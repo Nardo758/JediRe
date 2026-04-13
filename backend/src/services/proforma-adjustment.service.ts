@@ -1254,6 +1254,29 @@ export interface DealFinancials {
     equityMultiple: number | null;
     cashOnCash: number | null;
   } | null;
+  /** Sources & Uses — capital deployment at close */
+  sourcesUses: {
+    sources: Array<{ id: string; label: string; amount: number | null; pct: number | null; sub: string | null }>;
+    uses: Array<{ id: string; label: string; amount: number | null; pct: number | null; sub: string | null; userOverridable: boolean }>;
+    totalSources: number | null;
+    totalUses: number | null;
+    delta: number | null;
+    balanced: boolean;
+    benchmarks: {
+      totalCostPerUnit: number | null;
+      totalCostPerSf: number | null;
+      closingCostsPct: number | null;
+      debtPct: number | null;
+      equityPct: number | null;
+      capexPerUnit: number | null;
+    };
+    userOverrides: {
+      workingCapital: number | null;
+      preopeningCosts: number | null;
+      otherUses: number | null;
+      sellerFinancing: number | null;
+    };
+  } | null;
   /** Debt stack v2 — senior + mezz/B-Note loans */
   debt: {
     loans: Array<{
@@ -2156,6 +2179,87 @@ export async function getDealFinancials(
     dscrMin: debtOvr('senior', 'minDscr') ?? capitalStack.dscrMin,
   };
 
+  // ── Sources & Uses ──────────────────────────────────────────────────────────
+  const suPyr = (assumptionsRow?.per_year_overrides ?? {}) as Record<string, unknown>;
+  const suOvr = (key: string): number | null => {
+    const entry = (suPyr[`su:${key}`] as Record<string, unknown> | null);
+    const v = entry?.value;
+    return typeof v === 'number' ? v : null;
+  };
+
+  const suSeniorLoan = seniorLoanAmtEff ?? capitalStack.loanAmount ?? 0;
+  const suMezzLoan = debtOvr('mezz', 'loanAmount') ?? 0;
+  const suPurchasePrice = purchasePrice ?? 0;
+  const suClosingCosts = 0; // Closing costs not yet structured in assumptions; placeholder for future field
+  const suTransferTax = totalTransferTax ?? 0;
+  const suOrigFee = suSeniorLoan * (capitalStackWithOverrides.originationFeePct ?? 0.01);
+  const suTiEscrow = suSeniorLoan * ((debtOvr('senior', 'tiEscrow') ?? 2) / 12) * (capitalStack.interestRate ?? 0.06);
+  const suReplReserve = totalUnits * (debtOvr('senior', 'replReserve') ?? 300);
+  const suOpReserve = suSeniorLoan * ((debtOvr('senior', 'opReserveMonths') ?? 3) / 12) * (capitalStack.interestRate ?? 0.06);
+  const suLenderReserves = suTiEscrow + suReplReserve + suOpReserve;
+
+  const suWorkingCapital = suOvr('workingCapital') ?? 0;
+  const suPreopening = suOvr('preopeningCosts') ?? 0;
+  const suOtherUses = suOvr('otherUses') ?? 0;
+  const suSellerFinancing = suOvr('sellerFinancing') ?? 0;
+  const suEquity = capitalStackWithOverrides.equityAtClose ?? Math.max(0, suPurchasePrice - suSeniorLoan);
+  const suLpShare = 0.90;
+  const suGpShare = 0.10;
+
+  const suUses = [
+    { id: 'purchasePrice',  label: 'PURCHASE PRICE',    amount: suPurchasePrice,   sub: totalUnits > 0 ? `${(suPurchasePrice / totalUnits).toFixed(0)}/unit` : null, userOverridable: false },
+    { id: 'closingCosts',   label: 'CLOSING COSTS',     amount: suClosingCosts,    sub: 'Title, legal, survey', userOverridable: false },
+    { id: 'transferTax',    label: 'TRANSFER TAXES',    amount: suTransferTax,     sub: 'Doc stamps + intangible — from Taxes tab', userOverridable: false },
+    { id: 'originationFee', label: 'LOAN ORIGINATION',  amount: suOrigFee,         sub: `${((capitalStackWithOverrides.originationFeePct ?? 0.01) * 100).toFixed(2)}% of loan`, userOverridable: false },
+    { id: 'lenderReserves', label: 'LENDER RESERVES',   amount: suLenderReserves > 0 ? suLenderReserves : null, sub: 'T&I escrow + replacement reserve + op reserve — from Debt tab', userOverridable: false },
+    { id: 'workingCapital', label: 'WORKING CAPITAL',   amount: suWorkingCapital > 0 ? suWorkingCapital : null,  sub: 'Operational runway', userOverridable: true },
+    { id: 'preopeningCosts',label: 'PRE-OPENING COSTS', amount: suPreopening > 0 ? suPreopening : null,          sub: 'Lease-up, marketing, staff', userOverridable: true },
+    { id: 'otherUses',      label: 'OTHER USES',        amount: suOtherUses > 0 ? suOtherUses : null,            sub: 'Miscellaneous at close', userOverridable: true },
+  ].filter(u => u.amount != null && (u.amount as number) > 0);
+
+  const suTotalUses = suUses.reduce((s, u) => s + (u.amount ?? 0), 0);
+
+  const suSources = [
+    { id: 'seniorDebt',      label: 'SENIOR DEBT',       amount: suSeniorLoan > 0 ? suSeniorLoan : null,       sub: `${((suSeniorLoan / Math.max(suPurchasePrice, 1)) * 100).toFixed(1)}% LTV` },
+    { id: 'mezzDebt',        label: 'MEZZ / B-NOTE',     amount: suMezzLoan > 0 ? suMezzLoan : null,           sub: 'Subordinate debt' },
+    { id: 'sellerFinancing', label: 'SELLER FINANCING',  amount: suSellerFinancing > 0 ? suSellerFinancing : null, sub: 'Seller carry-back note' },
+    { id: 'lpEquity',        label: 'LP EQUITY',         amount: suEquity > 0 ? suEquity * suLpShare : null,   sub: `${(suLpShare * 100).toFixed(0)}% LP split` },
+    { id: 'gpEquity',        label: 'GP EQUITY',         amount: suEquity > 0 ? suEquity * suGpShare : null,   sub: `${(suGpShare * 100).toFixed(0)}% GP co-invest` },
+  ].filter(s => s.amount != null && (s.amount as number) > 0);
+
+  const suTotalSources = suSources.reduce((s, src) => s + (src.amount ?? 0), 0);
+  const suDelta = suTotalSources - suTotalUses;
+  const suBalanced = Math.abs(suDelta) < 1000;
+
+  type SuItem = { id: string; label: string; amount: number | null; sub: string | null; userOverridable?: boolean };
+  const addPct = (items: SuItem[]): (SuItem & { pct: number })[] => {
+    const total = Math.max(items.reduce((s, i) => s + (i.amount ?? 0), 0), 1);
+    return items.map(i => ({ ...i, pct: (i.amount ?? 0) / total }));
+  };
+
+  const sourcesUses: DealFinancials['sourcesUses'] = {
+    sources: addPct(suSources).map(s => ({ id: s.id, label: s.label, amount: s.amount, pct: s.pct, sub: s.sub })),
+    uses: addPct(suUses).map(u => ({ id: u.id, label: u.label, amount: u.amount, pct: u.pct, sub: u.sub, userOverridable: u.userOverridable ?? false })),
+    totalSources: suTotalSources || null,
+    totalUses: suTotalUses || null,
+    delta: suDelta,
+    balanced: suBalanced,
+    benchmarks: {
+      totalCostPerUnit: totalUnits > 0 && suTotalUses > 0 ? Math.round(suTotalUses / totalUnits) : null,
+      totalCostPerSf: null,
+      closingCostsPct: suTotalUses > 0 ? +((suClosingCosts + suTransferTax) / suTotalUses).toFixed(4) : null,
+      debtPct: suTotalSources > 0 ? +((suSeniorLoan + suMezzLoan) / suTotalSources).toFixed(4) : null,
+      equityPct: suTotalSources > 0 ? +(suEquity / suTotalSources).toFixed(4) : null,
+      capexPerUnit: null,
+    },
+    userOverrides: {
+      workingCapital: suOvr('workingCapital'),
+      preopeningCosts: suOvr('preopeningCosts'),
+      otherUses: suOvr('otherUses'),
+      sellerFinancing: suOvr('sellerFinancing'),
+    },
+  };
+
   return {
     dealId,
     dealName: deal.name,
@@ -2173,6 +2277,7 @@ export async function getDealFinancials(
     returns: null,
     taxes,
     debt: debtStack,
+    sourcesUses,
   };
 }
 
@@ -2427,6 +2532,32 @@ export async function applyFinancialsOverride(
     );
     return {
       year1Key: field, year: 1, appliedValue: value, resolution: 'user_override',
+      updatedCell: { [field]: value },
+      derivedRecomputation: { egi: null, noi: null, totalOpex: null, derivedVacancyPct: null, affectedFields: [field] },
+    };
+  }
+
+  // Route Sources & Uses overrides to per_year_overrides with 'su:' prefix
+  // Field format: "su:{fieldName}" e.g. "su:workingCapital"
+  if (field.startsWith('su:')) {
+    const pyEntry = {
+      field, year: year ?? 0, value, updatedBy: userId,
+      updatedAt: new Date().toISOString(),
+      resolution: value != null ? 'override' : 'cleared',
+    };
+    await pool.query(
+      `UPDATE deal_assumptions
+          SET per_year_overrides = jsonb_set(
+                COALESCE(per_year_overrides, '{}'::jsonb),
+                $2::text[],
+                $3::jsonb
+              ),
+              updated_at = NOW()
+        WHERE deal_id = $1`,
+      [dealId, `{${field}}`, JSON.stringify(pyEntry)]
+    );
+    return {
+      year1Key: field, year: year ?? 0, appliedValue: value, resolution: 'user_override',
       updatedCell: { [field]: value },
       derivedRecomputation: { egi: null, noi: null, totalOpex: null, derivedVacancyPct: null, affectedFields: [field] },
     };

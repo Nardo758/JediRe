@@ -261,6 +261,29 @@ export interface F9DealFinancials {
   taxes: F9TaxData | null;
   /** Debt stack — senior + mezz/B-Note loans (v2) */
   debt: F9DebtStack | null;
+  /** Sources & Uses — capital deployment at close */
+  sourcesUses: {
+    sources: Array<{ id: string; label: string; amount: number | null; pct: number | null; sub: string | null }>;
+    uses: Array<{ id: string; label: string; amount: number | null; pct: number | null; sub: string | null; userOverridable: boolean }>;
+    totalSources: number | null;
+    totalUses: number | null;
+    delta: number | null;
+    balanced: boolean;
+    benchmarks: {
+      totalCostPerUnit: number | null;
+      totalCostPerSf: number | null;
+      closingCostsPct: number | null;
+      debtPct: number | null;
+      equityPct: number | null;
+      capexPerUnit: number | null;
+    };
+    userOverrides: {
+      workingCapital: number | null;
+      preopeningCosts: number | null;
+      otherUses: number | null;
+      sellerFinancing: number | null;
+    };
+  } | null;
 }
 
 export type F9ProFormaRow = F9DealFinancials['proforma']['year1'][number];
