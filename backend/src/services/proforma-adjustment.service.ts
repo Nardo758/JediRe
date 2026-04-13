@@ -2032,6 +2032,10 @@ export async function getDealFinancials(
     prepayType: debtOvrStr('senior', 'prepayType') ?? (seniorRateTypeResolved === 'Fixed' ? 'defeasance' : 'open'),
     derivedAnnualDS: seniorAnnualDS,
     sofrCurve: sofrCurveSenior,
+    extensionOptions: debtOvrStr('senior', 'extensionOptions') ?? null,
+    refiEnabled: (debtOvr('senior', 'refiEnabled') ?? 0) !== 0,
+    refiTriggerYear: debtOvr('senior', 'refiTriggerYear') ?? 3,
+    refiNewLoanType: debtOvrStr('senior', 'refiNewLoanType') ?? null,
   };
 
   // Build mezz loan entry from persisted overrides (only if loanAmount override exists)
@@ -2085,12 +2089,16 @@ export async function getDealFinancials(
     : seniorRateEff;
   const aggregateDscr = totalAnnualDS != null && totalAnnualDS > 0 && typeof noiFull === 'number' ? noiFull / totalAnnualDS : seniorDscr;
 
+  const combinedLtcPct = purchasePrice != null && purchasePrice > 0 && totalLoanAmt > 0
+    ? +(totalLoanAmt / purchasePrice).toFixed(4)
+    : capitalStack.ltcPct;
+
   const debtStack: DealFinancials['debt'] = {
     loans,
     aggregate: {
       totalLoanAmount: totalLoanAmt,
       blendedRatePct: blendedRate,
-      combinedLtcPct: capitalStack.ltcPct,
+      combinedLtcPct,
       totalAnnualDS: totalAnnualDS || null,
       aggregateDscr,
     },

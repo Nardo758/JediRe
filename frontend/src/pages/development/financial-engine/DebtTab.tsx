@@ -350,9 +350,9 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
             rateType: f9L.rateType,
             sofrCurve: f9L.sofrCurve?.length === 5 ? f9L.sofrCurve : SOFR_FWD,
             prepayType: f9L.prepayType as PrepayType ?? existing.prepayType,
+            extensionOptions: (f9L as any).extensionOptions ?? existing.extensionOptions,
           });
         } else if (f9L.id === 'mezz') {
-          // Mezz loan persisted in backend — reconstruct it
           const mPreset = LOAN_PRESETS.Mezz;
           next.push({
             ...makeLoanState('mezz', 'Mezz / B-Note', mPreset, f9L as F9DebtLoan, f9L.loanAmount.platform ?? 0),
@@ -361,6 +361,18 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
             sofrCurve: f9L.sofrCurve?.length === 5 ? f9L.sofrCurve : SOFR_FWD,
             prepayType: f9L.prepayType as PrepayType ?? mPreset.prepayType,
           });
+        }
+        // Restore refi state from senior loan overrides
+        if (f9L.id === 'senior') {
+          const fl = f9L as any;
+          if (fl.refiEnabled != null || fl.refiTriggerYear != null || fl.refiNewLoanType != null) {
+            setRefi(r => ({
+              ...r,
+              enabled: !!fl.refiEnabled,
+              triggerYear: fl.refiTriggerYear ?? r.triggerYear,
+              newLoanType: (fl.refiNewLoanType && LOAN_PRESETS[fl.refiNewLoanType as LoanPresetKey]) ? fl.refiNewLoanType as LoanPresetKey : r.newLoanType,
+            }));
+          }
         }
       }
       return next;
@@ -419,9 +431,6 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
   const dscrColor = (v: number | null) => v == null ? BT.text.muted : v >= 1.35 ? BT.met.financial : v >= 1.20 ? BT.text.amber : BT.text.red;
   const ltvColor  = (v: number | null) => v == null ? BT.text.muted : v <= 0.60 ? BT.met.financial : v <= 0.70 ? BT.text.amber : BT.text.red;
 
-  // ── Patch debounce ──────────────────────────────────────────────────────────
-  // Numeric fields: "debt:{loanId}:{fieldName}" — fieldName must match backend debtOvr() aliases
-  // String fields:  "debt:{loanId}:{fieldName}" — routed to debtOvrStr() in backend
   const patchTimeouts = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const patchDebt = useCallback((loanId: string, fieldName: string, value: number | null) => {
     const key = `debt:${loanId}:${fieldName}`;
@@ -433,7 +442,6 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
       } catch { /* non-fatal */ }
     }, 600);
   }, [dealId, onF9Refresh]);
-  // String fields use the same endpoint but value is sent as a JSON string
   const patchDebtStr = useCallback((loanId: string, fieldName: string, value: string) => {
     const key = `debt:${loanId}:${fieldName}`;
     clearTimeout(patchTimeouts.current[key]);
@@ -444,8 +452,14 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
       } catch { /* non-fatal */ }
     }, 600);
   }, [dealId, onF9Refresh]);
+  // Direct (non-debounced) batch clear — used by applyPreset to flush all overrides atomically
+  const clearDebtOverrides = useCallback(async (loanId: string, fields: string[]) => {
+    await Promise.all(fields.map(f =>
+      apiClient.patch(`/api/v1/deals/${dealId}/financials/override`, { field: `debt:${loanId}:${f}`, year: 1, value: null }).catch(() => null)
+    ));
+    onF9Refresh?.();
+  }, [dealId, onF9Refresh]);
 
-  // ── Helpers to update loan state ────────────────────────────────────────────
   const updateLoan = useCallback((id: string, patch: Partial<LoanState>) => {
     setLoans(prev => prev.map(l => l.id === id ? { ...l, ...patch } : l));
   }, []);
@@ -457,26 +471,21 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
       loanTypeLabel: key,
       rateType: p.rateType,
       prepayType: p.prepayType,
-      userRate: null,
-      userSpread: null,
-      userSofr: null,
-      userCapRate: null,
-      userTerm: null,
-      userAmort: null,
-      userIO: null,
-      userOrigFee: null,
-      userExitFee: null,
-      userRateCapCost: null,
-      userMinDscr: null,
-      userMinDY: null,
-      userMinOcc: null,
-      userMaxLtv: null,
+      userRate: null, userSpread: null, userSofr: null, userCapRate: null,
+      userTerm: null, userAmort: null, userIO: null,
+      userOrigFee: null, userExitFee: null, userRateCapCost: null,
+      userMinDscr: null, userMinDY: null, userMinOcc: null, userMaxLtv: null,
     }));
-    // Persist loan type, rate type, prepay type to backend
-    patchDebtStr(id, 'loanTypeLabel', key);
-    patchDebtStr(id, 'rateType', LOAN_PRESETS[key].rateType);
-    patchDebtStr(id, 'prepayType', LOAN_PRESETS[key].prepayType);
-  }, [patchDebtStr]);
+    // Clear all persisted numeric overrides atomically, then persist the new preset strings
+    const numericFields = ['interestRate','sofr','sofrCurve:0','spread','capRate','termYears',
+      'amortYears','ioMonths','origFee','exitFee','rateCapCost','minDscr','minDY','minOcc',
+      'maxLtv','cashTrapDscr','tiEscrow','replReserve','opReserveMonths'];
+    clearDebtOverrides(id, numericFields).then(() => {
+      patchDebtStr(id, 'loanTypeLabel', key);
+      patchDebtStr(id, 'rateType', p.rateType);
+      patchDebtStr(id, 'prepayType', p.prepayType);
+    });
+  }, [clearDebtOverrides, patchDebtStr]);
 
   const addMezz = useCallback(() => {
     if (loans.find(l => l.id === 'mezz')) return;
@@ -722,7 +731,11 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
                     user={activeLoan.userSofr}
                     userEditable
                     format={fmtPctFull}
-                    onUserChange={v => { updateLoan(activeLoan.id, { userSofr: v }); patchDebt(activeLoan.id, 'sofr', v); }}
+                    onUserChange={v => {
+                      updateLoan(activeLoan.id, { userSofr: v });
+                      patchDebt(activeLoan.id, 'sofr', v);
+                      patchDebt(activeLoan.id, 'sofrCurve:0', v); // sync sofrCurve[0] so backend round-trips correctly
+                    }}
                     sub="30-day Term SOFR"
                   />
                   <DebtRow
@@ -822,7 +835,10 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
                 <td colSpan={4} style={{ padding: '3px 10px' }}>
                   <input
                     value={activeLoan.extensionOptions}
-                    onChange={e => updateLoan(activeLoan.id, { extensionOptions: e.target.value })}
+                    onChange={e => {
+                      updateLoan(activeLoan.id, { extensionOptions: e.target.value });
+                      patchDebtStr(activeLoan.id, 'extensionOptions', e.target.value);
+                    }}
                     placeholder="e.g. 2 × 1yr @ 25bp fee (conditions: DSCR ≥ 1.10×)"
                     style={{ width: '100%', background: BT.bg.input, border: `1px solid ${BT.border.medium}`, color: BT.text.green, fontFamily: MONO, fontSize: 9, padding: '2px 6px', borderRadius: 2 }}
                   />
@@ -1049,7 +1065,13 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
         <div style={{ padding: '10px 14px', borderBottom: `1px solid ${BT.border.medium}` }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-              <input type="checkbox" checked={refi.enabled} onChange={e => setRefi(r => ({ ...r, enabled: e.target.checked }))} />
+              <input type="checkbox" checked={refi.enabled}
+                onChange={e => {
+                  const v = e.target.checked;
+                  setRefi(r => ({ ...r, enabled: v }));
+                  patchDebt(activeLoan.id, 'refiEnabled', v ? 1 : 0);
+                }}
+              />
               <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.white }}>ENABLE REFI EVENT</span>
             </label>
             {refi.enabled && (
@@ -1057,7 +1079,11 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
                 <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>TRIGGER:</span>
                 <select
                   value={refi.triggerYear}
-                  onChange={e => setRefi(r => ({ ...r, triggerYear: parseInt(e.target.value) }))}
+                  onChange={e => {
+                    const yr = parseInt(e.target.value);
+                    setRefi(r => ({ ...r, triggerYear: yr }));
+                    patchDebt(activeLoan.id, 'refiTriggerYear', yr);
+                  }}
                   style={{ background: BT.bg.input, border: `1px solid ${BT.border.medium}`, color: BT.text.white, fontFamily: MONO, fontSize: 9, padding: '2px 6px', borderRadius: 2 }}
                 >
                   {Array.from({ length: Math.min(effTerm, 10) }, (_, i) => i + 1).map(yr => (
@@ -1067,7 +1093,11 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
                 <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>NEW LOAN TYPE:</span>
                 <select
                   value={refi.newLoanType}
-                  onChange={e => setRefi(r => ({ ...r, newLoanType: e.target.value as LoanPresetKey }))}
+                  onChange={e => {
+                    const lt = e.target.value as LoanPresetKey;
+                    setRefi(r => ({ ...r, newLoanType: lt }));
+                    patchDebtStr(activeLoan.id, 'refiNewLoanType', lt);
+                  }}
                   style={{ background: BT.bg.input, border: `1px solid ${BT.border.medium}`, color: BT.text.white, fontFamily: MONO, fontSize: 9, padding: '2px 6px', borderRadius: 2 }}
                 >
                   {(Object.keys(LOAN_PRESETS) as LoanPresetKey[]).map(k => <option key={k} value={k}>{k}</option>)}
