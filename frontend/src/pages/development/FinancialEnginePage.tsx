@@ -11,6 +11,9 @@ import { ProjectionsTab } from './financial-engine/ProjectionsTab';
 import { AssumptionsTab } from './financial-engine/AssumptionsTab';
 import { DebtTab } from './financial-engine/DebtTab';
 import { WaterfallTab } from './financial-engine/WaterfallTab';
+import { TaxesTab } from './financial-engine/TaxesTab';
+import { SourcesUsesTab } from './financial-engine/SourcesUsesTab';
+import { ReturnsTab } from './financial-engine/ReturnsTab';
 import { SensitivityTab } from './financial-engine/SensitivityTab';
 import { DecisionTab } from './financial-engine/DecisionTab';
 import { CompareTab } from './financial-engine/CompareTab';
@@ -27,7 +30,10 @@ const TAB_LABELS = [
   '⋮≡ PROJECTIONS',
   '⊕ ASSUMPTIONS',
   '⊙ DEBT',
-  '◈ WATERFALL',
+  '◈ CAP & WFALL',
+  '$ TAXES',
+  '⇄ SRC & USES',
+  '% RETURNS',
   '∿ SENSITIVITY',
   '✓ DECISION',
   '⇔ COMPARE',
@@ -552,17 +558,20 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
 
         {/* ── TAB CONTENT (RIGHT) ── */}
         <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-          {activeTab === 0 && <BtTabWrapper><OverviewTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 1 && <BtTabWrapper><ProFormaSummaryTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 2 && (
+          {activeTab === 0  && <BtTabWrapper><OverviewTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 1  && <BtTabWrapper><ProFormaSummaryTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 2  && (
             <BtTabWrapper><ProjectionsTab {...tabProps} integrityWarning={integrityBlocked} /></BtTabWrapper>
           )}
-          {activeTab === 3 && <BtTabWrapper><AssumptionsTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 4 && <BtTabWrapper><DebtTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 5 && <BtTabWrapper><WaterfallTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 6 && <BtTabWrapper><SensitivityTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 7 && <BtTabWrapper><DecisionTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 8 && <BtTabWrapper><CompareTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 3  && <BtTabWrapper><AssumptionsTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 4  && <BtTabWrapper><DebtTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 5  && <BtTabWrapper><WaterfallTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 6  && <BtTabWrapper><TaxesTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 7  && <BtTabWrapper><SourcesUsesTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 8  && <BtTabWrapper><ReturnsTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 9  && <BtTabWrapper><SensitivityTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 10 && <BtTabWrapper><DecisionTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 11 && <BtTabWrapper><CompareTab {...tabProps} /></BtTabWrapper>}
         </div>
       </div>
 

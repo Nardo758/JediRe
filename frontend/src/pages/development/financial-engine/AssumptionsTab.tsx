@@ -323,8 +323,9 @@ const FIELD_META: Record<string, FieldMeta> = {
 
 // ─── RowDef interface ──────────────────────────────────────────────────────────
 interface RowDef {
-  key: string; label: string; section: 1|2|3|4|5|6|7;
+  key: string; label: string; section: 1|2|3|4|5|6|7|8|9|10;
   unit: 'pct'|'dollar'|'weeks'|'per_wk'|'months'; readonly?: boolean;
+  isM07?: boolean;
   format: (n: number) => string;
   description?: string;
   patchField?: string;
@@ -336,7 +337,7 @@ interface RowDef {
 }
 
 // Build a RowDef from a backend OSRow + FieldMeta
-function buildRowDef(osRow: OSRow, section: 1|3, meta: FieldMeta): RowDef {
+function buildRowDef(osRow: OSRow, section: 5|7, meta: FieldMeta): RowDef {
   const field = osRow.field;
   return {
     key: field,
@@ -382,33 +383,39 @@ function buildRowDef(osRow: OSRow, section: 1|3, meta: FieldMeta): RowDef {
   };
 }
 
-// Section headers
+// Section headers — v2 (10-section layout; 1-4 rendered as KeystonePanel above table)
 const SEC: Record<number,string> = {
-  1: '1  REVENUE — RENT SIDE  [proforma.year1]',
-  2: '2  REVENUE — TRAFFIC / DEMAND  [M07]',
-  3: '3  EXPENSE ASSUMPTIONS  [proforma.year1]',
-  4: '4  CAPEX / RESERVES',
-  5: '5  DEBT ASSUMPTIONS',
-  6: '6  EXIT ASSUMPTIONS',
-  7: '7  STRATEGY-SPECIFIC',
+  1: '1  KEYSTONE',
+  2: '2  DEAL INFO',
+  3: '3  ACQUISITION',
+  4: '4  UNIT MIX & RENT ROLL',
+  5: '5  REVENUE  [proforma.year1]',
+  6: '6  TRAFFIC INTEL  [M07 · T-01 / T-05 / T-06]',
+  7: '7  OPERATING EXPENSES  [proforma.year1]',
+  8: '8  CAPEX & RESERVES',
+  9: '9  DISPOSITION & HOLD',
+  10: '10  FINANCING  [→ Debt Tab]',
 };
 
-// ─── Static row definitions (Sections 2, 4, 5, 6, 7) ─────────────────────────
+// ─── Static row definitions (v2: Sections 6, 8, 9, 10) ───────────────────────
+// Sections 5 (Revenue) and 7 (OpEx) are backend-driven via buildRowDef.
+// Sections 1-4 (Keystone/DealInfo/Acquisition/UnitMix) are rendered as KeystonePanel.
 const STATIC_ROWS: RowDef[] = [
-  // ── Section 2 ──────────────────────────────────────────────────────────────
+
+  // ── Section 6: Traffic Intel [M07] ─────────────────────────────────────────
   {
-    key: 't01WeeklyTours', label: 'T-01  Walk-Ins / Week', section: 2, unit: 'per_wk',
-    format: fmtPwk, patchField: 't01WeeklyTours',
-    description: 'Total walk-in / inbound tour volume per week. Primary demand signal.',
+    key: 't01WeeklyTours', label: 'T-01  Walk-Ins / Week', section: 6, unit: 'per_wk',
+    isM07: true, format: fmtPwk, patchField: 't01WeeklyTours',
+    description: 'T-01 AADT-equivalent inbound tour volume per week. Primary demand signal from traffic engine.',
     platformSource: 'M07 — T-01 real-time signal per year', brokerSource: 'N/A — live traffic signal',
     getBroker:   (_f, _yr) => null,
     getPlatform: (f, yr)  => tyr(f, yr)?.t01WeeklyTours ?? null,
     getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
   },
   {
-    key: 't05ClosingRatio', label: 'T-05  Capture Rate / Tour→Lease %', section: 2, unit: 'pct',
-    format: fmtPct2, patchField: 't05ClosingRatio',
-    description: 'Tour-to-lease capture rate (T-05). Percentage of tours that convert to signed leases. Higher = stronger qualified demand.',
+    key: 't05ClosingRatio', label: 'T-05  Trade-Area Capture Rate %', section: 6, unit: 'pct',
+    isM07: true, format: fmtPct2, patchField: 't05ClosingRatio',
+    description: 'T-05 trade-area score — tour-to-lease capture rate. % of tours that convert to signed leases.',
     platformSource: 'M07 — T-05 closing ratio per year', brokerSource: 'N/A — live traffic signal',
     getBroker:   (_f, _yr) => null,
     getPlatform: (f, yr) => {
@@ -418,17 +425,17 @@ const STATIC_ROWS: RowDef[] = [
     getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
   },
   {
-    key: 't06WeeklyLeases', label: 'T-06  Net Leases / Week', section: 2, unit: 'per_wk',
-    format: fmtPwk, patchField: 't06WeeklyLeases',
-    description: 'Net new leases executed per week (T-06). Key lease-up velocity indicator.',
+    key: 't06WeeklyLeases', label: 'T-06  Velocity Signal — Net Leases/Wk', section: 6, unit: 'per_wk',
+    isM07: true, format: fmtPwk, patchField: 't06WeeklyLeases',
+    description: 'T-06 velocity signal — net new leases per week. Key lease-up velocity indicator.',
     platformSource: 'M07 — T-06 signal per year', brokerSource: 'N/A — live traffic signal',
     getBroker:   (_f, _yr) => null,
     getPlatform: (f, yr) => tyr(f, yr)?.t06WeeklyLeases ?? null,
     getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
   },
   {
-    key: 't07Trajectory', label: 'T-07  Demand Trajectory % (YoY)', section: 2, unit: 'pct',
-    format: n => (n >= 0 ? '+' : '') + (n * 100).toFixed(1) + '%', readonly: true,
+    key: 't07Trajectory', label: 'T-07  Demand Trajectory % YoY', section: 6, unit: 'pct',
+    isM07: true, format: n => (n >= 0 ? '+' : '') + (n * 100).toFixed(1) + '%', readonly: true,
     description: 'YoY tour-volume change (T-07). Positive = accelerating demand.',
     platformSource: 'M07 — T-07 derived from T-01 YoY change', brokerSource: 'N/A — derived',
     getBroker:   (_f, _yr) => null,
@@ -441,11 +448,10 @@ const STATIC_ROWS: RowDef[] = [
     getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
   },
   {
-    key: 'derivedVacancy', label: 'Derived Vacancy % (M07 equilibrium)', section: 2, unit: 'pct',
-    format: fmtPct2, readonly: true,
+    key: 'derivedVacancy', label: 'Derived Vacancy % (M07 equilibrium)', section: 6, unit: 'pct',
+    isM07: true, format: fmtPct2, readonly: true,
     description: 'Read-only equilibrium vacancy from T-01×T-05 traffic model. Fallback to broker T12 vacancy when M07 offline.',
     platformSource: 'M07 — equilibrium vacancy from tours × conversion', brokerSource: 'OM / T12 vacancy_pct (broker fallback)',
-    // Broker fallback: use year1.vacancy_pct.broker when M07 is offline
     getBroker: (f, _yr) => y1(f, 'vacancy_pct')?.broker ?? y1(f, 'vacancy_pct')?.t12 ?? null,
     getPlatform: (f, yr) => {
       const t = tyr(f, yr);
@@ -455,12 +461,11 @@ const STATIC_ROWS: RowDef[] = [
     getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
   },
   {
-    key: 'stabilizedOcc', label: 'Stabilized Occupancy Target', section: 2, unit: 'pct',
-    format: fmtPct2, patchField: 'vacancyPct',
+    key: 'stabilizedOcc', label: 'Stabilized Occupancy Target', section: 6, unit: 'pct',
+    isM07: true, format: fmtPct2, patchField: 'vacancyPct',
     description: 'Long-run stabilized occupancy target. Platform = M07 equilibrium. Broker fallback = 1 − T12 vacancy.',
     platformSource: 'M07 — occupancy trajectory per year', brokerSource: 'OM / Pro Forma Assumptions',
     brokerPage: 'Operating Assumptions', brokerLine: 'Stabilized Occupancy',
-    // Broker fallback: 1 − vacancy_pct.broker when M07 offline
     getBroker: (f, _yr) => {
       const v = y1(f, 'vacancy_pct')?.broker ?? y1(f, 'vacancy_pct')?.t12;
       return v != null ? +(1 - v).toFixed(4) : null;
@@ -472,8 +477,8 @@ const STATIC_ROWS: RowDef[] = [
     getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
   },
   {
-    key: 'leaseUpTo90', label: 'Lease-Up Curve: 90% Occ (weeks)', section: 2, unit: 'weeks',
-    format: fmtWks, readonly: true,
+    key: 'leaseUpTo90', label: 'Lease-Up Curve: 90% Occ (weeks)', section: 6, unit: 'weeks',
+    isM07: true, format: fmtWks, readonly: true,
     description: 'Weeks from CO to 90% physical occupancy. Derived from T-06 weekly leases.',
     platformSource: 'M07 — T-06 velocity → weeks to 90%', brokerSource: 'OM / Pro Forma Assumptions',
     getBroker:   (_f, _yr) => null,
@@ -481,8 +486,8 @@ const STATIC_ROWS: RowDef[] = [
     getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
   },
   {
-    key: 'leaseUpTo93', label: 'Lease-Up Curve: 93% Occ (weeks)', section: 2, unit: 'weeks',
-    format: fmtWks, readonly: true,
+    key: 'leaseUpTo93', label: 'Lease-Up Curve: 93% Occ (weeks)', section: 6, unit: 'weeks',
+    isM07: true, format: fmtWks, readonly: true,
     description: 'Weeks from CO to 93% physical occupancy.',
     platformSource: 'M07 — T-06 velocity → weeks to 93%', brokerSource: 'OM / Pro Forma Assumptions',
     getBroker:   (_f, _yr) => null,
@@ -490,8 +495,8 @@ const STATIC_ROWS: RowDef[] = [
     getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
   },
   {
-    key: 'leaseUpTo95', label: 'Lease-Up Curve: 95% Occ (weeks)', section: 2, unit: 'weeks',
-    format: fmtWks, readonly: true,
+    key: 'leaseUpTo95', label: 'Lease-Up Curve: 95% Occ (weeks)', section: 6, unit: 'weeks',
+    isM07: true, format: fmtWks, readonly: true,
     description: 'Weeks from CO to 95% physical occupancy. Standard stabilization threshold.',
     platformSource: 'M07 — T-06 velocity → weeks to 95%', brokerSource: 'OM / Pro Forma Assumptions',
     getBroker:   (_f, _yr) => null,
@@ -499,8 +504,8 @@ const STATIC_ROWS: RowDef[] = [
     getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
   },
   {
-    key: 'renovationLift', label: 'Renovation Traffic Lift %', section: 2, unit: 'pct',
-    format: fmtPct2,
+    key: 'renovationLift', label: 'Renovation Traffic Lift %', section: 6, unit: 'pct',
+    isM07: true, format: fmtPct2,
     description: 'Incremental rent lift from renovation/value-add scope, derived from M07 demand elasticity.',
     platformSource: 'M07 — Demand elasticity × renovation scope model', brokerSource: 'OM / Value-Add Pro Forma',
     getBroker: (_f, _yr) => null,
@@ -513,10 +518,34 @@ const STATIC_ROWS: RowDef[] = [
     },
     getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? 45,
   },
-
-  // ── Section 4 ──────────────────────────────────────────────────────────────
   {
-    key: 'capexPerUnit', label: 'CapEx Budget ($/unit total)', section: 4, unit: 'dollar',
+    key: 'afterRepairRent', label: 'Target After-Repair Rent', section: 6, unit: 'dollar',
+    isM07: true, format: fmtDlr,
+    description: 'Target in-place rent post-renovation. Value-add strategy only.',
+    platformSource: 'M07 — Rent trajectory + renovation premium model', brokerSource: 'OM / Value-Add Pro Forma',
+    getBroker: (_f, _yr) => null,
+    getPlatform: (f, yr) => {
+      const t = tyr(f, yr);
+      return t?.effRent != null ? Math.round(t.effRent * 1.08) : null;
+    },
+    getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? 50,
+  },
+  {
+    key: 'leaseUpVelocity', label: 'Lease-Up Velocity (leases/mo)', section: 6, unit: 'per_wk',
+    isM07: true, format: n => Math.round(n) + '/mo',
+    description: 'Monthly net leasing velocity during lease-up (T-06 × 4.33).',
+    platformSource: 'M07 — T-06 weekly lease velocity × 4.33', brokerSource: 'OM / Pro Forma Assumptions',
+    getBroker: (_f, _yr) => null,
+    getPlatform: (f, _yr) => {
+      const wk = f.trafficProjection?.leasingSignals?.t06WeeklyLeases;
+      return wk != null ? Math.round(wk * 4.33) : null;
+    },
+    getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
+  },
+
+  // ── Section 8: Capex & Reserves ────────────────────────────────────────────
+  {
+    key: 'capexPerUnit', label: 'CapEx Budget ($/unit total)', section: 8, unit: 'dollar',
     format: fmtDlr,
     description: 'Total capital expenditure budget per unit over the hold period.',
     platformSource: 'JEDI — Value-add comp database', brokerSource: 'OM / CapEx Schedule',
@@ -529,7 +558,24 @@ const STATIC_ROWS: RowDef[] = [
     getConfidence: _f => 50,
   },
   {
-    key: 'reserves', label: 'Replacement Reserves ($/unit/yr)', section: 4, unit: 'dollar',
+    key: 'capexYearDraw', label: 'CapEx Annual Draw ($/unit)', section: 8, unit: 'dollar',
+    format: fmtDlr, patchField: 'capexPerYear',
+    description: 'Per-year capital expenditure draw per unit. Front-loaded for value-add programs (Y1 40%, Y2 35%, Y3 25%).',
+    platformSource: 'JEDI — CapEx curve model (front-loaded)', brokerSource: 'OM / CapEx Schedule by Year',
+    getBroker: (f, yr) => {
+      const total = y1(f,'capex')?.broker;
+      if (total == null) return null;
+      const perUnit = total / Math.max(f.totalUnits, 1);
+      if (yr === 1) return Math.round(perUnit * 0.40);
+      if (yr === 2) return Math.round(perUnit * 0.35);
+      if (yr === 3) return Math.round(perUnit * 0.25);
+      return 0;
+    },
+    getPlatform: (_f, _yr) => null,
+    getConfidence: _f => 55,
+  },
+  {
+    key: 'reserves', label: 'Replacement Reserves ($/unit/yr)', section: 8, unit: 'dollar',
     format: fmtDlr, patchField: 'replacementReserves',
     description: 'Annual replacement reserves per unit. Industry standard: $150–$350.',
     platformSource: 'JEDI — Industry reserve standard', brokerSource: 'OM / Pro Forma Expenses',
@@ -538,41 +584,9 @@ const STATIC_ROWS: RowDef[] = [
     getConfidence: _f => 70,
   },
 
-  // ── Section 5 ──────────────────────────────────────────────────────────────
+  // ── Section 9: Disposition & Hold ──────────────────────────────────────────
   {
-    key: 'interestRate', label: 'Interest Rate', section: 5, unit: 'pct',
-    format: fmtPct2, patchField: 'interestRate',
-    description: 'Senior loan fixed rate. Platform = SOFR + 175bps current market. Persists to deal_assumptions.interest_rate.',
-    platformSource: 'JEDI — SOFR + spread (market rate)', brokerSource: 'OM / Term Sheet or Debt Broker',
-    brokerPage: 'Financing Assumptions', brokerLine: 'Interest Rate',
-    getBroker: (f, _yr) => f.capitalStack.interestRate ?? null,
-    getPlatform: (_f, _yr) => 0.0675,
-    getConfidence: _f => 80,
-  },
-  {
-    key: 'ltcPct', label: 'LTV / LTC %', section: 5, unit: 'pct',
-    format: fmtPct2, patchField: 'ltcPct',
-    description: 'Loan-to-value/cost at closing. Persists to deal_assumptions.ltc.',
-    platformSource: 'JEDI — Market LTV norms', brokerSource: 'OM / Financing Assumptions',
-    brokerPage: 'Financing Assumptions', brokerLine: 'LTV',
-    getBroker: (f, _yr) => f.capitalStack.ltcPct ?? null,
-    getPlatform: (_f, _yr) => 0.65,
-    getConfidence: _f => 75,
-  },
-  {
-    key: 'ioPeriodMonths', label: 'Interest-Only Period (months)', section: 5, unit: 'months',
-    format: fmtMo, patchField: 'ioPeriodMonths',
-    description: 'Months of I/O payments before amortization begins. Persists to deal_assumptions.io_period_months.',
-    platformSource: 'JEDI — Lender market norms', brokerSource: 'OM / Term Sheet',
-    brokerPage: 'Financing Assumptions', brokerLine: 'I/O Period',
-    getBroker: (f, _yr) => f.capitalStack.ioPeriodMonths ?? null,
-    getPlatform: (_f, _yr) => 24,
-    getConfidence: _f => 80,
-  },
-
-  // ── Section 6 ──────────────────────────────────────────────────────────────
-  {
-    key: 'exitCapRate', label: 'Exit Cap Rate', section: 6, unit: 'pct',
+    key: 'exitCapRate', label: 'Exit Cap Rate', section: 9, unit: 'pct',
     format: fmtPct2, patchField: 'exitCapRate',
     description: 'Terminal cap rate applied to forward NOI at disposition.',
     platformSource: 'M07 — Demand velocity implies cap compression trend', brokerSource: 'OM / Underwriting Assumptions',
@@ -582,7 +596,7 @@ const STATIC_ROWS: RowDef[] = [
     getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? 60,
   },
   {
-    key: 'sellingCosts', label: 'Selling Costs %', section: 6, unit: 'pct',
+    key: 'sellingCosts', label: 'Selling Costs %', section: 9, unit: 'pct',
     format: fmtPct2,
     description: 'Brokerage, legal, and transfer costs at disposition as % of sale price.',
     platformSource: 'JEDI — Market transaction cost norms', brokerSource: 'OM / Disposition Assumptions',
@@ -591,31 +605,87 @@ const STATIC_ROWS: RowDef[] = [
     getPlatform: (_f, _yr) => 0.02,
     getConfidence: _f => 80,
   },
-
-  // ── Section 7 ──────────────────────────────────────────────────────────────
   {
-    key: 'afterRepairRent', label: 'Target After-Repair Rent', section: 7, unit: 'dollar',
-    format: fmtDlr,
-    description: 'Target in-place rent post-renovation. Value-add strategy only.',
-    platformSource: 'M07 — Rent trajectory + renovation premium model', brokerSource: 'OM / Value-Add Pro Forma',
-    getBroker: (_f, _yr) => null,
-    getPlatform: (f, yr) => {
-      const t = tyr(f, yr);
-      return t?.effRent != null ? Math.round(t.effRent * 1.08) : null;
+    key: 'grossSalePrice', label: 'Gross Sale Price (NOI ÷ ExitCap)', section: 9, unit: 'dollar',
+    format: fmtDlr, readonly: true,
+    description: 'Implied gross sale price = forward NOI at exit year ÷ exit cap rate. Computed from broker NOI × growth.',
+    platformSource: 'Computed: NOI[yr] ÷ Platform ExitCap', brokerSource: 'Computed: NOI[yr1] ÷ Broker ExitCap',
+    getBroker: (f, yr) => {
+      const exitCap = f.assumptions.exitCap;
+      if (!exitCap || exitCap === 0) return null;
+      const noi1 = y1(f, 'net_operating_income')?.broker ?? y1(f, 'noi')?.broker;
+      if (noi1 == null) return null;
+      const noi = Math.round(noi1 * Math.pow(1.03, yr - 1));
+      return Math.round(noi / exitCap);
     },
-    getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? 50,
+    getPlatform: (f, yr) => {
+      const exitCap = f.trafficProjection?.calibrated?.exitCap ?? f.assumptions.exitCap;
+      if (!exitCap || exitCap === 0) return null;
+      const noi1 = y1(f, 'net_operating_income')?.platform ?? y1(f, 'noi')?.platform ?? y1(f, 'net_operating_income')?.broker ?? y1(f, 'noi')?.broker;
+      if (noi1 == null) return null;
+      const noi = Math.round(noi1 * Math.pow(1.03, yr - 1));
+      return Math.round(noi / exitCap);
+    },
+    getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? 60,
   },
   {
-    key: 'leaseUpVelocity', label: 'Lease-Up Velocity (leases/mo)', section: 7, unit: 'per_wk',
-    format: n => Math.round(n) + '/mo',
-    description: 'Monthly net leasing velocity during lease-up (T-06 × 4.33).',
-    platformSource: 'M07 — T-06 weekly lease velocity × 4.33', brokerSource: 'OM / Pro Forma Assumptions',
-    getBroker: (_f, _yr) => null,
-    getPlatform: (f, _yr) => {
-      const wk = f.trafficProjection?.leasingSignals?.t06WeeklyLeases;
-      return wk != null ? Math.round(wk * 4.33) : null;
+    key: 'netSaleProceeds', label: 'Net Sale Proceeds (after costs)', section: 9, unit: 'dollar',
+    format: fmtDlr, readonly: true,
+    description: 'Gross sale price × (1 − selling costs). Represents proceeds before debt payoff.',
+    platformSource: 'Computed: GrossSale × (1 − SellingCosts)', brokerSource: 'Computed: GrossSale × (1 − SellingCosts)',
+    getBroker: (f, yr) => {
+      const exitCap = f.assumptions.exitCap;
+      if (!exitCap || exitCap === 0) return null;
+      const noi1 = y1(f, 'net_operating_income')?.broker ?? y1(f, 'noi')?.broker;
+      if (noi1 == null) return null;
+      const noi = Math.round(noi1 * Math.pow(1.03, yr - 1));
+      const gross = noi / exitCap;
+      const costs = y1(f,'sellingCosts')?.broker ?? 0.02;
+      return Math.round(gross * (1 - costs));
     },
-    getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
+    getPlatform: (f, yr) => {
+      const exitCap = f.trafficProjection?.calibrated?.exitCap ?? f.assumptions.exitCap;
+      if (!exitCap || exitCap === 0) return null;
+      const noi1 = y1(f, 'net_operating_income')?.platform ?? y1(f, 'net_operating_income')?.broker ?? y1(f, 'noi')?.broker;
+      if (noi1 == null) return null;
+      const noi = Math.round(noi1 * Math.pow(1.03, yr - 1));
+      const gross = noi / exitCap;
+      return Math.round(gross * 0.98);
+    },
+    getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? 60,
+  },
+
+  // ── Section 10: Financing [→ Debt Tab] ─────────────────────────────────────
+  // Read-only cross-reference to Debt tab. Edit these in the Debt Tab.
+  {
+    key: 'interestRate', label: 'Interest Rate', section: 10, unit: 'pct',
+    format: fmtPct2, readonly: true,
+    description: 'Senior loan fixed rate. Edit in Debt Tab → cross-referenced here.',
+    platformSource: 'JEDI — SOFR + spread (market rate)', brokerSource: 'OM / Term Sheet or Debt Broker',
+    brokerPage: 'Financing Assumptions', brokerLine: 'Interest Rate',
+    getBroker: (f, _yr) => f.capitalStack.interestRate ?? null,
+    getPlatform: (_f, _yr) => 0.0675,
+    getConfidence: _f => 80,
+  },
+  {
+    key: 'ltcPct', label: 'LTV / LTC %', section: 10, unit: 'pct',
+    format: fmtPct2, readonly: true,
+    description: 'Loan-to-value/cost at closing. Edit in Debt Tab → cross-referenced here.',
+    platformSource: 'JEDI — Market LTV norms', brokerSource: 'OM / Financing Assumptions',
+    brokerPage: 'Financing Assumptions', brokerLine: 'LTV',
+    getBroker: (f, _yr) => f.capitalStack.ltcPct ?? null,
+    getPlatform: (_f, _yr) => 0.65,
+    getConfidence: _f => 75,
+  },
+  {
+    key: 'ioPeriodMonths', label: 'Interest-Only Period (months)', section: 10, unit: 'months',
+    format: fmtMo, readonly: true,
+    description: 'Months of I/O payments before amortization begins. Edit in Debt Tab → cross-referenced here.',
+    platformSource: 'JEDI — Lender market norms', brokerSource: 'OM / Term Sheet',
+    brokerPage: 'Financing Assumptions', brokerLine: 'I/O Period',
+    getBroker: (f, _yr) => f.capitalStack.ioPeriodMonths ?? null,
+    getPlatform: (_f, _yr) => 24,
+    getConfidence: _f => 80,
   },
 ];
 
@@ -647,14 +717,28 @@ function LayeredCell({ vals, format, onClick, isM07, readonly, divergence, formu
 }) {
   const { broker, platform, user } = vals;
   const bg = divergence === 'red' ? 'bg-red-900/20 border-r-red-500/40' : divergence === 'amber' ? 'bg-amber-900/10 border-r-amber-500/20' : '';
+  const hasUser = user != null || formulaResult != null;
+  const resolved = formulaResult ?? user ?? platform ?? broker;
+  const priorVal = hasUser ? (platform ?? broker) : null;
+  const tooltipParts: string[] = [];
+  if (user != null) tooltipParts.push(`USR: ${format(user)}`);
+  if (platform != null) tooltipParts.push(`PLT: ${format(platform)}`);
+  if (broker != null) tooltipParts.push(`BRK: ${format(broker)}`);
+  if (resolved != null) tooltipParts.push(`RES: ${format(resolved)}`);
 
   return (
     <td
       onClick={readonly ? undefined : onClick}
+      title={tooltipParts.join(' · ')}
       className={`relative border-r border-[#1e1e1e] align-top px-1.5 py-0.5 min-w-[82px] ${bg}
         ${readonly ? 'bg-[#0d0d0d]' : 'cursor-pointer hover:border-blue-500/30'}`}
     >
+      {/* M07 sup badge (top-right corner) */}
       {isM07 && <sup className="absolute top-[1px] right-[2px] text-[5px] text-purple-600 font-bold">M07</sup>}
+      {/* User override badge (blue pill, top-right) */}
+      {hasUser && !isM07 && !readonly && (
+        <sup className="absolute top-[1px] right-[2px] text-[5px] font-bold text-blue-500/80">USR</sup>
+      )}
       {readonly && <Lock className="absolute top-[2px] left-[2px] w-2 h-2 text-slate-700" />}
       {formulaResult != null && (
         <div className="text-[9px] font-mono font-bold text-teal-400 leading-[1.3]">
@@ -664,17 +748,23 @@ function LayeredCell({ vals, format, onClick, isM07, readonly, divergence, formu
       {formulaResult == null && user != null && (
         <div className="text-[9px] font-mono font-bold text-blue-400 leading-[1.3]">{format(user)}</div>
       )}
-      {platform != null && (
-        <div className={`text-[9px] font-mono leading-[1.3] ${(user != null || formulaResult != null) ? 'text-cyan-900' : 'text-cyan-400 font-bold'}`}>
+      {/* Resolved (effective) line — shown faint when overridden by user */}
+      {hasUser && priorVal != null && (
+        <div className="text-[8px] font-mono leading-[1.2] text-slate-700 line-through">
+          {format(priorVal)}
+        </div>
+      )}
+      {!hasUser && platform != null && (
+        <div className="text-[9px] font-mono font-bold text-cyan-400 leading-[1.3]">
           {format(platform)}
         </div>
       )}
-      {broker != null && (
-        <div className={`text-[9px] font-mono leading-[1.3] ${(user != null || platform != null || formulaResult != null) ? 'text-amber-900/70' : 'text-amber-400 font-bold'}`}>
+      {!hasUser && platform == null && broker != null && (
+        <div className="text-[9px] font-mono font-bold text-amber-400 leading-[1.3]">
           {format(broker)}
         </div>
       )}
-      {formulaResult == null && user == null && platform == null && broker == null && (
+      {resolved == null && (
         <div className="text-[9px] font-mono text-slate-700">—</div>
       )}
     </td>
@@ -1096,6 +1186,110 @@ function FindingsRail({ financials, narrativeBlocks }: { financials: DealFinanci
   );
 }
 
+// ─── Keystone Panel — Sections 1-4 (deal-level constants, above per-year grid) ──
+function KeystonePanel({
+  financials, deal, assumptions, collapsed, onToggle,
+}: {
+  financials: DealFinancials;
+  deal: Record<string, unknown> | null | undefined;
+  assumptions: { dealInfo?: { dealName?: string; totalUnits?: number; city?: string; state?: string; vintage?: number; netRentableSF?: number } } | null | undefined;
+  collapsed: Set<number>;
+  onToggle: (sec: number) => void;
+}) {
+  const fmtM = (n: number|null|undefined) => n != null ? '$' + (n / 1_000_000).toFixed(1) + 'M' : '—';
+  const fmtK = (n: number|null|undefined) => n != null ? '$' + Math.round(n).toLocaleString() : '—';
+  const fmtPct = (n: number|null|undefined) => n != null ? (n < 1 ? (n * 100).toFixed(2) : n.toFixed(2)) + '%' : '—';
+  const fmtN = (n: number|null|undefined) => n != null ? n.toLocaleString() : '—';
+
+  const cs = financials.capitalStack;
+  const rr = financials.rentRollSummary;
+  const a  = financials.assumptions;
+
+  const dealName = (deal?.['name'] as string) ?? financials.dealName ?? assumptions?.dealInfo?.dealName ?? 'Deal';
+  const city     = (deal?.['city'] as string) ?? assumptions?.dealInfo?.city ?? '';
+  const state    = (deal?.['state'] as string) ?? assumptions?.dealInfo?.state ?? '';
+  const vintage  = (deal?.['year_built'] as number) ?? assumptions?.dealInfo?.vintage;
+  const nrsf     = (deal?.['net_rentable_sf'] as number) ?? assumptions?.dealInfo?.netRentableSF;
+  const assetCls = (deal?.['deal_type'] as string) ?? 'Multifamily';
+
+  const sections = [
+    {
+      sec: 1, label: '1  KEYSTONE', items: [
+        { label: 'Hold Period', value: `${a.holdYears} Years` },
+        { label: 'Total Units', value: fmtN(financials.totalUnits) },
+        { label: 'Hold Scenario', value: `${a.holdYears}YR` },
+        { label: 'M07 Confidence', value: financials.trafficProjection?.leasingSignals?.confidence != null ? `${financials.trafficProjection.leasingSignals.confidence}%` : 'Offline' },
+        { label: 'Exit Cap Rate', value: fmtPct(a.exitCap) },
+        { label: 'Rent Growth Y1', value: a.rentGrowthYr1 != null ? (a.rentGrowthYr1 * 100).toFixed(1) + '% / yr' : '—' },
+      ],
+    },
+    {
+      sec: 2, label: '2  DEAL INFO', items: [
+        { label: 'Deal Name', value: dealName },
+        { label: 'Location', value: [city, state].filter(Boolean).join(', ') || '—' },
+        { label: 'Asset Class', value: assetCls },
+        { label: 'Year Built', value: vintage != null ? String(vintage) : '—' },
+        { label: 'Net Rentable SF', value: nrsf != null ? nrsf.toLocaleString() + ' SF' : '—' },
+        { label: 'SF / Unit', value: (nrsf && financials.totalUnits) ? Math.round(nrsf / financials.totalUnits) + ' SF' : '—' },
+      ],
+    },
+    {
+      sec: 3, label: '3  ACQUISITION', items: [
+        { label: 'Purchase Price', value: fmtM(cs.purchasePrice) },
+        { label: '$/Unit', value: cs.pricePerUnit != null ? '$' + Math.round(cs.pricePerUnit).toLocaleString() : '—' },
+        { label: 'Loan Amount', value: fmtM(cs.loanAmount) },
+        { label: 'Equity at Close', value: fmtM(cs.equityAtClose) },
+        { label: 'LTV/LTC', value: fmtPct(cs.ltcPct) },
+        { label: 'DSCR Min', value: cs.dscrMin != null ? cs.dscrMin.toFixed(2) + 'x' : '—' },
+      ],
+    },
+    {
+      sec: 4, label: '4  UNIT MIX & RENT ROLL', items: [
+        { label: 'Total Units', value: fmtN(financials.totalUnits) },
+        { label: 'Avg In-Place Rent', value: rr?.avgInPlaceRent != null ? fmtK(rr.avgInPlaceRent) + '/mo' : '—' },
+        { label: 'Weighted Occupancy', value: rr?.weightedOccupancyPct != null ? (rr.weightedOccupancyPct * 100).toFixed(1) + '%' : '—' },
+        { label: 'Rent Roll Status', value: rr != null ? 'Loaded' : 'Not Available' },
+        { label: 'Orig Fee', value: cs.originationFeePct != null ? (cs.originationFeePct * 100).toFixed(2) + '%' : '—' },
+        { label: 'Amort. (years)', value: cs.amortizationYears != null ? String(cs.amortizationYears) + ' yrs' : '—' },
+      ],
+    },
+  ];
+
+  return (
+    <div className="border-b border-[#1e1e1e] bg-[#060606]">
+      <div className="grid grid-cols-4 gap-0">
+        {sections.map(({ sec, label, items }) => {
+          const isCollapsed = collapsed.has(sec);
+          return (
+            <div key={sec} className="border-r border-[#1e1e1e] last:border-r-0">
+              <button
+                onClick={() => onToggle(sec)}
+                className="w-full flex items-center gap-2 px-3 py-1 bg-[#111] border-b border-[#1e1e1e] hover:bg-[#181818] text-left"
+              >
+                {isCollapsed
+                  ? <ChevronRight className="w-2.5 h-2.5 text-slate-600 shrink-0" />
+                  : <ChevronDown className="w-2.5 h-2.5 text-slate-600 shrink-0" />
+                }
+                <span className="text-[8px] font-bold tracking-widest text-slate-500">{label}</span>
+              </button>
+              {!isCollapsed && (
+                <div className="px-3 py-2 grid grid-cols-1 gap-0.5">
+                  {items.map(({ label: lbl, value }) => (
+                    <div key={lbl} className="flex items-baseline justify-between gap-2 min-w-0">
+                      <span className="text-[8px] text-slate-600 truncate shrink-0">{lbl}</span>
+                      <span className="text-[9px] font-bold text-slate-300 font-mono truncate text-right">{value}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ─── Root ─────────────────────────────────────────────────────────────────────
 export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssumptionsChange }: FinancialEngineTabProps) {
   const [financials, setFinancials]     = useState<DealFinancials|null>(null);
@@ -1107,6 +1301,7 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
   const [rowModes, setRowModes]       = useState<Record<string, RowMode>>({});
   const [drawerTarget, setDrawerTarget] = useState<DrawerTarget|null>(null);
   const [lockedOverrides, setLockedOverrides] = useState(false);
+  const [collapsedSections, setCollapsedSections] = useState<Set<number>>(new Set());
   const fetchRef   = useRef(0);
   const patchQueue = useRef<Array<{field:string; year:number|null; value:number|null}>>([]);
   const flushTimer = useRef<ReturnType<typeof setTimeout>|null>(null);
@@ -1196,7 +1391,7 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
         const osRow = year1.find(r => r.field === field);
         if (!osRow) return null;
         const meta = FIELD_META[field] ?? { unit: 'dollar' as const, format: fmtDlr };
-        return buildRowDef(osRow, 1, meta);
+        return buildRowDef(osRow, 5, meta);
       })
       .filter((r): r is RowDef => r !== null);
     const opexRows = OPEX_ORDER
@@ -1204,18 +1399,18 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
         const osRow = year1.find(r => r.field === field);
         if (!osRow) return null;
         const meta = FIELD_META[field] ?? { unit: 'dollar' as const, format: fmtDlr };
-        return buildRowDef(osRow, 3, meta);
+        return buildRowDef(osRow, 7, meta);
       })
       .filter((r): r is RowDef => r !== null);
     return { revRows, opexRows };
   }, [financials]);
 
-  // Combined rows for all sections (used for bulk actions)
+  // Combined rows for all sections (used for bulk actions) — excludes readonly financing (sec 10)
   const allRows = useMemo(() => [
     ...revRows,
-    ...STATIC_ROWS.filter(r => r.section === 2),
+    ...STATIC_ROWS.filter(r => r.section === 6),
     ...opexRows,
-    ...STATIC_ROWS.filter(r => r.section >= 4),
+    ...STATIC_ROWS.filter(r => r.section === 8 || r.section === 9),
   ], [revRows, opexRows]);
 
   const getUser    = (key: string, yr: number) => overrides[key]?.[yr] ?? null;
@@ -1344,15 +1539,21 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
   const m07Conf  = financials?.trafficProjection?.leasingSignals?.confidence;
   const overrideCount = Object.values(overrides).reduce((s, yr) => s + Object.values(yr).filter(v => v != null).length, 0);
 
-  // Build sections: 1 & 3 backend-driven; 2, 4-7 from STATIC_ROWS
-  const sec2Rows   = STATIC_ROWS.filter(r => r.section === 2);
-  const sec4to7Rows = STATIC_ROWS.filter(r => r.section >= 4);
+  // v2 section assembly (10-section layout; sections 1-4 rendered as KeystonePanel above grid)
+  const toggleSection = (sec: number) =>
+    setCollapsedSections(prev => {
+      const next = new Set(prev);
+      if (next.has(sec)) next.delete(sec); else next.add(sec);
+      return next;
+    });
 
   const allSections: Array<{ sec: number; rows: RowDef[] }> = [
-    { sec: 1, rows: revRows },
-    { sec: 2, rows: sec2Rows },
-    { sec: 3, rows: opexRows },
-    ...([4,5,6,7] as const).map(sec => ({ sec, rows: sec4to7Rows.filter(r => r.section === sec) })),
+    { sec: 5,  rows: revRows },
+    { sec: 6,  rows: STATIC_ROWS.filter(r => r.section === 6) },
+    { sec: 7,  rows: opexRows },
+    { sec: 8,  rows: STATIC_ROWS.filter(r => r.section === 8) },
+    { sec: 9,  rows: STATIC_ROWS.filter(r => r.section === 9) },
+    { sec: 10, rows: STATIC_ROWS.filter(r => r.section === 10) },
   ];
 
   return (
@@ -1433,8 +1634,19 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
       {trafficOffline && (
         <div className="flex items-center gap-3 px-4 py-1.5 bg-amber-900/20 border-b border-amber-500/20 text-[10px] text-amber-400">
           <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-          Traffic Engine offline — Section 2 platform signals unavailable. Showing broker layer only.
+          Traffic Engine offline — Section 6 (Traffic Intel) platform signals unavailable. Showing broker layer only.
         </div>
+      )}
+
+      {/* Keystone Panel — Sections 1-4: deal-level constants above the per-year grid */}
+      {financials && (
+        <KeystonePanel
+          financials={financials}
+          deal={deal}
+          assumptions={assumptions}
+          collapsed={collapsedSections}
+          onToggle={toggleSection}
+        />
       )}
 
       {/* Grid + findings */}
@@ -1451,69 +1663,89 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
               </tr>
             </thead>
             <tbody>
-              {allSections.map(({ sec, rows }) => (
-                <React.Fragment key={sec}>
-                  <tr className="bg-[#181818] border-y border-[#1e1e1e] h-[22px]">
-                    <td colSpan={years.length + 2} className="px-3 py-1 text-[11px] font-bold text-slate-300 sticky left-0 bg-[#181818]">
-                      {SEC[sec]}
-                    </td>
-                  </tr>
-                  {rows.map(rd => {
-                    const mode = getMode(rd.key);
-                    return (
-                      <tr key={rd.key} className="border-b border-[#1e1e1e]/40 hover:bg-[#0f0f0f] h-[26px]">
-                        <td className="px-3 py-0.5 text-[11px] text-slate-400 sticky left-0 bg-[#0a0a0a] border-r border-[#1e1e1e] z-10 min-w-[220px]">
-                          <span className="flex items-center gap-1.5 truncate">
-                            {rd.readonly && <Lock className="w-2.5 h-2.5 text-slate-600 shrink-0" />}
-                            {sec === 2 && !rd.readonly && <span style={{ fontFamily: MONO, fontSize: 6, color: '#7e22ce', border: '1px solid #4c1d95', borderRadius: 2, padding: '0 2px', flexShrink: 0 }}>M07</span>}
-                            {mode === 'formula' && <FlaskConical className="w-2.5 h-2.5 text-teal-500 shrink-0" />}
-                            <span className="truncate">{rd.label}</span>
-                          </span>
-                        </td>
-                        {years.map(yr => {
-                          const broker       = financials ? rd.getBroker(financials, yr)   : null;
-                          const platform     = financials ? rd.getPlatform(financials, yr) : null;
-                          const user         = getUser(rd.key, yr);
-                          const formulaResult = mode === 'formula' ? computeFormulaResult(rd, yr) : null;
-                          const divergence = getDivergenceColor(
-                            formulaResult ?? user, platform, broker,
-                          );
-                          return (
-                            <LayeredCell key={yr}
-                              vals={{ broker, platform, user }}
-                              format={rd.format}
-                              readonly={rd.readonly || lockedOverrides}
-                              isM07={sec === 2}
-                              divergence={divergence}
-                              formulaResult={formulaResult}
-                              onClick={() => openDrawer(rd, yr)}
-                            />
-                          );
-                        })}
-                        <td className="px-0.5 py-0.5 text-center">
-                          {!rd.readonly && (
-                            <div className="flex gap-0.5 justify-center">
-                              {(['flat','stepped','formula'] as RowMode[]).map(m => {
-                                const isActive = mode === m;
-                                return (
-                                  <button key={m}
-                                    onClick={() => setRowModes(s => ({ ...s, [rd.key]: m }))}
-                                    title={m === 'formula' ? 'Formula mode' : m === 'flat' ? 'Flat: Y1 propagates' : 'Stepped: per-year'}
-                                    className={`px-1 py-0.5 text-[7px] font-bold rounded-sm cursor-pointer
-                                      ${isActive ? 'bg-blue-600/40 text-blue-400' : 'text-slate-700 hover:text-slate-400'}`}>
-                                    {m === 'flat' ? 'F' : m === 'stepped' ? 'S' : 'Fx'}
-                                  </button>
-                                );
-                              })}
-                            </div>
+              {allSections.map(({ sec, rows }) => {
+                const isCollapsed = collapsedSections.has(sec);
+                const isFinancing = sec === 10;
+                return (
+                  <React.Fragment key={sec}>
+                    <tr
+                      className="bg-[#181818] border-y border-[#1e1e1e] h-[22px] cursor-pointer hover:bg-[#1e1e1e] select-none"
+                      onClick={() => toggleSection(sec)}
+                    >
+                      <td colSpan={years.length + 2} className="px-3 py-1 text-[11px] font-bold text-slate-300 sticky left-0 bg-[#181818]">
+                        <span className="flex items-center gap-2">
+                          {isCollapsed
+                            ? <ChevronRight className="w-3 h-3 text-slate-500 shrink-0" />
+                            : <ChevronDown className="w-3 h-3 text-slate-500 shrink-0" />
+                          }
+                          {SEC[sec]}
+                          {isFinancing && (
+                            <span className="ml-2 text-[8px] font-normal text-slate-500 border border-slate-700 rounded px-1">
+                              READ-ONLY · Edit in Debt Tab
+                            </span>
                           )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {sec === 2 && <GprDecompRow years={years} financials={financials} />}
-                </React.Fragment>
-              ))}
+                          <span className="ml-auto text-[8px] font-normal text-slate-600">{rows.length} rows</span>
+                        </span>
+                      </td>
+                    </tr>
+                    {!isCollapsed && rows.map(rd => {
+                      const mode = getMode(rd.key);
+                      return (
+                        <tr key={rd.key} className="border-b border-[#1e1e1e]/40 hover:bg-[#0f0f0f] h-[26px]">
+                          <td className="px-3 py-0.5 text-[11px] text-slate-400 sticky left-0 bg-[#0a0a0a] border-r border-[#1e1e1e] z-10 min-w-[220px]">
+                            <span className="flex items-center gap-1.5 truncate">
+                              {rd.readonly && <Lock className="w-2.5 h-2.5 text-slate-600 shrink-0" />}
+                              {rd.isM07 && !rd.readonly && <span style={{ fontFamily: MONO, fontSize: 6, color: '#7e22ce', border: '1px solid #4c1d95', borderRadius: 2, padding: '0 2px', flexShrink: 0 }}>M07</span>}
+                              {isFinancing && <span style={{ fontFamily: MONO, fontSize: 6, color: '#475569', border: '1px solid #334155', borderRadius: 2, padding: '0 2px', flexShrink: 0 }}>DEBT</span>}
+                              {mode === 'formula' && <FlaskConical className="w-2.5 h-2.5 text-teal-500 shrink-0" />}
+                              <span className="truncate">{rd.label}</span>
+                            </span>
+                          </td>
+                          {years.map(yr => {
+                            const broker       = financials ? rd.getBroker(financials, yr)   : null;
+                            const platform     = financials ? rd.getPlatform(financials, yr) : null;
+                            const user         = getUser(rd.key, yr);
+                            const formulaResult = mode === 'formula' ? computeFormulaResult(rd, yr) : null;
+                            const divergence = getDivergenceColor(
+                              formulaResult ?? user, platform, broker,
+                            );
+                            return (
+                              <LayeredCell key={yr}
+                                vals={{ broker, platform, user }}
+                                format={rd.format}
+                                readonly={rd.readonly || lockedOverrides}
+                                isM07={!!rd.isM07}
+                                divergence={divergence}
+                                formulaResult={formulaResult}
+                                onClick={() => openDrawer(rd, yr)}
+                              />
+                            );
+                          })}
+                          <td className="px-0.5 py-0.5 text-center">
+                            {!rd.readonly && (
+                              <div className="flex gap-0.5 justify-center">
+                                {(['flat','stepped','formula'] as RowMode[]).map(m => {
+                                  const isActive = mode === m;
+                                  return (
+                                    <button key={m}
+                                      onClick={() => setRowModes(s => ({ ...s, [rd.key]: m }))}
+                                      title={m === 'formula' ? 'Formula mode' : m === 'flat' ? 'Flat: Y1 propagates' : 'Stepped: per-year'}
+                                      className={`px-1 py-0.5 text-[7px] font-bold rounded-sm cursor-pointer
+                                        ${isActive ? 'bg-blue-600/40 text-blue-400' : 'text-slate-700 hover:text-slate-400'}`}>
+                                      {m === 'flat' ? 'F' : m === 'stepped' ? 'S' : 'Fx'}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {!isCollapsed && sec === 5 && <GprDecompRow years={years} financials={financials} />}
+                  </React.Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
