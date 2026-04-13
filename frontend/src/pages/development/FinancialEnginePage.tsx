@@ -60,6 +60,8 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
   const [opusExpanded, setOpusExpanded] = useState(false);
   const opusInputRef = useRef<HTMLInputElement>(null);
   const opusScrollRef = useRef<HTMLDivElement>(null);
+  // Projections gating: true when Pro Forma integrity checks contain errors
+  const [integrityBlocked, setIntegrityBlocked] = useState(false);
 
   const kpi = useMemo(() => modelResults?.summary ?? null, [modelResults]);
 
@@ -245,6 +247,7 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
     building,
     versions,
     activeVersion,
+    onIntegrityChange: setIntegrityBlocked,
   }), [resolvedDealId, propDeal, resolvedDealType, assumptions, modelResults, handleAssumptionsChange, handleBuildModel, building, versions, activeVersion]);
 
   return (
@@ -516,7 +519,28 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
         <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
           {activeTab === 0 && <BtTabWrapper><OverviewTab {...tabProps} /></BtTabWrapper>}
           {activeTab === 1 && <BtTabWrapper><ProFormaSummaryTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 2 && <BtTabWrapper><ProjectionsTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 2 && integrityBlocked ? (
+            <BtTabWrapper>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 12, padding: 32 }}>
+                <div style={{ background: '#1c0a0a', border: '1px solid #ef4444', borderLeft: '4px solid #ef4444', padding: '12px 16px', borderRadius: 2, maxWidth: 520 }}>
+                  <div style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, color: '#ef4444', letterSpacing: 0.5, marginBottom: 6 }}>
+                    ⛔ PROJECTIONS BLOCKED — INTEGRITY ERROR
+                  </div>
+                  <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 9, color: '#fca5a5', lineHeight: 1.5 }}>
+                    The Pro Forma tab has unresolved integrity errors. Review and correct the flagged fields before running projections.
+                  </div>
+                  <button
+                    onClick={() => setActiveTab(1)}
+                    style={{ marginTop: 8, background: 'none', border: '1px solid #ef4444', color: '#ef4444', fontFamily: MONO, fontSize: 9, padding: '3px 8px', cursor: 'pointer', borderRadius: 2 }}
+                  >
+                    GO TO PRO FORMA →
+                  </button>
+                </div>
+              </div>
+            </BtTabWrapper>
+          ) : activeTab === 2 ? (
+            <BtTabWrapper><ProjectionsTab {...tabProps} /></BtTabWrapper>
+          ) : null}
           {activeTab === 3 && <BtTabWrapper><AssumptionsTab {...tabProps} /></BtTabWrapper>}
           {activeTab === 4 && <BtTabWrapper><DebtTab {...tabProps} /></BtTabWrapper>}
           {activeTab === 5 && <BtTabWrapper><WaterfallTab {...tabProps} /></BtTabWrapper>}

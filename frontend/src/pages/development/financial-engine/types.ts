@@ -216,6 +216,8 @@ export interface FinancialEngineTabProps {
   building?: boolean;
   versions?: ModelVersion[];
   activeVersion?: ModelVersion | null;
+  /** Fires when Pro Forma integrity checks load; hasErrors=true blocks Projections tab */
+  onIntegrityChange?: (hasErrors: boolean) => void;
 }
 
 export const fmt$ = (n: number): string => {

@@ -136,10 +136,11 @@ function buildTaxSchedule(
 
 // ─── DEBT page ─────────────────────────────────────────────────────────────────
 
-function DebtPage({ holdYears, schedule, ioYears, loanAmt, rateAnn, amortYrs, origFee, purchasePrice, maxLtvLoan, maxDscrLoan, sizingConst, mortgageConstant }: {
+function DebtPage({ holdYears, schedule, ioYears, loanAmt, rateAnn, amortYrs, origFee, purchasePrice, maxLtvLoan, maxDscrLoan, sizingConst, mortgageConstant, units }: {
   holdYears: number; schedule: DebtYear[]; ioYears: number; loanAmt: number;
   rateAnn: number; amortYrs: number; origFee: number; purchasePrice: number;
   maxLtvLoan: number; maxDscrLoan: number; sizingConst: number; mortgageConstant: number;
+  units: number;
 }) {
   const cols = holdYears + 2;
   const sched = schedule.slice(0, holdYears);
@@ -658,6 +659,7 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
             loanAmt={loanAmt} rateAnn={rateAnn} amortYrs={amortYrs} origFee={origFee}
             purchasePrice={purchasePrice} maxLtvLoan={maxLtvLoan} maxDscrLoan={maxDscrLoan}
             sizingConst={sizingConst === Infinity ? 0 : sizingConst} mortgageConstant={mortgageConstant}
+            units={units}
           />
         ) : page === 'DEBT' ? (
           <div className="flex items-center justify-center h-32 text-[11px] text-slate-500">

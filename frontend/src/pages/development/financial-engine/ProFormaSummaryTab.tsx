@@ -163,7 +163,7 @@ interface UnitMixEdit {
 }
 
 // ─── Main component ────────────────────────────────────────────────────────────
-export function ProFormaSummaryTab({ dealId, deal }: FinancialEngineTabProps) {
+export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange }: FinancialEngineTabProps) {
   const [data, setData] = useState<DealFinancials | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -179,13 +179,19 @@ export function ProFormaSummaryTab({ dealId, deal }: FinancialEngineTabProps) {
       const res = await apiClient.get<{ success: boolean; data: DealFinancials; message?: string }>(`/api/v1/deals/${dealId}/financials`);
       const body = res.data;
       if (body?.success === false) throw new Error(body.message ?? 'Unknown error');
-      setData(body?.data ?? (body as unknown as DealFinancials));
+      const financials = body?.data ?? (body as unknown as DealFinancials);
+      setData(financials);
+      // Notify parent whether any integrity check has error status
+      if (onIntegrityChange && financials?.proforma?.integrityChecks) {
+        const hasErrors = financials.proforma.integrityChecks.some(c => c.status === 'error');
+        onIntegrityChange(hasErrors);
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to load financials');
     } finally {
       setLoading(false);
     }
-  }, [dealId]);
+  }, [dealId, onIntegrityChange]);
 
   useEffect(() => { load(); }, [load]);
 
