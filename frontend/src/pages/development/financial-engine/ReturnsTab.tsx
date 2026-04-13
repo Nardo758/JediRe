@@ -660,10 +660,14 @@ export function ReturnsTab({ f9Financials, onTabChange }: FinancialEngineTabProp
       </div>
 
       {/* § 8 — Valuation Metrics */}
-      {ret?.valuation && (
-        <>
-          <SectionHeader label="§ 8  VALUATION METRICS" color={BT.text.cyan} />
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0 }}>
+      <SectionHeader label="§ 8  VALUATION METRICS" color={BT.text.cyan} />
+      {!ret?.valuation ? (
+        <div style={{ padding: '12px 14px', fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>
+          Valuation metrics unavailable — projection engine did not return a valuation block.
+          Ensure deal has a purchase price and at least one hold-period projection year.
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0 }}>
 
             {/* Left: Per-Unit/SF + Income Multiples */}
             <div>
@@ -863,7 +867,6 @@ export function ReturnsTab({ f9Financials, onTabChange }: FinancialEngineTabProp
               })()}
             </div>
           </div>
-        </>
       )}
 
       {/* § 9 — Strategy Comparison Footer */}
