@@ -219,6 +219,27 @@ export function OverviewTab({ dealId, deal, dealType, assumptions, modelResults,
             </SectionPanel>
           )}
 
+          {/* Valuation Metrics — sourced from proforma.valuationSnapshot */}
+          {f9Financials?.proforma?.valuationSnapshot && (() => {
+            const vs = f9Financials.proforma.valuationSnapshot!;
+            return (
+              <SectionPanel title="VALUATION METRICS" subtitle="Price · Yield · Multiplier gateway metrics" borderColor={BT.text.green}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
+                  <div>
+                    <DataRow label="PRICE / UNIT" value={vs.pricePerUnit != null ? fmt$(vs.pricePerUnit) : '—'} valueColor={BT.text.cyan} />
+                    <DataRow label="GRM" value={vs.grm != null ? fmtX(vs.grm) : '—'} valueColor={BT.text.amber} />
+                    <DataRow label="GOING-IN CAP (T-12)" value={vs.goingInCapT12 != null ? fmtPct(vs.goingInCapT12 * 100) : '—'} valueColor={BT.met.financial} border={false} />
+                  </div>
+                  <div>
+                    <DataRow label="PRICE / SF" value={vs.pricePerSF != null ? fmt$(vs.pricePerSF) : '—'} valueColor={BT.text.cyan} />
+                    <DataRow label="GIM" value={vs.gim != null ? fmtX(vs.gim) : '—'} valueColor={BT.text.amber} />
+                    <DataRow label="PRICE-TO-RC" value={vs.priceToRC != null ? fmtX(vs.priceToRC) : 'PENDING RC FEED'} valueColor={vs.priceToRC != null ? BT.text.secondary : BT.text.muted} border={false} />
+                  </div>
+                </div>
+              </SectionPanel>
+            );
+          })()}
+
           <div style={{ flexShrink: 0 }}>
             {anyCollision ? (
               <AlertBanner label="COLLISION DETECTED" text="Broker and platform assumptions diverge >10% on highlighted rows" color={BT.text.amber} badge={<Bd c={BT.text.amber}>REVIEW REQUIRED</Bd>} />
