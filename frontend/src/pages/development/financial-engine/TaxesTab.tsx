@@ -104,7 +104,6 @@ function computeExitTax(
 
 export function TaxesTab({ dealId, deal, assumptions, modelResults, f9Financials }: FinancialEngineTabProps) {
   const [assetType, setAssetType] = useState<'residential' | 'commercial'>('residential');
-  const [customTaxRate, setCustomTaxRate] = useState<string>('');
   const [showDetail, setShowDetail] = useState(false);
 
   const depreciableLife = assetType === 'residential' ? DEPREC_LIFE_RESIDENTIAL : DEPREC_LIFE_COMMERCIAL;
@@ -146,12 +145,18 @@ export function TaxesTab({ dealId, deal, assumptions, modelResults, f9Financials
     exitSalePrice, purchasePrice, cumulDeprec, sellingCostsPct, loanAmount,
   ), [exitSalePrice, purchasePrice, cumulDeprec, sellingCostsPct, loanAmount]);
 
-  const customRate = parseFloat(customTaxRate) / 100;
-  const effectiveFedRate = isNaN(customRate) ? FED_ORDINARY_RATE : customRate;
-
   const colorBtcf  = (v: number) => v >= 0 ? BT.met.financial : BT.text.red;
-  const colorTax   = (_v: number) => BT.text.red;
   const colorAtcf  = (v: number) => v >= 0 ? BT.text.cyan : BT.text.red;
+
+  interface TaxRowDef {
+    key: string;
+    label: string;
+    color: string;
+    getValue: (r: TaxYear) => number;
+    isTotal: boolean;
+    bold?: boolean;
+    isPct?: boolean;
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto' }}>
@@ -211,22 +216,27 @@ export function TaxesTab({ dealId, deal, assumptions, modelResults, f9Financials
             </tr>
           </thead>
           <tbody>
-            {[
-              { key: 'noi',          label: 'NOI',              color: BT.met.financial, getValue: (r: TaxYear) => r.noi,          isTotal: false },
-              { key: 'ds',           label: '(–) DEBT SERVICE', color: BT.text.red,      getValue: (r: TaxYear) => -r.debtService, isTotal: false },
-              { key: 'btcf',         label: 'BTCF',             color: BT.met.financial, getValue: (r: TaxYear) => r.btcf,         isTotal: true, bold: true },
-              ...showDetail ? [
-                { key: 'deprec',     label: '(–) DEPRECIATION', color: BT.text.purple,  getValue: (r: TaxYear) => -r.depreciation, isTotal: false },
-                { key: 'taxable',    label: 'TAXABLE INCOME',   color: BT.text.amber,    getValue: (r: TaxYear) => r.taxableIncome, isTotal: false },
-                { key: 'fedTax',     label: '(–) FED TAX',      color: BT.text.red,      getValue: (r: TaxYear) => -r.taxOrdinary,  isTotal: false },
-                { key: 'niitTax',    label: '(–) NIIT',         color: BT.text.red,      getValue: (r: TaxYear) => -r.taxNIIT,      isTotal: false },
-                { key: 'stateTax',   label: '(–) STATE TAX',    color: BT.text.red,      getValue: (r: TaxYear) => -r.taxState,     isTotal: false },
-              ] : [],
-              { key: 'totalTax',     label: '(–) TOTAL TAX',   color: BT.text.red,      getValue: (r: TaxYear) => -r.totalTax,    isTotal: false },
-              { key: 'atcf',         label: 'ATCF',             color: BT.text.cyan,     getValue: (r: TaxYear) => r.atcf,         isTotal: true, bold: true },
-              { key: 'effRate',      label: 'EFF TAX RATE',     color: BT.text.amber,    getValue: (r: TaxYear) => r.effectiveRate, isTotal: false, isPct: true },
-              { key: 'cumulDeprecC', label: 'CUMUL DEPREC',     color: BT.text.purple,   getValue: (r: TaxYear) => r.cumulDepreciation, isTotal: false },
-            ].map((def) => {
+            {((): TaxRowDef[] => {
+              const base: TaxRowDef[] = [
+                { key: 'noi',  label: 'NOI',              color: BT.met.financial, getValue: (r: TaxYear) => r.noi,          isTotal: false },
+                { key: 'ds',   label: '(–) DEBT SERVICE', color: BT.text.red,      getValue: (r: TaxYear) => -r.debtService, isTotal: false },
+                { key: 'btcf', label: 'BTCF',             color: BT.met.financial, getValue: (r: TaxYear) => r.btcf,         isTotal: true, bold: true },
+              ];
+              const detail: TaxRowDef[] = showDetail ? [
+                { key: 'deprec',   label: '(–) DEPRECIATION', color: BT.text.purple, getValue: (r: TaxYear) => -r.depreciation,  isTotal: false },
+                { key: 'taxable',  label: 'TAXABLE INCOME',   color: BT.text.amber,  getValue: (r: TaxYear) => r.taxableIncome,  isTotal: false },
+                { key: 'fedTax',   label: '(–) FED TAX',      color: BT.text.red,    getValue: (r: TaxYear) => -r.taxOrdinary,   isTotal: false },
+                { key: 'niitTax',  label: '(–) NIIT',         color: BT.text.red,    getValue: (r: TaxYear) => -r.taxNIIT,       isTotal: false },
+                { key: 'stateTax', label: '(–) STATE TAX',    color: BT.text.red,    getValue: (r: TaxYear) => -r.taxState,      isTotal: false },
+              ] : [];
+              const tail: TaxRowDef[] = [
+                { key: 'totalTax',     label: '(–) TOTAL TAX',  color: BT.text.red,    getValue: (r: TaxYear) => -r.totalTax,          isTotal: false },
+                { key: 'atcf',         label: 'ATCF',            color: BT.text.cyan,   getValue: (r: TaxYear) => r.atcf,               isTotal: true, bold: true },
+                { key: 'effRate',      label: 'EFF TAX RATE',    color: BT.text.amber,  getValue: (r: TaxYear) => r.effectiveRate,       isTotal: false, isPct: true },
+                { key: 'cumulDeprecC', label: 'CUMUL DEPREC',    color: BT.text.purple, getValue: (r: TaxYear) => r.cumulDepreciation,   isTotal: false },
+              ];
+              return [...base, ...detail, ...tail];
+            })().map((def: TaxRowDef) => {
               const totVal = def.isPct ? null : taxYears.reduce((s, r) => s + def.getValue(r), 0);
               return (
                 <tr key={def.key} style={{
@@ -234,12 +244,12 @@ export function TaxesTab({ dealId, deal, assumptions, modelResults, f9Financials
                   borderTop: def.isTotal ? `1px solid ${BT.border.medium}` : 'none',
                   borderBottom: `1px solid ${BT.border.subtle}`,
                 }}>
-                  <td style={{ padding: '3px 8px', color: def.color, fontWeight: (def as any).bold ? 700 : 400 }}>{def.label}</td>
+                  <td style={{ padding: '3px 8px', color: def.color, fontWeight: def.bold ? 700 : 400 }}>{def.label}</td>
                   {taxYears.map(r => {
                     const v = def.getValue(r);
                     return (
-                      <td key={r.year} style={{ padding: '3px 8px', color: def.isPct ? def.color : (v < 0 ? BT.text.red : v > 0 ? def.color : BT.text.muted), textAlign: 'right', fontWeight: (def as any).bold ? 700 : 400 }}>
-                        {def.isPct ? fmtPct(v * 100) : (v === 0 ? '—' : fmt$(Math.abs(v) < 1 && v !== 0 ? v : v))}
+                      <td key={r.year} style={{ padding: '3px 8px', color: def.isPct ? def.color : (v < 0 ? BT.text.red : v > 0 ? def.color : BT.text.muted), textAlign: 'right', fontWeight: def.bold ? 700 : 400 }}>
+                        {def.isPct ? fmtPct(v * 100) : (v === 0 ? '—' : fmt$(v))}
                       </td>
                     );
                   })}
