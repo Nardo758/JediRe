@@ -13,7 +13,6 @@ import { Pool } from 'pg';
 import { getPool } from '../../database/connection';
 import { classifyRateEnvironment, RateEnvironmentResult } from './rate-environment.service';
 import { targetLenders, LenderTarget } from './lender-targeting.service';
-import { applyFinancialsOverride } from '../proforma-adjustment.service';
 import { getM08StrategyOutput, M08StrategyOutput } from './m08-strategy-output.service';
 import { applyDebtContextModifier, ContextModification } from './debt-context-modifier.service';
 import { logger } from '../../utils/logger';
@@ -343,7 +342,8 @@ function buildPhases(
   holdMonths: number,
   state: string,
   subStrategyKey: string,
-  contextMods: ContextModification
+  contextMods: ContextModification,
+  productHint?: string
 ): DebtPhase[] {
   const phases: DebtPhase[] = [];
   const sofr = rateEnv.sofr;
@@ -371,7 +371,9 @@ function buildPhases(
   const ioMonths = phaseStructure.ioMonths || (rateType === 'Floating' ? termMonthsActual : 24);
   const amortYears = phaseStructure.amortYears || (rateType === 'Fixed' ? 30 : 0);
 
-  const phase1ProductRaw = normalizeProductKey(phaseStructure.product || mapping.primaryProduct || 'bridge');
+  const phase1ProductRaw = productHint
+    ? normalizeProductKey(productHint)
+    : normalizeProductKey(phaseStructure.product || mapping.primaryProduct || 'bridge');
   const primaryProduct = contextMods.productExclusions.includes(phase1ProductRaw)
     ? (mapping.alternatives || []).map(normalizeProductKey).find((a: string) => !contextMods.productExclusions.includes(a)) || 'bridge'
     : phase1ProductRaw;
@@ -489,15 +491,12 @@ function buildCorrelationContext(
   if (cls === 'Rising') {
     rssAdj = riskScore > 7 ? 35 : riskScore > 4 ? 20 : 10;
     implication = `Rising-rate environment amplifies carry risk on floating-rate strategies. ${slug.includes('value_add') || slug.includes('brrrr') ? 'BRRRR/value-add bridge exposure requires rate-cap hedging (≥2yr, SOFR+300 strike).' : 'Consider locking into fixed permanent debt as soon as stabilized occupancy permits.'}`;
-  } else if (cls === 'Falling') {
+  } else if (cls === 'Dropping') {
     rssAdj = -15;
-    implication = `Falling-rate environment benefits floating-rate bridge loans and improves refi optionality. ${slug.includes('hold') ? 'Long-hold strategies may delay perm refi to capture further rate compression.' : 'Accelerate stabilization timeline to maximize refi window before rate floor.'}`;
-  } else if (cls === 'Inverted') {
-    rssAdj = riskScore > 6 ? 45 : 25;
-    implication = `Inverted yield curve penalizes short-term bridge lending: 10yr treasury near/below short SOFR. Agency/life-co term financing offers spread advantage. ${riskScore > 6 ? 'High-risk profile warrants conservative LTV (≤60%) and pre-arranged perm exit.' : 'Consider bypassing bridge phase if property cash-flows at purchase.'}`;
+    implication = `Dropping-rate environment benefits floating-rate bridge loans and improves refi optionality. ${slug.includes('hold') ? 'Long-hold strategies may delay perm refi to capture further rate compression.' : 'Accelerate stabilization timeline to maximize refi window before rate floor.'}`;
   } else {
     rssAdj = riskScore > 7 ? 15 : 0;
-    implication = `Stable rate environment provides predictable carry; lender credit boxes are fully open. ${slug.includes('nnn') || slug.includes('net_lease') ? 'Net-lease assets command tightest CMBS spreads in stable regimes.' : 'Focus on execution speed — current lender competition narrows spreads.'}`;
+    implication = `Flat rate environment provides predictable carry; lender credit boxes are fully open. ${slug.includes('nnn') || slug.includes('net_lease') ? 'Net-lease assets command tightest CMBS spreads in stable rate regimes.' : 'Focus on execution speed — current lender competition narrows spreads.'}`;
   }
 
   return { slug, riskScore, correlationImplication: implication, rssAdjustmentBps: rssAdj };
@@ -592,9 +591,11 @@ async function fetchDealBasicContext(pool: Pool, dealId: string): Promise<{
   };
 }
 
-export async function formulateDebtPlan(dealId: string): Promise<DebtAdvisorResponse> {
-  const cached = advisorCache.get(dealId);
-  if (cached && Date.now() < cached.expiresAt) return cached.data;
+export async function formulateDebtPlan(dealId: string, productHint?: string): Promise<DebtAdvisorResponse> {
+  if (!productHint) {
+    const cached = advisorCache.get(dealId);
+    if (cached && Date.now() < cached.expiresAt) return cached.data;
+  }
 
   const pool = getPool();
 
@@ -664,7 +665,7 @@ export async function formulateDebtPlan(dealId: string): Promise<DebtAdvisorResp
     estimatedLoan
   );
 
-  const phases = buildPhases(mapping, rateEnv, dealCtx.purchasePrice, dealCtx.holdMonths, dealCtx.state, subStrategyKey, contextMods);
+  const phases = buildPhases(mapping, rateEnv, dealCtx.purchasePrice, dealCtx.holdMonths, dealCtx.state, subStrategyKey, contextMods, productHint);
   const alternatives = buildAlternatives(mapping, rateEnv, contextMods);
 
   const allTriggers = phases.flatMap(p => p.triggers);
@@ -740,6 +741,40 @@ export function bustAdvisorCache(dealId: string): void {
   advisorCache.delete(dealId);
 }
 
+/**
+ * writeDebtPlatformDefault — writes a single debt field to per_year_overrides
+ * with resolution: 'platform' (not 'override') so Configure displays it as an
+ * AI/Platform default that users can then override on top, matching the layered
+ * value architecture: broker < platform < override.
+ */
+async function writeDebtPlatformDefault(
+  pool: Pool,
+  dealId: string,
+  field: string,
+  value: number | string | null,
+  source: string
+): Promise<void> {
+  const entry = {
+    field,
+    year: 1,
+    value,
+    updatedAt: new Date().toISOString(),
+    resolution: 'platform',
+    source,
+  };
+  await pool.query(
+    `UPDATE deal_assumptions
+        SET per_year_overrides = jsonb_set(
+              COALESCE(per_year_overrides, '{}'::jsonb),
+              $2::text[],
+              $3::jsonb
+            ),
+            updated_at = NOW()
+      WHERE deal_id = $1`,
+    [dealId, `{${field}}`, JSON.stringify(entry)]
+  );
+}
+
 export async function acceptDebtPlan(
   dealId: string,
   userId: string,
@@ -758,32 +793,33 @@ export async function acceptDebtPlan(
 
   const pool = getPool();
   const loanId = 'senior';
+  const source = 'debt_advisor';
   const overrideCount = 9;
 
   try {
     await Promise.all([
-      applyFinancialsOverride(pool, dealId, `debt:${loanId}:loanAmount`, 1, phase.loanAmountEst, userId),
-      applyFinancialsOverride(pool, dealId, `debt:${loanId}:interestRate`, 1, phase.rateEst, userId),
-      applyFinancialsOverride(pool, dealId, `debt:${loanId}:termYears`, 1, phase.termYears, userId),
-      applyFinancialsOverride(pool, dealId, `debt:${loanId}:amortYears`, 1, phase.amortYears, userId),
-      applyFinancialsOverride(pool, dealId, `debt:${loanId}:ioMonths`, 1, phase.ioMonths, userId),
-      applyFinancialsOverride(pool, dealId, `debt:${loanId}:origFee`, 1, phase.origFee, userId),
-      applyFinancialsOverride(pool, dealId, `debt:${loanId}:exitFee`, 1, phase.exitFee, userId),
-      applyFinancialsOverride(pool, dealId, `debt:${loanId}:rateType`, 1, phase.rateType, userId),
-      applyFinancialsOverride(pool, dealId, `debt:${loanId}:prepayType`, 1, phase.prepayType, userId),
+      writeDebtPlatformDefault(pool, dealId, `debt:${loanId}:loanAmount`, phase.loanAmountEst, source),
+      writeDebtPlatformDefault(pool, dealId, `debt:${loanId}:interestRate`, phase.rateEst, source),
+      writeDebtPlatformDefault(pool, dealId, `debt:${loanId}:termYears`, phase.termYears, source),
+      writeDebtPlatformDefault(pool, dealId, `debt:${loanId}:amortYears`, phase.amortYears, source),
+      writeDebtPlatformDefault(pool, dealId, `debt:${loanId}:ioMonths`, phase.ioMonths, source),
+      writeDebtPlatformDefault(pool, dealId, `debt:${loanId}:origFee`, phase.origFee, source),
+      writeDebtPlatformDefault(pool, dealId, `debt:${loanId}:exitFee`, phase.exitFee ?? 0, source),
+      writeDebtPlatformDefault(pool, dealId, `debt:${loanId}:rateType`, phase.rateType, source),
+      writeDebtPlatformDefault(pool, dealId, `debt:${loanId}:prepayType`, phase.prepayType, source),
     ]);
   } catch (overrideErr: any) {
-    logger.error('[DebtAdvisor] Override pipeline failed on accept — Configure fields not populated', {
+    logger.error('[DebtAdvisor] Platform-default pipeline failed on accept — Configure fields not populated', {
       dealId,
       phaseIndex,
       error: overrideErr.message,
     });
-    return { success: false, message: `Override pipeline failed: ${overrideErr.message}` };
+    return { success: false, message: `Platform default pipeline failed: ${overrideErr.message}` };
   }
 
   bustAdvisorCache(dealId);
 
-  logger.info('[DebtAdvisor] Plan accepted, all overrides applied', {
+  logger.info('[DebtAdvisor] Plan accepted, platform defaults written to Configure', {
     dealId,
     phaseIndex,
     loanAmount: phase.loanAmountEst,
@@ -793,6 +829,6 @@ export async function acceptDebtPlan(
 
   return {
     success: true,
-    message: `Debt plan accepted: ${overrideCount} fields populated in Configure`,
+    message: `Debt plan accepted: ${overrideCount} fields set as platform defaults in Configure`,
   };
 }

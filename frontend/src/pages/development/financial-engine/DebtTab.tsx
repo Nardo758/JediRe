@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { BT } from '../../../components/deal/bloomberg-ui';
 import { KpiTile } from '../../../components/deal/bloomberg-ui';
 import { Lock, Link, ChevronDown, ChevronRight, Plus, X, TrendingDown, TrendingUp, Minus, AlertTriangle, CheckCircle, Zap, RefreshCw, Activity, Info } from 'lucide-react';
@@ -431,6 +432,19 @@ interface DebtAdvisorData {
 }
 
 // ─── Debt Advisor View Component ──────────────────────────────────────────────
+function NoStratNavBtn({ dealId }: { dealId: string }) {
+  const navigate = useNavigate();
+  return (
+    <button
+      onClick={() => navigate(`/terminal/strategies`)}
+      style={{ padding: '8px 16px', background: `${BT.text.cyan}20`, border: `1px solid ${BT.text.cyan}`, color: BT.text.cyan, fontFamily: MONO, fontSize: 9, borderRadius: 3, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+    >
+      <Zap style={{ width: 10, height: 10 }} />
+      GO TO STRATEGIES
+    </button>
+  );
+}
+
 function DebtAdvisorView({ dealId, onSwitchToConfigure, onAccept, configuredLoanAmount, configuredRate, onAdvisorAccepted }: {
   dealId: string;
   onSwitchToConfigure: () => void;
@@ -481,10 +495,10 @@ function DebtAdvisorView({ dealId, onSwitchToConfigure, onAccept, configuredLoan
     }
   };
 
-  const handleRecompute = async () => {
+  const handleRecompute = async (productHint?: string) => {
     setRecomputing(true);
     try {
-      const res = await apiClient.post(`/api/v1/deals/${dealId}/debt/advisor/recompute`, {});
+      const res = await apiClient.post(`/api/v1/deals/${dealId}/debt/advisor/recompute`, productHint ? { productHint } : {});
       if (res.data?.success && res.data?.data) setData(res.data.data as DebtAdvisorData);
     } catch { /* ignore */ } finally {
       setRecomputing(false);
@@ -503,14 +517,17 @@ function DebtAdvisorView({ dealId, onSwitchToConfigure, onAccept, configuredLoan
         <Zap style={{ width: 32, height: 32, color: BT.text.amber, marginBottom: 12 }} />
         <div style={{ fontFamily: MONO, fontSize: 13, color: BT.text.white, marginBottom: 8 }}>RUN STRATEGY ANALYSIS FIRST</div>
         <div style={{ fontFamily: MONO, fontSize: 10, color: BT.text.muted, maxWidth: 380, margin: '0 auto', lineHeight: 1.6 }}>
-          The Debt Advisor is driven by M08 Strategy Analysis output. Navigate to the Strategies tab, run the analysis, and return here for a strategy-specific debt recommendation.
+          The Debt Advisor is driven by M08 Strategy Analysis output. Run the strategy analysis for this deal, then return here for a strategy-specific debt recommendation.
         </div>
-        <button
-          onClick={handleRecompute}
-          style={{ marginTop: 20, padding: '8px 20px', background: `${BT.text.cyan}20`, border: `1px solid ${BT.text.cyan}`, color: BT.text.cyan, fontFamily: MONO, fontSize: 9, borderRadius: 3, cursor: 'pointer' }}
-        >
-          CHECK AGAIN
-        </button>
+        <div style={{ display: 'flex', gap: 8, marginTop: 20 }}>
+          <NoStratNavBtn dealId={dealId} />
+          <button
+            onClick={handleRecompute}
+            style={{ padding: '8px 16px', background: 'transparent', border: `1px solid ${BT.border.medium}`, color: BT.text.muted, fontFamily: MONO, fontSize: 9, borderRadius: 3, cursor: 'pointer' }}
+          >
+            CHECK AGAIN
+          </button>
+        </div>
       </div>
     );
   }
@@ -572,19 +589,29 @@ function DebtAdvisorView({ dealId, onSwitchToConfigure, onAccept, configuredLoan
           </div>
         )}
 
-        {/* Correlation / RSS context banner */}
+        {/* AI Coordinator Narrative Block */}
         {correlationContext && (
-          <div style={{ padding: '6px 16px', background: `${BT.text.cyan}08`, borderBottom: `1px solid ${BT.border.subtle}`, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Activity style={{ width: 10, height: 10, color: BT.text.cyan, flexShrink: 0 }} />
-            <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary }}>
-              <span style={{ color: BT.text.cyan }}>RSS </span>
-              {correlationContext.correlationImplication}
+          <div style={{ margin: '0', background: `linear-gradient(135deg, ${BT.bg.panel} 0%, #0a1a2e 100%)`, borderBottom: `1px solid ${BT.text.cyan}30`, padding: '10px 16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+              <Activity style={{ width: 10, height: 10, color: BT.text.cyan }} />
+              <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.cyan, letterSpacing: 1 }}>AI COORDINATOR — STRATEGY-RATE SYNTHESIS</span>
               {correlationContext.rssAdjustmentBps !== 0 && (
-                <span style={{ color: correlationContext.rssAdjustmentBps > 0 ? BT.text.amber : BT.met.financial, marginLeft: 8 }}>
-                  ({correlationContext.rssAdjustmentBps > 0 ? '+' : ''}{correlationContext.rssAdjustmentBps}bps spread adj applied to alternatives)
+                <span style={{ fontFamily: MONO, fontSize: 7, color: correlationContext.rssAdjustmentBps > 0 ? BT.text.red : BT.met.financial, background: `${correlationContext.rssAdjustmentBps > 0 ? BT.text.red : BT.met.financial}15`, border: `1px solid ${correlationContext.rssAdjustmentBps > 0 ? BT.text.red : BT.met.financial}40`, borderRadius: 2, padding: '0 5px', marginLeft: 4 }}>
+                  {correlationContext.rssAdjustmentBps > 0 ? '+' : ''}{correlationContext.rssAdjustmentBps}bps SPREAD ADJ
                 </span>
               )}
-            </span>
+            </div>
+            <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary, lineHeight: 1.7, maxWidth: 680 }}>
+              {correlationContext.correlationImplication}
+            </div>
+            <div style={{ display: 'flex', gap: 12, marginTop: 6 }}>
+              <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>
+                Strategy: <span style={{ color: BT.text.cyan }}>{correlationContext.slug.replace(/_/g, ' ').toUpperCase()}</span>
+              </div>
+              <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>
+                Risk Score: <span style={{ color: correlationContext.riskScore > 7 ? BT.text.red : correlationContext.riskScore > 4 ? BT.text.amber : BT.met.financial }}>{correlationContext.riskScore}/10</span>
+              </div>
+            </div>
           </div>
         )}
 
@@ -617,9 +644,12 @@ function DebtAdvisorView({ dealId, onSwitchToConfigure, onAccept, configuredLoan
           </div>
         )}
 
-        {/* Recommendation header */}
-        <div style={{ padding: '14px 16px', background: BT.bg.panel, borderBottom: `1px solid ${BT.border.medium}` }}>
-          <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, letterSpacing: 1, marginBottom: 4 }}>RECOMMENDED DEBT STACK</div>
+        {/* Recommendation header — left cyan rule + RECOMMENDED badge */}
+        <div style={{ padding: '14px 16px', background: BT.bg.panel, borderBottom: `1px solid ${BT.border.medium}`, borderLeft: `3px solid ${BT.text.cyan}` }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, letterSpacing: 1 }}>RECOMMENDED DEBT STACK</div>
+            <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.cyan, background: `${BT.text.cyan}18`, border: `1px solid ${BT.text.cyan}40`, borderRadius: 2, padding: '1px 6px', letterSpacing: 1 }}>RECOMMENDED</div>
+          </div>
           <div style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: BT.text.white, marginBottom: 6 }}>
             {summary.headline}
           </div>
@@ -770,8 +800,18 @@ function DebtAdvisorView({ dealId, onSwitchToConfigure, onAccept, configuredLoan
                   <div style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: BT.text.amber, marginBottom: 3 }}>{alt.label}</div>
                   <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.white, marginBottom: 3 }}>{alt.productLabel}</div>
                   <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary, lineHeight: 1.5, marginBottom: 4 }}>{alt.tradeoff}</div>
-                  <div style={{ fontFamily: MONO, fontSize: 8, color: alt.deltaAllInBps > 0 ? BT.text.red : BT.met.financial }}>
-                    {alt.deltaAllInBps > 0 ? '+' : ''}{alt.deltaAllInBps}bps all-in vs primary
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    <div style={{ fontFamily: MONO, fontSize: 8, color: alt.deltaAllInBps > 0 ? BT.text.red : BT.met.financial }}>
+                      {alt.deltaAllInBps > 0 ? '+' : ''}{alt.deltaAllInBps}bps all-in vs primary
+                    </div>
+                    <button
+                      onClick={() => handleRecompute(alt.product)}
+                      disabled={recomputing}
+                      style={{ padding: '3px 8px', background: `${BT.text.amber}15`, border: `1px solid ${BT.text.amber}50`, color: BT.text.amber, fontFamily: MONO, fontSize: 7, borderRadius: 2, cursor: recomputing ? 'wait' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0 }}
+                    >
+                      <RefreshCw style={{ width: 8, height: 8 }} />
+                      RUN ALTERNATIVE
+                    </button>
                   </div>
                 </div>
               ))}
@@ -788,13 +828,31 @@ function DebtAdvisorView({ dealId, onSwitchToConfigure, onAccept, configuredLoan
                 const sevColor = t.severity === 'critical' ? BT.text.red : t.severity === 'warning' ? BT.text.amber : BT.text.cyan;
                 const SevIcon = t.severity === 'critical' ? AlertTriangle : t.severity === 'warning' ? AlertTriangle : CheckCircle;
                 return (
-                  <div key={t.id} style={{ padding: '6px 10px', background: BT.bg.panelAlt, border: `1px solid ${sevColor}30`, borderRadius: 3, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                    <SevIcon style={{ width: 10, height: 10, color: sevColor, flexShrink: 0, marginTop: 1 }} />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: sevColor, marginBottom: 2 }}>{t.condition}</div>
-                      <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>{t.action}</div>
+                  <div key={t.id} style={{ padding: '6px 10px', background: BT.bg.panelAlt, border: `1px solid ${sevColor}30`, borderRadius: 3 }}>
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: t.currentValue || t.threshold ? 4 : 0 }}>
+                      <SevIcon style={{ width: 10, height: 10, color: sevColor, flexShrink: 0, marginTop: 1 }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: sevColor, marginBottom: 2 }}>{t.condition}</div>
+                        <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>{t.action}</div>
+                      </div>
+                      <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, flexShrink: 0 }}>{t.frequency}</div>
                     </div>
-                    <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, flexShrink: 0 }}>{t.frequency}</div>
+                    {(t.currentValue || t.threshold) && (
+                      <div style={{ display: 'flex', gap: 16, paddingLeft: 20, marginTop: 4 }}>
+                        {t.currentValue && (
+                          <div style={{ fontFamily: MONO, fontSize: 7 }}>
+                            <span style={{ color: BT.text.muted }}>CURRENT: </span>
+                            <span style={{ color: BT.text.white }}>{t.currentValue}</span>
+                          </div>
+                        )}
+                        {t.threshold && (
+                          <div style={{ fontFamily: MONO, fontSize: 7 }}>
+                            <span style={{ color: BT.text.muted }}>THRESHOLD: </span>
+                            <span style={{ color: sevColor }}>{t.threshold}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -803,16 +861,40 @@ function DebtAdvisorView({ dealId, onSwitchToConfigure, onAccept, configuredLoan
         )}
       </div>
 
-      {/* ── Market Context Rail (right, sticky) ─────────────────────────────── */}
-      <div style={{ width: 200, flexShrink: 0, background: BT.bg.panel, borderLeft: `1px solid ${BT.border.medium}`, overflowY: 'auto', padding: '10px 0' }}>
-        <div style={{ padding: '0 10px', marginBottom: 10 }}>
+      {/* ── Market Context Rail (right, sticky, 280px) ───────────────────────── */}
+      <div style={{ width: 280, flexShrink: 0, background: BT.bg.panel, borderLeft: `1px solid ${BT.border.medium}`, overflowY: 'auto', position: 'sticky', top: 0, alignSelf: 'flex-start', maxHeight: '100vh', padding: '10px 0' }}>
+        <div style={{ padding: '0 12px', marginBottom: 10 }}>
           <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, letterSpacing: 1, marginBottom: 6 }}>MARKET CONTEXT</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
             <RateIcon style={{ width: 10, height: 10, color: rateColor }} />
             <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: rateColor }}>{re.classification.toUpperCase()} RATES</span>
           </div>
-          <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, lineHeight: 1.5 }}>
+          <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, lineHeight: 1.5, marginBottom: 6 }}>
             {re.sofrForward12moBps < 0 ? '' : '+'}{Math.round(re.sofrForward12moBps)}bps expected 12mo
+          </div>
+          {/* SOFR forward sparkline — 6-mo cadence bars */}
+          {(() => {
+            const baseSofr = re.sofr * 100;
+            const fwdBps = re.sofrForward12moBps;
+            const pts = [0, 2, 4, 6, 8, 10, 12].map(m => baseSofr + (fwdBps * m / 12) / 100);
+            const minV = Math.min(...pts);
+            const maxV = Math.max(...pts) || minV + 0.01;
+            return (
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 28, marginBottom: 4 }}>
+                {pts.map((v, i) => {
+                  const pct = (v - minV) / (maxV - minV);
+                  const barH = Math.max(4, Math.round(pct * 24) + 4);
+                  const barColor = fwdBps > 0 ? BT.text.red : fwdBps < 0 ? BT.met.financial : BT.text.amber;
+                  return (
+                    <div key={i} title={`M${i * 2}: ${v.toFixed(2)}%`} style={{ flex: 1, height: barH, background: i === 0 ? BT.text.amber : barColor, opacity: 0.6 + i * 0.06, borderRadius: 1 }} />
+                  );
+                })}
+              </div>
+            );
+          })()}
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: MONO, fontSize: 6, color: BT.text.muted }}>
+            <span>NOW {fmtPct(re.sofr * 100)}</span>
+            <span>+12MO</span>
           </div>
         </div>
 
@@ -821,13 +903,13 @@ function DebtAdvisorView({ dealId, onSwitchToConfigure, onAccept, configuredLoan
           { l: '10YR TREASURY', v: fmtPct(re.treasury10y * 100), c: BT.text.secondary },
           { l: 'RATE PREF', v: re.ratePreference, c: re.ratePreference === 'Fixed' ? BT.met.financial : re.ratePreference === 'Floating' ? BT.text.amber : BT.text.muted },
         ].map(({ l, v, c }) => (
-          <div key={l} style={{ padding: '4px 10px', borderBottom: `1px solid ${BT.border.subtle}` }}>
+          <div key={l} style={{ padding: '4px 12px', borderBottom: `1px solid ${BT.border.subtle}` }}>
             <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>{l}</div>
             <div style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, color: c }}>{v}</div>
           </div>
         ))}
 
-        <div style={{ padding: '8px 10px', borderBottom: `1px solid ${BT.border.subtle}` }}>
+        <div style={{ padding: '8px 12px', borderBottom: `1px solid ${BT.border.subtle}` }}>
           <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginBottom: 3 }}>PRICING WINDOW</div>
           <div style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: windowColor }}>{re.pricingWindowLabel}</div>
           <div style={{ height: 4, background: BT.border.subtle, borderRadius: 2, marginTop: 4 }}>
@@ -835,23 +917,23 @@ function DebtAdvisorView({ dealId, onSwitchToConfigure, onAccept, configuredLoan
           </div>
         </div>
 
-        <div style={{ padding: '8px 10px', borderBottom: `1px solid ${BT.border.subtle}` }}>
+        <div style={{ padding: '8px 12px', borderBottom: `1px solid ${BT.border.subtle}` }}>
           <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginBottom: 3 }}>RATE CAP ADVICE</div>
           <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary, lineHeight: 1.5 }}>{re.ratCapAdvice}</div>
         </div>
 
-        <div style={{ padding: '8px 10px', borderBottom: `1px solid ${BT.border.subtle}` }}>
+        <div style={{ padding: '8px 12px', borderBottom: `1px solid ${BT.border.subtle}` }}>
           <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginBottom: 3 }}>STRATEGY</div>
           <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.cyan }}>{si.subStrategyKey.replace(/_/g, ' ').toUpperCase()}</div>
           {si.strategyName && <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>{si.strategyName}</div>}
         </div>
 
-        <div style={{ padding: '8px 10px', borderBottom: `1px solid ${BT.border.subtle}` }}>
+        <div style={{ padding: '8px 12px', borderBottom: `1px solid ${BT.border.subtle}` }}>
           <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginBottom: 3 }}>HOLD PERIOD</div>
           <div style={{ fontFamily: MONO, fontSize: 10, color: BT.text.white }}>{si.holdMonths}mo ({Math.round(si.holdMonths / 12 * 10) / 10}yr)</div>
         </div>
 
-        <div style={{ padding: '8px 10px' }}>
+        <div style={{ padding: '8px 12px' }}>
           <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginBottom: 4 }}>RATE NARRATIVE</div>
           <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.secondary, lineHeight: 1.6 }}>{re.narrative}</div>
         </div>

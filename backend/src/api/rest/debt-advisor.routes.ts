@@ -102,10 +102,14 @@ router.post('/:dealId/debt/advisor/accept', requireAuth, async (req: Authenticat
   }
 });
 
-/** POST /api/v1/deals/:dealId/debt/advisor/recompute */
+/** POST /api/v1/deals/:dealId/debt/advisor/recompute
+ * Optional body: { productHint: string } — forces phase 1 product substitution
+ * so the Advisor can "Run Alternative" for any alternative product.
+ */
 router.post('/:dealId/debt/advisor/recompute', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   const { dealId } = req.params;
   const userId = req.user!.userId;
+  const { productHint } = req.body as { productHint?: string };
 
   if (!(await hasDealtAccess(dealId, userId))) {
     return res.status(404).json({ success: false, error: 'Deal not found' });
@@ -114,8 +118,8 @@ router.post('/:dealId/debt/advisor/recompute', requireAuth, async (req: Authenti
   try {
     bustAdvisorCache(dealId);
     bustRateCache();
-    const plan = await formulateDebtPlan(dealId);
-    return res.json({ success: true, data: plan, message: 'Recomputed from live market data' });
+    const plan = await formulateDebtPlan(dealId, productHint);
+    return res.json({ success: true, data: plan, message: productHint ? `Alternative computed: ${productHint}` : 'Recomputed from live market data' });
   } catch (err: any) {
     logger.error('[DebtAdvisor] Recompute failed', { dealId, error: err.message });
     return res.status(500).json({ success: false, error: err.message });
