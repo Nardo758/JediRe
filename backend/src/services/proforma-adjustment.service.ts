@@ -2423,7 +2423,8 @@ export async function getDealFinancials(
   const resolvedTranches = capitalTranches.length > 0 ? capitalTranches : TRANCHE_DEFAULTS;
 
   // ── Server-side waterfall schedule computation ──────────────────────────────
-  // Use available financial data to produce a distribution schedule
+  // Use available financial data to produce a distribution schedule.
+  // Note: waterfall object is not yet declared — read fee/type primitives directly.
   const schedNoi       = noiFull ?? 0;
   const schedLoan      = loanAmount ?? 0;
   const schedEquity    = equityAtClose ?? 0;
@@ -2432,11 +2433,19 @@ export async function getDealFinancials(
   const schedRentGr    = rentGrowthStab ?? 0.03;
   const schedExitCap   = exitCap ?? 0.055;
   const schedSellingPct= 0.025;
-  const schedWfType    = waterfall.waterfallType;
+  const schedWfType    = typeof wfWaterfallType === 'string' ? wfWaterfallType : 'american';
   const schedLpShare   = wfLpShare;
   const schedGpShare   = wfGpShare;
   const schedPrefRate  = wfPrefRate;
-  const schedFees      = waterfall.fees;
+  // Build fees inline (waterfall obj declared after schedule computation)
+  const schedFees = {
+    acquisitionFeePct:    wfOvr('acquisitionFeePct')    ?? 0.01,
+    assetMgmtFeePct:      wfOvr('assetMgmtFeePct')      ?? 0.015,
+    assetMgmtBasis:       wfStrOvr('assetMgmtBasis')    ?? 'equity',
+    constructionMgmtPct:  wfOvr('constructionMgmtPct')  ?? 0,
+    dispositionFeePct:    wfOvr('dispositionFeePct')     ?? 0.01,
+    refinancingFeePct:    wfOvr('refinancingFeePct')     ?? 0,
+  };
 
   // Build period-by-period CFADS
   const schedCfads: number[] = [];
