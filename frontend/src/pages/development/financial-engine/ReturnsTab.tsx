@@ -117,7 +117,7 @@ function HurdleInput({ label, value, onChange, isX, isNum }: {
         />
       ) : (
         <span
-          onClick={() => { setDraft(isX ? value.toFixed(2) : (value * 100).toFixed(1)); setEditing(true); }}
+          onClick={() => { setDraft(isNum ? value.toFixed(0) : isX ? value.toFixed(2) : (value * 100).toFixed(1)); setEditing(true); }}
           title="Click to edit hurdle"
           style={{
             fontFamily: MONO, fontSize: 11, fontWeight: 700, color: BT.text.amber,
