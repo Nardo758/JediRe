@@ -816,7 +816,7 @@ function DebtAdvisorView({ dealId, onSwitchToConfigure, onAccept, configuredLoan
                   )}
                   <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary, lineHeight: 1.6, marginBottom: 10, maxWidth: 620 }}>{ph.rationale}</div>
                   {ph.lenders.length > 0 && (
-                    <div>
+                    <div style={{ marginBottom: 10 }}>
                       <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, letterSpacing: 1, marginBottom: 6 }}>ACTIVE LENDERS — {ph.lenders[0]?.lender.type}</div>
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                         {ph.lenders.map((lt, li) => (
@@ -829,6 +829,25 @@ function DebtAdvisorView({ dealId, onSwitchToConfigure, onAccept, configuredLoan
                             <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>{lt.fitScore}% fit</div>
                           </div>
                         ))}
+                      </div>
+                    </div>
+                  )}
+                  {ph.triggers && ph.triggers.length > 0 && (
+                    <div>
+                      <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, letterSpacing: 1, marginBottom: 6 }}>PHASE MONITORING TRIGGERS</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                        {ph.triggers.map(t => {
+                          const sevColor = t.severity === 'critical' ? BT.text.red : t.severity === 'warning' ? BT.text.amber : BT.text.cyan;
+                          return (
+                            <div key={t.id} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '4px 8px', background: `${sevColor}08`, border: `1px solid ${sevColor}25`, borderRadius: 3 }}>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontFamily: MONO, fontSize: 8, color: sevColor, fontWeight: 700 }}>{t.condition}</div>
+                                <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.secondary }}>{t.action}</div>
+                              </div>
+                              <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, flexShrink: 0 }}>{t.frequency}</div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   )}

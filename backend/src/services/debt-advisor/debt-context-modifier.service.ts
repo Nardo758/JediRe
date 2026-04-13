@@ -136,7 +136,7 @@ function computeSizeModifications(ctx: DealUnderwritingContext, notes: string[])
     notes.push(`$75M+ loan: super-institutional range. Syndication, club deal, or single lender with correspondent market. Hard money and community bank excluded.`);
   }
 
-  return { lenderTypeExclusions: exclusions, sizeWarning };
+  return { productExclusions: exclusions, sizeWarning };
 }
 
 function computeGeographyModifications(ctx: DealUnderwritingContext, notes: string[]): Partial<ContextModification> {
@@ -224,10 +224,12 @@ export async function applyDebtContextModifier(
 
   const modifications: ContextModification = {
     productExclusions: [
-      ...(sizeMods.lenderTypeExclusions || []),
+      ...(sizeMods.productExclusions || []),
       ...(geoMods.productExclusions || []),
     ],
-    lenderTypeExclusions: [],
+    lenderTypeExclusions: [
+      ...(sizeMods.lenderTypeExclusions || []),
+    ],
     recourseRequired: sponsorMods.recourseRequired ?? false,
     addPcaReserveNote: ageMods.addPcaReserveNote ?? false,
     addAssetAgeHaircut: ageMods.addAssetAgeHaircut ?? false,

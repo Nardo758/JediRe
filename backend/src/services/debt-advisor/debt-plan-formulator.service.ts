@@ -244,8 +244,11 @@ function buildMonitoringTriggers(
   subStrategyKey: string,
   holdMonths: number,
   phases: Partial<DebtPhase>[],
-  sofr: number
+  sofr: number,
+  numPhases: number = 2
 ): MonitoringTrigger[] {
+  const lastPhaseIdx = numPhases - 1;
+  const refiPhaseIdx = Math.min(1, lastPhaseIdx);
   const triggers: MonitoringTrigger[] = [];
   const primaryPhase = phases[0];
 
@@ -318,7 +321,7 @@ function buildMonitoringTriggers(
     frequency: 'Weekly',
     action: 'Agency rate improves enough to justify refi even with prepay — evaluate savings',
     severity: 'info',
-    phase: Math.min(1, phases.length - 1),
+    phase: refiPhaseIdx,
   });
 
   triggers.push({
@@ -329,7 +332,7 @@ function buildMonitoringTriggers(
     frequency: 'Quarterly',
     action: 'Calculate exact prepay cost (yield maintenance or defeasance). Begin exit planning with capital stack waterfall.',
     severity: 'info',
-    phase: phases.length - 1,
+    phase: lastPhaseIdx,
   });
 
   return triggers;
@@ -373,7 +376,8 @@ function buildPhases(
   state: string,
   subStrategyKey: string,
   contextMods: ContextModification,
-  productHint?: string
+  productHint?: string,
+  strategyDrivers?: import('./m08-strategy-output.service').M08StrategyDrivers
 ): DebtPhase[] {
   const phases: DebtPhase[] = [];
   const sofr = rateEnv.sofr;
@@ -392,7 +396,8 @@ function buildPhases(
     ? sofr + (phaseStructure.spread || 0.0275)
     : (phaseStructure.rate || sofr + 0.015);
 
-  let targetLtv = phaseStructure.targetLtv || phaseStructure.targetLtc || 0.70;
+  const mappingLtv = phaseStructure.targetLtv || phaseStructure.targetLtc || 0.70;
+  let targetLtv = strategyDrivers?.targetLtv ?? mappingLtv;
   targetLtv = Math.max(0, targetLtv - contextMods.ltvHaircutPct);
 
   const phase1LoanM = (purchasePrice * targetLtv) / 1_000_000;
@@ -410,7 +415,9 @@ function buildPhases(
 
   const phase1Lenders = targetLenders(primaryProduct, phase1LoanM, state, targetLtv, !contextMods.recourseRequired, 5);
   const phase1EndMonth = Math.min(termMonthsActual, holdMonths);
-  const phase1Triggers = buildMonitoringTriggers(subStrategyKey, holdMonths, [{ rateType, ioMonths }], sofr);
+  const hasPhase2 = !!(structure.phase2 && holdMonths > termMonthsActual);
+  const numPhases = hasPhase2 ? 3 : 2;
+  const phase1Triggers = buildMonitoringTriggers(subStrategyKey, holdMonths, [{ rateType, ioMonths }], sofr, numPhases);
 
   const phase1Rationale = contextMods.narrativeNotes.length > 0
     ? `${mapping.rationale} Context notes: ${contextMods.narrativeNotes.slice(0, 2).join(' ')}`
@@ -440,20 +447,25 @@ function buildPhases(
     isRefiEvent: false,
   });
 
-  if (structure.phase2 && holdMonths > termMonthsActual) {
+  if (hasPhase2) {
     const p2 = structure.phase2;
-    const refiMonth = p2.triggerMonth || phase1EndMonth;
+    const refiMonth = strategyDrivers?.phase2TriggerMonth ?? p2.triggerMonth ?? phase1EndMonth;
     const p2Rate = rateEnv.classification === 'Rising'
       ? (p2.rate || 0.055)
       : (p2.rate || sofr + 0.012);
-    const p2Ltv = Math.max(0, (p2.targetLtv || 0.65) - contextMods.ltvHaircutPct);
+    const p2MappingLtv = p2.targetLtv || 0.65;
+    const p2Ltv = Math.max(0, (strategyDrivers?.targetLtv ? Math.min(strategyDrivers.targetLtv, 0.75) : p2MappingLtv) - contextMods.ltvHaircutPct);
     const p2LoanM = (purchasePrice * p2Ltv) / 1_000_000;
-    const p2ProductRaw = normalizeProductKey(p2.product || 'agency_fixed');
+    const p2ProductRaw = normalizeProductKey(
+      strategyDrivers?.phase2Product ?? p2.product ?? 'agency_fixed'
+    );
     const p2Product = contextMods.productExclusions.includes(p2ProductRaw)
       ? 'portfolio_bank'
       : p2ProductRaw;
     const p2TermYears = resolveTermYears(p2, 10);
     const p2Lenders = targetLenders(p2Product, p2LoanM, state, p2Ltv, !contextMods.recourseRequired, 3);
+    const refiTriggerOcc = strategyDrivers?.triggerOccupancy ?? p2.triggerOcc;
+    const refiTriggerDscr = strategyDrivers?.targetDscr ?? p2.triggerDscr;
 
     phases.push({
       phaseIndex: 1,
@@ -476,8 +488,8 @@ function buildPhases(
       lenders: p2Lenders,
       triggers: phase1Triggers.filter(t => t.phase === 1),
       isRefiEvent: true,
-      refiTriggerOcc: p2.triggerOcc,
-      refiTriggerDscr: p2.triggerDscr,
+      refiTriggerOcc,
+      refiTriggerDscr,
     });
   }
 
@@ -500,7 +512,7 @@ function buildPhases(
     prepayType: phases[phases.length - 1]?.prepayType || 'yield_maintenance',
     rationale: `At exit (M${holdMonths}), pay off outstanding balance plus prepayment penalty. Cross-reference Taxes tab for transfer tax. Proceeds flow through Capital Stack waterfall.`,
     lenders: [],
-    triggers: phase1Triggers.filter(t => t.phase === phases.length - 1),
+    triggers: phase1Triggers.filter(t => t.phase === numPhases - 1),
     isRefiEvent: false,
   });
 
@@ -692,17 +704,21 @@ export async function formulateDebtPlan(dealId: string, productHint?: string): P
 
   const subStrategyKey = detectSubStrategy(m08Output.strategySlug, m08Output.strategyName, dealCtx.propertyType);
   const mapping = getMappingForKey(subStrategyKey);
+  const strategyDrivers = m08Output.strategyDrivers;
 
-  const estimatedLoan = dealCtx.purchasePrice * 0.70;
-  const { modifications: contextMods } = await applyDebtContextModifier(
-    pool,
-    dealId,
-    dealCtx.purchasePrice,
-    dealCtx.state,
-    estimatedLoan
-  );
+  // Prefer M08 strategy hold months over deal-level hold period when provided.
+  const holdMonths = strategyDrivers.holdMonths ?? dealCtx.holdMonths;
 
-  const phases = buildPhases(mapping, rateEnv, dealCtx.purchasePrice, dealCtx.holdMonths, dealCtx.state, subStrategyKey, contextMods, productHint);
+  const estimatedLoan = dealCtx.purchasePrice * (strategyDrivers.targetLtv ?? 0.70);
+  const [{ modifications: contextMods }, configureRow] = await Promise.all([
+    applyDebtContextModifier(pool, dealId, dealCtx.purchasePrice, dealCtx.state, estimatedLoan),
+    pool.query(
+      `SELECT per_year_overrides FROM deal_assumptions WHERE deal_id = $1 ORDER BY updated_at DESC LIMIT 1`,
+      [dealId]
+    ).catch(() => ({ rows: [] as any[] })),
+  ]);
+
+  const phases = buildPhases(mapping, rateEnv, dealCtx.purchasePrice, holdMonths, dealCtx.state, subStrategyKey, contextMods, productHint, strategyDrivers);
 
   // Compute DSCR / Debt Yield from T-12 NOI (if available) for each non-exit phase.
   // Falls back to estimate (1% of purchase price/month) when actuals not yet ingested.
@@ -732,6 +748,53 @@ export async function formulateDebtPlan(dealId: string, productHint?: string): P
     : 0;
   const covenantCushionBps = phase1 ? 1500 : 0;
 
+  // Compute divergence: compare advisor recommendation to current Configure values
+  // from deal_assumptions.per_year_overrides (durable, survives refresh).
+  let divergence: DebtAdvisorResponse['divergence'] = undefined;
+  const pyoRaw = configureRow.rows[0]?.per_year_overrides || {};
+  if (phase1 && typeof pyoRaw === 'object') {
+    const advisorLoan = phase1.loanAmountEst;
+    const advisorRate = phase1.rateEst;
+    let configLoan: number | undefined;
+    let configRate: number | undefined;
+    for (const [key, val] of Object.entries(pyoRaw as Record<string, any>)) {
+      if (!key.startsWith('debt:')) continue;
+      const parts = key.split(':');
+      const field = parts[parts.length - 1];
+      if (field === 'loanAmount' && typeof val === 'number') configLoan = val;
+      if (field === 'interestRate' && typeof val === 'number') configRate = val;
+      if (field === 'sofr' && typeof val === 'number' && !configRate) {
+        const spreadKey = parts.slice(0, -1).join(':') + ':spread';
+        const spread = (pyoRaw as Record<string, any>)[spreadKey];
+        if (typeof spread === 'number') configRate = val + spread;
+      }
+    }
+    const loanDeltaPct = configLoan != null
+      ? Math.abs((configLoan - advisorLoan) / advisorLoan)
+      : 0;
+    const rateDeltaBps = configRate != null
+      ? Math.abs((configRate - advisorRate) * 10000)
+      : 0;
+    if (configLoan != null || configRate != null) {
+      const hasDivergence = loanDeltaPct > 0.03 || rateDeltaBps > 25;
+      const irrDelta = hasDivergence
+        ? Math.round(((advisorRate - (configRate ?? advisorRate)) * 10000) * 0.35 + (((advisorLoan - (configLoan ?? advisorLoan)) / advisorLoan) * 10000) * 0.12)
+        : 0;
+      const covenantDelta = hasDivergence
+        ? Math.round(rateDeltaBps * 0.15)
+        : 0;
+      divergence = {
+        hasDivergence,
+        configuredLoanAmount: configLoan,
+        configuredRate: configRate,
+        advisorLoanAmount: advisorLoan,
+        advisorRate,
+        irrImpactBps: irrDelta,
+        covenantCushionDeltaBps: covenantDelta,
+      };
+    }
+  }
+
   const result: DebtAdvisorResponse = {
     dealId,
     computedAt: new Date().toISOString(),
@@ -740,7 +803,7 @@ export async function formulateDebtPlan(dealId: string, productHint?: string): P
       subStrategyKey,
       strategySlug: m08Output.strategySlug,
       strategyName: m08Output.strategyName,
-      holdMonths: dealCtx.holdMonths,
+      holdMonths,
       hasStrategy: true,
       propertyType: dealCtx.propertyType,
       purchasePrice: dealCtx.purchasePrice,
@@ -774,6 +837,7 @@ export async function formulateDebtPlan(dealId: string, productHint?: string): P
       estimatedIrrImpactBps: irrImpactBps,
       covenantCushionBps,
     },
+    ...(divergence !== undefined ? { divergence } : {}),
   };
 
   advisorCache.set(dealId, { data: result, expiresAt: Date.now() + CACHE_TTL_MS });
