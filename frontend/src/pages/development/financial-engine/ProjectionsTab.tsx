@@ -48,6 +48,8 @@ interface RowDef {
   afterTaxOnly?: boolean;
   sourceKey?: 'reTaxSource' | 'debtSource';
   tabLink?: number;
+  /** If true, sub-period view shows the annual value unchanged (not prorated). Use for ratios, %s, balances, and exit/disposition rows */
+  noSubPeriod?: boolean;
 }
 interface SectionDef {
   label: string;
@@ -107,8 +109,8 @@ const SECTIONS: SectionDef[] = [
     label: 'NOI', key: 'noi', color: BT.text.cyan,
     rows: [
       { label: 'Net Operating Income',       key: 'noi',           isTotal: true },
-      { label: 'Operating Margin',           key: 'opMargin',      fmt: 'pct' },
-      { label: 'NOI / Unit',                 key: 'noiPerUnit' },
+      { label: 'Operating Margin',           key: 'opMargin',      fmt: 'pct', noSubPeriod: true },
+      { label: 'NOI / Unit',                 key: 'noiPerUnit',                noSubPeriod: true },
     ],
   },
   {
@@ -138,14 +140,14 @@ const SECTIONS: SectionDef[] = [
   {
     label: 'SALE-YEAR DISPOSITION', key: 'exit', color: BT.text.amber,
     rows: [
-      { label: 'Forward NOI (Exit)',              key: 'exitNoi' },
-      { label: 'Exit Cap Rate',                   key: 'exitCap',                fmt: 'pct' },
-      { label: 'Gross Sale Value',                key: 'grossSaleValue' },
-      { label: '(–) Selling Costs (1.5%)',        key: 'sellingCosts',            indent: true, sign: -1 },
-      { label: '(–) Doc Stamps / Transfer Tax',  key: 'dispositionDocStamps',    indent: true, sign: -1, tabLink: 4 },
-      { label: '(–) Loan Payoff',                key: 'loanPayoff',              indent: true, sign: -1 },
-      { label: '(–) Disposition Tax (Est.)',      key: 'dispositionTaxPayable',   indent: true, sign: -1, afterTaxOnly: true, tabLink: 4 },
-      { label: 'Net Sale Proceeds',               key: 'netSaleProceeds',         isTotal: true },
+      { label: 'Forward NOI (Exit)',              key: 'exitNoi',                                          noSubPeriod: true },
+      { label: 'Exit Cap Rate',                   key: 'exitCap',                fmt: 'pct',               noSubPeriod: true },
+      { label: 'Gross Sale Value',                key: 'grossSaleValue',                                   noSubPeriod: true },
+      { label: '(–) Selling Costs (1.5%)',        key: 'sellingCosts',            indent: true, sign: -1,   noSubPeriod: true },
+      { label: '(–) Doc Stamps / Transfer Tax',  key: 'dispositionDocStamps',    indent: true, sign: -1, tabLink: 4, noSubPeriod: true },
+      { label: '(–) Loan Payoff',                key: 'loanPayoff',              indent: true, sign: -1,   noSubPeriod: true },
+      { label: '(–) Disposition Tax (Est.)',      key: 'dispositionTaxPayable',   indent: true, sign: -1, afterTaxOnly: true, tabLink: 4, noSubPeriod: true },
+      { label: 'Net Sale Proceeds',               key: 'netSaleProceeds',         isTotal: true,            noSubPeriod: true },
     ],
   },
 ];
@@ -778,16 +780,21 @@ export function ProjectionsTab({
                             : subCols.map(c => {
                                 const proj    = projections[c.projYear - 1];
                                 const rawVal  = proj ? (proj[row.key] as number | null) : null;
-                                const subVal  = rawVal != null ? rawVal * c.fraction : null;
+                                // noSubPeriod rows (ratios, %, balances, exit/disposition) show annual value unchanged
+                                // flow rows get divided by period count
+                                const subVal  = rawVal != null
+                                  ? (row.noSubPeriod ? rawVal : rawVal * c.fraction)
+                                  : null;
                                 const display = fmtCell(subVal, row.fmt, row.sign);
                                 const isNeg   = subVal != null && subVal < 0;
                                 const textColor = row.isTotal ? section.color : isNeg ? BT.text.red : row.sign === -1 && subVal != null && subVal > 0 ? BT.text.red : BT.text.primary;
+                                const periodLabel = row.noSubPeriod ? `YR ${c.projYear} (annual, not prorated)` : `YR ${c.projYear} ÷ ${viewMode === 'quarterly' ? 4 : 12}`;
                                 return (
                                   <td
                                     key={c.periodKey}
                                     onClick={() => proj && setDrilldown(buildDrilldown(row, proj, financials))}
                                     style={{ padding: '3px 6px', textAlign: 'right', color: textColor, fontWeight: row.isTotal ? 700 : 400, cursor: proj ? 'pointer' : 'default', fontSize: 8 }}
-                                    title={proj ? `YR ${c.projYear} ÷ ${viewMode === 'quarterly' ? 4 : 12}` : undefined}
+                                    title={proj ? periodLabel : undefined}
                                   >
                                     {display}
                                   </td>

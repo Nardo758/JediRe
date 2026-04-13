@@ -321,7 +321,7 @@ export interface F9DealFinancials {
     occupancy: number | null; rentGrowthPct: number | null;
     opexRatioPct: number | null; noiMarginPct: number | null; capRatePct: number | null;
     cumulativeEM: number | null;
-    exitNoi: number | null; exitCap: number; grossSaleValue: number | null;
+    exitNoi: number | null; exitCap: number | null; grossSaleValue: number | null;
     sellingCosts: number | null; dispositionDocStamps: number | null;
     dispositionTaxPayable: number | null;
     loanPayoff: number; netSaleProceeds: number | null;
