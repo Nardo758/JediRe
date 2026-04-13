@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { BT } from '../../../components/deal/bloomberg-ui';
 import { KpiTile } from '../../../components/deal/bloomberg-ui';
-import { Lock, Link, ChevronDown, ChevronRight, Plus, X, TrendingDown, TrendingUp, Minus, AlertTriangle, CheckCircle, Zap, RefreshCw } from 'lucide-react';
+import { Lock, Link, ChevronDown, ChevronRight, Plus, X, TrendingDown, TrendingUp, Minus, AlertTriangle, CheckCircle, Zap, RefreshCw, Activity } from 'lucide-react';
 import type { FinancialEngineTabProps, F9DebtLoan, PrepayType } from './types';
 import { fmt$, fmtPct } from './types';
 import { apiClient } from '../../../services/api.client';
@@ -368,6 +368,7 @@ interface DebtAdvisorData {
   computedAt: string;
   strategyInputs: {
     subStrategyKey: string;
+    strategySlug: string;
     strategyName: string;
     holdMonths: number;
     hasStrategy: boolean;
@@ -376,6 +377,7 @@ interface DebtAdvisorData {
     city: string;
     state: string;
     units: number;
+    riskScore: number;
   };
   rateEnvironment: {
     classification: 'Dropping' | 'Flat' | 'Rising';
@@ -391,6 +393,12 @@ interface DebtAdvisorData {
   recommendedStack: AdvisorPhase[];
   alternatives: AdvisorAlternative[];
   monitoringTriggers: AdvisorTrigger[];
+  correlationContext: {
+    slug: string;
+    riskScore: number;
+    correlationImplication: string;
+    rssAdjustmentBps: number;
+  } | null;
   summary: {
     primaryProduct: string;
     primaryProductLabel: string;
@@ -399,14 +407,28 @@ interface DebtAdvisorData {
     blendedAllInRate: number;
     headline: string;
     whyStatement: string;
+    estimatedIrrImpactBps: number;
+    covenantCushionBps: number;
+  };
+  divergence?: {
+    hasDivergence: boolean;
+    configuredLoanAmount?: number;
+    configuredRate?: number;
+    advisorLoanAmount?: number;
+    advisorRate?: number;
+    irrImpactBps?: number;
+    covenantCushionDeltaBps?: number;
   };
 }
 
 // ─── Debt Advisor View Component ──────────────────────────────────────────────
-function DebtAdvisorView({ dealId, onSwitchToConfigure, onAccept }: {
+function DebtAdvisorView({ dealId, onSwitchToConfigure, onAccept, configuredLoanAmount, configuredRate, onAdvisorAccepted }: {
   dealId: string;
   onSwitchToConfigure: () => void;
   onAccept: () => void;
+  configuredLoanAmount?: number | null;
+  configuredRate?: number | null;
+  onAdvisorAccepted?: (loanAmount: number, rate: number) => void;
 }) {
   const [data, setData] = useState<DebtAdvisorData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -438,6 +460,9 @@ function DebtAdvisorView({ dealId, onSwitchToConfigure, onAccept }: {
     setAccepting(true);
     try {
       await apiClient.post(`/api/v1/deals/${dealId}/debt/advisor/accept`, { phaseIndex: 0 });
+      if (data?.summary) {
+        onAdvisorAccepted?.(data.summary.initialLoanAmount, data.summary.blendedAllInRate);
+      }
       onAccept();
       onSwitchToConfigure();
     } catch {
@@ -487,12 +512,24 @@ function DebtAdvisorView({ dealId, onSwitchToConfigure, onAccept }: {
     );
   }
 
-  const { strategyInputs: si, rateEnvironment: re, recommendedStack: phases, alternatives, monitoringTriggers: triggers, summary } = data;
+  const { strategyInputs: si, rateEnvironment: re, recommendedStack: phases, alternatives, monitoringTriggers: triggers, summary, correlationContext } = data;
 
   const RateIcon = re.classification === 'Dropping' ? TrendingDown : re.classification === 'Rising' ? TrendingUp : Minus;
   const rateColor = re.classification === 'Dropping' ? BT.met.financial : re.classification === 'Rising' ? BT.text.red : BT.text.amber;
   const windowColor = re.pricingWindowScore >= 65 ? BT.met.financial : re.pricingWindowScore <= 40 ? BT.text.red : BT.text.amber;
   const totalHoldMonths = si.holdMonths || 36;
+
+  const advisorLoanAmt = summary.initialLoanAmount;
+  const advisorRate = summary.blendedAllInRate;
+  const loanDivAmt = configuredLoanAmount != null && advisorLoanAmt > 0
+    ? Math.abs(configuredLoanAmount - advisorLoanAmt) / advisorLoanAmt
+    : 0;
+  const rateDivBps = configuredRate != null && advisorRate > 0
+    ? Math.round((configuredRate - advisorRate) * 10000)
+    : 0;
+  const hasDivergence = loanDivAmt > 0.05 || Math.abs(rateDivBps) > 25;
+  const irrDeltaBps = hasDivergence ? Math.round(Math.abs(rateDivBps) * 0.35 + loanDivAmt * 200) : 0;
+  const covenantDeltaBps = hasDivergence ? Math.round(Math.abs(rateDivBps) * 0.6) : 0;
 
   return (
     <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
@@ -505,6 +542,45 @@ function DebtAdvisorView({ dealId, onSwitchToConfigure, onAccept }: {
             <Zap style={{ width: 12, height: 12, color: BT.text.amber, flexShrink: 0 }} />
             <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.amber }}>
               No strategy detected — showing general debt recommendation. Run M08 Strategy for a strategy-specific plan.
+            </span>
+          </div>
+        )}
+
+        {/* Divergence banner — shown when Configure values deviate from Advisor recommendation */}
+        {hasDivergence && (
+          <div style={{ padding: '8px 16px', background: `${BT.text.amber}18`, borderBottom: `1px solid ${BT.text.amber}50`, display: 'flex', alignItems: 'center', gap: 10 }}>
+            <AlertTriangle style={{ width: 12, height: 12, color: BT.text.amber, flexShrink: 0 }} />
+            <div style={{ flex: 1 }}>
+              <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.amber, fontWeight: 700 }}>CONFIGURE DIVERGENCE DETECTED — </span>
+              <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary }}>
+                Current configuration differs from this recommendation
+                {Math.abs(rateDivBps) > 0 && ` by ${Math.abs(rateDivBps) > 0 ? `${rateDivBps > 0 ? '+' : ''}${rateDivBps}bps rate` : ''}`}
+                {loanDivAmt > 0.05 && ` / ${loanDivAmt > 0 ? '+' : ''}${(loanDivAmt * 100).toFixed(0)}% loan size`}.
+                {irrDeltaBps > 0 && ` Est. IRR impact: ~${irrDeltaBps}bps.`}
+                {covenantDeltaBps > 0 && ` Est. DSCR covenant cushion shift: ~${covenantDeltaBps}bps.`}
+              </span>
+            </div>
+            <button
+              onClick={onSwitchToConfigure}
+              style={{ padding: '3px 10px', background: 'transparent', border: `1px solid ${BT.text.amber}60`, color: BT.text.amber, fontFamily: MONO, fontSize: 8, cursor: 'pointer', borderRadius: 2, flexShrink: 0 }}
+            >
+              VIEW CONFIGURE
+            </button>
+          </div>
+        )}
+
+        {/* Correlation / RSS context banner */}
+        {correlationContext && (
+          <div style={{ padding: '6px 16px', background: `${BT.text.cyan}08`, borderBottom: `1px solid ${BT.border.subtle}`, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Activity style={{ width: 10, height: 10, color: BT.text.cyan, flexShrink: 0 }} />
+            <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary }}>
+              <span style={{ color: BT.text.cyan }}>RSS </span>
+              {correlationContext.correlationImplication}
+              {correlationContext.rssAdjustmentBps !== 0 && (
+                <span style={{ color: correlationContext.rssAdjustmentBps > 0 ? BT.text.amber : BT.met.financial, marginLeft: 8 }}>
+                  ({correlationContext.rssAdjustmentBps > 0 ? '+' : ''}{correlationContext.rssAdjustmentBps}bps spread adj applied to alternatives)
+                </span>
+              )}
             </span>
           </div>
         )}
@@ -983,6 +1059,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
   // ─── Render ──────────────────────────────────────────────────────────────
   const [showAnnual, setShowAnnual] = useState(true);
   const [debtView, setDebtView] = useState<'advisor' | 'configure'>('advisor');
+  const [advisorBaseline, setAdvisorBaseline] = useState<{ loanAmount: number; rate: number } | null>(null);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: debtView === 'advisor' ? 'hidden' : 'auto', background: BT.bg.terminal }}>
@@ -1040,12 +1117,45 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
             dealId={dealId}
             onSwitchToConfigure={() => setDebtView('configure')}
             onAccept={() => setDebtView('configure')}
+            configuredLoanAmount={effLoanAmt}
+            configuredRate={effRate}
+            onAdvisorAccepted={(la, r) => setAdvisorBaseline({ loanAmount: la, rate: r })}
           />
         </div>
       )}
 
       {/* ── Configure View ────────────────────────────────────────────────────── */}
       {debtView === 'configure' && (<>
+
+      {/* ── Configure Divergence Banner ─────────────────────────────────────── */}
+      {advisorBaseline && activeLoan.id === 'senior' && (() => {
+        const laDiv = advisorBaseline.loanAmount > 0 ? Math.abs(effLoanAmt - advisorBaseline.loanAmount) / advisorBaseline.loanAmount : 0;
+        const rateDiv = Math.round((effRate - advisorBaseline.rate) * 10000);
+        const hasCfgDiv = laDiv > 0.05 || Math.abs(rateDiv) > 25;
+        if (!hasCfgDiv) return null;
+        const irrEst = Math.round(Math.abs(rateDiv) * 0.35 + laDiv * 200);
+        const dscrEst = Math.round(Math.abs(rateDiv) * 0.6);
+        return (
+          <div style={{ padding: '7px 14px', background: `${BT.text.amber}15`, borderBottom: `1px solid ${BT.text.amber}40`, display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+            <AlertTriangle style={{ width: 11, height: 11, color: BT.text.amber, flexShrink: 0 }} />
+            <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.amber, fontWeight: 700 }}>ADVISOR DIVERGENCE · </span>
+            <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary, flex: 1 }}>
+              Configure differs from Advisor recommendation
+              {Math.abs(rateDiv) > 0 && ` (rate: ${rateDiv > 0 ? '+' : ''}${rateDiv}bps`}
+              {laDiv > 0.05 && `, loan size: ${laDiv > 0 ? '+' : ''}${(laDiv * 100).toFixed(0)}%`}
+              {Math.abs(rateDiv) > 0 && ')'}
+              {irrEst > 0 && ` · Est. IRR impact: ~${irrEst}bps`}
+              {dscrEst > 0 && ` · DSCR cushion shift: ~${dscrEst}bps`}
+            </span>
+            <button
+              onClick={() => setDebtView('advisor')}
+              style={{ padding: '2px 10px', background: 'transparent', border: `1px solid ${BT.text.amber}50`, color: BT.text.amber, fontFamily: MONO, fontSize: 7, cursor: 'pointer', borderRadius: 2, flexShrink: 0 }}
+            >
+              VIEW ADVISOR
+            </button>
+          </div>
+        );
+      })()}
 
       {/* ── KPI strip ───────────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', borderBottom: `1px solid ${BT.border.medium}`, flexShrink: 0 }}>
