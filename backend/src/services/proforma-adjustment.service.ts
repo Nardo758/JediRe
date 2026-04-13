@@ -1716,6 +1716,12 @@ export async function getDealFinancials(
     const rowKey = SNAKE_TO_STATIC_KEY[fieldSnake] ?? fieldSnake;  // snake_case passthrough for Sec 1/3
     if (!userOverrides[rowKey]) userOverrides[rowKey] = {};
     userOverrides[rowKey][yr] = entry.value;
+    // vacancy_pct overrides also populate the Section 2 'stabilizedOcc' row key
+    // (stabilizedOcc displays 1 - vacancyPct; its patchField is 'vacancyPct' → 'vacancy_pct')
+    if (fieldSnake === 'vacancy_pct') {
+      if (!userOverrides['stabilizedOcc']) userOverrides['stabilizedOcc'] = {};
+      userOverrides['stabilizedOcc'][yr] = +Math.max(0, 1 - entry.value).toFixed(4);
+    }
   }
 
   // Pass 2: year1 LayeredValue seed — year-1 non-traffic overrides stored via applyUserOverride.
@@ -1738,6 +1744,11 @@ export async function getDealFinancials(
     if (overrideVal == null) continue;
     if (!userOverrides[fieldSnake]) userOverrides[fieldSnake] = {};
     userOverrides[fieldSnake][1] = overrideVal;   // year 1
+    // vacancy_pct year-1 override also populates 'stabilizedOcc' key (Section 2 row)
+    if (fieldSnake === 'vacancy_pct') {
+      if (!userOverrides['stabilizedOcc']) userOverrides['stabilizedOcc'] = {};
+      userOverrides['stabilizedOcc'][1] = +Math.max(0, 1 - overrideVal).toFixed(4);
+    }
   }
 
   return {

@@ -111,7 +111,6 @@ interface FieldMeta {
   description?: string;
   platformSource?: string; brokerSource?: string;
   brokerPage?: string; brokerLine?: string;
-  benchmarkP25?: number; benchmarkP50?: number; benchmarkP75?: number;
   // Year-N projection approach
   growthPct?: number;        // fixed growth rate (e.g. 0.03 = 3%)
   growthKey?: 'rent'|'opex'; // dynamic: 'rent' = per-year from assumptions; 'opex' = 3%
@@ -133,7 +132,6 @@ const FIELD_META: Record<string, FieldMeta> = {
     description: 'Gross Potential Rent — 100% occupied × market rent × 12. Compounds each year by per-year rent growth.',
     platformSource: 'M07 Traffic Engine — effRent × occupancy × units', brokerSource: 'OM / Rent Roll',
     brokerPage: 'Rent Roll Summary', brokerLine: 'Gross Potential Rent',
-    benchmarkP25: 800_000, benchmarkP50: 2_200_000, benchmarkP75: 5_000_000,
     getYearNPlatform: (f, yr) => {
       const t = tyr(f, yr);
       if (t?.effRent != null && t?.occupancyPct != null)
@@ -147,14 +145,12 @@ const FIELD_META: Record<string, FieldMeta> = {
     description: 'Market rent minus in-place rent as % of market rent. Narrows as leases roll over hold period.',
     platformSource: 'JEDI — Submarket Avg Loss-to-Lease', brokerSource: 'OM / Operating Assumptions',
     brokerPage: 'Operating Assumptions', brokerLine: 'Loss-to-Lease',
-    benchmarkP25: 0.01, benchmarkP50: 0.025, benchmarkP75: 0.05,
   },
   vacancy_pct: {
     unit: 'pct', format: fmtPct2, patchField: 'vacancyPct',
     description: 'Physical vacancy & credit loss as % of GPR. M07 derives this from T-01×T-05 traffic equilibrium.',
     platformSource: 'M07 — T-01 × T-05 occupancy trajectory per year', brokerSource: 'OM / Operating Assumptions',
     brokerPage: 'Operating Assumptions', brokerLine: 'Vacancy & Credit Loss',
-    benchmarkP25: 0.03, benchmarkP50: 0.06, benchmarkP75: 0.10,
     getYearNPlatform: (f, yr) => tyr(f, yr)?.vacancyPct ?? y1(f,'vacancy_pct')?.platform ?? null,
   },
   concessions_pct: {
@@ -162,27 +158,23 @@ const FIELD_META: Record<string, FieldMeta> = {
     description: 'Free rent / net effective concessions as % of GPR. Declines as market tightens.',
     platformSource: 'M07 — Leasing velocity implies concession pressure', brokerSource: 'OM / Operating Assumptions',
     brokerPage: 'Operating Assumptions', brokerLine: 'Concessions',
-    benchmarkP25: 0.002, benchmarkP50: 0.005, benchmarkP75: 0.012,
   },
   bad_debt_pct: {
     unit: 'pct', format: fmtPct2, patchField: 'badDebtPct',
     description: 'Non-payment and collection losses as % of GPR.',
     platformSource: 'JEDI — Local collections data', brokerSource: 'OM / T12 Statement',
     brokerPage: 'T12 Operating Statement', brokerLine: 'Collection Loss',
-    benchmarkP25: 0.008, benchmarkP50: 0.015, benchmarkP75: 0.025,
   },
   non_revenue_units_pct: {
     unit: 'pct', format: fmtPct2,
     description: 'Manager/model units held offline as % of total unit count.',
     platformSource: 'JEDI — Submarket NRU norm', brokerSource: 'OM / Operating Assumptions',
-    benchmarkP25: 0.005, benchmarkP50: 0.01, benchmarkP75: 0.02,
   },
   other_income_per_unit: {
     unit: 'dollar', format: fmtDlr, patchField: 'otherIncomePerUnit',
     description: 'Ancillary income (parking, storage, RUBS, pet fees) per unit per month.',
     platformSource: 'JEDI — Historical ancillary income by market', brokerSource: 'OM / T12 Other Income',
     brokerPage: 'T12 Operating Statement', brokerLine: 'Other Income',
-    benchmarkP25: 40, benchmarkP50: 75, benchmarkP75: 130,
   },
   net_rental_income: {
     unit: 'dollar', format: fmtDlr, readonly: true,
@@ -202,75 +194,64 @@ const FIELD_META: Record<string, FieldMeta> = {
     description: 'On-site payroll and property management fee per year.',
     platformSource: 'JEDI — Submarket OpEx benchmark', brokerSource: 'OM / T12 Statement',
     brokerPage: 'T12 Operating Statement', brokerLine: 'Payroll & Benefits',
-    benchmarkP25: 1100, benchmarkP50: 1450, benchmarkP75: 1900,
   },
   repairs_maintenance: {
     unit: 'dollar', format: fmtDlr, patchField: 'repairsMaintenance', growthPct: 0.03,
     description: 'Routine R&M per year. Excludes capital expenditures.',
     platformSource: 'JEDI — Property class benchmark', brokerSource: 'OM / T12 Statement',
     brokerPage: 'T12 Operating Statement', brokerLine: 'Repairs & Maintenance',
-    benchmarkP25: 350, benchmarkP50: 550, benchmarkP75: 850,
   },
   turnover: {
     unit: 'dollar', format: fmtDlr, patchField: 'turnover', growthPct: 0.03,
     description: 'Make-ready and turnover costs per year.',
     platformSource: 'JEDI — Turnover benchmark', brokerSource: 'OM / T12 Statement',
     brokerPage: 'T12 Operating Statement', brokerLine: 'Turnover / Make Ready',
-    benchmarkP25: 150, benchmarkP50: 280, benchmarkP75: 450,
   },
   contract_services: {
     unit: 'dollar', format: fmtDlr, patchField: 'contractServices', growthPct: 0.03,
     description: 'Landscaping, pest control, elevator, janitorial contract services per year.',
     platformSource: 'JEDI — Contract services benchmark', brokerSource: 'OM / T12 Statement',
     brokerPage: 'T12 Operating Statement', brokerLine: 'Contract Services',
-    benchmarkP25: 200, benchmarkP50: 350, benchmarkP75: 550,
   },
   marketing: {
     unit: 'dollar', format: fmtDlr, patchField: 'marketing', growthPct: 0.03,
     description: 'Leasing, advertising, and marketing costs per year.',
     platformSource: 'JEDI — Marketing benchmark', brokerSource: 'OM / T12 Statement',
     brokerPage: 'T12 Operating Statement', brokerLine: 'Marketing',
-    benchmarkP25: 80, benchmarkP50: 150, benchmarkP75: 280,
   },
   utilities: {
     unit: 'dollar', format: fmtDlr, patchField: 'utilities', growthPct: 0.03,
     description: 'Owner-paid utilities per year.',
     platformSource: 'JEDI — Utility benchmark by market', brokerSource: 'OM / T12 Statement',
     brokerPage: 'T12 Operating Statement', brokerLine: 'Utilities',
-    benchmarkP25: 400, benchmarkP50: 620, benchmarkP75: 900,
   },
   g_and_a: {
     unit: 'dollar', format: fmtDlr, patchField: 'gAndA', growthPct: 0.03,
     description: 'General and administrative expenses per year.',
     platformSource: 'JEDI — G&A benchmark', brokerSource: 'OM / T12 Statement',
     brokerPage: 'T12 Operating Statement', brokerLine: 'G&A / Admin',
-    benchmarkP25: 100, benchmarkP50: 200, benchmarkP75: 350,
   },
   management_fee_pct: {
     unit: 'pct', format: fmtPct2, patchField: 'managementFeePct',
     description: 'Property management fee as % of EGI.',
     platformSource: 'JEDI — Market management fee norms', brokerSource: 'OM / Management Agreement',
-    benchmarkP25: 0.03, benchmarkP50: 0.04, benchmarkP75: 0.06,
   },
   insurance: {
     unit: 'dollar', format: fmtDlr, patchField: 'insurance', growthPct: 0.035,
     description: 'Hazard, liability, and specialty insurance per year.',
     platformSource: 'JEDI — Insurance benchmark', brokerSource: 'OM / T12 Statement',
     brokerPage: 'T12 Operating Statement', brokerLine: 'Insurance',
-    benchmarkP25: 300, benchmarkP50: 475, benchmarkP75: 700,
   },
   real_estate_tax: {
     unit: 'dollar', format: fmtDlr, patchField: 'realEstateTax', growthPct: 0.04,
     description: 'Annual RE tax. Reassessment at purchase causes Year-1 shock in Florida.',
     platformSource: 'JEDI — County millage model', brokerSource: 'OM / T12 Statement',
     brokerPage: 'T12 Operating Statement', brokerLine: 'Real Estate Taxes',
-    benchmarkP25: 600, benchmarkP50: 950, benchmarkP75: 1400,
   },
   replacement_reserves: {
     unit: 'dollar', format: fmtDlr, patchField: 'replacementReserves',
     description: 'Annual replacement reserves per unit. Industry standard $150–$350.',
     platformSource: 'JEDI — Industry reserve standard', brokerSource: 'OM / Pro Forma Expenses',
-    benchmarkP25: 150, benchmarkP50: 250, benchmarkP75: 350,
   },
   total_opex: {
     unit: 'dollar', format: fmtDlr, readonly: true,
@@ -295,7 +276,6 @@ interface RowDef {
   patchField?: string;
   platformSource?: string; brokerSource?: string;
   brokerPage?: string; brokerLine?: string;
-  benchmarkP25?: number; benchmarkP50?: number; benchmarkP75?: number;
   getBroker:     (f: DealFinancials, yr: number) => number|null;
   getPlatform:   (f: DealFinancials, yr: number) => number|null;
   getConfidence: (f: DealFinancials) => number|null;
@@ -317,9 +297,6 @@ function buildRowDef(osRow: OSRow, section: 1|3, meta: FieldMeta): RowDef {
     brokerSource: meta.brokerSource,
     brokerPage: meta.brokerPage,
     brokerLine: meta.brokerLine,
-    benchmarkP25: meta.benchmarkP25,
-    benchmarkP50: meta.benchmarkP50,
-    benchmarkP75: meta.benchmarkP75,
     getBroker: (f, yr) => {
       const row = y1(f, field);
       if (!row) return null;
@@ -370,17 +347,15 @@ const STATIC_ROWS: RowDef[] = [
     format: fmtPwk, patchField: 't01WeeklyTours',
     description: 'Total walk-in / inbound tour volume per week. Primary demand signal.',
     platformSource: 'M07 — T-01 real-time signal per year', brokerSource: 'N/A — live traffic signal',
-    benchmarkP25: 6, benchmarkP50: 12, benchmarkP75: 22,
     getBroker:   (_f, _yr) => null,
     getPlatform: (f, yr)  => tyr(f, yr)?.t01WeeklyTours ?? null,
     getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
   },
   {
-    key: 't05CaptureRate', label: 'T-05  Capture Rate / Tour→Lease %', section: 2, unit: 'pct',
+    key: 't05ClosingRatio', label: 'T-05  Capture Rate / Tour→Lease %', section: 2, unit: 'pct',
     format: fmtPct2, patchField: 't05ClosingRatio',
     description: 'Tour-to-lease capture rate (T-05). Percentage of tours that convert to signed leases. Higher = stronger qualified demand.',
     platformSource: 'M07 — T-05 closing ratio per year', brokerSource: 'N/A — live traffic signal',
-    benchmarkP25: 0.18, benchmarkP50: 0.28, benchmarkP75: 0.40,
     getBroker:   (_f, _yr) => null,
     getPlatform: (f, yr) => {
       const v = tyr(f, yr)?.t05ClosingRatio;
@@ -393,7 +368,6 @@ const STATIC_ROWS: RowDef[] = [
     format: fmtPwk, patchField: 't06WeeklyLeases',
     description: 'Net new leases executed per week (T-06). Key lease-up velocity indicator.',
     platformSource: 'M07 — T-06 signal per year', brokerSource: 'N/A — live traffic signal',
-    benchmarkP25: 1.5, benchmarkP50: 3.0, benchmarkP75: 5.5,
     getBroker:   (_f, _yr) => null,
     getPlatform: (f, yr) => tyr(f, yr)?.t06WeeklyLeases ?? null,
     getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
@@ -403,7 +377,6 @@ const STATIC_ROWS: RowDef[] = [
     format: n => (n >= 0 ? '+' : '') + (n * 100).toFixed(1) + '%', readonly: true,
     description: 'YoY tour-volume change (T-07). Positive = accelerating demand.',
     platformSource: 'M07 — T-07 derived from T-01 YoY change', brokerSource: 'N/A — derived',
-    benchmarkP25: -0.05, benchmarkP50: 0.05, benchmarkP75: 0.15,
     getBroker:   (_f, _yr) => null,
     getPlatform: (f, yr) => {
       if (yr < 2) return null;
@@ -418,7 +391,6 @@ const STATIC_ROWS: RowDef[] = [
     format: fmtPct2, readonly: true,
     description: 'Read-only equilibrium vacancy from T-01×T-05 traffic model. Fallback to broker T12 vacancy when M07 offline.',
     platformSource: 'M07 — equilibrium vacancy from tours × conversion', brokerSource: 'OM / T12 vacancy_pct (broker fallback)',
-    benchmarkP25: 0.03, benchmarkP50: 0.06, benchmarkP75: 0.10,
     // Broker fallback: use year1.vacancy_pct.broker when M07 is offline
     getBroker: (f, _yr) => y1(f, 'vacancy_pct')?.broker ?? y1(f, 'vacancy_pct')?.t12 ?? null,
     getPlatform: (f, yr) => {
@@ -434,7 +406,6 @@ const STATIC_ROWS: RowDef[] = [
     description: 'Long-run stabilized occupancy target. Platform = M07 equilibrium. Broker fallback = 1 − T12 vacancy.',
     platformSource: 'M07 — occupancy trajectory per year', brokerSource: 'OM / Pro Forma Assumptions',
     brokerPage: 'Operating Assumptions', brokerLine: 'Stabilized Occupancy',
-    benchmarkP25: 0.90, benchmarkP50: 0.94, benchmarkP75: 0.97,
     // Broker fallback: 1 − vacancy_pct.broker when M07 offline
     getBroker: (f, _yr) => {
       const v = y1(f, 'vacancy_pct')?.broker ?? y1(f, 'vacancy_pct')?.t12;
@@ -451,7 +422,6 @@ const STATIC_ROWS: RowDef[] = [
     format: fmtWks, readonly: true,
     description: 'Weeks from CO to 90% physical occupancy. Derived from T-06 weekly leases.',
     platformSource: 'M07 — T-06 velocity → weeks to 90%', brokerSource: 'OM / Pro Forma Assumptions',
-    benchmarkP25: 20, benchmarkP50: 28, benchmarkP75: 44,
     getBroker:   (_f, _yr) => null,
     getPlatform: (f, _yr) => f.trafficProjection?.leaseUp?.weeksTo90 ?? null,
     getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
@@ -461,7 +431,6 @@ const STATIC_ROWS: RowDef[] = [
     format: fmtWks, readonly: true,
     description: 'Weeks from CO to 93% physical occupancy.',
     platformSource: 'M07 — T-06 velocity → weeks to 93%', brokerSource: 'OM / Pro Forma Assumptions',
-    benchmarkP25: 22, benchmarkP50: 32, benchmarkP75: 50,
     getBroker:   (_f, _yr) => null,
     getPlatform: (f, _yr) => f.trafficProjection?.leaseUp?.weeksTo93 ?? null,
     getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
@@ -471,7 +440,6 @@ const STATIC_ROWS: RowDef[] = [
     format: fmtWks, readonly: true,
     description: 'Weeks from CO to 95% physical occupancy. Standard stabilization threshold.',
     platformSource: 'M07 — T-06 velocity → weeks to 95%', brokerSource: 'OM / Pro Forma Assumptions',
-    benchmarkP25: 24, benchmarkP50: 36, benchmarkP75: 56,
     getBroker:   (_f, _yr) => null,
     getPlatform: (f, _yr) => f.trafficProjection?.leaseUp?.weeksTo95 ?? null,
     getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
@@ -481,7 +449,6 @@ const STATIC_ROWS: RowDef[] = [
     format: fmtPct2,
     description: 'Incremental rent lift from renovation/value-add scope, derived from M07 demand elasticity.',
     platformSource: 'M07 — Demand elasticity × renovation scope model', brokerSource: 'OM / Value-Add Pro Forma',
-    benchmarkP25: 0.06, benchmarkP50: 0.12, benchmarkP75: 0.20,
     getBroker: (_f, _yr) => null,
     getPlatform: (f, yr) => {
       const t = tyr(f, yr);
@@ -500,7 +467,6 @@ const STATIC_ROWS: RowDef[] = [
     description: 'Total capital expenditure budget per unit over the hold period.',
     platformSource: 'JEDI — Value-add comp database', brokerSource: 'OM / CapEx Schedule',
     brokerPage: 'Capital Budget', brokerLine: 'Total CapEx Budget',
-    benchmarkP25: 8000, benchmarkP50: 16000, benchmarkP75: 28000,
     getBroker: (f, _yr) => {
       const base = y1(f,'capex')?.broker;
       return base != null ? Math.round(base / Math.max(f.totalUnits, 1)) : null;
@@ -513,7 +479,6 @@ const STATIC_ROWS: RowDef[] = [
     format: fmtDlr, patchField: 'replacementReserves',
     description: 'Annual replacement reserves per unit. Industry standard: $150–$350.',
     platformSource: 'JEDI — Industry reserve standard', brokerSource: 'OM / Pro Forma Expenses',
-    benchmarkP25: 150, benchmarkP50: 250, benchmarkP75: 350,
     getBroker: (f, _yr) => y1(f,'replacement_reserves')?.broker ?? 200,
     getPlatform: (_f, _yr) => 250,
     getConfidence: _f => 70,
@@ -526,7 +491,6 @@ const STATIC_ROWS: RowDef[] = [
     description: 'Senior loan fixed rate. Platform = SOFR + 175bps current market. Persists to deal_assumptions.interest_rate.',
     platformSource: 'JEDI — SOFR + spread (market rate)', brokerSource: 'OM / Term Sheet or Debt Broker',
     brokerPage: 'Financing Assumptions', brokerLine: 'Interest Rate',
-    benchmarkP25: 0.0575, benchmarkP50: 0.0675, benchmarkP75: 0.0775,
     getBroker: (f, _yr) => f.capitalStack.interestRate ?? null,
     getPlatform: (_f, _yr) => 0.0675,
     getConfidence: _f => 80,
@@ -537,7 +501,6 @@ const STATIC_ROWS: RowDef[] = [
     description: 'Loan-to-value/cost at closing. Persists to deal_assumptions.ltc.',
     platformSource: 'JEDI — Market LTV norms', brokerSource: 'OM / Financing Assumptions',
     brokerPage: 'Financing Assumptions', brokerLine: 'LTV',
-    benchmarkP25: 0.55, benchmarkP50: 0.65, benchmarkP75: 0.72,
     getBroker: (f, _yr) => f.capitalStack.ltcPct ?? null,
     getPlatform: (_f, _yr) => 0.65,
     getConfidence: _f => 75,
@@ -548,7 +511,6 @@ const STATIC_ROWS: RowDef[] = [
     description: 'Months of I/O payments before amortization begins. Persists to deal_assumptions.io_period_months.',
     platformSource: 'JEDI — Lender market norms', brokerSource: 'OM / Term Sheet',
     brokerPage: 'Financing Assumptions', brokerLine: 'I/O Period',
-    benchmarkP25: 0, benchmarkP50: 24, benchmarkP75: 48,
     getBroker: (f, _yr) => f.capitalStack.ioPeriodMonths ?? null,
     getPlatform: (_f, _yr) => 24,
     getConfidence: _f => 80,
@@ -561,7 +523,6 @@ const STATIC_ROWS: RowDef[] = [
     description: 'Terminal cap rate applied to forward NOI at disposition.',
     platformSource: 'M07 — Demand velocity implies cap compression trend', brokerSource: 'OM / Underwriting Assumptions',
     brokerPage: 'Operating Assumptions', brokerLine: 'Exit Cap Rate',
-    benchmarkP25: 0.048, benchmarkP50: 0.055, benchmarkP75: 0.065,
     getBroker: (f, _yr) => f.assumptions.exitCap ?? null,
     getPlatform: (f, _yr) => f.trafficProjection?.calibrated?.exitCap ?? null,
     getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? 60,
@@ -572,7 +533,6 @@ const STATIC_ROWS: RowDef[] = [
     description: 'Brokerage, legal, and transfer costs at disposition as % of sale price.',
     platformSource: 'JEDI — Market transaction cost norms', brokerSource: 'OM / Disposition Assumptions',
     brokerPage: 'Operating Assumptions', brokerLine: 'Selling Costs',
-    benchmarkP25: 0.015, benchmarkP50: 0.02, benchmarkP75: 0.025,
     getBroker: (f, _yr) => y1(f,'sellingCosts')?.broker ?? 0.02,
     getPlatform: (_f, _yr) => 0.02,
     getConfidence: _f => 80,
@@ -584,7 +544,6 @@ const STATIC_ROWS: RowDef[] = [
     format: fmtDlr,
     description: 'Target in-place rent post-renovation. Value-add strategy only.',
     platformSource: 'M07 — Rent trajectory + renovation premium model', brokerSource: 'OM / Value-Add Pro Forma',
-    benchmarkP25: 1600, benchmarkP50: 2000, benchmarkP75: 2500,
     getBroker: (_f, _yr) => null,
     getPlatform: (f, yr) => {
       const t = tyr(f, yr);
@@ -597,7 +556,6 @@ const STATIC_ROWS: RowDef[] = [
     format: n => Math.round(n) + '/mo',
     description: 'Monthly net leasing velocity during lease-up (T-06 × 4.33).',
     platformSource: 'M07 — T-06 weekly lease velocity × 4.33', brokerSource: 'OM / Pro Forma Assumptions',
-    benchmarkP25: 8, benchmarkP50: 15, benchmarkP75: 25,
     getBroker: (_f, _yr) => null,
     getPlatform: (f, _yr) => {
       const wk = f.trafficProjection?.leasingSignals?.t06WeeklyLeases;
@@ -716,13 +674,6 @@ function CellDrawer({ target, allYears, onClose, onApply, onFormulaChange }: {
     onClose();
   };
 
-  const benchPos = (() => {
-    const { benchmarkP25: p25, benchmarkP75: p75 } = rd;
-    const eff = vals.user ?? vals.platform ?? vals.broker;
-    if (eff == null || p25 == null || p75 == null || p75 === p25) return null;
-    return Math.max(0, Math.min(100, ((eff - p25) / (p75 - p25)) * 100));
-  })();
-
   const LAYER_CFG = [
     { id: 'platform' as const, label: 'PLATFORM', color: '#22d3ee', val: vals.platform },
     { id: 'broker'   as const, label: 'BROKER',   color: '#f59e0b', val: vals.broker },
@@ -794,22 +745,6 @@ function CellDrawer({ target, allYears, onClose, onApply, onFormulaChange }: {
         )}
       </div>
 
-      {rd.benchmarkP25 != null && rd.benchmarkP75 != null && (
-        <div style={{ padding: '7px 12px', borderBottom: '1px solid #1e1e1e', flexShrink: 0 }}>
-          <div style={{ fontSize: 8, color: '#475569', letterSpacing: 0.5, marginBottom: 5 }}>SUBMARKET BENCHMARK (P25 → P75)</div>
-          <div style={{ position: 'relative', height: 12, background: '#1e1e1e', borderRadius: 6, overflow: 'hidden', marginBottom: 4 }}>
-            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to right, #ef4444, #f59e0b, #10b981)', opacity: 0.3 }} />
-            {benchPos != null && (
-              <div style={{ position: 'absolute', left: `${benchPos}%`, top: 0, width: 2, height: '100%', background: '#fff', borderRadius: 1 }} />
-            )}
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 8, color: '#334155' }}>
-            <span>P25: {rd.format(rd.benchmarkP25)}</span>
-            {rd.benchmarkP50 != null && <span style={{ color: '#475569' }}>P50: {rd.format(rd.benchmarkP50)}</span>}
-            <span>P75: {rd.format(rd.benchmarkP75)}</span>
-          </div>
-        </div>
-      )}
 
       {activeLayer === 'formula' && (
         <div style={{ padding: '7px 12px', borderBottom: '1px solid #1e1e1e', flexShrink: 0 }}>
@@ -1114,25 +1049,33 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
   const fetchRef   = useRef(0);
   const patchQueue = useRef<Array<{field:string; year:number|null; value:number|null}>>([]);
   const flushTimer = useRef<ReturnType<typeof setTimeout>|null>(null);
-  const ovInitialized = useRef(false);
-
-  // Rehydrate USER override layer from persisted backend overrides on first load.
-  // Only runs once per mount (guards with ovInitialized ref) so current-session
-  // edits are not clobbered by a subsequent financials refetch.
+  // Rehydrate USER override layer from backend on every successful financials fetch.
+  // Conflict policy: session edits (prev) win over backend — so in-flight local edits
+  // are never clobbered. When hold period changes and new years become available, the
+  // backend overrides for those years are added automatically.
   useEffect(() => {
-    if (!financials?.userOverrides || ovInitialized.current) return;
-    ovInitialized.current = true;
-    const reconstructed: Overrides = {};
+    if (!financials?.userOverrides) return;
+    const fromBackend: Overrides = {};
     for (const [field, yearVals] of Object.entries(financials.userOverrides)) {
       for (const [yrStr, val] of Object.entries(yearVals)) {
         if (val == null) continue;
         const yr = parseInt(yrStr, 10);
         if (isNaN(yr)) continue;
-        if (!reconstructed[field]) reconstructed[field] = {};
-        reconstructed[field][yr] = val;
+        if (!fromBackend[field]) fromBackend[field] = {};
+        fromBackend[field][yr] = val;
       }
     }
-    if (Object.keys(reconstructed).length > 0) setOverrides(reconstructed);
+    setOverrides(prev => {
+      // Backend as base; session edits win per-cell
+      const merged: Overrides = { ...fromBackend };
+      for (const [field, yearVals] of Object.entries(prev)) {
+        if (!merged[field]) merged[field] = {};
+        for (const [yr, val] of Object.entries(yearVals)) {
+          merged[field][parseInt(yr)] = val;
+        }
+      }
+      return merged;
+    });
   }, [financials?.userOverrides]);
 
   const dbHold    = financials?.assumptions.holdYears ?? 5;
@@ -1450,7 +1393,6 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
                           const formulaResult = mode === 'formula' ? computeFormulaResult(rd, yr) : null;
                           const divergence = getDivergenceColor(
                             formulaResult ?? user, platform, broker,
-                            rd.benchmarkP25, rd.benchmarkP50, rd.benchmarkP75,
                           );
                           return (
                             <LayeredCell key={yr}
