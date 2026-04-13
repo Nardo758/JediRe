@@ -1271,6 +1271,8 @@ export interface DealFinancials {
       capexPerUnit: number | null;
     };
     userOverrides: {
+      closingCosts: number | null;
+      capexTotal: number | null;
       workingCapital: number | null;
       preopeningCosts: number | null;
       otherUses: number | null;
@@ -2190,32 +2192,57 @@ export async function getDealFinancials(
   const suSeniorLoan = seniorLoanAmtEff ?? capitalStack.loanAmount ?? 0;
   const suMezzLoan = debtOvr('mezz', 'loanAmount') ?? 0;
   const suPurchasePrice = purchasePrice ?? 0;
-  const suClosingCosts = 0; // Closing costs not yet structured in assumptions; placeholder for future field
+
+  // Closing costs: user override first, else estimate ~2% of purchase price (title, legal, survey)
+  const suClosingCostsOvr = suOvr('closingCosts');
+  const suClosingCosts = suClosingCostsOvr != null
+    ? suClosingCostsOvr
+    : suPurchasePrice > 0 ? Math.round(suPurchasePrice * 0.02) : 0;
+
   const suTransferTax = totalTransferTax ?? 0;
   const suOrigFee = suSeniorLoan * (capitalStackWithOverrides.originationFeePct ?? 0.01);
-  const suTiEscrow = suSeniorLoan * ((debtOvr('senior', 'tiEscrow') ?? 2) / 12) * (capitalStack.interestRate ?? 0.06);
-  const suReplReserve = totalUnits * (debtOvr('senior', 'replReserve') ?? 300);
-  const suOpReserve = suSeniorLoan * ((debtOvr('senior', 'opReserveMonths') ?? 3) / 12) * (capitalStack.interestRate ?? 0.06);
+
+  // Lender reserves — use debt overrides or standard industry defaults
+  const suTiMonths  = debtOvr('senior', 'tiEscrow') ?? 2;
+  const suTiEscrow  = suSeniorLoan > 0 ? Math.round(suSeniorLoan * (suTiMonths / 12) * (capitalStack.interestRate ?? 0.06)) : 0;
+  const suReplPerUnit = (assumptionsRow as Record<string, unknown>)?.replacement_reserves_per_unit as number | null ?? debtOvr('senior', 'replReserve') ?? 300;
+  const suReplReserve = totalUnits > 0 ? Math.round(totalUnits * suReplPerUnit) : 0;
+  const suOpMonths  = debtOvr('senior', 'opReserveMonths') ?? 3;
+  const suOpReserve = suSeniorLoan > 0 ? Math.round(suSeniorLoan * (suOpMonths / 12) * (capitalStack.interestRate ?? 0.06)) : 0;
   const suLenderReserves = suTiEscrow + suReplReserve + suOpReserve;
+
+  // Renovation / Value-Add Capex — user override first, else estimate $5,000/unit (typical value-add)
+  const suCapexOvr = suOvr('capexTotal');
+  const suCapex = suCapexOvr != null
+    ? suCapexOvr
+    : totalUnits > 0 ? Math.round(totalUnits * 5000) : 0;
 
   const suWorkingCapital = suOvr('workingCapital') ?? 0;
   const suPreopening = suOvr('preopeningCosts') ?? 0;
   const suOtherUses = suOvr('otherUses') ?? 0;
   const suSellerFinancing = suOvr('sellerFinancing') ?? 0;
-  const suEquity = capitalStackWithOverrides.equityAtClose ?? Math.max(0, suPurchasePrice - suSeniorLoan);
+
+  // Total debt for equity computation
+  const suTotalDebt = suSeniorLoan + suMezzLoan;
+  const suEquity = Math.max(0, suPurchasePrice - suTotalDebt);
   const suLpShare = 0.90;
   const suGpShare = 0.10;
 
-  const suUses = [
-    { id: 'purchasePrice',  label: 'PURCHASE PRICE',    amount: suPurchasePrice,   sub: totalUnits > 0 ? `${(suPurchasePrice / totalUnits).toFixed(0)}/unit` : null, userOverridable: false },
-    { id: 'closingCosts',   label: 'CLOSING COSTS',     amount: suClosingCosts,    sub: 'Title, legal, survey', userOverridable: false },
-    { id: 'transferTax',    label: 'TRANSFER TAXES',    amount: suTransferTax,     sub: 'Doc stamps + intangible — from Taxes tab', userOverridable: false },
-    { id: 'originationFee', label: 'LOAN ORIGINATION',  amount: suOrigFee,         sub: `${((capitalStackWithOverrides.originationFeePct ?? 0.01) * 100).toFixed(2)}% of loan`, userOverridable: false },
-    { id: 'lenderReserves', label: 'LENDER RESERVES',   amount: suLenderReserves > 0 ? suLenderReserves : null, sub: 'T&I escrow + replacement reserve + op reserve — from Debt tab', userOverridable: false },
-    { id: 'workingCapital', label: 'WORKING CAPITAL',   amount: suWorkingCapital > 0 ? suWorkingCapital : null,  sub: 'Operational runway', userOverridable: true },
-    { id: 'preopeningCosts',label: 'PRE-OPENING COSTS', amount: suPreopening > 0 ? suPreopening : null,          sub: 'Lease-up, marketing, staff', userOverridable: true },
-    { id: 'otherUses',      label: 'OTHER USES',        amount: suOtherUses > 0 ? suOtherUses : null,            sub: 'Miscellaneous at close', userOverridable: true },
-  ].filter(u => u.amount != null && (u.amount as number) > 0);
+  const suUses: SuItem[] = [
+    { id: 'purchasePrice',  label: 'PURCHASE PRICE',     amount: suPurchasePrice,                              sub: totalUnits > 0 ? `$${Math.round(suPurchasePrice / totalUnits).toLocaleString()}/unit` : null, userOverridable: false },
+    { id: 'closingCosts',   label: 'CLOSING COSTS',      amount: suClosingCosts,                               sub: 'Title, legal, survey — estimated 2% of purchase price', userOverridable: true },
+    { id: 'transferTax',    label: 'TRANSFER TAXES',     amount: suTransferTax > 0 ? suTransferTax : null,     sub: 'Doc stamps + intangible — from Taxes tab', userOverridable: false },
+    { id: 'originationFee', label: 'LOAN ORIGINATION',   amount: suOrigFee > 0 ? suOrigFee : null,             sub: `${((capitalStackWithOverrides.originationFeePct ?? 0.01) * 100).toFixed(2)}% of loan`, userOverridable: false },
+    { id: 'lenderReserves', label: 'LENDER RESERVES',    amount: suLenderReserves > 0 ? suLenderReserves : null, sub: 'T&I escrow + replacement reserve + operating reserve — from Debt tab', userOverridable: false },
+    { id: 'capex',          label: 'RENOVATION / CAPEX', amount: suCapex > 0 ? suCapex : null,                 sub: `Renovation & value-add budget${suCapexOvr == null ? (totalUnits > 0 ? ' — estimated $5K/unit' : ' — enter total below') : ''}`, userOverridable: true },
+    { id: 'workingCapital', label: 'WORKING CAPITAL',    amount: suWorkingCapital > 0 ? suWorkingCapital : null, sub: 'Operational runway at close', userOverridable: true },
+    { id: 'preopeningCosts',label: 'PRE-OPENING COSTS',  amount: suPreopening > 0 ? suPreopening : null,       sub: 'Lease-up, marketing, staff', userOverridable: true },
+    { id: 'otherUses',      label: 'OTHER USES',         amount: suOtherUses > 0 ? suOtherUses : null,         sub: 'Miscellaneous at close', userOverridable: true },
+  ].filter(u =>
+    // Keep non-overridable rows with amount > 0
+    // Keep overridable rows always (even if null) so frontend can render editable cells
+    u.userOverridable ? true : (u.amount != null && (u.amount as number) > 0)
+  );
 
   const suTotalUses = suUses.reduce((s, u) => s + (u.amount ?? 0), 0);
 
@@ -2253,6 +2280,8 @@ export async function getDealFinancials(
       capexPerUnit: null,
     },
     userOverrides: {
+      closingCosts: suOvr('closingCosts'),
+      capexTotal: suOvr('capexTotal'),
       workingCapital: suOvr('workingCapital'),
       preopeningCosts: suOvr('preopeningCosts'),
       otherUses: suOvr('otherUses'),

@@ -278,6 +278,8 @@ export interface F9DealFinancials {
       capexPerUnit: number | null;
     };
     userOverrides: {
+      closingCosts: number | null;
+      capexTotal: number | null;
       workingCapital: number | null;
       preopeningCosts: number | null;
       otherUses: number | null;

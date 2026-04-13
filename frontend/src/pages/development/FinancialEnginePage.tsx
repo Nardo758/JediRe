@@ -30,9 +30,9 @@ const TAB_LABELS = [
   '⋮≡ PROJECTIONS',
   '⊕ ASSUMPTIONS',
   '$ TAXES',
+  '⇄ SRC & USES',
   '⊙ DEBT',
   '◈ CAP & WFALL',
-  '⇄ SRC & USES',
   '% RETURNS',
   '∿ SENSITIVITY',
   '✓ DECISION',
@@ -571,9 +571,9 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
           )}
           {activeTab === 3  && <BtTabWrapper><AssumptionsTab {...tabProps} /></BtTabWrapper>}
           {activeTab === 4  && <BtTabWrapper><TaxesTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 5  && <BtTabWrapper><DebtTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 6  && <BtTabWrapper><WaterfallTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 7  && <BtTabWrapper><SourcesUsesTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 5  && <BtTabWrapper><SourcesUsesTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 6  && <BtTabWrapper><DebtTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 7  && <BtTabWrapper><WaterfallTab {...tabProps} /></BtTabWrapper>}
           {activeTab === 8  && <BtTabWrapper><ReturnsTab {...tabProps} /></BtTabWrapper>}
           {activeTab === 9  && <BtTabWrapper><SensitivityTab {...tabProps} /></BtTabWrapper>}
           {activeTab === 10 && <BtTabWrapper><DecisionTab {...tabProps} /></BtTabWrapper>}
