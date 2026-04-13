@@ -1254,6 +1254,46 @@ export interface DealFinancials {
     equityMultiple: number | null;
     cashOnCash: number | null;
   } | null;
+  /** Debt stack v2 — senior + mezz/B-Note loans */
+  debt: {
+    loans: Array<{
+      id: string;
+      name: string;
+      loanTypeLabel: string;
+      rateType: 'Fixed' | 'Floating';
+      loanAmount: { broker: number|null; platform: number|null };
+      ltcPct:     { broker: number|null; platform: number|null };
+      ltv:        { platform: number|null };
+      interestRate: { broker: number|null; platform: number|null };
+      sofr:       { platform: number|null };
+      spread:     { broker: number|null; platform: number|null };
+      capRate:    { broker: number|null; platform: number|null };
+      termYears:  { broker: number|null; platform: number|null };
+      amortYears: { broker: number|null; platform: number|null };
+      ioMonths:   { broker: number|null; platform: number|null };
+      origFee:    { broker: number|null; platform: number|null };
+      exitFee:    { platform: number|null };
+      rateCapCost:{ broker: number|null; platform: number|null };
+      minDscr:    { platform: number|null };
+      minDebtYield: { platform: number|null };
+      minOccupancy: { platform: number|null };
+      maxLtv:     { platform: number|null };
+      cashTrapDscr: { platform: number|null };
+      tiEscrowMonths:         { platform: number|null };
+      replacementReserve:     { platform: number|null };
+      operatingReserveMonths: { platform: number|null };
+      prepayType: string;
+      derivedAnnualDS: number | null;
+      sofrCurve: number[];
+    }>;
+    aggregate: {
+      totalLoanAmount: number|null;
+      blendedRatePct:  number|null;
+      combinedLtcPct:  number|null;
+      totalAnnualDS:   number|null;
+      aggregateDscr:   number|null;
+    };
+  } | null;
   /** FL tax computations — RE tax, TPP, income tax/depreciation, transfer taxes */
   taxes: {
     reTax: {
@@ -1916,6 +1956,59 @@ export async function getDealFinancials(
     },
   };
 
+  // ── Debt Stack v2 — build from capitalStack fields ──────────────────────────
+  const SOFR_CURVE_DEFAULT = [0.0500, 0.0475, 0.0450, 0.0425, 0.0400];
+  const seniorRate = capitalStack.interestRate;
+  const seniorLoan = capitalStack.loanAmount;
+  const seniorIsMezz = (assumptionsRow as Record<string, unknown>)?.loan_type === 'Mezz';
+  const seniorLabel  = (assumptionsRow as Record<string, unknown>)?.loan_type as string | null;
+  const seniorRateType: 'Fixed' | 'Floating' = (['Bridge', 'Construction', 'Mezz'].includes(String(seniorLabel ?? ''))) ? 'Floating' : 'Fixed';
+  const seniorAnnualDS = seniorLoan != null && seniorRate != null ? seniorLoan * seniorRate : null;
+  const noiFull = year1Rows.find((r: { field: string }) => r.field === 'noi')?.resolved ?? null;
+  const seniorDscr = seniorAnnualDS != null && seniorAnnualDS > 0 && typeof noiFull === 'number' ? noiFull / seniorAnnualDS : null;
+
+  const seniorLoanEntry = {
+    id: 'senior',
+    name: seniorIsMezz ? 'Mezz / B-Note' : 'Senior Loan',
+    loanTypeLabel: String(seniorLabel ?? 'Bridge'),
+    rateType: seniorRateType,
+    loanAmount: { broker: null, platform: seniorLoan },
+    ltcPct:     { broker: null, platform: capitalStack.ltcPct },
+    ltv:        { platform: purchasePrice != null && seniorLoan != null && purchasePrice > 0 ? +(seniorLoan / purchasePrice).toFixed(4) : null },
+    interestRate: { broker: null, platform: seniorRate },
+    sofr:       { platform: seniorRateType === 'Floating' ? SOFR_CURVE_DEFAULT[0] : null },
+    spread:     { broker: null, platform: seniorRateType === 'Floating' ? (seniorRate != null ? +(seniorRate - SOFR_CURVE_DEFAULT[0]).toFixed(4) : 0.035) : null },
+    capRate:    { broker: null, platform: seniorRateType === 'Floating' ? 0.07 : null },
+    termYears:  { broker: null, platform: null },
+    amortYears: { broker: null, platform: capitalStack.amortizationYears },
+    ioMonths:   { broker: null, platform: capitalStack.ioPeriodMonths },
+    origFee:    { broker: null, platform: capitalStack.originationFeePct },
+    exitFee:    { platform: null },
+    rateCapCost:{ broker: null, platform: seniorRateType === 'Floating' ? 0.005 : null },
+    minDscr:    { platform: capitalStack.dscrMin ?? 1.20 },
+    minDebtYield: { platform: 0.07 },
+    minOccupancy: { platform: 0.90 },
+    maxLtv:     { platform: 0.75 },
+    cashTrapDscr: { platform: 1.10 },
+    tiEscrowMonths:         { platform: 2 },
+    replacementReserve:     { platform: 300 },
+    operatingReserveMonths: { platform: 3 },
+    prepayType: seniorRateType === 'Fixed' ? 'defeasance' : 'open',
+    derivedAnnualDS: seniorAnnualDS,
+    sofrCurve: SOFR_CURVE_DEFAULT,
+  };
+
+  const debtStack: DealFinancials['debt'] = {
+    loans: [seniorLoanEntry],
+    aggregate: {
+      totalLoanAmount: seniorLoan,
+      blendedRatePct: seniorRate,
+      combinedLtcPct: capitalStack.ltcPct,
+      totalAnnualDS: seniorAnnualDS,
+      aggregateDscr: seniorDscr,
+    },
+  };
+
   return {
     dealId,
     dealName: deal.name,
@@ -1932,6 +2025,7 @@ export async function getDealFinancials(
     },
     returns: null,
     taxes,
+    debt: debtStack,
   };
 }
 

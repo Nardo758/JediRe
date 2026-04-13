@@ -1,16 +1,106 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { BT } from '../../../components/deal/bloomberg-ui';
-import { SectionPanel, DataRow, Bd, KpiTile } from '../../../components/deal/bloomberg-ui';
-import type { FinancialEngineTabProps, LoanOption } from './types';
+import { KpiTile } from '../../../components/deal/bloomberg-ui';
+import { Lock, Link, ChevronDown, ChevronRight, Plus, X } from 'lucide-react';
+import type { FinancialEngineTabProps, F9DebtLoan, PrepayType } from './types';
 import { fmt$, fmtPct } from './types';
+import { apiClient } from '../../../services/api.client';
 
 const MONO = BT.font.mono;
 
-interface LoanConfig extends LoanOption {
-  active: boolean;
-  customAmount: string;
+// ─── SOFR Forward Curve (static 5-yr, updated quarterly) ─────────────────────
+const SOFR_FWD: number[] = [0.0500, 0.0475, 0.0450, 0.0425, 0.0400];
+
+// ─── Loan type presets ────────────────────────────────────────────────────────
+type LoanPresetKey = 'Bridge' | 'Agency' | 'CMBS' | 'HUD' | 'LifeCo' | 'Mezz';
+
+interface LoanPreset {
+  label: LoanPresetKey;
+  rateType: 'Fixed' | 'Floating';
+  rate: number;
+  spread: number;
+  term: number;
+  amort: number;
+  io: number;
+  origFee: number;
+  exitFee: number;
+  rateCapCost: number;
+  minDscr: number;
+  maxLtv: number;
+  prepayType: PrepayType;
 }
 
+const LOAN_PRESETS: Record<LoanPresetKey, LoanPreset> = {
+  Bridge:  { label: 'Bridge',  rateType: 'Floating', rate: 0.085, spread: 0.035, term: 3,  amort: 0,  io: 36, origFee: 0.015, exitFee: 0.005, rateCapCost: 0.005, minDscr: 1.15, maxLtv: 0.80, prepayType: 'open' },
+  Agency:  { label: 'Agency',  rateType: 'Fixed',    rate: 0.055, spread: 0,     term: 10, amort: 30, io: 0,  origFee: 0.010, exitFee: 0,     rateCapCost: 0,     minDscr: 1.25, maxLtv: 0.75, prepayType: 'stepdown' },
+  CMBS:    { label: 'CMBS',    rateType: 'Fixed',    rate: 0.065, spread: 0,     term: 10, amort: 30, io: 24, origFee: 0.010, exitFee: 0,     rateCapCost: 0,     minDscr: 1.20, maxLtv: 0.70, prepayType: 'defeasance' },
+  HUD:     { label: 'HUD',     rateType: 'Fixed',    rate: 0.045, spread: 0,     term: 35, amort: 35, io: 36, origFee: 0.008, exitFee: 0,     rateCapCost: 0,     minDscr: 1.20, maxLtv: 0.87, prepayType: 'yield_maintenance' },
+  LifeCo:  { label: 'LifeCo',  rateType: 'Fixed',    rate: 0.048, spread: 0,     term: 15, amort: 30, io: 0,  origFee: 0.005, exitFee: 0,     rateCapCost: 0,     minDscr: 1.20, maxLtv: 0.65, prepayType: 'yield_maintenance' },
+  Mezz:    { label: 'Mezz',    rateType: 'Floating', rate: 0.120, spread: 0.060, term: 3,  amort: 0,  io: 36, origFee: 0.020, exitFee: 0.010, rateCapCost: 0.008, minDscr: 1.10, maxLtv: 0.90, prepayType: 'open' },
+};
+
+// ─── Per-loan editable state ──────────────────────────────────────────────────
+interface LoanState {
+  id: string;
+  name: string;
+  loanTypeLabel: LoanPresetKey;
+  rateType: 'Fixed' | 'Floating';
+  // user overrides (null = use platform/preset)
+  userLoanAmount: number | null;
+  userRate: number | null;
+  userSpread: number | null;
+  userSofr: number | null;
+  userCapRate: number | null;
+  userTerm: number | null;
+  userAmort: number | null;
+  userIO: number | null;
+  userOrigFee: number | null;
+  userExitFee: number | null;
+  userRateCapCost: number | null;
+  userMinDscr: number | null;
+  userMinDY: number | null;
+  userMinOcc: number | null;
+  userMaxLtv: number | null;
+  userCashTrapDscr: number | null;
+  userTIEscrow: number | null;
+  userReplReserve: number | null;
+  userOpReserveMonths: number | null;
+  prepayType: PrepayType;
+  sofrCurve: number[];
+  extensionOptions: string;
+}
+
+function makeLoanState(id: string, name: string, preset: LoanPreset, f9Loan?: F9DebtLoan | null, baseLoanAmt?: number): LoanState {
+  return {
+    id, name,
+    loanTypeLabel: preset.label,
+    rateType: preset.rateType,
+    userLoanAmount: null,
+    userRate: null,
+    userSpread: null,
+    userSofr: null,
+    userCapRate: null,
+    userTerm: null,
+    userAmort: null,
+    userIO: null,
+    userOrigFee: null,
+    userExitFee: null,
+    userRateCapCost: null,
+    userMinDscr: null,
+    userMinDY: null,
+    userMinOcc: null,
+    userMaxLtv: null,
+    userCashTrapDscr: null,
+    userTIEscrow: null,
+    userReplReserve: null,
+    userOpReserveMonths: null,
+    prepayType: f9Loan?.prepayType as PrepayType ?? preset.prepayType,
+    sofrCurve: f9Loan?.sofrCurve ?? SOFR_FWD,
+    extensionOptions: '',
+  };
+}
+
+// ─── Amortization helpers ─────────────────────────────────────────────────────
 interface AmortRow {
   month: number;
   payment: number;
@@ -18,327 +108,1060 @@ interface AmortRow {
   principal: number;
   balance: number;
   isIO: boolean;
+  dscr: number | null;
 }
 
-interface AnnualDebtRow {
+interface AnnualRow {
   year: number;
   openBalance: number;
   annualInterest: number;
   annualPrincipal: number;
-  annualPayment: number;
+  annualDS: number;
   closeBalance: number;
+  noi: number;
   dscr: number | null;
   debtYield: number | null;
+  covenantBreach: boolean;
 }
 
-function buildAmortSchedule(loan: LoanConfig, loanAmt: number): AmortRow[] {
+function buildAmort(loanAmt: number, rate: number, termYrs: number, amortYrs: number, ioMo: number): AmortRow[] {
   const rows: AmortRow[] = [];
-  const monthlyRate = loan.rate / 12;
-  const totalMonths = loan.term * 12;
-  const amortMonths = loan.amortization * 12;
-  let balance = loanAmt;
-
-  for (let m = 1; m <= Math.min(totalMonths, 120); m++) {
-    const isIO = m <= loan.ioPeriod;
-    const interest = balance * monthlyRate;
+  const mr = rate / 12;
+  const totalMo = Math.min(termYrs * 12, 120);
+  const amortMo = amortYrs * 12;
+  let bal = loanAmt;
+  for (let m = 1; m <= totalMo; m++) {
+    const isIO = m <= ioMo;
+    const interest = bal * mr;
     let principal = 0;
     let payment = interest;
-
-    if (!isIO && amortMonths > 0) {
-      payment = (loanAmt * monthlyRate * Math.pow(1 + monthlyRate, amortMonths))
-              / (Math.pow(1 + monthlyRate, amortMonths) - 1);
+    if (!isIO && amortMo > 0 && mr > 0) {
+      payment = (loanAmt * mr * Math.pow(1 + mr, amortMo)) / (Math.pow(1 + mr, amortMo) - 1);
       principal = payment - interest;
     }
-
-    balance = Math.max(0, balance - principal);
-    rows.push({ month: m, payment, interest, principal, balance, isIO });
+    bal = Math.max(0, bal - principal);
+    rows.push({ month: m, payment, interest, principal, balance: bal, isIO, dscr: null });
   }
   return rows;
 }
 
-function buildAnnualDebt(amortRows: AmortRow[], noi_y1: number, rentGrowth: number): AnnualDebtRow[] {
-  const annual: AnnualDebtRow[] = [];
+function buildAnnual(amortRows: AmortRow[], noi1: number, rentGrowth: number, minDscr: number): AnnualRow[] {
   const years = Math.ceil(amortRows.length / 12);
+  const annual: AnnualRow[] = [];
   for (let y = 1; y <= years; y++) {
-    const monthRows = amortRows.slice((y - 1) * 12, y * 12);
-    if (monthRows.length === 0) break;
-    const openBalance    = monthRows[0].balance + monthRows[0].principal;
-    const closeBalance   = monthRows[monthRows.length - 1].balance;
-    const annualInterest = monthRows.reduce((s, r) => s + r.interest, 0);
-    const annualPrincipal = monthRows.reduce((s, r) => s + r.principal, 0);
-    const annualPayment   = monthRows.reduce((s, r) => s + r.payment, 0);
-    const noi = noi_y1 * Math.pow(1 + rentGrowth, y - 1);
-    const dscr = annualPayment > 0 ? noi / annualPayment : null;
+    const mo = amortRows.slice((y - 1) * 12, y * 12);
+    if (!mo.length) break;
+    const openBalance = mo[0].balance + mo[0].principal;
+    const closeBalance = mo[mo.length - 1].balance;
+    const annualInterest = mo.reduce((s, r) => s + r.interest, 0);
+    const annualPrincipal = mo.reduce((s, r) => s + r.principal, 0);
+    const annualDS = mo.reduce((s, r) => s + r.payment, 0);
+    const noi = noi1 * Math.pow(1 + rentGrowth, y - 1);
+    const dscr = annualDS > 0 ? noi / annualDS : null;
     const debtYield = openBalance > 0 ? noi / openBalance : null;
-    annual.push({ year: y, openBalance, annualInterest, annualPrincipal, annualPayment, closeBalance, dscr, debtYield });
+    const covenantBreach = dscr != null && dscr < minDscr;
+    annual.push({ year: y, openBalance, annualInterest, annualPrincipal, annualDS, closeBalance, noi, dscr, debtYield, covenantBreach });
   }
   return annual;
 }
 
-const LOAN_PRESETS: Omit<LoanConfig, 'active' | 'customAmount'>[] = [
-  { id: 'bridge',   name: 'Bridge Loan',     type: 'Bridge',        amount: 0, rate: 0.085, spread: 0.035, term: 3,  amortization: 0,  ioPeriod: 36, originationFee: 0.015, rateCapCost: 0.005, prepayPenalty: 0.01, loanType: 'Floating', source: 'platform' },
-  { id: 'agency',   name: 'Agency (F/N/MAC)',  type: 'Agency',        amount: 0, rate: 0.055, spread: 0,     term: 10, amortization: 30, ioPeriod: 0,  originationFee: 0.01,  rateCapCost: 0,     prepayPenalty: 0.01, loanType: 'Fixed',    source: 'platform' },
-  { id: 'cmbs',     name: 'CMBS',            type: 'CMBS',          amount: 0, rate: 0.065, spread: 0,     term: 10, amortization: 30, ioPeriod: 24, originationFee: 0.01,  rateCapCost: 0,     prepayPenalty: 0.02, loanType: 'Fixed',    source: 'platform' },
-  { id: 'life_co',  name: 'Life Co.',        type: 'Life Company',  amount: 0, rate: 0.048, spread: 0,     term: 15, amortization: 30, ioPeriod: 0,  originationFee: 0.005, rateCapCost: 0,     prepayPenalty: 0.03, loanType: 'Fixed',    source: 'platform' },
-  { id: 'construg', name: 'Construction',    type: 'Construction',  amount: 0, rate: 0.080, spread: 0.030, term: 3,  amortization: 0,  ioPeriod: 36, originationFee: 0.015, rateCapCost: 0.005, prepayPenalty: 0.00, loanType: 'Floating', source: 'platform' },
-];
+// ─── 4-column DebtRow ─────────────────────────────────────────────────────────
+type FmtFn = (v: number | null | undefined) => string;
 
-export function DebtTab({ dealId, deal, assumptions, modelResults, f9Financials }: FinancialEngineTabProps) {
-  const baseLoanAmt = f9Financials?.capitalStack?.loanAmount
-    ?? assumptions?.financing?.loanAmount
-    ?? (typeof deal?.purchase_price === 'number' ? (deal.purchase_price as number) * 0.65 : 0);
+function fmtDlr(v: number | null | undefined) { return v != null ? fmt$(v) : '—'; }
+function fmtPctFull(v: number | null | undefined) { return v != null ? fmtPct(v * 100) : '—'; }
+function fmtYrs(v: number | null | undefined) { return v != null ? `${v}yr` : '—'; }
+function fmtMo(v: number | null | undefined) { return v != null ? `${v}mo` : '—'; }
+function fmtX(v: number | null | undefined) { return v != null ? `${Number(v).toFixed(2)}×` : '—'; }
 
-  const f9Ltv  = f9Financials?.capitalStack?.ltcPct ?? null;
-  const f9Rate = f9Financials?.capitalStack?.interestRate ?? null;
-  const f9IO   = f9Financials?.capitalStack?.ioPeriodMonths ?? null;
-  const f9DSCR = f9Financials?.capitalStack?.dscrMin ?? null;
-  const f9PP   = f9Financials?.capitalStack?.purchasePrice ?? null;
+function DebtRow({ label, broker, platform, user, userEditable = false, onUserChange, format = fmtDlr, locked = false, sub, pass, fail }: {
+  label: string;
+  broker?: number | null;
+  platform?: number | null;
+  user: number | null;
+  userEditable?: boolean;
+  onUserChange?: (v: number | null) => void;
+  format?: FmtFn;
+  locked?: boolean;
+  sub?: string;
+  pass?: boolean;
+  fail?: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+  const hasUser = user != null;
+  const resolved = user ?? platform ?? broker;
 
-  const f9Noi = f9Financials?.proforma?.year1?.find(r => r.field === 'noi')?.resolved ?? null;
-  const noi_y1 = f9Noi ?? modelResults?.summary?.noi ?? 0;
-  const rentGrowth = f9Financials?.assumptions?.rentGrowthStabilized ?? 0.03;
-  const holdYears  = f9Financials?.assumptions?.holdYears ?? assumptions?.holdPeriod ?? 5;
-
-  const [loans, setLoans] = useState<LoanConfig[]>(
-    LOAN_PRESETS.map(p => ({ ...p, amount: baseLoanAmt, active: p.id === 'bridge', customAmount: '' }))
-  );
-  const [selectedId, setSelectedId] = useState<string>('bridge');
-  const [showAmort, setShowAmort] = useState(false);
-  const [showAnnual, setShowAnnual] = useState(true);
-  const [view, setView] = useState<'compare' | 'detail'>('compare');
-
-  const selectedLoan = loans.find(l => l.id === selectedId) ?? loans[0];
-  const activeLoan   = loans.find(l => l.active) ?? selectedLoan;
-
-  const loanAmt = (customAmt: string, fallback: number) => {
-    const v = parseFloat(customAmt);
-    return isNaN(v) ? fallback : v;
+  const startEdit = () => {
+    if (!userEditable || locked) return;
+    setDraft(user != null ? String(user) : '');
+    setEditing(true);
+    setTimeout(() => inputRef.current?.focus(), 0);
+  };
+  const commit = () => {
+    setEditing(false);
+    const v = parseFloat(draft);
+    if (isNaN(v)) { onUserChange?.(null); return; }
+    onUserChange?.(v);
   };
 
-  const amortSchedule  = useMemo(() => buildAmortSchedule(selectedLoan, loanAmt(selectedLoan.customAmount, baseLoanAmt)), [selectedLoan, baseLoanAmt]);
-  const annualDebtRows = useMemo(() => buildAnnualDebt(amortSchedule, noi_y1, rentGrowth), [amortSchedule, noi_y1, rentGrowth]);
-
-  const dscrColor = (v: number | null) => {
-    if (v == null) return BT.text.muted;
-    if (v >= 1.35) return BT.met.financial;
-    if (v >= 1.20) return BT.text.amber;
-    return BT.text.red;
-  };
-
-  const ltvColor = (v: number | null) => {
-    if (v == null) return BT.text.muted;
-    if (v <= 0.60) return BT.met.financial;
-    if (v <= 0.70) return BT.text.amber;
-    return BT.text.red;
-  };
-
-  const toggleActive = (id: string) => {
-    setLoans(prev => prev.map(l => ({ ...l, active: l.id === id })));
-  };
+  const statusColor = pass != null ? (pass ? BT.met.financial : BT.text.red) : undefined;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto' }}>
-      {/* Header */}
-      <div style={{ padding: '4px 10px', background: BT.bg.header, borderBottom: `1px solid ${BT.border.subtle}`, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, letterSpacing: 0.5 }}>MULTI-LOAN STACK · SELECT ACTIVE · PER-YEAR DSCR</span>
-        <Bd c={BT.text.cyan}>ACTIVE: {activeLoan.name.toUpperCase()}</Bd>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
-          {(['compare', 'detail'] as const).map(v => (
-            <button key={v} onClick={() => setView(v)} style={{
-              background: view === v ? `${BT.text.cyan}20` : 'transparent',
-              border: `1px solid ${view === v ? BT.text.cyan : BT.border.medium}`,
-              color: view === v ? BT.text.cyan : BT.text.muted,
-              fontFamily: MONO, fontSize: 8, padding: '2px 8px', cursor: 'pointer', borderRadius: 2, textTransform: 'uppercase',
-            }}>{v}</button>
-          ))}
+    <tr style={{ borderBottom: `1px solid ${BT.border.subtle}`, height: 28 }}>
+      <td style={{ padding: '3px 12px', fontFamily: MONO, fontSize: 10, color: BT.text.secondary, position: 'sticky', left: 0, background: BT.bg.panel, zIndex: 1, borderRight: `1px solid ${BT.border.subtle}`, minWidth: 180 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          {locked && <Lock style={{ width: 8, height: 8, color: BT.text.muted }} />}
+          <span>{label}</span>
+          {pass != null && <span style={{ fontSize: 8, color: statusColor, marginLeft: 4 }}>{pass ? '✓' : '✗'}</span>}
         </div>
+        {sub && <div style={{ fontSize: 7, color: BT.text.muted }}>{sub}</div>}
+      </td>
+      <td style={{ padding: '3px 10px', textAlign: 'center', fontFamily: MONO, fontSize: 10, color: BT.text.amber, borderRight: `1px solid ${BT.border.subtle}`, minWidth: 100 }}>
+        {format(broker)}
+      </td>
+      <td style={{ padding: '3px 10px', textAlign: 'center', fontFamily: MONO, fontSize: 10, color: BT.text.cyan, borderRight: `1px solid ${BT.border.subtle}`, minWidth: 100 }}>
+        {format(platform)}
+      </td>
+      <td
+        style={{ padding: '3px 10px', textAlign: 'center', fontFamily: MONO, fontSize: 10, borderRight: `1px solid ${BT.border.subtle}`, minWidth: 100, cursor: userEditable && !locked ? 'pointer' : 'default' }}
+        onClick={startEdit}
+      >
+        {editing ? (
+          <input
+            ref={inputRef}
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onBlur={commit}
+            onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }}
+            style={{ width: 80, background: BT.bg.input, border: `1px solid ${BT.border.bright}`, color: BT.text.white, fontFamily: MONO, fontSize: 10, padding: '1px 4px', borderRadius: 2 }}
+          />
+        ) : (
+          <span style={{ color: hasUser ? BT.text.green : BT.text.muted }}>
+            {hasUser ? format(user) : (userEditable ? <span style={{ fontSize: 8 }}>click</span> : '—')}
+          </span>
+        )}
+      </td>
+      <td style={{ padding: '3px 10px', textAlign: 'center', fontFamily: MONO, fontSize: 10, color: statusColor ?? (hasUser ? BT.text.green : (platform != null ? BT.text.cyan : BT.text.muted)), fontWeight: 700, minWidth: 100 }}>
+        {format(resolved)}
+      </td>
+    </tr>
+  );
+}
+
+// ─── Section header ───────────────────────────────────────────────────────────
+function SectionHeader({ letter, title, subtitle, collapsed, onToggle }: { letter: string; title: string; subtitle?: string; collapsed: boolean; onToggle: () => void }) {
+  return (
+    <div
+      onClick={onToggle}
+      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 12px', background: BT.bg.header, borderBottom: `1px solid ${BT.border.medium}`, cursor: 'pointer', userSelect: 'none' }}
+    >
+      <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: BT.text.cyan, background: `${BT.text.cyan}15`, border: `1px solid ${BT.text.cyan}40`, borderRadius: 2, padding: '1px 5px' }}>{letter}</span>
+      <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.white, letterSpacing: 0.6 }}>{title}</span>
+      {subtitle && <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>{subtitle}</span>}
+      <div style={{ marginLeft: 'auto' }}>{collapsed ? <ChevronRight style={{ width: 12, height: 12, color: BT.text.muted }} /> : <ChevronDown style={{ width: 12, height: 12, color: BT.text.muted }} />}</div>
+    </div>
+  );
+}
+
+function ColHeader() {
+  return (
+    <tr style={{ background: BT.bg.header, borderBottom: `2px solid ${BT.border.medium}` }}>
+      <th style={{ padding: '4px 12px', fontFamily: MONO, fontSize: 8, color: BT.text.muted, textAlign: 'left', fontWeight: 500, minWidth: 180 }}>METRIC</th>
+      <th style={{ padding: '4px 10px', fontFamily: MONO, fontSize: 8, color: BT.text.amber, textAlign: 'center', fontWeight: 700, minWidth: 100 }}>BROKER</th>
+      <th style={{ padding: '4px 10px', fontFamily: MONO, fontSize: 8, color: BT.text.cyan, textAlign: 'center', fontWeight: 700, minWidth: 100 }}>PLATFORM</th>
+      <th style={{ padding: '4px 10px', fontFamily: MONO, fontSize: 8, color: BT.text.green, textAlign: 'center', fontWeight: 700, minWidth: 100 }}>USER</th>
+      <th style={{ padding: '4px 10px', fontFamily: MONO, fontSize: 8, color: BT.text.white, textAlign: 'center', fontWeight: 700, minWidth: 100 }}>RESOLVED</th>
+    </tr>
+  );
+}
+
+// ─── Refi Event State ─────────────────────────────────────────────────────────
+interface RefiState {
+  enabled: boolean;
+  triggerYear: number;
+  newLoanType: LoanPresetKey;
+  newLoanAmtPct: number;
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: FinancialEngineTabProps) {
+  const cs = f9Financials?.capitalStack ?? null;
+  const f9Debt = f9Financials?.debt ?? null;
+  const f9Loan0 = f9Debt?.loans?.[0] ?? null;
+
+  const purchasePrice = cs?.purchasePrice ?? null;
+  const baseLoanAmt = cs?.loanAmount ?? 0;
+  const noi1 = f9Financials?.proforma?.year1?.find(r => r.field === 'noi')?.resolved ?? 0;
+  const rentGrowth = f9Financials?.assumptions?.rentGrowthStabilized ?? 0.03;
+  const holdYears = f9Financials?.assumptions?.holdYears ?? 5;
+  const dealName = f9Financials?.dealName ?? '';
+
+  // ── Determine initial preset from f9Loan0 ──
+  const initPresetKey: LoanPresetKey = (LOAN_PRESETS[f9Loan0?.loanTypeLabel as LoanPresetKey] ? f9Loan0?.loanTypeLabel as LoanPresetKey : 'Bridge');
+  const initPreset = LOAN_PRESETS[initPresetKey];
+
+  // ── Loan stack ──────────────────────────────────────────────────────────────
+  const [loans, setLoans] = useState<LoanState[]>(() => [
+    makeLoanState('senior', 'Senior Loan', initPreset, f9Loan0, baseLoanAmt),
+  ]);
+  const [activeLoanId, setActiveLoanId] = useState<string>('senior');
+
+  // Hydrate from f9Loan0 on data arrival
+  useEffect(() => {
+    if (!f9Loan0) return;
+    const key: LoanPresetKey = LOAN_PRESETS[f9Loan0.loanTypeLabel as LoanPresetKey] ? f9Loan0.loanTypeLabel as LoanPresetKey : 'Bridge';
+    setLoans(prev => prev.map(l => l.id !== 'senior' ? l : {
+      ...l,
+      loanTypeLabel: key,
+      rateType: f9Loan0.rateType,
+      sofrCurve: f9Loan0.sofrCurve?.length === 5 ? f9Loan0.sofrCurve : SOFR_FWD,
+    }));
+  }, [f9Loan0?.id]);
+
+  const activeLoan = loans.find(l => l.id === activeLoanId) ?? loans[0];
+  const preset = LOAN_PRESETS[activeLoan.loanTypeLabel];
+  const f9ThisLoan = f9Debt?.loans?.find(l => l.id === activeLoan.id) ?? null;
+
+  // Resolved values
+  const effLoanAmt  = activeLoan.userLoanAmount ?? f9ThisLoan?.loanAmount.platform ?? baseLoanAmt;
+  const effRate     = activeLoan.rateType === 'Floating'
+    ? ((activeLoan.userSofr ?? f9ThisLoan?.sofr.platform ?? activeLoan.sofrCurve[0]) + (activeLoan.userSpread ?? f9ThisLoan?.spread.platform ?? preset.spread))
+    : (activeLoan.userRate ?? f9ThisLoan?.interestRate.platform ?? preset.rate);
+  const effTerm     = activeLoan.userTerm    ?? f9ThisLoan?.termYears.platform    ?? preset.term;
+  const effAmort    = activeLoan.userAmort   ?? f9ThisLoan?.amortYears.platform   ?? preset.amort;
+  const effIO       = activeLoan.userIO      ?? f9ThisLoan?.ioMonths.platform     ?? preset.io;
+  const effOrigFee  = activeLoan.userOrigFee ?? f9ThisLoan?.origFee.platform      ?? preset.origFee;
+  const effExitFee  = activeLoan.userExitFee ?? f9ThisLoan?.exitFee.platform      ?? preset.exitFee;
+  const effCapRate  = activeLoan.userCapRate ?? f9ThisLoan?.capRate.platform      ?? preset.rateCapCost;
+  const effMinDscr  = activeLoan.userMinDscr ?? f9ThisLoan?.minDscr.platform     ?? preset.minDscr;
+  const effMinDY    = activeLoan.userMinDY   ?? f9ThisLoan?.minDebtYield.platform ?? 0.07;
+  const effMinOcc   = activeLoan.userMinOcc  ?? f9ThisLoan?.minOccupancy.platform ?? 0.90;
+  const effMaxLtv   = activeLoan.userMaxLtv  ?? f9ThisLoan?.maxLtv.platform      ?? preset.maxLtv;
+  const effCashTrap = activeLoan.userCashTrapDscr ?? f9ThisLoan?.cashTrapDscr.platform ?? 1.10;
+  const effLtc      = purchasePrice != null && purchasePrice > 0 ? effLoanAmt / purchasePrice : null;
+  const effLtv      = purchasePrice != null && purchasePrice > 0 ? effLoanAmt / purchasePrice : null;
+
+  // Amortization
+  const amortRows = useMemo(() => buildAmort(effLoanAmt, effRate, effTerm, effAmort, effIO), [effLoanAmt, effRate, effTerm, effAmort, effIO]);
+  const annualRows = useMemo(() => buildAnnual(amortRows, typeof noi1 === 'number' ? noi1 : 0, rentGrowth, effMinDscr), [amortRows, noi1, rentGrowth, effMinDscr]);
+
+  // Derived metrics
+  const annualDS1 = annualRows[0]?.annualDS ?? (effLoanAmt * effRate);
+  const dscrY1 = annualDS1 > 0 && typeof noi1 === 'number' && noi1 > 0 ? noi1 / annualDS1 : null;
+  const debtYieldY1 = effLoanAmt > 0 && typeof noi1 === 'number' ? noi1 / effLoanAmt : null;
+
+  // Aggregate across stack
+  const aggTotalLoan = loans.length > 1
+    ? loans.reduce((s, l) => {
+        const p = LOAN_PRESETS[l.loanTypeLabel];
+        const f9l = f9Debt?.loans?.find(x => x.id === l.id) ?? null;
+        return s + (l.userLoanAmount ?? f9l?.loanAmount.platform ?? baseLoanAmt);
+      }, 0)
+    : effLoanAmt;
+
+  const dscrColor = (v: number | null) => v == null ? BT.text.muted : v >= 1.35 ? BT.met.financial : v >= 1.20 ? BT.text.amber : BT.text.red;
+  const ltvColor  = (v: number | null) => v == null ? BT.text.muted : v <= 0.60 ? BT.met.financial : v <= 0.70 ? BT.text.amber : BT.text.red;
+
+  // ── Patch debounce ──────────────────────────────────────────────────────────
+  const patchTimeouts = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const patchField = useCallback((field: string, value: number | null) => {
+    clearTimeout(patchTimeouts.current[field]);
+    patchTimeouts.current[field] = setTimeout(async () => {
+      try {
+        await apiClient.patch(`/api/v1/deals/${dealId}/financials/override`, { field, year: 1, value });
+        onF9Refresh?.();
+      } catch { /* non-fatal */ }
+    }, 600);
+  }, [dealId, onF9Refresh]);
+
+  // ── Helpers to update loan state ────────────────────────────────────────────
+  const updateLoan = useCallback((id: string, patch: Partial<LoanState>) => {
+    setLoans(prev => prev.map(l => l.id === id ? { ...l, ...patch } : l));
+  }, []);
+
+  const applyPreset = useCallback((id: string, key: LoanPresetKey) => {
+    const p = LOAN_PRESETS[key];
+    setLoans(prev => prev.map(l => l.id !== id ? l : {
+      ...l,
+      loanTypeLabel: key,
+      rateType: p.rateType,
+      prepayType: p.prepayType,
+      userRate: null,
+      userSpread: null,
+      userSofr: null,
+      userCapRate: null,
+      userTerm: null,
+      userAmort: null,
+      userIO: null,
+      userOrigFee: null,
+      userExitFee: null,
+      userRateCapCost: null,
+      userMinDscr: null,
+      userMinDY: null,
+      userMinOcc: null,
+      userMaxLtv: null,
+    }));
+  }, []);
+
+  const addMezz = useCallback(() => {
+    if (loans.find(l => l.id === 'mezz')) return;
+    setLoans(prev => [...prev, makeLoanState('mezz', 'Mezz / B-Note', LOAN_PRESETS.Mezz)]);
+    setActiveLoanId('mezz');
+  }, [loans]);
+
+  const removeLoan = useCallback((id: string) => {
+    if (id === 'senior') return;
+    setLoans(prev => prev.filter(l => l.id !== id));
+    setActiveLoanId('senior');
+  }, []);
+
+  // ── Collapsed sections ──────────────────────────────────────────────────────
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set(['amort']));
+  const toggle = (s: string) => setCollapsed(prev => { const n = new Set(prev); n.has(s) ? n.delete(s) : n.add(s); return n; });
+
+  // ── Refi event ──────────────────────────────────────────────────────────────
+  const [refi, setRefi] = useState<RefiState>({ enabled: false, triggerYear: 3, newLoanType: 'Agency', newLoanAmtPct: 0.70 });
+  const refiPreset = LOAN_PRESETS[refi.newLoanType];
+  const refiPayoff = useMemo(() => {
+    const yr = refi.triggerYear;
+    const row = annualRows[yr - 1];
+    if (!row) return null;
+    const balloon = row.closeBalance;
+    const prepay = activeLoan.prepayType === 'yield_maintenance' ? balloon * 0.02
+      : activeLoan.prepayType === 'defeasance' ? balloon * 0.015
+      : activeLoan.prepayType === 'stepdown' ? balloon * Math.max(0, 0.05 - (yr - 1) * 0.01)
+      : activeLoan.prepayType === 'open' ? 0
+      : balloon * 0.03;
+    return { balloon, prepay, exitFee: balloon * effExitFee, total: balloon + prepay + balloon * effExitFee };
+  }, [annualRows, refi.triggerYear, activeLoan.prepayType, effExitFee]);
+  const refiDocStamps = refiPayoff ? refiPayoff.total * 0.0070 : null;
+
+  // ── SOFR curve editor ───────────────────────────────────────────────────────
+  const updateSofrCurve = (idx: number, val: number) => {
+    const next = [...activeLoan.sofrCurve];
+    next[idx] = val / 100;
+    updateLoan(activeLoan.id, { sofrCurve: next });
+  };
+
+  // ─── Render ──────────────────────────────────────────────────────────────
+  const [showAnnual, setShowAnnual] = useState(true);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto', background: BT.bg.terminal }}>
+
+      {/* ── Header ──────────────────────────────────────────────────────────── */}
+      <div style={{ padding: '5px 12px', background: BT.bg.header, borderBottom: `1px solid ${BT.border.medium}`, display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+        <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: BT.text.white, letterSpacing: 0.8 }}>F9 · DEBT</span>
+        <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>{dealName}</span>
+        <span style={{ fontFamily: MONO, fontSize: 8, padding: '2px 6px', background: `${BT.text.cyan}15`, border: `1px solid ${BT.text.cyan}40`, borderRadius: 3, color: BT.text.cyan }}>
+          {loans.length === 1 ? 'SENIOR ONLY' : `${loans.length}-LOAN STACK`}
+        </span>
+        {loans.length > 1 && (
+          <span style={{ fontFamily: MONO, fontSize: 8, padding: '2px 6px', background: `${BT.text.purple}15`, border: `1px solid ${BT.text.purple}40`, borderRadius: 3, color: BT.text.purple }}>
+            BLENDED {fmtPctFull(
+              loans.reduce((s, l) => {
+                const f9l = f9Debt?.loans?.find(x => x.id === l.id);
+                const p = LOAN_PRESETS[l.loanTypeLabel];
+                const la = l.userLoanAmount ?? f9l?.loanAmount.platform ?? baseLoanAmt;
+                const r  = l.rateType === 'Floating'
+                  ? ((l.userSofr ?? f9l?.sofr.platform ?? l.sofrCurve[0]) + (l.userSpread ?? f9l?.spread.platform ?? p.spread))
+                  : (l.userRate ?? f9l?.interestRate.platform ?? p.rate);
+                return s + la * r;
+              }, 0) / (aggTotalLoan || 1)
+            )}
+          </span>
+        )}
       </div>
 
-      {/* F9 signal bar */}
-      {(f9Ltv != null || f9Rate != null || baseLoanAmt > 0) && (
-        <div style={{ padding: '4px 10px', background: `${BT.met.financial}08`, borderBottom: `1px solid ${BT.border.subtle}`, display: 'flex', alignItems: 'center', gap: 16 }}>
-          <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, letterSpacing: 0.5 }}>F9 CAPITAL STACK ▸</span>
-          {baseLoanAmt > 0 && <span style={{ fontFamily: MONO, fontSize: 9, color: BT.met.financial }}>LOAN {fmt$(baseLoanAmt)}</span>}
-          {f9Ltv  != null && <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.cyan   }}>LTC {fmtPct(f9Ltv * 100)}</span>}
-          {f9Rate != null && <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.amber  }}>RATE {fmtPct(f9Rate * 100)}</span>}
-          {f9IO   != null && <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.orange }}>IO {f9IO}mo</span>}
-          {f9DSCR != null && <span style={{ fontFamily: MONO, fontSize: 9, color: dscrColor(f9DSCR) }}>DSCR {f9DSCR.toFixed(2)}×</span>}
-          {f9PP   != null && baseLoanAmt > 0 && <span style={{ fontFamily: MONO, fontSize: 9, color: ltvColor(baseLoanAmt / f9PP) }}>LTV {fmtPct((baseLoanAmt / f9PP) * 100)}</span>}
-        </div>
-      )}
-
-      {/* Loan comparison grid */}
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ borderCollapse: 'collapse', fontFamily: MONO, fontSize: 9, width: '100%', minWidth: 800 }}>
-          <thead>
-            <tr style={{ borderBottom: `2px solid ${BT.border.medium}`, background: BT.bg.header }}>
-              <th style={{ padding: '4px 8px', color: BT.text.muted, textAlign: 'left', fontWeight: 500, minWidth: 130 }}>METRIC</th>
-              {loans.map(l => (
-                <th key={l.id} style={{ padding: '4px 8px', textAlign: 'center', minWidth: 140 }}>
-                  <div
-                    onClick={() => { setSelectedId(l.id); }}
-                    style={{
-                      cursor: 'pointer', padding: '3px 6px', borderRadius: 2,
-                      background: l.id === selectedId ? `${BT.met.financial}15` : 'transparent',
-                      border: `1px solid ${l.id === selectedId ? BT.met.financial : BT.border.subtle}`,
-                    }}
-                  >
-                    <div style={{ color: l.id === selectedId ? BT.met.financial : BT.text.primary, fontWeight: 700, fontSize: 9 }}>{l.name.toUpperCase()}</div>
-                    <div style={{ color: l.active ? BT.text.cyan : BT.text.muted, fontSize: 8 }}>
-                      {l.active ? '● ACTIVE' : '○ compare'}
-                    </div>
-                  </div>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {[
-              { key: 'type',     label: 'TYPE',           fmt: (l: LoanConfig) => l.type,                                      color: (_: LoanConfig) => BT.text.secondary },
-              { key: 'loanType', label: 'RATE TYPE',      fmt: (l: LoanConfig) => l.loanType,                                  color: (l: LoanConfig) => l.loanType === 'Floating' ? BT.text.amber : BT.met.financial },
-              { key: 'amount',   label: 'LOAN AMOUNT',    fmt: (l: LoanConfig) => fmt$(loanAmt(l.customAmount, baseLoanAmt)),   color: (_: LoanConfig) => BT.text.cyan },
-              { key: 'rate',     label: 'INTEREST RATE',  fmt: (l: LoanConfig) => fmtPct(l.rate * 100),                        color: (l: LoanConfig) => l.loanType === 'Floating' ? BT.text.amber : BT.met.financial },
-              { key: 'spread',   label: 'SPREAD (FLOAT)', fmt: (l: LoanConfig) => l.spread > 0 ? `+${fmtPct(l.spread * 100)} over SOFR` : '—', color: (_: LoanConfig) => BT.text.secondary },
-              { key: 'term',     label: 'TERM',           fmt: (l: LoanConfig) => `${l.term} years`,                           color: (_: LoanConfig) => BT.text.secondary },
-              { key: 'amort',    label: 'AMORTIZATION',   fmt: (l: LoanConfig) => l.amortization > 0 ? `${l.amortization}yr` : 'IO only', color: (_: LoanConfig) => BT.text.secondary },
-              { key: 'io',       label: 'IO PERIOD',      fmt: (l: LoanConfig) => l.ioPeriod > 0 ? `${l.ioPeriod} months` : '—', color: (l: LoanConfig) => l.ioPeriod > 0 ? BT.text.amber : BT.text.muted },
-              { key: 'origFee',  label: 'ORIGINATION FEE', fmt: (l: LoanConfig) => fmtPct(l.originationFee * 100),             color: (_: LoanConfig) => BT.text.secondary },
-              { key: 'rateCap',  label: 'RATE CAP COST',  fmt: (l: LoanConfig) => l.rateCapCost > 0 ? fmtPct(l.rateCapCost * 100) : '—', color: (_: LoanConfig) => BT.text.amber },
-              { key: 'prepay',   label: 'PREPAY PENALTY', fmt: (l: LoanConfig) => fmtPct(l.prepayPenalty * 100),               color: (_: LoanConfig) => BT.text.red },
-              { key: 'annualDS', label: 'ANNUAL DEBT SVC', fmt: (l: LoanConfig) => fmt$(loanAmt(l.customAmount, baseLoanAmt) * l.rate), color: (_: LoanConfig) => BT.text.red },
-              { key: 'ltv',      label: 'LTV',            fmt: (l: LoanConfig) => f9PP != null && f9PP > 0 ? fmtPct((loanAmt(l.customAmount, baseLoanAmt) / f9PP) * 100) : '—', color: (l: LoanConfig) => ltvColor(f9PP != null && f9PP > 0 ? loanAmt(l.customAmount, baseLoanAmt) / f9PP : null) },
-              { key: 'dscr',     label: 'DSCR (Y1 DERIV)', fmt: (l: LoanConfig) => { const ds = loanAmt(l.customAmount, baseLoanAmt) * l.rate; return noi_y1 > 0 && ds > 0 ? `${(noi_y1 / ds).toFixed(2)}×` : '—'; }, color: (l: LoanConfig) => { const ds = loanAmt(l.customAmount, baseLoanAmt) * l.rate; return dscrColor(noi_y1 > 0 && ds > 0 ? noi_y1 / ds : null); } },
-              { key: 'debtYld',  label: 'DEBT YIELD',     fmt: (l: LoanConfig) => { const la = loanAmt(l.customAmount, baseLoanAmt); return noi_y1 > 0 && la > 0 ? fmtPct((noi_y1 / la) * 100) : '—'; }, color: (_: LoanConfig) => BT.text.amber },
-            ].map((row, ri) => (
-              <tr key={row.key} style={{ background: ri % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt, borderBottom: `1px solid ${BT.border.subtle}` }}>
-                <td style={{ padding: '3px 8px', color: BT.text.muted }}>{row.label}</td>
-                {loans.map(l => (
-                  <td key={l.id} style={{ padding: '3px 8px', textAlign: 'center', color: row.color(l), fontWeight: l.active ? 600 : 400 }}>
-                    {row.fmt(l)}
-                  </td>
-                ))}
-              </tr>
-            ))}
-            {/* Set active row */}
-            <tr style={{ background: `${BT.text.cyan}08`, borderTop: `2px solid ${BT.border.medium}` }}>
-              <td style={{ padding: '4px 8px', color: BT.text.muted, fontSize: 8 }}>SET ACTIVE</td>
-              {loans.map(l => (
-                <td key={l.id} style={{ padding: '4px 8px', textAlign: 'center' }}>
-                  <button onClick={() => toggleActive(l.id)} style={{
-                    background: l.active ? `${BT.text.cyan}20` : 'transparent',
-                    border: `1px solid ${l.active ? BT.text.cyan : BT.border.medium}`,
-                    color: l.active ? BT.text.cyan : BT.text.muted,
-                    fontFamily: MONO, fontSize: 8, padding: '2px 10px', cursor: 'pointer', borderRadius: 2,
-                  }}>{l.active ? 'ACTIVE ●' : 'SELECT'}</button>
-                </td>
-              ))}
-            </tr>
-          </tbody>
-        </table>
+      {/* ── KPI strip ───────────────────────────────────────────────────────── */}
+      <div style={{ display: 'flex', borderBottom: `1px solid ${BT.border.medium}`, flexShrink: 0 }}>
+        <KpiTile label="LOAN AMOUNT"    value={fmt$(effLoanAmt)}             color={BT.text.cyan} />
+        <KpiTile label="ALL-IN RATE"    value={fmtPctFull(effRate)}           color={activeLoan.rateType === 'Floating' ? BT.text.amber : BT.met.financial} />
+        <KpiTile label="LTC"            value={effLtc != null ? fmtPct(effLtc * 100) : '—'} color={ltvColor(effLtc)} />
+        <KpiTile label="DSCR Y1"        value={dscrY1 != null ? `${dscrY1.toFixed(2)}×` : '—'} color={dscrColor(dscrY1)} />
+        <KpiTile label="DEBT YIELD Y1"  value={debtYieldY1 != null ? fmtPct(debtYieldY1 * 100) : '—'} color={BT.text.amber} />
+        <KpiTile label="ANNUAL DS"      value={fmt$(annualDS1)}              color={BT.text.red} />
+        {loans.length > 1 && <KpiTile label="TOTAL STACK" value={fmt$(aggTotalLoan)} color={BT.text.purple} />}
       </div>
 
-      {/* Per-year DSCR grid */}
-      <div style={{ padding: '4px 10px', background: BT.bg.header, borderBottom: `1px solid ${BT.border.subtle}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, letterSpacing: 0.5 }}>ANNUAL DEBT SERVICE — {selectedLoan.name.toUpperCase()}</span>
-          <Bd c={BT.text.cyan}>SELECTED</Bd>
-        </div>
-        <button onClick={() => setShowAnnual(!showAnnual)} style={{
-          background: 'transparent', border: `1px solid ${BT.border.medium}`, color: BT.text.muted,
-          fontFamily: MONO, fontSize: 8, padding: '2px 8px', cursor: 'pointer', borderRadius: 2,
-        }}>{showAnnual ? 'HIDE' : 'SHOW'}</button>
+      {/* ── Loan stack tabs ─────────────────────────────────────────────────── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 0, borderBottom: `1px solid ${BT.border.medium}`, background: BT.bg.panel, flexShrink: 0 }}>
+        {loans.map(l => (
+          <div
+            key={l.id}
+            onClick={() => setActiveLoanId(l.id)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '6px 14px', cursor: 'pointer',
+              borderRight: `1px solid ${BT.border.subtle}`,
+              background: l.id === activeLoanId ? BT.bg.active : 'transparent',
+              borderBottom: l.id === activeLoanId ? `2px solid ${BT.text.cyan}` : '2px solid transparent',
+            }}
+          >
+            <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: l.id === activeLoanId ? BT.text.white : BT.text.muted }}>{l.name.toUpperCase()}</span>
+            <span style={{ fontFamily: MONO, fontSize: 8, color: l.id === activeLoanId ? BT.text.cyan : BT.text.muted }}>{l.loanTypeLabel}</span>
+            {l.id !== 'senior' && (
+              <span onClick={e => { e.stopPropagation(); removeLoan(l.id); }} style={{ cursor: 'pointer', color: BT.text.muted, padding: '0 2px' }}>
+                <X style={{ width: 9, height: 9 }} />
+              </span>
+            )}
+          </div>
+        ))}
+        {!loans.find(l => l.id === 'mezz') && (
+          <div onClick={addMezz} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', cursor: 'pointer', color: BT.text.muted }}>
+            <Plus style={{ width: 10, height: 10 }} />
+            <span style={{ fontFamily: MONO, fontSize: 8 }}>ADD MEZZ / B-NOTE</span>
+          </div>
+        )}
       </div>
 
-      {showAnnual && (
+      {/* ── Loan type selector ──────────────────────────────────────────────── */}
+      <div style={{ padding: '6px 12px', background: BT.bg.panelAlt, borderBottom: `1px solid ${BT.border.subtle}`, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', flexShrink: 0 }}>
+        <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>LOAN TYPE:</span>
+        {(Object.keys(LOAN_PRESETS) as LoanPresetKey[]).map(key => (
+          <button
+            key={key}
+            onClick={() => applyPreset(activeLoan.id, key)}
+            style={{
+              padding: '2px 10px', fontFamily: MONO, fontSize: 8, fontWeight: 700,
+              background: activeLoan.loanTypeLabel === key ? `${BT.text.cyan}20` : 'transparent',
+              border: `1px solid ${activeLoan.loanTypeLabel === key ? BT.text.cyan : BT.border.subtle}`,
+              color: activeLoan.loanTypeLabel === key ? BT.text.cyan : BT.text.muted,
+              borderRadius: 3, cursor: 'pointer',
+            }}
+          >
+            {key}
+          </button>
+        ))}
+        <span style={{ marginLeft: 8, fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>RATE TYPE:</span>
+        {(['Fixed', 'Floating'] as const).map(rt => (
+          <button
+            key={rt}
+            onClick={() => updateLoan(activeLoan.id, { rateType: rt })}
+            style={{
+              padding: '2px 10px', fontFamily: MONO, fontSize: 8, fontWeight: 700,
+              background: activeLoan.rateType === rt ? `${rt === 'Fixed' ? BT.met.financial : BT.text.amber}20` : 'transparent',
+              border: `1px solid ${activeLoan.rateType === rt ? (rt === 'Fixed' ? BT.met.financial : BT.text.amber) : BT.border.subtle}`,
+              color: activeLoan.rateType === rt ? (rt === 'Fixed' ? BT.met.financial : BT.text.amber) : BT.text.muted,
+              borderRadius: 3, cursor: 'pointer',
+            }}
+          >
+            {rt.toUpperCase()}
+          </button>
+        ))}
+      </div>
+
+      {/* ════════════════════════════════════════════════════════════════════
+          SECTION A — LOAN SIZING
+      ═══════════════════════════════════════════════════════════════════════ */}
+      <SectionHeader letter="A" title="LOAN SIZING" subtitle="4-column Broker / Platform / User / Resolved" collapsed={collapsed.has('a')} onToggle={() => toggle('a')} />
+      {!collapsed.has('a') && (
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 9 }}>
-            <thead>
-              <tr style={{ borderBottom: `2px solid ${BT.border.medium}`, background: BT.bg.header }}>
-                {['YEAR', 'OPEN BALANCE', 'INTEREST', 'PRINCIPAL', 'DEBT SERVICE', 'CLOSE BALANCE', 'NOI', 'DSCR', 'DEBT YIELD'].map(h => (
-                  <th key={h} style={{ padding: '4px 8px', color: BT.text.muted, textAlign: h === 'YEAR' ? 'left' : 'right', fontWeight: 500 }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
+          <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 600 }}>
+            <thead><ColHeader /></thead>
             <tbody>
-              {annualDebtRows.filter(r => r.year <= holdYears).map((row, i) => {
-                const noi = noi_y1 * Math.pow(1 + rentGrowth, i);
-                return (
-                  <tr key={row.year} style={{ background: i % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt, borderBottom: `1px solid ${BT.border.subtle}` }}>
-                    <td style={{ padding: '3px 8px', color: BT.text.secondary }}>Y{row.year}</td>
-                    <td style={{ padding: '3px 8px', color: BT.text.cyan, textAlign: 'right' }}>{fmt$(row.openBalance)}</td>
-                    <td style={{ padding: '3px 8px', color: BT.text.red, textAlign: 'right' }}>{fmt$(row.annualInterest)}</td>
-                    <td style={{ padding: '3px 8px', color: BT.met.financial, textAlign: 'right' }}>{fmt$(row.annualPrincipal)}</td>
-                    <td style={{ padding: '3px 8px', color: BT.text.red, textAlign: 'right', fontWeight: 700 }}>{fmt$(row.annualPayment)}</td>
-                    <td style={{ padding: '3px 8px', color: BT.text.cyan, textAlign: 'right' }}>{fmt$(row.closeBalance)}</td>
-                    <td style={{ padding: '3px 8px', color: BT.met.financial, textAlign: 'right' }}>{fmt$(noi)}</td>
-                    <td style={{ padding: '3px 8px', textAlign: 'right', color: dscrColor(row.dscr), fontWeight: 700 }}>{row.dscr != null ? `${row.dscr.toFixed(2)}×` : '—'}</td>
-                    <td style={{ padding: '3px 8px', textAlign: 'right', color: BT.text.amber }}>{row.debtYield != null ? fmtPct(row.debtYield * 100) : '—'}</td>
-                  </tr>
-                );
-              })}
+              <DebtRow
+                label="LOAN AMOUNT ($)"
+                broker={f9ThisLoan?.loanAmount.broker}
+                platform={f9ThisLoan?.loanAmount.platform ?? (baseLoanAmt || null)}
+                user={activeLoan.userLoanAmount}
+                userEditable
+                format={fmtDlr}
+                onUserChange={v => { updateLoan(activeLoan.id, { userLoanAmount: v }); patchField('loanAmount', v); }}
+              />
+              <DebtRow
+                label="LOAN AMOUNT (LTC%)"
+                broker={f9ThisLoan?.ltcPct.broker}
+                platform={f9ThisLoan?.ltcPct.platform ?? (purchasePrice ? baseLoanAmt / purchasePrice : null)}
+                user={null}
+                format={fmtPctFull}
+                locked
+                sub="Derived from loan amount ÷ purchase price"
+              />
+              <DebtRow
+                label="GOING-IN LTV"
+                platform={effLtv}
+                user={null}
+                format={fmtPctFull}
+                locked
+                sub="Loan amount ÷ purchase price"
+                pass={effLtv != null ? effLtv <= effMaxLtv : undefined}
+              />
+              <DebtRow
+                label="DEBT YIELD (Y1)"
+                platform={debtYieldY1}
+                user={null}
+                format={fmtPctFull}
+                locked
+                sub="NOI ÷ loan amount"
+                pass={debtYieldY1 != null ? debtYieldY1 >= effMinDY : undefined}
+              />
+              <DebtRow
+                label="DSCR AT CLOSE (Y1)"
+                platform={dscrY1}
+                user={null}
+                format={fmtX}
+                locked
+                sub="NOI ÷ annual debt service"
+                pass={dscrY1 != null ? dscrY1 >= effMinDscr : undefined}
+              />
             </tbody>
           </table>
         </div>
       )}
 
-      {/* Covenants */}
-      <SectionPanel title="LOAN COVENANTS & TESTS" subtitle="Lender underwriting thresholds" borderColor={BT.text.amber}>
-        {(() => {
-          const ds = loanAmt(selectedLoan.customAmount, baseLoanAmt) * selectedLoan.rate;
-          const dscrY1 = noi_y1 > 0 && ds > 0 ? noi_y1 / ds : null;
-          const ltv = f9PP != null && f9PP > 0 ? loanAmt(selectedLoan.customAmount, baseLoanAmt) / f9PP : null;
-          const debtYield = loanAmt(selectedLoan.customAmount, baseLoanAmt) > 0 ? noi_y1 / loanAmt(selectedLoan.customAmount, baseLoanAmt) : null;
-          const DSCR_MIN = selectedLoan.type === 'Agency' ? 1.25 : selectedLoan.type === 'Bridge' ? 1.15 : 1.20;
-          const LTV_MAX  = selectedLoan.type === 'Agency' ? 0.75 : selectedLoan.type === 'Bridge' ? 0.80 : 0.70;
-          const DY_MIN   = 0.07;
-          return (
-            <>
-              <DataRow label="DSCR COVENANT" value={`Min ${DSCR_MIN.toFixed(2)}×`} valueColor={BT.text.muted} sub={selectedLoan.type} />
-              <DataRow label="DSCR (DERIVED Y1)" value={dscrY1 != null ? `${dscrY1.toFixed(2)}×` : '—'} valueColor={dscrColor(dscrY1)} sub={dscrY1 != null ? (dscrY1 >= DSCR_MIN ? '✓ PASSES' : '✗ FAILS covenant') : undefined} />
-              <DataRow label="MAX LTV COVENANT" value={fmtPct(LTV_MAX * 100)} valueColor={BT.text.muted} />
-              <DataRow label="LTV (DERIVED)" value={ltv != null ? fmtPct(ltv * 100) : '—'} valueColor={ltvColor(ltv)} sub={ltv != null ? (ltv <= LTV_MAX ? '✓ PASSES' : '✗ FAILS covenant') : undefined} />
-              <DataRow label="MIN DEBT YIELD" value={fmtPct(DY_MIN * 100)} valueColor={BT.text.muted} />
-              <DataRow label="DEBT YIELD (DERIVED)" value={debtYield != null ? fmtPct(debtYield * 100) : '—'} valueColor={debtYield != null ? (debtYield >= DY_MIN ? BT.met.financial : BT.text.red) : BT.text.muted} sub={debtYield != null ? (debtYield >= DY_MIN ? '✓ PASSES' : '✗ FAILS covenant') : undefined} border={false} />
-            </>
-          );
-        })()}
-      </SectionPanel>
+      {/* ════════════════════════════════════════════════════════════════════
+          SECTION B — PRICING & RATE
+      ═══════════════════════════════════════════════════════════════════════ */}
+      <SectionHeader letter="B" title="PRICING & RATE" subtitle={activeLoan.rateType === 'Floating' ? 'SOFR + SPREAD — RATE CAP' : 'FIXED RATE'} collapsed={collapsed.has('b')} onToggle={() => toggle('b')} />
+      {!collapsed.has('b') && (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 600 }}>
+            <thead><ColHeader /></thead>
+            <tbody>
+              {activeLoan.rateType === 'Fixed' ? (
+                <DebtRow
+                  label="INTEREST RATE"
+                  broker={f9ThisLoan?.interestRate.broker}
+                  platform={f9ThisLoan?.interestRate.platform ?? preset.rate}
+                  user={activeLoan.userRate}
+                  userEditable
+                  format={fmtPctFull}
+                  onUserChange={v => updateLoan(activeLoan.id, { userRate: v })}
+                  sub="Fixed all-in rate"
+                />
+              ) : (
+                <>
+                  <DebtRow
+                    label="SOFR (CURRENT)"
+                    platform={f9ThisLoan?.sofr.platform ?? SOFR_FWD[0]}
+                    user={activeLoan.userSofr}
+                    userEditable
+                    format={fmtPctFull}
+                    onUserChange={v => updateLoan(activeLoan.id, { userSofr: v })}
+                    sub="30-day Term SOFR"
+                  />
+                  <DebtRow
+                    label="SPREAD OVER SOFR"
+                    broker={f9ThisLoan?.spread.broker}
+                    platform={f9ThisLoan?.spread.platform ?? preset.spread}
+                    user={activeLoan.userSpread}
+                    userEditable
+                    format={fmtPctFull}
+                    onUserChange={v => updateLoan(activeLoan.id, { userSpread: v })}
+                  />
+                  <DebtRow
+                    label="ALL-IN RATE (SOFR+SPREAD)"
+                    platform={effRate}
+                    user={null}
+                    format={fmtPctFull}
+                    locked
+                    sub="Derived"
+                  />
+                  <DebtRow
+                    label="RATE CAP STRIKE"
+                    broker={f9ThisLoan?.capRate.broker}
+                    platform={f9ThisLoan?.capRate.platform ?? preset.rateCapCost}
+                    user={activeLoan.userCapRate}
+                    userEditable
+                    format={fmtPctFull}
+                    onUserChange={v => updateLoan(activeLoan.id, { userCapRate: v })}
+                    sub="SOFR cap — lender required"
+                  />
+                </>
+              )}
+            </tbody>
+          </table>
 
-      {/* Amortization schedule toggle */}
-      <div style={{ padding: '4px 10px', background: BT.bg.header, borderBottom: `1px solid ${BT.border.subtle}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, letterSpacing: 0.5 }}>MONTHLY AMORT SCHEDULE — {selectedLoan.name.toUpperCase()}</span>
-        <button onClick={() => setShowAmort(!showAmort)} style={{
-          background: 'transparent', border: `1px solid ${BT.border.medium}`, color: BT.text.muted,
-          fontFamily: MONO, fontSize: 8, padding: '2px 8px', cursor: 'pointer', borderRadius: 2,
-        }}>{showAmort ? 'HIDE' : 'SHOW'} SCHEDULE</button>
+          {/* SOFR Forward Curve editor (floating only) */}
+          {activeLoan.rateType === 'Floating' && (
+            <div style={{ padding: '8px 12px', borderTop: `1px solid ${BT.border.subtle}` }}>
+              <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginBottom: 4, letterSpacing: 0.5 }}>SOFR FORWARD CURVE — click to edit (% per year)</div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {activeLoan.sofrCurve.map((v, i) => (
+                  <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                    <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>Y{i + 1}</span>
+                    <input
+                      type="number"
+                      step="0.05"
+                      value={(v * 100).toFixed(2)}
+                      onChange={e => updateSofrCurve(i, parseFloat(e.target.value) || 0)}
+                      style={{ width: 52, background: BT.bg.input, border: `1px solid ${BT.border.medium}`, color: BT.text.amber, fontFamily: MONO, fontSize: 9, padding: '2px 4px', borderRadius: 2, textAlign: 'center' }}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════════
+          SECTION C — TERM & STRUCTURE
+      ═══════════════════════════════════════════════════════════════════════ */}
+      <SectionHeader letter="C" title="TERM & STRUCTURE" subtitle="Term · Amortization · IO months · Extension" collapsed={collapsed.has('c')} onToggle={() => toggle('c')} />
+      {!collapsed.has('c') && (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 600 }}>
+            <thead><ColHeader /></thead>
+            <tbody>
+              <DebtRow
+                label="TERM (years)"
+                broker={f9ThisLoan?.termYears.broker}
+                platform={f9ThisLoan?.termYears.platform ?? preset.term}
+                user={activeLoan.userTerm}
+                userEditable
+                format={fmtYrs}
+                onUserChange={v => updateLoan(activeLoan.id, { userTerm: v })}
+              />
+              <DebtRow
+                label="AMORTIZATION (years)"
+                broker={f9ThisLoan?.amortYears.broker}
+                platform={f9ThisLoan?.amortYears.platform ?? preset.amort}
+                user={activeLoan.userAmort}
+                userEditable
+                format={v => v != null ? (v === 0 ? 'IO Only' : fmtYrs(v)) : '—'}
+                onUserChange={v => updateLoan(activeLoan.id, { userAmort: v })}
+              />
+              <DebtRow
+                label="IO PERIOD (months)"
+                broker={f9ThisLoan?.ioMonths.broker}
+                platform={f9ThisLoan?.ioMonths.platform ?? preset.io}
+                user={activeLoan.userIO}
+                userEditable
+                format={v => v != null ? (v === 0 ? 'None' : fmtMo(v)) : '—'}
+                onUserChange={v => updateLoan(activeLoan.id, { userIO: v })}
+                sub={effIO > 0 ? `IO through month ${effIO}` : 'Fully amortizing from month 1'}
+              />
+              <tr style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
+                <td style={{ padding: '3px 12px', fontFamily: MONO, fontSize: 10, color: BT.text.secondary, borderRight: `1px solid ${BT.border.subtle}` }}>EXTENSION OPTIONS</td>
+                <td colSpan={4} style={{ padding: '3px 10px' }}>
+                  <input
+                    value={activeLoan.extensionOptions}
+                    onChange={e => updateLoan(activeLoan.id, { extensionOptions: e.target.value })}
+                    placeholder="e.g. 2 × 1yr @ 25bp fee (conditions: DSCR ≥ 1.10×)"
+                    style={{ width: '100%', background: BT.bg.input, border: `1px solid ${BT.border.medium}`, color: BT.text.green, fontFamily: MONO, fontSize: 9, padding: '2px 6px', borderRadius: 2 }}
+                  />
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════════
+          SECTION D — FEES & COSTS
+      ═══════════════════════════════════════════════════════════════════════ */}
+      <SectionHeader letter="D" title="FEES & COSTS" subtitle={`Origination · Exit · Rate Cap${activeLoan.rateType === 'Floating' ? ' · Other' : ''}`} collapsed={collapsed.has('d')} onToggle={() => toggle('d')} />
+      {!collapsed.has('d') && (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 600 }}>
+            <thead><ColHeader /></thead>
+            <tbody>
+              <DebtRow
+                label="ORIGINATION FEE"
+                broker={f9ThisLoan?.origFee.broker}
+                platform={f9ThisLoan?.origFee.platform ?? preset.origFee}
+                user={activeLoan.userOrigFee}
+                userEditable
+                format={fmtPctFull}
+                onUserChange={v => updateLoan(activeLoan.id, { userOrigFee: v })}
+                sub={`${fmt$(effLoanAmt * effOrigFee)} at close`}
+              />
+              <DebtRow
+                label="EXIT FEE"
+                platform={f9ThisLoan?.exitFee.platform ?? preset.exitFee}
+                user={activeLoan.userExitFee}
+                userEditable
+                format={fmtPctFull}
+                onUserChange={v => updateLoan(activeLoan.id, { userExitFee: v })}
+                sub="Applied on payoff/refi"
+              />
+              {activeLoan.rateType === 'Floating' && (
+                <DebtRow
+                  label="RATE CAP COST"
+                  broker={f9ThisLoan?.rateCapCost.broker}
+                  platform={f9ThisLoan?.rateCapCost.platform ?? preset.rateCapCost}
+                  user={activeLoan.userRateCapCost}
+                  userEditable
+                  format={fmtPctFull}
+                  onUserChange={v => updateLoan(activeLoan.id, { userRateCapCost: v })}
+                  sub="Upfront cost of rate cap — flows to Sources & Uses"
+                />
+              )}
+              <tr style={{ borderBottom: `1px solid ${BT.border.subtle}`, background: BT.bg.panelAlt }}>
+                <td style={{ padding: '3px 12px', fontFamily: MONO, fontSize: 10, color: BT.text.secondary, borderRight: `1px solid ${BT.border.subtle}` }}>TOTAL UPFRONT FEES</td>
+                <td colSpan={3} />
+                <td style={{ padding: '3px 10px', textAlign: 'center', fontFamily: MONO, fontSize: 10, fontWeight: 700, color: BT.text.red }}>
+                  {fmt$(effLoanAmt * effOrigFee + effLoanAmt * effExitFee + (activeLoan.rateType === 'Floating' ? effLoanAmt * (activeLoan.userRateCapCost ?? f9ThisLoan?.rateCapCost.platform ?? preset.rateCapCost) : 0))}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════════
+          SECTION E — PREPAYMENT
+      ═══════════════════════════════════════════════════════════════════════ */}
+      <SectionHeader letter="E" title="PREPAYMENT" subtitle="Structure · Penalty at each year" collapsed={collapsed.has('e')} onToggle={() => toggle('e')} />
+      {!collapsed.has('e') && (
+        <div style={{ padding: '8px 12px', borderBottom: `1px solid ${BT.border.medium}` }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+            <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>PREPAY TYPE:</span>
+            {(['lockout', 'yield_maintenance', 'defeasance', 'stepdown', 'open'] as PrepayType[]).map(t => (
+              <button
+                key={t}
+                onClick={() => updateLoan(activeLoan.id, { prepayType: t })}
+                style={{
+                  padding: '2px 8px', fontFamily: MONO, fontSize: 8, fontWeight: 700,
+                  background: activeLoan.prepayType === t ? `${BT.text.amber}20` : 'transparent',
+                  border: `1px solid ${activeLoan.prepayType === t ? BT.text.amber : BT.border.subtle}`,
+                  color: activeLoan.prepayType === t ? BT.text.amber : BT.text.muted,
+                  borderRadius: 3, cursor: 'pointer',
+                }}
+              >
+                {t.replace('_', ' ').toUpperCase()}
+              </button>
+            ))}
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ borderCollapse: 'collapse', fontFamily: MONO, fontSize: 9 }}>
+              <thead>
+                <tr style={{ background: BT.bg.header }}>
+                  {Array.from({ length: Math.min(effTerm, 10) }, (_, i) => i + 1).map(yr => (
+                    <th key={yr} style={{ padding: '3px 10px', color: BT.text.muted, fontWeight: 500 }}>Y{yr}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  {Array.from({ length: Math.min(effTerm, 10) }, (_, i) => {
+                    const yr = i + 1;
+                    let penalty = '—';
+                    if (activeLoan.prepayType === 'lockout') penalty = yr <= 2 ? 'LOCKED' : '—';
+                    else if (activeLoan.prepayType === 'yield_maintenance') penalty = 'YM';
+                    else if (activeLoan.prepayType === 'defeasance') penalty = 'DEF';
+                    else if (activeLoan.prepayType === 'stepdown') penalty = `${Math.max(0, 5 - (yr - 1))}%`;
+                    else if (activeLoan.prepayType === 'open') penalty = 'OPEN';
+                    return (
+                      <td key={yr} style={{ padding: '3px 10px', textAlign: 'center', color: penalty === 'LOCKED' ? BT.text.red : penalty === 'OPEN' ? BT.met.financial : BT.text.amber }}>
+                        {penalty}
+                      </td>
+                    );
+                  })}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════════
+          SECTION F — COVENANTS
+      ═══════════════════════════════════════════════════════════════════════ */}
+      <SectionHeader letter="F" title="COVENANTS & TESTS" subtitle="Lender underwriting thresholds — pass/fail" collapsed={collapsed.has('f')} onToggle={() => toggle('f')} />
+      {!collapsed.has('f') && (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 600 }}>
+            <thead><ColHeader /></thead>
+            <tbody>
+              <DebtRow
+                label="MIN DSCR COVENANT"
+                platform={f9ThisLoan?.minDscr.platform ?? preset.minDscr}
+                user={activeLoan.userMinDscr}
+                userEditable
+                format={fmtX}
+                onUserChange={v => updateLoan(activeLoan.id, { userMinDscr: v })}
+                pass={dscrY1 != null ? dscrY1 >= effMinDscr : undefined}
+                sub={dscrY1 != null ? `Y1 DSCR: ${dscrY1.toFixed(2)}×` : undefined}
+              />
+              <DebtRow
+                label="MIN DEBT YIELD"
+                platform={f9ThisLoan?.minDebtYield.platform ?? 0.07}
+                user={activeLoan.userMinDY}
+                userEditable
+                format={fmtPctFull}
+                onUserChange={v => updateLoan(activeLoan.id, { userMinDY: v })}
+                pass={debtYieldY1 != null ? debtYieldY1 >= effMinDY : undefined}
+                sub={debtYieldY1 != null ? `Y1 DY: ${fmtPct(debtYieldY1 * 100)}` : undefined}
+              />
+              <DebtRow
+                label="MIN OCCUPANCY"
+                platform={f9ThisLoan?.minOccupancy.platform ?? 0.90}
+                user={activeLoan.userMinOcc}
+                userEditable
+                format={fmtPctFull}
+                onUserChange={v => updateLoan(activeLoan.id, { userMinOcc: v })}
+              />
+              <DebtRow
+                label="MAX LTV"
+                platform={f9ThisLoan?.maxLtv.platform ?? preset.maxLtv}
+                user={activeLoan.userMaxLtv}
+                userEditable
+                format={fmtPctFull}
+                onUserChange={v => updateLoan(activeLoan.id, { userMaxLtv: v })}
+                pass={effLtv != null ? effLtv <= effMaxLtv : undefined}
+                sub={effLtv != null ? `Current LTV: ${fmtPct(effLtv * 100)}` : undefined}
+              />
+              <DebtRow
+                label="CASH TRAP DSCR TRIGGER"
+                platform={f9ThisLoan?.cashTrapDscr.platform ?? 1.10}
+                user={activeLoan.userCashTrapDscr}
+                userEditable
+                format={fmtX}
+                onUserChange={v => updateLoan(activeLoan.id, { userCashTrapDscr: v })}
+                sub="Cash swept to lender reserve if DSCR falls below"
+              />
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════════
+          SECTION G — RESERVES
+      ═══════════════════════════════════════════════════════════════════════ */}
+      <SectionHeader letter="G" title="RESERVES" subtitle="T&I Escrow · Replacement · Operating — flows to Sources & Uses" collapsed={collapsed.has('g')} onToggle={() => toggle('g')} />
+      {!collapsed.has('g') && (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 600 }}>
+            <thead><ColHeader /></thead>
+            <tbody>
+              <DebtRow
+                label="T&I ESCROW (months)"
+                platform={f9ThisLoan?.tiEscrowMonths.platform ?? 2}
+                user={activeLoan.userTIEscrow}
+                userEditable
+                format={v => v != null ? `${v}mo — ${fmt$(effLoanAmt * effRate / 12 * (v ?? 0))}` : '—'}
+                onUserChange={v => updateLoan(activeLoan.id, { userTIEscrow: v })}
+                sub="Tax & insurance upfront reserve"
+              />
+              <DebtRow
+                label="REPLACEMENT RESERVE ($/unit/yr)"
+                platform={f9ThisLoan?.replacementReserve.platform ?? 300}
+                user={activeLoan.userReplReserve}
+                userEditable
+                format={v => v != null ? `$${v}/unit/yr` : '—'}
+                onUserChange={v => updateLoan(activeLoan.id, { userReplReserve: v })}
+              />
+              <DebtRow
+                label="OPERATING RESERVE (months of DS)"
+                platform={f9ThisLoan?.operatingReserveMonths.platform ?? 3}
+                user={activeLoan.userOpReserveMonths}
+                userEditable
+                format={v => v != null ? `${v}mo — ${fmt$(annualDS1 / 12 * (v ?? 0))}` : '—'}
+                onUserChange={v => updateLoan(activeLoan.id, { userOpReserveMonths: v })}
+              />
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════════
+          SECTION H — REFI EVENT
+      ═══════════════════════════════════════════════════════════════════════ */}
+      <SectionHeader letter="H" title="REFI / PAYOFF EVENT" subtitle="Model refinance trigger — cross-links to Taxes tab" collapsed={collapsed.has('h')} onToggle={() => toggle('h')} />
+      {!collapsed.has('h') && (
+        <div style={{ padding: '10px 14px', borderBottom: `1px solid ${BT.border.medium}` }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+              <input type="checkbox" checked={refi.enabled} onChange={e => setRefi(r => ({ ...r, enabled: e.target.checked }))} />
+              <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.white }}>ENABLE REFI EVENT</span>
+            </label>
+            {refi.enabled && (
+              <>
+                <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>TRIGGER:</span>
+                <select
+                  value={refi.triggerYear}
+                  onChange={e => setRefi(r => ({ ...r, triggerYear: parseInt(e.target.value) }))}
+                  style={{ background: BT.bg.input, border: `1px solid ${BT.border.medium}`, color: BT.text.white, fontFamily: MONO, fontSize: 9, padding: '2px 6px', borderRadius: 2 }}
+                >
+                  {Array.from({ length: Math.min(effTerm, 10) }, (_, i) => i + 1).map(yr => (
+                    <option key={yr} value={yr}>Y{yr}</option>
+                  ))}
+                </select>
+                <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>NEW LOAN TYPE:</span>
+                <select
+                  value={refi.newLoanType}
+                  onChange={e => setRefi(r => ({ ...r, newLoanType: e.target.value as LoanPresetKey }))}
+                  style={{ background: BT.bg.input, border: `1px solid ${BT.border.medium}`, color: BT.text.white, fontFamily: MONO, fontSize: 9, padding: '2px 6px', borderRadius: 2 }}
+                >
+                  {(Object.keys(LOAN_PRESETS) as LoanPresetKey[]).map(k => <option key={k} value={k}>{k}</option>)}
+                </select>
+              </>
+            )}
+          </div>
+
+          {refi.enabled && refiPayoff && (
+            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', padding: '8px 0', borderTop: `1px solid ${BT.border.subtle}` }}>
+              <div>
+                <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginBottom: 2 }}>BALLOON PAYOFF</div>
+                <div style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: BT.text.red }}>{fmt$(refiPayoff.balloon)}</div>
+              </div>
+              <div>
+                <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginBottom: 2 }}>PREPAY PENALTY</div>
+                <div style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: BT.text.amber }}>{fmt$(refiPayoff.prepay)}</div>
+              </div>
+              <div>
+                <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginBottom: 2 }}>EXIT FEE</div>
+                <div style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: BT.text.amber }}>{fmt$(refiPayoff.exitFee)}</div>
+              </div>
+              <div>
+                <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginBottom: 2 }}>TOTAL PAYOFF</div>
+                <div style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: BT.text.white }}>{fmt$(refiPayoff.total)}</div>
+              </div>
+              <div>
+                <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginBottom: 2 }}>NEW LOAN ({refi.newLoanType})</div>
+                <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.cyan }}>{fmtPctFull(refiPreset.rate)} fixed · {refiPreset.term}yr term</div>
+              </div>
+              {/* Cross-link to Taxes tab */}
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => onTabChange?.(4)}
+                onKeyDown={e => { if (e.key === 'Enter') onTabChange?.(4); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 10px', background: '#065f4630', border: `1px solid #10b981`, borderRadius: 4, cursor: onTabChange ? 'pointer' : 'default', alignSelf: 'center' }}
+                title="Click to open Taxes tab — refi doc stamps"
+              >
+                <Link style={{ width: 10, height: 10, color: '#10b981' }} />
+                <span style={{ fontFamily: MONO, fontSize: 8, color: '#10b981', fontWeight: 700 }}>
+                  → TAXES TAB — Refi doc stamps {refiDocStamps != null ? fmt$(refiDocStamps) : ''}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════════
+          AGGREGATED STACK (multi-loan only)
+      ═══════════════════════════════════════════════════════════════════════ */}
+      {loans.length > 1 && (
+        <>
+          <SectionHeader letter="Σ" title="AGGREGATED STACK" subtitle="Total DS · Blended rate · Combined LTC" collapsed={collapsed.has('agg')} onToggle={() => toggle('agg')} />
+          {!collapsed.has('agg') && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 0, borderBottom: `1px solid ${BT.border.medium}` }}>
+              {loans.map(l => {
+                const lf = f9Debt?.loans?.find(x => x.id === l.id);
+                const lp = LOAN_PRESETS[l.loanTypeLabel];
+                const la = l.userLoanAmount ?? lf?.loanAmount.platform ?? baseLoanAmt;
+                const lr = l.rateType === 'Floating'
+                  ? ((l.userSofr ?? lf?.sofr.platform ?? l.sofrCurve[0]) + (l.userSpread ?? lf?.spread.platform ?? lp.spread))
+                  : (l.userRate ?? lf?.interestRate.platform ?? lp.rate);
+                const lds = la * lr;
+                return (
+                  <div key={l.id} style={{ flex: 1, minWidth: 140, padding: '8px 14px', borderRight: `1px solid ${BT.border.subtle}` }}>
+                    <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginBottom: 4 }}>{l.name.toUpperCase()}</div>
+                    <div style={{ fontFamily: MONO, fontSize: 10, color: BT.text.cyan }}>{fmt$(la)}</div>
+                    <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.amber }}>{fmtPctFull(lr)}</div>
+                    <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.red }}>DS: {fmt$(lds)}</div>
+                  </div>
+                );
+              })}
+              <div style={{ flex: 1, minWidth: 140, padding: '8px 14px', background: `${BT.text.purple}08` }}>
+                <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.purple, marginBottom: 4 }}>COMBINED STACK</div>
+                <div style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, color: BT.text.white }}>{fmt$(aggTotalLoan)}</div>
+                <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.amber }}>
+                  BLENDED {fmtPctFull(
+                    loans.reduce((s, l) => {
+                      const lf = f9Debt?.loans?.find(x => x.id === l.id);
+                      const lp = LOAN_PRESETS[l.loanTypeLabel];
+                      const la = l.userLoanAmount ?? lf?.loanAmount.platform ?? baseLoanAmt;
+                      const lr = l.rateType === 'Floating'
+                        ? ((l.userSofr ?? lf?.sofr.platform ?? l.sofrCurve[0]) + (l.userSpread ?? lf?.spread.platform ?? lp.spread))
+                        : (l.userRate ?? lf?.interestRate.platform ?? lp.rate);
+                      return s + la * lr;
+                    }, 0) / (aggTotalLoan || 1)
+                  )}
+                </div>
+                <div style={{ fontFamily: MONO, fontSize: 9, color: ltvColor(purchasePrice ? aggTotalLoan / purchasePrice : null) }}>
+                  LTC: {purchasePrice ? fmtPct((aggTotalLoan / purchasePrice) * 100) : '—'}
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════════
+          ANNUAL DEBT SERVICE SCHEDULE
+      ═══════════════════════════════════════════════════════════════════════ */}
+      <div style={{ padding: '5px 12px', background: BT.bg.header, borderBottom: `1px solid ${BT.border.subtle}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+        <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, letterSpacing: 0.5 }}>
+          ANNUAL DEBT SERVICE — {activeLoan.name.toUpperCase()} · {annualRows.filter(r => r.covenantBreach).length > 0 && <span style={{ color: BT.text.red }}>⚠ {annualRows.filter(r => r.covenantBreach).length} COVENANT BREACH{annualRows.filter(r => r.covenantBreach).length > 1 ? 'ES' : ''}</span>}
+        </span>
+        <button onClick={() => setShowAnnual(!showAnnual)} style={{ background: 'transparent', border: `1px solid ${BT.border.medium}`, color: BT.text.muted, fontFamily: MONO, fontSize: 8, padding: '2px 8px', cursor: 'pointer', borderRadius: 2 }}>
+          {showAnnual ? 'HIDE' : 'SHOW'}
+        </button>
       </div>
-
-      {showAmort && (
-        <div style={{ overflowX: 'auto', maxHeight: 400 }}>
+      {showAnnual && (
+        <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 9 }}>
             <thead>
-              <tr style={{ borderBottom: `1px solid ${BT.border.medium}`, position: 'sticky', top: 0, background: BT.bg.header }}>
-                {['MONTH', 'PAYMENT', 'INTEREST', 'PRINCIPAL', 'BALANCE', 'STATUS'].map(h => (
-                  <th key={h} style={{ padding: '4px 6px', color: BT.text.muted, textAlign: h === 'MONTH' || h === 'STATUS' ? 'left' : 'right', fontWeight: 500 }}>{h}</th>
+              <tr style={{ borderBottom: `2px solid ${BT.border.medium}`, background: BT.bg.header }}>
+                {['YR', 'OPEN BAL', 'INTEREST', 'PRINCIPAL', 'DEBT SVC', 'CLOSE BAL', 'NOI', 'DSCR', 'DY', 'COVENANT'].map(h => (
+                  <th key={h} style={{ padding: '4px 8px', color: BT.text.muted, textAlign: h === 'YR' || h === 'COVENANT' ? 'left' : 'right', fontWeight: 500 }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {amortSchedule.map((row, i) => {
-                const isTransition = i > 0 && row.isIO !== amortSchedule[i - 1].isIO;
+              {annualRows.filter(r => r.year <= holdYears).map((row, i) => (
+                <tr key={row.year} style={{ background: row.covenantBreach ? `${BT.text.red}10` : i % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt, borderBottom: `1px solid ${row.covenantBreach ? BT.text.red : BT.border.subtle}` }}>
+                  <td style={{ padding: '3px 8px', color: BT.text.secondary }}>Y{row.year}</td>
+                  <td style={{ padding: '3px 8px', color: BT.text.cyan, textAlign: 'right' }}>{fmt$(row.openBalance)}</td>
+                  <td style={{ padding: '3px 8px', color: BT.text.red, textAlign: 'right' }}>{fmt$(row.annualInterest)}</td>
+                  <td style={{ padding: '3px 8px', color: BT.met.financial, textAlign: 'right' }}>{fmt$(row.annualPrincipal)}</td>
+                  <td style={{ padding: '3px 8px', color: BT.text.red, textAlign: 'right', fontWeight: 700 }}>{fmt$(row.annualDS)}</td>
+                  <td style={{ padding: '3px 8px', color: BT.text.cyan, textAlign: 'right' }}>{fmt$(row.closeBalance)}</td>
+                  <td style={{ padding: '3px 8px', color: BT.met.financial, textAlign: 'right' }}>{fmt$(row.noi)}</td>
+                  <td style={{ padding: '3px 8px', textAlign: 'right', color: dscrColor(row.dscr), fontWeight: 700 }}>{row.dscr != null ? `${row.dscr.toFixed(2)}×` : '—'}</td>
+                  <td style={{ padding: '3px 8px', textAlign: 'right', color: BT.text.amber }}>{row.debtYield != null ? fmtPct(row.debtYield * 100) : '—'}</td>
+                  <td style={{ padding: '3px 8px' }}>
+                    {row.covenantBreach
+                      ? <span style={{ color: BT.text.red, fontWeight: 700 }}>✗ BREACH</span>
+                      : <span style={{ color: BT.met.financial }}>✓ OK</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════════
+          MONTHLY AMORTIZATION SCHEDULE
+      ═══════════════════════════════════════════════════════════════════════ */}
+      <SectionHeader letter="M" title="MONTHLY AMORTIZATION" subtitle={`${amortRows.length} rows — IO rows highlighted`} collapsed={collapsed.has('amort')} onToggle={() => toggle('amort')} />
+      {!collapsed.has('amort') && (
+        <div style={{ overflowX: 'auto', maxHeight: 400 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 9 }}>
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${BT.border.medium}`, position: 'sticky', top: 0, background: BT.bg.header, zIndex: 2 }}>
+                {['MO', 'PAYMENT', 'INTEREST', 'PRINCIPAL', 'BALANCE', 'STATUS'].map(h => (
+                  <th key={h} style={{ padding: '4px 8px', color: BT.text.muted, textAlign: h === 'MO' || h === 'STATUS' ? 'left' : 'right', fontWeight: 500 }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {amortRows.map((row, i) => {
+                const isTransition = i > 0 && row.isIO !== amortRows[i - 1].isIO;
                 return (
                   <tr key={row.month} style={{
-                    background: isTransition ? `${BT.text.amber}15` : i % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt,
+                    background: isTransition ? `${BT.text.amber}15` : row.isIO ? `${BT.text.amber}08` : i % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt,
                     borderBottom: isTransition ? `2px solid ${BT.text.amber}` : `1px solid ${BT.border.subtle}`,
                   }}>
-                    <td style={{ padding: '2px 6px', color: BT.text.secondary }}>{row.month}</td>
-                    <td style={{ padding: '2px 6px', color: BT.text.primary, textAlign: 'right' }}>{fmt$(row.payment)}</td>
-                    <td style={{ padding: '2px 6px', color: BT.text.red, textAlign: 'right' }}>{fmt$(row.interest)}</td>
-                    <td style={{ padding: '2px 6px', color: BT.met.financial, textAlign: 'right' }}>{fmt$(row.principal)}</td>
-                    <td style={{ padding: '2px 6px', color: BT.text.cyan, textAlign: 'right' }}>{fmt$(row.balance)}</td>
-                    <td style={{ padding: '2px 6px' }}>
-                      {row.isIO ? <Bd c={BT.text.amber}>IO</Bd> : <Bd c={BT.met.financial}>AMORT</Bd>}
-                      {isTransition && <span style={{ marginLeft: 4, fontFamily: MONO, fontSize: 8, color: BT.text.amber }}>← TRANSITION</span>}
+                    <td style={{ padding: '2px 8px', color: BT.text.muted }}>{row.month}</td>
+                    <td style={{ padding: '2px 8px', color: BT.text.primary, textAlign: 'right' }}>{fmt$(row.payment)}</td>
+                    <td style={{ padding: '2px 8px', color: BT.text.red, textAlign: 'right' }}>{fmt$(row.interest)}</td>
+                    <td style={{ padding: '2px 8px', color: BT.met.financial, textAlign: 'right' }}>{fmt$(row.principal)}</td>
+                    <td style={{ padding: '2px 8px', color: BT.text.cyan, textAlign: 'right' }}>{fmt$(row.balance)}</td>
+                    <td style={{ padding: '2px 8px' }}>
+                      {row.isIO
+                        ? <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.amber, border: `1px solid ${BT.text.amber}40`, padding: '0 4px', borderRadius: 2 }}>IO</span>
+                        : <span style={{ fontFamily: MONO, fontSize: 8, color: BT.met.financial }}>AMORT</span>}
+                      {isTransition && <span style={{ marginLeft: 6, fontFamily: MONO, fontSize: 7, color: BT.text.amber }}>← IO END</span>}
                     </td>
                   </tr>
                 );
@@ -347,6 +1170,7 @@ export function DebtTab({ dealId, deal, assumptions, modelResults, f9Financials 
           </table>
         </div>
       )}
+
     </div>
   );
 }

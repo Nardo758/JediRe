@@ -259,6 +259,8 @@ export interface F9DealFinancials {
   userOverrides: Record<string, Record<number, number|null>>;
   meta: { seeded: boolean; updatedAt: string|null };
   taxes: F9TaxData | null;
+  /** Debt stack — senior + mezz/B-Note loans (v2) */
+  debt: F9DebtStack | null;
 }
 
 export type F9ProFormaRow = F9DealFinancials['proforma']['year1'][number];
@@ -347,6 +349,60 @@ export interface FinancialEngineTabProps {
   onTabChange?: (tabIndex: number) => void;
   /** Refetch f9Financials from the server (e.g. after a PATCH override) */
   onF9Refresh?: () => void;
+}
+
+// ─── F9 Debt Stack (v2) ───────────────────────────────────────────────────────
+
+export type PrepayType = 'lockout' | 'yield_maintenance' | 'defeasance' | 'stepdown' | 'open';
+
+export interface F9DebtLoan {
+  /** Unique id within the stack, e.g. 'senior' | 'mezz' */
+  id: string;
+  /** Display label */
+  name: string;
+  /** Bridge | Agency | CMBS | HUD | LifeCo | Mezz */
+  loanTypeLabel: string;
+  /** Fixed | Floating */
+  rateType: 'Fixed' | 'Floating';
+  /** 4-column values — null means source has no data for this field */
+  loanAmount: { broker: number|null; platform: number|null };
+  ltcPct:     { broker: number|null; platform: number|null };
+  ltv:        { platform: number|null };
+  interestRate: { broker: number|null; platform: number|null };
+  sofr:       { platform: number|null };
+  spread:     { broker: number|null; platform: number|null };
+  capRate:    { broker: number|null; platform: number|null };
+  termYears:  { broker: number|null; platform: number|null };
+  amortYears: { broker: number|null; platform: number|null };
+  ioMonths:   { broker: number|null; platform: number|null };
+  origFee:    { broker: number|null; platform: number|null };
+  exitFee:    { platform: number|null };
+  rateCapCost:{ broker: number|null; platform: number|null };
+  minDscr:    { platform: number|null };
+  minDebtYield: { platform: number|null };
+  minOccupancy: { platform: number|null };
+  maxLtv:     { platform: number|null };
+  cashTrapDscr: { platform: number|null };
+  tiEscrowMonths:      { platform: number|null };
+  replacementReserve:  { platform: number|null };
+  operatingReserveMonths: { platform: number|null };
+  prepayType: PrepayType;
+  /** Derived annual DS at platform rate/amount */
+  derivedAnnualDS: number | null;
+  /** SOFR forward curve (5 years), pct decimal e.g. 0.05 */
+  sofrCurve: number[];
+}
+
+export interface F9DebtStack {
+  loans: F9DebtLoan[];
+  /** Aggregate totals across all loans */
+  aggregate: {
+    totalLoanAmount: number|null;
+    blendedRatePct:  number|null;
+    combinedLtcPct:  number|null;
+    totalAnnualDS:   number|null;
+    aggregateDscr:   number|null;
+  };
 }
 
 export const fmt$ = (n: number): string => {
