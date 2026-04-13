@@ -286,6 +286,23 @@ export interface F9DealFinancials {
       sellerFinancing: number | null;
     };
   } | null;
+  /** Waterfall / capital configuration */
+  waterfall: {
+    waterfallType: string;
+    lpShare: number;
+    gpShare: number;
+    prefRate: number;
+    tiers: Array<{ triggerIrr: number; lpPct: number; gpPct: number }>;
+    fees: {
+      acquisitionFeePct: number;
+      assetMgmtFeePct: number;
+      assetMgmtBasis: string;
+      constructionMgmtPct: number;
+      dispositionFeePct: number;
+      refinancingFeePct: number;
+    };
+    userOverrides: { lpShare: number | null; gpShare: number | null; prefRate: number | null };
+  } | null;
 }
 
 export type F9ProFormaRow = F9DealFinancials['proforma']['year1'][number];

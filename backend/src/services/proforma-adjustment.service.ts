@@ -1375,6 +1375,23 @@ export interface DealFinancials {
       taxCounty: boolean | null;
     };
   } | null;
+  /** Waterfall / capital configuration with persisted overrides */
+  waterfall: {
+    waterfallType: string;
+    lpShare: number;
+    gpShare: number;
+    prefRate: number;
+    tiers: Array<{ triggerIrr: number; lpPct: number; gpPct: number }>;
+    fees: {
+      acquisitionFeePct: number;
+      assetMgmtFeePct: number;
+      assetMgmtBasis: unknown;
+      constructionMgmtPct: number;
+      dispositionFeePct: number;
+      refinancingFeePct: number;
+    };
+    userOverrides: { lpShare: number | null; gpShare: number | null; prefRate: number | null };
+  } | null;
 }
 
 /**
@@ -2291,6 +2308,60 @@ export async function getDealFinancials(
     },
   };
 
+  // ── Waterfall / Capital config overrides (wf: prefix) ──────────────────────
+  const wfPyr = (assumptionsRow?.per_year_overrides ?? {}) as Record<string, unknown>;
+  const wfOvr = (key: string): number | null => {
+    const entry = (wfPyr[`wf:${key}`] as Record<string, unknown> | null);
+    const v = entry?.value;
+    return typeof v === 'number' ? v : null;
+  };
+
+  const wfLpShare    = wfOvr('lpShare')    ?? 0.9;
+  const wfGpShare    = wfOvr('gpShare')    ?? 0.1;
+  const wfPrefRate   = wfOvr('prefRate')   ?? 0.08;
+  const wfWaterfallType = (wfPyr['wf:waterfallType'] as Record<string, unknown> | null)?.value ?? 'american';
+  const wfPromoteTiers: Array<{ triggerIrr: number; lpPct: number; gpPct: number }> = [];
+  for (let i = 0; i < 4; i++) {
+    const trigger = wfOvr(`tier${i}TriggerIrr`);
+    const lp      = wfOvr(`tier${i}LpPct`);
+    const gp      = wfOvr(`tier${i}GpPct`);
+    if (trigger != null || lp != null || gp != null || i < 3) {
+      wfPromoteTiers.push({
+        triggerIrr: trigger ?? (i === 0 ? 0.08 : i === 1 ? 0.12 : i === 2 ? 0.15 : 0.20),
+        lpPct: lp ?? (i === 0 ? 0.80 : i === 1 ? 0.70 : i === 2 ? 0.60 : 0.50),
+        gpPct: gp ?? (i === 0 ? 0.20 : i === 1 ? 0.30 : i === 2 ? 0.40 : 0.50),
+      });
+    }
+  }
+  if (wfPromoteTiers.length === 0) {
+    wfPromoteTiers.push(
+      { triggerIrr: 0.08, lpPct: 0.80, gpPct: 0.20 },
+      { triggerIrr: 0.12, lpPct: 0.70, gpPct: 0.30 },
+      { triggerIrr: 0.15, lpPct: 0.60, gpPct: 0.40 },
+    );
+  }
+
+  const waterfall = {
+    waterfallType: typeof wfWaterfallType === 'string' ? wfWaterfallType : 'american',
+    lpShare:   wfLpShare,
+    gpShare:   wfGpShare,
+    prefRate:  wfPrefRate,
+    tiers: wfPromoteTiers,
+    fees: {
+      acquisitionFeePct:    wfOvr('acquisitionFeePct')    ?? 0.01,
+      assetMgmtFeePct:      wfOvr('assetMgmtFeePct')      ?? 0.015,
+      assetMgmtBasis:       (wfPyr['wf:assetMgmtBasis'] as Record<string, unknown> | null)?.value ?? 'equity',
+      constructionMgmtPct:  wfOvr('constructionMgmtPct')  ?? 0,
+      dispositionFeePct:    wfOvr('dispositionFeePct')     ?? 0.01,
+      refinancingFeePct:    wfOvr('refinancingFeePct')     ?? 0,
+    },
+    userOverrides: {
+      lpShare:              wfOvr('lpShare'),
+      gpShare:              wfOvr('gpShare'),
+      prefRate:             wfOvr('prefRate'),
+    },
+  };
+
   return {
     dealId,
     dealName: deal.name,
@@ -2309,6 +2380,7 @@ export async function getDealFinancials(
     taxes,
     debt: debtStack,
     sourcesUses,
+    waterfall,
   };
 }
 
@@ -2571,6 +2643,32 @@ export async function applyFinancialsOverride(
   // Route Sources & Uses overrides to per_year_overrides with 'su:' prefix
   // Field format: "su:{fieldName}" e.g. "su:workingCapital"
   if (field.startsWith('su:')) {
+    const pyEntry = {
+      field, year: year ?? 0, value, updatedBy: userId,
+      updatedAt: new Date().toISOString(),
+      resolution: value != null ? 'override' : 'cleared',
+    };
+    await pool.query(
+      `UPDATE deal_assumptions
+          SET per_year_overrides = jsonb_set(
+                COALESCE(per_year_overrides, '{}'::jsonb),
+                $2::text[],
+                $3::jsonb
+              ),
+              updated_at = NOW()
+        WHERE deal_id = $1`,
+      [dealId, `{${field}}`, JSON.stringify(pyEntry)]
+    );
+    return {
+      year1Key: field, year: year ?? 0, appliedValue: value, resolution: 'user_override',
+      updatedCell: { [field]: value },
+      derivedRecomputation: { egi: null, noi: null, totalOpex: null, derivedVacancyPct: null, affectedFields: [field] },
+    };
+  }
+
+  // Route Waterfall/Capital config overrides to per_year_overrides with 'wf:' prefix
+  // Field format: "wf:{fieldName}" e.g. "wf:waterfallType", "wf:lpShare", "wf:tier0LpPct"
+  if (field.startsWith('wf:')) {
     const pyEntry = {
       field, year: year ?? 0, value, updatedBy: userId,
       updatedAt: new Date().toISOString(),
