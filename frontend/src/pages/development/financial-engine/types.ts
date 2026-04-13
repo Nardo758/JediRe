@@ -243,8 +243,9 @@ export interface F9DealFinancials {
     minDebtYield: number|null; minDebtYieldYear: number|null; avgDebtYield: number|null; maturityLtv: number|null;
     refiEventCount: number;
     holdMonths: number|null; equityRecoveryYear: number|null; equityRecoveryMonths: number|null;
-    breakevenCfYear: number|null; breakevenCfMonths: number|null;
+    breakevenCfYear: number|null; breakevenCfMonths: number|null; breakevenCfDateStr: string|null;
     leaseUpMonths: number|null; prefAccrualYears: number|null; peakEquityDeployed: number|null;
+    peakEquityDateStr: string|null;
     totalLpDistributions: number|null; prefAccrued: number|null; prefPaid: number|null;
     netDistributionsByYear: number[]; cumulativeCfByYear: number[];
     lpTrancheReturns: Array<{ id: string; avgCoc: number|null; twr: number|null; promoteTierHit: boolean|null }>;

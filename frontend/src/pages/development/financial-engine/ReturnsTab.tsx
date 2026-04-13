@@ -82,12 +82,14 @@ function Sparkline({ data, color = BT.met.financial, width = 220, height = 32 }:
 }
 
 // ─── Editable hurdle input ──────────────────────────────────────────────────
-function HurdleInput({ label, value, onChange, isX }: {
-  label: string; value: number; onChange: (v: number) => void; isX?: boolean;
+function HurdleInput({ label, value, onChange, isX, isNum }: {
+  label: string; value: number; onChange: (v: number) => void; isX?: boolean; isNum?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft]     = useState('');
-  const display = isX ? `${value.toFixed(2)}×` : `${(value * 100).toFixed(1)}%`;
+  const display = isNum
+    ? (value >= 1e6 ? `$${(value / 1e6).toFixed(1)}M` : value >= 1e3 ? `$${(value / 1e3).toFixed(0)}K` : `$${value.toFixed(0)}`)
+    : isX ? `${value.toFixed(2)}×` : `${(value * 100).toFixed(1)}%`;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
       <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>{label}</span>
@@ -96,13 +98,13 @@ function HurdleInput({ label, value, onChange, isX }: {
           onChange={e => setDraft(e.target.value)}
           onBlur={() => {
             const n = parseFloat(draft.replace(/[^0-9.-]/g, ''));
-            if (!isNaN(n)) onChange(isX ? n : n / 100);
+            if (!isNaN(n)) onChange(isNum ? n : isX ? n : n / 100);
             setEditing(false);
           }}
           onKeyDown={e => {
             if (e.key === 'Enter') {
               const n = parseFloat(draft.replace(/[^0-9.-]/g, ''));
-              if (!isNaN(n)) onChange(isX ? n : n / 100);
+              if (!isNaN(n)) onChange(isNum ? n : isX ? n : n / 100);
               setEditing(false);
             }
             if (e.key === 'Escape') setEditing(false);
@@ -128,11 +130,16 @@ function HurdleInput({ label, value, onChange, isX }: {
 }
 
 // ─── Hero tile with hurdle color ────────────────────────────────────────────
-function HeroTile({ label, value, hurdle, actual, isX, baseColor }: {
-  label: string; value: string; hurdle?: number; actual?: number | null; isX?: boolean; baseColor: string;
+function HeroTile({ label, value, hurdle, actual, isX, isNum, baseColor }: {
+  label: string; value: string; hurdle?: number; actual?: number | null; isX?: boolean; isNum?: boolean; baseColor: string;
 }) {
   const aboveHurdle = hurdle != null && actual != null ? actual >= hurdle : null;
   const statusColor = aboveHurdle == null ? baseColor : aboveHurdle ? BT.text.green : BT.text.red;
+  const fmtHurdle = (h: number) => {
+    if (isNum) return h >= 1e6 ? `$${(h/1e6).toFixed(1)}M` : h >= 1e3 ? `$${(h/1e3).toFixed(0)}K` : `$${h.toFixed(0)}`;
+    if (isX)   return `${h.toFixed(2)}×`;
+    return `${(h * 100).toFixed(1)}%`;
+  };
   return (
     <div style={{
       flex: 1, padding: '10px 14px', textAlign: 'center',
@@ -147,7 +154,7 @@ function HeroTile({ label, value, hurdle, actual, isX, baseColor }: {
       <div style={{ fontFamily: MONO, fontSize: 18, fontWeight: 700, color: statusColor }}>{value}</div>
       {hurdle != null && (
         <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginTop: 3 }}>
-          hurdle: {isX ? `${hurdle.toFixed(2)}×` : `${(hurdle * 100).toFixed(1)}%`}
+          hurdle: {fmtHurdle(hurdle)}
           {aboveHurdle != null && (
             <span style={{ marginLeft: 4, color: statusColor }}>
               {aboveHurdle ? '▲ pass' : '▼ miss'}
@@ -168,9 +175,10 @@ export function ReturnsTab({ f9Financials, onTabChange }: FinancialEngineTabProp
   const proj   = f9Financials?.projections;
 
   // Local hurdle state (no server persistence needed)
-  const [irrHurdle, setIrrHurdle] = useState(0.12);
-  const [emHurdle,  setEmHurdle]  = useState(1.8);
-  const [cocHurdle, setCocHurdle] = useState(0.07);
+  const [irrHurdle,     setIrrHurdle]     = useState(0.12);
+  const [emHurdle,      setEmHurdle]      = useState(1.8);
+  const [cocHurdle,     setCocHurdle]     = useState(0.07);
+  const [promoteHurdle, setPromoteHurdle] = useState(500000);
 
   const prefRate = wf?.prefRate ?? 0.08;
 
@@ -220,9 +228,10 @@ export function ReturnsTab({ f9Financials, onTabChange }: FinancialEngineTabProp
         <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, fontWeight: 700, letterSpacing: 0.6 }}>
           HURDLE TARGETS
         </span>
-        <HurdleInput label="IRR Hurdle" value={irrHurdle} onChange={setIrrHurdle} />
-        <HurdleInput label="EM Hurdle"  value={emHurdle}  onChange={setEmHurdle}  isX />
-        <HurdleInput label="CoC Hurdle" value={cocHurdle} onChange={setCocHurdle} />
+        <HurdleInput label="IRR Hurdle"     value={irrHurdle}     onChange={setIrrHurdle} />
+        <HurdleInput label="EM Hurdle"      value={emHurdle}      onChange={setEmHurdle}  isX />
+        <HurdleInput label="CoC Hurdle"     value={cocHurdle}     onChange={setCocHurdle} />
+        <HurdleInput label="Promote Hurdle" value={promoteHurdle} onChange={setPromoteHurdle} isNum />
         <span style={{ marginLeft: 'auto', fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
           Click values to edit · green = above hurdle · red = below hurdle
         </span>
@@ -244,6 +253,7 @@ export function ReturnsTab({ f9Financials, onTabChange }: FinancialEngineTabProp
         />
         <HeroTile
           label="GP PROMOTE EARNED" value={ret?.gpPromoteEarned != null ? fmt$(ret.gpPromoteEarned) : '—'}
+          hurdle={promoteHurdle} actual={ret?.gpPromoteEarned ?? null} isX={false}
           baseColor={BT.text.orange}
         />
       </div>
@@ -476,13 +486,17 @@ export function ReturnsTab({ f9Financials, onTabChange }: FinancialEngineTabProp
           <SectionHeader label="§ 6  TIME-BASED METRICS" color={BT.text.secondary} />
           <KvRow label="Hold Period"               value={fmtMo(ret?.holdMonths ?? null)} bold />
           <KvRow label="Lease-Up Period"           value={ret?.leaseUpMonths != null ? fmtMo(ret.leaseUpMonths) : '—'} />
+          <KvRow label="Peak Equity Date"
+            value={ret?.peakEquityDateStr ?? '—'}
+            sub={ret?.peakEquityDeployed != null ? fmt$(ret.peakEquityDeployed) : undefined}
+          />
           <KvRow label="Equity Recovery"
             value={ret?.equityRecoveryYear != null ? fmtYr(ret.equityRecoveryYear) : '—'}
             sub={ret?.equityRecoveryMonths != null ? `≈ ${ret.equityRecoveryMonths} mo` : undefined}
           />
           <KvRow label="Breakeven CF"
             value={ret?.breakevenCfYear != null ? fmtYr(ret.breakevenCfYear) : '—'}
-            sub={ret?.breakevenCfMonths != null ? `≈ ${ret.breakevenCfMonths} mo` : undefined}
+            sub={ret?.breakevenCfDateStr ?? (ret?.breakevenCfMonths != null ? `≈ ${ret.breakevenCfMonths} mo` : undefined)}
           />
           <KvRow label="Pref Accrual Years"
             value={ret?.prefAccrualYears != null ? `${ret.prefAccrualYears} yr${ret.prefAccrualYears !== 1 ? 's' : ''}` : '—'}
@@ -533,7 +547,7 @@ export function ReturnsTab({ f9Financials, onTabChange }: FinancialEngineTabProp
             cursor: 'pointer', borderRadius: 4, whiteSpace: 'nowrap',
           }}
         >
-          ∿ Run Sensitivity →
+          ⊞ Run Monte Carlo →
         </button>
       </div>
 

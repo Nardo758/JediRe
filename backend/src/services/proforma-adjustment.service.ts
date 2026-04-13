@@ -1280,9 +1280,11 @@ export interface DealFinancials {
     equityRecoveryMonths: number | null;
     breakevenCfYear: number | null;
     breakevenCfMonths: number | null;
+    breakevenCfDateStr: string | null;
     leaseUpMonths: number | null;
     prefAccrualYears: number | null;
     peakEquityDeployed: number | null;
+    peakEquityDateStr: string | null;
     // ── LP aggregate ─────────────────────────────────────────────────
     totalLpDistributions: number | null;
     prefAccrued: number | null;
@@ -1562,7 +1564,7 @@ export async function getDealFinancials(
 
   const [dealRes, assumptionsRes, proformaAssumRes, trafficProjection] = await Promise.all([
     pool.query(
-      'SELECT id, name, city, state_code, target_units, budget, deal_data FROM deals WHERE id = $1',
+      'SELECT id, name, city, state_code, target_units, budget, deal_data, timeline_start FROM deals WHERE id = $1',
       [dealId]
     ),
     pool.query(
@@ -3002,11 +3004,18 @@ export async function getDealFinancials(
       const totalCost = sourcesUses?.totalUses ?? purchasePrice;
       const yocUntrended = totalCost && year1noi && totalCost > 0 ? +(year1noi / totalCost).toFixed(4) : null;
       const yocTrended   = totalCost && peakNoi > 0 && totalCost > 0 ? +(peakNoi / totalCost).toFixed(4) : null;
-      const developmentSpread = lastRow.exitCap != null && goingInCapRate != null ? +(lastRow.exitCap - goingInCapRate).toFixed(4) : null;
+      // developmentSpread = stabilized cap rate minus going-in cap rate
+      const developmentSpread = stabilizedCapRate != null && goingInCapRate != null ? +(stabilizedCapRate - goingInCapRate).toFixed(4) : null;
 
-      // ── Avg NOI growth ────────────────────────────────────────────────────────
-      const rgValues = rows.map(r => r.rentGrowthPct).filter((g): g is number => g != null);
-      const avgNoiGrowth = rgValues.length > 0 ? +(rgValues.reduce((s, g) => s + g, 0) / rgValues.length).toFixed(4) : null;
+      // ── Avg NOI growth (actual YoY from projection rows) ──────────────────────
+      const noiGrowthValues: number[] = [];
+      for (let i = 1; i < rows.length; i++) {
+        const prev = rows[i - 1].noi;
+        const curr = rows[i].noi;
+        if (prev > 0) noiGrowthValues.push((curr - prev) / prev);
+      }
+      const avgNoiGrowth = noiGrowthValues.length > 0
+        ? +(noiGrowthValues.reduce((s, g) => s + g, 0) / noiGrowthValues.length).toFixed(4) : null;
 
       // ── Debt metrics ──────────────────────────────────────────────────────────
       const dscrRows = rows.map(r => ({ yr: r.year, dscr: r.dscr, dy: r.debtYield })).filter(r => r.dscr != null);
@@ -3106,6 +3115,17 @@ export async function getDealFinancials(
       const prefAccrualYears = capital
         ? capital.schedule.filter(p => p.prefPaid < p.prefAccrued * 0.99).length
         : null;
+      // Calendar date helpers — base = deal.timeline_start or today
+      const baseDate: Date = deal.timeline_start ? new Date(deal.timeline_start) : new Date();
+      const addMonths = (d: Date, m: number): string => {
+        const r = new Date(d);
+        r.setMonth(r.getMonth() + m);
+        return r.toISOString().slice(0, 10);
+      };
+      // Peak equity: at deal close (timeline_start, since equity is deployed at acquisition)
+      const peakEquityDateStr = baseDate ? baseDate.toISOString().slice(0, 10) : null;
+      // Breakeven CF date: closing date + breakevenCfMonths
+      const breakevenCfDateStr = breakevenCfMonths != null ? addMonths(baseDate, breakevenCfMonths) : null;
 
       // ── Refi events: 0 (no refi engine yet) ─────────────────────────────────
       const refiEventCount = 0;
@@ -3118,7 +3138,8 @@ export async function getDealFinancials(
         minDebtYield: minDyRow?.dy ?? null, minDebtYieldYear: minDyRow?.yr ?? null, avgDebtYield, maturityLtv,
         refiEventCount,
         holdMonths, equityRecoveryYear, equityRecoveryMonths, breakevenCfYear, breakevenCfMonths,
-        leaseUpMonths, prefAccrualYears, peakEquityDeployed: equity,
+        breakevenCfDateStr, leaseUpMonths, prefAccrualYears, peakEquityDeployed: equity,
+        peakEquityDateStr,
         totalLpDistributions: totalLpDist,
         prefAccrued: totalPrefAccrued, prefPaid: totalPrefPaid,
         netDistributionsByYear, cumulativeCfByYear, lpTrancheReturns,
