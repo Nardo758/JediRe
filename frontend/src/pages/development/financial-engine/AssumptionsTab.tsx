@@ -337,7 +337,7 @@ interface RowDef {
 }
 
 // Build a RowDef from a backend OSRow + FieldMeta
-function buildRowDef(osRow: OSRow, section: 5|7, meta: FieldMeta): RowDef {
+function buildRowDef(osRow: OSRow, section: 5|6, meta: FieldMeta): RowDef {
   const field = osRow.field;
   return {
     key: field,
@@ -383,28 +383,28 @@ function buildRowDef(osRow: OSRow, section: 5|7, meta: FieldMeta): RowDef {
   };
 }
 
-// Section headers — v2 (10-section layout; 1-4 rendered as KeystonePanel above table)
+// Section headers — v2 (9-section layout; 1-4 rendered as KeystonePanel above table)
 const SEC: Record<number,string> = {
   1: '1  KEYSTONE',
   2: '2  DEAL INFO',
   3: '3  ACQUISITION',
   4: '4  UNIT MIX & RENT ROLL',
-  5: '5  REVENUE  [proforma.year1]',
-  6: '6  TRAFFIC INTEL  [M07 · T-01 / T-05 / T-06]',
-  7: '7  OPERATING EXPENSES  [proforma.year1]',
-  8: '8  CAPEX & RESERVES',
-  9: '9  DISPOSITION & HOLD',
-  10: '10  FINANCING  [→ Debt Tab]',
+  5: '5  REVENUE  [proforma.year1 · M07 Traffic Intel]',
+  6: '6  OPERATING EXPENSES  [proforma.year1]',
+  7: '7  CAPEX & RESERVES',
+  8: '8  DISPOSITION & HOLD',
+  9: '9  FINANCING  [→ Debt Tab]',
 };
 
-// ─── Static row definitions (v2: Sections 6, 8, 9, 10) ───────────────────────
-// Sections 5 (Revenue) and 7 (OpEx) are backend-driven via buildRowDef.
+// ─── Static row definitions (v2: Sections 5-9) ────────────────────────────────
+// Revenue (5) and OpEx (6) are backend-driven via buildRowDef.
+// M07 Traffic Intel rows are in section 5 (appended after revenue rows in Revenue section).
 // Sections 1-4 (Keystone/DealInfo/Acquisition/UnitMix) are rendered as KeystonePanel.
 const STATIC_ROWS: RowDef[] = [
 
-  // ── Section 6: Traffic Intel [M07] ─────────────────────────────────────────
+  // ── Section 5: Traffic Intel [M07] — subsection within Revenue ─────────────
   {
-    key: 't01WeeklyTours', label: 'T-01  Walk-Ins / Week', section: 6, unit: 'per_wk',
+    key: 't01WeeklyTours', label: 'T-01  Walk-Ins / Week', section: 5, unit: 'per_wk',
     isM07: true, format: fmtPwk, patchField: 't01WeeklyTours',
     description: 'T-01 AADT-equivalent inbound tour volume per week. Primary demand signal from traffic engine.',
     platformSource: 'M07 — T-01 real-time signal per year', brokerSource: 'N/A — live traffic signal',
@@ -413,7 +413,7 @@ const STATIC_ROWS: RowDef[] = [
     getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
   },
   {
-    key: 't05ClosingRatio', label: 'T-05  Trade-Area Capture Rate %', section: 6, unit: 'pct',
+    key: 't05ClosingRatio', label: 'T-05  Trade-Area Capture Rate %', section: 5, unit: 'pct',
     isM07: true, format: fmtPct2, patchField: 't05ClosingRatio',
     description: 'T-05 trade-area score — tour-to-lease capture rate. % of tours that convert to signed leases.',
     platformSource: 'M07 — T-05 closing ratio per year', brokerSource: 'N/A — live traffic signal',
@@ -425,7 +425,7 @@ const STATIC_ROWS: RowDef[] = [
     getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
   },
   {
-    key: 't06WeeklyLeases', label: 'T-06  Velocity Signal — Net Leases/Wk', section: 6, unit: 'per_wk',
+    key: 't06WeeklyLeases', label: 'T-06  Velocity Signal — Net Leases/Wk', section: 5, unit: 'per_wk',
     isM07: true, format: fmtPwk, patchField: 't06WeeklyLeases',
     description: 'T-06 velocity signal — net new leases per week. Key lease-up velocity indicator.',
     platformSource: 'M07 — T-06 signal per year', brokerSource: 'N/A — live traffic signal',
@@ -434,7 +434,7 @@ const STATIC_ROWS: RowDef[] = [
     getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
   },
   {
-    key: 't07Trajectory', label: 'T-07  Demand Trajectory % YoY', section: 6, unit: 'pct',
+    key: 't07Trajectory', label: 'T-07  Demand Trajectory % YoY', section: 5, unit: 'pct',
     isM07: true, format: n => (n >= 0 ? '+' : '') + (n * 100).toFixed(1) + '%', readonly: true,
     description: 'YoY tour-volume change (T-07). Positive = accelerating demand.',
     platformSource: 'M07 — T-07 derived from T-01 YoY change', brokerSource: 'N/A — derived',
@@ -448,7 +448,7 @@ const STATIC_ROWS: RowDef[] = [
     getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
   },
   {
-    key: 'derivedVacancy', label: 'Derived Vacancy % (M07 equilibrium)', section: 6, unit: 'pct',
+    key: 'derivedVacancy', label: 'Derived Vacancy % (M07 equilibrium)', section: 5, unit: 'pct',
     isM07: true, format: fmtPct2, readonly: true,
     description: 'Read-only equilibrium vacancy from T-01×T-05 traffic model. Fallback to broker T12 vacancy when M07 offline.',
     platformSource: 'M07 — equilibrium vacancy from tours × conversion', brokerSource: 'OM / T12 vacancy_pct (broker fallback)',
@@ -461,7 +461,7 @@ const STATIC_ROWS: RowDef[] = [
     getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
   },
   {
-    key: 'stabilizedOcc', label: 'Stabilized Occupancy Target', section: 6, unit: 'pct',
+    key: 'stabilizedOcc', label: 'Stabilized Occupancy Target', section: 5, unit: 'pct',
     isM07: true, format: fmtPct2, patchField: 'vacancyPct',
     description: 'Long-run stabilized occupancy target. Platform = M07 equilibrium. Broker fallback = 1 − T12 vacancy.',
     platformSource: 'M07 — occupancy trajectory per year', brokerSource: 'OM / Pro Forma Assumptions',
@@ -477,7 +477,7 @@ const STATIC_ROWS: RowDef[] = [
     getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
   },
   {
-    key: 'leaseUpTo90', label: 'Lease-Up Curve: 90% Occ (weeks)', section: 6, unit: 'weeks',
+    key: 'leaseUpTo90', label: 'Lease-Up Curve: 90% Occ (weeks)', section: 5, unit: 'weeks',
     isM07: true, format: fmtWks, readonly: true,
     description: 'Weeks from CO to 90% physical occupancy. Derived from T-06 weekly leases.',
     platformSource: 'M07 — T-06 velocity → weeks to 90%', brokerSource: 'OM / Pro Forma Assumptions',
@@ -486,7 +486,7 @@ const STATIC_ROWS: RowDef[] = [
     getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
   },
   {
-    key: 'leaseUpTo93', label: 'Lease-Up Curve: 93% Occ (weeks)', section: 6, unit: 'weeks',
+    key: 'leaseUpTo93', label: 'Lease-Up Curve: 93% Occ (weeks)', section: 5, unit: 'weeks',
     isM07: true, format: fmtWks, readonly: true,
     description: 'Weeks from CO to 93% physical occupancy.',
     platformSource: 'M07 — T-06 velocity → weeks to 93%', brokerSource: 'OM / Pro Forma Assumptions',
@@ -495,7 +495,7 @@ const STATIC_ROWS: RowDef[] = [
     getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
   },
   {
-    key: 'leaseUpTo95', label: 'Lease-Up Curve: 95% Occ (weeks)', section: 6, unit: 'weeks',
+    key: 'leaseUpTo95', label: 'Lease-Up Curve: 95% Occ (weeks)', section: 5, unit: 'weeks',
     isM07: true, format: fmtWks, readonly: true,
     description: 'Weeks from CO to 95% physical occupancy. Standard stabilization threshold.',
     platformSource: 'M07 — T-06 velocity → weeks to 95%', brokerSource: 'OM / Pro Forma Assumptions',
@@ -504,7 +504,7 @@ const STATIC_ROWS: RowDef[] = [
     getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
   },
   {
-    key: 'renovationLift', label: 'Renovation Traffic Lift %', section: 6, unit: 'pct',
+    key: 'renovationLift', label: 'Renovation Traffic Lift %', section: 5, unit: 'pct',
     isM07: true, format: fmtPct2,
     description: 'Incremental rent lift from renovation/value-add scope, derived from M07 demand elasticity.',
     platformSource: 'M07 — Demand elasticity × renovation scope model', brokerSource: 'OM / Value-Add Pro Forma',
@@ -519,7 +519,7 @@ const STATIC_ROWS: RowDef[] = [
     getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? 45,
   },
   {
-    key: 'afterRepairRent', label: 'Target After-Repair Rent', section: 6, unit: 'dollar',
+    key: 'afterRepairRent', label: 'Target After-Repair Rent', section: 5, unit: 'dollar',
     isM07: true, format: fmtDlr,
     description: 'Target in-place rent post-renovation. Value-add strategy only.',
     platformSource: 'M07 — Rent trajectory + renovation premium model', brokerSource: 'OM / Value-Add Pro Forma',
@@ -531,7 +531,7 @@ const STATIC_ROWS: RowDef[] = [
     getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? 50,
   },
   {
-    key: 'leaseUpVelocity', label: 'Lease-Up Velocity (leases/mo)', section: 6, unit: 'per_wk',
+    key: 'leaseUpVelocity', label: 'Lease-Up Velocity (leases/mo)', section: 5, unit: 'per_wk',
     isM07: true, format: n => Math.round(n) + '/mo',
     description: 'Monthly net leasing velocity during lease-up (T-06 × 4.33).',
     platformSource: 'M07 — T-06 weekly lease velocity × 4.33', brokerSource: 'OM / Pro Forma Assumptions',
@@ -543,9 +543,9 @@ const STATIC_ROWS: RowDef[] = [
     getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
   },
 
-  // ── Section 8: Capex & Reserves ────────────────────────────────────────────
+  // ── Section 7: Capex & Reserves ────────────────────────────────────────────
   {
-    key: 'capexPerUnit', label: 'CapEx Budget ($/unit total)', section: 8, unit: 'dollar',
+    key: 'capexPerUnit', label: 'CapEx Budget ($/unit total)', section: 7, unit: 'dollar',
     format: fmtDlr,
     description: 'Total capital expenditure budget per unit over the hold period.',
     platformSource: 'JEDI — Value-add comp database', brokerSource: 'OM / CapEx Schedule',
@@ -558,7 +558,7 @@ const STATIC_ROWS: RowDef[] = [
     getConfidence: _f => 50,
   },
   {
-    key: 'capexYearDraw', label: 'CapEx Annual Draw ($/unit)', section: 8, unit: 'dollar',
+    key: 'capexYearDraw', label: 'CapEx Annual Draw ($/unit)', section: 7, unit: 'dollar',
     format: fmtDlr, patchField: 'capexPerYear',
     description: 'Per-year capital expenditure draw per unit. Front-loaded for value-add programs (Y1 40%, Y2 35%, Y3 25%).',
     platformSource: 'JEDI — CapEx curve model (front-loaded)', brokerSource: 'OM / CapEx Schedule by Year',
@@ -575,7 +575,7 @@ const STATIC_ROWS: RowDef[] = [
     getConfidence: _f => 55,
   },
   {
-    key: 'reserves', label: 'Replacement Reserves ($/unit/yr)', section: 8, unit: 'dollar',
+    key: 'reserves', label: 'Replacement Reserves ($/unit/yr)', section: 7, unit: 'dollar',
     format: fmtDlr, patchField: 'replacementReserves',
     description: 'Annual replacement reserves per unit. Industry standard: $150–$350.',
     platformSource: 'JEDI — Industry reserve standard', brokerSource: 'OM / Pro Forma Expenses',
@@ -583,10 +583,40 @@ const STATIC_ROWS: RowDef[] = [
     getPlatform: (_f, _yr) => 250,
     getConfidence: _f => 70,
   },
-
-  // ── Section 9: Disposition & Hold ──────────────────────────────────────────
   {
-    key: 'exitCapRate', label: 'Exit Cap Rate', section: 9, unit: 'pct',
+    key: 'tiPerSF', label: 'Tenant Improvements ($/SF)', section: 7, unit: 'dollar',
+    format: fmtDlr, patchField: 'tiPerSF',
+    description: 'Tenant Improvement allowance per rentable SF. Applies to commercial leases and retail anchors.',
+    platformSource: 'JEDI — Market TI comp database', brokerSource: 'OM / CapEx Schedule — TI Line',
+    brokerPage: 'Capital Budget', brokerLine: 'Tenant Improvements',
+    getBroker: (_f, _yr) => null,
+    getPlatform: (_f, _yr) => 25,
+    getConfidence: _f => 50,
+  },
+  {
+    key: 'lcPctOfRent', label: 'Leasing Commissions (% of rent)', section: 7, unit: 'pct',
+    format: fmtPct2, patchField: 'lcPctOfRent',
+    description: 'Leasing commission cost as % of base rent. Typically 3–6% for multifamily; higher for commercial.',
+    platformSource: 'JEDI — Market LC norms', brokerSource: 'OM / CapEx Schedule — LC Line',
+    brokerPage: 'Capital Budget', brokerLine: 'Leasing Commissions',
+    getBroker: (_f, _yr) => null,
+    getPlatform: (_f, _yr) => 0.04,
+    getConfidence: _f => 55,
+  },
+
+  // ── Section 8: Disposition & Hold ──────────────────────────────────────────
+  {
+    key: 'saleYear', label: 'Target Sale Year', section: 8, unit: 'years',
+    format: n => `Yr ${Math.round(n)}`, patchField: 'saleYear',
+    description: 'Projected hold period in years before disposition. Drives exit NOI and cap-rate valuation.',
+    platformSource: 'JEDI — Optimal hold model (IRR/EM peak)', brokerSource: 'OM / Hold Period Assumption',
+    brokerPage: 'Underwriting Assumptions', brokerLine: 'Hold Period',
+    getBroker: (f, _yr) => f.assumptions.holdYears ?? null,
+    getPlatform: (f, _yr) => f.assumptions.holdYears ?? null,
+    getConfidence: _f => 65,
+  },
+  {
+    key: 'exitCapRate', label: 'Exit Cap Rate', section: 8, unit: 'pct',
     format: fmtPct2, patchField: 'exitCapRate',
     description: 'Terminal cap rate applied to forward NOI at disposition.',
     platformSource: 'M07 — Demand velocity implies cap compression trend', brokerSource: 'OM / Underwriting Assumptions',
@@ -596,7 +626,7 @@ const STATIC_ROWS: RowDef[] = [
     getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? 60,
   },
   {
-    key: 'sellingCosts', label: 'Selling Costs %', section: 9, unit: 'pct',
+    key: 'sellingCosts', label: 'Selling Costs %', section: 8, unit: 'pct',
     format: fmtPct2,
     description: 'Brokerage, legal, and transfer costs at disposition as % of sale price.',
     platformSource: 'JEDI — Market transaction cost norms', brokerSource: 'OM / Disposition Assumptions',
@@ -606,7 +636,7 @@ const STATIC_ROWS: RowDef[] = [
     getConfidence: _f => 80,
   },
   {
-    key: 'grossSalePrice', label: 'Gross Sale Price (NOI ÷ ExitCap)', section: 9, unit: 'dollar',
+    key: 'grossSalePrice', label: 'Gross Sale Price (NOI ÷ ExitCap)', section: 8, unit: 'dollar',
     format: fmtDlr, readonly: true,
     description: 'Implied gross sale price = forward NOI at exit year ÷ exit cap rate. Computed from broker NOI × growth.',
     platformSource: 'Computed: NOI[yr] ÷ Platform ExitCap', brokerSource: 'Computed: NOI[yr1] ÷ Broker ExitCap',
@@ -629,7 +659,7 @@ const STATIC_ROWS: RowDef[] = [
     getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? 60,
   },
   {
-    key: 'netSaleProceeds', label: 'Net Sale Proceeds (after costs)', section: 9, unit: 'dollar',
+    key: 'netSaleProceeds', label: 'Net Sale Proceeds (after costs)', section: 8, unit: 'dollar',
     format: fmtDlr, readonly: true,
     description: 'Gross sale price × (1 − selling costs). Represents proceeds before debt payoff.',
     platformSource: 'Computed: GrossSale × (1 − SellingCosts)', brokerSource: 'Computed: GrossSale × (1 − SellingCosts)',
@@ -658,7 +688,7 @@ const STATIC_ROWS: RowDef[] = [
   // ── Section 10: Financing [→ Debt Tab] ─────────────────────────────────────
   // Read-only cross-reference to Debt tab. Edit these in the Debt Tab.
   {
-    key: 'interestRate', label: 'Interest Rate', section: 10, unit: 'pct',
+    key: 'interestRate', label: 'Interest Rate', section: 9, unit: 'pct',
     format: fmtPct2, readonly: true,
     description: 'Senior loan fixed rate. Edit in Debt Tab → cross-referenced here.',
     platformSource: 'JEDI — SOFR + spread (market rate)', brokerSource: 'OM / Term Sheet or Debt Broker',
@@ -668,7 +698,7 @@ const STATIC_ROWS: RowDef[] = [
     getConfidence: _f => 80,
   },
   {
-    key: 'ltcPct', label: 'LTV / LTC %', section: 10, unit: 'pct',
+    key: 'ltcPct', label: 'LTV / LTC %', section: 9, unit: 'pct',
     format: fmtPct2, readonly: true,
     description: 'Loan-to-value/cost at closing. Edit in Debt Tab → cross-referenced here.',
     platformSource: 'JEDI — Market LTV norms', brokerSource: 'OM / Financing Assumptions',
@@ -678,7 +708,7 @@ const STATIC_ROWS: RowDef[] = [
     getConfidence: _f => 75,
   },
   {
-    key: 'ioPeriodMonths', label: 'Interest-Only Period (months)', section: 10, unit: 'months',
+    key: 'ioPeriodMonths', label: 'Interest-Only Period (months)', section: 9, unit: 'months',
     format: fmtMo, readonly: true,
     description: 'Months of I/O payments before amortization begins. Edit in Debt Tab → cross-referenced here.',
     platformSource: 'JEDI — Lender market norms', brokerSource: 'OM / Term Sheet',
@@ -1399,18 +1429,18 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
         const osRow = year1.find(r => r.field === field);
         if (!osRow) return null;
         const meta = FIELD_META[field] ?? { unit: 'dollar' as const, format: fmtDlr };
-        return buildRowDef(osRow, 7, meta);
+        return buildRowDef(osRow, 6, meta);
       })
       .filter((r): r is RowDef => r !== null);
     return { revRows, opexRows };
   }, [financials]);
 
-  // Combined rows for all sections (used for bulk actions) — excludes readonly financing (sec 10)
+  // Combined rows for all sections (used for bulk actions) — excludes readonly financing (sec 9)
   const allRows = useMemo(() => [
     ...revRows,
-    ...STATIC_ROWS.filter(r => r.section === 6),
+    ...STATIC_ROWS.filter(r => r.section === 5),  // M07 Traffic Intel within Revenue
     ...opexRows,
-    ...STATIC_ROWS.filter(r => r.section === 8 || r.section === 9),
+    ...STATIC_ROWS.filter(r => r.section === 7 || r.section === 8),  // Capex + Disposition
   ], [revRows, opexRows]);
 
   const getUser    = (key: string, yr: number) => overrides[key]?.[yr] ?? null;
@@ -1539,7 +1569,7 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
   const m07Conf  = financials?.trafficProjection?.leasingSignals?.confidence;
   const overrideCount = Object.values(overrides).reduce((s, yr) => s + Object.values(yr).filter(v => v != null).length, 0);
 
-  // v2 section assembly (10-section layout; sections 1-4 rendered as KeystonePanel above grid)
+  // v2 section assembly (9-section layout; sections 1-4 rendered as KeystonePanel above grid)
   const toggleSection = (sec: number) =>
     setCollapsedSections(prev => {
       const next = new Set(prev);
@@ -1548,12 +1578,11 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
     });
 
   const allSections: Array<{ sec: number; rows: RowDef[] }> = [
-    { sec: 5,  rows: revRows },
-    { sec: 6,  rows: STATIC_ROWS.filter(r => r.section === 6) },
-    { sec: 7,  rows: opexRows },
-    { sec: 8,  rows: STATIC_ROWS.filter(r => r.section === 8) },
-    { sec: 9,  rows: STATIC_ROWS.filter(r => r.section === 9) },
-    { sec: 10, rows: STATIC_ROWS.filter(r => r.section === 10) },
+    { sec: 5, rows: [...revRows, ...STATIC_ROWS.filter(r => r.section === 5)] },
+    { sec: 6, rows: opexRows },
+    { sec: 7, rows: STATIC_ROWS.filter(r => r.section === 7) },
+    { sec: 8, rows: STATIC_ROWS.filter(r => r.section === 8) },
+    { sec: 9, rows: STATIC_ROWS.filter(r => r.section === 9) },
   ];
 
   return (
@@ -1634,7 +1663,7 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
       {trafficOffline && (
         <div className="flex items-center gap-3 px-4 py-1.5 bg-amber-900/20 border-b border-amber-500/20 text-[10px] text-amber-400">
           <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-          Traffic Engine offline — Section 6 (Traffic Intel) platform signals unavailable. Showing broker layer only.
+          Traffic Engine offline — Revenue section (M07 Traffic Intel) platform signals unavailable. Showing broker layer only.
         </div>
       )}
 
@@ -1665,7 +1694,7 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
             <tbody>
               {allSections.map(({ sec, rows }) => {
                 const isCollapsed = collapsedSections.has(sec);
-                const isFinancing = sec === 10;
+                const isFinancing = sec === 9;
                 return (
                   <React.Fragment key={sec}>
                     <tr
@@ -1680,8 +1709,8 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
                           }
                           {SEC[sec]}
                           {isFinancing && (
-                            <span className="ml-2 text-[8px] font-normal text-slate-500 border border-slate-700 rounded px-1">
-                              READ-ONLY · Edit in Debt Tab
+                            <span className="ml-2 text-[8px] font-normal border rounded px-1" style={{ color: '#10b981', borderColor: '#065f46' }}>
+                              READ-ONLY · → DEBT TAB
                             </span>
                           )}
                           <span className="ml-auto text-[8px] font-normal text-slate-600">{rows.length} rows</span>
@@ -1696,7 +1725,7 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
                             <span className="flex items-center gap-1.5 truncate">
                               {rd.readonly && <Lock className="w-2.5 h-2.5 text-slate-600 shrink-0" />}
                               {rd.isM07 && !rd.readonly && <span style={{ fontFamily: MONO, fontSize: 6, color: '#7e22ce', border: '1px solid #4c1d95', borderRadius: 2, padding: '0 2px', flexShrink: 0 }}>M07</span>}
-                              {isFinancing && <span style={{ fontFamily: MONO, fontSize: 6, color: '#475569', border: '1px solid #334155', borderRadius: 2, padding: '0 2px', flexShrink: 0 }}>DEBT</span>}
+                              {isFinancing && <span style={{ fontFamily: MONO, fontSize: 6, color: '#10b981', border: '1px solid #065f46', borderRadius: 2, padding: '0 2px', flexShrink: 0 }}>→ DEBT</span>}
                               {mode === 'formula' && <FlaskConical className="w-2.5 h-2.5 text-teal-500 shrink-0" />}
                               <span className="truncate">{rd.label}</span>
                             </span>
