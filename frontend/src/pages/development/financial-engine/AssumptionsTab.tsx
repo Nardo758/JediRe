@@ -158,7 +158,7 @@ function rentCompound(f: DealFinancials, yr: number): number {
 
 // ─── Field metadata (thin overlay on top of backend proforma.year1 data) ───────
 interface FieldMeta {
-  unit: 'pct'|'dollar'|'weeks'|'per_wk'|'months';
+  unit: 'pct'|'dollar'|'weeks'|'per_wk'|'months'|'years';
   format: (n: number) => string;
   patchField?: string;
   readonly?: boolean;
@@ -324,7 +324,7 @@ const FIELD_META: Record<string, FieldMeta> = {
 // ─── RowDef interface ──────────────────────────────────────────────────────────
 interface RowDef {
   key: string; label: string; section: 1|2|3|4|5|6|7|8|9|10;
-  unit: 'pct'|'dollar'|'weeks'|'per_wk'|'months'; readonly?: boolean;
+  unit: 'pct'|'dollar'|'weeks'|'per_wk'|'months'|'years'; readonly?: boolean;
   isM07?: boolean;
   format: (n: number) => string;
   description?: string;
