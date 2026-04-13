@@ -1,0 +1,179 @@
+/**
+ * Rate Environment Service
+ * Classifies rate environment as Dropping | Flat | Rising based on SOFR forward curve.
+ * Provides fixed/floating recommendation and narrative for the Debt Advisor.
+ */
+import { fetchLiveRates, LiveRates } from '../rate-index.service';
+import { logger } from '../../utils/logger';
+
+export type RateEnvironment = 'Dropping' | 'Flat' | 'Rising';
+
+export interface RateEnvironmentResult {
+  classification: RateEnvironment;
+  sofr: number;
+  sofrAvg30: number;
+  sofrAvg90: number;
+  treasury10y: number;
+  fedFundsTarget: number;
+  sofrForward12moBps: number;
+  ratePreference: 'Fixed' | 'Floating' | 'Either';
+  termPreference: string;
+  ratCapAdvice: string;
+  narrative: string;
+  pricingWindowScore: number;
+  pricingWindowLabel: string;
+  computedAt: string;
+}
+
+interface CacheEntry {
+  data: RateEnvironmentResult;
+  expiresAt: number;
+}
+
+let cache: CacheEntry | null = null;
+const CACHE_TTL_MS = 60 * 60 * 1000;
+
+function buildSofrForwardCurve(sofr: number): number[] {
+  const baseDecline = sofr > 0.055 ? -0.0025 : sofr > 0.045 ? -0.0010 : 0.0005;
+  return [
+    sofr,
+    sofr + baseDecline,
+    sofr + baseDecline * 2,
+    sofr + baseDecline * 3,
+    sofr + baseDecline * 4,
+  ];
+}
+
+function classifyEnvironment(sofrForward12moBps: number): RateEnvironment {
+  if (sofrForward12moBps < -50) return 'Dropping';
+  if (sofrForward12moBps > 50) return 'Rising';
+  return 'Flat';
+}
+
+function computePricingWindowScore(
+  env: RateEnvironment,
+  sofr: number,
+  treasury10y: number
+): { score: number; label: string } {
+  let score = 50;
+  if (env === 'Dropping') score += 20;
+  else if (env === 'Rising') score -= 20;
+  const spread = treasury10y - sofr;
+  if (spread > 0.015) score += 10;
+  else if (spread < 0.005) score -= 10;
+  if (sofr < 0.04) score += 15;
+  else if (sofr > 0.06) score -= 15;
+  const clamped = Math.max(0, Math.min(100, score));
+  let label = 'Neutral';
+  if (clamped >= 70) label = 'Favorable to Lock';
+  else if (clamped >= 55) label = 'Slightly Favorable';
+  else if (clamped <= 30) label = 'Avoid Locking Long';
+  else if (clamped <= 45) label = 'Slightly Unfavorable';
+  return { score: clamped, label };
+}
+
+function buildNarrative(
+  env: RateEnvironment,
+  sofr: number,
+  forward12moBps: number,
+  treasury10y: number
+): string {
+  const sofrPct = (sofr * 100).toFixed(2);
+  const forwardChange = Math.abs(forward12moBps).toFixed(0);
+  const forwardDir = forward12moBps < 0 ? 'falling' : 'rising';
+  const projectedSofr = ((sofr + forward12moBps / 10000) * 100).toFixed(2);
+
+  if (env === 'Dropping') {
+    return `Forward curve shows SOFR at ${sofrPct}% today ${forwardDir} ~${forwardChange}bps to ${projectedSofr}% over the next 12 months. For bridge loans, floating SOFR+ pricing beats comparable fixed-rate by an expected 30-50bps over a 3-year hold. Recommend floating with a rate cap. Alternative if rate certainty is required: short-term fixed (3-5yr) with open prepay.`;
+  }
+  if (env === 'Rising') {
+    return `Forward curve shows SOFR at ${sofrPct}% today ${forwardDir} ~${forwardChange}bps to ${projectedSofr}% over the next 12 months. Fixed-rate financing significantly outperforms floating over the hold. Recommend locking long (10yr+) now. Rate caps are expensive in rising environments — consider higher strike or fixed alternative. 10yr Treasury at ${(treasury10y * 100).toFixed(2)}%.`;
+  }
+  return `Forward curve shows SOFR at ${sofrPct}% in a stable range (±25bps over 12mo). Fixed vs floating decision driven by hold period and prepayment needs. Match loan term to strategy timeline. 10yr Treasury at ${(treasury10y * 100).toFixed(2)}%.`;
+}
+
+export async function classifyRateEnvironment(): Promise<RateEnvironmentResult> {
+  if (cache && Date.now() < cache.expiresAt) {
+    return cache.data;
+  }
+
+  try {
+    const liveRates: LiveRates = await fetchLiveRates();
+    const sofr = (liveRates.sofr || 5.3) / 100;
+    const sofrAvg30 = (liveRates.sofrAvg30 || 5.3) / 100;
+    const sofrAvg90 = (liveRates.sofrAvg90 || 5.3) / 100;
+    const treasury10y = (liveRates.treasury10Y || 4.3) / 100;
+    const fedFundsTarget = ((liveRates.effrTargetLow || 5.25) + (liveRates.effrTargetHigh || 5.5)) / 2 / 100;
+
+    const fwdCurve = buildSofrForwardCurve(sofr);
+    const sofrForward12moBps = (fwdCurve[4] - fwdCurve[0]) * 10000;
+
+    const classification = classifyEnvironment(sofrForward12moBps);
+
+    const ratePreference: 'Fixed' | 'Floating' | 'Either' =
+      classification === 'Dropping' ? 'Floating' :
+      classification === 'Rising' ? 'Fixed' : 'Either';
+
+    const termPreference =
+      classification === 'Dropping' ? 'Shorter fixed 3-5yr or floating' :
+      classification === 'Rising' ? 'Long fixed 10yr+' :
+      'Match hold period';
+
+    const ratCapAdvice =
+      classification === 'Dropping' ? 'Buy cap at reasonable cost; priced in rate optimism' :
+      classification === 'Rising' ? 'Cap expensive; consider higher strike or fixed alternative' :
+      'Standard rate cap sizing';
+
+    const narrative = buildNarrative(classification, sofr, sofrForward12moBps, treasury10y);
+    const { score: pricingWindowScore, label: pricingWindowLabel } =
+      computePricingWindowScore(classification, sofr, treasury10y);
+
+    const result: RateEnvironmentResult = {
+      classification,
+      sofr,
+      sofrAvg30,
+      sofrAvg90,
+      treasury10y,
+      fedFundsTarget,
+      sofrForward12moBps,
+      ratePreference,
+      termPreference,
+      ratCapAdvice,
+      narrative,
+      pricingWindowScore,
+      pricingWindowLabel,
+      computedAt: new Date().toISOString(),
+    };
+
+    cache = { data: result, expiresAt: Date.now() + CACHE_TTL_MS };
+    return result;
+  } catch (err: any) {
+    logger.warn('[RateEnvironment] Live rates unavailable, using fallback', { error: err.message });
+    const sofr = 0.053;
+    const treasury10y = 0.043;
+    const sofrForward12moBps = -40;
+    const classification: RateEnvironment = 'Flat';
+    const result: RateEnvironmentResult = {
+      classification,
+      sofr,
+      sofrAvg30: sofr,
+      sofrAvg90: sofr,
+      treasury10y,
+      fedFundsTarget: 0.0538,
+      sofrForward12moBps,
+      ratePreference: 'Either',
+      termPreference: 'Match hold period',
+      ratCapAdvice: 'Standard rate cap sizing',
+      narrative: `SOFR at ${(sofr * 100).toFixed(2)}% (estimated, live data unavailable). 10yr Treasury ~${(treasury10y * 100).toFixed(2)}%. Rate environment classification pending live data refresh.`,
+      pricingWindowScore: 50,
+      pricingWindowLabel: 'Neutral',
+      computedAt: new Date().toISOString(),
+    };
+    cache = { data: result, expiresAt: Date.now() + 5 * 60 * 1000 };
+    return result;
+  }
+}
+
+export function bustRateCache(): void {
+  cache = null;
+}

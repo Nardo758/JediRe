@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { BT } from '../../../components/deal/bloomberg-ui';
 import { KpiTile } from '../../../components/deal/bloomberg-ui';
-import { Lock, Link, ChevronDown, ChevronRight, Plus, X } from 'lucide-react';
+import { Lock, Link, ChevronDown, ChevronRight, Plus, X, TrendingDown, TrendingUp, Minus, AlertTriangle, CheckCircle, Zap, RefreshCw } from 'lucide-react';
 import type { FinancialEngineTabProps, F9DebtLoan, PrepayType } from './types';
 import { fmt$, fmtPct } from './types';
 import { apiClient } from '../../../services/api.client';
@@ -314,6 +314,444 @@ interface RefiState {
   newLoanAmtPct: number;
 }
 
+// ─── Debt Advisor Types ───────────────────────────────────────────────────────
+interface AdvisorPhase {
+  phaseIndex: number;
+  phaseLabel: string;
+  product: string;
+  productLabel: string;
+  startMonth: number;
+  endMonth: number;
+  loanAmountEst: number;
+  termYears: number;
+  ioMonths: number;
+  amortYears: number;
+  rateType: 'Fixed' | 'Floating';
+  rateEst: number;
+  spreadBps?: number;
+  ltv: number;
+  origFee: number;
+  exitFee: number;
+  prepayType: string;
+  rationale: string;
+  lenders: AdvisorLender[];
+  triggers: AdvisorTrigger[];
+  isRefiEvent: boolean;
+  refiTriggerOcc?: number;
+  refiTriggerDscr?: number;
+}
+interface AdvisorLender {
+  lender: { id: string; name: string; type: string; typicalSpreadBps?: number; typicalRateFixed?: number; typicalLtc?: number; dealsYTDEst?: number; recoursePreference: string };
+  fitScore: number;
+  fitReasons: string[];
+  contactNote: string;
+}
+interface AdvisorTrigger {
+  id: string;
+  condition: string;
+  currentValue: string;
+  threshold: string;
+  frequency: string;
+  action: string;
+  severity: 'info' | 'warning' | 'critical';
+}
+interface AdvisorAlternative {
+  label: string;
+  product: string;
+  productLabel: string;
+  rationale: string;
+  tradeoff: string;
+  deltaAllInBps: number;
+}
+interface DebtAdvisorData {
+  dealId: string;
+  computedAt: string;
+  strategyInputs: {
+    subStrategyKey: string;
+    strategyName: string;
+    holdMonths: number;
+    hasStrategy: boolean;
+    propertyType: string;
+    purchasePrice: number;
+    city: string;
+    state: string;
+    units: number;
+  };
+  rateEnvironment: {
+    classification: 'Dropping' | 'Flat' | 'Rising';
+    sofr: number;
+    treasury10y: number;
+    sofrForward12moBps: number;
+    ratePreference: string;
+    narrative: string;
+    pricingWindowScore: number;
+    pricingWindowLabel: string;
+    ratCapAdvice: string;
+  };
+  recommendedStack: AdvisorPhase[];
+  alternatives: AdvisorAlternative[];
+  monitoringTriggers: AdvisorTrigger[];
+  summary: {
+    primaryProduct: string;
+    primaryProductLabel: string;
+    totalClosingCosts: number;
+    initialLoanAmount: number;
+    blendedAllInRate: number;
+    headline: string;
+    whyStatement: string;
+  };
+}
+
+// ─── Debt Advisor View Component ──────────────────────────────────────────────
+function DebtAdvisorView({ dealId, onSwitchToConfigure, onAccept }: {
+  dealId: string;
+  onSwitchToConfigure: () => void;
+  onAccept: () => void;
+}) {
+  const [data, setData] = useState<DebtAdvisorData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [expandedPhase, setExpandedPhase] = useState<number | null>(0);
+  const [accepting, setAccepting] = useState(false);
+  const [recomputing, setRecomputing] = useState(false);
+
+  const fetchAdvisor = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await apiClient.get(`/api/v1/deals/${dealId}/debt/advisor`);
+      if (res.data?.success && res.data?.data) {
+        setData(res.data.data as DebtAdvisorData);
+      } else {
+        setError('No advisor data returned');
+      }
+    } catch (e: any) {
+      setError(e?.response?.data?.error || e.message || 'Failed to load advisor');
+    } finally {
+      setLoading(false);
+    }
+  }, [dealId]);
+
+  useEffect(() => { fetchAdvisor(); }, [fetchAdvisor]);
+
+  const handleAccept = async () => {
+    setAccepting(true);
+    try {
+      await apiClient.post(`/api/v1/deals/${dealId}/debt/advisor/accept`, { phaseIndex: 0 });
+      onAccept();
+      onSwitchToConfigure();
+    } catch {
+      // silently handle
+    } finally {
+      setAccepting(false);
+    }
+  };
+
+  const handleRecompute = async () => {
+    setRecomputing(true);
+    try {
+      const res = await apiClient.post(`/api/v1/deals/${dealId}/debt/advisor/recompute`, {});
+      if (res.data?.success && res.data?.data) setData(res.data.data as DebtAdvisorData);
+    } catch { /* ignore */ } finally {
+      setRecomputing(false);
+    }
+  };
+
+  if (loading) return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 200, fontFamily: MONO, fontSize: 11, color: BT.text.muted }}>
+      LOADING DEBT ADVISOR…
+    </div>
+  );
+
+  if (error || !data) {
+    if (!data?.strategyInputs?.hasStrategy) {
+      return (
+        <div style={{ padding: 32, textAlign: 'center' }}>
+          <Zap style={{ width: 32, height: 32, color: BT.text.amber, marginBottom: 12 }} />
+          <div style={{ fontFamily: MONO, fontSize: 13, color: BT.text.white, marginBottom: 8 }}>RUN STRATEGY FIRST</div>
+          <div style={{ fontFamily: MONO, fontSize: 10, color: BT.text.muted, maxWidth: 340, margin: '0 auto', lineHeight: 1.6 }}>
+            The Debt Advisor is driven by M08 Strategy output. Run strategy scoring to get a personalized debt recommendation.
+          </div>
+          <button onClick={handleRecompute} style={{ marginTop: 20, padding: '8px 20px', background: `${BT.text.cyan}20`, border: `1px solid ${BT.text.cyan}`, color: BT.text.cyan, fontFamily: MONO, fontSize: 9, borderRadius: 3, cursor: 'pointer' }}>
+            CHECK AGAIN
+          </button>
+        </div>
+      );
+    }
+    return (
+      <div style={{ padding: 24, fontFamily: MONO, fontSize: 10, color: BT.text.muted }}>
+        <AlertTriangle style={{ width: 16, height: 16, color: BT.text.amber, marginRight: 8, display: 'inline' }} />
+        {error || 'Unable to load advisor'}
+        <button onClick={fetchAdvisor} style={{ marginLeft: 12, padding: '2px 10px', background: 'transparent', border: `1px solid ${BT.border.medium}`, color: BT.text.muted, fontFamily: MONO, fontSize: 8, cursor: 'pointer', borderRadius: 2 }}>RETRY</button>
+      </div>
+    );
+  }
+
+  const { strategyInputs: si, rateEnvironment: re, recommendedStack: phases, alternatives, monitoringTriggers: triggers, summary } = data;
+
+  const RateIcon = re.classification === 'Dropping' ? TrendingDown : re.classification === 'Rising' ? TrendingUp : Minus;
+  const rateColor = re.classification === 'Dropping' ? BT.met.financial : re.classification === 'Rising' ? BT.text.red : BT.text.amber;
+  const windowColor = re.pricingWindowScore >= 65 ? BT.met.financial : re.pricingWindowScore <= 40 ? BT.text.red : BT.text.amber;
+  const totalHoldMonths = si.holdMonths || 36;
+
+  return (
+    <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
+      {/* ── Main panel ──────────────────────────────────────────────────────── */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: 0 }}>
+
+        {/* No-strategy CTA banner */}
+        {!si.hasStrategy && (
+          <div style={{ padding: '8px 16px', background: `${BT.text.amber}15`, borderBottom: `1px solid ${BT.text.amber}40`, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Zap style={{ width: 12, height: 12, color: BT.text.amber, flexShrink: 0 }} />
+            <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.amber }}>
+              No strategy detected — showing general debt recommendation. Run M08 Strategy for a strategy-specific plan.
+            </span>
+          </div>
+        )}
+
+        {/* Recommendation header */}
+        <div style={{ padding: '14px 16px', background: BT.bg.panel, borderBottom: `1px solid ${BT.border.medium}` }}>
+          <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, letterSpacing: 1, marginBottom: 4 }}>RECOMMENDED DEBT STACK</div>
+          <div style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: BT.text.white, marginBottom: 6 }}>
+            {summary.headline}
+          </div>
+          <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary, lineHeight: 1.6, marginBottom: 10, maxWidth: 680 }}>
+            {summary.whyStatement}
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+            <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>
+              Total at close: <span style={{ color: BT.text.red }}>{fmt$(summary.totalClosingCosts)}</span> origination + fees
+            </div>
+            <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, marginLeft: 12 }}>
+              Initial loan: <span style={{ color: BT.text.cyan }}>{fmt$(summary.initialLoanAmount)}</span>
+            </div>
+            <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, marginLeft: 12 }}>
+              All-in rate: <span style={{ color: BT.text.amber }}>{fmtPct(summary.blendedAllInRate * 100)}</span>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={handleAccept}
+              disabled={accepting}
+              style={{ padding: '6px 16px', background: `${BT.met.financial}20`, border: `1px solid ${BT.met.financial}`, color: BT.met.financial, fontFamily: MONO, fontSize: 9, fontWeight: 700, borderRadius: 3, cursor: 'pointer', opacity: accepting ? 0.7 : 1 }}
+            >
+              {accepting ? 'POPULATING…' : '✓ ACCEPT & POPULATE CONFIGURE'}
+            </button>
+            <button
+              onClick={onSwitchToConfigure}
+              style={{ padding: '6px 14px', background: 'transparent', border: `1px solid ${BT.border.medium}`, color: BT.text.secondary, fontFamily: MONO, fontSize: 9, borderRadius: 3, cursor: 'pointer' }}
+            >
+              MODIFY IN CONFIGURE
+            </button>
+            <button
+              onClick={handleRecompute}
+              disabled={recomputing}
+              style={{ padding: '6px 10px', background: 'transparent', border: `1px solid ${BT.border.subtle}`, color: BT.text.muted, fontFamily: MONO, fontSize: 9, borderRadius: 3, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+            >
+              <RefreshCw style={{ width: 9, height: 9 }} />
+              {recomputing ? 'REFRESHING…' : 'RECOMPUTE'}
+            </button>
+          </div>
+        </div>
+
+        {/* Debt Plan Timeline — swim-lane */}
+        <div style={{ padding: '12px 16px', borderBottom: `1px solid ${BT.border.medium}` }}>
+          <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, letterSpacing: 1, marginBottom: 8 }}>DEBT PLAN TIMELINE — click phase to expand</div>
+          <div style={{ position: 'relative', overflowX: 'auto' }}>
+            <div style={{ display: 'flex', gap: 0, minWidth: 500 }}>
+              {phases.filter(p => p.product !== 'exit_payoff').map((phase, i) => {
+                const widthPct = Math.max(10, ((phase.endMonth - phase.startMonth) / totalHoldMonths) * 100);
+                const isExpanded = expandedPhase === i;
+                const phaseColor = phase.isRefiEvent ? BT.met.financial : (i === 0 ? BT.text.cyan : BT.text.amber);
+                return (
+                  <div
+                    key={i}
+                    onClick={() => setExpandedPhase(isExpanded ? null : i)}
+                    style={{
+                      flex: `0 0 ${widthPct}%`, minWidth: 120,
+                      background: isExpanded ? `${phaseColor}18` : `${phaseColor}08`,
+                      border: `1px solid ${phaseColor}${isExpanded ? '80' : '30'}`,
+                      borderRadius: 4, padding: '8px 10px', cursor: 'pointer',
+                      marginRight: 4, transition: 'all 0.15s',
+                    }}
+                  >
+                    <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginBottom: 2 }}>M{phase.startMonth}–M{phase.endMonth}</div>
+                    <div style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: phaseColor, marginBottom: 3 }}>{phase.productLabel}</div>
+                    <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary }}>{fmt$(phase.loanAmountEst)}</div>
+                    <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.amber }}>
+                      {phase.rateType === 'Floating' ? `SOFR+${phase.spreadBps}bps` : `${fmtPct(phase.rateEst * 100)} fixed`}
+                    </div>
+                    {phase.isRefiEvent && (
+                      <div style={{ fontFamily: MONO, fontSize: 7, color: BT.met.financial, marginTop: 2, border: `1px solid ${BT.met.financial}40`, padding: '0 4px', borderRadius: 2, display: 'inline-block' }}>REFI EVENT</div>
+                    )}
+                  </div>
+                );
+              })}
+              {/* Exit phase chip */}
+              <div style={{ flex: '0 0 80px', background: `${BT.text.red}08`, border: `1px solid ${BT.text.red}30`, borderRadius: 4, padding: '8px 10px', cursor: 'default', marginRight: 4 }}>
+                <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginBottom: 2 }}>M{totalHoldMonths}</div>
+                <div style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.red }}>EXIT / PAYOFF</div>
+                <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>→ Capital Stack</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Per-Phase Detail */}
+        {expandedPhase !== null && phases[expandedPhase] && phases[expandedPhase].product !== 'exit_payoff' && (
+          <div style={{ padding: '12px 16px', borderBottom: `1px solid ${BT.border.medium}`, background: `${BT.text.cyan}05` }}>
+            {(() => {
+              const ph = phases[expandedPhase];
+              const phaseColor = ph.isRefiEvent ? BT.met.financial : (expandedPhase === 0 ? BT.text.cyan : BT.text.amber);
+              return (
+                <>
+                  <div style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: phaseColor, marginBottom: 8 }}>{ph.phaseLabel} — {ph.productLabel}</div>
+                  <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 10 }}>
+                    {[
+                      { l: 'LOAN AMOUNT', v: fmt$(ph.loanAmountEst), c: BT.text.cyan },
+                      { l: 'TERM', v: `${ph.termYears}yr`, c: BT.text.secondary },
+                      { l: 'IO PERIOD', v: `${ph.ioMonths}mo`, c: BT.text.amber },
+                      { l: 'AMORT', v: ph.amortYears > 0 ? `${ph.amortYears}yr` : 'IO Only', c: BT.text.secondary },
+                      { l: 'RATE', v: ph.rateType === 'Floating' ? `SOFR+${ph.spreadBps}bps` : fmtPct(ph.rateEst * 100), c: BT.text.amber },
+                      { l: 'LTV/LTC', v: fmtPct(ph.ltv * 100), c: BT.text.cyan },
+                      { l: 'ORIG FEE', v: fmtPct(ph.origFee * 100), c: BT.text.muted },
+                      { l: 'PREPAY', v: ph.prepayType.replace(/_/g, ' ').toUpperCase(), c: BT.text.muted },
+                    ].map(({ l, v, c }) => (
+                      <div key={l}>
+                        <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>{l}</div>
+                        <div style={{ fontFamily: MONO, fontSize: 10, color: c }}>{v}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {ph.refiTriggerOcc && (
+                    <div style={{ fontFamily: MONO, fontSize: 8, color: BT.met.financial, marginBottom: 8 }}>
+                      REFI TRIGGER: Occ ≥ {fmtPct(ph.refiTriggerOcc * 100)} AND DSCR ≥ {ph.refiTriggerDscr?.toFixed(2)}×
+                    </div>
+                  )}
+                  <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary, lineHeight: 1.6, marginBottom: 10, maxWidth: 620 }}>{ph.rationale}</div>
+                  {ph.lenders.length > 0 && (
+                    <div>
+                      <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, letterSpacing: 1, marginBottom: 6 }}>ACTIVE LENDERS — {ph.lenders[0]?.lender.type}</div>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        {ph.lenders.map((lt, li) => (
+                          <div key={lt.lender.id} style={{ padding: '6px 10px', background: BT.bg.panelAlt, border: `1px solid ${li === 0 ? BT.text.cyan : BT.border.subtle}`, borderRadius: 4, minWidth: 140 }}>
+                            <div style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: li === 0 ? BT.text.cyan : BT.text.white }}>{lt.lender.name}</div>
+                            <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>{lt.lender.type}</div>
+                            {lt.lender.typicalSpreadBps && <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.amber }}>SOFR+{lt.lender.typicalSpreadBps}bps</div>}
+                            {lt.lender.typicalLtc && <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary }}>LTC max {fmtPct(lt.lender.typicalLtc * 100)}</div>}
+                            <div style={{ fontFamily: MONO, fontSize: 7, color: BT.met.financial }}>{lt.lender.recoursePreference}</div>
+                            <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>{lt.fitScore}% fit</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+          </div>
+        )}
+
+        {/* Alternatives */}
+        {alternatives.length > 0 && (
+          <div style={{ padding: '12px 16px', borderBottom: `1px solid ${BT.border.medium}` }}>
+            <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, letterSpacing: 1, marginBottom: 8 }}>ALTERNATIVE STRUCTURES</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {alternatives.map((alt, i) => (
+                <div key={i} style={{ padding: '8px 12px', background: BT.bg.panelAlt, border: `1px solid ${BT.border.subtle}`, borderRadius: 4, maxWidth: 320 }}>
+                  <div style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: BT.text.amber, marginBottom: 3 }}>{alt.label}</div>
+                  <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.white, marginBottom: 3 }}>{alt.productLabel}</div>
+                  <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary, lineHeight: 1.5, marginBottom: 4 }}>{alt.tradeoff}</div>
+                  <div style={{ fontFamily: MONO, fontSize: 8, color: alt.deltaAllInBps > 0 ? BT.text.red : BT.met.financial }}>
+                    {alt.deltaAllInBps > 0 ? '+' : ''}{alt.deltaAllInBps}bps all-in vs primary
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Monitoring Triggers */}
+        {triggers.length > 0 && (
+          <div style={{ padding: '12px 16px' }}>
+            <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, letterSpacing: 1, marginBottom: 8 }}>MONITORING TRIGGERS</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {triggers.map(t => {
+                const sevColor = t.severity === 'critical' ? BT.text.red : t.severity === 'warning' ? BT.text.amber : BT.text.cyan;
+                const SevIcon = t.severity === 'critical' ? AlertTriangle : t.severity === 'warning' ? AlertTriangle : CheckCircle;
+                return (
+                  <div key={t.id} style={{ padding: '6px 10px', background: BT.bg.panelAlt, border: `1px solid ${sevColor}30`, borderRadius: 3, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                    <SevIcon style={{ width: 10, height: 10, color: sevColor, flexShrink: 0, marginTop: 1 }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, color: sevColor, marginBottom: 2 }}>{t.condition}</div>
+                      <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>{t.action}</div>
+                    </div>
+                    <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, flexShrink: 0 }}>{t.frequency}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Market Context Rail (right, sticky) ─────────────────────────────── */}
+      <div style={{ width: 200, flexShrink: 0, background: BT.bg.panel, borderLeft: `1px solid ${BT.border.medium}`, overflowY: 'auto', padding: '10px 0' }}>
+        <div style={{ padding: '0 10px', marginBottom: 10 }}>
+          <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, letterSpacing: 1, marginBottom: 6 }}>MARKET CONTEXT</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+            <RateIcon style={{ width: 10, height: 10, color: rateColor }} />
+            <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: rateColor }}>{re.classification.toUpperCase()} RATES</span>
+          </div>
+          <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, lineHeight: 1.5 }}>
+            {re.sofrForward12moBps < 0 ? '' : '+'}{Math.round(re.sofrForward12moBps)}bps expected 12mo
+          </div>
+        </div>
+
+        {[
+          { l: 'SOFR', v: fmtPct(re.sofr * 100), c: BT.text.amber },
+          { l: '10YR TREASURY', v: fmtPct(re.treasury10y * 100), c: BT.text.secondary },
+          { l: 'RATE PREF', v: re.ratePreference, c: re.ratePreference === 'Fixed' ? BT.met.financial : re.ratePreference === 'Floating' ? BT.text.amber : BT.text.muted },
+        ].map(({ l, v, c }) => (
+          <div key={l} style={{ padding: '4px 10px', borderBottom: `1px solid ${BT.border.subtle}` }}>
+            <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>{l}</div>
+            <div style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, color: c }}>{v}</div>
+          </div>
+        ))}
+
+        <div style={{ padding: '8px 10px', borderBottom: `1px solid ${BT.border.subtle}` }}>
+          <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginBottom: 3 }}>PRICING WINDOW</div>
+          <div style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: windowColor }}>{re.pricingWindowLabel}</div>
+          <div style={{ height: 4, background: BT.border.subtle, borderRadius: 2, marginTop: 4 }}>
+            <div style={{ height: 4, width: `${re.pricingWindowScore}%`, background: windowColor, borderRadius: 2 }} />
+          </div>
+        </div>
+
+        <div style={{ padding: '8px 10px', borderBottom: `1px solid ${BT.border.subtle}` }}>
+          <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginBottom: 3 }}>RATE CAP ADVICE</div>
+          <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary, lineHeight: 1.5 }}>{re.ratCapAdvice}</div>
+        </div>
+
+        <div style={{ padding: '8px 10px', borderBottom: `1px solid ${BT.border.subtle}` }}>
+          <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginBottom: 3 }}>STRATEGY</div>
+          <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.cyan }}>{si.subStrategyKey.replace(/_/g, ' ').toUpperCase()}</div>
+          {si.strategyName && <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>{si.strategyName}</div>}
+        </div>
+
+        <div style={{ padding: '8px 10px', borderBottom: `1px solid ${BT.border.subtle}` }}>
+          <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginBottom: 3 }}>HOLD PERIOD</div>
+          <div style={{ fontFamily: MONO, fontSize: 10, color: BT.text.white }}>{si.holdMonths}mo ({Math.round(si.holdMonths / 12 * 10) / 10}yr)</div>
+        </div>
+
+        <div style={{ padding: '8px 10px' }}>
+          <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginBottom: 4 }}>RATE NARRATIVE</div>
+          <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.secondary, lineHeight: 1.6 }}>{re.narrative}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: FinancialEngineTabProps) {
   const cs = f9Financials?.capitalStack ?? null;
@@ -544,9 +982,10 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
 
   // ─── Render ──────────────────────────────────────────────────────────────
   const [showAnnual, setShowAnnual] = useState(true);
+  const [debtView, setDebtView] = useState<'advisor' | 'configure'>('advisor');
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto', background: BT.bg.terminal }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: debtView === 'advisor' ? 'hidden' : 'auto', background: BT.bg.terminal }}>
 
       {/* ── Header ──────────────────────────────────────────────────────────── */}
       <div style={{ padding: '5px 12px', background: BT.bg.header, borderBottom: `1px solid ${BT.border.medium}`, display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
@@ -571,6 +1010,42 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
           </span>
         )}
       </div>
+
+      {/* ── Advisor / Configure Toggle ────────────────────────────────────────── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 0, borderBottom: `1px solid ${BT.border.medium}`, background: BT.bg.panelAlt, flexShrink: 0, padding: '0 12px' }}>
+        {(['advisor', 'configure'] as const).map(v => (
+          <button
+            key={v}
+            onClick={() => setDebtView(v)}
+            style={{
+              padding: '6px 16px', fontFamily: MONO, fontSize: 9, fontWeight: 700, cursor: 'pointer',
+              background: 'transparent', border: 'none',
+              color: debtView === v ? BT.text.white : BT.text.muted,
+              borderBottom: debtView === v ? `2px solid ${BT.text.cyan}` : '2px solid transparent',
+              letterSpacing: 0.6,
+            }}
+          >
+            {v === 'advisor' ? 'ADVISOR' : 'CONFIGURE'}
+          </button>
+        ))}
+        <span style={{ marginLeft: 'auto', fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>
+          {debtView === 'advisor' ? 'Strategy-driven recommendation' : 'Manual loan configuration'}
+        </span>
+      </div>
+
+      {/* ── Advisor View ──────────────────────────────────────────────────────── */}
+      {debtView === 'advisor' && (
+        <div style={{ flex: 1, overflow: 'hidden' }}>
+          <DebtAdvisorView
+            dealId={dealId}
+            onSwitchToConfigure={() => setDebtView('configure')}
+            onAccept={() => setDebtView('configure')}
+          />
+        </div>
+      )}
+
+      {/* ── Configure View ────────────────────────────────────────────────────── */}
+      {debtView === 'configure' && (<>
 
       {/* ── KPI strip ───────────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', borderBottom: `1px solid ${BT.border.medium}`, flexShrink: 0 }}>
@@ -1262,6 +1737,8 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
           </table>
         </div>
       )}
+
+      </>)}
 
     </div>
   );

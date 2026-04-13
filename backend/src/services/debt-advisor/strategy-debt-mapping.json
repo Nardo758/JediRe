@@ -1,0 +1,415 @@
+{
+  "version": "1.0.0",
+  "lastUpdated": "2026-04-13",
+  "mappings": {
+    "mf_core": {
+      "label": "MF Core",
+      "primaryProduct": "agency_fixed",
+      "primaryProductLabel": "Agency Long-Term Fixed (Fannie DUS / Freddie Conventional)",
+      "alternatives": ["cmbs_10yr", "life_co"],
+      "structure": {
+        "termYears": 10,
+        "amortYears": 30,
+        "ioMonths": 24,
+        "targetLtv": 0.70,
+        "maxLtv": 0.75,
+        "rateType": "Fixed",
+        "recourse": "non-recourse",
+        "origFee": 0.010,
+        "prepayType": "yield_maintenance"
+      },
+      "rationale": "Core multifamily stabilized assets underwrite best for agency (Fannie/Freddie). Non-recourse, long-term fixed rates, and supplemental potential make agency the clear primary.",
+      "keywords": ["core", "stabilized", "multifamily"]
+    },
+    "mf_core_plus": {
+      "label": "MF Core-Plus",
+      "primaryProduct": "agency_supplemental",
+      "primaryProductLabel": "Agency with Supplemental Allowance",
+      "alternatives": ["cmbs_10yr", "portfolio_bank"],
+      "structure": {
+        "termYears": 10,
+        "amortYears": 30,
+        "ioMonths": 36,
+        "targetLtv": 0.725,
+        "maxLtv": 0.75,
+        "rateType": "Fixed",
+        "recourse": "non-recourse",
+        "origFee": 0.010,
+        "prepayType": "yield_maintenance",
+        "supplementalEligibleMonths": 36
+      },
+      "rationale": "Core-plus assets benefit from agency execution with supplemental loan capacity in Y3-5 to fund light value-add capex without a full refi.",
+      "keywords": ["core plus", "light value", "minor renovation"]
+    },
+    "mf_value_add": {
+      "label": "MF Value-Add",
+      "primaryProduct": "bridge_to_perm",
+      "primaryProductLabel": "Bridge-to-Perm (Bridge 2-3yr → Agency Refi at Stabilization)",
+      "alternatives": ["debt_fund_fixed"],
+      "structure": {
+        "phase1": {
+          "product": "bridge",
+          "termYears": 3,
+          "extensions": "2 × 1yr",
+          "ioMonths": 36,
+          "targetLtc": 0.70,
+          "maxLtc": 0.75,
+          "rateType": "Floating",
+          "spread": 0.0275,
+          "origFee": 0.015,
+          "exitFee": 0.005,
+          "prepayType": "open",
+          "recourse": "non-recourse"
+        },
+        "phase2": {
+          "product": "agency",
+          "triggerOcc": 0.92,
+          "triggerDscr": 1.35,
+          "triggerMonth": 24,
+          "termYears": 10,
+          "amortYears": 30,
+          "ioMonths": 24,
+          "targetLtv": 0.65,
+          "maxLtv": 0.75,
+          "rateType": "Fixed",
+          "prepayType": "yield_maintenance"
+        }
+      },
+      "rationale": "Value-add properties need bridge flexibility during renovation (IO, draws, no immediate DSCR test), then permanent fixed-rate agency financing at stabilization to lock in long-term capital.",
+      "keywords": ["value add", "value-add", "renovation", "reposition", "rehab", "rental_value_add"]
+    },
+    "mf_deep_value_add": {
+      "label": "MF Deep Value-Add",
+      "primaryProduct": "bridge_mezz_stack",
+      "primaryProductLabel": "Bridge + Mezz Stack",
+      "alternatives": ["pref_equity_sub"],
+      "structure": {
+        "seniorLtc": 0.70,
+        "mezzLtc": 0.80,
+        "mezzRate": 0.13,
+        "mezzPik": true,
+        "termYears": 3,
+        "ioMonths": 36,
+        "rateType": "Floating"
+      },
+      "rationale": "Deep value-add requires higher leverage to fund heavy capex. Senior bridge to 70% LTC + mezz to 80-85% LTC achieves the capital needed. Mezz at 12-14% pay + PIK.",
+      "keywords": ["deep value", "heavy renovation", "gut rehab"]
+    },
+    "mf_distressed": {
+      "label": "MF Distressed",
+      "primaryProduct": "private_credit",
+      "primaryProductLabel": "Private Credit / Distressed Bridge",
+      "alternatives": ["note_purchase"],
+      "structure": {
+        "termYears": 2,
+        "ioMonths": 24,
+        "targetLtc": 0.65,
+        "rateType": "Floating",
+        "spread": 0.0450,
+        "recourse": "partial",
+        "prepayType": "open"
+      },
+      "rationale": "Distressed assets carry performance and covenant risk that conventional lenders won't underwrite. Private credit accepts the risk premium in exchange for higher pricing and partial recourse.",
+      "keywords": ["distressed", "foreclosure", "note", "npl"]
+    },
+    "mf_lease_up": {
+      "label": "MF Lease-Up",
+      "primaryProduct": "bridge_earnout",
+      "primaryProductLabel": "Bridge-to-Perm with Earnout",
+      "alternatives": ["agency_lease_up_program"],
+      "structure": {
+        "termYears": 3,
+        "ioMonths": 36,
+        "targetLtc": 0.70,
+        "rateType": "Floating",
+        "spread": 0.0300,
+        "earnoutMilestoneOcc": 0.90,
+        "earnoutMilestoneDscr": 1.25
+      },
+      "rationale": "Lease-up assets fund at partial proceeds initially; earnout provisions release remaining proceeds as occupancy and DSCR milestones are met, reducing initial lender risk.",
+      "keywords": ["lease up", "lease-up", "new construction stabilizing", "c/o"]
+    },
+    "mf_ground_up": {
+      "label": "MF BTS Ground-Up",
+      "primaryProduct": "construction_to_perm",
+      "primaryProductLabel": "Construction Loan → Bridge-to-Perm or Sale",
+      "alternatives": ["hud_221d4"],
+      "structure": {
+        "phase1": {
+          "product": "construction",
+          "termMonths": 36,
+          "ioMonths": 36,
+          "targetLtc": 0.70,
+          "maxLtc": 0.75,
+          "rateType": "Floating",
+          "interestReserve": true
+        },
+        "phase2": {
+          "product": "bridge_or_agency",
+          "triggerMonth": 36,
+          "decision": "refi_or_sell"
+        }
+      },
+      "rationale": "Ground-up construction requires a construction loan with interest reserve and draw schedule. At certificate of occupancy, the exit is typically a refi to permanent or sale at stabilization.",
+      "keywords": ["ground up", "ground-up", "new construction", "build to sell", "build_to_sell", "bts"]
+    },
+    "sfr_fix_flip": {
+      "label": "SFR Fix-and-Flip",
+      "primaryProduct": "hard_money",
+      "primaryProductLabel": "Fix-Flip Hard Money",
+      "alternatives": ["cash_heloc"],
+      "structure": {
+        "termMonths": 12,
+        "targetLtc": 0.80,
+        "maxLtcRehab": 1.00,
+        "rateType": "Fixed",
+        "rate": 0.115,
+        "origFee": 0.025,
+        "prepayType": "open"
+      },
+      "rationale": "Fix-and-flip requires fast close, tolerance for under-construction collateral, and short duration. Hard money lenders specialize in this and can fund in days vs weeks for conventional.",
+      "keywords": ["fix flip", "fix and flip", "flip", "fix_flip"]
+    },
+    "sfr_brrrr": {
+      "label": "SFR BRRRR",
+      "primaryProduct": "hard_money_to_dscr",
+      "primaryProductLabel": "Hard Money Acquisition → DSCR Refi",
+      "alternatives": ["conventional_cash_out"],
+      "structure": {
+        "phase1": {
+          "product": "hard_money",
+          "termMonths": 12,
+          "targetLtc": 0.80,
+          "rateType": "Fixed",
+          "rate": 0.115
+        },
+        "phase2": {
+          "product": "dscr_loan",
+          "triggerMonth": 7,
+          "termYears": 30,
+          "targetLtv": 0.75,
+          "rateType": "Fixed",
+          "rate": 0.075,
+          "minDscr": 1.25
+        }
+      },
+      "rationale": "BRRRR requires acquisition flexibility (hard money or cash), followed by a DSCR refi after 6-month seasoning to extract equity and recycle capital into the next deal.",
+      "keywords": ["brrrr", "buy rehab rent refinance"]
+    },
+    "sfr_hold": {
+      "label": "SFR Hold (Scattered)",
+      "primaryProduct": "conventional_investment",
+      "primaryProductLabel": "Conventional Investment Loan / DSCR Loan",
+      "alternatives": ["portfolio_loan"],
+      "structure": {
+        "termYears": 30,
+        "targetLtv": 0.75,
+        "maxLtv": 0.80,
+        "rateType": "Fixed",
+        "minDscr": 1.25,
+        "prepayType": "open"
+      },
+      "rationale": "Stabilized SFR rental holds access conventional financing with favorable 30-year amortization. DSCR qualification eliminates personal income constraints for investors.",
+      "keywords": ["sfr hold", "rental hold", "rental_stabilized", "str", "short term rental"]
+    },
+    "sfr_portfolio": {
+      "label": "SFR Portfolio Aggregation",
+      "primaryProduct": "portfolio_blanket",
+      "primaryProductLabel": "Portfolio Loan (Multi-Property Blanket)",
+      "alternatives": ["cmbs_stabilized_portfolio"],
+      "structure": {
+        "termYears": 7,
+        "targetLtv": 0.70,
+        "maxLtv": 0.75,
+        "rateType": "Fixed",
+        "crossCollateral": true
+      },
+      "rationale": "Portfolios of 5+ SFR properties aggregate well into blanket loans offering simpler management, better pricing, and cross-collateralization benefits vs property-by-property financing.",
+      "keywords": ["sfr portfolio", "portfolio aggregation", "blanket loan"]
+    },
+    "retail_nnn_core": {
+      "label": "Retail NNN Core",
+      "primaryProduct": "cmbs_long_term",
+      "primaryProductLabel": "CMBS Long-Term Fixed (Match Lease Tail)",
+      "alternatives": ["life_co", "portfolio_bank"],
+      "structure": {
+        "termYears": 15,
+        "amortYears": 30,
+        "targetLtv": 0.65,
+        "maxLtv": 0.70,
+        "rateType": "Fixed",
+        "prepayType": "defeasance",
+        "recourse": "non-recourse"
+      },
+      "rationale": "Single-tenant NNN properties with credit tenants underwrite best for CMBS. Match loan term to lease expiration to maximize value and avoid refinance risk.",
+      "keywords": ["nnn", "net lease", "single tenant", "credit tenant", "retail nnn"]
+    },
+    "retail_grocery": {
+      "label": "Retail Grocery-Anchored",
+      "primaryProduct": "cmbs_or_life_co",
+      "primaryProductLabel": "CMBS or Life Company",
+      "alternatives": ["bank_5_7yr"],
+      "structure": {
+        "termYears": 10,
+        "amortYears": 30,
+        "targetLtv": 0.70,
+        "maxLtv": 0.75,
+        "rateType": "Fixed",
+        "prepayType": "defeasance"
+      },
+      "rationale": "Grocery-anchored centers are among the most financeable retail formats. CMBS or life company execution achieves lowest cost of capital with long-term fixed rates.",
+      "keywords": ["grocery anchored", "grocery", "retail anchored", "community center"]
+    },
+    "retail_value_add": {
+      "label": "Retail Value-Add Reposition",
+      "primaryProduct": "bridge_to_perm",
+      "primaryProductLabel": "Bridge-to-Perm (Bridge 2-3yr)",
+      "alternatives": ["debt_fund_3_5yr"],
+      "structure": {
+        "termYears": 3,
+        "ioMonths": 36,
+        "targetLtc": 0.65,
+        "rateType": "Floating",
+        "spread": 0.0300
+      },
+      "rationale": "Repositioning retail requires execution flexibility and tolerance for below-stabilized occupancy during lease-up. Bridge provides the time and funding to re-tenant and reposition.",
+      "keywords": ["retail value add", "retail reposition", "strip center"]
+    },
+    "office_core": {
+      "label": "Office Core",
+      "primaryProduct": "cmbs_or_life_co",
+      "primaryProductLabel": "CMBS or Life Company (Conservative LTV)",
+      "alternatives": ["portfolio_bank_5_7yr"],
+      "structure": {
+        "termYears": 10,
+        "amortYears": 30,
+        "targetLtv": 0.60,
+        "maxLtv": 0.65,
+        "rateType": "Fixed",
+        "prepayType": "defeasance",
+        "note": "Office underwritten conservatively post-2023; lenders require lower leverage"
+      },
+      "rationale": "Core office with long-term credit tenants can still access institutional fixed-rate capital, but at conservative LTVs (55-65%) reflecting post-2023 office market re-pricing.",
+      "keywords": ["office core", "class a office", "trophy office"]
+    },
+    "office_value_add": {
+      "label": "Office Value-Add",
+      "primaryProduct": "bridge_ti_lc",
+      "primaryProductLabel": "Bridge with TI/LC Reserve",
+      "alternatives": ["debt_fund"],
+      "structure": {
+        "termYears": 3,
+        "ioMonths": 36,
+        "targetLtc": 0.65,
+        "rateType": "Floating",
+        "spread": 0.0350,
+        "tiLcHoldback": true
+      },
+      "rationale": "Office value-add requires TI/LC holdbacks to fund re-leasing costs. Bridge lenders underwrite looser DSCR floors during vacancy to fund the value-creation period.",
+      "keywords": ["office value add", "office reposition", "office retrofit"]
+    },
+    "industrial_core": {
+      "label": "Industrial Core",
+      "primaryProduct": "cmbs_or_life_co",
+      "primaryProductLabel": "CMBS or Life Company",
+      "alternatives": ["agency_adjacent"],
+      "structure": {
+        "termYears": 10,
+        "amortYears": 30,
+        "targetLtv": 0.675,
+        "maxLtv": 0.70,
+        "rateType": "Fixed",
+        "prepayType": "defeasance"
+      },
+      "rationale": "Industrial is currently the most financeable asset class. Long-term credit tenants, strong NOI growth, and low vacancy underwrite well for institutional fixed-rate capital.",
+      "keywords": ["industrial core", "warehouse", "distribution", "logistics"]
+    },
+    "industrial_value_add": {
+      "label": "Industrial Value-Add",
+      "primaryProduct": "bridge_to_perm",
+      "primaryProductLabel": "Bridge-to-Perm",
+      "alternatives": ["bank_portfolio"],
+      "structure": {
+        "termYears": 3,
+        "ioMonths": 36,
+        "targetLtc": 0.65,
+        "rateType": "Floating",
+        "spread": 0.0275
+      },
+      "rationale": "Industrial value-add through re-leasing or renovation benefits from bridge flexibility, then refinances to fixed at stabilization.",
+      "keywords": ["industrial value add", "flex industrial", "industrial reposition"]
+    },
+    "hospitality_core": {
+      "label": "Hospitality Core (Stabilized Flag)",
+      "primaryProduct": "cmbs_hospitality",
+      "primaryProductLabel": "CMBS Hospitality",
+      "alternatives": ["bank_portfolio"],
+      "structure": {
+        "termYears": 10,
+        "amortYears": 30,
+        "targetLtv": 0.625,
+        "maxLtv": 0.65,
+        "rateType": "Fixed",
+        "ffAndEReserve": true
+      },
+      "rationale": "Stabilized flag properties qualify for CMBS execution at 60-65% LTV. FF&E reserves are lender-required and must be modeled in sources and uses.",
+      "keywords": ["hospitality", "hotel", "flag", "branded hotel"]
+    },
+    "default": {
+      "label": "General Investment",
+      "primaryProduct": "bridge",
+      "primaryProductLabel": "Bridge Loan (Floating Rate)",
+      "alternatives": ["bank_portfolio", "cmbs_10yr"],
+      "structure": {
+        "termYears": 3,
+        "ioMonths": 36,
+        "targetLtc": 0.65,
+        "maxLtv": 0.75,
+        "rateType": "Floating",
+        "spread": 0.0300,
+        "origFee": 0.015,
+        "exitFee": 0.005,
+        "prepayType": "open",
+        "recourse": "non-recourse"
+      },
+      "rationale": "Without a specific strategy detection, bridge financing provides maximum flexibility to preserve optionality during the initial hold period.",
+      "keywords": []
+    }
+  },
+  "productLabels": {
+    "agency_fixed": "Fannie DUS / Freddie Conventional",
+    "agency_supplemental": "Agency with Supplemental",
+    "cmbs_10yr": "CMBS 10-Year Fixed",
+    "life_co": "Life Company Fixed",
+    "bridge_to_perm": "Bridge-to-Perm",
+    "bridge_mezz_stack": "Bridge + Mezz Stack",
+    "private_credit": "Private Credit",
+    "hard_money": "Hard Money",
+    "hard_money_to_dscr": "Hard Money → DSCR Refi",
+    "conventional_investment": "Conventional / DSCR Loan",
+    "portfolio_blanket": "Portfolio Blanket Loan",
+    "cmbs_long_term": "CMBS Long-Term Fixed",
+    "cmbs_or_life_co": "CMBS or Life Company",
+    "cmbs_hospitality": "CMBS Hospitality",
+    "bridge_ti_lc": "Bridge with TI/LC Reserve",
+    "bridge_earnout": "Bridge with Earnout",
+    "bridge": "Bridge Loan",
+    "construction_to_perm": "Construction → Perm",
+    "hud_221d4": "HUD 221(d)(4)",
+    "debt_fund_fixed": "Debt Fund Fixed",
+    "bank_portfolio": "Bank Portfolio",
+    "portfolio_bank": "Portfolio Bank",
+    "note_purchase": "Note Purchase",
+    "pref_equity_sub": "Preferred Equity",
+    "dscr_loan": "DSCR Loan",
+    "cash_heloc": "Cash / HELOC",
+    "conventional_cash_out": "Conventional Cash-Out Refi",
+    "cmbs_stabilized_portfolio": "CMBS (Stabilized Portfolio)",
+    "debt_fund_3_5yr": "Debt Fund 3-5yr",
+    "debt_fund": "Debt Fund",
+    "agency_lease_up_program": "Agency Lease-Up Program",
+    "agency_adjacent": "Agency (MF-Adjacent)",
+    "bank_5_7yr": "Bank 5-7yr",
+    "portfolio_bank_5_7yr": "Portfolio Bank 5-7yr"
+  }
+}
