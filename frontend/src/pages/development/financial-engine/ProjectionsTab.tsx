@@ -138,14 +138,13 @@ const SECTIONS: SectionDef[] = [
   {
     label: 'SALE-YEAR DISPOSITION', key: 'exit', color: BT.text.amber,
     rows: [
-      { label: 'Forward NOI (Exit)',         key: 'exitNoi' },
-      { label: 'Exit Cap Rate',              key: 'exitCap',             fmt: 'pct' },
-      { label: 'Gross Sale Value',           key: 'grossSaleValue' },
-      { label: '(–) Selling Costs',         key: 'sellingCosts',         indent: true, sign: -1 },
-      { label: '(–) Doc Stamps / Transfer', key: 'dispositionDocStamps', indent: true, sign: -1, tabLink: 4 },
-      { label: '(–) Loan Payoff',           key: 'loanPayoff',           indent: true, sign: -1 },
-      { label: '(–) Sale Tax Payable',      key: 'taxPayable',           indent: true, sign: -1, afterTaxOnly: true },
-      { label: 'Net Sale Proceeds',          key: 'netSaleProceeds',      isTotal: true },
+      { label: 'Forward NOI (Exit)',          key: 'exitNoi' },
+      { label: 'Exit Cap Rate',               key: 'exitCap',             fmt: 'pct' },
+      { label: 'Gross Sale Value',            key: 'grossSaleValue' },
+      { label: '(–) Selling Costs (1.5%)',    key: 'sellingCosts',         indent: true, sign: -1 },
+      { label: '(–) Doc Stamps / Transfer',  key: 'dispositionDocStamps', indent: true, sign: -1, tabLink: 4 },
+      { label: '(–) Loan Payoff',            key: 'loanPayoff',           indent: true, sign: -1 },
+      { label: 'Net Sale Proceeds',           key: 'netSaleProceeds',      isTotal: true },
     ],
   },
 ];
@@ -459,8 +458,14 @@ export function ProjectionsTab({
   integrityWarning,
   f9Financials,
   onTabChange,
+  onHoldChange,
 }: FinancialEngineTabProps) {
   const [timeline, setTimeline] = useState<TimelineOption>(5);
+
+  const handleTimeline = useCallback((yr: TimelineOption) => {
+    setTimeline(yr);
+    onHoldChange?.(yr);
+  }, [onHoldChange]);
   const [viewMode, setViewMode] = useState<ViewMode>('annual');
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
     new Set(SECTIONS.map(s => s.key)),
@@ -573,7 +578,7 @@ export function ProjectionsTab({
           {/* Timeline */}
           <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, letterSpacing: 0.5 }}>HOLD:</span>
           {([3, 5, 7, 10] as TimelineOption[]).map(t => (
-            <button key={t} onClick={() => setTimeline(t)} style={{
+            <button key={t} onClick={() => handleTimeline(t)} style={{
               background: timeline === t ? BT.bg.active : 'transparent',
               color:      timeline === t ? BT.met.financial : BT.text.muted,
               border:     timeline === t ? `1px solid ${BT.met.financial}40` : '1px solid transparent',

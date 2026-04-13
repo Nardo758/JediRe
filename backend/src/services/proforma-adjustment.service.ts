@@ -1347,6 +1347,8 @@ export interface DealFinancials {
       annualDepreciation: number | null;
       bonusDepreciationCurrentYearPct: number;
       costSegAvailablePct: number;
+      /** Blended marginal income tax rate (federal + state). Default 0.37 when taxes seeded. */
+      marginalTaxRate: number;
     };
     transferTax: {
       purchasePrice: number | null;
@@ -2072,6 +2074,9 @@ export async function getDealFinancials(
     incomeTax: {
       purchasePrice, landValuePct: LAND_PCT, depreciableBase,
       annualDepreciation, bonusDepreciationCurrentYearPct: bonusRate, costSegAvailablePct: 0.30,
+      // Marginal blended rate (federal + state). Use 0.37 as conventional top-bracket default
+      // when incomeTax data is seeded but no explicit rate override is available.
+      marginalTaxRate: 0.37,
     },
     transferTax: {
       purchasePrice, isMiamiDade: resolvedIsMiamiDade,
@@ -2696,9 +2701,9 @@ export async function getDealFinancials(
     const reTaxY1Base  = ry1('real_estate_tax');
     const reservesY1   = ry1('replacement_reserves') || (totalUnits * 350);
 
-    // After-tax: income tax data from taxes tab
-    const annualDeprec   = taxes?.incomeTax?.annualDepreciation ?? null;
-    const marginalTaxRate = taxes?.incomeTax != null ? 0.37 : null; // only use when taxes seeded
+    // After-tax: income tax data from taxes tab (rate sourced from taxes.incomeTax.marginalTaxRate)
+    const annualDeprec    = taxes?.incomeTax?.annualDepreciation ?? null;
+    const marginalTaxRate = taxes?.incomeTax != null ? (taxes.incomeTax.marginalTaxRate ?? 0.37) : null;
 
     // Transfer tax for sale-year disposition
     const docStampAmtPurch = taxes?.transferTax?.docStampAmount ?? null;

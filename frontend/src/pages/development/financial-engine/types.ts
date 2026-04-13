@@ -403,6 +403,8 @@ export interface F9TaxData {
     annualDepreciation: number | null;
     bonusDepreciationCurrentYearPct: number;
     costSegAvailablePct: number;
+    /** Blended marginal income tax rate sourced from taxes engine (default 0.37 top bracket) */
+    marginalTaxRate: number;
   };
   transferTax: {
     purchasePrice: number | null;
@@ -461,6 +463,8 @@ export interface FinancialEngineTabProps {
   onTabChange?: (tabIndex: number) => void;
   /** Refetch f9Financials from the server (e.g. after a PATCH override) */
   onF9Refresh?: () => void;
+  /** Called when the Projections tab timeline (hold period) changes, so parent can re-fetch with ?hold=N */
+  onHoldChange?: (years: number) => void;
 }
 
 // ─── F9 Debt Stack (v2) ───────────────────────────────────────────────────────

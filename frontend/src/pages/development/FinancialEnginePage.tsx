@@ -125,18 +125,29 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
   }, [resolvedDealId]);
 
   // ── F9 DealFinancials — fetched at page level for F1/F8/F10 cross-tab wiring ─
-  const fetchF9Financials = useCallback(() => {
+  const [f9Hold, setF9Hold] = useState<number>(5);
+  const fetchF9Financials = useCallback((hold: number = f9Hold) => {
     if (!resolvedDealId) return;
     apiClient.get<{ success: boolean; data: F9DealFinancials }>(
-      `/api/v1/deals/${resolvedDealId}/financials?hold=5`,
+      `/api/v1/deals/${resolvedDealId}/financials?hold=${hold}`,
     ).then(res => {
       if (res.data?.data) setF9Financials(res.data.data);
     }).catch(() => {});
-  }, [resolvedDealId]);
+  }, [resolvedDealId, f9Hold]);
 
   useEffect(() => {
     fetchF9Financials();
   }, [fetchF9Financials]);
+
+  const handleHoldChange = useCallback((years: number) => {
+    setF9Hold(years);
+    if (!resolvedDealId) return;
+    apiClient.get<{ success: boolean; data: F9DealFinancials }>(
+      `/api/v1/deals/${resolvedDealId}/financials?hold=${years}`,
+    ).then(res => {
+      if (res.data?.data) setF9Financials(res.data.data);
+    }).catch(() => {});
+  }, [resolvedDealId]);
 
   const handleBuildModel = useCallback(async () => {
     if (!resolvedDealId || !assumptions) return;
@@ -295,7 +306,8 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
     f9Financials,
     onTabChange: setActiveTab,
     onF9Refresh: fetchF9Financials,
-  }), [resolvedDealId, propDeal, resolvedDealType, assumptions, modelResults, handleAssumptionsChange, handleBuildModel, building, versions, activeVersion, f9Financials, fetchF9Financials]);
+    onHoldChange: handleHoldChange,
+  }), [resolvedDealId, propDeal, resolvedDealType, assumptions, modelResults, handleAssumptionsChange, handleBuildModel, building, versions, activeVersion, f9Financials, fetchF9Financials, handleHoldChange]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BT.bg.terminal }}>
