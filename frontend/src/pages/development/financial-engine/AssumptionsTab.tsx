@@ -10,6 +10,7 @@ import { apiClient } from '../../../services/api.client';
 interface OSRow {
   field: string; label: string;
   broker: number|null; platform: number|null; t12: number|null;
+  rentRoll: number|null; taxBill: number|null;
   resolved: number|null; resolution: string|null; perUnit: number|null;
   source: string|null; confidence: number|null;
   benchmarkPosition: 'above'|'below'|'within'|null;
@@ -18,6 +19,12 @@ interface TrafficYear {
   year: number; vacancyPct: number|null; occupancyPct: number|null;
   effRent: number|null; rentGrowthPct: number|null;
   t01WeeklyTours: number|null; t05ClosingRatio: number|null; t06WeeklyLeases: number|null;
+}
+interface GprDecomposition {
+  brokerAnnual: number|null; platformAnnual: number|null; t12Annual: number|null;
+  rentRollAnnual: number|null; resolvedAnnual: number|null;
+  brokerPerUnitMo: number|null; platformPerUnitMo: number|null;
+  t12PerUnitMo: number|null; resolvedPerUnitMo: number|null;
 }
 interface DealFinancials {
   dealId: string; dealName: string; totalUnits: number;
@@ -32,8 +39,8 @@ interface DealFinancials {
   }|null;
   assumptions: {
     holdYears: number; exitCap: number|null; rentGrowthYr1: number|null; rentGrowthStabilized: number|null;
-    narrative?: string|null;
     perYear: Array<{ year: number; rentGrowthPct: number|null; vacancyPct: number|null; exitCapIfLastYear: number|null }>;
+    gprDecomposition: GprDecomposition|null;
   };
   meta: { seeded: boolean; updatedAt: string|null };
 }
@@ -42,24 +49,25 @@ interface DealFinancials {
 const MONO = "'JetBrains Mono','Fira Code',monospace";
 type RowMode = 'flat'|'stepped'|'formula';
 type Overrides = Record<string, Record<number, number|null>>;
-type Formulas  = Record<string, string>; // rowKey → expression string
+type Formulas  = Record<string, string>;
+
+// Field ordering from backend (sections 1 & 3)
+const REVENUE_ORDER = ['gpr','loss_to_lease_pct','vacancy_pct','concessions_pct','bad_debt_pct','non_revenue_units_pct','other_income_per_unit','net_rental_income','egi'];
+const OPEX_ORDER    = ['payroll','repairs_maintenance','turnover','contract_services','marketing','utilities','g_and_a','management_fee_pct','insurance','real_estate_tax','replacement_reserves','total_opex','noi'];
 
 // ─── Formula evaluator ─────────────────────────────────────────────────────────
-// Supports: Y1..Yn (year refs), base (broker), platform, numeric literals, %, basic math
 function evalFormula(
   expr: string,
   context: { base: number|null; platform: number|null; yearVals: Record<number, number|null> },
 ): number|null {
   try {
     let s = expr.trim();
-    // Replace year references: Y1, y2, Y5 etc
     s = s.replace(/[Yy](\d+)/g, (_, n) => {
       const v = context.yearVals[Number(n)];
       return v != null ? String(v) : 'null';
     });
     s = s.replace(/\bbase\b/gi, context.base != null ? String(context.base) : 'null');
     s = s.replace(/\bplatform\b/gi, context.platform != null ? String(context.platform) : 'null');
-    // Normalize percent literals: 3.5% → 0.035, +0.25% → +0.0025
     s = s.replace(/([+-]?\s*\d+(?:\.\d+)?)\s*%/g, (_, n) => String(parseFloat(n.replace(/\s+/,'')) / 100));
     if (s.includes('null')) return null;
     // eslint-disable-next-line no-new-func
@@ -78,7 +86,9 @@ function tyr(f: DealFinancials, yr: number): TrafficYear|undefined {
 function pyr(f: DealFinancials, yr: number) {
   return f.assumptions.perYear.find(p => p.year === yr);
 }
-function compound(f: DealFinancials, yr: number): number {
+
+// Compound rent growth multiplier for year `yr` relative to year 1
+function rentCompound(f: DealFinancials, yr: number): number {
   let m = 1;
   for (let y = 1; y < yr; y++) {
     const g = pyr(f, y)?.rentGrowthPct ?? f.assumptions.rentGrowthStabilized ?? 0.03;
@@ -87,30 +97,22 @@ function compound(f: DealFinancials, yr: number): number {
   return m;
 }
 
-// ─── Row definition ────────────────────────────────────────────────────────────
-interface RowDef {
-  key: string; label: string; section: 1|2|3|4|5|6|7;
-  unit: 'pct'|'dollar'|'weeks'|'per_wk'|'months'; readonly?: boolean;
+// ─── Field metadata (thin overlay on top of backend proforma.year1 data) ───────
+interface FieldMeta {
+  unit: 'pct'|'dollar'|'weeks'|'per_wk'|'months';
   format: (n: number) => string;
-  description?: string;
   patchField?: string;
-  platformSource: string; brokerSource: string;
+  readonly?: boolean;
+  description?: string;
+  platformSource?: string; brokerSource?: string;
   brokerPage?: string; brokerLine?: string;
   benchmarkP25?: number; benchmarkP50?: number; benchmarkP75?: number;
-  getBroker:     (f: DealFinancials, yr: number) => number|null;
-  getPlatform:   (f: DealFinancials, yr: number) => number|null;
-  getConfidence: (f: DealFinancials) => number|null;
+  // Year-N projection approach
+  growthPct?: number;        // fixed growth rate (e.g. 0.03 = 3%)
+  growthKey?: 'rent'|'opex'; // dynamic: 'rent' = per-year from assumptions; 'opex' = 3%
+  // Custom per-year platform getter (for traffic-driven metrics)
+  getYearNPlatform?: (f: DealFinancials, yr: number) => number|null;
 }
-
-const SEC: Record<number,string> = {
-  1: '1  REVENUE — RENT SIDE',
-  2: '2  REVENUE — TRAFFIC / DEMAND  [M07]',
-  3: '3  EXPENSE ASSUMPTIONS',
-  4: '4  CAPEX / RESERVES',
-  5: '5  DEBT ASSUMPTIONS',
-  6: '6  EXIT ASSUMPTIONS',
-  7: '7  STRATEGY-SPECIFIC',
-};
 
 const fmtPct2 = (n: number) => (n * 100).toFixed(2) + '%';
 const fmtDlr  = (n: number) => '$' + Math.round(n).toLocaleString();
@@ -118,116 +120,263 @@ const fmtWks  = (n: number) => Math.round(n) + ' wks';
 const fmtPwk  = (n: number) => n.toFixed(1) + '/wk';
 const fmtMo   = (n: number) => Math.round(n) + ' mo';
 
-const ROWS: RowDef[] = [
-  // ── Section 1 ──────────────────────────────────────────────────────────────
-  {
-    key: 'effRent', label: 'Avg Eff Rent / Unit / Mo', section: 1, unit: 'dollar',
-    format: fmtDlr, patchField: 'rentPerUnit',
-    description: 'Average effective rent per unit per month. Compounds each year by the rent growth % in Section 1.',
-    platformSource: 'M07 Traffic Engine — per-year effRent trajectory',
-    brokerSource: 'OM / Rent Roll — Avg In-Place Rent',
-    brokerPage: 'Rent Roll Summary', brokerLine: 'Avg In-Place Rent',
-    benchmarkP25: 1400, benchmarkP50: 1780, benchmarkP75: 2200,
-    getBroker: (f, yr) => {
-      const base = f.rentRollSummary?.avgInPlaceRent
-        ?? (y1(f,'gpr')?.broker != null ? y1(f,'gpr')!.broker! / Math.max(f.totalUnits,1) / 12 : null);
-      return base != null ? Math.round(base * compound(f, yr)) : null;
-    },
-    getPlatform: (f, yr) => {
+// Metadata keyed by backend field name — all Year-1 data comes from proforma.year1
+const FIELD_META: Record<string, FieldMeta> = {
+  // ── Revenue fields (Section 1) ─────────────────────────────────────────────
+  gpr: {
+    unit: 'dollar', format: fmtDlr, patchField: 'gpr', growthKey: 'rent',
+    description: 'Gross Potential Rent — 100% occupied × market rent × 12. Compounds each year by per-year rent growth.',
+    platformSource: 'M07 Traffic Engine — effRent × occupancy × units', brokerSource: 'OM / Rent Roll',
+    brokerPage: 'Rent Roll Summary', brokerLine: 'Gross Potential Rent',
+    benchmarkP25: 800_000, benchmarkP50: 2_200_000, benchmarkP75: 5_000_000,
+    getYearNPlatform: (f, yr) => {
       const t = tyr(f, yr);
-      if (t?.effRent != null) return Math.round(t.effRent);
+      if (t?.effRent != null && t?.occupancyPct != null)
+        return Math.round(t.effRent * t.occupancyPct * f.totalUnits * 12);
       const base = y1(f,'gpr')?.platform;
-      return base != null ? Math.round(base / Math.max(f.totalUnits,1) / 12 * compound(f, yr)) : null;
+      return base != null ? Math.round(base * rentCompound(f, yr)) : null;
     },
-    getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
   },
-  {
-    key: 'rentGrowth', label: 'Rent Growth % (per year)', section: 1, unit: 'pct',
-    format: fmtPct2, patchField: 'rentGrowthPct',
-    description: 'Year-over-year rent growth. M07 derives this from the effRent trajectory CAGR.',
-    platformSource: 'M07 — effRent trajectory YoY CAGR',
-    brokerSource: 'OM / Operating Assumptions',
-    brokerPage: 'Operating Assumptions', brokerLine: 'Rent Growth',
-    benchmarkP25: 0.02, benchmarkP50: 0.03, benchmarkP75: 0.045,
-    getBroker: (f, yr) => pyr(f, yr)?.rentGrowthPct ?? f.assumptions.rentGrowthStabilized ?? 0.03,
-    getPlatform: (f, yr) => tyr(f, yr)?.rentGrowthPct ?? null,
-    getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
-  },
-  {
-    key: 'lossToLease', label: 'Loss-to-Lease %', section: 1, unit: 'pct',
-    format: fmtPct2, patchField: 'lossToLeasePct',
-    description: 'Market rent minus in-place rent as % of market rent. Narrows each year as leases roll.',
-    platformSource: 'JEDI — Submarket Avg Loss-to-Lease',
-    brokerSource: 'OM / Operating Assumptions',
+  loss_to_lease_pct: {
+    unit: 'pct', format: fmtPct2, patchField: 'lossToLeasePct',
+    description: 'Market rent minus in-place rent as % of market rent. Narrows as leases roll over hold period.',
+    platformSource: 'JEDI — Submarket Avg Loss-to-Lease', brokerSource: 'OM / Operating Assumptions',
     brokerPage: 'Operating Assumptions', brokerLine: 'Loss-to-Lease',
     benchmarkP25: 0.01, benchmarkP50: 0.025, benchmarkP75: 0.05,
-    getBroker: (f, _yr) => y1(f,'lossToLease')?.broker ?? y1(f,'lossToLease')?.t12 ?? 0.022,
-    getPlatform: (f, _yr) => y1(f,'lossToLease')?.platform ?? 0.025,
-    getConfidence: f => y1(f,'lossToLease')?.confidence ?? 60,
   },
-  {
-    key: 'concessions', label: 'Concessions %', section: 1, unit: 'pct',
-    format: fmtPct2, patchField: 'concessionsPct',
+  vacancy_pct: {
+    unit: 'pct', format: fmtPct2, patchField: 'vacancyPct',
+    description: 'Physical vacancy & credit loss as % of GPR. M07 derives this from T-01×T-05 traffic equilibrium.',
+    platformSource: 'M07 — T-01 × T-05 occupancy trajectory per year', brokerSource: 'OM / Operating Assumptions',
+    brokerPage: 'Operating Assumptions', brokerLine: 'Vacancy & Credit Loss',
+    benchmarkP25: 0.03, benchmarkP50: 0.06, benchmarkP75: 0.10,
+    getYearNPlatform: (f, yr) => tyr(f, yr)?.vacancyPct ?? y1(f,'vacancy_pct')?.platform ?? null,
+  },
+  concessions_pct: {
+    unit: 'pct', format: fmtPct2, patchField: 'concessionsPct',
     description: 'Free rent / net effective concessions as % of GPR. Declines as market tightens.',
-    platformSource: 'M07 — Leasing velocity implies concession pressure',
-    brokerSource: 'OM / Operating Assumptions',
+    platformSource: 'M07 — Leasing velocity implies concession pressure', brokerSource: 'OM / Operating Assumptions',
     brokerPage: 'Operating Assumptions', brokerLine: 'Concessions',
     benchmarkP25: 0.002, benchmarkP50: 0.005, benchmarkP75: 0.012,
-    getBroker: (f, _yr) => y1(f,'concessions')?.broker ?? y1(f,'concessions')?.t12 ?? 0.005,
-    getPlatform: (f, _yr) => y1(f,'concessions')?.platform ?? 0.004,
-    getConfidence: f => y1(f,'concessions')?.confidence ?? 55,
   },
-  {
-    key: 'badDebt', label: 'Bad Debt / Collection Loss %', section: 1, unit: 'pct',
-    format: fmtPct2, patchField: 'badDebtPct',
+  bad_debt_pct: {
+    unit: 'pct', format: fmtPct2, patchField: 'badDebtPct',
     description: 'Non-payment and collection losses as % of GPR.',
-    platformSource: 'JEDI — Local collections data',
-    brokerSource: 'OM / T12 Statement',
+    platformSource: 'JEDI — Local collections data', brokerSource: 'OM / T12 Statement',
     brokerPage: 'T12 Operating Statement', brokerLine: 'Collection Loss',
     benchmarkP25: 0.008, benchmarkP50: 0.015, benchmarkP75: 0.025,
-    getBroker: (f, _yr) => y1(f,'badDebt')?.broker ?? y1(f,'badDebt')?.t12 ?? 0.015,
-    getPlatform: (f, _yr) => y1(f,'badDebt')?.platform ?? 0.012,
-    getConfidence: f => y1(f,'badDebt')?.confidence ?? 50,
   },
-  {
-    key: 'otherIncome', label: 'Other Income / Unit / Mo', section: 1, unit: 'dollar',
-    format: fmtDlr, patchField: 'otherIncomePerUnit',
-    description: 'Non-rent ancillary income (parking, storage, RUBS, pet fees) per unit per month.',
-    platformSource: 'JEDI — Historical ancillary income by market',
-    brokerSource: 'OM / T12 Other Income',
+  non_revenue_units_pct: {
+    unit: 'pct', format: fmtPct2,
+    description: 'Manager/model units held offline as % of total unit count.',
+    platformSource: 'JEDI — Submarket NRU norm', brokerSource: 'OM / Operating Assumptions',
+    benchmarkP25: 0.005, benchmarkP50: 0.01, benchmarkP75: 0.02,
+  },
+  other_income_per_unit: {
+    unit: 'dollar', format: fmtDlr, patchField: 'otherIncomePerUnit',
+    description: 'Ancillary income (parking, storage, RUBS, pet fees) per unit per month.',
+    platformSource: 'JEDI — Historical ancillary income by market', brokerSource: 'OM / T12 Other Income',
     brokerPage: 'T12 Operating Statement', brokerLine: 'Other Income',
     benchmarkP25: 40, benchmarkP50: 75, benchmarkP75: 130,
-    getBroker: (f, _yr) => {
-      const v = y1(f,'otherIncome')?.perUnit ?? y1(f,'otherIncome')?.broker;
-      return v != null ? Math.round(v < 5000 ? v : v / Math.max(f.totalUnits,1) / 12) : null;
-    },
-    getPlatform: (f, _yr) => {
-      const v = y1(f,'otherIncome')?.platform;
-      return v != null ? Math.round(v < 5000 ? v : v / Math.max(f.totalUnits,1) / 12) : null;
-    },
-    getConfidence: f => y1(f,'otherIncome')?.confidence ?? 65,
   },
+  net_rental_income: {
+    unit: 'dollar', format: fmtDlr, readonly: true,
+    description: 'Net Rental Income = GPR × (1 − Vacancy − Concessions − Bad Debt − NRU).',
+    platformSource: 'Computed from Section 1 revenue lines', brokerSource: 'OM / T12 Statement',
+    growthKey: 'rent',
+  },
+  egi: {
+    unit: 'dollar', format: fmtDlr, readonly: true,
+    description: 'Effective Gross Income = Net Rental Income + Other Income.',
+    platformSource: 'Computed — NRI + Other Income', brokerSource: 'OM / T12 Statement',
+    growthKey: 'rent',
+  },
+  // ── OpEx fields (Section 3) ───────────────────────────────────────────────
+  payroll: {
+    unit: 'dollar', format: fmtDlr, patchField: 'payroll', growthPct: 0.03,
+    description: 'On-site payroll and property management fee per year.',
+    platformSource: 'JEDI — Submarket OpEx benchmark', brokerSource: 'OM / T12 Statement',
+    brokerPage: 'T12 Operating Statement', brokerLine: 'Payroll & Benefits',
+    benchmarkP25: 1100, benchmarkP50: 1450, benchmarkP75: 1900,
+  },
+  repairs_maintenance: {
+    unit: 'dollar', format: fmtDlr, patchField: 'repairsMaintenance', growthPct: 0.03,
+    description: 'Routine R&M per year. Excludes capital expenditures.',
+    platformSource: 'JEDI — Property class benchmark', brokerSource: 'OM / T12 Statement',
+    brokerPage: 'T12 Operating Statement', brokerLine: 'Repairs & Maintenance',
+    benchmarkP25: 350, benchmarkP50: 550, benchmarkP75: 850,
+  },
+  turnover: {
+    unit: 'dollar', format: fmtDlr, patchField: 'turnover', growthPct: 0.03,
+    description: 'Make-ready and turnover costs per year.',
+    platformSource: 'JEDI — Turnover benchmark', brokerSource: 'OM / T12 Statement',
+    brokerPage: 'T12 Operating Statement', brokerLine: 'Turnover / Make Ready',
+    benchmarkP25: 150, benchmarkP50: 280, benchmarkP75: 450,
+  },
+  contract_services: {
+    unit: 'dollar', format: fmtDlr, patchField: 'contractServices', growthPct: 0.03,
+    description: 'Landscaping, pest control, elevator, janitorial contract services per year.',
+    platformSource: 'JEDI — Contract services benchmark', brokerSource: 'OM / T12 Statement',
+    brokerPage: 'T12 Operating Statement', brokerLine: 'Contract Services',
+    benchmarkP25: 200, benchmarkP50: 350, benchmarkP75: 550,
+  },
+  marketing: {
+    unit: 'dollar', format: fmtDlr, patchField: 'marketing', growthPct: 0.03,
+    description: 'Leasing, advertising, and marketing costs per year.',
+    platformSource: 'JEDI — Marketing benchmark', brokerSource: 'OM / T12 Statement',
+    brokerPage: 'T12 Operating Statement', brokerLine: 'Marketing',
+    benchmarkP25: 80, benchmarkP50: 150, benchmarkP75: 280,
+  },
+  utilities: {
+    unit: 'dollar', format: fmtDlr, patchField: 'utilities', growthPct: 0.03,
+    description: 'Owner-paid utilities per year.',
+    platformSource: 'JEDI — Utility benchmark by market', brokerSource: 'OM / T12 Statement',
+    brokerPage: 'T12 Operating Statement', brokerLine: 'Utilities',
+    benchmarkP25: 400, benchmarkP50: 620, benchmarkP75: 900,
+  },
+  g_and_a: {
+    unit: 'dollar', format: fmtDlr, patchField: 'gAndA', growthPct: 0.03,
+    description: 'General and administrative expenses per year.',
+    platformSource: 'JEDI — G&A benchmark', brokerSource: 'OM / T12 Statement',
+    brokerPage: 'T12 Operating Statement', brokerLine: 'G&A / Admin',
+    benchmarkP25: 100, benchmarkP50: 200, benchmarkP75: 350,
+  },
+  management_fee_pct: {
+    unit: 'pct', format: fmtPct2, patchField: 'managementFeePct',
+    description: 'Property management fee as % of EGI.',
+    platformSource: 'JEDI — Market management fee norms', brokerSource: 'OM / Management Agreement',
+    benchmarkP25: 0.03, benchmarkP50: 0.04, benchmarkP75: 0.06,
+  },
+  insurance: {
+    unit: 'dollar', format: fmtDlr, patchField: 'insurance', growthPct: 0.035,
+    description: 'Hazard, liability, and specialty insurance per year.',
+    platformSource: 'JEDI — Insurance benchmark', brokerSource: 'OM / T12 Statement',
+    brokerPage: 'T12 Operating Statement', brokerLine: 'Insurance',
+    benchmarkP25: 300, benchmarkP50: 475, benchmarkP75: 700,
+  },
+  real_estate_tax: {
+    unit: 'dollar', format: fmtDlr, patchField: 'realEstateTax', growthPct: 0.04,
+    description: 'Annual RE tax. Reassessment at purchase causes Year-1 shock in Florida.',
+    platformSource: 'JEDI — County millage model', brokerSource: 'OM / T12 Statement',
+    brokerPage: 'T12 Operating Statement', brokerLine: 'Real Estate Taxes',
+    benchmarkP25: 600, benchmarkP50: 950, benchmarkP75: 1400,
+  },
+  replacement_reserves: {
+    unit: 'dollar', format: fmtDlr, patchField: 'replacementReserves',
+    description: 'Annual replacement reserves per unit. Industry standard $150–$350.',
+    platformSource: 'JEDI — Industry reserve standard', brokerSource: 'OM / Pro Forma Expenses',
+    benchmarkP25: 150, benchmarkP50: 250, benchmarkP75: 350,
+  },
+  total_opex: {
+    unit: 'dollar', format: fmtDlr, readonly: true,
+    description: 'Total operating expenses — sum of all expense lines above.',
+    platformSource: 'Computed — sum of all opex lines', brokerSource: 'OM / T12 Operating Statement',
+    growthPct: 0.03,
+  },
+  noi: {
+    unit: 'dollar', format: fmtDlr, readonly: true,
+    description: 'Net Operating Income = EGI − Total OpEx.',
+    platformSource: 'Computed — EGI minus Total OpEx', brokerSource: 'OM / T12 Statement',
+    growthKey: 'rent',
+  },
+};
 
+// ─── RowDef interface ──────────────────────────────────────────────────────────
+interface RowDef {
+  key: string; label: string; section: 1|2|3|4|5|6|7;
+  unit: 'pct'|'dollar'|'weeks'|'per_wk'|'months'; readonly?: boolean;
+  format: (n: number) => string;
+  description?: string;
+  patchField?: string;
+  platformSource?: string; brokerSource?: string;
+  brokerPage?: string; brokerLine?: string;
+  benchmarkP25?: number; benchmarkP50?: number; benchmarkP75?: number;
+  getBroker:     (f: DealFinancials, yr: number) => number|null;
+  getPlatform:   (f: DealFinancials, yr: number) => number|null;
+  getConfidence: (f: DealFinancials) => number|null;
+}
+
+// Build a RowDef from a backend OSRow + FieldMeta
+function buildRowDef(osRow: OSRow, section: 1|3, meta: FieldMeta): RowDef {
+  const field = osRow.field;
+  return {
+    key: field,
+    label: osRow.label, // label from backend
+    section,
+    unit: meta.unit,
+    format: meta.format,
+    patchField: meta.patchField,
+    readonly: meta.readonly,
+    description: meta.description,
+    platformSource: meta.platformSource,
+    brokerSource: meta.brokerSource,
+    brokerPage: meta.brokerPage,
+    brokerLine: meta.brokerLine,
+    benchmarkP25: meta.benchmarkP25,
+    benchmarkP50: meta.benchmarkP50,
+    benchmarkP75: meta.benchmarkP75,
+    getBroker: (f, yr) => {
+      const row = y1(f, field);
+      if (!row) return null;
+      const base = row.broker ?? row.t12 ?? row.rentRoll;
+      if (base == null) return null;
+      if (yr === 1) return base;
+      if (meta.growthKey === 'rent') return Math.round(base * rentCompound(f, yr));
+      if (meta.growthKey === 'opex' || meta.growthPct != null) {
+        const g = meta.growthPct ?? 0.03;
+        return Math.round(base * Math.pow(1 + g, yr - 1));
+      }
+      return base;
+    },
+    getPlatform: (f, yr) => {
+      if (meta.getYearNPlatform) return meta.getYearNPlatform(f, yr);
+      const row = y1(f, field);
+      if (!row) return null;
+      const base = row.platform;
+      if (base == null) return null;
+      if (yr === 1) return base;
+      if (meta.growthKey === 'rent') return Math.round(base * rentCompound(f, yr));
+      if (meta.growthKey === 'opex' || meta.growthPct != null) {
+        const g = meta.growthPct ?? 0.03;
+        return Math.round(base * Math.pow(1 + g, yr - 1));
+      }
+      return base;
+    },
+    getConfidence: (f) => y1(f, field)?.confidence ?? null,
+  };
+}
+
+// Section headers
+const SEC: Record<number,string> = {
+  1: '1  REVENUE — RENT SIDE  [proforma.year1]',
+  2: '2  REVENUE — TRAFFIC / DEMAND  [M07]',
+  3: '3  EXPENSE ASSUMPTIONS  [proforma.year1]',
+  4: '4  CAPEX / RESERVES',
+  5: '5  DEBT ASSUMPTIONS',
+  6: '6  EXIT ASSUMPTIONS',
+  7: '7  STRATEGY-SPECIFIC',
+};
+
+// ─── Static row definitions (Sections 2, 4, 5, 6, 7) ─────────────────────────
+const STATIC_ROWS: RowDef[] = [
   // ── Section 2 ──────────────────────────────────────────────────────────────
   {
     key: 't01WeeklyTours', label: 'T-01  Walk-Ins / Week', section: 2, unit: 'per_wk',
     format: fmtPwk, patchField: 't01WeeklyTours',
-    description: 'Total walk-in / inbound tour volume per week. Primary demand signal (T-01).',
-    platformSource: 'M07 — T-01 real-time signal per year',
-    brokerSource: 'N/A — live traffic signal',
+    description: 'Total walk-in / inbound tour volume per week. Primary demand signal.',
+    platformSource: 'M07 — T-01 real-time signal per year', brokerSource: 'N/A — live traffic signal',
     benchmarkP25: 6, benchmarkP50: 12, benchmarkP75: 22,
-    getBroker: (_f, _yr) => null,
-    getPlatform: (f, yr) => tyr(f, yr)?.t01WeeklyTours ?? null,
+    getBroker:   (_f, _yr) => null,
+    getPlatform: (f, yr)  => tyr(f, yr)?.t01WeeklyTours ?? null,
     getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
   },
   {
-    key: 't05ClosingRatio', label: 'T-05  Tour→Lease Conversion %', section: 2, unit: 'pct',
+    key: 't05CaptureRate', label: 'T-05  Capture Rate / Tour→Lease %', section: 2, unit: 'pct',
     format: fmtPct2, patchField: 't05ClosingRatio',
-    description: 'Tour-to-lease conversion rate (T-05). Higher = stronger qualified demand.',
-    platformSource: 'M07 — T-05 signal per year',
-    brokerSource: 'N/A — live traffic signal',
+    description: 'Tour-to-lease capture rate (T-05). Percentage of tours that convert to signed leases. Higher = stronger qualified demand.',
+    platformSource: 'M07 — T-05 closing ratio per year', brokerSource: 'N/A — live traffic signal',
     benchmarkP25: 0.18, benchmarkP50: 0.28, benchmarkP75: 0.40,
-    getBroker: (_f, _yr) => null,
+    getBroker:   (_f, _yr) => null,
     getPlatform: (f, yr) => {
       const v = tyr(f, yr)?.t05ClosingRatio;
       return v != null ? (v > 1 ? v / 100 : v) : null;
@@ -238,21 +387,19 @@ const ROWS: RowDef[] = [
     key: 't06WeeklyLeases', label: 'T-06  Net Leases / Week', section: 2, unit: 'per_wk',
     format: fmtPwk, patchField: 't06WeeklyLeases',
     description: 'Net new leases executed per week (T-06). Key lease-up velocity indicator.',
-    platformSource: 'M07 — T-06 signal per year',
-    brokerSource: 'N/A — live traffic signal',
+    platformSource: 'M07 — T-06 signal per year', brokerSource: 'N/A — live traffic signal',
     benchmarkP25: 1.5, benchmarkP50: 3.0, benchmarkP75: 5.5,
-    getBroker: (_f, _yr) => null,
+    getBroker:   (_f, _yr) => null,
     getPlatform: (f, yr) => tyr(f, yr)?.t06WeeklyLeases ?? null,
     getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
   },
   {
     key: 't07Trajectory', label: 'T-07  Demand Trajectory % (YoY)', section: 2, unit: 'pct',
-    format: n => (n >= 0 ? '+' : '') + (n * 100).toFixed(1) + '%',
+    format: n => (n >= 0 ? '+' : '') + (n * 100).toFixed(1) + '%', readonly: true,
     description: 'YoY tour-volume change (T-07). Positive = accelerating demand.',
-    platformSource: 'M07 — T-07 derived from T-01 YoY change',
-    brokerSource: 'N/A — derived signal', readonly: true,
+    platformSource: 'M07 — T-07 derived from T-01 YoY change', brokerSource: 'N/A — derived',
     benchmarkP25: -0.05, benchmarkP50: 0.05, benchmarkP75: 0.15,
-    getBroker: (_f, _yr) => null,
+    getBroker:   (_f, _yr) => null,
     getPlatform: (f, yr) => {
       if (yr < 2) return null;
       const curr = tyr(f, yr)?.t01WeeklyTours;
@@ -264,10 +411,10 @@ const ROWS: RowDef[] = [
   {
     key: 'derivedVacancy', label: 'Derived Vacancy % (M07 equilibrium)', section: 2, unit: 'pct',
     format: fmtPct2, readonly: true,
-    description: 'Read-only vacancy from T-01×T-05 traffic equilibrium. Override via Stabilized Occ Target.',
-    platformSource: 'M07 — equilibrium vacancy from tours × conversion',
-    brokerSource: 'N/A — derived', benchmarkP25: 0.03, benchmarkP50: 0.06, benchmarkP75: 0.10,
-    getBroker: (_f, _yr) => null,
+    description: 'Read-only equilibrium vacancy from T-01×T-05 traffic model. Override via Stabilized Occ Target.',
+    platformSource: 'M07 — equilibrium vacancy from tours × conversion', brokerSource: 'N/A — derived',
+    benchmarkP25: 0.03, benchmarkP50: 0.06, benchmarkP75: 0.10,
+    getBroker:   (_f, _yr) => null,
     getPlatform: (f, yr) => {
       const t = tyr(f, yr);
       if (t?.vacancyPct != null) return t.vacancyPct;
@@ -278,15 +425,11 @@ const ROWS: RowDef[] = [
   {
     key: 'stabilizedOcc', label: 'Stabilized Occupancy Target', section: 2, unit: 'pct',
     format: fmtPct2, patchField: 'vacancyPct',
-    description: 'Long-run stabilized occupancy target. Platform = M07 equilibrium. Override to model different absorption.',
-    platformSource: 'M07 — occupancy trajectory per year',
-    brokerSource: 'OM / Pro Forma Assumptions',
+    description: 'Long-run stabilized occupancy target. Platform = M07 equilibrium.',
+    platformSource: 'M07 — occupancy trajectory per year', brokerSource: 'OM / Pro Forma Assumptions',
     brokerPage: 'Operating Assumptions', brokerLine: 'Stabilized Occupancy',
     benchmarkP25: 0.90, benchmarkP50: 0.94, benchmarkP75: 0.97,
-    getBroker: (f, yr) => {
-      const v = pyr(f, yr)?.vacancyPct;
-      return v != null ? 1 - v : null;
-    },
+    getBroker: (f, yr) => { const v = pyr(f, yr)?.vacancyPct; return v != null ? 1 - v : null; },
     getPlatform: (f, yr) => {
       const t = tyr(f, yr);
       return t?.occupancyPct ?? (t?.vacancyPct != null ? 1 - t.vacancyPct : null);
@@ -294,24 +437,40 @@ const ROWS: RowDef[] = [
     getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
   },
   {
-    key: 'leaseUpWeeks', label: 'Lease-Up to 95% Occ (weeks)', section: 2, unit: 'weeks',
-    format: fmtWks,
-    description: 'Weeks from CO to 95% physical occupancy. T-06 velocity determines this.',
-    platformSource: 'M07 — T-06 weekly leases → weeks to 95%',
-    brokerSource: 'OM / Pro Forma Assumptions',
-    brokerPage: 'Operating Assumptions', brokerLine: 'Lease-Up Period',
+    key: 'leaseUpTo90', label: 'Lease-Up Curve: 90% Occ (weeks)', section: 2, unit: 'weeks',
+    format: fmtWks, readonly: true,
+    description: 'Weeks from CO to 90% physical occupancy. Derived from T-06 weekly leases.',
+    platformSource: 'M07 — T-06 velocity → weeks to 90%', brokerSource: 'OM / Pro Forma Assumptions',
+    benchmarkP25: 20, benchmarkP50: 28, benchmarkP75: 44,
+    getBroker:   (_f, _yr) => null,
+    getPlatform: (f, _yr) => f.trafficProjection?.leaseUp?.weeksTo90 ?? null,
+    getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
+  },
+  {
+    key: 'leaseUpTo93', label: 'Lease-Up Curve: 93% Occ (weeks)', section: 2, unit: 'weeks',
+    format: fmtWks, readonly: true,
+    description: 'Weeks from CO to 93% physical occupancy.',
+    platformSource: 'M07 — T-06 velocity → weeks to 93%', brokerSource: 'OM / Pro Forma Assumptions',
+    benchmarkP25: 22, benchmarkP50: 32, benchmarkP75: 50,
+    getBroker:   (_f, _yr) => null,
+    getPlatform: (f, _yr) => f.trafficProjection?.leaseUp?.weeksTo93 ?? null,
+    getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
+  },
+  {
+    key: 'leaseUpTo95', label: 'Lease-Up Curve: 95% Occ (weeks)', section: 2, unit: 'weeks',
+    format: fmtWks, readonly: true,
+    description: 'Weeks from CO to 95% physical occupancy. Standard stabilization threshold.',
+    platformSource: 'M07 — T-06 velocity → weeks to 95%', brokerSource: 'OM / Pro Forma Assumptions',
     benchmarkP25: 24, benchmarkP50: 36, benchmarkP75: 56,
-    getBroker: (_f, _yr) => null,
+    getBroker:   (_f, _yr) => null,
     getPlatform: (f, _yr) => f.trafficProjection?.leaseUp?.weeksTo95 ?? null,
     getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? null,
   },
   {
     key: 'renovationLift', label: 'Renovation Traffic Lift %', section: 2, unit: 'pct',
     format: fmtPct2, patchField: 'renovationLiftPct',
-    description: 'Incremental rent lift attributable to renovation / value-add scope, derived from M07 demand elasticity and submarket rent curves.',
-    platformSource: 'M07 — Demand elasticity × renovation scope model',
-    brokerSource: 'OM / Value-Add Pro Forma',
-    brokerPage: 'Value-Add Pro Forma', brokerLine: 'Post-Renovation Premium',
+    description: 'Incremental rent lift from renovation/value-add scope, derived from M07 demand elasticity.',
+    platformSource: 'M07 — Demand elasticity × renovation scope model', brokerSource: 'OM / Value-Add Pro Forma',
     benchmarkP25: 0.06, benchmarkP50: 0.12, benchmarkP75: 0.20,
     getBroker: (_f, _yr) => null,
     getPlatform: (f, yr) => {
@@ -324,111 +483,17 @@ const ROWS: RowDef[] = [
     getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? 45,
   },
 
-  // ── Section 3 ──────────────────────────────────────────────────────────────
-  {
-    key: 'payroll', label: 'Payroll + Mgmt Fee ($/unit/yr)', section: 3, unit: 'dollar',
-    format: fmtDlr, patchField: 'payroll',
-    description: 'On-site payroll and property management fee per unit per year.',
-    platformSource: 'JEDI — Submarket OpEx benchmark',
-    brokerSource: 'OM / T12 Statement',
-    brokerPage: 'T12 Operating Statement', brokerLine: 'Payroll & Benefits',
-    benchmarkP25: 1100, benchmarkP50: 1450, benchmarkP75: 1900,
-    getBroker: (f, yr) => {
-      const base = y1(f,'payroll')?.broker ?? y1(f,'payroll')?.t12;
-      return base != null ? Math.round(base * Math.pow(1.03, yr - 1)) : null;
-    },
-    getPlatform: (f, yr) => {
-      const base = y1(f,'payroll')?.platform;
-      return base != null ? Math.round(base * Math.pow(1.03, yr - 1)) : null;
-    },
-    getConfidence: f => y1(f,'payroll')?.confidence ?? 60,
-  },
-  {
-    key: 'repairsMaint', label: 'Repairs & Maintenance ($/unit/yr)', section: 3, unit: 'dollar',
-    format: fmtDlr, patchField: 'repairsMaintenance',
-    description: 'Routine R&M per unit per year. Excludes capital expenditures.',
-    platformSource: 'JEDI — Property class benchmark',
-    brokerSource: 'OM / T12 Statement',
-    brokerPage: 'T12 Operating Statement', brokerLine: 'Repairs & Maintenance',
-    benchmarkP25: 350, benchmarkP50: 550, benchmarkP75: 850,
-    getBroker: (f, yr) => {
-      const base = y1(f,'repairsMaintenance')?.broker ?? y1(f,'repairsMaintenance')?.t12;
-      return base != null ? Math.round(base * Math.pow(1.03, yr - 1)) : null;
-    },
-    getPlatform: (f, yr) => {
-      const base = y1(f,'repairsMaintenance')?.platform;
-      return base != null ? Math.round(base * Math.pow(1.03, yr - 1)) : null;
-    },
-    getConfidence: f => y1(f,'repairsMaintenance')?.confidence ?? 55,
-  },
-  {
-    key: 'utilities', label: 'Utilities ($/unit/yr)', section: 3, unit: 'dollar',
-    format: fmtDlr, patchField: 'utilities',
-    description: 'Owner-paid utilities per unit per year.',
-    platformSource: 'JEDI — Utility benchmark by market',
-    brokerSource: 'OM / T12 Statement',
-    brokerPage: 'T12 Operating Statement', brokerLine: 'Utilities',
-    benchmarkP25: 400, benchmarkP50: 620, benchmarkP75: 900,
-    getBroker: (f, yr) => {
-      const base = y1(f,'utilities')?.broker ?? y1(f,'utilities')?.t12;
-      return base != null ? Math.round(base * Math.pow(1.03, yr - 1)) : null;
-    },
-    getPlatform: (f, yr) => {
-      const base = y1(f,'utilities')?.platform;
-      return base != null ? Math.round(base * Math.pow(1.03, yr - 1)) : null;
-    },
-    getConfidence: f => y1(f,'utilities')?.confidence ?? 60,
-  },
-  {
-    key: 'insurance', label: 'Insurance ($/unit/yr)', section: 3, unit: 'dollar',
-    format: fmtDlr, patchField: 'insurance',
-    description: 'Hazard, liability, and specialty insurance per unit per year.',
-    platformSource: 'JEDI — Insurance benchmark',
-    brokerSource: 'OM / T12 Statement',
-    brokerPage: 'T12 Operating Statement', brokerLine: 'Insurance',
-    benchmarkP25: 300, benchmarkP50: 475, benchmarkP75: 700,
-    getBroker: (f, yr) => {
-      const base = y1(f,'insurance')?.broker ?? y1(f,'insurance')?.t12;
-      return base != null ? Math.round(base * Math.pow(1.035, yr - 1)) : null;
-    },
-    getPlatform: (f, yr) => {
-      const base = y1(f,'insurance')?.platform;
-      return base != null ? Math.round(base * Math.pow(1.035, yr - 1)) : null;
-    },
-    getConfidence: f => y1(f,'insurance')?.confidence ?? 65,
-  },
-  {
-    key: 'reTax', label: 'Real Estate Taxes ($/unit/yr)', section: 3, unit: 'dollar',
-    format: fmtDlr, patchField: 'realEstateTax',
-    description: 'Annual RE tax per unit. Reassessment at purchase may cause a Year-1 shock.',
-    platformSource: 'JEDI — County millage model',
-    brokerSource: 'OM / T12 Statement',
-    brokerPage: 'T12 Operating Statement', brokerLine: 'Real Estate Taxes',
-    benchmarkP25: 600, benchmarkP50: 950, benchmarkP75: 1400,
-    getBroker: (f, yr) => {
-      const r = y1(f,'realEstateTax');
-      const base = r?.broker ?? r?.t12;
-      return base != null ? Math.round(base * Math.pow(1.04, yr - 1)) : null;
-    },
-    getPlatform: (f, yr) => {
-      const base = y1(f,'realEstateTax')?.platform;
-      return base != null ? Math.round(base * Math.pow(1.04, yr - 1)) : null;
-    },
-    getConfidence: f => y1(f,'realEstateTax')?.confidence ?? 75,
-  },
-
   // ── Section 4 ──────────────────────────────────────────────────────────────
   {
     key: 'capexPerUnit', label: 'CapEx Budget ($/unit total)', section: 4, unit: 'dollar',
     format: fmtDlr,
-    description: 'Total capital expenditure budget per unit over hold period.',
-    platformSource: 'JEDI — Value-add comp database',
-    brokerSource: 'OM / CapEx Schedule',
+    description: 'Total capital expenditure budget per unit over the hold period.',
+    platformSource: 'JEDI — Value-add comp database', brokerSource: 'OM / CapEx Schedule',
     brokerPage: 'Capital Budget', brokerLine: 'Total CapEx Budget',
     benchmarkP25: 8000, benchmarkP50: 16000, benchmarkP75: 28000,
     getBroker: (f, _yr) => {
       const base = y1(f,'capex')?.broker;
-      return base != null ? Math.round(base / Math.max(f.totalUnits,1)) : null;
+      return base != null ? Math.round(base / Math.max(f.totalUnits, 1)) : null;
     },
     getPlatform: (_f, _yr) => null,
     getConfidence: _f => 50,
@@ -437,11 +502,9 @@ const ROWS: RowDef[] = [
     key: 'reserves', label: 'Replacement Reserves ($/unit/yr)', section: 4, unit: 'dollar',
     format: fmtDlr, patchField: 'replacementReserves',
     description: 'Annual replacement reserves per unit. Industry standard: $150–$350.',
-    platformSource: 'JEDI — Industry reserve standard',
-    brokerSource: 'OM / Pro Forma Expenses',
-    brokerPage: 'Pro Forma Assumptions', brokerLine: 'Replacement Reserves',
+    platformSource: 'JEDI — Industry reserve standard', brokerSource: 'OM / Pro Forma Expenses',
     benchmarkP25: 150, benchmarkP50: 250, benchmarkP75: 350,
-    getBroker: (f, _yr) => y1(f,'reserves')?.broker ?? 200,
+    getBroker: (f, _yr) => y1(f,'replacement_reserves')?.broker ?? 200,
     getPlatform: (_f, _yr) => 250,
     getConfidence: _f => 70,
   },
@@ -451,8 +514,7 @@ const ROWS: RowDef[] = [
     key: 'interestRate', label: 'Interest Rate', section: 5, unit: 'pct',
     format: fmtPct2,
     description: 'Senior loan fixed rate. Platform = SOFR + 175bps current market.',
-    platformSource: 'JEDI — SOFR + spread (market rate)',
-    brokerSource: 'OM / Term Sheet or Debt Broker',
+    platformSource: 'JEDI — SOFR + spread (market rate)', brokerSource: 'OM / Term Sheet or Debt Broker',
     brokerPage: 'Financing Assumptions', brokerLine: 'Interest Rate',
     benchmarkP25: 0.0575, benchmarkP50: 0.0675, benchmarkP75: 0.0775,
     getBroker: (f, _yr) => f.capitalStack.interestRate ?? null,
@@ -463,8 +525,7 @@ const ROWS: RowDef[] = [
     key: 'ltv', label: 'LTV / LTC %', section: 5, unit: 'pct',
     format: fmtPct2,
     description: 'Loan-to-value at closing.',
-    platformSource: 'JEDI — Market LTV norms',
-    brokerSource: 'OM / Financing Assumptions',
+    platformSource: 'JEDI — Market LTV norms', brokerSource: 'OM / Financing Assumptions',
     brokerPage: 'Financing Assumptions', brokerLine: 'LTV',
     benchmarkP25: 0.55, benchmarkP50: 0.65, benchmarkP75: 0.72,
     getBroker: (f, _yr) => f.capitalStack.ltcPct ?? null,
@@ -475,8 +536,7 @@ const ROWS: RowDef[] = [
     key: 'ioPeriod', label: 'Interest-Only Period (months)', section: 5, unit: 'months',
     format: fmtMo,
     description: 'Months of I/O payments before amortization begins.',
-    platformSource: 'JEDI — Lender market norms',
-    brokerSource: 'OM / Term Sheet',
+    platformSource: 'JEDI — Lender market norms', brokerSource: 'OM / Term Sheet',
     brokerPage: 'Financing Assumptions', brokerLine: 'I/O Period',
     benchmarkP25: 0, benchmarkP50: 24, benchmarkP75: 48,
     getBroker: (f, _yr) => f.capitalStack.ioPeriodMonths ?? null,
@@ -488,9 +548,8 @@ const ROWS: RowDef[] = [
   {
     key: 'exitCapRate', label: 'Exit Cap Rate', section: 6, unit: 'pct',
     format: fmtPct2, patchField: 'exitCapRate',
-    description: 'Terminal cap rate applied to the forward NOI at disposition.',
-    platformSource: 'M07 — Demand velocity implies cap compression trend',
-    brokerSource: 'OM / Underwriting Assumptions',
+    description: 'Terminal cap rate applied to forward NOI at disposition.',
+    platformSource: 'M07 — Demand velocity implies cap compression trend', brokerSource: 'OM / Underwriting Assumptions',
     brokerPage: 'Operating Assumptions', brokerLine: 'Exit Cap Rate',
     benchmarkP25: 0.048, benchmarkP50: 0.055, benchmarkP75: 0.065,
     getBroker: (f, _yr) => f.assumptions.exitCap ?? null,
@@ -501,8 +560,7 @@ const ROWS: RowDef[] = [
     key: 'sellingCosts', label: 'Selling Costs %', section: 6, unit: 'pct',
     format: fmtPct2,
     description: 'Brokerage, legal, and transfer costs at disposition as % of sale price.',
-    platformSource: 'JEDI — Market transaction cost norms',
-    brokerSource: 'OM / Disposition Assumptions',
+    platformSource: 'JEDI — Market transaction cost norms', brokerSource: 'OM / Disposition Assumptions',
     brokerPage: 'Operating Assumptions', brokerLine: 'Selling Costs',
     benchmarkP25: 0.015, benchmarkP50: 0.02, benchmarkP75: 0.025,
     getBroker: (f, _yr) => y1(f,'sellingCosts')?.broker ?? 0.02,
@@ -515,9 +573,7 @@ const ROWS: RowDef[] = [
     key: 'afterRepairRent', label: 'Target After-Repair Rent', section: 7, unit: 'dollar',
     format: fmtDlr, patchField: 'afterRepairRent',
     description: 'Target in-place rent post-renovation. Value-add strategy only.',
-    platformSource: 'M07 — Rent trajectory + renovation premium model',
-    brokerSource: 'OM / Value-Add Pro Forma',
-    brokerPage: 'Pro Forma Assumptions', brokerLine: 'Post-Renovation Rent',
+    platformSource: 'M07 — Rent trajectory + renovation premium model', brokerSource: 'OM / Value-Add Pro Forma',
     benchmarkP25: 1600, benchmarkP50: 2000, benchmarkP75: 2500,
     getBroker: (_f, _yr) => null,
     getPlatform: (f, yr) => {
@@ -529,10 +585,8 @@ const ROWS: RowDef[] = [
   {
     key: 'leaseUpVelocity', label: 'Lease-Up Velocity (leases/mo)', section: 7, unit: 'per_wk',
     format: n => Math.round(n) + '/mo',
-    description: 'Monthly net leasing velocity during lease-up. Ties to T-06 × 4.33.',
-    platformSource: 'M07 — T-06 weekly lease velocity × 4.33',
-    brokerSource: 'OM / Pro Forma Assumptions',
-    brokerPage: 'Pro Forma Assumptions', brokerLine: 'Lease-Up Velocity',
+    description: 'Monthly net leasing velocity during lease-up (T-06 × 4.33).',
+    platformSource: 'M07 — T-06 weekly lease velocity × 4.33', brokerSource: 'OM / Pro Forma Assumptions',
     benchmarkP25: 8, benchmarkP50: 15, benchmarkP75: 25,
     getBroker: (_f, _yr) => null,
     getPlatform: (f, _yr) => {
@@ -544,19 +598,15 @@ const ROWS: RowDef[] = [
 ];
 
 // ─── Divergence helpers ────────────────────────────────────────────────────────
-// yellow = user vs platform divergence > 100 bps; red = value > 2 stdDev from benchmark median
 function getDivergenceColor(
-  user: number|null, platform: number|null,
-  broker: number|null,
+  user: number|null, platform: number|null, broker: number|null,
   p25: number|undefined, p50: number|undefined, p75: number|undefined,
 ): 'red'|'amber'|null {
   const effective = user ?? platform ?? broker;
-  // Benchmark stddev: approximation from IQR
   if (p25 != null && p50 != null && p75 != null && effective != null) {
     const stdDev = (p75 - p25) / 1.35;
     if (Math.abs(effective - p50) > 2 * stdDev) return 'red';
   }
-  // 100bps user-vs-platform divergence
   if (user != null && platform != null) {
     const absDiff = Math.abs(user - platform);
     const relativeDiff = platform !== 0 ? absDiff / Math.abs(platform) : absDiff;
@@ -584,11 +634,9 @@ function LayeredCell({ vals, format, onClick, isM07, readonly, divergence, formu
     >
       {isM07 && <sup className="absolute top-[1px] right-[2px] text-[5px] text-purple-600 font-bold">M07</sup>}
       {readonly && <Lock className="absolute top-[2px] left-[2px] w-2 h-2 text-slate-700" />}
-      {/* Formula result (top priority) */}
       {formulaResult != null && (
         <div className="text-[9px] font-mono font-bold text-teal-400 leading-[1.3]">
-          {format(formulaResult)}
-          <span className="text-[6px] text-teal-700 ml-0.5">Fx</span>
+          {format(formulaResult)}<span className="text-[6px] text-teal-700 ml-0.5">Fx</span>
         </div>
       )}
       {formulaResult == null && user != null && (
@@ -640,12 +688,7 @@ function CellDrawer({ target, allYears, onClose, onApply, onFormulaChange }: {
   if (!target) return null;
   const { row: rd, year: yr, vals } = target;
 
-  const evalCtx = {
-    base: vals.broker,
-    platform: vals.platform,
-    yearVals: {} as Record<number, number|null>,
-  };
-
+  const evalCtx = { base: vals.broker, platform: vals.platform, yearVals: {} as Record<number, number|null> };
   const previewFormula = formula ? evalFormula(formula, evalCtx) : null;
 
   const handleApply = () => {
@@ -663,7 +706,6 @@ function CellDrawer({ target, allYears, onClose, onApply, onFormulaChange }: {
     onClose();
   };
 
-  const conf = rd.getConfidence; // will be called in renders
   const benchPos = (() => {
     const { benchmarkP25: p25, benchmarkP75: p75 } = rd;
     const eff = vals.user ?? vals.platform ?? vals.broker;
@@ -685,7 +727,6 @@ function CellDrawer({ target, allYears, onClose, onApply, onFormulaChange }: {
       display: 'flex', flexDirection: 'column', overflowY: 'auto',
       boxShadow: '-8px 0 32px rgba(0,0,0,0.8)', fontFamily: MONO,
     }}>
-      {/* Header */}
       <div style={{ padding: '10px 12px', background: '#111', borderBottom: '1px solid #1e1e1e', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexShrink: 0 }}>
         <div>
           <div style={{ fontSize: 10, fontWeight: 700, color: '#e2e8f0' }}>{rd.label}</div>
@@ -696,7 +737,6 @@ function CellDrawer({ target, allYears, onClose, onApply, onFormulaChange }: {
         </button>
       </div>
 
-      {/* Layer selector */}
       <div style={{ padding: '8px 12px', borderBottom: '1px solid #1e1e1e', flexShrink: 0 }}>
         <div style={{ fontSize: 8, color: '#475569', letterSpacing: 0.5, marginBottom: 5 }}>SELECT ACTIVE LAYER</div>
         <div style={{ display: 'flex', gap: 4 }}>
@@ -722,23 +762,20 @@ function CellDrawer({ target, allYears, onClose, onApply, onFormulaChange }: {
         </div>
       </div>
 
-      {/* Description */}
       {rd.description && (
         <div style={{ padding: '6px 12px', borderBottom: '1px solid #1e1e1e', flexShrink: 0 }}>
           <div style={{ fontSize: 9, color: '#94a3b8', lineHeight: 1.5 }}>{rd.description}</div>
         </div>
       )}
 
-      {/* Platform derivation */}
       <div style={{ padding: '7px 12px', borderBottom: '1px solid #1e1e1e', flexShrink: 0 }}>
         <div style={{ fontSize: 8, color: '#22d3ee50', letterSpacing: 0.5, marginBottom: 3 }}>PLATFORM DERIVATION</div>
-        <div style={{ fontSize: 9, color: '#22d3ee', marginBottom: 4 }}>{rd.platformSource}</div>
+        <div style={{ fontSize: 9, color: '#22d3ee', marginBottom: 4 }}>{rd.platformSource ?? '—'}</div>
       </div>
 
-      {/* Broker citation */}
       <div style={{ padding: '7px 12px', borderBottom: '1px solid #1e1e1e', flexShrink: 0 }}>
         <div style={{ fontSize: 8, color: '#f59e0b50', letterSpacing: 0.5, marginBottom: 3 }}>BROKER SOURCE</div>
-        <div style={{ fontSize: 9, color: '#f59e0b', marginBottom: 2 }}>{rd.brokerSource}</div>
+        <div style={{ fontSize: 9, color: '#f59e0b', marginBottom: 2 }}>{rd.brokerSource ?? '—'}</div>
         {(rd.brokerPage || rd.brokerLine) && (
           <div style={{ fontSize: 8, color: '#78350f', lineHeight: 1.6 }}>
             {rd.brokerPage && <div>Page/Section: {rd.brokerPage}</div>}
@@ -747,7 +784,6 @@ function CellDrawer({ target, allYears, onClose, onApply, onFormulaChange }: {
         )}
       </div>
 
-      {/* Benchmark percentile */}
       {rd.benchmarkP25 != null && rd.benchmarkP75 != null && (
         <div style={{ padding: '7px 12px', borderBottom: '1px solid #1e1e1e', flexShrink: 0 }}>
           <div style={{ fontSize: 8, color: '#475569', letterSpacing: 0.5, marginBottom: 5 }}>SUBMARKET BENCHMARK (P25 → P75)</div>
@@ -765,7 +801,6 @@ function CellDrawer({ target, allYears, onClose, onApply, onFormulaChange }: {
         </div>
       )}
 
-      {/* Formula editor */}
       {activeLayer === 'formula' && (
         <div style={{ padding: '7px 12px', borderBottom: '1px solid #1e1e1e', flexShrink: 0 }}>
           <div style={{ fontSize: 8, color: '#2dd4bf80', letterSpacing: 0.5, marginBottom: 5 }}>
@@ -795,7 +830,6 @@ function CellDrawer({ target, allYears, onClose, onApply, onFormulaChange }: {
         </div>
       )}
 
-      {/* User override input */}
       {activeLayer === 'user' && (
         <div style={{ padding: '7px 12px', borderBottom: '1px solid #1e1e1e', flexShrink: 0 }}>
           <div style={{ fontSize: 8, color: '#3b82f660', letterSpacing: 0.5, marginBottom: 5 }}>YOUR OVERRIDE</div>
@@ -815,7 +849,6 @@ function CellDrawer({ target, allYears, onClose, onApply, onFormulaChange }: {
         </div>
       )}
 
-      {/* Apply to all years */}
       <div style={{ padding: '7px 12px', borderBottom: '1px solid #1e1e1e', flexShrink: 0 }}>
         <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
           <input type="checkbox" checked={applyAll} onChange={e => setApplyAll(e.target.checked)} style={{ width: 12, height: 12 }} />
@@ -823,7 +856,6 @@ function CellDrawer({ target, allYears, onClose, onApply, onFormulaChange }: {
         </label>
       </div>
 
-      {/* Actions */}
       <div style={{ padding: '10px 12px', display: 'flex', gap: 6 }}>
         {vals.user != null && (
           <button onClick={() => { onApply(rd, yr, null, applyAll, 'user'); onClose(); }}
@@ -840,30 +872,30 @@ function CellDrawer({ target, allYears, onClose, onApply, onFormulaChange }: {
   );
 }
 
-// ─── GPR Decomposition row ─────────────────────────────────────────────────────
+// ─── GPR Decomposition row — uses assumptions.gprDecomposition from backend ────
 function GprDecompRow({ years, financials }: { years: number[]; financials: DealFinancials|null }) {
   const [expanded, setExpanded] = useState(false);
   if (!financials) return null;
 
-  const rows = years.map(yr => {
-    const units = Math.max(financials.totalUnits, 1);
-    const t = tyr(financials, yr);
-    const p = pyr(financials, yr);
+  const gd = financials.assumptions.gprDecomposition;
+  if (!gd && !y1(financials, 'gpr')) return null;
 
-    const brokerRent = financials.rentRollSummary?.avgInPlaceRent
-      ?? (y1(financials,'gpr')?.broker != null ? y1(financials,'gpr')!.broker! / units / 12 : null);
-    const brokerVac = p?.vacancyPct ?? 0.06;
-    const brokerGpr = brokerRent != null ? Math.round(brokerRent * compound(financials, yr) * units * 12 * (1 - brokerVac)) : null;
+  // Use gprDecomposition from backend for year1; project forward using rent growth
+  const fmtM = (n: number) => '$' + (n / 1_000_000).toFixed(2) + 'M';
 
-    const platRent = t?.effRent;
-    const platOcc  = t?.occupancyPct ?? (t?.vacancyPct != null ? 1 - t.vacancyPct : null);
-    const platGpr  = platRent != null && platOcc != null ? Math.round(platRent * platOcc * units * 12) : null;
-
+  const rowData = years.map(yr => {
+    const mult = rentCompound(financials, yr);
+    const brokerGpr   = gd?.brokerAnnual   != null ? Math.round(gd.brokerAnnual   * mult) : null;
+    const platGpr     = gd?.platformAnnual != null ? Math.round(gd.platformAnnual * mult) : null;
+    const t12Gpr      = gd?.t12Annual      != null ? Math.round(gd.t12Annual      * mult) : null;
+    const rentRollGpr = gd?.rentRollAnnual != null ? Math.round(gd.rentRollAnnual * mult) : null;
+    const resolvedGpr = gd?.resolvedAnnual != null ? Math.round(gd.resolvedAnnual * mult) : null;
     const delta = platGpr != null && brokerGpr != null ? platGpr - brokerGpr : null;
-    return { yr, brokerGpr, platGpr, delta };
+    return { yr, brokerGpr, platGpr, t12Gpr, rentRollGpr, resolvedGpr, delta };
   });
 
-  const fmtM = (n: number) => '$' + (n / 1_000_000).toFixed(2) + 'M';
+  const yr1 = rowData[0];
+  const displayVal = yr1?.resolvedGpr ?? yr1?.platGpr ?? yr1?.brokerGpr;
 
   return (
     <>
@@ -873,51 +905,71 @@ function GprDecompRow({ years, financials }: { years: number[]; financials: Deal
           <span className="flex items-center gap-1">
             {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
             GPR DECOMPOSITION
+            {gd != null && <span style={{ fontFamily: MONO, fontSize: 7, color: '#78350f', marginLeft: 4 }}>assumptions.gprDecomposition</span>}
           </span>
         </td>
-        {rows.map(r => (
+        {rowData.map(r => (
           <td key={r.yr} className="px-2 py-0.5 text-right text-[10px] font-bold text-amber-400 border-r border-[#1e1e1e]" style={{ fontFamily: MONO }}>
-            {r.platGpr != null ? fmtM(r.platGpr) : r.brokerGpr != null ? fmtM(r.brokerGpr) : '—'}
+            {r.resolvedGpr != null ? fmtM(r.resolvedGpr) : r.platGpr != null ? fmtM(r.platGpr) : displayVal != null ? fmtM(displayVal) : '—'}
           </td>
         ))}
         <td className="px-1 py-0.5" />
       </tr>
       {expanded && (
         <>
-          <tr className="h-[18px] border-b border-[#1e1e1e]/30">
-            <td className="pl-8 pr-3 py-0 text-[9px] text-amber-700 sticky left-0 bg-[#0a0a0a] border-r border-[#1e1e1e] z-10">
-              Broker GPR (rent_component × broker occ)
-            </td>
-            {rows.map(r => (
-              <td key={r.yr} className="px-2 py-0 text-right text-[9px] text-amber-700 border-r border-[#1e1e1e]" style={{ fontFamily: MONO }}>
-                {r.brokerGpr != null ? fmtM(r.brokerGpr) : '—'}
+          {gd?.brokerPerUnitMo != null && (
+            <tr className="h-[18px] border-b border-[#1e1e1e]/30">
+              <td className="pl-8 pr-3 py-0 text-[9px] text-amber-700 sticky left-0 bg-[#0a0a0a] border-r border-[#1e1e1e] z-10">
+                Broker GPR (broker layer · ${gd.brokerPerUnitMo}/unit/mo)
               </td>
-            ))}
-            <td />
-          </tr>
-          <tr className="h-[18px] border-b border-[#1e1e1e]/30">
-            <td className="pl-8 pr-3 py-0 text-[9px] text-purple-500 sticky left-0 bg-[#0a0a0a] border-r border-[#1e1e1e] z-10">
-              M07 Platform GPR (traffic_component × M07 occ)
-            </td>
-            {rows.map(r => (
-              <td key={r.yr} className="px-2 py-0 text-right text-[9px] text-purple-500 border-r border-[#1e1e1e]" style={{ fontFamily: MONO }}>
-                {r.platGpr != null ? fmtM(r.platGpr) : '—'}
+              {rowData.map(r => (
+                <td key={r.yr} className="px-2 py-0 text-right text-[9px] text-amber-700 border-r border-[#1e1e1e]" style={{ fontFamily: MONO }}>
+                  {r.brokerGpr != null ? fmtM(r.brokerGpr) : '—'}
+                </td>
+              ))}
+              <td />
+            </tr>
+          )}
+          {gd?.t12PerUnitMo != null && (
+            <tr className="h-[18px] border-b border-[#1e1e1e]/30">
+              <td className="pl-8 pr-3 py-0 text-[9px] text-slate-500 sticky left-0 bg-[#0a0a0a] border-r border-[#1e1e1e] z-10">
+                T-12 GPR (t12 layer · ${gd.t12PerUnitMo}/unit/mo)
               </td>
-            ))}
-            <td />
-          </tr>
-          <tr className="h-[18px] border-b border-amber-500/20">
-            <td className="pl-8 pr-3 py-0 text-[9px] font-bold sticky left-0 bg-[#0a0a0a] border-r border-[#1e1e1e] z-10 text-green-500">
-              Traffic Lift Δ (M07 vs Broker)
-            </td>
-            {rows.map(r => (
-              <td key={r.yr} className="px-2 py-0 text-right text-[9px] font-bold border-r border-[#1e1e1e]"
-                style={{ fontFamily: MONO, color: r.delta != null ? (r.delta >= 0 ? '#10b981' : '#ef4444') : '#334155' }}>
-                {r.delta != null ? (r.delta >= 0 ? '+' : '') + fmtM(r.delta) : '—'}
+              {rowData.map(r => (
+                <td key={r.yr} className="px-2 py-0 text-right text-[9px] text-slate-500 border-r border-[#1e1e1e]" style={{ fontFamily: MONO }}>
+                  {r.t12Gpr != null ? fmtM(r.t12Gpr) : '—'}
+                </td>
+              ))}
+              <td />
+            </tr>
+          )}
+          {gd?.platformPerUnitMo != null && (
+            <tr className="h-[18px] border-b border-[#1e1e1e]/30">
+              <td className="pl-8 pr-3 py-0 text-[9px] text-purple-500 sticky left-0 bg-[#0a0a0a] border-r border-[#1e1e1e] z-10">
+                M07 Platform GPR (platform layer · ${gd.platformPerUnitMo}/unit/mo)
               </td>
-            ))}
-            <td />
-          </tr>
+              {rowData.map(r => (
+                <td key={r.yr} className="px-2 py-0 text-right text-[9px] text-purple-500 border-r border-[#1e1e1e]" style={{ fontFamily: MONO }}>
+                  {r.platGpr != null ? fmtM(r.platGpr) : '—'}
+                </td>
+              ))}
+              <td />
+            </tr>
+          )}
+          {rowData.some(r => r.delta != null) && (
+            <tr className="h-[18px] border-b border-amber-500/20">
+              <td className="pl-8 pr-3 py-0 text-[9px] font-bold sticky left-0 bg-[#0a0a0a] border-r border-[#1e1e1e] z-10 text-green-500">
+                Traffic Lift Δ (M07 vs Broker)
+              </td>
+              {rowData.map(r => (
+                <td key={r.yr} className="px-2 py-0 text-right text-[9px] font-bold border-r border-[#1e1e1e]"
+                  style={{ fontFamily: MONO, color: r.delta != null ? (r.delta >= 0 ? '#10b981' : '#ef4444') : '#334155' }}>
+                  {r.delta != null ? (r.delta >= 0 ? '+' : '') + fmtM(r.delta) : '—'}
+                </td>
+              ))}
+              <td />
+            </tr>
+          )}
         </>
       )}
     </>
@@ -938,7 +990,7 @@ function FindingsRail({ financials }: { financials: DealFinancials|null }) {
   const sig  = financials?.trafficProjection?.leasingSignals;
   const conf = sig?.confidence;
   const yr1T = financials?.trafficProjection?.yearly[0];
-  const narrative = financials?.assumptions?.narrative;
+  const leaseUp = financials?.trafficProjection?.leaseUp;
 
   return (
     <div className="w-[200px] bg-[#0d0d0d] border-l border-[#1e1e1e] flex flex-col overflow-hidden shrink-0">
@@ -954,14 +1006,6 @@ function FindingsRail({ financials }: { financials: DealFinancials|null }) {
           <div style={{ fontSize: 9, color: '#78350f', lineHeight: 1.5 }}>M07 Traffic Engine offline. Platform signals unavailable for this deal.</div>
         ) : (
           <>
-            {/* narrative from assumptions.narrative */}
-            {narrative && (
-              <div>
-                <div style={{ fontSize: 8, color: '#22d3ee80', letterSpacing: 0.5, marginBottom: 3 }}>MODEL NARRATIVE</div>
-                <div style={{ fontSize: 9, color: '#94a3b8', lineHeight: 1.5 }}>{narrative}</div>
-              </div>
-            )}
-
             <div>
               <div style={{ fontSize: 8, color: '#475569', letterSpacing: 0.5, marginBottom: 4 }}>MODEL CONFIDENCE</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -971,7 +1015,6 @@ function FindingsRail({ financials }: { financials: DealFinancials|null }) {
                 <span style={{ fontSize: 10, fontWeight: 700, color: '#e2e8f0' }}>{conf ?? 0}%</span>
               </div>
             </div>
-
             {yr1T?.effRent != null && (
               <div>
                 <div style={{ fontSize: 8, color: '#22d3ee80', letterSpacing: 0.5, marginBottom: 2 }}>YR1 EFF RENT</div>
@@ -990,18 +1033,19 @@ function FindingsRail({ financials }: { financials: DealFinancials|null }) {
                 <div style={{ fontSize: 8, color: '#22d3ee80', letterSpacing: 0.5, marginBottom: 4 }}>LEASING SIGNALS</div>
                 <div style={{ fontSize: 9, color: '#94a3b8', lineHeight: 1.8 }}>
                   {sig.t01WeeklyTours != null && <div>T-01: <span style={{ color: '#e2e8f0' }}>{sig.t01WeeklyTours.toFixed(1)}/wk</span></div>}
-                  {sig.t05ClosingRatio != null && <div>T-05: <span style={{ color: '#e2e8f0' }}>{(sig.t05ClosingRatio * 100).toFixed(1)}%</span></div>}
+                  {sig.t05ClosingRatio != null && <div>T-05 (Capture): <span style={{ color: '#e2e8f0' }}>{(sig.t05ClosingRatio * 100).toFixed(1)}%</span></div>}
                   {sig.t06WeeklyLeases != null && <div>T-06: <span style={{ color: '#e2e8f0' }}>{sig.t06WeeklyLeases.toFixed(1)}/wk</span></div>}
                   {sig.t07LeaseUpWeeksTo95 != null && <div>T-07: <span style={{ color: '#e2e8f0' }}>{sig.t07LeaseUpWeeksTo95} wks</span></div>}
                 </div>
               </div>
             )}
-            {financials.trafficProjection.leaseUp?.weeksTo95 != null && (
+            {leaseUp && (leaseUp.weeksTo90 ?? leaseUp.weeksTo93 ?? leaseUp.weeksTo95) != null && (
               <div>
-                <div style={{ fontSize: 8, color: '#22d3ee80', letterSpacing: 0.5, marginBottom: 2 }}>LEASE-UP TIMELINE</div>
+                <div style={{ fontSize: 8, color: '#22d3ee80', letterSpacing: 0.5, marginBottom: 2 }}>LEASE-UP CURVE</div>
                 <div style={{ fontSize: 9, color: '#94a3b8' }}>
-                  {financials.trafficProjection.leaseUp.weeksTo90 != null && <div>90% Occ: <span style={{ color: '#e2e8f0' }}>{financials.trafficProjection.leaseUp.weeksTo90} wks</span></div>}
-                  <div>95% Occ: <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{financials.trafficProjection.leaseUp.weeksTo95} wks</span></div>
+                  {leaseUp.weeksTo90 != null && <div>90% Occ: <span style={{ color: '#e2e8f0' }}>{leaseUp.weeksTo90} wks</span></div>}
+                  {leaseUp.weeksTo93 != null && <div>93% Occ: <span style={{ color: '#e2e8f0' }}>{leaseUp.weeksTo93} wks</span></div>}
+                  {leaseUp.weeksTo95 != null && <div>95% Occ: <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{leaseUp.weeksTo95} wks</span></div>}
                 </div>
               </div>
             )}
@@ -1029,8 +1073,7 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
   const [drawerTarget, setDrawerTarget] = useState<DrawerTarget|null>(null);
   const [lockedOverrides, setLockedOverrides] = useState(false);
   const fetchRef   = useRef(0);
-  // ── Batch PATCH queue (avoids API storm on bulk actions) ──────────────────
-  const patchQueue = useRef<Array<{field:string; year:number; value:number|null}>>([]);
+  const patchQueue = useRef<Array<{field:string; year:number|null; value:number|null}>>([]);
   const flushTimer = useRef<ReturnType<typeof setTimeout>|null>(null);
 
   const dbHold    = financials?.assumptions.holdYears ?? 5;
@@ -1056,8 +1099,7 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
   useEffect(() => { fetchFinancials(); }, [dealId]);
   useEffect(() => { if (holdTab) fetchFinancials(holdYears); }, [holdTab]);
 
-  // Enqueue a PATCH and debounce flush (600ms) — single re-fetch after all patches
-  const enqueuePatch = useCallback((field: string, year: number, value: number|null) => {
+  const enqueuePatch = useCallback((field: string, year: number|null, value: number|null) => {
     patchQueue.current.push({ field, year, value });
     if (flushTimer.current) clearTimeout(flushTimer.current);
     flushTimer.current = setTimeout(async () => {
@@ -1068,6 +1110,38 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
       fetchFinancials(holdYears);
     }, 600);
   }, [dealId, holdYears, fetchFinancials]);
+
+  // ── Backend-driven row derivation from proforma.year1 ──────────────────────
+  // Sections 1 & 3: rows derived from financials.proforma.year1 + FIELD_META
+  const { revRows, opexRows } = useMemo((): { revRows: RowDef[]; opexRows: RowDef[] } => {
+    if (!financials) return { revRows: [], opexRows: [] };
+    const year1 = financials.proforma.year1;
+    const revRows = REVENUE_ORDER
+      .map(field => {
+        const osRow = year1.find(r => r.field === field);
+        if (!osRow) return null;
+        const meta = FIELD_META[field] ?? { unit: 'dollar' as const, format: fmtDlr };
+        return buildRowDef(osRow, 1, meta);
+      })
+      .filter((r): r is RowDef => r !== null);
+    const opexRows = OPEX_ORDER
+      .map(field => {
+        const osRow = year1.find(r => r.field === field);
+        if (!osRow) return null;
+        const meta = FIELD_META[field] ?? { unit: 'dollar' as const, format: fmtDlr };
+        return buildRowDef(osRow, 3, meta);
+      })
+      .filter((r): r is RowDef => r !== null);
+    return { revRows, opexRows };
+  }, [financials]);
+
+  // Combined rows for all sections (used for bulk actions)
+  const allRows = useMemo(() => [
+    ...revRows,
+    ...STATIC_ROWS.filter(r => r.section === 2),
+    ...opexRows,
+    ...STATIC_ROWS.filter(r => r.section >= 4),
+  ], [revRows, opexRows]);
 
   const getUser    = (key: string, yr: number) => overrides[key]?.[yr] ?? null;
   const getMode    = (key: string): RowMode => rowModes[key] ?? 'stepped';
@@ -1081,7 +1155,7 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
       yearVals[y] = getUser(rd.key, y) ?? (financials ? rd.getPlatform(financials, y) ?? rd.getBroker(financials, y) : null);
     }
     return evalFormula(expr, {
-      base: financials ? rd.getBroker(financials, yr) : null,
+      base:     financials ? rd.getBroker(financials, yr)   : null,
       platform: financials ? rd.getPlatform(financials, yr) : null,
       yearVals,
     });
@@ -1091,7 +1165,7 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
     rd: RowDef, yr: number, val: number|null, applyAll: boolean,
     layer: 'broker'|'platform'|'user'|'formula',
   ) => {
-    if (layer === 'formula') return; // formula mode is applied separately via onFormulaChange
+    if (layer === 'formula') return; // formula handled by onFormulaChange
     const mode = getMode(rd.key);
     const targetYears = (applyAll || mode === 'flat') ? years : [yr];
     setOverrides(prev => {
@@ -1104,16 +1178,34 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
     }
   }, [years, rowModes, enqueuePatch]);
 
+  // Formula mode: save expression AND persist computed results via PATCH
   const handleFormulaChange = useCallback((rowKey: string, expr: string) => {
     setFormulas(f => ({ ...f, [rowKey]: expr }));
     setRowModes(m => ({ ...m, [rowKey]: 'formula' }));
-  }, []);
+    // Persist formula results to backend via PATCH
+    if (!financials || !expr) return;
+    const rd = allRows.find(r => r.key === rowKey);
+    if (!rd?.patchField) return;
+    const yearVals: Record<number, number|null> = {};
+    for (const y of years) {
+      yearVals[y] = rd.getPlatform(financials, y) ?? rd.getBroker(financials, y);
+    }
+    for (const y of years) {
+      const result = evalFormula(expr, {
+        base:     rd.getBroker(financials, y),
+        platform: rd.getPlatform(financials, y),
+        yearVals,
+      });
+      if (result != null) {
+        enqueuePatch(rd.patchField, y, result);
+      }
+    }
+  }, [financials, allRows, years, enqueuePatch]);
 
-  // Bulk: use all platform
   const handleUsePlatform = () => {
     if (!financials || lockedOverrides) return;
     const next: Overrides = { ...overrides };
-    for (const rd of ROWS) {
+    for (const rd of allRows) {
       if (rd.readonly) continue;
       for (const yr of years) {
         const v = rd.getPlatform(financials, yr);
@@ -1127,11 +1219,10 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
     setOverrides(next);
   };
 
-  // Bulk: use all broker
   const handleUseBroker = () => {
     if (!financials || lockedOverrides) return;
     const next: Overrides = { ...overrides };
-    for (const rd of ROWS) {
+    for (const rd of allRows) {
       if (rd.readonly) continue;
       for (const yr of years) {
         const v = rd.getBroker(financials, yr);
@@ -1167,7 +1258,16 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
   const m07Conf  = financials?.trafficProjection?.leasingSignals?.confidence;
   const overrideCount = Object.values(overrides).reduce((s, yr) => s + Object.values(yr).filter(v => v != null).length, 0);
 
-  const sections = [1, 2, 3, 4, 5, 6, 7] as const;
+  // Build sections: 1 & 3 backend-driven; 2, 4-7 from STATIC_ROWS
+  const sec2Rows   = STATIC_ROWS.filter(r => r.section === 2);
+  const sec4to7Rows = STATIC_ROWS.filter(r => r.section >= 4);
+
+  const allSections: Array<{ sec: number; rows: RowDef[] }> = [
+    { sec: 1, rows: revRows },
+    { sec: 2, rows: sec2Rows },
+    { sec: 3, rows: opexRows },
+    ...([4,5,6,7] as const).map(sec => ({ sec, rows: sec4to7Rows.filter(r => r.section === sec) })),
+  ];
 
   return (
     <div className="flex flex-col w-full h-full bg-[#0a0a0a] text-slate-300 text-xs overflow-hidden" style={{ fontFamily: 'system-ui,sans-serif' }}>
@@ -1265,74 +1365,70 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
               </tr>
             </thead>
             <tbody>
-              {sections.map(sec => {
-                const secRows = ROWS.filter(r => r.section === sec);
-                return (
-                  <React.Fragment key={sec}>
-                    <tr className="bg-[#181818] border-y border-[#1e1e1e] h-[22px]">
-                      <td colSpan={years.length + 2} className="px-3 py-1 text-[11px] font-bold text-slate-300 sticky left-0 bg-[#181818]">
-                        {SEC[sec]}
-                      </td>
-                    </tr>
-                    {secRows.map(rd => {
-                      const mode = getMode(rd.key);
-                      return (
-                        <tr key={rd.key} className="border-b border-[#1e1e1e]/40 hover:bg-[#0f0f0f] h-[26px]">
-                          <td className="px-3 py-0.5 text-[11px] text-slate-400 sticky left-0 bg-[#0a0a0a] border-r border-[#1e1e1e] z-10 min-w-[220px]">
-                            <span className="flex items-center gap-1.5 truncate">
-                              {rd.readonly && <Lock className="w-2.5 h-2.5 text-slate-600 shrink-0" />}
-                              {sec === 2 && !rd.readonly && <span style={{ fontFamily: MONO, fontSize: 6, color: '#7e22ce', border: '1px solid #4c1d95', borderRadius: 2, padding: '0 2px', flexShrink: 0 }}>M07</span>}
-                              {mode === 'formula' && <FlaskConical className="w-2.5 h-2.5 text-teal-500 shrink-0" />}
-                              <span className="truncate">{rd.label}</span>
-                            </span>
-                          </td>
-                          {years.map(yr => {
-                            const broker   = financials ? rd.getBroker(financials, yr) : null;
-                            const platform = financials ? rd.getPlatform(financials, yr) : null;
-                            const user     = getUser(rd.key, yr);
-                            const formulaResult = mode === 'formula' ? computeFormulaResult(rd, yr) : null;
-                            const divergence = getDivergenceColor(
-                              formulaResult ?? user, platform, broker,
-                              rd.benchmarkP25, rd.benchmarkP50, rd.benchmarkP75,
-                            );
-                            return (
-                              <LayeredCell key={yr}
-                                vals={{ broker, platform, user }}
-                                format={rd.format}
-                                readonly={rd.readonly || lockedOverrides}
-                                isM07={sec === 2}
-                                divergence={divergence}
-                                formulaResult={formulaResult}
-                                onClick={() => openDrawer(rd, yr)}
-                              />
-                            );
-                          })}
-                          {/* Row mode selector */}
-                          <td className="px-0.5 py-0.5 text-center">
-                            {!rd.readonly && (
-                              <div className="flex gap-0.5 justify-center">
-                                {(['flat','stepped','formula'] as RowMode[]).map(m => {
-                                  const isActive = mode === m;
-                                  return (
-                                    <button key={m}
-                                      onClick={() => setRowModes(s => ({ ...s, [rd.key]: m }))}
-                                      title={m === 'formula' ? 'Formula mode: enter an expression (Y1 + 0.25%, base * 1.03…)' : m === 'flat' ? 'Flat: Y1 propagates to all years' : 'Stepped: per-year values'}
-                                      className={`px-1 py-0.5 text-[7px] font-bold rounded-sm cursor-pointer
-                                        ${isActive ? 'bg-blue-600/40 text-blue-400' : 'text-slate-700 hover:text-slate-400'}`}>
-                                      {m === 'flat' ? 'F' : m === 'stepped' ? 'S' : 'Fx'}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    {sec === 2 && <GprDecompRow years={years} financials={financials} />}
-                  </React.Fragment>
-                );
-              })}
+              {allSections.map(({ sec, rows }) => (
+                <React.Fragment key={sec}>
+                  <tr className="bg-[#181818] border-y border-[#1e1e1e] h-[22px]">
+                    <td colSpan={years.length + 2} className="px-3 py-1 text-[11px] font-bold text-slate-300 sticky left-0 bg-[#181818]">
+                      {SEC[sec]}
+                    </td>
+                  </tr>
+                  {rows.map(rd => {
+                    const mode = getMode(rd.key);
+                    return (
+                      <tr key={rd.key} className="border-b border-[#1e1e1e]/40 hover:bg-[#0f0f0f] h-[26px]">
+                        <td className="px-3 py-0.5 text-[11px] text-slate-400 sticky left-0 bg-[#0a0a0a] border-r border-[#1e1e1e] z-10 min-w-[220px]">
+                          <span className="flex items-center gap-1.5 truncate">
+                            {rd.readonly && <Lock className="w-2.5 h-2.5 text-slate-600 shrink-0" />}
+                            {sec === 2 && !rd.readonly && <span style={{ fontFamily: MONO, fontSize: 6, color: '#7e22ce', border: '1px solid #4c1d95', borderRadius: 2, padding: '0 2px', flexShrink: 0 }}>M07</span>}
+                            {mode === 'formula' && <FlaskConical className="w-2.5 h-2.5 text-teal-500 shrink-0" />}
+                            <span className="truncate">{rd.label}</span>
+                          </span>
+                        </td>
+                        {years.map(yr => {
+                          const broker       = financials ? rd.getBroker(financials, yr)   : null;
+                          const platform     = financials ? rd.getPlatform(financials, yr) : null;
+                          const user         = getUser(rd.key, yr);
+                          const formulaResult = mode === 'formula' ? computeFormulaResult(rd, yr) : null;
+                          const divergence = getDivergenceColor(
+                            formulaResult ?? user, platform, broker,
+                            rd.benchmarkP25, rd.benchmarkP50, rd.benchmarkP75,
+                          );
+                          return (
+                            <LayeredCell key={yr}
+                              vals={{ broker, platform, user }}
+                              format={rd.format}
+                              readonly={rd.readonly || lockedOverrides}
+                              isM07={sec === 2}
+                              divergence={divergence}
+                              formulaResult={formulaResult}
+                              onClick={() => openDrawer(rd, yr)}
+                            />
+                          );
+                        })}
+                        <td className="px-0.5 py-0.5 text-center">
+                          {!rd.readonly && (
+                            <div className="flex gap-0.5 justify-center">
+                              {(['flat','stepped','formula'] as RowMode[]).map(m => {
+                                const isActive = mode === m;
+                                return (
+                                  <button key={m}
+                                    onClick={() => setRowModes(s => ({ ...s, [rd.key]: m }))}
+                                    title={m === 'formula' ? 'Formula mode' : m === 'flat' ? 'Flat: Y1 propagates' : 'Stepped: per-year'}
+                                    className={`px-1 py-0.5 text-[7px] font-bold rounded-sm cursor-pointer
+                                      ${isActive ? 'bg-blue-600/40 text-blue-400' : 'text-slate-700 hover:text-slate-400'}`}>
+                                    {m === 'flat' ? 'F' : m === 'stepped' ? 'S' : 'Fx'}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {sec === 1 && <GprDecompRow years={years} financials={financials} />}
+                </React.Fragment>
+              ))}
             </tbody>
           </table>
         </div>
@@ -1371,7 +1467,6 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
         </div>
       </div>
 
-      {/* Side drawer */}
       {drawerTarget && (
         <CellDrawer
           target={drawerTarget}

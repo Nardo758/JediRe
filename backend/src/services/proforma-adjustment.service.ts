@@ -1227,6 +1227,17 @@ export interface DealFinancials {
       vacancyPct: number | null;
       exitCapIfLastYear: number | null;
     }>;
+    gprDecomposition: {
+      brokerAnnual: number | null;
+      platformAnnual: number | null;
+      t12Annual: number | null;
+      rentRollAnnual: number | null;
+      resolvedAnnual: number | null;
+      brokerPerUnitMo: number | null;
+      platformPerUnitMo: number | null;
+      t12PerUnitMo: number | null;
+      resolvedPerUnitMo: number | null;
+    } | null;
   };
   meta: {
     seeded: boolean;
@@ -1544,12 +1555,35 @@ export async function getDealFinancials(
     };
   });
 
+  // ── GPR Decomposition — derived from year1 seed gpr LayeredValue ────────────
+  const gprSeed = lv(year1Seed, 'gpr');
+  const gprBrokerAnnual  = layerNum(gprSeed, 'om') ?? layerNum(gprSeed, 'broker');
+  const gprPlatAnnual    = layerNum(gprSeed, 'platform');
+  const gprT12Annual     = layerNum(gprSeed, 't12');
+  const gprRentRollAnnual = layerNum(gprSeed, 'rent_roll');
+  const gprResolvedAnnual = resolvedNum(gprSeed);
+  const safe2 = (v: number | null) => (v != null && totalUnits > 0 ? Math.round(v / totalUnits / 12) : null);
+  const gprDecomposition = {
+    brokerAnnual:      gprBrokerAnnual,
+    platformAnnual:    gprPlatAnnual,
+    t12Annual:         gprT12Annual,
+    rentRollAnnual:    gprRentRollAnnual,
+    resolvedAnnual:    gprResolvedAnnual,
+    brokerPerUnitMo:   safe2(gprBrokerAnnual),
+    platformPerUnitMo: safe2(gprPlatAnnual),
+    t12PerUnitMo:      safe2(gprT12Annual),
+    resolvedPerUnitMo: safe2(gprResolvedAnnual),
+  };
+
   const assumptions = {
     holdYears,
     exitCap,
     rentGrowthYr1,
     rentGrowthStabilized: rentGrowthStab,
     perYear,
+    gprDecomposition: (gprBrokerAnnual ?? gprPlatAnnual ?? gprT12Annual ?? gprResolvedAnnual) != null
+      ? gprDecomposition
+      : null,
   };
 
   // ── Capital Stack assembly ──────────────────────────────────────────────────
