@@ -1692,10 +1692,16 @@ async function applyUnitMixOverride(
 }> {
   // field format: unit_mix:{rowIndex}:{fieldName}  e.g. unit_mix:0:in_place_rent
   const parts = field.split(':');
-  const rowIndex = parseInt(parts[1] ?? '0', 10);
+  const rowIndexRaw = parseInt(parts[1] ?? '', 10);
   const cellField = parts[2] ?? '';
 
-  // Allowed mutable fields in a unit mix row
+  // Validate rowIndex is a safe non-negative integer (guards against malformed coordinates)
+  if (!Number.isInteger(rowIndexRaw) || rowIndexRaw < 0 || !isFinite(rowIndexRaw)) {
+    throw new Error(`unit_mix rowIndex '${parts[1]}' is not a valid non-negative integer`);
+  }
+  const rowIndex = rowIndexRaw;
+
+  // Allowed mutable fields in a unit mix row (whitelist — guard against arbitrary column injection)
   const ALLOWED = new Set(['count', 'avg_sf', 'in_place_rent', 'occupancy_pct', 'concession_pct']);
   if (!ALLOWED.has(cellField)) {
     throw new Error(`unit_mix cell field '${cellField}' is not overridable`);
