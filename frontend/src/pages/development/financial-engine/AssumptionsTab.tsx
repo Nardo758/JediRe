@@ -60,24 +60,78 @@ type Formulas  = Record<string, string>;
 const REVENUE_ORDER = ['gpr','loss_to_lease_pct','vacancy_pct','concessions_pct','bad_debt_pct','non_revenue_units_pct','other_income_per_unit','net_rental_income','egi'];
 const OPEX_ORDER    = ['payroll','repairs_maintenance','turnover','contract_services','marketing','utilities','g_and_a','management_fee_pct','insurance','real_estate_tax','replacement_reserves','total_opex','noi'];
 
-// ─── Formula evaluator ─────────────────────────────────────────────────────────
+// ─── Formula evaluator — constrained arithmetic parser (no new Function) ───────
+// Only allows: numbers, +  -  *  /  ()  and the named refs below.
+// Rejects anything outside [0-9 . + - * / ( ) spaces] after token substitution.
 function evalFormula(
   expr: string,
   context: { base: number|null; platform: number|null; yearVals: Record<number, number|null> },
 ): number|null {
   try {
     let s = expr.trim();
+    // Substitute named refs
     s = s.replace(/[Yy](\d+)/g, (_, n) => {
       const v = context.yearVals[Number(n)];
-      return v != null ? String(v) : 'null';
+      return v != null ? String(v) : '__UNDEF__';
     });
-    s = s.replace(/\bbase\b/gi, context.base != null ? String(context.base) : 'null');
-    s = s.replace(/\bplatform\b/gi, context.platform != null ? String(context.platform) : 'null');
-    s = s.replace(/([+-]?\s*\d+(?:\.\d+)?)\s*%/g, (_, n) => String(parseFloat(n.replace(/\s+/,'')) / 100));
-    if (s.includes('null')) return null;
-    // eslint-disable-next-line no-new-func
-    const result = new Function('return (' + s + ')')();
-    return typeof result === 'number' && isFinite(result) ? result : null;
+    s = s.replace(/\bbase\b/gi, context.base != null ? String(context.base) : '__UNDEF__');
+    s = s.replace(/\bplatform\b/gi, context.platform != null ? String(context.platform) : '__UNDEF__');
+    // Convert percentage notation: e.g. 0.25% → 0.0025
+    s = s.replace(/([\d.]+)\s*%/g, (_, n) => String(parseFloat(n) / 100));
+    // Bail if any ref is undefined
+    if (s.includes('__UNDEF__')) return null;
+    // Whitelist check — only digits, decimal points, operators, parens, whitespace
+    if (/[^0-9.\s+\-*/()]/.test(s)) return null;
+    // Constrained recursive descent parser
+    let pos = 0;
+    const skip = () => { while (pos < s.length && s[pos] === ' ') pos++; };
+    const parseExpr = (): number => {
+      let left = parseTerm();
+      skip();
+      while (pos < s.length && (s[pos] === '+' || s[pos] === '-')) {
+        const op = s[pos++];
+        const right = parseTerm();
+        left = op === '+' ? left + right : left - right;
+        skip();
+      }
+      return left;
+    };
+    const parseTerm = (): number => {
+      let left = parseUnary();
+      skip();
+      while (pos < s.length && (s[pos] === '*' || s[pos] === '/')) {
+        const op = s[pos++];
+        const right = parseUnary();
+        if (op === '/' && right === 0) throw new Error('div/0');
+        left = op === '*' ? left * right : left / right;
+        skip();
+      }
+      return left;
+    };
+    const parseUnary = (): number => {
+      skip();
+      if (s[pos] === '-') { pos++; return -parseAtom(); }
+      if (s[pos] === '+') { pos++; return parseAtom(); }
+      return parseAtom();
+    };
+    const parseAtom = (): number => {
+      skip();
+      if (s[pos] === '(') {
+        pos++;
+        const v = parseExpr();
+        skip();
+        if (s[pos] === ')') pos++;
+        return v;
+      }
+      const start = pos;
+      while (pos < s.length && /[0-9.]/.test(s[pos])) pos++;
+      if (pos === start) throw new Error('expected number');
+      return parseFloat(s.slice(start, pos));
+    };
+    const result = parseExpr();
+    skip();
+    if (pos !== s.length) return null;  // trailing characters
+    return isFinite(result) ? result : null;
   } catch { return null; }
 }
 
