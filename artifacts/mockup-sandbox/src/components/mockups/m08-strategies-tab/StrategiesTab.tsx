@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { TrendingUp, ChevronDown, ChevronRight, AlertTriangle, CheckCircle, Info, Zap, BarChart2, ArrowRight } from 'lucide-react';
+import { TrendingUp, ChevronDown, ChevronRight, AlertTriangle, CheckCircle, Info, Zap, BarChart2, ArrowRight, Brain, Database, FileText } from 'lucide-react';
 
 const C = {
   bg: '#0a0a0c',
@@ -394,11 +394,156 @@ const strategies = [
   { name: 'MF CORE-PLUS', detected: false, score: 54, irr: '13.4%', coc: '9.1%', hold: '60mo', gate: 'REJECTED', gateColor: C.red, metrics: ['LTL only $145/u', 'No reno thesis', 'Low upside'], color: C.textMuted },
 ];
 
+// ─── Asset-class adapter definitions ─────────────────────────────────────────
+const ASSET_CLASSES = [
+  { id: 'mf', label: 'Multifamily', sub: 'Garden / Mid-rise / High-rise', detected: true },
+  { id: 'sfr-flip', label: 'SFR Flip', sub: 'Fix-and-Flip · ARV-driven', detected: false },
+  { id: 'sfr-brrrr', label: 'SFR BRRRR', sub: 'Buy-Rehab-Rent-Refi-Repeat', detected: false },
+  { id: 'retail-va', label: 'Retail Value-Add', sub: 'Anchored / Strip · $/SF/yr NNN', detected: false },
+  { id: 'retail-nnn', label: 'Retail NNN', sub: 'Single-Tenant Credit Lease', detected: false },
+  { id: 'office', label: 'Office', sub: 'Value-Add / Core / Conversion', detected: false },
+];
+
+const AC_ADAPTER: Record<string, { unit: string; tiers: string[]; gaps: string[]; dollarize: string; phasing: string; proforma: string }> = {
+  'mf': { unit: '$/unit/mo per unit type (1BR/2BR/3BR)', tiers: 'Unrenovated ±5yr · Renovated ±5yr · Top-quartile ceiling'.split(' · '), gaps: ['LTL = Tier A − subject', 'VC = Tier B − Tier A', 'CG = Tier C − Tier B'], dollarize: 'Σ unit types × units × 12mo', phasing: 'Turnover rate (LTL) + reno pace 12u/mo (VC) + concession burnoff', proforma: 'F3 Sec 1: blended rent growth + per-year capture; Sec 4: capex schedule' },
+  'sfr-flip': { unit: 'Sold price / whole house · MLS closed comps', tiers: ['Tier A: As-is closed comps ±500SF ±5yr same school zone', 'Tier B: Renovated closed comps (ARV)', 'Tier C: Top-quartile renovated (stretch)'], gaps: ['Acquisition gap: contract − Tier A median', 'Reno lift: Tier B − Tier A (ARV delta)', 'ARV confidence band: Tier B std dev'], dollarize: 'Margin = ARV − (Acquisition + Rehab + Holding + Selling)', phasing: 'Single transaction · M0 acquire → M1-4 rehab → M4-5 list → M5-6 close · No year-over-year curve', proforma: 'SFR Flip template: P&L single-deal · CoC + annualized IRR on hold months' },
+  'sfr-brrrr': { unit: '$/mo rent / whole house · RentCast rental comps', tiers: ['Tier A: As-is rental comps ±300SF same ZIP', 'Tier B: Post-rehab rental comps (post-reno rent target)', 'Tier C: Top-quartile rented houses same neighborhood'], gaps: ['Rent gap (LTL analog): Tier A − current tenant pay', 'Rehab rent lift (VC analog): Tier B − Tier A', 'Ceiling gap: Tier C − Tier B'], dollarize: 'Monthly rent × 12 → NOI → DSCR + BRRRR refi-out test', phasing: 'M0 acquire → M1-4 rehab → M4-5 tenant → M5-11 seasoning → M12 refi → hold', proforma: 'SFR Hold: single-house projection · Year 1 ramp · BRRRR refi-out test flag' },
+  'retail-va': { unit: '$/SF/yr NNN · GLA-weighted by trade area', tiers: ['Tier A: Same-class center in-place rents (current leases)', 'Tier B: Asking rents for vacant space (today dollars)', 'Tier C: Top-quartile center — stretch reposition'], gaps: ['In-place rent gap: Tier A − subject in-place PSF', 'Mark-to-market: Tier B − subject in-place PSF', 'Vacancy gap: (subject vac% − submarket vac%) × SF × Tier B rent'], dollarize: 'Component 1: rolling SF × rent lift per year · Component 2: recoverable vacant SF × Tier B rent', phasing: 'Per-lease rollover schedule (not turnover rate) · TI/LC reserves at each renewal', proforma: 'F3 Sec 1: rent growth + vacancy schedule · Sec 3: TI/LC reserves · Sec 4: exterior/parking capex' },
+  'retail-nnn': { unit: 'Cap rate / credit quality — not rent comps', tiers: ['Tier A: Credit cap rate median (same-credit, same-geo)', 'Tier B (= subject): Subject cap = NOI / price', 'Tier C: Rent PSF vs submarket at rollover'], gaps: ['Cap rate delta: subject cap − Tier A cap (positive = discount to market)', 'Credit quality spread: normalized across BBB / BB / unrated', 'Rent vs market at rollover (only if < 10yr remaining)'], dollarize: 'NNN cash flow stream · No value-add math · Simple cap rate arbitrage', phasing: 'No phasing — contractual escalations per lease schedule. Exit: residual at remaining term', proforma: 'F3 Sec 1: escalator schedule only (CPI / fixed % / step) · Sec 6: exit residual at term' },
+  'office': { unit: '$/SF/yr full-service or NNN (per market convention)', tiers: ['Tier A: Same-class building in-place rents (leased)', 'Tier B: Current asking rents (vacant space)', 'Tier C: Trophy / Class A reposition ceiling'], gaps: ['Rent-to-market: Tier B − subject in-place', 'Vacancy spread: subject − submarket vacancy × SF × Tier B', 'TI delta: above-market TIs required to compete vs peers'], dollarize: 'Per-lease rollover + vacancy fill → stabilized NOI delta', phasing: 'Lease rollover schedule · WFH sensitivity · Conversion optionality at exit', proforma: 'F3 Sec 1: rent growth + vacancy · Sec 3: TI/LC (office = highest; $60-120/SF) · Sec 4: capex' },
+};
+
+// ─── F3 Integration Panel ─────────────────────────────────────────────────────
+function F3IntegrationPanel({ assetClass }: { assetClass: string }) {
+  const [open, setOpen] = useState(true);
+  const ac = AC_ADAPTER[assetClass] || AC_ADAPTER['mf'];
+
+  const reads = [
+    { field: 'loss_to_lease_pct', label: 'Loss-to-Lease %', f3Value: '12.0%', msdValue: '12.0%', status: 'confirmed', note: 'Comp stratification confirms broker value' },
+    { field: 'vacancy_pct', label: 'Vacancy Y1', f3Value: '10.9%', msdValue: '10.9%', status: 'confirmed', note: 'Consistent with physical occ 89.1%' },
+    { field: 'rent_growth_yr1', label: 'Rent Growth Y1', f3Value: '4.1%', msdValue: '15.6%', status: 'override', note: 'M08 comp-driven: 4.1% market + 11.5pp LTL capture = 15.6% blended' },
+    { field: 'rent_growth_stabilized', label: 'Rent Growth Stab.', f3Value: '3.8%', msdValue: '4.1%', status: 'nudge', note: 'Submarket CAGR 4.1% (M07) vs broker 3.8%' },
+    { field: 'exit_cap', label: 'Exit Cap Rate', f3Value: '5.50%', msdValue: '5.25%', status: 'nudge', note: 'M08: capture drives NOI uplift → 25bps compression at exit' },
+    { field: 'capex_per_unit', label: 'Capex/Unit', f3Value: '—', msdValue: '$18,000', status: 'new', note: '75 reno units × $18K from VC capture plan' },
+    { field: 'hold_years', label: 'Hold Years', f3Value: '5yr', msdValue: '3yr', status: 'nudge', note: 'M08 target exit: Q4 2028 (M36) → shortens hold' },
+  ];
+
+  const statusColor: Record<string, string> = { confirmed: C.green, override: C.amber, nudge: C.cyan, new: C.purple };
+  const statusLabel: Record<string, string> = { confirmed: '✓ MATCH', override: '↑ OVERRIDE', nudge: '~ NUDGE', new: '+ ADD' };
+
+  return (
+    <div style={{ border: `1px solid ${C.border}`, borderRadius: 2, overflow: 'hidden', marginBottom: 16 }}>
+      <div onClick={() => setOpen(!open)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 14px', backgroundColor: '#0d0f18', cursor: 'pointer', borderBottom: open ? `1px solid ${C.border}` : 'none' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Database size={12} color={C.purple} />
+          <span style={{ ...mono, color: C.purple, fontSize: 10, fontWeight: 700, letterSpacing: '0.1em' }}>F3 ASSUMPTIONS INTEGRATION</span>
+          <span style={{ ...mono, color: C.textMuted, fontSize: 9, marginLeft: 4 }}>⊕ ASSUMPTIONS tab → M08 reads these to formulate plan · then writes comp-derived values back</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ ...mono, color: C.amber, fontSize: 9 }}>2 OVERRIDES · 2 NUDGES · 1 NEW</span>
+          {open ? <ChevronDown size={12} color={C.textMuted} /> : <ChevronRight size={12} color={C.textMuted} />}
+        </div>
+      </div>
+      {open && (
+        <div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+            <thead>
+              <tr style={{ backgroundColor: '#0d0d12' }}>
+                {['F3 Field', 'F3 Current (Broker/T12)', 'M08 Comp-Derived', 'Action', 'Rationale'].map(h => (
+                  <th key={h} style={{ ...mono, textAlign: 'left', padding: '4px 10px', color: C.textMuted, fontSize: 9, fontWeight: 600, letterSpacing: '0.08em', borderBottom: `1px solid ${C.border}` }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {reads.map((r, i) => (
+                <tr key={i} style={{ backgroundColor: r.status === 'override' ? `${C.amber}06` : r.status === 'new' ? `${C.purple}06` : 'transparent', borderBottom: `1px solid ${C.border}15` }}>
+                  <td style={{ padding: '5px 10px', color: C.textMuted, fontSize: 10 }}>{r.label}</td>
+                  <td style={{ ...mono, padding: '5px 10px', color: r.status === 'override' || r.status === 'nudge' ? C.textMuted : C.textPrimary, textDecoration: r.status === 'override' ? 'line-through' : 'none', fontSize: 11 }}>{r.f3Value}</td>
+                  <td style={{ ...mono, padding: '5px 10px', color: statusColor[r.status], fontWeight: 600, fontSize: 11 }}>{r.msdValue}</td>
+                  <td style={{ padding: '5px 10px' }}>
+                    <span style={{ ...mono, fontSize: 8, color: statusColor[r.status], backgroundColor: `${statusColor[r.status]}15`, border: `1px solid ${statusColor[r.status]}35`, borderRadius: 2, padding: '1px 5px', whiteSpace: 'nowrap' as const }}>{statusLabel[r.status]}</span>
+                  </td>
+                  <td style={{ padding: '5px 10px', color: C.textMuted, fontSize: 10 }}>{r.note}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div style={{ padding: '8px 14px', borderTop: `1px solid ${C.border}`, backgroundColor: `${C.purple}08`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <FileText size={11} color={C.purple} />
+              <span style={{ color: C.textMuted, fontSize: 10 }}>
+                Computed from: <span style={{ ...mono, color: C.purple }}>Bell Tech Corridor comp set · {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button style={{ ...mono, fontSize: 9, padding: '3px 10px', color: C.purple, border: `1px solid ${C.purple}50`, borderRadius: 2, backgroundColor: `${C.purple}15`, cursor: 'pointer' }}>Review All Changes</button>
+              <button style={{ ...mono, fontSize: 9, padding: '3px 10px', color: '#0a0a0c', border: 'none', borderRadius: 2, backgroundColor: C.purple, cursor: 'pointer', fontWeight: 700 }}>Apply to F3 →</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Asset-Class Adapter Panel ────────────────────────────────────────────────
+function AssetClassAdapter({ activeClass, onSelect }: { activeClass: string; onSelect: (id: string) => void }) {
+  const ac = AC_ADAPTER[activeClass] || AC_ADAPTER['mf'];
+  return (
+    <div style={{ border: `1px solid ${C.border}`, borderRadius: 2, overflow: 'hidden', marginBottom: 16 }}>
+      <div style={{ backgroundColor: '#0d0f18', padding: '7px 14px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Brain size={12} color={C.purple} />
+          <span style={{ ...mono, color: C.purple, fontSize: 10, fontWeight: 700, letterSpacing: '0.1em' }}>CLAUDE — ASSET-CLASS ADAPTER</span>
+          <span style={{ ...mono, color: C.textMuted, fontSize: 9 }}>Evidence Layer math engine adapts per detected class · Powered by Claude Sonnet (Opus for Principal+)</span>
+        </div>
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          <span style={{ ...mono, color: C.textMuted, fontSize: 9 }}>COMPUTE</span>
+          <span style={{ ...mono, color: C.green, fontSize: 9 }}>1.4s</span>
+        </div>
+      </div>
+      {/* Class selector */}
+      <div style={{ display: 'flex', padding: '8px 14px', gap: 6, backgroundColor: '#0d0d12', flexWrap: 'wrap' as const, borderBottom: `1px solid ${C.border}` }}>
+        {ASSET_CLASSES.map(ac => (
+          <button key={ac.id} onClick={() => onSelect(ac.id)} style={{ ...mono, fontSize: 9, padding: '4px 10px', cursor: 'pointer', backgroundColor: activeClass === ac.id ? `${C.purple}20` : 'transparent', color: activeClass === ac.id ? C.purple : C.textMuted, border: `1px solid ${activeClass === ac.id ? C.purple + '60' : C.border}`, borderRadius: 2, textAlign: 'left' as const }}>
+            {ac.label}{ac.detected ? <span style={{ color: C.amber, marginLeft: 4 }}>⚡</span> : ''}
+          </button>
+        ))}
+      </div>
+      {/* Adapter dimensions */}
+      <div style={{ padding: 14, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+        {[
+          { label: 'COMP UNIT', value: ac.unit },
+          { label: 'TIER DEFINITIONS', value: ac.tiers.join(' → ') },
+          { label: 'GAP TYPES', value: ac.gaps.join(' / ') },
+          { label: 'DOLLARIZATION', value: ac.dollarize },
+          { label: 'PHASING MECHANIC', value: ac.phasing },
+          { label: 'PROFORMA MAPPING', value: ac.proforma },
+        ].map((d, i) => (
+          <div key={i} style={{ borderLeft: `2px solid ${C.purple}40`, paddingLeft: 8 }}>
+            <div style={{ ...mono, color: C.textMuted, fontSize: 8, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 3 }}>{d.label}</div>
+            <div style={{ color: C.textPrimary, fontSize: 10, lineHeight: 1.4 }}>{d.value}</div>
+          </div>
+        ))}
+      </div>
+      {activeClass !== 'mf' && (
+        <div style={{ margin: '0 14px 12px', padding: '8px 10px', backgroundColor: `${C.amber}08`, border: `1px solid ${C.amber}30`, borderRadius: 2, display: 'flex', gap: 6, alignItems: 'center' }}>
+          <AlertTriangle size={11} color={C.amber} />
+          <span style={{ color: C.textMuted, fontSize: 10 }}>
+            Evidence panels below show <span style={{ ...mono, color: C.amber }}>{ASSET_CLASSES.find(a => a.id === activeClass)?.label}</span> math engine. Bell Tech Corridor is MF — switch back to Multifamily to see the live deal data.
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export function StrategiesTab() {
   const [activeCompType, setActiveCompType] = useState<'1BR' | '2BR' | '3BR'>('1BR');
   const [evidenceOpen, setEvidenceOpen] = useState(true);
   const [planOpen, setPlanOpen] = useState(false);
+  const [activeAssetClass, setActiveAssetClass] = useState('mf');
 
   return (
     <div style={{ backgroundColor: C.bg, minHeight: '100vh', color: C.textPrimary, fontFamily: '"IBM Plex Sans", system-ui, sans-serif', fontSize: 12 }}>
@@ -415,6 +560,12 @@ export function StrategiesTab() {
       </div>
 
       <div style={{ padding: '16px 20px' }}>
+
+        {/* 0a. Claude Asset-Class Adapter */}
+        <AssetClassAdapter activeClass={activeAssetClass} onSelect={setActiveAssetClass} />
+
+        {/* 0b. F3 Assumptions Integration Panel */}
+        <F3IntegrationPanel assetClass={activeAssetClass} />
 
         {/* 1. Detection Banner */}
         <div style={{ borderLeft: `3px solid ${C.cyan}`, backgroundColor: C.panel, border: `1px solid ${C.border}`, borderLeft: `3px solid ${C.cyan}`, padding: '12px 16px', marginBottom: 16, borderRadius: 2 }}>
