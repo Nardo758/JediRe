@@ -335,11 +335,12 @@ function buildPhases(
   const ioMonths = phaseStructure.ioMonths || (rateType === 'Floating' ? termYears * 12 : 24);
   const amortYears = phaseStructure.amortYears || (rateType === 'Fixed' ? 30 : 0);
 
-  const primaryProduct = contextMods.productExclusions.includes(mapping.primaryProduct)
+  const phase1ProductRaw = phaseStructure.product || mapping.primaryProduct || 'bridge';
+  const primaryProduct = contextMods.productExclusions.includes(phase1ProductRaw)
     ? (mapping.alternatives || []).find((a: string) => !contextMods.productExclusions.includes(a)) || 'bridge'
-    : mapping.primaryProduct;
+    : phase1ProductRaw;
 
-  const phase1Lenders = targetLenders(primaryProduct, phase1LoanM, state, targetLtv, !contextMods.recourseRequired, 3);
+  const phase1Lenders = targetLenders(primaryProduct, phase1LoanM, state, targetLtv, !contextMods.recourseRequired, 5);
   const phase1EndMonth = Math.min(termYears * 12, holdMonths);
   const phase1Triggers = buildMonitoringTriggers(subStrategyKey, holdMonths, [{ rateType, ioMonths }], sofr);
 
@@ -351,7 +352,7 @@ function buildPhases(
     phaseIndex: 0,
     phaseLabel: 'Phase 1 — Acquisition',
     product: primaryProduct,
-    productLabel: productLabels[primaryProduct] || primaryProduct.replace(/_/g, ' '),
+    productLabel: productLabels[primaryProduct] || productLabels[mapping.primaryProduct] || primaryProduct.replace(/_/g, ' '),
     startMonth: 0,
     endMonth: phase1EndMonth,
     loanAmountEst: phase1LoanM * 1_000_000,

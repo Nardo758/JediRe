@@ -1,5 +1,6 @@
 /**
  * M08 Deal-Level Strategy Endpoints
+ * GET  /api/v1/deals/:dealId/strategies               — M08 v2 strategy output (strategy_analyses)
  * GET  /api/v1/deals/:dealId/strategy-scores          — get cached strategy scores
  * POST /api/v1/deals/:dealId/strategy-scores/recalculate — trigger fresh scoring
  * GET  /api/v1/deals/:dealId/arbitrage                — get arbitrage result
@@ -9,6 +10,7 @@ import { Router, Response } from 'express';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { query, getPool } from '../../database/connection';
 import { scoreAndPersist, detectArbitrage, ScoreContext } from '../../services/strategyArbitrage.service';
+import { getStrategiesForDeal } from '../../services/m08-strategies.service';
 import { logger } from '../../utils/logger';
 
 const router = Router({ mergeParams: true });
@@ -34,6 +36,29 @@ async function checkDealAccess(dealId: string, userId: string, orgId: string | n
   );
   return result.rows.length > 0;
 }
+
+/**
+ * GET /api/v1/deals/:dealId/strategies
+ * M08 v2 strategy output contract — returns strategy_analyses entries for the deal.
+ */
+router.get('/:dealId/strategies', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const userId = req.user!.userId;
+    const orgId = await getUserOrgId(userId);
+
+    if (!(await checkDealAccess(dealId, userId, orgId))) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
+
+    const pool = getPool();
+    const strategies = await getStrategiesForDeal(pool, dealId);
+    return res.json({ success: true, strategies, count: strategies.length });
+  } catch (error: any) {
+    logger.error('[M08v2] Error fetching strategies:', error);
+    return res.status(500).json({ success: false, error: 'Failed to fetch strategies' });
+  }
+});
 
 router.get('/:dealId/strategy-scores', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
