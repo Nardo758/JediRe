@@ -41,6 +41,8 @@ interface DealFinancials {
     holdYears: number; exitCap: number|null; rentGrowthYr1: number|null; rentGrowthStabilized: number|null;
     perYear: Array<{ year: number; rentGrowthPct: number|null; vacancyPct: number|null; exitCapIfLastYear: number|null }>;
     gprDecomposition: GprDecomposition|null;
+    /** AI narrative synthesizing M07 signals. Null when M07 offline. */
+    narrative: string|null;
   };
   meta: { seeded: boolean; updatedAt: string|null };
 }
@@ -411,10 +413,11 @@ const STATIC_ROWS: RowDef[] = [
   {
     key: 'derivedVacancy', label: 'Derived Vacancy % (M07 equilibrium)', section: 2, unit: 'pct',
     format: fmtPct2, readonly: true,
-    description: 'Read-only equilibrium vacancy from T-01×T-05 traffic model. Override via Stabilized Occ Target.',
-    platformSource: 'M07 — equilibrium vacancy from tours × conversion', brokerSource: 'N/A — derived',
+    description: 'Read-only equilibrium vacancy from T-01×T-05 traffic model. Fallback to broker T12 vacancy when M07 offline.',
+    platformSource: 'M07 — equilibrium vacancy from tours × conversion', brokerSource: 'OM / T12 vacancy_pct (broker fallback)',
     benchmarkP25: 0.03, benchmarkP50: 0.06, benchmarkP75: 0.10,
-    getBroker:   (_f, _yr) => null,
+    // Broker fallback: use year1.vacancy_pct.broker when M07 is offline
+    getBroker: (f, _yr) => y1(f, 'vacancy_pct')?.broker ?? y1(f, 'vacancy_pct')?.t12 ?? null,
     getPlatform: (f, yr) => {
       const t = tyr(f, yr);
       if (t?.vacancyPct != null) return t.vacancyPct;
@@ -425,11 +428,15 @@ const STATIC_ROWS: RowDef[] = [
   {
     key: 'stabilizedOcc', label: 'Stabilized Occupancy Target', section: 2, unit: 'pct',
     format: fmtPct2, patchField: 'vacancyPct',
-    description: 'Long-run stabilized occupancy target. Platform = M07 equilibrium.',
+    description: 'Long-run stabilized occupancy target. Platform = M07 equilibrium. Broker fallback = 1 − T12 vacancy.',
     platformSource: 'M07 — occupancy trajectory per year', brokerSource: 'OM / Pro Forma Assumptions',
     brokerPage: 'Operating Assumptions', brokerLine: 'Stabilized Occupancy',
     benchmarkP25: 0.90, benchmarkP50: 0.94, benchmarkP75: 0.97,
-    getBroker: (f, yr) => { const v = pyr(f, yr)?.vacancyPct; return v != null ? 1 - v : null; },
+    // Broker fallback: 1 − vacancy_pct.broker when M07 offline
+    getBroker: (f, _yr) => {
+      const v = y1(f, 'vacancy_pct')?.broker ?? y1(f, 'vacancy_pct')?.t12;
+      return v != null ? +(1 - v).toFixed(4) : null;
+    },
     getPlatform: (f, yr) => {
       const t = tyr(f, yr);
       return t?.occupancyPct ?? (t?.vacancyPct != null ? 1 - t.vacancyPct : null);
@@ -468,7 +475,7 @@ const STATIC_ROWS: RowDef[] = [
   },
   {
     key: 'renovationLift', label: 'Renovation Traffic Lift %', section: 2, unit: 'pct',
-    format: fmtPct2, patchField: 'renovationLiftPct',
+    format: fmtPct2,
     description: 'Incremental rent lift from renovation/value-add scope, derived from M07 demand elasticity.',
     platformSource: 'M07 — Demand elasticity × renovation scope model', brokerSource: 'OM / Value-Add Pro Forma',
     benchmarkP25: 0.06, benchmarkP50: 0.12, benchmarkP75: 0.20,
@@ -571,7 +578,7 @@ const STATIC_ROWS: RowDef[] = [
   // ── Section 7 ──────────────────────────────────────────────────────────────
   {
     key: 'afterRepairRent', label: 'Target After-Repair Rent', section: 7, unit: 'dollar',
-    format: fmtDlr, patchField: 'afterRepairRent',
+    format: fmtDlr,
     description: 'Target in-place rent post-renovation. Value-add strategy only.',
     platformSource: 'M07 — Rent trajectory + renovation premium model', brokerSource: 'OM / Value-Add Pro Forma',
     benchmarkP25: 1600, benchmarkP50: 2000, benchmarkP75: 2500,
@@ -872,7 +879,13 @@ function CellDrawer({ target, allYears, onClose, onApply, onFormulaChange }: {
   );
 }
 
-// ─── GPR Decomposition row — uses assumptions.gprDecomposition from backend ────
+// ─── GPR Decomposition row ─────────────────────────────────────────────────────
+// Implements spec equation: GPR = rent_component + traffic_component (derived_gpr)
+// rent_component  = organic broker/T12 GPR grown forward at rent growth rate (Year-1 base)
+// traffic_component = M07 signal increment above organic rent
+// derived_gpr     = M07 platform GPR (from trafficProjection.yearly.effRent × units × 12)
+//
+// Source: assumptions.gprDecomposition from GET /api/v1/deals/:id/financials
 function GprDecompRow({ years, financials }: { years: number[]; financials: DealFinancials|null }) {
   const [expanded, setExpanded] = useState(false);
   if (!financials) return null;
@@ -880,22 +893,40 @@ function GprDecompRow({ years, financials }: { years: number[]; financials: Deal
   const gd = financials.assumptions.gprDecomposition;
   if (!gd && !y1(financials, 'gpr')) return null;
 
-  // Use gprDecomposition from backend for year1; project forward using rent growth
-  const fmtM = (n: number) => '$' + (n / 1_000_000).toFixed(2) + 'M';
+  const fmtM = (n: number) => n >= 1_000_000
+    ? '$' + (n / 1_000_000).toFixed(2) + 'M'
+    : '$' + Math.round(n / 1000) + 'K';
 
+  // Per-year equation: rent_component + traffic_component = derived_gpr
   const rowData = years.map(yr => {
     const mult = rentCompound(financials, yr);
-    const brokerGpr   = gd?.brokerAnnual   != null ? Math.round(gd.brokerAnnual   * mult) : null;
-    const platGpr     = gd?.platformAnnual != null ? Math.round(gd.platformAnnual * mult) : null;
-    const t12Gpr      = gd?.t12Annual      != null ? Math.round(gd.t12Annual      * mult) : null;
-    const rentRollGpr = gd?.rentRollAnnual != null ? Math.round(gd.rentRollAnnual * mult) : null;
-    const resolvedGpr = gd?.resolvedAnnual != null ? Math.round(gd.resolvedAnnual * mult) : null;
-    const delta = platGpr != null && brokerGpr != null ? platGpr - brokerGpr : null;
-    return { yr, brokerGpr, platGpr, t12Gpr, rentRollGpr, resolvedGpr, delta };
+
+    // rent_component: organic broker base grown by per-year rent growth
+    // Uses gprDecomposition.brokerAnnual (Year-1 broker/T12 GPR from assumptions.gprDecomposition)
+    const rentComponent = gd?.brokerAnnual != null
+      ? Math.round(gd.brokerAnnual * mult)
+      : null;
+
+    // derived_gpr: M07 platform GPR for this year
+    // Prefer live trafficProjection.yearly[yr].effRent × units; fallback to gd.platformAnnual × growth
+    const trafficYr = tyr(financials, yr);
+    const derivedGpr = trafficYr?.effRent != null
+      ? Math.round(trafficYr.effRent * financials.totalUnits * 12)
+      : gd?.platformAnnual != null
+        ? Math.round(gd.platformAnnual * mult)
+        : null;
+
+    // traffic_component: M07 lift above organic rent component
+    const trafficComponent = derivedGpr != null && rentComponent != null
+      ? derivedGpr - rentComponent
+      : derivedGpr != null ? derivedGpr
+      : null;
+
+    return { yr, rentComponent, trafficComponent, derivedGpr };
   });
 
   const yr1 = rowData[0];
-  const displayVal = yr1?.resolvedGpr ?? yr1?.platGpr ?? yr1?.brokerGpr;
+  const headerVal = yr1?.derivedGpr ?? yr1?.rentComponent;
 
   return (
     <>
@@ -905,71 +936,67 @@ function GprDecompRow({ years, financials }: { years: number[]; financials: Deal
           <span className="flex items-center gap-1">
             {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
             GPR DECOMPOSITION
-            {gd != null && <span style={{ fontFamily: MONO, fontSize: 7, color: '#78350f', marginLeft: 4 }}>assumptions.gprDecomposition</span>}
+            <span style={{ fontFamily: MONO, fontSize: 7, color: '#78350f', marginLeft: 4 }}>
+              rent_component + traffic_component = derived_gpr
+            </span>
           </span>
         </td>
         {rowData.map(r => (
           <td key={r.yr} className="px-2 py-0.5 text-right text-[10px] font-bold text-amber-400 border-r border-[#1e1e1e]" style={{ fontFamily: MONO }}>
-            {r.resolvedGpr != null ? fmtM(r.resolvedGpr) : r.platGpr != null ? fmtM(r.platGpr) : displayVal != null ? fmtM(displayVal) : '—'}
+            {r.derivedGpr != null ? fmtM(r.derivedGpr) : headerVal != null ? fmtM(headerVal) : '—'}
           </td>
         ))}
         <td className="px-1 py-0.5" />
       </tr>
       {expanded && (
         <>
-          {gd?.brokerPerUnitMo != null && (
-            <tr className="h-[18px] border-b border-[#1e1e1e]/30">
-              <td className="pl-8 pr-3 py-0 text-[9px] text-amber-700 sticky left-0 bg-[#0a0a0a] border-r border-[#1e1e1e] z-10">
-                Broker GPR (broker layer · ${gd.brokerPerUnitMo}/unit/mo)
+          <tr className="h-[18px] border-b border-[#1e1e1e]/30">
+            <td className="pl-8 pr-3 py-0 sticky left-0 bg-[#0a0a0a] border-r border-[#1e1e1e] z-10"
+              style={{ fontSize: 9, color: '#f59e0b' }}>
+              Rent Component (broker base × growth)
+              {gd?.brokerPerUnitMo != null && (
+                <span style={{ color: '#78350f', marginLeft: 4 }}>${gd.brokerPerUnitMo}/unit/mo Y1</span>
+              )}
+            </td>
+            {rowData.map(r => (
+              <td key={r.yr} className="px-2 py-0 text-right border-r border-[#1e1e1e]"
+                style={{ fontFamily: MONO, fontSize: 9, color: '#f59e0b' }}>
+                {r.rentComponent != null ? fmtM(r.rentComponent) : '—'}
               </td>
-              {rowData.map(r => (
-                <td key={r.yr} className="px-2 py-0 text-right text-[9px] text-amber-700 border-r border-[#1e1e1e]" style={{ fontFamily: MONO }}>
-                  {r.brokerGpr != null ? fmtM(r.brokerGpr) : '—'}
-                </td>
-              ))}
-              <td />
-            </tr>
-          )}
-          {gd?.t12PerUnitMo != null && (
-            <tr className="h-[18px] border-b border-[#1e1e1e]/30">
-              <td className="pl-8 pr-3 py-0 text-[9px] text-slate-500 sticky left-0 bg-[#0a0a0a] border-r border-[#1e1e1e] z-10">
-                T-12 GPR (t12 layer · ${gd.t12PerUnitMo}/unit/mo)
+            ))}
+            <td />
+          </tr>
+          <tr className="h-[18px] border-b border-[#1e1e1e]/30">
+            <td className="pl-8 pr-3 py-0 sticky left-0 bg-[#0a0a0a] border-r border-[#1e1e1e] z-10"
+              style={{ fontSize: 9, color: '#22d3ee' }}>
+              Traffic Component (M07 T-01×T-05 demand lift)
+            </td>
+            {rowData.map(r => (
+              <td key={r.yr} className="px-2 py-0 text-right border-r border-[#1e1e1e]"
+                style={{ fontFamily: MONO, fontSize: 9, color: r.trafficComponent != null ? (r.trafficComponent >= 0 ? '#22d3ee' : '#ef4444') : '#334155' }}>
+                {r.trafficComponent != null
+                  ? (r.rentComponent != null ? (r.trafficComponent >= 0 ? '+' : '') + fmtM(r.trafficComponent) : fmtM(r.trafficComponent))
+                  : '—'}
               </td>
-              {rowData.map(r => (
-                <td key={r.yr} className="px-2 py-0 text-right text-[9px] text-slate-500 border-r border-[#1e1e1e]" style={{ fontFamily: MONO }}>
-                  {r.t12Gpr != null ? fmtM(r.t12Gpr) : '—'}
-                </td>
-              ))}
-              <td />
-            </tr>
-          )}
-          {gd?.platformPerUnitMo != null && (
-            <tr className="h-[18px] border-b border-[#1e1e1e]/30">
-              <td className="pl-8 pr-3 py-0 text-[9px] text-purple-500 sticky left-0 bg-[#0a0a0a] border-r border-[#1e1e1e] z-10">
-                M07 Platform GPR (platform layer · ${gd.platformPerUnitMo}/unit/mo)
+            ))}
+            <td />
+          </tr>
+          <tr className="h-[18px] border-b border-amber-500/30 bg-amber-900/5">
+            <td className="pl-8 pr-3 py-0 sticky left-0 bg-amber-900/10 border-r border-[#1e1e1e] z-10"
+              style={{ fontSize: 9, fontWeight: 700, color: '#fbbf24' }}>
+              = Derived GPR (M07 platform)
+              {gd?.platformPerUnitMo != null && (
+                <span style={{ fontWeight: 400, color: '#78350f', marginLeft: 4 }}>${gd.platformPerUnitMo}/unit/mo Y1</span>
+              )}
+            </td>
+            {rowData.map(r => (
+              <td key={r.yr} className="px-2 py-0 text-right border-r border-[#1e1e1e]"
+                style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: '#fbbf24' }}>
+                {r.derivedGpr != null ? fmtM(r.derivedGpr) : '—'}
               </td>
-              {rowData.map(r => (
-                <td key={r.yr} className="px-2 py-0 text-right text-[9px] text-purple-500 border-r border-[#1e1e1e]" style={{ fontFamily: MONO }}>
-                  {r.platGpr != null ? fmtM(r.platGpr) : '—'}
-                </td>
-              ))}
-              <td />
-            </tr>
-          )}
-          {rowData.some(r => r.delta != null) && (
-            <tr className="h-[18px] border-b border-amber-500/20">
-              <td className="pl-8 pr-3 py-0 text-[9px] font-bold sticky left-0 bg-[#0a0a0a] border-r border-[#1e1e1e] z-10 text-green-500">
-                Traffic Lift Δ (M07 vs Broker)
-              </td>
-              {rowData.map(r => (
-                <td key={r.yr} className="px-2 py-0 text-right text-[9px] font-bold border-r border-[#1e1e1e]"
-                  style={{ fontFamily: MONO, color: r.delta != null ? (r.delta >= 0 ? '#10b981' : '#ef4444') : '#334155' }}>
-                  {r.delta != null ? (r.delta >= 0 ? '+' : '') + fmtM(r.delta) : '—'}
-                </td>
-              ))}
-              <td />
-            </tr>
-          )}
+            ))}
+            <td />
+          </tr>
         </>
       )}
     </>
@@ -1006,6 +1033,15 @@ function FindingsRail({ financials }: { financials: DealFinancials|null }) {
           <div style={{ fontSize: 9, color: '#78350f', lineHeight: 1.5 }}>M07 Traffic Engine offline. Platform signals unavailable for this deal.</div>
         ) : (
           <>
+            {/* AI narrative from assumptions.narrative (synthesized by backend) */}
+            {financials.assumptions.narrative && (
+              <div style={{ borderBottom: '1px solid #1e1e1e', paddingBottom: 8 }}>
+                <div style={{ fontSize: 8, color: '#22d3ee50', letterSpacing: 0.5, marginBottom: 4 }}>AI SYNTHESIS</div>
+                <div style={{ fontSize: 9, color: '#94a3b8', lineHeight: 1.6 }}>
+                  {financials.assumptions.narrative}
+                </div>
+              </div>
+            )}
             <div>
               <div style={{ fontSize: 8, color: '#475569', letterSpacing: 0.5, marginBottom: 4 }}>MODEL CONFIDENCE</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1426,7 +1462,7 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
                       </tr>
                     );
                   })}
-                  {sec === 1 && <GprDecompRow years={years} financials={financials} />}
+                  {sec === 2 && <GprDecompRow years={years} financials={financials} />}
                 </React.Fragment>
               ))}
             </tbody>

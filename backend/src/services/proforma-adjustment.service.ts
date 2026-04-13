@@ -1238,6 +1238,8 @@ export interface DealFinancials {
       t12PerUnitMo: number | null;
       resolvedPerUnitMo: number | null;
     } | null;
+    /** AI narrative synthesizing M07 signals + key assumption flags. Null when M07 offline. */
+    narrative: string | null;
   };
   meta: {
     seeded: boolean;
@@ -1575,6 +1577,20 @@ export async function getDealFinancials(
     resolvedPerUnitMo: safe2(gprResolvedAnnual),
   };
 
+  // ── AI narrative — synthesizes M07 signals + key assumption flags ──────────
+  const sig = trafficProjectionOut?.leasingSignals;
+  let narrative: string | null = null;
+  if (sig != null) {
+    const parts: string[] = [];
+    if (sig.confidence != null) parts.push(`M07 model confidence: ${sig.confidence}%`);
+    if (sig.t01WeeklyTours != null) parts.push(`tour velocity ${sig.t01WeeklyTours.toFixed(1)}/wk`);
+    if (sig.t05ClosingRatio != null) parts.push(`capture rate ${(sig.t05ClosingRatio * 100).toFixed(1)}%`);
+    if (sig.t06WeeklyLeases != null) parts.push(`net leases ${sig.t06WeeklyLeases.toFixed(1)}/wk`);
+    if (sig.t07LeaseUpWeeksTo95 != null) parts.push(`lease-up to 95% in ${sig.t07LeaseUpWeeksTo95} wks`);
+    if (trafficProjectionOut?.calibrated?.exitCap != null) parts.push(`platform exit cap ${(trafficProjectionOut.calibrated.exitCap * 100).toFixed(2)}%`);
+    if (parts.length > 0) narrative = parts.join(' · ');
+  }
+
   const assumptions = {
     holdYears,
     exitCap,
@@ -1584,6 +1600,7 @@ export async function getDealFinancials(
     gprDecomposition: (gprBrokerAnnual ?? gprPlatAnnual ?? gprT12Annual ?? gprResolvedAnnual) != null
       ? gprDecomposition
       : null,
+    narrative,
   };
 
   // ── Capital Stack assembly ──────────────────────────────────────────────────
@@ -1696,12 +1713,21 @@ const FIELD_MAP: Record<string, string> = {
   utilities: 'utilities', gAndA: 'g_and_a', managementFeePct: 'management_fee_pct',
   insurance: 'insurance', realEstateTax: 'real_estate_tax',
   replacementReserves: 'replacement_reserves', totalOpex: 'total_opex', noi: 'noi',
-  // Traffic signal overrides: T-01/T-05 stored in per_year_overrides; trigger derived vacancy recomputation
+  // Traffic signal overrides: T-01/T-05/T-06 stored in per_year_overrides; trigger derived vacancy recomputation
   t01WeeklyTours: 't01_weekly_tours', t05ClosingRatio: 't05_closing_ratio',
+  t06WeeklyLeases: 't06_weekly_leases',
 };
 
-// Traffic signal fields that trigger derived vacancy recomputation
-const TRAFFIC_SIGNAL_FIELDS = new Set(['t01_weekly_tours', 't05_closing_ratio']);
+// Traffic signal fields — always stored in per_year_overrides (not year1 LayeredValue seed)
+const TRAFFIC_SIGNAL_FIELDS = new Set(['t01_weekly_tours', 't05_closing_ratio', 't06_weekly_leases']);
+
+// Scalar assumption fields stored directly in deal_assumptions columns (not year1 LayeredValue)
+const SCALAR_FIELD_MAP: Record<string, string> = {
+  exitCapRate: 'exit_cap',
+  interestRate: 'interest_rate',
+  ltcPct: 'ltc',
+  ioPeriodMonths: 'io_period_months',
+};
 
 /** Handle unit_mix:{index}:{field} overrides by patching the JSONB array in deal_assumptions */
 async function applyUnitMixOverride(
@@ -1889,6 +1915,21 @@ export async function applyFinancialsOverride(
   // Route unit_mix cell overrides to dedicated handler
   if (field.startsWith('unit_mix:')) {
     return applyUnitMixOverride(pool, dealId, field, value, userId);
+  }
+
+  // Route scalar deal_assumptions column overrides (exitCapRate, interestRate, ltcPct, ioPeriodMonths)
+  if (SCALAR_FIELD_MAP[field]) {
+    const col = SCALAR_FIELD_MAP[field];
+    // Col comes from our hardcoded map — safe to interpolate
+    await pool.query(
+      `UPDATE deal_assumptions SET ${col} = $2, updated_at = NOW() WHERE deal_id = $1`,
+      [dealId, value]
+    );
+    return {
+      year1Key: col, year: 0, appliedValue: value, resolution: 'user_override',
+      updatedCell: { [col]: value },
+      derivedRecomputation: { egi: null, noi: null, totalOpex: null, derivedVacancyPct: null, affectedFields: [col] },
+    };
   }
 
   const year1Key = FIELD_MAP[field] ?? field;
