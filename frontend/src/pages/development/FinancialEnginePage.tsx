@@ -126,14 +126,18 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
 
   // ── F9 DealFinancials — fetched at page level for F1/F8/F10 cross-tab wiring ─
   const [f9Hold, setF9Hold] = useState<number>(5);
-  const fetchF9Financials = useCallback((hold: number = f9Hold) => {
+  const f9HoldRef = React.useRef(f9Hold);
+  f9HoldRef.current = f9Hold;
+
+  const fetchF9Financials = useCallback((hold?: number) => {
     if (!resolvedDealId) return;
+    const h = hold ?? f9HoldRef.current;
     apiClient.get<{ success: boolean; data: F9DealFinancials }>(
-      `/api/v1/deals/${resolvedDealId}/financials?hold=${hold}`,
+      `/api/v1/deals/${resolvedDealId}/financials?hold=${h}`,
     ).then(res => {
       if (res.data?.data) setF9Financials(res.data.data);
     }).catch(() => {});
-  }, [resolvedDealId, f9Hold]);
+  }, [resolvedDealId]);
 
   useEffect(() => {
     fetchF9Financials();
@@ -141,13 +145,8 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
 
   const handleHoldChange = useCallback((years: number) => {
     setF9Hold(years);
-    if (!resolvedDealId) return;
-    apiClient.get<{ success: boolean; data: F9DealFinancials }>(
-      `/api/v1/deals/${resolvedDealId}/financials?hold=${years}`,
-    ).then(res => {
-      if (res.data?.data) setF9Financials(res.data.data);
-    }).catch(() => {});
-  }, [resolvedDealId]);
+    fetchF9Financials(years);
+  }, [fetchF9Financials]);
 
   const handleBuildModel = useCallback(async () => {
     if (!resolvedDealId || !assumptions) return;

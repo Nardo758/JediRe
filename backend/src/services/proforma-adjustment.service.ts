@@ -1452,7 +1452,7 @@ export interface DealFinancials {
     exitNoi: number | null; exitCap: number | null; grossSaleValue: number | null;
     sellingCosts: number | null; dispositionDocStamps: number | null;
     dispositionTaxPayable: number | null;
-    loanPayoff: number; netSaleProceeds: number | null;
+    loanPayoff: number | null; netSaleProceeds: number | null;
     reTaxSource: 'taxes_tab' | 'proforma' | 'estimate';
     debtSource: 'debt_tab' | 'capital_stack' | 'estimate';
   }> | null;
@@ -2851,7 +2851,7 @@ export async function getDealFinancials(
         cfbt, cfads,
         depreciation, taxableIncome, taxPayable, afterTaxCfads, effectiveTaxRate,
         coc, dscr, debtYield, occupancy, rentGrowthPct, opexRatioPct, noiMarginPct, capRatePct, cumulativeEM,
-        exitNoi, exitCap: isSaleYear ? exitCapRate : null, grossSaleValue, sellingCosts, dispositionDocStamps, dispositionTaxPayable, loanPayoff, netSaleProceeds,
+        exitNoi, exitCap: isSaleYear ? exitCapRate : null, grossSaleValue, sellingCosts, dispositionDocStamps, dispositionTaxPayable, loanPayoff: isSaleYear ? loanPayoff : null, netSaleProceeds,
         reTaxSource, debtSource,
       });
     }

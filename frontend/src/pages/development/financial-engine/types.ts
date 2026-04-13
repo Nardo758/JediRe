@@ -324,7 +324,7 @@ export interface F9DealFinancials {
     exitNoi: number | null; exitCap: number | null; grossSaleValue: number | null;
     sellingCosts: number | null; dispositionDocStamps: number | null;
     dispositionTaxPayable: number | null;
-    loanPayoff: number; netSaleProceeds: number | null;
+    loanPayoff: number | null; netSaleProceeds: number | null;
     reTaxSource: 'taxes_tab' | 'proforma' | 'estimate';
     debtSource: 'debt_tab' | 'capital_stack' | 'estimate';
   }> | null;
