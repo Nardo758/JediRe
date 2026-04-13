@@ -524,7 +524,9 @@ function buildCorrelationContext(
   rateEnv: RateEnvironmentResult
 ): { slug: string; riskScore: number; correlationImplication: string; rssAdjustmentBps: number } {
   const slug = m08Output.strategySlug;
-  const riskScore = m08Output.riskScore;
+  // Normalize riskScore to 0-10 scale: DB may store 0-100 (e.g. 75) or 0-10 (e.g. 7.5).
+  const rawScore = m08Output.riskScore;
+  const riskScore = rawScore > 10 ? Math.round((rawScore / 10) * 10) / 10 : rawScore;
   const cls = rateEnv.classification;
 
   let implication: string;
@@ -743,8 +745,11 @@ export async function formulateDebtPlan(dealId: string, productHint?: string): P
     ? phase1.loanAmountEst * (phase1.origFee + phase1.exitFee) + (phase1.rateType === 'Floating' ? phase1.loanAmountEst * 0.005 : 0)
     : 0;
 
-  const irrImpactBps = m08Output.riskScore > 70
-    ? Math.round((m08Output.riskScore - 70) * 1.5)
+  // Normalize riskScore to 0-10 scale for IRR impact and downstream display.
+  const rawRisk = m08Output.riskScore;
+  const normalizedRisk = rawRisk > 10 ? rawRisk / 10 : rawRisk;
+  const irrImpactBps = normalizedRisk > 7
+    ? Math.round((normalizedRisk - 7) * 15)
     : 0;
   const covenantCushionBps = phase1 ? 1500 : 0;
 
@@ -776,7 +781,7 @@ export async function formulateDebtPlan(dealId: string, productHint?: string): P
       ? Math.abs((configRate - advisorRate) * 10000)
       : 0;
     if (configLoan != null || configRate != null) {
-      const hasDivergence = loanDeltaPct > 0.03 || rateDeltaBps > 25;
+      const hasDivergence = loanDeltaPct > 0.05 || rateDeltaBps > 25;
       const irrDelta = hasDivergence
         ? Math.round(((advisorRate - (configRate ?? advisorRate)) * 10000) * 0.35 + (((advisorLoan - (configLoan ?? advisorLoan)) / advisorLoan) * 10000) * 0.12)
         : 0;

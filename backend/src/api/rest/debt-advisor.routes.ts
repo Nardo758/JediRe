@@ -18,7 +18,7 @@ import { logger } from '../../utils/logger';
 const router = Router({ mergeParams: true });
 
 /** Verify caller owns or has org access to the deal. Returns false on IDOR. */
-async function hasDealtAccess(dealId: string, userId: string): Promise<boolean> {
+async function hasDealAccess(dealId: string, userId: string): Promise<boolean> {
   try {
     const orgRow = await query(
       `SELECT org_id FROM org_members WHERE user_id = $1 LIMIT 1`,
@@ -44,7 +44,7 @@ router.get('/:dealId/debt/advisor', requireAuth, async (req: AuthenticatedReques
   const { dealId } = req.params;
   const userId = req.user!.userId;
 
-  if (!(await hasDealtAccess(dealId, userId))) {
+  if (!(await hasDealAccess(dealId, userId))) {
     return res.status(404).json({ success: false, error: 'Deal not found' });
   }
 
@@ -63,7 +63,7 @@ router.post('/:dealId/debt/advisor/accept', requireAuth, async (req: Authenticat
   const { phaseIndex = 0 } = req.body;
   const userId = req.user!.userId;
 
-  if (!(await hasDealtAccess(dealId, userId))) {
+  if (!(await hasDealAccess(dealId, userId))) {
     return res.status(404).json({ success: false, error: 'Deal not found' });
   }
 
@@ -111,7 +111,7 @@ router.post('/:dealId/debt/advisor/recompute', requireAuth, async (req: Authenti
   const userId = req.user!.userId;
   const { productHint } = req.body as { productHint?: string };
 
-  if (!(await hasDealtAccess(dealId, userId))) {
+  if (!(await hasDealAccess(dealId, userId))) {
     return res.status(404).json({ success: false, error: 'Deal not found' });
   }
 
