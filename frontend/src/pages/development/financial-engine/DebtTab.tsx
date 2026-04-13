@@ -340,6 +340,20 @@ interface AdvisorPhase {
   isRefiEvent: boolean;
   refiTriggerOcc?: number;
   refiTriggerDscr?: number;
+  dscrAtClose?: number;
+  debtYieldAtClose?: number;
+}
+
+function getProductFamilyColor(product: string): string {
+  const p = product.toLowerCase();
+  if (p.includes('bridge') || p.includes('construction'))    return BT.text.amber;
+  if (p.includes('fannie') || p.includes('freddie') || p.includes('agency') || p.includes('gse')) return BT.text.cyan;
+  if (p.includes('cmbs'))   return '#a855f7';
+  if (p.includes('hud') || p.includes('fha'))   return BT.met.financial;
+  if (p.includes('life') || p.includes('lifeco') || p.includes('life_co')) return '#8b5cf6';
+  if (p.includes('mezz') || p.includes('preferred') || p.includes('pref_eq')) return BT.text.red;
+  if (p.includes('portfolio') || p.includes('bank') || p.includes('credit_union')) return BT.text.secondary;
+  return BT.text.amber;
 }
 interface AdvisorLender {
   lender: { id: string; name: string; type: string; typicalSpreadBps?: number; typicalRateFixed?: number; typicalLtc?: number; dealsYTDEst?: number; recoursePreference: string };
@@ -732,7 +746,7 @@ function DebtAdvisorView({ dealId, onSwitchToConfigure, onAccept, configuredLoan
               {phases.filter(p => p.product !== 'exit_payoff').map((phase, i) => {
                 const widthPct = Math.max(10, ((phase.endMonth - phase.startMonth) / totalHoldMonths) * 100);
                 const isExpanded = expandedPhase === i;
-                const phaseColor = phase.isRefiEvent ? BT.met.financial : (i === 0 ? BT.text.cyan : BT.text.amber);
+                const phaseColor = phase.isRefiEvent ? BT.met.financial : getProductFamilyColor(phase.product);
                 return (
                   <div
                     key={i}
@@ -772,7 +786,7 @@ function DebtAdvisorView({ dealId, onSwitchToConfigure, onAccept, configuredLoan
           <div style={{ padding: '12px 16px', borderBottom: `1px solid ${BT.border.medium}`, background: `${BT.text.cyan}05` }}>
             {(() => {
               const ph = phases[expandedPhase];
-              const phaseColor = ph.isRefiEvent ? BT.met.financial : (expandedPhase === 0 ? BT.text.cyan : BT.text.amber);
+              const phaseColor = ph.isRefiEvent ? BT.met.financial : getProductFamilyColor(ph.product);
               return (
                 <>
                   <div style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: phaseColor, marginBottom: 8 }}>{ph.phaseLabel} — {ph.productLabel}</div>
@@ -784,6 +798,8 @@ function DebtAdvisorView({ dealId, onSwitchToConfigure, onAccept, configuredLoan
                       { l: 'AMORT', v: ph.amortYears > 0 ? `${ph.amortYears}yr` : 'IO Only', c: BT.text.secondary },
                       { l: 'RATE', v: ph.rateType === 'Floating' ? `SOFR+${ph.spreadBps}bps` : fmtPct(ph.rateEst * 100), c: BT.text.amber },
                       { l: 'LTV/LTC', v: fmtPct(ph.ltv * 100), c: BT.text.cyan },
+                      { l: 'DSCR AT CLOSE', v: ph.dscrAtClose != null ? `${ph.dscrAtClose.toFixed(2)}×` : '—', c: ph.dscrAtClose != null && ph.dscrAtClose >= 1.20 ? BT.met.financial : BT.text.red },
+                      { l: 'DEBT YIELD', v: ph.debtYieldAtClose != null ? fmtPct(ph.debtYieldAtClose * 100) : '—', c: ph.debtYieldAtClose != null && ph.debtYieldAtClose >= 0.07 ? BT.met.financial : BT.text.amber },
                       { l: 'ORIG FEE', v: fmtPct(ph.origFee * 100), c: BT.text.muted },
                       { l: 'PREPAY', v: ph.prepayType.replace(/_/g, ' ').toUpperCase(), c: BT.text.muted },
                     ].map(({ l, v, c }) => (

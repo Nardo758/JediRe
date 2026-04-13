@@ -33,7 +33,40 @@ interface CacheEntry {
 let cache: CacheEntry | null = null;
 const CACHE_TTL_MS = 60 * 60 * 1000;
 
-function buildSofrForwardCurve(sofr: number): number[] {
+/**
+ * Builds a 5-element SOFR forward curve from real trailing-average data.
+ *
+ * The NY Fed publishes SOFR 30/90/180-day compounded averages.  The slope
+ * from 180d→30d average tells us the observed direction rates have been
+ * moving; we extrapolate that trend forward 12 months to derive a
+ * data-driven curve instead of a simple static heuristic.
+ *
+ * If `sofrAvg30 === 0` (data unavailable), falls back to a conservative
+ * level-shift heuristic keyed on the absolute spot SOFR level.
+ *
+ * Returns annual rates in decimal form (e.g. 0.053), indexed [0..4] = Year 1..5.
+ */
+function buildSofrForwardCurve(
+  sofr: number,
+  sofrAvg30: number = 0,
+  sofrAvg90: number = 0,
+  sofrAvg180: number = 0
+): number[] {
+  if (sofrAvg30 > 0 && sofrAvg180 > 0) {
+    // Observed monthly rate-change: 30d avg is the midpoint of last 30 days,
+    // 180d avg is midpoint of last 180 days; gap between midpoints ≈ 75 days (~2.5 mo).
+    // Per-month change = (sofrAvg30 - sofrAvg90) / 2 months (30d→90d midpoint gap ≈ 2 mo).
+    const monthlyChangeDec = (sofrAvg30 - sofrAvg90) / 2;
+    const annualChangeDec  = monthlyChangeDec * 12;
+    return [
+      sofr,
+      sofr + annualChangeDec * (1 / 5),
+      sofr + annualChangeDec * (2 / 5),
+      sofr + annualChangeDec * (3 / 5),
+      sofr + annualChangeDec * (4 / 5),
+    ];
+  }
+  // Fallback: level-shift heuristic when averages are unavailable
   const baseDecline = sofr > 0.055 ? -0.0025 : sofr > 0.045 ? -0.0010 : 0.0005;
   return [
     sofr,
@@ -100,12 +133,15 @@ export async function classifyRateEnvironment(): Promise<RateEnvironmentResult> 
   try {
     const liveRates: LiveRates = await fetchLiveRates();
     const sofr = (liveRates.sofr || 5.3) / 100;
-    const sofrAvg30 = (liveRates.sofrAvg30 || 5.3) / 100;
-    const sofrAvg90 = (liveRates.sofrAvg90 || 5.3) / 100;
+    const sofrAvg30  = (liveRates.sofrAvg30  || 0) / 100;
+    const sofrAvg90  = (liveRates.sofrAvg90  || 0) / 100;
+    const sofrAvg180 = (liveRates.sofrAvg180 || 0) / 100;
     const treasury10y = (liveRates.treasury10Y || 4.3) / 100;
     const fedFundsTarget = ((liveRates.effrTargetLow || 5.25) + (liveRates.effrTargetHigh || 5.5)) / 2 / 100;
 
-    const fwdCurve = buildSofrForwardCurve(sofr);
+    // Pass real trailing averages so buildSofrForwardCurve uses observed
+    // rate-of-change rather than a static level-shift heuristic.
+    const fwdCurve = buildSofrForwardCurve(sofr, sofrAvg30, sofrAvg90, sofrAvg180);
     const sofrForward12moBps = (fwdCurve[4] - fwdCurve[0]) * 10000;
 
     const classification = classifyEnvironment(sofrForward12moBps);

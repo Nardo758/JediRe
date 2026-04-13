@@ -16,8 +16,34 @@ import { targetLenders, LenderTarget } from './lender-targeting.service';
 import { getM08StrategyOutput, M08StrategyOutput } from './m08-strategy-output.service';
 import { applyDebtContextModifier, ContextModification } from './debt-context-modifier.service';
 import { applyDebtAdvisorPlatformDefault } from '../proforma-adjustment.service';
+import { getDealFinancialContext } from '../deal-financial-context.service';
 import { logger } from '../../utils/logger';
 import strategyDebtMapping from './strategy-debt-mapping.json';
+
+/**
+ * Computes annual debt service for a loan.
+ * For IO periods the service is interest-only; once IO ends it switches to
+ * P+I.  We use the first year's payment — i.e., if ioMonths >= 12 the whole
+ * first year is IO, otherwise it amortizes.
+ */
+function computeAnnualDebtService(
+  loanAmount: number,
+  annualRate: number,
+  ioMonths: number,
+  amortYears: number
+): number {
+  if (loanAmount <= 0 || annualRate <= 0) return 0;
+  if (ioMonths >= 12) {
+    return loanAmount * annualRate;
+  }
+  if (amortYears <= 0) {
+    return loanAmount * annualRate;
+  }
+  const monthlyRate = annualRate / 12;
+  const n = amortYears * 12;
+  const pmt = loanAmount * monthlyRate / (1 - Math.pow(1 + monthlyRate, -n));
+  return pmt * 12;
+}
 
 export interface DebtPhase {
   phaseIndex: number;
@@ -43,6 +69,8 @@ export interface DebtPhase {
   isRefiEvent: boolean;
   refiTriggerOcc?: number;
   refiTriggerDscr?: number;
+  dscrAtClose?: number;
+  debtYieldAtClose?: number;
 }
 
 export interface MonitoringTrigger {
@@ -607,10 +635,11 @@ export async function formulateDebtPlan(dealId: string, productHint?: string): P
 
   const pool = getPool();
 
-  const [dealCtx, m08Output, rateEnv] = await Promise.all([
+  const [dealCtx, m08Output, rateEnv, finCtx] = await Promise.all([
     fetchDealBasicContext(pool, dealId),
     getM08StrategyOutput(pool, dealId),
     classifyRateEnvironment(),
+    getDealFinancialContext(dealId).catch(() => null),
   ]);
 
   if (!m08Output) {
@@ -674,6 +703,20 @@ export async function formulateDebtPlan(dealId: string, productHint?: string): P
   );
 
   const phases = buildPhases(mapping, rateEnv, dealCtx.purchasePrice, dealCtx.holdMonths, dealCtx.state, subStrategyKey, contextMods, productHint);
+
+  // Compute DSCR / Debt Yield from T-12 NOI (if available) for each non-exit phase.
+  // Falls back to estimate (1% of purchase price/month) when actuals not yet ingested.
+  const t12NOI = finCtx?.trailingTwelveNOI ?? null;
+  const estimatedAnnualNOI = t12NOI ?? (dealCtx.purchasePrice * 0.06); // 6% cap rate fallback
+  for (const ph of phases) {
+    if (ph.product === 'exit_payoff' || ph.loanAmountEst <= 0) continue;
+    const annualDebtSvc = computeAnnualDebtService(ph.loanAmountEst, ph.rateEst, ph.ioMonths, ph.amortYears);
+    if (annualDebtSvc > 0) {
+      ph.dscrAtClose        = Math.round((estimatedAnnualNOI / annualDebtSvc) * 100) / 100;
+      ph.debtYieldAtClose   = Math.round((estimatedAnnualNOI / ph.loanAmountEst) * 10000) / 10000;
+    }
+  }
+
   const alternatives = buildAlternatives(mapping, rateEnv, contextMods);
 
   const allTriggers = phases.flatMap(p => p.triggers);
