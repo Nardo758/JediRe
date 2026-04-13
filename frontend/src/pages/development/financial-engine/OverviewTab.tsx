@@ -80,6 +80,13 @@ export function OverviewTab({ dealId, deal, dealType, assumptions, modelResults,
   const totalSources = su?.sources?.reduce((s, r) => s + r.amount, 0) ?? 0;
   const totalUses = su?.uses?.reduce((s, r) => s + r.amount, 0) ?? 0;
 
+  // F9 returns: prefer F9 projection engine (IRR bisection + EM from hold-period CFs),
+  // fallback to legacy modelResults.summary if F9 engine hasn't populated yet.
+  const f9Returns = f9Financials?.returns ?? null;
+  const displayIrr = f9Returns?.irr ?? summary?.irr ?? null;
+  const displayEM  = f9Returns?.equityMultiple ?? summary?.equityMultiple ?? null;
+  const displayCoC = f9Returns?.cashOnCash ?? summary?.cashOnCash ?? null;
+
   const SUB_TABS: { k: OverviewSubTab; l: string }[] = [
     { k: 'summary', l: 'EXECUTIVE SUMMARY' },
     { k: 'insights', l: 'AI INSIGHTS' },
@@ -102,9 +109,9 @@ export function OverviewTab({ dealId, deal, dealType, assumptions, modelResults,
         <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 1, background: BT.border.subtle, padding: 1 }}>
             {[
-              { label: 'IRR', value: summary?.irr != null ? fmtPct(summary.irr) : '—', color: BT.met.financial },
-              { label: 'EQUITY MULT', value: summary?.equityMultiple != null ? fmtX(summary.equityMultiple) : '—', color: BT.text.amber },
-              { label: 'CASH-ON-CASH', value: summary?.cashOnCash != null ? fmtPct(summary.cashOnCash) : '—', color: BT.met.occupancy },
+              { label: 'IRR', value: displayIrr != null ? fmtPct(displayIrr) : '—', color: BT.met.financial },
+              { label: 'EQUITY MULT', value: displayEM != null ? fmtX(displayEM) : '—', color: BT.text.amber },
+              { label: 'CASH-ON-CASH', value: displayCoC != null ? fmtPct(displayCoC) : '—', color: BT.met.occupancy },
               { label: 'YEAR 1 NOI', value: summary?.noi != null ? fmt$(summary.noi) : '—', color: BT.text.cyan },
               { label: 'DSCR', value: summary?.dscr != null ? `${summary.dscr.toFixed(2)}×` : '—', color: BT.text.green },
             ].map(k => (
@@ -131,10 +138,10 @@ export function OverviewTab({ dealId, deal, dealType, assumptions, modelResults,
           <SectionPanel title="RETURNS BREAKDOWN" subtitle="Full Deal Period" borderColor={BT.text.amber}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1 }}>
               <div>
-                <div style={{ padding: '4px 8px', fontFamily: MONO, fontSize: 9, color: BT.text.muted, borderBottom: `1px solid ${BT.border.subtle}`, letterSpacing: 0.5 }}>DEAL LEVEL</div>
-                <DataRow label="IRR" value={summary?.irr != null ? fmtPct(summary.irr) : '—'} valueColor={BT.met.financial} />
-                <DataRow label="EQUITY MULTIPLE" value={summary?.equityMultiple != null ? fmtX(summary.equityMultiple) : '—'} valueColor={BT.text.amber} />
-                <DataRow label="CASH-ON-CASH" value={summary?.cashOnCash != null ? fmtPct(summary.cashOnCash) : '—'} valueColor={BT.met.occupancy} />
+                <div style={{ padding: '4px 8px', fontFamily: MONO, fontSize: 9, color: BT.text.muted, borderBottom: `1px solid ${BT.border.subtle}`, letterSpacing: 0.5 }}>DEAL LEVEL {f9Returns ? '· F9 ENGINE' : ''}</div>
+                <DataRow label="IRR" value={displayIrr != null ? fmtPct(displayIrr) : '—'} valueColor={BT.met.financial} />
+                <DataRow label="EQUITY MULTIPLE" value={displayEM != null ? fmtX(displayEM) : '—'} valueColor={BT.text.amber} />
+                <DataRow label="CASH-ON-CASH" value={displayCoC != null ? fmtPct(displayCoC) : '—'} valueColor={BT.met.occupancy} />
                 <DataRow label="TOTAL PROFIT" value={summary?.totalProfit != null ? fmt$(summary.totalProfit) : '—'} valueColor={BT.text.white} border={false} />
               </div>
               <div>

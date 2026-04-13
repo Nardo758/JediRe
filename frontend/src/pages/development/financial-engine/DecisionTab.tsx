@@ -99,6 +99,33 @@ export function DecisionTab({ dealId, assumptions, modelResults, f9Financials }:
         detail: `Yr-1 assumed vacancy (${fmtPct(assumedVac * 100)}) differs ${delta > 0 ? '+' : ''}${fmtPct(delta * 100)} from M07 platform estimate (${fmtPct(platformVac * 100)})`,
       });
     }
+
+    // Benchmark position flags: scan proforma.year1 rows for above/below submarket benchmarks.
+    // Key rows (GPR, NOI, vacancy, EGI) with 'above' or 'below' benchmarkPosition indicate
+    // assumptions diverge from the platform submarket model.
+    const BENCH_KEY_ROWS: Record<string, string> = {
+      gpr: 'GROSS POTENTIAL RENT',
+      noi: 'NET OPERATING INCOME',
+      egi: 'EFFECTIVE GROSS INCOME',
+      vacancy_pct: 'VACANCY RATE',
+    };
+    for (const row of f9Financials.proforma.year1) {
+      const label = BENCH_KEY_ROWS[row.field];
+      if (!label || row.benchmarkPosition == null || row.benchmarkPosition === 'within') continue;
+      const dir = row.benchmarkPosition === 'above' ? 'ABOVE' : 'BELOW';
+      const platform = row.platform;
+      const resolved = row.resolved;
+      const divergencePct = (platform != null && platform !== 0 && resolved != null)
+        ? Math.abs((resolved - platform) / platform) * 100 : null;
+      f9Flags.push({
+        severity: row.benchmarkPosition === 'above' && row.field === 'vacancy_pct' ? 'medium'
+          : row.benchmarkPosition === 'below' && (row.field === 'noi' || row.field === 'egi') ? 'medium'
+          : 'low',
+        label: `${label} ${dir} BENCHMARK`,
+        detail: `Resolved ${label.toLowerCase()} is ${dir.toLowerCase()} the M07 submarket benchmark${divergencePct != null ? ` by ${divergencePct.toFixed(1)}%` : ''}` +
+          (platform != null ? ` (platform: ${row.field.includes('pct') ? fmtPct(platform * 100) : fmt$(platform)})` : ''),
+      });
+    }
   }
 
   const baseFlags = deriveRiskFlags(assumptions, modelResults);

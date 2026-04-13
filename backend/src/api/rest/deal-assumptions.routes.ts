@@ -18,7 +18,30 @@ import {
 import * as XLSX from 'xlsx';
 import { seedProFormaYear1 } from '../../services/proforma-seeder.service';
 import { getDealFinancials, applyFinancialsOverride } from '../../services/proforma-adjustment.service';
-import { buildF9Workbook } from '../../services/f9-financial-export.service';
+import { buildF9Workbook, buildProjectionsForExport } from '../../services/f9-financial-export.service';
+
+// ─── IRR bisection helper ─────────────────────────────────────────────────────
+/**
+ * Compute Internal Rate of Return via bisection.
+ * cashFlows[0] is the t=0 outflow (negative equityAtClose).
+ * cashFlows[i] for i>0 are the annual free cash flows.
+ * Returns null if equity is zero, no sign change exists, or solution diverges.
+ */
+function computeIrr(cashFlows: number[]): number | null {
+  if (cashFlows.length < 2) return null;
+  const npv = (r: number) => cashFlows.reduce((s, cf, i) => s + cf / Math.pow(1 + r, i), 0);
+  const v0 = npv(0);
+  if (v0 === 0) return 0;
+  let lo = -0.9999, hi = 10.0;
+  if (npv(lo) * npv(hi) > 0) return null;
+  for (let i = 0; i < 200; i++) {
+    const mid = (lo + hi) / 2;
+    const m = npv(mid);
+    if (Math.abs(m) < 1e-4 || (hi - lo) < 1e-8) return +mid.toFixed(6);
+    if (v0 > 0 ? m > 0 : m < 0) lo = mid; else hi = mid;
+  }
+  return +((lo + hi) / 2).toFixed(6);
+}
 
 // ─── AI Coordinator config ────────────────────────────────────────────────────
 const ANTHROPIC_API_KEY  = process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
@@ -454,7 +477,26 @@ router.get('/:dealId/financials', requireAuth, async (req: AuthenticatedRequest,
     }
 
     const data = await getDealFinancials(pool, dealId, holdYears);
-    res.json({ success: true, data });
+
+    // Compute hold-period returns from F9 projection engine
+    const projs = buildProjectionsForExport(data, holdYears);
+    const equity = data.capitalStack.equityAtClose ?? 0;
+    let returns: typeof data.returns = null;
+    if (equity > 0 && projs.length > 0) {
+      const lastProj = projs[projs.length - 1];
+      // Build IRR cash flows: [-equity, cfbt_1, ..., cfbt_n-1, cfbt_n + netSaleProceeds_n]
+      const cashFlows: number[] = [-equity];
+      for (let i = 0; i < projs.length - 1; i++) {
+        cashFlows.push(projs[i].cfbt);
+      }
+      cashFlows.push((lastProj.cfbt ?? 0) + (lastProj.netSaleProceeds ?? 0));
+      const irr = computeIrr(cashFlows);
+      const equityMultiple = lastProj.cumulativeEM ?? null;
+      const cashOnCash = projs.length > 0 ? (projs[0].coc ?? null) : null;
+      returns = { irr, equityMultiple, cashOnCash };
+    }
+
+    res.json({ success: true, data: { ...data, returns } });
   } catch (error: any) {
     logger.error('Error fetching deal financials:', error);
     const status = (error as Error).message?.includes('not found') ? 404 : 500;

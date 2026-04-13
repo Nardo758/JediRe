@@ -1248,6 +1248,12 @@ export interface DealFinancials {
     seeded: boolean;
     updatedAt: string | null;
   };
+  /** Hold-period returns computed by the F9 projection engine */
+  returns: {
+    irr: number | null;
+    equityMultiple: number | null;
+    cashOnCash: number | null;
+  } | null;
 }
 
 /**
@@ -1765,6 +1771,7 @@ export async function getDealFinancials(
       seeded: Object.keys(year1Seed).length > 0,
       updatedAt: assumptionsRow?.updated_at?.toISOString?.() ?? null,
     },
+    returns: null,
   };
 }
 

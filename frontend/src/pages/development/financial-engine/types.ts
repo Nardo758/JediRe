@@ -223,10 +223,19 @@ export interface F9GprDecomposition {
 export interface F9DealFinancials {
   dealId: string; dealName: string; totalUnits: number;
   proforma: {
-    year1: Array<{ field: string; label: string; broker: number|null; platform: number|null; t12: number|null; rentRoll: number|null; taxBill: number|null; resolved: number|null; resolution: string|null; perUnit: number|null }>;
+    year1: Array<{
+      field: string; label: string;
+      broker: number|null; platform: number|null; t12: number|null;
+      rentRoll: number|null; taxBill: number|null;
+      resolved: number|null; resolution: string|null; perUnit: number|null;
+      source?: string|null; confidence?: number|null;
+      benchmarkPosition: 'above' | 'below' | 'within' | null;
+    }>;
     integrityChecks: Array<{ id: string; status: 'ok'|'warn'|'error'; message: string; detail?: Record<string, unknown> }>;
     unitEconomics: Record<string, number|null>;
   };
+  /** Hold-period returns computed from the F9 projection engine */
+  returns: { irr: number|null; equityMultiple: number|null; cashOnCash: number|null } | null;
   capitalStack: {
     purchasePrice: number|null; loanAmount: number|null; equityAtClose: number|null;
     ltcPct: number|null; interestRate: number|null; ioPeriodMonths: number|null;

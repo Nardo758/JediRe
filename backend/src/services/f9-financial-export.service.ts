@@ -478,6 +478,20 @@ function buildProFormaSheet(
       v: projs[y].netSaleProceeds ?? 0,
     };
 
+    // ── Cross-sheet formula: Vacancy Loss references M07 Traffic Projection sheet ──
+    // Traffic Projection data rows start at Excel row 5 (row index 4) for Year 1.
+    // Column C (index 2) = Vacancy % in the Traffic Projection sheet.
+    const tvYr = f.trafficProjection?.yearly.find(t => t.year === y + 1);
+    if (tvYr?.vacancyPct != null) {
+      const trafficVacRow = 4 + (y + 1);   // Excel row in Traffic sheet for Year (y+1)
+      ws[addr(R.VAC, col)] = {
+        t: 'n',
+        // Vacancy Loss = GPR × vacancy % pulled from Traffic Projection sheet
+        f: `=${C}${R.GPR + 1}*'Traffic Projection'!C${trafficVacRow}`,
+        v: projs[y].vacancyLoss,
+      };
+    }
+
     // ── Layer metadata cell comments on GPR row ──────────────────────────
     const gpd = f.assumptions.gprDecomposition;
     if (gpd) {
@@ -494,11 +508,10 @@ function buildProFormaSheet(
     }
 
     // ── Layer metadata comment on Vacancy row ────────────────────────────
-    const tv = f.trafficProjection?.yearly.find(t => t.year === y + 1);
-    if (tv?.vacancyPct != null) {
+    if (tvYr?.vacancyPct != null) {
       const vacCell = addr(R.VAC, col);
       setComment(ws, vacCell,
-        `Vacancy Source: M07 Traffic Engine\n  Year ${y + 1} vacancy: ${fmtPct(tv.vacancyPct)}\n  Occupancy: ${fmtPct(tv.occupancyPct)}`,
+        `Vacancy Source: M07 Traffic Engine\n  Year ${y + 1} vacancy: ${fmtPct(tvYr.vacancyPct)}\n  Occupancy: ${fmtPct(tvYr.occupancyPct)}`,
       );
     }
   }
