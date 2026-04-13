@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { BT, Bd } from '../../../components/deal/bloomberg-ui';
-import type { FinancialEngineTabProps } from './types';
+import type { FinancialEngineTabProps, F9NarrativeBlock } from './types';
 import { fmt$, fmtPct } from './types';
 import { apiClient } from '../../../services/api.client';
 
@@ -460,7 +460,17 @@ function IntegrityBanner({ checks }: { checks: IntegrityCheckItem[] }) {
 }
 
 // ─── AI Findings Panel ────────────────────────────────────────────────────
-function FindingsPanel({ narrative }: { narrative: string }) {
+const STATUS_COLORS: Record<F9NarrativeBlock['status'], string> = {
+  ok:   BT.text.green ?? '#00B050',
+  warn: BT.text.amber ?? '#F5A623',
+  info: BT.text.cyan  ?? '#00BCD4',
+};
+
+function FindingsPanel({ narrative, blocks, loading }: {
+  narrative: string | null;
+  blocks: F9NarrativeBlock[];
+  loading: boolean;
+}) {
   const [expanded, setExpanded] = useState(true);
   return (
     <div style={{
@@ -480,18 +490,43 @@ function FindingsPanel({ narrative }: { narrative: string }) {
           AI MARKET FINDINGS
         </span>
         <Bd c={BT.text.purple}>M07</Bd>
+        {loading && (
+          <span style={{ fontSize: 8, color: BT.text.muted, fontFamily: MONO }}>analyzing…</span>
+        )}
         <span style={{ marginLeft: 'auto', fontSize: 9, color: BT.text.muted, fontFamily: MONO }}>
           {expanded ? '▾' : '▸'}
         </span>
       </div>
       {expanded && (
-        <div style={{ padding: '8px 12px' }}>
-          <p style={{
-            fontFamily: MONO, fontSize: 9, color: BT.text.secondary,
-            lineHeight: 1.7, margin: 0, whiteSpace: 'pre-wrap',
-          }}>
-            {narrative}
-          </p>
+        <div style={{ padding: '6px 10px', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {loading && blocks.length === 0 && (
+            <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>…loading</span>
+          )}
+          {blocks.map(b => (
+            <div key={b.id} style={{
+              background: BT.bg.panel,
+              border: `1px solid ${STATUS_COLORS[b.status]}33`,
+              borderLeft: `2px solid ${STATUS_COLORS[b.status]}`,
+              borderRadius: 2, padding: '4px 8px', minWidth: 140,
+            }}>
+              <div style={{ fontSize: 8, fontWeight: 700, color: BT.text.muted, fontFamily: MONO, letterSpacing: 0.5, marginBottom: 2 }}>
+                {b.label.toUpperCase()}
+              </div>
+              <div style={{ fontSize: 9, color: STATUS_COLORS[b.status], fontFamily: MONO }}>
+                {b.summary}
+              </div>
+              {b.detail && (
+                <div style={{ fontSize: 8, color: BT.text.muted, fontFamily: MONO, marginTop: 2 }}>
+                  {b.detail}
+                </div>
+              )}
+            </div>
+          ))}
+          {!loading && blocks.length === 0 && narrative && (
+            <p style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary, lineHeight: 1.7, margin: 0, whiteSpace: 'pre-wrap' }}>
+              {narrative}
+            </p>
+          )}
         </div>
       )}
     </div>
@@ -512,8 +547,9 @@ export function ProjectionsTab({
   const [loading,         setLoading]         = useState(false);
   const [error,           setError]           = useState<string | null>(null);
   const [exporting,       setExporting]       = useState(false);
-  const [narrative,       setNarrative]       = useState<string | null>(null);
-  const [narrativeLoading,setNarrativeLoading]= useState(false);
+  const [narrative,        setNarrative]       = useState<string | null>(null);
+  const [narrativeBlocks,  setNarrativeBlocks] = useState<F9NarrativeBlock[]>([]);
+  const [narrativeLoading, setNarrativeLoading]= useState(false);
 
   const loadFinancials = useCallback(async () => {
     if (!dealId) return;
@@ -543,9 +579,13 @@ export function ProjectionsTab({
     try {
       const res = await apiClient.get<{
         success: boolean;
-        data: { narrative: string | null; cachedAt: string; source: string; fresh: boolean };
+        data: { narrative: string | null; blocks: F9NarrativeBlock[]; cachedAt: string; source: string; fresh: boolean };
       }>(`/api/v1/deals/${dealId}/financials/narrative`);
-      setNarrative(res.data?.data?.narrative ?? null);
+      const d = res.data?.data;
+      if (d) {
+        setNarrative(d.narrative ?? null);
+        setNarrativeBlocks(d.blocks ?? []);
+      }
     } catch {
       // Non-fatal: narrative panel simply stays hidden
     } finally {
@@ -850,7 +890,11 @@ export function ProjectionsTab({
 
       {/* ── AI Findings ───────────────────────────────────────────────────── */}
       {showFindings && (narrativeLoading || hasNarrative) && (
-        <FindingsPanel narrative={narrativeLoading ? '…loading AI analysis…' : narrative!} />
+        <FindingsPanel
+          narrative={narrative}
+          blocks={narrativeBlocks}
+          loading={narrativeLoading}
+        />
       )}
     </div>
   );

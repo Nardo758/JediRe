@@ -3,7 +3,7 @@ import {
   Lock, Download, AlertTriangle, TrendingUp, Zap,
   ChevronRight, ChevronDown, X, Check, FlaskConical,
 } from 'lucide-react';
-import type { FinancialEngineTabProps } from './types';
+import type { FinancialEngineTabProps, F9NarrativeBlock } from './types';
 import { apiClient } from '../../../services/api.client';
 
 // ─── Backend contract ──────────────────────────────────────────────────────────
@@ -1025,12 +1025,18 @@ function FindingsRail({ financials }: { financials: DealFinancials|null }) {
           <div style={{ fontSize: 9, color: '#78350f', lineHeight: 1.5 }}>M07 Traffic Engine offline. Platform signals unavailable for this deal.</div>
         ) : (
           <>
-            {/* AI narrative from assumptions.narrative (synthesized by backend) */}
-            {financials.assumptions.narrative && (
+            {/* AI narrative blocks from /financials/narrative endpoint */}
+            {narrativeBlocks.length > 0 && (
               <div style={{ borderBottom: '1px solid #1e1e1e', paddingBottom: 8 }}>
-                <div style={{ fontSize: 8, color: '#22d3ee50', letterSpacing: 0.5, marginBottom: 4 }}>AI SYNTHESIS</div>
-                <div style={{ fontSize: 9, color: '#94a3b8', lineHeight: 1.6 }}>
-                  {financials.assumptions.narrative}
+                <div style={{ fontSize: 8, color: '#22d3ee50', letterSpacing: 0.5, marginBottom: 6 }}>AI SYNTHESIS</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {narrativeBlocks.map(b => (
+                    <div key={b.id} style={{ paddingLeft: 6, borderLeft: `2px solid ${b.status === 'warn' ? '#f59e0b' : b.status === 'info' ? '#22d3ee' : '#10b981'}` }}>
+                      <div style={{ fontSize: 8, color: '#475569', letterSpacing: 0.4, textTransform: 'uppercase' }}>{b.label}</div>
+                      <div style={{ fontSize: 9, color: b.status === 'warn' ? '#f59e0b' : b.status === 'info' ? '#22d3ee' : '#94a3b8', lineHeight: 1.4 }}>{b.summary}</div>
+                      {b.detail && <div style={{ fontSize: 8, color: '#475569', lineHeight: 1.3, marginTop: 1 }}>{b.detail}</div>}
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
@@ -1092,9 +1098,10 @@ function FindingsRail({ financials }: { financials: DealFinancials|null }) {
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssumptionsChange }: FinancialEngineTabProps) {
-  const [financials, setFinancials]   = useState<DealFinancials|null>(null);
-  const [loading, setLoading]         = useState(false);
-  const [holdTab, setHoldTab]         = useState<'5 YR'|'7 YR'|'10 YR'|null>(null);
+  const [financials, setFinancials]     = useState<DealFinancials|null>(null);
+  const [loading, setLoading]           = useState(false);
+  const [holdTab, setHoldTab]           = useState<'5 YR'|'7 YR'|'10 YR'|null>(null);
+  const [narrativeBlocks, setNarrativeBlocks] = useState<F9NarrativeBlock[]>([]);
   const [overrides, setOverrides]     = useState<Overrides>({});
   const [formulas, setFormulas]       = useState<Formulas>({});
   const [rowModes, setRowModes]       = useState<Record<string, RowMode>>({});
@@ -1152,7 +1159,19 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
     finally { if (tok === fetchRef.current) setLoading(false); }
   }, [dealId, holdYears]);
 
+  const loadNarrativeBlocks = useCallback(async () => {
+    if (!dealId) return;
+    try {
+      const res = await apiClient.get<{
+        success: boolean;
+        data: { narrative: string | null; blocks: F9NarrativeBlock[]; source: string; fresh: boolean };
+      }>(`/api/v1/deals/${dealId}/financials/narrative`);
+      setNarrativeBlocks(res.data?.data?.blocks ?? []);
+    } catch { /* non-fatal */ }
+  }, [dealId]);
+
   useEffect(() => { fetchFinancials(); }, [dealId]);
+  useEffect(() => { loadNarrativeBlocks(); }, [loadNarrativeBlocks]);
   useEffect(() => { if (holdTab) fetchFinancials(holdYears); }, [holdTab]);
 
   const enqueuePatch = useCallback((field: string, year: number|null, value: number|null) => {

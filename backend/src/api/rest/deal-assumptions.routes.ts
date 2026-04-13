@@ -21,9 +21,23 @@ import { buildF9Workbook } from '../../services/f9-financial-export.service';
 
 const router = Router();
 
-// ─── Narrative cache (24h per deal) ──────────────────────────────────────────
+// ─── Narrative types and cache ───────────────────────────────────────────────
+export interface NarrativeBlock {
+  id: string;
+  label: string;
+  summary: string;
+  detail: string | null;
+  status: 'ok' | 'warn' | 'info';
+}
+
+interface NarrativeCacheEntry {
+  text: string | null;
+  blocks: NarrativeBlock[];
+  generatedAt: number;
+}
+
 // Two-layer cache: in-memory (fast) + DB (persistent across restarts)
-const narrativeCache = new Map<string, { text: string | null; generatedAt: number }>();
+const narrativeCache = new Map<string, NarrativeCacheEntry>();
 const NARRATIVE_TTL_MS = 24 * 60 * 60 * 1000;
 
 let narrativeColsMigrated = false;
@@ -528,9 +542,126 @@ function computeReturns(params: {
 }
 
 /**
+ * Build structured narrative blocks from DealFinancials.
+ * Blocks cover: rent growth delta, traffic trajectory, vacancy math,
+ * exit cap derivation, broker divergence, and lease-up velocity.
+ */
+function buildNarrativeBlocks(data: Awaited<ReturnType<typeof getDealFinancials>>): NarrativeBlock[] {
+  const blocks: NarrativeBlock[] = [];
+  const sig = data.trafficProjection?.leasingSignals;
+  const gpd = data.assumptions.gprDecomposition;
+
+  // ── 1. Rent Growth Delta ──────────────────────────────────────────────────
+  const rentGr1    = data.assumptions.rentGrowthYr1;
+  const platRentGr = data.trafficProjection?.calibrated.rentGrowthPct;
+  if (rentGr1 != null || platRentGr != null) {
+    const delta = rentGr1 != null && platRentGr != null ? rentGr1 - platRentGr : null;
+    const status: NarrativeBlock['status'] = delta != null && Math.abs(delta) > 0.02 ? 'warn' : 'ok';
+    blocks.push({
+      id:      'rent_growth_delta',
+      label:   'Rent Growth',
+      summary: platRentGr != null
+        ? `platform rent growth ${(platRentGr * 100).toFixed(1)}%/yr`
+        : `yr-1 rent growth ${((rentGr1 ?? 0) * 100).toFixed(1)}%/yr`,
+      detail:  delta != null
+        ? `assumption vs platform: ${delta > 0 ? '+' : ''}${(delta * 100).toFixed(1)}pp`
+        : null,
+      status,
+    });
+  }
+
+  // ── 2. Traffic Trajectory (M07 confidence) ────────────────────────────────
+  if (sig?.confidence != null) {
+    const status: NarrativeBlock['status'] = sig.confidence >= 80 ? 'ok' : sig.confidence >= 60 ? 'warn' : 'info';
+    blocks.push({
+      id:    'traffic_confidence',
+      label: 'M07 Confidence',
+      summary: `M07 model confidence: ${sig.confidence}%`,
+      detail: [
+        sig.t01WeeklyTours   != null ? `tour velocity ${sig.t01WeeklyTours.toFixed(1)}/wk`             : null,
+        sig.t05ClosingRatio  != null ? `capture rate ${(sig.t05ClosingRatio * 100).toFixed(1)}%`        : null,
+        sig.t06WeeklyLeases  != null ? `net leases ${sig.t06WeeklyLeases.toFixed(1)}/wk`               : null,
+      ].filter((s): s is string => s !== null).join(' · ') || null,
+      status,
+    });
+  }
+
+  // ── 3. Vacancy Math ───────────────────────────────────────────────────────
+  const calibVac = data.trafficProjection?.calibrated.vacancyPct;
+  const yr1Vac   = data.trafficProjection?.yearly.find(t => t.year === 1)?.vacancyPct;
+  if (calibVac != null || yr1Vac != null) {
+    blocks.push({
+      id:      'vacancy_math',
+      label:   'Vacancy Analysis',
+      summary: yr1Vac != null
+        ? `yr-1 vacancy ${(yr1Vac * 100).toFixed(1)}%`
+        : `platform vacancy ${((calibVac ?? 0) * 100).toFixed(1)}%`,
+      detail:  yr1Vac != null && calibVac != null
+        ? `platform: ${(calibVac * 100).toFixed(1)}%  ·  yr-1 M07: ${(yr1Vac * 100).toFixed(1)}%`
+        : null,
+      status: 'ok',
+    });
+  }
+
+  // ── 4. Exit Cap Derivation ────────────────────────────────────────────────
+  const assumedCap   = data.assumptions.exitCap;
+  const platformCap  = data.trafficProjection?.calibrated.exitCap;
+  if (assumedCap != null || platformCap != null) {
+    const delta = assumedCap != null && platformCap != null ? assumedCap - platformCap : null;
+    const status: NarrativeBlock['status'] = delta != null && Math.abs(delta) > 0.005 ? 'warn' : 'ok';
+    blocks.push({
+      id:      'exit_cap_derivation',
+      label:   'Exit Cap Rate',
+      summary: platformCap != null
+        ? `platform exit cap ${(platformCap * 100).toFixed(2)}%`
+        : `assumed exit cap ${((assumedCap ?? 0) * 100).toFixed(2)}%`,
+      detail:  delta != null
+        ? `assumption vs platform: ${delta > 0 ? '+' : ''}${(delta * 100).toFixed(2)}pp`
+        : null,
+      status,
+    });
+  }
+
+  // ── 5. Broker Divergence ─────────────────────────────────────────────────
+  if (gpd?.brokerAnnual != null && gpd?.resolvedAnnual != null) {
+    const deltaAbs = gpd.brokerAnnual - gpd.resolvedAnnual;
+    const deltaPct = gpd.resolvedAnnual !== 0 ? deltaAbs / gpd.resolvedAnnual : null;
+    const status: NarrativeBlock['status'] = deltaPct != null && Math.abs(deltaPct) > 0.05 ? 'warn' : 'ok';
+    blocks.push({
+      id:      'broker_divergence',
+      label:   'GPR Broker Divergence',
+      summary: deltaPct != null
+        ? `broker GPR ${deltaPct > 0 ? '+' : ''}${(deltaPct * 100).toFixed(1)}% vs resolved`
+        : `broker annual $${gpd.brokerAnnual.toLocaleString()}`,
+      detail:  `broker: $${gpd.brokerAnnual.toLocaleString()}  ·  resolved: $${gpd.resolvedAnnual.toLocaleString()}  ·  delta: $${Math.abs(deltaAbs).toLocaleString()}`,
+      status,
+    });
+  }
+
+  // ── 6. Lease-Up Trajectory ────────────────────────────────────────────────
+  if (sig?.t07LeaseUpWeeksTo95 != null) {
+    const status: NarrativeBlock['status'] = sig.t07LeaseUpWeeksTo95 <= 52 ? 'ok' : sig.t07LeaseUpWeeksTo95 <= 78 ? 'warn' : 'info';
+    blocks.push({
+      id:      'lease_up_trajectory',
+      label:   'Lease-Up Velocity',
+      summary: `lease-up to 95% in ${sig.t07LeaseUpWeeksTo95} wks`,
+      detail:  sig.stabilizedOccupancyPct != null
+        ? `stabilized occupancy: ${(sig.stabilizedOccupancyPct * 100).toFixed(1)}%`
+        : null,
+      status,
+    });
+  }
+
+  return blocks;
+}
+
+/**
  * GET /:dealId/financials/narrative
  *
- * Returns AI-synthesized M07 narrative for the deal, cached in-memory for 24h.
+ * Returns M07-synthesized narrative for the deal as both a plain string and
+ * structured NarrativeBlock array. Response is cached in-memory for 24 h.
+ * Narrative text is also persisted to DB (narrative_text / narrative_generated_at)
+ * for recovery across restarts.
  * Use ?refresh=true to force regeneration.
  */
 router.get('/:dealId/financials/narrative', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
@@ -539,71 +670,48 @@ router.get('/:dealId/financials/narrative', requireAuth, async (req: Authenticat
     const forceRefresh = req.query.refresh === 'true';
     const now = Date.now();
 
-    // ── Layer 1: in-memory cache ──────────────────────────────────────────
+    // ── Layer 1: in-memory cache (includes blocks) ────────────────────────
     const memCached = narrativeCache.get(dealId);
     if (!forceRefresh && memCached && (now - memCached.generatedAt) < NARRATIVE_TTL_MS) {
       return res.json({
         success: true,
         data: {
-          narrative: memCached.text,
-          cachedAt: new Date(memCached.generatedAt).toISOString(),
-          source: 'memory',
-          fresh: false,
+          narrative:  memCached.text,
+          blocks:     memCached.blocks,
+          cachedAt:   new Date(memCached.generatedAt).toISOString(),
+          source:     'memory',
+          fresh:      false,
         },
       });
     }
 
-    // ── Layer 2: DB cache (persisted across restarts) ─────────────────────
+    // ── Layer 2+3: always fetch fresh DealFinancials to build blocks ───────
+    const data   = await getDealFinancials(pool, dealId, 10);
+    const blocks = buildNarrativeBlocks(data);
+    // Plain text: blocks summaries joined with separator (same as original format)
+    const narrative = blocks.length > 0
+      ? blocks.map(b => b.summary).join(' · ')
+      : data.assumptions.narrative;
+
+    // Persist narrative_text to DB (non-blocking — we don't await to avoid slowing response)
     await ensureNarrativeColumns();
-    if (!forceRefresh) {
-      const dbRow = await pool.query<{
-        narrative_text: string | null;
-        narrative_generated_at: Date | null;
-      }>(
-        `SELECT narrative_text, narrative_generated_at
-           FROM deal_assumptions
-          WHERE deal_id = $1`,
-        [dealId],
-      );
-      if (dbRow.rows.length > 0 && dbRow.rows[0].narrative_generated_at != null) {
-        const dbAge = now - dbRow.rows[0].narrative_generated_at.getTime();
-        if (dbAge < NARRATIVE_TTL_MS) {
-          const text = dbRow.rows[0].narrative_text;
-          narrativeCache.set(dealId, { text, generatedAt: dbRow.rows[0].narrative_generated_at.getTime() });
-          return res.json({
-            success: true,
-            data: {
-              narrative: text,
-              cachedAt: dbRow.rows[0].narrative_generated_at.toISOString(),
-              source: 'db',
-              fresh: false,
-            },
-          });
-        }
-      }
-    }
-
-    // ── Layer 3: generate fresh via M07 signal synthesis ──────────────────
-    const data     = await getDealFinancials(pool, dealId, 10);
-    const narrative = data.assumptions.narrative;
-
-    // Persist to DB (UPDATE only — INSERT is owned by seedProFormaYear1)
-    await pool.query(
+    pool.query(
       `UPDATE deal_assumptions
           SET narrative_text = $2, narrative_generated_at = NOW()
         WHERE deal_id = $1`,
       [dealId, narrative],
-    );
+    ).catch((err: unknown) => logger.warn('Narrative DB persist failed (non-fatal):', err));
 
-    narrativeCache.set(dealId, { text: narrative, generatedAt: now });
+    narrativeCache.set(dealId, { text: narrative, blocks, generatedAt: now });
 
     res.json({
       success: true,
       data: {
         narrative,
+        blocks,
         cachedAt: new Date(now).toISOString(),
-        source: 'fresh',
-        fresh: true,
+        source:   'fresh',
+        fresh:    true,
       },
     });
   } catch (error: unknown) {

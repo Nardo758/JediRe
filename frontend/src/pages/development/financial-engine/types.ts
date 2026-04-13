@@ -205,6 +205,60 @@ export interface ModelVersion {
   results?: ModelResults;
 }
 
+// ─── F9 DealFinancials types (shared across tabs) ────────────────────────────
+
+export interface F9TrafficYear {
+  year: number; vacancyPct: number|null; occupancyPct: number|null;
+  effRent: number|null; rentGrowthPct: number|null;
+  t01WeeklyTours: number|null; t05ClosingRatio: number|null; t06WeeklyLeases: number|null;
+}
+
+export interface F9GprDecomposition {
+  brokerAnnual: number|null; platformAnnual: number|null; t12Annual: number|null;
+  rentRollAnnual: number|null; resolvedAnnual: number|null;
+  brokerPerUnitMo: number|null; platformPerUnitMo: number|null;
+  t12PerUnitMo: number|null; resolvedPerUnitMo: number|null;
+}
+
+export interface F9DealFinancials {
+  dealId: string; dealName: string; totalUnits: number;
+  proforma: {
+    year1: Array<{ field: string; label: string; broker: number|null; platform: number|null; t12: number|null; rentRoll: number|null; taxBill: number|null; resolved: number|null; resolution: string|null; perUnit: number|null }>;
+    integrityChecks: Array<{ id: string; status: 'ok'|'warn'|'error'; message: string; detail?: Record<string, unknown> }>;
+    unitEconomics: Record<string, number|null>;
+  };
+  capitalStack: {
+    purchasePrice: number|null; loanAmount: number|null; equityAtClose: number|null;
+    ltcPct: number|null; interestRate: number|null; ioPeriodMonths: number|null;
+    amortizationYears: number|null; dscrMin: number|null;
+    originationFeePct: number|null; pricePerUnit: number|null;
+  };
+  rentRollSummary: { avgInPlaceRent: number|null; weightedOccupancyPct: number|null }|null;
+  trafficProjection: {
+    yearly: F9TrafficYear[];
+    leaseUp: { weeksTo90: number|null; weeksTo93: number|null; weeksTo95: number|null }|null;
+    calibrated: { vacancyPct: number|null; rentGrowthPct: number|null; exitCap: number|null; lastCalibrated: string|null };
+    leasingSignals: { t01WeeklyTours: number|null; t05ClosingRatio: number|null; t06WeeklyLeases: number|null; t07LeaseUpWeeksTo95: number|null; stabilizedOccupancyPct: number|null; confidence: number|null }|null;
+  }|null;
+  assumptions: {
+    holdYears: number; exitCap: number|null; rentGrowthYr1: number|null;
+    rentGrowthStabilized: number|null;
+    perYear: Array<{ year: number; rentGrowthPct: number|null; vacancyPct: number|null; exitCapIfLastYear: number|null }>;
+    gprDecomposition: F9GprDecomposition|null;
+    narrative: string|null;
+  };
+  userOverrides: Record<string, Record<number, number|null>>;
+  meta: { seeded: boolean; updatedAt: string|null };
+}
+
+export interface F9NarrativeBlock {
+  id: string;
+  label: string;
+  summary: string;
+  detail: string | null;
+  status: 'ok' | 'warn' | 'info';
+}
+
 export interface FinancialEngineTabProps {
   dealId: string;
   deal?: Record<string, unknown>;
@@ -218,6 +272,8 @@ export interface FinancialEngineTabProps {
   activeVersion?: ModelVersion | null;
   /** Fires when Pro Forma integrity checks load; hasErrors=true blocks Projections tab */
   onIntegrityChange?: (hasErrors: boolean) => void;
+  /** F9 DealFinancials (from /api/v1/deals/:id/financials) shared across F1/F8/F10 tabs */
+  f9Financials?: F9DealFinancials | null;
 }
 
 export const fmt$ = (n: number): string => {

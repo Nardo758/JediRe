@@ -15,7 +15,7 @@ import { SensitivityTab } from './financial-engine/SensitivityTab';
 import { DecisionTab } from './financial-engine/DecisionTab';
 import { CompareTab } from './financial-engine/CompareTab';
 import { exportToExcel } from './financial-engine/excel-export';
-import type { ModelAssumptions, ModelResults, ModelVersion, DealType } from './financial-engine/types';
+import type { ModelAssumptions, ModelResults, ModelVersion, DealType, F9DealFinancials } from './financial-engine/types';
 import { fmt$, fmtPct, fmtX } from './financial-engine/types';
 import { apiClient } from '../../services/api.client';
 
@@ -62,6 +62,8 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
   const opusScrollRef = useRef<HTMLDivElement>(null);
   // Projections gating: true when Pro Forma integrity checks contain errors
   const [integrityBlocked, setIntegrityBlocked] = useState(false);
+  // F9 DealFinancials — fetched here so F1/F8/F10 tabs can consume it
+  const [f9Financials, setF9Financials] = useState<F9DealFinancials | null>(null);
 
   const kpi = useMemo(() => modelResults?.summary ?? null, [modelResults]);
 
@@ -113,6 +115,16 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
     apiClient.get(`/api/v1/financial-model/${resolvedDealId}/versions`).then((res: any) => {
       const data = res?.data?.data ?? res?.data ?? [];
       if (Array.isArray(data)) setVersions(data);
+    }).catch(() => {});
+  }, [resolvedDealId]);
+
+  // ── F9 DealFinancials — fetched at page level for F1/F8/F10 cross-tab wiring ─
+  useEffect(() => {
+    if (!resolvedDealId) return;
+    apiClient.get<{ success: boolean; data: F9DealFinancials }>(
+      `/api/v1/deals/${resolvedDealId}/financials?hold=5`,
+    ).then(res => {
+      if (res.data?.data) setF9Financials(res.data.data);
     }).catch(() => {});
   }, [resolvedDealId]);
 
@@ -248,7 +260,8 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
     versions,
     activeVersion,
     onIntegrityChange: setIntegrityBlocked,
-  }), [resolvedDealId, propDeal, resolvedDealType, assumptions, modelResults, handleAssumptionsChange, handleBuildModel, building, versions, activeVersion]);
+    f9Financials,
+  }), [resolvedDealId, propDeal, resolvedDealType, assumptions, modelResults, handleAssumptionsChange, handleBuildModel, building, versions, activeVersion, f9Financials]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BT.bg.terminal }}>
