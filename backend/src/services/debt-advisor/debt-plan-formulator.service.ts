@@ -81,7 +81,7 @@ export interface DebtAdvisorResponse {
     state: string;
     units: number;
     riskScore: number;
-    m08Source: 'strategy_analyses' | 'strategy_scores' | 'none';
+    m08Source: 'strategy_analyses' | 'none';
   };
   rateEnvironment: RateEnvironmentResult;
   recommendedStack: DebtPhase[];
@@ -691,39 +691,41 @@ export async function acceptDebtPlan(
 
   const pool = getPool();
   const loanId = 'senior';
+  const overrideCount = 9;
 
-  const overrideResults = await Promise.allSettled([
-    applyFinancialsOverride(pool, dealId, `debt:${loanId}:loanAmount`, 1, phase.loanAmountEst, userId),
-    applyFinancialsOverride(pool, dealId, `debt:${loanId}:interestRate`, 1, phase.rateEst, userId),
-    applyFinancialsOverride(pool, dealId, `debt:${loanId}:termYears`, 1, phase.termYears, userId),
-    applyFinancialsOverride(pool, dealId, `debt:${loanId}:amortYears`, 1, phase.amortYears, userId),
-    applyFinancialsOverride(pool, dealId, `debt:${loanId}:ioMonths`, 1, phase.ioMonths, userId),
-    applyFinancialsOverride(pool, dealId, `debt:${loanId}:origFee`, 1, phase.origFee, userId),
-    applyFinancialsOverride(pool, dealId, `debt:${loanId}:exitFee`, 1, phase.exitFee, userId),
-    applyFinancialsOverride(pool, dealId, `debt:${loanId}:rateType`, 1, phase.rateType, userId),
-    applyFinancialsOverride(pool, dealId, `debt:${loanId}:prepayType`, 1, phase.prepayType, userId),
-  ]);
-
-  const failures = overrideResults.filter(r => r.status === 'rejected');
-  if (failures.length > 0) {
-    const reasons = failures.map(f => (f as PromiseRejectedResult).reason?.message || 'unknown').join('; ');
-    logger.error('[DebtAdvisor] Some override fields failed on accept', { dealId, phaseIndex, failures: reasons });
+  try {
+    await Promise.all([
+      applyFinancialsOverride(pool, dealId, `debt:${loanId}:loanAmount`, 1, phase.loanAmountEst, userId),
+      applyFinancialsOverride(pool, dealId, `debt:${loanId}:interestRate`, 1, phase.rateEst, userId),
+      applyFinancialsOverride(pool, dealId, `debt:${loanId}:termYears`, 1, phase.termYears, userId),
+      applyFinancialsOverride(pool, dealId, `debt:${loanId}:amortYears`, 1, phase.amortYears, userId),
+      applyFinancialsOverride(pool, dealId, `debt:${loanId}:ioMonths`, 1, phase.ioMonths, userId),
+      applyFinancialsOverride(pool, dealId, `debt:${loanId}:origFee`, 1, phase.origFee, userId),
+      applyFinancialsOverride(pool, dealId, `debt:${loanId}:exitFee`, 1, phase.exitFee, userId),
+      applyFinancialsOverride(pool, dealId, `debt:${loanId}:rateType`, 1, phase.rateType, userId),
+      applyFinancialsOverride(pool, dealId, `debt:${loanId}:prepayType`, 1, phase.prepayType, userId),
+    ]);
+  } catch (overrideErr: any) {
+    logger.error('[DebtAdvisor] Override pipeline failed on accept — Configure fields not populated', {
+      dealId,
+      phaseIndex,
+      error: overrideErr.message,
+    });
+    return { success: false, message: `Override pipeline failed: ${overrideErr.message}` };
   }
 
-  const succeeded = overrideResults.length - failures.length;
   bustAdvisorCache(dealId);
 
-  logger.info('[DebtAdvisor] Plan accepted, overrides applied', {
+  logger.info('[DebtAdvisor] Plan accepted, all overrides applied', {
     dealId,
     phaseIndex,
     loanAmount: phase.loanAmountEst,
     rate: phase.rateEst,
-    overridesApplied: succeeded,
-    overridesFailed: failures.length,
+    overridesApplied: overrideCount,
   });
 
   return {
     success: true,
-    message: `Debt plan accepted: ${succeeded}/${overrideResults.length} fields populated in Configure`,
+    message: `Debt plan accepted: ${overrideCount} fields populated in Configure`,
   };
 }

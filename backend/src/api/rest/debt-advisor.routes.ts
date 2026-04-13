@@ -12,13 +12,42 @@ import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { formulateDebtPlan, bustAdvisorCache, acceptDebtPlan } from '../../services/debt-advisor/debt-plan-formulator.service';
 import { classifyRateEnvironment, bustRateCache } from '../../services/debt-advisor/rate-environment.service';
 import { dealAlertService } from '../../services/deal-alert.service';
+import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
 
 const router = Router({ mergeParams: true });
 
+/** Verify caller owns or has org access to the deal. Returns false on IDOR. */
+async function hasDealtAccess(dealId: string, userId: string): Promise<boolean> {
+  try {
+    const orgRow = await query(
+      `SELECT org_id FROM org_members WHERE user_id = $1 LIMIT 1`,
+      [userId]
+    );
+    const orgId: string | null = orgRow.rows[0]?.org_id ?? null;
+
+    const result = await query(
+      `SELECT id FROM deals
+       WHERE id = $1
+         AND (user_id = $2 OR ($3::uuid IS NOT NULL AND org_id = $3))`,
+      [dealId, userId, orgId]
+    );
+    return result.rows.length > 0;
+  } catch (err: any) {
+    logger.warn('[DebtAdvisor] Deal access check failed', { dealId, userId, error: err.message });
+    return false;
+  }
+}
+
 /** GET /api/v1/deals/:dealId/debt/advisor */
 router.get('/:dealId/debt/advisor', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   const { dealId } = req.params;
+  const userId = req.user!.userId;
+
+  if (!(await hasDealtAccess(dealId, userId))) {
+    return res.status(404).json({ success: false, error: 'Deal not found' });
+  }
+
   try {
     const plan = await formulateDebtPlan(dealId);
     return res.json({ success: true, data: plan });
@@ -33,6 +62,10 @@ router.post('/:dealId/debt/advisor/accept', requireAuth, async (req: Authenticat
   const { dealId } = req.params;
   const { phaseIndex = 0 } = req.body;
   const userId = req.user!.userId;
+
+  if (!(await hasDealtAccess(dealId, userId))) {
+    return res.status(404).json({ success: false, error: 'Deal not found' });
+  }
 
   try {
     const plan = await formulateDebtPlan(dealId);
@@ -72,6 +105,12 @@ router.post('/:dealId/debt/advisor/accept', requireAuth, async (req: Authenticat
 /** POST /api/v1/deals/:dealId/debt/advisor/recompute */
 router.post('/:dealId/debt/advisor/recompute', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   const { dealId } = req.params;
+  const userId = req.user!.userId;
+
+  if (!(await hasDealtAccess(dealId, userId))) {
+    return res.status(404).json({ success: false, error: 'Deal not found' });
+  }
+
   try {
     bustAdvisorCache(dealId);
     bustRateCache();
