@@ -46,11 +46,16 @@ function buildAmortSchedule(loan: LoanOption, loanAmt: number): AmortRow[] {
   return rows;
 }
 
-export function DebtTab({ dealId, deal, assumptions, modelResults }: FinancialEngineTabProps) {
+export function DebtTab({ dealId, deal, assumptions, modelResults, f9Financials }: FinancialEngineTabProps) {
   const [selectedLoanId, setSelectedLoanId] = useState<string>('bridge');
   const [showAmort, setShowAmort] = useState(false);
 
-  const loanAmt = assumptions?.financing?.loanAmount ?? (typeof deal?.purchase_price === 'number' ? (deal.purchase_price as number) * 0.65 : 0);
+  // F8 wiring: prefer F9 engine capital stack for loan amount
+  const loanAmt = f9Financials?.capitalStack?.loanAmount
+    ?? assumptions?.financing?.loanAmount
+    ?? (typeof deal?.purchase_price === 'number' ? (deal.purchase_price as number) * 0.65 : 0);
+  const f9Ltv = f9Financials?.capitalStack?.ltcPct ?? null;
+  const f9Rate = f9Financials?.capitalStack?.interestRate ?? null;
 
   const loans = useMemo(() => {
     return DEFAULT_LOANS.map(l => ({ ...l, amount: loanAmt }));
@@ -104,6 +109,16 @@ export function DebtTab({ dealId, deal, assumptions, modelResults }: FinancialEn
           );
         })}
       </div>
+
+      {/* F8 wiring: F9 capital stack signal row */}
+      {(f9Ltv != null || f9Rate != null || loanAmt > 0) && (
+        <div style={{ padding: '4px 10px', background: `${BT.met.financial}08`, borderBottom: `1px solid ${BT.border.subtle}`, display: 'flex', alignItems: 'center', gap: 16 }}>
+          <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, letterSpacing: 0.5 }}>F9 CAPITAL STACK ▸</span>
+          {loanAmt > 0 && <span style={{ fontFamily: MONO, fontSize: 9, color: BT.met.financial }}>LOAN {fmt$(loanAmt)}</span>}
+          {f9Ltv != null && <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.cyan }}>LTC {fmtPct(f9Ltv * 100)}</span>}
+          {f9Rate != null && <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.amber }}>RATE {fmtPct(f9Rate * 100)}</span>}
+        </div>
+      )}
 
       <div style={{ padding: '6px 10px', background: BT.bg.header, borderBottom: `1px solid ${BT.border.subtle}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

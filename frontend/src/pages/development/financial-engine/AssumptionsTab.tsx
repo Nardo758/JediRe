@@ -996,7 +996,7 @@ function GprDecompRow({ years, financials }: { years: number[]; financials: Deal
 }
 
 // ─── Findings rail ─────────────────────────────────────────────────────────────
-function FindingsRail({ financials }: { financials: DealFinancials|null }) {
+function FindingsRail({ financials, narrativeBlocks }: { financials: DealFinancials|null; narrativeBlocks: F9NarrativeBlock[] }) {
   const [open, setOpen] = useState(true);
   if (!open) {
     return (
@@ -1517,7 +1517,7 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
             </tbody>
           </table>
         </div>
-        <FindingsRail financials={financials} />
+        <FindingsRail financials={financials} narrativeBlocks={narrativeBlocks} />
       </div>
 
       {/* Footer */}

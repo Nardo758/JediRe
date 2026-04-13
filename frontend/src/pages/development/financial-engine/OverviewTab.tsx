@@ -27,7 +27,7 @@ function collisionDot(broker: number | null, platform: number | null): React.Rea
 
 type OverviewSubTab = 'summary' | 'insights';
 
-export function OverviewTab({ dealId, deal, dealType, assumptions, modelResults }: FinancialEngineTabProps) {
+export function OverviewTab({ dealId, deal, dealType, assumptions, modelResults, f9Financials }: FinancialEngineTabProps) {
   const [subTab, setSubTab] = useState<OverviewSubTab>('summary');
   const summary = modelResults?.summary;
   const su = modelResults?.sourcesAndUses;
@@ -36,8 +36,14 @@ export function OverviewTab({ dealId, deal, dealType, assumptions, modelResults 
   const dealData = deal?.deal_data as Record<string, unknown> | undefined;
   const brokerCapRate = typeof dealData?.broker_cap_rate === 'number' ? dealData.broker_cap_rate / 100
     : typeof deal?.cap_rate === 'number' ? (deal.cap_rate as number) / 100 : null;
-  const brokerPurchasePrice = typeof deal?.purchase_price === 'number' ? deal.purchase_price as number
-    : typeof deal?.asking_price === 'number' ? deal.asking_price as number : null;
+  // F9 wiring: prefer f9Financials purchase price over raw deal field
+  const brokerPurchasePrice =
+    f9Financials?.capitalStack?.purchasePrice ??
+    (typeof deal?.purchase_price === 'number' ? deal.purchase_price as number
+      : typeof deal?.asking_price === 'number' ? deal.asking_price as number : null);
+  // F9 wiring: platform exit cap and NOI from F9 engine
+  const f9ExitCap = f9Financials?.trafficProjection?.calibrated?.exitCap ?? null;
+  const f9Yr1Noi  = f9Financials?.proforma?.year1?.find(r => r.field === 'noi')?.resolved ?? null;
 
   const [platformData, setPlatformData] = useState<PlatformData>({});
 
@@ -56,13 +62,18 @@ export function OverviewTab({ dealId, deal, dealType, assumptions, modelResults 
     }).catch(() => {});
   }, [dealId]);
 
+  // F9 wiring: use f9ExitCap (M07 calibrated) as authoritative platform exit cap
+  const platformExitCap = f9ExitCap ?? platformData.exitCap ?? null;
+  const f9VacancyPct = f9Financials?.trafficProjection?.calibrated?.vacancyPct ?? null;
+  const f9PurchasePrice = f9Financials?.capitalStack?.purchasePrice ?? null;
+
   type ProFormaRow = { label: string; brokerFmt: string; platformFmt: string; brokerRaw: number | null; platformRaw: number | null };
   const proFormaRows: ProFormaRow[] = [
-    { label: 'EXIT CAP RATE', brokerFmt: brokerCapRate != null ? fmtPct(brokerCapRate * 100) : '—', platformFmt: platformData.exitCap != null ? fmtPct(platformData.exitCap * 100) : '—', brokerRaw: brokerCapRate, platformRaw: platformData.exitCap ?? null },
+    { label: 'EXIT CAP RATE',      brokerFmt: brokerCapRate != null ? fmtPct(brokerCapRate * 100) : '—', platformFmt: platformExitCap != null ? fmtPct(platformExitCap * 100) : '—', brokerRaw: brokerCapRate, platformRaw: platformExitCap },
     { label: 'ACQUISITION CAP RATE', brokerFmt: brokerCapRate != null ? fmtPct(brokerCapRate * 100) : '—', platformFmt: platformData.capRate != null ? fmtPct(platformData.capRate * 100) : '—', brokerRaw: brokerCapRate, platformRaw: platformData.capRate ?? null },
-    { label: 'PURCHASE PRICE', brokerFmt: brokerPurchasePrice != null ? fmt$(brokerPurchasePrice) : '—', platformFmt: '—', brokerRaw: brokerPurchasePrice, platformRaw: null },
-    { label: 'VACANCY RATE', brokerFmt: '—', platformFmt: '—', brokerRaw: null, platformRaw: null },
-    { label: 'EXPENSE RATIO', brokerFmt: '—', platformFmt: '—', brokerRaw: null, platformRaw: null },
+    { label: 'PURCHASE PRICE',    brokerFmt: brokerPurchasePrice != null ? fmt$(brokerPurchasePrice) : '—', platformFmt: f9PurchasePrice != null ? fmt$(f9PurchasePrice) : '—', brokerRaw: brokerPurchasePrice, platformRaw: f9PurchasePrice },
+    { label: 'VACANCY RATE',      brokerFmt: '—', platformFmt: f9VacancyPct != null ? fmtPct(f9VacancyPct * 100) : '—', brokerRaw: null, platformRaw: f9VacancyPct },
+    { label: 'YR-1 NOI (F9)',     brokerFmt: '—', platformFmt: f9Yr1Noi != null ? fmt$(f9Yr1Noi) : '—', brokerRaw: null, platformRaw: f9Yr1Noi },
   ];
   const anyCollision = proFormaRows.some(r => collisionDot(r.brokerRaw, r.platformRaw) != null);
 
