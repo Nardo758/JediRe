@@ -1757,6 +1757,113 @@ export async function getDealFinancials(
     }
   }
 
+  // ── Florida Tax Engine ────────────────────────────────────────────────────────
+  const FL_SOH_CAP = 0.10;  // FL Save Our Homes: max 10% annual assessed-value increase
+  const FL_MIAMI_DADE_CITIES = new Set([
+    'miami','miami beach','hialeah','coral gables','doral','miami gardens','homestead',
+    'north miami','north miami beach','opa-locka','aventura','bal harbour',
+    'florida city','golden beach','indian creek','key biscayne','medley','miami shores',
+    'miami springs','north bay village','palmetto bay','pinecrest','south miami',
+    'sunny isles beach','surfside','sweetwater','virginia gardens','west miami',
+  ]);
+  const isMiamiDade = FL_MIAMI_DADE_CITIES.has((deal.city ?? '').toLowerCase().trim());
+  const millageRate = isMiamiDade ? 23.09 : 20.00;   // mills per $1,000 assessed value
+
+  // T-12 RE tax from proforma year1 seed (real_estate_tax field)
+  const taxLvObj = lv(year1Seed, 'real_estate_tax') as Record<string, unknown> | null;
+  const layerN = (lvo: Record<string, unknown> | null, key: string): number | null => {
+    if (!lvo) return null;
+    const v = lvo[key];
+    return v != null && !isNaN(Number(v)) ? Number(v) : null;
+  };
+  const t12AnnualTax: number | null = layerN(taxLvObj, 'broker') ?? layerN(taxLvObj, 't12') ?? layerN(taxLvObj, 'resolved');
+  const t12AssessedValue: number | null = t12AnnualTax != null ? Math.round(t12AnnualTax / (millageRate / 1000)) : null;
+
+  // Read user tax overrides from per_year_overrides
+  const rawTaxOvs = (assumptionsRow?.per_year_overrides ?? {}) as Record<string, Record<string, unknown> | null>;
+  const taxAssessedValueOvr: number | null = (() => {
+    const v = rawTaxOvs['tax:assessed_value:yr1'];
+    return v?.value != null ? Number(v.value) : null;
+  })();
+  const taxMillageRateOvr: number | null = (() => {
+    const v = rawTaxOvs['tax:millage_rate:yr1'];
+    return v?.value != null ? Number(v.value) : null;
+  })();
+  const tppAmountOvr: number | null = (() => {
+    const v = rawTaxOvs['tax:tpp_amount:yr1'];
+    return v?.value != null ? Number(v.value) : null;
+  })();
+
+  // Platform assessed value: purchase price post-acquisition reassessment (resolved or override)
+  const platformAssessedValue: number | null = taxAssessedValueOvr ?? purchasePrice;
+  const resolvedMillage = taxMillageRateOvr ?? millageRate;
+  const platformAnnualTax: number | null = platformAssessedValue != null
+    ? Math.round(platformAssessedValue * (resolvedMillage / 1000)) : null;
+
+  // Y1-Y10 RE tax projection (SOH cap applies after Y1 acquisition reassessment)
+  const reTaxPerYear: Array<{
+    year: number; assessedValue: number; millageRate: number;
+    taxAmount: number; sohCapBinding: boolean; reassessmentEvent: boolean;
+  }> = [];
+  const baseAssessed = platformAssessedValue ?? 0;
+  let prevCapped = baseAssessed;
+  const mktGrowthRate = 0.05;  // assumed 5% market-value growth after acquisition
+  for (let yr = 1; yr <= holdYears; yr++) {
+    const isReassessment = yr === 1;
+    const marketValue = baseAssessed * Math.pow(1 + mktGrowthRate, yr - 1);
+    const capLimited = yr === 1 ? baseAssessed : Math.min(marketValue, prevCapped * (1 + FL_SOH_CAP));
+    const sohCapBinding = yr > 1 && marketValue > capLimited + 1;
+    const assessedValue = Math.round(capLimited);
+    const taxAmount = Math.round(assessedValue * (resolvedMillage / 1000));
+    reTaxPerYear.push({ year: yr, assessedValue, millageRate: resolvedMillage, taxAmount, sohCapBinding, reassessmentEvent: isReassessment });
+    prevCapped = capLimited;
+  }
+  const y1TaxAmt = reTaxPerYear[0]?.taxAmount ?? null;
+  const deltaVsT12Pct = y1TaxAmt != null && t12AnnualTax != null && t12AnnualTax > 0
+    ? (y1TaxAmt - t12AnnualTax) / t12AnnualTax : null;
+
+  // TPP (Tangible Personal Property) estimates
+  const rrLv = lv(year1Seed, 'replacement_reserves') as Record<string, unknown> | null;
+  const rrBroker = layerN(rrLv, 'broker') ?? layerN(rrLv, 't12');
+  const tppBroker: number | null = tppAmountOvr ?? (rrBroker != null ? Math.round(rrBroker * 0.5) : (totalUnits > 0 ? totalUnits * 150 : null));
+  const tppPlatform: number | null = totalUnits > 0 ? totalUnits * 200 : null;
+
+  // Income tax / depreciation
+  const LAND_PCT = 0.20;
+  const depreciableBase = purchasePrice != null ? Math.round(purchasePrice * (1 - LAND_PCT)) : null;
+  const annualDepreciation = depreciableBase != null ? Math.round(depreciableBase / 27.5) : null;
+  const currentYear = new Date().getFullYear();
+  const bonusRate = currentYear >= 2027 ? 0.20 : 0.40;  // 2026=40%, 2027=20%
+
+  // FL transfer taxes (Doc Stamps + Intangible Tax on new mortgage)
+  const docStampRate = isMiamiDade ? 0.0105 : 0.0070;
+  const docStampAmount = purchasePrice != null ? Math.round(purchasePrice * docStampRate) : null;
+  const intangibleTaxAmount = loanAmount != null ? Math.round(loanAmount * 0.002) : null;
+  const totalTransferTax = ((docStampAmount ?? 0) + (intangibleTaxAmount ?? 0)) || null;
+
+  const taxes = {
+    reTax: {
+      t12AssessedValue, t12MillageRate: millageRate, t12AnnualTax,
+      platformAssessedValue, platformAnnualTax, isMiamiDade,
+      sohCapPct: FL_SOH_CAP, perYear: reTaxPerYear, deltaVsT12Pct,
+    },
+    tpp: { broker: tppBroker, platform: tppPlatform },
+    incomeTax: {
+      purchasePrice, landValuePct: LAND_PCT, depreciableBase,
+      annualDepreciation, bonusDepreciationCurrentYearPct: bonusRate, costSegAvailablePct: 0.30,
+    },
+    transferTax: {
+      purchasePrice, isMiamiDade, miamiDadeRatePct: 0.0105, statewideFlatRatePct: 0.0070,
+      appliedRatePct: docStampRate, docStampAmount, intangibleTaxAmount,
+      loanAmount, totalTransferTax,
+    },
+    userOverrides: {
+      taxAssessedValue: taxAssessedValueOvr,
+      taxMillageRate: taxMillageRateOvr,
+      tppAmount: tppAmountOvr,
+    },
+  };
+
   return {
     dealId,
     dealName: deal.name,
@@ -1772,6 +1879,7 @@ export async function getDealFinancials(
       updatedAt: assumptionsRow?.updated_at?.toISOString?.() ?? null,
     },
     returns: null,
+    taxes,
   };
 }
 
@@ -1997,6 +2105,37 @@ export async function applyFinancialsOverride(
   // Route unit_mix cell overrides to dedicated handler
   if (field.startsWith('unit_mix:')) {
     return applyUnitMixOverride(pool, dealId, field, value, userId);
+  }
+
+  // Route FL tax overrides to per_year_overrides with 'tax:' prefix
+  const TAX_FIELD_TO_PY_KEY: Record<string, string> = {
+    taxAssessedValue: 'tax:assessed_value:yr1',
+    taxMillageRate:   'tax:millage_rate:yr1',
+    tppAmount:        'tax:tpp_amount:yr1',
+  };
+  if (TAX_FIELD_TO_PY_KEY[field]) {
+    const pyKey = TAX_FIELD_TO_PY_KEY[field];
+    const pyEntry = {
+      field, year: 1, value, updatedBy: userId,
+      updatedAt: new Date().toISOString(),
+      resolution: value != null ? 'override' : 'cleared',
+    };
+    await pool.query(
+      `UPDATE deal_assumptions
+          SET per_year_overrides = jsonb_set(
+                COALESCE(per_year_overrides, '{}'::jsonb),
+                $2::text[],
+                $3::jsonb
+              ),
+              updated_at = NOW()
+        WHERE deal_id = $1`,
+      [dealId, `{${pyKey}}`, JSON.stringify(pyEntry)]
+    );
+    return {
+      year1Key: field, year: 1, appliedValue: value, resolution: 'user_override',
+      updatedCell: { [field]: value },
+      derivedRecomputation: { egi: null, noi: null, totalOpex: null, derivedVacancyPct: null, affectedFields: [field] },
+    };
   }
 
   // Route scalar deal_assumptions column overrides (exitCapRate, interestRate, ltcPct, ioPeriodMonths)

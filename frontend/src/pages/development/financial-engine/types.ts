@@ -258,10 +258,64 @@ export interface F9DealFinancials {
   };
   userOverrides: Record<string, Record<number, number|null>>;
   meta: { seeded: boolean; updatedAt: string|null };
+  taxes: F9TaxData | null;
 }
 
 export type F9ProFormaRow = F9DealFinancials['proforma']['year1'][number];
 export type F9IntegrityCheck = F9DealFinancials['proforma']['integrityChecks'][number];
+
+// ─── F9 Tax data ──────────────────────────────────────────────────────────────
+
+export interface F9TaxYear {
+  year: number;
+  assessedValue: number;
+  millageRate: number;
+  taxAmount: number;
+  sohCapBinding: boolean;
+  reassessmentEvent: boolean;
+}
+
+export interface F9TaxData {
+  reTax: {
+    t12AssessedValue: number | null;
+    t12MillageRate: number | null;
+    t12AnnualTax: number | null;
+    platformAssessedValue: number | null;
+    platformAnnualTax: number | null;
+    isMiamiDade: boolean;
+    sohCapPct: number;
+    perYear: F9TaxYear[];
+    deltaVsT12Pct: number | null;
+  };
+  tpp: {
+    broker: number | null;
+    platform: number | null;
+  };
+  incomeTax: {
+    purchasePrice: number | null;
+    landValuePct: number;
+    depreciableBase: number | null;
+    annualDepreciation: number | null;
+    bonusDepreciationCurrentYearPct: number;
+    costSegAvailablePct: number;
+  };
+  transferTax: {
+    purchasePrice: number | null;
+    isMiamiDade: boolean;
+    miamiDadeRatePct: number;
+    statewideFlatRatePct: number;
+    appliedRatePct: number;
+    docStampAmount: number | null;
+    intangibleTaxAmount: number | null;
+    loanAmount: number | null;
+    totalTransferTax: number | null;
+  };
+  userOverrides: {
+    taxAssessedValue: number | null;
+    taxMillageRate: number | null;
+    tppAmount: number | null;
+  };
+}
 
 export interface F9NarrativeBlock {
   id: string;
