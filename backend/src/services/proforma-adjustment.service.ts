@@ -1256,7 +1256,7 @@ export interface DealFinancials {
   } | null;
   /** Sources & Uses — capital deployment at close */
   sourcesUses: {
-    sources: Array<{ id: string; label: string; amount: number | null; pct: number | null; sub: string | null }>;
+    sources: Array<{ id: string; label: string; amount: number | null; pct: number | null; sub: string | null; userOverridable?: boolean }>;
     uses: Array<{ id: string; label: string; amount: number | null; pct: number | null; sub: string | null; userOverridable: boolean }>;
     totalSources: number | null;
     totalUses: number | null;
@@ -2249,10 +2249,12 @@ export async function getDealFinancials(
   const suSources = [
     { id: 'seniorDebt',      label: 'SENIOR DEBT',       amount: suSeniorLoan > 0 ? suSeniorLoan : null,       sub: `${((suSeniorLoan / Math.max(suPurchasePrice, 1)) * 100).toFixed(1)}% LTV` },
     { id: 'mezzDebt',        label: 'MEZZ / B-NOTE',     amount: suMezzLoan > 0 ? suMezzLoan : null,           sub: 'Subordinate debt' },
-    { id: 'sellerFinancing', label: 'SELLER FINANCING',  amount: suSellerFinancing > 0 ? suSellerFinancing : null, sub: 'Seller carry-back note' },
-    { id: 'lpEquity',        label: 'LP EQUITY',         amount: suEquity > 0 ? suEquity * suLpShare : null,   sub: `${(suLpShare * 100).toFixed(0)}% LP split` },
-    { id: 'gpEquity',        label: 'GP EQUITY',         amount: suEquity > 0 ? suEquity * suGpShare : null,   sub: `${(suGpShare * 100).toFixed(0)}% GP co-invest` },
-  ].filter(s => s.amount != null && (s.amount as number) > 0);
+    { id: 'sellerFinancing', label: 'SELLER FINANCING',  amount: suSellerFinancing > 0 ? suSellerFinancing : null, sub: 'Seller carry-back note', userOverridable: true },
+    { id: 'lpEquity',        label: 'LP EQUITY',         amount: suEquity > 0 ? suEquity * suLpShare : null,   sub: `${(suLpShare * 100).toFixed(0)}% LP split`, userOverridable: false },
+    { id: 'gpEquity',        label: 'GP EQUITY',         amount: suEquity > 0 ? suEquity * suGpShare : null,   sub: `${(suGpShare * 100).toFixed(0)}% GP co-invest`, userOverridable: false },
+  ].filter(s =>
+    s.userOverridable ? true : (s.amount != null && (s.amount as number) > 0)
+  );
 
   const suTotalSources = suSources.reduce((s, src) => s + (src.amount ?? 0), 0);
   const suDelta = suTotalSources - suTotalUses;
@@ -2265,7 +2267,7 @@ export async function getDealFinancials(
   };
 
   const sourcesUses: DealFinancials['sourcesUses'] = {
-    sources: addPct(suSources).map(s => ({ id: s.id, label: s.label, amount: s.amount, pct: s.pct, sub: s.sub })),
+    sources: addPct(suSources).map(s => ({ id: s.id, label: s.label, amount: s.amount, pct: s.pct, sub: s.sub, userOverridable: s.userOverridable ?? false })),
     uses: addPct(suUses).map(u => ({ id: u.id, label: u.label, amount: u.amount, pct: u.pct, sub: u.sub, userOverridable: u.userOverridable ?? false })),
     totalSources: suTotalSources || null,
     totalUses: suTotalUses || null,

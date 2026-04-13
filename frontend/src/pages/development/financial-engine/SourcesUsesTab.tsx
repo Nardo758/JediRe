@@ -158,11 +158,11 @@ export function SourcesUsesTab({
   const buildSourceRows = (): RowItem[] => {
     if (su && su.sources.length > 0) {
       return su.sources
-        .filter(s => (s.amount ?? 0) > 0)
+        .filter(s => s.userOverridable ? true : (s.amount ?? 0) > 0)
         .map(s => ({
-          id: s.id, label: s.label, amount: s.amount!, pct: s.pct ?? 0,
+          id: s.id, label: s.label, amount: s.amount ?? 0, pct: s.pct ?? 0,
           sub: s.sub ?? '', color: SOURCE_COLORS[s.id] ?? BT.met.financial,
-          userOverridable: false,
+          userOverridable: s.userOverridable ?? false,
         }));
     }
     const items: RowItem[] = [];
@@ -339,9 +339,9 @@ export function SourcesUsesTab({
             </div>
           ))}
 
-          <div style={{ padding: '4px 8px', display: 'flex', justifyContent: 'space-between', borderTop: `2px solid ${BT.border.medium}` }}>
-            <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, fontWeight: 700 }}>TOTAL USES</span>
-            <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.amber, fontWeight: 700 }}>{totalUses > 0 ? fmt$(totalUses) : '—'}</span>
+          <div style={{ padding: '4px 8px', display: 'flex', justifyContent: 'space-between', borderTop: `2px solid ${BT.border.medium}`, background: `${BT.text.cyan}10` }}>
+            <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.cyan, fontWeight: 700 }}>TOTAL USES</span>
+            <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.cyan, fontWeight: 700 }}>{totalUses > 0 ? fmt$(totalUses) : '—'}</span>
           </div>
 
           {/* Stacked bar */}
@@ -360,10 +360,10 @@ export function SourcesUsesTab({
       {/* ── Reconciliation row ─────────────────────────────────────────────── */}
       <div style={{ padding: '4px 12px', background: balanced ? `${BT.met.financial}12` : `${BT.text.red}12`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: `1px solid ${BT.border.subtle}` }}>
         <span style={{ fontFamily: MONO, fontSize: 9, color: balanced ? BT.met.financial : BT.text.red, fontWeight: 700 }}>
-          {balanced ? 'SOURCES = USES · BALANCED' : 'SOURCES ≠ USES · ADJUST EQUITY OR DEBT'}
+          {balanced ? 'SOURCES = USES · BALANCED' : `EQUITY GAP ${fmt$(Math.abs(delta))}`}
         </span>
         <span style={{ fontFamily: MONO, fontSize: 9, color: balanced ? BT.met.financial : BT.text.red, fontWeight: 700 }}>
-          {delta >= 0 ? '+' : ''}{fmt$(delta)}
+          {balanced ? '✓' : `${delta >= 0 ? '+' : ''}${fmt$(delta)}`}
         </span>
       </div>
 

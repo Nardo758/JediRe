@@ -263,7 +263,7 @@ export interface F9DealFinancials {
   debt: F9DebtStack | null;
   /** Sources & Uses — capital deployment at close */
   sourcesUses: {
-    sources: Array<{ id: string; label: string; amount: number | null; pct: number | null; sub: string | null }>;
+    sources: Array<{ id: string; label: string; amount: number | null; pct: number | null; sub: string | null; userOverridable?: boolean }>;
     uses: Array<{ id: string; label: string; amount: number | null; pct: number | null; sub: string | null; userOverridable: boolean }>;
     totalSources: number | null;
     totalUses: number | null;
