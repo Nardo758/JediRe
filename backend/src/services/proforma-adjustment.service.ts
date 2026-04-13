@@ -1187,6 +1187,17 @@ export interface DealFinancials {
     year1: OperatingStatementRow[];
     integrityChecks: IntegrityCheck[];
     unitEconomics: Record<string, number | null>;
+    valuationSnapshot: {
+      pricePerUnit: number | null; pricePerSF: number | null;
+      grm: number | null; gim: number | null; goingInCapT12: number | null;
+      priceToRC: number | null; rcPerUnit: number | null;
+      buildArbitrageFlag: 'buy_existing' | 'neutral' | 'build_new' | null;
+      pricePerUnitSubmarketMedian: number | null; pricePerUnitPercentile: number | null;
+      pricePerSFSubmarketMedian: number | null; pricePerSFPercentile: number | null;
+      grmSubmarketMedian: number | null; grmPercentile: number | null;
+      gimSubmarketMedian: number | null; gimPercentile: number | null;
+      goingInCapSubmarketMedian: number | null; goingInCapPercentile: number | null;
+    };
   };
   capitalStack: DealCapitalStack;
   rentRollSummary: {
@@ -2955,11 +2966,42 @@ export async function getDealFinancials(
     return rows;
   })();
 
+  // ── Valuation Snapshot (6 key metrics for the Pro Forma gateway strip) ─────
+  const _vsGprRow = year1Rows.find(r => r.field === 'gpr');
+  const _vsEgiRow = year1Rows.find(r => r.field === 'egi');
+  const _vsNoiRow = year1Rows.find(r => r.field === 'noi');
+  const _vsGpr = _vsGprRow?.resolved ?? null;
+  const _vsEgi = _vsEgiRow?.resolved ?? null;
+  const _vsNoi = _vsNoiRow?.resolved ?? null;
+  const _vsNRSF: number | null = (dealData.net_rentable_sf as number | null) ?? null;
+  const _vsPP = purchasePrice;
+  const valuationSnapshot = {
+    pricePerUnit: _vsPP != null && totalUnits > 0 ? Math.round(_vsPP / totalUnits) : null,
+    pricePerSF: _vsPP != null && _vsNRSF != null && _vsNRSF > 0 ? +(_vsPP / _vsNRSF).toFixed(2) : null,
+    grm: _vsPP != null && _vsGpr != null && _vsGpr > 0 ? +(_vsPP / _vsGpr).toFixed(2) : null,
+    gim: _vsPP != null && _vsEgi != null && _vsEgi > 0 ? +(_vsPP / _vsEgi).toFixed(2) : null,
+    goingInCapT12: _vsPP != null && _vsNoi != null && _vsPP > 0 ? +(_vsNoi / _vsPP).toFixed(4) : null,
+    priceToRC: null as number | null,
+    rcPerUnit: null as number | null,
+    buildArbitrageFlag: null as 'buy_existing' | 'neutral' | 'build_new' | null,
+    // Comparison fields (submarket comps feed not yet wired)
+    pricePerUnitSubmarketMedian: null as number | null,
+    pricePerUnitPercentile: null as number | null,
+    pricePerSFSubmarketMedian: null as number | null,
+    pricePerSFPercentile: null as number | null,
+    grmSubmarketMedian: null as number | null,
+    grmPercentile: null as number | null,
+    gimSubmarketMedian: null as number | null,
+    gimPercentile: null as number | null,
+    goingInCapSubmarketMedian: null as number | null,
+    goingInCapPercentile: null as number | null,
+  };
+
   return {
     dealId,
     dealName: deal.name,
     totalUnits,
-    proforma: { year1: year1Rows, integrityChecks: checks, unitEconomics },
+    proforma: { year1: year1Rows, integrityChecks: checks, unitEconomics, valuationSnapshot },
     capitalStack: capitalStackWithOverrides,
     rentRollSummary,
     trafficProjection: trafficProjectionOut,

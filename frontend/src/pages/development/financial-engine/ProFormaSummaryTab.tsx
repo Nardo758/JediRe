@@ -54,6 +54,18 @@ interface DealCapitalStack {
   originationFeePct: number | null;
 }
 
+interface ValuationSnapshot {
+  pricePerUnit: number | null; pricePerSF: number | null;
+  grm: number | null; gim: number | null; goingInCapT12: number | null;
+  priceToRC: number | null; rcPerUnit: number | null;
+  buildArbitrageFlag: 'buy_existing' | 'neutral' | 'build_new' | null;
+  pricePerUnitSubmarketMedian: number | null; pricePerUnitPercentile: number | null;
+  pricePerSFSubmarketMedian: number | null; pricePerSFPercentile: number | null;
+  grmSubmarketMedian: number | null; grmPercentile: number | null;
+  gimSubmarketMedian: number | null; gimPercentile: number | null;
+  goingInCapSubmarketMedian: number | null; goingInCapPercentile: number | null;
+}
+
 interface DealFinancials {
   dealId: string;
   dealName: string;
@@ -62,6 +74,7 @@ interface DealFinancials {
     year1: OperatingStatementRow[];
     integrityChecks: IntegrityCheck[];
     unitEconomics: Record<string, number | null>;
+    valuationSnapshot: ValuationSnapshot | null;
   };
   capitalStack: DealCapitalStack;
   rentRollSummary: {
@@ -407,6 +420,11 @@ export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange }: Financia
       {/* ── Scrollable body ── */}
       <div style={{ flex: 1, overflowY: 'auto', overflowX: 'auto' }}>
 
+        {/* ── VALUATION SNAPSHOT STRIP ── */}
+        {data.proforma.valuationSnapshot && (
+          <ValuationSnapshotStrip vs={data.proforma.valuationSnapshot} />
+        )}
+
         {/* ── SECTION A — In-Place Rent Roll Unit Mix ── */}
         {data.rentRollSummary && (
           <RentRollSection
@@ -562,6 +580,154 @@ export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange }: Financia
         <div style={{ fontFamily: MONO, fontSize: 8, color: '#334155' }}>
           {data.meta.updatedAt ? `SEEDED ${new Date(data.meta.updatedAt).toISOString().slice(0, 16)} UTC` : 'PENDING SEED'}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── ValuationSnapshotStrip ────────────────────────────────────────────────────
+
+function vsFmtPct(v: number | null, decimals = 2): string {
+  if (v == null) return '—';
+  return `${(v * 100).toFixed(decimals)}%`;
+}
+function vsFmtX(v: number | null, decimals = 1): string {
+  if (v == null) return '—';
+  return `${v.toFixed(decimals)}×`;
+}
+function vsFmtDollarK(v: number | null): string {
+  if (v == null) return '—';
+  if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(2)}M`;
+  if (v >= 1_000) return `$${Math.round(v / 1_000)}K`;
+  return `$${v.toLocaleString()}`;
+}
+
+function PctBadge({ pct, invert = false }: { pct: number | null; invert?: boolean }) {
+  if (pct == null) return <span style={{ fontFamily: MONO, fontSize: 8, color: '#475569' }}>NO COMP</span>;
+  const isHigh = invert ? pct < 30 : pct > 70;
+  const isMid = pct >= 30 && pct <= 70;
+  const bg = isHigh ? '#1c0a0a' : isMid ? '#1a1200' : '#0a1c10';
+  const color = isHigh ? '#ef4444' : isMid ? '#f59e0b' : '#22c55e';
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      padding: '1px 5px', borderRadius: 3, background: bg,
+      fontFamily: MONO, fontSize: 8, color, fontWeight: 700, letterSpacing: 0.4,
+    }}>
+      P{Math.round(pct)}
+    </span>
+  );
+}
+
+function VSSnapshotTile({
+  label, value, sub, pct, invertBadge, note, flagColor,
+}: {
+  label: string;
+  value: string;
+  sub: string | null;
+  pct: number | null;
+  invertBadge?: boolean;
+  note?: string | null;
+  flagColor?: string | null;
+}) {
+  return (
+    <div style={{
+      flex: '1 1 0', minWidth: 120, maxWidth: 200,
+      background: '#0d0d0d', border: '1px solid #1e1e1e',
+      borderTop: `2px solid ${flagColor ?? '#06b6d4'}`,
+      padding: '8px 10px 7px',
+      display: 'flex', flexDirection: 'column', gap: 3,
+    }}>
+      <div style={{ fontFamily: LABEL, fontSize: 8, color: '#475569', letterSpacing: 0.8, textTransform: 'uppercase' }}>
+        {label}
+      </div>
+      <div style={{ fontFamily: MONO, fontSize: 16, color: '#e2e8f0', fontWeight: 700, lineHeight: 1.1 }}>
+        {value}
+      </div>
+      {sub && (
+        <div style={{ fontFamily: MONO, fontSize: 8, color: '#475569' }}>
+          MED {sub}
+        </div>
+      )}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 1 }}>
+        <PctBadge pct={pct} invert={invertBadge} />
+        {note && (
+          <span style={{ fontFamily: MONO, fontSize: 8, color: '#64748b' }}>{note}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ValuationSnapshotStrip({ vs }: { vs: ValuationSnapshot }) {
+  const grmFlag = vs.grm != null && vs.grm > 12 && (vs.grmSubmarketMedian == null || vs.grmSubmarketMedian < 10)
+    ? '#ef4444' : null;
+
+  const priceToRCBadgeColor =
+    vs.priceToRC != null && vs.priceToRC < 0.80 ? '#22c55e' :
+    vs.priceToRC != null && vs.priceToRC > 1.00 ? '#f59e0b' : null;
+  const priceToRCNote =
+    vs.priceToRC != null && vs.priceToRC < 0.80 ? 'BUY<BUILD' :
+    vs.priceToRC != null && vs.priceToRC > 1.00 ? 'BUILD<BUY' : null;
+
+  return (
+    <div style={{
+      flexShrink: 0, borderBottom: '1px solid #1e1e1e',
+      padding: '0 0 0 0',
+    }}>
+      <div style={{
+        padding: '5px 12px 4px',
+        background: '#0a0a0a',
+        borderBottom: '1px solid #1e1e1e',
+        display: 'flex', alignItems: 'center', gap: 8,
+      }}>
+        <span style={{ fontFamily: LABEL, fontSize: 8, color: '#06b6d4', letterSpacing: 1 }}>VALUATION SNAPSHOT</span>
+        <span style={{ fontFamily: MONO, fontSize: 8, color: '#334155' }}>6 GATEWAY METRICS · SUBMARKET COMPS PENDING FEED</span>
+      </div>
+      <div style={{ display: 'flex', gap: 1, background: '#070707', padding: '1px' }}>
+        <VSSnapshotTile
+          label="Price / Unit"
+          value={vsFmtDollarK(vs.pricePerUnit)}
+          sub={vs.pricePerUnitSubmarketMedian != null ? vsFmtDollarK(vs.pricePerUnitSubmarketMedian) : null}
+          pct={vs.pricePerUnitPercentile}
+          invertBadge
+        />
+        <VSSnapshotTile
+          label="Price / SF"
+          value={vs.pricePerSF != null ? `$${vs.pricePerSF.toFixed(0)}/SF` : '—'}
+          sub={vs.pricePerSFSubmarketMedian != null ? `$${vs.pricePerSFSubmarketMedian.toFixed(0)}/SF` : null}
+          pct={vs.pricePerSFPercentile}
+          invertBadge
+        />
+        <VSSnapshotTile
+          label="GRM"
+          value={vsFmtX(vs.grm)}
+          sub={vs.grmSubmarketMedian != null ? vsFmtX(vs.grmSubmarketMedian) : null}
+          pct={vs.grmPercentile}
+          invertBadge
+          flagColor={grmFlag}
+        />
+        <VSSnapshotTile
+          label="GIM"
+          value={vsFmtX(vs.gim)}
+          sub={vs.gimSubmarketMedian != null ? vsFmtX(vs.gimSubmarketMedian) : null}
+          pct={vs.gimPercentile}
+          invertBadge
+        />
+        <VSSnapshotTile
+          label="Going-In Cap"
+          value={vsFmtPct(vs.goingInCapT12)}
+          sub={vs.goingInCapSubmarketMedian != null ? vsFmtPct(vs.goingInCapSubmarketMedian) : null}
+          pct={vs.goingInCapPercentile}
+        />
+        <VSSnapshotTile
+          label="Price-to-RC"
+          value={vs.priceToRC != null ? `${(vs.priceToRC * 100).toFixed(0)}%` : '—'}
+          sub={null}
+          pct={null}
+          flagColor={priceToRCBadgeColor}
+          note={priceToRCNote}
+        />
       </div>
     </div>
   );

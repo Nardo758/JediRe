@@ -233,6 +233,17 @@ export interface F9DealFinancials {
     }>;
     integrityChecks: Array<{ id: string; status: 'ok'|'warn'|'error'; message: string; detail?: Record<string, unknown> }>;
     unitEconomics: Record<string, number|null>;
+    valuationSnapshot: {
+      pricePerUnit: number|null; pricePerSF: number|null;
+      grm: number|null; gim: number|null; goingInCapT12: number|null;
+      priceToRC: number|null; rcPerUnit: number|null;
+      buildArbitrageFlag: 'buy_existing'|'neutral'|'build_new'|null;
+      pricePerUnitSubmarketMedian: number|null; pricePerUnitPercentile: number|null;
+      pricePerSFSubmarketMedian: number|null; pricePerSFPercentile: number|null;
+      grmSubmarketMedian: number|null; grmPercentile: number|null;
+      gimSubmarketMedian: number|null; gimPercentile: number|null;
+      goingInCapSubmarketMedian: number|null; goingInCapPercentile: number|null;
+    } | null;
   };
   /** Hold-period returns computed from the F9 projection engine */
   returns: {
