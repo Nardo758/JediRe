@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useCallback, useRef } from 'react';
 import { AlertTriangle, Lock, ChevronDown, ChevronRight, Link, Check } from 'lucide-react';
 import { BT } from '../../../components/deal/bloomberg-ui';
-import type { FinancialEngineTabProps, F9TaxData, F9TaxYear } from './types';
+import type { FinancialEngineTabProps, F9TaxData, F9TaxYear, F9DealFinancials } from './types';
 
 const MONO = BT.font.mono;
 
@@ -209,26 +209,61 @@ function SohGrid({ perYear }: { perYear: F9TaxYear[] }) {
   );
 }
 
-function DeprecSchedule({ taxes }: { taxes: F9TaxData; costSeg: boolean; bonusYear: 2026 | 2027 }) {
+function DeprecSchedule({ taxes, costSeg, bonusYear, f9Financials }: {
+  taxes: F9TaxData;
+  costSeg: boolean;
+  bonusYear: 2026 | 2027;
+  f9Financials: F9DealFinancials | null | undefined;
+}) {
   const { incomeTax } = taxes;
   const holdYears = taxes.reTax.perYear.length || 5;
-  const { annualDepreciation, depreciableBase, bonusDepreciationCurrentYearPct, costSegAvailablePct } = incomeTax;
+  const { annualDepreciation, depreciableBase, costSegAvailablePct } = incomeTax;
+
+  const y1NoiRow = f9Financials?.proforma?.year1?.find(r => r.field === 'noi');
+  const y1Noi = y1NoiRow?.resolved ?? y1NoiRow?.platform ?? null;
+  const rentGrowth = f9Financials?.assumptions?.rentGrowthStabilized ?? 0.03;
+  const loanAmount = f9Financials?.capitalStack?.loanAmount ?? null;
+  const interestRate = f9Financials?.capitalStack?.interestRate ?? null;
+  const annualInterest = loanAmount != null && interestRate != null ? Math.round(loanAmount * interestRate) : null;
+  const bonusBasis = (costSeg && depreciableBase != null)
+    ? Math.round(depreciableBase * costSegAvailablePct * (bonusYear === 2026 ? 0.40 : 0.20))
+    : 0;
 
   const rows = useMemo(() => {
     if (!depreciableBase || !annualDepreciation) return [];
     return Array.from({ length: holdYears }, (_, i) => {
       const yr = i + 1;
-      const deprec = yr === 1 ? annualDepreciation + (depreciableBase * costSegAvailablePct * bonusDepreciationCurrentYearPct) : annualDepreciation;
-      const taxableIncome = -deprec;
+      const deprec = yr === 1
+        ? Math.round(annualDepreciation + bonusBasis)
+        : annualDepreciation;
+      const cumDepreciation = Math.min(
+        annualDepreciation * yr + bonusBasis,
+        depreciableBase,
+      );
+      const noi = y1Noi != null ? Math.round(y1Noi * Math.pow(1 + rentGrowth, yr - 1)) : null;
+      const taxableIncome = noi != null && annualInterest != null
+        ? noi - annualInterest - deprec
+        : null;
+      const taxPayable = taxableIncome != null ? Math.round(Math.max(0, taxableIncome) * 0.37) : null;
       const taxShield = Math.round(deprec * 0.37);
-      const cumDepreciation = Math.min(annualDepreciation * yr + (depreciableBase * costSegAvailablePct * bonusDepreciationCurrentYearPct), depreciableBase);
-      return { yr, deprec: Math.round(deprec), taxableIncome: Math.round(taxableIncome), taxShield, cumDepreciation: Math.round(cumDepreciation) };
+      return {
+        yr,
+        noi,
+        annualInterest,
+        deprec,
+        taxableIncome,
+        taxPayable,
+        taxShield,
+        cumDepreciation: Math.round(cumDepreciation),
+      };
     });
-  }, [depreciableBase, annualDepreciation, bonusDepreciationCurrentYearPct, costSegAvailablePct, holdYears]);
+  }, [depreciableBase, annualDepreciation, bonusBasis, holdYears, y1Noi, rentGrowth, annualInterest]);
 
   if (!rows.length) return (
     <tr><td colSpan={6} style={{ padding: '12px 12px', fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>No purchase price — depreciation unavailable.</td></tr>
   );
+
+  const COLS = ['YR', 'NOI (EST)', 'INTEREST EXP', 'DEPRECIATION', 'TAXABLE INCOME', 'TAX PAYABLE (37%)', 'CUMUL DEPREC'];
 
   return (
     <tr>
@@ -237,8 +272,8 @@ function DeprecSchedule({ taxes }: { taxes: F9TaxData; costSeg: boolean; bonusYe
           <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 9 }}>
             <thead>
               <tr style={{ background: BT.bg.panelAlt }}>
-                {(['YR', 'ANNUAL DEPREC', 'TAX SHIELD (37%)', 'CUMUL DEPREC', 'TAXABLE IMPACT'] as const).map(h => (
-                  <th key={h} style={{ padding: '4px 10px', textAlign: 'center', color: BT.text.muted, letterSpacing: 0.5, fontWeight: 700, borderRight: `1px solid ${BT.border.subtle}` }}>{h}</th>
+                {COLS.map(h => (
+                  <th key={h} style={{ padding: '4px 10px', textAlign: 'center', color: BT.text.muted, letterSpacing: 0.5, fontWeight: 700, borderRight: `1px solid ${BT.border.subtle}`, whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -246,10 +281,17 @@ function DeprecSchedule({ taxes }: { taxes: F9TaxData; costSeg: boolean; bonusYe
               {rows.map(r => (
                 <tr key={r.yr} style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
                   <td style={{ padding: '3px 10px', textAlign: 'center', color: BT.text.secondary, fontWeight: 700 }}>Y{r.yr}</td>
-                  <td style={{ padding: '3px 10px', textAlign: 'right', color: BT.text.purple }}>{fmtDlr(r.deprec)}</td>
-                  <td style={{ padding: '3px 10px', textAlign: 'right', color: BT.text.green, fontWeight: 700 }}>{fmtDlr(r.taxShield)}</td>
+                  <td style={{ padding: '3px 10px', textAlign: 'right', color: BT.text.cyan }}>{fmtDlr(r.noi)}</td>
+                  <td style={{ padding: '3px 10px', textAlign: 'right', color: BT.text.amber }}>{fmtDlr(r.annualInterest)}</td>
+                  <td style={{ padding: '3px 10px', textAlign: 'right', color: BT.text.purple }}>{fmtDlr(r.deprec)}{r.yr === 1 && bonusBasis > 0 ? <span style={{ fontSize: 7, color: BT.text.muted, marginLeft: 3 }}>+BONUS</span> : null}</td>
+                  <td style={{ padding: '3px 10px', textAlign: 'right', color: r.taxableIncome == null ? BT.text.muted : r.taxableIncome < 0 ? BT.text.green : BT.text.red, fontWeight: 700 }}>
+                    {r.taxableIncome != null ? fmtDlr(r.taxableIncome) : '—'}
+                    {r.taxableIncome != null && r.taxableIncome < 0 && <span style={{ fontSize: 7, marginLeft: 3 }}>LOSS</span>}
+                  </td>
+                  <td style={{ padding: '3px 10px', textAlign: 'right', color: r.taxPayable == null ? BT.text.muted : r.taxPayable > 0 ? BT.text.red : BT.text.green, fontWeight: 700 }}>
+                    {r.taxPayable != null ? (r.taxPayable === 0 ? '$0 (LOSS)' : fmtDlr(r.taxPayable)) : '—'}
+                  </td>
                   <td style={{ padding: '3px 10px', textAlign: 'right', color: BT.text.muted }}>{fmtDlr(r.cumDepreciation)}</td>
-                  <td style={{ padding: '3px 10px', textAlign: 'right', color: BT.text.red }}>{fmtDlr(r.taxableIncome)}</td>
                 </tr>
               ))}
             </tbody>
@@ -269,9 +311,9 @@ export function TaxesTab({ dealId, f9Financials }: FinancialEngineTabProps) {
   const [bonusYear, setBonusYear] = useState<2026 | 2027>(2026);
   const [miamiDadeOverride, setMiamiDadeOverride] = useState<boolean | null>(null);
 
-  const [userAssessedValue, setUserAssessedValue] = useState<number | null>(taxes?.reTax.userOverrides?.taxAssessedValue ?? null);
-  const [userMillageRate, setUserMillageRate]       = useState<number | null>(taxes?.reTax.userOverrides?.taxMillageRate   ?? null);
-  const [userTppAmount, setUserTppAmount]           = useState<number | null>(taxes?.tpp?.broker ?? null);
+  const [userAssessedValue, setUserAssessedValue] = useState<number | null>(taxes?.userOverrides?.taxAssessedValue ?? null);
+  const [userMillageRate, setUserMillageRate]       = useState<number | null>(taxes?.userOverrides?.taxMillageRate   ?? null);
+  const [userTppAmount, setUserTppAmount]           = useState<number | null>(taxes?.userOverrides?.tppAmount ?? null);
 
   const isMiamiDade = miamiDadeOverride ?? taxes?.reTax.isMiamiDade ?? false;
   const effMillageRate = userMillageRate ?? (isMiamiDade ? 23.09 : 20.00);
@@ -450,7 +492,7 @@ export function TaxesTab({ dealId, f9Financials }: FinancialEngineTabProps) {
                 sub="FF&E + appliances × TPP millage (~6 mills). Override with actual assessor bill."
                 broker={taxes?.tpp.broker}
                 platform={taxes?.tpp.platform}
-                user={userTppAmount !== taxes?.tpp.broker ? userTppAmount : null}
+                user={userTppAmount}
                 resolved={userTppAmount ?? taxes?.tpp.platform ?? taxes?.tpp.broker}
                 userEditable
                 onUserChange={handleTppAmount}
@@ -555,7 +597,7 @@ export function TaxesTab({ dealId, f9Financials }: FinancialEngineTabProps) {
                   </td>
                 </tr>
                 {taxes ? (
-                  <DeprecSchedule taxes={taxes} costSeg={costSeg} bonusYear={bonusYear} />
+                  <DeprecSchedule taxes={taxes} costSeg={costSeg} bonusYear={bonusYear} f9Financials={f9Financials} />
                 ) : (
                   <tr><td colSpan={6} style={{ padding: '8px 12px', fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>No data.</td></tr>
                 )}

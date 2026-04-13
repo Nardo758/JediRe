@@ -35,7 +35,9 @@ export function SourcesUsesTab({ dealId, deal, assumptions, modelResults, f9Fina
   const originationFeePct = f9Financials?.capitalStack?.originationFeePct ?? assumptions?.financing?.originationFee ?? 0.01;
   const originationFee = loanAmount * originationFeePct;
 
-  const totalUses = purchasePrice + closingCosts + originationFee + totalCapex;
+  const transferTaxAmount = f9Financials?.taxes?.transferTax?.totalTransferTax ?? 0;
+
+  const totalUses = purchasePrice + closingCosts + transferTaxAmount + originationFee + totalCapex;
   const totalSources = loanAmount + equity;
   const delta = totalSources - totalUses;
 
@@ -50,12 +52,13 @@ export function SourcesUsesTab({ dealId, deal, assumptions, modelResults, f9Fina
   const uses: UseItem[] = useMemo(() => {
     const items: UseItem[] = [];
     const total = Math.max(totalUses, 1);
-    if (purchasePrice > 0) items.push({ label: 'PURCHASE PRICE',    amount: purchasePrice, pct: purchasePrice / total, color: BT.text.white,     sub: totalUnits > 0 ? `${fmt$(purchasePrice / totalUnits)}/unit` : undefined });
-    if (closingCosts > 0)  items.push({ label: 'CLOSING COSTS',      amount: closingCosts,  pct: closingCosts / total,  color: BT.text.secondary, sub: 'Title, transfer tax, legal' });
-    if (originationFee > 0) items.push({ label: 'LOAN ORIGINATION',  amount: originationFee, pct: originationFee / total, color: BT.text.amber,   sub: `${fmtPct(originationFeePct * 100)} of loan` });
-    if (totalCapex > 0)    items.push({ label: 'CAPEX / RESERVES',   amount: totalCapex,    pct: totalCapex / total,    color: BT.text.orange,    sub: `${fmt$(capexTotal)} capex + ${fmt$(capexContingency)} contingency + ${fmt$(capexReserves)} reserves` });
+    if (purchasePrice > 0)    items.push({ label: 'PURCHASE PRICE',    amount: purchasePrice,    pct: purchasePrice / total,    color: BT.text.white,     sub: totalUnits > 0 ? `${fmt$(purchasePrice / totalUnits)}/unit` : undefined });
+    if (closingCosts > 0)     items.push({ label: 'CLOSING COSTS',      amount: closingCosts,     pct: closingCosts / total,     color: BT.text.secondary, sub: 'Title, legal' });
+    if (transferTaxAmount > 0) items.push({ label: 'TRANSFER TAXES',    amount: transferTaxAmount, pct: transferTaxAmount / total, color: BT.text.red,      sub: 'Doc stamps + intangible tax (FL) — from Taxes tab' });
+    if (originationFee > 0)   items.push({ label: 'LOAN ORIGINATION',   amount: originationFee,   pct: originationFee / total,   color: BT.text.amber,   sub: `${fmtPct(originationFeePct * 100)} of loan` });
+    if (totalCapex > 0)       items.push({ label: 'CAPEX / RESERVES',   amount: totalCapex,       pct: totalCapex / total,       color: BT.text.orange,    sub: `${fmt$(capexTotal)} capex + ${fmt$(capexContingency)} contingency + ${fmt$(capexReserves)} reserves` });
     return items;
-  }, [purchasePrice, closingCosts, originationFee, totalCapex, totalUses, totalUnits]);
+  }, [purchasePrice, closingCosts, transferTaxAmount, originationFee, totalCapex, totalUses, totalUnits]);
 
   const modelSu = modelResults?.sourcesAndUses;
 

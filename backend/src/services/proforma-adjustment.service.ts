@@ -1825,7 +1825,7 @@ export async function getDealFinancials(
   // TPP (Tangible Personal Property) estimates
   const rrLv = lv(year1Seed, 'replacement_reserves') as Record<string, unknown> | null;
   const rrBroker = layerN(rrLv, 'broker') ?? layerN(rrLv, 't12');
-  const tppBroker: number | null = tppAmountOvr ?? (rrBroker != null ? Math.round(rrBroker * 0.5) : (totalUnits > 0 ? totalUnits * 150 : null));
+  const tppBroker: number | null = rrBroker != null ? Math.round(rrBroker * 0.5) : (totalUnits > 0 ? totalUnits * 150 : null);
   const tppPlatform: number | null = totalUnits > 0 ? totalUnits * 200 : null;
 
   // Income tax / depreciation
