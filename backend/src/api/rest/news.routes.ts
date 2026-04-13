@@ -16,7 +16,7 @@ const RSS_SOURCES = [
   { id: 'housingwire',  label: 'Housing Wire',      url: 'https://www.housingwire.com/feed/',                                                    color: '#2E86C1' },
   { id: 'cnbc_re',      label: 'CNBC Real Estate',  url: 'https://www.cnbc.com/id/10000664/device/rss/rss.html',                                  color: '#CC0000' },
   { id: 'cnbc_fin',     label: 'CNBC Finance',       url: 'https://www.cnbc.com/id/10001147/device/rss/rss.html',                                  color: '#CC0000' },
-  { id: 'mw_re',        label: 'MarketWatch RE',     url: 'https://feeds.content.dowjones.io/public/rss/mw_realestate',                            color: '#004B87' },
+  { id: 'mw_re',        label: 'MarketWatch RE',     url: 'https://feeds.marketwatch.com/marketwatch/realtimeheadlines/',                         color: '#004B87' },
   { id: 'calculated',   label: 'Calculated Risk',    url: 'https://www.calculatedriskblog.com/feeds/posts/default',                                color: '#27AE60' },
 ];
 
