@@ -1,0 +1,1269 @@
+# F9 Financial Engine — Complete Model Specification (v2)
+
+**Module:** M09 (Pro Forma) + M09a (Assumptions) + M11 (Capital) + M12 (Returns) + M14 (Tax) + M15 (Sources & Uses) + M07 (Traffic feed)
+**Author:** Leon / JEDI RE
+**Status:** Implementation-grade spec — supersedes v1
+**Dependencies:** `proforma-adjustment.service.ts` (1,110 lines), `capital-structure.service.ts` (742 lines), `trafficPredictionEngine.ts` (668 lines), T-12 / rent roll parsers, `LayeredValue<T>` resolver, FRED/SOFR feed, FL county GIS for tax data
+
+---
+
+## Part 1 — Architecture
+
+### 1.1 The 12-tab structure (locked)
+
+| # | Tab | Layer ownership | Computes | Read or Edit |
+|---|---|---|---|---|
+| 1 | **Overview** | All layers, AI on top | KPIs, S&U summary, AI synthesis | Read |
+| 2 | **Pro Forma** | **Broker** | Year-0 as-is operating snapshot | Edit (corrections only) |
+| 3 | **Assumptions** | **Platform → User** | Forward Y1-N drivers (rent, traffic, expenses, capex, exit) | Edit (full) |
+| 4 | **Taxes** | **Platform → User** | Property tax model + income tax / depreciation + sale taxes | Edit (overrides) |
+| 5 | **Sources & Uses** | **User-confirmed** | Closing costs itemization + capital stack origin | Edit (full) |
+| 6 | **Debt** | **User-confirmed Platform-suggested** | Multi-loan stack: senior, mezz, pref, bridge, construction, refi | Edit (full) |
+| 7 | **Capital & Waterfall** | **User-confirmed** | Equity tranches, pref, promote tiers, distribution rules | Edit (full) |
+| 8 | **Projections** | **Engine** (resolved) | Full operating statement + cash flow waterfall, monthly/annual | Read (toggle views) |
+| 9 | **Returns** | **Engine** | Property + LP + GP returns, time-based metrics, hurdle deltas | Read |
+| 10 | Sensitivity | Engine | Two-way heat maps, tornado | Toggle drivers |
+| 11 | Decision | AI | Synthesis, risks, actions | Read |
+| 12 | Compare | Engine + AI | Version diffs | Select versions |
+
+### 1.2 The mental model
+
+> **Pro Forma = Year 0 (what is)**
+> **Assumptions + Taxes + Debt + Capital = Year 1-N rules (how it grows, what it costs, who pays, who collects)**
+> **Projections + Returns = Output (what falls out)**
+
+No tab computes anything that another tab also computes. Every number has exactly one home.
+
+### 1.3 Cross-tab data flow
+
+```
+                      ┌──────────────┐
+                      │  Pro Forma   │  In-place rent roll, T-12 OpEx, in-place tax/insurance
+                      │  (Year 0)    │
+                      └──────┬───────┘
+                             │ baseline values
+              ┌──────────────┼─────────────────┐
+              ▼              ▼                 ▼
+      ┌─────────────┐ ┌─────────────┐  ┌─────────────┐
+      │ Assumptions │ │   Taxes     │  │ Sources &   │
+      │ (Y1-N)      │ │ (RE + Inc)  │  │ Uses        │
+      │             │ │             │  │             │
+      │ rent growth │ │ reassessment│  │ purchase $  │
+      │ traffic     │ │ millage Δ   │  │ closing $   │
+      │ vacancy     │ │ depreciation│  │ reserves    │
+      │ expense %   │ │ doc stamps  │  │ acq fees    │
+      │ capex       │ │ TPP         │  │             │
+      │ exit cap    │ └──────┬──────┘  └──────┬──────┘
+      └──────┬──────┘        │                │
+             │               │                │ uses must = sources
+             │               │         ┌──────▼──────┐
+             │               │         │    Debt     │
+             │               │         │             │
+             │               │         │ senior +    │
+             │               │         │ mezz +      │
+             │               │         │ pref +      │
+             │               │         │ bridge      │
+             │               │         │ → DS sched  │
+             │               │         └──────┬──────┘
+             │               │                │
+             │               │         ┌──────▼──────┐
+             │               │         │  Capital &  │
+             │               │         │  Waterfall  │
+             │               │         │             │
+             │               │         │ LP/GP/pref  │
+             │               │         │ tiers       │
+             │               │         │ promote     │
+             │               │         └──────┬──────┘
+             │               │                │
+             ▼               ▼                ▼
+      ┌─────────────────────────────────────────────┐
+      │          Projections (Engine)               │
+      │  Y0 → Y(hold+1) operating statement         │
+      │  monthly toggle for Y1-2                    │
+      │  GPR → NOI → CFADS → Distributions          │
+      └────────────────────┬────────────────────────┘
+                           │
+                           ▼
+                   ┌───────────────┐
+                   │   Returns     │
+                   │ Property + LP │
+                   │ + GP + Risk   │
+                   └───────────────┘
+```
+
+---
+
+## Part 2 — Tab Specs
+
+### 2.1 Pro Forma Tab (recap from v1, with valuation snapshot)
+
+**Purpose:** Show the ingested as-is operating picture. Broker layer's home. Every cell is `LayeredValue<T>` with `broker` populated.
+
+Three sections plus a top-of-tab valuation snapshot strip:
+
+**Valuation Snapshot Strip (NEW — top of tab, sticky)**
+
+A 6-tile strip showing the as-is metrics at the broker's asking price. Updates live as user corrects parser values:
+
+| Tile | Value | Submarket Median | Percentile |
+|---|---|---|---|
+| Price / Unit | $X | $Y | nth |
+| Price / SF (NRSF) | $X/SF | $Y/SF | nth |
+| **GRM** | Xx | Yx | nth |
+| **GIM** | Xx | Yx | nth |
+| Going-In Cap (T-12) | X% | Y% | nth |
+| Price / Replacement Cost | X% | — | "Buy<Build" if <80% |
+
+These sit at the top because they're the first sniff-test any underwriter applies. If GRM is 14x in a market where comps trade at 8-9x, the deal is dead before opening Assumptions.
+
+Three sections below: In-Place Unit Economics (from rent roll) | T-12 Operating Statement (canonical GL) | Asking Capital Stack (what seller wants).
+
+Edits = corrections only (parser misreads). `Reset to ingested` per row, `Reparse from source` at top. Integrity banner flags when T-12 doesn't reconcile or rent roll doesn't tie to T-12 GPR within 3%.
+
+*Full detail in v1 spec — unchanged.*
+
+---
+
+### 2.2 Assumptions Tab (recap from v1, with traffic)
+
+**Purpose:** Per-year forward inputs Y1-N. Platform values pre-populated from agents; user overrides per cell with Broker/Platform/User layered display.
+
+Seven sections:
+1. Revenue — Rent side (rent growth, concessions, bad debt, other income, loss-to-lease)
+2. **Revenue — Traffic side** (T-01 walk-ins, T-05 conversion, T-06 capture, T-07 trajectory, derived vacancy)
+3. Expenses (RE tax growth handled in Taxes tab, others here)
+4. CapEx & reserves
+5. Debt placeholders (if M11 not locked)
+6. Exit
+7. Strategy-specific (redev / dev / STR)
+
+GPR = `Σ rent_component × traffic_component`. Decomposition row shows the two ingredients merging.
+
+*Full detail in v1 spec — unchanged.*
+
+---
+
+### 2.3 Taxes Tab (NEW)
+
+**Purpose:** Property tax is the single largest expense miss in broker proformas — Florida reassessment on sale resets the basis, often spiking taxes 40-80% in Y1. This tab models that explicitly. It also handles income tax / depreciation, sale-related transfer taxes, and TPP.
+
+Florida-specific behaviors materially affect every deal in the primary market.
+
+#### 2.3.1 Section A: Property Tax (RE Tax)
+
+Per-year grid with the following rows. Each row LayeredValue (Broker / Platform / User).
+
+| Row | Y0 (in-place) | Y1 (post-sale) | Y2 ... Yn |
+|---|---|---|---|
+| Just / Market Value | from county assessor | = Purchase Price (reassessment trigger) | + Platform appreciation model |
+| Assessed Value | from county TRIM | = Just Value Y1 (reset) | min(prior × 1.10, Just Value) — **10% cap** |
+| Taxable Value | Assessed − exemptions | same | same |
+| Millage Rate | from TRIM | from TRIM (or platform-projected change) | Platform millage trend |
+| **Gross RE Tax** | Taxable × Millage / 1000 | Taxable × Millage / 1000 | same |
+| Early-pay discount | 4% if paid Nov | 4% Nov / 3% Dec / 2% Jan / 1% Feb | same |
+| Special assessments (CDD, MSBU) | from county | from county | + escalation per CDD bond schedule |
+| **Net RE Tax (Cash)** | T-12 actual | computed | computed |
+| Tax Appeal scenario (toggle) | n/a | reduces taxable by X% | persists if won |
+
+**The 10% non-homestead cap** is the structural mechanic Florida investors must model. Once a property is bought at a higher price, Year 1 reassessment hits the new Just Value. But going forward, annual assessed value increases are capped at 10% per year regardless of market value — until next sale or substantial improvement triggers reset. The grid shows this cap binding visually (lock icon when cap is the constraint).
+
+**Reassessment event flag:** the Y1 row carries a banner "**REASSESSMENT EVENT** — Just Value resets to purchase price. Tax delta vs T-12: +$X (+Y%). This is the Tax Bump." Click for the math: `(Purchase Price × millage / 1000) − T-12 RE tax`.
+
+**Platform value derivation:**
+- Just Value Y1 = purchase price (from S&U tab)
+- Just Value Y2-N = purchase price × (1 + market_appreciation_model_per_year)
+- Assessed Value cap rule applied per year
+- Millage Rate Platform value = trailing 5-year submarket millage trend (data: county GIS millage history)
+- Special assessments pulled from county CDD database for Florida
+- Tax appeal Platform recommendation: triggers when Assessed > 110% of comp-derived value
+
+**Comparison row at top:** "T-12 RE Tax: $X | Year 1 modeled: $Y | Delta: +$Z (+W%)" — color-coded red if delta > +30%.
+
+#### 2.3.2 Section B: Tangible Personal Property (TPP) Tax
+
+FL only. Tax on FF&E of income-producing property. Material for furnished STR, hotel-style multifamily, or recently renovated assets.
+
+| Row | Source |
+|---|---|
+| TPP Just Value (FF&E book value) | DR-405 filing or platform estimate from unit count × $/unit furnishing cost |
+| TPP Assessed Value | = Just Value (no cap) |
+| TPP Exemption ($25K) | automatic |
+| TPP Millage | same as RE millage |
+| **TPP Tax** | (Assessed − $25K) × Millage / 1000 |
+
+Usually small ($5-15K/yr for typical multifamily) but missed in 70% of broker OMs.
+
+#### 2.3.3 Section C: Income Tax / Depreciation Schedule
+
+Per-year grid. This drives after-tax returns, which drives the LP-level return calculation.
+
+| Row | Y1 | Y2 | ... | Sale Year |
+|---|---|---|---|---|
+| Acquisition basis | from S&U tab (purchase + closing + capex) | | | |
+| Land value (non-depreciable) | platform: 15-25% of basis based on county | | | |
+| Building value (depreciable) | Total basis − land | | | |
+| 27.5-yr straight-line depreciation | Building / 27.5 | same | same | partial year |
+| **Cost segregation election** (toggle) | accelerate 20-30% of basis to 5/7/15-yr | | | |
+| Bonus depreciation rate (current year) | **2026: 40%, 2027: 20%, 2028: 0%** | per year schedule | | |
+| Bonus depreciation $ | (segregated 5/7/15-yr property) × bonus rate | | | |
+| **Total depreciation deduction** | sum | | | |
+| NOI − Depreciation − Interest | taxable income | | | |
+| Suspended losses carried fwd | track | | | |
+| **Tax payable (before sale)** | applies user marginal rate | | | |
+| Depreciation recapture at sale | min(depreciation taken, gain) × 25% | | | |
+| Capital gains at sale | (sale − adjusted basis − recapture) × 20% | | | |
+| **Total tax at sale** | recapture + cap gains | | | |
+| 1031 exchange election (toggle) | defers entire tax bill | | | |
+
+**Cost segregation Platform recommendation:** triggered when basis > $5M (study cost ~$8-15K is justified). Shows estimated NPV of accelerated depreciation vs study cost.
+
+**Bonus depreciation timing alert:** since bonus depreciation phases to zero by 2028, the Platform flags closing-timing implications: "Closing in 2026 captures 40% bonus on $X segregated property = $Y immediate deduction. Closing in 2027 captures 20% = $Z. Delta: $W."
+
+#### 2.3.4 Section D: Sale-Related Transfer Taxes
+
+These hit at exit. Modeled in the sale year only.
+
+**Florida Documentary Stamps on Deed:**
+- Statewide: $0.70 per $100 of sale consideration = **0.7% of sale price**
+- Miami-Dade: $0.60/$100 + $0.45/$100 surtax on non-single-family = **1.05% on multifamily**
+
+**Florida Doc Stamps on Mortgage** (paid by buyer at refi or new debt origination):
+- $0.35 per $100 of mortgage = **0.35% of loan amount**
+
+**Florida Intangible Tax on Mortgage:**
+- $0.002 per $1 of mortgage = **0.2% of loan amount** (one-time at origination)
+
+**Combined FL closing tax burden on a new mortgage = 0.55% of loan amount, plus 0.7-1.05% of purchase price on the deed.** This rolls into Sources & Uses on the buy side and into sale proceeds calculation on the exit side.
+
+#### 2.3.5 Tab-level outputs (read-only summary card top of tab)
+
+- **Effective tax rate (RE tax / EGI)** Year 1 vs T-12 (delta highlighted)
+- **Total tax expense (RE + TPP) Year 1 → Year N** sparkline
+- **Tax bump impact on Year 1 NOI** ($, % of NOI)
+- **Sale year tax burden** (recapture + cap gains + transfer) as % of gross proceeds
+- **1031 deferral value** (NPV of taxes deferred)
+
+---
+
+### 2.4 Sources & Uses Tab (NEW)
+
+**Purpose:** The capital stack origin and complete acquisition cost itemization. Total uses must equal total sources (enforced). This is the Year 0 financing snapshot — what hits the closing table.
+
+#### 2.4.1 USES — Itemized
+
+Grouped sections, every line user-editable with Platform suggested defaults:
+
+**Acquisition**
+- Purchase Price (from contract / OM, links to Pro Forma)
+- Earnest Money credit (offset)
+
+**Hard Diligence Costs**
+- Appraisal — Platform default $8-15K based on size
+- Phase I Environmental — $3-5K
+- Property Condition Assessment (PCA) — $4-8K
+- Survey (boundary + ALTA if required by lender) — $5-15K
+- Zoning report — $2-5K
+- Engineering / Structural review — varies
+- Termite / WDO inspection — $500-1500
+- Lead/asbestos screening (pre-1978 buildings) — $2-5K
+
+**Soft Diligence Costs**
+- Acquisition legal — Platform default 0.10-0.20% of price, min $40K
+- Lender legal — 0.05-0.15% of loan, min $25K
+- Travel & DD personnel — user input
+- Background / OFAC — nominal
+
+**Lender / Financing Costs**
+- Loan origination fee — 0.5-1.0% of loan (toggle per lender type)
+- Loan application fee — flat
+- Lender title insurance premium — ALTA loan policy, ~0.3-0.4% of loan (FL Promulgated Rate)
+- Lender legal (above)
+- Mortgage broker fee (if used) — 0.5-1.0% of loan
+- Rate cap purchase (if floater) — Platform pulls live rate cap pricing from Chatham/Pensford feed
+
+**Title & Closing**
+- Owner's title insurance — ~0.5-0.6% of price (FL Promulgated Rate)
+- Endorsements (zoning, comp lien, survey, environmental) — bundled $2-10K
+- Escrow / settlement fee — flat $2-5K
+- Recording fees — nominal
+- Closing agent fee — flat
+
+**Florida-Specific Transfer Taxes** *(pulled from Taxes tab Section D)*
+- Doc Stamps on Deed (0.7% statewide / 1.05% Miami-Dade)
+- Doc Stamps on Mortgage (0.35% of loan)
+- Intangible Tax on Mortgage (0.2% of loan)
+
+**Required Reserves at Closing** *(lender-driven, pulls from Debt tab)*
+- Tax & Insurance escrow (typically 3-6 months)
+- Replacement Reserve initial deposit ($250-400/unit/yr)
+- Immediate Repair Reserve (from PCA, usually 125% of identified)
+- Interest reserve (bridge / construction loans only)
+- Operating Deficit Reserve (for value-add)
+
+**Sponsor Acquisition Fee**
+- Acquisition fee — 1-2% of purchase price (paid to GP from equity)
+
+**Working Capital**
+- Initial operating reserve — typically 1-3 months OpEx
+
+**Capex Funding** *(Year 0 portion of renovation budget)*
+- Initial CapEx wave — links to Assumptions Section 4 (capex schedule)
+
+**TOTAL USES**
+
+#### 2.4.2 SOURCES — Itemized
+
+- Senior Debt (links to Debt tab — pulls amount selected there)
+- Mezzanine Debt (if applicable)
+- Preferred Equity (if applicable)
+- Sponsor Co-investment (GP equity)
+- LP Equity Class A
+- LP Equity Class B (if multi-class)
+- Seller carryback (if applicable)
+- Assumed debt (if applicable)
+
+**TOTAL SOURCES**
+
+#### 2.4.3 Reconciliation
+
+Top of tab: **`Sources $X — Uses $Y = $Z`** with green check if Z = 0 within $1, red banner otherwise. Equity gap (if uses exceed debt + GP) is auto-displayed as the "LP Equity Need." Capital tab consumes this.
+
+#### 2.4.4 Closing Cost Benchmarks (right rail)
+
+Platform shows a benchmarks panel:
+- Total closing costs as % of price — your deal: X.X% | submarket avg: Y.Y% | percentile: Z
+- Largest line items vs benchmark — flags any line >2 std dev from peer deals
+- "Florida transfer taxes alone: $X (Y% of price). This is non-negotiable but often missed in pre-LOI underwriting."
+
+---
+
+### 2.5 Debt Tab (NEW detail)
+
+**Purpose:** Multi-loan stack modeling. Handle every debt instrument used in commercial multifamily, plus refi events mid-hold. Populates Sources & Uses, drives debt service in Projections, drives DSCR and debt yield in Returns.
+
+#### 2.5.1 Loan stack list
+
+Top of tab: list of all loans on the deal. Multiple allowed. User adds/removes loans. Each row shows: Loan Type | Lender | Amount | Rate | Term | Status (proposed/locked/refi'd).
+
+Statuses: `Proposed` (Platform suggestion), `Quoted` (user has actual term sheet), `Closed` (locked at acquisition), `Refi'd` (replaces prior loan in year X).
+
+#### 2.5.2 Loan-level configuration
+
+For each loan, a panel with these fields. All `LayeredValue` where Platform can suggest based on loan type + market.
+
+**Identity**
+- Loan Type — dropdown:
+  - Senior Fixed (CMBS / Life Co)
+  - Senior Floating (Bank / Debt Fund)
+  - Agency — Fannie Mae DUS
+  - Agency — Freddie Mac Optigo Conventional
+  - Agency — Freddie Mac SBL (small balance)
+  - Agency — HUD/FHA 223(f) or 221(d)(4)
+  - Bridge (1-3 yr floating)
+  - Construction Loan
+  - Bridge-to-Perm
+  - Mezzanine Debt
+  - Preferred Equity (debt-like)
+  - Subordinate Debt
+  - Seller Carryback
+  - Assumed Loan (in-place)
+- Lender Name — free text
+- Loan Position (1st mortgage / 2nd / mezz / pref)
+- Origination Date
+- Maturity Date
+
+**Sizing**
+- Loan Amount (or LTV / LTC trigger — Platform back-solves)
+- LTV — auto-calc (loan / appraised value)
+- LTC — auto-calc (loan / total cost from S&U)
+- Debt Yield — auto-calc (Year 1 NOI / loan)
+- DSCR (Year 1) — auto-calc
+- Loan-to-Stabilized-Value (for value-add or development)
+
+**Pricing**
+- Rate Type — Fixed / Floating / Floating-with-cap
+- Index (if floating) — SOFR (1mo, 3mo) / Prime / Treasury / WSJ Prime — pulls live from FRED
+- Spread (bps over index)
+- Floor rate
+- Coupon (if fixed)
+- All-in rate at close
+- Note rate vs Pay rate (for IO portion)
+
+**Term**
+- Loan Term (years)
+- Amortization Period (years) — separate from term
+- IO Period (months)
+- Balloon at maturity — auto-calc
+- Extension Options — list: number, length, fee bps, conditions (DSCR test, debt yield test, fee paid)
+
+**Fees**
+- Origination Fee (bps of loan)
+- Exit Fee (bps of loan, paid at payoff)
+- Standby/Unused Fee (for construction undrawn balances)
+- Servicing Fee (bps annually)
+- Rate Cap Cost (for floaters) — Platform pulls from rate cap broker feed
+
+**Prepayment**
+- Lockout Period (months)
+- Yield Maintenance / Defeasance / Step-Down / Open
+- Step-Down Schedule (if step-down): year/% (e.g., 5,4,3,2,1,0)
+- Open Period (last X months prepayable at par)
+
+**Covenants**
+- Min DSCR (test frequency — annual, quarterly)
+- Min Debt Yield
+- Min Occupancy
+- Max LTV (mid-loan revaluation trigger)
+- Cash trap thresholds
+- Sweep thresholds
+
+**Reserves Required by Lender**
+- Tax & Insurance escrow
+- Replacement Reserve $/unit/yr
+- Immediate Repair Reserve
+- Interest Reserve (bridge/construction)
+- Carry Reserve (for lease-up loans)
+
+**Recourse**
+- Non-recourse / Limited carve-out / Partial / Full
+- Burn-off triggers (DSCR test, debt yield test)
+- Bad-boy carve-outs
+
+#### 2.5.3 Amortization Schedule (per loan)
+
+Read-only output, monthly granularity, with annual rollup. Columns:
+- Period
+- Beginning Balance
+- Index Rate (if floating, sourced from forward curve)
+- Coupon Rate
+- Interest Payment
+- Principal Payment (zero in IO period)
+- Total Debt Service
+- Ending Balance
+- DSCR (NOI for period / DS for period)
+- Debt Yield (NOI annualized / balance)
+
+For floaters, the rate column uses **Platform forward curve** (SOFR forward strip from FRED) per period. User can override with flat-rate scenario or custom curve.
+
+For construction loans, draws schedule (S-curve or user-input) ties to capex schedule from Assumptions Section 4.
+
+#### 2.5.4 Refinance Event Modeling
+
+User can add a "Refi Event" at any year. Refi event:
+- New loan replaces old loan in Month X of Year Y
+- Calculates payoff (existing balance + prepay penalty + exit fee)
+- New loan proceeds — payoff = Net Refi Proceeds (distributed to equity per Capital tab waterfall)
+- Triggers FL doc stamps + intangible tax on new loan (flows to Taxes tab)
+- Resets amortization schedule from Month X forward
+
+Platform refi recommendation: when remaining loan term < 24 months, when DSCR > 2.0x and rates have dropped 100bps, when deal hits stabilization milestones — flag as suggested refi event.
+
+#### 2.5.5 Multi-Loan Aggregation
+
+Bottom of tab shows aggregated stack:
+- Combined Loan Balance by year
+- Combined Debt Service by year
+- Combined LTV / LTC / Debt Yield
+- Weighted Average Cost of Capital (debt only)
+- Stack visualization (bar chart by tranche)
+
+#### 2.5.6 Loan-Level Metrics Panel (per loan, NEW)
+
+For each loan, a metrics panel runs alongside the amortization schedule. These are the operative numbers for sizing, sanity-checking, and arguing with the lender.
+
+**Sizing metrics (at close)**
+- LTV (loan / appraised value)
+- LTC (loan / total cost from S&U)
+- Loan-to-Stabilized-Value (loan / stabilized value)
+- Debt Yield (Year 1 NOI / loan)
+- Debt Yield Stabilized (Stab NOI / loan)
+- DSCR Year 1 / Min Year / Avg
+- Loan Constant (Annual DS / Loan) — the all-in yield to the lender, the cost-of-debt for the GP
+
+**Leverage diagnostic**
+- **Positive Leverage Flag** — Going-In Cap > Loan Constant. Green check / red X.
+- Leverage Spread (bps) — (Going-In Cap − Loan Constant) × 10000
+- Levered IRR Lift — (Levered LP IRR − Unlevered Property IRR) bps contribution
+- Cash-on-Cash Spread — Year 1 CoC − Loan Constant
+
+If the indicator is red (negative leverage), the panel surfaces a warning: "This loan is more expensive than the property yields. Total return depends on appreciation, not cash flow. Common in low-cap-rate / value-add bridges, but verify the appreciation thesis is durable."
+
+**Stress metrics**
+- Break-Even Occupancy — occupancy at which NOI = DS
+- Break-Even Rent — rent level at which NOI = DS
+- DSCR @ -10% NOI
+- DSCR @ +200bps Rate (floaters)
+- Cash Trap Distance (bps)
+- Default Buffer (months of DS in reserves)
+
+**Maturity / refi metrics**
+- Maturity Year & Balloon Balance
+- Projected Maturity LTV (balloon / projected value)
+- Projected Maturity Debt Yield (NOI at maturity / balloon)
+- **Refi-Out Probability** — Platform model: P(maturity_LTV < market_refi_max AND maturity_DY > market_refi_min) using forward rate curve and projected NOI
+- Defeasance / YM Cost Today (live calc)
+- Suggested Refi Window (Platform-flagged years)
+
+**Covenant cushion (live)**
+- DSCR cushion vs minimum (current vs Year-of-min)
+- Debt Yield cushion vs minimum
+- Occupancy cushion vs minimum
+- Distance to cash trap trigger
+
+When any cushion drops below 10%, the panel turns amber. Below 5%, red. This is what saves you from accidentally signing into a covenant you'll breach in Year 2.
+
+---
+
+### 2.6 Capital & Waterfall Tab (NEW detail)
+
+**Purpose:** Define the equity stack and the rules by which cash flows distribute. This determines LP returns, GP returns, sponsor promote earnings, and whether/when promote tiers crystallize.
+
+#### 2.6.1 Equity Stack — Tranches
+
+List of equity tranches. Each tranche editable. Order matters for distribution waterfall.
+
+For each tranche:
+- Tranche Name (e.g., "LP Class A", "LP Class B", "GP Co-invest", "Pref Equity")
+- Tranche Type — Common / Preferred / Pref Equity (debt-like) / GP Carry-only
+- Contribution $ (auto-fills from S&U "LP Equity Need")
+- % of Equity Stack
+- Pari Passu vs Sequential to other tranches
+- Pref Return Rate (if preferred)
+- Pref Compounding (annual / quarterly / monthly)
+- Pref Type — Cumulative / Non-cumulative
+- Catch-up provision (if any)
+- Promote tier participation (yes/no)
+
+#### 2.6.2 Waterfall Configuration
+
+Distribution structure type — toggle:
+- **American Waterfall** (deal-by-deal, distributions test on this deal alone)
+- **European Waterfall** (fund-level, no promote until all LP capital + pref returned across the fund)
+
+Tier-by-tier configuration. Standard 4-tier example, fully editable:
+
+| Tier | Trigger | LP Share | GP Share | Notes |
+|---|---|---|---|---|
+| 1. Return of Capital | Until LP receives 100% of contributed equity | 100% | 0% | |
+| 2. Preferred Return | Until LP receives X% IRR (or Y% accrued pref) | 100% | 0% | Pref rate user-set |
+| 3. GP Catch-up | Until GP receives Z% of profits-to-date | 0% / 50% / 100% | 100% / 50% / 0% | Catch-up % editable |
+| 4. Promote | All distributions thereafter | 80% / 70% / 60% | 20% / 30% / 40% | Multiple sub-tiers possible (IRR-based) |
+
+**IRR-based promote tiers** (most common for value-add):
+- 80/20 LP/GP up to 12% LP IRR
+- 70/30 LP/GP from 12% to 18% LP IRR
+- 60/40 LP/GP above 18% LP IRR
+
+Each tier configurable: hurdle rate (IRR or EM), LP/GP split above hurdle, lookback provisions.
+
+#### 2.6.3 Distribution Schedule (per period)
+
+Read-only output. Periods = annual default, quarterly toggle. Per period shows:
+- Available Cash for Distribution (from Projections — CFADS net of reserves)
+- Cumulative Distributions to LP at start of period
+- LP Pref Accrued at start of period
+- Distribution per Tier (T1 / T2 / T3 / T4)
+- LP Distribution this period
+- GP Distribution this period
+- LP IRR-to-date
+- GP Promote earned this period
+- Tier Currently Active flag
+
+#### 2.6.4 GP Compensation Layers
+
+In addition to promote, GP earns fees. These reduce LP returns. Fees configurable:
+- **Acquisition Fee** — 1-2% of purchase price, paid at close (already in S&U Uses)
+- **Asset Management Fee** — 0.75-1.5% of equity OR % of EGI annually
+- **Construction Management Fee** — 3-5% of capex, if value-add
+- **Disposition Fee** — 0.5-1.0% of sale price
+- **Refinancing Fee** — 0.25-0.50% of new loan
+- **Loan Guarantor Fee** — only if recourse, ~0.25% of loan
+
+Each fee shown as $ per year on the Distribution Schedule. Toggleable on/off.
+
+#### 2.6.5 Capital Stack Visualization
+
+Stacked bar chart showing the full stack at close: from bottom (senior debt) to top (GP equity). Width = $, color-coded by tranche type. Hover shows IRR target per tranche.
+
+Side panel: Weighted Average Cost of Capital (WACC) calc — debt-weighted-cost + equity-weighted-cost (using LP IRR target as equity cost). Compared to going-in cap rate to show the **leverage spread** (the GP's edge).
+
+---
+
+### 2.7 Projections Tab (full detail)
+
+**Purpose:** The fully-resolved operating statement and cash flow waterfall. This tab computes nothing of its own — it consumes resolved LayeredValues from Pro Forma + Assumptions + Taxes + Debt + Capital and renders the institutional underwriting sheet.
+
+#### 2.7.1 Layout
+
+Header: timeline selector (3 / 5 / 7 / 10 yr) + view toggle (Annual / Monthly / Quarterly).
+
+Default Annual view shows columns: **Year 0 (Close) | Year 1 | Year 2 | … | Year N | Sale Year**
+
+Monthly toggle expands Y1 and Y2 into 24 monthly columns then resumes annual (most users want monthly granularity in lease-up / stabilization period).
+
+#### 2.7.2 Line items (canonical, in display order)
+
+**REVENUE (from Assumptions Sections 1-2)**
+- Gross Potential Rent (units × rent × 12, with growth)
+- (Loss-to-Lease) — gap between in-place and market that captures over time
+- Gross Scheduled Rent
+- (Vacancy) — derived from Traffic or user-input
+- (Concessions)
+- (Bad Debt / Credit Loss)
+- Net Rental Revenue
+- + Other Income — RUBS
+- + Other Income — Fees
+- + Other Income — Misc
+- **Effective Gross Income (EGI)**
+
+**OPERATING EXPENSES (from Assumptions Section 3 + Taxes Sections A-B)**
+- Real Estate Taxes (from Taxes tab Section A — net of discount)
+- Tangible Personal Property Tax (Taxes Section B)
+- Insurance
+- Utilities — Electric / Water-Sewer / Gas / Trash (sub-rows)
+- Repairs & Maintenance
+- Contract Services
+- Turnover / Make-Ready
+- Payroll & Benefits
+- Marketing & Leasing
+- Management Fee (% of EGI)
+- G&A
+- **Total Operating Expenses**
+
+- **NET OPERATING INCOME (NOI)**
+
+**BELOW NOI**
+- (Replacement Reserve) — recurring capex
+- (Renovation CapEx) — from Assumptions Section 4 schedule
+- **Cash Flow After Reserves & CapEx (CFAS)**
+
+**DEBT SERVICE (from Debt tab)**
+- Senior Loan Interest
+- Senior Loan Principal
+- Mezz Interest (if any)
+- Mezz Principal (if any)
+- **Total Debt Service**
+- DSCR (NOI / DS) — annotation
+- Debt Yield (NOI / Balance) — annotation
+
+- **CASH FLOW AVAILABLE FOR DISTRIBUTION (CFADS)**
+
+**DEPRECIATION & TAX (from Taxes Section C, if "after-tax view" toggle on)**
+- Depreciation deduction
+- Taxable income
+- (Income tax)
+- **After-tax CFADS**
+
+**DISTRIBUTIONS (from Capital tab waterfall)**
+- LP Distribution (by tier)
+- GP Distribution (by tier)
+- GP Fees (asset mgmt, etc.)
+- **Total Equity Distribution**
+
+**SALE YEAR — Disposition Block (sale year column only)**
+- Year N+1 Forward NOI (terminal NOI basis from Assumptions)
+- ÷ Exit Cap Rate
+- = Gross Sale Price
+- − Selling Costs (broker fee, legal — % of gross)
+- − FL Doc Stamps on Deed (Taxes Section D)
+- − Loan Payoff (Debt tab final balance + prepay penalty + exit fee)
+- = Net Sale Proceeds to Equity
+- − Depreciation Recapture Tax
+- − Capital Gains Tax
+- = Net After-Tax Sale Proceeds (or 1031 deferred — toggle)
+- → Distributed per Capital Waterfall
+
+#### 2.7.3 Cell formatting (Bloomberg dark)
+
+- Black text = formula computation
+- Cyan text = pulled from another tab (cross-tab link)
+- Blue text = user input on this tab (none in Projections — read-only)
+- Subtotal rows = bold, light gray bg
+- NOI row = highlighted (cyan accent)
+- CFADS row = highlighted (green accent)
+- Negative numbers in parens, red text
+- Click any cell → drawer shows formula + source path
+
+#### 2.7.4 Key annotations row (below each year)
+
+A condensed metrics row beneath the operating statement:
+- Occupancy %
+- Rent Growth YoY %
+- OpEx Ratio (OpEx / EGI)
+- NOI Margin
+- DSCR
+- Debt Yield
+- Cap Rate (NOI / Asset Value)
+- Yield on Cost (Stabilized NOI / Total Cost)
+
+---
+
+### 2.8 Returns Tab (NEW)
+
+**Purpose:** Aggregate the financial output into the metrics that LPs and IC committees actually care about. Property-level, LP-level, GP-level, risk-adjusted, time-based.
+
+#### 2.8.1 Hero Metrics Strip (top of tab)
+
+Four large tiles, color-coded vs user hurdles:
+
+| Metric | Value | Hurdle | Status |
+|---|---|---|---|
+| LP Net IRR | 18.4% | 15.0% | ✓ +340bps |
+| LP Equity Multiple | 2.34x | 2.00x | ✓ +0.34x |
+| Average Cash-on-Cash | 7.8% | 7.0% | ✓ +80bps |
+| GP Promote Earned | $4.2M | — | n/a |
+
+#### 2.8.2 Property-Level Returns (Unleveraged)
+
+- Unleveraged IRR (property cash flows + sale, no debt)
+- Unleveraged Equity Multiple
+- Going-In Cap Rate (Year 1 NOI / Total Cost)
+- Stabilized Cap Rate (Stabilized NOI / Total Cost)
+- Yield on Cost (development) — Untrended and Trended
+- Development Spread (YoC − Exit Cap) — for development deals
+- Average NOI Growth %
+- Peak NOI Year
+
+#### 2.8.3 LP Returns (Levered, After Fees)
+
+Per-class table if multi-class equity:
+
+| Class | IRR | EM | CoC Avg | Time-Weighted Return | Pref Achieved | Promote Hit |
+|---|---|---|---|---|---|---|
+| LP Class A | X% | Yx | Z% | W% | Y/N | Tier hit |
+| LP Class B | … | … | … | … | … | … |
+
+Plus:
+- LP Pref Accrued vs Paid (gap = unpaid pref accumulating)
+- Net Distributions by Year (chart)
+- Cumulative LP Cash Flow (curve, showing breakeven year)
+- Peak Equity Outstanding ($)
+- Equity Recovery Year (when cumulative distributions = cumulative contributions)
+
+#### 2.8.4 GP Returns
+
+- GP Co-invest IRR
+- GP Co-invest EM
+- Promote Earned by Tier ($)
+- Total GP Compensation = Promote + Fees (acq + AM + disp + refi)
+- Fee Income breakdown by year
+- GP All-In Multiple (Promote + Fees + Co-invest return / GP Co-invest)
+
+#### 2.8.5 Debt Metrics (expanded)
+
+Debt analytics live in three groups: **coverage**, **structural**, and **stress**. Every metric tracked per year + min/avg/max + status vs covenant.
+
+**Coverage Ratios**
+- DSCR (Year 1, Min, Avg, Stabilized) — NOI / Total Debt Service
+- Debt Yield (Year 1, Min, Avg, At Refi) — NOI / Loan Balance
+- Interest Coverage Ratio (ICR) — NOI / Interest only (matters for IO loans where DSCR understates pressure)
+- Fixed Charge Coverage — NOI / (DS + ground rent + capital lease) — for ground-leased deals
+- Cash Flow Coverage — CFAS / DS (post-reserves coverage, the truest test)
+- Loan Constant — Annual DS / Loan Amount (the all-in cost of debt as a yield)
+
+**Structural Metrics**
+- LTV at Close — Loan / Appraised Value
+- LTV at Stabilization — Loan / Stabilized Value (Year 3 NOI / Exit Cap)
+- LTV at Maturity — Balloon / Projected Maturity Value
+- LTC — Loan / Total Cost (from S&U)
+- Loan-to-Stabilized-Value (LTSV) — for value-add deals
+- Refi-Out Probability — Platform model: P(maturity_LTV < refi_max_LTV AND maturity_DY > refi_min_DY) given forward rate curve
+- Maturity Risk Score — composite of LTV-at-maturity, DY-at-maturity, market liquidity, and time-to-maturity
+
+**Leverage Position (the GP's edge)**
+- **Positive vs Negative Leverage Indicator** — Going-In Cap Rate vs Loan Constant. Positive when cap rate > constant; negative when constant > cap rate (you're borrowing at a higher rate than the property yields, only justified by appreciation thesis)
+- **Leverage Spread (bps)** — (Going-In Cap − Loan Constant) × 10000
+- **Leverage IRR Lift** — Levered LP IRR − Unlevered Property IRR (the bps that debt is contributing)
+- **Cash-on-Cash Spread** — Year 1 CoC − Loan Constant (the immediate cash benefit of leverage)
+
+**Stress Tests**
+- Break-Even Occupancy — occupancy at which NOI = DS + reserves (the floor)
+- Break-Even Rent — rent level at which NOI = DS at current occupancy
+- DSCR at -10% NOI — coverage if NOI drops 10%
+- DSCR at +200bps Rate (floaters only) — coverage if SOFR rises 200bps
+- Cash Trap Distance — bps cushion above the cash trap DSCR trigger
+- Default Buffer — months of debt service covered by reserves + working capital
+
+**Refi Economics**
+- Refi Event Summary (year, payoff, prepay penalty, exit fee, new loan, net proceeds returned to equity)
+- Maturity LTV vs Origination LTV
+- Defeasance / YM Cost Today (live calc using current Treasury curve from FRED)
+- Cost-to-Refi-Now ($ + bps impact on IRR)
+
+**Lender-Specific**
+- Covenant Cushion at min year (DSCR, DY, occ vs covenant minimums)
+- Sweep / Cash Trap Trigger Year (if any modeled period breaches)
+- Recourse Burn-off Date (when carve-out triggers clear)
+
+#### 2.8.6 Valuation Metrics (NEW)
+
+The "what is this thing worth, in every framing investors use" section. Three sub-blocks: per-unit/SF metrics, multiples, and replacement cost.
+
+**Per-Unit and Per-SF Pricing**
+
+| Metric | Formula | Going-In | Stabilized | At Exit | Submarket Comp |
+|---|---|---|---|---|---|
+| Price per Unit | Total Cost / Units | $X | $Y | $Z | submarket median |
+| Price per SF (Net Rentable) | Total Cost / NRSF | $X/SF | — | $Z/SF | submarket median |
+| Price per SF (Gross) | Total Cost / Gross Building SF | $X/GSF | — | — | submarket median |
+| Land Price per Buildable Unit | Land Cost / (Acres × Density) | $X/buildable unit | — | — | submarket median |
+| Land Price per FAR SF | Land Cost / (Acres × FAR × 43,560) | $X/FAR SF | — | — | submarket median |
+
+Each row shows your deal's value alongside the submarket median, with percentile position.
+
+**Income Multiples**
+
+| Metric | Formula | Going-In | Stabilized | At Exit |
+|---|---|---|---|---|
+| Cap Rate | NOI / Value | X% | Y% | Z% |
+| Reverse Cap Rate (NOI Multiple) | Value / NOI | Xx | Yx | Zx |
+| **GRM (Gross Rent Multiplier)** | Price / Annual GPR | Xx | — | — |
+| **GIM (Gross Income Multiplier)** | Price / Annual EGI | Xx | — | — |
+| Net Income Multiplier | Price / NOI | Xx | — | — |
+| Operating Expense Ratio | OpEx / EGI | X% | Y% | Z% |
+| Cash-on-Cash Yield | BTCF / Equity | X% | Y% | Z% |
+| Yield on Cost (untrended) | Stab NOI / Total Cost | — | X% | — |
+| Yield on Cost (trended) | Stab NOI w/ rent growth / Total Cost | — | X% | — |
+| Development Spread | YoC − Exit Cap | — | — | bps |
+
+**Why GRM/GIM matter:** They're the fastest gut-check metric brokers and small-balance lenders use. A GRM of 7-9x is healthy multifamily; >12x suggests overpaying or sub-market rents needing capture; <6x flags either distress or a market with extreme cap rates. The Platform shows GRM next to the submarket benchmark to surface mispricing fast.
+
+**Replacement Cost & Intrinsic Value**
+
+| Metric | Formula | Value | Benchmark |
+|---|---|---|---|
+| Replacement Cost (RC) | Land + Hard + Soft + Contingency from Marshall & Swift / RSMeans, FL-adjusted | $X | per construction cost feed |
+| **Price-to-Replacement-Cost Ratio** | Total Cost / RC | X% | <80% = buy-existing arbitrage; >100% = build cheaper |
+| RC per Unit | RC / Units | $X | submarket build comps |
+| Insurable Value | RC − land − below-grade | $X | for insurance basis |
+
+**Price-to-Replacement-Cost is the single most important "should I build or buy" gate.** When it sits below ~80%, existing product is trading at a meaningful discount to building new — buy-and-hold thesis. When it crosses 100%, the rational move is to develop. This is the same ratio that drives the BTS vs. Acquisition decision in Strategy Arbitrage (M08), surfaced here for the financial-side audience.
+
+**Versus-Submarket Position Matrix**
+
+A small 2x2 grid showing your deal's position on Price/SF (X-axis) vs Cap Rate (Y-axis) plotted against the submarket comp set. Quadrants:
+- Low $/SF + High Cap → "Value Buy" (the goal)
+- Low $/SF + Low Cap → "Suspicious" (why is yield low? operational issues?)
+- High $/SF + High Cap → "Distressed Trophy" (premium asset, broken operations)
+- High $/SF + Low Cap → "Trophy / Premium pricing"
+
+#### 2.8.7 Time-Based Metrics
+
+- Hold Period (months)
+- Lease-Up Period (if dev/redev)
+- Equity Recovery Period (months)
+- Peak Equity Date
+- Breakeven Cash Flow Date
+- Years of Pref Accrual Before Crystallization
+
+#### 2.8.8 Risk-Adjusted (from M14 Risk module)
+
+- Probability-Weighted IRR (Σ scenario_prob × scenario_IRR)
+- IRR Standard Deviation (from Monte Carlo, 1000 runs)
+- Downside IRR (10th percentile)
+- Sharpe-style ratio: (LP IRR − risk-free rate) / IRR std dev
+- Tail Risk: probability of LP IRR < pref rate
+
+#### 2.8.9 Strategy Comparison Footer
+
+Conditional banner if Strategy Arbitrage (M08) recommends a different strategy:
+
+> "Current strategy: Rental (IRR 18.4%, EM 2.34x). Strategy Arbitrage suggests Build-to-Sell would yield IRR 24.1%, EM 2.1x — higher IRR, lower EM, capital recycles 3x faster. [Compare in ProForma]"
+
+---
+
+### 2.9 Sensitivity / Decision / Compare (existing — brief)
+
+These tabs were detailed in v1 spec and the framework v3.1 JSX. No structural changes for this revision — they continue to consume the resolved Projections/Returns outputs.
+
+---
+
+## Part 3 — Backend Data Contract (revised)
+
+Single endpoint: `GET /api/deals/:dealId/financials`
+
+```ts
+interface DealFinancials {
+  proforma: ProForma & {
+    valuationSnapshot: {                  // NEW — sticky strip top of Pro Forma tab
+      askingPrice: number;
+      pricePerUnit: { value: number; submarketMedian: number; percentile: number; };
+      pricePerSF: { value: number; submarketMedian: number; percentile: number; };
+      grm: { value: number; submarketMedian: number; percentile: number; };
+      gim: { value: number; submarketMedian: number; percentile: number; };
+      goingInCapT12: { value: number; submarketMedian: number; percentile: number; };
+      priceToReplacementCost: { value: number; signal: 'buy_existing' | 'neutral' | 'build_new'; };
+    };
+  };
+  trafficProjection: TrafficProj;    // section 2.2 (added in v1.1)
+  assumptions: Assumptions;          // section 2.2
+
+  // NEW
+  taxes: {
+    propertyTax: {
+      yearly: Array<{
+        year: number;
+        justValue: LayeredValue<number>;
+        assessedValue: LayeredValue<number>;
+        cappedAtTenPct: boolean;
+        taxableValue: LayeredValue<number>;
+        millage: LayeredValue<number>;
+        grossTax: number;
+        earlyPayDiscount: LayeredValue<number>;
+        specialAssessments: LayeredValue<number>;
+        netTax: number;
+        reassessmentEvent: boolean;
+        deltaVsT12: { abs: number; pct: number };
+      }>;
+    };
+    tppTax: { yearly: Array<{ year: number; justValue: LayeredValue<number>; tax: number; }> };
+    incomeTax: {
+      basis: { total: number; land: LayeredValue<number>; building: number; };
+      costSeg: { enabled: boolean; segregatedPct: LayeredValue<number>; bonusByYear: number[]; };
+      yearly: Array<{
+        year: number;
+        depreciation: number;
+        taxableIncome: number;
+        taxPayable: number;
+        suspendedLossesCarryFwd: number;
+      }>;
+      atSale: {
+        recapture: number;
+        capitalGains: number;
+        total: number;
+        section1031Election: boolean;
+      };
+    };
+    transferTaxes: {
+      docStampsDeed: number;       // sale year
+      docStampsMortgage: number;   // origination + refi events
+      intangibleTax: number;       // origination + refi events
+    };
+  };
+
+  sourcesAndUses: {
+    uses: {
+      acquisition: Record<string, number>;
+      hardDD: Record<string, LayeredValue<number>>;
+      softDD: Record<string, LayeredValue<number>>;
+      lender: Record<string, LayeredValue<number>>;
+      title: Record<string, LayeredValue<number>>;
+      transferTaxes: Record<string, number>;     // pulled from taxes
+      reserves: Record<string, LayeredValue<number>>;
+      sponsorFees: Record<string, LayeredValue<number>>;
+      workingCapital: LayeredValue<number>;
+      capexInitial: number;                       // pulled from assumptions
+      total: number;
+    };
+    sources: {
+      seniorDebt: number;          // pulled from debt
+      mezzDebt: number;
+      prefEquity: number;
+      gpCoinvest: LayeredValue<number>;
+      lpEquityClassA: number;      // computed: gap fill
+      lpEquityClassB: number;
+      sellerCarryback: LayeredValue<number>;
+      assumedDebt: number;
+      total: number;
+    };
+    reconciliation: { delta: number; balanced: boolean; };
+    benchmarks: { totalCostPctOfPrice: number; submarketPctile: number; };
+  };
+
+  debt: {
+    loans: Array<{
+      id: string;
+      type: LoanType;
+      lender: string;
+      position: number;
+      status: 'proposed' | 'quoted' | 'closed' | 'refid';
+      sizing: { amount: LayeredValue<number>; ltv: number; ltc: number; ltsv: number; debtYield: number; debtYieldStab: number; dscr: number; dscrMin: number; dscrAvg: number; loanConstant: number; };
+      pricing: { rateType: 'fixed' | 'floating' | 'floating_capped'; index?: string; spread?: number; floor?: number; coupon: number; allInRate: number; };
+      term: { termYears: number; amortYears: number; ioMonths: number; balloon: number; extensionOptions: ExtensionOption[]; };
+      fees: Record<string, LayeredValue<number>>;
+      prepay: { type: 'lockout' | 'YM' | 'defeasance' | 'stepdown' | 'open'; schedule?: number[]; openMonths?: number; };
+      covenants: { minDSCR: number; minDY: number; minOcc: number; maxLTV: number; cashTrapDSCR?: number; };
+      reserves: Record<string, LayeredValue<number>>;
+      recourse: { type: 'NR' | 'limited' | 'partial' | 'full'; burnoffTriggers?: string[]; };
+      schedule: Array<MonthlyDebtRow>;
+      // NEW — loan-level metrics panel
+      leverageDiagnostic: {
+        positiveLeverage: boolean;
+        leverageSpreadBps: number;            // (going-in cap - loan constant) * 10000
+        leveredIRRLiftBps: number;
+        cashOnCashSpread: number;
+      };
+      stress: {
+        breakevenOccupancy: number;
+        breakevenRent: number;
+        dscrAtMinusTenPctNOI: number;
+        dscrAtPlus200bps?: number;            // floaters only
+        cashTrapDistanceBps: number;
+        defaultBufferMonths: number;
+      };
+      maturity: {
+        maturityYear: number;
+        balloonBalance: number;
+        maturityLTV: number;
+        maturityDebtYield: number;
+        refiOutProbability: number;           // 0-1
+        defeasanceCostToday: number;
+        ymCostToday: number;
+        suggestedRefiWindow?: number[];
+      };
+      covenantCushion: {
+        dscrCushionBps: number;
+        dyCushionBps: number;
+        occCushionBps: number;
+        cashTrapDistanceBps: number;
+        status: 'green' | 'amber' | 'red';
+      };
+      refiEvent?: { triggerYear: number; replacedBy: string; payoff: number; prepayPenalty: number; netProceeds: number; };
+    }>;
+    aggregated: {
+      yearlyBalance: number[];
+      yearlyDS: number[];
+      blendedRate: number[];
+      ltcAtClose: number;
+    };
+  };
+
+  capital: {
+    tranches: Array<{
+      id: string;
+      name: string;
+      type: 'common' | 'preferred' | 'pref_equity' | 'gp_carry';
+      contribution: number;
+      pctOfStack: number;
+      pari: boolean;
+      prefRate?: LayeredValue<number>;
+      prefCompounding?: 'annual' | 'quarterly' | 'monthly';
+      prefType?: 'cumulative' | 'noncumulative';
+      participatesInPromote: boolean;
+    }>;
+    waterfallType: 'american' | 'european';
+    tiers: Array<{
+      tier: number;
+      trigger: { type: 'roc' | 'pref' | 'catchup' | 'promote'; hurdle?: number; hurdleType?: 'irr' | 'em'; };
+      lpShare: LayeredValue<number>;
+      gpShare: LayeredValue<number>;
+    }>;
+    fees: { acquisition: number; assetMgmt: { rate: number; basis: 'equity' | 'egi'; }; constructionMgmt?: number; disposition: number; refinancing: number; loanGuarantor?: number; };
+    distributionSchedule: Array<{
+      period: number; cfads: number; tierActive: number;
+      lpDist: number; gpDist: number; gpPromote: number; gpFees: number;
+      lpIRRtoDate: number; lpEMtoDate: number;
+      prefAccrued: number; prefPaid: number;
+    }>;
+  };
+
+  projections: {                       // resolved engine output, read-only
+    timeline: 'annual' | 'monthly' | 'quarterly';
+    columns: Array<{ label: string; year: number; month?: number; isSaleYear: boolean; }>;
+    rows: Array<{
+      key: string;                     // canonical row id
+      label: string;
+      values: number[];
+      formattingHint: 'currency' | 'percentage' | 'multiple';
+      sourceTab: 'proforma' | 'assumptions' | 'taxes' | 'debt' | 'capital' | 'computed';
+    }>;
+    keyMetricsRow: Array<{ year: number; occupancy: number; rentGrowth: number; opexRatio: number; noiMargin: number; dscr: number; debtYield: number; capRate: number; yoc?: number; }>;
+  };
+
+  returns: {
+    hero: { lpNetIRR: number; lpEM: number; avgCoC: number; gpPromote: number; };
+    hurdles: { irr: number; em: number; coc: number; };               // user settings
+    propertyLevel: { unleveragedIRR: number; unleveragedEM: number; goingInCap: number; stabilizedCap: number; yocUntrended?: number; yocTrended?: number; devSpread?: number; avgNOIGrowth: number; peakNOIYear: number; };
+    lpByClass: Array<{ className: string; irr: number; em: number; cocAvg: number; twr: number; prefAchieved: boolean; promoteTierHit: number; }>;
+    lpAggregate: { peakEquity: number; equityRecoveryYear: number; cumulativeCashflowByYear: number[]; netDistByYear: number[]; prefAccruedVsPaid: { accrued: number; paid: number; gap: number; }; };
+    gp: { coinvestIRR: number; coinvestEM: number; promoteByTier: number[]; feesTotal: number; feeBreakdown: Record<string, number>; allInMultiple: number; };
+    debt: {
+      coverage: { dscrY1: number; dscrMin: { year: number; value: number; }; dscrAvg: number; dscrStab: number; dyY1: number; dyMin: { year: number; value: number; }; dyAvg: number; dyAtRefi?: number; icr: number; cashFlowCoverage: number; loanConstantBlended: number; };
+      structural: { ltvAtClose: number; ltvAtStab: number; ltvAtMaturity: number; ltc: number; ltsv: number; refiOutProbability: number; maturityRiskScore: number; };
+      leverage: { positiveLeverage: boolean; leverageSpreadBps: number; leverageIRRLiftBps: number; cashOnCashSpread: number; };
+      stress: { breakevenOccupancy: number; breakevenRent: number; dscrAtMinusTenPctNOI: number; dscrAtPlus200bps?: number; cashTrapDistanceBps: number; defaultBufferMonths: number; };
+      refi: { events: Array<{ year: number; payoff: number; prepayPenalty: number; exitFee: number; netProceeds: number; }>; defeasanceCostToday: number; ymCostToday: number; costToRefiNowBps: number; };
+      covenants: { worstCushionPct: number; sweepTriggerYear?: number; recourseBurnoffDate?: string; };
+    };
+    valuation: {
+      perUnit: { goingIn: number; stabilized: number; atExit: number; submarketMedian: number; percentile: number; };
+      perSF: { netRentable: { goingIn: number; atExit: number; submarketMedian: number; percentile: number; }; gross: { goingIn: number; submarketMedian: number; }; };
+      land: { perBuildableUnit?: number; perFARSF?: number; submarketMedian?: number; };
+      multiples: {
+        capRate: { goingIn: number; stabilized: number; atExit: number; };
+        grm: { goingIn: number; submarketMedian: number; percentile: number; };
+        gim: { goingIn: number; submarketMedian: number; percentile: number; };
+        nim: number;
+        opexRatio: { y1: number; stab: number; };
+        coc: { y1: number; stab: number; avg: number; };
+        yieldOnCost: { untrended: number; trended: number; };
+        devSpread?: number;
+      };
+      replacementCost: {
+        rcTotal: number;
+        rcPerUnit: number;
+        priceToRC: number;                     // ratio
+        buildArbitrageFlag: 'buy_existing' | 'neutral' | 'build_new';
+        insurableValue: number;
+      };
+      positionMatrix: {
+        priceSF: number; capRate: number;
+        quadrant: 'value_buy' | 'suspicious' | 'distressed_trophy' | 'trophy';
+        comps: Array<{ name: string; priceSF: number; capRate: number; }>;
+      };
+    };
+    timeBased: { holdMonths: number; leaseUpMonths?: number; equityRecoveryMonths: number; peakEquityDate: string; breakevenCashflowDate: string; yearsOfPrefAccrual: number; };
+    riskAdjusted: { probWeightedIRR: number; irrStdDev: number; downsideIRR_p10: number; sharpe: number; tailRiskBelowPref: number; };
+    strategyAlternative?: { strategy: string; irr: number; em: number; rationale: string; };
+  };
+}
+```
+
+Writes go through `PATCH /api/deals/:dealId/financials/{tab}/{path}` with cell coordinates + new user value. Every write triggers cross-tab recompute via Kafka events (e.g., a Debt tab loan amount change → S&U recompute → equity gap recompute → Capital tranche resize → Projections recompute → Returns recompute).
+
+---
+
+## Part 4 — Implementation Sequence
+
+Reordered to reflect dependency chain. Each item = one Claude Code session unless noted.
+
+### Phase 1 — Foundation (already specced in v1)
+1. M07 Traffic Engine wiring (prerequisite — mount routes, run migrations) — 1-2 sessions
+2. Backend `DealFinancials` contract scaffolding — 1 session
+3. Pro Forma tab rebuild — 1 session
+4. Assumptions grid (with traffic Section 2) — 2 sessions
+5. GPR decomposition widget — 0.5 session
+6. AI Coordinator findings narrative — 1 session
+
+### Phase 2 — New tabs (this revision)
+7. **Taxes tab** — Section A (RE Tax with FL 10% cap engine) is the largest piece. Sections B/C/D follow. **2 sessions.** Requires county GIS millage feed + assessor data integration; if those aren't ready, Platform values fall back to "manual entry only" with a banner.
+8. **Sources & Uses tab** — itemized uses grid + sources reconciliation + benchmarks panel. Pulls from Taxes Section D for transfer taxes. **1 session.**
+9. **Debt tab — single loan modeling** — full configuration panel for one senior loan, amortization schedule, FRED forward curve integration for floaters. **2 sessions.**
+10. **Debt tab — multi-loan stack + refi events** — extends to multiple loans, refi event modeling, aggregated stack view. **1 session.**
+11. **Capital & Waterfall tab** — equity tranches, waterfall configuration, distribution schedule output, fee modeling. **2 sessions.** This is the most computationally complex tab — the waterfall iterator is the meat.
+12. **Projections tab rewire** — change from inline-assumption model to fully-resolved consumer of all upstream tabs. Monthly/annual toggle. Cross-tab cell drilldown. **1.5 sessions.**
+13. **Returns tab** — hero strip + all six sub-sections + risk-adjusted from M14 Monte Carlo. **2 sessions.**
+
+### Phase 3 — Polish
+14. Excel export (all 8 input/output tabs as separate sheets, formulas live, cell comments preserve LayeredValue metadata) — 1 session
+15. Cross-tab event/Kafka wiring + recompute orchestration — 1 session
+16. Bench testing (test cases in Part 6) + visual QA — 1 session
+
+**Total: ~18-20 Claude Code sessions** for the complete F9 build-out.
+
+**Critical path:** Phase 1 (Pro Forma + Assumptions) must complete first. Then Taxes + S&U + Debt can be built in parallel (different developers / sessions). Capital depends on Debt (needs sources). Projections + Returns depend on all upstream.
+
+---
+
+## Part 5 — Cross-Tab Event Bus
+
+Every user edit triggers a typed event on Kafka topic `deal.financials.changed`:
+
+```ts
+{
+  dealId: string;
+  tab: 'proforma' | 'assumptions' | 'taxes' | 'sources_uses' | 'debt' | 'capital';
+  path: string;          // dot-path to changed cell
+  oldValue: any;
+  newValue: any;
+  layer: 'broker' | 'platform' | 'user';
+  timestamp: string;
+  userId: string;
+}
+```
+
+Recompute orchestrator (`financials-orchestrator.service.ts`) subscribes and triggers downstream rebuilds in dependency order:
+- proforma change → assumptions baseline refresh → taxes recompute → projections rebuild → returns rebuild
+- assumptions change → projections rebuild → returns rebuild → sensitivity invalidate
+- taxes change → projections rebuild → returns rebuild
+- sources_uses change → equity gap recompute → capital tranche resize → returns rebuild
+- debt change → S&U sources update → projections debt service refresh → capital cfads refresh → returns rebuild
+- capital change → distribution schedule refresh → returns rebuild
+
+Recomputes run server-side, push results via WebSocket subscription so the user sees downstream tabs update without manual refresh.
+
+---
+
+## Part 6 — Test Cases (additions to v1)
+
+### Taxes tab
+1. Y1 reassessment event flag appears, RE tax delta vs T-12 displayed in red banner if > +30%.
+2. 10% cap engages in Y2: assessed value capped, lock icon shown, tooltip explains constraint.
+3. Cost segregation toggle on → Section C bonus depreciation populates with correct year-of-close bonus rate (2026=40%, 2027=20%).
+4. Doc stamps on deed in Miami-Dade calculates at 1.05% (vs 0.7% statewide).
+5. 1031 election toggle → recapture and capital gains zero out, "deferred to next exchange" banner appears.
+
+### Sources & Uses
+6. Total Uses = Total Sources (within $1) → green check; off by $5K → red banner with "$5K equity gap."
+7. FL transfer taxes line items pull live from Taxes Section D (changing purchase price in Pro Forma updates them automatically).
+8. Closing cost benchmarks panel shows percentile vs peer deals; flag any line >2 std dev.
+9. Lender reserve requirements (T&I escrow, replacement reserve) auto-populate when Debt tab loan changes.
+
+### Debt tab
+10. Switch loan type from CMBS to Fannie DUS → spread, fees, prepay structure, recourse all update to Platform defaults for that product.
+11. Floating loan + SOFR forward curve → amortization schedule rate column shows forward curve per period; user can override with flat scenario.
+12. Add a refi event in Year 5 → old loan terminates, new loan begins, payoff calculation includes prepay penalty + exit fee, FL doc stamps + intangible flow to Taxes.
+13. DSCR covenant breach in Year 3 (NOI dip) → red highlight on schedule row, cash trap activation modeled.
+14. Construction loan with S-curve draws ties to capex schedule from Assumptions Section 4.
+
+### Capital & Waterfall
+15. Configure 4-tier American waterfall, run distribution schedule → promote tier crystallizes only when LP IRR hurdle hit, GP catch-up activates at correct tier.
+16. Switch American → European → no promote until cumulative LP returns clear hurdle across full hold.
+17. Multi-class equity (LP A 8% pref, LP B 10% pref) → distribution schedule respects sequential pref payments.
+18. Asset management fee 1% of equity per year → fees reduce LP IRR by ~80-100bps over hold (sanity check vs hand calc).
+
+### Projections
+19. Monthly toggle for Y1-2 → 24 monthly columns + annual rollup; lease-up months show low occupancy ramping.
+20. Click any cell → drawer shows formula path back to source tab + cell coordinate.
+21. After-tax view toggle → adds depreciation, taxable income, tax payable, after-tax CFADS rows.
+22. Sale year disposition block shows full payoff calc: gross sale → selling costs → doc stamps → loan payoff → tax → net proceeds.
+
+### Returns
+23. Hero strip status colors: LP IRR > hurdle = green, < hurdle = red.
+24. Promote earned by tier matches sum of GP distributions in tiers 3+ from Capital schedule.
+25. Risk-adjusted: probability-weighted IRR pulls Monte Carlo from M14; downside IRR p10 displayed.
+26. Strategy alternative banner appears when M08 Strategy Arbitrage delta > 15pts vs current strategy.
+
+### Valuation Metrics
+30. Pro Forma valuation snapshot strip updates GRM/GIM/Price-per-SF live as user corrects parser-misread T-12 values.
+31. GRM > 12x in market with 8x median → percentile shows in bottom decile, snapshot tile turns red.
+32. Price-to-Replacement-Cost < 80% → "Buy<Build" green badge appears; > 100% → "Build<Buy" amber badge.
+33. Position matrix correctly classifies a low-$/SF + high-cap deal as "Value Buy" quadrant.
+34. Price/Unit, Price/SF, Cap Rate at exit reflect terminal NOI and exit cap from Assumptions Section 6.
+
+### Expanded Debt Metrics
+35. Loan with Going-In Cap 5.4% and Loan Constant 6.1% → Positive Leverage flag = false, warning banner appears.
+36. Floating loan stress test "+200bps" → DSCR drops to projected value using forward curve + 200bps shock.
+37. Refi-Out Probability = 0.84 when projected maturity LTV is 58% and DY is 9.2% (well within agency parameters).
+38. Covenant cushion drops below 10% in Year 4 → loan panel turns amber, alert pings to Decision tab.
+39. Break-Even Occupancy at Year 1 = 78% → displayed as "22pp cushion above breakeven."
+40. Defeasance cost recalculates daily using FRED Treasury curve; "Cost-to-Refi-Now" shown in bps of IRR drag.
+
+### Cross-tab orchestration
+27. Change rent growth Y3 in Assumptions → Projections Y3 GPR updates → Returns IRR updates → all within 2 seconds via WebSocket push.
+28. Change loan amount in Debt → S&U sources update → equity gap recomputes → Capital LP contribution resizes → Returns LP IRR updates.
+29. Change purchase price in Pro Forma asking stack → S&U Uses updates → FL doc stamps recalc in Taxes → Returns NPV/IRR refreshes.
+
+---
+
+## Part 7 — Design tokens (Bloomberg dark, applies to all tabs)
+
+- Broker layer: `T.text.amber`
+- Platform layer: `T.text.cyan`
+- User layer: `T.text.blue`
+- Computed (engine output): `T.text.primary`
+- Cross-tab link: `T.text.green`
+- Subtotal row bg: `rgba(255,255,255,0.04)`
+- Highlighted row (NOI / CFADS / Hero metric): `rgba(0,255,255,0.06)` cyan tint
+- Warning bg: `rgba(255,193,7,0.08)`
+- Error bg: `rgba(244,67,54,0.08)`
+- Lock icon (cap binding): 8px, amber
+- Reassessment event flag: red border-left 2px on the row
+- Grid row height: 22px standard, 26px on summary/total rows
+- Fonts: JetBrains Mono 10px for numbers, IBM Plex Sans 9px for labels, 11px for section headers
+- Source badges: 8px uppercase, 2px padding, 2px border radius
+- Cell drawer (drilldown): right-side panel 360px wide
+
+---
+
+**End of v2 spec.**
