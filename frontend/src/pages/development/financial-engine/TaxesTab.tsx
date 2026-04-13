@@ -442,6 +442,15 @@ export function TaxesTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fin
           >
             MIAMI-DADE
           </button>
+          {countyOverride != null && (
+            <button
+              onClick={() => { setCountyOverride(null); patchField('taxCounty', null); }}
+              title="Reset to auto-detected county"
+              style={{ padding: '2px 6px', fontFamily: MONO, fontSize: 8, fontWeight: 700, background: 'transparent', border: `1px solid ${BT.border.subtle}`, color: BT.text.amber, borderRadius: 3, cursor: 'pointer' }}
+            >
+              ↺ AUTO
+            </button>
+          )}
         </div>
       </div>
 
