@@ -55,20 +55,22 @@ function EditNum({ value, onCommit, pct, disabled }: {
 // ─── Domain types ─────────────────────────────────────────────────────────────
 
 type TriggerType = 'roc' | 'pref_return' | 'catch_up' | 'promote';
+type CompoundingType = 'annual' | 'monthly' | 'daily';
 
 interface WfTranche {
   id: string;
   label: string;
   role: 'lp' | 'gp' | 'pref';
-  pct: number;         // % of total equity
-  prefRate: number;    // annual preferred return rate
-  cumulative: boolean; // cumulative pref (accrues if not paid)
+  pct: number;
+  prefRate: number;
+  compounding: CompoundingType;
+  cumulative: boolean;
   participatePromote: boolean;
 }
 
 interface WfTier {
   triggerType: TriggerType;
-  triggerIrr: number;   // IRR hurdle (decimal), used when triggerType='promote'
+  triggerIrr: number;
   lpPct: number;
   gpPct: number;
 }
@@ -92,7 +94,7 @@ interface DistRow {
   gpPromote: number;
   gpFees: number;
   lpIrrToDate: number | null;
-  lpEmToDate: number | null;
+  lpEmToDate: number;
   prefAccrued: number;
   prefPaid: number;
   isPromoteCrystallize: boolean;
@@ -118,7 +120,7 @@ function calcIrr(cashFlows: number[]): number | null {
   return rate;
 }
 
-// ─── American waterfall: period-by-period ROC + pref + promote per tier ──────
+// ─── American waterfall: period-by-period ROC → pref → catch-up → promote ───
 function runAmerican(
   equity: number, lpShare: number, gpShare: number,
   prefRate: number, tiers: WfTier[], annualCfads: number[],
@@ -135,7 +137,6 @@ function runAmerican(
   let gpPromoteCumul = 0;
 
   const lpCFs: number[] = [-lpEquity];
-  const gpCFs: number[] = [-gpEquity + equity * fees.acquisitionFeePct];
   const rows: DistRow[] = [];
 
   for (let yr = 1; yr <= holdYears + 1; yr++) {
@@ -147,22 +148,18 @@ function runAmerican(
     const gpFees = gpFeeThis + dispFee;
     let avail = Math.max(rawCf - gpFees, 0);
 
-    // ── ROC tier ───────────────────────────────────────────────────────────
+    // ROC tier
     const rocTier = tiers.find(t => t.triggerType === 'roc');
-    const rocToLP = rocTier
-      ? Math.min(avail, Math.max(lpEquity - lpRocPaid, 0))
-      : 0;
+    const rocToLP = rocTier ? Math.min(avail, Math.max(lpEquity - lpRocPaid, 0)) : 0;
     avail -= rocToLP; lpRocPaid += rocToLP;
 
-    // ── Pref return tier ───────────────────────────────────────────────────
+    // Pref return tier
     lpPrefAccrued += lpEquity * prefRate;
     const prefTier = tiers.find(t => t.triggerType === 'pref_return');
-    const prefToLP = prefTier
-      ? Math.min(avail, lpPrefAccrued)
-      : 0;
+    const prefToLP = prefTier ? Math.min(avail, lpPrefAccrued) : 0;
     avail -= prefToLP; lpPrefAccrued -= prefToLP;
 
-    // ── Catch-up tier ──────────────────────────────────────────────────────
+    // Catch-up tier
     const catchTier = tiers.find(t => t.triggerType === 'catch_up');
     let catchToGP = 0;
     if (catchTier && avail > 0) {
@@ -170,7 +167,7 @@ function runAmerican(
       avail -= catchToGP;
     }
 
-    // ── Promote tiers (by IRR hurdle) ──────────────────────────────────────
+    // Promote tiers (by IRR hurdle)
     const promoteTiers = tiers.filter(t => t.triggerType === 'promote').sort((a, b) => a.triggerIrr - b.triggerIrr);
     const currentIrr = lpCFs.length > 1 ? (calcIrr(lpCFs) ?? 0) : 0;
     const activeTierIdx = promoteTiers.findIndex((t, i) =>
@@ -181,14 +178,12 @@ function runAmerican(
     const lpAbove = avail * activeTier.lpPct;
     const gpAbove = avail * activeTier.gpPct;
     const gpPromote = gpAbove + catchToGP;
-
     const lpDist = rocToLP + prefToLP + lpAbove;
     const gpDist = gpFees + catchToGP + gpAbove;
     gpPromoteCumul += gpPromote;
     lpDistCumul += lpDist;
     gpDistCumul += gpDist;
     lpCFs.push(lpDist);
-    gpCFs.push(gpDist);
 
     const lpIrrToDate = lpCFs.length > 2 ? calcIrr(lpCFs) : null;
     const lpEmToDate  = lpDistCumul / Math.max(lpEquity, 1);
@@ -198,7 +193,7 @@ function runAmerican(
       : `${(activeTier.lpPct * 100).toFixed(0)}/${(activeTier.gpPct * 100).toFixed(0)}`;
 
     rows.push({
-      year: yr, label: isExit ? 'EXIT' : `YR ${yr}`,
+      year: yr, label: isExit ? 'EXIT ★' : `YR ${yr}`,
       cfads: rawCf, activeTier: tierLabel,
       lpDist, gpDist, gpPromote, gpFees,
       lpIrrToDate, lpEmToDate,
@@ -210,7 +205,7 @@ function runAmerican(
   return rows;
 }
 
-// ─── European waterfall: accumulate all CFADS, single terminal distribution ──
+// ─── European waterfall: defer all LP dists to terminal event ────────────────
 function runEuropean(
   equity: number, lpShare: number, gpShare: number,
   prefRate: number, tiers: WfTier[], annualCfads: number[],
@@ -218,55 +213,44 @@ function runEuropean(
 ): DistRow[] {
   const holdYears = annualCfads.length;
   const lpEquity = equity * lpShare;
-  const gpEquity = equity * gpShare;
-
   const rows: DistRow[] = [];
-  let lpCumul = 0; let gpCumul = 0;
 
-  // Operating years: all fees, distributions deferred
   for (let yr = 1; yr <= holdYears; yr++) {
     const rawCf = annualCfads[yr - 1] ?? 0;
     const amFee = (fees.assetMgmtBasis === 'equity' ? equityBase : egi_y1) * fees.assetMgmtFeePct;
-    const gpFees = amFee;
-    gpCumul += gpFees;
     rows.push({
       year: yr, label: `YR ${yr}`, cfads: rawCf, activeTier: 'EUROPEAN (DEFERRED)',
-      lpDist: 0, gpDist: gpFees, gpPromote: 0, gpFees,
+      lpDist: 0, gpDist: amFee, gpPromote: 0, gpFees: amFee,
       lpIrrToDate: null, lpEmToDate: 0,
-      prefAccrued: lpEquity * prefRate * yr,
-      prefPaid: 0,
+      prefAccrued: lpEquity * prefRate * yr, prefPaid: 0,
       isPromoteCrystallize: false,
     });
   }
 
-  // Terminal event: waterfall on exit + cumulative operating CF
   const totalOperatingCF = annualCfads.reduce((s, c) => s + c, 0);
   const totalCF = totalOperatingCF + exitProceeds;
   const dispFee = exitProceeds * fees.dispositionFeePct;
   let avail = Math.max(totalCF - dispFee, 0);
 
-  // ROC
   const rocToLP = Math.min(avail, lpEquity); avail -= rocToLP;
-  // Pref (cumulative over hold)
   const prefAccruedTotal = lpEquity * prefRate * holdYears;
   const prefToLP = Math.min(avail, prefAccruedTotal); avail -= prefToLP;
-  // Remaining split by top promote tier
+
   const promoteTiers = tiers.filter(t => t.triggerType === 'promote').sort((a, b) => a.triggerIrr - b.triggerIrr);
   const topTier = promoteTiers[promoteTiers.length - 1] ?? { lpPct: 0.7, gpPct: 0.3, triggerIrr: 0, triggerType: 'promote' as TriggerType };
   const lpAbove = avail * topTier.lpPct;
   const gpAbove = avail * topTier.gpPct;
-  const gpPromote = gpAbove;
   const lpDist = rocToLP + prefToLP + lpAbove;
   const gpDist = dispFee + gpAbove;
-  lpCumul += lpDist; gpCumul += gpDist;
   const lpCFs = [-lpEquity, lpDist];
   const lpIrr = calcIrr(lpCFs);
   const lpEm = lpDist / Math.max(lpEquity, 1);
 
   rows.push({
     year: holdYears + 1, label: 'EXIT ★',
-    cfads: exitProceeds, activeTier: `T${promoteTiers.length} ${(topTier.lpPct * 100).toFixed(0)}/${(topTier.gpPct * 100).toFixed(0)} · FINAL`,
-    lpDist, gpDist, gpPromote, gpFees: dispFee,
+    cfads: exitProceeds,
+    activeTier: `T${promoteTiers.length} ${(topTier.lpPct * 100).toFixed(0)}/${(topTier.gpPct * 100).toFixed(0)} · FINAL`,
+    lpDist, gpDist, gpPromote: gpAbove, gpFees: dispFee,
     lpIrrToDate: lpIrr, lpEmToDate: lpEm,
     prefAccrued: prefAccruedTotal, prefPaid: prefToLP,
     isPromoteCrystallize: true,
@@ -275,18 +259,16 @@ function runEuropean(
   return rows;
 }
 
-// ─── Tranche color ────────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 const TRANCHE_COLORS: Record<string, string> = {
-  lp: BT.met.financial,
-  gp: BT.text.orange,
-  pref: BT.text.purple,
+  lp: BT.met.financial, gp: BT.text.orange, pref: BT.text.purple,
 };
 
-const TRANCHE_PRESETS: Pick<WfTranche, 'label' | 'role' | 'pct' | 'prefRate' | 'cumulative' | 'participatePromote'>[] = [
-  { label: 'LP CLASS A',    role: 'lp',   pct: 0.90, prefRate: 0.08, cumulative: true,  participatePromote: true },
-  { label: 'LP CLASS B',    role: 'lp',   pct: 0.05, prefRate: 0.10, cumulative: true,  participatePromote: true },
-  { label: 'PREF EQUITY',   role: 'pref', pct: 0.03, prefRate: 0.12, cumulative: true,  participatePromote: false },
-  { label: 'GP CO-INVEST',  role: 'gp',   pct: 0.02, prefRate: 0,    cumulative: false, participatePromote: true },
+const TRANCHE_PRESETS: WfTranche[] = [
+  { id: 'lpA',   label: 'LP CLASS A',   role: 'lp',   pct: 0.90, prefRate: 0.08, compounding: 'annual', cumulative: true,  participatePromote: true  },
+  { id: 'lpB',   label: 'LP CLASS B',   role: 'lp',   pct: 0.05, prefRate: 0.10, compounding: 'annual', cumulative: true,  participatePromote: true  },
+  { id: 'prefEq',label: 'PREF EQUITY',  role: 'pref', pct: 0.03, prefRate: 0.12, compounding: 'annual', cumulative: true,  participatePromote: false },
+  { id: 'gp',    label: 'GP CO-INVEST', role: 'gp',   pct: 0.02, prefRate: 0,    compounding: 'annual', cumulative: false, participatePromote: true  },
 ];
 
 const TRIGGER_TYPE_LABELS: Record<TriggerType, string> = {
@@ -296,12 +278,17 @@ const TRIGGER_TYPE_LABELS: Record<TriggerType, string> = {
   promote: 'PROMOTE',
 };
 
+const COMPOUNDING_LABELS: Record<CompoundingType, string> = {
+  annual: 'ANNUAL', monthly: 'MONTHLY', daily: 'DAILY',
+};
+
 // ─── WaterfallTab v2 ──────────────────────────────────────────────────────────
 export function WaterfallTab({ dealId, assumptions, modelResults, f9Financials, onF9Refresh }: FinancialEngineTabProps) {
   const [activePanel, setActivePanel] = useState<'config' | 'schedule'>('config');
 
   const wfBe = f9Financials?.waterfall ?? null;
-  const cs   = f9Financials?.capitalStack;
+  const capBe = f9Financials?.capital ?? null;
+  const cs = f9Financials?.capitalStack;
 
   // ── Capital / equity seed ──────────────────────────────────────────────────
   const purchasePrice = cs?.purchasePrice ?? assumptions?.acquisition?.purchasePrice ?? 0;
@@ -313,29 +300,37 @@ export function WaterfallTab({ dealId, assumptions, modelResults, f9Financials, 
   const rentGrowth    = f9Financials?.assumptions?.rentGrowthStabilized ?? 0.03;
   const exitCap       = f9Financials?.assumptions?.exitCap ?? assumptions?.disposition?.exitCapRate ?? 0.055;
   const sellingPct    = assumptions?.disposition?.sellingCosts ?? 0.025;
-  const f9Noi = f9Financials?.proforma?.year1?.find(r => r.field === 'noi')?.resolved ?? null;
-  const noi_y1  = f9Noi ?? modelResults?.summary?.noi ?? 0;
+  const noi_y1  = f9Financials?.proforma?.year1?.find(r => r.field === 'noi')?.resolved ?? modelResults?.summary?.noi ?? 0;
   const egi_y1  = f9Financials?.proforma?.year1?.find(r => r.field === 'egi')?.resolved ?? noi_y1 * 1.15;
 
   // ── Local state ────────────────────────────────────────────────────────────
   const [wfType, setWfType] = useState<string>(wfBe?.waterfallType ?? 'american');
-  const [lpShare, setLpShare] = useState<number>(wfBe?.lpShare ?? 0.9);
-  const [gpShare, setGpShare] = useState<number>(wfBe?.gpShare ?? 0.1);
   const [prefRate, setPrefRate] = useState<number>(wfBe?.prefRate ?? 0.08);
 
-  // Tranches state — persisted partially via wf:trancheN:* PATCH fields
-  const [tranches, setTranches] = useState<WfTranche[]>(() => [
-    { id: 'lpA', label: 'LP CLASS A',   role: 'lp',   pct: wfBe?.lpShare ?? 0.9, prefRate: wfBe?.prefRate ?? 0.08, cumulative: true,  participatePromote: true  },
-    { id: 'gp',  label: 'GP CO-INVEST', role: 'gp',   pct: wfBe?.gpShare ?? 0.1, prefRate: 0,                      cumulative: false, participatePromote: true  },
-  ]);
+  // Tranches — initialized from backend capital.tranches (persisted) or defaults
+  const [tranches, setTranches] = useState<WfTranche[]>(() => {
+    if (capBe?.tranches?.length) {
+      return capBe.tranches.map(t => ({
+        id: t.id, label: t.label,
+        role: t.role as 'lp' | 'gp' | 'pref',
+        pct: t.pct, prefRate: t.prefRate,
+        compounding: (t.compounding ?? 'annual') as CompoundingType,
+        cumulative: t.cumulative, participatePromote: t.participatePromote,
+      }));
+    }
+    return [
+      { id: 'lpA', label: 'LP CLASS A',   role: 'lp', pct: wfBe?.lpShare ?? 0.9, prefRate: wfBe?.prefRate ?? 0.08, compounding: 'annual', cumulative: true,  participatePromote: true  },
+      { id: 'gp',  label: 'GP CO-INVEST', role: 'gp', pct: wfBe?.gpShare ?? 0.1, prefRate: 0,                      compounding: 'annual', cumulative: false, participatePromote: true  },
+    ];
+  });
 
-  // Tiers state
+  // Tiers — initialized from backend waterfall.tiers (includes triggerType)
   const [tiers, setTiers] = useState<WfTier[]>(() => (wfBe?.tiers ?? [
-    { triggerIrr: 0.08, lpPct: 0.80, gpPct: 0.20 },
-    { triggerIrr: 0.12, lpPct: 0.70, gpPct: 0.30 },
-    { triggerIrr: 0.15, lpPct: 0.60, gpPct: 0.40 },
-  ]).map((t, i): WfTier => ({
-    triggerType: i === 0 ? 'roc' : i === 1 ? 'pref_return' : 'promote',
+    { triggerIrr: 0.08, lpPct: 0.80, gpPct: 0.20, triggerType: 'roc' },
+    { triggerIrr: 0.12, lpPct: 0.70, gpPct: 0.30, triggerType: 'pref_return' },
+    { triggerIrr: 0.15, lpPct: 0.60, gpPct: 0.40, triggerType: 'promote' },
+  ]).map((t): WfTier => ({
+    triggerType: (t.triggerType ?? 'promote') as TriggerType,
     triggerIrr: t.triggerIrr,
     lpPct: t.lpPct,
     gpPct: t.gpPct,
@@ -350,36 +345,73 @@ export function WaterfallTab({ dealId, assumptions, modelResults, f9Financials, 
     refinancingFeePct: 0,
   });
 
-  // Sync from backend when f9Financials updates
+  // Sync from backend on f9Financials refresh
   React.useEffect(() => {
     if (wfBe) {
       setWfType(wfBe.waterfallType);
-      setLpShare(wfBe.lpShare);
-      setGpShare(wfBe.gpShare);
       setPrefRate(wfBe.prefRate);
       if (wfBe.fees) setFees(wfBe.fees as WfFees);
       if (wfBe.tiers?.length) {
-        setTiers(wfBe.tiers.map((t, i): WfTier => ({
-          triggerType: i === 0 ? 'roc' : i === 1 ? 'pref_return' : i === 2 ? 'catch_up' : 'promote',
-          triggerIrr: t.triggerIrr,
-          lpPct: t.lpPct,
-          gpPct: t.gpPct,
+        setTiers(wfBe.tiers.map((t): WfTier => ({
+          triggerType: (t.triggerType ?? 'promote') as TriggerType,
+          triggerIrr: t.triggerIrr, lpPct: t.lpPct, gpPct: t.gpPct,
         })));
       }
     }
+    if (capBe?.tranches?.length) {
+      setTranches(capBe.tranches.map(t => ({
+        id: t.id, label: t.label,
+        role: t.role as 'lp' | 'gp' | 'pref',
+        pct: t.pct, prefRate: t.prefRate,
+        compounding: (t.compounding ?? 'annual') as CompoundingType,
+        cumulative: t.cumulative, participatePromote: t.participatePromote,
+      })));
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wfBe?.lpShare, wfBe?.gpShare, wfBe?.prefRate, wfBe?.waterfallType, wfBe?.tiers?.length]);
+  }, [wfBe?.lpShare, wfBe?.gpShare, wfBe?.prefRate, wfBe?.waterfallType, wfBe?.tiers?.length, capBe?.tranches?.length]);
 
   const patch = useCallback(async (key: string, value: number | string | null) => {
     await patchWf(dealId, key, value);
     onF9Refresh?.();
   }, [dealId, onF9Refresh]);
 
-  // Persist full tier array when changed
-  const persistTiers = useCallback(async (next: WfTier[]) => {
-    for (let i = 0; i < Math.max(next.length, tiers.length); i++) {
+  // Persist entire tranche array (N tranches: label, role, pct, prefRate, compounding, cumulative, participatePromote)
+  const persistTranches = useCallback(async (next: WfTranche[], skipRefresh = false) => {
+    const maxN = Math.max(next.length, tranches.length, 1);
+    for (let i = 0; i < maxN; i++) {
       if (!next[i]) {
         // Removed — clear from backend
+        await patchWf(dealId, `tranche${i}Label`, null);
+        await patchWf(dealId, `tranche${i}Role`, null);
+        await patchWf(dealId, `tranche${i}Pct`, null);
+        await patchWf(dealId, `tranche${i}PrefRate`, null);
+        await patchWf(dealId, `tranche${i}Compounding`, null);
+        await patchWf(dealId, `tranche${i}Cumulative`, null);
+        await patchWf(dealId, `tranche${i}ParticipatePromote`, null);
+      } else {
+        const t = next[i];
+        await patchWf(dealId, `tranche${i}Label`, t.label);
+        await patchWf(dealId, `tranche${i}Role`, t.role);
+        await patchWf(dealId, `tranche${i}Pct`, t.pct);
+        await patchWf(dealId, `tranche${i}PrefRate`, t.prefRate);
+        await patchWf(dealId, `tranche${i}Compounding`, t.compounding);
+        await patchWf(dealId, `tranche${i}Cumulative`, String(t.cumulative));
+        await patchWf(dealId, `tranche${i}ParticipatePromote`, String(t.participatePromote));
+      }
+    }
+    // Also keep the aggregate wf:lpShare and wf:gpShare in sync
+    const newLp = next.filter(t => t.role !== 'gp').reduce((s, t) => s + t.pct, 0);
+    const newGp = next.filter(t => t.role === 'gp').reduce((s, t) => s + t.pct, 0);
+    await patchWf(dealId, 'lpShare', newLp);
+    await patchWf(dealId, 'gpShare', newGp);
+    if (!skipRefresh) onF9Refresh?.();
+  }, [dealId, onF9Refresh, tranches.length]);
+
+  // Persist entire tier array
+  const persistTiers = useCallback(async (next: WfTier[]) => {
+    const maxN = Math.max(next.length, tiers.length, 1);
+    for (let i = 0; i < maxN; i++) {
+      if (!next[i]) {
         await patchWf(dealId, `tier${i}TriggerIrr`, null);
         await patchWf(dealId, `tier${i}LpPct`, null);
         await patchWf(dealId, `tier${i}GpPct`, null);
@@ -407,7 +439,7 @@ export function WaterfallTab({ dealId, assumptions, modelResults, f9Financials, 
   const grossSale    = exitCap > 0 ? exitNOI / exitCap : 0;
   const exitProceeds = Math.max(grossSale * (1 - sellingPct) - loanAmount, 0);
 
-  // Primary LP/GP shares derived from tranches
+  // Effective LP/GP shares from tranches
   const lpShareEff = tranches.filter(t => t.role !== 'gp').reduce((s, t) => s + t.pct, 0);
   const gpShareEff = tranches.filter(t => t.role === 'gp').reduce((s, t) => s + t.pct, 0);
 
@@ -429,15 +461,13 @@ export function WaterfallTab({ dealId, assumptions, modelResults, f9Financials, 
   const gpEm         = gpEquity > 0 ? (totalGP + equity * fees.acquisitionFeePct) / Math.max(gpEquity, 1) : null;
   const lpCFs        = [-lpEquity, ...distRows.map(r => r.lpDist)];
   const lpIrr        = lpEquity > 0 && distRows.length > 0 ? calcIrr(lpCFs) : null;
-  const gpCFs        = [-gpEquity + equity * fees.acquisitionFeePct, ...distRows.map(r => r.gpDist)];
-  const gpIrr        = gpEquity > 0 && distRows.length > 0 ? calcIrr(gpCFs) : null;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto' }}>
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div style={{ padding: '4px 10px', background: BT.bg.header, borderBottom: `1px solid ${BT.border.subtle}`, display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-        <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, letterSpacing: 0.5 }}>LP/GP EQUITY · PROMOTE TIERS · DISTRIBUTIONS</span>
+        <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>LP/GP EQUITY · PROMOTE TIERS · DISTRIBUTIONS</span>
         <Bd c={BT.text.purple}>CAP & WATERFALL</Bd>
         {equity > 0 && <Bd c={BT.text.cyan}>{fmt$(equity)} EQUITY</Bd>}
         <Bd c={wfType === 'european' ? BT.text.orange : BT.text.cyan}>{wfType.toUpperCase()}</Bd>
@@ -465,14 +495,13 @@ export function WaterfallTab({ dealId, assumptions, modelResults, f9Financials, 
       {activePanel === 'config' ? (
         <>
           {/* ── Equity Tranches panel ────────────────────────────────────────── */}
-          <SectionPanel title="EQUITY TRANCHES" subtitle="LP / preferred / GP capital structure — add/remove tranches" borderColor={BT.met.financial}>
-            {/* Tranche table */}
+          <SectionPanel title="EQUITY TRANCHES" subtitle="LP / preferred / GP capital structure — fully persisted · add/remove tranches" borderColor={BT.met.financial}>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 9 }}>
                 <thead>
                   <tr style={{ borderBottom: `2px solid ${BT.border.medium}` }}>
-                    {['TRANCHE', 'ROLE', 'CONTRIBUTION', '% EQUITY', 'PREF RATE', 'CUMUL', 'PROMOTE', ''].map(h => (
-                      <th key={h} style={{ padding: '3px 8px', color: BT.text.muted, textAlign: h === 'TRANCHE' ? 'left' : 'right', fontWeight: 500 }}>{h}</th>
+                    {['TRANCHE', 'ROLE', 'CONTRIBUTION', '% EQUITY', 'PREF RATE', 'COMPOUND', 'CUMUL', 'PROMOTE', ''].map(h => (
+                      <th key={h} style={{ padding: '3px 8px', color: BT.text.muted, textAlign: h === 'TRANCHE' || h === 'ROLE' ? 'left' : 'right', fontWeight: 500 }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -480,38 +509,71 @@ export function WaterfallTab({ dealId, assumptions, modelResults, f9Financials, 
                   {tranches.map((tr, i) => (
                     <tr key={tr.id} style={{ background: i % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt, borderBottom: `1px solid ${BT.border.subtle}` }}>
                       <td style={{ padding: '3px 8px', color: TRANCHE_COLORS[tr.role] ?? BT.text.white, fontWeight: 700 }}>{tr.label}</td>
-                      <td style={{ padding: '3px 8px', textAlign: 'right', color: BT.text.muted }}>{tr.role.toUpperCase()}</td>
+                      <td style={{ padding: '3px 8px', color: BT.text.muted }}>{tr.role.toUpperCase()}</td>
                       <td style={{ padding: '3px 8px', textAlign: 'right', color: BT.text.white }}>{equity > 0 ? fmt$(equity * tr.pct) : '—'}</td>
                       <td style={{ padding: '3px 8px', textAlign: 'right' }}>
-                        <EditNum value={tr.pct} pct onCommit={v => {
+                        <EditNum value={tr.pct} pct onCommit={async v => {
                           const next = tranches.map((t, j) => j === i ? { ...t, pct: v } : t);
-                          setTranches(next);
-                          // Sync global lp/gp share from tranches
-                          const newLp = next.filter(t => t.role !== 'gp').reduce((s, t) => s + t.pct, 0);
-                          const newGp = next.filter(t => t.role === 'gp').reduce((s, t) => s + t.pct, 0);
-                          setLpShare(newLp); setGpShare(newGp);
-                          patch('lpShare', newLp); patch('gpShare', newGp);
+                          setTranches(next); await persistTranches(next);
                         }} />
                       </td>
                       <td style={{ padding: '3px 8px', textAlign: 'right' }}>
                         {tr.role !== 'gp'
-                          ? <EditNum value={tr.prefRate} pct onCommit={v => {
+                          ? <EditNum value={tr.prefRate} pct onCommit={async v => {
                               const next = tranches.map((t, j) => j === i ? { ...t, prefRate: v } : t);
                               setTranches(next);
-                              if (tr.id === 'lpA') { setPrefRate(v); patch('prefRate', v); }
+                              if (tr.id === 'lpA') { setPrefRate(v); }
+                              await persistTranches(next);
                             }} />
                           : <span style={{ color: BT.text.muted }}>—</span>
                         }
                       </td>
-                      <td style={{ padding: '3px 8px', textAlign: 'right', color: tr.cumulative ? BT.met.financial : BT.text.muted }}>
-                        {tr.role !== 'gp' ? (tr.cumulative ? 'YES' : 'NO') : '—'}
+                      <td style={{ padding: '3px 8px', textAlign: 'right' }}>
+                        {tr.role !== 'gp' ? (
+                          <select value={tr.compounding} onChange={async e => {
+                            const val = e.target.value as CompoundingType;
+                            const next = tranches.map((t, j) => j === i ? { ...t, compounding: val } : t);
+                            setTranches(next); await persistTranches(next);
+                          }} style={{
+                            background: BT.bg.panel, border: `1px solid ${BT.border.medium}`,
+                            color: BT.text.amber, fontFamily: MONO, fontSize: 8, padding: '1px 3px',
+                          }}>
+                            {(Object.keys(COMPOUNDING_LABELS) as CompoundingType[]).map(k => (
+                              <option key={k} value={k}>{COMPOUNDING_LABELS[k]}</option>
+                            ))}
+                          </select>
+                        ) : <span style={{ color: BT.text.muted }}>—</span>}
                       </td>
-                      <td style={{ padding: '3px 8px', textAlign: 'right', color: tr.participatePromote ? BT.text.orange : BT.text.muted }}>
-                        {tr.participatePromote ? 'YES' : 'NO'}
+                      <td style={{ padding: '3px 8px', textAlign: 'right' }}>
+                        {tr.role !== 'gp' ? (
+                          <button onClick={async () => {
+                            const next = tranches.map((t, j) => j === i ? { ...t, cumulative: !t.cumulative } : t);
+                            setTranches(next); await persistTranches(next);
+                          }} style={{
+                            background: tr.cumulative ? `${BT.met.financial}22` : 'transparent',
+                            border: `1px solid ${tr.cumulative ? BT.met.financial : BT.border.medium}`,
+                            color: tr.cumulative ? BT.met.financial : BT.text.muted,
+                            fontFamily: MONO, fontSize: 8, padding: '1px 6px', cursor: 'pointer', borderRadius: 2,
+                          }}>{tr.cumulative ? 'YES' : 'NO'}</button>
+                        ) : <span style={{ color: BT.text.muted }}>—</span>}
+                      </td>
+                      <td style={{ padding: '3px 8px', textAlign: 'right' }}>
+                        <button onClick={async () => {
+                          const next = tranches.map((t, j) => j === i ? { ...t, participatePromote: !t.participatePromote } : t);
+                          setTranches(next); await persistTranches(next);
+                        }} style={{
+                          background: tr.participatePromote ? `${BT.text.orange}22` : 'transparent',
+                          border: `1px solid ${tr.participatePromote ? BT.text.orange : BT.border.medium}`,
+                          color: tr.participatePromote ? BT.text.orange : BT.text.muted,
+                          fontFamily: MONO, fontSize: 8, padding: '1px 6px', cursor: 'pointer', borderRadius: 2,
+                        }}>{tr.participatePromote ? 'YES' : 'NO'}</button>
                       </td>
                       <td style={{ padding: '3px 8px', textAlign: 'right' }}>
                         {tranches.length > 2 && (
-                          <button onClick={() => setTranches(tranches.filter((_, j) => j !== i))} style={{
+                          <button onClick={async () => {
+                            const next = tranches.filter((_, j) => j !== i);
+                            setTranches(next); await persistTranches(next);
+                          }} style={{
                             background: 'transparent', border: `1px solid ${BT.border.medium}`,
                             color: BT.text.red, fontFamily: MONO, fontSize: 8, padding: '1px 5px', cursor: 'pointer', borderRadius: 2,
                           }}>✕</button>
@@ -522,11 +584,12 @@ export function WaterfallTab({ dealId, assumptions, modelResults, f9Financials, 
                 </tbody>
               </table>
             </div>
-            {/* Add tranche buttons */}
+            {/* Add preset tranches */}
             <div style={{ padding: '4px 8px', borderTop: `1px solid ${BT.border.subtle}`, display: 'flex', gap: 4 }}>
               {TRANCHE_PRESETS.filter(p => !tranches.some(t => t.label === p.label)).map(preset => (
-                <button key={preset.label} onClick={() => {
-                  setTranches(prev => [...prev, { id: `tr_${Date.now()}`, ...preset }]);
+                <button key={preset.label} onClick={async () => {
+                  const next = [...tranches, { ...preset, id: `tr_${Date.now()}` }];
+                  setTranches(next); await persistTranches(next);
                 }} style={{
                   background: 'transparent', border: `1px solid ${BT.border.medium}`,
                   color: TRANCHE_COLORS[preset.role], fontFamily: MONO, fontSize: 8,
@@ -557,7 +620,7 @@ export function WaterfallTab({ dealId, assumptions, modelResults, f9Financials, 
           </SectionPanel>
 
           {/* ── Waterfall Config panel ──────────────────────────────────────── */}
-          <SectionPanel title="WATERFALL CONFIG" subtitle="American = per-period · European = fund-end crystallization" borderColor={BT.text.purple}>
+          <SectionPanel title="WATERFALL CONFIG" subtitle="American = per-period · European = fund-end crystallization · trigger types: ROC / PREF / CATCH-UP / PROMOTE" borderColor={BT.text.purple}>
             {/* American / European toggle */}
             <div style={{ padding: '4px 8px', display: 'flex', alignItems: 'center', gap: 12, borderBottom: `1px solid ${BT.border.subtle}` }}>
               <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>TYPE</span>
@@ -588,8 +651,7 @@ export function WaterfallTab({ dealId, assumptions, modelResults, f9Financials, 
                         <select value={tier.triggerType} onChange={async e => {
                           const val = e.target.value as TriggerType;
                           const next = tiers.map((t, j) => j === i ? { ...t, triggerType: val } : t);
-                          setTiers(next);
-                          await persistTiers(next);
+                          setTiers(next); await persistTiers(next);
                         }} style={{
                           background: BT.bg.panel, border: `1px solid ${BT.border.medium}`,
                           color: BT.text.amber, fontFamily: MONO, fontSize: 8, padding: '2px 4px',
@@ -672,7 +734,6 @@ export function WaterfallTab({ dealId, assumptions, modelResults, f9Financials, 
                   }} />
                 </div>
               ))}
-              {/* Asset mgmt basis toggle */}
               <div style={{ padding: '4px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${BT.border.subtle}` }}>
                 <div>
                   <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.amber, fontWeight: 600 }}>ASSET MGMT BASIS</div>
@@ -695,18 +756,18 @@ export function WaterfallTab({ dealId, assumptions, modelResults, f9Financials, 
           {/* ── Returns summary ─────────────────────────────────────────────── */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
             <SectionPanel title="LP RETURN SUMMARY" subtitle="All LP tranches combined" borderColor={BT.met.financial}>
-              <DataRow label="LP EQUITY IN"      value={lpEquity > 0 ? fmt$(lpEquity) : '—'}                          valueColor={BT.text.white} />
-              <DataRow label="TOTAL LP DIST"     value={totalLP > 0 ? fmt$(totalLP) : '—'}                            valueColor={BT.met.financial} />
-              <DataRow label="LP EQUITY MULT"    value={lpEm != null ? fmtX(lpEm) : '—'}                              valueColor={lpEm != null && lpEm >= 1.8 ? BT.met.financial : BT.text.amber} />
-              <DataRow label="LP IRR"             value={lpIrr != null ? fmtPct(lpIrr * 100) : '—'}                   valueColor={lpIrr != null && lpIrr >= 0.12 ? BT.met.financial : BT.text.amber} />
-              <DataRow label="PREF RATE"          value={fmtPct(prefRate * 100)}                                       valueColor={BT.text.cyan} border={false} />
+              <DataRow label="LP EQUITY IN"    value={lpEquity > 0 ? fmt$(lpEquity) : '—'}                        valueColor={BT.text.white} />
+              <DataRow label="TOTAL LP DIST"   value={totalLP > 0 ? fmt$(totalLP) : '—'}                          valueColor={BT.met.financial} />
+              <DataRow label="LP EQUITY MULT"  value={lpEm != null ? fmtX(lpEm) : '—'}                            valueColor={lpEm != null && lpEm >= 1.8 ? BT.met.financial : BT.text.amber} />
+              <DataRow label="LP IRR"           value={lpIrr != null ? fmtPct(lpIrr * 100) : '—'}                 valueColor={lpIrr != null && lpIrr >= 0.12 ? BT.met.financial : BT.text.amber} />
+              <DataRow label="PREF RATE"        value={fmtPct(prefRate * 100)}                                     valueColor={BT.text.cyan} border={false} />
             </SectionPanel>
-            <SectionPanel title="GP ECONOMICS" subtitle="Promote + fees · all-in" borderColor={BT.text.orange}>
-              <DataRow label="GP EQUITY IN"      value={gpEquity > 0 ? fmt$(gpEquity) : '—'}                          valueColor={BT.text.white} />
-              <DataRow label="GP TOTAL DIST"     value={totalGP > 0 ? fmt$(totalGP) : '—'}                            valueColor={BT.text.orange} />
-              <DataRow label="GP PROMOTE"        value={totalPromote > 0 ? fmt$(totalPromote) : '—'}                  valueColor={BT.text.amber} />
-              <DataRow label="GP ALL-IN FEES"    value={totalFees > 0 ? fmt$(totalFees) : '—'}                        valueColor={BT.text.red} />
-              <DataRow label="GP ALL-IN MULT"    value={gpEm != null ? fmtX(gpEm) : '—'}                              valueColor={BT.text.orange} border={false} />
+            <SectionPanel title="GP ECONOMICS" subtitle="Promote + fees all-in" borderColor={BT.text.orange}>
+              <DataRow label="GP EQUITY IN"    value={gpEquity > 0 ? fmt$(gpEquity) : '—'}                        valueColor={BT.text.white} />
+              <DataRow label="GP TOTAL DIST"   value={totalGP > 0 ? fmt$(totalGP) : '—'}                          valueColor={BT.text.orange} />
+              <DataRow label="GP PROMOTE"      value={totalPromote > 0 ? fmt$(totalPromote) : '—'}                valueColor={BT.text.amber} />
+              <DataRow label="GP ALL-IN FEES"  value={totalFees > 0 ? fmt$(totalFees) : '—'}                      valueColor={BT.text.red} />
+              <DataRow label="GP ALL-IN MULT"  value={gpEm != null ? fmtX(gpEm) : '—'}                            valueColor={BT.text.orange} border={false} />
             </SectionPanel>
           </div>
         </>
@@ -716,7 +777,7 @@ export function WaterfallTab({ dealId, assumptions, modelResults, f9Financials, 
           <SectionPanel title="DISTRIBUTION SCHEDULE" subtitle={`${holdYears}-year hold · ${wfType.toUpperCase()} waterfall · ${fmtPct(prefRate * 100)} pref · ★ = promote crystallizes`} borderColor={BT.text.purple}>
             {distRows.length === 0 ? (
               <div style={{ padding: '24px', textAlign: 'center', fontFamily: MONO, fontSize: 10, color: BT.text.muted }}>
-                Set equity structure and NOI to generate distribution schedule
+                Configure equity structure and NOI to generate distribution schedule
               </div>
             ) : (
               <div style={{ overflowX: 'auto' }}>
@@ -821,18 +882,18 @@ export function WaterfallTab({ dealId, assumptions, modelResults, f9Financials, 
           {/* ── LP/GP Returns detail ────────────────────────────────────────── */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
             <SectionPanel title="LP INVESTOR RETURNS" subtitle="All LP tranches" borderColor={BT.met.financial}>
-              <DataRow label="LP EQUITY IN"      value={lpEquity > 0 ? fmt$(lpEquity) : '—'}                          valueColor={BT.text.white} />
-              <DataRow label="LP TOTAL OUT"      value={totalLP > 0 ? fmt$(totalLP) : '—'}                            valueColor={BT.met.financial} />
-              <DataRow label="LP EQUITY MULT"    value={lpEm != null ? fmtX(lpEm) : '—'}                              valueColor={lpEm != null && lpEm >= 1.8 ? BT.met.financial : BT.text.amber} />
-              <DataRow label="LP IRR"             value={lpIrr != null ? fmtPct(lpIrr * 100) : '—'}                   valueColor={lpIrr != null && lpIrr >= 0.12 ? BT.met.financial : BT.text.amber} />
-              <DataRow label="LP PREF RATE"       value={fmtPct(prefRate * 100)}                                       valueColor={BT.text.cyan} border={false} />
+              <DataRow label="LP EQUITY IN"    value={lpEquity > 0 ? fmt$(lpEquity) : '—'}                        valueColor={BT.text.white} />
+              <DataRow label="LP TOTAL OUT"    value={totalLP > 0 ? fmt$(totalLP) : '—'}                          valueColor={BT.met.financial} />
+              <DataRow label="LP EQUITY MULT"  value={lpEm != null ? fmtX(lpEm) : '—'}                            valueColor={lpEm != null && lpEm >= 1.8 ? BT.met.financial : BT.text.amber} />
+              <DataRow label="LP IRR"           value={lpIrr != null ? fmtPct(lpIrr * 100) : '—'}                 valueColor={lpIrr != null && lpIrr >= 0.12 ? BT.met.financial : BT.text.amber} />
+              <DataRow label="LP PREF RATE"     value={fmtPct(prefRate * 100)}                                     valueColor={BT.text.cyan} border={false} />
             </SectionPanel>
             <SectionPanel title="GP ECONOMICS" subtitle="Promote + fees all-in" borderColor={BT.text.orange}>
-              <DataRow label="GP CO-INVEST IN"  value={gpEquity > 0 ? fmt$(gpEquity) : '—'}                          valueColor={BT.text.white} />
-              <DataRow label="GP TOTAL DIST"    value={totalGP > 0 ? fmt$(totalGP) : '—'}                            valueColor={BT.text.orange} />
-              <DataRow label="GP PROMOTE"       value={totalPromote > 0 ? fmt$(totalPromote) : '—'}                  valueColor={BT.text.amber} />
-              <DataRow label="GP TOTAL FEES"    value={totalFees > 0 ? fmt$(totalFees) : '—'}                        valueColor={BT.text.red} />
-              <DataRow label="GP ALL-IN MULT"   value={gpEm != null ? fmtX(gpEm) : '—'}                              valueColor={BT.text.orange} border={false} />
+              <DataRow label="GP CO-INVEST IN" value={gpEquity > 0 ? fmt$(gpEquity) : '—'}                        valueColor={BT.text.white} />
+              <DataRow label="GP TOTAL DIST"   value={totalGP > 0 ? fmt$(totalGP) : '—'}                          valueColor={BT.text.orange} />
+              <DataRow label="GP PROMOTE"      value={totalPromote > 0 ? fmt$(totalPromote) : '—'}                valueColor={BT.text.amber} />
+              <DataRow label="GP TOTAL FEES"   value={totalFees > 0 ? fmt$(totalFees) : '—'}                      valueColor={BT.text.red} />
+              <DataRow label="GP ALL-IN MULT"  value={gpEm != null ? fmtX(gpEm) : '—'}                            valueColor={BT.text.orange} border={false} />
             </SectionPanel>
           </div>
         </>

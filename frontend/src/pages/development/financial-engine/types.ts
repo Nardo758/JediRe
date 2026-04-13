@@ -292,7 +292,7 @@ export interface F9DealFinancials {
     lpShare: number;
     gpShare: number;
     prefRate: number;
-    tiers: Array<{ triggerIrr: number; lpPct: number; gpPct: number }>;
+    tiers: Array<{ triggerIrr: number; lpPct: number; gpPct: number; triggerType: string }>;
     fees: {
       acquisitionFeePct: number;
       assetMgmtFeePct: number;
@@ -302,6 +302,19 @@ export interface F9DealFinancials {
       refinancingFeePct: number;
     };
     userOverrides: { lpShare: number | null; gpShare: number | null; prefRate: number | null };
+  } | null;
+  /** Capital tranche configuration (persisted tranches from backend) */
+  capital: {
+    tranches: Array<{
+      id: string;
+      label: string;
+      role: string;
+      pct: number;
+      prefRate: number;
+      compounding: string;
+      cumulative: boolean;
+      participatePromote: boolean;
+    }>;
   } | null;
 }
 

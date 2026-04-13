@@ -1381,17 +1381,30 @@ export interface DealFinancials {
     lpShare: number;
     gpShare: number;
     prefRate: number;
-    tiers: Array<{ triggerIrr: number; lpPct: number; gpPct: number }>;
+    tiers: Array<{ triggerIrr: number; lpPct: number; gpPct: number; triggerType: string }>;
     fees: {
       acquisitionFeePct: number;
       assetMgmtFeePct: number;
-      assetMgmtBasis: unknown;
+      assetMgmtBasis: string;
       constructionMgmtPct: number;
       dispositionFeePct: number;
       refinancingFeePct: number;
     };
     userOverrides: { lpShare: number | null; gpShare: number | null; prefRate: number | null };
   } | null;
+  /** Capital tranche configuration persisted via wf:trancheN:* overrides */
+  capital: {
+    tranches: Array<{
+      id: string;
+      label: string;
+      role: string;
+      pct: number;
+      prefRate: number;
+      compounding: string;
+      cumulative: boolean;
+      participatePromote: boolean;
+    }>;
+  };
 }
 
 /**
@@ -2320,37 +2333,83 @@ export async function getDealFinancials(
   const wfGpShare    = wfOvr('gpShare')    ?? 0.1;
   const wfPrefRate   = wfOvr('prefRate')   ?? 0.08;
   const wfWaterfallType = (wfPyr['wf:waterfallType'] as Record<string, unknown> | null)?.value ?? 'american';
-  const wfPromoteTiers: Array<{ triggerIrr: number; lpPct: number; gpPct: number }> = [];
-  for (let i = 0; i < 4; i++) {
-    const trigger = wfOvr(`tier${i}TriggerIrr`);
-    const lp      = wfOvr(`tier${i}LpPct`);
-    const gp      = wfOvr(`tier${i}GpPct`);
+
+  // Helper: read string wf override
+  const wfStrOvr = (key: string): string | null => {
+    const entry = (wfPyr[`wf:${key}`] as Record<string, unknown> | null);
+    const v = entry?.value;
+    return typeof v === 'string' ? v : null;
+  };
+
+  // Tier defaults for triggerType
+  const DEFAULT_TRIGGER_TYPES = ['roc', 'pref_return', 'promote'];
+  const wfTiers: Array<{ triggerIrr: number; lpPct: number; gpPct: number; triggerType: string }> = [];
+  for (let i = 0; i < 6; i++) {
+    const trigger     = wfOvr(`tier${i}TriggerIrr`);
+    const lp          = wfOvr(`tier${i}LpPct`);
+    const gp          = wfOvr(`tier${i}GpPct`);
+    const triggerType = wfStrOvr(`tier${i}TriggerType`) ?? DEFAULT_TRIGGER_TYPES[i] ?? 'promote';
     if (trigger != null || lp != null || gp != null || i < 3) {
-      wfPromoteTiers.push({
-        triggerIrr: trigger ?? (i === 0 ? 0.08 : i === 1 ? 0.12 : i === 2 ? 0.15 : 0.20),
-        lpPct: lp ?? (i === 0 ? 0.80 : i === 1 ? 0.70 : i === 2 ? 0.60 : 0.50),
-        gpPct: gp ?? (i === 0 ? 0.20 : i === 1 ? 0.30 : i === 2 ? 0.40 : 0.50),
+      wfTiers.push({
+        triggerIrr:   trigger  ?? (i === 0 ? 0.08 : i === 1 ? 0.12 : i === 2 ? 0.15 : 0.20),
+        lpPct:        lp       ?? (i === 0 ? 0.80 : i === 1 ? 0.70 : i === 2 ? 0.60 : 0.50),
+        gpPct:        gp       ?? (i === 0 ? 0.20 : i === 1 ? 0.30 : i === 2 ? 0.40 : 0.50),
+        triggerType,
       });
     }
   }
-  if (wfPromoteTiers.length === 0) {
-    wfPromoteTiers.push(
-      { triggerIrr: 0.08, lpPct: 0.80, gpPct: 0.20 },
-      { triggerIrr: 0.12, lpPct: 0.70, gpPct: 0.30 },
-      { triggerIrr: 0.15, lpPct: 0.60, gpPct: 0.40 },
+  if (wfTiers.length === 0) {
+    wfTiers.push(
+      { triggerIrr: 0.08, lpPct: 0.80, gpPct: 0.20, triggerType: 'roc' },
+      { triggerIrr: 0.12, lpPct: 0.70, gpPct: 0.30, triggerType: 'pref_return' },
+      { triggerIrr: 0.15, lpPct: 0.60, gpPct: 0.40, triggerType: 'promote' },
     );
   }
+
+  // Capital tranche config: read from per_year_overrides wf:trancheN:* fields
+  // Schema: wf:trancheN:label, wf:trancheN:role, wf:trancheN:pct, wf:trancheN:prefRate,
+  //         wf:trancheN:compounding, wf:trancheN:cumulative, wf:trancheN:participatePromote
+  const TRANCHE_DEFAULTS = [
+    { id: 'lpA', label: 'LP CLASS A',   role: 'lp',   pct: wfLpShare, prefRate: wfPrefRate, compounding: 'annual', cumulative: true,  participatePromote: true },
+    { id: 'gp',  label: 'GP CO-INVEST', role: 'gp',   pct: wfGpShare, prefRate: 0,          compounding: 'annual', cumulative: false, participatePromote: true },
+  ];
+  const capitalTranches: Array<{ id: string; label: string; role: string; pct: number; prefRate: number; compounding: string; cumulative: boolean; participatePromote: boolean }> = [];
+  for (let i = 0; i < 6; i++) {
+    const label = wfStrOvr(`tranche${i}Label`);
+    const role  = wfStrOvr(`tranche${i}Role`);
+    const pct   = wfOvr(`tranche${i}Pct`);
+    const prefR = wfOvr(`tranche${i}PrefRate`);
+    const comp  = wfStrOvr(`tranche${i}Compounding`);
+    const cumul = wfStrOvr(`tranche${i}Cumulative`);
+    const promo = wfStrOvr(`tranche${i}ParticipatePromote`);
+    if (label || role || pct != null) {
+      capitalTranches.push({
+        id:                 `tranche${i}`,
+        label:              label ?? (TRANCHE_DEFAULTS[i]?.label ?? `TRANCHE ${i + 1}`),
+        role:               role  ?? (TRANCHE_DEFAULTS[i]?.role  ?? 'lp'),
+        pct:                pct   ?? (TRANCHE_DEFAULTS[i]?.pct   ?? 0),
+        prefRate:           prefR ?? (TRANCHE_DEFAULTS[i]?.prefRate ?? 0),
+        compounding:        comp  ?? 'annual',
+        cumulative:         cumul != null ? cumul === 'true' : (TRANCHE_DEFAULTS[i]?.cumulative ?? true),
+        participatePromote: promo != null ? promo === 'true' : (TRANCHE_DEFAULTS[i]?.participatePromote ?? true),
+      });
+    }
+  }
+  // Fall back to defaults if no tranches persisted
+  const capital = {
+    tranches: capitalTranches.length > 0 ? capitalTranches : TRANCHE_DEFAULTS,
+  };
 
   const waterfall = {
     waterfallType: typeof wfWaterfallType === 'string' ? wfWaterfallType : 'american',
     lpShare:   wfLpShare,
     gpShare:   wfGpShare,
     prefRate:  wfPrefRate,
-    tiers: wfPromoteTiers,
+    tiers: wfTiers,
     fees: {
       acquisitionFeePct:    wfOvr('acquisitionFeePct')    ?? 0.01,
       assetMgmtFeePct:      wfOvr('assetMgmtFeePct')      ?? 0.015,
-      assetMgmtBasis:       (wfPyr['wf:assetMgmtBasis'] as Record<string, unknown> | null)?.value ?? 'equity',
+      assetMgmtBasis:       wfStrOvr('assetMgmtBasis')    ?? 'equity',
       constructionMgmtPct:  wfOvr('constructionMgmtPct')  ?? 0,
       dispositionFeePct:    wfOvr('dispositionFeePct')     ?? 0.01,
       refinancingFeePct:    wfOvr('refinancingFeePct')     ?? 0,
@@ -2381,6 +2440,7 @@ export async function getDealFinancials(
     debt: debtStack,
     sourcesUses,
     waterfall,
+    capital,
   };
 }
 
