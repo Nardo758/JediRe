@@ -172,9 +172,31 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
     setShowVersionDropdown(false);
   }, []);
 
-  const handleExport = useCallback(() => {
-    exportToExcel(assumptions, modelResults, assumptions?.dealInfo?.dealName);
-  }, [assumptions, modelResults]);
+  const handleExport = useCallback(async () => {
+    if (!resolvedDealId) {
+      exportToExcel(assumptions, modelResults, assumptions?.dealInfo?.dealName);
+      return;
+    }
+    try {
+      const holdYears = assumptions?.holdPeriod ?? 5;
+      const response = await fetch(
+        `/api/v1/deals/${resolvedDealId}/financials/export?hold=${holdYears}`,
+        { method: 'GET', credentials: 'include' },
+      );
+      if (!response.ok) throw new Error(`Export failed: ${response.status}`);
+      const blob = await response.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href     = url;
+      a.download = `${assumptions?.dealInfo?.dealName ?? 'deal'}_f9_export.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      exportToExcel(assumptions, modelResults, assumptions?.dealInfo?.dealName);
+    }
+  }, [resolvedDealId, assumptions, modelResults]);
 
   const handleAssumptionsChange = useCallback((partial: Partial<ModelAssumptions>) => {
     setAssumptions(prev => prev ? { ...prev, ...partial } : null);
@@ -532,28 +554,9 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
         <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
           {activeTab === 0 && <BtTabWrapper><OverviewTab {...tabProps} /></BtTabWrapper>}
           {activeTab === 1 && <BtTabWrapper><ProFormaSummaryTab {...tabProps} /></BtTabWrapper>}
-          {activeTab === 2 && integrityBlocked ? (
-            <BtTabWrapper>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 12, padding: 32 }}>
-                <div style={{ background: '#1c0a0a', border: '1px solid #ef4444', borderLeft: '4px solid #ef4444', padding: '12px 16px', borderRadius: 2, maxWidth: 520 }}>
-                  <div style={{ fontFamily: MONO, fontSize: 10, fontWeight: 700, color: '#ef4444', letterSpacing: 0.5, marginBottom: 6 }}>
-                    ⛔ PROJECTIONS BLOCKED — INTEGRITY ERROR
-                  </div>
-                  <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 9, color: '#fca5a5', lineHeight: 1.5 }}>
-                    The Pro Forma tab has unresolved integrity errors. Review and correct the flagged fields before running projections.
-                  </div>
-                  <button
-                    onClick={() => setActiveTab(1)}
-                    style={{ marginTop: 8, background: 'none', border: '1px solid #ef4444', color: '#ef4444', fontFamily: MONO, fontSize: 9, padding: '3px 8px', cursor: 'pointer', borderRadius: 2 }}
-                  >
-                    GO TO PRO FORMA →
-                  </button>
-                </div>
-              </div>
-            </BtTabWrapper>
-          ) : activeTab === 2 ? (
-            <BtTabWrapper><ProjectionsTab {...tabProps} /></BtTabWrapper>
-          ) : null}
+          {activeTab === 2 && (
+            <BtTabWrapper><ProjectionsTab {...tabProps} integrityWarning={integrityBlocked} /></BtTabWrapper>
+          )}
           {activeTab === 3 && <BtTabWrapper><AssumptionsTab {...tabProps} /></BtTabWrapper>}
           {activeTab === 4 && <BtTabWrapper><DebtTab {...tabProps} /></BtTabWrapper>}
           {activeTab === 5 && <BtTabWrapper><WaterfallTab {...tabProps} /></BtTabWrapper>}

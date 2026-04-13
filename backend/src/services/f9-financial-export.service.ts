@@ -230,9 +230,9 @@ function setComment(ws: XLSX.WorkSheet, cellAddr: string, text: string): void {
 
 // ─── Cell style helpers ──────────────────────────────────────────────────
 // Color semantics (standard Excel audit convention):
-//   Black = hardcoded input value  (default cell)
-//   Blue  = formula / computed     (0070C0)
-//   Green = M07-linked / traffic   (00B050)
+//   Black    = formula / derived row (computed from inputs)  (000000 bold)
+//   Blue     = user override cell    (value differs from platform) (0070C0)
+//   Green    = cross-sheet link      (sourced from M07 Traffic / another sheet) (00B050)
 
 type CellStyle = {
   font?: { bold?: boolean; color?: { rgb: string }; sz?: number; name?: string };
@@ -266,9 +266,10 @@ const S = {
   title:   { font: { bold: true, sz: 12, name: 'Calibri', color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '0F1319' }, patternType: 'solid' } },
   header:  { font: { bold: true, sz: 10, name: 'Calibri', color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '1B2A4A' }, patternType: 'solid' }, alignment: { horizontal: 'center' } },
   section: { font: { bold: true, sz: 10, name: 'Calibri', color: { rgb: 'F5A623' } }, fill: { fgColor: { rgb: '0F1319' }, patternType: 'solid' }, border: { bottom: { style: 'thin', color: { rgb: '2A3A5A' } } } },
-  formula: { font: { bold: true, sz: 10, name: 'Calibri', color: { rgb: '0070C0' } }, border: { top: { style: 'thin', color: { rgb: '2A3A5A' } }, bottom: { style: 'double', color: { rgb: '2A3A5A' } } } },
-  linked:  { font: { sz: 10, name: 'Calibri', color: { rgb: '00B050' } } },
-  input:   { font: { sz: 10, name: 'Calibri', color: { rgb: '000000' } } },
+  formula:  { font: { bold: true, sz: 10, name: 'Calibri', color: { rgb: '000000' } }, border: { top: { style: 'thin', color: { rgb: '2A3A5A' } }, bottom: { style: 'double', color: { rgb: '2A3A5A' } } } },
+  override: { font: { bold: true, sz: 10, name: 'Calibri', color: { rgb: '0070C0' } } },
+  linked:   { font: { sz: 10, name: 'Calibri', color: { rgb: '00B050' } } },
+  input:    { font: { sz: 10, name: 'Calibri', color: { rgb: '000000' } } },
 } as const;
 
 // ─── Sheet builders ──────────────────────────────────────────────────────────
@@ -514,7 +515,7 @@ function buildProFormaSheet(
     e: { r: totalRows - 1, c: N },
   });
 
-  // ── Apply cell styles (black=input, blue=formula, green=M07-linked) ──────
+  // ── Apply cell styles (black=formula rows, blue=user overrides, green=cross-sheet M07 link) ──
   styleRow(ws, R.TITLE,   N, S.title);
   styleRow(ws, R.SUBTITLE, N, S.title);
   styleRow(ws, R.HDRS,    N, S.header);
@@ -523,24 +524,42 @@ function buildProFormaSheet(
   for (const secRow of [14, 32, 40, 47]) {
     styleRow(ws, secRow, N, S.section);
   }
-  // REVENUE header (implied in row 4 as GPR title context — add explicit marker at row 3.5)
-  // Instead, style the section above GPR via a header in row 4-1:
-  // GPR section = row before R.GPR. Since R.HDRS=3 and R.GPR=4, we style GPR row label in section color
   styleCell(ws, addr(R.GPR, 0), S.section);
 
-  // Formula/total rows (blue): NRI, EGI, TOPEX, NOI, TOTALDS, CFBT, NETSALE
+  // Formula/derived rows (black bold): NRI, EGI, TOPEX, NOI, TOTALDS, CFBT, NETSALE
   for (const fRow of [R.NRI, R.EGI, R.TOPEX, R.NOI, R.TOTALDS, R.CFBT, R.NETSALE]) {
     for (let c = 0; c <= N; c++) {
       styleCell(ws, addr(fRow, c), S.formula);
     }
   }
 
-  // Traffic-linked rows (green): Vacancy comes from M07
+  // Cross-sheet linked rows (green): Vacancy cells sourced from M07 Traffic sheet
   for (let c = 1; c <= N; c++) {
     const yr = c;
     const tvYr = f.trafficProjection?.yearly.find(t => t.year === yr);
     if (tvYr?.vacancyPct != null) {
       styleCell(ws, addr(R.VAC, c), S.linked);
+    }
+  }
+
+  // User override cells (blue): any cell where userOverrides[field][year] is set
+  const rowFieldMap: Record<number, string> = {
+    [R.GPR]: 'gpr', [R.VAC]: 'vacancy_pct', [R.LTL]: 'loss_to_lease_pct',
+    [R.CONC]: 'concessions_pct', [R.BADDEBT]: 'bad_debt_pct', [R.NRU]: 'non_revenue_units_pct',
+    [R.OTH]: 'other_income_per_unit', [R.PAYROLL]: 'payroll', [R.REPAIRS]: 'repairs_maintenance',
+    [R.TURNOVER]: 'turnover', [R.CONTRACT]: 'contract_services', [R.MKTG]: 'marketing',
+    [R.UTIL]: 'utilities', [R.GANDA]: 'g_and_a', [R.MGMT]: 'management_fee_pct',
+    [R.INS]: 'insurance', [R.RETAX]: 'real_estate_tax', [R.RESV]: 'replacement_reserves',
+  };
+  for (const [rowStr, field] of Object.entries(rowFieldMap)) {
+    const rowIdx = Number(rowStr);
+    const fieldOverrides = f.userOverrides[field];
+    if (!fieldOverrides) continue;
+    for (let c = 1; c <= N; c++) {
+      const yr = c;
+      if (fieldOverrides[yr] != null) {
+        styleCell(ws, addr(rowIdx, c), S.override);
+      }
     }
   }
 

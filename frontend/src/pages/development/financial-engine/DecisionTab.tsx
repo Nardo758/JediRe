@@ -35,9 +35,18 @@ const SEVERITY_COLORS = {
   low: BT.met.financial,
 };
 
-export function DecisionTab({ dealId, assumptions, modelResults }: FinancialEngineTabProps) {
+export function DecisionTab({ dealId, assumptions, modelResults, f9Financials }: FinancialEngineTabProps) {
   const summary = modelResults?.summary;
-  const flags = deriveRiskFlags(assumptions, modelResults);
+  // F10 wiring: merge F9 integrity check errors/warnings as additional risk flags
+  const f9Flags: RiskFlag[] = (f9Financials?.proforma.integrityChecks ?? [])
+    .filter(c => c.status !== 'ok')
+    .map(c => ({
+      severity: c.status === 'error' ? 'high' : 'medium' as 'high' | 'medium',
+      label: `INTEGRITY: ${c.id.toUpperCase().replace(/_/g, ' ')}`,
+      detail: c.message,
+    }));
+  const baseFlags = deriveRiskFlags(assumptions, modelResults);
+  const flags = [...f9Flags, ...baseFlags.filter(f => f.label !== 'NO FLAGS' || f9Flags.length === 0)];
   const highFlags = flags.filter(f => f.severity === 'high');
   const medFlags = flags.filter(f => f.severity === 'medium');
 

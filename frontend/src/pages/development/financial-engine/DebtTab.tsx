@@ -131,6 +131,29 @@ export function DebtTab({ dealId, deal, assumptions, modelResults, f9Financials 
         }}>{showAmort ? 'HIDE' : 'SHOW'} SCHEDULE</button>
       </div>
 
+      {/* F8 wiring: F9 debt metrics — DSCR, debt yield, LTV, implied cap */}
+      {f9Financials && (() => {
+        const noi    = f9Financials.proforma.year1.find(r => r.field === 'noi')?.resolved ?? null;
+        const pp     = f9Financials.capitalStack.purchasePrice;
+        const loan   = f9Financials.capitalStack.loanAmount;
+        const dscr   = f9Financials.capitalStack.dscrMin;
+        const ltv    = f9Financials.capitalStack.ltcPct;
+        const debtYield = noi != null && loan != null && loan > 0 ? noi / loan : null;
+        const impliedCap = noi != null && pp != null && pp > 0 ? noi / pp : null;
+        return (
+          <div style={{ padding: '6px 10px', background: BT.bg.panel, borderBottom: `1px solid ${BT.border.subtle}` }}>
+            <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, letterSpacing: 0.5, marginBottom: 4 }}>F9 DEBT METRICS · M07 CALIBRATED</div>
+            <div style={{ display: 'flex', gap: 12 }}>
+              {dscr != null && <span style={{ fontFamily: MONO, fontSize: 9, color: dscr >= 1.25 ? BT.met.financial : BT.text.red }}>DSCR {dscr.toFixed(2)}×</span>}
+              {ltv != null && <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.cyan }}>LTV {fmtPct(ltv * 100)}</span>}
+              {debtYield != null && <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.amber }}>DEBT YIELD {fmtPct(debtYield * 100)}</span>}
+              {impliedCap != null && <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary }}>IMPLIED CAP {fmtPct(impliedCap * 100)}</span>}
+              {noi != null && <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>NOI {fmt$(noi)}</span>}
+            </div>
+          </div>
+        );
+      })()}
+
       {showAmort && (
         <div style={{ overflowX: 'auto', maxHeight: 400 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 9 }}>

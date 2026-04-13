@@ -536,6 +536,7 @@ function FindingsPanel({ narrative, blocks, loading }: {
 // ─── Main component ───────────────────────────────────────────────────────
 export function ProjectionsTab({
   dealId,
+  integrityWarning,
 }: FinancialEngineTabProps) {
   const [timeline, setTimeline]               = useState<TimelineOption>(5);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
@@ -715,6 +716,17 @@ export function ProjectionsTab({
           {exporting ? 'EXPORTING...' : 'EXPORT XLSX'}
         </button>
       </div>
+
+      {/* ── Parent-level integrity warning (passed from FinancialEnginePage) ── */}
+      {integrityWarning && (
+        <div style={{
+          background: '#1c0a0a', borderBottom: '1px solid #ef4444', borderLeft: '4px solid #ef4444',
+          padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 8,
+        }}>
+          <span style={{ fontFamily: MONO, fontSize: 9, color: '#ef4444', fontWeight: 700 }}>PRO FORMA INTEGRITY ERRORS DETECTED</span>
+          <span style={{ fontFamily: MONO, fontSize: 9, color: '#fca5a5' }}>Projections may reflect unresolved field conflicts. Review Pro Forma tab for details.</span>
+        </div>
+      )}
 
       {/* ── Integrity banner (errors / warnings from pro forma checks) ─────── */}
       {integrityChecks.length > 0 && (

@@ -192,6 +192,26 @@ export function OverviewTab({ dealId, deal, dealType, assumptions, modelResults,
             <DataRow label="TOTAL PROFIT" value={summary?.totalProfit != null ? fmt$(summary.totalProfit) : '—'} valueColor={BT.text.white} border={false} />
           </SectionPanel>
 
+          {/* F9 Unit Economics — sourced from GET /financials */}
+          {f9Financials && (
+            <SectionPanel title="F9 UNIT ECONOMICS" subtitle="M07-calibrated · /financials engine" borderColor={BT.text.cyan}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
+                <div>
+                  <DataRow label="GPR / UNIT / MO" value={f9Financials.proforma.unitEconomics.gprPerUnit != null ? fmt$(f9Financials.proforma.unitEconomics.gprPerUnit / 12) : '—'} valueColor={BT.text.cyan} />
+                  <DataRow label="EGI / UNIT / MO" value={f9Financials.proforma.unitEconomics.egiPerUnit != null ? fmt$(f9Financials.proforma.unitEconomics.egiPerUnit / 12) : '—'} valueColor={BT.met.financial} />
+                  <DataRow label="OPEX / UNIT / MO" value={f9Financials.proforma.unitEconomics.opexPerUnit != null ? fmt$(f9Financials.proforma.unitEconomics.opexPerUnit / 12) : '—'} valueColor={BT.text.red} />
+                  <DataRow label="NOI / UNIT / MO" value={f9Financials.proforma.unitEconomics.noiPerUnit != null ? fmt$(f9Financials.proforma.unitEconomics.noiPerUnit / 12) : '—'} valueColor={BT.met.financial} border={false} />
+                </div>
+                <div>
+                  <DataRow label="OPEX RATIO" value={f9Financials.proforma.unitEconomics.opexRatioPct != null ? fmtPct(f9Financials.proforma.unitEconomics.opexRatioPct) : '—'} valueColor={BT.text.amber} />
+                  <DataRow label="VACANCY (M07)" value={f9Financials.proforma.unitEconomics.derivedVacancyPct != null ? fmtPct((f9Financials.proforma.unitEconomics.derivedVacancyPct as number) * 100) : '—'} valueColor={BT.text.muted} />
+                  <DataRow label="PRICE / UNIT" value={f9Financials.capitalStack.pricePerUnit != null ? fmt$(f9Financials.capitalStack.pricePerUnit) : '—'} valueColor={BT.text.secondary} />
+                  <DataRow label="EXIT CAP (M07)" value={f9ExitCap != null ? fmtPct(f9ExitCap * 100) : '—'} valueColor={BT.text.amber} border={false} />
+                </div>
+              </div>
+            </SectionPanel>
+          )}
+
           <div style={{ flexShrink: 0 }}>
             {anyCollision ? (
               <AlertBanner label="COLLISION DETECTED" text="Broker and platform assumptions diverge >10% on highlighted rows" color={BT.text.amber} badge={<Bd c={BT.text.amber}>REVIEW REQUIRED</Bd>} />

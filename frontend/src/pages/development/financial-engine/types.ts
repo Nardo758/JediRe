@@ -274,6 +274,8 @@ export interface FinancialEngineTabProps {
   onIntegrityChange?: (hasErrors: boolean) => void;
   /** F9 DealFinancials (from /api/v1/deals/:id/financials) shared across F1/F8/F10 tabs */
   f9Financials?: F9DealFinancials | null;
+  /** True when Pro Forma integrity checks contain errors — tab shows warning banner but remains accessible */
+  integrityWarning?: boolean;
 }
 
 export const fmt$ = (n: number): string => {

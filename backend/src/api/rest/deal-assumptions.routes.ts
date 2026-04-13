@@ -685,16 +685,52 @@ router.get('/:dealId/financials/narrative', requireAuth, async (req: Authenticat
       });
     }
 
-    // ── Layer 2+3: always fetch fresh DealFinancials to build blocks ───────
+    // ── Layer 2: DB cache (survives restarts) ─────────────────────────────
+    // Read persisted narrative_text + generated_at from DB; if within TTL,
+    // use DB text + rebuild blocks from current financials (blocks are derived, not stored)
+    await ensureNarrativeColumns();
+    if (!forceRefresh) {
+      try {
+        const dbRow = await pool.query<{ narrative_text: string|null; narrative_generated_at: Date|null }>(
+          `SELECT narrative_text, narrative_generated_at FROM deal_assumptions WHERE deal_id = $1 LIMIT 1`,
+          [dealId],
+        );
+        const dbNarrative = dbRow.rows[0]?.narrative_text ?? null;
+        const dbGeneratedAt = dbRow.rows[0]?.narrative_generated_at;
+        if (dbNarrative && dbGeneratedAt) {
+          const dbAge = now - new Date(dbGeneratedAt).getTime();
+          if (dbAge < NARRATIVE_TTL_MS) {
+            // DB cache is fresh — rebuild blocks from current financials, serve from DB
+            const freshData = await getDealFinancials(pool, dealId, 10);
+            const freshBlocks = buildNarrativeBlocks(freshData);
+            const dbCachedAt = new Date(dbGeneratedAt).getTime();
+            narrativeCache.set(dealId, { text: dbNarrative, blocks: freshBlocks, generatedAt: dbCachedAt });
+            return res.json({
+              success: true,
+              data: {
+                narrative:  dbNarrative,
+                blocks:     freshBlocks,
+                cachedAt:   new Date(dbGeneratedAt).toISOString(),
+                source:     'db',
+                fresh:      false,
+              },
+            });
+          }
+        }
+      } catch (dbErr: unknown) {
+        logger.warn('Narrative DB read failed (non-fatal):', dbErr);
+      }
+    }
+
+    // ── Layer 3: fresh derivation from DealFinancials ─────────────────────
     const data   = await getDealFinancials(pool, dealId, 10);
     const blocks = buildNarrativeBlocks(data);
-    // Plain text: blocks summaries joined with separator (same as original format)
+    // Plain text: blocks summaries joined with separator
     const narrative = blocks.length > 0
       ? blocks.map(b => b.summary).join(' · ')
       : data.assumptions.narrative;
 
-    // Persist narrative_text to DB (non-blocking — we don't await to avoid slowing response)
-    await ensureNarrativeColumns();
+    // Persist to DB (non-blocking — fire-and-forget)
     pool.query(
       `UPDATE deal_assumptions
           SET narrative_text = $2, narrative_generated_at = NOW()
