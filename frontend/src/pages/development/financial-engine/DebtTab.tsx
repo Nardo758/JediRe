@@ -530,7 +530,9 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
       : balloon * 0.03;
     return { balloon, prepay, exitFee: balloon * effExitFee, total: balloon + prepay + balloon * effExitFee };
   }, [annualRows, refi.triggerYear, activeLoan.prepayType, effExitFee]);
-  const refiDocStamps = refiPayoff ? refiPayoff.total * 0.0070 : null;
+  // Prefer backend-computed refi tax (taxes.transferTax.refi) for accuracy; fall back to local estimate
+  const backendRefiTax = f9Financials?.taxes?.transferTax?.refi;
+  const refiDocStamps = backendRefiTax?.refiTotalTax ?? (refiPayoff ? refiPayoff.balloon * 0.0035 + refiPayoff.balloon * 0.002 : null);
 
   // ── SOFR curve editor ───────────────────────────────────────────────────────
   const updateSofrCurve = (idx: number, val: number) => {
