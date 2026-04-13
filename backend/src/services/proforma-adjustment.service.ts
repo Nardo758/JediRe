@@ -1956,53 +1956,80 @@ export async function getDealFinancials(
     },
   };
 
-  // ── Debt Stack v2 — build from capitalStack fields ──────────────────────────
+  // ── Debt Stack v2 — build from capitalStack fields + persisted per_year_overrides ────
   const SOFR_CURVE_DEFAULT = [0.0500, 0.0475, 0.0450, 0.0425, 0.0400];
   const seniorRate = capitalStack.interestRate;
   const seniorLoan = capitalStack.loanAmount;
   const seniorIsMezz = (assumptionsRow as Record<string, unknown>)?.loan_type === 'Mezz';
   const seniorLabel  = (assumptionsRow as Record<string, unknown>)?.loan_type as string | null;
   const seniorRateType: 'Fixed' | 'Floating' = (['Bridge', 'Construction', 'Mezz'].includes(String(seniorLabel ?? ''))) ? 'Floating' : 'Fixed';
-  const seniorAnnualDS = seniorLoan != null && seniorRate != null ? seniorLoan * seniorRate : null;
   const noiFull = year1Rows.find((r: { field: string }) => r.field === 'noi')?.resolved ?? null;
-  const seniorDscr = seniorAnnualDS != null && seniorAnnualDS > 0 && typeof noiFull === 'number' ? noiFull / seniorAnnualDS : null;
+
+  // Helper to read a persisted debt override from per_year_overrides JSONB
+  const rawPyr = assumptionsRow?.per_year_overrides ?? {};
+  const debtOvr = (loanId: string, fieldName: string): number | null => {
+    const key = `debt:${loanId}:${fieldName}`;
+    const entry = (rawPyr as Record<string, unknown>)[key];
+    if (entry && typeof entry === 'object' && 'value' in (entry as Record<string, unknown>)) {
+      const v = (entry as Record<string, unknown>).value;
+      return v != null ? +v : null;
+    }
+    return null;
+  };
+  const debtOvrStr = (loanId: string, fieldName: string): string | null => {
+    const key = `debt:${loanId}:${fieldName}`;
+    const entry = (rawPyr as Record<string, unknown>)[key];
+    if (entry && typeof entry === 'object' && 'value' in (entry as Record<string, unknown>)) {
+      const v = (entry as Record<string, unknown>).value;
+      return v != null ? String(v) : null;
+    }
+    return null;
+  };
+
+  const seniorLoanAmtEff = debtOvr('senior', 'loanAmount') ?? seniorLoan;
+  const seniorRateEff    = debtOvr('senior', 'interestRate') ?? seniorRate;
+  const seniorAnnualDS   = seniorLoanAmtEff != null && seniorRateEff != null ? seniorLoanAmtEff * seniorRateEff : null;
+  const seniorDscr       = seniorAnnualDS != null && seniorAnnualDS > 0 && typeof noiFull === 'number' ? noiFull / seniorAnnualDS : null;
+
+  // Reconstruct SOFR curve from overrides if any
+  const sofrCurveSenior = SOFR_CURVE_DEFAULT.map((v, i) => debtOvr('senior', `sofrCurve:${i}`) ?? v);
 
   const seniorLoanEntry = {
     id: 'senior',
     name: seniorIsMezz ? 'Mezz / B-Note' : 'Senior Loan',
-    loanTypeLabel: String(seniorLabel ?? 'Bridge'),
-    rateType: seniorRateType,
+    loanTypeLabel: debtOvrStr('senior', 'loanTypeLabel') ?? String(seniorLabel ?? 'Bridge'),
+    rateType: (debtOvrStr('senior', 'rateType') as 'Fixed' | 'Floating') ?? seniorRateType,
     loanAmount: { broker: null, platform: seniorLoan },
     ltcPct:     { broker: null, platform: capitalStack.ltcPct },
-    ltv:        { platform: purchasePrice != null && seniorLoan != null && purchasePrice > 0 ? +(seniorLoan / purchasePrice).toFixed(4) : null },
+    ltv:        { platform: purchasePrice != null && seniorLoanAmtEff != null && purchasePrice > 0 ? +(seniorLoanAmtEff / purchasePrice).toFixed(4) : null },
     interestRate: { broker: null, platform: seniorRate },
-    sofr:       { platform: seniorRateType === 'Floating' ? SOFR_CURVE_DEFAULT[0] : null },
-    spread:     { broker: null, platform: seniorRateType === 'Floating' ? (seniorRate != null ? +(seniorRate - SOFR_CURVE_DEFAULT[0]).toFixed(4) : 0.035) : null },
+    sofr:       { platform: seniorRateType === 'Floating' ? sofrCurveSenior[0] : null },
+    spread:     { broker: null, platform: seniorRateType === 'Floating' ? (seniorRate != null ? +(seniorRate - sofrCurveSenior[0]).toFixed(4) : 0.035) : null },
     capRate:    { broker: null, platform: seniorRateType === 'Floating' ? 0.07 : null },
     termYears:  { broker: null, platform: null },
     amortYears: { broker: null, platform: capitalStack.amortizationYears },
     ioMonths:   { broker: null, platform: capitalStack.ioPeriodMonths },
     origFee:    { broker: null, platform: capitalStack.originationFeePct },
-    exitFee:    { platform: null },
+    exitFee:    { platform: debtOvr('senior', 'exitFee') },
     rateCapCost:{ broker: null, platform: seniorRateType === 'Floating' ? 0.005 : null },
-    minDscr:    { platform: capitalStack.dscrMin ?? 1.20 },
-    minDebtYield: { platform: 0.07 },
-    minOccupancy: { platform: 0.90 },
-    maxLtv:     { platform: 0.75 },
-    cashTrapDscr: { platform: 1.10 },
-    tiEscrowMonths:         { platform: 2 },
-    replacementReserve:     { platform: 300 },
-    operatingReserveMonths: { platform: 3 },
-    prepayType: seniorRateType === 'Fixed' ? 'defeasance' : 'open',
+    minDscr:    { platform: debtOvr('senior', 'minDscr') ?? capitalStack.dscrMin ?? 1.20 },
+    minDebtYield: { platform: debtOvr('senior', 'minDY') ?? 0.07 },
+    minOccupancy: { platform: debtOvr('senior', 'minOcc') ?? 0.90 },
+    maxLtv:     { platform: debtOvr('senior', 'maxLtv') ?? 0.75 },
+    cashTrapDscr: { platform: debtOvr('senior', 'cashTrapDscr') ?? 1.10 },
+    tiEscrowMonths:         { platform: debtOvr('senior', 'tiEscrow') ?? 2 },
+    replacementReserve:     { platform: debtOvr('senior', 'replReserve') ?? 300 },
+    operatingReserveMonths: { platform: debtOvr('senior', 'opReserveMonths') ?? 3 },
+    prepayType: debtOvrStr('senior', 'prepayType') ?? (seniorRateType === 'Fixed' ? 'defeasance' : 'open'),
     derivedAnnualDS: seniorAnnualDS,
-    sofrCurve: SOFR_CURVE_DEFAULT,
+    sofrCurve: sofrCurveSenior,
   };
 
   const debtStack: DealFinancials['debt'] = {
     loans: [seniorLoanEntry],
     aggregate: {
-      totalLoanAmount: seniorLoan,
-      blendedRatePct: seniorRate,
+      totalLoanAmount: seniorLoanAmtEff,
+      blendedRatePct: seniorRateEff,
       combinedLtcPct: capitalStack.ltcPct,
       totalAnnualDS: seniorAnnualDS,
       aggregateDscr: seniorDscr,
@@ -2280,6 +2307,33 @@ export async function applyFinancialsOverride(
     );
     return {
       year1Key: field, year: 1, appliedValue: value, resolution: 'user_override',
+      updatedCell: { [field]: value },
+      derivedRecomputation: { egi: null, noi: null, totalOpex: null, derivedVacancyPct: null, affectedFields: [field] },
+    };
+  }
+
+  // Route debt stack overrides to per_year_overrides with 'debt:' prefix
+  // Field format: "debt:{loanId}:{fieldName}" e.g. "debt:senior:loanAmount"
+  if (field.startsWith('debt:')) {
+    const pyKey = field; // Store directly as-is, e.g. "debt:senior:loanAmount"
+    const pyEntry = {
+      field, year: year ?? 1, value, updatedBy: userId,
+      updatedAt: new Date().toISOString(),
+      resolution: value != null ? 'override' : 'cleared',
+    };
+    await pool.query(
+      `UPDATE deal_assumptions
+          SET per_year_overrides = jsonb_set(
+                COALESCE(per_year_overrides, '{}'::jsonb),
+                $2::text[],
+                $3::jsonb
+              ),
+              updated_at = NOW()
+        WHERE deal_id = $1`,
+      [dealId, `{${pyKey}}`, JSON.stringify(pyEntry)]
+    );
+    return {
+      year1Key: field, year: year ?? 1, appliedValue: value, resolution: 'user_override',
       updatedCell: { [field]: value },
       derivedRecomputation: { egi: null, noi: null, totalOpex: null, derivedVacancyPct: null, affectedFields: [field] },
     };

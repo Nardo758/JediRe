@@ -103,12 +103,15 @@ function makeLoanState(id: string, name: string, preset: LoanPreset, f9Loan?: F9
 // ─── Amortization helpers ─────────────────────────────────────────────────────
 interface AmortRow {
   month: number;
+  begBalance: number;
   payment: number;
   interest: number;
   principal: number;
-  balance: number;
+  endBalance: number;
   isIO: boolean;
   dscr: number | null;
+  debtYield: number | null;
+  covenantBreach: boolean;
 }
 
 interface AnnualRow {
@@ -124,14 +127,16 @@ interface AnnualRow {
   covenantBreach: boolean;
 }
 
-function buildAmort(loanAmt: number, rate: number, termYrs: number, amortYrs: number, ioMo: number): AmortRow[] {
+function buildAmort(loanAmt: number, rate: number, termYrs: number, amortYrs: number, ioMo: number, annualNoi: number, minDscr: number): AmortRow[] {
   const rows: AmortRow[] = [];
   const mr = rate / 12;
   const totalMo = Math.min(termYrs * 12, 120);
   const amortMo = amortYrs * 12;
+  const monthlyNoi = annualNoi / 12;
   let bal = loanAmt;
   for (let m = 1; m <= totalMo; m++) {
     const isIO = m <= ioMo;
+    const begBalance = bal;
     const interest = bal * mr;
     let principal = 0;
     let payment = interest;
@@ -140,7 +145,10 @@ function buildAmort(loanAmt: number, rate: number, termYrs: number, amortYrs: nu
       principal = payment - interest;
     }
     bal = Math.max(0, bal - principal);
-    rows.push({ month: m, payment, interest, principal, balance: bal, isIO, dscr: null });
+    const dscr = payment > 0 ? monthlyNoi / payment : null;
+    const debtYield = begBalance > 0 ? (annualNoi / begBalance) : null;
+    const covenantBreach = dscr != null && dscr < minDscr;
+    rows.push({ month: m, begBalance, payment, interest, principal, endBalance: bal, isIO, dscr, debtYield, covenantBreach });
   }
   return rows;
 }
@@ -151,8 +159,8 @@ function buildAnnual(amortRows: AmortRow[], noi1: number, rentGrowth: number, mi
   for (let y = 1; y <= years; y++) {
     const mo = amortRows.slice((y - 1) * 12, y * 12);
     if (!mo.length) break;
-    const openBalance = mo[0].balance + mo[0].principal;
-    const closeBalance = mo[mo.length - 1].balance;
+    const openBalance = mo[0].begBalance;
+    const closeBalance = mo[mo.length - 1].endBalance;
     const annualInterest = mo.reduce((s, r) => s + r.interest, 0);
     const annualPrincipal = mo.reduce((s, r) => s + r.principal, 0);
     const annualDS = mo.reduce((s, r) => s + r.payment, 0);
@@ -344,7 +352,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
   const effLtv      = purchasePrice != null && purchasePrice > 0 ? effLoanAmt / purchasePrice : null;
 
   // Amortization
-  const amortRows = useMemo(() => buildAmort(effLoanAmt, effRate, effTerm, effAmort, effIO), [effLoanAmt, effRate, effTerm, effAmort, effIO]);
+  const amortRows = useMemo(() => buildAmort(effLoanAmt, effRate, effTerm, effAmort, effIO, typeof noi1 === 'number' ? noi1 : 0, effMinDscr), [effLoanAmt, effRate, effTerm, effAmort, effIO, noi1, effMinDscr]);
   const annualRows = useMemo(() => buildAnnual(amortRows, typeof noi1 === 'number' ? noi1 : 0, rentGrowth, effMinDscr), [amortRows, noi1, rentGrowth, effMinDscr]);
 
   // Derived metrics
@@ -365,14 +373,18 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
   const ltvColor  = (v: number | null) => v == null ? BT.text.muted : v <= 0.60 ? BT.met.financial : v <= 0.70 ? BT.text.amber : BT.text.red;
 
   // ── Patch debounce ──────────────────────────────────────────────────────────
+  // field = "debt:{loanId}:{fieldName}" — routed to per_year_overrides via PATCH
   const patchTimeouts = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-  const patchField = useCallback((field: string, value: number | null) => {
-    clearTimeout(patchTimeouts.current[field]);
-    patchTimeouts.current[field] = setTimeout(async () => {
+  const patchDebt = useCallback((loanId: string, fieldName: string, value: number | string | null) => {
+    const key = `debt:${loanId}:${fieldName}`;
+    clearTimeout(patchTimeouts.current[key]);
+    patchTimeouts.current[key] = setTimeout(async () => {
       try {
-        await apiClient.patch(`/api/v1/deals/${dealId}/financials/override`, { field, year: 1, value });
+        await apiClient.patch(`/api/v1/deals/${dealId}/financials/override`, {
+          field: key, year: 1, value: typeof value === 'string' ? null : value,
+        });
         onF9Refresh?.();
-      } catch { /* non-fatal */ }
+      } catch { /* non-fatal override failure */ }
     }, 600);
   }, [dealId, onF9Refresh]);
 
@@ -403,7 +415,9 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
       userMinOcc: null,
       userMaxLtv: null,
     }));
-  }, []);
+    // Persist loan type to backend so it survives page refresh
+    patchDebt(id, 'loanTypeLabel', null); // clear any old override; use null since strings not supported
+  }, [patchDebt]);
 
   const addMezz = useCallback(() => {
     if (loans.find(l => l.id === 'mezz')) return;
@@ -443,6 +457,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
     const next = [...activeLoan.sofrCurve];
     next[idx] = val / 100;
     updateLoan(activeLoan.id, { sofrCurve: next });
+    patchDebt(activeLoan.id, `sofrCurve:${idx}`, val / 100);
   };
 
   // ─── Render ──────────────────────────────────────────────────────────────
@@ -569,7 +584,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
                 user={activeLoan.userLoanAmount}
                 userEditable
                 format={fmtDlr}
-                onUserChange={v => { updateLoan(activeLoan.id, { userLoanAmount: v }); patchField('loanAmount', v); }}
+                onUserChange={v => { updateLoan(activeLoan.id, { userLoanAmount: v }); patchDebt(activeLoan.id, 'loanAmount', v); }}
               />
               <DebtRow
                 label="LOAN AMOUNT (LTC%)"
@@ -629,7 +644,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
                   user={activeLoan.userRate}
                   userEditable
                   format={fmtPctFull}
-                  onUserChange={v => updateLoan(activeLoan.id, { userRate: v })}
+                  onUserChange={v => { updateLoan(activeLoan.id, { userRate: v }); patchDebt(activeLoan.id, 'interestRate', v); }}
                   sub="Fixed all-in rate"
                 />
               ) : (
@@ -640,7 +655,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
                     user={activeLoan.userSofr}
                     userEditable
                     format={fmtPctFull}
-                    onUserChange={v => updateLoan(activeLoan.id, { userSofr: v })}
+                    onUserChange={v => { updateLoan(activeLoan.id, { userSofr: v }); patchDebt(activeLoan.id, 'sofr', v); }}
                     sub="30-day Term SOFR"
                   />
                   <DebtRow
@@ -650,7 +665,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
                     user={activeLoan.userSpread}
                     userEditable
                     format={fmtPctFull}
-                    onUserChange={v => updateLoan(activeLoan.id, { userSpread: v })}
+                    onUserChange={v => { updateLoan(activeLoan.id, { userSpread: v }); patchDebt(activeLoan.id, 'spread', v); }}
                   />
                   <DebtRow
                     label="ALL-IN RATE (SOFR+SPREAD)"
@@ -667,7 +682,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
                     user={activeLoan.userCapRate}
                     userEditable
                     format={fmtPctFull}
-                    onUserChange={v => updateLoan(activeLoan.id, { userCapRate: v })}
+                    onUserChange={v => { updateLoan(activeLoan.id, { userCapRate: v }); patchDebt(activeLoan.id, 'capRate', v); }}
                     sub="SOFR cap — lender required"
                   />
                 </>
@@ -714,7 +729,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
                 user={activeLoan.userTerm}
                 userEditable
                 format={fmtYrs}
-                onUserChange={v => updateLoan(activeLoan.id, { userTerm: v })}
+                onUserChange={v => { updateLoan(activeLoan.id, { userTerm: v }); patchDebt(activeLoan.id, 'termYears', v); }}
               />
               <DebtRow
                 label="AMORTIZATION (years)"
@@ -723,7 +738,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
                 user={activeLoan.userAmort}
                 userEditable
                 format={v => v != null ? (v === 0 ? 'IO Only' : fmtYrs(v)) : '—'}
-                onUserChange={v => updateLoan(activeLoan.id, { userAmort: v })}
+                onUserChange={v => { updateLoan(activeLoan.id, { userAmort: v }); patchDebt(activeLoan.id, 'amortYears', v); }}
               />
               <DebtRow
                 label="IO PERIOD (months)"
@@ -732,7 +747,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
                 user={activeLoan.userIO}
                 userEditable
                 format={v => v != null ? (v === 0 ? 'None' : fmtMo(v)) : '—'}
-                onUserChange={v => updateLoan(activeLoan.id, { userIO: v })}
+                onUserChange={v => { updateLoan(activeLoan.id, { userIO: v }); patchDebt(activeLoan.id, 'ioMonths', v); }}
                 sub={effIO > 0 ? `IO through month ${effIO}` : 'Fully amortizing from month 1'}
               />
               <tr style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
@@ -767,7 +782,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
                 user={activeLoan.userOrigFee}
                 userEditable
                 format={fmtPctFull}
-                onUserChange={v => updateLoan(activeLoan.id, { userOrigFee: v })}
+                onUserChange={v => { updateLoan(activeLoan.id, { userOrigFee: v }); patchDebt(activeLoan.id, 'origFee', v); }}
                 sub={`${fmt$(effLoanAmt * effOrigFee)} at close`}
               />
               <DebtRow
@@ -776,7 +791,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
                 user={activeLoan.userExitFee}
                 userEditable
                 format={fmtPctFull}
-                onUserChange={v => updateLoan(activeLoan.id, { userExitFee: v })}
+                onUserChange={v => { updateLoan(activeLoan.id, { userExitFee: v }); patchDebt(activeLoan.id, 'exitFee', v); }}
                 sub="Applied on payoff/refi"
               />
               {activeLoan.rateType === 'Floating' && (
@@ -787,7 +802,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
                   user={activeLoan.userRateCapCost}
                   userEditable
                   format={fmtPctFull}
-                  onUserChange={v => updateLoan(activeLoan.id, { userRateCapCost: v })}
+                  onUserChange={v => { updateLoan(activeLoan.id, { userRateCapCost: v }); patchDebt(activeLoan.id, 'rateCapCost', v); }}
                   sub="Upfront cost of rate cap — flows to Sources & Uses"
                 />
               )}
@@ -874,7 +889,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
                 user={activeLoan.userMinDscr}
                 userEditable
                 format={fmtX}
-                onUserChange={v => updateLoan(activeLoan.id, { userMinDscr: v })}
+                onUserChange={v => { updateLoan(activeLoan.id, { userMinDscr: v }); patchDebt(activeLoan.id, 'minDscr', v); }}
                 pass={dscrY1 != null ? dscrY1 >= effMinDscr : undefined}
                 sub={dscrY1 != null ? `Y1 DSCR: ${dscrY1.toFixed(2)}×` : undefined}
               />
@@ -884,7 +899,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
                 user={activeLoan.userMinDY}
                 userEditable
                 format={fmtPctFull}
-                onUserChange={v => updateLoan(activeLoan.id, { userMinDY: v })}
+                onUserChange={v => { updateLoan(activeLoan.id, { userMinDY: v }); patchDebt(activeLoan.id, 'minDebtYield', v); }}
                 pass={debtYieldY1 != null ? debtYieldY1 >= effMinDY : undefined}
                 sub={debtYieldY1 != null ? `Y1 DY: ${fmtPct(debtYieldY1 * 100)}` : undefined}
               />
@@ -894,7 +909,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
                 user={activeLoan.userMinOcc}
                 userEditable
                 format={fmtPctFull}
-                onUserChange={v => updateLoan(activeLoan.id, { userMinOcc: v })}
+                onUserChange={v => { updateLoan(activeLoan.id, { userMinOcc: v }); patchDebt(activeLoan.id, 'minOccupancy', v); }}
               />
               <DebtRow
                 label="MAX LTV"
@@ -902,7 +917,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
                 user={activeLoan.userMaxLtv}
                 userEditable
                 format={fmtPctFull}
-                onUserChange={v => updateLoan(activeLoan.id, { userMaxLtv: v })}
+                onUserChange={v => { updateLoan(activeLoan.id, { userMaxLtv: v }); patchDebt(activeLoan.id, 'maxLtv', v); }}
                 pass={effLtv != null ? effLtv <= effMaxLtv : undefined}
                 sub={effLtv != null ? `Current LTV: ${fmtPct(effLtv * 100)}` : undefined}
               />
@@ -912,7 +927,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
                 user={activeLoan.userCashTrapDscr}
                 userEditable
                 format={fmtX}
-                onUserChange={v => updateLoan(activeLoan.id, { userCashTrapDscr: v })}
+                onUserChange={v => { updateLoan(activeLoan.id, { userCashTrapDscr: v }); patchDebt(activeLoan.id, 'cashTrapDscr', v); }}
                 sub="Cash swept to lender reserve if DSCR falls below"
               />
             </tbody>
@@ -935,7 +950,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
                 user={activeLoan.userTIEscrow}
                 userEditable
                 format={v => v != null ? `${v}mo — ${fmt$(effLoanAmt * effRate / 12 * (v ?? 0))}` : '—'}
-                onUserChange={v => updateLoan(activeLoan.id, { userTIEscrow: v })}
+                onUserChange={v => { updateLoan(activeLoan.id, { userTIEscrow: v }); patchDebt(activeLoan.id, 'tiEscrowMonths', v); }}
                 sub="Tax & insurance upfront reserve"
               />
               <DebtRow
@@ -944,7 +959,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
                 user={activeLoan.userReplReserve}
                 userEditable
                 format={v => v != null ? `$${v}/unit/yr` : '—'}
-                onUserChange={v => updateLoan(activeLoan.id, { userReplReserve: v })}
+                onUserChange={v => { updateLoan(activeLoan.id, { userReplReserve: v }); patchDebt(activeLoan.id, 'replaceReserve', v); }}
               />
               <DebtRow
                 label="OPERATING RESERVE (months of DS)"
@@ -952,7 +967,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
                 user={activeLoan.userOpReserveMonths}
                 userEditable
                 format={v => v != null ? `${v}mo — ${fmt$(annualDS1 / 12 * (v ?? 0))}` : '—'}
-                onUserChange={v => updateLoan(activeLoan.id, { userOpReserveMonths: v })}
+                onUserChange={v => { updateLoan(activeLoan.id, { userOpReserveMonths: v }); patchDebt(activeLoan.id, 'opReserveMonths', v); }}
               />
             </tbody>
           </table>
@@ -1133,35 +1148,50 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
       {/* ════════════════════════════════════════════════════════════════════
           MONTHLY AMORTIZATION SCHEDULE
       ═══════════════════════════════════════════════════════════════════════ */}
-      <SectionHeader letter="M" title="MONTHLY AMORTIZATION" subtitle={`${amortRows.length} rows — IO rows highlighted`} collapsed={collapsed.has('amort')} onToggle={() => toggle('amort')} />
+      <SectionHeader letter="M" title="MONTHLY AMORTIZATION" subtitle={`${amortRows.length} rows — IO highlighted amber · covenant breach highlighted red`} collapsed={collapsed.has('amort')} onToggle={() => toggle('amort')} />
       {!collapsed.has('amort') && (
         <div style={{ overflowX: 'auto', maxHeight: 400 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 9 }}>
             <thead>
               <tr style={{ borderBottom: `1px solid ${BT.border.medium}`, position: 'sticky', top: 0, background: BT.bg.header, zIndex: 2 }}>
-                {['MO', 'PAYMENT', 'INTEREST', 'PRINCIPAL', 'BALANCE', 'STATUS'].map(h => (
-                  <th key={h} style={{ padding: '4px 8px', color: BT.text.muted, textAlign: h === 'MO' || h === 'STATUS' ? 'left' : 'right', fontWeight: 500 }}>{h}</th>
+                {['MO', 'BEG BAL', 'PAYMENT', 'INTEREST', 'PRINCIPAL', 'END BAL', 'DSCR', 'DY (ANN)', 'STATUS'].map(h => (
+                  <th key={h} style={{ padding: '4px 8px', color: BT.text.muted, textAlign: h === 'MO' || h === 'STATUS' ? 'left' : 'right', fontWeight: 500, whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {amortRows.map((row, i) => {
                 const isTransition = i > 0 && row.isIO !== amortRows[i - 1].isIO;
+                const rowBg = row.covenantBreach
+                  ? `${BT.text.red}18`
+                  : isTransition ? `${BT.text.amber}15`
+                  : row.isIO ? `${BT.text.amber}08`
+                  : i % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt;
+                const rowBorder = row.covenantBreach
+                  ? `1px solid ${BT.text.red}40`
+                  : isTransition ? `2px solid ${BT.text.amber}`
+                  : `1px solid ${BT.border.subtle}`;
                 return (
-                  <tr key={row.month} style={{
-                    background: isTransition ? `${BT.text.amber}15` : row.isIO ? `${BT.text.amber}08` : i % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt,
-                    borderBottom: isTransition ? `2px solid ${BT.text.amber}` : `1px solid ${BT.border.subtle}`,
-                  }}>
+                  <tr key={row.month} style={{ background: rowBg, borderBottom: rowBorder }}>
                     <td style={{ padding: '2px 8px', color: BT.text.muted }}>{row.month}</td>
+                    <td style={{ padding: '2px 8px', color: BT.text.secondary, textAlign: 'right' }}>{fmt$(row.begBalance)}</td>
                     <td style={{ padding: '2px 8px', color: BT.text.primary, textAlign: 'right' }}>{fmt$(row.payment)}</td>
                     <td style={{ padding: '2px 8px', color: BT.text.red, textAlign: 'right' }}>{fmt$(row.interest)}</td>
                     <td style={{ padding: '2px 8px', color: BT.met.financial, textAlign: 'right' }}>{fmt$(row.principal)}</td>
-                    <td style={{ padding: '2px 8px', color: BT.text.cyan, textAlign: 'right' }}>{fmt$(row.balance)}</td>
+                    <td style={{ padding: '2px 8px', color: BT.text.cyan, textAlign: 'right' }}>{fmt$(row.endBalance)}</td>
+                    <td style={{ padding: '2px 8px', textAlign: 'right', color: row.covenantBreach ? BT.text.red : dscrColor(row.dscr), fontWeight: row.covenantBreach ? 700 : 400 }}>
+                      {row.dscr != null ? `${row.dscr.toFixed(2)}×` : '—'}
+                    </td>
+                    <td style={{ padding: '2px 8px', textAlign: 'right', color: BT.text.amber }}>
+                      {row.debtYield != null ? fmtPct(row.debtYield * 100) : '—'}
+                    </td>
                     <td style={{ padding: '2px 8px' }}>
-                      {row.isIO
-                        ? <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.amber, border: `1px solid ${BT.text.amber}40`, padding: '0 4px', borderRadius: 2 }}>IO</span>
-                        : <span style={{ fontFamily: MONO, fontSize: 8, color: BT.met.financial }}>AMORT</span>}
-                      {isTransition && <span style={{ marginLeft: 6, fontFamily: MONO, fontSize: 7, color: BT.text.amber }}>← IO END</span>}
+                      {row.covenantBreach
+                        ? <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.red, fontWeight: 700 }}>✗ BREACH</span>
+                        : row.isIO
+                          ? <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.amber, border: `1px solid ${BT.text.amber}40`, padding: '0 4px', borderRadius: 2 }}>IO</span>
+                          : <span style={{ fontFamily: MONO, fontSize: 8, color: BT.met.financial }}>AMORT</span>}
+                      {isTransition && !row.covenantBreach && <span style={{ marginLeft: 6, fontFamily: MONO, fontSize: 7, color: BT.text.amber }}>← IO END</span>}
                     </td>
                   </tr>
                 );
