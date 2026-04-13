@@ -44,6 +44,9 @@ interface DealFinancials {
     /** AI narrative synthesizing M07 signals. Null when M07 offline. */
     narrative: string|null;
   };
+  /** Persisted user overrides keyed by camelCase field name → hold year → value.
+   *  Returned by backend so the frontend can rehydrate overrides state across sessions. */
+  userOverrides: Record<string, Record<number, number|null>>;
   meta: { seeded: boolean; updatedAt: string|null };
 }
 
@@ -519,8 +522,8 @@ const STATIC_ROWS: RowDef[] = [
   // ── Section 5 ──────────────────────────────────────────────────────────────
   {
     key: 'interestRate', label: 'Interest Rate', section: 5, unit: 'pct',
-    format: fmtPct2,
-    description: 'Senior loan fixed rate. Platform = SOFR + 175bps current market.',
+    format: fmtPct2, patchField: 'interestRate',
+    description: 'Senior loan fixed rate. Platform = SOFR + 175bps current market. Persists to deal_assumptions.interest_rate.',
     platformSource: 'JEDI — SOFR + spread (market rate)', brokerSource: 'OM / Term Sheet or Debt Broker',
     brokerPage: 'Financing Assumptions', brokerLine: 'Interest Rate',
     benchmarkP25: 0.0575, benchmarkP50: 0.0675, benchmarkP75: 0.0775,
@@ -529,9 +532,9 @@ const STATIC_ROWS: RowDef[] = [
     getConfidence: _f => 80,
   },
   {
-    key: 'ltv', label: 'LTV / LTC %', section: 5, unit: 'pct',
-    format: fmtPct2,
-    description: 'Loan-to-value at closing.',
+    key: 'ltcPct', label: 'LTV / LTC %', section: 5, unit: 'pct',
+    format: fmtPct2, patchField: 'ltcPct',
+    description: 'Loan-to-value/cost at closing. Persists to deal_assumptions.ltc.',
     platformSource: 'JEDI — Market LTV norms', brokerSource: 'OM / Financing Assumptions',
     brokerPage: 'Financing Assumptions', brokerLine: 'LTV',
     benchmarkP25: 0.55, benchmarkP50: 0.65, benchmarkP75: 0.72,
@@ -540,9 +543,9 @@ const STATIC_ROWS: RowDef[] = [
     getConfidence: _f => 75,
   },
   {
-    key: 'ioPeriod', label: 'Interest-Only Period (months)', section: 5, unit: 'months',
-    format: fmtMo,
-    description: 'Months of I/O payments before amortization begins.',
+    key: 'ioPeriodMonths', label: 'Interest-Only Period (months)', section: 5, unit: 'months',
+    format: fmtMo, patchField: 'ioPeriodMonths',
+    description: 'Months of I/O payments before amortization begins. Persists to deal_assumptions.io_period_months.',
     platformSource: 'JEDI — Lender market norms', brokerSource: 'OM / Term Sheet',
     brokerPage: 'Financing Assumptions', brokerLine: 'I/O Period',
     benchmarkP25: 0, benchmarkP50: 24, benchmarkP75: 48,
@@ -1111,6 +1114,26 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
   const fetchRef   = useRef(0);
   const patchQueue = useRef<Array<{field:string; year:number|null; value:number|null}>>([]);
   const flushTimer = useRef<ReturnType<typeof setTimeout>|null>(null);
+  const ovInitialized = useRef(false);
+
+  // Rehydrate USER override layer from persisted backend overrides on first load.
+  // Only runs once per mount (guards with ovInitialized ref) so current-session
+  // edits are not clobbered by a subsequent financials refetch.
+  useEffect(() => {
+    if (!financials?.userOverrides || ovInitialized.current) return;
+    ovInitialized.current = true;
+    const reconstructed: Overrides = {};
+    for (const [field, yearVals] of Object.entries(financials.userOverrides)) {
+      for (const [yrStr, val] of Object.entries(yearVals)) {
+        if (val == null) continue;
+        const yr = parseInt(yrStr, 10);
+        if (isNaN(yr)) continue;
+        if (!reconstructed[field]) reconstructed[field] = {};
+        reconstructed[field][yr] = val;
+      }
+    }
+    if (Object.keys(reconstructed).length > 0) setOverrides(reconstructed);
+  }, [financials?.userOverrides]);
 
   const dbHold    = financials?.assumptions.holdYears ?? 5;
   const holdYears = holdTab === '5 YR' ? 5 : holdTab === '7 YR' ? 7 : holdTab === '10 YR' ? 10 : dbHold;

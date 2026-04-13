@@ -1241,6 +1241,9 @@ export interface DealFinancials {
     /** AI narrative synthesizing M07 signals + key assumption flags. Null when M07 offline. */
     narrative: string | null;
   };
+  /** Persisted user overrides (camelCase field → hold year → value). Used by frontend to
+   *  reconstruct the USER display layer across sessions, keyed from per_year_overrides JSONB. */
+  userOverrides: Record<string, Record<number, number | null>>;
   meta: {
     seeded: boolean;
     updatedAt: string | null;
@@ -1677,6 +1680,37 @@ export async function getDealFinancials(
     ? { unitMix: parsedUnitMix, avgInPlaceRent, weightedOccupancyPct }
     : null;
 
+  // ── User overrides — reconstruct camelCase USER layer state for frontend ────
+  // Maps persisted per_year_overrides (snake_case field keys) back to camelCase
+  // so the frontend can rehydrate its `overrides` state on load (cross-session fidelity).
+  const SNAKE_TO_CAMEL: Record<string, string> = {
+    vacancy_pct: 'vacancyPct', gpr: 'gpr', loss_to_lease_pct: 'lossToLeasePct',
+    concessions_pct: 'concessionsPct', bad_debt_pct: 'badDebtPct',
+    non_revenue_units_pct: 'nonRevenueUnitsPct', other_income_per_unit: 'otherIncomePerUnit',
+    egi: 'egi', payroll: 'payroll', repairs_maintenance: 'repairsMaintenance',
+    turnover: 'turnover', contract_services: 'contractServices', marketing: 'marketing',
+    utilities: 'utilities', g_and_a: 'gAndA', management_fee_pct: 'managementFeePct',
+    insurance: 'insurance', real_estate_tax: 'realEstateTax',
+    replacement_reserves: 'replacementReserves', total_opex: 'totalOpex', noi: 'noi',
+    t01_weekly_tours: 't01WeeklyTours', t05_closing_ratio: 't05ClosingRatio',
+    t06_weekly_leases: 't06WeeklyLeases',
+    exit_cap: 'exitCapRate', interest_rate: 'interestRate', ltc: 'ltcPct',
+    io_period_months: 'ioPeriodMonths',
+  };
+  const rawPyOvs = (assumptionsRow?.per_year_overrides ?? {}) as Record<string, { value: number | null } | null>;
+  const userOverrides: Record<string, Record<number, number | null>> = {};
+  for (const [key, entry] of Object.entries(rawPyOvs)) {
+    if (!entry || entry.value == null) continue;
+    const colonIdx = key.lastIndexOf(':');
+    const fieldSnake = colonIdx >= 0 ? key.slice(0, colonIdx) : key;
+    const yrStr = colonIdx >= 0 ? key.slice(colonIdx + 1) : '';
+    const yr = yrStr.startsWith('yr') ? parseInt(yrStr.slice(2), 10) : NaN;
+    if (isNaN(yr)) continue;
+    const camelField = SNAKE_TO_CAMEL[fieldSnake] ?? fieldSnake;
+    if (!userOverrides[camelField]) userOverrides[camelField] = {};
+    userOverrides[camelField][yr] = entry.value;
+  }
+
   return {
     dealId,
     dealName: deal.name,
@@ -1686,6 +1720,7 @@ export async function getDealFinancials(
     rentRollSummary,
     trafficProjection: trafficProjectionOut,
     assumptions,
+    userOverrides,
     meta: {
       seeded: Object.keys(year1Seed).length > 0,
       updatedAt: assumptionsRow?.updated_at?.toISOString?.() ?? null,
@@ -1950,7 +1985,9 @@ export async function applyFinancialsOverride(
       updatedBy: userId,
       updatedAt: new Date().toISOString(),
       resolution: value != null ? 'override' : 'cleared',
-      signalType: year1Key === 't01_weekly_tours' ? 'T-01' : 'T-05',
+      signalType: year1Key === 't01_weekly_tours' ? 'T-01'
+              : year1Key === 't05_closing_ratio' ? 'T-05'
+              : 'T-06',
     };
     await pool.query(
       `UPDATE deal_assumptions
@@ -2039,28 +2076,48 @@ export async function applyFinancialsOverride(
   const derivedNoi = seed ? resolvedNum(lv(seed, 'noi')) : null;
   const derivedOpex = seed ? resolvedNum(lv(seed, 'total_opex')) : null;
 
-  // For T-01/T-05 overrides, derive vacancy from the signal combination:
-  //   Weekly leases = T-01 (tours/week) × T-05 (closing ratio)
-  //   Annual leases = weeklyLeases × 52
-  //   Annual turnover = totalUnits / (avgLeaseTermMonths / 12)
-  //   Steady-state occupancy = min(annualLeases / annualTurnover, 1.0)
-  //   Derived vacancyPct = 1 - steady-state occupancy
+  // Derived vacancy recomputation from traffic signal overrides.
+  //
+  // T-01 / T-05 path (primary recompute inputs):
+  //   weeklyLeases = T-01 (tours/wk) × T-05 (closing ratio)
+  //   annualLeases = weeklyLeases × 52
+  //   annualTurnover = totalUnits / (avgLeaseTermMonths / 12)
+  //   steadyOcc = min(annualLeases / annualTurnover, 1.0)
+  //   derivedVacancyPct = 1 - steadyOcc
+  //
+  // T-06 path (informational shortcut — net leases/week direct override):
+  //   T-06 = net leases/week; user override bypasses T-01 × T-05 multiplication.
+  //   This is semantically equivalent: annual leases = T-06 × 52.
+  //   Derived vacancy is recomputed from this T-06 override, giving a meaningful
+  //   vacancy delta in the response (not a no-op).
   let derivedVacancyPct: number | null = null;
   if (isTrafficSignal && totalUnitsDA > 0 && perYearOverrides) {
-    const t01Key = `t01_weekly_tours:yr${targetYear}`;
-    const t05Key = `t05_closing_ratio:yr${targetYear}`;
-    const t01Entry = perYearOverrides[t01Key] as { value?: number } | null;
-    const t05Entry = perYearOverrides[t05Key] as { value?: number } | null;
-    // Use newly overridden value for the changed signal
-    const t01Val = year1Key === 't01_weekly_tours' ? (value ?? null) : (t01Entry?.value ?? null);
-    const t05Val = year1Key === 't05_closing_ratio' ? (value ?? null) : (t05Entry?.value ?? null);
-    if (t01Val != null && t05Val != null) {
-      const weeklyLeases = t01Val * t05Val;
-      const annualLeases = weeklyLeases * 52;
-      const annualTurnover = totalUnitsDA / (avgLeaseTermMonths / 12);
-      const steadyOcc = Math.min(annualLeases / annualTurnover, 1.0);
-      derivedVacancyPct = +Math.max(0, 1 - steadyOcc).toFixed(4);
-      affectedFields.push('vacancy_pct', 'egi', 'noi');
+    if (year1Key === 't06_weekly_leases') {
+      // T-06 direct net-leases-per-week override → back-derive vacancy
+      const t06Val = value ?? null;
+      if (t06Val != null) {
+        const annualLeases = t06Val * 52;
+        const annualTurnover = totalUnitsDA / (avgLeaseTermMonths / 12);
+        const steadyOcc = Math.min(annualLeases / annualTurnover, 1.0);
+        derivedVacancyPct = +Math.max(0, 1 - steadyOcc).toFixed(4);
+        affectedFields.push('vacancy_pct', 'egi', 'noi');
+      }
+    } else {
+      // T-01 or T-05 override → use T-01 × T-05 equilibrium model
+      const t01Key = `t01_weekly_tours:yr${targetYear}`;
+      const t05Key = `t05_closing_ratio:yr${targetYear}`;
+      const t01Entry = perYearOverrides[t01Key] as { value?: number } | null;
+      const t05Entry = perYearOverrides[t05Key] as { value?: number } | null;
+      const t01Val = year1Key === 't01_weekly_tours' ? (value ?? null) : (t01Entry?.value ?? null);
+      const t05Val = year1Key === 't05_closing_ratio' ? (value ?? null) : (t05Entry?.value ?? null);
+      if (t01Val != null && t05Val != null) {
+        const weeklyLeases = t01Val * t05Val;
+        const annualLeases = weeklyLeases * 52;
+        const annualTurnover = totalUnitsDA / (avgLeaseTermMonths / 12);
+        const steadyOcc = Math.min(annualLeases / annualTurnover, 1.0);
+        derivedVacancyPct = +Math.max(0, 1 - steadyOcc).toFixed(4);
+        affectedFields.push('vacancy_pct', 'egi', 'noi');
+      }
     }
   }
 
