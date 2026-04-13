@@ -1451,6 +1451,7 @@ export interface DealFinancials {
     cumulativeEM: number | null;
     exitNoi: number | null; exitCap: number; grossSaleValue: number | null;
     sellingCosts: number | null; dispositionDocStamps: number | null;
+    dispositionTaxPayable: number | null;
     loanPayoff: number; netSaleProceeds: number | null;
     reTaxSource: 'taxes_tab' | 'proforma' | 'estimate';
     debtSource: 'debt_tab' | 'capital_stack' | 'estimate';
@@ -1499,7 +1500,7 @@ export async function getDealFinancials(
       [dealId]
     ),
     pool.query(
-      `SELECT vacancy_current, rent_growth_current, exit_cap_current, last_recalculation
+      `SELECT vacancy_current, rent_growth_current, exit_cap_current, opex_growth_current, last_recalculation
          FROM proforma_assumptions WHERE deal_id = $1 ORDER BY last_recalculation DESC LIMIT 1`,
       [dealId]
     ),
@@ -1737,6 +1738,10 @@ export async function getDealFinancials(
   const rentGrowthStab = assumptionsRow?.rent_growth_stabilized != null ? +parseFloat(assumptionsRow.rent_growth_stabilized).toFixed(3) : null;
   const calibVacancy = trafficProjection?.calibrated.vacancyPct ?? null;
   const calibRentGrowth = trafficProjection?.calibrated.rentGrowthPct ?? null;
+  // Opex growth: source from proforma_assumptions.opex_growth_current if available, else default 3%
+  const opexGrowthRate: number = proformaAssumRes.rows[0]?.opex_growth_current != null
+    ? +parseFloat(proformaAssumRes.rows[0].opex_growth_current).toFixed(3)
+    : 0.03;
 
   // Per-year assumptions grid: year1 uses M07 calibrated values; years 2+ blend toward
   // stabilized growth (platform findings from proforma_assumptions.rent_growth_current)
@@ -2725,12 +2730,14 @@ export async function getDealFinancials(
         rentMult *= 1 + (g ?? 0.03);
       }
       const thisYrGrowth = pv?.rentGrowthPct ?? assumptions.rentGrowthStabilized ?? 0.03;
-      const opexMult = Math.pow(1.03, yr - 1);
+      // opexGrowthRate sourced from proforma_assumptions.opex_growth_current (default 3%)
+      // insMult uses insurance industry standard 3.5% escalation (same assumption as Pro Forma tab)
+      const opexMult = Math.pow(1 + opexGrowthRate, yr - 1);
       const insMult  = Math.pow(1.035, yr - 1);
 
       // Revenue
       const gpr         = Math.round(gprY1 * rentMult);
-      const vacPct      = tv?.vacancyPct ?? pv?.vacancyPct ?? (ry1('vacancy_pct') / 100 || 0.05);
+      const vacPct      = tv?.vacancyPct ?? pv?.vacancyPct ?? ry1('vacancy_pct') ?? 0.05;
       const vacancyLoss = Math.round(gpr * vacPct);
       const lossToLease = Math.round(gpr * lossToLeasePct);
       const concessions = Math.round(gpr * concPct);
@@ -2816,14 +2823,19 @@ export async function getDealFinancials(
       const exitCap = pv?.exitCapIfLastYear ?? trafficProjectionOut?.calibrated?.exitCap ?? assumptions.exitCap ?? 0.055;
       const exitNoi = Math.round(noi * (1 + (rentGrowthPct ?? 0.03)));
       const grossSaleValue = exitCap > 0 ? Math.round(exitNoi / exitCap) : null;
+      // Selling costs: 1.5% of gross sale value (industry standard; surfaced in drilldown as EST)
       const sellingCosts   = grossSaleValue != null ? Math.round(grossSaleValue * 0.015) : null;
       const loanPayoff     = Math.round(projBalance);
       const capRatePct     = grossSaleValue != null && grossSaleValue > 0 ? +(noi / grossSaleValue).toFixed(4) : null;
       // Doc stamps on disposition (same rate as acquisition, but applied to sale price)
       const dispositionDocStamps = grossSaleValue != null && taxes?.transferTax != null
         ? Math.round(grossSaleValue * taxes.transferTax.appliedRatePct) : null;
+      // Simplified capital gains / depreciation-recapture tax on disposition — gated on taxes seeding
+      const recognizedGain = grossSaleValue != null ? grossSaleValue - loanPayoff - (taxes?.incomeTax?.depreciableBase ?? 0) : null;
+      const dispositionTaxPayable = recognizedGain != null && marginalTaxRate != null
+        ? Math.round(Math.max(0, recognizedGain) * marginalTaxRate) : null;
       const netSaleProceeds = grossSaleValue != null && sellingCosts != null
-        ? grossSaleValue - sellingCosts - loanPayoff - (dispositionDocStamps ?? 0)
+        ? grossSaleValue - sellingCosts - loanPayoff - (dispositionDocStamps ?? 0) - (dispositionTaxPayable ?? 0)
         : null;
       const cumulativeEM = projEquity > 0 && netSaleProceeds != null
         ? +((cumulCF + netSaleProceeds) / projEquity).toFixed(4) : null;
@@ -2837,7 +2849,7 @@ export async function getDealFinancials(
         cfbt, cfads,
         depreciation, taxableIncome, taxPayable, afterTaxCfads, effectiveTaxRate,
         coc, dscr, debtYield, occupancy, rentGrowthPct, opexRatioPct, noiMarginPct, capRatePct, cumulativeEM,
-        exitNoi, exitCap, grossSaleValue, sellingCosts, dispositionDocStamps, loanPayoff, netSaleProceeds,
+        exitNoi, exitCap, grossSaleValue, sellingCosts, dispositionDocStamps, dispositionTaxPayable, loanPayoff, netSaleProceeds,
         reTaxSource, debtSource,
       });
     }

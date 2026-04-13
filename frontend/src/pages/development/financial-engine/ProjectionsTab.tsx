@@ -138,13 +138,14 @@ const SECTIONS: SectionDef[] = [
   {
     label: 'SALE-YEAR DISPOSITION', key: 'exit', color: BT.text.amber,
     rows: [
-      { label: 'Forward NOI (Exit)',          key: 'exitNoi' },
-      { label: 'Exit Cap Rate',               key: 'exitCap',             fmt: 'pct' },
-      { label: 'Gross Sale Value',            key: 'grossSaleValue' },
-      { label: '(–) Selling Costs (1.5%)',    key: 'sellingCosts',         indent: true, sign: -1 },
-      { label: '(–) Doc Stamps / Transfer',  key: 'dispositionDocStamps', indent: true, sign: -1, tabLink: 4 },
-      { label: '(–) Loan Payoff',            key: 'loanPayoff',           indent: true, sign: -1 },
-      { label: 'Net Sale Proceeds',           key: 'netSaleProceeds',      isTotal: true },
+      { label: 'Forward NOI (Exit)',              key: 'exitNoi' },
+      { label: 'Exit Cap Rate',                   key: 'exitCap',                fmt: 'pct' },
+      { label: 'Gross Sale Value',                key: 'grossSaleValue' },
+      { label: '(–) Selling Costs (1.5%)',        key: 'sellingCosts',            indent: true, sign: -1 },
+      { label: '(–) Doc Stamps / Transfer Tax',  key: 'dispositionDocStamps',    indent: true, sign: -1, tabLink: 4 },
+      { label: '(–) Loan Payoff',                key: 'loanPayoff',              indent: true, sign: -1 },
+      { label: '(–) Disposition Tax (Est.)',      key: 'dispositionTaxPayable',   indent: true, sign: -1, afterTaxOnly: true, tabLink: 4 },
+      { label: 'Net Sale Proceeds',               key: 'netSaleProceeds',         isTotal: true },
     ],
   },
 ];
@@ -152,14 +153,15 @@ const SECTIONS: SectionDef[] = [
 // Key metrics strip — fixed bottom row (not a collapsible section)
 interface MetricDef { label: string; key: keyof ProjYear; fmt: 'pct' | 'x' | 'dollar'; }
 const METRICS_STRIP: MetricDef[] = [
-  { label: 'OCC',  key: 'occupancy',     fmt: 'pct' },
-  { label: 'DSCR', key: 'dscr',          fmt: 'x'   },
-  { label: 'DY',   key: 'debtYield',     fmt: 'pct' },
-  { label: 'CoC',  key: 'coc',           fmt: 'pct' },
-  { label: 'EM',   key: 'cumulativeEM',  fmt: 'x'   },
-  { label: 'Cap',  key: 'capRatePct',    fmt: 'pct' },
-  { label: 'RG',   key: 'rentGrowthPct', fmt: 'pct' },
-  { label: 'OER',  key: 'opexRatioPct',  fmt: 'pct' },
+  { label: 'OCC',      key: 'occupancy',     fmt: 'pct' },
+  { label: 'DSCR',     key: 'dscr',          fmt: 'x'   },
+  { label: 'DY',       key: 'debtYield',     fmt: 'pct' },
+  { label: 'CoC',      key: 'coc',           fmt: 'pct' },
+  { label: 'EM',       key: 'cumulativeEM',  fmt: 'x'   },
+  { label: 'Cap',      key: 'capRatePct',    fmt: 'pct' },
+  { label: 'NOI Margin', key: 'noiMarginPct',fmt: 'pct' },
+  { label: 'OER',      key: 'opexRatioPct',  fmt: 'pct' },
+  { label: 'RG',       key: 'rentGrowthPct', fmt: 'pct' },
 ];
 
 // Source badge label
