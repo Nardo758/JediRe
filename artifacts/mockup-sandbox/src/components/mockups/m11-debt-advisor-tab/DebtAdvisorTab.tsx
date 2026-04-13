@@ -1,428 +1,466 @@
-import React, { useState } from 'react';
-import { 
-  CheckCircle2, 
-  AlertTriangle, 
-  ChevronRight, 
-  ChevronDown, 
-  TrendingDown,
-  Info,
-  Clock,
-  ArrowRight,
-  TrendingUp
-} from 'lucide-react';
+import { useState } from 'react';
+import { AlertTriangle, CheckCircle, ArrowRight, TrendingDown, Zap, ChevronDown, ChevronRight } from 'lucide-react';
 
+const C = {
+  bg: '#0a0a0c',
+  panel: '#111114',
+  panelAlt: '#13131a',
+  border: '#1e1e24',
+  borderMid: '#2a2a35',
+  cyan: '#00e5a0',
+  amber: '#f59e0b',
+  purple: '#a855f7',
+  red: '#ef4444',
+  green: '#22c55e',
+  orange: '#f97316',
+  textPrimary: '#e2e8f0',
+  textMuted: '#64748b',
+  textDim: '#2a2a40',
+};
+
+const mono = { fontFamily: '"JetBrains Mono", monospace' };
+
+function Pill({ children, color = C.cyan }: { children: React.ReactNode; color?: string }) {
+  return (
+    <span style={{ ...mono, backgroundColor: `${color}18`, color, border: `1px solid ${color}40`, borderRadius: 2, padding: '1px 6px', fontSize: 10, fontWeight: 700, letterSpacing: '0.06em' }}>
+      {children}
+    </span>
+  );
+}
+
+function SectionLabel({ label, accent = C.cyan }: { label: string; accent?: string }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+      <div style={{ width: 3, height: 14, backgroundColor: accent, borderRadius: 1 }} />
+      <span style={{ ...mono, color: C.textMuted, fontSize: 9, letterSpacing: '0.1em', fontWeight: 700 }}>{label}</span>
+    </div>
+  );
+}
+
+// ─── Strategy Origin Banner ─────────────────────────────────────────────────
+function StrategyOrigin() {
+  return (
+    <div style={{ backgroundColor: `${C.cyan}08`, border: `1px solid ${C.cyan}30`, borderRadius: 2, padding: '8px 14px', marginBottom: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <Zap size={13} color={C.cyan} />
+        <div style={{ flex: 1 }}>
+          <div style={{ ...mono, color: C.textMuted, fontSize: 9, letterSpacing: '0.08em', marginBottom: 4 }}>DEBT STRUCTURE DRIVEN BY M08 STRATEGY DETECTION</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const, alignItems: 'center' }}>
+            {[
+              ['MF VALUE-ADD', C.cyan],
+              ['→', C.textMuted],
+              ['Reno capex $2.7M', C.textMuted],
+              ['·', C.textDim],
+              ['Going-in DSCR 0.91 (IO required)', C.red],
+              ['·', C.textDim],
+              ['Capture Y1 $334K → Y3 $1.16M', C.textMuted],
+              ['·', C.textDim],
+              ['Stab NOI $2.11M → Fannie eligible M21', C.green],
+            ].map(([t, col], i) => (
+              <span key={i} style={{ ...mono, color: col as string, fontSize: t === '→' || t === '·' ? 10 : 10, fontWeight: t === 'MF VALUE-ADD' ? 700 : 400 }}>{t}</span>
+            ))}
+          </div>
+        </div>
+        <button style={{ ...mono, fontSize: 9, padding: '3px 8px', color: C.cyan, border: `1px solid ${C.cyan}40`, borderRadius: 2, backgroundColor: 'transparent', cursor: 'pointer', whiteSpace: 'nowrap' as const }}>View Strategy →</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── DSCR Recovery Timeline ─────────────────────────────────────────────────
+function DSCRTimeline() {
+  const cols = [
+    { yr: 'Y1', dscr: 0.91, noi: '$1.64M', occ: '89.1%', capture: '$334K', status: 'IO · pre-stab', color: C.red, flag: null },
+    { yr: 'Y2', dscr: 1.24, noi: '$1.87M', occ: '92.3%', capture: '$877K', status: 'IO · reno 75%', color: C.amber, flag: null },
+    { yr: 'Y3', dscr: 1.47, noi: '$2.11M', occ: '94.2%', capture: '$1.16M', status: 'REFI TRIGGER', color: C.green, flag: '✓' },
+    { yr: 'Y4', dscr: 1.62, noi: '$2.35M', occ: '95.1%', capture: '$1.20M', status: 'Stabilized', color: C.green, flag: null },
+    { yr: 'Y5', dscr: 1.68, noi: '$2.49M', occ: '95.8%', capture: '$1.20M', status: 'Exit window', color: C.cyan, flag: null },
+  ];
+
+  return (
+    <div style={{ border: `1px solid ${C.border}`, borderRadius: 2, padding: 14, marginBottom: 14, backgroundColor: C.panelAlt }}>
+      <SectionLabel label="DSCR RECOVERY — POWERED BY M08 CAPTURE SCHEDULE" />
+      <div style={{ display: 'flex', gap: 0 }}>
+        {cols.map((c, i) => (
+          <div key={i} style={{ flex: 1, borderRight: i < cols.length - 1 ? `1px solid ${C.border}` : 'none', padding: '0 12px', borderLeft: c.flag ? `2px solid ${C.green}` : 'none' }}>
+            {c.flag && <div style={{ ...mono, color: C.green, fontSize: 8, marginBottom: 2 }}>◀ REFI HERE</div>}
+            <div style={{ ...mono, color: c.color, fontSize: 18, fontWeight: 700 }}>{c.dscr.toFixed(2)}×</div>
+            <div style={{ ...mono, color: C.textPrimary, fontSize: 11, fontWeight: 700 }}>{c.yr}</div>
+            <div style={{ color: C.textMuted, fontSize: 9, marginTop: 3 }}>NOI {c.noi}</div>
+            <div style={{ color: C.textMuted, fontSize: 9 }}>Occ {c.occ}</div>
+            <div style={{ color: C.cyan, fontSize: 9 }}>Cap {c.capture}</div>
+            <div style={{ marginTop: 6 }}>
+              <span style={{ ...mono, fontSize: 8, color: c.color, backgroundColor: `${c.color}15`, border: `1px solid ${c.color}30`, borderRadius: 2, padding: '1px 4px' }}>{c.status}</span>
+            </div>
+            {/* DSCR bar */}
+            <div style={{ marginTop: 8, height: 36, display: 'flex', alignItems: 'flex-end' }}>
+              <div style={{ width: '70%', height: `${Math.min((c.dscr / 2) * 100, 100)}%`, backgroundColor: `${c.color}35`, border: `1px solid ${c.color}50`, borderRadius: 2 }} />
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 10, paddingTop: 8, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+        <CheckCircle size={11} color={C.green} style={{ marginTop: 1, flexShrink: 0 }} />
+        <span style={{ color: C.textMuted, fontSize: 10 }}>
+          Refi trigger: <span style={{ ...mono, color: C.green }}>DSCR {'>'} 1.35 AND Occ {'>'} 92%</span> — first met M21 (Q3 Y2). Bridge extension option exercised as needed. Fannie DUS refi executes M24 as planned. Alert auto-fires from M08 NOI tracker.
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ─── Capture → Debt Linkage ──────────────────────────────────────────────────
+function CaptureLinkage() {
+  const rows = [
+    { yr: 'Y1', capture: '$334K', noi: '$1.64M', dscr: '0.91×', ds: '$2.14M (IO)', refi: false, note: 'Bridge IO — DSCR pre-stab. No perm product qualifies at 0.91.' },
+    { yr: 'Y2', capture: '$877K', noi: '$1.87M', dscr: '1.24×', ds: '$2.14M (IO)', refi: false, note: 'Reno 75% complete. DSCR climbing. Approaching refi threshold.' },
+    { yr: 'Y3', capture: '$1.16M', noi: '$2.11M', dscr: '1.47×', ds: '$1.69M (perm)', refi: true, note: '✓ Fannie DUS refi M24. Debt service drops $450K/yr vs IO bridge.' },
+    { yr: 'Y4', capture: '$1.20M', noi: '$2.35M', dscr: '1.62×', ds: '$1.69M', refi: true, note: 'Stabilized. Exit prep. YM prepay est. $640K modeled in waterfall.' },
+  ];
+  return (
+    <div style={{ border: `1px solid ${C.border}`, borderRadius: 2, overflow: 'hidden', marginBottom: 14 }}>
+      <div style={{ backgroundColor: C.panelAlt, padding: '7px 12px', borderBottom: `1px solid ${C.border}` }}>
+        <span style={{ ...mono, color: C.textMuted, fontSize: 9, letterSpacing: '0.1em', fontWeight: 700 }}>M08 CAPTURE SCHEDULE → DEBT STRUCTURE LOGIC</span>
+      </div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+        <thead>
+          <tr style={{ backgroundColor: '#0d0d12' }}>
+            {['Yr', 'Net Uplift', 'NOI', 'DSCR', 'Annual DS', 'Refi?', 'Rationale'].map(h => (
+              <th key={h} style={{ ...mono, textAlign: 'left', padding: '4px 10px', color: C.textMuted, fontSize: 9, fontWeight: 600, letterSpacing: '0.08em', borderBottom: `1px solid ${C.border}` }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={i} style={{ backgroundColor: r.refi ? `${C.green}06` : 'transparent', borderTop: i > 0 ? `1px solid ${C.border}15` : 'none' }}>
+              <td style={{ ...mono, padding: '5px 10px', color: C.textPrimary, fontWeight: 700 }}>{r.yr}</td>
+              <td style={{ ...mono, padding: '5px 10px', color: C.cyan }}>{r.capture}</td>
+              <td style={{ ...mono, padding: '5px 10px', color: C.textPrimary }}>{r.noi}</td>
+              <td style={{ ...mono, padding: '5px 10px', color: r.dscr.startsWith('0') ? C.red : r.dscr.startsWith('1.2') ? C.amber : C.green, fontWeight: 700 }}>{r.dscr}</td>
+              <td style={{ ...mono, padding: '5px 10px', color: r.refi ? C.cyan : C.textMuted }}>{r.ds}</td>
+              <td style={{ padding: '5px 10px' }}>{r.refi ? <Pill color={C.green}>✓ ELIGIBLE</Pill> : <span style={{ ...mono, color: C.textMuted, fontSize: 9 }}>—</span>}</td>
+              <td style={{ padding: '5px 10px', color: C.textMuted, fontSize: 10 }}>{r.note}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ─── Debt Plan Timeline ──────────────────────────────────────────────────────
+function DebtTimeline({ expandedPhase, setExpandedPhase }: { expandedPhase: string | null; setExpandedPhase: (v: string | null) => void }) {
+  const pct = (m: number) => `${(m / 36) * 100}%`;
+  const phases = [
+    { id: 'bridge', label: 'BRIDGE', detail: '$28.5M · SOFR+275 · 3yr+1+1 · IO · 70% LTC', start: 0, end: 24, color: C.orange, row: 0 },
+    { id: 'refi', label: 'FANNIE DUS REFI', detail: '$32M · 10yr fixed · 5.1% · 65% LTV', start: 24, end: 36, color: C.cyan, row: 0 },
+  ];
+  return (
+    <div style={{ border: `1px solid ${C.border}`, borderRadius: 2, padding: 14, marginBottom: 4, backgroundColor: C.panelAlt }}>
+      <SectionLabel label="DEBT PLAN TIMELINE" accent={C.amber} />
+      <div style={{ position: 'relative', marginBottom: 8 }}>
+        {/* Month axis */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+          {[0, 6, 12, 18, 24, 30, 36].map(m => (
+            <span key={m} style={{ ...mono, color: C.textMuted, fontSize: 9 }}>M{m}</span>
+          ))}
+        </div>
+        {/* Refi trigger line */}
+        <div style={{ position: 'absolute', left: pct(24), top: 24, height: 34, width: 1, backgroundColor: `${C.green}70`, borderTop: 'none' }}>
+          <span style={{ ...mono, fontSize: 8, color: C.green, position: 'absolute', top: '100%', transform: 'translateX(-50%)', whiteSpace: 'nowrap' as const }}>REFI TRIGGER M24</span>
+        </div>
+        {/* Phase bars */}
+        <div style={{ position: 'relative', height: 34 }}>
+          {phases.map((p) => (
+            <div
+              key={p.id}
+              onClick={() => setExpandedPhase(expandedPhase === p.id ? null : p.id)}
+              style={{
+                position: 'absolute',
+                left: pct(p.start),
+                width: `calc(${pct(p.end - p.start)} - 2px)`,
+                top: 0,
+                height: 28,
+                backgroundColor: `${p.color}20`,
+                border: `1px solid ${p.color}60`,
+                borderRadius: 2,
+                display: 'flex',
+                alignItems: 'center',
+                padding: '0 8px',
+                gap: 6,
+                cursor: 'pointer',
+              }}
+            >
+              <span style={{ ...mono, color: p.color, fontSize: 10, fontWeight: 700 }}>{p.label}</span>
+              <span style={{ color: C.textMuted, fontSize: 9 }}>· {p.detail}</span>
+              {expandedPhase === p.id ? <ChevronDown size={10} color={p.color} style={{ marginLeft: 'auto' }} /> : <ChevronRight size={10} color={C.textMuted} style={{ marginLeft: 'auto' }} />}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Bridge Detail ───────────────────────────────────────────────────────────
+function BridgeDetail() {
+  return (
+    <div style={{ border: `1px solid ${C.orange}40`, borderRadius: 2, marginBottom: 14, overflow: 'hidden' }}>
+      <div style={{ backgroundColor: `${C.orange}10`, padding: '8px 14px', borderBottom: `1px solid ${C.orange}30`, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <ChevronDown size={12} color={C.orange} />
+        <span style={{ ...mono, color: C.orange, fontSize: 11, fontWeight: 700 }}>Bridge-to-Perm Bridge · M0–M24</span>
+        <span style={{ color: C.textMuted, fontSize: 10 }}>Why: Going-in DSCR 0.91 disqualifies all perm products. IO preserves cash during reno. Open prepay for clean refi at stabilization.</span>
+      </div>
+      <div style={{ display: 'flex', gap: 0 }}>
+        <div style={{ flex: 7, padding: 14, borderRight: `1px solid ${C.border}` }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            {[
+              { section: 'SIZING', rows: [['Loan Amount', '$28.5M'], ['LTV', '70%'], ['LTC (incl reno)', '70%'], ['DSCR Y1 (IO)', '0.91 — pre-stab'], ['Debt Yield', '5.7%']] },
+              { section: 'PRICING', rows: [['Type', 'Floating · SOFR + 275bps'], ['All-in today', '~8.25%'], ['Rate Cap', '4.5% strike · 2yr · $380K'], ['Cap renewal M24', '~$180K — budget now']] },
+              { section: 'STRUCTURE', rows: [['Term', '3yr + 1yr + 1yr extensions'], ['Amortization', 'Full IO'], ['Extension fee', '50bps per extension'], ['Prepay', 'Open — no yield-maintenance']] },
+              { section: 'ALL-IN FEES', rows: [['Origination 1.5%', '$427K'], ['Exit fee 0.5%', '$142K'], ['Rate cap', '$380K'], ['Total close costs', '$949K']] },
+            ].map((s, i) => (
+              <div key={i}>
+                <div style={{ ...mono, color: C.textMuted, fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 6 }}>{s.section}</div>
+                {s.rows.map(([k, v]) => (
+                  <div key={k} style={{ display: 'flex', justifyContent: 'space-between', borderBottom: `1px solid ${C.border}25`, padding: '3px 0' }}>
+                    <span style={{ color: C.textMuted, fontSize: 10 }}>{k}</span>
+                    <span style={{ ...mono, color: C.textPrimary, fontSize: 10, fontWeight: 600 }}>{v}</span>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 12, padding: '8px 10px', backgroundColor: `${C.green}08`, border: `1px solid ${C.green}30`, borderRadius: 2, display: 'flex', gap: 6, alignItems: 'center' }}>
+            <CheckCircle size={11} color={C.green} />
+            <span style={{ color: C.textMuted, fontSize: 10 }}>
+              Refi window: <span style={{ ...mono, color: C.green }}>Occ {'>'} 92% AND DSCR {'>'} 1.35</span> → projected M21 per M08 capture schedule. Alert fires automatically from M08 NOI tracker.
+            </span>
+          </div>
+        </div>
+        <div style={{ flex: 3, padding: 14, backgroundColor: C.bg }}>
+          <div style={{ ...mono, color: C.textMuted, fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 10 }}>LENDER TARGETS</div>
+          {[
+            { name: 'Acore Capital', deals: '6 deals YTD', pricing: 'SOFR+290', fit: 94, fitColor: C.green, note: 'Non-recourse · Fast close · Rec.' },
+            { name: 'Square Mile Capital', deals: '4 deals', pricing: 'SOFR+325', fit: 78, fitColor: C.cyan, note: 'Higher spread · Flexible extensions' },
+            { name: 'Bank OZK', deals: '8 deals', pricing: 'SOFR+275', fit: 71, fitColor: C.amber, note: '⚠ Partial recourse required' },
+          ].map((l, i) => (
+            <div key={i} style={{ border: `1px solid ${i === 0 ? C.green + '50' : C.border}`, backgroundColor: i === 0 ? `${C.green}08` : 'transparent', borderRadius: 2, padding: '8px 10px', marginBottom: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                <span style={{ color: C.textPrimary, fontSize: 11, fontWeight: 600 }}>{l.name}</span>
+                <span style={{ ...mono, color: l.fitColor, fontSize: 11, fontWeight: 700 }}>fit {l.fit}%</span>
+              </div>
+              <div style={{ ...mono, color: C.textMuted, fontSize: 9, marginBottom: 2 }}>{l.deals} · {l.pricing}</div>
+              <div style={{ color: C.textMuted, fontSize: 9 }}>{l.note}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Market Context (right rail) ─────────────────────────────────────────────
+function MarketContext() {
+  return (
+    <div style={{ border: `1px solid ${C.border}`, borderRadius: 2, padding: 14, backgroundColor: C.bg }}>
+      <div style={{ ...mono, color: C.textMuted, fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 12 }}>MARKET CONTEXT</div>
+      {[
+        { label: '10yr Treasury', value: '4.21%', sub: '−8bps today', color: C.green },
+        { label: 'SOFR', value: '4.95%', sub: '−60bps projected 12mo', color: C.cyan },
+        { label: 'RSS Score', value: '67/100', sub: 'Favorable for bridge', color: C.cyan },
+      ].map((r, i) => (
+        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${C.border}30`, padding: '6px 0' }}>
+          <span style={{ color: C.textMuted, fontSize: 10 }}>{r.label}</span>
+          <div style={{ textAlign: 'right' as const }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
+              <TrendingDown size={10} color={r.color} />
+              <span style={{ ...mono, color: r.color, fontSize: 12, fontWeight: 700 }}>{r.value}</span>
+            </div>
+            <div style={{ ...mono, color: C.textMuted, fontSize: 9 }}>{r.sub}</div>
+          </div>
+        </div>
+      ))}
+      {/* Forward curve sparkline */}
+      <div style={{ marginTop: 10 }}>
+        <div style={{ ...mono, color: C.textMuted, fontSize: 9, marginBottom: 4 }}>SOFR FORWARD CURVE</div>
+        <svg width="100%" height={32} viewBox="0 0 200 32">
+          <defs>
+            <linearGradient id="curveGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={C.cyan} stopOpacity="0.3" />
+              <stop offset="100%" stopColor={C.cyan} stopOpacity="0.02" />
+            </linearGradient>
+          </defs>
+          <polyline points="0,26 40,24 80,20 120,14 160,9 200,5" fill="none" stroke={C.cyan} strokeWidth={1.5} />
+        </svg>
+        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          {['Now', '6mo', '12mo', '18mo', '24mo'].map(l => (
+            <span key={l} style={{ ...mono, color: C.textMuted, fontSize: 8 }}>{l}</span>
+          ))}
+        </div>
+      </div>
+      <div style={{ marginTop: 10, backgroundColor: `${C.green}10`, border: `1px solid ${C.green}30`, borderRadius: 2, padding: '6px 8px' }}>
+        <div style={{ ...mono, color: C.green, fontSize: 10, fontWeight: 700 }}>PRICING WINDOW: FAVORABLE</div>
+        <div style={{ color: C.textMuted, fontSize: 9, marginTop: 2 }}>Forward curve supports floating bridge + rate cap today. Lock fixed perm at refi M24 when SOFR lower.</div>
+      </div>
+      <div style={{ marginTop: 12 }}>
+        <div style={{ ...mono, color: C.textMuted, fontSize: 9, fontWeight: 700, marginBottom: 6 }}>ACTIVE COR SIGNALS</div>
+        {[['COR-08', 'Permit velocity +42%', C.amber], ['COR-01', 'Traffic surge active', C.cyan]].map(([id, label, col]) => (
+          <div key={id as string} style={{ display: 'flex', gap: 6, marginBottom: 3 }}>
+            <span style={{ ...mono, fontSize: 9, color: col as string }}>↗ {id}</span>
+            <span style={{ color: C.textMuted, fontSize: 9 }}>{label as string}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Alternatives ─────────────────────────────────────────────────────────────
+function Alternatives() {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+      {[
+        {
+          title: 'Zero Rate Risk',
+          sub: '3yr Fixed Bridge + Fixed Agency Refi',
+          rows: [['Bridge rate', '6.5% fixed (today)'], ['Rate cap', 'Not needed — saves $380K'], ['Y1 annual DS', '$2.33M vs $2.14M floating IO'], ['IRR impact', '−0.3% (loses floating benefit if SOFR drops)']],
+          tradeoff: 'Eliminates rate cap cost. Sacrifices expected ~$420K floating savings if SOFR declines 60bps as projected.',
+          color: C.textMuted,
+        },
+        {
+          title: 'Higher Leverage',
+          sub: 'Add 10% Mezz at 13% pay+PIK',
+          rows: [['Senior bridge', '$28.5M · SOFR+275'], ['Mezz', '$4.5M · 13% (7% pay + 6% PIK)'], ['Blended all-in', '~9.8%'], ['IRR impact', '+1.1% (more equity deployed)']],
+          tradeoff: 'Mezz adds execution risk (intercreditor, review). Higher coupon drag in IO period. Best if equity redeployed to parallel deal.',
+          color: C.purple,
+        },
+      ].map((a, i) => (
+        <div key={i} style={{ border: `1px solid ${C.border}`, borderRadius: 2, padding: 12 }}>
+          <div style={{ ...mono, color: C.textPrimary, fontSize: 11, fontWeight: 700, marginBottom: 2 }}>{a.title}</div>
+          <div style={{ color: C.textMuted, fontSize: 10, marginBottom: 10 }}>{a.sub}</div>
+          {a.rows.map(([k, v]) => (
+            <div key={k} style={{ display: 'flex', justifyContent: 'space-between', borderBottom: `1px solid ${C.border}20`, padding: '3px 0' }}>
+              <span style={{ color: C.textMuted, fontSize: 10 }}>{k}</span>
+              <span style={{ ...mono, color: C.textPrimary, fontSize: 10 }}>{v}</span>
+            </div>
+          ))}
+          <div style={{ marginTop: 8, color: C.textMuted, fontSize: 9, fontStyle: 'italic' }}>{a.tradeoff}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Monitoring Triggers ─────────────────────────────────────────────────────
+function MonitoringTriggers() {
+  const triggers = [
+    { warn: false, label: 'M21 Refi Window', cond: 'Occ > 92% AND DSCR > 1.35 → agency refi eligible', current: 'Occ 89.1% · DSCR 0.91 — not yet', note: 'Monitor monthly from M08 NOI tracker.' },
+    { warn: true, label: 'Rate Cap Renewal', cond: 'Cap expires M24 — replacement at same strike ~$180K', current: '⚠ Order at M21 — 90-day lead time', note: 'Budget in reserves now. Do not miss renewal window.' },
+    { warn: false, label: 'COR-08 Permit Velocity', cond: 'If velocity breaks 60% → shorten exit → early refi to long fixed', current: 'Currently 42% — below 60% threshold', note: 'Auto-trigger from M14 permit tracker.' },
+  ];
+  return (
+    <div style={{ border: `1px solid ${C.border}`, borderRadius: 2, overflow: 'hidden', marginBottom: 14 }}>
+      <div style={{ backgroundColor: C.panelAlt, padding: '7px 12px', borderBottom: `1px solid ${C.border}` }}>
+        <span style={{ ...mono, color: C.textMuted, fontSize: 9, letterSpacing: '0.1em', fontWeight: 700 }}>MONITORING TRIGGERS</span>
+      </div>
+      {triggers.map((t, i) => (
+        <div key={i} style={{ display: 'flex', gap: 12, padding: '10px 14px', borderBottom: i < triggers.length - 1 ? `1px solid ${C.border}` : 'none', backgroundColor: t.warn ? `${C.amber}06` : 'transparent', alignItems: 'flex-start' }}>
+          <div style={{ marginTop: 1, flexShrink: 0 }}>
+            {t.warn ? <AlertTriangle size={12} color={C.amber} /> : <CheckCircle size={12} color={C.green} />}
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 2 }}>
+              <span style={{ ...mono, color: C.textPrimary, fontSize: 11, fontWeight: 600 }}>{t.label}</span>
+              <span style={{ ...mono, color: t.warn ? C.amber : C.textMuted, fontSize: 9 }}>{t.current}</span>
+            </div>
+            <div style={{ color: C.textMuted, fontSize: 10 }}>{t.cond}</div>
+            <div style={{ color: C.textDim, fontSize: 9, marginTop: 1 }}>{t.note}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
 export function DebtAdvisorTab() {
   const [activeTab, setActiveTab] = useState<'advisor' | 'configure'>('advisor');
   const [expandedPhase, setExpandedPhase] = useState<string | null>('bridge');
 
   return (
-    <div className="min-h-screen bg-[#0a0a0c] text-[#e2e8f0] font-sans p-4 space-y-6">
-      <style>{`
-        .font-mono { font-family: 'JetBrains Mono', monospace; }
-        .font-sans { font-family: 'IBM Plex Sans', sans-serif; }
-      `}</style>
-      
-      {/* 1. TAB TOGGLE ROW */}
-      <div className="flex justify-between items-center border-b border-[#1e1e24] pb-2">
-        <div className="flex space-x-6 text-sm font-medium tracking-wide">
-          <button 
-            onClick={() => setActiveTab('advisor')}
-            className={`pb-2 -mb-[9px] uppercase ${activeTab === 'advisor' ? 'text-[#00e5a0] border-b-2 border-[#00e5a0]' : 'text-[#64748b] hover:text-[#e2e8f0]'}`}
-          >
-            [ Advisor ]
-          </button>
-          <button 
-            onClick={() => setActiveTab('configure')}
-            className={`pb-2 -mb-[9px] uppercase ${activeTab === 'configure' ? 'text-[#00e5a0] border-b-2 border-[#00e5a0]' : 'text-[#64748b] hover:text-[#e2e8f0]'}`}
-          >
-            [ Configure ]
-          </button>
+    <div style={{ backgroundColor: C.bg, minHeight: '100vh', color: C.textPrimary, fontFamily: '"IBM Plex Sans", system-ui, sans-serif', fontSize: 12 }}>
+      {/* Tab toggle row */}
+      <div style={{ padding: '8px 20px', borderBottom: `1px solid ${C.border}`, backgroundColor: C.panel, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 0 }}>
+          {(['advisor', 'configure'] as const).map(t => (
+            <button key={t} onClick={() => setActiveTab(t)} style={{ ...mono, fontSize: 11, padding: '6px 14px', cursor: 'pointer', backgroundColor: 'transparent', color: activeTab === t ? C.cyan : C.textMuted, border: 'none', borderBottom: `2px solid ${activeTab === t ? C.cyan : 'transparent'}`, fontWeight: activeTab === t ? 700 : 400, letterSpacing: '0.08em', textTransform: 'uppercase' as const }}>
+              [ {t} ]
+            </button>
+          ))}
         </div>
-        <div className="flex items-center text-[#64748b] text-xs font-mono">
-          <Clock className="w-3 h-3 mr-2" />
-          LAST COMPUTED: 10:42 AM EST
-        </div>
+        <span style={{ ...mono, color: C.textMuted, fontSize: 9 }}>LAST COMPUTED: 10:42 AM EST · Source: M08 strategy output</span>
       </div>
 
-      <div className="flex flex-col xl:flex-row gap-6">
-        
-        {/* Main Content Area */}
-        <div className="flex-1 space-y-6">
-          
-          {/* 2. RECOMMENDATION HEADER */}
-          <div className="bg-[#111114] border border-[#1e1e24] border-l-4 border-l-[#00e5a0] p-4 rounded-sm">
-            <div className="flex justify-between items-start mb-3">
-              <div>
-                <div className="flex items-center space-x-3 mb-1">
-                  <span className="bg-[#f59e0b]/20 text-[#f59e0b] text-[10px] font-bold px-2 py-0.5 rounded-sm border border-[#f59e0b]/30">
-                    RECOMMENDED
-                  </span>
-                  <h2 className="text-xl font-bold tracking-tight text-white">Bridge-to-Perm + Fannie DUS Refi</h2>
-                </div>
-                <p className="text-[#64748b] text-sm max-w-3xl leading-relaxed">
-                  MF Value-Add needs flexibility during reno (bridge), then long-term fixed at stabilization (agency). Rate environment: SOFR dropping 60bps over 12mo — floating bridge wins.
-                </p>
-              </div>
-            </div>
-            
-            <div className="flex items-center space-x-4 mb-5 text-sm">
-              <span className="text-[#e2e8f0]">Total at close:</span>
-              <span className="font-mono text-[#00e5a0] bg-[#00e5a0]/10 px-2 py-0.5 rounded-sm">$28.5M bridge</span>
-              <span className="text-[#64748b]">&middot;</span>
-              <span className="font-mono text-[#e2e8f0]">$320K origination + fees</span>
-            </div>
+      <div style={{ display: 'flex', gap: 0 }}>
+        {/* Main column */}
+        <div style={{ flex: 1, padding: '14px 20px', overflowY: 'auto' as const }}>
 
-            <div className="flex space-x-3">
-              <button className="bg-[#00e5a0] text-[#0a0a0c] hover:bg-[#00e5a0]/90 px-4 py-1.5 text-sm font-bold rounded-sm transition-colors">
-                Accept and Populate Configure
-              </button>
-              <button className="border border-[#00e5a0] text-[#00e5a0] hover:bg-[#00e5a0]/10 px-4 py-1.5 text-sm font-medium rounded-sm transition-colors">
-                Modify
-              </button>
-              <button className="border border-[#a855f7] text-[#a855f7] hover:bg-[#a855f7]/10 px-4 py-1.5 text-sm font-medium rounded-sm transition-colors">
-                Run Alt: Debt Fund
-              </button>
+          <StrategyOrigin />
+
+          {/* Recommendation Header */}
+          <div style={{ borderLeft: `3px solid ${C.cyan}`, border: `1px solid ${C.border}`, backgroundColor: C.panel, padding: '12px 16px', marginBottom: 14, borderRadius: 2 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4 }}>
+                  <Pill color={C.amber}>RECOMMENDED</Pill>
+                  <span style={{ ...mono, fontSize: 13, fontWeight: 700, color: C.textPrimary }}>Bridge-to-Perm + Fannie DUS Refi</span>
+                </div>
+                <div style={{ color: C.textMuted, fontSize: 11, marginBottom: 10 }}>
+                  MF Value-Add: going-in DSCR 0.91 → must use IO bridge. Rate environment dropping 60bps → floating wins vs fixed today. Refi to fixed agency when DSCR {'>'} 1.35 at stabilization M24.
+                </div>
+                <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' as const }}>
+                  {[['Bridge close', '$28.5M · SOFR+275 · 3yr IO'], ['Close costs', '$949K all-in'], ['Refi', '$32M · 5.1% · Fannie DUS M24'], ['LP IRR', '18.4–21.7%']].map(([l, v]) => (
+                    <div key={l as string}><div style={{ color: C.textMuted, fontSize: 9 }}>{l}</div><div style={{ ...mono, color: C.textPrimary, fontSize: 11, fontWeight: 600 }}>{v}</div></div>
+                  ))}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 6, marginLeft: 16, flexShrink: 0, flexDirection: 'column' as const }}>
+                <button style={{ ...mono, fontSize: 10, padding: '6px 12px', backgroundColor: C.cyan, color: '#0a0a0c', border: 'none', borderRadius: 2, cursor: 'pointer', fontWeight: 700, whiteSpace: 'nowrap' as const }}>Accept → Populate Configure</button>
+                <button style={{ ...mono, fontSize: 10, padding: '5px 10px', backgroundColor: 'transparent', color: C.cyan, border: `1px solid ${C.cyan}40`, borderRadius: 2, cursor: 'pointer' }}>Modify</button>
+                <button style={{ ...mono, fontSize: 10, padding: '5px 10px', backgroundColor: 'transparent', color: C.purple, border: `1px solid ${C.purple}40`, borderRadius: 2, cursor: 'pointer' }}>Run Alt: Debt Fund</button>
+              </div>
             </div>
           </div>
 
-          {/* 3. DEBT PLAN TIMELINE */}
-          <div className="bg-[#111114] border border-[#1e1e24] p-4 rounded-sm">
-            <h3 className="text-[#64748b] text-xs font-bold tracking-widest mb-4">DEBT PLAN TIMELINE</h3>
-            
-            <div className="relative pt-6 pb-2">
-              {/* Axis */}
-              <div className="absolute top-0 left-0 w-full flex justify-between text-[10px] text-[#64748b] font-mono border-b border-[#1e1e24] pb-1">
-                <span>M0</span>
-                <span>M6</span>
-                <span>M12</span>
-                <span>M18</span>
-                <span>M24</span>
-                <span>M30</span>
-                <span>M36</span>
-              </div>
-              
-              {/* Timeline Tracks */}
-              <div className="relative h-20 mt-4">
-                {/* Track 1: Bridge */}
-                <div 
-                  onClick={() => setExpandedPhase(expandedPhase === 'bridge' ? null : 'bridge')}
-                  className="absolute top-0 left-0 w-[66.6%] h-8 bg-[#f97316]/20 border border-[#f97316] rounded-sm flex items-center px-3 cursor-pointer hover:bg-[#f97316]/30 transition-colors group"
-                >
-                  <div className="flex items-center space-x-2 w-full">
-                    <span className="text-[#f97316] font-bold text-xs">BRIDGE</span>
-                    <span className="text-[#f97316]/60">&middot;</span>
-                    <span className="font-mono text-[#e2e8f0] text-xs">$28.5M</span>
-                    <span className="text-[#f97316]/60">&middot;</span>
-                    <span className="font-mono text-[#e2e8f0] text-xs">SOFR+275</span>
-                    <span className="text-[#f97316]/60">&middot;</span>
-                    <span className="font-mono text-[#e2e8f0] text-xs">3yr+1+1</span>
-                    <span className="text-[#f97316]/60">&middot;</span>
-                    <span className="text-[#e2e8f0] text-xs">IO</span>
-                    <span className="text-[#f97316]/60">&middot;</span>
-                    <span className="font-mono text-[#e2e8f0] text-xs">70% LTC</span>
-                  </div>
-                </div>
+          <DSCRTimeline />
+          <CaptureLinkage />
+          <DebtTimeline expandedPhase={expandedPhase} setExpandedPhase={setExpandedPhase} />
 
-                {/* Track 2: Refi */}
-                <div 
-                  className="absolute top-10 left-[66.6%] w-[33.4%] h-8 bg-[#00e5a0]/10 border border-[#00e5a0]/50 border-r-transparent border-dashed rounded-l-sm flex items-center px-3"
-                >
-                  <div className="flex items-center space-x-2 w-full truncate">
-                    <span className="text-[#00e5a0] font-bold text-xs">FANNIE DUS REFI</span>
-                    <span className="text-[#00e5a0]/60">&middot;</span>
-                    <span className="font-mono text-[#e2e8f0] text-xs">$32M</span>
-                    <span className="text-[#00e5a0]/60">&middot;</span>
-                    <span className="font-mono text-[#e2e8f0] text-xs">10yr</span>
-                    <span className="text-[#00e5a0]/60">&middot;</span>
-                    <span className="font-mono text-[#e2e8f0] text-xs">5.1% Fixed</span>
-                    <span className="text-[#00e5a0]/60">&middot;</span>
-                    <span className="font-mono text-[#e2e8f0] text-xs">65% LTV</span>
-                  </div>
-                </div>
-                
-                {/* Exit Line */}
-                <div className="absolute top-0 bottom-0 right-0 w-px bg-[#64748b] border-r border-dashed border-[#64748b]">
-                  <div className="absolute -top-4 right-2 text-[#64748b] text-[10px] font-bold whitespace-nowrap">
-                    EXIT &middot; DUS Payoff + YM
-                  </div>
-                </div>
+          {expandedPhase === 'bridge' && <BridgeDetail />}
+          {expandedPhase === 'refi' && (
+            <div style={{ border: `1px solid ${C.cyan}40`, borderRadius: 2, marginBottom: 14, padding: 14 }}>
+              <div style={{ ...mono, color: C.cyan, fontSize: 11, fontWeight: 700, marginBottom: 10 }}>Fannie DUS Refi · M24–M36+</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12 }}>
+                {[['Loan Amount', '$32M'], ['LTV', '65%'], ['Rate', '5.1% fixed · 10yr'], ['DSCR at refi', '1.47× (Y3 proj)'], ['Stabilized NOI', '$2.11M'], ['Amortization', '30yr'], ['Prepay', 'YM — ~$640K at M36'], ['Eligible at', 'M21 (Q3 Y2)']].map(([k, v]) => (
+                  <div key={k as string}><div style={{ color: C.textMuted, fontSize: 9 }}>{k}</div><div style={{ ...mono, color: C.textPrimary, fontSize: 11, fontWeight: 600, marginTop: 2 }}>{v}</div></div>
+                ))}
               </div>
             </div>
+          )}
 
-            {/* 4. EXPANDED PHASE DETAIL */}
-            {expandedPhase === 'bridge' && (
-              <div className="mt-4 border border-[#f97316]/30 bg-[#111114] rounded-sm flex flex-col md:flex-row overflow-hidden">
-                {/* Left: Detail */}
-                <div className="flex-1 p-4 border-r border-[#1e1e24]">
-                  <div className="flex justify-between items-start mb-4">
-                    <div>
-                      <h4 className="text-[#f97316] font-bold text-sm flex items-center">
-                        <ChevronDown className="w-4 h-4 mr-1" />
-                        Bridge-to-Perm Bridge
-                      </h4>
-                      <p className="text-[#64748b] text-xs mt-1">Why: Value-Add reno needs IO and flexible prepay</p>
-                    </div>
-                  </div>
+          <SectionLabel label="ALTERNATIVE STRUCTURES" accent={C.textMuted} />
+          <Alternatives />
 
-                  <div className="grid grid-cols-2 gap-x-6 gap-y-4 text-sm">
-                    <div className="space-y-2">
-                      <div className="flex justify-between border-b border-[#1e1e24] pb-1">
-                        <span className="text-[#64748b]">Sizing</span>
-                        <span className="font-mono">$28.5M &middot; LTV 70% &middot; LTC 70%</span>
-                      </div>
-                      <div className="flex justify-between border-b border-[#1e1e24] pb-1">
-                        <span className="text-[#64748b]">Metrics</span>
-                        <span className="font-mono">DSCR 0.91 (pre-stab) &middot; DY 5.7%</span>
-                      </div>
-                      <div className="flex justify-between border-b border-[#1e1e24] pb-1">
-                        <span className="text-[#64748b]">Term</span>
-                        <span className="font-mono">3yr + 1+1 &middot; Full IO</span>
-                      </div>
-                      <div className="flex justify-between border-b border-[#1e1e24] pb-1">
-                        <span className="text-[#64748b]">Prepay</span>
-                        <span className="font-mono">Open (bridge product)</span>
-                      </div>
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <div className="flex justify-between border-b border-[#1e1e24] pb-1">
-                        <span className="text-[#64748b]">Pricing</span>
-                        <span className="font-mono">Floating &middot; SOFR + 275bps</span>
-                      </div>
-                      <div className="flex justify-between border-b border-[#1e1e24] pb-1">
-                        <span className="text-[#64748b]">Rate Cap</span>
-                        <span className="font-mono">4.5% strike &middot; $380K &middot; 2yr</span>
-                      </div>
-                      <div className="flex justify-between border-b border-[#1e1e24] pb-1">
-                        <span className="text-[#64748b]">Total Fees</span>
-                        <span className="font-mono">$949K (Orig 1.5%, Exit 0.5%)</span>
-                      </div>
-                      <div className="flex justify-between border-b border-[#1e1e24] pb-1">
-                        <span className="text-[#64748b]">All-in</span>
-                        <span className="font-mono text-[#f59e0b]">~8.25%</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 bg-[#1e1e24]/50 p-2 rounded-sm border border-[#1e1e24] flex items-start space-x-2">
-                    <Info className="w-4 h-4 text-[#00e5a0] mt-0.5 flex-shrink-0" />
-                    <span className="text-xs text-[#e2e8f0]">
-                      <strong className="text-[#00e5a0]">Monitoring:</strong> Refi window trigger at M18 (occ &gt;92% + DSCR &gt;1.35)
-                    </span>
-                  </div>
-                </div>
-
-                {/* Right: Lenders */}
-                <div className="w-full md:w-64 bg-[#0a0a0c] p-4 flex flex-col">
-                  <h4 className="text-[#64748b] text-[10px] font-bold tracking-widest mb-3">LENDER TARGETS</h4>
-                  
-                  <div className="space-y-2 flex-1">
-                    <div className="bg-[#111114] border border-[#00e5a0]/30 p-2 rounded-sm relative overflow-hidden">
-                      <div className="absolute top-0 left-0 bottom-0 w-1 bg-[#00e5a0]"></div>
-                      <div className="flex justify-between items-center mb-1 pl-2">
-                        <span className="font-bold text-xs text-white">Acore Capital</span>
-                        <span className="text-[#00e5a0] text-[10px] font-mono">fit 94%</span>
-                      </div>
-                      <div className="text-[10px] text-[#64748b] font-mono pl-2">
-                        6 deals YTD &middot; SOFR+290
-                      </div>
-                    </div>
-                    
-                    <div className="bg-[#111114] border border-[#1e1e24] p-2 rounded-sm hover:border-[#64748b] transition-colors cursor-pointer">
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="font-bold text-xs text-[#e2e8f0]">Square Mile Cap</span>
-                        <span className="text-[#64748b] text-[10px] font-mono">fit 78%</span>
-                      </div>
-                      <div className="text-[10px] text-[#64748b] font-mono">
-                        4 deals &middot; SOFR+325
-                      </div>
-                    </div>
-
-                    <div className="bg-[#111114] border border-[#1e1e24] p-2 rounded-sm hover:border-[#64748b] transition-colors cursor-pointer">
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="font-bold text-xs text-[#e2e8f0]">Bank OZK</span>
-                        <span className="text-[#64748b] text-[10px] font-mono">fit 71%</span>
-                      </div>
-                      <div className="text-[10px] text-[#64748b] font-mono">
-                        8 deals &middot; SOFR+275
-                      </div>
-                      <div className="text-[9px] text-[#ef4444] mt-1">Requires partial recourse</div>
-                    </div>
-                  </div>
-                  
-                  <div className="mt-3 pt-3 border-t border-[#1e1e24] text-[10px] text-[#64748b] leading-tight">
-                    <span className="text-[#00e5a0]">Acore recommended</span> — highest volume, non-recourse, pricing competitive
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* 6. ALTERNATIVE STRUCTURES */}
-          <div className="space-y-3">
-            <h3 className="text-[#64748b] text-xs font-bold tracking-widest uppercase">Alternative Structures</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              
-              {/* Alt 1 */}
-              <div className="bg-[#111114] border border-[#1e1e24] p-4 rounded-sm hover:border-[#64748b] transition-colors cursor-pointer group">
-                <div className="flex justify-between items-start mb-2">
-                  <h4 className="font-bold text-[#e2e8f0] group-hover:text-white">Zero Rate Risk</h4>
-                  <span className="text-[#ef4444] font-mono text-xs bg-[#ef4444]/10 px-1.5 py-0.5 rounded-sm">IRR -0.3%</span>
-                </div>
-                <div className="font-mono text-xs text-[#64748b] mb-3 space-y-1">
-                  <div>3yr fixed 6.5% bridge</div>
-                  <div>+40bps expected all-in</div>
-                </div>
-                <p className="text-xs text-[#e2e8f0] border-t border-[#1e1e24] pt-2">
-                  Eliminates rate cap cost $380K, sacrifices expected floating savings.
-                </p>
-              </div>
-
-              {/* Alt 2 */}
-              <div className="bg-[#111114] border border-[#1e1e24] p-4 rounded-sm hover:border-[#64748b] transition-colors cursor-pointer group">
-                <div className="flex justify-between items-start mb-2">
-                  <h4 className="font-bold text-[#e2e8f0] group-hover:text-white">Higher Leverage</h4>
-                  <span className="text-[#00e5a0] font-mono text-xs bg-[#00e5a0]/10 px-1.5 py-0.5 rounded-sm">IRR +1.1%</span>
-                </div>
-                <div className="font-mono text-xs text-[#64748b] mb-3 space-y-1">
-                  <div>Add 10% mezz at 13% pay+PIK</div>
-                  <div>Blended cost +60bps</div>
-                </div>
-                <p className="text-xs text-[#e2e8f0] border-t border-[#1e1e24] pt-2">
-                  Mezz adds execution risk at close. More equity deployed.
-                </p>
-              </div>
-
-            </div>
-          </div>
-
-          {/* 7. MONITORING TRIGGERS */}
-          <div className="bg-[#111114] border border-[#1e1e24] p-4 rounded-sm">
-            <h3 className="text-[#64748b] text-xs font-bold tracking-widest uppercase mb-4">Monitoring Triggers</h3>
-            <div className="space-y-3">
-              
-              <div className="flex items-start space-x-3 p-3 bg-[#0a0a0c] border border-[#1e1e24] rounded-sm">
-                <div className="mt-0.5">
-                  <CheckCircle2 className="w-4 h-4 text-[#64748b]" />
-                </div>
-                <div className="flex-1">
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="font-bold text-sm text-[#e2e8f0]">M18 Refi Window</span>
-                    <span className="text-[#64748b] text-[10px] uppercase font-bold tracking-wide">Not Triggered</span>
-                  </div>
-                  <p className="text-xs text-[#64748b] mb-1">If occ &gt;92% AND DSCR &gt;1.35 → agency refi eligible</p>
-                  <p className="font-mono text-xs text-[#e2e8f0]">Current: occ 89.1%, DSCR 0.91</p>
-                </div>
-              </div>
-
-              <div className="flex items-start space-x-3 p-3 bg-[#ef4444]/5 border border-[#ef4444]/30 rounded-sm">
-                <div className="mt-0.5">
-                  <AlertTriangle className="w-4 h-4 text-[#ef4444]" />
-                </div>
-                <div className="flex-1">
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="font-bold text-sm text-[#ef4444]">Cap Replacement</span>
-                    <span className="text-[#ef4444] text-[10px] uppercase font-bold tracking-wide bg-[#ef4444]/10 px-1.5 py-0.5 rounded-sm">Warning</span>
-                  </div>
-                  <p className="text-xs text-[#e2e8f0]">Rate cap expires M24 — replacement at same strike ~$180K. Budget in reserves.</p>
-                </div>
-              </div>
-
-              <div className="flex items-start space-x-3 p-3 bg-[#0a0a0c] border border-[#1e1e24] rounded-sm">
-                <div className="mt-0.5">
-                  <CheckCircle2 className="w-4 h-4 text-[#64748b]" />
-                </div>
-                <div className="flex-1">
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="font-bold text-sm text-[#e2e8f0]">COR-08 Permit Velocity</span>
-                    <span className="text-[#00e5a0] text-[10px] uppercase font-bold tracking-wide bg-[#00e5a0]/10 px-1.5 py-0.5 rounded-sm">Active Signal</span>
-                  </div>
-                  <p className="text-xs text-[#64748b] mb-1">Permit velocity at 42% — if breaks 60%, shorten exit → recommend early refi to long fixed</p>
-                </div>
-              </div>
-
-            </div>
-          </div>
+          <SectionLabel label="MONITORING TRIGGERS" accent={C.amber} />
+          <MonitoringTriggers />
 
         </div>
 
-        {/* 5. MARKET CONTEXT PANEL (Right Rail) */}
-        <div className="w-full xl:w-[280px] space-y-4 flex-shrink-0">
-          <div className="bg-[#111114] border border-[#1e1e24] rounded-sm flex flex-col h-full sticky top-4">
-            <div className="p-4 border-b border-[#1e1e24]">
-              <h3 className="text-[#64748b] text-xs font-bold tracking-widest uppercase mb-4">Market Context</h3>
-              
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-[#e2e8f0]">10yr Treasury</span>
-                  <div className="flex items-center text-[#00e5a0] font-mono text-sm">
-                    4.21% <TrendingDown className="w-3 h-3 ml-1" />
-                  </div>
-                </div>
-                <div className="flex justify-between items-center text-xs text-[#64748b]">
-                  <span>Change today</span>
-                  <span>-8bps</span>
-                </div>
-
-                <div className="h-px bg-[#1e1e24] w-full"></div>
-
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-[#e2e8f0]">SOFR</span>
-                  <span className="font-mono text-sm text-white">4.95%</span>
-                </div>
-                
-                {/* Sparkline Mock */}
-                <div className="h-10 w-full flex items-end justify-between space-x-1 pt-2">
-                  <div className="w-full h-full relative">
-                    <svg viewBox="0 0 100 30" className="w-full h-full overflow-visible">
-                      <path d="M0,5 L20,10 L40,12 L60,18 L80,25 L100,28" fill="none" stroke="#00e5a0" strokeWidth="2" />
-                      <circle cx="100" cy="28" r="2" fill="#00e5a0" />
-                    </svg>
-                  </div>
-                </div>
-
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-[#64748b]">Environment</span>
-                  <span className="text-[10px] font-bold tracking-wide text-[#00e5a0] bg-[#00e5a0]/10 px-1.5 py-0.5 rounded-sm uppercase">Dropping</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-4 space-y-4">
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-[#e2e8f0]">RSS Score</span>
-                <span className="font-mono text-sm text-[#00e5a0]">67/100</span>
-              </div>
-              
-              <div className="space-y-2">
-                <div className="text-xs text-[#64748b]">Active Signals</div>
-                <div className="bg-[#0a0a0c] border border-[#1e1e24] p-2 rounded-sm text-xs">
-                  <div className="flex items-center text-[#e2e8f0] mb-1">
-                    <TrendingUp className="w-3 h-3 mr-1 text-[#f59e0b]" />
-                    <span className="font-mono mr-2">COR-08</span>
-                    <span className="truncate">Permit velocity +42%</span>
-                  </div>
-                  <div className="flex items-center text-[#e2e8f0]">
-                    <TrendingUp className="w-3 h-3 mr-1 text-[#00e5a0]" />
-                    <span className="font-mono mr-2">COR-01</span>
-                    <span className="truncate">Traffic surge active</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-4 pt-4 border-t border-[#1e1e24]">
-                <div className="text-xs text-[#64748b] mb-2 uppercase tracking-widest font-bold">Pricing Window</div>
-                <div className="bg-[#00e5a0]/10 border border-[#00e5a0]/30 p-3 rounded-sm">
-                  <div className="text-[#00e5a0] text-xs font-bold mb-1 uppercase tracking-wide">Favorable</div>
-                  <p className="text-xs text-[#e2e8f0] leading-relaxed">
-                    Forward curve supports floating bridge with cap over 3yr fixed.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
+        {/* Right rail */}
+        <div style={{ width: 250, borderLeft: `1px solid ${C.border}`, padding: 14, flexShrink: 0 }}>
+          <MarketContext />
         </div>
-
       </div>
     </div>
   );
