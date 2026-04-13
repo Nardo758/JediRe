@@ -346,7 +346,7 @@ export function TaxesTab({ dealId, f9Financials }: FinancialEngineTabProps) {
   // Client-side SOH projection — recomputed whenever assessed value or millage changes
   // so the grid reflects user overrides immediately without waiting for a server round-trip.
   const FL_SOH_CAP = 0.10;
-  const MKT_GROWTH = 0.05;
+  const MKT_GROWTH = 0.12;  // FL market appreciation (12%/yr) — exceeds 10% SOH cap so cap binds after Y1
   const computedPerYear: F9TaxYear[] = useMemo(() => {
     const baseAssessed = effAssessedValue;
     if (!baseAssessed) return taxes?.reTax.perYear ?? [];
@@ -513,7 +513,7 @@ export function TaxesTab({ dealId, f9Financials }: FinancialEngineTabProps) {
                 {/* SOH Projection Grid — uses client-side computed values so overrides show immediately */}
                 <tr>
                   <td colSpan={6} style={{ padding: '4px 12px 2px', fontFamily: MONO, fontSize: 8, color: BT.text.muted, letterSpacing: 0.6, background: BT.bg.panelAlt, borderBottom: `1px solid ${BT.border.subtle}` }}>
-                    FL SOH 10% CAP ENGINE — Y1–Y{computedPerYear.length || 10} PROJECTION &nbsp;
+                    FL SOH 10% CAP ENGINE — Y1–Y{computedPerYear.length || 10} PROJECTION (12% mkt growth assumed) &nbsp;
                     <span style={{ color: BT.text.red }}>█ REASSESSMENT</span>
                     &nbsp;&nbsp;
                     <span style={{ color: BT.text.muted }}>🔒 SOH CAP BINDING</span>

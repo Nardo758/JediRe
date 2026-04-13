@@ -1814,7 +1814,7 @@ export async function getDealFinancials(
   }> = [];
   const baseAssessed = platformAssessedValue ?? 0;
   let prevCapped = baseAssessed;
-  const mktGrowthRate = 0.05;  // assumed 5% market-value growth after acquisition
+  const mktGrowthRate = 0.12;  // FL market appreciation (12%/yr) — exceeds 10% SOH cap so cap binds
   for (let yr = 1; yr <= Math.max(holdYears, 10); yr++) {
     const isReassessment = yr === 1;
     const marketValue = baseAssessed * Math.pow(1 + mktGrowthRate, yr - 1);
