@@ -1680,25 +1680,32 @@ export async function getDealFinancials(
     ? { unitMix: parsedUnitMix, avgInPlaceRent, weightedOccupancyPct }
     : null;
 
-  // ── User overrides — reconstruct camelCase USER layer state for frontend ────
-  // Maps persisted per_year_overrides (snake_case field keys) back to camelCase
-  // so the frontend can rehydrate its `overrides` state on load (cross-session fidelity).
-  const SNAKE_TO_CAMEL: Record<string, string> = {
-    vacancy_pct: 'vacancyPct', gpr: 'gpr', loss_to_lease_pct: 'lossToLeasePct',
-    concessions_pct: 'concessionsPct', bad_debt_pct: 'badDebtPct',
-    non_revenue_units_pct: 'nonRevenueUnitsPct', other_income_per_unit: 'otherIncomePerUnit',
-    egi: 'egi', payroll: 'payroll', repairs_maintenance: 'repairsMaintenance',
-    turnover: 'turnover', contract_services: 'contractServices', marketing: 'marketing',
-    utilities: 'utilities', g_and_a: 'gAndA', management_fee_pct: 'managementFeePct',
-    insurance: 'insurance', real_estate_tax: 'realEstateTax',
-    replacement_reserves: 'replacementReserves', total_opex: 'totalOpex', noi: 'noi',
-    t01_weekly_tours: 't01WeeklyTours', t05_closing_ratio: 't05ClosingRatio',
+  // ── User overrides — reconstruct USER layer state for frontend rehydration ──
+  //
+  // Frontend reads overrides by rd.key:
+  //   • Section 1/3 rows: rd.key = OSRow.field (snake_case, e.g. "vacancy_pct")
+  //   • Section 2/4-7 STATIC_ROWS: rd.key = camelCase (e.g. "t01WeeklyTours")
+  //
+  // Therefore userOverrides must use snake_case keys for Section 1/3 fields and
+  // camelCase keys for traffic-signal / scalar / STATIC_ROW fields.
+  //
+  // Key routing table (only non-identity mappings):
+  const SNAKE_TO_STATIC_KEY: Record<string, string> = {
+    // Traffic signals → camelCase STATIC_ROW keys
+    t01_weekly_tours: 't01WeeklyTours',
+    t05_closing_ratio: 't05ClosingRatio',
     t06_weekly_leases: 't06WeeklyLeases',
-    exit_cap: 'exitCapRate', interest_rate: 'interestRate', ltc: 'ltcPct',
-    io_period_months: 'ioPeriodMonths',
+    // Scalar deal_assumptions columns → camelCase STATIC_ROW keys
+    exit_cap:          'exitCapRate',
+    interest_rate:     'interestRate',
+    ltc:               'ltcPct',
+    io_period_months:  'ioPeriodMonths',
+    // Section 1/3 fields pass through unchanged (snake_case = rd.key)
   };
   const rawPyOvs = (assumptionsRow?.per_year_overrides ?? {}) as Record<string, { value: number | null } | null>;
   const userOverrides: Record<string, Record<number, number | null>> = {};
+
+  // Pass 1: per_year_overrides JSONB (year-1 traffic signals + all year 2+ overrides)
   for (const [key, entry] of Object.entries(rawPyOvs)) {
     if (!entry || entry.value == null) continue;
     const colonIdx = key.lastIndexOf(':');
@@ -1706,9 +1713,31 @@ export async function getDealFinancials(
     const yrStr = colonIdx >= 0 ? key.slice(colonIdx + 1) : '';
     const yr = yrStr.startsWith('yr') ? parseInt(yrStr.slice(2), 10) : NaN;
     if (isNaN(yr)) continue;
-    const camelField = SNAKE_TO_CAMEL[fieldSnake] ?? fieldSnake;
-    if (!userOverrides[camelField]) userOverrides[camelField] = {};
-    userOverrides[camelField][yr] = entry.value;
+    const rowKey = SNAKE_TO_STATIC_KEY[fieldSnake] ?? fieldSnake;  // snake_case passthrough for Sec 1/3
+    if (!userOverrides[rowKey]) userOverrides[rowKey] = {};
+    userOverrides[rowKey][yr] = entry.value;
+  }
+
+  // Pass 2: year1 LayeredValue seed — year-1 non-traffic overrides stored via applyUserOverride.
+  // These are NOT in per_year_overrides; they appear as a user-layer value in the seed.
+  // Section 1/3 fields only (snake_case keys, matching rd.key in the grid).
+  const YEAR1_SECTION13_FIELDS = [
+    'vacancy_pct','gpr','loss_to_lease_pct','concessions_pct','bad_debt_pct',
+    'non_revenue_units_pct','other_income_per_unit','egi',
+    'payroll','repairs_maintenance','turnover','contract_services','marketing',
+    'utilities','g_and_a','management_fee_pct','insurance','real_estate_tax',
+    'replacement_reserves','total_opex','noi',
+  ];
+  for (const fieldSnake of YEAR1_SECTION13_FIELDS) {
+    const lvEntry = lv(year1Seed, fieldSnake) as Record<string, unknown> | null;
+    if (!lvEntry) continue;
+    // applyUserOverride stores the value at field.override (LayeredValue<T>.override)
+    // and sets resolution='override'. We surface this when resolution is override.
+    if (lvEntry['resolution'] !== 'override') continue;
+    const overrideVal = lvEntry['override'] as number | null | undefined;
+    if (overrideVal == null) continue;
+    if (!userOverrides[fieldSnake]) userOverrides[fieldSnake] = {};
+    userOverrides[fieldSnake][1] = overrideVal;   // year 1
   }
 
   return {
