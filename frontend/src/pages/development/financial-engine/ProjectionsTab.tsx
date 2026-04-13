@@ -542,9 +542,9 @@ export function ProjectionsTab({
   useEffect(() => { loadFinancials(); }, [loadFinancials]);
   useEffect(() => { loadNarrative(); }, [loadNarrative]);
 
-  const holdYears  = financials
-    ? Math.min(timeline, financials.assumptions.holdYears || timeline)
-    : timeline;
+  // Timeline selection is authoritative: show the full selected horizon regardless of stored holdYears.
+  // The API is always called with ?hold={timeline} so the data covers the selected period.
+  const holdYears  = timeline;
   const projections = useMemo(
     () => financials ? buildProjections(financials, holdYears) : [],
     [financials, holdYears],
@@ -676,6 +676,15 @@ export function ProjectionsTab({
       {/* ── Integrity banner (errors / warnings from pro forma checks) ─────── */}
       {integrityChecks.length > 0 && (
         <IntegrityBanner checks={integrityChecks} />
+      )}
+
+      {/* ── AI Findings / Platform's View (top of Projections) ──────────────── */}
+      {showFindings && (narrativeLoading || hasNarrative) && (
+        <FindingsPanel
+          narrative={narrative}
+          blocks={narrativeBlocks}
+          loading={narrativeLoading}
+        />
       )}
 
       {/* ── GPR Decomposition ──────────────────────────────────────────────── */}
@@ -845,14 +854,6 @@ export function ProjectionsTab({
         )}
       </div>
 
-      {/* ── AI Findings ───────────────────────────────────────────────────── */}
-      {showFindings && (narrativeLoading || hasNarrative) && (
-        <FindingsPanel
-          narrative={narrative}
-          blocks={narrativeBlocks}
-          loading={narrativeLoading}
-        />
-      )}
     </div>
   );
 }
