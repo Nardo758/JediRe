@@ -568,7 +568,7 @@ const STATIC_ROWS: RowDef[] = [
 // ─── Divergence helpers ────────────────────────────────────────────────────────
 function getDivergenceColor(
   user: number|null, platform: number|null, broker: number|null,
-  p25: number|undefined, p50: number|undefined, p75: number|undefined,
+  p25?: number, p50?: number, p75?: number,
 ): 'red'|'amber'|null {
   const effective = user ?? platform ?? broker;
   if (p25 != null && p50 != null && p75 != null && effective != null) {
@@ -1176,7 +1176,10 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
       return next;
     });
     if (rd.patchField) {
-      for (const y of targetYears) enqueuePatch(rd.patchField, y, val);
+      // stabilizedOcc displays occupancy (1 - vacancyPct) but patchField is 'vacancyPct'.
+      // Convert before PATCH so we store vacancy, not occupancy.
+      const patchVal = (rd.key === 'stabilizedOcc' && val != null) ? +(1 - val).toFixed(4) : val;
+      for (const y of targetYears) enqueuePatch(rd.patchField, y, patchVal);
     }
   }, [years, rowModes, enqueuePatch]);
 
@@ -1214,7 +1217,11 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
         if (v != null) {
           if (!next[rd.key]) next[rd.key] = {};
           next[rd.key][yr] = v;
-          if (rd.patchField) enqueuePatch(rd.patchField, yr, v);
+          if (rd.patchField) {
+            // stabilizedOcc getPlatform returns occupancy; PATCH expects vacancy (1 - occ)
+            const pv = rd.key === 'stabilizedOcc' ? +(1 - v).toFixed(4) : v;
+            enqueuePatch(rd.patchField, yr, pv);
+          }
         }
       }
     }
@@ -1231,7 +1238,11 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
         if (v != null) {
           if (!next[rd.key]) next[rd.key] = {};
           next[rd.key][yr] = v;
-          if (rd.patchField) enqueuePatch(rd.patchField, yr, v);
+          if (rd.patchField) {
+            // stabilizedOcc getBroker returns occupancy; PATCH expects vacancy (1 - occ)
+            const pv = rd.key === 'stabilizedOcc' ? +(1 - v).toFixed(4) : v;
+            enqueuePatch(rd.patchField, yr, pv);
+          }
         }
       }
     }
