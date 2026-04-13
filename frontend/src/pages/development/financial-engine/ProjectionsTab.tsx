@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useRef } from 'react';
 import { BT, Bd } from '../../../components/deal/bloomberg-ui';
 import type {
   FinancialEngineTabProps, F9NarrativeBlock,
@@ -9,6 +9,7 @@ import { apiClient } from '../../../services/api.client';
 
 const MONO = BT.font.mono;
 type TimelineOption = 3 | 5 | 7 | 10;
+type ViewMode = 'annual' | 'quarterly' | 'monthly';
 
 // Type aliases — use shared types from types.ts (single source of truth)
 type DealFinancials     = F9DealFinancials;
@@ -16,12 +17,6 @@ type TrafficYear        = F9TrafficYear;
 type GprDecomposition   = F9GprDecomposition;
 type OSRow              = F9ProFormaRow;
 type IntegrityCheckItem = F9IntegrityCheck;
-
-// API response envelope
-interface FinancialsApiResponse {
-  success: boolean;
-  data: DealFinancials;
-}
 
 // ─── Projection row (one year of computed data) ────────────────────────────
 export interface ProjYear {
@@ -35,17 +30,43 @@ export interface ProjYear {
   totalOpex: number; noi: number;
   opMargin: number|null; noiPerUnit: number|null;
   interest: number; principal: number; annualDS: number;
-  cfbt: number; capexReserves: number; netCF: number;
+  cfbt: number; cfads: number;
+  // After-tax rows
+  depreciation: number|null;
+  taxableIncome: number|null;
+  taxPayable: number|null;
+  afterTaxCfads: number|null;
   coc: number|null; dscr: number|null; debtYield: number|null; occupancy: number|null;
+  rentGrowthPct: number|null; opexRatioPct: number|null; noiMarginPct: number|null;
+  capRatePct: number|null;
   exitNoi: number|null; exitCap: number|null; grossSaleValue: number|null;
   sellingCosts: number|null; loanPayoff: number; netSaleProceeds: number|null;
   outstandingBalance: number;
   cumulativeEM: number|null;
+  // Source tracking for drilldown
+  reTaxSource: 'taxes_tab' | 'proforma' | 'estimate';
+  debtSource: 'debt_tab' | 'capital_stack' | 'estimate';
 }
 
-// ─── Build per-year projections from DealFinancials ──────────────────────
+// ─── Drilldown formula path entry ─────────────────────────────────────────
+interface DrilldownEntry {
+  label: string;
+  value: string;
+  sourceTab: string;
+  tabIndex: number;
+  formula?: string;
+}
+
+interface DrilldownInfo {
+  rowLabel: string;
+  year: number;
+  value: string;
+  entries: DrilldownEntry[];
+}
+
+// ─── Build per-year projections from F9DealFinancials (f9Financials) ──────
 function buildProjections(f: DealFinancials, holdYears: number): ProjYear[] {
-  const { totalUnits, proforma, capitalStack, trafficProjection, assumptions } = f;
+  const { totalUnits, proforma, capitalStack, trafficProjection, assumptions, taxes, debt, capital } = f;
 
   const y1 = (field: string): number | null => {
     const row = proforma.year1.find(r => r.field === field);
@@ -55,12 +76,16 @@ function buildProjections(f: DealFinancials, holdYears: number): ProjYear[] {
     trafficProjection?.yearly.find(t => t.year === yr);
   const pyr = (yr: number) => assumptions.perYear.find(p => p.year === yr);
 
-  const loan         = capitalStack.loanAmount ?? 0;
-  const rate         = capitalStack.interestRate ?? 0.07;
-  const ioPeriodYrs  = Math.max(0, Math.round((capitalStack.ioPeriodMonths ?? 0) / 12));
-  const amortYrs     = capitalStack.amortizationYears ?? 30;
+  // Debt: prefer debt_tab senior loan, fall back to capitalStack
+  const seniorLoan = debt?.loans?.find(l => l.id === 'senior');
+  const loan = seniorLoan?.loanAmount?.platform ?? capitalStack.loanAmount ?? 0;
+  const rate = seniorLoan?.interestRate?.platform ?? capitalStack.interestRate ?? 0.07;
+  const ioPeriodYrs = Math.max(0, Math.round(
+    (seniorLoan?.ioMonths?.platform ?? capitalStack.ioPeriodMonths ?? 0) / 12
+  ));
+  const amortYrs = seniorLoan?.amortYears?.platform ?? capitalStack.amortizationYears ?? 30;
   const monthlyRate  = rate / 12;
-  const numPmts      = amortYrs * 12;
+  const numPmts      = Math.max(1, amortYrs * 12);
   const monthlyPayment =
     loan > 0 && monthlyRate > 0
       ? (loan * monthlyRate * Math.pow(1 + monthlyRate, numPmts)) /
@@ -85,13 +110,21 @@ function buildProjections(f: DealFinancials, holdYears: number): ProjYear[] {
   const utilitiesY1      = y1('utilities') ?? 0;
   const gAndAY1          = y1('g_and_a') ?? 0;
   const insuranceY1      = y1('insurance') ?? 0;
-  const reTaxY1          = y1('real_estate_tax') ?? 0;
+  const reTaxY1Base      = y1('real_estate_tax') ?? 0;
   const reservesY1       = y1('replacement_reserves') ?? totalUnits * 350;
+
+  // After-tax: depreciation from taxes tab
+  const depreciableBase  = taxes?.incomeTax?.depreciableBase ?? null;
+  const annualDeprec     = taxes?.incomeTax?.annualDepreciation ?? null;
+  const taxRateEff       = 0.37; // effective blended rate (marginal fed + state estimate)
 
   let outstandingBalance = loan;
   let cumulativeCF = 0;
   const equityAtClose = capitalStack.equityAtClose ?? 0;
   const years: ProjYear[] = [];
+
+  // Capital schedule: per-year CFADS from waterfall if available
+  const capSchedule = capital?.schedule ?? [];
 
   for (let yr = 1; yr <= holdYears; yr++) {
     const tv = tyr(yr);
@@ -103,14 +136,12 @@ function buildProjections(f: DealFinancials, holdYears: number): ProjYear[] {
       const g = pyr(y)?.rentGrowthPct ?? assumptions.rentGrowthStabilized ?? 0.03;
       rentMult *= 1 + (g ?? 0.03);
     }
+    const thisYrGrowth = pv?.rentGrowthPct ?? assumptions.rentGrowthStabilized ?? 0.03;
     const opexMult = Math.pow(1.03, yr - 1);
     const insMult  = Math.pow(1.035, yr - 1);
 
-    // GPR = resolvedAnnual (Year 1 authority) × compound rent growth
-    // Vacancy is handled separately; GPR represents 100%-occupied market rent
     const gpr = Math.round(gprY1 * rentMult);
 
-    // Vacancy: per-year M07 traffic vacancy wins when available
     const vacPct      = tv?.vacancyPct ?? pv?.vacancyPct ?? y1('vacancy_pct') ?? 0.05;
     const vacancyLoss = Math.round(gpr * (vacPct ?? 0.05));
     const lossToLease = Math.round(gpr * lossToLeasePctY1);
@@ -131,16 +162,40 @@ function buildProjections(f: DealFinancials, holdYears: number): ProjYear[] {
     const gAndA      = Math.round(gAndAY1      * opexMult);
     const mgmtFee    = Math.round(egi          * (mgmtFeePctY1 ?? 0.05));
     const insurance  = Math.round(insuranceY1  * insMult);
-    const reTaxes    = Math.round(reTaxY1      * opexMult);
+
+    // RE Taxes: prefer taxes tab perYear, then pro forma, then estimate
+    let reTaxes = 0;
+    let reTaxSource: ProjYear['reTaxSource'] = 'estimate';
+    const taxYr = taxes?.reTax?.perYear?.find(t => t.year === yr);
+    if (taxYr?.taxAmount != null && taxYr.taxAmount > 0) {
+      reTaxes = taxYr.taxAmount;
+      reTaxSource = 'taxes_tab';
+    } else if (reTaxY1Base > 0) {
+      reTaxes = Math.round(reTaxY1Base * opexMult);
+      reTaxSource = 'proforma';
+    } else {
+      reTaxes = 0;
+      reTaxSource = 'estimate';
+    }
+
     const reserves   = Math.round(reservesY1   * opexMult);
     const totalOpex  =
       payroll + repairs + turnover + contractSvc + marketing + utilities +
       gAndA + mgmtFee + insurance + reTaxes + reserves;
     const noi = egi - totalOpex;
 
-    // Debt service — IO then amortizing
+    // Debt service — prefer debt tab derived annual DS, else IO then amortizing
     let interest = 0, principal = 0, annualDS = 0;
-    if (loan > 0) {
+    let debtSource: ProjYear['debtSource'] = 'estimate';
+    const derivedDS = debt?.aggregate?.totalAnnualDS;
+    if (derivedDS != null && derivedDS > 0) {
+      annualDS = derivedDS;
+      debtSource = 'debt_tab';
+      // Approximate split for display
+      interest = Math.round(outstandingBalance * rate);
+      principal = Math.max(0, annualDS - interest);
+    } else if (loan > 0) {
+      debtSource = 'capital_stack';
       if (yr <= ioPeriodYrs || amortYrs === 0) {
         interest = Math.round(outstandingBalance * rate);
         principal = 0;
@@ -161,14 +216,29 @@ function buildProjections(f: DealFinancials, holdYears: number): ProjYear[] {
     }
 
     const cfbt  = noi - annualDS;
-    const capexReserves = 0;
-    const netCF = cfbt;
-    cumulativeCF += netCF;
+    // CFADS: prefer capital.schedule for this year (after distributions)
+    const capRow = capSchedule.find(r => r.year === yr);
+    const cfads  = capRow?.cfads ?? cfbt;
+
+    cumulativeCF += cfbt;
+
+    // After-tax
+    const depreciation = annualDeprec ?? null;
+    let taxableIncome: number | null = null;
+    let taxPayable: number | null = null;
+    let afterTaxCfads: number | null = null;
+    if (depreciation != null) {
+      taxableIncome = noi - interest - depreciation;
+      taxPayable    = taxableIncome > 0 ? Math.round(taxableIncome * taxRateEff) : 0;
+      afterTaxCfads = cfads - (taxPayable ?? 0);
+    }
 
     const coc       = equityAtClose > 0 ? cfbt / equityAtClose : null;
     const dscr      = annualDS > 0 ? noi / annualDS : null;
     const debtYield = outstandingBalance > 0 ? noi / outstandingBalance : null;
     const occupancy = tv?.occupancyPct ?? (1 - (vacPct ?? 0.05));
+    const opexRatioPct = egi > 0 ? totalOpex / egi : null;
+    const noiMarginPct = egi > 0 ? noi / egi : null;
 
     const exitCap =
       pv?.exitCapIfLastYear ??
@@ -185,8 +255,8 @@ function buildProjections(f: DealFinancials, holdYears: number): ProjYear[] {
       grossSaleValue != null && sellingCosts != null
         ? grossSaleValue - sellingCosts - loanPayoff
         : null;
+    const capRatePct = grossSaleValue != null && grossSaleValue > 0 ? noi / grossSaleValue : null;
 
-    // Cumulative equity multiple at this year's exit
     const cumulativeEM =
       equityAtClose > 0 && netSaleProceeds != null
         ? (cumulativeCF + netSaleProceeds) / equityAtClose
@@ -202,11 +272,14 @@ function buildProjections(f: DealFinancials, holdYears: number): ProjYear[] {
       opMargin:   egi > 0 ? noi / egi : null,
       noiPerUnit: totalUnits > 0 ? noi / totalUnits : null,
       interest, principal, annualDS,
-      cfbt, capexReserves, netCF,
+      cfbt, cfads,
+      depreciation, taxableIncome, taxPayable, afterTaxCfads,
       coc, dscr, debtYield, occupancy,
+      rentGrowthPct: thisYrGrowth, opexRatioPct, noiMarginPct, capRatePct,
       exitNoi, exitCap, grossSaleValue, sellingCosts, loanPayoff, netSaleProceeds,
       outstandingBalance,
       cumulativeEM,
+      reTaxSource, debtSource,
     });
   }
   return years;
@@ -220,6 +293,9 @@ interface RowDef {
   indent?: boolean;
   sign?: -1;
   fmt?: 'dollar' | 'pct' | 'x' | 'raw';
+  afterTaxOnly?: boolean;
+  sourceKey?: 'reTaxSource' | 'debtSource';
+  tabLink?: number;
 }
 interface SectionDef {
   label: string;
@@ -270,7 +346,7 @@ const SECTIONS: SectionDef[] = [
       { label: 'G&A / Administrative',       key: 'gAndA',         indent: true, sign: -1 },
       { label: 'Management Fee',             key: 'mgmtFee',       indent: true, sign: -1 },
       { label: 'Insurance',                  key: 'insurance',     indent: true, sign: -1 },
-      { label: 'Real Estate Taxes',          key: 'reTaxes',       indent: true, sign: -1 },
+      { label: 'Real Estate Taxes',          key: 'reTaxes',       indent: true, sign: -1, sourceKey: 'reTaxSource', tabLink: 4 },
       { label: 'Replacement Reserves',       key: 'reserves',      indent: true, sign: -1 },
       { label: 'Total Operating Expenses',   key: 'totalOpex',     isTotal: true, sign: -1 },
     ],
@@ -286,25 +362,38 @@ const SECTIONS: SectionDef[] = [
   {
     label: 'DEBT SERVICE', key: 'debt', color: BT.text.orange,
     rows: [
-      { label: 'Interest',                   key: 'interest',      indent: true, sign: -1 },
-      { label: 'Principal Paydown',          key: 'principal',     indent: true, sign: -1 },
-      { label: 'Total Debt Service',         key: 'annualDS',      isTotal: true, sign: -1 },
+      { label: 'Interest',                   key: 'interest',      indent: true, sign: -1, sourceKey: 'debtSource', tabLink: 6 },
+      { label: 'Principal Paydown',          key: 'principal',     indent: true, sign: -1, sourceKey: 'debtSource', tabLink: 6 },
+      { label: 'Total Debt Service',         key: 'annualDS',      isTotal: true, sign: -1, sourceKey: 'debtSource', tabLink: 6 },
     ],
   },
   {
     label: 'CASH FLOW', key: 'cashflow', color: BT.met.financial,
     rows: [
       { label: 'Cash Flow Before Tax',       key: 'cfbt',          isTotal: true },
-      { label: 'Net Cash Flow',              key: 'netCF',         isTotal: true },
+      { label: 'CFADS (After Distributions)', key: 'cfads',        isTotal: true },
     ],
   },
   {
-    label: 'METRICS', key: 'metrics', color: BT.text.purple,
+    label: 'AFTER-TAX', key: 'aftertax', color: BT.text.purple,
     rows: [
-      { label: 'Cash-on-Cash Return',        key: 'coc',           fmt: 'pct' },
+      { label: 'Depreciation',               key: 'depreciation',  indent: true, sign: -1, afterTaxOnly: true, tabLink: 4 },
+      { label: 'Taxable Income',             key: 'taxableIncome', indent: true, afterTaxOnly: true },
+      { label: 'Tax Payable (37%)',          key: 'taxPayable',    indent: true, sign: -1, afterTaxOnly: true },
+      { label: 'After-Tax CFADS',            key: 'afterTaxCfads', isTotal: true, afterTaxOnly: true },
+    ],
+  },
+  {
+    label: 'METRICS', key: 'metrics', color: BT.text.amber,
+    rows: [
+      { label: 'Occupancy',                  key: 'occupancy',     fmt: 'pct' },
+      { label: 'Rent Growth',                key: 'rentGrowthPct', fmt: 'pct' },
+      { label: 'OpEx Ratio',                 key: 'opexRatioPct',  fmt: 'pct' },
+      { label: 'NOI Margin',                 key: 'noiMarginPct',  fmt: 'pct' },
       { label: 'DSCR',                       key: 'dscr',          fmt: 'x' },
       { label: 'Debt Yield',                 key: 'debtYield',     fmt: 'pct' },
-      { label: 'Occupancy',                  key: 'occupancy',     fmt: 'pct' },
+      { label: 'Implied Cap Rate',           key: 'capRatePct',    fmt: 'pct' },
+      { label: 'Cash-on-Cash Return',        key: 'coc',           fmt: 'pct' },
       { label: 'Cumulative Equity Multiple', key: 'cumulativeEM',  fmt: 'x' },
     ],
   },
@@ -321,14 +410,17 @@ const SECTIONS: SectionDef[] = [
   },
 ];
 
+// Source badge label
+const SOURCE_LABELS: Record<string, { label: string; color: string }> = {
+  taxes_tab: { label: 'TAX', color: BT.text.purple },
+  proforma:  { label: 'PF',  color: BT.met.financial },
+  estimate:  { label: 'EST', color: BT.text.muted },
+  debt_tab:  { label: 'DEBT', color: BT.text.orange },
+  capital_stack: { label: 'CS', color: BT.text.cyan },
+};
+
 // ─── GPR Decomposition Panel ──────────────────────────────────────────────
-function GprDecompPanel({
-  decomp,
-  totalUnits,
-}: {
-  decomp: GprDecomposition;
-  totalUnits: number;
-}) {
+function GprDecompPanel({ decomp, totalUnits }: { decomp: GprDecomposition; totalUnits: number }) {
   const rows = [
     { label: 'RESOLVED', annual: decomp.resolvedAnnual, perUnit: decomp.resolvedPerUnitMo, color: BT.text.cyan, bold: true },
     { label: 'PLATFORM', annual: decomp.platformAnnual, perUnit: decomp.platformPerUnitMo, color: '#22D3EE' },
@@ -337,12 +429,7 @@ function GprDecompPanel({
     { label: 'RENT ROLL', annual: decomp.rentRollAnnual, perUnit: null,                    color: BT.text.secondary },
   ];
   return (
-    <div style={{
-      borderBottom: `1px solid ${BT.border.subtle}`,
-      background: BT.bg.panel,
-      padding: '6px 10px',
-      flexShrink: 0,
-    }}>
+    <div style={{ borderBottom: `1px solid ${BT.border.subtle}`, background: BT.bg.panel, padding: '6px 10px', flexShrink: 0 }}>
       <div style={{ fontSize: 9, fontWeight: 700, color: BT.text.white, letterSpacing: 1, fontFamily: MONO, marginBottom: 4 }}>
         GPR SOURCE DECOMPOSITION
         <span style={{ marginLeft: 8, fontWeight: 400, color: BT.text.muted }}>({totalUnits} units)</span>
@@ -351,11 +438,7 @@ function GprDecompPanel({
         {rows.map(r => (
           <div key={r.label} style={{ display: 'flex', flexDirection: 'column', minWidth: 100 }}>
             <span style={{ fontSize: 8, color: BT.text.muted, fontFamily: MONO, letterSpacing: 0.5 }}>{r.label}</span>
-            <span style={{
-              fontSize: 11, fontWeight: r.bold ? 700 : 500,
-              color: r.annual != null ? r.color : BT.text.muted,
-              fontFamily: MONO,
-            }}>
+            <span style={{ fontSize: 11, fontWeight: r.bold ? 700 : 500, color: r.annual != null ? r.color : BT.text.muted, fontFamily: MONO }}>
               {r.annual != null ? fmt$(r.annual) : '—'}
             </span>
             {r.perUnit != null && (
@@ -375,30 +458,19 @@ function IntegrityBanner({ checks }: { checks: IntegrityCheckItem[] }) {
   const errors = checks.filter(c => c.status === 'error');
   const warns  = checks.filter(c => c.status === 'warn');
   if (errors.length === 0 && warns.length === 0) return null;
-
   const color   = errors.length > 0 ? BT.text.red : BT.text.amber;
   const bgColor = errors.length > 0 ? `${BT.text.red}12` : `${BT.text.amber}12`;
   const label   = errors.length > 0
     ? `${errors.length} INTEGRITY ERROR${errors.length > 1 ? 'S' : ''}`
     : `${warns.length} WARNING${warns.length > 1 ? 'S' : ''}`;
   const items = [...errors, ...warns].slice(0, 5);
-
   return (
-    <div style={{
-      background: bgColor,
-      border: `1px solid ${color}40`,
-      borderLeft: `3px solid ${color}`,
-      padding: '6px 10px',
-      flexShrink: 0,
-      fontFamily: MONO,
-    }}>
+    <div style={{ background: bgColor, border: `1px solid ${color}40`, borderLeft: `3px solid ${color}`, padding: '6px 10px', flexShrink: 0, fontFamily: MONO }}>
       <div style={{ fontSize: 9, fontWeight: 700, color, letterSpacing: 0.8, marginBottom: 4 }}>
         ⚠ PRO FORMA {label} — review before relying on projections
       </div>
       {items.map(c => (
-        <div key={c.id} style={{ fontSize: 8, color: BT.text.secondary, marginBottom: 1 }}>
-          [{c.id}] {c.message}
-        </div>
+        <div key={c.id} style={{ fontSize: 8, color: BT.text.secondary, marginBottom: 1 }}>[{c.id}] {c.message}</div>
       ))}
     </div>
   );
@@ -411,66 +483,28 @@ const STATUS_COLORS: Record<F9NarrativeBlock['status'], string> = {
   info: BT.text.cyan  ?? '#00BCD4',
 };
 
-function FindingsPanel({ narrative, blocks, loading }: {
-  narrative: string | null;
-  blocks: F9NarrativeBlock[];
-  loading: boolean;
-}) {
+function FindingsPanel({ narrative, blocks, loading }: { narrative: string | null; blocks: F9NarrativeBlock[]; loading: boolean }) {
   const [expanded, setExpanded] = useState(true);
   return (
-    <div style={{
-      borderTop: `1px solid ${BT.border.subtle}`,
-      background: `${BT.text.purple}0A`,
-      flexShrink: 0,
-    }}>
-      <div
-        onClick={() => setExpanded(e => !e)}
-        style={{
-          display: 'flex', alignItems: 'center', gap: 6,
-          padding: '5px 10px', cursor: 'pointer',
-          borderBottom: expanded ? `1px solid ${BT.border.subtle}` : 'none',
-        }}
-      >
-        <span style={{ fontSize: 9, fontWeight: 700, color: BT.text.purple, fontFamily: MONO, letterSpacing: 1 }}>
-          AI MARKET FINDINGS
-        </span>
+    <div style={{ borderTop: `1px solid ${BT.border.subtle}`, background: `${BT.text.purple}0A`, flexShrink: 0 }}>
+      <div onClick={() => setExpanded(e => !e)} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 10px', cursor: 'pointer', borderBottom: expanded ? `1px solid ${BT.border.subtle}` : 'none' }}>
+        <span style={{ fontSize: 9, fontWeight: 700, color: BT.text.purple, fontFamily: MONO, letterSpacing: 1 }}>AI MARKET FINDINGS</span>
         <Bd c={BT.text.purple}>M07</Bd>
-        {loading && (
-          <span style={{ fontSize: 8, color: BT.text.muted, fontFamily: MONO }}>analyzing…</span>
-        )}
-        <span style={{ marginLeft: 'auto', fontSize: 9, color: BT.text.muted, fontFamily: MONO }}>
-          {expanded ? '▾' : '▸'}
-        </span>
+        {loading && <span style={{ fontSize: 8, color: BT.text.muted, fontFamily: MONO }}>analyzing…</span>}
+        <span style={{ marginLeft: 'auto', fontSize: 9, color: BT.text.muted, fontFamily: MONO }}>{expanded ? '▾' : '▸'}</span>
       </div>
       {expanded && (
         <div style={{ padding: '6px 10px', display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          {loading && blocks.length === 0 && (
-            <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>…loading</span>
-          )}
+          {loading && blocks.length === 0 && <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>…loading</span>}
           {blocks.map(b => (
-            <div key={b.id} style={{
-              background: BT.bg.panel,
-              border: `1px solid ${STATUS_COLORS[b.status]}33`,
-              borderLeft: `2px solid ${STATUS_COLORS[b.status]}`,
-              borderRadius: 2, padding: '4px 8px', minWidth: 140,
-            }}>
-              <div style={{ fontSize: 8, fontWeight: 700, color: BT.text.muted, fontFamily: MONO, letterSpacing: 0.5, marginBottom: 2 }}>
-                {b.label.toUpperCase()}
-              </div>
-              <div style={{ fontSize: 9, color: STATUS_COLORS[b.status], fontFamily: MONO }}>
-                {b.summary}
-              </div>
-              {b.detail && (
-                <div style={{ fontSize: 8, color: BT.text.muted, fontFamily: MONO, marginTop: 2 }}>
-                  {b.detail}
-                </div>
-              )}
+            <div key={b.id} style={{ background: BT.bg.panel, border: `1px solid ${STATUS_COLORS[b.status]}33`, borderLeft: `2px solid ${STATUS_COLORS[b.status]}`, borderRadius: 2, padding: '4px 8px', minWidth: 140 }}>
+              <div style={{ fontSize: 8, fontWeight: 700, color: BT.text.muted, fontFamily: MONO, letterSpacing: 0.5, marginBottom: 2 }}>{b.label.toUpperCase()}</div>
+              <div style={{ fontSize: 9, color: STATUS_COLORS[b.status], fontFamily: MONO }}>{b.summary}</div>
+              {b.detail && <div style={{ fontSize: 8, color: BT.text.muted, fontFamily: MONO, marginTop: 2 }}>{b.detail}</div>}
             </div>
           ))}
           {!loading && blocks.length === 0 && narrative && (
-            <p style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary, lineHeight: 1.7, margin: 0, whiteSpace: 'pre-wrap' }}>
-              {narrative}
-            </p>
+            <p style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary, lineHeight: 1.7, margin: 0, whiteSpace: 'pre-wrap' }}>{narrative}</p>
           )}
         </div>
       )}
@@ -478,47 +512,217 @@ function FindingsPanel({ narrative, blocks, loading }: {
   );
 }
 
+// ─── Drilldown Drawer ─────────────────────────────────────────────────────
+function DrilldownDrawer({
+  info,
+  onClose,
+  onTabChange,
+}: {
+  info: DrilldownInfo;
+  onClose: () => void;
+  onTabChange?: (i: number) => void;
+}) {
+  return (
+    <div style={{
+      width: 360, flexShrink: 0, display: 'flex', flexDirection: 'column',
+      background: BT.bg.panel, borderLeft: `2px solid ${BT.met.financial}`,
+      overflow: 'auto',
+    }}>
+      {/* Header */}
+      <div style={{ padding: '8px 10px', borderBottom: `1px solid ${BT.border.medium}`, display: 'flex', alignItems: 'center', gap: 6, background: BT.bg.header }}>
+        <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.white, flex: 1 }}>
+          FORMULA DRILLDOWN
+        </span>
+        <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: BT.text.muted, cursor: 'pointer', fontFamily: MONO, fontSize: 11 }}>✕</button>
+      </div>
+      {/* Row label + value */}
+      <div style={{ padding: '8px 10px', borderBottom: `1px solid ${BT.border.subtle}` }}>
+        <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, letterSpacing: 0.5, marginBottom: 2 }}>
+          {info.rowLabel} · YR {info.year}
+        </div>
+        <div style={{ fontFamily: MONO, fontSize: 16, fontWeight: 700, color: BT.met.financial }}>{info.value}</div>
+      </div>
+      {/* Formula path entries */}
+      <div style={{ flex: 1, overflow: 'auto', padding: '8px 0' }}>
+        {info.entries.map((e, i) => (
+          <div key={i} style={{ padding: '6px 10px', borderBottom: `1px solid ${BT.border.subtle}` }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+              <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, flex: 1 }}>{e.label}</span>
+              {onTabChange && e.tabIndex >= 0 && (
+                <button
+                  onClick={() => onTabChange(e.tabIndex)}
+                  style={{
+                    background: 'transparent', border: `1px solid ${BT.met.financial}40`,
+                    color: BT.met.financial, fontFamily: MONO, fontSize: 7, padding: '1px 5px',
+                    cursor: 'pointer', borderRadius: 2,
+                  }}
+                >
+                  {e.sourceTab} ↗
+                </button>
+              )}
+            </div>
+            <div style={{ fontFamily: MONO, fontSize: 11, fontWeight: 600, color: BT.text.white }}>{e.value}</div>
+            {e.formula && (
+              <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginTop: 2, fontStyle: 'italic' }}>
+                {e.formula}
+              </div>
+            )}
+          </div>
+        ))}
+        {info.entries.length === 0 && (
+          <div style={{ padding: '20px 10px', textAlign: 'center', fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>
+            No formula path available for this cell.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Build drilldown info for a row+year ──────────────────────────────────
+function buildDrilldown(
+  row: RowDef,
+  proj: ProjYear,
+  f: DealFinancials | null,
+): DrilldownInfo {
+  const rawVal = proj[row.key] as number | null;
+  const display = fmtCell(rawVal, row.fmt, row.sign);
+
+  const entries: DrilldownEntry[] = [];
+
+  switch (row.key) {
+    case 'gpr': {
+      const gprDecomp = f?.assumptions?.gprDecomposition;
+      if (gprDecomp?.resolvedAnnual != null) {
+        entries.push({ label: 'Y1 Resolved GPR (M07)', value: fmt$(gprDecomp.resolvedAnnual), sourceTab: 'PRO FORMA', tabIndex: 1, formula: 'Max(broker, platform, t12, rentRoll)' });
+      }
+      entries.push({ label: `Rent Growth Multiplier (YR ${proj.year})`, value: `×${(rawVal != null && gprDecomp?.resolvedAnnual ? rawVal / gprDecomp.resolvedAnnual : 1).toFixed(4)}`, sourceTab: 'ASSUMPTIONS', tabIndex: 3, formula: 'Compound(rentGrowthPct per year)' });
+      break;
+    }
+    case 'reTaxes': {
+      const src = proj.reTaxSource;
+      const taxYr = f?.taxes?.reTax?.perYear?.find(t => t.year === proj.year);
+      if (src === 'taxes_tab' && taxYr) {
+        entries.push({ label: 'Taxes Tab · Per-Year RE Tax', value: fmt$(taxYr.taxAmount), sourceTab: 'TAXES', tabIndex: 4, formula: `assessedValue × millageRate (${(taxYr.millageRate * 100).toFixed(2)}%)` });
+        entries.push({ label: 'Assessed Value', value: fmt$(taxYr.assessedValue), sourceTab: 'TAXES', tabIndex: 4 });
+        entries.push({ label: 'SOH Cap Binding?', value: taxYr.sohCapBinding ? 'YES — growth capped' : 'NO', sourceTab: 'TAXES', tabIndex: 4 });
+      } else if (src === 'proforma') {
+        entries.push({ label: 'Pro Forma Y1 RE Tax', value: fmt$(rawVal ?? 0), sourceTab: 'PRO FORMA', tabIndex: 1, formula: 'Y1 RE Tax × opexGrowthMultiplier' });
+      } else {
+        entries.push({ label: 'Estimate (no tax data)', value: '—', sourceTab: 'TAXES', tabIndex: 4, formula: 'Seed deal data to compute' });
+      }
+      break;
+    }
+    case 'annualDS':
+    case 'interest':
+    case 'principal': {
+      const src = proj.debtSource;
+      if (src === 'debt_tab') {
+        const aggDS = f?.debt?.aggregate?.totalAnnualDS;
+        entries.push({ label: 'Debt Tab · Aggregate Annual DS', value: aggDS != null ? fmt$(aggDS) : '—', sourceTab: 'DEBT', tabIndex: 6, formula: 'Sum(allLoans.derivedAnnualDS)' });
+        const sen = f?.debt?.loans?.find(l => l.id === 'senior');
+        if (sen) {
+          entries.push({ label: 'Senior Loan Amount', value: fmt$(sen.loanAmount?.platform ?? 0), sourceTab: 'DEBT', tabIndex: 6 });
+          entries.push({ label: 'Interest Rate', value: `${((sen.interestRate?.platform ?? 0) * 100).toFixed(2)}%`, sourceTab: 'DEBT', tabIndex: 6 });
+          entries.push({ label: 'IO Period', value: `${sen.ioMonths?.platform ?? 0} mo`, sourceTab: 'DEBT', tabIndex: 6 });
+        }
+      } else {
+        entries.push({ label: 'Capital Stack · Loan Amount', value: fmt$(f?.capitalStack?.loanAmount ?? 0), sourceTab: 'DEBT', tabIndex: 6, formula: 'Standard amortizing schedule' });
+        entries.push({ label: 'Interest Rate', value: `${((f?.capitalStack?.interestRate ?? 0) * 100).toFixed(2)}%`, sourceTab: 'DEBT', tabIndex: 6 });
+      }
+      break;
+    }
+    case 'cfads': {
+      const capRow = f?.capital?.schedule?.find(r => r.year === proj.year);
+      if (capRow) {
+        entries.push({ label: 'Capital Schedule CFADS', value: fmt$(capRow.cfads), sourceTab: 'CAP & WFALL', tabIndex: 7, formula: 'NOI - DebtService - Distributions' });
+        entries.push({ label: 'LP Distributions', value: fmt$(capRow.lpDist), sourceTab: 'CAP & WFALL', tabIndex: 7 });
+        entries.push({ label: 'GP Distributions', value: fmt$(capRow.gpDist), sourceTab: 'CAP & WFALL', tabIndex: 7 });
+      } else {
+        entries.push({ label: 'Cash Flow Before Tax (fallback)', value: fmt$(proj.cfbt), sourceTab: 'CASH FLOW', tabIndex: -1, formula: 'NOI - Annual Debt Service' });
+      }
+      break;
+    }
+    case 'taxableIncome':
+    case 'taxPayable':
+    case 'afterTaxCfads':
+    case 'depreciation': {
+      const depr = f?.taxes?.incomeTax?.annualDepreciation;
+      const base = f?.taxes?.incomeTax?.depreciableBase;
+      entries.push({ label: 'Depreciable Base', value: base != null ? fmt$(base) : '—', sourceTab: 'TAXES', tabIndex: 4, formula: 'purchasePrice × (1 − landValuePct)' });
+      entries.push({ label: 'Annual Depreciation (39yr)', value: depr != null ? fmt$(depr) : '—', sourceTab: 'TAXES', tabIndex: 4 });
+      entries.push({ label: 'Effective Tax Rate', value: '37.00%', sourceTab: 'TAXES', tabIndex: 4, formula: 'Blended federal + state estimate' });
+      break;
+    }
+    case 'noi': {
+      entries.push({ label: 'EGI', value: fmt$(proj.egi), sourceTab: 'PROJECTIONS', tabIndex: 2, formula: 'NRI + OtherIncome' });
+      entries.push({ label: 'Total OpEx', value: fmt$(proj.totalOpex), sourceTab: 'PROJECTIONS', tabIndex: 2, formula: 'Sum(all expense lines)' });
+      entries.push({ label: 'NOI Formula', value: fmt$(proj.noi), sourceTab: 'PROJECTIONS', tabIndex: 2, formula: 'EGI − TotalOpEx' });
+      break;
+    }
+    case 'grossSaleValue': {
+      entries.push({ label: 'Exit NOI', value: fmt$(proj.exitNoi ?? 0), sourceTab: 'ASSUMPTIONS', tabIndex: 3, formula: `NOI × (1 + rentGrowth)` });
+      entries.push({ label: 'Exit Cap Rate', value: fmtCell(proj.exitCap, 'pct'), sourceTab: 'ASSUMPTIONS', tabIndex: 3 });
+      entries.push({ label: 'Gross Sale Value', value: fmt$(proj.grossSaleValue ?? 0), sourceTab: 'EXIT', tabIndex: -1, formula: 'ExitNOI ÷ ExitCap' });
+      break;
+    }
+    default: {
+      entries.push({ label: row.label, value: display, sourceTab: 'PROJECTIONS', tabIndex: 2 });
+    }
+  }
+
+  return { rowLabel: row.label, year: proj.year, value: display, entries };
+}
+
+// ─── Sub-period columns for monthly/quarterly views ───────────────────────
+interface SubColHeader {
+  label: string;
+  periodKey: string; // 'Q1Y1', 'M01Y1', etc.
+  projYear: number;
+  fraction: number; // 0.25 for quarterly, 1/12 for monthly
+}
+
+function buildSubCols(holdYears: number, mode: 'quarterly' | 'monthly'): SubColHeader[] {
+  const cols: SubColHeader[] = [];
+  const count = mode === 'quarterly' ? 4 : 12;
+  const frac  = mode === 'quarterly' ? 0.25 : 1 / 12;
+  const prefix = mode === 'quarterly' ? 'Q' : 'M';
+  for (let yr = 1; yr <= holdYears; yr++) {
+    for (let p = 1; p <= count; p++) {
+      cols.push({
+        label:     `${prefix}${p}Y${yr}`,
+        periodKey: `${prefix}${p.toString().padStart(2, '0')}Y${yr}`,
+        projYear:  yr,
+        fraction:  frac,
+      });
+    }
+  }
+  return cols;
+}
+
 // ─── Main component ───────────────────────────────────────────────────────
 export function ProjectionsTab({
   dealId,
   integrityWarning,
+  f9Financials,
+  onTabChange,
 }: FinancialEngineTabProps) {
-  const [timeline, setTimeline]               = useState<TimelineOption>(5);
+  const [timeline, setTimeline] = useState<TimelineOption>(5);
+  const [viewMode, setViewMode] = useState<ViewMode>('annual');
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
     new Set(SECTIONS.map(s => s.key)),
   );
-  const [showGprDecomp, setShowGprDecomp]   = useState(true);
-  const [showFindings,  setShowFindings]    = useState(true);
-  const [financials,      setFinancials]      = useState<DealFinancials | null>(null);
-  const [loading,         setLoading]         = useState(false);
-  const [error,           setError]           = useState<string | null>(null);
-  const [exporting,       setExporting]       = useState(false);
+  const [showAfterTax, setShowAfterTax] = useState(false);
+  const [showGprDecomp, setShowGprDecomp] = useState(true);
+  const [showFindings,  setShowFindings]  = useState(true);
   const [narrative,        setNarrative]       = useState<string | null>(null);
   const [narrativeBlocks,  setNarrativeBlocks] = useState<F9NarrativeBlock[]>([]);
   const [narrativeLoading, setNarrativeLoading]= useState(false);
+  const [exporting,        setExporting]       = useState(false);
+  const [error,            setError]           = useState<string | null>(null);
+  const [drilldown, setDrilldown] = useState<DrilldownInfo | null>(null);
 
-  const loadFinancials = useCallback(async () => {
-    if (!dealId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await apiClient.get<FinancialsApiResponse>(
-        `/api/v1/deals/${dealId}/financials?hold=${timeline}`,
-      );
-      const data = res.data?.data;
-      if (data) setFinancials(data);
-    } catch (err: unknown) {
-      const msg =
-        err instanceof Error
-          ? err.message
-          : (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-            ?? 'Failed to load projections';
-      setError(msg);
-    } finally {
-      setLoading(false);
-    }
-  }, [dealId, timeline]);
-
+  // Narrative load — non-critical, fires once
   const loadNarrative = useCallback(async () => {
     if (!dealId) return;
     setNarrativeLoading(true);
@@ -528,22 +732,19 @@ export function ProjectionsTab({
         data: { narrative: string | null; blocks: F9NarrativeBlock[]; cachedAt: string; source: string; fresh: boolean };
       }>(`/api/v1/deals/${dealId}/financials/narrative`);
       const d = res.data?.data;
-      if (d) {
-        setNarrative(d.narrative ?? null);
-        setNarrativeBlocks(d.blocks ?? []);
-      }
+      if (d) { setNarrative(d.narrative ?? null); setNarrativeBlocks(d.blocks ?? []); }
     } catch {
-      // Non-fatal: narrative panel simply stays hidden
+      // Non-fatal
     } finally {
       setNarrativeLoading(false);
     }
   }, [dealId]);
 
-  useEffect(() => { loadFinancials(); }, [loadFinancials]);
-  useEffect(() => { loadNarrative(); }, [loadNarrative]);
+  React.useEffect(() => { loadNarrative(); }, [loadNarrative]);
 
-  // Timeline selection is authoritative: show the full selected horizon regardless of stored holdYears.
-  // The API is always called with ?hold={timeline} so the data covers the selected period.
+  // Use f9Financials from parent (no separate fetch needed — avoids dual fetching)
+  const financials = f9Financials ?? null;
+
   const holdYears  = timeline;
   const projections = useMemo(
     () => financials ? buildProjections(financials, holdYears) : [],
@@ -558,20 +759,19 @@ export function ProjectionsTab({
     });
   };
 
-  // Export: fetch binary from backend /financials/export, trigger browser download
+  // Export
   const handleExport = useCallback(async () => {
     if (!financials || !dealId) return;
     setExporting(true);
+    setError(null);
     try {
       const token = localStorage.getItem('auth_token');
       const url   = `/api/v1/deals/${dealId}/financials/export?hold=${timeline}`;
-      const resp  = await fetch(url, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const resp  = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
       if (!resp.ok) throw new Error(`Export failed: ${resp.status}`);
-      const blob     = await resp.blob();
-      const blobUrl  = URL.createObjectURL(blob);
-      const a        = document.createElement('a');
+      const blob    = await resp.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a       = document.createElement('a');
       const safeName = financials.dealName.replace(/[^a-zA-Z0-9_\-]/g, '_').slice(0, 60);
       a.href         = blobUrl;
       a.download     = `${safeName}_ProForma_${holdYears}yr.xlsx`;
@@ -580,279 +780,318 @@ export function ProjectionsTab({
       document.body.removeChild(a);
       URL.revokeObjectURL(blobUrl);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Export failed';
-      setError(msg);
+      setError(err instanceof Error ? err.message : 'Export failed');
     } finally {
       setExporting(false);
     }
   }, [financials, dealId, timeline, holdYears]);
 
-  const colCount = holdYears;
-  const years    = Array.from({ length: colCount }, (_, i) => i + 1);
-
-  const hasGprDecomp = financials?.assumptions.gprDecomposition != null;
-  const hasNarrative = narrative != null && narrative.length > 0;
+  const hasGprDecomp   = financials?.assumptions.gprDecomposition != null;
+  const hasNarrative   = narrative != null && narrative.length > 0;
   const integrityChecks = financials?.proforma.integrityChecks ?? [];
+  const hasAfterTaxData = projections.some(p => p.depreciation != null);
+
+  // Sub-period columns for monthly/quarterly
+  const subCols = useMemo(
+    () => viewMode !== 'annual' ? buildSubCols(Math.min(holdYears, viewMode === 'monthly' ? 2 : holdYears), viewMode) : [],
+    [viewMode, holdYears],
+  );
+
+  // Annual column headers
+  const annualYears = Array.from({ length: holdYears }, (_, i) => i + 1);
+
+  // Active columns
+  const isAnnual = viewMode === 'annual';
+  const colCount  = isAnnual ? holdYears : subCols.length;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
 
-      {/* ── Header controls ──────────────────────────────────────────────── */}
-      <div style={{
-        padding: '4px 10px', background: BT.bg.header,
-        borderBottom: `1px solid ${BT.border.subtle}`,
-        display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, flexWrap: 'wrap',
-      }}>
-        <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, letterSpacing: 0.5 }}>
-          TIMELINE:
-        </span>
-        {([3, 5, 7, 10] as TimelineOption[]).map(t => (
-          <button key={t} onClick={() => setTimeline(t)} style={{
-            background: timeline === t ? BT.bg.active : 'transparent',
-            color:      timeline === t ? BT.met.financial : BT.text.muted,
-            border:     timeline === t ? `1px solid ${BT.met.financial}40` : '1px solid transparent',
-            padding: '2px 8px', fontFamily: MONO, fontSize: 9, cursor: 'pointer', borderRadius: 2,
-          }}>{t}YR</button>
-        ))}
+      {/* ── Main panel ─────────────────────────────────────────────────────── */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-        <div style={{ width: 1, height: 14, background: BT.border.medium }} />
-
-        {hasGprDecomp && (
-          <button onClick={() => setShowGprDecomp(v => !v)} style={{
-            background: showGprDecomp ? `${BT.met.financial}15` : 'transparent',
-            color:      showGprDecomp ? BT.met.financial : BT.text.muted,
-            border: `1px solid ${showGprDecomp ? BT.met.financial : BT.border.subtle}`,
-            padding: '2px 8px', fontFamily: MONO, fontSize: 9, cursor: 'pointer', borderRadius: 2,
-          }}>GPR DECOMP</button>
-        )}
-
-        {hasNarrative && (
-          <button onClick={() => setShowFindings(v => !v)} style={{
-            background: showFindings ? `${BT.text.purple}15` : 'transparent',
-            color:      showFindings ? BT.text.purple : BT.text.muted,
-            border: `1px solid ${showFindings ? BT.text.purple : BT.border.subtle}`,
-            padding: '2px 8px', fontFamily: MONO, fontSize: 9, cursor: 'pointer', borderRadius: 2,
-          }}>FINDINGS</button>
-        )}
-
-        <div style={{ flex: 1 }} />
-
-        {financials && (
-          <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
-            {financials.totalUnits} UNITS · {financials.dealName}
-          </span>
-        )}
-
-        {loading && (
-          <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>LOADING...</span>
-        )}
-
-        <button
-          onClick={() => { void handleExport(); }}
-          disabled={!financials || projections.length === 0 || exporting}
-          style={{
-            background: 'transparent', border: `1px solid ${BT.border.medium}`,
-            color:    financials && !exporting ? BT.text.secondary : BT.text.muted,
-            fontFamily: MONO, fontSize: 9, padding: '2px 8px',
-            cursor:   financials && !exporting ? 'pointer' : 'default',
-            borderRadius: 2, opacity: financials && !exporting ? 1 : 0.4,
-          }}
-        >
-          {exporting ? 'EXPORTING...' : 'EXPORT XLSX'}
-        </button>
-      </div>
-
-      {/* ── Parent-level integrity warning (passed from FinancialEnginePage) ── */}
-      {integrityWarning && (
+        {/* ── Header controls ────────────────────────────────────────────── */}
         <div style={{
-          background: '#1c0a0a', borderBottom: '1px solid #ef4444', borderLeft: '4px solid #ef4444',
-          padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 8,
+          padding: '4px 10px', background: BT.bg.header,
+          borderBottom: `1px solid ${BT.border.subtle}`,
+          display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, flexWrap: 'wrap',
         }}>
-          <span style={{ fontFamily: MONO, fontSize: 9, color: '#ef4444', fontWeight: 700 }}>PRO FORMA INTEGRITY ERRORS DETECTED</span>
-          <span style={{ fontFamily: MONO, fontSize: 9, color: '#fca5a5' }}>Projections may reflect unresolved field conflicts. Review Pro Forma tab for details.</span>
+          {/* Timeline */}
+          <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, letterSpacing: 0.5 }}>HOLD:</span>
+          {([3, 5, 7, 10] as TimelineOption[]).map(t => (
+            <button key={t} onClick={() => setTimeline(t)} style={{
+              background: timeline === t ? BT.bg.active : 'transparent',
+              color:      timeline === t ? BT.met.financial : BT.text.muted,
+              border:     timeline === t ? `1px solid ${BT.met.financial}40` : '1px solid transparent',
+              padding: '2px 8px', fontFamily: MONO, fontSize: 9, cursor: 'pointer', borderRadius: 2,
+            }}>{t}YR</button>
+          ))}
+
+          <div style={{ width: 1, height: 14, background: BT.border.medium }} />
+
+          {/* View mode */}
+          <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, letterSpacing: 0.5 }}>VIEW:</span>
+          {(['annual', 'quarterly', 'monthly'] as ViewMode[]).map(v => (
+            <button key={v} onClick={() => setViewMode(v)} style={{
+              background: viewMode === v ? BT.bg.active : 'transparent',
+              color:      viewMode === v ? BT.text.cyan : BT.text.muted,
+              border:     viewMode === v ? `1px solid ${BT.text.cyan}40` : '1px solid transparent',
+              padding: '2px 8px', fontFamily: MONO, fontSize: 9, cursor: 'pointer', borderRadius: 2,
+            }}>{v.toUpperCase()}</button>
+          ))}
+
+          <div style={{ width: 1, height: 14, background: BT.border.medium }} />
+
+          {/* After-tax toggle */}
+          {hasAfterTaxData && (
+            <button onClick={() => setShowAfterTax(v => !v)} style={{
+              background: showAfterTax ? `${BT.text.purple}20` : 'transparent',
+              color:      showAfterTax ? BT.text.purple : BT.text.muted,
+              border: `1px solid ${showAfterTax ? BT.text.purple : BT.border.subtle}`,
+              padding: '2px 8px', fontFamily: MONO, fontSize: 9, cursor: 'pointer', borderRadius: 2,
+            }}>AFTER-TAX</button>
+          )}
+
+          {hasGprDecomp && (
+            <button onClick={() => setShowGprDecomp(v => !v)} style={{
+              background: showGprDecomp ? `${BT.met.financial}15` : 'transparent',
+              color:      showGprDecomp ? BT.met.financial : BT.text.muted,
+              border: `1px solid ${showGprDecomp ? BT.met.financial : BT.border.subtle}`,
+              padding: '2px 8px', fontFamily: MONO, fontSize: 9, cursor: 'pointer', borderRadius: 2,
+            }}>GPR DECOMP</button>
+          )}
+
+          {hasNarrative && (
+            <button onClick={() => setShowFindings(v => !v)} style={{
+              background: showFindings ? `${BT.text.purple}15` : 'transparent',
+              color:      showFindings ? BT.text.purple : BT.text.muted,
+              border: `1px solid ${showFindings ? BT.text.purple : BT.border.subtle}`,
+              padding: '2px 8px', fontFamily: MONO, fontSize: 9, cursor: 'pointer', borderRadius: 2,
+            }}>FINDINGS</button>
+          )}
+
+          <div style={{ flex: 1 }} />
+
+          {financials && (
+            <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
+              {financials.totalUnits} UNITS · {financials.dealName}
+            </span>
+          )}
+
+          <button
+            onClick={() => { void handleExport(); }}
+            disabled={!financials || projections.length === 0 || exporting}
+            style={{
+              background: 'transparent', border: `1px solid ${BT.border.medium}`,
+              color:    financials && !exporting ? BT.text.secondary : BT.text.muted,
+              fontFamily: MONO, fontSize: 9, padding: '2px 8px',
+              cursor:   financials && !exporting ? 'pointer' : 'default',
+              borderRadius: 2, opacity: financials && !exporting ? 1 : 0.4,
+            }}
+          >
+            {exporting ? 'EXPORTING...' : 'EXPORT XLSX'}
+          </button>
         </div>
-      )}
 
-      {/* ── Integrity banner (errors / warnings from pro forma checks) ─────── */}
-      {integrityChecks.length > 0 && (
-        <IntegrityBanner checks={integrityChecks} />
-      )}
-
-      {/* ── AI Findings / Platform's View (top of Projections) ──────────────── */}
-      {showFindings && (narrativeLoading || hasNarrative) && (
-        <FindingsPanel
-          narrative={narrative}
-          blocks={narrativeBlocks}
-          loading={narrativeLoading}
-        />
-      )}
-
-      {/* ── GPR Decomposition ──────────────────────────────────────────────── */}
-      {showGprDecomp && hasGprDecomp && (
-        <GprDecompPanel
-          decomp={financials!.assumptions.gprDecomposition!}
-          totalUnits={financials!.totalUnits}
-        />
-      )}
-
-      {/* ── Operating Statement Table ─────────────────────────────────────── */}
-      <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-        {error ? (
-          <div style={{ padding: 20, fontFamily: MONO, fontSize: 9, color: BT.text.red }}>
-            ERROR: {error}
-            <button onClick={loadFinancials} style={{
-              marginLeft: 12, background: 'transparent', border: `1px solid ${BT.border.medium}`,
-              color: BT.text.secondary, fontFamily: MONO, fontSize: 9, padding: '2px 8px', cursor: 'pointer',
-            }}>RETRY</button>
+        {/* ── Integrity banners ──────────────────────────────────────────── */}
+        {integrityWarning && (
+          <div style={{ background: '#1c0a0a', borderBottom: '1px solid #ef4444', borderLeft: '4px solid #ef4444', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontFamily: MONO, fontSize: 9, color: '#ef4444', fontWeight: 700 }}>PRO FORMA INTEGRITY ERRORS DETECTED</span>
+            <span style={{ fontFamily: MONO, fontSize: 9, color: '#fca5a5' }}>Projections may reflect unresolved field conflicts. Review Pro Forma tab for details.</span>
           </div>
-        ) : (
+        )}
+        {integrityChecks.length > 0 && <IntegrityBanner checks={integrityChecks} />}
+
+        {/* ── AI Findings ────────────────────────────────────────────────── */}
+        {showFindings && (narrativeLoading || hasNarrative) && (
+          <FindingsPanel narrative={narrative} blocks={narrativeBlocks} loading={narrativeLoading} />
+        )}
+
+        {/* ── GPR Decomposition ──────────────────────────────────────────── */}
+        {showGprDecomp && hasGprDecomp && (
+          <GprDecompPanel decomp={financials!.assumptions.gprDecomposition!} totalUnits={financials!.totalUnits} />
+        )}
+
+        {/* ── Export error ───────────────────────────────────────────────── */}
+        {error && (
+          <div style={{ padding: '4px 10px', background: `${BT.text.red}12`, fontFamily: MONO, fontSize: 8, color: BT.text.red, flexShrink: 0 }}>
+            {error}
+          </div>
+        )}
+
+        {/* ── Operating Statement Table ──────────────────────────────────── */}
+        <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 9 }}>
             <thead>
-              <tr style={{
-                borderBottom: `2px solid ${BT.border.medium}`,
-                position: 'sticky', top: 0,
-                background: BT.bg.header, zIndex: 2,
-              }}>
-                <th style={{
-                  padding: '5px 8px', textAlign: 'left', color: BT.text.muted, fontWeight: 500,
-                  minWidth: 220, position: 'sticky', left: 0, background: BT.bg.header, zIndex: 3,
-                }}>
+              <tr style={{ borderBottom: `2px solid ${BT.border.medium}`, position: 'sticky', top: 0, background: BT.bg.header, zIndex: 2 }}>
+                <th style={{ padding: '5px 8px', textAlign: 'left', color: BT.text.muted, fontWeight: 500, minWidth: 220, position: 'sticky', left: 0, background: BT.bg.header, zIndex: 3 }}>
                   OPERATING STATEMENT
-                  {financials && (
-                    <span style={{ marginLeft: 8, fontWeight: 400, color: BT.text.muted, fontSize: 8 }}>
-                      · {financials.totalUnits} units · M07-integrated
-                    </span>
-                  )}
+                  {financials && <span style={{ marginLeft: 8, fontWeight: 400, color: BT.text.muted, fontSize: 8 }}>· {financials.totalUnits} units · M07</span>}
                 </th>
-                {years.map(yr => (
-                  <th key={yr} style={{
-                    padding: '5px 8px', textAlign: 'right',
-                    color: BT.text.muted, fontWeight: 500, minWidth: 90,
-                  }}>
-                    YR {yr}
-                  </th>
-                ))}
+                {isAnnual
+                  ? annualYears.map(yr => (
+                      <th key={yr} style={{ padding: '5px 8px', textAlign: 'right', color: BT.text.muted, fontWeight: 500, minWidth: 90 }}>
+                        YR {yr}
+                      </th>
+                    ))
+                  : subCols.map(c => (
+                      <th key={c.periodKey} style={{ padding: '5px 6px', textAlign: 'right', color: BT.text.muted, fontWeight: 500, minWidth: 80, fontSize: 8 }}>
+                        {c.label}
+                      </th>
+                    ))
+                }
               </tr>
             </thead>
 
-            {loading ? (
-              <tbody>
-                {Array.from({ length: 28 }, (_, i) => (
-                  <tr key={i} style={{ background: i % 2 === 0 ? BT.bg.panel : BT.bg.terminal }}>
-                    <td style={{ padding: '5px 8px', position: 'sticky', left: 0, background: 'inherit' }}>
-                      <div style={{ height: 8, width: `${50 + (i % 4) * 12}%`, background: `${BT.border.medium}50`, borderRadius: 2 }} />
-                    </td>
-                    {years.map(yr => (
-                      <td key={yr} style={{ padding: '5px 8px', textAlign: 'right' }}>
-                        <div style={{ height: 8, width: 72, background: `${BT.border.medium}30`, borderRadius: 2, marginLeft: 'auto' }} />
+            <tbody>
+              {SECTIONS.map(section => {
+                const isExpanded = expandedSections.has(section.key);
+                // Hide after-tax section unless toggle active
+                if (section.key === 'aftertax' && !showAfterTax) return null;
+
+                return (
+                  <React.Fragment key={section.key}>
+                    <tr onClick={() => toggleSection(section.key)} style={{ cursor: 'pointer', background: BT.bg.header, borderBottom: `1px solid ${BT.border.medium}` }}>
+                      <td colSpan={colCount + 1} style={{ padding: '5px 8px', color: section.color, fontWeight: 700, letterSpacing: 0.8, position: 'sticky', left: 0, background: BT.bg.header, zIndex: 1 }}>
+                        {isExpanded ? '▾' : '▸'} {section.label}
                       </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            ) : (
-              <tbody>
-                {SECTIONS.map(section => {
-                  const isExpanded = expandedSections.has(section.key);
-                  return (
-                    <React.Fragment key={section.key}>
-                      <tr
-                        onClick={() => toggleSection(section.key)}
-                        style={{ cursor: 'pointer', background: BT.bg.header, borderBottom: `1px solid ${BT.border.medium}` }}
-                      >
-                        <td colSpan={colCount + 1} style={{
-                          padding: '5px 8px', color: section.color, fontWeight: 700, letterSpacing: 0.8,
-                          position: 'sticky', left: 0, background: BT.bg.header, zIndex: 1,
-                        }}>
-                          {isExpanded ? '▾' : '▸'} {section.label}
-                        </td>
-                      </tr>
+                    </tr>
 
-                      {isExpanded && section.rows.map((row, ri) => {
-                        const isEven  = ri % 2 === 0;
-                        const rowBg   = row.isTotal
-                          ? `${section.color}08`
-                          : isEven ? BT.bg.panel : BT.bg.terminal;
-                        return (
-                          <tr key={row.key} style={{
-                            background: rowBg,
-                            borderBottom: row.isTotal
-                              ? `2px solid ${BT.border.medium}`
-                              : `1px solid ${BT.border.subtle}`,
-                          }}>
-                            <td style={{
-                              padding: `3px 8px 3px ${row.indent ? 20 : 8}px`,
-                              color:      row.isTotal ? BT.text.white : BT.text.secondary,
-                              fontWeight: row.isTotal ? 700 : 400,
-                              position: 'sticky', left: 0,
-                              background: rowBg, zIndex: 1,
-                            }}>
-                              {row.label}
-                            </td>
-                            {years.map(yr => {
-                              const proj   = projections[yr - 1];
-                              const rawVal = proj ? (proj[row.key] as number | null) : null;
-                              const display = fmtCell(rawVal, row.fmt, row.sign);
-                              const isNeg   = rawVal != null && rawVal < 0;
-                              const textColor = row.isTotal
-                                ? section.color
-                                : isNeg
-                                  ? BT.text.red
-                                  : row.sign === -1 && rawVal != null && rawVal > 0
-                                    ? BT.text.red
-                                    : BT.text.primary;
-                              return (
-                                <td key={yr} style={{
-                                  padding: '3px 8px', textAlign: 'right',
-                                  color:      textColor,
-                                  fontWeight: row.isTotal ? 700 : 400,
-                                }}>
-                                  {display}
-                                </td>
-                              );
-                            })}
-                          </tr>
-                        );
-                      })}
-                    </React.Fragment>
-                  );
-                })}
+                    {isExpanded && section.rows.map((row, ri) => {
+                      // Hide after-tax rows unless toggle active
+                      if (row.afterTaxOnly && !showAfterTax) return null;
 
-                {/* Traffic signal footnote */}
-                {financials?.trafficProjection?.yearly &&
-                  financials.trafficProjection.yearly.length > 0 && (
-                  <tr style={{ background: BT.bg.header, borderTop: `1px solid ${BT.border.subtle}` }}>
-                    <td style={{
-                      padding: '4px 8px', color: BT.text.muted, fontSize: 8, fontStyle: 'italic',
-                      position: 'sticky', left: 0, background: BT.bg.header,
-                    }}>
-                      Traffic signals: T01/T05/T06 integrated via M07 Engine
-                    </td>
-                    {years.map(yr => {
-                      const tv = financials.trafficProjection?.yearly.find(t => t.year === yr);
+                      const isEven = ri % 2 === 0;
+                      const rowBg  = row.isTotal ? `${section.color}08` : isEven ? BT.bg.panel : BT.bg.terminal;
+
                       return (
-                        <td key={yr} style={{ padding: '4px 8px', textAlign: 'right', fontSize: 8 }}>
-                          {tv?.occupancyPct != null
-                            ? <span style={{ color: BT.text.cyan }}>{(tv.occupancyPct * 100).toFixed(1)}% occ</span>
-                            : <span style={{ color: BT.text.muted }}>—</span>}
-                        </td>
+                        <tr key={row.key} style={{ background: rowBg, borderBottom: row.isTotal ? `2px solid ${BT.border.medium}` : `1px solid ${BT.border.subtle}` }}>
+                          <td style={{ padding: `3px 8px 3px ${row.indent ? 20 : 8}px`, color: row.isTotal ? BT.text.white : BT.text.secondary, fontWeight: row.isTotal ? 700 : 400, position: 'sticky', left: 0, background: rowBg, zIndex: 1 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <span>{row.label}</span>
+                              {row.tabLink != null && (
+                                <button
+                                  onClick={e => { e.stopPropagation(); onTabChange?.(row.tabLink!); }}
+                                  style={{ background: 'transparent', border: `1px solid ${BT.border.subtle}`, color: BT.text.muted, fontFamily: MONO, fontSize: 7, padding: '0 4px', cursor: 'pointer', borderRadius: 2 }}
+                                >
+                                  ↗
+                                </button>
+                              )}
+                            </div>
+                          </td>
+
+                          {isAnnual
+                            ? annualYears.map(yr => {
+                                const proj    = projections[yr - 1];
+                                const rawVal  = proj ? (proj[row.key] as number | null) : null;
+                                const display = fmtCell(rawVal, row.fmt, row.sign);
+                                const isNeg   = rawVal != null && rawVal < 0;
+                                const textColor = row.isTotal ? section.color : isNeg ? BT.text.red : row.sign === -1 && rawVal != null && rawVal > 0 ? BT.text.red : BT.text.primary;
+                                // Source badge
+                                const srcKey  = row.sourceKey ? (proj?.[row.sourceKey] as string | undefined) : undefined;
+                                const srcBadge = srcKey ? SOURCE_LABELS[srcKey] : null;
+                                return (
+                                  <td
+                                    key={yr}
+                                    onClick={() => proj && setDrilldown(buildDrilldown(row, proj, financials))}
+                                    style={{ padding: '3px 8px', textAlign: 'right', color: textColor, fontWeight: row.isTotal ? 700 : 400, cursor: proj ? 'pointer' : 'default' }}
+                                    title={proj ? `Click for formula drilldown` : undefined}
+                                  >
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 3 }}>
+                                      {srcBadge && (
+                                        <span style={{ fontSize: 7, color: srcBadge.color, fontFamily: MONO, padding: '0 2px', border: `1px solid ${srcBadge.color}40`, borderRadius: 2 }}>
+                                          {srcBadge.label}
+                                        </span>
+                                      )}
+                                      <span>{display}</span>
+                                    </div>
+                                  </td>
+                                );
+                              })
+                            : subCols.map(c => {
+                                const proj    = projections[c.projYear - 1];
+                                const rawVal  = proj ? (proj[row.key] as number | null) : null;
+                                const subVal  = rawVal != null ? rawVal * c.fraction : null;
+                                const display = fmtCell(subVal, row.fmt, row.sign);
+                                const isNeg   = subVal != null && subVal < 0;
+                                const textColor = row.isTotal ? section.color : isNeg ? BT.text.red : row.sign === -1 && subVal != null && subVal > 0 ? BT.text.red : BT.text.primary;
+                                return (
+                                  <td
+                                    key={c.periodKey}
+                                    onClick={() => proj && setDrilldown(buildDrilldown(row, proj, financials))}
+                                    style={{ padding: '3px 6px', textAlign: 'right', color: textColor, fontWeight: row.isTotal ? 700 : 400, cursor: proj ? 'pointer' : 'default', fontSize: 8 }}
+                                    title={proj ? `YR ${c.projYear} ÷ ${viewMode === 'quarterly' ? 4 : 12}` : undefined}
+                                  >
+                                    {display}
+                                  </td>
+                                );
+                              })
+                          }
+                        </tr>
                       );
                     })}
-                  </tr>
-                )}
-              </tbody>
-            )}
-          </table>
-        )}
+                  </React.Fragment>
+                );
+              })}
 
-        {/* Empty state */}
-        {!loading && !error && projections.length === 0 && (
-          <div style={{ padding: '40px 24px', textAlign: 'center', fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>
-            <div style={{ marginBottom: 8 }}>No projection data available for this deal.</div>
-            <div>Run <strong style={{ color: BT.text.secondary }}>REPARSE</strong> from the Pro Forma tab to seed Year 1 data.</div>
-          </div>
-        )}
+              {/* ── Traffic signal footnote ──────────────────────────────── */}
+              {isAnnual && financials?.trafficProjection?.yearly && financials.trafficProjection.yearly.length > 0 && (
+                <tr style={{ background: BT.bg.header, borderTop: `1px solid ${BT.border.subtle}` }}>
+                  <td style={{ padding: '4px 8px', color: BT.text.muted, fontSize: 8, fontStyle: 'italic', position: 'sticky', left: 0, background: BT.bg.header }}>
+                    Traffic signals: T01/T05/T06 integrated via M07 Engine
+                  </td>
+                  {annualYears.map(yr => {
+                    const tv = financials.trafficProjection?.yearly.find(t => t.year === yr);
+                    return (
+                      <td key={yr} style={{ padding: '4px 8px', textAlign: 'right', fontSize: 8 }}>
+                        {tv?.occupancyPct != null
+                          ? <span style={{ color: BT.text.cyan }}>{(tv.occupancyPct * 100).toFixed(1)}% occ</span>
+                          : <span style={{ color: BT.text.muted }}>—</span>}
+                      </td>
+                    );
+                  })}
+                </tr>
+              )}
+
+              {/* ── Data source legend ───────────────────────────────────── */}
+              {projections.length > 0 && (
+                <tr style={{ background: BT.bg.header, borderTop: `1px solid ${BT.border.subtle}` }}>
+                  <td colSpan={colCount + 1} style={{ padding: '4px 10px', position: 'sticky', left: 0, background: BT.bg.header }}>
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                      <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, letterSpacing: 0.5 }}>DATA SOURCES:</span>
+                      {Object.entries(SOURCE_LABELS).map(([k, v]) => (
+                        <span key={k} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                          <span style={{ fontSize: 7, color: v.color, fontFamily: MONO, padding: '0 2px', border: `1px solid ${v.color}40`, borderRadius: 2 }}>{v.label}</span>
+                          <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>{k.replace('_', ' ')}</span>
+                        </span>
+                      ))}
+                      <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginLeft: 'auto' }}>Click any cell for formula drilldown</span>
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+
+          {/* Empty state */}
+          {projections.length === 0 && (
+            <div style={{ padding: '40px 24px', textAlign: 'center', fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>
+              <div style={{ marginBottom: 8 }}>No projection data available for this deal.</div>
+              <div>Run <strong style={{ color: BT.text.secondary }}>REPARSE</strong> from the Pro Forma tab to seed Year 1 data.</div>
+            </div>
+          )}
+        </div>
+
       </div>
+
+      {/* ── Drilldown Drawer (right side) ──────────────────────────────────── */}
+      {drilldown && (
+        <DrilldownDrawer
+          info={drilldown}
+          onClose={() => setDrilldown(null)}
+          onTabChange={onTabChange}
+        />
+      )}
 
     </div>
   );
