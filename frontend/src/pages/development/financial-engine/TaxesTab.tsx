@@ -718,6 +718,48 @@ export function TaxesTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fin
                   locked
                   format={fmtDlr}
                 />
+                {/* Refi event taxes — sourced from backend refi data in transferTax.refi */}
+                {taxes?.transferTax.refi?.enabled && (
+                  <>
+                    <tr style={{ borderTop: `1px dashed ${BT.border.medium}` }}>
+                      <td colSpan={6} style={{ padding: '4px 12px', background: BT.bg.panelAlt }}>
+                        <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.amber, fontWeight: 700 }}>
+                          REFI EVENT · Y{taxes.transferTax.refi.triggerYear} — {taxes.transferTax.refi.newLoanType ?? 'N/A'}
+                        </span>
+                      </td>
+                    </tr>
+                    <TaxRow
+                      label="Refi Mortgage Doc Stamps"
+                      sub="$0.35 per $100 of new note (FL F.S. 201.08)"
+                      broker={null}
+                      platform={taxes.transferTax.refi.refiDocStampAmount}
+                      user={null}
+                      resolved={taxes.transferTax.refi.refiDocStampAmount}
+                      locked
+                      format={fmtDlr}
+                    />
+                    <TaxRow
+                      label="Refi Intangible Tax"
+                      sub="0.20% of new loan amount on refinance"
+                      broker={null}
+                      platform={taxes.transferTax.refi.refiIntangibleTaxAmount}
+                      user={null}
+                      resolved={taxes.transferTax.refi.refiIntangibleTaxAmount}
+                      locked
+                      format={fmtDlr}
+                    />
+                    <TaxRow
+                      label="Total Refi Tax Cost"
+                      sub="Refi doc stamps + intangible tax"
+                      broker={null}
+                      platform={taxes.transferTax.refi.refiTotalTax}
+                      user={null}
+                      resolved={taxes.transferTax.refi.refiTotalTax}
+                      locked
+                      format={fmtDlr}
+                    />
+                  </>
+                )}
                 {/* Cross-tab link badge → Sources & Uses (tab index 7) */}
                 <tr>
                   <td colSpan={6} style={{ padding: '6px 12px', borderBottom: `1px solid ${BT.border.medium}` }}>

@@ -105,6 +105,7 @@ function makeLoanState(id: string, name: string, preset: LoanPreset, f9Loan?: F9
 interface AmortRow {
   month: number;
   begBalance: number;
+  periodRate: number;
   payment: number;
   interest: number;
   principal: number;
@@ -168,7 +169,7 @@ function buildAmort(
     const dscr = payment > 0 ? monthlyNoi / payment : null;
     const debtYield = begBalance > 0 ? (annualNoi / begBalance) : null;
     const covenantBreach = dscr != null && dscr < minDscr;
-    rows.push({ month: m, begBalance, payment, interest, principal, endBalance: bal, isIO, dscr, debtYield, covenantBreach });
+    rows.push({ month: m, begBalance, periodRate: annualRate, payment, interest, principal, endBalance: bal, isIO, dscr, debtYield, covenantBreach });
   }
   return rows;
 }
@@ -502,9 +503,13 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
     if (id === 'senior') return;
     setLoans(prev => prev.filter(l => l.id !== id));
     setActiveLoanId('senior');
-    // Clear the mezz loan amount override so backend no longer includes it in loans[]
-    patchDebt(id, 'loanAmount', null);
-  }, [patchDebt]);
+    // Clear all debt:mezz:* overrides so backend drops the loan and leaves no orphaned state
+    const allMezzFields = ['loanAmount','interestRate','sofr','spread','capRate','termYears',
+      'amortYears','ioMonths','origFee','exitFee','rateCapCost','minDscr','minDY','minOcc',
+      'maxLtv','cashTrapDscr','tiEscrow','replReserve','opReserveMonths',
+      ...Array.from({ length: 5 }, (_, i) => `sofrCurve:${i}`)];
+    clearDebtOverrides(id, allMezzFields);
+  }, [clearDebtOverrides]);
 
   // ── Collapsed sections ──────────────────────────────────────────────────────
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set(['amort']));
@@ -642,10 +647,6 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
           </button>
         ))}
       </div>
-
-      {/* ════════════════════════════════════════════════════════════════════
-          SECTION A — LOAN SIZING
-      ═══════════════════════════════════════════════════════════════════════ */}
       <SectionHeader letter="A" title="LOAN SIZING" subtitle="4-column Broker / Platform / User / Resolved" collapsed={collapsed.has('a')} onToggle={() => toggle('a')} />
       {!collapsed.has('a') && (
         <div style={{ overflowX: 'auto' }}>
@@ -701,10 +702,6 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
           </table>
         </div>
       )}
-
-      {/* ════════════════════════════════════════════════════════════════════
-          SECTION B — PRICING & RATE
-      ═══════════════════════════════════════════════════════════════════════ */}
       <SectionHeader letter="B" title="PRICING & RATE" subtitle={activeLoan.rateType === 'Floating' ? 'SOFR + SPREAD — RATE CAP' : 'FIXED RATE'} collapsed={collapsed.has('b')} onToggle={() => toggle('b')} />
       {!collapsed.has('b') && (
         <div style={{ overflowX: 'auto' }}>
@@ -791,10 +788,6 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
           )}
         </div>
       )}
-
-      {/* ════════════════════════════════════════════════════════════════════
-          SECTION C — TERM & STRUCTURE
-      ═══════════════════════════════════════════════════════════════════════ */}
       <SectionHeader letter="C" title="TERM & STRUCTURE" subtitle="Term · Amortization · IO months · Extension" collapsed={collapsed.has('c')} onToggle={() => toggle('c')} />
       {!collapsed.has('c') && (
         <div style={{ overflowX: 'auto' }}>
@@ -847,10 +840,6 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
           </table>
         </div>
       )}
-
-      {/* ════════════════════════════════════════════════════════════════════
-          SECTION D — FEES & COSTS
-      ═══════════════════════════════════════════════════════════════════════ */}
       <SectionHeader letter="D" title="FEES & COSTS" subtitle={`Origination · Exit · Rate Cap${activeLoan.rateType === 'Floating' ? ' · Other' : ''}`} collapsed={collapsed.has('d')} onToggle={() => toggle('d')} />
       {!collapsed.has('d') && (
         <div style={{ overflowX: 'auto' }}>
@@ -899,10 +888,6 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
           </table>
         </div>
       )}
-
-      {/* ════════════════════════════════════════════════════════════════════
-          SECTION E — PREPAYMENT
-      ═══════════════════════════════════════════════════════════════════════ */}
       <SectionHeader letter="E" title="PREPAYMENT" subtitle="Structure · Penalty at each year" collapsed={collapsed.has('e')} onToggle={() => toggle('e')} />
       {!collapsed.has('e') && (
         <div style={{ padding: '8px 12px', borderBottom: `1px solid ${BT.border.medium}` }}>
@@ -955,10 +940,6 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
           </div>
         </div>
       )}
-
-      {/* ════════════════════════════════════════════════════════════════════
-          SECTION F — COVENANTS
-      ═══════════════════════════════════════════════════════════════════════ */}
       <SectionHeader letter="F" title="COVENANTS & TESTS" subtitle="Lender underwriting thresholds — pass/fail" collapsed={collapsed.has('f')} onToggle={() => toggle('f')} />
       {!collapsed.has('f') && (
         <div style={{ overflowX: 'auto' }}>
@@ -1016,10 +997,6 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
           </table>
         </div>
       )}
-
-      {/* ════════════════════════════════════════════════════════════════════
-          SECTION G — RESERVES
-      ═══════════════════════════════════════════════════════════════════════ */}
       <SectionHeader letter="G" title="RESERVES" subtitle="T&I Escrow · Replacement · Operating — flows to Sources & Uses" collapsed={collapsed.has('g')} onToggle={() => toggle('g')} />
       {!collapsed.has('g') && (
         <div style={{ overflowX: 'auto' }}>
@@ -1055,10 +1032,6 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
           </table>
         </div>
       )}
-
-      {/* ════════════════════════════════════════════════════════════════════
-          SECTION H — REFI EVENT
-      ═══════════════════════════════════════════════════════════════════════ */}
       <SectionHeader letter="H" title="REFI / PAYOFF EVENT" subtitle="Model refinance trigger — cross-links to Taxes tab" collapsed={collapsed.has('h')} onToggle={() => toggle('h')} />
       {!collapsed.has('h') && (
         <div style={{ padding: '10px 14px', borderBottom: `1px solid ${BT.border.medium}` }}>
@@ -1145,10 +1118,6 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
           )}
         </div>
       )}
-
-      {/* ════════════════════════════════════════════════════════════════════
-          AGGREGATED STACK (multi-loan only)
-      ═══════════════════════════════════════════════════════════════════════ */}
       {loans.length > 1 && (
         <>
           <SectionHeader letter="Σ" title="AGGREGATED STACK" subtitle="Total DS · Blended rate · Combined LTC" collapsed={collapsed.has('agg')} onToggle={() => toggle('agg')} />
@@ -1195,10 +1164,6 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
           )}
         </>
       )}
-
-      {/* ════════════════════════════════════════════════════════════════════
-          ANNUAL DEBT SERVICE SCHEDULE
-      ═══════════════════════════════════════════════════════════════════════ */}
       <div style={{ padding: '5px 12px', background: BT.bg.header, borderBottom: `1px solid ${BT.border.subtle}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
         <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, letterSpacing: 0.5 }}>
           ANNUAL DEBT SERVICE — {activeLoan.name.toUpperCase()} · {annualRows.filter(r => r.covenantBreach).length > 0 && <span style={{ color: BT.text.red }}>⚠ {annualRows.filter(r => r.covenantBreach).length} COVENANT BREACH{annualRows.filter(r => r.covenantBreach).length > 1 ? 'ES' : ''}</span>}
@@ -1241,16 +1206,13 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
         </div>
       )}
 
-      {/* ════════════════════════════════════════════════════════════════════
-          MONTHLY AMORTIZATION SCHEDULE
-      ═══════════════════════════════════════════════════════════════════════ */}
       <SectionHeader letter="M" title="MONTHLY AMORTIZATION" subtitle={`${amortRows.length} rows — IO highlighted amber · covenant breach highlighted red`} collapsed={collapsed.has('amort')} onToggle={() => toggle('amort')} />
       {!collapsed.has('amort') && (
         <div style={{ overflowX: 'auto', maxHeight: 400 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 9 }}>
             <thead>
               <tr style={{ borderBottom: `1px solid ${BT.border.medium}`, position: 'sticky', top: 0, background: BT.bg.header, zIndex: 2 }}>
-                {['MO', 'BEG BAL', 'PAYMENT', 'INTEREST', 'PRINCIPAL', 'END BAL', 'DSCR', 'DY (ANN)', 'STATUS'].map(h => (
+                {['MO', 'BEG BAL', 'RATE', 'PAYMENT', 'INTEREST', 'PRINCIPAL', 'END BAL', 'DSCR', 'DY (ANN)', 'STATUS'].map(h => (
                   <th key={h} style={{ padding: '4px 8px', color: BT.text.muted, textAlign: h === 'MO' || h === 'STATUS' ? 'left' : 'right', fontWeight: 500, whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
@@ -1258,6 +1220,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
             <tbody>
               {amortRows.map((row, i) => {
                 const isTransition = i > 0 && row.isIO !== amortRows[i - 1].isIO;
+                const rateChanged = i > 0 && Math.abs(row.periodRate - amortRows[i - 1].periodRate) > 0.0001;
                 const rowBg = row.covenantBreach
                   ? `${BT.text.red}18`
                   : isTransition ? `${BT.text.amber}15`
@@ -1271,6 +1234,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
                   <tr key={row.month} style={{ background: rowBg, borderBottom: rowBorder }}>
                     <td style={{ padding: '2px 8px', color: BT.text.muted }}>{row.month}</td>
                     <td style={{ padding: '2px 8px', color: BT.text.secondary, textAlign: 'right' }}>{fmt$(row.begBalance)}</td>
+                    <td style={{ padding: '2px 8px', textAlign: 'right', color: rateChanged ? BT.text.amber : BT.text.secondary }}>{fmtPctFull(row.periodRate)}</td>
                     <td style={{ padding: '2px 8px', color: BT.text.primary, textAlign: 'right' }}>{fmt$(row.payment)}</td>
                     <td style={{ padding: '2px 8px', color: BT.text.red, textAlign: 'right' }}>{fmt$(row.interest)}</td>
                     <td style={{ padding: '2px 8px', color: BT.met.financial, textAlign: 'right' }}>{fmt$(row.principal)}</td>

@@ -1333,6 +1333,15 @@ export interface DealFinancials {
       intangibleTaxAmount: number | null;
       loanAmount: number | null;
       totalTransferTax: number | null;
+      refi: {
+        enabled: boolean;
+        triggerYear: number;
+        newLoanType: string | null;
+        refiLoanAmount: number | null;
+        refiDocStampAmount: number | null;
+        refiIntangibleTaxAmount: number | null;
+        refiTotalTax: number | null;
+      } | null;
     };
     userOverrides: {
       taxAssessedValue: number | null;
@@ -1935,6 +1944,21 @@ export async function getDealFinancials(
   const intangibleTaxAmount = loanAmount != null ? Math.round(loanAmount * 0.002) : null;
   const totalTransferTax = ((docStampAmount ?? 0) + (intangibleTaxAmount ?? 0)) || null;
 
+  // Refi event taxes — read directly from per_year_overrides (debtOvr/debtOvrStr not yet available here)
+  const refiRawPyr = (assumptionsRow?.per_year_overrides ?? {}) as Record<string, unknown>;
+  const refiEnabledRaw = (refiRawPyr['debt:senior:refiEnabled'] as Record<string, unknown> | null)?.value;
+  const refiEnabled = typeof refiEnabledRaw === 'number' ? refiEnabledRaw !== 0 : !!refiEnabledRaw;
+  const refiTriggerYearRaw = (refiRawPyr['debt:senior:refiTriggerYear'] as Record<string, unknown> | null)?.value;
+  const refiTriggerYear = typeof refiTriggerYearRaw === 'number' ? refiTriggerYearRaw : 3;
+  const refiNewLoanTypeRaw = (refiRawPyr['debt:senior:refiNewLoanType'] as Record<string, unknown> | null)?.value;
+  const refiNewLoanType = refiNewLoanTypeRaw != null ? String(refiNewLoanTypeRaw) : null;
+  // For FL mortgage refi: doc stamp $0.35/$100 = 0.0035; intangible tax 0.2% on new note
+  const refiLoanAmount = loanAmount;
+  const refiDocStampAmount = refiEnabled && refiLoanAmount != null ? Math.round(refiLoanAmount * 0.0035) : null;
+  const refiIntangibleTaxAmount = refiEnabled && refiLoanAmount != null ? Math.round(refiLoanAmount * 0.002) : null;
+  const refiTotalTax = refiEnabled && (refiDocStampAmount != null || refiIntangibleTaxAmount != null)
+    ? ((refiDocStampAmount ?? 0) + (refiIntangibleTaxAmount ?? 0)) : null;
+
   const taxes = {
     reTax: {
       t12AssessedValue, t12MillageRate: millageRate, t12AnnualTax,
@@ -1951,6 +1975,15 @@ export async function getDealFinancials(
       miamiDadeRatePct: 0.0105, statewideFlatRatePct: 0.0070,
       appliedRatePct: docStampRate, docStampAmount, intangibleTaxAmount,
       loanAmount, totalTransferTax,
+      refi: {
+        enabled: refiEnabled,
+        triggerYear: refiTriggerYear,
+        newLoanType: refiNewLoanType,
+        refiLoanAmount: refiEnabled ? refiLoanAmount : null,
+        refiDocStampAmount,
+        refiIntangibleTaxAmount,
+        refiTotalTax,
+      },
     },
     userOverrides: {
       taxAssessedValue: taxAssessedValueOvr,

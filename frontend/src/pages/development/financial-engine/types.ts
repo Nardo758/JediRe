@@ -311,6 +311,15 @@ export interface F9TaxData {
     intangibleTaxAmount: number | null;
     loanAmount: number | null;
     totalTransferTax: number | null;
+    refi: {
+      enabled: boolean;
+      triggerYear: number;
+      newLoanType: string | null;
+      refiLoanAmount: number | null;
+      refiDocStampAmount: number | null;
+      refiIntangibleTaxAmount: number | null;
+      refiTotalTax: number | null;
+    } | null;
   };
   userOverrides: {
     taxAssessedValue: number | null;
