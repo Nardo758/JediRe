@@ -413,19 +413,35 @@ const AC_ADAPTER: Record<string, { unit: string; tiers: string[]; gaps: string[]
   'office': { unit: '$/SF/yr full-service or NNN (per market convention)', tiers: ['Tier A: Same-class building in-place rents (leased)', 'Tier B: Current asking rents (vacant space)', 'Tier C: Trophy / Class A reposition ceiling'], gaps: ['Rent-to-market: Tier B − subject in-place', 'Vacancy spread: subject − submarket vacancy × SF × Tier B', 'TI delta: above-market TIs required to compete vs peers'], dollarize: 'Per-lease rollover + vacancy fill → stabilized NOI delta', phasing: 'Lease rollover schedule · WFH sensitivity · Conversion optionality at exit', proforma: 'F3 Sec 1: rent growth + vacancy · Sec 3: TI/LC (office = highest; $60-120/SF) · Sec 4: capex' },
 };
 
-// ─── F3 Integration Panel ─────────────────────────────────────────────────────
-function F3IntegrationPanel({ assetClass }: { assetClass: string }) {
+// ─── F2 + F3 Integration Panel ────────────────────────────────────────────────
+function DataIntegrationPanel({ assetClass }: { assetClass: string }) {
   const [open, setOpen] = useState(true);
-  const ac = AC_ADAPTER[assetClass] || AC_ADAPTER['mf'];
+  const [activeSource, setActiveSource] = useState<'f2' | 'f3'>('f2');
 
-  const reads = [
-    { field: 'loss_to_lease_pct', label: 'Loss-to-Lease %', f3Value: '12.0%', msdValue: '12.0%', status: 'confirmed', note: 'Comp stratification confirms broker value' },
-    { field: 'vacancy_pct', label: 'Vacancy Y1', f3Value: '10.9%', msdValue: '10.9%', status: 'confirmed', note: 'Consistent with physical occ 89.1%' },
-    { field: 'rent_growth_yr1', label: 'Rent Growth Y1', f3Value: '4.1%', msdValue: '15.6%', status: 'override', note: 'M08 comp-driven: 4.1% market + 11.5pp LTL capture = 15.6% blended' },
-    { field: 'rent_growth_stabilized', label: 'Rent Growth Stab.', f3Value: '3.8%', msdValue: '4.1%', status: 'nudge', note: 'Submarket CAGR 4.1% (M07) vs broker 3.8%' },
-    { field: 'exit_cap', label: 'Exit Cap Rate', f3Value: '5.50%', msdValue: '5.25%', status: 'nudge', note: 'M08: capture drives NOI uplift → 25bps compression at exit' },
-    { field: 'capex_per_unit', label: 'Capex/Unit', f3Value: '—', msdValue: '$18,000', status: 'new', note: '75 reno units × $18K from VC capture plan' },
-    { field: 'hold_years', label: 'Hold Years', f3Value: '5yr', msdValue: '3yr', status: 'nudge', note: 'M08 target exit: Q4 2028 (M36) → shortens hold' },
+  // F2 — Projections (computed outputs M08 reads to see current model trajectory)
+  const f2Reads = [
+    { label: 'GPR Year 1', f2Value: '$3.01M', m08Value: '$3.35M', delta: '+$340K', deltaColor: C.green, note: 'F2 baseline uses broker rent growth 4.1% only. M08 adds LTL capture 28% → $334K uplift Y1.' },
+    { label: 'GPR Year 2', f2Value: '$3.13M', m08Value: '$3.88M', delta: '+$750K', deltaColor: C.green, note: 'VC capture ramps; reno 75% complete at Y2.' },
+    { label: 'GPR Year 3', f2Value: '$3.25M', m08Value: '$4.12M', delta: '+$870K', deltaColor: C.green, note: 'Full LTL + VC capture complete. M08 stabilized rent.' },
+    { label: 'LTL Line Y1', f2Value: '-$361K', m08Value: '-$249K', delta: '+$112K', deltaColor: C.green, note: 'F2 holds LTL flat at 12%. M08: LTL burns down as capture executes — 50% captured Y1.' },
+    { label: 'Concessions Y1', f2Value: '$0', m08Value: '-$89K', delta: '-$89K', deltaColor: C.amber, note: 'M08 adds reno concession drag Y1 (absent from current model — needs to be in F2).' },
+    { label: 'NOI Year 1', f2Value: '$1.48M', m08Value: '$1.64M', delta: '+$160K', deltaColor: C.green, note: 'M08 capture increases NOI by $160K Y1 despite concession drag.' },
+    { label: 'NOI Year 3', f2Value: '$1.64M', m08Value: '$2.11M', delta: '+$470K', deltaColor: C.green, note: 'Stabilized NOI after full capture. This is the Fannie DUS refi trigger.' },
+    { label: 'DSCR Year 1 (implied)', f2Value: '0.82×', m08Value: '0.91×', delta: '+0.09×', deltaColor: C.amber, note: 'F2 DSCR 0.82× (LTL understated NOI). M08 corrects to 0.91× — still IO territory.' },
+    { label: 'Exit NOI (Fwd)', f2Value: '$1.75M', m08Value: '$2.11M', delta: '+$360K', deltaColor: C.green, note: 'M08 stabilized NOI vs current flat-growth model. Critical for exit valuation.' },
+    { label: 'Exit Cap Rate', f2Value: '5.50%', m08Value: '5.25%', delta: '-25bps', deltaColor: C.green, note: 'NOI quality improvement compresses cap rate 25bps at institutional exit.' },
+    { label: 'Gross Exit Value', f2Value: '$31.8M', m08Value: '$40.2M', delta: '+$8.4M', deltaColor: C.green, note: 'M08 capture + cap compression = $8.4M incremental exit value. This is the strategy thesis.' },
+  ];
+
+  // F3 — Assumptions (inputs M08 writes back)
+  const f3Reads = [
+    { label: 'Loss-to-Lease %', f3Value: '12.0%', m08Value: '12.0%', status: 'confirmed', note: 'Comp stratification confirms broker value' },
+    { label: 'Vacancy Y1', f3Value: '10.9%', m08Value: '10.9%', status: 'confirmed', note: 'Consistent with physical occ 89.1%' },
+    { label: 'Rent Growth Y1', f3Value: '4.1%', m08Value: '15.6%', status: 'override', note: 'M08: 4.1% market + 11.5pp LTL capture = 15.6% blended' },
+    { label: 'Rent Growth Stab.', f3Value: '3.8%', m08Value: '4.1%', status: 'nudge', note: 'Submarket CAGR 4.1% (M07) vs broker 3.8%' },
+    { label: 'Exit Cap Rate', f3Value: '5.50%', m08Value: '5.25%', status: 'nudge', note: 'Capture drives NOI uplift → 25bps compression at exit' },
+    { label: 'Capex / Unit', f3Value: '—', m08Value: '$18,000', status: 'new', note: '75 reno units × $18K from VC capture plan' },
+    { label: 'Hold Years', f3Value: '5yr', m08Value: '3yr', status: 'nudge', note: 'M08 target exit Q4 2028 (M36) → shortens hold' },
   ];
 
   const statusColor: Record<string, string> = { confirmed: C.green, override: C.amber, nudge: C.cyan, new: C.purple };
@@ -433,53 +449,120 @@ function F3IntegrationPanel({ assetClass }: { assetClass: string }) {
 
   return (
     <div style={{ border: `1px solid ${C.border}`, borderRadius: 2, overflow: 'hidden', marginBottom: 16 }}>
+      {/* Header */}
       <div onClick={() => setOpen(!open)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 14px', backgroundColor: '#0d0f18', cursor: 'pointer', borderBottom: open ? `1px solid ${C.border}` : 'none' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Database size={12} color={C.purple} />
-          <span style={{ ...mono, color: C.purple, fontSize: 10, fontWeight: 700, letterSpacing: '0.1em' }}>F3 ASSUMPTIONS INTEGRATION</span>
-          <span style={{ ...mono, color: C.textMuted, fontSize: 9, marginLeft: 4 }}>⊕ ASSUMPTIONS tab → M08 reads these to formulate plan · then writes comp-derived values back</span>
+          <span style={{ ...mono, color: C.purple, fontSize: 10, fontWeight: 700, letterSpacing: '0.1em' }}>F2 + F3 DATA INTEGRATION</span>
+          <span style={{ ...mono, color: C.textMuted, fontSize: 9, marginLeft: 2 }}>M08 reads projections + assumptions to formulate plan · writes comp-derived values back to F3</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ ...mono, color: C.amber, fontSize: 9 }}>2 OVERRIDES · 2 NUDGES · 1 NEW</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ ...mono, color: C.green, fontSize: 9 }}>EXIT VALUE DELTA +$8.4M</span>
+          <span style={{ ...mono, color: C.amber, fontSize: 9 }}>2 OVERRIDES · 2 NUDGES</span>
           {open ? <ChevronDown size={12} color={C.textMuted} /> : <ChevronRight size={12} color={C.textMuted} />}
         </div>
       </div>
+
       {open && (
         <div>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
-            <thead>
-              <tr style={{ backgroundColor: '#0d0d12' }}>
-                {['F3 Field', 'F3 Current (Broker/T12)', 'M08 Comp-Derived', 'Action', 'Rationale'].map(h => (
-                  <th key={h} style={{ ...mono, textAlign: 'left', padding: '4px 10px', color: C.textMuted, fontSize: 9, fontWeight: 600, letterSpacing: '0.08em', borderBottom: `1px solid ${C.border}` }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {reads.map((r, i) => (
-                <tr key={i} style={{ backgroundColor: r.status === 'override' ? `${C.amber}06` : r.status === 'new' ? `${C.purple}06` : 'transparent', borderBottom: `1px solid ${C.border}15` }}>
-                  <td style={{ padding: '5px 10px', color: C.textMuted, fontSize: 10 }}>{r.label}</td>
-                  <td style={{ ...mono, padding: '5px 10px', color: r.status === 'override' || r.status === 'nudge' ? C.textMuted : C.textPrimary, textDecoration: r.status === 'override' ? 'line-through' : 'none', fontSize: 11 }}>{r.f3Value}</td>
-                  <td style={{ ...mono, padding: '5px 10px', color: statusColor[r.status], fontWeight: 600, fontSize: 11 }}>{r.msdValue}</td>
-                  <td style={{ padding: '5px 10px' }}>
-                    <span style={{ ...mono, fontSize: 8, color: statusColor[r.status], backgroundColor: `${statusColor[r.status]}15`, border: `1px solid ${statusColor[r.status]}35`, borderRadius: 2, padding: '1px 5px', whiteSpace: 'nowrap' as const }}>{statusLabel[r.status]}</span>
-                  </td>
-                  <td style={{ padding: '5px 10px', color: C.textMuted, fontSize: 10 }}>{r.note}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div style={{ padding: '8px 14px', borderTop: `1px solid ${C.border}`, backgroundColor: `${C.purple}08`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <FileText size={11} color={C.purple} />
-              <span style={{ color: C.textMuted, fontSize: 10 }}>
-                Computed from: <span style={{ ...mono, color: C.purple }}>Bell Tech Corridor comp set · {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-              </span>
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button style={{ ...mono, fontSize: 9, padding: '3px 10px', color: C.purple, border: `1px solid ${C.purple}50`, borderRadius: 2, backgroundColor: `${C.purple}15`, cursor: 'pointer' }}>Review All Changes</button>
-              <button style={{ ...mono, fontSize: 9, padding: '3px 10px', color: '#0a0a0c', border: 'none', borderRadius: 2, backgroundColor: C.purple, cursor: 'pointer', fontWeight: 700 }}>Apply to F3 →</button>
-            </div>
+          {/* Sub-tab toggle */}
+          <div style={{ display: 'flex', borderBottom: `1px solid ${C.border}`, backgroundColor: '#0d0d12' }}>
+            {([
+              { id: 'f2' as const, label: '⋮≡ F2 PROJECTIONS', sub: 'Year-by-year output reads — current model vs M08 overlay', count: '11 fields' },
+              { id: 'f3' as const, label: '⊕ F3 ASSUMPTIONS', sub: 'Input reads + proposed writes back to F3', count: '2 overrides · 1 new' },
+            ]).map(t => (
+              <button key={t.id} onClick={e => { e.stopPropagation(); setActiveSource(t.id); }} style={{ padding: '8px 14px', border: 'none', borderBottom: `2px solid ${activeSource === t.id ? C.purple : 'transparent'}`, backgroundColor: 'transparent', cursor: 'pointer', textAlign: 'left' as const }}>
+                <div style={{ ...mono, color: activeSource === t.id ? C.purple : C.textMuted, fontSize: 10, fontWeight: 700 }}>{t.label}</div>
+                <div style={{ color: C.textMuted, fontSize: 9, marginTop: 1 }}>{t.sub} · <span style={{ color: activeSource === t.id ? C.purple : C.textMuted }}>{t.count}</span></div>
+              </button>
+            ))}
           </div>
+
+          {/* F2 — Projections reads */}
+          {activeSource === 'f2' && (
+            <div>
+              <div style={{ padding: '6px 14px', backgroundColor: `${C.green}06`, borderBottom: `1px solid ${C.border}`, display: 'flex', gap: 24 }}>
+                {[
+                  ['Exit Value (F2 model)', '$31.8M', C.textMuted],
+                  ['Exit Value (M08 capture)', '$40.2M', C.green],
+                  ['Incremental Value', '+$8.4M', C.green],
+                  ['From NOI uplift', '+$360K fwd NOI', C.cyan],
+                  ['From cap compression', '-25bps exit cap', C.cyan],
+                ].map(([l, v, col]) => (
+                  <div key={l as string}>
+                    <div style={{ color: C.textMuted, fontSize: 9 }}>{l}</div>
+                    <div style={{ ...mono, color: col as string, fontSize: 12, fontWeight: 700 }}>{v}</div>
+                  </div>
+                ))}
+              </div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                <thead>
+                  <tr style={{ backgroundColor: '#0d0d12' }}>
+                    {['F2 Field (Projections)', 'Current Model', 'M08 Comp-Overlay', 'Delta', 'How M08 Changes This'].map(h => (
+                      <th key={h} style={{ ...mono, textAlign: 'left', padding: '4px 10px', color: C.textMuted, fontSize: 9, fontWeight: 600, letterSpacing: '0.08em', borderBottom: `1px solid ${C.border}` }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {f2Reads.map((r, i) => (
+                    <tr key={i} style={{ backgroundColor: i % 2 === 0 ? 'transparent' : `${C.border}15`, borderBottom: `1px solid ${C.border}10` }}>
+                      <td style={{ padding: '5px 10px', color: C.textMuted, fontSize: 10 }}>{r.label}</td>
+                      <td style={{ ...mono, padding: '5px 10px', color: C.textMuted, fontSize: 11 }}>{r.f2Value}</td>
+                      <td style={{ ...mono, padding: '5px 10px', color: C.textPrimary, fontWeight: 600, fontSize: 11 }}>{r.m08Value}</td>
+                      <td style={{ ...mono, padding: '5px 10px', color: r.deltaColor, fontWeight: 700, fontSize: 11 }}>{r.delta}</td>
+                      <td style={{ padding: '5px 10px', color: C.textMuted, fontSize: 10 }}>{r.note}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div style={{ padding: '8px 14px', borderTop: `1px solid ${C.border}`, backgroundColor: `${C.green}08`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: C.textMuted, fontSize: 10 }}>
+                  F2 is <span style={{ ...mono, color: C.textPrimary }}>read-only</span> from M08 — these are the current model outputs. M08 writes its overlay back through <span style={{ ...mono, color: C.purple }}>F3 Assumptions</span>, which re-computes F2 projections.
+                </span>
+                <button style={{ ...mono, fontSize: 9, padding: '3px 10px', color: C.cyan, border: `1px solid ${C.cyan}40`, borderRadius: 2, backgroundColor: `${C.cyan}10`, cursor: 'pointer' }}>Open F2 in new panel →</button>
+              </div>
+            </div>
+          )}
+
+          {/* F3 — Assumptions reads + writes */}
+          {activeSource === 'f3' && (
+            <div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                <thead>
+                  <tr style={{ backgroundColor: '#0d0d12' }}>
+                    {['F3 Field', 'F3 Current (Broker/T12)', 'M08 Comp-Derived', 'Action', 'Rationale'].map(h => (
+                      <th key={h} style={{ ...mono, textAlign: 'left', padding: '4px 10px', color: C.textMuted, fontSize: 9, fontWeight: 600, letterSpacing: '0.08em', borderBottom: `1px solid ${C.border}` }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {f3Reads.map((r, i) => (
+                    <tr key={i} style={{ backgroundColor: r.status === 'override' ? `${C.amber}06` : r.status === 'new' ? `${C.purple}06` : 'transparent', borderBottom: `1px solid ${C.border}15` }}>
+                      <td style={{ padding: '5px 10px', color: C.textMuted, fontSize: 10 }}>{r.label}</td>
+                      <td style={{ ...mono, padding: '5px 10px', color: r.status === 'override' || r.status === 'nudge' ? C.textMuted : C.textPrimary, textDecoration: r.status === 'override' ? 'line-through' : 'none', fontSize: 11 }}>{r.f3Value}</td>
+                      <td style={{ ...mono, padding: '5px 10px', color: statusColor[r.status], fontWeight: 600, fontSize: 11 }}>{r.m08Value}</td>
+                      <td style={{ padding: '5px 10px' }}>
+                        <span style={{ ...mono, fontSize: 8, color: statusColor[r.status], backgroundColor: `${statusColor[r.status]}15`, border: `1px solid ${statusColor[r.status]}35`, borderRadius: 2, padding: '1px 5px', whiteSpace: 'nowrap' as const }}>{statusLabel[r.status]}</span>
+                      </td>
+                      <td style={{ padding: '5px 10px', color: C.textMuted, fontSize: 10 }}>{r.note}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div style={{ padding: '8px 14px', borderTop: `1px solid ${C.border}`, backgroundColor: `${C.purple}08`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <FileText size={11} color={C.purple} />
+                  <span style={{ color: C.textMuted, fontSize: 10 }}>
+                    Computed from: <span style={{ ...mono, color: C.purple }}>Bell Tech Corridor comp set · {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button style={{ ...mono, fontSize: 9, padding: '3px 10px', color: C.purple, border: `1px solid ${C.purple}50`, borderRadius: 2, backgroundColor: `${C.purple}15`, cursor: 'pointer' }}>Review All Changes</button>
+                  <button style={{ ...mono, fontSize: 9, padding: '3px 10px', color: '#0a0a0c', border: 'none', borderRadius: 2, backgroundColor: C.purple, cursor: 'pointer', fontWeight: 700 }}>Apply to F3 → Re-compute F2</button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -564,8 +647,8 @@ export function StrategiesTab() {
         {/* 0a. Claude Asset-Class Adapter */}
         <AssetClassAdapter activeClass={activeAssetClass} onSelect={setActiveAssetClass} />
 
-        {/* 0b. F3 Assumptions Integration Panel */}
-        <F3IntegrationPanel assetClass={activeAssetClass} />
+        {/* 0b. F2 + F3 Data Integration Panel */}
+        <DataIntegrationPanel assetClass={activeAssetClass} />
 
         {/* 1. Detection Banner */}
         <div style={{ borderLeft: `3px solid ${C.cyan}`, backgroundColor: C.panel, border: `1px solid ${C.border}`, borderLeft: `3px solid ${C.cyan}`, padding: '12px 16px', marginBottom: 16, borderRadius: 2 }}>
