@@ -71,7 +71,7 @@ export interface PlaybookRow {
   instanceCount: number;
   confidence: number;
   status: 'preliminary' | 'publishable';
-  lagStructure: Record<string, unknown>;
+  lagStructure: Record<string, Record<string, unknown>>;
   scalingCoefficients: Record<string, number>;
   isSeeded: boolean;
   lastUpdated: Date;
@@ -109,7 +109,7 @@ export interface Playbook {
   instanceCount: number;
   confidence: number;
   status: 'preliminary' | 'publishable';
-  lagStructure: Record<string, unknown>;
+  lagStructure: Record<string, Record<string, unknown>>;
   scalingCoefficients: Record<string, number>;
   metrics: PlaybookMetricWindow[];
   lastUpdated: Date | null;
@@ -482,6 +482,15 @@ export async function getPlaybook(
   const avgConf = data.reduce((s, r) => s + Number(r.confidence), 0) / data.length;
   const overallStatus = maxN >= MIN_PUBLISHABLE ? 'publishable' : 'preliminary';
 
+  // Build per-metric lag structure map — lag_structure is metric-level (same object stored in every
+  // window row for the same metric), so deduplicate by taking the first non-empty entry per metric_key.
+  const lagStructureMap: Record<string, Record<string, unknown>> = {};
+  for (const r of data) {
+    if (r.lag_structure && Object.keys(r.lag_structure).length > 0 && !lagStructureMap[r.metric_key]) {
+      lagStructureMap[r.metric_key] = r.lag_structure as Record<string, unknown>;
+    }
+  }
+
   return {
     subtype,
     displayName: tax.rows[0]?.display_name ?? subtype,
@@ -490,7 +499,7 @@ export async function getPlaybook(
     instanceCount: maxN,
     confidence: Math.round(avgConf * 100) / 100,
     status: overallStatus,
-    lagStructure: first.lag_structure ?? {},
+    lagStructure: lagStructureMap,
     scalingCoefficients: first.scaling_coefficients ?? {},
     metrics: data.map(r => ({
       metricKey: r.metric_key,
