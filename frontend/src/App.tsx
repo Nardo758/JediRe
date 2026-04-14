@@ -24,6 +24,7 @@ import AdminToolsPage from './pages/admin/AdminToolsPage';
 import DealDetailPage from './pages/DealDetailPage';
 import DealCapsulesPage from './pages/DealCapsulesPage';
 import CapsuleDetailPage from './pages/CapsuleDetailPage';
+import M35EventDetailPage from './pages/m35/M35EventDetailPage';
 import { LeasingForecastPage } from './pages/LeasingForecastPage';
 import DealFlywheelDashboard from './pages/deal/DealFlywheelDashboard';
 import PortfolioPropertyPage from './pages/PortfolioPropertyPage';
@@ -132,6 +133,7 @@ function AppContent() {
         <Route path="/market-intelligence/property/:id" element={<PropertyDetailsPage />} />
         <Route path="/capsules" element={<DealCapsulesPage />} />
         <Route path="/capsules/:id" element={<CapsuleDetailPage />} />
+        <Route path="/events/:eventId" element={<M35EventDetailPage />} />
         <Route path="/leasing-forecast/:propertyId" element={<LeasingForecastPage />} />
         <Route path="/assets-owned/:dealId/property" element={<PortfolioPropertyPage />} />
         <Route path="/property-card" element={<Suspense fallback={<PageLoadingFallback />}><PropertyCardPage /></Suspense>} />

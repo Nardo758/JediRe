@@ -33,6 +33,7 @@ import { MSANewsTab } from './tabs/msa/MSANewsTab';
 import { MSACompareTab } from './tabs/msa/MSACompareTab';
 import { MSAOwnersTab } from './tabs/msa/MSAOwnersTab';
 import { MSAPropertiesTab } from './tabs/msa/MSAPropertiesTab';
+import { MSAEventsTab } from './tabs/msa/MSAEventsTab';
 
 export const MSA_TABS: TabDef[] = [
   { key: 'overview', label: 'OVERVIEW', num: 0 },
@@ -47,9 +48,10 @@ export const MSA_TABS: TabDef[] = [
   { key: 'trends', label: 'TRENDS', num: 9 },
   { key: 'news', label: 'NEWS', num: 10 },
   { key: 'compare', label: 'COMPARE', num: 11 },
+  { key: 'events', label: 'EVENTS ⚡', num: 12 },
 ];
 
-export type MSATabKey = 'overview' | 'submarkets' | 'deals' | 'rankings' | 'properties' | 'owners' | 'supply' | 'capital' | 'economics' | 'trends' | 'news' | 'compare';
+export type MSATabKey = 'overview' | 'submarkets' | 'deals' | 'rankings' | 'properties' | 'owners' | 'supply' | 'capital' | 'economics' | 'trends' | 'news' | 'compare' | 'events';
 
 export interface MSAData {
   id: string;
@@ -209,6 +211,8 @@ export const MSATerminal: React.FC<MSATerminalProps> = ({
         return <MSANewsTab msaId={msaId} msa={msa} />;
       case 'compare':
         return <MSACompareTab msaId={msaId} msa={msa} />;
+      case 'events':
+        return <MSAEventsTab msaId={msaId} msa={msa} />;
       default:
         return null;
     }

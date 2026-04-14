@@ -3,7 +3,7 @@
  */
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { Newspaper, TrendingUp, Building2, Briefcase, AlertTriangle } from 'lucide-react';
+import { Newspaper, TrendingUp, Building2, Briefcase, AlertTriangle, Activity, ChevronDown, ChevronRight, ArrowRight } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
 import { TerminalSection } from '../../TerminalLayouts';
 import { MSAData } from '../../MSATerminal';
@@ -32,6 +32,110 @@ interface MarketAlert {
   severity: 'high' | 'medium' | 'low';
   timestamp: string;
 }
+
+/* ─── M35 Structured Events Collapsible Subsection ─── */
+const M35_EVENTS_PREVIEW = [
+  { emoji: '📣', name: 'Amazon HQ2 Tampa', scope: 'Submarket', timing: 'T+8mo', status: 'FIRED', statusColor: '#10B981', metric: 'Rent Growth +1.4pp', metricColor: '#10B981', tracking: 'AHEAD', trackColor: '#10B981' },
+  { emoji: '🚆', name: 'BRT Phase 2 Extension', scope: 'Submarket', timing: 'T-4mo', status: 'PENDING', statusColor: '#D97706', metric: 'Cap Rate -25bps', metricColor: '#10B981', tracking: 'ON TARGET', trackColor: '#A0ABBE' },
+  { emoji: '📜', name: 'FL Insurance Rate Cap', scope: 'State', timing: 'T+2mo', status: 'FIRED', statusColor: '#10B981', metric: 'OpEx -4.2%', metricColor: '#EF4444', tracking: 'AHEAD', trackColor: '#10B981' },
+];
+
+const M35EventsSubsection: React.FC<{ msaName: string }> = ({ msaName }) => {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div style={{ marginTop: 16 }}>
+      {/* Header bar — always visible */}
+      <div
+        onClick={() => setExpanded((v) => !v)}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '10px 14px', background: '#131929', cursor: 'pointer',
+          border: '1px solid #1E2538', borderLeft: '3px solid #0891B2',
+          borderRadius: expanded ? '4px 4px 0 0' : 4,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Activity style={{ width: 14, height: 14, color: '#0891B2' }} />
+          <span style={{ color: '#0891B2', fontSize: 11, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+            M35 Structured Events
+          </span>
+          {expanded
+            ? <ChevronDown style={{ width: 14, height: 14, color: '#0891B2' }} />
+            : <ChevronRight style={{ width: 14, height: 14, color: '#0891B2' }} />}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, fontSize: 11, fontFamily: 'monospace', color: '#6B7A8D' }}>
+          <span><span style={{ color: '#E2E8F0' }}>5</span> active | <span style={{ color: '#E2E8F0' }}>2</span> transformative | Last classified: 3 min ago</span>
+          <button
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: 'none', border: 'none', color: '#0891B2', fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+          >
+            Open Full Event Module <ArrowRight style={{ width: 10, height: 10 }} />
+          </button>
+        </div>
+      </div>
+
+      {/* Expanded content */}
+      {expanded && (
+        <div style={{ background: '#0B0E1A', border: '1px solid #1E2538', borderTop: 'none', borderLeft: '3px solid #0891B2', borderRadius: '0 0 4px 4px', padding: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* Event density strip */}
+          <div style={{ width: '100%', height: 64, background: '#131929', border: '1px solid #1E2538', position: 'relative', borderRadius: 4, overflow: 'hidden', display: 'flex', alignItems: 'flex-end', padding: '0 12px' }}>
+            <div style={{ position: 'absolute', top: 6, width: '100%', left: 0, paddingRight: 32, display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#6B7A8D', fontFamily: 'monospace' }}>
+              {['T-18mo', 'T-12mo', 'T-6mo', 'TODAY', 'T+6mo', 'T+12mo'].map((l) => (
+                <span key={l} style={l === 'TODAY' ? { color: '#0891B2' } : {}}>{l}</span>
+              ))}
+            </div>
+            <div style={{ position: 'absolute', top: '10%', left: '12%', width: 2, height: '50%', background: '#0891B2', borderRadius: 1 }}></div>
+            <div style={{ position: 'absolute', top: '25%', left: '30%', width: 2, height: '35%', background: '#6B7A8D', borderRadius: 1 }}></div>
+            <div style={{ position: 'absolute', top: '15%', left: '75%', width: 4, height: '55%', background: '#0891B2', borderRadius: 1 }}></div>
+            <div style={{ position: 'absolute', top: '30%', left: '85%', width: 2, height: '30%', background: '#6B7A8D', borderRadius: 1 }}></div>
+            <div style={{ position: 'absolute', left: '60%', top: 0, bottom: 0, width: 1, borderLeft: '1px dashed #0891B2', opacity: 0.5 }}></div>
+          </div>
+
+          {/* Event cards — 3-column grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+            {M35_EVENTS_PREVIEW.map((ev) => (
+              <div
+                key={ev.name}
+                style={{ background: '#131929', border: '1px solid #1E2538', borderLeft: '3px solid #0891B2', borderRadius: 4, padding: 14, display: 'flex', flexDirection: 'column', gap: 10, cursor: 'pointer' }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ padding: 6, background: '#0B0E1A', borderRadius: 4, fontSize: 14 }}>{ev.emoji}</div>
+                    <span style={{ fontWeight: 700, fontSize: 13, color: '#E2E8F0' }}>{ev.name}</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <span style={{ padding: '1px 6px', fontSize: 9, fontFamily: 'monospace', textTransform: 'uppercase', background: '#0B0E1A', color: '#6B7A8D', border: '1px solid #1E2538', borderRadius: 2 }}>{ev.scope}</span>
+                    <span style={{ padding: '1px 6px', fontSize: 9, fontFamily: 'monospace', textTransform: 'uppercase', background: `${ev.statusColor}1A`, color: ev.statusColor, border: `1px solid ${ev.statusColor}33`, borderRadius: 2 }}>{ev.status}</span>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#0891B2' }}></div>
+                    <span style={{ fontFamily: 'monospace', color: '#0891B2' }}>{ev.timing}</span>
+                  </div>
+                  <span style={{ fontSize: 10, fontFamily: 'monospace', background: 'rgba(226,232,240,0.1)', color: '#E2E8F0', padding: '2px 6px', borderRadius: 2 }}>87% CONF</span>
+                </div>
+                <div style={{ fontSize: 12, color: '#A0ABBE', display: 'flex', flexDirection: 'column', gap: 4, borderTop: '1px solid #1E2538', paddingTop: 10 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Primary metric:</span>
+                    <span style={{ fontFamily: 'monospace', color: ev.metricColor }}>{ev.metric}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Tracking:</span>
+                    <span style={{ fontFamily: 'monospace', color: ev.trackColor }}>{ev.tracking}</span>
+                  </div>
+                </div>
+                <div style={{ fontSize: 11, color: '#0891B2', fontWeight: 700, letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  VIEW FULL IMPACT <ArrowRight style={{ width: 10, height: 10 }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const MSANewsTab: React.FC<MSANewsTabProps> = ({ msaId, msa }) => {
   const [expandedNews, setExpandedNews] = useState<string | null>(null);
@@ -270,6 +374,9 @@ export const MSANewsTab: React.FC<MSANewsTabProps> = ({ msaId, msa }) => {
           )}
         </div>
       )}
+
+      {/* M35 Structured Events Collapsible Subsection */}
+      <M35EventsSubsection msaName={msaName} />
     </div>
   );
 };

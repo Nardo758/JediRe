@@ -3,13 +3,13 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, Share2, Download, TrendingUp, Building2, 
   DollarSign, AlertTriangle, CheckCircle, Target,
-  BarChart3, MessageSquare, Loader2
+  BarChart3, MessageSquare, Loader2, Activity, ChevronDown, ChevronUp, ArrowRight
 } from 'lucide-react';
 import { ThreeColumnComparison } from '../components/deal/ThreeColumnComparison';
 import { apiClient } from '../services/api.client';
 import { useAuthStore } from '../stores/authStore';
 
-type TabId = 'overview' | 'layers' | 'collision' | 'training' | 'ai-agent';
+type TabId = 'overview' | 'layers' | 'collision' | 'training' | 'ai-agent' | 'intelligence';
 
 interface CapsuleData {
   id: string;
@@ -79,6 +79,207 @@ const DEFAULT_COLLISION: Record<string, CollisionResult> = {
   broker_validation: { score: 0, insight: 'No collision data available.', recommended_action: 'Run full analysis to generate collision scores.' },
   risk_assessment: { score: 0, insight: 'No collision data available.', recommended_action: 'Run full analysis to generate collision scores.' },
   execution_confidence: { score: 0, insight: 'No collision data available.', recommended_action: 'Run full analysis to generate collision scores.' },
+};
+
+/* ─── Capsule Intelligence View (M35 graduation) ─── */
+const CAPSULE_FEED = [
+  { emoji: '📣', headline: 'Amazon HQ2 Confirmed — 25,000 Jobs', source: 'WSJ', age: '3h', sentiment: 'POSITIVE', sentimentColor: '#10B981', eventRef: '#127' },
+  { emoji: '📊', headline: '10Y Treasury: 4.82% ↑0.06bps', source: 'Bloomberg', age: '12h', sentiment: 'NEUTRAL', sentimentColor: '#A0ABBE', eventRef: null },
+  { emoji: '🏗️', headline: 'Westshore Supply Pipeline: 1,200 New Units by Q4', source: 'CoStar', age: '2d', sentiment: 'NEUTRAL', sentimentColor: '#A0ABBE', eventRef: null },
+  { emoji: '📜', headline: 'FL Insurance Reform Advances in Senate', source: 'Sun Sentinel', age: '3d', sentiment: 'POSITIVE', sentimentColor: '#10B981', eventRef: '#203' },
+  { emoji: '💰', headline: 'SOFR: 5.31% | Agency Spreads +12bps', source: 'Trepp', age: '4d', sentiment: 'NEUTRAL', sentimentColor: '#A0ABBE', eventRef: null },
+];
+
+const CAPSULE_M35_EVENTS = [
+  { scope: 'MSA', name: 'Amazon HQ2 Tampa', status: 'FIRED T+8MO', statusColor: '#10B981', tracking: 'AHEAD', trackColor: '#10B981', proximity: '0.74', proxNote: '2.1mi from site', irrImpact: '+1.8pp by Y2', rentImpact: '+1.4pp projected at T+12', leftColor: '#0891B2' },
+  { scope: 'Submarket', name: 'Tampa BRT Phase 2', status: 'PENDING T-4MO', statusColor: '#D97706', tracking: null, trackColor: null, proximity: '0.94', proxNote: 'very close', irrImpact: null, rentImpact: '+$85/unit by Y2 via transit proximity', leftColor: '#6B7A8D' },
+  { scope: 'State', name: 'FL Insurance Rate Cap', status: 'PENDING T+2MO', statusColor: '#D97706', tracking: null, trackColor: null, proximity: null, proxNote: null, irrImpact: null, rentImpact: null, insuranceNote: '-4% expense vs baseline by Y1', conf: '85%', leftColor: '#6B7A8D' },
+];
+
+const CapsuleIntelligenceView: React.FC<{ address?: string }> = ({ address }) => {
+  const [activeMetric, setActiveMetric] = useState('Rent Growth');
+  const [eventsExpanded, setEventsExpanded] = useState(false);
+  const [feedFilter, setFeedFilter] = useState('All');
+
+  return (
+    <div className="w-full min-h-[600px] rounded-lg overflow-hidden font-mono" style={{ background: '#0B0E1A', color: '#E2E8F0' }}>
+      <div className="p-5 flex flex-col gap-6">
+        {/* Header */}
+        <div className="flex flex-col gap-1">
+          {address && <div className="text-xs" style={{ color: '#6B7A8D' }}>{address}</div>}
+          <h2 className="text-xl font-semibold tracking-wide uppercase" style={{ color: '#E2E8F0' }}>Deal & Market Intelligence</h2>
+        </div>
+
+        {/* Raw Intelligence Feed */}
+        <section className="flex flex-col gap-3">
+          <div className="flex items-center gap-2">
+            <div className="flex-1 flex items-center">
+              <span className="text-[10px] whitespace-nowrap mr-2 tracking-widest uppercase" style={{ color: '#6B7A8D' }}>── Deal & Market Intelligence</span>
+              <div className="h-px w-full" style={{ background: '#1E2538' }}></div>
+              <span className="text-[10px] whitespace-nowrap ml-2 tracking-widest uppercase px-1.5 py-0.5 rounded" style={{ color: '#0891B2', background: 'rgba(8,145,178,0.1)' }}>M06 Pipeline</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 text-[10px]">
+            {['All', 'Macro', 'Local', 'Rates', 'Regulatory'].map((f) => (
+              <button
+                key={f}
+                onClick={() => setFeedFilter(f)}
+                className="px-2 py-1 rounded border transition-colors"
+                style={{
+                  background: feedFilter === f ? '#1E2538' : 'transparent',
+                  color: feedFilter === f ? '#E2E8F0' : '#6B7A8D',
+                  borderColor: '#1E2538',
+                }}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex flex-col rounded overflow-hidden border" style={{ borderColor: '#1E2538', background: '#131929' }}>
+            {CAPSULE_FEED.map((item, i, arr) => (
+              <div
+                key={item.headline}
+                className="flex items-center justify-between p-2.5 cursor-pointer transition-colors group"
+                style={{ borderBottom: i < arr.length - 1 ? '1px solid #1E2538' : 'none' }}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-sm">{item.emoji}</span>
+                  <span className="text-sm" style={{ color: '#E2E8F0' }}>{item.headline}</span>
+                  <span className="text-xs" style={{ color: '#6B7A8D' }}>{item.source}</span>
+                  <span className="text-xs" style={{ color: '#6B7A8D' }}>{item.age}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-[10px] px-1 rounded border" style={{ color: item.sentimentColor, background: `${item.sentimentColor}1A`, borderColor: `${item.sentimentColor}4D` }}>
+                    {item.sentiment}
+                  </span>
+                  {item.eventRef && (
+                    <span className="text-[10px] flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: '#0891B2' }}>
+                      → EVENT {item.eventRef}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* M35 Structured Events Collapsible */}
+        <section className="flex flex-col rounded overflow-hidden border" style={{ borderColor: '#1E2538' }}>
+          <div
+            onClick={() => setEventsExpanded((v) => !v)}
+            className="h-12 flex items-center justify-between px-4 cursor-pointer transition-colors"
+            style={{ background: '#131929', borderLeft: '2px solid #0891B2', boxShadow: 'inset 0 0 20px rgba(217,119,6,0.05)' }}
+          >
+            <div className="flex items-center gap-2" style={{ color: '#0891B2' }}>
+              {eventsExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              <span className="text-[11px] uppercase tracking-widest font-semibold flex items-center gap-2">
+                <Activity size={14} />
+                M35 STRUCTURED EVENTS — THIS DEAL
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-[10px]">
+              <span className="px-2 py-1 rounded border" style={{ background: '#1E2538', color: '#A0ABBE', borderColor: 'rgba(107,122,141,0.3)' }}>1 FIRED</span>
+              <span className="px-2 py-1 rounded border" style={{ background: '#1E2538', color: '#A0ABBE', borderColor: 'rgba(107,122,141,0.3)' }}>2 PENDING</span>
+              <span className="px-2 py-1 rounded border" style={{ background: '#1E2538', color: '#E2E8F0', borderColor: 'rgba(107,122,141,0.3)' }}>42% OF IRR FROM EVENTS</span>
+              <div className="flex items-center gap-1 px-2 py-1 rounded border font-semibold" style={{ background: 'rgba(239,68,68,0.1)', color: '#EF4444', borderColor: 'rgba(239,68,68,0.3)' }}>
+                EVENT SENSITIVITY: HIGH <AlertTriangle size={10} />
+              </div>
+              <div className="flex items-center gap-1 text-xs" style={{ color: '#0891B2' }}>
+                View Full Impact <ArrowRight size={12} />
+              </div>
+            </div>
+          </div>
+
+          {eventsExpanded && (
+            <div className="p-4 flex flex-col gap-4 border-t" style={{ background: '#0B0E1A', borderColor: '#1E2538' }}>
+              {/* Mini chart */}
+              <div className="rounded p-4 flex flex-col gap-4 border" style={{ background: '#131929', borderColor: '#1E2538' }}>
+                <div className="flex items-center gap-4 text-xs">
+                  {['Rent Growth', 'Cap Rate', 'Absorption', 'Permits'].map((m) => (
+                    <button
+                      key={m}
+                      onClick={() => setActiveMetric(m)}
+                      className="flex items-center gap-1.5 pb-1 border-b-2 transition-colors"
+                      style={{
+                        borderBottomColor: activeMetric === m ? '#0891B2' : 'transparent',
+                        color: activeMetric === m ? '#E2E8F0' : '#6B7A8D',
+                      }}
+                    >
+                      {m}{activeMetric === m && <span style={{ color: '#0891B2' }}>●</span>}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="relative h-[150px] w-full border-t border-b" style={{ borderColor: '#1E2538' }}>
+                  <div className="absolute left-0 top-0 h-full flex flex-col justify-between py-2 text-[10px]" style={{ color: '#6B7A8D' }}>
+                    <span>+6%</span><span>+3%</span><span>0%</span><span>-3%</span>
+                  </div>
+                  <svg className="w-full h-full ml-8" viewBox="0 0 800 150" preserveAspectRatio="none">
+                    <line x1="0" y1="37" x2="800" y2="37" stroke="#1E2538" strokeWidth="1" strokeDasharray="4 4" />
+                    <line x1="0" y1="75" x2="800" y2="75" stroke="#1E2538" strokeWidth="1" />
+                    <line x1="0" y1="112" x2="800" y2="112" stroke="#1E2538" strokeWidth="1" strokeDasharray="4 4" />
+                    <rect x="250" y="0" width="100" height="150" fill="#0891B2" fillOpacity="0.05" />
+                    <path d="M 0 100 Q 100 92, 200 79 T 350 67 T 450 50" fill="none" stroke="#0891B2" strokeWidth="2" />
+                    <path d="M 450 50 L 800 17 L 800 83 Z" fill="#0891B2" fillOpacity="0.1" />
+                    <path d="M 450 50 Q 600 37, 800 29" fill="none" stroke="#0891B2" strokeWidth="2" strokeDasharray="4 4" />
+                    <g transform="translate(250,0)">
+                      <line x1="0" y1="16" x2="0" y2="150" stroke="#6B7A8D" strokeWidth="1" />
+                      <text x="5" y="13" fill="#6B7A8D" fontSize="10" fontFamily="monospace">T-8</text>
+                    </g>
+                    <g transform="translate(350,0)">
+                      <line x1="0" y1="16" x2="0" y2="150" stroke="#0891B2" strokeWidth="1" strokeDasharray="2 2" />
+                      <text x="5" y="13" fill="#0891B2" fontSize="10" fontFamily="monospace">T-4</text>
+                    </g>
+                    <g transform="translate(500,0)">
+                      <line x1="0" y1="16" x2="0" y2="150" stroke="#6B7A8D" strokeWidth="1" strokeDasharray="2 2" />
+                      <text x="5" y="13" fill="#6B7A8D" fontSize="10" fontFamily="monospace">T+2</text>
+                    </g>
+                  </svg>
+                </div>
+              </div>
+
+              {/* Event cards */}
+              <div className="flex flex-col gap-2">
+                {CAPSULE_M35_EVENTS.map((ev) => (
+                  <div
+                    key={ev.name}
+                    className="rounded-r flex flex-col gap-2 cursor-pointer border transition-colors p-3"
+                    style={{ background: '#131929', borderLeft: `2px solid ${ev.leftColor}`, borderColor: '#1E2538' }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="px-1.5 py-0.5 rounded text-[10px]" style={{ background: '#1E2538', color: '#A0ABBE' }}>{ev.scope}</span>
+                        <span className="text-sm font-semibold" style={{ color: '#E2E8F0' }}>{ev.name}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="px-1.5 py-0.5 rounded border text-[10px]" style={{ background: `${ev.statusColor}1A`, borderColor: `${ev.statusColor}4D`, color: ev.statusColor }}>{ev.status}</span>
+                        {ev.tracking && <span className="text-[10px]" style={{ color: ev.trackColor ?? '#A0ABBE' }}>{ev.tracking}</span>}
+                        {ev.conf && <span className="text-[10px]" style={{ color: '#6B7A8D' }}>{ev.conf} CONFIDENCE</span>}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4 text-xs" style={{ color: '#A0ABBE' }}>
+                      {ev.proximity && <span>Proximity: <strong style={{ color: '#E2E8F0' }}>{ev.proximity}</strong> ({ev.proxNote})</span>}
+                      {ev.irrImpact && <span>IRR impact: <strong style={{ color: '#10B981' }}>{ev.irrImpact}</strong></span>}
+                      {ev.rentImpact && <span><strong style={{ color: '#10B981' }}>{ev.rentImpact}</strong></span>}
+                      {ev.insuranceNote && <span>Insurance expense: <strong style={{ color: '#10B981' }}>{ev.insuranceNote}</strong></span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Summary row */}
+              <div className="flex items-center gap-3 text-[10px]">
+                <div className="px-2 py-1 rounded-full border" style={{ background: '#131929', borderColor: '#1E2538', color: '#A0ABBE' }}>3 events drive 42% of IRR uplift</div>
+                <div className="px-2 py-1 rounded-full border" style={{ background: '#131929', borderColor: '#1E2538', color: '#A0ABBE' }}>Highest: <span style={{ color: '#E2E8F0' }}>Amazon HQ2</span> (+1.4pp rent)</div>
+              </div>
+            </div>
+          )}
+        </section>
+      </div>
+    </div>
+  );
 };
 
 const CapsuleDetailPage: React.FC = () => {
@@ -224,7 +425,8 @@ const CapsuleDetailPage: React.FC = () => {
               { id: 'layers' as const, label: 'Three Layers', icon: Target },
               { id: 'collision' as const, label: 'Collision Analysis', icon: AlertTriangle },
               { id: 'training' as const, label: 'Training', icon: Target },
-              { id: 'ai-agent' as const, label: 'AI Agent', icon: MessageSquare }
+              { id: 'ai-agent' as const, label: 'AI Agent', icon: MessageSquare },
+              { id: 'intelligence' as const, label: 'Intelligence', icon: Activity }
             ] satisfies { id: TabId; label: string; icon: typeof BarChart3 }[]).map((tab) => {
               const Icon = tab.icon;
               return (
@@ -731,6 +933,10 @@ const CapsuleDetailPage: React.FC = () => {
               </div>
             </div>
           </div>
+        )}
+
+        {activeTab === 'intelligence' && (
+          <CapsuleIntelligenceView address={capsule?.property_address} />
         )}
       </div>
     </div>
