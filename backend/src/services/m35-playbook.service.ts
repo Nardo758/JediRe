@@ -166,14 +166,20 @@ export async function aggregatePlaybook(
   const params: (string | number)[] = [subtype];
 
   if (msaTier !== 'all') {
-    const tierMsas = msaTier === 'large'
-      ? ['new-york', 'los-angeles', 'chicago', 'dallas', 'houston', 'atlanta', 'washington', 'miami', 'phoenix', 'philadelphia', 'boston', 'san-francisco', 'seattle']
-      : msaTier === 'small'
-      ? ['boise', 'fayetteville', 'macon', 'savannah', 'augusta', 'chattanooga']
-      : null;
-    if (tierMsas) {
-      params.push(tierMsas.join('|'));
+    const largeMsaPattern = 'new-york|los-angeles|chicago|dallas|houston|atlanta|washington|miami|phoenix|philadelphia|boston|san-francisco|seattle|detroit|minneapolis';
+    const smallMsaPattern = 'boise|fayetteville|macon|savannah|augusta|chattanooga|knoxville|greenville|columbia-sc|montgomery|tuscaloosa';
+    if (msaTier === 'large') {
+      params.push(largeMsaPattern);
       stratumClauses.push(`ke.msa_id ~ $${params.length}`);
+    } else if (msaTier === 'small') {
+      params.push(smallMsaPattern);
+      stratumClauses.push(`ke.msa_id ~ $${params.length}`);
+    } else {
+      // 'mid': explicitly exclude both large and small sets
+      params.push(largeMsaPattern);
+      stratumClauses.push(`ke.msa_id !~ $${params.length}`);
+      params.push(smallMsaPattern);
+      stratumClauses.push(`ke.msa_id !~ $${params.length}`);
     }
   }
   if (magnitude !== 'all') {
@@ -805,12 +811,25 @@ export async function seedHistoricalPlaybooks(): Promise<{ seeded: number; skipp
     seeded++;
   }
 
-  // 3) Aggregate all affected subtypes through the normal weighted pipeline
+  // 3) Aggregate all affected subtypes across every stratum combination.
+  // aggregatePlaybook() returns early when a stratum has no qualifying events,
+  // so empty combinations incur only a lightweight SELECT and no INSERT.
+  const SEED_MSA_TIERS    = ['all', 'large', 'mid', 'small'] as const;
+  const SEED_MAGNITUDES   = ['all', 'small', 'medium', 'large', 'transformative'] as const;
+  const SEED_REGIMES      = ['all', 'pre_covid', 'post_covid'] as const;
+  let strataCombinations  = 0;
   for (const subtype of subtypesAffected) {
-    await aggregatePlaybook(subtype, { msaTier: 'all', magnitude: 'all', regime: 'all' });
+    for (const msaTier of SEED_MSA_TIERS) {
+      for (const magnitude of SEED_MAGNITUDES) {
+        for (const regime of SEED_REGIMES) {
+          await aggregatePlaybook(subtype, { msaTier, magnitude, regime });
+          strataCombinations++;
+        }
+      }
+    }
   }
 
-  logger.info(`[M35 Playbook] Seed complete: ${seeded} events inserted, ${skipped} skipped; ${subtypesAffected.size} subtypes aggregated`);
+  logger.info(`[M35 Playbook] Seed complete: ${seeded} events inserted, ${skipped} skipped; ${subtypesAffected.size} subtypes × ${strataCombinations} strata aggregated`);
   return { seeded, skipped };
 }
 
