@@ -1,20 +1,20 @@
 /**
  * MSATerminal - Bloomberg-style MSA/Metro analytics dashboard
  * Top level in the hierarchy: MSA → Submarket → Property
- * 
+ *
  * Tabs (12 total):
  * [0] OVERVIEW      - Signal chart+metrics, commentary, alerts, supply, dev capacity
  * [1] SUBMARKETS    - 14-column matrix with Dev Capacity signals
  * [2] DEALS         - Pipeline kanban, quadrant filter, opportunities
- * [3] RANKINGS      - Power Rankings with PCS scores
- * [4] PROPERTIES    - Property listings and search
- * [5] OWNERS        - Owner analysis and portfolio data
- * [6] SUPPLY        - Supply wave forecast, phases
- * [7] CAPITAL       - Transaction volume, cap rate trends
- * [8] ECONOMICS     - Employment, population, income trends
- * [9] TRENDS        - Correlation, rent by vintage, JEDI history
- * [10] NEWS         - Metro market news
- * [11] COMPARE      - Compare to peer MSAs
+ * [3] PROPERTIES    - Map-based view: ranked properties + side panel (combined Rankings+Properties)
+ * [4] OWNERS        - Owner analysis and portfolio data
+ * [5] SUPPLY        - Supply wave forecast, phases
+ * [6] CAPITAL       - Transaction volume, cap rate trends
+ * [7] ECONOMICS     - Employment, population, income trends
+ * [8] TRENDS        - Correlation, rent by vintage, JEDI history
+ * [9] NEWS          - Metro market news
+ * [10] COMPARE      - Compare to peer MSAs
+ * [11] EVENTS ⚡    - M35 key events
  */
 
 import React, { useState, useEffect } from 'react';
@@ -24,7 +24,7 @@ import { MSAHeader } from './MSAHeader';
 import { MSAOverviewTab } from './tabs/msa/MSAOverviewTab';
 import { MSASubmarketsTab } from './tabs/msa/MSASubmarketsTab';
 import { MSADealsTab } from './tabs/msa/MSADealsTab';
-import { MSAPowerRankingsTab } from './tabs/msa/MSAPowerRankingsTab';
+import { MSAMarketMapTab } from './tabs/msa/MSAMarketMapTab';
 import { MSASupplyTab } from './tabs/msa/MSASupplyTab';
 import { MSACapitalTab } from './tabs/msa/MSACapitalTab';
 import { MSAEconomicsTab } from './tabs/msa/MSAEconomicsTab';
@@ -32,26 +32,24 @@ import { MSATrendsTab } from './tabs/msa/MSATrendsTab';
 import { MSANewsTab } from './tabs/msa/MSANewsTab';
 import { MSACompareTab } from './tabs/msa/MSACompareTab';
 import { MSAOwnersTab } from './tabs/msa/MSAOwnersTab';
-import { MSAPropertiesTab } from './tabs/msa/MSAPropertiesTab';
 import { MSAEventsTab } from './tabs/msa/MSAEventsTab';
 
 export const MSA_TABS: TabDef[] = [
   { key: 'overview', label: 'OVERVIEW', num: 0 },
   { key: 'submarkets', label: 'SUBMARKETS', num: 1 },
   { key: 'deals', label: 'DEALS', num: 2 },
-  { key: 'rankings', label: 'RANKINGS', num: 3 },
-  { key: 'properties', label: 'PROPERTIES', num: 4 },
-  { key: 'owners', label: 'OWNERS', num: 5 },
-  { key: 'supply', label: 'SUPPLY', num: 6 },
-  { key: 'capital', label: 'CAPITAL', num: 7 },
-  { key: 'economics', label: 'ECONOMICS', num: 8 },
-  { key: 'trends', label: 'TRENDS', num: 9 },
-  { key: 'news', label: 'NEWS', num: 10 },
-  { key: 'compare', label: 'COMPARE', num: 11 },
-  { key: 'events', label: 'EVENTS ⚡', num: 12 },
+  { key: 'properties', label: 'PROPERTIES', num: 3 },
+  { key: 'owners', label: 'OWNERS', num: 4 },
+  { key: 'supply', label: 'SUPPLY', num: 5 },
+  { key: 'capital', label: 'CAPITAL', num: 6 },
+  { key: 'economics', label: 'ECONOMICS', num: 7 },
+  { key: 'trends', label: 'TRENDS', num: 8 },
+  { key: 'news', label: 'NEWS', num: 9 },
+  { key: 'compare', label: 'COMPARE', num: 10 },
+  { key: 'events', label: 'EVENTS ⚡', num: 11 },
 ];
 
-export type MSATabKey = 'overview' | 'submarkets' | 'deals' | 'rankings' | 'properties' | 'owners' | 'supply' | 'capital' | 'economics' | 'trends' | 'news' | 'compare' | 'events';
+export type MSATabKey = 'overview' | 'submarkets' | 'deals' | 'properties' | 'owners' | 'supply' | 'capital' | 'economics' | 'trends' | 'news' | 'compare' | 'events';
 
 export interface MSAData {
   id: string;
@@ -86,7 +84,7 @@ interface MSATerminalProps {
   onPropertySelect?: (propertyId: string, propertyName?: string) => void;
   onDealSelect?: (dealId: string) => void;
   onBackToMarkets?: () => void;
-  embedded?: boolean; // Hide header/footer when embedded in F4MarketsView
+  embedded?: boolean;
 }
 
 export const MSATerminal: React.FC<MSATerminalProps> = ({
@@ -103,10 +101,8 @@ export const MSATerminal: React.FC<MSATerminalProps> = ({
   const [loading, setLoading] = useState(!msaProp);
   const [error, setError] = useState<string | null>(null);
 
-  // Keyboard navigation
   useTabKeyboard(activeTab, setActiveTab, MSA_TABS);
 
-  // Load MSA data if not provided
   useEffect(() => {
     if (msaProp) {
       setMsa(msaProp);
@@ -117,7 +113,6 @@ export const MSATerminal: React.FC<MSATerminalProps> = ({
     const loadMSA = async () => {
       try {
         setLoading(true);
-        // Mock data for now - would fetch from API
         const mockMSA: MSAData = {
           id: msaId,
           name: msaId === 'atlanta' ? 'Atlanta' : msaId.charAt(0).toUpperCase() + msaId.slice(1),
@@ -156,14 +151,13 @@ export const MSATerminal: React.FC<MSATerminalProps> = ({
     loadMSA();
   }, [msaId, msaProp]);
 
-  // Render active tab content
   const renderTabContent = () => {
     if (loading) {
       return (
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'center', 
-          alignItems: 'center', 
+        <div style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
           height: 400,
           color: BT.text.muted,
         }}>
@@ -174,10 +168,10 @@ export const MSATerminal: React.FC<MSATerminalProps> = ({
 
     if (error) {
       return (
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'center', 
-          alignItems: 'center', 
+        <div style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
           height: 400,
           color: BT.accent.red,
         }}>
@@ -193,10 +187,8 @@ export const MSATerminal: React.FC<MSATerminalProps> = ({
         return <MSASubmarketsTab msaId={msaId} msa={msa} onSelectSubmarket={onSubmarketSelect} />;
       case 'deals':
         return <MSADealsTab msaId={msaId} msa={msa} onSelectDeal={onDealSelect} />;
-      case 'rankings':
-        return <MSAPowerRankingsTab msaId={msaId} msa={msa} onSelectProperty={onPropertySelect} />;
       case 'properties':
-        return <MSAPropertiesTab msaId={msaId} msa={msa} onSelectProperty={onPropertySelect} />;
+        return <MSAMarketMapTab msaId={msaId} msa={msa} onSelectProperty={onPropertySelect} />;
       case 'owners':
         return <MSAOwnersTab msaId={msaId} msa={msa} onSelectProperty={onPropertySelect} />;
       case 'supply':
@@ -218,6 +210,8 @@ export const MSATerminal: React.FC<MSATerminalProps> = ({
     }
   };
 
+  const isMapTab = activeTab === 'properties';
+
   return (
     <div style={{
       display: 'flex',
@@ -227,30 +221,25 @@ export const MSATerminal: React.FC<MSATerminalProps> = ({
       color: BT.text.primary,
       fontFamily: embedded ? "'JetBrains Mono', monospace" : "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
     }}>
-      {/* Header - hidden when embedded */}
-      {!embedded && (
-        <MSAHeader 
-          msa={msa} 
-        />
-      )}
+      {!embedded && <MSAHeader msa={msa} />}
 
-      {/* Tab Bar */}
       <TerminalTabs
         tabs={MSA_TABS}
         activeTab={activeTab}
         onTabChange={(key) => setActiveTab(key as MSATabKey)}
       />
 
-      {/* Tab Content */}
+      {/* Tab Content — map tab gets no padding, fills height; others scroll normally */}
       <div style={{
         flex: 1,
-        overflow: 'auto',
-        padding: embedded ? 12 : 20,
+        overflow: isMapTab ? 'hidden' : 'auto',
+        padding: isMapTab ? 0 : (embedded ? 12 : 20),
+        display: isMapTab ? 'flex' : 'block',
+        flexDirection: isMapTab ? 'column' : undefined,
       }}>
         {renderTabContent()}
       </div>
 
-      {/* Footer Status Bar - hidden when embedded */}
       {!embedded && (
         <div style={{
           display: 'flex',
