@@ -346,9 +346,21 @@ export async function aggregatePlaybook(
     ]);
   }
 
-  // Bulk-insert provenance links into playbook_instances:
-  // links each event_playbooks row to its contributing event_impacts with the same weights.
-  // Stratum join params are appended AFTER the WHERE-clause params so indices stay consistent.
+  // Bulk-insert provenance links into playbook_instances.
+  // First, prune any stale links for the affected playbook rows — this handles the case where
+  // source impacts have been removed, quality-gated, or moved out of the stratum since the last run.
+  await pool.query(`
+    DELETE FROM playbook_instances
+    WHERE playbook_id IN (
+      SELECT ep.id FROM event_playbooks ep
+      WHERE ep.subtype            = $1
+        AND ep.stratum_msa_tier   = $2
+        AND ep.stratum_magnitude  = $3
+        AND ep.stratum_regime     = $4
+    )
+  `, [subtype, msaTier, magnitude, regime]);
+
+  // Then insert fresh links — stratum join params appended AFTER WHERE params.
   const piMsaIdx  = params.length + 1;
   const piMagIdx  = params.length + 2;
   const piRegIdx  = params.length + 3;

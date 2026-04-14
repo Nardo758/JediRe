@@ -38,12 +38,23 @@ router.get('/playbooks', async (req: Request, res: Response) => {
 router.get('/playbooks/:subtype', async (req: Request, res: Response) => {
   try {
     const { subtype } = req.params;
-    const { msaTier, magnitude, regime } = req.query as Record<string, string>;
+    const q = req.query as Record<string, string>;
+
+    // Accepts two equivalent query formats:
+    //   1. Compact: ?stratum=<msaTier>:<magnitude>:<regime>  (e.g. "large:medium:pre_covid")
+    //   2. Separate: ?msaTier=large&magnitude=medium&regime=pre_covid  (backwards-compatible)
+    let msaTier  = q.msaTier  ?? 'all';
+    let magnitude = q.magnitude ?? 'all';
+    let regime   = q.regime   ?? 'all';
+    if (q.stratum) {
+      const parts = q.stratum.split(':');
+      if (parts.length === 3) { [msaTier, magnitude, regime] = parts; }
+    }
 
     const stratum = {
-      msaTier: (['large', 'mid', 'small', 'all'].includes(msaTier) ? msaTier : 'all') as any,
-      magnitude: (['small', 'medium', 'large', 'transformative', 'all'].includes(magnitude) ? magnitude : 'all') as any,
-      regime: (['pre_covid', 'post_covid', 'all'].includes(regime) ? regime : 'all') as any,
+      msaTier:   (['large', 'mid', 'small', 'all'].includes(msaTier)                           ? msaTier   : 'all') as any,
+      magnitude: (['small', 'medium', 'large', 'transformative', 'all'].includes(magnitude)    ? magnitude : 'all') as any,
+      regime:    (['pre_covid', 'post_covid', 'all'].includes(regime)                          ? regime    : 'all') as any,
     };
 
     const playbook = await getPlaybook(subtype, stratum);

@@ -198,6 +198,13 @@ export class M35TrafficApiService {
    * Returns the historical playbook for an event type/subtype — reads from
    * the aggregated event_playbooks table (populated by m35-playbook.service).
    * Used by Lease-Up absorption curve adjustment (Mechanism D).
+   *
+   * Semantics when `eventType` is a category (not a subtype):
+   *   The query matches any playbook row whose event_taxonomy.category equals eventType,
+   *   then selects the single subtype with the highest instance_count. This gives the
+   *   most data-rich representative subtype, NOT a cross-subtype aggregate. Callers that
+   *   need true category-level aggregation should call getPlaybook() for each subtype
+   *   and merge results externally.
    */
   async getPlaybook(eventType: string): Promise<EventPlaybook | null> {
     const pool = this.pool;
