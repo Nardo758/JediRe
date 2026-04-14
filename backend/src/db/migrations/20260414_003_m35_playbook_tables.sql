@@ -53,6 +53,27 @@ CREATE INDEX IF NOT EXISTS idx_playbook_instances_playbook
 CREATE INDEX IF NOT EXISTS idx_playbook_instances_event
   ON playbook_instances (event_id);
 
+-- Preflight: NULL out any duplicate source_record_id values so the unique index below
+-- does not fail on legacy data.  Keeps the most-recently-created row's value and NULLs
+-- all earlier duplicates.  Safe to re-run (no-op if no duplicates exist).
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'key_events' AND column_name = 'source_record_id'
+  ) THEN
+    UPDATE key_events ke
+    SET    source_record_id = NULL
+    WHERE  source_record_id IS NOT NULL
+      AND  ke.id NOT IN (
+             SELECT DISTINCT ON (source_record_id) id
+             FROM   key_events
+             WHERE  source_record_id IS NOT NULL
+             ORDER  BY source_record_id, created_at DESC NULLS LAST, id DESC
+           );
+  END IF;
+END $$;
+
 -- Allow seed function to upsert key_events idempotently by source_record_id.
 -- Partial index (WHERE IS NOT NULL) matches the ON CONFLICT predicate in seedHistoricalPlaybooks().
 CREATE UNIQUE INDEX IF NOT EXISTS idx_key_events_source_record_id
