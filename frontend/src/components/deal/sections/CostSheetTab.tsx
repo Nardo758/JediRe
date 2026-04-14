@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import type { F9DealFinancials } from '../../pages/development/financial-engine/types';
 
 const MONO = "'JetBrains Mono', monospace";
 
@@ -16,6 +17,7 @@ const C = {
   red:     '#FC8181',
   yellow:  '#F6E05E',
   teal:    '#4FD1C5',
+  cyan:    '#76E4F7',
 };
 
 export const SECTIONS = [
@@ -48,6 +50,14 @@ export interface CostLineItem {
   pctValue?: number;
   note?: string;
   locked?: boolean;
+  sourceKey?: string;
+  synced?: boolean;
+}
+
+const LETTERS = ['A', 'B', 'C', 'D', 'E'];
+
+function stableId(sourceKey: string) {
+  return `src_${sourceKey.replace(/[^a-zA-Z0-9]/g, '_')}`;
 }
 
 function uid() {
@@ -63,44 +73,185 @@ function buildDefaults(totalBasis: number, loanAmt: number): CostLineItem[] {
     { id: uid(), section: 'acquisition', name: 'Survey',                   amount: 8500,          timing: 'closing'   },
     { id: uid(), section: 'acquisition', name: 'Environmental (Phase I)',   amount: 4500,          timing: 'closing'   },
     { id: uid(), section: 'acquisition', name: 'Inspection / Property Cond.',amount: 12000,        timing: 'closing'   },
-    // SPONSOR FEES
-    { id: uid(), section: 'sponsor',     name: 'Acquisition Fee (1.0%)',    amount: pct(0.010),   timing: 'closing'   },
-    { id: uid(), section: 'sponsor',     name: 'Development / Mgmt Fee (1.5%)', amount: pct(0.015), timing: 'month_1_6' },
-    { id: uid(), section: 'sponsor',     name: 'Asset Mgmt Fee (0.5%/yr × 2)', amount: pct(0.010), timing: 'month_7_12' },
-    { id: uid(), section: 'sponsor',     name: 'Promote / Incentive Fee',   amount: 0,             timing: 'disposition', note: 'TBD at exit' },
-    // DEBT FEES
-    { id: uid(), section: 'debt',        name: 'Origination Fee (1.0%)',    amount: lp(0.010),    timing: 'closing'   },
-    { id: uid(), section: 'debt',        name: 'Processing / Admin Fee',    amount: 10000,         timing: 'closing'   },
-    { id: uid(), section: 'debt',        name: 'Lender Title Insurance',    amount: 25000,         timing: 'closing'   },
-    { id: uid(), section: 'debt',        name: 'Lender Legal',              amount: 20000,         timing: 'closing'   },
-    { id: uid(), section: 'debt',        name: 'Appraisal',                 amount: 6500,          timing: 'closing'   },
+    // SPONSOR FEES — sourceKey links to waterfall engine data
+    { id: stableId('wf:acquisitionFee'),   section: 'sponsor', name: 'Acquisition Fee (1.00%)',             amount: pct(0.010), timing: 'closing',      sourceKey: 'wf:acquisitionFee'   },
+    { id: stableId('wf:assetMgmtFee'),     section: 'sponsor', name: 'Asset Mgmt Fee (1.50%/yr)',           amount: pct(0.015), timing: 'month_1_6',    sourceKey: 'wf:assetMgmtFee'     },
+    { id: stableId('wf:constructionMgmt'), section: 'sponsor', name: 'Construction Mgmt Fee (0.00%)',       amount: 0,          timing: 'month_1_6',    sourceKey: 'wf:constructionMgmt' },
+    { id: uid(),                            section: 'sponsor', name: 'Promote / Incentive Fee',             amount: 0,          timing: 'disposition',  note: 'TBD at exit' },
+    // DEBT FEES — sourceKey links to debt engine data (LOAN A = first/senior loan)
+    { id: stableId('debt:A:origFee'),  section: 'debt', name: 'Origination Fee — LOAN A (1.00%)', amount: lp(0.010), timing: 'closing', sourceKey: 'debt:A:origFee'  },
+    { id: stableId('debt:A:exitFee'),  section: 'debt', name: 'Exit Fee — LOAN A (0.00%)',         amount: 0,          timing: 'disposition', sourceKey: 'debt:A:exitFee'  },
+    { id: stableId('debt:A:rateCap'),  section: 'debt', name: 'Rate Cap — LOAN A (0.00%)',          amount: 0,          timing: 'closing',  sourceKey: 'debt:A:rateCap'  },
+    { id: uid(), section: 'debt', name: 'Processing / Admin Fee',    amount: 10000, timing: 'closing'   },
+    { id: uid(), section: 'debt', name: 'Lender Title Insurance',    amount: 25000, timing: 'closing'   },
+    { id: uid(), section: 'debt', name: 'Lender Legal',              amount: 20000, timing: 'closing'   },
+    { id: uid(), section: 'debt', name: 'Appraisal',                 amount: 6500,  timing: 'closing'   },
     // CLOSING COSTS
-    { id: uid(), section: 'closing',     name: 'Title Insurance (Buyer)',   amount: pct(0.005),   timing: 'closing'   },
-    { id: uid(), section: 'closing',     name: 'Intangible Tax (0.2%)',     amount: pct(0.002),   timing: 'closing'   },
-    { id: uid(), section: 'closing',     name: 'Documentary Stamps (0.7%)', amount: pct(0.007),   timing: 'closing'   },
-    { id: uid(), section: 'closing',     name: 'Recording Fees',            amount: 5000,          timing: 'closing'   },
-    { id: uid(), section: 'closing',     name: 'Buyer Legal / Attorney',    amount: 25000,         timing: 'closing'   },
-    { id: uid(), section: 'closing',     name: 'Due Diligence Reserve',     amount: 30000,         timing: 'closing'   },
+    { id: uid(), section: 'closing', name: 'Title Insurance (Buyer)',   amount: pct(0.005), timing: 'closing' },
+    { id: uid(), section: 'closing', name: 'Intangible Tax (0.2%)',     amount: pct(0.002), timing: 'closing' },
+    { id: uid(), section: 'closing', name: 'Documentary Stamps (0.7%)', amount: pct(0.007), timing: 'closing' },
+    { id: uid(), section: 'closing', name: 'Recording Fees',            amount: 5000,        timing: 'closing' },
+    { id: uid(), section: 'closing', name: 'Buyer Legal / Attorney',    amount: 25000,       timing: 'closing' },
+    { id: uid(), section: 'closing', name: 'Due Diligence Reserve',     amount: 30000,       timing: 'closing' },
     // RENOVATION / CAPEX
-    { id: uid(), section: 'renovation',  name: 'Unit Renovations',          amount: 0,             timing: 'month_1_6',  note: 'Enter renovation budget' },
-    { id: uid(), section: 'renovation',  name: 'Common Areas',              amount: 0,             timing: 'month_1_6'  },
-    { id: uid(), section: 'renovation',  name: 'Exterior / Roofing',        amount: 0,             timing: 'month_7_12' },
-    { id: uid(), section: 'renovation',  name: 'FF&E',                      amount: 0,             timing: 'month_1_6'  },
-    { id: uid(), section: 'renovation',  name: 'Contingency (5%)',          amount: 0,             timing: 'month_7_12', note: 'Auto: 5% of renovation subtotal' },
+    { id: uid(), section: 'renovation', name: 'Unit Renovations',     amount: 0, timing: 'month_1_6',  note: 'Enter renovation budget' },
+    { id: uid(), section: 'renovation', name: 'Common Areas',         amount: 0, timing: 'month_1_6'  },
+    { id: uid(), section: 'renovation', name: 'Exterior / Roofing',   amount: 0, timing: 'month_7_12' },
+    { id: uid(), section: 'renovation', name: 'FF&E',                 amount: 0, timing: 'month_1_6'  },
+    { id: uid(), section: 'renovation', name: 'Contingency (5%)',     amount: 0, timing: 'month_7_12', note: 'Auto: 5% of renovation subtotal' },
     // CARRY / OPERATING
-    { id: uid(), section: 'carry',       name: 'Property Tax (carry)',      amount: 0,             timing: 'month_1_6'  },
-    { id: uid(), section: 'carry',       name: 'Insurance (carry)',         amount: 0,             timing: 'month_1_6'  },
-    { id: uid(), section: 'carry',       name: 'Utilities (carry)',         amount: 0,             timing: 'month_1_6'  },
-    { id: uid(), section: 'carry',       name: 'Interest Reserve (est.)',   amount: lp(0.085) / 4, timing: 'month_1_6', note: '~3mo interest' },
+    { id: uid(), section: 'carry', name: 'Property Tax (carry)',    amount: 0,               timing: 'month_1_6' },
+    { id: uid(), section: 'carry', name: 'Insurance (carry)',       amount: 0,               timing: 'month_1_6' },
+    { id: uid(), section: 'carry', name: 'Utilities (carry)',       amount: 0,               timing: 'month_1_6' },
+    { id: uid(), section: 'carry', name: 'Interest Reserve (est.)', amount: lp(0.085) / 4,  timing: 'month_1_6', note: '~3mo interest' },
     // DISPOSITION
-    { id: uid(), section: 'disposition', name: 'Broker Commission (3.0%)',  amount: pct(0.030),   timing: 'disposition' },
-    { id: uid(), section: 'disposition', name: 'Transfer Tax (Dispo)',      amount: pct(0.007),   timing: 'disposition' },
-    { id: uid(), section: 'disposition', name: 'Legal (Dispo)',             amount: 15000,         timing: 'disposition' },
-    { id: uid(), section: 'disposition', name: 'Marketing / Signage',       amount: 10000,         timing: 'disposition' },
+    { id: stableId('wf:dispositionFee'), section: 'disposition', name: 'Disposition Fee (1.00%)',      amount: pct(0.010), timing: 'disposition', sourceKey: 'wf:dispositionFee' },
+    { id: uid(),                          section: 'disposition', name: 'Broker Commission (3.00%)',    amount: pct(0.030), timing: 'disposition' },
+    { id: uid(),                          section: 'disposition', name: 'Transfer Tax (Dispo)',         amount: pct(0.007), timing: 'disposition' },
+    { id: uid(),                          section: 'disposition', name: 'Legal (Dispo)',                amount: 15000,       timing: 'disposition' },
+    { id: uid(),                          section: 'disposition', name: 'Marketing / Signage',         amount: 10000,       timing: 'disposition' },
   ];
 }
 
-function fmt$  (n: number) { return n >= 1e6 ? `$${(n/1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n/1e3).toFixed(0)}K` : `$${n.toFixed(0)}`; }
+function computeSyncItems(f9: F9DealFinancials, totalBasis: number): CostLineItem[] {
+  const out: CostLineItem[] = [];
+  const loans = f9.debt?.loans ?? [];
+  const totalDebt = f9.debt?.aggregate?.totalLoanAmount ?? 0;
+  const equity = Math.max(totalBasis - totalDebt, 0);
+  const holdYears = f9.projections?.length ?? 3;
+
+  loans.forEach((loan, i) => {
+    const letter = LETTERS[i] ?? `${i + 1}`;
+    const loanAmt = loan.loanAmount.platform ?? 0;
+    const origFeePct = loan.origFee.platform ?? 0;
+    const exitFeePct = loan.exitFee.platform ?? 0;
+    const rateCapPct = loan.rateCapCost.platform ?? 0;
+
+    const origKey = `debt:${letter}:origFee`;
+    const exitKey = `debt:${letter}:exitFee`;
+    const capKey  = `debt:${letter}:rateCap`;
+
+    if (loanAmt > 0) {
+      out.push({
+        id: stableId(origKey), section: 'debt',
+        name: `Origination Fee — LOAN ${letter} (${(origFeePct * 100).toFixed(2)}%)`,
+        amount: Math.round(loanAmt * origFeePct),
+        timing: 'closing',
+        sourceKey: origKey, synced: true,
+      });
+      if (exitFeePct > 0) {
+        out.push({
+          id: stableId(exitKey), section: 'debt',
+          name: `Exit Fee — LOAN ${letter} (${(exitFeePct * 100).toFixed(2)}%)`,
+          amount: Math.round(loanAmt * exitFeePct),
+          timing: 'disposition',
+          sourceKey: exitKey, synced: true,
+        });
+      } else {
+        out.push({ id: stableId(exitKey), section: 'debt', name: `Exit Fee — LOAN ${letter} (0.00%)`, amount: 0, timing: 'disposition', sourceKey: exitKey, synced: true });
+      }
+      if (loan.rateType === 'Floating' && rateCapPct > 0) {
+        out.push({
+          id: stableId(capKey), section: 'debt',
+          name: `Rate Cap — LOAN ${letter} (${(rateCapPct * 100).toFixed(2)}%)`,
+          amount: Math.round(loanAmt * rateCapPct),
+          timing: 'closing',
+          sourceKey: capKey, synced: true,
+        });
+      } else if (loan.rateType === 'Floating') {
+        out.push({ id: stableId(capKey), section: 'debt', name: `Rate Cap — LOAN ${letter} (0.00%)`, amount: 0, timing: 'closing', sourceKey: capKey, synced: true });
+      }
+    }
+  });
+
+  const wf = f9.waterfall?.fees;
+  if (wf) {
+    if (wf.acquisitionFeePct > 0 || true) {
+      out.push({
+        id: stableId('wf:acquisitionFee'), section: 'sponsor',
+        name: `Acquisition Fee (${(wf.acquisitionFeePct * 100).toFixed(2)}%)`,
+        amount: Math.round(equity * wf.acquisitionFeePct),
+        timing: 'closing',
+        sourceKey: 'wf:acquisitionFee', synced: true,
+      });
+    }
+    if (wf.assetMgmtFeePct > 0 || true) {
+      const amBase = wf.assetMgmtBasis === 'egi' ? totalBasis * 0.07 : equity;
+      out.push({
+        id: stableId('wf:assetMgmtFee'), section: 'sponsor',
+        name: `Asset Mgmt Fee (${(wf.assetMgmtFeePct * 100).toFixed(2)}%/${wf.assetMgmtBasis ?? 'equity'} × ${holdYears}yr)`,
+        amount: Math.round(amBase * wf.assetMgmtFeePct * holdYears),
+        timing: 'month_7_12',
+        sourceKey: 'wf:assetMgmtFee', synced: true,
+      });
+    }
+    if (wf.constructionMgmtPct > 0) {
+      out.push({
+        id: stableId('wf:constructionMgmt'), section: 'sponsor',
+        name: `Construction Mgmt Fee (${(wf.constructionMgmtPct * 100).toFixed(2)}%)`,
+        amount: Math.round(totalBasis * wf.constructionMgmtPct),
+        timing: 'month_1_6',
+        sourceKey: 'wf:constructionMgmt', synced: true,
+      });
+    } else {
+      out.push({ id: stableId('wf:constructionMgmt'), section: 'sponsor', name: 'Construction Mgmt Fee (0.00%)', amount: 0, timing: 'month_1_6', sourceKey: 'wf:constructionMgmt', synced: true });
+    }
+    if (wf.dispositionFeePct > 0 || true) {
+      out.push({
+        id: stableId('wf:dispositionFee'), section: 'disposition',
+        name: `Disposition Fee (${(wf.dispositionFeePct * 100).toFixed(2)}%)`,
+        amount: Math.round(totalBasis * wf.dispositionFeePct),
+        timing: 'disposition',
+        sourceKey: 'wf:dispositionFee', synced: true,
+      });
+    }
+    if (wf.refinancingFeePct > 0) {
+      out.push({
+        id: stableId('wf:refinancingFee'), section: 'debt',
+        name: `Refinancing Fee (${(wf.refinancingFeePct * 100).toFixed(2)}%)`,
+        amount: Math.round(totalBasis * wf.refinancingFeePct),
+        timing: 'month_19_24',
+        sourceKey: 'wf:refinancingFee', synced: true,
+      });
+    }
+  }
+  return out;
+}
+
+function mergeSynced(existing: CostLineItem[], synced: CostLineItem[]): CostLineItem[] {
+  const syncedById = new Map(synced.map(s => [s.id, s]));
+  const sectionOrder = SECTIONS.map(s => s.id);
+  const result: CostLineItem[] = [];
+
+  for (const item of existing) {
+    if (item.sourceKey) {
+      const updated = syncedById.get(item.id);
+      if (updated) {
+        result.push(updated);
+        syncedById.delete(item.id);
+      }
+    } else {
+      result.push(item);
+    }
+  }
+  for (const [, item] of syncedById) {
+    result.push(item);
+  }
+
+  result.sort((a, b) => {
+    const ai = sectionOrder.indexOf(a.section);
+    const bi = sectionOrder.indexOf(b.section);
+    if (ai !== bi) return ai - bi;
+    if (a.locked && !b.locked) return -1;
+    if (!a.locked && b.locked) return 1;
+    if (a.sourceKey && !b.sourceKey) return -1;
+    if (!a.sourceKey && b.sourceKey) return 1;
+    return 0;
+  });
+  return result;
+}
+
+function fmt$(n: number) { return n >= 1e6 ? `$${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `$${(n / 1e3).toFixed(0)}K` : `$${n.toFixed(0)}`; }
 function parseDollar(s: string) { const n = parseFloat(s.replace(/[$,KkMm]/g, '')); if (isNaN(n)) return 0; if (/[Mm]$/.test(s.trim())) return n * 1e6; if (/[Kk]$/.test(s.trim())) return n * 1e3; return n; }
 
 function InlineEdit({ value, onSave, prefix = '' }: { value: number; onSave: (v: number) => void; prefix?: string }) {
@@ -192,9 +343,10 @@ interface CostSheetTabProps {
   dealId: string;
   deal?: Record<string, any>;
   assumptions?: Record<string, any> | null;
+  f9Financials?: F9DealFinancials | null;
 }
 
-export function CostSheetTab({ dealId, deal, assumptions }: CostSheetTabProps) {
+export function CostSheetTab({ dealId, deal, assumptions, f9Financials }: CostSheetTabProps) {
   const storageKey = `jedire_cost_sheet_${dealId}`;
 
   const totalBasis = useMemo(() => {
@@ -204,7 +356,6 @@ export function CostSheetTab({ dealId, deal, assumptions }: CostSheetTabProps) {
   }, [deal, assumptions]);
 
   const seniorLTV = assumptions?.seniorLTV ?? assumptions?.ltv ?? 65;
-  const seniorRate = assumptions?.seniorRate ?? assumptions?.interestRate ?? 8.5;
   const loanAmt = totalBasis * (seniorLTV / 100);
 
   const [items, setItems] = useState<CostLineItem[]>(() => {
@@ -224,13 +375,40 @@ export function CostSheetTab({ dealId, deal, assumptions }: CostSheetTabProps) {
   const [newRowTiming, setNewRowTiming] = useState('closing');
   const [equityAmount, setEquityAmount] = useState(() => Math.round(totalBasis * 0.35));
   const [debtAmount, setDebtAmount] = useState(() => Math.round(loanAmt));
+  const [syncFlash, setSyncFlash] = useState(false);
+  const [syncCount, setSyncCount] = useState(0);
 
   useEffect(() => {
     localStorage.setItem(storageKey, JSON.stringify(items));
   }, [items, storageKey]);
 
+  const syncFromEngine = useCallback(() => {
+    if (!f9Financials) return;
+    const synced = computeSyncItems(f9Financials, totalBasis);
+    setItems(prev => {
+      const merged = mergeSynced(prev, synced);
+      return merged;
+    });
+    setSyncCount(synced.length);
+    setSyncFlash(true);
+    setTimeout(() => setSyncFlash(false), 2500);
+
+    const totalDebt = f9Financials.debt?.aggregate?.totalLoanAmount ?? 0;
+    if (totalDebt > 0) setDebtAmount(Math.round(totalDebt));
+    const eq = Math.max(totalBasis - totalDebt, 0);
+    if (eq > 0) setEquityAmount(Math.round(eq));
+  }, [f9Financials, totalBasis]);
+
+  useEffect(() => {
+    if (!f9Financials) return;
+    const hasPersisted = !!localStorage.getItem(storageKey);
+    if (!hasPersisted) {
+      syncFromEngine();
+    }
+  }, [f9Financials]);
+
   const updateAmount = useCallback((id: string, v: number) => {
-    setItems(prev => prev.map(i => i.id === id ? { ...i, amount: v } : i));
+    setItems(prev => prev.map(i => i.id === id ? { ...i, amount: v, synced: false, sourceKey: undefined } : i));
   }, []);
 
   const updateTiming = useCallback((id: string, t: string) => {
@@ -258,6 +436,8 @@ export function CostSheetTab({ dealId, deal, assumptions }: CostSheetTabProps) {
     }
   }, [totalBasis, loanAmt]);
 
+  const syncedCount = useMemo(() => items.filter(i => i.synced).length, [items]);
+
   const sectionTotals = useMemo(() =>
     Object.fromEntries(SECTIONS.map(s => [s.id, items.filter(i => i.section === s.id).reduce((sum, i) => sum + i.amount, 0)])),
     [items]
@@ -267,6 +447,12 @@ export function CostSheetTab({ dealId, deal, assumptions }: CostSheetTabProps) {
   const totalSources = equityAmount + debtAmount;
   const variance = totalSources - grandTotal;
   const isBalanced = Math.abs(variance) < 1000;
+
+  const selectStyle: React.CSSProperties = {
+    fontFamily: MONO, fontSize: 8,
+    background: '#111111', border: `1px solid ${C.border}`, borderRadius: 3,
+    padding: '2px 4px', color: C.muted, cursor: 'pointer', colorScheme: 'dark',
+  };
 
   return (
     <div style={{ display: 'flex', gap: 16, height: '100%', overflow: 'hidden' }}>
@@ -280,11 +466,31 @@ export function CostSheetTab({ dealId, deal, assumptions }: CostSheetTabProps) {
             <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1.2, color: C.dim, fontFamily: MONO }}>₵ DEAL COST SHEET</div>
             <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>
               Click any amount to edit · {items.length} line items · Basis: {fmt$(totalBasis)}
+              {syncedCount > 0 && (
+                <span style={{ marginLeft: 8, color: C.cyan, fontSize: 8 }}>⛓ {syncedCount} LIVE FROM ENGINE</span>
+              )}
             </div>
           </div>
-          <button onClick={resetToDefaults} style={{ fontSize: 8, fontFamily: MONO, color: C.dim, background: 'none', border: `1px solid ${C.border}`, borderRadius: 4, padding: '3px 8px', cursor: 'pointer' }}>
-            RESET DEFAULTS
-          </button>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            {f9Financials && (
+              <button
+                onClick={syncFromEngine}
+                style={{
+                  fontSize: 8, fontFamily: MONO, cursor: 'pointer', borderRadius: 4, padding: '3px 10px',
+                  background: syncFlash ? `${C.cyan}22` : 'none',
+                  border: `1px solid ${syncFlash ? C.cyan : C.border}`,
+                  color: syncFlash ? C.cyan : C.muted,
+                  transition: 'all 0.3s',
+                }}
+                title="Pull live fee values from DEBT and CAP & WFALL tabs"
+              >
+                {syncFlash ? `⛓ SYNCED ${syncCount} ITEMS` : '⛓ SYNC FROM ENGINE'}
+              </button>
+            )}
+            <button onClick={resetToDefaults} style={{ fontSize: 8, fontFamily: MONO, color: C.dim, background: 'none', border: `1px solid ${C.border}`, borderRadius: 4, padding: '3px 8px', cursor: 'pointer' }}>
+              ↺ RESET
+            </button>
+          </div>
         </div>
 
         {/* Column header */}
@@ -316,7 +522,10 @@ export function CostSheetTab({ dealId, deal, assumptions }: CostSheetTabProps) {
                   {secItems.map(item => (
                     <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '1fr 100px 110px 24px', gap: 4, padding: '4px 8px', alignItems: 'center', borderBottom: `1px solid rgba(255,255,255,0.03)` }}>
                       {/* Name */}
-                      <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+                        {item.synced && (
+                          <span title="Live value from engine — click amount to override" style={{ fontSize: 6, color: C.cyan, fontFamily: MONO, letterSpacing: 0.5, flexShrink: 0, border: `1px solid ${C.cyan}55`, borderRadius: 2, padding: '1px 3px' }}>⛓</span>
+                        )}
                         {editingName === item.id ? (
                           <input
                             autoFocus
@@ -330,7 +539,7 @@ export function CostSheetTab({ dealId, deal, assumptions }: CostSheetTabProps) {
                           <span
                             onDoubleClick={() => { setEditingName(item.id); setEditingNameVal(item.name); }}
                             title="Double-click to rename"
-                            style={{ fontSize: 10, color: item.amount === 0 ? C.dim : C.text, cursor: 'default' }}
+                            style={{ fontSize: 10, color: item.amount === 0 ? C.dim : C.text, cursor: 'default', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                           >
                             {item.name}
                             {item.note && <span style={{ fontSize: 8, color: C.dim, marginLeft: 4 }}>· {item.note}</span>}
@@ -341,7 +550,7 @@ export function CostSheetTab({ dealId, deal, assumptions }: CostSheetTabProps) {
                       <select
                         value={item.timing}
                         onChange={e => updateTiming(item.id, e.target.value)}
-                        style={{ fontFamily: MONO, fontSize: 8, background: 'rgba(255,255,255,0.04)', border: `1px solid ${C.border}`, borderRadius: 3, padding: '2px 4px', color: C.muted, cursor: 'pointer' }}
+                        style={selectStyle}
                       >
                         {TIMING_OPTIONS.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
                       </select>
@@ -371,7 +580,7 @@ export function CostSheetTab({ dealId, deal, assumptions }: CostSheetTabProps) {
                         onKeyDown={e => e.key === 'Enter' && addItem(sec.id)}
                         style={{ fontFamily: MONO, fontSize: 10, background: 'rgba(255,255,255,0.06)', border: `1px solid ${C.border}`, borderRadius: 3, padding: '3px 6px', color: C.text }}
                       />
-                      <select value={newRowTiming} onChange={e => setNewRowTiming(e.target.value)} style={{ fontFamily: MONO, fontSize: 8, background: 'rgba(255,255,255,0.04)', border: `1px solid ${C.border}`, borderRadius: 3, padding: '2px 4px', color: C.muted }}>
+                      <select value={newRowTiming} onChange={e => setNewRowTiming(e.target.value)} style={selectStyle}>
                         {TIMING_OPTIONS.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
                       </select>
                       <input

@@ -606,6 +606,7 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
                 dealId={tabProps.dealId}
                 deal={tabProps.deal as Record<string, any> | undefined}
                 assumptions={tabProps.assumptions as Record<string, any> | null | undefined}
+                f9Financials={tabProps.f9Financials}
               />
             </div>
           )}
