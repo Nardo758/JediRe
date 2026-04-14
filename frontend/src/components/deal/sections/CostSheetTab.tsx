@@ -175,10 +175,12 @@ function computeSyncItems(f9: F9DealFinancials, totalBasis: number): CostLineIte
       timing: 'closing',
       sourceKey: 'wf:acquisitionFee', synced: true,
     });
+    // EGI basis uses a proxy of ~7% of total basis; real EGI requires projection data.
     const amBase = wf.assetMgmtBasis === 'egi' ? totalBasis * 0.07 : equity;
+    const egiBasisNote = wf.assetMgmtBasis === 'egi' ? ' ~est.' : '';
     out.push({
       id: stableId('wf:assetMgmtFee'), section: 'sponsor',
-      name: `Asset Mgmt Fee (${(wf.assetMgmtFeePct * 100).toFixed(2)}%/${wf.assetMgmtBasis ?? 'equity'} × ${holdYears}yr)`,
+      name: `Asset Mgmt Fee (${(wf.assetMgmtFeePct * 100).toFixed(2)}%/${wf.assetMgmtBasis ?? 'equity'}${egiBasisNote} × ${holdYears}yr)`,
       amount: Math.round(amBase * wf.assetMgmtFeePct * holdYears),
       timing: 'month_7_12',
       sourceKey: 'wf:assetMgmtFee', synced: true,
@@ -424,7 +426,7 @@ export function CostSheetTab({ dealId, deal, assumptions, f9Financials }: CostSh
   }, []);
 
   const updateTiming = useCallback((id: string, t: string) => {
-    setItems(prev => prev.map(i => i.id === id ? { ...i, timing: t } : i));
+    setItems(prev => prev.map(i => i.id === id ? { ...i, timing: t, synced: false, sourceKey: undefined } : i));
   }, []);
 
   const removeItem = useCallback((id: string) => {
@@ -543,7 +545,7 @@ export function CostSheetTab({ dealId, deal, assumptions, f9Financials }: CostSh
                             autoFocus
                             value={editingNameVal}
                             onChange={e => setEditingNameVal(e.target.value)}
-                            onBlur={() => { setItems(prev => prev.map(i => i.id === item.id ? { ...i, name: editingNameVal.trim() || i.name } : i)); setEditingName(null); }}
+                            onBlur={() => { setItems(prev => prev.map(i => i.id === item.id ? { ...i, name: editingNameVal.trim() || i.name, synced: false, sourceKey: undefined } : i)); setEditingName(null); }}
                             onKeyDown={e => { if (e.key === 'Enter' || e.key === 'Escape') setEditingName(null); }}
                             style={{ fontFamily: MONO, fontSize: 10, background: 'rgba(255,255,255,0.06)', border: `1px solid ${C.border}`, borderRadius: 3, padding: '1px 4px', color: C.text, width: '100%' }}
                           />
