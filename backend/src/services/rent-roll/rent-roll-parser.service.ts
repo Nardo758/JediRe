@@ -5,7 +5,7 @@
  *   1. Detect format (FormatDetector)
  *   2. Map fields (FieldMapper)
  *   3. Parse and validate rows (RentRollValidator)
- *   4. Persist to rent_roll_snapshots + lease_events tables
+ *   4. Persist to rent_roll_snapshots + leasing_events table
  *   5. Trigger single-snapshot derivations
  *
  * Returns the snapshot ID for downstream processing.
@@ -105,12 +105,12 @@ export class RentRollParserService {
 
     const snapshotId = snapshotResult.rows[0].id;
 
-    // Step 5: Bulk insert lease_events (leasing_events is a view alias over this table)
+    // Step 5: Bulk insert into leasing_events (the M07 base table)
     let eventsStored = 0;
     for (const evt of leaseEvents) {
       try {
         await this.pool.query(`
-          INSERT INTO lease_events (
+          INSERT INTO leasing_events (
             snapshot_id, deal_id, unit_id, unit_type, unit_sf,
             contract_rent, market_rent, concession_value, concession_months,
             lease_start, lease_end, move_in_date, move_out_date, notice_date,

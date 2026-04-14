@@ -80,10 +80,8 @@ const rentRollUpload = multer({
   },
 });
 
-// Note: The two-step cast below is required to resolve a nominal type mismatch
-// between the workspace-root @types/express and the backend-local @types/express
-// (two separate node_modules trees). The target type is explicit and correct.
-const rentRollMiddleware: RequestHandler = rentRollUpload.single('file') as unknown as RequestHandler;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const rentRollMiddleware = rentRollUpload.single('file') as any as RequestHandler;
 
 // ============================================================================
 // Authorization helper: verify the authenticated user owns the deal.
@@ -339,17 +337,23 @@ router.get('/starting-state/:dealId', async (req, res) => {
 router.get('/absorption-benchmark/:submarketId', async (req, res) => {
   try {
     const submarketId = req.params['submarketId'];
-    const { property_class } = req.query;
+    const { property_class, size_band } = req.query;
+
+    // size_band is stored in vintage_band as "size:<band>" (e.g. "size:medium").
+    // Filter deterministically by (submarket, class, size_band) so callers always
+    // get the same row for the same tuple rather than relying on ORDER BY recency.
+    const vintageFilter = size_band ? `size:${size_band}` : null;
 
     const result = await pool.query<any>(`
       SELECT *
-      FROM traffic_calibration_coefficients
+      FROM traffic_calibration_factors
       WHERE coefficient_name = 'absorption_curve'
         AND submarket_id = $1
-        AND (property_class = $2 OR $2 IS NULL OR $2 = '')
+        AND (property_class = $2 OR $2 IS NULL)
+        AND (vintage_band = $3 OR $3 IS NULL)
       ORDER BY updated_at DESC
       LIMIT 1
-    `, [submarketId, property_class || null]);
+    `, [submarketId, property_class || null, vintageFilter]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({
@@ -363,6 +367,7 @@ router.get('/absorption-benchmark/:submarketId', async (req, res) => {
     return res.json({
       submarket_id: submarketId,
       property_class: row.property_class,
+      size_band: row.vintage_band ? String(row.vintage_band).replace(/^size:/, '') : null,
       n_peer_properties: row.n_peer_properties,
       benchmark: row.curve_data,
       last_updated: row.updated_at,

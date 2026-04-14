@@ -3,6 +3,37 @@
 -- Date: 2026-04-14
 
 -- ============================================================================
+-- 0.5. Rename M06 legacy table so the M07 spec name is available.
+--   The pre-existing table traffic_calibration_factors stored M06 "manual
+--   multiplier" calibration rows (schema: factor_type/factor_key/multiplier/
+--   reason/is_active/effective_until/created_by, 23 rows).  M07 requires
+--   traffic_calibration_factors as the Bayesian coefficient store.  We rename
+--   the M06 table to traffic_calibration_legacy_factors to free the name.
+--   The rename is guarded so re-running the migration is safe.
+-- ============================================================================
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = 'traffic_calibration_factors'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public' AND table_name = 'traffic_calibration_legacy_factors'
+  ) THEN
+    ALTER TABLE traffic_calibration_factors RENAME TO traffic_calibration_legacy_factors;
+  END IF;
+END $$;
+
+-- Rename any associated index/sequence objects if needed (guard with IF EXISTS)
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_traffic_calibration_active')
+     AND NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_tcl_active') THEN
+    ALTER INDEX idx_traffic_calibration_active RENAME TO idx_tcl_active;
+  END IF;
+END $$;
+
+-- ============================================================================
 -- 1. deal_mode enum + column on deals
 -- ============================================================================
 DO $$
@@ -16,9 +47,11 @@ ALTER TABLE deals ADD COLUMN IF NOT EXISTS deal_mode deal_mode_type
   DEFAULT 'STABILIZED'::deal_mode_type;
 
 -- ============================================================================
--- 2. traffic_calibration_coefficients
+-- 2. traffic_calibration_factors (M07 Bayesian coefficient store)
+--    Named to match the M07 task spec.  The M06 multiplier rows that previously
+--    lived here have been moved to traffic_calibration_legacy_factors above.
 -- ============================================================================
-CREATE TABLE IF NOT EXISTS traffic_calibration_coefficients (
+CREATE TABLE IF NOT EXISTS traffic_calibration_factors (
   id                BIGSERIAL PRIMARY KEY,
   coefficient_name  TEXT NOT NULL,
   scope_level       TEXT NOT NULL CHECK (scope_level IN ('msa', 'submarket', 'class', 'vintage', 'platform')),
@@ -47,20 +80,19 @@ CREATE TABLE IF NOT EXISTS traffic_calibration_coefficients (
 
   created_at        TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at        TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-  -- NOTE: No UNIQUE constraint here because PostgreSQL treats two NULLs as NOT equal
-  -- in standard UNIQUE indexes, which would allow duplicate rows for scopes where
-  -- msa_id/submarket_id/property_class/vintage_band are all NULL (platform scope).
-  -- Correct deduplication is enforced by a COALESCE functional unique index below.
+  -- NOTE: No inline UNIQUE constraint — PostgreSQL treats two NULLs as NOT equal
+  -- in standard UNIQUE indexes, which would create duplicate platform-scope rows.
+  -- A COALESCE functional unique index (below) provides correct dedup semantics.
 );
 
-CREATE INDEX IF NOT EXISTS idx_tcc_scope ON traffic_calibration_coefficients
+CREATE INDEX IF NOT EXISTS idx_tcf_scope ON traffic_calibration_factors
   (coefficient_name, scope_level, submarket_id, property_class, vintage_band);
-CREATE INDEX IF NOT EXISTS idx_tcc_msa ON traffic_calibration_coefficients
+CREATE INDEX IF NOT EXISTS idx_tcf_msa ON traffic_calibration_factors
   (msa_id, coefficient_name) WHERE msa_id IS NOT NULL;
 
--- Functional unique index using COALESCE so NULLs are treated as empty strings,
--- preventing duplicate rows for platform/class/vintage scopes where dimensions are NULL.
-CREATE UNIQUE INDEX IF NOT EXISTS uq_tcc_scope_coalesce ON traffic_calibration_coefficients (
+-- Functional unique index: NULLs coalesced to '' so platform/class/vintage
+-- scopes with all-null dimensions still get proper uniqueness enforcement.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_tcf_scope_coalesce ON traffic_calibration_factors (
   coefficient_name,
   scope_level,
   cal_window,
@@ -75,7 +107,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_tcc_scope_coalesce ON traffic_calibration_c
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS traffic_calibration_history (
   id                BIGSERIAL PRIMARY KEY,
-  coefficient_id    BIGINT REFERENCES traffic_calibration_coefficients(id) ON DELETE CASCADE,
+  coefficient_id    BIGINT REFERENCES traffic_calibration_factors(id) ON DELETE CASCADE,
   coefficient_name  TEXT NOT NULL,
   scope_level       TEXT NOT NULL,
   submarket_id      TEXT,
@@ -126,11 +158,23 @@ CREATE INDEX IF NOT EXISTS idx_rrs_snapshot_date ON rent_roll_snapshots (snapsho
 CREATE INDEX IF NOT EXISTS idx_rrs_status ON rent_roll_snapshots (status);
 
 -- ============================================================================
--- 5. lease_events (raw event log per uploaded rent roll)
---    This is the BASE TABLE. The canonical-name alias leasing_events is created
---    as a simple updatable VIEW in section 8.
+-- 5. leasing_events (raw event log per uploaded rent roll)
+--    This is the BASE TABLE as required by the M07 spec.
+--    All parser writes and engine reads use this table directly.
+--    If a previous migration created leasing_events as a view (alias over
+--    lease_events), we drop the view first so we can create it as a table.
 -- ============================================================================
-CREATE TABLE IF NOT EXISTS lease_events (
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.views
+    WHERE table_schema = 'public' AND table_name = 'leasing_events'
+  ) THEN
+    DROP VIEW leasing_events;
+  END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS leasing_events (
   id                BIGSERIAL PRIMARY KEY,
   snapshot_id       BIGINT NOT NULL REFERENCES rent_roll_snapshots(id) ON DELETE CASCADE,
   deal_id           TEXT NOT NULL,
@@ -159,10 +203,10 @@ CREATE TABLE IF NOT EXISTS lease_events (
   created_at        TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_le_snapshot_id ON lease_events (snapshot_id);
-CREATE INDEX IF NOT EXISTS idx_le_deal_id ON lease_events (deal_id);
-CREATE INDEX IF NOT EXISTS idx_le_lease_start ON lease_events (lease_start);
-CREATE INDEX IF NOT EXISTS idx_le_unit_type ON lease_events (unit_type);
+CREATE INDEX IF NOT EXISTS idx_le_snapshot_id ON leasing_events (snapshot_id);
+CREATE INDEX IF NOT EXISTS idx_le_deal_id ON leasing_events (deal_id);
+CREATE INDEX IF NOT EXISTS idx_le_lease_start ON leasing_events (lease_start);
+CREATE INDEX IF NOT EXISTS idx_le_unit_type ON leasing_events (unit_type);
 
 -- ============================================================================
 -- 6. traffic_weight_config
@@ -188,30 +232,10 @@ INSERT INTO traffic_weight_config (metric_name, metric_layer, description, weigh
 ON CONFLICT (metric_name) DO NOTHING;
 
 -- ============================================================================
--- 7. Helper view: latest calibration coefficients per scope
+-- 7. Helper view: latest calibration factors per scope
 -- ============================================================================
-CREATE OR REPLACE VIEW latest_calibration_coefficients AS
+CREATE OR REPLACE VIEW latest_calibration_factors AS
 SELECT DISTINCT ON (coefficient_name, scope_level, submarket_id, property_class, vintage_band, cal_window)
   *
-FROM traffic_calibration_coefficients
+FROM traffic_calibration_factors
 ORDER BY coefficient_name, scope_level, submarket_id, property_class, vintage_band, cal_window, updated_at DESC;
-
--- ============================================================================
--- 8. leasing_events canonical-name VIEW
---    lease_events is the BASE TABLE (section 5).
---    leasing_events is a read/write-capable simple-select view so that any
---    query code that references the canonical spec name continues to work.
---    PostgreSQL makes single-table SELECT * views fully updatable (INSERT/UPDATE/DELETE).
---
--- NOTE ON traffic_calibration_factors vs traffic_calibration_coefficients:
---   The task spec uses "traffic_calibration_factors" as the M07 Bayesian table
---   name.  However, a pre-existing M06 table named traffic_calibration_factors
---   already exists in this database with schema (factor_type, factor_key,
---   multiplier, reason) and 23 active rows.  Renaming or replacing that table
---   would destroy the M06 catalog-metric pipeline.  We therefore preserve
---   traffic_calibration_factors for M06 and use traffic_calibration_coefficients
---   for the M07 Bayesian stack — both names are referenced consistently
---   throughout the M07 codebase.
--- ============================================================================
-CREATE OR REPLACE VIEW leasing_events AS
-  SELECT * FROM lease_events;

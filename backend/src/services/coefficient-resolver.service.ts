@@ -172,7 +172,7 @@ export class CoefficientResolverService {
   }
 
   /**
-   * Load platform-level coefficients from traffic_calibration_coefficients,
+   * Load platform-level coefficients from traffic_calibration_factors,
    * falling back from most specific scope to most general.
    */
   private async loadPlatformCoefficients(
@@ -230,7 +230,7 @@ export class CoefficientResolverService {
             SELECT coefficient_name, posterior_value, n_peer_properties, cal_window,
                    confidence_low, confidence_mid, confidence_high,
                    calibration_source, scope_level, submarket_id, property_class, vintage_band
-            FROM traffic_calibration_coefficients
+            FROM traffic_calibration_factors
             WHERE scope_level = $1
               AND (submarket_id = $2 OR ($2 IS NULL AND submarket_id IS NULL))
               AND (property_class = $3 OR ($3 IS NULL AND property_class IS NULL))

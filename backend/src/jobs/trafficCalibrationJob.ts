@@ -6,7 +6,7 @@
  *   2. Compute per-property coefficients from observed conversion rates
  *   3. Roll up to (msa, submarket, class, vintage_band) scope buckets
  *   4. Apply Bayesian update: posterior = (prior×n_prior + evidence×n_evidence) / (n_prior+n_evidence)
- *   5. Write versioned rows to traffic_calibration_coefficients
+ *   5. Write versioned rows to traffic_calibration_factors
  *   6. Snapshot old rows to traffic_calibration_history
  *   7. Compute absorption benchmarks (§T006)
  *   8. Publish Kafka event traffic.calibration.updated
@@ -369,7 +369,7 @@ export class TrafficCalibrationJob {
       // cross-scope collisions when the uniqueness index spans msa_id.
       const existingResult = await this.pool.query<any>(`
         SELECT id, posterior_value, n_prior, n_evidence
-        FROM traffic_calibration_coefficients
+        FROM traffic_calibration_factors
         WHERE coefficient_name = $1
           AND scope_level = $2
           AND (msa_id = $3 OR (msa_id IS NULL AND $3 IS NULL))
@@ -417,7 +417,7 @@ export class TrafficCalibrationJob {
 
         // Update existing row
         await this.pool.query(`
-          UPDATE traffic_calibration_coefficients
+          UPDATE traffic_calibration_factors
           SET posterior_value = $1, n_prior = $2, n_evidence = $3,
               n_peer_properties = $4, confidence_low = $5, confidence_mid = $6,
               confidence_high = $7, period_end = CURRENT_DATE,
@@ -434,7 +434,7 @@ export class TrafficCalibrationJob {
       } else {
         // Create new row
         await this.pool.query(`
-          INSERT INTO traffic_calibration_coefficients (
+          INSERT INTO traffic_calibration_factors (
             coefficient_name, scope_level, msa_id, submarket_id, property_class, vintage_band,
             prior_value, posterior_value, n_prior, n_evidence, n_peer_properties,
             cal_window, match_tier, calibration_source,
@@ -539,7 +539,7 @@ export class TrafficCalibrationJob {
       const resolvedClass = propertyClass !== 'unknown' ? propertyClass : null;
       const vintageBandForAbsorption = `size:${sizeBand}`;
       const existingAbsorption = await this.pool.query<{ id: number }>(`
-        SELECT id FROM traffic_calibration_coefficients
+        SELECT id FROM traffic_calibration_factors
         WHERE coefficient_name = 'absorption_curve'
           AND scope_level = 'submarket'
           AND (submarket_id = $1 OR (submarket_id IS NULL AND $1 IS NULL))
@@ -550,7 +550,7 @@ export class TrafficCalibrationJob {
 
       if (existingAbsorption.rows.length > 0) {
         await this.pool.query(`
-          UPDATE traffic_calibration_coefficients
+          UPDATE traffic_calibration_factors
           SET curve_data = $1, n_evidence = $2, n_peer_properties = $3, updated_at = NOW()
           WHERE id = $4
         `, [
@@ -559,7 +559,7 @@ export class TrafficCalibrationJob {
         ]);
       } else {
         await this.pool.query(`
-          INSERT INTO traffic_calibration_coefficients (
+          INSERT INTO traffic_calibration_factors (
             coefficient_name, scope_level, submarket_id, property_class, vintage_band,
             prior_value, posterior_value, n_prior, n_evidence, n_peer_properties,
             cal_window, match_tier, calibration_source, curve_data

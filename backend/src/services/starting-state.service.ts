@@ -248,7 +248,7 @@ export class StartingStateService {
     try {
       const result = await this.pool.query<any>(`
         SELECT curve_data
-        FROM traffic_calibration_coefficients
+        FROM traffic_calibration_factors
         WHERE coefficient_name = 'absorption_curve'
           AND submarket_id = $1
           AND (property_class = $2 OR $2 IS NULL)

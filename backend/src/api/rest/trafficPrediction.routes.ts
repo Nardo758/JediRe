@@ -326,7 +326,7 @@ router.post('/calibration/apply', async (req, res) => {
     } = req.body;
     
     const result = await pool.query(`
-      INSERT INTO traffic_calibration_factors (
+      INSERT INTO traffic_calibration_legacy_factors (
         factor_type,
         factor_key,
         multiplier,

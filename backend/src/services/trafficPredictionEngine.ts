@@ -1327,11 +1327,13 @@ export class TrafficPredictionEngine {
         try {
           const rrResult = await pool.query<any>(`
             SELECT rrs.id, rrs.derived_metrics,
+                   COUNT(le.id)                       AS total_units,
                    json_agg(json_build_object(
-                     'months_out', EXTRACT(YEAR FROM age(le.lease_end, NOW()))::int * 12
-                                  + EXTRACT(MONTH FROM age(le.lease_end, NOW()))::int,
+                     'months_out', EXTRACT(YEAR FROM age(le.lease_end, rrs.snapshot_date))::int * 12
+                                  + EXTRACT(MONTH FROM age(le.lease_end, rrs.snapshot_date))::int,
                      'lease_end', le.lease_end
-                   )) FILTER (WHERE le.lease_end >= NOW() AND le.lease_end < NOW() + INTERVAL '24 months') AS expiry_rows
+                   )) FILTER (WHERE le.lease_end >= rrs.snapshot_date
+                                AND le.lease_end < rrs.snapshot_date + INTERVAL '24 months') AS expiry_rows
             FROM rent_roll_snapshots rrs
             LEFT JOIN leasing_events le ON le.snapshot_id = rrs.id
             WHERE rrs.deal_id = $1 AND rrs.status IN ('derived', 'calibrated')
@@ -1359,11 +1361,13 @@ export class TrafficPredictionEngine {
                 const mo = Math.max(1, Math.min(24, (row.months_out as number) + 1));
                 waterfall[mo] = (waterfall[mo] || 0) + 1;
               }
-              const totalExpiring = Object.values(waterfall).reduce((s, v) => s + v, 0) || 1;
+              // Denominator is total units in the snapshot (not just the expiring set)
+              // so each bucket's expiring_pct reflects its share of the whole portfolio.
+              const totalUnits = Number(rr.total_units) || 1;
               prediction.expiration_waterfall = Array.from({ length: 24 }, (_, i) => ({
-                months_out: i + 1,                                                        // 1-based
+                months_out: i + 1,
                 expiring_units: waterfall[i + 1] || 0,
-                expiring_pct: Math.round(((waterfall[i + 1] || 0) / totalExpiring) * 1000) / 1000,
+                expiring_pct: Math.round(((waterfall[i + 1] || 0) / totalUnits) * 10000) / 100,
               }));
             }
           }
@@ -1673,7 +1677,7 @@ export class TrafficPredictionEngine {
     // Load active calibration factors
     const factors = await pool.query(`
       SELECT factor_type, factor_key, multiplier
-      FROM traffic_calibration_factors
+      FROM traffic_calibration_legacy_factors
       WHERE is_active = TRUE
       AND (effective_until IS NULL OR effective_until >= CURRENT_DATE)
     `);

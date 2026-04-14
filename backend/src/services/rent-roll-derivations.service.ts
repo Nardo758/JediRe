@@ -1,7 +1,7 @@
 /**
  * M07: Single-Snapshot Derivations
  *
- * Fired on each rent roll ingest after lease_events are stored.
+ * Fired on each rent roll ingest after leasing_events are stored.
  * Computes and stores derived metrics on the rent_roll_snapshots record.
  *
  * Derivations (per spec §5.x):
@@ -32,7 +32,7 @@ export class RentRollDerivationsService {
         contract_rent, market_rent, concession_value, concession_months,
         lease_start, lease_end, move_in_date, move_out_date, notice_date,
         unit_status, is_renewal, days_vacant, row_confidence
-      FROM lease_events
+      FROM leasing_events
       WHERE snapshot_id = $1
     `, [snapshotId]);
 
