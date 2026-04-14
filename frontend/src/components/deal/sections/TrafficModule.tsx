@@ -12,6 +12,7 @@ import { T as BT, mono as bMono, sans as bSans } from '../bloomberg-tokens';
 import { BT as BT2, PanelHeader, SubTabBar, KpiTile, SectionPanel, DataRow, BtTabWrapper, BT_CSS } from '../bloomberg-ui';
 import TrafficDataSourcesTab from './traffic/TrafficDataSourcesTab';
 import TrafficCompsTab from './traffic/TrafficCompsTab';
+import TrafficCoefficientsTab from './traffic/TrafficCoefficientsTab';
 import VisibilityAssessmentTab from './traffic/VisibilityAssessmentTab';
 import TrafficPredictionsTab from './traffic/TrafficPredictionsTab';
 import AbsorptionScheduleTab from './traffic/AbsorptionScheduleTab';
@@ -127,18 +128,23 @@ interface CalibrationStats {
   lastUpdated: string | null;
   comparisons: Record<string, { calibrated: number; default: number }>;
   dataLibraryFileCount: number;
+  matchTier?: string;
+  nPeerProperties?: number;
+  windowType?: 'TTM' | 'TTM-24' | string;
+  scopeLevel?: string;
+  confidenceBands?: Record<string, { low: number; high: number }>;
 }
 
-type TabId = 'predictions' | 'data_sources' | 'comps' | 'visibility' | 'adjustments' | 'calibration' | 'absorption';
+type TabId = 'predictions' | 'coefficients' | 'comps' | 'data_sources' | 'visibility' | 'calibration' | 'absorption';
 
 const TABS: Array<{ id: TabId; label: string; icon: any }> = [
   { id: 'predictions', label: 'Predictions', icon: TrendingUp },
+  { id: 'coefficients', label: 'Coefficients', icon: SlidersHorizontal },
+  { id: 'comps', label: 'Comp Grid', icon: Building2 },
   { id: 'data_sources', label: 'Data Sources', icon: Layers },
-  { id: 'comps', label: 'Comps', icon: Building2 },
   { id: 'visibility', label: 'Visibility', icon: Eye },
-  { id: 'adjustments', label: 'Market Adjustments', icon: SlidersHorizontal },
   { id: 'calibration', label: 'Calibration', icon: Gauge },
-  { id: 'absorption', label: 'Absorption Schedule', icon: BarChart3 },
+  { id: 'absorption', label: 'Absorption', icon: BarChart3 },
 ];
 
 const API_BASE = '/api/v1/leasing-traffic';
@@ -880,8 +886,39 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
   );
 
   const renderCalibrationTab = () => (
-    <div className="space-y-6">
-      <div style={{ background: "#0F1319", border: "1px solid #1e2a3d", borderRadius: 4, padding: 20 }}>
+    <div style={{ background: BT2.bg.terminal, display: 'flex', flexDirection: 'column', gap: 1 }}>
+
+      {/* Info strip */}
+      <div style={{ background: BT2.bg.header, padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: `1px solid ${BT2.border.subtle}`, flexWrap: 'wrap' }}>
+        <Database size={11} color={calibration?.calibrated ? BT2.text.green : BT2.text.muted} />
+        <span style={{ fontSize: 9, fontWeight: 700, color: calibration?.calibrated ? BT2.text.green : BT2.text.secondary, fontFamily: bMono, letterSpacing: 0.8 }}>
+          {calibration?.calibrated ? 'CALIBRATED' : 'UNCALIBRATED'}
+        </span>
+        {calibration?.matchTier && (
+          <span style={{ fontSize: 9, color: BT2.text.cyan, fontFamily: bMono, background: `${BT2.text.cyan}15`, border: `1px solid ${BT2.text.cyan}40`, padding: '1px 6px' }}>
+            TIER: {calibration.matchTier.toUpperCase()}
+          </span>
+        )}
+        {calibration?.windowType && (
+          <span style={{ fontSize: 9, color: BT2.text.muted, fontFamily: bMono }}>WINDOW: {calibration.windowType}</span>
+        )}
+        {calibration?.nPeerProperties != null && (
+          <span style={{ fontSize: 9, color: BT2.text.amber, fontFamily: bMono }}>{calibration.nPeerProperties} PEER PROPERTIES</span>
+        )}
+        {calibration?.sampleCount != null && calibration.sampleCount > 0 && (
+          <span style={{ fontSize: 9, color: BT2.text.muted, fontFamily: bMono }}>{calibration.sampleCount} DEALS</span>
+        )}
+        {calibration?.dataLibraryFileCount != null && calibration.dataLibraryFileCount > 0 && (
+          <span style={{ fontSize: 9, color: BT2.text.muted, fontFamily: bMono }}>{calibration.dataLibraryFileCount} FILES</span>
+        )}
+        {calibration?.lastUpdated && (
+          <span style={{ fontSize: 9, color: BT2.text.muted, fontFamily: bMono, marginLeft: 'auto' }}>
+            UPDATED {new Date(calibration.lastUpdated).toLocaleDateString()}
+          </span>
+        )}
+      </div>
+
+      <div style={{ background: BT2.bg.panel, border: `1px solid ${BT2.border.subtle}`, padding: 20 }}>
         <div className="flex items-center gap-3 mb-4">
           <Database size={18} className="text-neutral-400" />
           <div>
@@ -1087,9 +1124,9 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                 onDefineTradeArea={() => setShowTradeAreaPanel(true)}
               />
             )}
+            {activeTab === 'coefficients' && <TrafficCoefficientsTab dealId={resolvedDealId} />}
             {activeTab === 'comps' && <TrafficCompsTab dealId={resolvedDealId} onSelectionChange={loadData} />}
             {activeTab === 'visibility' && <VisibilityAssessmentTab dealId={resolvedDealId} propertyId={propertyId} />}
-            {activeTab === 'adjustments' && renderAdjustmentsTab()}
             {activeTab === 'calibration' && renderCalibrationTab()}
             {activeTab === 'absorption' && (
               <AbsorptionScheduleTab

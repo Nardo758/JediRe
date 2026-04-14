@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import {
-  ArrowUpDown, Download, Filter, Building2, AlertCircle,
-  CheckCircle2, Globe, Eye, Car, FileText, Database, ChevronDown, ChevronUp,
-} from 'lucide-react';
+import { ArrowUpDown, Download, Building2, AlertCircle, CheckCircle2, Database, Filter } from 'lucide-react';
 import { apiClient } from '@/services/api.client';
+import { BT } from '../../bloomberg-ui';
+
+const MONO = BT.font.mono;
 
 interface CompProperty {
   property_id: string;
@@ -25,13 +25,18 @@ interface CompProperty {
 
 interface CompAverages {
   avg_units: number;
-  avg_occupancy: number;
-  avg_traffic: number;
-  avg_tours: number;
+  avg_occupancy_pct?: number;
+  avg_occupancy?: number;
+  avg_weekly_traffic?: number;
+  avg_traffic?: number;
+  avg_weekly_tours?: number;
+  avg_tours?: number;
   avg_closing_ratio: number;
-  avg_net_leases: number;
+  avg_net_leases_per_week?: number;
+  avg_net_leases?: number;
   avg_web_sessions: number;
-  avg_visibility: number;
+  avg_visibility_score?: number;
+  avg_visibility?: number;
   avg_adt: number;
 }
 
@@ -55,31 +60,64 @@ interface TrafficCompsTabProps {
   onSelectionChange?: () => void;
 }
 
+const SOURCE_CFG: Record<string, { label: string; color: string }> = {
+  ga:                 { label: 'GA',     color: BT.met.digTraffic },
+  google_analytics:   { label: 'GA',     color: BT.met.digTraffic },
+  predictions:        { label: 'PRED',   color: BT.met.physTraffic },
+  apartment_locator:  { label: 'AL',     color: BT.text.purple },
+  uploaded:           { label: 'UPLOAD', color: BT.text.amber },
+  visibility:         { label: 'VIS',    color: BT.text.green },
+  dot_adt:            { label: 'DOT',    color: BT.text.cyan },
+  adt:                { label: 'DOT',    color: BT.text.cyan },
+  estimate:           { label: 'EST',    color: BT.text.muted },
+};
+
 function SourceBadge({ source }: { source: string }) {
-  const config: Record<string, { icon: any; label: string; color: string }> = {
-    ga: { icon: Globe, label: 'GA', color: 'bg-blue-100 text-blue-700' },
-    apartment_locator: { icon: Building2, label: 'AL', color: 'bg-purple-100 text-purple-700' },
-    uploaded: { icon: FileText, label: 'Upload', color: 'bg-amber-100 text-amber-700' },
-    visibility: { icon: Eye, label: 'Vis', color: 'bg-emerald-100 text-emerald-700' },
-    adt: { icon: Car, label: 'DOT', color: 'bg-stone-100 text-stone-700' },
-    estimate: { icon: AlertCircle, label: 'Est', color: 'bg-stone-100 text-stone-400' },
-  };
-  const cfg = config[source] || config.estimate;
-  const Icon = cfg.icon;
+  const cfg = SOURCE_CFG[source] || SOURCE_CFG.estimate;
   return (
-    <span className={`inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded font-mono ${cfg.color}`}>
-      <Icon size={8} /> {cfg.label}
+    <span style={{
+      fontFamily: MONO, fontSize: 8, fontWeight: 700, color: cfg.color,
+      background: `${cfg.color}18`, border: `1px solid ${cfg.color}33`,
+      padding: '1px 4px', letterSpacing: 0.5,
+      whiteSpace: 'nowrap' as const,
+    }}>
+      {cfg.label}
     </span>
   );
 }
 
-function formatWeekRange(earliest: string, latest: string) {
+function fmtWeekRange(earliest: string, latest: string) {
   const fmt = (d: string) => {
     if (!d) return '–';
     const dt = new Date(d);
     return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
   };
   return `${fmt(earliest)} → ${fmt(latest)}`;
+}
+
+function ColHeader({ field, label, sortBy, sortDir, onSort }: {
+  field: string; label: string; sortBy: string; sortDir: 'asc' | 'desc'; onSort: (f: string) => void;
+}) {
+  const active = sortBy === field;
+  return (
+    <th
+      onClick={() => onSort(field)}
+      style={{
+        padding: '4px 8px', textAlign: 'right', cursor: 'pointer',
+        background: active ? BT.bg.active : BT.bg.header,
+        color: active ? BT.text.amber : BT.text.muted,
+        fontFamily: MONO, fontSize: 9, fontWeight: 700, letterSpacing: 0.8,
+        borderBottom: `1px solid ${BT.border.medium}`,
+        userSelect: 'none' as const,
+        whiteSpace: 'nowrap' as const,
+      }}
+    >
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+        {label}
+        {active && <ArrowUpDown size={9} style={{ color: BT.text.amber }} />}
+      </span>
+    </th>
+  );
 }
 
 export default function TrafficCompsTab({ dealId, onSelectionChange }: TrafficCompsTabProps) {
@@ -89,16 +127,10 @@ export default function TrafficCompsTab({ dealId, onSelectionChange }: TrafficCo
   const [selectedDealIds, setSelectedDealIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [savingSelection, setSavingSelection] = useState(false);
-  const [showCompGrid, setShowCompGrid] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
   const [sortBy, setSortBy] = useState('distance_miles');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
-  const [showFilters, setShowFilters] = useState(false);
-  const [filters, setFilters] = useState({
-    minUnits: '',
-    maxUnits: '',
-    minOccupancy: '',
-    maxDistance: '',
-  });
+  const [filters, setFilters] = useState({ minUnits: '', maxUnits: '', minOccupancy: '', maxDistance: '' });
 
   const loadData = useCallback(async () => {
     if (!dealId) return;
@@ -107,8 +139,7 @@ export default function TrafficCompsTab({ dealId, onSelectionChange }: TrafficCo
       const [compsRes, avgRes, dealsRes] = await Promise.all([
         apiClient.get(`/api/v1/traffic-comps/${dealId}`, {
           params: {
-            sortBy,
-            sortDir,
+            sortBy, sortDir,
             minUnits: filters.minUnits || undefined,
             maxUnits: filters.maxUnits || undefined,
             minOccupancy: filters.minOccupancy || undefined,
@@ -134,11 +165,7 @@ export default function TrafficCompsTab({ dealId, onSelectionChange }: TrafficCo
 
   const toggleDealSelection = async (deal: DealWithData) => {
     const next = new Set(selectedDealIds);
-    if (next.has(deal.deal_id)) {
-      next.delete(deal.deal_id);
-    } else {
-      next.add(deal.deal_id);
-    }
+    next.has(deal.deal_id) ? next.delete(deal.deal_id) : next.add(deal.deal_id);
     setSelectedDealIds(next);
     setSavingSelection(true);
     try {
@@ -157,28 +184,12 @@ export default function TrafficCompsTab({ dealId, onSelectionChange }: TrafficCo
   };
 
   const toggleSort = (field: string) => {
-    if (sortBy === field) {
-      setSortDir(prev => prev === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortBy(field);
-      setSortDir('asc');
-    }
+    if (sortBy === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortBy(field); setSortDir('asc'); }
   };
 
-  const SortHeader = ({ field, label }: { field: string; label: string }) => (
-    <th
-      className="px-3 py-2.5 text-right cursor-pointer hover:bg-[#4d5a4c] transition-colors"
-      onClick={() => toggleSort(field)}
-    >
-      <span className="text-white/80 text-[10px] font-medium uppercase tracking-wider flex items-center justify-end gap-1">
-        {label}
-        {sortBy === field && <ArrowUpDown size={10} className="text-white" />}
-      </span>
-    </th>
-  );
-
   const exportCSV = () => {
-    const headers = ['Property', 'Units', 'Occ %', 'Weekly Traffic', 'Tours/Wk', 'Closing %', 'Net Leases/Wk', 'Web Sessions', 'Visibility', 'ADT', 'Distance'];
+    const headers = ['Property', 'Units', 'Occ %', 'Traffic/Wk', 'Tours/Wk', 'Close %', 'Net/Wk', 'Web Sessions', 'Vis', 'ADT', 'Dist'];
     const rows = comps.map(c => [
       c.property_name, c.units, (c.occupancy_pct * 100).toFixed(1),
       c.weekly_traffic, c.weekly_tours, (c.closing_ratio * 100).toFixed(1),
@@ -190,110 +201,117 @@ export default function TrafficCompsTab({ dealId, onSelectionChange }: TrafficCo
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `comp-traffic-grid-${new Date().toISOString().split('T')[0]}.csv`;
+    a.download = `comp-grid-${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
+  const avgOcc = averages?.avg_occupancy ?? averages?.avg_occupancy_pct ?? 0;
+  const avgTraffic = averages?.avg_weekly_traffic ?? averages?.avg_traffic ?? 0;
+  const avgTours = averages?.avg_weekly_tours ?? averages?.avg_tours ?? 0;
+  const avgNetLeases = averages?.avg_net_leases_per_week ?? averages?.avg_net_leases ?? 0;
+  const avgVis = averages?.avg_visibility_score ?? averages?.avg_visibility ?? 0;
+  const selectedCount = selectedDealIds.size;
+
   if (loading) {
     return (
-      <div className="bg-white rounded-xl border border-stone-200 p-12 text-center">
-        <div className="w-8 h-8 border-2 border-stone-300 border-t-stone-900 rounded-full animate-spin mx-auto mb-3" />
-        <p className="text-stone-500 text-sm">Loading comp traffic data...</p>
+      <div style={{ padding: 48, textAlign: 'center', background: BT.bg.terminal }}>
+        <div style={{ width: 28, height: 28, border: `2px solid ${BT.text.amber}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 12px' }} />
+        <p style={{ fontSize: 11, color: BT.text.muted, fontFamily: MONO }}>LOADING COMP TRAFFIC DATA...</p>
       </div>
     );
   }
 
-  const selectedCount = selectedDealIds.size;
+  const thStyle: React.CSSProperties = {
+    padding: '4px 8px', textAlign: 'left', background: BT.bg.header,
+    color: BT.text.muted, fontFamily: MONO, fontSize: 9, fontWeight: 700,
+    letterSpacing: 0.8, borderBottom: `1px solid ${BT.border.medium}`,
+    whiteSpace: 'nowrap',
+  };
 
   return (
-    <div className="space-y-4">
+    <div style={{ background: BT.bg.terminal, display: 'flex', flexDirection: 'column', gap: 1 }}>
 
-      {/* Pattern Sources Panel */}
-      <div className="bg-white rounded-xl border border-stone-200 overflow-hidden">
-        <div className="px-4 py-3 border-b border-stone-100 flex items-center justify-between" style={{ backgroundColor: '#f8f7f4' }}>
-          <div className="flex items-center gap-2">
-            <Database size={14} className="text-stone-600" />
-            <span className="text-sm font-semibold text-stone-800">Regional Pattern Sources</span>
-            {selectedCount > 0 && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-800">
-                <CheckCircle2 size={9} /> {selectedCount} active
-              </span>
-            )}
-            {savingSelection && (
-              <span className="text-[10px] text-stone-400 font-mono">saving...</span>
-            )}
-          </div>
-          <p className="text-[11px] text-stone-500">
+      {/* ── SECTION 1: Regional Pattern Sources ── */}
+      <div style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}` }}>
+        <div style={{
+          padding: '6px 12px', background: BT.bg.header, borderBottom: `1px solid ${BT.border.subtle}`,
+          display: 'flex', alignItems: 'center', gap: 8,
+        }}>
+          <Database size={11} color={BT.met.compTraffic} />
+          <span style={{ fontSize: 9, color: BT.text.white, fontFamily: MONO, fontWeight: 700, letterSpacing: 0.8 }}>
+            REGIONAL PATTERN SOURCES
+          </span>
+          {selectedCount > 0 && (
+            <span style={{ fontSize: 9, color: BT.text.green, fontFamily: MONO, background: `${BT.text.green}15`, border: `1px solid ${BT.text.green}40`, padding: '1px 6px' }}>
+              {selectedCount} ACTIVE
+            </span>
+          )}
+          {savingSelection && (
+            <span style={{ fontSize: 9, color: BT.text.muted, fontFamily: MONO }}>SAVING...</span>
+          )}
+          <span style={{ fontSize: 9, color: BT.text.muted, fontFamily: MONO, marginLeft: 'auto' }}>
             Check deals to use their historical patterns as the projection baseline
-          </p>
+          </span>
         </div>
 
         {dealsWithData.length === 0 ? (
-          <div className="px-4 py-8 text-center">
-            <Building2 size={28} className="mx-auto text-stone-300 mb-2" />
-            <p className="text-sm text-stone-500">No other deals with traffic history found.</p>
-            <p className="text-xs text-stone-400 mt-1">Upload weekly reports for comparable deals to enable comp-calibrated projections.</p>
+          <div style={{ padding: '32px 24px', textAlign: 'center' }}>
+            <Building2 size={24} style={{ color: BT.text.muted, margin: '0 auto 8px', display: 'block' }} />
+            <p style={{ fontSize: 10, color: BT.text.muted, fontFamily: MONO, marginBottom: 4 }}>NO DEALS WITH TRAFFIC HISTORY FOUND</p>
+            <p style={{ fontSize: 9, color: BT.text.secondary, fontFamily: MONO }}>Upload weekly reports for comparable deals to enable comp-calibrated projections.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs border-collapse">
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
-                <tr className="border-b border-stone-100 bg-stone-50">
-                  <th className="px-4 py-2 text-left w-8">
-                    <span className="sr-only">Select</span>
-                  </th>
-                  <th className="px-4 py-2 text-left text-[10px] font-semibold text-stone-500 uppercase tracking-wider">Deal / Property</th>
-                  <th className="px-3 py-2 text-right text-[10px] font-semibold text-stone-500 uppercase tracking-wider">Units</th>
-                  <th className="px-3 py-2 text-right text-[10px] font-semibold text-stone-500 uppercase tracking-wider">Data Range</th>
-                  <th className="px-3 py-2 text-right text-[10px] font-semibold text-stone-500 uppercase tracking-wider">Weeks</th>
-                  <th className="px-3 py-2 text-right text-[10px] font-semibold text-stone-500 uppercase tracking-wider">Avg Traffic/Wk</th>
-                  <th className="px-3 py-2 text-right text-[10px] font-semibold text-stone-500 uppercase tracking-wider">Avg Tours/Wk</th>
-                  <th className="px-3 py-2 text-right text-[10px] font-semibold text-stone-500 uppercase tracking-wider">Avg Close %</th>
-                  <th className="px-3 py-2 text-right text-[10px] font-semibold text-stone-500 uppercase tracking-wider">Avg Occ %</th>
+                <tr>
+                  <th style={{ ...thStyle, width: 32 }} />
+                  <th style={{ ...thStyle }}>DEAL / PROPERTY</th>
+                  <th style={{ ...thStyle, textAlign: 'right' }}>UNITS</th>
+                  <th style={{ ...thStyle, textAlign: 'right' }}>DATA RANGE</th>
+                  <th style={{ ...thStyle, textAlign: 'right' }}>WKS</th>
+                  <th style={{ ...thStyle, textAlign: 'right' }}>AVG TRAFFIC/WK</th>
+                  <th style={{ ...thStyle, textAlign: 'right' }}>AVG TOURS/WK</th>
+                  <th style={{ ...thStyle, textAlign: 'right' }}>AVG CLOSE %</th>
+                  <th style={{ ...thStyle, textAlign: 'right' }}>AVG OCC %</th>
                 </tr>
               </thead>
               <tbody>
                 {dealsWithData.map((deal, i) => {
                   const isSelected = selectedDealIds.has(deal.deal_id);
+                  const bg = isSelected
+                    ? `${BT.text.green}0d`
+                    : i % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt;
+                  const borderColor = isSelected ? `${BT.text.green}30` : BT.border.subtle;
                   return (
                     <tr
                       key={deal.deal_id}
                       onClick={() => toggleDealSelection(deal)}
-                      className={`border-b border-stone-100 cursor-pointer transition-colors ${
-                        isSelected
-                          ? 'bg-emerald-50 hover:bg-emerald-100'
-                          : i % 2 === 0 ? 'bg-white hover:bg-stone-50' : 'bg-stone-50/40 hover:bg-stone-100/60'
-                      }`}
+                      style={{ background: bg, borderBottom: `1px solid ${borderColor}`, cursor: 'pointer' }}
+                      onMouseEnter={e => (e.currentTarget.style.background = isSelected ? `${BT.text.green}18` : BT.bg.hover)}
+                      onMouseLeave={e => (e.currentTarget.style.background = bg)}
                     >
-                      <td className="px-4 py-2.5">
-                        <div
-                          className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
-                            isSelected ? 'bg-emerald-600 border-emerald-600' : 'border-stone-300'
-                          }`}
-                        >
-                          {isSelected && (
-                            <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                            </svg>
-                          )}
+                      <td style={{ padding: '6px 12px' }}>
+                        <div style={{
+                          width: 14, height: 14, border: `1px solid ${isSelected ? BT.text.green : BT.border.bright}`,
+                          background: isSelected ? BT.text.green : 'transparent',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        }}>
+                          {isSelected && <span style={{ color: BT.bg.terminal, fontSize: 10, fontWeight: 900 }}>✓</span>}
                         </div>
                       </td>
-                      <td className="px-4 py-2.5">
-                        <div className={`font-medium ${isSelected ? 'text-emerald-900' : 'text-stone-800'}`}>{deal.deal_name}</div>
-                        {deal.address && <div className="text-[10px] text-stone-400 truncate max-w-[220px]">{deal.address}</div>}
+                      <td style={{ padding: '6px 8px' }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: isSelected ? BT.text.green : BT.text.primary, fontFamily: MONO }}>{deal.deal_name}</div>
+                        {deal.address && <div style={{ fontSize: 9, color: BT.text.muted, fontFamily: MONO }}>{deal.address.substring(0, 40)}</div>}
                       </td>
-                      <td className="px-3 py-2.5 text-right font-mono text-stone-700">{deal.total_units || '–'}</td>
-                      <td className="px-3 py-2.5 text-right font-mono text-stone-500 text-[10px]">{formatWeekRange(deal.earliest_week, deal.latest_week)}</td>
-                      <td className="px-3 py-2.5 text-right font-mono text-stone-700">{deal.snapshot_count}</td>
-                      <td className="px-3 py-2.5 text-right font-mono text-stone-700">{deal.avg_traffic.toFixed(1)}</td>
-                      <td className="px-3 py-2.5 text-right font-mono text-stone-700">{deal.avg_tours.toFixed(1)}</td>
-                      <td className="px-3 py-2.5 text-right font-mono text-stone-700">
-                        {deal.avg_closing_ratio ? `${(deal.avg_closing_ratio * 100).toFixed(1)}%` : '–'}
-                      </td>
-                      <td className="px-3 py-2.5 text-right font-mono text-stone-700">
-                        {deal.avg_occ_pct ? `${(deal.avg_occ_pct * 100).toFixed(1)}%` : '–'}
-                      </td>
+                      <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: MONO, fontSize: 10, color: BT.text.secondary }}>{deal.total_units || '–'}</td>
+                      <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>{fmtWeekRange(deal.earliest_week, deal.latest_week)}</td>
+                      <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: MONO, fontSize: 10, color: BT.text.secondary }}>{deal.snapshot_count}</td>
+                      <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: MONO, fontSize: 10, color: BT.text.amber }}>{deal.avg_traffic.toFixed(1)}</td>
+                      <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: MONO, fontSize: 10, color: BT.text.amber }}>{deal.avg_tours.toFixed(1)}</td>
+                      <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: MONO, fontSize: 10, color: BT.text.secondary }}>{deal.avg_closing_ratio ? `${(deal.avg_closing_ratio * 100).toFixed(1)}%` : '–'}</td>
+                      <td style={{ padding: '6px 8px', textAlign: 'right', fontFamily: MONO, fontSize: 10, color: BT.text.secondary }}>{deal.avg_occ_pct ? `${(deal.avg_occ_pct * 100).toFixed(1)}%` : '–'}</td>
                     </tr>
                   );
                 })}
@@ -303,191 +321,203 @@ export default function TrafficCompsTab({ dealId, onSelectionChange }: TrafficCo
         )}
 
         {selectedCount > 0 && (
-          <div className="px-4 py-2.5 bg-emerald-50 border-t border-emerald-100 flex items-center gap-2">
-            <CheckCircle2 size={13} className="text-emerald-600" />
-            <span className="text-[11px] text-emerald-800 font-medium">
-              Projection baseline is calibrated from {selectedCount} comp deal{selectedCount !== 1 ? 's' : ''}.
-              Traffic, seasonal patterns, and trend rates are derived from their historical data and scaled to this deal's unit count.
+          <div style={{ padding: '6px 12px', background: `${BT.text.green}0a`, borderTop: `1px solid ${BT.text.green}30`, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <CheckCircle2 size={11} color={BT.text.green} />
+            <span style={{ fontSize: 9, color: BT.text.green, fontFamily: MONO }}>
+              PROJECTION BASELINE CALIBRATED FROM {selectedCount} COMP DEAL{selectedCount !== 1 ? 'S' : ''} — traffic, seasonal patterns, and trend rates derived and scaled to this deal's unit count.
             </span>
           </div>
         )}
       </div>
 
-      {/* Trade Area Comp Grid (toggle) */}
-      <div className="bg-white rounded-xl border border-stone-200 overflow-hidden">
-        <button
-          className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-stone-50 transition-colors"
-          onClick={() => setShowCompGrid(!showCompGrid)}
-        >
-          <div className="flex items-center gap-2">
-            <Building2 size={14} className="text-stone-500" />
-            <span className="text-sm font-semibold text-stone-700">Trade Area Comp Grid</span>
+      {/* ── SECTION 2: Trade Area Comp Grid ── */}
+      <div style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}` }}>
+        <div style={{
+          padding: '6px 12px', background: BT.bg.header, borderBottom: `1px solid ${BT.border.subtle}`,
+          display: 'flex', alignItems: 'center', gap: 8,
+        }}>
+          <Building2 size={11} color={BT.met.physTraffic} />
+          <span style={{ fontSize: 9, color: BT.text.white, fontFamily: MONO, fontWeight: 700, letterSpacing: 0.8 }}>
+            TRADE AREA COMP GRID
+          </span>
+          {comps.length > 0 && (
+            <span style={{ fontSize: 9, color: BT.text.muted, fontFamily: MONO }}>
+              {comps.length} PROPERTIES
+            </span>
+          )}
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+            <button
+              onClick={() => setShowFilters(f => !f)}
+              style={{
+                background: showFilters ? BT.bg.active : 'transparent',
+                border: `1px solid ${BT.border.medium}`,
+                color: showFilters ? BT.text.amber : BT.text.muted,
+                cursor: 'pointer', padding: '2px 8px', fontFamily: MONO, fontSize: 9,
+                display: 'flex', alignItems: 'center', gap: 4,
+              }}
+            >
+              <Filter size={9} /> FILTERS
+            </button>
             {comps.length > 0 && (
-              <span className="text-[10px] text-stone-400 font-mono">{comps.length} properties</span>
+              <button
+                onClick={exportCSV}
+                style={{
+                  background: 'transparent', border: `1px solid ${BT.border.medium}`,
+                  color: BT.text.muted, cursor: 'pointer', padding: '2px 8px',
+                  fontFamily: MONO, fontSize: 9, display: 'flex', alignItems: 'center', gap: 4,
+                }}
+              >
+                <Download size={9} /> EXPORT
+              </button>
             )}
           </div>
-          {showCompGrid ? <ChevronUp size={14} className="text-stone-400" /> : <ChevronDown size={14} className="text-stone-400" />}
-        </button>
+        </div>
 
-        {showCompGrid && (
-          <>
-            <div className="px-4 pb-3 border-t border-stone-100 pt-3 flex items-center justify-between">
-              <div className="text-xs text-stone-500">{comps.length} comparable properties in trade area</div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setShowFilters(!showFilters)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors ${
-                    showFilters ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-700 hover:bg-stone-200'
-                  }`}
-                >
-                  <Filter size={12} /> Filters
-                </button>
-                {comps.length > 0 && (
-                  <button
-                    onClick={exportCSV}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-stone-100 text-stone-700 rounded-lg text-xs hover:bg-stone-200 transition-colors"
-                  >
-                    <Download size={12} /> Export
-                  </button>
-                )}
+        {/* Filter bar */}
+        {showFilters && (
+          <div style={{
+            padding: '8px 12px', background: BT.bg.panelAlt, borderBottom: `1px solid ${BT.border.subtle}`,
+            display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8,
+          }}>
+            {[
+              { label: 'MIN UNITS', key: 'minUnits', placeholder: '0' },
+              { label: 'MAX UNITS', key: 'maxUnits', placeholder: '500' },
+              { label: 'MIN OCC %', key: 'minOccupancy', placeholder: '0' },
+              { label: 'MAX DIST (mi)', key: 'maxDistance', placeholder: '5' },
+            ].map(f => (
+              <div key={f.key}>
+                <div style={{ fontSize: 8, color: BT.text.muted, fontFamily: MONO, letterSpacing: 0.8, marginBottom: 3 }}>{f.label}</div>
+                <input
+                  type="number"
+                  value={(filters as any)[f.key]}
+                  onChange={e => setFilters(p => ({ ...p, [f.key]: e.target.value }))}
+                  placeholder={f.placeholder}
+                  style={{
+                    width: '100%', background: BT.bg.input, border: `1px solid ${BT.border.medium}`,
+                    color: BT.text.white, fontFamily: MONO, fontSize: 10, padding: '3px 6px',
+                    outline: 'none', boxSizing: 'border-box' as const, colorScheme: 'dark',
+                  }}
+                />
               </div>
-            </div>
-
-            {showFilters && (
-              <div className="px-4 pb-3 grid grid-cols-4 gap-3 border-b border-stone-100">
-                <div>
-                  <label className="text-[10px] text-stone-500 uppercase mb-1 block">Min Units</label>
-                  <input
-                    type="number"
-                    value={filters.minUnits}
-                    onChange={e => setFilters(p => ({ ...p, minUnits: e.target.value }))}
-                    className="w-full px-2 py-1.5 text-xs border border-stone-200 rounded-lg"
-                    placeholder="0"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] text-stone-500 uppercase mb-1 block">Max Units</label>
-                  <input
-                    type="number"
-                    value={filters.maxUnits}
-                    onChange={e => setFilters(p => ({ ...p, maxUnits: e.target.value }))}
-                    className="w-full px-2 py-1.5 text-xs border border-stone-200 rounded-lg"
-                    placeholder="500"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] text-stone-500 uppercase mb-1 block">Min Occupancy %</label>
-                  <input
-                    type="number"
-                    value={filters.minOccupancy}
-                    onChange={e => setFilters(p => ({ ...p, minOccupancy: e.target.value }))}
-                    className="w-full px-2 py-1.5 text-xs border border-stone-200 rounded-lg"
-                    placeholder="0"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] text-stone-500 uppercase mb-1 block">Max Distance (mi)</label>
-                  <input
-                    type="number"
-                    value={filters.maxDistance}
-                    onChange={e => setFilters(p => ({ ...p, maxDistance: e.target.value }))}
-                    className="w-full px-2 py-1.5 text-xs border border-stone-200 rounded-lg"
-                    placeholder="5"
-                  />
-                </div>
-              </div>
-            )}
-
-            {comps.length === 0 ? (
-              <div className="px-4 py-8 text-center">
-                <AlertCircle size={24} className="mx-auto text-stone-300 mb-2" />
-                <p className="text-sm text-stone-500">No trade area comp snapshot data yet.</p>
-                <p className="text-xs text-stone-400 mt-1">Use the snapshot action to pull traffic data for nearby properties.</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs border-collapse">
-                  <thead>
-                    <tr style={{ backgroundColor: '#3C4A3B' }}>
-                      <th className="sticky left-0 z-10 text-left px-4 py-2.5 min-w-[180px]" style={{ backgroundColor: '#3C4A3B' }}>
-                        <span className="text-white/80 text-[10px] font-medium uppercase tracking-wider">Property</span>
-                      </th>
-                      <SortHeader field="units" label="Units" />
-                      <SortHeader field="occupancy_pct" label="Occ %" />
-                      <SortHeader field="weekly_traffic" label="Traffic/Wk" />
-                      <SortHeader field="weekly_tours" label="Tours/Wk" />
-                      <SortHeader field="closing_ratio" label="Close %" />
-                      <SortHeader field="net_leases_per_week" label="Net/Wk" />
-                      <SortHeader field="web_sessions" label="Web" />
-                      <SortHeader field="visibility_score" label="Vis" />
-                      <SortHeader field="adt" label="ADT" />
-                      <SortHeader field="distance_miles" label="Dist" />
-                      <th className="px-3 py-2.5 text-right">
-                        <span className="text-white/80 text-[10px] font-medium uppercase tracking-wider">Sources</span>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {comps.map((comp, i) => (
-                      <tr
-                        key={comp.property_id}
-                        className={`border-b border-stone-100 ${
-                          comp.is_subject
-                            ? 'bg-amber-50 font-medium'
-                            : i % 2 === 0 ? 'bg-white' : 'bg-stone-50/50'
-                        }`}
-                      >
-                        <td className={`sticky left-0 z-10 px-4 py-2 text-[11px] border-r border-stone-100 ${comp.is_subject ? 'bg-amber-50' : i % 2 === 0 ? 'bg-white' : 'bg-stone-50/50'}`}>
-                          <div className="text-stone-900 font-medium truncate max-w-[160px]">{comp.property_name}</div>
-                          {comp.is_subject && <span className="text-[9px] text-amber-600 font-mono">SUBJECT</span>}
-                        </td>
-                        <td className="px-3 py-2 text-right font-mono text-stone-800">{comp.units || '–'}</td>
-                        <td className="px-3 py-2 text-right font-mono text-stone-800">{comp.occupancy_pct ? `${(comp.occupancy_pct * 100).toFixed(1)}%` : '–'}</td>
-                        <td className="px-3 py-2 text-right font-mono text-stone-800">{comp.weekly_traffic || '–'}</td>
-                        <td className="px-3 py-2 text-right font-mono text-stone-800">{comp.weekly_tours || '–'}</td>
-                        <td className="px-3 py-2 text-right font-mono text-stone-800">{comp.closing_ratio ? `${(comp.closing_ratio * 100).toFixed(1)}%` : '–'}</td>
-                        <td className="px-3 py-2 text-right font-mono text-stone-800">{comp.net_leases_per_week ? comp.net_leases_per_week.toFixed(1) : '–'}</td>
-                        <td className="px-3 py-2 text-right font-mono text-stone-800">{comp.web_sessions ? comp.web_sessions.toLocaleString() : '–'}</td>
-                        <td className="px-3 py-2 text-right font-mono text-stone-800">
-                          {comp.visibility_score ? (
-                            <span className={`${comp.visibility_score >= 70 ? 'text-emerald-700' : comp.visibility_score >= 50 ? 'text-amber-700' : 'text-red-600'}`}>
-                              {comp.visibility_score}
-                            </span>
-                          ) : '–'}
-                        </td>
-                        <td className="px-3 py-2 text-right font-mono text-stone-800">{comp.adt ? `${(comp.adt / 1000).toFixed(0)}K` : '–'}</td>
-                        <td className="px-3 py-2 text-right font-mono text-stone-800">{comp.distance_miles ? `${comp.distance_miles.toFixed(1)} mi` : '–'}</td>
-                        <td className="px-3 py-2 text-right">
-                          <div className="flex items-center gap-0.5 justify-end flex-wrap">
-                            {(comp.data_sources || []).map((s, j) => <SourceBadge key={j} source={s} />)}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-
-                    {averages && (
-                      <tr className="bg-stone-100 border-t-2 border-stone-300 font-medium">
-                        <td className="sticky left-0 z-10 bg-stone-100 px-4 py-2 text-[11px] text-stone-700 border-r border-stone-200">
-                          Trade Area Average
-                        </td>
-                        <td className="px-3 py-2 text-right font-mono text-stone-700">{averages.avg_units ? Math.round(averages.avg_units) : '–'}</td>
-                        <td className="px-3 py-2 text-right font-mono text-stone-700">{averages.avg_occupancy ? `${(averages.avg_occupancy * 100).toFixed(1)}%` : '–'}</td>
-                        <td className="px-3 py-2 text-right font-mono text-stone-700">{averages.avg_traffic ? Math.round(averages.avg_traffic) : '–'}</td>
-                        <td className="px-3 py-2 text-right font-mono text-stone-700">{averages.avg_tours ? Math.round(averages.avg_tours) : '–'}</td>
-                        <td className="px-3 py-2 text-right font-mono text-stone-700">{averages.avg_closing_ratio ? `${(averages.avg_closing_ratio * 100).toFixed(1)}%` : '–'}</td>
-                        <td className="px-3 py-2 text-right font-mono text-stone-700">{averages.avg_net_leases ? averages.avg_net_leases.toFixed(1) : '–'}</td>
-                        <td className="px-3 py-2 text-right font-mono text-stone-700">{averages.avg_web_sessions ? Math.round(averages.avg_web_sessions).toLocaleString() : '–'}</td>
-                        <td className="px-3 py-2 text-right font-mono text-stone-700">{averages.avg_visibility ? Math.round(averages.avg_visibility) : '–'}</td>
-                        <td className="px-3 py-2 text-right font-mono text-stone-700">{averages.avg_adt ? `${(averages.avg_adt / 1000).toFixed(0)}K` : '–'}</td>
-                        <td className="px-3 py-2 text-right font-mono text-stone-700" colSpan={2}>–</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </>
+            ))}
+          </div>
         )}
+
+        {comps.length === 0 ? (
+          <div style={{ padding: '32px 24px', textAlign: 'center' }}>
+            <AlertCircle size={24} style={{ color: BT.text.muted, margin: '0 auto 8px', display: 'block' }} />
+            <p style={{ fontSize: 10, color: BT.text.muted, fontFamily: MONO, marginBottom: 4 }}>NO TRADE AREA COMP DATA</p>
+            <p style={{ fontSize: 9, color: BT.text.secondary, fontFamily: MONO }}>Use the snapshot action to pull traffic data for nearby properties.</p>
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={{
+                    ...thStyle, position: 'sticky', left: 0, zIndex: 10,
+                    minWidth: 160, textAlign: 'left',
+                  }}>PROPERTY</th>
+                  <ColHeader field="units" label="UNITS" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
+                  <ColHeader field="occupancy_pct" label="OCC %" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
+                  <ColHeader field="weekly_traffic" label="TRAFFIC/WK" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
+                  <ColHeader field="weekly_tours" label="TOURS/WK" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
+                  <ColHeader field="closing_ratio" label="CLOSE %" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
+                  <ColHeader field="net_leases_per_week" label="NET/WK" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
+                  <ColHeader field="web_sessions" label="WEB" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
+                  <ColHeader field="visibility_score" label="VIS" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
+                  <ColHeader field="adt" label="ADT" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
+                  <ColHeader field="distance_miles" label="DIST" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
+                  <th style={{ ...thStyle, textAlign: 'right' }}>SOURCES</th>
+                </tr>
+              </thead>
+              <tbody>
+                {comps.map((comp, i) => {
+                  const isSubject = comp.is_subject;
+                  const bg = isSubject
+                    ? `${BT.text.amber}0d`
+                    : i % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt;
+                  const tdStyle: React.CSSProperties = {
+                    padding: '4px 8px', textAlign: 'right', fontFamily: MONO, fontSize: 10,
+                    color: isSubject ? BT.text.amberBright : BT.text.secondary,
+                    borderBottom: `1px solid ${isSubject ? BT.text.amber + '30' : BT.border.subtle}`,
+                  };
+                  const visColor = comp.visibility_score >= 70 ? BT.text.green : comp.visibility_score >= 50 ? BT.text.amber : BT.text.red;
+
+                  return (
+                    <tr key={comp.property_id} style={{ background: bg }}>
+                      <td style={{
+                        padding: '5px 8px', position: 'sticky', left: 0, zIndex: 1,
+                        background: bg,
+                        borderBottom: `1px solid ${isSubject ? BT.text.amber + '30' : BT.border.subtle}`,
+                        borderRight: `1px solid ${BT.border.subtle}`,
+                      }}>
+                        <div style={{ fontSize: 10, fontWeight: isSubject ? 700 : 400, color: isSubject ? BT.text.amberBright : BT.text.primary, fontFamily: MONO, maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {comp.property_name}
+                        </div>
+                        {isSubject && (
+                          <span style={{ fontSize: 8, color: BT.text.amber, fontFamily: MONO, fontWeight: 700, letterSpacing: 0.5 }}>SUBJECT</span>
+                        )}
+                      </td>
+                      <td style={tdStyle}>{comp.units || '–'}</td>
+                      <td style={tdStyle}>{comp.occupancy_pct ? `${(comp.occupancy_pct * 100).toFixed(1)}%` : '–'}</td>
+                      <td style={{ ...tdStyle, color: isSubject ? BT.text.amberBright : BT.text.amber }}>{comp.weekly_traffic || '–'}</td>
+                      <td style={tdStyle}>{comp.weekly_tours || '–'}</td>
+                      <td style={tdStyle}>{comp.closing_ratio ? `${(comp.closing_ratio * 100).toFixed(1)}%` : '–'}</td>
+                      <td style={tdStyle}>{comp.net_leases_per_week ? comp.net_leases_per_week.toFixed(1) : '–'}</td>
+                      <td style={tdStyle}>{comp.web_sessions ? comp.web_sessions.toLocaleString() : '–'}</td>
+                      <td style={{ ...tdStyle, color: comp.visibility_score ? visColor : BT.text.muted }}>
+                        {comp.visibility_score || '–'}
+                      </td>
+                      <td style={tdStyle}>{comp.adt ? `${(comp.adt / 1000).toFixed(0)}K` : '–'}</td>
+                      <td style={tdStyle}>{comp.distance_miles ? `${comp.distance_miles.toFixed(1)}mi` : '–'}</td>
+                      <td style={{ ...tdStyle, textAlign: 'right' }}>
+                        <div style={{ display: 'flex', gap: 2, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                          {(comp.data_sources || []).map((s, j) => <SourceBadge key={j} source={s} />)}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+
+                {/* Averages footer */}
+                {averages && (
+                  <tr style={{ background: BT.bg.active, borderTop: `2px solid ${BT.border.bright}` }}>
+                    <td style={{
+                      padding: '5px 8px', position: 'sticky', left: 0, zIndex: 1,
+                      background: BT.bg.active, borderTop: `2px solid ${BT.border.bright}`,
+                    }}>
+                      <span style={{ fontSize: 9, fontWeight: 700, color: BT.text.white, fontFamily: MONO, letterSpacing: 0.5 }}>TRADE AREA AVG</span>
+                    </td>
+                    <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: MONO, fontSize: 10, color: BT.text.white }}>{averages.avg_units ? Math.round(averages.avg_units) : '–'}</td>
+                    <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: MONO, fontSize: 10, color: BT.text.white }}>{avgOcc ? `${(avgOcc * 100).toFixed(1)}%` : '–'}</td>
+                    <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: MONO, fontSize: 10, color: BT.text.amber, fontWeight: 700 }}>{avgTraffic ? Math.round(avgTraffic) : '–'}</td>
+                    <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: MONO, fontSize: 10, color: BT.text.white }}>{avgTours ? Math.round(avgTours) : '–'}</td>
+                    <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: MONO, fontSize: 10, color: BT.text.white }}>{averages.avg_closing_ratio ? `${(averages.avg_closing_ratio * 100).toFixed(1)}%` : '–'}</td>
+                    <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: MONO, fontSize: 10, color: BT.text.white }}>{avgNetLeases ? avgNetLeases.toFixed(1) : '–'}</td>
+                    <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: MONO, fontSize: 10, color: BT.text.white }}>{averages.avg_web_sessions ? averages.avg_web_sessions.toLocaleString() : '–'}</td>
+                    <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: MONO, fontSize: 10, color: BT.text.white }}>{avgVis ? Math.round(avgVis) : '–'}</td>
+                    <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: MONO, fontSize: 10, color: BT.text.white }}>{averages.avg_adt ? `${(averages.avg_adt / 1000).toFixed(0)}K` : '–'}</td>
+                    <td style={{ padding: '5px 8px', textAlign: 'right', fontFamily: MONO, fontSize: 10, color: BT.text.muted }}>—</td>
+                    <td style={{ padding: '5px 8px' }} />
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Source legend */}
+      <div style={{ background: BT.bg.header, padding: '4px 12px', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        {Object.entries(SOURCE_CFG).slice(0, 6).map(([key, cfg]) => (
+          <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ fontSize: 8, fontFamily: MONO, color: cfg.color, background: `${cfg.color}18`, border: `1px solid ${cfg.color}33`, padding: '0 3px' }}>{cfg.label}</span>
+          </div>
+        ))}
+        <span style={{ fontSize: 9, color: BT.text.muted, fontFamily: MONO, marginLeft: 'auto' }}>
+          Click column headers to sort · Subject property shown in amber
+        </span>
       </div>
     </div>
   );

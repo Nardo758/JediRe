@@ -65,6 +65,36 @@ interface PredictionBreakdown {
   trend_direction?: string;
 }
 
+type DealMode = 'STABILIZED' | 'LEASE_UP' | 'REDEVELOPMENT';
+
+interface ExpirationWaterfallBar {
+  month: number;
+  label: string;
+  count: number;
+}
+
+interface AbsorptionPoint {
+  month: number;
+  p25: number;
+  median: number;
+  p75: number;
+}
+
+interface ModePayload {
+  mode: DealMode;
+  occupancy?: number;
+  targetOccupancy?: number;
+  monthsToStabilization?: { min: number; max: number };
+  expirationWaterfall?: ExpirationWaterfallBar[];
+  absorptionCurve?: AbsorptionPoint[];
+  churnReplacementNeeded?: number;
+  concessionIntensity?: number;
+  premiumCaptureRate?: number;
+  confidenceTier?: string;
+  calibrationSource?: string;
+  nPeerProperties?: number;
+}
+
 interface PredictionData {
   property_id: string;
   weekly_walk_ins: number;
@@ -95,6 +125,8 @@ interface PredictionData {
   };
   model_version: string;
   data_sources?: any;
+  mode?: DealMode;
+  mode_payload?: ModePayload;
 }
 
 interface TrafficPredictionsTabProps {
@@ -265,8 +297,112 @@ export default function TrafficPredictionsTab({ dealId, propertyId }: TrafficPre
   const physScore = prediction?.physical_traffic_score;
   const maxDayWalkins = dailyBreakdown.length > 0 ? Math.max(...dailyBreakdown.map(d => d.walk_ins)) : 1;
 
+  const mode = prediction?.mode || prediction?.mode_payload?.mode;
+  const mp = prediction?.mode_payload;
+
   return (
     <div className="space-y-4">
+      {/* ── Mode-aware panel (shown only when backend provides mode) ── */}
+      {mode && (
+        <div style={{
+          background: mode === 'STABILIZED' ? '#00BCD418' : mode === 'LEASE_UP' ? '#F5A62318' : '#A78BFA18',
+          border: `1px solid ${mode === 'STABILIZED' ? '#00BCD440' : mode === 'LEASE_UP' ? '#F5A62340' : '#A78BFA40'}`,
+          borderRadius: 4, padding: '12px 16px', display: 'flex', flexDirection: 'column' as const, gap: 10,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{
+              fontSize: 9, fontWeight: 700, letterSpacing: 1.2,
+              color: mode === 'STABILIZED' ? '#00BCD4' : mode === 'LEASE_UP' ? '#F5A623' : '#A78BFA',
+              fontFamily: 'var(--bt-mono, monospace)', background: mode === 'STABILIZED' ? '#00BCD420' : mode === 'LEASE_UP' ? '#F5A62320' : '#A78BFA20',
+              padding: '2px 8px', border: `1px solid ${mode === 'STABILIZED' ? '#00BCD450' : mode === 'LEASE_UP' ? '#F5A62350' : '#A78BFA50'}`,
+            }}>
+              {mode === 'STABILIZED' ? 'STABILIZED ASSET' : mode === 'LEASE_UP' ? 'LEASE-UP MODE' : 'REDEVELOPMENT MODE'}
+            </span>
+            {mp?.confidenceTier && (
+              <span style={{ fontSize: 9, color: '#9EA8B4', fontFamily: 'var(--bt-mono, monospace)' }}>
+                CONFIDENCE: {mp.confidenceTier.toUpperCase()}
+              </span>
+            )}
+            {mp?.nPeerProperties && (
+              <span style={{ fontSize: 9, color: '#9EA8B4', fontFamily: 'var(--bt-mono, monospace)', marginLeft: 'auto' }}>
+                {mp.nPeerProperties} PEER PROPERTIES
+              </span>
+            )}
+          </div>
+
+          {mode === 'STABILIZED' && mp && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+              {mp.occupancy != null && (
+                <div>
+                  <div style={{ fontSize: 8, color: '#6B7585', fontFamily: 'var(--bt-mono, monospace)', letterSpacing: 0.8, textTransform: 'uppercase' as const, marginBottom: 2 }}>Current Occ</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: '#00BCD4', fontFamily: 'var(--bt-mono, monospace)' }}>{(mp.occupancy * 100).toFixed(1)}%</div>
+                </div>
+              )}
+              {mp.premiumCaptureRate != null && (
+                <div>
+                  <div style={{ fontSize: 8, color: '#6B7585', fontFamily: 'var(--bt-mono, monospace)', letterSpacing: 0.8, textTransform: 'uppercase' as const, marginBottom: 2 }}>Premium Capture</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: '#00BCD4', fontFamily: 'var(--bt-mono, monospace)' }}>{(mp.premiumCaptureRate * 100).toFixed(1)}%</div>
+                </div>
+              )}
+              {mp.churnReplacementNeeded != null && (
+                <div>
+                  <div style={{ fontSize: 8, color: '#6B7585', fontFamily: 'var(--bt-mono, monospace)', letterSpacing: 0.8, textTransform: 'uppercase' as const, marginBottom: 2 }}>Churn Replacement/Wk</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: '#E8E6E1', fontFamily: 'var(--bt-mono, monospace)' }}>{mp.churnReplacementNeeded.toFixed(1)}</div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {mode === 'LEASE_UP' && mp && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+              {mp.occupancy != null && (
+                <div>
+                  <div style={{ fontSize: 8, color: '#6B7585', fontFamily: 'var(--bt-mono, monospace)', letterSpacing: 0.8, textTransform: 'uppercase' as const, marginBottom: 2 }}>Current Occ</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: '#F5A623', fontFamily: 'var(--bt-mono, monospace)' }}>{(mp.occupancy * 100).toFixed(1)}%</div>
+                </div>
+              )}
+              {mp.targetOccupancy != null && (
+                <div>
+                  <div style={{ fontSize: 8, color: '#6B7585', fontFamily: 'var(--bt-mono, monospace)', letterSpacing: 0.8, textTransform: 'uppercase' as const, marginBottom: 2 }}>Target Occ</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: '#F5A623', fontFamily: 'var(--bt-mono, monospace)' }}>{(mp.targetOccupancy * 100).toFixed(1)}%</div>
+                </div>
+              )}
+              {mp.monthsToStabilization != null && (
+                <div>
+                  <div style={{ fontSize: 8, color: '#6B7585', fontFamily: 'var(--bt-mono, monospace)', letterSpacing: 0.8, textTransform: 'uppercase' as const, marginBottom: 2 }}>Months to Stabilize</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: '#E8E6E1', fontFamily: 'var(--bt-mono, monospace)' }}>
+                    {mp.monthsToStabilization.min}–{mp.monthsToStabilization.max}
+                  </div>
+                </div>
+              )}
+              {mp.concessionIntensity != null && (
+                <div>
+                  <div style={{ fontSize: 8, color: '#6B7585', fontFamily: 'var(--bt-mono, monospace)', letterSpacing: 0.8, textTransform: 'uppercase' as const, marginBottom: 2 }}>Concession Intensity</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: '#E8E6E1', fontFamily: 'var(--bt-mono, monospace)' }}>{mp.concessionIntensity.toFixed(2)}x</div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {mode === 'REDEVELOPMENT' && mp && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+              {mp.occupancy != null && (
+                <div>
+                  <div style={{ fontSize: 8, color: '#6B7585', fontFamily: 'var(--bt-mono, monospace)', letterSpacing: 0.8, textTransform: 'uppercase' as const, marginBottom: 2 }}>Pre-Reno Occ</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: '#A78BFA', fontFamily: 'var(--bt-mono, monospace)' }}>{(mp.occupancy * 100).toFixed(1)}%</div>
+                </div>
+              )}
+              {mp.churnReplacementNeeded != null && (
+                <div>
+                  <div style={{ fontSize: 8, color: '#6B7585', fontFamily: 'var(--bt-mono, monospace)', letterSpacing: 0.8, textTransform: 'uppercase' as const, marginBottom: 2 }}>Relo Units Needed</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: '#E8E6E1', fontFamily: 'var(--bt-mono, monospace)' }}>{mp.churnReplacementNeeded}</div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="bg-white rounded-xl border border-stone-200 p-5">
         <div className="flex items-center gap-2 mb-4">
           <Layers size={16} className="text-stone-500" />
