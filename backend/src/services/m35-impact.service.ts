@@ -741,6 +741,16 @@ export async function computeEventImpact(eventId: string): Promise<ImpactRecord[
     eventId, metrics: metricKeys.length, windows: MEASUREMENT_WINDOWS.length, records: results.length,
   });
 
+  // Trigger async playbook update — non-blocking, logs internally
+  setImmediate(async () => {
+    try {
+      const { triggerPlaybookUpdate } = await import('./m35-playbook.service');
+      await triggerPlaybookUpdate(eventId);
+    } catch (err) {
+      logger.warn('[M35 Impact] Playbook update trigger failed (non-fatal)', { eventId, err });
+    }
+  });
+
   return results;
 }
 

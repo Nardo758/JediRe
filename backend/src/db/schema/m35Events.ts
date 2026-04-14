@@ -286,6 +286,67 @@ export const eventControlGroups = pgTable('event_control_groups', {
   controlUniq: uniqueIndex('idx_event_control_groups_unique').on(t.eventId, t.controlGeographyId),
 }));
 
+// ─── event_playbooks ──────────────────────────────────────────────────────────
+// Aggregated response functions per event subtype × stratum × metric × window.
+// Populated/updated by m35-playbook.service.ts after each impact measurement.
+// Status: 'preliminary' (n<8) | 'publishable' (n>=8)
+
+export const playbookStatusEnum = pgEnum('playbook_status', ['preliminary', 'publishable']);
+
+export const eventPlaybooks = pgTable('event_playbooks', {
+  id:                 uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  subtype:            varchar('subtype', { length: 64 }).notNull(),
+  // Stratification axes
+  stratumMsaTier:     varchar('stratum_msa_tier', { length: 16 }).notNull().default('all'),
+  // 'large' | 'mid' | 'small' | 'all'
+  stratumMagnitude:   varchar('stratum_magnitude', { length: 20 }).notNull().default('all'),
+  // 'small' | 'medium' | 'large' | 'transformative' | 'all'
+  stratumRegime:      varchar('stratum_regime', { length: 16 }).notNull().default('all'),
+  // 'pre_covid' | 'post_covid' | 'all'
+  metricKey:          varchar('metric_key', { length: 64 }).notNull(),
+  windowMonths:       smallint('window_months').notNull(),             // 3 | 12 | 24 | 36
+  // Distribution statistics (attributed_delta across all instances)
+  medianDelta:        numeric('median_delta', { precision: 18, scale: 6 }),
+  p25:                numeric('p25', { precision: 18, scale: 6 }),
+  p75:                numeric('p75', { precision: 18, scale: 6 }),
+  meanDelta:          numeric('mean_delta', { precision: 18, scale: 6 }),
+  stddevDelta:        numeric('stddev_delta', { precision: 18, scale: 6 }),
+  // Reliability
+  instanceCount:      smallint('instance_count').notNull().default(0),
+  confidence:         numeric('confidence', { precision: 4, scale: 3 }).default('0'),
+  status:             playbookStatusEnum('status').notNull().default('preliminary'),
+  // Lag structure summary (JSON: { leading_months, peak_months, decay_months })
+  lagStructure:       jsonb('lag_structure').default(sql`'{}'::jsonb`),
+  // Magnitude scaling coefficients (JSON: { jobs_per_pp, wage_premium_mult, msa_size_attenuation })
+  scalingCoefficients: jsonb('scaling_coefficients').default(sql`'{}'::jsonb`),
+  isSeeded:           boolean('is_seeded').default(false),   // true = backfill, false = computed
+  lastUpdated:        timestamp('last_updated', { withTimezone: true }).defaultNow(),
+  createdAt:          timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (t) => ({
+  subtypeMetricWindowIdx: index('idx_event_playbooks_subtype_metric_window')
+    .on(t.subtype, t.metricKey, t.windowMonths),
+  uniqueStratum: uniqueIndex('idx_event_playbooks_unique')
+    .on(t.subtype, t.stratumMsaTier, t.stratumMagnitude, t.stratumRegime, t.metricKey, t.windowMonths),
+  statusIdx: index('idx_event_playbooks_status').on(t.status),
+}));
+
+// ─── playbook_instances ───────────────────────────────────────────────────────
+// Links aggregated playbook rows to the specific event_impacts records used to
+// build them. Enables audit and re-aggregation without losing provenance.
+
+export const playbookInstances = pgTable('playbook_instances', {
+  id:             uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  playbookId:     uuid('playbook_id').notNull().references(() => eventPlaybooks.id, { onDelete: 'cascade' }),
+  eventId:        uuid('event_id').notNull().references(() => keyEvents.id, { onDelete: 'cascade' }),
+  impactId:       uuid('impact_id').notNull().references(() => eventImpacts.id, { onDelete: 'cascade' }),
+  weight:         numeric('weight', { precision: 6, scale: 4 }).notNull().default('1'), // = impact.did_confidence
+  createdAt:      timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (t) => ({
+  playbookIdx: index('idx_playbook_instances_playbook').on(t.playbookId),
+  eventIdx:    index('idx_playbook_instances_event').on(t.eventId),
+  uniqueImpact: uniqueIndex('idx_playbook_instances_unique').on(t.playbookId, t.impactId),
+}));
+
 // ─── event_geographic_impacts ─────────────────────────────────────────────────
 
 export const eventGeographicImpacts = pgTable('event_geographic_impacts', {

@@ -9,6 +9,7 @@ import React, { useState, useEffect } from 'react';
 import { ArrowRight, Activity, ChevronDown, RefreshCw, AlertCircle } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
 import { MSAData } from '../../MSATerminal';
+import { EventForecastPanel } from './EventForecastPanel';
 
 interface MSAEventsTabProps {
   msaId: string;
@@ -163,6 +164,7 @@ export const MSAEventsTab: React.FC<MSAEventsTabProps> = ({ msaId, msa }) => {
   const [pipelineSignal, setPipelineSignal] = useState<PipelineSignal | null>(null);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [eventDetail, setEventDetail] = useState<any | null>(null);
+  const [detailTab, setDetailTab] = useState<'causality' | 'forecast'>('causality');
   const [loading, setLoading] = useState(true);
   const [causalityLoading, setCausalityLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -493,10 +495,26 @@ export const MSAEventsTab: React.FC<MSAEventsTabProps> = ({ msaId, msa }) => {
         {/* Right: Event Detail + Per-Metric Causality ─────────────────────────── */}
         {selectedEventId && (
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <span style={{ fontSize: 10, fontWeight: 700, color: BT.text.muted, letterSpacing: '0.1em' }}>
-                CAUSALITY DETAIL
-              </span>
+            {/* Panel header with tab toggle */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <div style={{ display: 'flex', gap: 2 }}>
+                {(['causality', 'forecast'] as const).map(tab => (
+                  <button
+                    key={tab}
+                    onClick={() => setDetailTab(tab)}
+                    style={{
+                      padding: '4px 12px', fontSize: 9, fontWeight: 700, cursor: 'pointer',
+                      fontFamily: "'JetBrains Mono','Fira Code',monospace",
+                      background: detailTab === tab ? BT.accent.blue : BT.bg.elevated,
+                      color: detailTab === tab ? '#0A0F14' : BT.text.muted,
+                      border: `1px solid ${detailTab === tab ? BT.accent.blue : BT.border.subtle}`,
+                      letterSpacing: '0.06em',
+                    }}
+                  >
+                    {tab === 'causality' ? 'CAUSALITY' : 'FORECAST'}
+                  </button>
+                ))}
+              </div>
               <button
                 onClick={() => setSelectedEventId(null)}
                 style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: BT.text.dim, fontSize: 12 }}
@@ -505,13 +523,22 @@ export const MSAEventsTab: React.FC<MSAEventsTabProps> = ({ msaId, msa }) => {
               </button>
             </div>
 
-            {!eventDetail && (
+            {/* Forecast tab */}
+            {detailTab === 'forecast' && (
+              <EventForecastPanel
+                eventId={selectedEventId}
+                eventName={liveEvents.find(e => e.id === selectedEventId)?.name}
+              />
+            )}
+
+            {/* Causality tab */}
+            {detailTab === 'causality' && !eventDetail && (
               <div style={{ ...terminalStyles.card, padding: 32, textAlign: 'center', color: BT.text.muted, fontSize: 11 }}>
                 Loading causality analysis...
               </div>
             )}
 
-            {eventDetail && (
+            {detailTab === 'causality' && eventDetail && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {/* Overall verdict */}
                 {(() => {

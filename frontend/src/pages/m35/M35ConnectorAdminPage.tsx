@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { PlaybookAccuracyDashboard } from '../../components/terminal/tabs/msa/PlaybookAccuracyDashboard';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, CheckCircle, AlertTriangle, Clock, RefreshCw, Play, Pause, ChevronDown, ChevronRight, Database, Wifi, WifiOff } from 'lucide-react';
 
@@ -409,6 +410,18 @@ const M35ConnectorAdminPage: React.FC = () => {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+
+        {/* Playbook Accuracy Dashboard */}
+        <div style={{ border: `1px solid ${BORDER}`, borderRadius: 3, overflow: 'hidden', backgroundColor: PANEL, marginBottom: 16 }}>
+          <div style={{ padding: '12px 16px', borderBottom: `1px solid ${BORDER}` }}>
+            <span style={{ fontFamily: "'JetBrains Mono','Fira Code',monospace", color: DIM, fontSize: 9, fontWeight: 700, letterSpacing: '0.1em' }}>
+              PLAYBOOK ACCURACY &amp; BACKTEST ENGINE
+            </span>
+          </div>
+          <div style={{ padding: 16 }}>
+            <PlaybookAccuracyDashboard />
           </div>
         </div>
 
