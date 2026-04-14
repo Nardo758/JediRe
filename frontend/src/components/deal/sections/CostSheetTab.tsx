@@ -64,6 +64,44 @@ function uid() {
   return Math.random().toString(36).slice(2, 10);
 }
 
+/**
+ * Maps legacy name patterns → their canonical sourceKey and stableId.
+ * Run once when loading saved data so that old cost sheets can sync in-place
+ * instead of accumulating duplicate synced rows alongside old unlinked ones.
+ */
+const LEGACY_NAME_TO_SOURCE: Array<{ test: RegExp; sourceKey: string }> = [
+  { test: /^Acquisition Fee/i,         sourceKey: 'wf:acquisitionFee'  },
+  { test: /^Asset Mgmt Fee/i,          sourceKey: 'wf:assetMgmtFee'    },
+  { test: /^Construction Mgmt Fee/i,   sourceKey: 'wf:constructionMgmt'},
+  { test: /^Disposition Fee/i,         sourceKey: 'wf:dispositionFee'  },
+  { test: /^Refinancing Fee/i,         sourceKey: 'wf:refinancingFee'  },
+  ...(['A','B','C','D','E'].flatMap(letter => [
+    { test: new RegExp(`^Origination Fee.*LOAN ${letter}`, 'i'), sourceKey: `debt:${letter}:origFee` },
+    { test: new RegExp(`^Exit Fee.*LOAN ${letter}`, 'i'),        sourceKey: `debt:${letter}:exitFee` },
+    { test: new RegExp(`^Rate Cap.*LOAN ${letter}`, 'i'),        sourceKey: `debt:${letter}:rateCap` },
+  ])),
+];
+
+function migrateLegacyItems(items: CostLineItem[]): CostLineItem[] {
+  // Collect stableIds already present so we don't assign the same one twice
+  const usedIds = new Set(items.map(i => i.id));
+  return items.map(item => {
+    if (item.sourceKey) return item; // already migrated
+    for (const { test, sourceKey } of LEGACY_NAME_TO_SOURCE) {
+      if (test.test(item.name)) {
+        const sid = stableId(sourceKey);
+        // Only assign if the stableId isn't already claimed by another item
+        if (!usedIds.has(sid)) {
+          usedIds.add(sid);
+          return { ...item, id: sid, sourceKey };
+        }
+        break; // stableId already exists — leave this item as user-owned
+      }
+    }
+    return item;
+  });
+}
+
 function buildDefaults(totalBasis: number, loanAmt: number): CostLineItem[] {
   const pct = (n: number) => Math.round(totalBasis * n);
   const lp  = (n: number) => Math.round(loanAmt  * n);
@@ -372,7 +410,8 @@ export function CostSheetTab({ dealId, deal, assumptions, f9Financials }: CostSh
       const saved = localStorage.getItem(storageKey);
       if (saved) {
         loadedFromStorage.current = true;
-        return JSON.parse(saved);
+        // Migrate old saves that predate sourceKey/stableId so sync can update in-place
+        return migrateLegacyItems(JSON.parse(saved));
       }
     } catch {}
     return buildDefaults(totalBasis, loanAmt);
