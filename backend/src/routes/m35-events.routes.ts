@@ -11,9 +11,13 @@
  * GET    /api/v1/m35/events/:id/history              — status history
  * GET    /api/v1/m35/events/:id/watchlist            — metric watchlist
  * POST   /api/v1/m35/events/:id/watchlist            — add metric to watchlist
+ * GET    /api/v1/m35/events/:id/impacts              — get impact records (M35-2)
+ * GET    /api/v1/m35/events/:id/control-group        — get DiD control group (M35-2)
+ * POST   /api/v1/m35/events/:id/compute-impact       — trigger on-demand impact (M35-2)
  * POST   /api/v1/m35/events/promote/:draftId         — promote from draft queue
  * GET    /api/v1/m35/deals/:dealId/events            — events affecting a deal
  * GET    /api/v1/m35/submarkets/:id/active-forecasts — active events for submarket
+ * POST   /api/v1/m35/impact-job/run                  — manually trigger nightly job (M35-2)
  */
 
 import { Router, Request, Response } from 'express';
@@ -35,6 +39,12 @@ import {
   type CreateEventInput,
   type M35EventStatus,
 } from '../services/m35-events.service';
+import {
+  computeEventImpact,
+  getEventImpacts,
+  getEventControlGroup,
+  runImpactMeasurementJob,
+} from '../services/m35-impact.service';
 
 const router = Router();
 
@@ -233,15 +243,58 @@ router.get('/deals/:dealId/events', async (req: Request, res: Response) => {
   }
 });
 
-// ─── Submarket active forecasts (shell — full impl in Task #187) ──────────────
+// ─── Submarket active forecasts ───────────────────────────────────────────────
 
 router.get('/submarkets/:id/active-forecasts', async (req: Request, res: Response) => {
   try {
     const events = await getActiveEventsBySubmarket(req.params.id);
-    // Task #185/187 will attach forecast impacts here — returning events only for now
     res.json({ items: events, forecasts: [], total: events.length });
   } catch (err: any) {
     logger.error('[M35 Events] submarket forecasts error', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Impact records (M35-2) ───────────────────────────────────────────────────
+
+router.get('/events/:id/impacts', async (req: Request, res: Response) => {
+  try {
+    const impacts = await getEventImpacts(req.params.id);
+    res.json({ items: impacts, total: impacts.length });
+  } catch (err: any) {
+    logger.error('[M35 Events] get impacts error', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/events/:id/control-group', async (req: Request, res: Response) => {
+  try {
+    const group = await getEventControlGroup(req.params.id);
+    res.json({ items: group, total: group.length });
+  } catch (err: any) {
+    logger.error('[M35 Events] get control-group error', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/events/:id/compute-impact', async (req: Request, res: Response) => {
+  try {
+    const records = await computeEventImpact(req.params.id);
+    res.json({ computed: records.length, items: records });
+  } catch (err: any) {
+    logger.error('[M35 Events] compute-impact error', err);
+    res.status(err.message.includes('not found') ? 404 : 500).json({ error: err.message });
+  }
+});
+
+// ─── Nightly job — manual trigger (M35-2) ─────────────────────────────────────
+
+router.post('/impact-job/run', async (req: Request, res: Response) => {
+  try {
+    const result = await runImpactMeasurementJob();
+    res.json(result);
+  } catch (err: any) {
+    logger.error('[M35 Events] impact-job error', err);
     res.status(500).json({ error: err.message });
   }
 });

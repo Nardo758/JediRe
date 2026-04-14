@@ -889,6 +889,31 @@ httpServer.listen(Number(PORT), '0.0.0.0', async () => {
     console.error('Failed to start email sync scheduler:', error);
   }
 
+  // M35 Impact Measurement — nightly job (runs once a day at ~3:00 AM)
+  try {
+    const { runImpactMeasurementJob } = await import('./services/m35-impact.service');
+    const scheduleM35ImpactJob = () => {
+      const now = new Date();
+      const target = new Date(now);
+      target.setHours(3, 0, 0, 0);
+      if (target <= now) target.setDate(target.getDate() + 1);
+      const msUntilRun = target.getTime() - now.getTime();
+      setTimeout(async () => {
+        try {
+          const result = await runImpactMeasurementJob();
+          console.log('[M35 Impact Job] Nightly run complete:', result);
+        } catch (err) {
+          console.error('[M35 Impact Job] Nightly run error:', err);
+        }
+        scheduleM35ImpactJob(); // reschedule for next day
+      }, msUntilRun);
+      console.log(`[M35 Impact Job] Scheduled for ${target.toISOString()}`);
+    };
+    scheduleM35ImpactJob();
+  } catch (error) {
+    console.error('[M35 Impact Job] Failed to schedule nightly job (non-fatal):', error);
+  }
+
   try {
     const { runStartupPstBackflow } = await import('./services/pst-backflow.service');
     await runStartupPstBackflow();

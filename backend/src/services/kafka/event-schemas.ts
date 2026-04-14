@@ -473,4 +473,18 @@ export interface M35EventVerifiedMessage extends BaseEvent {
   confidence: number;
 }
 
+export interface M35ImpactMeasuredMessage extends BaseEvent {
+  eventType: 'M35_IMPACT_MEASURED';
+  keyEventId: string;       // key_events.id (renamed from eventId to avoid collision)
+  msaId: string;
+  category: string;
+  metricKey: string;
+  windowMonths: number;     // 3 | 12 | 24 | 36
+  delta: number;            // actual - OLS projected
+  deltaPct: number | null;  // delta / |projected| * 100
+  attributedDelta: number | null;  // DiD: delta - control_avg_delta
+  didConfidence: number;    // 0-1
+  dataQuality: 'complete' | 'partial' | 'insufficient';
+}
+
 export type KafkaTopic = typeof KAFKA_TOPICS[keyof typeof KAFKA_TOPICS];
