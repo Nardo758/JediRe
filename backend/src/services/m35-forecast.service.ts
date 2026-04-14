@@ -487,26 +487,8 @@ export async function runDivergenceTrackingJob(): Promise<{
   let offset = 0;
   let batchRows: any[] = [];
 
-  // ─── PRODUCT DECISION: Divergence timing ─────────────────────────────────────
-  // We compare the forecast point-estimate against the *actual metric value closest
-  // to the forecast horizon date* (announced_date + window_months), and only evaluate
-  // forecasts whose full window has elapsed.
-  //
-  // Alternative interpretation ("latest actual nightly"): compare every active forecast
-  // to the most recent metric observation regardless of horizon. This was considered and
-  // REJECTED because:
-  //   1. A 12-month forecast should not be flagged as "diverged" after only 2 months;
-  //      the event is still in flight and the metric has not had time to respond.
-  //   2. Premature divergence signals would generate spurious M35_FORECAST_DIVERGED Kafka
-  //      events, contaminating downstream M08/M09 consumers.
-  //   3. The task spec's "nightly" language refers to the JOB CADENCE, not the comparison
-  //      window. Each night we look for newly-elapsed windows and perform a post-hoc check.
-  //
-  // If product requirements change to intra-window monitoring, a separate early-warning
-  // signal (e.g., trend extrapolation) should be implemented as an additive feature.
-  // ─────────────────────────────────────────────────────────────────────────────
-  //
-  // Paginate through all eligible forecasts to guarantee full daily coverage.
+  // Nightly: compare each active forecast's point estimate to the latest available
+  // actual metric value for that geography. Paginate to cover full table each run.
   do {
     const batchRes = await pool.query(`
       SELECT
@@ -519,8 +501,6 @@ export async function runDivergenceTrackingJob(): Promise<{
         ef.ci_high,
         ke.msa_id,
         ke.submarket_id,
-        ke.announced_date,
-        ke.materialization_date,
         ke.subtype,
         COALESCE(ep.stddev_delta, 0) AS playbook_stddev
       FROM event_forecasts ef
@@ -534,8 +514,6 @@ export async function runDivergenceTrackingJob(): Promise<{
         AND ep.stratum_regime     = 'all'
       WHERE ef.status = 'active'
         AND ef.point_estimate IS NOT NULL
-        AND ke.announced_date IS NOT NULL
-        AND ke.announced_date + (ef.window_months || ' months')::interval <= NOW()
       ORDER BY ef.event_id, ef.metric_key, ef.window_months
       LIMIT $1 OFFSET $2
     `, [DIVERGENCE_BATCH_SIZE, offset]);
@@ -546,21 +524,15 @@ export async function runDivergenceTrackingJob(): Promise<{
   for (const row of batchRows) {
     const geoId = row.submarket_id ?? row.msa_id ?? 'national';
 
-    // Compute the forecast horizon date: announced_date + window_months
-    // This is the point-in-time at which the forecast was expected to materialise.
-    const horizonDate = new Date(row.announced_date);
-    horizonDate.setMonth(horizonDate.getMonth() + parseInt(row.window_months));
-
-    // Pull actual metric value closest to the forecast horizon date
+    // Pull latest actual metric value for this geography/metric pair
     const actualRes = await pool.query(`
       SELECT value FROM metric_time_series
       WHERE geography_id = $1
         AND metric_id = $2
-        AND period_date >= $3::date - INTERVAL '3 months'
-        AND period_date <= $3::date + INTERVAL '3 months'
-      ORDER BY ABS(EXTRACT(EPOCH FROM (period_date - $3::date)))
+        AND value IS NOT NULL
+      ORDER BY period_date DESC
       LIMIT 1
-    `, [geoId, row.metric_key, horizonDate]);
+    `, [geoId, row.metric_key]);
 
     if (!actualRes.rows[0]) continue;
 
@@ -619,4 +591,67 @@ export async function runDivergenceTrackingJob(): Promise<{
 
   logger.info(`[M35 Forecast] Divergence check: ${checked} checked, ${diverged} diverged`);
   return { checked, diverged };
+}
+
+// ─── Durable regen queue ──────────────────────────────────────────────────────
+
+/** Enqueue an event for forecast regeneration (called by playbook service). */
+export async function enqueueForecastRegen(
+  eventId: string,
+  reason: string = 'playbook_update',
+): Promise<void> {
+  const pool = getPool();
+  // Only enqueue if no pending row exists for this event (avoid duplicate work)
+  await pool.query(
+    `INSERT INTO forecast_regen_queue (event_id, reason)
+     SELECT $1, $2
+     WHERE NOT EXISTS (
+       SELECT 1 FROM forecast_regen_queue
+       WHERE event_id = $1 AND status = 'pending'
+     )`,
+    [eventId, reason],
+  );
+}
+
+/**
+ * Drain pending forecast_regen_queue rows. Claims rows with SKIP LOCKED so
+ * concurrent invocations are safe, then calls generateForecast per row.
+ * Scheduled every minute from index.replit.ts.
+ */
+export async function processForecastRegenQueue(): Promise<void> {
+  const pool = getPool();
+
+  const claimed = await pool.query(`
+    UPDATE forecast_regen_queue
+    SET status = 'processing', started_at = NOW()
+    WHERE id IN (
+      SELECT id FROM forecast_regen_queue
+      WHERE status = 'pending'
+      ORDER BY created_at
+      LIMIT 50
+      FOR UPDATE SKIP LOCKED
+    )
+    RETURNING id, event_id, reason
+  `);
+
+  if (claimed.rows.length === 0) return;
+
+  for (const row of claimed.rows) {
+    try {
+      await generateForecast(row.event_id);
+      await pool.query(
+        `UPDATE forecast_regen_queue SET status = 'done', completed_at = NOW() WHERE id = $1`,
+        [row.id],
+      );
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn(`[M35 RegenQueue] Failed for event ${row.event_id}: ${msg}`);
+      await pool.query(
+        `UPDATE forecast_regen_queue SET status = 'failed', completed_at = NOW(), error_msg = $2 WHERE id = $1`,
+        [row.id, msg],
+      );
+    }
+  }
+
+  logger.info(`[M35 RegenQueue] Processed ${claimed.rows.length} regen jobs`);
 }

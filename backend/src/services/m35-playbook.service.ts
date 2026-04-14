@@ -432,7 +432,7 @@ export async function triggerPlaybookUpdate(eventId: string): Promise<void> {
 
   logger.info(`[M35 Playbook] Updated playbooks for subtype=${subtype} after impact event=${eventId}`);
 
-  // Regen forecasts for all active events of the same subtype (fire-and-forget)
+  // Enqueue affected events into forecast_regen_queue; the per-minute worker drains it.
   // Dynamic import avoids circular dep: m35-forecast.service imports m35-playbook.service
   void (async () => {
     try {
@@ -447,31 +447,13 @@ export async function triggerPlaybookUpdate(eventId: string): Promise<void> {
 
       if (affectedRes.rows.length === 0) return;
 
-      // TECH DEBT (deferred): Sequential regen is intentional at current volumes
-      // (typically <50 active events per subtype). Each generateForecast() call
-      // supersedes the prior active row atomically (UPDATE status='superseded' + INSERT),
-      // so there is no duplication risk from sequential execution.
-      //
-      // Retry semantics: individual failures are caught and logged as non-fatal warnings;
-      // the outer loop continues with remaining events. Failed regenerations will be
-      // retried on the next playbook update for the same subtype, or at next nightly
-      // divergence check when the new playbook is already in place.
-      //
-      // Migration path: if subtype fanout grows large (>200 active events/subtype),
-      // extract to a durable job queue (Bull/BullMQ) with exponential-backoff retry so
-      // the playbook write path is not held waiting for regen completion.
-      const { generateForecast } = await import('./m35-forecast.service');
+      const { enqueueForecastRegen } = await import('./m35-forecast.service');
       for (const row of affectedRes.rows) {
-        try {
-          await generateForecast(row.event_id);
-        } catch (innerErr: unknown) {
-          logger.warn(`[M35 Playbook] Forecast regen failed for event ${row.event_id} (non-fatal)`,
-            { err: innerErr instanceof Error ? innerErr.message : String(innerErr) });
-        }
+        await enqueueForecastRegen(row.event_id, `playbook_update:${subtype}`);
       }
-      logger.info(`[M35 Playbook] Regenerated forecasts for ${affectedRes.rows.length} active events of subtype=${subtype}`);
+      logger.info(`[M35 Playbook] Enqueued regen for ${affectedRes.rows.length} events of subtype=${subtype}`);
     } catch (err: unknown) {
-      logger.warn('[M35 Playbook] Playbook-update forecast regen failed (non-fatal)',
+      logger.warn('[M35 Playbook] Regen enqueue failed (non-fatal)',
         { err: err instanceof Error ? err.message : String(err) });
     }
   })();

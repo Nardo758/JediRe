@@ -1013,6 +1013,14 @@ httpServer.listen(Number(PORT), '0.0.0.0', async () => {
     console.log(`[M35 Divergence] Scheduled for ${nextRun.toISOString()}`);
   }
   scheduleM35DivergenceJob();
+
+  // M35 Phase 4: drain forecast_regen_queue every minute (claims with SKIP LOCKED)
+  setInterval(async () => {
+    try {
+      const { processForecastRegenQueue } = await import('./services/m35-forecast.service');
+      await processForecastRegenQueue();
+    } catch (err) { /* non-blocking */ }
+  }, 60_000).unref();
 });
 
 process.on('SIGTERM', async () => {
