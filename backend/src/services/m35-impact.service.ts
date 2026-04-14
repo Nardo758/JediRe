@@ -25,18 +25,76 @@ const MIN_BASELINE_POINTS = 4;
 const TARGET_CONTROL_N = 5;
 const MAX_CONTROL_N = 10;
 
+// ─── Canonical Metric Source Map ───────────────────────────────────────────────
+// Maps analyst-friendly watchlist metric keys → actual metric_id values in
+// metric_time_series. Enables M06 email classifier and analysts to refer to
+// metrics by descriptive names without knowing internal source identifiers.
+// Sources: Zillow (rent_index, home_value_index), CoStar (CS_*), M05 demand signals.
+// Update this map when new metric_time_series sources are added.
+
+export const METRIC_SOURCE_MAP: Record<string, string> = {
+  // Zillow rent & value series
+  rent_index:                 'rent_index',
+  home_value_index:           'home_value_index',
+  rent_index_yoy:             'rent_index_yoy',
+  rent_growth_yoy:            'rent_index_yoy',
+
+  // CoStar rent
+  effective_rent:             'CS_EFFECTIVE_RENT',
+  market_rent:                'CS_MARKET_RENT',
+  effective_rent_growth:      'CS_EFF_RENT_GROWTH',
+  effective_rent_psf:         'CS_EFF_RENT_PSF',
+
+  // CoStar supply / absorption
+  vacancy_rate:               'CS_VACANCY_PCT',
+  net_absorption:             'CS_NET_ABSORPTION_PCT',
+  net_absorption_units:       'CS_ABSORPTION_UNITS',
+  new_supply:                 'CS_DELIVERIES',
+  construction_starts:        'CS_CONSTR_STARTS',
+  permits_issued:             'CS_CONSTR_STARTS',         // closest proxy
+  inventory_units:            'CS_INVENTORY_UNITS',
+
+  // CoStar capital markets
+  cap_rate:                   'CS_CAP_RATE',
+  asset_value:                'CS_ASSET_VALUE',
+  avg_sale_price:             'CS_AVG_SALE_PRICE',
+
+  // Employment / demographics (M05 series)
+  employment_growth:          'D_EMP_GROWTH_YOY',
+  wage_growth:                'D_AVG_WEEKLY_WAGE',
+  population_growth:          'DEMO_POPULATION_TREND_3Y',
+  net_migration:              'DEMO_NET_MIGRATION',
+  renter_pct:                 'DEMO_RENTER_PCT',
+  median_income:              'DEMO_MED_INCOME',
+  biz_formations:             'D_BIZ_FORMATIONS',
+
+  // M07 traffic / digital demand signals
+  digital_score:              'D_DIGITAL_SCORE',
+  search_growth:              'C_SEARCH_GROWTH_INDEX',
+  traffic_growth:             'C_TRAFFIC_GROWTH_INDEX',
+  surge_index:                'C_SURGE_INDEX',
+};
+
+/**
+ * Resolve a watchlist metric_key to its canonical metric_time_series metric_id.
+ * Falls back to the key itself so existing direct IDs (e.g. 'CS_CAP_RATE') still work.
+ */
+export function resolveMetricId(watchlistKey: string): string {
+  return METRIC_SOURCE_MAP[watchlistKey] ?? watchlistKey;
+}
+
 // ─── Canonical metric registry ─────────────────────────────────────────────
-// Maps M35 category → preferred metric_ids from metric_time_series.
-// Geography resolution: prefer 'metro' (MSA-level), fall back to 'national'.
+// Maps M35 category → preferred watchlist keys (resolved via METRIC_SOURCE_MAP).
+// Used when no event-specific watchlist exists in m35_metric_watchlist_config.
 
 export const M35_METRIC_REGISTRY: Record<string, string[]> = {
-  EMPLOYMENT:          ['rent_index', 'home_value_index', 'rent_index_yoy'],
-  INFRASTRUCTURE:      ['rent_index', 'home_value_index', 'rent_index_yoy'],
-  REGULATORY_POLICY:   ['rent_index', 'home_value_index'],
-  MARKET_STRUCTURE:    ['rent_index', 'home_value_index', 'rent_index_yoy'],
-  MACRO_DEMOGRAPHIC:   ['rent_index', 'home_value_index'],
-  DISASTER_DISRUPTION: ['rent_index', 'home_value_index'],
-  TECHNOLOGY_INDUSTRY: ['rent_index', 'home_value_index', 'rent_index_yoy'],
+  EMPLOYMENT:          ['rent_index', 'home_value_index', 'employment_growth'],
+  INFRASTRUCTURE:      ['rent_index', 'home_value_index', 'new_supply'],
+  REGULATORY_POLICY:   ['rent_index', 'home_value_index', 'permits_issued'],
+  MARKET_STRUCTURE:    ['effective_rent', 'vacancy_rate', 'cap_rate'],
+  MACRO_DEMOGRAPHIC:   ['rent_index', 'home_value_index', 'net_migration'],
+  DISASTER_DISRUPTION: ['rent_index', 'home_value_index', 'effective_rent'],
+  TECHNOLOGY_INDUSTRY: ['rent_index', 'home_value_index', 'employment_growth'],
 };
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -106,6 +164,9 @@ export async function resolveMetricSeries(
 ): Promise<TimeSeriesPoint[]> {
   const pool = getPool();
 
+  // Translate analyst-friendly watchlist key to canonical metric_time_series metric_id
+  const metricId = resolveMetricId(metricKey);
+
   const geoTypes = ['submarket', 'metro', 'national'];
 
   for (const geoType of geoTypes) {
@@ -119,7 +180,7 @@ export async function resolveMetricSeries(
          AND geography_id = $3
          AND period_date BETWEEN $4 AND $5
        ORDER BY period_date ASC`,
-      [metricKey, geoType, geoId, startDate, endDate]
+      [metricId, geoType, geoId, startDate, endDate]
     );
 
     if (result.rows.length >= MIN_BASELINE_POINTS) {
@@ -140,6 +201,9 @@ async function resolveMetricAtDate(
 ): Promise<number | null> {
   const pool = getPool();
 
+  // Translate watchlist alias to canonical metric_time_series metric_id
+  const metricId = resolveMetricId(metricKey);
+
   const searchStart = new Date(targetDate);
   searchStart.setMonth(searchStart.getMonth() - 3);
   const searchEnd = new Date(targetDate);
@@ -159,7 +223,7 @@ async function resolveMetricAtDate(
          AND period_date BETWEEN $4 AND $5
        ORDER BY ABS(EXTRACT(EPOCH FROM (period_date - $6::date))) ASC
        LIMIT 1`,
-      [metricKey, geoType, geoId, searchStart, searchEnd, targetDate]
+      [metricId, geoType, geoId, searchStart, searchEnd, targetDate]
     );
 
     if (result.rows.length > 0) {
@@ -627,11 +691,11 @@ export async function computeEventImpact(eventId: string): Promise<ImpactRecord[
         const m = record.measurementDate;
         m.setMonth(m.getMonth() + windowMonths);
 
-        await persistImpactRecord(record);
+        const isNewInsert = await persistImpactRecord(record);
         results.push(record);
 
-        // Publish Kafka event for each complete window with actual data
-        if (record.delta !== null) {
+        // Publish Kafka event only on first insert and when we have actual delta data
+        if (isNewInsert && record.delta !== null) {
           await publishImpactMeasured(record, event.category, event.msaId ?? '');
         }
       } catch (err) {
@@ -675,10 +739,15 @@ async function persistControlGroup(eventId: string, group: ControlGroupEntry[]):
   }
 }
 
-async function persistImpactRecord(r: ImpactRecord): Promise<void> {
+/**
+ * Persist an impact record. Returns true if this was a NEW INSERT (not an update),
+ * which is used to gate Kafka emission — we only emit on first write, not re-computes.
+ */
+async function persistImpactRecord(r: ImpactRecord): Promise<boolean> {
   const pool = getPool();
 
-  await pool.query(
+  // xmax = 0 after an upsert means the row was freshly inserted (not updated).
+  const res = await pool.query(
     `INSERT INTO event_impacts
        (id, event_id, metric_key, geography_type, geography_id, window_months, measurement_date,
         baseline_slope, baseline_intercept, baseline_r2, baseline_n,
@@ -704,7 +773,8 @@ async function persistImpactRecord(r: ImpactRecord): Promise<void> {
        control_group_n = EXCLUDED.control_group_n,
        data_quality = EXCLUDED.data_quality,
        data_gaps = EXCLUDED.data_gaps,
-       computed_at = EXCLUDED.computed_at`,
+       computed_at = EXCLUDED.computed_at
+     RETURNING (xmax = 0) AS is_new_insert`,
     [
       r.id, r.eventId, r.metricKey, r.geographyType, r.geographyId, r.windowMonths, r.measurementDate,
       r.baselineSlope, r.baselineIntercept, r.baselineR2, r.baselineN,
@@ -714,6 +784,8 @@ async function persistImpactRecord(r: ImpactRecord): Promise<void> {
       r.dataQuality, JSON.stringify(r.dataGaps), r.computedAt,
     ]
   );
+
+  return res.rows[0]?.is_new_insert === true;
 }
 
 // ─── Kafka ────────────────────────────────────────────────────────────────────
@@ -809,8 +881,14 @@ export async function getEventControlGroup(eventId: string): Promise<ControlGrou
 
 /**
  * Scan key_events for items that have crossed a T+3 / T+12 / T+24 / T+36
- * measurement window milestone since the last run. Trigger computeEventImpact
- * for each. Safe to run multiple times (upsert semantics).
+ * measurement window milestone without an existing non-insufficient impact record.
+ *
+ * Milestone detection logic:
+ *   - window_date = materialization_date + N months
+ *   - "newly crossed" = window_date <= now AND no complete/partial impact row exists
+ *     for that (event_id, window_months) combination
+ *
+ * Safe to run multiple times; upsert semantics prevent duplicate rows.
  */
 export async function runImpactMeasurementJob(options?: { since?: Date }): Promise<{
   scanned: number;
@@ -821,9 +899,9 @@ export async function runImpactMeasurementJob(options?: { since?: Date }): Promi
   const pool = getPool();
   const now = new Date();
 
-  // Find materialized events with a materialization_date in the past
+  // Find materialized events where at least one window milestone has been crossed
   const eventsRes = await pool.query(
-    `SELECT id, category, msa_id, msa_name, submarket_id, materialization_date
+    `SELECT id, materialization_date
      FROM key_events
      WHERE status = 'materialized'
        AND materialization_date IS NOT NULL
@@ -836,19 +914,51 @@ export async function runImpactMeasurementJob(options?: { since?: Date }): Promi
   const events = eventsRes.rows;
   let computed = 0, skipped = 0, errors = 0;
 
-  logger.info('[M35 Impact Job] Starting impact measurement job', { eventCount: events.length });
+  if (events.length === 0) {
+    logger.info('[M35 Impact Job] No materialized events to process');
+    return { scanned: 0, computed: 0, skipped: 0, errors: 0 };
+  }
+
+  // Load already-computed (non-insufficient) windows for all candidate events in one query
+  const eventIds = events.map((e: any) => e.id);
+  const computedRes = await pool.query(
+    `SELECT DISTINCT event_id, window_months
+     FROM event_impacts
+     WHERE event_id = ANY($1::uuid[])
+       AND data_quality IN ('complete', 'partial')`,
+    [eventIds]
+  );
+  // Build a Set of "eventId:windowMonths" strings for O(1) lookup
+  const doneSet = new Set<string>(
+    computedRes.rows.map((r: any) => `${r.event_id}:${r.window_months}`)
+  );
+
+  logger.info('[M35 Impact Job] Starting impact measurement job', {
+    eventCount: events.length,
+    alreadyComputed: doneSet.size,
+  });
 
   for (const ev of events) {
     const matDate = new Date(ev.materialization_date);
 
-    // Check if any measurement window has been crossed since last computed_at
-    const windowCrossed = MEASUREMENT_WINDOWS.some(wm => {
+    // Identify windows that have crossed the milestone but have no impact row yet
+    const newlyEligible = (MEASUREMENT_WINDOWS as readonly number[]).filter(wm => {
       const windowDate = new Date(matDate);
       windowDate.setMonth(windowDate.getMonth() + wm);
-      return windowDate <= now;
+      const hasCrossed = windowDate <= now;
+      const alreadyDone = doneSet.has(`${ev.id}:${wm}`);
+      return hasCrossed && !alreadyDone;
     });
 
-    if (!windowCrossed) { skipped++; continue; }
+    if (newlyEligible.length === 0) {
+      skipped++;
+      continue;
+    }
+
+    logger.info('[M35 Impact Job] Computing impact for event', {
+      eventId: ev.id,
+      newWindows: newlyEligible,
+    });
 
     try {
       await computeEventImpact(ev.id);
