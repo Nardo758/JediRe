@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import type { F9DealFinancials } from '../../pages/development/financial-engine/types';
+import type { F9DealFinancials } from '../../../pages/development/financial-engine/types';
 
 const MONO = "'JetBrains Mono', monospace";
 
