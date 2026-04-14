@@ -200,24 +200,37 @@ export class TrafficCalibrationJob {
       // Only include this snapshot if we have useful signal
       if (avgSigningVelocity <= 0) continue;
 
-      // Derive proxy coefficients
-      // These are loose proxies — the actual labels match the coefficient names
-      // but the derivation is heuristic until we have funnel tracking data
+      // Derive proxy coefficients for all 6 calibrated coefficients.
+      // These are heuristic proxies derived from rent-roll signals until
+      // we have end-to-end funnel tracking data.
       const evidence: Partial<Record<CoefficientName, number>> = {
-        // Signing velocity normalized to monthly rate drives walkin_to_tour proxy
-        walkin_to_tour: Math.min(0.9, Math.max(0.1, avgSigningVelocity / 10)),
-        // Low days vacant = better stop_probability (people visit and convert)
-        stop_probability: avgDaysVacant > 0
-          ? Math.min(0.5, Math.max(0.05, 0.15 * (30 / avgDaysVacant)))
-          : BASELINE_COEFFICIENTS.stop_probability,
-        // Renewal rate drives app_to_signed proxy (satisfied residents sign leases)
-        app_to_signed: Math.min(0.95, Math.max(0.3, 0.5 + renewalRate * 0.3)),
-        // Concession intensity inversely affects apartment_seeker_pct
+        // 1. visibility_capture_rate — lower vacancy time = higher capture (people find the property faster)
+        visibility_capture_rate: avgDaysVacant > 0
+          ? Math.min(0.10, Math.max(0.02, 0.08 * (30 / avgDaysVacant)))
+          : BASELINE_COEFFICIENTS.visibility_capture_rate,
+
+        // 2. apartment_seeker_pct — concession intensity inversely signals demand
         apartment_seeker_pct: avgConcession > 4
           ? 0.015  // high concessions = lower demand
           : avgConcession < 1
           ? 0.025  // low concessions = strong demand
           : BASELINE_COEFFICIENTS.apartment_seeker_pct,
+
+        // 3. stop_probability — fast vacancy turn = high stop conversion
+        stop_probability: avgDaysVacant > 0
+          ? Math.min(0.5, Math.max(0.05, 0.15 * (30 / avgDaysVacant)))
+          : BASELINE_COEFFICIENTS.stop_probability,
+
+        // 4. walkin_to_tour — signing velocity (leases/month) drives conversion rate
+        walkin_to_tour: Math.min(0.9, Math.max(0.1, avgSigningVelocity / 10)),
+
+        // 5. tour_to_app — high velocity + low concessions → tours convert well to apps
+        tour_to_app: Math.min(0.85, Math.max(0.3,
+          0.55 + (avgSigningVelocity / 20) - (avgConcession / 20)
+        )),
+
+        // 6. app_to_signed — renewal rate (loyal residents) proxies lease-signing propensity
+        app_to_signed: Math.min(0.95, Math.max(0.3, 0.5 + renewalRate * 0.3)),
       };
 
       rows.push({
@@ -253,7 +266,7 @@ export class TrafficCalibrationJob {
       const inPYTM = snapDate >= pytmStart && snapDate < ttmStart;
       const inTTM24 = snapDate >= pytmStart;
 
-      // Create buckets at multiple scopes (most specific → most general)
+      // Create buckets at all scopes in the degradation hierarchy
       const scopeLevels = [
         // Most specific: submarket + class + vintage
         {
@@ -273,6 +286,24 @@ export class TrafficCalibrationJob {
           property_class: row.property_class,
           vintage_band: null,
         },
+        // Class scope — cross-MSA data sliced by property class (first-class tier)
+        ...(row.property_class ? [{
+          scope_level: 'class' as const,
+          key: `class:${row.property_class}`,
+          msa_id: null,
+          submarket_id: null,
+          property_class: row.property_class,
+          vintage_band: null,
+        }] : []),
+        // Vintage scope — cross-MSA data sliced by vintage band (first-class tier)
+        ...(row.vintage_band ? [{
+          scope_level: 'vintage' as const,
+          key: `vintage:${row.vintage_band}`,
+          msa_id: null,
+          submarket_id: null,
+          property_class: null,
+          vintage_band: row.vintage_band,
+        }] : []),
         // Platform level (all)
         {
           scope_level: 'platform' as const,

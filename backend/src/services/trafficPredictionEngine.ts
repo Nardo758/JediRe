@@ -270,15 +270,13 @@ interface TrafficPrediction {
   starting_state?: StartingState;
 
   // M07 §4.2: rent-roll derived enrichments (present when deal has uploaded rent rolls)
+  // Shape matches RentRollDerivationsService unit_type_breakdown output exactly.
   unit_type_breakdown?: Array<{
     unit_type: string;
-    unit_count: number;
-    avg_sf: number;
-    avg_contract_rent: number;
-    avg_market_rent: number;
-    signing_velocity: number;
-    days_vacant_avg: number;
-    concession_intensity: number;
+    signing_velocity: number;      // new leases/month in last 12 months
+    days_vacant_avg: number;       // average days between lease_end and next lease_start
+    concession_intensity: number;  // average concession months (free rent)
+    renewal_rate: number;          // fraction of leases that are renewals
   }>;
   expiration_waterfall?: Array<{
     months_out: number;
@@ -1320,7 +1318,9 @@ export class TrafficPredictionEngine {
             }
           }
         } catch (rrErr: unknown) {
-          // Non-blocking — rent roll data is optional
+          // Non-blocking — rent roll data enrichment is optional, but log so regressions are visible
+          console.warn('[TrafficEngine] §4.2 rent-roll enrichment failed (non-blocking):',
+            rrErr instanceof Error ? rrErr.message : String(rrErr));
         }
       }
 
@@ -1337,6 +1337,8 @@ export class TrafficPredictionEngine {
         }
       }
     } catch (calibErr: unknown) {
+      // Log at warn so regressions in calibration or starting-state lookup are visible,
+      // but don't throw — the base prediction still reaches the caller.
       console.warn(
         '[TrafficEngine] M07 calibration step skipped (non-blocking):',
         calibErr instanceof Error ? calibErr.message : String(calibErr)
