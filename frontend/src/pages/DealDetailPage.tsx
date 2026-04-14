@@ -34,7 +34,7 @@ import {
   DollarSign, Bot, TrendingUp,
   Building2, Target, Package, Calculator,
   ArrowLeft, ArrowRight, Activity, LayoutDashboard,
-  Landmark, HardHat, Shield, Box, FileText, Briefcase,
+  Landmark, HardHat, Shield, Box, FileText, Briefcase, Zap,
 } from 'lucide-react';
 import { Tab } from '../components/deal/TabGroup';
 import { DealScreenWrapper } from '../components/deal/DealScreenWrapper';
@@ -85,6 +85,9 @@ import UnitMixIntelligence from '../components/deal/sections/UnitMixIntelligence
 import { ZoningModuleSection } from '../components/deal/sections/ZoningModuleSection';
 import { useZoningModuleStore } from '../stores/zoningModuleStore';
 import type { DevelopmentPath } from '../types/zoning.types';
+import { EventTimelineSection } from '../components/deal/sections/EventTimelineSection';
+import { EventHeroBanner } from '../components/m35/EventHeroBanner';
+import type { HeroBannerEvent, EventSensitivity } from '../components/m35/EventHeroBanner';
 
 interface DealTab extends Tab {
   moduleId?: ModuleId;
@@ -437,6 +440,9 @@ const DealDetailPage: React.FC = () => {
   const [geographicContext, setGeographicContext] = useState<any>(null);
   const [showTradeAreaPanel, setShowTradeAreaPanel] = useState(false);
   const [savingDealType, setSavingDealType] = useState(false);
+  const [bannerEvents, setBannerEvents] = useState<HeroBannerEvent[]>([]);
+  const [eventSensitivity, setEventSensitivity] = useState<EventSensitivity>('LOW');
+  const [eventConcentration, setEventConcentration] = useState<{topEventName:string;irrShare:number;isConcentrated:boolean}|null>(null);
 
   const handleDealTypeChange = useCallback(async (newType: DealType) => {
     if (!dealId || newType === dealType) return;
@@ -456,6 +462,21 @@ const DealDetailPage: React.FC = () => {
     if (dealId) {
       loadDeal(dealId);
       fetchGeographicContext(dealId);
+      // Fetch events context for banner
+      const token = localStorage.getItem('auth_token') || '';
+      fetch(`/api/v1/m35/deals/${dealId}/events-context`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => r.ok ? r.json() : null)
+        .then(ctx => {
+          if (!ctx) return;
+          const mapped: HeroBannerEvent[] = (ctx.events || []).map((e: any) => ({
+            id: e.id, name: e.name, category: e.category || 'EMPLOYMENT',
+            scope: e.scope || 'msa', magnitudeScore: Number(e.magnitude_score ?? 2), status: e.status || 'announced',
+          }));
+          setBannerEvents(mapped);
+          setEventSensitivity(ctx.sensitivity || 'LOW');
+          setEventConcentration(ctx.concentration ?? null);
+        })
+        .catch(() => {});
     }
   }, [dealId]);
 
@@ -620,6 +641,7 @@ const DealDetailPage: React.FC = () => {
     { id: 'capital',     moduleId: 'M11', fkey: 'F8',  code: 'M11', short: 'DEBT/CAP',   label: 'Debt & Capital',   icon: <DollarSign size={14} />,      component: DebtCapitalScreen },
     { id: 'proforma',    moduleId: 'M08', fkey: 'F9',  code: 'M08', short: 'PRO FORMA',  label: 'Financial Engine', icon: <Calculator size={14} />,      component: ProFormaScreen },
     { id: 'risk',        moduleId: 'M13', fkey: 'F10', code: 'M13', short: 'RISK',       label: 'Risk',             icon: <Shield size={14} />,          component: RiskScreen },
+    { id: 'events',      moduleId: 'M35', fkey: 'F12', code: 'M35', short: 'EVENTS',     label: 'Event Timeline',   icon: <Zap size={14} />,             component: (props: any) => <EventTimelineSection {...props} /> },
     { id: 'deal-tools', moduleId: 'M21', fkey: 'F11', code: 'M21', short: 'TOOLS',      label: 'Deal Tools',       icon: <Briefcase size={14} />,       component: DealToolsScreen },
   ];
 
@@ -798,6 +820,14 @@ const DealDetailPage: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* ── M35 Event Hero Banner (Touch 1 — renders when active events exist) ── */}
+        <EventHeroBanner
+          events={bannerEvents}
+          sensitivity={eventSensitivity}
+          concentration={eventConcentration}
+          onViewTimeline={() => setActiveTab('events')}
+        />
 
         {/* ── Bloomberg-style F-Key Navigation Bar ── */}
         <div style={{

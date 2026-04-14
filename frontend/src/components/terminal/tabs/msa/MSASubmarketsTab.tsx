@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { BT } from '../../theme';
 import { useCommentaryStore } from '../../../../stores/commentaryStore';
 import { MarketNarrative, InvestmentThesis, PeerContext } from '../../commentary';
+import { EventTimelineChart } from '../../../m35/EventTimelineChart';
 
 interface MSASubmarketsTabProps {
   msaId: string;
@@ -124,7 +125,15 @@ const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono','Fira Code','S
 
 export const MSASubmarketsTab: React.FC<MSASubmarketsTabProps> = ({ msaId, msa, onSelectSubmarket }) => {
   const [selectedSub, setSelectedSub] = useState<string>('midtown');
+  const [chartMetric, setChartMetric] = useState<string>('rent_growth_yoy');
   const msaName = msa?.name || msaId || 'Atlanta';
+
+  const SUBMARKET_METRICS = [
+    { key: 'rent_growth_yoy', label: 'Rent Growth', baseline: 3.8 },
+    { key: 'cap_rate',        label: 'Cap Rate',    baseline: 5.0 },
+    { key: 'absorption',      label: 'Absorption',  baseline: 280 },
+    { key: 'permits',         label: 'Permits',     baseline: 420 },
+  ];
 
   const { fetchCommentary, getCommentary, isLoading, getError } = useCommentaryStore();
   const commentary = getCommentary('msa', msaId);
@@ -301,6 +310,7 @@ export const MSASubmarketsTab: React.FC<MSASubmarketsTabProps> = ({ msaId, msa, 
           </div>
 
           {selectedData && (
+            <>
             <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
               <div style={{
                 flex: 1,
@@ -391,6 +401,52 @@ export const MSASubmarketsTab: React.FC<MSASubmarketsTabProps> = ({ msaId, msa, 
                 </div>
               )}
             </div>
+
+            {/* ── M35 Event Timeline Chart (Single-Metric) ── */}
+            <div style={{ marginTop: 12 }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '5px 10px',
+                background: BT.bg.elevated,
+                border: `1px solid ${BT.border.subtle}`,
+                borderBottom: 'none',
+              }}>
+                <span style={{ fontSize: 9, fontWeight: 700, color: BT.text.primary, fontFamily: "'JetBrains Mono', monospace", letterSpacing: 0.6 }}>
+                  M35 · EVENT TIMELINE — {selectedData?.name}
+                </span>
+                <div style={{ display: 'flex', gap: 0 }}>
+                  {SUBMARKET_METRICS.map(m => (
+                    <button
+                      key={m.key}
+                      onClick={() => setChartMetric(m.key)}
+                      style={{
+                        padding: '2px 8px',
+                        fontFamily: "'JetBrains Mono', monospace",
+                        fontSize: 8,
+                        fontWeight: 700,
+                        background: chartMetric === m.key ? BT.bg.active : 'transparent',
+                        border: `1px solid ${chartMetric === m.key ? BT.text.cyan : BT.border.medium}`,
+                        color: chartMetric === m.key ? BT.text.cyan : BT.text.muted,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {m.label.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <EventTimelineChart
+                eventName={`${selectedData?.name || ''} submarket events`}
+                eventScope="submarket"
+                metric={chartMetric}
+                baselineValue={SUBMARKET_METRICS.find(m => m.key === chartMetric)?.baseline ?? 3.8}
+                height={180}
+                compact
+              />
+            </div>
+            </>
           )}
         </div>
 

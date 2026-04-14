@@ -26,6 +26,9 @@ import DealCapsulesPage from './pages/DealCapsulesPage';
 import CapsuleDetailPage from './pages/CapsuleDetailPage';
 import M35EventDetailPage from './pages/m35/M35EventDetailPage';
 import M35ConnectorAdminPage from './pages/m35/M35ConnectorAdminPage';
+import PlaybookLibraryPage from './pages/m35/PlaybookLibraryPage';
+import AdminEventsPage from './pages/m35/AdminEventsPage';
+import PortfolioEventFeedPage from './pages/m35/PortfolioEventFeedPage';
 import { LeasingForecastPage } from './pages/LeasingForecastPage';
 import DealFlywheelDashboard from './pages/deal/DealFlywheelDashboard';
 import PortfolioPropertyPage from './pages/PortfolioPropertyPage';
@@ -135,6 +138,9 @@ function AppContent() {
         <Route path="/capsules" element={<DealCapsulesPage />} />
         <Route path="/capsules/:id" element={<CapsuleDetailPage />} />
         <Route path="/events/:eventId" element={<M35EventDetailPage />} />
+        <Route path="/playbooks" element={<PlaybookLibraryPage />} />
+        <Route path="/admin/events" element={<AdminEventsPage />} />
+        <Route path="/portfolio/events" element={<PortfolioEventFeedPage />} />
         <Route path="/leasing-forecast/:propertyId" element={<LeasingForecastPage />} />
         <Route path="/assets-owned/:dealId/property" element={<PortfolioPropertyPage />} />
         <Route path="/property-card" element={<Suspense fallback={<PageLoadingFallback />}><PropertyCardPage /></Suspense>} />

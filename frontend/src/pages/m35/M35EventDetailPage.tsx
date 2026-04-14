@@ -1,6 +1,11 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ChevronDown, Check, ArrowLeft, ArrowRight, Activity } from 'lucide-react';
+import { ForecastTracker } from '../../components/m35/ForecastTracker';
+import { MultiMetricPanel } from '../../components/m35/MultiMetricPanel';
+import { EventDensityStrip } from '../../components/m35/EventDensityStrip';
+import { CascadeMap } from '../../components/m35/CascadeMap';
+import { AttributionWaterfall } from '../../components/m35/AttributionWaterfall';
 
 const TABS = ['FORECAST', 'MULTI-METRIC', 'PLAYBOOK', 'GEOGRAPHY', 'TIMELINE'] as const;
 type EventTab = typeof TABS[number];
@@ -103,6 +108,21 @@ const M35EventDetailPage: React.FC = () => {
               Rent Growth (YoY) — Primary Metric{' '}
               <span className="font-normal" style={{ color: '#6B7A8D' }}>| Tampa Westshore Submarket</span>
             </h2>
+
+            {/* ForecastTracker component */}
+            <div className="mb-4">
+              <ForecastTracker
+                eventId={eventId ?? 'demo-event'}
+                eventName="Amazon HQ2 — Tampa"
+                metric="rent_growth_yoy"
+                height={240}
+              />
+            </div>
+
+            {/* EventDensityStrip */}
+            <div className="mb-6">
+              <EventDensityStrip msaId="tampa" height={30} />
+            </div>
 
             {/* Metric selectors */}
             <div className="flex items-center gap-2 mb-6">
@@ -211,129 +231,24 @@ const M35EventDetailPage: React.FC = () => {
           </div>
         )}
 
-        {/* GEOGRAPHY Tab — CascadeMap */}
-        {activeTab === 'GEOGRAPHY' && (
-          <div className="mb-8">
-            <h2 className="text-lg font-semibold mb-4" style={{ color: '#E2E8F0' }}>
-              Geographic Impact Map <span className="font-normal text-sm" style={{ color: '#6B7A8D' }}>| Tampa MSA — Amazon HQ2 Cascade</span>
-            </h2>
-            <div className="flex gap-4">
-              {/* SVG Map */}
-              <div className="flex-1 rounded border relative overflow-hidden" style={{ background: '#0d1120', borderColor: '#1E2538', minHeight: 400 }}>
-                <svg className="w-full h-full" viewBox="0 0 500 420" style={{ position: 'absolute', inset: 0 }}>
-                  {/* Ocean/bay background */}
-                  <rect width="500" height="420" fill="#0a0e1a" />
-                  {/* Tampa Bay */}
-                  <path d="M180,280 Q200,260 220,250 Q240,240 260,260 Q280,280 300,300 Q320,320 310,350 Q300,380 280,400 L220,400 Q200,380 180,360 Z" fill="#0d1928" stroke="#162235" strokeWidth="1" />
-                  {/* Distance rings from HQ2 site */}
-                  <circle cx="255" cy="195" r="60" fill="none" stroke="#0891B2" strokeWidth="0.5" strokeDasharray="3,3" opacity="0.4" />
-                  <circle cx="255" cy="195" r="110" fill="none" stroke="#0891B2" strokeWidth="0.5" strokeDasharray="3,3" opacity="0.25" />
-                  <circle cx="255" cy="195" r="160" fill="none" stroke="#0891B2" strokeWidth="0.5" strokeDasharray="3,3" opacity="0.15" />
-                  {/* Westshore submarket — high impact */}
-                  <path d="M210,160 L260,155 L280,180 L270,220 L230,225 L205,200 Z" fill="rgba(16,185,129,0.25)" stroke="#10B981" strokeWidth="1.5" />
-                  <text x="235" y="195" textAnchor="middle" fontSize="9" fill="#10B981" fontFamily="monospace" fontWeight="700">WESTSHORE</text>
-                  <text x="235" y="207" textAnchor="middle" fontSize="8" fill="#10B981" fontFamily="monospace">+3.2pp rent</text>
-                  {/* Downtown Tampa submarket */}
-                  <path d="M260,220 L300,215 L315,250 L295,270 L260,265 Z" fill="rgba(8,145,178,0.2)" stroke="#0891B2" strokeWidth="1" />
-                  <text x="287" y="245" textAnchor="middle" fontSize="8" fill="#0891B2" fontFamily="monospace" fontWeight="700">DOWNTOWN</text>
-                  <text x="287" y="256" textAnchor="middle" fontSize="8" fill="#0891B2" fontFamily="monospace">+1.8pp rent</text>
-                  {/* Ybor City */}
-                  <path d="M300,200 L340,195 L350,225 L330,240 L300,235 Z" fill="rgba(8,145,178,0.12)" stroke="#0891B2" strokeWidth="0.8" />
-                  <text x="325" y="218" textAnchor="middle" fontSize="8" fill="#0891B2" fontFamily="monospace">YBOR</text>
-                  <text x="325" y="229" textAnchor="middle" fontSize="8" fill="#0891B2" fontFamily="monospace">+1.2pp</text>
-                  {/* South Tampa */}
-                  <path d="M195,230 L235,225 L240,265 L215,280 L185,265 Z" fill="rgba(217,119,6,0.12)" stroke="#D97706" strokeWidth="0.8" />
-                  <text x="213" y="255" textAnchor="middle" fontSize="8" fill="#D97706" fontFamily="monospace">S. TAMPA</text>
-                  <text x="213" y="266" textAnchor="middle" fontSize="8" fill="#D97706" fontFamily="monospace">+0.7pp</text>
-                  {/* Brandon submarket — low impact */}
-                  <path d="M360,210 L400,205 L408,240 L380,255 L355,240 Z" fill="rgba(107,114,128,0.1)" stroke="#6B7280" strokeWidth="0.6" />
-                  <text x="382" y="230" textAnchor="middle" fontSize="8" fill="#6B7280" fontFamily="monospace">BRANDON</text>
-                  <text x="382" y="241" textAnchor="middle" fontSize="8" fill="#6B7280" fontFamily="monospace">+0.3pp</text>
-                  {/* HQ2 epicenter */}
-                  <circle cx="255" cy="195" r="6" fill="#10B981" />
-                  <circle cx="255" cy="195" r="10" fill="none" stroke="#10B981" strokeWidth="1.5" opacity="0.6" />
-                  <circle cx="255" cy="195" r="15" fill="none" stroke="#10B981" strokeWidth="1" opacity="0.3" />
-                  <text x="255" y="175" textAnchor="middle" fontSize="9" fill="#E2E8F0" fontFamily="monospace" fontWeight="700">HQ2 SITE</text>
-                  {/* Deal pins */}
-                  <rect x="222" y="188" width="8" height="8" rx="1" fill="#0891B2" />
-                  <text x="226" y="180" textAnchor="middle" fontSize="7" fill="#0891B2" fontFamily="monospace">3820 W</text>
-                  <rect x="268" y="230" width="8" height="8" rx="1" fill="#D97706" />
-                  <text x="272" y="248" textAnchor="middle" fontSize="7" fill="#D97706" fontFamily="monospace">1005 DT</text>
-                  {/* Ring labels */}
-                  <text x="310" y="140" fontSize="8" fill="#0891B2" fontFamily="monospace" opacity="0.6">1mi</text>
-                  <text x="355" y="100" fontSize="8" fill="#0891B2" fontFamily="monospace" opacity="0.4">2mi</text>
-                  <text x="400" y="65" fontSize="8" fill="#0891B2" fontFamily="monospace" opacity="0.25">3mi</text>
-                  {/* Compass */}
-                  <text x="460" y="30" fontSize="10" fill="#6B7A8D" fontFamily="monospace">N↑</text>
-                </svg>
-                {/* Legend */}
-                <div className="absolute bottom-3 left-3 p-2 rounded border" style={{ background: 'rgba(11,14,26,0.9)', borderColor: '#1E2538' }}>
-                  <div className="text-[9px] font-mono mb-1" style={{ color: '#6B7A8D' }}>IMPACT INTENSITY</div>
-                  {[
-                    { color: '#10B981', label: 'High (+2pp+ rent)' },
-                    { color: '#0891B2', label: 'Medium (+1–2pp)' },
-                    { color: '#D97706', label: 'Low (+0.5–1pp)' },
-                    { color: '#6B7280', label: 'Minimal (<0.5pp)' },
-                  ].map(l => (
-                    <div key={l.label} className="flex items-center gap-1.5 mb-0.5">
-                      <div className="w-2 h-2 rounded-sm" style={{ background: l.color }} />
-                      <span className="text-[8px]" style={{ color: '#A0ABBE' }}>{l.label}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Right panel — impact hierarchy */}
-              <div className="w-72 flex flex-col gap-3">
-                <div className="rounded border p-3" style={{ background: '#131929', borderColor: '#1E2538' }}>
-                  <div className="text-[10px] font-mono font-semibold uppercase tracking-widest mb-3" style={{ color: '#6B7A8D' }}>Submarket Impact Hierarchy</div>
-                  {[
-                    { name: 'Westshore', proximity: 0.74, rentDelta: '+3.2pp', absorb: '+4.8pp', score: 94 },
-                    { name: 'Downtown Tampa', proximity: 0.61, rentDelta: '+1.8pp', absorb: '+2.9pp', score: 78 },
-                    { name: 'Ybor City', proximity: 0.49, rentDelta: '+1.2pp', absorb: '+1.8pp', score: 62 },
-                    { name: 'South Tampa', proximity: 0.38, rentDelta: '+0.7pp', absorb: '+1.1pp', score: 45 },
-                    { name: 'Brandon', proximity: 0.21, rentDelta: '+0.3pp', absorb: '+0.5pp', score: 24 },
-                  ].map((sm, i) => (
-                    <div key={sm.name} className="border-b py-2 last:border-b-0" style={{ borderColor: '#1E2538' }}>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-semibold" style={{ color: '#E2E8F0' }}>{sm.name}</span>
-                        <span className="text-[10px] font-mono font-bold" style={{ color: sm.score >= 70 ? '#10B981' : sm.score >= 40 ? '#0891B2' : '#6B7280' }}>
-                          {sm.score}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2 text-[10px]" style={{ color: '#A0ABBE' }}>
-                        <span>Prox: <strong style={{ color: '#E2E8F0' }}>{sm.proximity}</strong></span>
-                        <span>Rent Δ: <strong style={{ color: '#10B981' }}>{sm.rentDelta}</strong></span>
-                        <span>Abs: <strong style={{ color: '#0891B2' }}>{sm.absorb}</strong></span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="rounded border p-3" style={{ background: '#131929', borderColor: '#1E2538' }}>
-                  <div className="text-[10px] font-mono font-semibold uppercase tracking-widest mb-2" style={{ color: '#6B7A8D' }}>Your Deal Exposure</div>
-                  {[
-                    { address: '3820 W Kennedy', distance: '0.8mi', submarket: 'Westshore', impact: '+1.8pp IRR', color: '#10B981' },
-                    { address: '1005 DT Meridian', distance: '1.4mi', submarket: 'Downtown', impact: '+0.9pp IRR', color: '#0891B2' },
-                  ].map(d => (
-                    <div key={d.address} className="mb-2 pb-2 border-b last:border-b-0 last:mb-0 last:pb-0" style={{ borderColor: '#1E2538' }}>
-                      <div className="text-xs font-semibold mb-0.5" style={{ color: '#E2E8F0' }}>{d.address}</div>
-                      <div className="text-[10px]" style={{ color: '#A0ABBE' }}>
-                        {d.distance} · {d.submarket} · <span style={{ color: d.color }}>{d.impact}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* MULTI-METRIC Tab — MultiMetricPanel */}
         {activeTab === 'MULTI-METRIC' && (
           <div className="mb-8">
             <h2 className="text-lg font-semibold mb-1" style={{ color: '#E2E8F0' }}>Multi-Metric Dashboard</h2>
-            <p className="text-sm mb-6" style={{ color: '#6B7A8D' }}>All tracked metrics vs forecast — actual vs model with M35 event markers</p>
+            <p className="text-sm mb-4" style={{ color: '#6B7A8D' }}>All tracked metrics vs forecast — actual vs model with M35 event markers</p>
+            <div className="mb-6">
+              <MultiMetricPanel
+                eventId={eventId ?? 'demo-event'}
+                eventName="Amazon HQ2 — Tampa"
+              />
+            </div>
+            <div className="mb-4">
+              <AttributionWaterfall
+                eventId={eventId ?? 'demo-event'}
+                metric="rent_growth_yoy"
+              />
+            </div>
             <div className="grid grid-cols-3 gap-3">
               {[
                 { metric: 'Rent Growth (YoY)', actual: '+2.1%', forecast: '+1.3%', delta: '+0.8pp', status: 'AHEAD', statusColor: '#10B981', points: '0,80 20,70 40,55 60,35 80,20 100,10', eventX: 62 },
@@ -388,12 +303,146 @@ const M35EventDetailPage: React.FC = () => {
           </div>
         )}
 
-        {/* PLAYBOOK / TIMELINE — Coming Soon */}
-        {(activeTab === 'PLAYBOOK' || activeTab === 'TIMELINE') && (
-          <div className="flex items-center justify-center h-48 rounded border" style={{ borderColor: '#1E2538', color: '#6B7A8D' }}>
-            <div className="text-center">
-              <Activity className="w-8 h-8 mx-auto mb-2 opacity-30" />
-              <div className="text-sm font-mono uppercase tracking-wider">{activeTab} — Coming Soon</div>
+        {/* PLAYBOOK Tab */}
+        {activeTab === 'PLAYBOOK' && (
+          <div className="mb-8">
+            <h2 className="text-lg font-semibold mb-4" style={{ color: '#E2E8F0' }}>
+              Playbook Citation
+              <span className="text-sm font-normal ml-2" style={{ color: '#6B7A8D' }}>Major Employment Expansion · Subtype M35-EMP-LARGE</span>
+            </h2>
+
+            {/* Confidence + regime */}
+            <div className="grid grid-cols-3 gap-3 mb-6">
+              {[
+                { label: 'Playbook Confidence', value: '87%', color: '#10B981', sub: '43 comparable events' },
+                { label: 'Confidence Tier', value: 'HIGH', color: '#10B981', sub: 'Tier 1 (≥75%)' },
+                { label: 'Regime Shift', value: 'NONE', color: '#6B7A8D', sub: 'Stable rate environment' },
+              ].map(c => (
+                <div key={c.label} className="rounded border p-4" style={{ background: '#131929', borderColor: '#1E2538' }}>
+                  <div className="text-xs font-mono uppercase tracking-widest mb-2" style={{ color: '#6B7A8D' }}>{c.label}</div>
+                  <div className="text-2xl font-bold font-mono" style={{ color: c.color }}>{c.value}</div>
+                  <div className="text-xs mt-1" style={{ color: '#6B7A8D' }}>{c.sub}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Stratified response curves */}
+            <div className="rounded border mb-4" style={{ background: '#131929', borderColor: '#1E2538' }}>
+              <div className="px-4 py-3 border-b" style={{ borderColor: '#1E2538' }}>
+                <div className="text-xs font-mono uppercase tracking-widest font-semibold" style={{ color: '#A0ABBE' }}>Stratified Response Curves — Rent Growth</div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr style={{ borderBottom: `1px solid #1E2538` }}>
+                      {['Window', 'p25', 'Median', 'p75', 'This Event'].map(h => (
+                        <th key={h} className="px-4 py-2 text-left font-mono uppercase" style={{ color: '#6B7A8D' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      { window: 'T+0 to T+3',  p25: '+0.1%', med: '+0.4%', p75: '+0.7%', cur: '+0.6%', color: '#10B981' },
+                      { window: 'T+3 to T+12', p25: '+0.6%', med: '+1.3%', p75: '+2.2%', cur: '+2.1%', color: '#10B981' },
+                      { window: 'T+12 to T+24',p25: '+1.4%', med: '+2.8%', p75: '+4.1%', cur: '—',     color: '#6B7A8D' },
+                      { window: 'T+24 to T+60',p25: '+2.0%', med: '+3.9%', p75: '+5.5%', cur: '—',     color: '#6B7A8D' },
+                    ].map(row => (
+                      <tr key={row.window} className="border-b" style={{ borderColor: '#1E2538' }}>
+                        <td className="px-4 py-2 font-mono" style={{ color: '#E2E8F0' }}>{row.window}</td>
+                        <td className="px-4 py-2 font-mono" style={{ color: '#6B7A8D' }}>{row.p25}</td>
+                        <td className="px-4 py-2 font-mono font-semibold" style={{ color: '#0891B2' }}>{row.med}</td>
+                        <td className="px-4 py-2 font-mono" style={{ color: '#6B7A8D' }}>{row.p75}</td>
+                        <td className="px-4 py-2 font-mono font-bold" style={{ color: row.color }}>{row.cur}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Comparable events */}
+            <div className="rounded border" style={{ background: '#131929', borderColor: '#1E2538' }}>
+              <div className="px-4 py-3 border-b" style={{ borderColor: '#1E2538' }}>
+                <div className="text-xs font-mono uppercase tracking-widest font-semibold" style={{ color: '#A0ABBE' }}>Comparable Historical Events</div>
+              </div>
+              <div className="divide-y" style={{ borderColor: '#1E2538' }}>
+                {[
+                  { name: 'Apple Park — Cupertino', yr: '2017', out: '+4.8pp rent / 36mo', status: 'AHEAD', fin: 'CLOSED', irrDelta: '+2.1pp' },
+                  { name: 'Amazon HQ1 — Seattle', yr: '2010', out: '+6.2pp rent / 48mo', status: 'AHEAD', fin: 'CLOSED', irrDelta: '+3.4pp' },
+                  { name: 'Tesla Gigafactory — Austin', yr: '2021', out: '+3.1pp rent / 24mo', status: 'ON PACE', fin: 'ACTIVE', irrDelta: '+1.6pp' },
+                  { name: 'Boeing HQ — Chicago', yr: '2001', out: '+0.8pp rent / 12mo', status: 'BEHIND', fin: 'CLOSED', irrDelta: '+0.3pp' },
+                ].map(ev => (
+                  <div key={ev.name} className="px-4 py-3 flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-semibold" style={{ color: '#E2E8F0' }}>{ev.name}</div>
+                      <div className="text-xs font-mono mt-0.5" style={{ color: '#6B7A8D' }}>
+                        {ev.yr} · Outcome: <span style={{ color: '#A0ABBE' }}>{ev.out}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs font-mono">
+                      <span style={{ color: ev.status === 'AHEAD' ? '#10B981' : ev.status === 'ON PACE' ? '#0891B2' : '#EF4444' }}>{ev.status}</span>
+                      <span style={{ color: '#6B7A8D' }}>{ev.fin}</span>
+                      <span style={{ color: '#D97706' }}>IRR Δ {ev.irrDelta}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* GEOGRAPHY Tab — enhanced with CascadeMap */}
+        {activeTab === 'GEOGRAPHY' && (
+          <div className="mb-8">
+            <h2 className="text-lg font-semibold mb-4" style={{ color: '#E2E8F0' }}>
+              Geographic Impact Map <span className="font-normal text-sm" style={{ color: '#6B7A8D' }}>| Tampa MSA — Amazon HQ2 Cascade</span>
+            </h2>
+            <div className="mb-4">
+              <CascadeMap
+                eventId={eventId ?? 'demo-event'}
+                height={340}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* TIMELINE Tab */}
+        {activeTab === 'TIMELINE' && (
+          <div className="mb-8">
+            <h2 className="text-lg font-semibold mb-4" style={{ color: '#E2E8F0' }}>Status History</h2>
+            <div className="relative">
+              {/* Vertical line */}
+              <div className="absolute left-[11px] top-0 bottom-0 w-0.5" style={{ background: '#1E2538' }} />
+              <div className="flex flex-col gap-0">
+                {[
+                  { date: 'Mar 2024', status: 'ANNOUNCED', color: '#0891B2', desc: 'Amazon announces Tampa as HQ2 location. 25,000 jobs over 10 years. Initial market reaction: +0.4pp rent growth signal detected.' },
+                  { date: 'May 2024', status: 'CONFIRMED', color: '#10B981', desc: 'Construction permits filed. Site preparation begins at Westshore corridor. Submarket confidence upgraded to Tier 1.' },
+                  { date: 'Aug 2024', status: 'MATERIALIZING', color: '#10B981', desc: 'First cohort hiring announcements (2,500 roles). Absorption rate jumps +1.9pp above forecast. AHEAD status triggered.' },
+                  { date: 'Nov 2024', status: 'T+8 CURRENT', color: '#D97706', desc: 'Rent growth tracking +2.1% vs +1.3% forecast. Playbook confidence upgraded to 87%. IRR impact +1.8pp on Westshore properties.' },
+                  { date: 'Q1 2025', status: 'PENDING', color: '#6B7A8D', desc: 'Phase 2 hiring wave expected. BRT transit alignment may amplify proximity effects.' },
+                  { date: '2027–2034', status: 'LONG-TERM', color: '#6B7A8D', desc: 'Remaining 22,500 jobs phased in. Full MSA absorption over multi-year window.' },
+                ].map((item, i) => (
+                  <div key={i} className="relative flex gap-6 pl-8 pb-6">
+                    <div className="absolute left-0 top-1.5 w-6 h-6 rounded-full border-2 flex items-center justify-center z-10"
+                      style={{
+                        background: item.status === 'PENDING' || item.status === 'LONG-TERM' ? '#0B0E1A' : item.color,
+                        borderColor: item.color,
+                      }}>
+                      {item.status === 'T+8 CURRENT' && <div className="w-2 h-2 rounded-full bg-white animate-pulse" />}
+                    </div>
+                    <div className="flex-1 rounded border p-4" style={{ background: '#131929', borderColor: '#1E2538' }}>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-mono font-bold" style={{ color: '#A0ABBE' }}>{item.date}</span>
+                        <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border"
+                          style={{ color: item.color, background: `${item.color}1A`, borderColor: `${item.color}4D` }}>
+                          {item.status}
+                        </span>
+                      </div>
+                      <p className="text-sm" style={{ color: '#A0ABBE' }}>{item.desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}

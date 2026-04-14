@@ -6,3 +6,4 @@ export { SubmarketMarketTab } from './SubmarketMarketTab';
 export { SubmarketPropertiesTab } from './SubmarketPropertiesTab';
 export { SubmarketNewsTab } from './SubmarketNewsTab';
 export { SubmarketCompareTab } from './SubmarketCompareTab';
+export { SubmarketEventsTab } from './SubmarketEventsTab';

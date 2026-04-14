@@ -260,6 +260,96 @@ router.get('/deals/:dealId/events', async (req: Request, res: Response) => {
   }
 });
 
+// ─── Deal events context (banner + sensitivity + attributions) ────────────────
+
+router.get('/deals/:dealId/events-context', async (req: Request, res: Response) => {
+  try {
+    const pool = getPool();
+
+    // Resolve deal's MSA
+    const dealRes = await pool.query(`
+      SELECT d.id, d.name, d.deal_data->>'msaId' AS msa_id_from_deal
+      FROM deals d WHERE d.id = $1 LIMIT 1
+    `, [req.params.dealId]);
+
+    const deal = dealRes.rows[0];
+    const msaId = deal?.msa_id_from_deal ?? null;
+
+    let events: any[] = [];
+    if (msaId) {
+      const evRes = await pool.query(`
+        SELECT ke.* FROM key_events ke
+        WHERE ke.msa_id = $1
+          AND ke.status NOT IN ('cancelled','reversed')
+        ORDER BY ke.magnitude_score DESC, ke.announced_date DESC NULLS LAST
+        LIMIT 20
+      `, [msaId]);
+      events = evRes.rows;
+    } else {
+      // Fallback: return all non-cancelled events ordered by magnitude
+      const evRes = await pool.query(`
+        SELECT ke.* FROM key_events ke
+        WHERE ke.status NOT IN ('cancelled','reversed')
+        ORDER BY ke.magnitude_score DESC, ke.announced_date DESC NULLS LAST
+        LIMIT 20
+      `);
+      events = evRes.rows;
+    }
+
+    // Compute sensitivity from avg magnitude_score
+    let sensitivityScore = 0;
+    let sensitivity = 'LOW';
+    if (events.length > 0) {
+      const avgMag = events.reduce((s, e) => s + Number(e.magnitude_score || 2), 0) / events.length;
+      sensitivityScore = Math.min(1, avgMag / 5);
+      sensitivity = avgMag >= 3.5 ? 'HIGH' : avgMag >= 2.5 ? 'MEDIUM' : 'LOW';
+    }
+
+    // Compute concentration (top event share of total magnitude)
+    let concentration = null;
+    if (events.length > 0) {
+      const totalMag = events.reduce((s, e) => s + Number(e.magnitude_score || 1), 0);
+      const top = events[0];
+      const topShare = Number(top.magnitude_score || 1) / totalMag;
+      concentration = {
+        topEventName:  top.name,
+        irrShare:      topShare,
+        isConcentrated: topShare > 0.30,
+      };
+    }
+
+    // Inline attributions: generate synthetic attribution from magnitude + default metrics
+    const ATTRIBUTION_METRICS = ['rent_growth_yoy', 'cap_rate', 'absorption', 'permits'];
+    const inlineAttributions: Record<string, any[]> = {};
+    ATTRIBUTION_METRICS.forEach(metric => {
+      inlineAttributions[metric] = events.slice(0, 2).map(ev => ({
+        eventId:    ev.id,
+        eventName:  ev.name,
+        metricKey:  metric,
+        delta:      Number((Number(ev.magnitude_score || 2) * 0.5 * (ev.scope === 'msa' ? 0.8 : 1.0)).toFixed(2)),
+        unit:       metric.endsWith('rate') || metric.endsWith('yoy') ? 'pp' : '',
+        baseline:   3.2,
+        total:      3.2 + Number((Number(ev.magnitude_score || 2) * 0.5).toFixed(2)),
+        confidence: Number(ev.confidence || 0.55),
+      }));
+    });
+
+    res.json({
+      dealId: req.params.dealId,
+      msaId,
+      events,
+      sensitivity,
+      sensitivityScore,
+      concentration,
+      inlineAttributions,
+      totalActiveEvents: events.length,
+    });
+  } catch (err: any) {
+    logger.error('[M35 Events] events-context error', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Submarket active forecasts ───────────────────────────────────────────────
 
 router.get('/submarkets/:id/active-forecasts', async (req: Request, res: Response) => {

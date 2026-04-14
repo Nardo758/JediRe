@@ -26,6 +26,7 @@ import { SubmarketPropertiesTab } from './tabs/submarket/SubmarketPropertiesTab'
 import { SubmarketNewsTab } from './tabs/submarket/SubmarketNewsTab';
 import { SubmarketCompareTab } from './tabs/submarket/SubmarketCompareTab';
 import { SubmarketCommentaryTab } from './tabs/submarket/SubmarketCommentaryTab';
+import { SubmarketEventsTab } from './tabs/submarket/SubmarketEventsTab';
 
 // Tab configuration for submarket level
 export const SUBMARKET_TABS = [
@@ -38,6 +39,7 @@ export const SUBMARKET_TABS = [
   { key: 'news', label: 'NEWS', shortcut: '6' },
   { key: 'compare', label: 'COMPARE', shortcut: '7' },
   { key: 'commentary', label: 'COMMENTARY', shortcut: '8' },
+  { key: 'events', label: 'EVENTS', shortcut: '9' },
 ] as const;
 
 export type SubmarketTabKey = typeof SUBMARKET_TABS[number]['key'];
@@ -235,6 +237,8 @@ export const SubmarketTerminal: React.FC<SubmarketTerminalProps> = ({
         return <SubmarketCompareTab {...tabProps} />;
       case 'commentary':
         return <SubmarketCommentaryTab {...tabProps} />;
+      case 'events':
+        return <SubmarketEventsTab submarketId={submarketId} submarket={submarket} />;
       default:
         return <SubmarketOverviewTab {...tabProps} />;
     }

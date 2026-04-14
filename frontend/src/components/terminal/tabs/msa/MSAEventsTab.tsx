@@ -6,10 +6,12 @@
  * or did the market uptick attract this event?"
  */
 import React, { useState, useEffect } from 'react';
-import { ArrowRight, Activity, ChevronDown, RefreshCw, AlertCircle } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { ArrowRight, Activity, ChevronDown, RefreshCw, AlertCircle, ArrowUpRight } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
 import { MSAData } from '../../MSATerminal';
 import { EventForecastPanel } from './EventForecastPanel';
+import { EventDensityStrip } from '../../../m35/EventDensityStrip';
 
 interface MSAEventsTabProps {
   msaId: string;
@@ -158,6 +160,7 @@ const mono: React.CSSProperties = {
 
 export const MSAEventsTab: React.FC<MSAEventsTabProps> = ({ msaId, msa }) => {
   const msaName = msa?.name || msaId || 'MSA';
+  const navigate = useNavigate();
 
   const [causality, setCausality] = useState<MSACausalityReport | null>(null);
   const [liveEvents, setLiveEvents] = useState<LiveEvent[]>([]);
@@ -283,7 +286,26 @@ export const MSAEventsTab: React.FC<MSAEventsTabProps> = ({ msaId, msa }) => {
             <div style={{ color: BT.text.muted, fontSize: 9, marginBottom: 2 }}>LIVE EVENTS</div>
             <div style={{ fontWeight: 700, fontSize: 18, color: BT.accent.blue }}>{liveEvents.length}</div>
           </div>
+          <div style={{ width: 1, height: 32, background: BT.border.subtle }} />
+          <button
+            onClick={() => navigate('/playbooks')}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, fontWeight: 700, ...mono,
+              padding: '4px 10px', background: `${BT.accent.blue}18`, border: `1px solid ${BT.accent.blue}44`,
+              color: BT.accent.blue, cursor: 'pointer',
+            }}
+          >
+            PLAYBOOKS <ArrowUpRight size={9} />
+          </button>
         </div>
+      </div>
+
+      {/* ── Event Density Strip ───────────────────────────────────────────────── */}
+      <div style={{ ...terminalStyles.card, padding: '8px 14px', marginBottom: 16 }}>
+        <div style={{ fontSize: 9, fontWeight: 700, color: BT.text.muted, letterSpacing: '0.08em', marginBottom: 5 }}>
+          EVENT DENSITY TIMELINE
+        </div>
+        <EventDensityStrip msaId={msaId} height={20} />
       </div>
 
       {/* ── Causality Summary Bar ─────────────────────────────────────────────── */}
