@@ -55,6 +55,15 @@ interface DealWithData {
   is_selected: boolean;
 }
 
+type FilterKey = 'minUnits' | 'maxUnits' | 'minOccupancy' | 'maxDistance';
+
+const FILTER_FIELDS: Array<{ label: string; key: FilterKey; placeholder: string }> = [
+  { label: 'MIN UNITS',     key: 'minUnits',     placeholder: '0' },
+  { label: 'MAX UNITS',     key: 'maxUnits',     placeholder: '500' },
+  { label: 'MIN OCC %',     key: 'minOccupancy', placeholder: '0' },
+  { label: 'MAX DIST (mi)', key: 'maxDistance',  placeholder: '5' },
+];
+
 interface TrafficCompsTabProps {
   dealId: string;
   onSelectionChange?: () => void;
@@ -130,7 +139,7 @@ export default function TrafficCompsTab({ dealId, onSelectionChange }: TrafficCo
   const [showFilters, setShowFilters] = useState(false);
   const [sortBy, setSortBy] = useState('distance_miles');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
-  const [filters, setFilters] = useState({ minUnits: '', maxUnits: '', minOccupancy: '', maxDistance: '' });
+  const [filters, setFilters] = useState<Record<FilterKey, string>>({ minUnits: '', maxUnits: '', minOccupancy: '', maxDistance: '' });
 
   const loadData = useCallback(async () => {
     if (!dealId) return;
@@ -379,17 +388,12 @@ export default function TrafficCompsTab({ dealId, onSelectionChange }: TrafficCo
             padding: '8px 12px', background: BT.bg.panelAlt, borderBottom: `1px solid ${BT.border.subtle}`,
             display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8,
           }}>
-            {[
-              { label: 'MIN UNITS', key: 'minUnits', placeholder: '0' },
-              { label: 'MAX UNITS', key: 'maxUnits', placeholder: '500' },
-              { label: 'MIN OCC %', key: 'minOccupancy', placeholder: '0' },
-              { label: 'MAX DIST (mi)', key: 'maxDistance', placeholder: '5' },
-            ].map(f => (
+            {FILTER_FIELDS.map(f => (
               <div key={f.key}>
                 <div style={{ fontSize: 8, color: BT.text.muted, fontFamily: MONO, letterSpacing: 0.8, marginBottom: 3 }}>{f.label}</div>
                 <input
                   type="number"
-                  value={(filters as any)[f.key]}
+                  value={filters[f.key]}
                   onChange={e => setFilters(p => ({ ...p, [f.key]: e.target.value }))}
                   placeholder={f.placeholder}
                   style={{

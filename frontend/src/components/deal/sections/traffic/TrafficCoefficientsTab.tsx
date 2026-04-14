@@ -5,11 +5,17 @@ import { BT } from '../../bloomberg-ui';
 
 const MONO = BT.font.mono;
 
+interface ComparisonEntry {
+  calibrated: number;
+  default: number;
+  std_dev?: number;
+}
+
 interface CalibrationData {
   calibrated: boolean;
   sampleCount: number;
   lastUpdated: string | null;
-  comparisons: Record<string, { calibrated: number; default: number }>;
+  comparisons: Record<string, ComparisonEntry>;
   dataLibraryFileCount: number;
   matchTier?: string;
   nPeerProperties?: number;
@@ -25,6 +31,7 @@ interface CoefficientRow {
   baseline: number;
   platform: number | null;
   thisDeal: number | null;
+  sigma: number | null;
 }
 
 const BASELINE_DEFAULTS: Record<string, { label: string; description: string; baseline: number; format: 'pct' | 'decimal' | 'days' }> = {
@@ -43,9 +50,18 @@ function fmtVal(val: number | null | undefined, format: 'pct' | 'decimal' | 'day
   return val.toFixed(3);
 }
 
-function divergencePct(platform: number | null, baseline: number): number | null {
-  if (platform === null || baseline === 0) return null;
-  return Math.abs((platform - baseline) / baseline);
+function zScore(thisDeal: number | null, platform: number | null, sigma: number | null): number | null {
+  if (thisDeal === null || platform === null) return null;
+  const effectiveSigma = sigma ?? (Math.abs(platform) * 0.15 || 0.001);
+  return Math.abs(thisDeal - platform) / effectiveSigma;
+}
+
+function collisionSigmaLabel(z: number | null): string | null {
+  if (z === null) return null;
+  if (z >= 3.0) return `${z.toFixed(1)}σ — 3σ EXTREME DIVERGENCE`;
+  if (z >= 2.0) return `${z.toFixed(1)}σ — SIGNIFICANT DIVERGENCE`;
+  if (z >= 1.5) return `${z.toFixed(1)}σ — NOTABLE DIVERGENCE`;
+  return null;
 }
 
 interface TrafficCoefficientsTabProps {
@@ -84,6 +100,7 @@ export default function TrafficCoefficientsTab({ dealId }: TrafficCoefficientsTa
       baseline: def.baseline,
       platform: comp ? comp.default : null,
       thisDeal: comp ? comp.calibrated : null,
+      sigma: comp?.std_dev ?? null,
     };
   });
 
@@ -101,6 +118,7 @@ export default function TrafficCoefficientsTab({ dealId }: TrafficCoefficientsTa
       baseline: comp.default,
       platform: comp.default,
       thisDeal: comp.calibrated,
+      sigma: comp.std_dev ?? null,
     });
   });
 
@@ -173,8 +191,9 @@ export default function TrafficCoefficientsTab({ dealId }: TrafficCoefficientsTa
 
       {/* Coefficient rows */}
       {rows.map((row, i) => {
-        const divPct = divergencePct(row.thisDeal, row.baseline);
-        const hasCollision = divPct !== null && divPct > 0.20;
+        const z = zScore(row.thisDeal, row.platform, row.sigma);
+        const collisionLabel = collisionSigmaLabel(z);
+        const hasCollision = collisionLabel !== null;
         const bg = i % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt;
         const effectiveVal = row.thisDeal ?? row.platform;
         const dealColor = row.thisDeal !== null ? BT.text.amber : BT.text.muted;
@@ -221,7 +240,7 @@ export default function TrafficCoefficientsTab({ dealId }: TrafficCoefficientsTa
               }}>
                 <AlertTriangle size={10} color={BT.text.amber} />
                 <span style={{ fontSize: 9, color: BT.text.amber, fontFamily: MONO }}>
-                  COLLISION WARNING — {row.label} diverges {Math.round((divPct ?? 0) * 100)}% from industry baseline. Deal-specific data may be outside typical ranges.
+                  COLLISION WARNING — {row.label}: THIS DEAL vs PLATFORM = {collisionLabel}. Deal-specific data deviates beyond expected range.
                 </span>
               </div>
             )}
@@ -245,7 +264,7 @@ export default function TrafficCoefficientsTab({ dealId }: TrafficCoefficientsTa
         <span style={{ fontSize: 9, color: BT.text.secondary, fontFamily: MONO }}>BASELINE = Industry model defaults</span>
         <span style={{ fontSize: 9, color: BT.text.cyan, fontFamily: MONO }}>PLATFORM = M07 submarket calibration</span>
         <span style={{ fontSize: 9, color: BT.text.amber, fontFamily: MONO }}>THIS DEAL ▶ = Resolved Bayesian blend</span>
-        <span style={{ fontSize: 9, color: BT.text.amber, fontFamily: MONO, marginLeft: 'auto' }}>⚠ COLLISION = &gt;20% divergence</span>
+        <span style={{ fontSize: 9, color: BT.text.amber, fontFamily: MONO, marginLeft: 'auto' }}>⚠ COLLISION = THIS DEAL vs PLATFORM &gt;1.5σ</span>
       </div>
     </div>
   );

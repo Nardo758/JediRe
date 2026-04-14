@@ -937,67 +937,148 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
         {calibration?.calibrated && Object.keys(calibration.comparisons).length > 0 ? (
           <div className="space-y-3">
             <div className="text-neutral-400 font-mono text-[10px] uppercase mb-2">Calibrated vs Default Values</div>
-            <div className="grid grid-cols-2 gap-3">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               {Object.entries(calibration.comparisons).map(([metric, vals]) => {
-                const isPct = metric.includes('Ratio') || metric.includes('Conversion') || metric.includes('%');
+                const isPct = metric.includes('Ratio') || metric.includes('Conversion') || metric.includes('%') || metric.includes('rate') || metric.includes('pct');
                 const formatFn = (v: number) => isPct ? `${(v * 100).toFixed(1)}%` : v.toFixed(4);
                 const diff = vals.calibrated - vals.default;
                 const diffPct = vals.default !== 0 ? ((diff / vals.default) * 100).toFixed(0) : '0';
                 const isUp = diff > 0;
+                const band = calibration.confidenceBands?.[metric];
 
                 return (
-                  <div key={metric} className="bg-[#0F1319] rounded-lg p-3">
-                    <div className="text-[#6B7585] font-mono text-[10px] uppercase mb-2">{metric}</div>
-                    <div className="flex items-end justify-between">
+                  <div key={metric} style={{ background: BT2.bg.terminal, border: `1px solid ${BT2.border.subtle}`, padding: 12 }}>
+                    <div style={{ fontSize: 9, color: BT2.text.muted, fontFamily: bMono, textTransform: 'uppercase' as const, letterSpacing: 0.8, marginBottom: 8 }}>{metric}</div>
+                    <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
                       <div>
-                        <div className="text-lg font-bold text-[#E8E6E1]">{formatFn(vals.calibrated)}</div>
-                        <div className="text-[11px] text-neutral-400">Default: {formatFn(vals.default)}</div>
+                        <div style={{ fontSize: 16, fontWeight: 700, color: BT2.text.amber, fontFamily: bMono }}>{formatFn(vals.calibrated)}</div>
+                        <div style={{ fontSize: 10, color: BT2.text.secondary, fontFamily: bMono, marginTop: 2 }}>Default: {formatFn(vals.default)}</div>
                       </div>
-                      <div className={`text-xs font-mono ${isUp ? 'text-emerald-600' : 'text-red-500'}`}>
+                      <div style={{ fontSize: 10, fontFamily: bMono, color: isUp ? BT2.text.green : BT2.text.red, fontWeight: 700 }}>
                         {isUp ? '+' : ''}{diffPct}%
                       </div>
                     </div>
+                    {/* Confidence band display */}
+                    {band && (
+                      <div style={{ marginTop: 8, paddingTop: 6, borderTop: `1px solid ${BT2.border.subtle}` }}>
+                        <div style={{ fontSize: 8, color: BT2.text.muted, fontFamily: bMono, letterSpacing: 0.8, marginBottom: 4 }}>95% CONFIDENCE BAND</div>
+                        <div style={{ position: 'relative' as const, height: 8, background: BT2.bg.input, borderRadius: 2 }}>
+                          {(() => {
+                            const range = band.high - band.low;
+                            if (range <= 0) return null;
+                            const valPct = Math.min(100, Math.max(0, ((vals.calibrated - band.low) / range) * 100));
+                            return (
+                              <>
+                                <div style={{ position: 'absolute' as const, left: '10%', right: '10%', top: 0, bottom: 0, background: `${BT2.text.amber}25`, borderRadius: 2 }} />
+                                <div style={{ position: 'absolute' as const, left: `${valPct}%`, top: 0, bottom: 0, width: 2, background: BT2.text.amber, borderRadius: 1 }} />
+                              </>
+                            );
+                          })()}
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 2 }}>
+                          <span style={{ fontSize: 8, color: BT2.text.muted, fontFamily: bMono }}>{formatFn(band.low)}</span>
+                          <span style={{ fontSize: 8, color: BT2.text.muted, fontFamily: bMono }}>{formatFn(band.high)}</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
             </div>
-            <div className="flex items-center justify-between mt-3">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}>
               {calibration.lastUpdated && (
-                <div className="text-[10px] text-neutral-400">
+                <div style={{ fontSize: 10, color: BT2.text.secondary, fontFamily: bMono }}>
                   Last updated: {new Date(calibration.lastUpdated).toLocaleDateString()}
                 </div>
               )}
               <a
                 href="/data-library"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-[#1e2a3d] text-[#6B7585] rounded-lg text-xs hover:bg-[#0F1319] transition-colors"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 10px', border: `1px solid ${BT2.border.subtle}`, color: BT2.text.secondary, textDecoration: 'none', fontSize: 10, fontFamily: bMono }}
               >
-                <Database size={12} /> Data Library <ExternalLink size={10} />
+                <Database size={11} /> Data Library <ExternalLink size={9} />
               </a>
             </div>
           </div>
         ) : (
-          <div className="text-center py-6">
-            <Database size={32} className="mx-auto text-neutral-400 mb-3" />
-            <p className="text-sm text-[#6B7585] mb-3">
+          <div style={{ textAlign: 'center', padding: '32px 24px' }}>
+            <Database size={32} style={{ color: BT2.text.muted, display: 'block', margin: '0 auto 12px' }} />
+            <p style={{ fontSize: 11, color: BT2.text.secondary, fontFamily: bSans, marginBottom: 12 }}>
               Upload weekly operating reports to build submarket-specific calibration data.
-              The more deals that contribute data, the better the predictions become.
             </p>
-            <div className="flex items-center gap-3 justify-center">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'center' }}>
               <button
                 onClick={triggerUpload}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm text-[#E8E6E1] hover:bg-[#131920] transition-colors" style={{ background: "#0F1319", border: "1px solid #1e2a3d" }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', background: BT2.bg.terminal, border: `1px solid ${BT2.border.medium}`, color: BT2.text.white, cursor: 'pointer', fontSize: 10, fontFamily: bMono }}
               >
-                <Upload size={14} /> Upload Weekly Report
+                <Upload size={12} /> Upload Weekly Report
               </button>
               <a
                 href="/data-library"
-                className="inline-flex items-center gap-1.5 px-4 py-2 border border-[#1e2a3d] text-[#9EA8B4] rounded-lg text-sm hover:bg-[#0F1319] transition-colors"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', border: `1px solid ${BT2.border.subtle}`, color: BT2.text.secondary, textDecoration: 'none', fontSize: 10, fontFamily: bMono }}
               >
-                <Database size={14} /> Open Data Library <ExternalLink size={11} />
+                <Database size={12} /> Data Library <ExternalLink size={9} />
               </a>
             </div>
           </div>
         )}
+      </div>
+
+      {/* ── RENT ROLL UPLOAD ── */}
+      <div style={{ background: BT2.bg.panel, border: `1px solid ${BT2.border.subtle}`, padding: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <Upload size={13} color={BT2.text.cyan} />
+          <span style={{ fontSize: 10, fontWeight: 700, color: BT2.text.white, fontFamily: bMono, letterSpacing: 0.8 }}>RENT ROLL UPLOAD</span>
+          <span style={{ fontSize: 9, color: BT2.text.muted, fontFamily: bMono }}>POST → /api/rent-roll/upload/:dealId</span>
+        </div>
+        <label
+          style={{
+            display: 'flex', flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center',
+            border: `2px dashed ${BT2.border.medium}`, background: BT2.bg.terminal,
+            padding: '24px 16px', cursor: 'pointer', gap: 8,
+          }}
+          onDragOver={e => { e.preventDefault(); (e.currentTarget as HTMLElement).style.borderColor = BT2.text.cyan; }}
+          onDragLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BT2.border.medium; }}
+          onDrop={async (e) => {
+            e.preventDefault();
+            (e.currentTarget as HTMLElement).style.borderColor = BT2.border.medium;
+            const file = e.dataTransfer.files?.[0];
+            if (!file || !resolvedDealId) return;
+            const fd = new FormData();
+            fd.append('file', file);
+            try {
+              await apiClient.post(`/api/rent-roll/upload/${resolvedDealId}`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+              await loadData();
+            } catch (err) {
+              console.error('[TrafficModule] Rent roll upload failed:', err);
+            }
+          }}
+        >
+          <input
+            type="file"
+            accept=".xlsx,.xls,.csv,.pdf"
+            style={{ display: 'none' }}
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (!file || !resolvedDealId) return;
+              const fd = new FormData();
+              fd.append('file', file);
+              try {
+                await apiClient.post(`/api/rent-roll/upload/${resolvedDealId}`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+                await loadData();
+              } catch (err) {
+                console.error('[TrafficModule] Rent roll upload failed:', err);
+              } finally {
+                e.target.value = '';
+              }
+            }}
+          />
+          <Database size={18} style={{ color: BT2.text.muted }} />
+          <span style={{ fontSize: 10, color: BT2.text.secondary, fontFamily: bMono }}>DRAG & DROP RENT ROLL FILE</span>
+          <span style={{ fontSize: 9, color: BT2.text.muted, fontFamily: bMono }}>or click to browse · XLSX / XLS / CSV / PDF</span>
+          <span style={{ fontSize: 9, color: BT2.text.muted, fontFamily: bMono, textAlign: 'center' as const, maxWidth: 360 }}>
+            Upload current rent roll to improve calibration accuracy. M07 extracts unit count, lease expirations, and concession data.
+          </span>
+        </label>
       </div>
     </div>
   );
