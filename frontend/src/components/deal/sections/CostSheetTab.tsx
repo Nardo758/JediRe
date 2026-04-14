@@ -407,6 +407,8 @@ export function CostSheetTab({ dealId, deal, assumptions, f9Financials }: CostSh
   // Set synchronously inside useState initializer (before any effects) to reliably
   // distinguish "loaded from prior user session" vs "freshly initialized from defaults".
   const loadedFromStorage = React.useRef(false);
+  // Guard first-load auto-sync so it fires exactly once (even if deps re-trigger).
+  const syncedOnce = React.useRef(false);
 
   const [items, setItems] = useState<CostLineItem[]>(() => {
     try {
@@ -454,14 +456,14 @@ export function CostSheetTab({ dealId, deal, assumptions, f9Financials }: CostSh
   }, [f9Financials, totalBasis]);
 
   useEffect(() => {
-    if (!f9Financials) return;
+    if (!f9Financials || loadedFromStorage.current || syncedOnce.current) return;
     // Auto-sync only when starting from defaults (no prior user session in localStorage).
-    // loadedFromStorage.current is set synchronously during useState, before any effects,
-    // so this correctly reflects whether the user has prior saved data.
-    if (!loadedFromStorage.current) {
-      syncFromEngine();
-    }
-  }, [f9Financials]);
+    // syncedOnce prevents re-firing if totalBasis or f9Financials re-resolves later.
+    // Including syncFromEngine (which depends on f9Financials + totalBasis) ensures
+    // we compute amounts after both assumptions and financial engine data are settled.
+    syncedOnce.current = true;
+    syncFromEngine();
+  }, [f9Financials, syncFromEngine]);
 
   const updateAmount = useCallback((id: string, v: number) => {
     setItems(prev => prev.map(i => i.id === id ? { ...i, amount: v, synced: false, sourceKey: undefined } : i));
