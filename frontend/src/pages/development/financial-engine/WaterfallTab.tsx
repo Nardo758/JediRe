@@ -645,6 +645,7 @@ export function WaterfallTab({ dealId, assumptions, modelResults, f9Financials, 
                               }} style={{
                                 background: BT.bg.panel, border: `1px solid ${BT.border.medium}`,
                                 color: BT.text.amber, fontFamily: MONO, fontSize: 8, padding: '1px 3px',
+                                colorScheme: 'dark',
                               }}>
                                 {(Object.keys(COMPOUNDING_LABELS) as CompoundingType[]).map(k => (
                                   <option key={k} value={k}>{COMPOUNDING_LABELS[k]}</option>
@@ -756,8 +757,8 @@ export function WaterfallTab({ dealId, assumptions, modelResults, f9Financials, 
                                             </td>
                                             <td style={{ padding: '3px 8px' }}>
                                               <select value={inv.entity} onChange={e => updateInvestor(inv.id, { entity: e.target.value })} style={{
-                                                background: 'transparent', border: `1px solid ${BT.border.subtle}`, color: BT.text.muted,
-                                                fontFamily: MONO, fontSize: 7, padding: '1px 2px', maxWidth: 90,
+                                                background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, color: BT.text.muted,
+                                                fontFamily: MONO, fontSize: 7, padding: '1px 2px', maxWidth: 90, colorScheme: 'dark',
                                               }}>
                                                 <option value="">—</option>
                                                 {['Individual', 'LLC', 'LP', 'Trust', 'Family Office', 'Fund', 'REIT', 'Corp', 'Other'].map(o => <option key={o} value={o}>{o}</option>)}
@@ -789,8 +790,9 @@ export function WaterfallTab({ dealId, assumptions, modelResults, f9Financials, 
                                             </td>
                                             <td style={{ padding: '3px 8px', textAlign: 'right' }}>
                                               <select value={inv.status} onChange={e => updateInvestor(inv.id, { status: e.target.value as InvestorStatus })} style={{
-                                                background: `${STATUS_COLORS[inv.status]}22`, border: `1px solid ${STATUS_COLORS[inv.status]}66`,
+                                                background: BT.bg.panel, border: `1px solid ${STATUS_COLORS[inv.status]}66`,
                                                 color: STATUS_COLORS[inv.status], fontFamily: MONO, fontSize: 7, padding: '1px 3px', borderRadius: 2,
+                                                colorScheme: 'dark',
                                               }}>
                                                 {(Object.keys(STATUS_LABELS) as InvestorStatus[]).map(s => (
                                                   <option key={s} value={s}>{STATUS_LABELS[s]}</option>
@@ -844,7 +846,7 @@ export function WaterfallTab({ dealId, assumptions, modelResults, f9Financials, 
                                       style={{ background: BT.bg.panel, border: `1px solid ${BT.border.medium}`, color: BT.text.white, fontFamily: MONO, fontSize: 8, padding: '2px 6px', borderRadius: 2, width: 150 }} />
                                     <select value={newInv.entity} onChange={e => setNewInv(p => ({ ...p, entity: e.target.value }))} style={{
                                       background: BT.bg.panel, border: `1px solid ${BT.border.medium}`, color: BT.text.muted,
-                                      fontFamily: MONO, fontSize: 8, padding: '2px 4px', borderRadius: 2,
+                                      fontFamily: MONO, fontSize: 8, padding: '2px 4px', borderRadius: 2, colorScheme: 'dark',
                                     }}>
                                       <option value="">Entity Type</option>
                                       {['Individual', 'LLC', 'LP', 'Trust', 'Family Office', 'Fund', 'REIT', 'Corp', 'Other'].map(o => <option key={o} value={o}>{o}</option>)}
@@ -856,8 +858,9 @@ export function WaterfallTab({ dealId, assumptions, modelResults, f9Financials, 
                                       placeholder="Email (optional)"
                                       style={{ background: BT.bg.panel, border: `1px solid ${BT.border.medium}`, color: BT.text.muted, fontFamily: MONO, fontSize: 8, padding: '2px 6px', borderRadius: 2, width: 140 }} />
                                     <select value={newInv.status} onChange={e => setNewInv(p => ({ ...p, status: e.target.value as InvestorStatus }))} style={{
-                                      background: `${STATUS_COLORS[newInv.status]}22`, border: `1px solid ${STATUS_COLORS[newInv.status]}66`,
+                                      background: BT.bg.panel, border: `1px solid ${STATUS_COLORS[newInv.status]}66`,
                                       color: STATUS_COLORS[newInv.status], fontFamily: MONO, fontSize: 8, padding: '2px 4px', borderRadius: 2,
+                                      colorScheme: 'dark',
                                     }}>
                                       {(Object.keys(STATUS_LABELS) as InvestorStatus[]).map(s => (
                                         <option key={s} value={s}>{STATUS_LABELS[s]}</option>
@@ -954,6 +957,7 @@ export function WaterfallTab({ dealId, assumptions, modelResults, f9Financials, 
                         }} style={{
                           background: BT.bg.panel, border: `1px solid ${BT.border.medium}`,
                           color: BT.text.amber, fontFamily: MONO, fontSize: 8, padding: '2px 4px',
+                          colorScheme: 'dark',
                         }}>
                           {Object.entries(TRIGGER_TYPE_LABELS).map(([k, v]) => (
                             <option key={k} value={k}>{v}</option>
