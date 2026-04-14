@@ -235,13 +235,15 @@ export async function aggregatePlaybook(
   // Publish Kafka event
   try {
     await kafkaProducer.publish(KAFKA_TOPICS.M35_PLAYBOOK_UPDATED, {
-      eventType: 'M35_PLAYBOOK_UPDATED',
+      eventType: 'M35_PLAYBOOK_UPDATED' as any,
+      eventId: `playbook:${subtype}:${msaTier}:${magnitude}:${regime}`,
+      timestamp: new Date().toISOString(),
       subtype,
       stratum: { msaTier, magnitude, regime },
       metricWindowCount: aggRows.rows.length,
       instanceCount: aggRows.rows[0] ? parseInt(aggRows.rows[0].instance_count) : 0,
       updatedAt: new Date().toISOString(),
-    }, { key: `${subtype}:${msaTier}:${magnitude}:${regime}` });
+    } as any, { key: `${subtype}:${msaTier}:${magnitude}:${regime}` });
   } catch { /* non-blocking */ }
 
   logger.info(`[M35 Playbook] Aggregated ${aggRows.rows.length} metric×window rows for ${subtype}`);
@@ -280,7 +282,7 @@ export async function getPlaybook(
   const magnitude = stratum.magnitude ?? 'all';
   const regime = stratum.regime ?? 'all';
 
-  const rows = await pool.query<PlaybookRow>(`
+  const rows = await pool.query<any>(`
     SELECT ep.*
     FROM event_playbooks ep
     WHERE ep.subtype = $1
@@ -291,9 +293,9 @@ export async function getPlaybook(
   `, [subtype, msaTier, magnitude, regime]);
 
   // Fall back to 'all' stratum if no rows for specific stratum
-  let data = rows.rows;
+  let data: any[] = rows.rows;
   if (data.length === 0 && (msaTier !== 'all' || magnitude !== 'all' || regime !== 'all')) {
-    const fallback = await pool.query<PlaybookRow>(`
+    const fallback = await pool.query<any>(`
       SELECT ep.*
       FROM event_playbooks ep
       WHERE ep.subtype = $1

@@ -195,77 +195,82 @@ export class M35TrafficApiService {
   }
 
   /**
-   * Returns the historical playbook for an event type — derived from avg impact
-   * across past events of the same category.
+   * Returns the historical playbook for an event type/subtype — reads from
+   * the aggregated event_playbooks table (populated by m35-playbook.service).
    * Used by Lease-Up absorption curve adjustment (Mechanism D).
    */
   async getPlaybook(eventType: string): Promise<EventPlaybook | null> {
     const pool = this.pool;
 
-    // Pull aggregated impact measurements for this event type across all historical events
+    // Prefer subtype match, fall back to category match
     const res = await pool.query(`
       SELECT
-        COUNT(DISTINCT ke.id)::int AS n_analogs,
-        AVG(CASE WHEN ei.metric_key = 'net_absorption' THEN ei.attributed_delta_pct END) AS avg_absorption_lift,
-        PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY
-          CASE WHEN ei.metric_key = 'net_absorption' THEN ei.attributed_delta_pct END
-        ) AS absorption_lift_p25,
-        PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY
-          CASE WHEN ei.metric_key = 'net_absorption' THEN ei.attributed_delta_pct END
-        ) AS absorption_lift_p75,
-        AVG(CASE WHEN ei.metric_key IN ('rent_index_yoy', 'effective_rent_growth')
-            THEN ei.attributed_delta_pct END) AS avg_rent_lift,
-        ett.decay_shape,
-        ett.typical_decay_months,
-        ett.default_magnitude
-      FROM key_events ke
-      JOIN event_impacts ei ON ei.event_id = ke.id
-      LEFT JOIN event_type_treatments ett ON ett.event_type = ke.category
-      WHERE ke.category = $1
-        AND ke.status = 'materialized'
-        AND ei.window_months = 12
-        AND ei.data_quality IN ('complete', 'partial')
-      GROUP BY ett.decay_shape, ett.typical_decay_months, ett.default_magnitude
+        ep.subtype,
+        MAX(ep.instance_count)::int                                                  AS n_analogs,
+        AVG(CASE WHEN ep.metric_key IN ('net_absorption','net_absorption_units')
+               THEN ep.median_delta END)                                             AS avg_absorption_lift,
+        AVG(CASE WHEN ep.metric_key IN ('net_absorption','net_absorption_units')
+               THEN ep.p25 END)                                                      AS absorption_lift_p25,
+        AVG(CASE WHEN ep.metric_key IN ('net_absorption','net_absorption_units')
+               THEN ep.p75 END)                                                      AS absorption_lift_p75,
+        AVG(CASE WHEN ep.metric_key IN ('rent_growth_yoy','effective_rent_growth','rent_index_yoy')
+               THEN ep.median_delta END)                                             AS avg_rent_lift,
+        AVG(ep.confidence)                                                           AS avg_confidence,
+        COALESCE(ett.decay_shape, 'linear')                                          AS decay_shape,
+        COALESCE(ett.typical_decay_months, 12)                                       AS typical_decay_months
+      FROM event_playbooks ep
+      LEFT JOIN event_taxonomy et ON et.subtype = ep.subtype
+      LEFT JOIN event_type_treatments ett
+             ON ett.event_type = COALESCE(et.category::text, $1)
+      WHERE (ep.subtype = $1 OR et.category::text = $1)
+        AND ep.stratum_msa_tier = 'all'
+        AND ep.stratum_magnitude = 'all'
+        AND ep.stratum_regime    = 'all'
+        AND ep.window_months     = 12
+      GROUP BY ep.subtype, ett.decay_shape, ett.typical_decay_months
+      ORDER BY MAX(ep.instance_count) DESC
       LIMIT 1
     `, [eventType]);
 
-    const ett = await pool.query(`
-      SELECT * FROM event_type_treatments WHERE event_type = $1
-    `, [eventType]);
+    const nAnalogs = parseInt(res.rows[0]?.n_analogs ?? '0');
 
-    const nAnalogs = parseInt(res.rows[0]?.n_analogs || '0');
-    if (nAnalogs < 3) {
-      logger.debug(`[M35 Traffic API] Thin playbook for ${eventType}: only ${nAnalogs} analogs`);
-      // Return default from event_type_treatments if available
-      if (ett.rows.length > 0) {
-        const t = ett.rows[0];
-        return {
-          eventType,
-          nAnalogs,
-          absorptionLift: Math.abs(parseFloat(t.default_magnitude || '0.1')),
-          absorptionLiftBand: { low: 0, high: Math.abs(parseFloat(t.default_magnitude || '0.1')) * 1.5 },
-          rentGrowthLift: Math.abs(parseFloat(t.default_magnitude || '0.05')) * 0.4,
-          liftDecayCurve: (t.decay_shape || 'linear') as any,
-          typicalDecayMonths: parseInt(t.typical_decay_months || '12'),
-          confidence: 'low',
-        };
+    if (nAnalogs === 0) {
+      // Nothing in event_playbooks — fall back to event_type_treatments defaults
+      const ett = await pool.query(
+        `SELECT * FROM event_type_treatments WHERE event_type = $1 LIMIT 1`,
+        [eventType],
+      );
+      if (ett.rows.length === 0) {
+        logger.debug(`[M35 Traffic API] No playbook or treatment for ${eventType}`);
+        return null;
       }
-      return null;
+      const t = ett.rows[0];
+      return {
+        eventType,
+        nAnalogs: 0,
+        absorptionLift: Math.abs(parseFloat(t.default_magnitude || '0.1')),
+        absorptionLiftBand: { low: 0, high: Math.abs(parseFloat(t.default_magnitude || '0.1')) * 1.5 },
+        rentGrowthLift: Math.abs(parseFloat(t.default_magnitude || '0.05')) * 0.4,
+        liftDecayCurve: (t.decay_shape || 'linear') as any,
+        typicalDecayMonths: parseInt(t.typical_decay_months || '12'),
+        confidence: 'low',
+      };
     }
 
     const row = res.rows[0];
+    const avgConf = parseFloat(row.avg_confidence ?? '0.5');
     return {
       eventType,
       nAnalogs,
-      absorptionLift: parseFloat(row.avg_absorption_lift || '0') / 100,
+      absorptionLift: parseFloat(row.avg_absorption_lift ?? '0'),
       absorptionLiftBand: {
-        low: parseFloat(row.absorption_lift_p25 || '0') / 100,
-        high: parseFloat(row.absorption_lift_p75 || '0') / 100,
+        low: parseFloat(row.absorption_lift_p25 ?? '0'),
+        high: parseFloat(row.absorption_lift_p75 ?? '0'),
       },
-      rentGrowthLift: parseFloat(row.avg_rent_lift || '0') / 100,
+      rentGrowthLift: parseFloat(row.avg_rent_lift ?? '0'),
       liftDecayCurve: (row.decay_shape || 'linear') as any,
       typicalDecayMonths: parseInt(row.typical_decay_months || '12'),
-      confidence: nAnalogs >= 15 ? 'high' : nAnalogs >= 8 ? 'medium' : 'low',
+      confidence: avgConf >= 0.7 ? 'high' : avgConf >= 0.5 ? 'medium' : 'low',
     };
   }
 
