@@ -384,28 +384,68 @@ export function detectAssetClass(deal: Record<string, any>): {
   const userConfirmed = !!deal.recommended;
 
   const rawPropType: string = d.property_type || prop.property_type || d.propertyType || prop.propertyType || deal.project_type || deal.deal_category || '';
-  const unitCount = Number(deal.unit_count || d.unit_count || d.units || assumptions.total_units || 0);
-  const avgRent   = Number(deal.avg_rent_per_unit || d.avg_rent || d.avg_rent_per_unit || 0);
-  const stories   = Number(d.stories || assumptions.stories || 0);
+  const unitCount  = Number(deal.unit_count || d.unit_count || d.units || assumptions.total_units || 0);
+  const parcelCount = Number(d.parcel_count || deal.parcel_count || prop.parcel_count || 0);
+  const avgRent    = Number(deal.avg_rent_per_unit || d.avg_rent || d.avg_rent_per_unit || 0);
+  const stories    = Number(d.stories || assumptions.stories || 0);
   const constructionType = d.construction_type || prop.construction_type || '';
-  const zoning    = d.zoning_classification || d.zoning || prop.zoning || '';
-  const savedSlug = deal.strategy_slug || null;
+  const zoning     = d.zoning_classification || d.zoning || prop.zoning || '';
+  const savedSlug  = deal.strategy_slug || null;
 
   const signals: DetectionSignal[] = [];
 
-  // ── Step 1: Primary classification from property type string ──────────────
+  // ── Step 1a: Parcel-structure heuristic — first-class SFR/MF classifier ──
+  //
+  // Spec Section 3.1: "one house per parcel = SFR; one building many units = MF"
+  // This is checked before property-type string inference so that hard parcel
+  // evidence beats potentially ambiguous label strings.
+
   let assetClass: AssetClass = 'other';
+
+  if (parcelCount === 1 && (unitCount === 0 || unitCount <= 4)) {
+    // Single parcel, ≤4 units (or units unknown) → SFR
+    assetClass = 'sfr';
+    signals.push({
+      signal: 'parcel_structure',
+      value: `parcel_count=1, units=${unitCount || 'unknown'}`,
+      threshold: '1 parcel ≤4 units → SFR',
+      contribution: 0,  // routing signal only; not a waterfall input
+    });
+  } else if (parcelCount === 1 && unitCount > 4) {
+    // Single parcel, many units → multifamily
+    assetClass = 'multifamily';
+    signals.push({
+      signal: 'parcel_structure',
+      value: `parcel_count=1, units=${unitCount}`,
+      threshold: '1 parcel >4 units → MF',
+      contribution: 0,  // routing signal only; not a waterfall input
+    });
+  } else if (parcelCount > 1 && unitCount <= 4 * parcelCount) {
+    // Multiple parcels each with ≤4 units → SFR portfolio
+    assetClass = 'sfr';
+    signals.push({
+      signal: 'parcel_structure',
+      value: `parcel_count=${parcelCount}, units=${unitCount}`,
+      threshold: 'multi-parcel ≤4 units/parcel → SFR portfolio',
+      contribution: 0,  // routing signal only
+    });
+  }
+
+  // ── Step 1b: Property type string (secondary, yields to parcel heuristic) ──
   let propTypeBoost = 0;
 
   const fromPropType = inferAssetClassFromPropType(rawPropType);
   if (fromPropType) {
-    assetClass = fromPropType.assetClass;
+    // Only apply string inference if parcel heuristic did not already classify
+    if (assetClass === 'other') {
+      assetClass = fromPropType.assetClass;
+    }
     propTypeBoost = fromPropType.confidence;
     signals.push({
       signal: 'property_type',
       value: rawPropType,
       threshold: 'string classification',
-      contribution: propTypeBoost,
+      contribution: 0,  // routing only; confidence is waterfall-driven per spec
     });
   }
 
@@ -420,32 +460,29 @@ export function detectAssetClass(deal: Record<string, any>): {
       : null;
     if (slugClass) {
       if (assetClass === 'other') assetClass = slugClass as AssetClass;
-      propTypeBoost = Math.min(0.65, propTypeBoost + 0.10);
-      signals.push({ signal: 'saved_slug', value: savedSlug, threshold: 'prior classification confirmation', contribution: 0.10 });
+      signals.push({ signal: 'saved_slug', value: savedSlug, threshold: 'prior classification confirmation', contribution: 0 });
     }
   }
 
-  // Unit count heuristic (override 'other', confirm MF vs SFR)
-  if (unitCount > 4 && (assetClass === 'other' || assetClass === 'sfr')) {
-    assetClass = 'multifamily';
-    propTypeBoost = Math.min(0.65, propTypeBoost + 0.15);
-    signals.push({ signal: 'unit_count', value: String(unitCount), threshold: '>4 units → multifamily', contribution: 0.15 });
-  } else if (unitCount >= 1 && unitCount <= 4 && assetClass === 'other') {
-    assetClass = 'sfr';
-    propTypeBoost = Math.min(0.60, propTypeBoost + 0.10);
+  // Unit count fallback (when no parcel data and no string match)
+  if (assetClass === 'other') {
+    if (unitCount > 4) {
+      assetClass = 'multifamily';
+      signals.push({ signal: 'unit_count', value: String(unitCount), threshold: '>4 units → multifamily', contribution: 0 });
+    } else if (unitCount >= 1 && unitCount <= 4) {
+      assetClass = 'sfr';
+    }
   }
 
-  // Project type: development with no units → ground-up
+  // Project type: development with no units → ground-up MF
   if (deal.project_type === 'development' && unitCount === 0 && assetClass === 'other') {
     assetClass = 'multifamily';
-    propTypeBoost = Math.min(0.55, propTypeBoost + 0.10);
-    signals.push({ signal: 'project_type', value: 'development', threshold: 'development project', contribution: 0.10 });
+    signals.push({ signal: 'project_type', value: 'development', threshold: 'development project', contribution: 0 });
   }
 
   // Final fallback
   if (assetClass === 'other') {
     assetClass = 'multifamily';
-    propTypeBoost = Math.max(0.25, propTypeBoost);
   }
 
   // ── Step 2: Weighted waterfall ────────────────────────────────────────────
@@ -496,11 +533,15 @@ export function detectAssetClass(deal: Record<string, any>): {
     });
   }
 
-  // ── Step 3: Combine waterfall with property-type heuristic ────────────────
+  // ── Step 3: Confidence = pure waterfall sum ───────────────────────────────
   //
-  // Waterfall produces max 0.45 from wired inputs (zoning 0.20 + rent roll 0.15 + building 0.10).
-  // Property type string heuristic contributes up to 0.65 as a parallel signal.
-  // Final confidence = weighted blend: 60% waterfall + 40% prop-type heuristic.
+  // Per spec Section 3.1: confidence is strictly the weighted waterfall sum.
+  // Property type string is used only to identify the asset class (Stage 1 routing)
+  // but must NOT influence the confidence score — it is not a verifiable data signal.
+  //
+  // Max confidence from wired inputs = 0.45 (zoning 0.20 + rent_roll 0.15 + building 0.10).
+  // When assessor_code (#M08-AC-01) and NAICS (#M08-AC-02) ship the max rises to 0.90+.
+  // Until then, most deals correctly receive requiresUserConfirmation: true.
 
   const waterfallScore =
     assessorScore    * W_ASSESSOR_CODE   +
@@ -509,9 +550,7 @@ export function detectAssetClass(deal: Record<string, any>): {
     naicsScore       * W_NAICS_SIGNAL    +
     buildingScore    * W_BUILDING_STRUCT;
 
-  // Scale: waterfallScore max is 0.45 (three wired inputs at 1.0). Normalize to 0-1.
-  const waterfallNorm = Math.min(1, waterfallScore / 0.45);
-  const confidence = Math.min(0.98, waterfallNorm * 0.60 + propTypeBoost * 0.40);
+  const confidence = Math.min(0.98, waterfallScore);
 
   const subType = detectSubType(assetClass, deal);
 

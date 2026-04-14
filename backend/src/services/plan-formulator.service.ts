@@ -66,12 +66,32 @@ export interface PivotCondition {
   irrDelta: string;
 }
 
+export interface HoldStructure {
+  targetHoldMonths: number;
+  rationale: string;                         // why this hold length for this sub-strategy
+  refiEventMonth?: number;                   // optional interim refi (e.g., bridge-to-perm)
+  refiTrigger?: string;                      // condition for refi (e.g., "DSCR ≥ 1.20x")
+  exitWindows: Array<{ month: number; condition: string }>;  // opportunistic earlier exits
+}
+
+export interface CapitalSequencingStep {
+  phase: number;
+  monthRange: [number, number];
+  capitalEvent: string;                      // what capital action occurs
+  amount: number;                            // $ amount (0 if equity / non-cash)
+  source: 'equity' | 'debt' | 'refinance' | 'reserves' | 'operating_cash';
+  correlationRef?: string;                   // correlation driving the sequencing decision
+}
+
+// StrategyPlan — seven required dimensions per M08 v2 spec Section 6.2
 export interface StrategyPlan {
-  entry: PlanEntry;
-  valueCreation: ValueCreationPhase[];
-  exit: PlanExit;
-  monitoring: MonitoringTrigger[];
-  pivotConditions: PivotCondition[];
+  entry: PlanEntry;                          // 1. Entry Timing
+  holdStructure: HoldStructure;              // 2. Hold Structure
+  valueCreation: ValueCreationPhase[];       // 3. Value-Creation Sequence
+  capitalSequencing: CapitalSequencingStep[];// 4. Capital Sequencing
+  exit: PlanExit;                            // 5. Exit Targeting
+  monitoring: MonitoringTrigger[];           // 6. Risk Mitigations (monitoring triggers)
+  pivotConditions: PivotCondition[];         // 7. Pivot Conditions
 }
 
 export interface PlanContext {
@@ -119,6 +139,18 @@ function buildMFValueAddPlan(ctx: PlanContext, deep: boolean): StrategyPlan {
         ? 'Bridge loan 65% LTC, 24mo IO, then perm refi post-stabilization'
         : 'Bridge-to-perm 65% LTC, 18mo IO',
     },
+    holdStructure: {
+      targetHoldMonths: holdMonths,
+      rationale: deep
+        ? 'Deep value-add requires 48mo to fully execute renovation wave and demonstrate stabilized NOI before institutional exit'
+        : 'Standard value-add 36mo allows full renovation cycle + 12mo seasoned NOI for institutional buyer underwriting',
+      refiEventMonth: deep ? 30 : 18,
+      refiTrigger: 'DSCR ≥ 1.25x and occupancy ≥ 90% — bridge-to-perm refinance at post-renovation basis',
+      exitWindows: [
+        { month: holdMonths - 6, condition: 'Begin broker interviews if COR-08 (permits) fires above +60%' },
+        { month: holdMonths,     condition: 'Stabilized NOI seasoned 12mo — target institutional sale' },
+      ],
+    },
     valueCreation: [
       {
         phase: 1,
@@ -155,6 +187,13 @@ function buildMFValueAddPlan(ctx: PlanContext, deep: boolean): StrategyPlan {
           { action: 'Commission third-party appraisal and Phase I ESA', correlationRefs: [], evidenceRef: 'blockD.step5.exit_value', kpi: 'Clean Phase I, appraisal at or above underwritten exit value' },
         ],
       },
+    ],
+    capitalSequencing: [
+      { phase: 1, monthRange: [1, 1],  capitalEvent: 'Equity close — acquisition',       amount: Math.round(price * 0.35), source: 'equity' },
+      { phase: 2, monthRange: [1, 1],  capitalEvent: 'Bridge loan draw — acquisition',    amount: Math.round(price * 0.65), source: 'debt',      correlationRef: 'COR-20' },
+      { phase: 3, monthRange: [4, 9],  capitalEvent: 'Exterior + amenity capex draws',    amount: Math.round(phase2Capital),                     source: 'reserves' },
+      { phase: 4, monthRange: [10, deep ? 30 : 24], capitalEvent: 'Unit renovation capex draws', amount: Math.round(phase3Capital), source: 'reserves', correlationRef: 'COR-01' },
+      { phase: 5, monthRange: [deep ? 30 : 18, deep ? 30 : 18], capitalEvent: 'Bridge-to-perm refinance at post-renovation basis', amount: Math.round(price * 0.70), source: 'refinance' },
     ],
     exit: {
       targetQuarter: nextQuarter(exitMonth),
@@ -217,6 +256,16 @@ function buildMFDistressedPlan(ctx: PlanContext): StrategyPlan {
       rationale: 'Distress discount must reflect turnaround execution risk; 10-15% discount to stabilized value required',
       debtStructure: 'Bridge loan only — no agency financing available until stabilization; 65-70% LTC, 24mo IO',
     },
+    holdStructure: {
+      targetHoldMonths: 42,
+      rationale: 'Distressed turnaround requires 36mo to stabilize; 6mo additional for agency refi seasoning before exit',
+      refiEventMonth: 30,
+      refiTrigger: 'DSCR ≥ 1.20x and occupancy ≥ 90% — bridge to agency or perm refi',
+      exitWindows: [
+        { month: 36, condition: 'Stabilized; evaluate sale vs. refi-and-hold based on cap rate environment' },
+        { month: 42, condition: 'Target exit if COR-04 wage-rent gap compression signals affordability ceiling' },
+      ],
+    },
     valueCreation: [
       {
         phase: 1,
@@ -243,6 +292,13 @@ function buildMFDistressedPlan(ctx: PlanContext): StrategyPlan {
           { action: 'Refinance bridge debt to agency/perm once DSCR > 1.20x', correlationRefs: [], evidenceRef: 'blockD.step6.irr' },
         ],
       },
+    ],
+    capitalSequencing: [
+      { phase: 1, monthRange: [1, 1],  capitalEvent: 'Equity close — distressed acquisition', amount: Math.round(price * 0.35), source: 'equity' },
+      { phase: 2, monthRange: [1, 1],  capitalEvent: 'Bridge loan draw',                       amount: Math.round(price * 0.65), source: 'debt' },
+      { phase: 3, monthRange: [1, 6],  capitalEvent: 'Emergency capex reserves deploy',        amount: Math.round(units * 2_500),  source: 'reserves' },
+      { phase: 4, monthRange: [7, 18], capitalEvent: 'Lease-up concessions + exterior capex',  amount: Math.round(units * 4_000),  source: 'operating_cash' },
+      { phase: 5, monthRange: [30, 30], capitalEvent: 'Bridge-to-agency refi — DSCR ≥ 1.20x', amount: Math.round(price * 0.70), source: 'refinance' },
     ],
     exit: {
       targetQuarter: nextQuarter(42),
@@ -274,6 +330,7 @@ function buildMFDistressedPlan(ctx: PlanContext): StrategyPlan {
 function buildMFGroundUpPlan(ctx: PlanContext): StrategyPlan {
   const price = ctx.acquisitionPrice > 0 ? ctx.acquisitionPrice : 5_000_000;
   const units = ctx.unitCount > 0 ? ctx.unitCount : 100;
+  const constructionCost = units * 180_000;
 
   return {
     entry: {
@@ -281,6 +338,16 @@ function buildMFGroundUpPlan(ctx: PlanContext): StrategyPlan {
       priceCeiling: price,
       rationale: 'Entitlement confirmation and construction financing commitment required before hard close',
       debtStructure: 'Construction loan 65% LTC, interest-only during construction; mini-perm or agency takeout at stabilization',
+    },
+    holdStructure: {
+      targetHoldMonths: 42,
+      rationale: 'Ground-up: 12mo entitlement, 18mo construction, 12mo lease-up + seasoning before institutional sale',
+      refiEventMonth: 36,
+      refiTrigger: 'CO issued and 93% occupancy sustained for 90 days — agency takeout or mini-perm',
+      exitWindows: [
+        { month: 36, condition: 'Stabilized at 93% occ — eligible for agency refi or institutional sale' },
+        { month: 42, condition: 'Target sale if COR-08 permit velocity signals competing supply within 18mo' },
+      ],
     },
     valueCreation: [
       {
@@ -308,6 +375,13 @@ function buildMFGroundUpPlan(ctx: PlanContext): StrategyPlan {
           { action: 'Refinance or sell at stabilization — target institutional buyer', correlationRefs: [], kpi: 'Agency takeout or sale close' },
         ],
       },
+    ],
+    capitalSequencing: [
+      { phase: 1, monthRange: [1, 1],   capitalEvent: 'Equity close — land acquisition',         amount: Math.round(price * 0.35), source: 'equity' },
+      { phase: 2, monthRange: [1, 12],  capitalEvent: 'Entitlement costs + soft costs',           amount: Math.round(price * 0.05), source: 'reserves' },
+      { phase: 3, monthRange: [13, 13], capitalEvent: 'Construction loan close + first draw',     amount: Math.round(constructionCost * 0.65), source: 'debt', correlationRef: 'COR-08' },
+      { phase: 4, monthRange: [13, 30], capitalEvent: 'Construction draws (monthly)',             amount: Math.round(constructionCost * 0.35), source: 'equity' },
+      { phase: 5, monthRange: [36, 36], capitalEvent: 'Agency takeout / mini-perm refi at stabilization', amount: Math.round((price + constructionCost) * 0.65), source: 'refinance' },
     ],
     exit: {
       targetQuarter: nextQuarter(42),
@@ -347,6 +421,14 @@ function buildSFRFixFlipPlan(ctx: PlanContext): StrategyPlan {
       rationale: 'ARV − (Rehab + Holding + Selling + Acq) must exceed 18% margin; hard-money at 65% ARV',
       debtStructure: 'Hard money bridge 65% ARV, 6-9mo term',
     },
+    holdStructure: {
+      targetHoldMonths: 7,
+      rationale: 'Fix-and-flip: 2mo renovation + 5mo selling window; hard money cost of capital penalizes extended holds',
+      exitWindows: [
+        { month: 5, condition: 'List for sale after renovation completion — target under contract within 30 days' },
+        { month: 7, condition: 'If DOM > 45 days, evaluate price reduction or convert to sfr_brrrr' },
+      ],
+    },
     valueCreation: [
       {
         phase: 1,
@@ -365,6 +447,12 @@ function buildSFRFixFlipPlan(ctx: PlanContext): StrategyPlan {
           { action: 'Price at or 2% below renovated comp ceiling for fast DOM', correlationRefs: ['COR-01'], evidenceRef: 'blockC.tradeArea.rent_per_unit', kpi: 'Under contract within 30 days' },
         ],
       },
+    ],
+    capitalSequencing: [
+      { phase: 1, monthRange: [1, 1], capitalEvent: 'Equity close — acquisition',        amount: Math.round(price * 0.35), source: 'equity' },
+      { phase: 2, monthRange: [1, 1], capitalEvent: 'Hard money draw — 65% ARV',         amount: Math.round(price * 0.65), source: 'debt' },
+      { phase: 3, monthRange: [1, 2], capitalEvent: 'Renovation draws (cosmetic + mech)', amount: Math.round(reno),         source: 'reserves' },
+      { phase: 4, monthRange: [7, 7], capitalEvent: 'Sale close — payoff HML + profit',  amount: 0,                         source: 'operating_cash' },
     ],
     exit: {
       targetQuarter: nextQuarter(7),
@@ -405,6 +493,16 @@ function buildSFRBRRRRPlan(ctx: PlanContext): StrategyPlan {
       rationale: 'ARV × 75% must exceed (Acq + Rehab) to clear BRRRR basis; rental comp must support DSCR > 1.25x post-refi',
       debtStructure: 'Hard money acquisition + reno; cash-out refi at 75% ARV post-stabilization',
     },
+    holdStructure: {
+      targetHoldMonths: 60,
+      rationale: 'BRRRR: 8mo to reno + refi (full equity recovery), then long-term hold for cash flow; exit opportunistically at cap rate compression',
+      refiEventMonth: 8,
+      refiTrigger: 'ARV × 75% clears all-in basis — cash-out refi fully recycles equity; DSCR must exceed 1.25x at market rate',
+      exitWindows: [
+        { month: 36, condition: 'Evaluate sale if SFR cap rate compression < 5.5% in submarket' },
+        { month: 60, condition: 'Target institutional SFR aggregator exit if portfolio size qualifies' },
+      ],
+    },
     valueCreation: [
       {
         phase: 1,
@@ -422,6 +520,12 @@ function buildSFRBRRRRPlan(ctx: PlanContext): StrategyPlan {
           { action: 'Evaluate next BRRRR acquisition with recycled capital', correlationRefs: [], evidenceRef: 'blockC.likeKind.irr' },
         ],
       },
+    ],
+    capitalSequencing: [
+      { phase: 1, monthRange: [1, 1], capitalEvent: 'Equity close — acquisition',              amount: Math.round(price * 0.35), source: 'equity' },
+      { phase: 2, monthRange: [1, 1], capitalEvent: 'Hard money draw',                          amount: Math.round(price * 0.65), source: 'debt' },
+      { phase: 3, monthRange: [1, 4], capitalEvent: 'Renovation capex draws',                   amount: Math.round(reno),          source: 'reserves' },
+      { phase: 4, monthRange: [8, 8], capitalEvent: `Cash-out refi at 75% ARV ($${Math.round(arv * 0.75 / 1000)}K) — equity recycled`, amount: Math.round(arv * 0.75), source: 'refinance', correlationRef: 'RATE-ENV' },
     ],
     exit: {
       targetQuarter: nextQuarter(60),
@@ -460,6 +564,14 @@ function buildGenericPlan(ctx: PlanContext): StrategyPlan {
       rationale: 'Entry price aligned with underwritten return assumptions',
       debtStructure: 'Conventional commercial financing 65-70% LTV',
     },
+    holdStructure: {
+      targetHoldMonths: 60,
+      rationale: 'Generic 5-year hold allows full value-creation cycle and exit in stable market conditions',
+      exitWindows: [
+        { month: 36, condition: 'Evaluate early exit if cap rate compression creates sale premium' },
+        { month: 60, condition: 'Target institutional or private equity exit at full stabilization' },
+      ],
+    },
     valueCreation: [
       {
         phase: 1,
@@ -468,6 +580,10 @@ function buildGenericPlan(ctx: PlanContext): StrategyPlan {
           { action: 'Operational stabilization and value-creation execution', correlationRefs: [], evidenceRef: 'blockB.market_position', kpi: 'NOI at or above underwritten year 1' },
         ],
       },
+    ],
+    capitalSequencing: [
+      { phase: 1, monthRange: [1, 1],  capitalEvent: 'Equity close — acquisition',   amount: Math.round(price * 0.30), source: 'equity' },
+      { phase: 2, monthRange: [1, 1],  capitalEvent: 'Conventional loan draw',        amount: Math.round(price * 0.70), source: 'debt' },
     ],
     exit: {
       targetQuarter: nextQuarter(60),

@@ -3,6 +3,7 @@ import { getPool } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { JEDIScoreService } from '../../services/jedi-score.service';
 import { scoreAndPersist } from '../../services/strategyArbitrage.service';
+import { bustM08Cache } from '../../services/m08-strategies.service';
 
 const router = Router();
 const jediService = new JEDIScoreService();
@@ -221,6 +222,9 @@ router.patch('/:dealId/context', async (req: Request, res: Response) => {
         updated_at = NOW()
       WHERE id = $2
     `, [JSON.stringify(updates), dealId]);
+
+    // Bust M08 strategy cache so next GET recomputes with updated deal data
+    bustM08Cache(dealId);
 
     res.json({ success: true });
   } catch (error: any) {

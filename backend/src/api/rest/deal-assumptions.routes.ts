@@ -9,6 +9,7 @@ import { Router, Response } from 'express';
 import { getPool } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
+import { bustM08Cache } from '../../services/m08-strategies.service';
 import { 
   DealAssumptionsInput, 
   SiteDataInput, 
@@ -250,6 +251,9 @@ router.put('/:dealId/assumptions', requireAuth, async (req: AuthenticatedRequest
       sourceRef,
       sourceDate,
     ]);
+
+    // Bust M08 strategy cache — assumption changes invalidate strategy analysis
+    bustM08Cache(dealId);
     
     res.json({
       success: true,

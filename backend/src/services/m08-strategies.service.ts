@@ -528,12 +528,16 @@ export async function getStrategiesForDeal(pool: Pool, dealId: string): Promise<
     ...detection.alternateSubStrategies.map(a => a.key),
   ].filter((k, i, arr) => k && arr.indexOf(k) === i);
 
-  const subStrategies: SubStrategyScore[] = keys.map(key => {
-    const baseScore = scoreSubStrategy(key, signalScores);
+  // Gate first — exclude disqualified strategies from scored set entirely.
+  // Spec: "disqualified sub-strategies excluded from scoring; not included in output."
+  const subStrategies: SubStrategyScore[] = keys.flatMap(key => {
     const gate = evaluateGate(key, deal);
-    const disqualified = gate.status === 'disqualified';
+    if (gate.status === 'disqualified') return [];   // hard exclusion — never scored
+
+    const baseScore = scoreSubStrategy(key, signalScores);
     const gateAdjustment = gate.status === 'marginal' ? -5 : 0;
-    const finalScore = disqualified ? 0 : parseFloat(Math.max(0, baseScore + gateAdjustment).toFixed(1));
+    const finalScore = parseFloat(Math.max(0, baseScore + gateAdjustment).toFixed(1));
+    const disqualified = false;                       // always false here (disqualified were filtered above)
     const isPrimary = key === detection.detectedSubStrategy;
     const preview = financialPreview(key);
     const evReport = buildEvidenceReport(key, detection, dealCtx);
@@ -657,7 +661,7 @@ function buildFallback(dealId: string): StrategyAnalysisV2 {
     signalScores: { demand: 50, supply: 50, momentum: 50, position: 50, risk: 50, confidence: 10 },
     subStrategies: [],
     arbitrage: { detected: false, winner: '', detectedPrimary: '', deltaPoints: 0, narrative: 'Insufficient deal data.' },
-    plan: { entry: { targetQuarter: '', priceCeiling: 0, rationale: '', debtStructure: '' }, valueCreation: [], exit: { targetQuarter: '', buyerType: '', activeBuyers: [], capRate: 0, expectedIRR: [0, 0] }, monitoring: [], pivotConditions: [] },
+    plan: { entry: { targetQuarter: '', priceCeiling: 0, rationale: '', debtStructure: '' }, holdStructure: { targetHoldMonths: 0, rationale: '', exitWindows: [] }, valueCreation: [], capitalSequencing: [], exit: { targetQuarter: '', buyerType: '', activeBuyers: [], capRate: 0, expectedIRR: [0, 0] }, monitoring: [], pivotConditions: [] },
     goldenChain: { phase: 'mid', position: 5, description: 'Unknown', activeSignals: [] },
     correlationAlerts: [], indicators: { leading: [], concurrent: [], lagging: [] },
     buyerTargeting: { trafficQuadrant: 'unknown', institutionalActivity: 0, suggestedBuyerTypes: [], narrative: '' },
