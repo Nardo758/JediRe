@@ -355,13 +355,41 @@ function buildAlternates(
     }
   } else if (assetClass === 'retail') {
     if (primaryKey === 'retail_value_add') {
-      alts.push({ key: 'retail_last_mile', fit: 0.45, reason: 'If adjacent industrial demand and truck access present' });
+      alts.push({ key: 'retail_last_mile', fit: 0.45, reason: 'If truck access and adjacent population > 250K — last-mile conversion possible' });
+      alts.push({ key: 'retail_grocery_anchored', fit: 0.40, reason: 'If anchor-credit grocery tenant available for recruitment' });
     } else if (primaryKey === 'retail_grocery_anchored') {
-      alts.push({ key: 'retail_value_add', fit: 0.50, reason: 'If anchor tenant vacates or credit deteriorates' });
+      alts.push({ key: 'retail_value_add', fit: 0.50, reason: 'If anchor tenant vacates or credit deteriorates to below BBB' });
+      alts.push({ key: 'retail_nnn_core', fit: 0.35, reason: 'If anchor executes new 10yr+ lease — reposition to NNN Core hold' });
+    } else if (primaryKey === 'retail_nnn_core') {
+      alts.push({ key: 'retail_grocery_anchored', fit: 0.45, reason: 'If multi-tenant grocery-anchored center instead of single-tenant NNN' });
+      alts.push({ key: 'retail_value_add', fit: 0.30, reason: 'If tenant credit is below investment grade — active reposition required' });
+    } else if (primaryKey === 'retail_last_mile') {
+      alts.push({ key: 'retail_value_add', fit: 0.50, reason: 'If last-mile conversion does not pencil — traditional retail value-add instead' });
+      alts.push({ key: 'retail_grocery_anchored', fit: 0.30, reason: 'If format can support grocery anchor with inline tenants' });
     }
   } else if (assetClass === 'office') {
     if (primaryKey === 'office_adaptive_reuse') {
-      alts.push({ key: 'office_tenant_rollup', fit: 0.45, reason: 'If floor plate too large for residential conversion' });
+      alts.push({ key: 'office_tenant_rollup', fit: 0.45, reason: 'If floor plate > 12K SF — too large for residential conversion; pursue tenant rollup instead' });
+      alts.push({ key: 'office_medical', fit: 0.35, reason: 'If medical/healthcare tenant adjacency exists within 1 mile' });
+    } else if (primaryKey === 'office_tenant_rollup') {
+      alts.push({ key: 'office_adaptive_reuse', fit: 0.50, reason: 'If rollover timeline > 36 months — adaptive reuse may outpace reposition returns' });
+      alts.push({ key: 'office_medical', fit: 0.40, reason: 'If medical campus nearby — pivot to MOB repositioning' });
+    } else if (primaryKey === 'office_medical') {
+      alts.push({ key: 'office_adaptive_reuse', fit: 0.40, reason: 'If medical tenant recruitment fails — residential conversion fallback' });
+      alts.push({ key: 'office_tenant_rollup', fit: 0.35, reason: 'If general office demand stabilizes — tenant rollup at lower capex' });
+    }
+  } else if (assetClass === 'industrial') {
+    if (primaryKey === 'industrial_last_mile') {
+      alts.push({ key: 'industrial_core', fit: 0.50, reason: 'If lease velocity is slow — stabilize as core industrial and hold' });
+      alts.push({ key: 'retail_last_mile', fit: 0.30, reason: 'If asset is better suited to retail-adjacent last-mile than pure logistics' });
+    } else if (primaryKey === 'industrial_core') {
+      alts.push({ key: 'industrial_last_mile', fit: 0.55, reason: 'If clear height ≥ 24ft and truck court access confirmed — upgrade to last-mile premium' });
+    }
+  } else if (assetClass === 'hospitality') {
+    if (primaryKey === 'hospitality_reflag') {
+      alts.push({ key: 'hospitality_extended_stay', fit: 0.45, reason: 'If extended-stay demand drivers present — corporate HQ, medical center, or military within 3mi' });
+    } else if (primaryKey === 'hospitality_extended_stay') {
+      alts.push({ key: 'hospitality_reflag', fit: 0.50, reason: 'If franchise opportunity available and ADR gap to flag standard > 15%' });
     }
   }
 
