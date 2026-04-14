@@ -431,6 +431,35 @@ export async function triggerPlaybookUpdate(eventId: string): Promise<void> {
   await aggregatePlaybook(subtype, { msaTier, magnitude, regime });
 
   logger.info(`[M35 Playbook] Updated playbooks for subtype=${subtype} after impact event=${eventId}`);
+
+  // Regen forecasts for all active events of the same subtype (fire-and-forget)
+  // Dynamic import avoids circular dep: m35-forecast.service imports m35-playbook.service
+  void (async () => {
+    try {
+      const affectedRes = await pool.query(`
+        SELECT DISTINCT ef.event_id
+        FROM event_forecasts ef
+        JOIN key_events ke ON ke.id = ef.event_id
+        WHERE ke.subtype = $1
+          AND ef.status = 'active'
+          AND ke.status IN ('announced', 'in_progress', 'materialized')
+      `, [subtype]);
+
+      if (affectedRes.rows.length === 0) return;
+
+      const { generateForecast } = await import('./m35-forecast.service');
+      for (const row of affectedRes.rows) {
+        try {
+          await generateForecast(row.event_id);
+        } catch (innerErr: any) {
+          logger.warn(`[M35 Playbook] Forecast regen failed for event ${row.event_id} (non-fatal)`, { err: innerErr.message });
+        }
+      }
+      logger.info(`[M35 Playbook] Regenerated forecasts for ${affectedRes.rows.length} active events of subtype=${subtype}`);
+    } catch (err: any) {
+      logger.warn('[M35 Playbook] Playbook-update forecast regen failed (non-fatal)', { err: err.message });
+    }
+  })();
 }
 
 // ─── Read: Get playbook ───────────────────────────────────────────────────────

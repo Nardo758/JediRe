@@ -465,7 +465,8 @@ export async function runDivergenceTrackingJob(): Promise<{
 }> {
   const pool = getPool();
 
-  // Find all active forecasts with events that have crossed their window
+  // Find all active forecasts with events that have crossed their window.
+  // Join event_playbooks to pull stddev_delta for the >1-std divergence rule.
   const activeForecastsRes = await pool.query(`
     SELECT
       ef.id AS forecast_id,
@@ -478,9 +479,18 @@ export async function runDivergenceTrackingJob(): Promise<{
       ke.msa_id,
       ke.submarket_id,
       ke.announced_date,
-      ke.materialization_date
+      ke.materialization_date,
+      ke.subtype,
+      COALESCE(ep.stddev_delta, 0) AS playbook_stddev
     FROM event_forecasts ef
     JOIN key_events ke ON ke.id = ef.event_id
+    LEFT JOIN event_playbooks ep
+      ON ep.subtype = ke.subtype
+      AND ep.metric_key = ef.metric_key
+      AND ep.window_months = ef.window_months
+      AND ep.stratum_msa_tier = 'all'
+      AND ep.stratum_magnitude  = 'all'
+      AND ep.stratum_regime     = 'all'
     WHERE ef.status = 'active'
       AND ef.point_estimate IS NOT NULL
       AND ke.announced_date IS NOT NULL
@@ -517,7 +527,11 @@ export async function runDivergenceTrackingJob(): Promise<{
       ? (actualValue - forecastValue) / Math.abs(forecastValue)
       : 0;
 
-    const isDiverged = actualValue < ciLow || actualValue > ciHigh;
+    // Divergence rule: actual outside CI OR |actual - forecast| > 1 playbook stddev
+    const playbookStddev = parseFloat(row.playbook_stddev ?? '0');
+    const absDeviation = Math.abs(actualValue - forecastValue);
+    const isDiverged = actualValue < ciLow || actualValue > ciHigh
+      || (playbookStddev > 0 && absDeviation > playbookStddev);
     const statusLabel = actualValue > ciHigh ? 'ahead'
       : actualValue < ciLow ? 'behind'
       : 'on_pace';
