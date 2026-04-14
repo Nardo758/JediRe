@@ -12,8 +12,11 @@ const MONO = BT.font.mono;
 // ─── SOFR Forward Curve (static 5-yr, updated quarterly) ─────────────────────
 const SOFR_FWD: number[] = [0.0500, 0.0475, 0.0450, 0.0425, 0.0400];
 
+// ─── Loan letter designations ─────────────────────────────────────────────────
+const LOAN_LETTERS = ['A', 'B', 'C', 'D', 'E'];
+
 // ─── Loan type presets ────────────────────────────────────────────────────────
-type LoanPresetKey = 'Bridge' | 'Agency' | 'FannieDUS' | 'CMBS' | 'HUD' | 'LifeCo' | 'Mezz';
+type LoanPresetKey = 'Bridge' | 'Agency' | 'FannieDUS' | 'CMBS' | 'HUD' | 'LifeCo' | 'Mezz' | 'BNote';
 
 interface LoanPreset {
   label: LoanPresetKey;
@@ -39,6 +42,7 @@ const LOAN_PRESETS: Record<LoanPresetKey, LoanPreset> = {
   HUD:       { label: 'HUD',       rateType: 'Fixed',    rate: 0.045, spread: 0,     term: 35, amort: 35, io: 36, origFee: 0.008, exitFee: 0,     rateCapCost: 0,     minDscr: 1.20, maxLtv: 0.87, prepayType: 'yield_maintenance' },
   LifeCo:    { label: 'LifeCo',    rateType: 'Fixed',    rate: 0.048, spread: 0,     term: 15, amort: 30, io: 0,  origFee: 0.005, exitFee: 0,     rateCapCost: 0,     minDscr: 1.20, maxLtv: 0.65, prepayType: 'yield_maintenance' },
   Mezz:      { label: 'Mezz',      rateType: 'Floating', rate: 0.120, spread: 0.060, term: 3,  amort: 0,  io: 36, origFee: 0.020, exitFee: 0.010, rateCapCost: 0.008, minDscr: 1.10, maxLtv: 0.90, prepayType: 'open' },
+  BNote:     { label: 'BNote',     rateType: 'Floating', rate: 0.095, spread: 0.040, term: 3,  amort: 0,  io: 36, origFee: 0.015, exitFee: 0.005, rateCapCost: 0.006, minDscr: 1.10, maxLtv: 0.85, prepayType: 'open' },
 };
 
 // ─── Per-loan editable state ──────────────────────────────────────────────────
@@ -1189,17 +1193,21 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
     });
   }, [clearDebtOverrides, patchDebtStr]);
 
-  const addMezz = useCallback(() => {
-    if (loans.find(l => l.id === 'mezz')) return;
-    const p = LOAN_PRESETS.Mezz;
-    setLoans(prev => [...prev, makeLoanState('mezz', 'Mezz / B-Note', p)]);
-    setActiveLoanId('mezz');
-    // Persist mezz loan defaults so it survives page refresh (backend includes mezz when loanAmount override exists)
-    patchDebt('mezz', 'loanAmount', 0);
-    patchDebtStr('mezz', 'loanTypeLabel', 'Mezz');
-    patchDebtStr('mezz', 'rateType', p.rateType);
-    patchDebtStr('mezz', 'prepayType', p.prepayType);
+  const addLoan = useCallback((typeKey: LoanPresetKey = 'Mezz') => {
+    if (loans.length >= 5) return;
+    const newId = `loan_${Date.now()}`;
+    const p = LOAN_PRESETS[typeKey];
+    const letter = LOAN_LETTERS[loans.length] ?? String(loans.length + 1);
+    setLoans(prev => [...prev, makeLoanState(newId, `Loan ${letter}`, p)]);
+    setActiveLoanId(newId);
+    patchDebt(newId, 'loanAmount', 0);
+    patchDebtStr(newId, 'loanTypeLabel', typeKey);
+    patchDebtStr(newId, 'rateType', p.rateType);
+    patchDebtStr(newId, 'prepayType', p.prepayType);
   }, [loans, patchDebt, patchDebtStr]);
+
+  // keep addMezz as alias for backward compat with hydration code
+  const addMezz = useCallback(() => addLoan('Mezz'), [addLoan]);
 
   const removeLoan = useCallback((id: string) => {
     if (id === 'senior') return;
@@ -1216,6 +1224,10 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
   // ── Collapsed sections ──────────────────────────────────────────────────────
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set(['amort']));
   const toggle = (s: string) => setCollapsed(prev => { const n = new Set(prev); n.has(s) ? n.delete(s) : n.add(s); return n; });
+
+  // ── Loan structure mode ──────────────────────────────────────────────────────
+  const [loanRelationship, setLoanRelationship] = useState<'stack' | 'chain'>('stack');
+  const [addLoanMenuOpen, setAddLoanMenuOpen] = useState(false);
 
   // ── Refi event ──────────────────────────────────────────────────────────────
   const [refi, setRefi] = useState<RefiState>({ enabled: false, triggerYear: 3, newLoanType: 'Agency', newLoanAmtPct: 0.70 });
@@ -1358,39 +1370,194 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
       </div>
 
       {/* ── Loan stack tabs ─────────────────────────────────────────────────── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 0, borderBottom: `1px solid ${BT.border.medium}`, background: BT.bg.panel, flexShrink: 0 }}>
-        {loans.map(l => (
-          <div
-            key={l.id}
-            onClick={() => setActiveLoanId(l.id)}
-            style={{
+      <div style={{ display: 'flex', alignItems: 'center', borderBottom: `1px solid ${BT.border.medium}`, background: BT.bg.panel, flexShrink: 0, flexWrap: 'wrap' }}>
+
+        {/* STACK / CHAIN mode toggle */}
+        <div style={{ display: 'flex', alignItems: 'center', borderRight: `1px solid ${BT.border.medium}`, padding: '0 6px', gap: 2, flexShrink: 0 }}>
+          {(['stack', 'chain'] as const).map(mode => (
+            <button key={mode} onClick={() => setLoanRelationship(mode)} style={{
+              padding: '4px 10px', fontFamily: MONO, fontSize: 8, fontWeight: 700, cursor: 'pointer',
+              background: loanRelationship === mode ? `${mode === 'stack' ? BT.text.cyan : BT.text.amber}20` : 'transparent',
+              border: `1px solid ${loanRelationship === mode ? (mode === 'stack' ? BT.text.cyan : BT.text.amber) : 'transparent'}`,
+              color: loanRelationship === mode ? (mode === 'stack' ? BT.text.cyan : BT.text.amber) : BT.text.muted,
+              borderRadius: 3,
+            }}>
+              {mode === 'stack' ? '⊞ STACK' : '⟶ CHAIN'}
+            </button>
+          ))}
+        </div>
+
+        {/* Per-loan tabs — LOAN A, LOAN B, LOAN C */}
+        {loans.map((l, idx) => {
+          const letter = LOAN_LETTERS[idx] ?? String(idx + 1);
+          const isActive = l.id === activeLoanId;
+          const typeColor = l.loanTypeLabel === 'Bridge' || l.loanTypeLabel === 'BNote' ? BT.text.amber
+            : l.loanTypeLabel === 'Agency' || l.loanTypeLabel === 'FannieDUS' ? BT.text.cyan
+            : l.loanTypeLabel === 'CMBS' ? '#a855f7'
+            : l.loanTypeLabel === 'HUD' ? BT.met.financial
+            : l.loanTypeLabel === 'LifeCo' ? '#8b5cf6'
+            : l.loanTypeLabel === 'Mezz' ? BT.text.red
+            : BT.text.amber;
+          return (
+            <div key={l.id} onClick={() => setActiveLoanId(l.id)} style={{
               display: 'flex', alignItems: 'center', gap: 6,
               padding: '6px 14px', cursor: 'pointer',
               borderRight: `1px solid ${BT.border.subtle}`,
-              background: l.id === activeLoanId ? BT.bg.active : 'transparent',
-              borderBottom: l.id === activeLoanId ? `2px solid ${BT.text.cyan}` : '2px solid transparent',
-            }}
-          >
-            <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: l.id === activeLoanId ? BT.text.white : BT.text.muted }}>{l.name.toUpperCase()}</span>
-            <span style={{ fontFamily: MONO, fontSize: 8, color: l.id === activeLoanId ? BT.text.cyan : BT.text.muted }}>{l.loanTypeLabel}</span>
-            {l.id !== 'senior' && (
-              <span onClick={e => { e.stopPropagation(); removeLoan(l.id); }} style={{ cursor: 'pointer', color: BT.text.muted, padding: '0 2px' }}>
-                <X style={{ width: 9, height: 9 }} />
+              background: isActive ? BT.bg.active : 'transparent',
+              borderBottom: isActive ? `2px solid ${BT.text.cyan}` : '2px solid transparent',
+            }}>
+              <span style={{ fontFamily: MONO, fontSize: 10, fontWeight: 900, color: isActive ? BT.text.white : BT.text.muted, letterSpacing: 0.5 }}>
+                LOAN {letter}
               </span>
+              <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 700, padding: '1px 5px', borderRadius: 2, background: `${typeColor}20`, border: `1px solid ${typeColor}60`, color: typeColor }}>
+                {l.loanTypeLabel === 'BNote' ? 'B-NOTE' : l.loanTypeLabel.toUpperCase()}
+              </span>
+              {idx > 0 && (
+                <span onClick={e => { e.stopPropagation(); removeLoan(l.id); setAddLoanMenuOpen(false); }} style={{ cursor: 'pointer', color: BT.text.muted, padding: '0 2px' }}>
+                  <X style={{ width: 9, height: 9 }} />
+                </span>
+              )}
+            </div>
+          );
+        })}
+
+        {/* ADD LOAN button */}
+        {loans.length < 5 && (
+          <div style={{ position: 'relative', flexShrink: 0 }}>
+            <div onClick={() => setAddLoanMenuOpen(o => !o)} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', cursor: 'pointer', color: BT.text.muted }}>
+              <Plus style={{ width: 10, height: 10 }} />
+              <span style={{ fontFamily: MONO, fontSize: 8 }}>ADD LOAN {LOAN_LETTERS[loans.length] ?? ''}</span>
+            </div>
+            {addLoanMenuOpen && (
+              <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 50, background: BT.bg.panel, border: `1px solid ${BT.border.medium}`, borderRadius: 4, minWidth: 160, boxShadow: '0 4px 16px rgba(0,0,0,0.5)', padding: '4px 0' }}
+                onMouseLeave={() => setAddLoanMenuOpen(false)}>
+                <div style={{ padding: '3px 10px', fontFamily: MONO, fontSize: 7, color: BT.text.muted, borderBottom: `1px solid ${BT.border.subtle}`, marginBottom: 2 }}>SELECT LOAN TYPE</div>
+                {(Object.keys(LOAN_PRESETS) as LoanPresetKey[]).map(key => (
+                  <div key={key} onClick={() => { addLoan(key); setAddLoanMenuOpen(false); }} style={{
+                    padding: '4px 12px', fontFamily: MONO, fontSize: 8, fontWeight: 700,
+                    color: BT.text.secondary, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = `${BT.text.cyan}15`)}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                    <span>{key === 'BNote' ? 'B-Note' : key}</span>
+                    <span style={{ color: BT.text.muted, fontSize: 7 }}>
+                      {key === 'Bridge' ? 'Float · 3yr' : key === 'Agency' ? 'Fixed · 10yr' : key === 'FannieDUS' ? 'Fixed · 10yr' : key === 'CMBS' ? 'Fixed · 10yr' : key === 'HUD' ? 'Fixed · 35yr' : key === 'LifeCo' ? 'Fixed · 15yr' : key === 'Mezz' ? 'Float · 3yr' : 'Float · 3yr'}
+                    </span>
+                  </div>
+                ))}
+              </div>
             )}
-          </div>
-        ))}
-        {!loans.find(l => l.id === 'mezz') && (
-          <div onClick={addMezz} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px', cursor: 'pointer', color: BT.text.muted }}>
-            <Plus style={{ width: 10, height: 10 }} />
-            <span style={{ fontFamily: MONO, fontSize: 8 }}>ADD MEZZ / B-NOTE</span>
           </div>
         )}
       </div>
 
+      {/* ── CHAIN timeline visualization ──────────────────────────────────────── */}
+      {loanRelationship === 'chain' && loans.length > 1 && (() => {
+        let cursor = 0;
+        const segments = loans.map((l, idx) => {
+          const p = LOAN_PRESETS[l.loanTypeLabel];
+          const f9l = f9Debt?.loans?.find(x => x.id === l.id);
+          const termYrs = l.userTerm ?? f9l?.termYears.platform ?? p.term;
+          const start = cursor;
+          cursor += termYrs;
+          const letter = LOAN_LETTERS[idx] ?? String(idx + 1);
+          const typeColor = l.loanTypeLabel === 'Bridge' || l.loanTypeLabel === 'BNote' ? BT.text.amber
+            : l.loanTypeLabel === 'Agency' || l.loanTypeLabel === 'FannieDUS' ? BT.text.cyan
+            : l.loanTypeLabel === 'CMBS' ? '#a855f7'
+            : l.loanTypeLabel === 'HUD' ? BT.met.financial
+            : l.loanTypeLabel === 'LifeCo' ? '#8b5cf6'
+            : l.loanTypeLabel === 'Mezz' ? BT.text.red : BT.text.amber;
+          return { letter, typeColor, termYrs, start, end: cursor, pct: termYrs };
+        });
+        const totalYrs = cursor || 1;
+        return (
+          <div style={{ padding: '8px 12px', background: `${BT.text.amber}08`, borderBottom: `1px solid ${BT.border.subtle}`, flexShrink: 0 }}>
+            <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.amber, fontWeight: 700, marginBottom: 6, letterSpacing: '0.08em' }}>
+              ⟶ DAISY CHAIN TIMELINE · {totalYrs} YR TOTAL
+            </div>
+            <div style={{ display: 'flex', height: 22, borderRadius: 3, overflow: 'hidden', border: `1px solid ${BT.border.subtle}` }}>
+              {segments.map((seg, i) => (
+                <div key={i} style={{
+                  flex: seg.termYrs / totalYrs,
+                  background: `${seg.typeColor}30`,
+                  borderRight: i < segments.length - 1 ? `2px solid ${BT.bg.terminal}` : 'none',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, position: 'relative',
+                }}>
+                  <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 900, color: seg.typeColor }}>LOAN {seg.letter}</span>
+                  <span style={{ fontFamily: MONO, fontSize: 7, color: seg.typeColor, opacity: 0.8 }}>{seg.termYrs}yr</span>
+                  {i < segments.length - 1 && (
+                    <div style={{ position: 'absolute', right: -8, zIndex: 2, color: BT.text.amber, fontSize: 10, fontWeight: 900 }}>⟶</div>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', marginTop: 2 }}>
+              {segments.map((seg, i) => (
+                <div key={i} style={{ flex: seg.termYrs / totalYrs, fontFamily: MONO, fontSize: 7, color: BT.text.muted, textAlign: 'left', paddingLeft: 2 }}>
+                  Yr {seg.start + 1}
+                </div>
+              ))}
+              <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, textAlign: 'right', whiteSpace: 'nowrap' }}>Yr {totalYrs}</div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── STACK visualization (when multiple loans) ──────────────────────────── */}
+      {loanRelationship === 'stack' && loans.length > 1 && (() => {
+        const totalStack = loans.reduce((s, l) => {
+          const f9l = f9Debt?.loans?.find(x => x.id === l.id);
+          const p = LOAN_PRESETS[l.loanTypeLabel];
+          return s + (l.userLoanAmount ?? f9l?.loanAmount.platform ?? (l.id === 'senior' ? baseLoanAmt : 0));
+        }, 0);
+        if (totalStack === 0) return null;
+        let cumPct = 0;
+        return (
+          <div style={{ padding: '8px 12px', background: `${BT.text.cyan}08`, borderBottom: `1px solid ${BT.border.subtle}`, flexShrink: 0 }}>
+            <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.cyan, fontWeight: 700, marginBottom: 6, letterSpacing: '0.08em' }}>
+              ⊞ STACKED DEBT LAYERS · {fmt$(totalStack)} TOTAL
+            </div>
+            <div style={{ display: 'flex', height: 22, borderRadius: 3, overflow: 'hidden', border: `1px solid ${BT.border.subtle}` }}>
+              {loans.map((l, idx) => {
+                const f9l = f9Debt?.loans?.find(x => x.id === l.id);
+                const p = LOAN_PRESETS[l.loanTypeLabel];
+                const lAmt = l.userLoanAmount ?? f9l?.loanAmount.platform ?? (l.id === 'senior' ? baseLoanAmt : 0);
+                const pct = totalStack > 0 ? lAmt / totalStack : 0;
+                const letter = LOAN_LETTERS[idx] ?? String(idx + 1);
+                const typeColor = l.loanTypeLabel === 'Bridge' || l.loanTypeLabel === 'BNote' ? BT.text.amber
+                  : l.loanTypeLabel === 'Agency' || l.loanTypeLabel === 'FannieDUS' ? BT.text.cyan
+                  : l.loanTypeLabel === 'CMBS' ? '#a855f7'
+                  : l.loanTypeLabel === 'HUD' ? BT.met.financial
+                  : l.loanTypeLabel === 'LifeCo' ? '#8b5cf6'
+                  : l.loanTypeLabel === 'Mezz' ? BT.text.red : BT.text.amber;
+                const start = cumPct;
+                cumPct += pct;
+                return (
+                  <div key={l.id} style={{ flex: pct, background: `${typeColor}30`, borderRight: idx < loans.length - 1 ? `2px solid ${BT.bg.terminal}` : 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3 }}>
+                    <span style={{ fontFamily: MONO, fontSize: 8, fontWeight: 900, color: typeColor }}>LOAN {letter}</span>
+                    <span style={{ fontFamily: MONO, fontSize: 7, color: typeColor, opacity: 0.8 }}>{(pct * 100).toFixed(0)}%</span>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginTop: 2 }}>
+              {loans.map((l, idx) => {
+                const f9l = f9Debt?.loans?.find(x => x.id === l.id);
+                const lAmt = l.userLoanAmount ?? f9l?.loanAmount.platform ?? (l.id === 'senior' ? baseLoanAmt : 0);
+                const letter = LOAN_LETTERS[idx] ?? String(idx + 1);
+                return lAmt > 0 ? `Loan ${letter}: ${fmt$(lAmt)}` : null;
+              }).filter(Boolean).join('  ·  ')}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ── Loan type selector ──────────────────────────────────────────────── */}
       <div style={{ padding: '6px 12px', background: BT.bg.panelAlt, borderBottom: `1px solid ${BT.border.subtle}`, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', flexShrink: 0 }}>
-        <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>LOAN TYPE:</span>
+        <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.white }}>
+          LOAN {LOAN_LETTERS[loans.findIndex(l => l.id === activeLoanId)] ?? '?'} ·
+        </span>
+        <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>TYPE:</span>
         {(Object.keys(LOAN_PRESETS) as LoanPresetKey[]).map(key => (
           <button
             key={key}
@@ -1403,7 +1570,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
               borderRadius: 3, cursor: 'pointer',
             }}
           >
-            {key}
+            {key === 'BNote' ? 'B-Note' : key}
           </button>
         ))}
         <span style={{ marginLeft: 8, fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>RATE TYPE:</span>
