@@ -423,13 +423,21 @@ export class TrafficCalibrationJob {
   // T006: Absorption Benchmarks (per submarket/class/size_band)
   // ============================================================================
 
+  private getSizeBand(unitCount: number): string {
+    if (unitCount <= 100) return 'small';
+    if (unitCount <= 300) return 'medium';
+    return 'large';
+  }
+
   private async computeAbsorptionBenchmarks(snapshots: any[]): Promise<number> {
-    // Group snapshots by (submarket_id, property_class)
+    // Group snapshots by (submarket_id, property_class, size_band)
     const groups: Record<string, any[]> = {};
 
     for (const snap of snapshots) {
       if (!snap.submarket_id || !snap.derived_metrics) continue;
-      const key = `${snap.submarket_id}||${snap.property_class || 'unknown'}`;
+      const unitCount = snap.units || snap.derived_metrics?.total_units || 0;
+      const sizeBand = this.getSizeBand(unitCount);
+      const key = `${snap.submarket_id}||${snap.property_class || 'unknown'}||${sizeBand}`;
       if (!groups[key]) groups[key] = [];
       groups[key].push(snap);
     }
@@ -439,7 +447,7 @@ export class TrafficCalibrationJob {
     for (const [key, groupSnaps] of Object.entries(groups)) {
       if (groupSnaps.length < 3) continue;  // Need at least 3 properties for a benchmark
 
-      const [submarketId, propertyClass] = key.split('||');
+      const [submarketId, propertyClass, sizeBand] = key.split('||');
 
       // Compute median signing velocity curves (proxy for absorption)
       const velocityCurves: number[][] = groupSnaps
@@ -454,36 +462,45 @@ export class TrafficCalibrationJob {
         return vals[Math.floor(vals.length / 2)];
       });
 
-      // Estimate months to stabilization from cumulative velocity
-      const totalUnitsMedian = this.mean(groupSnaps.map(s => s.units || 100));
-      const targetUnits = totalUnitsMedian * 0.93;  // 93% occupancy
+      // Cumulative absorption curve
+      const cumulativeCurve: number[] = [];
       let cumulative = 0;
-      let monthsToStab = 24;
+      for (const v of medianCurve) {
+        cumulative += v;
+        cumulativeCurve.push(cumulative);
+      }
+
+      // months_to_80, months_to_90, months_to_stabilization (93%)
+      const totalUnitsMedian = this.mean(groupSnaps.map(s => s.units || s.derived_metrics?.total_units || 100));
+      let monthsTo80 = 24, monthsTo90 = 24, monthsToStab = 24;
       for (let m = 0; m < 24; m++) {
-        cumulative += medianCurve[m];
-        if (cumulative >= targetUnits * 0.93) {
-          monthsToStab = m + 1;
-          break;
-        }
+        const absorbedPct = cumulativeCurve[m] / totalUnitsMedian;
+        if (monthsTo80 === 24 && absorbedPct >= 0.80) monthsTo80 = m + 1;
+        if (monthsTo90 === 24 && absorbedPct >= 0.90) monthsTo90 = m + 1;
+        if (monthsToStab === 24 && absorbedPct >= 0.93) monthsToStab = m + 1;
       }
 
       const curveData = {
         monthly_absorption_curve: medianCurve,
+        cumulative_absorption_curve: cumulativeCurve,
+        months_to_80_pct: monthsTo80,
+        months_to_90_pct: monthsTo90,
         months_to_stabilization_p50: monthsToStab,
         months_to_stabilization_p25: Math.max(1, Math.round(monthsToStab * 0.75)),
         months_to_stabilization_p75: Math.round(monthsToStab * 1.35),
+        size_band: sizeBand,
         concession_intensity_curve: this.defaultConcessionCurve(),
         sample_size: groupSnaps.length,
         last_updated: new Date().toISOString(),
       };
 
-      // Upsert absorption benchmark
+      // Upsert absorption benchmark — vintage_band proxied by size_band for the conflict key
       await this.pool.query(`
         INSERT INTO traffic_calibration_coefficients (
-          coefficient_name, scope_level, submarket_id, property_class,
+          coefficient_name, scope_level, submarket_id, property_class, vintage_band,
           prior_value, posterior_value, n_prior, n_evidence, n_peer_properties,
           cal_window, match_tier, calibration_source, curve_data
-        ) VALUES ('absorption_curve', 'submarket', $1, $2, 0, 0, 0, $3, $3, 'TTM', 'PLATFORM', $4, $5)
+        ) VALUES ('absorption_curve', 'submarket', $1, $2, $3, 0, 0, 0, $4, $4, 'TTM', 'PLATFORM', $5, $6)
         ON CONFLICT (coefficient_name, scope_level, msa_id, submarket_id, property_class, vintage_band, cal_window)
         DO UPDATE SET
           curve_data = EXCLUDED.curve_data,
@@ -491,7 +508,9 @@ export class TrafficCalibrationJob {
           n_peer_properties = EXCLUDED.n_peer_properties,
           updated_at = NOW()
       `, [
-        submarketId, propertyClass !== 'unknown' ? propertyClass : null,
+        submarketId,
+        propertyClass !== 'unknown' ? propertyClass : null,
+        `size:${sizeBand}`,  // store size_band in vintage_band column as "size:small|medium|large"
         groupSnaps.length,
         this.buildCalibrationSource({ scope_level: 'submarket', submarket_id: submarketId, property_class: propertyClass }),
         JSON.stringify(curveData),

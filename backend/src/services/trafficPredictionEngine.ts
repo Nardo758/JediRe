@@ -1260,6 +1260,53 @@ export class TrafficPredictionEngine {
         prediction.starting_state = earlyStartingState;
       }
 
+      // §4.2 output contract: populate unit_type_breakdown + expiration_waterfall[24]
+      // from the most recent rent roll snapshot if one exists for this deal.
+      if (dealId) {
+        try {
+          const rrResult = await pool.query<any>(`
+            SELECT rrs.id, rrs.derived_metrics,
+                   json_agg(json_build_object(
+                     'months_out', EXTRACT(YEAR FROM age(le.lease_end, NOW()))::int * 12
+                                  + EXTRACT(MONTH FROM age(le.lease_end, NOW()))::int,
+                     'lease_end', le.lease_end
+                   )) FILTER (WHERE le.lease_end >= NOW() AND le.lease_end < NOW() + INTERVAL '24 months') AS expiry_rows
+            FROM rent_roll_snapshots rrs
+            LEFT JOIN leasing_events le ON le.snapshot_id = rrs.id
+            WHERE rrs.deal_id = $1 AND rrs.status IN ('derived', 'calibrated')
+            GROUP BY rrs.id, rrs.derived_metrics
+            ORDER BY rrs.snapshot_date DESC
+            LIMIT 1
+          `, [dealId]);
+
+          if (rrResult.rows.length > 0) {
+            const rr = rrResult.rows[0];
+
+            // unit_type_breakdown from derived_metrics
+            if (rr.derived_metrics?.unit_type_breakdown?.length) {
+              (prediction as any).unit_type_breakdown = rr.derived_metrics.unit_type_breakdown;
+            }
+
+            // expiration_waterfall — bucket by months_out [0..23]
+            if (rr.expiry_rows) {
+              const waterfall: Record<number, number> = {};
+              for (const row of rr.expiry_rows) {
+                const mo = Math.max(0, Math.min(23, row.months_out as number));
+                waterfall[mo] = (waterfall[mo] || 0) + 1;
+              }
+              const totalExpiring = Object.values(waterfall).reduce((s, v) => s + v, 0) || 1;
+              (prediction as any).expiration_waterfall = Array.from({ length: 24 }, (_, i) => ({
+                months_out: i,
+                expiring_units: waterfall[i] || 0,
+                expiring_pct: Math.round(((waterfall[i] || 0) / totalExpiring) * 1000) / 1000,
+              }));
+            }
+          }
+        } catch (rrErr: unknown) {
+          // Non-blocking — rent roll data is optional
+        }
+      }
+
       // Apply catalog metric adjustments (Layer A boost + Layer C dampers)
       if (property.submarket_id) {
         const catalogMetrics = await this.catalogMetricsService.loadSubmarketMetrics(property.submarket_id);

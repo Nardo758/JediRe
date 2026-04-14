@@ -56,8 +56,12 @@ export class RentRollParserService {
     const leaseEvents: RentRollLeaseEvent[] = [];
     const rowConfidences: number[] = [];
 
-    // Try to derive snapshot date from the data or use today
-    let snapshotDate = new Date();
+    // Derive snapshot date = max(lease_start, lease_end) across all rows.
+    // We must NOT initialise to new Date() because every historical date would
+    // be less than "now" and the fallback would always win, recording today as
+    // the report date.  Start with null and fall back to today only when no
+    // date at all is found in the data.
+    let maxDate: Date | null = null;
 
     for (const rawRow of rows) {
       const event = this.mapRow(rawRow, mapping);
@@ -66,11 +70,16 @@ export class RentRollParserService {
       rowConfidences.push(validation.row_confidence);
       leaseEvents.push(event as RentRollLeaseEvent);
 
-      // Use the latest lease_start as a proxy for snapshot date
-      if (event.lease_start && event.lease_start > snapshotDate) {
-        snapshotDate = event.lease_start;
+      // Track the most recent date seen in the rent roll (lease_start or lease_end)
+      for (const d of [event.lease_start, event.lease_end]) {
+        if (d && (!maxDate || d > maxDate)) {
+          maxDate = d;
+        }
       }
     }
+
+    // Fall back to today only when the file had zero date columns at all
+    const snapshotDate: Date = maxDate ?? new Date();
 
     const extractionConfidence = rentRollValidatorService.computeSnapshotConfidence(
       rowConfidences,
