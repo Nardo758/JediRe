@@ -36,6 +36,7 @@ export interface DetectionResult {
   detectedDealType: string;
   detectedSubStrategy: string;
   confidence: number;
+  requiresUserConfirmation: boolean;  // true when confidence < 0.70
   detectionSignals: DetectionSignal[];
   alternateSubStrategies: AlternateSubStrategy[];
   userConfirmed: boolean;
@@ -361,12 +362,15 @@ export function detectAssetClassAndDealType(deal: Record<string, any>): Detectio
   // ── Alternates ────────────────────────────────────────────────────────────
   const alternates = buildAlternates(assetClass, detectedSubStrategy, { lossToLease, occupancy, dscr, capitalGapPerUnit });
 
+  const finalConfidence = parseFloat(confidence.toFixed(2));
+
   return {
     assetClass,
     subType,
     detectedDealType,
     detectedSubStrategy,
-    confidence: parseFloat(confidence.toFixed(2)),
+    confidence: finalConfidence,
+    requiresUserConfirmation: finalConfidence < 0.70,
     detectionSignals: signals,
     alternateSubStrategies: alternates,
     userConfirmed,

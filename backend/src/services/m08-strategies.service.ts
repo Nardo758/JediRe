@@ -225,7 +225,7 @@ function scoreSubStrategy(key: string, signals: SignalScores): number {
   return parseFloat(Math.min(100, Math.max(0, s)).toFixed(1));
 }
 
-// ─── Gate evaluation ──────────────────────────────────────────────────────────
+// ─── Gate evaluation — full sub-strategy matrix ───────────────────────────────
 
 function evaluateGate(key: string, deal: Record<string, any>): GateResult {
   const data = deal.deal_data || {};
@@ -236,32 +236,177 @@ function evaluateGate(key: string, deal: Record<string, any>): GateResult {
   const dscr = Number(data.dscr || 0);
   const occupancy = Number(data.occupancy || data.occupancy_rate || 0);
   const capitalGap = Number(deal.tdc_per_unit || 0);
+  const vacancy = Number(data.vacancy || data.vacancy_rate || 0);
+  const parcelCount = Number(data.parcel_count || 1);
+  const adr = Number(data.adr || 0);
+  const clearHeight = Number(data.clear_height_ft || 0);
+  const leaseTerm = Number(data.lease_term_remaining_years || 0);
+  const tenantCredit = data.tenant_credit_rating || '';
 
   switch (key) {
+    // ── Multifamily ───────────────────────────────────────────────────────────
     case 'mf_value_add_standard':
-      if (lossToLease >= 0.08) { checks.push('✓ Loss-to-lease > 8%'); }
-      else { checks.push('⚠ Loss-to-lease < 8% — value-add thesis weaker'); status = 'marginal'; }
-      if (capitalGap > 0 && capitalGap <= 40_000) { checks.push('✓ Capital gap within value-add band'); }
-      else if (capitalGap > 40_000) { checks.push('⚠ Capital gap > $40K — consider deep value-add'); status = 'marginal'; }
+      if (lossToLease >= 0.08) { checks.push('✓ Loss-to-lease > 8% — value-add thesis supported'); }
+      else if (lossToLease > 0) { checks.push('⚠ Loss-to-lease < 8% — value-add thesis weaker'); status = 'marginal'; }
+      else { checks.push('⚠ Loss-to-lease not measured — value-add confidence limited'); status = 'marginal'; }
+      if (capitalGap > 40_000) { checks.push('⚠ Capital gap > $40K/unit — consider Deep Value-Add instead'); status = 'marginal'; }
+      else if (capitalGap > 0) { checks.push('✓ Capital gap within value-add band (<$40K/unit)'); }
+      if (occupancy > 0 && occupancy < 0.75) { checks.push('✗ Occupancy < 75% — distressed, not value-add'); status = 'disqualified'; }
       break;
+
     case 'mf_deep_value_add':
       if (capitalGap > 40_000) { checks.push('✓ Capital gap > $40K/unit confirms deep scope'); }
-      else { checks.push('⚠ Capital gap below $40K — may not require deep value-add'); status = 'marginal'; }
+      else if (capitalGap > 0) { checks.push('⚠ Capital gap below $40K — standard value-add may be more appropriate'); status = 'marginal'; }
+      else { checks.push('⚠ Capital gap unknown — scope confirmation required'); status = 'marginal'; }
+      if (occupancy > 0 && occupancy < 0.75) { checks.push('✗ Occupancy < 75% — distressed, not deep value-add'); status = 'disqualified'; }
       break;
+
     case 'mf_core':
-      if (occupancy >= 0.93) { checks.push('✓ Occupancy ≥ 93%'); }
+      if (occupancy >= 0.93) { checks.push('✓ Occupancy ≥ 93% — core stabilization confirmed'); }
       else if (occupancy > 0) { checks.push('✗ Occupancy below 93% — not core-qualified'); status = 'disqualified'; }
-      else { checks.push('⚠ Occupancy unknown'); status = 'marginal'; }
+      else { checks.push('⚠ Occupancy not confirmed — assuming not core-stabilized'); status = 'marginal'; }
+      if (lossToLease > 0.05) { checks.push('⚠ Loss-to-lease > 5% — consider Core-Plus instead'); status = 'marginal'; }
       break;
+
+    case 'mf_core_plus':
+      if (lossToLease >= 0.03 && lossToLease <= 0.08) { checks.push('✓ Loss-to-lease 3-8% — Core-Plus band'); }
+      else if (lossToLease > 0.08) { checks.push('⚠ Loss-to-lease > 8% — Value-Add may be more appropriate'); status = 'marginal'; }
+      if (occupancy > 0 && occupancy < 0.85) { checks.push('⚠ Occupancy below 85% — occupancy recovery needed first'); status = 'marginal'; }
+      break;
+
     case 'mf_distressed':
-      if ((dscr > 0 && dscr < 1.0) || (occupancy > 0 && occupancy < 0.75)) {
-        checks.push('✓ Distress signals confirmed (DSCR < 1.0 or occ < 75%)');
+      if (dscr > 0 && dscr < 1.0) { checks.push('✓ DSCR < 1.0x — financial distress confirmed'); }
+      else if (occupancy > 0 && occupancy < 0.75) { checks.push('✓ Occupancy < 75% — operational distress confirmed'); }
+      else { checks.push('⚠ No confirmed distress signals (DSCR ≥ 1.0, occ ≥ 75%)'); status = 'marginal'; }
+      break;
+
+    case 'mf_lease_up':
+      if (occupancy > 0 && occupancy < 0.90) { checks.push('✓ Occupancy < 90% — lease-up in progress'); }
+      else if (occupancy === 0) { checks.push('⚠ Occupancy unknown — verify recent delivery date'); status = 'marginal'; }
+      else { checks.push('⚠ Already stabilized — lease-up not needed'); status = 'marginal'; }
+      break;
+
+    case 'mf_bts_ground_up':
+      if (deal.project_type === 'development') { checks.push('✓ Development project type — BTS eligible'); }
+      else { checks.push('⚠ Not a development project — BTS may require redevelopment'); status = 'marginal'; }
+      break;
+
+    // ── SFR ───────────────────────────────────────────────────────────────────
+    case 'sfr_fix_flip':
+      // Gate: ARV gap > 25% (estimated from capital gap and occupancy), DOM < 45d, condition poor
+      if (data.condition === 'poor' || capitalGap > 15_000) {
+        checks.push('✓ Property condition and capital gap support fix-flip scope');
       } else {
-        checks.push('⚠ No confirmed distress signals'); status = 'marginal';
+        checks.push('⚠ Condition not confirmed as needing rehab — flip margin may be insufficient'); status = 'marginal';
+      }
+      checks.push('⚠ ARV analysis required: confirm ARV−(Acq+Rehab+Hold+Sell) > 18% before committing');
+      break;
+
+    case 'sfr_brrrr':
+      checks.push('⚠ BRRRR gate: verify ARV × 75% LTV clears total invested basis');
+      checks.push('⚠ BRRRR gate: confirm rental comp supports DSCR > 1.25x post-refi at current rates');
+      if (data.refi_rate_check === false) {
+        checks.push('✗ Cash-out refi rates above 8% — BRRRR refi-out infeasible'); status = 'disqualified';
       }
       break;
+
+    case 'sfr_btr':
+      if (parcelCount >= 50 || deal.project_type === 'development') {
+        checks.push('✓ Lot count or development type supports SFR BTR');
+      } else {
+        checks.push('⚠ SFR BTR typically requires 50+ lots — confirm institutional aggregator active in market'); status = 'marginal';
+      }
+      break;
+
+    case 'sfr_str':
+      if (data.str_permitted === false) { checks.push('✗ Short-term rental not permitted (HOA or municipal)'); status = 'disqualified'; }
+      else if (data.str_permitted === true) { checks.push('✓ STR permitted — SFR vacation rental eligible'); }
+      else { checks.push('⚠ STR permitting not confirmed — verify HOA and municipal ordinance'); status = 'marginal'; }
+      break;
+
+    case 'sfr_portfolio_agg':
+      if (parcelCount >= 20) { checks.push('✓ Portfolio of 20+ parcels qualifies for aggregation play'); }
+      else { checks.push('⚠ Portfolio Aggregation typically requires 20+ parcels across submarket'); status = 'marginal'; }
+      break;
+
+    case 'sfr_hold':
+    case 'sfr_mtr':
+    case 'sfr_wholesale':
+      checks.push(`✓ ${key}: SFR-eligible strategy — no hard disqualification signals`);
+      break;
+
+    // ── Retail ────────────────────────────────────────────────────────────────
+    case 'retail_nnn_core':
+      if (tenantCredit && /BBB|A-|A\b|AA|AAA/i.test(tenantCredit)) {
+        checks.push(`✓ Investment-grade tenant credit (${tenantCredit}) confirmed`);
+      } else if (tenantCredit) {
+        checks.push(`⚠ Tenant credit below investment grade (${tenantCredit}) — NNN Core gate not met`); status = 'marginal';
+      } else {
+        checks.push('⚠ Tenant credit rating not confirmed — NNN Core requires BBB+ or better'); status = 'marginal';
+      }
+      if (leaseTerm >= 7) { checks.push(`✓ Lease term ${leaseTerm}yr remaining (≥7yr threshold)`); }
+      else if (leaseTerm > 0) { checks.push(`⚠ Lease term only ${leaseTerm}yr — below 7yr NNN Core threshold`); status = 'marginal'; }
+      break;
+
+    case 'retail_grocery_anchored':
+      checks.push('⚠ Confirm anchor tenant credit and lease term; check inline vacancy vs. submarket');
+      if (vacancy > 0.30) { checks.push('⚠ Inline vacancy > 30% — elevated; reposition thesis may outweigh core'); status = 'marginal'; }
+      break;
+
+    case 'retail_value_add':
+      if (vacancy > 0.15) { checks.push('✓ Vacancy > 15% supports retail value-add reposition thesis'); }
+      else { checks.push('⚠ Low vacancy — retail value-add thesis weaker'); status = 'marginal'; }
+      break;
+
+    case 'retail_last_mile':
+      checks.push('⚠ Last-mile gate: confirm truck access, zoning, adjacent population density > 250K within 10mi');
+      break;
+
+    // ── Office ────────────────────────────────────────────────────────────────
+    case 'office_adaptive_reuse':
+      if (vacancy > 0.30) { checks.push('✓ Vacancy > 30% confirms adaptive reuse candidate'); }
+      else { checks.push('⚠ Vacancy below 30% — adaptive reuse economics may not pencil'); status = 'marginal'; }
+      checks.push('⚠ Adaptive reuse gate: floor plate < 12K SF ideal; confirm window mullion spacing and zoning');
+      break;
+
+    case 'office_medical':
+      if (/medical|health/i.test(data.tenant_mix || '')) {
+        checks.push('✓ Medical tenant mix detected — medical office conversion eligible');
+      } else {
+        checks.push('⚠ Medical tenant adjacency not confirmed — verify tenant mix compatibility'); status = 'marginal';
+      }
+      break;
+
+    case 'office_tenant_rollup':
+      checks.push('⚠ Tenant rollup gate: confirm > 40% tenant rollover in next 24mo for reposition thesis');
+      break;
+
+    // ── Industrial ────────────────────────────────────────────────────────────
+    case 'industrial_last_mile':
+      if (clearHeight >= 24) { checks.push(`✓ Clear height ${clearHeight}ft — last-mile eligible (≥24ft)`); }
+      else if (clearHeight > 0) { checks.push(`⚠ Clear height ${clearHeight}ft — below optimal 24ft for last-mile`); status = 'marginal'; }
+      else { checks.push('⚠ Clear height not confirmed — last-mile suitability unknown'); status = 'marginal'; }
+      checks.push('⚠ Last-mile gate: confirm truck court access and population > 250K within 10mi');
+      break;
+
+    case 'industrial_core':
+      if (vacancy > 0.10) { checks.push('⚠ Vacancy > 10% — industrial core stability limited'); status = 'marginal'; }
+      else { checks.push('✓ Low vacancy supports industrial core thesis'); }
+      break;
+
+    // ── Hospitality ───────────────────────────────────────────────────────────
+    case 'hospitality_reflag':
+      checks.push('⚠ Reflag gate: confirm franchise opportunity available and PIP cost feasible');
+      if (adr > 0) { checks.push(`✓ ADR $${adr} — operating data present`); }
+      else { checks.push('⚠ ADR/RevPAR not confirmed — flag performance analysis required'); status = 'marginal'; }
+      break;
+
+    case 'hospitality_extended_stay':
+      checks.push('⚠ Extended-stay gate: confirm extended-stay demand drivers (medical center, corporate HQ, military)');
+      break;
+
     default:
-      checks.push(`✓ ${key}: no disqualifying signals`);
+      checks.push(`✓ ${key}: no disqualifying gate signals`);
   }
 
   return { status, checks };
@@ -498,6 +643,7 @@ function buildFallback(dealId: string): StrategyAnalysisV2 {
   const detection: DetectionResult = {
     assetClass: 'multifamily', subType: 'garden', detectedDealType: 'value_add',
     detectedSubStrategy: 'mf_value_add_standard', confidence: 0.50,
+    requiresUserConfirmation: true,
     detectionSignals: [], alternateSubStrategies: [], userConfirmed: false,
   };
   return {

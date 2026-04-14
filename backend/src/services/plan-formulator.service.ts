@@ -26,6 +26,7 @@ export interface PlanAction {
   action: string;
   capital?: number;
   correlationRefs: string[];
+  evidenceRef?: string;   // Section 6.2: ref to evidence block driving this action
   kpi?: string;
 }
 
@@ -123,35 +124,35 @@ function buildMFValueAddPlan(ctx: PlanContext, deep: boolean): StrategyPlan {
         phase: 1,
         monthRange: [1, 3],
         actions: [
-          { action: 'Management transition — new PM engagement', correlationRefs: ['COR-19'], kpi: '+3-6% NOI margin within 90 days' },
-          { action: 'Pricing audit — capture 30% of loss-to-lease via new lease pricing', correlationRefs: ['COR-01'], kpi: 'Avg rent up within 60 days' },
-          { action: 'Deferred maintenance triage — identify high-priority items', correlationRefs: [], kpi: 'Maintenance backlog cleared' },
+          { action: 'Management transition — new PM engagement', correlationRefs: ['COR-19'], evidenceRef: 'blockB.ops_score', kpi: '+3-6% NOI margin within 90 days' },
+          { action: 'Pricing audit — capture 30% of loss-to-lease via new lease pricing', correlationRefs: ['COR-01'], evidenceRef: 'blockB.loss_to_lease', kpi: 'Avg rent up within 60 days' },
+          { action: 'Deferred maintenance triage — identify high-priority items', correlationRefs: [], evidenceRef: 'blockB.capital_gap', kpi: 'Maintenance backlog cleared' },
         ],
       },
       {
         phase: 2,
         monthRange: [4, 9],
         actions: [
-          { action: 'Exterior paint + signage rebrand (PCS asset-quality lift)', capital: phase2Capital * 0.60, correlationRefs: [], kpi: 'PCS exterior component score +5 pts' },
-          { action: 'Amenity upgrade per trade-area gap analysis', capital: phase2Capital * 0.40, correlationRefs: ['COR-18'], kpi: 'Google review rating +0.3 within 6mo' },
-          { action: 'Launch digital marketing refresh — update listings, photos, virtual tour', correlationRefs: ['COR-20'], kpi: 'Lead volume +20%' },
+          { action: 'Exterior paint + signage rebrand (PCS asset-quality lift)', capital: phase2Capital * 0.60, correlationRefs: [], evidenceRef: 'blockC.tradeArea.condition_gap', kpi: 'PCS exterior component score +5 pts' },
+          { action: 'Amenity upgrade per trade-area gap analysis', capital: phase2Capital * 0.40, correlationRefs: ['COR-18'], evidenceRef: 'blockC.tradeArea.amenity_score', kpi: 'Google review rating +0.3 within 6mo' },
+          { action: 'Launch digital marketing refresh — update listings, photos, virtual tour', correlationRefs: ['COR-20'], evidenceRef: 'blockB.loss_to_lease', kpi: 'Lead volume +20%' },
         ],
       },
       {
         phase: 3,
         monthRange: [10, deep ? 30 : 24],
         actions: [
-          { action: `Unit renovation wave — ${renovUnits} units at turn at $${Math.round(capGap / 1000)}K/unit scope`, capital: phase3Capital, correlationRefs: ['COR-01'], kpi: `$${Math.round((ctx.avgRent || 1420) * 0.10)}/unit premium at turn` },
-          { action: 'Track stabilization metrics: occupancy, effective rent, NOI margin monthly', correlationRefs: [], kpi: 'Physical occ ≥ 93%, loss-to-lease < 3%' },
+          { action: `Unit renovation wave — ${renovUnits} units at turn at $${Math.round(capGap / 1000)}K/unit scope`, capital: phase3Capital, correlationRefs: ['COR-01'], evidenceRef: 'blockD.step3.capex_deploy', kpi: `$${Math.round((ctx.avgRent || 1420) * 0.10)}/unit premium at turn` },
+          { action: 'Track stabilization metrics: occupancy, effective rent, NOI margin monthly', correlationRefs: [], evidenceRef: 'blockD.step4.stabilized_noi', kpi: 'Physical occ ≥ 93%, loss-to-lease < 3%' },
         ],
       },
       {
         phase: 4,
         monthRange: [deep ? 31 : 25, exitMonth],
         actions: [
-          { action: 'Hold 12 months stabilized for institutional exit eligibility', correlationRefs: [] },
-          { action: 'Begin broker interviews Q-2 before exit', correlationRefs: ['COR-04'], kpi: 'LOIs from 3+ qualified buyers' },
-          { action: 'Commission third-party appraisal and Phase I ESA', correlationRefs: [], kpi: 'Clean Phase I, appraisal at or above underwritten exit value' },
+          { action: 'Hold 12 months stabilized for institutional exit eligibility', correlationRefs: [], evidenceRef: 'blockC.likeKind.hold_months' },
+          { action: 'Begin broker interviews Q-2 before exit', correlationRefs: ['COR-04'], evidenceRef: 'blockD.step5.exit_value', kpi: 'LOIs from 3+ qualified buyers' },
+          { action: 'Commission third-party appraisal and Phase I ESA', correlationRefs: [], evidenceRef: 'blockD.step5.exit_value', kpi: 'Clean Phase I, appraisal at or above underwritten exit value' },
         ],
       },
     ],
@@ -221,25 +222,25 @@ function buildMFDistressedPlan(ctx: PlanContext): StrategyPlan {
         phase: 1,
         monthRange: [1, 6],
         actions: [
-          { action: 'Emergency management transition — replace PM, reset leasing protocols', correlationRefs: ['COR-19'], kpi: 'Occupancy +5pp within 90 days' },
-          { action: 'Deferred maintenance triage — make properties habitable, address life-safety items first', correlationRefs: [], kpi: 'Life-safety deficiencies resolved within 60 days' },
-          { action: 'Lender/lien negotiation (if financial distress) — forbearance or discounted payoff', correlationRefs: [] },
+          { action: 'Emergency management transition — replace PM, reset leasing protocols', correlationRefs: ['COR-19'], evidenceRef: 'blockB.ops_score', kpi: 'Occupancy +5pp within 90 days' },
+          { action: 'Deferred maintenance triage — make properties habitable, address life-safety items first', correlationRefs: [], evidenceRef: 'blockB.capital_gap', kpi: 'Life-safety deficiencies resolved within 60 days' },
+          { action: 'Lender/lien negotiation (if financial distress) — forbearance or discounted payoff', correlationRefs: [], evidenceRef: 'blockB.dscr' },
         ],
       },
       {
         phase: 2,
         monthRange: [7, 18],
         actions: [
-          { action: 'Lease-up campaign — aggressive concessions to reach 90% occupancy', capital: units * 1_500, correlationRefs: ['COR-01'], kpi: 'Physical occ ≥ 90%' },
-          { action: 'Exterior triage — cosmetic improvements to halt perception decline', capital: units * 2_500, correlationRefs: [] },
+          { action: 'Lease-up campaign — aggressive concessions to reach 90% occupancy', capital: units * 1_500, correlationRefs: ['COR-01'], evidenceRef: 'blockB.occupancy', kpi: 'Physical occ ≥ 90%' },
+          { action: 'Exterior triage — cosmetic improvements to halt perception decline', capital: units * 2_500, correlationRefs: [], evidenceRef: 'blockC.tradeArea.condition_gap' },
         ],
       },
       {
         phase: 3,
         monthRange: [19, 36],
         actions: [
-          { action: 'Transition from distressed to value-add value-creation program', correlationRefs: [], kpi: 'NOI margin ≥ 55%' },
-          { action: 'Refinance bridge debt to agency/perm once DSCR > 1.20x', correlationRefs: [] },
+          { action: 'Transition from distressed to value-add value-creation program', correlationRefs: [], evidenceRef: 'blockD.step4.stabilized_noi', kpi: 'NOI margin ≥ 55%' },
+          { action: 'Refinance bridge debt to agency/perm once DSCR > 1.20x', correlationRefs: [], evidenceRef: 'blockD.step6.irr' },
         ],
       },
     ],
@@ -351,17 +352,17 @@ function buildSFRFixFlipPlan(ctx: PlanContext): StrategyPlan {
         phase: 1,
         monthRange: [1, 2],
         actions: [
-          { action: 'Cosmetic renovation: kitchen, baths, flooring, paint', capital: reno * 0.70, correlationRefs: [], kpi: 'Scope complete on budget' },
-          { action: 'Landscaping, exterior, curb appeal', capital: reno * 0.15, correlationRefs: [] },
-          { action: 'Mechanical triage: HVAC, plumbing, electrical if needed', capital: reno * 0.15, correlationRefs: [] },
+          { action: 'Cosmetic renovation: kitchen, baths, flooring, paint', capital: reno * 0.70, correlationRefs: [], evidenceRef: 'blockB.capital_gap', kpi: 'Scope complete on budget' },
+          { action: 'Landscaping, exterior, curb appeal', capital: reno * 0.15, correlationRefs: [], evidenceRef: 'blockC.tradeArea.condition_gap' },
+          { action: 'Mechanical triage: HVAC, plumbing, electrical if needed', capital: reno * 0.15, correlationRefs: [], evidenceRef: 'blockB.capital_gap' },
         ],
       },
       {
         phase: 2,
         monthRange: [3, 7],
         actions: [
-          { action: 'List with MLS agent — professional photos, staging', correlationRefs: [] },
-          { action: 'Price at or 2% below renovated comp ceiling for fast DOM', correlationRefs: ['COR-01'], kpi: 'Under contract within 30 days' },
+          { action: 'List with MLS agent — professional photos, staging', correlationRefs: [], evidenceRef: 'blockC.likeKind.dom_days' },
+          { action: 'Price at or 2% below renovated comp ceiling for fast DOM', correlationRefs: ['COR-01'], evidenceRef: 'blockC.tradeArea.rent_per_unit', kpi: 'Under contract within 30 days' },
         ],
       },
     ],
@@ -409,16 +410,16 @@ function buildSFRBRRRRPlan(ctx: PlanContext): StrategyPlan {
         phase: 1,
         monthRange: [1, 4],
         actions: [
-          { action: 'Full renovation to ARV standard', capital: reno, correlationRefs: [] },
-          { action: 'List for rent — target stabilization within 45 days of completion', correlationRefs: [] },
+          { action: 'Full renovation to ARV standard', capital: reno, correlationRefs: [], evidenceRef: 'blockB.capital_gap' },
+          { action: 'List for rent — target stabilization within 45 days of completion', correlationRefs: [], evidenceRef: 'blockC.tradeArea.rent_per_unit' },
         ],
       },
       {
         phase: 2,
         monthRange: [5, 8],
         actions: [
-          { action: `Cash-out refinance at 75% ARV ($${Math.round(arv * 0.75 / 1000)}K) — recover equity`, correlationRefs: [], kpi: `Refi clears basis of $${Math.round((price + reno) / 1000)}K` },
-          { action: 'Evaluate next BRRRR acquisition with recycled capital', correlationRefs: [] },
+          { action: `Cash-out refinance at 75% ARV ($${Math.round(arv * 0.75 / 1000)}K) — recover equity`, correlationRefs: [], evidenceRef: 'blockD.step5.exit_value', kpi: `Refi clears basis of $${Math.round((price + reno) / 1000)}K` },
+          { action: 'Evaluate next BRRRR acquisition with recycled capital', correlationRefs: [], evidenceRef: 'blockC.likeKind.irr' },
         ],
       },
     ],
@@ -464,7 +465,7 @@ function buildGenericPlan(ctx: PlanContext): StrategyPlan {
         phase: 1,
         monthRange: [1, 12],
         actions: [
-          { action: 'Operational stabilization and value-creation execution', correlationRefs: [], kpi: 'NOI at or above underwritten year 1' },
+          { action: 'Operational stabilization and value-creation execution', correlationRefs: [], evidenceRef: 'blockB.market_position', kpi: 'NOI at or above underwritten year 1' },
         ],
       },
     ],
