@@ -126,11 +126,11 @@ CREATE INDEX IF NOT EXISTS idx_rrs_snapshot_date ON rent_roll_snapshots (snapsho
 CREATE INDEX IF NOT EXISTS idx_rrs_status ON rent_roll_snapshots (status);
 
 -- ============================================================================
--- 5. leasing_events (raw event log per uploaded rent roll)
---    This is the BASE TABLE. A backward-compat view named lease_events is
---    created in section 8 so that existing read-paths continue to work.
+-- 5. lease_events (raw event log per uploaded rent roll)
+--    This is the BASE TABLE. The canonical-name alias leasing_events is created
+--    as a simple updatable VIEW in section 8.
 -- ============================================================================
-CREATE TABLE IF NOT EXISTS leasing_events (
+CREATE TABLE IF NOT EXISTS lease_events (
   id                BIGSERIAL PRIMARY KEY,
   snapshot_id       BIGINT NOT NULL REFERENCES rent_roll_snapshots(id) ON DELETE CASCADE,
   deal_id           TEXT NOT NULL,
@@ -159,10 +159,10 @@ CREATE TABLE IF NOT EXISTS leasing_events (
   created_at        TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_le_snapshot_id ON leasing_events (snapshot_id);
-CREATE INDEX IF NOT EXISTS idx_le_deal_id ON leasing_events (deal_id);
-CREATE INDEX IF NOT EXISTS idx_le_lease_start ON leasing_events (lease_start);
-CREATE INDEX IF NOT EXISTS idx_le_unit_type ON leasing_events (unit_type);
+CREATE INDEX IF NOT EXISTS idx_le_snapshot_id ON lease_events (snapshot_id);
+CREATE INDEX IF NOT EXISTS idx_le_deal_id ON lease_events (deal_id);
+CREATE INDEX IF NOT EXISTS idx_le_lease_start ON lease_events (lease_start);
+CREATE INDEX IF NOT EXISTS idx_le_unit_type ON lease_events (unit_type);
 
 -- ============================================================================
 -- 6. traffic_weight_config
@@ -197,11 +197,11 @@ FROM traffic_calibration_coefficients
 ORDER BY coefficient_name, scope_level, submarket_id, property_class, vintage_band, cal_window, updated_at DESC;
 
 -- ============================================================================
--- 8. lease_events backward-compat VIEW
---    leasing_events is the BASE TABLE (section 5).
---    lease_events is a read/write-capable simple-select view alias so existing
---    INSERT/SELECT code that was written against `lease_events` continues to work
---    without changes.
+-- 8. leasing_events canonical-name VIEW
+--    lease_events is the BASE TABLE (section 5).
+--    leasing_events is a read/write-capable simple-select view so that any
+--    query code that references the canonical spec name continues to work.
+--    PostgreSQL makes single-table SELECT * views fully updatable (INSERT/UPDATE/DELETE).
 --
 -- NOTE ON traffic_calibration_factors vs traffic_calibration_coefficients:
 --   The task spec uses "traffic_calibration_factors" as the M07 Bayesian table
@@ -213,5 +213,5 @@ ORDER BY coefficient_name, scope_level, submarket_id, property_class, vintage_ba
 --   for the M07 Bayesian stack — both names are referenced consistently
 --   throughout the M07 codebase.
 -- ============================================================================
-CREATE OR REPLACE VIEW lease_events AS
-  SELECT * FROM leasing_events;
+CREATE OR REPLACE VIEW leasing_events AS
+  SELECT * FROM lease_events;

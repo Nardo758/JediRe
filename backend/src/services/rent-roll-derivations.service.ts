@@ -52,9 +52,9 @@ export class RentRollDerivationsService {
 
     // Compute each derivation
     const signingVelocity24m = this.computeSigningVelocity(rows, snapshotDate);
-    const renewalRateProxy = this.computeRenewalRateProxy(rows);
+    const renewalRateProxy = this.computeRenewalRateProxy(rows, snapshotDate);
     const expirationWaterfall = this.computeExpirationWaterfall(rows, snapshotDate);
-    const unitTypeBreakdown = this.computeUnitTypeBreakdown(rows);
+    const unitTypeBreakdown = this.computeUnitTypeBreakdown(rows, snapshotDate);
 
     const derived: DerivedSnapshotMetrics = {
       signing_velocity_24m: signingVelocity24m,
@@ -119,9 +119,12 @@ export class RentRollDerivationsService {
   // Proxy: (units marked is_renewal=true) / (units with lease_start in last 12 months)
   // Floors at 0, caps at 1.
   // ============================================================================
-  private computeRenewalRateProxy(rows: any[]): number {
-    const now = new Date();
-    const twelveMonthsAgo = new Date(now);
+  // §5.8: snapshot-date-anchored renewal proxy.
+  // Anchoring to snapshotDate (not now) prevents bias when processing historical snapshots —
+  // leases that appear "recent" relative to upload time may be months old relative to snapshot.
+  private computeRenewalRateProxy(rows: any[], snapshotDate: Date): number {
+    const anchor = snapshotDate;
+    const twelveMonthsAgo = new Date(anchor);
     twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
 
     let recentLeases = 0;
@@ -130,7 +133,7 @@ export class RentRollDerivationsService {
     for (const row of rows) {
       if (!row.lease_start) continue;
       const ls = new Date(row.lease_start);
-      if (ls >= twelveMonthsAgo && ls <= now) {
+      if (ls >= twelveMonthsAgo && ls <= anchor) {
         recentLeases++;
         if (row.is_renewal === true) renewals++;
       }
@@ -168,7 +171,7 @@ export class RentRollDerivationsService {
   // ============================================================================
   // §5.9: Per-Unit-Type Metrics
   // ============================================================================
-  private computeUnitTypeBreakdown(rows: any[]): UnitTypeMetrics[] {
+  private computeUnitTypeBreakdown(rows: any[], snapshotDate: Date): UnitTypeMetrics[] {
     const byType: Record<string, any[]> = {};
 
     for (const row of rows) {
@@ -178,12 +181,12 @@ export class RentRollDerivationsService {
     }
 
     const result: UnitTypeMetrics[] = [];
-    const now = new Date();
-    const twelveMonthsAgo = new Date(now);
+    // Anchor to snapshotDate so historical snapshots are not biased by current date
+    const twelveMonthsAgo = new Date(snapshotDate);
     twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
 
     for (const [unit_type, typeRows] of Object.entries(byType)) {
-      // Signing velocity = new leases in last 12 months / 12
+      // Signing velocity = new leases in the 12 months up to snapshot date / 12
       const recentLeases = typeRows.filter(r =>
         r.lease_start && new Date(r.lease_start) >= twelveMonthsAgo
       );

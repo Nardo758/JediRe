@@ -274,6 +274,14 @@ interface TrafficPrediction {
   calibration_meta?: CalibrationMeta;
   starting_state?: StartingState;
 
+  // M07 §4.2: top-level convenience fields promoted from calibration_meta.
+  // Consumers may read these directly without drilling into calibration_meta.
+  match_tier?: 'DEAL' | 'PLATFORM' | 'BASELINE';
+  window?: 'TTM' | 'PYTM' | 'TTM_24';
+  calibration_source?: string;
+  confidence_band?: { low: number; mid: number; high: number };
+  deal_mode?: 'STABILIZED' | 'LEASE_UP' | 'REDEVELOPMENT';
+
   // M07 §4.2: rent-roll derived enrichments (present when deal has uploaded rent rolls)
   // Shape matches RentRollDerivationsService unit_type_breakdown output exactly.
   unit_type_breakdown?: Array<{
@@ -993,7 +1001,34 @@ export class TrafficPredictionEngine {
     const startTime = Date.now();
     
     const property = await this.loadProperty(propertyId);
-    
+
+    // §4.4 hierarchy resolution: augment property with calibration context from deal_data.
+    // Deals store property_class / year_built / msa_id in JSONB; the properties table
+    // may not have these if the deal was created via the deal form (not property import).
+    if (dealId && (!property.property_class || !property.msa_id)) {
+      try {
+        const dealCtx = await pool.query<{
+          property_class: string | null;
+          year_built: string | null;
+          msa_id: string | null;
+        }>(`
+          SELECT
+            (deal_data->>'property_class') AS property_class,
+            (deal_data->>'year_built')     AS year_built,
+            (deal_data->'market_intelligence'->'data'->'demographics'->'submarket'->>'msa_id') AS msa_id
+          FROM deals WHERE id = $1 LIMIT 1
+        `, [dealId]);
+        if (dealCtx.rows.length > 0) {
+          const ctx = dealCtx.rows[0];
+          if (!property.property_class && ctx.property_class) property.property_class = ctx.property_class;
+          if (!property.year_built && ctx.year_built) property.year_built = ctx.year_built;
+          if (!property.msa_id && ctx.msa_id) property.msa_id = ctx.msa_id;
+        }
+      } catch {
+        // Non-blocking — falls back to properties-table values only
+      }
+    }
+
     const marketResearch = await marketResearchEngine.getCachedReport(propertyId, 24);
     
     if (!marketResearch) {
@@ -1269,11 +1304,17 @@ export class TrafficPredictionEngine {
     try {
       // Attach metadata from early resolution — no second DB round-trip needed
       if (earlyResolvedCoefficients) {
-        // §4.2 output contract: include starting-state mode in calibration_meta
-        prediction.calibration_meta = {
+        const meta: CalibrationMeta = {
           ...earlyResolvedCoefficients.meta,
           mode: earlyStartingState?.mode ?? 'STABILIZED',
         };
+        // §4.2 output contract: calibration_meta nested + top-level convenience fields
+        prediction.calibration_meta = meta;
+        prediction.match_tier = meta.match_tier;
+        prediction.window = meta.window;
+        prediction.calibration_source = meta.calibration_source;
+        prediction.confidence_band = meta.confidence_band;
+        prediction.deal_mode = meta.mode as 'STABILIZED' | 'LEASE_UP' | 'REDEVELOPMENT';
       }
       // starting_state was also resolved early (before mode dispatch) — attach it
       if (earlyStartingState) {
