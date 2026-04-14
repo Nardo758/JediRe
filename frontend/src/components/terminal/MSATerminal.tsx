@@ -7,14 +7,13 @@
  * [1] SUBMARKETS    - 14-column matrix with Dev Capacity signals
  * [2] DEALS         - Pipeline kanban, quadrant filter, opportunities
  * [3] PROPERTIES    - Map-based view: ranked properties + side panel (combined Rankings+Properties)
- * [4] OWNERS        - Owner analysis and portfolio data
+ * [4] CAPITAL       - Combined Owners (buy/sell signals) + Capital Markets (volume, cap rates, debt)
  * [5] SUPPLY        - Supply wave forecast, phases
- * [6] CAPITAL       - Transaction volume, cap rate trends
- * [7] ECONOMICS     - Employment, population, income trends
- * [8] TRENDS        - Correlation, rent by vintage, JEDI history
- * [9] NEWS          - Metro market news
- * [10] COMPARE      - Compare to peer MSAs
- * [11] EVENTS ⚡    - M35 key events
+ * [6] ECONOMICS     - Employment, population, income trends
+ * [7] TRENDS        - Correlation, rent by vintage, JEDI history
+ * [8] NEWS          - Metro market news
+ * [9] COMPARE       - Compare to peer MSAs
+ * [10] EVENTS ⚡   - M35 key events
  */
 
 import React, { useState, useEffect } from 'react';
@@ -25,31 +24,29 @@ import { MSAOverviewTab } from './tabs/msa/MSAOverviewTab';
 import { MSASubmarketsTab } from './tabs/msa/MSASubmarketsTab';
 import { MSADealsTab } from './tabs/msa/MSADealsTab';
 import { MSAMarketMapTab } from './tabs/msa/MSAMarketMapTab';
+import { MSACapitalOwnersTab } from './tabs/msa/MSACapitalOwnersTab';
 import { MSASupplyTab } from './tabs/msa/MSASupplyTab';
-import { MSACapitalTab } from './tabs/msa/MSACapitalTab';
 import { MSAEconomicsTab } from './tabs/msa/MSAEconomicsTab';
 import { MSATrendsTab } from './tabs/msa/MSATrendsTab';
 import { MSANewsTab } from './tabs/msa/MSANewsTab';
 import { MSACompareTab } from './tabs/msa/MSACompareTab';
-import { MSAOwnersTab } from './tabs/msa/MSAOwnersTab';
 import { MSAEventsTab } from './tabs/msa/MSAEventsTab';
 
 export const MSA_TABS: TabDef[] = [
-  { key: 'overview', label: 'OVERVIEW', num: 0 },
-  { key: 'submarkets', label: 'SUBMARKETS', num: 1 },
-  { key: 'deals', label: 'DEALS', num: 2 },
-  { key: 'properties', label: 'PROPERTIES', num: 3 },
-  { key: 'owners', label: 'OWNERS', num: 4 },
-  { key: 'supply', label: 'SUPPLY', num: 5 },
-  { key: 'capital', label: 'CAPITAL', num: 6 },
-  { key: 'economics', label: 'ECONOMICS', num: 7 },
-  { key: 'trends', label: 'TRENDS', num: 8 },
-  { key: 'news', label: 'NEWS', num: 9 },
-  { key: 'compare', label: 'COMPARE', num: 10 },
-  { key: 'events', label: 'EVENTS ⚡', num: 11 },
+  { key: 'overview',    label: 'OVERVIEW',    num: 0 },
+  { key: 'submarkets',  label: 'SUBMARKETS',  num: 1 },
+  { key: 'deals',       label: 'DEALS',       num: 2 },
+  { key: 'properties',  label: 'PROPERTIES',  num: 3 },
+  { key: 'capital',     label: 'CAPITAL',     num: 4 },
+  { key: 'supply',      label: 'SUPPLY',      num: 5 },
+  { key: 'economics',   label: 'ECONOMICS',   num: 6 },
+  { key: 'trends',      label: 'TRENDS',      num: 7 },
+  { key: 'news',        label: 'NEWS',        num: 8 },
+  { key: 'compare',     label: 'COMPARE',     num: 9 },
+  { key: 'events',      label: 'EVENTS ⚡',   num: 10 },
 ];
 
-export type MSATabKey = 'overview' | 'submarkets' | 'deals' | 'properties' | 'owners' | 'supply' | 'capital' | 'economics' | 'trends' | 'news' | 'compare' | 'events';
+export type MSATabKey = 'overview' | 'submarkets' | 'deals' | 'properties' | 'capital' | 'supply' | 'economics' | 'trends' | 'news' | 'compare' | 'events';
 
 export interface MSAData {
   id: string;
@@ -189,12 +186,10 @@ export const MSATerminal: React.FC<MSATerminalProps> = ({
         return <MSADealsTab msaId={msaId} msa={msa} onSelectDeal={onDealSelect} />;
       case 'properties':
         return <MSAMarketMapTab msaId={msaId} msa={msa} onSelectProperty={onPropertySelect} />;
-      case 'owners':
-        return <MSAOwnersTab msaId={msaId} msa={msa} onSelectProperty={onPropertySelect} />;
+      case 'capital':
+        return <MSACapitalOwnersTab msaId={msaId} msa={msa} onSelectProperty={onPropertySelect} />;
       case 'supply':
         return <MSASupplyTab msaId={msaId} msa={msa} />;
-      case 'capital':
-        return <MSACapitalTab msaId={msaId} msa={msa} />;
       case 'economics':
         return <MSAEconomicsTab msaId={msaId} msa={msa} />;
       case 'trends':
