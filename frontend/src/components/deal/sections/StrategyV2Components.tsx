@@ -435,10 +435,10 @@ export function SubStrategyComparison({ subStrategies, arbitrage }: {
 
 const SIGNAL_LABELS = ['DEMAND', 'SUPPLY', 'MOMENTUM', 'POSITION', 'RISK'];
 
+// 3-band spec: green ≥80, amber 50–79, red <50
 function heatColor(v: number): string {
   if (v >= 80) return BT.text.green;
-  if (v >= 60) return BT.text.cyan;
-  if (v >= 40) return BT.text.amber;
+  if (v >= 50) return BT.text.amber;
   return BT.text.red;
 }
 
@@ -603,7 +603,7 @@ export function SignalHeatmap({ subStrategies, signalScores }: {
           </tbody>
         </table>
         <div style={{ padding: '4px 8px', borderTop: `1px solid ${BT.border.subtle}`, display: 'flex', gap: 12, alignItems: 'center' }}>
-          {[{ v: '≥80 STRONG', c: BT.text.green }, { v: '60-79 POSITIVE', c: BT.text.cyan }, { v: '40-59 WATCH', c: BT.text.amber }, { v: '<40 WEAK', c: BT.text.red }].map(item => (
+          {[{ v: '≥80 STRONG', c: BT.text.green }, { v: '50-79 WATCH', c: BT.text.amber }, { v: '<50 WEAK', c: BT.text.red }].map(item => (
             <div key={item.v} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
               <div style={{ width: 8, height: 8, background: item.c, opacity: 0.8 }} />
               <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>{item.v}</span>
@@ -677,7 +677,8 @@ function DrawerCompDetail({ row }: { row: MetricStackRow }) {
         }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontFamily: MONO, fontSize: 8, color: step.isSubtotal ? BT.text.amber : BT.text.secondary }}>
-              {step.label}
+              {/* MathTrailStep uses 'step' as the label field */}
+              {step.step}
             </div>
             {step.formula && <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>[{step.formula}]</div>}
           </div>

@@ -70,6 +70,8 @@ export interface MetricStackRow {
   dollarImpact: string;
   source?: string;
   dataQuality?: string;
+  /** Per-row derivation trail — may be included by backend for comp detail */
+  mathTrail?: MathTrailStep[];
 }
 
 export interface CompPoint {

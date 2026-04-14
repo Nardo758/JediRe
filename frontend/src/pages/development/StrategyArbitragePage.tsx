@@ -74,7 +74,7 @@ export function StrategyArbitragePage({ dealId, deal: _deal, dealType: _dealType
 
   const {
     analysis, loading, error, recalculating,
-    confirmDetection, overrideClassification, refresh, triggerRecalc,
+    confirmDetection, overrideClassification, adjustSubStrategy, refresh, triggerRecalc,
   } = useStrategyAnalysisV2(resolvedDealId);
 
   const [activeTab, setActiveTab] = useState(0);
@@ -83,6 +83,7 @@ export function StrategyArbitragePage({ dealId, deal: _deal, dealType: _dealType
   const stateName = useDealStore(s => s.identity.state) || 'GA';
 
   const handleConfirm = useCallback(() => confirmDetection(true), [confirmDetection]);
+  const handleAdjust = useCallback((ss: string) => adjustSubStrategy(ss), [adjustSubStrategy]);
   const handleOverride = useCallback((ac: string) => overrideClassification(ac), [overrideClassification]);
 
   const statusBadge = () => {
@@ -171,6 +172,7 @@ export function StrategyArbitragePage({ dealId, deal: _deal, dealType: _dealType
                 <V2FullAnalysis
                   analysis={analysis}
                   onConfirm={handleConfirm}
+                  onAdjust={handleAdjust}
                   onOverride={handleOverride}
                   dealId={resolvedDealId}
                 />
