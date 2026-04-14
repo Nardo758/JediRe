@@ -44,6 +44,38 @@ CREATE TABLE IF NOT EXISTS playbook_instances (
   created_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Add FK constraints idempotently — safe if table already exists from an earlier run
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_name = 'fk_playbook_instances_event_id'
+      AND table_name = 'playbook_instances'
+  ) THEN
+    BEGIN
+      ALTER TABLE playbook_instances
+        ADD CONSTRAINT fk_playbook_instances_event_id
+        FOREIGN KEY (event_id) REFERENCES key_events(id) ON DELETE CASCADE;
+    EXCEPTION WHEN OTHERS THEN
+      RAISE NOTICE 'fk_playbook_instances_event_id skipped: %', SQLERRM;
+    END;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.table_constraints
+    WHERE constraint_name = 'fk_playbook_instances_impact_id'
+      AND table_name = 'playbook_instances'
+  ) THEN
+    BEGIN
+      ALTER TABLE playbook_instances
+        ADD CONSTRAINT fk_playbook_instances_impact_id
+        FOREIGN KEY (impact_id) REFERENCES event_impacts(id) ON DELETE CASCADE;
+    EXCEPTION WHEN OTHERS THEN
+      RAISE NOTICE 'fk_playbook_instances_impact_id skipped: %', SQLERRM;
+    END;
+  END IF;
+END $$;
+
 CREATE UNIQUE INDEX IF NOT EXISTS idx_playbook_instances_unique
   ON playbook_instances (playbook_id, impact_id);
 
