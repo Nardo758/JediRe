@@ -1048,13 +1048,13 @@ export class TrafficPredictionEngine {
     try {
       [earlyResolvedCoefficients, earlyStartingState] = await Promise.all([
         this.coefficientResolver.resolveForDeal(
-          dealId || propertyId,
+          dealId ?? null,
           property.submarket_id || null,
           (property as any).property_class || null,
           (property as any).year_built ? parseInt((property as any).year_built) : null,
           (property as any).msa_id || null,
         ),
-        this.startingStateService.resolveStartingState(dealId || propertyId),
+        this.startingStateService.resolveStartingState(dealId ?? null),
       ]);
     } catch {
       // Non-blocking — engine falls through to hard-coded defaults
@@ -1249,7 +1249,11 @@ export class TrafficPredictionEngine {
     try {
       // Attach metadata from early resolution — no second DB round-trip needed
       if (earlyResolvedCoefficients) {
-        prediction.calibration_meta = earlyResolvedCoefficients.meta;
+        // §4.2 output contract: include starting-state mode in calibration_meta
+        prediction.calibration_meta = {
+          ...earlyResolvedCoefficients.meta,
+          mode: earlyStartingState?.mode ?? 'STABILIZED',
+        };
       }
       // starting_state was also resolved early (before mode dispatch) — attach it
       if (earlyStartingState) {

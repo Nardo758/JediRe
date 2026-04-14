@@ -65,22 +65,26 @@ export class TrafficCalibrationJob {
     const runAt = new Date();
     logger.info('[CalibrationJob] Starting nightly calibration', { lookbackHours, jobVersion: this.JOB_VERSION });
 
-    // Load all deal+property context for recently ingested snapshots
+    // Gather only NEW snapshots (since lookbackHours ago) as this run's evidence.
+    // Each run, the existing DB row serves as the Bayesian prior; we fold in only
+    // new evidence so old evidence is never double-counted across runs.
     const newSnapshots = await this.getRecentSnapshots(lookbackHours);
-    logger.info('[CalibrationJob] Found recent snapshots', { count: newSnapshots.length });
+    logger.info('[CalibrationJob] New snapshots in window', { count: newSnapshots.length, lookbackHours });
 
-    // Also process all historical snapshots for bucket roll-up
+    // Absorption benchmarks still need all historical snapshots (they're point-in-time stats,
+    // not cumulative Bayesian updates, so re-computing from all data is correct).
     const allSnapshots = await this.getAllDerivedSnapshots();
-    logger.info('[CalibrationJob] Total derived snapshots', { count: allSnapshots.length });
 
-    if (allSnapshots.length === 0) {
-      logger.info('[CalibrationJob] No derived snapshots found — using baseline only');
-      return { buckets_updated: 0, buckets_created: 0, properties_processed: 0, absorption_benchmarks_updated: 0, job_version: this.JOB_VERSION, run_at: runAt };
+    if (newSnapshots.length === 0) {
+      logger.info('[CalibrationJob] No new snapshots in window — skipping Bayesian update (absorption benchmarks still run)');
+      const absorptionUpdated = await this.computeAbsorptionBenchmarks(allSnapshots);
+      await this.publishCalibrationEvent({ bucketsUpdated: 0, bucketsCreated: 0, propertiesProcessed: 0, absorptionUpdated, runAt });
+      return { buckets_updated: 0, buckets_created: 0, properties_processed: 0, absorption_benchmarks_updated: absorptionUpdated, job_version: this.JOB_VERSION, run_at: runAt };
     }
 
-    // Compute observed coefficients per snapshot (as a proxy for per-property evidence)
-    const evidenceRows = await this.computeEvidenceFromSnapshots(allSnapshots);
-    logger.info('[CalibrationJob] Evidence rows computed', { count: evidenceRows.length });
+    // Compute evidence from NEW snapshots only
+    const evidenceRows = await this.computeEvidenceFromSnapshots(newSnapshots);
+    logger.info('[CalibrationJob] Evidence rows from new snapshots', { count: evidenceRows.length });
 
     // Roll up to scope buckets
     const buckets = this.rollUpToBuckets(evidenceRows);

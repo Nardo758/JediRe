@@ -57,6 +57,9 @@ export interface CalibrationMeta {
     high: number;
   };
   coefficients: TrafficCoefficientFamily;
+  /** Starting-state mode resolved for this prediction (§4.2 output contract).
+   *  Populated by the engine after starting-state resolution; absent if no deal context. */
+  mode?: 'STABILIZED' | 'LEASE_UP' | 'REDEVELOPMENT';
 }
 
 // ============================================================================

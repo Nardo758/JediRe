@@ -42,7 +42,7 @@ export class CoefficientResolverService {
    *   3. Baseline hard-coded constants
    */
   async resolveForDeal(
-    dealId: string,
+    dealId: string | null,
     submarketId: string | null,
     propertyClass: string | null,
     yearBuilt: number | null,
@@ -131,8 +131,9 @@ export class CoefficientResolverService {
    * Returns null if no rent roll has been uploaded for this deal.
    */
   private async loadDealCoefficients(
-    dealId: string,
+    dealId: string | null,
   ): Promise<Partial<Record<CoefficientName, number>> | null> {
+    if (!dealId) return null;
     try {
       const result = await this.pool.query<any>(`
         SELECT derived_metrics
@@ -203,48 +204,53 @@ export class CoefficientResolverService {
         { scope_level: 'platform', submarket_id: null, property_class: null, vintage_band: null, msa_id: null },
       ];
 
+      // Window priority: TTM (primary) → TTM_24 (sparse fallback) → PYTM (comparison)
+      const WINDOW_PRIORITY: CalibrationWindow[] = ['TTM', 'TTM_24', 'PYTM'];
+
       for (const attempt of scopeAttempts) {
-        const result = await this.pool.query<{
-          coefficient_name: string;
-          posterior_value: string;
-          n_peer_properties: number;
-          cal_window: string;
-          confidence_low: string;
-          confidence_mid: string;
-          confidence_high: string;
-          calibration_source: string;
-        }>(`
-          SELECT coefficient_name, posterior_value, n_peer_properties, cal_window,
-                 confidence_low, confidence_mid, confidence_high,
-                 calibration_source, scope_level, submarket_id, property_class, vintage_band
-          FROM traffic_calibration_coefficients
-          WHERE scope_level = $1
-            AND (submarket_id = $2 OR ($2 IS NULL AND submarket_id IS NULL))
-            AND (property_class = $3 OR ($3 IS NULL AND property_class IS NULL))
-            AND (vintage_band = $4 OR ($4 IS NULL AND vintage_band IS NULL))
-            AND (msa_id = $5 OR ($5 IS NULL AND msa_id IS NULL))
-            AND coefficient_name != 'absorption_curve'
-            AND cal_window = 'TTM'
-          ORDER BY n_peer_properties DESC
-        `, [attempt.scope_level, attempt.submarket_id, attempt.property_class, attempt.vintage_band, attempt.msa_id]);
+        for (const window of WINDOW_PRIORITY) {
+          const result = await this.pool.query<{
+            coefficient_name: string;
+            posterior_value: string;
+            n_peer_properties: number;
+            cal_window: string;
+            confidence_low: string;
+            confidence_mid: string;
+            confidence_high: string;
+            calibration_source: string;
+          }>(`
+            SELECT coefficient_name, posterior_value, n_peer_properties, cal_window,
+                   confidence_low, confidence_mid, confidence_high,
+                   calibration_source, scope_level, submarket_id, property_class, vintage_band
+            FROM traffic_calibration_coefficients
+            WHERE scope_level = $1
+              AND (submarket_id = $2 OR ($2 IS NULL AND submarket_id IS NULL))
+              AND (property_class = $3 OR ($3 IS NULL AND property_class IS NULL))
+              AND (vintage_band = $4 OR ($4 IS NULL AND vintage_band IS NULL))
+              AND (msa_id = $5 OR ($5 IS NULL AND msa_id IS NULL))
+              AND coefficient_name != 'absorption_curve'
+              AND cal_window = $6
+            ORDER BY n_peer_properties DESC
+          `, [attempt.scope_level, attempt.submarket_id, attempt.property_class, attempt.vintage_band, attempt.msa_id, window]);
 
-        if (result.rows.length === 0) continue;
+          if (result.rows.length === 0) continue;
 
-        const entries: Record<string, PlatformEntry> = {};
-        for (const row of result.rows) {
-          entries[row.coefficient_name] = {
-            value: parseFloat(row.posterior_value),
-            n_peer_properties: row.n_peer_properties,
-            window: row.cal_window as CalibrationWindow,
-            source: row.calibration_source || '',
-            confidence_low: parseFloat(row.confidence_low) || 0,
-            confidence_high: parseFloat(row.confidence_high) || 0,
-          };
-        }
+          const entries: Record<string, PlatformEntry> = {};
+          for (const row of result.rows) {
+            entries[row.coefficient_name] = {
+              value: parseFloat(row.posterior_value),
+              n_peer_properties: row.n_peer_properties,
+              window: row.cal_window as CalibrationWindow,
+              source: row.calibration_source || '',
+              confidence_low: parseFloat(row.confidence_low) || 0,
+              confidence_high: parseFloat(row.confidence_high) || 0,
+            };
+          }
 
-        // Only use this scope if we have at least 2 coefficients
-        if (Object.keys(entries).length >= 2) {
-          return entries as Record<CoefficientName, PlatformEntry>;
+          // Only use this scope+window if we have at least 2 coefficients
+          if (Object.keys(entries).length >= 2) {
+            return entries as Record<CoefficientName, PlatformEntry>;
+          }
         }
       }
 

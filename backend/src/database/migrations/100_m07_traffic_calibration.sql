@@ -3,11 +3,17 @@
 -- Date: 2026-04-14
 
 -- ============================================================================
--- 1. deal_mode column on deals
+-- 1. deal_mode enum + column on deals
 -- ============================================================================
-ALTER TABLE deals ADD COLUMN IF NOT EXISTS deal_mode TEXT
-  DEFAULT 'STABILIZED'
-  CHECK (deal_mode IN ('STABILIZED', 'LEASE_UP', 'REDEVELOPMENT'));
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'deal_mode_type') THEN
+    CREATE TYPE deal_mode_type AS ENUM ('STABILIZED', 'LEASE_UP', 'REDEVELOPMENT');
+  END IF;
+END $$;
+
+ALTER TABLE deals ADD COLUMN IF NOT EXISTS deal_mode deal_mode_type
+  DEFAULT 'STABILIZED'::deal_mode_type;
 
 -- ============================================================================
 -- 2. traffic_calibration_coefficients
@@ -106,9 +112,9 @@ CREATE INDEX IF NOT EXISTS idx_rrs_snapshot_date ON rent_roll_snapshots (snapsho
 CREATE INDEX IF NOT EXISTS idx_rrs_status ON rent_roll_snapshots (status);
 
 -- ============================================================================
--- 5. lease_events
+-- 5. leasing_events (canonical table name per §3.2)
 -- ============================================================================
-CREATE TABLE IF NOT EXISTS lease_events (
+CREATE TABLE IF NOT EXISTS leasing_events (
   id                BIGSERIAL PRIMARY KEY,
   snapshot_id       BIGINT NOT NULL REFERENCES rent_roll_snapshots(id) ON DELETE CASCADE,
   deal_id           TEXT NOT NULL,
@@ -137,10 +143,10 @@ CREATE TABLE IF NOT EXISTS lease_events (
   created_at        TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_le_snapshot_id ON lease_events (snapshot_id);
-CREATE INDEX IF NOT EXISTS idx_le_deal_id ON lease_events (deal_id);
-CREATE INDEX IF NOT EXISTS idx_le_lease_start ON lease_events (lease_start);
-CREATE INDEX IF NOT EXISTS idx_le_unit_type ON lease_events (unit_type);
+CREATE INDEX IF NOT EXISTS idx_le_snapshot_id ON leasing_events (snapshot_id);
+CREATE INDEX IF NOT EXISTS idx_le_deal_id ON leasing_events (deal_id);
+CREATE INDEX IF NOT EXISTS idx_le_lease_start ON leasing_events (lease_start);
+CREATE INDEX IF NOT EXISTS idx_le_unit_type ON leasing_events (unit_type);
 
 -- ============================================================================
 -- 6. traffic_weight_config
@@ -175,10 +181,12 @@ FROM traffic_calibration_coefficients
 ORDER BY coefficient_name, scope_level, submarket_id, property_class, vintage_band, cal_window, updated_at DESC;
 
 -- ============================================================================
--- 8. Compatibility aliases
---    leasing_events → alias for lease_events (required by spec §3.2 naming).
---    NOTE: traffic_calibration_factors already exists as a separate table
---    (factor_type / factor_key / multiplier schema) so no alias is needed.
+-- 8. Backward-compat alias
+--    lease_events view → aliases leasing_events table so any code that still
+--    references the old name continues to work.
+--    NOTE: traffic_calibration_factors is a pre-existing table with a different
+--    schema (factor_type/multiplier); our Bayesian stack uses
+--    traffic_calibration_coefficients (a separate table).
 -- ============================================================================
-CREATE OR REPLACE VIEW leasing_events AS
-  SELECT * FROM lease_events;
+CREATE OR REPLACE VIEW lease_events AS
+  SELECT * FROM leasing_events;

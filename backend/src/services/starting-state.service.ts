@@ -30,7 +30,10 @@ export class StartingStateService {
   /**
    * Main entry: resolve the starting state for a deal.
    */
-  async resolveStartingState(dealId: string): Promise<StartingState> {
+  async resolveStartingState(dealId: string | null): Promise<StartingState> {
+    if (!dealId) {
+      return this.defaultLeaseUpState();
+    }
     // Load deal metadata
     const dealResult = await this.pool.query<any>(`
       SELECT d.id, d.deal_mode, d.target_units, d.deal_data, d.property_data,
