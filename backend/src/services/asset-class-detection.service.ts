@@ -339,19 +339,24 @@ function buildAlternates(
       alts.push({ key: 'mf_value_add_standard', fit: 0.35, reason: 'If physical condition better than financials suggest' });
     } else if (primaryKey === 'mf_core') {
       alts.push({ key: 'mf_core_plus', fit: 0.55, reason: 'If modest upgrades yield rent lift beyond current modeling' });
+      alts.push({ key: 'mf_value_add_standard', fit: 0.35, reason: 'If a capital event or occupancy decline changes return profile' });
     } else if (primaryKey === 'mf_bts_ground_up') {
-      alts.push({ key: 'mf_value_add_standard', fit: 0.45, reason: 'If entitlement risk or capital constraints prefer renovation' });
+      alts.push({ key: 'mf_value_add_standard', fit: 0.45, reason: 'If entitlement risk or capital constraints prefer acquisition + renovation' });
+      alts.push({ key: 'mf_lease_up', fit: 0.30, reason: 'If a partially delivered lease-up project exists in the submarket' });
     } else if (primaryKey === 'mf_lease_up') {
-      alts.push({ key: 'mf_value_add_standard', fit: 0.50, reason: 'If property requires physical improvements beyond lease-up' });
+      alts.push({ key: 'mf_value_add_standard', fit: 0.50, reason: 'If property requires physical improvements beyond stabilization' });
+      alts.push({ key: 'mf_distressed', fit: 0.30, reason: 'If lease-up velocity stalls and occupancy falls below 75%' });
     }
   } else if (assetClass === 'sfr') {
     if (primaryKey === 'sfr_fix_flip') {
-      alts.push({ key: 'sfr_brrrr', fit: 0.55, reason: 'If rental comps support DSCR > 1.25 post-refi' });
+      alts.push({ key: 'sfr_brrrr', fit: 0.55, reason: 'If rental comps support DSCR > 1.25 post-refi — convert to hold instead of sell' });
       alts.push({ key: 'sfr_hold', fit: 0.40, reason: 'If resale market is soft but rental demand is strong' });
     } else if (primaryKey === 'sfr_brrrr') {
-      alts.push({ key: 'sfr_fix_flip', fit: 0.50, reason: 'If refi-out LTV does not clear BRRRR basis' });
+      alts.push({ key: 'sfr_fix_flip', fit: 0.50, reason: 'If refi-out LTV does not clear BRRRR basis — sell at ARV instead' });
+      alts.push({ key: 'sfr_hold', fit: 0.35, reason: 'If refi rates are unfavorable — hold and refinance when rates normalize' });
     } else if (primaryKey === 'sfr_hold') {
-      alts.push({ key: 'sfr_mtr', fit: 0.45, reason: 'If corporate/medical demand in submarket is strong' });
+      alts.push({ key: 'sfr_mtr', fit: 0.45, reason: 'If corporate/medical demand in submarket supports mid-term rental premium' });
+      alts.push({ key: 'sfr_str', fit: 0.35, reason: 'If STR permitted and vacation/transient demand present in submarket' });
     }
   } else if (assetClass === 'retail') {
     if (primaryKey === 'retail_value_add') {
@@ -380,16 +385,19 @@ function buildAlternates(
     }
   } else if (assetClass === 'industrial') {
     if (primaryKey === 'industrial_last_mile') {
-      alts.push({ key: 'industrial_core', fit: 0.50, reason: 'If lease velocity is slow — stabilize as core industrial and hold' });
+      alts.push({ key: 'industrial_core', fit: 0.50, reason: 'If lease velocity is slow — stabilize as core industrial and hold for yield' });
       alts.push({ key: 'retail_last_mile', fit: 0.30, reason: 'If asset is better suited to retail-adjacent last-mile than pure logistics' });
     } else if (primaryKey === 'industrial_core') {
-      alts.push({ key: 'industrial_last_mile', fit: 0.55, reason: 'If clear height ≥ 24ft and truck court access confirmed — upgrade to last-mile premium' });
+      alts.push({ key: 'industrial_last_mile', fit: 0.55, reason: 'If clear height ≥ 24ft and truck court access confirmed — upgrade to last-mile premium pricing' });
+      alts.push({ key: 'retail_last_mile', fit: 0.30, reason: 'If population density > 250K within 10mi and retail-compatible zoning exists — convert portion to retail-adjacent use' });
     }
   } else if (assetClass === 'hospitality') {
     if (primaryKey === 'hospitality_reflag') {
       alts.push({ key: 'hospitality_extended_stay', fit: 0.45, reason: 'If extended-stay demand drivers present — corporate HQ, medical center, or military within 3mi' });
+      alts.push({ key: 'mf_bts_ground_up', fit: 0.25, reason: 'If franchise not available and layout allows hotel-to-residential adaptive reuse — ground-up residential conversion' });
     } else if (primaryKey === 'hospitality_extended_stay') {
-      alts.push({ key: 'hospitality_reflag', fit: 0.50, reason: 'If franchise opportunity available and ADR gap to flag standard > 15%' });
+      alts.push({ key: 'hospitality_reflag', fit: 0.50, reason: 'If franchise opportunity available and ADR gap to flag standard > 15% — reflag outperforms extended-stay returns' });
+      alts.push({ key: 'mf_bts_ground_up', fit: 0.20, reason: 'If extended-stay demand does not materialize — evaluate hotel-to-residential conversion' });
     }
   }
 
@@ -617,10 +625,38 @@ export function detectAssetClassAndDealType(deal: Record<string, any>): Detectio
   const dscr        = Number(d.dscr || 0);
   const capitalGap  = Number(d.capital_gap_per_unit || d.capex_per_unit || deal.tdc_per_unit || 0);
 
+  // ── User override resolution ───────────────────────────────────────────────
+  // When the user has confirmed an override classification (PATCH endpoint),
+  // we apply it to ALL downstream scoring, adapter selection, and plan assembly.
+  // The auto-detection result is still computed and surfaced for transparency,
+  // but the override assetClass takes precedence in the output and scoring flow.
+  const m08Detection = d.m08_detection || {};
+  const userConfirmedOverride: boolean = m08Detection.user_confirmed === true;
+  const rawOverride: string | undefined = m08Detection.user_override_classification || undefined;
+  const validAssetClasses: AssetClass[] = ['multifamily', 'sfr', 'retail', 'office', 'industrial', 'hospitality', 'other'];
+  const overrideAssetClass: AssetClass | undefined =
+    userConfirmedOverride && rawOverride && validAssetClasses.includes(rawOverride as AssetClass)
+      ? (rawOverride as AssetClass)
+      : undefined;
+
   const ac = detectAssetClass(deal);
-  const dt = detectDealType(ac.assetClass, deal);
+
+  // Effective asset class: override takes full precedence when user has confirmed.
+  const effectiveAssetClass: AssetClass = overrideAssetClass ?? ac.assetClass;
+
+  // Re-run deal-type detection with the effective (possibly overridden) asset class
+  // so that sub-strategy selection uses the correct class.
+  const dt = detectDealType(effectiveAssetClass, deal);
 
   const allSignals = [...ac.signals, ...dt.signals];
+  if (overrideAssetClass) {
+    allSignals.push({
+      signal: 'user_override',
+      value: overrideAssetClass,
+      threshold: `auto-detected: ${ac.assetClass} → user override: ${overrideAssetClass}`,
+      contribution: 0, // override is not a waterfall component
+    });
+  }
 
   // Stage 1 waterfall confidence drives requiresUserConfirmation per spec.
   // The blended combined metric (ac + dt) is stored as dealTypeConfidence for
@@ -629,7 +665,7 @@ export function detectAssetClassAndDealType(deal: Record<string, any>): Detectio
     Math.min(0.98, ac.confidence * 0.40 + dt.confidence * 0.60).toFixed(2)
   );
 
-  const alternates = buildAlternates(ac.assetClass, dt.detectedSubStrategy, {
+  const alternates = buildAlternates(effectiveAssetClass, dt.detectedSubStrategy, {
     lossToLease,
     occupancy,
     dscr,
@@ -637,11 +673,12 @@ export function detectAssetClassAndDealType(deal: Record<string, any>): Detectio
   });
 
   return {
-    assetClass: ac.assetClass,
+    // Use effective asset class so scoring/adapter/plan all use override when active
+    assetClass: effectiveAssetClass,
     subType: ac.subType,
     detectedDealType: dt.detectedDealType,
     detectedSubStrategy: dt.detectedSubStrategy,
-    confidence: ac.confidence,              // Stage 1 waterfall only
+    confidence: ac.confidence,              // Stage 1 waterfall only — never overridden
     requiresUserConfirmation: ac.confidence < 0.70,  // strictly waterfall-driven
     confidenceBreakdown: ac.confidenceBreakdown,
     dealTypeConfidence,                     // blended metadata (display/ranking)
@@ -650,6 +687,6 @@ export function detectAssetClassAndDealType(deal: Record<string, any>): Detectio
     userConfirmed: ac.userConfirmed,
     // Persisted override: written by PATCH /deals/:dealId/detection-confirmation.
     // undefined when user has not overridden detection.
-    userOverrideClassification: (deal.deal_data?.m08_detection?.user_override_classification) ?? undefined,
+    userOverrideClassification: rawOverride ?? undefined,
   };
 }

@@ -298,23 +298,72 @@ function evaluateGate(key: string, deal: Record<string, any>): GateResult {
       break;
 
     // ── SFR ───────────────────────────────────────────────────────────────────
-    case 'sfr_fix_flip':
-      // Gate: ARV gap > 25% (estimated from capital gap and occupancy), DOM < 45d, condition poor
-      if (data.condition === 'poor' || capitalGap > 15_000) {
-        checks.push('✓ Property condition and capital gap support fix-flip scope');
+    case 'sfr_fix_flip': {
+      const arvEst   = Number(data.arv_estimate || data.after_repair_value || 0);
+      const acqPrice = Number(data.acquisition_price || data.purchase_price || deal.budget || 0);
+      const dom      = Number(data.days_on_market || data.dom || 0);
+      const schoolRating = Number(data.school_rating || 0);
+      // Hard gate: ARV margin < 18% → not viable as a flip
+      if (arvEst > 0 && acqPrice > 0) {
+        const arvMargin = (arvEst - acqPrice) / arvEst;
+        if (arvMargin < 0.18) {
+          checks.push(`✗ ARV margin ${(arvMargin * 100).toFixed(1)}% — below 18% flip viability threshold (ARV $${Math.round(arvEst/1000)}K, Acq $${Math.round(acqPrice/1000)}K); flip will not pencil net of rehab, holding, and closing costs`);
+          status = 'disqualified';
+        } else {
+          checks.push(`✓ ARV margin ${(arvMargin * 100).toFixed(1)}% — above 18% minimum flip threshold`);
+        }
       } else {
-        checks.push('⚠ Condition not confirmed as needing rehab — flip margin may be insufficient'); status = 'marginal';
+        checks.push('⚠ ARV analysis required: confirm ARV−(Acq+Rehab+Hold+Sell) > 18% before committing');
       }
-      checks.push('⚠ ARV analysis required: confirm ARV−(Acq+Rehab+Hold+Sell) > 18% before committing');
+      // Hard gate: DOM > 45d → market too slow for flip velocity
+      if (dom > 0 && dom > 45) {
+        checks.push(`✗ DOM ${dom}d — market absorption too slow for fix-flip (>45d threshold); inventory building risk`);
+        status = 'disqualified';
+      } else if (dom > 0) {
+        checks.push(`✓ DOM ${dom}d — within 45d flip absorption threshold`);
+      }
+      // Hard gate: school rating < 5 → limited buyer demand
+      if (schoolRating > 0 && schoolRating < 5) {
+        checks.push(`✗ School rating ${schoolRating}/10 — below 5.0 threshold; flips in sub-5 school zones face severe buyer pool constraints`);
+        status = 'disqualified';
+      } else if (schoolRating >= 5) {
+        checks.push(`✓ School rating ${schoolRating}/10 — buyer demand supported`);
+      }
+      if (status !== 'disqualified') {
+        if (data.condition === 'poor' || capitalGap > 15_000) {
+          checks.push('✓ Property condition and capital gap support fix-flip scope');
+        } else {
+          checks.push('⚠ Condition not confirmed as needing rehab — flip margin may be insufficient'); status = 'marginal';
+        }
+      }
       break;
+    }
 
-    case 'sfr_brrrr':
-      checks.push('⚠ BRRRR gate: verify ARV × 75% LTV clears total invested basis');
-      checks.push('⚠ BRRRR gate: confirm rental comp supports DSCR > 1.25x post-refi at current rates');
-      if (data.refi_rate_check === false) {
-        checks.push('✗ Cash-out refi rates above 8% — BRRRR refi-out infeasible'); status = 'disqualified';
+    case 'sfr_brrrr': {
+      const arvEst   = Number(data.arv_estimate || data.after_repair_value || 0);
+      const acqPrice = Number(data.acquisition_price || data.purchase_price || deal.budget || 0);
+      const rehabCost = Number(data.rehab_cost || data.renovation_cost || capitalGap || 0);
+      const totalBasis = acqPrice + rehabCost;
+      // Hard gate: refi-out LTV > 75% ARV → equity not recycled → BRRRR thesis fails
+      if (arvEst > 0 && totalBasis > 0) {
+        const ltv = totalBasis / arvEst;
+        if (ltv > 0.75) {
+          checks.push(`✗ Refi-out LTV ${(ltv * 100).toFixed(1)}% at 75% ARV — total basis ($${Math.round(totalBasis/1000)}K) exceeds 75% of ARV ($${Math.round(arvEst * 0.75/1000)}K); BRRRR does not recycle equity`);
+          status = 'disqualified';
+        } else {
+          checks.push(`✓ Refi-out LTV ${(ltv * 100).toFixed(1)}% — basis clears 75% ARV; BRRRR equity recycling viable`);
+        }
+      } else {
+        checks.push('⚠ BRRRR gate: verify ARV × 75% LTV clears total invested basis');
+      }
+      if (status !== 'disqualified') {
+        checks.push('⚠ BRRRR gate: confirm rental comp supports DSCR > 1.25x post-refi at current rates');
+        if (data.refi_rate_check === false) {
+          checks.push('✗ Cash-out refi rates above 8% — BRRRR refi-out infeasible'); status = 'disqualified';
+        }
       }
       break;
+    }
 
     case 'sfr_btr':
       if (parcelCount >= 50 || deal.project_type === 'development') {
@@ -381,16 +430,35 @@ function evaluateGate(key: string, deal: Record<string, any>): GateResult {
       break;
 
     // ── Office ────────────────────────────────────────────────────────────────
-    case 'office_adaptive_reuse':
+    case 'office_adaptive_reuse': {
+      const floorPlateSf = Number(data.floor_plate_sf || 0);
+      const zoningAllows = data.residential_zoning_allowed; // explicit flag from zoning profile
+      // Hard gate: vacancy < 20% — building economically viable as office; reuse doesn't pencil
       if (vacancy > 0 && vacancy < 0.20) {
         checks.push(`✗ Vacancy ${Math.round(vacancy * 100)}% — building still economically viable as office; adaptive reuse does not pencil at <20% vacancy`); status = 'disqualified';
       } else if (vacancy > 0.30) {
         checks.push('✓ Vacancy > 30% confirms adaptive reuse candidate');
       } else {
-        checks.push('⚠ Vacancy below 30% — adaptive reuse economics may not pencil'); status = 'marginal';
+        checks.push('⚠ Vacancy 20-30% — adaptive reuse economics marginal'); status = 'marginal';
       }
-      checks.push('⚠ Adaptive reuse gate: floor plate < 12K SF ideal; confirm window mullion spacing and zoning');
+      // Hard gate: floor plate > 25K SF — too deep for residential daylighting
+      if (status !== 'disqualified' && floorPlateSf > 25_000) {
+        checks.push(`✗ Floor plate ${floorPlateSf.toLocaleString()} SF — exceeds 25K SF daylighting limit; residential adaptive reuse infeasible without demolition of interior`); status = 'disqualified';
+      } else if (floorPlateSf > 0 && floorPlateSf <= 12_000) {
+        checks.push(`✓ Floor plate ${floorPlateSf.toLocaleString()} SF — within residential conversion range (<12K SF ideal)`);
+      } else if (floorPlateSf > 12_000) {
+        checks.push(`⚠ Floor plate ${floorPlateSf.toLocaleString()} SF — above 12K SF ideal; mullion spacing and zoning critical`); status = 'marginal';
+      }
+      // Hard gate: zoning does not allow residential
+      if (status !== 'disqualified' && zoningAllows === false) {
+        checks.push('✗ Residential zoning not permitted — adaptive reuse to residential infeasible without rezoning'); status = 'disqualified';
+      } else if (zoningAllows === true) {
+        checks.push('✓ Residential zoning permitted — adaptive reuse zoning gate cleared');
+      } else if (status !== 'disqualified') {
+        checks.push('⚠ Residential zoning status not confirmed — verify zoning ordinance before proceeding');
+      }
       break;
+    }
 
     case 'office_medical':
       if (/medical|health/i.test(data.tenant_mix || '')) {
@@ -409,9 +477,12 @@ function evaluateGate(key: string, deal: Record<string, any>): GateResult {
       break;
 
     // ── Industrial ────────────────────────────────────────────────────────────
-    case 'industrial_last_mile':
+    case 'industrial_last_mile': {
+      const popWithin10mi = Number(data.population_within_10mi || 0);
+      const truckCourtDepth = Number(data.truck_court_depth_ft || 0);
+      // Hard gate: clear height < 18ft — fundamentally incompatible with industrial use
       if (clearHeight > 0 && clearHeight < 18) {
-        checks.push(`✗ Clear height ${clearHeight}ft — fundamentally incompatible with industrial use (minimum 18ft); adaptive reuse only`); status = 'disqualified';
+        checks.push(`✗ Clear height ${clearHeight}ft — below 18ft minimum; fundamentally incompatible with last-mile logistics; adaptive reuse only`); status = 'disqualified';
       } else if (clearHeight >= 24) {
         checks.push(`✓ Clear height ${clearHeight}ft — last-mile eligible (≥24ft)`);
       } else if (clearHeight > 0) {
@@ -419,10 +490,22 @@ function evaluateGate(key: string, deal: Record<string, any>): GateResult {
       } else {
         checks.push('⚠ Clear height not confirmed — last-mile suitability unknown'); status = 'marginal';
       }
+      // Hard gate: population < 50K within 10mi — insufficient consumer density
+      if (status !== 'disqualified' && popWithin10mi > 0 && popWithin10mi < 50_000) {
+        checks.push(`✗ Population ${popWithin10mi.toLocaleString()} within 10mi — below 50K minimum; last-mile logistics not viable at this consumer density`); status = 'disqualified';
+      } else if (popWithin10mi >= 250_000) {
+        checks.push(`✓ Population ${popWithin10mi.toLocaleString()} within 10mi — last-mile density requirement met`);
+      } else if (popWithin10mi > 0) {
+        checks.push(`⚠ Population ${popWithin10mi.toLocaleString()} within 10mi — below 250K optimal threshold`); status = 'marginal';
+      }
+      // Truck court access advisory
       if (status !== 'disqualified') {
-        checks.push('⚠ Last-mile gate: confirm truck court access and population > 250K within 10mi');
+        if (truckCourtDepth >= 130) checks.push(`✓ Truck court depth ${truckCourtDepth}ft — adequate for last-mile operations`);
+        else if (truckCourtDepth > 0) { checks.push(`⚠ Truck court depth ${truckCourtDepth}ft — below 130ft standard; confirm access`); status = 'marginal'; }
+        else checks.push('⚠ Truck court access not confirmed — verify dock configuration and access lanes');
       }
       break;
+    }
 
     case 'industrial_core':
       if (vacancy > 0.10) { checks.push('⚠ Vacancy > 10% — industrial core stability limited'); status = 'marginal'; }
