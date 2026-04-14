@@ -17,6 +17,7 @@ import { ReturnsTab } from './financial-engine/ReturnsTab';
 import { SensitivityTab } from './financial-engine/SensitivityTab';
 import { DecisionTab } from './financial-engine/DecisionTab';
 import { CompareTab } from './financial-engine/CompareTab';
+import { CostSheetTab } from '../../components/deal/sections/CostSheetTab';
 import { exportToExcel } from './financial-engine/excel-export';
 import type { ModelAssumptions, ModelResults, ModelVersion, DealType, F9DealFinancials } from './financial-engine/types';
 import { fmt$, fmtPct, fmtX } from './financial-engine/types';
@@ -37,6 +38,7 @@ const TAB_LABELS = [
   '✓ DECISION',
   '⇔ COMPARE',
   '% RETURNS',
+  '₵ COST SHEET',
 ];
 
 interface FinancialEnginePageProps {
@@ -598,6 +600,15 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
           {activeTab === 9  && <BtTabWrapper><DecisionTab {...tabProps} /></BtTabWrapper>}
           {activeTab === 10 && <BtTabWrapper><CompareTab {...tabProps} /></BtTabWrapper>}
           {activeTab === 11 && <BtTabWrapper><ReturnsTab {...tabProps} /></BtTabWrapper>}
+          {activeTab === 12 && (
+            <div style={{ height: '100%', overflow: 'hidden', padding: 16, display: 'flex', flexDirection: 'column' }}>
+              <CostSheetTab
+                dealId={tabProps.dealId}
+                deal={tabProps.deal as Record<string, any> | undefined}
+                assumptions={tabProps.assumptions as Record<string, any> | null | undefined}
+              />
+            </div>
+          )}
         </div>
       </div>
 
