@@ -1999,7 +1999,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
                     setRefi(r => ({ ...r, triggerYear: yr }));
                     patchDebt(activeLoan.id, 'refiTriggerYear', yr);
                   }}
-                  style={{ background: BT.bg.input, border: `1px solid ${BT.border.medium}`, color: BT.text.white, fontFamily: MONO, fontSize: 9, padding: '2px 6px', borderRadius: 2, colorScheme: 'dark' }}
+                  style={{ background: BT.bg.panel, border: `1px solid ${BT.border.medium}`, color: BT.text.white, fontFamily: MONO, fontSize: 9, padding: '2px 6px', borderRadius: 2, colorScheme: 'dark' }}
                 >
                   {Array.from({ length: Math.min(effTerm, 10) }, (_, i) => i + 1).map(yr => (
                     <option key={yr} value={yr}>Y{yr}</option>
@@ -2013,7 +2013,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
                     setRefi(r => ({ ...r, newLoanType: lt }));
                     patchDebtStr(activeLoan.id, 'refiNewLoanType', lt);
                   }}
-                  style={{ background: BT.bg.input, border: `1px solid ${BT.border.medium}`, color: BT.text.white, fontFamily: MONO, fontSize: 9, padding: '2px 6px', borderRadius: 2, colorScheme: 'dark' }}
+                  style={{ background: BT.bg.panel, border: `1px solid ${BT.border.medium}`, color: BT.text.white, fontFamily: MONO, fontSize: 9, padding: '2px 6px', borderRadius: 2, colorScheme: 'dark' }}
                 >
                   {(Object.keys(LOAN_PRESETS) as LoanPresetKey[]).map(k => <option key={k} value={k}>{k}</option>)}
                 </select>
