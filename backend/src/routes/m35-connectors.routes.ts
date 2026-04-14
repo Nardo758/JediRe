@@ -21,6 +21,7 @@ import {
   seedAtlantaBacktest,
   type ConnectorRunStats,
 } from '../services/m35-event-connectors.service';
+import { promoteFromDraftQueue } from '../services/m35-events.service';
 
 const router = Router();
 
@@ -209,43 +210,26 @@ router.get('/draft-events', async (req: Request, res: Response) => {
 });
 
 // ─── POST /draft-events/:id/promote ──────────────────────────────────────────
-// Promote a draft event into the live M35 events table (once M35 DB ships in Task #184,
-// this route will INSERT into m35_events; for now it marks status = PROMOTED).
+// Promote a draft event into the live key_events table via the M35 events service.
 
 router.post('/draft-events/:id/promote', async (req: Request, res: Response) => {
-  const pool = getPool();
   const { id } = req.params;
-  const { overrides } = req.body ?? {};    // analyst can patch fields before promoting
+  const { overrides } = req.body ?? {};
 
   try {
-    const draftResult = await pool.query(
-      `SELECT * FROM m35_draft_events WHERE id = $1`, [id]
+    const event = await promoteFromDraftQueue(
+      id,
+      overrides ?? {},
+      (req as any).user?.email
     );
-    if (!draftResult.rowCount) {
-      res.status(404).json({ error: 'Draft event not found' });
-      return;
-    }
-    const draft = draftResult.rows[0];
-
-    // Apply analyst overrides (name, category, scope, magnitude, etc.)
-    const patched = { ...draft, ...(overrides ?? {}) };
-
-    // TODO (Task #184): INSERT INTO m35_events once the table exists.
-    // The connector inserts into m35_draft_events; Task #184's ingestion
-    // API will read from here and promote confirmed events.
-
-    await pool.query(
-      `UPDATE m35_draft_events
-         SET status = 'PROMOTED', reviewed_at = now(), reviewed_by = $2,
-             name = $3, category = $4, scope = $5, estimated_magnitude = $6
-       WHERE id = $1`,
-      [id, (req as any).user?.email ?? 'admin', patched.name, patched.category, patched.scope, patched.estimated_magnitude]
-    );
-
-    res.json({ ok: true, promoted: patched });
+    res.status(201).json({ ok: true, event });
   } catch (err: any) {
     logger.error('[M35 Connectors] promote error', err);
-    res.status(500).json({ error: err.message });
+    if (err.message.includes('not found')) {
+      res.status(404).json({ error: err.message });
+    } else {
+      res.status(500).json({ error: err.message });
+    }
   }
 });
 

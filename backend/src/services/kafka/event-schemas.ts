@@ -416,6 +416,61 @@ export const KAFKA_TOPICS = {
   USER_ALERTS: 'alerts.user.generated',
   TRAFFIC_CALIBRATION: 'traffic.calibration.updated',
   DLQ: 'dlq.failed.events',
+  // M35 Event Impact Engine
+  M35_EVENT_INGESTED:      'event.ingested',
+  M35_EVENT_STATUS_CHANGED: 'event.status_changed',
+  M35_EVENT_VERIFIED:      'event.verified',
+  M35_IMPACT_MEASURED:     'event.impact_measured',
+  M35_PLAYBOOK_UPDATED:    'playbook.updated',
+  M35_FORECAST_DIVERGED:   'forecast.diverged',
 } as const;
+
+// ─── M35 Event Impact Engine — Kafka Message Types ────────────────────────────
+
+export type M35EventCategory =
+  | 'EMPLOYMENT' | 'INFRASTRUCTURE' | 'REGULATORY_POLICY'
+  | 'MARKET_STRUCTURE' | 'MACRO_DEMOGRAPHIC' | 'DISASTER_DISRUPTION'
+  | 'TECHNOLOGY_INDUSTRY';
+
+export type M35EventScope = 'MSA' | 'SUBMARKET' | 'PROPERTY' | 'STATE' | 'NATIONAL';
+
+export type M35EventStatus =
+  | 'draft' | 'announced' | 'in_progress' | 'materialized'
+  | 'delayed' | 'cancelled' | 'reversed';
+
+export interface M35EventIngestedMessage extends BaseEvent {
+  eventType: 'M35_EVENT_INGESTED';
+  eventId: string;         // key_events.id
+  msaId: string;
+  submarketId?: string;
+  category: M35EventCategory;
+  subtype: string;
+  scope: M35EventScope;
+  name: string;
+  announcedDate?: string;
+  materializationDate?: string;
+  magnitudeScore: number;
+  confidence: number;
+  ingestionSource: string;
+}
+
+export interface M35EventStatusChangedMessage extends BaseEvent {
+  eventType: 'M35_EVENT_STATUS_CHANGED';
+  eventId: string;
+  msaId: string;
+  fromStatus: M35EventStatus;
+  toStatus: M35EventStatus;
+  reason?: string;
+  changedBy?: string;
+}
+
+export interface M35EventVerifiedMessage extends BaseEvent {
+  eventType: 'M35_EVENT_VERIFIED';
+  eventId: string;
+  msaId: string;
+  verifiedBy: string;
+  verifiedAt: string;
+  confidence: number;
+}
 
 export type KafkaTopic = typeof KAFKA_TOPICS[keyof typeof KAFKA_TOPICS];

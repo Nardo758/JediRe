@@ -5,8 +5,9 @@
  */
 
 import { logger } from '../utils/logger';
-import { query } from '../database/connection';
+import { query, getPool } from '../database/connection';
 import axios from 'axios';
+import { createEvent, type M35EventCategory, type M35EventScope } from './m35-events.service';
 
 export interface ExtractedNewsEvent {
   // Event details
@@ -383,6 +384,12 @@ export async function processEmailForNews(
     // Link email to news item
     await linkEmailToNews(emailId, newsItemId);
 
+    // ── M35 Event Impact Engine classifier ────────────────────────────────────
+    // Run async (non-blocking); failures do not affect the news pipeline result.
+    void classifyNewsEventForM35(newsEvent, newsItemId, emailId, userId).catch((err: Error) =>
+      logger.warn('[M35 Classifier] non-fatal error', { err: err.message, newsItemId })
+    );
+
     return {
       success: true,
       newsItemId,
@@ -393,5 +400,104 @@ export async function processEmailForNews(
       success: false,
       reason: 'Internal error: ' + (error as Error).message,
     };
+  }
+}
+
+// ─── M35 Event Impact Engine — Taxonomy Classifier ───────────────────────────
+// Maps M06 eventType strings → M35 category.  Runs after news_item is stored.
+// High confidence (≥0.6): auto-creates a key_event (status=draft).
+// Medium confidence (0.3–0.59): logs to event_ingestion_log for analyst review.
+
+const M06_TO_M35_CATEGORY: Record<string, M35EventCategory> = {
+  employment:     'EMPLOYMENT',
+  jobs:           'EMPLOYMENT',
+  headquarters:   'EMPLOYMENT',
+  layoff:         'EMPLOYMENT',
+  infrastructure: 'INFRASTRUCTURE',
+  transit:        'INFRASTRUCTURE',
+  development:    'INFRASTRUCTURE',
+  stadium:        'INFRASTRUCTURE',
+  regulation:     'REGULATORY_POLICY',
+  zoning:         'REGULATORY_POLICY',
+  policy:         'REGULATORY_POLICY',
+  incentive:      'REGULATORY_POLICY',
+  transaction:    'MARKET_STRUCTURE',
+  acquisition:    'MARKET_STRUCTURE',
+  portfolio:      'MARKET_STRUCTURE',
+  supply:         'MARKET_STRUCTURE',
+  demographic:    'MACRO_DEMOGRAPHIC',
+  migration:      'MACRO_DEMOGRAPHIC',
+  disaster:       'DISASTER_DISRUPTION',
+  flood:          'DISASTER_DISRUPTION',
+  wildfire:       'DISASTER_DISRUPTION',
+  hurricane:      'DISASTER_DISRUPTION',
+  technology:     'TECHNOLOGY_INDUSTRY',
+  biotech:        'TECHNOLOGY_INDUSTRY',
+  'data center':  'TECHNOLOGY_INDUSTRY',
+  manufacturing:  'TECHNOLOGY_INDUSTRY',
+};
+
+function inferM35Category(eventType: string): M35EventCategory | null {
+  const lower = eventType.toLowerCase();
+  for (const [key, category] of Object.entries(M06_TO_M35_CATEGORY)) {
+    if (lower.includes(key)) return category;
+  }
+  return null;
+}
+
+async function classifyNewsEventForM35(
+  newsEvent: ExtractedNewsEvent,
+  newsItemId: string,
+  emailId: string,
+  userId: string
+): Promise<void> {
+  const category = inferM35Category(newsEvent.eventType);
+  if (!category) {
+    logger.debug('[M35 Classifier] No M35 category match', { eventType: newsEvent.eventType, newsItemId });
+    return;
+  }
+
+  const confidence = newsEvent.confidence ?? 0;
+  const pool = getPool();
+
+  if (confidence >= 0.6) {
+    // Auto-create a draft key_event
+    const event = await createEvent({
+      category,
+      name: newsEvent.title,
+      description: newsEvent.summary,
+      scope: 'MSA' as M35EventScope,
+      msaName: newsEvent.city ? `${newsEvent.city}, ${newsEvent.state ?? ''}`.trim() : undefined,
+      magnitudeScore: Math.round((newsEvent.impactScore ?? 50) / 20), // 0-100 → 0-5
+      confidence,
+      ingestionSource: 'email_m06',
+      sourceUrl: undefined,
+      newsItemIds: [newsItemId],
+      createdBy: userId,
+      lat: undefined,
+      lng: undefined,
+    });
+    logger.info('[M35 Classifier] Auto-created draft key_event from email', {
+      eventId: event.id, newsItemId, category, confidence,
+    });
+    return;
+  }
+
+  if (confidence >= 0.3) {
+    // Log for analyst review
+    await pool.query(
+      `INSERT INTO event_ingestion_log
+         (source_type, source_record_id, raw_payload, inferred_category, confidence, status, error_message)
+       VALUES ('email_m06', $1, $2, $3, $4, 'pending_review', 'Medium confidence — analyst review required')`,
+      [
+        newsItemId,
+        JSON.stringify({ emailId, newsItemId, eventType: newsEvent.eventType, title: newsEvent.title }),
+        category,
+        confidence,
+      ]
+    );
+    logger.info('[M35 Classifier] Logged to ingestion queue (medium confidence)', {
+      newsItemId, category, confidence,
+    });
   }
 }
