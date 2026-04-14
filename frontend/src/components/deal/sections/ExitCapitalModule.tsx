@@ -597,49 +597,60 @@ interface ExitStrategyCardsProps {
   options: ExitStrategyOption[];
   selectedStrategy: string;
   onSelectStrategy: (id: string) => void;
-  ret: ExitReturns;
 }
 
-function ExitStrategyCards({ options, selectedStrategy, onSelectStrategy, ret }: ExitStrategyCardsProps) {
+function ExitStrategyCards({ options, selectedStrategy, onSelectStrategy }: ExitStrategyCardsProps) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${options.length}, 1fr)`, gap: 12 }}>
-      {options.map((opt) => {
-        const isSelected = selectedStrategy === opt.id;
-        return (
-          <div
-            key={opt.id}
-            onClick={() => onSelectStrategy(opt.id)}
-            style={{
-              background: isSelected ? 'rgba(104,211,145,0.08)' : 'rgba(255,255,255,0.025)',
-              border: isSelected ? '1px solid rgba(104,211,145,0.3)' : '1px solid rgba(255,255,255,0.06)',
-              borderRadius: 8,
-              padding: '16px 18px',
-              cursor: 'pointer',
-            }}
-          >
-            {isSelected && (
-              <div style={{ fontSize: 9, fontWeight: 700, color: '#68D391', fontFamily: "'JetBrains Mono'", letterSpacing: 1, marginBottom: 6 }}>
-                ✓ ACTIVE — debt terms reflected in banner above
+    <div>
+      <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'", marginBottom: 8 }}>
+        EXIT STRATEGY — selecting changes debt structure in banner above
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${options.length}, 1fr)`, gap: 12 }}>
+        {options.map((opt) => {
+          const isSelected = selectedStrategy === opt.id;
+          const preset = STACK_PRESETS[opt.id];
+          return (
+            <div
+              key={opt.id}
+              onClick={() => onSelectStrategy(opt.id)}
+              style={{
+                background: isSelected ? 'rgba(104,211,145,0.08)' : 'rgba(255,255,255,0.025)',
+                border: isSelected ? '1px solid rgba(104,211,145,0.3)' : '1px solid rgba(255,255,255,0.06)',
+                borderRadius: 8,
+                padding: '14px 16px',
+                cursor: 'pointer',
+              }}
+            >
+              <div style={{ fontSize: 9, fontWeight: 700, color: isSelected ? '#68D391' : 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'", letterSpacing: 1, marginBottom: 5 }}>
+                {isSelected ? '✓ ACTIVE' : 'SELECT'}
               </div>
-            )}
-            <div style={{ fontSize: 13, fontWeight: 700, color: isSelected ? '#68D391' : '#E8E6E1', marginBottom: 4 }}>{opt.label}</div>
-            <div style={{ fontSize: 10, color: 'rgba(232,230,225,0.5)', marginBottom: 10 }}>{opt.desc}</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-              {[
-                { l: 'IRR', v: `${ret.irr.toFixed(1)}%`, c: ret.irr >= 15 ? '#68D391' : '#F6E05E' },
-                { l: 'EM', v: `${ret.em.toFixed(2)}x`, c: '#63B3ED' },
-                { l: 'Exit Cap', v: fmt.pct(ret.exitCap), c: 'rgba(232,230,225,0.5)' },
-                { l: 'Timeline', v: opt.tl, c: '#B794F4' },
-              ].map((m) => (
-                <div key={m.l}>
-                  <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>{m.l}</div>
-                  <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono'", color: m.c }}>{m.v}</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: isSelected ? '#68D391' : '#E8E6E1', marginBottom: 3 }}>{opt.label}</div>
+              <div style={{ fontSize: 10, color: 'rgba(232,230,225,0.5)', marginBottom: 10 }}>{opt.desc}</div>
+              {preset && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {[
+                    { l: 'Loan type', v: preset.sr.type, c: '#63B3ED' },
+                    { l: 'Rate', v: fmt.pct(preset.sr.rate), c: isSelected ? '#68D391' : '#E8E6E1' },
+                    { l: 'LTV', v: `${preset.sr.pct}%`, c: 'rgba(232,230,225,0.7)' },
+                    { l: 'IO period', v: preset.sr.io, c: 'rgba(232,230,225,0.7)' },
+                    { l: 'Term', v: preset.sr.term, c: '#B794F4' },
+                    ...(preset.mz ? [{ l: '+ Mezz', v: fmt.pct(preset.mz.rate), c: '#F6E05E' }] : []),
+                  ].map((m) => (
+                    <div key={m.l} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                      <span style={{ fontSize: 9, color: 'rgba(232,230,225,0.3)', fontFamily: "'JetBrains Mono'" }}>{m.l}</span>
+                      <span style={{ fontSize: 10, fontWeight: 600, fontFamily: "'JetBrains Mono'", color: m.c }}>{m.v}</span>
+                    </div>
+                  ))}
+                  <div style={{ marginTop: 4, paddingTop: 4, borderTop: '1px solid rgba(255,255,255,0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                    <span style={{ fontSize: 9, color: 'rgba(232,230,225,0.3)', fontFamily: "'JetBrains Mono'" }}>Timeline</span>
+                    <span style={{ fontSize: 10, fontWeight: 600, fontFamily: "'JetBrains Mono'", color: '#B794F4' }}>{opt.tl}</span>
+                  </div>
                 </div>
-              ))}
+              )}
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -901,7 +912,7 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
             <RSSBreakdownCards rssData={rssData} />
 
             {/* Exit strategy cards */}
-            <ExitStrategyCards options={exitOptions} selectedStrategy={selectedExitStrategy} onSelectStrategy={setSelectedExitStrategy} ret={ret} />
+            <ExitStrategyCards options={exitOptions} selectedStrategy={selectedExitStrategy} onSelectStrategy={setSelectedExitStrategy} />
 
             {/* F9 cross-link */}
             <div style={{ marginTop: 12, padding: '8px 12px', background: 'rgba(99,179,237,0.06)', border: '1px solid rgba(99,179,237,0.15)', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
