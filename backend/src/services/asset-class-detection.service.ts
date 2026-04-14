@@ -5,15 +5,15 @@
  * "What deal type / sub-strategy should we use?" (see deal-type-detection.service.ts).
  *
  * Implements the spec's 5-input weighted confidence waterfall:
- *   assessor_code_match   × 0.45  ← TODO #M08-AC-01 (DB field not yet available)
+ *   assessor_code_match   × 0.45  ← WIRED (deal_data.assessor_code / property_class_code / county_land_use_code)
  *   zoning_match          × 0.20  ← WIRED (deal_data.zoning_classification)
  *   rent_roll_signal      × 0.15  ← WIRED (unit_count + avg_rent structure)
- *   naics_signal          × 0.10  ← TODO #M08-AC-02 (DB field not yet available)
+ *   naics_signal          × 0.10  ← WIRED (deal_data.naics_code / primary_naics_code / tenant_naics)
  *   building_structure    × 0.10  ← WIRED (stories + construction_type + unit_count)
  *
- * Total wired: 0.20 + 0.15 + 0.10 = 0.45 max (from available DB fields)
- * Consequence: most deals will have requiresUserConfirmation: true until
- * assessor codes (#M08-AC-01) and NAICS codes (#M08-AC-02) are ingested.
+ * Max confidence when all 5 inputs present = 0.90–0.98.
+ * Without assessor code + NAICS: max 0.45 (zoning + rent_roll + building).
+ * requiresUserConfirmation: true when Stage 1 waterfall confidence < 0.70.
  *
  * Spec reference: M08 Rebuild Spec v2 Sections 3.1, 3.2
  */
@@ -48,15 +48,14 @@ export interface DetectionResult {
   detectedDealType: string;
   detectedSubStrategy: string;
   // Stage 1 waterfall confidence only — drives requiresUserConfirmation per spec.
-  // Max 0.45 from wired inputs (zoning × 0.20 + rent_roll × 0.15 + building × 0.10);
-  // rises to 0.90+ when assessor codes (#M08-AC-01) and NAICS (#M08-AC-02) land.
+  // 0 when no waterfall inputs available; up to 0.90+ when all 5 inputs present.
   confidence: number;
   requiresUserConfirmation: boolean; // true when Stage 1 waterfall confidence < 0.70
   confidenceBreakdown: {             // waterfall component scores for auditability
-    assessorCode: number;            // always 0 until TODO #M08-AC-01 lands
+    assessorCode: number;            // 0 when assessor_code / property_class_code not in deal_data
     zoningMatch: number;
     rentRollSignal: number;
-    naicsSignal: number;             // always 0 until TODO #M08-AC-02 lands
+    naicsSignal: number;             // 0 when naics_code / primary_naics_code not in deal_data
     buildingStructure: number;
   };
   // Blended asset-class + deal-type signal confidence (separate metadata; not used
@@ -164,11 +163,93 @@ export const SUB_STRATEGY_WEIGHTS: Record<string, Record<string, number>> = {
 
 // ─── Waterfall weight constants (spec Section 3.1) ────────────────────────────
 
-const W_ASSESSOR_CODE    = 0.45; // TODO #M08-AC-01: awaiting assessor code ingestion
+const W_ASSESSOR_CODE    = 0.45; // WIRED — reads assessor_code / property_class_code / county_land_use_code
 const W_ZONING_MATCH     = 0.20; // WIRED
 const W_RENT_ROLL_SIGNAL = 0.15; // WIRED
-const W_NAICS_SIGNAL     = 0.10; // TODO #M08-AC-02: awaiting NAICS code ingestion
+const W_NAICS_SIGNAL     = 0.10; // WIRED — reads naics_code / primary_naics_code / tenant_naics
 const W_BUILDING_STRUCT  = 0.10; // WIRED
+
+// ─── Assessor code → asset class mapping (spec Stage 1 input × 0.45) ──────────
+// Supports three common assessor code formats:
+//   1. Numeric land-use codes (IAAO standard):
+//      100-199 = SFR; 200-299 = MF; 300-399 = Commercial; 400-499 = Industrial; 700-799 = Hotel/Lodging
+//   2. Letter-prefix codes: R1/R2/RS = SFR; R3/R4/RM/MF = MF; C1/C2/C3 = Retail; O/OC = Office;
+//      I/IND/W = Industrial; H/HT = Hospitality
+//   3. State-specific: CA "0200"/"A" (apartment), "0100"/"S" (sfr), "C" (commercial), "I" (industrial)
+
+function computeAssessorCodeScore(rawCode: string | null | undefined, assetClass: AssetClass): number {
+  if (!rawCode) return 0;
+  const code = String(rawCode).trim().toUpperCase();
+
+  // --- Numeric IAAO-style codes ---
+  const num = parseInt(code.replace(/\D/g, ''), 10);
+  if (!isNaN(num)) {
+    const iaaoScore = (() => {
+      if (num >= 100 && num <= 199) return assetClass === 'sfr' ? 1.0 : assetClass === 'multifamily' ? 0.20 : 0;
+      if (num >= 200 && num <= 299) return assetClass === 'multifamily' ? 1.0 : assetClass === 'sfr' ? 0.20 : 0;
+      if (num >= 300 && num <= 399) return (assetClass === 'retail' || assetClass === 'office') ? 0.75 : 0;
+      if (num >= 400 && num <= 499) return assetClass === 'industrial' ? 1.0 : 0;
+      if (num >= 700 && num <= 799) return assetClass === 'hospitality' ? 1.0 : 0;
+      return 0;
+    })();
+    if (iaaoScore > 0) return iaaoScore;
+  }
+
+  // --- Letter-prefix codes ---
+  if (/^R[1-2]$|^RS$|^RSF$|^RE$|^RR$/.test(code))         return assetClass === 'sfr' ? 1.0 : 0;
+  if (/^R[3-9]$|^RM|^MF|^APT|^0200/.test(code))            return assetClass === 'multifamily' ? 1.0 : 0;
+  if (/^C[1-5]$|^GC$|^NC$|^CC$|^COM/.test(code))           return (assetClass === 'retail' || assetClass === 'office') ? 0.70 : 0;
+  if (/^O[1-9]$|^OC$|^OP$|^OFF/.test(code))                return assetClass === 'office' ? 1.0 : assetClass === 'retail' ? 0.20 : 0;
+  if (/^I[1-9]$|^IND|^M[1-9]$|^WH$|^LI$|^HI$/.test(code)) return assetClass === 'industrial' ? 1.0 : 0;
+  if (/^H[T]?$|^HOT|^LDG|^HSP/.test(code))                 return assetClass === 'hospitality' ? 1.0 : 0;
+  // Ambiguous single-letter codes
+  if (/^A$|^APT$/.test(code))                               return assetClass === 'multifamily' ? 0.85 : 0;
+  if (/^R$/.test(code)) return (assetClass === 'sfr' || assetClass === 'multifamily') ? 0.50 : 0;
+  if (/^C$/.test(code)) return (assetClass === 'retail' || assetClass === 'office') ? 0.50 : 0;
+  if (/^I$/.test(code)) return assetClass === 'industrial' ? 0.85 : 0;
+  // Specific CA/TX county formats
+  if (/^0100/.test(code))  return assetClass === 'sfr' ? 0.90 : 0;
+  if (/^0200/.test(code))  return assetClass === 'multifamily' ? 0.90 : 0;
+  if (/^0300/.test(code))  return (assetClass === 'retail' || assetClass === 'office') ? 0.70 : 0;
+  if (/^0400/.test(code))  return assetClass === 'industrial' ? 0.90 : 0;
+
+  return 0; // unrecognized code → no signal
+}
+
+// ─── NAICS code → asset class mapping (spec Stage 1 input × 0.10) ─────────────
+// Maps 6-digit NAICS codes to asset class confidence for the detected class.
+// Sources: deal_data.naics_code, deal_data.primary_naics_code, deal_data.tenant_naics
+
+function computeNaicsScore(rawCode: string | null | undefined, assetClass: AssetClass): number {
+  if (!rawCode) return 0;
+  const code = String(rawCode).trim().replace(/\D/g, '');
+  const n6 = parseInt(code.substring(0, 6), 10);
+  if (isNaN(n6)) return 0;
+
+  // NAICS 53: Real Estate — specific subdivision mapping
+  if (code.startsWith('531111') || code.startsWith('531110')) return assetClass === 'sfr' ? 1.0 : 0;
+  if (code.startsWith('531120') || code.startsWith('531130')) return assetClass === 'multifamily' ? 1.0 : 0;
+  if (code.startsWith('531190')) return (assetClass === 'retail' || assetClass === 'office' || assetClass === 'industrial') ? 0.60 : 0;
+  if (code.startsWith('531210')) return (assetClass === 'retail' || assetClass === 'office') ? 0.50 : 0;
+  // NAICS 44-45: Retail Trade — tenant/property
+  if (code.startsWith('44') || code.startsWith('45'))    return assetClass === 'retail' ? 0.85 : 0;
+  // NAICS 48-49: Transportation/Warehousing
+  if (code.startsWith('493') || code.startsWith('484')) return assetClass === 'industrial' ? 1.0 : 0;
+  if (code.startsWith('491') || code.startsWith('492')) return assetClass === 'industrial' ? 0.75 : 0;
+  // NAICS 52-54: Finance, Professional services (office tenants)
+  if (code.startsWith('52') || code.startsWith('54')) return assetClass === 'office' ? 0.70 : 0;
+  // NAICS 62: Healthcare (medical office)
+  if (code.startsWith('62')) return assetClass === 'office' ? 0.80 : 0;
+  // NAICS 72: Accommodation and Food Services (hospitality)
+  if (code.startsWith('721')) return assetClass === 'hospitality' ? 1.0 : 0;
+  if (code.startsWith('722')) return assetClass === 'retail' ? 0.60 : 0;
+  // NAICS 53: broader real estate lessor codes
+  if (code.startsWith('53'))  {
+    if (assetClass === 'multifamily' || assetClass === 'sfr') return 0.55;
+    if (assetClass === 'retail' || assetClass === 'office' || assetClass === 'industrial') return 0.55;
+  }
+  return 0;
+}
 
 // ─── Zoning match (0-1 score, weighted 0.20) ──────────────────────────────────
 
@@ -532,9 +613,26 @@ export function detectAssetClass(deal: Record<string, any>): {
 
   // ── Step 2: Weighted waterfall ────────────────────────────────────────────
   //
-  // assessor_code_match × 0.45 — TODO #M08-AC-01
-  // (assessor codes not yet ingested into deal DB schema; score = 0 until ticket ships)
-  const assessorScore = 0;
+  // assessor_code_match × 0.45 — WIRED (reads assessor_code / property_class_code / county_land_use_code)
+  const rawAssessorCode = d.assessor_code || d.property_class_code || d.county_land_use_code
+    || deal.assessor_code || deal.property_class_code || null;
+  const assessorRaw = computeAssessorCodeScore(rawAssessorCode, assetClass);
+  const assessorScore = assessorRaw;
+  if (rawAssessorCode) {
+    signals.push({
+      signal: 'assessor_code_match',
+      value: String(rawAssessorCode),
+      threshold: `${assetClass} assessor code pattern`,
+      contribution: assessorRaw * W_ASSESSOR_CODE,
+    });
+  } else {
+    signals.push({
+      signal: 'assessor_code_match',
+      value: '(not available)',
+      threshold: 'assessor_code / property_class_code / county_land_use_code not in deal_data',
+      contribution: 0,
+    });
+  }
 
   // zoning_match × 0.20 — WIRED
   const zoningRaw = computeZoningScore(zoning, assetClass);
@@ -562,9 +660,26 @@ export function detectAssetClass(deal: Record<string, any>): {
     });
   }
 
-  // naics_signal × 0.10 — TODO #M08-AC-02
-  // (NAICS codes not yet ingested into deal DB schema; score = 0 until ticket ships)
-  const naicsScore = 0;
+  // naics_signal × 0.10 — WIRED (reads naics_code / primary_naics_code / tenant_naics)
+  const rawNaicsCode = d.naics_code || d.primary_naics_code || d.tenant_naics
+    || deal.naics_code || null;
+  const naicsRaw = computeNaicsScore(rawNaicsCode, assetClass);
+  const naicsScore = naicsRaw;
+  if (rawNaicsCode) {
+    signals.push({
+      signal: 'naics_signal',
+      value: String(rawNaicsCode),
+      threshold: `${assetClass} NAICS code mapping`,
+      contribution: naicsRaw * W_NAICS_SIGNAL,
+    });
+  } else {
+    signals.push({
+      signal: 'naics_signal',
+      value: '(not available)',
+      threshold: 'naics_code / primary_naics_code / tenant_naics not in deal_data',
+      contribution: 0,
+    });
+  }
 
   // building_structure × 0.10 — WIRED
   const buildingRaw = computeBuildingStructureScore(stories, constructionType, unitCount, assetClass);
@@ -584,9 +699,8 @@ export function detectAssetClass(deal: Record<string, any>): {
   // Property type string is used only to identify the asset class (Stage 1 routing)
   // but must NOT influence the confidence score — it is not a verifiable data signal.
   //
-  // Max confidence from wired inputs = 0.45 (zoning 0.20 + rent_roll 0.15 + building 0.10).
-  // When assessor_code (#M08-AC-01) and NAICS (#M08-AC-02) ship the max rises to 0.90+.
-  // Until then, most deals correctly receive requiresUserConfirmation: true.
+  // When assessor_code and NAICS are present, confidence can reach 0.90+.
+  // Without them, max is 0.45 (zoning 0.20 + rent_roll 0.15 + building 0.10).
 
   const waterfallScore =
     assessorScore    * W_ASSESSOR_CODE   +
@@ -604,10 +718,10 @@ export function detectAssetClass(deal: Record<string, any>): {
     subType,
     confidence: parseFloat(confidence.toFixed(2)),
     confidenceBreakdown: {
-      assessorCode:     assessorScore,     // always 0 until #M08-AC-01
+      assessorCode:     parseFloat((assessorScore * W_ASSESSOR_CODE).toFixed(3)),
       zoningMatch:      parseFloat((zoningScore * W_ZONING_MATCH).toFixed(3)),
       rentRollSignal:   parseFloat((rentRollScore * W_RENT_ROLL_SIGNAL).toFixed(3)),
-      naicsSignal:      naicsScore,        // always 0 until #M08-AC-02
+      naicsSignal:      parseFloat((naicsScore * W_NAICS_SIGNAL).toFixed(3)),
       buildingStructure: parseFloat((buildingScore * W_BUILDING_STRUCT).toFixed(3)),
     },
     signals,

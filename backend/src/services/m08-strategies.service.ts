@@ -630,19 +630,50 @@ export async function getStrategiesForDeal(pool: Pool, dealId: string): Promise<
   const detection = detectAssetClassAndDealType(deal);
   const signalScores = computeSignalScores(deal, detection);
 
+  const d = deal.deal_data || {};
+
+  // Helper to parse raw comp arrays from deal_data (M05 dual-lens or manual entry)
+  function parseLiveComps(raw: any[]): import('./evidence-report.service').LiveComp[] {
+    if (!Array.isArray(raw)) return [];
+    return raw.map((c: any) => ({
+      address: c.address || c.name || 'Unknown',
+      distance: c.distance || c.distance_mi ? `${c.distance || c.distance_mi}mi` : undefined,
+      rentPerUnit: Number(c.rent_per_unit || c.rent || c.avg_rent || 0) || undefined,
+      occupancy: Number(c.occupancy || c.occ_rate || 0) || undefined,
+      pricePerUnit: Number(c.price_per_unit || c.ppu || c.sale_price_per_unit || 0) || undefined,
+      capRate: Number(c.cap_rate || c.caprate || 0) || undefined,
+      irr: Number(c.irr || 0) || undefined,
+      holdMonths: Number(c.hold_months || c.hold_period_months || 0) || undefined,
+      capitalPerUnit: Number(c.capital_per_unit || c.capex_per_unit || 0) || undefined,
+      condition: c.condition || c.asset_condition,
+      sourceRef: c.source_ref || c.source || 'deal_data.comps [live]',
+    })).filter(c => c.address !== 'Unknown' || c.rentPerUnit || c.pricePerUnit);
+  }
+
   const dealCtx: DealContext = {
     dealId,
     address: deal.name || deal.address || '',
     city: deal.city || '',
     unitCount: Number(deal.total_units || deal.unit_count || 0),
-    avgRent: Number(deal.avg_rent_per_unit || (deal.deal_data || {}).avg_rent || 0),
-    occupancy: Number((deal.deal_data || {}).occupancy || (deal.deal_data || {}).occupancy_rate || 0),
-    lossToLease: Number((deal.deal_data || {}).loss_to_lease || 0),
-    dscr: Number((deal.deal_data || {}).dscr || 0),
-    opsScore: Number((deal.deal_data || {}).ops_score || (deal.deal_data || {}).pcs_score || 0),
-    capitalGapPerUnit: Number(deal.tdc_per_unit || 0),
-    acquisitionPrice: Number(deal.budget || deal.tdc || 0),
-    targetIrr: Number(deal.target_irr || 0),
+    avgRent: Number(deal.avg_rent_per_unit || d.avg_rent || 0),
+    occupancy: Number(d.occupancy || d.occupancy_rate || 0),
+    lossToLease: Number(d.loss_to_lease || 0),
+    dscr: Number(d.dscr || 0),
+    opsScore: Number(d.ops_score || d.pcs_score || 0),
+    capitalGapPerUnit: Number(deal.tdc_per_unit || d.capital_gap_per_unit || d.capex_per_unit || 0),
+    acquisitionPrice: Number(deal.budget || deal.tdc || d.acquisition_price || d.purchase_price || 0),
+    targetIrr: Number(deal.target_irr || d.target_irr || 0),
+    // Extended real-data fields — sourced directly from deal_data JSONB
+    capRate: Number(d.cap_rate || d.going_in_cap_rate || d.going_in_cap || 0) || undefined,
+    noi: Number(d.noi || d.net_operating_income || d.t12_noi || 0) || undefined,
+    arvEstimate: Number(d.arv_estimate || d.after_repair_value || d.arv || 0) || undefined,
+    rehabCost: Number(d.rehab_cost || d.renovation_cost || d.total_rehab_cost || 0) || undefined,
+    exitCapRate: Number(d.exit_cap_rate || d.target_exit_cap || d.exit_cap || 0) || undefined,
+    goingInCapRate: Number(d.going_in_cap_rate || d.cap_rate || 0) || undefined,
+    // Comp arrays: parse from deal_data arrays if present (M05 dual-lens integration)
+    rentComps: parseLiveComps(d.rent_comps || d.comparable_rents || d.m05_rent_comps || []),
+    salesComps: parseLiveComps(d.sales_comps || d.comparable_sales || d.m05_sales_comps || []),
+    likeKindComps: parseLiveComps(d.like_kind_comps || d.m05_comps || d.likekind_comps || []),
   };
 
   // Collect sub-strategy keys (primary + alternates)
@@ -703,12 +734,31 @@ export async function getStrategiesForDeal(pool: Pool, dealId: string): Promise<
       : 'No arbitrage detected. The primary sub-strategy scores highest among applicable options.',
   };
 
-  // Plan
-  const primaryEvidence = subStrategies.find(s => s.isDetectedPrimary)?.evidenceReport || subStrategies[0]?.evidenceReport;
+  // Resolve effective primary: when the auto-detected primary was disqualified by a hard gate,
+  // it is not in `subStrategies`. `primary` already points to the top-scoring qualified strategy
+  // (via the `eligible.find(s => s.isDetectedPrimary) || eligible[0]` fallback above).
+  // We must rebind planCtx.detection to the effective primary key so the plan formulator
+  // uses the correct strategy template — not the gated-out auto-detected one.
+  const effectivePrimaryKey = primary?.key || detection.detectedSubStrategy;
+  const effectivePrimaryGated = effectivePrimaryKey !== detection.detectedSubStrategy;
+  const detectionForPlan: DetectionResult = effectivePrimaryGated
+    ? { ...detection, detectedSubStrategy: effectivePrimaryKey }
+    : detection;
+
+  const primaryEvidence = subStrategies.find(s => s.key === effectivePrimaryKey)?.evidenceReport
+    || subStrategies[0]?.evidenceReport;
+
+  if (effectivePrimaryGated) {
+    logger.info(
+      `[M08v2] detected primary "${detection.detectedSubStrategy}" was disqualified by hard gate; ` +
+      `plan formulated for effective primary "${effectivePrimaryKey}" (top-scoring qualified strategy)`
+    );
+  }
+
   const planCtx: PlanContext = {
-    detection,
+    detection: detectionForPlan,
     primaryScore: primary?.finalScore || 0,
-    adjacentScores: subStrategies.filter(s => s.isAdjacent).map(s => ({ key: s.key, score: s.finalScore })),
+    adjacentScores: subStrategies.filter(s => s.key !== effectivePrimaryKey).map(s => ({ key: s.key, score: s.finalScore })),
     acquisitionPrice: dealCtx.acquisitionPrice,
     unitCount: dealCtx.unitCount,
     avgRent: dealCtx.avgRent,

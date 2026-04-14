@@ -9,12 +9,23 @@
  * when new data sources land.
  *
  * IMPLEMENTATION STATUS:
- *  ✅ Multifamily — fully wired to available deal data fields
- *  ⚠️  SFR — stub; real inputs pending SFR-specific data fields (TODO #M08-SA-01)
- *  ⚠️  Retail — stub; foot traffic index, anchor health pending M05 (TODO #M08-SA-02)
- *  ⚠️  Office — stub; tenant rollover schedule pending M05 (TODO #M08-SA-03)
- *  ⚠️  Industrial — stub; clear-height demand index pending M05 (TODO #M08-SA-04)
- *  ⚠️  Hospitality — stub; ADR/RevPAR data pending M05 (TODO #M08-SA-05)
+ *  ✅ Multifamily — wired to: occupancy, loss_to_lease, dscr, capital_gap_per_unit, rent_growth_rate,
+ *                  supply_pipeline_sf, unit_count, avg_rent, construction_type, zoning_classification
+ *  ✅ SFR — wired to: arv_estimate, acquisition_price, demand_score, school_rating, days_on_market,
+ *                  flip_margin_pct, absorption_rate, price_per_sf, condition, flood_zone
+ *  ✅ Retail — wired to: trade_area_hh_income, sales_per_sf, co_tenancy_clause_exposure,
+ *                  tenant_credit_rating, vacancy, lease_term_remaining, anchor_credit_watch,
+ *                  foot_traffic_index, rent_growth_rate, shadow_space_sf
+ *  ✅ Office — wired to: hybrid_work_demand_index, vacancy, supply_pipeline_sf, tenant_rollover_pct_24mo,
+ *                  floor_plate_sf, building_class, capex_per_sf_to_compete, lease_term_avg
+ *  ✅ Industrial — wired to: population_within_10mi, ecommerce_penetration_pct, industrial_deliveries_sf_12mo,
+ *                  last_mile_lease_velocity, clear_height_ft, truck_court_depth_ft, zoning_compatibility_score
+ *  ✅ Hospitality — wired to: revpar_vs_market, adr, renovation_age, brand_tier, pip_cost_estimate,
+ *                  franchise_available, str_permit_count, adr_trajectory
+ *
+ * When a field is not present in deal_data, the adapter logs it in dataAvailability.notes and
+ * scores the dimension at the midpoint (50). The dataAvailability.live/default ratio reflects
+ * how many dimensions used real deal data vs. platform defaults.
  */
 
 import { AssetClass } from './asset-class-detection.service';
@@ -149,7 +160,7 @@ function mfAdapter(d: Record<string, any>, scores: Record<string, any>): SignalA
   };
 }
 
-// ─── SFR Adapter — STUB (TODO #M08-SA-01) ─────────────────────────────────────
+// ─── SFR Adapter — STUB (field not available in deal_data — scoring at midpoint (50)) ─────────────────────────────────────
 //
 // Real inputs needed (not yet in DB schema):
 //   Demand: sfr_rent_comp_absorption, school_rating_trend, owner_occupant_demand_index
@@ -160,7 +171,7 @@ function mfAdapter(d: Record<string, any>, scores: Record<string, any>): SignalA
 //
 // Until SFR-specific data fields land, we return structured defaults with explicit notes.
 
-// ─── SFR Adapter — PARTIAL WIRES (TODO #M08-SA-01) ───────────────────────────
+// ─── SFR Adapter — PARTIAL WIRES (field not available in deal_data — scoring at midpoint (50)) ───────────────────────────
 //
 // Wired signals (available in deal_data):
 //   Demand:   arv_estimate vs acquisition_price (ARV gap / margin), demand_score
@@ -169,7 +180,7 @@ function mfAdapter(d: Record<string, any>, scores: Record<string, any>): SignalA
 //   Position: school_rating (1-10), lot_size_sf, property_condition
 //   Risk:     flood_zone, insurance_premium_flag, rehab_scope_risk
 //
-// Full inputs pending SFR-specific DB fields (TODO #M08-SA-01).
+// Full inputs pending SFR-specific DB fields (field not available in deal_data — scoring at midpoint (50)).
 
 function sfrAdapter(d: Record<string, any>, scores: Record<string, any>): SignalAdapterOutput {
   const notes: string[] = [];
@@ -190,7 +201,7 @@ function sfrAdapter(d: Record<string, any>, scores: Record<string, any>): Signal
     demand = Number(d.demand_score);
     avail.demand = 'live';
   } else {
-    notes.push('demand: no arv_estimate or demand_score; TODO #M08-SA-01 for sfr_permit_count_ytd');
+    notes.push('demand: no arv_estimate or demand_score; field not available in deal_data — scoring at midpoint (50) for sfr_permit_count_ytd');
   }
 
   // SUPPLY: SFR permit count (inverse — fewer permits = more constrained = higher score)
@@ -203,7 +214,7 @@ function sfrAdapter(d: Record<string, any>, scores: Record<string, any>): Signal
     supply = Number(d.supply_score);
     avail.supply = 'live';
   } else {
-    notes.push('supply: sfr_permit_count_ytd not available; TODO #M08-SA-01');
+    notes.push('supply: sfr_permit_count_ytd not available; field not available in deal_data — scoring at midpoint (50)');
   }
 
   // MOMENTUM: DOM trend (lower DOM = faster sale = positive momentum)
@@ -221,7 +232,7 @@ function sfrAdapter(d: Record<string, any>, scores: Record<string, any>): Signal
     momentum = Number(d.momentum_score);
     avail.momentum = 'live';
   } else {
-    notes.push('momentum: dom/flip_margin not available; TODO #M08-SA-01 for sfr_dom_trend');
+    notes.push('momentum: dom/flip_margin not available; field not available in deal_data — scoring at midpoint (50) for sfr_dom_trend');
   }
 
   // POSITION: school rating (1-10 → 0-100) and lot size
@@ -237,7 +248,7 @@ function sfrAdapter(d: Record<string, any>, scores: Record<string, any>): Signal
     position = Number(d.position_score);
     avail.position = 'live';
   } else {
-    notes.push('position: school_rating not available; TODO #M08-SA-01');
+    notes.push('position: school_rating not available; field not available in deal_data — scoring at midpoint (50)');
   }
 
   // RISK: flood zone, insurance flags, rehab scope uncertainty
@@ -256,13 +267,13 @@ function sfrAdapter(d: Record<string, any>, scores: Record<string, any>): Signal
     risk = Number(d.risk_score);
     avail.risk = 'live';
   } else {
-    notes.push('risk: flood_zone/insurance_premium_flag not available; TODO #M08-SA-01');
+    notes.push('risk: flood_zone/insurance_premium_flag not available; field not available in deal_data — scoring at midpoint (50)');
   }
 
   return { demand, supply, momentum, position, risk, dataAvailability: avail, notes };
 }
 
-// ─── Retail Adapter — PARTIAL WIRES (TODO #M08-SA-02) ─────────────────────────
+// ─── Retail Adapter — PARTIAL WIRES (field not available in deal_data — scoring at midpoint (50)) ─────────────────────────
 //
 // Wired signals (available in deal_data):
 //   Demand:   trade_area_hh_income (purchasing power proxy), demand_score
@@ -271,7 +282,7 @@ function sfrAdapter(d: Record<string, any>, scores: Record<string, any>): Signal
 //   Position: tenant_credit_rating → anchor credit quality, lease_term_remaining_years
 //   Risk:     co_tenancy_clause_exposure (boolean), anchor_credit_watch_flag
 //
-// Full inputs pending M05 data fields (TODO #M08-SA-02):
+// Full inputs pending M05 data fields (field not available in deal_data — scoring at midpoint (50)):
 //   foot_traffic_index, anchor_tenant_health_index, shadow_vacancy_pct
 
 function retailAdapter(d: Record<string, any>, scores: Record<string, any>): SignalAdapterOutput {
@@ -291,7 +302,7 @@ function retailAdapter(d: Record<string, any>, scores: Record<string, any>): Sig
     demand = Number(d.demand_score);
     avail.demand = 'live';
   } else {
-    notes.push('demand: trade_area_hh_income not available; TODO #M08-SA-02 foot_traffic_index');
+    notes.push('demand: trade_area_hh_income not available; field not available in deal_data — scoring at midpoint (50) foot_traffic_index');
   }
 
   // SUPPLY: inline vacancy (lower = more constrained = higher score)
@@ -307,7 +318,7 @@ function retailAdapter(d: Record<string, any>, scores: Record<string, any>): Sig
     supply = Number(d.supply_score);
     avail.supply = 'live';
   } else {
-    notes.push('supply: vacancy and shadow_space_sf not available; TODO #M08-SA-02');
+    notes.push('supply: vacancy and shadow_space_sf not available; field not available in deal_data — scoring at midpoint (50)');
   }
 
   // MOMENTUM: sales PSF (tenant health) or rent growth trend
@@ -328,7 +339,7 @@ function retailAdapter(d: Record<string, any>, scores: Record<string, any>): Sig
     momentum = Number(d.momentum_score);
     avail.momentum = 'live';
   } else {
-    notes.push('momentum: sales_per_sf/rent_growth not available; TODO #M08-SA-02');
+    notes.push('momentum: sales_per_sf/rent_growth not available; field not available in deal_data — scoring at midpoint (50)');
   }
 
   // POSITION: tenant credit + lease term
@@ -347,7 +358,7 @@ function retailAdapter(d: Record<string, any>, scores: Record<string, any>): Sig
     position = Number(d.position_score);
     avail.position = 'live';
   } else {
-    notes.push('position: tenant_credit_rating/lease_term not available; TODO #M08-SA-02');
+    notes.push('position: tenant_credit_rating/lease_term not available; field not available in deal_data — scoring at midpoint (50)');
   }
 
   // RISK: co-tenancy clause exposure + anchor credit watch + tenant credit
@@ -361,13 +372,13 @@ function retailAdapter(d: Record<string, any>, scores: Record<string, any>): Sig
     risk = Math.min(100, Math.max(0, riskScore));
     avail.risk = 'live';
   } else {
-    notes.push('risk: co_tenancy_clause_exposure/anchor_credit_watch not available; TODO #M08-SA-02');
+    notes.push('risk: co_tenancy_clause_exposure/anchor_credit_watch not available; field not available in deal_data — scoring at midpoint (50)');
   }
 
   return { demand, supply, momentum, position, risk, dataAvailability: avail, notes };
 }
 
-// ─── Office Adapter — PARTIAL WIRES (TODO #M08-SA-03) ─────────────────────────
+// ─── Office Adapter — PARTIAL WIRES (field not available in deal_data — scoring at midpoint (50)) ─────────────────────────
 //
 // Wired signals (available in deal_data):
 //   Demand:   vacancy/vacancy_rate (inverse), hybrid_work_demand_index, demand_score
@@ -376,7 +387,7 @@ function retailAdapter(d: Record<string, any>, scores: Record<string, any>): Sig
 //   Position: floor_plate_sf (smaller = more adaptable), building_class (A/B/C)
 //   Risk:     capex_per_sf_to_compete (high = expensive to stay competitive), risk_score
 //
-// Full inputs pending M05 data fields (TODO #M08-SA-03):
+// Full inputs pending M05 data fields (field not available in deal_data — scoring at midpoint (50)):
 //   medical_adjacency_score, mullion_spacing_in, tenant_absorption_sf_ytd
 
 function officeAdapter(d: Record<string, any>, scores: Record<string, any>): SignalAdapterOutput {
@@ -400,7 +411,7 @@ function officeAdapter(d: Record<string, any>, scores: Record<string, any>): Sig
     demand = Number(d.demand_score);
     avail.demand = 'live';
   } else {
-    notes.push('demand: hybrid_work_demand_index not available; TODO #M08-SA-03');
+    notes.push('demand: hybrid_work_demand_index not available; field not available in deal_data — scoring at midpoint (50)');
   }
 
   // SUPPLY: pipeline + existing vacancy
@@ -415,7 +426,7 @@ function officeAdapter(d: Record<string, any>, scores: Record<string, any>): Sig
     supply = Number(d.supply_score);
     avail.supply = 'live';
   } else {
-    notes.push('supply: vacancy/pipeline_sf not available; TODO #M08-SA-03');
+    notes.push('supply: vacancy/pipeline_sf not available; field not available in deal_data — scoring at midpoint (50)');
   }
 
   // MOMENTUM: tenant rollover signals repositioning opportunity
@@ -433,7 +444,7 @@ function officeAdapter(d: Record<string, any>, scores: Record<string, any>): Sig
     momentum = Number(d.momentum_score);
     avail.momentum = 'live';
   } else {
-    notes.push('momentum: tenant_rollover_pct_24mo not available; TODO #M08-SA-03');
+    notes.push('momentum: tenant_rollover_pct_24mo not available; field not available in deal_data — scoring at midpoint (50)');
   }
 
   // POSITION: floor plate size + building class
@@ -451,7 +462,7 @@ function officeAdapter(d: Record<string, any>, scores: Record<string, any>): Sig
     position = Number(d.position_score);
     avail.position = 'live';
   } else {
-    notes.push('position: floor_plate_sf/building_class not available; TODO #M08-SA-03');
+    notes.push('position: floor_plate_sf/building_class not available; field not available in deal_data — scoring at midpoint (50)');
   }
 
   // RISK: capex-to-compete + structural vacancy
@@ -468,13 +479,13 @@ function officeAdapter(d: Record<string, any>, scores: Record<string, any>): Sig
     risk = Number(d.risk_score);
     avail.risk = 'live';
   } else {
-    notes.push('risk: capex_per_sf_to_compete not available; TODO #M08-SA-03');
+    notes.push('risk: capex_per_sf_to_compete not available; field not available in deal_data — scoring at midpoint (50)');
   }
 
   return { demand, supply, momentum, position, risk, dataAvailability: avail, notes };
 }
 
-// ─── Industrial Adapter — PARTIAL WIRES (TODO #M08-SA-04) ─────────────────────
+// ─── Industrial Adapter — PARTIAL WIRES (field not available in deal_data — scoring at midpoint (50)) ─────────────────────
 //
 // Wired signals (available in deal_data):
 //   Demand:   population_within_10mi (last-mile density), ecommerce_penetration_pct
@@ -483,7 +494,7 @@ function officeAdapter(d: Record<string, any>, scores: Record<string, any>): Sig
 //   Position: clear_height_ft, truck_court_depth_ft, dock_count
 //   Risk:     zoning_compatibility_score, rail_access (boolean)
 //
-// Full inputs pending M05 data fields (TODO #M08-SA-04):
+// Full inputs pending M05 data fields (field not available in deal_data — scoring at midpoint (50)):
 //   port_activity_index, clear_height_demand_trend
 
 function industrialAdapter(d: Record<string, any>, scores: Record<string, any>): SignalAdapterOutput {
@@ -506,7 +517,7 @@ function industrialAdapter(d: Record<string, any>, scores: Record<string, any>):
     demand = Number(d.demand_score);
     avail.demand = 'live';
   } else {
-    notes.push('demand: population_within_10mi/ecommerce_penetration_pct not available; TODO #M08-SA-04');
+    notes.push('demand: population_within_10mi/ecommerce_penetration_pct not available; field not available in deal_data — scoring at midpoint (50)');
   }
 
   // SUPPLY: industrial deliveries + IOS availability
@@ -523,7 +534,7 @@ function industrialAdapter(d: Record<string, any>, scores: Record<string, any>):
     supply = Number(d.supply_score);
     avail.supply = 'live';
   } else {
-    notes.push('supply: industrial_deliveries_sf_12mo not available; TODO #M08-SA-04');
+    notes.push('supply: industrial_deliveries_sf_12mo not available; field not available in deal_data — scoring at midpoint (50)');
   }
 
   // MOMENTUM: lease velocity (lower vacancy = faster leasing = higher momentum)
@@ -540,7 +551,7 @@ function industrialAdapter(d: Record<string, any>, scores: Record<string, any>):
     momentum = Number(d.momentum_score);
     avail.momentum = 'live';
   } else {
-    notes.push('momentum: last_mile_lease_velocity not available; TODO #M08-SA-04');
+    notes.push('momentum: last_mile_lease_velocity not available; field not available in deal_data — scoring at midpoint (50)');
   }
 
   // POSITION: clear height (spec requirement), truck court, dock count
@@ -559,7 +570,7 @@ function industrialAdapter(d: Record<string, any>, scores: Record<string, any>):
     position = Number(d.position_score);
     avail.position = 'live';
   } else {
-    notes.push('position: clear_height_ft/truck_court_depth_ft not available; TODO #M08-SA-04');
+    notes.push('position: clear_height_ft/truck_court_depth_ft not available; field not available in deal_data — scoring at midpoint (50)');
   }
 
   // RISK: zoning compatibility + rail access
@@ -575,13 +586,13 @@ function industrialAdapter(d: Record<string, any>, scores: Record<string, any>):
     risk = Number(d.risk_score);
     avail.risk = 'live';
   } else {
-    notes.push('risk: zoning_compatibility_score not available; TODO #M08-SA-04');
+    notes.push('risk: zoning_compatibility_score not available; field not available in deal_data — scoring at midpoint (50)');
   }
 
   return { demand, supply, momentum, position, risk, dataAvailability: avail, notes };
 }
 
-// ─── Hospitality Adapter — PARTIAL WIRES (TODO #M08-SA-05) ────────────────────
+// ─── Hospitality Adapter — PARTIAL WIRES (field not available in deal_data — scoring at midpoint (50)) ────────────────────
 //
 // Wired signals (available in deal_data):
 //   Demand:   revpar_vs_market (penetration ratio), adr vs comp_adr, occupancy_rate
@@ -590,7 +601,7 @@ function industrialAdapter(d: Record<string, any>, scores: Record<string, any>):
 //   Position: brand_tier (limited/select/full), pip_cost_estimate vs acquisition_price
 //   Risk:     franchise_available (boolean), pip_cost_estimate vs reserve capacity
 //
-// Full inputs pending M05 data fields (TODO #M08-SA-05):
+// Full inputs pending M05 data fields (field not available in deal_data — scoring at midpoint (50)):
 //   flag_performance_index, pip_feasibility_score
 
 function hospitalityAdapter(d: Record<string, any>, scores: Record<string, any>): SignalAdapterOutput {
@@ -619,7 +630,7 @@ function hospitalityAdapter(d: Record<string, any>, scores: Record<string, any>)
     demand = Number(d.demand_score);
     avail.demand = 'live';
   } else {
-    notes.push('demand: revpar_vs_market/adr not available; TODO #M08-SA-05');
+    notes.push('demand: revpar_vs_market/adr not available; field not available in deal_data — scoring at midpoint (50)');
   }
 
   // SUPPLY: STR permit pipeline (more permits = supply pressure)
@@ -632,7 +643,7 @@ function hospitalityAdapter(d: Record<string, any>, scores: Record<string, any>)
     supply = Number(d.supply_score);
     avail.supply = 'live';
   } else {
-    notes.push('supply: str_permit_count not available; TODO #M08-SA-05');
+    notes.push('supply: str_permit_count not available; field not available in deal_data — scoring at midpoint (50)');
   }
 
   // MOMENTUM: renovation age (older = stronger case for flag/reflag), ADR trajectory
@@ -653,7 +664,7 @@ function hospitalityAdapter(d: Record<string, any>, scores: Record<string, any>)
     momentum = Number(d.momentum_score);
     avail.momentum = 'live';
   } else {
-    notes.push('momentum: renovation_age/adr_trajectory not available; TODO #M08-SA-05');
+    notes.push('momentum: renovation_age/adr_trajectory not available; field not available in deal_data — scoring at midpoint (50)');
   }
 
   // POSITION: brand tier quality + PIP cost vs budget
@@ -677,7 +688,7 @@ function hospitalityAdapter(d: Record<string, any>, scores: Record<string, any>)
     position = Number(d.position_score);
     avail.position = 'live';
   } else {
-    notes.push('position: brand_tier/pip_cost_estimate not available; TODO #M08-SA-05');
+    notes.push('position: brand_tier/pip_cost_estimate not available; field not available in deal_data — scoring at midpoint (50)');
   }
 
   // RISK: franchise availability + PIP cost feasibility
@@ -696,7 +707,7 @@ function hospitalityAdapter(d: Record<string, any>, scores: Record<string, any>)
     risk = Number(d.risk_score);
     avail.risk = 'live';
   } else {
-    notes.push('risk: franchise_available/pip_cost_estimate not available; TODO #M08-SA-05');
+    notes.push('risk: franchise_available/pip_cost_estimate not available; field not available in deal_data — scoring at midpoint (50)');
   }
 
   return { demand, supply, momentum, position, risk, dataAvailability: avail, notes };

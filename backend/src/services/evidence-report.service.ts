@@ -244,13 +244,19 @@ function buildMathTrail(subStrategyKey: string, ctx: DealContext): MathTrailStep
   const renovUnits = Math.round(units * 0.50);
   const rentLiftPerUnit = rent * lossToLease;
   const noiImprovement = renovUnits * rentLiftPerUnit * 12 * 0.60;
-  const exitCapRate = 0.054;
-  const exitNOI = (units * rent * 12 * 0.94 * 0.60) + noiImprovement;
+  // Use real cap rate/NOI from deal_data when available; fall back to benchmarks
+  const exitCapRate = ctx.exitCapRate || ctx.capRate || 0.054;
+  const baseNOI = ctx.noi && ctx.noi > 0
+    ? ctx.noi
+    : (units * rent * 12 * 0.94 * 0.60);
+  const exitNOI = baseNOI + noiImprovement;
   const exitValue = exitNOI / exitCapRate;
   const equity = price * 0.30;
   const totalReturn = exitValue - price;
-  const irr = 0.183;
+  const irr = ctx.targetIrr > 0 ? ctx.targetIrr : 0.183;
   const em = parseFloat(((equity + totalReturn * 0.35) / equity).toFixed(2));
+  const noiSourceRef = ctx.noi && ctx.noi > 0 ? 'deal_data.noi [live]' : 'estimate: units × avg_rent × occ × noi_margin [synthetic]';
+  const exitCapSourceRef = ctx.exitCapRate ? 'deal_data.exit_cap_rate [live]' : ctx.capRate ? 'deal_data.cap_rate [live]' : 'submarket_comp_median [synthetic_benchmark]';
 
   return [
     {
@@ -266,12 +272,16 @@ function buildMathTrail(subStrategyKey: string, ctx: DealContext): MathTrailStep
     {
       stepNum: 2,
       stepName: 'Current NOI (T-12)',
-      lines: [
-        { label: 'Gross potential rent', value: units * rent * 12, formula: 'units × avg_rent × 12' },
-        { label: 'Vacancy & credit loss (5%)', value: -(units * rent * 12 * 0.05), formula: 'GPR × 0.05' },
-        { label: 'Operating expenses (40%)', value: -(units * rent * 12 * 0.95 * 0.40), formula: 'EGI × 0.40' },
-      ],
-      subtotal: parseFloat((units * rent * 12 * 0.95 * 0.60).toFixed(0)),
+      lines: ctx.noi && ctx.noi > 0
+        ? [
+            { label: 'NOI (T-12 actuals)', value: ctx.noi, formula: 'from deal_data.noi', sourceRef: noiSourceRef },
+          ]
+        : [
+            { label: 'Gross potential rent', value: units * rent * 12, formula: 'units × avg_rent × 12', sourceRef: 'deal_data.avg_rent [live]' },
+            { label: 'Vacancy & credit loss (5%)', value: -(units * rent * 12 * 0.05), formula: 'GPR × 0.05' },
+            { label: 'Operating expenses (40%)', value: -(units * rent * 12 * 0.95 * 0.40), formula: 'EGI × 0.40' },
+          ],
+      subtotal: ctx.noi && ctx.noi > 0 ? ctx.noi : parseFloat((units * rent * 12 * 0.95 * 0.60).toFixed(0)),
     },
     {
       stepNum: 3,
@@ -297,8 +307,8 @@ function buildMathTrail(subStrategyKey: string, ctx: DealContext): MathTrailStep
       stepNum: 5,
       stepName: 'Exit Valuation',
       lines: [
-        { label: `Exit cap rate (${fmtPct(exitCapRate)})`, value: exitCapRate, formula: 'Submarket renovated-comp cap rate' },
-        { label: 'Exit value', value: exitValue, formula: 'stabilized_NOI / exit_cap_rate' },
+        { label: `Exit cap rate (${fmtPct(exitCapRate)})`, value: exitCapRate, formula: 'stabilized_NOI / exit_value', sourceRef: exitCapSourceRef },
+        { label: 'Exit value', value: exitValue, formula: 'stabilized_NOI / exit_cap_rate', sourceRef: 'formula_engine.exit_valuation' },
         { label: 'Gain on sale', value: totalReturn, formula: 'exit_value − purchase_price' },
       ],
       subtotal: exitValue,
@@ -326,7 +336,31 @@ function buildTradeAreaComps(subStrategyKey: string, ctx: DealContext): CompEntr
   const rent = ctx.avgRent > 0 ? ctx.avgRent : 1420;
   const ac = subStrategyKey.split('_')[0];
 
+  // ── Live comp data from deal_data (via ctx.rentComps / ctx.salesComps) ────
+  // If the deal has been enriched with M05 comparable data, use it directly
+  // and mark as 'live'. Otherwise fall through to synthetic benchmarks.
+  const liveSources: CompEntry[] = [];
+  const allLive = [...(ctx.rentComps || []), ...(ctx.salesComps || [])];
+  if (allLive.length > 0) {
+    for (const lc of allLive.slice(0, 3)) {
+      liveSources.push({
+        address: lc.address,
+        distance: lc.distance,
+        rentPerUnit: lc.rentPerUnit,
+        occupancy: lc.occupancy,
+        pricePerUnit: lc.pricePerUnit,
+        capRate: lc.capRate,
+        condition: lc.condition,
+        sourceRef: lc.sourceRef,
+        dataQuality: 'live',
+      });
+    }
+    return liveSources; // live data supersedes synthetic benchmarks
+  }
+
+  // ── Synthetic benchmarks (fallback when no live comps) ──────────────────
   if (ac === 'mf') {
+    const capRate = ctx.capRate || 0.054;
     return [
       {
         address: `Comp A — ${city} Renovated (0.8mi)`,
@@ -334,9 +368,9 @@ function buildTradeAreaComps(subStrategyKey: string, ctx: DealContext): CompEntr
         rentPerUnit: Math.round(rent * 1.09),
         occupancy: 0.95,
         pricePerUnit: Math.round(rent * 120),
-        capRate: 0.054,
+        capRate: capRate,
         condition: 'renovated',
-        sourceRef: 'CoStar.rent_comp.trade_area_A',
+        sourceRef: 'CoStar.rent_comp.trade_area_A [synthetic_benchmark]',
         dataQuality: 'synthetic_benchmark',
       },
       {
@@ -345,9 +379,9 @@ function buildTradeAreaComps(subStrategyKey: string, ctx: DealContext): CompEntr
         rentPerUnit: Math.round(rent * 1.06),
         occupancy: 0.93,
         pricePerUnit: Math.round(rent * 115),
-        capRate: 0.056,
+        capRate: capRate + 0.002,
         condition: 'partially_renovated',
-        sourceRef: 'CoStar.rent_comp.trade_area_B',
+        sourceRef: 'CoStar.rent_comp.trade_area_B [synthetic_benchmark]',
         dataQuality: 'synthetic_benchmark',
       },
       {
@@ -356,55 +390,57 @@ function buildTradeAreaComps(subStrategyKey: string, ctx: DealContext): CompEntr
         rentPerUnit: Math.round(rent * 0.98),
         occupancy: 0.88,
         pricePerUnit: Math.round(rent * 105),
-        capRate: 0.062,
+        capRate: capRate + 0.008,
         condition: 'unrenovated',
-        sourceRef: 'CoStar.rent_comp.trade_area_C',
+        sourceRef: 'CoStar.rent_comp.trade_area_C [synthetic_benchmark]',
         dataQuality: 'synthetic_benchmark',
       },
     ];
   }
   if (ac === 'sfr') {
+    const arvEst = ctx.arvEstimate || 0;
     return [
       {
         address: `Comp A — ${city} Renovated SFR (0.4mi)`,
         distance: '0.4mi',
         rentPerUnit: Math.round(rent * 1.12),
-        pricePerUnit: Math.round(rent * 200),
+        pricePerUnit: arvEst > 0 ? Math.round(arvEst * 1.05) : Math.round(rent * 200),
         capRate: 0.058,
         condition: 'renovated',
-        sourceRef: 'MLS.sfr_comp.A',
+        sourceRef: 'MLS.sfr_comp.A [synthetic_benchmark]',
         dataQuality: 'synthetic_benchmark',
       },
       {
         address: `Comp B — ${city} As-Is SFR (0.7mi)`,
         distance: '0.7mi',
         rentPerUnit: Math.round(rent * 0.95),
-        pricePerUnit: Math.round(rent * 170),
+        pricePerUnit: arvEst > 0 ? Math.round(arvEst * 0.88) : Math.round(rent * 170),
         capRate: 0.065,
         condition: 'as_is',
-        sourceRef: 'MLS.sfr_comp.B',
+        sourceRef: 'MLS.sfr_comp.B [synthetic_benchmark]',
         dataQuality: 'synthetic_benchmark',
       },
     ];
   }
   // Generic fallback for retail / office / industrial / hospitality
+  const baseCapRate = ctx.capRate || 0.058;
   return [
     {
       address: `Comp A — ${city} Stabilized (1mi)`,
       rentPerUnit: Math.round(rent * 1.08),
       occupancy: 0.92,
-      capRate: 0.058,
+      capRate: baseCapRate,
       condition: 'stabilized',
-      sourceRef: 'CoStar.comp.A',
+      sourceRef: 'CoStar.comp.A [synthetic_benchmark]',
       dataQuality: 'synthetic_benchmark',
     },
     {
       address: `Comp B — ${city} Value-Add Peer (1.8mi)`,
       rentPerUnit: Math.round(rent * 1.02),
       occupancy: 0.84,
-      capRate: 0.065,
+      capRate: baseCapRate + 0.007,
       condition: 'value_add',
-      sourceRef: 'CoStar.comp.B',
+      sourceRef: 'CoStar.comp.B [synthetic_benchmark]',
       dataQuality: 'synthetic_benchmark',
     },
   ];
@@ -412,23 +448,64 @@ function buildTradeAreaComps(subStrategyKey: string, ctx: DealContext): CompEntr
 
 function buildLikeKindComps(subStrategyKey: string, ctx: DealContext): CompEntry[] {
   const city = ctx.city || 'Submarket';
+
+  // ── Live like-kind comps from deal_data (M05 dual-lens) ──────────────────
+  if (ctx.likeKindComps && ctx.likeKindComps.length > 0) {
+    return ctx.likeKindComps.slice(0, 3).map(lk => ({
+      address: lk.address,
+      irr: lk.irr,
+      holdMonths: lk.holdMonths,
+      capitalPerUnit: lk.capitalPerUnit,
+      capRate: lk.capRate,
+      pricePerUnit: lk.pricePerUnit,
+      condition: lk.condition,
+      sourceRef: lk.sourceRef,
+      dataQuality: 'live' as const,
+    }));
+  }
+
+  // ── Synthetic deal-archive benchmarks (fallback) ──────────────────────────
   const TABLE: Record<string, CompEntry[]> = {
     mf_value_add_standard: [
-      { address: `SE Value-Add Exit 2024 — ${city} analog`, irr: 18.5, holdMonths: 30, capitalPerUnit: 22_000, sourceRef: 'JediRE.deal_archive.va_2024_01', dataQuality: 'synthetic_benchmark' },
-      { address: `Sun-Belt Renovation Play 2023`, irr: 20.1, holdMonths: 36, capitalPerUnit: 28_000, sourceRef: 'JediRE.deal_archive.va_2023_07', dataQuality: 'synthetic_benchmark' },
+      { address: `SE Value-Add Exit 2024 — ${city} analog`, irr: 18.5, holdMonths: 30, capitalPerUnit: 22_000, sourceRef: 'JediRE.deal_archive.va_2024_01 [synthetic_benchmark]', dataQuality: 'synthetic_benchmark' },
+      { address: `Sun-Belt Renovation Play 2023`, irr: 20.1, holdMonths: 36, capitalPerUnit: 28_000, sourceRef: 'JediRE.deal_archive.va_2023_07 [synthetic_benchmark]', dataQuality: 'synthetic_benchmark' },
     ],
     mf_deep_value_add: [
-      { address: `Deep Reposition Exit 2023`, irr: 22.4, holdMonths: 48, capitalPerUnit: 48_000, sourceRef: 'JediRE.deal_archive.dva_2023_03', dataQuality: 'synthetic_benchmark' },
+      { address: `Deep Reposition Exit 2023`, irr: 22.4, holdMonths: 48, capitalPerUnit: 48_000, sourceRef: 'JediRE.deal_archive.dva_2023_03 [synthetic_benchmark]', dataQuality: 'synthetic_benchmark' },
+      { address: `Major Rehab Exit 2024`, irr: 19.8, holdMonths: 42, capitalPerUnit: 52_000, sourceRef: 'JediRE.deal_archive.dva_2024_01 [synthetic_benchmark]', dataQuality: 'synthetic_benchmark' },
     ],
     sfr_fix_flip: [
-      { address: `Fix-Flip Closed Q4 2024`, irr: 38.0, holdMonths: 6, capitalPerUnit: 35_000, sourceRef: 'JediRE.deal_archive.ff_2024_04', dataQuality: 'synthetic_benchmark' },
+      { address: `Fix-Flip Closed Q4 2024`, irr: 38.0, holdMonths: 6, capitalPerUnit: 35_000, sourceRef: 'JediRE.deal_archive.ff_2024_04 [synthetic_benchmark]', dataQuality: 'synthetic_benchmark' },
+      { address: `Quick Flip Q1 2025`, irr: 42.0, holdMonths: 5, capitalPerUnit: 28_000, sourceRef: 'JediRE.deal_archive.ff_2025_01 [synthetic_benchmark]', dataQuality: 'synthetic_benchmark' },
     ],
     sfr_brrrr: [
-      { address: `BRRRR Stabilized 2024`, irr: 17.5, holdMonths: 60, capitalPerUnit: 30_000, sourceRef: 'JediRE.deal_archive.brrrr_2024_02', dataQuality: 'synthetic_benchmark' },
+      { address: `BRRRR Stabilized 2024`, irr: 17.5, holdMonths: 60, capitalPerUnit: 30_000, sourceRef: 'JediRE.deal_archive.brrrr_2024_02 [synthetic_benchmark]', dataQuality: 'synthetic_benchmark' },
+      { address: `BRRRR Portfolio Exit 2023`, irr: 15.8, holdMonths: 72, capitalPerUnit: 25_000, sourceRef: 'JediRE.deal_archive.brrrr_2023_05 [synthetic_benchmark]', dataQuality: 'synthetic_benchmark' },
+    ],
+    sfr_hold: [
+      { address: `Long-Hold SFR 2023`, irr: 13.2, holdMonths: 84, sourceRef: 'JediRE.deal_archive.sfr_hold_2023_02 [synthetic_benchmark]', dataQuality: 'synthetic_benchmark' },
+      { address: `Scattered SFR Portfolio 2024`, irr: 14.8, holdMonths: 96, sourceRef: 'JediRE.deal_archive.sfr_hold_2024_01 [synthetic_benchmark]', dataQuality: 'synthetic_benchmark' },
+    ],
+    industrial_last_mile: [
+      { address: `Last-Mile Lease-Up Exit 2024`, irr: 22.0, holdMonths: 36, capRate: 0.046, sourceRef: 'JediRE.deal_archive.ind_lm_2024_01 [synthetic_benchmark]', dataQuality: 'synthetic_benchmark' },
+      { address: `E-Commerce Hub Disposition 2023`, irr: 19.5, holdMonths: 24, capRate: 0.048, sourceRef: 'JediRE.deal_archive.ind_lm_2023_03 [synthetic_benchmark]', dataQuality: 'synthetic_benchmark' },
+    ],
+    retail_value_add: [
+      { address: `Strip Center Reposition 2024`, irr: 16.2, holdMonths: 36, capRate: 0.065, sourceRef: 'JediRE.deal_archive.ret_va_2024_01 [synthetic_benchmark]', dataQuality: 'synthetic_benchmark' },
+      { address: `Grocery Shadow Reposition 2023`, irr: 18.1, holdMonths: 42, capRate: 0.060, sourceRef: 'JediRE.deal_archive.ret_va_2023_04 [synthetic_benchmark]', dataQuality: 'synthetic_benchmark' },
+    ],
+    office_adaptive_reuse: [
+      { address: `Office-to-Resi Conversion 2024`, irr: 24.0, holdMonths: 48, sourceRef: 'JediRE.deal_archive.office_ar_2024_01 [synthetic_benchmark]', dataQuality: 'synthetic_benchmark' },
+      { address: `Suburban Office Resi Conversion 2023`, irr: 19.5, holdMonths: 60, sourceRef: 'JediRE.deal_archive.office_ar_2023_02 [synthetic_benchmark]', dataQuality: 'synthetic_benchmark' },
+    ],
+    hospitality_reflag: [
+      { address: `Select-Service Reflag 2024`, irr: 17.0, holdMonths: 36, sourceRef: 'JediRE.deal_archive.hosp_reflag_2024_01 [synthetic_benchmark]', dataQuality: 'synthetic_benchmark' },
+      { address: `Boutique Franchise Conversion 2023`, irr: 20.5, holdMonths: 48, sourceRef: 'JediRE.deal_archive.hosp_reflag_2023_02 [synthetic_benchmark]', dataQuality: 'synthetic_benchmark' },
     ],
   };
   return TABLE[subStrategyKey] || [
-    { address: `Like-kind ${subStrategyKey} deal 2024`, irr: 16.0, holdMonths: 48, sourceRef: `JediRE.deal_archive.${subStrategyKey}_2024`, dataQuality: 'synthetic_benchmark' },
+    { address: `Like-kind ${subStrategyKey} deal 2024`, irr: 16.0, holdMonths: 48, sourceRef: `JediRE.deal_archive.${subStrategyKey}_2024 [synthetic_benchmark]`, dataQuality: 'synthetic_benchmark' },
+    { address: `${subStrategyKey} analog 2023`, irr: 14.5, holdMonths: 42, sourceRef: `JediRE.deal_archive.${subStrategyKey}_2023 [synthetic_benchmark]`, dataQuality: 'synthetic_benchmark' },
   ];
 }
 
@@ -462,6 +539,20 @@ function buildCompEvidence(subStrategyKey: string, ctx: DealContext): CompEviden
 
 // ─── Context type ─────────────────────────────────────────────────────────────
 
+export interface LiveComp {
+  address: string;
+  distance?: string;
+  rentPerUnit?: number;
+  occupancy?: number;
+  pricePerUnit?: number;
+  capRate?: number;
+  irr?: number;
+  holdMonths?: number;
+  capitalPerUnit?: number;
+  condition?: string;
+  sourceRef: string;
+}
+
 export interface DealContext {
   dealId: string;
   address: string;
@@ -475,6 +566,17 @@ export interface DealContext {
   capitalGapPerUnit: number;
   acquisitionPrice: number;
   targetIrr: number;
+  // Extended real-data fields (populated from deal_data when available)
+  capRate?: number;           // going-in cap rate from deal_data.cap_rate / deal_data.going_in_cap_rate
+  noi?: number;               // current NOI from deal_data.noi / deal_data.net_operating_income
+  arvEstimate?: number;       // after-repair value from deal_data.arv_estimate / after_repair_value
+  rehabCost?: number;         // total rehab cost from deal_data.rehab_cost / renovation_cost
+  exitCapRate?: number;       // target exit cap rate from deal_data.exit_cap_rate / deal_data.target_exit_cap
+  goingInCapRate?: number;    // alias for capRate — some deal schemas use different field names
+  // Comp arrays from deal_data (live data; falls back to synthetic benchmarks if empty)
+  rentComps?: LiveComp[];     // from deal_data.rent_comps / deal_data.comparable_rents
+  salesComps?: LiveComp[];    // from deal_data.sales_comps / deal_data.comparable_sales
+  likeKindComps?: LiveComp[]; // from deal_data.like_kind_comps / deal_data.m05_comps
 }
 
 // ─── Main builder ─────────────────────────────────────────────────────────────
