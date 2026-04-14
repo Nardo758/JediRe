@@ -209,6 +209,45 @@ CREATE INDEX IF NOT EXISTS idx_le_lease_start ON leasing_events (lease_start);
 CREATE INDEX IF NOT EXISTS idx_le_unit_type ON leasing_events (unit_type);
 
 -- ============================================================================
+-- 5b. lease_events (normalized lease event log per parser run)
+--     Companion to leasing_events. Parser writes normalized per-unit event
+--     rows here; leasing_events stores the snapshot-level event detail that
+--     the engine JOINs for occupancy and waterfall derivation.
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS lease_events (
+  id                BIGSERIAL PRIMARY KEY,
+  snapshot_id       BIGINT NOT NULL REFERENCES rent_roll_snapshots(id) ON DELETE CASCADE,
+  deal_id           TEXT NOT NULL,
+
+  unit_id           TEXT,
+  unit_type         TEXT,
+  unit_sf           INTEGER,
+
+  contract_rent     NUMERIC(10,2),
+  market_rent       NUMERIC(10,2),
+  concession_value  NUMERIC(10,2),
+  concession_months INTEGER,
+
+  lease_start       DATE,
+  lease_end         DATE,
+  move_in_date      DATE,
+  move_out_date     DATE,
+  notice_date       DATE,
+
+  unit_status       TEXT,
+  is_renewal        BOOLEAN,
+  days_vacant       INTEGER,
+
+  row_confidence    NUMERIC(4,3) DEFAULT 1.0,
+
+  created_at        TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_lev_snapshot_id ON lease_events (snapshot_id);
+CREATE INDEX IF NOT EXISTS idx_lev_deal_id ON lease_events (deal_id);
+CREATE INDEX IF NOT EXISTS idx_lev_lease_start ON lease_events (lease_start);
+
+-- ============================================================================
 -- 6. traffic_weight_config
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS traffic_weight_config (

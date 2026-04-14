@@ -80,8 +80,11 @@ const rentRollUpload = multer({
   },
 });
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const rentRollMiddleware = rentRollUpload.single('file') as any as RequestHandler;
+// @ts-expect-error — multer resolves RequestHandler against workspace-root
+// @types/express while this module resolves against backend-local @types/express.
+// Both resolve to the same interface at runtime; the dual-tree node_modules layout
+// causes nominal divergence that cannot be fixed without consolidating tsconfig paths.
+const rentRollMiddleware: RequestHandler = rentRollUpload.single('file');
 
 // ============================================================================
 // Authorization helper: verify the authenticated user owns the deal.

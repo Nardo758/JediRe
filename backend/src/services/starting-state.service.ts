@@ -64,22 +64,28 @@ export class StartingStateService {
 
     const snapshot = snapshotResult.rows[0] || null;
     const derived: DerivedSnapshotMetrics | null = snapshot?.derived_metrics || null;
+    const hasRentRoll = snapshot !== null;
 
-    // Determine mode
-    const explicitMode = deal.deal_mode;
+    // Explicit deal_mode always wins — never override with occupancy inference.
+    const explicitMode = deal.deal_mode as string | null;
 
     if (explicitMode === 'REDEVELOPMENT' || this.isRedevelopment(deal)) {
       return this.buildRedevelopmentState(deal, derived);
     }
 
-    const hasRentRoll = snapshot !== null;
-    const occupancy = this.getOccupancy(deal, derived);
+    if (explicitMode === 'LEASE_UP') {
+      return await this.buildLeaseUpState(deal, derived);
+    }
+
+    // Derive occupancy from rent-roll snapshot when available; fall back to
+    // deal metadata, and finally to a conservative default.
+    const occupancy = await this.getOccupancy(deal, derived, snapshot?.id ?? null);
 
     if (explicitMode === 'STABILIZED' || (hasRentRoll && occupancy >= 0.80)) {
       return this.buildStabilizedState(deal, derived, occupancy);
     }
 
-    // Default: LEASE_UP
+    // No explicit mode and occupancy below stabilized threshold → LEASE_UP
     return await this.buildLeaseUpState(deal, derived);
   }
 
@@ -124,11 +130,11 @@ export class StartingStateService {
   private async buildLeaseUpState(deal: any, derived: DerivedSnapshotMetrics | null): Promise<LeaseUpState> {
     const submarketId = deal.submarket_id;
 
-    // Use observed occupancy when rent roll or deal data provides it.
-    // For new construction with no data the value falls back to 0 (correct for LEASE_UP).
-    const observedOcc = this.getOccupancy(deal, derived);
-    // getOccupancy returns 0.90 as its default — treat 0.90 as "no real signal"
-    // so we only carry forward occupancy that came from actual data fields.
+    // Observed occupancy from rent-roll snapshot, deal metadata, or 0 for new construction.
+    // Pass no snapshotId here since we don't have it in this path — deal metadata is enough.
+    const observedOcc = await this.getOccupancy(deal, derived, null);
+    // Only use observed occupancy when there is a real data signal (deal field or rent-roll).
+    // New construction with no evidence should start at 0.
     const hasRealOccupancySignal =
       deal.current_occupancy != null ||
       (deal.deal_data?.occupancy != null) ||
@@ -182,8 +188,25 @@ export class StartingStateService {
       });
     }
 
+    // For redevelopment mode, derive occupancy from deal metadata only
+    // (no async DB call needed; rent-roll data may not exist for rehabs).
+    const metaOcc = (() => {
+      if (deal.current_occupancy != null) {
+        const v = parseFloat(deal.current_occupancy);
+        if (!isNaN(v) && v >= 0 && v <= 1) return v;
+        if (!isNaN(v) && v > 1 && v <= 100) return v / 100;
+      }
+      const dd = deal.deal_data || {};
+      if (dd.occupancy != null) {
+        const v = parseFloat(dd.occupancy);
+        if (!isNaN(v) && v >= 0 && v <= 1) return v;
+        if (!isNaN(v) && v > 1 && v <= 100) return v / 100;
+      }
+      return 0.90;
+    })();
+
     const occupiedUnits = derived
-      ? Math.round((this.getOccupancy(deal, derived)) * (deal.target_units || 100))
+      ? Math.round(metaOcc * (deal.target_units || 100))
       : 0;
 
     const totalUnits = deal.target_units || 100;
@@ -203,21 +226,39 @@ export class StartingStateService {
   // Helpers
   // ============================================================================
 
-  private getOccupancy(deal: any, derived: DerivedSnapshotMetrics | null): number {
-    // Try from deal property data first
+  private async getOccupancy(
+    deal: any,
+    _derived: DerivedSnapshotMetrics | null,
+    snapshotId: number | null,
+  ): Promise<number> {
+    // Prefer rent-roll occupancy derived from leasing_events unit_status counts.
+    if (snapshotId != null) {
+      const occResult = await this.pool.query<any>(`
+        SELECT
+          COUNT(*) FILTER (WHERE unit_status IN ('occupied', 'renewal', 'notice')) AS occupied,
+          COUNT(*) AS total
+        FROM leasing_events
+        WHERE snapshot_id = $1
+      `, [snapshotId]);
+      const row = occResult.rows[0];
+      if (row && Number(row.total) > 0) {
+        return Math.round((Number(row.occupied) / Number(row.total)) * 10000) / 10000;
+      }
+    }
+
+    // Fall back to deal metadata fields.
     if (deal.current_occupancy != null) {
       const occ = parseFloat(deal.current_occupancy);
       if (!isNaN(occ) && occ >= 0 && occ <= 1) return occ;
       if (!isNaN(occ) && occ > 1 && occ <= 100) return occ / 100;
     }
-    // Try from deal_data
     const dealData = deal.deal_data || {};
     if (dealData.occupancy != null) {
       const occ = parseFloat(dealData.occupancy);
       if (!isNaN(occ) && occ >= 0 && occ <= 1) return occ;
       if (!isNaN(occ) && occ > 1 && occ <= 100) return occ / 100;
     }
-    // Default
+
     return 0.90;
   }
 

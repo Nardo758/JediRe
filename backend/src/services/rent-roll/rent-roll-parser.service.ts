@@ -105,36 +105,38 @@ export class RentRollParserService {
 
     const snapshotId = snapshotResult.rows[0].id;
 
-    // Step 5: Bulk insert into leasing_events (the M07 base table)
+    // Step 5: Bulk insert into leasing_events (engine JOIN target) and
+    //          lease_events (normalized per-unit event log per spec contract).
     let eventsStored = 0;
-    for (const evt of leaseEvents) {
-      try {
-        await this.pool.query(`
-          INSERT INTO leasing_events (
-            snapshot_id, deal_id, unit_id, unit_type, unit_sf,
+    const colList = `snapshot_id, deal_id, unit_id, unit_type, unit_sf,
             contract_rent, market_rent, concession_value, concession_months,
             lease_start, lease_end, move_in_date, move_out_date, notice_date,
-            unit_status, is_renewal, days_vacant, row_confidence
-          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
-        `, [
-          snapshotId, dealId,
-          evt.unit_id || null,
-          evt.unit_type || null,
-          evt.unit_sf || null,
-          evt.contract_rent || null,
-          evt.market_rent || null,
-          evt.concession_value || null,
-          evt.concession_months || null,
-          evt.lease_start || null,
-          evt.lease_end || null,
-          evt.move_in_date || null,
-          evt.move_out_date || null,
-          evt.notice_date || null,
-          evt.unit_status || null,
-          evt.is_renewal ?? null,
-          evt.days_vacant ?? null,
-          evt.row_confidence,
-        ]);
+            unit_status, is_renewal, days_vacant, row_confidence`;
+    const valPlaceholders = `$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18`;
+
+    for (const evt of leaseEvents) {
+      const params = [
+        snapshotId, dealId,
+        evt.unit_id || null,
+        evt.unit_type || null,
+        evt.unit_sf || null,
+        evt.contract_rent || null,
+        evt.market_rent || null,
+        evt.concession_value || null,
+        evt.concession_months || null,
+        evt.lease_start || null,
+        evt.lease_end || null,
+        evt.move_in_date || null,
+        evt.move_out_date || null,
+        evt.notice_date || null,
+        evt.unit_status || null,
+        evt.is_renewal ?? null,
+        evt.days_vacant ?? null,
+        evt.row_confidence,
+      ];
+      try {
+        await this.pool.query(`INSERT INTO leasing_events (${colList}) VALUES (${valPlaceholders})`, params);
+        await this.pool.query(`INSERT INTO lease_events (${colList}) VALUES (${valPlaceholders})`, params);
         eventsStored++;
       } catch (err: any) {
         logger.warn('[RentRollParser] Failed to insert lease event row', { error: err.message });
