@@ -97,6 +97,8 @@ export interface StrategyAnalysisV2Slice {
   triggerStrategyAnalysisV2Recalc: (dealId: string) => Promise<void>;
   confirmStrategyDetection: (dealId: string, confirmed: boolean) => Promise<void>;
   overrideStrategyClassification: (dealId: string, assetClass: string) => Promise<void>;
+  /** Refines sub-strategy within detected asset class without changing the asset class itself */
+  adjustStrategySubStrategy: (dealId: string, subStrategyKey: string) => Promise<void>;
   setStrategyAnalysisV2: (data: import('../hooks/useStrategyAnalysisV2').StrategyAnalysisV2 | null) => void;
 }
 
@@ -124,6 +126,8 @@ interface DealStoreActions {
   triggerStrategyAnalysisV2Recalc: (dealId: string) => Promise<void>;
   confirmStrategyDetection: (dealId: string, confirmed: boolean) => Promise<void>;
   overrideStrategyClassification: (dealId: string, assetClass: string) => Promise<void>;
+  /** Refines sub-strategy within detected asset class without changing the asset class itself */
+  adjustStrategySubStrategy: (dealId: string, subStrategyKey: string) => Promise<void>;
   setStrategyAnalysisV2: (data: import('../hooks/useStrategyAnalysisV2').StrategyAnalysisV2 | null) => void;
 
   // ─── LIFECYCLE ────────────────────────────────────────────
@@ -605,6 +609,21 @@ export const useDealStore = create<DealStore>()(
         await apiClient.patch(`/api/v1/deals/${dealId}/detection-confirmation`, {
           userConfirmed: true,
           userOverrideClassification: assetClass,
+        });
+      } catch {
+        // best-effort
+      }
+      const storeActions = get();
+      await storeActions.fetchStrategyAnalysisV2(dealId);
+    },
+
+    adjustStrategySubStrategy: async (dealId: string, subStrategyKey: string) => {
+      // Sub-strategy refinement: confirms detection and sets the preferred sub-strategy
+      // without changing the detected asset class (distinct from full override)
+      try {
+        await apiClient.patch(`/api/v1/deals/${dealId}/detection-confirmation`, {
+          userConfirmed: true,
+          adjustedSubStrategyKey: subStrategyKey,
         });
       } catch {
         // best-effort

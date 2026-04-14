@@ -255,12 +255,25 @@ export interface StrategyAnalysisV2 {
 }
 
 export interface UseStrategyAnalysisV2Result {
+  // Raw analysis object (for backward compat)
   analysis: StrategyAnalysisV2 | null;
+  // Flat spec-contract exports (detection-first spec)
+  detection: DetectionResult | null;
+  subStrategies: SubStrategyScore[];
+  arbitrage: ArbitrageSummary | null;
+  plan: InvestmentPlan | null;
+  correlationAlerts: CorrelationAlert[];
+  goldenChain: GoldenChain | null;
+  coordinatorNarrative: string | null;
+  // Loading state
   loading: boolean;
   error: string | null;
   recalculating: boolean;
+  // Actions
   confirmDetection: (confirmed: boolean) => Promise<void>;
   overrideClassification: (assetClass: string) => Promise<void>;
+  /** Refines sub-strategy within the detected asset class without changing asset class */
+  adjustSubStrategy: (subStrategyKey: string) => Promise<void>;
   refresh: () => void;
   triggerRecalc: () => Promise<void>;
 }
@@ -281,6 +294,7 @@ export function useStrategyAnalysisV2(dealId: string): UseStrategyAnalysisV2Resu
   const triggerStrategyAnalysisV2Recalc = useDealStore(s => s.triggerStrategyAnalysisV2Recalc);
   const confirmStrategyDetection = useDealStore(s => s.confirmStrategyDetection);
   const overrideStrategyClassification = useDealStore(s => s.overrideStrategyClassification);
+  const adjustStrategySubStrategy = useDealStore(s => s.adjustStrategySubStrategy);
 
   // Fetch on dealId change — store handles null-response recalc internally
   useEffect(() => {
@@ -297,6 +311,11 @@ export function useStrategyAnalysisV2(dealId: string): UseStrategyAnalysisV2Resu
     [dealId, overrideStrategyClassification],
   );
 
+  const adjustSubStrategy = useCallback(
+    (subStrategyKey: string) => adjustStrategySubStrategy(dealId, subStrategyKey),
+    [dealId, adjustStrategySubStrategy],
+  );
+
   const refresh = useCallback(
     () => { fetchStrategyAnalysisV2(dealId); },
     [dealId, fetchStrategyAnalysisV2],
@@ -309,11 +328,22 @@ export function useStrategyAnalysisV2(dealId: string): UseStrategyAnalysisV2Resu
 
   return {
     analysis,
+    // Flat spec-contract fields
+    detection: analysis?.detection ?? null,
+    subStrategies: analysis?.subStrategies ?? [],
+    arbitrage: analysis?.arbitrage ?? null,
+    plan: analysis?.plan ?? null,
+    correlationAlerts: analysis?.correlationAlerts ?? [],
+    goldenChain: analysis?.goldenChain ?? null,
+    coordinatorNarrative: analysis?.coordinatorNarrative ?? null,
+    // State
     loading,
     error,
     recalculating,
+    // Actions
     confirmDetection,
     overrideClassification,
+    adjustSubStrategy,
     refresh,
     triggerRecalc,
   };

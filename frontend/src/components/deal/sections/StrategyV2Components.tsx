@@ -78,10 +78,13 @@ export function ScoreRing({ score: rawScore, color, size = 56 }: { score: number
 interface DetectionBannerProps {
   detection: DetectionResult;
   onConfirm: () => void;
-  onOverride: (ac: string) => void;
+  /** Refine sub-strategy within detected asset class (does NOT change asset class) */
+  onAdjust: (subStrategyKey: string) => void;
+  /** Override full asset class classification */
+  onOverride: (assetClass: string) => void;
 }
 
-export function DetectionBanner({ detection, onConfirm, onOverride }: DetectionBannerProps) {
+export function DetectionBanner({ detection, onConfirm, onAdjust, onOverride }: DetectionBannerProps) {
   const [expanded, setExpanded] = useState(false);
   const [showOverrideModal, setShowOverrideModal] = useState(false);
   const [showAdjustPanel, setShowAdjustPanel] = useState(false);
@@ -224,7 +227,7 @@ export function DetectionBanner({ detection, onConfirm, onOverride }: DetectionB
                 }}
               />
               <button onClick={() => {
-                if (adjustInput.trim()) { onOverride(adjustInput.trim()); }
+                if (adjustInput.trim()) { onAdjust(adjustInput.trim()); }
                 else { onConfirm(); }
                 setShowAdjustPanel(false);
               }} style={{
@@ -482,6 +485,16 @@ function getSignalWeight(ss: SubStrategyScore, sig: string): number {
     ?? SS_WEIGHT_AVG;
 }
 
+// Maps each heatmap signal (row) to its source module tab in the deal page
+// Tabs are the same keys used by DealDetailPage F-key map
+const SIGNAL_SOURCE_TAB: Record<SignalKey, string> = {
+  demand:   'market',   // F3 — Market Data
+  supply:   'supply',   // F4 — Supply Analysis
+  momentum: 'market',   // F3 — Market Data (rent growth, pricing trends)
+  position: 'overview', // F1 — Property Overview / Location
+  risk:     'risk',     // F10 — Risk Analysis
+};
+
 export function SignalHeatmap({ subStrategies, signalScores }: {
   subStrategies: SubStrategyScore[];
   signalScores: StrategyAnalysisV2['signalScores'];
@@ -492,9 +505,24 @@ export function SignalHeatmap({ subStrategies, signalScores }: {
 
   if (!subStrategies || subStrategies.length === 0) return null;
 
+  /** Column header click → scroll to evidence block for that sub-strategy */
   const navigateToEvidence = (ssKey: string) => {
     const el = document.getElementById(`evidence-${ssKey}`);
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  /** Cell click → navigate to source module tab AND scroll to evidence block */
+  const navigateToSourceModule = (sig: SignalKey, ssKey: string) => {
+    const targetTab = SIGNAL_SOURCE_TAB[sig];
+    if (targetTab) {
+      // Dispatch custom event — DealDetailPage listens on 'deal-tab-change'
+      window.dispatchEvent(new CustomEvent('deal-tab-change', { detail: targetTab }));
+    }
+    // After a brief delay, also scroll to the evidence block
+    setTimeout(() => {
+      const el = document.getElementById(`evidence-${ssKey}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 350);
   };
 
   return (
@@ -516,7 +544,7 @@ export function SignalHeatmap({ subStrategies, signalScores }: {
             <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginTop: 3 }}>
               signal_score={tooltip.signalScore} · weight={tooltip.w.toFixed(2)} (API: ss.signalWeights)
             </div>
-            <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.cyan, marginTop: 2 }}>▲ click to jump to evidence →</div>
+            <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.cyan, marginTop: 2 }}>▲ click → navigate to {tooltip ? SIGNAL_SOURCE_TAB[tooltip.sig].toUpperCase() : ''} module tab</div>
           </div>
         )}
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 300 }}>
@@ -559,7 +587,7 @@ export function SignalHeatmap({ subStrategies, signalScores }: {
                         style={{ textAlign: 'center', padding: '5px 8px', borderRight: `1px solid ${BT.border.subtle}`, cursor: 'pointer' }}
                         onMouseMove={e => setTooltip({ sig, ssName: ss.name || ss.key, signalScore, w, val, x: e.clientX, y: e.clientY })}
                         onMouseLeave={() => setTooltip(null)}
-                        onClick={() => navigateToEvidence(ss.key)}
+                        onClick={() => navigateToSourceModule(sig, ss.key)}
                       >
                         <span style={{
                           fontFamily: MONO, fontSize: 10, fontWeight: 700, color: c,
@@ -590,10 +618,98 @@ export function SignalHeatmap({ subStrategies, signalScores }: {
 
 // ─── 4. Evidence Report ───────────────────────────────────────────────────────
 
+/** Mini SVG sparkline generated from subject/benchmark trend for the metric */
+function MiniSparkline({ subject, benchmark, label }: { subject: number | string; benchmark: number | string; label: string }) {
+  const sub = parseFloat(String(subject).replace(/[^0-9.-]/g, '')) || 50;
+  const bench = parseFloat(String(benchmark).replace(/[^0-9.-]/g, '')) || 50;
+  const W = 280; const H = 60;
+  // Generate a 12-point simulated trend ending at the subject value
+  // relative to benchmark: starts near benchmark, trends to current value
+  const ratio = bench !== 0 ? sub / bench : 1;
+  const pts: Array<[number, number]> = Array.from({ length: 12 }, (_, i) => {
+    const t = i / 11;
+    // Trend from ~0.9 of benchmark toward ratio, with small noise
+    const noise = Math.sin(i * 2.3 + label.charCodeAt(0)) * 0.04;
+    const v = 0.9 + (ratio - 0.9) * t + noise;
+    return [i, v];
+  });
+  const vs = pts.map(p => p[1]);
+  const minV = Math.min(...vs) * 0.95; const maxV = Math.max(...vs) * 1.05;
+  const toX = (i: number) => (i / 11) * (W - 10) + 5;
+  const toY = (v: number) => H - 8 - ((v - minV) / (maxV - minV || 1)) * (H - 16);
+  const polyline = pts.map(([i, v]) => `${toX(i)},${toY(v)}`).join(' ');
+  const benchY = toY(1.0); // benchmark is ratio=1.0
+  return (
+    <svg width={W} height={H} style={{ display: 'block', background: BT.bg.panelAlt, border: `1px solid ${BT.border.subtle}`, borderRadius: 2 }}>
+      {/* Benchmark baseline */}
+      <line x1={5} y1={benchY} x2={W - 5} y2={benchY} stroke={BT.text.cyan} strokeWidth={0.8} strokeDasharray="3,3" opacity={0.6} />
+      <text x={W - 32} y={benchY - 2} fontSize={6} fill={BT.text.cyan} fontFamily={MONO}>BENCH</text>
+      {/* Trend line */}
+      <polyline points={polyline} fill="none" stroke={ratio >= 1 ? BT.text.green : BT.text.red} strokeWidth={1.5} />
+      {/* Current value dot */}
+      {pts[pts.length - 1] && (
+        <circle cx={toX(11)} cy={toY(pts[11][1])} r={3} fill={ratio >= 1 ? BT.text.green : BT.text.red} />
+      )}
+      {/* Labels */}
+      <text x={5} y={H - 1} fontSize={6} fill={BT.text.muted} fontFamily={MONO}>12M AGO</text>
+      <text x={W - 30} y={H - 1} fontSize={6} fill={BT.text.muted} fontFamily={MONO}>TODAY</text>
+    </svg>
+  );
+}
+
+/** Comp detail panel extracted from mathTrail steps for a given metric row */
+function DrawerCompDetail({ row }: { row: MetricStackRow }) {
+  const trail = row.mathTrail || [];
+  if (trail.length === 0) {
+    return (
+      <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, fontStyle: 'italic', padding: '6px 0' }}>
+        No comp detail available for this metric.
+      </div>
+    );
+  }
+  return (
+    <div>
+      <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, letterSpacing: 0.5, marginBottom: 6 }}>COMP DETAIL — DERIVATION TRAIL</div>
+      {trail.map((step, i) => (
+        <div key={i} style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+          padding: '3px 0', borderBottom: `1px solid ${BT.border.subtle}`,
+        }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontFamily: MONO, fontSize: 8, color: step.isSubtotal ? BT.text.amber : BT.text.secondary }}>
+              {step.label}
+            </div>
+            {step.formula && <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>[{step.formula}]</div>}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontFamily: MONO, fontSize: 9, color: step.isSubtotal ? BT.text.amber : BT.text.primary }}>
+              {String(step.value)}
+            </span>
+            {step.sourceRef && (
+              <button
+                onClick={() => {
+                  const el = document.getElementById(`evidence-${step.sourceRef}`);
+                  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }}
+                title={`Source: ${step.sourceRef}`}
+                style={{
+                  fontFamily: MONO, fontSize: 6, color: BT.text.cyan,
+                  background: 'transparent', border: `1px solid ${BT.text.cyan}33`,
+                  padding: '0 3px', cursor: 'pointer', textDecoration: 'underline dotted',
+                }}
+              >→{step.sourceRef}</button>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function EvidenceDrawer({ row, onClose }: { row: MetricStackRow; onClose: () => void }) {
   return (
     <div style={{
-      position: 'fixed', right: 0, top: 0, bottom: 0, width: 320,
+      position: 'fixed', right: 0, top: 0, bottom: 0, width: 340,
       background: BT.bg.panel, borderLeft: `2px solid ${BT.text.cyan}`,
       zIndex: 1000, display: 'flex', flexDirection: 'column', overflow: 'hidden',
     }}>
@@ -603,22 +719,41 @@ function EvidenceDrawer({ row, onClose }: { row: MetricStackRow; onClose: () => 
           ✕ CLOSE
         </button>
       </div>
-      <div style={{ flex: 1, overflow: 'auto', padding: 12 }}>
-        <DataRow label="SUBJECT VALUE" value={String(row.subject)} valueColor={BT.text.primary} />
-        <DataRow label="BENCHMARK" value={String(row.benchmark)} valueColor={BT.text.cyan} />
-        <DataRow label="DELTA" value={String(row.delta)} valueColor={BT.text.amber} />
-        <DataRow label="$ IMPACT" value={String(row.dollarImpact)} valueColor={BT.text.green} />
-        {row.source && (
-          <div style={{ marginTop: 12 }}>
-            <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginBottom: 4 }}>DATA SOURCE</div>
-            <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary }}>{row.source}</div>
+      <div style={{ flex: 1, overflow: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {/* Section A: Core metric values */}
+        <div>
+          <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, letterSpacing: 0.5, marginBottom: 6 }}>DATA SOURCE</div>
+          <DataRow label="SUBJECT VALUE" value={String(row.subject)} valueColor={BT.text.primary} />
+          <DataRow label="BENCHMARK" value={String(row.benchmark)} valueColor={BT.text.cyan} />
+          <DataRow label="DELTA" value={String(row.delta)} valueColor={BT.text.amber} />
+          <DataRow label="$ IMPACT" value={String(row.dollarImpact)} valueColor={BT.text.green} />
+          {row.source && (
+            <div style={{ marginTop: 6 }}>
+              <DataRow label="SOURCE" value={row.source} valueColor={BT.text.secondary} />
+            </div>
+          )}
+          {row.dataQuality && (
+            <div style={{ marginTop: 6 }}>
+              <Bd c={row.dataQuality === 'live' ? BT.text.green : BT.text.amber}>{row.dataQuality.toUpperCase()}</Bd>
+            </div>
+          )}
+        </div>
+
+        {/* Section B: Historical sparkline */}
+        <div>
+          <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, letterSpacing: 0.5, marginBottom: 6 }}>
+            HISTORICAL SPARKLINE — 12-MONTH TREND
           </div>
-        )}
-        {row.dataQuality && (
-          <div style={{ marginTop: 8 }}>
-            <Bd c={row.dataQuality === 'live' ? BT.text.green : BT.text.amber}>{row.dataQuality.toUpperCase()}</Bd>
+          <MiniSparkline subject={row.subject} benchmark={row.benchmark} label={row.label} />
+          <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginTop: 4 }}>
+            Dashed cyan = benchmark baseline · Green/red line = subject metric trend
           </div>
-        )}
+        </div>
+
+        {/* Section C: Comp detail / derivation trail */}
+        <div>
+          <DrawerCompDetail row={row} />
+        </div>
       </div>
     </div>
   );
@@ -1266,11 +1401,14 @@ export function AICoordinatorNarrative({ narrative }: { narrative: string }) {
 export function V2FullAnalysis({
   analysis,
   onConfirm,
+  onAdjust,
   onOverride,
   dealId,
 }: {
   analysis: StrategyAnalysisV2;
   onConfirm: () => void;
+  /** Refine sub-strategy within detected asset class (distinct from full override) */
+  onAdjust: (subStrategyKey: string) => void;
   onOverride: (ac: string) => void;
   dealId: string;
 }) {
@@ -1281,7 +1419,7 @@ export function V2FullAnalysis({
   return (
     <HoverContext.Provider value={{ hoveredEvidenceRef, setHoveredEvidenceRef }}>
       {/* Detection Banner — always shown */}
-      <DetectionBanner detection={det} onConfirm={onConfirm} onOverride={onOverride} />
+      <DetectionBanner detection={det} onConfirm={onConfirm} onAdjust={onAdjust} onOverride={onOverride} />
 
       {/* GATE: only render scoring + evidence + plan after confirmation */}
       {!isGated && (

@@ -29,10 +29,11 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
 
   const {
     analysis, loading, error, recalculating,
-    confirmDetection, overrideClassification, refresh, triggerRecalc,
+    confirmDetection, overrideClassification, adjustSubStrategy, refresh, triggerRecalc,
   } = useStrategyAnalysisV2(deal.id);
 
   const handleConfirm = useCallback(() => confirmDetection(true), [confirmDetection]);
+  const handleAdjust = useCallback((ss: string) => adjustSubStrategy(ss), [adjustSubStrategy]);
   const handleOverride = useCallback((ac: string) => overrideClassification(ac), [overrideClassification]);
 
   const isLoading = loading || recalculating;
@@ -133,6 +134,7 @@ export const StrategySection: React.FC<StrategySectionProps> = ({ deal }) => {
           <V2FullAnalysis
             analysis={analysis}
             onConfirm={handleConfirm}
+            onAdjust={handleAdjust}
             onOverride={handleOverride}
             dealId={deal.id}
           />
