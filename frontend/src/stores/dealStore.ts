@@ -86,6 +86,20 @@ export interface M08ArbitrageResult {
   arbitrage_detected: boolean;
 }
 
+// ─── M08 v2 Strategy Analysis slice ──────────────────────────────────────────
+// Re-exported from hook types; duplicated here to avoid circular deps.
+export interface StrategyAnalysisV2Slice {
+  strategyAnalysisV2: import('../hooks/useStrategyAnalysisV2').StrategyAnalysisV2 | null;
+  strategyAnalysisV2Loading: boolean;
+  strategyAnalysisV2Recalculating: boolean;
+  strategyAnalysisV2Error: string | null;
+  fetchStrategyAnalysisV2: (dealId: string) => Promise<void>;
+  triggerStrategyAnalysisV2Recalc: (dealId: string) => Promise<void>;
+  confirmStrategyDetection: (dealId: string, confirmed: boolean) => Promise<void>;
+  overrideStrategyClassification: (dealId: string, assetClass: string) => Promise<void>;
+  setStrategyAnalysisV2: (data: import('../hooks/useStrategyAnalysisV2').StrategyAnalysisV2 | null) => void;
+}
+
 interface DealStoreActions {
   // ─── DEAL LIST (Dashboard) ────────────────────────────────
   deals: any[];
@@ -93,13 +107,24 @@ interface DealStoreActions {
   error: string | null;
   fetchDeals: () => Promise<void>;
 
-  // ─── M08 STRATEGY ARBITRAGE ───────────────────────────────
+  // ─── M08 v1 STRATEGY ARBITRAGE ───────────────────────────────
   strategyScores: M08StrategyScore[];
   arbitrageResult: M08ArbitrageResult | null;
   strategyScoresLoading: boolean;
   fetchStrategyScores: (dealId: string) => Promise<void>;
   recalculateStrategyScores: (dealId: string) => Promise<void>;
   fetchArbitrage: (dealId: string) => Promise<void>;
+
+  // ─── M08 v2 DETECTION-FIRST STRATEGY ANALYSIS ────────────
+  strategyAnalysisV2: import('../hooks/useStrategyAnalysisV2').StrategyAnalysisV2 | null;
+  strategyAnalysisV2Loading: boolean;
+  strategyAnalysisV2Recalculating: boolean;
+  strategyAnalysisV2Error: string | null;
+  fetchStrategyAnalysisV2: (dealId: string) => Promise<void>;
+  triggerStrategyAnalysisV2Recalc: (dealId: string) => Promise<void>;
+  confirmStrategyDetection: (dealId: string, confirmed: boolean) => Promise<void>;
+  overrideStrategyClassification: (dealId: string, assetClass: string) => Promise<void>;
+  setStrategyAnalysisV2: (data: import('../hooks/useStrategyAnalysisV2').StrategyAnalysisV2 | null) => void;
 
   // ─── LIFECYCLE ────────────────────────────────────────────
   /** Create a new deal */
@@ -504,12 +529,88 @@ export const useDealStore = create<DealStore>()(
     fetchArbitrage: async (dealId: string) => {
       try {
         const res = await apiClient.get(`/api/v1/deals/${dealId}/arbitrage`);
-        // Backend returns { success, arbitrage: M08ArbitrageResult }
         const result: M08ArbitrageResult | null = res.data?.arbitrage ?? null;
         set({ arbitrageResult: result });
       } catch (err) {
         console.error('[dealStore] fetchArbitrage failed:', err);
       }
+    },
+
+    // ─── M08 v2 Detection-First Strategy Analysis ──────────────────────────
+    strategyAnalysisV2: null,
+    strategyAnalysisV2Loading: false,
+    strategyAnalysisV2Recalculating: false,
+    strategyAnalysisV2Error: null,
+
+    setStrategyAnalysisV2: (data) => {
+      set({ strategyAnalysisV2: data });
+    },
+
+    fetchStrategyAnalysisV2: async (dealId: string) => {
+      set({ strategyAnalysisV2Loading: true, strategyAnalysisV2Error: null });
+      try {
+        const res = await apiClient.get(`/api/v1/deals/${dealId}/strategies`);
+        const data = res.data?.data ?? res.data;
+        if (data && (Array.isArray(data.subStrategies) || data.detection)) {
+          set({ strategyAnalysisV2: data, strategyAnalysisV2Loading: false });
+        } else {
+          // null response — keep loading true and trigger recalc inline
+          const storeActions = get();
+          await storeActions.triggerStrategyAnalysisV2Recalc(dealId);
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Failed to load strategy analysis v2';
+        console.error('[dealStore] fetchStrategyAnalysisV2 failed:', err);
+        set({ strategyAnalysisV2Error: msg, strategyAnalysisV2Loading: false });
+      }
+    },
+
+    triggerStrategyAnalysisV2Recalc: async (dealId: string) => {
+      set({ strategyAnalysisV2Recalculating: true, strategyAnalysisV2Loading: true });
+      try {
+        await apiClient.post('/api/v1/strategy-analyses', {
+          dealId,
+          strategySlug: 'auto',
+          assumptions: {},
+        });
+      } catch {
+        // best-effort trigger
+      }
+      await new Promise(r => setTimeout(r, 2000));
+      try {
+        const res = await apiClient.get(`/api/v1/deals/${dealId}/strategies`);
+        const data = res.data?.data ?? res.data;
+        if (data && (Array.isArray(data.subStrategies) || data.detection)) {
+          set({ strategyAnalysisV2: data });
+        }
+      } catch {
+        // best-effort refetch
+      } finally {
+        set({ strategyAnalysisV2Recalculating: false, strategyAnalysisV2Loading: false });
+      }
+    },
+
+    confirmStrategyDetection: async (dealId: string, confirmed: boolean) => {
+      try {
+        await apiClient.patch(`/api/v1/deals/${dealId}/detection-confirmation`, { userConfirmed: confirmed });
+      } catch {
+        // best-effort
+      }
+      const storeActions = get();
+      await storeActions.fetchStrategyAnalysisV2(dealId);
+    },
+
+    overrideStrategyClassification: async (dealId: string, assetClass: string) => {
+      try {
+        await apiClient.patch(`/api/v1/deals/${dealId}/detection-confirmation`, {
+          userConfirmed: true,
+          userOverrideClassification: assetClass,
+        });
+      } catch {
+        // best-effort
+      }
+      const storeActions = get();
+      await storeActions.fetchStrategyAnalysisV2(dealId);
     },
 
     createDeal: async (payload: any) => {

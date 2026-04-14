@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { apiClient } from '../services/api.client';
+import { useCallback, useEffect } from 'react';
+import { useDealStore } from '../stores/dealStore';
 
 // ─── API response types (mirror backend StrategyAnalysisV2) ──────────────────
 
@@ -128,7 +128,7 @@ export interface SubStrategyScore {
   finalScore: number;
   disqualified: boolean;
   financialPreview: FinancialPreview;
-  strategyAssumptions: Record<string, any>;
+  strategyAssumptions: Record<string, unknown>;
   appliedCorrelations: string[];
   evidenceReport: EvidenceReport;
 }
@@ -263,106 +263,47 @@ export interface UseStrategyAnalysisV2Result {
   triggerRecalc: () => Promise<void>;
 }
 
+/**
+ * useStrategyAnalysisV2 — reads from the dealStore's strategyAnalysisV2 slice.
+ * On mount, fetches from GET /api/v1/deals/:dealId/strategies.
+ * If null response, automatically triggers a recalc via POST and re-fetches.
+ * loading remains true through the entire recalc→refetch cycle.
+ */
 export function useStrategyAnalysisV2(dealId: string): UseStrategyAnalysisV2Result {
-  const [analysis, setAnalysis] = useState<StrategyAnalysisV2 | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [recalculating, setRecalculating] = useState(false);
-  const fetchRef = useRef(0);
-  const recalcTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const analysis = useDealStore(s => s.strategyAnalysisV2);
+  const loading = useDealStore(s => s.strategyAnalysisV2Loading);
+  const error = useDealStore(s => s.strategyAnalysisV2Error);
+  const recalculating = useDealStore(s => s.strategyAnalysisV2Recalculating);
 
-  const fetchAnalysis = useCallback(async () => {
-    if (!dealId) return;
-    const token = ++fetchRef.current;
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await apiClient.get(`/api/v1/deals/${dealId}/strategies`);
-      if (token !== fetchRef.current) return;
-      const data = res.data?.data ?? res.data;
-      if (data && (data.subStrategies?.length > 0 || data.detection)) {
-        setAnalysis(data as StrategyAnalysisV2);
-      } else {
-        // null/empty response — trigger recalc automatically
-        setAnalysis(null);
-        triggerRecalcInternal(token);
-      }
-    } catch (err: any) {
-      if (token !== fetchRef.current) return;
-      setError(err?.response?.data?.error || err?.message || 'Failed to load strategy analysis');
-    } finally {
-      if (token === fetchRef.current) setLoading(false);
-    }
+  const fetchStrategyAnalysisV2 = useDealStore(s => s.fetchStrategyAnalysisV2);
+  const triggerStrategyAnalysisV2Recalc = useDealStore(s => s.triggerStrategyAnalysisV2Recalc);
+  const confirmStrategyDetection = useDealStore(s => s.confirmStrategyDetection);
+  const overrideStrategyClassification = useDealStore(s => s.overrideStrategyClassification);
+
+  // Fetch on dealId change — store handles null-response recalc internally
+  useEffect(() => {
+    if (dealId) fetchStrategyAnalysisV2(dealId);
   }, [dealId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const triggerRecalcInternal = useCallback(async (originToken?: number) => {
-    if (!dealId) return;
-    setRecalculating(true);
-    try {
-      await apiClient.post(`/api/v1/strategy-analyses`, {
-        dealId,
-        strategySlug: 'auto',
-        assumptions: {},
-      });
-      // re-fetch after recalc
-      if (recalcTimerRef.current) clearTimeout(recalcTimerRef.current);
-      recalcTimerRef.current = setTimeout(async () => {
-        if (originToken !== undefined && originToken !== fetchRef.current) return;
-        const token = ++fetchRef.current;
-        setLoading(true);
-        try {
-          const res = await apiClient.get(`/api/v1/deals/${dealId}/strategies`);
-          if (token !== fetchRef.current) return;
-          const data = res.data?.data ?? res.data;
-          if (data && (data.subStrategies?.length > 0 || data.detection)) {
-            setAnalysis(data as StrategyAnalysisV2);
-          }
-        } catch {
-          // best-effort
-        } finally {
-          if (token === fetchRef.current) setLoading(false);
-        }
-      }, 2000);
-    } catch {
-      // ignore recalc trigger errors — analysis may just be empty for this deal
-    } finally {
-      setRecalculating(false);
-    }
-  }, [dealId]);
+  const confirmDetection = useCallback(
+    (confirmed: boolean) => confirmStrategyDetection(dealId, confirmed),
+    [dealId, confirmStrategyDetection],
+  );
 
-  const triggerRecalc = useCallback(() => triggerRecalcInternal(), [triggerRecalcInternal]);
+  const overrideClassification = useCallback(
+    (assetClass: string) => overrideStrategyClassification(dealId, assetClass),
+    [dealId, overrideStrategyClassification],
+  );
 
-  useEffect(() => {
-    fetchAnalysis();
-    return () => {
-      if (recalcTimerRef.current) clearTimeout(recalcTimerRef.current);
-    };
-  }, [fetchAnalysis]);
+  const refresh = useCallback(
+    () => { fetchStrategyAnalysisV2(dealId); },
+    [dealId, fetchStrategyAnalysisV2],
+  );
 
-  const confirmDetection = useCallback(async (confirmed: boolean) => {
-    if (!dealId) return;
-    try {
-      await apiClient.patch(`/api/v1/deals/${dealId}/detection-confirmation`, {
-        userConfirmed: confirmed,
-      });
-    } catch {
-      // best-effort
-    }
-    fetchAnalysis();
-  }, [dealId, fetchAnalysis]);
-
-  const overrideClassification = useCallback(async (assetClass: string) => {
-    if (!dealId) return;
-    try {
-      await apiClient.patch(`/api/v1/deals/${dealId}/detection-confirmation`, {
-        userConfirmed: true,
-        userOverrideClassification: assetClass,
-      });
-    } catch {
-      // best-effort
-    }
-    fetchAnalysis();
-  }, [dealId, fetchAnalysis]);
+  const triggerRecalc = useCallback(
+    () => triggerStrategyAnalysisV2Recalc(dealId),
+    [dealId, triggerStrategyAnalysisV2Recalc],
+  );
 
   return {
     analysis,
@@ -371,7 +312,7 @@ export function useStrategyAnalysisV2(dealId: string): UseStrategyAnalysisV2Resu
     recalculating,
     confirmDetection,
     overrideClassification,
-    refresh: fetchAnalysis,
+    refresh,
     triggerRecalc,
   };
 }

@@ -5,12 +5,13 @@
  * scoring, evidence, and plan sections do NOT render.
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, createContext, useContext } from 'react';
 import { BT, BT_CSS, Bd, SectionPanel, DataRow } from '../bloomberg-ui';
 import type {
   StrategyAnalysisV2,
   DetectionResult,
   SubStrategyScore,
+  SignalScores,
   InvestmentPlan,
   GoldenChain,
   CorrelationAlert,
@@ -19,6 +20,13 @@ import type {
   MetricStackRow,
   MathTrailStep,
 } from '../../../hooks/useStrategyAnalysisV2';
+
+// ─── Bidirectional hover context (plan ↔ evidence) ───────────────────────────
+interface HoverCtx {
+  hoveredEvidenceRef: string | null;
+  setHoveredEvidenceRef: (ref: string | null) => void;
+}
+const HoverContext = createContext<HoverCtx>({ hoveredEvidenceRef: null, setHoveredEvidenceRef: () => {} });
 
 const MONO = BT.font.mono;
 
@@ -323,16 +331,6 @@ export function SubStrategyComparison({ subStrategies, arbitrage }: {
 
 // ─── 3. Signal × Sub-Strategy Heatmap (API-driven) ───────────────────────────
 
-// Per-sub-strategy signal weights from M08 v2 spec (Sheet 7)
-// These are applied to the API-returned base signal scores to produce cell values
-const SIGNAL_WEIGHT_TABLE: Record<string, number[]> = {
-  demand:   [0.30, 0.25, 0.20, 0.30, 0.35, 0.20, 0.25, 0.30],
-  supply:   [0.25, 0.20, 0.25, 0.30, 0.30, 0.15, 0.20, 0.25],
-  momentum: [0.20, 0.25, 0.15, 0.15, 0.15, 0.25, 0.15, 0.20],
-  position: [0.15, 0.20, 0.25, 0.15, 0.10, 0.20, 0.25, 0.15],
-  risk:     [0.10, 0.10, 0.15, 0.10, 0.10, 0.20, 0.15, 0.10],
-};
-const SIGNAL_KEYS = ['demand', 'supply', 'momentum', 'position', 'risk'] as const;
 const SIGNAL_LABELS = ['DEMAND', 'SUPPLY', 'MOMENTUM', 'POSITION', 'RISK'];
 
 function heatColor(v: number): string {
@@ -342,15 +340,46 @@ function heatColor(v: number): string {
   return BT.text.red;
 }
 
+type SignalKey = keyof SignalScores;
+const TYPED_SIGNAL_KEYS: SignalKey[] = ['demand', 'supply', 'momentum', 'position', 'risk'];
+const TYPED_SIGNAL_WEIGHT_TABLE: Record<SignalKey, number[]> = {
+  demand:     [0.30, 0.25, 0.20, 0.30, 0.35, 0.20, 0.25, 0.30],
+  supply:     [0.25, 0.20, 0.25, 0.30, 0.30, 0.15, 0.20, 0.25],
+  momentum:   [0.20, 0.25, 0.15, 0.15, 0.15, 0.25, 0.15, 0.20],
+  position:   [0.15, 0.20, 0.25, 0.15, 0.10, 0.20, 0.25, 0.15],
+  risk:       [0.10, 0.10, 0.15, 0.10, 0.10, 0.20, 0.15, 0.10],
+  confidence: [0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20],
+};
+
 export function SignalHeatmap({ subStrategies, signalScores }: {
   subStrategies: SubStrategyScore[];
   signalScores: StrategyAnalysisV2['signalScores'];
 }) {
+  const [tooltip, setTooltip] = useState<{ sig: SignalKey; ssKey: string; baseVal: number; w: number; val: number; x: number; y: number } | null>(null);
+
   if (!subStrategies || subStrategies.length === 0) return null;
 
   return (
     <SectionPanel title="SIGNAL × STRATEGY HEATMAP" borderColor={BT.text.purple} style={{ marginBottom: 1 }}>
-      <div style={{ overflowX: 'auto' }}>
+      <div style={{ overflowX: 'auto', position: 'relative' }}>
+        {/* Hover tooltip */}
+        {tooltip && (
+          <div style={{
+            position: 'fixed', left: tooltip.x + 12, top: tooltip.y - 60,
+            background: BT.bg.panelAlt, border: `1px solid ${BT.border.medium}`,
+            padding: '6px 10px', zIndex: 9999, pointerEvents: 'none', minWidth: 200,
+          }}>
+            <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginBottom: 3 }}>
+              {tooltip.sig.toUpperCase()} × {tooltip.ssKey.replace(/_/g, ' ').toUpperCase()}
+            </div>
+            <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.primary }}>
+              val = {tooltip.baseVal} × (0.7 + {tooltip.w.toFixed(2)} × 1.5) = <b>{tooltip.val}</b>
+            </div>
+            <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginTop: 2 }}>
+              base={tooltip.baseVal} · weight={tooltip.w.toFixed(2)} · formula: base×(0.7+w×1.5)
+            </div>
+          </div>
+        )}
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 300 }}>
           <thead>
             <tr style={{ background: BT.bg.header }}>
@@ -367,8 +396,8 @@ export function SignalHeatmap({ subStrategies, signalScores }: {
             </tr>
           </thead>
           <tbody>
-            {SIGNAL_KEYS.map((sig, sIdx) => {
-              const baseVal = (signalScores as any)?.[sig] ?? 50;
+            {TYPED_SIGNAL_KEYS.map((sig, sIdx) => {
+              const baseVal = signalScores?.[sig] ?? 50;
               return (
                 <tr key={sig} style={{ borderBottom: `1px solid ${BT.border.subtle}`, background: sIdx % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt }}>
                   <td style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, padding: '5px 8px', borderRight: `1px solid ${BT.border.subtle}`, letterSpacing: 0.5 }}>
@@ -376,14 +405,17 @@ export function SignalHeatmap({ subStrategies, signalScores }: {
                     <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>{baseVal}</div>
                   </td>
                   {subStrategies.map((ss, ssIdx) => {
-                    const weights = (SIGNAL_WEIGHT_TABLE as any)[sig] as number[];
+                    const weights = TYPED_SIGNAL_WEIGHT_TABLE[sig];
                     const w = weights[Math.min(ssIdx, weights.length - 1)] ?? 0.20;
-                    // Weighted cell = base * (1 + (weight - avg_weight) * scaling_factor)
-                    // avg weight is 0.20; this amplifies high-weight signals
                     const val = Math.round(Math.min(99, Math.max(10, baseVal * (0.7 + w * 1.5))));
                     const c = heatColor(val);
                     return (
-                      <td key={ss.key} style={{ textAlign: 'center', padding: '5px 8px', borderRight: `1px solid ${BT.border.subtle}` }}>
+                      <td
+                        key={ss.key}
+                        style={{ textAlign: 'center', padding: '5px 8px', borderRight: `1px solid ${BT.border.subtle}`, cursor: 'help' }}
+                        onMouseMove={e => setTooltip({ sig, ssKey: ss.key, baseVal, w, val, x: e.clientX, y: e.clientY })}
+                        onMouseLeave={() => setTooltip(null)}
+                      >
                         <span style={{
                           fontFamily: MONO, fontSize: 10, fontWeight: 700, color: c,
                           background: `${c}18`, padding: '1px 6px', display: 'inline-block',
@@ -404,6 +436,7 @@ export function SignalHeatmap({ subStrategies, signalScores }: {
               <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>{item.v}</span>
             </div>
           ))}
+          <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginLeft: 'auto', fontStyle: 'italic' }}>hover cell for formula</span>
         </div>
       </div>
     </SectionPanel>
@@ -488,6 +521,11 @@ function CompScatter({ points, title }: { points: Array<{ name: string; x: numbe
 }
 
 export function EvidenceReportBlock({ ss, defaultExpanded }: { ss: SubStrategyScore; defaultExpanded: boolean }) {
+  const { hoveredEvidenceRef } = useContext(HoverContext);
+  const isPlanHighlighted = hoveredEvidenceRef !== null && (
+    ss.key === hoveredEvidenceRef ||
+    (ss.evidenceReport?.subStrategyKey ?? '') === hoveredEvidenceRef
+  );
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [drawerRow, setDrawerRow] = useState<MetricStackRow | null>(null);
   const [hoveredRow, setHoveredRow] = useState<number | null>(null);
@@ -499,8 +537,8 @@ export function EvidenceReportBlock({ ss, defaultExpanded }: { ss: SubStrategySc
       {drawerRow && <EvidenceDrawer row={drawerRow} onClose={() => setDrawerRow(null)} />}
       <SectionPanel
         title={`EVIDENCE — ${(ss.name || ss.key).replace(/_/g, ' ').toUpperCase()}`}
-        borderColor={ss.isDetectedPrimary ? BT.text.amber : BT.border.medium}
-        style={{ marginBottom: 1 }}
+        borderColor={isPlanHighlighted ? BT.text.cyan : (ss.isDetectedPrimary ? BT.text.amber : BT.border.medium)}
+        style={{ marginBottom: 1, outline: isPlanHighlighted ? `1px solid ${BT.text.cyan}44` : undefined }}
         right={
           <button onClick={() => setExpanded(v => !v)} style={{
             fontFamily: MONO, fontSize: 8, color: BT.text.secondary,
@@ -736,10 +774,12 @@ const PHASE_COLORS: Record<number, string> = {
 };
 
 export function PlanDocument({ plan, dealId }: { plan: InvestmentPlan; dealId: string }) {
-  // Local edit state for plan fields (bidirectional editing)
+  const { hoveredEvidenceRef, setHoveredEvidenceRef } = useContext(HoverContext);
   const [editedEntry, setEditedEntry] = useState<Partial<{ targetQuarter: string; priceCeiling: string; debtStructure: string }>>({});
   const [hoveredAction, setHoveredAction] = useState<string | null>(null);
   const [applyFeedback, setApplyFeedback] = useState<Record<string, string>>({});
+  // Per-line action edits: key = `vc-${i}`, value = partial overrides
+  const [editedActions, setEditedActions] = useState<Record<string, { timing?: string; expectedImpact?: string }>>({});
 
   const handleApplyToProForma = async (section: string) => {
     try {
@@ -805,31 +845,61 @@ export function PlanDocument({ plan, dealId }: { plan: InvestmentPlan; dealId: s
         {(plan.valueCreation || []).map((action, i) => {
           const phaseColor = PHASE_COLORS[action.phase] || BT.text.secondary;
           const key = `vc-${i}`;
+          const refs = action.evidenceRefs || [];
+          const isHighlighted = refs.length > 0 && refs.some(r => r === hoveredEvidenceRef);
+          const isDirty = !!(editedActions[key]?.timing !== undefined || editedActions[key]?.expectedImpact !== undefined);
           return (
             <div
-              key={i}
-              onMouseEnter={() => setHoveredAction(key)}
-              onMouseLeave={() => setHoveredAction(null)}
+              key={key}
+              onMouseEnter={() => {
+                setHoveredAction(key);
+                if (refs.length > 0) setHoveredEvidenceRef(refs[0]);
+              }}
+              onMouseLeave={() => {
+                setHoveredAction(null);
+                setHoveredEvidenceRef(null);
+              }}
               style={{
-                padding: '4px 0', borderBottom: `1px solid ${BT.border.subtle}`,
-                background: hoveredAction === key ? `${phaseColor}08` : 'transparent',
+                padding: '5px 0', borderBottom: `1px solid ${BT.border.subtle}`,
+                background: isHighlighted
+                  ? `${BT.text.cyan}12`
+                  : hoveredAction === key ? `${phaseColor}08` : 'transparent',
+                borderLeft: isHighlighted ? `3px solid ${BT.text.cyan}` : '3px solid transparent',
+                paddingLeft: 4,
+                transition: 'background 0.15s',
               }}
             >
               <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
                 <Bd c={phaseColor}>PH{action.phase}</Bd>
+                {isDirty && <Bd c={BT.text.amber}>●</Bd>}
                 <div style={{ flex: 1 }}>
                   <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.primary }}>{action.action}</div>
-                  <div style={{ display: 'flex', gap: 8, marginTop: 2, flexWrap: 'wrap' }}>
-                    <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>⏱ {action.timing}</span>
-                    {(action.evidenceRefs || []).map((ref, ri) => (
-                      <span key={ri} style={{ fontFamily: MONO, fontSize: 8, color: BT.text.cyan }}>§{ref}</span>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 3, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, flexShrink: 0 }}>⏱</span>
+                    <input
+                      value={editedActions[key]?.timing ?? action.timing ?? ''}
+                      onChange={e => setEditedActions(p => ({ ...p, [key]: { ...p[key], timing: e.target.value } }))}
+                      style={{ fontFamily: MONO, fontSize: 8, background: BT.bg.input, color: BT.text.primary, border: `1px solid ${BT.border.subtle}`, padding: '1px 4px', width: 80 }}
+                    />
+                    {refs.map((ref, ri) => (
+                      <span
+                        key={ri}
+                        style={{ fontFamily: MONO, fontSize: 8, color: BT.text.cyan, cursor: 'pointer', textDecoration: 'underline dotted' }}
+                        onMouseEnter={() => setHoveredEvidenceRef(ref)}
+                        onMouseLeave={() => setHoveredEvidenceRef(null)}
+                      >§{ref}</span>
                     ))}
                     {(action.correlationRefs || []).map((ref, ri) => (
                       <span key={ri} style={{ fontFamily: MONO, fontSize: 8, color: BT.text.teal }}>{ref}</span>
                     ))}
-                    {action.expectedImpact && (
-                      <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.green }}>→ {action.expectedImpact}</span>
-                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, marginTop: 3, alignItems: 'center' }}>
+                    <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, flexShrink: 0 }}>IMPACT →</span>
+                    <input
+                      value={editedActions[key]?.expectedImpact ?? action.expectedImpact ?? ''}
+                      onChange={e => setEditedActions(p => ({ ...p, [key]: { ...p[key], expectedImpact: e.target.value } }))}
+                      style={{ fontFamily: MONO, fontSize: 8, background: BT.bg.input, color: BT.text.green, border: `1px solid ${BT.border.subtle}`, padding: '1px 4px', width: 140 }}
+                    />
                   </div>
                 </div>
                 {action.costEstimate && (
@@ -905,13 +975,27 @@ export function PlanDocument({ plan, dealId }: { plan: InvestmentPlan; dealId: s
 
 // ─── 7. Monitoring Dashboard ──────────────────────────────────────────────────
 
+function parseNumeric(s: string): number | null {
+  if (!s) return null;
+  const cleaned = s.replace(/[^0-9.\-]/g, '');
+  const n = parseFloat(cleaned);
+  return isNaN(n) ? null : n;
+}
+
 export function MonitoringDashboard({ monitoring }: { monitoring: MonitoringItem[] }) {
+  const [decisionPrompted, setDecisionPrompted] = useState<Record<string, boolean>>({});
   if (!monitoring || monitoring.length === 0) return null;
   return (
     <SectionPanel title="MONITORING DASHBOARD" borderColor={BT.text.orange} style={{ marginBottom: 1 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 1 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 1 }}>
         {monitoring.map((item, i) => {
           const sColor = sevColor(item.severity);
+          const curNum = parseNumeric(item.currentValue);
+          const thrNum = parseNumeric(item.triggerThreshold);
+          const hasBar = curNum !== null && thrNum !== null && thrNum > 0;
+          const fillPct = hasBar ? Math.min(100, Math.max(0, Math.round((curNum / thrNum) * 100))) : null;
+          const breached = hasBar && curNum >= thrNum;
+          const promptKey = `${item.correlationId}-${i}`;
           return (
             <div key={i} style={{ padding: '8px 10px', background: BT.bg.panelAlt, border: `1px solid ${sColor}33`, borderLeft: `2px solid ${sColor}` }}>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
@@ -919,11 +1003,52 @@ export function MonitoringDashboard({ monitoring }: { monitoring: MonitoringItem
                 <Bd c={sColor}>{item.severity.toUpperCase()}</Bd>
                 <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.primary, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.metric}</span>
               </div>
-              <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
-                <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>NOW: <span style={{ color: BT.text.primary }}>{item.currentValue}</span></div>
-                <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>TRIGGER: <span style={{ color: sColor }}>{item.triggerThreshold}</span></div>
-              </div>
-              <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary, fontStyle: 'italic' }}>{item.action}</div>
+              {/* Breach bar */}
+              {hasBar && (
+                <div style={{ marginBottom: 6 }}>
+                  <div style={{ height: 5, background: `${sColor}22`, borderRadius: 2, overflow: 'hidden', marginBottom: 2 }}>
+                    <div style={{
+                      height: '100%', width: `${fillPct}%`, borderRadius: 2,
+                      background: breached ? BT.text.red : sColor,
+                      transition: 'width 0.3s ease',
+                    }} />
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ fontFamily: MONO, fontSize: 7, color: breached ? BT.text.red : BT.text.primary }}>
+                      {breached ? '⚠ BREACHED' : `${fillPct}% to trigger`}
+                    </span>
+                    <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>{item.currentValue} / {item.triggerThreshold}</span>
+                  </div>
+                </div>
+              )}
+              {/* Fallback values when no bar */}
+              {!hasBar && (
+                <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
+                  <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>NOW: <span style={{ color: BT.text.primary }}>{item.currentValue}</span></div>
+                  <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>TRIGGER: <span style={{ color: sColor }}>{item.triggerThreshold}</span></div>
+                </div>
+              )}
+              <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary, fontStyle: 'italic', marginBottom: item.severity === 'critical' ? 6 : 0 }}>{item.action}</div>
+              {/* Decision prompt for critical severity */}
+              {item.severity === 'critical' && (
+                <div style={{ marginTop: 4 }}>
+                  {decisionPrompted[promptKey] ? (
+                    <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.amber, background: `${BT.text.amber}18`, padding: '4px 8px', border: `1px solid ${BT.text.amber}44` }}>
+                      ⚡ DECISION REQUIRED — review plan document and update exit/pivot conditions
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setDecisionPrompted(p => ({ ...p, [promptKey]: true }))}
+                      style={{
+                        fontFamily: MONO, fontSize: 8, fontWeight: 700, color: '#ffffff',
+                        background: BT.text.red, border: 'none', padding: '3px 10px', cursor: 'pointer', width: '100%',
+                      }}
+                    >
+                      ⚡ CRITICAL THRESHOLD — DECIDE NOW
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}
@@ -963,11 +1088,12 @@ export function V2FullAnalysis({
   onOverride: (ac: string) => void;
   dealId: string;
 }) {
+  const [hoveredEvidenceRef, setHoveredEvidenceRef] = useState<string | null>(null);
   const det = analysis.detection;
   const isGated = det.requiresUserConfirmation && !det.userConfirmed;
 
   return (
-    <>
+    <HoverContext.Provider value={{ hoveredEvidenceRef, setHoveredEvidenceRef }}>
       {/* Detection Banner — always shown */}
       <DetectionBanner detection={det} onConfirm={onConfirm} onOverride={onOverride} />
 
@@ -1000,6 +1126,6 @@ export function V2FullAnalysis({
           </div>
         </div>
       )}
-    </>
+    </HoverContext.Provider>
   );
 }
