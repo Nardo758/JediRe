@@ -19,6 +19,10 @@ import { trendPatternDetector } from './trend-pattern-detector';
 import type { TrendPattern } from './trend-pattern-detector';
 import { getDotTemporalProfilesService } from './dot-temporal-profiles.service';
 import type { TemporalMultiplierResult } from './dot-temporal-profiles.service';
+import { CoefficientResolverService } from './coefficient-resolver.service';
+import { StartingStateService } from './starting-state.service';
+import { CatalogMetricsWiringService } from './catalog-metrics-wiring.service';
+import type { CalibrationMeta, StartingState } from '../types/traffic-calibration.types';
 
 export interface DataSourceSignals {
   visibility?: {
@@ -260,9 +264,17 @@ interface TrafficPrediction {
   
   model_version: string;
   prediction_date: Date;
+
+  // M07: Calibration metadata (Deal → Platform → Baseline hierarchy)
+  calibration_meta?: CalibrationMeta;
+  starting_state?: StartingState;
 }
 
 export class TrafficPredictionEngine {
+
+  private readonly coefficientResolver = new CoefficientResolverService(pool);
+  private readonly startingStateService = new StartingStateService(pool);
+  private readonly catalogMetricsService = new CatalogMetricsWiringService(pool);
   
   private readonly MODEL_VERSION = '1.2.0';
   private readonly JOBS_TO_UNITS_MULTIPLIER = 0.45;
@@ -1155,11 +1167,41 @@ export class TrafficPredictionEngine {
       });
     }
     
-    // Step 12: Save prediction to database
+    // Step 12: M07 — Resolve Bayesian calibration metadata (Deal → Platform → Baseline)
+    try {
+      const [calibrationResolved, startingState] = await Promise.all([
+        this.coefficientResolver.resolveForDeal(
+          propertyId,
+          property.submarket_id || null,
+          (property as any).property_class || null,
+          (property as any).year_built ? parseInt((property as any).year_built) : null,
+        ),
+        this.startingStateService.resolveStartingState(propertyId),
+      ]);
+      prediction.calibration_meta = calibrationResolved.meta;
+      prediction.starting_state = startingState;
+
+      // Apply catalog metric adjustments (Layer A boost + Layer C dampers)
+      if (property.submarket_id) {
+        const catalogMetrics = await this.catalogMetricsService.loadSubmarketMetrics(property.submarket_id);
+        const catalogAdjustment = await this.catalogMetricsService.applyAdjustments(
+          prediction.weekly_walk_ins,
+          catalogMetrics,
+        );
+        if (catalogAdjustment.adjusted_prediction !== prediction.weekly_walk_ins) {
+          prediction.weekly_walk_ins = catalogAdjustment.adjusted_prediction;
+          prediction.daily_average = Math.round(catalogAdjustment.adjusted_prediction / 7);
+        }
+      }
+    } catch (calibErr: any) {
+      console.warn('[TrafficEngine] M07 calibration metadata skipped (non-blocking):', calibErr.message);
+    }
+
+    // Step 13: Save prediction to database
     await this.savePrediction(prediction);
     
     const duration = Date.now() - startTime;
-    console.log(`✅ Traffic prediction generated in ${duration}ms: ${prediction.weekly_walk_ins} weekly walk-ins`);
+    console.log(`✅ Traffic prediction generated in ${duration}ms: ${prediction.weekly_walk_ins} weekly walk-ins (tier: ${prediction.calibration_meta?.match_tier || 'BASELINE'})`);
     
     return prediction;
   }
