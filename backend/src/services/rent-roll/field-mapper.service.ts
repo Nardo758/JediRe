@@ -57,7 +57,7 @@ const GENERIC_ALIASES: Record<CanonicalField, string[]> = {
   concession_value:  ['concession', 'concession amount', 'free rent', 'discount'],
   concession_months: ['free months', 'concession months'],
   lease_start:       ['lease start', 'start date', 'from', 'begin'],
-  lease_end:         ['lease end', 'end date', 'expiration', 'expires', 'to'],
+  lease_end:         ['lease end', 'end date', 'expiration', 'expires'],
   move_in_date:      ['move in', 'move-in date', 'movein'],
   move_out_date:     ['move out', 'move-out date', 'moveout', 'vacated'],
   notice_date:       ['notice date', 'notice', 'ntv'],
@@ -79,7 +79,11 @@ export class FieldMapperService {
 
     for (const [canonical, aliasList] of Object.entries(aliases) as [CanonicalField, string[]][]) {
       for (const alias of aliasList) {
-        const idx = headerLower.findIndex(h => h === alias || h.includes(alias));
+        // Use exact match for short aliases (≤4 chars) to avoid substring collisions
+        // (e.g. alias "to" would match "total", alias "sf" would match "sqft" but not
+        //  "notice_to_vacate").  Longer aliases use includes() for flexibility.
+        const useExact = alias.length <= 4;
+        const idx = headerLower.findIndex(h => useExact ? h === alias : (h === alias || h.includes(alias)));
         if (idx >= 0) {
           mapping[canonical] = idx;
           break;

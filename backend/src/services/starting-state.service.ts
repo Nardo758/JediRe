@@ -32,7 +32,9 @@ export class StartingStateService {
    */
   async resolveStartingState(dealId: string | null): Promise<StartingState> {
     if (!dealId) {
-      return this.defaultLeaseUpState();
+      // No deal context — fall back to STABILIZED (neutral baseline).
+      // LEASE_UP applies mode-dispatch multipliers that would distort non-deal predictions.
+      return this.defaultStabilizedState();
     }
     // Load deal metadata
     const dealResult = await this.pool.query<any>(`
@@ -247,6 +249,23 @@ export class StartingStateService {
     } catch {
       return null;
     }
+  }
+
+  private defaultStabilizedState(): StabilizedState {
+    // Conservative baseline for predictions with no deal context.
+    // Uses 95% occupancy (typical stabilized asset) and 60% renewal rate.
+    return {
+      mode: 'STABILIZED',
+      current_occupancy: 0.95,
+      renewal_rate: 0.60,
+      expiration_waterfall: Array.from({ length: 24 }, (_, i) => ({
+        months_out: i,
+        expiring_units: 0,
+        expiring_pct: 0,
+      })),
+      avg_days_vacant: 30,
+      churn_replacement_rate: (1 - 0.60) / 12,  // (1 - renewal_rate) / avg_tenancy_months
+    };
   }
 
   private defaultLeaseUpState(): LeaseUpState {

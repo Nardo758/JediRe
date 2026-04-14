@@ -135,12 +135,19 @@ export class TrafficCalibrationJob {
       SELECT rrs.id, rrs.deal_id, rrs.snapshot_date, rrs.derived_metrics,
              (d.deal_data->'market_intelligence'->'data'->'demographics'->'submarket'->>'id') AS submarket_id,
              (d.deal_data->>'property_class') AS property_class,
-             (d.deal_data->>'year_built') AS year_built
+             (d.deal_data->>'year_built') AS year_built,
+             (d.deal_data->>'target_units')::integer AS units,
+             -- MSA fallback chain (same as getAllDerivedSnapshots)
+             COALESCE(
+               d.deal_data->'market_intelligence'->'data'->'demographics'->>'msa_id',
+               d.deal_data->>'msa_id',
+               d.deal_data->'market_intelligence'->>'msa_id'
+             ) AS msa_id
       FROM rent_roll_snapshots rrs
       JOIN deals d ON rrs.deal_id::uuid = d.id
       WHERE rrs.status = 'derived'
-        AND rrs.updated_at >= NOW() - INTERVAL '${lookbackHours} hours'
-    `);
+        AND rrs.updated_at >= NOW() - ($1 * INTERVAL '1 hour')
+    `, [lookbackHours]);
     return result.rows;
   }
 
