@@ -40,6 +40,8 @@ export interface ForecastMetricWindow {
   ciHigh: number | null;
   confidence: number;
   statusLabel: 'ahead' | 'behind' | 'on_pace' | 'no_data';
+  /** Full derivation trace: playbook used, scaling factors, submarket/regime adjustments */
+  derivation: ForecastDerivation | null;
 }
 
 export interface ForecastRow {
@@ -421,6 +423,7 @@ export async function getEventForecast(eventId: string): Promise<EventForecast |
       ciHigh: r.ci_high ? parseFloat(r.ci_high) : null,
       confidence: parseFloat(r.confidence),
       statusLabel: 'no_data' as const,
+      derivation: (r.derivation as ForecastDerivation) ?? null,
     })),
     actuals: actuals.map((r: any) => ({
       metricKey: r.metric_key,

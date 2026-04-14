@@ -422,8 +422,8 @@ export const KAFKA_TOPICS = {
   M35_EVENT_VERIFIED:      'event.verified',
   M35_IMPACT_MEASURED:     'event.impact_measured',
   M35_PLAYBOOK_UPDATED:    'playbook.updated',
-  M35_FORECAST_CREATED:    'forecast.created',
-  M35_FORECAST_DIVERGED:   'forecast.diverged',
+  M35_FORECAST_CREATED:    'm35.forecast.created',
+  M35_FORECAST_DIVERGED:   'm35.forecast.diverged',
 } as const;
 
 // ─── M35 Event Impact Engine — Kafka Message Types ────────────────────────────
