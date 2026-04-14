@@ -276,67 +276,77 @@ export async function generateForecast(eventId: string): Promise<ForecastRow[]> 
 
   const combinedFactor = submarketAdj.factor * regimeAdj.factor;
 
-  // Step 5: Supersede existing active forecasts
-  await pool.query(`
-    UPDATE event_forecasts
-    SET status = 'superseded', superseded_at = NOW()
-    WHERE event_id = $1 AND status = 'active'
-  `, [eventId]);
-
-  // Build and insert new forecast rows
+  // Steps 5+6: Supersede old rows and insert new ones atomically.
+  // A transaction prevents a partial-generation state if the process fails mid-loop.
   const newRows: ForecastRow[] = [];
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
 
-  for (const scaled of scaledMetrics) {
-    if (scaled.scaledMedian === null) continue;
+    await client.query(`
+      UPDATE event_forecasts
+      SET status = 'superseded', superseded_at = NOW()
+      WHERE event_id = $1 AND status = 'active'
+    `, [eventId]);
 
-    const point = scaled.scaledMedian * combinedFactor;
-    const spreadHalf = ((scaled.scaledP75 ?? point) - (scaled.scaledP25 ?? point)) / 2 * combinedFactor;
-    const ciLow = point - spreadHalf;
-    const ciHigh = point + spreadHalf;
+    for (const scaled of scaledMetrics) {
+      if (scaled.scaledMedian === null) continue;
 
-    // Find the playbook metric for confidence
-    const pbMetric = playbook.metrics.find(
-      m => m.metricKey === scaled.metricKey && m.windowMonths === scaled.windowMonths,
-    );
-    const conf = Math.min(0.99, (pbMetric?.confidence ?? 0.5) * ev.confidence * combinedFactor);
+      const point = scaled.scaledMedian * combinedFactor;
+      const spreadHalf = ((scaled.scaledP75 ?? point) - (scaled.scaledP25 ?? point)) / 2 * combinedFactor;
+      const ciLow = point - spreadHalf;
+      const ciHigh = point + spreadHalf;
 
-    const derivation: ForecastDerivation = {
-      playbookSubtype: ev.subtype,
-      stratum,
-      playbookInstanceCount: playbook.instanceCount,
-      playbookConfidence: playbook.confidence,
-      playbookStatus: playbook.status,
-      scalingFactor: scaled.scaleFactor * combinedFactor,
-      scalingExplanation: scaled.explanation,
-      submarketAdj,
-      regimeAdj,
-      baselineMedian: scaled.baselineMedian,
-    };
+      const pbMetric = playbook.metrics.find(
+        m => m.metricKey === scaled.metricKey && m.windowMonths === scaled.windowMonths,
+      );
+      const conf = Math.min(0.99, (pbMetric?.confidence ?? 0.5) * ev.confidence * combinedFactor);
 
-    const res = await pool.query(`
-      INSERT INTO event_forecasts
-        (event_id, metric_key, window_months, point_estimate, ci_low, ci_high,
-         confidence, model_version, status, derivation, generated_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'active',$9::jsonb,NOW())
-      RETURNING *
-    `, [eventId, scaled.metricKey, scaled.windowMonths, point, ciLow, ciHigh,
-        conf, MODEL_VERSION, JSON.stringify(derivation)]);
+      const derivation: ForecastDerivation = {
+        playbookSubtype: ev.subtype,
+        stratum,
+        playbookInstanceCount: playbook.instanceCount,
+        playbookConfidence: playbook.confidence,
+        playbookStatus: playbook.status,
+        scalingFactor: scaled.scaleFactor * combinedFactor,
+        scalingExplanation: scaled.explanation,
+        submarketAdj,
+        regimeAdj,
+        baselineMedian: scaled.baselineMedian,
+      };
 
-    const row = res.rows[0];
-    newRows.push({
-      id: row.id,
-      eventId: row.event_id,
-      metricKey: row.metric_key,
-      windowMonths: parseInt(row.window_months),
-      pointEstimate: row.point_estimate ? parseFloat(row.point_estimate) : null,
-      ciLow: row.ci_low ? parseFloat(row.ci_low) : null,
-      ciHigh: row.ci_high ? parseFloat(row.ci_high) : null,
-      confidence: parseFloat(row.confidence),
-      modelVersion: row.model_version,
-      status: row.status,
-      derivation,
-      generatedAt: new Date(row.generated_at),
-    });
+      const res = await client.query(`
+        INSERT INTO event_forecasts
+          (event_id, metric_key, window_months, point_estimate, ci_low, ci_high,
+           confidence, model_version, status, derivation, generated_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'active',$9::jsonb,NOW())
+        RETURNING *
+      `, [eventId, scaled.metricKey, scaled.windowMonths, point, ciLow, ciHigh,
+          conf, MODEL_VERSION, JSON.stringify(derivation)]);
+
+      const row = res.rows[0];
+      newRows.push({
+        id: row.id,
+        eventId: row.event_id,
+        metricKey: row.metric_key,
+        windowMonths: parseInt(row.window_months),
+        pointEstimate: row.point_estimate ? parseFloat(row.point_estimate) : null,
+        ciLow: row.ci_low ? parseFloat(row.ci_low) : null,
+        ciHigh: row.ci_high ? parseFloat(row.ci_high) : null,
+        confidence: parseFloat(row.confidence),
+        modelVersion: row.model_version,
+        status: row.status,
+        derivation,
+        generatedAt: new Date(row.generated_at),
+      });
+    }
+
+    await client.query('COMMIT');
+  } catch (txErr) {
+    await client.query('ROLLBACK');
+    throw txErr;
+  } finally {
+    client.release();
   }
 
   if (newRows.length > 0) {
@@ -514,6 +524,10 @@ export async function runDivergenceTrackingJob(): Promise<{
         AND ep.stratum_regime     = 'all'
       WHERE ef.status = 'active'
         AND ef.point_estimate IS NOT NULL
+        AND (
+          ke.announced_date IS NULL
+          OR ke.announced_date + (ef.window_months / 2.0 || ' months')::interval <= NOW()
+        )
       ORDER BY ef.event_id, ef.metric_key, ef.window_months
       LIMIT $1 OFFSET $2
     `, [DIVERGENCE_BATCH_SIZE, offset]);
