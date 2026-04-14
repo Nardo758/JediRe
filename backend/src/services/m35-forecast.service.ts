@@ -468,50 +468,57 @@ export async function getMsaActiveForecasts(msaId: string): Promise<EventForecas
 
 // ─── Nightly divergence tracking job ─────────────────────────────────────────
 
+const DIVERGENCE_BATCH_SIZE = 200;
+
 export async function runDivergenceTrackingJob(): Promise<{
   checked: number;
   diverged: number;
 }> {
   const pool = getPool();
 
-  // Find all active forecasts with events that have crossed their window.
-  // Join event_playbooks to pull stddev_delta for the >1-std divergence rule.
-  const activeForecastsRes = await pool.query(`
-    SELECT
-      ef.id AS forecast_id,
-      ef.event_id,
-      ef.metric_key,
-      ef.window_months,
-      ef.point_estimate,
-      ef.ci_low,
-      ef.ci_high,
-      ke.msa_id,
-      ke.submarket_id,
-      ke.announced_date,
-      ke.materialization_date,
-      ke.subtype,
-      COALESCE(ep.stddev_delta, 0) AS playbook_stddev
-    FROM event_forecasts ef
-    JOIN key_events ke ON ke.id = ef.event_id
-    LEFT JOIN event_playbooks ep
-      ON ep.subtype = ke.subtype
-      AND ep.metric_key = ef.metric_key
-      AND ep.window_months = ef.window_months
-      AND ep.stratum_msa_tier = 'all'
-      AND ep.stratum_magnitude  = 'all'
-      AND ep.stratum_regime     = 'all'
-    WHERE ef.status = 'active'
-      AND ef.point_estimate IS NOT NULL
-      AND ke.announced_date IS NOT NULL
-      AND ke.announced_date + (ef.window_months || ' months')::interval <= NOW()
-    ORDER BY ef.event_id, ef.metric_key, ef.window_months
-    LIMIT 500
-  `);
-
   let checked = 0;
   let diverged = 0;
+  let offset = 0;
+  let batchRows: any[] = [];
 
-  for (const row of activeForecastsRes.rows) {
+  // Paginate through all eligible forecasts to guarantee full daily coverage.
+  do {
+    const batchRes = await pool.query(`
+      SELECT
+        ef.id AS forecast_id,
+        ef.event_id,
+        ef.metric_key,
+        ef.window_months,
+        ef.point_estimate,
+        ef.ci_low,
+        ef.ci_high,
+        ke.msa_id,
+        ke.submarket_id,
+        ke.announced_date,
+        ke.materialization_date,
+        ke.subtype,
+        COALESCE(ep.stddev_delta, 0) AS playbook_stddev
+      FROM event_forecasts ef
+      JOIN key_events ke ON ke.id = ef.event_id
+      LEFT JOIN event_playbooks ep
+        ON ep.subtype = ke.subtype
+        AND ep.metric_key = ef.metric_key
+        AND ep.window_months = ef.window_months
+        AND ep.stratum_msa_tier = 'all'
+        AND ep.stratum_magnitude  = 'all'
+        AND ep.stratum_regime     = 'all'
+      WHERE ef.status = 'active'
+        AND ef.point_estimate IS NOT NULL
+        AND ke.announced_date IS NOT NULL
+        AND ke.announced_date + (ef.window_months || ' months')::interval <= NOW()
+      ORDER BY ef.event_id, ef.metric_key, ef.window_months
+      LIMIT $1 OFFSET $2
+    `, [DIVERGENCE_BATCH_SIZE, offset]);
+
+    batchRows = batchRes.rows;
+    offset += batchRows.length;
+
+  for (const row of batchRows) {
     const geoId = row.submarket_id ?? row.msa_id ?? 'national';
 
     // Compute the forecast horizon date: announced_date + window_months
@@ -582,7 +589,8 @@ export async function runDivergenceTrackingJob(): Promise<{
         );
       } catch { /* non-blocking */ }
     }
-  }
+  } // end for (row of batchRows)
+  } while (batchRows.length === DIVERGENCE_BATCH_SIZE); // next batch if page was full
 
   logger.info(`[M35 Forecast] Divergence check: ${checked} checked, ${diverged} diverged`);
   return { checked, diverged };

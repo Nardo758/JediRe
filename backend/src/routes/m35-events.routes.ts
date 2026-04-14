@@ -339,15 +339,9 @@ router.get('/deals/:dealId/events-context', async (req: Request, res: Response) 
 
 // ─── Submarket active forecasts ───────────────────────────────────────────────
 
-router.get('/submarkets/:id/active-forecasts', async (req: Request, res: Response) => {
-  try {
-    const events = await getActiveEventsBySubmarket(req.params.id);
-    res.json({ items: events, forecasts: [], total: events.length });
-  } catch (err: any) {
-    logger.error('[M35 Events] submarket forecasts error', err);
-    res.status(500).json({ error: err.message });
-  }
-});
+// NOTE: /submarkets/:id/active-forecasts is served by m35-forecasts.routes.ts
+// (mounted earlier in index.replit.ts). The events router no longer registers it
+// to avoid duplicate route confusion and stale empty-forecasts responses.
 
 // ─── Impact records (M35-2) ───────────────────────────────────────────────────
 
