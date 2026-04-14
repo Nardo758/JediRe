@@ -447,6 +447,10 @@ export async function triggerPlaybookUpdate(eventId: string): Promise<void> {
 
       if (affectedRes.rows.length === 0) return;
 
+      // Sequential regen is intentional for current volumes (typically <50 events
+      // per subtype). Each call supersedes the prior active forecast row rather than
+      // duplicating. If subtype fanout grows large, move this to a job queue
+      // (e.g., Bull/BullMQ) so playbook writes are not blocked by regen time.
       const { generateForecast } = await import('./m35-forecast.service');
       for (const row of affectedRes.rows) {
         try {

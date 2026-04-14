@@ -481,6 +481,13 @@ export async function runDivergenceTrackingJob(): Promise<{
   let offset = 0;
   let batchRows: any[] = [];
 
+  // Divergence timing design: we only check forecasts whose window has *elapsed*
+  // (announced_date + window_months <= NOW()). Checking before the horizon elapses
+  // would compare a point-estimate for T+12 months against an early T+1 observation,
+  // which produces meaningless divergence signals. "Nightly" refers to the run cadence,
+  // not the observation age — each night we look for newly-elapsed windows and compare
+  // the actual metric value closest to that horizon date.
+  //
   // Paginate through all eligible forecasts to guarantee full daily coverage.
   do {
     const batchRes = await pool.query(`
