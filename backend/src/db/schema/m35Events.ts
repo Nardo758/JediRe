@@ -218,6 +218,74 @@ export const m35MetricWatchlistConfig = pgTable('m35_metric_watchlist_config', {
   metricUniq: uniqueIndex('idx_m35_watchlist_unique').on(t.eventId, t.metricKey),
 }));
 
+// ─── event_impacts ────────────────────────────────────────────────────────────
+// One row per event × metric_key × geography_id × window_months
+// Populated by the nightly M35 Impact Measurement Job (OLS + DiD engine)
+
+export const eventImpacts = pgTable('event_impacts', {
+  id:                 uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  eventId:            uuid('event_id').notNull().references(() => keyEvents.id, { onDelete: 'cascade' }),
+  metricKey:          varchar('metric_key', { length: 64 }).notNull(),
+  geographyType:      varchar('geography_type', { length: 32 }).notNull().default('metro'),
+  geographyId:        varchar('geography_id', { length: 128 }).notNull(),
+  windowMonths:       smallint('window_months').notNull(),           // 3 | 12 | 24 | 36
+  measurementDate:    timestamp('measurement_date', { withTimezone: true }).notNull(),
+
+  // OLS baseline (T-12mo → T0)
+  baselineSlope:      numeric('baseline_slope', { precision: 18, scale: 8 }),
+  baselineIntercept:  numeric('baseline_intercept', { precision: 18, scale: 8 }),
+  baselineR2:         numeric('baseline_r2', { precision: 6, scale: 4 }),
+  baselineN:          smallint('baseline_n').notNull().default(0),
+
+  // Extrapolation vs actual
+  projectedValue:     numeric('projected_value', { precision: 18, scale: 4 }),
+  actualValue:        numeric('actual_value', { precision: 18, scale: 4 }),
+  delta:              numeric('delta', { precision: 18, scale: 4 }),           // actual - projected
+  deltaPct:           numeric('delta_pct', { precision: 10, scale: 4 }),       // % vs projected
+
+  // Difference-in-Differences
+  controlAvgDelta:    numeric('control_avg_delta', { precision: 18, scale: 4 }),
+  attributedDelta:    numeric('attributed_delta', { precision: 18, scale: 4 }), // delta - controlAvgDelta
+  attributedDeltaPct: numeric('attributed_delta_pct', { precision: 10, scale: 4 }),
+  didConfidence:      numeric('did_confidence', { precision: 6, scale: 4 }).notNull().default('0'),
+  pValue:             numeric('p_value', { precision: 8, scale: 6 }),
+  controlGroupN:      smallint('control_group_n').notNull().default(0),
+
+  // Data quality
+  dataQuality:        varchar('data_quality', { length: 16 }).notNull().default('insufficient'),
+  // 'complete' | 'partial' | 'insufficient'
+  dataGaps:           jsonb('data_gaps').default(sql`'[]'::jsonb`),
+
+  computedAt:         timestamp('computed_at', { withTimezone: true }).defaultNow(),
+}, (t) => ({
+  eventIdx:       index('idx_event_impacts_event').on(t.eventId),
+  metricIdx:      index('idx_event_impacts_metric').on(t.metricKey),
+  windowIdx:      index('idx_event_impacts_window').on(t.windowMonths),
+  eventMetricUniq: uniqueIndex('idx_event_impacts_unique')
+    .on(t.eventId, t.metricKey, t.geographyId, t.windowMonths),
+}));
+
+// ─── event_control_groups ─────────────────────────────────────────────────────
+// Control submarkets selected for each event's DiD computation.
+// Re-computed idempotently each time computeEventImpact() runs.
+
+export const eventControlGroups = pgTable('event_control_groups', {
+  id:                     uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  eventId:                uuid('event_id').notNull().references(() => keyEvents.id, { onDelete: 'cascade' }),
+  controlGeographyType:   varchar('control_geography_type', { length: 32 }).notNull().default('submarket'),
+  controlGeographyId:     varchar('control_geography_id', { length: 128 }).notNull(),
+  controlGeographyName:   varchar('control_geography_name', { length: 256 }),
+  matchScore:             numeric('match_score', { precision: 6, scale: 4 }).notNull(),
+  matchCriteria:          jsonb('match_criteria').default(sql`'{}'::jsonb`),
+  // {no_confounding_event, pre_event_trend_similarity, class_similarity, rent_level_similarity, occupancy_similarity}
+  isIncluded:             boolean('is_included').notNull().default(true),
+  exclusionReason:        text('exclusion_reason'),
+  createdAt:              timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (t) => ({
+  eventIdx:    index('idx_event_control_groups_event').on(t.eventId),
+  controlUniq: uniqueIndex('idx_event_control_groups_unique').on(t.eventId, t.controlGeographyId),
+}));
+
 // ─── event_geographic_impacts ─────────────────────────────────────────────────
 
 export const eventGeographicImpacts = pgTable('event_geographic_impacts', {

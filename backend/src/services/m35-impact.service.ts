@@ -242,11 +242,12 @@ function approxPValue(r: number, n: number): number {
 
 /**
  * Select control submarkets for a given event.
- * Criteria (all checked):
- *   - Same MSA as event (or adjacent MSA tier if too few candidates)
+ * Criteria:
+ *   - Same MSA as event
  *   - No same-category event within ±18 months of event's materialization_date
- *   - Pre-event rent_index trend similarity (within 30% slope difference)
- *   - Not the event's own submarket
+ *   - Pre-event trend similarity: compute OLS slope on primary metric (rent_index)
+ *     for each candidate; score = 1 - min(|slope_diff|/max(|treat_slope|,0.001), 1)
+ *   - Class/demographic similarity from submarkets table (avg_rent, class_label, avg_occupancy)
  */
 export async function selectControlGroup(
   eventId: string,
@@ -270,9 +271,16 @@ export async function selectControlGroup(
   const windowEnd = new Date(event.materializationDate);
   windowEnd.setMonth(windowEnd.getMonth() + 18);
 
-  // Get candidate submarkets in same MSA
+  const baselineStart = new Date(event.materializationDate);
+  baselineStart.setMonth(baselineStart.getMonth() - BASELINE_MONTHS);
+  const baselineEnd = new Date(event.materializationDate);
+
+  // Get candidate submarkets in same MSA (include class_label and avg_rent for similarity)
   const candidatesRes = await pool.query(
-    `SELECT s.id::text AS id, s.name, s.avg_rent, s.avg_occupancy
+    `SELECT s.id::text AS id, s.name,
+            COALESCE(s.avg_rent, 0) AS avg_rent,
+            COALESCE(s.avg_occupancy, 0) AS avg_occupancy,
+            COALESCE(s.class_label, '') AS class_label
      FROM submarkets s
      WHERE ($1::text IS NULL OR s.msa_id::text = $1)
        AND s.id::text != $2
@@ -296,34 +304,80 @@ export async function selectControlGroup(
   );
   const excludedIds = new Set(excludeRes.rows.map((r: any) => r.submarket_id));
 
+  // Compute treatment pre-event OLS slope on the primary metric for trend similarity
+  const primaryMetric = 'rent_index';
+  const treatmentSeries = await resolveMetricSeries(
+    event.geographyId, primaryMetric, baselineStart, baselineEnd
+  );
+  const treatmentOls = fitOLS(treatmentSeries);
+  const treatmentSlope = treatmentOls?.slope ?? null;
+
+  // Get treatment submarket's own class/rent/occupancy for demographic similarity
+  const treatRes = await pool.query(
+    `SELECT COALESCE(avg_rent, 0) AS avg_rent,
+            COALESCE(avg_occupancy, 0) AS avg_occupancy,
+            COALESCE(class_label, '') AS class_label
+     FROM submarkets WHERE id::text = $1 LIMIT 1`,
+    [event.geographyId]
+  );
+  const treatAttr = treatRes.rows[0] ?? null;
+
   // Score each candidate
   const scored: Array<ControlGroupEntry & { _rank: number }> = [];
 
   for (const c of candidatesRes.rows) {
     const isExcluded = excludedIds.has(c.id);
-
-    let matchScore = 0.5;
     const matchCriteria: Record<string, number> = {};
+    const componentScores: number[] = [];
 
-    // Rent similarity score (0-1)
-    if (event.msaId && c.avg_rent) {
-      // Use a reference rent (take first non-null from DB or default to candidate rent)
-      const rentScore = 0.7; // Simplified: same MSA = decent rent proxy
-      matchCriteria.rent_similarity = rentScore;
-      matchScore = (matchScore + rentScore) / 2;
-    }
+    // 1. No confounding event (binary: 1.0 / 0.0)
+    const confoundScore = isExcluded ? 0.0 : 1.0;
+    matchCriteria.no_confounding_event = confoundScore;
 
-    // Occupancy similarity
-    if (c.avg_occupancy) {
-      const occScore = 0.65;
-      matchCriteria.occupancy_similarity = occScore;
-      matchScore = (matchScore * 0.7 + occScore * 0.3);
+    // 2. Pre-event trend similarity (OLS slope comparison on rent_index)
+    let trendScore = 0.5; // default when we have no data
+    if (treatmentSlope !== null) {
+      try {
+        const ctrlSeries = await resolveMetricSeries(c.id, primaryMetric, baselineStart, baselineEnd);
+        const ctrlOls = fitOLS(ctrlSeries);
+        if (ctrlOls) {
+          const slopeDiff = Math.abs(ctrlOls.slope - treatmentSlope);
+          const denom = Math.max(Math.abs(treatmentSlope), 0.001);
+          trendScore = Math.max(0, 1 - Math.min(slopeDiff / denom, 1));
+        }
+      } catch (_) { /* non-fatal */ }
     }
+    matchCriteria.pre_event_trend_similarity = Math.round(trendScore * 10000) / 10000;
+    componentScores.push(trendScore * 0.40); // 40% weight
 
-    if (!isExcluded) {
-      matchCriteria.no_confounding_event = 1.0;
-      matchScore = Math.min(1, matchScore + 0.1);
+    // 3. Class/asset class similarity
+    let classScore = 0.5;
+    if (treatAttr && treatAttr.class_label && c.class_label) {
+      classScore = c.class_label === treatAttr.class_label ? 1.0 : 0.2;
     }
+    matchCriteria.class_similarity = classScore;
+    componentScores.push(classScore * 0.25); // 25% weight
+
+    // 4. Demographic/rent-level similarity
+    let rentScore = 0.5;
+    if (treatAttr && treatAttr.avg_rent > 0 && c.avg_rent > 0) {
+      const rentDiff = Math.abs(c.avg_rent - treatAttr.avg_rent);
+      const rentDenom = Math.max(treatAttr.avg_rent, 1);
+      rentScore = Math.max(0, 1 - Math.min(rentDiff / rentDenom, 1));
+    }
+    matchCriteria.rent_level_similarity = Math.round(rentScore * 10000) / 10000;
+    componentScores.push(rentScore * 0.20); // 20% weight
+
+    // 5. Occupancy similarity
+    let occScore = 0.5;
+    if (treatAttr && treatAttr.avg_occupancy > 0 && c.avg_occupancy > 0) {
+      const occDiff = Math.abs(c.avg_occupancy - treatAttr.avg_occupancy);
+      occScore = Math.max(0, 1 - Math.min(occDiff / 100, 1));
+    }
+    matchCriteria.occupancy_similarity = Math.round(occScore * 10000) / 10000;
+    componentScores.push(occScore * 0.15); // 15% weight
+
+    const matchScore = Math.min(1, componentScores.reduce((a, b) => a + b, 0));
 
     scored.push({
       id: uuidv4(),
@@ -339,7 +393,7 @@ export async function selectControlGroup(
     });
   }
 
-  // Sort by rank desc, take top TARGET_CONTROL_N included
+  // Sort by rank desc, take top TARGET_CONTROL_N included + all excluded
   scored.sort((a, b) => b._rank - a._rank);
   const included = scored.filter(s => s.isIncluded).slice(0, TARGET_CONTROL_N);
   const excluded = scored.filter(s => !s.isIncluded);
@@ -525,8 +579,16 @@ export async function computeEventImpact(eventId: string): Promise<ImpactRecord[
   const controlGroup = await selectControlGroup(eventId, event);
   await persistControlGroup(eventId, controlGroup);
 
-  // Determine metric keys for this event's category
-  const metricKeys = M35_METRIC_REGISTRY[event.category] ?? ['rent_index'];
+  // Determine metric keys: prefer event-specific watchlist, fall back to category registry
+  const watchlistRes = await pool.query(
+    `SELECT metric_key FROM m35_metric_watchlist_config
+     WHERE event_id = $1 AND is_active = true
+     ORDER BY created_at ASC`,
+    [eventId]
+  );
+  const metricKeys: string[] = watchlistRes.rows.length > 0
+    ? watchlistRes.rows.map((r: any) => r.metric_key as string)
+    : (M35_METRIC_REGISTRY[event.category] ?? ['rent_index']);
 
   const results: ImpactRecord[] = [];
 
@@ -704,19 +766,19 @@ export async function getEventImpacts(eventId: string): Promise<ImpactRecord[]> 
     geographyId: r.geography_id,
     windowMonths: r.window_months,
     measurementDate: r.measurement_date,
-    baselineSlope: r.baseline_slope ? parseFloat(r.baseline_slope) : null,
-    baselineIntercept: r.baseline_intercept ? parseFloat(r.baseline_intercept) : null,
-    baselineR2: r.baseline_r2 ? parseFloat(r.baseline_r2) : null,
+    baselineSlope: r.baseline_slope != null ? parseFloat(r.baseline_slope) : null,
+    baselineIntercept: r.baseline_intercept != null ? parseFloat(r.baseline_intercept) : null,
+    baselineR2: r.baseline_r2 != null ? parseFloat(r.baseline_r2) : null,
     baselineN: r.baseline_n,
-    projectedValue: r.projected_value ? parseFloat(r.projected_value) : null,
-    actualValue: r.actual_value ? parseFloat(r.actual_value) : null,
-    delta: r.delta ? parseFloat(r.delta) : null,
-    deltaPct: r.delta_pct ? parseFloat(r.delta_pct) : null,
-    controlAvgDelta: r.control_avg_delta ? parseFloat(r.control_avg_delta) : null,
-    attributedDelta: r.attributed_delta ? parseFloat(r.attributed_delta) : null,
-    attributedDeltaPct: r.attributed_delta_pct ? parseFloat(r.attributed_delta_pct) : null,
+    projectedValue: r.projected_value != null ? parseFloat(r.projected_value) : null,
+    actualValue: r.actual_value != null ? parseFloat(r.actual_value) : null,
+    delta: r.delta != null ? parseFloat(r.delta) : null,
+    deltaPct: r.delta_pct != null ? parseFloat(r.delta_pct) : null,
+    controlAvgDelta: r.control_avg_delta != null ? parseFloat(r.control_avg_delta) : null,
+    attributedDelta: r.attributed_delta != null ? parseFloat(r.attributed_delta) : null,
+    attributedDeltaPct: r.attributed_delta_pct != null ? parseFloat(r.attributed_delta_pct) : null,
     didConfidence: parseFloat(r.did_confidence ?? '0'),
-    pValue: r.p_value ? parseFloat(r.p_value) : null,
+    pValue: r.p_value != null ? parseFloat(r.p_value) : null,
     controlGroupN: r.control_group_n,
     dataQuality: r.data_quality,
     dataGaps: r.data_gaps ?? [],
