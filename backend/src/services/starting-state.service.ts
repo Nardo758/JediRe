@@ -118,10 +118,22 @@ export class StartingStateService {
 
   // ============================================================================
   // LEASE_UP: uses absorption curve from peer benchmark
+  // start_occupancy uses observed data when available (rent roll or deal field),
+  // defaulting to 0 only for true ground-up/new construction with no evidence.
   // ============================================================================
   private async buildLeaseUpState(deal: any, derived: DerivedSnapshotMetrics | null): Promise<LeaseUpState> {
     const submarketId = deal.submarket_id;
-    const targetUnits = deal.target_units || 100;
+
+    // Use observed occupancy when rent roll or deal data provides it.
+    // For new construction with no data the value falls back to 0 (correct for LEASE_UP).
+    const observedOcc = this.getOccupancy(deal, derived);
+    // getOccupancy returns 0.90 as its default — treat 0.90 as "no real signal"
+    // so we only carry forward occupancy that came from actual data fields.
+    const hasRealOccupancySignal =
+      deal.current_occupancy != null ||
+      (deal.deal_data?.occupancy != null) ||
+      (derived != null && derived.unit_type_breakdown?.length > 0);
+    const startOccupancy = hasRealOccupancySignal ? observedOcc : 0;
 
     // Lookup absorption benchmark from platform calibration
     const benchmark = await this.getAbsorptionBenchmark(submarketId, deal.deal_data?.property_class);
@@ -133,7 +145,7 @@ export class StartingStateService {
 
     return {
       mode: 'LEASE_UP',
-      start_occupancy: 0,
+      start_occupancy: startOccupancy,
       target_occupancy: 0.93,
       absorption_curve: benchmark?.monthly_absorption_curve || this.defaultAbsorptionCurve(),
       months_to_stabilization_p50: benchmark?.months_to_stabilization_p50 ?? 18,

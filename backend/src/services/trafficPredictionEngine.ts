@@ -1302,18 +1302,22 @@ export class TrafficPredictionEngine {
               prediction.unit_type_breakdown = rr.derived_metrics.unit_type_breakdown;
             }
 
-            // expiration_waterfall — bucket by months_out [0..23]
+            // expiration_waterfall — bucket by months_out [1..24].
+            // months_out=1 means expiring in the current/next month,
+            // months_out=24 means expiring 24 months from now.
+            // The SQL age() result can be 0 for this month's expirations,
+            // so we add 1 to shift the range to 1-based.
             if (rr.expiry_rows) {
               const waterfall: Record<number, number> = {};
               for (const row of rr.expiry_rows) {
-                const mo = Math.max(0, Math.min(23, row.months_out as number));
+                const mo = Math.max(1, Math.min(24, (row.months_out as number) + 1));
                 waterfall[mo] = (waterfall[mo] || 0) + 1;
               }
               const totalExpiring = Object.values(waterfall).reduce((s, v) => s + v, 0) || 1;
               prediction.expiration_waterfall = Array.from({ length: 24 }, (_, i) => ({
-                months_out: i,
-                expiring_units: waterfall[i] || 0,
-                expiring_pct: Math.round(((waterfall[i] || 0) / totalExpiring) * 1000) / 1000,
+                months_out: i + 1,                                                        // 1-based
+                expiring_units: waterfall[i + 1] || 0,
+                expiring_pct: Math.round(((waterfall[i + 1] || 0) / totalExpiring) * 1000) / 1000,
               }));
             }
           }

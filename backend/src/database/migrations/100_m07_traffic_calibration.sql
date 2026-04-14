@@ -46,15 +46,29 @@ CREATE TABLE IF NOT EXISTS traffic_calibration_coefficients (
   curve_data        JSONB,
 
   created_at        TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at        TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-
-  UNIQUE (coefficient_name, scope_level, msa_id, submarket_id, property_class, vintage_band, cal_window)
+  updated_at        TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  -- NOTE: No UNIQUE constraint here because PostgreSQL treats two NULLs as NOT equal
+  -- in standard UNIQUE indexes, which would allow duplicate rows for scopes where
+  -- msa_id/submarket_id/property_class/vintage_band are all NULL (platform scope).
+  -- Correct deduplication is enforced by a COALESCE functional unique index below.
 );
 
 CREATE INDEX IF NOT EXISTS idx_tcc_scope ON traffic_calibration_coefficients
   (coefficient_name, scope_level, submarket_id, property_class, vintage_band);
 CREATE INDEX IF NOT EXISTS idx_tcc_msa ON traffic_calibration_coefficients
   (msa_id, coefficient_name) WHERE msa_id IS NOT NULL;
+
+-- Functional unique index using COALESCE so NULLs are treated as empty strings,
+-- preventing duplicate rows for platform/class/vintage scopes where dimensions are NULL.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_tcc_scope_coalesce ON traffic_calibration_coefficients (
+  coefficient_name,
+  scope_level,
+  cal_window,
+  COALESCE(msa_id,        ''),
+  COALESCE(submarket_id,  ''),
+  COALESCE(property_class,''),
+  COALESCE(vintage_band,  '')
+);
 
 -- ============================================================================
 -- 3. traffic_calibration_history
@@ -112,10 +126,11 @@ CREATE INDEX IF NOT EXISTS idx_rrs_snapshot_date ON rent_roll_snapshots (snapsho
 CREATE INDEX IF NOT EXISTS idx_rrs_status ON rent_roll_snapshots (status);
 
 -- ============================================================================
--- 5. lease_events (raw event log per uploaded rent roll)
---    leasing_events is a VIEW alias created in section 8.
+-- 5. leasing_events (raw event log per uploaded rent roll)
+--    This is the BASE TABLE. A backward-compat view named lease_events is
+--    created in section 8 so that existing read-paths continue to work.
 -- ============================================================================
-CREATE TABLE IF NOT EXISTS lease_events (
+CREATE TABLE IF NOT EXISTS leasing_events (
   id                BIGSERIAL PRIMARY KEY,
   snapshot_id       BIGINT NOT NULL REFERENCES rent_roll_snapshots(id) ON DELETE CASCADE,
   deal_id           TEXT NOT NULL,
@@ -144,10 +159,10 @@ CREATE TABLE IF NOT EXISTS lease_events (
   created_at        TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_le_snapshot_id ON lease_events (snapshot_id);
-CREATE INDEX IF NOT EXISTS idx_le_deal_id ON lease_events (deal_id);
-CREATE INDEX IF NOT EXISTS idx_le_lease_start ON lease_events (lease_start);
-CREATE INDEX IF NOT EXISTS idx_le_unit_type ON lease_events (unit_type);
+CREATE INDEX IF NOT EXISTS idx_le_snapshot_id ON leasing_events (snapshot_id);
+CREATE INDEX IF NOT EXISTS idx_le_deal_id ON leasing_events (deal_id);
+CREATE INDEX IF NOT EXISTS idx_le_lease_start ON leasing_events (lease_start);
+CREATE INDEX IF NOT EXISTS idx_le_unit_type ON leasing_events (unit_type);
 
 -- ============================================================================
 -- 6. traffic_weight_config
@@ -182,18 +197,21 @@ FROM traffic_calibration_coefficients
 ORDER BY coefficient_name, scope_level, submarket_id, property_class, vintage_band, cal_window, updated_at DESC;
 
 -- ============================================================================
--- 8. leasing_events canonical-name VIEW
---    lease_events is the BASE TABLE (created in section 5).
---    leasing_events is a read/write-capable view alias so query code can use
---    either name.
+-- 8. lease_events backward-compat VIEW
+--    leasing_events is the BASE TABLE (section 5).
+--    lease_events is a read/write-capable simple-select view alias so existing
+--    INSERT/SELECT code that was written against `lease_events` continues to work
+--    without changes.
 --
--- NOTE ON traffic_calibration_factors:
---   A pre-existing M06 table named traffic_calibration_factors already exists
---   with schema (factor_type, factor_key, multiplier, reason).  Our M07 Bayesian
---   stack requires a richer schema (prior_value, posterior_value, n_evidence,
---   confidence bands, cal_window, etc.) that is fundamentally different.
---   We therefore use traffic_calibration_coefficients as the M07 Bayesian table
---   to avoid destroying the 23 existing M06 rows.
+-- NOTE ON traffic_calibration_factors vs traffic_calibration_coefficients:
+--   The task spec uses "traffic_calibration_factors" as the M07 Bayesian table
+--   name.  However, a pre-existing M06 table named traffic_calibration_factors
+--   already exists in this database with schema (factor_type, factor_key,
+--   multiplier, reason) and 23 active rows.  Renaming or replacing that table
+--   would destroy the M06 catalog-metric pipeline.  We therefore preserve
+--   traffic_calibration_factors for M06 and use traffic_calibration_coefficients
+--   for the M07 Bayesian stack — both names are referenced consistently
+--   throughout the M07 codebase.
 -- ============================================================================
-CREATE OR REPLACE VIEW leasing_events AS
-  SELECT * FROM lease_events;
+CREATE OR REPLACE VIEW lease_events AS
+  SELECT * FROM leasing_events;
