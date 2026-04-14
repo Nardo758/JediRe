@@ -190,9 +190,11 @@ export async function aggregatePlaybook(
 
   const whereClause = stratumClauses.join(' AND ');
 
-  // Confidence × recency weighted aggregation.
-  // weight = did_confidence × exp(-DECAY_WEIGHT × age_in_years)
-  // CI bounds derived from weighted variance: p25 = wt_mean - 0.674 × wt_stddev, p75 = + 0.674 ×
+  // Hybrid aggregation:
+  //   • Quantiles (median / p25 / p75): true PERCENTILE_CONT from empirical distribution of attributed_delta
+  //   • Mean / stddev / confidence: confidence × recency weighted (weight = did_confidence × exp(-DECAY_WEIGHT × age_years))
+  // This preserves the correct distributional statistics while incorporating recency/quality weighting
+  // in the scalar summarisation fields.
   const aggRows = await pool.query(`
     WITH weighted AS (
       SELECT
@@ -213,41 +215,55 @@ export async function aggregatePlaybook(
       WHERE ${whereClause}
         AND ei.attributed_delta IS NOT NULL
     ),
-    agg AS (
+    -- Empirical quantiles: true percentiles from historical distribution
+    quantiles AS (
+      SELECT
+        metric_key,
+        window_months,
+        PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY delta)   AS median_delta,
+        PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY delta)   AS p25,
+        PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY delta)   AS p75,
+        COUNT(DISTINCT event_id)::int                          AS n
+      FROM weighted
+      GROUP BY metric_key, window_months
+    ),
+    -- Weighted mean: recency × confidence weighted point estimate
+    wt_stats AS (
       SELECT
         metric_key,
         window_months,
         SUM(delta * w) / NULLIF(SUM(w), 0)   AS wt_mean,
         SUM(w)                                AS sum_w,
-        COUNT(DISTINCT event_id)::int         AS n,
         AVG(w)                                AS avg_w
       FROM weighted
       GROUP BY metric_key, window_months
     ),
-    var AS (
+    -- Weighted variance: for stddev_delta field
+    wt_var AS (
       SELECT
         w.metric_key,
         w.window_months,
         SQRT(
-          SUM(w.w * POWER(w.delta - a.wt_mean, 2)) / NULLIF(a.sum_w, 0)
+          SUM(w.w * POWER(w.delta - s.wt_mean, 2)) / NULLIF(s.sum_w, 0)
         )                                     AS wt_sd
       FROM weighted w
-      JOIN agg a USING (metric_key, window_months)
-      GROUP BY w.metric_key, w.window_months, a.wt_mean, a.sum_w
+      JOIN wt_stats s USING (metric_key, window_months)
+      GROUP BY w.metric_key, w.window_months, s.wt_mean, s.sum_w
     )
     SELECT
-      a.metric_key,
-      a.window_months,
-      a.wt_mean                            AS median_delta,
-      a.wt_mean - 0.674 * v.wt_sd         AS p25,
-      a.wt_mean + 0.674 * v.wt_sd         AS p75,
-      a.wt_mean                            AS mean_delta,
-      v.wt_sd                              AS stddev_delta,
-      a.n                                  AS instance_count,
-      LEAST(a.avg_w, 0.999)               AS avg_confidence
-    FROM agg a
-    JOIN var v USING (metric_key, window_months)
-    ORDER BY a.metric_key, a.window_months
+      q.metric_key,
+      q.window_months,
+      q.median_delta,
+      q.p25,
+      q.p75,
+      s.wt_mean                              AS mean_delta,
+      v.wt_sd                                AS stddev_delta,
+      q.n                                    AS instance_count,
+      LEAST(s.avg_w, 0.999)                 AS avg_confidence
+    FROM quantiles q
+    JOIN wt_stats s USING (metric_key, window_months)
+    JOIN wt_var v USING (metric_key, window_months)
+    ORDER BY q.metric_key, q.window_months
   `, params);
 
   if (aggRows.rows.length === 0) {
