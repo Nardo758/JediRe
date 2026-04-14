@@ -619,7 +619,7 @@ function ExitStrategyCards({ options, selectedStrategy, onSelectStrategy, ret }:
           >
             {isSelected && (
               <div style={{ fontSize: 9, fontWeight: 700, color: '#68D391', fontFamily: "'JetBrains Mono'", letterSpacing: 1, marginBottom: 6 }}>
-                SELECTED → pushes debt terms to ProForma
+                ✓ ACTIVE — debt terms reflected in banner above
               </div>
             )}
             <div style={{ fontSize: 13, fontWeight: 700, color: isSelected ? '#68D391' : '#E8E6E1', marginBottom: 4 }}>{opt.label}</div>
@@ -824,14 +824,19 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
 
   return (
     <div style={{ height: '100%', background: '#0B0E13', color: '#E8E6E1', fontFamily: "'DM Sans', sans-serif", display: 'flex', flexDirection: 'column' }}>
+      {/* PUSH TO PROFORMA BANNER — module-level, not per-tab */}
+      <div style={{ padding: '12px 24px 0', flexShrink: 0 }}>
+        <PushToProFormaBanner holdYears={ret.holdYears} exitCap={ret.exitCap} debtRate={stack.sr.rate} debtIO={stack.sr.io} annualDS={annualDS} />
+      </div>
+
       {/* Tab navigation */}
-      <div style={{ padding: '0 24px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex' }}>
+      <div style={{ padding: '0 24px', borderTop: '1px solid rgba(255,255,255,0.06)', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', background: 'rgba(255,255,255,0.01)', flexShrink: 0 }}>
         {TABS.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             style={{
-              padding: '10px 16px',
+              padding: '8px 16px',
               fontSize: 10.5,
               fontWeight: 600,
               cursor: 'pointer',
@@ -848,27 +853,23 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
             <span style={{ fontSize: 11, opacity: 0.6 }}>{tab.icon}</span> {tab.label}
           </button>
         ))}
-      </div>
-
-      {/* Compact live-metrics strip — Target Exit · IRR · EM · RSS */}
-      <div style={{ padding: '6px 24px', borderBottom: '1px solid rgba(255,255,255,0.04)', background: 'rgba(255,255,255,0.015)', display: 'flex', alignItems: 'center', gap: 24, flexShrink: 0 }}>
-        {[
-          { label: 'TARGET EXIT', value: Q_LABELS[NOW_IDX + selectedFwd]?.label ?? '—', color: '#68D391' },
-          { label: 'IRR', value: `${ret.irr.toFixed(1)}%`, color: ret.irr >= 15 ? '#68D391' : '#F6E05E' },
-          { label: 'EM', value: `${ret.em.toFixed(2)}x`, color: '#63B3ED' },
-          { label: `RSS ${rssData.rss}`, value: rssVerdict, color: rssColor },
-        ].map((m) => (
-          <div key={m.label} style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
-            <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: 0.8, color: 'rgba(232,230,225,0.3)', fontFamily: "'JetBrains Mono'" }}>{m.label}</span>
-            <span style={{ fontSize: 11, fontWeight: 700, fontFamily: "'JetBrains Mono'", color: m.color }}>{m.value}</span>
-          </div>
-        ))}
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 16, paddingRight: 4 }}>
+          {[
+            { label: 'EXIT', value: Q_LABELS[NOW_IDX + selectedFwd]?.label ?? '—', color: '#68D391' },
+            { label: 'IRR', value: `${ret.irr.toFixed(1)}%`, color: ret.irr >= 15 ? '#68D391' : '#F6E05E' },
+            { label: 'EM', value: `${ret.em.toFixed(2)}x`, color: '#63B3ED' },
+            { label: `RSS`, value: `${rssData.rss} — ${rssVerdict}`, color: rssColor },
+          ].map((m) => (
+            <div key={m.label} style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+              <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: 0.8, color: 'rgba(232,230,225,0.25)', fontFamily: "'JetBrains Mono'" }}>{m.label}</span>
+              <span style={{ fontSize: 10, fontWeight: 700, fontFamily: "'JetBrains Mono'", color: m.color }}>{m.value}</span>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Content */}
       <div style={{ padding: '16px 24px 24px', flex: 1, overflowY: 'auto' }}>
-        {/* PUSH TO PROFORMA BANNER — shows on all tabs */}
-        <PushToProFormaBanner holdYears={ret.holdYears} exitCap={ret.exitCap} debtRate={stack.sr.rate} debtIO={stack.sr.io} annualDS={annualDS} />
 
         {/* EXIT STRATEGY TAB */}
         {activeTab === 'exit' && (
@@ -1015,7 +1016,7 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
           <div>
             <div style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, padding: '16px 20px', marginBottom: 16 }}>
               <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>
-                IRR BY EXIT QUARTER — click to select (pushes hold period to ProForma)
+                IRR BY EXIT QUARTER — alternate view · same selection as convergence chart above
               </span>
               <div style={{ display: 'flex', alignItems: 'flex-end', gap: 1, height: 140, marginTop: 12 }}>
                 {Array.from({ length: TOTAL_Q - NOW_IDX }, (_, i) => {
