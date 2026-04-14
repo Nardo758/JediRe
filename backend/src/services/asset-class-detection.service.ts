@@ -427,6 +427,12 @@ function buildAlternates(
     } else if (primaryKey === 'mf_lease_up') {
       alts.push({ key: 'mf_value_add_standard', fit: 0.50, reason: 'If property requires physical improvements beyond stabilization' });
       alts.push({ key: 'mf_distressed', fit: 0.30, reason: 'If lease-up velocity stalls and occupancy falls below 75%' });
+    } else if (primaryKey === 'mf_core_plus') {
+      alts.push({ key: 'mf_value_add_standard', fit: 0.55, reason: 'If loss-to-lease exceeds 10% — broader renovation program delivers better risk-adjusted returns' });
+      alts.push({ key: 'mf_core', fit: 0.35, reason: 'If rent premium potential is below 5% after targeted upgrades — revert to pure core hold' });
+    } else if (primaryKey === 'mf_str') {
+      alts.push({ key: 'mf_value_add_standard', fit: 0.55, reason: 'If STR permitting tightens or platform fees compress returns below long-term rental IRR' });
+      alts.push({ key: 'mf_lease_up', fit: 0.30, reason: 'If STR demand is seasonal and long-term rental stabilization offers more predictable income' });
     }
   } else if (assetClass === 'sfr') {
     if (primaryKey === 'sfr_fix_flip') {
@@ -438,6 +444,21 @@ function buildAlternates(
     } else if (primaryKey === 'sfr_hold') {
       alts.push({ key: 'sfr_mtr', fit: 0.45, reason: 'If corporate/medical demand in submarket supports mid-term rental premium' });
       alts.push({ key: 'sfr_str', fit: 0.35, reason: 'If STR permitted and vacation/transient demand present in submarket' });
+    } else if (primaryKey === 'sfr_str') {
+      alts.push({ key: 'sfr_mtr', fit: 0.55, reason: 'If STR regulations tighten or seasonality creates income gaps — mid-term rental provides more stable income' });
+      alts.push({ key: 'sfr_hold', fit: 0.35, reason: 'If STR permitting is revoked — convert to long-term residential hold' });
+    } else if (primaryKey === 'sfr_mtr') {
+      alts.push({ key: 'sfr_str', fit: 0.50, reason: 'If transient/vacation demand exceeds corporate MTR demand in the submarket' });
+      alts.push({ key: 'sfr_hold', fit: 0.35, reason: 'If MTR demand softens — convert to long-term residential hold for stable cash flow' });
+    } else if (primaryKey === 'sfr_btr') {
+      alts.push({ key: 'sfr_portfolio_agg', fit: 0.55, reason: 'If BTR entitlement or construction risk is elevated — aggregate existing SFR portfolio instead' });
+      alts.push({ key: 'mf_bts_ground_up', fit: 0.30, reason: 'If density zoning allows multifamily — apartment ground-up outperforms scattered-site BTR economics' });
+    } else if (primaryKey === 'sfr_portfolio_agg') {
+      alts.push({ key: 'sfr_brrrr', fit: 0.55, reason: 'If portfolio acquisition price requires individual asset recycling to fund growth' });
+      alts.push({ key: 'sfr_btr', fit: 0.30, reason: 'If land is available and SFR supply is constrained — develop instead of aggregate' });
+    } else if (primaryKey === 'sfr_wholesale') {
+      alts.push({ key: 'sfr_fix_flip', fit: 0.60, reason: 'If wholesale spread is thin — retain asset, renovate, and sell at retail ARV' });
+      alts.push({ key: 'sfr_brrrr', fit: 0.30, reason: 'If rental comps support DSCR > 1.25 post-refi — hold instead of wholesale' });
     }
   } else if (assetClass === 'retail') {
     if (primaryKey === 'retail_value_add') {
