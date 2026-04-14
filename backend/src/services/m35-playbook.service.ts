@@ -50,7 +50,7 @@ interface DbPlaybookRow {
   instance_count: string;     // pg numeric → string
   confidence: string;         // pg numeric → string
   status: 'preliminary' | 'publishable';
-  lag_structure: Record<string, number> | null;
+  lag_structure: Record<string, unknown> | null;
   scaling_coefficients: Record<string, number> | null;
   is_seeded: boolean;
   last_updated: string;
@@ -71,7 +71,7 @@ export interface PlaybookRow {
   instanceCount: number;
   confidence: number;
   status: 'preliminary' | 'publishable';
-  lagStructure: Record<string, number>;
+  lagStructure: Record<string, unknown>;
   scalingCoefficients: Record<string, number>;
   isSeeded: boolean;
   lastUpdated: Date;
@@ -109,7 +109,7 @@ export interface Playbook {
   instanceCount: number;
   confidence: number;
   status: 'preliminary' | 'publishable';
-  lagStructure: Record<string, number>;
+  lagStructure: Record<string, unknown>;
   scalingCoefficients: Record<string, number>;
   metrics: PlaybookMetricWindow[];
   lastUpdated: Date | null;
@@ -277,6 +277,32 @@ export async function aggregatePlaybook(
     return;
   }
 
+  // ── Lag structure derivation ──────────────────────────────────────────────
+  // For each metric, examine how |median_delta| varies across window_months.
+  // Peak window = the window with highest absolute impact.
+  // Onset window = first window where signal exceeds 25% of peak amplitude.
+  // Profile = 'immediate' | 'gradual' | 'delayed' (based on peak position in window ordering).
+  const metricWindows: Record<string, Array<{ wm: number; delta: number }>> = {};
+  for (const r of aggRows.rows) {
+    const mk = r.metric_key;
+    if (!metricWindows[mk]) metricWindows[mk] = [];
+    metricWindows[mk].push({ wm: parseInt(r.window_months), delta: parseFloat(r.median_delta ?? '0') });
+  }
+  const lagStructureByMetric: Record<string, object> = {};
+  for (const [metric, windows] of Object.entries(metricWindows)) {
+    windows.sort((a, b) => a.wm - b.wm);
+    const absVals = windows.map(w => Math.abs(w.delta));
+    const peakIdx = absVals.indexOf(Math.max(...absVals));
+    const peakWindow = windows[peakIdx].wm;
+    const peakAbs = absVals[peakIdx];
+    const onset = windows.find(w => Math.abs(w.delta) > 0.25 * peakAbs);
+    const onsetWindow = onset ? onset.wm : windows[0]?.wm ?? 0;
+    const peakPos = peakIdx / Math.max(windows.length - 1, 1);
+    const profile = peakPos <= 0.25 ? 'immediate' : peakPos <= 0.6 ? 'gradual' : 'delayed';
+    const direction = (windows[peakIdx]?.delta ?? 0) >= 0 ? 'positive' : 'negative';
+    lagStructureByMetric[metric] = { peak_window: peakWindow, onset_window: onsetWindow, profile, direction };
+  }
+
   // Upsert each metric×window row
   for (const row of aggRows.rows) {
     const n = parseInt(row.instance_count);
@@ -290,13 +316,14 @@ export async function aggregatePlaybook(
       p75 = mid + spread / 2;
     }
 
+    const lagJson = JSON.stringify(lagStructureByMetric[row.metric_key] ?? {});
     await pool.query(`
       INSERT INTO event_playbooks
         (subtype, stratum_msa_tier, stratum_magnitude, stratum_regime,
          metric_key, window_months,
          median_delta, p25, p75, mean_delta, stddev_delta,
-         instance_count, confidence, status, is_seeded, last_updated)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,false,NOW())
+         instance_count, confidence, status, lag_structure, is_seeded, last_updated)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,false,NOW())
       ON CONFLICT (subtype, stratum_msa_tier, stratum_magnitude, stratum_regime, metric_key, window_months)
       DO UPDATE SET
         median_delta   = EXCLUDED.median_delta,
@@ -307,6 +334,7 @@ export async function aggregatePlaybook(
         instance_count = EXCLUDED.instance_count,
         confidence     = EXCLUDED.confidence,
         status         = EXCLUDED.status,
+        lag_structure  = EXCLUDED.lag_structure,
         is_seeded      = false,
         last_updated   = NOW()
     `, [
@@ -314,7 +342,7 @@ export async function aggregatePlaybook(
       row.metric_key, row.window_months,
       row.median_delta, p25, p75,
       row.mean_delta, row.stddev_delta,
-      n, row.avg_confidence, status,
+      n, row.avg_confidence, status, lagJson,
     ]);
   }
 
