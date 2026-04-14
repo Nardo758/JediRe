@@ -387,7 +387,10 @@ export function detectAssetClass(deal: Record<string, any>): {
   const d = deal.deal_data || {};
   const prop = deal.property_data || {};
   const assumptions = deal.assumptions || {};
-  const userConfirmed = !!deal.recommended;
+  // Read persisted confirmation from deal_data.m08_detection (written by PATCH endpoint).
+  // Falls back to false — never inferred from unrelated fields like deal.recommended.
+  const m08Detection = d.m08_detection || {};
+  const userConfirmed: boolean = m08Detection.user_confirmed === true;
 
   const rawPropType: string = d.property_type || prop.property_type || d.propertyType || prop.propertyType || deal.project_type || deal.deal_category || '';
   const unitCount  = Number(deal.unit_count || d.unit_count || d.units || assumptions.total_units || 0);
@@ -617,6 +620,8 @@ export function detectAssetClassAndDealType(deal: Record<string, any>): Detectio
     detectionSignals: allSignals,
     alternateSubStrategies: alternates,
     userConfirmed: ac.userConfirmed,
-    userOverrideClassification: undefined,
+    // Persisted override: written by PATCH /deals/:dealId/detection-confirmation.
+    // undefined when user has not overridden detection.
+    userOverrideClassification: (deal.deal_data?.m08_detection?.user_override_classification) ?? undefined,
   };
 }

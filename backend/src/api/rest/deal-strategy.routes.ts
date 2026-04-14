@@ -10,7 +10,7 @@ import { Router, Response } from 'express';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { query, getPool } from '../../database/connection';
 import { scoreAndPersist, detectArbitrage, ScoreContext } from '../../services/strategyArbitrage.service';
-import { getStrategiesForDeal } from '../../services/m08-strategies.service';
+import { getStrategiesForDeal, bustM08Cache } from '../../services/m08-strategies.service';
 import { logger } from '../../utils/logger';
 
 const router = Router({ mergeParams: true });
@@ -36,6 +36,62 @@ async function checkDealAccess(dealId: string, userId: string, orgId: string | n
   );
   return result.rows.length > 0;
 }
+
+/**
+ * PATCH /api/v1/deals/:dealId/detection-confirmation
+ * Persists user confirmation or override of AI asset-class detection.
+ *
+ * Body: { userConfirmed: boolean; userOverrideClassification?: string }
+ *
+ * Writes to deal_data.m08_detection JSONB sub-document and busts the M08 cache
+ * so the next GET /strategies reflects the confirmed classification.
+ */
+router.patch('/:dealId/detection-confirmation', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const userId = req.user!.userId;
+    const orgId = await getUserOrgId(userId);
+
+    if (!(await checkDealAccess(dealId, userId, orgId))) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
+
+    const { userConfirmed, userOverrideClassification } = req.body;
+    if (typeof userConfirmed !== 'boolean') {
+      return res.status(400).json({ success: false, error: 'userConfirmed (boolean) is required' });
+    }
+
+    // Merge into deal_data.m08_detection sub-document without clobbering other deal_data keys
+    const patch: Record<string, any> = { user_confirmed: userConfirmed };
+    if (userOverrideClassification !== undefined) {
+      patch.user_override_classification = userOverrideClassification || null;
+    }
+    patch.confirmed_at = new Date().toISOString();
+
+    await query(
+      `UPDATE deals
+          SET deal_data = jsonb_set(
+                COALESCE(deal_data, '{}'::jsonb),
+                '{m08_detection}',
+                COALESCE(deal_data->'m08_detection', '{}'::jsonb) || $1::jsonb,
+                true
+              ),
+              updated_at = NOW()
+        WHERE id = $2`,
+      [JSON.stringify(patch), dealId]
+    );
+
+    bustM08Cache(dealId);
+
+    return res.json({
+      success: true,
+      data: { dealId, userConfirmed, userOverrideClassification: userOverrideClassification ?? null },
+    });
+  } catch (error: any) {
+    logger.error('[M08v2] Error persisting detection confirmation:', error);
+    return res.status(500).json({ success: false, error: 'Failed to persist detection confirmation' });
+  }
+});
 
 /**
  * GET /api/v1/deals/:dealId/strategies

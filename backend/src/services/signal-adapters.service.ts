@@ -282,7 +282,9 @@ function retailAdapter(d: Record<string, any>, scores: Record<string, any>): Sig
 
   let demand   = Number(scores.demand   || 55);
   let supply   = Number(scores.supply   || 55);
-  const momentum = Number(scores.momentum || d.rent_growth_yoy ? Math.min(100, 50 + Number(d.rent_growth_yoy) * 300) : 50);
+  const momentum = d.rent_growth_yoy != null
+    ? Math.min(100, Math.max(0, 50 + Number(d.rent_growth_yoy) * 300))
+    : Number(scores.momentum ?? 50);
   let position = Number(scores.position || 50);
   let risk     = Number(scores.risk     || 50);
 
