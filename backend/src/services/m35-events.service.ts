@@ -274,6 +274,9 @@ export async function createEvent(input: CreateEventInput): Promise<KeyEvent> {
   void kafkaProducer.publish(KAFKA_TOPICS.M35_EVENT_INGESTED, msg, { key: id })
     .catch((err: Error) => logger.warn('[M35 Events] Kafka publish failed (non-fatal)', { err: err.message }));
 
+  // Note: new events always start in 'draft' status (see INSERT above).
+  // Forecast generation is triggered when the event transitions to 'announced'
+  // or 'in_progress' via transitionStatus() — see the lifecycle hooks below.
   logger.info('[M35 Events] Created event', { id, name: input.name, category: input.category });
   return event;
 }

@@ -5,15 +5,8 @@
 -- Tables:
 --   event_forecasts            — per-event × metric × window forward projections with CI
 --   forecast_actuals_tracking  — nightly divergence check log
-
--- ─── Preflight: idempotent guard ─────────────────────────────────────────────
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'event_forecasts') THEN
-    RAISE NOTICE 'event_forecasts already exists — skipping migration';
-    RETURN;
-  END IF;
-END $$;
+--
+-- Idempotency: each CREATE uses IF NOT EXISTS; tables are guarded independently.
 
 -- ─── event_forecasts ─────────────────────────────────────────────────────────
 -- One row per event × metric_key × window_months × model generation.
@@ -27,7 +20,7 @@ CREATE TABLE IF NOT EXISTS event_forecasts (
   metric_key           VARCHAR(64)  NOT NULL,
   window_months        SMALLINT     NOT NULL,   -- 3 | 12 | 24 | 36
 
-  -- Point estimate and 80% confidence interval
+  -- Point estimate and confidence interval
   point_estimate       NUMERIC(18,6),
   ci_low               NUMERIC(18,6),
   ci_high              NUMERIC(18,6),
@@ -46,7 +39,7 @@ CREATE TABLE IF NOT EXISTS event_forecasts (
   invalidation_reason  VARCHAR(128)
 );
 
--- Partial index on active rows for fast lookup
+-- Indexes created independently with IF NOT EXISTS
 CREATE INDEX IF NOT EXISTS idx_event_forecasts_event
   ON event_forecasts (event_id);
 
@@ -56,6 +49,7 @@ CREATE INDEX IF NOT EXISTS idx_event_forecasts_metric
 CREATE INDEX IF NOT EXISTS idx_event_forecasts_status
   ON event_forecasts (status);
 
+-- Partial unique index: only one active forecast per event × metric × window
 CREATE UNIQUE INDEX IF NOT EXISTS idx_event_forecasts_active
   ON event_forecasts (event_id, metric_key, window_months)
   WHERE status = 'active';
