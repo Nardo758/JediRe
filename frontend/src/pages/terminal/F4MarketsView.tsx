@@ -16,6 +16,7 @@ import { useGridTemplates, GridTemplate } from "../../hooks/useGridTemplates";
 import { ColumnConfigPopover, ColumnConfig, DEFAULT_COLUMN_CONFIG } from "../../components/terminal/ColumnConfigPopover";
 import api from "../../services/api";
 import { DemandTab } from "../../components/terminal/tabs/DemandTab";
+import { F4DealsView } from "../../components/terminal/tabs/F4DealsView";
 
 /**
  * F4 Markets View - Refactored
@@ -221,7 +222,7 @@ const dataCell: React.CSSProperties = {
 // Types
 // ============================================================================
 
-type ActiveTab = "dashboard" | "browse" | "submarkets" | "properties" | "demand" | "compare";
+type ActiveTab = "dashboard" | "browse" | "submarkets" | "properties" | "demand" | "deals" | "compare";
 type DrillLevel = "landing" | "msa-terminal" | "submarket-terminal" | "property-terminal";
 type SortKey = "rank" | "msa" | "jedi" | "d30" | "rentNum" | "vacNum" | "absorbNum" | "pipelineNum" | "capNum" | "cycle";
 type CycleFilter = "all" | "EXPANSION" | "LATE EXP" | "PEAK" | "CONTRACTION";
@@ -360,7 +361,7 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
     compare: "f4_compare",
   };
 
-  const safeTab = activeTab === "demand" ? "dashboard" : activeTab;
+  const safeTab = (activeTab === "demand" || activeTab === "deals") ? "dashboard" : activeTab;
 
   const [pickerOpen, setPickerOpen] = useState<ActiveTab | null>(null);
 
@@ -1546,6 +1547,8 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
 
   const renderDemand = () => <DemandTab msaName={drillMsaName || undefined} msaCode={drillMsaId || undefined} />;
 
+  const renderDeals = () => <F4DealsView />;
+
   const renderTabContent = () => {
     switch (activeTab) {
       case "dashboard": return renderDashboard();
@@ -1553,6 +1556,7 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
       case "submarkets": return renderSubmarkets();
       case "properties": return renderProperties();
       case "demand": return renderDemand();
+      case "deals": return renderDeals();
       case "compare": return renderCompare();
       default: return null;
     }
@@ -1568,6 +1572,7 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
     { id: "submarkets", label: "SUBMARKETS" },
     { id: "properties", label: "PROPERTIES" },
     { id: "demand", label: "DEMAND" },
+    { id: "deals", label: "DEALS" },
     { id: "compare", label: "COMPARE" },
   ];
 
@@ -1610,9 +1615,9 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
         </button>
       </div>
 
-      {activeTab !== "demand" && renderMetricsLegend()}
+      {activeTab !== "demand" && activeTab !== "deals" && renderMetricsLegend()}
 
-      {activeTab !== "demand" && renderSuggestedMetrics()}
+      {activeTab !== "demand" && activeTab !== "deals" && renderSuggestedMetrics()}
 
       {/* Tab Content */}
       {renderTabContent()}

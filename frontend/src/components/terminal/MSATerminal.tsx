@@ -2,18 +2,18 @@
  * MSATerminal - Bloomberg-style MSA/Metro analytics dashboard
  * Top level in the hierarchy: MSA → Submarket → Property
  *
- * Tabs (12 total):
+ * Tabs (10 total):
  * [0] OVERVIEW      - Signal chart+metrics, commentary, alerts, supply, dev capacity
  * [1] SUBMARKETS    - 14-column matrix with Dev Capacity signals
- * [2] DEALS         - Pipeline kanban, quadrant filter, opportunities
- * [3] PROPERTIES    - Map-based view: ranked properties + side panel (combined Rankings+Properties)
- * [4] CAPITAL       - Combined Owners (buy/sell signals) + Capital Markets (volume, cap rates, debt)
- * [5] SUPPLY        - Supply wave forecast, phases
- * [6] ECONOMICS     - Employment, population, income trends
- * [7] TRENDS        - Correlation, rent by vintage, JEDI history
- * [8] NEWS          - Metro market news
- * [9] COMPARE       - Compare to peer MSAs
- * [10] EVENTS ⚡   - M35 key events
+ * [2] PROPERTIES    - Map-based view: ranked properties + side panel (combined Rankings+Properties)
+ * [3] CAPITAL       - Combined Owners (buy/sell signals) + Capital Markets (volume, cap rates, debt)
+ * [4] SUPPLY        - Supply wave forecast, phases
+ * [5] ECONOMICS     - Employment, population, income trends
+ * [6] TRENDS        - Correlation, rent by vintage, JEDI history
+ * [7] NEWS          - Metro market news
+ * [8] COMPARE       - Compare to peer MSAs
+ * [9] EVENTS ⚡    - M35 key events
+ * NOTE: DEALS tab lives at the F4 Dashboard level (cross-market aggregated view)
  */
 
 import React, { useState, useEffect } from 'react';
@@ -22,7 +22,6 @@ import { TerminalTabs, TabDef, useTabKeyboard } from './TerminalTabs';
 import { MSAHeader } from './MSAHeader';
 import { MSAOverviewTab } from './tabs/msa/MSAOverviewTab';
 import { MSASubmarketsTab } from './tabs/msa/MSASubmarketsTab';
-import { MSADealsTab } from './tabs/msa/MSADealsTab';
 import { MSAMarketMapTab } from './tabs/msa/MSAMarketMapTab';
 import { MSACapitalOwnersTab } from './tabs/msa/MSACapitalOwnersTab';
 import { MSASupplyTab } from './tabs/msa/MSASupplyTab';
@@ -35,18 +34,17 @@ import { MSAEventsTab } from './tabs/msa/MSAEventsTab';
 export const MSA_TABS: TabDef[] = [
   { key: 'overview',    label: 'OVERVIEW',    num: 0 },
   { key: 'submarkets',  label: 'SUBMARKETS',  num: 1 },
-  { key: 'deals',       label: 'DEALS',       num: 2 },
-  { key: 'properties',  label: 'PROPERTIES',  num: 3 },
-  { key: 'capital',     label: 'CAPITAL',     num: 4 },
-  { key: 'supply',      label: 'SUPPLY',      num: 5 },
-  { key: 'economics',   label: 'ECONOMICS',   num: 6 },
-  { key: 'trends',      label: 'TRENDS',      num: 7 },
-  { key: 'news',        label: 'NEWS',        num: 8 },
-  { key: 'compare',     label: 'COMPARE',     num: 9 },
-  { key: 'events',      label: 'EVENTS ⚡',   num: 10 },
+  { key: 'properties',  label: 'PROPERTIES',  num: 2 },
+  { key: 'capital',     label: 'CAPITAL',     num: 3 },
+  { key: 'supply',      label: 'SUPPLY',      num: 4 },
+  { key: 'economics',   label: 'ECONOMICS',   num: 5 },
+  { key: 'trends',      label: 'TRENDS',      num: 6 },
+  { key: 'news',        label: 'NEWS',        num: 7 },
+  { key: 'compare',     label: 'COMPARE',     num: 8 },
+  { key: 'events',      label: 'EVENTS ⚡',   num: 9 },
 ];
 
-export type MSATabKey = 'overview' | 'submarkets' | 'deals' | 'properties' | 'capital' | 'supply' | 'economics' | 'trends' | 'news' | 'compare' | 'events';
+export type MSATabKey = 'overview' | 'submarkets' | 'properties' | 'capital' | 'supply' | 'economics' | 'trends' | 'news' | 'compare' | 'events';
 
 export interface MSAData {
   id: string;
@@ -182,8 +180,6 @@ export const MSATerminal: React.FC<MSATerminalProps> = ({
         return <MSAOverviewTab msaId={msaId} msa={msa} />;
       case 'submarkets':
         return <MSASubmarketsTab msaId={msaId} msa={msa} onSelectSubmarket={onSubmarketSelect} />;
-      case 'deals':
-        return <MSADealsTab msaId={msaId} msa={msa} onSelectDeal={onDealSelect} />;
       case 'properties':
         return <MSAMarketMapTab msaId={msaId} msa={msa} onSelectProperty={onPropertySelect} />;
       case 'capital':
