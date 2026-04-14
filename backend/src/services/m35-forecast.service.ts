@@ -627,29 +627,38 @@ export async function enqueueForecastRegen(
   );
 }
 
+const REGEN_QUEUE_MAX_ATTEMPTS = 3;
+// Exponential backoff: 5m, 30m, 3h after each failure
+const REGEN_BACKOFF_MINUTES = [5, 30, 180];
+
 /**
  * Drain pending forecast_regen_queue rows. Claims rows with SKIP LOCKED so
- * concurrent invocations are safe, then calls generateForecast per row.
- * Scheduled every minute from index.replit.ts.
+ * concurrent invocations are safe. Retries failed jobs with exponential backoff
+ * up to REGEN_QUEUE_MAX_ATTEMPTS times. Scheduled every minute from index.replit.ts.
  */
 export async function processForecastRegenQueue(): Promise<void> {
   const pool = getPool();
 
   const claimed = await pool.query(`
     UPDATE forecast_regen_queue
-    SET status = 'processing', started_at = NOW()
+    SET status = 'processing', started_at = NOW(), attempts = attempts + 1
     WHERE id IN (
       SELECT id FROM forecast_regen_queue
-      WHERE status = 'pending'
+      WHERE (status = 'pending')
+         OR (status = 'failed'
+             AND attempts < $1
+             AND (next_retry_at IS NULL OR next_retry_at <= NOW()))
       ORDER BY created_at
       LIMIT 50
       FOR UPDATE SKIP LOCKED
     )
-    RETURNING id, event_id, reason
-  `);
+    RETURNING id, event_id, reason, attempts
+  `, [REGEN_QUEUE_MAX_ATTEMPTS]);
 
   if (claimed.rows.length === 0) return;
 
+  let done = 0;
+  let failed = 0;
   for (const row of claimed.rows) {
     try {
       await generateForecast(row.event_id);
@@ -657,15 +666,23 @@ export async function processForecastRegenQueue(): Promise<void> {
         `UPDATE forecast_regen_queue SET status = 'done', completed_at = NOW() WHERE id = $1`,
         [row.id],
       );
+      done++;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      logger.warn(`[M35 RegenQueue] Failed for event ${row.event_id}: ${msg}`);
+      const backoffMins = REGEN_BACKOFF_MINUTES[Math.min(row.attempts - 1, REGEN_BACKOFF_MINUTES.length - 1)];
+      logger.warn(`[M35 RegenQueue] Attempt ${row.attempts} failed for event ${row.event_id}; retry in ${backoffMins}m`);
       await pool.query(
-        `UPDATE forecast_regen_queue SET status = 'failed', completed_at = NOW(), error_msg = $2 WHERE id = $1`,
-        [row.id, msg],
+        `UPDATE forecast_regen_queue
+         SET status = 'failed', completed_at = NOW(), error_msg = $2,
+             next_retry_at = NOW() + ($3 || ' minutes')::interval
+         WHERE id = $1`,
+        [row.id, msg, backoffMins],
       );
+      failed++;
     }
   }
 
-  logger.info(`[M35 RegenQueue] Processed ${claimed.rows.length} regen jobs`);
+  if (done + failed > 0) {
+    logger.info(`[M35 RegenQueue] Processed ${done + failed} jobs: ${done} done, ${failed} failed`);
+  }
 }
