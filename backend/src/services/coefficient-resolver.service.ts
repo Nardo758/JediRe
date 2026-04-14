@@ -46,6 +46,7 @@ export class CoefficientResolverService {
     submarketId: string | null,
     propertyClass: string | null,
     yearBuilt: number | null,
+    msaId: string | null = null,
   ): Promise<ResolvedCoefficients> {
 
     const vintageBand = this.getVintageBand(yearBuilt);
@@ -55,7 +56,7 @@ export class CoefficientResolverService {
 
     // Try Platform-level (buckets: submarket→msa→platform)
     const platformCoefficients = await this.loadPlatformCoefficients(
-      submarketId, propertyClass, vintageBand
+      submarketId, propertyClass, vintageBand, msaId
     );
 
     // Build the family
@@ -163,8 +164,8 @@ export class CoefficientResolverService {
         app_to_signed: Math.min(0.95, Math.max(0.3, 0.5 + renewalRate * 0.3)),
         apartment_seeker_pct: avgConcession > 4 ? 0.015 : avgConcession < 1 ? 0.025 : BASELINE_COEFFICIENTS.apartment_seeker_pct,
       };
-    } catch (err: any) {
-      logger.debug('[CoefficientResolver] Could not load deal coefficients', { dealId, error: err.message });
+    } catch (err: unknown) {
+      logger.debug('[CoefficientResolver] Could not load deal coefficients', { dealId, error: err instanceof Error ? err.message : String(err) });
       return null;
     }
   }
@@ -177,26 +178,42 @@ export class CoefficientResolverService {
     submarketId: string | null,
     propertyClass: string | null,
     vintageBand: string | null,
+    msaId: string | null = null,
   ): Promise<Record<CoefficientName, PlatformEntry> | null> {
-    if (!submarketId) return null;
+    if (!submarketId && !msaId) return null;
 
     try {
       // Try increasingly general scopes until we find data
-      const scopeAttempts = [
+      const scopeAttempts: Array<{
+        scope_level: string;
+        submarket_id: string | null;
+        property_class: string | null;
+        vintage_band: string | null;
+        msa_id: string | null;
+      }> = [
         // Most specific: submarket + class + vintage
-        { scope_level: 'submarket', submarket_id: submarketId, property_class: propertyClass, vintage_band: vintageBand },
+        { scope_level: 'submarket', submarket_id: submarketId, property_class: propertyClass, vintage_band: vintageBand, msa_id: null },
         // Submarket + class only
-        { scope_level: 'submarket', submarket_id: submarketId, property_class: propertyClass, vintage_band: null },
+        { scope_level: 'submarket', submarket_id: submarketId, property_class: propertyClass, vintage_band: null, msa_id: null },
         // Submarket only
-        { scope_level: 'submarket', submarket_id: submarketId, property_class: null, vintage_band: null },
-        // MSA level
-        { scope_level: 'msa', submarket_id: null, property_class: propertyClass, vintage_band: null },
-        // Platform level
-        { scope_level: 'platform', submarket_id: null, property_class: null, vintage_band: null },
+        { scope_level: 'submarket', submarket_id: submarketId, property_class: null, vintage_band: null, msa_id: null },
+        // MSA level — only filter by msa_id when we know it, preventing cross-MSA bleed
+        { scope_level: 'msa', submarket_id: null, property_class: propertyClass, vintage_band: null, msa_id: msaId },
+        // Platform level (global fallback)
+        { scope_level: 'platform', submarket_id: null, property_class: null, vintage_band: null, msa_id: null },
       ];
 
       for (const attempt of scopeAttempts) {
-        const result = await this.pool.query<any>(`
+        const result = await this.pool.query<{
+          coefficient_name: string;
+          posterior_value: string;
+          n_peer_properties: number;
+          cal_window: string;
+          confidence_low: string;
+          confidence_mid: string;
+          confidence_high: string;
+          calibration_source: string;
+        }>(`
           SELECT coefficient_name, posterior_value, n_peer_properties, cal_window,
                  confidence_low, confidence_mid, confidence_high,
                  calibration_source, scope_level, submarket_id, property_class, vintage_band
@@ -205,10 +222,11 @@ export class CoefficientResolverService {
             AND (submarket_id = $2 OR ($2 IS NULL AND submarket_id IS NULL))
             AND (property_class = $3 OR ($3 IS NULL AND property_class IS NULL))
             AND (vintage_band = $4 OR ($4 IS NULL AND vintage_band IS NULL))
+            AND (msa_id = $5 OR ($5 IS NULL AND msa_id IS NULL))
             AND coefficient_name != 'absorption_curve'
             AND cal_window = 'TTM'
           ORDER BY n_peer_properties DESC
-        `, [attempt.scope_level, attempt.submarket_id, attempt.property_class, attempt.vintage_band]);
+        `, [attempt.scope_level, attempt.submarket_id, attempt.property_class, attempt.vintage_band, attempt.msa_id]);
 
         if (result.rows.length === 0) continue;
 
@@ -231,8 +249,8 @@ export class CoefficientResolverService {
       }
 
       return null;
-    } catch (err: any) {
-      logger.debug('[CoefficientResolver] Platform coefficient lookup failed', { error: err.message });
+    } catch (err: unknown) {
+      logger.debug('[CoefficientResolver] Platform coefficient lookup failed', { error: err instanceof Error ? err.message : String(err) });
       return null;
     }
   }

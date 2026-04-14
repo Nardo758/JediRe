@@ -120,8 +120,8 @@ export class CatalogMetricsWiringService {
       this.weightsCacheAt = new Date();
 
       return this.weightsCache;
-    } catch (err: any) {
-      logger.warn('[CatalogMetrics] Failed to load weights from DB, using defaults', { error: err.message });
+    } catch (err: unknown) {
+      logger.warn('[CatalogMetrics] Failed to load weights from DB, using defaults', { error: err instanceof Error ? err.message : String(err) });
       return this.defaultWeights();
     }
   }
@@ -196,8 +196,8 @@ export class CatalogMetricsWiringService {
             break;
         }
       }
-    } catch (err: any) {
-      logger.debug('[CatalogMetrics] Could not load submarket metrics', { submarketId, error: err.message });
+    } catch (err: unknown) {
+      logger.debug('[CatalogMetrics] Could not load submarket metrics', { submarketId, error: err instanceof Error ? err.message : String(err) });
     }
 
     return metrics;

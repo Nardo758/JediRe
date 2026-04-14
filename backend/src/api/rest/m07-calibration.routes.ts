@@ -107,9 +107,9 @@ router.post('/rent-roll/upload', rentRollUpload.single('file') as any, async (re
       },
       message: `Rent roll parsed and derived. ${parseResult.lease_events_stored} lease events stored.`,
     });
-  } catch (error: any) {
-    logger.error('[M07] Rent roll upload failed', { error: error.message });
-    res.status(500).json({ error: 'Failed to process rent roll', message: error.message });
+  } catch (error: unknown) {
+    logger.error('[M07] Rent roll upload failed', { error: error instanceof Error ? error.message : String(error) });
+    res.status(500).json({ error: 'Failed to process rent roll', message: error instanceof Error ? error.message : String(error) });
   }
 });
 
@@ -131,9 +131,9 @@ router.post('/rent-roll/:snapshotId/derive', async (req: Request, res: Response)
       snapshot_id: snapshotId,
       derivations: derived,
     });
-  } catch (error: any) {
-    logger.error('[M07] Derivations failed', { error: error.message });
-    res.status(500).json({ error: 'Failed to run derivations', message: error.message });
+  } catch (error: unknown) {
+    logger.error('[M07] Derivations failed', { error: error instanceof Error ? error.message : String(error) });
+    res.status(500).json({ error: 'Failed to run derivations', message: error instanceof Error ? error.message : String(error) });
   }
 });
 
@@ -158,9 +158,9 @@ router.get('/rent-roll/:dealId/snapshots', async (req: Request, res: Response) =
       count: result.rows.length,
       snapshots: result.rows,
     });
-  } catch (error: any) {
-    logger.error('[M07] Snapshot list failed', { error: error.message });
-    res.status(500).json({ error: 'Failed to list snapshots', message: error.message });
+  } catch (error: unknown) {
+    logger.error('[M07] Snapshot list failed', { error: error instanceof Error ? error.message : String(error) });
+    res.status(500).json({ error: 'Failed to list snapshots', message: error instanceof Error ? error.message : String(error) });
   }
 });
 
@@ -179,9 +179,9 @@ router.post('/job/run', async (req: Request, res: Response) => {
       success: true,
       result,
     });
-  } catch (error: any) {
-    logger.error('[M07] Calibration job failed', { error: error.message });
-    res.status(500).json({ error: 'Calibration job failed', message: error.message });
+  } catch (error: unknown) {
+    logger.error('[M07] Calibration job failed', { error: error instanceof Error ? error.message : String(error) });
+    res.status(500).json({ error: 'Calibration job failed', message: error instanceof Error ? error.message : String(error) });
   }
 });
 
@@ -220,9 +220,9 @@ router.get('/coefficients/:dealId', async (req: Request, res: Response) => {
       ...resolved.meta,
       coefficients: resolved.family,
     });
-  } catch (error: any) {
-    logger.error('[M07] Coefficient resolution failed', { error: error.message });
-    res.status(500).json({ error: 'Failed to resolve coefficients', message: error.message });
+  } catch (error: unknown) {
+    logger.error('[M07] Coefficient resolution failed', { error: error instanceof Error ? error.message : String(error) });
+    res.status(500).json({ error: 'Failed to resolve coefficients', message: error instanceof Error ? error.message : String(error) });
   }
 });
 
@@ -239,9 +239,9 @@ router.get('/starting-state/:dealId', async (req: Request, res: Response) => {
       deal_id: dealId,
       starting_state: state,
     });
-  } catch (error: any) {
-    logger.error('[M07] Starting state resolution failed', { error: error.message });
-    res.status(500).json({ error: 'Failed to resolve starting state', message: error.message });
+  } catch (error: unknown) {
+    logger.error('[M07] Starting state resolution failed', { error: error instanceof Error ? error.message : String(error) });
+    res.status(500).json({ error: 'Failed to resolve starting state', message: error instanceof Error ? error.message : String(error) });
   }
 });
 
@@ -280,9 +280,9 @@ router.get('/absorption-benchmark/:submarketId', async (req: Request, res: Respo
       benchmark: row.curve_data,
       last_updated: row.updated_at,
     });
-  } catch (error: any) {
-    logger.error('[M07] Absorption benchmark fetch failed', { error: error.message });
-    res.status(500).json({ error: 'Failed to fetch benchmark', message: error.message });
+  } catch (error: unknown) {
+    logger.error('[M07] Absorption benchmark fetch failed', { error: error instanceof Error ? error.message : String(error) });
+    res.status(500).json({ error: 'Failed to fetch benchmark', message: error instanceof Error ? error.message : String(error) });
   }
 });
 
@@ -316,9 +316,9 @@ router.put('/deal/:dealId/mode', async (req: Request, res: Response) => {
       deal_id: dealId,
       deal_mode: result.rows[0].deal_mode,
     });
-  } catch (error: any) {
-    logger.error('[M07] Deal mode update failed', { error: error.message });
-    res.status(500).json({ error: 'Failed to update deal mode', message: error.message });
+  } catch (error: unknown) {
+    logger.error('[M07] Deal mode update failed', { error: error instanceof Error ? error.message : String(error) });
+    res.status(500).json({ error: 'Failed to update deal mode', message: error instanceof Error ? error.message : String(error) });
   }
 });
 

@@ -19,7 +19,7 @@ import { trendPatternDetector } from './trend-pattern-detector';
 import type { TrendPattern } from './trend-pattern-detector';
 import { getDotTemporalProfilesService } from './dot-temporal-profiles.service';
 import type { TemporalMultiplierResult } from './dot-temporal-profiles.service';
-import { CoefficientResolverService } from './coefficient-resolver.service';
+import { CoefficientResolverService, type ResolvedCoefficients } from './coefficient-resolver.service';
 import { StartingStateService } from './starting-state.service';
 import { CatalogMetricsWiringService } from './catalog-metrics-wiring.service';
 import type { CalibrationMeta, StartingState } from '../types/traffic-calibration.types';
@@ -179,7 +179,7 @@ export interface ConversionChainRates {
   apartment_seeker_pct: number;
   stop_probability: number;
   combined_rate: number;
-  source: 'visibility_assessment' | 'submarket_calibrated' | 'default';
+  source: 'visibility_assessment' | 'submarket_calibrated' | 'bayesian_calibrated' | 'default';
 }
 
 export interface HourlyWalkInPotential {
@@ -312,6 +312,11 @@ export class TrafficPredictionEngine {
   private getConversionChainRates(
     signals: DataSourceSignals,
     submarketId?: string,
+    calibrationOverrides?: {
+      visibility_capture_rate?: number;
+      apartment_seeker_pct?: number;
+      stop_probability?: number;
+    },
   ): ConversionChainRates {
     let captureRate = this.DEFAULT_VISIBILITY_CAPTURE_RATE;
     let source: ConversionChainRates['source'] = 'default';
@@ -321,8 +326,22 @@ export class TrafficPredictionEngine {
       source = 'visibility_assessment';
     }
 
-    const seekerPct = this.DEFAULT_APARTMENT_SEEKER_PCT;
-    const stopProb = this.DEFAULT_STOP_PROBABILITY;
+    let seekerPct = this.DEFAULT_APARTMENT_SEEKER_PCT;
+    let stopProb = this.DEFAULT_STOP_PROBABILITY;
+
+    // Apply Bayesian-resolved coefficients when available (Deal → Platform → Baseline)
+    if (calibrationOverrides) {
+      if (calibrationOverrides.visibility_capture_rate != null && calibrationOverrides.visibility_capture_rate > 0) {
+        captureRate = calibrationOverrides.visibility_capture_rate;
+        source = 'bayesian_calibrated';
+      }
+      if (calibrationOverrides.apartment_seeker_pct != null && calibrationOverrides.apartment_seeker_pct > 0) {
+        seekerPct = calibrationOverrides.apartment_seeker_pct;
+      }
+      if (calibrationOverrides.stop_probability != null && calibrationOverrides.stop_probability > 0) {
+        stopProb = calibrationOverrides.stop_probability;
+      }
+    }
 
     return {
       visibility_capture_rate: captureRate,
@@ -948,7 +967,7 @@ export class TrafficPredictionEngine {
     };
   }
 
-  async predictTraffic(propertyId: string, targetWeek?: number): Promise<TrafficPrediction> {
+  async predictTraffic(propertyId: string, targetWeek?: number, dealId?: string): Promise<TrafficPrediction> {
     console.log(`🚶 Predicting traffic for property ${propertyId}`);
     
     const startTime = Date.now();
@@ -1020,7 +1039,30 @@ export class TrafficPredictionEngine {
       marketResearch
     );
     
-    const conversionChain = this.getConversionChainRates(signals, property.submarket_id);
+    // M07 early coefficient resolution — must happen before conversion chain so resolved
+    // Bayesian values (Deal → Platform → Baseline) are baked into the walk-in math.
+    let earlyResolvedCoefficients: ResolvedCoefficients | null = null;
+    try {
+      earlyResolvedCoefficients = await this.coefficientResolver.resolveForDeal(
+        dealId || propertyId,
+        property.submarket_id || null,
+        (property as any).property_class || null,
+        (property as any).year_built ? parseInt((property as any).year_built) : null,
+        (property as any).msa_id || null,
+      );
+    } catch {
+      // Non-blocking — engine falls through to hard-coded defaults
+    }
+
+    const conversionChain = this.getConversionChainRates(
+      signals,
+      property.submarket_id,
+      earlyResolvedCoefficients ? {
+        visibility_capture_rate: earlyResolvedCoefficients.family.visibility_capture_rate?.resolved,
+        apartment_seeker_pct:    earlyResolvedCoefficients.family.apartment_seeker_pct?.resolved,
+        stop_probability:        earlyResolvedCoefficients.family.stop_probability?.resolved,
+      } : undefined,
+    );
 
     let hourlyPotential: HourlyWalkInPotential[] | undefined;
     let dailyBreakdown: DailyBreakdown[] | undefined;
@@ -1167,18 +1209,19 @@ export class TrafficPredictionEngine {
       });
     }
     
-    // Step 12: M07 — Resolve Bayesian calibration metadata (Deal → Platform → Baseline)
+    // Step 12: M07 — Attach Bayesian calibration metadata + starting state + catalog adjustments.
+    // earlyResolvedCoefficients was already resolved above before the conversion chain,
+    // so no duplicate DB call is needed here.
     try {
-      const [calibrationResolved, startingState] = await Promise.all([
-        this.coefficientResolver.resolveForDeal(
-          propertyId,
-          property.submarket_id || null,
-          (property as any).property_class || null,
-          (property as any).year_built ? parseInt((property as any).year_built) : null,
-        ),
-        this.startingStateService.resolveStartingState(propertyId),
-      ]);
-      prediction.calibration_meta = calibrationResolved.meta;
+      // Attach coefficient metadata from the early resolution
+      if (earlyResolvedCoefficients) {
+        prediction.calibration_meta = earlyResolvedCoefficients.meta;
+      }
+
+      // Resolve starting state using dealId when known (for rent-roll-based state)
+      const startingState = await this.startingStateService.resolveStartingState(
+        dealId || propertyId
+      );
       prediction.starting_state = startingState;
 
       // Apply catalog metric adjustments (Layer A boost + Layer C dampers)
@@ -1193,8 +1236,11 @@ export class TrafficPredictionEngine {
           prediction.daily_average = Math.round(catalogAdjustment.adjusted_prediction / 7);
         }
       }
-    } catch (calibErr: any) {
-      console.warn('[TrafficEngine] M07 calibration metadata skipped (non-blocking):', calibErr.message);
+    } catch (calibErr: unknown) {
+      console.warn(
+        '[TrafficEngine] M07 calibration step skipped (non-blocking):',
+        calibErr instanceof Error ? calibErr.message : String(calibErr)
+      );
     }
 
     // Step 13: Save prediction to database
