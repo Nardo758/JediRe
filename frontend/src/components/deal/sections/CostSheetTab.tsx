@@ -223,10 +223,11 @@ function computeSyncItems(f9: F9DealFinancials, totalBasis: number): CostLineIte
       timing: 'month_7_12',
       sourceKey: 'wf:assetMgmtFee', synced: true,
     });
+    // Construction mgmt fee is equity-based (consistent with Waterfall tab display)
     out.push({
       id: stableId('wf:constructionMgmt'), section: 'sponsor',
       name: `Construction Mgmt Fee (${(wf.constructionMgmtPct * 100).toFixed(2)}%)`,
-      amount: Math.round(totalBasis * wf.constructionMgmtPct),
+      amount: Math.round(equity * wf.constructionMgmtPct),
       timing: 'month_1_6',
       sourceKey: 'wf:constructionMgmt', synced: true,
     });
@@ -238,10 +239,12 @@ function computeSyncItems(f9: F9DealFinancials, totalBasis: number): CostLineIte
       sourceKey: 'wf:dispositionFee', synced: true,
     });
     if (wf.refinancingFeePct > 0) {
+      // Use actual refi loan amount when available; fall back to total basis
+      const refiAmt = f9.closing?.refi?.refiLoanAmount ?? totalBasis;
       out.push({
         id: stableId('wf:refinancingFee'), section: 'debt',
         name: `Refinancing Fee (${(wf.refinancingFeePct * 100).toFixed(2)}%)`,
-        amount: Math.round(totalBasis * wf.refinancingFeePct),
+        amount: Math.round(refiAmt * wf.refinancingFeePct),
         timing: 'month_19_24',
         sourceKey: 'wf:refinancingFee', synced: true,
       });
