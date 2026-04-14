@@ -488,4 +488,18 @@ export interface M35ImpactMeasuredMessage extends BaseEvent {
   dataQuality: 'complete' | 'partial' | 'insufficient';
 }
 
+export interface M35PlaybookUpdatedMessage extends BaseEvent {
+  eventType: 'M35_PLAYBOOK_UPDATED';
+  eventId: string;          // synthetic key: 'playbook:{subtype}:{msaTier}:{magnitude}:{regime}'
+  subtype: string;
+  stratum: {
+    msaTier: 'large' | 'mid' | 'small' | 'all';
+    magnitude: 'small' | 'medium' | 'large' | 'transformative' | 'all';
+    regime: 'pre_covid' | 'post_covid' | 'all';
+  };
+  metricWindowCount: number;
+  instanceCount: number;
+  updatedAt: string;        // ISO-8601
+}
+
 export type KafkaTopic = typeof KAFKA_TOPICS[keyof typeof KAFKA_TOPICS];

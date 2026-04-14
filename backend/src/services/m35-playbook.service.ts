@@ -17,7 +17,7 @@
 import { getPool } from '../database/connection';
 import { logger } from '../utils/logger';
 import { kafkaProducer } from './kafka/kafka-producer.service';
-import { KAFKA_TOPICS } from './kafka/event-schemas';
+import { KAFKA_TOPICS, M35PlaybookUpdatedMessage } from './kafka/event-schemas';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -31,6 +31,29 @@ export interface PlaybookStratum {
   msaTier?: 'large' | 'mid' | 'small' | 'all';
   magnitude?: 'small' | 'medium' | 'large' | 'transformative' | 'all';
   regime?: 'pre_covid' | 'post_covid' | 'all';
+}
+
+/** Snake-case DB row from the event_playbooks table. */
+interface DbPlaybookRow {
+  id: string;
+  subtype: string;
+  stratum_msa_tier: 'large' | 'mid' | 'small' | 'all';
+  stratum_magnitude: 'small' | 'medium' | 'large' | 'transformative' | 'all';
+  stratum_regime: 'pre_covid' | 'post_covid' | 'all';
+  metric_key: string;
+  window_months: string;      // pg numeric → string
+  median_delta: string | null;
+  p25: string | null;
+  p75: string | null;
+  mean_delta: string | null;
+  stddev_delta: string | null;
+  instance_count: string;     // pg numeric → string
+  confidence: string;         // pg numeric → string
+  status: 'preliminary' | 'publishable';
+  lag_structure: Record<string, number> | null;
+  scaling_coefficients: Record<string, number> | null;
+  is_seeded: boolean;
+  last_updated: string;
 }
 
 export interface PlaybookRow {
@@ -234,16 +257,19 @@ export async function aggregatePlaybook(
 
   // Publish Kafka event
   try {
-    await kafkaProducer.publish(KAFKA_TOPICS.M35_PLAYBOOK_UPDATED, {
-      eventType: 'M35_PLAYBOOK_UPDATED' as any,
+    const now = new Date().toISOString();
+    const playbookMsg: M35PlaybookUpdatedMessage = {
+      eventType: 'M35_PLAYBOOK_UPDATED',
       eventId: `playbook:${subtype}:${msaTier}:${magnitude}:${regime}`,
-      timestamp: new Date().toISOString(),
+      timestamp: now,
       subtype,
       stratum: { msaTier, magnitude, regime },
       metricWindowCount: aggRows.rows.length,
       instanceCount: aggRows.rows[0] ? parseInt(aggRows.rows[0].instance_count) : 0,
-      updatedAt: new Date().toISOString(),
-    } as any, { key: `${subtype}:${msaTier}:${magnitude}:${regime}` });
+      updatedAt: now,
+    };
+    await kafkaProducer.publish(KAFKA_TOPICS.M35_PLAYBOOK_UPDATED, playbookMsg,
+      { key: `${subtype}:${msaTier}:${magnitude}:${regime}` });
   } catch { /* non-blocking */ }
 
   logger.info(`[M35 Playbook] Aggregated ${aggRows.rows.length} metric×window rows for ${subtype}`);
@@ -282,7 +308,7 @@ export async function getPlaybook(
   const magnitude = stratum.magnitude ?? 'all';
   const regime = stratum.regime ?? 'all';
 
-  const rows = await pool.query<any>(`
+  const rows = await pool.query<DbPlaybookRow>(`
     SELECT ep.*
     FROM event_playbooks ep
     WHERE ep.subtype = $1
@@ -293,9 +319,9 @@ export async function getPlaybook(
   `, [subtype, msaTier, magnitude, regime]);
 
   // Fall back to 'all' stratum if no rows for specific stratum
-  let data: any[] = rows.rows;
+  let data: DbPlaybookRow[] = rows.rows;
   if (data.length === 0 && (msaTier !== 'all' || magnitude !== 'all' || regime !== 'all')) {
-    const fallback = await pool.query<any>(`
+    const fallback = await pool.query<DbPlaybookRow>(`
       SELECT ep.*
       FROM event_playbooks ep
       WHERE ep.subtype = $1
@@ -324,12 +350,12 @@ export async function getPlaybook(
     subtype,
     displayName: tax.rows[0]?.display_name ?? subtype,
     category: tax.rows[0]?.category ?? 'EMPLOYMENT',
-    stratum: { msaTier: first.stratum_msa_tier as any, magnitude: first.stratum_magnitude as any, regime: first.stratum_regime as any },
+    stratum: { msaTier: first.stratum_msa_tier, magnitude: first.stratum_magnitude, regime: first.stratum_regime },
     instanceCount: maxN,
     confidence: Math.round(avgConf * 100) / 100,
     status: overallStatus,
-    lagStructure: (first.lag_structure as any) ?? {},
-    scalingCoefficients: (first.scaling_coefficients as any) ?? {},
+    lagStructure: first.lag_structure ?? {},
+    scalingCoefficients: first.scaling_coefficients ?? {},
     metrics: data.map(r => ({
       metricKey: r.metric_key,
       windowMonths: Number(r.window_months),
