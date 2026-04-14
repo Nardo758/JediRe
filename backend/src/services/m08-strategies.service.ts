@@ -714,6 +714,7 @@ export async function getStrategiesForDeal(pool: Pool, dealId: string): Promise<
         exit_cap_rate: { value: preview.exitCapRate, layer: 'platform', sourceRef: 'sub_strategy_matrix' },
         target_irr: { value: dealCtx.targetIrr || preview.irr / 100, layer: deal.target_irr ? 'user' : 'platform', sourceRef: 'deal_assumptions.target_irr' },
       },
+      signalWeights: SUB_STRATEGY_WEIGHTS[key] ?? { demand: 0.20, supply: 0.20, momentum: 0.20, position: 0.20, risk: 0.20 },
       appliedCorrelations: ['COR-01', 'COR-04', 'COR-08', 'COR-20'],
       evidenceReport: evReport,
     };

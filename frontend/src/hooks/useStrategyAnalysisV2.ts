@@ -129,6 +129,8 @@ export interface SubStrategyScore {
   disqualified: boolean;
   financialPreview: FinancialPreview;
   strategyAssumptions: Record<string, unknown>;
+  /** Per-signal weights from backend SUB_STRATEGY_WEIGHTS — included in API response */
+  signalWeights: Record<string, number>;
   appliedCorrelations: string[];
   evidenceReport: EvidenceReport;
 }

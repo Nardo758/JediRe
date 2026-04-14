@@ -83,15 +83,66 @@ interface DetectionBannerProps {
 
 export function DetectionBanner({ detection, onConfirm, onOverride }: DetectionBannerProps) {
   const [expanded, setExpanded] = useState(false);
-  const [showModal, setShowModal] = useState(false);
+  const [showOverrideModal, setShowOverrideModal] = useState(false);
+  const [showAdjustPanel, setShowAdjustPanel] = useState(false);
   const [overrideInput, setOverrideInput] = useState('');
+  const [adjustInput, setAdjustInput] = useState('');
 
   const conf = detection.confidence;
   const cColor = confColor(conf);
   const needsConfirmation = detection.requiresUserConfirmation && !detection.userConfirmed;
+  // Auto-show low-confidence modal gate on mount if not yet confirmed
+  const [lowConfModal, setLowConfModal] = useState(() => conf < 0.70 && needsConfirmation);
 
   return (
     <>
+      {/* ── Low-confidence modal gate: appears automatically for confidence < 70% ── */}
+      {lowConfModal && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.82)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999,
+        }}>
+          <div style={{
+            background: BT.bg.panel, border: `2px solid ${BT.text.amber}`,
+            borderTop: `3px solid ${BT.text.amber}`, padding: 28, width: 480,
+            boxShadow: `0 0 40px ${BT.text.amber}30`,
+          }}>
+            <div style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: BT.text.amber, marginBottom: 6 }}>
+              ⚠ LOW-CONFIDENCE DETECTION
+            </div>
+            <div style={{ fontFamily: MONO, fontSize: 10, color: BT.text.secondary, marginBottom: 12 }}>
+              Confidence <span style={{ color: cColor, fontWeight: 700 }}>{pct(conf)}</span> is below the 70% threshold.
+              Scoring, evidence gates, and plan generation are <span style={{ color: BT.text.amber }}>locked</span> until you resolve this.
+            </div>
+            <div style={{
+              background: `${BT.bg.input}`, border: `1px solid ${BT.border.subtle}`,
+              padding: '8px 10px', marginBottom: 16, fontFamily: MONO, fontSize: 9, color: BT.text.secondary,
+            }}>
+              <div style={{ color: BT.text.primary, fontWeight: 700, marginBottom: 4 }}>DETECTED:</div>
+              <div>{(detection.assetClass || '').toUpperCase()} · {(detection.detectedDealType || '').replace(/_/g, ' ').toUpperCase()}</div>
+              <div style={{ color: BT.text.muted }}>[{(detection.detectedSubStrategy || '').replace(/_/g, ' ')}]</div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => { setLowConfModal(false); setShowAdjustPanel(true); }} style={{
+                fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.cyan,
+                background: `${BT.text.cyan}18`, border: `1px solid ${BT.text.cyan}44`,
+                padding: '5px 14px', cursor: 'pointer',
+              }}>ADJUST CLASSIFICATION</button>
+              <button onClick={() => { setLowConfModal(false); setShowOverrideModal(true); }} style={{
+                fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.amber,
+                background: `${BT.text.amber}18`, border: `1px solid ${BT.text.amber}44`,
+                padding: '5px 14px', cursor: 'pointer',
+              }}>OVERRIDE CLASSIFICATION</button>
+              <button onClick={() => { onConfirm(); setLowConfModal(false); }} style={{
+                fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.green,
+                background: `${BT.text.green}18`, border: `1px solid ${BT.text.green}44`,
+                padding: '5px 14px', cursor: 'pointer',
+              }}>✓ CONFIRM &amp; PROCEED</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={{
         borderLeft: `3px solid ${BT.text.cyan}`, background: `${BT.text.cyan}08`,
         padding: '8px 12px', borderBottom: `1px solid ${BT.border.subtle}`,
@@ -127,6 +178,12 @@ export function DetectionBanner({ detection, onConfirm, onOverride }: DetectionB
                 padding: '2px 8px', cursor: 'pointer',
               }}>✓ CONFIRM</button>
             )}
+            <button onClick={() => setShowAdjustPanel(v => !v)} style={{
+              fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.cyan,
+              background: showAdjustPanel ? `${BT.text.cyan}22` : 'transparent',
+              border: `1px solid ${BT.text.cyan}55`,
+              padding: '2px 8px', cursor: 'pointer',
+            }}>ADJUST</button>
             <button onClick={() => setExpanded(v => !v)} style={{
               fontFamily: MONO, fontSize: 9, color: BT.text.secondary,
               background: 'transparent', border: `1px solid ${BT.border.subtle}`,
@@ -134,23 +191,65 @@ export function DetectionBanner({ detection, onConfirm, onOverride }: DetectionB
             }}>
               {expanded ? '▲ SIGNALS' : '▼ SIGNALS'}
             </button>
-            <button onClick={() => setShowModal(true)} style={{
+            <button onClick={() => setShowOverrideModal(true)} style={{
               fontFamily: MONO, fontSize: 9, color: BT.text.amber,
               background: `${BT.text.amber}18`, border: `1px solid ${BT.text.amber}44`,
               padding: '2px 8px', cursor: 'pointer',
-            }}>OVERRIDE</button>
+            }}>OVERRIDE CLASSIFICATION</button>
           </div>
         </div>
 
-        {/* Low-confidence gating warning */}
-        {needsConfirmation && (
+        {/* Adjust panel: refine sub-strategy within detected asset class */}
+        {showAdjustPanel && (
+          <div style={{
+            marginTop: 8, padding: '10px 12px',
+            background: `${BT.text.cyan}0C`, border: `1px solid ${BT.text.cyan}33`,
+          }}>
+            <div style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.cyan, marginBottom: 6 }}>
+              ADJUST DETECTED CLASSIFICATION
+            </div>
+            <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary, marginBottom: 8 }}>
+              Refine the sub-strategy within the detected asset class without overriding the asset class itself.
+              Enter a sub-strategy key (e.g. mf_value_add_standard, mf_core_plus_stabilized) or leave blank to keep detected.
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input
+                value={adjustInput}
+                onChange={e => setAdjustInput(e.target.value)}
+                placeholder={`Current: ${detection.detectedSubStrategy || 'none'}`}
+                style={{
+                  flex: 1, fontFamily: MONO, fontSize: 9,
+                  background: BT.bg.input, color: BT.text.primary,
+                  border: `1px solid ${BT.border.medium}`, padding: '4px 8px',
+                }}
+              />
+              <button onClick={() => {
+                if (adjustInput.trim()) { onOverride(adjustInput.trim()); }
+                else { onConfirm(); }
+                setShowAdjustPanel(false);
+              }} style={{
+                fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.cyan,
+                background: `${BT.text.cyan}22`, border: `1px solid ${BT.text.cyan}55`,
+                padding: '4px 12px', cursor: 'pointer', whiteSpace: 'nowrap',
+              }}>APPLY ADJUSTMENT</button>
+              <button onClick={() => setShowAdjustPanel(false)} style={{
+                fontFamily: MONO, fontSize: 9, color: BT.text.secondary,
+                background: 'transparent', border: `1px solid ${BT.border.subtle}`,
+                padding: '4px 8px', cursor: 'pointer',
+              }}>CANCEL</button>
+            </div>
+          </div>
+        )}
+
+        {/* Low-confidence inline warning (secondary to modal, shown after modal dismissed) */}
+        {needsConfirmation && !lowConfModal && (
           <div style={{
             marginTop: 8, padding: '6px 10px',
             background: `${BT.text.amber}15`, border: `1px solid ${BT.text.amber}44`,
           }}>
             <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.amber }}>
               ⚠ CONFIDENCE BELOW 70% — SCORING AND EVIDENCE GATES ARE LOCKED.
-              Confirm detection or override classification to proceed.
+              Use CONFIRM, ADJUST, or OVERRIDE CLASSIFICATION to proceed.
             </span>
           </div>
         )}
@@ -208,7 +307,7 @@ export function DetectionBanner({ detection, onConfirm, onOverride }: DetectionB
       </div>
 
       {/* Override modal */}
-      {showModal && (
+      {showOverrideModal && (
         <div style={{
           position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999,
@@ -234,12 +333,12 @@ export function DetectionBanner({ detection, onConfirm, onOverride }: DetectionB
               }}
             />
             <div style={{ display: 'flex', gap: 8, marginTop: 12, justifyContent: 'flex-end' }}>
-              <button onClick={() => setShowModal(false)} style={{
+              <button onClick={() => setShowOverrideModal(false)} style={{
                 fontFamily: MONO, fontSize: 9, color: BT.text.secondary,
                 background: 'transparent', border: `1px solid ${BT.border.subtle}`,
                 padding: '4px 12px', cursor: 'pointer',
               }}>CANCEL</button>
-              <button onClick={() => { onOverride(overrideInput); setShowModal(false); }} style={{
+              <button onClick={() => { onOverride(overrideInput); setShowOverrideModal(false); }} style={{
                 fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.amber,
                 background: `${BT.text.amber}18`, border: `1px solid ${BT.text.amber}44`,
                 padding: '4px 12px', cursor: 'pointer',
@@ -376,6 +475,12 @@ const SS_SIGNAL_WEIGHTS: Record<string, Partial<Record<SignalKey, number>>> = {
   hospitality_extended_stay: { demand: 0.25, supply: 0.20, momentum: 0.20, position: 0.20, risk: 0.15 },
 };
 const SS_WEIGHT_AVG = 0.20; // equal-weight baseline (5 signals, weights sum to 1.0)
+// Fallback when API doesn't return signalWeights yet (old cached responses)
+function getSignalWeight(ss: SubStrategyScore, sig: string): number {
+  return ss.signalWeights?.[sig]
+    ?? SS_SIGNAL_WEIGHTS[ss.key]?.[sig as SignalKey]
+    ?? SS_WEIGHT_AVG;
+}
 
 export function SignalHeatmap({ subStrategies, signalScores }: {
   subStrategies: SubStrategyScore[];
@@ -409,7 +514,7 @@ export function SignalHeatmap({ subStrategies, signalScores }: {
               {tooltip.signalScore} × ({tooltip.w.toFixed(2)} ÷ {SS_WEIGHT_AVG.toFixed(2)}) = <b>{tooltip.val}</b>
             </div>
             <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginTop: 3 }}>
-              signal_score={tooltip.signalScore} · weight={tooltip.w.toFixed(2)} (from backend SUB_STRATEGY_WEIGHTS)
+              signal_score={tooltip.signalScore} · weight={tooltip.w.toFixed(2)} (API: ss.signalWeights)
             </div>
             <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.cyan, marginTop: 2 }}>▲ click to jump to evidence →</div>
           </div>
@@ -443,9 +548,9 @@ export function SignalHeatmap({ subStrategies, signalScores }: {
                     <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.secondary }}>{signalScore}</div>
                   </td>
                   {subStrategies.map((ss) => {
-                    const w = SS_SIGNAL_WEIGHTS[ss.key]?.[sig] ?? SS_WEIGHT_AVG;
-                    // Data-driven formula: signal_score × (weight / avg_weight)
-                    // Uses actual backend SUB_STRATEGY_WEIGHTS — no synthetic math
+                    // Uses API-provided ss.signalWeights (backend SUB_STRATEGY_WEIGHTS)
+                    // with fallback to mirrored table for old cached responses
+                    const w = getSignalWeight(ss, sig);
                     const val = Math.round(Math.min(99, Math.max(10, signalScore * (w / SS_WEIGHT_AVG))));
                     const c = heatColor(val);
                     return (
@@ -561,7 +666,8 @@ function CompScatter({ points, title }: { points: Array<{ name: string; x: numbe
 }
 
 export function EvidenceReportBlock({ ss, defaultExpanded }: { ss: SubStrategyScore; defaultExpanded: boolean }) {
-  const { hoveredEvidenceRef } = useContext(HoverContext);
+  const { hoveredEvidenceRef, setHoveredEvidenceRef } = useContext(HoverContext);
+  // isPlanHighlighted: this evidence block is highlighted because a plan action references it
   const isPlanHighlighted = hoveredEvidenceRef !== null && (
     ss.key === hoveredEvidenceRef ||
     (ss.evidenceReport?.subStrategyKey ?? '') === hoveredEvidenceRef
@@ -643,8 +749,8 @@ export function EvidenceReportBlock({ ss, defaultExpanded }: { ss: SubStrategySc
                   <div
                     key={i}
                     onClick={() => setDrawerRow(row)}
-                    onMouseEnter={() => setHoveredRow(i)}
-                    onMouseLeave={() => setHoveredRow(null)}
+                    onMouseEnter={() => { setHoveredRow(i); setHoveredEvidenceRef(ss.key); }}
+                    onMouseLeave={() => { setHoveredRow(null); setHoveredEvidenceRef(null); }}
                     style={{
                       display: 'grid', gridTemplateColumns: '1fr 90px 90px 80px 1fr',
                       padding: '4px 8px', borderBottom: `1px solid ${BT.border.subtle}`,
@@ -690,7 +796,29 @@ export function EvidenceReportBlock({ ss, defaultExpanded }: { ss: SubStrategySc
                       <span style={{ fontFamily: MONO, fontSize: 9, color: step.isSubtotal ? BT.text.amber : BT.text.primary, minWidth: 80, textAlign: 'right' }}>
                         {String(step.value)}
                       </span>
-                      {step.sourceRef && <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.cyan }}>→{step.sourceRef}</span>}
+                      {step.sourceRef && (
+                        <button
+                          onClick={() => {
+                            // Navigate to evidence block if sourceRef is a sub-strategy key
+                            const el = document.getElementById(`evidence-${step.sourceRef}`);
+                            if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+                            // Also try deal assumptions section for known refs
+                            else {
+                              const alt = document.getElementById(`section-${step.sourceRef?.replace(/\./g, '-')}`);
+                              if (alt) alt.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }
+                          }}
+                          title={`Source: ${step.sourceRef} — click to navigate`}
+                          style={{
+                            fontFamily: MONO, fontSize: 7, color: BT.text.cyan,
+                            background: 'transparent', border: `1px solid ${BT.text.cyan}33`,
+                            padding: '0 4px', cursor: 'pointer', textDecoration: 'underline dotted',
+                            display: 'inline',
+                          }}
+                        >
+                          →{step.sourceRef}
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
