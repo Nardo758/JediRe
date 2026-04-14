@@ -710,7 +710,7 @@ function DrawerCompDetail({ row }: { row: MetricStackRow }) {
 function EvidenceDrawer({ row, onClose }: { row: MetricStackRow; onClose: () => void }) {
   return (
     <div style={{
-      position: 'fixed', right: 0, top: 0, bottom: 0, width: 340,
+      position: 'fixed', right: 0, top: 0, bottom: 0, width: 320,
       background: BT.bg.panel, borderLeft: `2px solid ${BT.text.cyan}`,
       zIndex: 1000, display: 'flex', flexDirection: 'column', overflow: 'hidden',
     }}>
@@ -1383,7 +1383,7 @@ export function MonitoringDashboard({ monitoring }: { monitoring: MonitoringItem
 
 export function AICoordinatorNarrative({ narrative }: { narrative: string }) {
   return (
-    <div style={{ borderTop: `1px solid ${BT.border.medium}`, padding: '10px 14px', background: BT.bg.panelAlt, margin: '1px 0' }}>
+    <div style={{ borderTop: `1px solid ${BT.border.medium}`, borderBottom: `1px solid ${BT.border.medium}`, padding: '10px 14px', background: BT.bg.panelAlt, margin: '1px 0' }}>
       <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, letterSpacing: 0.5, marginBottom: 6 }}>AI COORDINATOR NARRATIVE</div>
       <div style={{ fontFamily: MONO, fontSize: 10, color: BT.text.secondary, lineHeight: 1.7, fontStyle: 'italic' }}>
         {narrative || 'No coordinator narrative available for this deal.'}

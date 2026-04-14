@@ -12,8 +12,6 @@ import {
 import { useStrategyAnalysisV2 } from '../../hooks/useStrategyAnalysisV2';
 import { V2FullAnalysis } from '../../components/deal/sections/StrategyV2Components';
 import { useCorrelationReport } from '../../hooks/useCorrelationReport';
-import { useDriverAnalysis } from '../../hooks/useDriverAnalysis';
-import { useLeadLagRelationships } from '../../hooks/useLeadLagRelationships';
 import { CustomScreenTab } from '../../components/deal/sections/CustomScreenTab';
 import { useDealStore } from '../../stores/dealStore';
 
