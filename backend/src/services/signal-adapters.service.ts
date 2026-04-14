@@ -160,27 +160,104 @@ function mfAdapter(d: Record<string, any>, scores: Record<string, any>): SignalA
 //
 // Until SFR-specific data fields land, we return structured defaults with explicit notes.
 
+// ─── SFR Adapter — PARTIAL WIRES (TODO #M08-SA-01) ───────────────────────────
+//
+// Wired signals (available in deal_data):
+//   Demand:   arv_estimate vs acquisition_price (ARV gap / margin), demand_score
+//   Supply:   sfr_permit_count_ytd (when present), supply_score
+//   Momentum: days_on_market (DOM trend proxy), dom, flip_margin
+//   Position: school_rating (1-10), lot_size_sf, property_condition
+//   Risk:     flood_zone, insurance_premium_flag, rehab_scope_risk
+//
+// Full inputs pending SFR-specific DB fields (TODO #M08-SA-01).
+
 function sfrAdapter(d: Record<string, any>, scores: Record<string, any>): SignalAdapterOutput {
-  const notes = [
-    'SFR adapter: data fields pending (TODO #M08-SA-01). Returning structured defaults.',
-    'Real inputs needed: sfr_permit_count_ytd, sfr_dom_trend, school_rating, owner_occupant_demand_index',
-  ];
+  const notes: string[] = [];
   const avail: SignalAdapterOutput['dataAvailability'] = {
     demand: 'default', supply: 'default', momentum: 'default', position: 'default', risk: 'default',
   };
 
-  // Apply any scores present in deal_data as partial wires
-  const demand   = Number(scores.demand   || d.demand_score   || 55);
-  const supply   = Number(scores.supply   || d.supply_score   || 55);
-  const momentum = Number(scores.momentum || d.momentum_score || 50);
-  const position = Number(scores.position || d.position_score || 50);
-  const risk     = Number(scores.risk     || d.risk_score     || 50);
+  // DEMAND: ARV gap indicates investor demand (higher margin = stronger demand)
+  let demand = Number(scores.demand || d.demand_score || 55);
+  const arvEstimate = Number(d.arv_estimate || d.after_repair_value || 0);
+  const acqPrice    = Number(d.acquisition_price || d.purchase_price || 0);
+  if (arvEstimate > 0 && acqPrice > 0) {
+    const arvMargin = (arvEstimate - acqPrice) / arvEstimate;
+    // ARV margin > 30% → strong investor demand; 10% → moderate
+    demand = Math.min(100, Math.max(0, 30 + arvMargin * 200));
+    avail.demand = 'live';
+  } else if (d.demand_score) {
+    demand = Number(d.demand_score);
+    avail.demand = 'live';
+  } else {
+    notes.push('demand: no arv_estimate or demand_score; TODO #M08-SA-01 for sfr_permit_count_ytd');
+  }
 
-  if (d.demand_score)   avail.demand   = 'live';
-  if (d.supply_score)   avail.supply   = 'live';
-  if (d.momentum_score) avail.momentum = 'live';
-  if (d.position_score) avail.position = 'live';
-  if (d.risk_score)     avail.risk     = 'live';
+  // SUPPLY: SFR permit count (inverse — fewer permits = more constrained = higher score)
+  let supply = Number(scores.supply || d.supply_score || 55);
+  const sfrPermits = Number(d.sfr_permit_count_ytd || 0);
+  if (sfrPermits > 0) {
+    supply = Math.min(100, Math.max(0, 80 - sfrPermits * 0.02)); // 0 permits → 80, 1000 → 60
+    avail.supply = 'live';
+  } else if (d.supply_score) {
+    supply = Number(d.supply_score);
+    avail.supply = 'live';
+  } else {
+    notes.push('supply: sfr_permit_count_ytd not available; TODO #M08-SA-01');
+  }
+
+  // MOMENTUM: DOM trend (lower DOM = faster sale = positive momentum)
+  let momentum = Number(scores.momentum || d.momentum_score || 50);
+  const dom = Number(d.days_on_market || d.dom || 0);
+  if (dom > 0) {
+    // DOM < 15 → 85 (hot), 30 → 70, 60 → 50, 90+ → 30 (stale)
+    momentum = Math.min(100, Math.max(10, 100 - dom * 0.78));
+    avail.momentum = 'live';
+  } else if (d.flip_margin != null) {
+    // Flip margin proxy (higher = stronger momentum)
+    momentum = Math.min(100, 50 + Number(d.flip_margin) * 300);
+    avail.momentum = 'live';
+  } else if (d.momentum_score) {
+    momentum = Number(d.momentum_score);
+    avail.momentum = 'live';
+  } else {
+    notes.push('momentum: dom/flip_margin not available; TODO #M08-SA-01 for sfr_dom_trend');
+  }
+
+  // POSITION: school rating (1-10 → 0-100) and lot size
+  let position = Number(scores.position || d.position_score || 50);
+  const schoolRating = Number(d.school_rating || 0);
+  const lotSizeSf    = Number(d.lot_size_sf || 0);
+  if (schoolRating > 0) {
+    const schoolScore = Math.min(100, schoolRating * 10);
+    const lotBonus = lotSizeSf > 7000 ? 5 : 0;
+    position = Math.min(100, schoolScore + lotBonus);
+    avail.position = 'live';
+  } else if (d.position_score) {
+    position = Number(d.position_score);
+    avail.position = 'live';
+  } else {
+    notes.push('position: school_rating not available; TODO #M08-SA-01');
+  }
+
+  // RISK: flood zone, insurance flags, rehab scope uncertainty
+  let risk = Number(scores.risk || d.risk_score || 50);
+  const inFloodZone       = d.flood_zone === true || /AE|VE|A\b/i.test(String(d.flood_zone || ''));
+  const insuranceFlag     = d.insurance_premium_flag === true;
+  const conditionPoor     = d.condition === 'poor' || d.property_condition === 'poor';
+  if (d.flood_zone != null || d.insurance_premium_flag != null || d.condition != null) {
+    let riskScore = 70; // baseline reasonable risk
+    if (inFloodZone)    riskScore -= 25;
+    if (insuranceFlag)  riskScore -= 15;
+    if (conditionPoor)  riskScore -= 10;
+    risk = Math.min(100, Math.max(0, riskScore));
+    avail.risk = 'live';
+  } else if (d.risk_score) {
+    risk = Number(d.risk_score);
+    avail.risk = 'live';
+  } else {
+    notes.push('risk: flood_zone/insurance_premium_flag not available; TODO #M08-SA-01');
+  }
 
   return { demand, supply, momentum, position, risk, dataAvailability: avail, notes };
 }

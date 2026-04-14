@@ -274,9 +274,10 @@ function evaluateGate(key: string, deal: Record<string, any>): GateResult {
       break;
 
     case 'mf_core_plus':
-      if (lossToLease >= 0.03 && lossToLease <= 0.08) { checks.push('✓ Loss-to-lease 3-8% — Core-Plus band'); }
+      if (occupancy > 0 && occupancy < 0.80) { checks.push('✗ Occupancy < 80% — property not in Core-Plus territory; pursue Value-Add or Distressed sub-strategy first'); status = 'disqualified'; }
+      else if (lossToLease >= 0.03 && lossToLease <= 0.08) { checks.push('✓ Loss-to-lease 3-8% — Core-Plus band'); }
       else if (lossToLease > 0.08) { checks.push('⚠ Loss-to-lease > 8% — Value-Add may be more appropriate'); status = 'marginal'; }
-      if (occupancy > 0 && occupancy < 0.85) { checks.push('⚠ Occupancy below 85% — occupancy recovery needed first'); status = 'marginal'; }
+      if (status !== 'disqualified' && occupancy > 0 && occupancy < 0.85) { checks.push('⚠ Occupancy 80-85% — occupancy recovery still needed for Core-Plus positioning'); status = 'marginal'; }
       break;
 
     case 'mf_distressed':
@@ -342,14 +343,17 @@ function evaluateGate(key: string, deal: Record<string, any>): GateResult {
 
     // ── Retail ────────────────────────────────────────────────────────────────
     case 'retail_nnn_core':
-      if (tenantCredit && /BBB|A-|A\b|AA|AAA/i.test(tenantCredit)) {
+      if (tenantCredit && /CCC|CC\b|C\b|D\b/i.test(tenantCredit)) {
+        checks.push(`✗ Tenant credit (${tenantCredit}) is distressed/default — NNN Core requires BBB+ minimum`); status = 'disqualified';
+      } else if (tenantCredit && /BBB|A-|A\b|AA|AAA/i.test(tenantCredit)) {
         checks.push(`✓ Investment-grade tenant credit (${tenantCredit}) confirmed`);
       } else if (tenantCredit) {
         checks.push(`⚠ Tenant credit below investment grade (${tenantCredit}) — NNN Core gate not met`); status = 'marginal';
       } else {
         checks.push('⚠ Tenant credit rating not confirmed — NNN Core requires BBB+ or better'); status = 'marginal';
       }
-      if (leaseTerm >= 7) { checks.push(`✓ Lease term ${leaseTerm}yr remaining (≥7yr threshold)`); }
+      if (leaseTerm > 0 && leaseTerm < 3) { checks.push(`✗ Lease term ${leaseTerm}yr — below 3yr minimum; NNN Core requires ≥7yr`); status = 'disqualified'; }
+      else if (leaseTerm >= 7) { checks.push(`✓ Lease term ${leaseTerm}yr remaining (≥7yr threshold)`); }
       else if (leaseTerm > 0) { checks.push(`⚠ Lease term only ${leaseTerm}yr — below 7yr NNN Core threshold`); status = 'marginal'; }
       break;
 
@@ -364,13 +368,27 @@ function evaluateGate(key: string, deal: Record<string, any>): GateResult {
       break;
 
     case 'retail_last_mile':
-      checks.push('⚠ Last-mile gate: confirm truck access, zoning, adjacent population density > 250K within 10mi');
+      {
+        const popWithin10mi = Number(data.population_within_10mi || 0);
+        if (popWithin10mi > 0 && popWithin10mi < 50_000) {
+          checks.push(`✗ Population within 10mi (${popWithin10mi.toLocaleString()}) too sparse for last-mile logistics — requires 250K+ consumers`); status = 'disqualified';
+        } else if (popWithin10mi >= 250_000) {
+          checks.push(`✓ Population ${popWithin10mi.toLocaleString()} within 10mi — last-mile density requirement met`);
+        } else {
+          checks.push('⚠ Last-mile gate: confirm truck access, zoning, adjacent population density > 250K within 10mi');
+        }
+      }
       break;
 
     // ── Office ────────────────────────────────────────────────────────────────
     case 'office_adaptive_reuse':
-      if (vacancy > 0.30) { checks.push('✓ Vacancy > 30% confirms adaptive reuse candidate'); }
-      else { checks.push('⚠ Vacancy below 30% — adaptive reuse economics may not pencil'); status = 'marginal'; }
+      if (vacancy > 0 && vacancy < 0.20) {
+        checks.push(`✗ Vacancy ${Math.round(vacancy * 100)}% — building still economically viable as office; adaptive reuse does not pencil at <20% vacancy`); status = 'disqualified';
+      } else if (vacancy > 0.30) {
+        checks.push('✓ Vacancy > 30% confirms adaptive reuse candidate');
+      } else {
+        checks.push('⚠ Vacancy below 30% — adaptive reuse economics may not pencil'); status = 'marginal';
+      }
       checks.push('⚠ Adaptive reuse gate: floor plate < 12K SF ideal; confirm window mullion spacing and zoning');
       break;
 
@@ -383,15 +401,27 @@ function evaluateGate(key: string, deal: Record<string, any>): GateResult {
       break;
 
     case 'office_tenant_rollup':
-      checks.push('⚠ Tenant rollup gate: confirm > 40% tenant rollover in next 24mo for reposition thesis');
+      if (leaseTerm > 10) {
+        checks.push(`✗ Weighted lease term ${leaseTerm}yr — no meaningful rollover opportunity in underwriting window; tenant rollup thesis not viable`); status = 'disqualified';
+      } else {
+        checks.push('⚠ Tenant rollup gate: confirm > 40% tenant rollover in next 24mo for reposition thesis');
+      }
       break;
 
     // ── Industrial ────────────────────────────────────────────────────────────
     case 'industrial_last_mile':
-      if (clearHeight >= 24) { checks.push(`✓ Clear height ${clearHeight}ft — last-mile eligible (≥24ft)`); }
-      else if (clearHeight > 0) { checks.push(`⚠ Clear height ${clearHeight}ft — below optimal 24ft for last-mile`); status = 'marginal'; }
-      else { checks.push('⚠ Clear height not confirmed — last-mile suitability unknown'); status = 'marginal'; }
-      checks.push('⚠ Last-mile gate: confirm truck court access and population > 250K within 10mi');
+      if (clearHeight > 0 && clearHeight < 18) {
+        checks.push(`✗ Clear height ${clearHeight}ft — fundamentally incompatible with industrial use (minimum 18ft); adaptive reuse only`); status = 'disqualified';
+      } else if (clearHeight >= 24) {
+        checks.push(`✓ Clear height ${clearHeight}ft — last-mile eligible (≥24ft)`);
+      } else if (clearHeight > 0) {
+        checks.push(`⚠ Clear height ${clearHeight}ft — below optimal 24ft for last-mile`); status = 'marginal';
+      } else {
+        checks.push('⚠ Clear height not confirmed — last-mile suitability unknown'); status = 'marginal';
+      }
+      if (status !== 'disqualified') {
+        checks.push('⚠ Last-mile gate: confirm truck court access and population > 250K within 10mi');
+      }
       break;
 
     case 'industrial_core':
@@ -401,13 +431,23 @@ function evaluateGate(key: string, deal: Record<string, any>): GateResult {
 
     // ── Hospitality ───────────────────────────────────────────────────────────
     case 'hospitality_reflag':
-      checks.push('⚠ Reflag gate: confirm franchise opportunity available and PIP cost feasible');
-      if (adr > 0) { checks.push(`✓ ADR $${adr} — operating data present`); }
-      else { checks.push('⚠ ADR/RevPAR not confirmed — flag performance analysis required'); status = 'marginal'; }
+      if (data.franchise_available === false) {
+        checks.push('✗ No franchise opportunity available — reflag thesis disqualified'); status = 'disqualified';
+      } else {
+        checks.push('⚠ Reflag gate: confirm franchise opportunity available and PIP cost feasible');
+      }
+      if (status !== 'disqualified') {
+        if (adr > 0) { checks.push(`✓ ADR $${adr} — operating data present`); }
+        else { checks.push('⚠ ADR/RevPAR not confirmed — flag performance analysis required'); status = 'marginal'; }
+      }
       break;
 
     case 'hospitality_extended_stay':
-      checks.push('⚠ Extended-stay gate: confirm extended-stay demand drivers (medical center, corporate HQ, military)');
+      if (data.extended_stay_demand === false) {
+        checks.push('✗ Extended-stay demand drivers not confirmed (medical center, corporate HQ, or military not present)'); status = 'disqualified';
+      } else {
+        checks.push('⚠ Extended-stay gate: confirm demand drivers — medical center, corporate HQ, or military within 3mi');
+      }
       break;
 
     default:

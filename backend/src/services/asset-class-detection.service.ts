@@ -47,8 +47,11 @@ export interface DetectionResult {
   subType: string;
   detectedDealType: string;
   detectedSubStrategy: string;
+  // Stage 1 waterfall confidence only — drives requiresUserConfirmation per spec.
+  // Max 0.45 from wired inputs (zoning × 0.20 + rent_roll × 0.15 + building × 0.10);
+  // rises to 0.90+ when assessor codes (#M08-AC-01) and NAICS (#M08-AC-02) land.
   confidence: number;
-  requiresUserConfirmation: boolean; // true when confidence < 0.70 per spec
+  requiresUserConfirmation: boolean; // true when Stage 1 waterfall confidence < 0.70
   confidenceBreakdown: {             // waterfall component scores for auditability
     assessorCode: number;            // always 0 until TODO #M08-AC-01 lands
     zoningMatch: number;
@@ -56,6 +59,9 @@ export interface DetectionResult {
     naicsSignal: number;             // always 0 until TODO #M08-AC-02 lands
     buildingStructure: number;
   };
+  // Blended asset-class + deal-type signal confidence (separate metadata; not used
+  // for requiresUserConfirmation). Available for display/ranking where applicable.
+  dealTypeConfidence?: number;
   detectionSignals: DetectionSignal[];
   alternateSubStrategies: AlternateSubStrategy[];
   userConfirmed: boolean;
@@ -585,8 +591,10 @@ export function detectAssetClassAndDealType(deal: Record<string, any>): Detectio
 
   const allSignals = [...ac.signals, ...dt.signals];
 
-  // Combined confidence: asset class confidence (40%) + deal type confidence (60%)
-  const combined = parseFloat(
+  // Stage 1 waterfall confidence drives requiresUserConfirmation per spec.
+  // The blended combined metric (ac + dt) is stored as dealTypeConfidence for
+  // display/ranking use only — it does NOT control requiresUserConfirmation.
+  const dealTypeConfidence = parseFloat(
     Math.min(0.98, ac.confidence * 0.40 + dt.confidence * 0.60).toFixed(2)
   );
 
@@ -602,9 +610,10 @@ export function detectAssetClassAndDealType(deal: Record<string, any>): Detectio
     subType: ac.subType,
     detectedDealType: dt.detectedDealType,
     detectedSubStrategy: dt.detectedSubStrategy,
-    confidence: combined,
-    requiresUserConfirmation: combined < 0.70,
+    confidence: ac.confidence,              // Stage 1 waterfall only
+    requiresUserConfirmation: ac.confidence < 0.70,  // strictly waterfall-driven
     confidenceBreakdown: ac.confidenceBreakdown,
+    dealTypeConfidence,                     // blended metadata (display/ranking)
     detectionSignals: allSignals,
     alternateSubStrategies: alternates,
     userConfirmed: ac.userConfirmed,
