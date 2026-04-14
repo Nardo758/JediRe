@@ -52,8 +52,8 @@ router.get('/:dealId/strategies', requireAuth, async (req: AuthenticatedRequest,
     }
 
     const pool = getPool();
-    const strategies = await getStrategiesForDeal(pool, dealId);
-    return res.json({ success: true, strategies, count: strategies.length });
+    const analysis = await getStrategiesForDeal(pool, dealId);
+    return res.json({ success: true, data: analysis });
   } catch (error: any) {
     logger.error('[M08v2] Error fetching strategies:', error);
     return res.status(500).json({ success: false, error: 'Failed to fetch strategies' });
