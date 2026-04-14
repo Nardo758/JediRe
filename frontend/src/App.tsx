@@ -25,6 +25,7 @@ import DealDetailPage from './pages/DealDetailPage';
 import DealCapsulesPage from './pages/DealCapsulesPage';
 import CapsuleDetailPage from './pages/CapsuleDetailPage';
 import M35EventDetailPage from './pages/m35/M35EventDetailPage';
+import M35ConnectorAdminPage from './pages/m35/M35ConnectorAdminPage';
 import { LeasingForecastPage } from './pages/LeasingForecastPage';
 import DealFlywheelDashboard from './pages/deal/DealFlywheelDashboard';
 import PortfolioPropertyPage from './pages/PortfolioPropertyPage';
@@ -222,6 +223,7 @@ function AppContent() {
             )}
           </Suspense>
         } />
+        <Route path="/admin/m35-connectors" element={<M35ConnectorAdminPage />} />
         <Route path="/admin/*" element={<AdminToolsPage />} />
 
         {/* ═══ Dev/demo pages — keep in MainLayout ═══ */}

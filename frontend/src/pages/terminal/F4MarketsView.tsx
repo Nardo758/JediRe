@@ -1279,6 +1279,34 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
         <KPICard label="EXPANDING" value={`${kpis.expanding}/${kpis.count}`} color={C.green} />
       </div>
 
+      {/* M35 Cross-Market Event Intelligence Strip */}
+      <div style={{ display: "flex", alignItems: "center", gap: 0, background: `${C.panelAlt}`, borderBottom: `1px solid ${C.borderS}`, flexShrink: 0, overflowX: "auto" as const }}>
+        <div style={{ ...mono, fontSize: 8, fontWeight: 700, color: C.muted, padding: "4px 10px", whiteSpace: "nowrap" as const, borderRight: `1px solid ${C.borderS}`, letterSpacing: "0.08em" }}>
+          M35 EVENTS⚡
+        </div>
+        {[
+          { msa: "ATL", name: "Amazon HQ2", status: "FIRED", statusColor: C.green, metric: "+3.2pp rent", elapsed: "T+8MO" },
+          { msa: "ATL", name: "BeltLine Rezoning", status: "PENDING", statusColor: C.amber, metric: "+1.1pp proj", elapsed: "T-2MO" },
+          { msa: "TPA", name: "BRT Phase 2", status: "PENDING", statusColor: C.amber, metric: "+0.5pp proj", elapsed: "T-4MO" },
+          { msa: "RDU", name: "Apple Campus", status: "STAGED", statusColor: C.cyan, metric: "+2.8pp proj", elapsed: "Conf 74%" },
+          { msa: "CHI", name: "Supply Wave", status: "FIRED", statusColor: C.red, metric: "−0.8pp rent", elapsed: "T+3MO" },
+        ].map((ev, i) => (
+          <div
+            key={i}
+            style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 12px", borderRight: `1px solid ${C.borderS}`, cursor: "pointer", whiteSpace: "nowrap" as const }}
+          >
+            <span style={{ ...mono, fontSize: 8, fontWeight: 700, color: C.muted, background: C.panel, padding: "1px 4px", borderRadius: 1 }}>{ev.msa}</span>
+            <span style={{ fontSize: 9, color: C.primary }}>{ev.name}</span>
+            <span style={{ ...mono, fontSize: 8, fontWeight: 700, color: ev.statusColor, background: `${ev.statusColor}15`, padding: "1px 4px", borderRadius: 1 }}>{ev.status}</span>
+            <span style={{ ...mono, fontSize: 8, color: ev.metric.startsWith('+') ? C.green : ev.metric.startsWith('−') ? C.red : C.cyan }}>{ev.metric}</span>
+            <span style={{ ...mono, fontSize: 8, color: C.muted }}>{ev.elapsed}</span>
+          </div>
+        ))}
+        <div style={{ marginLeft: "auto", padding: "4px 10px", flexShrink: 0 }}>
+          <span style={{ ...mono, fontSize: 8, color: C.cyan, cursor: "pointer", textDecoration: "underline" }}>All Events →</span>
+        </div>
+      </div>
+
       {/* Filter Bar */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "6px 12px", background: C.panel, borderBottom: `1px solid ${C.borderS}`, flexShrink: 0 }}>
         <label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>

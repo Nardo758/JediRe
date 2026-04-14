@@ -3,13 +3,14 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, Share2, Download, TrendingUp, Building2, 
   DollarSign, AlertTriangle, CheckCircle, Target,
-  BarChart3, MessageSquare, Loader2, Activity, ChevronDown, ChevronUp, ArrowRight
+  BarChart3, MessageSquare, Loader2, Activity, ChevronDown, ChevronUp, ArrowRight, Zap
 } from 'lucide-react';
 import { ThreeColumnComparison } from '../components/deal/ThreeColumnComparison';
 import { apiClient } from '../services/api.client';
 import { useAuthStore } from '../stores/authStore';
+import { M11DebtAdvisorTab } from '../components/m35/M11DebtAdvisorTab';
 
-type TabId = 'overview' | 'layers' | 'collision' | 'training' | 'ai-agent' | 'intelligence';
+type TabId = 'overview' | 'layers' | 'collision' | 'training' | 'ai-agent' | 'intelligence' | 'debt-advisor';
 
 interface CapsuleData {
   id: string;
@@ -277,6 +278,85 @@ const CapsuleIntelligenceView: React.FC<{ address?: string }> = ({ address }) =>
             </div>
           )}
         </section>
+
+        {/* F6 M07 Traffic Predictions + M35 Event Overlays */}
+        <section className="flex flex-col gap-3">
+          <div className="flex items-center gap-2">
+            <div className="flex-1 flex items-center">
+              <span className="text-[10px] whitespace-nowrap mr-2 tracking-widest uppercase" style={{ color: '#6B7A8D' }}>── M07 Traffic Predictions</span>
+              <div className="h-px w-full" style={{ background: '#1E2538' }}></div>
+              <span className="text-[10px] whitespace-nowrap ml-2 tracking-widest uppercase px-1.5 py-0.5 rounded" style={{ color: '#0891B2', background: 'rgba(8,145,178,0.1)' }}>M35 Event Overlays</span>
+            </div>
+          </div>
+
+          {/* Traffic chart with event pins */}
+          <div className="rounded border p-4" style={{ background: '#131929', borderColor: '#1E2538' }}>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-semibold" style={{ color: '#E2E8F0' }}>Westshore Search Momentum — W/W Index</span>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] px-2 py-0.5 rounded border" style={{ color: '#10B981', background: 'rgba(16,185,129,0.1)', borderColor: 'rgba(16,185,129,0.3)' }}>+18% vs baseline</span>
+                <span className="text-[10px]" style={{ color: '#6B7A8D' }}>4wk avg</span>
+              </div>
+            </div>
+            <div className="relative" style={{ height: 80 }}>
+              <svg className="absolute inset-0 w-full h-full" viewBox="0 0 300 80" preserveAspectRatio="none">
+                {/* Baseline zone */}
+                <path d="M0,55 L60,53 L90,52 L120,54 L150,53 L180,52 L300,52 L300,70 L0,70 Z" fill="#1E2538" fillOpacity="0.5" />
+                {/* Actual trace */}
+                <polyline points="0,55 30,52 60,48 90,44 110,36 130,28 160,22 190,18 220,15 260,12 300,10" fill="none" stroke="#10B981" strokeWidth="1.5" strokeLinejoin="round" />
+                {/* Event 1 — Amazon HQ2 */}
+                <line x1="110" y1="10" x2="110" y2="80" stroke="#0891B2" strokeWidth="1" strokeDasharray="2,2" />
+                <circle cx="110" cy="36" r="3" fill="#0891B2" />
+                <text x="112" y="26" fontSize="7" fill="#0891B2">📣 HQ2</text>
+                {/* Event 2 — BRT announcement */}
+                <line x1="180" y1="10" x2="180" y2="80" stroke="#D97706" strokeWidth="1" strokeDasharray="2,2" />
+                <circle cx="180" cy="18" r="3" fill="#D97706" />
+                <text x="182" y="14" fontSize="7" fill="#D97706">🚆 BRT</text>
+              </svg>
+            </div>
+            <div className="flex justify-between text-[9px] mt-1" style={{ color: '#6B7A8D', fontFamily: 'monospace' }}>
+              {['W-16', 'W-12', 'W-8', 'W-4', 'Now'].map(w => <span key={w}>{w}</span>)}
+            </div>
+          </div>
+
+          {/* Event contribution table */}
+          <div className="rounded border overflow-hidden" style={{ borderColor: '#1E2538' }}>
+            <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-widest" style={{ background: '#0d111e', color: '#6B7A8D', borderBottom: '1px solid #1E2538' }}>
+              M35 Event Contribution Breakdown
+            </div>
+            <table className="w-full text-xs">
+              <thead>
+                <tr style={{ background: '#0B0E1A', color: '#6B7A8D' }}>
+                  {['Event', 'Scope', 'Traffic Lift', 'Confidence', 'Calibration'].map(h => (
+                    <th key={h} className="text-left px-3 py-2 font-mono text-[10px] font-semibold uppercase">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody style={{ fontFamily: 'monospace' }}>
+                {[
+                  { name: 'Amazon HQ2 Tampa', scope: 'MSA', lift: '+18%', conf: '87%', cal: 'CALIBRATED', calColor: '#10B981' },
+                  { name: 'Tampa BRT Phase 2', scope: 'Submarket', lift: '+7%', conf: '63%', cal: 'PENDING', calColor: '#D97706' },
+                  { name: 'FL Insurance Reform', scope: 'State', lift: '+2%', conf: '71%', cal: 'CALIBRATED', calColor: '#10B981' },
+                ].map((r, i) => (
+                  <tr key={i} style={{ borderTop: '1px solid #1E2538', background: i % 2 === 0 ? '#0f1520' : 'transparent' }}>
+                    <td className="px-3 py-2" style={{ color: '#E2E8F0' }}>{r.name}</td>
+                    <td className="px-3 py-2" style={{ color: r.scope === 'MSA' ? '#6B7280' : r.scope === 'Submarket' ? '#0891B2' : '#D97706' }}>{r.scope}</td>
+                    <td className="px-3 py-2 font-semibold" style={{ color: '#10B981' }}>{r.lift}</td>
+                    <td className="px-3 py-2" style={{ color: '#A0ABBE' }}>{r.conf}</td>
+                    <td className="px-3 py-2">
+                      <span className="px-1.5 py-0.5 rounded border text-[9px] font-semibold" style={{ color: r.calColor, background: `${r.calColor}1A`, borderColor: `${r.calColor}4D` }}>{r.cal}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex items-center gap-2 text-[10px]" style={{ color: '#6B7A8D' }}>
+            <CheckCircle className="w-3 h-3" style={{ color: '#10B981' }} />
+            <span>Playbook: <span style={{ color: '#E2E8F0' }}>MF Value-Add › Employment Anchor</span> — 3 historical analogs · median +22% traffic lift at T+6</span>
+          </div>
+        </section>
       </div>
     </div>
   );
@@ -426,7 +506,8 @@ const CapsuleDetailPage: React.FC = () => {
               { id: 'collision' as const, label: 'Collision Analysis', icon: AlertTriangle },
               { id: 'training' as const, label: 'Training', icon: Target },
               { id: 'ai-agent' as const, label: 'AI Agent', icon: MessageSquare },
-              { id: 'intelligence' as const, label: 'Intelligence', icon: Activity }
+              { id: 'intelligence' as const, label: 'Intelligence', icon: Activity },
+              { id: 'debt-advisor' as const, label: 'M11 Advisor', icon: Zap }
             ] satisfies { id: TabId; label: string; icon: typeof BarChart3 }[]).map((tab) => {
               const Icon = tab.icon;
               return (
@@ -937,6 +1018,16 @@ const CapsuleDetailPage: React.FC = () => {
 
         {activeTab === 'intelligence' && (
           <CapsuleIntelligenceView address={capsule?.property_address} />
+        )}
+
+        {activeTab === 'debt-advisor' && (
+          <div>
+            <div className="mb-4 px-1">
+              <h2 className="text-lg font-semibold mb-1" style={{ color: '#E2E8F0' }}>M11 Debt Advisor</h2>
+              <p className="text-sm" style={{ color: '#6B7A8D' }}>AI-optimized debt structure driven by M08 strategy detection. Bridge-to-perm plan with DSCR recovery timeline.</p>
+            </div>
+            <M11DebtAdvisorTab />
+          </div>
         )}
       </div>
     </div>

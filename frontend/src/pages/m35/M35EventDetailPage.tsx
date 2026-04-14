@@ -211,8 +211,185 @@ const M35EventDetailPage: React.FC = () => {
           </div>
         )}
 
-        {/* Placeholder for other tabs */}
-        {activeTab !== 'FORECAST' && (
+        {/* GEOGRAPHY Tab — CascadeMap */}
+        {activeTab === 'GEOGRAPHY' && (
+          <div className="mb-8">
+            <h2 className="text-lg font-semibold mb-4" style={{ color: '#E2E8F0' }}>
+              Geographic Impact Map <span className="font-normal text-sm" style={{ color: '#6B7A8D' }}>| Tampa MSA — Amazon HQ2 Cascade</span>
+            </h2>
+            <div className="flex gap-4">
+              {/* SVG Map */}
+              <div className="flex-1 rounded border relative overflow-hidden" style={{ background: '#0d1120', borderColor: '#1E2538', minHeight: 400 }}>
+                <svg className="w-full h-full" viewBox="0 0 500 420" style={{ position: 'absolute', inset: 0 }}>
+                  {/* Ocean/bay background */}
+                  <rect width="500" height="420" fill="#0a0e1a" />
+                  {/* Tampa Bay */}
+                  <path d="M180,280 Q200,260 220,250 Q240,240 260,260 Q280,280 300,300 Q320,320 310,350 Q300,380 280,400 L220,400 Q200,380 180,360 Z" fill="#0d1928" stroke="#162235" strokeWidth="1" />
+                  {/* Distance rings from HQ2 site */}
+                  <circle cx="255" cy="195" r="60" fill="none" stroke="#0891B2" strokeWidth="0.5" strokeDasharray="3,3" opacity="0.4" />
+                  <circle cx="255" cy="195" r="110" fill="none" stroke="#0891B2" strokeWidth="0.5" strokeDasharray="3,3" opacity="0.25" />
+                  <circle cx="255" cy="195" r="160" fill="none" stroke="#0891B2" strokeWidth="0.5" strokeDasharray="3,3" opacity="0.15" />
+                  {/* Westshore submarket — high impact */}
+                  <path d="M210,160 L260,155 L280,180 L270,220 L230,225 L205,200 Z" fill="rgba(16,185,129,0.25)" stroke="#10B981" strokeWidth="1.5" />
+                  <text x="235" y="195" textAnchor="middle" fontSize="9" fill="#10B981" fontFamily="monospace" fontWeight="700">WESTSHORE</text>
+                  <text x="235" y="207" textAnchor="middle" fontSize="8" fill="#10B981" fontFamily="monospace">+3.2pp rent</text>
+                  {/* Downtown Tampa submarket */}
+                  <path d="M260,220 L300,215 L315,250 L295,270 L260,265 Z" fill="rgba(8,145,178,0.2)" stroke="#0891B2" strokeWidth="1" />
+                  <text x="287" y="245" textAnchor="middle" fontSize="8" fill="#0891B2" fontFamily="monospace" fontWeight="700">DOWNTOWN</text>
+                  <text x="287" y="256" textAnchor="middle" fontSize="8" fill="#0891B2" fontFamily="monospace">+1.8pp rent</text>
+                  {/* Ybor City */}
+                  <path d="M300,200 L340,195 L350,225 L330,240 L300,235 Z" fill="rgba(8,145,178,0.12)" stroke="#0891B2" strokeWidth="0.8" />
+                  <text x="325" y="218" textAnchor="middle" fontSize="8" fill="#0891B2" fontFamily="monospace">YBOR</text>
+                  <text x="325" y="229" textAnchor="middle" fontSize="8" fill="#0891B2" fontFamily="monospace">+1.2pp</text>
+                  {/* South Tampa */}
+                  <path d="M195,230 L235,225 L240,265 L215,280 L185,265 Z" fill="rgba(217,119,6,0.12)" stroke="#D97706" strokeWidth="0.8" />
+                  <text x="213" y="255" textAnchor="middle" fontSize="8" fill="#D97706" fontFamily="monospace">S. TAMPA</text>
+                  <text x="213" y="266" textAnchor="middle" fontSize="8" fill="#D97706" fontFamily="monospace">+0.7pp</text>
+                  {/* Brandon submarket — low impact */}
+                  <path d="M360,210 L400,205 L408,240 L380,255 L355,240 Z" fill="rgba(107,114,128,0.1)" stroke="#6B7280" strokeWidth="0.6" />
+                  <text x="382" y="230" textAnchor="middle" fontSize="8" fill="#6B7280" fontFamily="monospace">BRANDON</text>
+                  <text x="382" y="241" textAnchor="middle" fontSize="8" fill="#6B7280" fontFamily="monospace">+0.3pp</text>
+                  {/* HQ2 epicenter */}
+                  <circle cx="255" cy="195" r="6" fill="#10B981" />
+                  <circle cx="255" cy="195" r="10" fill="none" stroke="#10B981" strokeWidth="1.5" opacity="0.6" />
+                  <circle cx="255" cy="195" r="15" fill="none" stroke="#10B981" strokeWidth="1" opacity="0.3" />
+                  <text x="255" y="175" textAnchor="middle" fontSize="9" fill="#E2E8F0" fontFamily="monospace" fontWeight="700">HQ2 SITE</text>
+                  {/* Deal pins */}
+                  <rect x="222" y="188" width="8" height="8" rx="1" fill="#0891B2" />
+                  <text x="226" y="180" textAnchor="middle" fontSize="7" fill="#0891B2" fontFamily="monospace">3820 W</text>
+                  <rect x="268" y="230" width="8" height="8" rx="1" fill="#D97706" />
+                  <text x="272" y="248" textAnchor="middle" fontSize="7" fill="#D97706" fontFamily="monospace">1005 DT</text>
+                  {/* Ring labels */}
+                  <text x="310" y="140" fontSize="8" fill="#0891B2" fontFamily="monospace" opacity="0.6">1mi</text>
+                  <text x="355" y="100" fontSize="8" fill="#0891B2" fontFamily="monospace" opacity="0.4">2mi</text>
+                  <text x="400" y="65" fontSize="8" fill="#0891B2" fontFamily="monospace" opacity="0.25">3mi</text>
+                  {/* Compass */}
+                  <text x="460" y="30" fontSize="10" fill="#6B7A8D" fontFamily="monospace">N↑</text>
+                </svg>
+                {/* Legend */}
+                <div className="absolute bottom-3 left-3 p-2 rounded border" style={{ background: 'rgba(11,14,26,0.9)', borderColor: '#1E2538' }}>
+                  <div className="text-[9px] font-mono mb-1" style={{ color: '#6B7A8D' }}>IMPACT INTENSITY</div>
+                  {[
+                    { color: '#10B981', label: 'High (+2pp+ rent)' },
+                    { color: '#0891B2', label: 'Medium (+1–2pp)' },
+                    { color: '#D97706', label: 'Low (+0.5–1pp)' },
+                    { color: '#6B7280', label: 'Minimal (<0.5pp)' },
+                  ].map(l => (
+                    <div key={l.label} className="flex items-center gap-1.5 mb-0.5">
+                      <div className="w-2 h-2 rounded-sm" style={{ background: l.color }} />
+                      <span className="text-[8px]" style={{ color: '#A0ABBE' }}>{l.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Right panel — impact hierarchy */}
+              <div className="w-72 flex flex-col gap-3">
+                <div className="rounded border p-3" style={{ background: '#131929', borderColor: '#1E2538' }}>
+                  <div className="text-[10px] font-mono font-semibold uppercase tracking-widest mb-3" style={{ color: '#6B7A8D' }}>Submarket Impact Hierarchy</div>
+                  {[
+                    { name: 'Westshore', proximity: 0.74, rentDelta: '+3.2pp', absorb: '+4.8pp', score: 94 },
+                    { name: 'Downtown Tampa', proximity: 0.61, rentDelta: '+1.8pp', absorb: '+2.9pp', score: 78 },
+                    { name: 'Ybor City', proximity: 0.49, rentDelta: '+1.2pp', absorb: '+1.8pp', score: 62 },
+                    { name: 'South Tampa', proximity: 0.38, rentDelta: '+0.7pp', absorb: '+1.1pp', score: 45 },
+                    { name: 'Brandon', proximity: 0.21, rentDelta: '+0.3pp', absorb: '+0.5pp', score: 24 },
+                  ].map((sm, i) => (
+                    <div key={sm.name} className="border-b py-2 last:border-b-0" style={{ borderColor: '#1E2538' }}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-semibold" style={{ color: '#E2E8F0' }}>{sm.name}</span>
+                        <span className="text-[10px] font-mono font-bold" style={{ color: sm.score >= 70 ? '#10B981' : sm.score >= 40 ? '#0891B2' : '#6B7280' }}>
+                          {sm.score}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 text-[10px]" style={{ color: '#A0ABBE' }}>
+                        <span>Prox: <strong style={{ color: '#E2E8F0' }}>{sm.proximity}</strong></span>
+                        <span>Rent Δ: <strong style={{ color: '#10B981' }}>{sm.rentDelta}</strong></span>
+                        <span>Abs: <strong style={{ color: '#0891B2' }}>{sm.absorb}</strong></span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="rounded border p-3" style={{ background: '#131929', borderColor: '#1E2538' }}>
+                  <div className="text-[10px] font-mono font-semibold uppercase tracking-widest mb-2" style={{ color: '#6B7A8D' }}>Your Deal Exposure</div>
+                  {[
+                    { address: '3820 W Kennedy', distance: '0.8mi', submarket: 'Westshore', impact: '+1.8pp IRR', color: '#10B981' },
+                    { address: '1005 DT Meridian', distance: '1.4mi', submarket: 'Downtown', impact: '+0.9pp IRR', color: '#0891B2' },
+                  ].map(d => (
+                    <div key={d.address} className="mb-2 pb-2 border-b last:border-b-0 last:mb-0 last:pb-0" style={{ borderColor: '#1E2538' }}>
+                      <div className="text-xs font-semibold mb-0.5" style={{ color: '#E2E8F0' }}>{d.address}</div>
+                      <div className="text-[10px]" style={{ color: '#A0ABBE' }}>
+                        {d.distance} · {d.submarket} · <span style={{ color: d.color }}>{d.impact}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MULTI-METRIC Tab — MultiMetricPanel */}
+        {activeTab === 'MULTI-METRIC' && (
+          <div className="mb-8">
+            <h2 className="text-lg font-semibold mb-1" style={{ color: '#E2E8F0' }}>Multi-Metric Dashboard</h2>
+            <p className="text-sm mb-6" style={{ color: '#6B7A8D' }}>All tracked metrics vs forecast — actual vs model with M35 event markers</p>
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { metric: 'Rent Growth (YoY)', actual: '+2.1%', forecast: '+1.3%', delta: '+0.8pp', status: 'AHEAD', statusColor: '#10B981', points: '0,80 20,70 40,55 60,35 80,20 100,10', eventX: 62 },
+                { metric: 'Absorption Rate', actual: '+4.8pp', forecast: '+2.9pp', delta: '+1.9pp', status: 'AHEAD', statusColor: '#10B981', points: '0,75 20,68 40,58 60,40 80,28 100,18', eventX: 60 },
+                { metric: 'Search Momentum', actual: '+18%', forecast: '+8%', delta: '+10pp', status: 'AHEAD', statusColor: '#10B981', points: '0,70 20,60 40,45 60,30 80,15 100,8', eventX: 58 },
+                { metric: 'Cap Rate', actual: '5.4%', forecast: '5.6%', delta: '−0.2pp', status: 'COMPRESSING', statusColor: '#0891B2', points: '0,40 20,42 40,48 60,55 80,60 100,62', eventX: 58, inverted: true },
+                { metric: 'Permit Velocity', actual: '+12%', forecast: '+5%', delta: '+7pp', status: 'WATCH', statusColor: '#D97706', points: '0,60 20,55 40,50 60,42 80,35 100,30', eventX: 60 },
+                { metric: 'AADT / Traffic', actual: '+18%', forecast: '+9%', delta: '+9pp', status: 'AHEAD', statusColor: '#10B981', points: '0,72 20,65 40,55 60,40 80,25 100,15', eventX: 60 },
+              ].map((m) => (
+                <div key={m.metric} className="rounded border p-3 flex flex-col gap-2" style={{ background: '#131929', borderColor: '#1E2538' }}>
+                  <div className="text-[10px] font-mono font-semibold uppercase tracking-wide" style={{ color: '#A0ABBE' }}>{m.metric}</div>
+                  <div className="flex items-end justify-between">
+                    <div>
+                      <div className="text-xl font-bold font-mono" style={{ color: '#E2E8F0' }}>{m.actual}</div>
+                      <div className="text-[10px]" style={{ color: '#6B7A8D' }}>actual</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs font-mono" style={{ color: m.statusColor }}>{m.delta}</div>
+                      <div className="text-[9px] font-semibold uppercase px-1.5 py-0.5 rounded border" style={{ color: m.statusColor, background: `${m.statusColor}1A`, borderColor: `${m.statusColor}4D` }}>{m.status}</div>
+                    </div>
+                  </div>
+                  {/* Mini chart */}
+                  <div className="relative" style={{ height: 60 }}>
+                    <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+                      {/* Forecast line (dashed) */}
+                      <polyline
+                        points={m.points.split(' ').map((pt, i) => {
+                          const [x, y] = pt.split(',');
+                          return `${x},${parseFloat(y) + 15}`;
+                        }).join(' ')}
+                        fill="none" stroke="#6B7A8D" strokeWidth="1" strokeDasharray="2,2"
+                      />
+                      {/* Actual fill area */}
+                      <polyline points={m.points} fill="none" stroke={m.statusColor} strokeWidth="1.5" strokeLinejoin="round" />
+                      {/* Event marker */}
+                      <line x1={m.eventX} y1="0" x2={m.eventX} y2="100" stroke="#0891B2" strokeWidth="0.8" strokeDasharray="2,2" />
+                      <circle cx={m.eventX} cy={parseFloat(m.points.split(' ')[Math.floor(m.points.split(' ').length / 2)].split(',')[1])} r="3" fill="#0891B2" />
+                    </svg>
+                  </div>
+                  <div className="flex items-center gap-3 text-[9px]" style={{ color: '#6B7A8D' }}>
+                    <span>Forecast: <span style={{ color: '#A0ABBE' }}>{m.forecast}</span></span>
+                    <span className="ml-auto">T+0 → T+36</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-4 flex items-center gap-6 text-[10px]" style={{ color: '#6B7A8D' }}>
+              <div className="flex items-center gap-1.5"><div className="w-6 h-0.5" style={{ background: '#0891B2' }}></div><span>Actual</span></div>
+              <div className="flex items-center gap-1.5"><div className="w-6 h-0.5 border-t border-dashed" style={{ borderColor: '#6B7A8D' }}></div><span>Forecast</span></div>
+              <div className="flex items-center gap-1.5"><div className="w-0.5 h-3" style={{ background: '#0891B2' }}></div><span>Event marker (Amazon HQ2)</span></div>
+            </div>
+          </div>
+        )}
+
+        {/* PLAYBOOK / TIMELINE — Coming Soon */}
+        {(activeTab === 'PLAYBOOK' || activeTab === 'TIMELINE') && (
           <div className="flex items-center justify-center h-48 rounded border" style={{ borderColor: '#1E2538', color: '#6B7A8D' }}>
             <div className="text-center">
               <Activity className="w-8 h-8 mx-auto mb-2 opacity-30" />

@@ -333,6 +333,8 @@ export function DealsPage() {
   const [quadrantFilter, setQuadrantFilter] = useState<QuadrantType | null>(null);
   const [rankTierFilter, setRankTierFilter] = useState<RankTier>('All');
   const [intelligenceData, setIntelligenceData] = useState<Map<string, any>>(new Map());
+  const [m35EventsOpen, setM35EventsOpen] = useState(false);
+  const [m35ExpandedEvent, setM35ExpandedEvent] = useState<string | null>(null);
 
   const tabs: { id: TabType; label: string; icon: string }[] = [
     { id: 'all', label: 'All Deals', icon: '📊' },
@@ -604,6 +606,97 @@ export function DealsPage() {
             onExport={handleExport}
             loading={loading}
           />
+        </div>
+
+        {/* M35 Portfolio Event Tracker */}
+        <div className="flex-shrink-0 border-t" style={{ borderColor: BT.border.subtle }}>
+          <button
+            onClick={() => setM35EventsOpen(!m35EventsOpen)}
+            className="w-full flex items-center gap-2 px-4 py-2 text-left transition-colors"
+            style={{ background: BT.bg.panelAlt }}
+          >
+            <span className="text-xs font-semibold" style={{ fontFamily: BT.font.mono, color: BT.text.cyan }}>⚡ M35 PORTFOLIO EVENT TRACKER</span>
+            <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: `${BT.text.cyan}18`, color: BT.text.cyan, fontFamily: BT.font.mono }}>3 ACTIVE</span>
+            <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: `${BT.text.amber}18`, color: BT.text.amber, fontFamily: BT.font.mono }}>5 PENDING</span>
+            <span className="ml-auto text-xs" style={{ color: BT.text.muted, fontFamily: BT.font.mono }}>{m35EventsOpen ? '▲ COLLAPSE' : '▼ EXPAND'}</span>
+          </button>
+
+          {m35EventsOpen && (
+            <div style={{ background: BT.bg.panel, borderTop: `1px solid ${BT.border.subtle}`, maxHeight: 320, overflowY: 'auto' }}>
+              {/* Most Exposed Deal */}
+              <div className="flex items-center gap-3 px-4 py-2 border-b" style={{ borderColor: BT.border.subtle, background: `${BT.text.amber}08` }}>
+                <span className="text-xs font-semibold" style={{ fontFamily: BT.font.mono, color: BT.text.amber }}>MOST EXPOSED</span>
+                <span className="text-xs font-semibold" style={{ color: BT.text.primary }}>3820 W Kennedy Blvd</span>
+                <span className="text-xs" style={{ color: BT.text.secondary }}>3 events · Prox 0.74 avg · IRR impact +1.8pp</span>
+                <button className="ml-auto text-xs px-2 py-0.5 rounded" style={{ fontFamily: BT.font.mono, color: BT.text.cyan, border: `1px solid ${BT.border.subtle}` }}>View →</button>
+              </div>
+
+              {/* Event rows */}
+              <table className="w-full text-xs">
+                <thead>
+                  <tr style={{ background: BT.bg.panelAlt, color: BT.text.muted }}>
+                    {['Event', 'Scope', 'Status', 'Affected Deals', 'IRR Impact', 'Rent Impact', 'Elapsed'].map(h => (
+                      <th key={h} className="text-left px-3 py-2 font-semibold uppercase" style={{ fontFamily: BT.font.mono, fontSize: 9, letterSpacing: '0.08em', borderBottom: `1px solid ${BT.border.subtle}` }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    { event: 'Amazon HQ2 Tampa', scope: 'MSA', scopeColor: '#6B7280', status: 'FIRED', statusColor: BT.text.green, deals: 4, irrImpact: '+1.8pp', rentImpact: '+3.2pp', elapsed: 'T+8MO' },
+                    { event: 'Tampa BRT Phase 2', scope: 'Submarket', scopeColor: BT.text.cyan, status: 'PENDING', statusColor: BT.text.amber, deals: 2, irrImpact: '+0.6pp proj', rentImpact: '+0.5pp proj', elapsed: 'T-4MO' },
+                    { event: 'FL Insurance Reform', scope: 'State', scopeColor: BT.text.purple, status: 'PENDING', statusColor: BT.text.amber, deals: 7, irrImpact: '+0.3pp proj', rentImpact: '−4% expense', elapsed: 'T-2MO' },
+                    { event: 'Westshore Supply Wave', scope: 'Submarket', scopeColor: BT.text.cyan, status: 'FIRED', statusColor: BT.text.red, deals: 3, irrImpact: '−0.4pp', rentImpact: '−0.3pp', elapsed: 'T+6MO' },
+                    { event: 'Atlanta Rezoning (BeltLine)', scope: 'Submarket', scopeColor: BT.text.cyan, status: 'STAGED', statusColor: BT.text.cyan, deals: 1, irrImpact: '+0.9pp proj', rentImpact: '+1.1pp proj', elapsed: 'conf 72%' },
+                  ].map((ev, i) => (
+                    <React.Fragment key={ev.event}>
+                      <tr
+                        onClick={() => setM35ExpandedEvent(m35ExpandedEvent === ev.event ? null : ev.event)}
+                        className="cursor-pointer transition-colors"
+                        style={{ background: m35ExpandedEvent === ev.event ? `${BT.text.cyan}08` : i % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt, borderTop: `1px solid ${BT.border.subtle}30` }}
+                      >
+                        <td className="px-3 py-2 font-medium" style={{ color: BT.text.primary }}>{ev.event}</td>
+                        <td className="px-3 py-2" style={{ color: ev.scopeColor, fontFamily: BT.font.mono }}>{ev.scope}</td>
+                        <td className="px-3 py-2">
+                          <span className="px-1.5 py-0.5 rounded font-semibold" style={{ fontFamily: BT.font.mono, fontSize: 9, color: ev.statusColor, background: `${ev.statusColor}1A` }}>{ev.status}</span>
+                        </td>
+                        <td className="px-3 py-2 font-semibold" style={{ fontFamily: BT.font.mono, color: BT.text.cyan }}>{ev.deals} deals</td>
+                        <td className="px-3 py-2" style={{ fontFamily: BT.font.mono, color: ev.irrImpact.startsWith('+') ? BT.text.green : BT.text.red }}>{ev.irrImpact}</td>
+                        <td className="px-3 py-2" style={{ fontFamily: BT.font.mono, color: ev.rentImpact.startsWith('+') ? BT.text.green : BT.text.red }}>{ev.rentImpact}</td>
+                        <td className="px-3 py-2" style={{ fontFamily: BT.font.mono, color: BT.text.muted }}>{ev.elapsed}</td>
+                      </tr>
+                      {m35ExpandedEvent === ev.event && (
+                        <tr style={{ background: `${BT.text.cyan}05` }}>
+                          <td colSpan={7} className="px-6 py-3">
+                            <div className="text-xs" style={{ color: BT.text.secondary, fontFamily: BT.font.mono }}>
+                              Affected deals: <span style={{ color: BT.text.primary }}>3820 W Kennedy · 1005 DT Meridian · Portfolio Deal #3 · #{ev.deals > 3 ? '+' + (ev.deals - 3) + ' more' : ''}</span>
+                              <span className="mx-3" style={{ color: BT.border.subtle }}>|</span>
+                              Playbook: <span style={{ color: BT.text.cyan }}>MF Value-Add › Employment Anchor</span>
+                              <span className="mx-3" style={{ color: BT.border.subtle }}>|</span>
+                              <span className="cursor-pointer underline" style={{ color: BT.text.cyan }}>View Event Detail →</span>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </table>
+
+              {/* Upcoming materializations */}
+              <div className="px-4 py-2 border-t flex items-center gap-4" style={{ borderColor: BT.border.subtle, background: BT.bg.panelAlt }}>
+                <span className="text-xs font-semibold" style={{ fontFamily: BT.font.mono, color: BT.text.muted }}>UPCOMING MATERIALIZATIONS:</span>
+                {[
+                  { name: 'FL Insurance Reform', timing: '~2mo', color: BT.text.green },
+                  { name: 'BRT Phase 2', timing: '~4mo', color: BT.text.amber },
+                  { name: 'Apple Campus (RDU)', timing: '~8mo', color: BT.text.cyan },
+                ].map(m => (
+                  <span key={m.name} className="text-xs" style={{ fontFamily: BT.font.mono, color: BT.text.secondary }}>
+                    <span style={{ color: m.color }}>◆</span> {m.name} <span style={{ color: BT.text.muted }}>({m.timing})</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
