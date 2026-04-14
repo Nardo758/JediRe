@@ -39,7 +39,6 @@ import {
   type CreateEventInput,
   type M35EventStatus,
 } from '../services/m35-events.service';
-import { generateForecast, invalidateForecasts } from '../services/m35-forecast.service';
 import {
   computeEventImpact,
   getEventImpacts,
@@ -156,19 +155,7 @@ router.post('/events/:id/status', async (req: Request, res: Response) => {
       { reason, changedBy: (req as any).user?.email }
     );
 
-    // Non-blocking side effects: forecast lifecycle
-    const newStatus = status as M35EventStatus;
-    if (newStatus === 'announced' || newStatus === 'in_progress') {
-      // Generate or regenerate forecast (supersedes any existing active forecast)
-      generateForecast(req.params.id).catch(e =>
-        logger.warn(`[M35 Events] Non-blocking forecast gen failed for ${req.params.id}: ${e.message}`)
-      );
-    } else if (newStatus === 'cancelled' || newStatus === 'reversed') {
-      invalidateForecasts(req.params.id, reason ?? newStatus).catch(e =>
-        logger.warn(`[M35 Events] Non-blocking forecast invalidation failed for ${req.params.id}: ${e.message}`)
-      );
-    }
-
+    // Forecast lifecycle (generate/invalidate) is handled inside transitionStatus()
     res.json(result);
   } catch (err: any) {
     if (err.message.includes('Invalid status transition') || err.message.includes('not found')) {

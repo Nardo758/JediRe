@@ -990,18 +990,29 @@ httpServer.listen(Number(PORT), '0.0.0.0', async () => {
 
   await initStripe();
 
-  // M35 Phase 4: Nightly divergence tracking job — every 24 hours
-  const M35_DIVERGENCE_INTERVAL_MS = 24 * 60 * 60 * 1000;
-  const m35DivergenceTimer = setInterval(async () => {
-    try {
-      const { runDivergenceTrackingJob } = await import('./services/m35-forecast.service');
-      const result = await runDivergenceTrackingJob();
-      console.log(`[M35 Divergence] Nightly check complete: ${result.checked} checked, ${result.diverged} diverged`);
-    } catch (err) {
-      console.error('[M35 Divergence] Nightly job failed (non-fatal):', err);
-    }
-  }, M35_DIVERGENCE_INTERVAL_MS);
-  m35DivergenceTimer.unref(); // don't block process exit
+  // M35 Phase 4: Nightly divergence tracking — fires at 2:00 AM UTC each day
+  // Mirrors the fixed-time scheduling pattern used by the M35 impact job.
+  function scheduleM35DivergenceJob() {
+    const now = new Date();
+    const nextRun = new Date(now);
+    nextRun.setUTCHours(2, 0, 0, 0);
+    if (nextRun <= now) nextRun.setUTCDate(nextRun.getUTCDate() + 1);
+    const msUntilNextRun = nextRun.getTime() - now.getTime();
+
+    const timer = setTimeout(async () => {
+      try {
+        const { runDivergenceTrackingJob } = await import('./services/m35-forecast.service');
+        const result = await runDivergenceTrackingJob();
+        console.log(`[M35 Divergence] Nightly check complete: ${result.checked} checked, ${result.diverged} diverged`);
+      } catch (err) {
+        console.error('[M35 Divergence] Nightly job failed (non-fatal):', err);
+      }
+      scheduleM35DivergenceJob(); // reschedule for tomorrow
+    }, msUntilNextRun);
+    timer.unref();
+    console.log(`[M35 Divergence] Scheduled for ${nextRun.toISOString()}`);
+  }
+  scheduleM35DivergenceJob();
 });
 
 process.on('SIGTERM', async () => {
