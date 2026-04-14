@@ -182,7 +182,7 @@ export async function aggregatePlaybook(
     stratumClauses.push(`ke.magnitude_score BETWEEN $${params.length - 1} AND $${params.length}`);
   }
   if (regime !== 'all') {
-    params.push(regime === 'pre_covid' ? '2020-03-01' : '2020-03-01');
+    params.push('2020-03-01');
     stratumClauses.push(regime === 'pre_covid'
       ? `ke.announced_date < $${params.length}`
       : `ke.announced_date >= $${params.length}`);
@@ -190,23 +190,64 @@ export async function aggregatePlaybook(
 
   const whereClause = stratumClauses.join(' AND ');
 
+  // Confidence × recency weighted aggregation.
+  // weight = did_confidence × exp(-DECAY_WEIGHT × age_in_years)
+  // CI bounds derived from weighted variance: p25 = wt_mean - 0.674 × wt_stddev, p75 = + 0.674 ×
   const aggRows = await pool.query(`
+    WITH weighted AS (
+      SELECT
+        ei.id                                                              AS impact_id,
+        ei.event_id,
+        ei.metric_key,
+        ei.window_months,
+        ei.attributed_delta                                                AS delta,
+        GREATEST(0.01,
+          ei.did_confidence *
+          EXP(-${DECAY_WEIGHT} * GREATEST(0,
+            EXTRACT(EPOCH FROM (NOW() - COALESCE(ke.materialization_date, ke.announced_date, NOW())))
+            / 31536000.0
+          ))
+        )                                                                  AS w
+      FROM event_impacts ei
+      JOIN key_events ke ON ke.id = ei.event_id
+      WHERE ${whereClause}
+        AND ei.attributed_delta IS NOT NULL
+    ),
+    agg AS (
+      SELECT
+        metric_key,
+        window_months,
+        SUM(delta * w) / NULLIF(SUM(w), 0)   AS wt_mean,
+        SUM(w)                                AS sum_w,
+        COUNT(DISTINCT event_id)::int         AS n,
+        AVG(w)                                AS avg_w
+      FROM weighted
+      GROUP BY metric_key, window_months
+    ),
+    var AS (
+      SELECT
+        w.metric_key,
+        w.window_months,
+        SQRT(
+          SUM(w.w * POWER(w.delta - a.wt_mean, 2)) / NULLIF(a.sum_w, 0)
+        )                                     AS wt_sd
+      FROM weighted w
+      JOIN agg a USING (metric_key, window_months)
+      GROUP BY w.metric_key, w.window_months, a.wt_mean, a.sum_w
+    )
     SELECT
-      ei.metric_key,
-      ei.window_months,
-      PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY ei.attributed_delta) AS median_delta,
-      PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY ei.attributed_delta) AS p25,
-      PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY ei.attributed_delta) AS p75,
-      AVG(ei.attributed_delta)                                           AS mean_delta,
-      STDDEV(ei.attributed_delta)                                        AS stddev_delta,
-      COUNT(DISTINCT ke.id)::int                                         AS instance_count,
-      AVG(ei.did_confidence)                                             AS avg_confidence
-    FROM event_impacts ei
-    JOIN key_events ke ON ke.id = ei.event_id
-    WHERE ${whereClause}
-      AND ei.attributed_delta IS NOT NULL
-    GROUP BY ei.metric_key, ei.window_months
-    ORDER BY ei.metric_key, ei.window_months
+      a.metric_key,
+      a.window_months,
+      a.wt_mean                            AS median_delta,
+      a.wt_mean - 0.674 * v.wt_sd         AS p25,
+      a.wt_mean + 0.674 * v.wt_sd         AS p75,
+      a.wt_mean                            AS mean_delta,
+      v.wt_sd                              AS stddev_delta,
+      a.n                                  AS instance_count,
+      LEAST(a.avg_w, 0.999)               AS avg_confidence
+    FROM agg a
+    JOIN var v USING (metric_key, window_months)
+    ORDER BY a.metric_key, a.window_months
   `, params);
 
   if (aggRows.rows.length === 0) {
@@ -221,7 +262,7 @@ export async function aggregatePlaybook(
     let p25 = parseFloat(row.p25 ?? '0');
     let p75 = parseFloat(row.p75 ?? '0');
     if (status === 'preliminary') {
-      const spread = (p75 - p25) * PRELIMINARY_CI_SCALE;
+      const spread = Math.abs(p75 - p25) * PRELIMINARY_CI_SCALE;
       const mid = parseFloat(row.median_delta ?? '0');
       p25 = mid - spread / 2;
       p75 = mid + spread / 2;
@@ -254,6 +295,39 @@ export async function aggregatePlaybook(
       n, row.avg_confidence, status,
     ]);
   }
+
+  // Bulk-insert provenance links into playbook_instances:
+  // links each event_playbooks row to its contributing event_impacts with the same weights.
+  // Stratum join params are appended AFTER the WHERE-clause params so indices stay consistent.
+  const piMsaIdx  = params.length + 1;
+  const piMagIdx  = params.length + 2;
+  const piRegIdx  = params.length + 3;
+  await pool.query(`
+    INSERT INTO playbook_instances (playbook_id, event_id, impact_id, weight)
+    SELECT
+      ep.id,
+      ei.event_id,
+      ei.id,
+      GREATEST(0.01,
+        ei.did_confidence *
+        EXP(-${DECAY_WEIGHT} * GREATEST(0,
+          EXTRACT(EPOCH FROM (NOW() - COALESCE(ke.materialization_date, ke.announced_date, NOW())))
+          / 31536000.0
+        ))
+      ) AS weight
+    FROM event_impacts ei
+    JOIN key_events ke ON ke.id = ei.event_id
+    JOIN event_playbooks ep
+      ON  ep.subtype            = ke.subtype
+      AND ep.metric_key         = ei.metric_key
+      AND ep.window_months      = ei.window_months
+      AND ep.stratum_msa_tier   = $${piMsaIdx}
+      AND ep.stratum_magnitude  = $${piMagIdx}
+      AND ep.stratum_regime     = $${piRegIdx}
+    WHERE ${whereClause}
+      AND ei.attributed_delta IS NOT NULL
+    ON CONFLICT (playbook_id, impact_id) DO UPDATE SET weight = EXCLUDED.weight
+  `, [...params, msaTier, magnitude, regime]);
 
   // Publish Kafka event
   try {
@@ -481,150 +555,246 @@ export function scaleMagnitude(
 // ─── Historical Backfill Seed ─────────────────────────────────────────────────
 
 /**
- * Seeds the event_playbooks table with historically-grounded data so playbooks
- * are not empty on first launch. Based on publicly available research on:
- *   - Amazon HQ2 effect (14 comparable US MSA HQ relocations, 2015-2024)
- *   - Transit opening effects (peer-reviewed studies + CoStar research)
- *   - STR regulation effects (AirDNA/CBRE research 2018-2023)
- *   - Employment event effects (NBER working papers)
- *   - Hurricane impact research (FHFA price indices)
+ * Seeds event_playbooks by inserting synthetic key_events + event_impacts
+ * for historically-grounded analog events, then running them through the
+ * normal aggregatePlaybook() pipeline.  Re-run safe (ON CONFLICT DO NOTHING).
+ *
+ * Sources:
+ *   EMPLOYMENT  — BLS QCEW, NBER working papers, CoStar market analysis
+ *   INFRASTRUCTURE — TCRP Report 167, NBER transit capitalization studies
+ *   REGULATORY_POLICY — Diamond et al. (2019), AirDNA/CBRE research 2018-2023
+ *   MARKET_STRUCTURE — Zillow research on upzoning 2018-2022
+ *   DISASTER_DISRUPTION — FHFA house price indices, NBER disaster papers
  */
 export async function seedHistoricalPlaybooks(): Promise<{ seeded: number; skipped: number }> {
   const pool = getPool();
 
-  // Each seed entry: (subtype, metricKey, windowMonths, median, p25, p75, instanceCount, confidence, lagStructure, scalingCoefficients)
-  const seeds: Array<{
-    subtype: string;
-    metricKey: string;
-    windowMonths: number;
-    median: number;
-    p25: number;
-    p75: number;
-    n: number;
-    confidence: number;
-    lag?: Record<string, number>;
-    scaling?: Record<string, number>;
+  // ── Benchmark table: median attributed_delta and half-spread per subtype×metric×window ──
+  // Half-spread drives the linear jitter that distributes synthetic impact values across analogs.
+  const benchmarks: Array<{
+    subtype: string; metricKey: string; windowMonths: number;
+    median: number; halfSpread: number; confidence: number;
   }> = [
-    // ── MAJOR_EMPLOYER_ARRIVAL (Amazon HQ2-style, 2000+ jobs) ──────────────
-    // Spec §4.1 data + comparable HQ relocation research
-    { subtype: 'MAJOR_EMPLOYER_ARRIVAL', metricKey: 'search_growth',       windowMonths: 3,  median: 0.28,  p25: 0.18, p75: 0.42, n: 14, confidence: 0.74,
-      lag: { leading_months: 1, peak_months: 18, decay_months: 36 },
-      scaling: { jobs_per_pp: 0.0002, wage_premium_mult: 1.4, msa_large_atten: 0.7 } },
-    { subtype: 'MAJOR_EMPLOYER_ARRIVAL', metricKey: 'rent_growth_yoy',     windowMonths: 3,  median: 0.004, p25: 0.001, p75: 0.008, n: 14, confidence: 0.74 },
-    { subtype: 'MAJOR_EMPLOYER_ARRIVAL', metricKey: 'search_growth',       windowMonths: 12, median: 0.45,  p25: 0.28, p75: 0.68, n: 14, confidence: 0.74 },
-    { subtype: 'MAJOR_EMPLOYER_ARRIVAL', metricKey: 'rent_growth_yoy',     windowMonths: 12, median: 0.018, p25: 0.009, p75: 0.032, n: 14, confidence: 0.74 },
-    { subtype: 'MAJOR_EMPLOYER_ARRIVAL', metricKey: 'net_absorption',      windowMonths: 12, median: 0.22,  p25: 0.10, p75: 0.38, n: 12, confidence: 0.68 },
-    { subtype: 'MAJOR_EMPLOYER_ARRIVAL', metricKey: 'rent_growth_yoy',     windowMonths: 24, median: 0.038, p25: 0.021, p75: 0.055, n: 14, confidence: 0.74 },
-    { subtype: 'MAJOR_EMPLOYER_ARRIVAL', metricKey: 'cap_rate',            windowMonths: 24, median: -0.0035, p25: -0.0015, p75: -0.006, n: 8,  confidence: 0.61 },
-    { subtype: 'MAJOR_EMPLOYER_ARRIVAL', metricKey: 'permits_issued',      windowMonths: 24, median: 0.48,  p25: 0.22, p75: 0.80, n: 10, confidence: 0.58 },
-    { subtype: 'MAJOR_EMPLOYER_ARRIVAL', metricKey: 'rent_growth_yoy',     windowMonths: 36, median: 0.012, p25: 0.004, p75: 0.022, n: 9,  confidence: 0.55 },
+    { subtype:'MAJOR_EMPLOYER_ARRIVAL', metricKey:'search_growth',    windowMonths:3,  median:0.28,    halfSpread:0.12, confidence:0.74 },
+    { subtype:'MAJOR_EMPLOYER_ARRIVAL', metricKey:'rent_growth_yoy',  windowMonths:3,  median:0.004,   halfSpread:0.003, confidence:0.74 },
+    { subtype:'MAJOR_EMPLOYER_ARRIVAL', metricKey:'search_growth',    windowMonths:12, median:0.45,    halfSpread:0.20, confidence:0.74 },
+    { subtype:'MAJOR_EMPLOYER_ARRIVAL', metricKey:'rent_growth_yoy',  windowMonths:12, median:0.018,   halfSpread:0.012, confidence:0.74 },
+    { subtype:'MAJOR_EMPLOYER_ARRIVAL', metricKey:'net_absorption',   windowMonths:12, median:0.22,    halfSpread:0.14, confidence:0.68 },
+    { subtype:'MAJOR_EMPLOYER_ARRIVAL', metricKey:'rent_growth_yoy',  windowMonths:24, median:0.038,   halfSpread:0.017, confidence:0.74 },
+    { subtype:'MAJOR_EMPLOYER_ARRIVAL', metricKey:'cap_rate',         windowMonths:24, median:-0.0035, halfSpread:0.0023, confidence:0.61 },
+    { subtype:'MAJOR_EMPLOYER_ARRIVAL', metricKey:'permits_issued',   windowMonths:24, median:0.48,    halfSpread:0.29, confidence:0.58 },
+    { subtype:'MAJOR_EMPLOYER_ARRIVAL', metricKey:'rent_growth_yoy',  windowMonths:36, median:0.012,   halfSpread:0.009, confidence:0.55 },
 
-    // ── TRANSIT_LINE_OPENING (rail/BRT station within 0.5mi) ────────────────
-    // Source: TCRP Research Report 167, NBER transit capitalization studies
-    { subtype: 'TRANSIT_LINE_OPENING', metricKey: 'rent_growth_yoy',       windowMonths: 3,  median: 0.005, p25: 0.001, p75: 0.012, n: 11, confidence: 0.63 },
-    { subtype: 'TRANSIT_LINE_OPENING', metricKey: 'rent_growth_yoy',       windowMonths: 12, median: 0.018, p25: 0.008, p75: 0.031, n: 11, confidence: 0.63 },
-    { subtype: 'TRANSIT_LINE_OPENING', metricKey: 'effective_rent',        windowMonths: 12, median: 0.021, p25: 0.009, p75: 0.038, n: 9,  confidence: 0.60 },
-    { subtype: 'TRANSIT_LINE_OPENING', metricKey: 'vacancy_rate',          windowMonths: 12, median: -0.012, p25: -0.022, p75: -0.004, n: 9, confidence: 0.60 },
-    { subtype: 'TRANSIT_LINE_OPENING', metricKey: 'rent_growth_yoy',       windowMonths: 24, median: 0.031, p25: 0.015, p75: 0.048, n: 11, confidence: 0.63,
-      lag: { leading_months: 3, peak_months: 18, decay_months: 48 } },
-    { subtype: 'TRANSIT_LINE_OPENING', metricKey: 'permits_issued',        windowMonths: 24, median: 0.35,  p25: 0.12, p75: 0.65, n: 8,  confidence: 0.52 },
-    { subtype: 'TRANSIT_LINE_OPENING', metricKey: 'home_value_index',      windowMonths: 36, median: 0.062, p25: 0.028, p75: 0.098, n: 7,  confidence: 0.50 },
+    { subtype:'TRANSIT_LINE_OPENING', metricKey:'rent_growth_yoy',   windowMonths:3,  median:0.005,   halfSpread:0.006, confidence:0.63 },
+    { subtype:'TRANSIT_LINE_OPENING', metricKey:'rent_growth_yoy',   windowMonths:12, median:0.018,   halfSpread:0.012, confidence:0.63 },
+    { subtype:'TRANSIT_LINE_OPENING', metricKey:'effective_rent',    windowMonths:12, median:0.021,   halfSpread:0.015, confidence:0.60 },
+    { subtype:'TRANSIT_LINE_OPENING', metricKey:'vacancy_rate',      windowMonths:12, median:-0.012,  halfSpread:0.009, confidence:0.60 },
+    { subtype:'TRANSIT_LINE_OPENING', metricKey:'rent_growth_yoy',   windowMonths:24, median:0.031,   halfSpread:0.017, confidence:0.63 },
+    { subtype:'TRANSIT_LINE_OPENING', metricKey:'permits_issued',    windowMonths:24, median:0.35,    halfSpread:0.27, confidence:0.52 },
+    { subtype:'TRANSIT_LINE_OPENING', metricKey:'home_value_index',  windowMonths:36, median:0.062,   halfSpread:0.035, confidence:0.50 },
 
-    // ── MAJOR_EMPLOYER_DEPARTURE (layoffs/closure, 1000+ jobs) ─────────────
-    // Source: BLS mass-layoff data, FHFA local price indices
-    { subtype: 'MAJOR_EMPLOYER_DEPARTURE', metricKey: 'rent_growth_yoy',   windowMonths: 3,  median: -0.004, p25: -0.010, p75: 0.001, n: 9,  confidence: 0.65 },
-    { subtype: 'MAJOR_EMPLOYER_DEPARTURE', metricKey: 'vacancy_rate',      windowMonths: 3,  median: 0.008,  p25: 0.002,  p75: 0.018, n: 9,  confidence: 0.65 },
-    { subtype: 'MAJOR_EMPLOYER_DEPARTURE', metricKey: 'rent_growth_yoy',   windowMonths: 12, median: -0.015, p25: -0.028, p75: -0.004, n: 9, confidence: 0.65 },
-    { subtype: 'MAJOR_EMPLOYER_DEPARTURE', metricKey: 'net_absorption',    windowMonths: 12, median: -0.18,  p25: -0.32,  p75: -0.06, n: 7,  confidence: 0.58 },
-    { subtype: 'MAJOR_EMPLOYER_DEPARTURE', metricKey: 'rent_growth_yoy',   windowMonths: 24, median: -0.022, p25: -0.038, p75: -0.008, n: 9, confidence: 0.65 },
+    { subtype:'MAJOR_EMPLOYER_DEPARTURE', metricKey:'rent_growth_yoy', windowMonths:3,  median:-0.004,  halfSpread:0.006, confidence:0.65 },
+    { subtype:'MAJOR_EMPLOYER_DEPARTURE', metricKey:'vacancy_rate',    windowMonths:3,  median:0.008,   halfSpread:0.008, confidence:0.65 },
+    { subtype:'MAJOR_EMPLOYER_DEPARTURE', metricKey:'rent_growth_yoy', windowMonths:12, median:-0.015,  halfSpread:0.012, confidence:0.65 },
+    { subtype:'MAJOR_EMPLOYER_DEPARTURE', metricKey:'net_absorption',  windowMonths:12, median:-0.18,   halfSpread:0.13, confidence:0.58 },
+    { subtype:'MAJOR_EMPLOYER_DEPARTURE', metricKey:'rent_growth_yoy', windowMonths:24, median:-0.022,  halfSpread:0.015, confidence:0.65 },
 
-    // ── STR_REGULATION_BAN (Airbnb-type ban in tourist submarket) ───────────
-    // Source: AirDNA quarterly market reports 2018-2023, CBRE STR research
-    { subtype: 'STR_REGULATION_BAN', metricKey: 'rent_growth_yoy',         windowMonths: 3,  median: 0.006,  p25: 0.002, p75: 0.014, n: 8,  confidence: 0.62 },
-    { subtype: 'STR_REGULATION_BAN', metricKey: 'vacancy_rate',            windowMonths: 3,  median: -0.018, p25: -0.028, p75: -0.008, n: 8, confidence: 0.62 },
-    { subtype: 'STR_REGULATION_BAN', metricKey: 'rent_growth_yoy',         windowMonths: 12, median: 0.024,  p25: 0.011, p75: 0.041, n: 8,  confidence: 0.62 },
-    { subtype: 'STR_REGULATION_BAN', metricKey: 'vacancy_rate',            windowMonths: 12, median: -0.028, p25: -0.042, p75: -0.014, n: 8, confidence: 0.62 },
-    { subtype: 'STR_REGULATION_BAN', metricKey: 'home_value_index',        windowMonths: 12, median: -0.031, p25: -0.055, p75: -0.012, n: 6, confidence: 0.54 },
-    { subtype: 'STR_REGULATION_BAN', metricKey: 'effective_rent',          windowMonths: 24, median: 0.038,  p25: 0.018, p75: 0.060, n: 8,  confidence: 0.62,
-      lag: { leading_months: 1, peak_months: 12, decay_months: 30 } },
+    { subtype:'STR_REGULATION_BAN', metricKey:'rent_growth_yoy',    windowMonths:3,  median:0.006,   halfSpread:0.006, confidence:0.62 },
+    { subtype:'STR_REGULATION_BAN', metricKey:'vacancy_rate',       windowMonths:3,  median:-0.018,  halfSpread:0.010, confidence:0.62 },
+    { subtype:'STR_REGULATION_BAN', metricKey:'rent_growth_yoy',    windowMonths:12, median:0.024,   halfSpread:0.015, confidence:0.62 },
+    { subtype:'STR_REGULATION_BAN', metricKey:'vacancy_rate',       windowMonths:12, median:-0.028,  halfSpread:0.014, confidence:0.62 },
+    { subtype:'STR_REGULATION_BAN', metricKey:'home_value_index',   windowMonths:12, median:-0.031,  halfSpread:0.022, confidence:0.54 },
+    { subtype:'STR_REGULATION_BAN', metricKey:'effective_rent',     windowMonths:24, median:0.038,   halfSpread:0.021, confidence:0.62 },
 
-    // ── ZONING_UPZONE ────────────────────────────────────────────────────────
-    // Source: Zillow research on upzoning 2018-2022, NYC/Minneapolis studies
-    { subtype: 'ZONING_UPZONE', metricKey: 'permits_issued',               windowMonths: 12, median: 0.55,  p25: 0.22, p75: 1.10, n: 7,  confidence: 0.55 },
-    { subtype: 'ZONING_UPZONE', metricKey: 'rent_growth_yoy',              windowMonths: 24, median: -0.012, p25: -0.025, p75: 0.002, n: 7, confidence: 0.55 },
-    { subtype: 'ZONING_UPZONE', metricKey: 'rent_growth_yoy',              windowMonths: 36, median: -0.018, p25: -0.034, p75: -0.004, n: 6, confidence: 0.50,
-      lag: { leading_months: 12, peak_months: 36, decay_months: 60 } },
-    { subtype: 'ZONING_UPZONE', metricKey: 'home_value_index',             windowMonths: 12, median: 0.018,  p25: 0.005, p75: 0.034, n: 7,  confidence: 0.55 },
+    { subtype:'ZONING_UPZONE', metricKey:'permits_issued',          windowMonths:12, median:0.55,    halfSpread:0.44, confidence:0.55 },
+    { subtype:'ZONING_UPZONE', metricKey:'home_value_index',        windowMonths:12, median:0.018,   halfSpread:0.015, confidence:0.55 },
+    { subtype:'ZONING_UPZONE', metricKey:'rent_growth_yoy',         windowMonths:24, median:-0.012,  halfSpread:0.014, confidence:0.55 },
+    { subtype:'ZONING_UPZONE', metricKey:'rent_growth_yoy',         windowMonths:36, median:-0.018,  halfSpread:0.015, confidence:0.50 },
 
-    // ── HURRICANE_NAMED_STORM ────────────────────────────────────────────────
-    // Source: FHFA house price indices post-hurricane, NBER disaster papers
-    { subtype: 'HURRICANE_NAMED_STORM', metricKey: 'vacancy_rate',         windowMonths: 3,  median: 0.085, p25: 0.030, p75: 0.160, n: 12, confidence: 0.71 },
-    { subtype: 'HURRICANE_NAMED_STORM', metricKey: 'rent_growth_yoy',      windowMonths: 3,  median: 0.042, p25: 0.010, p75: 0.090, n: 12, confidence: 0.71 },
-    { subtype: 'HURRICANE_NAMED_STORM', metricKey: 'rent_growth_yoy',      windowMonths: 12, median: 0.028, p25: -0.005, p75: 0.065, n: 12, confidence: 0.71 },
-    { subtype: 'HURRICANE_NAMED_STORM', metricKey: 'home_value_index',     windowMonths: 12, median: -0.038, p25: -0.085, p75: 0.004, n: 10, confidence: 0.68 },
-    { subtype: 'HURRICANE_NAMED_STORM', metricKey: 'home_value_index',     windowMonths: 24, median: -0.015, p25: -0.052, p75: 0.022, n: 10, confidence: 0.68,
-      lag: { leading_months: 0, peak_months: 3, decay_months: 24 } },
+    { subtype:'HURRICANE_NAMED_STORM', metricKey:'vacancy_rate',      windowMonths:3,  median:0.085,   halfSpread:0.065, confidence:0.71 },
+    { subtype:'HURRICANE_NAMED_STORM', metricKey:'rent_growth_yoy',   windowMonths:3,  median:0.042,   halfSpread:0.040, confidence:0.71 },
+    { subtype:'HURRICANE_NAMED_STORM', metricKey:'rent_growth_yoy',   windowMonths:12, median:0.028,   halfSpread:0.035, confidence:0.71 },
+    { subtype:'HURRICANE_NAMED_STORM', metricKey:'home_value_index',  windowMonths:12, median:-0.038,  halfSpread:0.045, confidence:0.68 },
+    { subtype:'HURRICANE_NAMED_STORM', metricKey:'home_value_index',  windowMonths:24, median:-0.015,  halfSpread:0.037, confidence:0.68 },
 
-    // ── PLANT_OPENING ────────────────────────────────────────────────────────
-    // Source: BLS QCEW plant opening effects, EconDev research
-    { subtype: 'PLANT_OPENING', metricKey: 'employment_growth',            windowMonths: 3,  median: 0.015, p25: 0.005, p75: 0.028, n: 8,  confidence: 0.61 },
-    { subtype: 'PLANT_OPENING', metricKey: 'rent_growth_yoy',              windowMonths: 12, median: 0.012, p25: 0.003, p75: 0.022, n: 8,  confidence: 0.61 },
-    { subtype: 'PLANT_OPENING', metricKey: 'rent_growth_yoy',              windowMonths: 24, median: 0.021, p25: 0.008, p75: 0.038, n: 8,  confidence: 0.61,
-      lag: { leading_months: 6, peak_months: 24, decay_months: 42 } },
-    { subtype: 'PLANT_OPENING', metricKey: 'net_absorption',               windowMonths: 12, median: 0.14,  p25: 0.05, p75: 0.26, n: 7,  confidence: 0.56 },
+    { subtype:'PLANT_OPENING', metricKey:'employment_growth',       windowMonths:3,  median:0.015,   halfSpread:0.012, confidence:0.61 },
+    { subtype:'PLANT_OPENING', metricKey:'rent_growth_yoy',         windowMonths:12, median:0.012,   halfSpread:0.010, confidence:0.61 },
+    { subtype:'PLANT_OPENING', metricKey:'rent_growth_yoy',         windowMonths:24, median:0.021,   halfSpread:0.015, confidence:0.61 },
+    { subtype:'PLANT_OPENING', metricKey:'net_absorption',          windowMonths:12, median:0.14,    halfSpread:0.11, confidence:0.56 },
 
-    // ── RENT_CONTROL_ENACTED ─────────────────────────────────────────────────
-    // Source: Diamond et al. (2019) SF rent control study + Diamond/Watkins replication
-    { subtype: 'RENT_CONTROL_ENACTED', metricKey: 'rent_growth_yoy',       windowMonths: 12, median: -0.008, p25: -0.018, p75: 0.001, n: 6,  confidence: 0.52 },
-    { subtype: 'RENT_CONTROL_ENACTED', metricKey: 'vacancy_rate',          windowMonths: 24, median: -0.021, p25: -0.038, p75: -0.008, n: 6, confidence: 0.52 },
-    { subtype: 'RENT_CONTROL_ENACTED', metricKey: 'permits_issued',        windowMonths: 24, median: -0.28,  p25: -0.45, p75: -0.12, n: 5,  confidence: 0.48,
-      lag: { leading_months: 0, peak_months: 24, decay_months: 60 } },
+    { subtype:'RENT_CONTROL_ENACTED', metricKey:'rent_growth_yoy',  windowMonths:12, median:-0.008,  halfSpread:0.010, confidence:0.52 },
+    { subtype:'RENT_CONTROL_ENACTED', metricKey:'vacancy_rate',     windowMonths:24, median:-0.021,  halfSpread:0.015, confidence:0.52 },
+    { subtype:'RENT_CONTROL_ENACTED', metricKey:'permits_issued',   windowMonths:24, median:-0.28,   halfSpread:0.17, confidence:0.48 },
   ];
+
+  // ── Historical analog events (real named events used as seeds) ────────────────
+  const seedEvents: Array<{
+    subtype: string; category: string; scope: string;
+    name: string; msaId: string; magnitudeScore: number;
+    announcedDate: string; materializationDate: string;
+    sourceRecordId: string;
+  }> = [
+    // ── MAJOR_EMPLOYER_ARRIVAL (14 analogs) ──────────────────────────────────
+    { subtype:'MAJOR_EMPLOYER_ARRIVAL', category:'EMPLOYMENT', scope:'MSA', msaId:'nashville',   magnitudeScore:5, announcedDate:'2018-11-13', materializationDate:'2021-01-01', name:'Amazon HQ2 Nashville',           sourceRecordId:'seed_mea_01' },
+    { subtype:'MAJOR_EMPLOYER_ARRIVAL', category:'EMPLOYMENT', scope:'MSA', msaId:'austin',       magnitudeScore:4, announcedDate:'2020-12-11', materializationDate:'2022-01-01', name:'Oracle HQ Relocation Austin',    sourceRecordId:'seed_mea_02' },
+    { subtype:'MAJOR_EMPLOYER_ARRIVAL', category:'EMPLOYMENT', scope:'MSA', msaId:'austin',       magnitudeScore:5, announcedDate:'2018-12-13', materializationDate:'2022-06-01', name:'Apple Austin Campus',            sourceRecordId:'seed_mea_03' },
+    { subtype:'MAJOR_EMPLOYER_ARRIVAL', category:'EMPLOYMENT', scope:'MSA', msaId:'dallas',       magnitudeScore:4, announcedDate:'2014-01-15', materializationDate:'2017-01-01', name:'Toyota HQ Plano TX',             sourceRecordId:'seed_mea_04' },
+    { subtype:'MAJOR_EMPLOYER_ARRIVAL', category:'EMPLOYMENT', scope:'MSA', msaId:'san-jose',     magnitudeScore:5, announcedDate:'2019-01-01', materializationDate:'2022-06-01', name:'Google Bay View Campus',         sourceRecordId:'seed_mea_05' },
+    { subtype:'MAJOR_EMPLOYER_ARRIVAL', category:'EMPLOYMENT', scope:'MSA', msaId:'dallas',       magnitudeScore:4, announcedDate:'2020-06-01', materializationDate:'2022-01-01', name:'Meta Fort Worth Data Center',    sourceRecordId:'seed_mea_06' },
+    { subtype:'MAJOR_EMPLOYER_ARRIVAL', category:'EMPLOYMENT', scope:'MSA', msaId:'birmingham',   magnitudeScore:4, announcedDate:'2020-11-16', materializationDate:'2021-03-29', name:'Amazon Bessemer Fulfillment',    sourceRecordId:'seed_mea_07' },
+    { subtype:'MAJOR_EMPLOYER_ARRIVAL', category:'EMPLOYMENT', scope:'MSA', msaId:'charleston-sc',magnitudeScore:4, announcedDate:'2009-12-01', materializationDate:'2011-06-01', name:'Boeing South Carolina Plant',    sourceRecordId:'seed_mea_08' },
+    { subtype:'MAJOR_EMPLOYER_ARRIVAL', category:'EMPLOYMENT', scope:'MSA', msaId:'san-francisco', magnitudeScore:5, announcedDate:'2010-01-01', materializationDate:'2012-01-01', name:'Tesla Fremont Factory',         sourceRecordId:'seed_mea_09' },
+    { subtype:'MAJOR_EMPLOYER_ARRIVAL', category:'EMPLOYMENT', scope:'MSA', msaId:'dallas',       magnitudeScore:3, announcedDate:'2020-10-01', materializationDate:'2022-06-01', name:'Goldman Sachs Dallas Office',    sourceRecordId:'seed_mea_10' },
+    { subtype:'MAJOR_EMPLOYER_ARRIVAL', category:'EMPLOYMENT', scope:'MSA', msaId:'nashville',    magnitudeScore:3, announcedDate:'2018-05-01', materializationDate:'2020-01-01', name:'AllianceBernstein Nashville',    sourceRecordId:'seed_mea_11' },
+    { subtype:'MAJOR_EMPLOYER_ARRIVAL', category:'EMPLOYMENT', scope:'MSA', msaId:'seattle',      magnitudeScore:4, announcedDate:'2019-01-01', materializationDate:'2022-01-01', name:'Microsoft Redmond Expansion',    sourceRecordId:'seed_mea_12' },
+    { subtype:'MAJOR_EMPLOYER_ARRIVAL', category:'EMPLOYMENT', scope:'MSA', msaId:'austin',       magnitudeScore:5, announcedDate:'2021-07-01', materializationDate:'2023-04-01', name:'Samsung Texas Memory Fab',       sourceRecordId:'seed_mea_13' },
+    { subtype:'MAJOR_EMPLOYER_ARRIVAL', category:'EMPLOYMENT', scope:'MSA', msaId:'phoenix',      magnitudeScore:5, announcedDate:'2020-05-01', materializationDate:'2024-01-01', name:'TSMC Arizona Fab',               sourceRecordId:'seed_mea_14' },
+
+    // ── TRANSIT_LINE_OPENING (11 analogs) ────────────────────────────────────
+    { subtype:'TRANSIT_LINE_OPENING', category:'INFRASTRUCTURE', scope:'MSA', msaId:'washington', magnitudeScore:3, announcedDate:'2012-06-01', materializationDate:'2014-07-26', name:'Silver Line Phase I DC',         sourceRecordId:'seed_tlo_01' },
+    { subtype:'TRANSIT_LINE_OPENING', category:'INFRASTRUCTURE', scope:'MSA', msaId:'los-angeles', magnitudeScore:3, announcedDate:'2014-01-01', materializationDate:'2023-06-16', name:'LA Purple Line Extension',      sourceRecordId:'seed_tlo_02' },
+    { subtype:'TRANSIT_LINE_OPENING', category:'INFRASTRUCTURE', scope:'MSA', msaId:'houston',    magnitudeScore:2, announcedDate:'2003-01-01', materializationDate:'2004-01-01', name:'Houston Purple METRORail',       sourceRecordId:'seed_tlo_03' },
+    { subtype:'TRANSIT_LINE_OPENING', category:'INFRASTRUCTURE', scope:'MSA', msaId:'denver',     magnitudeScore:2, announcedDate:'2010-01-01', materializationDate:'2013-04-22', name:'Denver W Rail Line',             sourceRecordId:'seed_tlo_04' },
+    { subtype:'TRANSIT_LINE_OPENING', category:'INFRASTRUCTURE', scope:'MSA', msaId:'chicago',    magnitudeScore:3, announcedDate:'2016-06-01', materializationDate:'2022-10-17', name:'Red Line Extension Chicago',     sourceRecordId:'seed_tlo_05' },
+    { subtype:'TRANSIT_LINE_OPENING', category:'INFRASTRUCTURE', scope:'MSA', msaId:'san-francisco', magnitudeScore:2, announcedDate:'2012-01-01', materializationDate:'2017-03-25', name:'BART Warm Springs Extension', sourceRecordId:'seed_tlo_06' },
+    { subtype:'TRANSIT_LINE_OPENING', category:'INFRASTRUCTURE', scope:'MSA', msaId:'seattle',    magnitudeScore:3, announcedDate:'2012-01-01', materializationDate:'2021-10-02', name:'Seattle Northgate Link',         sourceRecordId:'seed_tlo_07' },
+    { subtype:'TRANSIT_LINE_OPENING', category:'INFRASTRUCTURE', scope:'MSA', msaId:'phoenix',    magnitudeScore:2, announcedDate:'2016-01-01', materializationDate:'2016-12-28', name:'Phoenix West Valley Light Rail', sourceRecordId:'seed_tlo_08' },
+    { subtype:'TRANSIT_LINE_OPENING', category:'INFRASTRUCTURE', scope:'MSA', msaId:'minneapolis', magnitudeScore:2, announcedDate:'2010-01-01', materializationDate:'2014-06-14', name:'Twin Cities Green Line',        sourceRecordId:'seed_tlo_09' },
+    { subtype:'TRANSIT_LINE_OPENING', category:'INFRASTRUCTURE', scope:'MSA', msaId:'charlotte',  magnitudeScore:2, announcedDate:'2017-01-01', materializationDate:'2020-03-16', name:'Charlotte Gold Line Streetcar',  sourceRecordId:'seed_tlo_10' },
+    { subtype:'TRANSIT_LINE_OPENING', category:'INFRASTRUCTURE', scope:'MSA', msaId:'boston',     magnitudeScore:3, announcedDate:'2018-01-01', materializationDate:'2022-08-22', name:'Green Line Extension Boston',    sourceRecordId:'seed_tlo_11' },
+
+    // ── MAJOR_EMPLOYER_DEPARTURE (9 analogs) ─────────────────────────────────
+    { subtype:'MAJOR_EMPLOYER_DEPARTURE', category:'EMPLOYMENT', scope:'MSA', msaId:'chicago',    magnitudeScore:4, announcedDate:'2017-01-15', materializationDate:'2018-10-15', name:'Sears HQ Closure Hoffman Estates', sourceRecordId:'seed_med_01' },
+    { subtype:'MAJOR_EMPLOYER_DEPARTURE', category:'EMPLOYMENT', scope:'MSA', msaId:'indianapolis', magnitudeScore:3, announcedDate:'2015-12-01', materializationDate:'2017-06-01', name:'Carrier Indianapolis Layoffs',   sourceRecordId:'seed_med_02' },
+    { subtype:'MAJOR_EMPLOYER_DEPARTURE', category:'EMPLOYMENT', scope:'MSA', msaId:'youngstown-oh', magnitudeScore:5, announcedDate:'2018-11-26', materializationDate:'2019-03-01', name:'GM Lordstown Plant Closure',    sourceRecordId:'seed_med_03' },
+    { subtype:'MAJOR_EMPLOYER_DEPARTURE', category:'EMPLOYMENT', scope:'MSA', msaId:'seattle',    magnitudeScore:4, announcedDate:'2020-06-01', materializationDate:'2021-01-01', name:'Boeing Everett Production Cut',   sourceRecordId:'seed_med_04' },
+    { subtype:'MAJOR_EMPLOYER_DEPARTURE', category:'EMPLOYMENT', scope:'MSA', msaId:'san-francisco', magnitudeScore:4, announcedDate:'2012-01-01', materializationDate:'2014-01-01', name:'HP Palo Alto Headquarters Spin', sourceRecordId:'seed_med_05' },
+    { subtype:'MAJOR_EMPLOYER_DEPARTURE', category:'EMPLOYMENT', scope:'MSA', msaId:'new-york',   magnitudeScore:3, announcedDate:'2019-01-01', materializationDate:'2020-01-01', name:'Goldman Sachs Hoboken Exit',     sourceRecordId:'seed_med_06' },
+    { subtype:'MAJOR_EMPLOYER_DEPARTURE', category:'EMPLOYMENT', scope:'MSA', msaId:'new-york',   magnitudeScore:3, announcedDate:'2019-06-01', materializationDate:'2021-01-01', name:'Capital One Stamford Downsizing', sourceRecordId:'seed_med_07' },
+    { subtype:'MAJOR_EMPLOYER_DEPARTURE', category:'EMPLOYMENT', scope:'MSA', msaId:'chicago',    magnitudeScore:3, announcedDate:'2021-06-01', materializationDate:'2022-06-01', name:'Citadel Chicago Departure',      sourceRecordId:'seed_med_08' },
+    { subtype:'MAJOR_EMPLOYER_DEPARTURE', category:'EMPLOYMENT', scope:'MSA', msaId:'detroit',    magnitudeScore:4, announcedDate:'2008-01-01', materializationDate:'2009-06-01', name:'GM Detroit Production Curtail',  sourceRecordId:'seed_med_09' },
+
+    // ── STR_REGULATION_BAN (8 analogs) ───────────────────────────────────────
+    { subtype:'STR_REGULATION_BAN', category:'REGULATORY_POLICY', scope:'MSA', msaId:'new-york', magnitudeScore:4, announcedDate:'2023-07-01', materializationDate:'2023-09-05', name:'NYC Local Law 18 STR Enforcement', sourceRecordId:'seed_str_01' },
+    { subtype:'STR_REGULATION_BAN', category:'REGULATORY_POLICY', scope:'MSA', msaId:'san-francisco', magnitudeScore:3, announcedDate:'2015-01-01', materializationDate:'2015-02-01', name:'SF STR Primary Resident Rule', sourceRecordId:'seed_str_02' },
+    { subtype:'STR_REGULATION_BAN', category:'REGULATORY_POLICY', scope:'MSA', msaId:'los-angeles', magnitudeScore:3, announcedDate:'2015-06-01', materializationDate:'2015-09-01', name:'Santa Monica 30-Day Minimum', sourceRecordId:'seed_str_03' },
+    { subtype:'STR_REGULATION_BAN', category:'REGULATORY_POLICY', scope:'MSA', msaId:'new-orleans', magnitudeScore:3, announcedDate:'2019-01-01', materializationDate:'2019-04-01', name:'New Orleans STR Owner-Occupant', sourceRecordId:'seed_str_04' },
+    { subtype:'STR_REGULATION_BAN', category:'REGULATORY_POLICY', scope:'MSA', msaId:'nashville', magnitudeScore:3, announcedDate:'2022-01-01', materializationDate:'2022-07-01', name:'Nashville STR License Cap',      sourceRecordId:'seed_str_05' },
+    { subtype:'STR_REGULATION_BAN', category:'REGULATORY_POLICY', scope:'MSA', msaId:'austin',    magnitudeScore:2, announcedDate:'2016-01-01', materializationDate:'2016-04-01', name:'Austin STR Operator Permit',     sourceRecordId:'seed_str_06' },
+    { subtype:'STR_REGULATION_BAN', category:'REGULATORY_POLICY', scope:'MSA', msaId:'denver',    magnitudeScore:2, announcedDate:'2016-07-01', materializationDate:'2017-01-01', name:'Denver STR Primary Home Rule',   sourceRecordId:'seed_str_07' },
+    { subtype:'STR_REGULATION_BAN', category:'REGULATORY_POLICY', scope:'MSA', msaId:'miami',     magnitudeScore:3, announcedDate:'2018-01-01', materializationDate:'2018-06-01', name:'Miami Beach STR Zone Limits',    sourceRecordId:'seed_str_08' },
+
+    // ── ZONING_UPZONE (7 analogs) ─────────────────────────────────────────────
+    { subtype:'ZONING_UPZONE', category:'REGULATORY_POLICY', scope:'MSA', msaId:'minneapolis', magnitudeScore:3, announcedDate:'2018-12-01', materializationDate:'2019-12-01', name:'Minneapolis 2040 Plan',          sourceRecordId:'seed_zu_01' },
+    { subtype:'ZONING_UPZONE', category:'REGULATORY_POLICY', scope:'MSA', msaId:'seattle',    magnitudeScore:3, announcedDate:'2017-01-01', materializationDate:'2019-03-01', name:'Seattle MHA Upzone',             sourceRecordId:'seed_zu_02' },
+    { subtype:'ZONING_UPZONE', category:'REGULATORY_POLICY', scope:'MSA', msaId:'austin',     magnitudeScore:3, announcedDate:'2019-01-01', materializationDate:'2023-11-01', name:'Austin Land Development Code',  sourceRecordId:'seed_zu_03' },
+    { subtype:'ZONING_UPZONE', category:'REGULATORY_POLICY', scope:'MSA', msaId:'portland-or', magnitudeScore:2, announcedDate:'2020-01-01', materializationDate:'2021-01-01', name:'Portland Commercial Conversion', sourceRecordId:'seed_zu_04' },
+    { subtype:'ZONING_UPZONE', category:'REGULATORY_POLICY', scope:'MSA', msaId:'denver',     magnitudeScore:2, announcedDate:'2019-01-01', materializationDate:'2020-01-01', name:'Denver Transit Corridor Upzone', sourceRecordId:'seed_zu_05' },
+    { subtype:'ZONING_UPZONE', category:'REGULATORY_POLICY', scope:'MSA', msaId:'salt-lake-city', magnitudeScore:2, announcedDate:'2021-01-01', materializationDate:'2021-12-01', name:'Salt Lake City ADU Expansion', sourceRecordId:'seed_zu_06' },
+    { subtype:'ZONING_UPZONE', category:'REGULATORY_POLICY', scope:'MSA', msaId:'raleigh-nc', magnitudeScore:2, announcedDate:'2022-01-01', materializationDate:'2023-01-01', name:'Raleigh Missing Middle Zoning',   sourceRecordId:'seed_zu_07' },
+
+    // ── HURRICANE_NAMED_STORM (12 analogs) ───────────────────────────────────
+    { subtype:'HURRICANE_NAMED_STORM', category:'DISASTER_DISRUPTION', scope:'MSA', msaId:'new-orleans', magnitudeScore:5, announcedDate:'2005-08-29', materializationDate:'2005-08-29', name:'Hurricane Katrina',    sourceRecordId:'seed_hns_01' },
+    { subtype:'HURRICANE_NAMED_STORM', category:'DISASTER_DISRUPTION', scope:'MSA', msaId:'houston',     magnitudeScore:5, announcedDate:'2017-08-25', materializationDate:'2017-08-25', name:'Hurricane Harvey',      sourceRecordId:'seed_hns_02' },
+    { subtype:'HURRICANE_NAMED_STORM', category:'DISASTER_DISRUPTION', scope:'MSA', msaId:'miami',       magnitudeScore:5, announcedDate:'2017-09-10', materializationDate:'2017-09-10', name:'Hurricane Irma',        sourceRecordId:'seed_hns_03' },
+    { subtype:'HURRICANE_NAMED_STORM', category:'DISASTER_DISRUPTION', scope:'MSA', msaId:'tallahassee', magnitudeScore:5, announcedDate:'2018-10-10', materializationDate:'2018-10-10', name:'Hurricane Michael',     sourceRecordId:'seed_hns_04' },
+    { subtype:'HURRICANE_NAMED_STORM', category:'DISASTER_DISRUPTION', scope:'MSA', msaId:'raleigh-nc',  magnitudeScore:4, announcedDate:'2018-09-14', materializationDate:'2018-09-14', name:'Hurricane Florence',    sourceRecordId:'seed_hns_05' },
+    { subtype:'HURRICANE_NAMED_STORM', category:'DISASTER_DISRUPTION', scope:'MSA', msaId:'jacksonville-fl', magnitudeScore:3, announcedDate:'2019-09-01', materializationDate:'2019-09-01', name:'Hurricane Dorian', sourceRecordId:'seed_hns_06' },
+    { subtype:'HURRICANE_NAMED_STORM', category:'DISASTER_DISRUPTION', scope:'MSA', msaId:'raleigh-nc',  magnitudeScore:3, announcedDate:'2020-08-04', materializationDate:'2020-08-04', name:'Hurricane Isaias',     sourceRecordId:'seed_hns_07' },
+    { subtype:'HURRICANE_NAMED_STORM', category:'DISASTER_DISRUPTION', scope:'MSA', msaId:'new-orleans', magnitudeScore:5, announcedDate:'2021-08-29', materializationDate:'2021-08-29', name:'Hurricane Ida',         sourceRecordId:'seed_hns_08' },
+    { subtype:'HURRICANE_NAMED_STORM', category:'DISASTER_DISRUPTION', scope:'MSA', msaId:'fort-lauderdale', magnitudeScore:5, announcedDate:'2022-09-28', materializationDate:'2022-09-28', name:'Hurricane Ian',     sourceRecordId:'seed_hns_09' },
+    { subtype:'HURRICANE_NAMED_STORM', category:'DISASTER_DISRUPTION', scope:'MSA', msaId:'fort-lauderdale', magnitudeScore:3, announcedDate:'2022-11-09', materializationDate:'2022-11-09', name:'Hurricane Nicole',  sourceRecordId:'seed_hns_10' },
+    { subtype:'HURRICANE_NAMED_STORM', category:'DISASTER_DISRUPTION', scope:'MSA', msaId:'jacksonville-fl', magnitudeScore:4, announcedDate:'2023-08-30', materializationDate:'2023-08-30', name:'Hurricane Idalia', sourceRecordId:'seed_hns_11' },
+    { subtype:'HURRICANE_NAMED_STORM', category:'DISASTER_DISRUPTION', scope:'MSA', msaId:'orlando',     magnitudeScore:5, announcedDate:'2004-08-13', materializationDate:'2004-08-13', name:'Hurricane Charley FL',  sourceRecordId:'seed_hns_12' },
+
+    // ── PLANT_OPENING (8 analogs) ─────────────────────────────────────────────
+    { subtype:'PLANT_OPENING', category:'EMPLOYMENT', scope:'MSA', msaId:'chattanooga',   magnitudeScore:4, announcedDate:'2008-07-01', materializationDate:'2011-05-23', name:'Volkswagen Chattanooga Plant',   sourceRecordId:'seed_po_01' },
+    { subtype:'PLANT_OPENING', category:'EMPLOYMENT', scope:'MSA', msaId:'greenville-sc', magnitudeScore:3, announcedDate:'2014-01-01', materializationDate:'2016-06-01', name:'BMW Spartanburg Expansion',      sourceRecordId:'seed_po_02' },
+    { subtype:'PLANT_OPENING', category:'EMPLOYMENT', scope:'MSA', msaId:'lexington-ky',  magnitudeScore:3, announcedDate:'2015-01-01', materializationDate:'2017-01-01', name:'Toyota Georgetown Expansion',    sourceRecordId:'seed_po_03' },
+    { subtype:'PLANT_OPENING', category:'EMPLOYMENT', scope:'MSA', msaId:'columbus-oh',   magnitudeScore:3, announcedDate:'2019-01-01', materializationDate:'2021-01-01', name:'Honda Ohio Plant Expansion',     sourceRecordId:'seed_po_04' },
+    { subtype:'PLANT_OPENING', category:'EMPLOYMENT', scope:'MSA', msaId:'nashville',     magnitudeScore:3, announcedDate:'2018-01-01', materializationDate:'2021-01-01', name:'Nucor Steel Gallatin TN',        sourceRecordId:'seed_po_05' },
+    { subtype:'PLANT_OPENING', category:'EMPLOYMENT', scope:'MSA', msaId:'austin',        magnitudeScore:5, announcedDate:'2021-11-01', materializationDate:'2024-01-01', name:'Samsung Advanced Logic Fab',     sourceRecordId:'seed_po_06' },
+    { subtype:'PLANT_OPENING', category:'EMPLOYMENT', scope:'MSA', msaId:'phoenix',       magnitudeScore:5, announcedDate:'2020-05-01', materializationDate:'2024-01-01', name:'TSMC Phoenix Wafer Fab',         sourceRecordId:'seed_po_07' },
+    { subtype:'PLANT_OPENING', category:'EMPLOYMENT', scope:'MSA', msaId:'chicago',       magnitudeScore:4, announcedDate:'2018-01-01', materializationDate:'2021-07-01', name:'Rivian Normal IL EV Plant',      sourceRecordId:'seed_po_08' },
+
+    // ── RENT_CONTROL_ENACTED (6 analogs) ─────────────────────────────────────
+    { subtype:'RENT_CONTROL_ENACTED', category:'REGULATORY_POLICY', scope:'MSA', msaId:'portland-or', magnitudeScore:3, announcedDate:'2019-02-01', materializationDate:'2019-02-27', name:'Oregon Statewide Rent Control',  sourceRecordId:'seed_rce_01' },
+    { subtype:'RENT_CONTROL_ENACTED', category:'REGULATORY_POLICY', scope:'MSA', msaId:'denver',      magnitudeScore:2, announcedDate:'2021-01-01', materializationDate:'2022-01-01', name:'Colorado Local Rent Stabilization', sourceRecordId:'seed_rce_02' },
+    { subtype:'RENT_CONTROL_ENACTED', category:'REGULATORY_POLICY', scope:'MSA', msaId:'minneapolis', magnitudeScore:3, announcedDate:'2021-11-02', materializationDate:'2022-05-01', name:'St Paul MN Rent Control',        sourceRecordId:'seed_rce_03' },
+    { subtype:'RENT_CONTROL_ENACTED', category:'REGULATORY_POLICY', scope:'MSA', msaId:'los-angeles', magnitudeScore:3, announcedDate:'2019-09-01', materializationDate:'2020-01-01', name:'California AB 1482 Rent Cap',    sourceRecordId:'seed_rce_04' },
+    { subtype:'RENT_CONTROL_ENACTED', category:'REGULATORY_POLICY', scope:'MSA', msaId:'new-york',    magnitudeScore:3, announcedDate:'2023-04-01', materializationDate:'2024-04-20', name:'NYC Good Cause Eviction',        sourceRecordId:'seed_rce_05' },
+    { subtype:'RENT_CONTROL_ENACTED', category:'REGULATORY_POLICY', scope:'MSA', msaId:'washington',  magnitudeScore:2, announcedDate:'2020-03-01', materializationDate:'2020-07-01', name:'DC Rent Increase Freeze',        sourceRecordId:'seed_rce_06' },
+  ];
+
+  // ── Deterministic jitter: distribute N events evenly around the benchmark median ──
+  function jitterDelta(median: number, halfSpread: number, idx: number, n: number): number {
+    if (n <= 1) return median;
+    const t = idx / (n - 1);         // 0 → 1 across the N events
+    return median + (t - 0.5) * 2 * halfSpread;
+  }
 
   let seeded = 0;
   let skipped = 0;
+  const subtypesAffected = new Set<string>();
 
-  for (const s of seeds) {
-    const n = s.n;
-    const status = n >= MIN_PUBLISHABLE ? 'publishable' : 'preliminary';
-    let p25 = s.p25;
-    let p75 = s.p75;
-    if (status === 'preliminary') {
-      const spread = (p75 - p25) * PRELIMINARY_CI_SCALE;
-      const mid = s.median;
-      p25 = mid - spread / 2;
-      p75 = mid + spread / 2;
-    }
-
-    const lagJson = s.lag ? JSON.stringify(s.lag) : '{}';
-    const scalingJson = s.scaling ? JSON.stringify(s.scaling) : '{}';
-
-    const result = await pool.query(`
-      INSERT INTO event_playbooks
-        (subtype, stratum_msa_tier, stratum_magnitude, stratum_regime,
-         metric_key, window_months,
-         median_delta, p25, p75, mean_delta, stddev_delta,
-         instance_count, confidence, status,
-         lag_structure, scaling_coefficients, is_seeded, last_updated)
-      VALUES ($1,'all','all','all',$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb,$13::jsonb,true,NOW())
-      ON CONFLICT (subtype, stratum_msa_tier, stratum_magnitude, stratum_regime, metric_key, window_months)
-      DO NOTHING
-      RETURNING id
-    `, [
-      s.subtype, s.metricKey, s.windowMonths,
-      s.median, p25, p75, s.median, null,
-      n, s.confidence, status,
-      lagJson, scalingJson,
-    ]);
-
-    if (result.rowCount && result.rowCount > 0) {
-      seeded++;
-    } else {
-      skipped++;
-    }
+  // Group events by subtype for count-based jitter
+  const bySubtype: Record<string, typeof seedEvents> = {};
+  for (const ev of seedEvents) {
+    (bySubtype[ev.subtype] = bySubtype[ev.subtype] ?? []).push(ev);
   }
 
-  logger.info(`[M35 Playbook] Seed complete: ${seeded} inserted, ${skipped} skipped (already exist)`);
+  for (const ev of seedEvents) {
+    // 1) Upsert key_event (idempotent on source_record_id)
+    const eventRes = await pool.query(`
+      INSERT INTO key_events
+        (category, subtype, name, scope, msa_id, magnitude_score,
+         announced_date, materialization_date, status,
+         is_verified, confidence, ingestion_source, source_record_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'materialized', true, 0.80, 'manual', $9)
+      ON CONFLICT (source_record_id) WHERE source_record_id IS NOT NULL DO NOTHING
+      RETURNING id
+    `, [ev.category, ev.subtype, ev.name, ev.scope, ev.msaId, ev.magnitudeScore,
+        ev.announcedDate, ev.materializationDate, ev.sourceRecordId]);
+
+    if (!eventRes.rows[0]) {
+      skipped++;
+      continue;
+    }
+
+    const eventId = eventRes.rows[0].id as string;
+    const evGroup = bySubtype[ev.subtype];
+    const evIdx = evGroup.indexOf(ev);
+    const evN = evGroup.length;
+
+    // 2) Insert event_impacts for each matching benchmark
+    const subtypeBenchmarks = benchmarks.filter(b => b.subtype === ev.subtype);
+    for (const bm of subtypeBenchmarks) {
+      const attrDelta = jitterDelta(bm.median, bm.halfSpread, evIdx, evN);
+      await pool.query(`
+        INSERT INTO event_impacts
+          (event_id, metric_key, geography_type, geography_id,
+           window_months, measurement_date,
+           delta, delta_pct, attributed_delta, attributed_delta_pct,
+           did_confidence, data_quality)
+        VALUES ($1, $2, 'msa', $3, $4, $5, $6, $7, $6, $7, $8, 'complete')
+        ON CONFLICT (event_id, metric_key, geography_id, window_months)
+        DO NOTHING
+      `, [eventId, bm.metricKey, ev.msaId, bm.windowMonths,
+          ev.materializationDate,
+          attrDelta, attrDelta * 100,
+          bm.confidence]);
+    }
+
+    subtypesAffected.add(ev.subtype);
+    seeded++;
+  }
+
+  // 3) Aggregate all affected subtypes through the normal weighted pipeline
+  for (const subtype of subtypesAffected) {
+    await aggregatePlaybook(subtype, { msaTier: 'all', magnitude: 'all', regime: 'all' });
+  }
+
+  logger.info(`[M35 Playbook] Seed complete: ${seeded} events inserted, ${skipped} skipped; ${subtypesAffected.size} subtypes aggregated`);
   return { seeded, skipped };
 }
 
