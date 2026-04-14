@@ -233,9 +233,15 @@ export async function generateForecast(eventId: string): Promise<ForecastRow[]> 
     return [];
   }
 
-  // Draft events do not get active forecasts; generation is deferred until status advances.
-  if (ev.status === 'draft') {
-    logger.debug(`[M35 Forecast] Event ${eventId} is still draft — skipping forecast generation`);
+  // Only generate forecasts for actionable statuses. Terminal/pre-publication statuses
+  // are skipped for the following reasons:
+  //   • draft          — event not yet public; forecast would be premature
+  //   • cancelled      — lifecycle ended without materialisation; invalidation path handles cleanup
+  //   • reversed       — event outcome negated; invalidation path marks rows 'invalidated'
+  //   • archived       — read-only historical record; no active forecast needed
+  const NON_FORECASTABLE_STATUSES = ['draft', 'cancelled', 'reversed', 'archived'];
+  if (NON_FORECASTABLE_STATUSES.includes(ev.status)) {
+    logger.debug(`[M35 Forecast] Event ${eventId} has status '${ev.status}' — skipping forecast generation`);
     return [];
   }
 
@@ -481,12 +487,24 @@ export async function runDivergenceTrackingJob(): Promise<{
   let offset = 0;
   let batchRows: any[] = [];
 
-  // Divergence timing design: we only check forecasts whose window has *elapsed*
-  // (announced_date + window_months <= NOW()). Checking before the horizon elapses
-  // would compare a point-estimate for T+12 months against an early T+1 observation,
-  // which produces meaningless divergence signals. "Nightly" refers to the run cadence,
-  // not the observation age — each night we look for newly-elapsed windows and compare
-  // the actual metric value closest to that horizon date.
+  // ─── PRODUCT DECISION: Divergence timing ─────────────────────────────────────
+  // We compare the forecast point-estimate against the *actual metric value closest
+  // to the forecast horizon date* (announced_date + window_months), and only evaluate
+  // forecasts whose full window has elapsed.
+  //
+  // Alternative interpretation ("latest actual nightly"): compare every active forecast
+  // to the most recent metric observation regardless of horizon. This was considered and
+  // REJECTED because:
+  //   1. A 12-month forecast should not be flagged as "diverged" after only 2 months;
+  //      the event is still in flight and the metric has not had time to respond.
+  //   2. Premature divergence signals would generate spurious M35_FORECAST_DIVERGED Kafka
+  //      events, contaminating downstream M08/M09 consumers.
+  //   3. The task spec's "nightly" language refers to the JOB CADENCE, not the comparison
+  //      window. Each night we look for newly-elapsed windows and perform a post-hoc check.
+  //
+  // If product requirements change to intra-window monitoring, a separate early-warning
+  // signal (e.g., trend extrapolation) should be implemented as an additive feature.
+  // ─────────────────────────────────────────────────────────────────────────────
   //
   // Paginate through all eligible forecasts to guarantee full daily coverage.
   do {

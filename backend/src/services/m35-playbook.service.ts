@@ -447,10 +447,19 @@ export async function triggerPlaybookUpdate(eventId: string): Promise<void> {
 
       if (affectedRes.rows.length === 0) return;
 
-      // Sequential regen is intentional for current volumes (typically <50 events
-      // per subtype). Each call supersedes the prior active forecast row rather than
-      // duplicating. If subtype fanout grows large, move this to a job queue
-      // (e.g., Bull/BullMQ) so playbook writes are not blocked by regen time.
+      // TECH DEBT (deferred): Sequential regen is intentional at current volumes
+      // (typically <50 active events per subtype). Each generateForecast() call
+      // supersedes the prior active row atomically (UPDATE status='superseded' + INSERT),
+      // so there is no duplication risk from sequential execution.
+      //
+      // Retry semantics: individual failures are caught and logged as non-fatal warnings;
+      // the outer loop continues with remaining events. Failed regenerations will be
+      // retried on the next playbook update for the same subtype, or at next nightly
+      // divergence check when the new playbook is already in place.
+      //
+      // Migration path: if subtype fanout grows large (>200 active events/subtype),
+      // extract to a durable job queue (Bull/BullMQ) with exponential-backoff retry so
+      // the playbook write path is not held waiting for regen completion.
       const { generateForecast } = await import('./m35-forecast.service');
       for (const row of affectedRes.rows) {
         try {
