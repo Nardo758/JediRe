@@ -32,6 +32,7 @@ import { Router } from 'express';
 import type { RequestHandler } from 'express';
 import multer from 'multer';
 import path from 'path';
+import { mkdirSync } from 'fs';
 import { pool } from '../../database';
 import { RentRollParserService } from '../../services/rent-roll/rent-roll-parser.service';
 import { RentRollDerivationsService } from '../../services/rent-roll-derivations.service';
@@ -49,9 +50,22 @@ const startingStateService = new StartingStateService(pool);
 const coefficientResolver = new CoefficientResolverService(pool);
 const calibrationJob = new TrafficCalibrationJob(pool);
 
-// Multer for rent roll uploads (disk storage, type-checked by filter)
+// Multer for rent roll uploads.
+// Uses diskStorage with explicit filename so the original extension is preserved —
+// FormatDetectorService.detect() infers format from path.extname(filePath), so
+// the temp file MUST keep its extension (e.g. .csv / .xlsx / .xls).
+const uploadDir = path.join(process.cwd(), 'uploads', 'rent-rolls');
+mkdirSync(uploadDir, { recursive: true });
+
 const rentRollUpload = multer({
-  dest: path.join(process.cwd(), 'uploads', 'rent-rolls'),
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, uploadDir),
+    filename: (_req, file, cb) => {
+      const ext = path.extname(file.originalname).toLowerCase();
+      const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
+      cb(null, uniqueName);
+    },
+  }),
   limits: { fileSize: 50 * 1024 * 1024 },  // 50 MB
   fileFilter: (_req, file, cb) => {
     const allowed = ['.csv', '.xlsx', '.xls'];

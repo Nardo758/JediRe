@@ -22,7 +22,7 @@ import type { TemporalMultiplierResult } from './dot-temporal-profiles.service';
 import { CoefficientResolverService, type ResolvedCoefficients } from './coefficient-resolver.service';
 import { StartingStateService } from './starting-state.service';
 import { CatalogMetricsWiringService } from './catalog-metrics-wiring.service';
-import type { CalibrationMeta, StartingState } from '../types/traffic-calibration.types';
+import type { CalibrationMeta, StartingState, LeaseUpState, RedevelopmentState } from '../types/traffic-calibration.types';
 
 export interface DataSourceSignals {
   visibility?: {
@@ -1039,17 +1039,23 @@ export class TrafficPredictionEngine {
       marketResearch
     );
     
-    // M07 early coefficient resolution — must happen before conversion chain so resolved
-    // Bayesian values (Deal → Platform → Baseline) are baked into the walk-in math.
+    // M07 early resolution block — must happen before conversion chain.
+    // Resolves both Bayesian coefficients and starting state concurrently so that:
+    //   1. Bayesian values bake into the conversion chain math (§4.3)
+    //   2. Starting state drives mode-dispatched prediction paths (§4.4)
     let earlyResolvedCoefficients: ResolvedCoefficients | null = null;
+    let earlyStartingState: StartingState | null = null;
     try {
-      earlyResolvedCoefficients = await this.coefficientResolver.resolveForDeal(
-        dealId || propertyId,
-        property.submarket_id || null,
-        (property as any).property_class || null,
-        (property as any).year_built ? parseInt((property as any).year_built) : null,
-        (property as any).msa_id || null,
-      );
+      [earlyResolvedCoefficients, earlyStartingState] = await Promise.all([
+        this.coefficientResolver.resolveForDeal(
+          dealId || propertyId,
+          property.submarket_id || null,
+          (property as any).property_class || null,
+          (property as any).year_built ? parseInt((property as any).year_built) : null,
+          (property as any).msa_id || null,
+        ),
+        this.startingStateService.resolveStartingState(dealId || propertyId),
+      ]);
     } catch {
       // Non-blocking — engine falls through to hard-coded defaults
     }
@@ -1123,9 +1129,37 @@ export class TrafficPredictionEngine {
       ? { week: targetWeek, year: new Date().getFullYear() }
       : this.getCurrentWeek();
 
-    const finalWeeklyWalkins = conversionWeeklyWalkins !== undefined
+    const signalWeeklyWalkins = conversionWeeklyWalkins !== undefined
       ? Math.round(Math.max(conversionWeeklyWalkins, calibrated * 0.1))
       : Math.round(calibrated);
+
+    // M07 §4.4 — Mode-dispatched prediction adjustment.
+    // Starting state was resolved early (before conversion chain) so the mode
+    // is available here to branch traffic behavior by property lifecycle stage.
+    let finalWeeklyWalkins = signalWeeklyWalkins;
+    if (earlyStartingState) {
+      if (earlyStartingState.mode === 'LEASE_UP') {
+        const leaseUpState = earlyStartingState as LeaseUpState;
+        // Lease-up: early stage requires disproportionately more traffic per lease signed
+        // because the conversion funnel is less efficient (prospects haven't heard of the property).
+        // Boost is front-loaded: (1 + (1 - current_occ) × 0.5).
+        const currentOcc = leaseUpState.start_occupancy ?? 0;
+        const leaseUpMultiplier = 1.0 + (1.0 - Math.min(1.0, currentOcc)) * 0.5;
+        finalWeeklyWalkins = Math.round(signalWeeklyWalkins * leaseUpMultiplier);
+      } else if (earlyStartingState.mode === 'REDEVELOPMENT') {
+        const redevState = earlyStartingState as RedevelopmentState;
+        // Redevelopment: only the currently-online (non-offline) units generate traffic.
+        const onlineUnits = Math.max(0, redevState.total_units - redevState.offline_units);
+        const onlineRatio = redevState.total_units > 0
+          ? onlineUnits / redevState.total_units
+          : 1.0;
+        // Floor at 20% so prediction stays meaningful even for fully-offline properties
+        finalWeeklyWalkins = Math.round(signalWeeklyWalkins * Math.max(0.2, onlineRatio));
+      }
+      // STABILIZED mode: no adjustment — the multi-source signal blend already anchors to
+      // observed occupancy/ADT and is the most accurate path for stabilized properties.
+    }
+
 
     const peakHourWalkin = hourlyPotential && hourlyPotential.length > 0
       ? Math.round(Math.max(...hourlyPotential.map(h => h.walk_in_potential)) * 100) / 100
@@ -1213,16 +1247,14 @@ export class TrafficPredictionEngine {
     // earlyResolvedCoefficients was already resolved above before the conversion chain,
     // so no duplicate DB call is needed here.
     try {
-      // Attach coefficient metadata from the early resolution
+      // Attach metadata from early resolution — no second DB round-trip needed
       if (earlyResolvedCoefficients) {
         prediction.calibration_meta = earlyResolvedCoefficients.meta;
       }
-
-      // Resolve starting state using dealId when known (for rent-roll-based state)
-      const startingState = await this.startingStateService.resolveStartingState(
-        dealId || propertyId
-      );
-      prediction.starting_state = startingState;
+      // starting_state was also resolved early (before mode dispatch) — attach it
+      if (earlyStartingState) {
+        prediction.starting_state = earlyStartingState;
+      }
 
       // Apply catalog metric adjustments (Layer A boost + Layer C dampers)
       if (property.submarket_id) {

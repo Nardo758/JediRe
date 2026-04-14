@@ -147,8 +147,13 @@ export class TrafficCalibrationJob {
              d.deal_data,
              (d.deal_data->>'property_class') AS property_class,
              (d.deal_data->>'year_built') AS year_built,
-             NULL::integer AS units,
-             NULL::text AS msa_id
+             (d.deal_data->>'target_units')::integer AS units,
+             -- Extract MSA from multiple JSONB paths (fallback chain)
+             COALESCE(
+               d.deal_data->'market_intelligence'->'data'->'demographics'->>'msa_id',
+               d.deal_data->>'msa_id',
+               d.deal_data->'market_intelligence'->>'msa_id'
+             ) AS msa_id
       FROM rent_roll_snapshots rrs
       JOIN deals d ON rrs.deal_id::uuid = d.id
       WHERE rrs.status IN ('derived', 'calibrated')
@@ -318,19 +323,22 @@ export class TrafficCalibrationJob {
       const avgEvidence = this.mean(evidenceValues);
       const baseline = BASELINE_COEFFICIENTS[coeffName];
 
-      // Load existing prior from DB
+      // Load existing prior from DB — include msa_id in the WHERE to prevent
+      // cross-scope collisions when the uniqueness index spans msa_id.
       const existingResult = await this.pool.query<any>(`
         SELECT id, posterior_value, n_prior, n_evidence
         FROM traffic_calibration_coefficients
         WHERE coefficient_name = $1
           AND scope_level = $2
-          AND (submarket_id = $3 OR (submarket_id IS NULL AND $3 IS NULL))
-          AND (property_class = $4 OR (property_class IS NULL AND $4 IS NULL))
-          AND (vintage_band = $5 OR (vintage_band IS NULL AND $5 IS NULL))
-          AND cal_window = $6
+          AND (msa_id = $3 OR (msa_id IS NULL AND $3 IS NULL))
+          AND (submarket_id = $4 OR (submarket_id IS NULL AND $4 IS NULL))
+          AND (property_class = $5 OR (property_class IS NULL AND $5 IS NULL))
+          AND (vintage_band = $6 OR (vintage_band IS NULL AND $6 IS NULL))
+          AND cal_window = $7
       `, [
         coeffName,
         bucket.scope_level,
+        bucket.msa_id,
         bucket.submarket_id,
         bucket.property_class,
         bucket.vintage_band,
