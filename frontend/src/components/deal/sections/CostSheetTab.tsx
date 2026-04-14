@@ -166,45 +166,37 @@ function computeSyncItems(f9: F9DealFinancials, totalBasis: number): CostLineIte
 
   const wf = f9.waterfall?.fees;
   if (wf) {
-    if (wf.acquisitionFeePct > 0 || true) {
-      out.push({
-        id: stableId('wf:acquisitionFee'), section: 'sponsor',
-        name: `Acquisition Fee (${(wf.acquisitionFeePct * 100).toFixed(2)}%)`,
-        amount: Math.round(equity * wf.acquisitionFeePct),
-        timing: 'closing',
-        sourceKey: 'wf:acquisitionFee', synced: true,
-      });
-    }
-    if (wf.assetMgmtFeePct > 0 || true) {
-      const amBase = wf.assetMgmtBasis === 'egi' ? totalBasis * 0.07 : equity;
-      out.push({
-        id: stableId('wf:assetMgmtFee'), section: 'sponsor',
-        name: `Asset Mgmt Fee (${(wf.assetMgmtFeePct * 100).toFixed(2)}%/${wf.assetMgmtBasis ?? 'equity'} × ${holdYears}yr)`,
-        amount: Math.round(amBase * wf.assetMgmtFeePct * holdYears),
-        timing: 'month_7_12',
-        sourceKey: 'wf:assetMgmtFee', synced: true,
-      });
-    }
-    if (wf.constructionMgmtPct > 0) {
-      out.push({
-        id: stableId('wf:constructionMgmt'), section: 'sponsor',
-        name: `Construction Mgmt Fee (${(wf.constructionMgmtPct * 100).toFixed(2)}%)`,
-        amount: Math.round(totalBasis * wf.constructionMgmtPct),
-        timing: 'month_1_6',
-        sourceKey: 'wf:constructionMgmt', synced: true,
-      });
-    } else {
-      out.push({ id: stableId('wf:constructionMgmt'), section: 'sponsor', name: 'Construction Mgmt Fee (0.00%)', amount: 0, timing: 'month_1_6', sourceKey: 'wf:constructionMgmt', synced: true });
-    }
-    if (wf.dispositionFeePct > 0 || true) {
-      out.push({
-        id: stableId('wf:dispositionFee'), section: 'disposition',
-        name: `Disposition Fee (${(wf.dispositionFeePct * 100).toFixed(2)}%)`,
-        amount: Math.round(totalBasis * wf.dispositionFeePct),
-        timing: 'disposition',
-        sourceKey: 'wf:dispositionFee', synced: true,
-      });
-    }
+    // Always emit acquisition, asset mgmt, construction mgmt, disposition — even at 0%
+    // so they slot into the right place in buildDefaults and show live % labels.
+    out.push({
+      id: stableId('wf:acquisitionFee'), section: 'sponsor',
+      name: `Acquisition Fee (${(wf.acquisitionFeePct * 100).toFixed(2)}%)`,
+      amount: Math.round(equity * wf.acquisitionFeePct),
+      timing: 'closing',
+      sourceKey: 'wf:acquisitionFee', synced: true,
+    });
+    const amBase = wf.assetMgmtBasis === 'egi' ? totalBasis * 0.07 : equity;
+    out.push({
+      id: stableId('wf:assetMgmtFee'), section: 'sponsor',
+      name: `Asset Mgmt Fee (${(wf.assetMgmtFeePct * 100).toFixed(2)}%/${wf.assetMgmtBasis ?? 'equity'} × ${holdYears}yr)`,
+      amount: Math.round(amBase * wf.assetMgmtFeePct * holdYears),
+      timing: 'month_7_12',
+      sourceKey: 'wf:assetMgmtFee', synced: true,
+    });
+    out.push({
+      id: stableId('wf:constructionMgmt'), section: 'sponsor',
+      name: `Construction Mgmt Fee (${(wf.constructionMgmtPct * 100).toFixed(2)}%)`,
+      amount: Math.round(totalBasis * wf.constructionMgmtPct),
+      timing: 'month_1_6',
+      sourceKey: 'wf:constructionMgmt', synced: true,
+    });
+    out.push({
+      id: stableId('wf:dispositionFee'), section: 'disposition',
+      name: `Disposition Fee (${(wf.dispositionFeePct * 100).toFixed(2)}%)`,
+      amount: Math.round(totalBasis * wf.dispositionFeePct),
+      timing: 'disposition',
+      sourceKey: 'wf:dispositionFee', synced: true,
+    });
     if (wf.refinancingFeePct > 0) {
       out.push({
         id: stableId('wf:refinancingFee'), section: 'debt',
@@ -222,20 +214,31 @@ function mergeSynced(existing: CostLineItem[], synced: CostLineItem[]): CostLine
   const syncedById = new Map(synced.map(s => [s.id, s]));
   const sectionOrder = SECTIONS.map(s => s.id);
   const result: CostLineItem[] = [];
+  const resultIds = new Set<string>();
 
   for (const item of existing) {
     if (item.sourceKey) {
+      // Still linked — replace with fresh synced value if available
       const updated = syncedById.get(item.id);
       if (updated) {
         result.push(updated);
+        resultIds.add(updated.id);
         syncedById.delete(item.id);
       }
+      // If synced no longer produces this item (e.g. loan removed), drop it silently
     } else {
+      // User-owned item (manually edited, or never had a sourceKey)
       result.push(item);
+      resultIds.add(item.id);
+      // Remove from syncedById so we don't re-append a duplicate with the same stableId
+      syncedById.delete(item.id);
     }
   }
-  for (const [, item] of syncedById) {
-    result.push(item);
+  // Append any newly produced synced items that didn't exist before
+  for (const [id, item] of syncedById) {
+    if (!resultIds.has(id)) {
+      result.push(item);
+    }
   }
 
   result.sort((a, b) => {
@@ -358,10 +361,17 @@ export function CostSheetTab({ dealId, deal, assumptions, f9Financials }: CostSh
   const seniorLTV = assumptions?.seniorLTV ?? assumptions?.ltv ?? 65;
   const loanAmt = totalBasis * (seniorLTV / 100);
 
+  // Set synchronously inside useState initializer (before any effects) to reliably
+  // distinguish "loaded from prior user session" vs "freshly initialized from defaults".
+  const loadedFromStorage = React.useRef(false);
+
   const [items, setItems] = useState<CostLineItem[]>(() => {
     try {
       const saved = localStorage.getItem(storageKey);
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        loadedFromStorage.current = true;
+        return JSON.parse(saved);
+      }
     } catch {}
     return buildDefaults(totalBasis, loanAmt);
   });
@@ -401,8 +411,10 @@ export function CostSheetTab({ dealId, deal, assumptions, f9Financials }: CostSh
 
   useEffect(() => {
     if (!f9Financials) return;
-    const hasPersisted = !!localStorage.getItem(storageKey);
-    if (!hasPersisted) {
+    // Auto-sync only when starting from defaults (no prior user session in localStorage).
+    // loadedFromStorage.current is set synchronously during useState, before any effects,
+    // so this correctly reflects whether the user has prior saved data.
+    if (!loadedFromStorage.current) {
       syncFromEngine();
     }
   }, [f9Financials]);
