@@ -256,16 +256,20 @@ export interface UseStrategyAnalysisV2Result {
   analysis: StrategyAnalysisV2 | null;
   loading: boolean;
   error: string | null;
+  recalculating: boolean;
   confirmDetection: (confirmed: boolean) => Promise<void>;
   overrideClassification: (assetClass: string) => Promise<void>;
   refresh: () => void;
+  triggerRecalc: () => Promise<void>;
 }
 
 export function useStrategyAnalysisV2(dealId: string): UseStrategyAnalysisV2Result {
   const [analysis, setAnalysis] = useState<StrategyAnalysisV2 | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [recalculating, setRecalculating] = useState(false);
   const fetchRef = useRef(0);
+  const recalcTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchAnalysis = useCallback(async () => {
     if (!dealId) return;
@@ -276,33 +280,87 @@ export function useStrategyAnalysisV2(dealId: string): UseStrategyAnalysisV2Resu
       const res = await apiClient.get(`/api/v1/deals/${dealId}/strategies`);
       if (token !== fetchRef.current) return;
       const data = res.data?.data ?? res.data;
-      setAnalysis(data as StrategyAnalysisV2);
+      if (data && (data.subStrategies?.length > 0 || data.detection)) {
+        setAnalysis(data as StrategyAnalysisV2);
+      } else {
+        // null/empty response — trigger recalc automatically
+        setAnalysis(null);
+        triggerRecalcInternal(token);
+      }
     } catch (err: any) {
       if (token !== fetchRef.current) return;
       setError(err?.response?.data?.error || err?.message || 'Failed to load strategy analysis');
     } finally {
       if (token === fetchRef.current) setLoading(false);
     }
+  }, [dealId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const triggerRecalcInternal = useCallback(async (originToken?: number) => {
+    if (!dealId) return;
+    setRecalculating(true);
+    try {
+      await apiClient.post(`/api/v1/strategy-analyses`, {
+        dealId,
+        strategySlug: 'auto',
+        assumptions: {},
+      });
+      // re-fetch after recalc
+      if (recalcTimerRef.current) clearTimeout(recalcTimerRef.current);
+      recalcTimerRef.current = setTimeout(async () => {
+        if (originToken !== undefined && originToken !== fetchRef.current) return;
+        const token = ++fetchRef.current;
+        setLoading(true);
+        try {
+          const res = await apiClient.get(`/api/v1/deals/${dealId}/strategies`);
+          if (token !== fetchRef.current) return;
+          const data = res.data?.data ?? res.data;
+          if (data && (data.subStrategies?.length > 0 || data.detection)) {
+            setAnalysis(data as StrategyAnalysisV2);
+          }
+        } catch {
+          // best-effort
+        } finally {
+          if (token === fetchRef.current) setLoading(false);
+        }
+      }, 2000);
+    } catch {
+      // ignore recalc trigger errors — analysis may just be empty for this deal
+    } finally {
+      setRecalculating(false);
+    }
   }, [dealId]);
+
+  const triggerRecalc = useCallback(() => triggerRecalcInternal(), [triggerRecalcInternal]);
 
   useEffect(() => {
     fetchAnalysis();
+    return () => {
+      if (recalcTimerRef.current) clearTimeout(recalcTimerRef.current);
+    };
   }, [fetchAnalysis]);
 
   const confirmDetection = useCallback(async (confirmed: boolean) => {
     if (!dealId) return;
-    await apiClient.patch(`/api/v1/deals/${dealId}/detection-confirmation`, {
-      userConfirmed: confirmed,
-    });
+    try {
+      await apiClient.patch(`/api/v1/deals/${dealId}/detection-confirmation`, {
+        userConfirmed: confirmed,
+      });
+    } catch {
+      // best-effort
+    }
     fetchAnalysis();
   }, [dealId, fetchAnalysis]);
 
   const overrideClassification = useCallback(async (assetClass: string) => {
     if (!dealId) return;
-    await apiClient.patch(`/api/v1/deals/${dealId}/detection-confirmation`, {
-      userConfirmed: true,
-      userOverrideClassification: assetClass,
-    });
+    try {
+      await apiClient.patch(`/api/v1/deals/${dealId}/detection-confirmation`, {
+        userConfirmed: true,
+        userOverrideClassification: assetClass,
+      });
+    } catch {
+      // best-effort
+    }
     fetchAnalysis();
   }, [dealId, fetchAnalysis]);
 
@@ -310,8 +368,10 @@ export function useStrategyAnalysisV2(dealId: string): UseStrategyAnalysisV2Resu
     analysis,
     loading,
     error,
+    recalculating,
     confirmDetection,
     overrideClassification,
     refresh: fetchAnalysis,
+    triggerRecalc,
   };
 }
