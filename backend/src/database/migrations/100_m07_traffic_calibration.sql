@@ -274,7 +274,7 @@ ON CONFLICT (metric_name) DO NOTHING;
 -- 7. Helper view: latest calibration factors per scope
 -- ============================================================================
 CREATE OR REPLACE VIEW latest_calibration_factors AS
-SELECT DISTINCT ON (coefficient_name, scope_level, submarket_id, property_class, vintage_band, cal_window)
+SELECT DISTINCT ON (coefficient_name, scope_level, msa_id, submarket_id, property_class, vintage_band, cal_window)
   *
 FROM traffic_calibration_factors
-ORDER BY coefficient_name, scope_level, submarket_id, property_class, vintage_band, cal_window, updated_at DESC;
+ORDER BY coefficient_name, scope_level, msa_id, submarket_id, property_class, vintage_band, cal_window, updated_at DESC;

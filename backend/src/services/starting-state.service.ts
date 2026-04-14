@@ -74,7 +74,7 @@ export class StartingStateService {
     }
 
     if (explicitMode === 'LEASE_UP') {
-      return await this.buildLeaseUpState(deal, derived);
+      return await this.buildLeaseUpState(deal, derived, snapshot?.id ?? null);
     }
 
     // Derive occupancy from rent-roll snapshot when available; fall back to
@@ -86,7 +86,7 @@ export class StartingStateService {
     }
 
     // No explicit mode and occupancy below stabilized threshold → LEASE_UP
-    return await this.buildLeaseUpState(deal, derived);
+    return await this.buildLeaseUpState(deal, derived, snapshot?.id ?? null);
   }
 
   // ============================================================================
@@ -127,12 +127,16 @@ export class StartingStateService {
   // start_occupancy uses observed data when available (rent roll or deal field),
   // defaulting to 0 only for true ground-up/new construction with no evidence.
   // ============================================================================
-  private async buildLeaseUpState(deal: any, derived: DerivedSnapshotMetrics | null): Promise<LeaseUpState> {
+  private async buildLeaseUpState(
+    deal: any,
+    derived: DerivedSnapshotMetrics | null,
+    snapshotId: number | null,
+  ): Promise<LeaseUpState> {
     const submarketId = deal.submarket_id;
 
-    // Observed occupancy from rent-roll snapshot, deal metadata, or 0 for new construction.
-    // Pass no snapshotId here since we don't have it in this path — deal metadata is enough.
-    const observedOcc = await this.getOccupancy(deal, derived, null);
+    // Derive occupancy from rent-roll snapshot when available (via leasing_events
+    // unit_status counts). Falls back to deal metadata or 0 for new construction.
+    const observedOcc = await this.getOccupancy(deal, derived, snapshotId);
     // Only use observed occupancy when there is a real data signal (deal field or rent-roll).
     // New construction with no evidence should start at 0.
     const hasRealOccupancySignal =
@@ -312,7 +316,7 @@ export class StartingStateService {
       current_occupancy: 0.95,
       renewal_rate: 0.60,
       expiration_waterfall: Array.from({ length: 24 }, (_, i) => ({
-        months_out: i,
+        months_out: i + 1,
         expiring_units: 0,
         expiring_pct: 0,
       })),
