@@ -678,7 +678,16 @@ export const useDealStore = create<DealStore>()(
     },
 
     clearDeal: () => {
-      set({ ...INITIAL_CONTEXT, strategyScores: [], arbitrageResult: null, strategyScoresLoading: false });
+      set({
+        ...INITIAL_CONTEXT,
+        strategyScores: [],
+        arbitrageResult: null,
+        strategyScoresLoading: false,
+        strategyAnalysisV2: null,
+        strategyAnalysisV2Loading: false,
+        strategyAnalysisV2Recalculating: false,
+        strategyAnalysisV2Error: null,
+      });
     },
 
     // ─── DEVELOPMENT ENVELOPE (from Dev Capacity) ─────────────

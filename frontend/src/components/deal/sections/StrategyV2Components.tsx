@@ -340,24 +340,57 @@ function heatColor(v: number): string {
   return BT.text.red;
 }
 
-type SignalKey = keyof SignalScores;
+type SignalKey = Exclude<keyof SignalScores, 'confidence'>;
 const TYPED_SIGNAL_KEYS: SignalKey[] = ['demand', 'supply', 'momentum', 'position', 'risk'];
-const TYPED_SIGNAL_WEIGHT_TABLE: Record<SignalKey, number[]> = {
-  demand:     [0.30, 0.25, 0.20, 0.30, 0.35, 0.20, 0.25, 0.30],
-  supply:     [0.25, 0.20, 0.25, 0.30, 0.30, 0.15, 0.20, 0.25],
-  momentum:   [0.20, 0.25, 0.15, 0.15, 0.15, 0.25, 0.15, 0.20],
-  position:   [0.15, 0.20, 0.25, 0.15, 0.10, 0.20, 0.25, 0.15],
-  risk:       [0.10, 0.10, 0.15, 0.10, 0.10, 0.20, 0.15, 0.10],
-  confidence: [0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20, 0.20],
+
+// Mirrors backend SUB_STRATEGY_WEIGHTS from asset-class-detection.service.ts
+// These are the authoritative weights used by scoreSubStrategy() on the backend.
+// Cell value = signalScore × (weight / avg_weight_0.20) — capped to [10, 99]
+const SS_SIGNAL_WEIGHTS: Record<string, Partial<Record<SignalKey, number>>> = {
+  mf_value_add_standard:   { demand: 0.30, supply: 0.25, momentum: 0.20, position: 0.15, risk: 0.10 },
+  mf_deep_value_add:       { demand: 0.25, supply: 0.20, momentum: 0.25, position: 0.15, risk: 0.15 },
+  mf_core:                 { demand: 0.25, supply: 0.20, momentum: 0.15, position: 0.25, risk: 0.15 },
+  mf_core_plus:            { demand: 0.25, supply: 0.20, momentum: 0.20, position: 0.20, risk: 0.15 },
+  mf_distressed:           { demand: 0.20, supply: 0.15, momentum: 0.15, position: 0.20, risk: 0.30 },
+  mf_lease_up:             { demand: 0.35, supply: 0.30, momentum: 0.15, position: 0.10, risk: 0.10 },
+  mf_bts_ground_up:        { demand: 0.30, supply: 0.30, momentum: 0.15, position: 0.15, risk: 0.10 },
+  mf_str:                  { demand: 0.25, supply: 0.15, momentum: 0.25, position: 0.25, risk: 0.10 },
+  sfr_fix_flip:            { demand: 0.20, supply: 0.15, momentum: 0.30, position: 0.20, risk: 0.15 },
+  sfr_brrrr:               { demand: 0.20, supply: 0.15, momentum: 0.25, position: 0.25, risk: 0.15 },
+  sfr_hold:                { demand: 0.25, supply: 0.20, momentum: 0.15, position: 0.25, risk: 0.15 },
+  sfr_portfolio_agg:       { demand: 0.30, supply: 0.25, momentum: 0.20, position: 0.15, risk: 0.10 },
+  sfr_btr:                 { demand: 0.30, supply: 0.30, momentum: 0.15, position: 0.15, risk: 0.10 },
+  sfr_str:                 { demand: 0.25, supply: 0.15, momentum: 0.25, position: 0.25, risk: 0.10 },
+  sfr_mtr:                 { demand: 0.25, supply: 0.15, momentum: 0.25, position: 0.25, risk: 0.10 },
+  sfr_wholesale:           { demand: 0.20, supply: 0.15, momentum: 0.30, position: 0.20, risk: 0.15 },
+  retail_nnn_core:         { demand: 0.20, supply: 0.10, momentum: 0.10, position: 0.35, risk: 0.25 },
+  retail_grocery_anchored: { demand: 0.25, supply: 0.15, momentum: 0.15, position: 0.30, risk: 0.15 },
+  retail_value_add:        { demand: 0.30, supply: 0.15, momentum: 0.20, position: 0.25, risk: 0.10 },
+  retail_last_mile:        { demand: 0.30, supply: 0.20, momentum: 0.20, position: 0.20, risk: 0.10 },
+  office_adaptive_reuse:   { demand: 0.35, supply: 0.20, momentum: 0.15, position: 0.15, risk: 0.15 },
+  office_medical:          { demand: 0.30, supply: 0.20, momentum: 0.15, position: 0.20, risk: 0.15 },
+  office_tenant_rollup:    { demand: 0.15, supply: 0.20, momentum: 0.25, position: 0.20, risk: 0.20 },
+  industrial_last_mile:    { demand: 0.30, supply: 0.25, momentum: 0.20, position: 0.20, risk: 0.05 },
+  industrial_core:         { demand: 0.20, supply: 0.25, momentum: 0.15, position: 0.25, risk: 0.15 },
+  hospitality_reflag:      { demand: 0.25, supply: 0.20, momentum: 0.20, position: 0.25, risk: 0.10 },
+  hospitality_extended_stay: { demand: 0.25, supply: 0.20, momentum: 0.20, position: 0.20, risk: 0.15 },
 };
+const SS_WEIGHT_AVG = 0.20; // equal-weight baseline (5 signals, weights sum to 1.0)
 
 export function SignalHeatmap({ subStrategies, signalScores }: {
   subStrategies: SubStrategyScore[];
   signalScores: StrategyAnalysisV2['signalScores'];
 }) {
-  const [tooltip, setTooltip] = useState<{ sig: SignalKey; ssKey: string; baseVal: number; w: number; val: number; x: number; y: number } | null>(null);
+  const [tooltip, setTooltip] = useState<{
+    sig: SignalKey; ssName: string; signalScore: number; w: number; val: number; x: number; y: number;
+  } | null>(null);
 
   if (!subStrategies || subStrategies.length === 0) return null;
+
+  const navigateToEvidence = (ssKey: string) => {
+    const el = document.getElementById(`evidence-${ssKey}`);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   return (
     <SectionPanel title="SIGNAL × STRATEGY HEATMAP" borderColor={BT.text.purple} style={{ marginBottom: 1 }}>
@@ -365,19 +398,20 @@ export function SignalHeatmap({ subStrategies, signalScores }: {
         {/* Hover tooltip */}
         {tooltip && (
           <div style={{
-            position: 'fixed', left: tooltip.x + 12, top: tooltip.y - 60,
+            position: 'fixed', left: tooltip.x + 14, top: tooltip.y - 72,
             background: BT.bg.panelAlt, border: `1px solid ${BT.border.medium}`,
-            padding: '6px 10px', zIndex: 9999, pointerEvents: 'none', minWidth: 200,
+            padding: '6px 10px', zIndex: 9999, pointerEvents: 'none', minWidth: 220,
           }}>
             <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, marginBottom: 3 }}>
-              {tooltip.sig.toUpperCase()} × {tooltip.ssKey.replace(/_/g, ' ').toUpperCase()}
+              {tooltip.sig.toUpperCase()} × {tooltip.ssName.replace(/_/g, ' ').toUpperCase()}
             </div>
             <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.primary }}>
-              val = {tooltip.baseVal} × (0.7 + {tooltip.w.toFixed(2)} × 1.5) = <b>{tooltip.val}</b>
+              {tooltip.signalScore} × ({tooltip.w.toFixed(2)} ÷ {SS_WEIGHT_AVG.toFixed(2)}) = <b>{tooltip.val}</b>
             </div>
-            <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginTop: 2 }}>
-              base={tooltip.baseVal} · weight={tooltip.w.toFixed(2)} · formula: base×(0.7+w×1.5)
+            <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginTop: 3 }}>
+              signal_score={tooltip.signalScore} · weight={tooltip.w.toFixed(2)} (from backend SUB_STRATEGY_WEIGHTS)
             </div>
+            <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.cyan, marginTop: 2 }}>▲ click to jump to evidence →</div>
           </div>
         )}
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 300 }}>
@@ -387,34 +421,40 @@ export function SignalHeatmap({ subStrategies, signalScores }: {
                 SIGNAL
               </th>
               {subStrategies.map((ss, i) => (
-                <th key={ss.key} style={{ fontFamily: MONO, fontSize: 8, color: SS_COLORS[i % SS_COLORS.length], padding: '4px 8px', textAlign: 'center', borderRight: `1px solid ${BT.border.subtle}`, maxWidth: 90 }}>
+                <th key={ss.key} style={{ fontFamily: MONO, fontSize: 8, color: SS_COLORS[i % SS_COLORS.length], padding: '4px 8px', textAlign: 'center', borderRight: `1px solid ${BT.border.subtle}`, maxWidth: 90, cursor: 'pointer' }}
+                  onClick={() => navigateToEvidence(ss.key)}
+                  title={`Click to jump to evidence for ${ss.name || ss.key}`}
+                >
                   <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {(ss.name || ss.key).replace(/_/g, ' ').toUpperCase().slice(0, 14)}
                   </div>
+                  <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>→ evid</div>
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
             {TYPED_SIGNAL_KEYS.map((sig, sIdx) => {
-              const baseVal = signalScores?.[sig] ?? 50;
+              const signalScore = signalScores?.[sig] ?? 50;
               return (
                 <tr key={sig} style={{ borderBottom: `1px solid ${BT.border.subtle}`, background: sIdx % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt }}>
                   <td style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, padding: '5px 8px', borderRight: `1px solid ${BT.border.subtle}`, letterSpacing: 0.5 }}>
                     {SIGNAL_LABELS[sIdx]}
-                    <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>{baseVal}</div>
+                    <div style={{ fontFamily: MONO, fontSize: 7, color: BT.text.secondary }}>{signalScore}</div>
                   </td>
-                  {subStrategies.map((ss, ssIdx) => {
-                    const weights = TYPED_SIGNAL_WEIGHT_TABLE[sig];
-                    const w = weights[Math.min(ssIdx, weights.length - 1)] ?? 0.20;
-                    const val = Math.round(Math.min(99, Math.max(10, baseVal * (0.7 + w * 1.5))));
+                  {subStrategies.map((ss) => {
+                    const w = SS_SIGNAL_WEIGHTS[ss.key]?.[sig] ?? SS_WEIGHT_AVG;
+                    // Data-driven formula: signal_score × (weight / avg_weight)
+                    // Uses actual backend SUB_STRATEGY_WEIGHTS — no synthetic math
+                    const val = Math.round(Math.min(99, Math.max(10, signalScore * (w / SS_WEIGHT_AVG))));
                     const c = heatColor(val);
                     return (
                       <td
                         key={ss.key}
-                        style={{ textAlign: 'center', padding: '5px 8px', borderRight: `1px solid ${BT.border.subtle}`, cursor: 'help' }}
-                        onMouseMove={e => setTooltip({ sig, ssKey: ss.key, baseVal, w, val, x: e.clientX, y: e.clientY })}
+                        style={{ textAlign: 'center', padding: '5px 8px', borderRight: `1px solid ${BT.border.subtle}`, cursor: 'pointer' }}
+                        onMouseMove={e => setTooltip({ sig, ssName: ss.name || ss.key, signalScore, w, val, x: e.clientX, y: e.clientY })}
                         onMouseLeave={() => setTooltip(null)}
+                        onClick={() => navigateToEvidence(ss.key)}
                       >
                         <span style={{
                           fontFamily: MONO, fontSize: 10, fontWeight: 700, color: c,
@@ -429,14 +469,14 @@ export function SignalHeatmap({ subStrategies, signalScores }: {
             })}
           </tbody>
         </table>
-        <div style={{ padding: '4px 8px', borderTop: `1px solid ${BT.border.subtle}`, display: 'flex', gap: 12 }}>
+        <div style={{ padding: '4px 8px', borderTop: `1px solid ${BT.border.subtle}`, display: 'flex', gap: 12, alignItems: 'center' }}>
           {[{ v: '≥80 STRONG', c: BT.text.green }, { v: '60-79 POSITIVE', c: BT.text.cyan }, { v: '40-59 WATCH', c: BT.text.amber }, { v: '<40 WEAK', c: BT.text.red }].map(item => (
             <div key={item.v} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
               <div style={{ width: 8, height: 8, background: item.c, opacity: 0.8 }} />
               <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>{item.v}</span>
             </div>
           ))}
-          <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginLeft: 'auto', fontStyle: 'italic' }}>hover cell for formula</span>
+          <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted, marginLeft: 'auto', fontStyle: 'italic' }}>hover=formula · click=jump to evidence</span>
         </div>
       </div>
     </SectionPanel>
@@ -533,7 +573,7 @@ export function EvidenceReportBlock({ ss, defaultExpanded }: { ss: SubStrategySc
   const tp = ev?.thesisPrompt;
 
   return (
-    <>
+    <div id={`evidence-${ss.key}`}>
       {drawerRow && <EvidenceDrawer row={drawerRow} onClose={() => setDrawerRow(null)} />}
       <SectionPanel
         title={`EVIDENCE — ${(ss.name || ss.key).replace(/_/g, ' ').toUpperCase()}`}
@@ -679,7 +719,7 @@ export function EvidenceReportBlock({ ss, defaultExpanded }: { ss: SubStrategySc
           </div>
         )}
       </SectionPanel>
-    </>
+    </div>
   );
 }
 
@@ -949,6 +989,24 @@ export function PlanDocument({ plan, dealId }: { plan: InvestmentPlan; dealId: s
           <div key={i} style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary, padding: '1px 0' }}>◆ {b}</div>
         ))}
       </div>
+
+      {/* MONITORING — inline compact view inside plan doc */}
+      {(plan.monitoring || []).length > 0 && (
+        <div style={{ padding: '8px 12px', borderBottom: `1px solid ${BT.border.subtle}`, borderLeft: `2px solid ${BT.text.orange}` }}>
+          <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.orange, letterSpacing: 0.5, display: 'block', marginBottom: 4 }}>MONITORING TRIGGERS</span>
+          {(plan.monitoring || []).map((item, i) => {
+            const sColor = sevColor(item.severity);
+            return (
+              <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '2px 0', borderBottom: `1px solid ${BT.border.subtle}` }}>
+                <Bd c={sColor}>{item.severity.toUpperCase()}</Bd>
+                <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.primary, flex: 1 }}>{item.metric}</span>
+                <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>NOW: {item.currentValue}</span>
+                <span style={{ fontFamily: MONO, fontSize: 7, color: sColor }}>▲ {item.triggerThreshold}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* PIVOT CONDITIONS */}
       {(plan.pivotConditions || []).length > 0 && (
