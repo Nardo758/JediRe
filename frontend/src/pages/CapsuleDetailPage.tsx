@@ -9,6 +9,7 @@ import { ThreeColumnComparison } from '../components/deal/ThreeColumnComparison'
 import { apiClient } from '../services/api.client';
 import { useAuthStore } from '../stores/authStore';
 import { M11DebtAdvisorTab } from '../components/m35/M11DebtAdvisorTab';
+import { M35KeyEventsHub } from '../components/m35/M35KeyEventsHub';
 
 type TabId = 'overview' | 'layers' | 'collision' | 'training' | 'ai-agent' | 'intelligence' | 'debt-advisor';
 
@@ -98,8 +99,6 @@ const CAPSULE_M35_EVENTS = [
 ];
 
 const CapsuleIntelligenceView: React.FC<{ address?: string }> = ({ address }) => {
-  const [activeMetric, setActiveMetric] = useState('Rent Growth');
-  const [eventsExpanded, setEventsExpanded] = useState(false);
   const [feedFilter, setFeedFilter] = useState('All');
 
   return (
@@ -166,117 +165,9 @@ const CapsuleIntelligenceView: React.FC<{ address?: string }> = ({ address }) =>
           </div>
         </section>
 
-        {/* M35 Structured Events Collapsible */}
-        <section className="flex flex-col rounded overflow-hidden border" style={{ borderColor: '#1E2538' }}>
-          <div
-            onClick={() => setEventsExpanded((v) => !v)}
-            className="h-12 flex items-center justify-between px-4 cursor-pointer transition-colors"
-            style={{ background: '#131929', borderLeft: '2px solid #0891B2', boxShadow: 'inset 0 0 20px rgba(217,119,6,0.05)' }}
-          >
-            <div className="flex items-center gap-2" style={{ color: '#0891B2' }}>
-              {eventsExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-              <span className="text-[11px] uppercase tracking-widest font-semibold flex items-center gap-2">
-                <Activity size={14} />
-                M35 STRUCTURED EVENTS — THIS DEAL
-              </span>
-            </div>
-            <div className="flex items-center gap-2 text-[10px]">
-              <span className="px-2 py-1 rounded border" style={{ background: '#1E2538', color: '#A0ABBE', borderColor: 'rgba(107,122,141,0.3)' }}>1 FIRED</span>
-              <span className="px-2 py-1 rounded border" style={{ background: '#1E2538', color: '#A0ABBE', borderColor: 'rgba(107,122,141,0.3)' }}>2 PENDING</span>
-              <span className="px-2 py-1 rounded border" style={{ background: '#1E2538', color: '#E2E8F0', borderColor: 'rgba(107,122,141,0.3)' }}>42% OF IRR FROM EVENTS</span>
-              <div className="flex items-center gap-1 px-2 py-1 rounded border font-semibold" style={{ background: 'rgba(239,68,68,0.1)', color: '#EF4444', borderColor: 'rgba(239,68,68,0.3)' }}>
-                EVENT SENSITIVITY: HIGH <AlertTriangle size={10} />
-              </div>
-              <div className="flex items-center gap-1 text-xs" style={{ color: '#0891B2' }}>
-                View Full Impact <ArrowRight size={12} />
-              </div>
-            </div>
-          </div>
-
-          {eventsExpanded && (
-            <div className="p-4 flex flex-col gap-4 border-t" style={{ background: '#0B0E1A', borderColor: '#1E2538' }}>
-              {/* Mini chart */}
-              <div className="rounded p-4 flex flex-col gap-4 border" style={{ background: '#131929', borderColor: '#1E2538' }}>
-                <div className="flex items-center gap-4 text-xs">
-                  {['Rent Growth', 'Cap Rate', 'Absorption', 'Permits'].map((m) => (
-                    <button
-                      key={m}
-                      onClick={() => setActiveMetric(m)}
-                      className="flex items-center gap-1.5 pb-1 border-b-2 transition-colors"
-                      style={{
-                        borderBottomColor: activeMetric === m ? '#0891B2' : 'transparent',
-                        color: activeMetric === m ? '#E2E8F0' : '#6B7A8D',
-                      }}
-                    >
-                      {m}{activeMetric === m && <span style={{ color: '#0891B2' }}>●</span>}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="relative h-[150px] w-full border-t border-b" style={{ borderColor: '#1E2538' }}>
-                  <div className="absolute left-0 top-0 h-full flex flex-col justify-between py-2 text-[10px]" style={{ color: '#6B7A8D' }}>
-                    <span>+6%</span><span>+3%</span><span>0%</span><span>-3%</span>
-                  </div>
-                  <svg className="w-full h-full ml-8" viewBox="0 0 800 150" preserveAspectRatio="none">
-                    <line x1="0" y1="37" x2="800" y2="37" stroke="#1E2538" strokeWidth="1" strokeDasharray="4 4" />
-                    <line x1="0" y1="75" x2="800" y2="75" stroke="#1E2538" strokeWidth="1" />
-                    <line x1="0" y1="112" x2="800" y2="112" stroke="#1E2538" strokeWidth="1" strokeDasharray="4 4" />
-                    <rect x="250" y="0" width="100" height="150" fill="#0891B2" fillOpacity="0.05" />
-                    <path d="M 0 100 Q 100 92, 200 79 T 350 67 T 450 50" fill="none" stroke="#0891B2" strokeWidth="2" />
-                    <path d="M 450 50 L 800 17 L 800 83 Z" fill="#0891B2" fillOpacity="0.1" />
-                    <path d="M 450 50 Q 600 37, 800 29" fill="none" stroke="#0891B2" strokeWidth="2" strokeDasharray="4 4" />
-                    <g transform="translate(250,0)">
-                      <line x1="0" y1="16" x2="0" y2="150" stroke="#6B7A8D" strokeWidth="1" />
-                      <text x="5" y="13" fill="#6B7A8D" fontSize="10" fontFamily="monospace">T-8</text>
-                    </g>
-                    <g transform="translate(350,0)">
-                      <line x1="0" y1="16" x2="0" y2="150" stroke="#0891B2" strokeWidth="1" strokeDasharray="2 2" />
-                      <text x="5" y="13" fill="#0891B2" fontSize="10" fontFamily="monospace">T-4</text>
-                    </g>
-                    <g transform="translate(500,0)">
-                      <line x1="0" y1="16" x2="0" y2="150" stroke="#6B7A8D" strokeWidth="1" strokeDasharray="2 2" />
-                      <text x="5" y="13" fill="#6B7A8D" fontSize="10" fontFamily="monospace">T+2</text>
-                    </g>
-                  </svg>
-                </div>
-              </div>
-
-              {/* Event cards */}
-              <div className="flex flex-col gap-2">
-                {CAPSULE_M35_EVENTS.map((ev) => (
-                  <div
-                    key={ev.name}
-                    className="rounded-r flex flex-col gap-2 cursor-pointer border transition-colors p-3"
-                    style={{ background: '#131929', borderLeft: `2px solid ${ev.leftColor}`, borderColor: '#1E2538' }}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="px-1.5 py-0.5 rounded text-[10px]" style={{ background: '#1E2538', color: '#A0ABBE' }}>{ev.scope}</span>
-                        <span className="text-sm font-semibold" style={{ color: '#E2E8F0' }}>{ev.name}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="px-1.5 py-0.5 rounded border text-[10px]" style={{ background: `${ev.statusColor}1A`, borderColor: `${ev.statusColor}4D`, color: ev.statusColor }}>{ev.status}</span>
-                        {ev.tracking && <span className="text-[10px]" style={{ color: ev.trackColor ?? '#A0ABBE' }}>{ev.tracking}</span>}
-                        {ev.conf && <span className="text-[10px]" style={{ color: '#6B7A8D' }}>{ev.conf} CONFIDENCE</span>}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-4 text-xs" style={{ color: '#A0ABBE' }}>
-                      {ev.proximity && <span>Proximity: <strong style={{ color: '#E2E8F0' }}>{ev.proximity}</strong> ({ev.proxNote})</span>}
-                      {ev.irrImpact && <span>IRR impact: <strong style={{ color: '#10B981' }}>{ev.irrImpact}</strong></span>}
-                      {ev.rentImpact && <span><strong style={{ color: '#10B981' }}>{ev.rentImpact}</strong></span>}
-                      {ev.insuranceNote && <span>Insurance expense: <strong style={{ color: '#10B981' }}>{ev.insuranceNote}</strong></span>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Summary row */}
-              <div className="flex items-center gap-3 text-[10px]">
-                <div className="px-2 py-1 rounded-full border" style={{ background: '#131929', borderColor: '#1E2538', color: '#A0ABBE' }}>3 events drive 42% of IRR uplift</div>
-                <div className="px-2 py-1 rounded-full border" style={{ background: '#131929', borderColor: '#1E2538', color: '#A0ABBE' }}>Highest: <span style={{ color: '#E2E8F0' }}>Amazon HQ2</span> (+1.4pp rent)</div>
-              </div>
-            </div>
-          )}
+        {/* M35 Key Events Hub — This Deal */}
+        <section>
+          <M35KeyEventsHub variant="capsule" />
         </section>
 
         {/* F6 M07 Traffic Predictions + M35 Event Overlays */}
