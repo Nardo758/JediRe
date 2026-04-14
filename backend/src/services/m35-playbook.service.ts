@@ -566,28 +566,48 @@ export function scaleMagnitude(
     wageMult = event.wageLevel / event.areaMedWage > 1.5 ? 1.4 : 1.0;
   }
 
-  // Jobs-based scaling (only applies to rent_growth_* metrics)
-  const jobCount = event.magnitudeUnit === 'jobs' ? (event.magnitudeValue ?? 0) : 0;
-  const rentScaling = event.magnitudeUnit === 'jobs'
-    ? Math.min(3.0, Math.max(0.1, jobCount * 0.0002 * 10))   // scale factor vs playbook median (which assumes ~1000 jobs)
-    : 1.0;
+  // ── Jobs-based formula (employment events only) ────────────────────────────
+  // Spec: rent_growth_pp_baseline = jobs × 0.0002
+  //       absorption_pp_baseline  = jobs × 0.0001 (net absorption driven by employment demand)
+  // Both baselines are then modulated by wageMult and msaAtten — NOT used as multipliers on
+  // the existing playbook median, which would double-count and inflate results.
+  const jobCount  = event.magnitudeUnit === 'jobs' ? (event.magnitudeValue ?? 0) : 0;
+  const isJobsBased = event.magnitudeUnit === 'jobs' && jobCount > 0;
+  const rentBaseline       = jobCount * 0.0002 * wageMult * msaAtten;  // pp rent growth
+  const absorptionBaseline = jobCount * 0.0001 * wageMult * msaAtten;  // pp absorption
 
   return playbook.metrics.map(m => {
-    const isRentMetric = m.metricKey.includes('rent') || m.metricKey.includes('rent_growth');
+    const isRentMetric       = m.metricKey.includes('rent');
     const isAbsorptionMetric = m.metricKey.includes('absorption') || m.metricKey.includes('vacancy');
 
-    let scaleFactor = msaAtten * wageMult;
-    if (isRentMetric && event.magnitudeUnit === 'jobs') scaleFactor *= rentScaling;
-    if (isAbsorptionMetric && event.magnitudeUnit === 'jobs') scaleFactor *= Math.min(2.5, rentScaling * 0.8);
-
-    const scaledMedian = m.median !== null ? m.median * scaleFactor : null;
-    const spread = (m.p75 ?? 0) - (m.p25 ?? 0);
-    const halfSpread = spread / 2 * scaleFactor;
-
+    let scaledMedian: number | null;
+    let scaleFactor: number;
     const parts: string[] = [];
-    if (msaAtten !== 1.0) parts.push(`MSA ${msaTier} atten×${msaAtten}`);
-    if (wageMult !== 1.0) parts.push(`wage premium×${wageMult}`);
-    if (isRentMetric && rentScaling !== 1.0) parts.push(`${jobCount} jobs→rent×${rentScaling.toFixed(2)}`);
+
+    if (isJobsBased && isRentMetric) {
+      // Point estimate from jobs formula; playbook median drives the CI spread ratio
+      scaledMedian = rentBaseline;
+      scaleFactor  = m.median !== null && m.median !== 0 ? rentBaseline / m.median : msaAtten * wageMult;
+      parts.push(`${jobCount} jobs × 0.0002 = ${rentBaseline.toFixed(3)} pp`);
+      if (wageMult !== 1.0) parts.push(`wage premium ×${wageMult}`);
+      if (msaAtten !== 1.0) parts.push(`MSA ${msaTier} atten ×${msaAtten}`);
+    } else if (isJobsBased && isAbsorptionMetric) {
+      scaledMedian = absorptionBaseline;
+      scaleFactor  = m.median !== null && m.median !== 0 ? absorptionBaseline / m.median : msaAtten * wageMult;
+      parts.push(`${jobCount} jobs × 0.0001 = ${absorptionBaseline.toFixed(3)} pp`);
+      if (wageMult !== 1.0) parts.push(`wage premium ×${wageMult}`);
+      if (msaAtten !== 1.0) parts.push(`MSA ${msaTier} atten ×${msaAtten}`);
+    } else {
+      // Non-jobs event OR non-rent/absorption metric: scale the playbook median by modifiers
+      scaleFactor  = msaAtten * wageMult;
+      scaledMedian = m.median !== null ? m.median * scaleFactor : null;
+      if (msaAtten !== 1.0) parts.push(`MSA ${msaTier} atten ×${msaAtten}`);
+      if (wageMult !== 1.0) parts.push(`wage premium ×${wageMult}`);
+    }
+
+    // CI spread is always relative to the playbook's existing spread, scaled by scaleFactor
+    const spread     = (m.p75 ?? 0) - (m.p25 ?? 0);
+    const halfSpread = Math.abs(spread / 2 * scaleFactor);
 
     return {
       metricKey: m.metricKey,
