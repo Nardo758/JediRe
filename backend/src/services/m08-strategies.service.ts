@@ -876,9 +876,16 @@ export async function getPrimaryStrategyForDeal(pool: Pool, dealId: string): Pro
       };
     }
 
-    // Fall back to detection-based primary
+    // Fall back to detection-based primary.
+    // When the auto-detected primary was disqualified by a hard gate it is removed
+    // from subStrategies and no entry will have isDetectedPrimary=true.  In that
+    // case fall back to the top-scoring qualified strategy (subStrategies[0] is
+    // already sorted by finalScore desc) rather than returning null.
     const analysis = await getStrategiesForDeal(pool, dealId);
-    const primarySS = analysis.subStrategies.find(s => s.isDetectedPrimary);
+    const primarySS =
+      analysis.subStrategies.find(s => s.isDetectedPrimary) ??
+      analysis.subStrategies[0] ??
+      null;
     if (!primarySS) return null;
 
     return {

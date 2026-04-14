@@ -8,6 +8,7 @@ import { requireAuth } from '../../middleware/auth';
 import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { bustAdvisorCache } from '../../services/debt-advisor/debt-plan-formulator.service';
+import { bustM08Cache } from '../../services/m08-strategies.service';
 
 const router = Router();
 
@@ -67,7 +68,10 @@ router.post('/', async (req: Request, res: Response) => {
       analysisId: result.rows[0].id
     });
 
-    // Bust Debt Advisor cache so next GET recomputes with updated strategy output
+    // Bust M08 + Debt Advisor caches so next GET recomputes with updated strategy output.
+    // strategy_analyses is read by getPrimaryStrategyForDeal(), so M08 cache must be
+    // invalidated whenever the recommended strategy changes.
+    try { bustM08Cache(dealId); } catch (_) {}
     try { bustAdvisorCache(dealId); } catch (_) {}
 
     res.json({
@@ -273,7 +277,8 @@ router.patch('/:id', async (req: Request, res: Response) => {
       analysisId: id
     });
 
-    // Bust Debt Advisor cache — strategy content changed, next GET recomputes
+    // Bust M08 + Debt Advisor caches — strategy content changed, next GET recomputes
+    try { bustM08Cache(updatedDealId); } catch (_) {}
     try { bustAdvisorCache(updatedDealId); } catch (_) {}
 
     res.json({
