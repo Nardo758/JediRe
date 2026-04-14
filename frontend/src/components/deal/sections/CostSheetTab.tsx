@@ -239,8 +239,8 @@ function computeSyncItems(f9: F9DealFinancials, totalBasis: number): CostLineIte
       sourceKey: 'wf:dispositionFee', synced: true,
     });
     if (wf.refinancingFeePct > 0) {
-      // Use actual refi loan amount when available; fall back to total basis
-      const refiAmt = f9.closing?.refi?.refiLoanAmount ?? totalBasis;
+      // Use actual refi loan amount from taxes.transferTax when available; fall back to total basis
+      const refiAmt = f9.taxes?.transferTax?.refi?.refiLoanAmount ?? totalBasis;
       out.push({
         id: stableId('wf:refinancingFee'), section: 'debt',
         name: `Refinancing Fee (${(wf.refinancingFeePct * 100).toFixed(2)}%)`,
