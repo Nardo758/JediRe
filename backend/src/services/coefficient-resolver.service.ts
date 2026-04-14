@@ -184,7 +184,9 @@ export class CoefficientResolverService {
     if (!submarketId && !msaId) return null;
 
     try {
-      // Try increasingly general scopes until we find data
+      // Degradation hierarchy per spec:
+      //   submarket+class+vintage → submarket+class → submarket
+      //   → MSA+class → class (first-class) → vintage (first-class) → platform
       const scopeAttempts: Array<{
         scope_level: string;
         submarket_id: string | null;
@@ -196,11 +198,15 @@ export class CoefficientResolverService {
         { scope_level: 'submarket', submarket_id: submarketId, property_class: propertyClass, vintage_band: vintageBand, msa_id: null },
         // Submarket + class only
         { scope_level: 'submarket', submarket_id: submarketId, property_class: propertyClass, vintage_band: null, msa_id: null },
-        // Submarket only
+        // Submarket only (drop class)
         { scope_level: 'submarket', submarket_id: submarketId, property_class: null, vintage_band: null, msa_id: null },
-        // MSA level — only filter by msa_id when we know it, preventing cross-MSA bleed
+        // MSA + class
         { scope_level: 'msa', submarket_id: null, property_class: propertyClass, vintage_band: null, msa_id: msaId },
-        // Platform level (global fallback)
+        // Class scope — cross-MSA platform data sliced by property class
+        { scope_level: 'class', submarket_id: null, property_class: propertyClass, vintage_band: null, msa_id: null },
+        // Vintage scope — cross-MSA platform data sliced by vintage band
+        { scope_level: 'vintage', submarket_id: null, property_class: null, vintage_band: vintageBand, msa_id: null },
+        // Platform level (global fallback — all nulls)
         { scope_level: 'platform', submarket_id: null, property_class: null, vintage_band: null, msa_id: null },
       ];
 

@@ -268,6 +268,23 @@ interface TrafficPrediction {
   // M07: Calibration metadata (Deal → Platform → Baseline hierarchy)
   calibration_meta?: CalibrationMeta;
   starting_state?: StartingState;
+
+  // M07 §4.2: rent-roll derived enrichments (present when deal has uploaded rent rolls)
+  unit_type_breakdown?: Array<{
+    unit_type: string;
+    unit_count: number;
+    avg_sf: number;
+    avg_contract_rent: number;
+    avg_market_rent: number;
+    signing_velocity: number;
+    days_vacant_avg: number;
+    concession_intensity: number;
+  }>;
+  expiration_waterfall?: Array<{
+    months_out: number;
+    expiring_units: number;
+    expiring_pct: number;
+  }>;
 }
 
 export class TrafficPredictionEngine {
@@ -1284,7 +1301,7 @@ export class TrafficPredictionEngine {
 
             // unit_type_breakdown from derived_metrics
             if (rr.derived_metrics?.unit_type_breakdown?.length) {
-              (prediction as any).unit_type_breakdown = rr.derived_metrics.unit_type_breakdown;
+              prediction.unit_type_breakdown = rr.derived_metrics.unit_type_breakdown;
             }
 
             // expiration_waterfall — bucket by months_out [0..23]
@@ -1295,7 +1312,7 @@ export class TrafficPredictionEngine {
                 waterfall[mo] = (waterfall[mo] || 0) + 1;
               }
               const totalExpiring = Object.values(waterfall).reduce((s, v) => s + v, 0) || 1;
-              (prediction as any).expiration_waterfall = Array.from({ length: 24 }, (_, i) => ({
+              prediction.expiration_waterfall = Array.from({ length: 24 }, (_, i) => ({
                 months_out: i,
                 expiring_units: waterfall[i] || 0,
                 expiring_pct: Math.round(((waterfall[i] || 0) / totalExpiring) * 1000) / 1000,

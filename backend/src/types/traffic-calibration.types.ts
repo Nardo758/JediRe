@@ -18,12 +18,15 @@ export type CalibrationWindow = 'TTM' | 'PYTM' | 'TTM_24';
  * `platform` is the submarket/class/vintage-bucketed posterior.
  * `baseline` is the hard-coded constant from the original engine.
  * `resolved` is the value the engine actually uses.
+ *
+ * Generic: T defaults to number.  Use LayeredValue<string> for label-typed
+ * coefficients (e.g. a calibrated unit-mix label).
  */
-export interface LayeredValue {
-  baseline: number;
-  platform: number | null;    // null = no platform data for this scope
-  deal: number | null;        // null = no rent roll data for this deal
-  resolved: number;
+export interface LayeredValue<T = number> {
+  baseline: T;
+  platform: T | null;    // null = no platform data for this scope
+  deal: T | null;        // null = no rent roll data for this deal
+  resolved: T;
   match_tier: MatchTier;
   window: CalibrationWindow;
   n_peer_properties: number;
