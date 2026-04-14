@@ -233,6 +233,12 @@ export async function generateForecast(eventId: string): Promise<ForecastRow[]> 
     return [];
   }
 
+  // Draft events do not get active forecasts; generation is deferred until status advances.
+  if (ev.status === 'draft') {
+    logger.debug(`[M35 Forecast] Event ${eventId} is still draft — skipping forecast generation`);
+    return [];
+  }
+
   // Classify stratum
   const announcedDate = ev.announced_date ? new Date(ev.announced_date) : null;
   const stratum: PlaybookStratum = {

@@ -280,13 +280,12 @@ export async function createEvent(input: CreateEventInput): Promise<KeyEvent> {
   void kafkaProducer.publish(KAFKA_TOPICS.M35_EVENT_INGESTED, msg, { key: id })
     .catch((err: Error) => logger.warn('[M35 Events] Kafka publish failed (non-fatal)', { err: err.message }));
 
-  // If created in an active status, generate forecast immediately (fire-and-forget).
-  // Default creation is 'draft'; pass initialStatus:'announced'/'in_progress' to trigger on create.
-  if (initialStatus === 'announced' || initialStatus === 'in_progress') {
-    void generateForecast(id)
-      .catch((err: unknown) => logger.warn('[M35 Events] Post-create forecast generation failed (non-fatal)',
-        { eventId: id, err: err instanceof Error ? err.message : String(err) }));
-  }
+  // Always attempt forecast generation after event creation (fire-and-forget).
+  // generateForecast() skips gracefully when status='draft' or no playbook exists,
+  // so this is always safe. Non-draft events with an active playbook will be forecast immediately.
+  void generateForecast(id)
+    .catch((err: unknown) => logger.warn('[M35 Events] Post-create forecast generation failed (non-fatal)',
+      { eventId: id, err: err instanceof Error ? err.message : String(err) }));
 
   logger.info('[M35 Events] Created event', { id, name: input.name, category: input.category, status: initialStatus });
   return event;
