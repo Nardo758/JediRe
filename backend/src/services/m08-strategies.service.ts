@@ -21,6 +21,7 @@ import {
 } from './asset-class-detection.service';
 import { buildEvidenceReport, DealContext, EvidenceReport } from './evidence-report.service';
 import { formulatePlan, PlanContext, StrategyPlan } from './plan-formulator.service';
+import { getSignalAdapter } from './signal-adapters.service';
 
 // ─── Section 8 contract types ─────────────────────────────────────────────────
 
@@ -198,22 +199,26 @@ async function loadDealData(pool: Pool, dealId: string): Promise<Record<string, 
   }
 }
 
-// ─── Signal scores ────────────────────────────────────────────────────────────
+// ─── Signal scores — per-asset-class adapter ─────────────────────────────────
+// Delegates to the signal adapter for the detected asset class.
+// Each adapter reads asset-class-specific signals; stubs return structured
+// defaults with TODO notes for asset classes pending M05 data.
 
-function computeSignalScores(deal: Record<string, any>): SignalScores {
-  const data = deal.deal_data || {};
-  const triage = deal.triage_result || {};
-  const scores = data.scores || triage.scores || {};
+function computeSignalScores(deal: Record<string, any>, detection: DetectionResult): SignalScores {
+  const adapted = getSignalAdapter(detection.assetClass, deal);
 
-  const demand = Math.min(100, Math.max(0, Number(data.demand_strength_score || data.demand_score || scores.demand || 55)));
-  const supply = Math.min(100, Math.max(0, 100 - Number(data.supply_pressure || data.supply_balance_score || scores.supply || 45)));
-  const momentum = Math.min(100, Math.max(0, Number(data.rent_growth_trailing_12mo != null ? data.rent_growth_trailing_12mo * 10 : scores.momentum || 50)));
-  const position = Math.min(100, Math.max(0, Number(data.overall_opportunity_score || scores.position || 50)));
-  const risk = Math.min(100, Math.max(0, 100 - Number(data.risk_score || scores.risk || 50)));
-  const coverage = [demand, supply, momentum, position, risk].filter(v => v !== 50 && v !== 55).length;
-  const confidence = Math.min(100, coverage * 18 + 10);
+  // coverage: count of dimensions that received live data (not defaults)
+  const liveCount = Object.values(adapted.dataAvailability).filter(v => v === 'live').length;
+  const confidence = Math.min(100, liveCount * 18 + 10);
 
-  return { demand, supply, momentum, position, risk, confidence };
+  return {
+    demand:     Math.round(adapted.demand),
+    supply:     Math.round(adapted.supply),
+    momentum:   Math.round(adapted.momentum),
+    position:   Math.round(adapted.position),
+    risk:       Math.round(adapted.risk),
+    confidence,
+  };
 }
 
 // ─── Scoring ──────────────────────────────────────────────────────────────────
@@ -500,7 +505,7 @@ export async function getStrategiesForDeal(pool: Pool, dealId: string): Promise<
   logger.info(`[M08v2] computing strategy analysis for deal ${dealId}`);
 
   const detection = detectAssetClassAndDealType(deal);
-  const signalScores = computeSignalScores(deal);
+  const signalScores = computeSignalScores(deal, detection);
 
   const dealCtx: DealContext = {
     dealId,
@@ -644,6 +649,7 @@ function buildFallback(dealId: string): StrategyAnalysisV2 {
     assetClass: 'multifamily', subType: 'garden', detectedDealType: 'value_add',
     detectedSubStrategy: 'mf_value_add_standard', confidence: 0.50,
     requiresUserConfirmation: true,
+    confidenceBreakdown: { assessorCode: 0, zoningMatch: 0, rentRollSignal: 0, naicsSignal: 0, buildingStructure: 0 },
     detectionSignals: [], alternateSubStrategies: [], userConfirmed: false,
   };
   return {

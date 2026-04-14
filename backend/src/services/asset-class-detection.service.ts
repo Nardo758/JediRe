@@ -1,9 +1,21 @@
 /**
- * Asset Class Detection Service — M08 v2 Stage 1
+ * Asset Class Detection Service — M08 v2 Stage 1a
  *
- * Rule-based detection engine that classifies the asset class and deal type
- * from raw deal data (property type, unit count, deal_data JSON, zoning, etc.).
- * Returns a DetectionResult with confidence scores and signal evidence.
+ * Answers: "What type of asset is this?" — a distinct problem from
+ * "What deal type / sub-strategy should we use?" (see deal-type-detection.service.ts).
+ *
+ * Implements the spec's 5-input weighted confidence waterfall:
+ *   assessor_code_match   × 0.45  ← TODO #M08-AC-01 (DB field not yet available)
+ *   zoning_match          × 0.20  ← WIRED (deal_data.zoning_classification)
+ *   rent_roll_signal      × 0.15  ← WIRED (unit_count + avg_rent structure)
+ *   naics_signal          × 0.10  ← TODO #M08-AC-02 (DB field not yet available)
+ *   building_structure    × 0.10  ← WIRED (stories + construction_type + unit_count)
+ *
+ * Total wired: 0.20 + 0.15 + 0.10 = 0.45 max (from available DB fields)
+ * Consequence: most deals will have requiresUserConfirmation: true until
+ * assessor codes (#M08-AC-01) and NAICS codes (#M08-AC-02) are ingested.
+ *
+ * Spec reference: M08 Rebuild Spec v2 Sections 3.1, 3.2
  */
 
 export type AssetClass =
@@ -36,496 +48,270 @@ export interface DetectionResult {
   detectedDealType: string;
   detectedSubStrategy: string;
   confidence: number;
-  requiresUserConfirmation: boolean;  // true when confidence < 0.70
+  requiresUserConfirmation: boolean; // true when confidence < 0.70 per spec
+  confidenceBreakdown: {             // waterfall component scores for auditability
+    assessorCode: number;            // always 0 until TODO #M08-AC-01 lands
+    zoningMatch: number;
+    rentRollSignal: number;
+    naicsSignal: number;             // always 0 until TODO #M08-AC-02 lands
+    buildingStructure: number;
+  };
   detectionSignals: DetectionSignal[];
   alternateSubStrategies: AlternateSubStrategy[];
   userConfirmed: boolean;
   userOverrideClassification?: string;
 }
 
-// Sub-strategy key → human name
+// ─── Sub-strategy catalog ─────────────────────────────────────────────────────
+
 export const SUB_STRATEGY_NAMES: Record<string, string> = {
-  mf_value_add_standard: 'Multifamily Value-Add',
-  mf_deep_value_add: 'Multifamily Deep Value-Add',
-  mf_core: 'Multifamily Core',
-  mf_core_plus: 'Multifamily Core-Plus',
-  mf_distressed: 'Multifamily Distressed / Opportunistic',
-  mf_lease_up: 'Multifamily Lease-Up',
-  mf_bts_ground_up: 'Multifamily Ground-Up Development',
-  mf_str: 'Short-Term Rental (MF)',
-  sfr_fix_flip: 'SFR Fix-and-Flip',
-  sfr_brrrr: 'SFR BRRRR',
-  sfr_hold: 'SFR Hold (Scattered)',
-  sfr_portfolio_agg: 'SFR Portfolio Aggregation',
-  sfr_btr: 'SFR Build-to-Rent',
-  sfr_str: 'SFR STR (Vacation Rental)',
-  sfr_mtr: 'SFR MTR (Mid-Term)',
-  sfr_wholesale: 'SFR Wholesale',
-  retail_nnn_core: 'Retail NNN Core',
+  mf_value_add_standard:   'Multifamily Value-Add',
+  mf_deep_value_add:       'Multifamily Deep Value-Add',
+  mf_core:                 'Multifamily Core',
+  mf_core_plus:            'Multifamily Core-Plus',
+  mf_distressed:           'Multifamily Distressed / Opportunistic',
+  mf_lease_up:             'Multifamily Lease-Up',
+  mf_bts_ground_up:        'Multifamily Ground-Up Development',
+  mf_str:                  'Short-Term Rental (MF)',
+  sfr_fix_flip:            'SFR Fix-and-Flip',
+  sfr_brrrr:               'SFR BRRRR',
+  sfr_hold:                'SFR Hold (Scattered)',
+  sfr_portfolio_agg:       'SFR Portfolio Aggregation',
+  sfr_btr:                 'SFR Build-to-Rent',
+  sfr_str:                 'SFR STR (Vacation Rental)',
+  sfr_mtr:                 'SFR MTR (Mid-Term)',
+  sfr_wholesale:           'SFR Wholesale',
+  retail_nnn_core:         'Retail NNN Core',
   retail_grocery_anchored: 'Retail Grocery-Anchored Reposition',
-  retail_value_add: 'Retail Value-Add Reposition',
-  retail_last_mile: 'Retail → Flex / Last-Mile Conversion',
-  office_adaptive_reuse: 'Office Adaptive Reuse',
-  office_medical: 'Office Medical Conversion',
-  office_tenant_rollup: 'Office Tenant Rollup Reposition',
-  industrial_last_mile: 'Industrial Last-Mile',
-  industrial_core: 'Industrial Core',
-  hospitality_reflag: 'Hospitality Reflag',
+  retail_value_add:        'Retail Value-Add Reposition',
+  retail_last_mile:        'Retail → Flex / Last-Mile Conversion',
+  office_adaptive_reuse:   'Office Adaptive Reuse',
+  office_medical:          'Office Medical Conversion',
+  office_tenant_rollup:    'Office Tenant Rollup Reposition',
+  industrial_last_mile:    'Industrial Last-Mile',
+  industrial_core:         'Industrial Core',
+  hospitality_reflag:      'Hospitality Reflag',
   hospitality_extended_stay: 'Hospitality Extended-Stay Conversion',
 };
 
-// Sub-strategy → family
 export const SUB_STRATEGY_FAMILY: Record<string, string> = {
-  mf_value_add_standard: 'rental',
-  mf_deep_value_add: 'rental',
-  mf_core: 'rental',
-  mf_core_plus: 'rental',
-  mf_distressed: 'rental',
-  mf_lease_up: 'rental',
-  mf_bts_ground_up: 'bts',
-  mf_str: 'str',
-  sfr_fix_flip: 'flip',
-  sfr_brrrr: 'sfr',
-  sfr_hold: 'sfr',
-  sfr_portfolio_agg: 'sfr',
-  sfr_btr: 'sfr',
-  sfr_str: 'str',
-  sfr_mtr: 'str',
-  sfr_wholesale: 'flip',
-  retail_nnn_core: 'retail_specific',
+  mf_value_add_standard:   'rental',
+  mf_deep_value_add:       'rental',
+  mf_core:                 'rental',
+  mf_core_plus:            'rental',
+  mf_distressed:           'rental',
+  mf_lease_up:             'rental',
+  mf_bts_ground_up:        'bts',
+  mf_str:                  'str',
+  sfr_fix_flip:            'flip',
+  sfr_brrrr:               'sfr',
+  sfr_hold:                'sfr',
+  sfr_portfolio_agg:       'sfr',
+  sfr_btr:                 'sfr',
+  sfr_str:                 'str',
+  sfr_mtr:                 'str',
+  sfr_wholesale:           'flip',
+  retail_nnn_core:         'retail_specific',
   retail_grocery_anchored: 'retail_specific',
-  retail_value_add: 'retail_specific',
-  retail_last_mile: 'retail_specific',
-  office_adaptive_reuse: 'office_specific',
-  office_medical: 'office_specific',
-  office_tenant_rollup: 'office_specific',
-  industrial_last_mile: 'industrial_specific',
-  industrial_core: 'industrial_specific',
-  hospitality_reflag: 'hospitality_specific',
+  retail_value_add:        'retail_specific',
+  retail_last_mile:        'retail_specific',
+  office_adaptive_reuse:   'office_specific',
+  office_medical:          'office_specific',
+  office_tenant_rollup:    'office_specific',
+  industrial_last_mile:    'industrial_specific',
+  industrial_core:         'industrial_specific',
+  hospitality_reflag:      'hospitality_specific',
   hospitality_extended_stay: 'hospitality_specific',
 };
 
 // Signal weight matrix per sub-strategy (Demand, Supply, Momentum, Position, Risk)
+// Weights sum to 1.0 per row — spec Section 4.1
 export const SUB_STRATEGY_WEIGHTS: Record<string, Record<string, number>> = {
-  mf_value_add_standard: { demand: 0.30, supply: 0.25, momentum: 0.20, position: 0.15, risk: 0.10 },
-  mf_deep_value_add: { demand: 0.25, supply: 0.20, momentum: 0.25, position: 0.15, risk: 0.15 },
-  mf_core: { demand: 0.25, supply: 0.20, momentum: 0.15, position: 0.25, risk: 0.15 },
-  mf_core_plus: { demand: 0.25, supply: 0.20, momentum: 0.20, position: 0.20, risk: 0.15 },
-  mf_distressed: { demand: 0.20, supply: 0.15, momentum: 0.15, position: 0.20, risk: 0.30 },
-  mf_lease_up: { demand: 0.35, supply: 0.30, momentum: 0.15, position: 0.10, risk: 0.10 },
-  mf_bts_ground_up: { demand: 0.30, supply: 0.30, momentum: 0.15, position: 0.15, risk: 0.10 },
-  mf_str: { demand: 0.25, supply: 0.15, momentum: 0.25, position: 0.25, risk: 0.10 },
-  sfr_fix_flip: { demand: 0.20, supply: 0.15, momentum: 0.30, position: 0.20, risk: 0.15 },
-  sfr_brrrr: { demand: 0.20, supply: 0.15, momentum: 0.25, position: 0.25, risk: 0.15 },
-  sfr_hold: { demand: 0.25, supply: 0.20, momentum: 0.15, position: 0.25, risk: 0.15 },
-  sfr_portfolio_agg: { demand: 0.30, supply: 0.25, momentum: 0.20, position: 0.15, risk: 0.10 },
-  sfr_btr: { demand: 0.30, supply: 0.30, momentum: 0.15, position: 0.15, risk: 0.10 },
-  sfr_str: { demand: 0.25, supply: 0.15, momentum: 0.25, position: 0.25, risk: 0.10 },
-  sfr_mtr: { demand: 0.25, supply: 0.15, momentum: 0.25, position: 0.25, risk: 0.10 },
-  sfr_wholesale: { demand: 0.20, supply: 0.15, momentum: 0.30, position: 0.20, risk: 0.15 },
-  retail_nnn_core: { demand: 0.20, supply: 0.10, momentum: 0.10, position: 0.35, risk: 0.25 },
+  mf_value_add_standard:   { demand: 0.30, supply: 0.25, momentum: 0.20, position: 0.15, risk: 0.10 },
+  mf_deep_value_add:       { demand: 0.25, supply: 0.20, momentum: 0.25, position: 0.15, risk: 0.15 },
+  mf_core:                 { demand: 0.25, supply: 0.20, momentum: 0.15, position: 0.25, risk: 0.15 },
+  mf_core_plus:            { demand: 0.25, supply: 0.20, momentum: 0.20, position: 0.20, risk: 0.15 },
+  mf_distressed:           { demand: 0.20, supply: 0.15, momentum: 0.15, position: 0.20, risk: 0.30 },
+  mf_lease_up:             { demand: 0.35, supply: 0.30, momentum: 0.15, position: 0.10, risk: 0.10 },
+  mf_bts_ground_up:        { demand: 0.30, supply: 0.30, momentum: 0.15, position: 0.15, risk: 0.10 },
+  mf_str:                  { demand: 0.25, supply: 0.15, momentum: 0.25, position: 0.25, risk: 0.10 },
+  sfr_fix_flip:            { demand: 0.20, supply: 0.15, momentum: 0.30, position: 0.20, risk: 0.15 },
+  sfr_brrrr:               { demand: 0.20, supply: 0.15, momentum: 0.25, position: 0.25, risk: 0.15 },
+  sfr_hold:                { demand: 0.25, supply: 0.20, momentum: 0.15, position: 0.25, risk: 0.15 },
+  sfr_portfolio_agg:       { demand: 0.30, supply: 0.25, momentum: 0.20, position: 0.15, risk: 0.10 },
+  sfr_btr:                 { demand: 0.30, supply: 0.30, momentum: 0.15, position: 0.15, risk: 0.10 },
+  sfr_str:                 { demand: 0.25, supply: 0.15, momentum: 0.25, position: 0.25, risk: 0.10 },
+  sfr_mtr:                 { demand: 0.25, supply: 0.15, momentum: 0.25, position: 0.25, risk: 0.10 },
+  sfr_wholesale:           { demand: 0.20, supply: 0.15, momentum: 0.30, position: 0.20, risk: 0.15 },
+  retail_nnn_core:         { demand: 0.20, supply: 0.10, momentum: 0.10, position: 0.35, risk: 0.25 },
   retail_grocery_anchored: { demand: 0.25, supply: 0.15, momentum: 0.15, position: 0.30, risk: 0.15 },
-  retail_value_add: { demand: 0.30, supply: 0.15, momentum: 0.20, position: 0.25, risk: 0.10 },
-  retail_last_mile: { demand: 0.30, supply: 0.20, momentum: 0.20, position: 0.20, risk: 0.10 },
-  office_adaptive_reuse: { demand: 0.35, supply: 0.20, momentum: 0.15, position: 0.15, risk: 0.15 },
-  office_medical: { demand: 0.30, supply: 0.20, momentum: 0.15, position: 0.20, risk: 0.15 },
-  office_tenant_rollup: { demand: 0.15, supply: 0.20, momentum: 0.25, position: 0.20, risk: 0.20 },
-  industrial_last_mile: { demand: 0.30, supply: 0.25, momentum: 0.20, position: 0.20, risk: 0.05 },
-  industrial_core: { demand: 0.20, supply: 0.25, momentum: 0.15, position: 0.25, risk: 0.15 },
-  hospitality_reflag: { demand: 0.25, supply: 0.20, momentum: 0.20, position: 0.25, risk: 0.10 },
+  retail_value_add:        { demand: 0.30, supply: 0.15, momentum: 0.20, position: 0.25, risk: 0.10 },
+  retail_last_mile:        { demand: 0.30, supply: 0.20, momentum: 0.20, position: 0.20, risk: 0.10 },
+  office_adaptive_reuse:   { demand: 0.35, supply: 0.20, momentum: 0.15, position: 0.15, risk: 0.15 },
+  office_medical:          { demand: 0.30, supply: 0.20, momentum: 0.15, position: 0.20, risk: 0.15 },
+  office_tenant_rollup:    { demand: 0.15, supply: 0.20, momentum: 0.25, position: 0.20, risk: 0.20 },
+  industrial_last_mile:    { demand: 0.30, supply: 0.25, momentum: 0.20, position: 0.20, risk: 0.05 },
+  industrial_core:         { demand: 0.20, supply: 0.25, momentum: 0.15, position: 0.25, risk: 0.15 },
+  hospitality_reflag:      { demand: 0.25, supply: 0.20, momentum: 0.20, position: 0.25, risk: 0.10 },
   hospitality_extended_stay: { demand: 0.25, supply: 0.20, momentum: 0.20, position: 0.20, risk: 0.15 },
 };
+
+// ─── Waterfall weight constants (spec Section 3.1) ────────────────────────────
+
+const W_ASSESSOR_CODE    = 0.45; // TODO #M08-AC-01: awaiting assessor code ingestion
+const W_ZONING_MATCH     = 0.20; // WIRED
+const W_RENT_ROLL_SIGNAL = 0.15; // WIRED
+const W_NAICS_SIGNAL     = 0.10; // TODO #M08-AC-02: awaiting NAICS code ingestion
+const W_BUILDING_STRUCT  = 0.10; // WIRED
+
+// ─── Zoning match (0-1 score, weighted 0.20) ──────────────────────────────────
+
+const ZONING_MF_PATTERNS = /^(R-?[3-9]|R-?MF|RM\b|RMH|MF|MFR|R-?PD|RM[0-9]|C-?[3-4]|PUD.*multi)/i;
+const ZONING_SFR_PATTERNS = /^(R-?1|R-?2|RS\b|RSF|RE\b|A-?R|R-?L|R-?E|RR\b|R-?A)/i;
+const ZONING_RETAIL_PATTERNS = /^(C-?[1-3]|B-?[1-3]|GC\b|NC\b|CC\b|RC\b|CR\b|NB\b|HB\b)/i;
+const ZONING_OFFICE_PATTERNS = /^(O-?[1-2]|OC\b|OP\b|OB\b|MO\b|MOB\b|CP\b)/i;
+const ZONING_INDUSTRIAL_PATTERNS = /^(I-?[1-3]|M-?[1-3]|LI\b|HI\b|IL\b|IH\b|IP\b|BP\b)/i;
+const ZONING_HOSPITALITY_PATTERNS = /^(C-?2|C-?3|H\b|CH\b|GC\b|TH\b)/i;
+
+function computeZoningScore(zoning: string, assetClass: AssetClass): number {
+  if (!zoning) return 0;
+  const z = zoning.trim();
+  const patterns: Record<AssetClass, RegExp | null> = {
+    multifamily:  ZONING_MF_PATTERNS,
+    sfr:          ZONING_SFR_PATTERNS,
+    retail:       ZONING_RETAIL_PATTERNS,
+    office:       ZONING_OFFICE_PATTERNS,
+    industrial:   ZONING_INDUSTRIAL_PATTERNS,
+    hospitality:  ZONING_HOSPITALITY_PATTERNS,
+    mixed_use:    null,
+    vacant_land:  null,
+    other:        null,
+  };
+  const pattern = patterns[assetClass];
+  if (!pattern) return 0.50; // mixed/vacant/other — partial credit
+  return pattern.test(z) ? 1.0 : 0;
+}
+
+// ─── Rent roll signal (0-1 score, weighted 0.15) ──────────────────────────────
+// "Rent roll structure" = does the income structure match the asset class?
+
+function computeRentRollScore(unitCount: number, avgRent: number, assetClass: AssetClass): number {
+  if (assetClass === 'multifamily') {
+    if (unitCount > 4 && avgRent > 0) return 1.0;      // clear MF rent roll
+    if (unitCount > 4) return 0.70;                     // unit count alone
+    if (unitCount >= 2 && avgRent > 0) return 0.50;    // small MF
+    return 0;
+  }
+  if (assetClass === 'sfr') {
+    if (unitCount >= 1 && unitCount <= 4) return 1.0;  // single-family rent structure
+    if (unitCount === 0 && avgRent > 0) return 0.50;   // single unit with rent
+    return 0;
+  }
+  if (assetClass === 'retail' || assetClass === 'office' || assetClass === 'industrial') {
+    // Commercial rent roll: we have deal_data but no standard unit_count field
+    if (avgRent > 0) return 0.60;  // some rent data present
+    return 0;
+  }
+  return 0;
+}
+
+// ─── Building structure signal (0-1 score, weighted 0.10) ─────────────────────
+// Stories + construction type + unit count confirm or deny the asset class
+
+function computeBuildingStructureScore(
+  stories: number,
+  constructionType: string,
+  unitCount: number,
+  assetClass: AssetClass
+): number {
+  if (assetClass === 'multifamily') {
+    if (stories >= 5) return 1.0;           // high-rise / mid-rise confirms MF
+    if (stories >= 2 && unitCount > 4) return 0.90;
+    if (unitCount > 4) return 0.70;
+    return 0;
+  }
+  if (assetClass === 'sfr') {
+    if (stories <= 2 && unitCount <= 4) return 1.0;
+    if (unitCount <= 4) return 0.80;
+    return 0;
+  }
+  if (assetClass === 'industrial') {
+    if (/warehouse|industrial|tilt.up|metal/i.test(constructionType)) return 1.0;
+    if (stories === 1 && unitCount === 0) return 0.60;
+    return 0;
+  }
+  if (assetClass === 'retail') {
+    if (/frame|masonry|shell/i.test(constructionType) && stories <= 2) return 0.80;
+    if (stories <= 2 && unitCount === 0) return 0.60;
+    return 0;
+  }
+  if (assetClass === 'office') {
+    if (/steel|concrete/i.test(constructionType) && stories >= 2) return 0.90;
+    if (stories >= 2) return 0.70;
+    return 0;
+  }
+  if (assetClass === 'hospitality') {
+    if (/hotel|hospitality|concrete/i.test(constructionType)) return 1.0;
+    return 0.40;
+  }
+  return 0;
+}
+
+// ─── Property type → asset class inference ────────────────────────────────────
 
 function normalizePropType(raw: string | null | undefined): string {
   if (!raw) return '';
   return raw.toLowerCase().replace(/[_\-\s]+/g, '_');
 }
 
-function inferAssetClassFromPropType(propType: string): AssetClass | null {
+function inferAssetClassFromPropType(propType: string): { assetClass: AssetClass; confidence: number } | null {
   const t = normalizePropType(propType);
-  if (/(multifamily|apartment|multi_family|mf|residential_multi|garden|mid_rise|high_rise|condo|townhome)/i.test(t)) return 'multifamily';
-  if (/(sfr|single_family|single_house|single_fam|residential_single|detached|1_4_unit|fourplex)/i.test(t)) return 'sfr';
-  if (/(retail|strip|shopping|mall|outparcel|nnn|net_lease|power_center|grocery)/i.test(t)) return 'retail';
-  if (/(office|medical_office|flex_office)/i.test(t)) return 'office';
-  if (/(industrial|warehouse|flex_industrial|manufacturing|cold_storage|ios)/i.test(t)) return 'industrial';
-  if (/(hotel|motel|hospitality|lodging|resort|inn|bnb)/i.test(t)) return 'hospitality';
-  if (/(mixed|mixed_use)/i.test(t)) return 'mixed_use';
-  if (/(land|vacant|lot|acreage|raw_land)/i.test(t)) return 'vacant_land';
+  if (/(multifamily|apartment|multi_family|mf|residential_multi|garden|mid_rise|high_rise|condo|townhome)/i.test(t)) return { assetClass: 'multifamily', confidence: 0.60 };
+  if (/(sfr|single_family|single_house|single_fam|residential_single|detached|1_4_unit|fourplex)/i.test(t))          return { assetClass: 'sfr', confidence: 0.60 };
+  if (/(retail|strip|shopping|mall|outparcel|nnn|net_lease|power_center|grocery)/i.test(t))                          return { assetClass: 'retail', confidence: 0.60 };
+  if (/(office|medical_office|flex_office)/i.test(t))                                                                return { assetClass: 'office', confidence: 0.60 };
+  if (/(industrial|warehouse|flex_industrial|manufacturing|cold_storage|ios)/i.test(t))                              return { assetClass: 'industrial', confidence: 0.60 };
+  if (/(hotel|motel|hospitality|lodging|resort|inn|bnb)/i.test(t))                                                   return { assetClass: 'hospitality', confidence: 0.60 };
+  if (/(mixed|mixed_use)/i.test(t))                                                                                   return { assetClass: 'mixed_use', confidence: 0.55 };
+  if (/(land|vacant|lot|acreage|raw_land)/i.test(t))                                                                 return { assetClass: 'vacant_land', confidence: 0.65 };
   return null;
 }
 
-/**
- * Detect asset class and deal type from deal data.
- * deal: row from deals table joined with deal_data, deal_assumptions, strategy_analyses
- */
-export function detectAssetClassAndDealType(deal: Record<string, any>): DetectionResult {
-  const dealData = deal.deal_data || {};
-  const propertyData = deal.property_data || {};
-  const triage = deal.triage_result || {};
-  const assumptions = deal.assumptions || {};
+// ─── Sub-type detection ───────────────────────────────────────────────────────
 
-  // ── Existing user override / saved strategy_slug ──────────────────────────
-  const savedSlug: string | null = deal.strategy_slug || null;
-  const userConfirmed = !!deal.recommended;
+function detectSubType(assetClass: AssetClass, deal: Record<string, any>): string {
+  const d = deal.deal_data || {};
+  const rawPropType = d.property_type || deal.project_type || '';
+  const unitCount = Number(deal.unit_count || d.unit_count || 0);
+  const stories = Number(d.stories || deal.assumptions?.stories || 0);
+  const parcelCount = Number(d.parcel_count || 1);
 
-  // ── Signals ───────────────────────────────────────────────────────────────
-  const rawPropType: string =
-    dealData.property_type ||
-    propertyData.property_type ||
-    dealData.propertyType ||
-    propertyData.propertyType ||
-    deal.project_type ||
-    deal.deal_category ||
-    '';
-
-  const unitCount: number = Number(
-    deal.unit_count ||
-    dealData.unit_count ||
-    dealData.units ||
-    assumptions.total_units ||
-    0
-  );
-
-  const occupancy: number = Number(
-    dealData.occupancy ||
-    dealData.occupancy_rate ||
-    assumptions.occupancy_pct ||
-    triage.occupancy ||
-    0
-  );
-
-  const lossToLease: number = Number(
-    dealData.loss_to_lease ||
-    dealData.lossToLease ||
-    assumptions.loss_to_lease ||
-    0
-  );
-
-  const dscr: number = Number(
-    dealData.dscr ||
-    assumptions.dscr ||
-    0
-  );
-
-  const opsScore: number = Number(
-    dealData.ops_score ||
-    dealData.pcs_score ||
-    0
-  );
-
-  const capitalGapPerUnit: number = Number(
-    dealData.capital_gap_per_unit ||
-    dealData.capex_per_unit ||
-    assumptions.tdc_per_unit ||
-    0
-  );
-
-  const projectType: string = deal.project_type || '';
-  const developmentType: string = deal.development_type || '';
-  const parcelCount: number = Number(dealData.parcel_count || 1);
-
-  // ── Asset class detection ─────────────────────────────────────────────────
-  let assetClass: AssetClass = 'other';
-  let assetClassConfidence = 0;
-  const signals: DetectionSignal[] = [];
-
-  // Try property type string first
-  const fromPropType = inferAssetClassFromPropType(rawPropType);
-  if (fromPropType) {
-    assetClass = fromPropType;
-    assetClassConfidence += 0.45;
-    signals.push({
-      signal: 'property_type',
-      value: rawPropType,
-      threshold: 'type classification',
-      contribution: 0.45,
-    });
+  switch (assetClass) {
+    case 'multifamily':
+      if (unitCount >= 100 || stories >= 5) return 'mid_rise';
+      if (unitCount >= 20) return 'garden';
+      return 'townhome';
+    case 'sfr':
+      if (parcelCount >= 20) return 'scattered_portfolio';
+      if (unitCount >= 2 && unitCount <= 4) return '2_4_unit';
+      return 'single_house';
+    case 'retail':
+      if (/nnn|net.lease/i.test(rawPropType)) return 'single_tenant_nnn';
+      if (/grocery|anchored/i.test(rawPropType)) return 'grocery_anchored';
+      if (/power|big.box/i.test(rawPropType)) return 'power_center';
+      return 'strip';
+    case 'office':
+      return /medical/i.test(rawPropType) ? 'medical' : 'class_b_suburban';
+    case 'industrial':
+      return /last.mile/i.test(rawPropType) ? 'last_mile' : 'warehouse';
+    case 'hospitality':
+      return /extended|stay/i.test(rawPropType) ? 'extended_stay' : 'select_service';
+    default:
+      return 'unknown';
   }
-
-  // Saved slug override
-  if (savedSlug) {
-    if (/multifamily|value.add|core|lease.up|distressed/i.test(savedSlug)) {
-      assetClass = 'multifamily';
-      assetClassConfidence = Math.min(1, assetClassConfidence + 0.20);
-    } else if (/sfr|brrrr|fix.flip|btr/i.test(savedSlug)) {
-      assetClass = 'sfr';
-      assetClassConfidence = Math.min(1, assetClassConfidence + 0.20);
-    } else if (/retail|nnn/i.test(savedSlug)) {
-      assetClass = 'retail';
-      assetClassConfidence = Math.min(1, assetClassConfidence + 0.20);
-    } else if (/office/i.test(savedSlug)) {
-      assetClass = 'office';
-      assetClassConfidence = Math.min(1, assetClassConfidence + 0.20);
-    } else if (/industrial/i.test(savedSlug)) {
-      assetClass = 'industrial';
-      assetClassConfidence = Math.min(1, assetClassConfidence + 0.20);
-    } else if (/hotel|hospitality/i.test(savedSlug)) {
-      assetClass = 'hospitality';
-      assetClassConfidence = Math.min(1, assetClassConfidence + 0.20);
-    }
-  }
-
-  // Unit count heuristic
-  if (assetClass === 'other' || assetClass === 'sfr') {
-    if (unitCount > 4) {
-      assetClass = 'multifamily';
-      assetClassConfidence += 0.15;
-      signals.push({
-        signal: 'unit_count',
-        value: String(unitCount),
-        threshold: '>4 units → multifamily',
-        contribution: 0.15,
-      });
-    } else if (unitCount >= 1 && unitCount <= 4) {
-      if (assetClass === 'other') assetClass = 'sfr';
-      assetClassConfidence += 0.10;
-    }
-  }
-
-  // Project type: development → could be BTS or SFR BTR
-  if (projectType === 'development' && unitCount === 0) {
-    if (assetClass === 'other') assetClass = 'multifamily';
-    signals.push({
-      signal: 'project_type',
-      value: projectType,
-      threshold: 'development project',
-      contribution: 0.10,
-    });
-    assetClassConfidence += 0.10;
-  }
-
-  // Final fallback
-  if (assetClass === 'other') {
-    assetClass = 'multifamily';
-    assetClassConfidence = Math.max(0.30, assetClassConfidence);
-  }
-
-  assetClassConfidence = Math.min(1, assetClassConfidence + 0.25);
-
-  // ── Sub-type detection ────────────────────────────────────────────────────
-  let subType = 'unknown';
-  if (assetClass === 'multifamily') {
-    const stories = Number(dealData.stories || assumptions.stories || 0);
-    if (unitCount >= 100 || stories >= 5) subType = 'mid_rise';
-    else if (unitCount >= 20) subType = 'garden';
-    else subType = 'townhome';
-  } else if (assetClass === 'sfr') {
-    if (parcelCount >= 20) subType = 'scattered_portfolio';
-    else if (unitCount >= 2 && unitCount <= 4) subType = '2_4_unit';
-    else subType = 'single_house';
-  } else if (assetClass === 'retail') {
-    if (/nnn|net.lease/i.test(rawPropType)) subType = 'single_tenant_nnn';
-    else if (/grocery|anchored/i.test(rawPropType)) subType = 'grocery_anchored';
-    else if (/power|big.box/i.test(rawPropType)) subType = 'power_center';
-    else subType = 'strip';
-  } else if (assetClass === 'office') {
-    subType = /medical/i.test(rawPropType) ? 'medical' : 'class_b_suburban';
-  } else if (assetClass === 'industrial') {
-    subType = /last.mile/i.test(rawPropType) ? 'last_mile' : 'warehouse';
-  } else if (assetClass === 'hospitality') {
-    subType = /extended|stay/i.test(rawPropType) ? 'extended_stay' : 'select_service';
-  }
-
-  // ── Deal type + primary sub-strategy detection ────────────────────────────
-  let detectedDealType = 'unknown';
-  let detectedSubStrategy = '';
-  let subStrategySignals: DetectionSignal[] = [];
-  let subStratConf = 0.50;
-
-  if (assetClass === 'multifamily') {
-    const mfResult = detectMFDealType({ unitCount, occupancy, lossToLease, dscr, opsScore, capitalGapPerUnit, projectType, developmentType, savedSlug });
-    detectedDealType = mfResult.detectedDealType; detectedSubStrategy = mfResult.detectedSubStrategy; subStrategySignals = mfResult.signals; subStratConf = mfResult.confidence;
-  } else if (assetClass === 'sfr') {
-    const sfrResult = detectSFRDealType({ parcelCount, projectType, dealData, savedSlug });
-    detectedDealType = sfrResult.detectedDealType; detectedSubStrategy = sfrResult.detectedSubStrategy; subStrategySignals = sfrResult.signals; subStratConf = sfrResult.confidence;
-  } else if (assetClass === 'retail') {
-    const retailResult = detectRetailDealType({ rawPropType, dealData, savedSlug });
-    detectedDealType = retailResult.detectedDealType; detectedSubStrategy = retailResult.detectedSubStrategy; subStrategySignals = retailResult.signals; subStratConf = retailResult.confidence;
-  } else if (assetClass === 'office') {
-    const officeResult = detectOfficeDealType({ rawPropType, dealData, savedSlug });
-    detectedDealType = officeResult.detectedDealType; detectedSubStrategy = officeResult.detectedSubStrategy; subStrategySignals = officeResult.signals; subStratConf = officeResult.confidence;
-  } else if (assetClass === 'industrial') {
-    detectedDealType = 'last_mile';
-    detectedSubStrategy = 'industrial_last_mile';
-  } else if (assetClass === 'hospitality') {
-    detectedDealType = 'reflag';
-    detectedSubStrategy = 'hospitality_reflag';
-  } else {
-    detectedDealType = 'value_add';
-    detectedSubStrategy = 'mf_value_add_standard';
-  }
-
-  signals.push(...subStrategySignals);
-
-  const confidence = Math.min(0.98, (assetClassConfidence * 0.40 + subStratConf * 0.60));
-
-  // ── Alternates ────────────────────────────────────────────────────────────
-  const alternates = buildAlternates(assetClass, detectedSubStrategy, { lossToLease, occupancy, dscr, capitalGapPerUnit });
-
-  const finalConfidence = parseFloat(confidence.toFixed(2));
-
-  return {
-    assetClass,
-    subType,
-    detectedDealType,
-    detectedSubStrategy,
-    confidence: finalConfidence,
-    requiresUserConfirmation: finalConfidence < 0.70,
-    detectionSignals: signals,
-    alternateSubStrategies: alternates,
-    userConfirmed,
-    userOverrideClassification: undefined,
-  };
 }
 
-// ─── Per-Asset-Class Decision Trees ──────────────────────────────────────────
-
-function detectMFDealType(p: {
-  unitCount: number;
-  occupancy: number;
-  lossToLease: number;
-  dscr: number;
-  opsScore: number;
-  capitalGapPerUnit: number;
-  projectType: string;
-  developmentType: string;
-  savedSlug: string | null;
-}): { detectedDealType: string; detectedSubStrategy: string; signals: DetectionSignal[]; confidence: number } {
-  const sigs: DetectionSignal[] = [];
-
-  // Ground-up / vacant land
-  if (p.projectType === 'development' && p.unitCount === 0) {
-    sigs.push({ signal: 'project_type', value: 'development', threshold: 'development + no units', contribution: 0.50 });
-    return { detectedDealType: 'ground_up_bts', detectedSubStrategy: 'mf_bts_ground_up', signals: sigs, confidence: 0.80 };
-  }
-
-  // Distressed: DSCR < 1.0 or very low occupancy
-  if ((p.dscr > 0 && p.dscr < 1.0) || (p.occupancy > 0 && p.occupancy < 0.75)) {
-    sigs.push({ signal: 'dscr', value: String(p.dscr), threshold: '<1.0', contribution: 0.40 });
-    if (p.occupancy > 0 && p.occupancy < 0.75) {
-      sigs.push({ signal: 'occupancy', value: `${Math.round(p.occupancy * 100)}%`, threshold: '<75%', contribution: 0.30 });
-    }
-    return { detectedDealType: 'distressed', detectedSubStrategy: 'mf_distressed', signals: sigs, confidence: 0.85 };
-  }
-
-  // Value-add: loss-to-lease > 8% or low ops score
-  if (p.lossToLease > 0.08 || (p.opsScore > 0 && p.opsScore < 60)) {
-    sigs.push({ signal: 'loss_to_lease', value: `${Math.round(p.lossToLease * 100)}%`, threshold: '>8%', contribution: 0.35 });
-    if (p.opsScore > 0 && p.opsScore < 60) {
-      sigs.push({ signal: 'ops_score', value: String(p.opsScore), threshold: '<60', contribution: 0.20 });
-    }
-
-    // Deep value-add: capital gap > $40K/unit
-    if (p.capitalGapPerUnit > 40000) {
-      sigs.push({ signal: 'capital_gap', value: `$${Math.round(p.capitalGapPerUnit / 1000)}K/unit`, threshold: '>$40K/unit', contribution: 0.25 });
-      return { detectedDealType: 'deep_value_add', detectedSubStrategy: 'mf_deep_value_add', signals: sigs, confidence: 0.82 };
-    }
-
-    if (p.capitalGapPerUnit > 0) {
-      sigs.push({ signal: 'capital_gap', value: `$${Math.round(p.capitalGapPerUnit / 1000)}K/unit`, threshold: '<$40K/unit', contribution: 0.15 });
-    }
-    return { detectedDealType: 'value_add', detectedSubStrategy: 'mf_value_add_standard', signals: sigs, confidence: 0.84 };
-  }
-
-  // Core-plus: loss-to-lease 3-8% and decent ops score
-  if (p.lossToLease >= 0.03 && p.lossToLease <= 0.08 && p.opsScore >= 60 && p.opsScore <= 75) {
-    sigs.push({ signal: 'loss_to_lease', value: `${Math.round(p.lossToLease * 100)}%`, threshold: '3-8%', contribution: 0.30 });
-    sigs.push({ signal: 'ops_score', value: String(p.opsScore), threshold: '60-75', contribution: 0.25 });
-    return { detectedDealType: 'core_plus', detectedSubStrategy: 'mf_core_plus', signals: sigs, confidence: 0.75 };
-  }
-
-  // Core: stabilized, low LTL, strong ops
-  if (p.opsScore >= 75 && p.occupancy >= 0.93) {
-    sigs.push({ signal: 'ops_score', value: String(p.opsScore), threshold: '>75', contribution: 0.30 });
-    sigs.push({ signal: 'occupancy', value: `${Math.round(p.occupancy * 100)}%`, threshold: '≥93%', contribution: 0.25 });
-    return { detectedDealType: 'core', detectedSubStrategy: 'mf_core', signals: sigs, confidence: 0.78 };
-  }
-
-  // Fallback: use saved slug if available
-  if (p.savedSlug) {
-    if (/deep.value/i.test(p.savedSlug)) return { detectedDealType: 'deep_value_add', detectedSubStrategy: 'mf_deep_value_add', signals: sigs, confidence: 0.60 };
-    if (/core.plus/i.test(p.savedSlug)) return { detectedDealType: 'core_plus', detectedSubStrategy: 'mf_core_plus', signals: sigs, confidence: 0.60 };
-    if (/core(?!.plus)/i.test(p.savedSlug)) return { detectedDealType: 'core', detectedSubStrategy: 'mf_core', signals: sigs, confidence: 0.60 };
-    if (/distressed|opportunistic/i.test(p.savedSlug)) return { detectedDealType: 'distressed', detectedSubStrategy: 'mf_distressed', signals: sigs, confidence: 0.60 };
-  }
-
-  // Default MF value-add
-  sigs.push({ signal: 'fallback', value: 'default', threshold: 'no strong signal', contribution: 0.10 });
-  return { detectedDealType: 'value_add', detectedSubStrategy: 'mf_value_add_standard', signals: sigs, confidence: 0.55 };
-}
-
-function detectSFRDealType(p: {
-  parcelCount: number;
-  projectType: string;
-  dealData: Record<string, any>;
-  savedSlug: string | null;
-}): { detectedDealType: string; detectedSubStrategy: string; signals: DetectionSignal[]; confidence: number } {
-  const sigs: DetectionSignal[] = [];
-
-  if (p.parcelCount >= 20) {
-    sigs.push({ signal: 'parcel_count', value: String(p.parcelCount), threshold: '≥20 parcels', contribution: 0.45 });
-    return { detectedDealType: 'sfr_portfolio_aggregation', detectedSubStrategy: 'sfr_portfolio_agg', signals: sigs, confidence: 0.82 };
-  }
-
-  if (p.projectType === 'development') {
-    sigs.push({ signal: 'project_type', value: 'development', threshold: 'new SFR development', contribution: 0.40 });
-    return { detectedDealType: 'sfr_btr', detectedSubStrategy: 'sfr_btr', signals: sigs, confidence: 0.75 };
-  }
-
-  if (p.savedSlug) {
-    if (/brrrr/i.test(p.savedSlug)) return { detectedDealType: 'sfr_brrrr', detectedSubStrategy: 'sfr_brrrr', signals: sigs, confidence: 0.65 };
-    if (/fix.flip|flip/i.test(p.savedSlug)) return { detectedDealType: 'sfr_fix_flip', detectedSubStrategy: 'sfr_fix_flip', signals: sigs, confidence: 0.65 };
-    if (/str|vacation/i.test(p.savedSlug)) return { detectedDealType: 'sfr_str', detectedSubStrategy: 'sfr_str', signals: sigs, confidence: 0.65 };
-    if (/mtr|mid.term/i.test(p.savedSlug)) return { detectedDealType: 'sfr_mtr', detectedSubStrategy: 'sfr_mtr', signals: sigs, confidence: 0.65 };
-  }
-
-  sigs.push({ signal: 'single_house', value: '1 parcel', threshold: 'single family', contribution: 0.30 });
-  return { detectedDealType: 'sfr_hold', detectedSubStrategy: 'sfr_hold', signals: sigs, confidence: 0.60 };
-}
-
-function detectRetailDealType(p: {
-  rawPropType: string;
-  dealData: Record<string, any>;
-  savedSlug: string | null;
-}): { detectedDealType: string; detectedSubStrategy: string; signals: DetectionSignal[]; confidence: number } {
-  const sigs: DetectionSignal[] = [];
-  const t = p.rawPropType.toLowerCase();
-
-  if (/nnn|net.lease|single.tenant/i.test(t)) {
-    sigs.push({ signal: 'property_type', value: t, threshold: 'NNN single tenant', contribution: 0.50 });
-    return { detectedDealType: 'retail_nnn_core', detectedSubStrategy: 'retail_nnn_core', signals: sigs, confidence: 0.80 };
-  }
-
-  if (/grocery|anchored/i.test(t)) {
-    sigs.push({ signal: 'property_type', value: t, threshold: 'grocery-anchored', contribution: 0.45 });
-    return { detectedDealType: 'retail_grocery_anchored', detectedSubStrategy: 'retail_grocery_anchored', signals: sigs, confidence: 0.78 };
-  }
-
-  sigs.push({ signal: 'property_type', value: t, threshold: 'retail value-add', contribution: 0.30 });
-  return { detectedDealType: 'retail_value_add', detectedSubStrategy: 'retail_value_add', signals: sigs, confidence: 0.65 };
-}
-
-function detectOfficeDealType(p: {
-  rawPropType: string;
-  dealData: Record<string, any>;
-  savedSlug: string | null;
-}): { detectedDealType: string; detectedSubStrategy: string; signals: DetectionSignal[]; confidence: number } {
-  const sigs: DetectionSignal[] = [];
-  const vacancy = Number(p.dealData.vacancy || 0);
-
-  if (vacancy > 0.30) {
-    sigs.push({ signal: 'vacancy', value: `${Math.round(vacancy * 100)}%`, threshold: '>30%', contribution: 0.40 });
-    return { detectedDealType: 'office_adaptive_reuse', detectedSubStrategy: 'office_adaptive_reuse', signals: sigs, confidence: 0.78 };
-  }
-
-  if (/medical/i.test(p.rawPropType)) {
-    sigs.push({ signal: 'property_type', value: p.rawPropType, threshold: 'medical office', contribution: 0.45 });
-    return { detectedDealType: 'office_medical', detectedSubStrategy: 'office_medical', signals: sigs, confidence: 0.80 };
-  }
-
-  sigs.push({ signal: 'default', value: 'office', threshold: 'tenant rollup', contribution: 0.25 });
-  return { detectedDealType: 'office_tenant_rollup', detectedSubStrategy: 'office_tenant_rollup', signals: sigs, confidence: 0.60 };
-}
+// ─── Alternate sub-strategies ─────────────────────────────────────────────────
 
 function buildAlternates(
   assetClass: AssetClass,
@@ -538,9 +324,7 @@ function buildAlternates(
     if (primaryKey === 'mf_value_add_standard') {
       alts.push({ key: 'mf_deep_value_add', fit: 0.62, reason: 'If capital scope is expanded beyond $40K/unit' });
       alts.push({ key: 'mf_core_plus', fit: 0.38, reason: 'If loss-to-lease capture is faster than modeled' });
-      if (metrics.lossToLease > 0.12) {
-        alts.push({ key: 'mf_bts_ground_up', fit: 0.30, reason: 'If zoning allows 3x+ density and land residual is positive' });
-      }
+      if (metrics.lossToLease > 0.12) alts.push({ key: 'mf_bts_ground_up', fit: 0.30, reason: 'If zoning allows 3x+ density and land residual is positive' });
     } else if (primaryKey === 'mf_deep_value_add') {
       alts.push({ key: 'mf_value_add_standard', fit: 0.55, reason: 'If capital budget is reduced below $40K/unit scope' });
       alts.push({ key: 'mf_bts_ground_up', fit: 0.40, reason: 'If teardown + redevelopment exceeds repositioning ROI' });
@@ -551,6 +335,8 @@ function buildAlternates(
       alts.push({ key: 'mf_core_plus', fit: 0.55, reason: 'If modest upgrades yield rent lift beyond current modeling' });
     } else if (primaryKey === 'mf_bts_ground_up') {
       alts.push({ key: 'mf_value_add_standard', fit: 0.45, reason: 'If entitlement risk or capital constraints prefer renovation' });
+    } else if (primaryKey === 'mf_lease_up') {
+      alts.push({ key: 'mf_value_add_standard', fit: 0.50, reason: 'If property requires physical improvements beyond lease-up' });
     }
   } else if (assetClass === 'sfr') {
     if (primaryKey === 'sfr_fix_flip') {
@@ -574,4 +360,215 @@ function buildAlternates(
   }
 
   return alts;
+}
+
+// ─── Main detection function ──────────────────────────────────────────────────
+
+import { detectDealType } from './deal-type-detection.service';
+
+/**
+ * Detect asset class from deal data using the spec's weighted confidence waterfall.
+ * Call this first; then call detectDealType() from deal-type-detection.service.ts.
+ */
+export function detectAssetClass(deal: Record<string, any>): {
+  assetClass: AssetClass;
+  subType: string;
+  confidence: number;
+  confidenceBreakdown: DetectionResult['confidenceBreakdown'];
+  signals: DetectionSignal[];
+  userConfirmed: boolean;
+} {
+  const d = deal.deal_data || {};
+  const prop = deal.property_data || {};
+  const assumptions = deal.assumptions || {};
+  const userConfirmed = !!deal.recommended;
+
+  const rawPropType: string = d.property_type || prop.property_type || d.propertyType || prop.propertyType || deal.project_type || deal.deal_category || '';
+  const unitCount = Number(deal.unit_count || d.unit_count || d.units || assumptions.total_units || 0);
+  const avgRent   = Number(deal.avg_rent_per_unit || d.avg_rent || d.avg_rent_per_unit || 0);
+  const stories   = Number(d.stories || assumptions.stories || 0);
+  const constructionType = d.construction_type || prop.construction_type || '';
+  const zoning    = d.zoning_classification || d.zoning || prop.zoning || '';
+  const savedSlug = deal.strategy_slug || null;
+
+  const signals: DetectionSignal[] = [];
+
+  // ── Step 1: Primary classification from property type string ──────────────
+  let assetClass: AssetClass = 'other';
+  let propTypeBoost = 0;
+
+  const fromPropType = inferAssetClassFromPropType(rawPropType);
+  if (fromPropType) {
+    assetClass = fromPropType.assetClass;
+    propTypeBoost = fromPropType.confidence;
+    signals.push({
+      signal: 'property_type',
+      value: rawPropType,
+      threshold: 'string classification',
+      contribution: propTypeBoost,
+    });
+  }
+
+  // Saved slug confirms asset class
+  if (savedSlug) {
+    const slugClass = savedSlug.startsWith('mf_') ? 'multifamily'
+      : savedSlug.startsWith('sfr_')  ? 'sfr'
+      : savedSlug.startsWith('retail_') ? 'retail'
+      : savedSlug.startsWith('office_') ? 'office'
+      : savedSlug.startsWith('industrial_') ? 'industrial'
+      : savedSlug.startsWith('hospitality_') ? 'hospitality'
+      : null;
+    if (slugClass) {
+      if (assetClass === 'other') assetClass = slugClass as AssetClass;
+      propTypeBoost = Math.min(0.65, propTypeBoost + 0.10);
+      signals.push({ signal: 'saved_slug', value: savedSlug, threshold: 'prior classification confirmation', contribution: 0.10 });
+    }
+  }
+
+  // Unit count heuristic (override 'other', confirm MF vs SFR)
+  if (unitCount > 4 && (assetClass === 'other' || assetClass === 'sfr')) {
+    assetClass = 'multifamily';
+    propTypeBoost = Math.min(0.65, propTypeBoost + 0.15);
+    signals.push({ signal: 'unit_count', value: String(unitCount), threshold: '>4 units → multifamily', contribution: 0.15 });
+  } else if (unitCount >= 1 && unitCount <= 4 && assetClass === 'other') {
+    assetClass = 'sfr';
+    propTypeBoost = Math.min(0.60, propTypeBoost + 0.10);
+  }
+
+  // Project type: development with no units → ground-up
+  if (deal.project_type === 'development' && unitCount === 0 && assetClass === 'other') {
+    assetClass = 'multifamily';
+    propTypeBoost = Math.min(0.55, propTypeBoost + 0.10);
+    signals.push({ signal: 'project_type', value: 'development', threshold: 'development project', contribution: 0.10 });
+  }
+
+  // Final fallback
+  if (assetClass === 'other') {
+    assetClass = 'multifamily';
+    propTypeBoost = Math.max(0.25, propTypeBoost);
+  }
+
+  // ── Step 2: Weighted waterfall ────────────────────────────────────────────
+  //
+  // assessor_code_match × 0.45 — TODO #M08-AC-01
+  // (assessor codes not yet ingested into deal DB schema; score = 0 until ticket ships)
+  const assessorScore = 0;
+
+  // zoning_match × 0.20 — WIRED
+  const zoningRaw = computeZoningScore(zoning, assetClass);
+  const zoningScore = zoningRaw;
+  if (zoning) {
+    signals.push({
+      signal: 'zoning_match',
+      value: zoning,
+      threshold: `${assetClass} zoning pattern`,
+      contribution: zoningRaw * W_ZONING_MATCH,
+    });
+  } else {
+    signals.push({ signal: 'zoning_match', value: '(not available)', threshold: 'no zoning field in deal_data', contribution: 0 });
+  }
+
+  // rent_roll_signal × 0.15 — WIRED
+  const rentRollRaw = computeRentRollScore(unitCount, avgRent, assetClass);
+  const rentRollScore = rentRollRaw;
+  if (unitCount > 0 || avgRent > 0) {
+    signals.push({
+      signal: 'rent_roll_signal',
+      value: `${unitCount} units, $${Math.round(avgRent)}/unit`,
+      threshold: `${assetClass} rent roll structure`,
+      contribution: rentRollRaw * W_RENT_ROLL_SIGNAL,
+    });
+  }
+
+  // naics_signal × 0.10 — TODO #M08-AC-02
+  // (NAICS codes not yet ingested into deal DB schema; score = 0 until ticket ships)
+  const naicsScore = 0;
+
+  // building_structure × 0.10 — WIRED
+  const buildingRaw = computeBuildingStructureScore(stories, constructionType, unitCount, assetClass);
+  const buildingScore = buildingRaw;
+  if (stories > 0 || constructionType) {
+    signals.push({
+      signal: 'building_structure',
+      value: `${stories} stories, ${constructionType || 'type unknown'}`,
+      threshold: `${assetClass} building structure`,
+      contribution: buildingRaw * W_BUILDING_STRUCT,
+    });
+  }
+
+  // ── Step 3: Combine waterfall with property-type heuristic ────────────────
+  //
+  // Waterfall produces max 0.45 from wired inputs (zoning 0.20 + rent roll 0.15 + building 0.10).
+  // Property type string heuristic contributes up to 0.65 as a parallel signal.
+  // Final confidence = weighted blend: 60% waterfall + 40% prop-type heuristic.
+
+  const waterfallScore =
+    assessorScore    * W_ASSESSOR_CODE   +
+    zoningScore      * W_ZONING_MATCH    +
+    rentRollScore    * W_RENT_ROLL_SIGNAL +
+    naicsScore       * W_NAICS_SIGNAL    +
+    buildingScore    * W_BUILDING_STRUCT;
+
+  // Scale: waterfallScore max is 0.45 (three wired inputs at 1.0). Normalize to 0-1.
+  const waterfallNorm = Math.min(1, waterfallScore / 0.45);
+  const confidence = Math.min(0.98, waterfallNorm * 0.60 + propTypeBoost * 0.40);
+
+  const subType = detectSubType(assetClass, deal);
+
+  return {
+    assetClass,
+    subType,
+    confidence: parseFloat(confidence.toFixed(2)),
+    confidenceBreakdown: {
+      assessorCode:     assessorScore,     // always 0 until #M08-AC-01
+      zoningMatch:      parseFloat((zoningScore * W_ZONING_MATCH).toFixed(3)),
+      rentRollSignal:   parseFloat((rentRollScore * W_RENT_ROLL_SIGNAL).toFixed(3)),
+      naicsSignal:      naicsScore,        // always 0 until #M08-AC-02
+      buildingStructure: parseFloat((buildingScore * W_BUILDING_STRUCT).toFixed(3)),
+    },
+    signals,
+    userConfirmed,
+  };
+}
+
+// ─── Orchestrated entry point ─────────────────────────────────────────────────
+// Combines asset class detection + deal type detection into a single DetectionResult.
+
+export function detectAssetClassAndDealType(deal: Record<string, any>): DetectionResult {
+  const d = deal.deal_data || {};
+  const lossToLease = Number(d.loss_to_lease || d.lossToLease || 0);
+  const occupancy   = Number(d.occupancy || d.occupancy_rate || 0);
+  const dscr        = Number(d.dscr || 0);
+  const capitalGap  = Number(d.capital_gap_per_unit || d.capex_per_unit || deal.tdc_per_unit || 0);
+
+  const ac = detectAssetClass(deal);
+  const dt = detectDealType(ac.assetClass, deal);
+
+  const allSignals = [...ac.signals, ...dt.signals];
+
+  // Combined confidence: asset class confidence (40%) + deal type confidence (60%)
+  const combined = parseFloat(
+    Math.min(0.98, ac.confidence * 0.40 + dt.confidence * 0.60).toFixed(2)
+  );
+
+  const alternates = buildAlternates(ac.assetClass, dt.detectedSubStrategy, {
+    lossToLease,
+    occupancy,
+    dscr,
+    capitalGapPerUnit: capitalGap,
+  });
+
+  return {
+    assetClass: ac.assetClass,
+    subType: ac.subType,
+    detectedDealType: dt.detectedDealType,
+    detectedSubStrategy: dt.detectedSubStrategy,
+    confidence: combined,
+    requiresUserConfirmation: combined < 0.70,
+    confidenceBreakdown: ac.confidenceBreakdown,
+    detectionSignals: allSignals,
+    alternateSubStrategies: alternates,
+    userConfirmed: ac.userConfirmed,
+    userOverrideClassification: undefined,
+  };
 }
