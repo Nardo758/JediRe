@@ -340,12 +340,12 @@ export async function selectControlGroup(
   baselineStart.setMonth(baselineStart.getMonth() - BASELINE_MONTHS);
   const baselineEnd = new Date(event.materializationDate);
 
-  // Get candidate submarkets in same MSA (include class_label and avg_rent for similarity)
+  // Get candidate submarkets in same MSA using actual available columns
   const candidatesRes = await pool.query(
     `SELECT s.id::text AS id, s.name,
             COALESCE(s.avg_rent, 0) AS avg_rent,
             COALESCE(s.avg_occupancy, 0) AS avg_occupancy,
-            COALESCE(s.class_label, '') AS class_label
+            COALESCE(s.avg_cap_rate, 0) AS avg_cap_rate
      FROM submarkets s
      WHERE ($1::text IS NULL OR s.msa_id::text = $1)
        AND s.id::text != $2
@@ -377,11 +377,11 @@ export async function selectControlGroup(
   const treatmentOls = fitOLS(treatmentSeries);
   const treatmentSlope = treatmentOls?.slope ?? null;
 
-  // Get treatment submarket's own class/rent/occupancy for demographic similarity
+  // Get treatment submarket's own rent/cap_rate/occupancy for demographic similarity
   const treatRes = await pool.query(
     `SELECT COALESCE(avg_rent, 0) AS avg_rent,
             COALESCE(avg_occupancy, 0) AS avg_occupancy,
-            COALESCE(class_label, '') AS class_label
+            COALESCE(avg_cap_rate, 0) AS avg_cap_rate
      FROM submarkets WHERE id::text = $1 LIMIT 1`,
     [event.geographyId]
   );
@@ -415,12 +415,14 @@ export async function selectControlGroup(
     matchCriteria.pre_event_trend_similarity = Math.round(trendScore * 10000) / 10000;
     componentScores.push(trendScore * 0.40); // 40% weight
 
-    // 3. Class/asset class similarity
+    // 3. Asset class similarity via cap_rate (proxy for asset quality tier)
     let classScore = 0.5;
-    if (treatAttr && treatAttr.class_label && c.class_label) {
-      classScore = c.class_label === treatAttr.class_label ? 1.0 : 0.2;
+    if (treatAttr && treatAttr.avg_cap_rate > 0 && c.avg_cap_rate > 0) {
+      const capDiff = Math.abs(c.avg_cap_rate - treatAttr.avg_cap_rate);
+      const capDenom = Math.max(treatAttr.avg_cap_rate, 0.001);
+      classScore = Math.max(0, 1 - Math.min(capDiff / capDenom, 1));
     }
-    matchCriteria.class_similarity = classScore;
+    matchCriteria.cap_rate_similarity = Math.round(classScore * 10000) / 10000;
     componentScores.push(classScore * 0.25); // 25% weight
 
     // 4. Demographic/rent-level similarity
@@ -458,12 +460,13 @@ export async function selectControlGroup(
     });
   }
 
-  // Sort by rank desc, take top TARGET_CONTROL_N included + all excluded
+  // Sort by rank desc, return only the top TARGET_CONTROL_N included controls.
+  // Excluded candidates (confounding events) are not persisted — they are
+  // a diagnostic artifact and would muddle the matched control set.
   scored.sort((a, b) => b._rank - a._rank);
   const included = scored.filter(s => s.isIncluded).slice(0, TARGET_CONTROL_N);
-  const excluded = scored.filter(s => !s.isIncluded);
 
-  return [...included, ...excluded];
+  return included;
 }
 
 // ─── Single-metric impact computation ─────────────────────────────────────────
@@ -706,8 +709,8 @@ export async function computeEventImpact(eventId: string): Promise<ImpactRecord[
         const isNewInsert = await persistImpactRecord(record);
         results.push(record);
 
-        // Publish Kafka event only on first insert and when we have actual delta data
-        if (isNewInsert && record.delta !== null) {
+        // Publish Kafka event on every new insert (not re-compute upserts)
+        if (isNewInsert) {
           await publishImpactMeasured(record, event.category, event.msaId ?? '');
         }
       } catch (err) {
