@@ -989,6 +989,19 @@ httpServer.listen(Number(PORT), '0.0.0.0', async () => {
   }
 
   await initStripe();
+
+  // M35 Phase 4: Nightly divergence tracking job — every 24 hours
+  const M35_DIVERGENCE_INTERVAL_MS = 24 * 60 * 60 * 1000;
+  const m35DivergenceTimer = setInterval(async () => {
+    try {
+      const { runDivergenceTrackingJob } = await import('./services/m35-forecast.service');
+      const result = await runDivergenceTrackingJob();
+      console.log(`[M35 Divergence] Nightly check complete: ${result.checked} checked, ${result.diverged} diverged`);
+    } catch (err) {
+      console.error('[M35 Divergence] Nightly job failed (non-fatal):', err);
+    }
+  }, M35_DIVERGENCE_INTERVAL_MS);
+  m35DivergenceTimer.unref(); // don't block process exit
 });
 
 process.on('SIGTERM', async () => {

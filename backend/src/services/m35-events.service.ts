@@ -25,6 +25,7 @@ import {
   type M35EventScope,
   type M35EventStatus,
 } from './kafka/event-schemas';
+import { generateForecast, invalidateForecasts } from './m35-forecast.service';
 
 // Re-export so consumers can import everything M35 from one place
 export type { M35EventCategory, M35EventScope, M35EventStatus };
@@ -442,6 +443,15 @@ export async function transitionStatus(
     };
     void kafkaProducer.publish(KAFKA_TOPICS.M35_EVENT_STATUS_CHANGED, statusMsg, { key: eventId })
       .catch((err: Error) => logger.warn('[M35 Events] Kafka status publish failed', { err: err.message }));
+
+    // Forecast lifecycle hooks — fire-and-forget, non-blocking
+    if (toStatus === 'announced' || toStatus === 'in_progress') {
+      void generateForecast(eventId)
+        .catch((err: Error) => logger.warn('[M35 Events] Forecast generation failed (non-fatal)', { eventId, err: err.message }));
+    } else if (toStatus === 'cancelled' || toStatus === 'reversed') {
+      void invalidateForecasts(eventId, `Event ${toStatus}${options.reason ? ': ' + options.reason : ''}`)
+        .catch((err: Error) => logger.warn('[M35 Events] Forecast invalidation failed (non-fatal)', { eventId, err: err.message }));
+    }
 
     logger.info('[M35 Events] Status transition', { eventId, fromStatus, toStatus });
     return { event, historyId };
