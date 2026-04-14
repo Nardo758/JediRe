@@ -143,6 +143,15 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
     fetchF9Financials();
   }, [fetchF9Financials]);
 
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const idx = (e as CustomEvent<number>).detail;
+      if (typeof idx === 'number') setActiveTab(idx);
+    };
+    window.addEventListener('fe-tab-change', handler);
+    return () => window.removeEventListener('fe-tab-change', handler);
+  }, []);
+
   const handleHoldChange = useCallback((years: number) => {
     setF9Hold(years);
     fetchF9Financials(years);

@@ -921,7 +921,10 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
                 Full debt stack designer (multi-tranche, amortization, SOFR curves) and IRR sensitivity matrix are in
               </span>
               <button
-                onClick={() => window.dispatchEvent(new CustomEvent('deal-tab-change', { detail: { tab: 'proforma' } }))}
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent('deal-tab-change', { detail: 'proforma' }));
+                  setTimeout(() => window.dispatchEvent(new CustomEvent('fe-tab-change', { detail: 6 })), 120);
+                }}
                 style={{ fontSize: 9, fontWeight: 700, fontFamily: "'JetBrains Mono'", color: '#63B3ED', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline', textUnderlineOffset: 2 }}
               >
                 F9 · PRO FORMA → ⊙ DEBT &amp; ∿ SENSITIVITY
