@@ -1,8 +1,9 @@
 import React, { useState } from "react";
-import { Search, Plus, Download, ChevronRight, Zap, AlertTriangle, AlertCircle, ArrowUpRight, ArrowRight, ArrowDownRight, Info, CheckCircle2 } from "lucide-react";
+import { Search, Plus, Download, ChevronRight, Zap, AlertTriangle, AlertCircle, ArrowUpRight, ArrowRight, ArrowDownRight, Info, CheckCircle2, ChevronDown } from "lucide-react";
 
 export function F4DashboardWithEvents() {
   const [hoveredRow, setHoveredRow] = useState<string | null>(null);
+  const [m35Expanded, setM35Expanded] = useState(true);
 
   return (
     <div className="min-h-screen bg-[#0B0E1A] text-[#E2E8F0] font-sans flex flex-col">
@@ -349,8 +350,266 @@ export function F4DashboardWithEvents() {
           </div>
         </div>
 
+        {/* M35 EVENT IMPACT ENGINE SUBSECTION */}
+        <div className="mt-2 flex flex-col gap-0 border border-[#1E2538] rounded-lg overflow-hidden bg-[#131929]">
+          <button 
+            onClick={() => setM35Expanded(!m35Expanded)}
+            className="flex items-center justify-between w-full p-3 bg-[#131929] hover:bg-[#1E2538]/50 transition-colors border-b border-[#1E2538]"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-bold text-[#0891B2] tracking-wider uppercase">M35 EVENT IMPACT ENGINE</span>
+              {m35Expanded ? <ChevronDown className="w-3.5 h-3.5 text-[#0891B2]" /> : <ChevronRight className="w-3.5 h-3.5 text-[#0891B2]" />}
+            </div>
+            <div className="flex items-center gap-4 text-xs">
+              <span className="text-[#A0ABBE]">Tampa–St. Pete MSA | 5 active events | Event Sensitivity: <span className="text-[#D97706] font-medium">HIGH</span></span>
+              <div className="flex items-center gap-1 text-[#0891B2] hover:text-[#E2E8F0] transition-colors">
+                View Full Module <ArrowRight className="w-3 h-3" />
+              </div>
+            </div>
+          </button>
+
+          {m35Expanded && (
+            <div className="p-4 flex flex-col gap-4 bg-[#0B0E1A]">
+              {/* Panel A - Active Events Banner */}
+              <div className="flex items-center justify-between bg-[#131929] border-l-2 border-l-[#0891B2] border-y border-r border-[#1E2538] rounded-r p-3">
+                <div className="flex items-center gap-4">
+                  <span className="text-xs font-bold text-[#E2E8F0] tracking-wide">5 ACTIVE EVENTS AFFECTING THIS MSA</span>
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 bg-[#0891B2]/10 border border-[#0891B2]/30 text-[#0891B2] px-2 py-1 rounded text-[11px] font-medium">
+                      <span>📣</span> Amazon HQ2 — FIRED, AHEAD <CheckCircle2 className="w-3 h-3" />
+                    </div>
+                    <div className="flex items-center gap-1.5 bg-[#D97706]/10 border border-[#D97706]/30 text-[#D97706] px-2 py-1 rounded text-[11px] font-medium">
+                      <span>🌀</span> Hurricane Idalia — FIRED, BEHIND <AlertTriangle className="w-3 h-3" />
+                    </div>
+                    <div className="flex items-center gap-1.5 bg-[#1E2538]/50 border border-[#1E2538] text-[#A0ABBE] px-2 py-1 rounded text-[11px] font-medium">
+                      <span>📜</span> FL Insurance — PENDING
+                    </div>
+                  </div>
+                </div>
+                <button className="text-[11px] font-medium text-[#0891B2] hover:text-[#E2E8F0] flex items-center gap-1 transition-colors">
+                  View All <ArrowRight className="w-3 h-3" />
+                </button>
+              </div>
+
+              {/* Panel B - ForecastTracker & AttributionWaterfall */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* Forecast Tracker */}
+                <div className="bg-[#131929] border border-[#1E2538] rounded p-4 flex flex-col">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-xs font-bold text-[#E2E8F0] tracking-wider">FORECAST TRACKER — Rent Growth (YoY)</h3>
+                    <div className="flex items-center gap-1 text-xs text-[#A0ABBE] bg-[#1E2538]/50 px-2 py-1 rounded border border-[#1E2538] cursor-pointer hover:text-[#E2E8F0]">
+                      Rent Growth <ChevronDown className="w-3 h-3" />
+                    </div>
+                  </div>
+                  <div className="relative h-[200px] w-full border-b border-l border-[#1E2538] mb-4">
+                    <svg className="w-full h-full" viewBox="0 0 400 200" preserveAspectRatio="none">
+                      <path d="M0,150 L50,140 L100,130 L150,145 L200,100" fill="none" stroke="#6B7A8D" strokeWidth="2" />
+                      <path d="M200,100 L250,80 L300,90 L350,60 L400,40" fill="none" stroke="#0891B2" strokeWidth="2" strokeDasharray="4,4" />
+                      <path d="M200,100 L250,80 L300,90 L350,60 L400,40 L400,200 L200,200 Z" fill="url(#forecast-gradient)" opacity="0.2" />
+                      
+                      <line x1="200" y1="0" x2="200" y2="200" stroke="#E2E8F0" strokeWidth="1" strokeDasharray="4,4" />
+                      <text x="205" y="15" fill="#E2E8F0" fontSize="10" fontWeight="bold">TODAY (T-0)</text>
+                      
+                      {/* Event Markers */}
+                      <line x1="80" y1="0" x2="80" y2="200" stroke="#6B7A8D" strokeWidth="1" opacity="0.5" />
+                      <circle cx="80" cy="134" r="4" fill="#131929" stroke="#6B7A8D" strokeWidth="2" />
+                      <text x="85" y="195" fill="#6B7A8D" fontSize="9">T-8 (Amazon)</text>
+                      
+                      <line x1="140" y1="0" x2="140" y2="200" stroke="#0891B2" strokeWidth="1" opacity="0.5" />
+                      <circle cx="140" cy="142" r="4" fill="#131929" stroke="#0891B2" strokeWidth="2" />
+                      <text x="145" y="185" fill="#0891B2" fontSize="9">T-4 (BRT)</text>
+                      
+                      <line x1="230" y1="0" x2="230" y2="200" stroke="#6B7A8D" strokeWidth="1" opacity="0.5" />
+                      <circle cx="230" cy="88" r="4" fill="#131929" stroke="#6B7A8D" strokeWidth="2" />
+                      <text x="235" y="195" fill="#6B7A8D" fontSize="9">T+2 (Insurance)</text>
+                      
+                      <defs>
+                        <linearGradient id="forecast-gradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#0891B2" />
+                          <stop offset="100%" stopColor="#131929" stopOpacity="0" />
+                        </linearGradient>
+                      </defs>
+                    </svg>
+                    <div className="absolute top-2 right-2 bg-[#10B981]/10 border border-[#10B981]/30 text-[#10B981] px-2 py-1 rounded text-[10px] font-bold">
+                      AHEAD +0.4pp vs playbook
+                    </div>
+                    <div className="absolute -bottom-5 left-0 text-[10px] text-[#6B7A8D]">T-18</div>
+                    <div className="absolute -bottom-5 right-0 text-[10px] text-[#6B7A8D]">T+24</div>
+                  </div>
+                  <div className="flex gap-2 justify-center mt-2">
+                    <div className="bg-[#10B981]/10 text-[#10B981] px-2 py-1 rounded text-[10px] font-medium flex items-center gap-1">
+                      Amazon HQ2 <CheckCircle2 className="w-3 h-3" /> AHEAD +0.6pp
+                    </div>
+                    <div className="bg-[#A0ABBE]/10 text-[#A0ABBE] px-2 py-1 rounded text-[10px] font-medium flex items-center gap-1">
+                      BRT Phase 2 <ArrowRight className="w-3 h-3" /> ON PACE
+                    </div>
+                    <div className="bg-[#D97706]/10 text-[#D97706] px-2 py-1 rounded text-[10px] font-medium flex items-center gap-1">
+                      Hurricane <AlertTriangle className="w-3 h-3" /> BEHIND -0.4pp
+                    </div>
+                  </div>
+                </div>
+
+                {/* Attribution Waterfall */}
+                <div className="bg-[#131929] border border-[#1E2538] rounded p-4 flex flex-col justify-between">
+                  <h3 className="text-xs font-bold text-[#E2E8F0] tracking-wider mb-4">IRR ATTRIBUTION — By Event</h3>
+                  <div className="flex-1 flex flex-col justify-center gap-3">
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[11px]">
+                        <span className="text-[#A0ABBE]">Baseline (No Events)</span>
+                        <span className="font-mono text-[#E2E8F0]">12.0%</span>
+                      </div>
+                      <div className="h-4 bg-[#1E2538] rounded w-full overflow-hidden">
+                        <div className="h-full bg-[#6B7A8D] w-[60%]"></div>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[11px]">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[#E2E8F0]">Amazon HQ2</span>
+                          <span className="text-[9px] bg-[#1E2538] px-1 rounded text-[#A0ABBE]">MSA</span>
+                        </div>
+                        <span className="font-mono text-[#10B981]">+1.4pp</span>
+                      </div>
+                      <div className="h-4 bg-[#1E2538] rounded w-full overflow-hidden flex">
+                        <div className="h-full w-[60%]"></div>
+                        <div className="h-full bg-[#10B981] w-[15%]"></div>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[11px]">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[#E2E8F0]">BRT Phase 2</span>
+                          <span className="text-[9px] bg-[#1E2538] px-1 rounded text-[#A0ABBE]">Submarket</span>
+                        </div>
+                        <span className="font-mono text-[#10B981]">+0.8pp</span>
+                      </div>
+                      <div className="h-4 bg-[#1E2538] rounded w-full overflow-hidden flex">
+                        <div className="h-full w-[75%]"></div>
+                        <div className="h-full bg-[#10B981] w-[8%]"></div>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-[11px]">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[#E2E8F0]">Hurricane Idalia</span>
+                          <span className="text-[9px] bg-[#1E2538] px-1 rounded text-[#A0ABBE]">MSA</span>
+                        </div>
+                        <span className="font-mono text-[#EF4444]">-0.3pp</span>
+                      </div>
+                      <div className="h-4 bg-[#1E2538] rounded w-full overflow-hidden flex">
+                        <div className="h-full w-[80%]"></div>
+                        <div className="h-full bg-[#EF4444] w-[3%]"></div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-[#1E2538] flex justify-between items-center">
+                    <span className="text-xs text-[#A0ABBE]">Net event IRR uplift</span>
+                    <span className="text-sm font-bold text-[#10B981]">+1.9pp vs baseline</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Panel C - Active Event Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-[#131929] border-y border-r border-l-2 border-l-[#0891B2] border-y-[#1E2538] border-r-[#1E2538] rounded p-3 h-[120px] flex flex-col justify-between">
+                  <div>
+                    <div className="flex justify-between items-start mb-1">
+                      <span className="font-bold text-sm text-[#E2E8F0] truncate">Amazon HQ2 Phase 2</span>
+                      <span className="text-[10px] text-[#A0ABBE]">T-8</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <span className="bg-[#1E2538] text-[#A0ABBE] px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider">Demand Shock</span>
+                      <span className="bg-[#10B981]/10 text-[#10B981] px-1.5 py-0.5 rounded text-[9px] font-bold">FIRED</span>
+                    </div>
+                    <div className="text-[11px] text-[#A0ABBE]">
+                      Rent Growth: <span className="text-[#10B981] font-medium">+1.4pp</span> → tracking AHEAD
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between mt-2">
+                    <div className="flex-1 mr-4">
+                      <div className="flex justify-between text-[9px] mb-1 text-[#6B7A8D]">
+                        <span>Confidence</span>
+                        <span>85%</span>
+                      </div>
+                      <div className="h-1 bg-[#1E2538] rounded overflow-hidden">
+                        <div className="h-full bg-[#0891B2] w-[85%]"></div>
+                      </div>
+                    </div>
+                    <button className="text-[10px] font-medium text-[#0891B2] hover:text-[#E2E8F0] whitespace-nowrap flex items-center gap-0.5 transition-colors">
+                      View Impact <ArrowRight className="w-2.5 h-2.5" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="bg-[#131929] border-y border-r border-l-2 border-l-[#8B5CF6] border-y-[#1E2538] border-r-[#1E2538] rounded p-3 h-[120px] flex flex-col justify-between">
+                  <div>
+                    <div className="flex justify-between items-start mb-1">
+                      <span className="font-bold text-sm text-[#E2E8F0] truncate">BRT Phase 2 Extension</span>
+                      <span className="text-[10px] text-[#A0ABBE]">T-4</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <span className="bg-[#1E2538] text-[#A0ABBE] px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider">Infrastructure</span>
+                      <span className="bg-[#10B981]/10 text-[#10B981] px-1.5 py-0.5 rounded text-[9px] font-bold">FIRED</span>
+                    </div>
+                    <div className="text-[11px] text-[#A0ABBE]">
+                      Rent Growth: <span className="text-[#E2E8F0] font-medium">+0.8pp</span> → tracking ON PACE
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between mt-2">
+                    <div className="flex-1 mr-4">
+                      <div className="flex justify-between text-[9px] mb-1 text-[#6B7A8D]">
+                        <span>Confidence</span>
+                        <span>60%</span>
+                      </div>
+                      <div className="h-1 bg-[#1E2538] rounded overflow-hidden">
+                        <div className="h-full bg-[#8B5CF6] w-[60%]"></div>
+                      </div>
+                    </div>
+                    <button className="text-[10px] font-medium text-[#0891B2] hover:text-[#E2E8F0] whitespace-nowrap flex items-center gap-0.5 transition-colors">
+                      View Impact <ArrowRight className="w-2.5 h-2.5" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="bg-[#131929] border-y border-r border-l-2 border-l-[#EF4444] border-y-[#1E2538] border-r-[#1E2538] rounded p-3 h-[120px] flex flex-col justify-between">
+                  <div>
+                    <div className="flex justify-between items-start mb-1">
+                      <span className="font-bold text-sm text-[#E2E8F0] truncate">FL Insurance Rate Cap</span>
+                      <span className="text-[10px] text-[#A0ABBE]">T+2</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <span className="bg-[#1E2538] text-[#A0ABBE] px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider">Regulatory</span>
+                      <span className="bg-[#A0ABBE]/10 text-[#A0ABBE] px-1.5 py-0.5 rounded text-[9px] font-bold">PENDING</span>
+                    </div>
+                    <div className="text-[11px] text-[#A0ABBE]">
+                      Expense Ratio: <span className="text-[#EF4444] font-medium">-1.2pp</span> → PENDING
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between mt-2">
+                    <div className="flex-1 mr-4">
+                      <div className="flex justify-between text-[9px] mb-1 text-[#6B7A8D]">
+                        <span>Confidence</span>
+                        <span>40%</span>
+                      </div>
+                      <div className="h-1 bg-[#1E2538] rounded overflow-hidden">
+                        <div className="h-full bg-[#EF4444] w-[40%]"></div>
+                      </div>
+                    </div>
+                    <button className="text-[10px] font-medium text-[#0891B2] hover:text-[#E2E8F0] whitespace-nowrap flex items-center gap-0.5 transition-colors">
+                      View Impact <ArrowRight className="w-2.5 h-2.5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* BOTTOM ROW */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-2">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
           {/* MARKET MOVERS */}
           <div className="bg-[#131929] border border-[#1E2538] rounded-lg p-4">
             <h3 className="text-[#E2E8F0] font-semibold mb-4 text-sm flex items-center gap-2">

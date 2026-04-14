@@ -2,11 +2,12 @@ import React, { useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ChevronRight, ArrowUp, Download, Info, ExternalLink, Activity, Target } from 'lucide-react';
+import { ChevronRight, ChevronDown, ChevronUp, ArrowUp, Download, Info, ExternalLink, Activity, Target, ArrowRight } from 'lucide-react';
 
 export function F6TrafficWithEvents() {
-  const [showEvents, setShowEvents] = useState(true);
+  const [showEvents, setShowEvents] = useState(false);
   const [showCounterfactual, setShowCounterfactual] = useState(false);
+  const [isEventsExpanded, setIsEventsExpanded] = useState(false);
 
   return (
     <div className="min-h-screen bg-[#0B0E1A] text-[#E2E8F0] p-6 font-mono text-sm">
@@ -48,12 +49,11 @@ export function F6TrafficWithEvents() {
           </div>
         </Card>
         <Card className="bg-[#131929] border-[#1E2538] p-4 flex flex-col justify-between">
-          <div className="text-[#A0ABBE] text-xs mb-2">EVENT CONTRIBUTION</div>
+          <div className="text-[#A0ABBE] text-xs mb-2">PEAK TRAFFIC MONTH</div>
           <div className="flex items-end justify-between">
-            <div className="text-2xl text-[#0891B2]">+284</div>
-            <div className="text-[#A0ABBE] text-xs">searches/mo</div>
+            <div className="text-2xl text-[#E2E8F0]">Sep 2026</div>
           </div>
-          <div className="text-[#6B7A8D] text-xs mt-1">from 2 active events</div>
+          <div className="text-[#6B7A8D] text-xs mt-1">2,247 searches</div>
         </Card>
         <Card className="bg-[#131929] border-[#1E2538] p-4 flex flex-col justify-between">
           <div className="text-[#A0ABBE] text-xs mb-2">TRAFFIC INDEX</div>
@@ -77,32 +77,39 @@ export function F6TrafficWithEvents() {
       {/* MAIN CHART SECTION */}
       <Card className="bg-[#131929] border-[#1E2538] mb-6 flex flex-col">
         <div className="flex justify-between items-center p-4 border-b border-[#1E2538]">
-          <div className="font-bold text-[#E2E8F0] tracking-wider">MONTHLY SEARCH TRAFFIC — PREDICTIONS + EVENT OVERLAY</div>
+          <div className="font-bold text-[#E2E8F0] tracking-wider">MONTHLY SEARCH TRAFFIC — PREDICTIONS</div>
           <div className="flex gap-3">
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={() => setShowEvents(!showEvents)}
-              className={`border-[#1E2538] bg-transparent h-8 text-xs ${showEvents ? 'text-[#0891B2] border-[#0891B2]' : 'text-[#A0ABBE]'}`}
-            >
-              Show Events {showEvents && <span className="w-1.5 h-1.5 rounded-full bg-[#0891B2] ml-2"></span>}
-            </Button>
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={() => setShowCounterfactual(!showCounterfactual)}
-              className={`border-[#1E2538] bg-transparent h-8 text-xs ${showCounterfactual ? 'text-[#E2E8F0]' : 'text-[#A0ABBE]'}`}
-            >
-              Show Counterfactual
-            </Button>
-            <Button 
-              variant="outline" 
-              size="sm"
-              className="border-[#1E2538] bg-transparent text-[#A0ABBE] hover:text-[#E2E8F0] h-8 text-xs flex items-center gap-2"
-            >
-              <Download className="w-3 h-3" />
-              Export
-            </Button>
+            <div className="flex flex-col items-end">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => setShowEvents(!showEvents)}
+                className={`border-[#1E2538] bg-transparent h-8 text-xs ${showEvents ? 'text-[#0891B2] border-[#0891B2]' : 'text-[#A0ABBE]'}`}
+              >
+                Show Events {showEvents && <span className="w-1.5 h-1.5 rounded-full bg-[#0891B2] ml-2"></span>}
+              </Button>
+              <span className="text-[9px] text-[#6B7A8D] mt-1 pr-1">Toggle events to see M35 impact overlays</span>
+            </div>
+            <div>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => setShowCounterfactual(!showCounterfactual)}
+                className={`border-[#1E2538] bg-transparent h-8 text-xs mt-[1px] ${showCounterfactual ? 'text-[#E2E8F0]' : 'text-[#A0ABBE]'}`}
+              >
+                Show Counterfactual
+              </Button>
+            </div>
+            <div>
+              <Button 
+                variant="outline" 
+                size="sm"
+                className="border-[#1E2538] bg-transparent text-[#A0ABBE] hover:text-[#E2E8F0] h-8 text-xs flex items-center gap-2 mt-[1px]"
+              >
+                <Download className="w-3 h-3" />
+                Export
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -141,7 +148,7 @@ export function F6TrafficWithEvents() {
             {/* SVG Chart Layer */}
             <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none" viewBox="0 0 1000 250">
               {/* Confidence Band */}
-              {showEvents && (
+              {isEventsExpanded && showEvents && (
                 <path 
                   d="M 500 130 L 640 100 L 780 70 L 1000 50 L 1000 80 L 780 100 L 640 120 L 500 130 Z" 
                   fill="#0891B2" 
@@ -158,7 +165,7 @@ export function F6TrafficWithEvents() {
               />
               
               {/* Event Adjusted Forecast (Cyan Dotted) */}
-              {showEvents && (
+              {isEventsExpanded && showEvents && (
                 <path 
                   d="M 500 130 Q 750 90 1000 60" 
                   fill="none" 
@@ -169,7 +176,7 @@ export function F6TrafficWithEvents() {
               )}
 
               {/* Baseline Forecast (Thin Dotted Gray) */}
-              {(showCounterfactual || !showEvents) && (
+              {(!isEventsExpanded || !showEvents || showCounterfactual) && (
                 <path 
                   d="M 500 130 L 1000 125" 
                   fill="none" 
@@ -184,7 +191,7 @@ export function F6TrafficWithEvents() {
             </svg>
 
             {/* Event Markers & Overlays */}
-            {showEvents && (
+            {isEventsExpanded && showEvents && (
               <>
                 {/* Event 1: Amazon HQ2 */}
                 <div className="absolute top-0 bottom-0 left-[27.7%] border-l border-[#6B7A8D] border-dashed pointer-events-none">
@@ -200,36 +207,6 @@ export function F6TrafficWithEvents() {
                     <span>🚆</span> BRT Phase 2
                   </div>
                 </div>
-
-                {/* Static Tooltip at T+6 */}
-                <Card className="absolute left-[60%] top-[20%] bg-[#131929] border-[#1E2538] p-3 shadow-lg z-10 w-64 pointer-events-none">
-                  <div className="flex items-center gap-2 mb-2 pb-2 border-b border-[#1E2538]">
-                    <div className="w-2 h-2 rounded-full bg-[#0891B2]"></div>
-                    <div className="font-bold text-[#E2E8F0] text-xs">T+6 PROJECTION: 1,924 searches/mo</div>
-                  </div>
-                  <div className="space-y-1 text-xs">
-                    <div className="flex justify-between">
-                      <span className="text-[#A0ABBE]">Event contribution:</span>
-                      <span className="text-[#0891B2] font-mono">+324</span>
-                    </div>
-                    <div className="flex justify-between pl-2">
-                      <span className="text-[#6B7A8D] text-[10px]">- Amazon HQ2:</span>
-                      <span className="text-[#6B7A8D] text-[10px] font-mono">+261</span>
-                    </div>
-                    <div className="flex justify-between pl-2">
-                      <span className="text-[#6B7A8D] text-[10px]">- BRT:</span>
-                      <span className="text-[#6B7A8D] text-[10px] font-mono">+63</span>
-                    </div>
-                    <div className="flex justify-between mt-2 pt-1 border-t border-[#1E2538]">
-                      <span className="text-[#A0ABBE]">Baseline without events:</span>
-                      <span className="text-[#E2E8F0] font-mono">1,600</span>
-                    </div>
-                    <div className="flex justify-between mt-1">
-                      <span className="text-[#A0ABBE]">Confidence:</span>
-                      <span className="text-[#E2E8F0]">78%</span>
-                    </div>
-                  </div>
-                </Card>
               </>
             )}
 
@@ -244,119 +221,181 @@ export function F6TrafficWithEvents() {
         </div>
       </Card>
 
-      {/* BELOW CHART */}
-      <div className="grid grid-cols-3 gap-6">
-        {/* LEFT COLUMN: EVENT CONTRIBUTION BREAKDOWN */}
-        <Card className="col-span-2 bg-[#131929] border-[#1E2538]">
-          <div className="p-4 border-b border-[#1E2538] font-bold tracking-wider text-[#E2E8F0]">
-            EVENT CONTRIBUTION BREAKDOWN
+      {/* COLLAPSIBLE SUBSECTION */}
+      <div className="flex flex-col border border-[#1E2538] rounded-sm overflow-hidden bg-[#131929]">
+        {/* Subsection header bar */}
+        <div 
+          className="h-12 border-l-4 border-l-[#0891B2] flex items-center justify-between px-4 cursor-pointer hover:bg-[#1E2538]/30 transition-colors"
+          onClick={() => setIsEventsExpanded(!isEventsExpanded)}
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-[#0891B2] uppercase text-[11px] font-bold tracking-wider">M35 EVENT OVERLAYS</span>
+            {isEventsExpanded ? <ChevronUp className="w-4 h-4 text-[#6B7A8D]" /> : <ChevronDown className="w-4 h-4 text-[#6B7A8D]" />}
           </div>
-          <div className="p-0">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-[#1E2538] text-[#6B7A8D] text-xs">
-                  <th className="p-4 font-normal">EVENT</th>
-                  <th className="p-4 font-normal">SCOPE</th>
-                  <th className="p-4 font-normal">STATUS</th>
-                  <th className="p-4 font-normal">MONTHLY TRAFFIC IMPACT</th>
-                  <th className="p-4 font-normal">MECHANISM</th>
-                </tr>
-              </thead>
-              <tbody className="text-sm">
-                <tr className="border-b border-[#1E2538] hover:bg-[#1E2538]/30 transition-colors">
-                  <td className="p-4 text-[#E2E8F0] flex items-center gap-2">
-                    <span className="text-[#6B7A8D]">📣</span> Amazon HQ2
-                  </td>
-                  <td className="p-4 text-[#A0ABBE]">MSA</td>
-                  <td className="p-4">
-                    <Badge variant="outline" className="bg-[#131929] border-[#6B7A8D] text-[#A0ABBE] rounded-none text-[10px]">FIRED T+8mo</Badge>
-                  </td>
-                  <td className="p-4 text-[#0891B2] font-mono">+261 <span className="text-[#6B7A8D] text-xs ml-1">by T+12</span></td>
-                  <td className="p-4 text-[#A0ABBE] text-xs">Jobs→apartment demand→search</td>
-                </tr>
-                <tr className="border-b border-[#1E2538] hover:bg-[#1E2538]/30 transition-colors">
-                  <td className="p-4 text-[#E2E8F0] flex items-center gap-2">
-                    <span className="text-[#0891B2]">🚆</span> BRT Phase 2
-                  </td>
-                  <td className="p-4 text-[#A0ABBE]">Submarket</td>
-                  <td className="p-4">
-                    <Badge variant="outline" className="bg-[#131929] border-[#0891B2] text-[#0891B2] rounded-none text-[10px]">PENDING</Badge>
-                  </td>
-                  <td className="p-4 text-[#0891B2] font-mono">+63 <span className="text-[#6B7A8D] text-xs ml-1">by T+18</span></td>
-                  <td className="p-4 text-[#A0ABBE] text-xs">Transit access→search momentum</td>
-                </tr>
-                <tr className="hover:bg-[#1E2538]/30 transition-colors">
-                  <td className="p-4 text-[#6B7A8D]">Baseline trend</td>
-                  <td className="p-4 text-[#6B7A8D]">—</td>
-                  <td className="p-4 text-[#6B7A8D]">—</td>
-                  <td className="p-4 text-[#6B7A8D] font-mono">+62/mo <span className="text-[#6B7A8D] text-xs ml-1">secular</span></td>
-                  <td className="p-4 text-[#6B7A8D] text-xs">Population growth</td>
-                </tr>
-              </tbody>
-            </table>
+          
+          <div className="flex items-center gap-3">
+            <Badge variant="outline" className="bg-[#0B0E1A] border-[#1E2538] text-[#A0ABBE] font-normal text-[10px] rounded-sm">2 active events</Badge>
+            <Badge variant="outline" className="bg-[#0B0E1A] border-[#1E2538] text-[#10B981] font-normal text-[10px] rounded-sm">+20.3% traffic lift at T+12</Badge>
           </div>
-          <div className="p-4 border-t border-[#1E2538] bg-[#0B0E1A]/50 flex justify-between items-center">
-            <span className="text-[#A0ABBE] text-xs">TOTAL EVENT LIFT</span>
-            <div className="flex items-center gap-3">
-              <span className="text-[#0891B2] font-bold font-mono">+324 searches/mo</span>
-              <span className="text-[#10B981] text-xs">= +20.3% above baseline at T+12</span>
-            </div>
+          
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-[#6B7A8D]">Linked to M35 Event Engine</span>
+            <Button variant="link" className="text-[#0891B2] p-0 h-auto font-normal flex items-center gap-1 hover:text-[#06b6d4]">
+              Open Event Module <ArrowRight className="w-3 h-3" />
+            </Button>
           </div>
-        </Card>
-
-        {/* RIGHT COLUMN */}
-        <div className="space-y-6">
-          <Card className="bg-[#131929] border-[#1E2538]">
-            <div className="p-4 border-b border-[#1E2538] font-bold tracking-wider text-[#E2E8F0] flex items-center justify-between">
-              PLAYBOOK REFERENCE
-              <Info className="w-4 h-4 text-[#6B7A8D]" />
-            </div>
-            <div className="p-4 space-y-4">
-              <div className="text-[#0891B2] font-bold text-sm">M35 Playbook: Major HQ Relocation (Large MSA)</div>
-              
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-[#A0ABBE]">Median search momentum uplift:</span>
-                  <span className="text-[#E2E8F0] font-mono">+18-24% at T+12</span>
-                </div>
-                <div className="flex justify-between text-sm items-center">
-                  <span className="text-[#A0ABBE]">This property:</span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[#0891B2] font-mono">+20.3%</span>
-                    <Badge className="bg-[#10B981]/20 text-[#10B981] hover:bg-[#10B981]/30 border-none text-[10px] rounded-sm py-0 h-5">ON PACE</Badge>
-                  </div>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-[#A0ABBE]">Comparable events:</span>
-                  <span className="text-[#E2E8F0]">23 historical instances</span>
-                </div>
-              </div>
-
-              <Button className="w-full bg-[#1E2538] hover:bg-[#2A3441] text-[#E2E8F0] border-none flex items-center justify-between mt-4">
-                <span>View Full Playbook</span>
-                <ExternalLink className="w-4 h-4 text-[#A0ABBE]" />
-              </Button>
-            </div>
-          </Card>
-
-          <Card className="bg-[#131929] border-[#1E2538]">
-            <div className="p-4 border-b border-[#1E2538] font-bold tracking-wider text-[#E2E8F0] text-xs">
-              CALIBRATION STATUS
-            </div>
-            <div className="p-4 flex justify-between items-center">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-[#10B981]/10 flex items-center justify-center">
-                  <Activity className="w-4 h-4 text-[#10B981]" />
-                </div>
-                <div>
-                  <div className="text-[#E2E8F0] text-sm">High Confidence (78%)</div>
-                  <div className="text-[#6B7A8D] text-xs">Calibrated 2 days ago</div>
-                </div>
-              </div>
-              <Target className="w-5 h-5 text-[#6B7A8D]" />
-            </div>
-          </Card>
         </div>
+
+        {/* Expanded Content */}
+        {isEventsExpanded && (
+          <div className="p-6 bg-[#0B0E1A] border-t border-[#1E2538]">
+            <div className="grid grid-cols-3 gap-6">
+              {/* LEFT COLUMN: EVENT CONTRIBUTION BREAKDOWN + CALLOUT CARD */}
+              <div className="col-span-2 flex flex-col gap-6">
+                <Card className="bg-[#131929] border-[#1E2538]">
+                  <div className="p-4 border-b border-[#1E2538] font-bold tracking-wider text-[#E2E8F0]">
+                    EVENT CONTRIBUTION BREAKDOWN
+                  </div>
+                  <div className="p-0">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-[#1E2538] text-[#6B7A8D] text-xs">
+                          <th className="p-4 font-normal">EVENT</th>
+                          <th className="p-4 font-normal">SCOPE</th>
+                          <th className="p-4 font-normal">STATUS</th>
+                          <th className="p-4 font-normal">MONTHLY TRAFFIC IMPACT</th>
+                          <th className="p-4 font-normal">MECHANISM</th>
+                        </tr>
+                      </thead>
+                      <tbody className="text-sm">
+                        <tr className="border-b border-[#1E2538] hover:bg-[#1E2538]/30 transition-colors">
+                          <td className="p-4 text-[#E2E8F0] flex items-center gap-2">
+                            <span className="text-[#6B7A8D]">📣</span> Amazon HQ2
+                          </td>
+                          <td className="p-4 text-[#A0ABBE]">MSA</td>
+                          <td className="p-4">
+                            <Badge variant="outline" className="bg-[#131929] border-[#6B7A8D] text-[#A0ABBE] rounded-none text-[10px]">FIRED T+8mo</Badge>
+                          </td>
+                          <td className="p-4 text-[#0891B2] font-mono">+261 <span className="text-[#6B7A8D] text-xs ml-1">by T+12</span></td>
+                          <td className="p-4 text-[#A0ABBE] text-xs">Jobs→apartment demand→search</td>
+                        </tr>
+                        <tr className="border-b border-[#1E2538] hover:bg-[#1E2538]/30 transition-colors">
+                          <td className="p-4 text-[#E2E8F0] flex items-center gap-2">
+                            <span className="text-[#0891B2]">🚆</span> BRT Phase 2
+                          </td>
+                          <td className="p-4 text-[#A0ABBE]">Submarket</td>
+                          <td className="p-4">
+                            <Badge variant="outline" className="bg-[#131929] border-[#0891B2] text-[#0891B2] rounded-none text-[10px]">PENDING</Badge>
+                          </td>
+                          <td className="p-4 text-[#0891B2] font-mono">+63 <span className="text-[#6B7A8D] text-xs ml-1">by T+18</span></td>
+                          <td className="p-4 text-[#A0ABBE] text-xs">Transit access→search momentum</td>
+                        </tr>
+                        <tr className="hover:bg-[#1E2538]/30 transition-colors">
+                          <td className="p-4 text-[#6B7A8D]">Baseline trend</td>
+                          <td className="p-4 text-[#6B7A8D]">—</td>
+                          <td className="p-4 text-[#6B7A8D]">—</td>
+                          <td className="p-4 text-[#6B7A8D] font-mono">+62/mo <span className="text-[#6B7A8D] text-xs ml-1">secular</span></td>
+                          <td className="p-4 text-[#6B7A8D] text-xs">Population growth</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="p-4 border-t border-[#1E2538] bg-[#0B0E1A]/50 flex justify-between items-center">
+                    <span className="text-[#A0ABBE] text-xs">TOTAL EVENT LIFT</span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-[#0891B2] font-bold font-mono">+324 searches/mo</span>
+                      <span className="text-[#10B981] text-xs">= +20.3% above baseline at T+12</span>
+                    </div>
+                  </div>
+                </Card>
+
+                {/* Static Callout Card (formerly tooltip) */}
+                <Card className="bg-[#131929] border-[#1E2538] p-4 shadow-lg w-full max-w-md">
+                  <div className="flex items-center gap-2 mb-3 pb-3 border-b border-[#1E2538]">
+                    <div className="w-2 h-2 rounded-full bg-[#0891B2]"></div>
+                    <div className="font-bold text-[#E2E8F0] text-sm">T+6 PROJECTION: 1,924 searches/mo</div>
+                  </div>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-[#A0ABBE]">Event contribution:</span>
+                      <span className="text-[#0891B2] font-mono font-bold">+324</span>
+                    </div>
+                    <div className="flex justify-between pl-4">
+                      <span className="text-[#6B7A8D] text-xs">- Amazon HQ2:</span>
+                      <span className="text-[#6B7A8D] text-xs font-mono">+261</span>
+                    </div>
+                    <div className="flex justify-between pl-4">
+                      <span className="text-[#6B7A8D] text-xs">- BRT:</span>
+                      <span className="text-[#6B7A8D] text-xs font-mono">+63</span>
+                    </div>
+                    <div className="flex justify-between mt-3 pt-2 border-t border-[#1E2538]">
+                      <span className="text-[#A0ABBE]">Baseline without events:</span>
+                      <span className="text-[#E2E8F0] font-mono">1,600</span>
+                    </div>
+                    <div className="flex justify-between mt-2">
+                      <span className="text-[#A0ABBE]">Confidence:</span>
+                      <span className="text-[#E2E8F0]">78%</span>
+                    </div>
+                  </div>
+                </Card>
+              </div>
+
+              {/* RIGHT COLUMN */}
+              <div className="space-y-6">
+                <Card className="bg-[#131929] border-[#1E2538]">
+                  <div className="p-4 border-b border-[#1E2538] font-bold tracking-wider text-[#E2E8F0] flex items-center justify-between">
+                    PLAYBOOK REFERENCE
+                    <Info className="w-4 h-4 text-[#6B7A8D]" />
+                  </div>
+                  <div className="p-4 space-y-4">
+                    <div className="text-[#0891B2] font-bold text-sm">M35 Playbook: Major HQ Relocation (Large MSA)</div>
+                    
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-[#A0ABBE]">Median search momentum uplift:</span>
+                        <span className="text-[#E2E8F0] font-mono">+18-24% at T+12</span>
+                      </div>
+                      <div className="flex justify-between text-sm items-center">
+                        <span className="text-[#A0ABBE]">This property:</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[#0891B2] font-mono">+20.3%</span>
+                          <Badge className="bg-[#10B981]/20 text-[#10B981] hover:bg-[#10B981]/30 border-none text-[10px] rounded-sm py-0 h-5">ON PACE</Badge>
+                        </div>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-[#A0ABBE]">Comparable events:</span>
+                        <span className="text-[#E2E8F0]">23 historical instances</span>
+                      </div>
+                    </div>
+
+                    <Button className="w-full bg-[#1E2538] hover:bg-[#2A3441] text-[#E2E8F0] border-none flex items-center justify-between mt-4">
+                      <span>View Full Playbook</span>
+                      <ExternalLink className="w-4 h-4 text-[#A0ABBE]" />
+                    </Button>
+                  </div>
+                </Card>
+
+                <Card className="bg-[#131929] border-[#1E2538]">
+                  <div className="p-4 border-b border-[#1E2538] font-bold tracking-wider text-[#E2E8F0] text-xs">
+                    CALIBRATION STATUS
+                  </div>
+                  <div className="p-4 flex justify-between items-center">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-[#10B981]/10 flex items-center justify-center">
+                        <Activity className="w-4 h-4 text-[#10B981]" />
+                      </div>
+                      <div>
+                        <div className="text-[#E2E8F0] text-sm">High Confidence (78%)</div>
+                        <div className="text-[#6B7A8D] text-xs">Calibrated 2 days ago</div>
+                      </div>
+                    </div>
+                    <Target className="w-5 h-5 text-[#6B7A8D]" />
+                  </div>
+                </Card>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
