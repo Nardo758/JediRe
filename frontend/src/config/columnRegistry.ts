@@ -14,7 +14,7 @@ export interface ColumnDef {
   format?: (value: number | null) => string;
 }
 
-export type ViewId = "f4_dashboard" | "f4_browse" | "f4_submarkets" | "f4_properties" | "f4_compare";
+export type ViewId = "f4_dashboard" | "f4_browse" | "f4_submarkets" | "f4_properties" | "f4_compare" | "msa_compare";
 
 export type ColumnCategory =
   | "identity"
@@ -61,6 +61,7 @@ const DASH_BROWSE: ViewId[] = ["f4_dashboard", "f4_browse"];
 const SUB: ViewId[] = ["f4_submarkets"];
 const PROP: ViewId[] = ["f4_properties"];
 const ALL_VIEWS: ViewId[] = ["f4_dashboard", "f4_browse", "f4_submarkets", "f4_properties", "f4_compare"];
+const MSA_CMP: ViewId[] = ["msa_compare"];
 
 export const COLUMN_REGISTRY: ColumnDef[] = [
   { id: "rank", label: "#", category: "identity", width: 28, sortable: true, align: "center", views: DASH_BROWSE },
@@ -96,6 +97,39 @@ export const COLUMN_REGISTRY: ColumnDef[] = [
   { id: "medInc", label: "MED INC", category: "demographic", width: 56, sortable: true, align: "center", description: "Median household income", views: DASH_BROWSE },
 
   { id: "cycle", label: "CYCLE", category: "cycle", width: 76, sortable: true, align: "center", description: "Market cycle position", views: DASH_BROWSE },
+
+  // ── MSA Compare tab metrics (rows in the comparison matrix) ──────────────
+  // Demand
+  { id: "D-01 Jobs/Apt",    label: "Jobs/Apt",      shortLabel: "D-01", category: "demand", width: 80, sortable: false, align: "center", description: "Jobs per apartment unit — measures labor-market depth relative to supply", views: MSA_CMP },
+  { id: "D-02 New Jobs/Unit", label: "New Jobs/Unit", shortLabel: "D-02", category: "demand", width: 80, sortable: false, align: "center", description: "New job creation per new unit added — demand absorption proxy", views: MSA_CMP },
+  { id: "D-03 Migration",   label: "Migration",     shortLabel: "D-03", category: "demand", width: 80, sortable: false, align: "center", description: "Net in-migration (000s persons) — population-driven demand signal", views: MSA_CMP },
+  { id: "D-09 Momentum",    label: "Momentum",      shortLabel: "D-09", category: "demand", width: 80, sortable: false, align: "center", description: "Demand momentum composite score (0–100)", views: MSA_CMP },
+  { id: "D-10 Gravity",     label: "Gravity",       shortLabel: "D-10", category: "demand", width: 80, sortable: false, align: "center", description: "Gravitational pull from employment nodes (0–100)", views: MSA_CMP },
+  { id: "D-11 Rent-Mort",   label: "Rent–Mort Δ",   shortLabel: "D-11", category: "demand", width: 80, sortable: false, align: "center", description: "Rent vs. mortgage cost gap — renting advantage (negative = rent cheaper)", views: MSA_CMP },
+  // Supply
+  { id: "S-04 Absorption",  label: "Absorption",    shortLabel: "S-04", category: "supply", width: 80, sortable: false, align: "center", description: "Months to absorb current pipeline", views: MSA_CMP },
+  { id: "S-05 Clusters",    label: "Supply Clusters", shortLabel: "S-05", category: "supply", width: 80, sortable: false, align: "center", description: "Number of concentrated delivery zones — dispersion risk", views: MSA_CMP },
+  { id: "S-06 Permit Mom",  label: "Permit Mom",    shortLabel: "S-06", category: "supply", width: 80, sortable: false, align: "center", description: "Permit momentum YoY % change — leading supply indicator", views: MSA_CMP },
+  { id: "S-08 Saturation",  label: "Saturation",    shortLabel: "S-08", category: "supply", width: 80, sortable: false, align: "center", description: "Pipeline as % of total stock — saturation pressure", views: MSA_CMP },
+  // Momentum (Rent)
+  { id: "M-01 Avg Rent",    label: "Avg Rent",      shortLabel: "M-01", category: "rent", width: 80, sortable: false, align: "center", description: "Average market asking rent", views: MSA_CMP },
+  { id: "M-02 Rent Accel",  label: "Rent Accel",    shortLabel: "M-02", category: "rent", width: 80, sortable: false, align: "center", description: "Month-over-month rent acceleration", views: MSA_CMP },
+  { id: "M-05 Rent vs Wage", label: "Rent vs Wage", shortLabel: "M-05", category: "rent", width: 80, sortable: false, align: "center", description: "Rent growth relative to wage growth — affordability pressure", views: MSA_CMP },
+  { id: "M-06 Occupancy",   label: "Occupancy",     shortLabel: "M-06", category: "occupancy", width: 80, sortable: false, align: "center", description: "Physical occupancy rate", views: MSA_CMP },
+  // Dev Capacity
+  { id: "DC-01 Capacity",   label: "Dev Capacity",  shortLabel: "DC-01", category: "market", width: 80, sortable: false, align: "center", description: "Remaining developable land capacity as % of current stock", views: MSA_CMP },
+  { id: "DC-02 Buildout",   label: "Buildout Yrs",  shortLabel: "DC-02", category: "market", width: 80, sortable: false, align: "center", description: "Estimated years to buildout at current absorption pace", views: MSA_CMP },
+  { id: "DC-03 Constraint", label: "Constraint",    shortLabel: "DC-03", category: "market", width: 80, sortable: false, align: "center", description: "Supply constraint score — higher = harder to build (0–100)", views: MSA_CMP },
+  { id: "DC-04 Overhang",   label: "Supply Overhang", shortLabel: "DC-04", category: "market", width: 80, sortable: false, align: "center", description: "Excess pipeline above historical absorption capacity", views: MSA_CMP },
+  { id: "DC-07 Pricing Power", label: "Pricing Power", shortLabel: "DC-07", category: "market", width: 80, sortable: false, align: "center", description: "Landlord pricing power index (0–100)", views: MSA_CMP },
+  { id: "DC-08 Supply Wave", label: "Supply Wave",  shortLabel: "DC-08", category: "market", width: 80, sortable: false, align: "center", description: "Current phase of supply wave cycle", views: MSA_CMP },
+  { id: "DC-11 Adj Rent",   label: "Adj Rent",      shortLabel: "DC-11", category: "market", width: 80, sortable: false, align: "center", description: "Rent adjusted for concessions and effective lease-up", views: MSA_CMP },
+  // Traffic
+  { id: "T-02 Physical avg", label: "Physical Traffic", shortLabel: "T-02", category: "traffic_physical", width: 80, sortable: false, align: "center", description: "Average physical traffic score across submarkets", views: MSA_CMP },
+  { id: "T-03 Digital avg", label: "Digital Traffic", shortLabel: "T-03", category: "traffic_digital", width: 80, sortable: false, align: "center", description: "Average digital engagement score across submarkets", views: MSA_CMP },
+  // Risk
+  { id: "R-01 Affordability", label: "Affordability", shortLabel: "R-01", category: "risk", width: 80, sortable: false, align: "center", description: "Rent-to-income ratio — higher = more stressed renters", views: MSA_CMP },
+  { id: "R-03 Concession Drag", label: "Concession Drag", shortLabel: "R-03", category: "risk", width: 80, sortable: false, align: "center", description: "Concession drag on effective rent — leakage from face rent", views: MSA_CMP },
 ];
 
 export const DEFAULT_COLUMNS: Record<ViewId, string[]> = {
@@ -104,6 +138,14 @@ export const DEFAULT_COLUMNS: Record<ViewId, string[]> = {
   f4_submarkets: ["name", "msa", "jedi", "rent", "rentD", "vac", "props", "units", "opp", "cap"],
   f4_properties: ["name", "submarket", "msa", "jedi", "units", "rent", "occ", "capRate", "vintage", "owner"],
   f4_compare: [],
+  msa_compare: [
+    "D-01 Jobs/Apt", "D-02 New Jobs/Unit", "D-03 Migration", "D-09 Momentum", "D-10 Gravity", "D-11 Rent-Mort",
+    "S-04 Absorption", "S-05 Clusters", "S-06 Permit Mom", "S-08 Saturation",
+    "M-01 Avg Rent", "M-02 Rent Accel", "M-05 Rent vs Wage", "M-06 Occupancy",
+    "DC-01 Capacity", "DC-02 Buildout", "DC-03 Constraint", "DC-04 Overhang", "DC-07 Pricing Power", "DC-08 Supply Wave", "DC-11 Adj Rent",
+    "T-02 Physical avg", "T-03 Digital avg",
+    "R-01 Affordability", "R-03 Concession Drag",
+  ],
 };
 
 const dynamicColumnCache = new Map<string, ColumnDef>();
