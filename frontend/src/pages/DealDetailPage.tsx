@@ -172,17 +172,16 @@ const DebtCapitalScreen = (props: ScreenProps) => (
   <DealScreenWrapper
     passProps={props}
     moduleTitle="DEBT & CAPITAL"
-    moduleSubtitle="M12 · CAPITAL STACK + EXIT ANALYSIS"
+    moduleSubtitle="M11+M12 · EXIT STRATEGY + DEBT MARKET"
     moduleBorderColor={BT.text.cyan}
     moduleMetrics={[
-      { l: 'LTV', c: BT.text.cyan },
-      { l: 'DSCR', c: BT.met.financial },
+      { l: 'RSS', c: BT.text.cyan },
+      { l: 'IRR', c: BT.met.financial },
       { l: 'EXIT', c: BT.text.amber },
     ]}
     accentColor={BT.text.cyan}
     tabs={[
-      { id: 'capital', label: 'Capital Structure', component: (p: ScreenProps) => <ExitCapitalModule dealId={p.dealId} deal={p.deal} dealType={p.dealType} initialTab="stack" /> },
-      { id: 'exit',    label: 'Exit Analysis',     component: (p: ScreenProps) => <ExitCapitalModule dealId={p.dealId} deal={p.deal} dealType={p.dealType} initialTab="exit" /> },
+      { id: 'exit', label: 'Exit & Debt Analysis', component: (p: ScreenProps) => <ExitCapitalModule dealId={p.dealId} deal={p.deal} dealType={p.dealType} /> },
     ]}
   />
 );
