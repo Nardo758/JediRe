@@ -321,6 +321,7 @@ export async function selectControlGroup(
     category: string;
     materializationDate: Date;
     geographyId: string;
+    geographyType: string;
   }
 ): Promise<ControlGroupEntry[]> {
   const pool = getPool();
@@ -475,12 +476,15 @@ async function computeMetricWindowImpact(
     msaName: string | null;
     materializationDate: Date;
     geographyId: string;
+    geographyType: string;
   },
   metricKey: string,
   windowMonths: number,
   controlGroup: ControlGroupEntry[]
 ): Promise<Partial<ImpactRecord>> {
-  const geographyId = event.msaId ?? event.geographyId;
+  // Use the event's actual geography (submarket_id > msa_id > national)
+  // so that treatment and control deltas are computed at the same granularity
+  const geographyId = event.geographyId;
 
   const baselineEnd = new Date(event.materializationDate);
   const baselineStart = new Date(event.materializationDate);
@@ -630,13 +634,21 @@ export async function computeEventImpact(eventId: string): Promise<ImpactRecord[
     return [];
   }
 
+  // Determine geography granularity from event scope fields:
+  //   submarket_id present → submarket level
+  //   msa_id only          → metro level
+  //   neither              → national fallback
+  const geoId = ev.submarket_id ?? ev.msa_id ?? 'national';
+  const geoType = ev.submarket_id ? 'submarket' : (ev.msa_id ? 'metro' : 'national');
+
   const event = {
     id: ev.id,
     category: ev.category,
     msaId: ev.msa_id ?? null,
     msaName: ev.msa_name ?? null,
     materializationDate: new Date(ev.materialization_date),
-    geographyId: ev.submarket_id ?? ev.msa_id ?? 'national',
+    geographyId: geoId,
+    geographyType: geoType,
   };
 
   // Select control group (persist to DB)
@@ -665,8 +677,8 @@ export async function computeEventImpact(eventId: string): Promise<ImpactRecord[
           id: uuidv4(),
           eventId,
           metricKey,
-          geographyType: 'metro',
-          geographyId: event.msaId ?? 'national',
+          geographyType: event.geographyType,
+          geographyId: event.geographyId,
           windowMonths,
           measurementDate: new Date(event.materializationDate.getTime()),
           baselineSlope: partial.baselineSlope ?? null,
