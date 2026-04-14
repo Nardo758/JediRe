@@ -52,6 +52,9 @@ export interface CreateEventInput {
   announcedDate?: Date | string;
   materializationDate?: Date | string;
   completionDate?: Date | string;
+  /** Override the default 'draft' initial status. When 'announced' or 'in_progress',
+   *  a forecast is generated immediately after creation. */
+  initialStatus?: M35EventStatus;
   confidence?: number;
   ingestionSource?: string;
   sourceUrl?: string;
@@ -200,6 +203,8 @@ export async function createEvent(input: CreateEventInput): Promise<KeyEvent> {
   const id = randomUUID();
   const now = new Date();
 
+  const initialStatus: M35EventStatus = input.initialStatus ?? 'draft';
+
   const result = await pool.query(
     `INSERT INTO key_events (
        id, category, subtype, taxonomy_subtype_id, name, description, tags,
@@ -210,7 +215,7 @@ export async function createEvent(input: CreateEventInput): Promise<KeyEvent> {
        raw_payload, news_item_ids, created_by, created_at, updated_at
      ) VALUES (
        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
-       $19,$20,$21,'draft',$22,$23,$24,$25,$26,$27,$28,$29,$30
+       $19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31
      ) RETURNING *`,
     [
       id,
@@ -234,6 +239,7 @@ export async function createEvent(input: CreateEventInput): Promise<KeyEvent> {
       input.announcedDate ? new Date(input.announcedDate) : null,
       input.materializationDate ? new Date(input.materializationDate) : null,
       input.completionDate ? new Date(input.completionDate) : null,
+      initialStatus,                                                  // $22
       input.confidence ?? 0.5,
       input.ingestionSource ?? 'manual',
       input.sourceUrl ?? null,
@@ -274,10 +280,15 @@ export async function createEvent(input: CreateEventInput): Promise<KeyEvent> {
   void kafkaProducer.publish(KAFKA_TOPICS.M35_EVENT_INGESTED, msg, { key: id })
     .catch((err: Error) => logger.warn('[M35 Events] Kafka publish failed (non-fatal)', { err: err.message }));
 
-  // Note: new events always start in 'draft' status (see INSERT above).
-  // Forecast generation is triggered when the event transitions to 'announced'
-  // or 'in_progress' via transitionStatus() — see the lifecycle hooks below.
-  logger.info('[M35 Events] Created event', { id, name: input.name, category: input.category });
+  // If created in an active status, generate forecast immediately (fire-and-forget).
+  // Default creation is 'draft'; pass initialStatus:'announced'/'in_progress' to trigger on create.
+  if (initialStatus === 'announced' || initialStatus === 'in_progress') {
+    void generateForecast(id)
+      .catch((err: unknown) => logger.warn('[M35 Events] Post-create forecast generation failed (non-fatal)',
+        { eventId: id, err: err instanceof Error ? err.message : String(err) }));
+  }
+
+  logger.info('[M35 Events] Created event', { id, name: input.name, category: input.category, status: initialStatus });
   return event;
 }
 
@@ -450,10 +461,12 @@ export async function transitionStatus(
     // Forecast lifecycle hooks — fire-and-forget, non-blocking
     if (toStatus === 'announced' || toStatus === 'in_progress') {
       void generateForecast(eventId)
-        .catch((err: Error) => logger.warn('[M35 Events] Forecast generation failed (non-fatal)', { eventId, err: err.message }));
+        .catch((err: unknown) => logger.warn('[M35 Events] Forecast generation failed (non-fatal)',
+          { eventId, err: err instanceof Error ? err.message : String(err) }));
     } else if (toStatus === 'cancelled' || toStatus === 'reversed') {
       void invalidateForecasts(eventId, `Event ${toStatus}${options.reason ? ': ' + options.reason : ''}`)
-        .catch((err: Error) => logger.warn('[M35 Events] Forecast invalidation failed (non-fatal)', { eventId, err: err.message }));
+        .catch((err: unknown) => logger.warn('[M35 Events] Forecast invalidation failed (non-fatal)',
+          { eventId, err: err instanceof Error ? err.message : String(err) }));
     }
 
     logger.info('[M35 Events] Status transition', { eventId, fromStatus, toStatus });

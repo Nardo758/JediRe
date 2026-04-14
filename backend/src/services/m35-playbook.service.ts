@@ -451,13 +451,15 @@ export async function triggerPlaybookUpdate(eventId: string): Promise<void> {
       for (const row of affectedRes.rows) {
         try {
           await generateForecast(row.event_id);
-        } catch (innerErr: any) {
-          logger.warn(`[M35 Playbook] Forecast regen failed for event ${row.event_id} (non-fatal)`, { err: innerErr.message });
+        } catch (innerErr: unknown) {
+          logger.warn(`[M35 Playbook] Forecast regen failed for event ${row.event_id} (non-fatal)`,
+            { err: innerErr instanceof Error ? innerErr.message : String(innerErr) });
         }
       }
       logger.info(`[M35 Playbook] Regenerated forecasts for ${affectedRes.rows.length} active events of subtype=${subtype}`);
-    } catch (err: any) {
-      logger.warn('[M35 Playbook] Playbook-update forecast regen failed (non-fatal)', { err: err.message });
+    } catch (err: unknown) {
+      logger.warn('[M35 Playbook] Playbook-update forecast regen failed (non-fatal)',
+        { err: err instanceof Error ? err.message : String(err) });
     }
   })();
 }

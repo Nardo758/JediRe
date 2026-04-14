@@ -505,33 +505,40 @@ export async function runDivergenceTrackingJob(): Promise<{
   for (const row of activeForecastsRes.rows) {
     const geoId = row.submarket_id ?? row.msa_id ?? 'national';
 
-    // Pull latest actual metric value
+    // Compute the forecast horizon date: announced_date + window_months
+    // This is the point-in-time at which the forecast was expected to materialise.
+    const horizonDate = new Date(row.announced_date);
+    horizonDate.setMonth(horizonDate.getMonth() + parseInt(row.window_months));
+
+    // Pull actual metric value closest to the forecast horizon date
     const actualRes = await pool.query(`
       SELECT value FROM metric_time_series
       WHERE geography_id = $1
         AND metric_id = $2
-        AND period_date >= $3 - INTERVAL '3 months'
-        AND period_date <= $3 + INTERVAL '1 month'
+        AND period_date >= $3::date - INTERVAL '3 months'
+        AND period_date <= $3::date + INTERVAL '3 months'
       ORDER BY ABS(EXTRACT(EPOCH FROM (period_date - $3::date)))
       LIMIT 1
-    `, [geoId, row.metric_key, new Date(row.announced_date)]);
+    `, [geoId, row.metric_key, horizonDate]);
 
     if (!actualRes.rows[0]) continue;
 
-    const actualValue = parseFloat(actualRes.rows[0].value);
+    const actualValue  = parseFloat(actualRes.rows[0].value);
     const forecastValue = parseFloat(row.point_estimate);
-    const ciLow = parseFloat(row.ci_low ?? row.point_estimate);
+    const ciLow  = parseFloat(row.ci_low  ?? row.point_estimate);
     const ciHigh = parseFloat(row.ci_high ?? row.point_estimate);
 
     const divergencePct = forecastValue !== 0
       ? (actualValue - forecastValue) / Math.abs(forecastValue)
       : 0;
 
-    // Divergence rule: actual outside CI OR |actual - forecast| > 1 playbook stddev
+    // Divergence rule per spec: |actual - forecast| > 1 playbook stddev.
+    // Falls back to CI-based check when stddev is unavailable (preliminary playbooks).
     const playbookStddev = parseFloat(row.playbook_stddev ?? '0');
     const absDeviation = Math.abs(actualValue - forecastValue);
-    const isDiverged = actualValue < ciLow || actualValue > ciHigh
-      || (playbookStddev > 0 && absDeviation > playbookStddev);
+    const isDiverged = playbookStddev > 0
+      ? absDeviation > playbookStddev
+      : (actualValue < ciLow || actualValue > ciHigh);
     const statusLabel = actualValue > ciHigh ? 'ahead'
       : actualValue < ciLow ? 'behind'
       : 'on_pace';
