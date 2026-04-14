@@ -172,6 +172,11 @@ interface Property {
   
   // Competitive context
   competitor_count_500m?: number;
+
+  // Calibration context — populated from the deals/properties DB row
+  property_class?: string;   // 'A', 'B', 'C', or null
+  year_built?: string;       // stored as string in DB; parsed to int when needed
+  msa_id?: string;           // MSA identifier for scope-hierarchy resolution
 }
 
 export interface ConversionChainRates {
@@ -1065,9 +1070,9 @@ export class TrafficPredictionEngine {
         this.coefficientResolver.resolveForDeal(
           dealId ?? null,
           property.submarket_id || null,
-          (property as any).property_class || null,
-          (property as any).year_built ? parseInt((property as any).year_built) : null,
-          (property as any).msa_id || null,
+          property.property_class || null,
+          property.year_built ? parseInt(property.year_built) : null,
+          property.msa_id || null,
         ),
         this.startingStateService.resolveStartingState(dealId ?? null),
       ]);

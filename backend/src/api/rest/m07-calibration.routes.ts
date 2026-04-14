@@ -28,7 +28,8 @@
  *     → Update deal_mode (STABILIZED / LEASE_UP / REDEVELOPMENT)
  */
 
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
+import { AuthenticatedRequest } from '../../middleware/auth';
 import type { RequestHandler } from 'express';
 import multer from 'multer';
 import path from 'path';
@@ -88,8 +89,9 @@ const rentRollMiddleware: RequestHandler = rentRollUpload.single('file') as unkn
 // Authorization helper: verify the authenticated user owns the deal.
 // Returns the deal row on success, or responds with 403/404 and returns null.
 // ============================================================================
-async function assertDealOwnership(req: any, res: any, dealId: string): Promise<boolean> {
-  const userId = req.user?.userId;
+async function assertDealOwnership(req: Request, res: Response, dealId: string): Promise<boolean> {
+  // req.user is set by requireAuth middleware; cast to the augmented interface.
+  const userId = (req as AuthenticatedRequest).user?.userId;
   if (!userId) {
     res.status(401).json({ error: 'Authentication required' });
     return false;
@@ -110,8 +112,8 @@ async function assertDealOwnership(req: any, res: any, dealId: string): Promise<
 }
 
 // Admin role check for privileged operations
-function assertAdminRole(req: any, res: any): boolean {
-  const role = req.user?.role;
+function assertAdminRole(req: Request, res: Response): boolean {
+  const role = (req as AuthenticatedRequest).user?.role;
   if (role !== 'admin' && role !== 'service') {
     res.status(403).json({ error: 'Admin or service role required' });
     return false;
@@ -126,7 +128,7 @@ function assertAdminRole(req: any, res: any): boolean {
 router.post('/rent-roll/upload', rentRollMiddleware, async (req, res) => {
   try {
     const file = req.file;
-    const dealId = (req.body as any).dealId;
+    const dealId = req.body['dealId'];
 
     if (!file) {
       return res.status(400).json({ error: 'No file uploaded. Accepted formats: CSV, XLSX, XLS' });
@@ -179,7 +181,7 @@ router.post('/rent-roll/upload', rentRollMiddleware, async (req, res) => {
 // ============================================================================
 router.post('/rent-roll/:snapshotId/derive', async (req, res) => {
   try {
-    const snapshotId = parseInt((req.params as any).snapshotId);
+    const snapshotId = parseInt(req.params['snapshotId']);
     if (isNaN(snapshotId)) {
       return res.status(400).json({ error: 'Invalid snapshotId' });
     }
@@ -214,7 +216,7 @@ router.post('/rent-roll/:snapshotId/derive', async (req, res) => {
 // ============================================================================
 router.get('/rent-roll/:dealId/snapshots', async (req, res) => {
   try {
-    const dealId = (req.params as any).dealId;
+    const dealId = req.params['dealId'];
 
     const authorized = await assertDealOwnership(req, res, dealId);
     if (!authorized) return;
@@ -246,7 +248,7 @@ router.post('/job/run', async (req, res) => {
   try {
     if (!assertAdminRole(req, res)) return;
 
-    const lookbackHours = parseInt((req.body as any).lookbackHours || '720');  // default: 30 days
+    const lookbackHours = parseInt(req.body['lookbackHours'] || '720');  // default: 30 days
 
     logger.info('[M07] Manual calibration job triggered', { lookbackHours });
     const result = await calibrationJob.run(lookbackHours);
@@ -267,7 +269,7 @@ router.post('/job/run', async (req, res) => {
 // ============================================================================
 router.get('/coefficients/:dealId', async (req, res) => {
   try {
-    const dealId = (req.params as any).dealId;
+    const dealId = req.params['dealId'];
 
     const authorized = await assertDealOwnership(req, res, dealId);
     if (!authorized) return;
@@ -312,7 +314,7 @@ router.get('/coefficients/:dealId', async (req, res) => {
 // ============================================================================
 router.get('/starting-state/:dealId', async (req, res) => {
   try {
-    const dealId = (req.params as any).dealId;
+    const dealId = req.params['dealId'];
 
     const authorized = await assertDealOwnership(req, res, dealId);
     if (!authorized) return;
@@ -336,8 +338,8 @@ router.get('/starting-state/:dealId', async (req, res) => {
 // ============================================================================
 router.get('/absorption-benchmark/:submarketId', async (req, res) => {
   try {
-    const submarketId = (req.params as any).submarketId;
-    const { property_class } = req.query as any;
+    const submarketId = req.params['submarketId'];
+    const { property_class } = req.query;
 
     const result = await pool.query<any>(`
       SELECT *
@@ -377,8 +379,8 @@ router.get('/absorption-benchmark/:submarketId', async (req, res) => {
 // ============================================================================
 router.put('/deal/:dealId/mode', async (req, res) => {
   try {
-    const dealId = (req.params as any).dealId;
-    const { mode } = req.body as any;
+    const dealId = req.params['dealId'];
+    const mode: string = req.body['mode'];
 
     const authorized = await assertDealOwnership(req, res, dealId);
     if (!authorized) return;

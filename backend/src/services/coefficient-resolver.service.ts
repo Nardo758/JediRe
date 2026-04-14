@@ -181,8 +181,10 @@ export class CoefficientResolverService {
     vintageBand: string | null,
     msaId: string | null = null,
   ): Promise<Record<CoefficientName, PlatformEntry> | null> {
-    if (!submarketId && !msaId) return null;
-
+    // Note: no early-return when both geo IDs are null.
+    // The submarket/msa-scoped attempts will simply return 0 rows in that case,
+    // and execution continues through to class / vintage / platform tiers —
+    // which are geo-independent and must remain reachable for this fallback to work.
     try {
       // Degradation hierarchy per spec:
       //   submarket+class+vintage → submarket+class → submarket

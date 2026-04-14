@@ -532,27 +532,44 @@ export class TrafficCalibrationJob {
         last_updated: new Date().toISOString(),
       };
 
-      // Upsert absorption benchmark — vintage_band proxied by size_band for the conflict key
-      await this.pool.query(`
-        INSERT INTO traffic_calibration_coefficients (
-          coefficient_name, scope_level, submarket_id, property_class, vintage_band,
-          prior_value, posterior_value, n_prior, n_evidence, n_peer_properties,
-          cal_window, match_tier, calibration_source, curve_data
-        ) VALUES ('absorption_curve', 'submarket', $1, $2, $3, 0, 0, 0, $4, $4, 'TTM', 'PLATFORM', $5, $6)
-        ON CONFLICT (coefficient_name, scope_level, msa_id, submarket_id, property_class, vintage_band, cal_window)
-        DO UPDATE SET
-          curve_data = EXCLUDED.curve_data,
-          n_evidence = EXCLUDED.n_evidence,
-          n_peer_properties = EXCLUDED.n_peer_properties,
-          updated_at = NOW()
-      `, [
-        submarketId,
-        propertyClass !== 'unknown' ? propertyClass : null,
-        `size:${sizeBand}`,  // store size_band in vintage_band column as "size:small|medium|large"
-        groupSnaps.length,
-        this.buildCalibrationSource({ scope_level: 'submarket', submarket_id: submarketId, property_class: propertyClass }),
-        JSON.stringify(curveData),
-      ]);
+      // Persist absorption benchmark — vintage_band stores size_band as "size:small|medium|large".
+      // Uses explicit SELECT+UPDATE/INSERT rather than ON CONFLICT because the table's
+      // uniqueness is enforced by a COALESCE functional index (uq_tcc_scope_coalesce)
+      // which PostgreSQL cannot reference directly in an ON CONFLICT clause.
+      const resolvedClass = propertyClass !== 'unknown' ? propertyClass : null;
+      const vintageBandForAbsorption = `size:${sizeBand}`;
+      const existingAbsorption = await this.pool.query<{ id: number }>(`
+        SELECT id FROM traffic_calibration_coefficients
+        WHERE coefficient_name = 'absorption_curve'
+          AND scope_level = 'submarket'
+          AND (submarket_id = $1 OR (submarket_id IS NULL AND $1 IS NULL))
+          AND (property_class = $2 OR (property_class IS NULL AND $2 IS NULL))
+          AND (vintage_band = $3 OR (vintage_band IS NULL AND $3 IS NULL))
+          AND cal_window = 'TTM'
+      `, [submarketId, resolvedClass, vintageBandForAbsorption]);
+
+      if (existingAbsorption.rows.length > 0) {
+        await this.pool.query(`
+          UPDATE traffic_calibration_coefficients
+          SET curve_data = $1, n_evidence = $2, n_peer_properties = $3, updated_at = NOW()
+          WHERE id = $4
+        `, [
+          JSON.stringify(curveData), groupSnaps.length, groupSnaps.length,
+          existingAbsorption.rows[0].id,
+        ]);
+      } else {
+        await this.pool.query(`
+          INSERT INTO traffic_calibration_coefficients (
+            coefficient_name, scope_level, submarket_id, property_class, vintage_band,
+            prior_value, posterior_value, n_prior, n_evidence, n_peer_properties,
+            cal_window, match_tier, calibration_source, curve_data
+          ) VALUES ('absorption_curve', 'submarket', $1, $2, $3, 0, 0, 0, $4, $4, 'TTM', 'PLATFORM', $5, $6)
+        `, [
+          submarketId, resolvedClass, vintageBandForAbsorption, groupSnaps.length,
+          this.buildCalibrationSource({ scope_level: 'submarket', submarket_id: submarketId, property_class: propertyClass }),
+          JSON.stringify(curveData),
+        ]);
+      }
 
       updated++;
     }
