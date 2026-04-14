@@ -18,7 +18,10 @@
  */
 
 import type { Pool } from 'pg';
+import { randomUUID } from 'crypto';
 import { logger } from '../utils/logger';
+import { kafkaProducer } from '../services/kafka/kafka-producer.service';
+import { KAFKA_TOPICS, type TrafficCalibrationUpdatedMessage } from '../services/kafka/event-schemas';
 
 // ============================================================================
 // Baseline coefficient defaults (hard-coded constants from original engine)
@@ -101,8 +104,13 @@ export class TrafficCalibrationJob {
       propertiesProcessed: evidenceRows.length,
     });
 
-    // (Kafka publish would go here — currently a no-op stub)
-    await this.publishCalibrationEvent({ bucketsUpdated, bucketsCreated, runAt });
+    await this.publishCalibrationEvent({
+      bucketsUpdated,
+      bucketsCreated,
+      propertiesProcessed: evidenceRows.length,
+      absorptionUpdated,
+      runAt,
+    });
 
     return {
       buckets_updated: bucketsUpdated,
@@ -528,9 +536,38 @@ export class TrafficCalibrationJob {
     return Math.sqrt(variance);
   }
 
-  private async publishCalibrationEvent(payload: any): Promise<void> {
-    // Kafka stub — will be wired in when Kafka infra is available
-    logger.info('[CalibrationJob] Calibration event (kafka stub)', { event: 'traffic.calibration.updated', payload });
+  private async publishCalibrationEvent(payload: {
+    bucketsUpdated: number;
+    bucketsCreated: number;
+    propertiesProcessed: number;
+    absorptionUpdated: number;
+    runAt: Date;
+  }): Promise<void> {
+    const event: TrafficCalibrationUpdatedMessage = {
+      eventId: randomUUID(),
+      timestamp: payload.runAt.toISOString(),
+      eventType: 'traffic.calibration.updated',
+      job_version: this.JOB_VERSION,
+      run_at: payload.runAt.toISOString(),
+      buckets_updated: payload.bucketsUpdated,
+      buckets_created: payload.bucketsCreated,
+      properties_processed: payload.propertiesProcessed,
+      absorption_benchmarks_updated: payload.absorptionUpdated,
+    };
+
+    try {
+      await kafkaProducer.publish(KAFKA_TOPICS.TRAFFIC_CALIBRATION, event, {
+        key: `calibration-${payload.runAt.toISOString()}`,
+        publishedBy: 'traffic-calibration-job',
+      });
+      logger.info('[CalibrationJob] Published traffic.calibration.updated event');
+    } catch (publishErr: unknown) {
+      // Non-blocking: log and continue — calibration results are already persisted to DB
+      logger.warn(
+        '[CalibrationJob] Kafka publish failed (non-blocking):',
+        publishErr instanceof Error ? publishErr.message : String(publishErr)
+      );
+    }
   }
 }
 

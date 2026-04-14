@@ -173,3 +173,12 @@ SELECT DISTINCT ON (coefficient_name, scope_level, submarket_id, property_class,
   *
 FROM traffic_calibration_coefficients
 ORDER BY coefficient_name, scope_level, submarket_id, property_class, vintage_band, cal_window, updated_at DESC;
+
+-- ============================================================================
+-- 8. Compatibility aliases
+--    leasing_events → alias for lease_events (required by spec §3.2 naming).
+--    NOTE: traffic_calibration_factors already exists as a separate table
+--    (factor_type / factor_key / multiplier schema) so no alias is needed.
+-- ============================================================================
+CREATE OR REPLACE VIEW leasing_events AS
+  SELECT * FROM lease_events;

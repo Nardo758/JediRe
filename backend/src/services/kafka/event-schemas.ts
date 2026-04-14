@@ -386,6 +386,20 @@ export function validateEvent(event: BaseEvent): { valid: boolean; errors: strin
 }
 
 // ============================================================================
+// M07 Traffic Calibration Events
+// ============================================================================
+
+export interface TrafficCalibrationUpdatedMessage extends BaseEvent {
+  eventType: 'traffic.calibration.updated';
+  job_version: string;
+  run_at: string;
+  buckets_updated: number;
+  buckets_created: number;
+  properties_processed: number;
+  absorption_benchmarks_updated: number;
+}
+
+// ============================================================================
 // Topic Mapping
 // ============================================================================
 
@@ -400,6 +414,7 @@ export const KAFKA_TOPICS = {
   PROFORMA_ASSUMPTIONS: 'proforma.assumptions.updated',
   STRATEGY_RANKINGS: 'strategy.rankings.updated',
   USER_ALERTS: 'alerts.user.generated',
+  TRAFFIC_CALIBRATION: 'traffic.calibration.updated',
   DLQ: 'dlq.failed.events',
 } as const;
 

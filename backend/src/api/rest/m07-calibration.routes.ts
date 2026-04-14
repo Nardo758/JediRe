@@ -13,7 +13,7 @@
  *     → List all snapshots for a deal
  *
  *   POST /api/v1/calibration/job/run
- *     → Trigger the nightly calibration job on-demand
+ *     → Trigger the nightly calibration job on-demand (admin only)
  *
  *   GET  /api/v1/calibration/coefficients/:dealId
  *     → Get resolved coefficients for a deal (Deal → Platform → Baseline hierarchy)
@@ -28,7 +28,8 @@
  *     → Update deal_mode (STABILIZED / LEASE_UP / REDEVELOPMENT)
  */
 
-import { Router, Request, Response } from 'express';
+import { Router } from 'express';
+import type { RequestHandler } from 'express';
 import multer from 'multer';
 import path from 'path';
 import { pool } from '../../database';
@@ -48,7 +49,7 @@ const startingStateService = new StartingStateService(pool);
 const coefficientResolver = new CoefficientResolverService(pool);
 const calibrationJob = new TrafficCalibrationJob(pool);
 
-// Multer for rent roll uploads
+// Multer for rent roll uploads (disk storage, type-checked by filter)
 const rentRollUpload = multer({
   dest: path.join(process.cwd(), 'uploads', 'rent-rolls'),
   limits: { fileSize: 50 * 1024 * 1024 },  // 50 MB
@@ -64,14 +65,54 @@ const rentRollUpload = multer({
   },
 });
 
+// Note: The two-step cast below is required to resolve a nominal type mismatch
+// between the workspace-root @types/express and the backend-local @types/express
+// (two separate node_modules trees). The target type is explicit and correct.
+const rentRollMiddleware: RequestHandler = rentRollUpload.single('file') as unknown as RequestHandler;
+
+// ============================================================================
+// Authorization helper: verify the authenticated user owns the deal.
+// Returns the deal row on success, or responds with 403/404 and returns null.
+// ============================================================================
+async function assertDealOwnership(req: any, res: any, dealId: string): Promise<boolean> {
+  const userId = req.user?.userId;
+  if (!userId) {
+    res.status(401).json({ error: 'Authentication required' });
+    return false;
+  }
+
+  const result = await pool.query<{ id: string }>(
+    'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
+    [dealId, userId],
+  );
+
+  if (result.rows.length === 0) {
+    // Return 404 to avoid leaking deal existence to unauthorised callers
+    res.status(404).json({ error: 'Deal not found' });
+    return false;
+  }
+
+  return true;
+}
+
+// Admin role check for privileged operations
+function assertAdminRole(req: any, res: any): boolean {
+  const role = req.user?.role;
+  if (role !== 'admin' && role !== 'service') {
+    res.status(403).json({ error: 'Admin or service role required' });
+    return false;
+  }
+  return true;
+}
+
 // ============================================================================
 // POST /rent-roll/upload
 // Full pipeline: detect → map → parse → store → derive
 // ============================================================================
-router.post('/rent-roll/upload', rentRollUpload.single('file') as any, async (req: Request, res: Response) => {
+router.post('/rent-roll/upload', rentRollMiddleware, async (req, res) => {
   try {
     const file = req.file;
-    const dealId = req.body.dealId;
+    const dealId = (req.body as any).dealId;
 
     if (!file) {
       return res.status(400).json({ error: 'No file uploaded. Accepted formats: CSV, XLSX, XLS' });
@@ -80,6 +121,10 @@ router.post('/rent-roll/upload', rentRollUpload.single('file') as any, async (re
       return res.status(400).json({ error: 'dealId is required' });
     }
 
+    // Verify the caller owns this deal before touching its data
+    const authorized = await assertDealOwnership(req, res, dealId);
+    if (!authorized) return;
+
     // Step 1: Parse and store
     const parseResult = await rentRollParser.parseAndStore(file.path, dealId);
 
@@ -87,11 +132,12 @@ router.post('/rent-roll/upload', rentRollUpload.single('file') as any, async (re
     const derived = await derivationsService.deriveAndStore(parseResult.snapshot_id);
 
     // Mark snapshot as calibrated-ready
-    await pool.query(`
-      UPDATE rent_roll_snapshots SET status = 'derived' WHERE id = $1
-    `, [parseResult.snapshot_id]);
+    await pool.query(
+      `UPDATE rent_roll_snapshots SET status = 'derived' WHERE id = $1`,
+      [parseResult.snapshot_id],
+    );
 
-    res.json({
+    return res.json({
       success: true,
       snapshot_id: parseResult.snapshot_id,
       deal_id: dealId,
@@ -109,31 +155,42 @@ router.post('/rent-roll/upload', rentRollUpload.single('file') as any, async (re
     });
   } catch (error: unknown) {
     logger.error('[M07] Rent roll upload failed', { error: error instanceof Error ? error.message : String(error) });
-    res.status(500).json({ error: 'Failed to process rent roll', message: error instanceof Error ? error.message : String(error) });
+    return res.status(500).json({ error: 'Failed to process rent roll', message: error instanceof Error ? error.message : String(error) });
   }
 });
 
 // ============================================================================
 // POST /rent-roll/:snapshotId/derive
-// Re-run derivations for an existing snapshot
+// Re-run derivations for an existing snapshot (ownership checked via snapshot→deal)
 // ============================================================================
-router.post('/rent-roll/:snapshotId/derive', async (req: Request, res: Response) => {
+router.post('/rent-roll/:snapshotId/derive', async (req, res) => {
   try {
-    const snapshotId = parseInt(req.params.snapshotId);
+    const snapshotId = parseInt((req.params as any).snapshotId);
     if (isNaN(snapshotId)) {
       return res.status(400).json({ error: 'Invalid snapshotId' });
     }
 
+    // Resolve the deal that owns this snapshot and verify access
+    const snapshotRow = await pool.query<{ deal_id: string }>(
+      'SELECT deal_id FROM rent_roll_snapshots WHERE id = $1',
+      [snapshotId],
+    );
+    if (snapshotRow.rows.length === 0) {
+      return res.status(404).json({ error: 'Snapshot not found' });
+    }
+    const authorized = await assertDealOwnership(req, res, snapshotRow.rows[0].deal_id);
+    if (!authorized) return;
+
     const derived = await derivationsService.deriveAndStore(snapshotId);
 
-    res.json({
+    return res.json({
       success: true,
       snapshot_id: snapshotId,
       derivations: derived,
     });
   } catch (error: unknown) {
     logger.error('[M07] Derivations failed', { error: error instanceof Error ? error.message : String(error) });
-    res.status(500).json({ error: 'Failed to run derivations', message: error instanceof Error ? error.message : String(error) });
+    return res.status(500).json({ error: 'Failed to run derivations', message: error instanceof Error ? error.message : String(error) });
   }
 });
 
@@ -141,9 +198,12 @@ router.post('/rent-roll/:snapshotId/derive', async (req: Request, res: Response)
 // GET /rent-roll/:dealId/snapshots
 // List all rent roll snapshots for a deal
 // ============================================================================
-router.get('/rent-roll/:dealId/snapshots', async (req: Request, res: Response) => {
+router.get('/rent-roll/:dealId/snapshots', async (req, res) => {
   try {
-    const { dealId } = req.params;
+    const dealId = (req.params as any).dealId;
+
+    const authorized = await assertDealOwnership(req, res, dealId);
+    if (!authorized) return;
 
     const result = await pool.query<any>(`
       SELECT id, upload_id, original_filename, file_format, row_count,
@@ -153,35 +213,37 @@ router.get('/rent-roll/:dealId/snapshots', async (req: Request, res: Response) =
       ORDER BY snapshot_date DESC, created_at DESC
     `, [dealId]);
 
-    res.json({
+    return res.json({
       deal_id: dealId,
       count: result.rows.length,
       snapshots: result.rows,
     });
   } catch (error: unknown) {
     logger.error('[M07] Snapshot list failed', { error: error instanceof Error ? error.message : String(error) });
-    res.status(500).json({ error: 'Failed to list snapshots', message: error instanceof Error ? error.message : String(error) });
+    return res.status(500).json({ error: 'Failed to list snapshots', message: error instanceof Error ? error.message : String(error) });
   }
 });
 
 // ============================================================================
 // POST /job/run
-// Trigger the nightly calibration job on-demand (admin use)
+// Trigger the nightly calibration job on-demand (admin/service role only)
 // ============================================================================
-router.post('/job/run', async (req: Request, res: Response) => {
+router.post('/job/run', async (req, res) => {
   try {
-    const lookbackHours = parseInt(req.body.lookbackHours || '720');  // default: 30 days
+    if (!assertAdminRole(req, res)) return;
+
+    const lookbackHours = parseInt((req.body as any).lookbackHours || '720');  // default: 30 days
 
     logger.info('[M07] Manual calibration job triggered', { lookbackHours });
     const result = await calibrationJob.run(lookbackHours);
 
-    res.json({
+    return res.json({
       success: true,
       result,
     });
   } catch (error: unknown) {
     logger.error('[M07] Calibration job failed', { error: error instanceof Error ? error.message : String(error) });
-    res.status(500).json({ error: 'Calibration job failed', message: error instanceof Error ? error.message : String(error) });
+    return res.status(500).json({ error: 'Calibration job failed', message: error instanceof Error ? error.message : String(error) });
   }
 });
 
@@ -189,9 +251,12 @@ router.post('/job/run', async (req: Request, res: Response) => {
 // GET /coefficients/:dealId
 // Get resolved coefficients for a deal (Deal → Platform → Baseline)
 // ============================================================================
-router.get('/coefficients/:dealId', async (req: Request, res: Response) => {
+router.get('/coefficients/:dealId', async (req, res) => {
   try {
-    const { dealId } = req.params;
+    const dealId = (req.params as any).dealId;
+
+    const authorized = await assertDealOwnership(req, res, dealId);
+    if (!authorized) return;
 
     // Load deal context from JSONB fields (deals has no properties FK)
     const dealResult = await pool.query<any>(`
@@ -203,6 +268,7 @@ router.get('/coefficients/:dealId', async (req: Request, res: Response) => {
       WHERE d.id = $1
     `, [dealId]);
 
+    // Ownership was confirmed above; if 0 rows here it's a race condition
     if (dealResult.rows.length === 0) {
       return res.status(404).json({ error: 'Deal not found' });
     }
@@ -215,14 +281,14 @@ router.get('/coefficients/:dealId', async (req: Request, res: Response) => {
       deal.year_built ? parseInt(deal.year_built) : null,
     );
 
-    res.json({
+    return res.json({
       deal_id: dealId,
       ...resolved.meta,
       coefficients: resolved.family,
     });
   } catch (error: unknown) {
     logger.error('[M07] Coefficient resolution failed', { error: error instanceof Error ? error.message : String(error) });
-    res.status(500).json({ error: 'Failed to resolve coefficients', message: error instanceof Error ? error.message : String(error) });
+    return res.status(500).json({ error: 'Failed to resolve coefficients', message: error instanceof Error ? error.message : String(error) });
   }
 });
 
@@ -230,29 +296,34 @@ router.get('/coefficients/:dealId', async (req: Request, res: Response) => {
 // GET /starting-state/:dealId
 // Resolve starting state for a deal
 // ============================================================================
-router.get('/starting-state/:dealId', async (req: Request, res: Response) => {
+router.get('/starting-state/:dealId', async (req, res) => {
   try {
-    const { dealId } = req.params;
+    const dealId = (req.params as any).dealId;
+
+    const authorized = await assertDealOwnership(req, res, dealId);
+    if (!authorized) return;
+
     const state = await startingStateService.resolveStartingState(dealId);
 
-    res.json({
+    return res.json({
       deal_id: dealId,
       starting_state: state,
     });
   } catch (error: unknown) {
     logger.error('[M07] Starting state resolution failed', { error: error instanceof Error ? error.message : String(error) });
-    res.status(500).json({ error: 'Failed to resolve starting state', message: error instanceof Error ? error.message : String(error) });
+    return res.status(500).json({ error: 'Failed to resolve starting state', message: error instanceof Error ? error.message : String(error) });
   }
 });
 
 // ============================================================================
 // GET /absorption-benchmark/:submarketId
-// Get platform absorption benchmark for a submarket
+// Get platform absorption benchmark for a submarket (no deal ownership needed —
+// submarket benchmarks are aggregated platform-level data, not deal-specific)
 // ============================================================================
-router.get('/absorption-benchmark/:submarketId', async (req: Request, res: Response) => {
+router.get('/absorption-benchmark/:submarketId', async (req, res) => {
   try {
-    const { submarketId } = req.params;
-    const { property_class } = req.query;
+    const submarketId = (req.params as any).submarketId;
+    const { property_class } = req.query as any;
 
     const result = await pool.query<any>(`
       SELECT *
@@ -273,7 +344,7 @@ router.get('/absorption-benchmark/:submarketId', async (req: Request, res: Respo
     }
 
     const row = result.rows[0];
-    res.json({
+    return res.json({
       submarket_id: submarketId,
       property_class: row.property_class,
       n_peer_properties: row.n_peer_properties,
@@ -282,7 +353,7 @@ router.get('/absorption-benchmark/:submarketId', async (req: Request, res: Respo
     });
   } catch (error: unknown) {
     logger.error('[M07] Absorption benchmark fetch failed', { error: error instanceof Error ? error.message : String(error) });
-    res.status(500).json({ error: 'Failed to fetch benchmark', message: error instanceof Error ? error.message : String(error) });
+    return res.status(500).json({ error: 'Failed to fetch benchmark', message: error instanceof Error ? error.message : String(error) });
   }
 });
 
@@ -290,10 +361,13 @@ router.get('/absorption-benchmark/:submarketId', async (req: Request, res: Respo
 // PUT /deal/:dealId/mode
 // Update deal_mode (STABILIZED / LEASE_UP / REDEVELOPMENT)
 // ============================================================================
-router.put('/deal/:dealId/mode', async (req: Request, res: Response) => {
+router.put('/deal/:dealId/mode', async (req, res) => {
   try {
-    const { dealId } = req.params;
-    const { mode } = req.body;
+    const dealId = (req.params as any).dealId;
+    const { mode } = req.body as any;
+
+    const authorized = await assertDealOwnership(req, res, dealId);
+    if (!authorized) return;
 
     const VALID_MODES = ['STABILIZED', 'LEASE_UP', 'REDEVELOPMENT'];
     if (!VALID_MODES.includes(mode)) {
@@ -303,22 +377,23 @@ router.put('/deal/:dealId/mode', async (req: Request, res: Response) => {
       });
     }
 
-    const result = await pool.query<any>(`
-      UPDATE deals SET deal_mode = $1 WHERE id = $2 RETURNING id, deal_mode
-    `, [mode, dealId]);
+    const result = await pool.query<any>(
+      'UPDATE deals SET deal_mode = $1 WHERE id = $2 RETURNING id, deal_mode',
+      [mode, dealId],
+    );
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Deal not found' });
     }
 
-    res.json({
+    return res.json({
       success: true,
       deal_id: dealId,
       deal_mode: result.rows[0].deal_mode,
     });
   } catch (error: unknown) {
     logger.error('[M07] Deal mode update failed', { error: error instanceof Error ? error.message : String(error) });
-    res.status(500).json({ error: 'Failed to update deal mode', message: error instanceof Error ? error.message : String(error) });
+    return res.status(500).json({ error: 'Failed to update deal mode', message: error instanceof Error ? error.message : String(error) });
   }
 });
 
