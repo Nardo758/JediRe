@@ -1,6 +1,27 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { computeExitReturns } from '../../../shared/calculations/returns';
+import { apiClient } from '../../../api/client';
+
+interface LiveRates {
+  sofr: number;
+  sofrAvg30: number;
+  effr: number;
+  effrTargetLow: number;
+  effrTargetHigh: number;
+  prime: number;
+  treasury1Y: number;
+  treasury2Y: number;
+  treasury3Y: number;
+  treasury5Y: number;
+  treasury7Y: number;
+  treasury10Y: number;
+  treasury20Y: number;
+  treasury30Y: number;
+  swap10Y: number;
+  lastUpdated: string;
+  source: string;
+}
 
 /**
  * ExitCapitalModule
@@ -725,6 +746,8 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
   const [activeTab, setActiveTab] = useState<TabId>('exit');
   const [selectedFwd, setSelectedFwd] = useState<number>(0);  // Will be set to optimal on mount
   const [selectedExitStrategy, setSelectedExitStrategy] = useState<string>(DEFAULT_EXIT_STRATEGY[dealType]);
+  const [liveRates, setLiveRates] = useState<LiveRates | null>(null);
+  const [liveRatesLoading, setLiveRatesLoading] = useState(false);
 
   // Compute optimal exit quarter (highest RSS in forward window)
   const optimalFwd = useMemo(() => {
@@ -742,6 +765,16 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
   useEffect(() => {
     setSelectedFwd(optimalFwd);
   }, [optimalFwd]);
+
+  // Fetch live rates when Debt Market tab is opened (cached 15min on backend)
+  useEffect(() => {
+    if (activeTab !== 'market' || liveRates !== null) return;
+    setLiveRatesLoading(true);
+    apiClient.get('/capital-structure/rates/live')
+      .then((data: any) => setLiveRates(data?.data ?? data))
+      .catch(() => {})
+      .finally(() => setLiveRatesLoading(false));
+  }, [activeTab, liveRates]);
 
   // Compute returns for selected and optimal quarters
   const ret = useMemo(() => computeExitReturns(selectedFwd, dealType), [selectedFwd, dealType]);
@@ -934,96 +967,247 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
         )}
 
         {/* DEBT MARKET TAB */}
-        {activeTab === 'market' && (
-          <div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10, marginBottom: 16 }}>
-              {[
-                { l: 'SOFR', v: '4.10%', d: '-18bps (90d)', c: '#63B3ED', dir: '↓' },
-                { l: '10Y TREASURY', v: '3.80%', d: '-30bps (90d)', c: '#B794F4', dir: '↓' },
-                { l: 'AGENCY', v: '+165bps', d: 'Tightening', c: '#68D391', dir: '↓' },
-                { l: 'CMBS', v: '+215bps', d: 'Stable', c: '#F6AD55', dir: '—' },
-                { l: 'BRIDGE', v: '+340bps', d: 'Compressing', c: '#4FD1C5', dir: '↓' },
-              ].map((r) => (
-                <div key={r.l} style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 7, padding: '10px 12px' }}>
-                  <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'", letterSpacing: 0.6, marginBottom: 4 }}>{r.l}</div>
-                  <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "'JetBrains Mono'", color: r.c }}>{r.v}</div>
-                  <div style={{ fontSize: 9, color: r.dir === '↓' ? '#68D391' : r.dir === '↑' ? '#FC8181' : 'rgba(232,230,225,0.5)', marginTop: 2 }}>
-                    {r.dir} {r.d}
+        {activeTab === 'market' && (() => {
+          // Spread config per loan type
+          const SPREADS: Record<string, { label: string; bps: number; index: string; c: string }> = {
+            'Agency':       { label: 'Agency',       bps: 165, index: '10Y T', c: '#63B3ED' },
+            'CMBS':         { label: 'CMBS',         bps: 215, index: '10Y T', c: '#B794F4' },
+            'Bank':         { label: 'Bank',         bps: 250, index: 'SOFR',  c: '#4FD1C5' },
+            'Bridge':       { label: 'Bridge',       bps: 340, index: 'SOFR',  c: '#F6AD55' },
+            'Construction': { label: 'Construction', bps: 425, index: 'SOFR',  c: '#FC8181' },
+            'Mezz':         { label: 'Mezz',         bps: 650, index: 'SOFR',  c: '#F6E05E' },
+          };
+
+          // Map strategy to spread entry + index rate from live data
+          const STRATEGY_SPREAD_MAP: Record<string, { spreadKey: string; indexLabel: string; getIndex: (r: LiveRates) => number }> = {
+            'sell-stabilized': { spreadKey: 'Bridge',       indexLabel: 'SOFR',         getIndex: r => r.sofr },
+            'refi-hold':       { spreadKey: 'Agency',       indexLabel: '10Y Treasury', getIndex: r => r.treasury10Y },
+            'merchant-build':  { spreadKey: 'Construction', indexLabel: 'SOFR',         getIndex: r => r.sofr },
+            'build-to-hold':   { spreadKey: 'Construction', indexLabel: 'SOFR',         getIndex: r => r.sofr },
+            '1031-exchange':   { spreadKey: 'Agency',       indexLabel: '10Y Treasury', getIndex: r => r.treasury10Y },
+          };
+
+          const stratMap = STRATEGY_SPREAD_MAP[selectedExitStrategy] ?? STRATEGY_SPREAD_MAP['sell-stabilized'];
+          const liveIndex = liveRates ? stratMap.getIndex(liveRates) : null;
+          const spreadEntry = SPREADS[stratMap.spreadKey];
+          const liveAllIn = liveIndex != null ? liveIndex + spreadEntry.bps / 100 : null;
+          const presetRate = stack.sr.rate;
+          const deltaBps = liveAllIn != null ? Math.round((liveAllIn - presetRate) * 100) : null;
+          const deltaAnnualDS = deltaBps != null ? Math.round(loanAmt * (deltaBps / 10000)) : null;
+
+          const curvePoints = liveRates ? [
+            { l: '1Y',  v: liveRates.treasury1Y },
+            { l: '2Y',  v: liveRates.treasury2Y },
+            { l: '3Y',  v: liveRates.treasury3Y },
+            { l: '5Y',  v: liveRates.treasury5Y },
+            { l: '7Y',  v: liveRates.treasury7Y },
+            { l: '10Y', v: liveRates.treasury10Y },
+            { l: '20Y', v: liveRates.treasury20Y },
+            { l: '30Y', v: liveRates.treasury30Y },
+          ] : [];
+          const curveMax = curvePoints.length ? Math.max(...curvePoints.map(p => p.v)) + 0.5 : 6;
+          const updatedAt = liveRates?.lastUpdated ? new Date(liveRates.lastUpdated).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : null;
+
+          return (
+            <div>
+              {/* Live rate banner header */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>
+                  LIVE MARKET RATES — NY FED / US TREASURY
+                </span>
+                {liveRatesLoading && (
+                  <span style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>fetching…</span>
+                )}
+                {updatedAt && !liveRatesLoading && (
+                  <span style={{ fontSize: 9, color: '#68D391', fontFamily: "'JetBrains Mono'" }}>● LIVE · updated {updatedAt}</span>
+                )}
+              </div>
+
+              {/* 4 live rate cards */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16 }}>
+                {[
+                  { l: 'SOFR',         v: liveRates?.sofr,         sub: `30d avg: ${liveRates?.sofrAvg30?.toFixed(2) ?? '—'}%`, c: '#63B3ED' },
+                  { l: '10Y TREASURY', v: liveRates?.treasury10Y,   sub: `30Y: ${liveRates?.treasury30Y?.toFixed(2) ?? '—'}%`,    c: '#B794F4' },
+                  { l: 'PRIME RATE',   v: liveRates?.prime,         sub: `EFFR: ${liveRates?.effr?.toFixed(2) ?? '—'}%`,          c: '#F6AD55' },
+                  { l: 'EFFR TARGET',  v: liveRates ? (liveRates.effrTargetLow + liveRates.effrTargetHigh) / 2 : undefined, sub: liveRates ? `${liveRates.effrTargetLow.toFixed(2)}–${liveRates.effrTargetHigh.toFixed(2)}%` : '—', c: '#4FD1C5' },
+                ].map((r) => (
+                  <div key={r.l} style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 7, padding: '10px 12px' }}>
+                    <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'", letterSpacing: 0.6, marginBottom: 4 }}>{r.l}</div>
+                    <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "'JetBrains Mono'", color: r.v != null ? r.c : 'rgba(232,230,225,0.15)' }}>
+                      {r.v != null ? `${r.v.toFixed(2)}%` : '—'}
+                    </div>
+                    <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.35)', marginTop: 2 }}>{r.sub}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Rate Impact on This Deal */}
+              <div style={{ background: liveRates ? 'rgba(99,179,237,0.04)' : 'rgba(255,255,255,0.02)', border: `1px solid ${liveRates ? 'rgba(99,179,237,0.18)' : 'rgba(255,255,255,0.06)'}`, borderRadius: 8, padding: '16px 20px', marginBottom: 16 }}>
+                <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, color: liveRates ? '#63B3ED' : 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'", marginBottom: 12 }}>
+                  RATE IMPACT ON THIS DEAL — {stack.label.toUpperCase()} @ {presetRate}% PRESET vs. LIVE MARKET
+                </div>
+                {!liveRates && !liveRatesLoading && (
+                  <div style={{ fontSize: 10, color: 'rgba(232,230,225,0.35)' }}>Open this tab to load live rates.</div>
+                )}
+                {liveRates && (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                    {/* Left: rate comparison */}
+                    <div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {[
+                          { l: 'Model preset rate', v: `${presetRate.toFixed(2)}%`, c: '#E8E6E1' },
+                          { l: `${stratMap.spreadKey} index (${stratMap.indexLabel})`, v: `${liveIndex!.toFixed(2)}%`, c: '#63B3ED' },
+                          { l: `Market spread (${spreadEntry.bps}bps)`, v: `+${(spreadEntry.bps / 100).toFixed(2)}%`, c: 'rgba(232,230,225,0.5)' },
+                          { l: 'Live all-in estimate', v: `${liveAllIn!.toFixed(2)}%`, c: deltaBps! > 0 ? '#FC8181' : '#68D391' },
+                          { l: 'Delta vs. preset', v: `${deltaBps! > 0 ? '+' : ''}${deltaBps}bps`, c: deltaBps! > 0 ? '#FC8181' : '#68D391' },
+                          { l: 'Annual DS delta', v: deltaAnnualDS! > 0 ? `+${fmt.k(deltaAnnualDS!)}/yr` : `${fmt.k(deltaAnnualDS!)}/yr`, c: deltaAnnualDS! > 0 ? '#FC8181' : '#68D391' },
+                        ].map(m => (
+                          <div key={m.l} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                            <span style={{ fontSize: 9, color: 'rgba(232,230,225,0.35)', fontFamily: "'JetBrains Mono'" }}>{m.l}</span>
+                            <span style={{ fontSize: 11, fontWeight: 700, fontFamily: "'JetBrains Mono'", color: m.c }}>{m.v}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ marginTop: 10, padding: '7px 10px', background: deltaBps! > 0 ? 'rgba(252,129,129,0.06)' : 'rgba(104,211,145,0.06)', borderRadius: 5, border: `1px solid ${deltaBps! > 0 ? 'rgba(252,129,129,0.2)' : 'rgba(104,211,145,0.2)'}` }}>
+                        <div style={{ fontSize: 9, fontFamily: "'JetBrains Mono'", color: deltaBps! > 0 ? '#FC8181' : '#68D391', fontWeight: 700 }}>
+                          {deltaBps! > 0
+                            ? `⚠ Live market is ${deltaBps}bps above your preset. If rates hold, update assumption in F9.`
+                            : `✓ Live market is ${Math.abs(deltaBps!)}bps below your preset. Your model is conservative.`}
+                        </div>
+                      </div>
+                    </div>
+                    {/* Right: bps sensitivity table */}
+                    <div>
+                      <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'", marginBottom: 8 }}>±BPS SENSITIVITY ON THIS LOAN</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                        {[-150, -100, -50, 0, 50, 100, 150].map(bps => {
+                          const ds = Math.round(loanAmt * (bps / 10000));
+                          const isCurrent = bps === 0;
+                          const isClose = deltaBps != null && Math.abs(bps - deltaBps) <= 25;
+                          return (
+                            <div key={bps} style={{ display: 'grid', gridTemplateColumns: '70px 1fr 90px', gap: 8, alignItems: 'center', padding: '4px 8px', borderRadius: 4, background: isCurrent ? 'rgba(255,255,255,0.06)' : isClose ? 'rgba(99,179,237,0.06)' : 'transparent', border: isClose ? '1px solid rgba(99,179,237,0.15)' : '1px solid transparent' }}>
+                              <span style={{ fontSize: 9, fontFamily: "'JetBrains Mono'", color: bps < 0 ? '#68D391' : bps > 0 ? '#FC8181' : '#E8E6E1', fontWeight: isCurrent ? 700 : 400 }}>
+                                {bps === 0 ? 'PRESET' : `${bps > 0 ? '+' : ''}${bps}bps`}
+                              </span>
+                              <div style={{ height: 6, background: 'rgba(255,255,255,0.04)', borderRadius: 3, overflow: 'hidden' }}>
+                                <div style={{ height: '100%', width: `${Math.min(100, Math.abs((presetRate + bps / 100) / 12) * 100)}%`, background: bps < 0 ? '#68D391' : bps === 0 ? '#E8E6E1' : '#FC8181', opacity: 0.5, borderRadius: 3 }} />
+                              </div>
+                              <span style={{ fontSize: 9, fontFamily: "'JetBrains Mono'", color: ds < 0 ? '#68D391' : ds > 0 ? '#FC8181' : 'rgba(232,230,225,0.5)', textAlign: 'right' }}>
+                                {ds === 0 ? `${fmt.k(annualDS)}/yr` : `${ds > 0 ? '+' : ''}${fmt.k(ds)}/yr`}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)', marginTop: 6, fontFamily: "'JetBrains Mono'" }}>
+                        Loan: {fmt.k(loanAmt)} · {stack.sr.pct}% LTV on {fmt.k(totalBasis)}
+                      </div>
+                      {deltaBps != null && (
+                        <div style={{ fontSize: 9, color: '#63B3ED', marginTop: 4, fontFamily: "'JetBrains Mono'" }}>
+                          ▲ Live market delta highlighted above
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Treasury Yield Curve */}
+              {liveRates && (
+                <div style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, padding: '16px 20px', marginBottom: 16 }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'", marginBottom: 10 }}>
+                    US TREASURY YIELD CURVE — live
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 80 }}>
+                    {curvePoints.map((pt) => {
+                      const pct = (pt.v / curveMax) * 100;
+                      const isKey = pt.l === '10Y';
+                      return (
+                        <div key={pt.l} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%', justifyContent: 'flex-end' }}>
+                          <div style={{ fontSize: 8, fontFamily: "'JetBrains Mono'", color: isKey ? '#B794F4' : 'rgba(232,230,225,0.5)', marginBottom: 2 }}>{pt.v.toFixed(2)}</div>
+                          <div style={{ width: '100%', height: `${pct}%`, background: isKey ? 'rgba(183,148,244,0.4)' : 'rgba(99,179,237,0.25)', borderRadius: '3px 3px 0 0', border: isKey ? '1px solid rgba(183,148,244,0.5)' : '1px solid rgba(99,179,237,0.2)' }} />
+                          <div style={{ fontSize: 8, fontFamily: "'JetBrains Mono'", color: isKey ? '#B794F4' : 'rgba(232,230,225,0.35)', marginTop: 3 }}>{pt.l}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)', marginTop: 6, fontFamily: "'JetBrains Mono'" }}>
+                    Source: {liveRates.source} · as of {updatedAt}
                   </div>
                 </div>
-              ))}
-            </div>
+              )}
 
-            {/* Fed Watch Card */}
-            <div style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, padding: '16px 20px', marginBottom: 16 }}>
-              <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'", marginBottom: 10 }}>FED WATCH — FOMC SCHEDULE & DOT PLOT</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-                <div>
-                  <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>NEXT MEETING</div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: '#E8E6E1', marginBottom: 2 }}>{FOMC_MEETINGS_2026[1]?.date || 'TBD'}</div>
-                  <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.5)' }}>Current target: {FED_DOT_PLOT.current}%</div>
+              {/* Fed Watch Card */}
+              <div style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, padding: '16px 20px', marginBottom: 16 }}>
+                <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'", marginBottom: 10 }}>FED WATCH — FOMC SCHEDULE & DOT PLOT</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>NEXT MEETING</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: '#E8E6E1', marginBottom: 2 }}>{FOMC_MEETINGS_2026[1]?.date || 'TBD'}</div>
+                    <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.5)' }}>Current target: {liveRates ? `${liveRates.effrTargetLow.toFixed(2)}–${liveRates.effrTargetHigh.toFixed(2)}%` : `${FED_DOT_PLOT.current}%`}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>DOT PLOT MEDIAN</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: '#63B3ED', marginBottom: 4 }}>2026: {FED_DOT_PLOT.endOf2026}% | 2027: {FED_DOT_PLOT.endOf2027}%</div>
+                    <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.5)' }}>Longer-run neutral: {FED_DOT_PLOT.longerRun}%</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>EXPECTED PATH</div>
+                    <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
+                      {['—', '↓', '↓', '↓', '↓'].map((a, i) => (
+                        <div key={i} style={{ fontSize: 14, fontWeight: 700, color: a === '↓' ? '#68D391' : 'rgba(232,230,225,0.22)' }}>{a}</div>
+                      ))}
+                    </div>
+                    <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)', marginTop: 4 }}>4 cuts expected in 2026</div>
+                  </div>
                 </div>
-                <div>
-                  <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>DOT PLOT MEDIAN</div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#63B3ED', marginBottom: 4 }}>2026: {FED_DOT_PLOT.endOf2026}% | 2027: {FED_DOT_PLOT.endOf2027}%</div>
-                  <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.5)' }}>Longer-run neutral: {FED_DOT_PLOT.longerRun}%</div>
+              </div>
+
+              {/* Spread & Lender Quotes */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, padding: '16px 20px' }}>
+                  <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>SPREAD OVER INDEX (bps)</span>
+                  <div style={{ marginTop: 12 }}>
+                    {Object.values(SPREADS).map((x) => {
+                      const base = x.index === '10Y T' ? liveRates?.treasury10Y : liveRates?.sofr;
+                      const allIn = base != null ? base + x.bps / 100 : null;
+                      return (
+                        <div key={x.label} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                          <span style={{ fontSize: 9, color: 'rgba(232,230,225,0.5)', minWidth: 76, textAlign: 'right' }}>{x.label}</span>
+                          <div style={{ flex: 1, height: 14, background: 'rgba(255,255,255,0.03)', borderRadius: 3, overflow: 'hidden' }}>
+                            <div style={{ height: '100%', width: `${(x.bps / 700) * 100}%`, background: `${x.c}40`, borderRadius: 3, borderRight: `2px solid ${x.c}` }} />
+                          </div>
+                          <span style={{ fontSize: 10, fontFamily: "'JetBrains Mono'", fontWeight: 600, color: x.c, minWidth: 50 }}>+{x.bps}</span>
+                          {allIn != null && (
+                            <span style={{ fontSize: 9, fontFamily: "'JetBrains Mono'", color: 'rgba(232,230,225,0.35)', minWidth: 44 }}>{allIn.toFixed(2)}%</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-                <div>
-                  <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>EXPECTED PATH</div>
-                  <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
-                    {['—', '↓', '↓', '↓', '↓'].map((a, i) => (
-                      <div key={i} style={{ fontSize: 14, fontWeight: 700, color: a === '↓' ? '#68D391' : 'rgba(232,230,225,0.22)' }}>{a}</div>
+                <div style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, padding: '16px 20px' }}>
+                  <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>LENDER QUOTES</span>
+                  <div style={{ marginTop: 10 }}>
+                    {LENDER_QUOTES.map((q) => (
+                      <div key={q.lender} style={{ display: 'grid', gridTemplateColumns: '1fr 60px 48px 48px 44px 40px', gap: 4, alignItems: 'center', padding: '6px 10px', borderRadius: 5, border: '1px solid rgba(255,255,255,0.06)', marginBottom: 2 }}>
+                        <div>
+                          <div style={{ fontSize: 10, fontWeight: 600, color: '#E8E6E1' }}>{q.lender}</div>
+                          <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)' }}>{q.product}</div>
+                        </div>
+                        <span style={{ fontSize: 10, fontFamily: "'JetBrains Mono'", fontWeight: 700, color: '#68D391' }}>{q.rate}</span>
+                        <span style={{ fontSize: 9, fontFamily: "'JetBrains Mono'", color: '#63B3ED' }}>{q.spread}</span>
+                        <span style={{ fontSize: 9, fontFamily: "'JetBrains Mono'", color: 'rgba(232,230,225,0.5)' }}>{q.ltv}</span>
+                        <span style={{ fontSize: 9, fontFamily: "'JetBrains Mono'", color: 'rgba(232,230,225,0.22)' }}>{q.term}</span>
+                        <span style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)' }}>{q.rcvd}</span>
+                      </div>
                     ))}
                   </div>
-                  <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)', marginTop: 4 }}>4 cuts expected in 2026</div>
                 </div>
               </div>
             </div>
-
-            {/* Spread & Lender Quotes */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-              <div style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, padding: '16px 20px' }}>
-                <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>SPREAD OVER INDEX (bps)</span>
-                <div style={{ marginTop: 12 }}>
-                  {[
-                    { n: 'Agency', s: 165, c: '#63B3ED' },
-                    { n: 'CMBS', s: 215, c: '#B794F4' },
-                    { n: 'Bank', s: 250, c: '#4FD1C5' },
-                    { n: 'Bridge', s: 340, c: '#F6AD55' },
-                    { n: 'Construction', s: 425, c: '#FC8181' },
-                    { n: 'Mezz', s: 650, c: '#F6E05E' },
-                  ].map((x) => (
-                    <div key={x.n} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-                      <span style={{ fontSize: 9, color: 'rgba(232,230,225,0.5)', minWidth: 76, textAlign: 'right' }}>{x.n}</span>
-                      <div style={{ flex: 1, height: 14, background: 'rgba(255,255,255,0.03)', borderRadius: 3, overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${(x.s / 700) * 100}%`, background: `${x.c}40`, borderRadius: 3, borderRight: `2px solid ${x.c}` }} />
-                      </div>
-                      <span style={{ fontSize: 10, fontFamily: "'JetBrains Mono'", fontWeight: 600, color: x.c, minWidth: 50 }}>+{x.s}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, padding: '16px 20px' }}>
-                <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>LENDER QUOTES</span>
-                <div style={{ marginTop: 10 }}>
-                  {LENDER_QUOTES.map((q) => (
-                    <div key={q.lender} style={{ display: 'grid', gridTemplateColumns: '1fr 60px 48px 48px 44px 40px', gap: 4, alignItems: 'center', padding: '6px 10px', borderRadius: 5, border: '1px solid rgba(255,255,255,0.06)', marginBottom: 2 }}>
-                      <div>
-                        <div style={{ fontSize: 10, fontWeight: 600, color: '#E8E6E1' }}>{q.lender}</div>
-                        <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)' }}>{q.product}</div>
-                      </div>
-                      <span style={{ fontSize: 10, fontFamily: "'JetBrains Mono'", fontWeight: 700, color: '#68D391' }}>{q.rate}</span>
-                      <span style={{ fontSize: 9, fontFamily: "'JetBrains Mono'", color: '#63B3ED' }}>{q.spread}</span>
-                      <span style={{ fontSize: 9, fontFamily: "'JetBrains Mono'", color: 'rgba(232,230,225,0.5)' }}>{q.ltv}</span>
-                      <span style={{ fontSize: 9, fontFamily: "'JetBrains Mono'", color: 'rgba(232,230,225,0.22)' }}>{q.term}</span>
-                      <span style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)' }}>{q.rcvd}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* EXIT TIMING TAB */}
         {activeTab === 'timing' && (
