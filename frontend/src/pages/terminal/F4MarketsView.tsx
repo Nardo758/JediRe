@@ -1716,7 +1716,7 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
                         {p.submarket && <span>{p.submarket} · </span>}
                         <span style={{ color: C.muted }}>{p.msa}</span>
                       </div>
-                      {/* Row 3: Metrics */}
+                      {/* Row 3: Rent + Occ + Units */}
                       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                         {p.rent && (
                           <span style={{ fontSize: 8, color: C.primary, ...mono, fontWeight: 600 }}>{p.rent}</span>
@@ -1726,20 +1726,20 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
                             {p.occ} occ
                           </span>
                         )}
-                        {p.capRate && (
-                          <span style={{ fontSize: 8, color: C.secondary, ...mono }}>{p.capRate} cap</span>
-                        )}
                         {p.units && (
                           <span style={{ fontSize: 8, color: C.muted, ...mono }}>{p.units}u</span>
                         )}
                       </div>
-                      {/* Row 4: Owner + Vintage + click hint */}
+                      {/* Row 4: Owner · Cap Rate · Vintage + click hint */}
                       <div style={{ display: "flex", alignItems: "center", marginTop: 3 }}>
                         {p.owner && (
-                          <span style={{ fontSize: 7, color: C.muted, ...mono }}>{p.owner}</span>
+                          <span style={{ fontSize: 7, color: C.secondary, ...mono }}>{p.owner}</span>
+                        )}
+                        {p.capRate && (
+                          <span style={{ fontSize: 7, color: C.amber, ...mono, marginLeft: 5 }}>· {p.capRate}</span>
                         )}
                         {p.vintage && (
-                          <span style={{ fontSize: 7, color: C.muted, ...mono, marginLeft: 6 }}>{p.vintage}</span>
+                          <span style={{ fontSize: 7, color: C.muted, ...mono, marginLeft: 5 }}>· {p.vintage}</span>
                         )}
                         <div style={{ flex: 1 }} />
                         <span style={{ fontSize: 7, color: C.cyan, ...mono, opacity: 0.6 }}>→ VIEW</span>
