@@ -331,6 +331,22 @@ export async function selectControlGroup(
     return [];
   }
 
+  // Resolve msaId from msaName when only the name is available, so the
+  // candidate query filters to same-MSA submarkets rather than broadening to all.
+  let resolvedMsaId = event.msaId;
+  if (!resolvedMsaId && event.msaName) {
+    const msaRes = await pool.query(
+      `SELECT id::text FROM msas WHERE LOWER(name) = LOWER($1) LIMIT 1`,
+      [event.msaName]
+    );
+    if (msaRes.rows.length > 0) {
+      resolvedMsaId = msaRes.rows[0].id;
+      logger.debug('[M35 Impact] Resolved msa_id from msa_name', { eventId, msaName: event.msaName, msaId: resolvedMsaId });
+    } else {
+      logger.warn('[M35 Impact] Could not resolve msa_id from msa_name; control matching quality degraded', { eventId, msaName: event.msaName });
+    }
+  }
+
   const windowStart = new Date(event.materializationDate);
   windowStart.setMonth(windowStart.getMonth() - 18);
   const windowEnd = new Date(event.materializationDate);
@@ -350,7 +366,7 @@ export async function selectControlGroup(
      WHERE ($1::text IS NULL OR s.msa_id::text = $1)
        AND s.id::text != $2
      LIMIT $3`,
-    [event.msaId, event.geographyId, MAX_CONTROL_N * 3]
+    [resolvedMsaId, event.geographyId, MAX_CONTROL_N * 3]
   );
 
   if (candidatesRes.rows.length === 0) {
@@ -820,7 +836,7 @@ async function publishImpactMeasured(
       category,
       metricKey: r.metricKey,
       windowMonths: r.windowMonths,
-      delta: r.delta!,
+      delta: r.delta ?? null,
       deltaPct: r.deltaPct,
       attributedDelta: r.attributedDelta,
       didConfidence: r.didConfidence,

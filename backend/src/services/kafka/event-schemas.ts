@@ -480,7 +480,7 @@ export interface M35ImpactMeasuredMessage extends BaseEvent {
   category: string;
   metricKey: string;
   windowMonths: number;     // 3 | 12 | 24 | 36
-  delta: number;            // actual - OLS projected
+  delta: number | null;     // actual - OLS projected (null for partial/insufficient records)
   deltaPct: number | null;  // delta / |projected| * 100
   attributedDelta: number | null;  // DiD: delta - control_avg_delta
   didConfidence: number;    // 0-1
