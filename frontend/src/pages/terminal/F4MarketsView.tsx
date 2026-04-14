@@ -221,7 +221,7 @@ const dataCell: React.CSSProperties = {
 // Types
 // ============================================================================
 
-type ActiveTab = "dashboard" | "browse" | "submarkets" | "properties" | "demand" | "compare";
+type ActiveTab = "dashboard" | "markets" | "submarkets" | "demand" | "compare";
 type DrillLevel = "landing" | "msa-terminal" | "submarket-terminal" | "property-terminal";
 type SortKey = "rank" | "msa" | "jedi" | "d30" | "rentNum" | "vacNum" | "absorbNum" | "pipelineNum" | "capNum" | "cycle";
 type CycleFilter = "all" | "EXPANSION" | "LATE EXP" | "PEAK" | "CONTRACTION";
@@ -242,6 +242,7 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
   
   // Tab & drill state
   const [activeTab, setActiveTab] = useState<ActiveTab>("dashboard");
+  const [mapSelectedMsa, setMapSelectedMsa] = useState<string | null>(null);
   const [level, setLevel] = useState<DrillLevel>("landing");
   const [drillMsaId, setDrillMsaId] = useState("");
   const [drillMsaName, setDrillMsaName] = useState("");
@@ -327,8 +328,7 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
   const recommendationGeoIds = useMemo(() => {
     switch (activeTab) {
       case "submarkets": return submarketGeoIds.length > 0 ? submarketGeoIds : trackedGeoIds;
-      case "properties": return propertyGeoIds.length > 0 ? propertyGeoIds : trackedGeoIds;
-      case "browse": return marketGeoIds;
+      case "markets": return propertyGeoIds.length > 0 ? propertyGeoIds : marketGeoIds;
       default: return trackedGeoIds;
     }
   }, [activeTab, submarketGeoIds, propertyGeoIds, marketGeoIds, trackedGeoIds]);
@@ -346,21 +346,19 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
 
   const colPrefsMap: Record<string, ReturnType<typeof useColumnPreferences>> = {
     dashboard: dashCols,
-    browse: browseCols,
+    markets: browseCols,
     submarkets: subCols,
-    properties: propCols,
     compare: compCols,
   };
 
   const viewIdMap: Record<string, ViewId> = {
     dashboard: "f4_dashboard",
-    browse: "f4_browse",
+    markets: "f4_browse",
     submarkets: "f4_submarkets",
-    properties: "f4_properties",
     compare: "f4_compare",
   };
 
-  const safeTab = activeTab === "demand" ? "dashboard" : activeTab;
+  const safeTab = activeTab === "demand" ? "dashboard" : activeTab === "markets" ? "markets" : activeTab;
 
   const [pickerOpen, setPickerOpen] = useState<ActiveTab | null>(null);
 
@@ -453,7 +451,7 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
   const trackedMarkets = useMemo(() => ALL_MARKETS_RESOLVED.filter(m => m.starred), [ALL_MARKETS_RESOLVED]);
   
   const filteredMarkets = useMemo(() => {
-    let markets = activeTab === "dashboard" && trackedOnly 
+    let markets = (activeTab === "dashboard" && trackedOnly) 
       ? ALL_MARKETS_RESOLVED.filter(m => m.starred)
       : ALL_MARKETS_RESOLVED;
     
@@ -935,8 +933,8 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
   // Market Table
   // ============================================================================
 
-  const renderMarketTable = (viewTab: ActiveTab = "browse") => {
-    const cols = colPrefsMap[viewTab].columns;
+  const renderMarketTable = (viewTab: ActiveTab = "dashboard") => {
+    const cols = (colPrefsMap[viewTab] || colPrefsMap["dashboard"]).columns;
     const sortableMap: Record<string, SortKey> = { rank: "rank", msa: "msa", jedi: "jedi", d30: "d30", rent: "rentNum", vac: "vacNum", absorb: "absorbNum", pipeline: "pipelineNum", cap: "capNum", cycle: "cycle" };
 
     if (marketsEmpty) {
@@ -1348,49 +1346,6 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
     </div>
   );
 
-  const renderBrowse = () => (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "6px 12px", background: C.panel, borderBottom: `1px solid ${C.borderS}`, flexShrink: 0 }}>
-        <span style={{ fontSize: 11, fontWeight: 700, color: C.primary, ...sans }}>All Markets</span>
-        <select value={cycleFilter} onChange={e => setCycleFilter(e.target.value as CycleFilter)} style={{ ...mono, fontSize: 9, background: C.bg, color: C.primary, border: `1px solid ${C.borderS}`, padding: "2px 6px" }}>
-          <option value="all">All Cycles</option>
-          <option value="EXPANSION">Expansion</option>
-          <option value="LATE EXP">Late Expansion</option>
-          <option value="PEAK">Peak</option>
-          <option value="CONTRACTION">Contraction</option>
-        </select>
-        <div style={{ flex: 1 }} />
-        <input
-          type="text"
-          placeholder="Search markets..."
-          value={searchQuery}
-          onChange={e => setSearchQuery(e.target.value)}
-          style={{ ...mono, fontSize: 9, background: C.bg, color: C.primary, border: `1px solid ${C.borderS}`, padding: "3px 8px", width: 180 }}
-        />
-        <span style={{ fontSize: 9, color: C.muted, ...mono }}>{filteredMarkets.length} markets · Click to drill</span>
-        {isLive && <span style={{ fontSize: 8, color: C.green, ...mono, fontWeight: 700 }}>LIVE</span>}
-        {corrStaleCount > 0 && (
-          <span style={{ fontSize: 8, color: C.red, ...mono, fontWeight: 700 }} title={`${corrStaleCount} of ${corrTotalCount} market correlations are stale (>7 days old)`}>
-            CORR STALE ({corrStaleCount}/{corrTotalCount})
-          </span>
-        )}
-        {corrTotalCount > 0 && corrStaleCount === 0 && (
-          <span style={{ fontSize: 8, color: C.cyan, ...mono, fontWeight: 700 }} title="All market correlations are fresh (<7 days)">
-            CORR FRESH
-          </span>
-        )}
-        <button
-          onClick={(e) => { e.stopPropagation(); refreshMarkets(); }}
-          style={{ ...mono, fontSize: 8, background: "transparent", color: C.muted, border: `1px solid ${C.borderS}`, padding: "1px 5px", cursor: "pointer" }}
-          title="Refresh market data"
-        >
-          REFRESH
-        </button>
-        <GearButton tab="browse" />
-      </div>
-      {renderMarketTable("browse")}
-    </div>
-  );
 
   const renderSubmarkets = () => {
     const cols = subCols.columns;
@@ -1470,76 +1425,334 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
   );
   };
 
-  const renderProperties = () => {
-    const cols = propCols.columns;
+
+  // ============================================================================
+  // Markets: Map + Properties Side Panel (combined view)
+  // ============================================================================
+
+  // Approximate center coordinates for known MSAs (lat, lng)
+  const MSA_COORDS: Record<string, [number, number]> = {
+    "Atlanta, GA":       [33.749, -84.388],
+    "Raleigh, NC":       [35.779, -78.638],
+    "Tampa, FL":         [27.947, -82.459],
+    "Miami, FL":         [25.761, -80.191],
+    "Jacksonville, FL":  [30.332, -81.655],
+    "Charlotte, NC":     [35.227, -80.843],
+    "Austin, TX":        [30.267, -97.743],
+    "Dallas, TX":        [32.776, -96.797],
+    "Phoenix, AZ":       [33.449, -112.074],
+    "Nashville, TN":     [36.174, -86.767],
+    "Denver, CO":        [39.739, -104.984],
+    "Seattle, WA":       [47.606, -122.332],
+    "Portland, OR":      [45.523, -122.676],
+    "Las Vegas, NV":     [36.174, -115.137],
+    "San Antonio, TX":   [29.424, -98.494],
+    "Orlando, FL":       [28.538, -81.379],
+    "Memphis, TN":       [35.149, -90.048],
+    "Columbus, OH":      [39.961, -82.999],
+    "Indianapolis, IN":  [39.768, -86.158],
+    "Louisville, KY":    [38.252, -85.759],
+    "Richmond, VA":      [37.541, -77.434],
+    "Kansas City, MO":   [39.099, -94.578],
+    "Minneapolis, MN":   [44.979, -93.265],
+    "St. Louis, MO":     [38.627, -90.198],
+    "Pittsburgh, PA":    [40.441, -79.996],
+    "Baltimore, MD":     [39.290, -76.612],
+    "Washington, DC":    [38.907, -77.037],
+    "Philadelphia, PA":  [39.952, -75.165],
+    "New York, NY":      [40.713, -74.006],
+    "Boston, MA":        [42.360, -71.059],
+    "Chicago, IL":       [41.878, -87.630],
+    "Detroit, MI":       [42.331, -83.046],
+    "Houston, TX":       [29.760, -95.370],
+    "Los Angeles, CA":   [34.052, -118.244],
+    "San Francisco, CA": [37.774, -122.419],
+    "San Diego, CA":     [32.715, -117.157],
+    "Sacramento, CA":    [38.582, -121.494],
+  };
+
+  // Project lat/lng into SVG coordinate space (US bounding box)
+  const US_LAT_MIN = 24.5, US_LAT_MAX = 49.5;
+  const US_LNG_MIN = -125.0, US_LNG_MAX = -66.5;
+  const latLngToSvg = (lat: number, lng: number, w: number, h: number): [number, number] => {
+    const x = ((lng - US_LNG_MIN) / (US_LNG_MAX - US_LNG_MIN)) * w;
+    const y = ((US_LAT_MAX - lat) / (US_LAT_MAX - US_LAT_MIN)) * h;
+    return [x, y];
+  };
+
+  const renderMarkets = () => {
+    const allMsas = ALL_MARKETS_RESOLVED.map(m => m.msa);
+    const mapWidth = 620, mapHeight = 360;
+
+    // Filter properties by selected MSA + search
+    const filteredProps = PROPERTY_RESOLVED.filter(p => {
+      const matchesMsa = !mapSelectedMsa || p.msa === mapSelectedMsa;
+      const matchesSearch = !searchQuery || p.name.toLowerCase().includes(searchQuery.toLowerCase()) || (p.msa || "").toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesCycle = cycleFilter === "all" || (() => {
+        const market = ALL_MARKETS_RESOLVED.find(m => m.msa === p.msa);
+        return market?.cycle === cycleFilter;
+      })();
+      return matchesMsa && matchesSearch && matchesCycle;
+    });
+
     return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-      <div style={{ padding: "6px 12px", display: "flex", alignItems: "center", gap: 8, borderBottom: `1px solid ${C.borderS}`, background: C.panel, flexShrink: 0 }}>
-        <span style={{ fontSize: 11, fontWeight: 700, color: C.primary, ...sans }}>Property Index</span>
-        <span style={{ fontSize: 9, color: C.muted, ...mono }}>| {PROPERTY_RESOLVED.length} properties{isLive ? " · LIVE" : ""} · Click to view</span>
-        <div style={{ flex: 1 }} />
-        <GearButton tab="properties" />
-      </div>
-      {propEmpty ? <AwaitingData loading={propLoading} label="property data" /> : (
-      <div style={{ flex: 1, overflow: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 10, ...mono }}>
-          <thead>
-            <tr style={{ background: C.header, position: "sticky", top: 0, zIndex: 2 }}>
-              {cols.map(colId => {
-                const def = getColumnById(colId);
-                const dynDef = def && 'isDynamic' in def ? (def as DynamicColumnDef) : null;
-                const catalogId = dynDef?.catalogMetricId || colId.replace(/^metric:/, '');
-                const dbMetricId = dynDef?.dbMetricId || catalogMetricsMap.get(catalogId)?.dbMetricId || catalogId;
-                const driverInsight = columnInsights[catalogId] || columnInsights[dbMetricId] || null;
-                const absR = driverInsight ? Math.abs(driverInsight.pearsonR) : 0;
-                const insightStrength = absR >= 0.7 ? 'strong' : absR >= 0.5 ? 'moderate' : 'weak';
-                const insightColor = insightStrength === 'strong' ? '#4CAF50' : insightStrength === 'moderate' ? '#00BCD4' : '#78909C';
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        {/* ── Filter Bar ── */}
+        <div style={{
+          display: "flex", alignItems: "center", gap: 10, padding: "6px 12px",
+          background: C.panel, borderBottom: `1px solid ${C.borderS}`, flexShrink: 0,
+        }}>
+          <span style={{ fontSize: 9, fontWeight: 700, color: C.amberBright, ...mono, marginRight: 2 }}>MARKETS</span>
+          <div style={{ width: 1, height: 14, background: C.borderS }} />
+          <input
+            type="text"
+            placeholder="Search markets or properties…"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            style={{ ...mono, fontSize: 9, background: C.bg, color: C.primary, border: `1px solid ${C.borderS}`, padding: "3px 8px", width: 200 }}
+          />
+          <select
+            value={cycleFilter}
+            onChange={e => setCycleFilter(e.target.value as CycleFilter)}
+            style={{ ...mono, fontSize: 9, background: C.bg, color: C.primary, border: `1px solid ${C.borderS}`, padding: "2px 6px" }}
+          >
+            <option value="all">All Cycles</option>
+            <option value="EXPANSION">Expansion</option>
+            <option value="LATE EXP">Late Expansion</option>
+            <option value="PEAK">Peak</option>
+            <option value="CONTRACTION">Contraction</option>
+          </select>
+          <select
+            value={mapSelectedMsa || ""}
+            onChange={e => setMapSelectedMsa(e.target.value || null)}
+            style={{ ...mono, fontSize: 9, background: C.bg, color: C.primary, border: `1px solid ${C.borderS}`, padding: "2px 6px", maxWidth: 200 }}
+          >
+            <option value="">All MSAs</option>
+            {allMsas.map(msa => <option key={msa} value={msa}>{msa}</option>)}
+          </select>
+          {mapSelectedMsa && (
+            <button
+              onClick={() => setMapSelectedMsa(null)}
+              style={{ ...mono, fontSize: 8, background: "transparent", color: C.amber, border: `1px solid ${C.amber}44`, padding: "1px 7px", cursor: "pointer" }}
+            >
+              ✕ CLEAR
+            </button>
+          )}
+          <div style={{ flex: 1 }} />
+          <span style={{ fontSize: 8, color: C.muted, ...mono }}>
+            {filteredProps.length} properties
+            {mapSelectedMsa ? ` · ${mapSelectedMsa}` : ` · ${filteredMarkets.length} markets`}
+          </span>
+          {isLive && <span style={{ fontSize: 8, color: C.green, ...mono, fontWeight: 700 }}>LIVE</span>}
+          <button
+            onClick={() => { refreshMarkets(); refreshProperties(); }}
+            style={{ ...mono, fontSize: 8, background: "transparent", color: C.muted, border: `1px solid ${C.borderS}`, padding: "1px 5px", cursor: "pointer" }}
+            title="Refresh data"
+          >
+            REFRESH
+          </button>
+        </div>
+
+        {/* ── Body: Map + Side Panel ── */}
+        <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+
+          {/* ── SVG USA Map ── */}
+          <div style={{ flex: 1, overflow: "hidden", position: "relative", background: C.bg }}>
+            {/* Grid lines */}
+            <svg width="100%" height="100%" style={{ position: "absolute", inset: 0, opacity: 0.08 }}>
+              {Array.from({ length: 12 }).map((_, i) => (
+                <line key={`v${i}`} x1={`${(i / 11) * 100}%`} y1="0" x2={`${(i / 11) * 100}%`} y2="100%"
+                  stroke={C.borderS} strokeWidth={0.5} />
+              ))}
+              {Array.from({ length: 8 }).map((_, i) => (
+                <line key={`h${i}`} x1="0" y1={`${(i / 7) * 100}%`} x2="100%" y2={`${(i / 7) * 100}%`}
+                  stroke={C.borderS} strokeWidth={0.5} />
+              ))}
+            </svg>
+
+            {/* USA continental outline (simplified polygon) */}
+            <svg viewBox="0 0 620 360" width="100%" height="100%" style={{ position: "absolute", inset: 0 }} preserveAspectRatio="xMidYMid meet">
+              {/* Simplified US continental outline */}
+              <polygon
+                points="
+                  28,82 35,68 55,62 72,58 95,55 118,52 140,48 165,44 190,42 215,40 240,38 265,38
+                  290,40 312,38 330,36 350,38 370,42 390,46 408,44 420,46 432,50 448,48 462,46
+                  480,50 492,58 500,70 510,80 514,96 520,108 526,118 532,130 536,145 540,158
+                  542,170 540,182 536,192 528,200 516,208 504,216 492,226 480,238 468,248
+                  456,258 444,264 430,268 416,272 400,278 384,282 368,284 350,286 332,286
+                  314,284 296,280 278,276 260,274 242,274 224,276 206,280 188,284 170,290
+                  154,296 140,304 128,312 118,320 110,328 106,338 108,348 114,354
+                  100,354 90,348 82,340 74,330 68,318 64,306 62,294 60,282 58,270
+                  56,258 54,246 52,234 50,220 48,206 46,192 44,178 42,164 40,150
+                  38,136 36,122 32,110 28,98 28,82
+                "
+                fill="none"
+                stroke={C.borderM}
+                strokeWidth={0.8}
+                opacity={0.35}
+              />
+              {/* Gulf coast hint */}
+              <path
+                d="M 108,348 C 120,356 138,360 158,358 C 178,356 198,350 218,346 C 238,342 258,340 278,342 C 298,344 316,350 330,354"
+                fill="none" stroke={C.borderM} strokeWidth={0.8} opacity={0.25}
+              />
+
+              {/* MSA Dots */}
+              {ALL_MARKETS_RESOLVED.map(market => {
+                const coords = MSA_COORDS[market.msa];
+                if (!coords) return null;
+                const [cx, cy] = latLngToSvg(coords[0], coords[1], mapWidth, mapHeight);
+                const isSelected = mapSelectedMsa === market.msa;
+                const jediColor = market.jedi >= 80 ? C.green : market.jedi >= 65 ? C.amber : C.red;
+                const r = isSelected ? 7 : 5;
+                const propCount = PROPERTY_RESOLVED.filter(p => p.msa === market.msa).length;
                 return (
-                  <th key={colId} style={{
-                    ...hdrCell, textAlign: colId === "name" ? "left" : "center",
-                    color: isDynamicColumn(colId) ? "#2196F3" : undefined, position: "relative",
-                  }}>
-                    {def?.label || colId.toUpperCase()}
-                    {isDynamicColumn(colId) && (
-                      <span onClick={e => { e.stopPropagation(); setConfigPopoverCol(configPopoverCol === colId ? null : colId); }}
-                        style={{ fontSize: 7, marginLeft: 2, cursor: "pointer", opacity: configPopoverCol === colId ? 1 : 0.5, color: "#2196F3" }}
-                        title="Column config">⚙</span>
+                  <g key={market.id} style={{ cursor: "pointer" }} onClick={() => setMapSelectedMsa(isSelected ? null : market.msa)}>
+                    {isSelected && (
+                      <circle cx={cx} cy={cy} r={14} fill={jediColor} opacity={0.15} />
                     )}
-                    {driverInsight && (
-                      <span style={{ ...mono, fontSize: 6, fontWeight: 700, marginLeft: 2, color: insightColor, background: insightColor + "15", border: `1px solid ${insightColor}30`, padding: "0px 3px", borderRadius: 2, verticalAlign: "super" }}>
-                        {driverInsight.direction === 'positive' ? '↗' : '↘'}r{driverInsight.pearsonR > 0 ? '+' : ''}{driverInsight.pearsonR.toFixed(2)}
-                      </span>
+                    <circle cx={cx} cy={cy} r={r + 2} fill={jediColor} opacity={0.18} />
+                    <circle cx={cx} cy={cy} r={r} fill={jediColor} opacity={isSelected ? 0.9 : 0.7} />
+                    <circle cx={cx} cy={cy} r={r} fill="none" stroke={jediColor} strokeWidth={isSelected ? 1.5 : 0.8} />
+                    {propCount > 0 && (
+                      <circle cx={cx + r - 1} cy={cy - r + 1} r={3} fill={C.amber} opacity={0.9} />
                     )}
-                    {configPopoverCol === colId && isDynamicColumn(colId) && def && (
-                      <ColumnConfigPopover colDef={def} config={getColumnConfig(colId)} onConfigChange={(cfg) => setColumnConfig(colId, cfg)} onClose={() => setConfigPopoverCol(null)} insight={driverInsight} />
-                    )}
-                  </th>
+                    <text x={cx} y={cy + r + 9} textAnchor="middle" fill={isSelected ? jediColor : C.secondary}
+                      style={{ fontSize: isSelected ? 7 : 6, fontFamily: "'JetBrains Mono',monospace", fontWeight: isSelected ? 700 : 400, pointerEvents: "none" }}>
+                      {market.msa.split(",")[0].toUpperCase()}
+                    </text>
+                    <text x={cx} y={cy + r + 17} textAnchor="middle" fill={jediColor}
+                      style={{ fontSize: 5.5, fontFamily: "'JetBrains Mono',monospace", pointerEvents: "none" }}>
+                      {market.jedi}
+                    </text>
+                  </g>
                 );
               })}
-            </tr>
-          </thead>
-          <tbody>
-            {PROPERTY_RESOLVED.map((p, i) => (
-              <tr
-                key={i}
-                onClick={() => handlePropertySelect(p.name)}
-                style={{ background: i % 2 === 0 ? C.panel : C.panelAlt, borderBottom: `1px solid ${C.borderS}`, cursor: "pointer" }}
-                onMouseEnter={e => { e.currentTarget.style.background = C.hover; }}
-                onMouseLeave={e => { e.currentTarget.style.background = i % 2 === 0 ? C.panel : C.panelAlt; }}
-              >
-                {cols.map(colId => (
-                  <td key={colId} style={{ ...dataCell, textAlign: colId === "name" ? "left" : "center" }}>
-                    {renderPropertyCell(colId, p)}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+            </svg>
+
+            {/* Map Legend */}
+            <div style={{
+              position: "absolute", bottom: 10, left: 12, display: "flex", gap: 12, alignItems: "center",
+              background: C.panel + "cc", border: `1px solid ${C.borderS}`, padding: "4px 8px",
+            }}>
+              <span style={{ fontSize: 7, color: C.muted, ...mono, fontWeight: 700 }}>JEDI</span>
+              {[{ label: "≥80", color: C.green }, { label: "≥65", color: C.amber }, { label: "<65", color: C.red }].map(item => (
+                <span key={item.label} style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: item.color, display: "inline-block" }} />
+                  <span style={{ fontSize: 7, color: C.muted, ...mono }}>{item.label}</span>
+                </span>
+              ))}
+              <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                <span style={{ width: 5, height: 5, borderRadius: "50%", background: C.amber, display: "inline-block" }} />
+                <span style={{ fontSize: 7, color: C.muted, ...mono }}>has properties</span>
+              </span>
+              <span style={{ fontSize: 7, color: C.muted, ...mono }}>· Click dot to filter</span>
+            </div>
+
+            {/* No-coords fallback note */}
+            {ALL_MARKETS_RESOLVED.filter(m => !MSA_COORDS[m.msa]).length > 0 && (
+              <div style={{ position: "absolute", top: 8, left: 10, fontSize: 7, color: C.muted, ...mono, opacity: 0.6 }}>
+                {ALL_MARKETS_RESOLVED.filter(m => !MSA_COORDS[m.msa]).length} markets without map coordinates
+              </div>
+            )}
+          </div>
+
+          {/* ── Properties Side Panel ── */}
+          <div style={{
+            width: 300, flexShrink: 0, display: "flex", flexDirection: "column",
+            borderLeft: `1px solid ${C.borderM}`, background: C.panel, overflow: "hidden",
+          }}>
+            {/* Panel header */}
+            <div style={{
+              padding: "6px 10px", borderBottom: `1px solid ${C.borderS}`,
+              display: "flex", alignItems: "center", gap: 6, flexShrink: 0,
+            }}>
+              <span style={{ fontSize: 9, fontWeight: 700, color: C.primary, ...mono }}>PROPERTIES</span>
+              <span style={{ fontSize: 8, color: C.muted, ...mono }}>
+                {filteredProps.length}/{PROPERTY_RESOLVED.length}
+              </span>
+              {mapSelectedMsa && (
+                <span style={{ fontSize: 7, color: C.amber, ...mono, background: C.amber + "18", border: `1px solid ${C.amber}33`, padding: "1px 4px" }}>
+                  {mapSelectedMsa.split(",")[0]}
+                </span>
+              )}
+            </div>
+
+            {/* Property list */}
+            {propEmpty ? (
+              <AwaitingData loading={propLoading} label="property data" />
+            ) : filteredProps.length === 0 ? (
+              <div style={{ padding: 20, textAlign: "center", color: C.muted, fontSize: 9, ...mono }}>
+                No properties match filters
+              </div>
+            ) : (
+              <div style={{ flex: 1, overflow: "auto" }}>
+                {filteredProps.map((p, i) => {
+                  const jedi = typeof p.jedi === "number" ? p.jedi : parseInt(String(p.jedi));
+                  const jediColor = jedi >= 80 ? C.green : jedi >= 65 ? C.amber : C.red;
+                  return (
+                    <div
+                      key={i}
+                      onClick={() => handlePropertySelect(p.name)}
+                      style={{
+                        padding: "8px 10px", borderBottom: `1px solid ${C.borderS}`,
+                        cursor: "pointer", background: "transparent",
+                        transition: "background 0.1s",
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.background = C.hover; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = "transparent"; }}
+                    >
+                      {/* Row 1: Name + JEDI */}
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 3 }}>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: C.primary, ...mono, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {p.name}
+                        </span>
+                        <span style={{ fontSize: 11, fontWeight: 800, color: jediColor, ...mono, marginLeft: 6, flexShrink: 0 }}>
+                          {jedi}
+                        </span>
+                      </div>
+                      {/* Row 2: Submarket + MSA */}
+                      <div style={{ fontSize: 8, color: C.secondary, ...mono, marginBottom: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {p.submarket && <span>{p.submarket} · </span>}
+                        <span style={{ color: C.muted }}>{p.msa}</span>
+                      </div>
+                      {/* Row 3: Metrics */}
+                      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        {p.rent && (
+                          <span style={{ fontSize: 8, color: C.primary, ...mono, fontWeight: 600 }}>{p.rent}</span>
+                        )}
+                        {p.occ && (
+                          <span style={{ fontSize: 8, color: parseFloat(p.occ) >= 95 ? C.green : parseFloat(p.occ) >= 90 ? C.amber : C.red, ...mono }}>
+                            {p.occ} occ
+                          </span>
+                        )}
+                        {p.capRate && (
+                          <span style={{ fontSize: 8, color: C.secondary, ...mono }}>{p.capRate} cap</span>
+                        )}
+                        {p.units && (
+                          <span style={{ fontSize: 8, color: C.muted, ...mono }}>{p.units}u</span>
+                        )}
+                      </div>
+                      {/* Row 4: Owner + Vintage + click hint */}
+                      <div style={{ display: "flex", alignItems: "center", marginTop: 3 }}>
+                        {p.owner && (
+                          <span style={{ fontSize: 7, color: C.muted, ...mono }}>{p.owner}</span>
+                        )}
+                        {p.vintage && (
+                          <span style={{ fontSize: 7, color: C.muted, ...mono, marginLeft: 6 }}>{p.vintage}</span>
+                        )}
+                        <div style={{ flex: 1 }} />
+                        <span style={{ fontSize: 7, color: C.cyan, ...mono, opacity: 0.6 }}>→ VIEW</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
-      )}
-    </div>
-  );
+    );
   };
 
   const renderCompare = () => <PeerComparisonPage embedded onViewDetail={() => {}} />;
@@ -1549,9 +1762,8 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
   const renderTabContent = () => {
     switch (activeTab) {
       case "dashboard": return renderDashboard();
-      case "browse": return renderBrowse();
+      case "markets": return renderMarkets();
       case "submarkets": return renderSubmarkets();
-      case "properties": return renderProperties();
       case "demand": return renderDemand();
       case "compare": return renderCompare();
       default: return null;
@@ -1564,9 +1776,8 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
 
   const TAB_DEFS: { id: ActiveTab; label: string }[] = [
     { id: "dashboard", label: "DASHBOARD" },
-    { id: "browse", label: "BROWSE" },
+    { id: "markets", label: "MARKETS" },
     { id: "submarkets", label: "SUBMARKETS" },
-    { id: "properties", label: "PROPERTIES" },
     { id: "demand", label: "DEMAND" },
     { id: "compare", label: "COMPARE" },
   ];
