@@ -84,6 +84,33 @@ interface WfFees {
   refinancingFeePct: number;
 }
 
+type InvestorStatus = 'committed' | 'soft' | 'pending' | 'passed';
+
+interface InvestorRecord {
+  id: string;
+  trancheId: string;
+  name: string;
+  entity: string;
+  commitment: number;
+  status: InvestorStatus;
+  email?: string;
+  note?: string;
+}
+
+const STATUS_COLORS: Record<InvestorStatus, string> = {
+  committed: '#68D391',
+  soft:      '#63B3ED',
+  pending:   '#F6AD55',
+  passed:    '#FC8181',
+};
+
+const STATUS_LABELS: Record<InvestorStatus, string> = {
+  committed: 'COMMITTED',
+  soft:      'SOFT',
+  pending:   'PENDING',
+  passed:    'PASSED',
+};
+
 interface DistRow {
   year: number;
   label: string;
@@ -354,6 +381,41 @@ export function WaterfallTab({ dealId, assumptions, modelResults, f9Financials, 
     refinancingFeePct: 0,
   });
 
+  // ── Investor roster (per-tranche, localStorage-persisted) ─────────────────
+  const investorKey = `jedire_investors_${dealId}`;
+  const [investors, setInvestors] = useState<InvestorRecord[]>(() => {
+    try { const s = localStorage.getItem(investorKey); if (s) return JSON.parse(s); } catch {}
+    return [];
+  });
+  const [expandedTranches, setExpandedTranches] = useState<Record<string, boolean>>({});
+  const [addingToTranche, setAddingToTranche] = useState<string | null>(null);
+  const [newInv, setNewInv] = useState<Omit<InvestorRecord, 'id' | 'trancheId'>>({ name: '', entity: '', commitment: 0, status: 'soft' });
+
+  const saveInvestors = useCallback((next: InvestorRecord[]) => {
+    setInvestors(next);
+    localStorage.setItem(investorKey, JSON.stringify(next));
+  }, [investorKey]);
+
+  const addInvestor = useCallback((trancheId: string) => {
+    if (!newInv.name.trim()) return;
+    const rec: InvestorRecord = { id: `inv_${Date.now()}`, trancheId, ...newInv };
+    saveInvestors([...investors, rec]);
+    setNewInv({ name: '', entity: '', commitment: 0, status: 'soft' });
+    setAddingToTranche(null);
+  }, [investors, newInv, saveInvestors]);
+
+  const updateInvestor = useCallback((id: string, patch: Partial<InvestorRecord>) => {
+    saveInvestors(investors.map(inv => inv.id === id ? { ...inv, ...patch } : inv));
+  }, [investors, saveInvestors]);
+
+  const removeInvestor = useCallback((id: string) => {
+    saveInvestors(investors.filter(inv => inv.id !== id));
+  }, [investors, saveInvestors]);
+
+  const toggleTranche = useCallback((id: string) => {
+    setExpandedTranches(prev => ({ ...prev, [id]: !prev[id] }));
+  }, []);
+
   // Sync from backend on f9Financials refresh
   React.useEffect(() => {
     if (wfBe) {
@@ -533,91 +595,291 @@ export function WaterfallTab({ dealId, assumptions, modelResults, f9Financials, 
               <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 9 }}>
                 <thead>
                   <tr style={{ borderBottom: `2px solid ${BT.border.medium}` }}>
-                    {['TRANCHE', 'ROLE', 'CONTRIBUTION', '% EQUITY', 'PREF RATE', 'COMPOUND', 'CUMUL', 'PROMOTE', ''].map(h => (
+                    {['TRANCHE', 'ROLE', 'CONTRIBUTION', '% EQUITY', 'PREF RATE', 'COMPOUND', 'CUMUL', 'PROMOTE', 'INVESTORS', ''].map(h => (
                       <th key={h} style={{ padding: '3px 8px', color: BT.text.muted, textAlign: h === 'TRANCHE' || h === 'ROLE' ? 'left' : 'right', fontWeight: 500 }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {tranches.map((tr, i) => (
-                    <tr key={tr.id} style={{ background: i % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt, borderBottom: `1px solid ${BT.border.subtle}` }}>
-                      <td style={{ padding: '3px 8px', color: TRANCHE_COLORS[tr.role] ?? BT.text.white, fontWeight: 700 }}>{tr.label}</td>
-                      <td style={{ padding: '3px 8px', color: BT.text.muted }}>{tr.role.toUpperCase()}</td>
-                      <td style={{ padding: '3px 8px', textAlign: 'right', color: BT.text.white }}>{equity > 0 ? fmt$(equity * tr.pct) : '—'}</td>
-                      <td style={{ padding: '3px 8px', textAlign: 'right' }}>
-                        <EditNum value={tr.pct} pct onCommit={async v => {
-                          const next = tranches.map((t, j) => j === i ? { ...t, pct: v } : t);
-                          setTranches(next); await persistTranches(next);
-                        }} />
-                      </td>
-                      <td style={{ padding: '3px 8px', textAlign: 'right' }}>
-                        {tr.role !== 'gp'
-                          ? <EditNum value={tr.prefRate} pct onCommit={async v => {
-                              const next = tranches.map((t, j) => j === i ? { ...t, prefRate: v } : t);
-                              setTranches(next);
-                              // Sync global prefRate: use the first LP tranche's pref as the governing rate
-                              const firstLpPref = next.find(t => t.role !== 'gp')?.prefRate ?? v;
-                              setPrefRate(firstLpPref);
-                              await patchWf(dealId, 'prefRate', firstLpPref);
-                              await persistTranches(next, true);
-                              onF9Refresh?.();
+                  {tranches.map((tr, i) => {
+                    const trancheInvestors = investors.filter(inv => inv.trancheId === tr.id);
+                    const classTotal = equity * tr.pct;
+                    const committed = trancheInvestors.filter(inv => inv.status === 'committed').reduce((s, inv) => s + inv.commitment, 0);
+                    const softCircle = trancheInvestors.filter(inv => inv.status === 'soft').reduce((s, inv) => s + inv.commitment, 0);
+                    const totalRaised = committed + softCircle;
+                    const isExpanded = !!expandedTranches[tr.id];
+                    const isAdding = addingToTranche === tr.id;
+                    const trancheColor = TRANCHE_COLORS[tr.role] ?? BT.text.white;
+                    return (
+                      <React.Fragment key={tr.id}>
+                        <tr style={{ background: i % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt, borderBottom: isExpanded ? 'none' : `1px solid ${BT.border.subtle}` }}>
+                          <td style={{ padding: '3px 8px', color: trancheColor, fontWeight: 700 }}>{tr.label}</td>
+                          <td style={{ padding: '3px 8px', color: BT.text.muted }}>{tr.role.toUpperCase()}</td>
+                          <td style={{ padding: '3px 8px', textAlign: 'right', color: BT.text.white }}>{equity > 0 ? fmt$(classTotal) : '—'}</td>
+                          <td style={{ padding: '3px 8px', textAlign: 'right' }}>
+                            <EditNum value={tr.pct} pct onCommit={async v => {
+                              const next = tranches.map((t, j) => j === i ? { ...t, pct: v } : t);
+                              setTranches(next); await persistTranches(next);
                             }} />
-                          : <span style={{ color: BT.text.muted }}>—</span>
-                        }
-                      </td>
-                      <td style={{ padding: '3px 8px', textAlign: 'right' }}>
-                        {tr.role !== 'gp' ? (
-                          <select value={tr.compounding} onChange={async e => {
-                            const val = e.target.value as CompoundingType;
-                            const next = tranches.map((t, j) => j === i ? { ...t, compounding: val } : t);
-                            setTranches(next); await persistTranches(next);
-                          }} style={{
-                            background: BT.bg.panel, border: `1px solid ${BT.border.medium}`,
-                            color: BT.text.amber, fontFamily: MONO, fontSize: 8, padding: '1px 3px',
-                          }}>
-                            {(Object.keys(COMPOUNDING_LABELS) as CompoundingType[]).map(k => (
-                              <option key={k} value={k}>{COMPOUNDING_LABELS[k]}</option>
-                            ))}
-                          </select>
-                        ) : <span style={{ color: BT.text.muted }}>—</span>}
-                      </td>
-                      <td style={{ padding: '3px 8px', textAlign: 'right' }}>
-                        {tr.role !== 'gp' ? (
-                          <button onClick={async () => {
-                            const next = tranches.map((t, j) => j === i ? { ...t, cumulative: !t.cumulative } : t);
-                            setTranches(next); await persistTranches(next);
-                          }} style={{
-                            background: tr.cumulative ? `${BT.met.financial}22` : 'transparent',
-                            border: `1px solid ${tr.cumulative ? BT.met.financial : BT.border.medium}`,
-                            color: tr.cumulative ? BT.met.financial : BT.text.muted,
-                            fontFamily: MONO, fontSize: 8, padding: '1px 6px', cursor: 'pointer', borderRadius: 2,
-                          }}>{tr.cumulative ? 'YES' : 'NO'}</button>
-                        ) : <span style={{ color: BT.text.muted }}>—</span>}
-                      </td>
-                      <td style={{ padding: '3px 8px', textAlign: 'right' }}>
-                        <button onClick={async () => {
-                          const next = tranches.map((t, j) => j === i ? { ...t, participatePromote: !t.participatePromote } : t);
-                          setTranches(next); await persistTranches(next);
-                        }} style={{
-                          background: tr.participatePromote ? `${BT.text.orange}22` : 'transparent',
-                          border: `1px solid ${tr.participatePromote ? BT.text.orange : BT.border.medium}`,
-                          color: tr.participatePromote ? BT.text.orange : BT.text.muted,
-                          fontFamily: MONO, fontSize: 8, padding: '1px 6px', cursor: 'pointer', borderRadius: 2,
-                        }}>{tr.participatePromote ? 'YES' : 'NO'}</button>
-                      </td>
-                      <td style={{ padding: '3px 8px', textAlign: 'right' }}>
-                        {tranches.length > 2 && (
-                          <button onClick={async () => {
-                            const next = tranches.filter((_, j) => j !== i);
-                            setTranches(next); await persistTranches(next);
-                          }} style={{
-                            background: 'transparent', border: `1px solid ${BT.border.medium}`,
-                            color: BT.text.red, fontFamily: MONO, fontSize: 8, padding: '1px 5px', cursor: 'pointer', borderRadius: 2,
-                          }}>✕</button>
+                          </td>
+                          <td style={{ padding: '3px 8px', textAlign: 'right' }}>
+                            {tr.role !== 'gp'
+                              ? <EditNum value={tr.prefRate} pct onCommit={async v => {
+                                  const next = tranches.map((t, j) => j === i ? { ...t, prefRate: v } : t);
+                                  setTranches(next);
+                                  const firstLpPref = next.find(t => t.role !== 'gp')?.prefRate ?? v;
+                                  setPrefRate(firstLpPref);
+                                  await patchWf(dealId, 'prefRate', firstLpPref);
+                                  await persistTranches(next, true);
+                                  onF9Refresh?.();
+                                }} />
+                              : <span style={{ color: BT.text.muted }}>—</span>
+                            }
+                          </td>
+                          <td style={{ padding: '3px 8px', textAlign: 'right' }}>
+                            {tr.role !== 'gp' ? (
+                              <select value={tr.compounding} onChange={async e => {
+                                const val = e.target.value as CompoundingType;
+                                const next = tranches.map((t, j) => j === i ? { ...t, compounding: val } : t);
+                                setTranches(next); await persistTranches(next);
+                              }} style={{
+                                background: BT.bg.panel, border: `1px solid ${BT.border.medium}`,
+                                color: BT.text.amber, fontFamily: MONO, fontSize: 8, padding: '1px 3px',
+                              }}>
+                                {(Object.keys(COMPOUNDING_LABELS) as CompoundingType[]).map(k => (
+                                  <option key={k} value={k}>{COMPOUNDING_LABELS[k]}</option>
+                                ))}
+                              </select>
+                            ) : <span style={{ color: BT.text.muted }}>—</span>}
+                          </td>
+                          <td style={{ padding: '3px 8px', textAlign: 'right' }}>
+                            {tr.role !== 'gp' ? (
+                              <button onClick={async () => {
+                                const next = tranches.map((t, j) => j === i ? { ...t, cumulative: !t.cumulative } : t);
+                                setTranches(next); await persistTranches(next);
+                              }} style={{
+                                background: tr.cumulative ? `${BT.met.financial}22` : 'transparent',
+                                border: `1px solid ${tr.cumulative ? BT.met.financial : BT.border.medium}`,
+                                color: tr.cumulative ? BT.met.financial : BT.text.muted,
+                                fontFamily: MONO, fontSize: 8, padding: '1px 6px', cursor: 'pointer', borderRadius: 2,
+                              }}>{tr.cumulative ? 'YES' : 'NO'}</button>
+                            ) : <span style={{ color: BT.text.muted }}>—</span>}
+                          </td>
+                          <td style={{ padding: '3px 8px', textAlign: 'right' }}>
+                            <button onClick={async () => {
+                              const next = tranches.map((t, j) => j === i ? { ...t, participatePromote: !t.participatePromote } : t);
+                              setTranches(next); await persistTranches(next);
+                            }} style={{
+                              background: tr.participatePromote ? `${BT.text.orange}22` : 'transparent',
+                              border: `1px solid ${tr.participatePromote ? BT.text.orange : BT.border.medium}`,
+                              color: tr.participatePromote ? BT.text.orange : BT.text.muted,
+                              fontFamily: MONO, fontSize: 8, padding: '1px 6px', cursor: 'pointer', borderRadius: 2,
+                            }}>{tr.participatePromote ? 'YES' : 'NO'}</button>
+                          </td>
+                          {/* ── INVESTORS toggle cell ────────────────────────── */}
+                          <td style={{ padding: '3px 8px', textAlign: 'right' }}>
+                            <button onClick={() => toggleTranche(tr.id)} style={{
+                              background: isExpanded ? `${trancheColor}22` : 'transparent',
+                              border: `1px solid ${isExpanded ? trancheColor : BT.border.medium}`,
+                              color: isExpanded ? trancheColor : BT.text.muted,
+                              fontFamily: MONO, fontSize: 8, padding: '1px 7px', cursor: 'pointer', borderRadius: 2,
+                              display: 'flex', alignItems: 'center', gap: 3, whiteSpace: 'nowrap',
+                            }}>
+                              <span style={{ fontSize: 7 }}>{isExpanded ? '▼' : '▶'}</span>
+                              {trancheInvestors.length > 0 ? `${trancheInvestors.length} INVESTOR${trancheInvestors.length > 1 ? 'S' : ''}` : 'ADD INVESTORS'}
+                            </button>
+                          </td>
+                          <td style={{ padding: '3px 8px', textAlign: 'right' }}>
+                            {tranches.length > 2 && (
+                              <button onClick={async () => {
+                                const next = tranches.filter((_, j) => j !== i);
+                                setTranches(next); await persistTranches(next);
+                              }} style={{
+                                background: 'transparent', border: `1px solid ${BT.border.medium}`,
+                                color: BT.text.red, fontFamily: MONO, fontSize: 8, padding: '1px 5px', cursor: 'pointer', borderRadius: 2,
+                              }}>✕</button>
+                            )}
+                          </td>
+                        </tr>
+                        {/* ── Expandable investor roster ─────────────────────── */}
+                        {isExpanded && (
+                          <tr style={{ background: i % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt, borderBottom: `1px solid ${BT.border.subtle}` }}>
+                            <td colSpan={10} style={{ padding: 0 }}>
+                              <div style={{ margin: '0 8px 8px 28px', border: `1px solid ${trancheColor}44`, borderRadius: 4, overflow: 'hidden' }}>
+                                {/* Roster header */}
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 8px', background: `${trancheColor}18`, borderBottom: `1px solid ${trancheColor}33` }}>
+                                  <span style={{ fontFamily: MONO, fontSize: 9, color: trancheColor, fontWeight: 700, letterSpacing: '0.05em' }}>
+                                    {tr.label} · INVESTOR ROSTER
+                                  </span>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                    {classTotal > 0 && (
+                                      <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
+                                        TARGET: <span style={{ color: BT.text.white }}>{fmt$(classTotal)}</span>
+                                        {totalRaised > 0 && (
+                                          <> · RAISED: <span style={{ color: totalRaised >= classTotal ? '#68D391' : BT.text.amber }}>{fmt$(totalRaised)}</span>
+                                          {' '}(<span style={{ color: totalRaised >= classTotal ? '#68D391' : BT.text.amber }}>{((totalRaised / classTotal) * 100).toFixed(0)}%</span>)</>
+                                        )}
+                                      </span>
+                                    )}
+                                    <button onClick={() => { setAddingToTranche(isAdding ? null : tr.id); setNewInv({ name: '', entity: '', commitment: 0, status: 'soft' }); }} style={{
+                                      background: `${trancheColor}22`, border: `1px solid ${trancheColor}66`,
+                                      color: trancheColor, fontFamily: MONO, fontSize: 8, padding: '2px 8px',
+                                      cursor: 'pointer', borderRadius: 2,
+                                    }}>+ ADD INVESTOR</button>
+                                  </div>
+                                </div>
+                                {/* Commitment fill bar */}
+                                {classTotal > 0 && totalRaised > 0 && (
+                                  <div style={{ height: 3, background: BT.bg.panelAlt, position: 'relative' }}>
+                                    <div style={{ position: 'absolute', left: 0, top: 0, height: '100%', width: `${Math.min((committed / classTotal) * 100, 100)}%`, background: STATUS_COLORS.committed }} />
+                                    <div style={{ position: 'absolute', left: `${Math.min((committed / classTotal) * 100, 100)}%`, top: 0, height: '100%', width: `${Math.min((softCircle / classTotal) * 100, 100 - (committed / classTotal) * 100)}%`, background: STATUS_COLORS.soft, opacity: 0.6 }} />
+                                  </div>
+                                )}
+                                {/* Investor rows */}
+                                {trancheInvestors.length > 0 && (
+                                  <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 8 }}>
+                                    <thead>
+                                      <tr style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
+                                        {['INVESTOR NAME', 'ENTITY TYPE', 'COMMITMENT', '% OF CLASS', 'EMAIL', 'STATUS', 'NOTE', ''].map(h => (
+                                          <th key={h} style={{ padding: '3px 8px', color: BT.text.muted, textAlign: h === 'INVESTOR NAME' || h === 'ENTITY TYPE' || h === 'EMAIL' || h === 'NOTE' ? 'left' : 'right', fontWeight: 500, fontSize: 8 }}>{h}</th>
+                                        ))}
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {trancheInvestors.map((inv, ii) => {
+                                        const pctOfClass = classTotal > 0 ? (inv.commitment / classTotal) * 100 : 0;
+                                        return (
+                                          <tr key={inv.id} style={{ background: ii % 2 === 0 ? 'transparent' : `${BT.bg.panelAlt}88`, borderBottom: `1px solid ${BT.border.subtle}` }}>
+                                            <td style={{ padding: '3px 8px' }}>
+                                              <input value={inv.name} onChange={e => updateInvestor(inv.id, { name: e.target.value })}
+                                                style={{ background: 'transparent', border: 'none', color: BT.text.white, fontFamily: MONO, fontSize: 8, width: 140, outline: 'none' }} />
+                                            </td>
+                                            <td style={{ padding: '3px 8px' }}>
+                                              <select value={inv.entity} onChange={e => updateInvestor(inv.id, { entity: e.target.value })} style={{
+                                                background: 'transparent', border: `1px solid ${BT.border.subtle}`, color: BT.text.muted,
+                                                fontFamily: MONO, fontSize: 7, padding: '1px 2px', maxWidth: 90,
+                                              }}>
+                                                <option value="">—</option>
+                                                {['Individual', 'LLC', 'LP', 'Trust', 'Family Office', 'Fund', 'REIT', 'Corp', 'Other'].map(o => <option key={o} value={o}>{o}</option>)}
+                                              </select>
+                                            </td>
+                                            <td style={{ padding: '3px 8px', textAlign: 'right' }}>
+                                              <input value={inv.commitment === 0 ? '' : String(inv.commitment)}
+                                                onChange={e => {
+                                                  const raw = e.target.value.replace(/[^0-9.]/g, '');
+                                                  updateInvestor(inv.id, { commitment: parseFloat(raw) || 0 });
+                                                }}
+                                                onBlur={e => {
+                                                  const raw = e.target.value.replace(/[^0-9.kmKM]/gi, '');
+                                                  let v = parseFloat(raw);
+                                                  if (/k/i.test(raw)) v *= 1000;
+                                                  if (/m/i.test(raw)) v *= 1000000;
+                                                  updateInvestor(inv.id, { commitment: isNaN(v) ? 0 : v });
+                                                }}
+                                                placeholder="0"
+                                                style={{ background: `${BT.text.amber}18`, border: `1px solid ${BT.text.amber}44`, color: BT.text.amber, fontFamily: MONO, fontSize: 8, width: 80, padding: '1px 4px', textAlign: 'right', borderRadius: 2 }} />
+                                            </td>
+                                            <td style={{ padding: '3px 8px', textAlign: 'right', color: BT.text.cyan }}>
+                                              {pctOfClass > 0 ? `${pctOfClass.toFixed(1)}%` : '—'}
+                                            </td>
+                                            <td style={{ padding: '3px 8px' }}>
+                                              <input value={inv.email ?? ''} onChange={e => updateInvestor(inv.id, { email: e.target.value })}
+                                                placeholder="email@—"
+                                                style={{ background: 'transparent', border: 'none', color: BT.text.muted, fontFamily: MONO, fontSize: 7, width: 130, outline: 'none' }} />
+                                            </td>
+                                            <td style={{ padding: '3px 8px', textAlign: 'right' }}>
+                                              <select value={inv.status} onChange={e => updateInvestor(inv.id, { status: e.target.value as InvestorStatus })} style={{
+                                                background: `${STATUS_COLORS[inv.status]}22`, border: `1px solid ${STATUS_COLORS[inv.status]}66`,
+                                                color: STATUS_COLORS[inv.status], fontFamily: MONO, fontSize: 7, padding: '1px 3px', borderRadius: 2,
+                                              }}>
+                                                {(Object.keys(STATUS_LABELS) as InvestorStatus[]).map(s => (
+                                                  <option key={s} value={s}>{STATUS_LABELS[s]}</option>
+                                                ))}
+                                              </select>
+                                            </td>
+                                            <td style={{ padding: '3px 8px' }}>
+                                              <input value={inv.note ?? ''} onChange={e => updateInvestor(inv.id, { note: e.target.value })}
+                                                placeholder="note…"
+                                                style={{ background: 'transparent', border: 'none', color: BT.text.muted, fontFamily: MONO, fontSize: 7, width: 100, outline: 'none' }} />
+                                            </td>
+                                            <td style={{ padding: '3px 8px', textAlign: 'right' }}>
+                                              <button onClick={() => removeInvestor(inv.id)} style={{
+                                                background: 'transparent', border: `1px solid ${BT.border.medium}`,
+                                                color: BT.text.red, fontFamily: MONO, fontSize: 7, padding: '1px 5px', cursor: 'pointer', borderRadius: 2,
+                                              }}>✕</button>
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                    {/* Roster totals */}
+                                    <tfoot>
+                                      <tr style={{ borderTop: `1px solid ${trancheColor}44` }}>
+                                        <td colSpan={2} style={{ padding: '3px 8px', color: BT.text.muted, fontFamily: MONO, fontSize: 8 }}>TOTAL · {trancheInvestors.length} investor{trancheInvestors.length !== 1 ? 's' : ''}</td>
+                                        <td style={{ padding: '3px 8px', textAlign: 'right', color: totalRaised >= classTotal && classTotal > 0 ? '#68D391' : BT.text.amber, fontFamily: MONO, fontSize: 8, fontWeight: 700 }}>{fmt$(totalRaised)}</td>
+                                        <td style={{ padding: '3px 8px', textAlign: 'right', color: BT.text.cyan, fontFamily: MONO, fontSize: 8 }}>
+                                          {classTotal > 0 ? `${((totalRaised / classTotal) * 100).toFixed(1)}%` : '—'}
+                                        </td>
+                                        <td colSpan={4} style={{ padding: '3px 8px' }}>
+                                          <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>
+                                            COMMITTED: <span style={{ color: STATUS_COLORS.committed }}>{fmt$(committed)}</span>
+                                            {'  '}SOFT: <span style={{ color: STATUS_COLORS.soft }}>{fmt$(softCircle)}</span>
+                                            {'  '}GAP: <span style={{ color: classTotal > totalRaised ? BT.text.red : '#68D391' }}>{fmt$(Math.max(classTotal - totalRaised, 0))}</span>
+                                          </span>
+                                        </td>
+                                      </tr>
+                                    </tfoot>
+                                  </table>
+                                )}
+                                {trancheInvestors.length === 0 && !isAdding && (
+                                  <div style={{ padding: '10px 12px', color: BT.text.muted, fontFamily: MONO, fontSize: 8, textAlign: 'center' }}>
+                                    No investors added yet — click <span style={{ color: trancheColor }}>+ ADD INVESTOR</span> to build out your capital raise roster
+                                  </div>
+                                )}
+                                {/* Add investor inline form */}
+                                {isAdding && (
+                                  <div style={{ padding: '6px 8px', borderTop: `1px solid ${trancheColor}33`, background: `${trancheColor}0a`, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                                    <input autoFocus value={newInv.name} onChange={e => setNewInv(p => ({ ...p, name: e.target.value }))}
+                                      placeholder="Investor Name *"
+                                      style={{ background: BT.bg.panel, border: `1px solid ${BT.border.medium}`, color: BT.text.white, fontFamily: MONO, fontSize: 8, padding: '2px 6px', borderRadius: 2, width: 150 }} />
+                                    <select value={newInv.entity} onChange={e => setNewInv(p => ({ ...p, entity: e.target.value }))} style={{
+                                      background: BT.bg.panel, border: `1px solid ${BT.border.medium}`, color: BT.text.muted,
+                                      fontFamily: MONO, fontSize: 8, padding: '2px 4px', borderRadius: 2,
+                                    }}>
+                                      <option value="">Entity Type</option>
+                                      {['Individual', 'LLC', 'LP', 'Trust', 'Family Office', 'Fund', 'REIT', 'Corp', 'Other'].map(o => <option key={o} value={o}>{o}</option>)}
+                                    </select>
+                                    <input value={newInv.commitment === 0 ? '' : String(newInv.commitment)} onChange={e => setNewInv(p => ({ ...p, commitment: parseFloat(e.target.value.replace(/[^0-9.]/g, '')) || 0 }))}
+                                      placeholder="Commitment $"
+                                      style={{ background: BT.bg.panel, border: `1px solid ${BT.border.medium}`, color: BT.text.amber, fontFamily: MONO, fontSize: 8, padding: '2px 6px', borderRadius: 2, width: 110, textAlign: 'right' }} />
+                                    <input value={newInv.email ?? ''} onChange={e => setNewInv(p => ({ ...p, email: e.target.value }))}
+                                      placeholder="Email (optional)"
+                                      style={{ background: BT.bg.panel, border: `1px solid ${BT.border.medium}`, color: BT.text.muted, fontFamily: MONO, fontSize: 8, padding: '2px 6px', borderRadius: 2, width: 140 }} />
+                                    <select value={newInv.status} onChange={e => setNewInv(p => ({ ...p, status: e.target.value as InvestorStatus }))} style={{
+                                      background: `${STATUS_COLORS[newInv.status]}22`, border: `1px solid ${STATUS_COLORS[newInv.status]}66`,
+                                      color: STATUS_COLORS[newInv.status], fontFamily: MONO, fontSize: 8, padding: '2px 4px', borderRadius: 2,
+                                    }}>
+                                      {(Object.keys(STATUS_LABELS) as InvestorStatus[]).map(s => (
+                                        <option key={s} value={s}>{STATUS_LABELS[s]}</option>
+                                      ))}
+                                    </select>
+                                    <button onClick={() => addInvestor(tr.id)} style={{
+                                      background: `${trancheColor}33`, border: `1px solid ${trancheColor}`,
+                                      color: trancheColor, fontFamily: MONO, fontSize: 8, padding: '2px 10px', cursor: 'pointer', borderRadius: 2, fontWeight: 700,
+                                    }}>ADD</button>
+                                    <button onClick={() => setAddingToTranche(null)} style={{
+                                      background: 'transparent', border: `1px solid ${BT.border.medium}`,
+                                      color: BT.text.muted, fontFamily: MONO, fontSize: 8, padding: '2px 8px', cursor: 'pointer', borderRadius: 2,
+                                    }}>CANCEL</button>
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
                         )}
-                      </td>
-                    </tr>
-                  ))}
+                      </React.Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
