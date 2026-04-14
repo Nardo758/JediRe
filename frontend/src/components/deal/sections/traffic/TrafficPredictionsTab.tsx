@@ -6,6 +6,13 @@ import {
 } from 'lucide-react';
 import { apiClient } from '@/services/api.client';
 
+const BT = {
+  bg:     { terminal: '#0A0E14', panel: '#0F1319', panelAlt: '#131821', header: '#1A1F2E', active: '#252D40', input: '#0D1117' },
+  text:   { white: '#E8ECF1', secondary: '#9EA8B4', muted: '#6B7A8D', amber: '#F5A623', amberBright: '#FFD166', cyan: '#00BCD4', green: '#00D26A', purple: '#A78BFA', red: '#FF4757' },
+  border: { subtle: '#1E2538', medium: '#2A3348', bright: '#3B4A6B' },
+  mono:   'var(--bt-mono, monospace)',
+} as const;
+
 interface ConversionChain {
   visibility_capture_rate: number;
   apartment_seeker_pct: number;
@@ -236,6 +243,8 @@ export default function TrafficPredictionsTab({ dealId, propertyId }: TrafficPre
             },
             model_version: '1.2.0',
             data_sources: ds,
+            mode: projData.mode ?? undefined,
+            mode_payload: projData.mode_payload ?? undefined,
           });
 
           if (projData.detected_patterns) {
@@ -305,32 +314,32 @@ export default function TrafficPredictionsTab({ dealId, propertyId }: TrafficPre
       {/* ── Mode-aware panel (shown only when backend provides mode) ── */}
       {mode && (
         <div style={{
-          background: mode === 'STABILIZED' ? '#00BCD418' : mode === 'LEASE_UP' ? '#F5A62318' : '#A78BFA18',
-          border: `1px solid ${mode === 'STABILIZED' ? '#00BCD440' : mode === 'LEASE_UP' ? '#F5A62340' : '#A78BFA40'}`,
+          background: mode === 'STABILIZED' ? `${BT.text.cyan}18` : mode === 'LEASE_UP' ? `${BT.text.amber}18` : `${BT.text.purple}18`,
+          border: `1px solid ${mode === 'STABILIZED' ? `${BT.text.cyan}40` : mode === 'LEASE_UP' ? `${BT.text.amber}40` : `${BT.text.purple}40`}`,
           borderRadius: 4, padding: '12px 16px', display: 'flex', flexDirection: 'column' as const, gap: 10,
         }}>
           {/* Mode badge + metadata strip */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' as const }}>
             <span style={{
               fontSize: 9, fontWeight: 700, letterSpacing: 1.2,
-              color: mode === 'STABILIZED' ? '#00BCD4' : mode === 'LEASE_UP' ? '#F5A623' : '#A78BFA',
-              fontFamily: 'var(--bt-mono, monospace)', background: mode === 'STABILIZED' ? '#00BCD420' : mode === 'LEASE_UP' ? '#F5A62320' : '#A78BFA20',
-              padding: '2px 8px', border: `1px solid ${mode === 'STABILIZED' ? '#00BCD450' : mode === 'LEASE_UP' ? '#F5A62350' : '#A78BFA50'}`,
+              color: mode === 'STABILIZED' ? BT.text.cyan : mode === 'LEASE_UP' ? BT.text.amber : BT.text.purple,
+              fontFamily: BT.mono, background: mode === 'STABILIZED' ? `${BT.text.cyan}20` : mode === 'LEASE_UP' ? `${BT.text.amber}20` : `${BT.text.purple}20`,
+              padding: '2px 8px', border: `1px solid ${mode === 'STABILIZED' ? `${BT.text.cyan}50` : mode === 'LEASE_UP' ? `${BT.text.amber}50` : `${BT.text.purple}50`}`,
             }}>
               {mode === 'STABILIZED' ? 'STABILIZED ASSET' : mode === 'LEASE_UP' ? 'LEASE-UP MODE' : 'REDEVELOPMENT MODE'}
             </span>
             {mp?.confidenceTier && (
-              <span style={{ fontSize: 9, color: '#9EA8B4', fontFamily: 'var(--bt-mono, monospace)' }}>
+              <span style={{ fontSize: 9, color: BT.text.secondary, fontFamily: BT.mono }}>
                 CONFIDENCE: {mp.confidenceTier.toUpperCase()}
               </span>
             )}
             {mp?.calibrationSource && (
-              <span style={{ fontSize: 9, color: '#9EA8B4', fontFamily: 'var(--bt-mono, monospace)' }}>
+              <span style={{ fontSize: 9, color: BT.text.secondary, fontFamily: BT.mono }}>
                 SRC: {mp.calibrationSource.replace(/_/g, ' ').toUpperCase()}
               </span>
             )}
             {mp?.nPeerProperties && (
-              <span style={{ fontSize: 9, color: '#9EA8B4', fontFamily: 'var(--bt-mono, monospace)', marginLeft: 'auto' }}>
+              <span style={{ fontSize: 9, color: BT.text.secondary, fontFamily: BT.mono, marginLeft: 'auto' }}>
                 {mp.nPeerProperties} PEER PROPERTIES
               </span>
             )}
@@ -342,49 +351,49 @@ export default function TrafficPredictionsTab({ dealId, propertyId }: TrafficPre
               {/* KPI row */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
                 {mp.occupancy != null && (
-                  <div style={{ background: '#00BCD412', border: '1px solid #00BCD430', padding: '8px 10px' }}>
-                    <div style={{ fontSize: 8, color: '#6B7585', fontFamily: 'var(--bt-mono, monospace)', letterSpacing: 0.8, textTransform: 'uppercase' as const, marginBottom: 2 }}>CURRENT OCC</div>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: '#00BCD4', fontFamily: 'var(--bt-mono, monospace)' }}>{(mp.occupancy * 100).toFixed(1)}%</div>
+                  <div style={{ background: `${BT.text.cyan}12`, border: `1px solid ${BT.text.cyan}30`, padding: '8px 10px' }}>
+                    <div style={{ fontSize: 8, color: BT.text.muted, fontFamily: BT.mono, letterSpacing: 0.8, textTransform: 'uppercase' as const, marginBottom: 2 }}>CURRENT OCC</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: BT.text.cyan, fontFamily: BT.mono }}>{(mp.occupancy * 100).toFixed(1)}%</div>
                   </div>
                 )}
                 {/* Fill delta to 94% target */}
                 {mp.occupancy != null && (
-                  <div style={{ background: '#F5A62312', border: '1px solid #F5A62330', padding: '8px 10px' }}>
-                    <div style={{ fontSize: 8, color: '#6B7585', fontFamily: 'var(--bt-mono, monospace)', letterSpacing: 0.8, textTransform: 'uppercase' as const, marginBottom: 2 }}>DELTA TO 94% TARGET</div>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: mp.occupancy >= 0.94 ? '#00D26A' : '#F5A623', fontFamily: 'var(--bt-mono, monospace)' }}>
+                  <div style={{ background: `${BT.text.amber}12`, border: `1px solid ${BT.text.amber}30`, padding: '8px 10px' }}>
+                    <div style={{ fontSize: 8, color: BT.text.muted, fontFamily: BT.mono, letterSpacing: 0.8, textTransform: 'uppercase' as const, marginBottom: 2 }}>DELTA TO 94% TARGET</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: mp.occupancy >= 0.94 ? BT.text.green : BT.text.amber, fontFamily: BT.mono }}>
                       {mp.occupancy >= 0.94 ? '▲ AT TARGET' : `${((0.94 - mp.occupancy) * 100).toFixed(1)}pp`}
                     </div>
                   </div>
                 )}
                 {mp.premiumCaptureRate != null && (
-                  <div style={{ padding: '8px 10px', background: '#00BCD412', border: '1px solid #00BCD430' }}>
-                    <div style={{ fontSize: 8, color: '#6B7585', fontFamily: 'var(--bt-mono, monospace)', letterSpacing: 0.8, textTransform: 'uppercase' as const, marginBottom: 2 }}>PREMIUM CAPTURE</div>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: '#00BCD4', fontFamily: 'var(--bt-mono, monospace)' }}>{(mp.premiumCaptureRate * 100).toFixed(1)}%</div>
+                  <div style={{ padding: '8px 10px', background: `${BT.text.cyan}12`, border: `1px solid ${BT.text.cyan}30` }}>
+                    <div style={{ fontSize: 8, color: BT.text.muted, fontFamily: BT.mono, letterSpacing: 0.8, textTransform: 'uppercase' as const, marginBottom: 2 }}>PREMIUM CAPTURE</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: BT.text.cyan, fontFamily: BT.mono }}>{(mp.premiumCaptureRate * 100).toFixed(1)}%</div>
                   </div>
                 )}
                 {mp.churnReplacementNeeded != null && (
-                  <div style={{ padding: '8px 10px', background: '#1E2538', border: '1px solid #2A3348' }}>
-                    <div style={{ fontSize: 8, color: '#6B7585', fontFamily: 'var(--bt-mono, monospace)', letterSpacing: 0.8, textTransform: 'uppercase' as const, marginBottom: 2 }}>CHURN REPLACEMENT/WK</div>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: '#E8ECF1', fontFamily: 'var(--bt-mono, monospace)' }}>{mp.churnReplacementNeeded.toFixed(1)}</div>
+                  <div style={{ padding: '8px 10px', background: BT.border.subtle, border: `1px solid ${BT.border.medium}` }}>
+                    <div style={{ fontSize: 8, color: BT.text.muted, fontFamily: BT.mono, letterSpacing: 0.8, textTransform: 'uppercase' as const, marginBottom: 2 }}>CHURN REPLACEMENT/WK</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: BT.text.white, fontFamily: BT.mono }}>{mp.churnReplacementNeeded.toFixed(1)}</div>
                   </div>
                 )}
               </div>
 
               {/* Expiration waterfall */}
               {mp.expirationWaterfall && mp.expirationWaterfall.length > 0 && (
-                <div style={{ background: '#1A1F2E', border: '1px solid #1E2538', padding: '10px 12px' }}>
-                  <div style={{ fontSize: 8, color: '#6B7585', fontFamily: 'var(--bt-mono, monospace)', letterSpacing: 0.8, marginBottom: 8 }}>LEASE EXPIRATION WATERFALL</div>
+                <div style={{ background: BT.bg.header, border: `1px solid ${BT.border.subtle}`, padding: '10px 12px' }}>
+                  <div style={{ fontSize: 8, color: BT.text.muted, fontFamily: BT.mono, letterSpacing: 0.8, marginBottom: 8 }}>LEASE EXPIRATION WATERFALL</div>
                   <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 3 }}>
                     {mp.expirationWaterfall.map((bar, idx) => {
                       const maxCount = Math.max(...mp.expirationWaterfall!.map(b => b.count), 1);
                       const pct = (bar.count / maxCount) * 100;
                       return (
                         <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span style={{ fontSize: 9, color: '#A0ABBE', fontFamily: 'var(--bt-mono, monospace)', width: 32, textAlign: 'right' as const }}>{bar.label}</span>
-                          <div style={{ flex: 1, background: '#0D1117', height: 12, position: 'relative' as const }}>
-                            <div style={{ width: `${pct}%`, height: '100%', background: '#00BCD4', opacity: 0.7 }} />
+                          <span style={{ fontSize: 9, color: BT.text.secondary, fontFamily: BT.mono, width: 32, textAlign: 'right' as const }}>{bar.label}</span>
+                          <div style={{ flex: 1, background: BT.bg.input, height: 12, position: 'relative' as const }}>
+                            <div style={{ width: `${pct}%`, height: '100%', background: BT.text.cyan, opacity: 0.7 }} />
                           </div>
-                          <span style={{ fontSize: 9, color: '#00BCD4', fontFamily: 'var(--bt-mono, monospace)', width: 28, textAlign: 'right' as const }}>{bar.count}</span>
+                          <span style={{ fontSize: 9, color: BT.text.cyan, fontFamily: BT.mono, width: 28, textAlign: 'right' as const }}>{bar.count}</span>
                         </div>
                       );
                     })}
@@ -394,7 +403,7 @@ export default function TrafficPredictionsTab({ dealId, propertyId }: TrafficPre
 
               {/* Confidence band note */}
               {mp.confidenceTier && (
-                <div style={{ fontSize: 9, color: '#6B7A8D', fontFamily: 'var(--bt-mono, monospace)', padding: '4px 0', borderTop: '1px solid #1E2538' }}>
+                <div style={{ fontSize: 9, color: BT.text.muted, fontFamily: BT.mono, padding: '4px 0', borderTop: `1px solid ${BT.border.subtle}` }}>
                   CONFIDENCE BAND: {mp.confidenceTier} tier — predictions carry ±{mp.confidenceTier === 'High' ? '8' : mp.confidenceTier === 'Medium' ? '15' : '25'}% uncertainty at this calibration level.
                 </div>
               )}
@@ -407,75 +416,75 @@ export default function TrafficPredictionsTab({ dealId, propertyId }: TrafficPre
               {/* KPI row */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
                 {mp.occupancy != null && (
-                  <div style={{ background: '#F5A62312', border: '1px solid #F5A62330', padding: '8px 10px' }}>
-                    <div style={{ fontSize: 8, color: '#6B7585', fontFamily: 'var(--bt-mono, monospace)', letterSpacing: 0.8, textTransform: 'uppercase' as const, marginBottom: 2 }}>CURRENT OCC</div>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: '#F5A623', fontFamily: 'var(--bt-mono, monospace)' }}>{(mp.occupancy * 100).toFixed(1)}%</div>
+                  <div style={{ background: `${BT.text.amber}12`, border: `1px solid ${BT.text.amber}30`, padding: '8px 10px' }}>
+                    <div style={{ fontSize: 8, color: BT.text.muted, fontFamily: BT.mono, letterSpacing: 0.8, textTransform: 'uppercase' as const, marginBottom: 2 }}>CURRENT OCC</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: BT.text.amber, fontFamily: BT.mono }}>{(mp.occupancy * 100).toFixed(1)}%</div>
                   </div>
                 )}
                 {mp.targetOccupancy != null && (
-                  <div style={{ background: '#00D26A12', border: '1px solid #00D26A30', padding: '8px 10px' }}>
-                    <div style={{ fontSize: 8, color: '#6B7585', fontFamily: 'var(--bt-mono, monospace)', letterSpacing: 0.8, textTransform: 'uppercase' as const, marginBottom: 2 }}>STABILIZATION TARGET</div>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: '#00D26A', fontFamily: 'var(--bt-mono, monospace)' }}>{(mp.targetOccupancy * 100).toFixed(1)}%</div>
+                  <div style={{ background: `${BT.text.green}12`, border: `1px solid ${BT.text.green}30`, padding: '8px 10px' }}>
+                    <div style={{ fontSize: 8, color: BT.text.muted, fontFamily: BT.mono, letterSpacing: 0.8, textTransform: 'uppercase' as const, marginBottom: 2 }}>STABILIZATION TARGET</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: BT.text.green, fontFamily: BT.mono }}>{(mp.targetOccupancy * 100).toFixed(1)}%</div>
                   </div>
                 )}
                 {mp.monthsToStabilization != null && (
-                  <div style={{ background: '#1E2538', border: '1px solid #2A3348', padding: '8px 10px' }}>
-                    <div style={{ fontSize: 8, color: '#6B7585', fontFamily: 'var(--bt-mono, monospace)', letterSpacing: 0.8, textTransform: 'uppercase' as const, marginBottom: 2 }}>MONTHS TO STABILIZE</div>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: '#E8ECF1', fontFamily: 'var(--bt-mono, monospace)' }}>
+                  <div style={{ background: BT.border.subtle, border: `1px solid ${BT.border.medium}`, padding: '8px 10px' }}>
+                    <div style={{ fontSize: 8, color: BT.text.muted, fontFamily: BT.mono, letterSpacing: 0.8, textTransform: 'uppercase' as const, marginBottom: 2 }}>MONTHS TO STABILIZE</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: BT.text.white, fontFamily: BT.mono }}>
                       {mp.monthsToStabilization.min}–{mp.monthsToStabilization.max}
                     </div>
                   </div>
                 )}
                 {mp.concessionIntensity != null && (
-                  <div style={{ background: '#1E2538', border: '1px solid #2A3348', padding: '8px 10px' }}>
-                    <div style={{ fontSize: 8, color: '#6B7585', fontFamily: 'var(--bt-mono, monospace)', letterSpacing: 0.8, textTransform: 'uppercase' as const, marginBottom: 2 }}>CONCESSION INTENSITY</div>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: '#E8ECF1', fontFamily: 'var(--bt-mono, monospace)' }}>{mp.concessionIntensity.toFixed(2)}x</div>
+                  <div style={{ background: BT.border.subtle, border: `1px solid ${BT.border.medium}`, padding: '8px 10px' }}>
+                    <div style={{ fontSize: 8, color: BT.text.muted, fontFamily: BT.mono, letterSpacing: 0.8, textTransform: 'uppercase' as const, marginBottom: 2 }}>CONCESSION INTENSITY</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: BT.text.white, fontFamily: BT.mono }}>{mp.concessionIntensity.toFixed(2)}x</div>
                   </div>
                 )}
               </div>
 
               {/* P25 / median / P75 absorption curve */}
               {mp.absorptionCurve && mp.absorptionCurve.length > 0 ? (
-                <div style={{ background: '#1A1F2E', border: '1px solid #1E2538', padding: '10px 12px' }}>
-                  <div style={{ fontSize: 8, color: '#6B7585', fontFamily: 'var(--bt-mono, monospace)', letterSpacing: 0.8, marginBottom: 8 }}>ABSORPTION CURVE — P25 / MEDIAN / P75</div>
+                <div style={{ background: BT.bg.header, border: `1px solid ${BT.border.subtle}`, padding: '10px 12px' }}>
+                  <div style={{ fontSize: 8, color: BT.text.muted, fontFamily: BT.mono, letterSpacing: 0.8, marginBottom: 8 }}>ABSORPTION CURVE — P25 / MEDIAN / P75</div>
                   <svg width="100%" height="60" viewBox={`0 0 ${mp.absorptionCurve.length * 24} 60`} preserveAspectRatio="none" style={{ display: 'block' }}>
                     {/* P75 band (upper) */}
                     <polyline
                       points={mp.absorptionCurve.map((pt, i) => `${i * 24 + 12},${60 - (pt.p75 * 60)}`).join(' ')}
-                      fill="none" stroke="#00BCD440" strokeWidth="1" strokeDasharray="3,2"
+                      fill="none" stroke={`${BT.text.cyan}40`} strokeWidth="1" strokeDasharray="3,2"
                     />
                     {/* Median line */}
                     <polyline
                       points={mp.absorptionCurve.map((pt, i) => `${i * 24 + 12},${60 - (pt.median * 60)}`).join(' ')}
-                      fill="none" stroke="#00BCD4" strokeWidth="2"
+                      fill="none" stroke={BT.text.cyan} strokeWidth="2"
                     />
                     {/* P25 band (lower) */}
                     <polyline
                       points={mp.absorptionCurve.map((pt, i) => `${i * 24 + 12},${60 - (pt.p25 * 60)}`).join(' ')}
-                      fill="none" stroke="#00BCD440" strokeWidth="1" strokeDasharray="3,2"
+                      fill="none" stroke={`${BT.text.cyan}40`} strokeWidth="1" strokeDasharray="3,2"
                     />
                     {/* Month labels */}
                     {mp.absorptionCurve.map((pt, i) => (
-                      <text key={i} x={i * 24 + 12} y={58} textAnchor="middle" fontSize={7} fill="#6B7A8D" fontFamily="monospace">
+                      <text key={i} x={i * 24 + 12} y={58} textAnchor="middle" fontSize={7} fill={BT.text.muted} fontFamily="monospace">
                         M{pt.month}
                       </text>
                     ))}
                   </svg>
                   <div style={{ display: 'flex', gap: 12, marginTop: 4 }}>
-                    <span style={{ fontSize: 8, color: '#6B7585', fontFamily: 'var(--bt-mono, monospace)' }}>- - P25</span>
-                    <span style={{ fontSize: 8, color: '#00BCD4', fontFamily: 'var(--bt-mono, monospace)' }}>—— MEDIAN</span>
-                    <span style={{ fontSize: 8, color: '#6B7585', fontFamily: 'var(--bt-mono, monospace)' }}>- - P75</span>
+                    <span style={{ fontSize: 8, color: BT.text.muted, fontFamily: BT.mono }}>- - P25</span>
+                    <span style={{ fontSize: 8, color: BT.text.cyan, fontFamily: BT.mono }}>—— MEDIAN</span>
+                    <span style={{ fontSize: 8, color: BT.text.muted, fontFamily: BT.mono }}>- - P75</span>
                   </div>
                 </div>
               ) : (
-                <div style={{ background: '#1A1F2E', border: '1px solid #1E2538', padding: '10px 12px' }}>
-                  <div style={{ fontSize: 8, color: '#6B7585', fontFamily: 'var(--bt-mono, monospace)', letterSpacing: 0.8, marginBottom: 4 }}>ABSORPTION CURVE — P25 / MEDIAN / P75</div>
-                  <div style={{ fontSize: 9, color: '#6B7A8D', fontFamily: 'var(--bt-mono, monospace)' }}>NO ABSORPTION DATA — absorption curve will populate once backend provides peer-calibrated trajectory.</div>
+                <div style={{ background: BT.bg.header, border: `1px solid ${BT.border.subtle}`, padding: '10px 12px' }}>
+                  <div style={{ fontSize: 8, color: BT.text.muted, fontFamily: BT.mono, letterSpacing: 0.8, marginBottom: 4 }}>ABSORPTION CURVE — P25 / MEDIAN / P75</div>
+                  <div style={{ fontSize: 9, color: BT.text.muted, fontFamily: BT.mono }}>NO ABSORPTION DATA — absorption curve will populate once backend provides peer-calibrated trajectory.</div>
                 </div>
               )}
 
               {/* Delivery-month seasonality note */}
-              <div style={{ fontSize: 9, color: '#6B7A8D', fontFamily: 'var(--bt-mono, monospace)', padding: '4px 0', borderTop: '1px solid #1E2538' }}>
+              <div style={{ fontSize: 9, color: BT.text.muted, fontFamily: BT.mono, padding: '4px 0', borderTop: `1px solid ${BT.border.subtle}` }}>
                 DELIVERY-MONTH SEASONALITY: traffic velocity may be suppressed in winter delivery months (Nov–Feb). Peak absorption typically occurs Apr–Aug. Concessions priced accordingly.
               </div>
             </div>
@@ -487,54 +496,60 @@ export default function TrafficPredictionsTab({ dealId, propertyId }: TrafficPre
               {/* KPI row */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
                 {mp.occupancy != null && (
-                  <div style={{ background: '#A78BFA12', border: '1px solid #A78BFA30', padding: '8px 10px' }}>
-                    <div style={{ fontSize: 8, color: '#6B7585', fontFamily: 'var(--bt-mono, monospace)', letterSpacing: 0.8, textTransform: 'uppercase' as const, marginBottom: 2 }}>PRE-RENO OCC</div>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: '#A78BFA', fontFamily: 'var(--bt-mono, monospace)' }}>{(mp.occupancy * 100).toFixed(1)}%</div>
+                  <div style={{ background: `${BT.text.purple}12`, border: `1px solid ${BT.text.purple}30`, padding: '8px 10px' }}>
+                    <div style={{ fontSize: 8, color: BT.text.muted, fontFamily: BT.mono, letterSpacing: 0.8, textTransform: 'uppercase' as const, marginBottom: 2 }}>PRE-RENO OCC</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: BT.text.purple, fontFamily: BT.mono }}>{(mp.occupancy * 100).toFixed(1)}%</div>
                   </div>
                 )}
                 {mp.churnReplacementNeeded != null && (
-                  <div style={{ background: '#FF475712', border: '1px solid #FF475730', padding: '8px 10px' }}>
-                    <div style={{ fontSize: 8, color: '#6B7585', fontFamily: 'var(--bt-mono, monospace)', letterSpacing: 0.8, textTransform: 'uppercase' as const, marginBottom: 2 }}>RELO UNITS NEEDED</div>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: '#FF4757', fontFamily: 'var(--bt-mono, monospace)' }}>{mp.churnReplacementNeeded}</div>
+                  <div style={{ background: `${BT.text.red}12`, border: `1px solid ${BT.text.red}30`, padding: '8px 10px' }}>
+                    <div style={{ fontSize: 8, color: BT.text.muted, fontFamily: BT.mono, letterSpacing: 0.8, textTransform: 'uppercase' as const, marginBottom: 2 }}>RELO UNITS NEEDED</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: BT.text.red, fontFamily: BT.mono }}>{mp.churnReplacementNeeded}</div>
                   </div>
                 )}
                 {mp.targetOccupancy != null && (
-                  <div style={{ background: '#1E2538', border: '1px solid #2A3348', padding: '8px 10px' }}>
-                    <div style={{ fontSize: 8, color: '#6B7585', fontFamily: 'var(--bt-mono, monospace)', letterSpacing: 0.8, textTransform: 'uppercase' as const, marginBottom: 2 }}>POST-RENO TARGET</div>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: '#00D26A', fontFamily: 'var(--bt-mono, monospace)' }}>{(mp.targetOccupancy * 100).toFixed(1)}%</div>
+                  <div style={{ background: BT.border.subtle, border: `1px solid ${BT.border.medium}`, padding: '8px 10px' }}>
+                    <div style={{ fontSize: 8, color: BT.text.muted, fontFamily: BT.mono, letterSpacing: 0.8, textTransform: 'uppercase' as const, marginBottom: 2 }}>POST-RENO TARGET</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: BT.text.green, fontFamily: BT.mono }}>{(mp.targetOccupancy * 100).toFixed(1)}%</div>
                   </div>
                 )}
                 {mp.monthsToStabilization != null && (
-                  <div style={{ background: '#1E2538', border: '1px solid #2A3348', padding: '8px 10px' }}>
-                    <div style={{ fontSize: 8, color: '#6B7585', fontFamily: 'var(--bt-mono, monospace)', letterSpacing: 0.8, textTransform: 'uppercase' as const, marginBottom: 2 }}>RECOVERY TIMELINE</div>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: '#E8ECF1', fontFamily: 'var(--bt-mono, monospace)' }}>
+                  <div style={{ background: BT.border.subtle, border: `1px solid ${BT.border.medium}`, padding: '8px 10px' }}>
+                    <div style={{ fontSize: 8, color: BT.text.muted, fontFamily: BT.mono, letterSpacing: 0.8, textTransform: 'uppercase' as const, marginBottom: 2 }}>RECOVERY TIMELINE</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: BT.text.white, fontFamily: BT.mono }}>
                       {mp.monthsToStabilization.min}–{mp.monthsToStabilization.max} mo
                     </div>
+                  </div>
+                )}
+                {mp.premiumCaptureRate != null && (
+                  <div style={{ background: `${BT.text.purple}12`, border: `1px solid ${BT.text.purple}30`, padding: '8px 10px' }}>
+                    <div style={{ fontSize: 8, color: BT.text.muted, fontFamily: BT.mono, letterSpacing: 0.8, textTransform: 'uppercase' as const, marginBottom: 2 }}>PREMIUM CAPTURE</div>
+                    <div style={{ fontSize: 18, fontWeight: 700, color: BT.text.purple, fontFamily: BT.mono }}>{(mp.premiumCaptureRate * 100).toFixed(1)}%</div>
                   </div>
                 )}
               </div>
 
               {/* Phased occupancy curve: dip then recovery */}
               {mp.absorptionCurve && mp.absorptionCurve.length > 0 ? (
-                <div style={{ background: '#1A1F2E', border: '1px solid #1E2538', padding: '10px 12px' }}>
-                  <div style={{ fontSize: 8, color: '#6B7585', fontFamily: 'var(--bt-mono, monospace)', letterSpacing: 0.8, marginBottom: 8 }}>PHASED OCCUPANCY CURVE — RENO DIP / RECOVERY</div>
+                <div style={{ background: BT.bg.header, border: `1px solid ${BT.border.subtle}`, padding: '10px 12px' }}>
+                  <div style={{ fontSize: 8, color: BT.text.muted, fontFamily: BT.mono, letterSpacing: 0.8, marginBottom: 8 }}>PHASED OCCUPANCY CURVE — RENO DIP / RECOVERY</div>
                   <svg width="100%" height="60" viewBox={`0 0 ${mp.absorptionCurve.length * 24} 60`} preserveAspectRatio="none" style={{ display: 'block' }}>
                     <polyline
                       points={mp.absorptionCurve.map((pt, i) => `${i * 24 + 12},${60 - (pt.median * 60)}`).join(' ')}
-                      fill="none" stroke="#A78BFA" strokeWidth="2"
+                      fill="none" stroke={BT.text.purple} strokeWidth="2"
                     />
                     {mp.absorptionCurve.map((pt, i) => (
-                      <text key={i} x={i * 24 + 12} y={58} textAnchor="middle" fontSize={7} fill="#6B7A8D" fontFamily="monospace">
+                      <text key={i} x={i * 24 + 12} y={58} textAnchor="middle" fontSize={7} fill={BT.text.muted} fontFamily="monospace">
                         M{pt.month}
                       </text>
                     ))}
                   </svg>
-                  <div style={{ fontSize: 8, color: '#A78BFA', fontFamily: 'var(--bt-mono, monospace)', marginTop: 4 }}>—— MEDIAN OCC TRAJECTORY (includes renovation dip)</div>
+                  <div style={{ fontSize: 8, color: BT.text.purple, fontFamily: BT.mono, marginTop: 4 }}>—— MEDIAN OCC TRAJECTORY (includes renovation dip)</div>
                 </div>
               ) : (
-                <div style={{ background: '#1A1F2E', border: '1px solid #1E2538', padding: '10px 12px' }}>
-                  <div style={{ fontSize: 8, color: '#6B7585', fontFamily: 'var(--bt-mono, monospace)', letterSpacing: 0.8, marginBottom: 4 }}>PHASED OCCUPANCY CURVE</div>
-                  <div style={{ fontSize: 9, color: '#6B7A8D', fontFamily: 'var(--bt-mono, monospace)' }}>RENO DIP/RECOVERY curve will populate once backend provides phased trajectory data. Renovation typically suppresses occupancy 10–25% in active phases.</div>
+                <div style={{ background: BT.bg.header, border: `1px solid ${BT.border.subtle}`, padding: '10px 12px' }}>
+                  <div style={{ fontSize: 8, color: BT.text.muted, fontFamily: BT.mono, letterSpacing: 0.8, marginBottom: 4 }}>PHASED OCCUPANCY CURVE</div>
+                  <div style={{ fontSize: 9, color: BT.text.muted, fontFamily: BT.mono }}>RENO DIP/RECOVERY curve will populate once backend provides phased trajectory data. Renovation typically suppresses occupancy 10–25% in active phases.</div>
                 </div>
               )}
             </div>

@@ -294,6 +294,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
   const [projection, setProjection] = useState<ProjectionData | null>(null);
   const [history, setHistory] = useState<HistorySnapshot[]>([]);
   const [calibration, setCalibration] = useState<CalibrationStats | null>(null);
+  const [rentRollMeta, setRentRollMeta] = useState<{ lastUploadedAt: string | null; extractionConfidence: number | null } | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -334,6 +335,12 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
       setHistory(histRes.data.snapshots || []);
       setProjection(projRes.data);
       setCalibration(calRes.data);
+      try {
+        const rrRes = await apiClient.get(`/api/rent-roll/status/${resolvedDealId}`);
+        setRentRollMeta(rrRes.data ?? null);
+      } catch {
+        setRentRollMeta(null);
+      }
     } catch (err) {
       console.error('[TrafficModule] Load failed:', err);
     } finally {
@@ -1025,11 +1032,37 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
 
       {/* ── RENT ROLL UPLOAD ── */}
       <div style={{ background: BT2.bg.panel, border: `1px solid ${BT2.border.subtle}`, padding: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
           <Upload size={13} color={BT2.text.cyan} />
           <span style={{ fontSize: 10, fontWeight: 700, color: BT2.text.white, fontFamily: bMono, letterSpacing: 0.8 }}>RENT ROLL UPLOAD</span>
           <span style={{ fontSize: 9, color: BT2.text.muted, fontFamily: bMono }}>POST → /api/rent-roll/upload/:dealId</span>
         </div>
+        {/* Last-upload metadata */}
+        {rentRollMeta?.lastUploadedAt ? (
+          <div style={{ display: 'flex', gap: 16, marginBottom: 10, padding: '6px 10px', background: BT2.bg.terminal, border: `1px solid ${BT2.border.subtle}` }}>
+            <div>
+              <div style={{ fontSize: 8, color: BT2.text.muted, fontFamily: bMono, letterSpacing: 0.8 }}>LAST UPLOAD</div>
+              <div style={{ fontSize: 10, color: BT2.text.amber, fontFamily: bMono, marginTop: 2 }}>
+                {new Date(rentRollMeta.lastUploadedAt).toLocaleString()}
+              </div>
+            </div>
+            {rentRollMeta.extractionConfidence != null && (
+              <div>
+                <div style={{ fontSize: 8, color: BT2.text.muted, fontFamily: bMono, letterSpacing: 0.8 }}>EXTRACTION CONFIDENCE</div>
+                <div style={{ fontSize: 10, fontWeight: 700, fontFamily: bMono, marginTop: 2,
+                  color: rentRollMeta.extractionConfidence >= 0.8 ? BT2.text.green : rentRollMeta.extractionConfidence >= 0.5 ? BT2.text.amber : BT2.text.red
+                }}>
+                  {(rentRollMeta.extractionConfidence * 100).toFixed(0)}%
+                  {rentRollMeta.extractionConfidence >= 0.8 ? ' HIGH' : rentRollMeta.extractionConfidence >= 0.5 ? ' MEDIUM' : ' LOW'}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div style={{ fontSize: 9, color: BT2.text.muted, fontFamily: bMono, marginBottom: 10 }}>
+            NO RENT ROLL ON FILE — upload to improve calibration accuracy
+          </div>
+        )}
         <label
           style={{
             display: 'flex', flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center',
