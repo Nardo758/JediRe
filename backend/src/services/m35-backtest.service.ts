@@ -15,10 +15,11 @@ const CONFIDENCE_DECAY    = 0.15;
 const EVIDENCE_HIT        = 0.85; // calibrated: strong evidence from a hit
 const EVIDENCE_MISS       = 0.25; // calibrated: weak residual evidence from a miss
 const HIT_RATE_THRESHOLD  = 0.55;
+const MIN_CI_SAMPLE       = 4;    // minimum evaluated samples for a statistically valid hit rate
 const CI_WIDEN_FACTOR     = 1.20;
 const CI_WIDEN_MAX_HALF   = 3.0; // CI half-width cap: cannot exceed 3× |median_delta|
 const REGIME_WINDOW       = 5;
-const CANCELLED_STATUSES  = new Set(['cancelled', 'reversed']);
+const CANCELLED_STATUSES  = new Set(['cancelled', 'reversed']); // skip invalidated events
 
 // ─── Row interfaces ───────────────────────────────────────────────────────────
 
@@ -178,7 +179,7 @@ async function widenCIIfNeeded(
     [subtype, metricKey, windowMonths]
   );
   const total = parseInt(hr.rows[0].total ?? '0');
-  if (total < 4) return; // minimum 4 evaluated samples for a statistically meaningful hit rate
+  if (total < MIN_CI_SAMPLE) return;
 
   const hitRate = parseInt(hr.rows[0].hits ?? '0') / total;
   if (hitRate >= HIT_RATE_THRESHOLD) return;
