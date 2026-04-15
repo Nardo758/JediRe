@@ -65,10 +65,12 @@ CREATE TABLE IF NOT EXISTS regime_shift_alerts (
 );
 
 ALTER TABLE regime_shift_alerts
-  ADD COLUMN IF NOT EXISTS std_error       NUMERIC(10,6),
-  ADD COLUMN IF NOT EXISTS sample_size     SMALLINT     NOT NULL DEFAULT 5,
-  ADD COLUMN IF NOT EXISTS acknowledged_by VARCHAR(128),
-  ADD COLUMN IF NOT EXISTS acknowledged_at TIMESTAMPTZ;
+  ADD COLUMN IF NOT EXISTS std_error          NUMERIC(10,6),
+  ADD COLUMN IF NOT EXISTS sample_size        SMALLINT     NOT NULL DEFAULT 5,
+  ADD COLUMN IF NOT EXISTS consecutive_misses SMALLINT     NOT NULL DEFAULT 5,
+  ADD COLUMN IF NOT EXISTS resolved           BOOLEAN      NOT NULL DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS acknowledged_by    VARCHAR(128),
+  ADD COLUMN IF NOT EXISTS acknowledged_at    TIMESTAMPTZ;
 
 CREATE INDEX IF NOT EXISTS idx_rsa_subtype
   ON regime_shift_alerts (subtype, metric_key, window_months);

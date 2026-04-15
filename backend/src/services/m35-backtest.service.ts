@@ -35,9 +35,8 @@ function stdDev(arr: number[]): number {
 }
 
 // ─── DiD actual computation ───────────────────────────────────────────────────
-// Returns { actualValue, dataCoverage } for treatment − control pre/post delta.
-// actualValue = (treatPost − treatPre) − avg(ctrlPost − ctrlPre)
-// coverage    = fraction of expected monthly data points present in pre+post windows
+// Returns (treatPost−treatPre) − avg(ctrlPost−ctrlPre) for the given metric.
+// Also returns dataCoverage = actualPoints / expectedMonthlyPoints.
 
 async function computeDiDActual(
   pool: any,
@@ -47,74 +46,59 @@ async function computeDiDActual(
   announcedDate: Date,
   milestoneDate: Date
 ): Promise<{ actualValue: number | null; dataCoverage: number }> {
-  const metricId    = resolveMetricId(metricKey);
-  const preStart    = new Date(announcedDate);
+  const metricId  = resolveMetricId(metricKey);
+  const preStart  = new Date(announcedDate);
   preStart.setMonth(preStart.getMonth() - BASELINE_MONTHS);
-  const preEnd      = new Date(announcedDate);
-  const postStart   = new Date(announcedDate);
-  const postEnd     = new Date(milestoneDate);
+  const preEnd    = new Date(announcedDate);
+  const postStart = new Date(announcedDate);
+  const postEnd   = new Date(milestoneDate);
 
-  const windowMonths =
+  const expectedMonths =
     (postEnd.getFullYear() - preStart.getFullYear()) * 12 +
     (postEnd.getMonth()    - preStart.getMonth());
-  const expectedPoints = windowMonths;
 
-  // Count actual data points for coverage check
   const countRes = await pool.query(
     `SELECT COUNT(*) AS cnt
      FROM metric_time_series
-     WHERE metric_id = $1
-       AND geography_id = $2
+     WHERE metric_id = $1 AND geography_id = $2
        AND period_date BETWEEN $3 AND $4`,
     [metricId, geographyId, preStart, postEnd]
   );
-  const actualCount  = parseInt(countRes.rows[0]?.cnt ?? '0');
-  const dataCoverage = Math.min(1, actualCount / Math.max(expectedPoints, 1));
+  const dataCoverage = Math.min(1, parseInt(countRes.rows[0]?.cnt ?? '0') / Math.max(expectedMonths, 1));
 
-  // Treatment: pre and post averages
   const treatRes = await pool.query(
     `SELECT
        AVG(value) FILTER (WHERE period_date BETWEEN $3 AND $4) AS pre_avg,
        AVG(value) FILTER (WHERE period_date BETWEEN $5 AND $6) AS post_avg
      FROM metric_time_series
-     WHERE metric_id = $1 AND geography_id = $2
-       AND period_date BETWEEN $3 AND $6`,
+     WHERE metric_id = $1 AND geography_id = $2 AND period_date BETWEEN $3 AND $6`,
     [metricId, geographyId, preStart, preEnd, postStart, postEnd]
   );
-
   const treat = treatRes.rows[0];
   if (!treat || treat.pre_avg == null || treat.post_avg == null) {
     return { actualValue: null, dataCoverage };
   }
   const treatDelta = parseFloat(treat.post_avg) - parseFloat(treat.pre_avg);
 
-  if (!controlGeoIds.length) {
-    return { actualValue: treatDelta, dataCoverage };
-  }
+  if (!controlGeoIds.length) return { actualValue: treatDelta, dataCoverage };
 
-  // Control: pre and post averages across all control geographies
   const ctrlRes = await pool.query(
     `SELECT
        AVG(value) FILTER (WHERE period_date BETWEEN $3 AND $4) AS pre_avg,
        AVG(value) FILTER (WHERE period_date BETWEEN $5 AND $6) AS post_avg
      FROM metric_time_series
-     WHERE metric_id = $1
-       AND geography_id = ANY($2::text[])
+     WHERE metric_id = $1 AND geography_id = ANY($2::text[])
        AND period_date BETWEEN $3 AND $6`,
     [metricId, controlGeoIds, preStart, preEnd, postStart, postEnd]
   );
-
   const ctrl = ctrlRes.rows[0];
   if (!ctrl || ctrl.pre_avg == null || ctrl.post_avg == null) {
     return { actualValue: treatDelta, dataCoverage };
   }
-  const ctrlDelta   = parseFloat(ctrl.post_avg) - parseFloat(ctrl.pre_avg);
-  const didEstimate = treatDelta - ctrlDelta;
-
-  return { actualValue: didEstimate, dataCoverage };
+  return { actualValue: treatDelta - (parseFloat(ctrl.post_avg) - parseFloat(ctrl.pre_avg)), dataCoverage };
 }
 
-// ─── Confidence decay ─────────────────────────────────────────────────────────
+// ─── Confidence decay (applied only once per newly-evaluated row) ─────────────
 
 async function updatePlaybookConfidence(pool: any, playbookId: string, hit: boolean): Promise<void> {
   const row = await pool.query(
@@ -129,16 +113,16 @@ async function updatePlaybookConfidence(pool: any, playbookId: string, hit: bool
   );
 }
 
-// ─── CI widening ──────────────────────────────────────────────────────────────
+// ─── CI widening (applied only once per newly-evaluated row) ──────────────────
 
 async function widenCIIfNeeded(
   pool: any, playbookId: string, subtype: string, metricKey: string, windowMonths: number
 ): Promise<void> {
   const hr = await pool.query(
-    `SELECT COUNT(*) FILTER (WHERE pbr.hit_within_ci = true) AS hits, COUNT(*) AS total
-     FROM playbook_backtest_results pbr
-     WHERE pbr.subtype = $1 AND pbr.metric_key = $2 AND pbr.window_months = $3
-       AND pbr.status = 'evaluated' AND pbr.hit_within_ci IS NOT NULL`,
+    `SELECT COUNT(*) FILTER (WHERE hit_within_ci = true) AS hits, COUNT(*) AS total
+     FROM playbook_backtest_results
+     WHERE subtype = $1 AND metric_key = $2 AND window_months = $3
+       AND status = 'evaluated' AND hit_within_ci IS NOT NULL`,
     [subtype, metricKey, windowMonths]
   );
   const total = parseInt(hr.rows[0].total ?? '0');
@@ -162,6 +146,9 @@ async function widenCIIfNeeded(
 }
 
 // ─── Regime shift detection ───────────────────────────────────────────────────
+// Fires when last REGIME_WINDOW evaluated backtests are all same-direction
+// AND each individual |error| > 1 std of those errors (per-point threshold).
+// error = actual − forecast: negative → over-predicted; positive → under-predicted.
 
 async function detectRegimeShift(
   pool: any, subtype: string, metricKey: string, windowMonths: number
@@ -175,16 +162,14 @@ async function detectRegimeShift(
   );
   if (res.rows.length < REGIME_WINDOW) return;
 
-  // error = actual − forecast; positive → under-prediction; negative → over-prediction
   const errors: number[] = res.rows.map((r: any) => parseFloat(r.error));
-  const allNegative = errors.every(e => e < 0);   // actual < forecast → over-predicted
-  const allPositive = errors.every(e => e > 0);   // actual > forecast → under-predicted
+  const allNegative = errors.every(e => e < 0); // actual < forecast → over-predicted
+  const allPositive = errors.every(e => e > 0); // actual > forecast → under-predicted
   if (!allNegative && !allPositive) return;
 
   const stdErr = stdDev(errors);
-  // Each individual error must exceed 1× std — confirms systematic, not random, bias
-  const allExceedOneStd = errors.every(e => Math.abs(e) > stdErr);
-  if (!allExceedOneStd) return;
+  // Per-point threshold: each individual error must exceed 1× std
+  if (!errors.every(e => Math.abs(e) > stdErr)) return;
 
   const avgErr = mean(errors);
 
@@ -196,14 +181,14 @@ async function detectRegimeShift(
   if (existing.rows.length > 0) return;
 
   const alertId    = uuidv4();
-  const direction  = allNegative ? 'over' : 'under'; // over = we over-predicted (actual was lower)
+  const direction  = allNegative ? 'over' : 'under';
   const detectedAt = new Date().toISOString();
 
   await pool.query(
     `INSERT INTO regime_shift_alerts
        (id, subtype, metric_key, window_months, bias_direction, avg_pct_error, std_error,
-        sample_size, status, detected_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'open',$9)`,
+        sample_size, consecutive_misses, resolved, status, detected_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8,FALSE,'open',$9)`,
     [alertId, subtype, metricKey, windowMonths, direction,
      avgErr.toFixed(6), stdErr.toFixed(6), REGIME_WINDOW, detectedAt]
   );
@@ -214,7 +199,6 @@ async function detectRegimeShift(
     biasDirection: direction as 'over' | 'under',
     avgError: avgErr, stdError: stdErr, sampleSize: REGIME_WINDOW, detectedAt,
   };
-
   try {
     await kafkaProducer.publish(KAFKA_TOPICS.M35_REGIME_SHIFT_DETECTED, msg, { key: alertId });
   } catch (e) {
@@ -243,7 +227,7 @@ export async function runBacktestForEvent(eventId: string): Promise<{ processed:
   const geographyId   = ev.submarket_id ?? ev.msa_id ?? '';
   const now           = new Date();
 
-  // Load control geographies for DiD
+  // Control geographies for DiD
   const ctrlRes = await pool.query(
     `SELECT control_geography_id FROM event_control_groups WHERE event_id = $1 AND is_included = true`,
     [eventId]
@@ -255,9 +239,10 @@ export async function runBacktestForEvent(eventId: string): Promise<{ processed:
     milestoneDate.setMonth(milestoneDate.getMonth() + windowMonths);
     if (milestoneDate > now) { skipped++; continue; }
 
-    // Active forecasts for this event × window
+    // Use EARLIEST forecast at announcement time (DISTINCT ON metric_key, earliest generated_at)
     const fcRes = await pool.query(
-      `SELECT ef.metric_key, ef.point_estimate, ef.ci_low, ef.ci_high,
+      `SELECT DISTINCT ON (ef.metric_key)
+              ef.metric_key, ef.point_estimate, ef.ci_low, ef.ci_high, ef.generated_at,
               ep.id AS playbook_id, ep.median_delta, ep.p25, ep.p75
        FROM event_forecasts ef
        LEFT JOIN event_playbooks ep
@@ -265,7 +250,9 @@ export async function runBacktestForEvent(eventId: string): Promise<{ processed:
          AND ep.window_months = $2
          AND ep.stratum_msa_tier = 'all' AND ep.stratum_magnitude = 'all'
          AND ep.stratum_regime   = 'all'
-       WHERE ef.event_id = $3 AND ef.window_months = $2 AND ef.status = 'active'`,
+       WHERE ef.event_id = $3 AND ef.window_months = $2
+         AND ef.status IN ('active', 'superseded')
+       ORDER BY ef.metric_key, ef.generated_at ASC`,
       [ev.subtype, windowMonths, eventId]
     );
     if (!fcRes.rows.length) { skipped++; continue; }
@@ -273,12 +260,19 @@ export async function runBacktestForEvent(eventId: string): Promise<{ processed:
     for (const fc of fcRes.rows) {
       const metricKey: string = fc.metric_key;
 
-      // DiD actual computation (also returns data coverage)
+      // Check existing row status before upsert — idempotency guard
+      const prevRes = await pool.query(
+        `SELECT status FROM playbook_backtest_results
+         WHERE event_id = $1 AND metric_key = $2 AND window_months = $3 LIMIT 1`,
+        [eventId, metricKey, windowMonths]
+      );
+      const prevStatus: string | null = prevRes.rows[0]?.status ?? null;
+
       const { actualValue, dataCoverage } = await computeDiDActual(
         pool, geographyId, controlGeoIds, metricKey, announcedDate, milestoneDate
       );
 
-      const rowStatus  = dataCoverage < MIN_DATA_COVERAGE ? 'insufficient_data' : 'evaluated';
+      const rowStatus      = dataCoverage < MIN_DATA_COVERAGE ? 'insufficient_data' : 'evaluated';
       const forecastMedian = fc.point_estimate != null ? parseFloat(fc.point_estimate) : null;
       const forecastP25    = fc.ci_low         != null ? parseFloat(fc.ci_low)         : null;
       const forecastP75    = fc.ci_high        != null ? parseFloat(fc.ci_high)        : null;
@@ -287,14 +281,14 @@ export async function runBacktestForEvent(eventId: string): Promise<{ processed:
       let hitWithinCi: boolean | null = null;
 
       if (actualValue != null && rowStatus === 'evaluated') {
-        error        = forecastMedian != null ? actualValue - forecastMedian : null;
-        errorPct     = forecastMedian != null && Math.abs(forecastMedian) > 0
+        error       = forecastMedian != null ? actualValue - forecastMedian : null;
+        errorPct    = forecastMedian != null && Math.abs(forecastMedian) > 0
           ? ((actualValue - forecastMedian) / Math.abs(forecastMedian)) * 100 : null;
         hitWithinCi = forecastP25 != null && forecastP75 != null
           ? actualValue >= forecastP25 && actualValue <= forecastP75 : null;
       }
 
-      // Always persist a row — insufficient_data rows have null error/hit columns
+      // Always persist a row; insufficient_data rows have null error/hit columns
       await pool.query(
         `INSERT INTO playbook_backtest_results
            (id, event_id, playbook_id, subtype, metric_key, window_months, milestone_date,
@@ -312,17 +306,17 @@ export async function runBacktestForEvent(eventId: string): Promise<{ processed:
            status = EXCLUDED.status, computed_at = NOW(), ran_at = NOW()`,
         [
           uuidv4(), eventId, fc.playbook_id ?? null, ev.subtype, metricKey, windowMonths, milestoneDate,
-          forecastMedian, forecastP25, forecastP75,
-          actualValue,
+          forecastMedian, forecastP25, forecastP75, actualValue,
           error    != null ? error.toFixed(6)   : null,
           errorPct != null ? errorPct.toFixed(4) : null,
-          hitWithinCi,
-          dataCoverage.toFixed(3),
-          rowStatus,
+          hitWithinCi, dataCoverage.toFixed(3), rowStatus,
         ]
       );
 
-      if (rowStatus === 'evaluated' && fc.playbook_id && hitWithinCi != null) {
+      // Only apply confidence/CI/regime updates when the row is newly 'evaluated'
+      // (new insert OR status transition from insufficient_data → evaluated)
+      const isNewlyEvaluated = rowStatus === 'evaluated' && prevStatus !== 'evaluated';
+      if (isNewlyEvaluated && fc.playbook_id && hitWithinCi != null) {
         await updatePlaybookConfidence(pool, fc.playbook_id, hitWithinCi);
         await widenCIIfNeeded(pool, fc.playbook_id, ev.subtype, metricKey, windowMonths);
         await detectRegimeShift(pool, ev.subtype, metricKey, windowMonths);
@@ -336,7 +330,7 @@ export async function runBacktestForEvent(eventId: string): Promise<{ processed:
   return { processed, skipped };
 }
 
-// ─── runMonthlyBacktest ───────────────────────────────────────────────────────
+// ─── runMonthlyBacktest / runAllPendingBacktests ──────────────────────────────
 
 export async function runMonthlyBacktest(): Promise<{
   eventsChecked: number;
@@ -371,6 +365,9 @@ export async function runMonthlyBacktest(): Promise<{
   return { eventsChecked: evRes.rows.length, eventsProcessed, totalProcessed, totalSkipped };
 }
 
+// Alias required by task contract
+export const runAllPendingBacktests = runMonthlyBacktest;
+
 // ─── getPlaybookAccuracyStats ─────────────────────────────────────────────────
 
 export async function getPlaybookAccuracyStats(subtype?: string): Promise<Array<{
@@ -402,13 +399,12 @@ export async function getPlaybookAccuracyStats(subtype?: string): Promise<Array<
 }
 
 // ─── getPlaybookBacktestReport ────────────────────────────────────────────────
-// Full backtest report for a subtype: hit rate, error distribution, regime status, last 10 points.
 
 export async function getPlaybookBacktestReport(subtype: string): Promise<{
   subtype: string;
   hitRate: number | null;
   errorDistribution: { mean: number | null; stddev: number | null; p25: number | null; p75: number | null } | null;
-  regimeStatus: { hasOpenAlert: boolean; direction?: string; detectedAt?: string };
+  regimeStatus: { hasOpenAlert: boolean; direction?: string; consecutiveMisses?: number; detectedAt?: string };
   recentPoints: Array<{
     eventId: string; metricKey: string; windowMonths: number;
     forecastMedian: number | null; actualValue: number | null;
@@ -417,31 +413,26 @@ export async function getPlaybookBacktestReport(subtype: string): Promise<{
 }> {
   const pool = getPool();
 
-  // Aggregate stats
   const statsRes = await pool.query(
-    `SELECT
-       COUNT(*) FILTER (WHERE hit_within_ci IS NOT NULL) AS total,
-       COUNT(*) FILTER (WHERE hit_within_ci = true)      AS hits,
-       AVG(error)    AS mean_error,
-       STDDEV(error) AS std_error,
-       PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY error) AS p25,
-       PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY error) AS p75
-     FROM playbook_backtest_results
-     WHERE subtype = $1 AND status = 'evaluated'`,
+    `SELECT COUNT(*) FILTER (WHERE hit_within_ci IS NOT NULL) AS total,
+            COUNT(*) FILTER (WHERE hit_within_ci = true)      AS hits,
+            AVG(error) AS mean_error, STDDEV(error) AS std_error,
+            PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY error) AS p25,
+            PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY error) AS p75
+     FROM playbook_backtest_results WHERE subtype = $1 AND status = 'evaluated'`,
     [subtype]
   );
   const s = statsRes.rows[0];
   const total = parseInt(s?.total ?? '0');
 
-  // Regime alert
   const alertRes = await pool.query(
-    `SELECT bias_direction, detected_at FROM regime_shift_alerts
+    `SELECT bias_direction, consecutive_misses, detected_at
+     FROM regime_shift_alerts
      WHERE subtype = $1 AND status = 'open' ORDER BY detected_at DESC LIMIT 1`,
     [subtype]
   );
   const alert = alertRes.rows[0];
 
-  // Last 10 evaluated points
   const pointsRes = await pool.query(
     `SELECT event_id, metric_key, window_months, forecast_median, actual_value,
             error, hit_within_ci, ran_at
@@ -461,19 +452,20 @@ export async function getPlaybookBacktestReport(subtype: string): Promise<{
       p75:    s.p75        != null ? parseFloat(s.p75)        : null,
     } : null,
     regimeStatus: {
-      hasOpenAlert: !!alert,
-      direction:   alert?.bias_direction,
-      detectedAt:  alert?.detected_at,
+      hasOpenAlert:     !!alert,
+      direction:        alert?.bias_direction,
+      consecutiveMisses: alert?.consecutive_misses != null ? parseInt(alert.consecutive_misses) : undefined,
+      detectedAt:       alert?.detected_at,
     },
     recentPoints: pointsRes.rows.map((r: any) => ({
-      eventId:       r.event_id,
-      metricKey:     r.metric_key,
-      windowMonths:  parseInt(r.window_months),
+      eventId:        r.event_id,
+      metricKey:      r.metric_key,
+      windowMonths:   parseInt(r.window_months),
       forecastMedian: r.forecast_median != null ? parseFloat(r.forecast_median) : null,
-      actualValue:   r.actual_value     != null ? parseFloat(r.actual_value)     : null,
-      error:         r.error            != null ? parseFloat(r.error)            : null,
-      hitWithinCi:   r.hit_within_ci,
-      ranAt:         r.ran_at,
+      actualValue:    r.actual_value    != null ? parseFloat(r.actual_value)    : null,
+      error:          r.error           != null ? parseFloat(r.error)           : null,
+      hitWithinCi:    r.hit_within_ci,
+      ranAt:          r.ran_at,
     })),
   };
 }
@@ -516,31 +508,35 @@ export async function getEventBacktestResults(eventId: string): Promise<Array<{
 export async function getRegimeShiftAlerts(status: string = 'open'): Promise<Array<{
   id: string; subtype: string; metricKey: string; windowMonths: number;
   direction: string; avgError: number | null; stdError: number | null;
-  sampleSize: number; status: string; acknowledgedBy: string | null;
+  sampleSize: number; consecutiveMisses: number; resolved: boolean;
+  status: string; acknowledgedBy: string | null;
   acknowledgedAt: string | null; detectedAt: string;
 }>> {
   const pool = getPool();
   const res = await pool.query(
     `SELECT id, subtype, metric_key, window_months, bias_direction, avg_pct_error, std_error,
-            sample_size, status, acknowledged_by, acknowledged_at, detected_at
+            sample_size, consecutive_misses, resolved, status,
+            acknowledged_by, acknowledged_at, detected_at
      FROM regime_shift_alerts WHERE status = $1 ORDER BY detected_at DESC`,
     [status]
   );
   return res.rows.map((r: any) => ({
     id: r.id, subtype: r.subtype, metricKey: r.metric_key,
-    windowMonths:   parseInt(r.window_months),
-    direction:      r.bias_direction,
-    avgError:       r.avg_pct_error != null ? parseFloat(r.avg_pct_error) : null,
-    stdError:       r.std_error     != null ? parseFloat(r.std_error)     : null,
-    sampleSize:     r.sample_size   != null ? parseInt(r.sample_size)     : 5,
-    status:         r.status,
-    acknowledgedBy: r.acknowledged_by ?? null,
-    acknowledgedAt: r.acknowledged_at ?? null,
-    detectedAt:     r.detected_at,
+    windowMonths:     parseInt(r.window_months),
+    direction:        r.bias_direction,
+    avgError:         r.avg_pct_error    != null ? parseFloat(r.avg_pct_error)    : null,
+    stdError:         r.std_error        != null ? parseFloat(r.std_error)        : null,
+    sampleSize:       r.sample_size      != null ? parseInt(r.sample_size)        : 5,
+    consecutiveMisses: r.consecutive_misses != null ? parseInt(r.consecutive_misses) : 5,
+    resolved:         r.resolved ?? false,
+    status:           r.status,
+    acknowledgedBy:   r.acknowledged_by  ?? null,
+    acknowledgedAt:   r.acknowledged_at  ?? null,
+    detectedAt:       r.detected_at,
   }));
 }
 
-// ─── acknowledgeRegimeAlert ───────────────────────────────────────────────────
+// ─── acknowledgeRegimeAlert / resolveRegimeAlert ──────────────────────────────
 
 export async function acknowledgeRegimeAlert(
   alertId: string, acknowledgedBy: string = 'system'
@@ -548,11 +544,14 @@ export async function acknowledgeRegimeAlert(
   const pool = getPool();
   const res = await pool.query(
     `UPDATE regime_shift_alerts
-     SET status = 'acknowledged', acknowledged_by = $1,
-         acknowledged_at = NOW(), resolved_at = NOW()
+     SET status = 'acknowledged', resolved = TRUE,
+         acknowledged_by = $1, acknowledged_at = NOW(), resolved_at = NOW()
      WHERE id = $2 AND status = 'open'
      RETURNING id`,
     [acknowledgedBy, alertId]
   );
   return (res.rowCount ?? 0) > 0;
 }
+
+// Alias required by task contract
+export const resolveRegimeAlert = acknowledgeRegimeAlert;
