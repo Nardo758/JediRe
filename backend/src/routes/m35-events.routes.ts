@@ -22,6 +22,7 @@
 
 import { Router, Request, Response } from 'express';
 import { logger } from '../utils/logger';
+import { getPool } from '../database/connection';
 import {
   createEvent,
   getEventById,
@@ -104,14 +105,25 @@ router.get('/events/feed', async (req: Request, res: Response) => {
   try {
     const pool = getPool();
     const limitVal = req.query.limit ? parseInt(String(req.query.limit), 10) : 20;
+    const userEmail = (req as any).user?.email;
 
-    const dealRows = await pool.query(`
-      SELECT DISTINCT d.deal_data->>'msaId' AS msa_id
-      FROM deals d
-      WHERE d.deal_data->>'msaId' IS NOT NULL
-        AND (d.status IS NULL OR d.status NOT IN ('archived','closed'))
-      LIMIT 50
-    `);
+    const dealQuery = userEmail
+      ? `SELECT DISTINCT d.deal_data->>'msaId' AS msa_id
+         FROM deals d
+         WHERE d.deal_data->>'msaId' IS NOT NULL
+           AND (d.status IS NULL OR d.status NOT IN ('archived','closed'))
+           AND (d.created_by = $1 OR d.deal_data->>'createdBy' = $1 OR d.user_id = $1)
+         LIMIT 50`
+      : `SELECT DISTINCT d.deal_data->>'msaId' AS msa_id
+         FROM deals d
+         WHERE d.deal_data->>'msaId' IS NOT NULL
+           AND (d.status IS NULL OR d.status NOT IN ('archived','closed'))
+         LIMIT 50`;
+
+    const dealRows = userEmail
+      ? await pool.query(dealQuery, [userEmail])
+      : await pool.query(dealQuery);
+
     const msaIds = dealRows.rows
       .map((r: { msa_id: string }) => r.msa_id as string)
       .filter(Boolean);
@@ -126,6 +138,41 @@ router.get('/events/feed', async (req: Request, res: Response) => {
     res.json(result);
   } catch (err: any) {
     logger.error('[M35 Events] feed error', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/events/:id/related', async (req: Request, res: Response) => {
+  try {
+    const pool = getPool();
+    const event = await getEventById(req.params.id);
+    if (!event) { res.status(404).json({ error: 'Event not found' }); return; }
+
+    const conditions: string[] = [`id <> $1`, `status NOT IN ('cancelled','reversed')`];
+    const values: unknown[] = [req.params.id];
+    let i = 2;
+
+    if (event.msaId) { conditions.push(`msa_id = $${i}`); values.push(event.msaId); i++; }
+
+    const rows = await pool.query(
+      `SELECT id, name, category, status, scope FROM key_events
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY magnitude_score DESC, announced_date DESC NULLS LAST
+       LIMIT 8`,
+      values
+    );
+
+    const related = rows.rows.map((r: Record<string, string>) => ({
+      id:           r.id,
+      name:         r.name,
+      category:     r.category,
+      status:       r.status,
+      relationship: event.category === r.category ? 'same_category' : 'co_located',
+    }));
+
+    res.json({ items: related, total: related.length });
+  } catch (err: any) {
+    logger.error('[M35 Events] related error', err);
     res.status(500).json({ error: err.message });
   }
 });
