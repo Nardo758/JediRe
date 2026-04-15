@@ -564,7 +564,7 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
       case 'demand': return renderDemandTab();
       case 'positioning': return renderPositioningTab();
       case 'comps': return renderCompsTab();
-      case 'program': return renderProgramTab();
+      case 'program': return dealMode === 'existing' ? renderExistingProgramTab() : renderProgramTab();
       case 'repositioning': return renderRepositioningTab();
       case 'trends': return renderTrendsTab();
       default: return renderDiscoveryTab();
