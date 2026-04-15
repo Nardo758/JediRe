@@ -853,6 +853,43 @@ export const MSAEventsTab: React.FC<MSAEventsTabProps> = ({ msaId, msa }) => {
                     </div>
                   )}
 
+                  {/* Inline forecast preview — actual-vs-forecast summary */}
+                  {(fullEvent?.forecastStatus || fullEvent?.forecastSummary) && (
+                    <div style={{ ...terminalStyles.card, padding: '10px 14px', borderLeft: `3px solid ${BT.accent.blue}` }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                        <div style={{ ...mono, fontSize: 8, fontWeight: 700, color: BT.text.dim, letterSpacing: '0.08em' }}>
+                          FORECAST — ACTUAL vs PREDICTED
+                        </div>
+                        <button
+                          onClick={() => setDetailTab('forecast')}
+                          style={{ ...mono, fontSize: 8, color: BT.accent.cyan, background: `${BT.accent.cyan}12`, border: `1px solid ${BT.accent.cyan}44`, padding: '2px 8px', cursor: 'pointer' }}
+                        >
+                          FULL CHART →
+                        </button>
+                      </div>
+                      {fullEvent?.forecastStatus && (() => {
+                        const fsColors: Record<string, string> = { ahead: '#10B981', behind: '#EF4444', on_pace: BT.accent.cyan, no_data: BT.text.dim };
+                        const fc = fullEvent.forecastStatus ?? 'no_data';
+                        const fcColor = fsColors[fc] ?? BT.text.dim;
+                        return (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                              <span style={{ ...mono, fontSize: 7, color: BT.text.dim }}>STATUS</span>
+                              <span style={{ ...mono, fontSize: 14, fontWeight: 700, color: fcColor }}>
+                                {fc.replace('_', ' ').toUpperCase()}
+                              </span>
+                            </div>
+                            {fullEvent?.forecastSummary && (
+                              <div style={{ flex: 1, fontSize: 9, color: BT.text.secondary, lineHeight: 1.5 }}>
+                                {fullEvent.forecastSummary}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+
                   {/* Quick nav to full page */}
                   <button
                     onClick={() => navigate(`/events/${selectedEventId}`)}

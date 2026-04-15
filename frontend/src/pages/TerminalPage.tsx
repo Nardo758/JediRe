@@ -16,6 +16,7 @@ import { BottomPanel } from "../components/layout/BottomPanel";
 import { AgentBar } from "../components/layout/AgentBar";
 import TerminalMapView from "../components/map/TerminalMapView";
 import { AssumptionsPanel } from "../components/deal/AssumptionsPanel";
+import { M35EventCard, type M35EventCardData } from "../components/m35/M35EventCard";
 
 // ═══════════════════════════════════════════════════════════════
 // JEDI RE — BLOOMBERG TERMINAL  v3 (graduated from prototype)
@@ -1581,58 +1582,28 @@ export default function TerminalPage() {
 
         <div style={{flex:1,overflow:"auto"}}>
           {display.map((ev, i) => {
-            const catColor = EFD_CAT_COLORS[ev.category] ?? T.text.muted;
-            const mag = Math.round((ev.magnitudeScore / 5) * 5);
-            const scopeColors: Record<string,string> = { msa:'#6B7A8D', submarket:T.text.cyan, property:T.text.amber };
-            const scopeColor = scopeColors[ev.scope] ?? T.text.muted;
+            const fcMap: Record<string, M35EventCardData['forecastStatus']> = {
+              'AHEAD': 'ahead', 'BEHIND': 'behind', 'ON PACE': 'on_pace',
+            };
+            const cardData: M35EventCardData = {
+              id: ev.id,
+              name: ev.name,
+              category: ev.category,
+              status: ev.status,
+              scope: ev.scope,
+              magnitudeScore: ev.magnitudeScore,
+              confidence: ev.confidence,
+              announcedDate: ev.announcedDate,
+              msa: ev.msaName,
+              forecastStatus: ev.forecastStatus ? (fcMap[ev.forecastStatus] ?? 'no_data') : 'no_data',
+            };
             return (
-              <div
-                key={ev.id ?? i}
-                onClick={() => navigate(`/events/${ev.id}`)}
-                style={{
-                  display:"flex",gap:10,padding:"9px 12px",
-                  borderBottom:`1px solid ${T.border.subtle}`,
-                  borderLeft:`3px solid ${catColor}`,
-                  cursor:"pointer",transition:"background 0.1s",
-                }}
-                onMouseEnter={e=>(e.currentTarget.style.background=T.bg.hover)}
-                onMouseLeave={e=>(e.currentTarget.style.background="transparent")}
-              >
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:11,fontWeight:700,color:T.text.primary,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:3}}>
-                    {ev.name}
-                  </div>
-                  <div style={{display:"flex",gap:5,alignItems:"center",flexWrap:"wrap"}}>
-                    <span style={{fontFamily:T.font.mono,fontSize:8,color:catColor,background:`${catColor}18`,border:`1px solid ${catColor}33`,padding:"0 4px",fontWeight:700}}>
-                      {(ev.category ?? '').replace('_',' ').toUpperCase().substring(0,8)}
-                    </span>
-                    <span style={{fontFamily:T.font.mono,fontSize:8,color:scopeColor}}>{(ev.scope ?? '').toUpperCase()}</span>
-                    {ev.msaName && (
-                      <span style={{fontFamily:T.font.mono,fontSize:8,color:T.text.sub}}>{ev.msaName}</span>
-                    )}
-                    <span style={{fontFamily:T.font.mono,fontSize:8,color:T.text.muted}}>CONF {Math.round((ev.confidence ?? 0)*100)}%</span>
-                    <span style={{fontFamily:T.font.mono,fontSize:8,color:T.text.dim}}>{daysSince(ev.announcedDate)}</span>
-                  </div>
-                </div>
-                <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3,flexShrink:0}}>
-                  <div style={{display:"flex",gap:2,alignItems:"flex-end"}}>
-                    {[1,2,3,4,5].map(b=>(
-                      <div key={b} style={{width:3,height:3+b*2,background:b<=mag?catColor:`${catColor}22`,borderRadius:1}} />
-                    ))}
-                  </div>
-                  <span style={{fontFamily:T.font.mono,fontSize:8,color:ev.status==='active'?T.text.green:ev.status==='in_progress'?T.text.cyan:T.text.muted,fontWeight:700}}>
-                    {(ev.status ?? 'unknown').replace('_',' ').toUpperCase()}
-                  </span>
-                  {ev.forecastStatus && (() => {
-                    const fc = ev.forecastStatus;
-                    const fcColor = fc==='AHEAD'?T.text.green:fc==='BEHIND'?'#EF4444':T.text.cyan;
-                    return (
-                      <span style={{fontFamily:T.font.mono,fontSize:7,fontWeight:700,padding:"1px 4px",background:`${fcColor}18`,border:`1px solid ${fcColor}44`,color:fcColor}}>
-                        {fc}
-                      </span>
-                    );
-                  })()}
-                </div>
+              <div key={ev.id ?? i} style={{borderBottom:`1px solid ${T.border.subtle}`}}>
+                <M35EventCard
+                  event={cardData}
+                  compact
+                  onClick={() => navigate(`/events/${ev.id}`)}
+                />
               </div>
             );
           })}

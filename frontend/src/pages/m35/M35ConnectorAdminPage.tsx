@@ -399,25 +399,30 @@ function PlaybookLibraryPanel() {
 
       {/* Table */}
       <div style={{ border: `1px solid ${BORDER}`, overflow: 'hidden', borderRadius: 3 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 60px 80px 80px 80px 80px', padding: '7px 14px', background: PANEL_ALT, borderBottom: `1px solid ${BORDER}`, fontSize: 8, fontWeight: 700, color: DIM, letterSpacing: '0.08em', ...mono }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 50px 60px 60px 90px 110px', padding: '7px 14px', background: PANEL_ALT, borderBottom: `1px solid ${BORDER}`, fontSize: 8, fontWeight: 700, color: DIM, letterSpacing: '0.08em', ...mono }}>
           <span>PLAYBOOK SUBTYPE</span>
           <span>CATEGORY</span>
           <span>TIER</span>
-          <span>INSTANCES</span>
-          <span>T+12 HIT%</span>
-          <span>T+24 HIT%</span>
-          <span>CONF.</span>
+          <span>N</span>
+          <span>HIT% T+12</span>
+          <span>REGIME STATUS</span>
+          <span>LAST BACKTEST</span>
         </div>
         {filtered.map((sub, i) => {
           const tierColor = TIER_COLORS[sub.tier] ?? MUTED;
           const catColor = CAT_COLORS[sub.category] ?? MUTED;
           const isSelected = selectedId === sub.id;
+          const regimeColor = sub.regimeShiftFlag ? AMBER : GREEN;
+          const regimeLabel = sub.regimeShiftFlag ? '⚠ SHIFT' : '✓ STABLE';
+          const lastBacktest = sub.lastUpdated
+            ? new Date(sub.lastUpdated).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })
+            : '—';
           return (
             <div key={sub.id}>
               <div
                 onClick={() => setSelectedId(isSelected ? null : sub.id)}
                 style={{
-                  display: 'grid', gridTemplateColumns: '1fr 80px 60px 80px 80px 80px 80px',
+                  display: 'grid', gridTemplateColumns: '1fr 70px 50px 60px 60px 90px 110px',
                   padding: '9px 14px', cursor: 'pointer',
                   background: isSelected ? `${CYAN}0A` : i % 2 === 0 ? PANEL : BG,
                   borderBottom: `1px solid ${BORDER}20`,
@@ -440,11 +445,11 @@ function PlaybookLibraryPanel() {
                 <span style={{ ...mono, fontSize: 10, fontWeight: 700, color: sub.hitRate12mo >= 0.75 ? GREEN : sub.hitRate12mo >= 0.6 ? AMBER : RED }}>
                   {(sub.hitRate12mo * 100).toFixed(0)}%
                 </span>
-                <span style={{ ...mono, fontSize: 10, fontWeight: 700, color: sub.hitRate24mo >= 0.7 ? GREEN : sub.hitRate24mo >= 0.55 ? AMBER : RED }}>
-                  {(sub.hitRate24mo * 100).toFixed(0)}%
+                <span style={{ ...mono, fontSize: 9, fontWeight: 700, color: regimeColor }}>
+                  {regimeLabel}
                 </span>
-                <span style={{ ...mono, fontSize: 10, fontWeight: 700, color: sub.confidenceScore >= 75 ? GREEN : sub.confidenceScore >= 60 ? AMBER : RED }}>
-                  {sub.confidenceScore}%
+                <span style={{ ...mono, fontSize: 9, color: DIM }}>
+                  {lastBacktest}
                 </span>
               </div>
 
