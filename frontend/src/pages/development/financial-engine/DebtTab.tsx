@@ -562,7 +562,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
   const [advisorBaseline, setAdvisorBaseline] = useState<{ loanAmount: number; rate: number } | null>(null);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: debtView === 'advisor' ? 'hidden' : 'auto', background: BT.bg.terminal }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', background: BT.bg.terminal }}>
 
       {/* ── Header ──────────────────────────────────────────────────────────── */}
       <div style={{ padding: '5px 12px', background: BT.bg.header, borderBottom: `1px solid ${BT.border.medium}`, display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
@@ -613,7 +613,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
       )}
 
       {/* ── Configure View ────────────────────────────────────────────────────── */}
-      {debtView === 'configure' && (<>
+      {debtView === 'configure' && (<div style={{ flex: 1, overflowY: 'auto' }}>
 
       {/* ── Configure Divergence Banner ─────────────────────────────────────── */}
       {advisorBaseline && activeLoan.id === 'senior' && (() => {
@@ -1491,7 +1491,7 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
         </div>
       )}
 
-      </>)}
+      </div>)}
 
     </div>
   );
