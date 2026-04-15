@@ -132,6 +132,135 @@ function ConfidenceBar({ value }: { value: number }) {
 }
 
 
+// ─── Multi-Metric Forecast Chart ──────────────────────────────────────────────
+
+function MetricSparkChart({
+  metricKey,
+  metrics,
+  actuals,
+}: {
+  metricKey: string;
+  metrics: ForecastMetric[];
+  actuals: ForecastActual[];
+}) {
+  const W = 260;
+  const H = 52;
+  const PAD = { l: 0, r: 0, t: 6, b: 14 };
+  const innerW = W - PAD.l - PAD.r;
+  const innerH = H - PAD.t - PAD.b;
+
+  const f = METRIC_FORMAT[metricKey] ?? { suffix: '', decimals: 2, scale: 1 };
+
+  const fcRows = WINDOWS.map(w => metrics.find(m => m.metricKey === metricKey && m.windowMonths === w) ?? null);
+  const acRows = WINDOWS.map(w => actuals.find(a => a.metricKey === metricKey && a.windowMonths === w) ?? null);
+
+  const vals: number[] = [0];
+  fcRows.forEach(m => {
+    if (m?.pointEstimate != null) vals.push(m.pointEstimate * f.scale);
+    if (m?.ciLow != null) vals.push(m.ciLow * f.scale);
+    if (m?.ciHigh != null) vals.push(m.ciHigh * f.scale);
+  });
+  acRows.forEach(a => { if (a?.actualValue != null) vals.push(a.actualValue * f.scale); });
+
+  const minV = Math.min(...vals);
+  const maxV = Math.max(...vals);
+  const range = maxV - minV || 1;
+
+  const sy = (v: number) => PAD.t + innerH - ((v - minV) / range) * innerH;
+  const sx = (i: number) => PAD.l + (i / (WINDOWS.length - 1)) * innerW;
+
+  const zeroY = Math.max(PAD.t, Math.min(PAD.t + innerH, sy(0)));
+
+  const fcPts = fcRows.map((m, i) => m?.pointEstimate != null ? { x: sx(i), y: sy(m.pointEstimate * f.scale) } : null);
+  const acPts = acRows.map((a, i) => a?.actualValue != null ? { x: sx(i), y: sy(a.actualValue * f.scale) } : null);
+
+  const toPath = (pts: (({ x: number; y: number }) | null)[]) =>
+    pts.filter(Boolean).map((p, i) => `${i === 0 ? 'M' : 'L'} ${p!.x.toFixed(1)} ${p!.y.toFixed(1)}`).join(' ');
+
+  const ciPoints = fcRows.map((m, i) => {
+    if (!m || m.ciLow == null || m.ciHigh == null) return null;
+    return { x: sx(i), y1: sy(m.ciHigh * f.scale), y2: sy(m.ciLow * f.scale) };
+  });
+
+  const hasAny = vals.length > 1;
+  if (!hasAny) return null;
+
+  return (
+    <svg width={W} height={H} style={{ display: 'block', overflow: 'visible' }}>
+      <line x1={0} y1={zeroY} x2={W} y2={zeroY}
+        stroke={BT.border.subtle} strokeWidth={0.5} strokeDasharray="2 2" />
+
+      {ciPoints.map((ci, i) => ci && (
+        <rect key={i} x={ci.x - 4} y={ci.y1} width={8} height={Math.max(0, ci.y2 - ci.y1)}
+          fill={`${BT.accent.blue}1A`} />
+      ))}
+
+      {toPath(fcPts) && (
+        <path d={toPath(fcPts)} fill="none"
+          stroke={BT.accent.blue} strokeWidth={1.5} strokeDasharray="4 2" />
+      )}
+      {toPath(acPts) && (
+        <path d={toPath(acPts)} fill="none"
+          stroke="#10B981" strokeWidth={2} />
+      )}
+
+      {fcPts.map((p, i) => p && (
+        <circle key={i} cx={p.x} cy={p.y} r={2.5} fill={BT.accent.blue} />
+      ))}
+      {acPts.map((p, i) => p && (
+        <circle key={i} cx={p.x} cy={p.y} r={2.5} fill="#10B981" />
+      ))}
+
+      {WINDOWS.map((w, i) => (
+        <text key={w} x={sx(i)} y={H} textAnchor="middle" fontSize={6}
+          fill={BT.text.dim} fontFamily="monospace">
+          T+{w}
+        </text>
+      ))}
+    </svg>
+  );
+}
+
+function MultiMetricForecastChart({
+  metricKeys,
+  metrics,
+  actuals,
+}: {
+  metricKeys: string[];
+  metrics: ForecastMetric[];
+  actuals: ForecastActual[];
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', gap: 12, fontSize: 7, color: BT.text.dim, marginBottom: 2 }}>
+        <span style={{ color: BT.accent.blue }}>╌ FORECAST</span>
+        <span style={{ color: '#10B981' }}>— ACTUAL</span>
+        <span style={{ color: `${BT.accent.blue}99` }}>▓ CI BAND</span>
+      </div>
+      {metricKeys.map(k => {
+        const highestActual = actuals.filter(a => a.metricKey === k && a.actualValue != null);
+        const status = highestActual.length > 0 ? highestActual[highestActual.length - 1].statusLabel : null;
+        const stColor = status ? (STATUS_COLORS[status] ?? BT.text.dim) : BT.text.dim;
+        return (
+          <div key={k} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+            <div style={{ width: 80, flexShrink: 0, paddingTop: 4 }}>
+              <div style={{ fontSize: 8, color: BT.text.secondary, lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
+                {(METRIC_LABELS[k] ?? k).replace(' (YoY)', '')}
+              </div>
+              {status && (
+                <span style={{ fontSize: 7, fontWeight: 700, color: stColor }}>
+                  {status.replace('_', ' ').toUpperCase()}
+                </span>
+              )}
+            </div>
+            <MetricSparkChart metricKey={k} metrics={metrics} actuals={actuals} />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── Playbook Citation Card ───────────────────────────────────────────────────
 
 function PlaybookCitationCard({ forecast }: { forecast: EventForecast }) {
@@ -276,49 +405,17 @@ export function EventForecastPanel({ eventId, eventName, onRegenerateCallback }:
       {/* ── Playbook citation card ────────────────────────────────────────────── */}
       <PlaybookCitationCard forecast={forecast} />
 
-      {/* ── Multi-metric actual-vs-forecast matrix (one row per tracked metric) ── */}
+      {/* ── Multi-metric actual-vs-forecast chart (one SVG row per tracked metric) ── */}
       {metricKeys.length > 0 && (
         <div style={{ ...terminalStyles.card, padding: '10px 14px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <span style={{ fontSize: 8, fontWeight: 700, color: BT.text.dim, letterSpacing: '0.1em' }}>
-              ACTUAL VS FORECAST — ALL METRICS × WINDOWS
-            </span>
-            <div style={{ display: 'flex', gap: 10, fontSize: 7, color: BT.text.dim }}>
-              <span style={{ color: BT.accent.blue }}>╌ FCST</span>
-              <span style={{ color: '#10B981' }}>— ACT</span>
-            </div>
+          <div style={{ fontSize: 8, fontWeight: 700, color: BT.text.dim, letterSpacing: '0.1em', marginBottom: 10 }}>
+            ACTUAL VS FORECAST — ALL METRICS × WINDOWS
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: `120px repeat(${WINDOWS.length}, 1fr)`, gap: 1, fontSize: 8 }}>
-            <div style={{ padding: '3px 4px', color: BT.text.dim, fontWeight: 700 }}>METRIC</div>
-            {WINDOWS.map(w => (
-              <div key={w} style={{ padding: '3px 4px', color: BT.accent.blue, fontWeight: 700, textAlign: 'center' as const }}>
-                T+{w}mo
-              </div>
-            ))}
-            {metricKeys.map(k => (
-              <React.Fragment key={k}>
-                <div style={{ padding: '4px 4px', color: BT.text.secondary, borderTop: `1px solid ${BT.border.subtle}20`, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
-                  {(METRIC_LABELS[k] ?? k).replace(' (YoY)', '')}
-                </div>
-                {WINDOWS.map(w => {
-                  const m = forecast.metrics.find(x => x.metricKey === k && x.windowMonths === w);
-                  const a = actuals.find(x => x.metricKey === k && x.windowMonths === w);
-                  const stColor = a ? (STATUS_COLORS[a.statusLabel] ?? BT.text.dim) : BT.border.subtle;
-                  return (
-                    <div key={w} style={{ padding: '4px 4px', borderTop: `1px solid ${BT.border.subtle}20`, borderLeft: `2px solid ${stColor}22`, textAlign: 'center' as const }}>
-                      {m?.pointEstimate != null && (
-                        <div style={{ color: BT.accent.blue, fontSize: 7 }}>{fmtVal(k, m.pointEstimate)}</div>
-                      )}
-                      {a?.actualValue != null && (
-                        <div style={{ color: '#10B981', fontSize: 7, fontWeight: 700 }}>{fmtVal(k, a.actualValue)}</div>
-                      )}
-                      {!m && !a && <div style={{ color: BT.text.dim, fontSize: 7 }}>—</div>}
-                    </div>
-                  );
-                })}
-              </React.Fragment>
-            ))}
-          </div>
+          <MultiMetricForecastChart
+            metricKeys={metricKeys}
+            metrics={forecast.metrics}
+            actuals={actuals}
+          />
         </div>
       )}
 
