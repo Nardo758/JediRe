@@ -1273,6 +1273,27 @@ function ProgramDevPanel({ program, computed, zoning, comps, gaps, onProgramChan
 
   return (
     <div style={{ background: PC.bg, fontFamily: pmono, color: PC.text, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ backgroundColor: `${PC.blue}08`, border: `1px solid ${PC.blue}30`, borderRadius: 2, margin: '10px 12px 0', padding: '8px 14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Zap size={13} color={PC.blue} />
+          <div style={{ flex: 1 }}>
+            <div style={{ fontFamily: pmono, color: PC.dim, fontSize: 9, letterSpacing: '0.08em', marginBottom: 4 }}>PROGRAM DRIVEN BY F3 DEMAND + F2 ZONING ENVELOPE</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const, alignItems: 'center' }}>
+              {([
+                ['DEVELOPMENT', PC.blue],
+                ['→', PC.dim],
+                [`${maxUnits > 0 ? maxUnits : totalUnits}u max · ${maxSF > 0 ? (maxSF / 1000).toFixed(0) + 'K' : '—'} SF`, PC.dim],
+                ['·', PC.faint],
+                ['2BR/3BR undersupplied vs comps', PC.green],
+                ['·', PC.faint],
+                [`Gross rev $${(grossRev / 1e6).toFixed(2)}M/yr at ${totalUnits}u`, PC.dim],
+              ] as [string, string][]).map(([t, col], i) => (
+                <span key={i} style={{ fontFamily: pmono, color: col, fontSize: 10, fontWeight: t === 'DEVELOPMENT' ? 700 : 400 }}>{t}</span>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
       <div style={{ display: "flex", gap: 20, padding: "8px 12px", background: PC.card, borderBottom: `1px solid ${PC.border}` }}>
         <PEnvelopeGauge used={totalUnits} total={maxUnits} label="Unit envelope" />
         <div style={{ width: 1, background: PC.border }} />
@@ -1499,6 +1520,28 @@ function ProgramRedevPanel({ rationale, umComps, umGaps, umProgram, onProgramCha
 
   return (
     <div style={{ background: PC.bg, fontFamily: pmono, color: PC.text, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ backgroundColor: `${PC.yellow}08`, border: `1px solid ${PC.yellow}30`, borderRadius: 2, margin: '10px 12px 0', padding: '8px 14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Zap size={13} color={PC.yellow} />
+          <div style={{ flex: 1 }}>
+            <div style={{ fontFamily: pmono, color: PC.dim, fontSize: 9, letterSpacing: '0.08em', marginBottom: 4 }}>REPOSITIONING RATIONALE — M03 DEMAND + F6 AMENITY GAP MATRIX</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const, alignItems: 'center' }}>
+              {([
+                ['REDEVELOPMENT', PC.yellow],
+                ['→', PC.dim],
+                ['Studio overweight vs comp avg', PC.red],
+                ['·', PC.faint],
+                ['2BR undersupplied — convert to absorb demand', PC.green],
+                ['·', PC.faint],
+                ['Conv budget $1.2M · payback 2.4yr', PC.dim],
+              ] as [string, string][]).map(([t, col], i) => (
+                <span key={i} style={{ fontFamily: pmono, color: col, fontSize: 10, fontWeight: t === 'REDEVELOPMENT' ? 700 : 400 }}>{t}</span>
+              ))}
+            </div>
+          </div>
+          <button style={{ fontFamily: pmono, fontSize: 9, padding: '3px 8px', color: PC.yellow, border: `1px solid ${PC.yellow}40`, borderRadius: 2, backgroundColor: 'transparent', cursor: 'pointer', whiteSpace: 'nowrap' as const }}>View Strategy →</button>
+        </div>
+      </div>
       {rationale && (
         <div style={{ background: PC.card, border: `1px solid ${PC.yellow}30`, padding: '8px 12px', margin: '8px 12px 0' , borderRadius: 4 }}>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
@@ -1710,15 +1753,33 @@ function ProgramExistingPanel({ umComps }: { umComps: CompData[] }) {
   return (
     <div style={{ background: PC.bg, fontFamily: pmono, color: PC.text, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-      {topOpportunity && topOpportunity.rentGap > 0 && (
-        <div style={{ background: PC.green + '0C', borderBottom: `1px solid ${PC.green}22`, padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ color: PC.green, fontFamily: pmono, fontSize: 7, fontWeight: 700, letterSpacing: '0.08em' }}>AI INSIGHT</span>
-          <span style={{ color: PC.border }}>·</span>
-          <span style={{ fontSize: 9, color: PC.dim }}>
-            <span style={{ color: PC.text, fontWeight: 700 }}>{topOpportunity.label}</span> is under-rented vs. the submarket — comp avg <span style={{ color: PC.green, fontWeight: 700 }}>${topOpportunity.avg.rent.toLocaleString()}/mo</span> vs. your <span style={{ color: PC.subject, fontWeight: 700 }}>${topOpportunity.subj.rent.toLocaleString()}/mo</span>. Potential revenue upside of <span style={{ color: PC.green, fontWeight: 700 }}>+${topOpportunity.rentGap.toFixed(0)}/unit</span> on renewals.
-          </span>
+      <div style={{ backgroundColor: `${PC.yellow}08`, border: `1px solid ${PC.yellow}30`, borderRadius: 2, margin: '10px 12px 0', padding: '8px 14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <AlertTriangle size={13} color={PC.yellow} />
+          <div style={{ flex: 1 }}>
+            <div style={{ fontFamily: pmono, color: PC.dim, fontSize: 9, letterSpacing: '0.08em', marginBottom: 4 }}>GAP ANALYSIS DRIVEN BY COMP PARITY + SUBMARKET PENETRATION</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const, alignItems: 'center' }}>
+              {([
+                ['EXISTING', PC.blue],
+                ['→', PC.dim],
+                [`${missingAmenities.length} amenity gaps vs comps`, PC.yellow],
+                ['·', PC.faint],
+                [missingAmenities.length > 0 ? `${missingAmenities[0].name}: close cost $${Math.round(EXISTING_LIFT[missingAmenities[0].key].cost / 1000)}K` : 'all amenities covered', missingAmenities.length > 0 ? PC.red : PC.green],
+                ['·', PC.faint],
+                [`Close all → +$${totalLiftPerUnit}/u/mo · $${(annualLift / 1e6).toFixed(2)}M/yr`, PC.dim],
+              ] as [string, string][]).map(([t, col], i) => (
+                <span key={i} style={{ fontFamily: pmono, color: col, fontSize: 10, fontWeight: t === 'EXISTING' ? 700 : 400 }}>{t}</span>
+              ))}
+            </div>
+          </div>
+          {topOpportunity && topOpportunity.rentGap > 0 && (
+            <div style={{ fontFamily: pmono, fontSize: 9, color: PC.dim, textAlign: 'right' as const, flexShrink: 0 }}>
+              <span style={{ color: PC.text, fontWeight: 700 }}>{topOpportunity.label}</span> under-rented<br />
+              <span style={{ color: PC.green, fontWeight: 700 }}>+${topOpportunity.rentGap.toFixed(0)}/unit</span> upside
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       <div style={{ background: PC.card, borderBottom: `1px solid ${PC.border}` }}>
         <div style={{ padding: '6px 12px', borderBottom: `1px solid ${PC.border}`, display: 'flex', gap: 6, alignItems: 'center' }}>
