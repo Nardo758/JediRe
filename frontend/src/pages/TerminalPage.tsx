@@ -181,6 +181,7 @@ const WIDGET_CATALOG = [
   {id:"strategy",   label:"Strategy Snapshot",      desc:"BTS / RENTAL / FLIP / STR performance breakdown",     category:"OPS",    color:"#A78BFA"},
   {id:"agents",     label:"Agent Activity",         desc:"Live status of all AI agents running",                 category:"OPS",    color:"#00D26A"},
   {id:"tasks",      label:"Task List",              desc:"Team task queue with deal assignments",                 category:"OPS",    color:"#FFD166"},
+  {id:"events",     label:"M35 Event Feed",         desc:"Active market events — employment, supply, policy & regulatory catalysts", category:"INTEL",  color:"#0891B2"},
   {id:"tv",         label:"TV / Media",             desc:"Live business news channel selector",                  category:"MEDIA",  color:"#FF8C42"},
 ];
 
@@ -1491,6 +1492,107 @@ export default function TerminalPage() {
     );
   };
 
+  // ─── WIDGET: M35 EVENT FEED ────────────────────────────────
+  const WidgetEventFeed = () => {
+    const [events, setEvents] = React.useState<any[]>([]);
+    const [loading, setLoading] = React.useState(true);
+
+    React.useEffect(() => {
+      fetch('/api/v1/m35/events?limit=8')
+        .then(r => r.ok ? r.json() : null)
+        .then(d => {
+          if (d) setEvents((d.items || d.events || []).slice(0, 8));
+        })
+        .catch(() => {})
+        .finally(() => setLoading(false));
+    }, []);
+
+    const DEMO_EVENTS = [
+      { id: 'ev-d1', name: 'Amazon HQ2 — Tampa', category: 'employment', scope: 'submarket', status: 'active',      magnitudeScore: 4, confidence: 0.87, announcedDate: '2024-09-01' },
+      { id: 'ev-d2', name: 'Midtown Upzone ATL', category: 'policy',      scope: 'submarket', status: 'announced',   magnitudeScore: 2, confidence: 0.74, announcedDate: '2025-11-15' },
+      { id: 'ev-d3', name: 'Supply Wave — Denver',category: 'supply',     scope: 'submarket', status: 'in_progress', magnitudeScore: 3, confidence: 0.76, announcedDate: '2025-08-20' },
+      { id: 'ev-d4', name: 'BRT Opening — Denver',category: 'infrastructure', scope: 'submarket', status: 'announced', magnitudeScore: 3, confidence: 0.81, announcedDate: '2025-01-10' },
+      { id: 'ev-d5', name: 'FL Insurance Rate Shock', category: 'policy', scope: 'msa', status: 'active',           magnitudeScore: 2, confidence: 0.62, announcedDate: '2026-01-01' },
+    ];
+
+    const display = loading ? [] : (events.length > 0 ? events : DEMO_EVENTS);
+    const CAT_COLORS: Record<string, string> = {
+      employment:'#00D26A', infrastructure:T.text.cyan, supply:T.text.amber,
+      policy:'#A78BFA', regulatory:'#A78BFA', demographic:'#EC4899', macro:T.text.muted,
+    };
+    const SCOPE_COLORS: Record<string, string> = { msa:'#6B7A8D', submarket:T.text.cyan, property:T.text.amber };
+
+    return (
+      <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
+        {/* Header action */}
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",borderBottom:`1px solid ${T.border.subtle}`,background:T.bg.header}}>
+          <span style={{fontFamily:T.font.mono,fontSize:9,color:T.text.muted,fontWeight:700,letterSpacing:1}}>
+            {loading ? "LOADING…" : `${display.length} EVENTS`}
+          </span>
+          <button
+            onClick={() => navigate('/portfolio/events')}
+            style={{fontFamily:T.font.mono,fontSize:9,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}33`,padding:"2px 8px",cursor:"pointer"}}
+          >
+            FULL FEED ↗
+          </button>
+        </div>
+
+        {display.map((ev, i) => {
+          const catColor = CAT_COLORS[ev.category] ?? T.text.muted;
+          const scopeColor = SCOPE_COLORS[ev.scope] ?? T.text.muted;
+          const mag = typeof ev.magnitudeScore === 'number' ? ev.magnitudeScore : 0;
+          const filled = Math.round((mag / 5) * 5);
+          return (
+            <div
+              key={ev.id ?? i}
+              onClick={() => navigate(`/events/${ev.id}`)}
+              style={{
+                display:"flex",gap:10,padding:"9px 12px",
+                borderBottom:`1px solid ${T.border.subtle}`,
+                borderLeft:`3px solid ${catColor}`,
+                cursor:"pointer",
+                transition:"background 0.1s",
+              }}
+              onMouseEnter={e=>(e.currentTarget.style.background=T.bg.hover)}
+              onMouseLeave={e=>(e.currentTarget.style.background="transparent")}
+            >
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:11,fontWeight:700,color:T.text.primary,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:3}}>
+                  {ev.name}
+                </div>
+                <div style={{display:"flex",gap:5,alignItems:"center",flexWrap:"wrap"}}>
+                  <span style={{fontFamily:T.font.mono,fontSize:8,color:catColor,background:`${catColor}18`,border:`1px solid ${catColor}33`,padding:"0 4px",fontWeight:700}}>
+                    {(ev.category ?? '').replace('_',' ').toUpperCase().substring(0,8)}
+                  </span>
+                  <span style={{fontFamily:T.font.mono,fontSize:8,color:scopeColor}}>{(ev.scope ?? '').toUpperCase()}</span>
+                  <span style={{fontFamily:T.font.mono,fontSize:8,color:T.text.muted}}>
+                    CONF {Math.round((ev.confidence ?? 0) * 100)}%
+                  </span>
+                </div>
+              </div>
+              <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3,flexShrink:0}}>
+                <div style={{display:"flex",gap:2,alignItems:"flex-end"}}>
+                  {[1,2,3,4,5].map(b=>(
+                    <div key={b} style={{width:3,height:3+b*2,background:b<=filled?catColor:`${catColor}22`,borderRadius:1}} />
+                  ))}
+                </div>
+                <span style={{fontFamily:T.font.mono,fontSize:8,color:ev.status==='active'?T.text.green:ev.status==='in_progress'?T.text.cyan:T.text.muted,fontWeight:700}}>
+                  {(ev.status ?? 'unknown').replace('_',' ').toUpperCase()}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+
+        {!loading && display.length === 0 && (
+          <div style={{padding:24,textAlign:"center",fontSize:10,color:T.text.muted,fontFamily:T.font.mono}}>
+            No events loaded. Check M35 connector.
+          </div>
+        )}
+      </div>
+    );
+  };
+
   // ─── WIDGET ROUTER ─────────────────────────────────────────
   const renderWidget = (id:string) => {
     switch(id) {
@@ -1515,6 +1617,7 @@ export default function TerminalPage() {
       case "competitor":  return <WidgetCompetitor/>;
       case "aibrief":     return <WidgetAIBrief/>;
       case "tasks":       return <WidgetTaskList/>;
+      case "events":      return <WidgetEventFeed/>;
       default: return null;
     }
   };
