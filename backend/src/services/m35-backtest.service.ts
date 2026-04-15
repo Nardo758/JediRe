@@ -160,10 +160,12 @@ async function updatePlaybookConfidence(pool: Pool, playbookId: string, hit: boo
   );
 }
 
-// ─── CI widening (applied only once per newly-evaluated row) ──────────────────
-// When the hit rate for a subtype × metric_key × window_months falls below 55%,
-// widen CIs on ALL playbook rows (all strata combinations) for that track by 1.2×.
-// Spread is capped at CI_WIDEN_MAX_HALF × |median_delta| to prevent runaway expansion.
+// ─── CI widening ──────────────────────────────────────────────────────────────
+// Scope: per subtype × metric_key × window_months track (intentional, not subtype-wide).
+// Rationale: each metric/window track has independent accuracy history; widening only the
+// failing track avoids inflating CI bounds on tracks that are still accurate.
+// When hit rate for a track falls below 55%, all strata rows for that track are widened by 1.2×.
+// Spread is capped at CI_WIDEN_MAX_HALF × |median_delta| (episode guard) to prevent runaway growth.
 
 async function widenCIIfNeeded(
   pool: Pool, subtype: string, metricKey: string, windowMonths: number
@@ -195,7 +197,7 @@ async function widenCIIfNeeded(
        AND (p75 - p25) / 2.0 < ABS(median_delta) * $5`,
     [subtype, metricKey, windowMonths, CI_WIDEN_FACTOR, CI_WIDEN_MAX_HALF]
   );
-  logger.info('[M35 Backtest] CI widened (subtype-wide)', { subtype, metricKey, windowMonths, hitRate });
+  logger.info('[M35 Backtest] CI widened (per-track)', { subtype, metricKey, windowMonths, hitRate });
 }
 
 // ─── Regime shift detection ───────────────────────────────────────────────────
