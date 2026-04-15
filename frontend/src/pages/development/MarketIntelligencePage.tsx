@@ -1252,6 +1252,18 @@ function ProgramDevPanel({ program, computed, zoning, comps, gaps, onProgramChan
       const labels = undersupplied.map(g => UT_META.find(u => u.key === g.key)?.label ?? g.key);
       signals.push({ label: 'SUPPLY GAP', color: PC.green, text: `${labels.join(' + ')} are undersupplied vs. market demand (${undersupplied.map(g => `+${g.gap.toFixed(1)}pp gap`).join(', ')}). Overweighting these types captures near-term absorption.` });
     }
+    if (comps.length > 0 && topDemand.length > 0) {
+      const topKey = topDemand[0].key as UnitKey;
+      const topAvg = compAvg(topKey, comps);
+      const progRent = program.units[topKey].rent;
+      if (topAvg.rent > 0) {
+        const rentDelta = topAvg.rent - progRent;
+        const pct = Math.abs(Math.round((rentDelta / topAvg.rent) * 100));
+        const topLabel = UT_META.find(u => u.key === topKey)?.label ?? topKey;
+        const direction = rentDelta > 0 ? 'above' : 'below';
+        signals.push({ label: 'COMPS', color: PC.blue, text: `${topLabel} comp avg is $${topAvg.rent.toLocaleString()}/mo — program rent of $${progRent.toLocaleString()}/mo is ${pct}% ${direction} market. ${rentDelta > 50 ? 'Consider increasing ask to capture achievable rents.' : rentDelta < -50 ? 'Comp benchmark suggests current ask may be aggressive.' : 'Program is well-aligned with submarket comps.'}` });
+      }
+    }
     if (maxU > 0) {
       const withinEnv = totalUnits <= maxU;
       signals.push({ label: 'ZONING', color: withinEnv ? PC.yellow : PC.red, text: withinEnv ? `${totalUnits}u fits within ${zoning.zoningCode ?? 'zoning'} envelope at ${Math.round((totalUnits / maxU) * 100)}% utilization (${maxU - totalUnits} units of headroom remaining).` : `Program exceeds ${zoning.zoningCode ?? 'zoning'} by ${totalUnits - maxU}u — consider reducing total count or seeking a variance.` });
@@ -1468,7 +1480,8 @@ function ProgramRedevPanel({ rationale, umComps, umGaps, umProgram, onProgramCha
     const currentSf = umProgram.units[ut.key as UnitKey].sf;
     const delta = optimalMix - currentMix;
     const convCost = Math.abs(delta) > 2 ? `$${Math.round(Math.abs(delta) * 4.2)}K` : '$0';
-    return { abbr: ut.abbr, color: ut.color, key: ut.key, current: currentMix, target: optimalMix, delta, sf: currentSf, rent: currentRent, targetRent, convCost };
+    const absRunway = gap.demandScore > 0 ? Math.max(1, Math.round(18 / gap.demandScore)) : 24;
+    return { abbr: ut.abbr, color: ut.color, key: ut.key, current: currentMix, target: optimalMix, delta, sf: currentSf, rent: currentRent, targetRent, convCost, absRunway };
   });
 
   const applyRepositioning = () => {
@@ -1522,13 +1535,13 @@ function ProgramRedevPanel({ rationale, umComps, umGaps, umProgram, onProgramCha
             </div>
             <button onClick={applyRepositioning} style={{ padding: '3px 10px', fontSize: 8, fontWeight: 700, color: PC.yellow, background: `${PC.yellow}12`, border: `1px solid ${PC.yellow}40`, borderRadius: 3, cursor: 'pointer', fontFamily: pmono }}>APPLY REPOSITIONING</button>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '50px 70px 70px 50px 80px 80px 70px', padding: '3px 12px', background: PC.bg, borderBottom: `1px solid ${PC.border}` }}>
-            {['TYPE', 'CURRENT', 'TARGET', 'Δ MIX', 'RENT NOW', 'RENT TGT', 'CONV $'].map((h, i) => (
+          <div style={{ display: 'grid', gridTemplateColumns: '50px 70px 70px 50px 80px 80px 70px 60px', padding: '3px 12px', background: PC.bg, borderBottom: `1px solid ${PC.border}` }}>
+            {['TYPE', 'CURRENT', 'TARGET', 'Δ MIX', 'RENT NOW', 'RENT TGT', 'CONV $', 'ABS RUN'].map((h, i) => (
               <div key={i} style={{ color: PC.dim, fontSize: 7, fontFamily: pmono, fontWeight: 700, textAlign: i > 0 ? 'right' as const : 'left' as const }}>{h}</div>
             ))}
           </div>
           {conversions.map(u => (
-            <div key={u.abbr} style={{ display: 'grid', gridTemplateColumns: '50px 70px 70px 50px 80px 80px 70px', padding: '6px 12px', borderBottom: `1px solid ${PC.border}40`, alignItems: 'center' }}>
+            <div key={u.abbr} style={{ display: 'grid', gridTemplateColumns: '50px 70px 70px 50px 80px 80px 70px 60px', padding: '6px 12px', borderBottom: `1px solid ${PC.border}40`, alignItems: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                 <div style={{ width: 5, height: 5, background: u.color, borderRadius: 1 }} />
                 <span style={{ color: u.color, fontFamily: pmono, fontSize: 9, fontWeight: 700 }}>{u.abbr}</span>
@@ -1553,6 +1566,7 @@ function ProgramRedevPanel({ rationale, umComps, umGaps, umProgram, onProgramCha
               <span style={{ textAlign: 'right' as const, color: PC.dim, fontFamily: pmono, fontSize: 10 }}>${u.rent.toLocaleString()}</span>
               <span style={{ textAlign: 'right' as const, color: PC.green, fontFamily: pmono, fontSize: 10, fontWeight: 700 }}>${u.targetRent.toLocaleString()}</span>
               <span style={{ textAlign: 'right' as const, color: u.convCost !== '$0' ? PC.yellow : PC.dim, fontFamily: pmono, fontSize: 9 }}>{u.convCost}</span>
+              <span style={{ textAlign: 'right' as const, color: u.absRunway <= 6 ? PC.green : u.absRunway <= 12 ? PC.yellow : PC.red, fontFamily: pmono, fontSize: 9, fontWeight: 700 }}>{u.absRunway}mo</span>
             </div>
           ))}
         </div>
