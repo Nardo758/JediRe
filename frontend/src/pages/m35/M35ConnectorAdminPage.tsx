@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { PlaybookAccuracyDashboard } from '../../components/terminal/tabs/msa/PlaybookAccuracyDashboard';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, CheckCircle, AlertTriangle, Clock, RefreshCw, Play, Pause, ChevronDown, ChevronRight, Database, Wifi, WifiOff } from 'lucide-react';
@@ -288,13 +288,56 @@ const CAT_COLORS: Record<string, string> = {
   policy: '#8B5CF6', demographic: '#EC4899', macro: MUTED,
 };
 
+interface ApiPlaybook {
+  subtype: string;
+  displayName: string;
+  category: string;
+  instanceCount: number;
+  confidence: number;
+  status: 'preliminary' | 'publishable';
+  metricWindowCount: number;
+  lastUpdated: string | null;
+}
+
 function PlaybookLibraryPanel() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filterCat, setFilterCat] = useState('');
+  const [apiData, setApiData] = useState<ApiPlaybook[]>([]);
+  const [apiLoaded, setApiLoaded] = useState(false);
 
-  const cats = [...new Set(PLAYBOOK_SUBTYPES.map(s => s.category))];
-  const filtered = filterCat ? PLAYBOOK_SUBTYPES.filter(s => s.category === filterCat) : PLAYBOOK_SUBTYPES;
-  const selected = PLAYBOOK_SUBTYPES.find(s => s.id === selectedId) ?? null;
+  useEffect(() => {
+    fetch('/api/v1/m35/playbooks')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d?.playbooks?.length) setApiData(d.playbooks as ApiPlaybook[]);
+      })
+      .catch(() => {})
+      .finally(() => setApiLoaded(true));
+  }, []);
+
+  const mergedPlaybooks = apiLoaded && apiData.length > 0
+    ? apiData.map(api => {
+        const stat = PLAYBOOK_SUBTYPES.find(s => s.id === api.subtype);
+        return {
+          id: api.subtype,
+          name: api.displayName,
+          category: api.category.toLowerCase(),
+          instanceCount: api.instanceCount,
+          confidenceScore: Math.round(api.confidence * 100),
+          tier: api.status === 'publishable' ? 'CORE' : 'DRAFT',
+          regimeShiftFlag: false,
+          hitRate12mo: stat?.hitRate12mo ?? api.confidence,
+          hitRate24mo: stat?.hitRate24mo ?? api.confidence,
+          hitRate36mo: stat?.hitRate36mo ?? api.confidence,
+          triggerConditions: stat?.triggerConditions ?? [],
+          lastUpdated: api.lastUpdated ?? stat?.lastUpdated ?? '',
+        };
+      })
+    : PLAYBOOK_SUBTYPES;
+
+  const cats = [...new Set(mergedPlaybooks.map(s => s.category))];
+  const filtered = filterCat ? mergedPlaybooks.filter(s => s.category === filterCat) : mergedPlaybooks;
+  const selected = mergedPlaybooks.find(s => s.id === selectedId) ?? null;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 16 }}>

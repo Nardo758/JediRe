@@ -7,8 +7,9 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, ArrowUpRight, TrendingUp, TrendingDown, Activity } from 'lucide-react';
+import { ArrowLeft, ArrowUpRight, TrendingUp, TrendingDown, Activity, LayoutList, LayoutGrid } from 'lucide-react';
 import { EventDensityStrip } from '../../components/m35/EventDensityStrip';
+import { M35EventCard } from '../../components/m35/M35EventCard';
 
 const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono','Fira Code','SF Mono',monospace" };
 const BG = '#0B0E1A';
@@ -133,6 +134,7 @@ const PortfolioEventFeedPage: React.FC = () => {
   const [filter, setFilter] = useState<'all' | 'ahead' | 'behind' | 'pre'>('all');
   const [sortKey, setSortKey] = useState<'irrDelta' | 'magnitude' | 'triggerAt'>('irrDelta');
   const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
 
   const load = useCallback(async () => {
     try {
@@ -230,7 +232,23 @@ const PortfolioEventFeedPage: React.FC = () => {
               </button>
             ))}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 9, color: TEXT.muted, ...mono }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 9, color: TEXT.muted, ...mono }}>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button
+                onClick={() => setViewMode('table')}
+                title="Table view"
+                style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '3px 8px', fontSize: 8, cursor: 'pointer', background: viewMode === 'table' ? `${C.cyan}18` : 'transparent', border: `1px solid ${viewMode === 'table' ? C.cyan : BORDER}`, color: viewMode === 'table' ? C.cyan : TEXT.muted, ...mono }}
+              >
+                <LayoutList size={10} /> TABLE
+              </button>
+              <button
+                onClick={() => setViewMode('cards')}
+                title="Card view"
+                style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '3px 8px', fontSize: 8, cursor: 'pointer', background: viewMode === 'cards' ? `${C.cyan}18` : 'transparent', border: `1px solid ${viewMode === 'cards' ? C.cyan : BORDER}`, color: viewMode === 'cards' ? C.cyan : TEXT.muted, ...mono }}
+              >
+                <LayoutGrid size={10} /> CARDS
+              </button>
+            </div>
             <span>SORT:</span>
             {[
               { id: 'irrDelta', label: 'IRR Δ' },
@@ -251,7 +269,36 @@ const PortfolioEventFeedPage: React.FC = () => {
           </div>
         </div>
 
+        {/* Card view using M35EventCard */}
+        {viewMode === 'cards' && !loading && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 8, marginBottom: 16 }}>
+            {filtered.map(row => (
+              <M35EventCard
+                key={`${row.eventId}-${row.propertyId}`}
+                event={{
+                  id: row.eventId,
+                  name: row.eventName,
+                  category: row.category,
+                  status: row.status === 'AHEAD' || row.status === 'ON PACE' ? 'active' : row.status === 'BEHIND' ? 'in_progress' : 'announced',
+                  scope: row.scope,
+                  magnitudeScore: row.magnitude,
+                  confidence: 0.8,
+                  announcedDate: row.triggerAt,
+                  irrDelta: row.irrDelta,
+                  rentGrowthDelta: row.rentGrowthDelta,
+                  msa: row.msa,
+                  submarket: row.submarket,
+                  forecastStatus: row.status === 'AHEAD' ? 'ahead' : row.status === 'BEHIND' ? 'behind' : row.status === 'ON PACE' ? 'on_pace' : 'no_data',
+                  divergingForecast: row.status === 'BEHIND',
+                }}
+                onClick={() => navigate(`/events/${row.eventId}`)}
+              />
+            ))}
+          </div>
+        )}
+
         {/* Event feed table */}
+        {viewMode === 'table' && (
         <div style={{ border: `1px solid ${BORDER}`, overflow: 'hidden' }}>
           <div style={{ background: '#0B0E1A', borderBottom: `1px solid ${BORDER}` }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -361,6 +408,7 @@ const PortfolioEventFeedPage: React.FC = () => {
             </div>
           )}
         </div>
+        )}
 
         {/* Footer */}
         <div style={{ display: 'flex', gap: 24, marginTop: 12, padding: '8px 0', fontSize: 9, color: TEXT.muted, ...mono, borderTop: `1px solid ${BORDER}` }}>

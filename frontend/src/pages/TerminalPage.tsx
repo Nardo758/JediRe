@@ -1503,14 +1503,17 @@ export default function TerminalPage() {
     magnitudeScore: number;
     confidence: number;
     announcedDate: string | null;
+    msaId?: string;
+    msaName?: string;
+    forecastStatus?: 'AHEAD' | 'BEHIND' | 'ON PACE' | null;
   }
 
   const DEMO_EVENTS: EventFeedItem[] = [
-    { id:'ev-d1', name:'Amazon HQ2 — Tampa',     category:'employment',    scope:'submarket', status:'active',      magnitudeScore:4, confidence:0.87, announcedDate:'2024-09-01' },
-    { id:'ev-d2', name:'Midtown Upzone ATL',      category:'policy',        scope:'submarket', status:'announced',   magnitudeScore:2, confidence:0.74, announcedDate:'2025-11-15' },
-    { id:'ev-d3', name:'Supply Wave — Denver',    category:'supply',        scope:'submarket', status:'in_progress', magnitudeScore:3, confidence:0.76, announcedDate:'2025-08-20' },
-    { id:'ev-d4', name:'BRT Opening — Denver',    category:'infrastructure',scope:'submarket', status:'announced',   magnitudeScore:3, confidence:0.81, announcedDate:'2025-01-10' },
-    { id:'ev-d5', name:'FL Insurance Rate Shock', category:'policy',        scope:'msa',       status:'active',      magnitudeScore:2, confidence:0.62, announcedDate:'2026-01-01' },
+    { id:'ev-d1', name:'Amazon HQ2 — Tampa',     category:'employment',    scope:'submarket', status:'active',      magnitudeScore:4, confidence:0.87, announcedDate:'2024-09-01', msaId:'tampa',  msaName:'Tampa, FL',    forecastStatus:'AHEAD'    },
+    { id:'ev-d2', name:'Midtown Upzone ATL',      category:'policy',        scope:'submarket', status:'announced',   magnitudeScore:2, confidence:0.74, announcedDate:'2025-11-15', msaId:'atlanta',msaName:'Atlanta, GA',   forecastStatus:null       },
+    { id:'ev-d3', name:'Supply Wave — Denver',    category:'supply',        scope:'submarket', status:'in_progress', magnitudeScore:3, confidence:0.76, announcedDate:'2025-08-20', msaId:'denver', msaName:'Denver, CO',   forecastStatus:'BEHIND'   },
+    { id:'ev-d4', name:'BRT Opening — Denver',    category:'infrastructure',scope:'submarket', status:'announced',   magnitudeScore:3, confidence:0.81, announcedDate:'2025-01-10', msaId:'denver', msaName:'Denver, CO',   forecastStatus:'ON PACE'  },
+    { id:'ev-d5', name:'FL Insurance Rate Shock', category:'policy',        scope:'msa',       status:'active',      magnitudeScore:2, confidence:0.62, announcedDate:'2026-01-01', msaId:'miami',  msaName:'Miami, FL',    forecastStatus:'BEHIND'   },
   ];
 
   const EFD_CAT_COLORS: Record<string, string> = {
@@ -1604,6 +1607,9 @@ export default function TerminalPage() {
                       {(ev.category ?? '').replace('_',' ').toUpperCase().substring(0,8)}
                     </span>
                     <span style={{fontFamily:T.font.mono,fontSize:8,color:scopeColor}}>{(ev.scope ?? '').toUpperCase()}</span>
+                    {ev.msaName && (
+                      <span style={{fontFamily:T.font.mono,fontSize:8,color:T.text.sub}}>{ev.msaName}</span>
+                    )}
                     <span style={{fontFamily:T.font.mono,fontSize:8,color:T.text.muted}}>CONF {Math.round((ev.confidence ?? 0)*100)}%</span>
                     <span style={{fontFamily:T.font.mono,fontSize:8,color:T.text.dim}}>{daysSince(ev.announcedDate)}</span>
                   </div>
@@ -1617,6 +1623,15 @@ export default function TerminalPage() {
                   <span style={{fontFamily:T.font.mono,fontSize:8,color:ev.status==='active'?T.text.green:ev.status==='in_progress'?T.text.cyan:T.text.muted,fontWeight:700}}>
                     {(ev.status ?? 'unknown').replace('_',' ').toUpperCase()}
                   </span>
+                  {ev.forecastStatus && (() => {
+                    const fc = ev.forecastStatus;
+                    const fcColor = fc==='AHEAD'?T.text.green:fc==='BEHIND'?'#EF4444':T.text.cyan;
+                    return (
+                      <span style={{fontFamily:T.font.mono,fontSize:7,fontWeight:700,padding:"1px 4px",background:`${fcColor}18`,border:`1px solid ${fcColor}44`,color:fcColor}}>
+                        {fc}
+                      </span>
+                    );
+                  })()}
                 </div>
               </div>
             );

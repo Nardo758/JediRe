@@ -206,12 +206,20 @@ export const MSAEventsTab: React.FC<MSAEventsTabProps> = ({ msaId, msa }) => {
   const msaName = msa?.name || msaId || 'MSA';
   const navigate = useNavigate();
 
+  interface PlaybookDetail {
+    instanceCount: number;
+    confidence: number;
+    status: 'preliminary' | 'publishable';
+    lagStructure: Record<string, Record<string, unknown>> | null;
+  }
+
   const [causality, setCausality] = useState<MSACausalityReport | null>(null);
   const [liveEvents, setLiveEvents] = useState<LiveEvent[]>([]);
   const [pipelineSignal, setPipelineSignal] = useState<PipelineSignal | null>(null);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [eventDetail, setEventDetail] = useState<EventCausalityDetail | null>(null);
   const [fullEvent, setFullEvent] = useState<FullEventRecord | null>(null);
+  const [playbookDetail, setPlaybookDetail] = useState<PlaybookDetail | null>(null);
   const [detailTab, setDetailTab] = useState<'detail' | 'causality' | 'forecast'>('detail');
   const [loading, setLoading] = useState(true);
   const [causalityLoading, setCausalityLoading] = useState(false);
@@ -284,6 +292,23 @@ export const MSAEventsTab: React.FC<MSAEventsTabProps> = ({ msaId, msa }) => {
     };
     fetchAll();
   }, [selectedEventId]);
+
+  useEffect(() => {
+    if (!fullEvent?.playbookName) { setPlaybookDetail(null); return; }
+    fetch(`/api/v1/m35/playbooks/${encodeURIComponent(fullEvent.playbookName)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!d?.playbook) return;
+        const p = d.playbook;
+        setPlaybookDetail({
+          instanceCount: p.instanceCount ?? 0,
+          confidence: p.confidence ?? 0,
+          status: p.status ?? 'preliminary',
+          lagStructure: p.lagStructure ?? null,
+        });
+      })
+      .catch(() => {});
+  }, [fullEvent?.playbookName]);
 
   const handleRefreshCausality = async () => {
     if (refreshing) return;
@@ -707,12 +732,46 @@ export const MSAEventsTab: React.FC<MSAEventsTabProps> = ({ msaId, msa }) => {
 
                   {/* Playbook citation */}
                   {fullEvent?.playbookName && (
-                    <div style={{ ...terminalStyles.card, padding: '8px 12px', borderLeft: `3px solid ${BT.accent.blue}` }}>
-                      <div style={{ ...mono, fontSize: 8, fontWeight: 700, color: BT.text.dim, marginBottom: 4 }}>PLAYBOOK CITATION</div>
-                      <div style={{ fontSize: 10, color: BT.text.primary, fontWeight: 600 }}>{fullEvent.playbookName}</div>
+                    <div style={{ ...terminalStyles.card, padding: '10px 12px', borderLeft: `3px solid ${BT.accent.blue}` }}>
+                      <div style={{ ...mono, fontSize: 8, fontWeight: 700, color: BT.text.dim, marginBottom: 6, letterSpacing: '0.08em' }}>PLAYBOOK CITATION</div>
+                      <div style={{ fontSize: 11, color: BT.text.primary, fontWeight: 700, marginBottom: 6 }}>
+                        {fullEvent.playbookName.replace(/_/g, ' ').toUpperCase()}
+                      </div>
+                      {playbookDetail ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                              <span style={{ ...mono, fontSize: 7, color: BT.text.dim }}>INSTANCES</span>
+                              <span style={{ ...mono, fontSize: 12, fontWeight: 700, color: BT.text.primary }}>{playbookDetail.instanceCount}</span>
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                              <span style={{ ...mono, fontSize: 7, color: BT.text.dim }}>CONFIDENCE</span>
+                              <span style={{ ...mono, fontSize: 12, fontWeight: 700, color: playbookDetail.confidence >= 0.8 ? '#10B981' : playbookDetail.confidence >= 0.6 ? BT.accent.amber : '#EF4444' }}>
+                                {Math.round(playbookDetail.confidence * 100)}%
+                              </span>
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                              <span style={{ ...mono, fontSize: 7, color: BT.text.dim }}>STATUS</span>
+                              <span style={{ ...mono, fontSize: 9, fontWeight: 700, color: playbookDetail.status === 'publishable' ? '#10B981' : BT.accent.amber }}>
+                                {playbookDetail.status.toUpperCase()}
+                              </span>
+                            </div>
+                          </div>
+                          {playbookDetail.lagStructure && Object.keys(playbookDetail.lagStructure).length > 0 && (
+                            <div style={{ marginTop: 4, padding: '4px 8px', background: `${BT.accent.blue}10`, borderRadius: 2 }}>
+                              <div style={{ ...mono, fontSize: 7, color: BT.text.dim, marginBottom: 2 }}>LAG STRUCTURE</div>
+                              <div style={{ fontSize: 9, color: BT.text.secondary, ...mono }}>
+                                Peak effect at T+{Object.keys(playbookDetail.lagStructure)[0] ?? '24'} months
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div style={{ ...mono, fontSize: 8, color: BT.text.dim }}>Loading playbook data...</div>
+                      )}
                       <button
                         onClick={() => navigate('/playbooks')}
-                        style={{ ...mono, fontSize: 8, color: BT.accent.blue, background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, marginTop: 4 }}
+                        style={{ ...mono, fontSize: 8, color: BT.accent.blue, background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, marginTop: 8 }}
                       >
                         Open Playbook Library ↗
                       </button>
