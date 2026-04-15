@@ -673,6 +673,15 @@ export const MSAEventsTab: React.FC<MSAEventsTabProps> = ({ msaId, msa }) => {
                           <span style={{ ...mono, fontSize: 8, color: BT.text.dim }}>
                             {ev.scope.toUpperCase()}
                           </span>
+                          {(() => {
+                            const isVerified = ev.status === 'active' || ev.status === 'in_progress' || ev.status === 'completed';
+                            const vColor = isVerified ? '#10B981' : BT.accent.amber;
+                            return (
+                              <span style={{ ...mono, fontSize: 7, fontWeight: 700, padding: '1px 5px', color: vColor, background: `${vColor}18`, border: `1px solid ${vColor}44` }}>
+                                {isVerified ? '✓ VERIFIED' : '◌ ANNOUNCED'}
+                              </span>
+                            );
+                          })()}
                         </div>
                       </div>
                     </div>
@@ -690,21 +699,46 @@ export const MSAEventsTab: React.FC<MSAEventsTabProps> = ({ msaId, msa }) => {
                     </div>
                   )}
 
-                  {/* Forecast vs actual one-liner */}
-                  {fcStatus && (
-                    <div style={{
-                      padding: '6px 12px', background: `${fcStatusColors[fcStatus] ?? BT.text.dim}12`,
-                      border: `1px solid ${fcStatusColors[fcStatus] ?? BT.text.dim}44`,
-                      borderLeft: `3px solid ${fcStatusColors[fcStatus] ?? BT.text.dim}`,
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, ...mono, fontSize: 9 }}>
-                        <span style={{ fontWeight: 700, color: fcStatusColors[fcStatus] }}>
-                          {fcStatus.replace('_', ' ').toUpperCase()}
-                        </span>
-                        {fullEvent?.forecastSummary && (
-                          <span style={{ color: BT.text.muted }}>{fullEvent.forecastSummary}</span>
-                        )}
-                      </div>
+                  {/* Forecast verdict + Causality verdict side-by-side */}
+                  {(fcStatus || eventDetail?.overallDirection) && (
+                    <div style={{ display: 'grid', gridTemplateColumns: fcStatus && eventDetail?.overallDirection ? '1fr 1fr' : '1fr', gap: 6 }}>
+                      {fcStatus && (
+                        <div style={{
+                          padding: '6px 10px', background: `${fcStatusColors[fcStatus] ?? BT.text.dim}12`,
+                          border: `1px solid ${fcStatusColors[fcStatus] ?? BT.text.dim}44`,
+                          borderLeft: `3px solid ${fcStatusColors[fcStatus] ?? BT.text.dim}`,
+                        }}>
+                          <div style={{ ...mono, fontSize: 7, color: BT.text.dim, marginBottom: 2 }}>FORECAST</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 5, ...mono, fontSize: 9 }}>
+                            <span style={{ fontWeight: 700, color: fcStatusColors[fcStatus] }}>
+                              {fcStatus.replace('_', ' ').toUpperCase()}
+                            </span>
+                            {fullEvent?.forecastSummary && (
+                              <span style={{ color: BT.text.muted, fontSize: 8 }}>{fullEvent.forecastSummary}</span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      {eventDetail?.overallDirection && (() => {
+                        const dir = eventDetail.overallDirection as string;
+                        const dirMeta = DIRECTION_META[dir as keyof typeof DIRECTION_META];
+                        if (!dirMeta) return null;
+                        return (
+                          <div style={{
+                            padding: '6px 10px', background: dirMeta.bg,
+                            border: `1px solid ${dirMeta.color}44`,
+                            borderLeft: `3px solid ${dirMeta.color}`,
+                          }}>
+                            <div style={{ ...mono, fontSize: 7, color: BT.text.dim, marginBottom: 2 }}>CAUSALITY</div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 5, ...mono, fontSize: 9 }}>
+                              <span style={{ fontWeight: 700, color: dirMeta.color }}>{dirMeta.shortLabel}</span>
+                              {eventDetail.dominantLeadLagMonths && (
+                                <span style={{ color: BT.text.muted, fontSize: 8 }}>lag {eventDetail.dominantLeadLagMonths}mo</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
 
@@ -715,16 +749,22 @@ export const MSAEventsTab: React.FC<MSAEventsTabProps> = ({ msaId, msa }) => {
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 16px' }}>
                       {[
-                        { label: 'Magnitude', value: `${ev.magnitudeScore.toFixed(1)} / 5.0` },
-                        { label: 'Confidence', value: `${Math.round(ev.confidence * 100)}%` },
-                        { label: 'Announced', value: ev.announcedDate ? new Date(ev.announcedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—' },
-                        { label: 'Materialized', value: ev.materializationDate ? new Date(ev.materializationDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Pending' },
-                        { label: 'Submarket', value: fullEvent?.submarket ?? '—' },
-                        { label: 'Source', value: fullEvent?.connectorSource ?? 'Manual' },
+                        { label: 'Magnitude', value: `${ev.magnitudeScore.toFixed(1)} / 5.0`, url: null },
+                        { label: 'Confidence', value: `${Math.round(ev.confidence * 100)}%`, url: null },
+                        { label: 'Announced', value: ev.announcedDate ? new Date(ev.announcedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—', url: null },
+                        { label: 'Materialized', value: ev.materializationDate ? new Date(ev.materializationDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Pending', url: null },
+                        { label: 'Submarket', value: fullEvent?.submarket ?? '—', url: null },
+                        { label: 'Source', value: fullEvent?.connectorSource ?? 'Manual', url: fullEvent?.connectorSource?.startsWith('http') ? fullEvent.connectorSource : null },
                       ].map(row => (
                         <div key={row.label} style={{ display: 'flex', flexDirection: 'column', padding: '3px 0', borderBottom: `1px solid ${BT.border.subtle}20` }}>
                           <span style={{ ...mono, fontSize: 8, color: BT.text.dim }}>{row.label}</span>
-                          <span style={{ ...mono, fontSize: 10, color: BT.text.secondary, fontWeight: 600 }}>{row.value}</span>
+                          {row.url ? (
+                            <a href={row.url} target="_blank" rel="noopener noreferrer" style={{ ...mono, fontSize: 10, color: BT.accent.blue, fontWeight: 600, textDecoration: 'none' }}>
+                              {row.value} ↗
+                            </a>
+                          ) : (
+                            <span style={{ ...mono, fontSize: 10, color: BT.text.secondary, fontWeight: 600 }}>{row.value}</span>
+                          )}
                         </div>
                       ))}
                     </div>

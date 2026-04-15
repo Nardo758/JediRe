@@ -299,11 +299,34 @@ interface ApiPlaybook {
   lastUpdated: string | null;
 }
 
+interface PlaybookMetricWindow {
+  metricKey: string;
+  windowMonths: number;
+  median: number | null;
+  p25: number | null;
+  p75: number | null;
+  instanceCount: number;
+  confidence: number;
+  status: 'preliminary' | 'publishable';
+}
+
+interface FullPlaybookDetail {
+  subtype: string;
+  instanceCount: number;
+  confidence: number;
+  status: 'preliminary' | 'publishable';
+  lagStructure: Record<string, Record<string, unknown>>;
+  scalingCoefficients: Record<string, number>;
+  metrics: PlaybookMetricWindow[];
+}
+
 function PlaybookLibraryPanel() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filterCat, setFilterCat] = useState('');
   const [apiData, setApiData] = useState<ApiPlaybook[]>([]);
   const [apiLoaded, setApiLoaded] = useState(false);
+  const [fullDetail, setFullDetail] = useState<FullPlaybookDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
 
   useEffect(() => {
     fetch('/api/v1/m35/playbooks')
@@ -315,21 +338,35 @@ function PlaybookLibraryPanel() {
       .finally(() => setApiLoaded(true));
   }, []);
 
+  useEffect(() => {
+    if (!selectedId) { setFullDetail(null); return; }
+    setDetailLoading(true);
+    fetch(`/api/v1/m35/playbooks/${encodeURIComponent(selectedId)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d?.playbook) setFullDetail(d.playbook as FullPlaybookDetail);
+      })
+      .catch(() => {})
+      .finally(() => setDetailLoading(false));
+  }, [selectedId]);
+
   const mergedPlaybooks = apiLoaded && apiData.length > 0
     ? apiData.map(api => {
         const stat = PLAYBOOK_SUBTYPES.find(s => s.id === api.subtype);
+        const tier: 1 | 2 | 3 = api.confidence >= 0.8 ? 1 : api.confidence >= 0.6 ? 2 : 3;
         return {
           id: api.subtype,
           name: api.displayName,
           category: api.category.toLowerCase(),
           instanceCount: api.instanceCount,
           confidenceScore: Math.round(api.confidence * 100),
-          tier: api.status === 'publishable' ? 'CORE' : 'DRAFT',
-          regimeShiftFlag: false,
+          tier,
+          regimeShiftFlag: stat?.regimeShiftFlag ?? false,
+          regimeShiftNote: stat?.regimeShiftNote,
           hitRate12mo: stat?.hitRate12mo ?? api.confidence,
           hitRate24mo: stat?.hitRate24mo ?? api.confidence,
           hitRate36mo: stat?.hitRate36mo ?? api.confidence,
-          triggerConditions: stat?.triggerConditions ?? [],
+          triggerConditions: stat?.triggerConditions ?? '',
           lastUpdated: api.lastUpdated ?? stat?.lastUpdated ?? '',
         };
       })
@@ -415,8 +452,11 @@ function PlaybookLibraryPanel() {
               {isSelected && selected && (
                 <div style={{ background: `${CYAN}06`, borderBottom: `1px solid ${BORDER}`, padding: '12px 14px', display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
                   {selected.regimeShiftFlag && (
-                    <div style={{ padding: '8px 12px', background: `${AMBER}12`, border: `1px solid ${AMBER}44`, borderRadius: 2, fontSize: 10, color: AMBER }}>
-                      ⚠ REGIME SHIFT: {selected.regimeShiftNote}
+                    <div style={{ padding: '8px 12px', background: `${AMBER}12`, border: `1px solid ${AMBER}44`, borderRadius: 2, fontSize: 10, color: AMBER, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <span>⚠ REGIME SHIFT: {(selected as { regimeShiftNote?: string }).regimeShiftNote ?? 'Backtest deviation detected. Review playbook calibration before applying.'}</span>
+                      <button style={{ ...mono, fontSize: 8, color: AMBER, background: `${AMBER}22`, border: `1px solid ${AMBER}44`, padding: '2px 8px', cursor: 'pointer', flexShrink: 0, marginLeft: 8 }}>
+                        REVIEW CALIBRATION
+                      </button>
                     </div>
                   )}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -445,10 +485,96 @@ function PlaybookLibraryPanel() {
                       })}
                     </div>
                   </div>
+
+                  {detailLoading && (
+                    <div style={{ ...mono, fontSize: 9, color: DIM, padding: '6px 0' }}>Loading playbook analytics...</div>
+                  )}
+
+                  {fullDetail && fullDetail.metrics.length > 0 && (() => {
+                    const KEY_METRICS = ['rent_growth', 'absorption_rate', 'vacancy_rate', 'effective_rent'];
+                    const WINDOWS = [3, 12, 24, 36];
+                    const shownMetrics = KEY_METRICS.filter(k => fullDetail.metrics.some(m => m.metricKey === k));
+                    if (shownMetrics.length === 0) return null;
+                    return (
+                      <div>
+                        <div style={{ ...mono, fontSize: 8, fontWeight: 700, color: DIM, letterSpacing: '0.08em', marginBottom: 8 }}>
+                          METRIC × WINDOW DISTRIBUTION (P25 / MEDIAN / P75)
+                        </div>
+                        {shownMetrics.map(metricKey => {
+                          const metricRows = WINDOWS.map(w => fullDetail.metrics.find(m => m.metricKey === metricKey && m.windowMonths === w)).filter(Boolean) as PlaybookMetricWindow[];
+                          if (metricRows.length === 0) return null;
+                          const maxAbs = Math.max(...metricRows.map(r => Math.max(Math.abs(r.median ?? 0), Math.abs(r.p75 ?? 0))), 0.01);
+                          return (
+                            <div key={metricKey} style={{ marginBottom: 10 }}>
+                              <div style={{ ...mono, fontSize: 9, color: MUTED, marginBottom: 4, textTransform: 'uppercase' as const }}>
+                                {metricKey.replace(/_/g, ' ')}
+                              </div>
+                              {metricRows.map(row => {
+                                const pct = (v: number | null) => v == null ? 0 : Math.round((v / maxAbs) * 50);
+                                const isPositive = (row.median ?? 0) >= 0;
+                                const barColor = isPositive ? GREEN : RED;
+                                return (
+                                  <div key={row.windowMonths} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                                    <span style={{ ...mono, fontSize: 8, color: DIM, minWidth: 40 }}>T+{row.windowMonths}mo</span>
+                                    <div style={{ flex: 1, height: 12, background: BORDER, position: 'relative' as const, overflow: 'hidden', borderRadius: 2 }}>
+                                      <div style={{ position: 'absolute' as const, left: `${50 - pct(row.p25)}%`, top: 0, bottom: 0, width: `${pct(row.p75) - pct(row.p25) + pct(row.p25) * 2}%`, background: `${barColor}22` }} />
+                                      <div style={{ position: 'absolute' as const, left: `calc(50% + ${pct(row.median ?? 0) * (isPositive ? 1 : -1) * 0.5}% - 2px)`, top: 1, bottom: 1, width: 4, background: barColor, borderRadius: 1 }} />
+                                    </div>
+                                    <span style={{ ...mono, fontSize: 8, color: barColor, fontWeight: 700, minWidth: 44, textAlign: 'right' as const }}>
+                                      {(row.median ?? 0) >= 0 ? '+' : ''}{(row.median ?? 0).toFixed(1)}pp
+                                    </span>
+                                    <span style={{ ...mono, fontSize: 7, color: DIM, minWidth: 60 }}>
+                                      [{(row.p25 ?? 0).toFixed(1)}, {(row.p75 ?? 0).toFixed(1)}]
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+
+                  {fullDetail && Object.keys(fullDetail.lagStructure ?? {}).length > 0 && (
+                    <div>
+                      <div style={{ ...mono, fontSize: 8, fontWeight: 700, color: DIM, letterSpacing: '0.08em', marginBottom: 6 }}>LAG STRUCTURE</div>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
+                        {Object.entries(fullDetail.lagStructure).slice(0, 4).map(([metric, lag]) => {
+                          const peakWindow = (lag as Record<string, unknown>).peak_window_months ?? (lag as Record<string, unknown>).peakWindow ?? '—';
+                          return (
+                            <div key={metric} style={{ padding: '5px 10px', background: PANEL, border: `1px solid ${BORDER}`, fontSize: 9, color: MUTED, ...mono }}>
+                              <div style={{ fontSize: 7, color: DIM, marginBottom: 1 }}>{metric.replace(/_/g, ' ').toUpperCase()}</div>
+                              Peak T+{String(peakWindow)}mo
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {fullDetail && Object.keys(fullDetail.scalingCoefficients ?? {}).length > 0 && (
+                    <div>
+                      <div style={{ ...mono, fontSize: 8, fontWeight: 700, color: DIM, letterSpacing: '0.08em', marginBottom: 6 }}>MAGNITUDE SCALING FACTORS</div>
+                      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' as const }}>
+                        {Object.entries(fullDetail.scalingCoefficients).slice(0, 5).map(([key, val]) => (
+                          <div key={key} style={{ display: 'flex', flexDirection: 'column' as const }}>
+                            <span style={{ ...mono, fontSize: 7, color: DIM }}>{key.replace(/_/g, ' ')}</span>
+                            <span style={{ ...mono, fontSize: 11, fontWeight: 700, color: CYAN }}>{val.toFixed(4)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   <div style={{ display: 'flex', gap: 16, fontSize: 9, color: DIM, ...mono, borderTop: `1px solid ${BORDER}`, paddingTop: 8 }}>
                     <span>ID: M35-{selected.id.toUpperCase()}</span>
-                    <span>Instances: {selected.instanceCount}</span>
+                    <span>Instances: {fullDetail?.instanceCount ?? selected.instanceCount}</span>
+                    <span>Conf: {fullDetail ? `${Math.round(fullDetail.confidence * 100)}%` : `${selected.confidenceScore}%`}</span>
                     <span>Updated: {selected.lastUpdated}</span>
+                    <span style={{ color: fullDetail?.status === 'publishable' ? GREEN : AMBER, fontWeight: 700 }}>
+                      {(fullDetail?.status ?? 'PRELIMINARY').toUpperCase()}
+                    </span>
                   </div>
                 </div>
               )}
