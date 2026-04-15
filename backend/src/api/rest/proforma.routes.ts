@@ -11,6 +11,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { authMiddleware } from '../../middleware/auth';
 import { proformaAdjustmentService } from '../../services/proforma-adjustment.service';
 import { trafficToProForma } from '../../services/trafficToProFormaService';
+import { getPool } from '../../database/connection';
 import Decimal from 'decimal.js';
 
 const logger = { 
@@ -20,9 +21,79 @@ const logger = {
 
 const router = Router();
 
+// ─── M35 attribution helper ───────────────────────────────────────────────────
+
+interface M35AttributionEntry {
+  eventId: string;
+  eventName: string;
+  playbookSubtype: string;
+  metricKey: string;
+  windowMonths: number;
+  pointEstimate: number | null;
+  ciLow: number | null;
+  ciHigh: number | null;
+  confidence: number;
+}
+
+interface M35ProformaAttribution {
+  rentGrowth: M35AttributionEntry | null;
+  vacancy:    M35AttributionEntry | null;
+  exitCap:    M35AttributionEntry | null;
+}
+
+async function getM35ProformaAttribution(dealId: string): Promise<M35ProformaAttribution> {
+  const pool = getPool();
+
+  const dealRes = await pool.query(
+    `SELECT deal_data->>'msaId' AS msa_id FROM deals WHERE id = $1 LIMIT 1`,
+    [dealId]
+  );
+  const msaId: string | null = dealRes.rows[0]?.msa_id ?? null;
+  if (!msaId) return { rentGrowth: null, vacancy: null, exitCap: null };
+
+  const forecastRes = await pool.query(
+    `SELECT ef.id AS forecast_id, ke.id AS event_id, ke.event_name, ke.subtype,
+            efm.metric_key, efm.window_months, efm.point_estimate,
+            efm.ci_low, efm.ci_high, efm.confidence
+     FROM event_forecasts ef
+     JOIN key_events ke     ON ke.id = ef.event_id
+     JOIN event_forecast_metrics efm ON efm.forecast_id = ef.id
+     WHERE ef.status = 'active'
+       AND ke.msa_id = $1
+       AND ke.status IN ('announced','in_progress','materialized')
+       AND efm.metric_key IN ('rent_growth_yoy','vacancy_rate','cap_rate')
+     ORDER BY efm.confidence DESC`,
+    [msaId]
+  );
+
+  function pickBest(metricKey: string): M35AttributionEntry | null {
+    const row = forecastRes.rows.find((r: any) => r.metric_key === metricKey);
+    if (!row) return null;
+    return {
+      eventId:        row.event_id,
+      eventName:      row.event_name,
+      playbookSubtype: row.subtype,
+      metricKey:      row.metric_key,
+      windowMonths:   row.window_months,
+      pointEstimate:  row.point_estimate !== null ? parseFloat(row.point_estimate) : null,
+      ciLow:          row.ci_low !== null ? parseFloat(row.ci_low) : null,
+      ciHigh:         row.ci_high !== null ? parseFloat(row.ci_high) : null,
+      confidence:     parseFloat(row.confidence),
+    };
+  }
+
+  return {
+    rentGrowth: pickBest('rent_growth_yoy'),
+    vacancy:    pickBest('vacancy_rate'),
+    exitCap:    pickBest('cap_rate'),
+  };
+}
+
+// ─── Routes ───────────────────────────────────────────────────────────────────
+
 /**
  * GET /api/v1/proforma/:dealId
- * Get current pro forma assumptions (baseline + adjusted)
+ * Get current pro forma assumptions (baseline + adjusted) with M35 event attribution.
  */
 router.get('/:dealId', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -36,10 +107,22 @@ router.get('/:dealId', authMiddleware.requireAuth, async (req: Request, res: Res
         error: 'Pro forma not found for this deal'
       });
     }
+
+    // Append M35 event attribution metadata to each assumption value.
+    // Silently skipped if no active forecasts exist.
+    let eventAttribution: M35ProformaAttribution | null = null;
+    try {
+      eventAttribution = await getM35ProformaAttribution(dealId);
+    } catch {
+      // Non-fatal — proforma response is still returned without attribution
+    }
     
     res.json({
       success: true,
-      data: proforma
+      data: {
+        ...proforma,
+        ...(eventAttribution ? { eventAttribution } : {}),
+      },
     });
   } catch (error: any) {
     logger.error('Error fetching pro forma:', error);

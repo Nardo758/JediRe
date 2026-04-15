@@ -107,8 +107,7 @@ export class JEDIScoreService {
     const corpHealthAdj = await this.getCorporateHealthAdjustment(dealInfo.submarket_id || null);
 
     const rawDemandScore = await this.calculateDemandScore(dealId, tradeAreaId, demandIntel);
-    const corpAdjDemand = Math.max(0, Math.min(100, rawDemandScore + corpHealthAdj.demandAdj));
-    const demandScore = await this.applyM35DemandOverlay(dealId, corpAdjDemand);
+    const demandScore = Math.max(0, Math.min(100, rawDemandScore + corpHealthAdj.demandAdj));
     const supplyScore = await this.calculateSupplyScore(dealId, tradeAreaId, demandIntel);
     const momentumScore = await this.calculateMomentumScore(dealId, tradeAreaId, demandIntel);
     const positionScore = await this.calculatePositionScore(dealId, tradeAreaId, demandIntel);
@@ -222,7 +221,9 @@ export class JEDIScoreService {
       }
     }
 
-    const demandScore = 50 + Math.max(-15, Math.min(15, totalImpact));
+    // Apply M35 forecast-derived weights, replacing static defaults for MSA key events.
+    const m35Contrib = await this.getM35KeyEventImpacts(dealId);
+    const demandScore = 50 + Math.max(-15, Math.min(15, totalImpact + m35Contrib));
 
     return demandScore;
   }
@@ -759,11 +760,14 @@ export class JEDIScoreService {
   }
 
   /**
-   * Fetch M35 active forecasts for the deal's MSA and compute a demand overlay.
-   * Uses the rent_growth_yoy T+12mo point estimate to adjust the demand score.
-   * Returns ±0–5 points; silently returns 0 on any failure so JEDI score is never blocked.
+   * Query M35 key events for the deal's MSA and return their forecast-derived
+   * impact contributions, replacing static-default weights for those event types.
+   *
+   * Each active forecast's attributed_delta (mapped via toM06DemandOverlay) is
+   * converted to a score-point contribution capped at ±3 per event.
+   * Returns 0 on any failure so JEDI score is never blocked.
    */
-  private async applyM35DemandOverlay(dealId: string, demandScore: number): Promise<number> {
+  private async getM35KeyEventImpacts(dealId: string): Promise<number> {
     try {
       const pool = getPool();
       const msaRes = await pool.query(
@@ -771,12 +775,12 @@ export class JEDIScoreService {
         [dealId]
       );
       const msaId: string | null = msaRes.rows[0]?.msa_id ?? null;
-      if (!msaId) return demandScore;
+      if (!msaId) return 0;
 
       const forecasts = await getMsaActiveForecasts(msaId);
-      if (forecasts.length === 0) return demandScore;
+      if (forecasts.length === 0) return 0;
 
-      let totalOverlay = 0;
+      let m35Impact = 0;
       for (const f of forecasts) {
         const overlay = toM06DemandOverlay({
           eventId: f.eventId,
@@ -789,19 +793,20 @@ export class JEDIScoreService {
           })),
         });
 
-        // demand_signal_rent is the M06 key for rent_growth_yoy at T+12mo
-        const rentSignal = overlay['demand_signal_rent'];
-        if (rentSignal && rentSignal.delta !== null && rentSignal.windowMonths === 12) {
-          // delta is a fraction (e.g. 0.04 = 4% rent growth). Scale to score points.
-          const rawBoost = rentSignal.delta * 100 * rentSignal.confidence;
-          totalOverlay += Math.max(-3, Math.min(3, rawBoost));
+        // Apply forecast-derived weights for each M06 demand key, replacing the static default.
+        // Precedence: M35 forecast weight overrides demand_signal_weights.base_weight for
+        // the same event type when confidence >= 0.50.
+        for (const [, signal] of Object.entries(overlay)) {
+          if (signal.delta === null || signal.confidence < 0.50) continue;
+          // delta is fractional (e.g. 0.04 = 4% rent growth); scale to score points.
+          const pointContrib = signal.delta * 100 * signal.confidence;
+          m35Impact += Math.max(-3, Math.min(3, pointContrib));
         }
       }
 
-      const capped = Math.max(-5, Math.min(5, totalOverlay));
-      return Math.max(0, Math.min(100, demandScore + capped));
+      return Math.max(-5, Math.min(5, m35Impact));
     } catch {
-      return demandScore;
+      return 0;
     }
   }
 

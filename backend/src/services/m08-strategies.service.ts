@@ -619,21 +619,48 @@ function buildM35EventTimingNarrative(forecasts: EventForecast[]): string {
 
   const lines: string[] = [];
   for (const f of forecasts) {
+    const rentMetrics = f.metrics.filter(
+      m => m.pointEstimate !== null && m.metricKey === 'rent_growth_yoy',
+    ).sort((a, b) => a.windowMonths - b.windowMonths);
+
     const peakMetric = f.metrics
       .filter(m => m.pointEstimate !== null && m.windowMonths <= 24)
       .sort((a, b) => Math.abs(b.pointEstimate ?? 0) - Math.abs(a.pointEstimate ?? 0))[0];
+
+    const supplyMetric = f.metrics.find(
+      m => (m.metricKey === 'permits_issued' || m.metricKey === 'deliveries') &&
+           m.pointEstimate !== null && m.pointEstimate > 0,
+    );
 
     if (!peakMetric) continue;
 
     const label = getDisplayLabel(peakMetric.metricKey);
     const formatted = formatMetricValue(peakMetric.metricKey, peakMetric.pointEstimate!);
-    const window = `T+${peakMetric.windowMonths}mo`;
+    const peakWindow = `T+${peakMetric.windowMonths}mo`;
     const conf = Math.round(peakMetric.confidence * 100);
 
+    // Entry window: enter before peak lift materialises (6mo lead recommended)
+    const entryLead = Math.max(0, peakMetric.windowMonths - 6);
+    const entryWindow = entryLead === 0 ? 'immediately (lift already underway)' : `within T+${entryLead}mo`;
+
+    // Supply-response warning: elevated permits/deliveries post-event signal competitive supply risk
+    const supplyWarning = supplyMetric
+      ? ` Supply-response risk: ${getDisplayLabel(supplyMetric.metricKey)} expected ${formatMetricValue(supplyMetric.metricKey, supplyMetric.pointEstimate!)} at T+${supplyMetric.windowMonths}mo — underwrite conservatively on exit cap.`
+      : '';
+
+    // Early rent trajectory (T+3mo) if available
+    const earlyRent = rentMetrics.find(m => m.windowMonths === 3);
+    const earlyNote = earlyRent
+      ? ` Early rent signal: ${formatMetricValue('rent_growth_yoy', earlyRent.pointEstimate!)} at T+3mo.`
+      : '';
+
     lines.push(
-      `M35 playbook [${f.subtype}]: "${f.eventName}" peaks at ${window} ` +
-      `with ${label} ${formatted} (${conf}% confidence). ` +
-      `Align exit target to capture full ${label} lift.`
+      `M35 [${f.subtype}]: "${f.eventName}" — ` +
+      `Entry window: ${entryWindow}. ` +
+      `Peak ${label} ${formatted} at ${peakWindow} (${conf}% confidence). ` +
+      `Align exit target to capture full lift.` +
+      earlyNote +
+      supplyWarning
     );
   }
 
