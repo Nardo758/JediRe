@@ -325,8 +325,10 @@ export async function runBacktestForEvent(eventId: string): Promise<{ processed:
       // insufficient_data when coverage is low OR DiD baseline could not be computed
       const rowStatus      = (dataCoverage < MIN_DATA_COVERAGE || actualValue == null) ? 'insufficient_data' : 'evaluated';
       const forecastMedian = fc.point_estimate != null ? parseFloat(fc.point_estimate) : null;
-      const forecastP25    = fc.ci_low         != null ? parseFloat(fc.ci_low)         : null;
-      const forecastP75    = fc.ci_high        != null ? parseFloat(fc.ci_high)        : null;
+      // Fall back to playbook p25/p75 when forecast-specific CI bounds are absent,
+      // so confidence updates remain possible even if event_forecasts lacks CI columns.
+      const forecastP25    = fc.ci_low  != null ? parseFloat(fc.ci_low)  : (fc.p25 != null ? parseFloat(fc.p25) : null);
+      const forecastP75    = fc.ci_high != null ? parseFloat(fc.ci_high) : (fc.p75 != null ? parseFloat(fc.p75) : null);
 
       let error: number | null = null, errorPct: number | null = null;
       let hitWithinCi: boolean | null = null;
@@ -389,12 +391,22 @@ export async function runMonthlyBacktest(): Promise<{
   totalSkipped: number;
 }> {
   const pool = getPool();
+  // Only process events that have at least one milestone window not yet 'evaluated',
+  // reducing unnecessary work on fully-evaluated events on repeat runs.
   const evRes = await pool.query<{ id: string }>(
-    `SELECT id FROM key_events
-     WHERE announced_date IS NOT NULL
-       AND announced_date + INTERVAL '12 months' <= NOW()
-       AND status NOT IN ('cancelled','reversed')
-     ORDER BY announced_date ASC`
+    `SELECT DISTINCT ke.id FROM key_events ke
+     WHERE ke.announced_date IS NOT NULL
+       AND ke.status NOT IN ('cancelled','reversed')
+       AND EXISTS (
+         SELECT 1 FROM (VALUES (12::int),(24::int),(36::int)) AS w(wm)
+         WHERE ke.announced_date + (w.wm || ' months')::INTERVAL <= NOW()
+           AND NOT EXISTS (
+             SELECT 1 FROM playbook_backtest_results pbr
+             WHERE pbr.event_id = ke.id AND pbr.window_months = w.wm
+               AND pbr.status = 'evaluated'
+           )
+       )
+     ORDER BY ke.id`
   );
 
   let eventsProcessed = 0, totalProcessed = 0, totalSkipped = 0;
