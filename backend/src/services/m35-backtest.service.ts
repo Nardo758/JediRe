@@ -36,15 +36,18 @@ function stdDev(arr: number[]): number {
 
 // ─── DiD actual computation ───────────────────────────────────────────────────
 // Returns (treatPost−treatPre) − avg(ctrlPost−ctrlPre) for the given metric.
-// Also returns dataCoverage = actualPoints / expectedMonthlyPoints.
+// dataCoverage = actual window-period points / windowMonths (measurement window only).
+// geography_type filter mirrors the impact service pattern for consistency.
 
 async function computeDiDActual(
   pool: any,
+  geographyType: string,
   geographyId: string,
   controlGeoIds: string[],
   metricKey: string,
   announcedDate: Date,
-  milestoneDate: Date
+  milestoneDate: Date,
+  windowMonths: number
 ): Promise<{ actualValue: number | null; dataCoverage: number }> {
   const metricId  = resolveMetricId(metricKey);
   const preStart  = new Date(announcedDate);
@@ -53,26 +56,24 @@ async function computeDiDActual(
   const postStart = new Date(announcedDate);
   const postEnd   = new Date(milestoneDate);
 
-  const expectedMonths =
-    (postEnd.getFullYear() - preStart.getFullYear()) * 12 +
-    (postEnd.getMonth()    - preStart.getMonth());
-
+  // Coverage is measured over the window period only (postStart→postEnd), not pre+post
   const countRes = await pool.query(
     `SELECT COUNT(*) AS cnt
      FROM metric_time_series
-     WHERE metric_id = $1 AND geography_id = $2
-       AND period_date BETWEEN $3 AND $4`,
-    [metricId, geographyId, preStart, postEnd]
+     WHERE metric_id = $1 AND geography_type = $2 AND geography_id = $3
+       AND period_date BETWEEN $4 AND $5`,
+    [metricId, geographyType, geographyId, postStart, postEnd]
   );
-  const dataCoverage = Math.min(1, parseInt(countRes.rows[0]?.cnt ?? '0') / Math.max(expectedMonths, 1));
+  const dataCoverage = Math.min(1, parseInt(countRes.rows[0]?.cnt ?? '0') / Math.max(windowMonths, 1));
 
   const treatRes = await pool.query(
     `SELECT
-       AVG(value) FILTER (WHERE period_date BETWEEN $3 AND $4) AS pre_avg,
-       AVG(value) FILTER (WHERE period_date BETWEEN $5 AND $6) AS post_avg
+       AVG(value) FILTER (WHERE period_date BETWEEN $4 AND $5) AS pre_avg,
+       AVG(value) FILTER (WHERE period_date BETWEEN $6 AND $7) AS post_avg
      FROM metric_time_series
-     WHERE metric_id = $1 AND geography_id = $2 AND period_date BETWEEN $3 AND $6`,
-    [metricId, geographyId, preStart, preEnd, postStart, postEnd]
+     WHERE metric_id = $1 AND geography_type = $2 AND geography_id = $3
+       AND period_date BETWEEN $4 AND $7`,
+    [metricId, geographyType, geographyId, preStart, preEnd, postStart, postEnd]
   );
   const treat = treatRes.rows[0];
   if (!treat || treat.pre_avg == null || treat.post_avg == null) {
@@ -84,12 +85,12 @@ async function computeDiDActual(
 
   const ctrlRes = await pool.query(
     `SELECT
-       AVG(value) FILTER (WHERE period_date BETWEEN $3 AND $4) AS pre_avg,
-       AVG(value) FILTER (WHERE period_date BETWEEN $5 AND $6) AS post_avg
+       AVG(value) FILTER (WHERE period_date BETWEEN $4 AND $5) AS pre_avg,
+       AVG(value) FILTER (WHERE period_date BETWEEN $6 AND $7) AS post_avg
      FROM metric_time_series
-     WHERE metric_id = $1 AND geography_id = ANY($2::text[])
-       AND period_date BETWEEN $3 AND $6`,
-    [metricId, controlGeoIds, preStart, preEnd, postStart, postEnd]
+     WHERE metric_id = $1 AND geography_type = $2 AND geography_id = ANY($3::text[])
+       AND period_date BETWEEN $4 AND $7`,
+    [metricId, geographyType, controlGeoIds, preStart, preEnd, postStart, postEnd]
   );
   const ctrl = ctrlRes.rows[0];
   if (!ctrl || ctrl.pre_avg == null || ctrl.post_avg == null) {
@@ -153,16 +154,18 @@ async function widenCIIfNeeded(
 async function detectRegimeShift(
   pool: any, subtype: string, metricKey: string, windowMonths: number
 ): Promise<void> {
+  // Use error_pct (percentage error) so avg_pct_error column carries true pct semantics
   const res = await pool.query(
-    `SELECT error FROM playbook_backtest_results
+    `SELECT error, error_pct FROM playbook_backtest_results
      WHERE subtype = $1 AND metric_key = $2 AND window_months = $3
-       AND status = 'evaluated' AND error IS NOT NULL
+       AND status = 'evaluated' AND error IS NOT NULL AND error_pct IS NOT NULL
      ORDER BY ran_at DESC LIMIT $4`,
     [subtype, metricKey, windowMonths, REGIME_WINDOW]
   );
   if (res.rows.length < REGIME_WINDOW) return;
 
   const errors: number[] = res.rows.map((r: any) => parseFloat(r.error));
+  const errorPcts: number[] = res.rows.map((r: any) => parseFloat(r.error_pct));
   const allNegative = errors.every(e => e < 0); // actual < forecast → over-predicted
   const allPositive = errors.every(e => e > 0); // actual > forecast → under-predicted
   if (!allNegative && !allPositive) return;
@@ -171,7 +174,7 @@ async function detectRegimeShift(
   // Per-point threshold: each individual error must exceed 1× std
   if (!errors.every(e => Math.abs(e) > stdErr)) return;
 
-  const avgErr = mean(errors);
+  const avgPctErr = mean(errorPcts); // true average percent error for avg_pct_error column
 
   const existing = await pool.query(
     `SELECT id FROM regime_shift_alerts
@@ -190,21 +193,21 @@ async function detectRegimeShift(
         sample_size, consecutive_misses, resolved, status, detected_at)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8,FALSE,'open',$9)`,
     [alertId, subtype, metricKey, windowMonths, direction,
-     avgErr.toFixed(6), stdErr.toFixed(6), REGIME_WINDOW, detectedAt]
+     avgPctErr.toFixed(6), stdErr.toFixed(6), REGIME_WINDOW, detectedAt]
   );
 
   const msg: M35RegimeShiftDetectedMessage = {
     eventId: alertId, eventType: 'M35_REGIME_SHIFT_DETECTED', timestamp: detectedAt,
     alertId, subtype, metricKey, windowMonths,
     biasDirection: direction as 'over' | 'under',
-    avgError: avgErr, stdError: stdErr, sampleSize: REGIME_WINDOW, detectedAt,
+    avgError: avgPctErr, stdError: stdErr, sampleSize: REGIME_WINDOW, detectedAt,
   };
   try {
     await kafkaProducer.publish(KAFKA_TOPICS.M35_REGIME_SHIFT_DETECTED, msg, { key: alertId });
   } catch (e) {
     logger.warn('[M35 Backtest] Kafka publish failed for regime shift (non-fatal)', { alertId });
   }
-  logger.warn('[M35 Backtest] Regime shift detected', { alertId, subtype, metricKey, windowMonths, direction, avgErr, stdErr });
+  logger.warn('[M35 Backtest] Regime shift detected', { alertId, subtype, metricKey, windowMonths, direction, avgPctErr, stdErr });
 }
 
 // ─── runBacktestForEvent ──────────────────────────────────────────────────────
@@ -223,11 +226,12 @@ export async function runBacktestForEvent(eventId: string): Promise<{ processed:
   const ev = evRes.rows[0];
   if (!ev.subtype || !ev.announced_date || CANCELLED_STATUSES.has(ev.status)) return { processed, skipped };
 
-  const announcedDate = new Date(ev.announced_date);
-  const geographyId   = ev.submarket_id ?? ev.msa_id ?? '';
-  const now           = new Date();
+  const announcedDate  = new Date(ev.announced_date);
+  const geographyId    = ev.submarket_id ?? ev.msa_id ?? '';
+  const geographyType  = ev.submarket_id ? 'submarket' : 'msa'; // mirrors impact service pattern
+  const now            = new Date();
 
-  // Control geographies for DiD
+  // Control geographies for DiD (same geography_type as treatment)
   const ctrlRes = await pool.query(
     `SELECT control_geography_id FROM event_control_groups WHERE event_id = $1 AND is_included = true`,
     [eventId]
@@ -269,7 +273,7 @@ export async function runBacktestForEvent(eventId: string): Promise<{ processed:
       const prevStatus: string | null = prevRes.rows[0]?.status ?? null;
 
       const { actualValue, dataCoverage } = await computeDiDActual(
-        pool, geographyId, controlGeoIds, metricKey, announcedDate, milestoneDate
+        pool, geographyType, geographyId, controlGeoIds, metricKey, announcedDate, milestoneDate, windowMonths
       );
 
       const rowStatus      = dataCoverage < MIN_DATA_COVERAGE ? 'insufficient_data' : 'evaluated';
