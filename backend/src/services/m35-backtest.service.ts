@@ -6,6 +6,20 @@ import { kafkaProducer } from './kafka/kafka-producer.service';
 import { KAFKA_TOPICS, type M35RegimeShiftDetectedMessage } from './kafka/event-schemas';
 import { resolveMetricId } from './m35-impact.service';
 
+// ─── Contract note ────────────────────────────────────────────────────────────
+// Column name mapping (playbook_backtest_results vs task-spec wording):
+//   forecast_median  ↔ forecast_delta     (point estimate from event_forecasts)
+//   actual_value     ↔ actual_delta        (DiD-attributed observed delta)
+//   hit_within_ci    ↔ within_ci           (actual falls inside [forecast_p25, forecast_p75])
+//   data_coverage    ↔ data_coverage_pct   (stored as fraction 0-1; multiply ×100 for %)
+//   error_pct        ↔ pct_error           ((actual-forecast)/|forecast|×100)
+//
+// Regime detection semantics: detectRegimeShift() operates at the subtype level —
+// it checks the last REGIME_WINDOW evaluated rows across ALL metric_key/window_months
+// combinations for that subtype. The metric_key/window_months stored in the alert record
+// reflect the triggering context (the row that caused the check to run), not a
+// per-metric restriction on the alert scope.
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const BACKTEST_WINDOWS    = [12, 24, 36] as const;
@@ -16,6 +30,7 @@ const EVIDENCE_HIT        = 0.85;
 const EVIDENCE_MISS       = 0.25;
 const HIT_RATE_THRESHOLD  = 0.55;
 const CI_WIDEN_FACTOR     = 1.20;
+const CI_WIDEN_MAX_HALF   = 3.0; // CI half-width cap: cannot exceed 3× |median_delta|
 const REGIME_WINDOW       = 5;
 const CANCELLED_STATUSES  = new Set(['cancelled', 'reversed']);
 
@@ -183,7 +198,10 @@ async function widenCIIfNeeded(
   if (!pb.rows.length || pb.rows[0].median_delta == null || pb.rows[0].p25 == null || pb.rows[0].p75 == null) return;
 
   const med     = parseFloat(pb.rows[0].median_delta);
-  const newHalf = (parseFloat(pb.rows[0].p75) - parseFloat(pb.rows[0].p25)) * CI_WIDEN_FACTOR / 2;
+  const rawHalf = (parseFloat(pb.rows[0].p75) - parseFloat(pb.rows[0].p25)) * CI_WIDEN_FACTOR / 2;
+  // Cap: half-width cannot exceed CI_WIDEN_MAX_HALF × |median_delta| to prevent runaway expansion
+  const maxHalf = Math.abs(med) * CI_WIDEN_MAX_HALF;
+  const newHalf = maxHalf > 0 ? Math.min(rawHalf, maxHalf) : rawHalf;
   await pool.query(
     `UPDATE event_playbooks SET p25 = $1, p75 = $2, last_updated = NOW() WHERE id = $3`,
     [(med - newHalf).toFixed(6), (med + newHalf).toFixed(6), playbookId]
