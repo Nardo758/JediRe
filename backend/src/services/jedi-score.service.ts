@@ -13,7 +13,6 @@
  */
 
 import { query, getPool } from '../database/connection';
-import { getMsaActiveForecasts } from './m35-forecast.service';
 import { toM06DemandOverlay } from './m35-metric-mapping';
 
 // ============================================================================
@@ -787,29 +786,66 @@ export class JEDIScoreService {
   ): Promise<Record<string, { delta: number | null; confidence: number; windowMonths: number }>> {
     try {
       const pool = getPool();
-      const msaRes = await pool.query<{ msa_id: string | null }>(
-        `SELECT deal_data->>'msaId' AS msa_id FROM deals WHERE id = $1 LIMIT 1`,
+
+      const dealRes = await pool.query<{ submarket_id: string | null; msa_id: string | null }>(
+        `SELECT deal_data->>'submarketId' AS submarket_id,
+                deal_data->>'msaId'        AS msa_id
+         FROM deals WHERE id = $1 LIMIT 1`,
         [dealId]
       );
-      const msaId = msaRes.rows[0]?.msa_id ?? null;
-      if (!msaId) return {};
+      const { submarket_id: submarketId, msa_id: msaId } = dealRes.rows[0] ?? {};
 
-      const forecasts = await getMsaActiveForecasts(msaId);
-      if (forecasts.length === 0) return {};
+      // Prefer submarket-scoped key events (event-specific), fall back to MSA.
+      let rows: Array<{ event_id: string; subtype: string; metric_key: string; window_months: string; point_estimate: string | null; confidence: string }> = [];
 
-      // Merge overlays from all active forecasts; higher-confidence signals win.
-      const merged: Record<string, { delta: number | null; confidence: number; windowMonths: number }> = {};
-      for (const f of forecasts) {
-        const overlay = toM06DemandOverlay({
-          eventId: f.eventId,
-          subtype: f.subtype,
-          metrics: f.metrics.map(m => ({
-            metricKey: m.metricKey,
-            windowMonths: m.windowMonths,
-            pointEstimate: m.pointEstimate,
-            confidence: m.confidence,
-          })),
+      if (submarketId) {
+        const res = await pool.query<typeof rows[0]>(
+          `SELECT ke.id AS event_id, ke.subtype, ef.metric_key,
+                  ef.window_months, ef.point_estimate, ef.confidence
+           FROM event_forecasts ef
+           JOIN key_events ke ON ke.id = ef.event_id
+           WHERE ef.status = 'active'
+             AND ke.submarket_id = $1
+             AND ke.status IN ('announced','in_progress','materialized')`,
+          [submarketId]
+        );
+        rows = res.rows;
+      }
+
+      if (rows.length === 0 && msaId) {
+        const res = await pool.query<typeof rows[0]>(
+          `SELECT ke.id AS event_id, ke.subtype, ef.metric_key,
+                  ef.window_months, ef.point_estimate, ef.confidence
+           FROM event_forecasts ef
+           JOIN key_events ke ON ke.id = ef.event_id
+           WHERE ef.status = 'active'
+             AND ke.msa_id = $1
+             AND ke.status IN ('announced','in_progress','materialized')`,
+          [msaId]
+        );
+        rows = res.rows;
+      }
+
+      if (rows.length === 0) return {};
+
+      // Build per-event forecasts and merge their M06 overlays.
+      // Higher-confidence signal wins for each M06 demand key.
+      const eventMap = new Map<string, { subtype: string; metrics: Array<{ metricKey: string; windowMonths: number; pointEstimate: number | null; confidence: number }> }>();
+      for (const r of rows) {
+        if (!eventMap.has(r.event_id)) {
+          eventMap.set(r.event_id, { subtype: r.subtype, metrics: [] });
+        }
+        eventMap.get(r.event_id)!.metrics.push({
+          metricKey:     r.metric_key,
+          windowMonths:  parseInt(r.window_months),
+          pointEstimate: r.point_estimate !== null ? parseFloat(r.point_estimate) : null,
+          confidence:    parseFloat(r.confidence),
         });
+      }
+
+      const merged: Record<string, { delta: number | null; confidence: number; windowMonths: number }> = {};
+      for (const [eventId, ev] of eventMap) {
+        const overlay = toM06DemandOverlay({ eventId, subtype: ev.subtype, metrics: ev.metrics });
         for (const [key, signal] of Object.entries(overlay)) {
           if (!merged[key] || signal.confidence > merged[key].confidence) {
             merged[key] = { delta: signal.delta, confidence: signal.confidence, windowMonths: signal.windowMonths };

@@ -72,38 +72,70 @@ router.get('/deals/:dealId/events', async (req: Request, res: Response) => {
   try {
     const pool = getPool();
 
-    // Resolve deal's MSA from deal_data or properties
     const dealRes = await pool.query(`
       SELECT d.id, d.name,
-             p.city, p.state,
-             d.deal_data->>'msaId' AS msa_id_from_deal,
-             d.deal_data->>'submarketId' AS submarket_id_from_deal
+             d.deal_data->>'msaId'        AS msa_id,
+             d.deal_data->>'submarketId'  AS submarket_id
       FROM deals d
-      LEFT JOIN deal_properties dp ON dp.deal_id = d.id AND dp.is_primary = true
-      LEFT JOIN properties p ON p.id = dp.property_id
       WHERE d.id = $1
       LIMIT 1
     `, [req.params.dealId]);
 
     if (!dealRes.rows[0]) return res.status(404).json({ error: 'Deal not found' });
 
-    const deal = dealRes.rows[0];
-    const msaId = deal.msa_id_from_deal ?? null;
+    const { msa_id: msaId, submarket_id: submarketId } = dealRes.rows[0];
 
-    if (!msaId) {
-      return res.json({ events: [], forecasts: [], message: 'No MSA resolved for this deal' });
+    if (!msaId && !submarketId) {
+      return res.json({ dealId: req.params.dealId, events: [], message: 'No MSA or submarket resolved for this deal' });
     }
 
-    const forecasts = await getMsaActiveForecasts(msaId);
-    const events = await pool.query(`
+    // Prefer submarket-scoped events; fall back to MSA-scoped.
+    const scope = submarketId
+      ? { column: 'submarket_id', value: submarketId }
+      : { column: 'msa_id', value: msaId };
+
+    const eventsRes = await pool.query(`
       SELECT id, name, category, subtype, status, announced_date, magnitude_value, magnitude_unit, confidence
       FROM key_events
-      WHERE msa_id = $1 AND status IN ('announced', 'in_progress', 'materialized')
+      WHERE ${scope.column} = $1 AND status IN ('announced', 'in_progress', 'materialized')
       ORDER BY announced_date DESC
-      LIMIT 20
-    `, [msaId]);
+    `, [scope.value]);
 
-    res.json({ dealId: req.params.dealId, msaId, events: events.rows, forecasts });
+    // Attach active forecast metrics to each event (per-event binding).
+    const eventsWithForecasts = await Promise.all(
+      eventsRes.rows.map(async (ev) => {
+        const forecastRes = await pool.query(`
+          SELECT metric_key, window_months, point_estimate, ci_low, ci_high, confidence
+          FROM event_forecasts
+          WHERE event_id = $1 AND status = 'active'
+          ORDER BY metric_key, window_months
+        `, [ev.id]);
+
+        return {
+          ...ev,
+          forecast: forecastRes.rows.length > 0
+            ? {
+                metrics: forecastRes.rows.map(r => ({
+                  metricKey:     r.metric_key,
+                  windowMonths:  parseInt(r.window_months),
+                  pointEstimate: r.point_estimate !== null ? parseFloat(r.point_estimate) : null,
+                  ciLow:         r.ci_low !== null ? parseFloat(r.ci_low) : null,
+                  ciHigh:        r.ci_high !== null ? parseFloat(r.ci_high) : null,
+                  confidence:    parseFloat(r.confidence),
+                })),
+              }
+            : null,
+        };
+      })
+    );
+
+    res.json({
+      dealId: req.params.dealId,
+      msaId,
+      submarketId: submarketId ?? null,
+      scope: scope.column,
+      events: eventsWithForecasts,
+    });
   } catch (err) {
     logger.error('[M35 Forecasts] Error fetching deal events:', err);
     res.status(500).json({ error: 'Failed to fetch deal events' });

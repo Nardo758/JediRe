@@ -47,7 +47,7 @@ async function bustAndRecomputeForMsa(msaId: string): Promise<void> {
 
       const results = await Promise.allSettled(
         res.rows.map(r =>
-          jediScoreService.calculateScore({ dealId: r.id, tradeAreaId: r.trade_area_id ?? undefined })
+          jediScoreService.calculateAndSave({ dealId: r.id, tradeAreaId: r.trade_area_id ?? undefined })
         )
       );
 
@@ -89,20 +89,9 @@ const forecastDivergedHandler: MessageHandler = async (event: any) => {
 
   const msaId: string | undefined = event.msaId;
   if (msaId) {
-    // On divergence, bust caches only — full recompute triggered by operator or next forecast.created.
-    // Paginate to cover all deals without a hard cap.
-    const pool = getPool();
-    let pg = 0;
-    while (true) {
-      const res = await pool.query(
-        `SELECT id FROM deals WHERE deal_data->>'msaId' = $1 AND status NOT IN ('archived','deleted') LIMIT 50 OFFSET $2`,
-        [msaId, pg * 50]
-      ).catch(() => ({ rows: [] as Array<{ id: string }> }));
-      if (res.rows.length === 0) break;
-      for (const row of res.rows) bustM08Cache(row.id);
-      if (res.rows.length < 50) break;
-      pg++;
-    }
+    // Divergence means forecast accuracy drifted; recompute JEDI scores and bust caches
+    // so downstream consumers see updated persisted scores with revised M35 weights.
+    await bustAndRecomputeForMsa(msaId);
   }
 };
 
