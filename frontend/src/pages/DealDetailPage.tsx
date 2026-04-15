@@ -63,6 +63,7 @@ import { TrendsAnalysisSection } from '../components/deal/sections/TrendsAnalysi
 import OpportunityEngineSection from '../components/deal/sections/OpportunityEngineSection';
 import { TrafficModule } from '../components/deal/sections/TrafficModule';
 import { ExitCapitalModule } from '../components/deal/sections/ExitCapitalModule';
+import { ExitIntelModule } from '../components/deal/sections/ExitIntelModule';
 
 import { StrategyArbitragePage } from './development/StrategyArbitragePage';
 import { RiskDDPage } from './development/RiskDDPage';
@@ -174,17 +175,17 @@ const ProFormaScreen = (props: ScreenProps) => (
 const DebtCapitalScreen = (props: ScreenProps) => (
   <DealScreenWrapper
     passProps={props}
-    moduleTitle="DEBT & CAPITAL"
-    moduleSubtitle="M11+M12 · EXIT STRATEGY + DEBT MARKET"
+    moduleTitle="EXIT INTELLIGENCE"
+    moduleSubtitle="F8 · KEY EVENTS + EXIT WINDOW ANALYSIS"
     moduleBorderColor={BT.text.cyan}
     moduleMetrics={[
-      { l: 'RSS', c: BT.text.cyan },
-      { l: 'IRR', c: BT.met.financial },
-      { l: 'EXIT', c: BT.text.amber },
+      { l: 'OPTIMAL EXIT', c: BT.text.cyan },
+      { l: 'RSS', c: BT.met.financial },
+      { l: 'IRR', c: BT.text.amber },
     ]}
     accentColor={BT.text.cyan}
     tabs={[
-      { id: 'exit', label: 'Exit & Debt Analysis', component: (p: ScreenProps) => <ExitCapitalModule dealId={p.dealId} deal={p.deal} dealType={p.dealType} /> },
+      { id: 'exit-intel', label: 'Exit Intelligence', component: (p: ScreenProps) => <ExitIntelModule dealId={p.dealId} deal={p.deal} dealType={p.dealType} /> },
     ]}
   />
 );
