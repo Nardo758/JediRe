@@ -1113,10 +1113,12 @@ function PMixBar({ proposed, market, color }: { proposed: number; market: number
   const pW = (proposed / maxVal) * 100;
   const mW = (market / maxVal) * 100;
   return (
-    <div style={{ position: "relative", height: 18, width: "100%" }}>
-      <div style={{ position: "absolute", left: `${mW}%`, top: 0, bottom: 0, width: 1, background: PC.dim, zIndex: 2, opacity: 0.5 }} />
-      <div style={{ position: "absolute", left: `calc(${mW}% + 3px)`, top: 0, fontSize: 8, fontFamily: pmono, color: PC.faint, whiteSpace: "nowrap" as const }}>MKT {market.toFixed(0)}%</div>
-      <div style={{ position: "absolute", left: 0, top: 6, height: 6, width: `${pW}%`, background: color, borderRadius: 1, opacity: 0.8, transition: "width 0.3s ease" }} />
+    <div style={{ width: "100%" }}>
+      <div style={{ position: "relative", height: 6, width: "100%", background: PC.bg, borderRadius: 1 }}>
+        <div style={{ position: "absolute", left: `${mW}%`, top: -2, bottom: -2, width: 1, background: PC.dim, zIndex: 2, opacity: 0.6 }} />
+        <div style={{ position: "absolute", left: 0, top: 0, height: "100%", width: `${pW}%`, background: color, borderRadius: 1, opacity: 0.8, transition: "width 0.3s ease" }} />
+      </div>
+      <div style={{ fontSize: 7, fontFamily: pmono, color: PC.faint, marginTop: 2, letterSpacing: 0.3 }}>MKT {market.toFixed(0)}%</div>
     </div>
   );
 }
