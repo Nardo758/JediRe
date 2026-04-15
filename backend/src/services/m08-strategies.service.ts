@@ -22,7 +22,7 @@ import {
 import { buildEvidenceReport, DealContext, EvidenceReport } from './evidence-report.service';
 import { formulatePlan, PlanContext, StrategyPlan } from './plan-formulator.service';
 import { getSignalAdapter } from './signal-adapters.service';
-import { getMsaActiveForecasts, type EventForecast } from './m35-forecast.service';
+import { getMsaActiveForecasts, type EventForecast, type ForecastMetricWindow } from './m35-forecast.service';
 import { getDisplayLabel, formatMetricValue } from './m35-metric-mapping';
 
 // ─── Section 8 contract types ─────────────────────────────────────────────────
@@ -612,6 +612,66 @@ function buildNarrative(deal: Record<string, any>, detection: DetectionResult, s
     ` Execute the phased value-creation plan and register the monitoring triggers with the alert system.`;
 }
 
+// ─── M35 submarket forecast helper ───────────────────────────────────────────
+
+interface SubmarketForecastRow {
+  event_id: string;
+  name: string;
+  subtype: string;
+  metric_key: string;
+  window_months: string;
+  point_estimate: string | null;
+  ci_low: string | null;
+  ci_high: string | null;
+  confidence: string | null;
+}
+
+async function getSubmarketScopedForecasts(
+  pool: Pool,
+  submarketId: string,
+  fallbackMsaId: string | null,
+): Promise<EventForecast[]> {
+  const res = await pool.query<SubmarketForecastRow>(
+    `SELECT ke.id AS event_id, ke.name, ke.subtype,
+            ef.metric_key, ef.window_months, ef.point_estimate,
+            ef.ci_low, ef.ci_high, ef.confidence
+     FROM event_forecasts ef
+     JOIN key_events ke ON ke.id = ef.event_id
+     WHERE ef.status = 'active'
+       AND ke.submarket_id = $1
+       AND ke.status IN ('announced','in_progress','materialized')
+     ORDER BY ke.id, ef.metric_key, ef.window_months`,
+    [submarketId]
+  );
+
+  if (res.rows.length === 0 && fallbackMsaId) {
+    return getMsaActiveForecasts(fallbackMsaId);
+  }
+
+  const eventMap = new Map<string, EventForecast>();
+  for (const r of res.rows) {
+    if (!eventMap.has(r.event_id)) {
+      eventMap.set(r.event_id, {
+        eventId: r.event_id, eventName: r.name, subtype: r.subtype,
+        status: 'active', playbookStatus: 'active', overallConfidence: 0,
+        generatedAt: null, metrics: [], actuals: [], derivationSummary: '',
+      });
+    }
+    const metric: ForecastMetricWindow = {
+      metricKey:     r.metric_key,
+      windowMonths:  parseInt(r.window_months),
+      pointEstimate: r.point_estimate !== null ? parseFloat(r.point_estimate) : null,
+      ciLow:         r.ci_low !== null ? parseFloat(r.ci_low) : null,
+      ciHigh:        r.ci_high !== null ? parseFloat(r.ci_high) : null,
+      confidence:    r.confidence !== null ? parseFloat(r.confidence) : 0,
+      statusLabel:   'no_data',
+      derivation:    null,
+    };
+    eventMap.get(r.event_id)!.metrics.push(metric);
+  }
+  return Array.from(eventMap.values());
+}
+
 // ─── M35 event-timing narrative builder ──────────────────────────────────────
 
 function buildM35EventTimingNarrative(forecasts: EventForecast[]): string {
@@ -873,11 +933,17 @@ export async function getStrategiesForDeal(pool: Pool, dealId: string): Promise<
     coordinatorNarrative: buildNarrative(deal, detection, subStrategies, arbitrage),
   };
 
-  // Append M35 event-timing guidance when active forecasts exist for the deal's MSA.
+  // Append M35 event-timing guidance. Prefer submarket-scoped forecasts;
+  // fall back to MSA-level if no submarket forecasts exist.
   try {
-    const msaId: string | null = (deal.deal_data as Record<string, any>)?.msaId ?? null;
-    if (msaId) {
-      const m35Forecasts = await getMsaActiveForecasts(msaId);
+    const dealData = deal.deal_data as Record<string, string | undefined> | null;
+    const submarketId: string | null = dealData?.submarketId ?? null;
+    const msaId: string | null = dealData?.msaId ?? null;
+
+    if (submarketId || msaId) {
+      const m35Forecasts = submarketId
+        ? await getSubmarketScopedForecasts(pool, submarketId, msaId)
+        : await getMsaActiveForecasts(msaId!);
       const timingNarrative = buildM35EventTimingNarrative(m35Forecasts);
       if (timingNarrative) {
         result.coordinatorNarrative += timingNarrative;

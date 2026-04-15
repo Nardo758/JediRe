@@ -140,6 +140,30 @@ export function fromModuleAlias(moduleId: 'M06' | 'M08' | 'M09', aliasKey: strin
 }
 
 /**
+ * Convert an M35 metric key to the M06-specific alias (e.g. 'demand_signal_rent').
+ * Returns undefined when the metric is not tracked by M06.
+ */
+export function toM06Key(metricKey: string): string | undefined {
+  return Object.entries(MODULE_ALIASES.M06).find(([, v]) => v === metricKey)?.[0];
+}
+
+/**
+ * Convert an M35 metric key to the M08-specific alias (e.g. 'outcome_rent_growth').
+ * Returns undefined when the metric is not tracked by M08.
+ */
+export function toM08Key(metricKey: string): string | undefined {
+  return Object.entries(MODULE_ALIASES.M08).find(([, v]) => v === metricKey)?.[0];
+}
+
+/**
+ * Convert an M35 metric key to the M09-specific alias (e.g. 'mi_rent_growth').
+ * Returns undefined when the metric is not tracked by M09.
+ */
+export function toM09Key(metricKey: string): string | undefined {
+  return Object.entries(MODULE_ALIASES.M09).find(([, v]) => v === metricKey)?.[0];
+}
+
+/**
  * Resolve M35 shorthand → canonical for DB queries.
  * Returns the canonical ID to use in metric_time_series WHERE metric_id = ?
  */

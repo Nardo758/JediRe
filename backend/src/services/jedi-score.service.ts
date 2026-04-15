@@ -163,7 +163,7 @@ export class JEDIScoreService {
     }
 
     // Pre-compute M35 overlay so per-event base_weight can be substituted below.
-    const m35Overlay = await this.getM35KeyEventImpacts(dealId, true);
+    const m35Overlay = await this.getM35Overlay(dealId);
 
     let totalImpact = 0;
 
@@ -202,7 +202,7 @@ export class JEDIScoreService {
         // Substitute static base_weight with M35 forecast-derived weight when active
         // forecast exists for this event category. Falls back to static weight.
         const overlayKey = JEDIScoreService.CATEGORY_TO_OVERLAY_KEY[signal.eventCategory];
-        const m35Signal = overlayKey ? (m35Overlay as Record<string, { delta: number | null; confidence: number } | undefined>)[overlayKey] : undefined;
+        const m35Signal = overlayKey ? m35Overlay[overlayKey] : undefined;
         const effectiveBaseWeight =
           m35Signal && m35Signal.delta !== null && m35Signal.confidence >= 0.50
             ? Math.abs(m35Signal.delta) * 100 * m35Signal.confidence
@@ -778,23 +778,24 @@ export class JEDIScoreService {
 
   /**
    * Query M35 key events for the deal's MSA and return a merged M06 overlay map.
-   * When returnOverlay=true (default), returns the raw overlay for per-signal weight
-   * substitution inside calculateDemandScore. Falls back to {} on any failure.
+   * Keys are M06 demand signal names (e.g. 'demand_signal_rent'); values carry
+   * the highest-confidence attributed_delta and confidence from active forecasts.
+   * Returns {} on any failure so JEDI scoring is never blocked.
    */
-  private async getM35KeyEventImpacts(dealId: string, returnOverlay?: true): Promise<Record<string, { delta: number | null; confidence: number; windowMonths: number }>>;
-  private async getM35KeyEventImpacts(dealId: string, returnOverlay: false): Promise<number>;
-  private async getM35KeyEventImpacts(dealId: string, returnOverlay: boolean = true): Promise<unknown> {
+  private async getM35Overlay(
+    dealId: string,
+  ): Promise<Record<string, { delta: number | null; confidence: number; windowMonths: number }>> {
     try {
       const pool = getPool();
-      const msaRes = await pool.query(
+      const msaRes = await pool.query<{ msa_id: string | null }>(
         `SELECT deal_data->>'msaId' AS msa_id FROM deals WHERE id = $1 LIMIT 1`,
         [dealId]
       );
-      const msaId: string | null = msaRes.rows[0]?.msa_id ?? null;
-      if (!msaId) return returnOverlay ? {} : 0;
+      const msaId = msaRes.rows[0]?.msa_id ?? null;
+      if (!msaId) return {};
 
       const forecasts = await getMsaActiveForecasts(msaId);
-      if (forecasts.length === 0) return returnOverlay ? {} : 0;
+      if (forecasts.length === 0) return {};
 
       // Merge overlays from all active forecasts; higher-confidence signals win.
       const merged: Record<string, { delta: number | null; confidence: number; windowMonths: number }> = {};
@@ -816,18 +817,9 @@ export class JEDIScoreService {
         }
       }
 
-      if (!returnOverlay) {
-        // Legacy numeric path — used nowhere but kept for type signature completeness.
-        let total = 0;
-        for (const [, s] of Object.entries(merged)) {
-          if (s.delta !== null && s.confidence >= 0.50) total += Math.max(-3, Math.min(3, s.delta * 100 * s.confidence));
-        }
-        return Math.max(-5, Math.min(5, total));
-      }
-
       return merged;
     } catch {
-      return returnOverlay ? {} : 0;
+      return {};
     }
   }
 

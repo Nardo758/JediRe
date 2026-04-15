@@ -41,46 +41,62 @@ interface M35ProformaAttribution {
   exitCap:    M35AttributionEntry | null;
 }
 
+interface ForecastRow {
+  event_id: string;
+  event_name: string;
+  subtype: string;
+  metric_key: string;
+  window_months: number;
+  point_estimate: string | null;
+  ci_low: string | null;
+  ci_high: string | null;
+  confidence: string;
+}
+
+function toAttributionEntry(row: ForecastRow): M35AttributionEntry {
+  return {
+    eventId:        row.event_id,
+    eventName:      row.event_name,
+    playbookSubtype: row.subtype,
+    metricKey:      row.metric_key,
+    windowMonths:   Number(row.window_months),
+    pointEstimate:  row.point_estimate !== null ? parseFloat(row.point_estimate) : null,
+    ciLow:          row.ci_low !== null ? parseFloat(row.ci_low) : null,
+    ciHigh:         row.ci_high !== null ? parseFloat(row.ci_high) : null,
+    confidence:     parseFloat(row.confidence),
+  };
+}
+
 async function getM35ProformaAttribution(dealId: string): Promise<M35ProformaAttribution> {
   const pool = getPool();
 
-  const dealRes = await pool.query(
+  const dealRes = await pool.query<{ msa_id: string | null }>(
     `SELECT deal_data->>'msaId' AS msa_id FROM deals WHERE id = $1 LIMIT 1`,
     [dealId]
   );
-  const msaId: string | null = dealRes.rows[0]?.msa_id ?? null;
+  const msaId = dealRes.rows[0]?.msa_id ?? null;
   if (!msaId) return { rentGrowth: null, vacancy: null, exitCap: null };
 
-  const forecastRes = await pool.query(
-    `SELECT ef.id AS forecast_id, ke.id AS event_id, ke.name AS event_name, ke.subtype,
-            efm.metric_key, efm.window_months, efm.point_estimate,
-            efm.ci_low, efm.ci_high, efm.confidence
+  // event_forecasts is flat — one row per (event_id, metric_key, window_months).
+  // No separate event_forecast_metrics table.
+  const forecastRes = await pool.query<ForecastRow>(
+    `SELECT ke.id AS event_id, ke.name AS event_name, ke.subtype,
+            ef.metric_key, ef.window_months, ef.point_estimate,
+            ef.ci_low, ef.ci_high, ef.confidence
      FROM event_forecasts ef
-     JOIN key_events ke     ON ke.id = ef.event_id
-     JOIN event_forecast_metrics efm ON efm.forecast_id = ef.id
+     JOIN key_events ke ON ke.id = ef.event_id
      WHERE ef.status = 'active'
        AND ke.msa_id = $1
        AND ke.status IN ('announced','in_progress','materialized')
-       AND efm.metric_key IN ('rent_growth_yoy','vacancy_rate','cap_rate')
-     ORDER BY efm.confidence DESC`,
+       AND ef.metric_key IN ('rent_growth_yoy','vacancy_rate','cap_rate')
+     ORDER BY ef.confidence DESC`,
     [msaId]
   );
 
-  function pickBest(metricKey: string): M35AttributionEntry | null {
-    const row = forecastRes.rows.find((r: any) => r.metric_key === metricKey);
-    if (!row) return null;
-    return {
-      eventId:        row.event_id,
-      eventName:      row.event_name,
-      playbookSubtype: row.subtype,
-      metricKey:      row.metric_key,
-      windowMonths:   row.window_months,
-      pointEstimate:  row.point_estimate !== null ? parseFloat(row.point_estimate) : null,
-      ciLow:          row.ci_low !== null ? parseFloat(row.ci_low) : null,
-      ciHigh:         row.ci_high !== null ? parseFloat(row.ci_high) : null,
-      confidence:     parseFloat(row.confidence),
-    };
-  }
+  const pickBest = (metricKey: string): M35AttributionEntry | null => {
+    const row = forecastRes.rows.find(r => r.metric_key === metricKey);
+    return row ? toAttributionEntry(row) : null;
+  };
 
   return {
     rentGrowth: pickBest('rent_growth_yoy'),
