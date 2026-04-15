@@ -1302,11 +1302,16 @@ function ProgramDevPanel({ program, computed, zoning, comps, gaps, onProgramChan
 
   const withinEnvelope = totalUnits <= (maxUnits || Infinity) && (maxSF === 0 || totalSF <= maxSF);
 
-  const leaseUpRows = [
+  const leaseUpRows = totalUnits > 0 ? [
     { month: 'Mo 1–3',  absorption: 18, cumulative: 54,  pct: Math.round(54 / totalUnits * 100) },
     { month: 'Mo 4–6',  absorption: 22, cumulative: 120, pct: Math.round(120 / totalUnits * 100) },
     { month: 'Mo 7–9',  absorption: 20, cumulative: 180, pct: Math.round(180 / totalUnits * 100) },
     { month: 'Mo 10–12', absorption: 16, cumulative: 228, pct: Math.round(228 / totalUnits * 100) },
+  ] : [
+    { month: 'Mo 1–3',  absorption: 0, cumulative: 0,  pct: 0 },
+    { month: 'Mo 4–6',  absorption: 0, cumulative: 0, pct: 0 },
+    { month: 'Mo 7–9',  absorption: 0, cumulative: 0, pct: 0 },
+    { month: 'Mo 10–12', absorption: 0, cumulative: 0, pct: 0 },
   ];
 
   return (
@@ -1567,7 +1572,10 @@ function ProgramDevPanel({ program, computed, zoning, comps, gaps, onProgramChan
             <div style={{ fontFamily: pmono, fontSize: 8, color: PC.dim }}>
               {withinEnvelope
                 ? `${maxUnits - totalUnits > 0 ? maxUnits - totalUnits : 0}u headroom · ${maxSF > 0 ? (maxSF - totalSF).toLocaleString() : '—'} SF remaining`
-                : `Exceeds by ${totalUnits - maxUnits}u`}
+                : [
+                    totalUnits > maxUnits ? `${totalUnits - maxUnits}u over limit` : null,
+                    maxSF > 0 && totalSF > maxSF ? `${(totalSF - maxSF).toLocaleString()} SF over limit` : null,
+                  ].filter(Boolean).join(' · ') || `Exceeds envelope`}
             </div>
           </div>
 
