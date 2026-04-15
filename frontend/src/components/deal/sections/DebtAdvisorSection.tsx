@@ -463,7 +463,7 @@ function AdvisorTab({ phases, alternatives, triggers, env, narrativeNotes, strat
   );
 }
 
-function ConfigureTab({ phases }: { phases: DebtPhase[] }) {
+function ConfigureTab({ phases, onOpenLoanBuilder, onAcceptAdvisor }: { phases: DebtPhase[]; onOpenLoanBuilder?: () => void; onAcceptAdvisor?: () => Promise<void> }) {
   const [activePhase, setActivePhase] = useState(0);
   const phase = phases[activePhase];
   if (!phase) return null;
@@ -529,9 +529,27 @@ function ConfigureTab({ phases }: { phases: DebtPhase[] }) {
         </div>
 
         <div style={{ display: 'flex', gap: 8 }}>
-          <button style={{ ...mono, fontSize: 10, padding: '7px 16px', backgroundColor: C.cyan, color: '#0a0a0c', border: 'none', borderRadius: 2, cursor: 'pointer', fontWeight: 700 }}>Lock to ProForma <ArrowRight size={11} style={{ display: 'inline', verticalAlign: 'middle' }} /></button>
+          {onAcceptAdvisor ? (
+            <button
+              onClick={onAcceptAdvisor}
+              style={{ ...mono, fontSize: 10, padding: '7px 16px', backgroundColor: C.cyan, color: '#0a0a0c', border: 'none', borderRadius: 2, cursor: 'pointer', fontWeight: 700 }}
+            >
+              Accept &amp; Open Loan Builder <ArrowRight size={11} style={{ display: 'inline', verticalAlign: 'middle' }} />
+            </button>
+          ) : (
+            <button style={{ ...mono, fontSize: 10, padding: '7px 16px', backgroundColor: C.cyan, color: '#0a0a0c', border: 'none', borderRadius: 2, cursor: 'pointer', fontWeight: 700 }}>
+              Lock to ProForma <ArrowRight size={11} style={{ display: 'inline', verticalAlign: 'middle' }} />
+            </button>
+          )}
           <button style={{ ...mono, fontSize: 10, padding: '7px 14px', backgroundColor: 'transparent', color: C.textMuted, border: `1px solid ${C.border}`, borderRadius: 2, cursor: 'pointer' }}>Export Term Sheet</button>
-          <button style={{ ...mono, fontSize: 10, padding: '7px 14px', backgroundColor: 'transparent', color: C.purple, border: `1px solid ${C.purple}40`, borderRadius: 2, cursor: 'pointer' }}>Add Mezz Tranche</button>
+          {onOpenLoanBuilder && (
+            <button
+              onClick={onOpenLoanBuilder}
+              style={{ ...mono, fontSize: 10, padding: '7px 14px', backgroundColor: 'transparent', color: C.purple, border: `1px solid ${C.purple}40`, borderRadius: 2, cursor: 'pointer' }}
+            >
+              Open Loan Builder
+            </button>
+          )}
         </div>
       </div>
 
@@ -903,11 +921,13 @@ const TAB_LABELS: Record<SubTab, string> = {
 
 interface DebtAdvisorSectionProps {
   dealId: string;
+  onOpenLoanBuilder?: () => void;
+  onAdvisorAccepted?: (loanAmount: number, rate: number) => void;
 }
 
-export function DebtAdvisorSection({ dealId }: DebtAdvisorSectionProps) {
+export function DebtAdvisorSection({ dealId, onOpenLoanBuilder, onAdvisorAccepted }: DebtAdvisorSectionProps) {
   const [activeTab, setActiveTab] = useState<SubTab>('advisor');
-  const { data, loading, error, recompute, refresh } = useDebtAdvisor(dealId);
+  const { data, loading, error, recompute, refresh, accept } = useDebtAdvisor(dealId);
 
   return (
     <div style={{ backgroundColor: C.bg, height: '100%', display: 'flex', flexDirection: 'column', fontFamily: '"IBM Plex Sans", sans-serif' }}>
@@ -966,7 +986,15 @@ export function DebtAdvisorSection({ dealId }: DebtAdvisorSectionProps) {
               />
             )}
             {activeTab === 'configure' && (
-              <ConfigureTab phases={data.recommendedStack} />
+              <ConfigureTab
+                phases={data.recommendedStack}
+                onOpenLoanBuilder={onOpenLoanBuilder}
+                onAcceptAdvisor={async () => {
+                  await accept(0);
+                  onAdvisorAccepted?.(data.summary.initialLoanAmount, data.summary.blendedAllInRate);
+                  onOpenLoanBuilder?.();
+                }}
+              />
             )}
             {activeTab === 'sensitivity' && (
               <SensitivityTab />
