@@ -1011,12 +1011,12 @@ function RepositioningPanel({ umComps, umGaps, umProgram, data, onProgramChange 
 }
 
 const PC = {
-  bg: '#0A0E17', surface: '#0F1319', card: '#131821', elevated: '#1a2130',
-  border: '#1E2538', borderSub: '#161c24', muted: '#2A3348',
-  text: '#E8ECF1', dim: '#6B7A8D', faint: '#4A566B', accent: '#c2c0b6',
-  studio: '#A78BFA', oneBR: '#00BCD4', twoBR: '#00D26A', threeBR: '#F5A623',
-  subject: '#FF8C42', green: '#00D26A', red: '#FF4757', yellow: '#F5A623', blue: '#00BCD4',
-  purple: '#A78BFA',
+  bg: '#0a0a0c', surface: '#111114', card: '#13131a', elevated: '#1a1a22',
+  border: '#1e1e24', borderSub: '#13131a', muted: '#2a2a35',
+  text: '#e2e8f0', dim: '#64748b', faint: '#64748b', accent: '#e2e8f0',
+  studio: '#a855f7', oneBR: '#00e5a0', twoBR: '#22c55e', threeBR: '#f59e0b',
+  subject: '#f97316', green: '#22c55e', red: '#ef4444', yellow: '#f59e0b', blue: '#00e5a0',
+  purple: '#a855f7',
 };
 const pmono = "'JetBrains Mono','Fira Code','SF Mono',monospace";
 
