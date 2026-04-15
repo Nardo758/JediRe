@@ -1017,7 +1017,10 @@ httpServer.listen(Number(PORT), '0.0.0.0', async () => {
   // M35 Phase 5: monthly backtest — fires on the 1st of each month at 01:00 UTC
   function scheduleM35BacktestJob() {
     const now = new Date();
-    const nextRun = new Date(Date.UTC(
+    // Use this month's slot (1st at 01:00 UTC) if we haven't passed it yet;
+    // otherwise fall through to next month so we never skip a run on startup
+    const thisMonthSlot = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 1, 0, 0, 0));
+    const nextRun = now < thisMonthSlot ? thisMonthSlot : new Date(Date.UTC(
       now.getUTCMonth() === 11 ? now.getUTCFullYear() + 1 : now.getUTCFullYear(),
       now.getUTCMonth() === 11 ? 0 : now.getUTCMonth() + 1,
       1, 1, 0, 0, 0

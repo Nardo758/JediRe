@@ -227,8 +227,8 @@ export async function runBacktestForEvent(eventId: string): Promise<{ processed:
   if (!ev.subtype || !ev.announced_date || CANCELLED_STATUSES.has(ev.status)) return { processed, skipped };
 
   const announcedDate  = new Date(ev.announced_date);
-  const geographyId    = ev.submarket_id ?? ev.msa_id ?? '';
-  const geographyType  = ev.submarket_id ? 'submarket' : (ev.msa_id ? 'metro' : 'national'); // mirrors impact service
+  const geographyType  = ev.submarket_id ? 'submarket' : (ev.msa_id ? 'metro' : 'national');
+  const geographyId    = ev.submarket_id ?? ev.msa_id ?? 'national'; // 'national' when no specific geo
   const now            = new Date();
 
   // Control geographies for DiD (same geography_type as treatment)
@@ -276,7 +276,8 @@ export async function runBacktestForEvent(eventId: string): Promise<{ processed:
         pool, geographyType, geographyId, controlGeoIds, metricKey, announcedDate, milestoneDate, windowMonths
       );
 
-      const rowStatus      = dataCoverage < MIN_DATA_COVERAGE ? 'insufficient_data' : 'evaluated';
+      // insufficient_data when coverage is low OR DiD baseline could not be computed
+      const rowStatus = (dataCoverage < MIN_DATA_COVERAGE || actualValue == null) ? 'insufficient_data' : 'evaluated';
       const forecastMedian = fc.point_estimate != null ? parseFloat(fc.point_estimate) : null;
       const forecastP25    = fc.ci_low         != null ? parseFloat(fc.ci_low)         : null;
       const forecastP75    = fc.ci_high        != null ? parseFloat(fc.ci_high)        : null;
