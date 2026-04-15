@@ -181,14 +181,18 @@ async function widenCIIfNeeded(
   const hitRate = parseInt(hr.rows[0].hits ?? '0') / total;
   if (hitRate >= HIT_RATE_THRESHOLD) return;
 
-  // Widen all strata rows for this subtype × metric × window (subtype-wide CI expansion)
+  // Widen all strata rows for this subtype × metric × window.
+  // The WHERE guard `(p75-p25)/2 < ABS(median_delta)*$5` is the episode guard:
+  // once spread reaches the cap (CI_WIDEN_MAX_HALF × |median_delta|), further
+  // widening is skipped, preventing runaway expansion across multiple miss periods.
   await pool.query(
     `UPDATE event_playbooks SET
        p25 = median_delta - LEAST((p75 - p25) * $4 / 2, ABS(median_delta) * $5),
        p75 = median_delta + LEAST((p75 - p25) * $4 / 2, ABS(median_delta) * $5),
        last_updated = NOW()
      WHERE subtype = $1 AND metric_key = $2 AND window_months = $3
-       AND p25 IS NOT NULL AND p75 IS NOT NULL AND median_delta IS NOT NULL`,
+       AND p25 IS NOT NULL AND p75 IS NOT NULL AND median_delta IS NOT NULL
+       AND (p75 - p25) / 2.0 < ABS(median_delta) * $5`,
     [subtype, metricKey, windowMonths, CI_WIDEN_FACTOR, CI_WIDEN_MAX_HALF]
   );
   logger.info('[M35 Backtest] CI widened (subtype-wide)', { subtype, metricKey, windowMonths, hitRate });
