@@ -302,10 +302,10 @@ export const MSAEventsTab: React.FC<MSAEventsTabProps> = ({ msaId, msa }) => {
             if (aheadCount > behindCount) forecastStatus = 'ahead';
             else if (behindCount > aheadCount) forecastStatus = 'behind';
             else if (statuses.length > 0) forecastStatus = 'on_pace';
-            const diverged = fc.actuals.filter((a: { divergencePct: number | null }) => a.divergencePct != null && Math.abs(a.divergencePct) > 10);
+            const diverged = fc.actuals.filter((a: { divergencePct: number | null }) => a.divergencePct != null && Math.abs(a.divergencePct) > 0.10);
             if (diverged.length > 0) {
               const d = diverged[0];
-              forecastSummary = `${d.metricKey ?? 'Metric'} divergence: ${d.divergencePct > 0 ? '+' : ''}${Number(d.divergencePct).toFixed(1)}% vs forecast`;
+              forecastSummary = `${d.metricKey ?? 'Metric'} divergence: ${d.divergencePct > 0 ? '+' : ''}${(d.divergencePct * 100).toFixed(1)}% vs forecast`;
             }
           }
           if (fc?.playbookStatus && fc.playbookStatus !== 'preliminary') {

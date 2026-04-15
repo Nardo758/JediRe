@@ -103,42 +103,45 @@ router.get('/events', async (req: Request, res: Response) => {
 
 router.get('/events/feed', async (req: Request, res: Response) => {
   try {
+    const userEmail = (req as any).user?.email;
+    if (!userEmail) {
+      res.status(401).json({ error: 'Authentication required' });
+      return;
+    }
+
     const pool = getPool();
     const limitVal = req.query.limit ? parseInt(String(req.query.limit), 10) : 20;
-    const userEmail = (req as any).user?.email;
 
-    const dealQuery = userEmail
-      ? `SELECT DISTINCT d.deal_data->>'msaId' AS msa_id
-         FROM deals d
-         WHERE d.deal_data->>'msaId' IS NOT NULL
-           AND (d.status IS NULL OR d.status NOT IN ('archived','closed'))
-           AND (d.created_by = $1 OR d.deal_data->>'createdBy' = $1 OR d.user_id = $1)
-         LIMIT 50`
-      : `SELECT DISTINCT d.deal_data->>'msaId' AS msa_id
-         FROM deals d
-         WHERE d.deal_data->>'msaId' IS NOT NULL
-           AND (d.status IS NULL OR d.status NOT IN ('archived','closed'))
-         LIMIT 50`;
-
-    const dealRows = userEmail
-      ? await pool.query(dealQuery, [userEmail])
-      : await pool.query(dealQuery);
+    const dealRows = await pool.query(
+      `SELECT DISTINCT d.deal_data->>'msaId' AS msa_id
+       FROM deals d
+       WHERE d.deal_data->>'msaId' IS NOT NULL
+         AND (d.status IS NULL OR d.status NOT IN ('archived','closed'))
+         AND (d.created_by = $1 OR d.deal_data->>'createdBy' = $1 OR d.user_id = $1)
+       LIMIT 50`,
+      [userEmail],
+    );
 
     const msaIds = dealRows.rows
       .map((r: { msa_id: string }) => r.msa_id as string)
       .filter(Boolean);
 
+    if (msaIds.length === 0) {
+      res.json({ items: [], total: 0 });
+      return;
+    }
+
     const result = await searchEvents({
-      msaIds:  msaIds.length > 0 ? msaIds : undefined,
+      msaIds,
       status:  ['announced', 'in_progress', 'materialized'] as any,
       limit:   limitVal,
       offset:  0,
     });
 
     res.json(result);
-  } catch (err: any) {
+  } catch (err: unknown) {
     logger.error('[M35 Events] feed error', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Unknown error' });
   }
 });
 

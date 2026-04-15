@@ -69,7 +69,7 @@ export const StrategyTab: React.FC<StrategyTabProps> = ({ dealId, deal }) => {
     if (!dealId) return;
     fetch(`/api/v1/m35/deals/${dealId}/events`)
       .then(r => r.ok ? r.json() : { events: [] })
-      .then(data => setDealEvents((data.events ?? []).slice(0, 4)))
+      .then(data => setDealEvents((data.items ?? data.events ?? []).slice(0, 4)))
       .catch(() => setDealEvents([]));
   }, [dealId]);
 
