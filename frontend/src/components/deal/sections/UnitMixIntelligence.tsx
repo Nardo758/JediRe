@@ -693,12 +693,32 @@ function ProgramEditor({ program, computed, zoning, onProgramChange, comps, gaps
 
   const suggestion = useMemo(() => {
     if (comps.length === 0) return null;
-    const demandScores: Record<string, number> = {};
-    if (gaps) gaps.forEach(g => { demandScores[g.key] = g.demandScore; });
-    return computeOptimalProgram(program.totalUnits, comps, {
+    const demandScoreMap: Record<string, number> = {};
+    if (gaps) gaps.forEach(g => { demandScoreMap[g.key] = g.demandScore; });
+    const prog = computeOptimalProgram(program.totalUnits, comps, {
       zoning: { maxUnits: zoning.maxUnits, maxNetSF: zoning.maxNetSF },
-      demandScores: gaps ? demandScores : undefined,
+      demandScores: gaps ? demandScoreMap : undefined,
     });
+    const inventory = computeInventory(comps);
+    const gapRows = computeGaps(inventory);
+    const psfPerType = UT_META.map(ut => {
+      const avg = compAvg(ut.key, comps);
+      return avg.sf > 0 ? avg.rent / avg.sf : 0;
+    });
+    const maxPsf = Math.max(...psfPerType, 1);
+    const scores = UT_META.reduce<Record<string, { demand: number; psf: number; gap: number; velocity: number }>>((acc, ut, i) => {
+      const inv = inventory[i];
+      const gapRow = gapRows[i];
+      const demandScore = demandScoreMap[ut.key] ?? inv.demandScore ?? 0;
+      const psfScore = Math.round((psfPerType[i] / maxPsf) * 100);
+      const gapScore = Math.min(100, Math.max(0, (gapRow?.gap ?? 0)) * 5);
+      const vacPenalty = Math.max(0, 100 - (inv.avgVac ?? 0) * 8);
+      const domPenalty = inv.avgDOM > 0 ? Math.max(0, 100 - inv.avgDOM * 3) : 60;
+      const velocity = Math.round(vacPenalty * 0.6 + domPenalty * 0.4);
+      acc[ut.key] = { demand: Math.round(demandScore), psf: psfScore, gap: Math.round(gapScore), velocity };
+      return acc;
+    }, {});
+    return { program: prog, scores };
   }, [program.totalUnits, comps, gaps, zoning.maxUnits, zoning.maxNetSF]);
 
   function setUnit(utKey: UnitKey, field: string, val: number) {
@@ -707,7 +727,7 @@ function ProgramEditor({ program, computed, zoning, onProgramChange, comps, gaps
 
   function applySuggestion() {
     if (suggestion) {
-      onProgramChange(suggestion);
+      onProgramChange(suggestion.program);
       setShowSugg(false);
     }
   }
@@ -762,12 +782,11 @@ function ProgramEditor({ program, computed, zoning, onProgramChange, comps, gaps
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 1,
             background: C.border, padding: 1 }}>
             {UT_META.map(ut => {
-              const s = suggestion.units[ut.key];
-              const gap = gaps?.find(g => g.key === ut.key);
+              const s = suggestion.program.units[ut.key];
+              const sc = suggestion.scores[ut.key];
               const curr = program.units[ut.key];
               const mixDelta = s.mix - curr.mix;
-              const suggCount = Math.round(suggestion.totalUnits * s.mix / 100);
-              const gapPp = gap?.gap ?? 0;
+              const suggCount = Math.round(suggestion.program.totalUnits * s.mix / 100);
               return (
                 <div key={ut.key} style={{ background: C.bg, padding: "5px 7px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
@@ -777,25 +796,33 @@ function ProgramEditor({ program, computed, zoning, onProgramChange, comps, gaps
                   <div style={{ height: 3, background: C.muted, borderRadius: 1, overflow: "hidden", marginBottom: 4 }}>
                     <div style={{ width: `${Math.min(s.mix, 100)}%`, height: "100%", background: ut.color + "bb", borderRadius: 1 }} />
                   </div>
-                  <div style={{ display: "flex", gap: 5, flexWrap: "wrap" as const }}>
+                  <div style={{ display: "flex", gap: 5, flexWrap: "wrap" as const, marginBottom: 3 }}>
                     <span style={{ color: C.dim, fontFamily: mono, fontSize: 7 }}>×{suggCount}</span>
                     <span style={{ color: C.dim, fontFamily: mono, fontSize: 7 }}>{s.sf}sf</span>
                     <span style={{ color: C.green, fontFamily: mono, fontSize: 7, fontWeight: 700 }}>${s.rent}/mo</span>
                   </div>
-                  <div style={{ display: "flex", gap: 5, marginTop: 2 }}>
-                    {mixDelta !== 0 && (
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2px 6px" }}>
+                    <span style={{ fontFamily: mono, fontSize: 6, color: C.faint }}>
+                      <span style={{ color: sc.demand >= 70 ? C.green : sc.demand >= 50 ? C.yellow : C.red }}>■</span> DMD {sc.demand}
+                    </span>
+                    <span style={{ fontFamily: mono, fontSize: 6, color: C.faint }}>
+                      <span style={{ color: sc.psf >= 70 ? C.green : sc.psf >= 50 ? C.yellow : C.red }}>■</span> PSF {sc.psf}
+                    </span>
+                    <span style={{ fontFamily: mono, fontSize: 6, color: C.faint }}>
+                      <span style={{ color: sc.gap >= 50 ? C.green : sc.gap >= 20 ? C.yellow : C.red }}>■</span> GAP {sc.gap}
+                    </span>
+                    <span style={{ fontFamily: mono, fontSize: 6, color: C.faint }}>
+                      <span style={{ color: sc.velocity >= 70 ? C.green : sc.velocity >= 50 ? C.yellow : C.red }}>■</span> VEL {sc.velocity}
+                    </span>
+                  </div>
+                  {mixDelta !== 0 && (
+                    <div style={{ marginTop: 2 }}>
                       <span style={{ fontFamily: mono, fontSize: 6,
                         color: mixDelta > 0 ? C.green : C.red }}>
                         {mixDelta > 0 ? "▲" : "▼"}{Math.abs(mixDelta)}pp vs current
                       </span>
-                    )}
-                    {gap && (
-                      <span style={{ fontFamily: mono, fontSize: 6,
-                        color: gapPp > 2 ? C.green : gapPp < -2 ? C.red : C.yellow }}>
-                        {gapPp > 0 ? "+" : ""}{gapPp.toFixed(1)}pp gap
-                      </span>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
