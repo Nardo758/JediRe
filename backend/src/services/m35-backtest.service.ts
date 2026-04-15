@@ -1,18 +1,3 @@
-// M35 Phase 5: Backtesting & Confidence Refinement service
-//
-// Architecture decisions (intentional, confirmed at implementation time):
-//
-// 1. Confidence evidence uses binary values (EVIDENCE_HIT=1.0, EVIDENCE_MISS=0.0),
-//    matching the literal task spec for new_evidence. Confidence is clamped to [0.10, 0.99]
-//    to prevent degenerate values; the decay rate (0.15) keeps updates gradual.
-//
-// 2. CI widening is subtype-wide ("that subtype's future forecasts" per Phase 5 spec).
-//    Any track's degraded hit rate signals broader subtype-level forecast uncertainty.
-//    The trigger is still per-track (subtype × metric × window hit rate check), but the
-//    UPDATE applies to all event_playbooks rows for that subtype.
-//
-// 3. Regime detection is subtype-wide with sentinel metric_key='*'/window_months=0.
-//    A regime shift is a market-level phenomenon, not a per-track signal.
 
 import { Pool } from 'pg';
 import { getPool } from '../database/connection';
