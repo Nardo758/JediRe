@@ -52,7 +52,7 @@ async function getM35ProformaAttribution(dealId: string): Promise<M35ProformaAtt
   if (!msaId) return { rentGrowth: null, vacancy: null, exitCap: null };
 
   const forecastRes = await pool.query(
-    `SELECT ef.id AS forecast_id, ke.id AS event_id, ke.event_name, ke.subtype,
+    `SELECT ef.id AS forecast_id, ke.id AS event_id, ke.name AS event_name, ke.subtype,
             efm.metric_key, efm.window_months, efm.point_estimate,
             efm.ci_low, efm.ci_high, efm.confidence
      FROM event_forecasts ef
@@ -109,12 +109,11 @@ router.get('/:dealId', authMiddleware.requireAuth, async (req: Request, res: Res
     }
 
     // Append M35 event attribution metadata to each assumption value.
-    // Silently skipped if no active forecasts exist.
     let eventAttribution: M35ProformaAttribution | null = null;
     try {
       eventAttribution = await getM35ProformaAttribution(dealId);
-    } catch {
-      // Non-fatal — proforma response is still returned without attribution
+    } catch (attrErr: any) {
+      logger.error('M35 attribution lookup failed (non-fatal):', attrErr?.message ?? attrErr);
     }
     
     res.json({

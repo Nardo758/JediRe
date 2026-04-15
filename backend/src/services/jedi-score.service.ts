@@ -148,12 +148,22 @@ export class JEDIScoreService {
    * Based on employment events, population growth, economic indicators,
    * enriched with apartment_features demand counts and bedroom_demand from demand intelligence.
    */
+  // Maps demand_signal_weights.event_category → M06 overlay key from toM06DemandOverlay
+  private static readonly CATEGORY_TO_OVERLAY_KEY: Readonly<Record<string, string>> = {
+    employment:  'demand_signal_rent',
+    development: 'demand_signal_absorption',
+    amenities:   'demand_signal_traffic',
+  };
+
   private async calculateDemandScore(dealId: string, tradeAreaId?: string, demandIntel?: DemandIntelligence | null): Promise<number> {
     const signals = await this.getDemandSignals(dealId, tradeAreaId);
 
     if (signals.length === 0 && !demandIntel) {
       return 50.0;
     }
+
+    // Pre-compute M35 overlay so per-event base_weight can be substituted below.
+    const m35Overlay = await this.getM35KeyEventImpacts(dealId, true);
 
     let totalImpact = 0;
 
@@ -189,7 +199,16 @@ export class JEDIScoreService {
           impactMagnitude = (signal.impactScore / 100) * weight.max_jedi_impact;
         }
 
-        const weightedImpact = impactMagnitude * confidenceMultiplier * weight.base_weight;
+        // Substitute static base_weight with M35 forecast-derived weight when active
+        // forecast exists for this event category. Falls back to static weight.
+        const overlayKey = JEDIScoreService.CATEGORY_TO_OVERLAY_KEY[signal.eventCategory];
+        const m35Signal = overlayKey ? (m35Overlay as Record<string, { delta: number | null; confidence: number } | undefined>)[overlayKey] : undefined;
+        const effectiveBaseWeight =
+          m35Signal && m35Signal.delta !== null && m35Signal.confidence >= 0.50
+            ? Math.abs(m35Signal.delta) * 100 * m35Signal.confidence
+            : weight.base_weight;
+
+        const weightedImpact = impactMagnitude * confidenceMultiplier * effectiveBaseWeight;
         const proximityFactor = signal.impactScore / 100;
         const finalImpact = weightedImpact * proximityFactor;
 
@@ -221,9 +240,7 @@ export class JEDIScoreService {
       }
     }
 
-    // Apply M35 forecast-derived weights, replacing static defaults for MSA key events.
-    const m35Contrib = await this.getM35KeyEventImpacts(dealId);
-    const demandScore = 50 + Math.max(-15, Math.min(15, totalImpact + m35Contrib));
+    const demandScore = 50 + Math.max(-15, Math.min(15, totalImpact));
 
     return demandScore;
   }
@@ -760,14 +777,13 @@ export class JEDIScoreService {
   }
 
   /**
-   * Query M35 key events for the deal's MSA and return their forecast-derived
-   * impact contributions, replacing static-default weights for those event types.
-   *
-   * Each active forecast's attributed_delta (mapped via toM06DemandOverlay) is
-   * converted to a score-point contribution capped at ±3 per event.
-   * Returns 0 on any failure so JEDI score is never blocked.
+   * Query M35 key events for the deal's MSA and return a merged M06 overlay map.
+   * When returnOverlay=true (default), returns the raw overlay for per-signal weight
+   * substitution inside calculateDemandScore. Falls back to {} on any failure.
    */
-  private async getM35KeyEventImpacts(dealId: string): Promise<number> {
+  private async getM35KeyEventImpacts(dealId: string, returnOverlay?: true): Promise<Record<string, { delta: number | null; confidence: number; windowMonths: number }>>;
+  private async getM35KeyEventImpacts(dealId: string, returnOverlay: false): Promise<number>;
+  private async getM35KeyEventImpacts(dealId: string, returnOverlay: boolean = true): Promise<unknown> {
     try {
       const pool = getPool();
       const msaRes = await pool.query(
@@ -775,12 +791,13 @@ export class JEDIScoreService {
         [dealId]
       );
       const msaId: string | null = msaRes.rows[0]?.msa_id ?? null;
-      if (!msaId) return 0;
+      if (!msaId) return returnOverlay ? {} : 0;
 
       const forecasts = await getMsaActiveForecasts(msaId);
-      if (forecasts.length === 0) return 0;
+      if (forecasts.length === 0) return returnOverlay ? {} : 0;
 
-      let m35Impact = 0;
+      // Merge overlays from all active forecasts; higher-confidence signals win.
+      const merged: Record<string, { delta: number | null; confidence: number; windowMonths: number }> = {};
       for (const f of forecasts) {
         const overlay = toM06DemandOverlay({
           eventId: f.eventId,
@@ -792,21 +809,25 @@ export class JEDIScoreService {
             confidence: m.confidence,
           })),
         });
-
-        // Apply forecast-derived weights for each M06 demand key, replacing the static default.
-        // Precedence: M35 forecast weight overrides demand_signal_weights.base_weight for
-        // the same event type when confidence >= 0.50.
-        for (const [, signal] of Object.entries(overlay)) {
-          if (signal.delta === null || signal.confidence < 0.50) continue;
-          // delta is fractional (e.g. 0.04 = 4% rent growth); scale to score points.
-          const pointContrib = signal.delta * 100 * signal.confidence;
-          m35Impact += Math.max(-3, Math.min(3, pointContrib));
+        for (const [key, signal] of Object.entries(overlay)) {
+          if (!merged[key] || signal.confidence > merged[key].confidence) {
+            merged[key] = { delta: signal.delta, confidence: signal.confidence, windowMonths: signal.windowMonths };
+          }
         }
       }
 
-      return Math.max(-5, Math.min(5, m35Impact));
+      if (!returnOverlay) {
+        // Legacy numeric path — used nowhere but kept for type signature completeness.
+        let total = 0;
+        for (const [, s] of Object.entries(merged)) {
+          if (s.delta !== null && s.confidence >= 0.50) total += Math.max(-3, Math.min(3, s.delta * 100 * s.confidence));
+        }
+        return Math.max(-5, Math.min(5, total));
+      }
+
+      return merged;
     } catch {
-      return 0;
+      return returnOverlay ? {} : 0;
     }
   }
 
