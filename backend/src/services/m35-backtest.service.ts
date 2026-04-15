@@ -213,7 +213,7 @@ async function detectRegimeShift(pool: Pool, subtype: string): Promise<void> {
   const res = await pool.query<ErrorPctRow>(
     `SELECT error_pct, metric_key, window_months FROM playbook_backtest_results
      WHERE subtype = $1 AND status = 'evaluated' AND error_pct IS NOT NULL
-     ORDER BY ran_at DESC LIMIT $2`,
+     ORDER BY computed_at DESC LIMIT $2`,
     [subtype, REGIME_WINDOW]
   );
   if (res.rows.length < REGIME_WINDOW) return;
@@ -361,7 +361,7 @@ export async function runBacktestForEvent(eventId: string): Promise<{ processed:
            forecast_p75 = EXCLUDED.forecast_p75, actual_delta = EXCLUDED.actual_delta,
            error = EXCLUDED.error, error_pct = EXCLUDED.error_pct,
            within_ci = EXCLUDED.within_ci, data_coverage_pct = EXCLUDED.data_coverage_pct,
-           status = EXCLUDED.status, computed_at = NOW(), ran_at = NOW()`,
+           status = EXCLUDED.status, ran_at = NOW()`,
         [
           uuidv4(), eventId, fc.playbook_id ?? null, ev.subtype, metricKey, windowMonths, milestoneDate,
           forecastMedian, forecastP25, forecastP75, actualValue,
@@ -471,7 +471,7 @@ export async function getPlaybookBacktestReport(subtype: string): Promise<{
   recentPoints: Array<{
     eventId: string; metricKey: string; windowMonths: number;
     forecastMedian: number | null; actualValue: number | null;
-    error: number | null; hitWithinCi: boolean | null; ranAt: string;
+    error: number | null; hitWithinCi: boolean | null; evaluatedAt: string;
   }>;
 }> {
   const pool = getPool();
@@ -499,13 +499,13 @@ export async function getPlaybookBacktestReport(subtype: string): Promise<{
   const pointsRes = await pool.query<{
     event_id: string; metric_key: string; window_months: string;
     forecast_delta: string | null; actual_delta: string | null;
-    error: string | null; within_ci: boolean | null; ran_at: string;
+    error: string | null; within_ci: boolean | null; computed_at: string;
   }>(
     `SELECT event_id, metric_key, window_months, forecast_delta, actual_delta,
-            error, within_ci, ran_at
+            error, within_ci, computed_at
      FROM playbook_backtest_results
      WHERE subtype = $1 AND status = 'evaluated'
-     ORDER BY ran_at DESC LIMIT 10`,
+     ORDER BY computed_at DESC LIMIT 10`,
     [subtype]
   );
 
@@ -532,7 +532,7 @@ export async function getPlaybookBacktestReport(subtype: string): Promise<{
       actualValue:    r.actual_delta    != null ? parseFloat(r.actual_delta)    : null,
       error:          r.error           != null ? parseFloat(r.error)           : null,
       hitWithinCi:    r.within_ci,
-      ranAt:          r.ran_at,
+      evaluatedAt:    r.computed_at,
     })),
   };
 }
