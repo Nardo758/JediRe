@@ -2,6 +2,7 @@
  * JediRe Backend - Replit Entry Point
  * Route handlers extracted to dedicated router modules
  */
+import cron from 'node-cron';
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
@@ -1014,32 +1015,18 @@ httpServer.listen(Number(PORT), '0.0.0.0', async () => {
   }
   scheduleM35DivergenceJob();
 
-  // M35 Phase 5: monthly backtest — fires on the 1st of each month at 01:00 UTC
-  function scheduleM35BacktestJob() {
-    const now = new Date();
-    // Use this month's slot (1st at 01:00 UTC) if we haven't passed it yet;
-    // otherwise fall through to next month so we never skip a run on startup
-    const thisMonthSlot = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 1, 0, 0, 0));
-    const nextRun = now < thisMonthSlot ? thisMonthSlot : new Date(Date.UTC(
-      now.getUTCMonth() === 11 ? now.getUTCFullYear() + 1 : now.getUTCFullYear(),
-      now.getUTCMonth() === 11 ? 0 : now.getUTCMonth() + 1,
-      1, 1, 0, 0, 0
-    ));
-    const msUntil = nextRun.getTime() - now.getTime();
-    const timer = setTimeout(async () => {
-      try {
-        const { runMonthlyBacktest } = await import('./services/m35-backtest.service');
-        const result = await runMonthlyBacktest();
-        console.log(`[M35 Backtest] Monthly run complete: ${JSON.stringify(result)}`);
-      } catch (err) {
-        console.error('[M35 Backtest] Monthly job failed (non-fatal):', err);
-      }
-      scheduleM35BacktestJob(); // reschedule for next month
-    }, msUntil);
-    timer.unref();
-    console.log(`[M35 Backtest] Monthly job scheduled for ${nextRun.toISOString()}`);
-  }
-  scheduleM35BacktestJob();
+  // M35 Phase 5: monthly backtest — node-cron fires at 01:00 UTC on the 1st of each month.
+  // node-cron avoids setTimeout overflow (max ~24.8 days) for month-length delays.
+  cron.schedule('0 1 1 * *', async () => {
+    try {
+      const { runMonthlyBacktest } = await import('./services/m35-backtest.service');
+      const result = await runMonthlyBacktest();
+      console.log(`[M35 Backtest] Monthly run complete: ${JSON.stringify(result)}`);
+    } catch (err) {
+      console.error('[M35 Backtest] Monthly job failed (non-fatal):', err);
+    }
+  }, { timezone: 'UTC' });
+  console.log('[M35 Backtest] Monthly job scheduled (cron: 0 1 1 * * UTC)');
 
   // M35 Phase 4: drain forecast_regen_queue every minute (claims with SKIP LOCKED)
   setInterval(async () => {

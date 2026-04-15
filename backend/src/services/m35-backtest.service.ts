@@ -154,32 +154,33 @@ async function widenCIIfNeeded(
 async function detectRegimeShift(
   pool: any, subtype: string, metricKey: string, windowMonths: number
 ): Promise<void> {
-  // Use error_pct (percentage error) so avg_pct_error column carries true pct semantics
+  // Subtype-level detection: last 5 evaluated rows across ALL metrics/windows for this subtype.
+  // error_pct is used for direction + std checks (normalized across metrics).
+  // metricKey/windowMonths are passed as triggering context stored in the alert record.
   const res = await pool.query(
-    `SELECT error, error_pct FROM playbook_backtest_results
-     WHERE subtype = $1 AND metric_key = $2 AND window_months = $3
-       AND status = 'evaluated' AND error IS NOT NULL AND error_pct IS NOT NULL
-     ORDER BY ran_at DESC LIMIT $4`,
-    [subtype, metricKey, windowMonths, REGIME_WINDOW]
+    `SELECT error_pct, metric_key, window_months FROM playbook_backtest_results
+     WHERE subtype = $1 AND status = 'evaluated'
+       AND error_pct IS NOT NULL
+     ORDER BY ran_at DESC LIMIT $2`,
+    [subtype, REGIME_WINDOW]
   );
   if (res.rows.length < REGIME_WINDOW) return;
 
-  const errors: number[] = res.rows.map((r: any) => parseFloat(r.error));
   const errorPcts: number[] = res.rows.map((r: any) => parseFloat(r.error_pct));
-  const allNegative = errors.every(e => e < 0); // actual < forecast → over-predicted
-  const allPositive = errors.every(e => e > 0); // actual > forecast → under-predicted
+  const allNegative = errorPcts.every(e => e < 0); // over-predicted across subtype
+  const allPositive = errorPcts.every(e => e > 0); // under-predicted across subtype
   if (!allNegative && !allPositive) return;
 
-  const stdErr = stdDev(errors);
-  // Per-point threshold: each individual error must exceed 1× std
-  if (!errors.every(e => Math.abs(e) > stdErr)) return;
+  const stdErr = stdDev(errorPcts);
+  // Per-point threshold: each individual |error_pct| must exceed 1× std
+  if (!errorPcts.every(e => Math.abs(e) > stdErr)) return;
 
-  const avgPctErr = mean(errorPcts); // true average percent error for avg_pct_error column
+  const avgPctErr = mean(errorPcts);
 
+  // Dedup at subtype level — one open alert per subtype
   const existing = await pool.query(
-    `SELECT id FROM regime_shift_alerts
-     WHERE subtype = $1 AND metric_key = $2 AND window_months = $3 AND status = 'open' LIMIT 1`,
-    [subtype, metricKey, windowMonths]
+    `SELECT id FROM regime_shift_alerts WHERE subtype = $1 AND status = 'open' LIMIT 1`,
+    [subtype]
   );
   if (existing.rows.length > 0) return;
 
