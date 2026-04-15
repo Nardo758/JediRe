@@ -391,22 +391,14 @@ export async function runMonthlyBacktest(): Promise<{
   totalSkipped: number;
 }> {
   const pool = getPool();
-  // Only process events that have at least one milestone window not yet 'evaluated',
-  // reducing unnecessary work on fully-evaluated events on repeat runs.
+  // Process all eligible events; per-metric idempotency is handled inside runBacktestForEvent
+  // (rows already 'evaluated' skip confidence/CI/regime updates via prevStatus check).
   const evRes = await pool.query<{ id: string }>(
-    `SELECT DISTINCT ke.id FROM key_events ke
-     WHERE ke.announced_date IS NOT NULL
-       AND ke.status NOT IN ('cancelled','reversed')
-       AND EXISTS (
-         SELECT 1 FROM (VALUES (12::int),(24::int),(36::int)) AS w(wm)
-         WHERE ke.announced_date + (w.wm || ' months')::INTERVAL <= NOW()
-           AND NOT EXISTS (
-             SELECT 1 FROM playbook_backtest_results pbr
-             WHERE pbr.event_id = ke.id AND pbr.window_months = w.wm
-               AND pbr.status = 'evaluated'
-           )
-       )
-     ORDER BY ke.id`
+    `SELECT id FROM key_events
+     WHERE announced_date IS NOT NULL
+       AND announced_date + INTERVAL '12 months' <= NOW()
+       AND status NOT IN ('cancelled','reversed')
+     ORDER BY announced_date ASC`
   );
 
   let eventsProcessed = 0, totalProcessed = 0, totalSkipped = 0;
