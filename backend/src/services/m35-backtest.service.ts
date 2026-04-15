@@ -18,7 +18,8 @@ const HIT_RATE_THRESHOLD  = 0.55;
 const MIN_CI_SAMPLE       = 4;    // minimum evaluated samples for a statistically valid hit rate
 const CI_WIDEN_FACTOR     = 1.20;
 const CI_WIDEN_MAX_HALF   = 3.0; // CI half-width cap: cannot exceed 3× |median_delta|
-const REGIME_WINDOW       = 5;
+const REGIME_WINDOW             = 5;
+const MIN_REGIME_ABS_ERROR_PCT  = 5.0; // suppress alerts when avg |error_pct| < 5%
 const CANCELLED_STATUSES  = new Set(['cancelled', 'reversed']); // skip invalidated events
 
 // ─── Row interfaces ───────────────────────────────────────────────────────────
@@ -222,6 +223,9 @@ async function detectRegimeShift(pool: Pool, subtype: string): Promise<void> {
   const allNegative = errorPcts.every(e => e < 0);
   const allPositive = errorPcts.every(e => e > 0);
   if (!allNegative && !allPositive) return;
+
+  const avgAbsError = mean(errorPcts.map(e => Math.abs(e)));
+  if (avgAbsError < MIN_REGIME_ABS_ERROR_PCT) return; // suppress near-zero-error alerts
 
   const stdErr = stdDev(errorPcts);
   if (!errorPcts.every(e => Math.abs(e) > stdErr)) return;
