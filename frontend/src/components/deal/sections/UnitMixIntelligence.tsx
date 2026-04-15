@@ -30,7 +30,7 @@ interface ZoningData {
 interface InventoryItem {
   key: UnitKey; label: string; abbr: string; sfRange: string; color: string;
   typeUnits: number; supplyShare: number; avgVac: number; avgDOM: number;
-  avgRent: number; avgConc: number; demandScore: number;
+  avgRent: number; avgConc: number; demandScore: number; avgSF: number;
 }
 
 interface GapItem extends InventoryItem { demandShare: number; gap: number; }
@@ -184,12 +184,13 @@ function computeInventory(comps: CompData[]) {
     const avgDOM  = n(c => c.units[ut.key].dom);
     const avgRent = n(c => c.units[ut.key].rent);
     const avgConc = n(c => c.units[ut.key].conc);
+    const avgSF   = Math.round(n(c => c.units[ut.key].sf));
     const supplyShare = totalCompUnits > 0 ? typeUnits / totalCompUnits * 100 : 0;
     const vacScore  = Math.max(0, 100 - avgVac * 6);
     const domScore  = Math.max(0, 100 - avgDOM * 2);
     const concScore = Math.max(0, 100 - avgConc * 10);
     const demandScore = Math.round(vacScore * 0.4 + domScore * 0.35 + concScore * 0.25);
-    return { ...ut, typeUnits, supplyShare, avgVac, avgDOM, avgRent, avgConc, demandScore };
+    return { ...ut, typeUnits, supplyShare, avgVac, avgDOM, avgRent, avgConc, demandScore, avgSF };
   });
 }
 
@@ -482,6 +483,7 @@ function DemandMatrix({ inventory, trendData }: { inventory: InventoryItem[]; tr
                   { label: "DOM", val: u.avgDOM.toFixed(0), unit: "d", sig: "dom" as SigKey },
                   { label: "CONC", val: u.avgConc.toFixed(1), unit: "wk", sig: "conc" as SigKey },
                   { label: "RENT", val: `$${u.avgRent.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`, unit: "", sig: null },
+                  { label: "AVG SF", val: u.avgSF > 0 ? `${u.avgSF}` : "—", unit: u.avgSF > 0 ? " SF" : "", sig: null },
                 ] as const).map((m, mi) => (
                   <div key={mi} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0px 0" }}>
                     <span style={{ color: C.dim, fontSize: 7, fontFamily: mono }}>{m.label}</span>
@@ -937,6 +939,9 @@ function InventorySnapshot({ inventory, comps }: { inventory: InventoryItem[]; c
               <div style={{ width: 4, height: 4, background: u.color, borderRadius: 1 }} />
               <span style={{ color: C.dim, fontSize: 7, fontFamily: mono }}>{u.abbr}</span>
               <span style={{ color: C.text, fontFamily: mono, fontSize: 8, fontWeight: 700 }}>{u.typeUnits}u</span>
+              {u.avgSF > 0 && (
+                <span style={{ color: C.dim, fontSize: 6, fontFamily: mono }}>· {u.avgSF} SF</span>
+              )}
             </div>
           ))}
           <span style={{ color: C.faint, fontSize: 7 }}>·</span>
@@ -980,6 +985,19 @@ function InventorySnapshot({ inventory, comps }: { inventory: InventoryItem[]; c
             <div style={{ textAlign: "right", color: C.dim, fontFamily: mono, fontSize: 8 }}>{c.total}</div>
           </div>
         ))}
+        <div style={{ display: "grid", gridTemplateColumns: gridTpl, padding: "3px 8px",
+          background: C.surface, borderTop: `1px solid ${C.border}` }}>
+          <div style={{ color: C.dim, fontSize: 7, fontFamily: mono, fontWeight: 700 }}>AVG SF</div>
+          <div />
+          {inventory.map(u => (
+            <div key={u.key} style={{ textAlign: "right" }}>
+              <span style={{ color: u.avgSF > 0 ? u.color : C.faint, fontFamily: mono, fontSize: 8, fontWeight: 600 }}>
+                {u.avgSF > 0 ? `${u.avgSF}` : "—"}
+              </span>
+            </div>
+          ))}
+          <div />
+        </div>
       </div>
     </div>
   );
@@ -989,7 +1007,7 @@ function PropertyDrillDown({ selectedType, onSelect, comps }: { selectedType: Un
   const ut = UT_META.find(u => u.key === selectedType)!;
   const rows = comps.filter(c => c.units[selectedType].mix > 0)
     .sort((a, b) => a.units[selectedType].vac - b.units[selectedType].vac);
-  const gridTpl = "1fr 32px 44px 56px 48px 56px 60px";
+  const gridTpl = "1fr 32px 44px 52px 56px 48px 56px 60px";
 
   return (
     <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 4, overflow: "hidden" }}>
@@ -1002,7 +1020,7 @@ function PropertyDrillDown({ selectedType, onSelect, comps }: { selectedType: Un
 
       <div style={{ display: "grid", gridTemplateColumns: gridTpl,
         padding: "3px 8px", background: C.bg, borderBottom: `1px solid ${C.border}` }}>
-        {["PROPERTY","CLS","MIX","VAC","DOM","CONC","RENT"].map((h, i) => (
+        {["PROPERTY","CLS","MIX","AVG SF","VAC","DOM","CONC","RENT"].map((h, i) => (
           <div key={i} style={{ color: C.faint, fontSize: 7, fontFamily: mono, fontWeight: 700,
             letterSpacing: "0.05em", textAlign: i > 0 ? "right" : "left" }}>{h}</div>
         ))}
@@ -1021,6 +1039,7 @@ function PropertyDrillDown({ selectedType, onSelect, comps }: { selectedType: Un
             </div>
             <div style={{ textAlign: "right", color: C.dim, fontSize: 8, fontFamily: mono }}>{c.cls}</div>
             <div style={{ textAlign: "right", color: ut.color, fontFamily: mono, fontSize: 9, fontWeight: 700 }}>{u.mix}%</div>
+            <div style={{ textAlign: "right", color: C.dim, fontFamily: mono, fontSize: 9 }}>{u.sf > 0 ? `${u.sf} SF` : "—"}</div>
             <div style={{ textAlign: "right", color: sigColor(u.vac, "vac"), fontFamily: mono, fontSize: 9, fontWeight: 700 }}>{u.vac}%</div>
             <div style={{ textAlign: "right", color: sigColor(u.dom, "dom"), fontFamily: mono, fontSize: 9, fontWeight: 700 }}>{u.dom}d</div>
             <div style={{ textAlign: "right", color: sigColor(u.conc, "conc"), fontFamily: mono, fontSize: 9, fontWeight: 700 }}>{u.conc}wk</div>
