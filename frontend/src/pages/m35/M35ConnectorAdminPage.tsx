@@ -403,12 +403,13 @@ function PlaybookLibraryPanel() {
 
       {/* Table */}
       <div style={{ border: `1px solid ${BORDER}`, overflow: 'hidden', borderRadius: 3 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 50px 60px 60px 90px 110px', padding: '7px 14px', background: PANEL_ALT, borderBottom: `1px solid ${BORDER}`, fontSize: 8, fontWeight: 700, color: DIM, letterSpacing: '0.08em', ...mono }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 50px 60px 60px 55px 90px 110px', padding: '7px 14px', background: PANEL_ALT, borderBottom: `1px solid ${BORDER}`, fontSize: 8, fontWeight: 700, color: DIM, letterSpacing: '0.08em', ...mono }}>
           <span>PLAYBOOK SUBTYPE</span>
           <span>CATEGORY</span>
           <span>TIER</span>
           <span>N</span>
           <span>HIT% T+12</span>
+          <span>MED CONF</span>
           <span>REGIME STATUS</span>
           <span>LAST BACKTEST</span>
         </div>
@@ -426,7 +427,7 @@ function PlaybookLibraryPanel() {
               <div
                 onClick={() => setSelectedId(isSelected ? null : sub.id)}
                 style={{
-                  display: 'grid', gridTemplateColumns: '1fr 70px 50px 60px 60px 90px 110px',
+                  display: 'grid', gridTemplateColumns: '1fr 70px 50px 60px 60px 55px 90px 110px',
                   padding: '9px 14px', cursor: 'pointer',
                   background: isSelected ? `${CYAN}0A` : i % 2 === 0 ? PANEL : BG,
                   borderBottom: `1px solid ${BORDER}20`,
@@ -448,6 +449,9 @@ function PlaybookLibraryPanel() {
                 <span style={{ ...mono, fontSize: 10, color: MUTED }}>{sub.instanceCount}</span>
                 <span style={{ ...mono, fontSize: 10, fontWeight: 700, color: sub.hitRate12mo >= 0.75 ? GREEN : sub.hitRate12mo >= 0.6 ? AMBER : RED }}>
                   {(sub.hitRate12mo * 100).toFixed(0)}%
+                </span>
+                <span style={{ ...mono, fontSize: 10, fontWeight: 700, color: tierColor }}>
+                  {sub.confidenceScore}%
                 </span>
                 <span style={{ ...mono, fontSize: 9, fontWeight: 700, color: regimeColor }}>
                   {regimeLabel}
@@ -561,6 +565,38 @@ function PlaybookLibraryPanel() {
                   {detailLoading && (
                     <div style={{ ...mono, fontSize: 9, color: DIM, padding: '6px 0' }}>Loading playbook analytics...</div>
                   )}
+
+                  {/* Stratification breakdown — confidence distribution across metric windows */}
+                  {fullDetail && fullDetail.metrics.length > 0 && (() => {
+                    const highCount = fullDetail.metrics.filter(m => m.confidence >= 0.8).length;
+                    const midCount = fullDetail.metrics.filter(m => m.confidence >= 0.6 && m.confidence < 0.8).length;
+                    const lowCount = fullDetail.metrics.filter(m => m.confidence < 0.6).length;
+                    const total = fullDetail.metrics.length;
+                    const bands = [
+                      { label: 'HIGH (≥80%)', count: highCount, color: GREEN },
+                      { label: 'MEDIUM (60–79%)', count: midCount, color: AMBER },
+                      { label: 'LOW (<60%)', count: lowCount, color: RED },
+                    ];
+                    return (
+                      <div>
+                        <div style={{ ...mono, fontSize: 8, fontWeight: 700, color: DIM, letterSpacing: '0.08em', marginBottom: 6 }}>
+                          CONFIDENCE STRATIFICATION ({total} metric×window pairs)
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
+                          {bands.map(band => {
+                            const pct = total > 0 ? Math.round((band.count / total) * 100) : 0;
+                            return (
+                              <div key={band.label} style={{ flex: 1, minWidth: 90, padding: '6px 10px', background: `${band.color}12`, border: `1px solid ${band.color}30`, borderRadius: 2 }}>
+                                <div style={{ ...mono, fontSize: 7, color: DIM, marginBottom: 2 }}>{band.label}</div>
+                                <div style={{ ...mono, fontSize: 16, fontWeight: 700, color: band.color }}>{pct}%</div>
+                                <div style={{ ...mono, fontSize: 8, color: MUTED }}>{band.count} of {total}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {fullDetail && fullDetail.metrics.length > 0 && (() => {
                     const KEY_METRICS = ['rent_growth', 'absorption_rate', 'vacancy_rate', 'effective_rent'];

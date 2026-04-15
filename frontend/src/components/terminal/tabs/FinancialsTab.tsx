@@ -3,10 +3,11 @@
  * Migrated from: Assumptions + Projections views in FinancialDashboard
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { ChevronDown, ChevronRight, TrendingUp, DollarSign, Building2, Percent } from 'lucide-react';
 import { BT, fmt, terminalStyles } from '../theme';
 import { TerminalChart, ChartDataPoint, ChartSeries } from '../TerminalChart';
+import { M35EventCard, M35EventCardData } from '../../m35/M35EventCard';
 
 interface FinancialsTabProps {
   dealId: string;
@@ -17,6 +18,15 @@ export const FinancialsTab: React.FC<FinancialsTabProps> = ({ dealId, deal }) =>
   const [holdFilter, setHoldFilter] = useState(7);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [activeView, setActiveView] = useState<'projections' | 'assumptions'>('projections');
+  const [dealEvents, setDealEvents] = useState<M35EventCardData[]>([]);
+
+  useEffect(() => {
+    if (!dealId) return;
+    fetch(`/api/v1/m35/deals/${dealId}/events`)
+      .then(r => r.ok ? r.json() : { events: [] })
+      .then(data => setDealEvents((data.events ?? []).slice(0, 4)))
+      .catch(() => setDealEvents([]));
+  }, [dealId]);
 
   const toggle = (section: string) => setCollapsed(p => ({ ...p, [section]: !p[section] }));
 
@@ -427,6 +437,20 @@ export const FinancialsTab: React.FC<FinancialsTabProps> = ({ dealId, deal }) =>
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* M35 Events — market events affecting this deal's pro forma assumptions */}
+      {dealEvents.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: BT.text.dim, letterSpacing: '0.08em', fontFamily: "'JetBrains Mono', monospace", marginBottom: 6 }}>
+            M35 EVENTS — PRO FORMA RISK FLAGS
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {dealEvents.map(ev => (
+              <M35EventCard key={ev.id} event={ev} compact />
+            ))}
           </div>
         </div>
       )}

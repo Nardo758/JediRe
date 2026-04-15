@@ -244,8 +244,8 @@ export const MSAEventsTab: React.FC<MSAEventsTabProps> = ({ msaId, msa }) => {
         if (sigRes.ok) {
           setPipelineSignal(await sigRes.json());
         }
-      } catch (err: any) {
-        setError(err.message);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : String(err));
       } finally {
         setLoading(false);
       }
@@ -515,7 +515,7 @@ export const MSAEventsTab: React.FC<MSAEventsTabProps> = ({ msaId, msa }) => {
             {' '}trajectory signal over the next {pipelineSignal.horizonMonths} months
           </span>
           <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
-            {pipelineSignal.pipelineEvents.slice(0, 3).map((ev: any, i: number) => (
+            {pipelineSignal.pipelineEvents.slice(0, 3).map((ev: PipelineEvent, i: number) => (
               <span key={i} style={{ fontSize: 9, padding: '2px 6px', background: BT.bg.elevated, border: `1px solid ${BT.border.subtle}`, color: BT.text.muted }}>
                 {CATEGORY_EMOJI[ev.category] || '📌'} {ev.name?.substring(0, 20)}
                 {ev.timeToImpactMonths !== undefined && <span style={{ color: BT.text.dim }}> T+{ev.timeToImpactMonths}mo</span>}

@@ -3,13 +3,14 @@
  * Includes: strategy comparison, risk factors, exit scenarios, action items
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Target, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2,
   XCircle, Clock, DollarSign, Percent, Building2, ArrowRight,
   Shield, Zap, Award, BarChart3, Activity
 } from 'lucide-react';
 import { BT, fmt, terminalStyles } from '../theme';
+import { M35EventCard, M35EventCardData } from '../../m35/M35EventCard';
 
 interface StrategyTabProps {
   dealId: string;
@@ -62,6 +63,15 @@ interface ActionItem {
 export const StrategyTab: React.FC<StrategyTabProps> = ({ dealId, deal }) => {
   const [selectedStrategy, setSelectedStrategy] = useState<string>('value-add');
   const [expandedSection, setExpandedSection] = useState<string | null>('recommendation');
+  const [dealEvents, setDealEvents] = useState<M35EventCardData[]>([]);
+
+  useEffect(() => {
+    if (!dealId) return;
+    fetch(`/api/v1/m35/deals/${dealId}/events`)
+      .then(r => r.ok ? r.json() : { events: [] })
+      .then(data => setDealEvents((data.events ?? []).slice(0, 4)))
+      .catch(() => setDealEvents([]));
+  }, [dealId]);
 
   // Strategy options
   const strategies: Strategy[] = useMemo(() => [
@@ -777,6 +787,20 @@ export const StrategyTab: React.FC<StrategyTabProps> = ({ dealId, deal }) => {
           </div>
         </div>
       </div>
+
+      {/* M35 Events — active market events affecting this deal's strategy */}
+      {dealEvents.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: BT.text.dim, letterSpacing: '0.08em', fontFamily: "'JetBrains Mono', monospace", marginBottom: 6 }}>
+            M35 EVENTS — STRATEGY IMPACT
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {dealEvents.map(ev => (
+              <M35EventCard key={ev.id} event={ev} compact />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
