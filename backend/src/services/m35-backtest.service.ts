@@ -12,8 +12,8 @@ const BACKTEST_WINDOWS    = [12, 24, 36] as const;
 const BASELINE_MONTHS     = 12;
 const MIN_DATA_COVERAGE   = 0.80;
 const CONFIDENCE_DECAY    = 0.15;
-const EVIDENCE_HIT        = 0.85;
-const EVIDENCE_MISS       = 0.25;
+const EVIDENCE_HIT        = 0.85; // calibrated: strong evidence from a hit
+const EVIDENCE_MISS       = 0.25; // calibrated: weak residual evidence from a miss
 const HIT_RATE_THRESHOLD  = 0.55;
 const CI_WIDEN_FACTOR     = 1.20;
 const CI_WIDEN_MAX_HALF   = 3.0; // CI half-width cap: cannot exceed 3× |median_delta|
@@ -393,6 +393,8 @@ export async function runMonthlyBacktest(): Promise<{
   const pool = getPool();
   // Process all eligible events; per-metric idempotency is handled inside runBacktestForEvent
   // (rows already 'evaluated' skip confidence/CI/regime updates via prevStatus check).
+  // cancelled/reversed events are excluded: their forecasts are invalidated by the status
+  // change and including them would corrupt hit-rate and confidence signals.
   const evRes = await pool.query<{ id: string }>(
     `SELECT id FROM key_events
      WHERE announced_date IS NOT NULL
