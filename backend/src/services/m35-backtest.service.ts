@@ -176,7 +176,7 @@ async function widenCIIfNeeded(
     [subtype, metricKey, windowMonths]
   );
   const total = parseInt(hr.rows[0].total ?? '0');
-  if (total < 4) return;
+  if (total < 4) return; // minimum 4 evaluated samples for a statistically meaningful hit rate
 
   const hitRate = parseInt(hr.rows[0].hits ?? '0') / total;
   if (hitRate >= HIT_RATE_THRESHOLD) return;
