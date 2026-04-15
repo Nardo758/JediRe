@@ -1811,8 +1811,8 @@ export default function TerminalPage() {
       .finally(() => setPortfolioCompsLoading(prev => { const s = new Set(prev); s.delete(assetId); return s; }));
   };
 
-  const F3_TABS = ["rankings","grid","performance","comps","documents"] as const;
-  const F3_LABELS: Record<string,string> = {rankings:"RANKINGS",grid:"ASSET GRID",performance:"PERFORMANCE",comps:"COMP SETS",documents:"DOCUMENTS"};
+  const F3_TABS = ["rankings","events","grid","performance","comps","documents"] as const;
+  const F3_LABELS: Record<string,string> = {rankings:"RANKINGS",events:"EVENTS",grid:"ASSET GRID",performance:"PERFORMANCE",comps:"COMP SETS",documents:"DOCUMENTS"};
 
   // Portfolio helper functions
   const discoverCompsForAsset = async (assetId: string) => {
@@ -1986,6 +1986,23 @@ export default function TerminalPage() {
                     </table>
                   </div>
                 )
+              )}
+
+              {/* ── EVENTS ── */}
+              {f3Tab === "events" && (
+                <div style={{padding:10}}>
+                  <M35EventCard compact data={{
+                    id: "f3-events",
+                    name: "F3 Events",
+                    category: "portfolio",
+                    status: "announced",
+                    confidence: 0.5,
+                    impact: "neutral",
+                    magnitudeScore: 0,
+                    divergencePct: null,
+                    forecastStatus: "on_pace",
+                  } as M35EventCardData} />
+                </div>
               )}
 
               {/* ── ASSET GRID ── */}
