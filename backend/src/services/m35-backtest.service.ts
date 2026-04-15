@@ -2,9 +2,9 @@
 //
 // Architecture decisions (intentional, confirmed at implementation time):
 //
-// 1. Confidence evidence uses calibrated constants (EVIDENCE_HIT=0.85, EVIDENCE_MISS=0.25)
-//    rather than binary 1/0 signals. Binary evidence causes extreme swings (±DECAY per eval);
-//    calibrated values produce stable, gradual adjustments suited to monthly cadence.
+// 1. Confidence evidence uses binary values (EVIDENCE_HIT=1.0, EVIDENCE_MISS=0.0),
+//    matching the literal task spec for new_evidence. Confidence is clamped to [0.10, 0.99]
+//    to prevent degenerate values; the decay rate (0.15) keeps updates gradual.
 //
 // 2. CI widening is subtype-wide ("that subtype's future forecasts" per Phase 5 spec).
 //    Any track's degraded hit rate signals broader subtype-level forecast uncertainty.
@@ -28,14 +28,13 @@ const BACKTEST_WINDOWS    = [12, 24, 36] as const;
 const BASELINE_MONTHS     = 12;
 const MIN_DATA_COVERAGE   = 0.80;
 const CONFIDENCE_DECAY    = 0.15;
-const EVIDENCE_HIT        = 0.85; // calibrated: strong evidence from a hit
-const EVIDENCE_MISS       = 0.25; // calibrated: weak residual evidence from a miss
+const EVIDENCE_HIT        = 1.0;  // binary: hit   = full positive evidence
+const EVIDENCE_MISS       = 0.0;  // binary: miss  = zero positive evidence (confidence decays toward floor)
 const HIT_RATE_THRESHOLD  = 0.55;
 const MIN_CI_SAMPLE       = 4;    // minimum evaluated samples for a statistically valid hit rate
 const CI_WIDEN_FACTOR     = 1.20;
 const CI_WIDEN_MAX_HALF   = 3.0; // CI half-width cap: cannot exceed 3× |median_delta|
-const REGIME_WINDOW             = 5;
-const MIN_REGIME_ABS_ERROR_PCT  = 5.0; // suppress alerts when avg |error_pct| < 5%
+const REGIME_WINDOW       = 5;
 const CANCELLED_STATUSES  = new Set(['cancelled', 'reversed']); // skip invalidated events
 
 // ─── Row interfaces ───────────────────────────────────────────────────────────
@@ -239,9 +238,6 @@ async function detectRegimeShift(pool: Pool, subtype: string): Promise<void> {
   const allNegative = errorPcts.every(e => e < 0);
   const allPositive = errorPcts.every(e => e > 0);
   if (!allNegative && !allPositive) return;
-
-  const avgAbsError = mean(errorPcts.map(e => Math.abs(e)));
-  if (avgAbsError < MIN_REGIME_ABS_ERROR_PCT) return; // suppress near-zero-error alerts
 
   const stdErr = stdDev(errorPcts);
   if (!errorPcts.every(e => Math.abs(e) > stdErr)) return;
