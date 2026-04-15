@@ -228,7 +228,7 @@ export async function runBacktestForEvent(eventId: string): Promise<{ processed:
 
   const announcedDate  = new Date(ev.announced_date);
   const geographyId    = ev.submarket_id ?? ev.msa_id ?? '';
-  const geographyType  = ev.submarket_id ? 'submarket' : 'msa'; // mirrors impact service pattern
+  const geographyType  = ev.submarket_id ? 'submarket' : (ev.msa_id ? 'metro' : 'national'); // mirrors impact service
   const now            = new Date();
 
   // Control geographies for DiD (same geography_type as treatment)
