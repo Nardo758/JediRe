@@ -1124,10 +1124,12 @@ function PMixBar({ proposed, market, color }: { proposed: number; market: number
 }
 
 function PEnvelopeGauge({ used, total, label }: { used: number; total: number; label: string }) {
-  const pct = total > 0 ? (used / total) * 100 : 0;
-  const remaining = total - used;
-  const isOver = total > 0 && used > total;
-  const barColor = total === 0 ? PC.dim : isOver ? PC.red : pct > 90 ? PC.yellow : PC.green;
+  const u = used ?? 0;
+  const t = total ?? 0;
+  const pct = t > 0 ? (u / t) * 100 : 0;
+  const remaining = t - u;
+  const isOver = t > 0 && u > t;
+  const barColor = t === 0 ? PC.dim : isOver ? PC.red : pct > 90 ? PC.yellow : PC.green;
   return (
     <div style={{ flex: 1 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 3 }}>
@@ -1141,8 +1143,8 @@ function PEnvelopeGauge({ used, total, label }: { used: number; total: number; l
         <div style={{ position: "absolute", right: 0, top: -2, bottom: -2, width: 1, background: PC.faint, opacity: 0.4 }} />
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2 }}>
-        <span style={{ fontSize: 9, fontFamily: pmono, color: PC.text }}>{used.toLocaleString()}</span>
-        <span style={{ fontSize: 9, fontFamily: pmono, color: PC.faint }}>/ {total.toLocaleString()}</span>
+        <span style={{ fontSize: 9, fontFamily: pmono, color: PC.text }}>{u.toLocaleString()}</span>
+        <span style={{ fontSize: 9, fontFamily: pmono, color: PC.faint }}>/ {t.toLocaleString()}</span>
       </div>
     </div>
   );
@@ -1180,13 +1182,14 @@ function ProgramDevPanel({ program, computed, zoning, comps, gaps, onProgramChan
   const maxSF = zoning.maxNetSF;
   const grossRev = UT_META.reduce((s: number, ut: any) => {
     const u = program.units[ut.key as UnitKey];
+    if (!u) return s;
     return s + Math.round(totalUnits * u.mix / 100) * u.rent * 12;
   }, 0);
   const avgRent = grossRev / 12 / (totalUnits || 1);
   const avgPSF = totalSF > 0 ? grossRev / 12 / totalSF : 0;
 
   const unitRows = UT_META.map(ut => {
-    const u = program.units[ut.key as UnitKey];
+    const u = program.units[ut.key as UnitKey] ?? { mix: 0, sf: 0, rent: 0 };
     const avg = compAvg(ut.key as UnitKey, comps);
     const count = Math.round(totalUnits * u.mix / 100);
     const annualRev = u.rent * count * 12;

@@ -139,31 +139,34 @@ const PROGRAM_SEED = {
 };
 
 function compAvg(utKey: UnitKey, comps: CompData[]) {
-  const active = comps.filter(c => c.units[utKey].mix > 0);
+  const active = comps.filter(c => (c.units[utKey]?.mix ?? 0) > 0);
   if (!active.length) return { mix: 0, sf: 0, rent: 0, vac: 0, dom: 0, conc: 0 };
   const avg = (fn: (c: any) => number) => active.reduce((s, c) => s + fn(c), 0) / active.length;
   return {
-    mix:  avg(c => c.units[utKey].mix),
-    sf:   Math.round(avg(c => c.units[utKey].sf)),
-    rent: Math.round(avg(c => c.units[utKey].rent)),
-    vac:  avg(c => c.units[utKey].vac),
-    dom:  avg(c => c.units[utKey].dom),
-    conc: avg(c => c.units[utKey].conc),
+    mix:  avg(c => c.units[utKey]?.mix ?? 0),
+    sf:   Math.round(avg(c => c.units[utKey]?.sf ?? 0)),
+    rent: Math.round(avg(c => c.units[utKey]?.rent ?? 0)),
+    vac:  avg(c => c.units[utKey]?.vac ?? 0),
+    dom:  avg(c => c.units[utKey]?.dom ?? 0),
+    conc: avg(c => c.units[utKey]?.conc ?? 0),
   };
 }
 
 function computeProgram(program: Program) {
   const totalSF = UT_META.reduce((s, ut) => {
     const u = program.units[ut.key];
+    if (!u) return s;
     return s + Math.round(program.totalUnits * u.mix / 100) * u.sf;
   }, 0);
-  const mixTotal  = UT_META.reduce((s, ut) => s + program.units[ut.key].mix, 0);
+  const mixTotal = UT_META.reduce((s, ut) => s + (program.units[ut.key]?.mix ?? 0), 0);
   const totalMonthlyRent = UT_META.reduce((s, ut) => {
     const u = program.units[ut.key];
+    if (!u) return s;
     return s + Math.round(program.totalUnits * u.mix / 100) * u.rent;
   }, 0);
   const grossRevPA = UT_META.reduce((s, ut) => {
     const u = program.units[ut.key];
+    if (!u) return s;
     return s + Math.round(program.totalUnits * u.mix / 100) * u.rent * 12 * 0.95;
   }, 0);
   const wtdPSF = totalSF > 0 ? +(totalMonthlyRent / totalSF).toFixed(2) : 0;
@@ -173,18 +176,18 @@ function computeProgram(program: Program) {
 function computeInventory(comps: CompData[]) {
   const totalCompUnits = comps.reduce((s, c) => s + c.total, 0);
   return UT_META.map(ut => {
-    const active = comps.filter(c => c.units[ut.key].mix > 0);
-    const typeUnits = comps.reduce((s, c) => s + Math.round(c.total * c.units[ut.key].mix / 100), 0);
+    const active = comps.filter(c => (c.units[ut.key]?.mix ?? 0) > 0);
+    const typeUnits = comps.reduce((s, c) => s + Math.round(c.total * (c.units[ut.key]?.mix ?? 0) / 100), 0);
     const vacUnits  = comps.reduce((s, c) => {
-      const u = Math.round(c.total * c.units[ut.key].mix / 100);
-      return s + Math.round(u * (c.units[ut.key].vac || 0) / 100);
+      const u = Math.round(c.total * (c.units[ut.key]?.mix ?? 0) / 100);
+      return s + Math.round(u * (c.units[ut.key]?.vac ?? 0) / 100);
     }, 0);
     const avgVac  = typeUnits > 0 ? vacUnits / typeUnits * 100 : 0;
     const n = fn => active.length ? active.reduce((s, c) => s + fn(c), 0) / active.length : 0;
-    const avgDOM  = n(c => c.units[ut.key].dom);
-    const avgRent = n(c => c.units[ut.key].rent);
-    const avgConc = n(c => c.units[ut.key].conc);
-    const avgSF   = Math.round(n(c => c.units[ut.key].sf));
+    const avgDOM  = n(c => c.units[ut.key]?.dom ?? 0);
+    const avgRent = n(c => c.units[ut.key]?.rent ?? 0);
+    const avgConc = n(c => c.units[ut.key]?.conc ?? 0);
+    const avgSF   = Math.round(n(c => c.units[ut.key]?.sf ?? 0));
     const supplyShare = totalCompUnits > 0 ? typeUnits / totalCompUnits * 100 : 0;
     const vacScore  = Math.max(0, 100 - avgVac * 6);
     const domScore  = Math.max(0, 100 - avgDOM * 2);
@@ -1075,7 +1078,7 @@ function InventorySnapshot({ inventory, comps }: { inventory: InventoryItem[]; c
             <div style={{ color: C.text, fontSize: 9, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</div>
             <div style={{ color: C.dim, fontSize: 8, fontFamily: mono }}>{c.cls}</div>
             {UT_META.map(ut => {
-              const pct = c.units[ut.key].mix;
+              const pct = c.units[ut.key]?.mix ?? 0;
               return (
                 <div key={ut.key} style={{ textAlign: "right" }}>
                   <span style={{ color: pct > 0 ? ut.color : C.faint, fontFamily: mono,
@@ -1106,8 +1109,8 @@ function InventorySnapshot({ inventory, comps }: { inventory: InventoryItem[]; c
 
 function PropertyDrillDown({ selectedType, onSelect, comps }: { selectedType: UnitKey; onSelect: (k: UnitKey) => void; comps: CompData[] }) {
   const ut = UT_META.find(u => u.key === selectedType)!;
-  const rows = comps.filter(c => c.units[selectedType].mix > 0)
-    .sort((a, b) => a.units[selectedType].vac - b.units[selectedType].vac);
+  const rows = comps.filter(c => (c.units[selectedType]?.mix ?? 0) > 0)
+    .sort((a, b) => (a.units[selectedType]?.vac ?? 0) - (b.units[selectedType]?.vac ?? 0));
   const gridTpl = "1fr 32px 44px 52px 56px 48px 56px 60px";
 
   return (
@@ -1258,7 +1261,7 @@ function MixMatrix({ program, comps }: { program: Program; comps: CompData[] }) 
           <div style={{ color: c.cls==="A"?C.green:c.cls==="B+"?C.yellow:C.dim, fontSize: 8, fontFamily: mono,
             fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>{c.cls}</div>
           {UT_META.map(ut => {
-            const pct = c.units[ut.key].mix;
+            const pct = c.units[ut.key]?.mix ?? 0;
             return (
               <div key={ut.key} style={{ textAlign: "right" }}>
                 <span style={{ color: pct===0?C.faint:C.text, fontFamily: mono, fontSize: 9, fontWeight: 600 }}>
@@ -1398,8 +1401,8 @@ function CompTable({ program, utKey, setUtKey, comps }: { program: Program; utKe
         <PosTag rent={su.rent} />
       </div>
 
-      {comps.filter(c => c.units[ut.key].mix > 0 || c.units[ut.key].sf > 0).map((c, ri) => {
-        const u = c.units[ut.key];
+      {comps.filter(c => (c.units[ut.key]?.mix ?? 0) > 0 || (c.units[ut.key]?.sf ?? 0) > 0).map((c, ri) => {
+        const u = c.units[ut.key] ?? { mix: 0, sf: 0, rent: 0, vac: 0, dom: 0, conc: 0 };
         const psf = u.sf ? +(u.rent/u.sf).toFixed(2) : null;
         return (
           <div key={c.id} style={{ display: "grid", gridTemplateColumns: gridTpl, gap: 4,
