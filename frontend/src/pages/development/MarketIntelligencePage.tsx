@@ -1860,7 +1860,6 @@ function ProgramExistingPanel({ umComps }: { umComps: CompData[] }) {
               <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {EXISTING_AMENITIES.map(a => {
                   const sp = EXISTING_SUBMARKET.penetration[a.key];
-                  const isMissing = !EXISTING_SUBJECT.amenities[a.key];
                   return (
                     <div key={a.key} style={{ display: 'grid', gridTemplateColumns: '1fr 46px 1fr', gap: 8, alignItems: 'center' }}>
                       <div>
@@ -1876,7 +1875,7 @@ function ProgramExistingPanel({ umComps }: { umComps: CompData[] }) {
               </div>
             </div>
 
-            <div style={{ background: PC.card, border: `1px solid ${PC.border}`, borderRadius: 4, overflow: 'hidden', flex: 1 }}>
+            <div style={{ background: PC.card, border: `1px solid ${PC.border}`, borderRadius: 4 }}>
               <div style={{ padding: '6px 10px', borderBottom: `1px solid ${PC.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <div style={{ fontSize: 8, fontFamily: pmono, color: PC.faint, letterSpacing: 0.8 }}>ACTION SUMMARY</div>
@@ -1885,7 +1884,9 @@ function ProgramExistingPanel({ umComps }: { umComps: CompData[] }) {
                 <div style={{ fontSize: 8, fontFamily: pmono, color: PC.dim }}>terminal-ready</div>
               </div>
               <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {missingAmenities.map(a => {
+                {missingAmenities.length === 0 ? (
+                  <div style={{ padding: '10px 0', textAlign: 'center' as const, color: PC.green, fontFamily: pmono, fontSize: 9 }}>✓ All tracked amenities present — no gaps</div>
+                ) : missingAmenities.map(a => {
                   const lift = EXISTING_LIFT[a.key];
                   const cp = compPenetration(a.key);
                   const urgencyColor = cp >= 70 ? PC.red : cp >= 50 ? PC.yellow : PC.blue;
