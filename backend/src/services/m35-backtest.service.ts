@@ -6,20 +6,6 @@ import { kafkaProducer } from './kafka/kafka-producer.service';
 import { KAFKA_TOPICS, type M35RegimeShiftDetectedMessage } from './kafka/event-schemas';
 import { resolveMetricId } from './m35-impact.service';
 
-// ─── Contract note ────────────────────────────────────────────────────────────
-// Column name mapping (playbook_backtest_results vs task-spec wording):
-//   forecast_median  ↔ forecast_delta     (point estimate from event_forecasts)
-//   actual_value     ↔ actual_delta        (DiD-attributed observed delta)
-//   hit_within_ci    ↔ within_ci           (actual falls inside [forecast_p25, forecast_p75])
-//   data_coverage    ↔ data_coverage_pct   (stored as fraction 0-1; multiply ×100 for %)
-//   error_pct        ↔ pct_error           ((actual-forecast)/|forecast|×100)
-//
-// Regime detection semantics: detectRegimeShift() operates at the subtype level —
-// it checks the last REGIME_WINDOW evaluated rows across ALL metric_key/window_months
-// combinations for that subtype. The metric_key/window_months stored in the alert record
-// reflect the triggering context (the row that caused the check to run), not a
-// per-metric restriction on the alert scope.
-
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const BACKTEST_WINDOWS    = [12, 24, 36] as const;
@@ -40,7 +26,6 @@ interface MetricCoverageRow { cnt: string }
 interface DiDRow           { pre_avg: string | null; post_avg: string | null }
 interface ConfidenceRow    { confidence: string | null }
 interface HitRateRow       { hits: string; total: string }
-interface PlaybookCIRow    { median_delta: string | null; p25: string | null; p75: string | null }
 interface ErrorPctRow      { error_pct: string; metric_key: string; window_months: string }
 interface RegimeExistRow   { id: string }
 interface PrevStatusRow    { status: string }
@@ -176,12 +161,12 @@ async function updatePlaybookConfidence(pool: Pool, playbookId: string, hit: boo
 }
 
 // ─── CI widening (applied only once per newly-evaluated row) ──────────────────
-// Scope: per matched playbook row (subtype × metric_key × window_months × 'all' strata).
-// Intent: widen the specific forecast track that is under-performing, not all subtype forecasts.
-// The 1.2× spread is capped at CI_WIDEN_MAX_HALF × |median_delta| to prevent runaway expansion.
+// When the hit rate for a subtype × metric_key × window_months falls below 55%,
+// widen CIs on ALL playbook rows (all strata combinations) for that track by 1.2×.
+// Spread is capped at CI_WIDEN_MAX_HALF × |median_delta| to prevent runaway expansion.
 
 async function widenCIIfNeeded(
-  pool: Pool, playbookId: string, subtype: string, metricKey: string, windowMonths: number
+  pool: Pool, subtype: string, metricKey: string, windowMonths: number
 ): Promise<void> {
   const hr = await pool.query<HitRateRow>(
     `SELECT COUNT(*) FILTER (WHERE hit_within_ci = true) AS hits, COUNT(*) AS total
@@ -196,21 +181,17 @@ async function widenCIIfNeeded(
   const hitRate = parseInt(hr.rows[0].hits ?? '0') / total;
   if (hitRate >= HIT_RATE_THRESHOLD) return;
 
-  const pb = await pool.query<PlaybookCIRow>(
-    `SELECT median_delta, p25, p75 FROM event_playbooks WHERE id = $1`, [playbookId]
-  );
-  if (!pb.rows.length || pb.rows[0].median_delta == null || pb.rows[0].p25 == null || pb.rows[0].p75 == null) return;
-
-  const med     = parseFloat(pb.rows[0].median_delta);
-  const rawHalf = (parseFloat(pb.rows[0].p75) - parseFloat(pb.rows[0].p25)) * CI_WIDEN_FACTOR / 2;
-  // Cap: half-width cannot exceed CI_WIDEN_MAX_HALF × |median_delta| to prevent runaway expansion
-  const maxHalf = Math.abs(med) * CI_WIDEN_MAX_HALF;
-  const newHalf = maxHalf > 0 ? Math.min(rawHalf, maxHalf) : rawHalf;
+  // Widen all strata rows for this subtype × metric × window (subtype-wide CI expansion)
   await pool.query(
-    `UPDATE event_playbooks SET p25 = $1, p75 = $2, last_updated = NOW() WHERE id = $3`,
-    [(med - newHalf).toFixed(6), (med + newHalf).toFixed(6), playbookId]
+    `UPDATE event_playbooks SET
+       p25 = median_delta - LEAST((p75 - p25) * $4 / 2, ABS(median_delta) * $5),
+       p75 = median_delta + LEAST((p75 - p25) * $4 / 2, ABS(median_delta) * $5),
+       last_updated = NOW()
+     WHERE subtype = $1 AND metric_key = $2 AND window_months = $3
+       AND p25 IS NOT NULL AND p75 IS NOT NULL AND median_delta IS NOT NULL`,
+    [subtype, metricKey, windowMonths, CI_WIDEN_FACTOR, CI_WIDEN_MAX_HALF]
   );
-  logger.info('[M35 Backtest] CI widened', { playbookId, subtype, metricKey, windowMonths, hitRate });
+  logger.info('[M35 Backtest] CI widened (subtype-wide)', { subtype, metricKey, windowMonths, hitRate });
 }
 
 // ─── Regime shift detection ───────────────────────────────────────────────────
@@ -387,7 +368,7 @@ export async function runBacktestForEvent(eventId: string): Promise<{ processed:
       const isNewlyEvaluated = rowStatus === 'evaluated' && prevStatus !== 'evaluated';
       if (isNewlyEvaluated && fc.playbook_id && hitWithinCi != null) {
         await updatePlaybookConfidence(pool, fc.playbook_id, hitWithinCi);
-        await widenCIIfNeeded(pool, fc.playbook_id, ev.subtype, metricKey, windowMonths);
+        await widenCIIfNeeded(pool, ev.subtype, metricKey, windowMonths);
         await detectRegimeShift(pool, ev.subtype, metricKey, windowMonths);
       }
 
@@ -434,7 +415,6 @@ export async function runMonthlyBacktest(): Promise<{
   return { eventsChecked: evRes.rows.length, eventsProcessed, totalProcessed, totalSkipped };
 }
 
-// Alias required by task contract
 export const runAllPendingBacktests = runMonthlyBacktest;
 
 // ─── getPlaybookAccuracyStats ─────────────────────────────────────────────────
@@ -626,5 +606,4 @@ export async function acknowledgeRegimeAlert(
   return (res.rowCount ?? 0) > 0;
 }
 
-// Alias required by task contract
 export const resolveRegimeAlert = acknowledgeRegimeAlert;
