@@ -51,6 +51,14 @@ import { m35TrafficApiService } from '../services/m35-traffic-api.service';
 
 const router = Router();
 
+interface AuthRequest extends Request {
+  user?: { email: string; id?: string };
+}
+
+function callerEmail(req: Request): string | undefined {
+  return (req as AuthRequest).user?.email;
+}
+
 type ForecastStatusLabel = 'ahead' | 'behind' | 'on_pace' | 'no_data';
 
 interface ForecastEnrichment {
@@ -138,7 +146,7 @@ router.get('/events', async (req: Request, res: Response) => {
 
 router.get('/events/feed', async (req: Request, res: Response) => {
   try {
-    const userEmail = (req as any).user?.email;
+    const userEmail = callerEmail(req);
     if (!userEmail) {
       res.status(401).json({ error: 'Authentication required' });
       return;
@@ -249,7 +257,7 @@ router.post('/events', async (req: Request, res: Response) => {
   try {
     const input: CreateEventInput = {
       ...req.body,
-      createdBy: (req as any).user?.email ?? req.body.createdBy,
+      createdBy: callerEmail(req) ?? req.body.createdBy,
     };
 
     if (!input.category) { res.status(400).json({ error: 'category is required' }); return; }
@@ -300,7 +308,7 @@ router.post('/events/:id/status', async (req: Request, res: Response) => {
     const result = await transitionStatus(
       req.params.id,
       status as M35EventStatus,
-      { reason, changedBy: (req as any).user?.email }
+      { reason, changedBy: callerEmail(req) }
     );
 
     // Forecast lifecycle (generate/invalidate) is handled inside transitionStatus()
@@ -319,7 +327,7 @@ router.post('/events/:id/status', async (req: Request, res: Response) => {
 
 router.post('/events/:id/verify', async (req: Request, res: Response) => {
   try {
-    const verifiedBy = (req as any).user?.email ?? req.body.verifiedBy ?? 'unknown';
+    const verifiedBy = callerEmail(req) ?? req.body.verifiedBy ?? 'unknown';
     const event = await verifyEvent(req.params.id, verifiedBy, req.body.confidence);
     res.json(event);
   } catch (err: any) {
@@ -358,7 +366,7 @@ router.post('/events/:id/watchlist', async (req: Request, res: Response) => {
     if (!metricKey) { res.status(400).json({ error: 'metricKey is required' }); return; }
     const item = await addWatchlistMetric(
       req.params.id, metricKey, displayName,
-      (req as any).user?.email
+      callerEmail(req)
     );
     res.status(201).json(item);
   } catch (err: any) {
@@ -374,7 +382,7 @@ router.post('/events/promote/:draftId', async (req: Request, res: Response) => {
     const event = await promoteFromDraftQueue(
       req.params.draftId,
       req.body?.overrides ?? {},
-      (req as any).user?.email
+      callerEmail(req)
     );
     res.status(201).json(event);
   } catch (err: any) {

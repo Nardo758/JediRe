@@ -313,16 +313,6 @@ export const MSAEventsTab: React.FC<MSAEventsTabProps> = ({ msaId, msa }) => {
           }
         }
 
-        if (!fcRes.ok && raw.msaId) {
-          const dealsRes = await fetch(`/api/v1/deals?limit=1`).catch(() => null);
-          if (dealsRes?.ok) {
-            const dealsData = await dealsRes.json().catch(() => null);
-            if (dealsData?.deals?.length > 0 || dealsData?.items?.length > 0) {
-              proFormaLinked = true;
-            }
-          }
-        }
-
         let relatedEvents: RelatedEventRef[] = [];
         if (relRes.ok) {
           const relData = await relRes.json();

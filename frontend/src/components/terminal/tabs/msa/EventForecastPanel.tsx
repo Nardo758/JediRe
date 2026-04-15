@@ -131,106 +131,6 @@ function ConfidenceBar({ value }: { value: number }) {
   );
 }
 
-// ─── Actual vs Forecast SVG Chart ─────────────────────────────────────────────
-
-interface ChartProps {
-  metricKey: string;
-  metrics: ForecastMetric[];
-  actuals: ForecastActual[];
-}
-
-function ActualVsForecastChart({ metricKey, metrics, actuals }: ChartProps) {
-  const W = 280;
-  const H = 80;
-  const PAD = { l: 30, r: 10, t: 10, b: 20 };
-  const innerW = W - PAD.l - PAD.r;
-  const innerH = H - PAD.t - PAD.b;
-
-  const windows = WINDOWS;
-  const forecasts = windows.map(w => metrics.find(m => m.metricKey === metricKey && m.windowMonths === w) ?? null);
-  const acts      = windows.map(w => actuals.find(a => a.metricKey === metricKey && a.windowMonths === w) ?? null);
-
-  const f = METRIC_FORMAT[metricKey] ?? { suffix: '', decimals: 2, scale: 1 };
-
-  const allVals: number[] = [];
-  forecasts.forEach(m => { if (m?.pointEstimate != null) allVals.push(m.pointEstimate * f.scale); if (m?.ciLow != null) allVals.push(m.ciLow * f.scale); if (m?.ciHigh != null) allVals.push(m.ciHigh * f.scale); });
-  acts.forEach(a => { if (a?.actualValue != null) allVals.push(a.actualValue * f.scale); });
-  allVals.push(0);
-
-  const minV = Math.min(...allVals);
-  const maxV = Math.max(...allVals);
-  const range = maxV - minV || 1;
-
-  const scaleY = (v: number) => PAD.t + innerH - ((v - minV) / range) * innerH;
-  const scaleX = (i: number) => PAD.l + (i / (windows.length - 1)) * innerW;
-
-  const zeroY = scaleY(0);
-  const clampedZeroY = Math.max(PAD.t, Math.min(PAD.t + innerH, zeroY));
-
-  const fcstPoints = forecasts.map((m, i) => m?.pointEstimate != null ? { x: scaleX(i), y: scaleY(m.pointEstimate * f.scale) } : null);
-  const actPoints  = acts.map((a, i) => a?.actualValue != null ? { x: scaleX(i), y: scaleY(a.actualValue * f.scale) } : null);
-
-  const fcstPath = fcstPoints.filter(Boolean).map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p!.x} ${p!.y}`).join(' ');
-  const actPath  = actPoints.filter(Boolean).map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p!.x} ${p!.y}`).join(' ');
-
-  return (
-    <div>
-      <div style={{ fontSize: 8, color: BT.text.dim, ...mono, marginBottom: 4, display: 'flex', gap: 12 }}>
-        <span style={{ color: BT.accent.blue }}>╌╌ FORECAST</span>
-        <span style={{ color: '#10B981' }}>── ACTUAL</span>
-        <span style={{ color: BT.text.dim }}>▓ CI BAND</span>
-      </div>
-      <svg width={W} height={H} style={{ display: 'block', overflow: 'visible' }}>
-        {/* Zero line */}
-        <line x1={PAD.l} y1={clampedZeroY} x2={W - PAD.r} y2={clampedZeroY}
-          stroke={BT.border.subtle} strokeWidth={1} strokeDasharray="3 3" />
-
-        {/* CI bands */}
-        {windows.map((_, i) => {
-          const m = forecasts[i];
-          if (!m || m.ciLow == null || m.ciHigh == null) return null;
-          const x = scaleX(i);
-          const y1 = scaleY(m.ciHigh * f.scale);
-          const y2 = scaleY(m.ciLow * f.scale);
-          return <rect key={i} x={x - 4} y={y1} width={8} height={y2 - y1}
-            fill={`${BT.accent.blue}22`} />;
-        })}
-
-        {/* Forecast line — dotted (prediction) */}
-        {fcstPath && <path d={fcstPath} fill="none" stroke={BT.accent.blue} strokeWidth={1.5} strokeDasharray="4 2" />}
-
-        {/* Actual line — solid (real data) */}
-        {actPath && <path d={actPath} fill="none" stroke="#10B981" strokeWidth={2} />}
-
-        {/* Forecast dots */}
-        {fcstPoints.map((p, i) => p && (
-          <circle key={i} cx={p.x} cy={p.y} r={3} fill={BT.accent.blue} />
-        ))}
-
-        {/* Actual dots */}
-        {actPoints.map((p, i) => p && (
-          <circle key={i} cx={p.x} cy={p.y} r={3} fill="#10B981" />
-        ))}
-
-        {/* X-axis labels */}
-        {windows.map((w, i) => (
-          <text key={w} x={scaleX(i)} y={H} textAnchor="middle" fontSize={7}
-            fill={BT.text.dim} fontFamily="monospace">
-            T+{w}mo
-          </text>
-        ))}
-
-        {/* Y-axis min/max */}
-        <text x={PAD.l - 2} y={PAD.t + 4} textAnchor="end" fontSize={7} fill={BT.text.dim} fontFamily="monospace">
-          {maxV.toFixed(f.decimals)}{f.suffix}
-        </text>
-        <text x={PAD.l - 2} y={PAD.t + innerH} textAnchor="end" fontSize={7} fill={BT.text.dim} fontFamily="monospace">
-          {minV.toFixed(f.decimals)}{f.suffix}
-        </text>
-      </svg>
-    </div>
-  );
-}
 
 // ─── Playbook Citation Card ───────────────────────────────────────────────────
 
@@ -285,7 +185,6 @@ export function EventForecastPanel({ eventId, eventName, onRegenerateCallback }:
   const [error, setError] = useState<string | null>(null);
   const [activeWindow, setActiveWindow] = useState<3 | 12 | 24 | 36>(12);
   const [showDerivation, setShowDerivation] = useState(false);
-  const [chartMetric, setChartMetric] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -294,12 +193,7 @@ export function EventForecastPanel({ eventId, eventName, onRegenerateCallback }:
       const res = await fetch(`/api/v1/m35/events/${eventId}/forecast`);
       if (res.ok) {
         const d = await res.json();
-        const fc: EventForecast | null = d.forecast ?? null;
-        setForecast(fc);
-        if (fc) {
-          const keys = [...new Set(fc.metrics.map(m => m.metricKey))];
-          if (keys.length > 0) setChartMetric(keys[0]);
-        }
+        setForecast(d.forecast ?? null);
       } else if (res.status === 404) {
         setForecast(null);
       } else {
@@ -382,37 +276,49 @@ export function EventForecastPanel({ eventId, eventName, onRegenerateCallback }:
       {/* ── Playbook citation card ────────────────────────────────────────────── */}
       <PlaybookCitationCard forecast={forecast} />
 
-      {/* ── Actual-vs-forecast chart ──────────────────────────────────────────── */}
+      {/* ── Multi-metric actual-vs-forecast matrix (one row per tracked metric) ── */}
       {metricKeys.length > 0 && (
         <div style={{ ...terminalStyles.card, padding: '10px 14px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
             <span style={{ fontSize: 8, fontWeight: 700, color: BT.text.dim, letterSpacing: '0.1em' }}>
-              ACTUAL VS FORECAST — {METRIC_LABELS[chartMetric ?? ''] ?? (chartMetric ?? '')}
+              ACTUAL VS FORECAST — ALL METRICS × WINDOWS
             </span>
-            <div style={{ display: 'flex', gap: 3 }}>
-              {metricKeys.map(k => (
-                <button
-                  key={k}
-                  onClick={() => setChartMetric(k)}
-                  style={{
-                    fontSize: 8, padding: '1px 6px', cursor: 'pointer', ...mono,
-                    background: chartMetric === k ? BT.accent.blue : BT.bg.elevated,
-                    color: chartMetric === k ? '#0A0F14' : BT.text.muted,
-                    border: `1px solid ${chartMetric === k ? BT.accent.blue : BT.border.subtle}`,
-                  }}
-                >
-                  {(METRIC_LABELS[k] ?? k).replace(' (YoY)', '').substring(0, 10)}
-                </button>
-              ))}
+            <div style={{ display: 'flex', gap: 10, fontSize: 7, color: BT.text.dim }}>
+              <span style={{ color: BT.accent.blue }}>╌ FCST</span>
+              <span style={{ color: '#10B981' }}>— ACT</span>
             </div>
           </div>
-          {chartMetric && (
-            <ActualVsForecastChart
-              metricKey={chartMetric}
-              metrics={forecast.metrics}
-              actuals={actuals}
-            />
-          )}
+          <div style={{ display: 'grid', gridTemplateColumns: `120px repeat(${WINDOWS.length}, 1fr)`, gap: 1, fontSize: 8 }}>
+            <div style={{ padding: '3px 4px', color: BT.text.dim, fontWeight: 700 }}>METRIC</div>
+            {WINDOWS.map(w => (
+              <div key={w} style={{ padding: '3px 4px', color: BT.accent.blue, fontWeight: 700, textAlign: 'center' as const }}>
+                T+{w}mo
+              </div>
+            ))}
+            {metricKeys.map(k => (
+              <React.Fragment key={k}>
+                <div style={{ padding: '4px 4px', color: BT.text.secondary, borderTop: `1px solid ${BT.border.subtle}20`, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
+                  {(METRIC_LABELS[k] ?? k).replace(' (YoY)', '')}
+                </div>
+                {WINDOWS.map(w => {
+                  const m = forecast.metrics.find(x => x.metricKey === k && x.windowMonths === w);
+                  const a = actuals.find(x => x.metricKey === k && x.windowMonths === w);
+                  const stColor = a ? (STATUS_COLORS[a.statusLabel] ?? BT.text.dim) : BT.border.subtle;
+                  return (
+                    <div key={w} style={{ padding: '4px 4px', borderTop: `1px solid ${BT.border.subtle}20`, borderLeft: `2px solid ${stColor}22`, textAlign: 'center' as const }}>
+                      {m?.pointEstimate != null && (
+                        <div style={{ color: BT.accent.blue, fontSize: 7 }}>{fmtVal(k, m.pointEstimate)}</div>
+                      )}
+                      {a?.actualValue != null && (
+                        <div style={{ color: '#10B981', fontSize: 7, fontWeight: 700 }}>{fmtVal(k, a.actualValue)}</div>
+                      )}
+                      {!m && !a && <div style={{ color: BT.text.dim, fontSize: 7 }}>—</div>}
+                    </div>
+                  );
+                })}
+              </React.Fragment>
+            ))}
+          </div>
         </div>
       )}
 
