@@ -41,9 +41,9 @@ interface ForecastRow {
 }
 interface BacktestResultRow {
   id: string; metric_key: string; window_months: string; milestone_date: string;
-  forecast_median: string | null; forecast_p25: string | null; forecast_p75: string | null;
-  actual_value: string | null; error: string | null; error_pct: string | null;
-  hit_within_ci: boolean | null; data_coverage: string | null; status: string; ran_at: string;
+  forecast_delta: string | null; forecast_p25: string | null; forecast_p75: string | null;
+  actual_delta: string | null; error: string | null; error_pct: string | null;
+  within_ci: boolean | null; data_coverage_pct: string | null; status: string; ran_at: string;
 }
 interface AccuracyStatsRow {
   subtype: string; metric_key: string; window_months: string;
@@ -169,10 +169,10 @@ async function widenCIIfNeeded(
   pool: Pool, subtype: string, metricKey: string, windowMonths: number
 ): Promise<void> {
   const hr = await pool.query<HitRateRow>(
-    `SELECT COUNT(*) FILTER (WHERE hit_within_ci = true) AS hits, COUNT(*) AS total
+    `SELECT COUNT(*) FILTER (WHERE within_ci = true) AS hits, COUNT(*) AS total
      FROM playbook_backtest_results
      WHERE subtype = $1 AND metric_key = $2 AND window_months = $3
-       AND status = 'evaluated' AND hit_within_ci IS NOT NULL`,
+       AND status = 'evaluated' AND within_ci IS NOT NULL`,
     [subtype, metricKey, windowMonths]
   );
   const total = parseInt(hr.rows[0].total ?? '0');
@@ -348,17 +348,17 @@ export async function runBacktestForEvent(eventId: string): Promise<{ processed:
       await pool.query(
         `INSERT INTO playbook_backtest_results
            (id, event_id, playbook_id, subtype, metric_key, window_months, milestone_date,
-            forecast_median, forecast_p25, forecast_p75,
-            actual_value, error, error_pct, hit_within_ci, data_coverage, status, computed_at, ran_at)
+            forecast_delta, forecast_p25, forecast_p75,
+            actual_delta, error, error_pct, within_ci, data_coverage_pct, status, computed_at, ran_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NOW(),NOW())
          ON CONFLICT (event_id, metric_key, window_months)
          DO UPDATE SET
            playbook_id = EXCLUDED.playbook_id, subtype = EXCLUDED.subtype,
            milestone_date = EXCLUDED.milestone_date,
-           forecast_median = EXCLUDED.forecast_median, forecast_p25 = EXCLUDED.forecast_p25,
-           forecast_p75 = EXCLUDED.forecast_p75, actual_value = EXCLUDED.actual_value,
+           forecast_delta = EXCLUDED.forecast_delta, forecast_p25 = EXCLUDED.forecast_p25,
+           forecast_p75 = EXCLUDED.forecast_p75, actual_delta = EXCLUDED.actual_delta,
            error = EXCLUDED.error, error_pct = EXCLUDED.error_pct,
-           hit_within_ci = EXCLUDED.hit_within_ci, data_coverage = EXCLUDED.data_coverage,
+           within_ci = EXCLUDED.within_ci, data_coverage_pct = EXCLUDED.data_coverage_pct,
            status = EXCLUDED.status, computed_at = NOW(), ran_at = NOW()`,
         [
           uuidv4(), eventId, fc.playbook_id ?? null, ev.subtype, metricKey, windowMonths, milestoneDate,
@@ -437,11 +437,11 @@ export async function getPlaybookAccuracyStats(subtype?: string): Promise<Array<
   const res = await pool.query<AccuracyStatsRow>(
     `SELECT pbr.subtype, pbr.metric_key, pbr.window_months,
             COUNT(*) AS total,
-            COUNT(*) FILTER (WHERE pbr.hit_within_ci = true) AS hits,
+            COUNT(*) FILTER (WHERE pbr.within_ci = true) AS hits,
             AVG(pbr.error) AS avg_error,
             STDDEV(pbr.error) AS std_error
      FROM playbook_backtest_results pbr
-     WHERE pbr.status = 'evaluated' AND pbr.hit_within_ci IS NOT NULL
+     WHERE pbr.status = 'evaluated' AND pbr.within_ci IS NOT NULL
        AND ($1::text IS NULL OR pbr.subtype = $1)
      GROUP BY pbr.subtype, pbr.metric_key, pbr.window_months
      ORDER BY pbr.subtype, pbr.metric_key, pbr.window_months`,
@@ -472,8 +472,8 @@ export async function getPlaybookBacktestReport(subtype: string): Promise<{
   const pool = getPool();
 
   const statsRes = await pool.query<BacktestReportStatsRow>(
-    `SELECT COUNT(*) FILTER (WHERE hit_within_ci IS NOT NULL) AS total,
-            COUNT(*) FILTER (WHERE hit_within_ci = true)      AS hits,
+    `SELECT COUNT(*) FILTER (WHERE within_ci IS NOT NULL) AS total,
+            COUNT(*) FILTER (WHERE within_ci = true)      AS hits,
             AVG(error) AS mean_error, STDDEV(error) AS std_error,
             PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY error) AS p25,
             PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY error) AS p75
@@ -493,11 +493,11 @@ export async function getPlaybookBacktestReport(subtype: string): Promise<{
 
   const pointsRes = await pool.query<{
     event_id: string; metric_key: string; window_months: string;
-    forecast_median: string | null; actual_value: string | null;
-    error: string | null; hit_within_ci: boolean | null; ran_at: string;
+    forecast_delta: string | null; actual_delta: string | null;
+    error: string | null; within_ci: boolean | null; ran_at: string;
   }>(
-    `SELECT event_id, metric_key, window_months, forecast_median, actual_value,
-            error, hit_within_ci, ran_at
+    `SELECT event_id, metric_key, window_months, forecast_delta, actual_delta,
+            error, within_ci, ran_at
      FROM playbook_backtest_results
      WHERE subtype = $1 AND status = 'evaluated'
      ORDER BY ran_at DESC LIMIT 10`,
@@ -523,10 +523,10 @@ export async function getPlaybookBacktestReport(subtype: string): Promise<{
       eventId:        r.event_id,
       metricKey:      r.metric_key,
       windowMonths:   parseInt(r.window_months),
-      forecastMedian: r.forecast_median != null ? parseFloat(r.forecast_median) : null,
-      actualValue:    r.actual_value    != null ? parseFloat(r.actual_value)    : null,
+      forecastMedian: r.forecast_delta != null ? parseFloat(r.forecast_delta) : null,
+      actualValue:    r.actual_delta    != null ? parseFloat(r.actual_delta)    : null,
       error:          r.error           != null ? parseFloat(r.error)           : null,
-      hitWithinCi:    r.hit_within_ci,
+      hitWithinCi:    r.within_ci,
       ranAt:          r.ran_at,
     })),
   };
@@ -543,8 +543,8 @@ export async function getEventBacktestResults(eventId: string): Promise<Array<{
   const pool = getPool();
   const res = await pool.query<BacktestResultRow>(
     `SELECT id, metric_key, window_months, milestone_date,
-            forecast_median, forecast_p25, forecast_p75,
-            actual_value, error, error_pct, hit_within_ci, data_coverage, status, ran_at
+            forecast_delta, forecast_p25, forecast_p75,
+            actual_delta, error, error_pct, within_ci, data_coverage_pct, status, ran_at
      FROM playbook_backtest_results WHERE event_id = $1
      ORDER BY window_months, metric_key`,
     [eventId]
@@ -552,14 +552,14 @@ export async function getEventBacktestResults(eventId: string): Promise<Array<{
   return res.rows.map(r => ({
     id: r.id, metricKey: r.metric_key, windowMonths: parseInt(r.window_months),
     milestoneDate:  r.milestone_date,
-    forecastMedian: r.forecast_median != null ? parseFloat(r.forecast_median) : null,
+    forecastMedian: r.forecast_delta != null ? parseFloat(r.forecast_delta) : null,
     forecastP25:    r.forecast_p25    != null ? parseFloat(r.forecast_p25)    : null,
     forecastP75:    r.forecast_p75    != null ? parseFloat(r.forecast_p75)    : null,
-    actualValue:    r.actual_value    != null ? parseFloat(r.actual_value)    : null,
+    actualValue:    r.actual_delta    != null ? parseFloat(r.actual_delta)    : null,
     error:          r.error           != null ? parseFloat(r.error)           : null,
     errorPct:       r.error_pct       != null ? parseFloat(r.error_pct)       : null,
-    hitWithinCi:    r.hit_within_ci,
-    dataCoverage:   r.data_coverage   != null ? parseFloat(r.data_coverage)   : null,
+    hitWithinCi:    r.within_ci,
+    dataCoverage:   r.data_coverage_pct   != null ? parseFloat(r.data_coverage_pct)   : null,
     status:         r.status,
     ranAt:          r.ran_at,
   }));
