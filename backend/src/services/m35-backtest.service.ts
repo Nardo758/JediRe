@@ -361,7 +361,12 @@ export async function runBacktestForEvent(eventId: string): Promise<{ processed:
            forecast_p75 = EXCLUDED.forecast_p75, actual_delta = EXCLUDED.actual_delta,
            error = EXCLUDED.error, error_pct = EXCLUDED.error_pct,
            within_ci = EXCLUDED.within_ci, data_coverage_pct = EXCLUDED.data_coverage_pct,
-           status = EXCLUDED.status, ran_at = NOW()`,
+           status = EXCLUDED.status, ran_at = NOW(),
+           computed_at = CASE
+             WHEN playbook_backtest_results.status != 'evaluated' AND EXCLUDED.status = 'evaluated'
+             THEN NOW()
+             ELSE playbook_backtest_results.computed_at
+           END`,
         [
           uuidv4(), eventId, fc.playbook_id ?? null, ev.subtype, metricKey, windowMonths, milestoneDate,
           forecastMedian, forecastP25, forecastP75, actualValue,
