@@ -29,11 +29,6 @@ CREATE TABLE IF NOT EXISTS playbook_backtest_results (
   ran_at            TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
-ALTER TABLE playbook_backtest_results
-  ADD COLUMN IF NOT EXISTS status      VARCHAR(20)  NOT NULL DEFAULT 'evaluated',
-  ADD COLUMN IF NOT EXISTS computed_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-  ADD COLUMN IF NOT EXISTS subtype     VARCHAR(64);
-
 CREATE INDEX IF NOT EXISTS idx_pbr_event
   ON playbook_backtest_results (event_id);
 
