@@ -542,9 +542,15 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
     if (!id || Object.keys(rows).length === 0) return;
     const totalUnits = programData?.totalUnits ?? 0;
     if (totalUnits === 0) return;
+    const unitMix = Object.entries(rows).map(([key, u]) => ({ type: key, mix: u.mix, sf: u.sf, rent: u.rent }));
+    const avgRentPerUnit = unitMix.length > 0
+      ? Math.round(unitMix.reduce((s, u) => s + u.rent * (u.mix / 100), 0))
+      : undefined;
     try {
-      await apiClient.post(`/api/v1/unit-mix/${id}/push-to-proforma`, {
-        program: { totalUnits, units: rows },
+      await apiClient.put(`/api/v1/deals/${id}/assumptions`, {
+        unitMix,
+        totalUnits,
+        avgRentPerUnit,
       });
     } catch {
       // best-effort — non-blocking
