@@ -81,13 +81,6 @@ interface ExitReturns {
   absIdx: number;
 }
 
-interface ExitStrategyOption {
-  id: string;
-  label: string;
-  desc: string;
-  tl: string;  // timeline
-}
-
 interface StackPreset {
   sr: {
     pct: number;
@@ -611,72 +604,6 @@ function RSSBreakdownCards({ rssData }: RSSBreakdownCardsProps) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// EXIT STRATEGY CARDS
-// ═══════════════════════════════════════════════════════════════════════════
-
-interface ExitStrategyCardsProps {
-  options: ExitStrategyOption[];
-  selectedStrategy: string;
-  onSelectStrategy: (id: string) => void;
-}
-
-function ExitStrategyCards({ options, selectedStrategy, onSelectStrategy }: ExitStrategyCardsProps) {
-  return (
-    <div>
-      <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: 1, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'", marginBottom: 8 }}>
-        EXIT STRATEGY — selecting changes debt structure in banner above
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${options.length}, 1fr)`, gap: 12 }}>
-        {options.map((opt) => {
-          const isSelected = selectedStrategy === opt.id;
-          const preset = STACK_PRESETS[opt.id];
-          return (
-            <div
-              key={opt.id}
-              onClick={() => onSelectStrategy(opt.id)}
-              style={{
-                background: isSelected ? 'rgba(104,211,145,0.08)' : 'rgba(255,255,255,0.025)',
-                border: isSelected ? '1px solid rgba(104,211,145,0.3)' : '1px solid rgba(255,255,255,0.06)',
-                borderRadius: 8,
-                padding: '14px 16px',
-                cursor: 'pointer',
-              }}
-            >
-              <div style={{ fontSize: 9, fontWeight: 700, color: isSelected ? '#68D391' : 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'", letterSpacing: 1, marginBottom: 5 }}>
-                {isSelected ? '✓ ACTIVE' : 'SELECT'}
-              </div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: isSelected ? '#68D391' : '#E8E6E1', marginBottom: 3 }}>{opt.label}</div>
-              <div style={{ fontSize: 10, color: 'rgba(232,230,225,0.5)', marginBottom: 10 }}>{opt.desc}</div>
-              {preset && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  {[
-                    { l: 'Loan type', v: preset.sr.type, c: '#63B3ED' },
-                    { l: 'Rate', v: fmt.pct(preset.sr.rate), c: isSelected ? '#68D391' : '#E8E6E1' },
-                    { l: 'LTV', v: `${preset.sr.pct}%`, c: 'rgba(232,230,225,0.7)' },
-                    { l: 'IO period', v: preset.sr.io, c: 'rgba(232,230,225,0.7)' },
-                    { l: 'Term', v: preset.sr.term, c: '#B794F4' },
-                    ...(preset.mz ? [{ l: '+ Mezz', v: fmt.pct(preset.mz.rate), c: '#F6E05E' }] : []),
-                  ].map((m) => (
-                    <div key={m.l} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                      <span style={{ fontSize: 9, color: 'rgba(232,230,225,0.3)', fontFamily: "'JetBrains Mono'" }}>{m.l}</span>
-                      <span style={{ fontSize: 10, fontWeight: 600, fontFamily: "'JetBrains Mono'", color: m.c }}>{m.v}</span>
-                    </div>
-                  ))}
-                  <div style={{ marginTop: 4, paddingTop: 4, borderTop: '1px solid rgba(255,255,255,0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                    <span style={{ fontSize: 9, color: 'rgba(232,230,225,0.3)', fontFamily: "'JetBrains Mono'" }}>Timeline</span>
-                    <span style={{ fontSize: 10, fontWeight: 600, fontFamily: "'JetBrains Mono'", color: '#B794F4' }}>{opt.tl}</span>
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
 // PUSH-TO-PROFORMA BANNER
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -796,30 +723,6 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
   // RSS verdict
   const rssColor = rssData.rss >= 85 ? '#68D391' : rssData.rss >= 70 ? '#63B3ED' : rssData.rss >= 55 ? '#F6E05E' : '#FC8181';
   const rssVerdict = rssData.rss >= 85 ? 'Strong sell window' : rssData.rss >= 70 ? 'Favorable' : rssData.rss >= 55 ? 'Neutral' : 'Weak — hold';
-
-  // Exit strategy options by deal type
-  const exitOptions = useMemo((): ExitStrategyOption[] => {
-    if (dealType === 'development') {
-      return [
-        { id: 'merchant-build', label: 'Merchant Build', desc: 'Sell at CO', tl: '18-24mo' },
-        { id: 'sell-stabilized', label: 'Stabilize & Sell', desc: 'Lease-up then sell', tl: '30-36mo' },
-        { id: 'build-to-hold', label: 'Build-to-Hold', desc: 'Refi into permanent', tl: '7+ yrs' },
-      ];
-    }
-    if (dealType === 'redevelopment') {
-      return [
-        { id: 'sell-stabilized', label: 'Sell at Completion', desc: 'Renovate, sell repositioned', tl: '24-30mo' },
-        { id: 'refi-hold', label: 'Renovate & Hold', desc: 'Refi, hold for cash flow', tl: '5-7 yrs' },
-        { id: '1031-exchange', label: '1031 Exchange', desc: 'Defer gains', tl: '24-36mo' },
-      ];
-    }
-    // existing (default)
-    return [
-      { id: 'sell-stabilized', label: 'Sell at Stabilization', desc: 'Value-add then sell', tl: '24-36mo' },
-      { id: 'refi-hold', label: 'Refinance & Hold', desc: 'Agency permanent, hold', tl: '7-10 yrs' },
-      { id: '1031-exchange', label: '1031 Exchange', desc: 'Defer gains', tl: '24-36mo' },
-    ];
-  }, [dealType]);
 
   // Compute annual debt service
   const totalBasis = dealType === 'development' ? 52000000 : 46420000;
@@ -943,9 +846,6 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
 
             {/* RSS breakdown cards */}
             <RSSBreakdownCards rssData={rssData} />
-
-            {/* Exit strategy cards */}
-            <ExitStrategyCards options={exitOptions} selectedStrategy={selectedExitStrategy} onSelectStrategy={setSelectedExitStrategy} />
 
             {/* F9 cross-link */}
             <div style={{ marginTop: 12, padding: '8px 12px', background: 'rgba(99,179,237,0.06)', border: '1px solid rgba(99,179,237,0.15)', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
