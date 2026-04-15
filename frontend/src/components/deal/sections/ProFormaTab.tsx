@@ -144,6 +144,8 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
   const [modelResults, setModelResults] = useState<ModelResults | null>(null);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['dealInfo', 'unitMix', 'acquisition']));
   const [platformData, setPlatformData] = useState<Record<string, any>>({});
+  const [programData, setProgramData] = useState<{ totalUnits: number; units: Record<string, { mix: number; sf: number; rent: number }> } | null>(null);
+  const [programMixApplied, setProgramMixApplied] = useState(false);
 
   const [dealName, setDealName] = useState(deal?.name || 'Untitled Deal');
   const [totalUnitsManual, setTotalUnitsManual] = useState<number | null>(null);
@@ -333,11 +335,12 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
 
     const fetchData = async () => {
       try {
-        const [proformaRes, trafficRes, strategyRes, latestModelRes] = await Promise.allSettled([
+        const [proformaRes, trafficRes, strategyRes, latestModelRes, programRes] = await Promise.allSettled([
           apiClient.get(`/api/v1/proforma/${id}`),
           apiClient.get(`/api/v1/leasing-traffic/v2/intelligence/${id}`),
           apiClient.get(`/api/v1/strategy-analyses/${id}`),
           apiClient.get(`/api/v1/financial-model/${id}/latest`),
+          apiClient.get(`/api/v1/unit-mix/${id}/program`),
         ]);
 
         if (cancelled) return;
@@ -376,6 +379,14 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
           const model = (latestModelRes.value as any).data.data;
           if (model?.results) {
             setModelResults(model.results);
+          }
+        }
+
+        if (programRes.status === 'fulfilled') {
+          const raw = (programRes.value as any)?.data;
+          const prog = raw?.program ?? raw;
+          if (prog && typeof prog === 'object' && 'totalUnits' in prog && (prog as { totalUnits: number }).totalUnits > 0) {
+            setProgramData(prog as { totalUnits: number; units: Record<string, { mix: number; sf: number; rent: number }> });
           }
         }
 
@@ -518,6 +529,38 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
       alert('Excel export failed: ' + (err?.response?.data?.error || err.message));
     }
   };
+
+  const applyProgramMix = useCallback(() => {
+    if (!programData) return;
+    const keyMap: Array<{ key: string; floorPlan: string; beds: number }> = [
+      { key: 'studio', floorPlan: 'Studio', beds: 0 },
+      { key: 'oneBR',  floorPlan: '1BR/1BA', beds: 1 },
+      { key: 'twoBR',  floorPlan: '2BR/2BA', beds: 2 },
+      { key: 'threeBR', floorPlan: '3BR/2BA', beds: 3 },
+    ];
+    const rows: UnitMixRow[] = keyMap
+      .filter(m => programData.units[m.key]?.mix > 0)
+      .map(m => {
+        const u = programData.units[m.key];
+        const unitCount = Math.round(programData.totalUnits * u.mix / 100);
+        const occ = Math.round(unitCount * 0.94);
+        return {
+          floorPlan: m.floorPlan,
+          unitSize: u.sf,
+          beds: m.beds,
+          units: unitCount,
+          occupied: occ,
+          vacant: unitCount - occ,
+          marketRent: u.rent,
+          inPlaceRent: u.rent,
+        };
+      });
+    if (rows.length > 0) {
+      setUnitMix(rows);
+      setTotalUnitsManual(programData.totalUnits);
+      setProgramMixApplied(true);
+    }
+  }, [programData]);
 
   const toggleSection = (section: string) => {
     setExpandedSections(prev => {
@@ -680,7 +723,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
                   )}
                   {section.id === 'unitMix' && (
                     <>
-                      {designSource && (
+                      {designSource && !programMixApplied && (
                         <div className="mt-2 mb-1 flex items-center gap-2">
                           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-violet-100 text-violet-700 border border-violet-200">
                             Source: {designSource}
@@ -688,6 +731,38 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
                           <span className="text-[10px] text-stone-400">Unit mix pre-filled from 3D Design module — edit to override</span>
                         </div>
                       )}
+                      {programMixApplied && (
+                        <div className="mt-2 mb-1 flex items-center gap-2">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-100 text-blue-700 border border-blue-200">
+                            Source: Program Tab
+                          </span>
+                          <span className="text-[10px] text-stone-400">Unit mix loaded from AI-optimised program — edit to override</span>
+                        </div>
+                      )}
+                      {programData && !programMixApplied && (() => {
+                        const gpr = Object.entries(programData.units).reduce((sum, [, u]) => {
+                          const count = Math.round(programData.totalUnits * u.mix / 100);
+                          return sum + count * u.rent * 12;
+                        }, 0);
+                        return (
+                          <div className="mt-2 mb-2 flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+                            <div className="flex-1">
+                              <div className="text-[10px] font-bold text-blue-800 uppercase tracking-wider mb-0.5">
+                                Program Tab Data Available
+                              </div>
+                              <div className="text-[10px] text-blue-600">
+                                {programData.totalUnits} units · Est. GPR ${(gpr / 1e6).toFixed(2)}M/yr — click to load into Unit Mix
+                              </div>
+                            </div>
+                            <button
+                              onClick={applyProgramMix}
+                              className="px-3 py-1.5 bg-blue-600 text-white text-[10px] font-semibold rounded-lg hover:bg-blue-700 transition-colors whitespace-nowrap"
+                            >
+                              Apply from Program →
+                            </button>
+                          </div>
+                        );
+                      })()}
                       <UnitMixSection unitMix={unitMix} setUnitMix={setUnitMix} platformData={platformData} />
                     </>
                   )}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useParams } from "react-router-dom";
 import {
   ScatterChart, Scatter, XAxis, YAxis, ZAxis, Tooltip, ResponsiveContainer,
@@ -689,19 +689,27 @@ function ProgramEditor({ program, computed, zoning, onProgramChange, comps, gaps
   const sfOver = sfPct > 100;
   const [pushing, setPushing] = useState(false);
   const [pushResult, setPushResult] = useState<{ success: boolean; modules: string[] } | null>(null);
+  const [showSugg, setShowSugg] = useState(!readOnly);
+
+  const suggestion = useMemo(() => {
+    if (comps.length === 0) return null;
+    const demandScores: Record<string, number> = {};
+    if (gaps) gaps.forEach(g => { demandScores[g.key] = g.demandScore; });
+    return computeOptimalProgram(program.totalUnits, comps, {
+      zoning: { maxUnits: zoning.maxUnits, maxNetSF: zoning.maxNetSF },
+      demandScores: gaps ? demandScores : undefined,
+    });
+  }, [program.totalUnits, comps, gaps, zoning.maxUnits, zoning.maxNetSF]);
 
   function setUnit(utKey: UnitKey, field: string, val: number) {
     onProgramChange({ ...program, units: { ...program.units, [utKey]: { ...program.units[utKey], [field]: val } } });
   }
 
-  function applyOptimalMix() {
-    const demandScores: Record<string, number> = {};
-    if (gaps) gaps.forEach(g => { demandScores[g.key] = g.demandScore; });
-    const optimal = computeOptimalProgram(program.totalUnits, comps, {
-      zoning: { maxUnits: zoning.maxUnits, maxNetSF: zoning.maxNetSF },
-      demandScores: gaps ? demandScores : undefined,
-    });
-    onProgramChange(optimal);
+  function applySuggestion() {
+    if (suggestion) {
+      onProgramChange(suggestion);
+      setShowSugg(false);
+    }
   }
 
   function resetProgram() {
@@ -719,15 +727,81 @@ function ProgramEditor({ program, computed, zoning, onProgramChange, comps, gaps
         ) : (
           <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
             {!mixOk && <Tag label={`MIX ${mixTotal}%`} color={C.red} />}
-            <button onClick={applyOptimalMix} style={{ background: C.blue + "14", border: `1px solid ${C.blue}35`,
-              borderRadius: 3, padding: "2px 6px", color: C.blue, fontSize: 7, fontFamily: mono,
-              fontWeight: 700, cursor: "pointer", letterSpacing: "0.04em" }}>AI OPTIMIZE</button>
+            <button onClick={() => setShowSugg(s => !s)} style={{
+              background: showSugg ? C.blue + "22" : "none",
+              border: `1px solid ${showSugg ? C.blue + "60" : C.border}`,
+              borderRadius: 3, padding: "2px 6px",
+              color: showSugg ? C.blue : C.faint, fontSize: 7, fontFamily: mono,
+              fontWeight: 700, cursor: "pointer", letterSpacing: "0.04em",
+            }}>{showSugg ? "HIDE AI" : "AI SUGGESTION"}</button>
             <button onClick={resetProgram} style={{ background: "none",
               border: `1px solid ${C.border}`, borderRadius: 3, padding: "2px 6px",
               color: C.faint, fontSize: 7, fontFamily: mono, cursor: "pointer" }}>RESET</button>
           </div>
         )
       } />
+
+      {!readOnly && showSugg && suggestion && (
+        <div style={{ borderBottom: `1px solid ${C.border}`, background: C.blue + "08" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
+            padding: "5px 8px 4px", borderBottom: `1px solid ${C.blue}18` }}>
+            <div>
+              <span style={{ color: C.blue, fontFamily: mono, fontSize: 7, fontWeight: 700, letterSpacing: "0.06em" }}>
+                M03 · AI RECOMMENDATION
+              </span>
+              <span style={{ color: C.faint, fontFamily: mono, fontSize: 7, marginLeft: 6 }}>
+                {comps.length} comp{comps.length !== 1 ? "s" : ""} · demand 35% · PSF 25% · gap 20% · velocity 20%
+              </span>
+            </div>
+            <button onClick={applySuggestion} style={{
+              background: C.blue, border: "none", borderRadius: 3, padding: "2px 10px",
+              color: "#0A0E1A", fontSize: 7, fontFamily: mono, fontWeight: 800,
+              cursor: "pointer", letterSpacing: "0.05em",
+            }}>APPLY SUGGESTION →</button>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 1,
+            background: C.border, padding: 1 }}>
+            {UT_META.map(ut => {
+              const s = suggestion.units[ut.key];
+              const gap = gaps?.find(g => g.key === ut.key);
+              const curr = program.units[ut.key];
+              const mixDelta = s.mix - curr.mix;
+              const suggCount = Math.round(suggestion.totalUnits * s.mix / 100);
+              const gapPp = gap?.gap ?? 0;
+              return (
+                <div key={ut.key} style={{ background: C.bg, padding: "5px 7px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
+                    <span style={{ color: ut.color, fontFamily: mono, fontSize: 8, fontWeight: 700 }}>{ut.label}</span>
+                    <span style={{ color: C.text, fontFamily: mono, fontSize: 10, fontWeight: 800 }}>{s.mix}%</span>
+                  </div>
+                  <div style={{ height: 3, background: C.muted, borderRadius: 1, overflow: "hidden", marginBottom: 4 }}>
+                    <div style={{ width: `${Math.min(s.mix, 100)}%`, height: "100%", background: ut.color + "bb", borderRadius: 1 }} />
+                  </div>
+                  <div style={{ display: "flex", gap: 5, flexWrap: "wrap" as const }}>
+                    <span style={{ color: C.dim, fontFamily: mono, fontSize: 7 }}>×{suggCount}</span>
+                    <span style={{ color: C.dim, fontFamily: mono, fontSize: 7 }}>{s.sf}sf</span>
+                    <span style={{ color: C.green, fontFamily: mono, fontSize: 7, fontWeight: 700 }}>${s.rent}/mo</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 5, marginTop: 2 }}>
+                    {mixDelta !== 0 && (
+                      <span style={{ fontFamily: mono, fontSize: 6,
+                        color: mixDelta > 0 ? C.green : C.red }}>
+                        {mixDelta > 0 ? "▲" : "▼"}{Math.abs(mixDelta)}pp vs current
+                      </span>
+                    )}
+                    {gap && (
+                      <span style={{ fontFamily: mono, fontSize: 6,
+                        color: gapPp > 2 ? C.green : gapPp < -2 ? C.red : C.yellow }}>
+                        {gapPp > 0 ? "+" : ""}{gapPp.toFixed(1)}pp gap
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 1, background: C.border,
         borderBottom: `1px solid ${C.border}` }}>
