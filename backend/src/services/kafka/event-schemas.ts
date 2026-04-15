@@ -424,6 +424,7 @@ export const KAFKA_TOPICS = {
   M35_PLAYBOOK_UPDATED:    'playbook.updated',
   M35_FORECAST_CREATED:    'm35.forecast.created',
   M35_FORECAST_DIVERGED:   'm35.forecast.diverged',
+  M35_REGIME_SHIFT_DETECTED: 'm35.regime.shift_detected',
 } as const;
 
 // ─── M35 Event Impact Engine — Kafka Message Types ────────────────────────────
@@ -500,6 +501,19 @@ export interface M35PlaybookUpdatedMessage extends BaseEvent {
   metricWindowCount: number;
   instanceCount: number;
   updatedAt: string;        // ISO-8601
+}
+
+export interface M35RegimeShiftDetectedMessage extends BaseEvent {
+  eventType: 'M35_REGIME_SHIFT_DETECTED';
+  alertId: string;
+  subtype: string;
+  metricKey: string;
+  windowMonths: number;
+  biasDirection: 'over' | 'under';
+  avgError: number;
+  stdError: number;
+  sampleSize: number;
+  detectedAt: string;
 }
 
 export type KafkaTopic = typeof KAFKA_TOPICS[keyof typeof KAFKA_TOPICS];
