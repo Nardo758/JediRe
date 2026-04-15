@@ -199,10 +199,13 @@ async function widenCIIfNeeded(
 }
 
 // ─── Regime shift detection ───────────────────────────────────────────────────
-// Subtype-level: fires when the last REGIME_WINDOW evaluated rows for this subtype
-// (across ALL metrics/windows) show same-direction error_pct with each |error_pct| > 1× std.
-// error_pct normalization enables cross-metric comparison.
-// Alert metric_key='*' and window_months=0 signal subtype-level scope (not per metric/window).
+// Design: intentionally subtype-wide (not per metric/window track).
+// A regime shift reflects a structural change in the market environment affecting
+// the whole subtype, so aggregating across all metrics/windows yields a more robust
+// signal than per-track detection.
+// Fires when the last REGIME_WINDOW evaluated rows for this subtype all share the
+// same error_pct sign AND each |error_pct| exceeds 1× std dev of the sample.
+// Alert stored with metric_key='*', window_months=0 as sentinel values for subtype-level scope.
 
 async function detectRegimeShift(pool: Pool, subtype: string): Promise<void> {
   const res = await pool.query<ErrorPctRow>(
