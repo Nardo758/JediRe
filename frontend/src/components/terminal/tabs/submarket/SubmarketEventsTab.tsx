@@ -8,10 +8,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowUpRight, Activity, AlertTriangle } from 'lucide-react';
+import { ArrowUpRight, Activity } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
 import { EventDensityStrip } from '../../../m35/EventDensityStrip';
 import { ForecastTracker } from '../../../m35/ForecastTracker';
+import { M35EventCard, type M35EventCardData } from '../../../m35/M35EventCard';
 import type { SubmarketData } from '../../SubmarketTerminal';
 
 const mono: React.CSSProperties = {
@@ -31,48 +32,6 @@ interface LiveEvent {
   announcedDate: string | null;
   materializationDate: string | null;
 }
-
-// ─── Scope chip ───────────────────────────────────────────────────────────────
-
-const SCOPE_COLORS: Record<string, string> = {
-  msa: '#6B7280',
-  submarket: '#0891B2',
-  property: '#D97706',
-};
-
-function ScopeChip({ scope }: { scope: string }) {
-  const color = SCOPE_COLORS[scope] ?? BT.text.muted;
-  return (
-    <span style={{
-      padding: '1px 5px', fontSize: 8, ...mono,
-      background: `${color}22`, border: `1px solid ${color}55`, color,
-      borderRadius: 2, textTransform: 'uppercase', letterSpacing: 0.3,
-    }}>
-      {scope}
-    </span>
-  );
-}
-
-// ─── Magnitude bars ───────────────────────────────────────────────────────────
-
-function MagBars({ value }: { value: number }) {
-  const v = Math.round(Math.min(5, Math.max(1, value)));
-  return (
-    <div style={{ display: 'flex', gap: 2, alignItems: 'flex-end' }}>
-      {[1,2,3,4,5].map(i => (
-        <div key={i} style={{ width: 3, height: 3 + i * 2, background: i <= v ? BT.accent.blue : `${BT.text.muted}33`, borderRadius: 1 }} />
-      ))}
-    </div>
-  );
-}
-
-// ─── Category emojis ──────────────────────────────────────────────────────────
-
-const CAT_EMOJI: Record<string, string> = {
-  employment: '💼', infrastructure: '🚆', supply: '🏗️',
-  policy: '📜', demographic: '📊', macro: '📈',
-  disaster: '🌀', regulatory: '📋',
-};
 
 // ─── Demo fallback ────────────────────────────────────────────────────────────
 
@@ -127,11 +86,6 @@ export const SubmarketEventsTab: React.FC<SubmarketEventsTabProps> = ({ submarke
     return () => { mounted = false; };
   }, [submarketId, submarket.name]);
 
-  const statusColor = (s: string) =>
-    s === 'materialized' || s === 'in_progress' ? BT.text.green :
-    s === 'announced' ? BT.accent.amber :
-    BT.text.muted;
-
   return (
     <div style={{ color: BT.text.primary, ...mono }}>
 
@@ -181,53 +135,29 @@ export const SubmarketEventsTab: React.FC<SubmarketEventsTabProps> = ({ submarke
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {events.map(ev => {
                 const isActive = selected?.id === ev.id;
-                const sColor = statusColor(ev.status);
-                const emoji = CAT_EMOJI[ev.category] ?? '📌';
+                const cardData: M35EventCardData = {
+                  id:             ev.id,
+                  name:           ev.name,
+                  category:       ev.category,
+                  status:         ev.status,
+                  scope:          ev.scope,
+                  magnitudeScore: ev.magnitudeScore,
+                  confidence:     ev.confidence,
+                  announcedDate:  ev.announcedDate,
+                };
                 return (
-                  <div
-                    key={ev.id}
-                    onClick={() => setSelected(isActive ? null : ev)}
-                    style={{
-                      ...terminalStyles.card,
-                      padding: 0, cursor: 'pointer',
-                      borderLeft: `3px solid ${sColor}`,
-                      background: isActive ? BT.bg.active : BT.bg.card,
-                      outline: isActive ? `1px solid ${BT.accent.blue}44` : 'none',
-                    }}
-                  >
-                    <div style={{ padding: '10px 14px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                          <div style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, background: BT.bg.elevated, flexShrink: 0 }}>
-                            {emoji}
-                          </div>
-                          <div>
-                            <div style={{ fontWeight: 700, fontSize: 12, color: BT.text.primary }}>{ev.name}</div>
-                            <div style={{ fontSize: 9, color: BT.text.muted, marginTop: 2, display: 'flex', gap: 8 }}>
-                              <span style={{ color: sColor, textTransform: 'uppercase', fontWeight: 700 }}>{ev.status.replace(/_/g,' ')}</span>
-                              <ScopeChip scope={ev.scope} />
-                              {ev.announcedDate && (
-                                <span>· {new Date(ev.announcedDate).toLocaleDateString('en-US',{month:'short',year:'numeric'})}</span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
-                          <MagBars value={ev.magnitudeScore} />
-                          <span style={{ fontSize: 8, color: BT.text.muted }}>
-                            Conf: <span style={{ color: ev.confidence >= 0.7 ? BT.text.green : ev.confidence >= 0.5 ? BT.accent.amber : BT.text.muted, fontWeight: 700 }}>
-                              {(ev.confidence * 100).toFixed(0)}%
-                            </span>
-                          </span>
-                        </div>
-                      </div>
-                    </div>
+                  <div key={ev.id}>
+                    <M35EventCard
+                      event={cardData}
+                      selected={isActive}
+                      onClick={() => setSelected(isActive ? null : ev)}
+                    />
                     <div style={{
-                      borderTop: `1px solid ${BT.border.subtle}`,
-                      padding: '6px 14px',
                       display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      padding: '4px 10px', background: BT.bg.elevated,
+                      borderBottom: `1px solid ${BT.border.subtle}`,
                     }}>
-                      <span style={{ fontSize: 8, color: BT.text.muted }}>
+                      <span style={{ fontSize: 8, color: BT.text.muted, ...mono }}>
                         {isActive ? '▲ hide forecast' : '▼ show forecast'}
                       </span>
                       <button

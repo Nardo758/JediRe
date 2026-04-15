@@ -40,6 +40,17 @@ const CATEGORY_COLORS: Record<string, string> = {
 
 const MAGNITUDE_MAX = 5;
 
+function timeSince(isoDate: string | null): string | null {
+  if (!isoDate) return null;
+  const ms = Date.now() - new Date(isoDate).getTime();
+  const days = Math.floor(ms / 86400000);
+  if (days < 1) return 'Today';
+  if (days < 30) return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo ago`;
+  return `${Math.floor(months / 12)}yr ago`;
+}
+
 export interface M35EventCardData {
   id: string;
   name: string;
@@ -182,7 +193,9 @@ export function M35EventCard({ event, selected, onClick, compact }: Props) {
 
         {event.announcedDate && (
           <span style={{ ...mono, fontSize: 8, color: BT.text.dim }}>
-            {new Date(event.announcedDate).toLocaleDateString('en-US', { month: 'short', year: '2-digit' })}
+            {compact
+              ? (timeSince(event.announcedDate) ?? '')
+              : new Date(event.announcedDate).toLocaleDateString('en-US', { month: 'short', year: '2-digit' })}
           </span>
         )}
 
@@ -202,8 +215,8 @@ export function M35EventCard({ event, selected, onClick, compact }: Props) {
         )}
       </div>
 
-      {!compact && (event.msa || event.submarket) && (
-        <div style={{ fontSize: 9, color: BT.text.dim, ...mono }}>
+      {(event.msa || event.submarket) && (
+        <div style={{ fontSize: compact ? 8 : 9, color: BT.text.dim, ...mono }}>
           {event.submarket ? `${event.submarket} · ` : ''}{event.msa}
         </div>
       )}

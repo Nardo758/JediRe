@@ -284,7 +284,27 @@ export const MSAEventsTab: React.FC<MSAEventsTabProps> = ({ msaId, msa }) => {
       ]);
       if (evRes.ok) {
         const evData = await evRes.json();
-        setFullEvent(evData.event ?? evData);
+        const raw = evData.event ?? evData;
+        setFullEvent({
+          id:                  raw.id,
+          name:                raw.name,
+          category:            raw.category,
+          status:              raw.status,
+          scope:               raw.scope,
+          magnitudeScore:      raw.magnitudeScore ?? 2,
+          confidence:          raw.confidence ?? 0.5,
+          announcedDate:       raw.announcedDate ?? null,
+          materializationDate: raw.materializationDate ?? null,
+          description:         raw.description ?? null,
+          submarket:           raw.submarketName ?? null,
+          msaId:               raw.msaId ?? null,
+          connectorSource:     raw.ingestionSource ?? raw.sourceUrl ?? null,
+          proFormaLinked:      false,
+          forecastStatus:      null,
+          forecastSummary:     null,
+          playbookName:        raw.subtype ?? null,
+          relatedEvents:       [],
+        });
       }
       if (causalRes.ok) {
         setEventDetail(await causalRes.json());
