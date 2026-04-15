@@ -630,6 +630,66 @@ function RSSBreakdownCards({ rssData }: RSSBreakdownCardsProps) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// M35 KEY EVENT TYPES + HELPERS
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface M35Event {
+  id: string;
+  name: string;
+  category: string;
+  subtype?: string;
+  status: string;
+  description?: string;
+  announcedDate?: string;
+  materializationDate?: string;
+  magnitudeScore: number;
+  confidence: number;
+  isVerified: boolean;
+  msaName?: string;
+  submarketName?: string;
+  ingestionSource?: string;
+}
+
+const M35_CAT_COLORS: Record<string, string> = {
+  employment:      '#68D391',
+  infrastructure:  '#63B3ED',
+  regulatory:      '#F6AD55',
+  market_structure:'#B794F4',
+  macro:           '#4FD1C5',
+  disaster:        '#FC8181',
+  technology:      '#F6E05E',
+};
+
+function m35CatColor(cat: string): string {
+  return M35_CAT_COLORS[cat.toLowerCase()] ?? 'rgba(232,230,225,0.5)';
+}
+
+function dateToQIdx(iso: string): number {
+  const d = new Date(iso);
+  return (d.getFullYear() - 2016) * 4 + Math.floor(d.getMonth() / 3);
+}
+
+function eventPhase(ev: M35Event): 'past' | 'now' | 'future' {
+  const refDate = new Date('2026-04-15');
+  const date = ev.announcedDate ?? ev.materializationDate;
+  if (!date) return ev.status === 'materialized' ? 'past' : 'future';
+  const d = new Date(date);
+  const diffMonths = (d.getTime() - refDate.getTime()) / (1000 * 60 * 60 * 24 * 30);
+  if (diffMonths < -1) return 'past';
+  if (diffMonths <= 1) return 'now';
+  return 'future';
+}
+
+function exitImpact(category: string, status: string): { label: string; color: string } {
+  const cat = category.toLowerCase();
+  if (cat === 'disaster') return { label: 'NEGATIVE', color: '#FC8181' };
+  if (cat === 'regulatory') return { label: 'WATCH', color: '#F6AD55' };
+  if (status === 'reversed' || status === 'cancelled') return { label: 'NEUTRAL', color: 'rgba(232,230,225,0.4)' };
+  if (cat === 'employment' || cat === 'infrastructure' || cat === 'macro') return { label: 'POSITIVE', color: '#68D391' };
+  return { label: 'NEUTRAL', color: 'rgba(232,230,225,0.4)' };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -646,9 +706,16 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
   const dealType: DealType = propDealType || (deal?.dealType as DealType) || 'existing';
 
   const [activeTab, setActiveTab] = useState<TabId>('exit');
-  const [selectedFwd, setSelectedFwd] = useState<number>(0);  // Will be set to optimal on mount
+  const [selectedFwd, setSelectedFwd] = useState<number>(0);
   const [liveRates, setLiveRates] = useState<LiveRates | null>(null);
   const [liveRatesLoading, setLiveRatesLoading] = useState(false);
+  const [m35Events, setM35Events] = useState<M35Event[]>([]);
+
+  useEffect(() => {
+    apiClient.get<{ events: M35Event[] }>(`/m35/deals/${dealId}/events-context`)
+      .then(r => { if (Array.isArray(r.data?.events)) setM35Events(r.data.events); })
+      .catch(() => null);
+  }, [dealId]);
 
   // Compute optimal exit quarter (highest RSS in forward window)
   const optimalFwd = useMemo(() => {
@@ -831,6 +898,78 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
                   </div>
                 ))}
               </div>
+            </div>
+
+            {/* KEY EVENTS — sourced from M35 Event Impact Engine (news-ingested) */}
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: 1, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>
+                  KEY EVENTS — NEWS-SOURCED IMPACT SIGNALS
+                </div>
+                {m35Events.length > 0 && (
+                  <span style={{ fontSize: 7, padding: '1px 6px', background: 'rgba(104,211,145,0.1)', border: '1px solid rgba(104,211,145,0.3)', borderRadius: 3, color: '#68D391', fontFamily: "'JetBrains Mono'", fontWeight: 700 }}>
+                    {m35Events.length} ACTIVE
+                  </span>
+                )}
+              </div>
+
+              {m35Events.length === 0 ? (
+                <div style={{ padding: '14px 16px', background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 6, fontSize: 10, color: 'rgba(232,230,225,0.3)', fontFamily: "'JetBrains Mono'" }}>
+                  No M35 events indexed for this market yet. Events auto-ingest from news and government filings.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {m35Events.slice(0, 6).map(ev => {
+                    const phase = eventPhase(ev);
+                    const impact = exitImpact(ev.category, ev.status);
+                    const catColor = m35CatColor(ev.category);
+                    const dateStr = ev.announcedDate ?? ev.materializationDate;
+                    const displayDate = dateStr ? new Date(dateStr).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : null;
+                    return (
+                      <div key={ev.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '10px 14px', background: 'rgba(255,255,255,0.018)', border: `1px solid ${catColor}20`, borderLeft: `3px solid ${catColor}`, borderRadius: 5 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3, flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: 7, fontWeight: 700, padding: '1px 5px', background: `${catColor}15`, border: `1px solid ${catColor}40`, borderRadius: 2, color: catColor, fontFamily: "'JetBrains Mono'", textTransform: 'uppercase' }}>
+                              {ev.category.replace('_', ' ')}
+                            </span>
+                            <span style={{ fontSize: 7, fontWeight: 700, padding: '1px 5px', background: `${impact.color}10`, border: `1px solid ${impact.color}30`, borderRadius: 2, color: impact.color, fontFamily: "'JetBrains Mono'" }}>
+                              {impact.label}
+                            </span>
+                            {ev.ingestionSource === 'news' && (
+                              <span style={{ fontSize: 7, padding: '1px 5px', background: 'rgba(99,179,237,0.08)', border: '1px solid rgba(99,179,237,0.25)', borderRadius: 2, color: '#63B3ED', fontFamily: "'JetBrains Mono'" }}>
+                                NEWS
+                              </span>
+                            )}
+                            {ev.isVerified && (
+                              <span style={{ fontSize: 7, padding: '1px 5px', background: 'rgba(104,211,145,0.08)', border: '1px solid rgba(104,211,145,0.25)', borderRadius: 2, color: '#68D391', fontFamily: "'JetBrains Mono'" }}>
+                                ✓ VERIFIED
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: 11, fontWeight: 600, color: '#E8E6E1', marginBottom: ev.description ? 3 : 0, lineHeight: 1.4 }}>{ev.name}</div>
+                          {ev.description && (
+                            <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.45)', lineHeight: 1.5 }}>{ev.description}</div>
+                          )}
+                        </div>
+                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                          <div style={{ fontSize: 8, fontWeight: 700, color: phase === 'past' ? 'rgba(232,230,225,0.3)' : phase === 'now' ? '#63B3ED' : '#F6AD55', fontFamily: "'JetBrains Mono'", marginBottom: 4 }}>
+                            {phase.toUpperCase()}
+                          </div>
+                          {displayDate && (
+                            <div style={{ fontSize: 8, color: 'rgba(232,230,225,0.3)', fontFamily: "'JetBrains Mono'" }}>{displayDate}</div>
+                          )}
+                          <div style={{ marginTop: 6 }}>
+                            <div style={{ fontSize: 8, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'", marginBottom: 1 }}>CONFIDENCE</div>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: ev.confidence >= 0.7 ? '#68D391' : ev.confidence >= 0.5 ? '#F6E05E' : '#FC8181', fontFamily: "'JetBrains Mono'" }}>
+                              {Math.round(ev.confidence * 100)}%
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* F9 cross-link */}
