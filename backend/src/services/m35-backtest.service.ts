@@ -143,6 +143,8 @@ async function computeDiDActual(
   );
   const ctrl = ctrlRes.rows[0];
   if (!ctrl || ctrl.pre_avg == null || ctrl.post_avg == null) {
+    // Control data is sparse; fall back to treatment-only delta (no counterfactual adjustment).
+    // dataCoverage reflects treatment coverage only — control sparsity does not gate evaluated status.
     return { actualValue: treatDelta, dataCoverage };
   }
   return { actualValue: treatDelta - (parseFloat(ctrl.post_avg) - parseFloat(ctrl.pre_avg)), dataCoverage };
