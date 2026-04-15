@@ -195,15 +195,12 @@ async function widenCIIfNeeded(
 }
 
 // ─── Regime shift detection ───────────────────────────────────────────────────
-// Fires when last REGIME_WINDOW evaluated backtests for this subtype (across all
-// metrics/windows) show same-direction error_pct AND each |error_pct| > 1× std.
-// error_pct normalization allows comparison across different metric scales.
-// error = actual − forecast: error_pct < 0 → over-predicted; > 0 → under-predicted.
+// Subtype-level: fires when the last REGIME_WINDOW evaluated rows for this subtype
+// (across ALL metrics/windows) show same-direction error_pct with each |error_pct| > 1× std.
+// error_pct normalization enables cross-metric comparison.
+// Alert metric_key='*' and window_months=0 signal subtype-level scope (not per metric/window).
 
-async function detectRegimeShift(
-  pool: Pool, subtype: string, metricKey: string, windowMonths: number
-): Promise<void> {
-  // Subtype-level: last 5 evaluated rows across ALL metrics/windows for this subtype.
+async function detectRegimeShift(pool: Pool, subtype: string): Promise<void> {
   const res = await pool.query<ErrorPctRow>(
     `SELECT error_pct, metric_key, window_months FROM playbook_backtest_results
      WHERE subtype = $1 AND status = 'evaluated' AND error_pct IS NOT NULL
@@ -213,8 +210,8 @@ async function detectRegimeShift(
   if (res.rows.length < REGIME_WINDOW) return;
 
   const errorPcts: number[] = res.rows.map(r => parseFloat(r.error_pct));
-  const allNegative = errorPcts.every(e => e < 0); // over-predicted across subtype
-  const allPositive = errorPcts.every(e => e > 0); // under-predicted across subtype
+  const allNegative = errorPcts.every(e => e < 0);
+  const allPositive = errorPcts.every(e => e > 0);
   if (!allNegative && !allPositive) return;
 
   const stdErr = stdDev(errorPcts);
@@ -222,7 +219,6 @@ async function detectRegimeShift(
 
   const avgPctErr = mean(errorPcts);
 
-  // Dedup at subtype level — one open alert per subtype
   const existing = await pool.query<RegimeExistRow>(
     `SELECT id FROM regime_shift_alerts WHERE subtype = $1 AND status = 'open' LIMIT 1`,
     [subtype]
@@ -233,18 +229,18 @@ async function detectRegimeShift(
   const direction  = allNegative ? 'over' : 'under';
   const detectedAt = new Date().toISOString();
 
+  // metric_key='*' and window_months=0 indicate subtype-level scope (not a specific track)
   await pool.query(
     `INSERT INTO regime_shift_alerts
        (id, subtype, metric_key, window_months, bias_direction, avg_pct_error, std_error,
         sample_size, consecutive_misses, resolved, status, detected_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8,FALSE,'open',$9)`,
-    [alertId, subtype, metricKey, windowMonths, direction,
-     avgPctErr.toFixed(6), stdErr.toFixed(6), REGIME_WINDOW, detectedAt]
+     VALUES ($1,$2,'*',0,$3,$4,$5,$6,$6,FALSE,'open',$7)`,
+    [alertId, subtype, direction, avgPctErr.toFixed(6), stdErr.toFixed(6), REGIME_WINDOW, detectedAt]
   );
 
   const msg: M35RegimeShiftDetectedMessage = {
     eventId: alertId, eventType: 'M35_REGIME_SHIFT_DETECTED', timestamp: detectedAt,
-    alertId, subtype, metricKey, windowMonths,
+    alertId, subtype, metricKey: '*', windowMonths: 0,
     biasDirection: direction as 'over' | 'under',
     avgError: avgPctErr, stdError: stdErr, sampleSize: REGIME_WINDOW, detectedAt,
   };
@@ -253,7 +249,7 @@ async function detectRegimeShift(
   } catch (e) {
     logger.warn('[M35 Backtest] Kafka publish failed for regime shift (non-fatal)', { alertId });
   }
-  logger.warn('[M35 Backtest] Regime shift detected', { alertId, subtype, metricKey, windowMonths, direction, avgPctErr, stdErr });
+  logger.warn('[M35 Backtest] Regime shift detected', { alertId, subtype, direction, avgPctErr, stdErr });
 }
 
 // ─── runBacktestForEvent ──────────────────────────────────────────────────────
@@ -369,7 +365,7 @@ export async function runBacktestForEvent(eventId: string): Promise<{ processed:
       if (isNewlyEvaluated && fc.playbook_id && hitWithinCi != null) {
         await updatePlaybookConfidence(pool, fc.playbook_id, hitWithinCi);
         await widenCIIfNeeded(pool, ev.subtype, metricKey, windowMonths);
-        await detectRegimeShift(pool, ev.subtype, metricKey, windowMonths);
+        await detectRegimeShift(pool, ev.subtype);
       }
 
       processed++;
