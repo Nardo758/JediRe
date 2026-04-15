@@ -541,8 +541,11 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
   const saveProgramMixOverride = useCallback(async (rows: Record<string, { mix: number; sf: number; rent: number }>) => {
     if (!id || Object.keys(rows).length === 0) return;
     const totalUnits = programData?.totalUnits ?? 0;
+    if (totalUnits === 0) return;
     try {
-      await apiClient.post(`/api/v1/unit-mix/${id}/program`, { totalUnits, units: rows });
+      await apiClient.post(`/api/v1/unit-mix/${id}/push-to-proforma`, {
+        program: { totalUnits, units: rows },
+      });
     } catch {
       // best-effort — non-blocking
     }
