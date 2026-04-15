@@ -116,7 +116,8 @@ async function computeDiDActual(
   const postStart = new Date(announcedDate);
   const postEnd   = new Date(milestoneDate);
 
-  // Coverage is measured over the window period only (postStart→postEnd), not pre+post
+  // Coverage over window period only. Assumes monthly cadence (1 point/month expected).
+  // For mixed-frequency metrics, dataCoverage may over/under-estimate actual coverage.
   const countRes = await pool.query<MetricCoverageRow>(
     `SELECT COUNT(*) AS cnt
      FROM metric_time_series
@@ -175,6 +176,9 @@ async function updatePlaybookConfidence(pool: Pool, playbookId: string, hit: boo
 }
 
 // ─── CI widening (applied only once per newly-evaluated row) ──────────────────
+// Scope: per matched playbook row (subtype × metric_key × window_months × 'all' strata).
+// Intent: widen the specific forecast track that is under-performing, not all subtype forecasts.
+// The 1.2× spread is capped at CI_WIDEN_MAX_HALF × |median_delta| to prevent runaway expansion.
 
 async function widenCIIfNeeded(
   pool: Pool, playbookId: string, subtype: string, metricKey: string, windowMonths: number
