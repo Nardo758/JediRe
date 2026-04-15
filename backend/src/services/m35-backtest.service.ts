@@ -175,14 +175,18 @@ async function detectRegimeShift(
   );
   if (res.rows.length < REGIME_WINDOW) return;
 
+  // error = actual − forecast; positive → under-prediction; negative → over-prediction
   const errors: number[] = res.rows.map((r: any) => parseFloat(r.error));
-  const allOver  = errors.every(e => e > 0);
-  const allUnder = errors.every(e => e < 0);
-  if (!allOver && !allUnder) return;
+  const allNegative = errors.every(e => e < 0);   // actual < forecast → over-predicted
+  const allPositive = errors.every(e => e > 0);   // actual > forecast → under-predicted
+  if (!allNegative && !allPositive) return;
+
+  const stdErr = stdDev(errors);
+  // Each individual error must exceed 1× std — confirms systematic, not random, bias
+  const allExceedOneStd = errors.every(e => Math.abs(e) > stdErr);
+  if (!allExceedOneStd) return;
 
   const avgErr = mean(errors);
-  const stdErr = stdDev(errors);
-  if (Math.abs(avgErr) <= stdErr) return;
 
   const existing = await pool.query(
     `SELECT id FROM regime_shift_alerts
@@ -192,7 +196,7 @@ async function detectRegimeShift(
   if (existing.rows.length > 0) return;
 
   const alertId    = uuidv4();
-  const direction  = allOver ? 'over' : 'under';
+  const direction  = allNegative ? 'over' : 'under'; // over = we over-predicted (actual was lower)
   const detectedAt = new Date().toISOString();
 
   await pool.query(
@@ -544,7 +548,8 @@ export async function acknowledgeRegimeAlert(
   const pool = getPool();
   const res = await pool.query(
     `UPDATE regime_shift_alerts
-     SET status = 'acknowledged', acknowledged_by = $1, acknowledged_at = NOW()
+     SET status = 'acknowledged', acknowledged_by = $1,
+         acknowledged_at = NOW(), resolved_at = NOW()
      WHERE id = $2 AND status = 'open'
      RETURNING id`,
     [acknowledgedBy, alertId]
