@@ -929,13 +929,17 @@ export function DebtAdvisorSection({ dealId, onOpenLoanBuilder, onAdvisorAccepte
   const [activeTab, setActiveTab] = useState<SubTab>('advisor');
   const { data, loading, error, recompute, refresh, accept } = useDebtAdvisor(dealId);
 
+  const visibleTabs = onOpenLoanBuilder
+    ? SUB_TABS.filter(t => t !== 'configure')
+    : SUB_TABS;
+
   return (
     <div style={{ backgroundColor: C.bg, height: '100%', display: 'flex', flexDirection: 'column', fontFamily: '"IBM Plex Sans", sans-serif' }}>
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
 
       <div style={{ display: 'flex', alignItems: 'center', borderBottom: `1px solid ${C.border}`, backgroundColor: C.panel, flexShrink: 0 }}>
         <div style={{ display: 'flex' }}>
-          {SUB_TABS.map(tab => (
+          {visibleTabs.map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
