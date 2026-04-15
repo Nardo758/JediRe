@@ -51,6 +51,41 @@ import { m35TrafficApiService } from '../services/m35-traffic-api.service';
 
 const router = Router();
 
+type ForecastStatusLabel = 'ahead' | 'behind' | 'on_pace' | 'no_data';
+
+interface ForecastEnrichment {
+  forecastStatus: ForecastStatusLabel;
+  maxDivergencePct: number | null;
+}
+
+async function batchForecastStatus(eventIds: string[]): Promise<Map<string, ForecastEnrichment>> {
+  if (eventIds.length === 0) return new Map();
+  const pool = getPool();
+  const rows = await pool.query<{ event_id: string; status_label: string; divergence_pct: string | null }>(
+    `SELECT event_id, status_label, divergence_pct
+     FROM forecast_actuals_tracking
+     WHERE event_id = ANY($1::uuid[])
+     ORDER BY checked_at DESC`,
+    [eventIds],
+  );
+  const grouped = new Map<string, ForecastEnrichment>();
+  for (const row of rows.rows) {
+    const entry = grouped.get(row.event_id);
+    const div = row.divergence_pct != null ? Math.abs(parseFloat(row.divergence_pct)) : null;
+    if (!entry) {
+      grouped.set(row.event_id, {
+        forecastStatus: (row.status_label as ForecastStatusLabel) || 'no_data',
+        maxDivergencePct: div,
+      });
+    } else {
+      if (div != null && (entry.maxDivergencePct == null || div > entry.maxDivergencePct)) {
+        entry.maxDivergencePct = div;
+      }
+    }
+  }
+  return grouped;
+}
+
 // ─── Taxonomy ─────────────────────────────────────────────────────────────────
 
 router.get('/events/taxonomy', async (req: Request, res: Response) => {
@@ -138,7 +173,15 @@ router.get('/events/feed', async (req: Request, res: Response) => {
       offset:  0,
     });
 
-    res.json(result);
+    const items = result.items ?? [];
+    const forecastMap = await batchForecastStatus(items.map(e => String(e.id)));
+    const enriched = items.map(e => ({
+      ...e,
+      forecastStatus: forecastMap.get(String(e.id))?.forecastStatus ?? 'no_data',
+      maxDivergencePct: forecastMap.get(String(e.id))?.maxDivergencePct ?? null,
+    }));
+
+    res.json({ items: enriched, total: result.total ?? enriched.length });
   } catch (err: unknown) {
     logger.error('[M35 Events] feed error', err);
     res.status(500).json({ error: err instanceof Error ? err.message : 'Unknown error' });
@@ -151,32 +194,51 @@ router.get('/events/:id/related', async (req: Request, res: Response) => {
     const event = await getEventById(req.params.id);
     if (!event) { res.status(404).json({ error: 'Event not found' }); return; }
 
-    const conditions: string[] = [`id <> $1`, `status NOT IN ('cancelled','reversed')`];
-    const values: unknown[] = [req.params.id];
-    let i = 2;
-
-    if (event.msaId) { conditions.push(`msa_id = $${i}`); values.push(event.msaId); i++; }
-
-    const rows = await pool.query(
-      `SELECT id, name, category, status, scope FROM key_events
-       WHERE ${conditions.join(' AND ')}
-       ORDER BY magnitude_score DESC, announced_date DESC NULLS LAST
-       LIMIT 8`,
-      values
+    const rawRows = await pool.query<{ raw_payload: Record<string, unknown> | null }>(
+      `SELECT raw_payload FROM key_events WHERE id = $1`,
+      [req.params.id],
     );
+    const rawPayload = rawRows.rows[0]?.raw_payload;
+    const explicitIds: string[] = Array.isArray(rawPayload?.relatedEventIds)
+      ? (rawPayload!.relatedEventIds as string[]).filter(id => typeof id === 'string')
+      : [];
 
-    const related = rows.rows.map((r: Record<string, string>) => ({
+    let rows: Array<{ id: string; name: string; category: string; status: string; scope: string }>;
+
+    if (explicitIds.length > 0) {
+      const res2 = await pool.query<{ id: string; name: string; category: string; status: string; scope: string }>(
+        `SELECT id, name, category, status, scope FROM key_events
+         WHERE id = ANY($1::uuid[]) AND status NOT IN ('cancelled','reversed')`,
+        [explicitIds],
+      );
+      rows = res2.rows;
+    } else {
+      const conditions: string[] = [`id <> $1`, `status NOT IN ('cancelled','reversed')`];
+      const values: unknown[] = [req.params.id];
+      let i = 2;
+      if (event.msaId) { conditions.push(`msa_id = $${i}`); values.push(event.msaId); i++; }
+      const res2 = await pool.query<{ id: string; name: string; category: string; status: string; scope: string }>(
+        `SELECT id, name, category, status, scope FROM key_events
+         WHERE ${conditions.join(' AND ')}
+         ORDER BY magnitude_score DESC, announced_date DESC NULLS LAST
+         LIMIT 8`,
+        values,
+      );
+      rows = res2.rows;
+    }
+
+    const related = rows.map(r => ({
       id:           r.id,
       name:         r.name,
       category:     r.category,
       status:       r.status,
-      relationship: event.category === r.category ? 'same_category' : 'co_located',
+      relationship: explicitIds.includes(r.id) ? 'explicit_link' : (event.category === r.category ? 'same_category' : 'co_located'),
     }));
 
     res.json({ items: related, total: related.length });
-  } catch (err: any) {
+  } catch (err: unknown) {
     logger.error('[M35 Events] related error', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Unknown error' });
   }
 });
 
@@ -325,10 +387,16 @@ router.post('/events/promote/:draftId', async (req: Request, res: Response) => {
 router.get('/deals/:dealId/events', async (req: Request, res: Response) => {
   try {
     const events = await getEventsByDeal(req.params.dealId);
-    res.json({ items: events, total: events.length });
-  } catch (err: any) {
+    const forecastMap = await batchForecastStatus(events.map(e => e.id));
+    const enriched = events.map(e => ({
+      ...e,
+      forecastStatus: forecastMap.get(e.id)?.forecastStatus ?? 'no_data',
+      maxDivergencePct: forecastMap.get(e.id)?.maxDivergencePct ?? null,
+    }));
+    res.json({ items: enriched, total: enriched.length });
+  } catch (err: unknown) {
     logger.error('[M35 Events] deal events error', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Unknown error' });
   }
 });
 
