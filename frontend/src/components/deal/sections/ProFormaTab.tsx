@@ -332,6 +332,12 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
   const [constructionLoanRate, setConstructionLoanRate] = useState(0.065);
 
   useEffect(() => {
+    setProgramMixRows({});
+    setProgramMixApplied(false);
+    setProgramData(null);
+  }, [id]);
+
+  useEffect(() => {
     if (programData && Object.keys(programMixRows).length === 0) {
       setProgramMixRows({ ...programData.units });
     }
