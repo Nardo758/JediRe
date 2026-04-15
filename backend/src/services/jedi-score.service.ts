@@ -13,7 +13,6 @@
  */
 
 import { query, getPool } from '../database/connection';
-import { toM06DemandOverlay } from './m35-metric-mapping';
 
 // ============================================================================
 // Types
@@ -75,6 +74,13 @@ export interface ScoreCalculationContext {
   tradeAreaId?: string;
   triggerEventId?: string;
   triggerType?: 'news_event' | 'market_update' | 'manual_recalc' | 'periodic';
+}
+
+interface M35WeightOverride {
+  keyEventId:      string;
+  attributedDelta: number;
+  confidence:      number;
+  windowMonths:    number;
 }
 
 // ============================================================================
@@ -147,11 +153,13 @@ export class JEDIScoreService {
    * Based on employment events, population growth, economic indicators,
    * enriched with apartment_features demand counts and bedroom_demand from demand intelligence.
    */
-  // Maps demand_signal_weights.event_category → M06 overlay key from toM06DemandOverlay
-  private static readonly CATEGORY_TO_OVERLAY_KEY: Readonly<Record<string, string>> = {
-    employment:  'demand_signal_rent',
-    development: 'demand_signal_absorption',
-    amenities:   'demand_signal_traffic',
+  // Maps M35 key_event.category enum values to JEDI demand signal categories.
+  // Only categories listed here can produce an M35 weight override for demand signals.
+  private static readonly M35_TO_DEMAND_CAT: Readonly<Record<string, string>> = {
+    EMPLOYMENT:          'employment',
+    TECHNOLOGY_INDUSTRY: 'employment',
+    INFRASTRUCTURE:      'development',
+    MACRO_DEMOGRAPHIC:   'amenities',
   };
 
   private async calculateDemandScore(dealId: string, tradeAreaId?: string, demandIntel?: DemandIntelligence | null): Promise<number> {
@@ -161,8 +169,9 @@ export class JEDIScoreService {
       return 50.0;
     }
 
-    // Pre-compute M35 overlay so per-event base_weight can be substituted below.
-    const m35Overlay = await this.getM35Overlay(dealId);
+    // Pre-fetch M35 overrides keyed by demand signal category.
+    // Only categories with a forecast-backed key event in the deal's submarket (or MSA) get an override.
+    const m35Overrides = await this.getM35CategoryOverrides(dealId);
 
     let totalImpact = 0;
 
@@ -198,13 +207,12 @@ export class JEDIScoreService {
           impactMagnitude = (signal.impactScore / 100) * weight.max_jedi_impact;
         }
 
-        // Substitute static base_weight with M35 forecast-derived weight when active
-        // forecast exists for this event category. Falls back to static weight.
-        const overlayKey = JEDIScoreService.CATEGORY_TO_OVERLAY_KEY[signal.eventCategory];
-        const m35Signal = overlayKey ? m35Overlay[overlayKey] : undefined;
+        // Substitute static base_weight with M35 attributed_delta when the deal's
+        // submarket (or MSA) has a forecast-backed key event in this specific category.
+        const m35Override = m35Overrides.get(signal.eventCategory);
         const effectiveBaseWeight =
-          m35Signal && m35Signal.delta !== null && m35Signal.confidence >= 0.50
-            ? Math.abs(m35Signal.delta) * 100 * m35Signal.confidence
+          m35Override && m35Override.confidence >= 0.50
+            ? Math.abs(m35Override.attributedDelta) * 100 * m35Override.confidence
             : weight.base_weight;
 
         const weightedImpact = impactMagnitude * confidenceMultiplier * effectiveBaseWeight;
@@ -775,15 +783,13 @@ export class JEDIScoreService {
     }
   }
 
-  /**
-   * Query M35 key events for the deal's MSA and return a merged M06 overlay map.
-   * Keys are M06 demand signal names (e.g. 'demand_signal_rent'); values carry
-   * the highest-confidence attributed_delta and confidence from active forecasts.
-   * Returns {} on any failure so JEDI scoring is never blocked.
-   */
-  private async getM35Overlay(
+  // Queries key events with active forecasts in the deal's submarket (MSA fallback).
+  // Returns a Map<demandSignalCategory, M35WeightOverride> — one entry per demand category,
+  // taking the highest-confidence key event when multiple events share a category.
+  // Signals whose category is NOT in M35_TO_DEMAND_CAT keep their static base_weight.
+  private async getM35CategoryOverrides(
     dealId: string,
-  ): Promise<Record<string, { delta: number | null; confidence: number; windowMonths: number }>> {
+  ): Promise<Map<string, M35WeightOverride>> {
     try {
       const pool = getPool();
 
@@ -795,67 +801,58 @@ export class JEDIScoreService {
       );
       const { submarket_id: submarketId, msa_id: msaId } = dealRes.rows[0] ?? {};
 
-      // Prefer submarket-scoped key events (event-specific), fall back to MSA.
-      let rows: Array<{ event_id: string; subtype: string; metric_key: string; window_months: string; point_estimate: string | null; confidence: string }> = [];
+      type ForecastRow = {
+        key_event_id:    string;
+        m35_category:    string;
+        attributed_delta: string | null;
+        confidence:      string;
+        window_months:   string;
+      };
+
+      const BASE_SQL = `
+        SELECT ke.id          AS key_event_id,
+               ke.category::text AS m35_category,
+               ef.point_estimate AS attributed_delta,
+               ef.confidence,
+               ef.window_months
+        FROM event_forecasts ef
+        JOIN key_events ke ON ke.id = ef.event_id
+        WHERE ef.status = 'active'
+          AND ke.status IN ('announced','in_progress','materialized')
+          AND ef.point_estimate IS NOT NULL`;
+
+      let rows: ForecastRow[] = [];
 
       if (submarketId) {
-        const res = await pool.query<typeof rows[0]>(
-          `SELECT ke.id AS event_id, ke.subtype, ef.metric_key,
-                  ef.window_months, ef.point_estimate, ef.confidence
-           FROM event_forecasts ef
-           JOIN key_events ke ON ke.id = ef.event_id
-           WHERE ef.status = 'active'
-             AND ke.submarket_id = $1
-             AND ke.status IN ('announced','in_progress','materialized')`,
+        const res = await pool.query<ForecastRow>(
+          `${BASE_SQL} AND ke.submarket_id = $1 ORDER BY ef.confidence DESC`,
           [submarketId]
         );
         rows = res.rows;
       }
 
       if (rows.length === 0 && msaId) {
-        const res = await pool.query<typeof rows[0]>(
-          `SELECT ke.id AS event_id, ke.subtype, ef.metric_key,
-                  ef.window_months, ef.point_estimate, ef.confidence
-           FROM event_forecasts ef
-           JOIN key_events ke ON ke.id = ef.event_id
-           WHERE ef.status = 'active'
-             AND ke.msa_id = $1
-             AND ke.status IN ('announced','in_progress','materialized')`,
+        const res = await pool.query<ForecastRow>(
+          `${BASE_SQL} AND ke.msa_id = $1 ORDER BY ef.confidence DESC`,
           [msaId]
         );
         rows = res.rows;
       }
 
-      if (rows.length === 0) return {};
-
-      // Build per-event forecasts and merge their M06 overlays.
-      // Higher-confidence signal wins for each M06 demand key.
-      const eventMap = new Map<string, { subtype: string; metrics: Array<{ metricKey: string; windowMonths: number; pointEstimate: number | null; confidence: number }> }>();
+      const overrides = new Map<string, M35WeightOverride>();
       for (const r of rows) {
-        if (!eventMap.has(r.event_id)) {
-          eventMap.set(r.event_id, { subtype: r.subtype, metrics: [] });
-        }
-        eventMap.get(r.event_id)!.metrics.push({
-          metricKey:     r.metric_key,
-          windowMonths:  parseInt(r.window_months),
-          pointEstimate: r.point_estimate !== null ? parseFloat(r.point_estimate) : null,
-          confidence:    parseFloat(r.confidence),
+        const demandCat = JEDIScoreService.M35_TO_DEMAND_CAT[r.m35_category];
+        if (!demandCat || overrides.has(demandCat)) continue; // rows ordered by confidence DESC; first wins
+        overrides.set(demandCat, {
+          keyEventId:      r.key_event_id,
+          attributedDelta: parseFloat(r.attributed_delta!),
+          confidence:      parseFloat(r.confidence),
+          windowMonths:    parseInt(r.window_months),
         });
       }
-
-      const merged: Record<string, { delta: number | null; confidence: number; windowMonths: number }> = {};
-      for (const [eventId, ev] of eventMap) {
-        const overlay = toM06DemandOverlay({ eventId, subtype: ev.subtype, metrics: ev.metrics });
-        for (const [key, signal] of Object.entries(overlay)) {
-          if (!merged[key] || signal.confidence > merged[key].confidence) {
-            merged[key] = { delta: signal.delta, confidence: signal.confidence, windowMonths: signal.windowMonths };
-          }
-        }
-      }
-
-      return merged;
+      return overrides;
     } catch {
-      return {};
+      return new Map();
     }
   }
 
