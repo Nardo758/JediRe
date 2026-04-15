@@ -135,6 +135,59 @@ router.get('/submarkets/:id/active-forecasts', async (req: Request, res: Respons
   }
 });
 
+// ─── M09 ProForma: event attribution for Platform-layer assumptions ──────────
+
+router.get('/deals/:dealId/assumption-attribution', async (req: Request, res: Response) => {
+  try {
+    const pool = getPool();
+
+    const dealRes = await pool.query(
+      `SELECT deal_data->>'msaId' AS msa_id, deal_data->>'submarketId' AS submarket_id
+       FROM deals WHERE id = $1 LIMIT 1`,
+      [req.params.dealId]
+    );
+    if (!dealRes.rows[0]) return res.status(404).json({ error: 'Deal not found' });
+
+    const msaId: string | null = dealRes.rows[0].msa_id ?? null;
+    if (!msaId) return res.json({ rentGrowth: null, vacancy: null, exitCap: null });
+
+    const forecasts = await getMsaActiveForecasts(msaId);
+
+    function pickAttribution(metricKey: string) {
+      for (const f of forecasts) {
+        const m = f.metrics
+          .filter(m2 => m2.metricKey === metricKey && m2.pointEstimate !== null)
+          .sort((a, b) => b.confidence - a.confidence)[0];
+        if (m) {
+          return {
+            eventId: f.eventId,
+            eventName: f.eventName,
+            playbookSubtype: f.subtype,
+            metricKey,
+            windowMonths: m.windowMonths,
+            pointEstimate: m.pointEstimate,
+            ciLow: m.ciLow,
+            ciHigh: m.ciHigh,
+            confidence: m.confidence,
+          };
+        }
+      }
+      return null;
+    }
+
+    res.json({
+      dealId: req.params.dealId,
+      msaId,
+      rentGrowth: pickAttribution('rent_growth_yoy'),
+      vacancy:    pickAttribution('vacancy_rate'),
+      exitCap:    pickAttribution('cap_rate'),
+    });
+  } catch (err) {
+    logger.error('[M35 Forecasts] Error fetching assumption attribution:', err);
+    res.status(500).json({ error: 'Failed to fetch assumption attribution' });
+  }
+});
+
 // ─── Admin: Run divergence tracking job ──────────────────────────────────────
 
 router.post('/forecasts/run-divergence', async (req: Request, res: Response) => {

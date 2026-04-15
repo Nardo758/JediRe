@@ -22,6 +22,8 @@ import {
 import { buildEvidenceReport, DealContext, EvidenceReport } from './evidence-report.service';
 import { formulatePlan, PlanContext, StrategyPlan } from './plan-formulator.service';
 import { getSignalAdapter } from './signal-adapters.service';
+import { getMsaActiveForecasts, type EventForecast } from './m35-forecast.service';
+import { getDisplayLabel, formatMetricValue } from './m35-metric-mapping';
 
 // ─── Section 8 contract types ─────────────────────────────────────────────────
 
@@ -610,6 +612,34 @@ function buildNarrative(deal: Record<string, any>, detection: DetectionResult, s
     ` Execute the phased value-creation plan and register the monitoring triggers with the alert system.`;
 }
 
+// ─── M35 event-timing narrative builder ──────────────────────────────────────
+
+function buildM35EventTimingNarrative(forecasts: EventForecast[]): string {
+  if (forecasts.length === 0) return '';
+
+  const lines: string[] = [];
+  for (const f of forecasts) {
+    const peakMetric = f.metrics
+      .filter(m => m.pointEstimate !== null && m.windowMonths <= 24)
+      .sort((a, b) => Math.abs(b.pointEstimate ?? 0) - Math.abs(a.pointEstimate ?? 0))[0];
+
+    if (!peakMetric) continue;
+
+    const label = getDisplayLabel(peakMetric.metricKey);
+    const formatted = formatMetricValue(peakMetric.metricKey, peakMetric.pointEstimate!);
+    const window = `T+${peakMetric.windowMonths}mo`;
+    const conf = Math.round(peakMetric.confidence * 100);
+
+    lines.push(
+      `M35 playbook [${f.subtype}]: "${f.eventName}" peaks at ${window} ` +
+      `with ${label} ${formatted} (${conf}% confidence). ` +
+      `Align exit target to capture full ${label} lift.`
+    );
+  }
+
+  return lines.length > 0 ? ' M35 Event-Timing Guidance: ' + lines.join(' ') : '';
+}
+
 // ─── Main orchestrator ────────────────────────────────────────────────────────
 
 export async function getStrategiesForDeal(pool: Pool, dealId: string): Promise<StrategyAnalysisV2> {
@@ -815,6 +845,20 @@ export async function getStrategiesForDeal(pool: Pool, dealId: string): Promise<
     buyerTargeting,
     coordinatorNarrative: buildNarrative(deal, detection, subStrategies, arbitrage),
   };
+
+  // Append M35 event-timing guidance when active forecasts exist for the deal's MSA.
+  try {
+    const msaId: string | null = (deal.deal_data as Record<string, any>)?.msaId ?? null;
+    if (msaId) {
+      const m35Forecasts = await getMsaActiveForecasts(msaId);
+      const timingNarrative = buildM35EventTimingNarrative(m35Forecasts);
+      if (timingNarrative) {
+        result.coordinatorNarrative += timingNarrative;
+      }
+    }
+  } catch (err) {
+    logger.warn('[M08v2] M35 event-timing narrative fetch failed (non-fatal)', { dealId, err });
+  }
 
   analysisCache.set(dealId, { data: result, expiresAt: Date.now() + CACHE_TTL_MS });
   return result;

@@ -13,6 +13,8 @@
  */
 
 import { query, getPool } from '../database/connection';
+import { getMsaActiveForecasts } from './m35-forecast.service';
+import { toM06DemandOverlay } from './m35-metric-mapping';
 
 // ============================================================================
 // Types
@@ -105,7 +107,8 @@ export class JEDIScoreService {
     const corpHealthAdj = await this.getCorporateHealthAdjustment(dealInfo.submarket_id || null);
 
     const rawDemandScore = await this.calculateDemandScore(dealId, tradeAreaId, demandIntel);
-    const demandScore = Math.max(0, Math.min(100, rawDemandScore + corpHealthAdj.demandAdj));
+    const corpAdjDemand = Math.max(0, Math.min(100, rawDemandScore + corpHealthAdj.demandAdj));
+    const demandScore = await this.applyM35DemandOverlay(dealId, corpAdjDemand);
     const supplyScore = await this.calculateSupplyScore(dealId, tradeAreaId, demandIntel);
     const momentumScore = await this.calculateMomentumScore(dealId, tradeAreaId, demandIntel);
     const positionScore = await this.calculatePositionScore(dealId, tradeAreaId, demandIntel);
@@ -752,6 +755,53 @@ export class JEDIScoreService {
       return { demandAdj, riskAdj };
     } catch {
       return { demandAdj: 0, riskAdj: 0 };
+    }
+  }
+
+  /**
+   * Fetch M35 active forecasts for the deal's MSA and compute a demand overlay.
+   * Uses the rent_growth_yoy T+12mo point estimate to adjust the demand score.
+   * Returns ±0–5 points; silently returns 0 on any failure so JEDI score is never blocked.
+   */
+  private async applyM35DemandOverlay(dealId: string, demandScore: number): Promise<number> {
+    try {
+      const pool = getPool();
+      const msaRes = await pool.query(
+        `SELECT deal_data->>'msaId' AS msa_id FROM deals WHERE id = $1 LIMIT 1`,
+        [dealId]
+      );
+      const msaId: string | null = msaRes.rows[0]?.msa_id ?? null;
+      if (!msaId) return demandScore;
+
+      const forecasts = await getMsaActiveForecasts(msaId);
+      if (forecasts.length === 0) return demandScore;
+
+      let totalOverlay = 0;
+      for (const f of forecasts) {
+        const overlay = toM06DemandOverlay({
+          eventId: f.eventId,
+          subtype: f.subtype,
+          metrics: f.metrics.map(m => ({
+            metricKey: m.metricKey,
+            windowMonths: m.windowMonths,
+            pointEstimate: m.pointEstimate,
+            confidence: m.confidence,
+          })),
+        });
+
+        // demand_signal_rent is the M06 key for rent_growth_yoy at T+12mo
+        const rentSignal = overlay['demand_signal_rent'];
+        if (rentSignal && rentSignal.delta !== null && rentSignal.windowMonths === 12) {
+          // delta is a fraction (e.g. 0.04 = 4% rent growth). Scale to score points.
+          const rawBoost = rentSignal.delta * 100 * rentSignal.confidence;
+          totalOverlay += Math.max(-3, Math.min(3, rawBoost));
+        }
+      }
+
+      const capped = Math.max(-5, Math.min(5, totalOverlay));
+      return Math.max(0, Math.min(100, demandScore + capped));
+    } catch {
+      return demandScore;
     }
   }
 
