@@ -507,8 +507,8 @@ export interface M35RegimeShiftDetectedMessage extends BaseEvent {
   eventType: 'M35_REGIME_SHIFT_DETECTED';
   alertId: string;
   subtype: string;
-  metricKey: string;
-  windowMonths: number;
+  metricKey: string;    // '*' = subtype-level alert (not a specific metric track)
+  windowMonths: number; // 0   = subtype-level alert (not a specific window)
   biasDirection: 'over' | 'under';
   avgError: number;
   stdError: number;

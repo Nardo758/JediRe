@@ -375,6 +375,9 @@ export async function runBacktestForEvent(eventId: string): Promise<{ processed:
         await updatePlaybookConfidence(pool, fc.playbook_id, hitWithinCi);
         await widenCIIfNeeded(pool, ev.subtype, metricKey, windowMonths);
         await detectRegimeShift(pool, ev.subtype);
+      } else if (isNewlyEvaluated && hitWithinCi == null) {
+        // Confidence update skipped: forecast or playbook lacks CI bounds for this metric/window
+        logger.warn('[M35 Backtest] confidence update skipped — no CI bounds', { eventId, metricKey, windowMonths });
       }
 
       processed++;
