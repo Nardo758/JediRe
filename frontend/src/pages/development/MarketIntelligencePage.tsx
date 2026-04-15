@@ -1904,10 +1904,10 @@ function ProgramRedevPanel({ rationale, umComps, umGaps, umProgram, onProgramCha
             </div>
           </div>
 
-          <div style={{ backgroundColor: `${PC.blue}10`, borderRadius: 2, border: `1px solid ${PC.blue}30`, padding: '10px 12px' }}>
+          <div style={{ backgroundColor: `${PC.green}10`, borderRadius: 2, border: `1px solid ${PC.green}30`, padding: '10px 12px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
-              <CheckCircle size={12} color={PC.blue} />
-              <span style={{ fontFamily: pmono, fontSize: 9, fontWeight: 700, color: PC.blue }}>REFI ELIGIBLE</span>
+              <CheckCircle size={12} color={PC.green} />
+              <span style={{ fontFamily: pmono, fontSize: 9, fontWeight: 700, color: PC.green }}>REFI ELIGIBLE AT STAB</span>
             </div>
             <div style={{ fontFamily: pmono, fontSize: 8, color: PC.dim }}>Post-reposition stabilized NOI qualifies for agency refi at ~65% LTV. Est. rate: 6.4% · 7yr term.</div>
           </div>
@@ -2181,10 +2181,13 @@ function ProgramExistingPanel({ umComps }: { umComps: CompData[] }) {
             <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
               {actionItems.length === 0 ? (
                 <div style={{ fontSize: 9, fontFamily: pmono, color: PC.green }}>✓ All amenities covered</div>
-              ) : actionItems.map(a => (
-                <div key={a.key} style={{ padding: '7px 8px', border: `1px solid ${a.urgencyColor}22`, borderRadius: 2, backgroundColor: a.urgencyColor + '08' }}>
+              ) : actionItems.map((a, idx) => (
+                <div key={a.key} style={{ padding: '7px 8px', border: `1px solid ${idx === 0 ? a.urgencyColor + '60' : a.urgencyColor + '22'}`, borderRadius: 2, backgroundColor: idx === 0 ? a.urgencyColor + '14' : a.urgencyColor + '08', outline: idx === 0 ? `1px solid ${a.urgencyColor}30` : 'none', outlineOffset: -1 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                    <span style={{ fontSize: 10, fontWeight: 700, color: PC.text }}>{a.name}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                      {idx === 0 && <span style={{ fontFamily: pmono, fontSize: 7, color: a.urgencyColor, fontWeight: 700 }}>TOP</span>}
+                      <span style={{ fontSize: 10, fontWeight: 700, color: idx === 0 ? PC.text : PC.dim }}>{a.name}</span>
+                    </div>
                     <Pill color={a.urgencyColor}>{a.urgency}</Pill>
                   </div>
                   <div style={{ display: 'flex', gap: 8, fontFamily: pmono, fontSize: 8, color: PC.dim, flexWrap: 'wrap' as const }}>
@@ -2223,29 +2226,6 @@ function ProgramExistingPanel({ umComps }: { umComps: CompData[] }) {
                   </div>
                 </div>
               ))}
-            </div>
-          </div>
-
-          <div style={{ backgroundColor: PC.card, borderRadius: 2, border: `1px solid ${PC.border}`, overflow: 'hidden' }}>
-            <div style={{ padding: '7px 10px', borderBottom: `1px solid ${PC.border}` }}>
-              <SectionLabel label="Submarket Penetration" accent={PC.yellow} />
-            </div>
-            <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column' as const, gap: 5 }}>
-              {EXISTING_AMENITIES.slice(0, 5).map(a => {
-                const sp = EXISTING_SUBMARKET.penetration[a.key];
-                return (
-                  <div key={a.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontFamily: pmono, fontSize: 8, color: PC.dim, maxWidth: 90, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>{a.name}</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <div style={{ width: 50, height: 4, backgroundColor: PC.muted, borderRadius: 1, overflow: 'hidden' }}>
-                        <div style={{ width: `${sp}%`, height: '100%', backgroundColor: sp >= 50 ? PC.yellow : PC.dim, opacity: 0.8, borderRadius: 1 }} />
-                      </div>
-                      <span style={{ fontFamily: pmono, fontSize: 8, color: sp >= 50 ? PC.yellow : PC.dim, fontWeight: 700, minWidth: 28, textAlign: 'right' as const }}>{sp}%</span>
-                    </div>
-                  </div>
-                );
-              })}
-              <div style={{ fontFamily: pmono, fontSize: 7, color: PC.faint, marginTop: 4 }}>{EXISTING_SUBMARKET.name} · {EXISTING_SUBMARKET.properties} props</div>
             </div>
           </div>
 
