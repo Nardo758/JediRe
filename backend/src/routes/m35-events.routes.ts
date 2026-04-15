@@ -166,9 +166,10 @@ router.get('/events/feed', async (req: Request, res: Response) => {
       return;
     }
 
+    const feedStatuses: M35EventStatus[] = ['announced', 'in_progress', 'materialized'];
     const result = await searchEvents({
       msaIds,
-      status:  ['announced', 'in_progress', 'materialized'] as any,
+      status:  feedStatuses,
       limit:   limitVal,
       offset:  0,
     });

@@ -1506,16 +1506,9 @@ export default function TerminalPage() {
     announcedDate: string | null;
     msaId?: string;
     msaName?: string;
-    forecastStatus?: 'AHEAD' | 'BEHIND' | 'ON PACE' | null;
+    forecastStatus?: 'ahead' | 'behind' | 'on_pace' | 'no_data' | null;
+    maxDivergencePct?: number | null;
   }
-
-  const DEMO_EVENTS: EventFeedItem[] = [
-    { id:'ev-d1', name:'Amazon HQ2 — Tampa',     category:'employment',    scope:'submarket', status:'active',      magnitudeScore:4, confidence:0.87, announcedDate:'2024-09-01', msaId:'tampa',  msaName:'Tampa, FL',    forecastStatus:'AHEAD'    },
-    { id:'ev-d2', name:'Midtown Upzone ATL',      category:'policy',        scope:'submarket', status:'announced',   magnitudeScore:2, confidence:0.74, announcedDate:'2025-11-15', msaId:'atlanta',msaName:'Atlanta, GA',   forecastStatus:null       },
-    { id:'ev-d3', name:'Supply Wave — Denver',    category:'supply',        scope:'submarket', status:'in_progress', magnitudeScore:3, confidence:0.76, announcedDate:'2025-08-20', msaId:'denver', msaName:'Denver, CO',   forecastStatus:'BEHIND'   },
-    { id:'ev-d4', name:'BRT Opening — Denver',    category:'infrastructure',scope:'submarket', status:'announced',   magnitudeScore:3, confidence:0.81, announcedDate:'2025-01-10', msaId:'denver', msaName:'Denver, CO',   forecastStatus:'ON PACE'  },
-    { id:'ev-d5', name:'FL Insurance Rate Shock', category:'policy',        scope:'msa',       status:'active',      magnitudeScore:2, confidence:0.62, announcedDate:'2026-01-01', msaId:'miami',  msaName:'Miami, FL',    forecastStatus:'BEHIND'   },
-  ];
 
   const EFD_CAT_COLORS: Record<string, string> = {
     employment:'#00D26A', infrastructure:T.text.cyan, supply:T.text.amber,
@@ -1553,7 +1546,7 @@ export default function TerminalPage() {
         .finally(() => setLoading(false));
     }, []);
 
-    const source = loading ? [] : (events.length > 0 ? events : DEMO_EVENTS);
+    const source = loading ? [] : events;
     const display = catFilter ? source.filter(e => e.category === catFilter) : source;
     const cats = [...new Set(source.map(e => e.category))];
 
@@ -1588,9 +1581,6 @@ export default function TerminalPage() {
 
         <div style={{flex:1,overflow:"auto"}}>
           {display.map((ev, i) => {
-            const fcMap: Record<string, M35EventCardData['forecastStatus']> = {
-              'AHEAD': 'ahead', 'BEHIND': 'behind', 'ON PACE': 'on_pace',
-            };
             const cardData: M35EventCardData = {
               id: ev.id,
               name: ev.name,
@@ -1601,7 +1591,8 @@ export default function TerminalPage() {
               confidence: ev.confidence,
               announcedDate: ev.announcedDate,
               msa: ev.msaName,
-              forecastStatus: ev.forecastStatus ? (fcMap[ev.forecastStatus] ?? 'no_data') : 'no_data',
+              forecastStatus: (ev.forecastStatus as M35EventCardData['forecastStatus']) ?? 'no_data',
+              divergingForecast: ev.maxDivergencePct != null && ev.maxDivergencePct > 0.10,
             };
             return (
               <div key={ev.id ?? i} style={{borderBottom:`1px solid ${T.border.subtle}`}}>

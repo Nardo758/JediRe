@@ -68,8 +68,14 @@ export const StrategyTab: React.FC<StrategyTabProps> = ({ dealId, deal }) => {
   useEffect(() => {
     if (!dealId) return;
     fetch(`/api/v1/m35/deals/${dealId}/events`)
-      .then(r => r.ok ? r.json() : { events: [] })
-      .then(data => setDealEvents((data.items ?? data.events ?? []).slice(0, 4)))
+      .then(r => r.ok ? r.json() : { items: [] })
+      .then((data: { items?: Array<M35EventCardData & { maxDivergencePct?: number | null }>; events?: Array<M35EventCardData & { maxDivergencePct?: number | null }> }) => {
+        const items = (data.items ?? data.events ?? []).slice(0, 4);
+        setDealEvents(items.map(e => ({
+          ...e,
+          divergingForecast: e.maxDivergencePct != null && e.maxDivergencePct > 0.10,
+        })));
+      })
       .catch(() => setDealEvents([]));
   }, [dealId]);
 
