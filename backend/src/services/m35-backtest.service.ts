@@ -103,13 +103,14 @@ async function computeDiDActual(
   const postStart = new Date(announcedDate);
   const postEnd   = new Date(milestoneDate);
 
-  // Coverage over window period only. Assumes monthly cadence (1 point/month expected).
-  // For mixed-frequency metrics, dataCoverage may over/under-estimate actual coverage.
+  // Coverage = post-window point count / windowMonths. Uses exclusive-start (> postStart)
+  // to avoid double-counting the announcement-date boundary point.
+  // Assumes monthly cadence; capped at 1.0 via Math.min.
   const countRes = await pool.query<MetricCoverageRow>(
     `SELECT COUNT(*) AS cnt
      FROM metric_time_series
      WHERE metric_id = $1 AND geography_type = $2 AND geography_id = $3
-       AND period_date BETWEEN $4 AND $5`,
+       AND period_date > $4 AND period_date <= $5`,
     [metricId, geographyType, geographyId, postStart, postEnd]
   );
   const dataCoverage = Math.min(1, parseInt(countRes.rows[0]?.cnt ?? '0') / Math.max(windowMonths, 1));
