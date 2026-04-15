@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import axios from "axios";
+import { apiClient } from "../services/api.client";
 
 interface CompUnit {
   mix: number;
@@ -77,10 +77,10 @@ export function useUnitMixIntelligence(dealId: string | undefined, tradeAreaId: 
       try {
         const tradeAreaParam = tradeAreaId ? `?tradeAreaId=${tradeAreaId}` : "";
         const [compsRes, trendsRes, zoningRes, programRes] = await Promise.all([
-          axios.get(`/api/v1/unit-mix/${dealId}/comps${tradeAreaParam}`).then(r => r.data).catch(() => ({ comps: null, demandScores: null })),
-          axios.get(`/api/v1/unit-mix/${dealId}/trends${tradeAreaParam}`).then(r => r.data).catch(() => ({ trends: null })),
-          axios.get(`/api/v1/unit-mix/${dealId}/zoning`).then(r => r.data).catch(() => ({ zoning: null })),
-          axios.get(`/api/v1/unit-mix/${dealId}/program`).then(r => r.data).catch(() => ({ program: null })),
+          apiClient.get(`/api/v1/unit-mix/${dealId}/comps${tradeAreaParam}`).then(r => r.data).catch(() => ({ comps: null, demandScores: null })),
+          apiClient.get(`/api/v1/unit-mix/${dealId}/trends${tradeAreaParam}`).then(r => r.data).catch(() => ({ trends: null })),
+          apiClient.get(`/api/v1/unit-mix/${dealId}/zoning`).then(r => r.data).catch(() => ({ zoning: null })),
+          apiClient.get(`/api/v1/unit-mix/${dealId}/program`).then(r => r.data).catch(() => ({ program: null })),
         ]);
 
         if (cancelled) return;
@@ -107,7 +107,7 @@ export function useUnitMixIntelligence(dealId: string | undefined, tradeAreaId: 
 
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      axios.post(`/api/v1/unit-mix/${dealId}/program`, newProgram).catch(err => {
+      apiClient.post(`/api/v1/unit-mix/${dealId}/program`, newProgram).catch(err => {
         console.error("Failed to save unit program:", err);
       });
     }, 1500);
@@ -119,7 +119,7 @@ export function useUnitMixIntelligence(dealId: string | undefined, tradeAreaId: 
   ): Promise<{ success: boolean; modulesUpdated: string[]; errors: string[] }> => {
     if (!dealId) throw new Error('No deal ID');
 
-    const res = await axios.post(`/api/v1/unit-mix/${dealId}/push-to-proforma`, {
+    const res = await apiClient.post(`/api/v1/unit-mix/${dealId}/push-to-proforma`, {
       program: programData,
       amenityBudget,
     });
