@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AlertTriangle, CheckCircle, ArrowRight, TrendingDown, TrendingUp, Zap, ChevronDown, ChevronRight, RefreshCw, BarChart2, Minus } from 'lucide-react';
+import { AlertTriangle, CheckCircle, TrendingDown, TrendingUp, Zap, ChevronDown, ChevronRight, RefreshCw, BarChart2, Minus } from 'lucide-react';
 import { useDebtAdvisor, DebtPhase, MonitoringTrigger, DebtAlternative, RateEnvironmentResult } from '../../../hooks/useDebtAdvisor';
 
 const C = {
@@ -463,111 +463,6 @@ function AdvisorTab({ phases, alternatives, triggers, env, narrativeNotes, strat
   );
 }
 
-function ConfigureTab({ phases, onAcceptAdvisor }: { phases: DebtPhase[]; onAcceptAdvisor?: () => Promise<void> }) {
-  const [activePhase, setActivePhase] = useState(0);
-  const phase = phases[activePhase];
-  if (!phase) return null;
-
-  const fields: [string, string, string][] = [
-    ['Loan Amount', fmt$M(phase.loanAmountEst), fmtPct(phase.ltv) + ' LTV'],
-    ['Rate Type', phase.rateType, phase.rateType === 'Floating' ? 'SOFR + Spread' : 'Fixed rate'],
-    ['Rate Est', fmtPct(phase.rateEst), phase.rateType === 'Floating' && phase.spreadBps ? `SOFR + ${phase.spreadBps}bps` : ''],
-    ['Term', `${phase.termYears}yr`, `${phase.startMonth === 0 ? 'From close' : `from M${phase.startMonth}`}`],
-    ['IO Period', phase.ioMonths > 0 ? `${phase.ioMonths}mo` : 'None', phase.ioMonths >= phase.termYears * 12 ? 'Full IO' : 'Partial IO'],
-    ['Amortization', phase.amortYears > 0 ? `${phase.amortYears}yr` : 'Full IO', 'standard'],
-    ['Origination Fee', fmtPct(phase.origFee), fmt$M(phase.loanAmountEst * phase.origFee)],
-    ['Exit Fee', fmtPct(phase.exitFee), fmt$M(phase.loanAmountEst * phase.exitFee)],
-    ['Prepay Type', phase.prepayType, ''],
-  ];
-  if (phase.refiTriggerDscr != null) fields.push(['Min DSCR Trigger', phase.refiTriggerDscr.toFixed(2) + '×', 'refi threshold']);
-  if (phase.refiTriggerOcc != null) fields.push(['Min Occ Trigger', fmtPct(phase.refiTriggerOcc), 'refi threshold']);
-
-  const phaseColors = [C.orange, C.cyan, C.purple, C.green, C.amber];
-
-  return (
-    <div style={{ display: 'flex', gap: 0, height: '100%' }}>
-      <div style={{ flex: 1, padding: '14px 20px', overflowY: 'auto' }}>
-        <div style={{ backgroundColor: `${C.cyan}10`, border: `1px solid ${C.cyan}30`, borderRadius: 2, padding: '7px 12px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <CheckCircle size={12} color={C.cyan} />
-          <span style={{ color: C.textMuted, fontSize: 10 }}>Pre-populated from Advisor recommendation — <span style={{ ...mono, color: C.cyan }}>{phases[0]?.productLabel}</span></span>
-        </div>
-
-        <div style={{ display: 'flex', gap: 0, marginBottom: 12, border: `1px solid ${C.border}`, borderRadius: 2, overflow: 'hidden' }}>
-          {phases.map((p, i) => {
-            const color = phaseColors[i % phaseColors.length];
-            return (
-              <button
-                key={p.phaseIndex}
-                onClick={() => setActivePhase(i)}
-                style={{ flex: 1, padding: '8px 12px', border: 'none', cursor: 'pointer', backgroundColor: activePhase === i ? `${color}15` : C.panelAlt, color: activePhase === i ? color : C.textMuted, textAlign: 'left', borderRight: i < phases.length - 1 ? `1px solid ${C.border}` : 'none' }}
-              >
-                <div style={{ ...mono, fontSize: 10, fontWeight: activePhase === i ? 700 : 400 }}>{p.phaseLabel} · {fmt$M(p.loanAmountEst)} · M{p.startMonth}–M{p.endMonth}</div>
-              </button>
-            );
-          })}
-        </div>
-
-        <div style={{ border: `1px solid ${C.border}`, borderRadius: 2, overflow: 'hidden', marginBottom: 14 }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
-            <thead>
-              <tr style={{ backgroundColor: '#0d0d12' }}>
-                {['Field', 'Value', 'Note'].map(h => (
-                  <th key={h} style={{ ...mono, textAlign: 'left', padding: '4px 10px', color: C.textMuted, fontSize: 9, fontWeight: 600, letterSpacing: '0.08em', borderBottom: `1px solid ${C.border}` }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {fields.map(([label, value, note], i) => (
-                <tr key={label} style={{ backgroundColor: i % 2 === 0 ? 'transparent' : `${C.border}15` }}>
-                  <td style={{ padding: '4px 10px', color: C.textMuted, fontSize: 10 }}>{label}</td>
-                  <td style={{ ...mono, padding: '4px 10px', color: C.textPrimary, fontWeight: 600, fontSize: 11 }}>{value}</td>
-                  <td style={{ padding: '4px 10px', color: C.textMuted, fontSize: 9 }}>{note}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div style={{ display: 'flex', gap: 8 }}>
-          {onAcceptAdvisor ? (
-            <button
-              onClick={onAcceptAdvisor}
-              style={{ ...mono, fontSize: 10, padding: '7px 16px', backgroundColor: C.cyan, color: '#0a0a0c', border: 'none', borderRadius: 2, cursor: 'pointer', fontWeight: 700 }}
-            >
-              Accept &amp; Open Loan Builder <ArrowRight size={11} style={{ display: 'inline', verticalAlign: 'middle' }} />
-            </button>
-          ) : (
-            <button style={{ ...mono, fontSize: 10, padding: '7px 16px', backgroundColor: C.cyan, color: '#0a0a0c', border: 'none', borderRadius: 2, cursor: 'pointer', fontWeight: 700 }}>
-              Lock to ProForma <ArrowRight size={11} style={{ display: 'inline', verticalAlign: 'middle' }} />
-            </button>
-          )}
-          <button style={{ ...mono, fontSize: 10, padding: '7px 14px', backgroundColor: 'transparent', color: C.textMuted, border: `1px solid ${C.border}`, borderRadius: 2, cursor: 'pointer' }}>Export Term Sheet</button>
-        </div>
-      </div>
-
-      <div style={{ width: 220, borderLeft: `1px solid ${C.border}`, padding: 14, flexShrink: 0, backgroundColor: C.bg }}>
-        <div style={{ ...mono, color: C.textMuted, fontSize: 9, fontWeight: 700, marginBottom: 10 }}>LOAN STACK TOTAL</div>
-        {phases.map((p, i) => {
-          const color = phaseColors[i % phaseColors.length];
-          return (
-            <div key={p.phaseIndex} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: `1px solid ${C.border}20` }}>
-              <span style={{ color: C.textMuted, fontSize: 10 }}>{p.phaseLabel}</span>
-              <span style={{ ...mono, color, fontSize: 11, fontWeight: 600 }}>{fmt$M(p.loanAmountEst)}</span>
-            </div>
-          );
-        })}
-        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderTop: `1px solid ${C.border}`, marginTop: 4 }}>
-          <span style={{ color: C.textMuted, fontSize: 10 }}>Primary Loan</span>
-          <span style={{ ...mono, color: C.textPrimary, fontSize: 11, fontWeight: 700 }}>{fmt$M(phases[0]?.loanAmountEst ?? 0)}</span>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
-          <span style={{ color: C.textMuted, fontSize: 10 }}>Blended LTV</span>
-          <span style={{ ...mono, color: C.amber, fontSize: 11, fontWeight: 600 }}>{fmtPct(phases[0]?.ltv ?? 0)}</span>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function SensitivityTab() {
   const [activeTable, setActiveTable] = useState<'irr' | 'em' | 'dscr' | 'leverage'>('irr');
@@ -767,7 +662,7 @@ function SensitivityTab() {
   );
 }
 
-function ExitTab({ onNavigate }: { onNavigate: (tab: 'advisor' | 'configure' | 'sensitivity') => void }) {
+function ExitTab({ onNavigate }: { onNavigate: (tab: 'advisor' | 'sensitivity') => void }) {
   const [selectedFwd, setSelectedFwd] = useState(8);
   const [selectedStrategy, setSelectedStrategy] = useState('sell-stabilized');
 
@@ -813,7 +708,6 @@ function ExitTab({ onNavigate }: { onNavigate: (tab: 'advisor' | 'configure' | '
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
           <button onClick={() => onNavigate('advisor')} style={{ ...mono, fontSize: 10, padding: '5px 10px', backgroundColor: 'transparent', color: C.textMuted, border: `1px solid ${C.border}`, borderRadius: 2, cursor: 'pointer' }}>← Advisor</button>
-          <button onClick={() => onNavigate('configure')} style={{ ...mono, fontSize: 10, padding: '5px 10px', backgroundColor: C.cyan, color: '#0a0a0c', border: 'none', borderRadius: 2, cursor: 'pointer', fontWeight: 700 }}>Lock to Configure →</button>
         </div>
       </div>
 
@@ -919,7 +813,7 @@ interface DebtAdvisorSectionProps {
 
 export function DebtAdvisorSection({ dealId, configureContent, onAdvisorAccepted }: DebtAdvisorSectionProps) {
   const [activeTab, setActiveTab] = useState<SubTab>('advisor');
-  const { data, loading, error, recompute, refresh, accept } = useDebtAdvisor(dealId);
+  const { data, loading, error, recompute, refresh } = useDebtAdvisor(dealId);
 
   const visibleTabs = configureContent !== undefined
     ? SUB_TABS
@@ -982,15 +876,6 @@ export function DebtAdvisorSection({ dealId, configureContent, onAdvisorAccepted
                   strategyName={data.strategyInputs.strategyName}
                   summary={data.summary}
                   onRecompute={recompute}
-                />
-              )}
-              {activeTab === 'configure' && (
-                <ConfigureTab
-                  phases={data.recommendedStack}
-                  onAcceptAdvisor={async () => {
-                    await accept(0);
-                    onAdvisorAccepted?.(data.summary.initialLoanAmount, data.summary.blendedAllInRate);
-                  }}
                 />
               )}
               {activeTab === 'sensitivity' && (
