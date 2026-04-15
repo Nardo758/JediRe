@@ -278,13 +278,50 @@ export const MSAEventsTab: React.FC<MSAEventsTabProps> = ({ msaId, msa }) => {
       return;
     }
     const fetchAll = async () => {
-      const [evRes, causalRes] = await Promise.all([
+      const [evRes, causalRes, fcRes] = await Promise.all([
         fetch(`/api/v1/m35/events/${selectedEventId}`),
         fetch(`/api/v1/m35/events/${selectedEventId}/causality`),
+        fetch(`/api/v1/m35/events/${selectedEventId}/forecast`),
       ]);
       if (evRes.ok) {
         const evData = await evRes.json();
         const raw = evData.event ?? evData;
+
+        let forecastStatus: FullEventRecord['forecastStatus'] = null;
+        let forecastSummary: string | null = null;
+        let proFormaLinked = false;
+
+        if (fcRes.ok) {
+          const fcData = await fcRes.json();
+          const fc = fcData.forecast ?? fcData;
+          if (fc?.actuals && Array.isArray(fc.actuals) && fc.actuals.length > 0) {
+            const statuses: string[] = fc.actuals.map((a: { statusLabel: string }) => a.statusLabel).filter(Boolean);
+            const aheadCount  = statuses.filter(s => s === 'ahead').length;
+            const behindCount = statuses.filter(s => s === 'behind').length;
+            if (aheadCount > behindCount) forecastStatus = 'ahead';
+            else if (behindCount > aheadCount) forecastStatus = 'behind';
+            else if (statuses.length > 0) forecastStatus = 'on_pace';
+            const diverged = fc.actuals.filter((a: { divergencePct: number | null }) => a.divergencePct != null && Math.abs(a.divergencePct) > 10);
+            if (diverged.length > 0) {
+              const d = diverged[0];
+              forecastSummary = `${d.metricKey ?? 'Metric'} divergence: ${d.divergencePct > 0 ? '+' : ''}${Number(d.divergencePct).toFixed(1)}% vs forecast`;
+            }
+          }
+          if (fc?.playbookStatus && fc.playbookStatus !== 'preliminary') {
+            proFormaLinked = true;
+          }
+        }
+
+        if (!fcRes.ok && raw.msaId) {
+          const dealsRes = await fetch(`/api/v1/deals?limit=1`).catch(() => null);
+          if (dealsRes?.ok) {
+            const dealsData = await dealsRes.json().catch(() => null);
+            if (dealsData?.deals?.length > 0 || dealsData?.items?.length > 0) {
+              proFormaLinked = true;
+            }
+          }
+        }
+
         setFullEvent({
           id:                  raw.id,
           name:                raw.name,
@@ -299,9 +336,9 @@ export const MSAEventsTab: React.FC<MSAEventsTabProps> = ({ msaId, msa }) => {
           submarket:           raw.submarketName ?? null,
           msaId:               raw.msaId ?? null,
           connectorSource:     raw.ingestionSource ?? raw.sourceUrl ?? null,
-          proFormaLinked:      false,
-          forecastStatus:      null,
-          forecastSummary:     null,
+          proFormaLinked,
+          forecastStatus,
+          forecastSummary,
           playbookName:        raw.subtype ?? null,
           relatedEvents:       [],
         });

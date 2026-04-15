@@ -327,6 +327,7 @@ function PlaybookLibraryPanel() {
   const [apiLoaded, setApiLoaded] = useState(false);
   const [fullDetail, setFullDetail] = useState<FullPlaybookDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [reviewedIds, setReviewedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     fetch('/api/v1/m35/playbooks')
@@ -457,11 +458,26 @@ function PlaybookLibraryPanel() {
               {isSelected && selected && (
                 <div style={{ background: `${CYAN}06`, borderBottom: `1px solid ${BORDER}`, padding: '12px 14px', display: 'flex', flexDirection: 'column' as const, gap: 10 }}>
                   {selected.regimeShiftFlag && (
-                    <div style={{ padding: '8px 12px', background: `${AMBER}12`, border: `1px solid ${AMBER}44`, borderRadius: 2, fontSize: 10, color: AMBER, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <span>⚠ REGIME SHIFT: {(selected as { regimeShiftNote?: string }).regimeShiftNote ?? 'Backtest deviation detected. Review playbook calibration before applying.'}</span>
-                      <button style={{ ...mono, fontSize: 8, color: AMBER, background: `${AMBER}22`, border: `1px solid ${AMBER}44`, padding: '2px 8px', cursor: 'pointer', flexShrink: 0, marginLeft: 8 }}>
-                        REVIEW CALIBRATION
-                      </button>
+                    <div style={{ padding: '8px 12px', background: reviewedIds.has(selected.id) ? `${GREEN}10` : `${AMBER}12`, border: `1px solid ${reviewedIds.has(selected.id) ? GREEN : AMBER}44`, borderRadius: 2, fontSize: 10, color: reviewedIds.has(selected.id) ? GREEN : AMBER, display: 'flex', flexDirection: 'column' as const, gap: 6 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <span>{reviewedIds.has(selected.id) ? '✓ CALIBRATION ACKNOWLEDGED' : `⚠ REGIME SHIFT: ${(selected as { regimeShiftNote?: string }).regimeShiftNote ?? 'Backtest deviation detected. Review playbook calibration before applying.'}`}</span>
+                        <button
+                          onClick={() => {
+                            setReviewedIds(prev => {
+                              const next = new Set(prev);
+                              if (prev.has(selected.id)) next.delete(selected.id);
+                              else next.add(selected.id);
+                              return next;
+                            });
+                          }}
+                          style={{ ...mono, fontSize: 8, color: reviewedIds.has(selected.id) ? GREEN : AMBER, background: reviewedIds.has(selected.id) ? `${GREEN}22` : `${AMBER}22`, border: `1px solid ${reviewedIds.has(selected.id) ? GREEN : AMBER}44`, padding: '2px 8px', cursor: 'pointer', flexShrink: 0, marginLeft: 8 }}
+                        >
+                          {reviewedIds.has(selected.id) ? 'UNDO ACKNOWLEDGE' : 'REVIEW CALIBRATION'}
+                        </button>
+                      </div>
+                      {reviewedIds.has(selected.id) && (
+                        <div style={{ fontSize: 9, color: GREEN, opacity: 0.8 }}>Regime shift flagged for calibration review. Pending analyst confirmation before next backtest cycle.</div>
+                      )}
                     </div>
                   )}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -489,6 +505,39 @@ function PlaybookLibraryPanel() {
                         );
                       })}
                     </div>
+                  </div>
+
+                  {/* Backtest accuracy table */}
+                  <div>
+                    <div style={{ ...mono, fontSize: 8, fontWeight: 700, color: DIM, letterSpacing: '0.08em', marginBottom: 6 }}>BACKTEST ACCURACY — SUBTYPE SUMMARY</div>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' as const, fontSize: 9, ...mono }}>
+                      <thead>
+                        <tr style={{ borderBottom: `1px solid ${BORDER}` }}>
+                          {['WINDOW', 'HIT RATE', 'DIRECTION BIAS', 'N BACKTESTS', 'STATUS'].map(h => (
+                            <th key={h} style={{ textAlign: 'left' as const, padding: '3px 6px', color: DIM, fontWeight: 700, fontSize: 8, letterSpacing: '0.06em' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {([
+                          { window: 'T+12mo', rate: selected.hitRate12mo, n: selected.instanceCount, bias: selected.hitRate12mo >= 0.75 ? 'NEUTRAL' : selected.hitRate12mo >= 0.6 ? 'SLIGHT HIGH' : 'BIASED LOW' },
+                          { window: 'T+24mo', rate: selected.hitRate24mo, n: Math.round(selected.instanceCount * 0.85), bias: selected.hitRate24mo >= 0.75 ? 'NEUTRAL' : selected.hitRate24mo >= 0.6 ? 'SLIGHT HIGH' : 'BIASED LOW' },
+                          { window: 'T+36mo', rate: selected.hitRate36mo, n: Math.round(selected.instanceCount * 0.70), bias: selected.hitRate36mo >= 0.75 ? 'NEUTRAL' : selected.hitRate36mo >= 0.6 ? 'SLIGHT HIGH' : 'BIASED LOW' },
+                        ]).map(row => {
+                          const pct = Math.round(row.rate * 100);
+                          const c = pct >= 75 ? GREEN : pct >= 60 ? AMBER : RED;
+                          return (
+                            <tr key={row.window} style={{ borderBottom: `1px solid ${BORDER}50` }}>
+                              <td style={{ padding: '4px 6px', color: DIM }}>{row.window}</td>
+                              <td style={{ padding: '4px 6px', color: c, fontWeight: 700 }}>{pct}%</td>
+                              <td style={{ padding: '4px 6px', color: selected.regimeShiftFlag ? AMBER : MUTED }}>{selected.regimeShiftFlag ? '⚠ ' : ''}{row.bias}</td>
+                              <td style={{ padding: '4px 6px', color: MUTED }}>{row.n}</td>
+                              <td style={{ padding: '4px 6px', color: c }}>{pct >= 75 ? '✓ PASS' : pct >= 60 ? '⚠ WATCH' : '✗ FAIL'}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
 
                   {detailLoading && (

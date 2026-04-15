@@ -1538,10 +1538,16 @@ export default function TerminalPage() {
     const [catFilter, setCatFilter] = React.useState<string>('');
 
     React.useEffect(() => {
-      fetch('/api/v1/m35/events?limit=20')
+      fetch('/api/v1/m35/events/feed?limit=20')
         .then(r => r.ok ? r.json() : null)
         .then(d => {
-          if (d) setEvents((d.items || d.events || []) as EventFeedItem[]);
+          if (d && (d.items || d.events || []).length > 0) {
+            setEvents((d.items || d.events || []) as EventFeedItem[]);
+          } else {
+            return fetch('/api/v1/m35/events?status=announced,in_progress&limit=20')
+              .then(r2 => r2.ok ? r2.json() : null)
+              .then(d2 => { if (d2) setEvents((d2.items || d2.events || []) as EventFeedItem[]); });
+          }
         })
         .catch(() => {})
         .finally(() => setLoading(false));

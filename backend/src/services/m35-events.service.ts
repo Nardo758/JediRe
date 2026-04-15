@@ -70,6 +70,7 @@ export interface UpdateEventInput extends Partial<CreateEventInput> {
 
 export interface EventSearchParams {
   msaId?: string;
+  msaIds?: string[];
   submarketId?: string;
   category?: M35EventCategory;
   subtype?: string;
@@ -307,7 +308,8 @@ export async function searchEvents(params: EventSearchParams): Promise<{ items: 
 
   const push = (cond: string, val: unknown) => { conditions.push(cond); values.push(val); i++; };
 
-  if (params.msaId)        push(`msa_id = $${i}`, params.msaId);
+  if (params.msaIds && params.msaIds.length > 0) push(`msa_id = ANY($${i}::text[])`, params.msaIds);
+  else if (params.msaId)   push(`msa_id = $${i}`, params.msaId);
   if (params.submarketId)  push(`submarket_id = $${i}`, params.submarketId);
   if (params.category)     push(`category = $${i}`, params.category);
   if (params.subtype)      push(`subtype = $${i}`, params.subtype);

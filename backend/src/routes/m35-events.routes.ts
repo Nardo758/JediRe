@@ -68,13 +68,18 @@ router.get('/events/taxonomy', async (req: Request, res: Response) => {
 router.get('/events', async (req: Request, res: Response) => {
   try {
     const {
-      msaId, submarketId, category, subtype, status,
+      msaId, msaIds, submarketId, category, subtype, status,
       scope, minConfidence, isVerified, fromDate, toDate,
       limit, offset,
     } = req.query;
 
+    const parsedMsaIds = msaIds
+      ? String(msaIds).split(',').map(s => s.trim()).filter(Boolean)
+      : undefined;
+
     const result = await searchEvents({
-      msaId:          msaId as string,
+      msaId:          parsedMsaIds ? undefined : (msaId as string),
+      msaIds:         parsedMsaIds,
       submarketId:    submarketId as string,
       category:       category as any,
       subtype:        subtype as string,
@@ -91,6 +96,36 @@ router.get('/events', async (req: Request, res: Response) => {
     res.json(result);
   } catch (err: any) {
     logger.error('[M35 Events] search error', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/events/feed', async (req: Request, res: Response) => {
+  try {
+    const pool = getPool();
+    const limitVal = req.query.limit ? parseInt(String(req.query.limit), 10) : 20;
+
+    const dealRows = await pool.query(`
+      SELECT DISTINCT d.deal_data->>'msaId' AS msa_id
+      FROM deals d
+      WHERE d.deal_data->>'msaId' IS NOT NULL
+        AND (d.status IS NULL OR d.status NOT IN ('archived','closed'))
+      LIMIT 50
+    `);
+    const msaIds = dealRows.rows
+      .map((r: { msa_id: string }) => r.msa_id as string)
+      .filter(Boolean);
+
+    const result = await searchEvents({
+      msaIds:  msaIds.length > 0 ? msaIds : undefined,
+      status:  ['announced', 'in_progress', 'materialized'] as any,
+      limit:   limitVal,
+      offset:  0,
+    });
+
+    res.json(result);
+  } catch (err: any) {
+    logger.error('[M35 Events] feed error', err);
     res.status(500).json({ error: err.message });
   }
 });
