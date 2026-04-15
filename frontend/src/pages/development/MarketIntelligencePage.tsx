@@ -1314,7 +1314,7 @@ function ProgramDevPanel({ program, computed, zoning, comps, gaps, onProgramChan
       <div style={{ padding: '7px 14px', borderBottom: `1px solid ${PC.border}`, backgroundColor: PC.surface, display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
         <span style={{ fontFamily: pmono, fontSize: 9, color: PC.blue, letterSpacing: '0.12em', fontWeight: 700 }}>F3</span>
         <span style={{ color: PC.border }}>|</span>
-        <span style={{ fontFamily: pmono, fontSize: 10, fontWeight: 700, color: PC.text, letterSpacing: '0.06em' }}>PROGRAM</span>
+        <span style={{ fontFamily: pmono, fontSize: 10, fontWeight: 700, color: PC.text, letterSpacing: '0.06em' }}>MARKET INTELLIGENCE</span>
         <Pill color={PC.blue}>DEVELOPMENT</Pill>
         <div style={{ flex: 1 }} />
         <span style={{ fontFamily: pmono, color: PC.dim, fontSize: 9 }}>{zoning.zoningCode || '—'}</span>
@@ -1633,8 +1633,8 @@ function ProgramRedevPanel({ rationale, umComps, umGaps, umProgram, onProgramCha
       <div style={{ padding: '7px 14px', borderBottom: `1px solid ${PC.border}`, backgroundColor: PC.surface, display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
         <span style={{ fontFamily: pmono, fontSize: 9, color: PC.yellow, letterSpacing: '0.12em', fontWeight: 700 }}>F3</span>
         <span style={{ color: PC.border }}>|</span>
-        <span style={{ fontFamily: pmono, fontSize: 10, fontWeight: 700, color: PC.text, letterSpacing: '0.06em' }}>PROGRAM</span>
-        <Pill color={PC.yellow}>REPOSITIONING</Pill>
+        <span style={{ fontFamily: pmono, fontSize: 10, fontWeight: 700, color: PC.text, letterSpacing: '0.06em' }}>MARKET INTELLIGENCE</span>
+        <Pill color={PC.yellow}>REDEVELOPMENT</Pill>
         <div style={{ flex: 1 }} />
         <span style={{ fontFamily: pmono, color: PC.dim, fontSize: 9 }}>M03 DEMAND + F6 AMENITY GAP</span>
       </div>
@@ -1842,6 +1842,32 @@ function ProgramRedevPanel({ rationale, umComps, umGaps, umProgram, onProgramCha
 
           <div style={{ backgroundColor: PC.card, borderRadius: 2, border: `1px solid ${PC.border}`, overflow: 'hidden' }}>
             <div style={{ padding: '7px 10px', borderBottom: `1px solid ${PC.border}` }}>
+              <SectionLabel label="Conversion Context" accent={PC.yellow} />
+            </div>
+            <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column' as const, gap: 5 }}>
+              {conversions.filter(c => c.convCost !== '$0').length === 0 ? (
+                <span style={{ fontFamily: pmono, fontSize: 9, color: PC.dim }}>No conversions needed</span>
+              ) : conversions.filter(c => c.convCost !== '$0').map(c => (
+                <div key={c.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <div style={{ width: 3, height: 10, background: c.color, borderRadius: 1 }} />
+                    <span style={{ fontFamily: pmono, fontSize: 9, color: PC.text, fontWeight: 700 }}>{c.abbr}</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
+                    <span style={{ fontFamily: pmono, fontSize: 8, color: PC.dim }}>{c.delta > 0 ? '+' : ''}{c.delta}pp</span>
+                    <span style={{ fontFamily: pmono, fontSize: 9, color: PC.yellow, fontWeight: 700 }}>{c.convCost}</span>
+                  </div>
+                </div>
+              ))}
+              <div style={{ borderTop: `1px solid ${PC.border}`, marginTop: 3, paddingTop: 5, display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ fontFamily: pmono, fontSize: 8, color: PC.dim }}>Total</span>
+                <span style={{ fontFamily: pmono, fontSize: 9, color: PC.yellow, fontWeight: 700 }}>${(totalConvCost / 1000).toFixed(0)}K</span>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ backgroundColor: PC.card, borderRadius: 2, border: `1px solid ${PC.border}`, overflow: 'hidden' }}>
+            <div style={{ padding: '7px 10px', borderBottom: `1px solid ${PC.border}` }}>
               <SectionLabel label="ROI Summary" accent={PC.green} />
             </div>
             <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column' as const, gap: 5 }}>
@@ -1935,7 +1961,7 @@ function ProgramExistingPanel({ umComps }: { umComps: CompData[] }) {
       <div style={{ padding: '7px 14px', borderBottom: `1px solid ${PC.border}`, backgroundColor: PC.surface, display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
         <span style={{ fontFamily: pmono, fontSize: 9, color: PC.yellow, letterSpacing: '0.12em', fontWeight: 700 }}>F3</span>
         <span style={{ color: PC.border }}>|</span>
-        <span style={{ fontFamily: pmono, fontSize: 10, fontWeight: 700, color: PC.text, letterSpacing: '0.06em' }}>PROGRAM</span>
+        <span style={{ fontFamily: pmono, fontSize: 10, fontWeight: 700, color: PC.text, letterSpacing: '0.06em' }}>MARKET INTELLIGENCE</span>
         <Pill color={PC.yellow}>EXISTING</Pill>
         <div style={{ flex: 1 }} />
         <span style={{ fontFamily: pmono, color: PC.dim, fontSize: 9 }}>{EXISTING_SUBJECT.units}u · {EXISTING_SUBJECT.cls} · {EXISTING_SUBJECT.built}</span>
