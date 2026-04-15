@@ -1573,82 +1573,128 @@ function ProgramExistingPanel({ umComps: _umComps }: { umComps: CompData[] }) {
       </div>
 
       {view === 'matrix' && (
-        <>
-          <div style={{ overflowX: 'auto' }}>
-            <div style={{ minWidth: 700 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: `140px 50px repeat(${compCount}, 1fr) 60px 60px`, padding: '4px 12px', background: PC.bg, borderBottom: `1px solid ${PC.border}` }}>
-                <span style={{ fontSize: 7, fontFamily: pmono, color: PC.faint, fontWeight: 700 }}>AMENITY</span>
-                <span style={{ fontSize: 7, fontFamily: pmono, color: PC.subject, fontWeight: 700, textAlign: 'center' as const }}>YOU</span>
-                {EXISTING_COMPS_AMENITIES.map(c => (
-                  <div key={c.id} style={{ textAlign: 'center' as const, overflow: 'hidden' }}>
-                    <div style={{ fontSize: 7, fontFamily: pmono, color: PC.dim, fontWeight: 700, whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name.split(' ')[0]}</div>
-                    <div style={{ fontSize: 6, fontFamily: pmono, color: PC.faint }}>{c.cls} · {c.built}</div>
-                  </div>
-                ))}
-                <span style={{ fontSize: 7, fontFamily: pmono, color: PC.dim, fontWeight: 700, textAlign: 'center' as const }}>COMP %</span>
-                <span style={{ fontSize: 7, fontFamily: pmono, color: PC.dim, fontWeight: 700, textAlign: 'center' as const }}>SUBM %</span>
+        <div style={{ display: 'grid', gridTemplateColumns: '1.25fr 1fr', gap: 10, padding: 10 }}>
+          <div style={{ background: PC.card, border: `1px solid ${PC.border}`, borderRadius: 4, overflow: 'hidden' }}>
+            <div style={{ padding: '6px 10px', borderBottom: `1px solid ${PC.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontSize: 8, fontFamily: pmono, color: PC.faint, letterSpacing: 0.8 }}>COMP PARITY</div>
+                <div style={{ fontSize: 11, fontWeight: 700 }}>Amenity coverage across comparables</div>
               </div>
-
-              {EXISTING_AMENITIES.map((a, ri) => {
-                const subjectHas = EXISTING_SUBJECT.amenities[a.key];
-                const cp = compPenetration(a.key);
-                const sp = EXISTING_SUBMARKET.penetration[a.key];
-                const isMissing = !subjectHas;
-                const isHighGap = isMissing && cp >= 60;
-                return (
-                  <div key={a.key} style={{
-                    display: 'grid', gridTemplateColumns: `140px 50px repeat(${compCount}, 1fr) 60px 60px`,
-                    padding: '5px 12px', alignItems: 'center', borderBottom: `1px solid ${PC.border}30`,
-                    background: isHighGap ? PC.red + '06' : ri % 2 === 0 ? 'transparent' : PC.surface + '30',
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      {isMissing && isHighGap && <div style={{ width: 3, height: 14, background: PC.red, borderRadius: 1 }} />}
-                      {isMissing && !isHighGap && <div style={{ width: 3, height: 14, background: PC.yellow, borderRadius: 1 }} />}
-                      {!isMissing && <div style={{ width: 3, height: 14, background: PC.green, borderRadius: 1, opacity: 0.4 }} />}
-                      <span style={{ fontSize: 9, color: isMissing ? PC.text : PC.dim }}>{a.name}</span>
+              <div style={{ fontSize: 8, fontFamily: pmono, color: PC.dim }}>{compCount} comps</div>
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <div style={{ minWidth: 640 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: `140px 52px repeat(${compCount}, 1fr) 56px`, padding: '4px 10px', background: PC.bg, borderBottom: `1px solid ${PC.border}` }}>
+                  <span style={{ fontSize: 7, fontFamily: pmono, color: PC.faint, fontWeight: 700 }}>AMENITY</span>
+                  <span style={{ fontSize: 7, fontFamily: pmono, color: PC.subject, fontWeight: 700, textAlign: 'center' as const }}>YOU</span>
+                  {EXISTING_COMPS_AMENITIES.map(c => (
+                    <div key={c.id} style={{ textAlign: 'center' as const, overflow: 'hidden' }}>
+                      <div style={{ fontSize: 7, fontFamily: pmono, color: PC.dim, fontWeight: 700, whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name.split(' ')[0]}</div>
+                      <div style={{ fontSize: 6, fontFamily: pmono, color: PC.faint }}>{c.cls}</div>
                     </div>
-                    <div style={{ textAlign: 'center' as const }}>
-                      <span style={{ fontSize: 8, fontWeight: 700, padding: '1px 4px', borderRadius: 2, background: subjectHas ? PC.green + '18' : PC.red + '18', color: subjectHas ? PC.green : PC.red, border: `1px solid ${subjectHas ? PC.green : PC.red}30` }}>{subjectHas ? '✓' : '✗'}</span>
-                    </div>
-                    {EXISTING_COMPS_AMENITIES.map(c => (
-                      <div key={c.id} style={{ textAlign: 'center' as const }}>
-                        <span style={{ fontSize: 8, fontWeight: 700, color: c.amenities[a.key] ? PC.green : PC.faint, opacity: c.amenities[a.key] ? 0.8 : 0.4 }}>{c.amenities[a.key] ? '●' : '○'}</span>
+                  ))}
+                  <span style={{ fontSize: 7, fontFamily: pmono, color: PC.dim, fontWeight: 700, textAlign: 'center' as const }}>COMP %</span>
+                </div>
+                {EXISTING_AMENITIES.map((a, ri) => {
+                  const subjectHas = EXISTING_SUBJECT.amenities[a.key];
+                  const cp = compPenetration(a.key);
+                  const isMissing = !subjectHas;
+                  const isHighGap = isMissing && cp >= 60;
+                  return (
+                    <div key={a.key} style={{
+                      display: 'grid',
+                      gridTemplateColumns: `140px 52px repeat(${compCount}, 1fr) 56px`,
+                      padding: '6px 10px',
+                      alignItems: 'center',
+                      borderBottom: `1px solid ${PC.border}30`,
+                      background: isHighGap ? PC.red + '08' : ri % 2 === 0 ? 'transparent' : PC.surface + '30',
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <div style={{ width: 3, height: 14, background: isMissing ? (isHighGap ? PC.red : PC.yellow) : PC.green, borderRadius: 1, opacity: isMissing ? 1 : 0.45 }} />
+                        <div>
+                          <div style={{ fontSize: 9, color: isMissing ? PC.text : PC.dim }}>{a.name}</div>
+                          <div style={{ fontSize: 7, fontFamily: pmono, color: PC.faint }}>{a.category.toUpperCase()}</div>
+                        </div>
                       </div>
-                    ))}
-                    <div style={{ display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 1 }}>
-                      <span style={{ fontSize: 9, fontFamily: pmono, fontWeight: 700, color: cp >= 60 ? (isMissing ? PC.red : PC.dim) : PC.dim }}>{cp}%</span>
-                      <PenBar pct={cp} color={cp >= 60 && isMissing ? PC.red : PC.dim} width={36} />
+                      <div style={{ textAlign: 'center' as const }}>
+                        <span style={{ fontSize: 8, fontWeight: 700, padding: '1px 4px', borderRadius: 2, background: subjectHas ? PC.green + '18' : PC.red + '18', color: subjectHas ? PC.green : PC.red, border: `1px solid ${subjectHas ? PC.green : PC.red}30` }}>{subjectHas ? '✓' : '✗'}</span>
+                      </div>
+                      {EXISTING_COMPS_AMENITIES.map(c => (
+                        <div key={c.id} style={{ textAlign: 'center' as const }}>
+                          <span style={{ fontSize: 8, fontWeight: 700, color: c.amenities[a.key] ? PC.green : PC.faint, opacity: c.amenities[a.key] ? 0.8 : 0.35 }}>{c.amenities[a.key] ? '●' : '○'}</span>
+                        </div>
+                      ))}
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+                        <span style={{ fontSize: 9, fontFamily: pmono, fontWeight: 700, color: cp >= 60 ? (isMissing ? PC.red : PC.dim) : PC.dim }}>{cp}%</span>
+                        <PenBar pct={cp} color={cp >= 60 && isMissing ? PC.red : PC.dim} width={34} />
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 1 }}>
-                      <span style={{ fontSize: 9, fontFamily: pmono, fontWeight: 700, color: sp >= 50 ? (isMissing ? PC.yellow : PC.dim) : PC.dim }}>{sp}%</span>
-                      <PenBar pct={sp} color={sp >= 50 && isMissing ? PC.yellow : PC.dim} width={36} />
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           </div>
 
-          <div style={{ padding: '6px 12px', borderTop: `1px solid ${PC.border}`, background: PC.card }}>
-            <div style={{ fontSize: 8, fontFamily: pmono, color: PC.faint, letterSpacing: 0.8, marginBottom: 4 }}>COMP RENT CONTEXT</div>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px', background: PC.subject + '14', border: `1px solid ${PC.subject}30`, borderRadius: 2 }}>
-                <div style={{ width: 5, height: 5, background: PC.subject, borderRadius: 1 }} />
-                <span style={{ fontSize: 8, fontFamily: pmono, color: PC.subject, fontWeight: 700 }}>YOU ${EXISTING_SUBJECT.avgRent}/mo</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ background: PC.card, border: `1px solid ${PC.border}`, borderRadius: 4, overflow: 'hidden' }}>
+              <div style={{ padding: '6px 10px', borderBottom: `1px solid ${PC.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: 8, fontFamily: pmono, color: PC.faint, letterSpacing: 0.8 }}>SUBMARKET COVERAGE</div>
+                  <div style={{ fontSize: 11, fontWeight: 700 }}>Amenity penetration vs market</div>
+                </div>
+                <div style={{ fontSize: 8, fontFamily: pmono, color: PC.dim }}>{EXISTING_SUBMARKET.properties} properties</div>
               </div>
-              {EXISTING_COMPS_AMENITIES.map(c => {
-                const delta = c.avgRent - EXISTING_SUBJECT.avgRent;
-                return (
-                  <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 8px', background: PC.bg, border: `1px solid ${PC.border}`, borderRadius: 2 }}>
-                    <span style={{ fontSize: 8, fontFamily: pmono, color: PC.dim }}>{c.name.split(' ')[0]}</span>
-                    <span style={{ fontSize: 8, fontFamily: pmono, color: PC.text, fontWeight: 700 }}>${c.avgRent}</span>
-                    <span style={{ fontSize: 7, fontFamily: pmono, color: delta > 0 ? PC.green : PC.red, fontWeight: 700 }}>{delta > 0 ? '+' : ''}{delta}</span>
-                  </div>
-                );
-              })}
+              <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {EXISTING_AMENITIES.map(a => {
+                  const sp = EXISTING_SUBMARKET.penetration[a.key];
+                  const isMissing = !EXISTING_SUBJECT.amenities[a.key];
+                  return (
+                    <div key={a.key} style={{ display: 'grid', gridTemplateColumns: '1fr 46px 1fr', gap: 8, alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontSize: 9, color: PC.text }}>{a.name}</div>
+                        <div style={{ fontSize: 7, fontFamily: pmono, color: PC.faint }}>{a.category.toUpperCase()}</div>
+                      </div>
+                      <div style={{ textAlign: 'right' as const, fontFamily: pmono, fontSize: 9, fontWeight: 700, color: sp >= 50 ? PC.yellow : PC.dim }}>{sp}%</div>
+                      <PenBar pct={sp} color={sp >= 50 ? PC.yellow : PC.dim} width={120} />
+                      <div style={{ gridColumn: '1 / -1', height: 1, background: PC.border, opacity: 0.4 }} />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div style={{ background: PC.card, border: `1px solid ${PC.border}`, borderRadius: 4, overflow: 'hidden', flex: 1 }}>
+              <div style={{ padding: '6px 10px', borderBottom: `1px solid ${PC.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: 8, fontFamily: pmono, color: PC.faint, letterSpacing: 0.8 }}>ACTION SUMMARY</div>
+                  <div style={{ fontSize: 11, fontWeight: 700 }}>What closes the gap</div>
+                </div>
+                <div style={{ fontSize: 8, fontFamily: pmono, color: PC.dim }}>terminal-ready</div>
+              </div>
+              <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {missingAmenities.map(a => {
+                  const lift = EXISTING_LIFT[a.key];
+                  const cp = compPenetration(a.key);
+                  const urgencyColor = cp >= 70 ? PC.red : cp >= 50 ? PC.yellow : PC.blue;
+                  return (
+                    <div key={a.key} style={{ padding: '8px 10px', border: `1px solid ${urgencyColor}22`, borderRadius: 4, background: urgencyColor + '08' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                        <span style={{ fontSize: 10, fontWeight: 700 }}>{a.name}</span>
+                        <span style={{ fontSize: 7, fontFamily: pmono, color: urgencyColor, fontWeight: 700 }}>{cp}% comp penetration</span>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, fontSize: 8, fontFamily: pmono, color: PC.dim, flexWrap: 'wrap' as const }}>
+                        <span>COST ${Math.round(lift.cost / 1000)}K</span>
+                        <span>LIFT +${lift.liftPerUnit}/u</span>
+                        <span>ROI {lift.roi}</span>
+                        <span>PRIORITY {lift.tier}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
-        </>
+        </div>
       )}
 
       {view === 'impact' && (
