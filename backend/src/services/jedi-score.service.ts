@@ -13,6 +13,7 @@
  */
 
 import { query, getPool } from '../database/connection';
+import { MODULE_ALIASES } from './m35-metric-mapping';
 
 // ============================================================================
 // Types
@@ -160,6 +161,15 @@ export class JEDIScoreService {
     TECHNOLOGY_INDUSTRY: 'employment',
     INFRASTRUCTURE:      'development',
     MACRO_DEMOGRAPHIC:   'amenities',
+  };
+
+  // Per demand category: the M35 metric key (via MODULE_ALIASES.M06) that carries
+  // the attributed_delta for that category. Only this metric row is accepted from
+  // event_forecasts — all other metric rows for the same key event are ignored.
+  private static readonly DEMAND_CAT_M06_METRIC: Readonly<Record<string, string>> = {
+    employment:  MODULE_ALIASES.M06.demand_signal_rent,       // 'rent_growth_yoy'
+    development: MODULE_ALIASES.M06.demand_signal_absorption, // 'net_absorption'
+    amenities:   MODULE_ALIASES.M06.demand_signal_traffic,    // 'search_growth'
   };
 
   private async calculateDemandScore(dealId: string, tradeAreaId?: string, demandIntel?: DemandIntelligence | null): Promise<number> {
@@ -801,17 +811,14 @@ export class JEDIScoreService {
       );
       const { submarket_id: submarketId, msa_id: msaId } = dealRes.rows[0] ?? {};
 
-      type ForecastRow = {
-        key_event_id:    string;
-        m35_category:    string;
-        attributed_delta: string | null;
-        confidence:      string;
-        window_months:   string;
-      };
+      // Restrict to the M06-specific metric keys via the MODULE_ALIASES.M06 mapping.
+      // This prevents supply/investment metrics from polluting demand weight derivation.
+      const allowedMetricKeys = Object.values(JEDIScoreService.DEMAND_CAT_M06_METRIC);
 
       const BASE_SQL = `
-        SELECT ke.id          AS key_event_id,
+        SELECT ke.id             AS key_event_id,
                ke.category::text AS m35_category,
+               ef.metric_key,
                ef.point_estimate AS attributed_delta,
                ef.confidence,
                ef.window_months
@@ -819,14 +826,24 @@ export class JEDIScoreService {
         JOIN key_events ke ON ke.id = ef.event_id
         WHERE ef.status = 'active'
           AND ke.status IN ('announced','in_progress','materialized')
-          AND ef.point_estimate IS NOT NULL`;
+          AND ef.point_estimate IS NOT NULL
+          AND ef.metric_key = ANY($2)`;
+
+      type ForecastRow = {
+        key_event_id:    string;
+        m35_category:    string;
+        metric_key:      string;
+        attributed_delta: string | null;
+        confidence:      string;
+        window_months:   string;
+      };
 
       let rows: ForecastRow[] = [];
 
       if (submarketId) {
         const res = await pool.query<ForecastRow>(
           `${BASE_SQL} AND ke.submarket_id = $1 ORDER BY ef.confidence DESC`,
-          [submarketId]
+          [submarketId, allowedMetricKeys]
         );
         rows = res.rows;
       }
@@ -834,7 +851,7 @@ export class JEDIScoreService {
       if (rows.length === 0 && msaId) {
         const res = await pool.query<ForecastRow>(
           `${BASE_SQL} AND ke.msa_id = $1 ORDER BY ef.confidence DESC`,
-          [msaId]
+          [msaId, allowedMetricKeys]
         );
         rows = res.rows;
       }
@@ -842,7 +859,11 @@ export class JEDIScoreService {
       const overrides = new Map<string, M35WeightOverride>();
       for (const r of rows) {
         const demandCat = JEDIScoreService.M35_TO_DEMAND_CAT[r.m35_category];
-        if (!demandCat || overrides.has(demandCat)) continue; // rows ordered by confidence DESC; first wins
+        if (!demandCat) continue;
+        // Only accept the metric key designated for this demand category via MODULE_ALIASES.M06.
+        const expectedMetric = JEDIScoreService.DEMAND_CAT_M06_METRIC[demandCat];
+        if (r.metric_key !== expectedMetric) continue;
+        if (overrides.has(demandCat)) continue; // rows ordered by confidence DESC; first wins
         overrides.set(demandCat, {
           keyEventId:      r.key_event_id,
           attributedDelta: parseFloat(r.attributed_delta!),

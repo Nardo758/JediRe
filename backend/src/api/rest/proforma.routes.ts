@@ -70,31 +70,47 @@ function toAttributionEntry(row: ForecastRow): M35AttributionEntry {
 async function getM35ProformaAttribution(dealId: string): Promise<M35ProformaAttribution> {
   const pool = getPool();
 
-  const dealRes = await pool.query<{ msa_id: string | null }>(
-    `SELECT deal_data->>'msaId' AS msa_id FROM deals WHERE id = $1 LIMIT 1`,
+  const dealRes = await pool.query<{ msa_id: string | null; submarket_id: string | null }>(
+    `SELECT deal_data->>'msaId'        AS msa_id,
+            deal_data->>'submarketId'  AS submarket_id
+     FROM deals WHERE id = $1 LIMIT 1`,
     [dealId]
   );
-  const msaId = dealRes.rows[0]?.msa_id ?? null;
-  if (!msaId) return { rentGrowth: null, vacancy: null, exitCap: null };
+  const msaId       = dealRes.rows[0]?.msa_id       ?? null;
+  const submarketId = dealRes.rows[0]?.submarket_id  ?? null;
+  if (!msaId && !submarketId) return { rentGrowth: null, vacancy: null, exitCap: null };
 
-  // event_forecasts is flat — one row per (event_id, metric_key, window_months).
-  // No separate event_forecast_metrics table.
-  const forecastRes = await pool.query<ForecastRow>(
-    `SELECT ke.id AS event_id, ke.name AS event_name, ke.subtype,
-            ef.metric_key, ef.window_months, ef.point_estimate,
-            ef.ci_low, ef.ci_high, ef.confidence
-     FROM event_forecasts ef
-     JOIN key_events ke ON ke.id = ef.event_id
-     WHERE ef.status = 'active'
-       AND ke.msa_id = $1
-       AND ke.status IN ('announced','in_progress','materialized')
-       AND ef.metric_key IN ('rent_growth_yoy','vacancy_rate','cap_rate')
-     ORDER BY ef.confidence DESC`,
-    [msaId]
-  );
+  // Prefer submarket-scoped key events; fall back to MSA.
+  const BASE_SQL = `
+    SELECT ke.id AS event_id, ke.name AS event_name, ke.subtype,
+           ef.metric_key, ef.window_months, ef.point_estimate,
+           ef.ci_low, ef.ci_high, ef.confidence
+    FROM event_forecasts ef
+    JOIN key_events ke ON ke.id = ef.event_id
+    WHERE ef.status = 'active'
+      AND ke.status IN ('announced','in_progress','materialized')
+      AND ef.metric_key IN ('rent_growth_yoy','vacancy_rate','cap_rate')`;
+
+  let rows: ForecastRow[] = [];
+
+  if (submarketId) {
+    const res = await pool.query<ForecastRow>(
+      `${BASE_SQL} AND ke.submarket_id = $1 ORDER BY ef.confidence DESC`,
+      [submarketId]
+    );
+    rows = res.rows;
+  }
+
+  if (rows.length === 0 && msaId) {
+    const res = await pool.query<ForecastRow>(
+      `${BASE_SQL} AND ke.msa_id = $1 ORDER BY ef.confidence DESC`,
+      [msaId]
+    );
+    rows = res.rows;
+  }
 
   const pickBest = (metricKey: string): M35AttributionEntry | null => {
-    const row = forecastRes.rows.find(r => r.metric_key === metricKey);
+    const row = rows.find(r => r.metric_key === metricKey);
     return row ? toAttributionEntry(row) : null;
   };
 

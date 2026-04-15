@@ -87,7 +87,21 @@ const forecastDivergedHandler: MessageHandler = async (event: any) => {
     divergencePct: event.divergencePct,
   });
 
-  const msaId: string | undefined = event.msaId;
+  // Producer payload may omit msaId; fetch from key_events if so.
+  let msaId: string | undefined = event.msaId;
+  if (!msaId && event.eventId) {
+    try {
+      const pool = getPool();
+      const res = await pool.query<{ msa_id: string }>(
+        `SELECT msa_id FROM key_events WHERE id = $1 LIMIT 1`,
+        [event.eventId]
+      );
+      msaId = res.rows[0]?.msa_id ?? undefined;
+    } catch (lookupErr) {
+      logger.warn('Could not resolve msaId for diverged event', { eventId: event.eventId, err: lookupErr });
+    }
+  }
+
   if (msaId) {
     // Divergence means forecast accuracy drifted; recompute JEDI scores and bust caches
     // so downstream consumers see updated persisted scores with revised M35 weights.

@@ -101,33 +101,42 @@ router.get('/deals/:dealId/events', async (req: Request, res: Response) => {
       ORDER BY announced_date DESC
     `, [scope.value]);
 
-    // Attach active forecast metrics to each event (per-event binding).
-    const eventsWithForecasts = await Promise.all(
-      eventsRes.rows.map(async (ev) => {
-        const forecastRes = await pool.query(`
-          SELECT metric_key, window_months, point_estimate, ci_low, ci_high, confidence
-          FROM event_forecasts
-          WHERE event_id = $1 AND status = 'active'
-          ORDER BY metric_key, window_months
-        `, [ev.id]);
+    // Batch-fetch all active forecast metrics for the returned events in one query.
+    const eventIds: string[] = eventsRes.rows.map((ev: { id: string }) => ev.id);
+    const forecastBatch = eventIds.length > 0
+      ? await pool.query(
+          `SELECT event_id, metric_key, window_months, point_estimate, ci_low, ci_high, confidence
+           FROM event_forecasts
+           WHERE event_id = ANY($1) AND status = 'active'
+           ORDER BY event_id, metric_key, window_months`,
+          [eventIds]
+        )
+      : { rows: [] };
 
-        return {
-          ...ev,
-          forecast: forecastRes.rows.length > 0
-            ? {
-                metrics: forecastRes.rows.map(r => ({
-                  metricKey:     r.metric_key,
-                  windowMonths:  parseInt(r.window_months),
-                  pointEstimate: r.point_estimate !== null ? parseFloat(r.point_estimate) : null,
-                  ciLow:         r.ci_low !== null ? parseFloat(r.ci_low) : null,
-                  ciHigh:        r.ci_high !== null ? parseFloat(r.ci_high) : null,
-                  confidence:    parseFloat(r.confidence),
-                })),
-              }
-            : null,
-        };
-      })
-    );
+    const forecastsByEvent = new Map<string, typeof forecastBatch.rows>();
+    for (const row of forecastBatch.rows) {
+      if (!forecastsByEvent.has(row.event_id)) forecastsByEvent.set(row.event_id, []);
+      forecastsByEvent.get(row.event_id)!.push(row);
+    }
+
+    const eventsWithForecasts = eventsRes.rows.map((ev: { id: string; [k: string]: unknown }) => {
+      const frows = forecastsByEvent.get(ev.id) ?? [];
+      return {
+        ...ev,
+        forecast: frows.length > 0
+          ? {
+              metrics: frows.map(r => ({
+                metricKey:     r.metric_key,
+                windowMonths:  parseInt(r.window_months),
+                pointEstimate: r.point_estimate !== null ? parseFloat(r.point_estimate) : null,
+                ciLow:         r.ci_low !== null ? parseFloat(r.ci_low) : null,
+                ciHigh:        r.ci_high !== null ? parseFloat(r.ci_high) : null,
+                confidence:    parseFloat(r.confidence),
+              })),
+            }
+          : null,
+      };
+    });
 
     res.json({
       dealId: req.params.dealId,
