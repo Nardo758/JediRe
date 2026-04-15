@@ -1077,13 +1077,14 @@ const PHASE_COLORS: Record<number, string> = {
   1: BT.text.cyan, 2: BT.text.green, 3: BT.text.amber, 4: BT.text.purple,
 };
 
-export function PlanDocument({ plan, dealId }: { plan: InvestmentPlan; dealId: string }) {
+export function PlanDocument({ plan, dealId }: { plan: InvestmentPlan | null | undefined; dealId: string }) {
   const { hoveredEvidenceRef, setHoveredEvidenceRef } = useContext(HoverContext);
   const [editedEntry, setEditedEntry] = useState<Partial<{ targetQuarter: string; priceCeiling: string; debtStructure: string }>>({});
   const [hoveredAction, setHoveredAction] = useState<string | null>(null);
   const [applyFeedback, setApplyFeedback] = useState<Record<string, string>>({});
-  // Per-line action edits: key = `vc-${i}`, value = partial overrides
   const [editedActions, setEditedActions] = useState<Record<string, { timing?: string; expectedImpact?: string }>>({});
+
+  if (!plan) return null;
 
   const handleApplyToProForma = async (section: string) => {
     try {
@@ -1262,7 +1263,7 @@ export function PlanDocument({ plan, dealId }: { plan: InvestmentPlan; dealId: s
             const sColor = sevColor(item.severity);
             return (
               <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '2px 0', borderBottom: `1px solid ${BT.border.subtle}` }}>
-                <Bd c={sColor}>{item.severity.toUpperCase()}</Bd>
+                <Bd c={sColor}>{(item.severity ?? '').toUpperCase()}</Bd>
                 <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.primary, flex: 1 }}>{item.metric}</span>
                 <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>NOW: {item.currentValue}</span>
                 <span style={{ fontFamily: MONO, fontSize: 7, color: sColor }}>▲ {item.triggerThreshold}</span>
@@ -1322,7 +1323,7 @@ export function MonitoringDashboard({ monitoring }: { monitoring: MonitoringItem
             <div key={i} style={{ padding: '8px 10px', background: BT.bg.panelAlt, border: `1px solid ${sColor}33`, borderLeft: `2px solid ${sColor}` }}>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
                 <Bd c={sColor}>{item.correlationId}</Bd>
-                <Bd c={sColor}>{item.severity.toUpperCase()}</Bd>
+                <Bd c={sColor}>{(item.severity ?? '').toUpperCase()}</Bd>
                 <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.primary, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.metric}</span>
               </div>
               {/* Breach bar */}
@@ -1427,7 +1428,7 @@ export function V2FullAnalysis({
         <>
           <SubStrategyComparison subStrategies={analysis.subStrategies} arbitrage={analysis.arbitrage} />
           <SignalHeatmap subStrategies={analysis.subStrategies} signalScores={analysis.signalScores} />
-          {analysis.subStrategies.map(ss => (
+          {(analysis.subStrategies ?? []).map(ss => (
             <EvidenceReportBlock key={ss.key} ss={ss} defaultExpanded={ss.isDetectedPrimary} />
           ))}
           <CorrelationTimingPanel
