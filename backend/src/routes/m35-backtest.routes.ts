@@ -14,6 +14,7 @@ import { logger } from '../utils/logger';
 import {
   runMonthlyBacktest,
   getPlaybookAccuracyStats,
+  getPlaybookBacktestReport,
   getEventBacktestResults,
   getRegimeShiftAlerts,
   acknowledgeRegimeAlert,
@@ -52,6 +53,18 @@ router.get('/backtest/accuracy/:subtype', async (req: Request, res: Response) =>
   } catch (err) {
     logger.error('[M35 Backtest] Error fetching subtype accuracy:', err);
     res.status(500).json({ error: 'Failed to fetch subtype accuracy' });
+  }
+});
+
+// ─── Playbook backtest report (hit rate, error dist, regime status, last 10) ──
+
+router.get('/playbooks/:subtype/backtest', async (req: Request, res: Response) => {
+  try {
+    const report = await getPlaybookBacktestReport(req.params.subtype);
+    res.json(report);
+  } catch (err) {
+    logger.error('[M35 Backtest] Error fetching playbook backtest report:', err);
+    res.status(500).json({ error: 'Failed to fetch playbook backtest report' });
   }
 });
 
