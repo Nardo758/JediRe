@@ -2212,28 +2212,30 @@ function ProgramExistingPanel({ umComps }: { umComps: CompData[] }) {
             <div style={{ padding: '7px 10px', borderBottom: `1px solid ${PC.border}` }}>
               <SectionLabel label="Comp Rent Context" accent={PC.green} />
             </div>
-            <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column' as const, gap: 6 }}>
+            <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column' as const, gap: 5 }}>
               {topOpportunity && topOpportunity.rentGap > 0 && (
-                <div style={{ padding: '6px 8px', backgroundColor: `${PC.green}10`, borderRadius: 2, border: `1px solid ${PC.green}30`, marginBottom: 6 }}>
-                  <div style={{ fontFamily: pmono, fontSize: 8, color: PC.dim, marginBottom: 2 }}>Top opportunity</div>
-                  <div style={{ fontFamily: pmono, fontSize: 10, color: PC.text, fontWeight: 700 }}>{topOpportunity.label}</div>
-                  <div style={{ fontFamily: pmono, fontSize: 9, color: PC.green, fontWeight: 700 }}>+${topOpportunity.rentGap.toFixed(0)}/u upside</div>
+                <div style={{ padding: '5px 8px', backgroundColor: `${PC.green}10`, borderRadius: 2, border: `1px solid ${PC.green}30`, marginBottom: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontFamily: pmono, fontSize: 8, color: PC.dim }}>TOP UPSIDE</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <span style={{ fontFamily: pmono, fontSize: 9, color: PC.text, fontWeight: 700 }}>{topOpportunity.abbr}</span>
+                    <Pill color={PC.green}>+${topOpportunity.rentGap.toFixed(0)}/u</Pill>
+                  </div>
                 </div>
               )}
-              {unitMixRows.map(row => (
-                <div key={row.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 4, borderBottom: `1px solid ${PC.border}22` }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <div style={{ width: 3, height: 12, background: row.color, borderRadius: 1 }} />
-                    <span style={{ fontFamily: pmono, fontSize: 9, color: PC.text, fontWeight: 700 }}>{row.abbr}</span>
+              <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 5 }}>
+                {unitMixRows.map(row => (
+                  <div key={row.key} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 7px', borderRadius: 2, backgroundColor: PC.bg, border: `1px solid ${PC.border}` }}>
+                    <div style={{ width: 3, height: 10, background: row.color, borderRadius: 1 }} />
+                    <span style={{ fontFamily: pmono, fontSize: 8, color: PC.text, fontWeight: 700 }}>{row.abbr}</span>
+                    <span style={{ fontFamily: pmono, fontSize: 8, color: PC.subject }}>${row.subj.rent.toLocaleString()}</span>
+                    {row.rentGap !== 0 && (
+                      <span style={{ fontFamily: pmono, fontSize: 7, color: row.rentGap > 0 ? PC.green : PC.red, fontWeight: 700 }}>
+                        {row.rentGap > 0 ? `+$${row.rentGap.toFixed(0)}` : `-$${Math.abs(row.rentGap).toFixed(0)}`}
+                      </span>
+                    )}
                   </div>
-                  <div style={{ textAlign: 'right' as const }}>
-                    <div style={{ fontFamily: pmono, fontSize: 9, color: PC.subject, fontWeight: 700 }}>${row.subj.rent.toLocaleString()}</div>
-                    <div style={{ fontFamily: pmono, fontSize: 8, color: row.rentGap > 0 ? PC.green : row.rentGap < 0 ? PC.red : PC.dim }}>
-                      {row.rentGap > 0 ? `+$${row.rentGap.toFixed(0)}` : row.rentGap < 0 ? `-$${Math.abs(row.rentGap).toFixed(0)}` : '—'} vs mkt
-                    </div>
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
 
