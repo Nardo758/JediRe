@@ -54,6 +54,9 @@ export interface M35EventCardData {
   rentGrowthDelta?: number;
   submarket?: string;
   msa?: string;
+  proFormaLinked?: boolean;
+  forecastStatus?: 'ahead' | 'behind' | 'on_pace' | 'no_data';
+  playbookName?: string;
 }
 
 interface Props {
@@ -202,6 +205,45 @@ export function M35EventCard({ event, selected, onClick, compact }: Props) {
       {!compact && (event.msa || event.submarket) && (
         <div style={{ fontSize: 9, color: BT.text.dim, ...mono }}>
           {event.submarket ? `${event.submarket} · ` : ''}{event.msa}
+        </div>
+      )}
+
+      {/* Forecast vs Actual status one-liner */}
+      {event.forecastStatus && event.forecastStatus !== 'no_data' && (() => {
+        const FC_COLORS: Record<string, string> = {
+          ahead: '#10B981', behind: '#EF4444', on_pace: BT.accent.cyan,
+        };
+        const fc = event.forecastStatus;
+        const color = FC_COLORS[fc] ?? BT.text.muted;
+        return (
+          <div style={{
+            ...mono, fontSize: 8, fontWeight: 700, padding: '2px 6px',
+            color, background: `${color}14`,
+            border: `1px solid ${color}33`,
+            alignSelf: 'flex-start',
+          }}>
+            FORECAST {fc.replace('_', ' ').toUpperCase()}
+          </div>
+        );
+      })()}
+
+      {/* ProForma attribution badge */}
+      {event.proFormaLinked && (
+        <div style={{
+          ...mono, fontSize: 8, fontWeight: 700, padding: '2px 6px',
+          color: BT.accent.cyan, background: `${BT.accent.cyan}14`,
+          border: `1px solid ${BT.accent.cyan}33`,
+          alignSelf: 'flex-start',
+          display: 'flex', alignItems: 'center', gap: 4,
+        }}>
+          📊 PRO FORMA LINKED
+        </div>
+      )}
+
+      {/* Playbook name */}
+      {!compact && event.playbookName && (
+        <div style={{ ...mono, fontSize: 8, color: BT.text.dim }}>
+          Playbook: <span style={{ color: BT.text.muted }}>{event.playbookName}</span>
         </div>
       )}
     </div>

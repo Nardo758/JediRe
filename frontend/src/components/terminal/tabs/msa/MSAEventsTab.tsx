@@ -82,8 +82,52 @@ interface LiveEvent {
 
 interface PipelineSignal {
   signal: number;
-  pipelineEvents: any[];
+  pipelineEvents: PipelineEvent[];
   horizonMonths: number;
+}
+
+interface PipelineEvent {
+  id: string;
+  name: string;
+  category: string;
+  timeToImpactMonths?: number;
+}
+
+interface FullEventRecord {
+  id: string;
+  name: string;
+  category: string;
+  status: string;
+  scope: string;
+  magnitudeScore: number;
+  confidence: number;
+  announcedDate: string | null;
+  materializationDate: string | null;
+  description: string | null;
+  submarket: string | null;
+  msaId: string | null;
+  connectorSource: string | null;
+  proFormaLinked: boolean;
+  forecastStatus: 'ahead' | 'behind' | 'on_pace' | 'no_data' | null;
+  forecastSummary: string | null;
+  playbookName: string | null;
+  relatedEvents: RelatedEventRef[];
+}
+
+interface RelatedEventRef {
+  id: string;
+  name: string;
+  category: string;
+  relationship: string;
+}
+
+interface EventCausalityDetail {
+  eventId: string;
+  eventName: string;
+  overallDirection: string;
+  overallVerdictText: string;
+  dominantLeadLagMonths: number;
+  metrics: MetricCausality[];
 }
 
 // ─── Direction display config ─────────────────────────────────────────────────
@@ -166,8 +210,9 @@ export const MSAEventsTab: React.FC<MSAEventsTabProps> = ({ msaId, msa }) => {
   const [liveEvents, setLiveEvents] = useState<LiveEvent[]>([]);
   const [pipelineSignal, setPipelineSignal] = useState<PipelineSignal | null>(null);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
-  const [eventDetail, setEventDetail] = useState<any | null>(null);
-  const [detailTab, setDetailTab] = useState<'causality' | 'forecast'>('causality');
+  const [eventDetail, setEventDetail] = useState<EventCausalityDetail | null>(null);
+  const [fullEvent, setFullEvent] = useState<FullEventRecord | null>(null);
+  const [detailTab, setDetailTab] = useState<'detail' | 'causality' | 'forecast'>('detail');
   const [loading, setLoading] = useState(true);
   const [causalityLoading, setCausalityLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -216,14 +261,28 @@ export const MSAEventsTab: React.FC<MSAEventsTabProps> = ({ msaId, msa }) => {
     fetchCausality();
   }, [msaId]);
 
-  // ── Load event detail (when user clicks an event) ──────────────────────────
+  // ── Load full event record + causality when event selected ────────────────
   useEffect(() => {
-    if (!selectedEventId) { setEventDetail(null); return; }
-    const fetchDetail = async () => {
-      const res = await fetch(`/api/v1/m35/events/${selectedEventId}/causality`);
-      if (res.ok) setEventDetail(await res.json());
+    if (!selectedEventId) {
+      setEventDetail(null);
+      setFullEvent(null);
+      setDetailTab('detail');
+      return;
+    }
+    const fetchAll = async () => {
+      const [evRes, causalRes] = await Promise.all([
+        fetch(`/api/v1/m35/events/${selectedEventId}`),
+        fetch(`/api/v1/m35/events/${selectedEventId}/causality`),
+      ]);
+      if (evRes.ok) {
+        const evData = await evRes.json();
+        setFullEvent(evData.event ?? evData);
+      }
+      if (causalRes.ok) {
+        setEventDetail(await causalRes.json());
+      }
     };
-    fetchDetail();
+    fetchAll();
   }, [selectedEventId]);
 
   const handleRefreshCausality = async () => {
@@ -514,18 +573,19 @@ export const MSAEventsTab: React.FC<MSAEventsTabProps> = ({ msaId, msa }) => {
           </div>
         </div>
 
-        {/* Right: Event Detail + Per-Metric Causality ─────────────────────────── */}
+        {/* Right: Event Detail Panel ─────────────────────────────────────────── */}
         {selectedEventId && (
-          <div>
-            {/* Panel header with tab toggle */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+
+            {/* Panel header with tabs + close */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ display: 'flex', gap: 2 }}>
-                {(['causality', 'forecast'] as const).map(tab => (
+                {(['detail', 'causality', 'forecast'] as const).map(tab => (
                   <button
                     key={tab}
                     onClick={() => setDetailTab(tab)}
                     style={{
-                      padding: '4px 12px', fontSize: 9, fontWeight: 700, cursor: 'pointer',
+                      padding: '4px 10px', fontSize: 9, fontWeight: 700, cursor: 'pointer',
                       fontFamily: "'JetBrains Mono','Fira Code',monospace",
                       background: detailTab === tab ? BT.accent.blue : BT.bg.elevated,
                       color: detailTab === tab ? '#0A0F14' : BT.text.muted,
@@ -533,7 +593,7 @@ export const MSAEventsTab: React.FC<MSAEventsTabProps> = ({ msaId, msa }) => {
                       letterSpacing: '0.06em',
                     }}
                   >
-                    {tab === 'causality' ? 'CAUSALITY' : 'FORECAST'}
+                    {tab.toUpperCase()}
                   </button>
                 ))}
               </div>
@@ -545,7 +605,171 @@ export const MSAEventsTab: React.FC<MSAEventsTabProps> = ({ msaId, msa }) => {
               </button>
             </div>
 
-            {/* Forecast tab */}
+            {/* ── DETAIL tab — full event metadata ──────────────────────────── */}
+            {detailTab === 'detail' && (() => {
+              const liveEv = liveEvents.find(e => e.id === selectedEventId);
+              const ev = fullEvent ?? liveEv;
+              if (!ev) return (
+                <div style={{ ...terminalStyles.card, padding: 24, textAlign: 'center', color: BT.text.muted, fontSize: 11 }}>
+                  Loading event data…
+                </div>
+              );
+              const catEmoji = CATEGORY_EMOJI[ev.category] || '📌';
+              const statusColor =
+                ev.status === 'active' || ev.status === 'materialized' ? '#10B981' :
+                ev.status === 'announced' ? BT.accent.amber :
+                ev.status === 'in_progress' ? BT.accent.blue :
+                BT.text.muted;
+              const fcStatus = fullEvent?.forecastStatus ?? null;
+              const fcStatusColors: Record<string, string> = {
+                ahead: '#10B981', behind: '#EF4444', on_pace: BT.accent.blue, no_data: BT.text.dim,
+              };
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+
+                  {/* Header card */}
+                  <div style={{ ...terminalStyles.card, padding: '12px 16px', borderLeft: `3px solid ${statusColor}` }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                      <span style={{ fontSize: 22, lineHeight: 1, flexShrink: 0 }}>{catEmoji}</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: BT.text.primary, marginBottom: 4, lineHeight: 1.3 }}>
+                          {ev.name}
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                          <span style={{
+                            ...mono, fontSize: 8, fontWeight: 700, padding: '1px 5px',
+                            color: statusColor, background: `${statusColor}18`, border: `1px solid ${statusColor}44`,
+                          }}>
+                            {ev.status.replace('_', ' ').toUpperCase()}
+                          </span>
+                          <span style={{ ...mono, fontSize: 8, color: BT.text.muted }}>
+                            {ev.category.replace(/_/g, ' ').toUpperCase()}
+                          </span>
+                          <span style={{ ...mono, fontSize: 8, color: BT.text.dim }}>
+                            {ev.scope.toUpperCase()}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ProForma attribution badge */}
+                  {fullEvent?.proFormaLinked && (
+                    <div style={{
+                      padding: '6px 12px', background: `${BT.accent.blue}12`,
+                      border: `1px solid ${BT.accent.blue}44`, borderLeft: `3px solid ${BT.accent.blue}`,
+                      display: 'flex', alignItems: 'center', gap: 6, fontSize: 9,
+                    }}>
+                      <span style={{ ...mono, fontWeight: 700, color: BT.accent.blue }}>📊 PRO FORMA LINKED</span>
+                      <span style={{ color: BT.text.muted }}>This event's forecast is integrated into deal-level underwriting</span>
+                    </div>
+                  )}
+
+                  {/* Forecast vs actual one-liner */}
+                  {fcStatus && (
+                    <div style={{
+                      padding: '6px 12px', background: `${fcStatusColors[fcStatus] ?? BT.text.dim}12`,
+                      border: `1px solid ${fcStatusColors[fcStatus] ?? BT.text.dim}44`,
+                      borderLeft: `3px solid ${fcStatusColors[fcStatus] ?? BT.text.dim}`,
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, ...mono, fontSize: 9 }}>
+                        <span style={{ fontWeight: 700, color: fcStatusColors[fcStatus] }}>
+                          {fcStatus.replace('_', ' ').toUpperCase()}
+                        </span>
+                        {fullEvent?.forecastSummary && (
+                          <span style={{ color: BT.text.muted }}>{fullEvent.forecastSummary}</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Key metrics grid */}
+                  <div style={{ ...terminalStyles.card, padding: '10px 14px' }}>
+                    <div style={{ ...mono, fontSize: 8, fontWeight: 700, color: BT.text.dim, letterSpacing: '0.08em', marginBottom: 8 }}>
+                      EVENT METADATA
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 16px' }}>
+                      {[
+                        { label: 'Magnitude', value: `${ev.magnitudeScore.toFixed(1)} / 5.0` },
+                        { label: 'Confidence', value: `${Math.round(ev.confidence * 100)}%` },
+                        { label: 'Announced', value: ev.announcedDate ? new Date(ev.announcedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—' },
+                        { label: 'Materialized', value: ev.materializationDate ? new Date(ev.materializationDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Pending' },
+                        { label: 'Submarket', value: fullEvent?.submarket ?? '—' },
+                        { label: 'Source', value: fullEvent?.connectorSource ?? 'Manual' },
+                      ].map(row => (
+                        <div key={row.label} style={{ display: 'flex', flexDirection: 'column', padding: '3px 0', borderBottom: `1px solid ${BT.border.subtle}20` }}>
+                          <span style={{ ...mono, fontSize: 8, color: BT.text.dim }}>{row.label}</span>
+                          <span style={{ ...mono, fontSize: 10, color: BT.text.secondary, fontWeight: 600 }}>{row.value}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Playbook citation */}
+                  {fullEvent?.playbookName && (
+                    <div style={{ ...terminalStyles.card, padding: '8px 12px', borderLeft: `3px solid ${BT.accent.blue}` }}>
+                      <div style={{ ...mono, fontSize: 8, fontWeight: 700, color: BT.text.dim, marginBottom: 4 }}>PLAYBOOK CITATION</div>
+                      <div style={{ fontSize: 10, color: BT.text.primary, fontWeight: 600 }}>{fullEvent.playbookName}</div>
+                      <button
+                        onClick={() => navigate('/playbooks')}
+                        style={{ ...mono, fontSize: 8, color: BT.accent.blue, background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, marginTop: 4 }}
+                      >
+                        Open Playbook Library ↗
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Description */}
+                  {fullEvent?.description && (
+                    <div style={{ ...terminalStyles.card, padding: '10px 14px' }}>
+                      <div style={{ ...mono, fontSize: 8, fontWeight: 700, color: BT.text.dim, letterSpacing: '0.08em', marginBottom: 6 }}>DESCRIPTION</div>
+                      <div style={{ fontSize: 10, color: BT.text.secondary, lineHeight: 1.6 }}>{fullEvent.description}</div>
+                    </div>
+                  )}
+
+                  {/* Related events */}
+                  {fullEvent?.relatedEvents && fullEvent.relatedEvents.length > 0 && (
+                    <div style={{ ...terminalStyles.card, padding: '10px 14px' }}>
+                      <div style={{ ...mono, fontSize: 8, fontWeight: 700, color: BT.text.dim, letterSpacing: '0.08em', marginBottom: 8 }}>
+                        RELATED EVENTS ({fullEvent.relatedEvents.length})
+                      </div>
+                      {fullEvent.relatedEvents.map(rel => (
+                        <div
+                          key={rel.id}
+                          onClick={() => setSelectedEventId(rel.id)}
+                          style={{
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                            padding: '5px 0', borderBottom: `1px solid ${BT.border.subtle}20`, cursor: 'pointer',
+                          }}
+                        >
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                            <span style={{ fontSize: 10 }}>{CATEGORY_EMOJI[rel.category] ?? '📌'}</span>
+                            <span style={{ fontSize: 10, color: BT.text.secondary }}>{rel.name}</span>
+                          </div>
+                          <span style={{ ...mono, fontSize: 8, color: BT.text.muted }}>
+                            {rel.relationship.replace(/_/g, ' ').toUpperCase()}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Quick nav to full page */}
+                  <button
+                    onClick={() => navigate(`/events/${selectedEventId}`)}
+                    style={{
+                      ...mono, fontSize: 9, padding: '6px 12px', cursor: 'pointer',
+                      background: `${BT.accent.blue}12`, color: BT.accent.blue,
+                      border: `1px solid ${BT.accent.blue}44`,
+                    }}
+                  >
+                    OPEN FULL EVENT PAGE ↗
+                  </button>
+                </div>
+              );
+            })()}
+
+            {/* ── FORECAST tab ──────────────────────────────────────────────── */}
             {detailTab === 'forecast' && (
               <EventForecastPanel
                 eventId={selectedEventId}
@@ -553,7 +777,7 @@ export const MSAEventsTab: React.FC<MSAEventsTabProps> = ({ msaId, msa }) => {
               />
             )}
 
-            {/* Causality tab */}
+            {/* ── CAUSALITY tab ─────────────────────────────────────────────── */}
             {detailTab === 'causality' && !eventDetail && (
               <div style={{ ...terminalStyles.card, padding: 32, textAlign: 'center', color: BT.text.muted, fontSize: 11 }}>
                 Loading causality analysis...
@@ -607,11 +831,9 @@ export const MSAEventsTab: React.FC<MSAEventsTabProps> = ({ msaId, msa }) => {
                         </div>
                       </div>
 
-                      {/* Mini bar chart: lag sweep visualization */}
+                      {/* Lead-lag sweep bar */}
                       <div style={{ position: 'relative', height: 28, background: BT.bg.elevated, marginBottom: 8 }}>
-                        {/* Center line = T0 */}
                         <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: 1, background: BT.border.subtle }} />
-                        {/* Best-lag marker */}
                         {m.direction !== 'insufficient_data' && (
                           <div style={{
                             position: 'absolute',
@@ -623,7 +845,6 @@ export const MSAEventsTab: React.FC<MSAEventsTabProps> = ({ msaId, msa }) => {
                             borderRadius: '50%',
                           }} />
                         )}
-                        {/* Labels */}
                         <div style={{ position: 'absolute', left: 4, bottom: 2, fontSize: 8, color: BT.text.dim }}>-12mo</div>
                         <div style={{ position: 'absolute', left: '50%', bottom: 2, fontSize: 8, color: BT.text.dim, transform: 'translateX(-50%)' }}>T0</div>
                         <div style={{ position: 'absolute', right: 4, bottom: 2, fontSize: 8, color: BT.text.dim }}>+12mo</div>
@@ -652,12 +873,11 @@ export const MSAEventsTab: React.FC<MSAEventsTabProps> = ({ msaId, msa }) => {
                   );
                 })}
 
-                {/* Re-run causality */}
                 <button
                   onClick={async () => {
                     setEventDetail(null);
                     const res = await fetch(`/api/v1/m35/events/${selectedEventId}/causality`, { method: 'POST' });
-                    if (res.ok) setEventDetail(await res.json());
+                    if (res.ok) setEventDetail(await res.json() as EventCausalityDetail);
                   }}
                   style={{
                     ...mono, fontSize: 9, padding: '6px 12px',

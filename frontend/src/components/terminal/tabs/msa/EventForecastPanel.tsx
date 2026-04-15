@@ -114,7 +114,7 @@ function isBullish(key: string, val: number): boolean {
 
 const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono', 'Fira Code', 'Courier New', monospace" };
 
-const WINDOWS = [12, 24, 36] as const;
+const WINDOWS = [3, 12, 24, 36] as const;
 
 // ─── Confidence Bar ───────────────────────────────────────────────────────────
 
@@ -176,7 +176,7 @@ function ActualVsForecastChart({ metricKey, metrics, actuals }: ChartProps) {
   return (
     <div>
       <div style={{ fontSize: 8, color: BT.text.dim, ...mono, marginBottom: 4, display: 'flex', gap: 12 }}>
-        <span style={{ color: BT.accent.blue }}>── FORECAST</span>
+        <span style={{ color: BT.accent.blue }}>╌╌ FORECAST</span>
         <span style={{ color: '#10B981' }}>── ACTUAL</span>
         <span style={{ color: BT.text.dim }}>▓ CI BAND</span>
       </div>
@@ -196,11 +196,11 @@ function ActualVsForecastChart({ metricKey, metrics, actuals }: ChartProps) {
             fill={`${BT.accent.blue}22`} />;
         })}
 
-        {/* Forecast line */}
-        {fcstPath && <path d={fcstPath} fill="none" stroke={BT.accent.blue} strokeWidth={1.5} />}
+        {/* Forecast line — dotted (prediction) */}
+        {fcstPath && <path d={fcstPath} fill="none" stroke={BT.accent.blue} strokeWidth={1.5} strokeDasharray="4 2" />}
 
-        {/* Actual line */}
-        {actPath && <path d={actPath} fill="none" stroke="#10B981" strokeWidth={1.5} strokeDasharray="4 2" />}
+        {/* Actual line — solid (real data) */}
+        {actPath && <path d={actPath} fill="none" stroke="#10B981" strokeWidth={2} />}
 
         {/* Forecast dots */}
         {fcstPoints.map((p, i) => p && (
@@ -283,7 +283,7 @@ export function EventForecastPanel({ eventId, eventName, onRegenerateCallback }:
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeWindow, setActiveWindow] = useState<12 | 24 | 36>(12);
+  const [activeWindow, setActiveWindow] = useState<3 | 12 | 24 | 36>(12);
   const [showDerivation, setShowDerivation] = useState(false);
   const [chartMetric, setChartMetric] = useState<string | null>(null);
 
