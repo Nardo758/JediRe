@@ -1019,8 +1019,8 @@ httpServer.listen(Number(PORT), '0.0.0.0', async () => {
   // node-cron avoids setTimeout overflow (max ~24.8 days) for month-length delays.
   cron.schedule('0 1 1 * *', async () => {
     try {
-      const { runMonthlyBacktest } = await import('./services/m35-backtest.service');
-      const result = await runMonthlyBacktest();
+      const { runAllPendingBacktests } = await import('./services/m35-backtest.service');
+      const result = await runAllPendingBacktests();
       console.log(`[M35 Backtest] Monthly run complete: ${JSON.stringify(result)}`);
     } catch (err) {
       console.error('[M35 Backtest] Monthly job failed (non-fatal):', err);
