@@ -1223,9 +1223,12 @@ export function PlanDocument({ plan, dealId }: { plan: InvestmentPlan | null | u
       <div style={{ padding: '8px 12px', borderBottom: `1px solid ${BT.border.subtle}`, borderLeft: `2px solid ${BT.text.amber}` }}>
         <span style={{ fontFamily: MONO, fontSize: 9, fontWeight: 700, color: BT.text.amber, letterSpacing: 0.5 }}>HOLD STRUCTURE</span>
         <DataRow label="TARGET HOLD" value={plan.holdStructure?.targetHoldMonths ? `${plan.holdStructure.targetHoldMonths}mo` : '—'} valueColor={BT.text.primary} />
-        {(plan.holdStructure?.exitWindows || []).map((w, i) => (
-          <div key={i} style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary, padding: '1px 0' }}>◆ {w}</div>
-        ))}
+        {(plan.holdStructure?.exitWindows || []).map((w, i) => {
+          const label = typeof w === 'string' ? w : `Mo ${w.month}: ${w.condition}`;
+          return (
+            <div key={i} style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary, padding: '1px 0' }}>◆ {label}</div>
+          );
+        })}
         {plan.holdStructure?.rationale && (
           <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, fontStyle: 'italic', marginTop: 4 }}>{plan.holdStructure.rationale}</div>
         )}

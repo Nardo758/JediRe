@@ -152,10 +152,15 @@ export interface PlanEntry {
   debtStructure: string;
 }
 
+export interface ExitWindow {
+  month: number;
+  condition: string;
+}
+
 export interface PlanHoldStructure {
   targetHoldMonths: number;
   rationale: string;
-  exitWindows: string[];
+  exitWindows: Array<string | ExitWindow>;
 }
 
 export interface PlanAction {
