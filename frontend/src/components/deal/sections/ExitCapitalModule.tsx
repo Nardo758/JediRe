@@ -310,6 +310,15 @@ interface ConvergenceChart21Props {
   optimalFwd: number;
 }
 
+const CHART_KEY_EVENTS: Array<{ idx: number; label: string; phase: 'past' | 'future'; color: string; sublabel: string }> = [
+  { idx: 17, label: 'COVID',    phase: 'past',   color: 'rgba(252,129,129,0.8)',  sublabel: 'Q2\'20 · Demand shock'      },
+  { idx: 24, label: 'RATE↑',   phase: 'past',   color: 'rgba(246,173,85,0.85)',  sublabel: 'Q1\'22 · Hike cycle begins'  },
+  { idx: 30, label: 'PEAK',    phase: 'past',   color: 'rgba(252,129,129,0.85)', sublabel: 'Q3\'23 · 5.25–5.50% EFFR'   },
+  { idx: 34, label: 'CUT-1',   phase: 'past',   color: 'rgba(104,211,145,0.8)',  sublabel: 'Q3\'24 · First Fed cut'      },
+  { idx: 44, label: 'NORM',    phase: 'future',  color: 'rgba(99,179,237,0.85)', sublabel: 'Q1\'27 · Rate normalization'  },
+  { idx: 49, label: 'SUPPLY↓', phase: 'future',  color: 'rgba(167,139,250,0.8)', sublabel: 'Q2\'28 · Supply peak clears'  },
+];
+
 function ConvergenceChart21({ selectedFwd, onSelectFwd, optimalFwd }: ConvergenceChart21Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const W = 920,
@@ -521,6 +530,23 @@ function ConvergenceChart21({ selectedFwd, onSelectFwd, optimalFwd }: Convergenc
           </text>
         </g>
       </svg>
+
+      {/* Key event marker strip */}
+      <div style={{ position: 'relative', height: 36, marginTop: -4 }}>
+        {CHART_KEY_EVENTS.map(ev => {
+          const leftPct = (50 + (ev.idx / (TOTAL_Q - 1)) * 820) / 920 * 100;
+          return (
+            <div key={ev.idx} title={ev.sublabel} style={{ position: 'absolute', left: `${leftPct}%`, transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'default' }}>
+              <div style={{ width: 0, height: 0, borderLeft: '4px solid transparent', borderRight: '4px solid transparent', borderBottom: `6px solid ${ev.color}` }} />
+              <span style={{ fontSize: 7, fontWeight: 700, fontFamily: '"JetBrains Mono", monospace', color: ev.color, whiteSpace: 'nowrap', letterSpacing: 0.3 }}>{ev.label}</span>
+            </div>
+          );
+        })}
+        <div style={{ position: 'absolute', left: `${(50 + (NOW_IDX / (TOTAL_Q - 1)) * 820) / 920 * 100}%`, transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+          <div style={{ width: 0, height: 0, borderLeft: '4px solid transparent', borderRight: '4px solid transparent', borderBottom: '6px solid rgba(232,230,225,0.8)' }} />
+          <span style={{ fontSize: 7, fontWeight: 700, fontFamily: '"JetBrains Mono", monospace', color: 'rgba(232,230,225,0.8)', whiteSpace: 'nowrap' }}>NOW</span>
+        </div>
+      </div>
 
       {/* Hover tooltip */}
       {hoverIdx !== null && (
@@ -746,6 +772,66 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
 
             {/* RSS breakdown cards */}
             <RSSBreakdownCards rssData={rssData} />
+
+            {/* Exit Intelligence Panels */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+              {/* Why this window */}
+              <div style={{ background: 'rgba(16,185,129,0.04)', border: '1px solid rgba(16,185,129,0.15)', borderRadius: 7, padding: '14px 16px' }}>
+                <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: 1.2, color: '#10b981', fontFamily: "'JetBrains Mono'", marginBottom: 10 }}>
+                  THE CASE FOR {Q_LABELS[NOW_IDX + optimalFwd]?.label ?? '—'}
+                </div>
+                <div style={{ fontSize: 10, color: 'rgba(232,230,225,0.65)', lineHeight: 1.7 }}>
+                  The 21-year convergence model identifies <span style={{ color: '#68D391', fontWeight: 600 }}>{Q_LABELS[NOW_IDX + optimalFwd]?.label}</span> as the peak RSS window. By this quarter, the Fed normalization cycle will have compressed 10Y Treasuries enough to unlock agency cap rate compression, while the current supply pipeline will have largely been absorbed by sustained household formation. Buyer demand from institutional capital actively seeking stabilized multifamily is expected to produce premium pricing on well-positioned assets.
+                </div>
+              </div>
+
+              {/* Key triggers */}
+              <div style={{ background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 7, padding: '14px 16px' }}>
+                <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: 1.2, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'", marginBottom: 10 }}>
+                  KEY TRIGGERS TO EXIT WINDOW
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {[
+                    { n: '01', label: 'Rate normalization', desc: 'SOFR falls to 3.5–4.0% range, compressing cap rates 25–50bps', color: '#63B3ED', done: false },
+                    { n: '02', label: 'Supply pipeline clears', desc: 'New starts YoY decline sustains, absorption outpaces deliveries', color: '#B794F4', done: false },
+                    { n: '03', label: 'Asset stabilization', desc: 'Occupancy ≥ 93% at market rents for 2+ consecutive quarters', color: '#F6AD55', done: false },
+                    { n: '04', label: 'RSS peaks above 80', desc: 'All sub-scores converge — institutional buyer window opens', color: '#10b981', done: false },
+                  ].map(t => (
+                    <div key={t.n} style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                      <span style={{ fontSize: 9, fontWeight: 800, fontFamily: "'JetBrains Mono'", color: t.color, flexShrink: 0, marginTop: 1 }}>{t.n}</span>
+                      <div>
+                        <div style={{ fontSize: 10, fontWeight: 600, color: '#E8E6E1', marginBottom: 1 }}>{t.label}</div>
+                        <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.4)', lineHeight: 1.5 }}>{t.desc}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Market Momentum Strip */}
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: 1, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'", marginBottom: 8 }}>
+                MARKET MOMENTUM INDICATORS
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+                {[
+                  { label: 'Net Absorption', value: 'IMPROVING', trend: '↑', detail: '+2.3% QoQ vs market avg', c: '#68D391' },
+                  { label: 'Concession Level', value: 'DECLINING', trend: '↓', detail: '0.4 mo free → 0.2 mo', c: '#68D391' },
+                  { label: 'Buyer Pool Depth', value: 'DEEP', trend: '→', detail: '14 active inst. buyers tracked', c: '#63B3ED' },
+                  { label: 'Competing Supply', value: 'EASING', trend: '↓', detail: 'Pipeline -18% vs 2024 peak', c: '#68D391' },
+                ].map(m => (
+                  <div key={m.label} style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 6, padding: '10px 12px' }}>
+                    <div style={{ fontSize: 8, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'", marginBottom: 5 }}>{m.label}</div>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                      <span style={{ fontSize: 13, fontWeight: 800, fontFamily: "'JetBrains Mono'", color: m.c }}>{m.value}</span>
+                      <span style={{ fontSize: 11, color: m.c, fontWeight: 700 }}>{m.trend}</span>
+                    </div>
+                    <div style={{ fontSize: 8, color: 'rgba(232,230,225,0.3)', marginTop: 3, fontFamily: "'JetBrains Mono'" }}>{m.detail}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
 
             {/* F9 cross-link */}
             <div style={{ marginTop: 12, padding: '8px 12px', background: 'rgba(99,179,237,0.06)', border: '1px solid rgba(99,179,237,0.15)', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
