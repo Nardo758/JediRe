@@ -604,57 +604,6 @@ function RSSBreakdownCards({ rssData }: RSSBreakdownCardsProps) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// PUSH-TO-PROFORMA BANNER
-// ═══════════════════════════════════════════════════════════════════════════
-
-interface PushToProFormaBannerProps {
-  holdYears: string;
-  exitCap: number;
-  debtRate: number;
-  debtIO: string;
-  annualDS: number;
-}
-
-function PushToProFormaBanner({ holdYears, exitCap, debtRate, debtIO, annualDS }: PushToProFormaBannerProps) {
-  return (
-    <div
-      style={{
-        background: 'rgba(99,179,237,0.06)',
-        border: '1px solid rgba(99,179,237,0.15)',
-        borderRadius: 8,
-        padding: '12px 18px',
-        marginBottom: 16,
-      }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: '#63B3ED' }}>PUSHED TO PROFORMA</span>
-          <span style={{ fontSize: 9, color: 'rgba(232,230,225,0.5)' }}>These selections auto-update M09 assumptions</span>
-        </div>
-        <span style={{ fontSize: 9, color: '#63B3ED', fontFamily: "'JetBrains Mono'", padding: '2px 8px', border: '1px solid rgba(99,179,237,0.3)', borderRadius: 4 }}>
-          LIVE SYNC
-        </span>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10 }}>
-        {[
-          { l: 'Hold period', v: `${holdYears} yrs`, target: 'assumptions.holdPeriod' },
-          { l: 'Exit cap rate', v: fmt.pct(exitCap), target: 'assumptions.exitCapRate' },
-          { l: 'Senior debt rate', v: fmt.pct(debtRate), target: 'capital.seniorRate' },
-          { l: 'IO period', v: debtIO, target: 'capital.ioPeriod' },
-          { l: 'Annual debt service', v: fmt.k(annualDS), target: 'financial.annualDS' },
-        ].map((p) => (
-          <div key={p.l} style={{ padding: '6px 10px', background: 'rgba(99,179,237,0.04)', borderRadius: 5, borderLeft: '2px solid #63B3ED' }}>
-            <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>{p.l}</div>
-            <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono'", color: '#63B3ED' }}>{p.v}</div>
-            <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'", marginTop: 2 }}>→ {p.target}</div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -672,7 +621,6 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
 
   const [activeTab, setActiveTab] = useState<TabId>('exit');
   const [selectedFwd, setSelectedFwd] = useState<number>(0);  // Will be set to optimal on mount
-  const [selectedExitStrategy, setSelectedExitStrategy] = useState<string>(DEFAULT_EXIT_STRATEGY[dealType]);
   const [liveRates, setLiveRates] = useState<LiveRates | null>(null);
   const [liveRatesLoading, setLiveRatesLoading] = useState(false);
 
@@ -707,8 +655,10 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
   const ret = useMemo(() => computeExitReturns(selectedFwd, dealType), [selectedFwd, dealType]);
   const optRet = useMemo(() => computeExitReturns(optimalFwd, dealType), [optimalFwd, dealType]);
 
-  // Get capital stack preset
-  const stack = STACK_PRESETS[selectedExitStrategy] ?? STACK_PRESETS['sell-stabilized'];
+  const stack = STACK_PRESETS[DEFAULT_EXIT_STRATEGY[dealType]] ?? STACK_PRESETS['sell-stabilized'];
+  const totalBasis = dealType === 'development' ? 52000000 : 46420000;
+  const loanAmt = totalBasis * (stack.sr.pct / 100);
+  const annualDS = Math.round(loanAmt * (stack.sr.rate / 100));
 
   // RSS data for selected exit quarter
   const rssData = RSS_21Y[NOW_IDX + selectedFwd] ?? {
@@ -724,58 +674,8 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
   const rssColor = rssData.rss >= 85 ? '#68D391' : rssData.rss >= 70 ? '#63B3ED' : rssData.rss >= 55 ? '#F6E05E' : '#FC8181';
   const rssVerdict = rssData.rss >= 85 ? 'Strong sell window' : rssData.rss >= 70 ? 'Favorable' : rssData.rss >= 55 ? 'Neutral' : 'Weak — hold';
 
-  // Compute annual debt service
-  const totalBasis = dealType === 'development' ? 52000000 : 46420000;
-  const loanAmt = totalBasis * (stack.sr.pct / 100);
-  const annualDS = Math.round(loanAmt * (stack.sr.rate / 100));
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // PUSH TO PROFORMA EFFECT
-  // ═══════════════════════════════════════════════════════════════════════════
-  // When exit quarter or strategy changes, push downstream values to ProForma
-  useEffect(() => {
-    // In a real app, this would write to dealStore:
-    // dealStore.setState({
-    //   financial: {
-    //     ...dealStore.getState().financial,
-    //     assumptions: {
-    //       ...dealStore.getState().financial.assumptions,
-    //       holdPeriod: { value: parseFloat(ret.holdYears), source: 'exit-module', confidence: 0.7 },
-    //       exitCapRate: { value: ret.exitCap / 100, source: 'exit-module', confidence: 0.6 },
-    //     },
-    //   },
-    //   capital: {
-    //     ...dealStore.getState().capital,
-    //     seniorDebt: {
-    //       rate: stack.sr.rate / 100,
-    //       ltv: stack.sr.pct / 100,
-    //       term: stack.sr.term,
-    //       ioPeriod: stack.sr.io,
-    //       annualDebtService: annualDS,
-    //     },
-    //   },
-    // });
-
-    // For now, log the values that would be pushed
-    if (onUpdate) {
-      console.log('Push to ProForma:', {
-        holdPeriod: parseFloat(ret.holdYears),
-        exitCapRate: ret.exitCap / 100,
-        seniorRate: stack.sr.rate / 100,
-        ioPeriod: stack.sr.io,
-        annualDS,
-      });
-      onUpdate();
-    }
-  }, [selectedFwd, selectedExitStrategy, dealType, ret, stack, annualDS, onUpdate]);
-
   return (
     <div style={{ height: '100%', background: '#0B0E13', color: '#E8E6E1', fontFamily: "'DM Sans', sans-serif", display: 'flex', flexDirection: 'column' }}>
-      {/* PUSH TO PROFORMA BANNER — module-level, not per-tab */}
-      <div style={{ padding: '12px 24px 0', flexShrink: 0 }}>
-        <PushToProFormaBanner holdYears={ret.holdYears} exitCap={ret.exitCap} debtRate={stack.sr.rate} debtIO={stack.sr.io} annualDS={annualDS} />
-      </div>
-
       {/* Tab navigation */}
       <div style={{ padding: '0 24px', borderTop: '1px solid rgba(255,255,255,0.06)', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', background: 'rgba(255,255,255,0.01)', flexShrink: 0 }}>
         {TABS.map((tab) => (
@@ -887,7 +787,7 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
             '1031-exchange':   { spreadKey: 'Agency',       indexLabel: '10Y Treasury', getIndex: r => r.treasury10Y },
           };
 
-          const stratMap = STRATEGY_SPREAD_MAP[selectedExitStrategy] ?? STRATEGY_SPREAD_MAP['sell-stabilized'];
+          const stratMap = STRATEGY_SPREAD_MAP[DEFAULT_EXIT_STRATEGY[dealType]] ?? STRATEGY_SPREAD_MAP['sell-stabilized'];
           const liveIndex = liveRates ? stratMap.getIndex(liveRates) : null;
           const spreadEntry = SPREADS[stratMap.spreadKey];
           const liveAllIn = liveIndex != null ? liveIndex + spreadEntry.bps / 100 : null;
