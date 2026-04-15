@@ -538,6 +538,16 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
     }
   };
 
+  const saveProgramMixOverride = useCallback(async (rows: Record<string, { mix: number; sf: number; rent: number }>) => {
+    if (!id || Object.keys(rows).length === 0) return;
+    const totalUnits = programData?.totalUnits ?? 0;
+    try {
+      await apiClient.post(`/api/v1/unit-mix/${id}/program`, { totalUnits, units: rows });
+    } catch {
+      // best-effort — non-blocking
+    }
+  }, [id, programData?.totalUnits]);
+
   const applyProgramMix = useCallback(() => {
     const sourceRows = Object.keys(programMixRows).length > 0 ? programMixRows : programData?.units;
     if (!sourceRows) return;
@@ -795,7 +805,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
                                       <div className="text-[9px] font-semibold text-stone-500 uppercase tracking-wider text-right">Avg SF</div>
                                       <div className="text-[9px] font-semibold text-stone-500 uppercase tracking-wider text-right">Mkt Rent/mo</div>
                                     </div>
-                                    {PROG_TYPES.filter(pt => (programMixRows[pt.key]?.mix ?? 0) > 0 || !hasRows).map(pt => {
+                                    {PROG_TYPES.map(pt => {
                                       const row = programMixRows[pt.key] ?? { mix: 0, sf: 0, rent: 0 };
                                       const unitCount = Math.round(totalUnits * row.mix / 100);
                                       return (
@@ -810,6 +820,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
                                               const v = Math.max(0, Math.min(100, Number(e.target.value)));
                                               setProgramMixRows(prev => ({ ...prev, [pt.key]: { ...prev[pt.key], mix: v } }));
                                             }}
+                                            onBlur={() => saveProgramMixOverride(programMixRows)}
                                           />
                                           <input
                                             type="number"
@@ -820,6 +831,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
                                               const v = Math.max(0, Number(e.target.value));
                                               setProgramMixRows(prev => ({ ...prev, [pt.key]: { ...prev[pt.key], sf: v } }));
                                             }}
+                                            onBlur={() => saveProgramMixOverride(programMixRows)}
                                           />
                                           <div className="flex items-center gap-1">
                                             <span className="text-[9px] text-stone-400">$</span>
@@ -832,6 +844,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
                                                 const v = Math.max(0, Number(e.target.value));
                                                 setProgramMixRows(prev => ({ ...prev, [pt.key]: { ...prev[pt.key], rent: v } }));
                                               }}
+                                              onBlur={() => saveProgramMixOverride(programMixRows)}
                                             />
                                           </div>
                                           <div className="col-span-4 text-[9px] text-stone-400 pl-0 -mt-0.5 mb-0.5">
