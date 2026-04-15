@@ -588,27 +588,18 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
         )}
       </div>
 
-      {/* ── Advisor / Configure Toggle ────────────────────────────────────────── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 0, borderBottom: `1px solid ${BT.border.medium}`, background: BT.bg.panelAlt, flexShrink: 0, padding: '0 12px' }}>
-        {(['advisor', 'configure'] as const).map(v => (
+      {/* ── Configure back-nav (only shown in configure view) ────────────────── */}
+      {debtView === 'configure' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${BT.border.medium}`, background: BT.bg.panelAlt, flexShrink: 0, padding: '4px 12px' }}>
           <button
-            key={v}
-            onClick={() => setDebtView(v)}
-            style={{
-              padding: '6px 16px', fontFamily: MONO, fontSize: 9, fontWeight: 700, cursor: 'pointer',
-              background: 'transparent', border: 'none',
-              color: debtView === v ? BT.text.white : BT.text.muted,
-              borderBottom: debtView === v ? `2px solid ${BT.text.cyan}` : '2px solid transparent',
-              letterSpacing: 0.6,
-            }}
+            onClick={() => setDebtView('advisor')}
+            style={{ padding: '3px 10px', fontFamily: MONO, fontSize: 8, fontWeight: 700, cursor: 'pointer', background: 'transparent', border: `1px solid ${BT.border.medium}`, color: BT.text.muted, borderRadius: 2 }}
           >
-            {v === 'advisor' ? 'ADVISOR' : 'CONFIGURE'}
+            ← ADVISOR
           </button>
-        ))}
-        <span style={{ marginLeft: 'auto', fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>
-          {debtView === 'advisor' ? 'Strategy-driven recommendation' : 'Manual loan configuration'}
-        </span>
-      </div>
+          <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>Manual loan configuration</span>
+        </div>
+      )}
 
       {/* ── Advisor View ──────────────────────────────────────────────────────── */}
       {debtView === 'advisor' && (

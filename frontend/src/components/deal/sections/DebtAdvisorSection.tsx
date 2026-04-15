@@ -960,6 +960,28 @@ export function DebtAdvisorSection({ dealId, onOpenLoanBuilder, onAdvisorAccepte
               {TAB_LABELS[tab]}
             </button>
           ))}
+          {onOpenLoanBuilder && (
+            <button
+              onClick={onOpenLoanBuilder}
+              style={{
+                ...mono,
+                fontSize: 9,
+                fontWeight: 700,
+                letterSpacing: '0.1em',
+                padding: '9px 16px',
+                border: 'none',
+                borderBottom: '2px solid transparent',
+                backgroundColor: 'transparent',
+                color: C.textMuted,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+              }}
+            >
+              CONFIGURE <ArrowRight size={10} />
+            </button>
+          )}
         </div>
         <div style={{ flex: 1 }} />
         <button
