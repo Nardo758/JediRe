@@ -463,7 +463,7 @@ function AdvisorTab({ phases, alternatives, triggers, env, narrativeNotes, strat
   );
 }
 
-function ConfigureTab({ phases, onOpenLoanBuilder, onAcceptAdvisor }: { phases: DebtPhase[]; onOpenLoanBuilder?: () => void; onAcceptAdvisor?: () => Promise<void> }) {
+function ConfigureTab({ phases, onAcceptAdvisor }: { phases: DebtPhase[]; onAcceptAdvisor?: () => Promise<void> }) {
   const [activePhase, setActivePhase] = useState(0);
   const phase = phases[activePhase];
   if (!phase) return null;
@@ -542,14 +542,6 @@ function ConfigureTab({ phases, onOpenLoanBuilder, onAcceptAdvisor }: { phases: 
             </button>
           )}
           <button style={{ ...mono, fontSize: 10, padding: '7px 14px', backgroundColor: 'transparent', color: C.textMuted, border: `1px solid ${C.border}`, borderRadius: 2, cursor: 'pointer' }}>Export Term Sheet</button>
-          {onOpenLoanBuilder && (
-            <button
-              onClick={onOpenLoanBuilder}
-              style={{ ...mono, fontSize: 10, padding: '7px 14px', backgroundColor: 'transparent', color: C.purple, border: `1px solid ${C.purple}40`, borderRadius: 2, cursor: 'pointer' }}
-            >
-              Open Loan Builder
-            </button>
-          )}
         </div>
       </div>
 
@@ -921,17 +913,17 @@ const TAB_LABELS: Record<SubTab, string> = {
 
 interface DebtAdvisorSectionProps {
   dealId: string;
-  onOpenLoanBuilder?: () => void;
+  configureContent?: React.ReactNode;
   onAdvisorAccepted?: (loanAmount: number, rate: number) => void;
 }
 
-export function DebtAdvisorSection({ dealId, onOpenLoanBuilder, onAdvisorAccepted }: DebtAdvisorSectionProps) {
+export function DebtAdvisorSection({ dealId, configureContent, onAdvisorAccepted }: DebtAdvisorSectionProps) {
   const [activeTab, setActiveTab] = useState<SubTab>('advisor');
   const { data, loading, error, recompute, refresh, accept } = useDebtAdvisor(dealId);
 
-  const visibleTabs = onOpenLoanBuilder
-    ? SUB_TABS.filter(t => t !== 'configure')
-    : SUB_TABS;
+  const visibleTabs = configureContent !== undefined
+    ? SUB_TABS
+    : SUB_TABS.filter(t => t !== 'configure');
 
   return (
     <div style={{ backgroundColor: C.bg, height: '100%', display: 'flex', flexDirection: 'column', fontFamily: '"IBM Plex Sans", sans-serif' }}>
@@ -960,28 +952,6 @@ export function DebtAdvisorSection({ dealId, onOpenLoanBuilder, onAdvisorAccepte
               {TAB_LABELS[tab]}
             </button>
           ))}
-          {onOpenLoanBuilder && (
-            <button
-              onClick={onOpenLoanBuilder}
-              style={{
-                ...mono,
-                fontSize: 9,
-                fontWeight: 700,
-                letterSpacing: '0.1em',
-                padding: '9px 16px',
-                border: 'none',
-                borderBottom: '2px solid transparent',
-                backgroundColor: 'transparent',
-                color: C.textMuted,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-              }}
-            >
-              CONFIGURE <ArrowRight size={10} />
-            </button>
-          )}
         </div>
         <div style={{ flex: 1 }} />
         <button
@@ -993,44 +963,46 @@ export function DebtAdvisorSection({ dealId, onOpenLoanBuilder, onAdvisorAccepte
         </button>
       </div>
 
-      <div style={{ flex: 1, overflow: 'hidden' }}>
-        {loading && <LoadingState />}
-        {!loading && error && <ErrorState error={error} onRetry={refresh} />}
-        {!loading && !error && data && !data.hasStrategy && <NoStrategyState />}
-        {!loading && !error && data && data.hasStrategy && (
-          <>
-            {activeTab === 'advisor' && (
-              <AdvisorTab
-                phases={data.recommendedStack}
-                alternatives={data.alternatives}
-                triggers={data.monitoringTriggers}
-                env={data.rateEnvironment}
-                narrativeNotes={data.contextModifications.narrativeNotes}
-                strategyName={data.strategyInputs.strategyName}
-                summary={data.summary}
-                onRecompute={recompute}
-              />
-            )}
-            {activeTab === 'configure' && (
-              <ConfigureTab
-                phases={data.recommendedStack}
-                onOpenLoanBuilder={onOpenLoanBuilder}
-                onAcceptAdvisor={async () => {
-                  await accept(0);
-                  onAdvisorAccepted?.(data.summary.initialLoanAmount, data.summary.blendedAllInRate);
-                  onOpenLoanBuilder?.();
-                }}
-              />
-            )}
-            {activeTab === 'sensitivity' && (
-              <SensitivityTab />
-            )}
-            {activeTab === 'exit' && (
-              <ExitTab onNavigate={(tab) => setActiveTab(tab)} />
-            )}
-          </>
-        )}
-      </div>
+      {activeTab === 'configure' && configureContent !== undefined ? (
+        <div style={{ flex: 1, overflowY: 'auto' }}>{configureContent}</div>
+      ) : (
+        <div style={{ flex: 1, overflow: 'hidden' }}>
+          {loading && <LoadingState />}
+          {!loading && error && <ErrorState error={error} onRetry={refresh} />}
+          {!loading && !error && data && !data.hasStrategy && <NoStrategyState />}
+          {!loading && !error && data && data.hasStrategy && (
+            <>
+              {activeTab === 'advisor' && (
+                <AdvisorTab
+                  phases={data.recommendedStack}
+                  alternatives={data.alternatives}
+                  triggers={data.monitoringTriggers}
+                  env={data.rateEnvironment}
+                  narrativeNotes={data.contextModifications.narrativeNotes}
+                  strategyName={data.strategyInputs.strategyName}
+                  summary={data.summary}
+                  onRecompute={recompute}
+                />
+              )}
+              {activeTab === 'configure' && (
+                <ConfigureTab
+                  phases={data.recommendedStack}
+                  onAcceptAdvisor={async () => {
+                    await accept(0);
+                    onAdvisorAccepted?.(data.summary.initialLoanAmount, data.summary.blendedAllInRate);
+                  }}
+                />
+              )}
+              {activeTab === 'sensitivity' && (
+                <SensitivityTab />
+              )}
+              {activeTab === 'exit' && (
+                <ExitTab onNavigate={(tab) => setActiveTab(tab)} />
+              )}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

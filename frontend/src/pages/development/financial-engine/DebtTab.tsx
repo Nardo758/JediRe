@@ -558,7 +558,6 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
 
   // ─── Render ──────────────────────────────────────────────────────────────
   const [showAnnual, setShowAnnual] = useState(true);
-  const [debtView, setDebtView] = useState<'advisor' | 'configure'>('advisor');
   const [advisorBaseline, setAdvisorBaseline] = useState<{ loanAmount: number; rate: number } | null>(null);
 
   return (
@@ -588,32 +587,12 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
         )}
       </div>
 
-      {/* ── Configure back-nav (only shown in configure view) ────────────────── */}
-      {debtView === 'configure' && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${BT.border.medium}`, background: BT.bg.panelAlt, flexShrink: 0, padding: '4px 12px' }}>
-          <button
-            onClick={() => setDebtView('advisor')}
-            style={{ padding: '3px 10px', fontFamily: MONO, fontSize: 8, fontWeight: 700, cursor: 'pointer', background: 'transparent', border: `1px solid ${BT.border.medium}`, color: BT.text.muted, borderRadius: 2 }}
-          >
-            ← ADVISOR
-          </button>
-          <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>Manual loan configuration</span>
-        </div>
-      )}
-
-      {/* ── Advisor View ──────────────────────────────────────────────────────── */}
-      {debtView === 'advisor' && (
-        <div style={{ flex: 1, overflow: 'hidden' }}>
-          <DebtAdvisorSection
-            dealId={dealId}
-            onOpenLoanBuilder={() => setDebtView('configure')}
-            onAdvisorAccepted={(la, r) => setAdvisorBaseline({ loanAmount: la, rate: r })}
-          />
-        </div>
-      )}
-
-      {/* ── Configure View ────────────────────────────────────────────────────── */}
-      {debtView === 'configure' && (<div style={{ flex: 1, overflowY: 'auto' }}>
+      {/* ── Debt Advisor (always mounted; configure content rendered inline as a tab) ── */}
+      <div style={{ flex: 1, overflow: 'hidden' }}>
+        <DebtAdvisorSection
+          dealId={dealId}
+          onAdvisorAccepted={(la, r) => setAdvisorBaseline({ loanAmount: la, rate: r })}
+          configureContent={<>
 
       {/* ── Configure Divergence Banner ─────────────────────────────────────── */}
       {advisorBaseline && activeLoan.id === 'senior' && (() => {
@@ -635,12 +614,6 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
               {irrEst > 0 && ` · Est. IRR impact: ~${irrEst}bps`}
               {dscrEst > 0 && ` · DSCR cushion shift: ~${dscrEst}bps`}
             </span>
-            <button
-              onClick={() => setDebtView('advisor')}
-              style={{ padding: '2px 10px', background: 'transparent', border: `1px solid ${BT.text.amber}50`, color: BT.text.amber, fontFamily: MONO, fontSize: 7, cursor: 'pointer', borderRadius: 2, flexShrink: 0 }}
-            >
-              VIEW ADVISOR
-            </button>
           </div>
         );
       })()}
@@ -1491,7 +1464,9 @@ export function DebtTab({ dealId, f9Financials, onTabChange, onF9Refresh }: Fina
         </div>
       )}
 
-      </div>)}
+      </>}
+        />
+      </div>
 
     </div>
   );
