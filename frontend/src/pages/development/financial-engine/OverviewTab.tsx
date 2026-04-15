@@ -200,7 +200,7 @@ export function OverviewTab({ dealId, deal, dealType, assumptions, modelResults,
           </SectionPanel>
 
           {/* F9 Unit Economics — sourced from GET /financials */}
-          {f9Financials && (
+          {f9Financials?.proforma?.unitEconomics && (
             <SectionPanel title="F9 UNIT ECONOMICS" subtitle="M07-calibrated · /financials engine" borderColor={BT.text.cyan}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
                 <div>
@@ -212,7 +212,7 @@ export function OverviewTab({ dealId, deal, dealType, assumptions, modelResults,
                 <div>
                   <DataRow label="OPEX RATIO" value={f9Financials.proforma.unitEconomics.opexRatioPct != null ? fmtPct(f9Financials.proforma.unitEconomics.opexRatioPct) : '—'} valueColor={BT.text.amber} />
                   <DataRow label="VACANCY (M07)" value={f9Financials.proforma.unitEconomics.derivedVacancyPct != null ? fmtPct((f9Financials.proforma.unitEconomics.derivedVacancyPct as number) * 100) : '—'} valueColor={BT.text.muted} />
-                  <DataRow label="PRICE / UNIT" value={f9Financials.capitalStack.pricePerUnit != null ? fmt$(f9Financials.capitalStack.pricePerUnit) : '—'} valueColor={BT.text.secondary} />
+                  <DataRow label="PRICE / UNIT" value={f9Financials.capitalStack?.pricePerUnit != null ? fmt$(f9Financials.capitalStack.pricePerUnit) : '—'} valueColor={BT.text.secondary} />
                   <DataRow label="EXIT CAP (M07)" value={f9ExitCap != null ? fmtPct(f9ExitCap * 100) : '—'} valueColor={BT.text.amber} border={false} />
                 </div>
               </div>
