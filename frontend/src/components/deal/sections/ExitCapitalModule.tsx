@@ -800,11 +800,14 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
 
   useEffect(() => {
     const POLL_MS = 5 * 60 * 1000;
+    let ignored = false;
+
+    setM35Events([]);
 
     function fetchEvents() {
       if (document.visibilityState === 'hidden') return;
       apiClient.get<{ events: M35Event[] }>(`/m35/deals/${dealId}/events-context`)
-        .then(r => { if (Array.isArray(r.data?.events)) setM35Events(r.data.events); })
+        .then(r => { if (!ignored && Array.isArray(r.data?.events)) setM35Events(r.data.events); })
         .catch(() => null);
     }
 
@@ -816,6 +819,7 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
     const timer = setInterval(fetchEvents, POLL_MS);
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
+      ignored = true;
       clearInterval(timer);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
