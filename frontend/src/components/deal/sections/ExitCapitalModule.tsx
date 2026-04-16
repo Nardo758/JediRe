@@ -776,9 +776,17 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
   }
 
   useEffect(() => {
-    apiClient.get<{ events: M35Event[] }>(`/m35/deals/${dealId}/events-context`)
-      .then(r => { if (Array.isArray(r.data?.events)) setM35Events(r.data.events); })
-      .catch(() => null);
+    const POLL_MS = 5 * 60 * 1000;
+
+    function fetchEvents() {
+      apiClient.get<{ events: M35Event[] }>(`/m35/deals/${dealId}/events-context`)
+        .then(r => { if (Array.isArray(r.data?.events)) setM35Events(r.data.events); })
+        .catch(() => null);
+    }
+
+    fetchEvents();
+    const timer = setInterval(fetchEvents, POLL_MS);
+    return () => clearInterval(timer);
   }, [dealId]);
 
   function toggleEventExpand(id: string) {
