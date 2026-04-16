@@ -1018,6 +1018,25 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
                   )}
                 </div>
               </div>
+              {/* Chart legend */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 18, marginBottom: 8, paddingLeft: 2 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <svg width="9" height="8" viewBox="0 0 9 8" style={{ flexShrink: 0 }}>
+                    <polygon points="4.5,0.5 8.5,7.5 0.5,7.5" fill="none" stroke="rgba(232,230,225,0.35)" strokeWidth="1.2" />
+                  </svg>
+                  <span style={{ fontSize: 8, color: 'rgba(232,230,225,0.35)', fontFamily: "'JetBrains Mono'", letterSpacing: 0.4 }}>PLATFORM CYCLE EVENT</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <svg width="9" height="8" viewBox="0 0 9 8" style={{ flexShrink: 0 }}>
+                    <polygon points="4.5,0.5 8.5,7.5 0.5,7.5" fill="#00e5a0" />
+                  </svg>
+                  <span style={{ fontSize: 8, color: 'rgba(232,230,225,0.35)', fontFamily: "'JetBrains Mono'", letterSpacing: 0.4 }}>LIVE M35 EVENT — CLICK TO CROSS-REF</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <div style={{ width: 0, height: 0, borderLeft: '4px solid transparent', borderRight: '4px solid transparent', borderBottom: '6px solid rgba(232,230,225,0.35)', flexShrink: 0 }} />
+                  <span style={{ fontSize: 8, color: 'rgba(232,230,225,0.35)', fontFamily: "'JetBrains Mono'", letterSpacing: 0.4 }}>NOW</span>
+                </div>
+              </div>
               <ConvergenceChart21 selectedFwd={selectedFwd} onSelectFwd={setSelectedFwd} optimalFwd={optimalFwd} liveEvents={m35Events.slice(0, 6)} selectedEventId={selectedEventId} onMarkerClick={handleMarkerClick} />
             </div>
 
@@ -1170,7 +1189,10 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
                           transition: 'box-shadow 0.2s, border-color 0.2s, background 0.2s',
                         }}
                       >
-                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '10px 14px' }}>
+                        <div
+                          onClick={() => setSelectedEventId(prev => prev === ev.id ? null : ev.id)}
+                          style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '10px 14px', cursor: 'pointer' }}
+                        >
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3, flexWrap: 'wrap' }}>
                               <span style={{ fontSize: 7, fontWeight: 700, padding: '1px 5px', background: `${catColor}15`, border: `1px solid ${catColor}40`, borderRadius: 2, color: catColor, fontFamily: "'JetBrains Mono'", textTransform: 'uppercase' }}>
@@ -1196,7 +1218,7 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
                             )}
                             {hasExpandable && (
                               <button
-                                onClick={() => toggleEventExpand(ev.id)}
+                                onClick={e => { e.stopPropagation(); toggleEventExpand(ev.id); }}
                                 style={{ marginTop: 6, fontSize: 8, fontWeight: 700, fontFamily: "'JetBrains Mono'", color: '#63B3ED', background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 3 }}
                               >
                                 {linkedNews.length > 0 ? `${linkedNews.length} SOURCE${linkedNews.length > 1 ? 'S' : ''}` : 'VIEW SOURCE'}
