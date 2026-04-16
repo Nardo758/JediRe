@@ -775,6 +775,74 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
     setSelectedFwd(optimalFwd);
   }, [optimalFwd]);
 
+  const POSITIVE_CATS = new Set(['employment', 'infrastructure', 'macro', 'market_structure', 'technology']);
+
+  interface CaseForBullet { text: string; color: string; isLive: boolean }
+  interface KeyTriggerItem { n: string; label: string; desc: string; color: string; done: boolean; isLive: boolean }
+
+  const FALLBACK_CASE_FOR = 'The 21-year convergence model identifies this as the peak RSS window. By this quarter, the Fed normalization cycle will have compressed 10Y Treasuries enough to unlock agency cap rate compression, while the current supply pipeline will have largely been absorbed by sustained household formation. Institutional buyer demand is expected to produce premium pricing on well-positioned assets.';
+
+  const FALLBACK_TRIGGERS: KeyTriggerItem[] = [
+    { n: '01', label: 'Rate normalization', desc: 'SOFR falls to 3.5–4.0% range, compressing cap rates 25–50bps', color: '#63B3ED', done: false, isLive: false },
+    { n: '02', label: 'Supply pipeline clears', desc: 'New starts YoY decline sustains, absorption outpaces deliveries', color: '#B794F4', done: false, isLive: false },
+    { n: '03', label: 'Asset stabilization', desc: 'Occupancy ≥ 93% at market rents for 2+ consecutive quarters', color: '#F6AD55', done: false, isLive: false },
+    { n: '04', label: 'RSS peaks above 80', desc: 'All sub-scores converge — institutional buyer window opens', color: '#10b981', done: false, isLive: false },
+  ];
+
+  const caseForBullets = useMemo((): CaseForBullet[] | null => {
+    const positive = m35Events
+      .filter(ev => POSITIVE_CATS.has(ev.category.toLowerCase()) && ev.status !== 'cancelled' && ev.status !== 'reversed')
+      .sort((a, b) => b.magnitudeScore - a.magnitudeScore)
+      .slice(0, 4);
+    if (positive.length === 0) return null;
+    return positive.map(ev => {
+      const cat = ev.category.toLowerCase();
+      const suffix =
+        cat === 'employment'       ? 'supporting household formation and rental demand'
+        : cat === 'infrastructure' ? 'improving submarket access and long-term desirability'
+        : cat === 'macro'          ? 'creating macro tailwinds for real asset appreciation'
+        : cat === 'market_structure' ? 'driving favorable cap rate compression dynamics'
+        : 'contributing to strengthened demand fundamentals';
+      const shortName = ev.name.length > 60 ? ev.name.slice(0, 57) + '…' : ev.name;
+      return {
+        text: `${shortName} — ${suffix}`,
+        color: m35CatColor(cat),
+        isLive: true,
+      };
+    });
+  }, [m35Events]);
+
+  const keyTriggers = useMemo((): KeyTriggerItem[] => {
+    const live = m35Events
+      .filter(ev => (ev.status === 'announced' || ev.status === 'in_progress') && (ev.magnitudeScore >= 2.5 || ev.confidence >= 0.65))
+      .sort((a, b) => b.magnitudeScore - a.magnitudeScore)
+      .slice(0, 4);
+    if (live.length === 0) return FALLBACK_TRIGGERS;
+    const mapped: KeyTriggerItem[] = live.map((ev, i) => {
+      const shortName = ev.name.length > 40 ? ev.name.slice(0, 37) + '…' : ev.name;
+      const desc = ev.description
+        ? (ev.description.length > 80 ? ev.description.slice(0, 77) + '…' : ev.description)
+        : `${ev.category.replace('_', ' ')} event — confidence ${Math.round(ev.confidence * 100)}%`;
+      return {
+        n: String(i + 1).padStart(2, '0'),
+        label: shortName,
+        desc,
+        color: m35CatColor(ev.category.toLowerCase()),
+        done: ev.status === 'in_progress',
+        isLive: true,
+      };
+    });
+    if (mapped.length < 4) {
+      const needed = 4 - mapped.length;
+      const pads = FALLBACK_TRIGGERS.slice(mapped.length, mapped.length + needed).map((t, i) => ({
+        ...t,
+        n: String(mapped.length + i + 1).padStart(2, '0'),
+      }));
+      return [...mapped, ...pads];
+    }
+    return mapped;
+  }, [m35Events]);
+
   // Fetch live rates when Debt Market tab is opened (cached 15min on backend)
   useEffect(() => {
     if (activeTab !== 'market' || liveRates !== null) return;
@@ -885,30 +953,53 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
               {/* Why this window */}
               <div style={{ background: 'rgba(16,185,129,0.04)', border: '1px solid rgba(16,185,129,0.15)', borderRadius: 7, padding: '14px 16px' }}>
-                <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: 1.2, color: '#10b981', fontFamily: "'JetBrains Mono'", marginBottom: 10 }}>
-                  THE CASE FOR {Q_LABELS[NOW_IDX + optimalFwd]?.label ?? '—'}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                  <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: 1.2, color: '#10b981', fontFamily: "'JetBrains Mono'" }}>
+                    THE CASE FOR {Q_LABELS[NOW_IDX + optimalFwd]?.label ?? '—'}
+                  </div>
+                  {caseForBullets !== null && (
+                    <span style={{ fontSize: 7, padding: '1px 5px', background: 'rgba(104,211,145,0.1)', border: '1px solid rgba(104,211,145,0.3)', borderRadius: 2, color: '#68D391', fontFamily: "'JetBrains Mono'", fontWeight: 700 }}>
+                      LIVE
+                    </span>
+                  )}
                 </div>
-                <div style={{ fontSize: 10, color: 'rgba(232,230,225,0.65)', lineHeight: 1.7 }}>
-                  The 21-year convergence model identifies <span style={{ color: '#68D391', fontWeight: 600 }}>{Q_LABELS[NOW_IDX + optimalFwd]?.label}</span> as the peak RSS window. By this quarter, the Fed normalization cycle will have compressed 10Y Treasuries enough to unlock agency cap rate compression, while the current supply pipeline will have largely been absorbed by sustained household formation. Buyer demand from institutional capital actively seeking stabilized multifamily is expected to produce premium pricing on well-positioned assets.
-                </div>
+                {caseForBullets !== null ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                    {caseForBullets.map((b, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                        <div style={{ width: 4, height: 4, borderRadius: '50%', background: b.color, flexShrink: 0, marginTop: 5 }} />
+                        <div style={{ fontSize: 9.5, color: 'rgba(232,230,225,0.7)', lineHeight: 1.55 }}>{b.text}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 10, color: 'rgba(232,230,225,0.65)', lineHeight: 1.7 }}>
+                    The 21-year convergence model identifies <span style={{ color: '#68D391', fontWeight: 600 }}>{Q_LABELS[NOW_IDX + optimalFwd]?.label}</span> as the peak RSS window. {FALLBACK_CASE_FOR}
+                  </div>
+                )}
               </div>
 
               {/* Key triggers */}
               <div style={{ background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 7, padding: '14px 16px' }}>
-                <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: 1.2, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'", marginBottom: 10 }}>
-                  KEY TRIGGERS TO EXIT WINDOW
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                  <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: 1.2, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>
+                    KEY TRIGGERS TO EXIT WINDOW
+                  </div>
+                  {keyTriggers.some(t => t.isLive) && (
+                    <span style={{ fontSize: 7, padding: '1px 5px', background: 'rgba(99,179,237,0.1)', border: '1px solid rgba(99,179,237,0.3)', borderRadius: 2, color: '#63B3ED', fontFamily: "'JetBrains Mono'", fontWeight: 700 }}>
+                      M35
+                    </span>
+                  )}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {[
-                    { n: '01', label: 'Rate normalization', desc: 'SOFR falls to 3.5–4.0% range, compressing cap rates 25–50bps', color: '#63B3ED', done: false },
-                    { n: '02', label: 'Supply pipeline clears', desc: 'New starts YoY decline sustains, absorption outpaces deliveries', color: '#B794F4', done: false },
-                    { n: '03', label: 'Asset stabilization', desc: 'Occupancy ≥ 93% at market rents for 2+ consecutive quarters', color: '#F6AD55', done: false },
-                    { n: '04', label: 'RSS peaks above 80', desc: 'All sub-scores converge — institutional buyer window opens', color: '#10b981', done: false },
-                  ].map(t => (
+                  {keyTriggers.map(t => (
                     <div key={t.n} style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                       <span style={{ fontSize: 9, fontWeight: 800, fontFamily: "'JetBrains Mono'", color: t.color, flexShrink: 0, marginTop: 1 }}>{t.n}</span>
-                      <div>
-                        <div style={{ fontSize: 10, fontWeight: 600, color: '#E8E6E1', marginBottom: 1 }}>{t.label}</div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 1 }}>
+                          <div style={{ fontSize: 10, fontWeight: 600, color: t.done ? 'rgba(232,230,225,0.45)' : '#E8E6E1', textDecoration: t.done ? 'line-through' : 'none' }}>{t.label}</div>
+                          {t.done && <span style={{ fontSize: 7, color: '#68D391', fontFamily: "'JetBrains Mono'", fontWeight: 700 }}>IN PROGRESS</span>}
+                        </div>
                         <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.4)', lineHeight: 1.5 }}>{t.desc}</div>
                       </div>
                     </div>
