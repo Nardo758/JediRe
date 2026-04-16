@@ -553,12 +553,18 @@ function ConvergenceChart21({ selectedFwd, onSelectFwd, optimalFwd, liveEvents =
           const color = m35CatColor(ev.category);
           const leftPct = (50 + (qIdx / (TOTAL_Q - 1)) * 820) / 920 * 100;
           const truncLabel = ev.name.length > 10 ? ev.name.slice(0, 9) + '…' : ev.name;
+          const isMarkerSelected = selectedEventId === ev.id;
           return (
-            <div key={`live-${ev.id}`} title={ev.name} style={{ position: 'absolute', left: `${leftPct}%`, transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'default' }}>
-              <svg width="9" height="8" viewBox="0 0 9 8" style={{ display: 'block' }}>
+            <div
+              key={`live-${ev.id}`}
+              title={ev.name}
+              onClick={() => handleMarkerClick(ev.id)}
+              style={{ position: 'absolute', left: `${leftPct}%`, transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer' }}
+            >
+              <svg width="9" height="8" viewBox="0 0 9 8" style={{ display: 'block', filter: isMarkerSelected ? `drop-shadow(0 0 3px ${color})` : 'none' }}>
                 <polygon points="4.5,0.5 8.5,7.5 0.5,7.5" fill={color} />
               </svg>
-              <span style={{ fontSize: 7, fontWeight: 700, fontFamily: '"JetBrains Mono", monospace', color, whiteSpace: 'nowrap', letterSpacing: 0.3 }}>{truncLabel}</span>
+              <span style={{ fontSize: 7, fontWeight: 700, fontFamily: '"JetBrains Mono", monospace', color, whiteSpace: 'nowrap', letterSpacing: 0.3, opacity: isMarkerSelected ? 1 : 0.85 }}>{truncLabel}</span>
             </div>
           );
         })}
@@ -754,6 +760,18 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
   const [liveRatesLoading, setLiveRatesLoading] = useState(false);
   const [m35Events, setM35Events] = useState<M35Event[]>([]);
   const [expandedEvents, setExpandedEvents] = useState<Set<string>>(new Set());
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const keyEventRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  function handleMarkerClick(id: string) {
+    const next = selectedEventId === id ? null : id;
+    setSelectedEventId(next);
+    if (next) {
+      requestAnimationFrame(() => {
+        keyEventRefs.current[next]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      });
+    }
+  }
 
   useEffect(() => {
     apiClient.get<{ events: M35Event[] }>(`/m35/deals/${dealId}/events-context`)
@@ -1135,8 +1153,21 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
                     const linkedNews: NewsItem[] = ev.newsItems ?? [];
                     const hasExpandable = linkedNews.length > 0 || Boolean(ev.sourceUrl);
                     const isExpanded = expandedEvents.has(ev.id);
+                    const isSelected = selectedEventId === ev.id;
                     return (
-                      <div key={ev.id} style={{ background: 'rgba(255,255,255,0.018)', border: `1px solid ${catColor}20`, borderLeft: `3px solid ${catColor}`, borderRadius: 5, overflow: 'hidden' }}>
+                      <div
+                        key={ev.id}
+                        ref={el => { keyEventRefs.current[ev.id] = el; }}
+                        style={{
+                          background: isSelected ? `${catColor}10` : 'rgba(255,255,255,0.018)',
+                          border: `1px solid ${isSelected ? catColor + '55' : catColor + '20'}`,
+                          borderLeft: `3px solid ${catColor}`,
+                          boxShadow: isSelected ? `0 0 0 1px ${catColor}25, 0 2px 14px ${catColor}15` : 'none',
+                          borderRadius: 5,
+                          overflow: 'hidden',
+                          transition: 'box-shadow 0.2s, border-color 0.2s, background 0.2s',
+                        }}
+                      >
                         <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '10px 14px' }}>
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3, flexWrap: 'wrap' }}>
