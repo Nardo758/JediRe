@@ -659,7 +659,7 @@ interface M35Event {
   submarketName?: string;
   ingestionSource?: string;
   newsItems?: NewsItem[];
-  source_url?: string;
+  sourceUrl?: string;
 }
 
 const M35_CAT_COLORS: Record<string, string> = {
@@ -947,7 +947,7 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
                     const dateStr = ev.announcedDate ?? ev.materializationDate;
                     const displayDate = dateStr ? new Date(dateStr).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : null;
                     const linkedNews: NewsItem[] = ev.newsItems ?? [];
-                    const hasExpandable = linkedNews.length > 0 || Boolean(ev.source_url);
+                    const hasExpandable = linkedNews.length > 0 || Boolean(ev.sourceUrl);
                     const isExpanded = expandedEvents.has(ev.id);
                     return (
                       <div key={ev.id} style={{ background: 'rgba(255,255,255,0.018)', border: `1px solid ${catColor}20`, borderLeft: `3px solid ${catColor}`, borderRadius: 5, overflow: 'hidden' }}>
@@ -1052,9 +1052,9 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
                                   )}
                                 </div>
                               ))
-                            ) : ev.source_url ? (
+                            ) : ev.sourceUrl ? (
                               <a
-                                href={ev.source_url}
+                                href={ev.sourceUrl}
                                 target="_blank"
                                 rel="noreferrer"
                                 style={{ fontSize: 9, color: '#63B3ED', fontFamily: "'JetBrains Mono'", fontWeight: 700, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}

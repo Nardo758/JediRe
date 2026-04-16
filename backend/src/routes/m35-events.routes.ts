@@ -516,8 +516,25 @@ router.get('/deals/:dealId/events-context', async (req: Request, res: Response) 
     const enrichedEvents = events.map(ev => {
       const ids: string[] = Array.isArray(ev.news_item_ids) ? ev.news_item_ids : [];
       return {
-        ...ev,
-        newsItems: ids.map(id => newsItemMap.get(id)).filter(Boolean),
+        id:                 ev.id as string,
+        name:               ev.name as string,
+        category:           ev.category as string,
+        subtype:            ev.subtype as string | undefined,
+        status:             ev.status as string,
+        description:        ev.description as string | undefined,
+        scope:              ev.scope as string,
+        msaId:              ev.msa_id as string | undefined,
+        msaName:            ev.msa_name as string | undefined,
+        submarketId:        ev.submarket_id as string | undefined,
+        submarketName:      ev.submarket_name as string | undefined,
+        magnitudeScore:     parseFloat(ev.magnitude_score ?? '2'),
+        confidence:         parseFloat(ev.confidence ?? '0.5'),
+        isVerified:         Boolean(ev.is_verified),
+        announcedDate:      ev.announced_date ? new Date(ev.announced_date as string).toISOString() : undefined,
+        materializationDate: ev.materialization_date ? new Date(ev.materialization_date as string).toISOString() : undefined,
+        ingestionSource:    ev.ingestion_source as string | undefined,
+        sourceUrl:          ev.source_url as string | undefined,
+        newsItems:          ids.map(id => newsItemMap.get(id)).filter(Boolean),
       };
     });
 
