@@ -534,6 +534,7 @@ router.get('/deals/:dealId/events-context', async (req: Request, res: Response) 
         materializationDate: ev.materialization_date ? new Date(ev.materialization_date as string).toISOString() : undefined,
         ingestionSource:    ev.ingestion_source as string | undefined,
         sourceUrl:          ev.source_url as string | undefined,
+        updatedAt:          ev.updated_at ? new Date(ev.updated_at as string).toISOString() : undefined,
         newsItems:          ids.map(id => newsItemMap.get(id)).filter(Boolean),
       };
     });

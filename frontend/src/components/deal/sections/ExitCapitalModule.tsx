@@ -672,6 +672,7 @@ interface M35Event {
   description?: string;
   announcedDate?: string;
   materializationDate?: string;
+  updatedAt?: string;
   magnitudeScore: number;
   confidence: number;
   isVerified: boolean;
@@ -870,6 +871,33 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
     return mapped;
   }, [m35Events]);
 
+  function formatDataAsOf(isoStr: string): string {
+    const d = new Date(isoStr);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).toUpperCase();
+  }
+
+  const caseForDataAsOf = useMemo((): string | null => {
+    const displayed = m35Events
+      .filter(ev => POSITIVE_CATS.has(normalizeCat(ev.category)) && ev.status !== 'cancelled' && ev.status !== 'reversed')
+      .sort((a, b) => b.magnitudeScore - a.magnitudeScore)
+      .slice(0, 4)
+      .filter(ev => ev.updatedAt);
+    if (displayed.length === 0) return null;
+    const latest = displayed.reduce((best, ev) => ev.updatedAt! > (best.updatedAt ?? '') ? ev : best, displayed[0]);
+    return latest.updatedAt ? formatDataAsOf(latest.updatedAt) : null;
+  }, [m35Events]);
+
+  const keyTriggersDataAsOf = useMemo((): string | null => {
+    const displayed = m35Events
+      .filter(ev => (ev.status === 'announced' || ev.status === 'in_progress') && (ev.magnitudeScore >= 3 || ev.confidence >= 0.65))
+      .sort((a, b) => b.magnitudeScore - a.magnitudeScore)
+      .slice(0, 4)
+      .filter(ev => ev.updatedAt);
+    if (displayed.length === 0) return null;
+    const latest = displayed.reduce((best, ev) => ev.updatedAt! > (best.updatedAt ?? '') ? ev : best, displayed[0]);
+    return latest.updatedAt ? formatDataAsOf(latest.updatedAt) : null;
+  }, [m35Events]);
+
   // Fetch live rates when Debt Market tab is opened (cached 15min on backend)
   useEffect(() => {
     if (activeTab !== 'market' || liveRates !== null) return;
@@ -980,14 +1008,21 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
               {/* Why this window */}
               <div style={{ background: 'rgba(16,185,129,0.04)', border: '1px solid rgba(16,185,129,0.15)', borderRadius: 7, padding: '14px 16px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                  <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: 1.2, color: '#10b981', fontFamily: "'JetBrains Mono'" }}>
-                    THE CASE FOR {Q_LABELS[NOW_IDX + optimalFwd]?.label ?? '—'}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: 1.2, color: '#10b981', fontFamily: "'JetBrains Mono'" }}>
+                      THE CASE FOR {Q_LABELS[NOW_IDX + optimalFwd]?.label ?? '—'}
+                    </div>
+                    {caseForBullets !== null && (
+                      <span style={{ fontSize: 7, padding: '1px 5px', background: 'rgba(104,211,145,0.1)', border: '1px solid rgba(104,211,145,0.3)', borderRadius: 2, color: '#68D391', fontFamily: "'JetBrains Mono'", fontWeight: 700 }}>
+                        LIVE
+                      </span>
+                    )}
                   </div>
-                  {caseForBullets !== null && (
-                    <span style={{ fontSize: 7, padding: '1px 5px', background: 'rgba(104,211,145,0.1)', border: '1px solid rgba(104,211,145,0.3)', borderRadius: 2, color: '#68D391', fontFamily: "'JetBrains Mono'", fontWeight: 700 }}>
-                      LIVE
-                    </span>
+                  {caseForBullets !== null && caseForDataAsOf && (
+                    <div style={{ fontSize: 7, color: 'rgba(232,230,225,0.28)', fontFamily: "'JetBrains Mono'", letterSpacing: 0.5 }}>
+                      DATA AS OF {caseForDataAsOf}
+                    </div>
                   )}
                 </div>
                 {caseForBullets !== null ? (
@@ -1008,14 +1043,21 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
 
               {/* Key triggers */}
               <div style={{ background: 'rgba(255,255,255,0.018)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 7, padding: '14px 16px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                  <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: 1.2, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>
-                    KEY TRIGGERS TO EXIT WINDOW
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ fontSize: 8, fontWeight: 700, letterSpacing: 1.2, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'" }}>
+                      KEY TRIGGERS TO EXIT WINDOW
+                    </div>
+                    {keyTriggers.some(t => t.isLive) && (
+                      <span style={{ fontSize: 7, padding: '1px 5px', background: 'rgba(99,179,237,0.1)', border: '1px solid rgba(99,179,237,0.3)', borderRadius: 2, color: '#63B3ED', fontFamily: "'JetBrains Mono'", fontWeight: 700 }}>
+                        M35
+                      </span>
+                    )}
                   </div>
-                  {keyTriggers.some(t => t.isLive) && (
-                    <span style={{ fontSize: 7, padding: '1px 5px', background: 'rgba(99,179,237,0.1)', border: '1px solid rgba(99,179,237,0.3)', borderRadius: 2, color: '#63B3ED', fontFamily: "'JetBrains Mono'", fontWeight: 700 }}>
-                      M35
-                    </span>
+                  {keyTriggers.some(t => t.isLive) && keyTriggersDataAsOf && (
+                    <div style={{ fontSize: 7, color: 'rgba(232,230,225,0.28)', fontFamily: "'JetBrains Mono'", letterSpacing: 0.5 }}>
+                      DATA AS OF {keyTriggersDataAsOf}
+                    </div>
                   )}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
