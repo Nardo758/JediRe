@@ -802,14 +802,23 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
     const POLL_MS = 5 * 60 * 1000;
 
     function fetchEvents() {
+      if (document.visibilityState === 'hidden') return;
       apiClient.get<{ events: M35Event[] }>(`/m35/deals/${dealId}/events-context`)
         .then(r => { if (Array.isArray(r.data?.events)) setM35Events(r.data.events); })
         .catch(() => null);
     }
 
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') fetchEvents();
+    }
+
     fetchEvents();
     const timer = setInterval(fetchEvents, POLL_MS);
-    return () => clearInterval(timer);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [dealId]);
 
   function toggleEventExpand(id: string) {
