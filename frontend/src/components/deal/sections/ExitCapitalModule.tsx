@@ -308,6 +308,7 @@ interface ConvergenceChart21Props {
   selectedFwd: number;
   onSelectFwd: (idx: number) => void;
   optimalFwd: number;
+  liveEvents?: M35Event[];
 }
 
 const CHART_KEY_EVENTS: Array<{ idx: number; label: string; phase: 'past' | 'future'; color: string; sublabel: string }> = [
@@ -319,7 +320,7 @@ const CHART_KEY_EVENTS: Array<{ idx: number; label: string; phase: 'past' | 'fut
   { idx: 49, label: 'SUPPLY↓', phase: 'future',  color: 'rgba(167,139,250,0.8)', sublabel: 'Q2\'28 · Supply peak clears'  },
 ];
 
-function ConvergenceChart21({ selectedFwd, onSelectFwd, optimalFwd }: ConvergenceChart21Props) {
+function ConvergenceChart21({ selectedFwd, onSelectFwd, optimalFwd, liveEvents = [] }: ConvergenceChart21Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const W = 920,
     H = 360;
@@ -536,9 +537,28 @@ function ConvergenceChart21({ selectedFwd, onSelectFwd, optimalFwd }: Convergenc
         {CHART_KEY_EVENTS.map(ev => {
           const leftPct = (50 + (ev.idx / (TOTAL_Q - 1)) * 820) / 920 * 100;
           return (
-            <div key={ev.idx} title={ev.sublabel} style={{ position: 'absolute', left: `${leftPct}%`, transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'default' }}>
-              <div style={{ width: 0, height: 0, borderLeft: '4px solid transparent', borderRight: '4px solid transparent', borderBottom: `6px solid ${ev.color}` }} />
+            <div key={`hc-${ev.idx}`} title={ev.sublabel} style={{ position: 'absolute', left: `${leftPct}%`, transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'default' }}>
+              <svg width="9" height="8" viewBox="0 0 9 8" style={{ display: 'block' }}>
+                <polygon points="4.5,0.5 8.5,7.5 0.5,7.5" fill="none" stroke={ev.color} strokeWidth="1.2" />
+              </svg>
               <span style={{ fontSize: 7, fontWeight: 700, fontFamily: '"JetBrains Mono", monospace', color: ev.color, whiteSpace: 'nowrap', letterSpacing: 0.3 }}>{ev.label}</span>
+            </div>
+          );
+        })}
+        {liveEvents.map(ev => {
+          const dateStr = ev.announcedDate ?? ev.materializationDate;
+          if (!dateStr || Number.isNaN(new Date(dateStr).getTime())) return null;
+          const qIdx = dateToQIdx(dateStr);
+          if (qIdx < 0 || qIdx >= TOTAL_Q) return null;
+          const color = m35CatColor(ev.category);
+          const leftPct = (50 + (qIdx / (TOTAL_Q - 1)) * 820) / 920 * 100;
+          const truncLabel = ev.name.length > 10 ? ev.name.slice(0, 9) + '…' : ev.name;
+          return (
+            <div key={`live-${ev.id}`} title={ev.name} style={{ position: 'absolute', left: `${leftPct}%`, transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'default' }}>
+              <svg width="9" height="8" viewBox="0 0 9 8" style={{ display: 'block' }}>
+                <polygon points="4.5,0.5 8.5,7.5 0.5,7.5" fill={color} />
+              </svg>
+              <span style={{ fontSize: 7, fontWeight: 700, fontFamily: '"JetBrains Mono", monospace', color, whiteSpace: 'nowrap', letterSpacing: 0.3 }}>{truncLabel}</span>
             </div>
           );
         })}
@@ -855,7 +875,7 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
                   )}
                 </div>
               </div>
-              <ConvergenceChart21 selectedFwd={selectedFwd} onSelectFwd={setSelectedFwd} optimalFwd={optimalFwd} />
+              <ConvergenceChart21 selectedFwd={selectedFwd} onSelectFwd={setSelectedFwd} optimalFwd={optimalFwd} liveEvents={m35Events} />
             </div>
 
             {/* RSS breakdown cards */}
