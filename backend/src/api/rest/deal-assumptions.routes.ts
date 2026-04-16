@@ -4,18 +4,148 @@
  * Endpoints for managing deal underwriting assumptions
  */
 
+import axios from 'axios';
 import { Router, Response } from 'express';
 import { getPool } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
+import { bustM08Cache } from '../../services/m08-strategies.service';
 import { 
   DealAssumptionsInput, 
   SiteDataInput, 
   ComputedReturns,
   DEFAULT_ASSUMPTIONS 
 } from '../../types/deal-assumptions.types';
+import * as XLSX from 'xlsx';
+import { seedProFormaYear1 } from '../../services/proforma-seeder.service';
+import { getDealFinancials, applyFinancialsOverride } from '../../services/proforma-adjustment.service';
+import { buildF9Workbook, buildProjectionsForExport } from '../../services/f9-financial-export.service';
+
+// ─── IRR bisection helper ─────────────────────────────────────────────────────
+/**
+ * Compute Internal Rate of Return via bisection.
+ * cashFlows[0] is the t=0 outflow (negative equityAtClose).
+ * cashFlows[i] for i>0 are the annual free cash flows.
+ * Returns null if equity is zero, no sign change exists, or solution diverges.
+ */
+function computeIrr(cashFlows: number[]): number | null {
+  if (cashFlows.length < 2) return null;
+  const npv = (r: number) => cashFlows.reduce((s, cf, i) => s + cf / Math.pow(1 + r, i), 0);
+  const v0 = npv(0);
+  if (v0 === 0) return 0;
+  let lo = -0.9999, hi = 10.0;
+  if (npv(lo) * npv(hi) > 0) return null;
+  for (let i = 0; i < 200; i++) {
+    const mid = (lo + hi) / 2;
+    const m = npv(mid);
+    if (Math.abs(m) < 1e-4 || (hi - lo) < 1e-8) return +mid.toFixed(6);
+    if (v0 > 0 ? m > 0 : m < 0) lo = mid; else hi = mid;
+  }
+  return +((lo + hi) / 2).toFixed(6);
+}
+
+// ─── AI Coordinator config ────────────────────────────────────────────────────
+const ANTHROPIC_API_KEY  = process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || process.env.CLAUDE_API_KEY;
+const ANTHROPIC_BASE_URL = process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL || 'https://api.anthropic.com';
+const CLAUDE_MODEL       = 'claude-sonnet-4-5';
 
 const router = Router();
+
+// ─── Narrative types and cache ───────────────────────────────────────────────
+export interface NarrativeBlock {
+  id: string;
+  label: string;
+  summary: string;
+  detail: string | null;
+  status: 'ok' | 'warn' | 'info';
+}
+
+interface NarrativeCacheEntry {
+  text: string | null;
+  blocks: NarrativeBlock[];
+  generatedAt: number;
+}
+
+// Two-layer cache: in-memory (fast) + DB (persistent across restarts)
+const narrativeCache = new Map<string, NarrativeCacheEntry>();
+const NARRATIVE_TTL_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * AI Coordinator: generates a structured narrative for a deal using Claude.
+ * Returns null if the API key is not set (graceful degradation).
+ */
+async function generateAiNarrative(
+  data: Awaited<ReturnType<typeof getDealFinancials>>,
+  blocks: NarrativeBlock[],
+): Promise<string | null> {
+  if (!ANTHROPIC_API_KEY) {
+    logger.warn('AI_INTEGRATIONS_ANTHROPIC_API_KEY not set — narrative will be block-derived only');
+    return null;
+  }
+  try {
+    const cs  = data.capitalStack;
+    const tp  = data.trafficProjection;
+    const ass = data.assumptions;
+    const gpr = ass.gprDecomposition;
+
+    const context = [
+      `Deal: ${data.dealName} | ${data.totalUnits} units`,
+      cs.purchasePrice != null ? `Purchase Price: $${(cs.purchasePrice / 1e6).toFixed(2)}M` : '',
+      cs.loanAmount    != null ? `Loan: $${(cs.loanAmount / 1e6).toFixed(2)}M` : '',
+      ass.exitCap      != null ? `Assumed Exit Cap: ${(ass.exitCap * 100).toFixed(2)}%` : '',
+      tp?.calibrated.exitCap != null ? `M07 Platform Exit Cap: ${(tp.calibrated.exitCap * 100).toFixed(2)}%` : '',
+      ass.rentGrowthYr1 != null ? `Assumed Yr-1 Rent Growth: ${(ass.rentGrowthYr1 * 100).toFixed(2)}%` : '',
+      tp?.calibrated.rentGrowthPct != null ? `M07 Rent Growth: ${(tp.calibrated.rentGrowthPct * 100).toFixed(2)}%` : '',
+      gpr?.brokerPerUnitMo != null ? `Broker GPR: $${gpr.brokerPerUnitMo.toFixed(0)}/unit/mo` : '',
+      gpr?.platformPerUnitMo != null ? `Platform GPR: $${gpr.platformPerUnitMo.toFixed(0)}/unit/mo` : '',
+      tp?.leasingSignals?.confidence != null ? `M07 Confidence: ${tp.leasingSignals.confidence.toFixed(0)}%` : '',
+    ].filter(Boolean).join('\n');
+
+    const blockSummaries = blocks.map(b => `[${b.status.toUpperCase()}] ${b.label}: ${b.summary}`).join('\n');
+
+    const response = await axios.post(
+      `${ANTHROPIC_BASE_URL}/v1/messages`,
+      {
+        model: CLAUDE_MODEL,
+        max_tokens: 400,
+        temperature: 0.2,
+        system: 'You are JediRE F9 Financial Intelligence. Write a concise 2-3 sentence deal intelligence summary for a real estate underwriter. Be specific about numbers. Use financial professional language. Do not use bullet points.',
+        messages: [{
+          role: 'user',
+          content: `Synthesize the following deal signals into a 2-3 sentence intelligence narrative:\n\n${context}\n\nStructured findings:\n${blockSummaries}`,
+        }],
+      },
+      {
+        headers: {
+          'x-api-key': ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json',
+        },
+        timeout: 20000,
+      },
+    );
+    return (response.data?.content?.[0]?.text as string | undefined) ?? null;
+  } catch (err: unknown) {
+    logger.warn('AI Coordinator narrative generation failed (non-fatal):', err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+let narrativeColsMigrated = false;
+
+async function ensureNarrativeColumns(): Promise<void> {
+  if (narrativeColsMigrated) return;
+  try {
+    await pool.query(`
+      ALTER TABLE deal_assumptions
+        ADD COLUMN IF NOT EXISTS narrative_text TEXT,
+        ADD COLUMN IF NOT EXISTS narrative_generated_at TIMESTAMPTZ
+    `);
+    narrativeColsMigrated = true;
+  } catch (err: unknown) {
+    logger.warn('Could not ensure narrative columns (non-fatal):', err);
+  }
+}
 const pool = getPool();
 
 router.get('/:dealId/assumptions', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
@@ -56,15 +186,20 @@ router.put('/:dealId/assumptions', requireAuth, async (req: AuthenticatedRequest
     const { dealId } = req.params;
     const input: DealAssumptionsInput = req.body;
     
+    const sourceType = (input as any).sourceType || 'manual';
+    const sourceRef = (input as any).sourceRef || null;
+    const sourceDate = (input as any).sourceDate || null;
+
     const result = await pool.query(`
       INSERT INTO deal_assumptions (
         deal_id, land_cost, hard_cost_psf, soft_cost_pct, contingency_pct,
         developer_fee_pct, total_units, avg_unit_sf, efficiency, stories,
         construction_type, parking_type, unit_mix, avg_rent_per_unit,
         vacancy_pct, opex_ratio, interest_rate, ltc, exit_cap, hold_period_years,
+        source_type, source_ref, source_date,
         updated_at
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, NOW()
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, NOW()
       )
       ON CONFLICT (deal_id) DO UPDATE SET
         land_cost = COALESCE($2, deal_assumptions.land_cost),
@@ -86,6 +221,9 @@ router.put('/:dealId/assumptions', requireAuth, async (req: AuthenticatedRequest
         ltc = COALESCE($18, deal_assumptions.ltc),
         exit_cap = COALESCE($19, deal_assumptions.exit_cap),
         hold_period_years = COALESCE($20, deal_assumptions.hold_period_years),
+        source_type = COALESCE($21, deal_assumptions.source_type),
+        source_ref = $22,
+        source_date = $23,
         updated_at = NOW()
       RETURNING *
     `, [
@@ -108,8 +246,14 @@ router.put('/:dealId/assumptions', requireAuth, async (req: AuthenticatedRequest
       input.interestRate,
       input.ltc,
       input.exitCap,
-      input.holdPeriodYears
+      input.holdPeriodYears,
+      sourceType,
+      sourceRef,
+      sourceDate,
     ]);
+
+    // Bust M08 strategy cache — assumption changes invalidate strategy analysis
+    bustM08Cache(dealId);
     
     res.json({
       success: true,
@@ -316,6 +460,114 @@ router.get('/:dealId/full-context', requireAuth, async (req: AuthenticatedReques
   }
 });
 
+/**
+ * GET /:dealId/financials
+ *
+ * Thin controller — delegates to getDealFinancials() in proforma-adjustment.service.
+ * Returns the full DealFinancials contract: { proforma, trafficProjection, assumptions }
+ *
+ * Query params:
+ *   seed=true — (re)run seedProFormaYear1 before assembly (default: false)
+ *   hold=N    — hold period in years for traffic projections (default: 10)
+ */
+router.get('/:dealId/financials', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const holdYears = Math.min(Math.max(parseInt(req.query.hold as string) || 10, 1), 30);
+    const runSeed = req.query.seed === 'true';
+
+    if (runSeed) {
+      await seedProFormaYear1(pool, dealId);
+    }
+
+    const data = await getDealFinancials(pool, dealId, holdYears);
+
+    // Compute hold-period returns from F9 projection engine
+    const projs = buildProjectionsForExport(data, holdYears);
+    const equity = data.capitalStack.equityAtClose ?? 0;
+    let returns: typeof data.returns = null;
+    if (equity > 0 && projs.length > 0) {
+      const lastProj = projs[projs.length - 1];
+      // Build IRR cash flows: [-equity, cfbt_1, ..., cfbt_n-1, cfbt_n + netSaleProceeds_n]
+      const cashFlows: number[] = [-equity];
+      for (let i = 0; i < projs.length - 1; i++) {
+        cashFlows.push(projs[i].cfbt);
+      }
+      cashFlows.push((lastProj.cfbt ?? 0) + (lastProj.netSaleProceeds ?? 0));
+      const irr = computeIrr(cashFlows);
+      const equityMultiple = lastProj.cumulativeEM ?? null;
+      const cashOnCash = projs.length > 0 ? (projs[0].coc ?? null) : null;
+      returns = { irr, equityMultiple, cashOnCash };
+    }
+
+    res.json({ success: true, data: { ...data, returns } });
+  } catch (error: any) {
+    logger.error('Error fetching deal financials:', error);
+    const status = (error as Error).message?.includes('not found') ? 404 : 500;
+    res.status(status).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /:dealId/financials/reparse
+ *
+ * Force-rerun seedProFormaYear1 (re-ingests all extraction capsule signals),
+ * then re-assembles and returns a fresh DealFinancials contract.
+ */
+router.post('/:dealId/financials/reparse', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const holdYears = Math.min(Math.max(parseInt(req.query.hold as string) || 10, 1), 30);
+    await seedProFormaYear1(pool, dealId);
+    const data = await getDealFinancials(pool, dealId, holdYears);
+    res.json({ success: true, data });
+  } catch (error: unknown) {
+    logger.error('Error reparsing deal financials:', error);
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    const status = msg.includes('not found') ? 404 : 500;
+    res.status(status).json({ error: msg });
+  }
+});
+
+/**
+ * PATCH /:dealId/financials/override
+ *
+ * Thin controller — delegates to applyFinancialsOverride() in proforma-adjustment.service.
+ * Cell-coordinate override in the year1 LayeredValue seed.
+ *
+ * Body: { field: string, year?: number | null, value: number | null }
+ *   field — camelCase field name (e.g. "vacancyPct", "gpr", "realEstateTax")
+ *   year  — hold year (1-10); null or omitted = year 1 seed override
+ *   value — numeric override, or null to clear (falls back to priority resolution)
+ */
+router.patch('/:dealId/financials/override', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const { field, year = null, value, strValue } = req.body as { field: string; year?: number | null; value: number | string | null; strValue?: string };
+    const userId = req.user?.userId ?? 'unknown';
+
+    if (!field || typeof field !== 'string') {
+      return res.status(400).json({ error: 'field is required (camelCase field name, e.g. "vacancyPct")' });
+    }
+    // String fields: debt (loanTypeLabel, rateType, prepayType) and wf (waterfallType, assetMgmtBasis)
+    const isStrField = (field.startsWith('debt:') || field.startsWith('wf:')) && strValue != null;
+    if (!isStrField && value !== null && value !== undefined && typeof value !== 'number') {
+      return res.status(400).json({ error: 'value must be a number or null' });
+    }
+
+    // applyFinancialsOverride accepts number | string | null for string override fields
+    const effectiveValue: number | string | null = isStrField ? strValue! : (value as number | null);
+    const result = await applyFinancialsOverride(pool, dealId, field, year ?? null, effectiveValue, userId);
+    res.json({ success: true, data: { dealId, ...result } });
+  } catch (error: any) {
+    logger.error('Error applying financials override:', error);
+    const status = error.message?.includes('No year1 seed') ? 422
+      : error.message?.includes('not a layered value') || error.message?.includes('Field path invalid') ? 400
+      : error.message?.includes('not found') ? 404 : 500;
+    res.status(status).json({ error: error.message });
+  }
+});
+
 function computeReturns(params: {
   landCost: number;
   units: number;
@@ -405,5 +657,265 @@ function computeReturns(params: {
     ltv,
   };
 }
+
+/**
+ * Build structured narrative blocks from DealFinancials.
+ * Blocks cover: rent growth delta, traffic trajectory, vacancy math,
+ * exit cap derivation, broker divergence, and lease-up velocity.
+ */
+function buildNarrativeBlocks(data: Awaited<ReturnType<typeof getDealFinancials>>): NarrativeBlock[] {
+  const blocks: NarrativeBlock[] = [];
+  const sig = data.trafficProjection?.leasingSignals;
+  const gpd = data.assumptions.gprDecomposition;
+
+  // ── 1. Rent Growth Delta ──────────────────────────────────────────────────
+  const rentGr1    = data.assumptions.rentGrowthYr1;
+  const platRentGr = data.trafficProjection?.calibrated.rentGrowthPct;
+  if (rentGr1 != null || platRentGr != null) {
+    const delta = rentGr1 != null && platRentGr != null ? rentGr1 - platRentGr : null;
+    const status: NarrativeBlock['status'] = delta != null && Math.abs(delta) > 0.02 ? 'warn' : 'ok';
+    blocks.push({
+      id:      'rent_growth_delta',
+      label:   'Rent Growth',
+      summary: platRentGr != null
+        ? `platform rent growth ${(platRentGr * 100).toFixed(1)}%/yr`
+        : `yr-1 rent growth ${((rentGr1 ?? 0) * 100).toFixed(1)}%/yr`,
+      detail:  delta != null
+        ? `assumption vs platform: ${delta > 0 ? '+' : ''}${(delta * 100).toFixed(1)}pp`
+        : null,
+      status,
+    });
+  }
+
+  // ── 2. Traffic Trajectory (M07 confidence) ────────────────────────────────
+  if (sig?.confidence != null) {
+    const status: NarrativeBlock['status'] = sig.confidence >= 80 ? 'ok' : sig.confidence >= 60 ? 'warn' : 'info';
+    blocks.push({
+      id:    'traffic_confidence',
+      label: 'M07 Confidence',
+      summary: `M07 model confidence: ${sig.confidence}%`,
+      detail: [
+        sig.t01WeeklyTours   != null ? `tour velocity ${sig.t01WeeklyTours.toFixed(1)}/wk`             : null,
+        sig.t05ClosingRatio  != null ? `capture rate ${(sig.t05ClosingRatio * 100).toFixed(1)}%`        : null,
+        sig.t06WeeklyLeases  != null ? `net leases ${sig.t06WeeklyLeases.toFixed(1)}/wk`               : null,
+      ].filter((s): s is string => s !== null).join(' · ') || null,
+      status,
+    });
+  }
+
+  // ── 3. Vacancy Math ───────────────────────────────────────────────────────
+  const calibVac = data.trafficProjection?.calibrated.vacancyPct;
+  const yr1Vac   = data.trafficProjection?.yearly.find(t => t.year === 1)?.vacancyPct;
+  if (calibVac != null || yr1Vac != null) {
+    blocks.push({
+      id:      'vacancy_math',
+      label:   'Vacancy Analysis',
+      summary: yr1Vac != null
+        ? `yr-1 vacancy ${(yr1Vac * 100).toFixed(1)}%`
+        : `platform vacancy ${((calibVac ?? 0) * 100).toFixed(1)}%`,
+      detail:  yr1Vac != null && calibVac != null
+        ? `platform: ${(calibVac * 100).toFixed(1)}%  ·  yr-1 M07: ${(yr1Vac * 100).toFixed(1)}%`
+        : null,
+      status: 'ok',
+    });
+  }
+
+  // ── 4. Exit Cap Derivation ────────────────────────────────────────────────
+  const assumedCap   = data.assumptions.exitCap;
+  const platformCap  = data.trafficProjection?.calibrated.exitCap;
+  if (assumedCap != null || platformCap != null) {
+    const delta = assumedCap != null && platformCap != null ? assumedCap - platformCap : null;
+    const status: NarrativeBlock['status'] = delta != null && Math.abs(delta) > 0.005 ? 'warn' : 'ok';
+    blocks.push({
+      id:      'exit_cap_derivation',
+      label:   'Exit Cap Rate',
+      summary: platformCap != null
+        ? `platform exit cap ${(platformCap * 100).toFixed(2)}%`
+        : `assumed exit cap ${((assumedCap ?? 0) * 100).toFixed(2)}%`,
+      detail:  delta != null
+        ? `assumption vs platform: ${delta > 0 ? '+' : ''}${(delta * 100).toFixed(2)}pp`
+        : null,
+      status,
+    });
+  }
+
+  // ── 5. Broker Divergence ─────────────────────────────────────────────────
+  if (gpd?.brokerAnnual != null && gpd?.resolvedAnnual != null) {
+    const deltaAbs = gpd.brokerAnnual - gpd.resolvedAnnual;
+    const deltaPct = gpd.resolvedAnnual !== 0 ? deltaAbs / gpd.resolvedAnnual : null;
+    const status: NarrativeBlock['status'] = deltaPct != null && Math.abs(deltaPct) > 0.05 ? 'warn' : 'ok';
+    blocks.push({
+      id:      'broker_divergence',
+      label:   'GPR Broker Divergence',
+      summary: deltaPct != null
+        ? `broker GPR ${deltaPct > 0 ? '+' : ''}${(deltaPct * 100).toFixed(1)}% vs resolved`
+        : `broker annual $${gpd.brokerAnnual.toLocaleString()}`,
+      detail:  `broker: $${gpd.brokerAnnual.toLocaleString()}  ·  resolved: $${gpd.resolvedAnnual.toLocaleString()}  ·  delta: $${Math.abs(deltaAbs).toLocaleString()}`,
+      status,
+    });
+  }
+
+  // ── 6. Lease-Up Trajectory ────────────────────────────────────────────────
+  if (sig?.t07LeaseUpWeeksTo95 != null) {
+    const status: NarrativeBlock['status'] = sig.t07LeaseUpWeeksTo95 <= 52 ? 'ok' : sig.t07LeaseUpWeeksTo95 <= 78 ? 'warn' : 'info';
+    blocks.push({
+      id:      'lease_up_trajectory',
+      label:   'Lease-Up Velocity',
+      summary: `lease-up to 95% in ${sig.t07LeaseUpWeeksTo95} wks`,
+      detail:  sig.stabilizedOccupancyPct != null
+        ? `stabilized occupancy: ${(sig.stabilizedOccupancyPct * 100).toFixed(1)}%`
+        : null,
+      status,
+    });
+  }
+
+  return blocks;
+}
+
+/**
+ * GET /:dealId/financials/narrative
+ *
+ * Returns M07-synthesized narrative for the deal as both a plain string and
+ * structured NarrativeBlock array. Response is cached in-memory for 24 h.
+ * Narrative text is also persisted to DB (narrative_text / narrative_generated_at)
+ * for recovery across restarts.
+ * Use ?refresh=true to force regeneration.
+ */
+router.get('/:dealId/financials/narrative', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const forceRefresh = req.query.refresh === 'true';
+    const now = Date.now();
+
+    // ── Layer 1: in-memory cache (includes blocks) ────────────────────────
+    const memCached = narrativeCache.get(dealId);
+    if (!forceRefresh && memCached && (now - memCached.generatedAt) < NARRATIVE_TTL_MS) {
+      return res.json({
+        success: true,
+        data: {
+          narrative:  memCached.text,
+          blocks:     memCached.blocks,
+          cachedAt:   new Date(memCached.generatedAt).toISOString(),
+          source:     'memory',
+          fresh:      false,
+        },
+      });
+    }
+
+    // ── Layer 2: DB cache (survives restarts) ─────────────────────────────
+    // Read persisted narrative_text + generated_at from DB; if within TTL,
+    // use DB text + rebuild blocks from current financials (blocks are derived, not stored)
+    await ensureNarrativeColumns();
+    if (!forceRefresh) {
+      try {
+        const dbRow = await pool.query<{ narrative_text: string|null; narrative_generated_at: Date|null }>(
+          `SELECT narrative_text, narrative_generated_at FROM deal_assumptions WHERE deal_id = $1 LIMIT 1`,
+          [dealId],
+        );
+        const dbNarrative = dbRow.rows[0]?.narrative_text ?? null;
+        const dbGeneratedAt = dbRow.rows[0]?.narrative_generated_at;
+        if (dbNarrative && dbGeneratedAt) {
+          const dbAge = now - new Date(dbGeneratedAt).getTime();
+          if (dbAge < NARRATIVE_TTL_MS) {
+            // DB cache is fresh — rebuild blocks from current financials, serve from DB
+            const freshData = await getDealFinancials(pool, dealId, 10);
+            const freshBlocks = buildNarrativeBlocks(freshData);
+            const dbCachedAt = new Date(dbGeneratedAt).getTime();
+            narrativeCache.set(dealId, { text: dbNarrative, blocks: freshBlocks, generatedAt: dbCachedAt });
+            return res.json({
+              success: true,
+              data: {
+                narrative:  dbNarrative,
+                blocks:     freshBlocks,
+                cachedAt:   new Date(dbGeneratedAt).toISOString(),
+                source:     'db',
+                fresh:      false,
+              },
+            });
+          }
+        }
+      } catch (dbErr: unknown) {
+        logger.warn('Narrative DB read failed (non-fatal):', dbErr);
+      }
+    }
+
+    // ── Layer 3: fresh derivation + AI Coordinator narrative ──────────────
+    const data   = await getDealFinancials(pool, dealId, 10);
+    const blocks = buildNarrativeBlocks(data);
+    // AI Coordinator: generate rich narrative text; falls back to block-derived text if unavailable
+    const aiText = await generateAiNarrative(data, blocks);
+    const narrative = aiText
+      ?? (blocks.length > 0 ? blocks.map(b => b.summary).join(' · ') : data.assumptions.narrative);
+
+    // Persist to DB (non-blocking — fire-and-forget)
+    pool.query(
+      `UPDATE deal_assumptions
+          SET narrative_text = $2, narrative_generated_at = NOW()
+        WHERE deal_id = $1`,
+      [dealId, narrative],
+    ).catch((err: unknown) => logger.warn('Narrative DB persist failed (non-fatal):', err));
+
+    narrativeCache.set(dealId, { text: narrative, blocks, generatedAt: now });
+
+    res.json({
+      success: true,
+      data: {
+        narrative,
+        blocks,
+        cachedAt: new Date(now).toISOString(),
+        source:   'fresh',
+        fresh:    true,
+      },
+    });
+  } catch (error: unknown) {
+    logger.error('Error fetching deal financials narrative:', error);
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: msg });
+  }
+});
+
+/**
+ * GET /:dealId/financials/export
+ *
+ * Downloads an XLSX workbook with three sheets:
+ *   1. Pro Forma — per-year operating statement with live formula cells + layer metadata comments
+ *   2. Traffic Projection — per-year M07 signal data
+ *   3. Assumptions — GPR decomposition, capital stack, hold/exit parameters
+ *
+ * Query params:
+ *   hold=N — hold period in years (default: 10)
+ */
+router.get('/:dealId/financials/export', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const holdYears = Math.min(Math.max(parseInt(req.query.hold as string) || 10, 1), 30);
+
+    const data = await getDealFinancials(pool, dealId, holdYears);
+    const wb   = buildF9Workbook(data, holdYears);
+
+    const buffer = XLSX.write(wb, {
+      type: 'buffer',
+      bookType: 'xlsx',
+      bookSST: false,
+      cellStyles: true,
+    }) as Buffer;
+
+    const safeName = data.dealName.replace(/[^a-zA-Z0-9_\-]/g, '_').slice(0, 60);
+    const filename  = `${safeName}_ProForma_${holdYears}yr.xlsx`;
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Cache-Control', 'no-store');
+    res.send(buffer);
+  } catch (error: unknown) {
+    logger.error('Error exporting deal financials XLSX:', error);
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    const status = msg.includes('not found') ? 404 : 500;
+    res.status(status).json({ error: msg });
+  }
+});
 
 export default router;

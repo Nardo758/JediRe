@@ -20,8 +20,8 @@ const tabs: Tab[] = [
     id: 'market-intelligence',
     label: 'Market Intelligence',
     icon: <TrendingUp className="w-4 h-4" />,
-    path: '/market-intelligence',
-    matchPaths: ['/market-intelligence']
+    path: '/terminal',
+    matchPaths: ['/terminal', '/market-intelligence']
   },
   {
     id: 'news-intel',

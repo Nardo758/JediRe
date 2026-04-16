@@ -242,11 +242,11 @@ router.get(
 
         // Modern amenities advantage (properties < 5 years old)
         if (dealAge < 5) {
-          const hasCoworking = Math.random() > 0.7;
-          const competitorCoworking: any = {};
+          const hasCoworking = dealAge < 3;
+          const competitorCoworking: Record<string, boolean> = {};
           competitors.forEach((comp) => {
             const compAge = currentYear - comp.yearBuilt;
-            competitorCoworking[comp.id] = compAge < 3 && Math.random() > 0.5;
+            competitorCoworking[comp.id] = compAge < 3;
           });
 
           features.push({
@@ -263,7 +263,7 @@ router.get(
 
         // EV Charging (newer properties have advantage)
         const hasEVCharging = dealAge < 3;
-        const competitorEV: any = {};
+        const competitorEV: Record<string, boolean> = {};
         competitors.forEach((comp) => {
           const compAge = currentYear - comp.yearBuilt;
           competitorEV[comp.id] = compAge < 2;
@@ -282,7 +282,7 @@ router.get(
 
         // Smart Home Tech (very new properties)
         const hasSmartHome = dealAge < 2;
-        const competitorSmart: any = {};
+        const competitorSmart: Record<string, boolean> = {};
         competitors.forEach((comp) => {
           const compAge = currentYear - comp.yearBuilt;
           competitorSmart[comp.id] = compAge < 1;
@@ -1154,10 +1154,10 @@ function estimateOccupancy(yearBuilt: string): number {
   const year = parseInt(yearBuilt || '2000');
   const age = new Date().getFullYear() - year;
 
-  if (age < 3) return 95 + Math.random() * 3;
-  if (age < 10) return 90 + Math.random() * 5;
-  if (age < 20) return 85 + Math.random() * 5;
-  return 75 + Math.random() * 10;
+  if (age < 3) return 96.5;
+  if (age < 10) return 92.5;
+  if (age < 20) return 87.5;
+  return 80;
 }
 
 export default router;

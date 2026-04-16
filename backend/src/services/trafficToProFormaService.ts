@@ -767,3 +767,184 @@ export class TrafficToProFormaService {
 // ============================================================================
 
 export const trafficToProForma = new TrafficToProFormaService();
+
+// ============================================================================
+// Standalone per-deal traffic projection accessor
+// Used by getDealFinancials (F9 Pro Forma) to populate the trafficProjection
+// section of the DealFinancials contract. Returns per-year forward projections
+// for `holdYears` years derived from the stored traffic_projections record for
+// the deal, without triggering a full re-calibration.
+// ============================================================================
+
+export interface TrafficProjectionYear {
+  year: number;
+  vacancyPct: number | null;
+  occupancyPct: number | null;
+  effRent: number | null;
+  rentGrowthPct: number | null;
+  // Per-year T-01/T-05/T-06/T-07 leasing velocity signals
+  // These are the same stable signals from traffic_learned_rates (no per-year trajectory
+  // data available at this time; future versions will use weekly_projections per-year slice)
+  t01WeeklyTours: number | null;
+  t05ClosingRatio: number | null;
+  t06WeeklyLeases: number | null;
+}
+
+/** T-01/T-05/T-06/T-07 leasing velocity signals sourced from traffic_learned_rates */
+export interface LeasingSignals {
+  t01WeeklyTours: number | null;
+  t05ClosingRatio: number | null;
+  t06WeeklyLeases: number | null;
+  t07LeaseUpWeeksTo95: number | null;
+  stabilizedOccupancyPct: number | null;
+  confidence: number | null;
+}
+
+export interface TrafficProjectionResult {
+  dealId: string;
+  holdYears: number;
+  yearly: TrafficProjectionYear[];
+  leaseUp: {
+    weeksTo90: number | null;
+    weeksTo93: number | null;
+    weeksTo95: number | null;
+  } | null;
+  calibrated: {
+    vacancyPct: number | null;
+    rentGrowthPct: number | null;
+    exitCap: number | null;
+    lastCalibrated: string | null;
+  };
+  avgLeaseTerm: number;
+  leasingSignals: LeasingSignals | null;
+}
+
+/**
+ * getTrafficProjection — reads the stored traffic_projections row for a deal
+ * and returns per-year trajectory data for the specified hold period.
+ *
+ * @param pool   DB pool
+ * @param dealId Deal UUID
+ * @param holdYears Number of hold years (1–30, default 10)
+ * @returns TrafficProjectionResult or null if no traffic data for this deal
+ */
+export async function getTrafficProjection(
+  pool: import('pg').Pool,
+  dealId: string,
+  holdYears = 10
+): Promise<TrafficProjectionResult | null> {
+  const [tpRes, lrRes] = await Promise.all([
+    pool.query(
+      `SELECT tp.*, pa.vacancy_current, pa.rent_growth_current, pa.exit_cap_current,
+              pa.updated_at AS pa_updated_at, da.avg_lease_term_months
+       FROM traffic_projections tp
+       LEFT JOIN proforma_assumptions pa ON pa.deal_id = tp.deal_id
+       LEFT JOIN deal_assumptions da ON da.deal_id = tp.deal_id
+       WHERE tp.deal_id = $1
+       ORDER BY tp.projection_date DESC
+       LIMIT 1`,
+      [dealId]
+    ),
+    // T-01/T-05/T-06 leasing velocity signals from traffic_learned_rates
+    // Join via traffic_projections.property_id (deals don't have a direct property_id)
+    pool.query(
+      `SELECT tlr.tour_rate, tlr.app_rate, tlr.lease_rate,
+              tlr.stabilized_occupancy, tlr.confidence_level, tlr.data_weeks
+       FROM traffic_learned_rates tlr
+       JOIN traffic_projections tp ON tp.property_id = tlr.property_id
+       WHERE tp.deal_id = $1
+       ORDER BY tlr.updated_at DESC
+       LIMIT 1`,
+      [dealId]
+    ),
+  ]);
+
+  if (tpRes.rows.length === 0) return null;
+
+  const row = tpRes.rows[0];
+  const lr = lrRes.rows[0] ?? null;
+
+  // avg_lease_term in years (default 1.0 = standard 12-month lease)
+  const avgLeaseTerm = row.avg_lease_term_months != null ? Number(row.avg_lease_term_months) / 12 : 1.0;
+
+  // T-01/T-05/T-06/T-07 leasing signals from traffic_learned_rates
+  //   T-01 = tour_rate (weekly tours / walk-ins)
+  //   T-05 = closing ratio = app_rate × lease_rate (leases per tour)
+  //   T-06 = weekly leases = T-01 × T-05
+  //   T-07 = lease_up_weeks_to_95 from traffic_projections
+  const t01 = lr?.tour_rate != null ? Number(lr.tour_rate) : null;
+  const t05 = lr?.app_rate != null && lr?.lease_rate != null
+    ? Number(lr.app_rate) * Number(lr.lease_rate)
+    : null;
+  const t06 = t01 != null && t05 != null ? +(t01 * t05).toFixed(3) : null;
+  const t07 = row.lease_up_weeks_to_95 ?? null;
+  const stabilizedOccupancyPct = lr?.stabilized_occupancy != null ? Number(lr.stabilized_occupancy) / 100 : null;
+
+  const leasingSignals: LeasingSignals | null = (t01 != null || t05 != null) ? {
+    t01WeeklyTours: t01,
+    t05ClosingRatio: t05 != null ? +t05.toFixed(4) : null,
+    t06WeeklyLeases: t06,
+    t07LeaseUpWeeksTo95: t07,
+    stabilizedOccupancyPct,
+    confidence: lr?.confidence_level != null ? Number(lr.confidence_level) : null,
+  } : null;
+
+  // Build per-year trajectory from occupancy_trajectory / effective_rent_trajectory
+  const occTraj: Array<{ month: number; value: number }> = row.occupancy_trajectory ?? [];
+  const rentTraj: Array<{ month: number; value: number }> = row.effective_rent_trajectory ?? [];
+
+  // Aggregate monthly → annual by hold-year buckets
+  const yearly: TrafficProjectionYear[] = [];
+  for (let yr = 1; yr <= Math.min(holdYears, 30); yr++) {
+    const startMonth = (yr - 1) * 12 + 1;
+    const endMonth = yr * 12;
+    const occSlice = occTraj.filter(p => p.month >= startMonth && p.month <= endMonth);
+    const rentSlice = rentTraj.filter(p => p.month >= startMonth && p.month <= endMonth);
+
+    const avgOcc = occSlice.length > 0
+      ? occSlice.reduce((s, p) => s + p.value, 0) / occSlice.length
+      : null;
+    const avgRent = rentSlice.length > 0
+      ? rentSlice.reduce((s, p) => s + p.value, 0) / rentSlice.length
+      : null;
+    const prevRent = yr > 1 ? yearly[yr - 2]?.effRent : null;
+    const rentGrowthPct = avgRent != null && prevRent != null && prevRent !== 0
+      ? +((avgRent / prevRent - 1) * 100).toFixed(2)
+      : null;
+
+    // Apply rent growth adjustment to T-01 (traffic tends to decline as occupancy stabilizes)
+    // Year 1 uses raw signal; subsequent years modeled as traffic stabilizing toward equilibrium
+    const tourDecayFactor = Math.max(0.7, 1 - (yr - 1) * 0.03); // 3% annual decline in walk-ins as stabilized
+    const t01Yr = t01 != null ? +(t01 * tourDecayFactor).toFixed(3) : null;
+
+    yearly.push({
+      year: yr,
+      vacancyPct: avgOcc != null ? +((1 - avgOcc / 100)).toFixed(4) : null,
+      occupancyPct: avgOcc != null ? +(avgOcc / 100).toFixed(4) : null,
+      effRent: avgRent != null ? Math.round(avgRent) : null,
+      rentGrowthPct,
+      t01WeeklyTours: t01Yr,
+      t05ClosingRatio: t05 != null ? +t05.toFixed(4) : null,
+      t06WeeklyLeases: t01Yr != null && t05 != null ? +(t01Yr * t05).toFixed(3) : null,
+    });
+  }
+
+  return {
+    dealId,
+    holdYears,
+    yearly,
+    leaseUp: row.lease_up_weeks_to_90 != null || row.lease_up_weeks_to_93 != null || row.lease_up_weeks_to_95 != null ? {
+      weeksTo90: row.lease_up_weeks_to_90 ?? null,
+      weeksTo93: row.lease_up_weeks_to_93 ?? null,
+      weeksTo95: row.lease_up_weeks_to_95 ?? null,
+    } : null,
+    calibrated: {
+      vacancyPct: row.vacancy_current != null ? +parseFloat(row.vacancy_current).toFixed(4) : null,
+      rentGrowthPct: row.rent_growth_current != null ? +parseFloat(row.rent_growth_current).toFixed(4) : null,
+      exitCap: row.exit_cap_current != null ? +parseFloat(row.exit_cap_current).toFixed(4) : null,
+      lastCalibrated: row.pa_updated_at ?? row.projection_date ?? null,
+    },
+    avgLeaseTerm,
+    leasingSignals,
+  };
+}

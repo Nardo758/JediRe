@@ -16,6 +16,105 @@ import { logger } from '../../utils/logger';
 const router = Router();
 
 // ============================================================================
+// GET /api/v1/scenarios/templates
+// Get scenario template definitions
+// (MUST be before /:dealId to avoid matching "templates" as a UUID)
+// ============================================================================
+
+router.get('/templates', async (req: Request, res: Response) => {
+  try {
+    const { query: dbQuery } = await import('../../database/connection');
+
+    const result = await dbQuery(
+      `SELECT * FROM scenario_templates ORDER BY 
+       CASE scenario_type 
+         WHEN 'bull' THEN 1 
+         WHEN 'base' THEN 2 
+         WHEN 'bear' THEN 3 
+         WHEN 'stress' THEN 4 
+       END`
+    );
+
+    res.json({
+      success: true,
+      data: {
+        templates: result.rows,
+      },
+    });
+  } catch (error: any) {
+    logger.error('Error fetching templates:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to fetch templates',
+    });
+  }
+});
+
+// ============================================================================
+// POST /api/v1/scenarios/custom
+// Create a custom user-defined scenario
+// (MUST be before /:dealId to avoid matching "custom" as a UUID)
+// ============================================================================
+
+router.post('/custom', async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.userId;
+    const {
+      dealId,
+      scenarioName,
+      description,
+      selectedEventIds = [],
+      excludedEventIds = [],
+      assumptionOverrides = {},
+    } = req.body;
+
+    if (!dealId || !scenarioName) {
+      return res.status(400).json({
+        success: false,
+        error: 'dealId and scenarioName are required',
+      });
+    }
+
+    const { query: dbQuery } = await import('../../database/connection');
+
+    const scenarioResult = await dbQuery(
+      `INSERT INTO deal_scenarios (
+        deal_id, scenario_template_id, scenario_type, scenario_name, description,
+        is_custom, generation_trigger, generated_by
+      ) VALUES ($1, NULL, $2, $3, $4, TRUE, $5, $6)
+      RETURNING *`,
+      [dealId, 'custom', scenarioName, description, 'manual', userId]
+    );
+
+    const scenario = scenarioResult.rows[0];
+
+    await dbQuery(
+      `INSERT INTO custom_scenario_configs (
+        scenario_id, selected_event_ids, excluded_event_ids, assumption_overrides
+      ) VALUES ($1, $2, $3, $4)`,
+      [
+        scenario.id,
+        JSON.stringify(selectedEventIds),
+        JSON.stringify(excludedEventIds),
+        JSON.stringify(assumptionOverrides),
+      ]
+    );
+
+    res.json({
+      success: true,
+      data: { scenario },
+      message: 'Custom scenario created successfully',
+    });
+  } catch (error: any) {
+    logger.error('Error creating custom scenario:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to create custom scenario',
+    });
+  }
+});
+
+// ============================================================================
 // POST /api/v1/scenarios/generate/:dealId
 // Generate all 4 scenarios for a deal
 // ============================================================================
@@ -23,14 +122,15 @@ const router = Router();
 router.post('/generate/:dealId', async (req: Request, res: Response) => {
   try {
     const { dealId } = req.params;
-    const { trigger = 'manual', userId } = req.body;
+    const { trigger = 'manual' } = req.body;
+    const authUserId = (req as any).user?.userId;
 
     logger.info(`Generating scenarios for deal ${dealId}`);
 
     const scenarios = await scenarioGenerationService.generateScenariosForDeal({
       dealId,
       trigger,
-      generatedBy: userId || (req as any).user?.id,
+      generatedBy: authUserId,
     });
 
     res.json({
@@ -139,13 +239,13 @@ router.get('/:dealId/comparison', async (req: Request, res: Response) => {
 router.put('/:scenarioId/recalculate', async (req: Request, res: Response) => {
   try {
     const { scenarioId } = req.params;
-    const { userId } = req.body;
+    const authUserId = (req as any).user?.userId;
 
     logger.info(`Recalculating scenario ${scenarioId}`);
 
     const scenario = await scenarioGenerationService.recalculateScenario(
       scenarioId,
-      userId || (req as any).user?.id
+      authUserId
     );
 
     res.json({
@@ -158,71 +258,6 @@ router.put('/:scenarioId/recalculate', async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to recalculate scenario',
-    });
-  }
-});
-
-// ============================================================================
-// POST /api/v1/scenarios/custom
-// Create a custom user-defined scenario
-// ============================================================================
-
-router.post('/custom', async (req: Request, res: Response) => {
-  try {
-    const {
-      dealId,
-      scenarioName,
-      description,
-      selectedEventIds = [],
-      excludedEventIds = [],
-      assumptionOverrides = {},
-      userId,
-    } = req.body;
-
-    if (!dealId || !scenarioName) {
-      return res.status(400).json({
-        success: false,
-        error: 'dealId and scenarioName are required',
-      });
-    }
-
-    const { query: dbQuery } = await import('../../database/connection');
-
-    // Create custom scenario
-    const scenarioResult = await dbQuery(
-      `INSERT INTO deal_scenarios (
-        deal_id, scenario_template_id, scenario_type, scenario_name, description,
-        is_custom, generation_trigger, generated_by
-      ) VALUES ($1, NULL, $2, $3, $4, TRUE, $5, $6)
-      RETURNING *`,
-      [dealId, 'custom', scenarioName, description, 'manual', userId]
-    );
-
-    const scenario = scenarioResult.rows[0];
-
-    // Store custom configuration
-    await dbQuery(
-      `INSERT INTO custom_scenario_configs (
-        scenario_id, selected_event_ids, excluded_event_ids, assumption_overrides
-      ) VALUES ($1, $2, $3, $4)`,
-      [
-        scenario.id,
-        JSON.stringify(selectedEventIds),
-        JSON.stringify(excludedEventIds),
-        JSON.stringify(assumptionOverrides),
-      ]
-    );
-
-    res.json({
-      success: true,
-      data: { scenario },
-      message: 'Custom scenario created successfully',
-    });
-  } catch (error: any) {
-    logger.error('Error creating custom scenario:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to create custom scenario',
     });
   }
 });
@@ -328,40 +363,6 @@ router.delete('/:scenarioId', async (req: Request, res: Response) => {
 });
 
 // ============================================================================
-// GET /api/v1/scenarios/templates
-// Get scenario template definitions
-// ============================================================================
-
-router.get('/templates', async (req: Request, res: Response) => {
-  try {
-    const { query: dbQuery } = await import('../../database/connection');
-
-    const result = await dbQuery(
-      `SELECT * FROM scenario_templates ORDER BY 
-       CASE scenario_type 
-         WHEN 'bull' THEN 1 
-         WHEN 'base' THEN 2 
-         WHEN 'bear' THEN 3 
-         WHEN 'stress' THEN 4 
-       END`
-    );
-
-    res.json({
-      success: true,
-      data: {
-        templates: result.rows,
-      },
-    });
-  } catch (error: any) {
-    logger.error('Error fetching templates:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to fetch templates',
-    });
-  }
-});
-
-// ============================================================================
 // GET /api/v1/scenarios/:dealId/events
 // Get available events for custom scenario builder
 // ============================================================================
@@ -401,25 +402,24 @@ router.get('/:dealId/events', async (req: Request, res: Response) => {
     // Get demand events
     const demandResult = await dbQuery(
       `SELECT 
-        dp.id, dp.event_summary as summary, dp.employee_count as impact,
-        dp.demand_direction as direction, det.category,
-        dp.event_date, dp.projected_delivery_date as impact_date
-       FROM demand_projections dp
-       JOIN demand_event_types det ON det.id = dp.event_type_id
-       WHERE dp.trade_area_id = $1
-       ORDER BY dp.projected_delivery_date`,
+        dde.id, dde.headline as summary, dde.affected_employees as impact,
+        dde.event_type as direction, dde.event_type as category,
+        dde.event_date, dde.event_date as impact_date
+       FROM demand_driver_events dde
+       WHERE dde.trade_area_id = $1
+       ORDER BY dde.event_date DESC`,
       [tradeAreaId]
     );
 
     // Get supply events
     const supplyResult = await dbQuery(
       `SELECT 
-        sp.id, sp.project_name as summary, sp.units as impact,
-        sp.category, sp.announcement_date as event_date,
-        sp.projected_delivery as impact_date
-       FROM supply_pipeline sp
+        sp.id, sp.project_name as summary, sp.total_units as impact,
+        sp.project_status as category, sp.created_at as event_date,
+        sp.expected_delivery_date as impact_date
+       FROM supply_pipeline_projects sp
        WHERE sp.trade_area_id = $1
-       ORDER BY sp.projected_delivery`,
+       ORDER BY sp.expected_delivery_date`,
       [tradeAreaId]
     );
 
@@ -427,8 +427,8 @@ router.get('/:dealId/events', async (req: Request, res: Response) => {
     const riskResult = await dbQuery(
       `SELECT 
         re.id, re.description as summary, re.event_type as category,
-        re.probability, re.identified_date as event_date
-       FROM risk_escalations re
+        re.probability, re.event_date as event_date
+       FROM risk_events re
        WHERE re.trade_area_id = $1 AND re.is_active = TRUE
        ORDER BY re.probability DESC`,
       [tradeAreaId]

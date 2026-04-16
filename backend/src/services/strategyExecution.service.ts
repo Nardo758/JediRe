@@ -7,6 +7,12 @@
 import { Pool, QueryResult } from 'pg';
 import { logger } from '../utils/logger';
 
+/**
+ * Translates strategy metric IDs (both user-facing shortcodes and preset internal codes)
+ * to actual metric_time_series metric_id values.
+ */
+import { translateMetricId } from '../utils/metricTranslation';
+
 export interface StrategyCondition {
   id: string;
   metricId: string;
@@ -123,10 +129,13 @@ export class StrategyExecutionService {
         return [];
       }
 
-      // Extract unique metric IDs
-      const metricIds = [...new Set(conditions.map((c) => c.metricId))];
+      const translatedConditions = conditions.map(c => ({
+        ...c,
+        dbMetricId: translateMetricId(c.metricId),
+      }));
 
-      // Get the latest value for each metric × geography
+      const metricIds = [...new Set(translatedConditions.map((c) => c.dbMetricId))];
+
       const latestMetricsResult = await this.pool.query(`
         WITH latest AS (
           SELECT DISTINCT ON (metric_id, geography_id)
@@ -180,8 +189,8 @@ export class StrategyExecutionService {
         const weightedScores: number[] = [];
         const weights: number[] = [];
 
-        for (const condition of conditions) {
-          const metricValue = geoData.metrics.get(condition.metricId);
+        for (const condition of translatedConditions) {
+          const metricValue = geoData.metrics.get(condition.dbMetricId);
 
           if (!metricValue) {
             // Metric not available for this geography
@@ -201,7 +210,7 @@ export class StrategyExecutionService {
 
           // Evaluate the condition
           const { passed, score, percentile } = await this.evaluateCondition(
-            condition,
+            { ...condition, metricId: condition.dbMetricId },
             metricValue.value,
             scope,
             metricIds
@@ -300,9 +309,9 @@ export class StrategyExecutionService {
     }>
   > {
     try {
-      // Get deal's geography
+      // Get deal's location
       const dealResult = await this.pool.query(
-        `SELECT geography_type, geography_id FROM deals WHERE id = $1`,
+        `SELECT city, state_code FROM deals WHERE id = $1`,
         [dealId]
       );
 
@@ -310,7 +319,44 @@ export class StrategyExecutionService {
         throw new Error(`Deal not found: ${dealId}`);
       }
 
-      const { geography_type, geography_id } = dealResult.rows[0];
+      const { city, state_code } = dealResult.rows[0];
+
+      // Build Zillow-style geography_id (city-state-state) and look up in metric_time_series
+      const candidateGeoId = city && state_code
+        ? `${city.toLowerCase().replace(/[\s,]+/g, '-')}-${state_code.toLowerCase()}-${state_code.toLowerCase()}`
+        : null;
+
+      let geography_type: string;
+      let geography_id: string;
+
+      if (candidateGeoId) {
+        const geoResult = await this.pool.query(
+          `SELECT DISTINCT geography_type, geography_id
+           FROM metric_time_series
+           WHERE geography_id = $1 AND geography_type = 'metro'
+           LIMIT 1`,
+          [candidateGeoId]
+        );
+        if (geoResult.rows.length > 0) {
+          geography_type = geoResult.rows[0].geography_type;
+          geography_id = geoResult.rows[0].geography_id;
+        } else {
+          // Fuzzy: match on geography_name ILIKE '%city%state%'
+          const fuzzyResult = await this.pool.query(
+            `SELECT DISTINCT geography_type, geography_id
+             FROM metric_time_series
+             WHERE geography_type = 'metro'
+               AND geography_name ILIKE $1
+             LIMIT 1`,
+            [`%${city}%`]
+          );
+          geography_type = fuzzyResult.rows[0]?.geography_type ?? 'country';
+          geography_id = fuzzyResult.rows[0]?.geography_id ?? 'united-states-102001';
+        }
+      } else {
+        geography_type = 'country';
+        geography_id = 'united-states-102001';
+      }
 
       // Fetch all strategies (user's + presets)
       const strategiesResult = await this.pool.query(
@@ -331,8 +377,14 @@ export class StrategyExecutionService {
           continue;
         }
 
+        // Translate condition metric IDs to real DB metric IDs
+        const translatedConditions = applicableConditions.map((c) => ({
+          ...c,
+          dbMetricId: translateMetricId(c.metricId),
+        }));
+
         // Get metric values for this geography
-        const metricIds = [...new Set(applicableConditions.map((c) => c.metricId))];
+        const metricIds = [...new Set(translatedConditions.map((c) => c.dbMetricId))];
         const metricsResult = await this.pool.query(
           `SELECT DISTINCT ON (metric_id)
             metric_id, value, period_date
@@ -351,8 +403,8 @@ export class StrategyExecutionService {
         const weightedScores: number[] = [];
         const weights: number[] = [];
 
-        for (const condition of applicableConditions) {
-          const value = metrics.get(condition.metricId);
+        for (const condition of translatedConditions) {
+          const value = metrics.get(condition.dbMetricId);
 
           if (value === undefined) {
             conditionResults.push({
@@ -370,7 +422,7 @@ export class StrategyExecutionService {
           }
 
           const { passed, score } = await this.evaluateCondition(
-            condition,
+            { ...condition, metricId: condition.dbMetricId },
             value,
             geography_type,
             metricIds
@@ -537,13 +589,13 @@ export class StrategyExecutionService {
    * Higher values = higher scores (for higherIsBetter metrics)
    */
   private scoreValue(actual: number, threshold: number, higherIsBetter: boolean): number {
+    if (threshold === 0) return actual !== 0 ? 50 : 0;
     if (higherIsBetter) {
       if (actual <= threshold) return 0;
-      // Score increases linearly: at 2× threshold = 100
-      return Math.min(100, ((actual - threshold) / threshold) * 100);
+      return Math.min(100, ((actual - threshold) / Math.abs(threshold)) * 100);
     } else {
       if (actual >= threshold) return 0;
-      return Math.min(100, ((threshold - actual) / threshold) * 100);
+      return Math.min(100, ((threshold - actual) / Math.abs(threshold)) * 100);
     }
   }
 
@@ -558,7 +610,7 @@ export class StrategyExecutionService {
   ): Promise<number> {
     const result = await this.pool.query(
       `SELECT
-        ROUND(100.0 * COUNT(CASE WHEN value ${descending ? '<' : '>'} $1 THEN 1 END) / COUNT(*)) as percentile
+        COALESCE(ROUND(100.0 * COUNT(CASE WHEN value ${descending ? '<' : '>'} $1 THEN 1 END) / NULLIF(COUNT(*), 0)), 0) as percentile
        FROM (
          SELECT DISTINCT ON (geography_id) value
          FROM metric_time_series

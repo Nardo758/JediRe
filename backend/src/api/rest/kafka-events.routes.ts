@@ -44,7 +44,7 @@ router.get('/log', async (req, res) => {
         published_by,
         published_at,
         partition,
-        offset,
+        "offset",
         magnitude,
         confidence_score,
         deal_id,

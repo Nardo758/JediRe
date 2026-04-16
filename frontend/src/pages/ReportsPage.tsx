@@ -1,53 +1,73 @@
 import React from 'react';
+import { BT } from '@/components/deal/bloomberg-ui';
+
+const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono','Fira Code','SF Mono',monospace" };
 
 export function ReportsPage() {
   return (
-    <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Reports & Analytics</h1>
-        <p className="text-gray-600">Generate insights and track performance</p>
+    <div style={{ padding: 24, background: BT.bg.terminal, minHeight: '100vh' }}>
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ fontSize: 16, fontWeight: 700, color: BT.text.amber, letterSpacing: '0.06em', ...mono }}>REPORTS & ANALYTICS</h1>
+        <p style={{ fontSize: 12, color: BT.text.secondary, marginTop: 4 }}>Generate insights and track performance</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-6 mb-6">
-        {/* Quick Reports */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h2 className="font-semibold text-gray-900 mb-4">📊 Quick Reports</h2>
-          <div className="space-y-3">
-            <button className="w-full text-left px-4 py-3 border border-gray-200 rounded-lg hover:bg-gray-50">
-              <div className="font-medium">Portfolio Summary</div>
-              <div className="text-sm text-gray-600">Overview of all properties</div>
-            </button>
-            <button className="w-full text-left px-4 py-3 border border-gray-200 rounded-lg hover:bg-gray-50">
-              <div className="font-medium">Market Analysis</div>
-              <div className="text-sm text-gray-600">Submarket trends and insights</div>
-            </button>
-            <button className="w-full text-left px-4 py-3 border border-gray-200 rounded-lg hover:bg-gray-50">
-              <div className="font-medium">Deal Performance</div>
-              <div className="text-sm text-gray-600">ROI and metrics by deal</div>
-            </button>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+        <div style={{ padding: 20, background: BT.bg.panel, border: `1px solid ${BT.border.subtle}` }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: BT.text.cyan, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 16, ...mono }}>QUICK REPORTS</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {[
+              { title: 'Portfolio Summary', desc: 'Overview of all properties' },
+              { title: 'Market Analysis', desc: 'Submarket trends and insights' },
+              { title: 'Deal Performance', desc: 'ROI and metrics by deal' },
+            ].map((item) => (
+              <button key={item.title} style={{
+                width: '100%',
+                textAlign: 'left' as const,
+                padding: '12px 16px',
+                border: `1px solid ${BT.border.subtle}`,
+                background: BT.bg.panelAlt,
+                color: BT.text.primary,
+                cursor: 'pointer',
+              }}>
+                <div style={{ fontWeight: 600, fontSize: 13 }}>{item.title}</div>
+                <div style={{ fontSize: 11, color: BT.text.secondary, marginTop: 2 }}>{item.desc}</div>
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* Custom Reports */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h2 className="font-semibold text-gray-900 mb-4">🎯 Custom Reports</h2>
-          <div className="text-center py-8">
-            <div className="text-6xl mb-4">📈</div>
-            <p className="text-gray-600 mb-4">Build custom reports with your data</p>
-            <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+        <div style={{ padding: 20, background: BT.bg.panel, border: `1px solid ${BT.border.subtle}` }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: BT.text.cyan, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 16, ...mono }}>CUSTOM REPORTS</div>
+          <div style={{ textAlign: 'center', padding: '32px 0' }}>
+            <div style={{ fontSize: 12, color: BT.text.secondary, marginBottom: 16 }}>Build custom reports with your data</div>
+            <button style={{
+              padding: '8px 20px',
+              background: BT.text.cyan,
+              color: BT.bg.terminal,
+              border: 'none',
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: 'pointer',
+              ...mono,
+            }}>
               Create Custom Report
             </button>
           </div>
         </div>
       </div>
 
-      {/* Charts Placeholder */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <h2 className="font-semibold text-gray-900 mb-4">📉 Market Trends</h2>
-        <div className="h-64 bg-gradient-to-br from-blue-50 to-purple-50 rounded-lg flex items-center justify-center">
-          <div className="text-center">
-            <div className="text-4xl mb-2">📊</div>
-            <p className="text-gray-600">Chart visualization coming soon</p>
+      <div style={{ padding: 20, background: BT.bg.panel, border: `1px solid ${BT.border.subtle}` }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: BT.text.cyan, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 16, ...mono }}>MARKET TRENDS</div>
+        <div style={{
+          height: 256,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: BT.bg.panelAlt,
+        }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 12, color: BT.text.muted, ...mono }}>CHART VISUALIZATION</div>
+            <div style={{ fontSize: 11, color: BT.text.muted, marginTop: 4 }}>Coming soon</div>
           </div>
         </div>
       </div>

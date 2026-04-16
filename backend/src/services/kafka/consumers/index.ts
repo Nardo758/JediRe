@@ -10,6 +10,7 @@
 import { registerDemandConsumer } from './demand-consumer';
 import { registerJEDIScoreConsumer } from './jedi-score-consumer';
 import { registerAlertConsumer } from './alert-consumer';
+import { registerM35ForecastConsumer } from './m35-forecast-consumer';
 import { consumerManager } from '../kafka-consumer-manager.service';
 import { retryHandler } from '../retry-handler.service';
 
@@ -32,6 +33,7 @@ export async function initializeConsumers(): Promise<void> {
       registerDemandConsumer(),
       registerJEDIScoreConsumer(),
       registerAlertConsumer(),
+      registerM35ForecastConsumer(),
     ]);
 
     // Start health check monitoring

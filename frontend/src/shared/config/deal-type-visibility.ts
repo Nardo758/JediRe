@@ -25,7 +25,7 @@ export type StationId = 'S1' | 'S2' | 'S3' | 'S4' | 'S5' | 'S6';
 export type ModuleId =
   | 'M01' | 'M02' | 'M03' | 'M04' | 'M05' | 'M06' | 'M07' | 'M08'
   | 'M09' | 'M10' | 'M11' | 'M12' | 'M13' | 'M14' | 'M15'
-  | 'M17' | 'M18' | 'M22';
+  | 'M17' | 'M18' | 'M20' | 'M21' | 'M22' | 'M35';
 
 export type FKey =
   | 'F1' | 'F2' | 'F3' | 'F4' | 'F5' | 'F6' | 'F7' | 'F8'
@@ -429,6 +429,29 @@ export const MODULE_TABS: ModuleTabDefinition[] = [
         description: 'Two phases: (1) Redevelopment period tracks renovation spend vs budget. (2) Post-completion transitions to ops tracking with actual vs underwritten.',
       },
     },
+  },
+
+  // ─── Deal Tools (Universal) ────────────────────────────────────────────────
+
+  {
+    moduleId: 'M21',
+    name: 'Deal Tools',
+    fKey: 'F12',
+    station: 'S1',
+    stationLabel: 'Intake & Triage',
+    category: 'Core',
+    showFor: { existing: 'full', development: 'full', redevelopment: 'full' },
+    dealTypeNotes: 'Universal tools: Notes, Contacts, Key Dates, Decisions, Files, Documents, AI Agent. Available for all deal types.',
+  },
+  {
+    moduleId: 'M35',
+    name: 'Event Impact Engine',
+    fKey: 'F12',
+    station: 'S1',
+    stationLabel: 'Event Intelligence',
+    category: 'Core',
+    showFor: { existing: 'full', development: 'full', redevelopment: 'full' },
+    dealTypeNotes: 'M35 Event Impact Engine: event timeline, playbook forecasts, and event-dependency modal for all deal types.',
   },
 ];
 

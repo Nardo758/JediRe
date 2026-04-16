@@ -1,0 +1,101 @@
+# Replit Agent Prompt: Institutional Document Formatting
+
+## Task
+Convert the attached `F4_Commentary_Enhancement_Spec.md` into a professionally formatted, print-ready institutional document. The output should look like a technical specification document from a major real estate investment firm (CBRE, JLL, Blackstone) or investment bank (Goldman Sachs, Morgan Stanley).
+
+## Design Requirements
+
+### Brand Identity
+- **Primary Color**: Navy blue (#1E3A5F)
+- **Accent Color**: Teal (#14B8A6)
+- **Typography**: 
+  - Headers: Arial Bold or Helvetica Neue Bold
+  - Body: Arial or Helvetica Neue, 11pt
+  - Code/Metrics: JetBrains Mono or Consolas, 10pt
+- **Logo Placeholder**: Top-left of cover page, "JEDI RE" in navy with teal accent bar
+
+### Document Structure
+
+**Cover Page:**
+- Document title: "F4 Markets Tab — Commentary Enhancement Specification"
+- Subtitle: "Technical Implementation Guide for Claude Code"
+- Version: 1.0
+- Date: March 2026
+- Confidential marking: "INTERNAL USE ONLY"
+- JEDI RE logo/branding
+
+**Table of Contents:**
+- Auto-generated with page numbers
+- Two-level depth (H2 and H3 headers)
+
+**Page Layout:**
+- Letter size (8.5" x 11")
+- Margins: 1" top/bottom, 1.25" left/right
+- Header: Document title (left), Page number (right)
+- Footer: "JEDI RE — Confidential" centered
+
+### Formatting Rules
+
+**Headers:**
+- H1: 18pt, navy, bold, bottom border (2px teal)
+- H2: 14pt, navy, bold, top margin 24pt
+- H3: 12pt, navy, bold-italic
+
+**Tables:**
+- Header row: Navy background (#1E3A5F), white text
+- Alternating row colors: White / Light gray (#F5F5F5)
+- Borders: 1px light gray
+- Cell padding: 8px
+
+**Code Blocks:**
+- Background: #F8F9FA
+- Border-left: 3px teal
+- Font: Monospace, 10pt
+- Rounded corners: 4px
+
+**Callout Boxes:**
+- "Key Finding" boxes: Teal left border, light teal background
+- "Implementation Note" boxes: Navy left border, light blue background
+
+**Lists:**
+- Bullet style: Navy squares or teal circles
+- Numbered lists: Navy numbers with periods
+
+### Section-Specific Formatting
+
+**Executive Summary:** 
+- Pull quote style for "Core Finding" and "Solution"
+- Larger font (12pt) with extra line spacing
+
+**Tables (Audit sections):**
+- Full-width tables with proper column alignment
+- "Gap" columns in italic or muted color
+
+**Architecture Diagrams:**
+- If rendering the data flow, use a simple box diagram with arrows
+- Navy boxes, teal connectors
+
+**File Manifest:**
+- Two-column layout: "New Files" | "Files to Modify"
+- Monospace font for file paths
+
+**Acceptance Criteria:**
+- Checkbox style bullets (☐ or □)
+
+### Output Format
+Generate this as either:
+1. **HTML/CSS** file that can be printed to PDF via browser
+2. **React component** with print-optimized CSS (@media print)
+
+The document should be immediately printable and look like it came from a Fortune 500 company's strategy team.
+
+## Files Attached
+- `F4_Commentary_Enhancement_Spec.md` — The source content to format
+
+## Success Criteria
+- Looks professional when printed on standard letter paper
+- Table of contents with working page references
+- Consistent typography and spacing throughout
+- All tables render cleanly without overflow
+- Code blocks are readable and properly highlighted
+- Could be handed to a C-suite executive or institutional investor

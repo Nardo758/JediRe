@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Pencil, Check, X, Loader2 } from 'lucide-react';
 import { apiClient } from '../../services/api.client';
 import { useDealModule } from '../../contexts/DealModuleContext';
+import { BT } from '@/components/deal/bloomberg-ui';
 
 interface PropertyDetailsFormProps {
   dealId: string;
@@ -25,7 +26,7 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
 }) => {
   // Get canonical site data from context (single source of truth)
   const { siteData, dealInputs } = useDealModule();
-  
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -74,10 +75,10 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
         const deal = dealProp;
         const pd = deal.property_data || {};
         const property = deal.properties?.[0];
-        
+
         const rawAcres = property?.lot_size_acres ?? pd.lot_size_acres ?? deal.lot_size_acres ?? deal.lotSizeAcres ?? deal.acres;
         const lotSizeAcres = (rawAcres && rawAcres < 100) ? rawAcres : undefined;
-        
+
         const data: PropertyDetails = {
           parcelId: property?.parcel_id || pd.parcel_id || deal.parcel_id || deal.parcelId || '',
           lotSizeAcres,
@@ -105,12 +106,12 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
         const body = response.data;
         const deal = body?.deal || body?.data || body;
         const pd = deal.property_data || {};
-        
+
         const property = deal.properties?.[0];
-        
+
         const rawAcres = property?.lot_size_acres ?? pd.lot_size_acres ?? deal.lot_size_acres ?? deal.lotSizeAcres ?? deal.acres;
         const lotSizeAcres = (rawAcres && rawAcres < 100) ? rawAcres : undefined;
-        
+
         const data: PropertyDetails = {
           parcelId: property?.parcel_id || pd.parcel_id || deal.parcel_id || deal.parcelId || '',
           lotSizeAcres,
@@ -199,14 +200,14 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
     return (
       <div>
         <div className="flex items-center justify-between mb-2">
-          <span className="text-[10px] font-mono text-stone-400 tracking-widest">PROPERTY ESSENTIALS</span>
+          <span style={{ fontSize: 10, fontFamily: BT.font.mono, color: BT.text.muted, letterSpacing: '0.1em' }}>PROPERTY ESSENTIALS</span>
         </div>
         <div className="grid grid-cols-4 gap-4">
           {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="bg-white rounded-lg border border-stone-200 p-4">
-              <div className="h-3 w-16 bg-stone-100 rounded animate-pulse mb-2" />
-              <div className="h-6 w-24 bg-stone-100 rounded animate-pulse mb-1" />
-              <div className="h-3 w-20 bg-stone-50 rounded animate-pulse" />
+            <div key={i} className="p-4" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
+              <div className="mb-2 animate-pulse" style={{ height: 12, width: 64, background: BT.bg.hover, borderRadius: 0 }} />
+              <div className="mb-1 animate-pulse" style={{ height: 24, width: 96, background: BT.bg.hover, borderRadius: 0 }} />
+              <div className="animate-pulse" style={{ height: 12, width: 80, background: BT.bg.panelAlt, borderRadius: 0 }} />
             </div>
           ))}
         </div>
@@ -218,15 +219,15 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
     <div>
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-3">
-          <span className="text-[10px] font-mono text-stone-400 tracking-widest">PROPERTY ESSENTIALS</span>
+          <span style={{ fontSize: 10, fontFamily: BT.font.mono, color: BT.text.muted, letterSpacing: '0.1em' }}>PROPERTY ESSENTIALS</span>
           {success && (
-            <span className="text-[11px] text-emerald-600 font-medium flex items-center gap-1">
+            <span className="flex items-center gap-1" style={{ fontSize: 11, color: BT.text.green, fontWeight: 500, fontFamily: BT.font.mono }}>
               <Check className="w-3 h-3" />
               Saved
             </span>
           )}
           {error && (
-            <span className="text-[11px] text-red-600 font-medium">
+            <span style={{ fontSize: 11, color: BT.text.red, fontWeight: 500, fontFamily: BT.font.mono }}>
               {error}
             </span>
           )}
@@ -238,14 +239,25 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
               <button
                 onClick={handleCancel}
                 disabled={saving}
-                className="text-xs text-stone-500 hover:text-stone-700 transition-colors px-2 py-1"
+                className="px-2 py-1 transition-colors"
+                style={{ fontSize: BT.fontSize.xs, color: BT.text.muted, background: 'none', border: 'none', cursor: 'pointer', fontFamily: BT.font.mono }}
               >
                 Cancel
               </button>
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="bg-stone-900 text-white text-xs font-medium rounded-lg px-3 py-1.5 hover:bg-stone-800 transition-colors disabled:bg-stone-300 disabled:cursor-not-allowed flex items-center gap-1.5"
+                className="px-3 py-1.5 flex items-center gap-1.5 transition-colors"
+                style={{
+                  background: saving ? BT.bg.hover : BT.text.cyan,
+                  color: saving ? BT.text.muted : BT.bg.terminal,
+                  fontSize: BT.fontSize.xs,
+                  fontWeight: 500,
+                  fontFamily: BT.font.mono,
+                  borderRadius: 0,
+                  border: 'none',
+                  cursor: saving ? 'not-allowed' : 'pointer',
+                }}
               >
                 {saving ? (
                   <>
@@ -263,7 +275,8 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
           ) : (
             <button
               onClick={() => setEditing(true)}
-              className="text-xs text-stone-500 hover:text-stone-700 transition-colors flex items-center gap-1 px-2 py-1"
+              className="flex items-center gap-1 px-2 py-1 transition-colors"
+              style={{ fontSize: BT.fontSize.xs, color: BT.text.muted, background: 'none', border: 'none', cursor: 'pointer', fontFamily: BT.font.mono }}
             >
               <Pencil className="w-3 h-3" />
               Edit
@@ -273,25 +286,26 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
       </div>
 
       <div className="grid grid-cols-4 gap-4">
-        <div className="bg-white rounded-lg border border-stone-200 p-4 hover:border-stone-300 transition-colors">
-          <div className="text-[10px] font-mono text-stone-400 tracking-wider mb-1">Parcel ID</div>
+        <div className="p-4 transition-colors" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
+          <div style={{ fontSize: 10, fontFamily: BT.font.mono, color: BT.text.muted, letterSpacing: '0.05em', marginBottom: 4 }}>Parcel ID</div>
           {editing ? (
             <input
               type="text"
               value={formData.parcelId || ''}
               onChange={(e) => updateField('parcelId', e.target.value)}
               placeholder="14-0087-001"
-              className="w-full border border-stone-200 rounded-lg px-2.5 py-1.5 text-sm font-mono text-stone-900 focus:ring-1 focus:ring-stone-400 focus:border-stone-400 outline-none"
+              className="w-full px-2.5 py-1.5"
+              style={{ background: BT.bg.input, border: `1px solid ${BT.border.subtle}`, color: BT.text.primary, fontFamily: BT.font.mono, fontSize: BT.fontSize.base, borderRadius: 0, outline: 'none' }}
             />
           ) : (
-            <div className="text-xl font-bold text-stone-900 mb-1 truncate">
-              {formData.parcelId || <span className="text-stone-300 font-normal text-base">Not set</span>}
+            <div className="truncate" style={{ fontSize: BT.fontSize.xl, fontWeight: 700, color: BT.text.amber, fontFamily: BT.font.mono, marginBottom: 4 }}>
+              {formData.parcelId || <span style={{ color: BT.text.muted, fontWeight: 400, fontSize: BT.fontSize.base }}>Not set</span>}
             </div>
           )}
         </div>
 
-        <div className="bg-white rounded-lg border border-stone-200 p-4 hover:border-stone-300 transition-colors">
-          <div className="text-[10px] font-mono text-stone-400 tracking-wider mb-1">Lot Size</div>
+        <div className="p-4 transition-colors" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
+          <div style={{ fontSize: 10, fontFamily: BT.font.mono, color: BT.text.muted, letterSpacing: '0.05em', marginBottom: 4 }}>Lot Size</div>
           {editing ? (
             <input
               type="number"
@@ -299,63 +313,66 @@ export const PropertyDetailsForm: React.FC<PropertyDetailsFormProps> = ({
               value={formData.lotSizeAcres ?? ''}
               onChange={(e) => updateField('lotSizeAcres', e.target.value ? parseFloat(e.target.value) : undefined)}
               placeholder="0.00"
-              className="w-full border border-stone-200 rounded-lg px-2.5 py-1.5 text-sm font-mono text-stone-900 focus:ring-1 focus:ring-stone-400 focus:border-stone-400 outline-none"
+              className="w-full px-2.5 py-1.5"
+              style={{ background: BT.bg.input, border: `1px solid ${BT.border.subtle}`, color: BT.text.primary, fontFamily: BT.font.mono, fontSize: BT.fontSize.base, borderRadius: 0, outline: 'none' }}
             />
           ) : (
-            <div className="text-xl font-bold text-stone-900 mb-1">
+            <div style={{ fontSize: BT.fontSize.xl, fontWeight: 700, color: BT.text.amber, fontFamily: BT.font.mono, marginBottom: 4 }}>
               {formData.lotSizeAcres ? (
                 `${Number(formData.lotSizeAcres).toFixed(2)} ac`
               ) : (
-                <span className="text-stone-300 font-normal text-base">Not set</span>
+                <span style={{ color: BT.text.muted, fontWeight: 400, fontSize: BT.fontSize.base }}>Not set</span>
               )}
             </div>
           )}
           {computedSF && (
-            <div className="text-[11px] text-stone-500">{computedSF}</div>
+            <div style={{ fontSize: 11, color: BT.text.secondary, fontFamily: BT.font.mono }}>{computedSF}</div>
           )}
         </div>
 
-        <div className="bg-white rounded-lg border border-stone-200 p-4 hover:border-stone-300 transition-colors">
-          <div className="text-[10px] font-mono text-stone-400 tracking-wider mb-1">Land Cost</div>
+        <div className="p-4 transition-colors" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
+          <div style={{ fontSize: 10, fontFamily: BT.font.mono, color: BT.text.muted, letterSpacing: '0.05em', marginBottom: 4 }}>Land Cost</div>
           {editing ? (
             <div className="relative">
-              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400 text-sm font-mono">$</span>
+              <span className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: BT.text.muted, fontSize: BT.fontSize.base, fontFamily: BT.font.mono }}>$</span>
               <input
                 type="number"
                 step="1000"
                 value={formData.landCost ?? ''}
                 onChange={(e) => updateField('landCost', e.target.value ? parseFloat(e.target.value) : undefined)}
                 placeholder="0"
-                className="w-full border border-stone-200 rounded-lg pl-6 pr-2.5 py-1.5 text-sm font-mono text-stone-900 focus:ring-1 focus:ring-stone-400 focus:border-stone-400 outline-none"
+                className="w-full pl-6 pr-2.5 py-1.5"
+                style={{ background: BT.bg.input, border: `1px solid ${BT.border.subtle}`, color: BT.text.primary, fontFamily: BT.font.mono, fontSize: BT.fontSize.base, borderRadius: 0, outline: 'none' }}
               />
             </div>
           ) : (
-            <div className="text-xl font-bold text-stone-900 mb-1">
+            <div style={{ fontSize: BT.fontSize.xl, fontWeight: 700, color: BT.text.amber, fontFamily: BT.font.mono, marginBottom: 4 }}>
               {formData.landCost ? (
                 formatFullCurrency(formData.landCost)
               ) : (
-                <span className="text-stone-300 font-normal text-base">Not set</span>
+                <span style={{ color: BT.text.muted, fontWeight: 400, fontSize: BT.fontSize.base }}>Not set</span>
               )}
             </div>
           )}
           {computedPerAcre && (
-            <div className="text-[11px] text-stone-500">{computedPerAcre}</div>
+            <div style={{ fontSize: 11, color: BT.text.secondary, fontFamily: BT.font.mono }}>{computedPerAcre}</div>
           )}
         </div>
 
-        <div className="bg-white rounded-lg border border-stone-200 p-4 hover:border-stone-300 transition-colors">
-          <div className="text-[10px] font-mono text-stone-400 tracking-wider mb-1">Zoning</div>
+        <div className="p-4 transition-colors" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
+          <div style={{ fontSize: 10, fontFamily: BT.font.mono, color: BT.text.muted, letterSpacing: '0.05em', marginBottom: 4 }}>Zoning</div>
           {editing ? (
             <input
               type="text"
               value={formData.zoningCode || ''}
               onChange={(e) => updateField('zoningCode', e.target.value)}
               placeholder="MR-5, C-2"
-              className="w-full border border-stone-200 rounded-lg px-2.5 py-1.5 text-sm font-mono text-stone-900 focus:ring-1 focus:ring-stone-400 focus:border-stone-400 outline-none"
+              className="w-full px-2.5 py-1.5"
+              style={{ background: BT.bg.input, border: `1px solid ${BT.border.subtle}`, color: BT.text.primary, fontFamily: BT.font.mono, fontSize: BT.fontSize.base, borderRadius: 0, outline: 'none' }}
             />
           ) : (
-            <div className="text-xl font-bold text-stone-900 mb-1">
-              {formData.zoningCode || <span className="text-stone-300 font-normal text-base">Not set</span>}
+            <div style={{ fontSize: BT.fontSize.xl, fontWeight: 700, color: BT.text.amber, fontFamily: BT.font.mono, marginBottom: 4 }}>
+              {formData.zoningCode || <span style={{ color: BT.text.muted, fontWeight: 400, fontSize: BT.fontSize.base }}>Not set</span>}
             </div>
           )}
         </div>

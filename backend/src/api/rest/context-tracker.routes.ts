@@ -28,7 +28,7 @@ router.post('/deals/:dealId/notes', async (req: Request, res: Response) => {
     const result = await pool.query(
       `INSERT INTO deal_notes (deal_id, author_id, author_name, title, content, content_html, tags, category, pinned)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-      [dealId, userId, userName, title, content, content_html, tags || [], category, pinned || false]
+      [dealId, userId || '00000000-0000-0000-0000-000000000001', userName, title, content || '', content_html, tags || [], category, pinned || false]
     );
     res.json(result.rows[0]);
   } catch (err: any) {
@@ -90,7 +90,7 @@ router.post('/deals/:dealId/activity', async (req: Request, res: Response) => {
     const result = await pool.query(
       `INSERT INTO deal_activity (deal_id, action_type, entity_type, user_id, description, metadata)
        VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [dealId, actionType, module_name || 'general', userId, description || title, changes ? JSON.stringify(changes) : null]
+      [dealId, actionType, module_name || 'general', userId, description || title || 'Activity', changes ? JSON.stringify(changes) : null]
     );
     res.json(result.rows[0]);
   } catch (err: any) {
@@ -121,7 +121,7 @@ router.post('/deals/:dealId/contacts', async (req: Request, res: Response) => {
     const result = await pool.query(
       `INSERT INTO deal_contacts (deal_id, name, role, company, email, phone, linkedin_url, website, notes, tags, is_primary)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
-      [dealId, name, role, company, email, phone, linkedin_url, website, notes, tags || [], is_primary || false]
+      [dealId, name || 'Contact', role || 'contact', company, email, phone, linkedin_url, website, notes, tags || [], is_primary || false]
     );
     res.json(result.rows[0]);
   } catch (err: any) {
@@ -225,7 +225,7 @@ router.post('/deals/:dealId/key-dates', async (req: Request, res: Response) => {
     const result = await pool.query(
       `INSERT INTO deal_key_dates (deal_id, title, date, date_type, status, description, reminder_days_before)
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [dealId, title, date, date_type, status || 'upcoming', description, reminder_days_before || []]
+      [dealId, title || 'Key Date', date || new Date().toISOString().split('T')[0], date_type || 'general', status || 'upcoming', description, reminder_days_before || []]
     );
     res.json(result.rows[0]);
   } catch (err: any) {
@@ -285,7 +285,7 @@ router.post('/deals/:dealId/decisions', async (req: Request, res: Response) => {
       `INSERT INTO deal_decisions (deal_id, title, decision_type, status, rationale, alternatives_considered,
        impact_description, budget_impact, timeline_impact_days, decided_by, decision_date, next_actions, next_review_date)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
-      [dealId, title, decision_type, status, rationale, alternatives_considered, impact_description,
+      [dealId, title || 'Decision', decision_type, status || 'pending', rationale, alternatives_considered, impact_description,
         budget_impact, timeline_impact_days, decided_by || [], decision_date, next_actions || [], next_review_date]
     );
     res.json(result.rows[0]);
@@ -351,7 +351,7 @@ router.post('/deals/:dealId/risks', async (req: Request, res: Response) => {
       `INSERT INTO deal_risks (deal_id, title, description, category, impact, likelihood,
        mitigation_strategy, contingency_plan, budget_contingency, status, assigned_to_name, review_date)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
-      [dealId, title, description, category, impact, likelihood, mitigation_strategy,
+      [dealId, title || 'New Risk', description, category, impact || 'medium', likelihood || 'medium', mitigation_strategy,
         contingency_plan, budget_contingency, status || 'active', assigned_to_name, review_date]
     );
     res.json(result.rows[0]);

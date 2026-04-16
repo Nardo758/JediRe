@@ -1,0 +1,53 @@
+loss_to_lease_pct: extras.loss_to_lease_pct ?? rr.summary.lossToLeasePct,
+        total_billings_monthly: extras.total_billings_monthly ?? rr.summary.totalLeaseCharges,
+        egi_in_place_annualized: extras.egi_in_place_annualized ?? rr.summary.totalLeaseCharges * 12,
+        // Per-unit
+        avg_market_rent: extras.avg_market_rent ?? rr.summary.avgMarketRent,
+        avg_effective_rent: extras.avg_effective_rent ?? rr.summary.avgEffectiveRent,
+        avg_unit_sqft: extras.avg_unit_sqft ?? 0,
+        total_rentable_sqft: extras.total_rentable_sqft ?? 0,
+        // Occupancy
+        occupancy_by_unit_pct: extras.occupancy_by_unit_pct ?? rr.summary.occupancyRate,
+        occupancy_by_sqft_pct: extras.occupancy_by_sqft_pct ?? 0,
+        // Charge codes + grouped income
+        charge_codes: extras.charge_codes ?? {},
+        other_income_monthly: extras.other_income_monthly ?? {
+          parking: 0, pet_rent: 0, storage: 0, rubs: 0,
+          fees: 0, insurance_admin: 0, concessions_other: 0, other: 0,
+        },
+        // Mix
+        floor_plan_mix: extras.floor_plan_mix ?? rr.summary.floorPlanMix,
+        bedroom_mix: extras.bedroom_mix ?? {},
+        // Risk
+        outstanding_balance_total: extras.outstanding_balance_total ?? 0,
+        outstanding_balance_ratio: extras.outstanding_balance_ratio ?? 0,
+        security_deposits_held: extras.security_deposits_held ?? 0,
+        pre_lease_ratio: extras.pre_lease_ratio ?? 0,
+        expiration_curve: extras.expiration_curve ?? {
+          months_0_3: 0, months_3_6: 0, months_6_12: 0, months_12_plus: 0, mtm: 0,
+        },
+        warnings: result.warnings,
+      };
+      break;
+    }
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH 6 — Add documentId to RouteContext so capsule entries can reference
+// the source document. Update the interface near line 6:
+// ─────────────────────────────────────────────────────────────────────────────
+
+// FIND:
+interface RouteContext {
+  dealId: string;
+  filename: string;
+  uploadedBy: string;
+}
+
+// REPLACE WITH:
+interface RouteContext {
+  dealId: string;
+  filename: string;
+  uploadedBy: string;
+  documentId?: string;        // deal_document_files.id — passed by extraction-pipeline
+}

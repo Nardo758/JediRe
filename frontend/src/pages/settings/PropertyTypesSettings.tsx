@@ -8,80 +8,37 @@ import {
   Bed, Hotel, CalendarClock, Palmtree, Key,
   Archive, Car, HeartPulse, FlaskConical, Ticket, Church, School, Fuel,
   Mountain, FileCheck, Wheat, MapPin as MapPinIcon,
-  Layers, LayoutGrid, Loader2, CheckCircle2, Building2
+  Layers, LayoutGrid, Building2, CheckCircle2
 } from 'lucide-react';
 import api from '@/lib/api';
+import { BT } from '@/components/deal/bloomberg-ui';
 
-// Icon mapping for property types
+const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono','Fira Code','SF Mono',monospace" };
+
 const ICON_MAP: Record<string, React.ComponentType<any>> = {
-  'home': Home,
-  'building-2': Building2,
-  'building': Building,
-  'house': House,
-  'columns': Columns3,
-  'caravan': Caravan,
-  'users': Users,
-  'trees': Trees,
-  'graduation-cap': GraduationCap,
-  'heart-handshake': HeartHandshake,
-  'shield-check': ShieldCheck,
-  'hammer': Hammer,
-  'briefcase': Briefcase,
-  'stethoscope': Stethoscope,
-  'palette': Palette,
-  'store': Store,
-  'shopping-bag': ShoppingBag,
-  'zap': Zap,
-  'shopping-cart': ShoppingCart,
-  'file-signature': FileSignature,
-  'sparkles': Sparkles,
-  'tag': Tag,
-  'warehouse': Warehouse,
-  'package': Package,
-  'factory': Factory,
-  'snowflake': Snowflake,
-  'server': Server,
-  'layout': Layout,
-  'truck': Truck,
-  'bed': Bed,
-  'hotel': Hotel,
-  'calendar-clock': CalendarClock,
-  'palm-tree': Palmtree,
-  'key': Key,
-  'archive': Archive,
-  'car': Car,
-  'heart-pulse': HeartPulse,
-  'flask-conical': FlaskConical,
-  'ticket': Ticket,
-  'church': Church,
-  'school': School,
-  'fuel': Fuel,
-  'mountain': Mountain,
-  'file-check': FileCheck,
-  'wheat': Wheat,
-  'map-pin': MapPinIcon,
-  'layers': Layers,
-  'layout-grid': LayoutGrid,
+  'home': Home, 'building-2': Building2, 'building': Building, 'house': House,
+  'columns': Columns3, 'caravan': Caravan, 'users': Users, 'trees': Trees,
+  'graduation-cap': GraduationCap, 'heart-handshake': HeartHandshake,
+  'shield-check': ShieldCheck, 'hammer': Hammer, 'briefcase': Briefcase,
+  'stethoscope': Stethoscope, 'palette': Palette, 'store': Store,
+  'shopping-bag': ShoppingBag, 'zap': Zap, 'shopping-cart': ShoppingCart,
+  'file-signature': FileSignature, 'sparkles': Sparkles, 'tag': Tag,
+  'warehouse': Warehouse, 'package': Package, 'factory': Factory,
+  'snowflake': Snowflake, 'server': Server, 'layout': Layout, 'truck': Truck,
+  'bed': Bed, 'hotel': Hotel, 'calendar-clock': CalendarClock,
+  'palm-tree': Palmtree, 'key': Key, 'archive': Archive, 'car': Car,
+  'heart-pulse': HeartPulse, 'flask-conical': FlaskConical, 'ticket': Ticket,
+  'church': Church, 'school': School, 'fuel': Fuel, 'mountain': Mountain,
+  'file-check': FileCheck, 'wheat': Wheat, 'map-pin': MapPinIcon,
+  'layers': Layers, 'layout-grid': LayoutGrid,
 };
 
-// Category colors for visual grouping
-const CATEGORY_COLORS: Record<string, { bg: string; border: string; text: string; icon: string }> = {
-  'Residential': { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-700', icon: 'text-blue-500' },
-  'Multifamily': { bg: 'bg-indigo-50', border: 'border-indigo-200', text: 'text-indigo-700', icon: 'text-indigo-500' },
-  'Commercial': { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700', icon: 'text-emerald-500' },
-  'Retail': { bg: 'bg-orange-50', border: 'border-orange-200', text: 'text-orange-700', icon: 'text-orange-500' },
-  'Industrial': { bg: 'bg-slate-50', border: 'border-slate-200', text: 'text-slate-700', icon: 'text-slate-500' },
-  'Hospitality': { bg: 'bg-rose-50', border: 'border-rose-200', text: 'text-rose-700', icon: 'text-rose-500' },
-  'Special Purpose': { bg: 'bg-violet-50', border: 'border-violet-200', text: 'text-violet-700', icon: 'text-violet-500' },
-  'Land': { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-700', icon: 'text-amber-500' },
-  'Mixed-Use': { bg: 'bg-teal-50', border: 'border-teal-200', text: 'text-teal-700', icon: 'text-teal-500' },
-};
-
-// Strategy strength colors
-const STRENGTH_COLORS = {
-  strong: { bg: 'bg-green-100', text: 'text-green-800', border: 'border-green-300', dot: 'bg-green-600' },
-  moderate: { bg: 'bg-yellow-100', text: 'text-yellow-800', border: 'border-yellow-300', dot: 'bg-yellow-600' },
-  weak: { bg: 'bg-gray-100', text: 'text-gray-600', border: 'border-gray-300', dot: 'bg-gray-400' },
+const CATEGORY_ACCENT: Record<string, string> = {
+  'Residential': BT.text.cyan, 'Multifamily': BT.text.violet,
+  'Commercial': BT.text.green, 'Retail': BT.text.amber,
+  'Industrial': BT.text.secondary, 'Hospitality': BT.text.red,
+  'Special Purpose': BT.text.purple, 'Land': BT.text.amber,
+  'Mixed-Use': BT.text.cyan,
 };
 
 interface PropertyType {
@@ -102,13 +59,10 @@ interface Strategy {
   rationale?: string;
 }
 
-// Lucide Icon component that renders actual React components
-function LucideIcon({ name, className }: { name: string; className?: string }) {
+function LucideIcon({ name, style }: { name: string; style?: React.CSSProperties }) {
   const IconComponent = ICON_MAP[name];
-  if (!IconComponent) {
-    return <Building2 className={className} />;
-  }
-  return <IconComponent className={className} />;
+  if (!IconComponent) return <Building2 style={style} />;
+  return <IconComponent style={style} />;
 }
 
 export default function PropertyTypesSettings() {
@@ -122,15 +76,8 @@ export default function PropertyTypesSettings() {
   const [loadingStrategies, setLoadingStrategies] = useState(false);
   const [primaryUseCase, setPrimaryUseCase] = useState<string>('');
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  useEffect(() => {
-    if (selectedType) {
-      loadStrategiesForType(selectedType.type_key);
-    }
-  }, [selectedType]);
+  useEffect(() => { loadData(); }, []);
+  useEffect(() => { if (selectedType) loadStrategiesForType(selectedType.type_key); }, [selectedType]);
 
   const loadData = async () => {
     try {
@@ -139,20 +86,13 @@ export default function PropertyTypesSettings() {
         api.get('/preferences/property-types'),
         api.get('/preferences/user')
       ]);
-      
       setPropertyTypes(typesRes.data.property_types);
       const prefs = prefsRes.data.data || prefsRes.data;
       setSelectedTypes(prefs.property_types || []);
       setPrimaryUseCase(prefs.primary_use_case || '');
-      
-      // Auto-select first type if there are selected types
-      if (prefs.property_types && prefs.property_types.length > 0) {
-        const firstType = typesRes.data.property_types.find(
-          (t: PropertyType) => t.type_key === prefs.property_types[0]
-        );
-        if (firstType) {
-          setSelectedType(firstType);
-        }
+      if (prefs.property_types?.length > 0) {
+        const firstType = typesRes.data.property_types.find((t: PropertyType) => t.type_key === prefs.property_types[0]);
+        if (firstType) setSelectedType(firstType);
       }
     } catch (error) {
       console.error('Failed to load property types:', error);
@@ -186,10 +126,7 @@ export default function PropertyTypesSettings() {
     try {
       setSaving(true);
       setSaveMessage(null);
-      await api.put('/preferences/user', {
-        property_types: selectedTypes,
-        primary_use_case: primaryUseCase
-      });
+      await api.put('/preferences/user', { property_types: selectedTypes, primary_use_case: primaryUseCase });
       setSaveMessage({ type: 'success', text: 'Preferences saved successfully!' });
       setTimeout(() => setSaveMessage(null), 3000);
     } catch (error) {
@@ -200,40 +137,49 @@ export default function PropertyTypesSettings() {
     }
   };
 
-  // Group property types by category
   const groupedTypes = propertyTypes.reduce((acc, type) => {
-    if (!acc[type.category]) {
-      acc[type.category] = [];
-    }
+    if (!acc[type.category]) acc[type.category] = [];
     acc[type.category].push(type);
     return acc;
   }, {} as Record<string, PropertyType[]>);
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 400 }}>
+        <div style={{ height: 32, width: 32, border: `2px solid ${BT.border.subtle}`, borderBottom: `2px solid ${BT.text.cyan}`, borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
       </div>
     );
   }
 
+  const strengthColors: Record<string, { color: string; dot: string }> = {
+    strong: { color: BT.text.green, dot: BT.text.green },
+    moderate: { color: BT.text.amber, dot: BT.text.amber },
+    weak: { color: BT.text.muted, dot: BT.text.muted },
+  };
+
   return (
-    <div className="h-full flex flex-col">
-      {/* Header */}
-      <div className="px-6 py-4 border-b border-gray-200">
-        <div className="flex items-start justify-between">
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ padding: '12px 20px', borderBottom: `1px solid ${BT.border.subtle}` }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">Property Types & Strategies</h2>
-            <p className="text-sm text-gray-600 mt-1">
+            <h2 style={{ fontSize: 16, fontWeight: 700, color: BT.text.primary }}>Property Types & Strategies</h2>
+            <p style={{ fontSize: 11, color: BT.text.secondary, marginTop: 4 }}>
               Select property types you focus on and view applicable investment strategies
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Primary Role:</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <label style={{ fontSize: 11, fontWeight: 600, color: BT.text.secondary, whiteSpace: 'nowrap' }}>Primary Role:</label>
             <select
               value={primaryUseCase}
               onChange={(e) => setPrimaryUseCase(e.target.value)}
-              className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
+              style={{
+                padding: '4px 8px',
+                fontSize: 11,
+                background: BT.bg.input,
+                color: BT.text.primary,
+                border: `1px solid ${BT.border.medium}`,
+                outline: 'none',
+              }}
             >
               <option value="">Select role...</option>
               <option value="investor">Investor</option>
@@ -247,29 +193,21 @@ export default function PropertyTypesSettings() {
         </div>
       </div>
 
-      {/* Two-Panel Layout */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left Panel - Property Types List */}
-        <div className="w-1/2 border-r border-gray-200 overflow-y-auto p-6">
-          <div className="space-y-4">
+      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+        <div style={{ width: '50%', borderRight: `1px solid ${BT.border.subtle}`, overflowY: 'auto', padding: 16 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {Object.entries(groupedTypes).map(([category, types]) => {
-              const colors = CATEGORY_COLORS[category] || CATEGORY_COLORS['Commercial'];
+              const accent = CATEGORY_ACCENT[category] || BT.text.cyan;
               const selectedCount = types.filter(t => selectedTypes.includes(t.type_key)).length;
 
               return (
-                <div key={category} className={`rounded-lg border ${colors.border} overflow-hidden`}>
-                  {/* Category Header */}
-                  <div className={`${colors.bg} px-4 py-3 border-b ${colors.border}`}>
-                    <div className="flex items-center justify-between">
-                      <h3 className={`font-bold ${colors.text}`}>{category}</h3>
-                      <span className="text-xs text-gray-600">
-                        {selectedCount}/{types.length} selected
-                      </span>
-                    </div>
+                <div key={category} style={{ border: `1px solid ${BT.border.subtle}` }}>
+                  <div style={{ padding: '8px 12px', background: BT.bg.panelAlt, borderBottom: `1px solid ${BT.border.subtle}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontWeight: 700, fontSize: 12, color: accent }}>{category}</span>
+                    <span style={{ fontSize: 10, color: BT.text.muted, ...mono }}>{selectedCount}/{types.length}</span>
                   </div>
 
-                  {/* Property Types */}
-                  <div className="bg-white p-2 space-y-1">
+                  <div style={{ padding: 6, display: 'flex', flexDirection: 'column', gap: 2, background: BT.bg.panel }}>
                     {types.map((type) => {
                       const isSelected = selectedTypes.includes(type.type_key);
                       const isActive = selectedType?.type_key === type.type_key;
@@ -277,38 +215,26 @@ export default function PropertyTypesSettings() {
                       return (
                         <div
                           key={type.type_key}
-                          className={`
-                            flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all
-                            ${isActive ? 'bg-blue-50 border-2 border-blue-500' : 'border border-transparent hover:bg-gray-50'}
-                          `}
                           onClick={() => setSelectedType(type)}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 10,
+                            padding: '8px 10px',
+                            cursor: 'pointer',
+                            background: isActive ? BT.bg.active : 'transparent',
+                            border: isActive ? `1px solid ${BT.text.cyan}` : '1px solid transparent',
+                          }}
                         >
-                          {/* Checkbox */}
                           <input
                             type="checkbox"
                             checked={isSelected}
-                            onChange={(e) => {
-                              e.stopPropagation();
-                              toggleType(type.type_key);
-                            }}
-                            className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
+                            onChange={(e) => { e.stopPropagation(); toggleType(type.type_key); }}
+                            style={{ accentColor: BT.text.cyan }}
                           />
-
-                          {/* Icon */}
-                          <LucideIcon
-                            name={type.icon}
-                            className={`w-5 h-5 flex-shrink-0 ${isSelected ? colors.icon : 'text-gray-400'}`}
-                          />
-
-                          {/* Name */}
-                          <span className={`text-sm flex-1 ${isSelected ? 'font-medium text-gray-900' : 'text-gray-700'}`}>
-                            {type.display_name}
-                          </span>
-
-                          {/* Selection indicator */}
-                          {isSelected && (
-                            <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
-                          )}
+                          <LucideIcon name={type.icon} style={{ width: 16, height: 16, color: isSelected ? accent : BT.text.muted, flexShrink: 0 }} />
+                          <span style={{ fontSize: 12, flex: 1, fontWeight: isSelected ? 600 : 400, color: isSelected ? BT.text.primary : BT.text.secondary }}>{type.display_name}</span>
+                          {isSelected && <CheckCircle2 style={{ width: 14, height: 14, color: BT.text.green, flexShrink: 0 }} />}
                         </div>
                       );
                     })}
@@ -319,62 +245,48 @@ export default function PropertyTypesSettings() {
           </div>
         </div>
 
-        {/* Right Panel - Selected Type Details & Strategies */}
-        <div className="w-1/2 overflow-y-auto p-6 bg-gray-50">
+        <div style={{ width: '50%', overflowY: 'auto', padding: 16, background: BT.bg.terminal }}>
           {selectedType ? (
-            <div className="space-y-6">
-              {/* Selected Property Type Details */}
-              <div className="bg-white rounded-lg border border-gray-200 p-6">
-                <div className="flex items-start gap-4">
-                  <div className={`p-3 rounded-lg ${CATEGORY_COLORS[selectedType.category]?.bg || 'bg-gray-100'}`}>
-                    <LucideIcon
-                      name={selectedType.icon}
-                      className={`w-8 h-8 ${CATEGORY_COLORS[selectedType.category]?.icon || 'text-gray-500'}`}
-                    />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div style={{ padding: 16, background: BT.bg.panel, border: `1px solid ${BT.border.subtle}` }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                  <div style={{ padding: 10, background: BT.bg.panelAlt }}>
+                    <LucideIcon name={selectedType.icon} style={{ width: 28, height: 28, color: CATEGORY_ACCENT[selectedType.category] || BT.text.cyan }} />
                   </div>
-                  <div className="flex-1">
-                    <div className="flex items-start justify-between mb-2">
-                      <h3 className="text-xl font-bold text-gray-900">{selectedType.display_name}</h3>
-                      <span className={`text-xs px-2 py-1 rounded-full ${CATEGORY_COLORS[selectedType.category]?.bg} ${CATEGORY_COLORS[selectedType.category]?.text}`}>
-                        {selectedType.category}
-                      </span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                      <span style={{ fontSize: 16, fontWeight: 700, color: BT.text.primary }}>{selectedType.display_name}</span>
+                      <span style={{ padding: '2px 8px', fontSize: 9, fontWeight: 600, color: CATEGORY_ACCENT[selectedType.category] || BT.text.cyan, background: BT.bg.panelAlt, ...mono }}>{selectedType.category}</span>
                     </div>
-                    <p className="text-sm text-gray-600">{selectedType.description}</p>
+                    <p style={{ fontSize: 12, color: BT.text.secondary }}>{selectedType.description}</p>
                   </div>
                 </div>
               </div>
 
-              {/* Applicable Strategies */}
               <div>
-                <h4 className="text-lg font-bold text-gray-900 mb-3">
-                  Applicable Investment Strategies
-                </h4>
+                <h4 style={{ fontSize: 14, fontWeight: 700, color: BT.text.primary, marginBottom: 10 }}>Applicable Investment Strategies</h4>
 
                 {loadingStrategies ? (
-                  <div className="flex items-center justify-center py-12">
-                    <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 48 }}>
+                    <div style={{ height: 24, width: 24, border: `2px solid ${BT.border.subtle}`, borderBottom: `2px solid ${BT.text.cyan}`, borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
                   </div>
                 ) : strategies.length > 0 ? (
-                  <div className="space-y-3">
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {strategies.map((strategy) => {
-                      const strengthColor = STRENGTH_COLORS[strategy.strength || 'weak'];
-
+                      const sc = strengthColors[strategy.strength || 'weak'];
                       return (
-                        <div
-                          key={strategy.slug}
-                          className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow-md transition-shadow"
-                        >
-                          <div className="flex items-start justify-between mb-2">
-                            <h5 className="font-semibold text-gray-900">{strategy.name}</h5>
-                            <span className={`text-xs px-2 py-1 rounded-full font-medium flex items-center gap-1.5 ${strengthColor.bg} ${strengthColor.text} border ${strengthColor.border}`}>
-                              <span className={`w-2 h-2 rounded-full ${strengthColor.dot}`}></span>
-                              {strategy.strength?.charAt(0).toUpperCase() + strategy.strength?.slice(1)}
+                        <div key={strategy.slug} style={{ padding: 14, background: BT.bg.panel, border: `1px solid ${BT.border.subtle}` }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                            <span style={{ fontWeight: 600, fontSize: 13, color: BT.text.primary }}>{strategy.name}</span>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 8px', fontSize: 9, fontWeight: 600, color: sc.color, background: BT.bg.panelAlt, ...mono }}>
+                              <span style={{ width: 6, height: 6, borderRadius: '50%', background: sc.dot, display: 'inline-block' }} />
+                              {strategy.strength?.charAt(0).toUpperCase()}{strategy.strength?.slice(1)}
                             </span>
                           </div>
-                          <p className="text-sm text-gray-600 mb-2">{strategy.description}</p>
+                          <p style={{ fontSize: 12, color: BT.text.secondary, marginBottom: 4 }}>{strategy.description}</p>
                           {strategy.rationale && (
-                            <div className="mt-3 pt-3 border-t border-gray-100">
-                              <p className="text-xs text-gray-500 italic">
+                            <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${BT.border.subtle}` }}>
+                              <p style={{ fontSize: 10, color: BT.text.muted, fontStyle: 'italic' }}>
                                 <strong>Rationale:</strong> {strategy.rationale}
                               </p>
                             </div>
@@ -384,75 +296,83 @@ export default function PropertyTypesSettings() {
                     })}
                   </div>
                 ) : (
-                  <div className="text-center py-12 text-gray-500">
-                    <p>No strategies available for this property type.</p>
+                  <div style={{ textAlign: 'center', padding: 48, color: BT.text.muted, fontSize: 12 }}>
+                    No strategies available for this property type.
                   </div>
                 )}
               </div>
 
-              {/* Strategy Legend */}
               {strategies.length > 0 && (
-                <div className="bg-white rounded-lg border border-gray-200 p-4">
-                  <h5 className="text-sm font-semibold text-gray-700 mb-3">Strategy Strength Guide</h5>
-                  <div className="space-y-2 text-xs">
-                    <div className="flex items-center gap-2">
-                      <span className="w-3 h-3 rounded-full bg-green-600"></span>
-                      <span className="text-gray-700"><strong>Strong:</strong> Highly applicable, proven track record</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="w-3 h-3 rounded-full bg-yellow-600"></span>
-                      <span className="text-gray-700"><strong>Moderate:</strong> Can work with right conditions</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="w-3 h-3 rounded-full bg-gray-400"></span>
-                      <span className="text-gray-700"><strong>Weak:</strong> Limited applicability or high challenges</span>
-                    </div>
+                <div style={{ padding: 14, background: BT.bg.panel, border: `1px solid ${BT.border.subtle}` }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: BT.text.secondary, marginBottom: 8 }}>Strategy Strength Guide</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 10 }}>
+                    {[
+                      { key: 'strong', label: 'Strong', desc: 'Highly applicable, proven track record' },
+                      { key: 'moderate', label: 'Moderate', desc: 'Can work with right conditions' },
+                      { key: 'weak', label: 'Weak', desc: 'Limited applicability or high challenges' },
+                    ].map(item => (
+                      <div key={item.key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: strengthColors[item.key].dot, display: 'inline-block', flexShrink: 0 }} />
+                        <span style={{ color: BT.text.secondary }}><strong style={{ color: BT.text.primary }}>{item.label}:</strong> {item.desc}</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
             </div>
           ) : (
-            <div className="flex items-center justify-center h-full text-gray-500">
-              <div className="text-center">
-                <Building2 className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                <p className="text-lg font-medium">Select a property type</p>
-                <p className="text-sm">Click on any property type to view applicable strategies</p>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+              <div style={{ textAlign: 'center' }}>
+                <Building2 style={{ width: 48, height: 48, color: BT.text.muted, margin: '0 auto 12px' }} />
+                <div style={{ fontSize: 14, fontWeight: 600, color: BT.text.secondary }}>Select a property type</div>
+                <div style={{ fontSize: 11, color: BT.text.muted, marginTop: 4 }}>Click on any property type to view applicable strategies</div>
               </div>
             </div>
           )}
         </div>
       </div>
 
-      {/* Footer - Save Button */}
-      <div className="px-6 py-4 border-t border-gray-200 bg-white space-y-3">
+      <div style={{ padding: '12px 20px', borderTop: `1px solid ${BT.border.subtle}`, background: BT.bg.panel }}>
         {saveMessage && (
-          <div className={`px-4 py-3 rounded-lg text-sm ${
-            saveMessage.type === 'success'
-              ? 'bg-green-50 text-green-700 border border-green-200'
-              : 'bg-red-50 text-red-700 border border-red-200'
-          }`}>
+          <div style={{
+            padding: '8px 14px',
+            fontSize: 12,
+            marginBottom: 10,
+            background: BT.bg.panelAlt,
+            color: saveMessage.type === 'success' ? BT.text.green : BT.text.red,
+            border: `1px solid ${saveMessage.type === 'success' ? BT.text.green : BT.text.red}`,
+          }}>
             {saveMessage.text}
           </div>
         )}
-        <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-600">
-          {selectedTypes.length} property type{selectedTypes.length !== 1 ? 's' : ''} selected
-        </p>
-        
-        <button
-          onClick={handleSave}
-          disabled={saving || selectedTypes.length === 0}
-          className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
-        >
-          {saving ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Saving...
-            </>
-          ) : (
-            'Save Preferences'
-          )}
-        </button>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 11, color: BT.text.muted }}>
+            {selectedTypes.length} property type{selectedTypes.length !== 1 ? 's' : ''} selected
+          </span>
+          <button
+            onClick={handleSave}
+            disabled={saving || selectedTypes.length === 0}
+            style={{
+              padding: '8px 20px',
+              background: saving || selectedTypes.length === 0 ? BT.bg.active : BT.text.cyan,
+              color: saving || selectedTypes.length === 0 ? BT.text.muted : BT.bg.terminal,
+              border: 'none',
+              fontSize: 11,
+              fontWeight: 600,
+              cursor: saving || selectedTypes.length === 0 ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              ...mono,
+            }}
+          >
+            {saving ? (
+              <>
+                <div style={{ height: 14, width: 14, border: '2px solid transparent', borderBottom: `2px solid ${BT.bg.terminal}`, borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                Saving...
+              </>
+            ) : 'Save Preferences'}
+          </button>
         </div>
       </div>
     </div>

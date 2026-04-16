@@ -171,38 +171,78 @@ export async function discoverTieredComps(dealId: string, radiusMiles: number = 
   const tradeAreaAddresses = new Set<string>();
   let tradeArea: TieredComp[] = [];
 
-  const geoTradeArea = await pool.query(`
-    SELECT pr.address, pr.city, pr.units, pr.year_built::int as year_built,
-           pr.stories, pr.class_code, pr.building_sqft,
-           COALESCE(p.lat, pr.lat::float) as lat,
-           COALESCE(p.lng, pr.lng::float) as lng,
-           CASE WHEN COALESCE(p.lat, pr.lat) IS NOT NULL THEN
-             ST_Distance(
-               ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
-               ST_SetSRID(ST_MakePoint(
-                 COALESCE(p.lng, pr.lng::float), COALESCE(p.lat, pr.lat::float)
-               ), 4326)::geography
-             ) / 1609.34
-           ELSE NULL END as distance_miles
-    FROM property_records pr
-    LEFT JOIN properties p ON LOWER(p.address_line1) = LOWER(pr.address) AND p.lat IS NOT NULL
-    WHERE pr.units >= 20
-      AND pr.address != $3
-      AND COALESCE(p.lat, pr.lat) IS NOT NULL
-      AND ST_DWithin(
-        ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
-        ST_SetSRID(ST_MakePoint(COALESCE(p.lng, pr.lng::float), COALESCE(p.lat, pr.lat::float)), 4326)::geography,
-        $4 * 1609.34
-      )
-    ORDER BY distance_miles ASC NULLS LAST
-    LIMIT 50
-  `, [deal.lng, deal.lat, dealAddress, radiusMiles]);
+  // Prefer trade_area_id boundary membership; fall back to radius when boundary unavailable
+  if (deal.trade_area_id) {
+    const taGeoResult = await pool.query(`
+      SELECT pr.address, pr.city, pr.units, pr.year_built::int as year_built,
+             pr.stories, pr.class_code, pr.building_sqft,
+             COALESCE(p.lat, pr.lat::float) as lat,
+             COALESCE(p.lng, pr.lng::float) as lng,
+             CASE WHEN COALESCE(p.lat, pr.lat) IS NOT NULL THEN
+               ST_Distance(
+                 ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
+                 ST_SetSRID(ST_MakePoint(
+                   COALESCE(p.lng, pr.lng::float), COALESCE(p.lat, pr.lat::float)
+                 ), 4326)::geography
+               ) / 1609.34
+             ELSE NULL END as distance_miles
+      FROM property_records pr
+      LEFT JOIN properties p ON LOWER(p.address_line1) = LOWER(pr.address) AND p.lat IS NOT NULL
+      JOIN trade_areas ta ON ta.id = $3
+      WHERE pr.units >= 20
+        AND pr.address != $4
+        AND COALESCE(p.lat, pr.lat) IS NOT NULL
+        AND ST_Within(
+          ST_SetSRID(ST_MakePoint(COALESCE(p.lng, pr.lng::float), COALESCE(p.lat, pr.lat::float)), 4326),
+          ta.boundary
+        )
+      ORDER BY distance_miles ASC NULLS LAST
+      LIMIT 50
+    `, [deal.lng, deal.lat, deal.trade_area_id, dealAddress]);
 
-  if (geoTradeArea.rows.length > 0) {
-    tradeArea = geoTradeArea.rows.map((c: any) => {
-      tradeAreaAddresses.add(c.address.toLowerCase());
-      return mapToTieredComp(c, 'trade_area', radiusMiles);
-    });
+    if (taGeoResult.rows.length > 0) {
+      tradeArea = taGeoResult.rows.map((c: any) => {
+        tradeAreaAddresses.add(c.address.toLowerCase());
+        return mapToTieredComp(c, 'trade_area', radiusMiles);
+      });
+    }
+  }
+
+  // Radius fallback when trade_area_id missing or boundary returned < 5 comps
+  if (tradeArea.length < 5) {
+    const geoTradeArea = await pool.query(`
+      SELECT pr.address, pr.city, pr.units, pr.year_built::int as year_built,
+             pr.stories, pr.class_code, pr.building_sqft,
+             COALESCE(p.lat, pr.lat::float) as lat,
+             COALESCE(p.lng, pr.lng::float) as lng,
+             CASE WHEN COALESCE(p.lat, pr.lat) IS NOT NULL THEN
+               ST_Distance(
+                 ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
+                 ST_SetSRID(ST_MakePoint(
+                   COALESCE(p.lng, pr.lng::float), COALESCE(p.lat, pr.lat::float)
+                 ), 4326)::geography
+               ) / 1609.34
+             ELSE NULL END as distance_miles
+      FROM property_records pr
+      LEFT JOIN properties p ON LOWER(p.address_line1) = LOWER(pr.address) AND p.lat IS NOT NULL
+      WHERE pr.units >= 20
+        AND pr.address != $3
+        AND COALESCE(p.lat, pr.lat) IS NOT NULL
+        AND ST_DWithin(
+          ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
+          ST_SetSRID(ST_MakePoint(COALESCE(p.lng, pr.lng::float), COALESCE(p.lat, pr.lat::float)), 4326)::geography,
+          $4 * 1609.34
+        )
+      ORDER BY distance_miles ASC NULLS LAST
+      LIMIT 50
+    `, [deal.lng, deal.lat, dealAddress, radiusMiles]);
+
+    for (const c of geoTradeArea.rows) {
+      if (!tradeAreaAddresses.has(c.address.toLowerCase())) {
+        tradeAreaAddresses.add(c.address.toLowerCase());
+        tradeArea.push(mapToTieredComp(c, 'trade_area', radiusMiles));
+      }
+    }
   }
 
   if (tradeArea.length < 5) {
@@ -343,6 +383,61 @@ export async function discoverTieredComps(dealId: string, radiusMiles: number = 
   submarketComps.sort((a, b) => b.match_score - a.match_score);
   msaComps.sort((a, b) => b.match_score - a.match_score);
 
+  // ── Enrich: pull real avg_rent + occupancy from comp_properties/comp_unit_types ──
+  const allTierComps = [...tradeArea, ...submarketComps, ...msaComps];
+  if (allTierComps.length > 0) {
+    const addrKeys = allTierComps.map(c => c.address.toLowerCase());
+
+    // Weighted avg_rent and occupancy (100 - vacancy_pct) per address via comp_unit_types
+    const [enrichRows, storedRows] = await Promise.all([
+      pool.query<{ addr_key: string; avg_rent: string; occupancy: string }>(`
+        SELECT
+          LOWER(cp.address) AS addr_key,
+          SUM(cut.avg_rent * cut.mix_pct) / NULLIF(SUM(cut.mix_pct), 0) AS avg_rent,
+          100 - AVG(cut.vacancy_pct) AS occupancy
+        FROM comp_properties cp
+        JOIN comp_unit_types cut ON cut.comp_id = cp.id
+        WHERE LOWER(cp.address) = ANY($1)
+          AND cut.avg_rent IS NOT NULL
+        GROUP BY LOWER(cp.address)
+      `, [addrKeys]),
+      pool.query<{ addr_key: string; avg_rent: string; occupancy: string }>(`
+        SELECT
+          LOWER(comp_property_address) AS addr_key,
+          avg_rent,
+          occupancy
+        FROM deal_comp_sets
+        WHERE deal_id = $1
+          AND (avg_rent IS NOT NULL OR occupancy IS NOT NULL)
+      `, [dealId]),
+    ]);
+
+    const enrichMap = new Map<string, { avg_rent: number | null; occupancy: number | null }>();
+    for (const r of enrichRows.rows) {
+      enrichMap.set(r.addr_key, {
+        avg_rent: r.avg_rent != null ? Math.round(Number(r.avg_rent)) : null,
+        occupancy: r.occupancy != null ? Math.round(Number(r.occupancy) * 10) / 10 : null,
+      });
+    }
+    for (const r of storedRows.rows) {
+      if (!enrichMap.has(r.addr_key)) {
+        enrichMap.set(r.addr_key, {
+          avg_rent: r.avg_rent != null ? Number(r.avg_rent) : null,
+          occupancy: r.occupancy != null ? Number(r.occupancy) : null,
+        });
+      }
+    }
+
+    for (const comp of allTierComps) {
+      const key = comp.address.toLowerCase();
+      const enrich = enrichMap.get(key);
+      if (enrich) {
+        comp.avg_rent = enrich.avg_rent;
+        comp.occupancy = enrich.occupancy;
+      }
+    }
+  }
+
   return {
     trade_area: tradeArea,
     submarket: submarketComps,
@@ -404,10 +499,18 @@ export async function autoDiscoverComps(dealId: string, options: DiscoveryOption
                ) / 1609.34 as distance_miles
         FROM property_records pr
         LEFT JOIN properties p ON LOWER(p.address_line1) = LOWER(pr.address) AND p.lat IS NOT NULL
-        CROSS JOIN trade_areas ta
-        WHERE ta.id = $1
-          AND pr.units >= 20
+        JOIN trade_areas ta ON ta.id = $1
+        WHERE pr.units >= 20
           AND pr.address != $4
+          AND COALESCE(p.lat, pr.lat) IS NOT NULL
+          AND COALESCE(p.lng, pr.lng) IS NOT NULL
+          AND ST_Within(
+            ST_SetSRID(ST_MakePoint(
+              COALESCE(p.lng, pr.lng::float),
+              COALESCE(p.lat, pr.lat::float)
+            ), 4326),
+            ta.boundary
+          )
         ORDER BY distance_miles ASC NULLS LAST
         LIMIT 100
       `, [deal.trade_area_id, deal.lng, deal.lat, deal.address || '']);
@@ -473,6 +576,13 @@ export async function autoDiscoverComps(dealId: string, options: DiscoveryOption
     scored.sort((a, b) => b.match_score - a.match_score);
     const topComps = scored.slice(0, maxComps);
 
+    // True reset: deactivate all existing active comps before inserting new defaults
+    await pool.query(
+      `UPDATE deal_comp_sets SET status = 'removed', updated_at = NOW() WHERE deal_id = $1 AND status = 'active'`,
+      [dealId]
+    );
+    logger.info('Reset active comp set for deal', { dealId });
+
     let inserted = 0;
     for (const comp of topComps) {
       try {
@@ -484,6 +594,7 @@ export async function autoDiscoverComps(dealId: string, options: DiscoveryOption
             lat, lng
           ) VALUES ($1, $2, $3, 'auto', 'active', $4, $5, $6, $7, $8, $9, $10, $11, $12)
           ON CONFLICT (deal_id, comp_property_address) DO UPDATE SET
+            status = 'active',
             match_score = EXCLUDED.match_score,
             match_factors = EXCLUDED.match_factors,
             distance_miles = EXCLUDED.distance_miles,

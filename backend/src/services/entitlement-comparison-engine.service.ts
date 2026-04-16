@@ -69,6 +69,67 @@ interface ResolvedConstraints {
   densityMethod: string;
 }
 
+export interface StructuredZoningExtraction {
+  density: {
+    max_units_per_acre: number;
+    measurement_basis: string;
+    unit_equivalency: string;
+    bonuses: any[];
+    source: string;
+    confidence: string;
+    notes: string;
+  };
+  far: {
+    residential: number;
+    commercial: number;
+    combined: number;
+    applied_type: string;
+    measurement_basis: string;
+    exclusions: Record<string, boolean>;
+    common_area_note: string;
+    source: string;
+    confidence: string;
+    ambiguity: string;
+  };
+  height: {
+    max_ft: number;
+    max_stories: number | null;
+    measurement_from: string;
+    step_back: any | null;
+    roof_exclusion_ft: number;
+    source: string;
+    confidence: string;
+  };
+  setbacks: {
+    front_ft: number;
+    side_ft: number;
+    rear_ft: number;
+    corner_treatment: string;
+    source: string;
+    confidence: string;
+  };
+  parking: {
+    min_per_unit: number;
+    guest_per_unit: number;
+    by_bedroom: boolean;
+    transit_reduction: any | null;
+    shared_parking: any | null;
+    compact_pct: number;
+    source: string;
+    confidence: string;
+  };
+  coverage: {
+    max_lot_coverage_pct: number;
+    includes_carports: boolean;
+    impervious_limit_pct: number | null;
+    open_space_pct: number;
+    open_space_at_grade: boolean;
+    source: string;
+    confidence: string;
+    ambiguity: string;
+  };
+}
+
 interface ComputedPath {
   key: string;
   label: string;
@@ -1265,5 +1326,139 @@ Keep extraRow values under 70 characters. Do not add rows beyond these four.`;
       variancePct,
       baseDistrictCode,
     };
+  }
+
+  async extractStructuredZoning(
+    municodeText: string,
+    districtCode: string,
+    municipality: string
+  ): Promise<StructuredZoningExtraction> {
+    try {
+      const systemPrompt = `You are a zoning code interpreter for a real estate development feasibility analysis.
+
+I will give you the full text of a zoning district ordinance.
+
+For each parameter, extract:
+1. The numeric value
+2. The EXACT section reference (e.g., "Sec. 16-18A.007(3)(b)")
+3. Any conditions that modify the value (transit proximity, affordable set-aside, overlay)
+4. The DEFINITION used
+5. Any ambiguity you notice — where the code could be interpreted two ways
+
+Specifically extract:
+
+DENSITY:
+- Maximum density (units per acre) — is this GROSS or NET acres?
+- Any unit equivalency rules (do studios count as 0.5 units?)
+- Any density bonuses available and their requirements
+- Minimum lot area per unit (if density is expressed this way instead)
+
+FAR:
+- Residential FAR (if separate)
+- Commercial/Non-residential FAR (if separate)
+- Combined/Total FAR cap (if applicable)
+- What is EXCLUDED from FAR calculation? List each exclusion:
+  □ Open/surface parking
+  □ Structured parking (all, first floor only, or none)
+  □ Balconies (enclosed? unenclosed?)
+  □ Mechanical rooms/equipment
+  □ Common area/corridors
+  □ Amenity spaces (pool deck, fitness, leasing office)
+  □ Below-grade space
+- Is FAR measured against GROSS lot area or NET (after setbacks)?
+
+HEIGHT:
+- Maximum height in feet
+- Maximum stories (if specified separately)
+- How is height measured? (from grade, from BFE, from mean finished grade)
+- Any step-back requirements above a certain floor?
+- Roof structure exclusions (how many feet above max?)
+- Any height overlay map that supersedes?
+
+SETBACKS:
+- Front, side, rear in feet
+- Are there different setbacks above certain heights?
+- Corner lot treatment — which sides are "front"?
+- Do step-backs count as setbacks at upper floors?
+
+PARKING:
+- Minimum spaces per unit (by bedroom count?)
+- Guest parking requirement
+- Any transit proximity reductions? (distance threshold + reduction %)
+- Shared parking provisions for mixed-use?
+- Compact/tandem allowances?
+- Maximum parking caps?
+- Bicycle parking substitution?
+
+LOT COVERAGE:
+- Maximum lot coverage %
+- What counts as "covered"? Building footprint only or include carports/canopies?
+- Separate impervious surface limit?
+- Open space requirement (at grade? or any level?)
+- Landscaping/buffer requirements eating into coverage?
+
+OVERLAYS & BONUSES:
+- Any overlay districts applicable?
+- Each overlay's modifications to base parameters
+- Can bonuses from multiple programs stack?
+- Affordable housing incentive thresholds and benefits
+
+For each parameter, rate your confidence:
+- HIGH: Unambiguous numeric value with clear definition
+- MEDIUM: Numeric value found but definition/measurement basis has some ambiguity
+- LOW: Value inferred or calculated from related provisions; needs human verification
+
+Format as JSON matching the structure below. Return ONLY the JSON, no markdown fences, no preamble.`;
+
+      const response = await anthropic.messages.create({
+        model: 'claude-opus-4-6',
+        max_tokens: 4096,
+        system: systemPrompt,
+        messages: [
+          {
+            role: 'user',
+            content: `Extract zoning parameters from the following ordinance text for district ${districtCode} in ${municipality}:\n\n${municodeText}`,
+          },
+        ],
+      });
+
+      let extractedText = response.content[0].type === 'text' ? response.content[0].text : '';
+
+      // Strip markdown fences if present
+      extractedText = extractedText.replace(/^```json\n?/, '').replace(/\n?```$/, '');
+
+      const extraction = JSON.parse(extractedText) as StructuredZoningExtraction;
+
+      // Validate numeric ranges
+      const validationIssues: string[] = [];
+
+      if (extraction.density.max_units_per_acre < 0 || extraction.density.max_units_per_acre > 500) {
+        validationIssues.push('Density outside reasonable range (0-500 units/acre)');
+      }
+      if (extraction.far.residential < 0 || extraction.far.residential > 25) {
+        validationIssues.push('Residential FAR outside reasonable range (0-25)');
+      }
+      if (extraction.far.commercial < 0 || extraction.far.commercial > 25) {
+        validationIssues.push('Commercial FAR outside reasonable range (0-25)');
+      }
+      if (extraction.height.max_ft < 0 || extraction.height.max_ft > 1000) {
+        validationIssues.push('Height outside reasonable range (0-1000 ft)');
+      }
+      if (extraction.parking.min_per_unit < 0 || extraction.parking.min_per_unit > 5) {
+        validationIssues.push('Parking per unit outside reasonable range (0-5)');
+      }
+      if (extraction.coverage.max_lot_coverage_pct < 0 || extraction.coverage.max_lot_coverage_pct > 100) {
+        validationIssues.push('Lot coverage outside reasonable range (0-100%)');
+      }
+
+      if (validationIssues.length > 0) {
+        extraction.density.notes += ` [Validation warnings: ${validationIssues.join('; ')}]`;
+      }
+
+      return extraction;
+    } catch (error) {
+      console.error('Error extracting zoning structure:', error);
+      throw error;
+    }
   }
 }

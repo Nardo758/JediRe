@@ -4,6 +4,7 @@
  */
 
 import { Router, Response } from 'express';
+import axios from 'axios';
 import { getPool } from '../../database/connection';
 import { AuthenticatedRequest } from '../../middleware/auth';
 
@@ -13,7 +14,7 @@ const pool = getPool();
 /**
  * Middleware: Require Admin API Key
  */
-function requireAdminApiKey(req: AuthenticatedRequest, res: Response, next: Function) {
+export function requireAdminApiKey(req: AuthenticatedRequest, res: Response, next: Function) {
   const apiKey = req.headers['x-api-key'] as string;
   
   if (!apiKey) {
@@ -260,7 +261,7 @@ router.post('/ingest/census-acs', requireAdminApiKey, async (req: AuthenticatedR
       success: true,
       service: 'Census ACS',
       result: {
-        zipCodesProcessed: result.zipCodesProcessed,
+        countiesProcessed: result.countiesProcessed,
         rowsInserted: result.rowsInserted,
         errors: result.errors.length,
         duration_ms: result.endTime.getTime() - result.startTime.getTime(),
@@ -269,10 +270,10 @@ router.post('/ingest/census-acs', requireAdminApiKey, async (req: AuthenticatedR
       timestamp: new Date().toISOString()
     });
   } catch (error: any) {
-    res.status(500).json({
-      error: 'Ingestion Failed',
-      message: error.message
-    });
+    const message = error?.response?.data
+      ? `Census API error ${error.response.status}: ${JSON.stringify(error.response.data).slice(0, 200)}`
+      : error?.message || String(error);
+    res.status(500).json({ error: 'Ingestion Failed', message });
   }
 });
 
@@ -306,10 +307,10 @@ router.post('/ingest/census-building-permits', requireAdminApiKey, async (req: A
       timestamp: new Date().toISOString()
     });
   } catch (error: any) {
-    res.status(500).json({
-      error: 'Ingestion Failed',
-      message: error.message
-    });
+    const message = error?.response?.data
+      ? `Census API error ${error.response.status}: ${JSON.stringify(error.response.data).slice(0, 200)}`
+      : error?.message || String(error);
+    res.status(500).json({ error: 'Ingestion Failed', message });
   }
 });
 

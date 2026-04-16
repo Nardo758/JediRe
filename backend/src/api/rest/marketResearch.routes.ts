@@ -20,7 +20,7 @@ router.post('/generate/:dealId', async (req, res) => {
     
     // Get deal location
     const dealResult = await pool.query(`
-      SELECT id, property_name, latitude, longitude, city, state, address
+      SELECT id, name AS property_name, latitude, longitude, city, state, address
       FROM deals 
       WHERE id = $1
     `, [dealId]);

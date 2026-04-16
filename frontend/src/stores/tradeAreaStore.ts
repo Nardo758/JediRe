@@ -2,10 +2,16 @@ import { create } from 'zustand';
 import { DefinitionMethod, TradeArea, TradeAreaStats, GeographicScope } from '../types/trade-area';
 import { api } from '../services/api';
 
+interface GeographicStats {
+  occupancy?: unknown;
+  avg_rent?: unknown;
+}
+
 interface TradeAreaStore {
   // Active context for current deal/property
   activeTradeArea: TradeArea | null;
   activeScope: GeographicScope;
+  geographicStats: Record<string, GeographicStats> | null;
   
   // Trade area creation state
   definitionMethod: DefinitionMethod | null;
@@ -18,6 +24,7 @@ interface TradeAreaStore {
   
   // Actions
   setScope: (scope: GeographicScope) => void;
+  setGeographicStats: (stats: Record<string, GeographicStats> | null) => void;
   setDefinitionMethod: (method: DefinitionMethod) => void;
   setRadiusMiles: (miles: number) => void;
   setDriveTimeMinutes: (minutes: number) => void;
@@ -43,6 +50,7 @@ export const useTradeAreaStore = create<TradeAreaStore>((set, get) => ({
   // Initial state
   activeTradeArea: null,
   activeScope: 'submarket',
+  geographicStats: null,
   definitionMethod: null,
   isDrawing: false,
   draftGeometry: null,
@@ -53,6 +61,7 @@ export const useTradeAreaStore = create<TradeAreaStore>((set, get) => ({
   
   // Actions
   setScope: (scope) => set({ activeScope: scope }),
+  setGeographicStats: (stats) => set({ geographicStats: stats }),
   
   setDefinitionMethod: (method) => set({ 
     definitionMethod: method,

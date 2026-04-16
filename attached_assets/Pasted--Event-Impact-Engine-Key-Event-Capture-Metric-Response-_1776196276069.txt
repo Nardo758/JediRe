@@ -1,0 +1,721 @@
+# Event Impact Engine — Key Event Capture & Metric Response Framework
+
+**Module:** M35 Event Impact Engine (new module)
+**Status:** Implementation-grade spec
+**Relationship to existing modules:**
+- **M06 Demand Signal** already ingests events but applies them to JEDI Score — doesn't track per-metric delta over time
+- **Correlation Engine** tracks metric-vs-metric relationships but not metric-vs-event
+- **M08 Strategies** consumes event-adjusted signals but doesn't own the event library
+- M35 sits alongside these and feeds them the structured event library + metric response expectations
+
+---
+
+## 1. The Gap This Closes
+
+The platform knows events happen (demand signal). It knows metrics correlate with each other (correlation engine). It doesn't know **how specific event types historically affect specific metrics, with what lag, at what magnitude, with what confidence** — and therefore can't say:
+
+> "Amazon HQ2 announcements in other MSAs lifted rent growth 3.8% over 18 months with 74% confidence. Tampa just got a similar event 8 months ago. Rents are tracking +2.1% so far — on pace for ~3.5% cumulative, slightly below historical comp-event median."
+
+That's the output of an event impact engine. Three things it has to do:
+
+1. **Capture** events with enough structure to find comparable prior events
+2. **Measure** what metrics moved after the event, by how much, with what lag
+3. **Predict** what similar events will do to similar markets, and **back-test** predictions against what actually happened
+
+Without this, every event is analyzed from scratch. With it, the platform accumulates an event playbook that gets better with every new event.
+
+---
+
+## 2. Event Taxonomy
+
+### 2.1 Event Categories
+
+Events are classified at two levels: **category** (top) and **subtype** (specific).
+
+```
+EMPLOYMENT
+├── Major employer announcement (HQ relocation, large expansion)
+├── Major employer layoffs / departure
+├── Plant opening
+├── Plant closure
+├── Military base expansion / BRAC closure
+└── Hospital / medical center opening
+
+INFRASTRUCTURE
+├── Transit line opening (rail, BRT, streetcar)
+├── Highway expansion / interchange
+├── Airport expansion / new terminal
+├── Port expansion
+├── Sports / entertainment venue opening
+├── Convention center opening / expansion
+└── Utility upgrade (broadband, power, water)
+
+REGULATORY / POLICY
+├── Zoning change (upzone, downzone, overlay district)
+├── Rent control / stabilization enacted or repealed
+├── STR regulation (ban, permit cap, registration)
+├── Tax abatement / opportunity zone designation
+├── Eviction moratorium
+├── Building code change (seismic, energy, accessibility)
+├── Insurance regulation (FL-specific wind rate caps, Citizens changes)
+└── Immigration policy shift (affects specific labor markets)
+
+MARKET STRUCTURE
+├── Major delivery wave (>500 units in submarket within 6mo)
+├── Major acquisition (portfolio or trophy asset)
+├── Major REIT or institutional entry / exit
+├── Lender exit (bank closure, CMBS issuer pulling back)
+├── Interest rate regime shift (Fed pivot, SOFR step)
+└── Cap rate regime shift (200+bps move in submarket)
+
+MACRO / DEMOGRAPHIC
+├── In-migration wave (measurable population surge)
+├── Out-migration wave
+├── Wage growth acceleration / deceleration
+├── Industry cluster emergence (tech hub, medical cluster, logistics hub)
+└── Demographic tipping point (millennial household formation, retiree influx)
+
+DISASTER / DISRUPTION
+├── Hurricane / named storm
+├── Flood event (100-yr, 500-yr)
+├── Wildfire
+├── Pandemic / public health event
+├── Civil unrest
+└── Insurance market disruption (FL carrier exits)
+
+TECHNOLOGY / INDUSTRY
+├── AI / automation shift affecting specific job categories
+├── Remote work regime shift (policy changes, RTO mandates)
+├── E-commerce step-change (affects retail / industrial)
+├── EV infrastructure buildout
+└── Renewable energy project
+```
+
+The taxonomy is extensible — new subtypes register into the library without code changes.
+
+### 2.2 Event Record Schema
+
+Every captured event has this structure:
+
+```ts
+interface KeyEvent {
+  id: string;                              // stable ID for cross-reference
+  category: EventCategory;
+  subtype: string;                          // e.g. 'hq_relocation_major'
+  
+  // Identity
+  title: string;                            // "Amazon announces Tampa HQ2 — 2,000 jobs"
+  description: string;                      
+  source: EventSource;                      // URL, filing reference, news source
+  sourceDate: string;                       // when source published
+  announcedDate: string;                    // when event was announced
+  materialDate: string;                     // when the thing actually happens (delivery, opening, enactment)
+  
+  // Geographic scope
+  geography: {
+    msa: string;
+    submarket?: string;
+    zipCodes?: string[];
+    lat?: number; lng?: number;              // point events
+    polygon?: GeoJSON;                       // area events
+    radiusMiles?: number;                    // impact radius
+  };
+  
+  // Magnitude anchors (per subtype — different events have different magnitude measures)
+  magnitude: {
+    primary: { metric: string; value: number; unit: string; };  // e.g. {metric:'jobs', value:2000, unit:'count'}
+    secondary?: { metric: string; value: number; unit: string; }[];
+    wageLevel?: number;                       // for employment events — avg wage of jobs
+    sizeCategory: 'small' | 'medium' | 'large' | 'transformative';
+  };
+  
+  // Structural attributes (for finding comparable events)
+  attributes: {
+    sector?: string;                          // NAICS for employment
+    employerName?: string;
+    governmentLevel?: 'federal' | 'state' | 'county' | 'municipal';
+    permanence?: 'permanent' | 'temporary' | 'phased';
+    reversibilityRisk?: number;               // 0-1, likelihood event reverses
+    [custom: string]: any;
+  };
+  
+  // Confidence / verification
+  verified: boolean;                          // user or platform confirmed
+  verificationMethod?: 'primary_source' | 'news_multi' | 'filing' | 'manual';
+  confidence: number;                         // 0-1, likelihood event actually happens or reversed
+  
+  // Relationships
+  parentEventId?: string;                     // if this event is a sub-event of a larger one
+  relatedEventIds?: string[];                 // cross-references
+  
+  // Lifecycle
+  status: 'announced' | 'in_progress' | 'materialized' | 'delayed' | 'cancelled' | 'reversed';
+  statusHistory: Array<{ status: string; date: string; note?: string; }>;
+  
+  createdBy: 'platform_ingestion' | 'user' | 'admin';
+  createdAt: string;
+  updatedAt: string;
+}
+```
+
+### 2.3 Ingestion Sources
+
+Events ingest from multiple channels — not all require manual entry:
+
+**Automated:**
+- News scraping (platform already has news pipeline for M06) with NLP classifier to extract event type
+- Government filings (SEC 10-K / 8-K for corporate relocations, city council agenda scraping for zoning)
+- Permit records (major-project permits auto-create infrastructure events)
+- Census / BLS data (migration + wage events surface when thresholds breach)
+- FRED / economic data for macro events
+
+**Manual:**
+- User-submitted events (user sees news, adds to platform library)
+- Admin-curated "canonical" events (high-significance events get admin review)
+
+**Cross-platform:**
+- Events surfaced via correlation engine (when concurrent signals fire unexpectedly, surface for event classification)
+
+---
+
+## 3. Metric Response Measurement
+
+This is the heart of the module: **for every captured event, measure what happened to key metrics after the event.**
+
+### 3.1 Tracked Metrics per Event
+
+Each event subtype has a **default metric watchlist** — which metrics are expected to respond and should be tracked. Extensible per event.
+
+**Example — HQ Relocation event watchlist:**
+```
+Rent growth (YoY)
+Occupancy rate
+Absorption
+Price per unit (transaction)
+Cap rate
+Permit velocity
+Search momentum (apartments.com / Google Trends)
+AADT traffic near the HQ site
+In-migration (USPS change-of-address, IRS migration data)
+Wage growth (BLS QCEW)
+```
+
+**Example — Transit Opening event watchlist:**
+```
+Rent/SF within 0.5mi station radius
+Price per SF within 0.5mi station radius
+Permit velocity within station radius
+Traffic patterns (congestion along parallel roads)
+Walkability score
+Retail rent/SF near stations
+```
+
+**Example — STR Regulation event watchlist:**
+```
+STR listing counts
+Long-term rental supply
+ADR (average daily rate)
+Occupancy on STR
+Home prices in tourist submarkets
+Long-term rent growth
+```
+
+The watchlist per event subtype lives in a config table, editable without code changes.
+
+### 3.2 Pre / Post Windowing
+
+For each tracked metric, the engine measures pre-event baseline and post-event values at standardized windows.
+
+**Standard windows:**
+- Pre-event: T-12mo to T-0 (baseline trend)
+- Immediate: T+0 to T+3mo
+- Short-term: T+3mo to T+12mo
+- Medium-term: T+12mo to T+24mo
+- Long-term: T+24mo to T+60mo
+
+Different event types weight different windows. Transit openings have the biggest effects at T+12-24mo. HQ announcements have big effects at T+3-18mo. Zoning changes have 24-60mo delays.
+
+### 3.3 Delta Computation
+
+For each metric × window combination:
+
+```
+baseline_trend = OLS trend over T-12mo to T-0
+projected_value_at_T+N = baseline_trend extrapolated to T+N
+actual_value_at_T+N = observed metric value
+delta = actual - projected  (the event impact)
+delta_pct = (actual - projected) / projected
+```
+
+This separates **event-attributable change** from **trend continuation**. If rents were already growing at 3% and they grew 3% after the event, no attribution. If they grew 6%, the event-attributable delta is ~3 percentage points.
+
+### 3.4 Control Group Comparison
+
+To strengthen causal attribution, the engine compares the subject submarket to matched control submarkets that **didn't** experience the event:
+
+```
+subject_delta = subject_actual - subject_projected
+control_delta = average(control_actual - control_projected) across 3-5 similar submarkets without event
+attributed_delta = subject_delta - control_delta
+```
+
+This is a difference-in-differences approach — standard causal inference technique. It isolates what happened *specifically because of the event* from what was happening everywhere.
+
+Control submarkets selected by:
+- Same MSA or similar MSA
+- Same class tier
+- Similar demographic profile
+- Similar pre-event trend
+- No event of same category in same window
+
+### 3.5 Event Impact Record
+
+The output per event × metric × window:
+
+```ts
+interface EventImpact {
+  eventId: string;
+  metric: string;
+  window: 'immediate' | 'short' | 'medium' | 'long';
+  windowRange: [string, string];              // actual date range
+  
+  subject: {
+    preEventBaselineTrend: number;            // %/period
+    preEventValue: number;                     // at T-0
+    projectedAtWindowEnd: number;
+    actualAtWindowEnd: number;
+    delta: number;                             // actual - projected
+    deltaPct: number;
+  };
+  
+  controlGroup: {
+    controlSubmarkets: string[];               // IDs
+    averageDelta: number;
+    averageDeltaPct: number;
+  };
+  
+  attributedDelta: number;                     // subject - control
+  attributedDeltaPct: number;
+  
+  confidence: number;                          // based on control fit + data quality
+  pValue?: number;                             // if statistically testable
+  sampleSize: number;
+  
+  dataSource: string;
+  computedAt: string;
+}
+```
+
+Every attributed delta has a confidence score based on how well the controls match and how much data exists.
+
+---
+
+## 4. Event Playbook Library
+
+Individual event impacts are data points. Aggregated across many similar events, they form a **playbook** — the platform's learned response function per event type.
+
+### 4.1 Playbook Structure
+
+Per event subtype, the playbook aggregates all historical instances:
+
+```
+HQ Relocation — Major (2000+ jobs, relocation from another metro)
+
+Historical instances analyzed: 14 across US MSAs 2015-2024
+
+Typical magnitude response (median across instances):
+  Immediate (0-3mo):
+    Search momentum:    +28%   (p25-p75: +18% to +42%)
+    Rent growth:        +0.4pp (p25-p75: +0.1pp to +0.8pp)
+  
+  Short-term (3-12mo):
+    Search momentum:    +45%   (p25-p75: +28% to +68%)
+    Rent growth:        +1.8pp (p25-p75: +0.9pp to +3.2pp)
+    Absorption:         +22%   (p25-p75: +10% to +38%)
+    Transaction volume: +31%
+  
+  Medium-term (12-24mo):
+    Rent growth:        +3.8pp (p25-p75: +2.1pp to +5.5pp)  ← PEAK EFFECT
+    Cap rate:           -35bps (p25-p75: -15bps to -60bps)
+    Price/unit:         +14%
+    Permit velocity:    +48%
+  
+  Long-term (24-60mo):
+    Rent growth:        +1.2pp above baseline (partially normalizes)
+    Supply response:    +8% stock increase from permit wave
+
+Magnitude scaling factors:
+  Jobs × 0.0002 = rent_growth_pp (so 2,000 jobs ≈ +0.4pp base effect)
+  Wage premium multiplier: 1.4x if wages > 1.5x area median
+  MSA size attenuator: larger MSAs absorb better, so impact scales inverse to MSA size
+
+Lag structure:
+  Leading indicators respond at T+0-3mo (search, sentiment, inquiries)
+  Rent captures at T+6-18mo (lease renewals + new leases at new market)
+  Cap rate compresses at T+12-24mo (transactions repriced)
+  Supply response at T+18-36mo (permits → deliveries)
+
+Confidence: 0.74
+  (based on: 14 instances analyzed, 8 with full DiD vs controls, 6 with retrospective-only)
+
+Reversibility: rarely reverses; if employer pulls back, ~40% of gains retained (sticky)
+```
+
+The playbook is structured, numerical, and usable — not prose.
+
+### 4.2 Playbook Operations
+
+Three core operations:
+
+**Lookup** — given a new event, find the playbook for its subtype and return expected response per metric.
+
+**Forecast** — given a new event + submarket context, project expected metric values at each window, with confidence intervals. Used by M08 Strategies to adjust assumptions.
+
+**Backtest** — for any prior event, compare the playbook's prediction to actuals. Error signal used to refine playbook weights.
+
+### 4.3 Playbook Evolution
+
+Every new event instance updates the playbook:
+
+```
+playbook_v_next = weighted_update(
+  playbook_v_current,
+  new_instance_impact,
+  weight = new_instance_confidence
+)
+```
+
+Exponentially weighted so recent instances matter more (accounts for regime shifts). Also stratified — HQ relocations in tech hubs behave differently than in rust-belt cities, so the playbook has sub-playbooks by MSA cluster.
+
+---
+
+## 5. Forecasting: Using the Playbook for New Events
+
+When a new event fires, the platform generates a forecast for the affected metrics.
+
+### 5.1 Forecast Generation
+
+**Input:** New event with full schema + affected submarket context
+**Process:**
+1. Match event to playbook subtype
+2. Apply magnitude scaling based on event size, wage level, MSA size
+3. Apply submarket-specific adjustments (current supply, current vacancy, traffic position)
+4. Apply regime adjustments (currently-hot market vs cooling)
+5. Generate per-metric × per-window point estimates + confidence intervals
+
+**Output:**
+```
+Forecast for: Amazon announces Tampa HQ2 — 2,000 jobs
+
+Projected metric responses (submarket-adjusted):
+  T+3mo:  Search momentum +31% ±8pp, Rent growth no material change
+  T+12mo: Rent growth +2.3pp ±0.9pp, Absorption +26% ±6pp
+  T+24mo: Rent growth cumulative +4.5pp ±1.4pp, Cap rate -45bps ±18bps
+  T+36mo: Supply response begins, +12% permit velocity already observed
+
+Confidence: 0.68 (below playbook baseline because Tampa MSA has unusual supply pipeline)
+
+Strategic implications:
+  - Acquire before T+12mo to capture rent repricing
+  - Exit window optimal T+24 to T+30mo (peak pricing before supply response)
+  - Watch for secondary-employer follow-on announcements (Amazon often triggers ecosystem)
+```
+
+### 5.2 Forecast → ProForma Integration
+
+Forecasts feed the F9 Assumptions tab as Platform-layer adjustments to rent growth, vacancy, and exit cap. Each adjustment carries event attribution:
+
+```
+Assumption: Rent Growth Y2
+  Platform value: 5.8% (vs baseline 3.2%)
+  Derivation: "M35 Event #127 (Amazon HQ2 Tampa) + playbook subtype hq_relocation_major projects +2.3pp at T+12mo (this deal closes T-0)."
+```
+
+### 5.3 Forecast → Strategy Module Integration
+
+M08's plan formulator reads the forecast's timing signals to shape the debt plan + exit timing:
+
+```
+Strategy plan output:
+  "Exit target Q4 2028 (M+24) — aligns with projected peak rent + peak pricing per M35 playbook forecast.
+   Do not extend hold beyond M+30 — supply response expected to compress pricing after that."
+```
+
+### 5.4 Forecast → Correlation Engine Integration
+
+Active forecasts register with the correlation engine as "expected values." When actuals come in, the correlation engine tracks divergence. If actuals consistently overshoot the playbook, the playbook updates to steepen the response function for that subtype.
+
+---
+
+## 6. Backtesting & Confidence Scoring
+
+### 6.1 Backtest Process
+
+Every month, the engine runs backtests on events that are now at the 12mo, 24mo, 36mo mark:
+
+```
+For each event now at T+12mo (or T+24mo, T+36mo):
+  For each metric in watchlist:
+    Compute actual delta using DiD method
+    Compare to playbook forecast
+    Compute error = actual - forecast
+    Update playbook with new observation weighted by confidence
+    Log backtest result
+```
+
+### 6.2 Confidence Refinement
+
+Playbook confidence score updates based on backtest hit rate:
+
+```
+confidence = prior_confidence × (1 - decay) + new_evidence × decay
+  where new_evidence = accuracy_within_confidence_interval
+```
+
+If the playbook's ±1.4pp interval captured the actual 82% of the time, that's the confidence. If only 55%, confidence drops and interval widens until predictions calibrate.
+
+### 6.3 Regime Detection
+
+Occasionally, playbooks stop working — market structure changed. The engine monitors for this:
+
+```
+If recent 5 backtests show systematic bias (all over or all under predictions)
+  → flag regime shift
+  → reset playbook weights for that subtype
+  → surface to admin for review
+```
+
+Example: post-COVID, office-adjacent events behave differently than pre-2020. The engine detects this by observing consistent over-prediction in office-related impact and flags for manual investigation.
+
+### 6.4 Admin Dashboard
+
+A curated admin interface shows:
+- Event library (recent + historical)
+- Per-subtype playbook accuracy scores
+- Active forecasts and their current trajectory
+- Regime shift alerts
+- Manual-override queue (events needing admin verification)
+
+Users don't see the admin dashboard. But the forecasts and their confidence scores flow into Strategy + ProForma wherever events are referenced.
+
+---
+
+## 7. UI Surfaces
+
+The Event Impact Engine doesn't have its own primary surface — it feeds other modules. But it gets exposure in three places:
+
+### 7.1 Event Card (compact) — used in M08, F9, Market Intelligence
+
+Per active event affecting a deal or submarket:
+
+```
+┌──────────────────────────────────────────────────┐
+│ 📣 Amazon HQ2 — Tampa                  T+0 8mo   │
+│ 2,000 jobs at avg $95K wage                      │
+│ Announced Apr 2026 — in progress                 │
+│                                                   │
+│ Playbook forecast (hq_relocation_major):         │
+│ • Rent growth +2.3pp by T+12, +4.5pp by T+24     │
+│ • Absorption +26% at T+12                        │
+│ • Cap rate compression -45bps at T+24            │
+│                                                   │
+│ Actuals tracking:                                 │
+│ • Search momentum: +28% (forecast +31% — on pace)│
+│ • Rent growth: +2.1% YoY (forecast +1.3% — AHEAD)│
+│                                                   │
+│ [View Full Impact] [View Playbook]               │
+└──────────────────────────────────────────────────┘
+```
+
+### 7.2 Event Detail Page
+
+For a single event, shows:
+- Full event record + verification status
+- Affected submarket / geography visualization
+- Watchlist metrics with actual vs forecast curves
+- Related events (e.g., secondary employer moves triggered by primary)
+- Playbook citation and confidence
+
+### 7.3 Playbook Library Page
+
+Admin + power-user surface showing:
+- All event subtypes with their playbooks
+- Historical instance count and confidence per subtype
+- Regime shift indicators
+- Stratified playbooks (e.g., HQ relocations in MSAs >1M population vs <1M)
+
+### 7.4 Event Feed on Dashboard
+
+A live feed of events affecting user's tracked markets / deals. Each entry shows event + its forecast relevance to the user's portfolio.
+
+---
+
+## 8. Backend Data Contract
+
+```ts
+// Primary read endpoints
+
+GET /api/events/:eventId
+  → KeyEvent
+
+GET /api/events?msa=&submarket=&category=&dateRange=&limit=
+  → KeyEvent[]
+
+GET /api/events/:eventId/impacts
+  → EventImpact[]        // all measured impacts to date
+
+GET /api/events/:eventId/forecast?metrics=&horizons=
+  → ForecastOutput
+
+GET /api/playbooks/:subtype
+  → Playbook
+
+GET /api/playbooks/:subtype/backtest
+  → BacktestReport
+
+// Per-deal / per-submarket integration
+
+GET /api/deals/:dealId/events
+  → KeyEvent[]           // events affecting this deal
+  
+GET /api/submarkets/:id/active-forecasts
+  → ForecastOutput[]     // active event forecasts affecting submarket
+
+// Writes
+
+POST /api/events
+  → create event (user or platform submission)
+
+PATCH /api/events/:eventId/status
+  → update lifecycle status
+
+POST /api/events/:eventId/verify
+  → admin verification
+```
+
+Kafka topics:
+- `event.ingested` — new event added
+- `event.verified` — admin verified event
+- `event.status_changed` — lifecycle change
+- `event.impact_measured` — new impact data point
+- `playbook.updated` — playbook refined
+- `forecast.diverged` — forecast and actual diverging materially
+
+M06, M08, M09 subscribe to relevant topics to update downstream computations.
+
+---
+
+## 9. Implementation Sequence
+
+**Phase 1 — Event foundations (4 sessions)**
+
+1. Event schema + database — tables for events, impacts, playbooks, backtests. Drizzle models.
+2. Event ingestion — news pipeline already exists for M06; extend with NLP classifier to extract event type + magnitude + geography. Manual submission API.
+3. Event taxonomy seed — seed library with canonical subtypes and watchlists.
+4. Event CRUD + search API.
+
+**Phase 2 — Impact measurement (3 sessions)**
+
+5. Metric time-series store — requires metric values at daily/weekly/monthly granularity for impact analysis. Leverages existing M05 market data; backfill as needed.
+6. Delta computation engine — pre/post windowing, OLS baseline extrapolation, actual observation.
+7. Difference-in-differences with control group — submarket matching + control delta subtraction.
+
+**Phase 3 — Playbook library (3 sessions)**
+
+8. Playbook aggregation — aggregate impact records per subtype into playbook distributions.
+9. Stratified playbooks — MSA cluster, magnitude class, regime era stratification.
+10. Magnitude scaling + submarket adjustment functions.
+
+**Phase 4 — Forecasting (2 sessions)**
+
+11. Forecast generator — takes new event + context → emits per-metric × per-window point + interval estimates.
+12. Forecast publication to Kafka — downstream services subscribe.
+
+**Phase 5 — Backtesting (2 sessions)**
+
+13. Monthly backtest runner — scheduled job measuring actuals against forecasts at T+12, T+24, T+36 milestones.
+14. Confidence refinement + regime detection.
+
+**Phase 6 — Integration (3 sessions)**
+
+15. M06 Demand Signal — consume M35 forecasts to adjust event impact weights (already-fired events with known playbook response).
+16. M08 Strategy — plan formulator reads forecasts for timing guidance (entry, exit windows).
+17. M09 ProForma — Assumptions tab shows event-attributed adjustments with M35 forecast as source.
+
+**Phase 7 — UI (3 sessions)**
+
+18. Event Card component (used in M08, F9, Dashboard).
+19. Event Detail page with forecast + actuals chart.
+20. Playbook Library page (admin-first).
+
+**Phase 8 — Admin + QA (2 sessions)**
+
+21. Admin verification queue + regime-shift alerts.
+22. Testing + visual QA.
+
+**Total: ~22 sessions** for complete Event Impact Engine.
+
+**Critical path:** Phase 1-2 block everything. Phase 3 enables Phase 4. Phase 4-5 can parallelize. Phase 6 integrations depend on Phase 4.
+
+---
+
+## 10. Test Cases
+
+1. User adds event "Amazon HQ2 Tampa, 2000 jobs" → event records with full schema, matched to subtype `hq_relocation_major`, watchlist populated, geography resolved to Hillsborough MSA.
+
+2. Event at T+12mo → backtest job measures actual rent growth delta vs control group of non-Amazon submarkets; records impact record with DiD delta.
+
+3. New event fires, engine produces forecast → Strategy module's plan formulator reads forecast, adjusts exit window to align with projected peak at T+24mo.
+
+4. Playbook lookup for `hq_relocation_major` → returns aggregated response function across 14 historical instances with confidence 0.74.
+
+5. Forecast vs actual divergence after 8mo → event detail page shows actual rent growth tracking above forecast (+2.1% vs +1.3% forecast); flags "ahead of playbook."
+
+6. Regime detection: post-COVID office events consistently over-predict → admin dashboard flags regime shift, prompts manual playbook review.
+
+7. Event ingestion from news pipeline — NLP classifier extracts "BYD announces new plant in Nashville, 800 jobs" as subtype `plant_opening` → correctly categorized, magnitude primary = 800 jobs.
+
+8. Multiple events same submarket → forecasts composed additively when uncorrelated (Amazon HQ + convention center expansion), with interaction-effect dampening if overlap detected.
+
+9. Event cancelled (employer pulls back) → lifecycle status updated to `reversed`; playbook records reversibility data point; related forecasts deprecate.
+
+10. ProForma assumption derivation → Rent growth Y2 Platform-layer value carries M35 forecast attribution with playbook citation visible on hover.
+
+11. Admin overrides a forecast → platform uses override, but logs the override for playbook learning (the override becomes a training signal).
+
+12. Submarket with unusual supply pipeline dampens forecast → submarket adjustment reduces confidence from 0.74 to 0.68 and widens CI.
+
+13. Transit opening event (MARTA Beltline station) → forecast covers proximity-decayed metrics (rent/SF within 0.5mi, price/SF 0.5mi-1mi) with different magnitudes per ring.
+
+14. STR regulation ban event → forecast predicts ADR collapse, long-term rental supply surge; actuals validate within 18mo; playbook confidence rises.
+
+15. User asks "what did Amazon HQ2 in Arlington do to rents?" — event detail page shows full impact history with metric charts + control comparison + strategic lessons.
+
+---
+
+## 11. Cross-Module Reference Table
+
+| Module | Uses M35 | How |
+|---|---|---|
+| M06 Demand Signal | Subscribes | Event-forecasts adjust demand signal weights automatically |
+| M08 Strategy | Reads forecast | Plan formulator uses timing signals for entry/exit, monitoring triggers |
+| M09 ProForma | Reads forecast | Assumptions tab Platform-layer values carry event attribution |
+| M35 Correlation Engine | Mutual | Correlation signals surface events; events update correlations |
+| M14 Risk | Reads events | Disaster/regulation events feed risk scoring |
+| M22 Post-Close Intelligence | Feeds M35 | Actual metric data for backtest |
+| Alerting system | Subscribes | Forecast divergence triggers alerts |
+
+---
+
+## 12. Design tokens (consistent with platform)
+
+- Event card: cyan left border 3px, amber accent if forecast diverging from actual > 1 std
+- Forecast confidence meter: 0-1 scale, color-graded green → amber → red
+- Actual-vs-forecast chart: dotted forecast line, solid actual, shaded confidence interval
+- Status badges: green (in_progress), amber (delayed), red (reversed/cancelled), blue (announced)
+- Playbook confidence: star-style rating or percentile bar
+- Event category icons: one per top-level category for scanning (📣 Employment, 🚆 Transit, 📜 Regulatory, etc.)
+
+---
+
+**End of spec.**

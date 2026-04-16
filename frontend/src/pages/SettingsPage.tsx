@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { EmailSettings } from './settings/EmailSettings';
 import MarketsPreferencesPage from './settings/MarketsPreferencesPage';
 import PropertyTypesSettings from './settings/PropertyTypesSettings';
@@ -6,21 +7,24 @@ import { IntelligenceSettings } from './settings/IntelligenceSettings';
 import { AIModelSettings } from './settings/AIModelSettings';
 import { NotificationSettings } from './settings/NotificationSettings';
 import { SubscriptionSettings } from './settings/SubscriptionSettings';
+import { DataLibrarySettings } from './settings/DataLibrarySettings';
+import AgentSettingsPage from './settings/AgentSettingsPage';
 import { apiClient } from '../services/api.client';
+import { BT } from '@/components/deal/bloomberg-ui';
 
-type SettingsTab = 'profile' | 'subscription' | 'modules' | 'integrations' | 'notifications' | 'markets' | 'property-types' | 'intelligence' | 'ai-model';
+type SettingsTab = 'profile' | 'subscription' | 'modules' | 'integrations' | 'notifications' | 'markets' | 'property-types' | 'intelligence' | 'ai-model' | 'data-library' | 'agents';
 
-const TIER_LABELS: Record<string, { label: string; color: string }> = {
-  scout: { label: 'Scout', color: 'bg-gray-100 text-gray-700' },
-  operator: { label: 'Operator', color: 'bg-blue-100 text-blue-700' },
-  principal: { label: 'Principal', color: 'bg-indigo-100 text-indigo-700' },
-  institutional: { label: 'Institutional', color: 'bg-purple-100 text-purple-700' },
-  basic: { label: 'Basic', color: 'bg-gray-100 text-gray-700' },
-  pro: { label: 'Pro', color: 'bg-blue-100 text-blue-700' },
-  enterprise: { label: 'Enterprise', color: 'bg-purple-100 text-purple-700' },
+const TIER_LABELS: Record<string, { label: string; textColor: string; bgColor: string }> = {
+  scout: { label: 'Scout', textColor: BT.text.secondary, bgColor: BT.bg.panelAlt },
+  operator: { label: 'Operator', textColor: BT.text.cyan, bgColor: BT.bg.active },
+  principal: { label: 'Principal', textColor: BT.text.cyan, bgColor: BT.bg.active },
+  institutional: { label: 'Institutional', textColor: BT.text.purple, bgColor: BT.bg.active },
+  basic: { label: 'Basic', textColor: BT.text.secondary, bgColor: BT.bg.panelAlt },
+  pro: { label: 'Pro', textColor: BT.text.cyan, bgColor: BT.bg.active },
+  enterprise: { label: 'Enterprise', textColor: BT.text.purple, bgColor: BT.bg.active },
 };
 
-const VALID_TABS: SettingsTab[] = ['profile', 'subscription', 'modules', 'integrations', 'notifications', 'markets', 'property-types', 'intelligence', 'ai-model'];
+const VALID_TABS: SettingsTab[] = ['profile', 'subscription', 'modules', 'integrations', 'notifications', 'markets', 'property-types', 'intelligence', 'ai-model', 'data-library', 'agents'];
 
 function getInitialTab(): SettingsTab {
   const params = new URLSearchParams(window.location.search);
@@ -117,104 +121,90 @@ export function SettingsPage() {
 
   const tierInfo = TIER_LABELS[profileData.tier] || TIER_LABELS.scout;
 
+  const tabButtonStyle = (isActive: boolean): React.CSSProperties => ({
+    background: isActive ? BT.bg.active : 'transparent',
+    color: isActive ? BT.text.cyan : BT.text.secondary,
+    borderRadius: 0,
+    fontWeight: isActive ? 600 : 400,
+  });
+
   return (
-    <div className="p-6">
+    <div className="p-6" style={{ background: BT.bg.terminal, minHeight: '100vh' }}>
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Settings</h1>
-        <p className="text-gray-600">Manage your account and preferences</p>
+        <h1 className="text-sm font-bold mb-2" style={{ color: BT.text.primary, fontSize: 13, letterSpacing: 1, fontFamily: "'JetBrains Mono', monospace" }}>SETTINGS</h1>
+        <p style={{ color: BT.text.secondary }}>Manage your account and preferences</p>
       </div>
 
       <div className="grid grid-cols-3 gap-6">
         <div className="space-y-2">
-          <button 
+          <button
             onClick={() => setActiveTab('profile')}
-            className={`w-full text-left px-4 py-3 font-medium rounded-lg ${
-              activeTab === 'profile' 
-                ? 'bg-blue-50 text-blue-700' 
-                : 'text-gray-700 hover:bg-gray-50'
-            }`}
+            className="w-full text-left px-4 py-3 font-medium"
+            style={tabButtonStyle(activeTab === 'profile')}
           >
             Profile
           </button>
-          <button 
+          <button
             onClick={() => setActiveTab('subscription')}
-            className={`w-full text-left px-4 py-3 rounded-lg ${
-              activeTab === 'subscription' 
-                ? 'bg-blue-50 text-blue-700 font-medium' 
-                : 'text-gray-700 hover:bg-gray-50'
-            }`}
+            className="w-full text-left px-4 py-3"
+            style={tabButtonStyle(activeTab === 'subscription')}
           >
             Subscription
           </button>
-          <a 
-            href="/settings/modules"
-            className="block w-full text-left px-4 py-3 text-gray-700 hover:bg-gray-50 rounded-lg"
-          >
-            AI Modules
-          </a>
-          <a 
-            href="/settings/module-libraries"
-            className="block w-full text-left px-4 py-3 text-gray-700 hover:bg-gray-50 rounded-lg"
-          >
-            Module Libraries
-          </a>
-          <button 
+          {/* AI Modules, Module Libraries, Strategy Builder removed — routes deprecated */}
+          <button
             onClick={() => setActiveTab('markets')}
-            className={`w-full text-left px-4 py-3 rounded-lg ${
-              activeTab === 'markets' 
-                ? 'bg-blue-50 text-blue-700 font-medium' 
-                : 'text-gray-700 hover:bg-gray-50'
-            }`}
+            className="w-full text-left px-4 py-3"
+            style={tabButtonStyle(activeTab === 'markets')}
           >
             Markets & Coverage
           </button>
-          <button 
+          <button
             onClick={() => setActiveTab('property-types')}
-            className={`w-full text-left px-4 py-3 rounded-lg ${
-              activeTab === 'property-types' 
-                ? 'bg-blue-50 text-blue-700 font-medium' 
-                : 'text-gray-700 hover:bg-gray-50'
-            }`}
+            className="w-full text-left px-4 py-3"
+            style={tabButtonStyle(activeTab === 'property-types')}
           >
             Property Types & Strategies
           </button>
-          <button 
+          <button
             onClick={() => setActiveTab('intelligence')}
-            className={`w-full text-left px-4 py-3 rounded-lg ${
-              activeTab === 'intelligence' 
-                ? 'bg-blue-50 text-blue-700 font-medium' 
-                : 'text-gray-700 hover:bg-gray-50'
-            }`}
+            className="w-full text-left px-4 py-3"
+            style={tabButtonStyle(activeTab === 'intelligence')}
           >
             Intelligence & Data
           </button>
-          <button 
+          <button
+            onClick={() => setActiveTab('data-library')}
+            className="w-full text-left px-4 py-3"
+            style={tabButtonStyle(activeTab === 'data-library')}
+          >
+            Data Library
+          </button>
+          <button
             onClick={() => setActiveTab('ai-model')}
-            className={`w-full text-left px-4 py-3 rounded-lg ${
-              activeTab === 'ai-model' 
-                ? 'bg-blue-50 text-blue-700 font-medium' 
-                : 'text-gray-700 hover:bg-gray-50'
-            }`}
+            className="w-full text-left px-4 py-3"
+            style={tabButtonStyle(activeTab === 'ai-model')}
           >
             AI Model
           </button>
-          <button 
+          <button
+            onClick={() => setActiveTab('agents')}
+            className="w-full text-left px-4 py-3"
+            style={tabButtonStyle(activeTab === 'agents')}
+          >
+            Agent AI Settings
+          </button>
+          <button
             onClick={() => setActiveTab('integrations')}
-            className={`w-full text-left px-4 py-3 rounded-lg ${
-              activeTab === 'integrations' 
-                ? 'bg-blue-50 text-blue-700 font-medium' 
-                : 'text-gray-700 hover:bg-gray-50'
-            }`}
+            className="w-full text-left px-4 py-3"
+            style={tabButtonStyle(activeTab === 'integrations')}
           >
             Integrations
           </button>
-          <button 
+          <button
             onClick={() => setActiveTab('notifications')}
-            className={`w-full text-left px-4 py-3 rounded-lg ${
-              activeTab === 'notifications' 
-                ? 'bg-blue-50 text-blue-700 font-medium' 
-                : 'text-gray-700 hover:bg-gray-50'
-            }`}
+            className="w-full text-left px-4 py-3"
+            style={tabButtonStyle(activeTab === 'notifications')}
           >
             Notifications
           </button>
@@ -222,76 +212,81 @@ export function SettingsPage() {
 
         <div className="col-span-2">
           {activeTab === 'profile' && (
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-6">Profile Settings</h2>
+            <div className="p-6" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
+              <h2 className="text-sm font-semibold mb-6" style={{ color: BT.text.primary, fontSize: 11, letterSpacing: 0.8, fontFamily: "'JetBrains Mono', monospace" }}>PROFILE SETTINGS</h2>
 
               {profileLoading ? (
                 <div className="flex items-center justify-center py-12">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  <div className="h-8 w-8" style={{ border: `2px solid ${BT.text.cyan}`, borderTop: '2px solid transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
                 </div>
               ) : (
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">First Name</label>
+                      <label className="block text-sm font-medium mb-2" style={{ color: BT.text.secondary }}>First Name</label>
                       <input
                         type="text"
                         value={profileData.firstName}
                         onChange={(e) => setProfileData({ ...profileData, firstName: e.target.value })}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        className="w-full px-4 py-2"
+                        style={{ background: BT.bg.input, border: `1px solid ${BT.border.medium}`, borderRadius: 0, color: BT.text.primary, outline: 'none' }}
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Last Name</label>
+                      <label className="block text-sm font-medium mb-2" style={{ color: BT.text.secondary }}>Last Name</label>
                       <input
                         type="text"
                         value={profileData.lastName}
                         onChange={(e) => setProfileData({ ...profileData, lastName: e.target.value })}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        className="w-full px-4 py-2"
+                        style={{ background: BT.bg.input, border: `1px solid ${BT.border.medium}`, borderRadius: 0, color: BT.text.primary, outline: 'none' }}
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                    <label className="block text-sm font-medium mb-2" style={{ color: BT.text.secondary }}>Email</label>
                     <input
                       type="email"
                       value={profileData.email}
                       disabled
-                      className="w-full px-4 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed"
+                      className="w-full px-4 py-2 cursor-not-allowed"
+                      style={{ background: BT.bg.panelAlt, border: `1px solid ${BT.border.subtle}`, borderRadius: 0, color: BT.text.muted }}
                     />
-                    <p className="text-xs text-gray-500 mt-1">Contact support to change your email address</p>
+                    <p className="text-xs mt-1" style={{ color: BT.text.muted }}>Contact support to change your email address</p>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Phone</label>
+                    <label className="block text-sm font-medium mb-2" style={{ color: BT.text.secondary }}>Phone</label>
                     <input
                       type="tel"
                       value={profileData.phone}
                       onChange={(e) => setProfileData({ ...profileData, phone: e.target.value })}
                       placeholder="+1 (555) 123-4567"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      className="w-full px-4 py-2"
+                      style={{ background: BT.bg.input, border: `1px solid ${BT.border.medium}`, borderRadius: 0, color: BT.text.primary, outline: 'none' }}
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Subscription Tier</label>
+                    <label className="block text-sm font-medium mb-2" style={{ color: BT.text.secondary }}>Subscription Tier</label>
                     <div className="flex items-center gap-3">
-                      <span className={`px-4 py-2 font-semibold rounded-lg ${tierInfo.color}`}>
+                      <span className="px-4 py-2 font-semibold" style={{ background: tierInfo.bgColor, color: tierInfo.textColor, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
                         {tierInfo.label}
                       </span>
-                      <a href="/pricing" className="text-blue-600 hover:text-blue-700 text-sm">
+                      <a href="/pricing" className="text-sm" style={{ color: BT.text.cyan }}>
                         Change Plan
                       </a>
                     </div>
                   </div>
 
                   {profileMessage && (
-                    <div className={`px-4 py-3 rounded-lg text-sm ${
-                      profileMessage.type === 'success'
-                        ? 'bg-green-50 text-green-700 border border-green-200'
-                        : 'bg-red-50 text-red-700 border border-red-200'
-                    }`}>
+                    <div className="px-4 py-3 text-sm" style={{
+                      borderRadius: 0,
+                      background: BT.bg.panelAlt,
+                      color: profileMessage.type === 'success' ? BT.text.green : BT.text.red,
+                      border: `1px solid ${profileMessage.type === 'success' ? BT.text.green : BT.text.red}`,
+                    }}>
                       {profileMessage.text}
                     </div>
                   )}
@@ -300,11 +295,12 @@ export function SettingsPage() {
                     <button
                       onClick={saveProfile}
                       disabled={profileSaving}
-                      className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+                      className="px-6 py-2 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      style={{ background: BT.text.cyan, color: BT.bg.terminal, borderRadius: 0 }}
                     >
                       {profileSaving ? (
                         <>
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                          <div className="h-4 w-4" style={{ border: `2px solid ${BT.bg.terminal}`, borderTop: '2px solid transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
                           Saving...
                         </>
                       ) : (
@@ -324,13 +320,13 @@ export function SettingsPage() {
           {activeTab === 'notifications' && <NotificationSettings />}
 
           {activeTab === 'markets' && (
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+            <div style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
               <MarketsPreferencesPage />
             </div>
           )}
 
           {activeTab === 'property-types' && (
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 h-[calc(100vh-200px)]">
+            <div className="h-[calc(100vh-200px)]" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
               <PropertyTypesSettings />
             </div>
           )}
@@ -341,6 +337,14 @@ export function SettingsPage() {
 
           {activeTab === 'ai-model' && (
             <AIModelSettings />
+          )}
+
+          {activeTab === 'data-library' && (
+            <DataLibrarySettings />
+          )}
+
+          {activeTab === 'agents' && (
+            <AgentSettingsPage />
           )}
         </div>
       </div>

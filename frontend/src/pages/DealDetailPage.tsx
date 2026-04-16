@@ -1,40 +1,71 @@
-import React, { useState, useEffect, useMemo } from 'react';
+/**
+ * ═══════════════════════════════════════════════════════════════════
+ * DEV CAPACITY → UNIT MIX CASCADE FLOW
+ * ═══════════════════════════════════════════════════════════════════
+ *
+ * 1. User opens the Zoning module (activeTab === 'zoning')
+ *    └─ ZoningModuleSection renders; DevelopmentCapacityTab is the
+ *       second sub-tab ("Dev Capacity").
+ *
+ * 2. User selects a development path inside DevelopmentCapacityTab
+ *    └─ DevelopmentCapacityTab calls:
+ *         useDealStore.getState().setDevelopmentEnvelope({ max_units, max_gfa, … })
+ *         useZoningModuleStore.selectDevelopmentPath(pathId, envelope)
+ *
+ * 3. This page observes developmentEnvelope + selectedDevelopmentPathId
+ *    from dealStore. When both are non-null AND activeTab === 'zoning',
+ *    a sticky CTA banner appears at the bottom of the main content area.
+ *
+ * 4. CTA label is deal-type aware:
+ *      development   → "Design Unit Program →"
+ *      existing      → "View Unit Positioning →"
+ *      redevelopment → "Plan Renovation Mix →"
+ *
+ * 5. Clicking the CTA calls setActiveTab('unit-mix-intelligence').
+ *    └─ UnitMixIntelligence receives developmentEnvelope from the store
+ *       and renders the utilisation bar with max_units / max_gfa constraints.
+ *       For redevelopment deals it also shows the existing vs. net-new
+ *       units split sourced from the envelope's selected_path metadata.
+ * ═══════════════════════════════════════════════════════════════════
+ */
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { 
-  BarChart3, DollarSign, FileText, Bot, TrendingUp,
-  Building2, Target, Package, MapPin, Calculator,
-  ClipboardCheck, Calendar, FolderOpen, Box,
-  Search, ArrowLeft, Activity, LineChart,
-  Lightbulb, StickyNote, Briefcase, LayoutDashboard,
-  Compass, Landmark, Users, AlertTriangle, Leaf, HardHat,
-  Shield, Layers, BarChart2, Radar, Zap
+  DollarSign, Bot, TrendingUp,
+  Building2, Target, Package, Calculator,
+  ArrowLeft, ArrowRight, Activity, LayoutDashboard,
+  Landmark, HardHat, Shield, Box, FileText, Briefcase, Zap,
 } from 'lucide-react';
-import { TabGroup, Tab } from '../components/deal/TabGroup';
+import { Tab } from '../components/deal/TabGroup';
+import { DealScreenWrapper } from '../components/deal/DealScreenWrapper';
 import { apiClient } from '../services/api.client';
-import { useDealStore, useDealTypeConfig } from '../stores/dealStore';
+import { useDealStore, useDealTypeConfig, useDealType } from '../stores/dealStore';
 import { useTradeAreaStore } from '../stores/tradeAreaStore';
 import { DealModuleProvider } from '../contexts/DealModuleContext';
-import { GeographicScopeTabs, TradeAreaDefinitionPanel } from '../components/trade-area';
-import type { ModuleId } from '../shared/config/deal-type-visibility';
+import { useTheme } from '../contexts/ThemeContext';
+import { TradeAreaDefinitionPanel } from '../components/trade-area';
+import type { DealType, ModuleId } from '../shared/config/deal-type-visibility';
 
-import OverviewSection from '../components/deal/sections/OverviewSection';
+import { BT, BT_CSS, PanelHeader, SectionPanel } from '../components/deal/bloomberg-ui';
+import { BottomPanel } from '../components/layout/BottomPanel';
+import { AgentBar } from '../components/layout/AgentBar';
+import { BloombergOverviewSection } from '../components/deal/sections/BloombergOverviewSection';
 import { DealStatusSection } from '../components/deal/sections/DealStatusSection';
-import { Design3DPageEnhanced } from './Design3DPage.enhanced';
+import { PresenceIndicator } from '../components/deal/PresenceIndicator';
+import { ActivityFeed } from '../components/deal/ActivityFeed';
+import { CommentThread } from '../components/deal/CommentThread';
+import { DealTeamPanel } from '../components/deal/DealTeamPanel';
 
 import { MarketIntelligencePage } from './development/MarketIntelligencePage';
-import CompetitionPage from './development/CompetitionPage';
 import SupplyPipelinePage from './development/SupplyPipelinePage';
 import { TrendsAnalysisSection } from '../components/deal/sections/TrendsAnalysisSection';
-import { TrafficAnalysisSection } from '../components/deal/sections/TrafficAnalysisSection';
 
-import RiskIntelligence from '../components/deal/sections/RiskIntelligence';
 import OpportunityEngineSection from '../components/deal/sections/OpportunityEngineSection';
 import { TrafficModule } from '../components/deal/sections/TrafficModule';
-import { ProFormaTab } from '../components/deal/sections/ProFormaTab';
 import { ExitCapitalModule } from '../components/deal/sections/ExitCapitalModule';
-import FinancialDashboard from '../components/deal/sections/FinancialDashboard';
 
-import { DueDiligencePage } from './development/DueDiligencePage';
+import { StrategyArbitragePage } from './development/StrategyArbitragePage';
+import { RiskDDPage } from './development/RiskDDPage';
 import { ProjectTimelinePage } from './development/ProjectTimelinePage';
 import { ProjectManagementSection } from '../components/deal/sections/ProjectManagementSection';
 
@@ -43,30 +74,30 @@ import { FilesSection } from '../components/deal/sections/FilesSection';
 import OpusAISection from '../components/deal/sections/OpusAISection';
 import { AIRecommendationsSection } from '../components/deal/sections/AIRecommendationsSection';
 import { ContextTrackerSection } from '../components/deal/sections/ContextTrackerSection';
-import { StrategySection } from '../components/deal/sections/StrategySection';
-import { TeamSection } from '../components/deal/sections/TeamSection';
 import { TeamManagementSection } from '../components/deal/sections/TeamManagementSection';
 import { ConstructionManagementSection } from '../components/deal/sections/ConstructionManagementSection';
+import { NotarizeClosingSection } from '../components/deal/sections/NotarizeClosingSection';
+import { DealToolsSection } from '../components/deal/sections/DealToolsSection';
 
-import TaxModule from '../components/deal/sections/TaxModule';
-import CompsModule from '../components/deal/sections/CompsModule';
-import CollisionAnalysisSection from '../components/deal/sections/CollisionAnalysisSection';
+import { FinancialEnginePage } from './development/FinancialEnginePage';
+import { Design3DShellPage } from './development/Design3DShellPage';
 import UnitMixIntelligence from '../components/deal/sections/UnitMixIntelligence';
-import { ZoningCapacitySection } from '../components/deal/sections/ZoningCapacitySection';
 import { ZoningModuleSection } from '../components/deal/sections/ZoningModuleSection';
-import { ZoningAgentChat } from '../components/zoning/ZoningAgentChat';
 import { useZoningModuleStore } from '../stores/zoningModuleStore';
 import type { DevelopmentPath } from '../types/zoning.types';
+import { EventTimelineSection } from '../components/deal/sections/EventTimelineSection';
+import { EventHeroBanner } from '../components/m35/EventHeroBanner';
+import type { HeroBannerEvent, EventSensitivity } from '../components/m35/EventHeroBanner';
 
 interface DealTab extends Tab {
   moduleId?: ModuleId;
 }
 
-const DEV_PATH_CONFIG: Record<DevelopmentPath, { label: string; color: string }> = {
-  by_right: { label: 'By-Right', color: 'bg-green-100 text-green-700' },
-  overlay_bonus: { label: 'Overlay Bonus', color: 'bg-blue-100 text-blue-700' },
-  variance: { label: 'Variance', color: 'bg-amber-100 text-amber-700' },
-  rezone: { label: 'Full Rezone', color: 'bg-red-100 text-red-700' },
+const DEV_PATH_CONFIG: Record<DevelopmentPath, { label: string; bg: string; color: string }> = {
+  by_right: { label: 'By-Right', bg: BT.bg.active, color: BT.text.green },
+  overlay_bonus: { label: 'Overlay Bonus', bg: BT.bg.active, color: BT.text.cyan },
+  variance: { label: 'Variance', bg: BT.bg.active, color: BT.text.amber },
+  rezone: { label: 'Full Rezone', bg: BT.bg.active, color: BT.text.red },
 };
 
 function normalizePath(raw: string): DevelopmentPath | null {
@@ -86,11 +117,309 @@ function DevPathBadge() {
   if (!key) return null;
   const cfg = DEV_PATH_CONFIG[key];
   return (
-    <span className={`text-xs font-medium px-3 py-1 rounded-full ${cfg.color}`}>
+    <span className="text-xs font-medium px-3 py-1" style={{ borderRadius: 2, background: cfg.bg, color: cfg.color }}>
       {cfg.label}
     </span>
   );
 }
+
+// ─── Shared screen props type ──────────────────────────────────────────────────
+interface ScreenProps {
+  deal?: Record<string, unknown>;
+  dealId: string;
+  dealType?: string;
+  onUpdate?: () => void;
+  [k: string]: unknown;
+}
+
+// ─── Module-level screen wrappers (stable references — prevents remount blink) ──
+const CollaborationSection = (props: ScreenProps) => {
+  const dId = props?.dealId;
+  if (!dId) return <div className="p-4 text-sm" style={{ color: BT.text.secondary }}>No deal selected</div>;
+  return (
+    <div className="p-4 space-y-4">
+      <DealTeamPanel dealId={dId} />
+      <CommentThread dealId={dId} />
+      <ActivityFeed dealId={dId} />
+    </div>
+  );
+};
+
+const OverviewScreen = (props: ScreenProps) => {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+      <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+        <BloombergOverviewSection
+          deal={props.deal}
+          onTabChange={(tab) => props.onUpdate?.()}
+          geographicContext={props.geographicContext as Record<string, unknown> | undefined}
+        />
+      </div>
+    </div>
+  );
+};
+const MarketScreen = (props: ScreenProps) => (
+  <MarketIntelligencePage dealId={props.dealId} deal={props.deal} dealType={props.dealType} />
+);
+const StrategyScreen = (props: ScreenProps) => (
+  <StrategyArbitragePage dealId={props.dealId} deal={props.deal as Record<string, unknown> | undefined} dealType={props.dealType} />
+);
+const ProFormaScreen = (props: ScreenProps) => (
+  <FinancialEnginePage
+    dealId={props.dealId}
+    deal={props.deal as Record<string, unknown> | undefined}
+    dealType={props.dealType}
+  />
+);
+const DebtCapitalScreen = (props: ScreenProps) => (
+  <DealScreenWrapper
+    passProps={props}
+    moduleTitle="DEBT & CAPITAL"
+    moduleSubtitle="M11+M12 · EXIT STRATEGY + DEBT MARKET"
+    moduleBorderColor={BT.text.cyan}
+    moduleMetrics={[
+      { l: 'RSS', c: BT.text.cyan },
+      { l: 'IRR', c: BT.met.financial },
+      { l: 'EXIT', c: BT.text.amber },
+    ]}
+    accentColor={BT.text.cyan}
+    tabs={[
+      { id: 'exit', label: 'Exit & Debt Analysis', component: (p: ScreenProps) => <ExitCapitalModule dealId={p.dealId} deal={p.deal} dealType={p.dealType} /> },
+    ]}
+  />
+);
+const RiskScreen = (props: ScreenProps) => (
+  <RiskDDPage dealId={props.dealId} deal={props.deal as Record<string, unknown> | undefined} dealType={props.dealType} />
+);
+const EXEC_TABS = [
+  { id: 'timeline',           label: 'PROJECT TIMELINE',   title: 'PROJECT TIMELINE',   subtitle: 'M17 · MILESTONES + GANTT',        border: BT.text.cyan    },
+  { id: 'project-management', label: 'PROJECT MANAGEMENT', title: 'PROJECT MANAGEMENT', subtitle: 'M17 · PM TASKS + ASSIGNMENTS',     border: BT.met.occupancy },
+  { id: 'construction-mgmt',  label: 'CONSTRUCTION MGMT',  title: 'CONSTRUCTION MGMT',  subtitle: 'M17 · CONSTRUCTION MONITORING',   border: BT.text.amber   },
+  { id: 'notarize-closing',   label: 'CLOSING (RON)',       title: 'NOTARIZE & CLOSE',   subtitle: 'M17 · REMOTE ONLINE NOTARIZATION', border: BT.met.financial },
+  { id: 'opus-ai',            label: 'OPUS AI',             title: 'OPUS AI ASSISTANT',  subtitle: 'M17 · INTELLIGENT EXECUTION AID', border: BT.text.purple  },
+] as const;
+const EXEC_COMPONENTS: Record<string, React.ComponentType<ScreenProps>> = {
+  timeline:           ProjectTimelinePage,
+  'project-management': ProjectManagementSection,
+  'construction-mgmt':  ConstructionManagementSection,
+  'notarize-closing':   NotarizeClosingSection,
+  'opus-ai':            OpusAISection,
+};
+const ExecutionScreen = (props: ScreenProps) => {
+  const [active, setActive] = React.useState<string>(EXEC_TABS[0].id);
+  const tab = EXEC_TABS.find(t => t.id === active) ?? EXEC_TABS[0];
+  const C = EXEC_COMPONENTS[tab.id] as React.ComponentType<ScreenProps>;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BT.bg.terminal, animation: 'bt-fade 0.15s' }}>
+      <PanelHeader
+        title="EXECUTION"
+        subtitle="M17 · CLOSE + MANAGE"
+        borderColor={BT.text.cyan}
+        metrics={[
+          { l: 'TIMELINE', c: BT.text.cyan    },
+          { l: 'PM',       c: BT.met.occupancy },
+          { l: 'RON',      c: BT.met.financial },
+          { l: 'OPUS',     c: BT.text.purple  },
+        ]}
+      />
+      <div style={{ display: 'flex', background: BT.bg.header, borderBottom: `1px solid ${BT.border.medium}`, flexShrink: 0, overflowX: 'auto', height: 28, alignItems: 'stretch' }}>
+        {EXEC_TABS.map(t => (
+          <button
+            key={t.id}
+            onClick={() => setActive(t.id)}
+            style={{
+              fontFamily: BT.font.mono, fontSize: 9, fontWeight: active === t.id ? 700 : 500,
+              padding: '0 14px', background: 'transparent', border: 'none',
+              borderBottom: active === t.id ? `2px solid ${BT.text.cyan}` : '2px solid transparent',
+              color: active === t.id ? BT.text.cyan : BT.text.secondary,
+              cursor: 'pointer', whiteSpace: 'nowrap', letterSpacing: 0.6,
+            }}
+          >{t.label}</button>
+        ))}
+      </div>
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', background: BT.bg.terminal }}>
+        <SectionPanel title={tab.title} subtitle={tab.subtitle} borderColor={tab.border} style={{ minHeight: '100%' }}>
+          <C {...props} />
+        </SectionPanel>
+      </div>
+    </div>
+  );
+};
+const Design3DScreen = (props: ScreenProps) => (
+  <Design3DShellPage
+    dealId={props.dealId}
+    deal={props.deal}
+    dealType={props.dealType}
+  />
+);
+const DealToolsScreen = (props: ScreenProps) => (
+  <DealToolsSection dealId={props.dealId} deal={props.deal} />
+);
+
+const AIAgentScreen = (props: ScreenProps) => (
+  <DealScreenWrapper
+    passProps={props}
+    moduleTitle="AI AGENT"
+    moduleSubtitle="M20 · OPUS + RECOMMENDATIONS"
+    moduleBorderColor={BT.text.purple}
+    moduleMetrics={[
+      { l: 'OPUS', c: BT.text.purple },
+      { l: 'AI', c: BT.text.cyan },
+    ]}
+    accentColor={BT.text.purple}
+    tabs={[
+      { id: 'opus-ai',  label: 'Opus AI Agent',     component: OpusAISection },
+      { id: 'ai-recs',  label: 'AI Recommendations', component: AIRecommendationsSection },
+    ]}
+  />
+);
+
+const SupplyPipelineScreen = (props: ScreenProps) => (
+  <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BT.bg.terminal, animation: 'bt-fade 0.15s' }}>
+    <style>{BT_CSS}</style>
+    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+      <SupplyPipelinePage {...props} />
+    </div>
+  </div>
+);
+
+const TrafficScreen = (props: ScreenProps) => (
+  <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BT.bg.terminal, animation: 'bt-fade 0.15s' }}>
+    <style>{BT_CSS}</style>
+    <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+      <TrafficModule {...props} />
+    </div>
+  </div>
+);
+
+const DealTopStatusBar: React.FC<{ dealName: string; isDark: boolean; onToggleTheme: () => void }> = ({ dealName, isDark, onToggleTheme }) => {
+  const [clock, setClock] = React.useState('');
+  React.useEffect(() => {
+    const tick = () => setClock(new Date().toLocaleTimeString('en-GB', { hour12: false }));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <div style={{
+      height: 28, background: '#050810', display: 'flex', alignItems: 'center',
+      justifyContent: 'space-between', padding: '0 8px',
+      borderBottom: '1px solid #1E2538', flexShrink: 0,
+      fontFamily: "'JetBrains Mono','Fira Code','SF Mono',monospace", fontSize: 9, userSelect: 'none',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+        <span style={{ fontFamily: "'IBM Plex Mono',monospace", fontSize: 13, fontWeight: 800, color: '#F5A623', letterSpacing: 2, flexShrink: 0 }}>JediRE</span>
+        <span style={{ fontSize: 9, color: '#4A5568', flexShrink: 0 }}>|</span>
+        <span style={{ fontSize: 9, color: '#8B95A5', fontWeight: 600, letterSpacing: 0.8, textTransform: 'uppercase', flexShrink: 0 }}>
+          {dealName}
+        </span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+        <span style={{ fontSize: 9, color: '#00D26A', display: 'flex', alignItems: 'center', gap: 3 }}>
+          <span style={{ width: 4, height: 4, borderRadius: '50%', background: '#00D26A', animation: 'glow 2s infinite' }} />
+          5 AGT
+        </span>
+        <span style={{ fontSize: 9, color: '#00BCD4' }}>MAIL: 5</span>
+        <span style={{ fontSize: 9, color: '#8B95A5' }}>
+          KAFKA: <span style={{ color: '#E8ECF1', fontWeight: 600 }}>312/s</span>
+        </span>
+        <span style={{ fontSize: 9, color: '#8B95A5', flexShrink: 0 }}>
+          {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+        </span>
+        <span style={{ fontSize: 9, color: '#F5A623', fontWeight: 700, letterSpacing: 1 }}>
+          {clock}
+        </span>
+        <button
+          onClick={onToggleTheme}
+          title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+          style={{
+            fontFamily: "'JetBrains Mono','Fira Code','SF Mono',monospace", fontSize: 12, background: 'transparent',
+            border: '1px solid #1E2538', color: '#6B7A90',
+            padding: '2px 8px', cursor: 'pointer', lineHeight: 1,
+          }}
+        >
+          {isDark ? '☀' : '☾'}
+        </button>
+      </div>
+      <style>{`@keyframes glow{0%,100%{box-shadow:0 0 4px #00D26A44}50%{box-shadow:0 0 10px #00D26A66}}`}</style>
+    </div>
+  );
+};
+
+const DEAL_TYPE_OPTIONS: { value: DealType; label: string; color: string }[] = [
+  { value: 'existing',       label: 'EXISTING',       color: '#F5A623' },
+  { value: 'development',    label: 'DEVELOPMENT',    color: '#10B981' },
+  { value: 'redevelopment',  label: 'REDEVELOPMENT',  color: '#8B5CF6' },
+];
+
+const DealTypeBadge: React.FC<{
+  current: DealType;
+  onChange: (dt: DealType) => void;
+  saving?: boolean;
+}> = ({ current, onChange, saving }) => {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const opt = DEAL_TYPE_OPTIONS.find(o => o.value === current) || DEAL_TYPE_OPTIONS[0];
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    if (open) document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  return (
+    <div ref={ref} style={{ position: 'relative', display: 'inline-flex' }}>
+      <button
+        onClick={() => { if (!saving) setOpen(p => !p); }}
+        disabled={saving}
+        style={{
+          fontSize: 8, fontWeight: 700, letterSpacing: 0.8,
+          padding: '1px 6px', textTransform: 'uppercase',
+          color: opt.color, border: `1px solid ${opt.color}44`,
+          background: open ? `${opt.color}15` : 'transparent',
+          cursor: saving ? 'wait' : 'pointer',
+          fontFamily: "'JetBrains Mono','Fira Code','IBM Plex Mono',monospace",
+          display: 'flex', alignItems: 'center', gap: 4,
+          opacity: saving ? 0.5 : 1,
+          pointerEvents: saving ? 'none' : 'auto',
+        }}
+      >
+        {opt.label}
+        <span style={{ fontSize: 6, opacity: 0.6 }}>▼</span>
+      </button>
+      {open && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, marginTop: 2, zIndex: 999,
+          background: '#0F1319', border: '1px solid #1e2a3d',
+          minWidth: 130, boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+        }}>
+          {DEAL_TYPE_OPTIONS.map(o => (
+            <button
+              key={o.value}
+              onClick={() => { onChange(o.value); setOpen(false); }}
+              style={{
+                display: 'block', width: '100%', textAlign: 'left',
+                padding: '5px 10px', border: 'none', cursor: 'pointer',
+                fontFamily: "'JetBrains Mono','Fira Code','IBM Plex Mono',monospace",
+                fontSize: 9, fontWeight: o.value === current ? 700 : 500,
+                letterSpacing: 0.6,
+                color: o.value === current ? o.color : '#9EA8B4',
+                background: o.value === current ? `${o.color}12` : 'transparent',
+              }}
+              onMouseEnter={e => { if (o.value !== current) e.currentTarget.style.background = '#1a2133'; }}
+              onMouseLeave={e => { if (o.value !== current) e.currentTarget.style.background = 'transparent'; }}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 const DealDetailPage: React.FC = () => {
   const { dealId } = useParams<{ dealId: string }>();
@@ -98,49 +427,92 @@ const DealDetailPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const { fetchDealContext } = useDealStore();
   const config = useDealTypeConfig();
-  const { activeScope, setScope, loadTradeAreaForDeal, setActiveTradeArea } = useTradeAreaStore();
+  const dealType = useDealType();
+  const developmentEnvelope = useDealStore((s) => s.developmentEnvelope);
+  const selectedDevelopmentPathId = useDealStore((s) => s.selectedDevelopmentPathId);
+  const { activeScope, setScope, loadTradeAreaForDeal, setActiveTradeArea, setGeographicStats, geographicStats } = useTradeAreaStore();
+  const { theme, setTheme } = useTheme();
+  const isDark = theme === 'dark';
   const tabParam = searchParams.get('tab');
   const [activeTab, setActiveTab] = useState<string>(tabParam || 'overview');
   const [deal, setDeal] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [geographicStats, setGeographicStats] = useState<any>(null);
   const [geographicContext, setGeographicContext] = useState<any>(null);
   const [showTradeAreaPanel, setShowTradeAreaPanel] = useState(false);
+  const [savingDealType, setSavingDealType] = useState(false);
+  const [bannerEvents, setBannerEvents] = useState<HeroBannerEvent[]>([]);
+  const [eventSensitivity, setEventSensitivity] = useState<EventSensitivity>('LOW');
+  const [eventConcentration, setEventConcentration] = useState<{topEventName:string;irrShare:number;isConcentrated:boolean}|null>(null);
 
+  const handleDealTypeChange = useCallback(async (newType: DealType) => {
+    if (!dealId || newType === dealType) return;
+    setSavingDealType(true);
+    try {
+      await apiClient.patch(`/api/v1/deals/${dealId}`, { project_type: newType });
+      setDeal((prev: any) => prev ? { ...prev, project_type: newType, projectType: newType } : prev);
+      await fetchDealContext(dealId);
+    } catch (err) {
+      console.error('[DealType] Failed to update:', err);
+    } finally {
+      setSavingDealType(false);
+    }
+  }, [dealId, dealType, fetchDealContext]);
+  
   useEffect(() => {
     if (dealId) {
       loadDeal(dealId);
       fetchGeographicContext(dealId);
+      // Fetch events context for banner
+      const token = localStorage.getItem('auth_token') || '';
+      fetch(`/api/v1/m35/deals/${dealId}/events-context`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => r.ok ? r.json() : null)
+        .then(ctx => {
+          if (!ctx) return;
+          const mapped: HeroBannerEvent[] = (ctx.events || []).map((e: any) => ({
+            id: e.id, name: e.name, category: e.category || 'EMPLOYMENT',
+            scope: e.scope || 'msa', magnitudeScore: Number(e.magnitude_score ?? 2), status: e.status || 'announced',
+          }));
+          setBannerEvents(mapped);
+          setEventSensitivity(ctx.sensitivity || 'LOW');
+          setEventConcentration(ctx.concentration ?? null);
+        })
+        .catch(() => {});
     }
   }, [dealId]);
 
   const fetchGeographicContext = async (id: string) => {
     try {
-      const response = await apiClient.get(`/api/v1/deals/${id}/geographic-context`) as any;
-      const context = response?.data?.data;
+      const response = await apiClient.get(`/api/v1/deals/${id}/geographic-context`);
+      const context = (response as { data?: { data?: Record<string, unknown> } })?.data?.data;
       setGeographicContext(context || null);
       setActiveTradeArea(context?.trade_area || null);
       if (context?.active_scope) {
         setScope(context.active_scope);
       }
-      const stats: any = {};
+      const stats: Record<string, { occupancy?: unknown; avg_rent?: unknown }> = {};
       if (context?.trade_area) {
-        stats.trade_area = context.trade_area.stats
-          ? { occupancy: context.trade_area.stats.occupancy, avg_rent: context.trade_area.stats.avg_rent }
+        const ts = context.trade_area as { stats?: { occupancy?: unknown; avg_rent?: unknown } };
+        stats.trade_area = ts.stats
+          ? { occupancy: ts.stats.occupancy, avg_rent: ts.stats.avg_rent }
           : {};
       }
-      if (context?.submarket?.stats) {
-        stats.submarket = {
-          occupancy: context.submarket.stats.avg_occupancy,
-          avg_rent: context.submarket.stats.avg_rent,
-        };
+      if (context?.submarket) {
+        const sm = context.submarket as { stats?: { avg_occupancy?: unknown; avg_rent?: unknown } };
+        if (sm.stats) {
+          stats.submarket = {
+            occupancy: sm.stats.avg_occupancy,
+            avg_rent: sm.stats.avg_rent,
+          };
+        }
       }
-      if (context?.msa?.stats) {
-        stats.msa = {
-          occupancy: context.msa.stats.avg_occupancy,
-          avg_rent: context.msa.stats.avg_rent,
-        };
+      if (context?.msa) {
+        const msa = context.msa as { stats?: { avg_occupancy?: unknown; avg_rent?: unknown } };
+        if (msa.stats) {
+          stats.msa = {
+            occupancy: msa.stats.avg_occupancy,
+            avg_rent: msa.stats.avg_rent,
+          };
+        }
       }
       setGeographicStats(stats);
     } catch {
@@ -180,15 +552,38 @@ const DealDetailPage: React.FC = () => {
     }
   };
 
+  const FALLBACK_DEALS: Record<string, Record<string, unknown>> = {
+    "8aa4c42a-9f1f-47ba-b9d4-9def37b0b323":{id:"8aa4c42a-9f1f-47ba-b9d4-9def37b0b323",property_name:"Jaguar Redevelopment",name:"Jaguar Redevelopment",address:"915 S Dixie Hwy, West Palm Beach FL 33401",market:"West Palm Beach, FL",project_type:"development",asset_type:"Mixed Use",unit_count:280,pipeline_stage:"DD",ask_price:72000000,jedi_adjusted_irr:19.6,ai_opportunity_score:84,best_strategy:"build_to_sell"},
+    "ab17f229-8b9e-4628-8126-76729ef1e2ee":{id:"ab17f229-8b9e-4628-8126-76729ef1e2ee",property_name:"Inman Park Multifamily",name:"Inman Park Multifamily",address:"760 Edgewood Ave NE, Atlanta GA 30307",market:"Atlanta, GA",project_type:"development",asset_type:"Multifamily",unit_count:196,pipeline_stage:"LOI",ask_price:48000000,jedi_adjusted_irr:17.2,ai_opportunity_score:78,best_strategy:"build_to_sell"},
+    "6d6861b9-0e5f-4076-bfcb-3a859e8cdee8":{id:"6d6861b9-0e5f-4076-bfcb-3a859e8cdee8",property_name:"Westside Retail Center",name:"Westside Retail Center",address:"1460 Ellsworth Industrial Blvd, Atlanta GA 30318",market:"Atlanta, GA",project_type:"redevelopment",asset_type:"Retail",unit_count:144,pipeline_stage:"LOI",ask_price:36000000,jedi_adjusted_irr:15.8,ai_opportunity_score:72,best_strategy:"value_add"},
+    "5ef5c201-afbb-4c43-9d7b-9c160fb34d18":{id:"5ef5c201-afbb-4c43-9d7b-9c160fb34d18",property_name:"Grant Park Adaptive Reuse",name:"Grant Park Adaptive Reuse",address:"680 Cherokee Ave SE, Atlanta GA 30312",market:"Atlanta, GA",project_type:"existing",asset_type:"Multifamily",unit_count:110,pipeline_stage:"DD",ask_price:28600000,jedi_adjusted_irr:14.5,ai_opportunity_score:69,best_strategy:"value_add"},
+    "4f6115a8-499f-426b-a3f0-b1c988cf8d02":{id:"4f6115a8-499f-426b-a3f0-b1c988cf8d02",property_name:"East Atlanta Village Townhomes",name:"East Atlanta Village Townhomes",address:"1245 Flat Shoals Ave, Atlanta GA 30316",market:"Atlanta, GA",project_type:"existing",asset_type:"Multifamily",unit_count:64,pipeline_stage:"Prospect",ask_price:17900000,jedi_adjusted_irr:13.4,ai_opportunity_score:65,best_strategy:"build_to_sell"},
+    "fcaa546f-f082-432d-85b5-eb496ebd435b":{id:"fcaa546f-f082-432d-85b5-eb496ebd435b",property_name:"Decatur Station Mixed-Use",name:"Decatur Station Mixed-Use",address:"315 W Ponce de Leon Ave, Decatur GA 30030",market:"Atlanta, GA",project_type:"existing",asset_type:"Mixed Use",unit_count:128,pipeline_stage:"Prospect",ask_price:33300000,jedi_adjusted_irr:12.1,ai_opportunity_score:61,best_strategy:"core_plus"},
+    "93287781-255f-454b-950f-1eefa4c8ec55":{id:"93287781-255f-454b-950f-1eefa4c8ec55",property_name:"Reynoldstown Industrial Flip",name:"Reynoldstown Industrial Flip",address:"960 Memorial Dr SE, Atlanta GA 30316",market:"Atlanta, GA",project_type:"existing",asset_type:"Industrial",unit_count:48,pipeline_stage:"Lead",ask_price:8600000,jedi_adjusted_irr:11.0,ai_opportunity_score:56,best_strategy:"str"},
+    "eaabeb9f-830e-44f9-a923-56679ad0329d":{id:"eaabeb9f-830e-44f9-a923-56679ad0329d",property_name:"Highlands at Sweetwater Creek",name:"Highlands at Sweetwater Creek",address:"2789 Satellite Blvd, Duluth GA 30096",market:"Atlanta, GA",project_type:"existing",asset_type:"Multifamily",unit_count:290,pipeline_stage:"Owned",noi:4350000,actual_occupancy:93.8,jedi_adjusted_irr:14.8,ai_opportunity_score:88},
+    "ssc-suwanee":{id:"ssc-suwanee",property_name:"Symphony at Suwanee Creek",name:"Symphony at Suwanee Creek",address:"3100 Lawrenceville-Suwanee Rd, Suwanee GA 30024",market:"Atlanta, GA",project_type:"existing",asset_type:"Multifamily",unit_count:200,pipeline_stage:"Owned",noi:2980000,actual_occupancy:94.5,jedi_adjusted_irr:15.1},
+    "5d738adc-c4fe-42e9-986b-112e5fb550a8":{id:"5d738adc-c4fe-42e9-986b-112e5fb550a8",property_name:"Buckhead Luxury Apartments",name:"Buckhead Luxury Apartments",address:"3344 Peachtree Rd NE, Atlanta GA 30326",market:"Atlanta, GA",project_type:"existing",asset_type:"Multifamily",unit_count:210,pipeline_stage:"Owned",noi:4020000,actual_occupancy:91.2,jedi_adjusted_irr:12.4},
+    "7235a6f9-c7dc-400e-a982-b89e335dccdf":{id:"7235a6f9-c7dc-400e-a982-b89e335dccdf",property_name:"Midtown Tower",name:"Midtown Tower",address:"1000 Peachtree St NE, Atlanta GA 30309",market:"Atlanta, GA",project_type:"existing",asset_type:"Multifamily",unit_count:180,pipeline_stage:"Owned",noi:3100000,actual_occupancy:89.5,jedi_adjusted_irr:11.6},
+    "9ee2bc0c-a5a2-4fed-930b-12c81040a2b2":{id:"9ee2bc0c-a5a2-4fed-930b-12c81040a2b2",property_name:"Alpharetta Retail Center",name:"Alpharetta Retail Center",address:"2200 Old Milton Pkwy, Alpharetta GA 30009",market:"Atlanta, GA",project_type:"existing",asset_type:"Retail",unit_count:42,pipeline_stage:"Owned",noi:1850000,actual_occupancy:96.2,jedi_adjusted_irr:13.2},
+    "8205a985-cd17-4339-a6a4-efb57ce78b08":{id:"8205a985-cd17-4339-a6a4-efb57ce78b08",property_name:"Westside Lofts",name:"Westside Lofts",address:"750 Huff Rd NW, Atlanta GA 30318",market:"Atlanta, GA",project_type:"existing",asset_type:"Multifamily",unit_count:156,pipeline_stage:"Owned",noi:2680000,actual_occupancy:95.0,jedi_adjusted_irr:14.3},
+    "fb46a388-f3b8-44bd-ad12-7ed3250079a2":{id:"fb46a388-f3b8-44bd-ad12-7ed3250079a2",property_name:"College Park Workforce Housing",name:"College Park Workforce Housing",address:"3400 Camp Creek Pkwy, College Park GA 30349",market:"Atlanta, GA",project_type:"existing",asset_type:"Multifamily",unit_count:240,pipeline_stage:"Owned",noi:3200000,actual_occupancy:90.8,jedi_adjusted_irr:10.9},
+    "451d65eb-8c19-4a04-bbbd-eca4c2d2e9f7":{id:"451d65eb-8c19-4a04-bbbd-eca4c2d2e9f7",property_name:"Sandy Springs Office Park",name:"Sandy Springs Office Park",address:"5555 Roswell Rd, Sandy Springs GA 30342",market:"Atlanta, GA",project_type:"existing",asset_type:"Office",unit_count:68,pipeline_stage:"Owned",noi:2100000,actual_occupancy:87.3,jedi_adjusted_irr:11.0},
+    "1f8e270a-dfe0-4eb8-8f0b-f27b748aab0d":{id:"1f8e270a-dfe0-4eb8-8f0b-f27b748aab0d",property_name:"Buckhead Mixed-Use Development",name:"Buckhead Mixed-Use Development",address:"Buckhead, Atlanta GA",market:"Atlanta, GA",project_type:"existing",asset_type:"Mixed Use",unit_count:175,pipeline_stage:"Owned",noi:3450000,actual_occupancy:90.1,jedi_adjusted_irr:12.0},
+  };
+
   const loadDeal = async (id: string) => {
     try {
       setLoading(true);
-      const response = await apiClient.get(`/api/v1/deals/${id}`) as any;
-      const body = response?.data;
+      const response = await apiClient.get(`/api/v1/deals/${id}`);
+      const body = (response as { data?: Record<string, unknown> })?.data;
       setDeal(body?.deal || body?.data || body);
       fetchDealContext(id);
     } catch (error) {
       console.error('Error loading deal:', error);
+      const fallback = FALLBACK_DEALS[id];
+      if (fallback) {
+        setDeal(fallback);
+      }
     } finally {
       setLoading(false);
     }
@@ -199,255 +594,86 @@ const DealDetailPage: React.FC = () => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return;
       }
-      const keyMap: { [key: string]: string } = {
-        '1': 'overview',
-        '2': 'market-intelligence',
-        '3': '3d-design',
-        '4': 'due-diligence',
-        '5': 'timeline',
-        '6': 'ai-agent',
+      const fKeyMap: { [key: string]: string } = {
+        F1: 'overview',   F2: 'zoning',    F3: 'market',     F4: 'supply',
+        F5: 'strategy',   F6: 'traffic',   F7: 'design-3d',
+        F8: 'capital',    F9: 'proforma',  F10: 'risk',
+        F11: 'deal-tools',
       };
-      if (keyMap[e.key]) {
-        setActiveTab(keyMap[e.key]);
+      if (fKeyMap[e.key]) {
+        e.preventDefault();
+        setActiveTab(fKeyMap[e.key]);
       }
     };
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, []);
 
-  // Stage 1: OVERVIEW & SETUP - Get oriented
-  const overviewSetupTabs: Tab[] = [
-    {
-      id: 'overview',
-      label: 'Deal Overview',
-      icon: <BarChart3 size={16} />,
-      component: OverviewSection,
-      moduleId: 'M01'
-    },
-    {
-      id: 'zoning',
-      label: 'Property & Zoning',
-      icon: <Landmark size={16} />,
-      component: ZoningModuleSection,
-      moduleId: 'M02'
-    },
-    {
-      id: 'context-tracker',
-      label: 'Context Tracker',
-      icon: <Compass size={16} />,
-      component: ContextTrackerSection
-    },
-    {
-      id: 'team',
-      label: 'Team & Collaborators',
-      icon: <Users size={16} />,
-      component: TeamManagementSection,
-      moduleId: 'M17'
-    },
+  useEffect(() => {
+    const handleNavTabChange = (e: Event) => {
+      const tabId = (e as CustomEvent<string>).detail;
+      if (tabId) setActiveTab(tabId);
+    };
+    window.addEventListener('deal-tab-change', handleNavTabChange);
+    return () => window.removeEventListener('deal-tab-change', handleNavTabChange);
+  }, []);
+
+  useEffect(() => {
+    const handleOpenTradeAreaPanel = () => setShowTradeAreaPanel(true);
+    window.addEventListener('open-trade-area-panel', handleOpenTradeAreaPanel);
+    return () => window.removeEventListener('open-trade-area-panel', handleOpenTradeAreaPanel);
+  }, []);
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('deal-active-tab', { detail: activeTab }));
+  }, [activeTab]);
+
+  // ─── 13 FLAT SCREEN DEFINITIONS (F1–F13) ── Bloomberg station-logical order ──
+  // F7 = 3D Design · F10 = Comps · F11 = Execution (Docs moved to Context Tracker)
+  const allDealScreens: { id: string; moduleId: ModuleId; fkey: string; code: string; short: string; label: string; icon: React.ReactNode; component: React.ComponentType<ScreenProps> }[] = [
+    { id: 'overview',    moduleId: 'M01', fkey: 'F1',  code: 'M01', short: 'OVERVIEW',   label: 'Overview',         icon: <LayoutDashboard size={14} />, component: OverviewScreen },
+    { id: 'zoning',      moduleId: 'M02', fkey: 'F2',  code: 'M02', short: 'ZONING',     label: 'Zoning',           icon: <Landmark size={14} />,        component: ZoningModuleSection },
+    { id: 'market',      moduleId: 'M05', fkey: 'F3',  code: 'M05', short: 'MARKET',     label: 'Market Intel',     icon: <TrendingUp size={14} />,      component: MarketScreen },
+    { id: 'supply',      moduleId: 'M04', fkey: 'F4',  code: 'M04', short: 'SUPPLY',     label: 'Supply Pipeline',  icon: <Package size={14} />,         component: SupplyPipelineScreen },
+    { id: 'strategy',    moduleId: 'M08', fkey: 'F5',  code: 'M08', short: 'STRATEGY',   label: 'Strategy',         icon: <Target size={14} />,          component: StrategyScreen },
+    { id: 'traffic',     moduleId: 'M07', fkey: 'F6',  code: 'M07', short: 'TRAFFIC',    label: 'Traffic Intel',    icon: <Activity size={14} />,        component: TrafficScreen },
+    { id: 'design-3d',   moduleId: 'M03', fkey: 'F7',  code: 'M03', short: '3D DESIGN',  label: '3D Design',        icon: <Box size={14} />,             component: Design3DScreen },
+    { id: 'capital',     moduleId: 'M11', fkey: 'F8',  code: 'M11', short: 'DEBT/CAP',   label: 'Debt & Capital',   icon: <DollarSign size={14} />,      component: DebtCapitalScreen },
+    { id: 'proforma',    moduleId: 'M08', fkey: 'F9',  code: 'M08', short: 'PRO FORMA',  label: 'Financial Engine', icon: <Calculator size={14} />,      component: ProFormaScreen },
+    { id: 'risk',        moduleId: 'M13', fkey: 'F10', code: 'M13', short: 'RISK',       label: 'Risk',             icon: <Shield size={14} />,          component: RiskScreen },
+    { id: 'events',      moduleId: 'M35', fkey: 'F12', code: 'M35', short: 'EVENTS',     label: 'Event Timeline',   icon: <Zap size={14} />,             component: (props: any) => <EventTimelineSection {...props} /> },
+    { id: 'deal-tools', moduleId: 'M21', fkey: 'F11', code: 'M21', short: 'TOOLS',      label: 'Deal Tools',       icon: <Briefcase size={14} />,       component: DealToolsScreen },
   ];
 
-  // Stage 2: MARKET RESEARCH - Validate opportunity
-  const marketResearchTabs: Tab[] = [
-    {
-      id: 'market-intelligence',
-      label: 'Market Intelligence',
-      icon: <TrendingUp size={16} />,
-      component: MarketIntelligencePage,
-      moduleId: 'M05'
-    },
-    {
-      id: 'unit-mix-intelligence',
-      label: 'Unit Mix Intelligence',
-      icon: <Layers size={16} />,
-      component: UnitMixIntelligence,
-      // No moduleId — Unit Program tool, always visible across deal types
-    },
-    {
-      id: 'competition',
-      label: 'Competition Analysis',
-      icon: <Target size={16} />,
-      component: CompetitionPage,
-      moduleId: 'M15'
-    },
-    {
-      id: 'supply',
-      label: 'Supply Pipeline',
-      icon: <Package size={16} />,
-      component: SupplyPipelinePage,
-      moduleId: 'M04'
-    },
-    {
-      id: 'opportunity-engine',
-      label: 'Opportunity Engine',
-      icon: <Zap size={16} />,
-      component: OpportunityEngineSection,
-      moduleId: 'M05'
-    },
-    {
-      id: 'trends',
-      label: 'Trends Analysis',
-      icon: <LineChart size={16} />,
-      component: TrendsAnalysisSection,
-      moduleId: 'M05'
-    },
-    {
-      id: 'comps',
-      label: 'Sale Comps',
-      icon: <Briefcase size={16} />,
-      component: CompsModule,
-      moduleId: 'M15',
-    },
-  ];
+  const dealScreens = allDealScreens.filter((s) => config.isModuleVisible(s.moduleId));
 
-  // Stage 3: DEAL DESIGN - Create the deal
-  // Pipeline: Strategy → Traffic Module → Pro Forma → Debt, Equity & Exit → Financial Dashboard
-  const dealDesignTabs: Tab[] = [
-    { 
-      id: '3d-design', 
-      label: '3D Building Design', 
-      icon: <Box size={16} />, 
-      component: Design3DPageEnhanced 
-    },
-    { 
-      id: 'strategy', 
-      label: 'Strategy', 
-      icon: <Target size={16} />, 
-      component: StrategySection 
-    },
-    {
-      id: 'traffic-module',
-      label: 'Traffic Module',
-      icon: <Activity size={16} />,
-      component: TrafficModule
-    },
-    {
-      id: 'proforma',
-      label: 'Pro Forma',
-      icon: <Layers size={16} />,
-      component: ProFormaTab
-    },
-    {
-      id: 'tax',
-      label: 'Tax Intelligence',
-      icon: <Calculator size={16} />,
-      component: TaxModule
-    },
-    {
-      id: 'debt',
-      label: 'Debt, Equity & Exit',
-      icon: <DollarSign size={16} />,
-      component: ExitCapitalModule
-    },
-    {
-      id: 'financial-dashboard',
-      label: 'Financial Dashboard',
-      icon: <BarChart3 size={16} />,
-      component: FinancialDashboard
-    },
-  ];
+  useEffect(() => {
+    if (dealScreens.length > 0 && !dealScreens.find(s => s.id === activeTab)) {
+      setActiveTab(dealScreens[0].id);
+    }
+  }, [dealType, activeTab]);
 
-  // Stage 4: DUE DILIGENCE - Verify & validate
-  const dueDiligenceTabs: DealTab[] = [
-    {
-      id: 'collision-analysis',
-      label: 'Collision Analysis',
-      icon: <Zap size={16} />,
-      component: CollisionAnalysisSection,
-      // No moduleId — always visible
-    },
-    {
-      id: 'due-diligence',
-      label: 'DD Checklist',
-      icon: <ClipboardCheck size={16} />,
-      component: DueDiligencePage,
-      moduleId: 'M13'
-    },
-    {
-      id: 'deal-status',
-      label: 'Deal Lifecycle',
-      icon: <LayoutDashboard size={16} />,
-      component: DealStatusSection
-    },
-    {
-      id: 'risk-intelligence',
-      label: 'Risk Intelligence',
-      icon: <Shield size={16} />,
-      component: RiskIntelligence,
-      moduleId: 'M14'
-    },
-    {
-      id: 'files',
-      label: 'Files & Assets',
-      icon: <FolderOpen size={16} />,
-      component: FilesSection,
-      moduleId: 'M18'
-    },
-  ];
+  const activeScreenData = dealScreens.find(s => s.id === activeTab) || dealScreens[0];
+  const ActiveComponent = activeScreenData.component;
 
-  // Stage 5: EXECUTION - Build & deliver
-  const executionTabs: Tab[] = [
-    {
-      id: 'timeline',
-      label: 'Project Timeline',
-      icon: <Calendar size={16} />,
-      component: ProjectTimelinePage
-    },
-    {
-      id: 'project-management',
-      label: 'Project Management',
-      icon: <Briefcase size={16} />,
-      component: ProjectManagementSection,
-      moduleId: 'M17'
-    },
-    {
-      id: 'construction-management',
-      label: 'Construction Management',
-      icon: <HardHat size={16} />,
-      component: ConstructionManagementSection
-    },
-  ];
+  const showUnitMixCTA =
+    activeTab === 'zoning' &&
+    developmentEnvelope !== null &&
+    selectedDevelopmentPathId !== null;
 
-  // Always Available: AI ASSISTANT
-  const aiAssistantTabs: Tab[] = [
-    {
-      id: 'ai-agent',
-      label: 'Opus AI Agent',
-      icon: <Bot size={16} />,
-      component: OpusAISection
-    },
-    {
-      id: 'ai-recommendations',
-      label: 'AI Recommendations',
-      icon: <Lightbulb size={16} />,
-      component: AIRecommendationsSection
-    },
-  ];
-
-  // Filter tabs based on module visibility configuration
-  const filtered = (tabs: DealTab[]) => tabs.filter(t => !t.moduleId || config.isModuleVisible(t.moduleId as ModuleId));
-
-  const allTabs = [
-    ...filtered(overviewSetupTabs),
-    ...filtered(marketResearchTabs),
-    ...filtered(dealDesignTabs),
-    ...filtered(dueDiligenceTabs),
-    ...filtered(executionTabs),
-    ...aiAssistantTabs,
-  ];
-
-  const activeTabData = allTabs.find(tab => tab.id === activeTab);
-  const ActiveComponent = activeTabData?.component || OverviewSection;
-
-  const filteredTabs = searchQuery
-    ? allTabs.filter(tab => tab.label.toLowerCase().includes(searchQuery.toLowerCase()))
-    : null;
+  const ctaLabel =
+    dealType === 'development'
+      ? 'Design Unit Program'
+      : dealType === 'redevelopment'
+      ? 'Plan Renovation Mix'
+      : 'View Unit Positioning';
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-          <span className="text-sm text-slate-500">Loading deal...</span>
+          <div className="w-8 h-8 animate-spin" style={{ borderRadius: '50%', border: `2px solid ${BT.border.subtle}`, borderTop: `2px solid ${BT.text.cyan}` }} />
+          <span className="text-sm" style={{ color: BT.text.secondary }}>Loading deal...</span>
         </div>
       </div>
     );
@@ -456,74 +682,225 @@ const DealDetailPage: React.FC = () => {
   if (!deal) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4">
-        <div className="text-6xl text-slate-300">
+        <div className="text-6xl" style={{ color: BT.text.muted }}>
           <Building2 size={64} />
         </div>
-        <h2 className="text-xl font-semibold text-slate-700">Deal not found</h2>
-        <p className="text-sm text-slate-500">This deal may have been deleted or you don't have access.</p>
+        <h2 className="text-xl font-semibold" style={{ color: BT.text.primary }}>Deal not found</h2>
+        <p className="text-sm" style={{ color: BT.text.secondary }}>This deal may have been deleted or you don't have access.</p>
         <button
-          onClick={() => navigate('/deals')}
-          className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm font-medium"
+          onClick={() => navigate('/terminal/pipeline')}
+          className="px-4 py-2 transition-colors text-sm font-medium"
+          style={{ background: BT.text.cyan, color: BT.bg.terminal, borderRadius: 2 }}
         >
-          Back to Deal Capsules
+          Back to Pipeline
         </button>
       </div>
     );
   }
 
+  const BG = '#0A0E17';
+  const BG_CARD = '#0F1319';
+  const BG_NAV = '#080C12';
+  const BORDER = '#1e2a3d';
+  const AMBER = '#F5A623';
+  const AMBER_L = '#FFD166';
+  const GREEN = '#10B981';
+  const TEXT = '#E8E6E1';
+  const TEXT_MID = '#9EA8B4';
+  const TEXT_DIM = '#6B7585';
+  const MONO = "'JetBrains Mono','Fira Code','IBM Plex Mono',monospace";
+  const SANS = "'IBM Plex Sans',-apple-system,sans-serif";
+
   return (
     <DealModuleProvider dealId={dealId || null} deal={deal} activeTab={activeTab} onTabChange={setActiveTab}>
-      <div className="h-full flex flex-col bg-slate-50 -mb-6 -mx-6">
-        <div className="bg-white border-b border-slate-200 px-6 py-2.5 flex-shrink-0">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3 min-w-0">
-              <button
-                className="text-slate-400 hover:text-slate-700 transition-colors flex-shrink-0"
-                onClick={() => navigate(-1)}
-              >
-                <ArrowLeft size={16} />
-              </button>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-blue-600 bg-blue-50 px-2 py-0.5 rounded flex-shrink-0">Deal Capsule</span>
-                  <h1 className="text-lg font-bold text-slate-900 truncate">{deal.name || 'Untitled Deal'}</h1>
-                  <span className="text-xs font-medium px-2.5 py-0.5 bg-slate-100 text-slate-600 rounded-full capitalize flex-shrink-0">
-                    {deal.project_type || deal.property_type || 'multifamily'}
-                  </span>
-                  {deal.status && (
-                    <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full flex-shrink-0 ${
-                      deal.status === 'active' ? 'bg-green-100 text-green-700' :
-                      deal.status === 'closed' ? 'bg-blue-100 text-blue-700' :
-                      'bg-yellow-100 text-yellow-700'
-                    }`}>
-                      {deal.status}
-                    </span>
-                  )}
-                  <DevPathBadge />
-                </div>
-                {(deal.address || deal.location) && (
-                  <div className="flex items-center gap-1 text-xs text-slate-500 mt-0.5">
-                    <MapPin size={11} className="flex-shrink-0" />
-                    <span className="truncate">{deal.address || deal.location}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center gap-3 flex-shrink-0">
-              <GeographicScopeTabs
-                activeScope={activeScope}
-                onChange={setScope}
-                tradeAreaEnabled={!!geographicStats?.trade_area}
-                onDefineTradeArea={() => setShowTradeAreaPanel(true)}
-                stats={geographicStats || {}}
-                compact
-              />
-              {deal.jedi_score && (
-                <span className="flex items-center gap-1 text-xs text-slate-500">
-                  <Activity size={12} />
-                  JEDI {deal.jedi_score}
+      <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: BG, overflow: 'hidden' }}>
+
+        {/* ── Bar 1: Top Status Bar (JEDI RE branding + context label + status metrics) ── */}
+        <DealTopStatusBar dealName={deal?.name || deal?.address || 'DEAL'} isDark={isDark} onToggleTheme={() => setTheme(isDark ? 'light' : 'dark')} />
+
+        {/* ── Bar 2: Deal Context Bar (📍 name · address · JEDI score │ ▶ TRADE AREA │ SUBMARKET │ MSA) ── */}
+        {deal && (
+          <div style={{
+            height: 28, background: BG_NAV, borderBottom: `1px solid ${BORDER}`,
+            display: 'flex', alignItems: 'center', padding: '0 10px', gap: 0,
+            flexShrink: 0, fontFamily: MONO, overflow: 'hidden',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 0, minWidth: 0, flex: 1 }}>
+              <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#F5A623', flexShrink: 0, marginRight: 6 }} />
+              {(deal.address || deal.location) && (
+                <span style={{ color: TEXT_MID, fontSize: 9, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 260, letterSpacing: 0.2 }}>
+                  {deal.address || deal.location}
                 </span>
               )}
+              {dealType && (
+                <>
+                  <span style={{ color: BORDER, margin: '0 6px', fontSize: 9 }}>·</span>
+                  <DealTypeBadge current={dealType} onChange={handleDealTypeChange} saving={savingDealType} />
+                </>
+              )}
+              {deal.pipeline_stage && (
+                <>
+                  <span style={{ color: BORDER, margin: '0 6px', fontSize: 9 }}>·</span>
+                  <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: 0.8, padding: '1px 6px', color: GREEN, border: `1px solid ${GREEN}44`, textTransform: 'uppercase', flexShrink: 0 }}>
+                    {deal.pipeline_stage}
+                  </span>
+                </>
+              )}
+              {deal.jedi_score != null && (
+                <span style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0, marginLeft: 10 }}>
+                  <span style={{ color: AMBER, fontSize: 9, fontWeight: 700, letterSpacing: 0.3 }}>
+                    JEDI {typeof deal.jedi_score === 'object' ? (deal.jedi_score as any)?.totalScore ?? '' : deal.jedi_score}
+                  </span>
+                  {deal.delta_30d != null && (
+                    <span style={{ fontSize: 9, fontWeight: 700, color: deal.delta_30d >= 0 ? GREEN : '#EF4444' }}>
+                      {deal.delta_30d >= 0 ? '▲' : '▼'}{deal.delta_30d >= 0 ? '+' : ''}{deal.delta_30d}
+                    </span>
+                  )}
+                </span>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+              <button
+                onClick={() => setShowTradeAreaPanel(true)}
+                style={{
+                  background: 'transparent', border: `1px solid ${AMBER}55`, cursor: 'pointer',
+                  padding: '2px 8px', fontFamily: MONO,
+                  fontSize: 9, fontWeight: 800, color: AMBER, letterSpacing: 0.8,
+                  display: 'flex', alignItems: 'center', gap: 4,
+                }}
+              >
+                ▶ TRADE AREA
+              </button>
+
+              {(() => {
+                const fmtOcc = (v: unknown): string | null => {
+                  if (v == null) return null;
+                  const n = Number(v);
+                  if (isNaN(n)) return null;
+                  const pct = n > 1 ? n : n * 100;
+                  return `${pct.toFixed(1)}%`;
+                };
+                const fmtRent = (v: unknown): string | null => {
+                  if (v == null) return null;
+                  const n = Number(v);
+                  if (isNaN(n)) return null;
+                  return `$${Math.round(n).toLocaleString()}`;
+                };
+                const smStats = (geographicStats as any)?.submarket;
+                const msaStats = (geographicStats as any)?.msa;
+                const smOcc = fmtOcc(smStats?.occupancy);
+                const smRent = fmtRent(smStats?.avg_rent);
+                const msaOcc = fmtOcc(msaStats?.occupancy);
+                const msaRent = fmtRent(msaStats?.avg_rent);
+                const pipe = <span style={{ color: BORDER, margin: '0 8px', fontSize: 10 }}>│</span>;
+                return (
+                  <>
+                    {(smOcc || smRent) && (
+                      <>
+                        {pipe}
+                        <span style={{ fontSize: 9, color: TEXT_MID, letterSpacing: 0.5, marginRight: 4 }}>SUBMARKET</span>
+                        <span style={{ fontSize: 9, fontWeight: 700, color: TEXT, letterSpacing: 0.2 }}>
+                          {[smOcc, smRent].filter(Boolean).join(' · ')}
+                        </span>
+                      </>
+                    )}
+                    {(msaOcc || msaRent) && (
+                      <>
+                        {pipe}
+                        <span style={{ fontSize: 9, color: TEXT_MID, letterSpacing: 0.5, marginRight: 4 }}>MSA</span>
+                        <span style={{ fontSize: 9, fontWeight: 700, color: TEXT, letterSpacing: 0.2 }}>
+                          {[msaOcc, msaRent].filter(Boolean).join(' · ')}
+                        </span>
+                      </>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+        )}
+
+        {/* ── M35 Event Hero Banner (Touch 1 — renders when active events exist) ── */}
+        <EventHeroBanner
+          events={bannerEvents}
+          sensitivity={eventSensitivity}
+          concentration={eventConcentration}
+          onViewTimeline={() => setActiveTab('events')}
+        />
+
+        {/* ── Bloomberg-style F-Key Navigation Bar ── */}
+        <div style={{
+          background: BG_NAV,
+          borderBottom: `1px solid ${BORDER}`,
+          flexShrink: 0,
+          display: 'flex',
+          alignItems: 'center',
+          overflowX: 'auto',
+          height: 32,
+        }}>
+          {/* Back arrow */}
+          <button
+            onClick={() => navigate(-1)}
+            title="Go back"
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 32, height: 32, flexShrink: 0,
+              background: 'none', border: 'none', borderRight: `1px solid ${BORDER}`,
+              cursor: 'pointer', color: TEXT_DIM,
+              transition: 'color 0.12s',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.color = TEXT)}
+            onMouseLeave={e => (e.currentTarget.style.color = TEXT_DIM)}
+          >
+            <ArrowLeft size={12} />
+          </button>
+
+          {/* F-key module buttons — Terminal single-line style */}
+          {dealScreens.map((s) => {
+            const isActive = s.id === activeTab;
+            return (
+              <button
+                key={s.id}
+                onClick={() => setActiveTab(s.id)}
+                style={{
+                  fontFamily: MONO, fontSize: 10, fontWeight: 600,
+                  padding: '0 12px', height: 32,
+                  cursor: 'pointer',
+                  background: isActive ? AMBER : 'transparent',
+                  color: isActive ? BG_NAV : TEXT_MID,
+                  border: 'none',
+                  display: 'flex', alignItems: 'center', gap: 5,
+                  whiteSpace: 'nowrap', flexShrink: 0,
+                }}
+              >
+                <span style={{ fontSize: 9, fontWeight: 700, opacity: 0.7, color: isActive ? BG_NAV : TEXT_DIM }}>{s.fkey}</span>
+                {s.short}
+              </button>
+            );
+          })}
+
+          {/* Right side: search */}
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 0, flexShrink: 0 }}>
+            {/* Search bar */}
+            <div style={{ display: 'flex', alignItems: 'center', borderLeft: `1px solid ${BORDER}`, height: '100%', padding: '0 10px' }}>
+              <input
+                type="text"
+                placeholder="⌕  SEARCH DEAL..."
+                style={{
+                  fontFamily: MONO, fontSize: 9, fontWeight: 500,
+                  background: '#0D1117', color: TEXT,
+                  border: `1px solid ${BORDER}`,
+                  padding: '3px 10px', width: 160, letterSpacing: 0.4,
+                  outline: 'none',
+                }}
+                onFocus={e => { e.currentTarget.style.borderColor = AMBER; }}
+                onBlur={e => { e.currentTarget.style.borderColor = BORDER; }}
+              />
+            </div>
+            {/* Presence indicator */}
+            <div style={{ display: 'flex', alignItems: 'center', borderLeft: `1px solid ${BORDER}`, height: '100%', paddingLeft: 10, paddingRight: 10 }}>
+              {dealId && <PresenceIndicator dealId={dealId} currentModule={activeTab} />}
             </div>
           </div>
         </div>
@@ -533,14 +910,14 @@ const DealDetailPage: React.FC = () => {
           const lat = centroid ? centroid[1] : 33.749;
           const lng = centroid ? centroid[0] : -84.388;
           return (
-            <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-6">
-              <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-y-auto">
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-6" style={{ background: 'rgba(0,0,0,0.7)' }}>
+              <div className="max-w-2xl w-full max-h-[85vh] overflow-y-auto" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
                 <div className="p-6">
                   <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-lg font-bold text-gray-900">Define Trade Area</h2>
+                    <h2 className="text-lg font-bold text-[#E8E6E1]">Define Trade Area</h2>
                     <button
                       onClick={() => setShowTradeAreaPanel(false)}
-                      className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
+                      className="text-[#6B7585] hover:text-[#9EA8B4] text-2xl leading-none"
                     >
                       &times;
                     </button>
@@ -557,113 +934,47 @@ const DealDetailPage: React.FC = () => {
           );
         })()}
 
-        <div className="flex flex-1 overflow-hidden min-w-0">
-          <aside className="w-[260px] bg-white border-r border-slate-200 overflow-y-auto flex flex-col flex-shrink-0">
-            <div className="p-3">
-              <div className="relative mb-3">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search capsule modules..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-8 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                />
-              </div>
+        <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minWidth: 0, minHeight: 0 }}>
+          <main style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+            <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', background: BG, padding: '0 8px' }}>
+              <ActiveComponent deal={deal} dealId={dealId} dealType={dealType} embedded={true} onUpdate={() => dealId && loadDeal(dealId)} onBack={() => setActiveTab('overview')} geographicContext={geographicContext} />
+            </div>
 
-              {searchQuery && filteredTabs ? (
-                <div className="space-y-0.5">
-                  <div className="text-xs text-slate-400 px-3 py-1 font-medium">Search Results ({filteredTabs.length})</div>
-                  {filteredTabs.map(tab => (
-                    <button
-                      key={tab.id}
-                      onClick={() => { setActiveTab(tab.id); setSearchQuery(''); }}
-                      className={`w-full px-3 py-2 rounded-lg text-left text-sm flex items-center gap-2 transition-colors ${
-                        activeTab === tab.id
-                          ? 'bg-blue-500 text-white font-medium'
-                          : 'text-slate-600 hover:bg-slate-50'
-                      }`}
-                    >
-                      {tab.icon && <span className="flex items-center">{tab.icon}</span>}
-                      <span>{tab.label}</span>
-                    </button>
-                  ))}
-                  {filteredTabs.length === 0 && (
-                    <div className="text-sm text-slate-400 text-center py-4">No matching modules</div>
-                  )}
+            {showUnitMixCTA && (
+              <div style={{
+                flexShrink: 0, borderTop: `1px solid ${AMBER}40`,
+                background: `linear-gradient(to right, ${AMBER}08, #8B5CF608)`,
+                padding: '12px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ width: 7, height: 7, borderRadius: '50%', background: AMBER, animation: 'pulse 2s infinite' }} />
+                  <div>
+                    <p style={{ fontSize: 12, fontWeight: 700, color: AMBER_L, fontFamily: MONO, margin: 0 }}>Development path selected</p>
+                    <p style={{ fontSize: 10, color: TEXT_DIM, fontFamily: MONO, margin: 0 }}>
+                      {developmentEnvelope.max_units} max units · {developmentEnvelope.max_gfa.toLocaleString()} sf GFA · binding: {developmentEnvelope.binding_constraint}
+                    </p>
+                  </div>
                 </div>
-              ) : (
-                <nav className="flex-1">
-                  <TabGroup
-                    id="overview-setup"
-                    title="OVERVIEW & SETUP"
-                    icon={<LayoutDashboard size={18} />}
-                    tabs={overviewSetupTabs}
-                    activeTab={activeTab}
-                    onTabChange={setActiveTab}
-                    defaultExpanded={true}
-                  />
-                  <TabGroup
-                    id="market-research"
-                    title="MARKET RESEARCH"
-                    icon={<Search size={18} />}
-                    tabs={marketResearchTabs}
-                    activeTab={activeTab}
-                    onTabChange={setActiveTab}
-                  />
-                  <TabGroup
-                    id="deal-design"
-                    title="DEAL DESIGN"
-                    icon={<Box size={18} />}
-                    tabs={dealDesignTabs}
-                    activeTab={activeTab}
-                    onTabChange={setActiveTab}
-                  />
-                  <TabGroup
-                    id="due-diligence"
-                    title="DUE DILIGENCE"
-                    icon={<ClipboardCheck size={18} />}
-                    tabs={dueDiligenceTabs}
-                    activeTab={activeTab}
-                    onTabChange={setActiveTab}
-                  />
-                  <TabGroup
-                    id="execution"
-                    title="EXECUTION"
-                    icon={<Activity size={18} />}
-                    tabs={executionTabs}
-                    activeTab={activeTab}
-                    onTabChange={setActiveTab}
-                  />
-                  <TabGroup
-                    id="ai-assistant"
-                    title="AI ASSISTANT"
-                    icon={<Bot size={18} />}
-                    tabs={aiAssistantTabs}
-                    activeTab={activeTab}
-                    onTabChange={setActiveTab}
-                  />
-                </nav>
-              )}
-            </div>
-
-            <div className="mt-auto p-3 border-t border-slate-200">
-              <div className="text-[10px] text-slate-400 text-center space-y-0.5">
-                <p>Press 1-6 for quick stage access</p>
-                <p className="text-slate-300">Deal Capsule | {allTabs.length} modules</p>
+                <button
+                  onClick={() => setActiveTab('market')}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '8px 18px', background: AMBER, color: '#0A0E17',
+                    fontSize: 11, fontWeight: 700, fontFamily: MONO, letterSpacing: 1,
+                    border: 'none', borderRadius: 6, cursor: 'pointer',
+                  }}
+                >
+                  {ctaLabel}
+                  <ArrowRight size={14} />
+                </button>
               </div>
-            </div>
-          </aside>
-
-          <main className={`flex-1 min-w-0 min-h-0 ${activeTab === '3d-design' ? 'overflow-hidden flex flex-col' : 'overflow-y-auto p-6 pr-6'}`}>
-            <ActiveComponent deal={deal} dealId={dealId} embedded={true} onUpdate={() => dealId && loadDeal(dealId)} onBack={() => setActiveTab('overview')} geographicContext={geographicContext} />
+            )}
           </main>
-
-          <ZoningAgentChat
-            activeTab={activeTab}
-            dealId={dealId}
-          />
         </div>
+
+        {/* ── Bottom Panel + Agent Bar (shared with Terminal Dashboard) ── */}
+        <BottomPanel />
+        <AgentBar />
       </div>
     </DealModuleProvider>
   );

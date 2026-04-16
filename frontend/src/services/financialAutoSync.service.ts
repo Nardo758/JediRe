@@ -14,6 +14,9 @@ import type {
   CostBreakdown,
 } from '../types/financial.types';
 
+let _dealStoreRef: { getState: () => { hasBlockingAlerts: () => boolean } } | null = null;
+import('../stores/dealStore').then(m => { _dealStoreRef = m.useDealStore; }).catch(() => {});
+
 // Debounce delay for 3D changes (500ms)
 const DEBOUNCE_DELAY = 500;
 
@@ -31,6 +34,11 @@ export class FinancialAutoSyncService {
   private syncStates: Map<string, FinancialSyncState> = new Map();
   private lastProFormas: Map<string, ProForma> = new Map();
   private assumptions: Map<string, FinancialAssumptions> = new Map();
+
+  private isBlockGated(): boolean {
+    if (!_dealStoreRef) return true;
+    return _dealStoreRef.getState().hasBlockingAlerts();
+  }
 
   /**
    * Watch 3D design changes for a deal
@@ -123,12 +131,16 @@ export class FinancialAutoSyncService {
     const { id: designId, dealId } = design;
 
     try {
+      if (this.isBlockGated()) {
+        console.warn('[FinancialAutoSync] ProForma generation blocked: unresolved blocking alerts');
+        return;
+      }
+
       const assumptions = this.assumptions.get(designId);
       if (!assumptions) {
         throw new Error(`No assumptions found for design ${designId}`);
       }
 
-      // Generate new pro forma
       const newProForma = generateProForma(design, assumptions, dealId);
 
       // Detect changes

@@ -1,0 +1,431 @@
+import { useState, useMemo, useCallback } from "react";
+
+const T = {
+  bg: { primary: "#0a0e14", secondary: "#0f1319", tertiary: "#141a22", elevated: "#1a2130" },
+  text: { primary: "#e8e6df", secondary: "#9c9a92", tertiary: "#6b6963", accent: "#c2c0b6" },
+  border: { primary: "#2a2e36", secondary: "#1e2228", subtle: "#161c24" },
+  accent: { green: "#22c55e", greenDim: "#16a34a", red: "#ef4444", redDim: "#b91c1c", amber: "#f59e0b", amberDim: "#d97706", blue: "#3b82f6", blueDim: "#2563eb", cyan: "#06b6d4", purple: "#8b5cf6", teal: "#14b8a6" },
+  font: { mono: "'JetBrains Mono', 'IBM Plex Mono', monospace", sans: "'IBM Plex Sans', -apple-system, sans-serif" },
+};
+
+const UNIT_TYPES = [
+  { key: "studio", label: "Studio", color: "#8b5cf6", marketMix: 5.3, marketRent: 1240, marketSF: 508, proposedMix: 22, proposedRent: 1302, proposedSF: 508, units: 55 },
+  { key: "1br", label: "1 BR", color: "#3b82f6", marketMix: 42, marketRent: 1642, marketSF: 748, proposedMix: 22, proposedRent: 1642, proposedSF: 765, units: 55 },
+  { key: "2br", label: "2 BR", color: "#22c55e", marketMix: 44, marketRent: 1948, marketSF: 1055, proposedMix: 28, proposedRent: 1948, proposedSF: 1083, units: 70 },
+  { key: "3br", label: "3 BR+", color: "#f59e0b", marketMix: 8.7, marketRent: 2280, marketSF: 1298, proposedMix: 28, proposedRent: 2394, proposedSF: 1298, units: 70 },
+];
+
+const DEAL_TYPES = [
+  { key: "development", label: "Development", desc: "Ground-up" },
+  { key: "redevelopment", label: "Redevelopment", desc: "Add/convert" },
+  { key: "existing", label: "Existing", desc: "As-is" },
+];
+
+function formatNum(n) {
+  if (n >= 1e6) return `$${(n / 1e6).toFixed(2)}M`;
+  if (n >= 1e3) return `${(n / 1e3).toFixed(0)}K`;
+  return n.toLocaleString();
+}
+
+function DeltaBadge({ value, suffix = "", invert = false }) {
+  if (value === 0) return <span style={{ color: T.text.tertiary, fontSize: 10, fontFamily: T.font.mono }}>—</span>;
+  const pos = invert ? value < 0 : value > 0;
+  const color = pos ? T.accent.green : T.accent.red;
+  const arrow = pos ? "▲" : "▼";
+  return (
+    <span style={{ color, fontSize: 10, fontFamily: T.font.mono, letterSpacing: -0.3 }}>
+      {arrow} {Math.abs(value).toFixed(1)}{suffix}
+    </span>
+  );
+}
+
+function MixBar({ proposed, market, color }) {
+  const maxVal = Math.max(proposed, market, 50);
+  const pW = (proposed / maxVal) * 100;
+  const mW = (market / maxVal) * 100;
+  return (
+    <div style={{ position: "relative", height: 20, width: "100%" }}>
+      {/* Market benchmark line */}
+      <div style={{
+        position: "absolute", left: `${mW}%`, top: 0, bottom: 0, width: 1,
+        background: T.text.tertiary, zIndex: 2, opacity: 0.6,
+      }} />
+      <div style={{
+        position: "absolute", left: `calc(${mW}% + 3px)`, top: 1,
+        fontSize: 9, fontFamily: T.font.mono, color: T.text.tertiary, whiteSpace: "nowrap",
+      }}>
+        MKT {market.toFixed(0)}%
+      </div>
+      {/* Proposed bar */}
+      <div style={{
+        position: "absolute", left: 0, top: 6, height: 8,
+        width: `${pW}%`, background: color, borderRadius: 1, opacity: 0.85,
+        transition: "width 0.3s ease",
+      }} />
+    </div>
+  );
+}
+
+function EnvelopeGauge({ used, total, label }) {
+  const pct = (used / total) * 100;
+  const remaining = total - used;
+  const isOver = used > total;
+  const barColor = isOver ? T.accent.red : pct > 90 ? T.accent.amber : T.accent.green;
+  return (
+    <div style={{ flex: 1 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+        <span style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.tertiary, textTransform: "uppercase", letterSpacing: 0.8 }}>{label}</span>
+        <span style={{ fontSize: 10, fontFamily: T.font.mono, color: isOver ? T.accent.red : T.text.secondary }}>
+          {remaining > 0 ? `${remaining.toLocaleString()} remaining` : `${Math.abs(remaining).toLocaleString()} over`}
+        </span>
+      </div>
+      <div style={{ height: 4, background: T.bg.primary, borderRadius: 1, position: "relative" }}>
+        <div style={{
+          height: "100%", width: `${Math.min(pct, 100)}%`, background: barColor,
+          borderRadius: 1, transition: "width 0.3s ease",
+        }} />
+        {/* 100% mark */}
+        <div style={{
+          position: "absolute", right: 0, top: -2, bottom: -2, width: 1,
+          background: T.text.tertiary, opacity: 0.4,
+        }} />
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 3 }}>
+        <span style={{ fontSize: 10, fontFamily: T.font.mono, color: T.text.primary }}>
+          {used.toLocaleString()}
+        </span>
+        <span style={{ fontSize: 10, fontFamily: T.font.mono, color: T.text.tertiary }}>
+          / {total.toLocaleString()}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function KPICell({ label, value, sub, accent }) {
+  return (
+    <div style={{ flex: 1, borderRight: `1px solid ${T.border.secondary}`, padding: "8px 14px" }}>
+      <div style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.tertiary, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 18, fontFamily: T.font.mono, color: accent || T.text.primary, fontWeight: 500, lineHeight: 1 }}>{value}</div>
+      {sub && <div style={{ fontSize: 10, fontFamily: T.font.mono, color: T.text.secondary, marginTop: 3 }}>{sub}</div>}
+    </div>
+  );
+}
+
+function EditableField({ value, label, suffix = "", small = false }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+      <span style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.tertiary, textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</span>
+      <div style={{
+        display: "flex", alignItems: "center", gap: 3,
+        background: T.bg.primary, border: `1px solid ${T.border.primary}`,
+        borderRadius: 2, padding: "3px 6px", minWidth: small ? 52 : 68,
+      }}>
+        <span style={{ fontSize: 12, fontFamily: T.font.mono, color: T.text.primary }}>{value}</span>
+        {suffix && <span style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.tertiary }}>{suffix}</span>}
+      </div>
+    </div>
+  );
+}
+
+function UnitTypeRow({ unit, isLast }) {
+  const annualRev = unit.proposedRent * unit.units * 12;
+  const psfRent = unit.proposedSF > 0 ? (unit.proposedRent / unit.proposedSF) : 0;
+  const mixDelta = unit.proposedMix - unit.marketMix;
+  const rentDelta = unit.proposedRent - unit.marketRent;
+  const sfDelta = unit.proposedSF - unit.marketSF;
+
+  return (
+    <div style={{
+      display: "grid",
+      gridTemplateColumns: "80px 130px 1fr 1fr 1fr 90px 90px",
+      gap: 0,
+      alignItems: "center",
+      padding: "12px 14px",
+      borderBottom: isLast ? "none" : `1px solid ${T.border.subtle}`,
+      transition: "background 0.15s",
+    }}
+      onMouseEnter={e => e.currentTarget.style.background = T.bg.elevated}
+      onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+    >
+      {/* Type label + color */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ width: 3, height: 28, background: unit.color, borderRadius: 1 }} />
+        <div>
+          <div style={{ fontSize: 12, fontFamily: T.font.mono, color: T.text.primary, fontWeight: 500 }}>{unit.label}</div>
+          <div style={{ fontSize: 10, fontFamily: T.font.mono, color: T.text.tertiary }}>{unit.units} units</div>
+        </div>
+      </div>
+
+      {/* Mix % with market comparison bar */}
+      <div style={{ paddingRight: 12 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 2 }}>
+          <span style={{ fontSize: 14, fontFamily: T.font.mono, color: T.text.primary, fontWeight: 500 }}>{unit.proposedMix}%</span>
+          <DeltaBadge value={mixDelta} suffix="pp" />
+        </div>
+        <MixBar proposed={unit.proposedMix} market={unit.marketMix} color={unit.color} />
+      </div>
+
+      {/* SF */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <EditableField value={unit.proposedSF.toLocaleString()} label="SF" />
+        <div style={{ display: "flex", flexDirection: "column", gap: 1, paddingTop: 14 }}>
+          <span style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.tertiary }}>avg {unit.marketSF.toLocaleString()}</span>
+          <DeltaBadge value={sfDelta} suffix=" sf" />
+        </div>
+      </div>
+
+      {/* Rent */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <EditableField value={`$${unit.proposedRent.toLocaleString()}`} label="Rent" />
+        <div style={{ display: "flex", flexDirection: "column", gap: 1, paddingTop: 14 }}>
+          <span style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.tertiary }}>avg ${unit.marketRent.toLocaleString()}</span>
+          <DeltaBadge value={rentDelta} suffix="" />
+        </div>
+      </div>
+
+      {/* $/SF */}
+      <div>
+        <span style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.tertiary, textTransform: "uppercase", letterSpacing: 0.5, display: "block", marginBottom: 2 }}>$/SF</span>
+        <span style={{ fontSize: 14, fontFamily: T.font.mono, color: T.text.accent }}>${psfRent.toFixed(2)}</span>
+      </div>
+
+      {/* Revenue contribution bar */}
+      <div style={{ textAlign: "right" }}>
+        <span style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.tertiary, textTransform: "uppercase", letterSpacing: 0.5, display: "block", marginBottom: 2 }}>Annual</span>
+        <span style={{ fontSize: 12, fontFamily: T.font.mono, color: unit.color }}>${(annualRev / 1e3).toFixed(0)}K</span>
+      </div>
+
+      {/* Rev share mini bar */}
+      <div style={{ paddingLeft: 4 }}>
+        <div style={{ height: 28, width: 4, background: T.bg.primary, borderRadius: 1, position: "relative", display: "inline-block", verticalAlign: "middle" }}>
+          <div style={{
+            position: "absolute", bottom: 0, width: "100%", borderRadius: 1,
+            height: `${(annualRev / 6360000) * 100}%`,
+            background: unit.color, opacity: 0.7,
+          }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function UnitProgram() {
+  const [dealType, setDealType] = useState("development");
+  const [optimizing, setOptimizing] = useState(false);
+
+  const totalUnits = UNIT_TYPES.reduce((a, u) => a + u.units, 0);
+  const maxUnits = 280;
+  const totalSF = UNIT_TYPES.reduce((a, u) => a + (u.proposedSF * u.units), 0);
+  const maxSF = 310000;
+  const grossRev = UNIT_TYPES.reduce((a, u) => a + (u.proposedRent * u.units * 12), 0);
+  const avgPSF = grossRev / 12 / totalSF;
+  const avgRent = grossRev / 12 / totalUnits;
+
+  const handleOptimize = () => {
+    setOptimizing(true);
+    setTimeout(() => setOptimizing(false), 2000);
+  };
+
+  return (
+    <div style={{
+      background: T.bg.secondary, borderRadius: 2, border: `1px solid ${T.border.primary}`,
+      fontFamily: T.font.mono, color: T.text.primary, maxWidth: 1080, margin: "0 auto",
+    }}>
+      {/* ─── Header ─── */}
+      <div style={{
+        display: "flex", justifyContent: "space-between", alignItems: "center",
+        padding: "10px 14px", borderBottom: `1px solid ${T.border.primary}`,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ fontSize: 10, fontFamily: T.font.mono, color: T.accent.cyan, fontWeight: 500, letterSpacing: 0.5 }}>M03</span>
+          <span style={{ fontSize: 13, fontFamily: T.font.sans, color: T.text.primary, fontWeight: 500 }}>Unit program</span>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {/* Deal type selector */}
+          <div style={{
+            display: "flex", background: T.bg.primary, borderRadius: 2,
+            border: `1px solid ${T.border.primary}`, overflow: "hidden",
+          }}>
+            {DEAL_TYPES.map(dt => (
+              <button
+                key={dt.key}
+                onClick={() => setDealType(dt.key)}
+                style={{
+                  padding: "4px 10px", border: "none", cursor: "pointer",
+                  fontSize: 10, fontFamily: T.font.mono, letterSpacing: 0.3,
+                  background: dealType === dt.key ? T.bg.elevated : "transparent",
+                  color: dealType === dt.key ? T.text.primary : T.text.tertiary,
+                  borderRight: `1px solid ${T.border.secondary}`,
+                  transition: "all 0.15s",
+                }}
+              >
+                {dt.label}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ width: 1, height: 20, background: T.border.primary, margin: "0 4px" }} />
+
+          <button
+            onClick={handleOptimize}
+            style={{
+              padding: "5px 12px", border: `1px solid ${T.accent.cyan}33`,
+              borderRadius: 2, cursor: "pointer",
+              fontSize: 10, fontFamily: T.font.mono, letterSpacing: 0.5,
+              background: optimizing ? `${T.accent.cyan}15` : "transparent",
+              color: T.accent.cyan, fontWeight: 500,
+              transition: "all 0.2s",
+            }}
+          >
+            {optimizing ? "OPTIMIZING..." : "AI OPTIMIZE"}
+          </button>
+          <button style={{
+            padding: "5px 10px", border: `1px solid ${T.border.primary}`,
+            borderRadius: 2, cursor: "pointer", background: "transparent",
+            fontSize: 10, fontFamily: T.font.mono, color: T.text.tertiary,
+          }}>
+            RESET
+          </button>
+        </div>
+      </div>
+
+      {/* ─── Zoning envelope constraints ─── */}
+      <div style={{
+        display: "flex", gap: 24, padding: "10px 14px",
+        background: T.bg.tertiary, borderBottom: `1px solid ${T.border.primary}`,
+      }}>
+        <EnvelopeGauge used={totalUnits} total={maxUnits} label="Unit envelope" />
+        <div style={{ width: 1, background: T.border.primary }} />
+        <EnvelopeGauge used={totalSF} total={maxSF} label="SF envelope" />
+      </div>
+
+      {/* ─── KPI Strip ─── */}
+      <div style={{
+        display: "flex", borderBottom: `1px solid ${T.border.primary}`,
+        background: T.bg.secondary,
+      }}>
+        <KPICell label="Total units" value={totalUnits} sub={`of ${maxUnits} max`} />
+        <KPICell label="Net SF" value={totalSF.toLocaleString()} sub={`${Math.round(totalSF / totalUnits)} avg/unit`} />
+        <KPICell label="Gross rev" value={`$${(grossRev / 1e6).toFixed(2)}M`} sub="annual" accent={T.accent.green} />
+        <KPICell label="Avg rent" value={`$${avgRent.toFixed(0)}`} sub="/unit/mo" />
+        <KPICell label="Avg $/SF" value={`$${avgPSF.toFixed(2)}`} sub="/mo" />
+      </div>
+
+      {/* ─── Column Headers ─── */}
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "80px 130px 1fr 1fr 1fr 90px 90px",
+        padding: "6px 14px",
+        borderBottom: `1px solid ${T.border.secondary}`,
+      }}>
+        {["Type", "Mix %", "Avg SF", "Rent", "$/SF", "Rev", ""].map((h, i) => (
+          <span key={i} style={{
+            fontSize: 9, fontFamily: T.font.mono, color: T.text.tertiary,
+            textTransform: "uppercase", letterSpacing: 0.8,
+          }}>{h}</span>
+        ))}
+      </div>
+
+      {/* ─── Unit Type Rows ─── */}
+      {UNIT_TYPES.map((unit, i) => (
+        <UnitTypeRow key={unit.key} unit={unit} isLast={i === UNIT_TYPES.length - 1} />
+      ))}
+
+      {/* ─── Totals Row ─── */}
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "80px 130px 1fr 1fr 1fr 90px 90px",
+        padding: "10px 14px",
+        borderTop: `1px solid ${T.border.primary}`,
+        background: T.bg.tertiary,
+      }}>
+        <div>
+          <span style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.tertiary, letterSpacing: 0.5 }}>TOTAL</span>
+        </div>
+        <div>
+          <span style={{ fontSize: 12, fontFamily: T.font.mono, color: T.text.primary, fontWeight: 500 }}>100%</span>
+        </div>
+        <div>
+          <span style={{ fontSize: 12, fontFamily: T.font.mono, color: T.text.primary }}>{Math.round(totalSF / totalUnits)} avg</span>
+        </div>
+        <div>
+          <span style={{ fontSize: 12, fontFamily: T.font.mono, color: T.text.primary }}>${avgRent.toFixed(0)} avg</span>
+        </div>
+        <div>
+          <span style={{ fontSize: 12, fontFamily: T.font.mono, color: T.text.accent }}>${avgPSF.toFixed(2)}</span>
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <span style={{ fontSize: 13, fontFamily: T.font.mono, color: T.accent.green, fontWeight: 500 }}>${(grossRev / 1e6).toFixed(2)}M</span>
+        </div>
+        <div />
+      </div>
+
+      {/* ─── Revenue Composition Strip ─── */}
+      <div style={{
+        padding: "8px 14px",
+        borderTop: `1px solid ${T.border.secondary}`,
+      }}>
+        <div style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.tertiary, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 6 }}>
+          Revenue composition
+        </div>
+        <div style={{ display: "flex", height: 6, borderRadius: 1, overflow: "hidden", gap: 1 }}>
+          {UNIT_TYPES.map(u => {
+            const rev = u.proposedRent * u.units * 12;
+            const pct = (rev / grossRev) * 100;
+            return (
+              <div key={u.key} style={{
+                width: `${pct}%`, background: u.color, opacity: 0.75,
+                transition: "width 0.3s ease",
+              }} />
+            );
+          })}
+        </div>
+        <div style={{ display: "flex", gap: 16, marginTop: 6 }}>
+          {UNIT_TYPES.map(u => {
+            const rev = u.proposedRent * u.units * 12;
+            const pct = (rev / grossRev) * 100;
+            return (
+              <div key={u.key} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <div style={{ width: 6, height: 6, background: u.color, borderRadius: 1, opacity: 0.75 }} />
+                <span style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.secondary }}>
+                  {u.label} {pct.toFixed(0)}%
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ─── Push to ProForma ─── */}
+      <div style={{
+        display: "flex", justifyContent: "space-between", alignItems: "center",
+        padding: "10px 14px", borderTop: `1px solid ${T.border.primary}`,
+        background: T.bg.tertiary,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.tertiary, letterSpacing: 0.5 }}>
+            DEAL TYPE: {DEAL_TYPES.find(d => d.key === dealType)?.label.toUpperCase()}
+          </span>
+          <span style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.tertiary }}>·</span>
+          <span style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.tertiary, letterSpacing: 0.5 }}>
+            ZONING: MRC-3
+          </span>
+          <span style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.tertiary }}>·</span>
+          <span style={{ fontSize: 9, fontFamily: T.font.mono, color: totalSF <= maxSF ? T.accent.green : T.accent.red, letterSpacing: 0.5 }}>
+            {totalSF <= maxSF ? "WITHIN ENVELOPE" : "EXCEEDS ENVELOPE"}
+          </span>
+        </div>
+        <button style={{
+          padding: "6px 16px", border: "none", borderRadius: 2,
+          cursor: "pointer", fontSize: 10, fontFamily: T.font.mono,
+          background: T.accent.green, color: T.bg.primary, fontWeight: 600,
+          letterSpacing: 0.5,
+        }}>
+          PUSH TO PROFORMA →
+        </button>
+      </div>
+    </div>
+  );
+}

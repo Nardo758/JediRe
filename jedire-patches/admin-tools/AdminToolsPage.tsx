@@ -1,0 +1,295 @@
+/**
+ * Admin Tools Page - Bloomberg Terminal Style
+ * Deal/Team operations hub (no overlap with Settings)
+ * 
+ * Location: frontend/src/pages/admin/AdminToolsPage.tsx
+ */
+
+import React, { useState } from 'react';
+import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
+
+// Section imports
+import DealIntelligenceSection from './sections/DealIntelligenceSection';
+import TeamSection from './sections/TeamSection';
+import IntegrationsSection from './sections/IntegrationsSection';
+import TemplatesSection from './sections/TemplatesSection';
+import DataRoomSection from './sections/DataRoomSection';
+import VerificationSection from './sections/VerificationSection';
+import DataManagementSection from './sections/DataManagementSection';
+
+// Bloomberg Terminal tokens
+const BT = {
+  bg: { 
+    terminal: '#0A0E17', 
+    panel: '#0F1319', 
+    panelAlt: '#131821',
+    header: '#1A1F2E', 
+    hover: '#1E2538', 
+    active: '#252D40',
+    input: '#0D1117',
+    sidebar: '#080B10',
+    topBar: '#050810'
+  },
+  text: { 
+    primary: '#E8ECF1', 
+    secondary: '#8B95A5', 
+    muted: '#4A5568', 
+    amber: '#F5A623', 
+    amberBright: '#FFD166',
+    green: '#00D26A', 
+    red: '#FF4757',
+    cyan: '#00BCD4',
+    orange: '#FF8C42',
+    purple: '#A78BFA'
+  },
+  border: { 
+    subtle: '#1E2538', 
+    medium: '#2A3348',
+    bright: '#3B4A6B'
+  },
+};
+
+const MONO = "'JetBrains Mono', 'Fira Code', 'SF Mono', monospace";
+
+interface NavItem {
+  key: string;
+  label: string;
+  icon: string;
+  path: string;
+  description: string;
+  group: 'intel' | 'workflow' | 'data';
+}
+
+const NAV_ITEMS: NavItem[] = [
+  // Intelligence Group
+  { key: 'intel', label: 'DEAL INTELLIGENCE', icon: '🔒', path: 'intel', description: 'Notes, decisions, risks, contacts', group: 'intel' },
+  { key: 'team', label: 'TEAM & ACCESS', icon: '👥', path: 'team', description: 'Members, roles, permissions', group: 'intel' },
+  
+  // Workflow Group
+  { key: 'integrations', label: 'DEAL INTEGRATIONS', icon: '🔗', path: 'integrations', description: 'DocuSign, Notarize, Title', group: 'workflow' },
+  { key: 'templates', label: 'TEMPLATES', icon: '📋', path: 'templates', description: 'Pro forma, reports, checklists', group: 'workflow' },
+  { key: 'verification', label: 'VERIFICATION', icon: '✅', path: 'verification', description: 'KYC, background checks', group: 'workflow' },
+  
+  // Data Group
+  { key: 'dataroom', label: 'DATA ROOM', icon: '📁', path: 'dataroom', description: 'Secure document sharing', group: 'data' },
+  { key: 'datamanagement', label: 'DATA MANAGEMENT', icon: '📦', path: 'data', description: 'Import, export, retention', group: 'data' },
+];
+
+// Mock deals for selector
+const MOCK_DEALS = [
+  { id: 'all', name: 'All Deals' },
+  { id: '1', name: 'Atlanta Development' },
+  { id: '2', name: 'Tampa MF Acquisition' },
+  { id: '3', name: 'Orlando BTR Project' },
+];
+
+export default function AdminToolsPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [selectedDeal, setSelectedDeal] = useState('all');
+  
+  // Determine active section from URL
+  const currentPath = location.pathname.split('/admin/')[1] || 'intel';
+  const activeSection = NAV_ITEMS.find(item => currentPath.startsWith(item.path))?.key || 'intel';
+
+  const handleNavClick = (item: NavItem) => {
+    navigate(`/admin/${item.path}`);
+  };
+
+  const renderNavGroup = (groupId: string, groupLabel: string) => {
+    const items = NAV_ITEMS.filter(item => item.group === groupId);
+    return (
+      <div key={groupId} style={{ marginBottom: 16 }}>
+        <div style={{
+          fontSize: 9,
+          color: BT.text.muted,
+          fontFamily: MONO,
+          padding: '8px 12px',
+          textTransform: 'uppercase',
+          letterSpacing: '1px',
+        }}>
+          {groupLabel}
+        </div>
+        {items.map((item) => {
+          const isActive = activeSection === item.key;
+          return (
+            <button
+              key={item.key}
+              onClick={() => handleNavClick(item)}
+              style={{
+                width: '100%',
+                padding: '10px 12px',
+                marginBottom: 2,
+                background: isActive ? BT.bg.active : 'transparent',
+                border: 'none',
+                borderRadius: 4,
+                borderLeft: isActive ? `2px solid ${BT.text.amber}` : '2px solid transparent',
+                cursor: 'pointer',
+                textAlign: 'left',
+                transition: 'background 0.15s',
+              }}
+              onMouseEnter={(e) => {
+                if (!isActive) e.currentTarget.style.background = BT.bg.hover;
+              }}
+              onMouseLeave={(e) => {
+                if (!isActive) e.currentTarget.style.background = 'transparent';
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 14 }}>{item.icon}</span>
+                <div>
+                  <div style={{
+                    fontSize: 10,
+                    fontWeight: 600,
+                    color: isActive ? BT.text.amber : BT.text.primary,
+                    fontFamily: MONO,
+                    letterSpacing: '0.3px',
+                  }}>
+                    {item.label}
+                  </div>
+                  <div style={{
+                    fontSize: 9,
+                    color: BT.text.muted,
+                    fontFamily: MONO,
+                    marginTop: 1,
+                  }}>
+                    {item.description}
+                  </div>
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ 
+      display: 'flex', 
+      flexDirection: 'column',
+      minHeight: '100vh', 
+      background: BT.bg.terminal,
+      color: BT.text.primary,
+      fontFamily: MONO
+    }}>
+      {/* Top Bar */}
+      <header style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: '10px 20px',
+        background: BT.bg.topBar,
+        borderBottom: `1px solid ${BT.border.subtle}`,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <div style={{
+            fontSize: 14,
+            fontWeight: 700,
+            color: BT.text.amber,
+            letterSpacing: '1px',
+          }}>
+            🔒 ADMIN TOOLS
+          </div>
+          
+          {/* Deal Selector */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 10, color: BT.text.muted }}>Deal:</span>
+            <select
+              value={selectedDeal}
+              onChange={(e) => setSelectedDeal(e.target.value)}
+              style={{
+                padding: '6px 12px',
+                background: BT.bg.input,
+                border: `1px solid ${BT.border.medium}`,
+                borderRadius: 4,
+                color: BT.text.primary,
+                fontFamily: MONO,
+                fontSize: 11,
+                cursor: 'pointer',
+              }}
+            >
+              {MOCK_DEALS.map(deal => (
+                <option key={deal.id} value={deal.id}>{deal.name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* User Info & Link to Settings */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <a 
+            href="/settings" 
+            style={{ 
+              fontSize: 10, 
+              color: BT.text.cyan, 
+              textDecoration: 'none',
+              fontFamily: MONO,
+            }}
+          >
+            ⚙️ Account Settings
+          </a>
+          <span style={{
+            padding: '4px 10px',
+            background: BT.text.amber + '22',
+            color: BT.text.amber,
+            fontSize: 9,
+            fontFamily: MONO,
+            borderRadius: 3,
+            textTransform: 'uppercase',
+          }}>
+            Admin
+          </span>
+        </div>
+      </header>
+
+      <div style={{ display: 'flex', flex: 1 }}>
+        {/* Sidebar Navigation */}
+        <aside style={{
+          width: 220,
+          background: BT.bg.sidebar,
+          borderRight: `1px solid ${BT.border.subtle}`,
+          display: 'flex',
+          flexDirection: 'column',
+          overflowY: 'auto',
+        }}>
+          {/* Navigation Groups */}
+          <nav style={{ flex: 1, padding: '12px 8px' }}>
+            {renderNavGroup('intel', 'Intelligence')}
+            {renderNavGroup('workflow', 'Deal Workflow')}
+            {renderNavGroup('data', 'Data')}
+          </nav>
+
+          {/* Footer */}
+          <div style={{
+            padding: '12px',
+            borderTop: `1px solid ${BT.border.subtle}`,
+            fontSize: 9,
+            color: BT.text.muted,
+            fontFamily: MONO,
+          }}>
+            <div style={{ marginBottom: 8 }}>
+              <span style={{ color: BT.text.secondary }}>Personal settings →</span>{' '}
+              <a href="/settings" style={{ color: BT.text.cyan, textDecoration: 'none' }}>Settings</a>
+            </div>
+            <div>ADMIN TOOLS v1.2</div>
+          </div>
+        </aside>
+
+        {/* Main Content Area */}
+        <main style={{ flex: 1, overflow: 'auto' }}>
+          <Routes>
+            <Route path="/" element={<DealIntelligenceSection />} />
+            <Route path="intel/*" element={<DealIntelligenceSection />} />
+            <Route path="team" element={<TeamSection />} />
+            <Route path="integrations" element={<IntegrationsSection />} />
+            <Route path="templates" element={<TemplatesSection />} />
+            <Route path="dataroom" element={<DataRoomSection />} />
+            <Route path="verification" element={<VerificationSection />} />
+            <Route path="data" element={<DataManagementSection />} />
+          </Routes>
+        </main>
+      </div>
+    </div>
+  );
+}

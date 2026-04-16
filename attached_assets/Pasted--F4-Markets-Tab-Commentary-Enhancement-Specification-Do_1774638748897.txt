@@ -1,0 +1,898 @@
+# F4 Markets Tab — Commentary Enhancement Specification
+
+## Document Purpose
+This document provides Claude Code with a comprehensive audit of all F4 Markets sections, identifies where narrative commentary is missing, and specifies implementation requirements for AI-generated market intelligence.
+
+---
+
+## Executive Summary
+
+The F4 Markets module is the platform's market intelligence hub with a 5-level drill hierarchy: F4 Landing → MSA Terminal (12 tabs) → Submarket Terminal (8 tabs) → Property Card → Property Terminal.
+
+**Core Finding**: Every tab displays metric grids and charts without contextual narrative. Users see numbers but receive no interpretation of what those numbers mean for their investment thesis.
+
+**Solution**: Add Claude-generated commentary panels that synthesize metrics into actionable insights. Commentary is generated per-MSA/submarket dynamically, cached for 24 hours aligned with DealContext caching.
+
+---
+
+## Current State Audit
+
+### F4 Landing Page
+**Location**: `frontend/src/pages/terminal/F4MarketsView.tsx` (852 lines)
+
+| Sub-Tab | Current State | Commentary Gap |
+|---------|--------------|----------------|
+| MSA DETAIL | BloombergMarketDetail embedded, grids only | No market narrative, no investment thesis |
+| MSA INDEX | 18-column market comparison table | No relative positioning commentary |
+| SUBMARKETS | 8-row submarket grid with signals | No submarket opportunity summary |
+| WATCHLIST | 3 starred markets display | No watchlist rationale or alerts |
+| PEER COMP | Side-by-side comparison matrix | No competitive positioning narrative |
+| PROPERTY STOCK | 8-row property grid | No property-level insights |
+
+**Data Source**: All hardcoded mock arrays (`TRACKED_MARKETS`, `ALL_MSAS`, `SUBMARKET_INDEX`, `PROPERTY_INDEX`)
+
+---
+
+### MSA Terminal (12 Tabs)
+**Location**: `frontend/src/components/terminal/MSATerminal.tsx`
+**Tab Components**: `frontend/src/components/terminal/tabs/msa/`
+
+#### Tab 0: OVERVIEW (564 lines)
+**File**: `MSAOverviewTab.tsx`
+
+**Current Components**:
+- 6 Vitals Grid (population, rent, occupancy, JEDI, jobs ratio, income)
+- Coverage Bar (parcels, properties, units)
+- 5-Signal Health Bar (Demand, Supply, Momentum, Dev Capacity, Traffic)
+- 3 Market Alerts (brief headlines only)
+- Near-Term Supply (8 metrics)
+- Long-Term Dev Capacity (4 metrics)
+- Top Submarkets table
+
+**Commentary Gaps**:
+| Section | Current | Needed |
+|---------|---------|--------|
+| Health Bar | Bar charts only | Per-signal explanation: "DEMAND 68: Strong employment growth driving household formation, but income-to-rent ratios tightening in core submarkets." |
+| Market Thesis | 1 sentence hardcoded | 2-3 paragraph dynamic narrative on market cycle position, key drivers, risk factors |
+| Investment Thesis | None | Bulleted buy/hold/avoid signals with ✓ and ⚠ markers |
+| Risk Watch | In alerts, terse | Expanded panel with specific risks and recommended monitoring |
+| Opportunity Signals | None | Top 3 opportunities by submarket/strategy with rationale |
+| Peer Context | None | 1-2 sentence positioning vs comparable MSAs |
+
+#### Tab 1: SUBMARKETS (548 lines)
+**File**: `MSASubmarketsTab.tsx`
+
+**Current Components**:
+- 14-column matrix (JEDI, Demand, Supply, Saturation, Rent Acc, 7 Dev Capacity signals, Traffic)
+- Map layer choropleth selector
+- Detail sections with signal breakdowns
+- Compare mode for 2 submarkets
+
+**Commentary Gaps**:
+- No submarket tier narrative (A/B/C submarkets by opportunity)
+- No development capacity commentary explaining what constraint scores mean
+- No "Where to buy now" synthesis
+- Compare mode shows numbers but no analytical summary
+
+#### Tab 2: DEALS (543 lines)
+**File**: `MSADealsTab.tsx`
+
+**Current Components**:
+- Featured Deal card (JEDI score, strategy, arb spread, LTL, traffic metrics)
+- Compact deal grid (5 deals)
+- Kanban pipeline (Intake → Screening → Analysis → Execution)
+- Quadrant filter (Hidden Gem, Validated Winner, Hype Risk, Dead Weight)
+
+**Commentary Gaps**:
+- Featured deal has metrics but no investment thesis paragraph
+- No explanation of why deals are in each quadrant
+- Pipeline has no velocity commentary ("avg 12 days to screening")
+- No "top 3 reasons to pursue" for featured deal
+
+#### Tab 3: RANKINGS (486 lines)
+**File**: `MSAPowerRankingsTab.tsx`
+
+**Current Components**:
+- Property leaderboard with PCS scores
+- 5-component breakdown (Traffic, Revenue, Ops, Asset, Market)
+- Filters by class, vintage, size
+- Movement indicators
+
+**Commentary Gaps**:
+- No explanation of what PCS score means for each property
+- No "why is this property ranked here" narrative
+- No pattern recognition ("B-class 1990s vintage outperforming")
+
+#### Tab 4: PROPERTIES (583 lines)
+**File**: `MSAPropertiesTab.tsx`
+
+**Current Components**:
+- Full property grid with filters
+- Sortable columns
+- Click-through to Property Terminal
+
+**Commentary Gaps**:
+- No property segment commentary
+- No vintage analysis narrative
+- Header summary is stats only, no insight
+
+#### Tab 5: OWNERS (563 lines)
+**File**: `MSAOwnersTab.tsx`
+
+**Current Components**:
+- Owner rankings with buy/sell signals
+- Portfolio details per owner
+- Land positions
+- Motivation indicators
+
+**Commentary Gaps**:
+- Signals shown but not explained ("Why is Greystone a SELL signal?")
+- No owner strategy profiles
+- Land positions lack development probability rationale
+
+#### Tab 6: SUPPLY (142 lines)
+**File**: `MSASupplyTab.tsx`
+
+**Current Components**:
+- Pipeline summary cards (Total, Lease-up, Under Construction, Planned)
+- Delivery vs Absorption chart
+- Pipeline by Submarket table
+
+**Commentary Gaps**:
+- No supply wave narrative ("Peak delivery Q2 2026, absorption catching up by Q4")
+- No submarket clustering commentary
+- No risk assessment on pipeline concentration
+
+#### Tab 7: CAPITAL (120 lines)
+**File**: `MSACapitalTab.tsx`
+
+**Current Components**:
+- Transaction volume stats
+- Cap rate trends
+- Recent transactions table
+
+**Commentary Gaps**:
+- No capital markets narrative
+- No buyer/seller sentiment analysis
+- No cap rate compression/expansion explanation
+
+#### Tab 8: ECONOMICS (117 lines)
+**File**: `MSAEconomicsTab.tsx`
+
+**Current Components**:
+- Employment growth chart
+- Population trends
+- Income distribution
+
+**Commentary Gaps**:
+- No economic cycle positioning
+- No sector concentration analysis
+- No wage-to-rent affordability narrative
+
+#### Tab 9: TRENDS (565 lines)
+**File**: `MSATrendsTab.tsx`
+
+**Current Components**:
+- Correlation Analysis (Rent Growth vs Traffic vs Wage)
+- Supply Wave forecast (10-year projection)
+- Rent by Vintage breakdown
+- JEDI Score History
+- Affordability metrics
+- Concession trends
+- Transaction scatter
+
+**Commentary Gaps**:
+- Charts lack interpretation
+- No trend inflection point identification
+- Correlation charts need "what this means" explanation
+- Supply wave needs strategic timing narrative
+
+#### Tab 10: NEWS (125 lines)
+**File**: `MSANewsTab.tsx`
+
+**Current Components**:
+- News feed with headlines
+- Source badges
+- Date stamps
+
+**Commentary Gaps**:
+- No impact analysis per article
+- No aggregated sentiment score
+- No "key themes this week" summary
+
+#### Tab 11: COMPARE (352 lines)
+**File**: `MSACompareTab.tsx`
+
+**Current Components**:
+- Multi-market comparison matrix
+- 6 metric categories (Demand, Supply, Momentum, Dev Capacity, Traffic, Risk)
+- 24+ metrics with heat mapping
+- Market selector
+
+**Commentary Gaps**:
+- Matrix shows numbers, no "winner" narrative
+- No relative strength summary per category
+- No "Atlanta vs peers" executive summary
+
+---
+
+### Submarket Terminal (8 Tabs)
+**Location**: `frontend/src/components/terminal/SubmarketTerminal.tsx`
+**Tab Components**: `frontend/src/components/terminal/tabs/submarket/`
+
+| Tab | Lines | Commentary Gap |
+|-----|-------|----------------|
+| OVERVIEW | 336 | Health score shown but not explained; no submarket positioning narrative |
+| TRAFFIC | 501 | Traffic data displayed but no demand qualification explanation |
+| FINANCIALS | 134 | Rent/cap rate grids without pricing power narrative |
+| CAPITAL | 144 | Transaction data without buyer/seller analysis |
+| MARKET | 273 | Supply/absorption charts without timing strategy |
+| PROPERTIES | 365 | Property grid without segment insights |
+| NEWS | 184 | Headlines without impact assessment |
+| COMPARE | 243 | Peer comparison without "why this submarket wins" |
+
+---
+
+## Commentary Generation Architecture
+
+### Approach: Claude-Generated Dynamic Commentary
+
+Commentary is generated per-entity (MSA or Submarket) by Claude, not template-driven. This produces more insightful, contextual analysis.
+
+### Data Flow
+```
+MSA Metrics (from API/store)
+       ↓
+Commentary Generation Request
+       ↓
+Claude API (claude-sonnet-4-20250514)
+       ↓
+Structured JSON Response
+       ↓
+Cache (24-hour TTL, aligned with DealContext)
+       ↓
+Frontend Renders Commentary Panels
+```
+
+### Commentary Request Schema
+
+```typescript
+interface CommentaryRequest {
+  entityType: 'msa' | 'submarket';
+  entityId: string;
+  entityName: string;
+  metrics: {
+    // Core signals
+    jediScore: number;
+    demandScore: number;
+    supplyScore: number;
+    momentumScore: number;
+    devCapacityScore: number;
+    trafficScore: number;
+    
+    // Key metrics
+    population: number;
+    populationGrowth: number;
+    medianIncome: number;
+    employmentGrowth: number;
+    avgRent: number;
+    rentGrowth: number;
+    occupancy: number;
+    pipelinePercent: number;
+    capRate: number;
+    absorptionMonths: number;
+    
+    // Comparative context
+    peerAvgJedi?: number;
+    nationalAvgRent?: number;
+    cyclePhase?: 'Expansion' | 'Peak' | 'Contraction' | 'Trough' | 'Recovery';
+  };
+  sections: CommentarySection[];
+}
+
+type CommentarySection = 
+  | 'market_narrative'      // 2-3 paragraphs on market position
+  | 'investment_thesis'     // Bulleted signals with ✓/⚠
+  | 'signal_commentary'     // Per health-bar explanation
+  | 'risk_watch'            // Active concerns
+  | 'opportunity_signals'   // Where to buy
+  | 'peer_context'          // Relative positioning
+  | 'supply_narrative'      // Pipeline timing analysis
+  | 'capital_narrative'     // Transaction market analysis
+  | 'economic_narrative';   // Macro positioning
+```
+
+### Commentary Response Schema
+
+```typescript
+interface CommentaryResponse {
+  entityId: string;
+  generatedAt: string;  // ISO timestamp
+  expiresAt: string;    // 24h from generation
+  
+  marketNarrative?: {
+    summary: string;      // 1 sentence hook
+    body: string;         // 2-3 paragraphs
+    cyclePosition: string;
+  };
+  
+  investmentThesis?: {
+    signals: Array<{
+      type: 'positive' | 'caution' | 'negative';
+      text: string;
+    }>;
+    recommendation: 'Buy' | 'Hold' | 'Avoid' | 'Selective';
+  };
+  
+  signalCommentary?: {
+    demand: string;
+    supply: string;
+    momentum: string;
+    devCapacity: string;
+    traffic: string;
+  };
+  
+  riskWatch?: {
+    risks: Array<{
+      severity: 'high' | 'medium' | 'low';
+      title: string;
+      detail: string;
+    }>;
+  };
+  
+  opportunitySignals?: {
+    opportunities: Array<{
+      submarket?: string;
+      strategy?: string;
+      rationale: string;
+    }>;
+  };
+  
+  peerContext?: {
+    summary: string;
+    strengths: string[];
+    weaknesses: string[];
+  };
+  
+  supplyNarrative?: string;
+  capitalNarrative?: string;
+  economicNarrative?: string;
+}
+```
+
+---
+
+## Implementation Plan
+
+### Phase 1: Core Infrastructure (Priority P0)
+
+#### 1.1 Backend Service: Commentary Generator
+**File**: `backend/src/services/commentary/commentaryGenerator.ts`
+
+```typescript
+import Anthropic from '@anthropic-ai/sdk';
+
+export class CommentaryGenerator {
+  private client: Anthropic;
+  private cache: Map<string, { data: CommentaryResponse; expiresAt: Date }>;
+  
+  async generateMSACommentary(
+    msaId: string, 
+    metrics: MSAMetrics,
+    sections: CommentarySection[]
+  ): Promise<CommentaryResponse>;
+  
+  async generateSubmarketCommentary(
+    submarketId: string,
+    metrics: SubmarketMetrics,
+    sections: CommentarySection[]
+  ): Promise<CommentaryResponse>;
+  
+  private buildPrompt(entityType: string, metrics: object, sections: string[]): string;
+  
+  private parseResponse(response: string): CommentaryResponse;
+}
+```
+
+#### 1.2 API Endpoints
+**Files**: 
+- `backend/src/api/rest/commentary.routes.ts`
+- `backend/src/api/rest/commentary.controller.ts`
+
+```
+GET /api/v1/commentary/msa/:msaId
+GET /api/v1/commentary/submarket/:submarketId
+POST /api/v1/commentary/refresh/:entityType/:entityId
+```
+
+#### 1.3 Frontend Store Integration
+**File**: `frontend/src/stores/commentaryStore.ts`
+
+```typescript
+interface CommentaryStore {
+  msaCommentary: Record<string, CommentaryResponse>;
+  submarketCommentary: Record<string, CommentaryResponse>;
+  loading: Record<string, boolean>;
+  
+  fetchMSACommentary: (msaId: string) => Promise<void>;
+  fetchSubmarketCommentary: (submarketId: string) => Promise<void>;
+}
+```
+
+### Phase 2: MSA Overview Tab Enhancement (Priority P0)
+
+#### 2.1 New Components
+
+**File**: `frontend/src/components/terminal/commentary/MarketNarrativePanel.tsx`
+```typescript
+interface Props {
+  narrative: {
+    summary: string;
+    body: string;
+    cyclePosition: string;
+  };
+}
+```
+
+**File**: `frontend/src/components/terminal/commentary/InvestmentThesisPanel.tsx`
+```typescript
+interface Props {
+  thesis: {
+    signals: Array<{ type: 'positive' | 'caution' | 'negative'; text: string }>;
+    recommendation: string;
+  };
+}
+```
+
+**File**: `frontend/src/components/terminal/commentary/SignalCommentaryPanel.tsx`
+```typescript
+interface Props {
+  signalId: 'demand' | 'supply' | 'momentum' | 'devCapacity' | 'traffic';
+  score: number;
+  commentary: string;
+}
+```
+
+**File**: `frontend/src/components/terminal/commentary/RiskOpportunityPanel.tsx`
+```typescript
+interface Props {
+  risks: Array<{ severity: string; title: string; detail: string }>;
+  opportunities: Array<{ submarket?: string; strategy?: string; rationale: string }>;
+}
+```
+
+#### 2.2 MSAOverviewTab Integration
+
+Update `MSAOverviewTab.tsx` to:
+1. Import `useCommentaryStore`
+2. Fetch commentary on mount/msaId change
+3. Add commentary panels between existing grid sections
+4. Show loading skeletons while fetching
+
+**Layout Structure**:
+```
+┌─────────────────────────────────────────────────────────┐
+│ Vitals Grid (existing)                                  │
+├─────────────────────────────────────────────────────────┤
+│ Coverage Bar (existing)                                 │
+├────────────────────────────┬────────────────────────────┤
+│ Market Narrative Panel     │ Investment Thesis Panel    │
+│ (NEW - 2-3 paragraphs)     │ (NEW - bulleted signals)   │
+├────────────────────────────┴────────────────────────────┤
+│ 5-Signal Health Bar (existing)                          │
+│ + Signal Commentary below each bar (NEW)                │
+├────────────────────────────┬────────────────────────────┤
+│ Risk Watch Panel (NEW)     │ Opportunity Signals (NEW)  │
+├────────────────────────────┴────────────────────────────┤
+│ Peer Context Panel (NEW - 1-2 sentences)                │
+├─────────────────────────────────────────────────────────┤
+│ Near-Term Supply (existing)                             │
+├─────────────────────────────────────────────────────────┤
+│ Long-Term Dev Capacity (existing)                       │
+├─────────────────────────────────────────────────────────┤
+│ Top Submarkets (existing)                               │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Phase 3: Remaining MSA Tabs (Priority P1)
+
+| Tab | Enhancement |
+|-----|-------------|
+| SUBMARKETS | Add "Submarket Tier Summary" panel at top with opportunity narrative |
+| DEALS | Add investment thesis paragraph to Featured Deal card; quadrant explanations |
+| RANKINGS | Add "Ranking Insights" panel explaining top performers and patterns |
+| OWNERS | Add strategy profile and motivation explanation per owner |
+| SUPPLY | Add supply wave narrative panel above charts |
+| CAPITAL | Add capital markets sentiment narrative |
+| ECONOMICS | Add economic cycle positioning narrative |
+| TRENDS | Add chart interpretation callouts |
+| NEWS | Add weekly themes summary and impact scores |
+| COMPARE | Add "Competitive Summary" panel at top |
+
+### Phase 4: Submarket Terminal Tabs (Priority P1)
+
+Apply same pattern as MSA tabs. Each submarket overview gets:
+- Market narrative (scaled to submarket context)
+- Investment thesis
+- Risk/opportunity panels
+- Property segment insights
+
+### Phase 5: Mock Data Migration (Priority P0 - Parallel)
+
+All commentary fetching assumes API endpoints return real data. The following mock arrays in F4MarketsView.tsx must be replaced with API calls:
+
+| Mock Array | Replacement |
+|------------|-------------|
+| `TRACKED_MARKETS` | `/api/v1/markets/tracked` |
+| `ALL_MSAS` | `/api/v1/markets/all` |
+| `SUBMARKET_INDEX` | `/api/v1/submarkets?msaId=:id` |
+| `PROPERTY_INDEX` | `/api/v1/properties?msaId=:id` |
+
+---
+
+## Commentary Prompt Template
+
+Use this system prompt for Claude when generating MSA commentary:
+
+```
+You are a real estate investment analyst generating market intelligence for a Bloomberg Terminal-style platform. Your commentary must be:
+
+1. PRECISE: Use specific numbers from the provided metrics
+2. ACTIONABLE: Every paragraph should inform an investment decision
+3. PROFESSIONAL: Write like a CBRE or JLL market report
+4. CONCISE: Maximum 3 sentences per paragraph
+
+For the Investment Thesis section, use:
+- ✓ for positive signals (score > 70 or favorable trends)
+- ⚠ for caution signals (score 50-70 or mixed trends)
+- ✗ for negative signals (score < 50 or adverse trends)
+
+Always connect metrics to investment implications:
+- High DEMAND + Low SUPPLY = bullish for rent growth
+- High PIPELINE + Slowing ABSORPTION = caution on timing
+- Strong TRAFFIC + Weak CONVERSION = operational opportunity
+
+Format your response as valid JSON matching the CommentaryResponse schema.
+```
+
+---
+
+## Acceptance Criteria
+
+### Phase 1 Complete When:
+- [ ] `GET /api/v1/commentary/msa/:msaId` returns valid CommentaryResponse
+- [ ] Commentary cached for 24 hours
+- [ ] `commentaryStore.ts` integrated with React components
+- [ ] Loading states render correctly
+
+### Phase 2 Complete When:
+- [ ] MSAOverviewTab displays Market Narrative panel
+- [ ] MSAOverviewTab displays Investment Thesis panel
+- [ ] Each health bar has tooltip/inline commentary
+- [ ] Risk Watch panel populated from API
+- [ ] Opportunity Signals panel populated from API
+- [ ] Peer Context summary visible
+
+### Full Implementation Complete When:
+- [ ] All 12 MSA tabs have commentary where specified
+- [ ] All 8 Submarket tabs have commentary where specified
+- [ ] No hardcoded mock arrays remain in F4MarketsView.tsx
+- [ ] Commentary refreshes automatically every 24 hours
+- [ ] Credit cost per commentary generation tracked via Stripe token meter
+
+---
+
+## File Manifest
+
+### New Files to Create:
+```
+backend/src/services/commentary/
+  ├── commentaryGenerator.ts
+  ├── commentaryCache.ts
+  ├── commentaryPrompts.ts
+  └── index.ts
+
+backend/src/api/rest/
+  ├── commentary.routes.ts
+  └── commentary.controller.ts
+
+frontend/src/stores/
+  └── commentaryStore.ts
+
+frontend/src/components/terminal/commentary/
+  ├── MarketNarrativePanel.tsx
+  ├── InvestmentThesisPanel.tsx
+  ├── SignalCommentaryPanel.tsx
+  ├── RiskOpportunityPanel.tsx
+  ├── SupplyNarrativePanel.tsx
+  ├── PeerContextPanel.tsx
+  └── index.ts
+```
+
+### Files to Modify:
+```
+frontend/src/components/terminal/tabs/msa/MSAOverviewTab.tsx
+frontend/src/components/terminal/tabs/msa/MSASubmarketsTab.tsx
+frontend/src/components/terminal/tabs/msa/MSADealsTab.tsx
+frontend/src/components/terminal/tabs/msa/MSAPowerRankingsTab.tsx
+frontend/src/components/terminal/tabs/msa/MSAOwnersTab.tsx
+frontend/src/components/terminal/tabs/msa/MSASupplyTab.tsx
+frontend/src/components/terminal/tabs/msa/MSACapitalTab.tsx
+frontend/src/components/terminal/tabs/msa/MSAEconomicsTab.tsx
+frontend/src/components/terminal/tabs/msa/MSATrendsTab.tsx
+frontend/src/components/terminal/tabs/msa/MSANewsTab.tsx
+frontend/src/components/terminal/tabs/msa/MSACompareTab.tsx
+frontend/src/components/terminal/tabs/submarket/SubmarketOverviewTab.tsx
+frontend/src/pages/terminal/F4MarketsView.tsx
+backend/src/api/rest/index.ts (mount new routes)
+```
+
+---
+
+---
+
+## Strategy Arbitrage Engine Metrics (M08)
+
+The Strategy Arbitrage Engine simultaneously analyzes 4 investment strategies for every deal. These metrics should be incorporated into MSA and Deal-level commentary.
+
+### 4 Strategies Analyzed
+| Strategy | Label | Key Indicators |
+|----------|-------|----------------|
+| `build_to_sell` | Build-to-Sell | Absorption > supply pipeline, price appreciation accelerating, entitled land available, construction cost stability |
+| `flip` | Flip | Distressed inventory rising, DOM declining, below-market distressed deals, renovation cost certainty |
+| `rental` | Rental (Long-term) | Rent growth > inflation, vacancy declining, cash flow positive at acquisition, low tenant default risk |
+| `str` | Short-Term Rental | Tourism/business travel up, STR permits available, ADR growth positive, favorable regulatory environment |
+
+### Strategy Signal Weights
+Each strategy weights the 5 core signals differently:
+
+| Strategy | Demand | Supply | Momentum | Position | Risk |
+|----------|--------|--------|----------|----------|------|
+| Build-to-Sell | 30% | 25% | 20% | 15% | 10% |
+| Flip | 15% | 20% | 30% | 20% | 15% |
+| Rental | 30% | 25% | 20% | 15% | 10% |
+| STR | 25% | 20% | 25% | 20% | 10% |
+
+### Arbitrage Detection
+- **Arbitrage Flag**: Triggered when delta between top strategies > 15 points AND top score > 70
+- **Arbitrage Delta**: `recommended_score - second_best_score`
+
+### Envelope Adjustments (Development Path)
+Strategy scores are modified based on selected development path:
+
+| Path | BTS | Flip | Rental | STR |
+|------|-----|------|--------|-----|
+| by_right | +8 | +2 | +5 | +3 |
+| overlay_bonus | +6 | +1 | +7 | +2 |
+| variance | +3 | +2 | +4 | +1 |
+| rezone | +10 | -2 | +5 | -5 |
+
+Additional modifiers:
+- **Timeline penalty**: `entitlement_months × 0.5` (max 10), weighted by strategy sensitivity
+- **Scale bonus**: +5 if >200 units, +3 if >100 units, weighted by strategy affinity
+
+### Deal Signals Extracted for Scoring
+```typescript
+{
+  supply_pressure: number;      // Inverted supply balance (0-1)
+  demand_growth: number;        // Normalized demand score (0-1)
+  rent_momentum: number;        // Rent growth normalized (0-1)
+  job_growth: number;           // Employment trend (0-1)
+  cap_rate_spread: number;      // Opportunity score (0-1)
+  irr_potential: number;        // IRR / 30 (0-1)
+  risk_score: number;           // Composite risk (0-1)
+  regulatory_risk: number;      // Regulatory component (0-1)
+  market_volatility: number;    // Supply-derived volatility (0-1)
+  project_type: string;         // 'existing' | 'development' | 'redevelopment'
+}
+```
+
+---
+
+## JEDI Score Composition
+
+The JEDI Score (0-100) is the platform's master composite signal used across all levels (MSA, Submarket, Property).
+
+### Component Weights
+| Component | Weight | Source |
+|-----------|--------|--------|
+| Demand | 30% | D-01 through D-12 signals |
+| Supply | 25% | S-01 through S-10 signals |
+| Momentum | 20% | M-01 through M-10 signals |
+| Position | 15% | P-01 through P-12 signals |
+| Risk | 10% | R-01 through R-10 signals (inverted) |
+
+### Score Interpretation
+| Score Range | Classification | Commentary Guidance |
+|-------------|----------------|---------------------|
+| 80-100 | Strong Buy | Lead with opportunity signals, minimal caveats |
+| 60-79 | Buy / Selective | Balanced thesis, highlight entry timing |
+| 40-59 | Hold / Neutral | Emphasize specific conditions for entry |
+| 20-39 | Avoid / Caution | Lead with risks, identify turnaround catalysts |
+| 0-19 | Strong Avoid | Focus on risk factors, exit strategies |
+
+---
+
+## Signal Group Reference (70+ Metrics)
+
+### DEMAND Signals (D-01 to D-12)
+| ID | Metric | Level | Source |
+|----|--------|-------|--------|
+| D-01 | Jobs-to-Apartments Ratio | MSA | BLS API + S-01 |
+| D-02 | New Jobs to New Units Ratio | MSA | BLS + S-02 |
+| D-03 | Net Migration to New Supply | MSA | Census + S-02 |
+| D-04 | Household Formation to Supply | MSA | Census + S-02 |
+| D-05 | Traffic Count Growth Rate | Road Segment | State DOT |
+| D-06 | Traffic Acceleration | Road Segment | D-05 time series |
+| D-07 | Digital-Physical Traffic Gap | Submarket | Google Trends + DOT |
+| D-08 | Search Interest Volume | Submarket | Google Trends API |
+| D-09 | Demand Momentum Score | MSA | All D outputs |
+| D-10 | Employment Gravity Score | Submarket | BLS + Census LODES |
+| D-11 | Rent-to-Mortgage Discount | MSA | M-01 + Freddie Mac |
+| D-12 | Population & Demographics | MSA | Census ACS |
+
+### SUPPLY Signals (S-01 to S-10)
+| ID | Metric | Level | Source |
+|----|--------|-------|--------|
+| S-01 | Existing Inventory Map | Property | Municipal Records |
+| S-02 | Pipeline: Under Construction | Project | Municipal Permits |
+| S-03 | Pipeline: Permitted Not Started | Project | Municipal Permits |
+| S-04 | Absorption Runway | MSA | S-02+03 / Historical |
+| S-05 | Delivery Clustering | Submarket | S-02 geospatial+time |
+| S-06 | Permit Momentum | MSA | S-03 trend |
+| S-07 | Construction Cost vs Rent Yield | MSA | RSMeans + M-01 |
+| S-08 | Saturation Index | Submarket | S-01 / D-12 + S-02 |
+| S-09 | Permit-to-Delivery Conversion | MSA | Historical S-03→S-02 |
+| S-10 | Vintage Breakdown | MSA | P-01 year_built |
+
+### MOMENTUM Signals (M-01 to M-10)
+| ID | Metric | Level | Source |
+|----|--------|-------|--------|
+| M-01 | Rent Trends by Vintage Class | MSA | Apartments.com |
+| M-02 | Rent Acceleration Rate | MSA | M-01 2nd derivative |
+| M-03 | Concession Tracking | Property | Apartments.com |
+| M-04 | Concession Velocity | MSA | M-03 trend |
+| M-05 | Rent vs Wage Growth Spread | MSA | M-01 + BLS wages |
+| M-06 | Occupancy Proxy | Property | Apartments.com |
+| M-07 | Traffic-to-Rent Elasticity | Submarket | D-05 + M-01 |
+| M-08 | Cap Rate Trends | MSA | Municipal sale records |
+| M-09 | Investor Activity Index | MSA | Municipal deed freq. |
+| M-10 | Review Sentiment Score | Property | Google Places |
+
+### POSITION Signals (P-01 to P-12)
+| ID | Metric | Level | Source |
+|----|--------|-------|--------|
+| P-01 | Property Card (Municipal) | Property | Municipal Records |
+| P-02 | Vintage Classification | Property | P-01 year_built |
+| P-03 | Loss-to-Lease Estimate | Property | M-01 comp - actual |
+| P-04 | Ownership Profile & Hold Period | Property | Municipal Deeds |
+| P-05 | Seller Motivation Score | Property | P-04 + R-09 + patterns |
+| P-06 | Tax Assessment & Step-Up Risk | Property | Municipal Tax Records |
+| P-07 | Price/Unit Benchmarks | MSA | Municipal sale records |
+| P-08 | Zoning & Development Capacity | Property | Municipal Zoning |
+| P-09 | Amenity Density Score | Property | Google Places API |
+| P-10 | Revenue Conversion Efficiency | Property | PMS Integration |
+| P-11 | Expense Efficiency Gap | Property | PMS Integration |
+| P-12 | Turnover Cost Impact | Property | PMS Integration |
+
+### RISK Signals (R-01 to R-10)
+| ID | Metric | Level | Source |
+|----|--------|-------|--------|
+| R-01 | Affordability Absorption Threshold | MSA | Census + M-01 |
+| R-02 | Vintage Convergence Rate | MSA | M-01 spread trend |
+| R-03 | Concession Drag Rate | MSA | M-03 / M-01 |
+| R-04 | Insurance Cost Trends | MSA | Industry reports |
+| R-05 | Tax Reassessment Risk | Property | P-06 + sale price |
+| R-06 | Deferred Maintenance Estimate | Property | P-01 age + P-10/11 |
+| R-07 | Ownership Concentration Risk | Submarket | P-04 aggregated |
+| R-08 | Seasonal Traffic Swing | Property | D-05 seasonal var. |
+| R-09 | Owner Hold Period vs Market Cycle | Property | P-04 + M-08 trend |
+| R-10 | News Sentiment & Alerts | MSA | NewsAPI + Email |
+
+### COMPOSITE Signals (C-01 to C-10)
+| ID | Metric | Level | Source |
+|----|--------|-------|--------|
+| C-01 | JEDI Score (0-100) | All levels | All 5 master signals |
+| C-02 | Rent Growth Forecast (AI) | MSA | All demand+supply+momentum |
+| C-03 | Occupancy Trajectory Model | MSA | Supply + demand + momentum |
+| C-04 | Broker OM Variance Report | Property | OM inputs vs AI outputs |
+| C-05 | Strategy Arbitrage Score | Property | All strategy analyses |
+| C-06 | Apt-to-Condo Conversion Spread | Property | M-01 + condo comps |
+| C-07 | Build-to-Rent vs Hold Breakeven | Property | S-07 + P-07 + M-01 |
+| C-08 | STR Hybrid Revenue Uplift | Property | LTR NOI vs STR model |
+| C-09 | Sensitivity Scenario Generator | Property | Monte Carlo |
+| C-10 | Submarket Ranking Report | Submarket | C-01 per submarket |
+
+### TRAFFIC Signals (T-01 to T-10) ★ New
+| ID | Metric | Level | Source |
+|----|--------|-------|--------|
+| T-01 | Weekly Walk-In Prediction | Property | ADT + Census + Generators |
+| T-02 | Physical Traffic Score (0-100) | Property | State DOT + Road Class |
+| T-03 | Digital Traffic Score (0-100) | Property | Google Trends + Platform |
+| T-04 | Traffic Correlation Signal | Property | T-02 vs T-03 matrix |
+| T-05 | Traffic-to-Lease Prediction | Property | T-01 + T-03 ML model |
+| T-06 | Capture Rate | Property | Frontage + Corner + Setback |
+| T-07 | Property Traffic Trajectory | Property | T-01 8-week time series |
+| T-08 | Generator Proximity Score | Property | Census + BLS + Transit |
+| T-09 | Competitive Traffic Share | Property | T-01 subject / trade area |
+| T-10 | Traffic Validation Confidence | Property | User actuals vs predicted |
+
+### DEV_CAPACITY Signals (DC-01 to DC-11) ★ New
+| ID | Metric | Level | Source |
+|----|--------|-------|--------|
+| DC-01 | Capacity Ratio | Submarket | Zoning + Vacant Parcels / S-01 |
+| DC-02 | Buildout Timeline | Submarket | Weighted Capacity / Annual Abs. |
+| DC-03 | Supply Constraint Score (0-100) | Submarket | Composite: zoning + land |
+| DC-04 | Supply Overhang Risk | Submarket | (Capacity - Pipeline) / Inventory |
+| DC-05 | Last Mover Advantage Flag | Submarket | Capacity < 15% + Active Dev |
+| DC-06 | Development Probability | Parcel | Owner + zoning + infra + market |
+| DC-07 | Pricing Power Index (0-100) | Submarket | DC-03 40% + D-01 25% + M-06 20% |
+| DC-08 | Supply Wave Forecast (10yr) | MSA | S-02 + S-03 + DC-06 weighted |
+| DC-09 | Developer Land Bank Index | Submarket | Parcel ownership + DC-06 |
+| DC-10 | Assemblage Opportunity Score | Parcel Cluster | Spatial adjacency + capacity |
+| DC-11 | Supply-Adjusted Rent Forecast | Submarket | C-02 base +/- DC-03 factor |
+
+### TRADE_AREA Signals (TA-01 to TA-04) ★ New
+| ID | Metric | Level | Source |
+|----|--------|-------|--------|
+| TA-01 | Trade Area Definition | Property | Radius / Drive-time / Custom |
+| TA-02 | Competitive Set | Property | S-01 in TA + P-02 vintage |
+| TA-03 | Trade Area Supply-Demand Balance | Trade Area | D-01 + S-01 within polygon |
+| TA-04 | Digital Competitive Intel | Property | SpyFu / SimilarWeb |
+
+---
+
+## Property Competitive Score (PCS)
+
+Used for property rankings in the MSA Power Rankings tab.
+
+### Components & Weights
+| Component | Weight | Description |
+|-----------|--------|-------------|
+| Traffic Performance | 25% | T-02, T-03, T-07 composite |
+| Revenue Strength | 25% | M-01, M-03, P-03 composite |
+| Operational Quality | 20% | P-10, P-11 composite |
+| Asset Condition | 15% | P-02, R-06 composite |
+| Market Position | 15% | P-09, TA-02 composite |
+
+---
+
+## Quadrant Classification
+
+Deals/properties are classified into 4 quadrants based on JEDI Score and Traffic signals:
+
+| Quadrant | Criteria | Commentary Tone |
+|----------|----------|-----------------|
+| Hidden Gem | High JEDI + Low Traffic visibility | "Undervalued opportunity, catalysts ahead" |
+| Validated Winner | High JEDI + High Traffic visibility | "Market consensus correct, premium warranted" |
+| Hype Risk | Low JEDI + High Traffic visibility | "Overvalued, correction risk, find the short" |
+| Dead Weight | Low JEDI + Low Traffic visibility | "Avoid, no catalysts, dead money" |
+
+---
+
+## Lifecycle Phases
+
+Market/submarket cycle positioning:
+
+| Phase | Indicators | Commentary Focus |
+|-------|------------|------------------|
+| Emergence | Early demand signals, low supply, accelerating traffic | "Early mover advantage, position now" |
+| Acceleration | Strong demand, supply responding, momentum positive | "Peak opportunity window, execute quickly" |
+| Maturation | Demand stable, supply catching up, momentum flattening | "Selective entry, focus on differentiated assets" |
+| Contraction | Demand softening, oversupply, negative momentum | "Risk management, exit underperformers" |
+
+---
+
+## Credit Cost Estimation
+
+| Operation | Est. Tokens | Est. Credits |
+|-----------|------------|--------------|
+| Full MSA Commentary (all sections) | ~2,000 input + ~1,500 output | ~3.5 credits |
+| Single Section Refresh | ~800 input + ~400 output | ~1.2 credits |
+| Submarket Commentary | ~1,500 input + ~1,000 output | ~2.5 credits |
+
+With 24-hour caching, expected cost per active user: ~5-10 credits/day for market exploration.
+
+---
+
+## End of Specification

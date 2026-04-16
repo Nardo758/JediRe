@@ -15,6 +15,7 @@
 
 import { query } from '../database/connection';
 import { logger } from '../utils/logger';
+import Decimal from 'decimal.js';
 
 // ============================================================================
 // Types
@@ -146,7 +147,7 @@ export class RiskScoringService {
     // Get existing units in trade area
     const existingResult = await query(
       `SELECT 
-         COALESCE(SUM(p.unit_count), 0) as existing_units
+         COALESCE(SUM(p.units), 0) as existing_units
        FROM properties p
        JOIN trade_areas ta ON ta.property_id = p.id
        WHERE ta.id = $1`,
@@ -1060,31 +1061,33 @@ export class RiskScoringService {
 
     const events = eventsResult.rows;
 
-    // Calculate weighted risk impact
-    let totalRiskImpact = 0;
+    // Calculate weighted risk impact using Decimal.js for precision
+    let totalRiskImpact = new Decimal(0);
     events.forEach(event => {
-      const weightedImpact = parseFloat(event.risk_score_impact) * (parseFloat(event.stage_probability) / 100);
-      totalRiskImpact += weightedImpact;
+      const impact = new Decimal(event.risk_score_impact || 0);
+      const probability = new Decimal(event.stage_probability || 0).dividedBy(100);
+      const weightedImpact = impact.times(probability);
+      totalRiskImpact = totalRiskImpact.plus(weightedImpact);
     });
 
     // Base score starts at 50 (neutral)
-    const baseScore = 50.0 + totalRiskImpact;
-    
+    const baseScore = new Decimal(50).plus(totalRiskImpact);
+
     // Cap at 0-100
-    const finalScore = Math.max(0, Math.min(100, baseScore));
+    const finalScoreDec = baseScore.greaterThan(100) ? new Decimal(100) : baseScore.lessThan(0) ? new Decimal(0) : baseScore;
 
     return {
-      baseScore: parseFloat(baseScore.toFixed(2)),
-      finalScore: parseFloat(finalScore.toFixed(2)),
+      baseScore: baseScore.toFixed(2),
+      finalScore: finalScoreDec.toFixed(2),
       activeEvents: events.length,
-      totalRiskImpact: parseFloat(totalRiskImpact.toFixed(2)),
+      totalRiskImpact: totalRiskImpact.toFixed(2),
       events: events.map(e => ({
         id: e.id,
         name: e.legislation_name,
         type: e.legislation_type,
         stage: e.legislation_stage,
-        stageProbability: parseFloat(e.stage_probability),
-        impact: parseFloat(e.risk_score_impact),
+        stageProbability: new Decimal(e.stage_probability || 0).toFixed(4),
+        impact: new Decimal(e.risk_score_impact || 0).toFixed(4),
         severity: e.severity,
         effectiveDate: e.effective_date,
       })),

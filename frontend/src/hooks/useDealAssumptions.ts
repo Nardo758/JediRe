@@ -68,6 +68,14 @@ export interface DealAssumptions {
   // Meta
   exists: boolean;
   lastComputedAt: string | null;
+  
+  // Data Provenance
+  sourceType?: string | null;
+  sourceRef?: string | null;
+  sourceDate?: string | null;
+  source_type?: string | null;
+  source_ref?: string | null;
+  source_date?: string | null;
 }
 
 export interface SiteData {
@@ -227,6 +235,10 @@ export function useDealAssumptions(dealId: string | null) {
       if (updates.ltc !== undefined) payload.ltc = updates.ltc;
       if (updates.exitCap !== undefined) payload.exitCap = updates.exitCap;
       if (updates.holdPeriodYears !== undefined) payload.holdPeriodYears = updates.holdPeriodYears;
+      
+      payload.sourceType = (updates as any).sourceType || 'manual';
+      if ((updates as any).sourceRef) payload.sourceRef = (updates as any).sourceRef;
+      if ((updates as any).sourceDate) payload.sourceDate = (updates as any).sourceDate;
       
       const response = await apiClient.put(`/api/v1/deals/${dealId}/assumptions`, payload);
       

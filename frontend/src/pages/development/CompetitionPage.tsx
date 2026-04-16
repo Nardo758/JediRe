@@ -18,10 +18,8 @@ import {
   ArrowDown,
   Eye,
   Sparkles,
-  BarChart3,
 } from 'lucide-react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import DealCompAnalysisTab from '@/components/deal/sections/DealCompAnalysisTab';
 import { competitionService, CompetitorProperty, AdvantageMatrix, WaitlistProperty, DataSource, F40RankingsData } from '@/services/competition.service';
 
 interface CompetitionFilters {
@@ -108,9 +106,9 @@ export default function CompetitionPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [urlParams] = useSearchParams();
   const subtabParam = urlParams.get('subtab');
-  const validSubtabs = ['comp-analysis', 'map', 'comparison', 'advantage', 'aging', 'waitlist', 'f40'];
+  const validSubtabs = ['map', 'comparison', 'advantage', 'aging', 'waitlist', 'f40'];
   const initialTab = subtabParam && validSubtabs.includes(subtabParam) ? subtabParam : 'map';
-  const [activeTab, setActiveTab] = useState<'comp-analysis' | 'map' | 'comparison' | 'advantage' | 'aging' | 'waitlist' | 'f40'>(initialTab as any);
+  const [activeTab, setActiveTab] = useState<'map' | 'comparison' | 'advantage' | 'aging' | 'waitlist' | 'f40'>(initialTab as any);
 
   useEffect(() => {
     if (dealId) {
@@ -178,6 +176,23 @@ export default function CompetitionPage() {
 
   return (
     <div className="space-y-0">
+      {/* Bloomberg v0.34 PanelHeader */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '6px 10px', background: '#1A1F2E',
+        borderBottom: '1px solid #1E2538', borderTop: '2px solid #00BCD4',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: '#E8ECF1', letterSpacing: 0.8, fontFamily: "'JetBrains Mono',monospace" }}>COMPETITION ANALYSIS</span>
+          <span style={{ fontSize: 9, color: '#8B95A5', fontFamily: "'JetBrains Mono',monospace" }}>M15 | Comp Set · Differentiation · Waitlist · Rankings</span>
+          <span style={{ fontSize: 9, fontWeight: 700, color: '#00BCD4', background: '#00BCD415', border: '1px solid #00BCD430', padding: '0 3px', borderRadius: 2, fontFamily: "'JetBrains Mono',monospace" }}>COMPS</span>
+          <span style={{ fontSize: 9, fontWeight: 700, color: '#A78BFA', background: '#A78BFA15', border: '1px solid #A78BFA30', padding: '0 3px', borderRadius: 2, fontFamily: "'JetBrains Mono',monospace" }}>F40</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {primarySource === 'api' && <span style={{ fontSize: 9, fontWeight: 700, color: '#00D26A', background: '#022c22', border: '1px solid #00D26A40', padding: '1px 5px', fontFamily: "'JetBrains Mono',monospace" }}>LIVE</span>}
+          {primarySource === 'apartment' && <span style={{ fontSize: 9, fontWeight: 700, color: '#60A5FA', background: '#0d1e3d', border: '1px solid #60A5FA40', padding: '1px 5px', fontFamily: "'JetBrains Mono',monospace" }}>MKT DATA</span>}
+        </div>
+      </div>
       <div className="bg-white rounded-xl border border-stone-200 overflow-hidden">
         <div className="px-5 py-4 border-b border-stone-200">
           <div className="flex items-center justify-between">
@@ -274,7 +289,6 @@ export default function CompetitionPage() {
 
           <div className="flex gap-1 mt-3 border-b border-stone-200 -mx-5 px-5">
             {[
-              { id: 'comp-analysis', label: 'Comp Analysis', icon: BarChart3 },
               { id: 'map', label: 'Competitive Set Map', icon: MapPin },
               { id: 'comparison', label: 'Unit Comparison', icon: Home },
               { id: 'f40', label: 'F40 Performance', icon: TrendingUp },
@@ -319,10 +333,6 @@ export default function CompetitionPage() {
           </div>
 
         {/* Tab Content */}
-        {activeTab === 'comp-analysis' && (
-          <DealCompAnalysisTab />
-        )}
-
         {activeTab === 'map' && (
           <CompetitiveSetMap
             competitors={competitors}

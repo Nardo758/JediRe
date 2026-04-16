@@ -143,6 +143,46 @@ async function getCompetingProperties(centroid: { lat: number; lng: number }, ra
   }
 }
 
+async function getUnitMixBreakdown(dealId: string) {
+  try {
+    const result = await pool.query(
+      `SELECT 
+         cut.unit_type,
+         COUNT(DISTINCT cut.comp_id) as property_count,
+         ROUND(AVG(cut.avg_rent)::numeric, 0) as avg_rent,
+         ROUND(AVG(cut.avg_sf)::numeric, 0) as avg_sf,
+         ROUND(AVG(CASE WHEN cut.avg_sf > 0 THEN cut.avg_rent / cut.avg_sf ELSE NULL END)::numeric, 2) as rent_per_sf,
+         ROUND(AVG(cut.mix_pct)::numeric, 1) as avg_mix_pct,
+         ROUND(AVG(cut.vacancy_pct)::numeric, 1) as avg_vacancy
+       FROM comp_unit_types cut
+       JOIN comp_properties cp ON cp.id = cut.comp_id
+       WHERE cp.deal_id = $1
+       GROUP BY cut.unit_type
+       ORDER BY 
+         CASE cut.unit_type
+           WHEN 'Studio' THEN 1
+           WHEN '1 BR' THEN 2 WHEN '1BR' THEN 2
+           WHEN '2 BR' THEN 3 WHEN '2BR' THEN 3
+           WHEN '3 BR' THEN 4 WHEN '3BR' THEN 4
+           WHEN '4 BR' THEN 5 WHEN '4BR' THEN 5
+           ELSE 6
+         END`,
+      [dealId]
+    );
+    return result.rows.map(r => ({
+      unitType: r.unit_type,
+      propertyCount: parseInt(r.property_count) || 0,
+      avgRent: Number(r.avg_rent) || 0,
+      avgSf: Number(r.avg_sf) || 0,
+      rentPerSf: Number(r.rent_per_sf) || 0,
+      mixPct: Number(r.avg_mix_pct) || 0,
+      vacancy: Number(r.avg_vacancy) || 0,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 async function generateMarketIntelligence(
   deal: any,
   centroid: { lat: number; lng: number },
@@ -152,7 +192,7 @@ async function generateMarketIntelligence(
   newsEvents: any[],
   competingProps: any
 ) {
-  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  const anthropicKey = process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY;
   if (!anthropicKey) {
     logger.warn('No Anthropic API key — returning template market intelligence');
     return buildTemplateResponse(deal, censusData, submarketData, msaData, newsEvents, competingProps);
@@ -410,12 +450,13 @@ router.get('/:dealId/market-intelligence', authMiddleware.requireAuth, async (re
         }, ms)),
       ]);
 
-    const [censusData, submarketData, msaData, newsEvents, competingProps] = await Promise.all([
+    const [censusData, submarketData, msaData, newsEvents, competingProps, unitMixBreakdown] = await Promise.all([
       withTimeout(getCensusStatsForTradeArea(centroid.lat, centroid.lng, 3).catch(() => null), EXTERNAL_API_TIMEOUT_MS, 'Census API'),
       getSubmarketStats(centroid),
       getMsaStats(centroid),
       getNewsEvents(city, state),
       getCompetingProperties(centroid, 3),
+      getUnitMixBreakdown(dealId),
     ]);
 
     logger.info(`[MarketIntel] Data fetched — census: ${!!censusData}, submarket: ${!!submarketData}, msa: ${!!msaData}, news: ${(newsEvents || []).length}, competing: ${!!competingProps}`);
@@ -447,6 +488,7 @@ router.get('/:dealId/market-intelligence', authMiddleware.requireAuth, async (re
         submarket: submarketData,
         msa: msaData,
         renterDemandFunnel: aiAnalysis.renterDemandFunnel,
+        unitMixBreakdown: unitMixBreakdown || [],
       },
       news: formatNewsForResponse(newsEvents),
       supplyContext: {

@@ -1,11 +1,33 @@
 import { Router } from 'express';
+import multer from 'multer';
+import { randomUUID } from 'crypto';
+import path from 'path';
+import fs from 'fs';
 import { getPool } from '../../database/connection';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { validate, createDealSchema, updateDealSchema } from './validation';
 import { autoDiscoverComps } from '../../services/comp-set-discovery.service';
+import { processDocument, processDealDocuments } from '../../services/document-extraction/extraction-pipeline';
+import { computeAndPersistTrafficSnapshot } from '../../services/traffic-analytics.service';
 
 const router = Router();
 const pool = getPool();
+
+const uploadsDir = path.join(process.cwd(), 'uploads', 'deal-documents');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+const documentUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, uploadsDir),
+    filename: (_req, file, cb) => {
+      const ext = path.extname(file.originalname);
+      cb(null, `${randomUUID()}${ext}`);
+    },
+  }),
+  limits: { fileSize: 50 * 1024 * 1024 },
+});
 
 router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
@@ -32,7 +54,8 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
       deals: result.rows.map(row => ({
         id: row.id,
         name: row.name,
-        projectType: row.project_type,
+        project_type: row.project_type || 'existing',
+        projectType: row.project_type || 'existing',
         projectIntent: row.project_intent,
         tier: row.tier || 'basic',
         status: row.status,
@@ -97,7 +120,8 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
       deal: {
         id: row.id,
         name: row.name,
-        projectType: row.project_type || 'multifamily',
+        project_type: row.project_type || 'existing',
+        projectType: row.project_type || 'existing',
         projectIntent: row.project_intent,
         tier: row.tier || 'basic',
         status: row.status,
@@ -114,12 +138,19 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
         pipelineStage: row.pipelineStage || null,
         daysInStage: row.daysInStage || 0,
         dealCategory: row.deal_category || 'pipeline',
+        deal_category: row.deal_category || 'pipeline',
+        stage: row.stage || 'prospect',
+        pipeline_stage: row.pipelineStage || row.stage || null,
+        triage_score: row.triage_score ?? null,
+        jedi_score: row.jedi_score ?? row.triage_score ?? null,
+        timeline_end: row.timeline_end,
         developmentType: row.development_type,
         address: row.address,
         description: row.description,
         property_data: row.property_data || null,
         zoningProfile: row.zoning_profile || null,
         purchasePrice: parseFloat(row.purchase_price) || null,
+        deal_data: row.deal_data || {},
         parcelId: row.linkedParcelId || null,
         zoningCode: row.linkedZoningCode || null,
         lotSizeAcres: parseFloat(row.linkedLotSizeAcres) || null,
@@ -139,13 +170,13 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
     // Use pool directly instead of req.dbClient
     const client = pool;
     const {
-      name, boundary, projectType, projectIntent, targetUnits,
+      name, boundary, projectType, project_type, projectIntent, targetUnits,
       budget, timelineStart, timelineEnd, tier,
       deal_category, development_type, address, description,
-      property_type_key
+      property_type_key, documentFileIds, uploaded_documents
     } = req.body;
 
-    let resolvedProjectType = projectType;
+    let resolvedProjectType = projectType || project_type;
     if (!resolvedProjectType && property_type_key) {
       const ptResult = await client.query(
         'SELECT category FROM property_types WHERE type_key = $1 LIMIT 1',
@@ -158,11 +189,18 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
           'Hospitality': 'hospitality', 'Mixed-Use': 'mixed_use',
           'Land': 'land', 'Special Purpose': 'special_purpose',
         };
-        resolvedProjectType = categoryMap[ptResult.rows[0].category] || 'multifamily';
+        resolvedProjectType = categoryMap[ptResult.rows[0].category] || 'existing';
       }
     }
 
     const userTier = tier || 'basic';
+
+    const orgResult = await client.query(
+      'SELECT org_id FROM org_members WHERE user_id = $1 ORDER BY joined_at ASC LIMIT 1',
+      [req.user!.userId]
+    );
+    const userOrgId = orgResult.rows.length > 0 ? orgResult.rows[0].org_id : null;
+
     const boundaryGeom = boundary.type === 'Point'
       ? `ST_Buffer(ST_GeomFromGeoJSON($3)::geography, 200)::geometry`
       : `ST_GeomFromGeoJSON($3)`;
@@ -170,15 +208,15 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
       INSERT INTO deals (
         user_id, name, boundary, project_type, project_intent,
         target_units, budget, timeline_start, timeline_end, tier, status,
-        deal_category, development_type, address, description
+        deal_category, development_type, address, description, org_id
       )
-      VALUES ($1, $2, ${boundaryGeom}, $4, $5, $6, $7, $8, $9, $10, 'active', $11, $12, $13, $14)
+      VALUES ($1, $2, ${boundaryGeom}, $4, $5, $6, $7, $8, $9, $10, 'active', $11, $12, $13, $14, $15)
       RETURNING *
     `, [
       req.user!.userId,
       name,
       JSON.stringify(boundary),
-      resolvedProjectType || 'multifamily',
+      resolvedProjectType || 'existing',
       projectIntent || null,
       targetUnits || null,
       budget || null,
@@ -189,12 +227,39 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
       development_type || 'new',
       address || null,
       description || null,
+      userOrgId,
     ]);
 
     const row = result.rows[0];
 
     autoDiscoverComps(row.id).catch(err => {
       console.error(`[CompDiscovery] Failed for deal ${row.id}:`, err.message);
+    });
+
+    const docIds = Array.isArray(documentFileIds) ? documentFileIds
+      : Array.isArray(uploaded_documents) ? uploaded_documents
+      : [];
+    setImmediate(async () => {
+      try {
+        if (docIds.length > 0) {
+          await pool.query(
+            `UPDATE deal_document_files SET deal_id = $1, updated_at = NOW()
+             WHERE id = ANY($2::uuid[]) AND uploaded_by = $3 AND deal_id IS NULL`,
+            [row.id, docIds, req.user!.userId]
+          );
+        }
+        await processDealDocuments(row.id, req.user!.userId);
+
+        const seedExists = await pool.query(
+          `SELECT 1 FROM deal_assumptions WHERE deal_id = $1 AND year1 IS NOT NULL`,
+          [row.id]
+        );
+        if (seedExists.rows.length > 0) {
+          console.log(`[Seeder] Year1 seed available for deal ${row.id}`);
+        }
+      } catch (err) {
+        console.error(`[ExtractionPipeline] Deal creation trigger failed for ${row.id}:`, err instanceof Error ? err.message : err);
+      }
     });
 
     // M27 AUTO-TRIGGER: Generate comp set when deal is created with location
@@ -215,7 +280,8 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
       deal: {
         id: row.id,
         name: row.name,
-        projectType: row.project_type,
+        project_type: row.project_type || 'existing',
+        projectType: row.project_type || 'existing',
         tier: row.tier || 'basic',
         status: row.status,
         budget: parseFloat(row.budget) || 0,
@@ -699,7 +765,8 @@ router.get('/:id/lease-analysis', requireAuth, async (req: AuthenticatedRequest,
         p.renewal_status
       FROM properties p
       JOIN deals d ON d.id = $1
-      WHERE ST_Contains(d.boundary, ST_Point(p.lng, p.lat))
+      WHERE d.boundary IS NOT NULL
+        AND ST_Contains(d.boundary, ST_SetSRID(ST_Point(p.lng, p.lat), 4326))
     `, [dealId]);
 
     const properties = result.rows;
@@ -937,6 +1004,362 @@ router.post('/:dealId/analysis/trigger', requireAuth, async (req: AuthenticatedR
       success: false,
       error: error.message || 'Failed to trigger analysis'
     });
+  }
+});
+
+router.post('/upload-document', requireAuth, documentUpload.single('file'), async (req: AuthenticatedRequest, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'No file uploaded' });
+    }
+
+    const dealId = req.body?.dealId || req.query?.dealId;
+    let verifiedDealId: string | null = null;
+
+    if (dealId) {
+      const ownerResult = await pool.query(
+        'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
+        [dealId, req.user!.userId]
+      );
+      if (ownerResult.rows.length > 0) {
+        verifiedDealId = dealId as string;
+      } else {
+        return res.status(403).json({ success: false, error: 'Not authorized for this deal' });
+      }
+    }
+
+    const insertResult = await pool.query(
+      `INSERT INTO deal_document_files (deal_id, filename, original_filename, file_path, uploaded_by, created_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())
+       RETURNING id`,
+      [verifiedDealId, path.basename(req.file.path), req.file.originalname, req.file.path, req.user!.userId]
+    );
+
+    const docId = insertResult.rows[0].id;
+
+    const fileMeta = {
+      id: docId,
+      name: req.file.originalname,
+      type: req.file.mimetype,
+      size: req.file.size,
+      path: req.file.path,
+      uploadedAt: new Date().toISOString(),
+      uploadedBy: req.user!.userId,
+    };
+
+    if (verifiedDealId) {
+      processDocument(req.file.path, req.file.originalname, verifiedDealId, req.user!.userId, docId)
+        .then(async (result) => {
+          const seedTag = result.proformaSeeded ? ' +seed' : '';
+          const xvalTag = result.crossValidationVariances ? ` +xval(${result.crossValidationVariances})` : '';
+          console.log(`[ExtractionPipeline] ${req.file!.originalname} → ${result.documentType} (${result.success ? 'OK' : 'FAIL'}${result.rowsInserted ? `, ${result.rowsInserted} rows` : ''}${seedTag}${xvalTag})`);
+          if (result.alerts.length > 0) {
+            console.log(`[ExtractionPipeline] Alerts: ${result.alerts.join('; ')}`);
+          }
+          try {
+            await pool.query(
+              `UPDATE deal_document_files SET
+                 document_type = $1, extraction_status = $2,
+                 extraction_result = $3, updated_at = NOW()
+               WHERE id = $4`,
+              [result.documentType, result.success ? 'completed' : 'failed',
+               JSON.stringify({
+                 success: result.success,
+                 error: result.error,
+                 rowsInserted: result.rowsInserted,
+                 capsuleUpdated: result.capsuleUpdated,
+                 libraryUpdated: result.libraryUpdated,
+                 proformaSeeded: result.proformaSeeded,
+                 crossValidationVariances: result.crossValidationVariances,
+                 alerts: result.alerts,
+               }),
+               docId]
+            );
+
+            try {
+              const wsModule = await import('../../services/websocket.service') as Record<string, unknown>;
+              const broadcastToDeal = wsModule.broadcastToDeal as ((dealId: string, payload: Record<string, unknown>) => void) | undefined;
+              if (broadcastToDeal) {
+                broadcastToDeal(verifiedDealId, {
+                  type: 'extraction_complete',
+                  documentId: docId,
+                  documentType: result.documentType,
+                  success: result.success,
+                  capsuleUpdated: result.capsuleUpdated,
+                  proformaSeeded: result.proformaSeeded,
+                  crossValidationVariances: result.crossValidationVariances,
+                });
+              }
+            } catch { /* websocket optional */ }
+          } catch (e) { console.error('[ExtractionPipeline] Status update error:', e); }
+        })
+        .catch(err => {
+          console.error(`[ExtractionPipeline] Error processing ${req.file!.originalname}:`, err);
+        });
+    }
+
+    res.json({ success: true, data: fileMeta });
+  } catch (error: any) {
+    console.error('Error uploading deal document:', error);
+    res.status(500).json({ success: false, error: error.message || 'Failed to upload document' });
+  }
+});
+
+router.post('/:dealId/reprocess-documents', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { dealId } = req.params;
+
+    const ownerCheck = await pool.query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
+      [dealId, req.user!.userId]
+    );
+    if (ownerCheck.rows.length === 0) {
+      return res.status(403).json({ success: false, error: 'Not authorized to access this deal' });
+    }
+
+    const result = await processDealDocuments(dealId, req.user!.userId);
+
+    res.json({
+      success: true,
+      data: {
+        dealId: result.dealId,
+        documentsProcessed: result.documentsProcessed,
+        results: result.results,
+        capsuleUpdated: result.capsuleUpdated,
+        libraryUpdated: result.libraryUpdated,
+        alerts: result.alerts,
+      },
+    });
+  } catch (error: any) {
+    console.error('Error reprocessing deal documents:', error);
+    res.status(500).json({ success: false, error: error.message || 'Failed to reprocess documents' });
+  }
+});
+
+router.post('/:dealId/extract-document', requireAuth, documentUpload.single('file'), async (req: AuthenticatedRequest, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'No file uploaded' });
+    }
+
+    const { dealId } = req.params;
+
+    const ownerCheck = await pool.query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
+      [dealId, req.user!.userId]
+    );
+    if (ownerCheck.rows.length === 0) {
+      return res.status(403).json({ success: false, error: 'Not authorized to access this deal' });
+    }
+
+    const result = await processDocument(req.file.path, req.file.originalname, dealId, req.user!.userId);
+
+    res.json({
+      success: true,
+      data: {
+        filename: req.file.originalname,
+        documentType: result.documentType,
+        extractionSuccess: result.success,
+        rowsInserted: result.rowsInserted,
+        alerts: result.alerts,
+        error: result.error,
+      },
+    });
+  } catch (error: any) {
+    console.error('Error extracting document:', error);
+    res.status(500).json({ success: false, error: error.message || 'Failed to extract document' });
+  }
+});
+
+router.get('/:dealId/proforma/year1', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { dealId } = req.params;
+    const ownerCheck = await pool.query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
+      [dealId, req.user!.userId]
+    );
+    if (ownerCheck.rows.length === 0) {
+      return res.status(403).json({ success: false, error: 'Not authorized' });
+    }
+    const result = await pool.query(
+      `SELECT year1, source_type, source_date, updated_at
+       FROM deal_assumptions WHERE deal_id = $1`,
+      [dealId]
+    );
+    if (result.rows.length === 0 || !result.rows[0].year1) {
+      return res.json({ success: true, data: null, message: 'No proforma seed available — upload a T12 or rent roll first' });
+    }
+    res.json({
+      success: true,
+      data: {
+        year1: result.rows[0].year1,
+        sourceType: result.rows[0].source_type,
+        seededAt: result.rows[0].source_date,
+        updatedAt: result.rows[0].updated_at,
+      },
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    res.status(500).json({ success: false, error: message });
+  }
+});
+
+router.patch('/:dealId/proforma/year1/override', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { dealId } = req.params;
+    const { fieldPath, value } = req.body;
+
+    if (!fieldPath || typeof fieldPath !== 'string') {
+      return res.status(400).json({ success: false, error: 'fieldPath required' });
+    }
+
+    if (value !== null && (typeof value !== 'number' || !isFinite(value))) {
+      return res.status(400).json({ success: false, error: 'value must be a finite number or null' });
+    }
+
+    const ownerCheck = await pool.query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
+      [dealId, req.user!.userId]
+    );
+    if (ownerCheck.rows.length === 0) {
+      return res.status(403).json({ success: false, error: 'Not authorized' });
+    }
+
+    const { applyUserOverride } = await import('../../services/proforma-seeder.service');
+    await applyUserOverride(pool, dealId, fieldPath, value, req.user!.userId);
+    res.json({ success: true });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    res.status(500).json({ success: false, error: message });
+  }
+});
+
+router.post('/:dealId/proforma/seed', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { dealId } = req.params;
+
+    const ownerCheck = await pool.query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
+      [dealId, req.user!.userId]
+    );
+    if (ownerCheck.rows.length === 0) {
+      return res.status(403).json({ success: false, error: 'Not authorized' });
+    }
+
+    const { seedProFormaYear1 } = await import('../../services/proforma-seeder.service');
+    const result = await seedProFormaYear1(pool, dealId);
+    res.json({ success: true, ...result });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    res.status(500).json({ success: false, error: message });
+  }
+});
+
+router.post('/:dealId/validate/cross-doc', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { dealId } = req.params;
+
+    const ownerCheck = await pool.query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
+      [dealId, req.user!.userId]
+    );
+    if (ownerCheck.rows.length === 0) {
+      return res.status(403).json({ success: false, error: 'Not authorized' });
+    }
+
+    const { runCrossValidation } = await import('../../services/multi-doc-cross-validation.service');
+    const result = await runCrossValidation(pool, dealId);
+    res.json({ success: true, ...result });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    res.status(500).json({ success: false, error: message });
+  }
+});
+
+router.post('/:dealId/traffic-snapshot', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { dealId } = req.params;
+
+    const ownerCheck = await pool.query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
+      [dealId, req.user!.userId]
+    );
+    if (ownerCheck.rows.length === 0) {
+      return res.status(403).json({ success: false, error: 'Not authorized to access this deal' });
+    }
+
+    const snapshot = await computeAndPersistTrafficSnapshot(dealId);
+
+    res.json({
+      success: true,
+      data: {
+        snapshotDate: snapshot.snapshotDate,
+        summary: snapshot.summary,
+        signingVelocity: snapshot.signingVelocity,
+        seasonalityCurve: snapshot.seasonalityCurve,
+        expirationWaterfall: snapshot.expirationWaterfall,
+        velocityVariance: snapshot.velocityVariance,
+        leaseTermDistribution: snapshot.leaseTermDistribution,
+        tradeOutAnalytics: snapshot.tradeOutAnalytics,
+        mtmExposure: snapshot.mtmExposure,
+        conversionFunnel: snapshot.conversionFunnel,
+        sourceDocumentTypes: snapshot.sourceDocumentTypes,
+      },
+    });
+  } catch (error: any) {
+    console.error('Error computing traffic snapshot:', error);
+    res.status(500).json({ success: false, error: error.message || 'Failed to compute traffic snapshot' });
+  }
+});
+
+router.get('/:dealId/traffic-snapshot', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { dealId } = req.params;
+
+    const ownerCheck = await pool.query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
+      [dealId, req.user!.userId]
+    );
+    if (ownerCheck.rows.length === 0) {
+      return res.status(403).json({ success: false, error: 'Not authorized to access this deal' });
+    }
+
+    const result = await pool.query(
+      `SELECT snapshot_date, signing_velocity, seasonality_curve, expiration_waterfall,
+              velocity_variance, lease_term_distribution, trade_out_analytics,
+              mtm_exposure, conversion_funnel, summary, source_document_types, created_at
+       FROM deal_traffic_snapshots
+       WHERE deal_id = $1
+       ORDER BY snapshot_date DESC
+       LIMIT 1`,
+      [dealId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.json({ success: true, data: null });
+    }
+
+    const row = result.rows[0];
+    res.json({
+      success: true,
+      data: {
+        snapshotDate: row.snapshot_date,
+        summary: row.summary,
+        signingVelocity: row.signing_velocity,
+        seasonalityCurve: row.seasonality_curve,
+        expirationWaterfall: row.expiration_waterfall,
+        velocityVariance: row.velocity_variance,
+        leaseTermDistribution: row.lease_term_distribution,
+        tradeOutAnalytics: row.trade_out_analytics,
+        mtmExposure: row.mtm_exposure,
+        conversionFunnel: row.conversion_funnel,
+        sourceDocumentTypes: row.source_document_types,
+        createdAt: row.created_at,
+      },
+    });
+  } catch (error: any) {
+    console.error('Error fetching traffic snapshot:', error);
+    res.status(500).json({ success: false, error: error.message || 'Failed to fetch traffic snapshot' });
   }
 });
 

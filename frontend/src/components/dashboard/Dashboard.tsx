@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Search, Filter, Layers, Users, Settings, Building2 } from 'lucide-react';
 import { useAppStore } from '@/store';
+import { BT } from '@/components/deal/bloomberg-ui';
 import SearchBar from './SearchBar';
 import FilterPanel from './FilterPanel';
 import ModuleToggle from './ModuleToggle';
@@ -15,20 +16,27 @@ export default function Dashboard() {
 
   return (
     <div
-      className={`fixed left-0 top-0 h-full bg-white shadow-lg transition-all duration-300 z-30 ${
+      className={`fixed left-0 top-0 h-full transition-all duration-300 z-30 ${
         sidebarOpen ? 'w-96' : 'w-16'
       }`}
+      style={{ background: BT.bg.panel }}
     >
       {/* Sidebar Header */}
-      <div className="h-16 border-b border-gray-200 flex items-center px-4 bg-gradient-to-r from-primary-600 to-purple-600">
+      <div
+        className="h-16 flex items-center px-4"
+        style={{ borderBottom: `1px solid ${BT.border.subtle}`, background: BT.bg.header }}
+      >
         {sidebarOpen ? (
           <div className="flex items-center justify-between w-full">
-            <h1 className="text-xl font-bold text-white">JediRe</h1>
+            <h1 className="text-xl font-bold" style={{ color: BT.text.amber, fontFamily: BT.font.display }}>{`JediRe`}</h1>
             <button
               onClick={() => setSidebarOpen(false)}
-              className="p-1 hover:bg-white/20 rounded transition-colors"
+              className="p-1 transition-colors"
+              style={{ borderRadius: 2 }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = BT.bg.hover)}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
             >
-              <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-5 h-5" style={{ color: BT.text.primary }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
             </button>
@@ -36,9 +44,12 @@ export default function Dashboard() {
         ) : (
           <button
             onClick={() => setSidebarOpen(true)}
-            className="p-2 hover:bg-white/20 rounded transition-colors mx-auto"
+            className="p-2 transition-colors mx-auto"
+            style={{ borderRadius: 2 }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = BT.bg.hover)}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
           >
-            <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="w-5 h-5" style={{ color: BT.text.primary }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
           </button>
@@ -49,35 +60,47 @@ export default function Dashboard() {
       {sidebarOpen && (
         <div className="flex flex-col h-[calc(100%-4rem)] overflow-hidden">
           {/* Search Bar */}
-          <div className="p-4 border-b border-gray-200">
+          <div className="p-4" style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
             <SearchBar />
           </div>
 
           {/* Tab Buttons */}
-          <div className="p-4 border-b border-gray-200 flex gap-2">
+          <div className="p-4 flex gap-2" style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
             <button
               onClick={() => { setShowAnalyzer(true); setShowFilters(false); setShowModules(false); }}
-              className={`flex-1 py-2 px-3 rounded-lg font-medium text-sm flex items-center justify-center gap-1 ${
-                showAnalyzer ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
+              className="flex-1 py-2 px-3 font-medium text-sm flex items-center justify-center gap-1"
+              style={{
+                borderRadius: 0,
+                background: showAnalyzer ? BT.bg.active : BT.bg.panelAlt,
+                color: showAnalyzer ? BT.text.cyan : BT.text.secondary,
+                fontFamily: BT.font.label,
+              }}
             >
               <Building2 className="w-4 h-4" />
               Analyze
             </button>
             <button
               onClick={() => { setShowAnalyzer(false); setShowFilters(!showFilters); }}
-              className={`flex-1 py-2 px-3 rounded-lg font-medium text-sm flex items-center justify-center gap-1 ${
-                showFilters ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
+              className="flex-1 py-2 px-3 font-medium text-sm flex items-center justify-center gap-1"
+              style={{
+                borderRadius: 0,
+                background: showFilters ? BT.bg.active : BT.bg.panelAlt,
+                color: showFilters ? BT.text.cyan : BT.text.secondary,
+                fontFamily: BT.font.label,
+              }}
             >
               <Filter className="w-4 h-4" />
               Filters
             </button>
             <button
               onClick={() => { setShowAnalyzer(false); setShowModules(!showModules); }}
-              className={`flex-1 py-2 px-3 rounded-lg font-medium text-sm flex items-center justify-center gap-1 ${
-                showModules ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
+              className="flex-1 py-2 px-3 font-medium text-sm flex items-center justify-center gap-1"
+              style={{
+                borderRadius: 0,
+                background: showModules ? BT.bg.active : BT.bg.panelAlt,
+                color: showModules ? BT.text.cyan : BT.text.secondary,
+                fontFamily: BT.font.label,
+              }}
             >
               <Layers className="w-4 h-4" />
               Modules
@@ -86,14 +109,14 @@ export default function Dashboard() {
 
           {/* Filter Panel */}
           {showFilters && (
-            <div className="border-b border-gray-200">
+            <div style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
               <FilterPanel />
             </div>
           )}
 
           {/* Module Toggle */}
           {showModules && !showAnalyzer && (
-            <div className="border-b border-gray-200">
+            <div style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
               <ModuleToggle />
             </div>
           )}
@@ -108,29 +131,29 @@ export default function Dashboard() {
           {/* Stats (only when not showing analyzer) */}
           {!showAnalyzer && (
             <>
-              <div className="p-4 border-b border-gray-200">
+              <div className="p-4" style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="card text-center">
-                    <div className="text-2xl font-bold text-primary-600">
+                  <div className="text-center p-3" style={{ background: BT.bg.panelAlt, borderRadius: 0 }}>
+                    <div className="text-2xl font-bold" style={{ color: BT.text.cyan, fontFamily: BT.font.mono }}>
                       {properties.length}
                     </div>
-                    <div className="text-xs text-gray-600 mt-1">Properties</div>
+                    <div className="text-xs mt-1" style={{ color: BT.text.secondary, fontFamily: BT.font.label }}>Properties</div>
                   </div>
-                  <div className="card text-center">
-                    <div className="text-2xl font-bold text-purple-600">
+                  <div className="text-center p-3" style={{ background: BT.bg.panelAlt, borderRadius: 0 }}>
+                    <div className="text-2xl font-bold" style={{ color: BT.text.purple, fontFamily: BT.font.mono }}>
                       {collaborators.length}
                     </div>
-                    <div className="text-xs text-gray-600 mt-1">Online</div>
+                    <div className="text-xs mt-1" style={{ color: BT.text.secondary, fontFamily: BT.font.label }}>Online</div>
                   </div>
                 </div>
               </div>
 
               {/* Collaborators */}
               {collaborators.length > 0 && (
-                <div className="p-4 border-b border-gray-200">
+                <div className="p-4" style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
                   <div className="flex items-center gap-2 mb-3">
-                    <Users className="w-4 h-4 text-gray-600" />
-                    <h3 className="font-semibold text-gray-900 text-sm">Collaborators</h3>
+                    <Users className="w-4 h-4" style={{ color: BT.text.secondary }} />
+                    <h3 className="font-semibold text-sm" style={{ color: BT.text.primary, fontFamily: BT.font.label }}>Collaborators</h3>
                   </div>
                   <CollaboratorsList collaborators={collaborators} />
                 </div>
@@ -140,8 +163,11 @@ export default function Dashboard() {
               <div className="flex-1"></div>
 
               {/* Settings */}
-              <div className="p-4 border-t border-gray-200">
-                <button className="w-full btn btn-ghost flex items-center justify-center gap-2">
+              <div className="p-4" style={{ borderTop: `1px solid ${BT.border.subtle}` }}>
+                <button
+                  className="w-full flex items-center justify-center gap-2 py-2 px-4"
+                  style={{ color: BT.text.secondary, fontFamily: BT.font.label }}
+                >
                   <Settings className="w-4 h-4" />
                   <span>Settings</span>
                 </button>

@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
-import { MapPin, CheckCircle2, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
+import { MapPin, CheckCircle2, ChevronDown, ChevronRight } from 'lucide-react';
 import api from '@/lib/api';
+import { BT } from '@/components/deal/bloomberg-ui';
+
+const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono','Fira Code','SF Mono',monospace" };
 
 interface Market {
   name: string;
@@ -15,12 +18,12 @@ interface Market {
 
 const REGION_ORDER = ['Southeast', 'Texas', 'West', 'Midwest', 'Northeast'];
 
-const REGION_COLORS: Record<string, { bg: string; border: string; text: string; accent: string }> = {
-  'Southeast': { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700', accent: 'bg-emerald-600' },
-  'Texas': { bg: 'bg-orange-50', border: 'border-orange-200', text: 'text-orange-700', accent: 'bg-orange-600' },
-  'West': { bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-700', accent: 'bg-blue-600' },
-  'Midwest': { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-700', accent: 'bg-amber-600' },
-  'Northeast': { bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-700', accent: 'bg-purple-600' },
+const REGION_ACCENT: Record<string, string> = {
+  'Southeast': BT.text.green,
+  'Texas': BT.text.amber,
+  'West': BT.text.cyan,
+  'Midwest': BT.text.purple,
+  'Northeast': BT.text.violet,
 };
 
 export default function MarketsPreferencesPage() {
@@ -43,7 +46,6 @@ export default function MarketsPreferencesPage() {
         api.get('/preferences/available-markets'),
         api.get('/preferences/user')
       ]);
-      
       setMarkets(marketsRes.data.markets);
       const prefs = prefsRes.data.data || prefsRes.data.preferences || prefsRes.data;
       setSelectedMarkets(prefs.preferred_markets || []);
@@ -76,14 +78,10 @@ export default function MarketsPreferencesPage() {
   const toggleMarket = (marketName: string) => {
     if (selectedMarkets.includes(marketName)) {
       setSelectedMarkets(selectedMarkets.filter(m => m !== marketName));
-      if (primaryMarket === marketName) {
-        setPrimaryMarket('');
-      }
+      if (primaryMarket === marketName) setPrimaryMarket('');
     } else {
       setSelectedMarkets([...selectedMarkets, marketName]);
-      if (!primaryMarket) {
-        setPrimaryMarket(marketName);
-      }
+      if (!primaryMarket) setPrimaryMarket(marketName);
     }
   };
 
@@ -119,43 +117,32 @@ export default function MarketsPreferencesPage() {
   const toggleSelectAllRegion = (region: string) => {
     const selectable = getSelectableMarkets(groupedMarkets[region] || []);
     const selectableNames = selectable.map(m => m.name);
-    
     if (isRegionFullySelected(region)) {
       setSelectedMarkets(selectedMarkets.filter(m => !selectableNames.includes(m)));
-      if (selectableNames.includes(primaryMarket)) {
-        setPrimaryMarket('');
-      }
+      if (selectableNames.includes(primaryMarket)) setPrimaryMarket('');
     } else {
       const newSelected = [...new Set([...selectedMarkets, ...selectableNames])];
       setSelectedMarkets(newSelected);
-      if (!primaryMarket && selectableNames.length > 0) {
-        setPrimaryMarket(selectableNames[0]);
-      }
+      if (!primaryMarket && selectableNames.length > 0) setPrimaryMarket(selectableNames[0]);
     }
   };
 
   const getStatusBadge = (status: string) => {
-    const styles: Record<string, string> = {
-      active: 'bg-green-100 text-green-800',
-      beta: 'bg-blue-100 text-blue-800',
-      coming_soon: 'bg-gray-100 text-gray-600'
+    const cfg: Record<string, { label: string; color: string }> = {
+      active: { label: 'Active', color: BT.text.green },
+      beta: { label: 'Beta', color: BT.text.cyan },
+      coming_soon: { label: 'Coming Soon', color: BT.text.muted },
     };
-    const labels: Record<string, string> = {
-      active: 'Active',
-      beta: 'Beta',
-      coming_soon: 'Coming Soon'
-    };
+    const s = cfg[status] || cfg.coming_soon;
     return (
-      <span className={`text-xs px-2 py-0.5 rounded-full ${styles[status]}`}>
-        {labels[status]}
-      </span>
+      <span style={{ fontSize: 10, padding: '2px 8px', fontWeight: 600, color: s.color, background: BT.bg.panelAlt, ...mono }}>{s.label}</span>
     );
   };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 400 }}>
+        <div style={{ height: 32, width: 32, border: `2px solid ${BT.border.subtle}`, borderBottom: `2px solid ${BT.text.cyan}`, borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
       </div>
     );
   }
@@ -166,18 +153,18 @@ export default function MarketsPreferencesPage() {
   ];
 
   return (
-    <div className="max-w-6xl mx-auto p-6 space-y-6">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">Markets & Coverage</h1>
-        <p className="text-gray-600 mt-2">
+        <h1 style={{ fontSize: 16, fontWeight: 700, color: BT.text.primary, letterSpacing: '0.04em' }}>Markets & Coverage</h1>
+        <p style={{ fontSize: 12, color: BT.text.secondary, marginTop: 4 }}>
           Select which markets you want to track. Click a region header to select all markets in that region.
         </p>
-        <div className="mt-3 flex items-center gap-4 text-sm text-gray-500">
+        <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 16, fontSize: 11, color: BT.text.muted }}>
           <span>{selectedMarkets.length} market{selectedMarkets.length !== 1 ? 's' : ''} selected</span>
           {primaryMarket && (
-            <span className="flex items-center gap-1">
-              <MapPin className="w-3.5 h-3.5" />
-              Primary: <strong className="text-gray-700">{markets.find(m => m.name === primaryMarket)?.display_name}</strong>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <MapPin style={{ width: 12, height: 12 }} />
+              Primary: <strong style={{ color: BT.text.primary }}>{markets.find(m => m.name === primaryMarket)?.display_name}</strong>
             </span>
           )}
         </div>
@@ -185,49 +172,49 @@ export default function MarketsPreferencesPage() {
 
       {sortedRegions.map((region) => {
         const regionMarkets = groupedMarkets[region];
-        const colors = REGION_COLORS[region] || REGION_COLORS['Southeast'];
+        const accent = REGION_ACCENT[region] || BT.text.cyan;
         const isExpanded = expandedRegions.includes(region);
         const selectable = getSelectableMarkets(regionMarkets);
         const selectedCount = selectable.filter(m => selectedMarkets.includes(m.name)).length;
         const allSelected = isRegionFullySelected(region);
-        const partiallySelected = isRegionPartiallySelected(region);
 
         return (
-          <div key={region} className={`rounded-lg border ${colors.border} overflow-hidden`}>
+          <div key={region} style={{ border: `1px solid ${BT.border.subtle}`, overflow: 'hidden' }}>
             <div
-              className={`${colors.bg} px-5 py-3 flex items-center justify-between cursor-pointer select-none`}
               onClick={() => toggleRegion(region)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '10px 16px',
+                background: BT.bg.panelAlt,
+                cursor: 'pointer',
+                userSelect: 'none',
+              }}
             >
-              <div className="flex items-center gap-3">
-                {isExpanded ? (
-                  <ChevronDown className={`w-5 h-5 ${colors.text}`} />
-                ) : (
-                  <ChevronRight className={`w-5 h-5 ${colors.text}`} />
-                )}
-                <h2 className={`text-lg font-bold ${colors.text}`}>{region}</h2>
-                <span className="text-sm text-gray-500">
-                  {regionMarkets.length} market{regionMarkets.length !== 1 ? 's' : ''}
-                </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                {isExpanded
+                  ? <ChevronDown style={{ width: 16, height: 16, color: accent }} />
+                  : <ChevronRight style={{ width: 16, height: 16, color: accent }} />
+                }
+                <span style={{ fontSize: 13, fontWeight: 700, color: accent }}>{region}</span>
+                <span style={{ fontSize: 11, color: BT.text.muted }}>{regionMarkets.length} market{regionMarkets.length !== 1 ? 's' : ''}</span>
               </div>
 
-              <div className="flex items-center gap-3">
-                <span className="text-sm text-gray-600">
-                  {selectedCount}/{selectable.length} selected
-                </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 11, color: BT.text.secondary, ...mono }}>{selectedCount}/{selectable.length}</span>
                 <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleSelectAllRegion(region);
+                  onClick={(e) => { e.stopPropagation(); toggleSelectAllRegion(region); }}
+                  style={{
+                    padding: '4px 12px',
+                    fontSize: 10,
+                    fontWeight: 600,
+                    background: allSelected ? accent : 'transparent',
+                    color: allSelected ? BT.bg.terminal : BT.text.secondary,
+                    border: allSelected ? 'none' : `1px solid ${BT.border.subtle}`,
+                    cursor: 'pointer',
+                    ...mono,
                   }}
-                  className={`
-                    px-3 py-1 text-xs font-medium rounded-full transition-colors
-                    ${allSelected
-                      ? `${colors.accent} text-white`
-                      : partiallySelected
-                        ? `border-2 ${colors.border} ${colors.text} bg-white`
-                        : 'border border-gray-300 text-gray-600 bg-white hover:bg-gray-50'
-                    }
-                  `}
                 >
                   {allSelected ? 'Deselect All' : 'Select All'}
                 </button>
@@ -235,8 +222,8 @@ export default function MarketsPreferencesPage() {
             </div>
 
             {isExpanded && (
-              <div className="bg-white p-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div style={{ padding: 12, background: BT.bg.panel }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8 }}>
                   {regionMarkets.map((market) => {
                     const isSelected = selectedMarkets.includes(market.name);
                     const isDisabled = market.coverage_status === 'coming_soon';
@@ -246,45 +233,41 @@ export default function MarketsPreferencesPage() {
                         key={market.name}
                         onClick={() => !isDisabled && toggleMarket(market.name)}
                         disabled={isDisabled}
-                        className={`
-                          p-3 rounded-lg border-2 text-left transition-all
-                          ${isSelected
-                            ? `${colors.border} ${colors.bg}`
-                            : 'border-gray-200 hover:border-gray-300'
-                          }
-                          ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-                        `}
+                        style={{
+                          textAlign: 'left' as const,
+                          padding: 10,
+                          border: `1px solid ${isSelected ? accent : BT.border.subtle}`,
+                          background: isSelected ? BT.bg.active : BT.bg.panelAlt,
+                          opacity: isDisabled ? 0.4 : 1,
+                          cursor: isDisabled ? 'not-allowed' : 'pointer',
+                        }}
                       >
-                        <div className="flex items-start justify-between mb-1">
-                          <div className="min-w-0">
-                            <h3 className="font-semibold text-gray-900 text-sm truncate">{market.display_name}</h3>
-                            <p className="text-xs text-gray-500">{market.metro_area}</p>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: 600, fontSize: 12, color: BT.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{market.display_name}</div>
+                            <div style={{ fontSize: 10, color: BT.text.muted }}>{market.metro_area}</div>
                           </div>
-                          {isSelected && (
-                            <CheckCircle2 className={`w-4 h-4 ${colors.text} flex-shrink-0 ml-2`} />
-                          )}
+                          {isSelected && <CheckCircle2 style={{ width: 14, height: 14, color: accent, flexShrink: 0, marginLeft: 6 }} />}
                         </div>
-                        
-                        <div className="flex items-center justify-between mt-2">
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
                           {getStatusBadge(market.coverage_status)}
                           {market.property_count > 0 && (
-                            <span className="text-xs text-gray-500">
-                              {(market.property_count / 1000).toFixed(0)}K props
-                            </span>
+                            <span style={{ fontSize: 10, color: BT.text.muted, ...mono }}>{(market.property_count / 1000).toFixed(0)}K</span>
                           )}
                         </div>
 
                         {isSelected && (
-                          <div className="mt-2 pt-2 border-t border-gray-200">
-                            <label className="flex items-center gap-2 text-xs" onClick={(e) => e.stopPropagation()}>
+                          <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${BT.border.subtle}` }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, cursor: 'pointer' }} onClick={(e) => e.stopPropagation()}>
                               <input
                                 type="radio"
                                 name="primary_market"
                                 checked={primaryMarket === market.name}
                                 onChange={() => setPrimaryMarket(market.name)}
-                                className="text-blue-600"
+                                style={{ accentColor: BT.text.cyan }}
                               />
-                              <span className="text-gray-600">Primary market</span>
+                              <span style={{ color: BT.text.secondary }}>Primary market</span>
                             </label>
                           </div>
                         )}
@@ -299,33 +282,42 @@ export default function MarketsPreferencesPage() {
       })}
 
       {saveMessage && (
-        <div className={`px-4 py-3 rounded-lg text-sm ${
-          saveMessage.type === 'success'
-            ? 'bg-green-50 text-green-700 border border-green-200'
-            : 'bg-red-50 text-red-700 border border-red-200'
-        }`}>
+        <div style={{
+          padding: '10px 16px',
+          fontSize: 12,
+          background: BT.bg.panelAlt,
+          color: saveMessage.type === 'success' ? BT.text.green : BT.text.red,
+          border: `1px solid ${saveMessage.type === 'success' ? BT.text.green : BT.text.red}`,
+        }}>
           {saveMessage.text}
         </div>
       )}
 
-      <div className="flex items-center justify-between pt-2">
-        <p className="text-sm text-gray-600">
-          Changes will update your Market Research dashboard and analytics
-        </p>
-        
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8 }}>
+        <span style={{ fontSize: 11, color: BT.text.muted }}>Changes will update your Market Research dashboard and analytics</span>
         <button
           onClick={handleSave}
           disabled={saving || selectedMarkets.length === 0}
-          className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+          style={{
+            padding: '8px 20px',
+            background: saving || selectedMarkets.length === 0 ? BT.bg.active : BT.text.cyan,
+            color: saving || selectedMarkets.length === 0 ? BT.text.muted : BT.bg.terminal,
+            border: 'none',
+            fontSize: 11,
+            fontWeight: 600,
+            cursor: saving || selectedMarkets.length === 0 ? 'not-allowed' : 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            ...mono,
+          }}
         >
           {saving ? (
             <>
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <div style={{ height: 14, width: 14, border: '2px solid transparent', borderBottom: `2px solid ${BT.bg.terminal}`, borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
               Saving...
             </>
-          ) : (
-            'Save Preferences'
-          )}
+          ) : 'Save Preferences'}
         </button>
       </div>
     </div>

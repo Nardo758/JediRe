@@ -13,13 +13,11 @@ import agentRoutes from './agent.routes';
 import llmRoutes from './llm.routes';
 import microsoftRoutes from './microsoft.routes';
 import preferencesRoutes from './preferences.routes';
-import extractionsRoutes from './extractions.routes';
 import emailExtractionsRoutes from './email-extractions.routes';
 import mapsRoutes from './maps.routes';
 import proposalsRoutes from './proposals.routes';
 import notificationsRoutes from './notifications.routes';
 import pipelineRoutes from './pipeline';
-import analysisRoutes from './analysis.routes';
 import tasksRoutes from './tasks.routes';
 import taskCompletionRoutes from './task-completion.routes';
 import emailRoutes from './email.routes';
@@ -31,6 +29,7 @@ import geographicContextRoutes from './geographic-context.routes';
 import geographyRoutes from './geography.routes';
 import isochroneRoutes from './isochrone.routes';
 import trafficAiRoutes from './traffic-ai.routes';
+import trafficPredictionRoutes from './trafficPrediction.routes';
 import layersRoutes from './layers.routes';
 import mapConfigsRoutes from './map-configs.routes';
 import gridRoutes from './grid.routes';
@@ -50,7 +49,6 @@ import auditRoutes from './audit.routes';
 import scenariosRoutes from './scenarios.routes';
 import credibilityRoutes from './credibility.routes';
 import kafkaEventsRoutes from './kafka-events.routes';
-import filesRoutes from './files.routes';
 import documentsFilesRoutes from './documentsFiles.routes';
 import assetMapIntelligenceRoutes, { noteCategoriesRoutes } from './asset-map-intelligence.routes';
 import mapAnnotationsRoutes from './mapAnnotations.routes';
@@ -59,7 +57,6 @@ import moduleLibrariesRoutes from './module-libraries.routes';
 import neighboringPropertiesRoutes from './neighboringProperties.routes';
 import qwenRoutes from './qwen.routes';
 import competitionRoutes from './competition.routes';
-import errorsRoutes from './errors.routes';
 import dataTrackerRoutes from './data-tracker.routes';
 import entitlementRoutes from './entitlement.routes';
 import regulatoryAlertRoutes from './regulatory-alert.routes';
@@ -72,7 +69,11 @@ import developmentScenariosRoutes from './development-scenarios.routes';
 import trafficDataRoutes from './traffic-data.routes';
 import trafficCompsRoutes from './traffic-comps.routes';
 import correlationRoutes from './correlation.routes';
+import leadLagRoutes from './lead-lag.routes';
+import backtestRoutes from './backtest.routes';
+import dealContextRoutes from './deal-context.routes';
 import dealMarketIntelligenceRoutes from './deal-market-intelligence.routes';
+import createMarketIntelligenceRoutes from './market-intelligence.routes';
 import demandIntelligenceRoutes from './demand-intelligence.routes';
 import rankingsRoutes from './rankings.routes';
 import clawdbotWebhooksRoutes from './clawdbot-webhooks.routes';
@@ -84,10 +85,27 @@ import apartmentLocatorRoutes from './apartment-locator.routes';
 import commandCenterRoutes from './command-center.routes';
 import scrapeRoutes from './scrape.routes';
 import metricsCatalogRoutes from './metrics-catalog.routes';
+import marketMetricsRoutes from './market-metrics.routes';
 import customStrategiesRoutes from './custom-strategies.routes';
 import ingestionRoutes from './ingestion.routes';
 import strategiesRoutes from './strategy-definitions.routes';
+import m08StrategiesRoutes from './strategies.routes';
+import { createCapsuleRoutes } from './capsule.routes';
+import inlineDealsRoutes from './inline-deals.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
+import { createUnitMixRoutes } from './unitMix.routes';
+import dealCompSetsRoutes from './deal-comp-sets.routes';
+import capitalStructureRoutes from './capital-structure.routes';
+import buildingEnvelopeRoutes from './building-envelope.routes';
+import moduleWiringRoutes from './module-wiring.routes';
+import corporateHealthRoutes from './corporate-health.routes';
+import opportunityEngineRoutes from './opportunity-engine.routes';
+import benchmarkTimelineRoutes from './benchmark-timeline.routes';
+import tickerRoutes from './ticker.routes';
+import agentSettingsRoutes from './agent-settings.routes';
+import columnPreferencesRoutes from './column-preferences.routes';
+import timeSeriesRoutes from './time-series.routes';
+import driverAnalysisRoutes from './driver-analysis.routes';
 
 const API_PREFIX = '/api/v1';
 
@@ -106,9 +124,6 @@ export function setupRESTRoutes(app: Application): void {
 
   // Property Types routes (Deal Creation)
   app.use(`${API_PREFIX}/property-types`, propertyTypesRoutes);
-
-  // Property extraction routes
-  app.use(`${API_PREFIX}/extractions`, extractionsRoutes);
 
   // Email extraction routes (Property + News from emails)
   app.use(`${API_PREFIX}/email-extractions`, emailExtractionsRoutes);
@@ -138,6 +153,11 @@ export function setupRESTRoutes(app: Application): void {
   // Agent routes (orchestration)
   app.use(`${API_PREFIX}/agents`, agentRoutes);
 
+  // Agent Settings routes (model selection, workforce config)
+  app.use(`${API_PREFIX}/settings/agents`, agentSettingsRoutes);
+
+  app.use(`${API_PREFIX}/column-preferences`, columnPreferencesRoutes);
+
   // LLM routes (AI-powered features)
   app.use(`${API_PREFIX}/llm`, llmRoutes);
 
@@ -146,9 +166,6 @@ export function setupRESTRoutes(app: Application): void {
 
   // Data pipeline routes (Python integration)
   app.use(`${API_PREFIX}/pipeline`, pipelineRoutes);
-
-  // Market analysis routes (JEDI RE Phase 1 engines)
-  app.use(`${API_PREFIX}/analysis`, analysisRoutes);
 
   // Tasks routes (Global Tasks Module)
   app.use(`${API_PREFIX}/tasks`, tasksRoutes);
@@ -174,6 +191,9 @@ export function setupRESTRoutes(app: Application): void {
   // Geographic Context routes (Deal → Trade Area/Submarket/MSA linking)
   app.use(`${API_PREFIX}/deals`, geographicContextRoutes);
   app.use(`${API_PREFIX}`, geographicContextRoutes); // For /submarkets/lookup, /msas/lookup
+
+  // Deal Context routes (Full deal data hydration)
+  app.use(`${API_PREFIX}/deals`, dealContextRoutes);
 
   // Geography routes (Complete Geographic Assignment Engine)
   app.use(`${API_PREFIX}/geography`, geographyRoutes);
@@ -235,9 +255,6 @@ export function setupRESTRoutes(app: Application): void {
   // Due Diligence Checklists routes (Module-enhanced feature)
   app.use(`${API_PREFIX}/dd-checklists`, ddChecklistsRoutes);
 
-  // File Management routes (Asset Map Intelligence - Note Attachments)
-  app.use(`${API_PREFIX}`, filesRoutes);
-
   // Unified Documents & Files routes (Deal-level file management)
   app.use(`${API_PREFIX}`, documentsFilesRoutes);
 
@@ -266,11 +283,15 @@ export function setupRESTRoutes(app: Application): void {
   // Competition Analysis routes (Development deal competitive analysis)
   app.use(`${API_PREFIX}/deals`, competitionRoutes);
 
+  // Deal Comp Sets routes (Tiered comp discovery & management)
+  app.use(`${API_PREFIX}/deals`, dealCompSetsRoutes);
+
+  // Market Intelligence routes (preferences, available markets, overview)
+  const { getPool: getMarketPool } = require('../../database/connection');
+  app.use(`${API_PREFIX}/markets`, createMarketIntelligenceRoutes(getMarketPool()));
+
   // Deal Market Intelligence routes
   app.use(`${API_PREFIX}/deals`, dealMarketIntelligenceRoutes);
-
-  // Error Logging routes (Frontend error tracking and monitoring)
-  app.use(`${API_PREFIX}/errors`, errorsRoutes);
 
   // Data Tracker routes (Admin data coverage & completeness tracking)
   app.use(`${API_PREFIX}/admin/data-tracker`, dataTrackerRoutes);
@@ -305,17 +326,31 @@ export function setupRESTRoutes(app: Application): void {
   // Traffic Comps routes (M07 Traffic Engine - comp traffic analysis per deal)
   app.use(`${API_PREFIX}/traffic-comps`, trafficCompsRoutes);
 
+  // Traffic Prediction routes (foot traffic predictions, calibration, validation)
+  app.use(`${API_PREFIX}/traffic`, trafficPredictionRoutes);
+
   // Correlation Engine routes (COR-01 through COR-20 market correlations)
   app.use(`${API_PREFIX}/correlations`, correlationRoutes);
 
+  // Lead/Lag Discovery routes
+  app.use(`${API_PREFIX}/lead-lag`, leadLagRoutes);
+
+  // Backtesting Engine routes
+  app.use(`${API_PREFIX}/backtest`, backtestRoutes);
+
   // Metrics Catalog routes (Strategy Engine - metric definitions and historical data)
   app.use(`${API_PREFIX}/metrics`, metricsCatalogRoutes);
+
+  app.use(`${API_PREFIX}/market-metrics`, marketMetricsRoutes);
 
   // Custom Strategies routes (Strategy Engine - user-defined strategy management)
   app.use(`${API_PREFIX}/custom-strategies`, customStrategiesRoutes);
 
   // Strategy Definitions & Execution routes (Strategy Engine - new execution engine)
   app.use(`${API_PREFIX}/strategies`, strategiesRoutes);
+
+  // M08 Signal-Weight Arbitrage Strategy Builder (new spec-compliant endpoint)
+  app.use(`${API_PREFIX}/m08/strategies`, m08StrategiesRoutes);
 
   // Demand Intelligence routes (Full parsed demand signals + user preferences)
   app.use(`${API_PREFIX}/demand-intelligence`, demandIntelligenceRoutes);
@@ -335,6 +370,10 @@ export function setupRESTRoutes(app: Application): void {
   // Design Assistant routes (LLM-powered design modifications)
   app.use(`${API_PREFIX}/design-assistant`, designAssistantRoutes);
 
+  // Unit Mix Intelligence routes (Unit type composition analysis + comp set discovery)
+  const { getPool: getUnitMixPool } = require('../../database/connection');
+  app.use(`${API_PREFIX}/unit-mix`, createUnitMixRoutes(getUnitMixPool()));
+
   // M28 Cycle Intelligence routes (Investment cycle timing analysis)
   app.use(`${API_PREFIX}/cycle-intelligence`, m28CycleIntelligenceRoutes);
 
@@ -343,6 +382,39 @@ export function setupRESTRoutes(app: Application): void {
 
   // Data Ingestion routes (Admin-only — Zillow, FRED, other data sources)
   app.use(`${API_PREFIX}/admin/ingest`, ingestionRoutes);
+
+  app.use(`${API_PREFIX}/time-series`, timeSeriesRoutes);
+
+  app.use(`${API_PREFIX}/driver-analysis`, driverAnalysisRoutes);
+
+  // Deal Capsule routes (3-layer capsule CRUD, documents, shares, collision)
+  const { getPool: getCapsulePool } = require('../../database/connection');
+  app.use(`${API_PREFIX}/capsules`, createCapsuleRoutes(getCapsulePool()));
+
+  // Capital Structure Engine routes (M11 — capital stack, waterfall, rates, lifecycle)
+  app.use(`${API_PREFIX}/capital-structure`, capitalStructureRoutes);
+
+  // Building Envelope routes (M03 — envelope calc, HBU, AI recommendations)
+  app.use(`${API_PREFIX}`, buildingEnvelopeRoutes);
+
+  // Module Wiring routes (orchestration, pipelines, keystone cascade)
+  app.use(`${API_PREFIX}/module-wiring`, moduleWiringRoutes);
+
+  // Corporate Health routes (M33 — REIT earnings, sector rotation, alerts)
+  app.use(`${API_PREFIX}/corporate-health`, corporateHealthRoutes);
+
+  // Opportunity Engine routes (detect, rankings, market opportunities)
+  app.use(`${API_PREFIX}/opportunity-engine`, opportunityEngineRoutes);
+
+  // Benchmark Timeline routes (Monte Carlo simulation, entitlement benchmarks)
+  app.use(`${API_PREFIX}/benchmark-timeline`, benchmarkTimelineRoutes);
+
+  // Ticker feed — public macro data (FRED: 10Y Treasury, SOFR, CPI, Unemployment)
+  // No auth required — mounts before the 404 handler so it is always reachable
+  app.use(`${API_PREFIX}/ticker`, tickerRoutes);
+
+  // Inline Deals routes (Deal Capsule document upload, extraction, reprocessing)
+  app.use(`${API_PREFIX}/inline-deals`, inlineDealsRoutes);
 
   // 404 handler for API routes
   app.use(`${API_PREFIX}/*`, notFoundHandler);

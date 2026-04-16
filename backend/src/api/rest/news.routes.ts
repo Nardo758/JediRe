@@ -6,10 +6,33 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { authMiddleware } from '../../middleware/auth';
 import { query } from '../../database/connection';
+import Parser from 'rss-parser';
 
 const logger = { error: (...args: any[]) => console.error(...args) };
 
+// RSS Feed Configuration
+// Bloomberg has no public RSS (proprietary Terminal API only)
+const RSS_SOURCES = [
+  { id: 'housingwire',  label: 'Housing Wire',      url: 'https://www.housingwire.com/feed/',                                                    color: '#2E86C1' },
+  { id: 'cnbc_re',      label: 'CNBC Real Estate',  url: 'https://www.cnbc.com/id/10000664/device/rss/rss.html',                                  color: '#CC0000' },
+  { id: 'cnbc_fin',     label: 'CNBC Finance',       url: 'https://www.cnbc.com/id/10001147/device/rss/rss.html',                                  color: '#CC0000' },
+  { id: 'mw_re',        label: 'MarketWatch RE',     url: 'https://feeds.marketwatch.com/marketwatch/realtimeheadlines/',                         color: '#004B87' },
+  { id: 'calculated',   label: 'Calculated Risk',    url: 'https://www.calculatedriskblog.com/feeds/posts/default',                                color: '#27AE60' },
+];
+
+const rssParser = new Parser({
+  timeout: 5000,
+  headers: { 'User-Agent': 'JediRe/1.0 News Aggregator' },
+});
+
+// RSS Cache (5 minute TTL)
+const rssCache: Map<string, { data: any[]; timestamp: number }> = new Map();
+const RSS_CACHE_TTL = 5 * 60 * 1000;
+
 const router = Router();
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const isValidUUID = (s: string) => UUID_RE.test(s);
 
 /**
  * GET /api/v1/news/events
@@ -113,6 +136,9 @@ router.get('/events', authMiddleware.requireAuth, async (req: Request, res: Resp
 router.get('/events/:id', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
+    if (!isValidUUID(id)) {
+      return res.status(404).json({ success: false, message: 'Event not found' });
+    }
     const userId = (req as any).user?.userId;
 
     const result = await query(
@@ -317,6 +343,9 @@ router.get('/alerts', authMiddleware.requireAuth, async (req: Request, res: Resp
 router.patch('/alerts/:id', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
+    if (!isValidUUID(id)) {
+      return res.status(404).json({ success: false, message: 'Alert not found' });
+    }
     const userId = (req as any).user?.userId;
     const { is_read, is_dismissed, snooze_hours } = req.body;
 
@@ -426,6 +455,130 @@ router.get('/network', authMiddleware.requireAuth, async (req: Request, res: Res
     });
   } catch (error) {
     logger.error('Error fetching network intelligence:', error);
+    next(error);
+  }
+});
+
+/**
+ * GET /api/v1/news/feed
+ * Aggregated RSS news feed for Bottom Panel NEWS tab
+ */
+router.get('/feed', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { limit = 50, sources, refresh = 'false' } = req.query;
+
+    const requestedSources = sources 
+      ? (sources as string).split(',').map(s => s.trim())
+      : RSS_SOURCES.map(s => s.id);
+
+    const targetSources = RSS_SOURCES.filter(s => requestedSources.includes(s.id));
+    const forceRefresh = refresh === 'true';
+    const now = Date.now();
+
+    const feedPromises = targetSources.map(async (source) => {
+      const cached = rssCache.get(source.id);
+      if (!forceRefresh && cached && (now - cached.timestamp) < RSS_CACHE_TTL) {
+        return cached.data.map(item => ({ ...item, source: source.label, sourceId: source.id }));
+      }
+
+      try {
+        const feed = await rssParser.parseURL(source.url);
+        const items = (feed.items || []).slice(0, 20).map(item => ({
+          id: `${source.id}-${Buffer.from(item.link || item.guid || '').toString('base64').slice(0, 12)}`,
+          headline: item.title || 'Untitled',
+          summary: item.contentSnippet || item.content?.slice(0, 200) || '',
+          link: item.link || '',
+          published_at: item.pubDate || item.isoDate || new Date().toISOString(),
+          source: source.label,
+          sourceId: source.id,
+          sourceColor: source.color,
+        }));
+
+        rssCache.set(source.id, { data: items, timestamp: now });
+        return items;
+      } catch (err) {
+        logger.error(`Failed to fetch RSS from ${source.id}:`, err);
+        return cached?.data?.map(item => ({ ...item, source: source.label, sourceId: source.id })) || [];
+      }
+    });
+
+    const allFeeds = await Promise.all(feedPromises);
+    
+    let articles = allFeeds
+      .flat()
+      .sort((a, b) => new Date(b.published_at).getTime() - new Date(a.published_at).getTime())
+      .slice(0, parseInt(limit as string));
+
+    // Simple impact scoring
+    const impactKeywords = {
+      positive: ['growth', 'expansion', 'hiring', 'development', 'investment', 'acquisition', 'record', 'surge'],
+      negative: ['decline', 'layoff', 'closure', 'bankruptcy', 'default', 'foreclosure', 'recession'],
+    };
+
+    articles = articles.map(article => {
+      const text = `${article.headline} ${article.summary}`.toLowerCase();
+      const positiveHits = impactKeywords.positive.filter(kw => text.includes(kw)).length;
+      const negativeHits = impactKeywords.negative.filter(kw => text.includes(kw)).length;
+      
+      let impact: string | null = null;
+      let jedi_delta: number | null = null;
+      
+      if (positiveHits > negativeHits) {
+        impact = 'POSITIVE';
+        jedi_delta = Math.min(positiveHits * 0.5, 2.0);
+      } else if (negativeHits > positiveHits) {
+        impact = 'NEGATIVE';
+        jedi_delta = -Math.min(negativeHits * 0.5, 2.0);
+      }
+
+      return { ...article, impact, jedi_delta };
+    });
+
+    res.json({
+      success: true,
+      data: { articles, sources: targetSources.map(s => ({ id: s.id, label: s.label, color: s.color })) },
+      count: articles.length,
+    });
+  } catch (error) {
+    logger.error('Error fetching news feed:', error);
+    next(error);
+  }
+});
+
+/**
+ * GET /api/v1/news/rss
+ * RSS proxy for MEDIA tab (CORS bypass)
+ */
+router.get('/rss', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { url } = req.query;
+    
+    if (!url || typeof url !== 'string') {
+      return res.status(400).json({ success: false, message: 'url parameter required' });
+    }
+
+    const allowedDomains = ['globest.com', 'bisnow.com', 'therealdeal.com', 'housingwire.com', 'multihousingnews.com'];
+    const urlObj = new URL(url);
+    if (!allowedDomains.some(d => urlObj.hostname.includes(d))) {
+      return res.status(403).json({ success: false, message: 'RSS source not allowed' });
+    }
+
+    const feed = await rssParser.parseURL(url);
+    
+    res.json({
+      success: true,
+      data: {
+        title: feed.title,
+        items: (feed.items || []).slice(0, 30).map(item => ({
+          title: item.title,
+          link: item.link,
+          pubDate: item.pubDate || item.isoDate,
+          source: feed.title,
+        })),
+      },
+    });
+  } catch (error) {
+    logger.error('Error fetching RSS:', error);
     next(error);
   }
 });

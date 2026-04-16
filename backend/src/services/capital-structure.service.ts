@@ -10,6 +10,7 @@
 
 import { logger } from '../utils/logger';
 import { executeFormula } from './module-wiring/formula-engine';
+import Decimal from 'decimal.js';
 
 // ============================================================================
 // Types
@@ -29,9 +30,9 @@ export interface CapitalLayer {
   id: string;
   name: string;
   layerType: LayerType;
-  amount: number;
+  amount: string;
   percentage: number;
-  rate: number;
+  rate: string;
   term: number;
   source: string;
   amortYears?: number;
@@ -39,26 +40,26 @@ export interface CapitalLayer {
 }
 
 export interface CapitalUses {
-  acquisitionPrice: number;
-  closingCosts: number;
-  renovationBudget: number;
-  carryingCosts: number;
-  reserves: number;
-  developerFee: number;
-  total: number;
+  acquisitionPrice: string;
+  closingCosts: string;
+  renovationBudget: string;
+  carryingCosts: string;
+  reserves: string;
+  developerFee: string;
+  total: string;
 }
 
 export interface StackMetrics {
-  ltv: number;
-  ltc: number;
-  dscr: number;
-  debtYield: number;
-  equityRequired: number;
-  totalDebt: number;
-  totalEquity: number;
-  weightedAvgCostOfCapital: number;
-  cocReturn: number;
-  breakEvenOccupancy: number;
+  ltv: string;
+  ltc: string;
+  dscr: string;
+  debtYield: string;
+  equityRequired: string;
+  totalDebt: string;
+  totalEquity: string;
+  weightedAvgCostOfCapital: string;
+  cocReturn: string;
+  breakEvenOccupancy: string;
   capitalRiskScore: number;
 }
 
@@ -201,7 +202,7 @@ export class CapitalStructureService {
   ): CapitalStack {
     logger.info('[CapStructure] Building capital stack', { dealId, strategy, layerCount: layers.length });
 
-    const totalSources = layers.reduce((sum, l) => sum + l.amount, 0);
+    const totalSources = layers.reduce((sum, l) => sum + new Decimal(l.amount).toNumber(), 0);
 
     // F46: Sources = Uses
     const balance = executeFormula('F46', { total_sources: totalSources, total_uses: uses.total });
@@ -210,8 +211,8 @@ export class CapitalStructureService {
     const debtLayerTypes: LayerType[] = ['senior', 'mezz'];
     const debtLayers = layers.filter(l => debtLayerTypes.includes(l.layerType));
     const equityLayers = layers.filter(l => !debtLayerTypes.includes(l.layerType));
-    const totalDebt = debtLayers.reduce((sum, l) => sum + l.amount, 0);
-    const totalEquity = equityLayers.reduce((sum, l) => sum + l.amount, 0);
+    const totalDebt = debtLayers.reduce((sum, l) => sum + new Decimal(l.amount).toNumber(), 0);
+    const totalEquity = equityLayers.reduce((sum, l) => sum + new Decimal(l.amount).toNumber(), 0);
 
     // F43: LTV
     const ltv = executeFormula('F43', { total_debt: totalDebt, property_value: propertyValue });
@@ -224,21 +225,21 @@ export class CapitalStructureService {
 
     // F64: Total Annual Debt Service
     const debtLayerInputs = debtLayers.map(l => ({
-      amount: l.amount,
-      rate: l.rate,
+      amount: new Decimal(l.amount).toNumber(),
+      rate: new Decimal(l.rate).toNumber(),
       amort_years: l.amortYears || 0,
     }));
     const totalAnnualDS = executeFormula('F64', { debt_layers: debtLayerInputs });
 
-    // F21: DSCR (using total debt service)
-    const dscr = totalAnnualDS > 0 ? parseFloat((noi / totalAnnualDS).toFixed(2)) : 0;
+    // F21: DSCR (using total debt service) - using Decimal.js for precision
+    const dscr = totalAnnualDS > 0 ? new Decimal(noi).dividedBy(totalAnnualDS).toFixed(4) : '0.0000';
 
     // F22: Debt Yield
     const debtYield = executeFormula('F22', { noi, loan_amount: totalDebt });
 
-    // F18: Cash-on-Cash
+    // F18: Cash-on-Cash - using Decimal.js for precision
     const annualCashFlow = noi - totalAnnualDS;
-    const cocReturn = totalEquity > 0 ? parseFloat(((annualCashFlow / totalEquity) * 100).toFixed(2)) : 0;
+    const cocReturn = totalEquity > 0 ? new Decimal(annualCashFlow).dividedBy(totalEquity).times(100).toFixed(4) : '0.0000';
 
     // F63: Break-even occupancy
     const opex = grossPotentialRent ? grossPotentialRent - noi : noi * 0.45; // estimate if not provided
@@ -260,7 +261,7 @@ export class CapitalStructureService {
     // Compute percentages for each layer
     const layersWithPct = layers.map(l => ({
       ...l,
-      percentage: totalSources > 0 ? parseFloat(((l.amount / totalSources) * 100).toFixed(1)) : 0,
+      percentage: totalSources > 0 ? parseFloat(new Decimal(l.amount).dividedBy(totalSources).times(100).toFixed(1)) : 0,
     }));
 
     return {
@@ -273,16 +274,16 @@ export class CapitalStructureService {
       imbalance: balance.imbalance,
       uses,
       metrics: {
-        ltv,
-        ltc,
+        ltv: new Decimal(ltv).toFixed(2),
+        ltc: new Decimal(ltc).toFixed(2),
         dscr,
-        debtYield,
-        equityRequired: totalEquity,
-        totalDebt,
-        totalEquity,
-        weightedAvgCostOfCapital: wacc,
+        debtYield: new Decimal(debtYield).toFixed(4),
+        equityRequired: new Decimal(totalEquity).toFixed(2),
+        totalDebt: new Decimal(totalDebt).toFixed(2),
+        totalEquity: new Decimal(totalEquity).toFixed(2),
+        weightedAvgCostOfCapital: new Decimal(wacc).toFixed(2),
         cocReturn,
-        breakEvenOccupancy,
+        breakEvenOccupancy: new Decimal(breakEvenOccupancy).toFixed(2),
         capitalRiskScore,
       },
     };
@@ -332,8 +333,8 @@ export class CapitalStructureService {
     notRecommended: DebtProduct[];
   } {
     const allowedTypes = STRATEGY_DEBT_MATRIX[strategy] || [];
-    const recommended = allProducts.filter(p => p.bestForStrategies.includes(strategy) || allowedTypes.includes(p.productType));
-    const notRecommended = allProducts.filter(p => !p.bestForStrategies.includes(strategy) && !allowedTypes.includes(p.productType));
+    const recommended = allProducts.filter(p => (p.bestForStrategies || []).includes(strategy) || allowedTypes.includes(p.productType || ''));
+    const notRecommended = allProducts.filter(p => !(p.bestForStrategies || []).includes(strategy) && !allowedTypes.includes(p.productType || ''));
     return { recommended, notRecommended };
   }
 
@@ -350,7 +351,7 @@ export class CapitalStructureService {
     const allowedTypes = STRATEGY_DEBT_MATRIX[strategy] || [];
 
     for (const product of debtProducts) {
-      if (!allowedTypes.includes(product.productType) && !product.bestForStrategies.includes(strategy)) {
+      if (!allowedTypes.includes(product.productType || '') && !(product.bestForStrategies || []).includes(strategy)) {
         let issue = `${product.name} is not typically used for ${strategy} deals.`;
         let suggestion = `Consider products from: ${allowedTypes.join(', ')}.`;
 
@@ -522,8 +523,8 @@ export class CapitalStructureService {
     // F57: LP Equity Multiple
     const lpEquityMultiple = executeFormula('F57', { total_lp_distributions: lpTotal, lp_capital: config.lpCapital });
 
-    // GP equity multiple
-    const gpEquityMultiple = config.gpCapital > 0 ? parseFloat((gpTotal / config.gpCapital).toFixed(2)) : 0;
+    // GP equity multiple - use Decimal.js for precision
+    const gpEquityMultiple = config.gpCapital > 0 ? new Decimal(gpTotal).dividedBy(config.gpCapital).toNumber() : 0;
 
     // F58: GP Effective Share
     const gpEffectiveShare = executeFormula('F58', { gp_distributions: gpTotal, total_distributions: totalDistributed });
@@ -581,8 +582,10 @@ export class CapitalStructureService {
         has_mezz: scenario.hasMezz,
       });
 
-      const ltv = propertyValue > 0 ? parseFloat(((totalDebt / propertyValue) * 100).toFixed(1)) : 0;
-      const ltc = scenario.uses.total > 0 ? parseFloat(((totalDebt / scenario.uses.total) * 100).toFixed(1)) : 0;
+      const ltv = propertyValue > 0 ? new Decimal(totalDebt).dividedBy(propertyValue).times(100).toFixed(2) : '0.00';
+      const usesTotal = (scenario.uses as any)?.total ?? Object.values(scenario.uses || {}).reduce((s: number, v: any) => s + (Number(v) || 0), 0);
+      const ltcValue = new Decimal(usesTotal || 0);
+      const ltc = ltcValue.toNumber() > 0 ? new Decimal(totalDebt).dividedBy(ltcValue).times(100).toFixed(2) : '0.00';
       const wacc = executeFormula('F45', { layers: scenario.layers });
       const debtYield = executeFormula('F22', { noi, loan_amount: totalDebt });
 
@@ -592,14 +595,14 @@ export class CapitalStructureService {
         metrics: {
           ltv,
           ltc,
-          dscr: returns.dscr,
-          debtYield,
-          equityRequired: totalEquity,
-          totalDebt,
-          totalEquity,
-          weightedAvgCostOfCapital: wacc,
-          cocReturn: returns.coc_return,
-          breakEvenOccupancy: 0,
+          dscr: new Decimal(returns.dscr).toFixed(4),
+          debtYield: new Decimal(debtYield).toFixed(4),
+          equityRequired: new Decimal(totalEquity).toFixed(2),
+          totalDebt: new Decimal(totalDebt).toFixed(2),
+          totalEquity: new Decimal(totalEquity).toFixed(2),
+          weightedAvgCostOfCapital: new Decimal(wacc).toFixed(2),
+          cocReturn: new Decimal(returns.coc_return).toFixed(4),
+          breakEvenOccupancy: '0.00',
           capitalRiskScore,
         },
         returns: {
@@ -662,8 +665,13 @@ export class CapitalStructureService {
   }> {
     const insights: Array<{ metric: string; value: string; insight: string; severity: 'info' | 'success' | 'warning' | 'danger'; action?: { label: string; handler: string } }> = [];
 
+    // Convert string metrics to numbers for comparisons
+    const dscrNum = new Decimal(metrics.dscr ?? 0).toNumber();
+    const ltvNum = new Decimal(metrics.ltv ?? 0).toNumber();
+    const waccNum = new Decimal(metrics.weightedAvgCostOfCapital ?? 0).toNumber();
+
     // DSCR insight
-    if (metrics.dscr < 1.15) {
+    if (dscrNum < 1.15) {
       insights.push({
         metric: 'DSCR',
         value: `${metrics.dscr}x`,
@@ -671,7 +679,7 @@ export class CapitalStructureService {
         severity: 'danger',
         action: { label: 'Reduce Leverage →', handler: 'reduce-leverage' },
       });
-    } else if (metrics.dscr < 1.25) {
+    } else if (dscrNum < 1.25) {
       insights.push({
         metric: 'DSCR',
         value: `${metrics.dscr}x`,
@@ -683,20 +691,20 @@ export class CapitalStructureService {
       insights.push({
         metric: 'DSCR',
         value: `${metrics.dscr}x`,
-        insight: `Healthy DSCR with ${((metrics.dscr - 1.25) * 100).toFixed(0)}bps headroom above typical 1.25x minimum.`,
+        insight: `Healthy DSCR with ${new Decimal(dscrNum - 1.25).times(100).toFixed(0)}bps headroom above typical 1.25x minimum.`,
         severity: 'success',
       });
     }
 
     // LTV insight
-    if (metrics.ltv > 80) {
+    if (ltvNum > 80) {
       insights.push({
         metric: 'LTV',
         value: `${metrics.ltv}%`,
         insight: 'LTV exceeds 80% — most permanent lenders will not qualify. Bridge or mezz required.',
         severity: 'danger',
       });
-    } else if (metrics.ltv > 75) {
+    } else if (ltvNum > 75) {
       insights.push({
         metric: 'LTV',
         value: `${metrics.ltv}%`,
@@ -713,7 +721,7 @@ export class CapitalStructureService {
     }
 
     // WACC insight
-    if (metrics.weightedAvgCostOfCapital > 9) {
+    if (waccNum > 9) {
       insights.push({
         metric: 'WACC',
         value: `${metrics.weightedAvgCostOfCapital}%`,

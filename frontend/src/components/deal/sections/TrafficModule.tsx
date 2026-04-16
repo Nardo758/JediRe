@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import {
   TrendingUp, Upload, ArrowUpRight, ArrowDownRight,
   ChevronDown, ChevronRight, Edit3, Save, X, Building2,
@@ -8,10 +8,14 @@ import {
 } from 'lucide-react';
 import { apiClient } from '@/services/api.client';
 import { useDealModule } from '@/contexts/DealModuleContext';
+import { T as BT, mono as bMono, sans as bSans } from '../bloomberg-tokens';
+import { BT as BT2, PanelHeader, SubTabBar, KpiTile, SectionPanel, DataRow, BtTabWrapper, BT_CSS } from '../bloomberg-ui';
 import TrafficDataSourcesTab from './traffic/TrafficDataSourcesTab';
 import TrafficCompsTab from './traffic/TrafficCompsTab';
+import TrafficCoefficientsTab from './traffic/TrafficCoefficientsTab';
 import VisibilityAssessmentTab from './traffic/VisibilityAssessmentTab';
 import TrafficPredictionsTab from './traffic/TrafficPredictionsTab';
+import AbsorptionScheduleTab from './traffic/AbsorptionScheduleTab';
 
 const TradeAreaDefinitionPanel = lazy(() =>
   import('../../trade-area/TradeAreaDefinitionPanel').then(m => ({ default: m.TradeAreaDefinitionPanel }))
@@ -124,17 +128,23 @@ interface CalibrationStats {
   lastUpdated: string | null;
   comparisons: Record<string, { calibrated: number; default: number }>;
   dataLibraryFileCount: number;
+  matchTier?: string;
+  nPeerProperties?: number;
+  windowType?: 'TTM' | 'TTM-24' | string;
+  scopeLevel?: string;
+  confidenceBands?: Record<string, { low: number; high: number }>;
 }
 
-type TabId = 'predictions' | 'data_sources' | 'comps' | 'visibility' | 'adjustments' | 'calibration';
+type TabId = 'predictions' | 'coefficients' | 'comps' | 'data_sources' | 'visibility' | 'calibration' | 'absorption';
 
 const TABS: Array<{ id: TabId; label: string; icon: any }> = [
   { id: 'predictions', label: 'Predictions', icon: TrendingUp },
+  { id: 'coefficients', label: 'Coefficients', icon: SlidersHorizontal },
+  { id: 'comps', label: 'Comp Grid', icon: Building2 },
   { id: 'data_sources', label: 'Data Sources', icon: Layers },
-  { id: 'comps', label: 'Comps', icon: Building2 },
   { id: 'visibility', label: 'Visibility', icon: Eye },
-  { id: 'adjustments', label: 'Market Adjustments', icon: SlidersHorizontal },
   { id: 'calibration', label: 'Calibration', icon: Gauge },
+  { id: 'absorption', label: 'Absorption', icon: BarChart3 },
 ];
 
 const API_BASE = '/api/v1/leasing-traffic';
@@ -171,23 +181,24 @@ function Sparkline({ data, color = '#d97706', height = 32 }: { data: number[]; c
 function KPICard({ label, value, trend, trendUp, sparkData, icon: Icon }: {
   label: string; value: string; trend: string; trendUp: boolean | null; sparkData: number[]; icon: any;
 }) {
+  const trendColor = trendUp === true ? BT2.text.green : trendUp === false ? BT2.text.red : BT2.text.muted;
   return (
-    <div className="bg-white rounded-xl border border-stone-200 p-4 flex flex-col gap-2">
-      <div className="flex items-center justify-between">
-        <span className="text-stone-400 font-mono text-[10px] uppercase tracking-wider">{label}</span>
-        <Icon size={14} className="text-stone-300" />
+    <div style={{ background: BT2.bg.panel, borderRadius: 8, border: `1px solid ${BT2.border.subtle}`, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ fontSize: 9, color: BT2.text.muted, letterSpacing: 1.5, textTransform: 'uppercase', fontFamily: bMono }}>{label}</span>
+        <Icon size={13} style={{ color: BT2.text.muted }} />
       </div>
-      <div className="flex items-end justify-between">
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
         <div>
-          <div className="text-2xl font-bold text-stone-900">{value}</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: BT2.text.amber, fontFamily: bMono }}>{value}</div>
           {trend && (
-            <div className={`flex items-center gap-1 text-xs mt-1 ${trendUp === true ? 'text-emerald-600' : trendUp === false ? 'text-red-500' : 'text-stone-400'}`}>
-              {trendUp === true ? <ArrowUpRight size={12} /> : trendUp === false ? <ArrowDownRight size={12} /> : <Minus size={12} />}
-              {trend}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: trendColor, marginTop: 3 }}>
+              {trendUp === true ? <ArrowUpRight size={11} /> : trendUp === false ? <ArrowDownRight size={11} /> : <Minus size={11} />}
+              <span style={{ fontFamily: bMono }}>{trend}</span>
             </div>
           )}
         </div>
-        <Sparkline data={sparkData} />
+        <Sparkline data={sparkData} color={BT2.text.amber} />
       </div>
     </div>
   );
@@ -196,19 +207,19 @@ function KPICard({ label, value, trend, trendUp, sparkData, icon: Icon }: {
 function FactorCard({ label, factor, summary, direction }: {
   label: string; factor: number; summary: string; direction: 'up' | 'down' | 'neutral';
 }) {
+  const dc = direction === 'up' ? BT2.text.green : direction === 'down' ? BT2.text.red : BT2.text.amber;
+  const db = direction === 'up' ? `${BT2.text.green}18` : direction === 'down' ? `${BT2.text.red}18` : `${BT2.text.amber}18`;
   return (
-    <div className={`rounded-xl border p-4 flex flex-col gap-2 ${direction === 'up' ? 'bg-emerald-50 border-emerald-200' : direction === 'down' ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'}`}>
-      <div className="flex items-center gap-2">
-        <div className={`w-2 h-2 rounded-full ${direction === 'up' ? 'bg-emerald-500' : direction === 'down' ? 'bg-red-500' : 'bg-amber-500'}`} />
-        <span className="text-stone-500 font-mono text-[10px] uppercase tracking-wider">{label}</span>
+    <div style={{ background: db, borderRadius: 8, border: `1px solid ${dc}30`, padding: '14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ width: 6, height: 6, borderRadius: '50%', background: dc }} />
+        <span style={{ fontSize: 9, color: BT2.text.muted, letterSpacing: 1.5, textTransform: 'uppercase', fontFamily: bMono }}>{label}</span>
       </div>
-      <div className={`text-xl font-bold ${direction === 'up' ? 'text-emerald-700' : direction === 'down' ? 'text-red-700' : 'text-amber-700'}`}>
+      <div style={{ fontSize: 20, fontWeight: 700, color: dc, display: 'flex', alignItems: 'center', gap: 4, fontFamily: bMono }}>
         {factor.toFixed(2)}x
-        <span className="ml-1 text-xs">
-          {direction === 'up' ? <ArrowUpRight size={12} className="inline" /> : direction === 'down' ? <ArrowDownRight size={12} className="inline" /> : <Minus size={12} className="inline" />}
-        </span>
+        {direction === 'up' ? <ArrowUpRight size={12} /> : direction === 'down' ? <ArrowDownRight size={12} /> : <Minus size={12} />}
       </div>
-      <p className="text-[11px] text-stone-500 leading-tight">{summary}</p>
+      <p style={{ fontSize: 10, color: BT2.text.secondary, lineHeight: 1.4, margin: 0, fontFamily: bSans }}>{summary}</p>
     </div>
   );
 }
@@ -224,19 +235,19 @@ function DataSourceBanner({ dataSource, actualsCount, calibrationSource, baselin
   if (dataSource === 'predicted') {
     const isCompPattern = baselineSource === 'comp_pattern' && baselineComps && baselineComps.length > 0;
     return (
-      <div className={`border rounded-xl p-4 flex items-start gap-3 ${isCompPattern ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
+      <div className={`border rounded-xl p-4 flex items-start gap-3 ${isCompPattern ? 'bg-emerald-900/10 border-emerald-800' : 'bg-amber-900/10 border-amber-800'}`}>
         {isCompPattern
           ? <CheckCircle2 size={18} className="text-emerald-600 mt-0.5 flex-shrink-0" />
           : <AlertCircle size={18} className="text-amber-600 mt-0.5 flex-shrink-0" />
         }
         <div className="flex-1">
-          <div className={`text-sm font-semibold ${isCompPattern ? 'text-emerald-900' : 'text-amber-900'}`}>
+          <div className={`text-sm font-semibold ${isCompPattern ? 'text-emerald-300' : 'text-amber-300'}`}>
             {isCompPattern
               ? `Baseline calibrated from ${baselineComps!.length} comp deal${baselineComps!.length !== 1 ? 's' : ''}`
               : 'Projections based on property characteristics and market intelligence'
             }
           </div>
-          <p className={`text-[11px] mt-1 ${isCompPattern ? 'text-emerald-700' : 'text-amber-700'}`}>
+          <p className={`text-[11px] mt-1 ${isCompPattern ? 'text-emerald-300' : 'text-amber-300'}`}>
             {isCompPattern
               ? `Traffic, seasonal patterns, and trend rates derived from: ${baselineComps!.join(', ')}. Metrics are scaled to this deal's unit count.`
               : (calibrationSource || 'Using industry-standard baselines for multifamily leasing.')
@@ -247,7 +258,7 @@ function DataSourceBanner({ dataSource, actualsCount, calibrationSource, baselin
         {!isCompPattern && (
           <button
             onClick={onUploadClick}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 text-white rounded-lg text-xs hover:bg-amber-700 transition-colors flex-shrink-0"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-700 text-neutral-100 rounded-lg text-xs hover:bg-neutral-600 transition-colors flex-shrink-0"
           >
             <Upload size={12} /> Upload Data
           </button>
@@ -258,13 +269,13 @@ function DataSourceBanner({ dataSource, actualsCount, calibrationSource, baselin
 
   if (dataSource === 'blended') {
     return (
-      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
+      <div className="rounded-xl p-4 flex items-start gap-3 border border-blue-800/50" style={{ background: "rgba(59,130,246,0.06)" }}>
         <CheckCircle2 size={18} className="text-blue-600 mt-0.5 flex-shrink-0" />
         <div className="flex-1">
           <div className="text-sm font-semibold text-blue-900">
             Based on {actualsCount} week{actualsCount !== 1 ? 's' : ''} of actual data + market intelligence
           </div>
-          <p className="text-[11px] text-blue-700 mt-1">
+          <p className="text-[11px] text-blue-300 mt-1">
             Predictions are calibrated with your uploaded operating data. More data improves accuracy.
           </p>
         </div>
@@ -283,6 +294,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
   const [projection, setProjection] = useState<ProjectionData | null>(null);
   const [history, setHistory] = useState<HistorySnapshot[]>([]);
   const [calibration, setCalibration] = useState<CalibrationStats | null>(null);
+  const [rentRollMeta, setRentRollMeta] = useState<{ lastUploadedAt: string | null; extractionConfidence: number | null } | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -323,6 +335,12 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
       setHistory(histRes.data.snapshots || []);
       setProjection(projRes.data);
       setCalibration(calRes.data);
+      try {
+        const rrRes = await apiClient.get(`/api/rent-roll/status/${resolvedDealId}`);
+        setRentRollMeta(rrRes.data ?? null);
+      } catch {
+        setRentRollMeta(null);
+      }
     } catch (err) {
       console.error('[TrafficModule] Load failed:', err);
     } finally {
@@ -459,6 +477,9 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
   const sparkOcc = hasHistory
     ? history.slice(-12).map(h => (h.occ_pct || 0) * 100)
     : (projection?.periods?.slice(0, 12).map(p => p.adjOccPct * 100) || []);
+  const sparkWebsite = hasHistory
+    ? history.slice(-12).map(h => h.website_leads || 0)
+    : (projection?.periods?.slice(0, 12).map(p => p.adjWebsite) || []);
 
   const mi = projection?.marketIntelligence;
 
@@ -529,62 +550,62 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
     <div className="space-y-6">
       <DataSourceBanner dataSource={dataSource} actualsCount={projection?.actualsCount || 0} calibrationSource={projection?.calibrationSource} baselineSource={projection?.baseline_source} baselineComps={projection?.baseline_comps} onUploadClick={triggerUpload} />
 
-      <div className="bg-white rounded-xl border border-stone-200 p-6">
+      <div style={{ background: "#0F1319", border: "1px solid #1e2a3d", borderRadius: 4, padding: 20 }}>
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold text-stone-900">Leasing Funnel</h3>
+          <h3 className="text-lg font-bold text-[#E8E6E1]">Leasing Funnel</h3>
           {!hasHistory && (
-            <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-mono">PREDICTED TYPICAL WEEK</span>
+            <span className="text-[10px] bg-amber-900/20 text-amber-300 px-2 py-0.5 rounded-full font-mono">PREDICTED TYPICAL WEEK</span>
           )}
         </div>
         <div className="flex items-center gap-2 mb-4">
           {[
-            { label: 'Traffic', value: Math.round(funnelTraffic), color: 'bg-stone-900' },
-            { label: 'Tours', value: Math.round(funnelTours), color: 'bg-stone-700' },
-            { label: 'Apps', value: Math.round(funnelApps), color: 'bg-stone-500' },
+            { label: 'Traffic', value: Math.round(funnelTraffic), color: 'bg-[#4B5563]' },
+            { label: 'Tours', value: Math.round(funnelTours), color: 'bg-neutral-800' },
+            { label: 'Apps', value: Math.round(funnelApps), color: 'bg-neutral-800' },
             { label: 'Cancel/Deny', value: Math.round(funnelCancelDeny), color: 'bg-red-400' },
-            { label: 'Net Leases', value: Math.round(funnelNetLeases), color: 'bg-emerald-600' },
+            { label: 'Net Leases', value: Math.round(funnelNetLeases), color: 'bg-neutral-700' },
           ].map((step, i, arr) => (
             <div key={step.label} className="flex items-center gap-2 flex-1">
               <div className="flex-1">
-                <div className="text-stone-400 font-mono text-[10px] uppercase mb-1">{step.label}</div>
-                <div className="text-lg font-bold text-stone-900">{step.value}</div>
+                <div className="text-neutral-400 font-mono text-[10px] uppercase mb-1">{step.label}</div>
+                <div className="text-lg font-bold text-[#E8E6E1]">{step.value}</div>
                 <div className={`h-2 rounded-full ${step.color} mt-1`}
                   style={{ width: `${funnelTraffic > 0 ? Math.max(10, (step.value / funnelTraffic) * 100) : 10}%` }} />
               </div>
-              {i < arr.length - 1 && <ChevronRight size={16} className="text-stone-300 flex-shrink-0" />}
+              {i < arr.length - 1 && <ChevronRight size={16} className="text-neutral-400 flex-shrink-0" />}
             </div>
           ))}
         </div>
         <div className="flex gap-4 mt-4 pt-4 border-t border-stone-100">
           <div className="flex-1">
-            <div className="text-stone-400 font-mono text-[10px] uppercase mb-2">Traffic Source Split</div>
-            <div className="flex h-4 rounded-full overflow-hidden bg-stone-100">
-              <div className="bg-stone-700 flex items-center justify-center"
+            <div className="text-neutral-400 font-mono text-[10px] uppercase mb-2">Traffic Source Split</div>
+            <div className="flex h-4 rounded-full overflow-hidden bg-[#131920]">
+              <div className="bg-neutral-800 flex items-center justify-center"
                 style={{ width: `${funnelTraffic > 0 ? (Math.max(0, funnelWalkIn) / funnelTraffic) * 100 : 50}%` }}>
-                <span className="text-[9px] text-white font-mono">{Math.max(0, Math.round(funnelWalkIn))}</span>
+                <span className="text-[9px] text-neutral-100 font-mono">{Math.max(0, Math.round(funnelWalkIn))}</span>
               </div>
               <div className="bg-blue-500 flex items-center justify-center"
                 style={{ width: `${funnelTraffic > 0 ? (funnelWebsite / funnelTraffic) * 100 : 50}%` }}>
-                <span className="text-[9px] text-white font-mono">{Math.round(funnelWebsite)}</span>
+                <span className="text-[9px] text-neutral-100 font-mono">{Math.round(funnelWebsite)}</span>
               </div>
             </div>
             <div className="flex justify-between mt-1">
-              <span className="text-[10px] text-stone-500 flex items-center gap-1"><Footprints size={10} /> Walk-In</span>
-              <span className="text-[10px] text-stone-500 flex items-center gap-1"><Globe size={10} /> Website</span>
+              <span className="text-[10px] text-[#6B7585] flex items-center gap-1"><Footprints size={10} /> Walk-In</span>
+              <span className="text-[10px] text-[#6B7585] flex items-center gap-1"><Globe size={10} /> Website</span>
             </div>
           </div>
           <div className="flex-1">
-            <div className="text-stone-400 font-mono text-[10px] uppercase mb-2">
+            <div className="text-neutral-400 font-mono text-[10px] uppercase mb-2">
               {hasHistory ? 'This Week vs 4-Wk Avg' : 'Predicted Baseline'}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <div className="text-xs text-stone-500">{hasHistory ? 'This Week' : 'Weekly'}</div>
-                <div className="text-lg font-bold text-stone-900">{Math.round(kpiTraffic)}</div>
+                <div className="text-xs text-[#6B7585]">{hasHistory ? 'This Week' : 'Weekly'}</div>
+                <div className="text-lg font-bold text-[#E8E6E1]">{Math.round(kpiTraffic)}</div>
               </div>
               <div>
-                <div className="text-xs text-stone-500">{hasHistory ? '4-Wk Avg' : 'Monthly Est.'}</div>
-                <div className="text-lg font-bold text-stone-400">
+                <div className="text-xs text-[#6B7585]">{hasHistory ? '4-Wk Avg' : 'Monthly Est.'}</div>
+                <div className="text-lg font-bold text-neutral-400">
                   {hasHistory ? Math.round(avg4('traffic')) : Math.round(kpiTraffic * 4.33)}
                 </div>
               </div>
@@ -593,16 +614,17 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-stone-200 p-6">
+      <div style={{ background: "#0F1319", border: "1px solid #1e2a3d", borderRadius: 4, padding: 20 }}>
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold text-stone-900">Traffic Projection</h3>
+          <h3 className="text-lg font-bold text-[#E8E6E1]">Traffic Projection</h3>
           <div className="flex items-center gap-3">
-            <div className="flex bg-stone-100 rounded-lg p-0.5">
+            <div className="flex bg-[#131920] rounded-lg p-0.5">
               {(['weekly', 'monthly', 'yearly'] as const).map(v => (
                 <button
                   key={v}
                   onClick={() => setView(v)}
-                  className={`px-3 py-1 text-xs rounded-md transition-colors ${view === v ? 'bg-white text-stone-900 shadow-sm font-medium' : 'text-stone-500 hover:text-stone-700'}`}
+                  className={`px-3 py-1 text-xs rounded-md transition-colors ${view === v ? 'font-medium' : ''}`}
+                  style={view === v ? { background: '#131920', color: '#E8E6E1' } : { color: '#6B7585' }}
                 >
                   {v.charAt(0).toUpperCase() + v.slice(1)}
                 </button>
@@ -610,27 +632,27 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
             </div>
             {editing ? (
               <div className="flex gap-2">
-                <button onClick={handleSaveEdits} className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs hover:bg-emerald-700">
+                <button onClick={handleSaveEdits} className="flex items-center gap-1 px-3 py-1.5 bg-neutral-700 text-neutral-100 rounded-lg text-xs hover:bg-neutral-600">
                   <Save size={12} /> Save
                 </button>
-                <button onClick={() => { setEditing(false); setEditValues({}); }} className="flex items-center gap-1 px-3 py-1.5 bg-stone-200 text-stone-700 rounded-lg text-xs hover:bg-stone-300">
+                <button onClick={() => { setEditing(false); setEditValues({}); }} className="flex items-center gap-1 px-3 py-1.5 bg-[#1e2a3d] text-[#9EA8B4] rounded-lg text-xs hover:bg-[#1e2a3d]">
                   <X size={12} /> Cancel
                 </button>
               </div>
             ) : (
-              <button onClick={() => setEditing(true)} className="flex items-center gap-1 px-3 py-1.5 bg-stone-100 text-stone-700 rounded-lg text-xs hover:bg-stone-200">
+              <button onClick={() => setEditing(true)} className="flex items-center gap-1 px-3 py-1.5 bg-[#131920] text-[#9EA8B4] rounded-lg text-xs hover:bg-[#1e2a3d]">
                 <Edit3 size={12} /> Edit
               </button>
             )}
           </div>
         </div>
 
-        <div ref={tableContainerRef} className="overflow-x-auto rounded-lg border border-stone-200">
+        <div ref={tableContainerRef} className="overflow-x-auto rounded-lg border border-[#1e2a3d]">
           <table className="w-full text-xs border-collapse">
             <thead>
               <tr style={{ backgroundColor: '#3C4A3B' }}>
                 <th className="sticky left-0 z-10 text-left px-4 py-3 min-w-[160px] border-r border-[#4d5a4c]" style={{ backgroundColor: '#3C4A3B' }}>
-                  <span className="text-white/60 text-[10px] font-normal uppercase tracking-wider"></span>
+                  <span className="text-neutral-400 text-[10px] font-normal uppercase tracking-wider"></span>
                 </th>
                 {periods.map(p => {
                   const parts = p.label.split('|');
@@ -638,8 +660,8 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                   const bottomLine = parts[1] || '';
                   return (
                     <th key={p.index} className="px-3 py-2.5 text-right min-w-[88px] border-r border-[#4d5a4c] last:border-r-0">
-                      <div className="text-white text-[11px] font-semibold leading-tight">{topLine}</div>
-                      {bottomLine && <div className="text-white/50 text-[9px] font-normal mt-0.5">{bottomLine}</div>}
+                      <div className="text-neutral-100 text-[11px] font-semibold leading-tight">{topLine}</div>
+                      {bottomLine && <div className="text-neutral-400 text-[9px] font-normal mt-0.5">{bottomLine}</div>}
                     </th>
                   );
                 })}
@@ -647,17 +669,17 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
             </thead>
             <tbody>
               <tr>
-                <td colSpan={periods.length + 1} className="px-4 py-2 text-[10px] font-bold text-stone-500 uppercase tracking-wider border-b border-stone-200 bg-stone-50">
+                <td colSpan={periods.length + 1} className="px-4 py-2 text-[10px] font-bold text-[#6B7585] uppercase tracking-wider border-b border-[#1e2a3d] bg-[#0F1319]">
                   Raw Traffic Metrics
                 </td>
               </tr>
               {rawMetricRows.map(row => (
                 <tr key={row.key} className="border-b border-stone-100">
-                  <td className="sticky left-0 bg-white z-10 px-4 py-2 text-stone-700 text-[11px] border-r border-stone-100">{row.label}</td>
+                  <td className="sticky left-0 z-10 px-4 py-2 text-[11px] border-r" style={{ background: "#0F1319", color: "#9EA8B4", borderColor: "#1e2a3d" }}>{row.label}</td>
                   {periods.map(p => {
-                    const val = (p as any)[row.field] as number;
+                    const val = (p as Record<string, unknown>)[row.field] as number;
                     return (
-                      <td key={p.index} className="px-3 py-2 text-right font-mono text-[11px] text-stone-800">
+                      <td key={p.index} className="px-3 py-2 text-right font-mono text-[11px] text-neutral-400">
                         {formatVal(val, row.format)}
                       </td>
                     );
@@ -668,7 +690,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
               <tr className="h-3"><td colSpan={periods.length + 1}></td></tr>
 
               <tr className="cursor-pointer" onClick={() => setShowAdjustments(!showAdjustments)}>
-                <td colSpan={periods.length + 1} className="px-4 py-2 text-[10px] font-bold text-stone-500 uppercase tracking-wider border-b border-stone-200 border-t border-stone-200 bg-stone-50">
+                <td colSpan={periods.length + 1} className="px-4 py-2 text-[10px] font-bold text-[#6B7585] uppercase tracking-wider border-b border-[#1e2a3d] border-t border-[#1e2a3d] bg-[#0F1319]">
                   <span className="flex items-center gap-1">
                     {showAdjustments ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
                     Market Adjustments
@@ -677,11 +699,11 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
               </tr>
               {showAdjustments && adjustmentRows.map(row => (
                 <tr key={row.key} className="border-b border-stone-100">
-                  <td className="sticky left-0 bg-white z-10 px-4 py-2 text-stone-600 text-[11px] border-r border-stone-100">{row.label}</td>
+                  <td className="sticky left-0 z-10 px-4 py-2 text-[11px] border-r" style={{ background: "#0F1319", color: "#6B7585", borderColor: "#1e2a3d" }}>{row.label}</td>
                   {periods.map(p => {
-                    const val = (p as any)[row.field] as number;
+                    const val = (p as Record<string, unknown>)[row.field] as number;
                     return (
-                      <td key={p.index} className="px-3 py-2 text-right font-mono text-[11px] text-stone-700">
+                      <td key={p.index} className="px-3 py-2 text-right font-mono text-[11px] text-[#9EA8B4]">
                         {p.isActual ? '–' : `${val.toFixed(2)}x`}
                       </td>
                     );
@@ -692,15 +714,15 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
               <tr className="h-3"><td colSpan={periods.length + 1}></td></tr>
 
               <tr>
-                <td colSpan={periods.length + 1} className="px-4 py-2 text-[10px] font-bold text-stone-500 uppercase tracking-wider border-b border-stone-200 border-t border-stone-200 bg-stone-50">
+                <td colSpan={periods.length + 1} className="px-4 py-2 text-[10px] font-bold text-[#6B7585] uppercase tracking-wider border-b border-[#1e2a3d] border-t border-[#1e2a3d] bg-[#0F1319]">
                   Adjusted Output
                 </td>
               </tr>
               {adjOutputRows.map(row => (
                 <tr key={row.key} className="border-b border-stone-100">
-                  <td className="sticky left-0 bg-white z-10 px-4 py-2 text-stone-700 font-medium text-[11px] border-r border-stone-100">{row.label}</td>
+                  <td className="sticky left-0 z-10 px-4 py-2 font-medium text-[11px] border-r" style={{ background: "#0F1319", color: "#9EA8B4", borderColor: "#1e2a3d" }}>{row.label}</td>
                   {periods.map(p => {
-                    const val = (p as any)[row.field] as number;
+                    const val = (p as Record<string, unknown>)[row.field] as number;
                     const isEditable = editing && !p.isActual;
 
                     if (isEditable) {
@@ -708,7 +730,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                         <td key={p.index} className="px-1 py-1">
                           <input
                             type="number"
-                            className="w-full text-right text-[11px] font-mono border border-stone-300 rounded px-2 py-1 bg-amber-50/50 focus:outline-none focus:border-stone-400"
+                            className="w-full text-right text-[11px] font-mono rounded px-2 py-1 focus:outline-none" style={{ background: "rgba(245,158,11,0.06)", border: "1px solid #1e2a3d", color: "#C8C4BE" }}
                             defaultValue={row.format === 'pct' ? (val * 100).toFixed(1) : Math.round(val)}
                             onChange={(e) => {
                               const newVal = row.format === 'pct' ? parseFloat(e.target.value) / 100 : parseFloat(e.target.value);
@@ -723,7 +745,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                     }
 
                     return (
-                      <td key={p.index} className="px-3 py-2 text-right font-mono text-[11px] text-stone-900 font-medium">
+                      <td key={p.index} className="px-3 py-2 text-right font-mono text-[11px] text-[#E8E6E1] font-medium">
                         {formatVal(val, row.format)}
                       </td>
                     );
@@ -734,7 +756,7 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
           </table>
         </div>
 
-        <div className="flex items-center gap-6 mt-3 text-[10px] text-stone-400">
+        <div className="flex items-center gap-6 mt-3 text-[10px] text-neutral-400">
           <span>Parentheses indicate negative values</span>
           <span>– indicates zero or not applicable</span>
         </div>
@@ -745,13 +767,13 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
   const renderAdjustmentsTab = () => (
     <div className="space-y-6">
       {mi && (
-        <div className="bg-white rounded-xl border border-stone-200 p-6">
+        <div style={{ background: "#0F1319", border: "1px solid #1e2a3d", borderRadius: 4, padding: 20 }}>
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-bold text-stone-900">Market Intelligence Adjustments</h3>
+            <h3 className="text-lg font-bold text-[#E8E6E1]">Market Intelligence Adjustments</h3>
             <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono ${
-              dataSource === 'uploaded' ? 'bg-emerald-100 text-emerald-700' :
-              dataSource === 'blended' ? 'bg-blue-100 text-blue-700' :
-              'bg-amber-100 text-amber-700'
+              dataSource === 'uploaded' ? 'bg-emerald-900/20 text-emerald-300' :
+              dataSource === 'blended' ? 'bg-blue-900/20 text-blue-300' :
+              'bg-amber-900/20 text-amber-300'
             }`}>
               {dataSource === 'uploaded' ? 'LIVE DATA' : dataSource === 'blended' ? 'BLENDED' : 'MARKET SIGNALS'}
             </span>
@@ -762,69 +784,69 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
             <FactorCard label="Digital" factor={mi.digitalFactor} summary={mi.digitalSummary} direction={mi.digitalDirection} />
             <FactorCard label="Seasonal" factor={mi.seasonalFactor} summary={mi.seasonalSummary} direction={mi.seasonalDirection} />
           </div>
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start gap-3">
+          <div className="rounded-lg p-3 flex items-start gap-3 border border-amber-800" style={{ background: "rgba(245,158,11,0.08)" }}>
             <TrendingUp size={16} className="text-amber-600 mt-0.5 flex-shrink-0" />
             <div>
-              <div className="text-sm font-semibold text-amber-900">{mi.overallSummary}</div>
-              <p className="text-[11px] text-amber-700 mt-1">These factors are applied to your base traffic trend to produce the adjusted projections.</p>
+              <div className="text-sm font-semibold text-amber-300">{mi.overallSummary}</div>
+              <p className="text-[11px] text-amber-300 mt-1">These factors are applied to your base traffic trend to produce the adjusted projections.</p>
             </div>
           </div>
         </div>
       )}
 
       {latest && (
-        <div className="bg-white rounded-xl border border-stone-200 p-6">
-          <h3 className="text-lg font-bold text-stone-900 mb-4">Vacancy & Availability</h3>
+        <div style={{ background: "#0F1319", border: "1px solid #1e2a3d", borderRadius: 4, padding: 20 }}>
+          <h3 className="text-lg font-bold text-[#E8E6E1] mb-4">Vacancy & Availability</h3>
           <div className="grid grid-cols-2 gap-6">
             <div>
-              <div className="text-stone-400 font-mono text-[10px] uppercase mb-3">Vacancy Breakdown</div>
+              <div className="text-neutral-400 font-mono text-[10px] uppercase mb-3">Vacancy Breakdown</div>
               <div className="space-y-3">
                 {[
-                  { label: 'Model', value: latest.vacant_model || 0, color: 'bg-stone-400' },
+                  { label: 'Model', value: latest.vacant_model || 0, color: 'bg-neutral-800' },
                   { label: 'Rented Vacant', value: latest.vacant_rented || 0, color: 'bg-amber-500' },
                   { label: 'Unrented Vacant', value: latest.vacant_unrented || 0, color: 'bg-red-500' },
                 ].map(item => (
                   <div key={item.label} className="flex items-center gap-3">
-                    <span className="text-xs text-stone-600 w-28">{item.label}</span>
-                    <div className="flex-1 bg-stone-100 rounded-full h-3 overflow-hidden">
+                    <span className="text-xs text-[#6B7585] w-28">{item.label}</span>
+                    <div className="flex-1 bg-[#131920] rounded-full h-3 overflow-hidden">
                       <div className={`h-full ${item.color} rounded-full`}
                         style={{ width: `${(latest.total_units || 290) > 0 ? (item.value / (latest.total_units || 290)) * 100 : 0}%` }} />
                     </div>
-                    <span className="text-xs font-mono text-stone-700 w-8 text-right">{item.value}</span>
+                    <span className="text-xs font-mono text-[#9EA8B4] w-8 text-right">{item.value}</span>
                   </div>
                 ))}
                 <div className="flex items-center gap-3 pt-2 border-t border-stone-100">
-                  <span className="text-xs text-stone-900 font-semibold w-28">Total Vacant</span>
+                  <span className="text-xs text-[#E8E6E1] font-semibold w-28">Total Vacant</span>
                   <div className="flex-1" />
-                  <span className="text-xs font-mono font-bold text-stone-900 w-8 text-right">{latest.vacant_total || 0}</span>
+                  <span className="text-xs font-mono font-bold text-[#E8E6E1] w-8 text-right">{latest.vacant_total || 0}</span>
                 </div>
               </div>
 
-              <div className="text-stone-400 font-mono text-[10px] uppercase mt-6 mb-3">On-Notice Pipeline</div>
+              <div className="text-neutral-400 font-mono text-[10px] uppercase mt-6 mb-3">On-Notice Pipeline</div>
               <div className="space-y-3">
                 {[
                   { label: 'Rented Notice', value: latest.notice_rented || 0, color: 'bg-amber-400' },
                   { label: 'Unrented Notice', value: latest.notice_unrented || 0, color: 'bg-red-400' },
                 ].map(item => (
                   <div key={item.label} className="flex items-center gap-3">
-                    <span className="text-xs text-stone-600 w-28">{item.label}</span>
-                    <div className="flex-1 bg-stone-100 rounded-full h-3 overflow-hidden">
+                    <span className="text-xs text-[#6B7585] w-28">{item.label}</span>
+                    <div className="flex-1 bg-[#131920] rounded-full h-3 overflow-hidden">
                       <div className={`h-full ${item.color} rounded-full`}
                         style={{ width: `${(latest.total_units || 290) > 0 ? (item.value / (latest.total_units || 290)) * 100 : 0}%` }} />
                     </div>
-                    <span className="text-xs font-mono text-stone-700 w-8 text-right">{item.value}</span>
+                    <span className="text-xs font-mono text-[#9EA8B4] w-8 text-right">{item.value}</span>
                   </div>
                 ))}
                 <div className="flex items-center gap-3 pt-2 border-t border-stone-100">
-                  <span className="text-xs text-stone-900 font-semibold w-28">Total Notice</span>
+                  <span className="text-xs text-[#E8E6E1] font-semibold w-28">Total Notice</span>
                   <div className="flex-1" />
-                  <span className="text-xs font-mono font-bold text-stone-900 w-8 text-right">{latest.notice_total || 0}</span>
+                  <span className="text-xs font-mono font-bold text-[#E8E6E1] w-8 text-right">{latest.notice_total || 0}</span>
                 </div>
               </div>
             </div>
 
             <div>
-              <div className="text-stone-400 font-mono text-[10px] uppercase mb-3">Unit Availability by Type</div>
+              <div className="text-neutral-400 font-mono text-[10px] uppercase mb-3">Unit Availability by Type</div>
               <div className="space-y-4">
                 {[
                   { label: '1 BR', value: latest.avail_1br || 0 },
@@ -833,11 +855,11 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                 ].map(item => (
                   <div key={item.label}>
                     <div className="flex justify-between mb-1">
-                      <span className="text-xs text-stone-600">{item.label}</span>
-                      <span className="text-xs font-mono font-bold text-stone-900">{item.value} units</span>
+                      <span className="text-xs text-[#6B7585]">{item.label}</span>
+                      <span className="text-xs font-mono font-bold text-[#E8E6E1]">{item.value} units</span>
                     </div>
-                    <div className="bg-stone-100 rounded-full h-3 overflow-hidden">
-                      <div className="h-full bg-stone-600 rounded-full"
+                    <div className="bg-[#131920] rounded-full h-3 overflow-hidden">
+                      <div className="h-full bg-neutral-800 rounded-full"
                         style={{ width: `${Math.min(100, item.value * 5)}%` }} />
                     </div>
                   </div>
@@ -850,9 +872,9 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
                   { label: 'Leased %', value: `${((latest.leased_pct || 0) * 100).toFixed(1)}%` },
                   { label: 'Avail %', value: `${((latest.avail_pct || 0) * 100).toFixed(1)}%` },
                 ].map(item => (
-                  <div key={item.label} className="bg-stone-50 rounded-lg p-3 text-center">
-                    <div className="text-stone-400 font-mono text-[10px] uppercase">{item.label}</div>
-                    <div className="text-lg font-bold text-stone-900 mt-1">{item.value}</div>
+                  <div key={item.label} className="bg-[#0F1319] rounded-lg p-3 text-center">
+                    <div className="text-neutral-400 font-mono text-[10px] uppercase">{item.label}</div>
+                    <div className="text-lg font-bold text-[#E8E6E1] mt-1">{item.value}</div>
                   </div>
                 ))}
               </div>
@@ -862,203 +884,390 @@ export function TrafficModule({ deal, dealId: propDealId, propertyId }: TrafficM
       )}
 
       {!mi && !latest && (
-        <div className="bg-white rounded-xl border border-stone-200 p-12 text-center">
-          <SlidersHorizontal size={32} className="mx-auto text-stone-300 mb-3" />
-          <p className="text-sm text-stone-500">Market adjustments will appear once projection data is available.</p>
+        <div style={{ background: "#0F1319", border: "1px solid #1e2a3d", borderRadius: 4, padding: "48px", textAlign: "center" }}>
+          <SlidersHorizontal size={32} className="mx-auto text-neutral-400 mb-3" />
+          <p className="text-sm text-[#6B7585]">Market adjustments will appear once projection data is available.</p>
         </div>
       )}
     </div>
   );
 
   const renderCalibrationTab = () => (
-    <div className="space-y-6">
-      <div className="bg-white rounded-xl border border-stone-200 p-6">
+    <div style={{ background: BT2.bg.terminal, display: 'flex', flexDirection: 'column', gap: 1 }}>
+
+      {/* Info strip */}
+      <div style={{ background: BT2.bg.header, padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: `1px solid ${BT2.border.subtle}`, flexWrap: 'wrap' }}>
+        <Database size={11} color={calibration?.calibrated ? BT2.text.green : BT2.text.muted} />
+        <span style={{ fontSize: 9, fontWeight: 700, color: calibration?.calibrated ? BT2.text.green : BT2.text.secondary, fontFamily: bMono, letterSpacing: 0.8 }}>
+          {calibration?.calibrated ? 'CALIBRATED' : 'UNCALIBRATED'}
+        </span>
+        {calibration?.matchTier && (
+          <span style={{ fontSize: 9, color: BT2.text.cyan, fontFamily: bMono, background: `${BT2.text.cyan}15`, border: `1px solid ${BT2.text.cyan}40`, padding: '1px 6px' }}>
+            TIER: {calibration.matchTier.toUpperCase()}
+          </span>
+        )}
+        {calibration?.windowType && (
+          <span style={{ fontSize: 9, color: BT2.text.muted, fontFamily: bMono }}>WINDOW: {calibration.windowType}</span>
+        )}
+        {calibration?.nPeerProperties != null && (
+          <span style={{ fontSize: 9, color: BT2.text.amber, fontFamily: bMono }}>{calibration.nPeerProperties} PEER PROPERTIES</span>
+        )}
+        {calibration?.sampleCount != null && calibration.sampleCount > 0 && (
+          <span style={{ fontSize: 9, color: BT2.text.muted, fontFamily: bMono }}>{calibration.sampleCount} DEALS</span>
+        )}
+        {calibration?.dataLibraryFileCount != null && calibration.dataLibraryFileCount > 0 && (
+          <span style={{ fontSize: 9, color: BT2.text.muted, fontFamily: bMono }}>{calibration.dataLibraryFileCount} FILES</span>
+        )}
+        {calibration?.lastUpdated && (
+          <span style={{ fontSize: 9, color: BT2.text.muted, fontFamily: bMono, marginLeft: 'auto' }}>
+            UPDATED {new Date(calibration.lastUpdated).toLocaleDateString()}
+          </span>
+        )}
+      </div>
+
+      <div style={{ background: BT2.bg.panel, border: `1px solid ${BT2.border.subtle}`, padding: 20 }}>
         <div className="flex items-center gap-3 mb-4">
-          <Database size={18} className="text-stone-400" />
+          <Database size={18} className="text-neutral-400" />
           <div>
-            <h3 className="text-lg font-bold text-stone-900">Data Library Calibration</h3>
-            <p className="text-xs text-stone-500 mt-0.5">
+            <h3 className="text-lg font-bold text-[#E8E6E1]">Data Library Calibration</h3>
+            <p className="text-xs text-[#6B7585] mt-0.5">
               {calibration?.calibrated
                 ? `${calibration.sampleCount} deal${calibration.sampleCount !== 1 ? 's' : ''} in this submarket contributing to calibration${calibration.dataLibraryFileCount > 0 ? ` | ${calibration.dataLibraryFileCount} Data Library file${calibration.dataLibraryFileCount !== 1 ? 's' : ''}` : ''}`
                 : 'No submarket calibration data yet — upload weekly reports to teach the engine'}
             </p>
           </div>
           {calibration?.calibrated && (
-            <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-mono ml-auto">CALIBRATED</span>
+            <span className="text-[10px] bg-emerald-900/20 text-emerald-300 px-2 py-0.5 rounded-full font-mono ml-auto">CALIBRATED</span>
           )}
         </div>
 
         {calibration?.calibrated && Object.keys(calibration.comparisons).length > 0 ? (
           <div className="space-y-3">
-            <div className="text-stone-400 font-mono text-[10px] uppercase mb-2">Calibrated vs Default Values</div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="text-neutral-400 font-mono text-[10px] uppercase mb-2">Calibrated vs Default Values</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               {Object.entries(calibration.comparisons).map(([metric, vals]) => {
-                const isPct = metric.includes('Ratio') || metric.includes('Conversion') || metric.includes('%');
+                const isPct = metric.includes('Ratio') || metric.includes('Conversion') || metric.includes('%') || metric.includes('rate') || metric.includes('pct');
                 const formatFn = (v: number) => isPct ? `${(v * 100).toFixed(1)}%` : v.toFixed(4);
                 const diff = vals.calibrated - vals.default;
                 const diffPct = vals.default !== 0 ? ((diff / vals.default) * 100).toFixed(0) : '0';
                 const isUp = diff > 0;
+                const band = calibration.confidenceBands?.[metric];
 
                 return (
-                  <div key={metric} className="bg-stone-50 rounded-lg p-3">
-                    <div className="text-stone-500 font-mono text-[10px] uppercase mb-2">{metric}</div>
-                    <div className="flex items-end justify-between">
+                  <div key={metric} style={{ background: BT2.bg.terminal, border: `1px solid ${BT2.border.subtle}`, padding: 12 }}>
+                    <div style={{ fontSize: 9, color: BT2.text.muted, fontFamily: bMono, textTransform: 'uppercase' as const, letterSpacing: 0.8, marginBottom: 8 }}>{metric}</div>
+                    <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
                       <div>
-                        <div className="text-lg font-bold text-stone-900">{formatFn(vals.calibrated)}</div>
-                        <div className="text-[11px] text-stone-400">Default: {formatFn(vals.default)}</div>
+                        <div style={{ fontSize: 16, fontWeight: 700, color: BT2.text.amber, fontFamily: bMono }}>{formatFn(vals.calibrated)}</div>
+                        <div style={{ fontSize: 10, color: BT2.text.secondary, fontFamily: bMono, marginTop: 2 }}>Default: {formatFn(vals.default)}</div>
                       </div>
-                      <div className={`text-xs font-mono ${isUp ? 'text-emerald-600' : 'text-red-500'}`}>
+                      <div style={{ fontSize: 10, fontFamily: bMono, color: isUp ? BT2.text.green : BT2.text.red, fontWeight: 700 }}>
                         {isUp ? '+' : ''}{diffPct}%
                       </div>
                     </div>
+                    {/* Confidence band display */}
+                    {band && (
+                      <div style={{ marginTop: 8, paddingTop: 6, borderTop: `1px solid ${BT2.border.subtle}` }}>
+                        <div style={{ fontSize: 8, color: BT2.text.muted, fontFamily: bMono, letterSpacing: 0.8, marginBottom: 4 }}>95% CONFIDENCE BAND</div>
+                        <div style={{ position: 'relative' as const, height: 8, background: BT2.bg.input, borderRadius: 2 }}>
+                          {(() => {
+                            const range = band.high - band.low;
+                            if (range <= 0) return null;
+                            const valPct = Math.min(100, Math.max(0, ((vals.calibrated - band.low) / range) * 100));
+                            return (
+                              <>
+                                <div style={{ position: 'absolute' as const, left: '10%', right: '10%', top: 0, bottom: 0, background: `${BT2.text.amber}25`, borderRadius: 2 }} />
+                                <div style={{ position: 'absolute' as const, left: `${valPct}%`, top: 0, bottom: 0, width: 2, background: BT2.text.amber, borderRadius: 1 }} />
+                              </>
+                            );
+                          })()}
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 2 }}>
+                          <span style={{ fontSize: 8, color: BT2.text.muted, fontFamily: bMono }}>{formatFn(band.low)}</span>
+                          <span style={{ fontSize: 8, color: BT2.text.muted, fontFamily: bMono }}>{formatFn(band.high)}</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
             </div>
-            <div className="flex items-center justify-between mt-3">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}>
               {calibration.lastUpdated && (
-                <div className="text-[10px] text-stone-400">
+                <div style={{ fontSize: 10, color: BT2.text.secondary, fontFamily: bMono }}>
                   Last updated: {new Date(calibration.lastUpdated).toLocaleDateString()}
                 </div>
               )}
               <a
                 href="/data-library"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-stone-300 text-stone-600 rounded-lg text-xs hover:bg-stone-50 transition-colors"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 10px', border: `1px solid ${BT2.border.subtle}`, color: BT2.text.secondary, textDecoration: 'none', fontSize: 10, fontFamily: bMono }}
               >
-                <Database size={12} /> Data Library <ExternalLink size={10} />
+                <Database size={11} /> Data Library <ExternalLink size={9} />
               </a>
             </div>
           </div>
         ) : (
-          <div className="text-center py-6">
-            <Database size={32} className="mx-auto text-stone-300 mb-3" />
-            <p className="text-sm text-stone-500 mb-3">
+          <div style={{ textAlign: 'center', padding: '32px 24px' }}>
+            <Database size={32} style={{ color: BT2.text.muted, display: 'block', margin: '0 auto 12px' }} />
+            <p style={{ fontSize: 11, color: BT2.text.secondary, fontFamily: bSans, marginBottom: 12 }}>
               Upload weekly operating reports to build submarket-specific calibration data.
-              The more deals that contribute data, the better the predictions become.
             </p>
-            <div className="flex items-center gap-3 justify-center">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'center' }}>
               <button
                 onClick={triggerUpload}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-stone-900 text-white rounded-lg text-sm hover:bg-stone-800 transition-colors"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', background: BT2.bg.terminal, border: `1px solid ${BT2.border.medium}`, color: BT2.text.white, cursor: 'pointer', fontSize: 10, fontFamily: bMono }}
               >
-                <Upload size={14} /> Upload Weekly Report
+                <Upload size={12} /> Upload Weekly Report
               </button>
               <a
                 href="/data-library"
-                className="inline-flex items-center gap-1.5 px-4 py-2 border border-stone-300 text-stone-700 rounded-lg text-sm hover:bg-stone-50 transition-colors"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', border: `1px solid ${BT2.border.subtle}`, color: BT2.text.secondary, textDecoration: 'none', fontSize: 10, fontFamily: bMono }}
               >
-                <Database size={14} /> Open Data Library <ExternalLink size={11} />
+                <Database size={12} /> Data Library <ExternalLink size={9} />
               </a>
             </div>
           </div>
         )}
       </div>
+
+      {/* ── RENT ROLL UPLOAD ── */}
+      <div style={{ background: BT2.bg.panel, border: `1px solid ${BT2.border.subtle}`, padding: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+          <Upload size={13} color={BT2.text.cyan} />
+          <span style={{ fontSize: 10, fontWeight: 700, color: BT2.text.white, fontFamily: bMono, letterSpacing: 0.8 }}>RENT ROLL UPLOAD</span>
+          <span style={{ fontSize: 9, color: BT2.text.muted, fontFamily: bMono }}>POST → /api/rent-roll/upload/:dealId</span>
+        </div>
+        {/* Last-upload metadata */}
+        {rentRollMeta?.lastUploadedAt ? (
+          <div style={{ display: 'flex', gap: 16, marginBottom: 10, padding: '6px 10px', background: BT2.bg.terminal, border: `1px solid ${BT2.border.subtle}` }}>
+            <div>
+              <div style={{ fontSize: 8, color: BT2.text.muted, fontFamily: bMono, letterSpacing: 0.8 }}>LAST UPLOAD</div>
+              <div style={{ fontSize: 10, color: BT2.text.amber, fontFamily: bMono, marginTop: 2 }}>
+                {new Date(rentRollMeta.lastUploadedAt).toLocaleString()}
+              </div>
+            </div>
+            {rentRollMeta.extractionConfidence != null && (
+              <div>
+                <div style={{ fontSize: 8, color: BT2.text.muted, fontFamily: bMono, letterSpacing: 0.8 }}>EXTRACTION CONFIDENCE</div>
+                <div style={{ fontSize: 10, fontWeight: 700, fontFamily: bMono, marginTop: 2,
+                  color: rentRollMeta.extractionConfidence >= 0.8 ? BT2.text.green : rentRollMeta.extractionConfidence >= 0.5 ? BT2.text.amber : BT2.text.red
+                }}>
+                  {(rentRollMeta.extractionConfidence * 100).toFixed(0)}%
+                  {rentRollMeta.extractionConfidence >= 0.8 ? ' HIGH' : rentRollMeta.extractionConfidence >= 0.5 ? ' MEDIUM' : ' LOW'}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div style={{ fontSize: 9, color: BT2.text.muted, fontFamily: bMono, marginBottom: 10 }}>
+            NO RENT ROLL ON FILE — upload to improve calibration accuracy
+          </div>
+        )}
+        <label
+          style={{
+            display: 'flex', flexDirection: 'column' as const, alignItems: 'center', justifyContent: 'center',
+            border: `2px dashed ${BT2.border.medium}`, background: BT2.bg.terminal,
+            padding: '24px 16px', cursor: 'pointer', gap: 8,
+          }}
+          onDragOver={e => { e.preventDefault(); (e.currentTarget as HTMLElement).style.borderColor = BT2.text.cyan; }}
+          onDragLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = BT2.border.medium; }}
+          onDrop={async (e) => {
+            e.preventDefault();
+            (e.currentTarget as HTMLElement).style.borderColor = BT2.border.medium;
+            const file = e.dataTransfer.files?.[0];
+            if (!file || !resolvedDealId) return;
+            const fd = new FormData();
+            fd.append('file', file);
+            try {
+              await apiClient.post(`/api/rent-roll/upload/${resolvedDealId}`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+              await loadData();
+            } catch (err) {
+              console.error('[TrafficModule] Rent roll upload failed:', err);
+            }
+          }}
+        >
+          <input
+            type="file"
+            accept=".xlsx,.xls,.csv,.pdf"
+            style={{ display: 'none' }}
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (!file || !resolvedDealId) return;
+              const fd = new FormData();
+              fd.append('file', file);
+              try {
+                await apiClient.post(`/api/rent-roll/upload/${resolvedDealId}`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+                await loadData();
+              } catch (err) {
+                console.error('[TrafficModule] Rent roll upload failed:', err);
+              } finally {
+                e.target.value = '';
+              }
+            }}
+          />
+          <Database size={18} style={{ color: BT2.text.muted }} />
+          <span style={{ fontSize: 10, color: BT2.text.secondary, fontFamily: bMono }}>DRAG & DROP RENT ROLL FILE</span>
+          <span style={{ fontSize: 9, color: BT2.text.muted, fontFamily: bMono }}>or click to browse · XLSX / XLS / CSV / PDF</span>
+          <span style={{ fontSize: 9, color: BT2.text.muted, fontFamily: bMono, textAlign: 'center' as const, maxWidth: 360 }}>
+            Upload current rent roll to improve calibration accuracy. M07 extracts unit count, lease expirations, and concession data.
+          </span>
+        </label>
+      </div>
     </div>
   );
 
   return (
-    <div className="space-y-6 p-6">
+    <div style={{ background: BT2.bg.terminal, minHeight: '100%', display: 'flex', flexDirection: 'column' }}>
+      <style>{BT_CSS}</style>
       <input
         ref={fileInputRef}
         type="file"
         accept=".xlsx,.xls,.csv"
         onChange={handleUpload}
-        className="hidden"
+        style={{ display: 'none' }}
       />
 
-      <div className="bg-stone-900 rounded-xl p-6 text-white flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-bold">Traffic Intelligence</h2>
-          <p className="text-stone-300 text-sm mt-1">What is this property's true leasing velocity — and can we improve it?</p>
-        </div>
-        <div className="flex items-center gap-3">
-          {dataSource === 'uploaded' && (
-            <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-mono">LIVE DATA</span>
-          )}
-          {dataSource === 'blended' && (
-            <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-mono">BLENDED</span>
-          )}
-          {dataSource === 'predicted' && (
-            <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-mono">PREDICTED</span>
-          )}
-          <label className="inline-flex items-center gap-2 px-3 py-1.5 bg-white/10 text-white rounded-lg cursor-pointer hover:bg-white/20 transition-colors text-sm">
-            <Upload size={14} />
-            {uploading ? 'Uploading...' : 'Upload Report'}
-            <input
-              type="file"
-              accept=".xlsx,.xls,.csv"
-              onChange={handleUpload}
-              className="hidden"
-            />
-          </label>
-        </div>
-      </div>
+      <PanelHeader
+        title="TRAFFIC INTELLIGENCE"
+        subtitle="M07 · LEASING VELOCITY + DEMAND SIGNALS"
+        borderColor={BT2.met.physTraffic}
+        metrics={[
+          { l: 'P_TRAFFIC', c: BT2.met.physTraffic },
+          { l: 'D_TRAFFIC', c: BT2.met.digTraffic },
+          { l: 'C_TRAFFIC', c: BT2.met.compTraffic },
+        ]}
+        right={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {projection?.marketIntelligence && (
+              <span style={{ fontSize: 9, fontWeight: 700, color: BT2.text.green, fontFamily: 'var(--bt-mono)' }}>
+                OCC {((projection.periods[0]?.adjOccPct ?? 0) * 100).toFixed(0)}%
+              </span>
+            )}
+            {dataSource === 'uploaded' && (
+              <span style={{ fontSize: 9, fontWeight: 700, color: BT2.text.green, background: `${BT2.text.green}12`, border: `1px solid ${BT2.text.green}40`, padding: '1px 6px', fontFamily: 'var(--bt-mono)' }}>LIVE</span>
+            )}
+            {dataSource === 'blended' && (
+              <span style={{ fontSize: 9, fontWeight: 700, color: BT2.met.physTraffic, background: `${BT2.met.physTraffic}12`, border: `1px solid ${BT2.met.physTraffic}40`, padding: '1px 6px', fontFamily: 'var(--bt-mono)' }}>BLENDED</span>
+            )}
+            {dataSource === 'predicted' && (
+              <span style={{ fontSize: 9, fontWeight: 700, color: BT2.text.amber, background: `${BT2.text.amber}12`, border: `1px solid ${BT2.text.amber}40`, padding: '1px 6px', fontFamily: 'var(--bt-mono)' }}>PREDICTED</span>
+            )}
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', background: 'transparent', color: BT2.text.secondary, border: `1px solid ${BT2.border.subtle}`, cursor: 'pointer', fontSize: 9, fontFamily: 'var(--bt-mono)' }}>
+              <Upload size={10} />
+              {uploading ? 'UPLOADING...' : 'UPLOAD'}
+              <input type="file" accept=".xlsx,.xls,.csv" onChange={handleUpload} style={{ display: 'none' }} />
+            </label>
+          </div>
+        }
+      />
 
       {loading ? (
-        <div className="bg-white rounded-xl border border-stone-200 p-12 text-center">
-          <div className="w-8 h-8 border-2 border-stone-300 border-t-stone-900 rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-stone-500 text-sm">Loading traffic predictions...</p>
+        <div style={{ background: BT2.bg.panel, borderRadius: 8, border: `1px solid ${BT2.border.subtle}`, padding: 48, textAlign: 'center' }}>
+          <div style={{ width: 28, height: 28, border: `2px solid ${BT2.text.amber}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 12px' }} />
+          <p style={{ fontSize: 12, color: BT2.text.muted, fontFamily: bSans }}>Loading traffic predictions...</p>
         </div>
       ) : (
         <>
-          {renderKPIDashboard()}
-
-          <div className="flex border-b border-stone-200 gap-1">
-            {TABS.map(tab => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium border-b-2 transition-colors ${
-                    isActive
-                      ? 'border-stone-900 text-stone-900'
-                      : 'border-transparent text-stone-400 hover:text-stone-600 hover:border-stone-300'
-                  }`}
-                >
-                  <Icon size={14} />
-                  {tab.label}
-                </button>
-              );
-            })}
+          {/* KpiTile strip — Physical / Digital / Quadrant / Trajectory */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 1, background: BT2.border.subtle, borderBottom: `1px solid ${BT2.border.subtle}`, flexShrink: 0 }}>
+            <KpiTile label="PHYSICAL TRAFFIC" value={Math.round(kpiTraffic).toLocaleString()} sub={trafficTrend.text} color={BT2.met.physTraffic} spark={sparkTraffic} />
+            <KpiTile label="DIGITAL TRAFFIC" value={Math.round(funnelWebsite).toLocaleString()} sub={hasHistory ? `vs ${Math.round(avg4('website_leads'))} avg` : 'Predicted'} color={BT2.met.digTraffic} spark={sparkWebsite} />
+            <KpiTile label="QUADRANT SCORE" value={`${(kpiClosing * 100).toFixed(0)}pts`} sub={closingTrend.text} color={BT2.met.compTraffic} spark={sparkClosing} />
+            <KpiTile label="TRAJECTORY" value={`${(kpiOcc * 100).toFixed(1)}%`} sub={occTrend.text} color={BT2.met.occupancy} spark={sparkOcc} />
           </div>
 
-          {activeTab === 'predictions' && (
-            <>
-              {renderPredictionsTab()}
-              <TrafficPredictionsTab dealId={resolvedDealId} propertyId={propertyId} />
-            </>
+          {/* Digital-Physical Gap alert banner */}
+          {mi && Math.abs((mi.digitalFactor ?? 1) - (mi.demandFactor ?? 1)) >= 0.15 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px', background: `${BT2.text.amber}0d`, borderBottom: `1px solid ${BT2.text.amber}30`, flexShrink: 0 }}>
+              <AlertCircle size={10} color={BT2.text.amber} />
+              <span style={{ fontSize: 9, color: BT2.text.amber, fontFamily: 'var(--bt-mono)', fontWeight: 700 }}>DIGITAL-PHYSICAL GAP</span>
+              <span style={{ fontSize: 9, color: BT2.text.secondary, fontFamily: 'var(--bt-mono)' }}>
+                Digital demand {mi.digitalFactor > mi.demandFactor ? 'outpacing' : 'lagging'} physical leasing by {Math.abs(((mi.digitalFactor ?? 1) - (mi.demandFactor ?? 1)) * 100).toFixed(0)}% — {mi.digitalSummary ?? mi.demandSummary ?? ''}
+              </span>
+            </div>
           )}
-          {activeTab === 'data_sources' && (
-            <TrafficDataSourcesTab
-              key={dataSourcesKey}
-              dealId={resolvedDealId}
-              onNavigateToVisibility={() => setActiveTab('visibility')}
-              onDefineTradeArea={() => setShowTradeAreaPanel(true)}
-            />
-          )}
-          {activeTab === 'comps' && <TrafficCompsTab dealId={resolvedDealId} onSelectionChange={loadData} />}
-          {activeTab === 'visibility' && <VisibilityAssessmentTab dealId={resolvedDealId} propertyId={propertyId} />}
-          {activeTab === 'adjustments' && renderAdjustmentsTab()}
-          {activeTab === 'calibration' && renderCalibrationTab()}
+
+          <SubTabBar
+            tabs={TABS.map(t => t.label.toUpperCase())}
+            active={TABS.findIndex(t => t.id === activeTab)}
+            setActive={(i) => setActiveTab(TABS[i].id)}
+            color={BT2.met.physTraffic}
+          />
+
+          <BtTabWrapper>
+            {activeTab === 'predictions' && (
+              <>
+                {renderPredictionsTab()}
+                <TrafficPredictionsTab dealId={resolvedDealId} propertyId={propertyId} />
+                {/* Traffic Intelligence Signals + Leasing Velocity panels */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: BT2.border.subtle, marginTop: 1 }}>
+                  <SectionPanel title="FDOT TRAFFIC COUNTS" subtitle="State DOT ADT by period · year / count / source" borderColor={BT2.met.physTraffic}>
+                    {(projection?.periods ?? []).filter(p => p.isActual).slice(0, 5).map((p, i) => {
+                      const yearMatch = p.label.match(/20\d{2}/);
+                      const year = yearMatch ? yearMatch[0] : `Y${i + 1}`;
+                      const src = projection?.baseline_source === 'submarket_calibration' ? 'Submarket' : projection?.baseline_source === 'comp_pattern' ? 'Comp Pattern' : 'DOT/Actual';
+                      return (
+                        <DataRow key={i} label={year} value={Math.round(p.adjTraffic).toLocaleString()} sub={src} valueColor={BT2.met.occupancy} />
+                      );
+                    })}
+                    {(projection?.periods ?? []).filter(p => !p.isActual).slice(0, 3).map((p, i) => {
+                      const yearMatch = p.label.match(/20\d{2}/);
+                      const year = yearMatch ? yearMatch[0] : `Proj ${i + 1}`;
+                      return (
+                        <DataRow key={`proj-${i}`} label={year} value={Math.round(p.adjTraffic).toLocaleString()} sub="Predicted" valueColor={BT2.text.amber} />
+                      );
+                    })}
+                    {!(projection?.periods?.length) && (
+                      <DataRow label="NO DATA" value="—" valueColor={BT2.text.secondary} />
+                    )}
+                  </SectionPanel>
+                  <SectionPanel title="REVIEW SENTIMENT" subtitle="PR-01 · Overall / Maintenance / Management / Location" borderColor={BT2.met.digTraffic}>
+                    <DataRow label="OVERALL SENTIMENT" value="—" valueColor={BT2.text.secondary} />
+                    <DataRow label="MAINTENANCE SENTIMENT" value="—" valueColor={BT2.text.secondary} />
+                    <DataRow label="MANAGEMENT SENTIMENT" value="—" valueColor={BT2.text.secondary} />
+                    <DataRow label="LOCATION SENTIMENT" value="—" valueColor={BT2.text.secondary} />
+                  </SectionPanel>
+                </div>
+              </>
+            )}
+            {activeTab === 'data_sources' && (
+              <TrafficDataSourcesTab
+                key={dataSourcesKey}
+                dealId={resolvedDealId}
+                onNavigateToVisibility={() => setActiveTab('visibility')}
+                onDefineTradeArea={() => setShowTradeAreaPanel(true)}
+              />
+            )}
+            {activeTab === 'coefficients' && <TrafficCoefficientsTab dealId={resolvedDealId} />}
+            {activeTab === 'comps' && <TrafficCompsTab dealId={resolvedDealId} onSelectionChange={loadData} />}
+            {activeTab === 'visibility' && <VisibilityAssessmentTab dealId={resolvedDealId} propertyId={propertyId} />}
+            {activeTab === 'calibration' && renderCalibrationTab()}
+            {activeTab === 'absorption' && (
+              <AbsorptionScheduleTab
+                dealId={resolvedDealId}
+                deal={deal}
+                totalUnits={projection?.periods?.[0]?.totalUnits}
+                currentOccupancy={projection?.periods?.[0]?.baseOccPct}
+              />
+            )}
+          </BtTabWrapper>
         </>
       )}
 
       {showTradeAreaPanel && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto relative">
-            <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-stone-200">
-              <h2 className="text-lg font-bold text-stone-900">Define Trade Area</h2>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', padding: 16 }}>
+          <div style={{ background: BT2.bg.panel, borderRadius: 14, boxShadow: '0 24px 60px rgba(0,0,0,0.5)', width: '100%', maxWidth: 700, maxHeight: '90vh', overflowY: 'auto', position: 'relative', border: `1px solid ${BT2.border.subtle}` }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px', borderBottom: `1px solid ${BT2.border.subtle}` }}>
+              <h2 style={{ fontSize: 15, fontWeight: 700, color: BT2.text.primary, fontFamily: bSans }}>Define Trade Area</h2>
               <button
                 onClick={() => setShowTradeAreaPanel(false)}
-                className="p-1.5 rounded-lg hover:bg-stone-100 text-stone-500 hover:text-stone-900 transition-colors"
+                style={{ background: BT2.bg.panelAlt, border: `1px solid ${BT2.border.subtle}`, borderRadius: 6, padding: '4px 8px', color: BT2.text.muted, cursor: 'pointer' }}
               >
-                <X size={18} />
+                <X size={16} />
               </button>
             </div>
-            <div className="p-6">
-              <Suspense fallback={<div className="py-12 text-center text-stone-400 text-sm">Loading map...</div>}>
+            <div style={{ padding: 24 }}>
+              <Suspense fallback={<div style={{ padding: 48, textAlign: 'center', color: BT2.text.muted, fontSize: 12, fontFamily: bSans }}>Loading map...</div>}>
                 <TradeAreaDefinitionPanel
                   propertyLat={dealLatLng.lat}
                   propertyLng={dealLatLng.lng}

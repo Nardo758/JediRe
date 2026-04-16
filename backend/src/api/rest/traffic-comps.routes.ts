@@ -219,4 +219,56 @@ router.put('/:dealId/selections', async (req: Request, res: Response) => {
   }
 });
 
+router.get('/:dealId/baseline', async (req: Request, res: Response) => {
+  try {
+    const { dealId } = req.params;
+
+    // Get deal details for unit count
+    const dealResult = await pool.query(
+      `SELECT target_units, trade_area_id FROM deals WHERE id = $1`,
+      [dealId]
+    );
+
+    if (dealResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Deal not found', dealId });
+    }
+
+    const { target_units, trade_area_id } = dealResult.rows[0];
+
+    if (!trade_area_id) {
+      return res.status(400).json({
+        error: 'No trade area defined for this deal. Cannot calculate baseline.',
+        dealId,
+      });
+    }
+
+    // Get comp traffic averages for baseline projection
+    const averages = await compTrafficService.getCompAverages(trade_area_id);
+
+    // Calculate baseline metrics scaled to deal's target units
+    const baseline = {
+      dealId,
+      tradeAreaId: trade_area_id,
+      targetUnits: target_units,
+      projectedMetrics: averages
+        ? {
+            weeklyTraffic: Math.round((averages.avg_weekly_traffic / averages.avg_units) * (target_units || 200)),
+            weeklyTours: Math.round((averages.avg_weekly_tours / averages.avg_units) * (target_units || 200)),
+            netLeasesPerWeek: Math.round((averages.avg_net_leases_per_week / averages.avg_units) * (target_units || 200)),
+            webSessions: Math.round((averages.avg_web_sessions / averages.avg_units) * (target_units || 200)),
+            avgOccupancyPct: averages.avg_occupancy_pct,
+            avgClosingRatio: averages.avg_closing_ratio,
+            compCount: averages.comp_count,
+          }
+        : null,
+      timestamp: new Date().toISOString(),
+    };
+
+    res.json(baseline);
+  } catch (error: any) {
+    logger.error('[TrafficComps] GET /:dealId/baseline failed', { error: error.message });
+    res.status(500).json({ error: 'Failed to calculate baseline', message: error.message });
+  }
+});
+
 export default router;

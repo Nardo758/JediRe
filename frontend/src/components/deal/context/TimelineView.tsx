@@ -1,4 +1,5 @@
 import React from 'react';
+import { BT } from '@/components/deal/bloomberg-ui';
 import { TimelineEvent } from '../../../types/activity';
 import { format } from 'date-fns';
 
@@ -6,48 +7,60 @@ interface TimelineViewProps {
   events: TimelineEvent[];
 }
 
+const dotStyle = (type: string): React.CSSProperties => {
+  if (type === 'past') return { background: BT.text.green, borderColor: `${BT.text.green}44` };
+  if (type === 'current') return { background: BT.text.cyan, borderColor: `${BT.text.cyan}44`, animation: 'pulse 2s infinite' };
+  return { background: BT.text.muted, borderColor: `${BT.text.muted}44` };
+};
+
+const cardBorder = (type: string): string => {
+  if (type === 'past') return `${BT.text.green}44`;
+  if (type === 'current') return BT.text.cyan;
+  return BT.border.subtle;
+};
+
 export const TimelineView: React.FC<TimelineViewProps> = ({ events }) => {
   return (
-    <div className="relative py-6">
+    <div className="relative py-6" style={{ fontFamily: BT.font.mono }}>
       {/* Timeline Line */}
-      <div className="absolute left-8 top-0 bottom-0 w-0.5 bg-gray-300" />
+      <div className="absolute left-8 top-0 bottom-0 w-0.5" style={{ background: BT.border.medium }} />
 
       {/* Events */}
       {events.map((event, index) => (
         <div key={index} className="relative pl-20 pb-8">
           {/* Timeline Dot */}
           <div
-            className={`
-              absolute left-6 w-5 h-5 rounded-full border-4
-              ${event.type === 'past' ? 'bg-green-500 border-green-200' : ''}
-              ${event.type === 'current' ? 'bg-blue-500 border-blue-200 animate-pulse' : ''}
-              ${event.type === 'future' ? 'bg-gray-300 border-gray-100' : ''}
-            `}
+            className="absolute left-6 w-5 h-5 rounded-full"
+            style={{ ...dotStyle(event.type), borderWidth: 4, borderStyle: 'solid' }}
           />
 
           {/* Event Card */}
           <div
-            className={`
-              border-2 rounded-lg p-4 bg-white
-              ${event.type === 'past' ? 'border-green-200' : ''}
-              ${event.type === 'current' ? 'border-blue-400 shadow-lg' : ''}
-              ${event.type === 'future' ? 'border-gray-200' : ''}
-            `}
+            className="p-4"
+            style={{
+              background: BT.bg.panel,
+              border: `1px solid ${cardBorder(event.type)}`,
+              borderRadius: 0,
+            }}
           >
             {/* Header */}
             <div className="flex items-start justify-between mb-2">
               <div>
-                <h3 className="font-semibold text-gray-900 text-lg">{event.title}</h3>
-                <p className="text-sm text-gray-500">
+                <h3 style={{ fontWeight: 600, color: BT.text.primary, fontSize: 14, fontFamily: BT.font.display }}>{event.title}</h3>
+                <p style={{ fontSize: 10, color: BT.text.secondary }}>
                   {format(new Date(event.date), 'MMMM d, yyyy')}
                 </p>
               </div>
               {event.completed !== undefined && (
                 <span
-                  className={`
-                    px-3 py-1 rounded-full text-xs font-medium
-                    ${event.completed ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}
-                  `}
+                  className="px-3 py-1"
+                  style={{
+                    fontSize: 9,
+                    fontWeight: 700,
+                    borderRadius: 2,
+                    background: event.completed ? `${BT.text.green}22` : `${BT.text.muted}22`,
+                    color: event.completed ? BT.text.green : BT.text.muted,
+                  }}
                 >
                   {event.completed ? '✓ Complete' : 'Pending'}
                 </span>
@@ -60,7 +73,8 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ events }) => {
                 {event.activities.map((activity) => (
                   <div
                     key={activity.id}
-                    className="text-sm text-gray-600 pl-4 border-l-2 border-gray-200"
+                    className="pl-4"
+                    style={{ fontSize: 10, color: BT.text.secondary, borderLeft: `2px solid ${BT.border.subtle}` }}
                   >
                     {activity.description}
                   </div>
@@ -72,7 +86,7 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ events }) => {
       ))}
 
       {events.length === 0 && (
-        <div className="text-center text-gray-400 py-12">
+        <div className="text-center py-12" style={{ color: BT.text.muted }}>
           No timeline events yet
         </div>
       )}

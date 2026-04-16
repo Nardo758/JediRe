@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Bell, MessageSquare, Mail, Phone, CheckCircle, AlertTriangle } from 'lucide-react';
 import { apiClient } from '../../services/api.client';
+import { BT } from '@/components/deal/bloomberg-ui';
+
+const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono','Fira Code','SF Mono',monospace" };
 
 interface NotificationPreferences {
   smsEnabled: boolean;
@@ -90,8 +93,14 @@ export function NotificationSettings() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center p-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 48 }}>
+        <div style={{
+          height: 32, width: 32,
+          border: `2px solid ${BT.border.subtle}`,
+          borderBottom: `2px solid ${BT.text.cyan}`,
+          borderRadius: '50%',
+          animation: 'spin 1s linear infinite',
+        }} />
       </div>
     );
   }
@@ -105,33 +114,33 @@ export function NotificationSettings() {
   ];
 
   return (
-    <div className="space-y-6">
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <MessageSquare className="w-5 h-5 text-green-600" />
-          <h2 className="text-lg font-semibold text-gray-900">SMS Notifications</h2>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ padding: 20, background: BT.bg.panel, border: `1px solid ${BT.border.subtle}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+          <MessageSquare style={{ width: 18, height: 18, color: BT.text.green }} />
+          <span style={{ fontSize: 14, fontWeight: 700, color: BT.text.primary }}>SMS Notifications</span>
         </div>
 
-        <div className="space-y-4">
-          <label className="flex items-start gap-3 cursor-pointer">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
             <input
               type="checkbox"
               checked={preferences.smsEnabled}
               onChange={(e) => setPreferences({ ...preferences, smsEnabled: e.target.checked })}
-              className="mt-1 w-4 h-4 text-blue-600 rounded"
+              style={{ marginTop: 3, accentColor: BT.text.cyan }}
             />
-            <div className="flex-1">
-              <div className="font-medium text-gray-900">Enable SMS Notifications</div>
-              <div className="text-sm text-gray-600 mt-1">
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 13, color: BT.text.primary }}>Enable SMS Notifications</div>
+              <div style={{ fontSize: 11, color: BT.text.secondary, marginTop: 4 }}>
                 Receive critical alerts via text message for urgent deal updates and market events
               </div>
             </div>
           </label>
 
           {preferences.smsEnabled && (
-            <div className="pl-7">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                <Phone className="w-4 h-4 inline mr-1" />
+            <div style={{ paddingLeft: 28 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 600, color: BT.text.secondary, marginBottom: 6 }}>
+                <Phone style={{ width: 14, height: 14 }} />
                 Phone Number
               </label>
               <input
@@ -139,32 +148,42 @@ export function NotificationSettings() {
                 value={preferences.phoneNumber}
                 onChange={(e) => setPreferences({ ...preferences, phoneNumber: e.target.value })}
                 placeholder="+1 (555) 123-4567"
-                className="w-full max-w-xs px-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                style={{
+                  width: '100%',
+                  maxWidth: 280,
+                  padding: '8px 12px',
+                  background: BT.bg.input,
+                  border: `1px solid ${BT.border.medium}`,
+                  color: BT.text.primary,
+                  fontSize: 12,
+                  outline: 'none',
+                  ...mono,
+                }}
               />
-              <p className="text-xs text-gray-500 mt-1">Standard messaging rates may apply</p>
+              <p style={{ fontSize: 10, color: BT.text.muted, marginTop: 4 }}>Standard messaging rates may apply</p>
             </div>
           )}
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <Mail className="w-5 h-5 text-blue-600" />
-          <h2 className="text-lg font-semibold text-gray-900">Email Alerts</h2>
+      <div style={{ padding: 20, background: BT.bg.panel, border: `1px solid ${BT.border.subtle}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+          <Mail style={{ width: 18, height: 18, color: BT.text.cyan }} />
+          <span style={{ fontSize: 14, fontWeight: 700, color: BT.text.primary }}>Email Alerts</span>
         </div>
 
-        <div className="space-y-4">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {emailAlertOptions.map((option) => (
-            <label key={option.key} className="flex items-start gap-3 cursor-pointer">
+            <label key={option.key} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
               <input
                 type="checkbox"
                 checked={preferences.emailAlerts[option.key]}
                 onChange={(e) => updateEmailAlert(option.key, e.target.checked)}
-                className="mt-1 w-4 h-4 text-blue-600 rounded"
+                style={{ marginTop: 3, accentColor: BT.text.cyan }}
               />
-              <div className="flex-1">
-                <div className="font-medium text-gray-900">{option.label}</div>
-                <div className="text-sm text-gray-600 mt-1">{option.description}</div>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 13, color: BT.text.primary }}>{option.label}</div>
+                <div style={{ fontSize: 11, color: BT.text.secondary, marginTop: 4 }}>{option.description}</div>
               </div>
             </label>
           ))}
@@ -172,36 +191,58 @@ export function NotificationSettings() {
       </div>
 
       {saveMessage && (
-        <div className={`flex items-center gap-2 px-4 py-3 rounded-lg text-sm ${
-          saveMessage.type === 'success' 
-            ? 'bg-green-50 text-green-700 border border-green-200' 
-            : 'bg-red-50 text-red-700 border border-red-200'
-        }`}>
-          {saveMessage.type === 'success' 
-            ? <CheckCircle className="w-4 h-4" /> 
-            : <AlertTriangle className="w-4 h-4" />
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '10px 16px',
+          fontSize: 12,
+          background: BT.bg.panelAlt,
+          color: saveMessage.type === 'success' ? BT.text.green : BT.text.red,
+          border: `1px solid ${saveMessage.type === 'success' ? BT.text.green : BT.text.red}`,
+        }}>
+          {saveMessage.type === 'success'
+            ? <CheckCircle style={{ width: 14, height: 14 }} />
+            : <AlertTriangle style={{ width: 14, height: 14 }} />
           }
           {saveMessage.text}
         </div>
       )}
 
-      <div className="flex items-center justify-between pt-4 border-t border-gray-200">
-        <div className="text-sm text-gray-500">
-          Changes take effect immediately
-        </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 12, borderTop: `1px solid ${BT.border.subtle}` }}>
+        <div style={{ fontSize: 11, color: BT.text.muted }}>Changes take effect immediately</div>
         <button
           onClick={savePreferences}
           disabled={saving}
-          className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+          style={{
+            padding: '8px 20px',
+            background: BT.text.cyan,
+            color: BT.bg.terminal,
+            border: 'none',
+            fontSize: 11,
+            fontWeight: 600,
+            cursor: saving ? 'wait' : 'pointer',
+            opacity: saving ? 0.5 : 1,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            ...mono,
+          }}
         >
           {saving ? (
             <>
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+              <div style={{
+                height: 14, width: 14,
+                border: '2px solid transparent',
+                borderBottom: `2px solid ${BT.bg.terminal}`,
+                borderRadius: '50%',
+                animation: 'spin 1s linear infinite',
+              }} />
               Saving...
             </>
           ) : (
             <>
-              <CheckCircle className="w-4 h-4" />
+              <CheckCircle style={{ width: 14, height: 14 }} />
               Save Preferences
             </>
           )}

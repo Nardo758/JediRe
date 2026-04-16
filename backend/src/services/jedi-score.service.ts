@@ -13,6 +13,7 @@
  */
 
 import { query, getPool } from '../database/connection';
+import { MODULE_ALIASES } from './m35-metric-mapping';
 
 // ============================================================================
 // Types
@@ -76,6 +77,13 @@ export interface ScoreCalculationContext {
   triggerType?: 'news_event' | 'market_update' | 'manual_recalc' | 'periodic';
 }
 
+interface M35WeightOverride {
+  keyEventId:      string;
+  attributedDelta: number;
+  confidence:      number;
+  windowMonths:    number;
+}
+
 // ============================================================================
 // JEDI Score Service Class
 // ============================================================================
@@ -102,14 +110,16 @@ export class JEDIScoreService {
     }
 
     const demandIntel = await this.fetchDemandIntelligence(dealInfo.city);
+    const corpHealthAdj = await this.getCorporateHealthAdjustment(dealInfo.submarket_id || null);
 
-    const demandScore = await this.calculateDemandScore(dealId, tradeAreaId, demandIntel);
+    const rawDemandScore = await this.calculateDemandScore(dealId, tradeAreaId, demandIntel);
+    const demandScore = Math.max(0, Math.min(100, rawDemandScore + corpHealthAdj.demandAdj));
     const supplyScore = await this.calculateSupplyScore(dealId, tradeAreaId, demandIntel);
     const momentumScore = await this.calculateMomentumScore(dealId, tradeAreaId, demandIntel);
     const positionScore = await this.calculatePositionScore(dealId, tradeAreaId, demandIntel);
-    const riskScore = await this.calculateRiskScore(dealId, tradeAreaId, demandIntel);
+    const rawRiskScore = await this.calculateRiskScore(dealId, tradeAreaId, demandIntel);
+    const riskScore = Math.max(0, Math.min(100, rawRiskScore + corpHealthAdj.riskAdj));
 
-    // Calculate weighted contributions
     const demandContribution = demandScore * this.WEIGHTS.demand;
     const supplyContribution = supplyScore * this.WEIGHTS.supply;
     const momentumContribution = momentumScore * this.WEIGHTS.momentum;
@@ -144,12 +154,34 @@ export class JEDIScoreService {
    * Based on employment events, population growth, economic indicators,
    * enriched with apartment_features demand counts and bedroom_demand from demand intelligence.
    */
+  // Maps M35 key_event.category enum values to JEDI demand signal categories.
+  // Only categories listed here can produce an M35 weight override for demand signals.
+  private static readonly M35_TO_DEMAND_CAT: Readonly<Record<string, string>> = {
+    EMPLOYMENT:          'employment',
+    TECHNOLOGY_INDUSTRY: 'employment',
+    INFRASTRUCTURE:      'development',
+    MACRO_DEMOGRAPHIC:   'amenities',
+  };
+
+  // Per demand category: the M35 metric key (via MODULE_ALIASES.M06) that carries
+  // the attributed_delta for that category. Only this metric row is accepted from
+  // event_forecasts — all other metric rows for the same key event are ignored.
+  private static readonly DEMAND_CAT_M06_METRIC: Readonly<Record<string, string>> = {
+    employment:  MODULE_ALIASES.M06.demand_signal_rent,       // 'rent_growth_yoy'
+    development: MODULE_ALIASES.M06.demand_signal_absorption, // 'net_absorption'
+    amenities:   MODULE_ALIASES.M06.demand_signal_traffic,    // 'search_growth'
+  };
+
   private async calculateDemandScore(dealId: string, tradeAreaId?: string, demandIntel?: DemandIntelligence | null): Promise<number> {
     const signals = await this.getDemandSignals(dealId, tradeAreaId);
 
     if (signals.length === 0 && !demandIntel) {
       return 50.0;
     }
+
+    // Pre-fetch M35 overrides keyed by demand signal category.
+    // Only categories with a forecast-backed key event in the deal's submarket (or MSA) get an override.
+    const m35Overrides = await this.getM35CategoryOverrides(dealId);
 
     let totalImpact = 0;
 
@@ -185,7 +217,15 @@ export class JEDIScoreService {
           impactMagnitude = (signal.impactScore / 100) * weight.max_jedi_impact;
         }
 
-        const weightedImpact = impactMagnitude * confidenceMultiplier * weight.base_weight;
+        // Substitute static base_weight with M35 attributed_delta when the deal's
+        // submarket (or MSA) has a forecast-backed key event in this specific category.
+        const m35Override = m35Overrides.get(signal.eventCategory);
+        const effectiveBaseWeight =
+          m35Override && m35Override.confidence >= 0.50
+            ? Math.abs(m35Override.attributedDelta) * 100 * m35Override.confidence
+            : weight.base_weight;
+
+        const weightedImpact = impactMagnitude * confidenceMultiplier * effectiveBaseWeight;
         const proximityFactor = signal.impactScore / 100;
         const finalImpact = weightedImpact * proximityFactor;
 
@@ -703,7 +743,7 @@ export class JEDIScoreService {
    */
   private async getDealInfo(dealId: string) {
     const result = await query(
-      `SELECT d.*, d.city as city, p.id as property_id, ta.id as trade_area_id
+      `SELECT d.*, d.city as city, p.id as property_id, p.submarket_id, ta.id as trade_area_id
        FROM deals d
        LEFT JOIN deal_properties dp_link ON dp_link.deal_id = d.id
        LEFT JOIN properties p ON p.id = dp_link.property_id
@@ -714,6 +754,127 @@ export class JEDIScoreService {
     );
 
     return result.rows[0] || null;
+  }
+
+  private async getCorporateHealthAdjustment(submarketId: number | null): Promise<{demandAdj: number, riskAdj: number}> {
+    if (!submarketId) return { demandAdj: 0, riskAdj: 0 };
+    try {
+      const result = await query(
+        `SELECT schi_score, divergence_score, herfindahl_index, top_5_share
+         FROM submarket_corporate_health
+         WHERE submarket_id = $1
+         ORDER BY quarter DESC LIMIT 1`,
+        [submarketId]
+      );
+      if (result.rows.length === 0) return { demandAdj: 0, riskAdj: 0 };
+
+      const { schi_score, divergence_score, herfindahl_index, top_5_share } = result.rows[0];
+      const divVal = parseFloat(divergence_score || '0');
+      const hhi = parseFloat(herfindahl_index || '0');
+
+      const minChsResult = await query(
+        `SELECT MIN(chs.composite_chs) as min_chs
+         FROM corporate_health_scores chs
+         JOIN submarket_employers se ON se.ticker = chs.ticker
+         WHERE se.submarket_id = $1
+           AND chs.fiscal_quarter = (SELECT MAX(fiscal_quarter) FROM corporate_health_scores)`,
+        [submarketId]
+      );
+      const minChs = parseFloat(minChsResult.rows[0]?.min_chs || '50');
+
+      const demandAdj = Math.max(-8, Math.min(8, (divVal / 15) * 8));
+
+      const hhiNormalized = Math.min(1, hhi / 0.25);
+      const riskAdj = Math.round(hhiNormalized * (1 - minChs / 100) * 100) / 10;
+
+      return { demandAdj, riskAdj };
+    } catch {
+      return { demandAdj: 0, riskAdj: 0 };
+    }
+  }
+
+  // Queries key events with active forecasts in the deal's submarket (MSA fallback).
+  // Returns a Map<demandSignalCategory, M35WeightOverride> — one entry per demand category,
+  // taking the highest-confidence key event when multiple events share a category.
+  // Signals whose category is NOT in M35_TO_DEMAND_CAT keep their static base_weight.
+  private async getM35CategoryOverrides(
+    dealId: string,
+  ): Promise<Map<string, M35WeightOverride>> {
+    try {
+      const pool = getPool();
+
+      const dealRes = await pool.query<{ submarket_id: string | null; msa_id: string | null }>(
+        `SELECT deal_data->>'submarketId' AS submarket_id,
+                deal_data->>'msaId'        AS msa_id
+         FROM deals WHERE id = $1 LIMIT 1`,
+        [dealId]
+      );
+      const { submarket_id: submarketId, msa_id: msaId } = dealRes.rows[0] ?? {};
+
+      // Restrict to the M06-specific metric keys via the MODULE_ALIASES.M06 mapping.
+      // This prevents supply/investment metrics from polluting demand weight derivation.
+      const allowedMetricKeys = Object.values(JEDIScoreService.DEMAND_CAT_M06_METRIC);
+
+      const BASE_SQL = `
+        SELECT ke.id             AS key_event_id,
+               ke.category::text AS m35_category,
+               ef.metric_key,
+               ef.point_estimate AS attributed_delta,
+               ef.confidence,
+               ef.window_months
+        FROM event_forecasts ef
+        JOIN key_events ke ON ke.id = ef.event_id
+        WHERE ef.status = 'active'
+          AND ke.status IN ('announced','in_progress','materialized')
+          AND ef.point_estimate IS NOT NULL
+          AND ef.metric_key = ANY($2)`;
+
+      type ForecastRow = {
+        key_event_id:    string;
+        m35_category:    string;
+        metric_key:      string;
+        attributed_delta: string | null;
+        confidence:      string;
+        window_months:   string;
+      };
+
+      let rows: ForecastRow[] = [];
+
+      if (submarketId) {
+        const res = await pool.query<ForecastRow>(
+          `${BASE_SQL} AND ke.submarket_id = $1 ORDER BY ef.confidence DESC`,
+          [submarketId, allowedMetricKeys]
+        );
+        rows = res.rows;
+      }
+
+      if (rows.length === 0 && msaId) {
+        const res = await pool.query<ForecastRow>(
+          `${BASE_SQL} AND ke.msa_id = $1 ORDER BY ef.confidence DESC`,
+          [msaId, allowedMetricKeys]
+        );
+        rows = res.rows;
+      }
+
+      const overrides = new Map<string, M35WeightOverride>();
+      for (const r of rows) {
+        const demandCat = JEDIScoreService.M35_TO_DEMAND_CAT[r.m35_category];
+        if (!demandCat) continue;
+        // Only accept the metric key designated for this demand category via MODULE_ALIASES.M06.
+        const expectedMetric = JEDIScoreService.DEMAND_CAT_M06_METRIC[demandCat];
+        if (r.metric_key !== expectedMetric) continue;
+        if (overrides.has(demandCat)) continue; // rows ordered by confidence DESC; first wins
+        overrides.set(demandCat, {
+          keyEventId:      r.key_event_id,
+          attributedDelta: parseFloat(r.attributed_delta!),
+          confidence:      parseFloat(r.confidence),
+          windowMonths:    parseInt(r.window_months),
+        });
+      }
+      return overrides;
+    } catch {
+      return new Map();
+    }
   }
 
   /**

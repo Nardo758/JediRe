@@ -4,9 +4,134 @@
  * Single source of truth consumed by Zoning, Supply, and Cashflow agents.
  */
 
-// ── Core DealContext Interface ──────────────────────────────────
+// ── Shared Layer Types (aligned with frontend dealContext.types.ts) ──
 
-export interface DealContext {
+export type DataSourceLayer = 'broker' | 'platform' | 'user' | 'agent' | 'computed';
+export type AlertLevel = 'none' | 'info' | 'warn' | 'block';
+export type InputClass = 'identity' | 'override' | 'scope';
+export type ProjectType = 'existing' | 'development' | 'redevelopment';
+
+export interface LayeredValue<T> {
+  value: T;
+  source: DataSourceLayer;
+  resolvedFrom: 'broker' | 'platform' | 'user';
+  updatedAt: string;
+  confidence: number;
+  alertLevel: AlertLevel;
+  userReviewed: boolean;
+  layers?: {
+    broker?: { value: T; updatedAt: string; confidence: number; source?: string };
+    platform?: { value: T; updatedAt: string; confidence: number; source?: string };
+    user?: { value: T; updatedAt: string; confidence: number };
+  };
+}
+
+export interface EditLogEntry {
+  path: string;
+  oldValue: unknown;
+  newValue: unknown;
+  timestamp: string;
+  actor: 'user' | 'agent' | 'platform';
+  actorId?: string;
+}
+
+export interface RedevelopmentDelta {
+  id: string;
+  type: 'unit_reconfig' | 'amenity_add' | 'envelope_mod' | 'demo' | 'systems_upgrade';
+  description: string;
+  costEstimate: number;
+  timelineMonths: number;
+  impactOnUnits: number;
+  impactOnRent: number;
+}
+
+export interface RedevelopmentContext {
+  deltas: RedevelopmentDelta[];
+  demoScope: 'none' | 'partial' | 'full';
+  existingNOI: LayeredValue<number>;
+  projectedNOI: LayeredValue<number>;
+  nonConformingReview: boolean;
+  varianceRequired: boolean;
+  varianceNotes: string | null;
+}
+
+export interface InputFieldMeta {
+  path: string;
+  label: string;
+  inputClass: InputClass;
+  highSensitivity: boolean;
+  appliesTo: ProjectType[];
+  category: 'identity' | 'market' | 'cost' | 'capital' | 'exit' | 'site' | 'zoning';
+}
+
+export function computeAlertLevel<T>(
+  lv: LayeredValue<T>,
+  opts?: { isIdentity?: boolean; highSensitivity?: boolean }
+): AlertLevel {
+  const isIdentity = opts?.isIdentity ?? false;
+  const highSensitivity = opts?.highSensitivity ?? false;
+
+  if (isIdentity && (lv.value === null || lv.value === undefined || lv.value === '')) return 'block';
+  if (highSensitivity && lv.confidence < 0.4) return 'block';
+  if (lv.resolvedFrom === 'user' || lv.source === 'user') return 'none';
+  if (lv.confidence >= 0.9 && lv.userReviewed) return 'none';
+
+  const broker = lv.layers?.broker;
+  const platform = lv.layers?.platform;
+  if (broker && platform && typeof broker.value === 'number' && typeof platform.value === 'number') {
+    const denom = (platform.value as number) || 1;
+    const divergence = Math.abs(((broker.value as number) - (platform.value as number)) / denom);
+    if (divergence > 0.15) return 'warn';
+  }
+
+  if (lv.confidence <= 0.7) return 'warn';
+  if (!lv.userReviewed) return 'info';
+  return 'info';
+}
+
+const EXISTING_ALIASES = new Set([
+  'existing', 'acquisition', 'existing_acquisition', 'stabilized',
+  'value-add', 'value_add',
+  'multifamily', 'multi-family', 'multi_family',
+  'office', 'retail', 'industrial', 'flex',
+  'mixed_use', 'mixed-use', 'mixeduse',
+  'hotel', 'hospitality', 'self_storage', 'self-storage',
+  'senior_housing', 'senior-housing', 'student_housing',
+  'single_family', 'single-family', 'sfr',
+  'build_to_rent', 'build-to-rent',
+]);
+
+const DEVELOPMENT_ALIASES = new Set([
+  'development', 'ground_up', 'ground-up',
+  'new_construction', 'new construction',
+  'new_development', 'new-development',
+  'land', 'vacant',
+]);
+
+const REDEVELOPMENT_ALIASES = new Set([
+  'redevelopment', 'redev', 'rehab', 'repositioning',
+  'adaptive_reuse', 'adaptive-reuse',
+  'gut_rehab', 'gut-rehab',
+  'tear-down', 'teardown', 'tear_down',
+  'conversion', 'partial_demo', 'partial-demo',
+]);
+
+export function resolveProjectType(raw: string | null | undefined): ProjectType {
+  if (!raw) return 'existing';
+  const n = raw.toLowerCase().trim();
+  if (!n) return 'existing';
+  if (EXISTING_ALIASES.has(n)) return 'existing';
+  if (DEVELOPMENT_ALIASES.has(n)) return 'development';
+  if (REDEVELOPMENT_ALIASES.has(n)) return 'redevelopment';
+  return 'existing';
+}
+
+// ── Research Agent Context (legacy name: DealContext) ────────────
+// NOTE: This is the Research Agent's assembled output package — NOT the
+// frontend Deal Capsule union. For frontend-aligned deal types, use
+// DealCapsuleContext (ExistingDealCapsule | DevelopmentDealCapsule | RedevelopmentDealCapsule).
+
+export interface ResearchAgentContext {
   // ── Identity ──
   requestId: string;
   address: string;
@@ -206,7 +331,7 @@ export type ChatPlatform = 'whatsapp' | 'imessage' | 'sms' | 'telegram';
 export type Surface = 'chat' | 'web' | 'api' | 'autonomous';
 export type SubscriptionTier = 'scout' | 'operator' | 'principal' | 'institutional';
 export type AutomationLevel = 1 | 2 | 3 | 4;
-export type AgentId = 'research' | 'zoning' | 'supply' | 'cashflow' | 'coordinator';
+export type AgentId = 'research' | 'zoning' | 'supply' | 'cashflow' | 'coordinator' | 'commentary';
 
 export interface ChatMessage {
   platform: ChatPlatform;
@@ -259,7 +384,7 @@ export interface ChatSession {
     dealId: string;
     address: string;
     askingPrice: number;
-    dealContext?: DealContext;
+    dealContext?: ResearchAgentContext;
     agentResults?: {
       zoning?: ZoningResult;
       supply?: SupplyResult;
@@ -274,6 +399,160 @@ export interface ChatSession {
   lastMessageAt: string;
   expiresAt: string;
 }
+
+// ── Deal Capsule Context (aligned with frontend DealContext union) ───────
+
+interface DealCapsuleIdentity {
+  id: string;
+  name: string;
+  address: string;
+  city: string;
+  state: string;
+  zip: string;
+  county: string;
+  mode: 'existing' | 'development' | 'redevelopment';
+  stage: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface DealCapsuleSite {
+  acreage: LayeredValue<number>;
+  buildableAcreage: LayeredValue<number>;
+  floodZone: LayeredValue<string | null>;
+  coordinates?: { lat: number; lng: number };
+  parcelId?: string;
+  county?: string;
+  topography?: string;
+  utilities?: string[];
+  environmentalFlags?: string[];
+}
+
+interface DealCapsuleZoning {
+  designation: LayeredValue<string>;
+  maxDensity: LayeredValue<number>;
+  maxHeight: LayeredValue<number>;
+  maxFAR: LayeredValue<number>;
+  maxLotCoverage: LayeredValue<number>;
+  setbacks: LayeredValue<{
+    front: number;
+    side: number;
+    rear: number;
+  }>;
+  parkingRatio: LayeredValue<number>;
+  guestParkingRatio: LayeredValue<number>;
+}
+
+interface DealCapsuleMarket {
+  submarketName: string;
+  avgRent: LayeredValue<number>;
+  avgOccupancy: LayeredValue<number>;
+  rentGrowthYoY: LayeredValue<number>;
+  absorptionRate: LayeredValue<number>;
+  medianHHI: LayeredValue<number>;
+  popGrowthPct: LayeredValue<number>;
+  employmentGrowthPct: LayeredValue<number>;
+}
+
+interface DealCapsuleFinancial {
+  assumptions: {
+    rentGrowth: LayeredValue<number>;
+    expenseGrowth: LayeredValue<number>;
+    vacancy: LayeredValue<number>;
+    exitCapRate: LayeredValue<number>;
+    holdPeriod: LayeredValue<number>;
+    capexPerUnit: LayeredValue<number>;
+    managementFee: LayeredValue<number>;
+  };
+}
+
+interface DealCapsuleCapital {
+  totalCapital: LayeredValue<number>;
+  debt: Array<{
+    id: string;
+    name: string;
+    amount: number;
+    ltv: number;
+    rate: LayeredValue<number>;
+    termYears: number;
+    amortizationYears: number;
+    ioPeriodMonths: number;
+    lender?: string;
+  }>;
+  equity: Array<{
+    id: string;
+    name: string;
+    amount: number;
+    preferredReturn: number;
+    promoteSplits: Array<{ above: number; gpShare: number; lpShare: number }>;
+  }>;
+  metrics?: {
+    totalLTV: number;
+    blendedRate: number;
+    dscr: number;
+    debtYield: number;
+  };
+}
+
+interface DealCapsuleExistingProperty {
+  yearBuilt: LayeredValue<number>;
+  totalUnits: LayeredValue<number>;
+  totalSF: LayeredValue<number>;
+  occupancy: LayeredValue<number>;
+  currentNOI: LayeredValue<number>;
+  askingPrice: LayeredValue<number>;
+  pricePerUnit: number;
+  goingInCapRate: number;
+  lastRenovated: LayeredValue<number | null>;
+  propertyClass: LayeredValue<'A' | 'B+' | 'B' | 'B-' | 'C' | 'D'>;
+  amenities: string[];
+}
+
+interface DealCapsuleBase {
+  identity: DealCapsuleIdentity;
+  productType: string;
+  site: DealCapsuleSite;
+  zoning: DealCapsuleZoning;
+  market: DealCapsuleMarket;
+  financial: DealCapsuleFinancial;
+  capital: DealCapsuleCapital;
+  editLog: EditLogEntry[];
+}
+
+export interface ExistingDealCapsule extends DealCapsuleBase {
+  projectType: 'existing';
+  existingProperty: DealCapsuleExistingProperty | null;
+  redevelopment: null;
+}
+
+export interface DevelopmentDealCapsule extends DealCapsuleBase {
+  projectType: 'development';
+  existingProperty: null;
+  redevelopment: null;
+}
+
+export interface RedevelopmentDealCapsule extends DealCapsuleBase {
+  projectType: 'redevelopment';
+  existingProperty: DealCapsuleExistingProperty | null;
+  redevelopment: RedevelopmentContext | null;
+}
+
+export type DealCapsuleContext = ExistingDealCapsule | DevelopmentDealCapsule | RedevelopmentDealCapsule;
+
+export function isExistingCapsule(ctx: DealCapsuleContext): ctx is ExistingDealCapsule {
+  return ctx.projectType === 'existing';
+}
+
+export function isDevelopmentCapsule(ctx: DealCapsuleContext): ctx is DevelopmentDealCapsule {
+  return ctx.projectType === 'development';
+}
+
+export function isRedevelopmentCapsule(ctx: DealCapsuleContext): ctx is RedevelopmentDealCapsule {
+  return ctx.projectType === 'redevelopment';
+}
+
+/** @deprecated Use ResearchAgentContext instead. Kept for backward compatibility. */
+export type DealContext = ResearchAgentContext;
 
 // ── AI Service Types ────────────────────────────────────────────
 

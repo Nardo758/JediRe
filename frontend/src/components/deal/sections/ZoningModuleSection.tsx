@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   MapPin,
-  CheckCircle2,
   BarChart3,
   TrendingUp,
   ShieldAlert,
@@ -15,10 +14,13 @@ import DevelopmentCapacityTab from '../../zoning/tabs/DevelopmentCapacityTab';
 import RegulatoryRiskTab from '../../zoning/tabs/RegulatoryRiskTab';
 import TimeToShovelTab from '../../zoning/tabs/TimeToShovelTab';
 import HighestBestUseTab from '../../zoning/tabs/HighestBestUseTab';
-import EntitlementTrackerTab from '../../zoning/tabs/EntitlementTrackerTab';
 import type { ZoningTabId } from '../../../types/zoning.types';
+import { T as BT, mono as bMono, sans as bSans } from '../bloomberg-tokens';
+import { BT as BT2, BtTabWrapper, PanelHeader, SubTabBar } from '../bloomberg-ui';
 import { useDealType } from '../../../stores/dealStore';
-import { getZoningDepth } from '@/shared/config/deal-type-visibility';
+import { getZoningDepth } from '../../../shared/config/deal-type-visibility';
+import { useDealAssumptions } from '../../../hooks/useDealAssumptions';
+import { DataSourceBadge } from '../../ui/DataSourceBadge';
 
 interface ZoningModuleSectionProps {
   deal?: any;
@@ -27,26 +29,27 @@ interface ZoningModuleSectionProps {
   onBack?: () => void;
 }
 
+const SIMPLIFIED_TABS: ZoningTabId[] = ['boundary_zoning', 'risk'];
+const FULL_TABS: ZoningTabId[] = ['boundary_zoning', 'capacity', 'risk', 'timeline', 'hbu'];
+
 const ALL_TABS: { id: ZoningTabId; label: string; icon: React.ReactNode; step: number }[] = [
   { id: 'boundary_zoning', label: 'Boundary & Zoning', icon: <MapPin className="w-4 h-4" />, step: 1 },
   { id: 'capacity', label: 'Dev Capacity', icon: <BarChart3 className="w-4 h-4" />, step: 2 },
-  { id: 'hbu', label: 'Highest & Best Use', icon: <TrendingUp className="w-4 h-4" />, step: 3 },
-  { id: 'risk', label: 'Regulatory Risk', icon: <ShieldAlert className="w-4 h-4" />, step: 4 },
-  { id: 'timeline', label: 'Time-to-Shovel', icon: <Clock className="w-4 h-4" />, step: 5 },
-  { id: 'entitlements', label: 'Entitlements', icon: <CheckCircle2 className="w-4 h-4" />, step: 6 },
+  { id: 'risk', label: 'Regulatory Risk', icon: <ShieldAlert className="w-4 h-4" />, step: 3 },
+  { id: 'timeline', label: 'Time-to-Shovel', icon: <Clock className="w-4 h-4" />, step: 4 },
+  { id: 'hbu', label: 'Highest & Best Use', icon: <TrendingUp className="w-4 h-4" />, step: 5 },
 ];
-
-// Simplified tabs for existing deals (3 tabs)
-const SIMPLIFIED_TABS: ZoningTabId[] = ['boundary_zoning', 'risk', 'timeline'];
-
-// Full tabs for development/redevelopment deals (all 6 tabs)
-const FULL_TABS: ZoningTabId[] = ['boundary_zoning', 'capacity', 'hbu', 'risk', 'timeline', 'entitlements'];
 
 export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: ZoningModuleSectionProps) {
   const dealType = useDealType();
-  const zoningDepth = useMemo(() => getZoningDepth(dealType), [dealType]);
+  const resolvedDealIdForAssumptions = propDealId || deal?.id || null;
+  const { assumptions } = useDealAssumptions(resolvedDealIdForAssumptions);
+  const zoningDepth = useMemo(() => {
+    const explicitType = deal?.projectType || deal?.project_type || deal?.identity?.mode;
+    if (!explicitType) return 'full';
+    return getZoningDepth(dealType);
+  }, [dealType, deal]);
 
-  // Filter tabs based on zoning depth (simplified for existing, full for dev/redev)
   const visibleTabs = useMemo(() => {
     const tabIds = zoningDepth === 'simplified' ? SIMPLIFIED_TABS : FULL_TABS;
     return ALL_TABS.filter(tab => tabIds.includes(tab.id));
@@ -113,9 +116,8 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
     if (onUpdate) onUpdate();
   };
 
-  const isTabUnlocked = (tabId: ZoningTabId): boolean => {
-    if (tabId === 'boundary_zoning') return true;
-    return boundaryAndZoningComplete;
+  const isTabUnlocked = (_tabId: ZoningTabId): boolean => {
+    return true;
   };
 
   const renderActiveTab = () => {
@@ -129,15 +131,13 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
           />
         );
       case 'capacity':
-        return <DevelopmentCapacityTab dealId={resolvedDealId} deal={deal} />;
+        return <DevelopmentCapacityTab dealId={resolvedDealId} deal={deal} costPerSf={(assumptions?.hardCostPsf || (assumptions as any)?.hard_cost_psf) ?? undefined} />;
       case 'hbu':
         return <HighestBestUseTab dealId={resolvedDealId} deal={deal} />;
       case 'risk':
         return <RegulatoryRiskTab dealId={resolvedDealId} deal={deal} />;
       case 'timeline':
         return <TimeToShovelTab dealId={resolvedDealId} deal={deal} />;
-      case 'entitlements':
-        return <EntitlementTrackerTab dealId={resolvedDealId} deal={deal} />;
       default:
         return (
           <BoundaryAndZoningTab
@@ -152,78 +152,73 @@ export function ZoningModuleSection({ deal, dealId: propDealId, onUpdate }: Zoni
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-sm text-gray-500">Loading zoning analysis...</div>
+        <div className="text-sm text-[#7f8ea3]">Loading zoning analysis...</div>
       </div>
     );
   }
 
-  return (
-    <div className="relative flex flex-col h-full -m-6 -mr-10">
-      <div className="bg-white border-b border-gray-200 px-6 pt-4">
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h2 className="text-lg font-bold text-gray-900">Property & Zoning Intelligence</h2>
-            <p className="text-xs text-gray-500 mt-0.5">
-              Boundary, zoning verification, development capacity & entitlement timeline
-              {deal?.strategy && <><span className="ml-2 text-gray-400">•</span> <span className="ml-2 text-blue-600 font-medium">{deal.strategy} Strategy</span></>}
-            </p>
-          </div>
+  const MONO = BT2.font.mono;
 
-          {/* Refresh button */}
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BT2.bg.terminal }}>
+      <PanelHeader
+        title="PROPERTY & ZONING"
+        subtitle="M02 · ENTITLEMENT ENGINE"
+        borderColor={BT2.text.amber}
+        metrics={deal?.strategy ? [{ l: deal.strategy, c: BT2.text.amber }] : undefined}
+        right={<div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {assumptions?.exists && (
+            <DataSourceBadge
+              sourceType={assumptions?.source_type || assumptions?.sourceType || 'manual'}
+              sourceRef={assumptions?.source_ref || assumptions?.sourceRef}
+              sourceDate={assumptions?.source_date || assumptions?.sourceDate}
+              compact
+            />
+          )}
           {!boundaryAndZoningComplete && (
             <button
               onClick={() => checkCompletionStatus()}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-              title="Refresh tab status"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 4,
+                fontFamily: MONO, fontSize: 9, color: BT2.text.secondary,
+                background: 'transparent', border: `1px solid ${BT2.border.subtle}`,
+                padding: '2px 8px', cursor: 'pointer',
+              }}
             >
-              <RefreshCw className="w-3.5 h-3.5" />
-              <span>Refresh</span>
+              <RefreshCw size={10} />
+              REFRESH
             </button>
           )}
-        </div>
+        </div>}
+      />
 
-        {/* Status Banner */}
-        {statusMessage && !boundaryAndZoningComplete && (
-          <div className="mb-3 px-3 py-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-700 flex items-center gap-2">
-            <Lock className="w-3 h-3" />
-            {statusMessage}
-          </div>
+      {/* Status Banner */}
+      {statusMessage && !boundaryAndZoningComplete && (
+        <div style={{
+          padding: '4px 10px',
+          background: `${BT2.text.amber}08`,
+          borderLeft: `3px solid ${BT2.text.amber}`,
+          display: 'flex', alignItems: 'center', gap: 6,
+          flexShrink: 0,
+        }}>
+          <Lock size={10} style={{ color: BT2.text.amber }} />
+          <span style={{ fontSize: 9, color: BT2.text.secondary, fontFamily: MONO }}>{statusMessage}</span>
+        </div>
+      )}
+
+      <SubTabBar
+        tabs={visibleTabs.map(t =>
+          (t.id === 'boundary_zoning' && boundaryAndZoningComplete ? '✓ ' : '') +
+          t.label.toUpperCase()
         )}
+        active={visibleTabs.findIndex(t => t.id === activeTab)}
+        setActive={(i) => setActiveTab(visibleTabs[i].id)}
+        color={BT2.text.amber}
+      />
 
-        <div className="flex gap-0.5 overflow-x-auto">
-          {visibleTabs.map(tab => {
-            const unlocked = isTabUnlocked(tab.id);
-            const completed =
-              tab.id === 'boundary_zoning' && boundaryAndZoningComplete;
-
-            return (
-              <button
-                key={tab.id}
-                onClick={() => unlocked && setActiveTab(tab.id)}
-                disabled={!unlocked}
-                className={`flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
-                  activeTab === tab.id
-                    ? 'border-blue-600 text-blue-600'
-                    : unlocked
-                    ? 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                    : 'border-transparent text-gray-300 cursor-not-allowed'
-                }`}
-                title={!unlocked ? 'Complete boundary & zoning verification to unlock' : ''}
-              >
-                {!unlocked && <Lock className="w-3 h-3" />}
-                {completed && <CheckCircle2 className="w-3 h-3 text-green-600" />}
-                {!completed && unlocked && tab.icon}
-                <span>{tab.label}</span>
-                <span className="ml-1 text-[10px] text-gray-400">{tab.step}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto bg-gray-50 p-6 pr-10 pb-6">
+      <BtTabWrapper>
         {renderActiveTab()}
-      </div>
+      </BtTabWrapper>
     </div>
   );
 }

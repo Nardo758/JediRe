@@ -144,6 +144,10 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
   const [modelResults, setModelResults] = useState<ModelResults | null>(null);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['dealInfo', 'unitMix', 'acquisition']));
   const [platformData, setPlatformData] = useState<Record<string, any>>({});
+  const [programData, setProgramData] = useState<{ totalUnits: number; units: Record<string, { mix: number; sf: number; rent: number }> } | null>(null);
+  const [programMixApplied, setProgramMixApplied] = useState(false);
+  const [programMixRows, setProgramMixRows] = useState<Record<string, { mix: number; sf: number; rent: number }>>({});
+  const [programMixExpanded, setProgramMixExpanded] = useState(true);
 
   const [dealName, setDealName] = useState(deal?.name || 'Untitled Deal');
   const [totalUnitsManual, setTotalUnitsManual] = useState<number | null>(null);
@@ -328,16 +332,29 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
   const [constructionLoanRate, setConstructionLoanRate] = useState(0.065);
 
   useEffect(() => {
+    setProgramMixRows({});
+    setProgramMixApplied(false);
+    setProgramData(null);
+  }, [id]);
+
+  useEffect(() => {
+    if (programData && Object.keys(programMixRows).length === 0) {
+      setProgramMixRows({ ...programData.units });
+    }
+  }, [programData]);
+
+  useEffect(() => {
     if (!id) { setLoading(false); return; }
     let cancelled = false;
 
     const fetchData = async () => {
       try {
-        const [proformaRes, trafficRes, strategyRes, latestModelRes] = await Promise.allSettled([
+        const [proformaRes, trafficRes, strategyRes, latestModelRes, programRes] = await Promise.allSettled([
           apiClient.get(`/api/v1/proforma/${id}`),
           apiClient.get(`/api/v1/leasing-traffic/v2/intelligence/${id}`),
           apiClient.get(`/api/v1/strategy-analyses/${id}`),
           apiClient.get(`/api/v1/financial-model/${id}/latest`),
+          apiClient.get(`/api/v1/unit-mix/${id}/program`),
         ]);
 
         if (cancelled) return;
@@ -376,6 +393,14 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
           const model = (latestModelRes.value as any).data.data;
           if (model?.results) {
             setModelResults(model.results);
+          }
+        }
+
+        if (programRes.status === 'fulfilled') {
+          const raw = (programRes.value as any)?.data;
+          const prog = raw?.program ?? raw;
+          if (prog && typeof prog === 'object' && 'totalUnits' in prog && (prog as { totalUnits: number }).totalUnits > 0) {
+            setProgramData(prog as { totalUnits: number; units: Record<string, { mix: number; sf: number; rent: number }> });
           }
         }
 
@@ -518,6 +543,59 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
       alert('Excel export failed: ' + (err?.response?.data?.error || err.message));
     }
   };
+
+  const saveProgramMixOverride = useCallback(async (rows: Record<string, { mix: number; sf: number; rent: number }>) => {
+    if (!id || Object.keys(rows).length === 0) return;
+    const totalUnits = programData?.totalUnits ?? 0;
+    if (totalUnits === 0) return;
+    const unitMix = Object.entries(rows).map(([key, u]) => ({ type: key, mix: u.mix, sf: u.sf, rent: u.rent }));
+    const avgRentPerUnit = unitMix.length > 0
+      ? Math.round(unitMix.reduce((s, u) => s + u.rent * (u.mix / 100), 0))
+      : undefined;
+    try {
+      await apiClient.put(`/api/v1/deals/${id}/assumptions`, {
+        unitMix,
+        totalUnits,
+        avgRentPerUnit,
+      });
+    } catch {
+      // best-effort — non-blocking
+    }
+  }, [id, programData?.totalUnits]);
+
+  const applyProgramMix = useCallback(() => {
+    const sourceRows = Object.keys(programMixRows).length > 0 ? programMixRows : programData?.units;
+    if (!sourceRows) return;
+    const totalUnits = programData?.totalUnits ?? 0;
+    const keyMap: Array<{ key: string; floorPlan: string; beds: number }> = [
+      { key: 'studio',  floorPlan: 'Studio',  beds: 0 },
+      { key: 'oneBR',   floorPlan: '1BR/1BA', beds: 1 },
+      { key: 'twoBR',   floorPlan: '2BR/2BA', beds: 2 },
+      { key: 'threeBR', floorPlan: '3BR/2BA', beds: 3 },
+    ];
+    const rows: UnitMixRow[] = keyMap
+      .filter(m => (sourceRows[m.key]?.mix ?? 0) > 0)
+      .map(m => {
+        const u = sourceRows[m.key];
+        const unitCount = Math.round(totalUnits * u.mix / 100);
+        const occ = Math.round(unitCount * 0.94);
+        return {
+          floorPlan: m.floorPlan,
+          unitSize: u.sf,
+          beds: m.beds,
+          units: unitCount,
+          occupied: occ,
+          vacant: unitCount - occ,
+          marketRent: u.rent,
+          inPlaceRent: u.rent,
+        };
+      });
+    if (rows.length > 0) {
+      setUnitMix(rows);
+      if (totalUnits > 0) setTotalUnitsManual(totalUnits);
+      setProgramMixApplied(true);
+    }
+  }, [programData, programMixRows]);
 
   const toggleSection = (section: string) => {
     setExpandedSections(prev => {
@@ -680,7 +758,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
                   )}
                   {section.id === 'unitMix' && (
                     <>
-                      {designSource && (
+                      {designSource && !programMixApplied && (
                         <div className="mt-2 mb-1 flex items-center gap-2">
                           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-violet-100 text-violet-700 border border-violet-200">
                             Source: {designSource}
@@ -688,6 +766,126 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
                           <span className="text-[10px] text-stone-400">Unit mix pre-filled from 3D Design module — edit to override</span>
                         </div>
                       )}
+                      {programMixApplied && (
+                        <div className="mt-2 mb-1 flex items-center gap-2">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-100 text-blue-700 border border-blue-200">
+                            Source: Program Tab
+                          </span>
+                          <span className="text-[10px] text-stone-400">Unit mix loaded from AI-optimised program — edit to override</span>
+                        </div>
+                      )}
+                      {(() => {
+                        const PROG_TYPES = [
+                          { key: 'studio',  label: 'Studio',  beds: 0 },
+                          { key: 'oneBR',   label: '1BR',     beds: 1 },
+                          { key: 'twoBR',   label: '2BR',     beds: 2 },
+                          { key: 'threeBR', label: '3BR',     beds: 3 },
+                        ];
+                        const hasRows = Object.keys(programMixRows).length > 0;
+                        const totalUnits = programData?.totalUnits ?? 0;
+                        const gpr = hasRows
+                          ? Object.entries(programMixRows).reduce((sum, [, u]) => {
+                              return sum + Math.round(totalUnits * u.mix / 100) * u.rent * 12;
+                            }, 0)
+                          : 0;
+                        return (
+                          <div className="mt-3 mb-2 border border-blue-200 rounded-lg overflow-hidden">
+                            <button
+                              onClick={() => setProgramMixExpanded(e => !e)}
+                              className="w-full flex items-center justify-between px-3 py-2 bg-blue-50 hover:bg-blue-100 transition-colors"
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-bold text-blue-800 uppercase tracking-wider">
+                                  Unit Mix — Program Source
+                                </span>
+                                {hasRows && (
+                                  <span className="text-[10px] text-blue-600">
+                                    {totalUnits} units · GPR ${(gpr / 1e6).toFixed(2)}M/yr
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[10px] text-blue-500">{programMixExpanded ? '▲' : '▼'}</span>
+                            </button>
+                            {programMixExpanded && (
+                              <div className="bg-white p-3">
+                                {!hasRows ? (
+                                  <div className="py-6 text-center text-[11px] text-stone-400 italic">
+                                    — No program pushed yet —
+                                  </div>
+                                ) : (
+                                  <>
+                                    <div className="grid grid-cols-4 gap-1 mb-1">
+                                      <div className="text-[9px] font-semibold text-stone-500 uppercase tracking-wider">Type</div>
+                                      <div className="text-[9px] font-semibold text-stone-500 uppercase tracking-wider text-right">Mix %</div>
+                                      <div className="text-[9px] font-semibold text-stone-500 uppercase tracking-wider text-right">Avg SF</div>
+                                      <div className="text-[9px] font-semibold text-stone-500 uppercase tracking-wider text-right">Mkt Rent/mo</div>
+                                    </div>
+                                    {PROG_TYPES.map(pt => {
+                                      const row = programMixRows[pt.key] ?? { mix: 0, sf: 0, rent: 0 };
+                                      const unitCount = Math.round(totalUnits * row.mix / 100);
+                                      return (
+                                        <div key={pt.key} className="grid grid-cols-4 gap-1 mb-0.5 items-center">
+                                          <div className="text-[10px] font-medium text-stone-700">{pt.label}</div>
+                                          <input
+                                            type="number"
+                                            value={row.mix}
+                                            min={0} max={100}
+                                            className="text-[10px] text-right border border-stone-200 rounded px-1 py-0.5 w-full focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                            onChange={e => {
+                                              const v = Math.max(0, Math.min(100, Number(e.target.value)));
+                                              setProgramMixRows(prev => ({ ...prev, [pt.key]: { ...prev[pt.key], mix: v } }));
+                                            }}
+                                            onBlur={() => saveProgramMixOverride(programMixRows)}
+                                          />
+                                          <input
+                                            type="number"
+                                            value={row.sf}
+                                            min={0}
+                                            className="text-[10px] text-right border border-stone-200 rounded px-1 py-0.5 w-full focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                            onChange={e => {
+                                              const v = Math.max(0, Number(e.target.value));
+                                              setProgramMixRows(prev => ({ ...prev, [pt.key]: { ...prev[pt.key], sf: v } }));
+                                            }}
+                                            onBlur={() => saveProgramMixOverride(programMixRows)}
+                                          />
+                                          <div className="flex items-center gap-1">
+                                            <span className="text-[9px] text-stone-400">$</span>
+                                            <input
+                                              type="number"
+                                              value={row.rent}
+                                              min={0}
+                                              className="text-[10px] text-right border border-stone-200 rounded px-1 py-0.5 w-full focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                              onChange={e => {
+                                                const v = Math.max(0, Number(e.target.value));
+                                                setProgramMixRows(prev => ({ ...prev, [pt.key]: { ...prev[pt.key], rent: v } }));
+                                              }}
+                                              onBlur={() => saveProgramMixOverride(programMixRows)}
+                                            />
+                                          </div>
+                                          <div className="col-span-4 text-[9px] text-stone-400 pl-0 -mt-0.5 mb-0.5">
+                                            {unitCount} units · ${(unitCount * row.rent * 12 / 1000).toFixed(0)}K GPR/yr
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                    <div className="mt-2 pt-2 border-t border-stone-100 flex items-center justify-between">
+                                      <div className="text-[10px] text-stone-500">
+                                        Total GPR: <span className="font-semibold text-stone-700">${(gpr / 1e6).toFixed(2)}M/yr</span>
+                                      </div>
+                                      <button
+                                        onClick={applyProgramMix}
+                                        className="px-3 py-1 bg-blue-600 text-white text-[10px] font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+                                      >
+                                        Load into Pro Forma →
+                                      </button>
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                       <UnitMixSection unitMix={unitMix} setUnitMix={setUnitMix} platformData={platformData} />
                     </>
                   )}

@@ -21,7 +21,7 @@ const SectionHeader = ({ title, subtitle, icon, borderColor = T.text.amber, acti
     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
       {icon && <span style={{ fontSize: 10, color: borderColor }}>{icon}</span>}
       <span style={{ fontSize: 10, fontFamily: T.font.mono, fontWeight: 700, color: T.text.white, letterSpacing: "0.05em" }}>{title}</span>
-      {subtitle && <span style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.muted }}>{subtitle}</span>}
+      {subtitle && <span style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.muted }}>{subtitle}</span>}
     </div>
     {action && action}
   </div>
@@ -35,7 +35,7 @@ const DataRow = ({ label, value, sub, color, mono = true }) => (
     <span style={{ fontSize: 9, fontFamily: T.font.label, color: T.text.secondary }}>{label}</span>
     <div style={{ display: "flex", alignItems: "baseline", gap: 3 }}>
       <span style={{ fontSize: 10, fontFamily: mono ? T.font.mono : T.font.label, fontWeight: 600, color: color || T.text.primary }}>{value}</span>
-      {sub && <span style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.muted }}>{sub}</span>}
+      {sub && <span style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.muted }}>{sub}</span>}
     </div>
   </div>
 );
@@ -43,7 +43,7 @@ const DataRow = ({ label, value, sub, color, mono = true }) => (
 const Badge = ({ children, color = T.text.amber, bg, border: bdr }) => (
   <span style={{
     display: "inline-flex", alignItems: "center", padding: "1px 6px",
-    fontSize: 8, fontFamily: T.font.mono, fontWeight: 700, letterSpacing: "0.05em",
+    fontSize: 9, fontFamily: T.font.mono, fontWeight: 700, letterSpacing: "0.05em",
     color, background: bg || `${color}15`, border: `1px solid ${bdr || `${color}40`}`,
     borderRadius: 2, lineHeight: "14px", whiteSpace: "nowrap",
   }}>{children}</span>
@@ -253,7 +253,7 @@ export const MarketTabContent: React.FC<MarketTabContentProps> = ({
             {economy?.employers && economy.employers.length > 0 ? (
               <div style={{ marginBottom: 12 }}>
                 <div style={{
-                  fontSize: 8,
+                  fontSize: 9,
                   fontFamily: T.font.mono,
                   color: T.text.muted,
                   marginBottom: 6,
@@ -298,7 +298,7 @@ export const MarketTabContent: React.FC<MarketTabContentProps> = ({
                 borderRadius: 2,
                 marginTop: 8,
               }}>
-                <div style={{ fontSize: 8, fontFamily: T.font.mono, color: T.text.muted, marginBottom: 3 }}>
+                <div style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.muted, marginBottom: 3 }}>
                   Wage-Rent Alignment:
                 </div>
                 <div style={{ fontSize: 10, fontFamily: T.font.mono, fontWeight: 700, color: economy.wageRentAlignment.ratio >= 30 ? T.text.green : T.text.orange }}>
@@ -396,7 +396,7 @@ export const MarketTabContent: React.FC<MarketTabContentProps> = ({
                 </div>
                 {item.date && (
                   <div style={{
-                    fontSize: 7,
+                    fontSize: 9,
                     fontFamily: T.font.mono,
                     color: T.text.muted,
                   }}>

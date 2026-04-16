@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { competitionService, TieredCompProperty } from '@/services/competition.service';
 import {
@@ -8,150 +8,290 @@ import {
   Check,
   RotateCcw,
   MapPin,
-  Building2,
   AlertCircle,
 } from 'lucide-react';
+import { BT } from '@/components/deal/bloomberg-ui';
+
+const BT2 = BT;
 
 type TierKey = 'trade_area' | 'submarket' | 'msa';
+type ViewMode = 'list' | 'split' | 'map';
 
-const TIER_CONFIG: Record<TierKey, { label: string; color: string; bgColor: string; borderColor: string; icon: string }> = {
-  trade_area: { label: 'Trade Area Comps', color: 'text-emerald-700', bgColor: 'bg-emerald-50', borderColor: 'border-emerald-200', icon: '📍' },
-  submarket: { label: 'Submarket Comps', color: 'text-blue-700', bgColor: 'bg-blue-50', borderColor: 'border-blue-200', icon: '🏘️' },
-  msa: { label: 'MSA Comps', color: 'text-violet-700', bgColor: 'bg-violet-50', borderColor: 'border-violet-200', icon: '🌆' },
+const mono = 'var(--bt-mono)';
+
+const TIER_CONFIG: Record<TierKey, { label: string; color: string }> = {
+  trade_area: { label: 'TRADE AREA', color: '#00D26A' },
+  submarket:  { label: 'SUBMARKET',  color: '#00BCD4' },
+  msa:        { label: 'MSA',        color: '#A78BFA' },
 };
 
 interface CompSetSummary {
   count: number;
-  avgRent: number | null;
   avgUnits: number | null;
   avgDistance: number | null;
   avgMatchScore: number | null;
+  perTier: Record<TierKey, number>;
 }
 
-function computeCompSetSummary(comps: TieredCompProperty[]): CompSetSummary {
+function computeCompSetSummary(comps: TieredCompProperty[], tiers: Record<TierKey, TieredCompProperty[]>): CompSetSummary {
   const inSet = comps.filter(c => c.in_comp_set);
-  if (inSet.length === 0) return { count: 0, avgRent: null, avgUnits: null, avgDistance: null, avgMatchScore: null };
+  const perTier: Record<TierKey, number> = {
+    trade_area: tiers.trade_area.filter(c => c.in_comp_set).length,
+    submarket: tiers.submarket.filter(c => c.in_comp_set).length,
+    msa: tiers.msa.filter(c => c.in_comp_set).length,
+  };
 
-  const withRent = inSet.filter(c => c.avg_rent != null && c.avg_rent > 0);
+  if (inSet.length === 0) return { count: 0, avgUnits: null, avgDistance: null, avgMatchScore: null, perTier };
+
   const withDist = inSet.filter(c => c.distance_miles != null);
 
   return {
     count: inSet.length,
-    avgRent: withRent.length > 0 ? Math.round(withRent.reduce((s, c) => s + (c.avg_rent || 0), 0) / withRent.length) : null,
     avgUnits: Math.round(inSet.reduce((s, c) => s + c.units, 0) / inSet.length),
     avgDistance: withDist.length > 0 ? Math.round(withDist.reduce((s, c) => s + (c.distance_miles || 0), 0) / withDist.length * 10) / 10 : null,
     avgMatchScore: Math.round(inSet.reduce((s, c) => s + c.match_score, 0) / inSet.length),
+    perTier,
   };
 }
 
+const thStyle: React.CSSProperties = {
+  padding: '3px 6px', fontSize: 7, fontFamily: mono, fontWeight: 700,
+  letterSpacing: '0.06em', color: BT2.text.muted,
+};
+
 function CompRow({
-  comp,
-  rank,
-  onToggleCompSet,
-  toggling,
+  comp, rank, onToggleCompSet, toggling, hovered, onHover,
 }: {
-  comp: TieredCompProperty;
-  rank: number;
-  onToggleCompSet: (comp: TieredCompProperty) => void;
-  toggling: boolean;
+  comp: TieredCompProperty; rank: number;
+  onToggleCompSet: (comp: TieredCompProperty) => void; toggling: boolean;
+  hovered: boolean; onHover: (rank: number | null) => void;
 }) {
-  const scoreColor = comp.match_score >= 70 ? 'text-emerald-600' : comp.match_score >= 50 ? 'text-amber-600' : 'text-stone-500';
-  const scoreBg = comp.match_score >= 70 ? 'bg-emerald-500' : comp.match_score >= 50 ? 'bg-amber-500' : 'bg-stone-400';
+  const scoreColor = comp.match_score >= 70 ? BT2.text.green : comp.match_score >= 50 ? BT2.text.amber : BT2.text.muted;
 
   return (
-    <tr className="border-t border-stone-100 hover:bg-stone-50/50 transition-colors">
-      <td className="px-3 py-2.5 text-center">
-        <span className="text-xs font-mono text-stone-400">{rank}</span>
+    <tr style={{ borderTop: `1px solid ${BT2.border.subtle}40`, background: hovered ? '#00BCD408' : 'transparent' }}
+      onMouseEnter={() => onHover(rank)} onMouseLeave={() => onHover(null)}>
+      <td style={{ padding: '3px 6px', textAlign: 'center', color: BT2.text.muted, fontFamily: mono, fontSize: 9 }}>{rank}</td>
+      <td style={{ padding: '3px 6px' }}>
+        <div style={{ color: hovered ? BT2.text.cyan : BT2.text.primary, fontSize: 10, fontWeight: 600, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{comp.name || comp.address}</div>
+        <div style={{ color: BT2.text.muted, fontSize: 8, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{comp.address}</div>
       </td>
-      <td className="px-3 py-2.5">
-        <div className="text-xs font-semibold text-stone-900 truncate max-w-[200px]">{comp.name || comp.address}</div>
-        <div className="text-[10px] text-stone-400 truncate max-w-[200px]">{comp.address}</div>
-      </td>
-      <td className="px-3 py-2.5 text-center text-xs font-mono text-stone-600">{comp.units || '—'}</td>
-      <td className="px-3 py-2.5 text-center text-xs font-mono text-stone-600">{comp.year_built || '—'}</td>
-      <td className="px-3 py-2.5 text-center text-xs font-mono text-stone-600">{comp.stories || '—'}</td>
-      <td className="px-3 py-2.5 text-center">
+      <td style={{ padding: '3px 6px', textAlign: 'center', color: BT2.text.secondary, fontFamily: mono, fontSize: 9 }}>{comp.units || '—'}</td>
+      <td style={{ padding: '3px 6px', textAlign: 'center', color: BT2.text.secondary, fontFamily: mono, fontSize: 9 }}>{comp.year_built || '—'}</td>
+      <td style={{ padding: '3px 6px', textAlign: 'center' }}>
         {comp.class_code ? (
-          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-            comp.class_code.startsWith('A') ? 'bg-blue-50 text-blue-600' :
-            comp.class_code.startsWith('B') ? 'bg-amber-50 text-amber-600' :
-            'bg-stone-100 text-stone-500'
-          }`}>{comp.class_code}</span>
-        ) : <span className="text-xs text-stone-300">—</span>}
+          <span style={{
+            fontSize: 8, fontWeight: 700, padding: '1px 3px', borderRadius: 2,
+            background: comp.class_code.startsWith('A') ? '#00BCD411' : comp.class_code.startsWith('B') ? '#F5A62311' : BT2.bg.header,
+            color: comp.class_code.startsWith('A') ? '#00BCD4' : comp.class_code.startsWith('B') ? '#F5A623' : BT2.text.muted,
+          }}>{comp.class_code}</span>
+        ) : <span style={{ color: BT2.text.muted, fontSize: 9 }}>—</span>}
       </td>
-      <td className="px-3 py-2.5 text-center text-xs font-mono text-stone-600">
-        {comp.distance_miles != null ? `${comp.distance_miles} mi` : '—'}
+      <td style={{ padding: '3px 6px', textAlign: 'center', color: BT2.text.secondary, fontFamily: mono, fontSize: 9 }}>
+        {comp.distance_miles != null ? `${comp.distance_miles}mi` : '—'}
       </td>
-      <td className="px-3 py-2.5">
-        <div className="flex items-center gap-1.5">
-          <span className={`text-xs font-bold font-mono ${scoreColor}`}>{Math.round(comp.match_score)}</span>
-          <div className="w-12 h-1.5 bg-stone-100 rounded-full overflow-hidden">
-            <div className={`h-full rounded-full ${scoreBg}`} style={{ width: `${Math.min(100, comp.match_score)}%` }} />
+      <td style={{ padding: '3px 6px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+          <span style={{ color: scoreColor, fontFamily: mono, fontSize: 9, fontWeight: 700, minWidth: 14 }}>{Math.round(comp.match_score)}</span>
+          <div style={{ width: 24, height: 2, background: BT2.bg.header, borderRadius: 1, overflow: 'hidden' }}>
+            <div style={{ width: `${Math.min(100, comp.match_score)}%`, height: '100%', background: scoreColor, borderRadius: 1 }} />
           </div>
         </div>
       </td>
-      <td className="px-3 py-2.5 text-center text-xs font-mono text-stone-600">
-        {comp.avg_rent != null && comp.avg_rent > 0 ? `$${comp.avg_rent.toLocaleString()}` : '—'}
-      </td>
-      <td className="px-3 py-2.5 text-center text-xs font-mono text-stone-600">
-        {comp.occupancy != null ? `${comp.occupancy}%` : '—'}
-      </td>
-      <td className="px-3 py-2.5 text-center">
+      <td style={{ padding: '3px 6px', textAlign: 'center' }}>
         <button
           onClick={() => onToggleCompSet(comp)}
           disabled={toggling}
-          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-semibold transition-all ${
-            comp.in_comp_set
-              ? 'bg-emerald-100 text-emerald-700 border border-emerald-300 hover:bg-red-50 hover:text-red-600 hover:border-red-300'
-              : 'bg-stone-100 text-stone-600 border border-stone-300 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300'
-          } ${toggling ? 'opacity-50 cursor-wait' : ''}`}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 2,
+            padding: '1px 5px', fontSize: 7, fontWeight: 700, fontFamily: mono,
+            borderRadius: 2, cursor: toggling ? 'wait' : 'pointer',
+            opacity: toggling ? 0.5 : 1,
+            background: comp.in_comp_set ? '#00D26A18' : BT2.bg.header,
+            color: comp.in_comp_set ? '#00D26A' : BT2.text.secondary,
+            border: `1px solid ${comp.in_comp_set ? '#00D26A55' : BT2.border.medium}`,
+          }}
         >
-          {comp.in_comp_set ? (
-            <><Check className="h-3 w-3" /> In Set</>
-          ) : (
-            <><Plus className="h-3 w-3" /> Add to Set</>
-          )}
+          {comp.in_comp_set ? (<><Check style={{ width: 8, height: 8 }} /> IN</>) : (<><Plus style={{ width: 8, height: 8 }} /> ADD</>)}
         </button>
       </td>
     </tr>
   );
 }
 
-function TierSection({
-  tier,
-  comps,
-  onToggleCompSet,
-  togglingAddress,
+function CompMapPanel({
+  allComps, tiers, hoveredRank, onHover,
 }: {
-  tier: TierKey;
-  comps: TieredCompProperty[];
-  onToggleCompSet: (comp: TieredCompProperty) => void;
-  togglingAddress: string | null;
+  allComps: TieredCompProperty[];
+  tiers: Record<TierKey, TieredCompProperty[]>;
+  hoveredRank: number | null;
+  onHover: (rank: number | null) => void;
 }) {
-  const [expanded, setExpanded] = useState(tier === 'trade_area');
+  const geoComps = allComps.filter(c => c.lat != null && c.lng != null);
+
+  const mapPositions = useMemo(() => {
+    if (geoComps.length === 0) return [];
+    const centerLat = geoComps.reduce((s, c) => s + (c.lat || 0), 0) / geoComps.length;
+    const centerLng = geoComps.reduce((s, c) => s + (c.lng || 0), 0) / geoComps.length;
+
+    const maxDist = Math.max(...geoComps.map(c => c.distance_miles || 0), 2);
+    const scale = 180 / maxDist;
+
+    return geoComps.map((c, i) => {
+      const dx = ((c.lng || 0) - centerLng) * 69 * Math.cos((centerLat * Math.PI) / 180);
+      const dy = -((c.lat || 0) - centerLat) * 69;
+      return {
+        comp: c,
+        globalRank: allComps.indexOf(c) + 1,
+        x: 230 + dx * scale,
+        y: 230 + dy * scale,
+        tier: c.geographic_tier,
+      };
+    });
+  }, [geoComps, allComps]);
+
+  const maxDist = Math.max(...geoComps.map(c => c.distance_miles || 0), 2);
+  const ringDistances = maxDist <= 3 ? [0.5, 1.0, 2.0] : maxDist <= 6 ? [1.0, 2.5, 5.0] : [2.0, 5.0, 10.0];
+  const scale = 180 / maxDist;
+
+  const tierColor = (tier: TierKey) => TIER_CONFIG[tier].color;
+  const scoreColor = (s: number) => s >= 70 ? BT2.text.green : s >= 50 ? BT2.text.amber : BT2.text.muted;
+
+  return (
+    <div style={{
+      width: '100%', height: '100%', position: 'relative', overflow: 'hidden',
+      borderRadius: 4, border: `1px solid ${BT2.border.subtle}`, background: BT2.bg.panel,
+    }}>
+      <div style={{ position: 'absolute', top: 6, left: 8, zIndex: 10, display: 'flex', gap: 5, alignItems: 'center' }}>
+        <span style={{ color: BT2.text.cyan, fontFamily: mono, fontSize: 7, fontWeight: 700, padding: '2px 5px', background: '#00BCD415', borderRadius: 2, border: `1px solid ${BT2.border.subtle}` }}>MAP</span>
+        <span style={{ color: BT2.text.muted, fontFamily: mono, fontSize: 7 }}>{geoComps.length} geocoded</span>
+      </div>
+
+      {geoComps.length === 0 ? (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', flexDirection: 'column', gap: 6 }}>
+          <MapPin style={{ width: 20, height: 20, color: BT2.text.muted }} />
+          <span style={{ color: BT2.text.muted, fontSize: 10 }}>No geocoded properties</span>
+          <span style={{ color: BT2.text.muted, fontSize: 8 }}>Properties need lat/lng to appear on map</span>
+        </div>
+      ) : (
+        <svg width="100%" height="100%" viewBox="0 0 460 460" style={{ position: 'absolute', top: 0, left: 0 }}>
+          <defs>
+            <radialGradient id="mapBg" cx="50%" cy="50%" r="70%">
+              <stop offset="0%" stopColor="#111825" />
+              <stop offset="100%" stopColor="#0A0E17" />
+            </radialGradient>
+          </defs>
+          <rect width="460" height="460" fill="url(#mapBg)" />
+
+          {[120, 230, 340].map(y => <line key={`h${y}`} x1="0" y1={y} x2="460" y2={y} stroke="#1E2538" strokeWidth="0.5" strokeDasharray="4 4" />)}
+          {[120, 230, 340].map(x => <line key={`v${x}`} x1={x} y1="0" x2={x} y2="460" stroke="#1E2538" strokeWidth="0.5" strokeDasharray="4 4" />)}
+
+          {ringDistances.map((d, i) => {
+            const r = d * scale;
+            const colors = ['#00D26A', '#00BCD4', '#A78BFA'];
+            return (
+              <g key={d}>
+                <circle cx="230" cy="230" r={r} stroke={colors[i]} strokeWidth={0.8 - i * 0.1} fill="none" opacity={0.25 - i * 0.06} strokeDasharray="3 2" />
+                <text x={230 + r * 0.72} y={230 - r * 0.72} fill={colors[i]} fontSize="7" fontFamily={mono} opacity={0.5 - i * 0.1}>{d}mi</text>
+              </g>
+            );
+          })}
+
+          {mapPositions.map(p => {
+            const isHovered = hoveredRank === p.globalRank;
+            const pinColor = p.comp.in_comp_set ? '#00D26A' : tierColor(p.tier as TierKey);
+            const isTrade = p.tier === 'trade_area';
+            const r = isHovered ? 6 : isTrade ? 5 : 3.5;
+            const x = Math.max(15, Math.min(445, p.x));
+            const y = Math.max(15, Math.min(445, p.y));
+            return (
+              <g key={p.globalRank}
+                onMouseEnter={() => onHover(p.globalRank)}
+                onMouseLeave={() => onHover(null)}
+                style={{ cursor: 'pointer' }}>
+                {isHovered && <circle cx={x} cy={y} r="12" fill={pinColor} opacity="0.08" />}
+                <circle cx={x} cy={y} r={r + 1.5} fill={pinColor} opacity={isHovered ? 0.25 : 0.12} />
+                <circle cx={x} cy={y} r={r} fill={BT2.bg.terminal} stroke={pinColor} strokeWidth={isHovered ? 2 : 1.5} />
+                <text x={x} y={y + (isTrade ? 3 : 2.5)} textAnchor="middle" fill={pinColor} fontSize={isTrade ? 7 : 6} fontFamily={mono} fontWeight="700">{p.globalRank}</text>
+                {isHovered && (
+                  <g>
+                    <rect x={x + 10} y={y - 18} width={130} height={28} rx="3" fill={BT2.bg.header} stroke={BT2.border.medium} strokeWidth="1" opacity="0.95" />
+                    <text x={x + 15} y={y - 6} fill={BT2.text.primary} fontSize="8" fontWeight="600">{(p.comp.name || p.comp.address).substring(0, 22)}</text>
+                    <text x={x + 15} y={y + 3} fill={BT2.text.muted} fontSize="6" fontFamily={mono}>
+                      {p.comp.units}u · {p.comp.class_code || '—'} · {p.comp.distance_miles}mi · {Math.round(p.comp.match_score)}%
+                    </text>
+                  </g>
+                )}
+              </g>
+            );
+          })}
+
+          <g>
+            <circle cx="230" cy="230" r="7" fill="#FF8C42" opacity="0.15" />
+            <circle cx="230" cy="230" r="4.5" fill={BT2.bg.terminal} stroke="#FF8C42" strokeWidth="2" />
+            <circle cx="230" cy="230" r="2" fill="#FF8C42" />
+            <text x="240" y="226" fill="#FF8C42" fontSize="7" fontFamily={mono} fontWeight="700">SUBJECT</text>
+          </g>
+        </svg>
+      )}
+
+      <div style={{ position: 'absolute', bottom: 6, left: 8, right: 8, display: 'flex', gap: 10, alignItems: 'center', zIndex: 10 }}>
+        <div style={{ display: 'flex', gap: 8, padding: '3px 6px', background: BT2.bg.header + 'DD', borderRadius: 3, border: `1px solid ${BT2.border.subtle}` }}>
+          {[
+            { color: '#FF8C42', label: 'Subject' },
+            { color: '#00D26A', label: 'In Set' },
+            { color: '#00D26A', label: 'Trade', opacity: 0.6 },
+            { color: '#00BCD4', label: 'Submarket' },
+            { color: '#A78BFA', label: 'MSA' },
+          ].map(l => (
+            <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+              <div style={{ width: 5, height: 5, borderRadius: '50%', background: l.color, opacity: l.opacity || 1 }} />
+              <span style={{ color: BT2.text.muted, fontFamily: mono, fontSize: 6 }}>{l.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TierSection({
+  tier, comps, onToggleCompSet, togglingAddress, expanded, onToggleExpand,
+  hoveredRank, onHover, rankOffset,
+}: {
+  tier: TierKey; comps: TieredCompProperty[];
+  onToggleCompSet: (comp: TieredCompProperty) => void; togglingAddress: string | null;
+  expanded: boolean; onToggleExpand: () => void;
+  hoveredRank: number | null; onHover: (rank: number | null) => void;
+  rankOffset: number;
+}) {
   const config = TIER_CONFIG[tier];
   const inSetCount = comps.filter(c => c.in_comp_set).length;
 
   return (
-    <div className={`border ${config.borderColor} rounded-lg overflow-hidden`}>
+    <div style={{ border: `1px solid ${config.color}30`, borderRadius: 4, overflow: 'hidden', flexShrink: 0 }}>
       <button
-        onClick={() => setExpanded(!expanded)}
-        className={`w-full flex items-center justify-between px-4 py-3 ${config.bgColor} hover:opacity-90 transition-opacity`}
+        onClick={onToggleExpand}
+        style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '4px 10px', background: `${config.color}08`, border: 'none', cursor: 'pointer' }}
       >
-        <div className="flex items-center gap-2">
-          {expanded ? <ChevronDown className="h-4 w-4 text-stone-500" /> : <ChevronRight className="h-4 w-4 text-stone-500" />}
-          <span className="text-sm font-bold text-stone-900">{config.icon} {config.label}</span>
-          <span className="text-xs text-stone-500 font-mono">({comps.length} properties)</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {expanded
+            ? <ChevronDown style={{ width: 12, height: 12, color: BT2.text.secondary }} />
+            : <ChevronRight style={{ width: 12, height: 12, color: BT2.text.secondary }} />}
+          <span style={{ color: config.color, fontFamily: mono, fontSize: 8, fontWeight: 700, letterSpacing: '0.08em' }}>{config.label}</span>
+          <span style={{ color: BT2.text.secondary, fontFamily: mono, fontSize: 8 }}>({comps.length})</span>
           {inSetCount > 0 && (
-            <span className="text-[10px] font-bold bg-emerald-600 text-white px-2 py-0.5 rounded-full">{inSetCount} in set</span>
+            <span style={{ fontSize: 7, fontWeight: 700, padding: '1px 4px', borderRadius: 2,
+              background: '#00D26A', color: BT2.bg.terminal }}>{inSetCount} in set</span>
           )}
         </div>
-        <div className="flex items-center gap-3 text-[10px] text-stone-500">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: BT2.text.muted, fontSize: 8, fontFamily: mono }}>
           {comps.length > 0 && (
             <>
-              <span>Avg Units: {Math.round(comps.reduce((s, c) => s + c.units, 0) / comps.length)}</span>
+              <span>avg {Math.round(comps.reduce((s, c) => s + c.units, 0) / comps.length)}u</span>
               {comps.some(c => c.distance_miles != null) && (
-                <span>Avg Distance: {(comps.filter(c => c.distance_miles != null).reduce((s, c) => s + (c.distance_miles || 0), 0) / comps.filter(c => c.distance_miles != null).length).toFixed(1)} mi</span>
+                <span>{(comps.filter(c => c.distance_miles != null).reduce((s, c) => s + (c.distance_miles || 0), 0) / comps.filter(c => c.distance_miles != null).length).toFixed(1)}mi</span>
               )}
             </>
           )}
@@ -159,33 +299,24 @@ function TierSection({
       </button>
 
       {expanded && (
-        <div className="bg-white">
+        <div style={{ background: BT2.bg.panel }}>
           {comps.length === 0 ? (
-            <div className="text-center py-8">
-              <MapPin className="h-6 w-6 text-stone-300 mx-auto mb-2" />
-              <p className="text-xs text-stone-400">No properties found at this geographic level</p>
-              <p className="text-[10px] text-stone-300 mt-1">
-                {tier === 'trade_area' && 'No geocoded properties within the trade area radius'}
-                {tier === 'submarket' && 'Deal location does not fall within a defined submarket boundary'}
-                {tier === 'msa' && 'Deal location does not fall within a defined MSA boundary'}
-              </p>
+            <div style={{ textAlign: 'center', padding: '12px 10px' }}>
+              <MapPin style={{ width: 14, height: 14, margin: '0 auto 4px', display: 'block', color: BT2.text.muted }} />
+              <p style={{ color: BT2.text.secondary, fontSize: 9, margin: 0 }}>No properties at this tier</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
-                  <tr className="bg-stone-50 text-left">
-                    <th className="px-3 py-2 text-[10px] font-mono text-stone-400 tracking-wider w-10">#</th>
-                    <th className="px-3 py-2 text-[10px] font-mono text-stone-400 tracking-wider">PROPERTY</th>
-                    <th className="px-3 py-2 text-[10px] font-mono text-stone-400 tracking-wider text-center w-14">UNITS</th>
-                    <th className="px-3 py-2 text-[10px] font-mono text-stone-400 tracking-wider text-center w-16">BUILT</th>
-                    <th className="px-3 py-2 text-[10px] font-mono text-stone-400 tracking-wider text-center w-16">STORIES</th>
-                    <th className="px-3 py-2 text-[10px] font-mono text-stone-400 tracking-wider text-center w-14">CLASS</th>
-                    <th className="px-3 py-2 text-[10px] font-mono text-stone-400 tracking-wider text-center w-16">DIST</th>
-                    <th className="px-3 py-2 text-[10px] font-mono text-stone-400 tracking-wider text-center w-24">MATCH</th>
-                    <th className="px-3 py-2 text-[10px] font-mono text-stone-400 tracking-wider text-center w-20">RENT</th>
-                    <th className="px-3 py-2 text-[10px] font-mono text-stone-400 tracking-wider text-center w-16">OCC</th>
-                    <th className="px-3 py-2 text-[10px] font-mono text-stone-400 tracking-wider text-center w-24">COMP SET</th>
+                  <tr style={{ background: BT2.bg.header }}>
+                    {['#', 'PROPERTY', 'UNITS', 'BUILT', 'CLS', 'DIST', 'MATCH', 'SET'].map((h, i) => (
+                      <th key={i} style={{
+                        ...thStyle,
+                        textAlign: i === 1 ? 'left' : 'center',
+                        width: i === 0 ? 20 : i === 1 ? 'auto' : i === 6 ? 50 : i === 7 ? 42 : 32,
+                      }}>{h}</th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
@@ -193,9 +324,11 @@ function TierSection({
                     <CompRow
                       key={comp.address}
                       comp={comp}
-                      rank={idx + 1}
+                      rank={rankOffset + idx + 1}
                       onToggleCompSet={onToggleCompSet}
                       toggling={togglingAddress === comp.address}
+                      hovered={hoveredRank === rankOffset + idx + 1}
+                      onHover={onHover}
                     />
                   ))}
                 </tbody>
@@ -208,18 +341,26 @@ function TierSection({
   );
 }
 
-const DealCompAnalysisTab: React.FC = () => {
-  const { dealId } = useParams<{ dealId: string }>();
+interface DealCompAnalysisTabProps {
+  dealId?: string;
+}
+
+const DealCompAnalysisTab: React.FC<DealCompAnalysisTabProps> = ({ dealId: propDealId }) => {
+  const { dealId: paramDealId } = useParams<{ dealId: string }>();
+  const dealId = propDealId || paramDealId;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tiers, setTiers] = useState<Record<TierKey, TieredCompProperty[]>>({
-    trade_area: [],
-    submarket: [],
-    msa: [],
+    trade_area: [], submarket: [], msa: [],
   });
   const [dealInfo, setDealInfo] = useState<{ name: string; address: string } | null>(null);
   const [togglingAddress, setTogglingAddress] = useState<string | null>(null);
   const [resetting, setResetting] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>('split');
+  const [hoveredRank, setHoveredRank] = useState<number | null>(null);
+  const [expandedTiers, setExpandedTiers] = useState<Record<TierKey, boolean>>({
+    trade_area: true, submarket: true, msa: false,
+  });
 
   const fetchTieredComps = useCallback(async () => {
     if (!dealId) return;
@@ -245,8 +386,8 @@ const DealCompAnalysisTab: React.FC = () => {
     fetchTieredComps();
   }, [fetchTieredComps]);
 
-  const allComps = [...tiers.trade_area, ...tiers.submarket, ...tiers.msa];
-  const summary = computeCompSetSummary(allComps);
+  const allComps = useMemo(() => [...tiers.trade_area, ...tiers.submarket, ...tiers.msa], [tiers]);
+  const summary = useMemo(() => computeCompSetSummary(allComps, tiers), [allComps, tiers]);
 
   const handleToggleCompSet = async (comp: TieredCompProperty) => {
     if (!dealId) return;
@@ -304,107 +445,155 @@ const DealCompAnalysisTab: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-violet-600 mx-auto mb-3" />
-          <p className="text-sm text-stone-500">Discovering comps across geographic tiers...</p>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 0' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ width: 20, height: 20, margin: '0 auto 6px', border: `2px solid #A78BFA`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+          <p style={{ color: BT2.text.secondary, fontSize: 9, fontFamily: mono, margin: 0 }}>DISCOVERING COMPS...</p>
         </div>
       </div>
     );
   }
 
-  if (error) {
+  if (error && allComps.length === 0) {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-        <AlertCircle className="h-6 w-6 text-red-400 mx-auto mb-2" />
-        <p className="text-sm text-red-700 font-medium">{error}</p>
-        <button onClick={fetchTieredComps} className="mt-3 text-xs text-red-600 hover:text-red-800 font-medium">
-          Retry
+      <div style={{ padding: 14, textAlign: 'center', background: '#FF475710', border: `1px solid ${BT2.border.subtle}`, borderRadius: 4 }}>
+        <AlertCircle style={{ width: 16, height: 16, margin: '0 auto 4px', display: 'block', color: '#FF4757' }} />
+        <p style={{ color: '#FF4757', fontSize: 10, fontWeight: 600, margin: 0 }}>{error}</p>
+        <button onClick={fetchTieredComps} style={{ marginTop: 6, color: '#FF4757', fontSize: 9, fontFamily: mono, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
+          RETRY
         </button>
       </div>
     );
   }
 
   const totalComps = allComps.length;
+  const showTable = viewMode !== 'map';
+  const showMap = viewMode !== 'list';
 
   return (
-    <div className="space-y-4">
-      <div className="bg-stone-900 text-white rounded-xl p-4 border-l-4 border-violet-500">
-        <div className="text-[10px] font-mono text-violet-400 tracking-widest mb-1">COMP ANALYSIS</div>
-        <div className="text-lg font-semibold">
-          {dealInfo?.name || 'Deal'} — Geographic Comp Discovery
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 0, height: '100%' }}>
+      {error && (
+        <div style={{ padding: '4px 10px', background: '#FF47570A', borderBottom: `1px solid #FF475730`, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <AlertCircle style={{ width: 12, height: 12, color: '#FF4757' }} />
+          <span style={{ color: '#FF4757', fontSize: 9 }}>{error}</span>
         </div>
-        <div className="text-xs text-stone-400 mt-1">
-          {totalComps} properties discovered across {[tiers.trade_area.length > 0 && 'Trade Area', tiers.submarket.length > 0 && 'Submarket', tiers.msa.length > 0 && 'MSA'].filter(Boolean).join(', ')} tiers
-        </div>
-      </div>
+      )}
 
-      <div className="bg-white rounded-xl border border-stone-200 p-4">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-3">
-            <Building2 className="h-5 w-5 text-emerald-600" />
-            <div>
-              <h3 className="text-sm font-bold text-stone-900">Your Comp Set</h3>
-              <p className="text-[10px] text-stone-400">{summary.count} properties selected</p>
-            </div>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '5px 10px', background: BT2.bg.panel,
+        borderLeft: `3px solid ${BT2.text.purple}`, borderRadius: 4,
+        marginBottom: 8,
+      }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+            <span style={{ color: BT2.text.purple, fontFamily: mono, fontSize: 8, fontWeight: 700 }}>COMP SET</span>
+            <span style={{ color: BT2.text.green, fontFamily: mono, fontSize: 13, fontWeight: 800 }}>{summary.count}</span>
+            <span style={{ color: BT2.text.muted, fontSize: 8 }}>selected</span>
           </div>
+          <div style={{ width: 1, height: 14, background: BT2.border.subtle }} />
+          {(['trade_area', 'submarket', 'msa'] as TierKey[]).map(tier => (
+            <div key={tier} style={{ display: 'flex', gap: 3, alignItems: 'baseline' }}>
+              <span style={{ color: BT2.text.muted, fontFamily: mono, fontSize: 7 }}>{TIER_CONFIG[tier].label.split(' ')[0]}</span>
+              <span style={{ color: TIER_CONFIG[tier].color, fontFamily: mono, fontSize: 10, fontWeight: 700 }}>{summary.perTier[tier]}</span>
+            </div>
+          ))}
+          <div style={{ width: 1, height: 14, background: BT2.border.subtle }} />
+          <div style={{ display: 'flex', gap: 3, alignItems: 'baseline' }}>
+            <span style={{ color: BT2.text.muted, fontFamily: mono, fontSize: 7 }}>AVG MATCH</span>
+            <span style={{ color: BT2.text.primary, fontFamily: mono, fontSize: 10, fontWeight: 700 }}>{summary.avgMatchScore ?? '—'}</span>
+          </div>
+          {summary.avgDistance != null && (
+            <div style={{ display: 'flex', gap: 3, alignItems: 'baseline' }}>
+              <span style={{ color: BT2.text.muted, fontFamily: mono, fontSize: 7 }}>RADIUS</span>
+              <span style={{ color: BT2.text.primary, fontFamily: mono, fontSize: 10, fontWeight: 700 }}>{summary.avgDistance}mi</span>
+            </div>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
+          {(['list', 'split', 'map'] as ViewMode[]).map(m => (
+            <button key={m} onClick={() => setViewMode(m)} style={{
+              padding: '2px 7px', fontSize: 7, fontWeight: 700, fontFamily: mono,
+              border: `1px solid ${viewMode === m ? BT2.text.cyan + '60' : BT2.border.medium}`, borderRadius: 3,
+              color: viewMode === m ? BT2.text.cyan : BT2.text.muted,
+              background: viewMode === m ? '#00BCD410' : 'transparent', cursor: 'pointer',
+            }}>{m === 'list' ? '☰ LIST' : m === 'split' ? '◧ SPLIT' : '◻ MAP'}</button>
+          ))}
+          <div style={{ width: 1, height: 14, background: BT2.border.subtle, margin: '0 2px' }} />
           <button
             onClick={handleResetToDefaults}
             disabled={resetting}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-stone-300 rounded-lg hover:bg-stone-50 text-xs text-stone-600 transition-colors disabled:opacity-50"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 3,
+              padding: '2px 7px', fontSize: 7, fontWeight: 700, fontFamily: mono,
+              border: `1px solid ${BT2.border.medium}`, borderRadius: 3,
+              color: BT2.text.secondary, background: 'transparent', cursor: resetting ? 'wait' : 'pointer',
+              opacity: resetting ? 0.5 : 1 }}
           >
-            <RotateCcw className={`h-3.5 w-3.5 ${resetting ? 'animate-spin' : ''}`} />
-            {resetting ? 'Resetting...' : 'Reset to Defaults'}
+            <RotateCcw style={{ width: 9, height: 9, animation: resetting ? 'spin 1s linear infinite' : 'none' }} />
+            {resetting ? 'RESETTING...' : 'RESET'}
           </button>
         </div>
+      </div>
 
-        {summary.count > 0 ? (
-          <div className="grid grid-cols-4 gap-3">
-            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-center">
-              <div className="text-[10px] font-mono text-emerald-600 tracking-wider">PROPERTIES</div>
-              <div className="text-xl font-bold text-emerald-700">{summary.count}</div>
-            </div>
-            <div className="bg-stone-50 border border-stone-200 rounded-lg p-3 text-center">
-              <div className="text-[10px] font-mono text-stone-500 tracking-wider">AVG UNITS</div>
-              <div className="text-xl font-bold text-stone-800">{summary.avgUnits ?? '—'}</div>
-            </div>
-            <div className="bg-stone-50 border border-stone-200 rounded-lg p-3 text-center">
-              <div className="text-[10px] font-mono text-stone-500 tracking-wider">AVG DISTANCE</div>
-              <div className="text-xl font-bold text-stone-800">{summary.avgDistance != null ? `${summary.avgDistance} mi` : '—'}</div>
-            </div>
-            <div className="bg-stone-50 border border-stone-200 rounded-lg p-3 text-center">
-              <div className="text-[10px] font-mono text-stone-500 tracking-wider">AVG MATCH</div>
-              <div className="text-xl font-bold text-stone-800">{summary.avgMatchScore ?? '—'}</div>
-            </div>
+      <div style={{ flex: 1, display: 'flex', gap: 8, overflow: 'hidden', minHeight: 0 }}>
+        {showTable && (
+          <div style={{
+            flex: viewMode === 'list' ? 1 : 0,
+            width: viewMode === 'list' ? '100%' : '58%',
+            minWidth: viewMode === 'list' ? undefined : '58%',
+            display: 'flex', flexDirection: 'column', gap: 6, overflow: 'auto',
+          }}>
+            {(['trade_area', 'submarket', 'msa'] as TierKey[]).map(tier => {
+              const offset = tier === 'trade_area' ? 0
+                : tier === 'submarket' ? tiers.trade_area.length
+                : tiers.trade_area.length + tiers.submarket.length;
+              return (
+                <TierSection
+                  key={tier}
+                  tier={tier}
+                  comps={tiers[tier]}
+                  onToggleCompSet={handleToggleCompSet}
+                  togglingAddress={togglingAddress}
+                  expanded={expandedTiers[tier]}
+                  onToggleExpand={() => setExpandedTiers(prev => ({ ...prev, [tier]: !prev[tier] }))}
+                  hoveredRank={hoveredRank}
+                  onHover={setHoveredRank}
+                  rankOffset={offset}
+                />
+              );
+            })}
           </div>
-        ) : (
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-center">
-            <p className="text-xs text-amber-700">No properties in your comp set. Use the "Add to Set" buttons below to build your competitive analysis.</p>
+        )}
+
+        {showMap && (
+          <div style={{
+            width: viewMode === 'map' ? '100%' : '42%',
+            minWidth: viewMode === 'map' ? undefined : '42%',
+            minHeight: 300,
+          }}>
+            <CompMapPanel
+              allComps={allComps}
+              tiers={tiers}
+              hoveredRank={hoveredRank}
+              onHover={setHoveredRank}
+            />
           </div>
         )}
       </div>
 
-      {(['trade_area', 'submarket', 'msa'] as TierKey[]).map(tier => (
-        <TierSection
-          key={tier}
-          tier={tier}
-          comps={tiers[tier]}
-          onToggleCompSet={handleToggleCompSet}
-          togglingAddress={togglingAddress}
-        />
-      ))}
-
       {totalComps === 0 && (
-        <div className="bg-stone-50 border border-stone-200 rounded-lg p-8 text-center">
-          <MapPin className="h-8 w-8 text-stone-300 mx-auto mb-3" />
-          <p className="text-sm text-stone-500 font-medium">No comparable properties found</p>
-          <p className="text-xs text-stone-400 mt-1">This may be because property records in this area lack geocoded coordinates. Try the auto-discovery feature or add comps manually.</p>
+        <div style={{ padding: '20px 10px', textAlign: 'center', background: BT2.bg.header, border: `1px solid ${BT2.border.subtle}`, borderRadius: 4, marginTop: 8 }}>
+          <MapPin style={{ width: 16, height: 16, margin: '0 auto 6px', display: 'block', color: BT2.text.muted }} />
+          <p style={{ color: BT2.text.secondary, fontSize: 10, fontWeight: 600, margin: 0 }}>No comparable properties found</p>
+          <p style={{ color: BT2.text.muted, fontSize: 8, margin: '3px 0 0' }}>Records may lack geocoded coordinates.</p>
           <button
             onClick={handleResetToDefaults}
-            className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 text-xs font-medium transition-colors"
+            style={{ marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 4,
+              padding: '4px 10px', fontSize: 9, fontWeight: 700, fontFamily: mono,
+              background: '#A78BFA', color: BT2.bg.terminal, borderRadius: 2, border: 'none', cursor: 'pointer' }}
           >
-            <RotateCcw className="h-3.5 w-3.5" />
-            Run Auto-Discovery
+            <RotateCcw style={{ width: 10, height: 10 }} />
+            RUN AUTO-DISCOVERY
           </button>
         </div>
       )}

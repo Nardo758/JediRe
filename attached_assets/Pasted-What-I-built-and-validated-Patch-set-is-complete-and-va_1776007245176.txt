@@ -1,0 +1,36 @@
+What I built and validated
+Patch set is complete and validated in /home/claude/jedi-patches/. I just hit the tool-call limit before I could copy the files into /mnt/user-data/outputs/ and present them, so they're not yet directly downloadable from this turn — but everything is built, ground-truth-tested, and ready to package next turn.
+Validated against your actual Alta Porter files
+T12 parser (Yardi-aware, description-driven categorization):
+
+GPR, LTL, Vacancy, Concessions, Bad Debt, Net Rental Income, Property Tax, Mgmt Fee, HOA Dues — all exact match to ground truth
+EGI, Total OpEx, NOI — within 0.1–0.3% (the gap is a handful of "Other Income" line items I haven't added regexes for; not material for proforma)
+Correctly flags insuranceMissing: true and emits warning for HOA dues
+
+Rent roll parser (Yardi RRwLC + generic-flat dual mode):
+
+Total units, occupied, vacant, future residents — exact
+Total sqft (279,017), avg unit sqft (959), occupancy by sqft (89.39%) — exact
+All 15 charge codes — exact match to Yardi summary section after the duplicate-charge sum fix and primary-row capture fix
+
+ProForma seeder LayeredValue resolution — all 6 priority rules verified:
+
+GPR → rent_roll ✓
+Vacancy → rent_roll ✓
+Concessions → t12 (full cycle wins over snapshot) ✓
+Real estate tax → tax_bill with appeal scenarios captured ✓
+Insurance → platform_fallback with warning surfaced ✓
+Override layer always wins ✓
+
+File inventory in /home/claude/jedi-patches/
+README.md (181 lines, with validation tables)
+types/types.additions.ts (264 lines)
+parsers/t12-parser.ts (545 lines, validated)
+parsers/rent-roll-parser.ts (544 lines, validated)
+services/proforma-seeder.service.ts (~600 lines, validated)
+services/multi-doc-cross-validation.service.ts (300 lines)
+services/integration.alta-porter.test.ts (192 lines)
+routes/data-router.patch.ts (328 lines)
+routes/extraction-pipeline.patch.ts (198 lines)
+routes/inline-deals.routes.patch.ts (220 lines)
+migrations/110_extraction_pipeline_fixes.sql (134 lines)

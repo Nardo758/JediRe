@@ -53,6 +53,21 @@ export function createUnitMixRoutes(pool: Pool): Router {
     }
   });
 
+  router.post("/:dealId/push-to-proforma", async (req: Request, res: Response) => {
+    try {
+      const userId = (req as any).user?.userId || "unknown";
+      const { program, amenityBudget } = req.body;
+      if (!program || !program.totalUnits || !program.units) {
+        return res.status(400).json({ error: "Missing program data" });
+      }
+      const result = await svc.pushProgramToProforma(pool, req.params.dealId, userId, program, amenityBudget);
+      res.json(result);
+    } catch (err) {
+      console.error("Push to proforma error:", err);
+      res.status(500).json({ error: "Failed to push program to proforma" });
+    }
+  });
+
   router.get("/:dealId/zoning", async (req: Request, res: Response) => {
     try {
       const zoning = await svc.getZoningForUnitMix(pool, req.params.dealId);

@@ -23,8 +23,57 @@ interface CompResult {
 }
 
 export async function getCompSet(pool: Pool, dealId: string, tradeAreaId?: string): Promise<CompResult[]> {
+  // ── Prefer active deal_comp_sets if they exist (user-curated selections) ──
+  const activeComps = await pool.query(`
+    SELECT id, comp_name AS name, comp_property_address AS address,
+           class_code AS class, year_built AS built_year, units AS total_units, NULL AS source_url
+    FROM deal_comp_sets
+    WHERE deal_id = $1 AND status = 'active'
+    ORDER BY match_score DESC NULLS LAST
+  `, [dealId]);
+
   let propsQuery: string;
   let params: string[];
+
+  if (activeComps.rows.length > 0) {
+    // Use active comp_set addresses to look up unit type data from comp_properties
+    const addresses = activeComps.rows.map((r: any) => r.address.toLowerCase());
+    const cpResult = await pool.query(`
+      SELECT cp.id, cp.name, cp.address, cp.class, cp.built_year, cp.total_units, cp.source_url
+      FROM comp_properties cp
+      WHERE LOWER(cp.address) = ANY($1) AND cp.is_subject = false
+    `, [addresses]);
+
+    // Merge: for addresses found in comp_properties, use those; for others, use deal_comp_sets row
+    const cpByAddr = new Map<string, any>();
+    for (const r of cpResult.rows) cpByAddr.set(r.address.toLowerCase(), r);
+
+    const mergedProps = activeComps.rows.map((cs: any) => {
+      const cp = cpByAddr.get(cs.address.toLowerCase());
+      return cp || { id: cs.id, name: cs.name, address: cs.address, class: cs.class, built_year: cs.built_year, total_units: cs.total_units, source_url: null };
+    });
+
+    if (mergedProps.length === 0) return [];
+
+    const compIds = mergedProps.filter((p: any) => p.id && !p.id.startsWith('00000000')).map((p: any) => p.id);
+    const { rows: unitRows } = compIds.length > 0
+      ? await pool.query(`
+          SELECT comp_id, unit_type, mix_pct, avg_sf, avg_rent, vacancy_pct, days_on_market, concessions
+          FROM comp_unit_types WHERE comp_id = ANY($1)
+        `, [compIds])
+      : { rows: [] };
+
+    return mergedProps.map((prop: any) => {
+      const units: Record<string, CompUnit> = {};
+      for (const ut of UNIT_TYPES) {
+        const row = unitRows.find((r: any) => r.comp_id === prop.id && r.unit_type === ut);
+        units[ut] = row
+          ? { mix: Number(row.mix_pct) || 0, sf: Number(row.avg_sf) || 0, rent: Number(row.avg_rent) || 0, vac: Number(row.vacancy_pct) || 0, dom: Number(row.days_on_market) || 0, conc: Number(row.concessions) || 0 }
+          : { mix: 0, sf: 0, rent: 0, vac: 0, dom: 0, conc: 0 };
+      }
+      return { id: prop.id, name: prop.name, cls: prop.class as string | null, built: prop.built_year as number | null, total: prop.total_units as number | null, sourceUrl: prop.source_url as string | null, units };
+    });
+  }
 
   if (tradeAreaId) {
     propsQuery = `
@@ -190,6 +239,154 @@ export async function getProgram(pool: Pool, dealId: string) {
     units: row.unit_config,
     totalNetSf: row.total_net_sf,
     grossRevPA: Number(row.gross_rev_pa),
+  };
+}
+
+export async function pushProgramToProforma(
+  pool: Pool,
+  dealId: string,
+  userId: string,
+  program: { totalUnits: number; units: Record<string, { mix: number; sf: number; rent: number }> },
+  amenityBudget?: { totalCost: number; estLiftPerUnit: number; items: { name: string; cost: number; lift: number; tier: string }[] },
+) {
+  const modulesUpdated: string[] = [];
+  const errors: string[] = [];
+
+  const savedProgram = await saveProgram(pool, dealId, userId, program);
+  modulesUpdated.push('deal_unit_programs');
+
+  const unitMixBreakdown = Object.entries(program.units).map(([unitType, u]) => ({
+    unitType,
+    count: Math.round(program.totalUnits * u.mix / 100),
+    avgSF: u.sf,
+    avgRent: u.rent,
+    percent: u.mix,
+  }));
+
+  try {
+    const modelResult = await pool.query(
+      'SELECT id, assumptions FROM financial_models WHERE deal_id = $1 ORDER BY created_at DESC LIMIT 1',
+      [dealId]
+    );
+
+    if (modelResult.rows.length > 0) {
+      const model = modelResult.rows[0];
+      const assumptions = model.assumptions || {};
+
+      assumptions.unitMix = unitMixBreakdown.filter(item => item.count > 0);
+      assumptions.totalUnits = program.totalUnits;
+      assumptions.totalSF = savedProgram.totalNetSf;
+      assumptions.avgSF = program.totalUnits > 0 ? Math.round(savedProgram.totalNetSf / program.totalUnits) : 0;
+      assumptions.grossRevPA = savedProgram.grossRevPA;
+
+      assumptions.rentRoll = unitMixBreakdown
+        .filter(item => item.count > 0)
+        .map(item => ({
+          unitType: item.unitType,
+          count: item.count,
+          avgSF: item.avgSF,
+          monthlyRent: item.avgRent,
+          annualRev: item.count * item.avgRent * 12,
+          psfRent: item.avgSF > 0 ? +(item.avgRent / item.avgSF).toFixed(2) : 0,
+        }));
+
+      if (amenityBudget) {
+        assumptions.amenityPackage = {
+          totalCost: amenityBudget.totalCost,
+          estLiftPerUnit: amenityBudget.estLiftPerUnit,
+          items: amenityBudget.items,
+          appliedAt: new Date().toISOString(),
+        };
+      }
+
+      assumptions._programPushedAt = new Date().toISOString();
+      assumptions._programPushedBy = userId;
+
+      await pool.query(
+        `UPDATE financial_models
+         SET assumptions = $1, status = 'draft', updated_at = NOW()
+         WHERE id = $2`,
+        [JSON.stringify(assumptions), model.id]
+      );
+      modulesUpdated.push('financial_model');
+    }
+  } catch (err: any) {
+    errors.push(`Financial model: ${err.message}`);
+  }
+
+  try {
+    await pool.query(
+      `UPDATE deals
+       SET module_outputs = jsonb_set(
+         jsonb_set(
+           COALESCE(module_outputs, '{}'::jsonb),
+           '{unitMix}',
+           $1::jsonb
+         ),
+         '{unitMixStatus}',
+         $2::jsonb
+       ),
+       target_units = $3,
+       updated_at = NOW()
+       WHERE id = $4`,
+      [
+        JSON.stringify({
+          program: unitMixBreakdown,
+          totalUnits: program.totalUnits,
+          totalSF: savedProgram.totalNetSf,
+          grossRevPA: savedProgram.grossRevPA,
+        }),
+        JSON.stringify({
+          applied: true,
+          source: 'program_push',
+          appliedAt: new Date().toISOString(),
+          pushedBy: userId,
+        }),
+        program.totalUnits,
+        dealId,
+      ]
+    );
+    modulesUpdated.push('deal_metadata');
+  } catch (err: any) {
+    errors.push(`Deal metadata: ${err.message}`);
+  }
+
+  try {
+    const designResult = await pool.query(
+      'SELECT id FROM building_designs_3d WHERE deal_id = $1 ORDER BY created_at DESC LIMIT 1',
+      [dealId]
+    );
+    if (designResult.rows.length > 0) {
+      await pool.query(
+        `UPDATE building_designs_3d
+         SET metadata = jsonb_set(
+           COALESCE(metadata, '{}'::jsonb),
+           '{unitMix}',
+           $1::jsonb
+         ),
+         updated_at = NOW()
+         WHERE id = $2`,
+        [
+          JSON.stringify({
+            breakdown: unitMixBreakdown,
+            total: program.totalUnits,
+            totalSF: savedProgram.totalNetSf,
+            updatedAt: new Date().toISOString(),
+          }),
+          designResult.rows[0].id,
+        ]
+      );
+      modulesUpdated.push('3d_design');
+    }
+  } catch (err: any) {
+    errors.push(`3D design: ${err.message}`);
+  }
+
+  return {
+    success: errors.length === 0,
+    modulesUpdated,
+    errors,
+    program: savedProgram,
   };
 }
 

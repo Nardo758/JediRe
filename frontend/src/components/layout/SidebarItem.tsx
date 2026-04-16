@@ -11,6 +11,7 @@ import {
   ArrowDownTrayIcon,
   ChevronRightIcon
 } from '@heroicons/react/24/outline';
+import { BT } from '@/components/deal/bloomberg-ui';
 
 interface SidebarItemProps {
   icon: string;
@@ -59,7 +60,7 @@ export const SidebarItem: React.FC<SidebarItemProps> = ({
 
   const handleContextMenu = (e: React.MouseEvent) => {
     if (!layerConfig) return;
-    
+
     e.preventDefault();
     setContextMenuPosition({ x: e.clientX, y: e.clientY });
     setShowContextMenu(true);
@@ -82,7 +83,7 @@ export const SidebarItem: React.FC<SidebarItemProps> = ({
   // Drag and drop handlers
   const handleDragStart = (e: React.DragEvent) => {
     if (!layerConfig) return;
-    
+
     setIsDragging(true);
     e.dataTransfer.effectAllowed = 'copy';
     e.dataTransfer.setData('application/json', JSON.stringify({
@@ -106,16 +107,24 @@ export const SidebarItem: React.FC<SidebarItemProps> = ({
     <>
       <div
         ref={itemRef}
-        className={`group relative flex items-center gap-3 px-4 py-2 rounded-lg cursor-pointer transition-all ${
-          isActive
-            ? 'bg-gradient-to-r from-blue-50 to-purple-50 text-blue-700'
-            : 'text-gray-700 hover:bg-gray-50'
-        } ${isDragging ? 'opacity-50' : ''}`}
+        className={`group relative flex items-center gap-3 px-4 py-2 cursor-pointer transition-all ${isDragging ? 'opacity-50' : ''}`}
+        style={{
+          borderRadius: 2,
+          background: isActive ? BT.bg.active : 'transparent',
+          color: isActive ? BT.text.cyan : BT.text.secondary,
+          fontFamily: BT.font.label,
+        }}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
         draggable={!!layerConfig}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
+        onMouseEnter={e => {
+          if (!isActive) e.currentTarget.style.background = BT.bg.hover;
+        }}
+        onMouseLeave={e => {
+          if (!isActive) e.currentTarget.style.background = 'transparent';
+        }}
       >
         {/* Icon */}
         <span className="text-xl">{icon}</span>
@@ -125,7 +134,14 @@ export const SidebarItem: React.FC<SidebarItemProps> = ({
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium truncate">{label}</span>
             {count !== undefined && (
-              <span className="px-2 py-0.5 bg-gray-200 text-gray-700 text-xs rounded-full font-medium">
+              <span
+                className="px-2 py-0.5 text-xs font-medium"
+                style={{
+                  background: BT.bg.hover,
+                  color: BT.text.secondary,
+                  borderRadius: 2,
+                }}
+              >
                 {count}
               </span>
             )}
@@ -135,16 +151,17 @@ export const SidebarItem: React.FC<SidebarItemProps> = ({
         {/* Expand arrow (for subitems) */}
         {hasSubItems && (
           <ChevronRightIcon
-            className={`w-4 h-4 text-gray-400 transition-transform ${
+            className={`w-4 h-4 transition-transform ${
               isExpanded ? 'rotate-90' : ''
             }`}
+            style={{ color: BT.text.muted }}
           />
         )}
 
         {/* Layer indicator (shows on hover) */}
         {layerConfig && !isDragging && (
           <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-            <MapIcon className="w-4 h-4 text-gray-400" />
+            <MapIcon className="w-4 h-4" style={{ color: BT.text.muted }} />
           </div>
         )}
       </div>
@@ -157,34 +174,46 @@ export const SidebarItem: React.FC<SidebarItemProps> = ({
             className="fixed inset-0 z-40"
             onClick={handleClickOutside}
           />
-          
+
           {/* Menu */}
           <div
-            className="fixed z-50 bg-white rounded-lg shadow-xl border border-gray-200 py-1 min-w-[200px]"
+            className="fixed z-50 py-1 min-w-[200px]"
             style={{
               left: contextMenuPosition.x,
-              top: contextMenuPosition.y
+              top: contextMenuPosition.y,
+              background: BT.bg.panel,
+              border: `1px solid ${BT.border.medium}`,
+              borderRadius: 0,
             }}
           >
             <button
               onClick={handleShowOnMap}
-              className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+              className="w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors"
+              style={{ color: BT.text.secondary, background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: BT.font.label }}
+              onMouseEnter={e => { e.currentTarget.style.background = BT.bg.hover; e.currentTarget.style.color = BT.text.cyan; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = BT.text.secondary; }}
             >
               <MapIcon className="w-4 h-4" />
               <span className="font-medium">Show on Map</span>
             </button>
-            
+
             <button
               onClick={() => setShowContextMenu(false)}
-              className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+              className="w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors"
+              style={{ color: BT.text.secondary, background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: BT.font.label }}
+              onMouseEnter={e => { e.currentTarget.style.background = BT.bg.hover; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
             >
               <FunnelIcon className="w-4 h-4" />
               <span>Filter...</span>
             </button>
-            
+
             <button
               onClick={() => setShowContextMenu(false)}
-              className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+              className="w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors"
+              style={{ color: BT.text.secondary, background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: BT.font.label }}
+              onMouseEnter={e => { e.currentTarget.style.background = BT.bg.hover; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
             >
               <ArrowDownTrayIcon className="w-4 h-4" />
               <span>Export</span>

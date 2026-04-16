@@ -71,7 +71,7 @@ router.get('/deals/:dealId/supply', async (req, res) => {
  */
 router.get('/trade-area/:id', async (req, res) => {
   try {
-    const tradeAreaId = parseInt(req.params.id);
+    const tradeAreaId = req.params.id;
     
     const pipeline = await supplySignalService.getSupplyPipeline(tradeAreaId);
     
@@ -94,7 +94,7 @@ router.get('/trade-area/:id', async (req, res) => {
  */
 router.get('/trade-area/:id/risk', async (req, res) => {
   try {
-    const tradeAreaId = parseInt(req.params.id);
+    const tradeAreaId = req.params.id;
     const quarter = req.query.quarter as string || '2028-Q1';
     
     // Get demand data for this trade area/quarter (if available)
@@ -243,7 +243,7 @@ router.put('/event/:id/status', async (req, res) => {
  */
 router.get('/timeline/:tradeAreaId', async (req, res) => {
   try {
-    const tradeAreaId = parseInt(req.params.tradeAreaId);
+    const tradeAreaId = req.params.tradeAreaId;
     const startQuarter = req.query.start_quarter as string;
     const endQuarter = req.query.end_quarter as string;
     
@@ -272,7 +272,7 @@ router.get('/timeline/:tradeAreaId', async (req, res) => {
  */
 router.get('/market-dynamics/:tradeAreaId', async (req, res) => {
   try {
-    const tradeAreaId = parseInt(req.params.tradeAreaId);
+    const tradeAreaId = req.params.tradeAreaId;
     const quarter = req.query.quarter as string || '2028-Q1';
     
     // Get demand forecast
@@ -329,7 +329,7 @@ router.get('/market-dynamics/:tradeAreaId', async (req, res) => {
       marketBalance: demandForecast ? {
         demandSupplyGap: supplyRisk.demandSupplyGap,
         netMarketPressure: supplyRisk.netMarketPressure,
-        interpretation: this.interpretMarketBalance(
+        interpretation: interpretMarketBalance(
           supplyRisk.demandSupplyGap || 0,
           supplyRisk.netMarketPressure || 0
         )

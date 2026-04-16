@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { useArchitecture } from '../../contexts/ArchitectureContext';
 import { ArchitectureInfo } from '../ArchitectureOverlay';
+import { BT } from '@/components/deal/bloomberg-ui';
 
 interface PageHeaderProps {
   title: string;
@@ -31,22 +32,31 @@ export function PageHeader({
   };
 
   return (
-    <div className="bg-white border-b border-gray-200 px-6 py-4">
+    <div
+      className="px-6 py-4"
+      style={{ background: BT.bg.header, borderBottom: `1px solid ${BT.border.subtle}` }}
+    >
       <div className="flex items-start justify-between">
         <div className="flex-1">
           <div className="flex items-center gap-3 mb-2">
             {icon && <span className="text-3xl">{icon}</span>}
-            <h1 className="text-3xl font-bold text-gray-900">{title}</h1>
+            <h1
+              className="text-3xl font-bold"
+              style={{ color: BT.text.primary, fontFamily: BT.font.display }}
+            >
+              {title}
+            </h1>
           </div>
-          <p className="text-gray-600">{description}</p>
-          
+          <p style={{ color: BT.text.secondary, fontFamily: BT.font.label }}>{description}</p>
+
           {/* Quick Links */}
           {(architectureDiagram || documentation) && (
             <div className="flex gap-3 mt-3">
               {architectureDiagram && (
                 <Link
                   to={`/architecture?diagram=${architectureDiagram}`}
-                  className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                  className="text-sm flex items-center gap-1"
+                  style={{ color: BT.text.cyan, fontFamily: BT.font.label }}
                 >
                   <span>🏗️</span>
                   <span>View Architecture</span>
@@ -57,7 +67,8 @@ export function PageHeader({
                   href={documentation}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-sm text-purple-600 hover:text-purple-700 flex items-center gap-1"
+                  className="text-sm flex items-center gap-1"
+                  style={{ color: BT.text.purple, fontFamily: BT.font.label }}
                 >
                   <span>📖</span>
                   <span>Documentation</span>
@@ -66,7 +77,7 @@ export function PageHeader({
             </div>
           )}
         </div>
-        
+
         {actions && <div className="flex gap-2">{actions}</div>}
       </div>
     </div>

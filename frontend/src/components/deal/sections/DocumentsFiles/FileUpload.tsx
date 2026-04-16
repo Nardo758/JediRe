@@ -5,7 +5,7 @@
 
 import React, { useState, useCallback } from 'react';
 import { DealFile } from '../DocumentsFilesSection';
-import axios from 'axios';
+import { apiClient as axios } from '../../../../services/api.client';
 
 interface FileUploadProps {
   dealId: string;

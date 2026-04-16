@@ -1,9 +1,57 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import axios from 'axios';
 import { apiClient } from '../../../services/api.client';
 import { useZoningModuleStore } from '../../../stores/zoningModuleStore';
+import { useDealStore } from '../../../stores/dealStore';
 import type { DevelopmentPath, BuildingEnvelope } from '../../../types/zoning.types';
 import { MunicodeLink } from '../SourceCitation';
+import RegulatoryMarketResearch from './RegulatoryMarketResearch';
+
+// ═══ DEAL-TYPE ADAPTATION IMPORTS ═══
+// Utilities for conformance checks and scenario generation
+import { computeConformanceMetrics, ConformanceCheckData } from '../../../utils/conformance.utils';
+import { generateExpansionScenarios, generateRedevelopmentScenarios, ExpansionScenario } from '../../../utils/scenarios.utils';
+import { getSubTabsForDealType, normalizeDealType } from '../../../utils/tabs.utils';
+import { generateInterpretationDecisions, getInterpretationOverrides, estimateUnitCountForMode } from '../../../utils/interpretation.utils';
+
+// UI Components for deal-type views
+import ConformanceCheckSection from './components/ConformanceCheckSection';
+import UntappedEntitlementCard from './components/UntappedEntitlementCard';
+import ExpansionScenariosCards from './components/ExpansionScenariosCards';
+import RedevelopmentScenariosCards from './components/RedevelopmentScenariosCards';
+import ComplianceTriggerAnalysisCard from './components/ComplianceTriggerAnalysisCard';
+import NonconformingWarning from './components/NonconformingWarning';
+import InterpretationPanel, { InterpretationDecision } from './components/InterpretationPanel';
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// COLOR TOKENS & FONTS — Bloomberg Dark Aesthetic
+// ═══════════════════════════════════════════════════════════════════════════════
+const T = {
+  bg:         "#0a0f1a",
+  bgCard:     "#0f1729",
+  bgCardAlt:  "#111d33",
+  bgHover:    "#162040",
+  border:     "#1e2d4a",
+  borderLit:  "#2a4070",
+  text:       "#e2e8f0",
+  textMuted:  "#64748b",
+  textDim:    "#475569",
+  accent:     "#3b82f6",
+  accentDim:  "#1e40af",
+  green:      "#22c55e",
+  greenDim:   "#166534",
+  amber:      "#f59e0b",
+  amberDim:   "#92400e",
+  red:        "#ef4444",
+  redDim:     "#991b1b",
+  cyan:       "#06b6d4",
+  purple:     "#a78bfa",
+};
+
+const FONT = {
+  mono: "'JetBrains Mono', 'SF Mono', 'Fira Code', monospace",
+  body: "'IBM Plex Sans', -apple-system, sans-serif",
+};
 
 interface EnvelopeEnrichment {
   sources: Record<string, {
@@ -73,6 +121,7 @@ interface ZoningProfile {
 interface DevelopmentCapacityTabProps {
   dealId?: string;
   deal?: any;
+  costPerSf?: number;
 }
 
 const PROJECT_TYPE_OPTIONS = [
@@ -84,6 +133,192 @@ const PROJECT_TYPE_OPTIONS = [
   { value: 'hospitality', label: 'Hospitality / Hotel', hint: 'Applies nonresidential FAR only' },
   { value: 'industrial',  label: 'Industrial', hint: 'Applies nonresidential FAR only' },
 ];
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// COMPUTATION FUNCTIONS — Client-side instant preview calculations
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function calculateBuildableArea(parcel: any, zoning: any) {
+  const { front_ft, side_ft, rear_ft } = zoning.setbacks || {};
+  const frontage = parcel.frontage_ft || 200;
+  const depth = parcel.depth_ft || 200;
+
+  let buildable_width, buildable_depth;
+  if (parcel.is_corner) {
+    buildable_width = frontage - (front_ft || 0) - (side_ft || 0);
+    buildable_depth = depth - (front_ft || 0) - (rear_ft || 0);
+  } else {
+    buildable_width = frontage - 2 * (side_ft || 0);
+    buildable_depth = depth - (front_ft || 0) - (rear_ft || 0);
+  }
+
+  const buildable_sf = Math.max(0, buildable_width * buildable_depth);
+  const gross_lot_sf = parcel.lot_size_sf || 0;
+
+  return {
+    gross_lot_sf,
+    buildable_sf,
+    buildable_width,
+    buildable_depth,
+    setback_loss_sf: gross_lot_sf - buildable_sf,
+    setback_loss_pct: ((gross_lot_sf - buildable_sf) / gross_lot_sf * 100).toFixed(1),
+  };
+}
+
+function calculateEnvelope(parcel: any, zoning: any, overrides: any = {}, costPerSfOverride?: number) {
+  const area = calculateBuildableArea(parcel, zoning);
+  const lot_acres = (parcel.lot_size_sf || 0) / 43560;
+  const density = overrides.density || zoning.max_density_units_per_acre || 100;
+  const height_ft = overrides.height || zoning.max_height_ft || 85;
+  const far = overrides.far || zoning.max_far || 3.0;
+  const coverage = overrides.coverage || (zoning.lot_coverage_pct || 80) / 100;
+  const parking_per_unit = overrides.parking || zoning.parking?.per_unit || 1.0;
+  const guest_parking = zoning.parking?.guest_per_unit || 0.25;
+
+  // ─── CONSTRAINT 1: Density cap ───
+  const density_cap = Math.floor(density * lot_acres);
+
+  // ─── CONSTRAINT 2: FAR cap ───
+  const avg_unit_sf = overrides.avg_unit_sf || 850;
+  const common_area_factor = 1.15;
+  const max_gfa = far * (parcel.lot_size_sf || 0);
+  const rentable_sf = max_gfa / common_area_factor;
+  const far_cap = Math.floor(rentable_sf / avg_unit_sf);
+
+  // ─── CONSTRAINT 3: Height cap ───
+  const ground_floor_height = 14;
+  const upper_floor_height = 10;
+  const max_stories = height_ft <= ground_floor_height
+    ? 1
+    : 1 + Math.floor((height_ft - ground_floor_height) / upper_floor_height);
+  const footprint_sf = area.buildable_sf * coverage;
+  const units_per_floor = Math.floor(footprint_sf / (avg_unit_sf * common_area_factor));
+  const residential_floors = Math.max(1, max_stories - 1);
+  const height_cap = units_per_floor * residential_floors;
+
+  // ─── CONSTRAINT 4: Lot coverage cap ───
+  const coverage_cap = units_per_floor * max_stories;
+
+  // ─── BINDING CONSTRAINT ───
+  const constraints = [
+    { name: "Density", units: density_cap, param: `${density} units/acre`, formula: `${density} × ${lot_acres.toFixed(2)} acres` },
+    { name: "FAR", units: far_cap, param: `FAR ${far}`, formula: `${far} × ${(parcel.lot_size_sf || 0).toLocaleString()} SF ÷ ${avg_unit_sf} SF/unit ÷ ${common_area_factor}` },
+    { name: "Height", units: height_cap, param: `${height_ft} ft (${max_stories} stories)`, formula: `${units_per_floor} units/floor × ${residential_floors} res. floors` },
+    { name: "Coverage", units: coverage_cap, param: `${(coverage * 100).toFixed(0)}% coverage`, formula: `${units_per_floor} units/floor × ${max_stories} total stories` },
+  ];
+
+  constraints.sort((a, b) => a.units - b.units);
+  const binding = constraints[0];
+  const max_units = binding.units;
+
+  // ─── PARKING ANALYSIS ───
+  const total_parking_spaces = Math.ceil(max_units * (parking_per_unit + guest_parking));
+  const parking_sf_per_space = 350;
+  const parking_cost_per_space_surface = 5000;
+  const parking_cost_per_space_structured = 35000;
+  const surface_parking_sf = total_parking_spaces * parking_sf_per_space;
+  const needs_structured = surface_parking_sf > ((parcel.lot_size_sf || 0) - footprint_sf);
+  const parking_cost_per_space = needs_structured ? parking_cost_per_space_structured : parking_cost_per_space_surface;
+  const total_parking_cost = total_parking_spaces * parking_cost_per_space;
+  const cars_per_parking_level = Math.floor(footprint_sf / parking_sf_per_space);
+  const parking_levels_needed = needs_structured ? Math.ceil(total_parking_spaces / cars_per_parking_level) : 0;
+
+  // ─── ESTIMATED VALUES ───
+  const est_value_per_unit = 250000;
+  const _cpsf = Number(costPerSfOverride);
+  const est_construction_cost_per_sf = Number.isFinite(_cpsf) && _cpsf > 0 ? _cpsf : 185;
+  const total_gfa = max_units * avg_unit_sf * common_area_factor;
+  const est_construction_cost = total_gfa * est_construction_cost_per_sf;
+  const est_total_value = max_units * est_value_per_unit;
+
+  return {
+    max_units,
+    binding_constraint: binding.name,
+    constraints,
+    max_gfa,
+    total_gfa_at_max_units: total_gfa,
+    max_stories,
+    residential_floors,
+    units_per_floor,
+    footprint_sf,
+    buildable_area: area,
+    parking: {
+      total_spaces: total_parking_spaces,
+      per_unit: parking_per_unit,
+      guest_per_unit: guest_parking,
+      needs_structured,
+      parking_levels_needed,
+      cost_per_space: parking_cost_per_space,
+      total_cost: total_parking_cost,
+      pct_of_construction: ((total_parking_cost / est_construction_cost) * 100).toFixed(1),
+    },
+    financials: {
+      est_value_per_unit,
+      est_total_value,
+      est_construction_cost_per_sf,
+      est_construction_cost,
+      est_total_development_cost: est_construction_cost + total_parking_cost,
+    },
+  };
+}
+
+function generatePathScenarios(parcel: any, currentZoning: any, costPerSf?: number) {
+  const byRight = calculateEnvelope(parcel, currentZoning, {}, costPerSf);
+
+  const overlayDensity = (currentZoning.max_density_units_per_acre || 100) * 1.2;
+  const overlayParking = (currentZoning.parking?.per_unit || 1.0) * 0.8;
+  const overlayBonus = calculateEnvelope(parcel, {
+    ...currentZoning,
+    max_density_units_per_acre: overlayDensity,
+    parking: { ...currentZoning.parking, per_unit: overlayParking },
+  }, {}, costPerSf);
+
+  const varianceDensity = (currentZoning.max_density_units_per_acre || 100) * 1.25;
+  const varianceHeight = (currentZoning.max_height_ft || 85) * 1.10;
+  const variance = calculateEnvelope(parcel, {
+    ...currentZoning,
+    max_density_units_per_acre: varianceDensity,
+    max_height_ft: varianceHeight,
+  }, {}, costPerSf);
+
+  return {
+    paths: [
+      {
+        id: "by_right",
+        label: "By-Right",
+        sublabel: `Under current ${currentZoning.base_district_code || 'zoning'}`,
+        envelope: byRight,
+        timeline_months: { min: 3, median: 6, max: 9 },
+        approval_probability: 0.95,
+        additional_cost: 0,
+        risk_level: "low",
+        color: T.green,
+      },
+      {
+        id: "overlay_bonus",
+        label: "Overlay Bonus",
+        sublabel: `${currentZoning.base_district_code || 'Code'} + Overlay`,
+        envelope: overlayBonus,
+        timeline_months: { min: 4, median: 8, max: 12 },
+        approval_probability: 0.85,
+        additional_cost: 0,
+        risk_level: "low-medium",
+        color: T.cyan,
+      },
+      {
+        id: "variance",
+        label: "SAP / Variance",
+        sublabel: `${currentZoning.base_district_code || 'Code'} + 25% density bonus`,
+        envelope: variance,
+        timeline_months: { min: 6, median: 10, max: 16 },
+        approval_probability: 0.70,
+        additional_cost: 75000,
+        risk_level: "medium",
+        color: T.amber,
+      },
+    ],
+  };
+}
 
 function formatNumber(v: number | null | undefined): string {
   if (v == null) return '--';
@@ -130,358 +365,122 @@ function colKeyToPathId(colKey: string): DevelopmentPath {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// DESIGN TOKENS — Bloomberg Aesthetic
+// UI STYLING
 // ═══════════════════════════════════════════════════════════════════════════════
-const T = {
-  bg:         "#0a0f1a",
-  bgCard:     "#0f1729",
-  bgCardAlt:  "#111d33",
-  bgHover:    "#162040",
-  border:     "#1e2d4a",
-  borderLit:  "#2a4070",
-  text:       "#e2e8f0",
-  textMuted:  "#64748b",
-  textDim:    "#475569",
-  accent:     "#3b82f6",
-  accentDim:  "#1e40af",
-  green:      "#22c55e",
-  greenDim:   "#166534",
-  amber:      "#f59e0b",
-  amberDim:   "#92400e",
-  red:        "#ef4444",
-  redDim:     "#991b1b",
-  cyan:       "#06b6d4",
-  purple:     "#a78bfa",
-};
-
-const FONT = {
-  mono: "'JetBrains Mono', 'SF Mono', 'Fira Code', monospace",
-  body: "'IBM Plex Sans', -apple-system, sans-serif",
-};
 
 const s = {
-  page: {
-    background: T.bg,
-    color: T.text,
-    fontFamily: FONT.body,
-    minHeight: "100vh",
-    padding: "20px",
-  },
-  header: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 24,
-    borderBottom: `1px solid ${T.border}`,
-    paddingBottom: 16,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: 700,
-    fontFamily: FONT.mono,
-    letterSpacing: "-0.02em",
-    color: T.text,
-  },
-  subtitle: {
-    fontSize: 11,
-    color: T.textMuted,
-    fontFamily: FONT.mono,
-    marginTop: 4,
-  },
-  badge: (color: string) => ({
-    display: "inline-block" as const,
-    padding: "2px 8px",
-    borderRadius: 4,
-    fontSize: 10,
-    fontWeight: 700,
-    fontFamily: FONT.mono,
-    letterSpacing: "0.05em",
-    background: color + "15",
-    color: color,
-    border: `1px solid ${color}30`,
-  }),
   card: {
     background: T.bgCard,
     border: `1px solid ${T.border}`,
-    borderRadius: 8,
+    borderRadius: 6,
     padding: 16,
     marginBottom: 12,
   },
   cardLabel: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: 700,
     fontFamily: FONT.mono,
-    letterSpacing: "0.08em",
-    color: T.textMuted,
-    marginBottom: 8,
+    color: T.accent,
+    marginBottom: 12,
     textTransform: "uppercase" as const,
+    letterSpacing: 0.5,
   },
+  constraintBarBg: {
+    height: 6,
+    background: T.bgCardAlt,
+    borderRadius: 2,
+    overflow: "hidden" as const,
+  },
+  constraintBar: (pct: number, isBinding: boolean) => ({
+    height: "100%",
+    width: `${Math.min(100, pct)}%`,
+    background: isBinding ? T.red : T.accent,
+    transition: "width 0.3s ease",
+  }),
+  bindingTag: {
+    fontSize: 9,
+    fontWeight: 700,
+    color: T.red,
+    background: T.redDim + "40",
+    padding: "2px 6px",
+    borderRadius: 3,
+    fontFamily: FONT.mono,
+  },
+  pathCard: (selected: boolean, color: string) => ({
+    flex: "1 1 220px",
+    background: selected ? T.bgCardAlt : T.bgCard,
+    border: `2px solid ${selected ? color : T.border}`,
+    borderRadius: 6,
+    padding: 12,
+    cursor: "pointer" as const,
+    transition: "all 0.2s",
+    "&:hover": { borderColor: color },
+  }),
   metric: {
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: 800,
     fontFamily: FONT.mono,
     color: T.text,
-    lineHeight: 1,
+    marginTop: 8,
   },
   metricSub: {
-    fontSize: 11,
+    fontSize: 10,
     color: T.textMuted,
     fontFamily: FONT.mono,
-    marginTop: 4,
   },
+  badge: (color: string) => ({
+    fontSize: 9,
+    fontWeight: 700,
+    color: color,
+    background: color + "20",
+    padding: "4px 8px",
+    borderRadius: 3,
+    fontFamily: FONT.mono,
+  }),
   table: {
     width: "100%",
     borderCollapse: "collapse" as const,
     fontSize: 12,
-    fontFamily: FONT.mono,
   },
   th: {
+    background: T.bgCardAlt,
+    color: T.accent,
+    padding: "8px 10px",
     textAlign: "left" as const,
-    padding: "8px 10px",
-    fontSize: 10,
-    fontWeight: 700,
-    letterSpacing: "0.06em",
-    color: T.textMuted,
-    borderBottom: `1px solid ${T.border}`,
-    textTransform: "uppercase" as const,
-  },
-  td: (highlight = false) => ({
-    padding: "8px 10px",
-    borderBottom: `1px solid ${T.border}10`,
-    color: highlight ? T.accent : T.text,
-    fontWeight: highlight ? 700 : 400,
-  }),
-  tab: (active: boolean) => ({
-    padding: "8px 16px",
-    borderRadius: 6,
-    fontSize: 11,
     fontWeight: 600,
     fontFamily: FONT.mono,
-    cursor: "pointer" as const,
-    background: active ? T.accentDim + "40" : "transparent",
-    color: active ? T.accent : T.textMuted,
-    border: active ? `1px solid ${T.accent}40` : `1px solid transparent`,
-    transition: "all 0.15s ease",
-  }),
-  pathCard: (selected: boolean, color: string) => ({
-    background: selected ? color + "08" : T.bgCard,
-    border: `1px solid ${selected ? color + "60" : T.border}`,
-    borderRadius: 8,
-    padding: 16,
-    cursor: "pointer" as const,
-    transition: "all 0.15s ease",
-    flex: 1,
-    minWidth: 200,
-  }),
-  constraintBar: (pct: number, isBinding: boolean) => ({
-    height: 6,
-    borderRadius: 3,
-    background: isBinding ? T.red : T.accent + "30",
-    width: `${Math.min(100, pct)}%`,
-    transition: "width 0.4s ease",
-  }),
-  constraintBarBg: {
-    height: 6,
-    borderRadius: 3,
-    background: T.border + "40",
-    width: "100%",
-    marginTop: 4,
+    fontSize: 10,
+    borderBottom: `1px solid ${T.border}`,
   },
-  bindingTag: {
-    display: "inline-block" as const,
-    padding: "1px 6px",
-    borderRadius: 3,
-    fontSize: 9,
-    fontWeight: 800,
+  td: (bold = false) => ({
+    padding: "8px 10px",
+    borderBottom: `1px solid ${T.border}`,
     fontFamily: FONT.mono,
-    background: T.red + "20",
-    color: T.red,
-    letterSpacing: "0.06em",
-  },
+    fontSize: 11,
+    color: bold ? T.accent : T.text,
+    fontWeight: bold ? 600 : 400,
+  }),
+  tab: (active: boolean) => ({
+    padding: "8px 12px",
+    background: active ? T.bgCardAlt : "transparent",
+    border: `1px solid ${active ? T.accent : T.border}`,
+    color: active ? T.accent : T.textMuted,
+    cursor: "pointer" as const,
+    fontFamily: FONT.mono,
+    fontSize: 11,
+    fontWeight: 600,
+    borderRadius: 4,
+    transition: "all 0.2s",
+  }),
 };
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// COMPUTATION FUNCTIONS — Client-side envelope calculator
-// ═══════════════════════════════════════════════════════════════════════════════
-
-interface ParcelData {
-  lot_size_sf: number;
-  lot_size_acres: number;
-  frontage_ft: number;
-  depth_ft: number;
-  is_corner: boolean;
-}
-
-interface ZoningData {
-  code?: string;
-  max_density_units_per_acre: number;
-  max_height_ft: number;
-  max_far: number;
-  lot_coverage_pct: number;
-  setback_front_ft?: number;
-  setback_side_ft?: number;
-  setback_rear_ft?: number;
-  parking?: {
-    per_unit: number;
-    guest_per_unit?: number;
-  };
-  overlay_bonuses?: {
-    beltline?: {
-      density_bonus_pct: number;
-      parking_reduction_pct: number;
-      requires?: string;
-    };
-  };
-}
-
-interface EnvelopeResult {
-  max_units: number;
-  binding_constraint: string;
-  constraints: Array<{ name: string; units: number; param: string; formula: string }>;
-  max_gfa: number;
-  total_gfa_at_max_units: number;
-  max_stories: number;
-  residential_floors: number;
-  units_per_floor: number;
-  footprint_sf: number;
-  buildable_area: any;
-  parking: any;
-  financials: any;
-}
-
-function calculateBuildableArea(parcel: ParcelData, zoning: any) {
-  const { front_ft = 0, side_ft = 0, rear_ft = 0 } = zoning.setback_front_ft
-    ? { front_ft: zoning.setback_front_ft, side_ft: zoning.setback_side_ft, rear_ft: zoning.setback_rear_ft }
-    : { front_ft: 0, side_ft: 10, rear_ft: 20 };
-
-  const frontage = parcel.frontage_ft;
-  const depth = parcel.depth_ft;
-
-  let buildable_width, buildable_depth;
-  if (parcel.is_corner) {
-    buildable_width = frontage - front_ft - side_ft;
-    buildable_depth = depth - front_ft - rear_ft;
-  } else {
-    buildable_width = frontage - (2 * side_ft);
-    buildable_depth = depth - front_ft - rear_ft;
-  }
-
-  const buildable_sf = Math.max(0, buildable_width * buildable_depth);
-  const gross_lot_sf = parcel.lot_size_sf;
-
-  return {
-    gross_lot_sf,
-    buildable_sf,
-    buildable_width,
-    buildable_depth,
-    setback_loss_sf: gross_lot_sf - buildable_sf,
-    setback_loss_pct: ((gross_lot_sf - buildable_sf) / gross_lot_sf * 100).toFixed(1),
-  };
-}
-
-function calculateEnvelope(parcel: ParcelData, zoning: any, overrides: any = {}): EnvelopeResult {
-  const area = calculateBuildableArea(parcel, zoning);
-  const lot_acres = parcel.lot_size_acres;
-  const density = overrides.density || zoning.max_density_units_per_acre || 100;
-  const height_ft = overrides.height || zoning.max_height_ft || 150;
-  const far = overrides.far || zoning.max_far || 2.0;
-  const coverage = overrides.coverage || zoning.lot_coverage_pct || 0.75;
-  const parking_per_unit = overrides.parking || zoning.parking?.per_unit || 1.0;
-  const guest_parking = zoning.parking?.guest_per_unit || 0.25;
-
-  // CONSTRAINT 1: Density cap
-  const density_cap = Math.floor(density * lot_acres);
-
-  // CONSTRAINT 2: FAR cap
-  const avg_unit_sf = overrides.avg_unit_sf || 850;
-  const common_area_factor = 1.15;
-  const max_gfa = far * parcel.lot_size_sf;
-  const rentable_sf = max_gfa / common_area_factor;
-  const far_cap = Math.floor(rentable_sf / avg_unit_sf);
-
-  // CONSTRAINT 3: Height cap
-  const ground_floor_height = 14;
-  const upper_floor_height = 10;
-  const max_stories = height_ft <= ground_floor_height
-    ? 1
-    : 1 + Math.floor((height_ft - ground_floor_height) / upper_floor_height);
-  const footprint_sf = area.buildable_sf * coverage;
-  const units_per_floor = Math.floor(footprint_sf / (avg_unit_sf * common_area_factor));
-  const residential_floors = Math.max(1, max_stories - 1);
-  const height_cap = units_per_floor * residential_floors;
-
-  // CONSTRAINT 4: Lot coverage cap
-  const coverage_cap = units_per_floor * max_stories;
-
-  // BINDING CONSTRAINT
-  const constraints = [
-    { name: "Density", units: density_cap, param: `${density} units/acre`, formula: `${density} × ${lot_acres} acres` },
-    { name: "FAR", units: far_cap, param: `FAR ${far}`, formula: `${far} × ${parcel.lot_size_sf.toLocaleString()} SF ÷ ${avg_unit_sf} SF/unit ÷ ${common_area_factor}` },
-    { name: "Height", units: height_cap, param: `${height_ft} ft (${max_stories} stories)`, formula: `${units_per_floor} units/floor × ${residential_floors} res. floors` },
-    { name: "Coverage", units: coverage_cap, param: `${(coverage * 100).toFixed(0)}% coverage`, formula: `${units_per_floor} units/floor × ${max_stories} total stories` },
-  ];
-
-  constraints.sort((a, b) => a.units - b.units);
-  const binding = constraints[0];
-  const max_units = binding.units;
-
-  // PARKING ANALYSIS
-  const total_parking_spaces = Math.ceil(max_units * (parking_per_unit + guest_parking));
-  const parking_sf_per_space = 350;
-  const parking_cost_per_space_surface = 5000;
-  const parking_cost_per_space_structured = 35000;
-  const surface_parking_sf = total_parking_spaces * parking_sf_per_space;
-  const needs_structured = surface_parking_sf > (parcel.lot_size_sf - footprint_sf);
-  const parking_cost_per_space = needs_structured ? parking_cost_per_space_structured : parking_cost_per_space_surface;
-  const total_parking_cost = total_parking_spaces * parking_cost_per_space;
-  const cars_per_parking_level = Math.floor(footprint_sf / parking_sf_per_space);
-  const parking_levels_needed = needs_structured ? Math.ceil(total_parking_spaces / cars_per_parking_level) : 0;
-
-  // ESTIMATED VALUES
-  const est_value_per_unit = 250000;
-  const est_construction_cost_per_sf = 185;
-  const total_gfa = max_units * avg_unit_sf * common_area_factor;
-  const est_construction_cost = total_gfa * est_construction_cost_per_sf;
-  const est_total_value = max_units * est_value_per_unit;
-
-  return {
-    max_units,
-    binding_constraint: binding.name,
-    constraints,
-    max_gfa,
-    total_gfa_at_max_units: total_gfa,
-    max_stories,
-    residential_floors,
-    units_per_floor,
-    footprint_sf,
-    buildable_area: area,
-    parking: {
-      total_spaces: total_parking_spaces,
-      per_unit: parking_per_unit,
-      guest_per_unit: guest_parking,
-      needs_structured,
-      parking_levels_needed,
-      cost_per_space: parking_cost_per_space,
-      total_cost: total_parking_cost,
-      pct_of_construction: ((total_parking_cost / est_construction_cost) * 100).toFixed(1),
-    },
-    financials: {
-      est_value_per_unit,
-      est_total_value,
-      est_construction_cost_per_sf,
-      est_construction_cost,
-      est_total_development_cost: est_construction_cost + total_parking_cost,
-    },
-  };
-}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // UI COMPONENTS
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function ConstraintWaterfall({ constraints, maxPossible }: { constraints: any[]; maxPossible: number }) {
+function ConstraintWaterfall({ constraints, maxPossible }: { constraints: any[], maxPossible: number }) {
   return (
-    <div style={{ ...s.card, padding: 20 }}>
+    <div style={s.card}>
       <div style={s.cardLabel}>CONSTRAINT WATERFALL — BINDING ANALYSIS</div>
       <div style={{ fontSize: 11, color: T.textDim, marginBottom: 16, fontFamily: FONT.mono }}>
         Max units = MIN(density, FAR, height, coverage). The lowest is the binding constraint.
@@ -515,53 +514,88 @@ function ConstraintWaterfall({ constraints, maxPossible }: { constraints: any[];
   );
 }
 
-function PathComparisonCards({
-  paths,
-  selectedPath,
-  onSelectPath,
-}: {
-  paths: any[];
-  selectedPath: string | null;
-  onSelectPath: (pathId: string) => void;
-}) {
+function PathComparisonCards({ paths, selectedPath, onSelectPath, nearbyEntitlements, currentCode }: { paths: any[], selectedPath: string, onSelectPath: (id: string) => void, nearbyEntitlements?: any, currentCode?: string }) {
+  const getPrecedentBadge = (pathId: string) => {
+    if (pathId !== 'rezone' || !nearbyEntitlements || !currentCode) return null;
+
+    const rezoneTransitions = nearbyEntitlements.commonTransitions || [];
+    const currentCodeTransitions = rezoneTransitions.filter((t: any) => t.fromCode.toUpperCase() === currentCode.toUpperCase());
+
+    if (currentCodeTransitions.length === 0) return null;
+
+    const avgApprovalRate = currentCodeTransitions.reduce((sum: number, t: any) => sum + (t.approvalRate || 0), 0) / currentCodeTransitions.length;
+
+    if (avgApprovalRate > 75) {
+      return { text: `Strong precedent — ${currentCodeTransitions.length} approved`, color: T.green, bg: T.greenDim };
+    } else if (avgApprovalRate >= 50) {
+      return { text: `Moderate precedent — ${avgApprovalRate.toFixed(0)}% approval`, color: T.amber, bg: T.amberDim };
+    } else {
+      return { text: 'Limited precedent — proceed with caution', color: T.amber, bg: T.amberDim };
+    }
+  };
+
   return (
     <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
       {paths.map(path => {
         const sel = selectedPath === path.id;
+        const precedent = getPrecedentBadge(path.id);
         return (
           <div
             key={path.id}
-            style={{ ...s.pathCard(sel, path.color), position: "relative" } as any}
+            style={s.pathCard(sel, path.color)}
             onClick={() => onSelectPath(path.id)}
           >
-            <div style={{ fontSize: 12, fontWeight: 700, fontFamily: FONT.mono, color: T.text, marginBottom: 8 }}>
-              {path.label}
-            </div>
-            <div style={{ fontSize: 10, color: T.textMuted, fontFamily: FONT.mono, marginBottom: 10 }}>
-              {path.sublabel}
-            </div>
-            <div style={{ fontSize: 20, fontWeight: 800, fontFamily: FONT.mono, color: path.color, marginBottom: 12 }}>
-              {path.envelope?.max_units?.toLocaleString() || '--'} units
-            </div>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 8,
-                fontSize: 10,
-                fontFamily: FONT.mono,
-              }}
-            >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
               <div>
-                <div style={{ color: T.textMuted }}>Timeline (mo.)</div>
-                <div style={{ color: T.text, fontWeight: 700 }}>
-                  {path.timeline_months?.min}-{path.timeline_months?.max}
+                <div style={{ fontSize: 13, fontWeight: 700, fontFamily: FONT.mono, color: sel ? path.color : T.text }}>
+                  {path.label}
+                </div>
+                <div style={{ fontSize: 10, color: T.textMuted, fontFamily: FONT.mono, marginTop: 2 }}>
+                  {path.sublabel}
+                </div>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-end" }}>
+                <span style={s.badge(path.color)}>{path.risk_level.toUpperCase()}</span>
+                {precedent && (
+                  <span style={{
+                    fontSize: 8,
+                    fontWeight: 700,
+                    color: precedent.color,
+                    background: precedent.bg + "40",
+                    padding: "2px 6px",
+                    borderRadius: 3,
+                    fontFamily: FONT.mono,
+                  }}>
+                    {precedent.text}
+                  </span>
+                )}
+              </div>
+            </div>
+            <div style={s.metric}>{path.envelope.max_units.toLocaleString()}</div>
+            <div style={s.metricSub}>units — bound by {path.envelope.binding_constraint}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 12 }}>
+              <div>
+                <div style={{ fontSize: 9, color: T.textDim, fontFamily: FONT.mono }}>TIMELINE</div>
+                <div style={{ fontSize: 11, fontFamily: FONT.mono, color: T.text }}>
+                  {path.timeline_months.min}–{path.timeline_months.max} mo
                 </div>
               </div>
               <div>
-                <div style={{ color: T.textMuted }}>P(Approve)</div>
-                <div style={{ color: T.text, fontWeight: 700 }}>
-                  {Math.round(path.approval_probability * 100)}%
+                <div style={{ fontSize: 9, color: T.textDim, fontFamily: FONT.mono }}>PROBABILITY</div>
+                <div style={{ fontSize: 11, fontFamily: FONT.mono, color: T.text }}>
+                  {(path.approval_probability * 100).toFixed(0)}%
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 9, color: T.textDim, fontFamily: FONT.mono }}>EST. VALUE</div>
+                <div style={{ fontSize: 11, fontFamily: FONT.mono, color: T.green }}>
+                  ${(path.envelope.financials.est_total_value / 1e6).toFixed(1)}M
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 9, color: T.textDim, fontFamily: FONT.mono }}>PARKING</div>
+                <div style={{ fontSize: 11, fontFamily: FONT.mono, color: path.envelope.parking.needs_structured ? T.amber : T.text }}>
+                  {path.envelope.parking.total_spaces} sp. {path.envelope.parking.needs_structured ? "(struct.)" : "(surf.)"}
                 </div>
               </div>
             </div>
@@ -572,7 +606,102 @@ function PathComparisonCards({
   );
 }
 
-export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapacityTabProps) {
+function EnvelopeDetail({ envelope, label }: { envelope: any, label: string }) {
+  const { buildable_area: area, parking, financials } = envelope;
+  return (
+    <div style={s.card}>
+      <div style={s.cardLabel}>{label} — DEVELOPMENT ENVELOPE</div>
+      <table style={s.table}>
+        <thead>
+          <tr>
+            <th style={s.th}>Parameter</th>
+            <th style={s.th}>Value</th>
+            <th style={s.th}>Source</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style={s.td()}>Gross Lot Area</td>
+            <td style={s.td(true)}>{area.gross_lot_sf.toLocaleString()} SF ({(area.gross_lot_sf / 43560).toFixed(2)} ac)</td>
+            <td style={s.td()}>County GIS / PostGIS</td>
+          </tr>
+          <tr>
+            <td style={s.td()}>Setback Deduction</td>
+            <td style={s.td()}>{area.setback_loss_sf.toLocaleString()} SF ({area.setback_loss_pct}%)</td>
+            <td style={s.td()}>Zoning Code setbacks</td>
+          </tr>
+          <tr>
+            <td style={s.td()}>Buildable Area</td>
+            <td style={s.td(true)}>{area.buildable_sf.toLocaleString()} SF</td>
+            <td style={s.td()}>Gross - setbacks</td>
+          </tr>
+          <tr>
+            <td style={s.td()}>Building Footprint</td>
+            <td style={s.td()}>{Math.round(envelope.footprint_sf).toLocaleString()} SF</td>
+            <td style={s.td()}>Buildable × coverage %</td>
+          </tr>
+          <tr>
+            <td style={s.td()}>Max Units</td>
+            <td style={s.td(true)}>{envelope.max_units.toLocaleString()}</td>
+            <td style={s.td()}>Binding: {envelope.binding_constraint}</td>
+          </tr>
+          <tr>
+            <td style={s.td()}>Max Stories</td>
+            <td style={s.td()}>{envelope.max_stories} ({envelope.residential_floors} residential)</td>
+            <td style={s.td()}>Height ÷ floor height</td>
+          </tr>
+          <tr>
+            <td style={s.td()}>Units/Floor</td>
+            <td style={s.td()}>{envelope.units_per_floor}</td>
+            <td style={s.td()}>Footprint ÷ unit size</td>
+          </tr>
+          <tr>
+            <td style={s.td()}>Max GFA</td>
+            <td style={s.td()}>{Math.round(envelope.max_gfa).toLocaleString()} SF</td>
+            <td style={s.td()}>FAR × lot area</td>
+          </tr>
+          <tr style={{ background: T.bgCardAlt }}>
+            <td style={s.td()}>Parking Required</td>
+            <td style={s.td(true)}>
+              {parking.total_spaces} spaces
+              {parking.needs_structured && <span style={{ ...s.badge(T.amber), marginLeft: 6 }}>STRUCTURED</span>}
+            </td>
+            <td style={s.td()}>{parking.per_unit}/unit + {parking.guest_per_unit} guest</td>
+          </tr>
+          {parking.needs_structured && (
+            <tr style={{ background: T.bgCardAlt }}>
+              <td style={s.td()}>Parking Levels</td>
+              <td style={s.td()}>{parking.parking_levels_needed} levels</td>
+              <td style={s.td()}>Spaces ÷ cars/level</td>
+            </tr>
+          )}
+          <tr style={{ background: T.bgCardAlt }}>
+            <td style={s.td()}>Parking Cost</td>
+            <td style={s.td(true)}>${(parking.total_cost / 1e6).toFixed(1)}M ({parking.pct_of_construction}% of construction)</td>
+            <td style={s.td()}>${parking.cost_per_space.toLocaleString()}/space</td>
+          </tr>
+          <tr style={{ borderTop: `2px solid ${T.border}` }}>
+            <td style={s.td()}>Est. Construction</td>
+            <td style={s.td()}>${(financials.est_construction_cost / 1e6).toFixed(1)}M</td>
+            <td style={s.td()}>${financials.est_construction_cost_per_sf}/SF hard cost</td>
+          </tr>
+          <tr>
+            <td style={s.td()}>Est. Total Dev Cost</td>
+            <td style={s.td(true)}>${(financials.est_total_development_cost / 1e6).toFixed(1)}M</td>
+            <td style={s.td()}>Construction + Parking</td>
+          </tr>
+          <tr>
+            <td style={s.td()}>Est. Total Value</td>
+            <td style={{ ...s.td(true), color: T.green }}>${(financials.est_total_value / 1e6).toFixed(1)}M</td>
+            <td style={s.td()}>${financials.est_value_per_unit.toLocaleString()}/unit</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export default function DevelopmentCapacityTab({ dealId, deal, costPerSf: propCostPerSf }: DevelopmentCapacityTabProps) {
   const { development_path, selectDevelopmentPath } = useZoningModuleStore();
   const [profile, setProfile] = useState<ZoningProfile | null>(null);
   const [dealInfo, setDealInfo] = useState<any>(null);
@@ -590,9 +719,6 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
   const [loadingRecs, setLoadingRecs] = useState(false);
   const [municodeUrl, setMunicodeUrl] = useState<string | null>(null);
   const [enrichment, setEnrichment] = useState<EnvelopeEnrichment | null>(null);
-  const [densityBenchmarks, setDensityBenchmarks] = useState<any>(null);
-  const [loadingBenchmarks, setLoadingBenchmarks] = useState(false);
-  const [showAllCodes, setShowAllCodes] = useState(false);
   const [variancePct, setVariancePct] = useState(20);
   const [rezoneTargetCode, setRezoneTargetCode] = useState('');
   const [customRezoneCode, setCustomRezoneCode] = useState('');
@@ -607,8 +733,47 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
   const [scenarios, setScenarios] = useState<any[]>([]);
   const [activeScenario, setActiveScenario] = useState<any>(null);
   const [activatingScenario, setActivatingScenario] = useState(false);
-  const [paths, setPaths] = useState<any[]>([]);
-  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [pathScenarios, setPathScenarios] = useState<any>(null);
+
+  // ═══ DEAL-TYPE ADAPTATION STATE ═══
+  const [activeSubTab, setActiveSubTab] = useState<string>('');
+  const [conformance, setConformance] = useState<ConformanceCheckData | null>(null);
+
+  // ═══ INTERPRETATION STATE ═══
+  const [zoningInterpretation, setZoningInterpretation] = useState<any>(null);
+  const [interpretationLoading, setInterpretationLoading] = useState(false);
+  const [expansionScenarios, setExpansionScenarios] = useState<ExpansionScenario[]>([]);
+  const [redevelopmentScenarios, setRedevelopmentScenarios] = useState<ExpansionScenario[]>([]);
+
+  // ═══ INTERPRETATION PANEL STATE ═══
+  const [interpretationDecisions, setInterpretationDecisions] = useState<InterpretationDecision[]>([]);
+  const [interpretationWarnings, setInterpretationWarnings] = useState<string[]>([]);
+  const [userOverrides, setUserOverrides] = useState<Record<string, number>>({});
+  const [interpretationMode, setInterpretationMode] = useState<'conservative' | 'moderate' | 'aggressive'>('moderate');
+  const [unitCounts, setUnitCounts] = useState({
+    conservative: 0,
+    moderate: 0,
+    aggressive: 0,
+  });
+
+  // ═══ ENTITLEMENT ACTIVITY STATE ═══
+  const [nearbyEntitlements, setNearbyEntitlements] = useState<any>(null);
+  const [nearbyLoading, setNearbyLoading] = useState(false);
+
+  const fetchNearbyEntitlements = useCallback(async () => {
+    if (!dealId) return;
+    setNearbyLoading(true);
+    try {
+      const res = await apiClient.get(`/api/v1/deals/${dealId}/nearby-entitlements`);
+      if (res.data?.data) {
+        setNearbyEntitlements(res.data.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch nearby entitlements:', err);
+    } finally {
+      setNearbyLoading(false);
+    }
+  }, [dealId]);
 
   const loadScenarios = useCallback(async () => {
     if (!dealId) return;
@@ -715,7 +880,7 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
 
   const handleSelectPath = useCallback(async (colKey: string, rec: any) => {
     if (!dealId) return;
-    
+
     setSelectedColKey(colKey);
     const pathId = colKeyToPathId(colKey);
     const units = rec.maxUnits || 0;
@@ -744,6 +909,24 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
 
     // Update Zustand store
     selectDevelopmentPath(pathId, envelope);
+
+    // Write development envelope to dealStore for downstream modules
+    const unitsPerFloor = stories > 0 ? Math.ceil(units / stories) : 0;
+    useDealStore.getState().setDevelopmentEnvelope({
+      max_units: units,
+      max_gfa: gba,
+      max_stories: stories,
+      units_per_floor: unitsPerFloor,
+      binding_constraint: rec.bindingConstraint || 'density',
+      selected_path: pathId,
+      parking: {
+        type: parkingType,
+        spaces: parking,
+        cost_per_space: parkingType === 'surface' ? 2000 : parkingType === 'garage' ? 4000 : 5000,
+      },
+      buildable_area_sf: footprint,
+      impact_fee_credit_units: deal?.projectType === 'redevelopment' ? (deal?.existingProperty?.units || 0) : 0,
+    });
     
     // Persist to database
     try {
@@ -817,6 +1000,44 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         setProfile(profileData.profile);
         setDealInfo(profileData.deal);
 
+        // Step 5: Feed computation functions with real data
+        // Construct parcel object from deal + profile
+        const prof = profileData.profile;
+        const parcel = {
+          lot_size_sf: prof.lot_area_sf || 0,
+          lot_size_acres: (prof.lot_area_sf || 0) / 43560,
+          is_corner: profileData.deal?.is_corner || false,
+          frontage_ft: profileData.deal?.frontage_ft || 200,
+          depth_ft: profileData.deal?.depth_ft || 200,
+          address: profileData.deal?.address || '',
+          parcel_id: profileData.deal?.parcel_id || '',
+        };
+
+        // Construct currentZoning object from profile
+        const currentZoning = {
+          code: prof.base_district_code || 'Unknown',
+          municipality: prof.municipality || 'Unknown',
+          state: prof.state || 'GA',
+          max_density_units_per_acre: prof.max_density_per_acre || 100,
+          max_height_ft: prof.max_height_ft || 85,
+          max_far: prof.applied_far || prof.combined_far || prof.residential_far || 3.0,
+          lot_coverage_pct: prof.max_lot_coverage_pct || 80,
+          parking: {
+            per_unit: prof.min_parking_per_unit || 1.0,
+            guest_per_unit: 0.25,
+          },
+          setbacks: {
+            front_ft: prof.setback_front_ft || 0,
+            side_ft: prof.setback_side_ft || 10,
+            rear_ft: prof.setback_rear_ft || 20,
+          },
+        };
+
+        // Compute scenarios immediately (client-side preview)
+        const scenarios = generatePathScenarios(parcel, currentZoning, propCostPerSf);
+        setPathScenarios(scenarios);
+        console.log('🔄 Computed client-side scenarios:', scenarios);
+
         if (profileData.profile?.base_district_code && profileData.profile?.municipality) {
           try {
             const municipalityId = `${(profileData.profile.municipality as string).toLowerCase().replace(/\s+/g, '-')}-${(profileData.profile.state || 'ga').toLowerCase()}`;
@@ -862,19 +1083,39 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
           setEnrichment(null);
         }
 
-        setLoadingBenchmarks(true);
+        // Fetch density benchmarks for use in Entitlement Comparison section
         try {
-          const benchRes = await apiClient.get(`/api/v1/deals/${dealId}/density-benchmarks`);
-          setDensityBenchmarks(benchRes.data?.data || benchRes.data || null);
-        } catch {
-          setDensityBenchmarks(null);
-        } finally {
-          setLoadingBenchmarks(false);
-        }
+          await apiClient.get(`/api/v1/deals/${dealId}/density-benchmarks`);
+        } catch {}
 
         try {
           await apiClient.get(`/api/v1/deals/${dealId}/rezone-analysis`);
         } catch {}
+
+        // Fetch nearby entitlements for regulatory market research
+        try {
+          const nearbyRes = await apiClient.get(`/api/v1/deals/${dealId}/nearby-entitlements`);
+          if (nearbyRes.data?.data) {
+            setNearbyEntitlements(nearbyRes.data.data);
+          }
+        } catch (err) {
+          console.warn('Failed to fetch nearby entitlements:', err);
+        }
+
+        // Fetch zoning interpretation from Claude
+        setInterpretationLoading(true);
+        try {
+          const interpRes = await apiClient.post(`/api/v1/deals/${dealId}/zoning-interpretation`);
+          if (interpRes.data?.extraction) {
+            setZoningInterpretation(interpRes.data.extraction);
+          }
+        } catch (err) {
+          // Fall back to basic profile data if interpretation unavailable
+          console.warn('Could not load zoning interpretation:', err);
+          setZoningInterpretation(null);
+        } finally {
+          setInterpretationLoading(false);
+        }
       }
     } catch (err: any) {
       const msg = err?.response?.data?.error || err?.message || 'Failed to load capacity data';
@@ -888,6 +1129,26 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
     loadData();
     loadScenarios();
   }, [loadData, loadScenarios]);
+
+  useEffect(() => {
+    if (!propCostPerSf || !profile) return;
+    const parcel = {
+      lot_size_sf: profile.lot_size_sf || profile.parcel_size_sf || 0,
+      lot_width_ft: profile.lot_width_ft,
+      lot_depth_ft: profile.lot_depth_ft,
+    };
+    const currentZoning: any = {
+      max_density_units_per_acre: profile.max_density_units_per_acre || 100,
+      max_height_ft: profile.max_height_ft || 85,
+      max_stories: profile.max_stories,
+      max_far: profile.max_far,
+      max_lot_coverage_pct: profile.max_lot_coverage_pct || 80,
+      setbacks: profile.setbacks || { front_ft: 10, side_ft: 10, rear_ft: 20 },
+      parking: { per_unit: profile.parking_per_unit || 1.0, guest_per_unit: profile.guest_parking_per_unit || 0.15 },
+    };
+    const scenarios = generatePathScenarios(parcel, currentZoning, propCostPerSf);
+    setPathScenarios(scenarios);
+  }, [propCostPerSf, profile]);
 
   useEffect(() => {
     return () => { recsAbortRef.current?.abort(); };
@@ -935,81 +1196,236 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
     return () => clearTimeout(timer);
   }, [variancePct, rezoneTargetCode, avgUnitSize, dealId]);
 
-  // Generate development paths from profile using client-side calculations
+  // ═══ DEAL-TYPE ADAPTATION EFFECTS ═══
+  // Initialize activeSubTab and compute conformance/scenarios based on deal type
   useEffect(() => {
-    if (!profile) {
-      setPaths([]);
-      return;
+    if (!profile) return;
+
+    // Determine deal type from deal prop or dealStore
+    const projectType = deal?.projectType || deal?.project_type || 'existing';
+    const dealType = normalizeDealType(projectType);
+
+    // Get available tabs for this deal type
+    const availableTabs = getSubTabsForDealType(dealType);
+    if (availableTabs.length > 0) {
+      setActiveSubTab(availableTabs[0].id);
     }
 
+    // Compute conformance and scenarios for existing/redevelopment deals
+    if (dealType === 'existing' || dealType === 'redevelopment') {
+      const existingProperty = deal?.existingProperty || deal?.deal_data?.existingProperty;
+      if (existingProperty) {
+        try {
+          // Compute conformance metrics
+          const zoning = {
+            max_density_units_per_acre: profile.max_density_per_acre,
+            applied_far: profile.applied_far || profile.residential_far,
+            max_height_ft: profile.max_height_ft,
+            max_lot_coverage_pct: profile.max_lot_coverage_pct,
+            min_parking_per_unit: profile.min_parking_per_unit,
+            lot_area_sf: profile.lot_area_sf,
+          };
+
+          const conformanceData = computeConformanceMetrics(existingProperty, zoning, profile.lot_area_sf || 0);
+          setConformance(conformanceData);
+
+          // Compute max allowed from zoning for untapped entitlement card
+          const maxAllowed = {
+            units: Math.floor((profile.lot_area_sf || 0) / 43560 * (profile.max_density_per_acre || 100)),
+            gfa: Math.round((profile.lot_area_sf || 0) * (profile.applied_far || 3.0)),
+            stories: profile.max_stories || 8,
+          };
+
+          // Generate scenarios
+          if (dealType === 'existing') {
+            const scenarios = generateExpansionScenarios(existingProperty, maxAllowed, zoning);
+            setExpansionScenarios(scenarios);
+          } else {
+            const scenarios = generateRedevelopmentScenarios(existingProperty, maxAllowed, zoning);
+            setRedevelopmentScenarios(scenarios);
+          }
+
+          console.log(`✅ Computed ${dealType} metrics for deal`, {
+            conformance: conformanceData,
+            maxAllowed,
+          });
+        } catch (err) {
+          console.error(`Failed to compute ${dealType} metrics:`, err);
+        }
+      }
+    }
+  }, [profile, deal]);
+
+  // ═══ INTERPRETATION DECISIONS EFFECT ═══
+  // Generate interpretation decisions and compute unit counts for each mode
+  useEffect(() => {
+    if (!profile) return;
+
+    const { decisions, warnings } = generateInterpretationDecisions(profile, deal?.existingProperty, deal?.projectType);
+    setInterpretationDecisions(decisions);
+    setInterpretationWarnings(warnings);
+
+    // Compute unit counts for each mode
+    const lotSF = profile.lot_area_sf || 0;
+    const conservative = estimateUnitCountForMode(profile, 'conservative', lotSF);
+    const moderate = estimateUnitCountForMode(profile, 'moderate', lotSF);
+    const aggressive = estimateUnitCountForMode(profile, 'aggressive', lotSF);
+
+    setUnitCounts({ conservative, moderate, aggressive });
+
+    console.log(`✅ Generated interpretation decisions`, {
+      decisions: decisions.length,
+      warnings: warnings.length,
+      unitCounts: { conservative, moderate, aggressive },
+    });
+  }, [profile, deal?.existingProperty, deal?.projectType]);
+
+  // ═══ INTERPRETATION CALLBACKS ═══
+  const handleOverrideChange = useCallback(
+    (parameter: string, value: number | null) => {
+      const newOverrides = { ...userOverrides };
+      if (value === null) {
+        delete newOverrides[parameter];
+      } else {
+        newOverrides[parameter] = value;
+      }
+      setUserOverrides(newOverrides);
+
+      // TODO: STEP 2 OF INTERPRETATION PANEL
+      // When user overrides a parameter:
+      // 1. Re-run calculateEnvelope(parcel, zoningProfile, newOverrides)
+      //    The envelope calculation engine should accept overrides as 3rd argument
+      // 2. Update pathScenarios.paths[selectedColKey].envelope with new result
+      // 3. Waterfall will recalculate with new binding constraint
+      // 4. Unit count updates in real-time
+      // For now, state updates but envelope doesn't recalculate
+      console.log('Override changed:', parameter, value);
+    },
+    [userOverrides]
+  );
+
+  const handleInterpretationModeChange = useCallback(
+    (mode: 'conservative' | 'moderate' | 'aggressive') => {
+      setInterpretationMode(mode);
+      // Mode changes may trigger different unit counts via the envelope engine
+      // The unitCounts state already reflects each mode's max units
+    },
+    []
+  );
+
+  const handleReInterpret = useCallback(async () => {
+    if (!dealId) return;
+    setInterpretationLoading(true);
     try {
-      // Convert profile to parcel and zoning data format for calculation
-      const parcelData: ParcelData = {
-        lot_size_sf: profile.lot_area_sf || 10000,
-        lot_size_acres: (profile.lot_area_sf || 10000) / 43560,
-        frontage_ft: 200,
-        depth_ft: 200,
-        is_corner: false,
-      };
-
-      const zoningData: ZoningData = {
-        code: profile.base_district_code || 'MRC-3',
-        max_density_units_per_acre: profile.max_density_per_acre || 100,
-        max_height_ft: profile.max_height_ft || 150,
-        max_far: profile.combined_far || profile.residential_far || 2.0,
-        lot_coverage_pct: profile.max_lot_coverage_pct || 0.75,
-        setback_front_ft: profile.setback_front_ft || 0,
-        setback_side_ft: profile.setback_side_ft || 10,
-        setback_rear_ft: profile.setback_rear_ft || 20,
-        parking: { per_unit: profile.min_parking_per_unit || 1.0, guest_per_unit: 0.25 },
-      };
-
-      // Calculate By-Right envelope
-      const byRightEnv = calculateEnvelope(parcelData, zoningData);
-
-      // Calculate Variance envelope (25% density + 10% height)
-      const varianceEnv = calculateEnvelope(parcelData, zoningData, {
-        density: (zoningData.max_density_units_per_acre || 100) * 1.25,
-        height: (zoningData.max_height_ft || 150) * 1.10,
+      const interpRes = await apiClient.post(`/api/v1/deals/${dealId}/zoning-interpretation`, {
+        force: true,
       });
-
-      // Build paths array
-      const generatedPaths = [
-        {
-          id: "by_right",
-          label: "By-Right",
-          sublabel: `Under current ${profile.base_district_code || 'MRC-3'}`,
-          envelope: byRightEnv,
-          timeline_months: { min: 3, median: 6, max: 9 },
-          approval_probability: 0.95,
-          additional_cost: 0,
-          risk_level: "low",
-          color: T.green,
-        },
-        {
-          id: "variance",
-          label: "SAP / Variance",
-          sublabel: `${profile.base_district_code || 'MRC-3'} + 25% density bonus`,
-          envelope: varianceEnv,
-          timeline_months: { min: 6, median: 10, max: 16 },
-          approval_probability: 0.70,
-          additional_cost: 75000,
-          risk_level: "medium",
-          color: T.amber,
-        },
-      ];
-
-      setPaths(generatedPaths);
-
-      // Auto-select first path if none selected
-      if (!selectedPath) {
-        setSelectedPath("by_right");
+      if (interpRes.data?.extraction) {
+        setZoningInterpretation(interpRes.data.extraction);
+        console.log('✅ Re-interpreted zoning parameters from Claude');
       }
     } catch (err) {
-      console.error('Failed to generate development paths:', err);
-      setPaths([]);
+      console.error('Failed to re-interpret zoning:', err);
+    } finally {
+      setInterpretationLoading(false);
     }
+  }, [dealId]);
+
+  const saveOverridesToAPI = useCallback(async () => {
+    if (!dealId || Object.keys(userOverrides).length === 0) return;
+
+    try {
+      await apiClient.put(`/api/v1/deals/${dealId}/zoning-profile`, {
+        user_overrides: userOverrides,
+      });
+      console.log('✅ Saved interpretation overrides to API');
+    } catch (err) {
+      console.error('Failed to save overrides:', err);
+    }
+  }, [dealId, userOverrides]);
+
+  // ═══ HELPER FUNCTIONS ═══
+  const getMaxAllowedFromProfile = useCallback(() => {
+    if (!profile) return { units: 0, gfa: 0, stories: 0 };
+    const lotAreaSF = profile.lot_area_sf || 0;
+    const lotAcres = lotAreaSF / 43560;
+    return {
+      units: Math.floor(lotAcres * (profile.max_density_per_acre || 100)),
+      gfa: Math.round(lotAreaSF * (profile.applied_far || 3.0)),
+      stories: profile.max_stories || 8,
+    };
   }, [profile]);
+
+  // ═══ SUB-TAB RENDERING ═══
+  const renderSubTabContent = useCallback(() => {
+    const projectType = deal?.projectType || deal?.project_type || 'existing';
+    const dealType = normalizeDealType(projectType);
+    const existingProperty = deal?.existingProperty || deal?.deal_data?.existingProperty;
+    const maxAllowed = getMaxAllowedFromProfile();
+
+    if (dealType === 'existing' && activeSubTab === 'conformance_check') {
+      return (
+        <>
+          {conformance && <ConformanceCheckSection conformance={conformance} />}
+          {existingProperty && (
+            <UntappedEntitlementCard
+              existingUnits={existingProperty.units || 0}
+              maxAllowedUnits={maxAllowed.units}
+              existingGFA={existingProperty.totalSF || 0}
+              maxAllowedGFA={maxAllowed.gfa}
+              existingStories={existingProperty.stories || 1}
+              maxAllowedStories={maxAllowed.stories}
+            />
+          )}
+        </>
+      );
+    }
+
+    if (dealType === 'existing' && activeSubTab === 'expansion_scenarios') {
+      return <ExpansionScenariosCards scenarios={expansionScenarios} />;
+    }
+
+    if (dealType === 'redevelopment' && activeSubTab === 'current_vs_allowed') {
+      return (
+        <>
+          {existingProperty && <NonconformingWarning nonconformingItems={conformance?.nonconformingItems.map(i => i.item) || []} yearBuilt={existingProperty.yearBuilt} />}
+          {conformance && <ConformanceCheckSection conformance={conformance} />}
+          {existingProperty && (
+            <UntappedEntitlementCard
+              existingUnits={existingProperty.units || 0}
+              maxAllowedUnits={maxAllowed.units}
+              existingGFA={existingProperty.totalSF || 0}
+              maxAllowedGFA={maxAllowed.gfa}
+              existingStories={existingProperty.stories || 1}
+              maxAllowedStories={maxAllowed.stories}
+            />
+          )}
+        </>
+      );
+    }
+
+    if (dealType === 'redevelopment' && activeSubTab === 'renovation_scenarios') {
+      return <RedevelopmentScenariosCards scenarios={redevelopmentScenarios} />;
+    }
+
+    if (dealType === 'redevelopment' && activeSubTab === 'compliance_analysis') {
+      return (
+        <ComplianceTriggerAnalysisCard
+          triggers={[]}  // Would be populated from redevelopmentScenarios
+          totalCost={1050000}  // $1.05M baseline
+          expansionThreshold={50}
+        />
+      );
+    }
+
+    // Development deals and default: show nothing (existing content handles it)
+    return null;
+  }, [activeSubTab, deal, conformance, expansionScenarios, redevelopmentScenarios, getMaxAllowedFromProfile]);
+
+  // ═══ GET DEAL TYPE FOR RENDERING ═══
+  const projectType = deal?.projectType || deal?.project_type || 'existing';
+  const dealType = normalizeDealType(projectType);
+  const availableSubTabs = getSubTabsForDealType(dealType);
 
   const handleResolveProfile = async () => {
     if (!dealId) return;
@@ -1482,306 +1898,6 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         </div>
       )}
 
-      {loadingBenchmarks && (
-        <div className="flex items-center justify-center py-4">
-          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-teal-500" />
-          <span className="ml-2 text-gray-500 text-xs">Loading density benchmarks...</span>
-        </div>
-      )}
-
-      {!loadingBenchmarks && densityBenchmarks && (() => {
-        const avail = densityBenchmarks.dataAvailability || 'none';
-        const codeProjects: any[] = densityBenchmarks.projects || [];
-        const nearbyProjectsList: any[] = densityBenchmarks.nearbyProjects || [];
-        const allDisplayProjects = [...codeProjects, ...nearbyProjectsList]
-          .sort((a: any, b: any) => (b.similarityScore || 0) - (a.similarityScore || 0));
-        const currentCode = densityBenchmarks.currentCode;
-        const zonedMax = densityBenchmarks.zonedMaxDensity;
-        const rezoneFrom = densityBenchmarks.rezoneFromCurrent;
-        const zonedMaxFar = profile?.applied_far ?? profile?.combined_far ?? profile?.residential_far;
-        const zonedMaxLotCov = profile?.max_lot_coverage_pct;
-        const codeMatchCount = densityBenchmarks.codeMatchCount || 0;
-        const nearbyMatchCount = densityBenchmarks.nearbyMatchCount || 0;
-        const totalProjectCount = allDisplayProjects.length;
-        const municipality = profile?.municipality || '';
-        const bestComp = densityBenchmarks.bestComparable;
-
-        if (avail === 'none' || allDisplayProjects.length === 0) {
-          return (
-            <div className="bg-gray-50 rounded-lg border border-gray-200 px-5 py-4">
-              <div className="flex items-center gap-2 mb-1">
-                <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-                <span className="text-sm font-medium text-gray-500">Market Reality Check</span>
-              </div>
-              <p className="text-xs text-gray-400">
-                No density benchmarks available for {currentCode || 'this zoning code'}.
-              </p>
-            </div>
-          );
-        }
-
-        const avgDensityAll = (() => {
-          const d = allDisplayProjects.filter((p: any) => p.densityAchieved != null).map((p: any) => p.densityAchieved);
-          return d.length > 0 ? d.reduce((s: number, v: number) => s + v, 0) / d.length : null;
-        })();
-        const avgFarAll = (() => {
-          const f = allDisplayProjects.filter((p: any) => p.farAchieved != null).map((p: any) => p.farAchieved);
-          return f.length > 0 ? f.reduce((s: number, v: number) => s + v, 0) / f.length : null;
-        })();
-        const avgLotCovAll = (() => {
-          const l = allDisplayProjects.filter((p: any) => p.lotCoverageAchieved != null).map((p: any) => p.lotCoverageAchieved);
-          return l.length > 0 ? l.reduce((s: number, v: number) => s + v, 0) / l.length : null;
-        })();
-        const densityUtilPct = zonedMax && avgDensityAll ? (avgDensityAll / zonedMax) * 100 : null;
-        const farUtilPct = zonedMaxFar && avgFarAll ? (avgFarAll / zonedMaxFar) * 100 : null;
-        const lotCovUtilPct = zonedMaxLotCov && avgLotCovAll ? ((avgLotCovAll * 100) / zonedMaxLotCov) * 100 : null;
-
-        const entBadgeClass = (t: string) =>
-          t === 'rezone' ? 'bg-violet-50 text-violet-600 border-violet-200' :
-          t === 'cup' ? 'bg-blue-50 text-blue-600 border-blue-200' :
-          t === 'variance' ? 'bg-amber-50 text-amber-600 border-amber-200' :
-          'bg-gray-50 text-gray-500 border-gray-200';
-
-        const utilBadge = (pct: number | null) => {
-          if (pct == null) return null;
-          const cls = pct > 70 ? 'bg-green-50 text-green-700 border-green-200' :
-                      pct > 40 ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                      'bg-red-50 text-red-700 border-red-200';
-          return <span className={`text-[9px] px-1.5 py-0.5 rounded-full border font-medium ${cls}`}>{pct.toFixed(0)}%</span>;
-        };
-
-        const docLinks = (p: any) => (
-          <div className="flex items-center gap-1.5">
-            {p.ordinanceUrl && (
-              <a href={p.ordinanceUrl} target="_blank" rel="noopener noreferrer" className="text-red-500 hover:text-red-700" title="Ordinance PDF">
-                <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" /></svg>
-              </a>
-            )}
-            {p.sourceUrl && (
-              <a href={p.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-700" title="Source">
-                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-              </a>
-            )}
-            {p.docketNumber && (
-              <span className="text-[8px] font-mono text-gray-500 bg-gray-100 px-1 py-0.5 rounded" title="Docket">{p.docketNumber}</span>
-            )}
-          </div>
-        );
-
-        const visibleProjects = showAllCodes ? allDisplayProjects : allDisplayProjects.slice(0, 5);
-
-        return (
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <svg className="h-4 w-4 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-                <span className="text-sm font-semibold text-gray-800">Market Reality Check</span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-200">
-                  {totalProjectCount} project{totalProjectCount !== 1 ? 's' : ''}
-                </span>
-              </div>
-              <span className="text-[10px] text-gray-400">
-                {codeMatchCount > 0
-                  ? `${codeMatchCount} in ${currentCode}${nearbyMatchCount > 0 ? ` + ${nearbyMatchCount} nearby` : ''}`
-                  : `${nearbyMatchCount} nearby${municipality ? ` in ${municipality}` : ''}`}
-              </span>
-            </div>
-
-            <div className="px-5 py-4 space-y-3">
-              {avail === 'sparse' && (
-                <div className="flex items-center gap-2 text-xs text-amber-600 bg-amber-50 px-3 py-2 rounded-md border border-amber-100">
-                  <svg className="h-3.5 w-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  Limited benchmark data — {totalProjectCount} comparable project{totalProjectCount !== 1 ? 's' : ''} found
-                </div>
-              )}
-
-              <div className="flex items-center gap-4 flex-wrap text-[10px]">
-                {avgDensityAll != null && (
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-gray-500">Density:</span>
-                    <span className="font-bold text-teal-700">{avgDensityAll.toFixed(1)}</span>
-                    {zonedMax && <span className="text-gray-400">/ {zonedMax.toFixed(1)} u/ac</span>}
-                    {utilBadge(densityUtilPct)}
-                  </div>
-                )}
-                {avgFarAll != null && (
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-gray-500">FAR:</span>
-                    <span className="font-bold text-teal-700">{avgFarAll.toFixed(2)}</span>
-                    {zonedMaxFar && <span className="text-gray-400">/ {zonedMaxFar.toFixed(2)}</span>}
-                    {utilBadge(farUtilPct)}
-                  </div>
-                )}
-                {avgLotCovAll != null && (
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-gray-500">Lot Cov:</span>
-                    <span className="font-bold text-teal-700">{(avgLotCovAll * 100).toFixed(1)}%</span>
-                    {zonedMaxLotCov && <span className="text-gray-400">/ {zonedMaxLotCov.toFixed(1)}%</span>}
-                    {utilBadge(lotCovUtilPct)}
-                  </div>
-                )}
-              </div>
-
-              {bestComp && (
-                <div className="bg-teal-50 rounded-lg border border-teal-200 px-4 py-3">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-teal-600 text-white font-bold uppercase tracking-wide">Best Comp</span>
-                      <span className="text-[10px] font-bold text-teal-800">{bestComp.similarityScore}% match</span>
-                    </div>
-                    {docLinks(bestComp)}
-                  </div>
-                  <div className="text-[12px] font-semibold text-gray-900 truncate">
-                    {bestComp.projectName || bestComp.address || 'Address not available'}
-                  </div>
-                  {bestComp.projectName && bestComp.address && bestComp.projectName !== bestComp.address && (
-                    <div className="text-[10px] text-gray-500 truncate">{bestComp.address}</div>
-                  )}
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[10px]">
-                    {bestComp.landAcres != null && (
-                      <span className="text-gray-600"><span className="font-semibold">{bestComp.landAcres.toFixed(2)}</span> ac</span>
-                    )}
-                    {bestComp.unitCount != null && (
-                      <span className="text-gray-600"><span className="font-semibold">{bestComp.unitCount.toLocaleString()}</span> units</span>
-                    )}
-                    {bestComp.densityAchieved != null && (
-                      <span className="text-teal-700 font-bold">{bestComp.densityAchieved.toFixed(1)} u/ac</span>
-                    )}
-                    {bestComp.farAchieved != null && (
-                      <span className="text-gray-600">FAR <span className="font-semibold">{bestComp.farAchieved.toFixed(2)}</span></span>
-                    )}
-                    {bestComp.stories != null && (
-                      <span className="text-gray-600"><span className="font-semibold">{bestComp.stories}</span> stories</span>
-                    )}
-                    {bestComp.buildingSf != null && (
-                      <span className="text-gray-600"><span className="font-semibold">{formatNumber(bestComp.buildingSf)}</span> SF</span>
-                    )}
-                    {bestComp.entitlementType && (
-                      <span className={`text-[9px] px-1.5 py-0.5 rounded border font-medium ${entBadgeClass(bestComp.entitlementType)}`}>
-                        {bestComp.entitlementType}
-                      </span>
-                    )}
-                    {(bestComp.zoningFrom || bestComp.zoningTo) && (
-                      <span className="text-gray-500">
-                        {bestComp.zoningFrom && <span>{bestComp.zoningFrom}</span>}
-                        {bestComp.zoningFrom && bestComp.zoningTo && <span> → </span>}
-                        {bestComp.zoningTo && <span className="font-medium text-gray-700">{bestComp.zoningTo}</span>}
-                      </span>
-                    )}
-                    {bestComp.totalEntitlementDays != null && (
-                      <span className="text-gray-500">{Math.round(bestComp.totalEntitlementDays / 30)} mo timeline</span>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
-                <table className="w-full text-[10px]">
-                  <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200">
-                      <th className="text-left px-3 py-1.5 text-gray-500 font-medium w-6">#</th>
-                      <th className="text-left px-2 py-1.5 text-gray-500 font-medium">Project</th>
-                      <th className="text-right px-2 py-1.5 text-gray-500 font-medium">Lot</th>
-                      <th className="text-right px-2 py-1.5 text-gray-500 font-medium">Units</th>
-                      <th className="text-right px-2 py-1.5 text-gray-500 font-medium">Density</th>
-                      <th className="text-center px-2 py-1.5 text-gray-500 font-medium">Path</th>
-                      <th className="text-center px-2 py-1.5 text-gray-500 font-medium">Score</th>
-                      <th className="text-center px-2 py-1.5 text-gray-500 font-medium">Docs</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visibleProjects.map((p: any, i: number) => (
-                      <tr key={i} className={`border-b border-gray-100 last:border-0 ${bestComp && p.address === bestComp.address && p.similarityScore === bestComp.similarityScore ? 'bg-teal-50/30' : 'hover:bg-gray-50'}`}>
-                        <td className="px-3 py-1.5 text-gray-400 font-medium">{i + 1}</td>
-                        <td className="px-2 py-1.5">
-                          <div className="text-[11px] font-medium text-gray-800 truncate max-w-[200px]">
-                            {p.projectName || p.address || 'N/A'}
-                          </div>
-                          {p.projectName && p.address && p.projectName !== p.address && (
-                            <div className="text-[9px] text-gray-400 truncate max-w-[200px]">{p.address}</div>
-                          )}
-                        </td>
-                        <td className="px-2 py-1.5 text-right text-gray-600 whitespace-nowrap">
-                          {p.landAcres != null ? `${p.landAcres.toFixed(2)} ac` : '--'}
-                        </td>
-                        <td className="px-2 py-1.5 text-right text-gray-600 whitespace-nowrap">
-                          {p.unitCount != null ? p.unitCount.toLocaleString() : '--'}
-                        </td>
-                        <td className="px-2 py-1.5 text-right font-bold text-teal-700 whitespace-nowrap">
-                          {p.densityAchieved != null ? `${p.densityAchieved.toFixed(1)}` : '--'}
-                        </td>
-                        <td className="px-2 py-1.5 text-center">
-                          <span className={`text-[8px] px-1 py-0.5 rounded border ${entBadgeClass(p.entitlementType || '')}`}>
-                            {p.entitlementType || '--'}
-                          </span>
-                        </td>
-                        <td className="px-2 py-1.5 text-center">
-                          <span className={`text-[9px] font-bold ${
-                            p.similarityScore >= 60 ? 'text-green-600' :
-                            p.similarityScore >= 30 ? 'text-amber-600' :
-                            'text-gray-400'
-                          }`}>{p.similarityScore}</span>
-                        </td>
-                        <td className="px-2 py-1.5 text-center">
-                          {docLinks(p)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {allDisplayProjects.length > 5 && (
-                <button
-                  onClick={() => setShowAllCodes(!showAllCodes)}
-                  className="text-[11px] text-teal-600 hover:text-teal-800 font-medium py-1"
-                >
-                  {showAllCodes ? 'Show top 5 only' : `Show all ${allDisplayProjects.length} projects`}
-                </button>
-              )}
-
-              {rezoneFrom && rezoneFrom.projectCount > 0 && (
-                <div className="space-y-2 pt-2 border-t border-gray-100">
-                  <div className="text-xs font-medium text-gray-600">
-                    Projects That Left {currentCode}
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {rezoneFrom.targetCodes.map((code: string, i: number) => (
-                      <span key={i} className="text-[10px] px-2 py-0.5 rounded bg-violet-50 text-violet-700 border border-violet-200">
-                        → {code}
-                      </span>
-                    ))}
-                  </div>
-                  <div className="grid gap-1.5">
-                    {rezoneFrom.projects.slice(0, 5).map((p: any, i: number) => (
-                      <div key={i} className="bg-violet-50/50 rounded px-3 py-1.5 border border-violet-100">
-                        <div className="flex items-center justify-between text-[11px] text-gray-600">
-                          <span className="truncate mr-2">{p.address || '--'}</span>
-                          <div className="flex items-center gap-3 flex-shrink-0">
-                            <span className="text-violet-600 font-medium">→ {p.zoningTo}</span>
-                            {p.densityAchieved != null && (
-                              <span className="font-bold text-teal-700">{p.densityAchieved.toFixed(1)} u/ac</span>
-                            )}
-                            {p.unitCount != null && (
-                              <span className="text-gray-400">{p.unitCount} units</span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        );
-      })()}
-
       {/* Entitlement Comparison */}
       {(() => {
         const cols = comparison?.columns || [];
@@ -1789,17 +1905,9 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
         const cells = comparison?.cells || {};
         const hasData = cols.length > 0 || recommendations.length > 0;
 
-        const allBenchProjects = [...(densityBenchmarks?.projects || []), ...(densityBenchmarks?.nearbyProjects || [])];
-
-        const mrcCodes = (() => {
-          const invalidCodePattern = /site|plan|drive|thru|allowed|permit|admin/i;
-          const codes = new Set<string>();
-          allBenchProjects.forEach((p: any) => {
-            const c = p.zoningTo || p.zoningFrom;
-            if (c && !invalidCodePattern.test(c)) codes.add(c);
-          });
-          return Array.from(codes).sort();
-        })();
+        // mrcCodes are now populated from RegulatoryMarketResearch component
+        // For Entitlement Comparison section, we'll use an empty array
+        const mrcCodes: string[] = [];
 
         const rezone = recommendations.find((r: any) => r.name === 'Rezone');
 
@@ -2359,6 +2467,13 @@ export default function DevelopmentCapacityTab({ dealId, deal }: DevelopmentCapa
           </div>
         )}
       </div>
+
+      {/* Regulatory Market Research — replacing Market Reality Check and Nearby Entitlement Activity */}
+      <RegulatoryMarketResearch
+        dealId={dealId}
+        currentZoningCode={profile?.base_district_code || undefined}
+        municipality={profile?.municipality || undefined}
+      />
 
     </div>
   );

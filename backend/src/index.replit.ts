@@ -2,6 +2,7 @@
  * JediRe Backend - Replit Entry Point
  * Route handlers extracted to dedicated router modules
  */
+import cron from 'node-cron';
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
@@ -11,7 +12,10 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { requireAuth, optionalAuth } from './middleware/auth';
 import { getPool } from './database/connection';
+import { logger } from './utils/logger';
 import { emailSyncScheduler } from './services/email-sync-scheduler';
+import { agentAlertService } from './services/agent-alert.service';
+import { taskCoordinatorService } from './services/task-coordinator.service';
 import { createTrainingRoutes } from './api/rest/training.routes';
 import { createCalibrationRoutes } from './api/rest/calibration.routes';
 import { createCapsuleRoutes } from './api/rest/capsule.routes';
@@ -20,6 +24,11 @@ import preferencesRouter from './api/rest/preferences.routes';
 import propertyTypesRouter from './api/rest/property-types.routes';
 import propertyTypeStrategiesRouter from './api/rest/property-type-strategies.routes';
 import customStrategiesRouter from './api/rest/custom-strategies.routes';
+import strategiesRouter from './api/rest/strategies.routes';
+import strategyDefinitionsRouter from './api/rest/strategy-definitions.routes';
+import dealStrategyRouter from './api/rest/deal-strategy.routes';
+import metricsCatalogRouter from './api/rest/metrics-catalog.routes';
+import marketMetricsRouter from './api/rest/market-metrics.routes';
 import f40PerformanceRoutes from './api/rest/f40-performance.routes';
 import opportunityEngineRoutes from './api/rest/opportunity-engine.routes';
 import settingsAiRouter from './api/rest/settings-ai.routes';
@@ -29,10 +38,11 @@ import healthRouter from './api/rest/inline-health.routes';
 import authRouter from './api/rest/inline-auth.routes';
 import dataRouter from './api/rest/inline-data.routes';
 import dealsRouter from './api/rest/inline-deals.routes';
-import tasksRouter from './api/rest/inline-tasks.routes';
+import tasksRouter from './api/rest/tasks.routes';
 import inboxRouter from './api/rest/inline-inbox.routes';
 import zoningAnalyzeRouter from './api/rest/inline-zoning-analyze.routes';
 import { createMicrosoftInlineRoutes } from './api/rest/inline-microsoft.routes';
+import microsoftRouter from './api/rest/microsoft.routes';
 
 import newsRouter from './api/rest/news.routes';
 import tradeAreasRoutes from './api/rest/trade-areas.routes';
@@ -63,11 +73,14 @@ import { createPropertyMetricsRouter } from './api/rest/property-metrics.routes'
 import { createPropertyScoringRouter } from './api/rest/property-scoring.routes';
 import { createOpusRoutes } from './api/rest/opus.routes';
 import { createDataLibraryRoutes } from './api/rest/data-library.routes';
+import { createDataLibraryAssetsRoutes } from './api/rest/data-library-assets.routes';
 import propertyBoundaryRouter from './api/rest/property-boundary.routes';
 import siteIntelligenceRouter from './api/rest/site-intelligence.routes';
 import zoningCapacityRouter from './api/rest/zoning-capacity.routes';
 import teamManagementRouter from './api/rest/team-management.routes';
+import collaborationRouter from './api/rest/collaboration.routes';
 import contactsSyncRouter from './api/rest/contacts-sync.routes';
+import notarizeRouter from './api/rest/notarize.routes';
 import contextTrackerRouter from './api/rest/context-tracker.routes';
 import { createZoningIntelligenceRoutes } from './api/rest/zoning-intelligence.routes';
 import { createZoningLearningRoutes } from './api/rest/zoning-learning.routes';
@@ -75,7 +88,9 @@ import zoningVerificationRouter from './api/rest/zoning-verification.routes';
 import zoningProfileRouter from './api/rest/zoning-profile.routes';
 import developmentScenariosRouter from './api/rest/development-scenarios.routes';
 import moduleWiringRouter from './api/rest/module-wiring.routes';
+import taskCompletionRouter from './api/rest/task-completion.routes';
 import capitalStructureRouter from './api/rest/capital-structure.routes';
+import debtAdvisorRouter from './api/rest/debt-advisor.routes';
 import dataUploadRouter from './api/rest/data-upload.routes';
 import pstUploadRouter from './api/rest/pst-upload.routes';
 import uploadTemplatesRouter from './api/rest/upload-templates.routes';
@@ -87,6 +102,10 @@ import benchmarkTimelineRouter from './api/rest/benchmark-timeline.routes';
 import adminApiKeyRouter from './api/rest/admin-api-key.routes';
 import entitlementRouter from './api/rest/entitlement.routes';
 import regulatoryAlertRouter from './api/rest/regulatory-alert.routes';
+import scenariosRouter from './api/rest/scenarios.routes';
+import riskRouter from './api/rest/risk.routes';
+import kafkaEventsRouter from './api/rest/kafka-events.routes';
+import adminDataCoverageRouter from './api/rest/admin-data-coverage.routes';
 import municodeRouter from './api/rest/municode.routes';
 import scrapeRouter from './api/rest/scrape.routes';
 import designReferencesRouter from './api/rest/design-references.routes';
@@ -96,8 +115,11 @@ import visibilityRouter from './api/rest/visibility.routes';
 import propertyAnalyticsRouter from './api/rest/property-analytics.routes';
 import trafficDataRouter from './api/rest/traffic-data.routes';
 import trafficCompsRouter from './api/rest/traffic-comps.routes';
+import m07CalibrationRouter from './api/rest/m07-calibration.routes';
+import macroIndicatorsRouter from './api/rest/macro-indicators.routes';
 import correlationRouter from './api/rest/correlation.routes';
 import rankingsRouter from './api/rest/rankings.routes';
+import marketRouter from './api/rest/market.routes';
 import portfolioRouter from './api/rest/portfolio.routes';
 import competitionRouter from './api/rest/competition.routes';
 import dealMarketIntelligenceRoutes from './api/rest/deal-market-intelligence.routes';
@@ -106,6 +128,7 @@ import dealPhotosRoutes from './api/rest/deal-photos.routes';
 import dealContextRoutes from './api/rest/deal-context.routes';
 import financialModelRoutes from './api/rest/financial-model.routes';
 import clawdbotWebhooksRouter from './api/rest/clawdbot-webhooks.routes';
+import oppgridRouter from './api/rest/oppgrid.routes';
 import rentScraperAdminRouter from './api/rest/rent-scraper-admin.routes';
 import m26TaxRouter from './api/rest/m26-tax.routes';
 import m27CompsRouter from './api/rest/m27-comps.routes';
@@ -114,7 +137,17 @@ import { createUnitMixRoutes } from './api/rest/unitMix.routes';
 import dealValidationRoutes from './api/rest/deal-validation.routes';
 import unitMixPropagationRoutes from './api/rest/unit-mix-propagation.routes';
 import dealAssumptionsRoutes from './api/rest/deal-assumptions.routes';
+import financialDocumentsRoutes from './api/rest/financial-documents.routes';
 import jediRoutes from './api/rest/jedi.routes';
+import agentChatRouter from './routes/agent-chat.routes';
+import m35ConnectorsRouter from './routes/m35-connectors.routes';
+import m35EventsRouter from './routes/m35-events.routes';
+import m35PlaybooksRouter from './routes/m35-playbooks.routes';
+import m35ForecastsRouter from './routes/m35-forecasts.routes';
+import m35BacktestRouter from './routes/m35-backtest.routes';
+import corporateHealthRouter from './api/rest/corporate-health.routes';
+import mediaRouter from './api/rest/media.routes';
+import orgRouter from './api/rest/org.routes';
 import { errorWebhookMiddleware, setupUnhandledRejectionHandler, setupUncaughtExceptionHandler } from './middleware/errorWebhook';
 import { startM28Scheduler } from './services/m28-scheduler.service';
 
@@ -130,19 +163,14 @@ const allowedOriginPatterns = [/\.replit\.dev(:\d+)?$/, /\.replit\.app(:\d+)?$/,
 
 function isOriginAllowed(origin: string | undefined): boolean {
   if (!origin) return true;
+  if (!isProduction) return true;
   if (allowedOrigins.includes(origin)) return true;
   return allowedOriginPatterns.some(pattern => pattern.test(origin));
 }
 
 const io = new Server(httpServer, {
   cors: {
-    origin: (origin, callback) => {
-      if (isOriginAllowed(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
-      }
-    },
+    origin: true,
     methods: ['GET', 'POST'],
     credentials: true,
   }
@@ -157,13 +185,7 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
 }));
 app.use(cors({
-  origin: (origin, callback) => {
-    if (isOriginAllowed(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
+  origin: true,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
 }));
@@ -202,10 +224,15 @@ app.use('/api/v1/auth', authRouter);
 // Admin routes MUST be registered before generic /api/v1 routes
 import dataTrackerRoutes from './api/rest/data-tracker.routes';
 app.use('/api/v1/admin/data-tracker', dataTrackerRoutes);
+app.use('/api/v1/admin/data-coverage', adminDataCoverageRouter);
 import adminRouter from './api/rest/admin.routes';
 app.use('/api/v1/admin', adminRouter);
+import dotAdminRouter from './api/rest/dot-admin.routes';
+app.use('/api/v1/admin', dotAdminRouter);
 import atlantaUrlDiscoveryRouter from './api/rest/atlanta-url-discovery.routes';
 app.use('/api/v1/admin/atlanta-url-discovery', atlantaUrlDiscoveryRouter);
+import enrichmentAdminRouter from './api/rest/enrichment-admin.routes';
+app.use('/api/v1/admin', enrichmentAdminRouter);
 app.use('/api/v1/admin-api', adminApiKeyRouter);
 
 app.use('/api/v1', dataRouter);
@@ -225,9 +252,15 @@ const microsoftConfig = {
   redirectUri: process.env.MICROSOFT_REDIRECT_URI || 'http://localhost:4000/api/v1/microsoft/auth/callback',
   scopes: ['User.Read', 'Mail.Read', 'Mail.Send', 'Calendars.Read', 'Calendars.ReadWrite']
 };
+// Inline router mounted first: handles /auth/init, /auth/callback, /status
+// with a lightweight config-less implementation.
+// Full microsoftRouter mounted second: handles the remaining 13 unique routes.
+// Express first-match means /auth/callback and /status go to inline router.
 app.use('/api/v1/microsoft', createMicrosoftInlineRoutes(microsoftConfig));
+app.use('/api/v1/microsoft', microsoftRouter);
 
 app.use('/api/v1/clawdbot', clawdbotWebhooksRouter);
+app.use('/api/v1/oppgrid', oppgridRouter);
 app.use('/api/v1/admin/rent-scraper', rentScraperAdminRouter);
 app.use('/api/v1', m26TaxRouter);
 app.use('/api/v1', m27CompsRouter);
@@ -236,8 +269,31 @@ app.use('/api/v1/cycle-intelligence', m28CycleIntelligenceRoutes);
 import taxCompAnalysisRouter from './api/rest/tax-comp-analysis.routes';
 app.use('/api/v1', taxCompAnalysisRouter);
 
-app.use('/api/v1/markets', marketIntelligenceRouter(pool));
-app.use('/api/v1/markets', createEnhancedMarketIntelligenceRoutes(pool));
+// FRED macro ticker — public (no auth required) — used by TerminalPage ticker bar
+import tickerRoutes from './api/rest/ticker.routes';
+app.use('/api/v1/ticker', tickerRoutes);
+
+// Time Series Explorer — public (no auth required) — used by TimeSeriesExplorerPage
+import timeSeriesRoutes from './api/rest/time-series.routes';
+app.use('/api/v1/time-series', timeSeriesRoutes);
+
+import driverAnalysisRoutes from './api/rest/driver-analysis.routes';
+app.use('/api/v1/driver-analysis', driverAnalysisRoutes);
+
+import derivedMetricsRoutes from './api/rest/derived-metrics.routes';
+app.use('/api/v1/derived-metrics', derivedMetricsRoutes);
+
+import columnCatalogRoutes, { catalogHandler, gridDataHandler, insightsHandler } from './api/rest/column-catalog.routes';
+app.use('/api/v1/columns', columnCatalogRoutes);
+app.get('/api/v1/column-catalog', catalogHandler);
+app.get('/api/v1/grid-data', gridDataHandler);
+app.get('/api/v1/column-insights', insightsHandler);
+
+import gridTemplatesRoutes from './api/rest/grid-templates.routes';
+app.use('/api/v1/grid-templates', optionalAuth, gridTemplatesRoutes);
+
+app.use('/api/v1/markets', optionalAuth, marketIntelligenceRouter(pool));
+app.use('/api/v1/markets', optionalAuth, createEnhancedMarketIntelligenceRoutes(pool));
 
 import createUnifiedPropertiesRoutes from './api/rest/unified-properties.routes';
 app.use('/api/v1/properties', createUnifiedPropertiesRoutes(pool));
@@ -255,6 +311,13 @@ app.use('/api/v1/chat', chatRouter);
 import { MessageRouter } from './services/chat/messageRouter';
 const messageRouter = new MessageRouter();
 app.use('/', messageRouter.createRouter());
+
+// Correlations - public read, admin-key-protected compute
+app.use('/api/v1/correlations', correlationRouter);
+
+// Lead/Lag Discovery - public read, admin-key-protected compute
+import leadLagRoutes from './api/rest/lead-lag.routes';
+app.use('/api/v1/lead-lag', leadLagRoutes);
 
 // Building Envelope - requires auth
 import buildingEnvelopeRoutes from './api/rest/building-envelope.routes';
@@ -276,6 +339,10 @@ app.use('/api/v1/deals', requireAuth, dealContextRoutes);
 app.use('/api/v1/deals', requireAuth, financialModelRoutes);
 app.use('/api/v1/financial-models', requireAuth, financialModelRoutes);
 app.use('/api/v1/jedi', jediRoutes);
+app.use('/api/v1/agents', agentChatRouter);
+app.use('/api/v1/corporate-health', requireAuth, corporateHealthRouter);
+app.use('/api/media', mediaRouter);
+app.use('/api/v1/orgs', requireAuth, orgRouter);
 
 // Phase 10: Cross-Module Validation
 app.use('/api/v1/deals', requireAuth, dealValidationRoutes);
@@ -285,12 +352,14 @@ app.use('/api/v1/deals', requireAuth, unitMixPropagationRoutes);
 app.use('/api/v1/deals', requireAuth, competitionRouter);
 app.use('/api/v1/deals', requireAuth, proformaRouter);
 app.use('/api/v1/deals', dealAssumptionsRoutes);
+app.use('/api/v1/deals', financialDocumentsRoutes);
 app.use('/api/v1/map-configs', requireAuth, mapConfigsRouter);
 app.use('/api/v1/modules', requireAuth, modulesRouter);
 app.use('/api/v1/financial-models', requireAuth, financialModelsRouter);
 app.use('/api/v1/strategy-analyses', requireAuth, strategyAnalysesRouter);
 app.use('/api/v1/dd-checklists', requireAuth, ddChecklistsRouter);
 app.use('/api/v1/market-research', requireAuth, marketResearchRoutes);
+app.use('/api/v1/market', requireAuth, marketRouter);
 app.use('/api/v1', requireAuth, supplyRoutes);
 app.use('/api/v1', requireAuth, demandRoutes);
 app.use('/api/v1/traffic', requireAuth, trafficPredictionRoutes);
@@ -301,11 +370,17 @@ app.use('/api/v1/settings/ai-preferences', settingsAiRouter);
 app.use('/api/v1/property-types', requireAuth, propertyTypesRouter);
 app.use('/api/v1/property-type-strategies', requireAuth, propertyTypeStrategiesRouter);
 app.use('/api/v1/custom-strategies', requireAuth, customStrategiesRouter);
+app.use('/api/v1/strategies', requireAuth, strategiesRouter);
+app.use('/api/v1/strategy-definitions', requireAuth, strategyDefinitionsRouter);
+app.use('/api/v1/deals', requireAuth, dealStrategyRouter);
+app.use('/api/v1/metrics', requireAuth, metricsCatalogRouter);
+app.use('/api/v1/market-metrics', requireAuth, marketMetricsRouter);
 app.use('/api/v1/module-libraries', requireAuth, moduleLibrariesRouter);
 app.use('/api/v1/property-metrics', requireAuth, createPropertyMetricsRouter(pool));
 app.use('/api/v1/property-scoring', requireAuth, createPropertyScoringRouter(pool));
 app.use('/api/v1/opus', requireAuth, createOpusRoutes(pool));
 app.use('/api/v1/data-library', requireAuth, createDataLibraryRoutes(pool));
+app.use('/api/v1/data-library-assets', requireAuth, createDataLibraryAssetsRoutes(pool));
 app.use('/api/v1', requireAuth, propertyBoundaryRouter);
 app.use('/api/v1', requireAuth, siteIntelligenceRouter);
 app.use('/api/v1', requireAuth, zoningCapacityRouter);
@@ -315,12 +390,16 @@ app.use('/api/v1/zoning-verification', requireAuth, zoningVerificationRouter);
 app.use('/api/v1', requireAuth, zoningProfileRouter);
 app.use('/api/v1', requireAuth, developmentScenariosRouter);
 app.use('/api/v1', requireAuth, teamManagementRouter);
+app.use('/api/v1', requireAuth, collaborationRouter);
 app.use('/api/v1/emails', emailRouter);
 app.use('/api/v1/email-extractions', emailExtractionsRouter);
 app.use('/api/v1', requireAuth, contactsSyncRouter);
+app.use('/api/v1', notarizeRouter);
 app.use('/api/v1/context', requireAuth, contextTrackerRouter);
 app.use('/api/v1/module-wiring', requireAuth, moduleWiringRouter);
+app.use('/api/v1/task-completion', requireAuth, taskCompletionRouter);
 app.use('/api/v1/capital-structure', requireAuth, capitalStructureRouter);
+app.use('/api/v1/deals', debtAdvisorRouter);
 app.use('/api/v1/properties', requireAuth, dataUploadRouter);
 app.use('/api/v1/data-upload/pst', requireAuth, pstUploadRouter);
 app.use('/api/v1/upload-templates', requireAuth, uploadTemplatesRouter);
@@ -330,6 +409,14 @@ app.use('/api/v1/properties', requireAuth, proformaGeneratorRouter);
 app.use('/api/v1/benchmark-timeline', requireAuth, benchmarkTimelineRouter);
 app.use('/api/v1/entitlements', requireAuth, entitlementRouter);
 app.use('/api/v1/regulatory-alerts', requireAuth, regulatoryAlertRouter);
+app.use('/api/v1/scenarios', requireAuth, scenariosRouter);
+app.use('/api/v1/risk', requireAuth, riskRouter);
+app.use('/api/v1/events', requireAuth, kafkaEventsRouter);
+app.use('/api/v1/m35/connectors', requireAuth, m35ConnectorsRouter);
+app.use('/api/v1/m35', requireAuth, m35PlaybooksRouter);
+app.use('/api/v1/m35', requireAuth, m35ForecastsRouter);
+app.use('/api/v1/m35', requireAuth, m35BacktestRouter);
+app.use('/api/v1/m35', requireAuth, m35EventsRouter);
 app.use('/api/v1/municode', requireAuth, municodeRouter);
 app.use('/api/v1/scrape', requireAuth, scrapeRouter);
 app.use('/api/v1/design-references', requireAuth, designReferencesRouter);
@@ -339,7 +426,8 @@ app.use('/api/v1/visibility', requireAuth, visibilityRouter);
 app.use('/api/v1/property-analytics', requireAuth, propertyAnalyticsRouter);
 app.use('/api/v1/traffic-data', requireAuth, trafficDataRouter);
 app.use('/api/v1/traffic-comps', requireAuth, trafficCompsRouter);
-app.use('/api/v1/correlations', requireAuth, correlationRouter);
+app.use('/api/v1/calibration', requireAuth, m07CalibrationRouter);
+app.use('/api/v1/macro', requireAuth, macroIndicatorsRouter);
 app.use('/api/v1', requireAuth, zoningTriangulationRouter);
 
 app.use('/api/v1/unit-mix', requireAuth, createUnitMixRoutes(pool));
@@ -370,14 +458,265 @@ app.get('/api/v1/apartment-sync/submarkets', requireAuth, async (req: any, res) 
   }
 });
 
+app.get('/api/v1/apartment-sync/market-snapshots', requireAuth, async (req: any, res) => {
+  try {
+    const { city = 'Atlanta' } = req.query;
+    const result = await pool.query(
+      'SELECT * FROM apartment_market_snapshots WHERE city = $1 ORDER BY snapshot_date DESC LIMIT 30',
+      [city]
+    );
+    res.json({ success: true, count: result.rows.length, data: result.rows });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/v1/apartment-sync/demand-signals', requireAuth, async (req: any, res) => {
+  try {
+    const { city } = req.query;
+    const result = await pool.query(
+      `SELECT analytics_type, data, synced_at FROM apartment_user_analytics
+       WHERE analytics_type = 'demand-signals' ${city ? 'AND (city = $1 OR city IS NULL)' : ''}
+       ORDER BY synced_at DESC LIMIT 20`,
+      city ? [city] : []
+    );
+    res.json({ success: true, count: result.rows.length, data: result.rows });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/v1/apartment-sync/user-analytics', requireAuth, async (req: any, res) => {
+  try {
+    const { city, type } = req.query;
+    const params: any[] = [];
+    let where = 'WHERE 1=1';
+    if (city) { params.push(city); where += ` AND (city = $${params.length} OR city IS NULL)`; }
+    if (type) { params.push(type); where += ` AND analytics_type = $${params.length}`; }
+    const result = await pool.query(
+      `SELECT analytics_type, data, synced_at FROM apartment_user_analytics ${where} ORDER BY synced_at DESC LIMIT 50`,
+      params
+    );
+    res.json({ success: true, count: result.rows.length, data: result.rows });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/v1/apartment-sync/rent-comps', requireAuth, async (req: any, res) => {
+  try {
+    const { city = 'Atlanta', submarket } = req.query;
+    const params: any[] = [city];
+    let where = 'WHERE city = $1';
+    if (submarket) { params.push(submarket); where += ` AND submarket_name = $${params.length}`; }
+    const result = await pool.query(
+      `SELECT * FROM apartment_submarkets ${where} ORDER BY snapshot_date DESC LIMIT 30`,
+      params
+    );
+    res.json({ success: true, count: result.rows.length, data: result.rows });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Commentary + Strategy Scoring Endpoints
+import { CommentaryAgent, CommentaryInput } from './agents/commentary.agent';
+import { strategyArbitrageEngine, StrategySignalInputs } from './services/module-wiring/strategy-arbitrage-engine';
+import { StrategyExecutionService } from './services/strategyExecution.service';
+
+const commentaryAgent = new CommentaryAgent();
+
+app.get('/api/v1/commentary/:entityType/:entityId', requireAuth, async (req: any, res) => {
+  try {
+    const { entityType, entityId } = req.params;
+    const { forceRefresh, entityName } = req.query;
+
+    if (!['msa', 'submarket', 'property'].includes(entityType)) {
+      return res.status(400).json({ success: false, error: 'entityType must be msa, submarket, or property' });
+    }
+
+    const input: CommentaryInput = {
+      entityType: entityType as 'msa' | 'submarket' | 'property',
+      entityId,
+      entityName: entityName as string | undefined,
+      forceRefresh: forceRefresh === 'true',
+      userId: req.user?.id || req.userId,
+    };
+
+    const result = await commentaryAgent.execute(input);
+    res.json({ success: true, commentary: result });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/v1/commentary/:entityType/:entityId', requireAuth, async (req: any, res) => {
+  try {
+    const { entityType, entityId } = req.params;
+    const { entityName, signals, forceRefresh } = req.body;
+
+    if (!['msa', 'submarket', 'property'].includes(entityType)) {
+      return res.status(400).json({ success: false, error: 'entityType must be msa, submarket, or property' });
+    }
+
+    const input: CommentaryInput = {
+      entityType: entityType as 'msa' | 'submarket' | 'property',
+      entityId,
+      entityName,
+      signals,
+      forceRefresh: forceRefresh === true,
+      userId: req.user?.id || req.userId,
+    };
+
+    const result = await commentaryAgent.execute(input);
+    res.json({ success: true, commentary: result });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.post('/api/v1/strategy-scoring/analyze', requireAuth, async (req: any, res) => {
+  try {
+    const { dealId, entityType, entityId, strategyId, signals, envelope } = req.body;
+
+    const signalInputs: StrategySignalInputs | undefined = signals ? {
+      demandScore: signals.demandScore ?? 50,
+      supplyScore: signals.supplyScore ?? 50,
+      momentumScore: signals.momentumScore ?? 50,
+      positionScore: signals.positionScore ?? 50,
+      riskScore: signals.riskScore ?? 50,
+      budgetDistribution: signals.budgetDistribution,
+      bedroomDemand: signals.bedroomDemand,
+    } : undefined;
+
+    if (strategyId) {
+      try {
+        const userId = req.user?.id || req.userId;
+        const ownerCheck = await pool.query(
+          `SELECT id FROM strategy_definitions WHERE id = $1 AND (user_id = $2 OR user_id IS NULL OR scope = 'preset')`,
+          [strategyId, userId],
+        );
+        if (ownerCheck.rows.length === 0) {
+          return res.status(403).json({ success: false, error: 'Strategy not found or not authorized' });
+        }
+
+        const strategyExec = new StrategyExecutionService(pool);
+        const strategyResults = await strategyExec.executeStrategy(strategyId);
+
+        const commentaryInput: CommentaryInput = {
+          entityType: (entityType || 'msa') as 'msa' | 'submarket' | 'property',
+          entityId: entityId || strategyId,
+          signals: signalInputs,
+          userId,
+        };
+        const commentary = await commentaryAgent.execute(commentaryInput);
+
+        return res.json({
+          success: true,
+          analysis: {
+            strategyResults: strategyResults.slice(0, 25),
+            scores: commentary.strategyScores,
+            recommendedStrategy: commentary.recommendedStrategy,
+            arbitrageFlag: commentary.arbitrageFlag,
+            arbitrageDelta: commentary.arbitrageDelta,
+            jediScore: commentary.jediScore,
+            gateResults: strategyResults.slice(0, 10).map(r => ({
+              targetId: r.targetId,
+              targetName: r.targetName,
+              score: r.overallScore,
+              rank: r.rank,
+              passed: r.conditionResults.every(c => c.passed),
+              conditionResults: r.conditionResults,
+            })),
+          },
+        });
+      } catch (stratErr: any) {
+        logger.warn('Strategy execution failed, falling back to arbitrage engine', { error: stratErr.message });
+      }
+    }
+
+    if (entityType && entityId) {
+      const commentaryInput: CommentaryInput = {
+        entityType: entityType as 'msa' | 'submarket' | 'property',
+        entityId,
+        signals: signalInputs,
+        userId: req.user?.id || req.userId,
+      };
+      const commentary = await commentaryAgent.execute(commentaryInput);
+      const filtered = strategyId
+        ? commentary.strategyScores.filter(s => s.strategy === strategyId)
+        : commentary.strategyScores;
+      return res.json({
+        success: true,
+        analysis: {
+          scores: filtered,
+          recommendedStrategy: commentary.recommendedStrategy,
+          arbitrageFlag: commentary.arbitrageFlag,
+          arbitrageDelta: commentary.arbitrageDelta,
+          jediScore: commentary.jediScore,
+          gateResults: commentary.strategyScores.map(s => ({
+            strategy: s.strategy,
+            score: s.score,
+            rank: s.rank,
+            passed: s.score >= 40,
+          })),
+        },
+      });
+    }
+
+    if (!dealId) {
+      return res.status(400).json({ success: false, error: 'dealId or (entityType + entityId) is required' });
+    }
+
+    const result = envelope
+      ? await strategyArbitrageEngine.analyzeWithEnvelope(dealId, envelope, signalInputs)
+      : await strategyArbitrageEngine.analyze(dealId, signalInputs);
+
+    res.json({ success: true, analysis: result });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 app.use('/api/training', requireAuth, createTrainingRoutes(pool));
 app.use('/api/calibration', requireAuth, createCalibrationRoutes(pool));
 app.use('/api/capsules', requireAuth, createCapsuleRoutes(pool));
+app.use('/api/v1/capsules', requireAuth, createCapsuleRoutes(pool));
+app.use('/api/v1/email', emailRouter);
 
 const activeUsers = new Map<string, any>();
+const dealPresence = new Map<string, Map<string, { userId: string; email: string; activeModule?: string; joinedAt: number }>>();
+
+function getDealParticipants(dealId: string) {
+  const members = dealPresence.get(dealId);
+  return members ? Array.from(members.values()) : [];
+}
+
+function broadcastDealPresence(dealId: string) {
+  const room = `deal:${dealId}`;
+  io.to(room).emit('deal:presence', { dealId, participants: getDealParticipants(dealId) });
+}
+
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token;
+  if (token) {
+    try {
+      const { verifyAccessToken } = require('./auth/jwt');
+      const payload = verifyAccessToken(token);
+      if (payload) {
+        (socket as any).userId = payload.userId;
+        (socket as any).email = payload.email;
+        return next();
+      }
+    } catch {}
+  }
+  (socket as any).userId = socket.id;
+  (socket as any).email = 'anonymous';
+  next();
+});
 
 io.on('connection', (socket) => {
-  console.log(`WebSocket connected: ${socket.id}`);
+  console.log(`WebSocket connected: ${socket.id} (user: ${(socket as any).userId})`);
   
   socket.on('user:join', (userData) => {
     activeUsers.set(socket.id, {
@@ -402,9 +741,73 @@ io.on('connection', (socket) => {
     });
   });
   
+  const socketDeals = new Set<string>();
+
+  socket.on('deal:join', (data: { dealId: string; activeModule?: string }) => {
+    const { dealId, activeModule } = data;
+    const room = `deal:${dealId}`;
+    socket.join(room);
+    socketDeals.add(dealId);
+
+    if (!dealPresence.has(dealId)) dealPresence.set(dealId, new Map());
+    dealPresence.get(dealId)!.set(socket.id, {
+      userId: (socket as any).userId,
+      email: (socket as any).email,
+      activeModule,
+      joinedAt: Date.now(),
+    });
+    broadcastDealPresence(dealId);
+  });
+
+  socket.on('deal:leave', (data: { dealId: string }) => {
+    const { dealId } = data;
+    socket.leave(`deal:${dealId}`);
+    socketDeals.delete(dealId);
+    dealPresence.get(dealId)?.delete(socket.id);
+    if (dealPresence.get(dealId)?.size === 0) dealPresence.delete(dealId);
+    broadcastDealPresence(dealId);
+  });
+
+  socket.on('deal:module_change', (data: { dealId: string; activeModule?: string }) => {
+    const entry = dealPresence.get(data.dealId)?.get(socket.id);
+    if (entry) {
+      entry.activeModule = data.activeModule;
+      broadcastDealPresence(data.dealId);
+    }
+  });
+
+  socket.on('deal:field_change', (data: { dealId: string; module: string; field: string; value: any }) => {
+    socket.to(`deal:${data.dealId}`).emit('deal:field_updated', {
+      ...data,
+      userId: (socket as any).userId,
+      timestamp: Date.now(),
+    });
+  });
+
+  socket.on('deal:comment_added', (data: { dealId: string; comment: any }) => {
+    io.to(`deal:${data.dealId}`).emit('deal:new_comment', {
+      ...data,
+      userId: (socket as any).userId,
+      timestamp: Date.now(),
+    });
+  });
+
+  socket.on('deal:comment_resolved', (data: { dealId: string; commentId: string }) => {
+    io.to(`deal:${data.dealId}`).emit('deal:comment_resolved', {
+      ...data,
+      userId: (socket as any).userId,
+      timestamp: Date.now(),
+    });
+  });
+
   socket.on('disconnect', () => {
     console.log(`WebSocket disconnected: ${socket.id}`);
     activeUsers.delete(socket.id);
+    for (const dealId of socketDeals) {
+      dealPresence.get(dealId)?.delete(socket.id);
+      if (dealPresence.get(dealId)?.size === 0) dealPresence.delete(dealId);
+      broadcastDealPresence(dealId);
+    }
     io.emit('users:update', Array.from(activeUsers.values()));
   });
 });
@@ -430,8 +833,9 @@ if (isProduction) {
 
 app.use(errorWebhookMiddleware);
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error('Error:', err);
-  res.status(500).json({
+  const statusCode = (err && typeof err.statusCode === 'number' && err.statusCode >= 100 && err.statusCode < 600) ? err.statusCode : 500;
+  if (statusCode >= 500) console.error('Error:', err);
+  res.status(statusCode).json({
     success: false,
     error: err.message || 'Internal server error'
   });
@@ -492,6 +896,31 @@ httpServer.listen(Number(PORT), '0.0.0.0', async () => {
     console.error('Failed to start email sync scheduler:', error);
   }
 
+  // M35 Impact Measurement — nightly job (runs once a day at ~3:00 AM)
+  try {
+    const { runImpactMeasurementJob } = await import('./services/m35-impact.service');
+    const scheduleM35ImpactJob = () => {
+      const now = new Date();
+      const target = new Date(now);
+      target.setHours(3, 0, 0, 0);
+      if (target <= now) target.setDate(target.getDate() + 1);
+      const msUntilRun = target.getTime() - now.getTime();
+      setTimeout(async () => {
+        try {
+          const result = await runImpactMeasurementJob();
+          console.log('[M35 Impact Job] Nightly run complete:', result);
+        } catch (err) {
+          console.error('[M35 Impact Job] Nightly run error:', err);
+        }
+        scheduleM35ImpactJob(); // reschedule for next day
+      }, msUntilRun);
+      console.log(`[M35 Impact Job] Scheduled for ${target.toISOString()}`);
+    };
+    scheduleM35ImpactJob();
+  } catch (error) {
+    console.error('[M35 Impact Job] Failed to schedule nightly job (non-fatal):', error);
+  }
+
   try {
     const { runStartupPstBackflow } = await import('./services/pst-backflow.service');
     await runStartupPstBackflow();
@@ -499,7 +928,113 @@ httpServer.listen(Number(PORT), '0.0.0.0', async () => {
     console.error('PST backflow startup check failed (non-fatal):', error);
   }
 
+  try {
+    const { MetricCorrelationEngine } = await import('./services/metric-correlation-engine.service');
+    const correlationPool = getPool();
+    const correlationEngine = new MetricCorrelationEngine(correlationPool);
+    correlationEngine.seedCorePairs().then(result => {
+      console.log(`Correlation seeding complete: ${result.computed} computed, ${result.skipped} skipped`);
+    }).catch(err => {
+      console.error('Correlation seeding failed (non-fatal):', err);
+    });
+  } catch (error) {
+    console.error('Correlation engine startup failed (non-fatal):', error);
+  }
+
+  try {
+    const { CorrelationEngineService } = await import('./services/correlationEngine.service');
+    const presetSeedPool = getPool();
+    const presetSeedEngine = new CorrelationEngineService(presetSeedPool);
+    presetSeedEngine.seedPresetStrategyCorrelations().then(result => {
+      console.log(`Preset strategy correlation seeding: ${result.strategiesProcessed} strategies, ${result.correlationsComputed} correlations`);
+    }).catch(err => {
+      console.error('Preset strategy correlation seeding failed (non-fatal):', err);
+    });
+  } catch (error) {
+    console.error('Preset correlation engine startup failed (non-fatal):', error);
+  }
+
+  try {
+    const { LeadLagDiscoveryService } = await import('./services/leadLagDiscovery.service');
+    const leadLagPool = getPool();
+    const leadLagService = new LeadLagDiscoveryService(leadLagPool);
+    const existingRes = await leadLagPool.query('SELECT COUNT(*) as cnt FROM metric_lead_lag_results');
+    const existingCount = parseInt(existingRes.rows[0].cnt);
+    if (existingCount === 0) {
+      leadLagService.runDiscoveryPipeline('metro').then(async result => {
+        console.log(`Lead/lag discovery pipeline: ${result.pairsProcessed} processed, ${result.pairsDiscovered} discovered, ${result.pairsSkipped} skipped`);
+        try {
+          const { applyEmpiricalLeadLag } = await import('./services/metricsCatalog.service');
+          const overrides = await leadLagService.getEmpiricalCatalogOverrides();
+          const applied = applyEmpiricalLeadLag(overrides);
+          console.log(`Applied ${applied} empirical lead/lag overrides to metrics catalog`);
+        } catch (e) {
+          console.error('Failed to apply empirical overrides (non-fatal):', e);
+        }
+      }).catch(err => {
+        console.error('Lead/lag discovery pipeline failed (non-fatal):', err);
+      });
+    } else {
+      console.log(`Lead/lag discovery: ${existingCount} existing results, applying catalog overrides`);
+      try {
+        const { applyEmpiricalLeadLag } = await import('./services/metricsCatalog.service');
+        const overrides = await leadLagService.getEmpiricalCatalogOverrides();
+        const applied = applyEmpiricalLeadLag(overrides);
+        console.log(`Applied ${applied} empirical lead/lag overrides to metrics catalog`);
+      } catch (e) {
+        console.error('Failed to apply empirical overrides (non-fatal):', e);
+      }
+    }
+  } catch (error) {
+    console.error('Lead/lag discovery startup failed (non-fatal):', error);
+  }
+
   await initStripe();
+
+  // M35 Phase 4: Nightly divergence tracking — fires at 2:00 AM UTC each day
+  // Mirrors the fixed-time scheduling pattern used by the M35 impact job.
+  function scheduleM35DivergenceJob() {
+    const now = new Date();
+    const nextRun = new Date(now);
+    nextRun.setUTCHours(2, 0, 0, 0);
+    if (nextRun <= now) nextRun.setUTCDate(nextRun.getUTCDate() + 1);
+    const msUntilNextRun = nextRun.getTime() - now.getTime();
+
+    const timer = setTimeout(async () => {
+      try {
+        const { runDivergenceTrackingJob } = await import('./services/m35-forecast.service');
+        const result = await runDivergenceTrackingJob();
+        console.log(`[M35 Divergence] Nightly check complete: ${result.checked} checked, ${result.diverged} diverged`);
+      } catch (err) {
+        console.error('[M35 Divergence] Nightly job failed (non-fatal):', err);
+      }
+      scheduleM35DivergenceJob(); // reschedule for tomorrow
+    }, msUntilNextRun);
+    timer.unref();
+    console.log(`[M35 Divergence] Scheduled for ${nextRun.toISOString()}`);
+  }
+  scheduleM35DivergenceJob();
+
+  // M35 Phase 5: monthly backtest — node-cron fires at 01:00 UTC on the 1st of each month.
+  // node-cron avoids setTimeout overflow (max ~24.8 days) for month-length delays.
+  cron.schedule('0 1 1 * *', async () => {
+    try {
+      const { runAllPendingBacktests } = await import('./services/m35-backtest.service');
+      const result = await runAllPendingBacktests();
+      console.log(`[M35 Backtest] Monthly run complete: ${JSON.stringify(result)}`);
+    } catch (err) {
+      console.error('[M35 Backtest] Monthly job failed (non-fatal):', err);
+    }
+  }, { timezone: 'UTC' });
+  console.log('[M35 Backtest] Monthly job scheduled (cron: 0 1 1 * * UTC)');
+
+  // M35 Phase 4: drain forecast_regen_queue every minute (claims with SKIP LOCKED)
+  setInterval(async () => {
+    try {
+      const { processForecastRegenQueue } = await import('./services/m35-forecast.service');
+      await processForecastRegenQueue();
+    } catch (err) { /* non-blocking */ }
+  }, 60_000).unref();
 });
 
 process.on('SIGTERM', async () => {

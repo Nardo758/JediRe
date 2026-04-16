@@ -12,6 +12,7 @@ import { TaskFiltersGrid } from '../components/tasks/TaskFiltersGrid';
 import { TaskDetailModal } from '../components/tasks/TaskDetailModal';
 import { CreateTaskModal } from '../components/tasks/CreateTaskModal';
 import { TaskCompletionReview } from '../components/tasks/TaskCompletionReview';
+import { BT } from '@/components/deal/bloomberg-ui';
 
 export const TasksPage: React.FC = () => {
   const [allTasks, setAllTasks] = useState<Task[]>([]);
@@ -147,16 +148,16 @@ export const TasksPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="min-h-screen p-6" style={{ background: BT.bg.terminal }}>
       {/* Header */}
       <div className="mb-6">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
+            <h1 className="text-3xl font-bold flex items-center gap-2" style={{ color: BT.text.primary }}>
               <span>🎯</span>
               <span>Global Tasks</span>
             </h1>
-            <p className="text-gray-600 mt-1">
+            <p className="mt-1" style={{ color: BT.text.secondary }}>
               Manage all your action items across deals and properties
             </p>
           </div>
@@ -172,13 +173,15 @@ export const TasksPage: React.FC = () => {
                   loadTasks();
                 }
               }}
-              className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors font-medium"
+              className="px-4 py-2 font-medium transition-colors"
+              style={{ border: `1px solid ${BT.border.medium}`, borderRadius: 0, color: BT.text.secondary, background: BT.bg.panel }}
             >
               🔄 Reset Data
             </button>
             <button
               onClick={() => setIsCreateModalOpen(true)}
-              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold flex items-center gap-2 shadow-md hover:shadow-lg transition-all"
+              className="px-6 py-3 font-semibold flex items-center gap-2 transition-all"
+              style={{ background: BT.text.cyan, color: BT.bg.terminal, borderRadius: 0 }}
             >
               <span className="text-xl">+</span>
               Create Task
@@ -188,33 +191,33 @@ export const TasksPage: React.FC = () => {
 
         {/* Stats */}
         <div className="grid grid-cols-7 gap-4 mb-6">
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-            <div className="text-sm text-gray-600 mb-1">Total</div>
-            <div className="text-2xl font-bold text-gray-900">{stats.total}</div>
+          <div className="p-4" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
+            <div className="text-sm mb-1" style={{ color: BT.text.secondary }}>Total</div>
+            <div className="text-2xl font-bold" style={{ color: BT.text.primary }}>{stats.total}</div>
           </div>
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-            <div className="text-sm text-gray-600 mb-1">Open</div>
-            <div className="text-2xl font-bold text-blue-600">{stats.open}</div>
+          <div className="p-4" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
+            <div className="text-sm mb-1" style={{ color: BT.text.secondary }}>Open</div>
+            <div className="text-2xl font-bold" style={{ color: BT.text.cyan }}>{stats.open}</div>
           </div>
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-            <div className="text-sm text-gray-600 mb-1">In Progress</div>
-            <div className="text-2xl font-bold text-purple-600">{stats.inProgress}</div>
+          <div className="p-4" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
+            <div className="text-sm mb-1" style={{ color: BT.text.secondary }}>In Progress</div>
+            <div className="text-2xl font-bold" style={{ color: BT.text.purple }}>{stats.inProgress}</div>
           </div>
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-            <div className="text-sm text-gray-600 mb-1">Blocked</div>
-            <div className="text-2xl font-bold text-red-600">{stats.blocked}</div>
+          <div className="p-4" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
+            <div className="text-sm mb-1" style={{ color: BT.text.secondary }}>Blocked</div>
+            <div className="text-2xl font-bold" style={{ color: BT.text.red }}>{stats.blocked}</div>
           </div>
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-            <div className="text-sm text-gray-600 mb-1">Complete</div>
-            <div className="text-2xl font-bold text-green-600">{stats.complete}</div>
+          <div className="p-4" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
+            <div className="text-sm mb-1" style={{ color: BT.text.secondary }}>Complete</div>
+            <div className="text-2xl font-bold" style={{ color: BT.text.green }}>{stats.complete}</div>
           </div>
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-            <div className="text-sm text-gray-600 mb-1">Overdue</div>
-            <div className="text-2xl font-bold text-red-600">{stats.overdue}</div>
+          <div className="p-4" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
+            <div className="text-sm mb-1" style={{ color: BT.text.secondary }}>Overdue</div>
+            <div className="text-2xl font-bold" style={{ color: BT.text.red }}>{stats.overdue}</div>
           </div>
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-            <div className="text-sm text-gray-600 mb-1">Due Today</div>
-            <div className="text-2xl font-bold text-yellow-600">{stats.dueToday}</div>
+          <div className="p-4" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
+            <div className="text-sm mb-1" style={{ color: BT.text.secondary }}>Due Today</div>
+            <div className="text-2xl font-bold" style={{ color: BT.text.amber }}>{stats.dueToday}</div>
           </div>
         </div>
 
@@ -230,14 +233,15 @@ export const TasksPage: React.FC = () => {
 
         {/* Bulk Actions Bar */}
         {selectedIds.size > 0 && (
-          <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center justify-between">
+          <div className="mt-4 p-4 flex items-center justify-between" style={{ background: BT.bg.panelAlt, border: `1px solid ${BT.border.medium}`, borderRadius: 0 }}>
             <div className="flex items-center gap-4">
-              <span className="text-sm font-semibold text-blue-900">
+              <span className="text-sm font-semibold" style={{ color: BT.text.cyan }}>
                 {selectedIds.size} task{selectedIds.size > 1 ? 's' : ''} selected
               </span>
               <button
                 onClick={() => setSelectedIds(new Set())}
-                className="text-sm text-blue-600 hover:text-blue-800 underline"
+                className="text-sm underline"
+                style={{ color: BT.text.cyan }}
               >
                 Clear selection
               </button>
@@ -245,14 +249,16 @@ export const TasksPage: React.FC = () => {
             <div className="flex items-center gap-2">
               <button
                 onClick={handleBulkComplete}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium"
+                className="px-4 py-2 transition-colors text-sm font-medium"
+                style={{ background: BT.text.green, color: BT.bg.terminal, borderRadius: 0 }}
               >
                 ✅ Mark Complete
               </button>
               <div className="relative">
                 <button
                   onClick={() => setShowBulkActions(!showBulkActions)}
-                  className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
+                  className="px-4 py-2 transition-colors text-sm font-medium"
+                  style={{ background: BT.bg.panel, border: `1px solid ${BT.border.medium}`, color: BT.text.secondary, borderRadius: 0 }}
                 >
                   More Actions ▼
                 </button>
@@ -262,14 +268,17 @@ export const TasksPage: React.FC = () => {
                       className="fixed inset-0 z-10"
                       onClick={() => setShowBulkActions(false)}
                     />
-                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-20">
+                    <div className="absolute right-0 mt-2 w-48 z-20" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.medium}` }}>
                       <div className="py-1">
                         <button
                           onClick={() => {
                             handleBulkPriority('high');
                             setShowBulkActions(false);
                           }}
-                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                          className="w-full text-left px-4 py-2 text-sm"
+                          style={{ color: BT.text.secondary }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = BT.bg.hover)}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                         >
                           🔴 Set High Priority
                         </button>
@@ -278,7 +287,10 @@ export const TasksPage: React.FC = () => {
                             handleBulkPriority('medium');
                             setShowBulkActions(false);
                           }}
-                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                          className="w-full text-left px-4 py-2 text-sm"
+                          style={{ color: BT.text.secondary }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = BT.bg.hover)}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                         >
                           🟡 Set Medium Priority
                         </button>
@@ -287,7 +299,10 @@ export const TasksPage: React.FC = () => {
                             handleBulkPriority('low');
                             setShowBulkActions(false);
                           }}
-                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                          className="w-full text-left px-4 py-2 text-sm"
+                          style={{ color: BT.text.secondary }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = BT.bg.hover)}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                         >
                           ⚪ Set Low Priority
                         </button>
@@ -296,7 +311,10 @@ export const TasksPage: React.FC = () => {
                             handleBulkAssign();
                             setShowBulkActions(false);
                           }}
-                          className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                          className="w-full text-left px-4 py-2 text-sm"
+                          style={{ color: BT.text.secondary }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = BT.bg.hover)}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                         >
                           👤 Bulk Assign
                         </button>
@@ -305,7 +323,10 @@ export const TasksPage: React.FC = () => {
                             handleBulkDelete();
                             setShowBulkActions(false);
                           }}
-                          className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+                          className="w-full text-left px-4 py-2 text-sm"
+                          style={{ color: BT.text.red }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = BT.bg.hover)}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                         >
                           🗑️ Delete Selected
                         </button>
@@ -332,8 +353,8 @@ export const TasksPage: React.FC = () => {
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="mt-6 flex items-center justify-between bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-          <div className="text-sm text-gray-600">
+        <div className="mt-6 flex items-center justify-between p-4" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
+          <div className="text-sm" style={{ color: BT.text.secondary }}>
             Showing {startIndex + 1}-{Math.min(endIndex, filteredTasks.length)} of{' '}
             {filteredTasks.length} tasks
           </div>
@@ -341,7 +362,8 @@ export const TasksPage: React.FC = () => {
             <button
               onClick={() => setPage(Math.max(1, page - 1))}
               disabled={page === 1}
-              className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ border: `1px solid ${BT.border.medium}`, borderRadius: 0, color: BT.text.secondary, background: BT.bg.panel }}
             >
               ← Previous
             </button>
@@ -362,11 +384,12 @@ export const TasksPage: React.FC = () => {
                   <button
                     key={pageNum}
                     onClick={() => setPage(pageNum)}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      page === pageNum
-                        ? 'bg-blue-600 text-white'
-                        : 'text-gray-700 hover:bg-gray-100'
-                    }`}
+                    className="px-4 py-2 text-sm font-medium transition-colors"
+                    style={{
+                      borderRadius: 0,
+                      background: page === pageNum ? BT.text.cyan : 'transparent',
+                      color: page === pageNum ? BT.bg.terminal : BT.text.secondary,
+                    }}
                   >
                     {pageNum}
                   </button>
@@ -376,7 +399,8 @@ export const TasksPage: React.FC = () => {
             <button
               onClick={() => setPage(Math.min(totalPages, page + 1))}
               disabled={page === totalPages}
-              className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ border: `1px solid ${BT.border.medium}`, borderRadius: 0, color: BT.text.secondary, background: BT.bg.panel }}
             >
               Next →
             </button>

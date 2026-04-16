@@ -65,6 +65,43 @@ router.post('/login', validate(loginSchema), async (req, res) => {
   }
 });
 
+router.get('/dev-login', async (_req, res) => {
+  if (process.env.REPLIT_DEPLOYMENT === '1') {
+    res.status(404).json({ error: 'Not found' });
+    return;
+  }
+  try {
+    const result = await pool.query(
+      'SELECT id, email, full_name, role, subscription_tier, enabled_modules FROM users WHERE password_hash IS NOT NULL ORDER BY created_at DESC LIMIT 1'
+    );
+    if (result.rows.length === 0) {
+      res.status(404).json({ error: 'No dev user available' });
+      return;
+    }
+    const dbUser = result.rows[0];
+    const user = {
+      id: dbUser.id,
+      email: dbUser.email,
+      name: dbUser.full_name || 'User',
+      role: dbUser.role || 'user',
+      subscription: {
+        plan: dbUser.subscription_tier || 'free',
+        modules: dbUser.enabled_modules || ['supply']
+      }
+    };
+    const token = generateAccessToken({
+      userId: dbUser.id,
+      email: dbUser.email,
+      role: dbUser.role || 'user'
+    });
+    console.log('Dev auto-login successful for:', dbUser.email);
+    res.json({ success: true, user, token });
+  } catch (error) {
+    console.error('Dev login error:', error);
+    res.status(500).json({ error: 'Dev login failed' });
+  }
+});
+
 router.get('/me', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user?.userId;

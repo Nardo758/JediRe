@@ -3,10 +3,12 @@ import multer from 'multer';
 import path from 'path';
 import { pool } from '../../database';
 import { TrafficDataSourcesService } from '../../services/traffic-data-sources.service';
+import { TrafficGrowthIndexService, TrafficGrowthResult } from '../../services/traffic-growth-index.service';
 import { logger } from '../../utils/logger';
 
 const router = Router();
 const trafficDataService = new TrafficDataSourcesService(pool);
+const trafficGrowthService = new TrafficGrowthIndexService(pool);
 
 const adtUpload = multer({
   dest: path.join(process.cwd(), 'uploads', 'adt-data'),
@@ -154,6 +156,91 @@ router.post('/bulk-link', async (req: Request, res: Response) => {
   } catch (error: any) {
     logger.error('[TrafficData] Bulk link failed', { error: error.message });
     res.status(500).json({ error: 'Failed to bulk link properties', message: error.message });
+  }
+});
+
+router.get('/growth-index/:propertyId', async (req: Request, res: Response) => {
+  try {
+    const { propertyId } = req.params;
+    const result = await trafficGrowthService.computeForProperty(propertyId);
+
+    if (!result) {
+      return res.status(404).json({
+        success: false,
+        error: 'No traffic context found for this property. Ensure DOT data is linked.',
+      });
+    }
+
+    res.json({
+      success: true,
+      metric: 'C_TRAFFIC_GROWTH_INDEX',
+      metricName: 'Traffic Growth Index (TGI)',
+      formula: '(Google Realtime ADT - DOT Historical Avg ADT) / DOT Historical Avg ADT × 100',
+      data: result,
+    });
+  } catch (error: any) {
+    logger.error('[TrafficData] Growth index compute failed', { error: error.message });
+    res.status(500).json({ error: 'Failed to compute Traffic Growth Index', message: error.message });
+  }
+});
+
+router.post('/growth-index/:propertyId/store', async (req: Request, res: Response) => {
+  try {
+    const { propertyId } = req.params;
+    const result = await trafficGrowthService.computeAndStoreForProperty(propertyId);
+
+    if (!result) {
+      return res.status(404).json({
+        success: false,
+        error: 'No traffic context found for this property. Ensure DOT data is linked.',
+      });
+    }
+
+    res.json({
+      success: true,
+      metric: 'C_TRAFFIC_GROWTH_INDEX',
+      metricName: 'Traffic Growth Index (TGI)',
+      stored: true,
+      data: result,
+    });
+  } catch (error: any) {
+    logger.error('[TrafficData] Growth index store failed', { error: error.message });
+    res.status(500).json({ error: 'Failed to store Traffic Growth Index', message: error.message });
+  }
+});
+
+router.post('/growth-index/batch', async (req: Request, res: Response) => {
+  try {
+    const { propertyIds } = req.body;
+    if (!Array.isArray(propertyIds) || propertyIds.length === 0) {
+      return res.status(400).json({ success: false, error: 'propertyIds array is required' });
+    }
+
+    const results: TrafficGrowthResult[] = [];
+    const errors: Array<{ propertyId: string; error: string }> = [];
+
+    for (const pid of propertyIds.slice(0, 100)) {
+      try {
+        const r = await trafficGrowthService.computeAndStoreForProperty(pid);
+        if (r) results.push(r);
+      } catch (err: any) {
+        errors.push({ propertyId: pid, error: err.message });
+      }
+    }
+
+    res.json({
+      success: true,
+      metric: 'C_TRAFFIC_GROWTH_INDEX',
+      metricName: 'Traffic Growth Index (TGI)',
+      computed: results.length,
+      failed: errors.length,
+      requested: propertyIds.length,
+      data: results,
+      errors: errors.length > 0 ? errors : undefined,
+    });
+  } catch (error: any) {
+    logger.error('[TrafficData] Batch growth index failed', { error: error.message });
+    res.status(500).json({ error: 'Failed to compute batch Traffic Growth Index', message: error.message });
   }
 });
 

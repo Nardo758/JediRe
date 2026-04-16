@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useParams } from "react-router-dom";
 import {
   ScatterChart, Scatter, XAxis, YAxis, ZAxis, Tooltip, ResponsiveContainer,
@@ -6,6 +6,7 @@ import {
 } from "recharts";
 import { useUnitMixIntelligence } from "../../../hooks/useUnitMixIntelligence";
 import { useTradeAreaStore } from "../../../stores/tradeAreaStore";
+import { useDealStore, useDealType } from "../../../stores/dealStore";
 
 type UnitKey = "studio" | "oneBR" | "twoBR" | "threeBR";
 type SigKey = "vac" | "dom" | "conc";
@@ -29,20 +30,20 @@ interface ZoningData {
 interface InventoryItem {
   key: UnitKey; label: string; abbr: string; sfRange: string; color: string;
   typeUnits: number; supplyShare: number; avgVac: number; avgDOM: number;
-  avgRent: number; avgConc: number; demandScore: number;
+  avgRent: number; avgConc: number; demandScore: number; avgSF: number;
 }
 
 interface GapItem extends InventoryItem { demandShare: number; gap: number; }
 
-// ─────────────────────────────────────────────────────────
-//  PALETTE
-// ─────────────────────────────────────────────────────────
 const C = {
-  bg: "#07111f", surface: "#0b1827", card: "#0f1f30", border: "#162232",
-  muted: "#1e3347", text: "#d4e2f0", dim: "#4a6880", faint: "#243548",
-  studio: "#a78bfa", oneBR: "#38bdf8", twoBR: "#34d399", threeBR: "#fbbf24",
-  subject: "#f97316", green: "#34d399", red: "#f87171", yellow: "#fbbf24", blue: "#0ea5e9",
+  bg: "#0A0E17", surface: "#0F1319", card: "#131821", border: "#1E2538",
+  muted: "#2A3348", text: "#E8ECF1", dim: "#6B7A8D", faint: "#2A3348",
+  studio: "#A78BFA", oneBR: "#00BCD4", twoBR: "#00D26A", threeBR: "#F5A623",
+  subject: "#FF8C42", green: "#00D26A", red: "#FF4757", yellow: "#F5A623", blue: "#00BCD4",
+  header: "#1A1F2E", secondary: "#A0ABBE",
 };
+
+const mono = "var(--bt-mono)";
 
 const UT_META = [
   { key: "studio",  label: "Studio", abbr: "STU", sfRange: "420–540", color: C.studio  },
@@ -57,9 +58,6 @@ const SIG = {
   conc: { hot: 0, warm: 2 },
 };
 
-// ─────────────────────────────────────────────────────────
-//  UNIFIED DATA — units: { mix%, sf, rent, vac%, dom(days), conc(wks) }
-// ─────────────────────────────────────────────────────────
 const COMPS = [
   { id: "sandpiper", name: "Sandpiper Cove",  cls: "A",  built: 2021, total: 248, units: {
     studio:  { mix: 8,  sf: 525,  rent: 1310, vac: 11,  dom: 34, conc: 6 },
@@ -123,9 +121,6 @@ const TREND_DATA = {
   ],
 };
 
-// ─────────────────────────────────────────────────────────
-//  SEEDS
-// ─────────────────────────────────────────────────────────
 const ZONING_SEED = {
   zoningCode: "PUD-R / C-3", maxUnits: 280, maxNetSF: 310000,
   excludesParking: true, maxHeight: 5, maxLotCoverage: 65,
@@ -143,57 +138,62 @@ const PROGRAM_SEED = {
   },
 };
 
-// ─────────────────────────────────────────────────────────
-//  CALCULATIONS
-// ─────────────────────────────────────────────────────────
 function compAvg(utKey: UnitKey, comps: CompData[]) {
-  const active = comps.filter(c => c.units[utKey].mix > 0);
+  const active = comps.filter(c => (c.units[utKey]?.mix ?? 0) > 0);
   if (!active.length) return { mix: 0, sf: 0, rent: 0, vac: 0, dom: 0, conc: 0 };
   const avg = (fn: (c: any) => number) => active.reduce((s, c) => s + fn(c), 0) / active.length;
   return {
-    mix:  avg(c => c.units[utKey].mix),
-    sf:   Math.round(avg(c => c.units[utKey].sf)),
-    rent: Math.round(avg(c => c.units[utKey].rent)),
-    vac:  avg(c => c.units[utKey].vac),
-    dom:  avg(c => c.units[utKey].dom),
-    conc: avg(c => c.units[utKey].conc),
+    mix:  avg(c => c.units[utKey]?.mix ?? 0),
+    sf:   Math.round(avg(c => c.units[utKey]?.sf ?? 0)),
+    rent: Math.round(avg(c => c.units[utKey]?.rent ?? 0)),
+    vac:  avg(c => c.units[utKey]?.vac ?? 0),
+    dom:  avg(c => c.units[utKey]?.dom ?? 0),
+    conc: avg(c => c.units[utKey]?.conc ?? 0),
   };
 }
 
 function computeProgram(program: Program) {
   const totalSF = UT_META.reduce((s, ut) => {
     const u = program.units[ut.key];
+    if (!u) return s;
     return s + Math.round(program.totalUnits * u.mix / 100) * u.sf;
   }, 0);
-  const mixTotal  = UT_META.reduce((s, ut) => s + program.units[ut.key].mix, 0);
+  const mixTotal = UT_META.reduce((s, ut) => s + (program.units[ut.key]?.mix ?? 0), 0);
+  const totalMonthlyRent = UT_META.reduce((s, ut) => {
+    const u = program.units[ut.key];
+    if (!u) return s;
+    return s + Math.round(program.totalUnits * u.mix / 100) * u.rent;
+  }, 0);
   const grossRevPA = UT_META.reduce((s, ut) => {
     const u = program.units[ut.key];
+    if (!u) return s;
     return s + Math.round(program.totalUnits * u.mix / 100) * u.rent * 12 * 0.95;
   }, 0);
-  return { totalSF, mixTotal, grossRevPA };
+  const wtdPSF = totalSF > 0 ? +(totalMonthlyRent / totalSF).toFixed(2) : 0;
+  return { totalSF, mixTotal, grossRevPA, wtdPSF };
 }
 
-// Inventory: per unit-type aggregate across all comps
 function computeInventory(comps: CompData[]) {
   const totalCompUnits = comps.reduce((s, c) => s + c.total, 0);
   return UT_META.map(ut => {
-    const active = comps.filter(c => c.units[ut.key].mix > 0);
-    const typeUnits = comps.reduce((s, c) => s + Math.round(c.total * c.units[ut.key].mix / 100), 0);
+    const active = comps.filter(c => (c.units[ut.key]?.mix ?? 0) > 0);
+    const typeUnits = comps.reduce((s, c) => s + Math.round(c.total * (c.units[ut.key]?.mix ?? 0) / 100), 0);
     const vacUnits  = comps.reduce((s, c) => {
-      const u = Math.round(c.total * c.units[ut.key].mix / 100);
-      return s + Math.round(u * (c.units[ut.key].vac || 0) / 100);
+      const u = Math.round(c.total * (c.units[ut.key]?.mix ?? 0) / 100);
+      return s + Math.round(u * (c.units[ut.key]?.vac ?? 0) / 100);
     }, 0);
     const avgVac  = typeUnits > 0 ? vacUnits / typeUnits * 100 : 0;
     const n = fn => active.length ? active.reduce((s, c) => s + fn(c), 0) / active.length : 0;
-    const avgDOM  = n(c => c.units[ut.key].dom);
-    const avgRent = n(c => c.units[ut.key].rent);
-    const avgConc = n(c => c.units[ut.key].conc);
+    const avgDOM  = n(c => c.units[ut.key]?.dom ?? 0);
+    const avgRent = n(c => c.units[ut.key]?.rent ?? 0);
+    const avgConc = n(c => c.units[ut.key]?.conc ?? 0);
+    const avgSF   = Math.round(n(c => c.units[ut.key]?.sf ?? 0));
     const supplyShare = totalCompUnits > 0 ? typeUnits / totalCompUnits * 100 : 0;
     const vacScore  = Math.max(0, 100 - avgVac * 6);
     const domScore  = Math.max(0, 100 - avgDOM * 2);
     const concScore = Math.max(0, 100 - avgConc * 10);
     const demandScore = Math.round(vacScore * 0.4 + domScore * 0.35 + concScore * 0.25);
-    return { ...ut, typeUnits, supplyShare, avgVac, avgDOM, avgRent, avgConc, demandScore };
+    return { ...ut, typeUnits, supplyShare, avgVac, avgDOM, avgRent, avgConc, demandScore, avgSF };
   });
 }
 
@@ -205,6 +205,73 @@ function computeGaps(inventory: InventoryItem[]) {
     demandShare: proxies[i] / tot * 100,
     gap: proxies[i] / tot * 100 - u.supplyShare,
   }));
+}
+
+function computeOptimalProgram(totalUnits: number, comps: CompData[], opts?: { zoning?: ZoningData; demandScores?: Record<string, number> }): Program {
+  const inventory = computeInventory(comps);
+  const gaps = computeGaps(inventory);
+  const psfPerType = UT_META.map(ut => {
+    const avg = compAvg(ut.key, comps);
+    return avg.sf > 0 ? avg.rent / avg.sf : 0;
+  });
+  const maxPsf = Math.max(...psfPerType, 1);
+  const psfScores = psfPerType.map(p => (p / maxPsf) * 100);
+  const velocityScores = UT_META.map(ut => {
+    const avg = compAvg(ut.key, comps);
+    const vacPenalty = Math.max(0, 100 - avg.vac * 8);
+    const domPenalty = avg.dom > 0 ? Math.max(0, 100 - avg.dom * 3) : 60;
+    return (vacPenalty * 0.6 + domPenalty * 0.4);
+  });
+  const zoningMaxUnits = opts?.zoning?.maxUnits || totalUnits;
+  const effectiveUnits = Math.min(totalUnits, zoningMaxUnits);
+  const rawScores = UT_META.map((ut, i) => {
+    const inv = gaps[i];
+    const demandScore = opts?.demandScores?.[ut.key] ?? inv.demandScore ?? 0;
+    const psfScore = psfScores[i];
+    const gapScore = Math.max(0, inv.gap || 0) * 5;
+    const velocity = velocityScores[i];
+    return demandScore * 0.35 + psfScore * 0.25 + Math.min(gapScore, 100) * 0.20 + velocity * 0.20;
+  });
+  const totalScore = rawScores.reduce((s, v) => s + v, 0) || 1;
+  const mixPcts = rawScores.map(s => {
+    const raw = Math.round(s / totalScore * 100);
+    return Math.max(5, Math.min(55, raw));
+  });
+  let mixSum = mixPcts.reduce((s, v) => s + v, 0);
+  const maxIter = 50;
+  let iter = 0;
+  while (mixSum !== 100 && iter++ < maxIter) {
+    const delta = 100 - mixSum;
+    const sortedIdxs = rawScores.map((_, i) => i).sort((a, b) =>
+      delta > 0 ? rawScores[b] - rawScores[a] : rawScores[a] - rawScores[b]
+    );
+    for (const idx of sortedIdxs) {
+      if (mixSum === 100) break;
+      const room = delta > 0 ? 55 - mixPcts[idx] : mixPcts[idx] - 5;
+      if (room <= 0) continue;
+      const step = delta > 0 ? Math.min(delta, room, 3) : Math.max(delta, -room, -3);
+      mixPcts[idx] += step;
+      mixSum += step;
+    }
+  }
+  const units: Record<string, { mix: number; sf: number; rent: number }> = {};
+  UT_META.forEach((ut, i) => {
+    const avg = compAvg(ut.key, comps);
+    const baseSf = avg.sf || PROGRAM_SEED.units[ut.key].sf;
+    const baseRent = avg.rent || PROGRAM_SEED.units[ut.key].rent;
+    let sfTarget = baseSf;
+    let rentTarget = baseRent;
+    if (opts?.zoning?.maxNetSF) {
+      const budgetedSfPerUnit = opts.zoning.maxNetSF / effectiveUnits;
+      if (baseSf > budgetedSfPerUnit * 1.3) {
+        sfTarget = Math.round(baseSf * 0.95);
+      }
+    }
+    const gapBonus = (gaps[i]?.gap ?? 0) > 3 ? 1.05 : 1;
+    rentTarget = Math.round(baseRent * gapBonus);
+    units[ut.key] = { mix: mixPcts[i], sf: sfTarget, rent: rentTarget };
+  });
+  return { totalUnits: effectiveUnits, units: units as Record<UnitKey, ProgramUnit> };
 }
 
 function buildScatter(program: Program, comps: CompData[]) {
@@ -236,14 +303,42 @@ function sigColor(val: number | null | undefined, key: SigKey) {
   return val <= SIG[key].hot ? C.green : val <= SIG[key].warm ? C.yellow : C.red;
 }
 
-// ─────────────────────────────────────────────────────────
-//  SHARED ATOMS
-// ─────────────────────────────────────────────────────────
+function SectionHeader({ mod, title, right }: { mod: string; title: string; right?: React.ReactNode }) {
+  return (
+    <div style={{ padding: "4px 10px", borderBottom: `1px solid ${C.border}`,
+      display: "flex", justifyContent: "space-between", alignItems: "center", background: C.card }}>
+      <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
+        <span style={{ color: C.blue, fontFamily: mono, fontSize: 7, fontWeight: 700, letterSpacing: "0.08em" }}>{mod}</span>
+        <span style={{ color: C.border }}>·</span>
+        <span style={{ color: C.text, fontSize: 10, fontWeight: 700 }}>{title}</span>
+      </div>
+      {right}
+    </div>
+  );
+}
+
+function UnitTypeToggle({ selected, onSelect, size = "sm" }: { selected: UnitKey | string; onSelect: (k: any) => void; size?: string }) {
+  const items = size === "lg" ? [{key:"all",abbr:"ALL",color:C.dim},...UT_META] : UT_META;
+  return (
+    <div style={{ display: "flex", gap: 2 }}>
+      {items.map(u => (
+        <button key={u.key} onClick={() => onSelect(u.key)} style={{
+          background: selected===u.key ? (u.color||C.dim)+"18" : "transparent",
+          border: `1px solid ${selected===u.key ? (u.color||C.dim)+"60" : C.border}`,
+          borderRadius: 3, padding: "2px 6px",
+          color: selected===u.key ? (u.color||C.text) : C.dim,
+          fontSize: 8, fontFamily: mono, fontWeight: 700, cursor: "pointer",
+        }}>{u.abbr||"ALL"}</button>
+      ))}
+    </div>
+  );
+}
+
 function Tag({ label, color, size = "sm" }: { label: string; color: string; size?: string }) {
   return (
     <span style={{ background: color + "18", border: `1px solid ${color}35`, color,
-      borderRadius: 3, padding: size === "xs" ? "1px 5px" : "2px 7px",
-      fontSize: size === "xs" ? 9 : 10, fontFamily: "monospace", fontWeight: 700, whiteSpace: "nowrap" }}>
+      borderRadius: 2, padding: size === "xs" ? "0px 4px" : "1px 5px",
+      fontSize: size === "xs" ? 7 : 8, fontFamily: mono, fontWeight: 700, whiteSpace: "nowrap" }}>
       {label}
     </span>
   );
@@ -254,7 +349,7 @@ function Delt({ value, unit = "" }: { value: number | null | undefined; unit?: s
   const pos = value > 0;
   const color = Math.abs(value) < 0.5 ? C.dim : pos ? C.green : C.red;
   return (
-    <span style={{ color, fontFamily: "monospace", fontSize: 10, fontWeight: 700 }}>
+    <span style={{ color, fontFamily: mono, fontSize: 8, fontWeight: 700 }}>
       {pos ? "+" : ""}{typeof value === "number" ? value.toFixed(1) : value}{unit}
     </span>
   );
@@ -262,28 +357,28 @@ function Delt({ value, unit = "" }: { value: number | null | undefined; unit?: s
 
 function SecLabel({ mod, title, sub }: { mod: string; title: string; sub?: string }) {
   return (
-    <div style={{ marginBottom: 14 }}>
-      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 2 }}>
-        <span style={{ color: C.blue, fontFamily: "monospace", fontSize: 9, fontWeight: 700, letterSpacing: "0.1em" }}>{mod}</span>
+    <div style={{ marginBottom: 6 }}>
+      <div style={{ display: "flex", gap: 5, alignItems: "center", marginBottom: 1 }}>
+        <span style={{ color: C.blue, fontFamily: mono, fontSize: 7, fontWeight: 700, letterSpacing: "0.08em" }}>{mod}</span>
         <span style={{ color: C.border }}>·</span>
-        <span style={{ color: "#e2e8f0", fontSize: 13, fontWeight: 700 }}>{title}</span>
+        <span style={{ color: C.text, fontSize: 10, fontWeight: 700 }}>{title}</span>
       </div>
-      {sub && <p style={{ color: C.dim, fontSize: 11, margin: 0 }}>{sub}</p>}
+      {sub && <p style={{ color: C.dim, fontSize: 8, margin: 0 }}>{sub}</p>}
     </div>
   );
 }
 
-function NumInput({ value, onChange, min, max, step = 1, width = 60, suffix = "", accent }: { value: number; onChange: (v: number) => void; min?: number; max?: number; step?: number; width?: number; suffix?: string; accent?: boolean }) {
+function NumInput({ value, onChange, min, max, step = 1, width = 48, suffix = "", accent }: { value: number; onChange: (v: number) => void; min?: number; max?: number; step?: number; width?: number; suffix?: string; accent?: boolean }) {
   return (
-    <div style={{ display: "inline-flex", alignItems: "center", gap: 3,
+    <div style={{ display: "inline-flex", alignItems: "center", gap: 2,
       background: accent ? C.subject + "14" : C.faint,
-      border: `1px solid ${accent ? C.subject + "55" : C.border}`, borderRadius: 5, padding: "3px 8px" }}>
+      border: `1px solid ${accent ? C.subject + "55" : C.border}`, borderRadius: 3, padding: "2px 5px" }}>
       <input type="number" value={value} min={min} max={max} step={step}
         onChange={e => onChange(Number(e.target.value))}
         style={{ width, background: "none", border: "none", outline: "none",
-          color: accent ? C.subject : C.text, fontFamily: "monospace", fontSize: 13,
+          color: accent ? C.subject : C.text, fontFamily: mono, fontSize: 10,
           fontWeight: 700, textAlign: "right" }} />
-      {suffix && <span style={{ color: C.dim, fontSize: 11 }}>{suffix}</span>}
+      {suffix && <span style={{ color: C.dim, fontSize: 9 }}>{suffix}</span>}
     </div>
   );
 }
@@ -293,13 +388,13 @@ function GapBar({ gap, max = 15 }: { gap: number; max?: number }) {
   const pct = clamped / max * 100;
   const color = gap > 3 ? C.green : gap < -3 ? C.red : C.yellow;
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      <div style={{ width: 100, height: 6, background: C.muted, borderRadius: 3, position: "relative" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+      <div style={{ width: 80, height: 4, background: C.muted, borderRadius: 2, position: "relative" }}>
         <div style={{ position: "absolute", [gap >= 0 ? "left" : "right"]: "50%",
-          width: `${pct / 2}%`, height: "100%", background: color, borderRadius: 3 }} />
+          width: `${pct / 2}%`, height: "100%", background: color, borderRadius: 2 }} />
         <div style={{ position: "absolute", left: "50%", top: 0, width: 1, height: "100%", background: C.faint }} />
       </div>
-      <span style={{ color, fontFamily: "monospace", fontSize: 11, fontWeight: 700, minWidth: 48 }}>
+      <span style={{ color, fontFamily: mono, fontSize: 9, fontWeight: 700, minWidth: 40 }}>
         {gap > 0 ? "+" : ""}{gap.toFixed(1)}pp
       </span>
     </div>
@@ -308,9 +403,9 @@ function GapBar({ gap, max = 15 }: { gap: number; max?: number }) {
 
 function MiniLine({ data, dataKey, color }: { data: any[]; dataKey: string; color: string }) {
   return (
-    <ResponsiveContainer width="100%" height={40}>
-      <LineChart data={data} margin={{ top: 2, right: 2, bottom: 0, left: 0 }}>
-        <Line type="monotone" dataKey={dataKey} stroke={color} strokeWidth={1.5} dot={false} />
+    <ResponsiveContainer width="100%" height={28}>
+      <LineChart data={data} margin={{ top: 1, right: 1, bottom: 0, left: 0 }}>
+        <Line type="monotone" dataKey={dataKey} stroke={color} strokeWidth={1.2} dot={false} />
       </LineChart>
     </ResponsiveContainer>
   );
@@ -319,10 +414,10 @@ function MiniLine({ data, dataKey, color }: { data: any[]; dataKey: string; colo
 function ChartTip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
   return (
-    <div style={{ background: "#0a1827", border: `1px solid ${C.border}`, borderRadius: 6, padding: "8px 12px" }}>
-      <div style={{ color: C.dim, fontSize: 10, fontFamily: "monospace", marginBottom: 4 }}>{label}</div>
+    <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 3, padding: "4px 8px" }}>
+      <div style={{ color: C.dim, fontSize: 7, fontFamily: mono, marginBottom: 2 }}>{label}</div>
       {payload.map((p, i) => (
-        <div key={i} style={{ color: p.color || C.text, fontSize: 11, fontFamily: "monospace" }}>
+        <div key={i} style={{ color: p.color || C.text, fontSize: 9, fontFamily: mono }}>
           {p.name}: {p.value}
         </div>
       ))}
@@ -332,9 +427,9 @@ function ChartTip({ active, payload, label }: any) {
 
 function ScatterDot({ cx, cy, payload }: any) {
   if (cx === undefined) return null;
-  return <circle cx={cx} cy={cy} r={payload.isSubject ? 7 : 5} fill={payload.color}
+  return <circle cx={cx} cy={cy} r={payload.isSubject ? 5 : 3.5} fill={payload.color}
     fillOpacity={payload.isSubject ? 1 : 0.65}
-    stroke={payload.isSubject ? "#fff" : "none"} strokeWidth={2} />;
+    stroke={payload.isSubject ? "#fff" : "none"} strokeWidth={1.5} />;
 }
 
 function ScatterTip({ active, payload }: any) {
@@ -342,29 +437,25 @@ function ScatterTip({ active, payload }: any) {
   const d = payload[0]?.payload;
   if (!d) return null;
   return (
-    <div style={{ background: "#0a1827", border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px" }}>
-      <div style={{ color: d.color, fontFamily: "monospace", fontSize: 10, fontWeight: 700, marginBottom: 5 }}>
+    <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 3, padding: "4px 8px" }}>
+      <div style={{ color: d.color, fontFamily: mono, fontSize: 7, fontWeight: 700, marginBottom: 2 }}>
         {d.unitType} · {d.name}
       </div>
-      <div style={{ color: C.text, fontSize: 12 }}>
+      <div style={{ color: C.text, fontSize: 9 }}>
         {d.x.toLocaleString()} SF → <span style={{ color: C.green, fontWeight: 700 }}>${d.y.toLocaleString()}/mo</span>
       </div>
-      <div style={{ color: C.dim, fontSize: 11 }}>${d.psf}/SF</div>
-      {d.vac != null && <div style={{ color: C.dim, fontSize: 11, marginTop: 3 }}>Vac {d.vac}% · DOM {d.dom}d · Conc {d.conc}wk</div>}
+      <div style={{ color: C.dim, fontSize: 8 }}>${d.psf}/SF</div>
+      {d.vac != null && <div style={{ color: C.dim, fontSize: 8, marginTop: 2 }}>Vac {d.vac}% · DOM {d.dom}d · Conc {d.conc}wk</div>}
     </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────
-//  TAB 1A — DEMAND MATRIX (4 score cards)
-// ─────────────────────────────────────────────────────────
 function DemandMatrix({ inventory, trendData }: { inventory: InventoryItem[]; trendData: typeof TREND_DATA }) {
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
-      <div style={{ padding: "14px 20px", borderBottom: `1px solid ${C.border}` }}>
-        <SecLabel mod="M05 · M07" title="Demand by Unit Type"
-          sub="Vacancy · Days on Market · Concessions averaged across all trade area comps" />
-      </div>
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 4, overflow: "hidden" }}>
+      <SectionHeader mod="M05 · M07" title="Demand by Unit Type" right={
+        <span style={{ color: C.dim, fontSize: 7, fontFamily: mono }}>TRADE AREA AVG</span>
+      } />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 1, background: C.border }}>
         {inventory.map(u => {
           const dl = demandLabel(u.demandScore);
@@ -372,76 +463,54 @@ function DemandMatrix({ inventory, trendData }: { inventory: InventoryItem[]; tr
           const vacDelta = trend.length >= 12 ? trend[11].vac - trend[0].vac : 0;
           const rentDelta = trend.length >= 12 ? trend[11].rent - trend[0].rent : 0;
           return (
-            <div key={u.key} style={{ background: C.card, padding: "18px 16px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
-                <div>
-                  <div style={{ color: u.color, fontFamily: "monospace", fontSize: 10,
-                    fontWeight: 700, letterSpacing: "0.1em", marginBottom: 2 }}>{u.label.toUpperCase()}</div>
-                  <div style={{ color: C.dim, fontSize: 10 }}>{u.sfRange} SF</div>
+            <div key={u.key} style={{ background: C.card, padding: "5px 8px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                <div style={{ display: "flex", gap: 3, alignItems: "center" }}>
+                  <div style={{ width: 4, height: 4, background: u.color, borderRadius: 1 }} />
+                  <span style={{ color: u.color, fontFamily: mono, fontSize: 8, fontWeight: 700, letterSpacing: "0.05em" }}>{u.abbr}</span>
+                  <span style={{ color: C.dim, fontSize: 7 }}>{u.sfRange}</span>
                 </div>
-                <Tag label={dl.label} color={dl.color} />
+                <Tag label={dl.label} color={dl.color} size="xs" />
               </div>
 
-              {/* Score ring */}
-              <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 14 }}>
-                <div style={{ position: "relative", width: 48, height: 48, flexShrink: 0 }}>
-                  <svg width="48" height="48" viewBox="0 0 48 48">
-                    <circle cx="24" cy="24" r="18" fill="none" stroke={C.faint} strokeWidth="4" />
-                    <circle cx="24" cy="24" r="18" fill="none" stroke={dl.color} strokeWidth="4"
-                      strokeDasharray={`${u.demandScore * 1.131} 113.1`}
-                      strokeLinecap="round" transform="rotate(-90 24 24)" />
-                  </svg>
-                  <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center",
-                    justifyContent: "center", color: dl.color, fontFamily: "monospace",
-                    fontSize: 11, fontWeight: 700 }}>{u.demandScore}</div>
-                </div>
-                <div style={{ color: C.faint, fontSize: 10, lineHeight: 1.5 }}>
-                  Demand Score<br />vac × DOM × conc
+              <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 4 }}>
+                <span style={{ color: dl.color, fontFamily: mono, fontSize: 12, fontWeight: 800, lineHeight: 1 }}>{u.demandScore}</span>
+                <div style={{ flex: 1, height: 2, background: C.muted, borderRadius: 1, overflow: "hidden" }}>
+                  <div style={{ width: `${u.demandScore}%`, height: "100%", background: dl.color, borderRadius: 1 }} />
                 </div>
               </div>
 
-              {/* Metrics */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {[
-                  { label: "Vacancy",    val: u.avgVac.toFixed(1),  unit: "%",  sig: "vac",
-                    delta: vacDelta, dUnit: "pp" },
-                  { label: "DOM",        val: u.avgDOM.toFixed(0),   unit: "d",  sig: "dom" },
-                  { label: "Concessions",val: u.avgConc.toFixed(1), unit: "wk", sig: "conc" },
-                ].map(m => (
-                  <div key={m.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ color: C.dim, fontSize: 11 }}>{m.label}</span>
-                    <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
-                      <span style={{ color: sigColor(parseFloat(m.val), m.sig),
-                        fontFamily: "monospace", fontSize: 12, fontWeight: 700 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1px 4px", marginBottom: 3 }}>
+                {([
+                  { label: "VAC", val: u.avgVac.toFixed(1), unit: "%", sig: "vac" as SigKey, delta: vacDelta, dUnit: "pp" },
+                  { label: "DOM", val: u.avgDOM.toFixed(0), unit: "d", sig: "dom" as SigKey },
+                  { label: "CONC", val: u.avgConc.toFixed(1), unit: "wk", sig: "conc" as SigKey },
+                  { label: "RENT", val: `$${u.avgRent.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`, unit: "", sig: null },
+                  { label: "AVG SF", val: u.avgSF > 0 ? `${u.avgSF}` : "—", unit: u.avgSF > 0 ? " SF" : "", sig: null },
+                ] as const).map((m, mi) => (
+                  <div key={mi} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0px 0" }}>
+                    <span style={{ color: C.dim, fontSize: 7, fontFamily: mono }}>{m.label}</span>
+                    <div style={{ display: "flex", gap: 2, alignItems: "center" }}>
+                      <span style={{ color: m.sig ? sigColor(parseFloat(m.val), m.sig) : C.text,
+                        fontFamily: mono, fontSize: 9, fontWeight: 700 }}>
                         {m.val}{m.unit}
                       </span>
-                      {m.delta !== undefined && (
-                        <span style={{ color: m.delta > 0 ? C.red : C.green, fontFamily: "monospace", fontSize: 10 }}>
-                          {m.delta > 0 ? "▲" : "▼"}{Math.abs(m.delta).toFixed(1)}{m.dUnit}
+                      {m.delta !== undefined && m.delta !== 0 && (
+                        <span style={{ color: m.delta > 0 ? C.red : C.green, fontFamily: mono, fontSize: 6 }}>
+                          {m.delta > 0 ? "▲" : "▼"}{Math.abs(m.delta).toFixed(1)}
+                        </span>
+                      )}
+                      {mi === 3 && rentDelta !== 0 && (
+                        <span style={{ color: rentDelta > 0 ? C.green : C.red, fontFamily: mono, fontSize: 6 }}>
+                          {rentDelta > 0 ? "+" : ""}${rentDelta}
                         </span>
                       )}
                     </div>
                   </div>
                 ))}
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
-                  paddingTop: 8, borderTop: `1px solid ${C.faint}` }}>
-                  <span style={{ color: C.dim, fontSize: 11 }}>Avg Rent</span>
-                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                    <span style={{ color: C.text, fontFamily: "monospace", fontSize: 13, fontWeight: 700 }}>
-                      ${u.avgRent.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
-                    </span>
-                    <span style={{ color: rentDelta > 0 ? C.green : C.red, fontFamily: "monospace", fontSize: 10 }}>
-                      {rentDelta > 0 ? "+" : ""}${rentDelta}
-                    </span>
-                  </div>
-                </div>
               </div>
 
-              {/* 12-mo vacancy sparkline */}
-              <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${C.faint}` }}>
-                <div style={{ color: C.faint, fontSize: 8, fontFamily: "monospace", marginBottom: 3 }}>
-                  12-MO VACANCY
-                </div>
+              <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 2 }}>
                 <MiniLine data={trendData[u.key]} dataKey="vac" color={u.color} />
               </div>
             </div>
@@ -452,91 +521,71 @@ function DemandMatrix({ inventory, trendData }: { inventory: InventoryItem[]; tr
   );
 }
 
-// ─────────────────────────────────────────────────────────
-//  TAB 1B — GAP ANALYSIS
-// ─────────────────────────────────────────────────────────
 function GapAnalysis({ gaps }: { gaps: GapItem[] }) {
   const chartData = gaps.map(g => ({
-    name: g.label, supply: +g.supplyShare.toFixed(1), demand: +g.demandShare.toFixed(1), color: g.color,
+    name: g.abbr, supply: +g.supplyShare.toFixed(1), demand: +g.demandShare.toFixed(1), color: g.color,
   }));
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
-      <div style={{ padding: "14px 20px", borderBottom: `1px solid ${C.border}` }}>
-        <SecLabel mod="DERIVED" title="Supply / Demand Gap"
-          sub="Demand share (vacancy × DOM proxy) vs inventory share. Positive = undersupplied." />
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, background: C.border }}>
-        {/* Bar chart */}
-        <div style={{ background: C.card, padding: "18px 20px" }}>
-          <div style={{ color: C.faint, fontSize: 9, fontFamily: "monospace", marginBottom: 12 }}>
-            SUPPLY % vs DEMAND % — TRADE AREA
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 4, overflow: "hidden" }}>
+      <SectionHeader mod="DERIVED" title="Supply / Demand Gap" right={
+        <div style={{ display: "flex", gap: 6 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+            <div style={{ width: 6, height: 2, background: C.muted, borderRadius: 1 }} />
+            <span style={{ color: C.dim, fontSize: 7, fontFamily: mono }}>SUPPLY</span>
           </div>
-          <ResponsiveContainer width="100%" height={180}>
-            <BarChart data={chartData} barCategoryGap="25%">
-              <XAxis dataKey="name" tick={{ fill: C.dim, fontSize: 11 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: C.faint, fontSize: 10 }} axisLine={false} tickLine={false}
+          <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+            <div style={{ width: 6, height: 2, background: C.blue, borderRadius: 1 }} />
+            <span style={{ color: C.dim, fontSize: 7, fontFamily: mono }}>DEMAND</span>
+          </div>
+        </div>
+      } />
+      <div style={{ display: "grid", gridTemplateColumns: "200px 1fr", gap: 1, background: C.border }}>
+        <div style={{ background: C.card, padding: "5px 8px" }}>
+          <ResponsiveContainer width="100%" height={110}>
+            <BarChart data={chartData} barCategoryGap="18%">
+              <XAxis dataKey="name" tick={{ fill: C.dim, fontSize: 8, fontFamily: mono }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: C.faint, fontSize: 7 }} axisLine={false} tickLine={false} width={20}
                 tickFormatter={v => `${v}%`} />
               <Tooltip content={<ChartTip />} />
-              <Bar dataKey="supply" name="Supply %" radius={[3,3,0,0]}>
+              <Bar dataKey="supply" name="Supply %" radius={[2,2,0,0]}>
                 {chartData.map((e, i) => <Cell key={i} fill={e.color + "40"} />)}
               </Bar>
-              <Bar dataKey="demand" name="Demand %" radius={[3,3,0,0]}>
+              <Bar dataKey="demand" name="Demand %" radius={[2,2,0,0]}>
                 {chartData.map((e, i) => <Cell key={i} fill={e.color} />)}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
-          <div style={{ display: "flex", gap: 14, marginTop: 8 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-              <div style={{ width: 8, height: 8, background: C.muted, borderRadius: 2 }} />
-              <span style={{ color: C.dim, fontSize: 11 }}>Supply %</span>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-              <div style={{ width: 8, height: 8, background: C.twoBR, borderRadius: 2 }} />
-              <span style={{ color: C.dim, fontSize: 11 }}>Demand %</span>
-            </div>
-          </div>
         </div>
 
-        {/* Gap table */}
-        <div style={{ background: "#060f1a", padding: "18px 20px" }}>
-          <div style={{ color: C.faint, fontSize: 9, fontFamily: "monospace", marginBottom: 14 }}>
-            GAP — DEMAND MINUS SUPPLY
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={{ background: C.bg, padding: "5px 8px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {gaps.map(g => {
               const dl = demandLabel(g.demandScore);
               return (
-                <div key={g.key}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                    <div style={{ display: "flex", gap: 7, alignItems: "center" }}>
-                      <div style={{ width: 8, height: 8, background: g.color, borderRadius: 2 }} />
-                      <span style={{ color: C.text, fontSize: 12, fontWeight: 600 }}>{g.label}</span>
-                      <Tag label={dl.label} color={dl.color} size="xs" />
-                    </div>
-                    <span style={{ color: C.dim, fontSize: 10, fontFamily: "monospace" }}>
-                      S: {g.supplyShare.toFixed(1)}% · D: <span style={{ color: g.color }}>{g.demandShare.toFixed(1)}%</span>
-                    </span>
-                  </div>
-                  <GapBar gap={g.gap} />
+                <div key={g.key} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <div style={{ width: 4, height: 4, background: g.color, borderRadius: 1, flexShrink: 0 }} />
+                  <span style={{ color: C.text, fontSize: 9, fontWeight: 600, minWidth: 28 }}>{g.abbr}</span>
+                  <Tag label={dl.label} color={dl.color} size="xs" />
+                  <span style={{ color: C.dim, fontSize: 7, fontFamily: mono, minWidth: 70 }}>
+                    S:{g.supplyShare.toFixed(1)}% D:<span style={{ color: g.color }}>{g.demandShare.toFixed(1)}%</span>
+                  </span>
+                  <div style={{ flex: 1 }}><GapBar gap={g.gap} /></div>
                 </div>
               );
             })}
           </div>
-
-          {/* Interpretation */}
-          <div style={{ marginTop: 18, padding: 12, background: C.card, borderRadius: 8,
+          <div style={{ marginTop: 4, padding: "3px 6px", background: C.card, borderRadius: 2,
             border: `1px solid ${C.border}` }}>
-            <div style={{ color: C.faint, fontSize: 8, fontFamily: "monospace", marginBottom: 8 }}>INTERPRETATION</div>
             {gaps.filter(g => Math.abs(g.gap) > 3).sort((a, b) => b.gap - a.gap).map(g => (
-              <div key={g.key} style={{ display: "flex", gap: 7, marginBottom: 7, alignItems: "flex-start" }}>
-                <span style={{ color: g.gap > 0 ? C.green : C.red, fontFamily: "monospace", fontSize: 11, flexShrink: 0 }}>
+              <div key={g.key} style={{ display: "flex", gap: 3, marginBottom: 1, alignItems: "flex-start" }}>
+                <span style={{ color: g.gap > 0 ? C.green : C.red, fontFamily: mono, fontSize: 8, flexShrink: 0 }}>
                   {g.gap > 0 ? "▲" : "▼"}
                 </span>
-                <span style={{ color: C.dim, fontSize: 11, lineHeight: 1.5 }}>
-                  <span style={{ color: g.color, fontWeight: 700 }}>{g.label}</span>
+                <span style={{ color: C.dim, fontSize: 8, lineHeight: 1.3 }}>
+                  <span style={{ color: g.color, fontWeight: 700 }}>{g.abbr}</span>
                   {g.gap > 0
-                    ? ` undersupplied by ${g.gap.toFixed(1)}pp — fast lease velocity, low vacancy, minimal concessions.`
-                    : ` oversupplied by ${Math.abs(g.gap).toFixed(1)}pp — slow leasing, landlords conceding.`}
+                    ? ` undersupplied ${g.gap.toFixed(1)}pp — fast velocity, low vac`
+                    : ` oversupplied ${Math.abs(g.gap).toFixed(1)}pp — slow leasing`}
                 </span>
               </div>
             ))}
@@ -547,9 +596,6 @@ function GapAnalysis({ gaps }: { gaps: GapItem[] }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────
-//  TAB 2 — ZONING PANEL (M02)
-// ─────────────────────────────────────────────────────────
 function ZoningPanel({ zoning, program, computed, onZoningChange }: { zoning: ZoningData; program: Program; computed: any; onZoningChange: (z: ZoningData) => void }) {
   const sfUtil   = computed.totalSF / zoning.maxNetSF * 100;
   const unitUtil = program.totalUnits / zoning.maxUnits * 100;
@@ -559,86 +605,78 @@ function ZoningPanel({ zoning, program, computed, onZoningChange }: { zoning: Zo
   const fields = [
     { label: "Max Units", key: "maxUnits", val: zoning.maxUnits, your: program.totalUnits,
       util: unitUtil, over: unitOver, color: unitOver ? C.red : unitUtil > 88 ? C.yellow : C.green,
-      suffix: "units", w: 60, note: "Zoned acres × max DU/acre" },
+      suffix: "units", w: 48, note: "Zoned acres × max DU/acre" },
     { label: "Max Net SF", key: "maxNetSF", val: zoning.maxNetSF, your: computed.totalSF,
       util: sfUtil, over: sfOver, color: sfOver ? C.red : sfUtil > 88 ? C.yellow : C.green,
-      suffix: "SF", w: 86, note: zoning.excludesParking ? "Excl. parking & mechanical" : "All enclosed SF" },
-    { label: "Max Height",  key: "maxHeight",      val: zoning.maxHeight,      your: null, util: null, suffix: "fl", w: 44, note: "Per LDR §4.12.3" },
-    { label: "Lot Coverage",key: "maxLotCoverage", val: zoning.maxLotCoverage, your: null, util: null, suffix: "%",  w: 44, note: "Footprint / lot area" },
+      suffix: "SF", w: 64, note: zoning.excludesParking ? "Excl. parking & mechanical" : "All enclosed SF" },
+    { label: "Max Height",  key: "maxHeight",      val: zoning.maxHeight,      your: null, util: null, suffix: "fl", w: 36, note: "Per LDR §4.12.3" },
+    { label: "Lot Coverage",key: "maxLotCoverage", val: zoning.maxLotCoverage, your: null, util: null, suffix: "%",  w: 36, note: "Footprint / lot area" },
   ];
 
   return (
     <div style={{ background: C.card, border: `1px solid ${sfOver || unitOver ? C.red + "60" : C.border}`,
-      borderRadius: 12, overflow: "hidden" }}>
-      <div style={{ padding: "12px 20px", borderBottom: `1px solid ${C.border}`,
-        display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <span style={{ color: C.blue, fontFamily: "monospace", fontSize: 9, fontWeight: 700, letterSpacing: "0.1em" }}>M02</span>
-          <span style={{ color: C.border }}>·</span>
-          <span style={{ color: "#e2e8f0", fontSize: 13, fontWeight: 700 }}>Zoning Constraints</span>
+      borderRadius: 4, overflow: "hidden" }}>
+      <SectionHeader mod="M02" title="Zoning Constraints" right={
+        <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
           <Tag label={zoning.zoningCode} color={C.blue} size="xs" />
           <Tag label={`${zoning.confidence}% CONF`} color={C.green} size="xs" />
           {zoning.excludesParking && <Tag label="SF EXCL. PARKING" color={C.yellow} size="xs" />}
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
           {(sfOver || unitOver) && <Tag label="⚠ EXCEEDED" color={C.red} />}
-          <a href={zoning.sourceUrl} style={{ color: C.blue, fontSize: 10, textDecoration: "none" }}>
+          <a href={zoning.sourceUrl} style={{ color: C.blue, fontSize: 8, textDecoration: "none" }}>
             {zoning.source} ↗
           </a>
         </div>
-      </div>
-
+      } />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 1, background: C.border }}>
         {fields.map(f => (
-          <div key={f.key} style={{ background: C.card, padding: "14px 18px" }}>
-            <div style={{ color: C.dim, fontSize: 10, marginBottom: 10 }}>{f.label}</div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 10 }}>
+          <div key={f.key} style={{ background: C.card, padding: "5px 8px" }}>
+            <div style={{ color: C.dim, fontSize: 8, marginBottom: 4 }}>{f.label}</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 4 }}>
               <div>
-                <div style={{ color: C.faint, fontSize: 8, fontFamily: "monospace", marginBottom: 4 }}>ALLOWED</div>
+                <div style={{ color: C.faint, fontSize: 7, fontFamily: mono, letterSpacing: "0.06em", marginBottom: 2 }}>ALLOWED</div>
                 <NumInput value={f.val} min={1} max={9999999} width={f.w} suffix={f.suffix}
                   onChange={v => onZoningChange({ ...zoning, [f.key]: v })} />
               </div>
               {f.your !== null && (
                 <div style={{ textAlign: "right" }}>
-                  <div style={{ color: C.faint, fontSize: 8, fontFamily: "monospace", marginBottom: 4 }}>YOUR PROGRAM</div>
-                  <div style={{ color: f.over ? C.red : C.text, fontFamily: "monospace",
-                    fontSize: 13, fontWeight: 700 }}>
+                  <div style={{ color: C.faint, fontSize: 7, fontFamily: mono, letterSpacing: "0.06em", marginBottom: 2 }}>YOUR PROGRAM</div>
+                  <div style={{ color: f.over ? C.red : C.text, fontFamily: mono, fontSize: 10, fontWeight: 700 }}>
                     {Math.round(f.your).toLocaleString()}
-                    <span style={{ color: C.dim, fontSize: 10, marginLeft: 3 }}>{f.suffix}</span>
+                    <span style={{ color: C.dim, fontSize: 8, marginLeft: 2 }}>{f.suffix}</span>
                   </div>
                 </div>
               )}
             </div>
             {f.util !== null && (
               <>
-                <div style={{ height: 4, background: C.muted, borderRadius: 2, overflow: "hidden", marginBottom: 4 }}>
+                <div style={{ height: 3, background: C.muted, borderRadius: 1, overflow: "hidden", marginBottom: 2 }}>
                   <div style={{ width: `${Math.min(100, f.util)}%`, height: "100%",
-                    background: f.color, borderRadius: 2, transition: "width 0.4s" }} />
+                    background: f.color, borderRadius: 1, transition: "width 0.4s" }} />
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ color: f.color, fontFamily: "monospace", fontSize: 11, fontWeight: 700 }}>
+                  <span style={{ color: f.color, fontFamily: mono, fontSize: 9, fontWeight: 700 }}>
                     {f.util.toFixed(1)}%
                   </span>
-                  {f.over && <span style={{ color: C.red, fontSize: 10, fontWeight: 700 }}>OVER</span>}
+                  {f.over && <span style={{ color: C.red, fontSize: 8, fontWeight: 700 }}>OVER</span>}
                 </div>
               </>
             )}
-            <div style={{ color: C.faint, fontSize: 9, marginTop: 7 }}>{f.note}</div>
+            <div style={{ color: C.faint, fontSize: 7, marginTop: 4 }}>{f.note}</div>
           </div>
         ))}
       </div>
 
       {!sfOver && !unitOver && (
-        <div style={{ padding: "8px 20px", background: "#040c17",
-          display: "flex", gap: 20, alignItems: "center", flexWrap: "wrap" }}>
-          <span style={{ color: C.faint, fontSize: 9, fontFamily: "monospace" }}>REMAINING:</span>
-          <span style={{ color: C.green, fontFamily: "monospace", fontSize: 11 }}>
+        <div style={{ padding: "4px 10px", background: C.bg,
+          display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <span style={{ color: C.faint, fontSize: 7, fontFamily: mono }}>REMAINING:</span>
+          <span style={{ color: C.green, fontFamily: mono, fontSize: 9 }}>
             {(zoning.maxNetSF - computed.totalSF).toLocaleString()} SF unused
           </span>
-          <span style={{ color: C.green, fontFamily: "monospace", fontSize: 11 }}>
+          <span style={{ color: C.green, fontFamily: mono, fontSize: 9 }}>
             {zoning.maxUnits - program.totalUnits} unit headroom
           </span>
-          <span style={{ color: C.dim, fontSize: 10 }}>
+          <span style={{ color: C.dim, fontSize: 8 }}>
             → ~{Math.floor((zoning.maxNetSF - computed.totalSF) / (computed.totalSF / program.totalUnits))} more avg-sized units fit
           </span>
         </div>
@@ -647,350 +685,524 @@ function ZoningPanel({ zoning, program, computed, onZoningChange }: { zoning: Zo
   );
 }
 
-// ─────────────────────────────────────────────────────────
-//  TAB 2 — PROGRAM EDITOR
-// ─────────────────────────────────────────────────────────
-function ProgramEditor({ program, computed, zoning, onProgramChange, comps }: { program: Program; computed: any; zoning: ZoningData; onProgramChange: (p: Program) => void; comps: CompData[] }) {
-  const { totalSF, mixTotal, grossRevPA } = computed;
+function ProgramEditor({ program, computed, zoning, onProgramChange, comps, gaps, onPushToProforma, readOnly }: { program: Program; computed: any; zoning: ZoningData; onProgramChange: (p: Program) => void; comps: CompData[]; gaps?: GapItem[]; onPushToProforma?: (program: Program) => Promise<{ success: boolean; modulesUpdated: string[]; errors: string[] }>; readOnly?: boolean }) {
+  const { totalSF, mixTotal, grossRevPA, wtdPSF } = computed;
   const mixOk = Math.abs(mixTotal - 100) < 1;
+  const sfPct = zoning.maxNetSF > 0 ? (totalSF / zoning.maxNetSF) * 100 : 0;
+  const sfOver = sfPct > 100;
+  const [pushing, setPushing] = useState(false);
+  const [pushResult, setPushResult] = useState<{ success: boolean; modules: string[] } | null>(null);
+  const [showSugg, setShowSugg] = useState(!readOnly);
+
+  const suggestion = useMemo(() => {
+    if (comps.length === 0) return null;
+    const demandScoreMap: Record<string, number> = {};
+    if (gaps) gaps.forEach(g => { demandScoreMap[g.key] = g.demandScore; });
+    const prog = computeOptimalProgram(program.totalUnits, comps, {
+      zoning: { maxUnits: zoning.maxUnits, maxNetSF: zoning.maxNetSF },
+      demandScores: gaps ? demandScoreMap : undefined,
+    });
+    const inventory = computeInventory(comps);
+    const gapRows = computeGaps(inventory);
+    const psfPerType = UT_META.map(ut => {
+      const avg = compAvg(ut.key, comps);
+      return avg.sf > 0 ? avg.rent / avg.sf : 0;
+    });
+    const maxPsf = Math.max(...psfPerType, 1);
+    const scores = UT_META.reduce<Record<string, { demand: number; psf: number; gap: number; velocity: number }>>((acc, ut, i) => {
+      const inv = inventory[i];
+      const gapRow = gapRows[i];
+      const demandScore = demandScoreMap[ut.key] ?? inv.demandScore ?? 0;
+      const psfScore = Math.round((psfPerType[i] / maxPsf) * 100);
+      const gapScore = Math.min(100, Math.max(0, (gapRow?.gap ?? 0)) * 5);
+      const vacPenalty = Math.max(0, 100 - (inv.avgVac ?? 0) * 8);
+      const domPenalty = inv.avgDOM > 0 ? Math.max(0, 100 - inv.avgDOM * 3) : 60;
+      const velocity = Math.round(vacPenalty * 0.6 + domPenalty * 0.4);
+      acc[ut.key] = { demand: Math.round(demandScore), psf: psfScore, gap: Math.round(gapScore), velocity };
+      return acc;
+    }, {});
+    return { program: prog, scores };
+  }, [program.totalUnits, comps, gaps, zoning.maxUnits, zoning.maxNetSF]);
 
   function setUnit(utKey: UnitKey, field: string, val: number) {
     onProgramChange({ ...program, units: { ...program.units, [utKey]: { ...program.units[utKey], [field]: val } } });
   }
 
-  function applyCompAvgs() {
-    const units = {};
-    UT_META.forEach(ut => {
-      const avg = compAvg(ut.key, comps);
-      units[ut.key] = { mix: Math.round(avg.mix) || program.units[ut.key].mix, sf: avg.sf || program.units[ut.key].sf, rent: avg.rent || program.units[ut.key].rent };
-    });
-    onProgramChange({ ...program, units });
+  function applySuggestion() {
+    if (suggestion) {
+      onProgramChange(suggestion.program);
+      setShowSugg(false);
+    }
   }
 
-  const gridTpl = "96px 90px 76px 100px 80px 100px 80px 68px 100px";
+  function resetProgram() {
+    const base = computeOptimalProgram(zoning.maxUnits > 0 ? Math.min(PROGRAM_SEED.totalUnits, zoning.maxUnits) : PROGRAM_SEED.totalUnits, comps, {
+      zoning: { maxUnits: zoning.maxUnits, maxNetSF: zoning.maxNetSF },
+    });
+    onProgramChange(base);
+  }
 
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
-      <div style={{ padding: "12px 20px", borderBottom: `1px solid ${C.border}`,
-        display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <SecLabel mod="PROGRAM EDITOR" title="Unit Program"
-          sub="Edit mix %, unit SF, and target rent. All views update live." />
-        <div style={{ display: "flex", gap: 8 }}>
-          {!mixOk && <Tag label={`MIX = ${mixTotal}% ≠ 100`} color={C.red} />}
-          <button onClick={applyCompAvgs} style={{ background: "none", border: `1px solid ${C.border}`,
-            borderRadius: 6, padding: "4px 11px", color: C.dim, fontSize: 10, fontFamily: "monospace", cursor: "pointer" }}>
-            ↓ Comp Avgs
-          </button>
-          <button onClick={() => onProgramChange(PROGRAM_SEED)} style={{ background: "none",
-            border: `1px solid ${C.border}`, borderRadius: 6, padding: "4px 11px",
-            color: C.dim, fontSize: 10, fontFamily: "monospace", cursor: "pointer" }}>↺ Reset</button>
-        </div>
-      </div>
-
-      {/* Totals bar */}
-      <div style={{ padding: "9px 20px", background: "#060f1a", borderBottom: `1px solid ${C.border}`,
-        display: "flex", gap: 20, alignItems: "center" }}>
-        <span style={{ color: C.dim, fontSize: 12 }}>Total Units</span>
-        <NumInput value={program.totalUnits} min={10} max={zoning.maxUnits} suffix="units" width={52} accent
-          onChange={v => onProgramChange({ ...program, totalUnits: v })} />
-        <span style={{ color: C.faint, fontSize: 11 }}>
-          of <span style={{ color: C.blue, fontFamily: "monospace" }}>{zoning.maxUnits}</span> max (M02)
-        </span>
-        <div style={{ marginLeft: "auto", display: "flex", gap: 20 }}>
-          <span style={{ color: C.dim, fontSize: 11 }}>
-            Net SF: <span style={{ color: totalSF > zoning.maxNetSF ? C.red : C.text,
-              fontFamily: "monospace", fontWeight: 700 }}>{totalSF.toLocaleString()}</span>
-            <span style={{ color: C.faint }}> / {zoning.maxNetSF.toLocaleString()}</span>
-          </span>
-          <span style={{ color: C.dim, fontSize: 11 }}>
-            Rev: <span style={{ color: C.green, fontFamily: "monospace", fontWeight: 700 }}>${(grossRevPA/1e6).toFixed(2)}M/yr</span>
-          </span>
-        </div>
-      </div>
-
-      {/* Col headers */}
-      <div style={{ display: "grid", gridTemplateColumns: gridTpl, padding: "7px 20px",
-        background: "#060f1a", borderBottom: `1px solid ${C.border}`, gap: 0 }}>
-        {["Type","Mix %","Count","Unit SF","vs Avg SF","Rent/mo","vs Avg Rent","Rent/SF","Annual Rev"].map((h, i) => (
-          <div key={i} style={{ color: C.faint, fontSize: 9, fontFamily: "monospace",
-            letterSpacing: "0.06em", textAlign: i === 0 ? "left" : "right" }}>{h}</div>
-        ))}
-      </div>
-
-      {UT_META.map((ut, ri) => {
-        const u = program.units[ut.key];
-        const avg = compAvg(ut.key, comps);
-        const count = Math.round(program.totalUnits * u.mix / 100);
-        const psf = u.sf ? +(u.rent / u.sf).toFixed(2) : 0;
-        const annRev = count * u.rent * 12 * 0.95;
-        return (
-          <div key={ut.key} style={{ display: "grid", gridTemplateColumns: gridTpl, padding: "10px 20px",
-            borderBottom: `1px solid ${C.border}`, background: ri % 2 === 0 ? "transparent" : "#060f1a0a",
-            alignItems: "center", gap: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <div style={{ width: 7, height: 7, background: ut.color, borderRadius: 2 }} />
-              <span style={{ color: ut.color, fontSize: 12, fontWeight: 700 }}>{ut.label}</span>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
-              <NumInput value={u.mix} min={0} max={100} suffix="%" width={36} accent onChange={v => setUnit(ut.key,"mix",v)} />
-              {avg.mix > 0 && <Delt value={u.mix - avg.mix} unit="pp" />}
-            </div>
-            <div style={{ textAlign: "right", color: C.dim, fontFamily: "monospace", fontSize: 12 }}>{count}</div>
-            <div style={{ display: "flex", justifyContent: "flex-end" }}>
-              <NumInput value={u.sf} min={200} max={3000} step={5} suffix="SF" width={52} accent onChange={v => setUnit(ut.key,"sf",v)} />
-            </div>
-            <div style={{ textAlign: "right" }}>
-              <div style={{ color: C.faint, fontFamily: "monospace", fontSize: 10 }}>{avg.sf||"—"}</div>
-              {avg.sf > 0 && <Delt value={u.sf - avg.sf} unit=" SF" />}
-            </div>
-            <div style={{ display: "flex", justifyContent: "flex-end" }}>
-              <NumInput value={u.rent} min={500} max={10000} step={10} suffix="$" width={52} accent onChange={v => setUnit(ut.key,"rent",v)} />
-            </div>
-            <div style={{ textAlign: "right" }}>
-              <div style={{ color: C.faint, fontFamily: "monospace", fontSize: 10 }}>{avg.rent ? `$${avg.rent}` : "—"}</div>
-              {avg.rent > 0 && <Delt value={u.rent - avg.rent} unit="$" />}
-            </div>
-            <div style={{ textAlign: "right", color: C.text, fontFamily: "monospace", fontSize: 12, fontWeight: 700 }}>${psf}</div>
-            <div style={{ textAlign: "right", color: C.green, fontFamily: "monospace", fontSize: 12, fontWeight: 700 }}>
-              ${(annRev/1000).toFixed(0)}K
-            </div>
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 4, overflow: "hidden" }}>
+      <SectionHeader mod="M03" title={readOnly ? "Unit Program (Read-Only)" : "Unit Program"} right={
+        readOnly ? (
+          <Tag label="EXISTING — VIEW ONLY" color={C.faint} />
+        ) : (
+          <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+            {!mixOk && <Tag label={`MIX ${mixTotal}%`} color={C.red} />}
+            <button onClick={() => setShowSugg(s => !s)} style={{
+              background: showSugg ? C.blue + "22" : "none",
+              border: `1px solid ${showSugg ? C.blue + "60" : C.border}`,
+              borderRadius: 3, padding: "2px 6px",
+              color: showSugg ? C.blue : C.faint, fontSize: 7, fontFamily: mono,
+              fontWeight: 700, cursor: "pointer", letterSpacing: "0.04em",
+            }}>{showSugg ? "HIDE AI" : "AI SUGGESTION"}</button>
+            <button onClick={resetProgram} style={{ background: "none",
+              border: `1px solid ${C.border}`, borderRadius: 3, padding: "2px 6px",
+              color: C.faint, fontSize: 7, fontFamily: mono, cursor: "pointer" }}>RESET</button>
           </div>
-        );
-      })}
+        )
+      } />
 
-      {/* Totals row */}
-      <div style={{ display: "grid", gridTemplateColumns: gridTpl, padding: "10px 20px",
-        background: "#060f1a", borderTop: `2px solid ${C.border}`, alignItems: "center", gap: 0 }}>
-        <div style={{ color: C.dim, fontSize: 11, fontWeight: 700 }}>TOTAL</div>
-        <div style={{ textAlign: "right" }}>
-          <span style={{ color: mixOk ? C.green : C.red, fontFamily: "monospace", fontSize: 13, fontWeight: 800 }}>{mixTotal}%</span>
-        </div>
-        <div style={{ textAlign: "right", color: C.text, fontFamily: "monospace", fontWeight: 700 }}>{program.totalUnits}</div>
-        <div style={{ textAlign: "right", color: C.dim, fontFamily: "monospace", fontSize: 10 }}>
-          {Math.round(totalSF/program.totalUnits).toLocaleString()} avg
-        </div>
-        <div /><div /><div /><div />
-        <div style={{ textAlign: "right", color: C.green, fontFamily: "monospace", fontSize: 12, fontWeight: 700 }}>
-          ${(grossRevPA/1e6).toFixed(2)}M
-        </div>
-      </div>
-
-      {/* SF envelope */}
-      <div style={{ padding: "8px 20px", background: "#040c17", borderTop: `1px solid ${C.border}`,
-        display: "flex", gap: 14, alignItems: "center" }}>
-        <span style={{ color: C.faint, fontSize: 9, fontFamily: "monospace" }}>SF ENVELOPE:</span>
-        <span style={{ color: C.text, fontFamily: "monospace", fontSize: 11 }}>
-          {totalSF.toLocaleString()} of {zoning.maxNetSF.toLocaleString()} allowed
-        </span>
-        {totalSF > zoning.maxNetSF
-          ? <Tag label={`OVER BY ${(totalSF-zoning.maxNetSF).toLocaleString()} SF`} color={C.red} />
-          : <Tag label={`${(zoning.maxNetSF-totalSF).toLocaleString()} SF remaining`} color={C.green} size="xs" />}
-        <span style={{ color: C.faint, fontSize: 9, marginLeft: "auto" }}>
-          {zoning.excludesParking ? "Excl. parking per M02" : "All enclosed SF"}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────
-//  TAB 3A — INVENTORY SNAPSHOT
-// ─────────────────────────────────────────────────────────
-function InventorySnapshot({ inventory, comps }: { inventory: InventoryItem[]; comps: CompData[] }) {
-  const total = inventory.reduce((s, u) => s + u.typeUnits, 0);
-  return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
-      <div style={{ padding: "14px 20px", borderBottom: `1px solid ${C.border}`,
-        display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-        <SecLabel mod="M05" title="Submarket Unit Inventory" sub="Total tracked units by type across trade area comps" />
-        <div style={{ textAlign: "right" }}>
-          <div style={{ color: C.faint, fontSize: 9, fontFamily: "monospace" }}>TOTAL TRACKED</div>
-          <div style={{ color: C.text, fontSize: 18, fontFamily: "monospace", fontWeight: 700 }}>{total.toLocaleString()} units</div>
-        </div>
-      </div>
-      {/* Stacked bar */}
-      <div style={{ padding: "14px 20px 10px" }}>
-        <div style={{ display: "flex", height: 26, borderRadius: 6, overflow: "hidden", gap: 2, marginBottom: 10 }}>
-          {inventory.map(u => (
-            <div key={u.key} style={{ flex: u.supplyShare, background: u.color + "cc",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              color: "#fff", fontSize: 10, fontWeight: 700, fontFamily: "monospace" }}>
-              {u.supplyShare > 8 ? `${u.supplyShare.toFixed(0)}%` : ""}
+      {!readOnly && showSugg && suggestion && (
+        <div style={{ borderBottom: `1px solid ${C.border}`, background: C.blue + "08" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
+            padding: "5px 8px 4px", borderBottom: `1px solid ${C.blue}18` }}>
+            <div>
+              <span style={{ color: C.blue, fontFamily: mono, fontSize: 7, fontWeight: 700, letterSpacing: "0.06em" }}>
+                M03 · AI RECOMMENDATION
+              </span>
+              <span style={{ color: C.faint, fontFamily: mono, fontSize: 7, marginLeft: 6 }}>
+                {comps.length} comp{comps.length !== 1 ? "s" : ""} · demand 35% · PSF 25% · gap 20% · velocity 20%
+              </span>
             </div>
-          ))}
-        </div>
-        <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-          {inventory.map(u => (
-            <div key={u.key} style={{ display: "flex", alignItems: "center", gap: 5 }}>
-              <div style={{ width: 7, height: 7, background: u.color, borderRadius: 2 }} />
-              <span style={{ color: C.dim, fontSize: 11 }}>{u.label}</span>
-              <span style={{ color: C.text, fontFamily: "monospace", fontSize: 11, fontWeight: 700 }}>{u.typeUnits}u</span>
-              <span style={{ color: C.faint, fontSize: 10 }}>({u.supplyShare.toFixed(1)}%)</span>
-            </div>
-          ))}
-        </div>
-      </div>
-      {/* Property table */}
-      <div style={{ borderTop: `1px solid ${C.border}` }}>
-        <div style={{ display: "grid", gridTemplateColumns: "160px 48px repeat(5,1fr)", padding: "7px 20px",
-          background: "#060f1a", borderBottom: `1px solid ${C.border}` }}>
-          {["Property","Cls","Studio","1 BR","2 BR","3 BR+","Units"].map((h, i) => (
-            <div key={i} style={{ color: C.faint, fontSize: 9, fontFamily: "monospace",
-              textAlign: i > 1 ? "right" : "left" }}>{h}</div>
-          ))}
-        </div>
-        {[...comps].map((c, i) => (
-          <div key={c.id} style={{ display: "grid", gridTemplateColumns: "160px 48px repeat(5,1fr)",
-            padding: "9px 20px", borderBottom: `1px solid ${C.border}`,
-            background: i % 2 === 0 ? "transparent" : "#060f1a0a" }}>
-            <div style={{ color: C.text, fontSize: 12 }}>{c.name}</div>
-            <div style={{ color: C.dim, fontSize: 11 }}>{c.cls}</div>
+            <button onClick={applySuggestion} style={{
+              background: C.blue, border: "none", borderRadius: 3, padding: "2px 10px",
+              color: "#0A0E1A", fontSize: 7, fontFamily: mono, fontWeight: 800,
+              cursor: "pointer", letterSpacing: "0.05em",
+            }}>APPLY SUGGESTION →</button>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 1,
+            background: C.border, padding: 1 }}>
             {UT_META.map(ut => {
-              const pct = c.units[ut.key].mix;
+              const s = suggestion.program.units[ut.key];
+              const sc = suggestion.scores[ut.key];
+              const curr = program.units[ut.key];
+              const mixDelta = s.mix - curr.mix;
+              const suggCount = Math.round(suggestion.program.totalUnits * s.mix / 100);
               return (
-                <div key={ut.key} style={{ textAlign: "right" }}>
-                  <span style={{ color: pct > 0 ? ut.color : C.faint, fontFamily: "monospace",
-                    fontSize: 12, fontWeight: 600 }}>{pct > 0 ? `${pct}%` : "—"}</span>
+                <div key={ut.key} style={{ background: C.bg, padding: "5px 7px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
+                    <span style={{ color: ut.color, fontFamily: mono, fontSize: 8, fontWeight: 700 }}>{ut.label}</span>
+                    <span style={{ color: C.text, fontFamily: mono, fontSize: 10, fontWeight: 800 }}>{s.mix}%</span>
+                  </div>
+                  <div style={{ height: 3, background: C.muted, borderRadius: 1, overflow: "hidden", marginBottom: 4 }}>
+                    <div style={{ width: `${Math.min(s.mix, 100)}%`, height: "100%", background: ut.color + "bb", borderRadius: 1 }} />
+                  </div>
+                  <div style={{ display: "flex", gap: 5, flexWrap: "wrap" as const, marginBottom: 3 }}>
+                    <span style={{ color: C.dim, fontFamily: mono, fontSize: 7 }}>×{suggCount}</span>
+                    <span style={{ color: C.dim, fontFamily: mono, fontSize: 7 }}>{s.sf}sf</span>
+                    <span style={{ color: C.green, fontFamily: mono, fontSize: 7, fontWeight: 700 }}>${s.rent}/mo</span>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2px 6px" }}>
+                    <span style={{ fontFamily: mono, fontSize: 6, color: C.faint }}>
+                      <span style={{ color: sc.demand >= 70 ? C.green : sc.demand >= 50 ? C.yellow : C.red }}>■</span> DMD {sc.demand}
+                    </span>
+                    <span style={{ fontFamily: mono, fontSize: 6, color: C.faint }}>
+                      <span style={{ color: sc.psf >= 70 ? C.green : sc.psf >= 50 ? C.yellow : C.red }}>■</span> PSF {sc.psf}
+                    </span>
+                    <span style={{ fontFamily: mono, fontSize: 6, color: C.faint }}>
+                      <span style={{ color: sc.gap >= 50 ? C.green : sc.gap >= 20 ? C.yellow : C.red }}>■</span> GAP {sc.gap}
+                    </span>
+                    <span style={{ fontFamily: mono, fontSize: 6, color: C.faint }}>
+                      <span style={{ color: sc.velocity >= 70 ? C.green : sc.velocity >= 50 ? C.yellow : C.red }}>■</span> VEL {sc.velocity}
+                    </span>
+                  </div>
+                  {mixDelta !== 0 && (
+                    <div style={{ marginTop: 2 }}>
+                      <span style={{ fontFamily: mono, fontSize: 6,
+                        color: mixDelta > 0 ? C.green : C.red }}>
+                        {mixDelta > 0 ? "▲" : "▼"}{Math.abs(mixDelta)}pp vs current
+                      </span>
+                    </div>
+                  )}
                 </div>
               );
             })}
-            <div style={{ textAlign: "right", color: C.dim, fontFamily: "monospace", fontSize: 11 }}>{c.total}</div>
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 1, background: C.border,
+        borderBottom: `1px solid ${C.border}` }}>
+        {[
+          { label: "TOTAL UNITS", content: (
+            <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+              {readOnly ? (
+                <span style={{ color: C.text, fontFamily: mono, fontSize: 11, fontWeight: 700 }}>{program.totalUnits}</span>
+              ) : (
+                <NumInput value={program.totalUnits} min={10} max={zoning.maxUnits} suffix="" width={36} accent
+                  onChange={v => onProgramChange({ ...program, totalUnits: v })} />
+              )}
+              <span style={{ color: C.faint, fontSize: 7, fontFamily: mono }}>/ {zoning.maxUnits}</span>
+            </div>
+          )},
+          { label: "NET SF", content: (
+            <span style={{ color: sfOver ? C.red : C.text, fontFamily: mono, fontSize: 11, fontWeight: 700 }}>
+              {totalSF.toLocaleString()}
+            </span>
+          )},
+          { label: "GROSS REV", content: (
+            <span style={{ color: C.green, fontFamily: mono, fontSize: 11, fontWeight: 700 }}>
+              ${(grossRevPA/1e6).toFixed(2)}M
+            </span>
+          )},
+          { label: "WTD $/SF", content: (
+            <span style={{ color: C.yellow, fontFamily: mono, fontSize: 11, fontWeight: 700 }}>
+              ${wtdPSF.toFixed(2)}
+            </span>
+          )},
+        ].map((kpi, i) => (
+          <div key={i} style={{ background: C.bg, padding: "4px 8px" }}>
+            <div style={{ color: C.faint, fontSize: 7, fontFamily: mono, letterSpacing: "0.06em", marginBottom: 2 }}>{kpi.label}</div>
+            {kpi.content}
           </div>
         ))}
+      </div>
+
+      <div style={{ padding: "0 8px" }}>
+        {UT_META.map((ut, ri) => {
+          const u = program.units[ut.key];
+          const avg = compAvg(ut.key, comps);
+          const count = Math.round(program.totalUnits * u.mix / 100);
+          const psf = u.sf ? +(u.rent / u.sf).toFixed(2) : 0;
+          const annRev = count * u.rent * 12 * 0.95;
+          const sfDelta = avg.sf > 0 ? u.sf - avg.sf : null;
+          const rentDelta = avg.rent > 0 ? u.rent - avg.rent : null;
+
+          return (
+            <div key={ut.key} style={{ padding: "8px 0", borderBottom: ri < UT_META.length - 1 ? `1px solid ${C.border}40` : "none" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+                <div style={{ width: 6, height: 6, borderRadius: 1, background: ut.color, flexShrink: 0 }} />
+                <span style={{ color: ut.color, fontSize: 10, fontWeight: 700, fontFamily: mono, minWidth: 42 }}>{ut.label}</span>
+                <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 4 }}>
+                  <div style={{ flex: 1, height: 4, background: C.muted, borderRadius: 2, overflow: "hidden", maxWidth: 100 }}>
+                    <div style={{ width: `${Math.min(u.mix, 100)}%`, height: "100%", background: ut.color + "aa",
+                      borderRadius: 2, transition: "width 0.3s" }} />
+                  </div>
+                  {readOnly ? (
+                    <span style={{ color: C.text, fontFamily: mono, fontSize: 10, fontWeight: 700 }}>{u.mix}%</span>
+                  ) : (
+                    <NumInput value={u.mix} min={0} max={100} suffix="%" width={28} accent onChange={v => setUnit(ut.key,"mix",v)} />
+                  )}
+                  {avg.mix > 0 && <Delt value={u.mix - avg.mix} unit="pp" />}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 3, background: C.muted, borderRadius: 3, padding: "1px 6px" }}>
+                  <span style={{ color: C.dim, fontSize: 8, fontFamily: mono }}>×</span>
+                  <span style={{ color: C.text, fontSize: 10, fontWeight: 700, fontFamily: mono }}>{count}</span>
+                </div>
+                <div style={{ marginLeft: "auto", color: C.green, fontSize: 9, fontWeight: 700, fontFamily: mono }}>
+                  ${(annRev/1000).toFixed(0)}K
+                  <span style={{ color: C.faint, fontSize: 7, marginLeft: 2 }}>/yr</span>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: 8, marginLeft: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 4, background: C.bg, borderRadius: 3, padding: "2px 6px", border: `1px solid ${C.border}40` }}>
+                  <span style={{ color: C.faint, fontSize: 7, fontFamily: mono, letterSpacing: "0.04em" }}>SF</span>
+                  {readOnly ? (
+                    <span style={{ color: C.text, fontFamily: mono, fontSize: 10, fontWeight: 700 }}>{u.sf}</span>
+                  ) : (
+                    <NumInput value={u.sf} min={200} max={3000} step={5} suffix="" width={36} accent onChange={v => setUnit(ut.key,"sf",v)} />
+                  )}
+                  {avg.sf > 0 && (
+                    <span style={{ color: C.faint, fontSize: 7, fontFamily: mono }}>
+                      avg {avg.sf} {sfDelta !== null && <Delt value={sfDelta} unit="" />}
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 4, background: C.bg, borderRadius: 3, padding: "2px 6px", border: `1px solid ${C.border}40` }}>
+                  <span style={{ color: C.faint, fontSize: 7, fontFamily: mono, letterSpacing: "0.04em" }}>RENT</span>
+                  {readOnly ? (
+                    <span style={{ color: C.text, fontFamily: mono, fontSize: 10, fontWeight: 700 }}>${u.rent}</span>
+                  ) : (
+                    <NumInput value={u.rent} min={500} max={10000} step={10} suffix="$" width={36} accent onChange={v => setUnit(ut.key,"rent",v)} />
+                  )}
+                  {avg.rent > 0 && (
+                    <span style={{ color: C.faint, fontSize: 7, fontFamily: mono }}>
+                      avg ${avg.rent} {rentDelta !== null && <Delt value={rentDelta} unit="$" />}
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 3, padding: "2px 6px" }}>
+                  <span style={{ color: C.faint, fontSize: 7, fontFamily: mono }}>$/SF</span>
+                  <span style={{ color: C.text, fontFamily: mono, fontSize: 9, fontWeight: 700 }}>${psf}</span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 8px",
+        background: C.bg, borderTop: `2px solid ${C.border}` }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ color: C.faint, fontSize: 7, fontFamily: mono, fontWeight: 700, letterSpacing: "0.06em" }}>TOTALS</span>
+          <span style={{ color: mixOk ? C.green : C.red, fontFamily: mono, fontSize: 9, fontWeight: 800 }}>{mixTotal}%</span>
+          <span style={{ color: C.border }}>|</span>
+          <span style={{ color: C.text, fontFamily: mono, fontSize: 9, fontWeight: 700 }}>{program.totalUnits} units</span>
+          <span style={{ color: C.border }}>|</span>
+          <span style={{ color: C.dim, fontFamily: mono, fontSize: 9 }}>
+            {Math.round(totalSF/program.totalUnits).toLocaleString()} avg SF
+          </span>
+        </div>
+        <span style={{ color: C.green, fontFamily: mono, fontSize: 9, fontWeight: 700 }}>
+          ${(grossRevPA/1e6).toFixed(2)}M/yr
+        </span>
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 8px",
+        background: C.bg, borderTop: `1px solid ${C.border}` }}>
+        <span style={{ color: C.faint, fontSize: 7, fontFamily: mono, letterSpacing: "0.04em" }}>SF ENVELOPE</span>
+        <div style={{ flex: 1, height: 3, background: C.muted, borderRadius: 1, overflow: "hidden", maxWidth: 160 }}>
+          <div style={{ width: `${Math.min(sfPct, 100)}%`, height: "100%",
+            background: sfOver ? C.red : sfPct > 88 ? C.yellow : C.green,
+            borderRadius: 1, transition: "width 0.3s" }} />
+        </div>
+        <span style={{ color: sfOver ? C.red : C.text, fontFamily: mono, fontSize: 8, fontWeight: 700 }}>
+          {totalSF.toLocaleString()} / {zoning.maxNetSF.toLocaleString()}
+        </span>
+        {sfOver
+          ? <Tag label={`OVER ${(totalSF-zoning.maxNetSF).toLocaleString()} SF`} color={C.red} size="xs" />
+          : <Tag label={`${(zoning.maxNetSF-totalSF).toLocaleString()} remaining`} color={C.green} size="xs" />}
+      </div>
+
+      {onPushToProforma && !readOnly && (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
+          padding: "4px 8px", borderTop: `1px solid ${C.border}`, background: C.card }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+            <span style={{ fontSize: 7, fontFamily: mono, color: C.faint, letterSpacing: "0.04em" }}>
+              ZONING: <span style={{ color: C.blue }}>{zoning.zoningCode || "—"}</span>
+            </span>
+            <span style={{ color: C.faint, fontSize: 7 }}>·</span>
+            <span style={{ fontSize: 7, fontFamily: mono,
+              color: !sfOver && mixOk ? C.green : C.red, letterSpacing: "0.04em" }}>
+              {!sfOver && mixOk ? "WITHIN ENVELOPE" : sfOver ? "EXCEEDS SF ENVELOPE" : "MIX ≠ 100%"}
+            </span>
+            {pushResult && (
+              <>
+                <span style={{ color: C.faint, fontSize: 7 }}>·</span>
+                <span style={{ fontSize: 7, fontFamily: mono,
+                  color: pushResult.success ? C.green : C.red }}>
+                  {pushResult.success
+                    ? `PUSHED → ${pushResult.modules.join(", ")}`
+                    : "PUSH FAILED"}
+                </span>
+              </>
+            )}
+          </div>
+          <button
+            disabled={pushing || sfOver || !mixOk}
+            onClick={async () => {
+              setPushing(true);
+              setPushResult(null);
+              try {
+                const res = await onPushToProforma(program);
+                setPushResult({ success: res.success, modules: res.modulesUpdated || [] });
+              } catch {
+                setPushResult({ success: false, modules: [] });
+              }
+              setPushing(false);
+            }}
+            style={{
+              padding: "2px 8px", border: "none", borderRadius: 2,
+              cursor: pushing || sfOver || !mixOk ? "not-allowed" : "pointer",
+              fontSize: 7, fontFamily: mono, fontWeight: 700, letterSpacing: "0.04em",
+              background: pushing ? C.yellow : sfOver || !mixOk ? C.muted : C.green,
+              color: pushing ? C.bg : sfOver || !mixOk ? C.dim : C.bg,
+              opacity: sfOver || !mixOk ? 0.5 : 1,
+              transition: "all 0.2s",
+            }}>
+            {pushing ? "PUSHING..." : "PUSH TO PROFORMA →"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InventorySnapshot({ inventory, comps }: { inventory: InventoryItem[]; comps: CompData[] }) {
+  const total = inventory.reduce((s, u) => s + u.typeUnits, 0);
+  const gridTpl = "1fr 32px repeat(4,60px) 40px";
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 4, overflow: "hidden" }}>
+      <SectionHeader mod="M05" title="Submarket Inventory" right={
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {inventory.map(u => (
+            <div key={u.key} style={{ display: "flex", alignItems: "center", gap: 3 }}>
+              <div style={{ width: 4, height: 4, background: u.color, borderRadius: 1 }} />
+              <span style={{ color: C.dim, fontSize: 7, fontFamily: mono }}>{u.abbr}</span>
+              <span style={{ color: C.text, fontFamily: mono, fontSize: 8, fontWeight: 700 }}>{u.typeUnits}u</span>
+              {u.avgSF > 0 && (
+                <span style={{ color: C.dim, fontSize: 6, fontFamily: mono }}>· {u.avgSF} SF</span>
+              )}
+            </div>
+          ))}
+          <span style={{ color: C.faint, fontSize: 7 }}>·</span>
+          <span style={{ color: C.text, fontFamily: mono, fontSize: 9, fontWeight: 700 }}>{total.toLocaleString()}</span>
+        </div>
+      } />
+      <div style={{ padding: "4px 8px 2px" }}>
+        <div style={{ display: "flex", height: 12, borderRadius: 2, overflow: "hidden", gap: 1 }}>
+          {inventory.map(u => (
+            <div key={u.key} style={{ flex: u.supplyShare, background: u.color + "cc",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              color: "#fff", fontSize: 7, fontWeight: 700, fontFamily: mono }}>
+              {u.supplyShare > 10 ? `${u.supplyShare.toFixed(0)}%` : ""}
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{ borderTop: `1px solid ${C.border}` }}>
+        <div style={{ display: "grid", gridTemplateColumns: gridTpl, padding: "3px 8px",
+          background: C.bg, borderBottom: `1px solid ${C.border}` }}>
+          {["PROPERTY","CLS",...UT_META.map(u => u.abbr),"UNITS"].map((h, i) => (
+            <div key={i} style={{ color: i >= 2 && i <= 5 ? UT_META[i-2]?.color : C.faint, fontSize: 7, fontFamily: mono,
+              fontWeight: 700, letterSpacing: "0.05em", textAlign: i > 1 ? "right" : "left" }}>{h}</div>
+          ))}
+        </div>
+        {comps.map((c, i) => (
+          <div key={c.id} style={{ display: "grid", gridTemplateColumns: gridTpl,
+            padding: "3px 8px", borderBottom: `1px solid ${C.border}40`,
+            background: i % 2 === 0 ? "transparent" : "#1A1F2E10" }}>
+            <div style={{ color: C.text, fontSize: 9, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</div>
+            <div style={{ color: C.dim, fontSize: 8, fontFamily: mono }}>{c.cls}</div>
+            {UT_META.map(ut => {
+              const pct = c.units[ut.key]?.mix ?? 0;
+              return (
+                <div key={ut.key} style={{ textAlign: "right" }}>
+                  <span style={{ color: pct > 0 ? ut.color : C.faint, fontFamily: mono,
+                    fontSize: 9, fontWeight: 600 }}>{pct > 0 ? `${pct}%` : "—"}</span>
+                </div>
+              );
+            })}
+            <div style={{ textAlign: "right", color: C.dim, fontFamily: mono, fontSize: 8 }}>{c.total}</div>
+          </div>
+        ))}
+        <div style={{ display: "grid", gridTemplateColumns: gridTpl, padding: "3px 8px",
+          background: C.surface, borderTop: `1px solid ${C.border}` }}>
+          <div style={{ color: C.dim, fontSize: 7, fontFamily: mono, fontWeight: 700 }}>AVG SF</div>
+          <div />
+          {inventory.map(u => (
+            <div key={u.key} style={{ textAlign: "right" }}>
+              <span style={{ color: u.avgSF > 0 ? u.color : C.faint, fontFamily: mono, fontSize: 8, fontWeight: 600 }}>
+                {u.avgSF > 0 ? `${u.avgSF}` : "—"}
+              </span>
+            </div>
+          ))}
+          <div />
+        </div>
       </div>
     </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────
-//  TAB 3B — PROPERTY DRILL-DOWN
-// ─────────────────────────────────────────────────────────
 function PropertyDrillDown({ selectedType, onSelect, comps }: { selectedType: UnitKey; onSelect: (k: UnitKey) => void; comps: CompData[] }) {
-  const ut = UT_META.find(u => u.key === selectedType);
-  const rows = comps.filter(c => c.units[selectedType].mix > 0)
-    .sort((a, b) => a.units[selectedType].vac - b.units[selectedType].vac);
+  const ut = UT_META.find(u => u.key === selectedType)!;
+  const rows = comps.filter(c => (c.units[selectedType]?.mix ?? 0) > 0)
+    .sort((a, b) => (a.units[selectedType]?.vac ?? 0) - (b.units[selectedType]?.vac ?? 0));
+  const gridTpl = "1fr 32px 44px 52px 56px 48px 56px 60px";
 
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
-      <div style={{ padding: "14px 20px", borderBottom: `1px solid ${C.border}`,
-        display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <SecLabel mod="M15" title={`Property Drill-Down — ${ut.label}`}
-          sub="Sorted by vacancy (lowest = tightest demand). HOT/WARM/SOFT signal." />
-        <div style={{ display: "flex", gap: 5 }}>
-          {UT_META.map(u => (
-            <button key={u.key} onClick={() => onSelect(u.key)} style={{
-              background: selectedType === u.key ? u.color + "20" : "transparent",
-              border: `1px solid ${selectedType === u.key ? u.color : C.border}`,
-              borderRadius: 5, padding: "4px 10px",
-              color: selectedType === u.key ? u.color : C.dim,
-              fontSize: 10, fontFamily: "monospace", fontWeight: 700, cursor: "pointer",
-            }}>{u.abbr}</button>
-          ))}
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 4, overflow: "hidden" }}>
+      <SectionHeader mod="M15" title="Property Drill-Down" right={
+        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+          <span style={{ color: C.dim, fontSize: 7, fontFamily: mono }}>sorted by vac ↑</span>
+          <UnitTypeToggle selected={selectedType} onSelect={onSelect} />
         </div>
-      </div>
+      } />
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 56px 72px 90px 86px 90px 86px",
-        padding: "7px 20px", background: "#060f1a", borderBottom: `1px solid ${C.border}` }}>
-        {["Property","Cls","Mix %","Vacancy","DOM","Concessions","Avg Rent"].map((h, i) => (
-          <div key={i} style={{ color: C.faint, fontSize: 9, fontFamily: "monospace",
-            textAlign: i > 0 ? "right" : "left" }}>{h}</div>
+      <div style={{ display: "grid", gridTemplateColumns: gridTpl,
+        padding: "3px 8px", background: C.bg, borderBottom: `1px solid ${C.border}` }}>
+        {["PROPERTY","CLS","MIX","AVG SF","VAC","DOM","CONC","RENT"].map((h, i) => (
+          <div key={i} style={{ color: C.faint, fontSize: 7, fontFamily: mono, fontWeight: 700,
+            letterSpacing: "0.05em", textAlign: i > 0 ? "right" : "left" }}>{h}</div>
         ))}
       </div>
 
       {rows.map((c, i) => {
         const u = c.units[selectedType];
-        const sig = u.vac <= SIG.vac.hot ? "🟢" : u.vac <= SIG.vac.warm ? "🟡" : "🔴";
+        const sigCol = u.vac <= SIG.vac.hot ? C.green : u.vac <= SIG.vac.warm ? C.yellow : C.red;
         return (
-          <div key={c.id} style={{ display: "grid", gridTemplateColumns: "1fr 56px 72px 90px 86px 90px 86px",
-            padding: "10px 20px", borderBottom: `1px solid ${C.border}`,
-            background: i % 2 === 0 ? "transparent" : "#060f1a0a", alignItems: "center" }}>
-            <div style={{ color: C.text, fontSize: 12 }}>{sig} {c.name}</div>
-            <div style={{ textAlign: "right", color: C.dim, fontSize: 11 }}>{c.cls}</div>
-            <div style={{ textAlign: "right", color: ut.color, fontFamily: "monospace",
-              fontSize: 12, fontWeight: 700 }}>{u.mix}%</div>
-            <div style={{ textAlign: "right" }}>
-              <span style={{ color: sigColor(u.vac, "vac"), fontFamily: "monospace",
-                fontSize: 12, fontWeight: 700 }}>{u.vac}%</span>
+          <div key={c.id} style={{ display: "grid", gridTemplateColumns: gridTpl,
+            padding: "3px 8px", borderBottom: `1px solid ${C.border}40`,
+            background: i % 2 === 0 ? "transparent" : "#1A1F2E10", alignItems: "center" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <span style={{ color: sigCol, fontSize: 5 }}>●</span>
+              <span style={{ color: C.text, fontSize: 9 }}>{c.name}</span>
             </div>
-            <div style={{ textAlign: "right" }}>
-              <span style={{ color: sigColor(u.dom, "dom"), fontFamily: "monospace",
-                fontSize: 12, fontWeight: 700 }}>{u.dom}d</span>
-            </div>
-            <div style={{ textAlign: "right" }}>
-              <span style={{ color: sigColor(u.conc, "conc"), fontFamily: "monospace",
-                fontSize: 12, fontWeight: 700 }}>{u.conc}wk</span>
-            </div>
-            <div style={{ textAlign: "right", color: C.text, fontFamily: "monospace",
-              fontSize: 12, fontWeight: 700 }}>${u.rent.toLocaleString()}</div>
+            <div style={{ textAlign: "right", color: C.dim, fontSize: 8, fontFamily: mono }}>{c.cls}</div>
+            <div style={{ textAlign: "right", color: ut.color, fontFamily: mono, fontSize: 9, fontWeight: 700 }}>{u.mix}%</div>
+            <div style={{ textAlign: "right", color: C.dim, fontFamily: mono, fontSize: 9 }}>{u.sf > 0 ? `${u.sf} SF` : "—"}</div>
+            <div style={{ textAlign: "right", color: sigColor(u.vac, "vac"), fontFamily: mono, fontSize: 9, fontWeight: 700 }}>{u.vac}%</div>
+            <div style={{ textAlign: "right", color: sigColor(u.dom, "dom"), fontFamily: mono, fontSize: 9, fontWeight: 700 }}>{u.dom}d</div>
+            <div style={{ textAlign: "right", color: sigColor(u.conc, "conc"), fontFamily: mono, fontSize: 9, fontWeight: 700 }}>{u.conc}wk</div>
+            <div style={{ textAlign: "right", color: C.text, fontFamily: mono, fontSize: 9, fontWeight: 700 }}>${u.rent.toLocaleString()}</div>
           </div>
         );
       })}
-      <div style={{ padding: "9px 20px", background: "#060f1a" }}>
-        <span style={{ color: C.faint, fontSize: 9, fontFamily: "monospace" }}>
-          🟢 HOT (vac ≤3%, DOM ≤10d) &nbsp; 🟡 WARM (vac ≤6%, DOM ≤20d) &nbsp; 🔴 SOFT (vac &gt;6%, DOM &gt;20d)
-        </span>
+      <div style={{ padding: "3px 8px", background: C.bg, display: "flex", gap: 8 }}>
+        <span style={{ color: C.green, fontSize: 7, fontFamily: mono }}>● HOT vac≤3%</span>
+        <span style={{ color: C.yellow, fontSize: 7, fontFamily: mono }}>● WARM vac≤6%</span>
+        <span style={{ color: C.red, fontSize: 7, fontFamily: mono }}>● SOFT vac&gt;6%</span>
       </div>
     </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────
-//  TAB 4 — TREND DETAIL (12-month charts)
-// ─────────────────────────────────────────────────────────
 function TrendDetail({ selectedType, onSelect, trendData }: { selectedType: UnitKey; onSelect: (k: UnitKey) => void; trendData: typeof TREND_DATA }) {
-  const ut = UT_META.find(u => u.key === selectedType);
+  const ut = UT_META.find(u => u.key === selectedType)!;
   const data = trendData[selectedType];
   const metrics = [
-    { key: "vac",  label: "Vacancy %",            color: C.red,    fmt: (v: number) => `${v}%`  },
-    { key: "dom",  label: "Days on Market",        color: C.yellow, fmt: (v: number) => `${v}d`  },
-    { key: "rent", label: "Avg Rent",              color: C.green,  fmt: (v: number) => `$${v}`  },
-    { key: "conc", label: "Concessions (wks free)",color: C.studio, fmt: (v: number) => `${v}wk` },
+    { key: "vac",  label: "VACANCY",    color: C.red,    fmt: (v: number) => `${v}%`  },
+    { key: "dom",  label: "DOM",         color: C.yellow, fmt: (v: number) => `${v}d`  },
+    { key: "rent", label: "AVG RENT",    color: C.green,  fmt: (v: number) => `$${v.toLocaleString()}`  },
+    { key: "conc", label: "CONCESSIONS", color: C.studio, fmt: (v: number) => `${v}wk` },
   ];
 
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
-      <div style={{ padding: "14px 20px", borderBottom: `1px solid ${C.border}`,
-        display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <SecLabel mod="M05" title="12-Month Demand Trends"
-          sub="Submarket averages across trade area comps. Direction matters as much as current value." />
-        <div style={{ display: "flex", gap: 5 }}>
-          {UT_META.map(u => (
-            <button key={u.key} onClick={() => onSelect(u.key)} style={{
-              background: selectedType === u.key ? u.color + "20" : "transparent",
-              border: `1px solid ${selectedType === u.key ? u.color : C.border}`,
-              borderRadius: 6, padding: "4px 11px",
-              color: selectedType === u.key ? u.color : C.dim,
-              fontSize: 11, fontFamily: "monospace", fontWeight: 700, cursor: "pointer",
-            }}>{u.label}</button>
-          ))}
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 4, overflow: "hidden" }}>
+      <SectionHeader mod="M05" title="12-Month Trends" right={
+        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+          <span style={{ color: C.dim, fontSize: 7, fontFamily: mono }}>submarket avg</span>
+          <UnitTypeToggle selected={selectedType} onSelect={onSelect} />
         </div>
-      </div>
-      <div style={{ padding: "16px 20px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      } />
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, background: C.border }}>
         {metrics.map(m => {
           const first = data[0][m.key], last = data[data.length-1][m.key];
           const delta = last - first;
           const good = m.key === "rent" ? delta > 0 : delta < 0;
           return (
-            <div key={m.key} style={{ background: "#060f1a", borderRadius: 8, padding: 14,
-              border: `1px solid ${C.border}` }}>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
-                <span style={{ color: C.dim, fontSize: 11 }}>{m.label}</span>
-                <div style={{ textAlign: "right" }}>
-                  <span style={{ color: m.color, fontFamily: "monospace", fontSize: 14, fontWeight: 700 }}>
+            <div key={m.key} style={{ background: C.bg, padding: "4px 8px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
+                <span style={{ color: C.dim, fontSize: 7, fontFamily: mono, letterSpacing: "0.05em" }}>{m.label}</span>
+                <div style={{ display: "flex", gap: 4, alignItems: "baseline" }}>
+                  <span style={{ color: m.color, fontFamily: mono, fontSize: 11, fontWeight: 700 }}>
                     {m.fmt(last)}
                   </span>
-                  <span style={{ color: good ? C.green : C.red, fontFamily: "monospace",
-                    fontSize: 10, marginLeft: 8 }}>
+                  <span style={{ color: good ? C.green : C.red, fontFamily: mono, fontSize: 8 }}>
                     {delta > 0 ? "+" : ""}{m.key === "rent" ? `$${delta}` : m.key === "vac" ? `${delta}pp` : delta}
+                    {good ? " ▲" : " ▼"}
                   </span>
                 </div>
               </div>
-              <ResponsiveContainer width="100%" height={64}>
+              <ResponsiveContainer width="100%" height={40}>
                 <LineChart data={data}>
-                  <XAxis dataKey="mo" tick={{ fill: C.faint, fontSize: 9 }} axisLine={false} tickLine={false} />
+                  <XAxis dataKey="mo" tick={{ fill: C.faint, fontSize: 7 }} axisLine={false} tickLine={false} interval={2} />
                   <Tooltip content={<ChartTip />} />
                   <Line type="monotone" dataKey={m.key} name={m.label} stroke={m.color}
-                    strokeWidth={1.5} dot={false} />
+                    strokeWidth={1.2} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -1001,84 +1213,75 @@ function TrendDetail({ selectedType, onSelect, trendData }: { selectedType: Unit
   );
 }
 
-// ─────────────────────────────────────────────────────────
-//  TAB 5A — MIX MATRIX
-// ─────────────────────────────────────────────────────────
 function MixMatrix({ program, comps }: { program: Program; comps: CompData[] }) {
+  const gridTpl = "1fr 28px repeat(4,68px)";
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
-      <div style={{ padding: "14px 20px", borderBottom: `1px solid ${C.border}` }}>
-        <SecLabel mod="M05 · M15" title="Mix Matrix — Program vs Comp Set"
-          sub="Your proposed allocation vs every comp. Comp Average anchored at bottom." />
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "180px 56px repeat(4,1fr)", gap: 8,
-        padding: "7px 20px", background: "#060f1a", borderBottom: `1px solid ${C.border}` }}>
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 4, overflow: "hidden" }}>
+      <SectionHeader mod="M05 · M15" title="Mix Matrix" right={
+        <span style={{ color: C.dim, fontSize: 7, fontFamily: mono }}>program vs comp set</span>
+      } />
+      <div style={{ display: "grid", gridTemplateColumns: gridTpl, padding: "3px 8px",
+        background: C.bg, borderBottom: `1px solid ${C.border}` }}>
         {["PROPERTY","CLS",...UT_META.map(ut => ut.abbr)].map((h, i) => (
-          <div key={i} style={{ color: i > 1 ? UT_META[i-2].color : C.faint, fontSize: 9,
-            fontFamily: "monospace", fontWeight: 700, textAlign: i > 1 ? "right" : "left" }}>{h}</div>
+          <div key={i} style={{ color: i > 1 ? UT_META[i-2].color : C.faint, fontSize: 7,
+            fontFamily: mono, fontWeight: 700, letterSpacing: "0.05em", textAlign: i > 1 ? "right" : "left" }}>{h}</div>
         ))}
       </div>
-      {/* Subject */}
-      <div style={{ display: "grid", gridTemplateColumns: "180px 56px repeat(4,1fr)", gap: 8,
-        padding: "10px 20px", background: "#f9731606",
-        borderBottom: `1px solid ${C.border}`, borderLeft: `3px solid ${C.subject}` }}>
+      <div style={{ display: "grid", gridTemplateColumns: gridTpl, padding: "3px 8px",
+        background: C.subject + "08", borderBottom: `1px solid ${C.border}`, borderLeft: `3px solid ${C.subject}` }}>
         <div>
-          <div style={{ color: C.subject, fontSize: 12, fontWeight: 700 }}>★ Subject Property</div>
-          <div style={{ color: C.faint, fontSize: 10 }}>{program.totalUnits}u · Proposed</div>
+          <span style={{ color: C.subject, fontSize: 9, fontWeight: 700 }}>★ Subject</span>
+          <span style={{ color: C.faint, fontSize: 7, marginLeft: 4 }}>{program.totalUnits}u</span>
         </div>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <Tag label="A" color={C.green} size="xs" />
-        </div>
+        <div style={{ color: C.green, fontSize: 8, fontFamily: mono, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>A</div>
         {UT_META.map(ut => {
           const pct = program.units[ut.key].mix;
           const avg = compAvg(ut.key, comps);
           return (
-            <div key={ut.key} style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
-              <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
-                <span style={{ color: C.subject, fontFamily: "monospace", fontSize: 13, fontWeight: 800 }}>{pct}%</span>
+            <div key={ut.key} style={{ textAlign: "right" }}>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 3, alignItems: "center" }}>
+                <span style={{ color: C.subject, fontFamily: mono, fontSize: 10, fontWeight: 800 }}>{pct}%</span>
                 {avg.mix > 0 && <Delt value={pct - avg.mix} unit="pp" />}
               </div>
-              <div style={{ width: 52, height: 3, background: C.muted, borderRadius: 2, overflow: "hidden" }}>
-                <div style={{ width: `${Math.min(100, pct * 2.1)}%`, height: "100%", background: C.subject, borderRadius: 2 }} />
+              <div style={{ width: "100%", height: 2, background: C.muted, borderRadius: 1, overflow: "hidden", marginTop: 1 }}>
+                <div style={{ width: `${Math.min(100, pct * 2)}%`, height: "100%", background: C.subject }} />
               </div>
             </div>
           );
         })}
       </div>
       {comps.map((c, ri) => (
-        <div key={c.id} style={{ display: "grid", gridTemplateColumns: "180px 56px repeat(4,1fr)", gap: 8,
-          padding: "10px 20px", borderBottom: `1px solid ${C.border}`,
-          background: ri % 2 === 0 ? "transparent" : "#060f1a50",
+        <div key={c.id} style={{ display: "grid", gridTemplateColumns: gridTpl, padding: "3px 8px",
+          borderBottom: `1px solid ${C.border}40`, background: ri % 2 === 0 ? "transparent" : "#1A1F2E10",
           borderLeft: "3px solid transparent" }}>
           <div>
-            <div style={{ color: C.text, fontSize: 12 }}>{c.name}</div>
-            <div style={{ color: C.faint, fontSize: 10 }}>{c.total}u · {c.built}</div>
+            <span style={{ color: C.text, fontSize: 9 }}>{c.name}</span>
+            <span style={{ color: C.faint, fontSize: 7, marginLeft: 4 }}>{c.total}u·{c.built}</span>
           </div>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <Tag label={c.cls} color={c.cls==="A"?C.green:c.cls==="B+"?C.yellow:C.dim} size="xs" />
-          </div>
+          <div style={{ color: c.cls==="A"?C.green:c.cls==="B+"?C.yellow:C.dim, fontSize: 8, fontFamily: mono,
+            fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>{c.cls}</div>
           {UT_META.map(ut => {
-            const pct = c.units[ut.key].mix;
+            const pct = c.units[ut.key]?.mix ?? 0;
             return (
-              <div key={ut.key} style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
-                <span style={{ color: pct===0?C.faint:C.text, fontFamily: "monospace", fontSize: 12, fontWeight: 600 }}>
+              <div key={ut.key} style={{ textAlign: "right" }}>
+                <span style={{ color: pct===0?C.faint:C.text, fontFamily: mono, fontSize: 9, fontWeight: 600 }}>
                   {pct > 0 ? `${pct}%` : "—"}
                 </span>
-                <div style={{ width: 52, height: 3, background: C.muted, borderRadius: 2, overflow: "hidden" }}>
-                  <div style={{ width: `${Math.min(100, pct * 2.1)}%`, height: "100%", background: ut.color + "70", borderRadius: 2 }} />
+                <div style={{ width: "100%", height: 2, background: C.muted, borderRadius: 1, overflow: "hidden", marginTop: 1 }}>
+                  <div style={{ width: `${Math.min(100, pct * 2)}%`, height: "100%", background: ut.color + "70" }} />
                 </div>
               </div>
             );
           })}
         </div>
       ))}
-      <div style={{ display: "grid", gridTemplateColumns: "180px 56px repeat(4,1fr)", gap: 8,
-        padding: "10px 20px", background: "#060f1a", borderTop: `2px solid ${C.border}` }}>
-        <div style={{ color: C.dim, fontSize: 12, fontWeight: 700 }}>Comp Average</div>
+      <div style={{ display: "grid", gridTemplateColumns: gridTpl, padding: "3px 8px",
+        background: C.bg, borderTop: `2px solid ${C.border}` }}>
+        <div style={{ color: C.dim, fontSize: 9, fontWeight: 700 }}>Comp Average</div>
         <div />
         {UT_META.map(ut => (
           <div key={ut.key} style={{ textAlign: "right", color: ut.color,
-            fontFamily: "monospace", fontSize: 12, fontWeight: 700 }}>
+            fontFamily: mono, fontSize: 9, fontWeight: 700 }}>
             {compAvg(ut.key, comps).mix.toFixed(1)}%
           </div>
         ))}
@@ -1087,43 +1290,27 @@ function MixMatrix({ program, comps }: { program: Program; comps: CompData[] }) 
   );
 }
 
-// ─────────────────────────────────────────────────────────
-//  TAB 5B — RENT × SF SCATTER
-// ─────────────────────────────────────────────────────────
 function RentSFScatter({ program, filterUT, setFilterUT, comps }: { program: Program; filterUT: string; setFilterUT: (v: string) => void; comps: CompData[] }) {
   const all = buildScatter(program, comps);
   const pts = filterUT === "all" ? all : all.filter(p => p.utKey === filterUT);
 
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
-      <div style={{ padding: "14px 20px", borderBottom: `1px solid ${C.border}`,
-        display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <SecLabel mod="M05 · M15" title="Rent vs Unit Size"
-          sub="Orange = your program (updates live). Dot above the cluster = premium extraction." />
-        <div style={{ display: "flex", gap: 5 }}>
-          {[{key:"all",label:"All",color:C.dim},...UT_META].map(ut => (
-            <button key={ut.key} onClick={() => setFilterUT(ut.key)} style={{
-              background: filterUT===ut.key ? (ut.color||C.dim)+"22" : "transparent",
-              border: `1px solid ${filterUT===ut.key ? (ut.color||C.dim) : C.border}`,
-              borderRadius: 5, padding: "4px 10px",
-              color: filterUT===ut.key ? (ut.color||C.text) : C.faint,
-              fontSize: 10, fontFamily: "monospace", fontWeight: 700, cursor: "pointer",
-            }}>{ut.label||"All"}</button>
-          ))}
-        </div>
-      </div>
-      <div style={{ padding: "16px 20px" }}>
-        <ResponsiveContainer width="100%" height={270}>
-          <ScatterChart margin={{ top: 8, right: 20, bottom: 22, left: 10 }}>
-            <CartesianGrid stroke={C.faint} strokeDasharray="3 3" strokeOpacity={0.3} />
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 4, overflow: "hidden" }}>
+      <SectionHeader mod="M05 · M15" title="Rent vs Unit Size" right={
+        <UnitTypeToggle selected={filterUT} onSelect={setFilterUT} size="lg" />
+      } />
+      <div style={{ padding: "4px 8px" }}>
+        <ResponsiveContainer width="100%" height={160}>
+          <ScatterChart margin={{ top: 4, right: 12, bottom: 14, left: 4 }}>
+            <CartesianGrid stroke={C.faint} strokeDasharray="3 3" strokeOpacity={0.15} />
             <XAxis type="number" dataKey="x" name="SF" domain={["dataMin - 60","dataMax + 60"]}
-              tick={{ fill: C.dim, fontSize: 10 }} tickLine={false} axisLine={{ stroke: C.muted }}
-              label={{ value: "Unit SF", position: "insideBottom", offset: -12, fill: C.faint, fontSize: 11 }} />
+              tick={{ fill: C.dim, fontSize: 8, fontFamily: mono }} tickLine={false} axisLine={{ stroke: C.muted }}
+              label={{ value: "SF", position: "insideBottom", offset: -8, fill: C.faint, fontSize: 7 }} />
             <YAxis type="number" dataKey="y" name="Rent" domain={[1000,"dataMax + 200"]}
-              tick={{ fill: C.dim, fontSize: 10 }} tickLine={false} axisLine={{ stroke: C.muted }}
+              tick={{ fill: C.dim, fontSize: 8, fontFamily: mono }} tickLine={false} axisLine={{ stroke: C.muted }}
               tickFormatter={v => `$${(v/1000).toFixed(1)}k`}
-              label={{ value: "Rent/mo", angle: -90, position: "insideLeft", offset: 15, fill: C.faint, fontSize: 11 }} />
-            <ZAxis range={[40,40]} />
+              label={{ value: "$/mo", angle: -90, position: "insideLeft", offset: 8, fill: C.faint, fontSize: 7 }} />
+            <ZAxis range={[30,30]} />
             <Tooltip content={<ScatterTip />} />
             {UT_META.map(ut => {
               const d = pts.filter(p => p.utKey===ut.key && !p.isSubject);
@@ -1132,17 +1319,17 @@ function RentSFScatter({ program, filterUT, setFilterUT, comps }: { program: Pro
             <Scatter data={pts.filter(p => p.isSubject)} shape={<ScatterDot />} />
           </ScatterChart>
         </ResponsiveContainer>
-        <div style={{ display: "flex", gap: 14, flexWrap: "wrap", paddingTop: 10, borderTop: `1px solid ${C.border}` }}>
+        <div style={{ display: "flex", gap: 10, paddingTop: 4, borderTop: `1px solid ${C.border}` }}>
           {UT_META.map(ut => (
-            <div key={ut.key} style={{ display: "flex", alignItems: "center", gap: 5 }}>
-              <div style={{ width: 7, height: 7, borderRadius: "50%", background: ut.color, opacity: 0.7 }} />
-              <span style={{ color: C.dim, fontSize: 11 }}>{ut.label}</span>
+            <div key={ut.key} style={{ display: "flex", alignItems: "center", gap: 3 }}>
+              <div style={{ width: 5, height: 5, borderRadius: "50%", background: ut.color, opacity: 0.7 }} />
+              <span style={{ color: C.dim, fontSize: 7, fontFamily: mono }}>{ut.abbr}</span>
             </div>
           ))}
-          <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-            <div style={{ width: 9, height: 9, borderRadius: "50%", background: C.subject,
-              border: "2px solid white", boxSizing: "border-box" }} />
-            <span style={{ color: C.subject, fontSize: 11, fontWeight: 700 }}>Your Program</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
+            <div style={{ width: 5, height: 5, borderRadius: "50%", background: C.subject,
+              border: "1.5px solid white", boxSizing: "border-box" }} />
+            <span style={{ color: C.subject, fontSize: 7, fontFamily: mono, fontWeight: 700 }}>Subject</span>
           </div>
         </div>
       </div>
@@ -1150,23 +1337,22 @@ function RentSFScatter({ program, filterUT, setFilterUT, comps }: { program: Pro
   );
 }
 
-// ─────────────────────────────────────────────────────────
-//  TAB 5C — COMP DETAIL TABLE
-// ─────────────────────────────────────────────────────────
 function CompTable({ program, utKey, setUtKey, comps }: { program: Program; utKey: UnitKey; setUtKey: (k: UnitKey) => void; comps: CompData[] }) {
   const ut  = UT_META.find(u => u.key === utKey) || UT_META[1];
   const su  = program.units[ut.key];
   const avg = compAvg(ut.key, comps);
-  const gridTpl = "1fr 56px 88px 94px 68px 72px 72px 68px 90px";
+  const gridTpl = "1fr 36px 56px 64px 44px 44px 40px 40px 56px";
 
-  function PosTags({ rent }: { rent: number }) {
-    if (!rent || !avg.rent) return <span style={{ color: C.faint }}>—</span>;
+  function PosTag({ rent }: { rent: number }) {
+    if (!rent || !avg.rent) return <span style={{ color: C.faint, fontSize: 7 }}>—</span>;
     const pct = (rent - avg.rent) / avg.rent * 100;
     const color = pct > 3 ? C.green : pct < -3 ? C.red : C.yellow;
     return (
       <div style={{ textAlign: "right" }}>
-        <Tag label={pct > 3 ? "PREMIUM" : pct < -3 ? "DISCOUNT" : "AT MKT"} color={color} size="xs" />
-        <div style={{ color, fontFamily: "monospace", fontSize: 10, marginTop: 2 }}>
+        <span style={{ color, fontFamily: mono, fontSize: 7, fontWeight: 700 }}>
+          {pct > 3 ? "PREM" : pct < -3 ? "DISC" : "MKT"}
+        </span>
+        <div style={{ color, fontFamily: mono, fontSize: 7 }}>
           {pct > 0 ? "+" : ""}{pct.toFixed(1)}%
         </div>
       </div>
@@ -1174,149 +1360,125 @@ function CompTable({ program, utKey, setUtKey, comps }: { program: Program; utKe
   }
 
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, overflow: "hidden" }}>
-      <div style={{ padding: "14px 20px", borderBottom: `1px solid ${C.border}`,
-        display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <SecLabel mod="M05 · M15 · M07" title={`Comp Detail — ${ut.label}`}
-          sub="Subject row = your live program. Deltas vs comp average shown in small text." />
-        <div style={{ display: "flex", gap: 5 }}>
-          {UT_META.map(u => (
-            <button key={u.key} onClick={() => setUtKey(u.key)} style={{
-              background: utKey===u.key ? u.color+"20" : "transparent",
-              border: `1px solid ${utKey===u.key ? u.color : C.border}`,
-              borderRadius: 5, padding: "4px 10px", color: utKey===u.key ? u.color : C.faint,
-              fontSize: 10, fontFamily: "monospace", fontWeight: 700, cursor: "pointer",
-            }}>{u.abbr}</button>
-          ))}
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 4, overflow: "hidden" }}>
+      <SectionHeader mod="M05 · M15" title="Comp Detail" right={
+        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+          <span style={{ color: C.dim, fontSize: 7, fontFamily: mono }}>subject = live program</span>
+          <UnitTypeToggle selected={utKey} onSelect={setUtKey} />
         </div>
-      </div>
+      } />
 
-      {/* Headers */}
-      <div style={{ display: "grid", gridTemplateColumns: gridTpl, gap: 10, padding: "7px 20px",
-        background: "#060f1a", borderBottom: `1px solid ${C.border}` }}>
-        {["Property","Mix","Unit SF","Rent/mo","Rent/SF","Vacancy","DOM","Conc","Position"].map((h, i) => (
-          <div key={i} style={{ color: C.faint, fontSize: 9, fontFamily: "monospace",
-            textAlign: i === 0 ? "left" : "right" }}>{h}</div>
+      <div style={{ display: "grid", gridTemplateColumns: gridTpl, gap: 4, padding: "3px 8px",
+        background: C.bg, borderBottom: `1px solid ${C.border}` }}>
+        {["PROPERTY","MIX","SF","RENT","$/SF","VAC","DOM","CONC","POS"].map((h, i) => (
+          <div key={i} style={{ color: C.faint, fontSize: 7, fontFamily: mono, fontWeight: 700,
+            letterSpacing: "0.05em", textAlign: i === 0 ? "left" : "right" }}>{h}</div>
         ))}
       </div>
 
-      {/* Subject */}
-      <div style={{ display: "grid", gridTemplateColumns: gridTpl, gap: 10, padding: "11px 20px",
-        background: "#f9731606", borderBottom: `1px solid ${C.border}`,
+      <div style={{ display: "grid", gridTemplateColumns: gridTpl, gap: 4, padding: "3px 8px",
+        background: C.subject + "08", borderBottom: `1px solid ${C.border}`,
         borderLeft: `3px solid ${C.subject}`, alignItems: "center" }}>
         <div>
-          <div style={{ color: C.subject, fontSize: 12, fontWeight: 700 }}>★ Subject (Program)</div>
-          <div style={{ color: C.faint, fontSize: 10 }}>Proposed · 2025</div>
+          <span style={{ color: C.subject, fontSize: 9, fontWeight: 700 }}>★ Subject</span>
+          <span style={{ color: C.faint, fontSize: 7, marginLeft: 3 }}>Proposed</span>
         </div>
-        <div style={{ textAlign: "right", color: ut.color, fontFamily: "monospace", fontSize: 13, fontWeight: 700 }}>{su.mix}%</div>
+        <div style={{ textAlign: "right", color: ut.color, fontFamily: mono, fontSize: 9, fontWeight: 700 }}>{su.mix}%</div>
         <div style={{ textAlign: "right" }}>
-          <div style={{ color: C.subject, fontFamily: "monospace", fontSize: 13, fontWeight: 700 }}>{su.sf.toLocaleString()}</div>
-          {avg.sf > 0 && <Delt value={su.sf - avg.sf} unit=" SF" />}
+          <div style={{ color: C.subject, fontFamily: mono, fontSize: 9, fontWeight: 700 }}>{su.sf.toLocaleString()}</div>
+          {avg.sf > 0 && <Delt value={su.sf - avg.sf} />}
         </div>
         <div style={{ textAlign: "right" }}>
-          <div style={{ color: C.subject, fontFamily: "monospace", fontSize: 13, fontWeight: 700 }}>${su.rent.toLocaleString()}</div>
+          <div style={{ color: C.subject, fontFamily: mono, fontSize: 9, fontWeight: 700 }}>${su.rent.toLocaleString()}</div>
           {avg.rent > 0 && <Delt value={su.rent - avg.rent} unit="$" />}
         </div>
-        <div style={{ textAlign: "right", color: C.subject, fontFamily: "monospace", fontSize: 12 }}>
+        <div style={{ textAlign: "right", color: C.subject, fontFamily: mono, fontSize: 8 }}>
           {su.sf ? `$${(su.rent/su.sf).toFixed(2)}` : "—"}
         </div>
-        <div style={{ textAlign: "right", color: C.faint, fontSize: 11 }}>—</div>
-        <div style={{ textAlign: "right", color: C.faint, fontSize: 11 }}>—</div>
-        <div style={{ textAlign: "right", color: C.faint, fontSize: 11 }}>—</div>
-        <PosTags rent={su.rent} />
+        <div style={{ textAlign: "right", color: C.faint, fontSize: 8 }}>—</div>
+        <div style={{ textAlign: "right", color: C.faint, fontSize: 8 }}>—</div>
+        <div style={{ textAlign: "right", color: C.faint, fontSize: 8 }}>—</div>
+        <PosTag rent={su.rent} />
       </div>
 
-      {/* Comp rows */}
-      {comps.filter(c => c.units[ut.key].mix > 0 || c.units[ut.key].sf > 0).map((c, ri) => {
-        const u = c.units[ut.key];
+      {comps.filter(c => (c.units[ut.key]?.mix ?? 0) > 0 || (c.units[ut.key]?.sf ?? 0) > 0).map((c, ri) => {
+        const u = c.units[ut.key] ?? { mix: 0, sf: 0, rent: 0, vac: 0, dom: 0, conc: 0 };
         const psf = u.sf ? +(u.rent/u.sf).toFixed(2) : null;
         return (
-          <div key={c.id} style={{ display: "grid", gridTemplateColumns: gridTpl, gap: 10,
-            padding: "11px 20px", borderBottom: `1px solid ${C.border}`,
-            background: ri%2===0 ? "transparent" : "#060f1a50",
+          <div key={c.id} style={{ display: "grid", gridTemplateColumns: gridTpl, gap: 4,
+            padding: "3px 8px", borderBottom: `1px solid ${C.border}40`,
+            background: ri%2===0 ? "transparent" : "#1A1F2E10",
             borderLeft: "3px solid transparent", alignItems: "center" }}>
             <div>
-              <div style={{ color: C.text, fontSize: 12 }}>{c.name}</div>
-              <div style={{ color: C.faint, fontSize: 10 }}>{c.built} · {c.cls}</div>
+              <span style={{ color: C.text, fontSize: 9 }}>{c.name}</span>
+              <span style={{ color: C.faint, fontSize: 7, marginLeft: 3 }}>{c.built}·{c.cls}</span>
             </div>
-            <div style={{ textAlign: "right", color: ut.color, fontFamily: "monospace",
-              fontSize: 12, fontWeight: 700 }}>{u.mix > 0 ? `${u.mix}%` : "—"}</div>
-            <div style={{ textAlign: "right" }}>
-              <div style={{ color: C.text, fontFamily: "monospace", fontSize: 12 }}>{u.sf > 0 ? u.sf.toLocaleString() : "—"}</div>
-              {u.sf > 0 && avg.sf > 0 && <Delt value={u.sf - avg.sf} unit=" SF" />}
+            <div style={{ textAlign: "right", color: ut.color, fontFamily: mono, fontSize: 9, fontWeight: 700 }}>
+              {u.mix > 0 ? `${u.mix}%` : "—"}
             </div>
             <div style={{ textAlign: "right" }}>
-              <div style={{ color: C.text, fontFamily: "monospace", fontSize: 13, fontWeight: 700 }}>
+              <div style={{ color: C.text, fontFamily: mono, fontSize: 9 }}>{u.sf > 0 ? u.sf.toLocaleString() : "—"}</div>
+              {u.sf > 0 && avg.sf > 0 && <Delt value={u.sf - avg.sf} />}
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ color: C.text, fontFamily: mono, fontSize: 9, fontWeight: 700 }}>
                 {u.rent > 0 ? `$${u.rent.toLocaleString()}` : "—"}
               </div>
               {u.rent > 0 && avg.rent > 0 && <Delt value={u.rent - avg.rent} unit="$" />}
             </div>
-            <div style={{ textAlign: "right", color: C.dim, fontFamily: "monospace", fontSize: 12 }}>
+            <div style={{ textAlign: "right", color: C.dim, fontFamily: mono, fontSize: 8 }}>
               {psf ? `$${psf}` : "—"}
             </div>
-            <div style={{ textAlign: "right" }}>
-              <span style={{ color: sigColor(u.vac,"vac"), fontFamily: "monospace", fontSize: 12, fontWeight: 700 }}>
-                {u.vac > 0 ? `${u.vac}%` : "—"}
-              </span>
+            <div style={{ textAlign: "right", color: sigColor(u.vac,"vac"), fontFamily: mono, fontSize: 9, fontWeight: 700 }}>
+              {u.vac > 0 ? `${u.vac}%` : "—"}
             </div>
-            <div style={{ textAlign: "right" }}>
-              <span style={{ color: sigColor(u.dom,"dom"), fontFamily: "monospace", fontSize: 12, fontWeight: 700 }}>
-                {u.dom > 0 ? `${u.dom}d` : "—"}
-              </span>
+            <div style={{ textAlign: "right", color: sigColor(u.dom,"dom"), fontFamily: mono, fontSize: 9, fontWeight: 700 }}>
+              {u.dom > 0 ? `${u.dom}d` : "—"}
             </div>
-            <div style={{ textAlign: "right" }}>
-              <span style={{ color: sigColor(u.conc,"conc"), fontFamily: "monospace", fontSize: 12, fontWeight: 700 }}>
-                {u.conc > 0 ? `${u.conc}wk` : "—"}
-              </span>
+            <div style={{ textAlign: "right", color: sigColor(u.conc,"conc"), fontFamily: mono, fontSize: 9, fontWeight: 700 }}>
+              {u.conc > 0 ? `${u.conc}wk` : "—"}
             </div>
-            <PosTags rent={u.rent} />
+            <PosTag rent={u.rent} />
           </div>
         );
       })}
 
-      {/* Avg row */}
-      <div style={{ display: "grid", gridTemplateColumns: gridTpl, gap: 10, padding: "10px 20px",
-        background: "#060f1a", borderTop: `2px solid ${C.border}`, alignItems: "center" }}>
-        <div style={{ color: C.dim, fontSize: 12, fontWeight: 700 }}>Comp Average</div>
-        <div style={{ textAlign: "right", color: ut.color, fontFamily: "monospace", fontSize: 12, fontWeight: 700 }}>
-          {avg.mix.toFixed(1)}%
-        </div>
-        <div style={{ textAlign: "right", color: ut.color, fontFamily: "monospace", fontSize: 12, fontWeight: 700 }}>
-          {avg.sf.toLocaleString()}
-        </div>
-        <div style={{ textAlign: "right", color: ut.color, fontFamily: "monospace", fontSize: 12, fontWeight: 700 }}>
-          ${avg.rent.toLocaleString()}
-        </div>
-        <div style={{ textAlign: "right", color: ut.color, fontFamily: "monospace", fontSize: 12, fontWeight: 700 }}>
-          {avg.sf ? `$${(avg.rent/avg.sf).toFixed(2)}` : "—"}
-        </div>
-        <div style={{ textAlign: "right", color: ut.color, fontFamily: "monospace", fontSize: 12, fontWeight: 700 }}>
-          {avg.vac.toFixed(1)}%
-        </div>
-        <div style={{ textAlign: "right", color: ut.color, fontFamily: "monospace", fontSize: 12, fontWeight: 700 }}>
-          {Math.round(avg.dom)}d
-        </div>
-        <div style={{ textAlign: "right", color: ut.color, fontFamily: "monospace", fontSize: 12, fontWeight: 700 }}>
-          {avg.conc.toFixed(1)}wk
-        </div>
+      <div style={{ display: "grid", gridTemplateColumns: gridTpl, gap: 4, padding: "3px 8px",
+        background: C.bg, borderTop: `2px solid ${C.border}`, alignItems: "center" }}>
+        <div style={{ color: C.dim, fontSize: 9, fontWeight: 700 }}>Comp Avg</div>
+        <div style={{ textAlign: "right", color: ut.color, fontFamily: mono, fontSize: 9, fontWeight: 700 }}>{avg.mix.toFixed(1)}%</div>
+        <div style={{ textAlign: "right", color: ut.color, fontFamily: mono, fontSize: 9, fontWeight: 700 }}>{avg.sf.toLocaleString()}</div>
+        <div style={{ textAlign: "right", color: ut.color, fontFamily: mono, fontSize: 9, fontWeight: 700 }}>${avg.rent.toLocaleString()}</div>
+        <div style={{ textAlign: "right", color: ut.color, fontFamily: mono, fontSize: 8, fontWeight: 700 }}>{avg.sf ? `$${(avg.rent/avg.sf).toFixed(2)}` : "—"}</div>
+        <div style={{ textAlign: "right", color: ut.color, fontFamily: mono, fontSize: 9, fontWeight: 700 }}>{avg.vac.toFixed(1)}%</div>
+        <div style={{ textAlign: "right", color: ut.color, fontFamily: mono, fontSize: 9, fontWeight: 700 }}>{Math.round(avg.dom)}d</div>
+        <div style={{ textAlign: "right", color: ut.color, fontFamily: mono, fontSize: 9, fontWeight: 700 }}>{avg.conc.toFixed(1)}wk</div>
         <div />
       </div>
     </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────
-//  ROOT
-// ─────────────────────────────────────────────────────────
+export {
+  DemandMatrix, GapAnalysis, ProgramEditor, ZoningPanel, InventorySnapshot,
+  PropertyDrillDown, TrendDetail, MixMatrix, RentSFScatter, CompTable,
+  computeOptimalProgram, computeProgram, computeInventory, computeGaps,
+  compAvg, buildScatter, demandLabel, COMPS, TREND_DATA, PROGRAM_SEED, ZONING_SEED,
+  UT_META, C as UMC,
+};
+export type { Program, UnitKey, CompData, ZoningData, ProgramUnit, InventoryItem, GapItem };
+
 export default function UnitMixIntelligence() {
   const { dealId } = useParams<{ dealId: string }>();
   const { activeTradeArea } = useTradeAreaStore();
   const tradeAreaId = activeTradeArea?.id;
+  const developmentEnvelope = useDealStore(s => s.developmentEnvelope);
+  const dealType = useDealType();
 
   const {
     comps: apiComps, demandScores: apiDemandScores, trends: apiTrends,
     zoning: apiZoning, program: apiProgram, loading, error,
-    handleProgramChange: saveProgram,
+    handleProgramChange: saveProgram, pushToProforma,
   } = useUnitMixIntelligence(dealId, tradeAreaId);
 
   const hasApiComps = apiComps && apiComps.length > 0;
@@ -1332,26 +1494,47 @@ export default function UnitMixIntelligence() {
   const [filterUT,  setFilterUT]  = useState("all");
   const [tableUT,   setTableUT]   = useState<UnitKey>("twoBR");
   const initializedRef = useRef(false);
+  const hasDbProgramRef = useRef(false);
 
   useEffect(() => {
     if (loading || initializedRef.current) return;
     initializedRef.current = true;
     if (apiZoning) setZoning(apiZoning as ZoningData);
-    if (apiProgram && (apiProgram as any).totalUnits) setProgram(apiProgram as Program);
+
+    const hasSaved = apiProgram && typeof apiProgram === 'object' && 'totalUnits' in apiProgram && (apiProgram as Program).totalUnits > 0;
+    if (hasSaved) {
+      hasDbProgramRef.current = true;
+      setProgram(apiProgram as Program);
+    } else {
+      const seedUnits = developmentEnvelope?.max_units || PROGRAM_SEED.totalUnits;
+      const optimal = computeOptimalProgram(seedUnits, comps, {
+        zoning: apiZoning as ZoningData || undefined,
+      });
+      setProgram(optimal);
+    }
   }, [loading, apiZoning, apiProgram]);
+
+  useEffect(() => {
+    if (!developmentEnvelope?.max_units || !initializedRef.current || hasDbProgramRef.current) return;
+    const newUnits = developmentEnvelope.max_units;
+    setProgram(prev => prev.totalUnits === newUnits ? prev : { ...prev, totalUnits: newUnits });
+  }, [developmentEnvelope?.max_units]);
 
   const handleProgramChange = (p: Program) => {
     setProgram(p);
-    saveProgram(p as any);
+    hasDbProgramRef.current = true;
+    saveProgram(p);
   };
 
   const computed   = computeProgram(program);
   const inventory  = computeInventory(comps);
   const gaps       = computeGaps(inventory);
 
+  const dealTypeLabel = dealType === 'development' ? 'GROUND-UP' : dealType === 'redevelopment' ? 'REDEV' : 'EXISTING';
+  const programLabel = dealType === 'existing' ? '✏ Review Mix' : dealType === 'redevelopment' ? '✏ Reconfig Mix' : '✏ Program';
   const tabs = [
     { id: "demand",    label: "Demand"    },
-    { id: "program",   label: "✏ Program" },
+    { id: "program",   label: programLabel },
     { id: "inventory", label: "Inventory" },
     { id: "trends",    label: "Trends"    },
     { id: "comps",     label: "Comps"     },
@@ -1359,44 +1542,39 @@ export default function UnitMixIntelligence() {
 
   return (
     <div style={{ background: C.bg, minHeight: "100vh",
-      fontFamily: "'DM Sans', system-ui, sans-serif", color: C.text, paddingBottom: 60 }}>
+      fontFamily: "'DM Sans', system-ui, sans-serif", color: C.text, paddingBottom: 40 }}>
 
-      {/* HEADER */}
       <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`,
-        padding: "16px 24px 0", position: "sticky", top: 0, zIndex: 100 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+        padding: "6px 10px 0", position: "sticky", top: 0, zIndex: 100 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
           <div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 3 }}>
-              <span style={{ color: C.blue, fontFamily: "monospace", fontSize: 9,
-                fontWeight: 700, letterSpacing: "0.12em" }}>M02 · M05 · M07 · M15</span>
+            <div style={{ display: "flex", gap: 5, alignItems: "center", marginBottom: 1 }}>
+              <span style={{ color: C.blue, fontFamily: mono, fontSize: 7, fontWeight: 700, letterSpacing: "0.08em" }}>M02 · M05 · M07 · M15</span>
               <span style={{ color: C.border }}>|</span>
-              <span style={{ color: C.faint, fontFamily: "monospace", fontSize: 9 }}>
-                UNIT MIX INTELLIGENCE
-              </span>
+              <span style={{ color: C.faint, fontFamily: mono, fontSize: 7 }}>UNIT MIX INTELLIGENCE · {dealTypeLabel}</span>
             </div>
-            <h1 style={{ color: "#f1f5f9", fontSize: 18, fontWeight: 800, margin: 0 }}>
+            <h1 style={{ color: C.text, fontSize: 13, fontWeight: 800, margin: 0 }}>
               Unit Mix & Pricing Intelligence
             </h1>
-            <p style={{ color: C.dim, fontSize: 11, margin: "2px 0 0" }}>
+            <p style={{ color: C.dim, fontSize: 8, margin: "1px 0 0" }}>
               Trade Area · {comps.length} comps ·{" "}
               {comps.reduce((s, c) => s + c.total, 0).toLocaleString()} tracked units ·
               Zoning: <span style={{ color: C.blue }}>{zoning.zoningCode}</span>
             </p>
           </div>
 
-          {/* Gap + demand pills */}
-          <div style={{ display: "flex", gap: 7 }}>
+          <div style={{ display: "flex", gap: 3 }}>
             {gaps.map(g => {
               const color = g.gap > 2 ? C.green : g.gap < -2 ? C.red : C.yellow;
               const dl = demandLabel(g.demandScore);
               return (
                 <div key={g.key} style={{ background: color+"10", border: `1px solid ${color}30`,
-                  borderRadius: 7, padding: "5px 10px", textAlign: "center" }}>
-                  <div style={{ color: g.color, fontFamily: "monospace", fontSize: 9, fontWeight: 700 }}>{g.abbr}</div>
-                  <div style={{ color, fontFamily: "monospace", fontSize: 12, fontWeight: 800 }}>
+                  borderRadius: 3, padding: "3px 6px", textAlign: "center" }}>
+                  <div style={{ color: g.color, fontFamily: mono, fontSize: 7, fontWeight: 700 }}>{g.abbr}</div>
+                  <div style={{ color, fontFamily: mono, fontSize: 10, fontWeight: 800 }}>
                     {g.gap > 0 ? "+" : ""}{g.gap.toFixed(1)}pp
                   </div>
-                  <div style={{ color: dl.color, fontSize: 8, fontFamily: "monospace" }}>
+                  <div style={{ color: dl.color, fontSize: 7, fontFamily: mono }}>
                     {dl.label.slice(0,4)}
                   </div>
                 </div>
@@ -1410,17 +1588,17 @@ export default function UnitMixIntelligence() {
             <button key={t.id} onClick={() => setTab(t.id)} style={{
               background: "none", border: "none",
               borderBottom: tab === t.id ? `2px solid ${C.blue}` : "2px solid transparent",
-              padding: "7px 16px", marginBottom: -1,
-              color: tab === t.id ? "#e2e8f0" : C.dim,
-              fontSize: 12, fontWeight: tab === t.id ? 700 : 400,
+              padding: "4px 10px", marginBottom: -1,
+              color: tab === t.id ? C.text : C.dim,
+              fontSize: 9, fontWeight: tab === t.id ? 700 : 400,
+              fontFamily: mono,
               cursor: "pointer", transition: "all 0.15s",
             }}>{t.label}</button>
           ))}
         </div>
       </div>
 
-      {/* BODY */}
-      <div style={{ padding: "18px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ padding: "8px 10px", display: "flex", flexDirection: "column", gap: 8 }}>
 
         {tab === "demand" && (
           <>
@@ -1432,7 +1610,12 @@ export default function UnitMixIntelligence() {
         {tab === "program" && (
           <>
             <ZoningPanel zoning={zoning} program={program} computed={computed} onZoningChange={setZoning} />
-            <ProgramEditor program={program} computed={computed} zoning={zoning} onProgramChange={handleProgramChange} comps={comps} />
+            <ProgramEditor program={program} computed={computed} zoning={zoning} onProgramChange={handleProgramChange} comps={comps}
+              readOnly={dealType === 'existing'}
+              onPushToProforma={async (p) => {
+                const result = await pushToProforma(p);
+                return result;
+              }} />
           </>
         )}
 

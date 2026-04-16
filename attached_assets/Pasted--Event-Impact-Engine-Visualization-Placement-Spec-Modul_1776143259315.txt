@@ -1,0 +1,588 @@
+# Event Impact Engine — Visualization & Placement Spec
+
+**Module:** M35 Event Impact Engine — UI/UX layer
+**Status:** Implementation-grade spec
+**Supersedes/extends:** `Event_Impact_Engine_Spec.md` (M35 backend)
+**Scope:** How to graph events against metrics, where events live (property/submarket/MSA), and how they surface in the Deal Capsule
+
+---
+
+## 1. The Three-Scope Reality
+
+Events don't operate at one scope. A hurricane affects an entire MSA; an Amazon HQ announcement affects a specific submarket; a major renovation at a neighboring property affects the subject property directly. The UI has to respect this — forcing everything to property-level misses macro events; forcing everything to MSA-level misses micro events.
+
+**The rule: events attach to their natural scope, and cascade downward.**
+
+```
+MSA-scope events
+  ↓ cascade to all submarkets
+  ↓ cascade to all properties
+
+SUBMARKET-scope events
+  ↓ cascade to all properties in submarket
+
+PROPERTY-scope events
+  ↓ stay at property level
+```
+
+A property-scope view shows events from all three levels, filtered by relevance. A submarket view shows submarket + MSA events. An MSA view shows only MSA events.
+
+### 1.1 Scope Assignment Per Event Category
+
+| Event Category | Default Scope | Examples |
+|---|---|---|
+| Employment — Major HQ (2000+ jobs) | MSA | Amazon HQ2, Apple campus |
+| Employment — Mid employer (500-2000) | Submarket | Regional HQ, large plant |
+| Employment — Local (<500) | Submarket | Small plant, hospital wing |
+| Transit opening | Submarket (with property-level proximity decay) | BRT station, light rail |
+| Highway / port expansion | MSA | Interstate, airport |
+| Zoning — area-wide | Submarket | Overlay districts |
+| Zoning — parcel-specific | Property | Upzone on subject parcel |
+| STR regulation | MSA or submarket (depending on ordinance) | Miami Beach STR ban |
+| Tax abatement / opportunity zone | Parcel/block | Opportunity Zone designation |
+| Insurance regulation | State/MSA | FL wind rate caps |
+| Major delivery wave | Submarket | 500+ units within 1mi |
+| Single competitor delivery | Property (trade-area) | Specific competitor opens |
+| Major acquisition / institutional entry | Submarket | Blackstone enters market |
+| Hurricane / flood / wildfire | MSA or submarket | Depends on footprint |
+| Pandemic | Nation/MSA | COVID-19 |
+| Migration wave | MSA | SF→Austin flow |
+| Industry cluster emergence | Submarket | Tech corridor formation |
+| Remote work regime shift | National/MSA | RTO mandates |
+
+Scope is a property of the event type, not a user decision. But scope can be **refined** at ingestion — an employment event defaults to submarket, but if the user confirms "it's within 3mi of my property," it gets a property-proximity multiplier layered on top of the submarket scope.
+
+### 1.2 Proximity Decay for Submarket/MSA Events
+
+When a submarket-level event (like a transit opening) cascades to properties, impact attenuates with distance:
+
+```
+property_impact = submarket_impact × proximity_decay_function(distance_to_event)
+
+For transit: exponential decay, half-life ~0.5mi
+For employment: exponential decay, half-life ~3mi
+For hurricane: inverse distance squared, capped at storm footprint
+```
+
+A property at 0.2mi from a new BRT station sees ~90% of the submarket impact. At 1mi, ~25%. At 2mi, negligible. The Event Card on the property page shows the *property-specific* projected impact, not the generic submarket impact.
+
+---
+
+## 2. Graphing Strategy
+
+Events are discrete points in time; metrics are continuous time series. The visualization needs to show **both** with event impact visible.
+
+### 2.1 The Primary Chart — Metric Timeline with Event Overlays
+
+This is the core visualization. One chart per metric, with events as vertical markers and forecast shading.
+
+```
+ Rent Growth (YoY)
+ ┌───────────────────────────────────────────────────────────────┐
+ │                                                                │
+ │                                   ┌── Forecast cone ─╲          │
+ │                                  ╱ ████░░░░░░░░░░░░░░╲         │
+ │              ━━━━━━━━━━━━━━━━━━━━                    ╲        │
+ │             /                                          ╲       │
+ │            /                                            ────   │  ← historical actuals
+ │   ━━━━━━━━                                                     │
+ │                                                                │
+ │                                                                │
+ │   T-24      T-12      T-0       T+12      T+24     T+36       │
+ │              │          │          │                           │
+ │              │          │          │                           │
+ │              ⬆          ⬆          ⬆                           │
+ │           Event A   Event B    Event C (forecast)              │
+ │           📣 HQ     🚆 BRT     📣 Apple campus                 │
+ │           (fired)   (fired)    (announced)                     │
+ │                                                                │
+ └───────────────────────────────────────────────────────────────┘
+```
+
+Elements:
+
+- **X-axis:** Time, centered on today (T-0 marker). Historical on left, forecast on right. Default window: T-24mo to T+36mo.
+- **Y-axis:** Metric value.
+- **Historical line (solid):** Actual observations.
+- **Forecast cone (shaded):** Forecast point estimate + confidence interval from active forecasts.
+- **Event markers (vertical lines):** One per event with icon at top. Dotted when event is forecasted/pending, solid when fired. Color-coded by scope: MSA = gray, Submarket = cyan, Property = amber.
+- **Event impact bands (horizontal shading between event fire and observed impact window):** Light shading from event date forward through the expected impact window (T+3, T+12, T+24 per playbook).
+
+**Interaction:**
+- Hover event marker → tooltip shows event name, date, scope, projected impact on this metric
+- Click event marker → opens Event Detail drawer
+- Hover chart point → shows actual value, projected-without-event baseline, delta, and attributed event driver(s)
+- Toggle to add/remove specific event overlays
+- Toggle to show counterfactual line (what the metric would have been without the event per DiD analysis)
+
+### 2.2 The Event Density Strip
+
+Below the primary chart, a horizontal strip showing event density over the time window:
+
+```
+Events affecting this [property/submarket/MSA]:
+│ █ ███    █ █ ████  █  ██   ████    █   ██    ██ █                  │
+│ ─────────┬──────────┬──────────┬──────────┬──────────┬─────        │
+│ 24mo ago            12mo ago       today        12mo fwd  24mo     │
+```
+
+Each tick mark = one event. Height = magnitude category (small, medium, large, transformative). Color = scope. Hover → tooltip.
+
+Useful for noticing clusters — "lots of events 12-18mo ago" correlates with metric shifts visible in the primary chart.
+
+### 2.3 The Actual-vs-Forecast Tracker (for fired events)
+
+For events that have fired, compare what's actually happening to what the playbook predicted:
+
+```
+Amazon HQ2 — Forecast vs Actual Tracking
+                                                   T+8mo
+ ┌────────────────────────────────────────────────┐
+ │                    ╱ Forecast high               │
+ │                   ╱   ────────                   │
+ │                  ╱   ╱  Forecast median          │
+ │                 ╱   ╱  ──────────                │
+ │                ╱   ╱  ╱                          │
+ │               ╱   ╱  ╱   ● Actual (ahead)        │
+ │              ╱   ╱  ╱                            │
+ │             ╱   ╱  ╱                             │
+ │            ╱   ╱  ╱    Forecast low              │
+ │           ╱   ╱  ╱    ────                       │
+ │          ╱   ╱  ╱                                │
+ │         ╱_________________________              │
+ │         T+0    T+3    T+6    T+9   T+12         │
+ │                                                  │
+ │  Status: AHEAD of playbook                       │
+ │  Current +2.1% vs forecast median +1.3%          │
+ │  Upgrades playbook confidence for Tampa          │
+ └────────────────────────────────────────────────┘
+```
+
+Shown on Event Detail page. Key visual: is actual inside or outside the forecast cone? Ahead (positive surprise), behind (negative surprise), or on pace.
+
+### 2.4 The Cascade Visualization
+
+For MSA events cascading to submarkets/properties, show the geographic cascade:
+
+```
+[Map with heat overlay]
+  MSA-level event epicenter: ● Amazon HQ site
+  Submarket heat intensity: gradient based on proximity + projected impact
+  Property-level deals plotted: circles sized by projected IRR impact
+```
+
+Click any submarket → filter to submarket-scope impact. Click any property → open property event timeline.
+
+### 2.5 The Multi-Metric Panel
+
+For pages showing multiple metrics affected by a single event, a 2x2 or 2x3 grid of small timeline charts:
+
+```
+Event: Amazon HQ2 Tampa — affecting 6 metrics
+
+┌─────────────┬─────────────┬─────────────┐
+│ Rent Growth │ Absorption  │ Search Mom. │
+│  ●  ●  ●    │  ● ●  ●     │ ● ● ●       │
+│ [mini chart]│ [mini chart]│ [mini chart]│
+├─────────────┼─────────────┼─────────────┤
+│ Cap Rate    │ Permits     │ AADT        │
+│ [mini chart]│ [mini chart]│ [mini chart]│
+└─────────────┴─────────────┴─────────────┘
+```
+
+Each mini-chart = metric timeline with the event marker overlaid. User scans all six at once to see whether the event is having coherent multi-metric effects as playbook predicts.
+
+### 2.6 The Metric Attribution Waterfall
+
+For a given metric value change (say, rent growth went from 3.2% baseline to 5.8% observed), decompose the change into contributing drivers:
+
+```
+Rent Growth — attribution waterfall Y2
+
+ Baseline trend                         3.2%  ━━━━━━━━━━
+ + Event #127 (Amazon HQ2)              +1.4%         ━━━━
+ + Event #203 (BRT Phase 1)             +0.5%             ━━
+ + Secular migration trend              +0.4%               ━━
+ + Unexplained                          +0.3%                 ━
+                                        ─────                  ━━━
+ Observed rent growth                    5.8%                 ━━━━━
+```
+
+Click any bar → drill into that driver's evidence.
+
+---
+
+## 3. Where Events Live in the Product
+
+Events surface on four distinct surfaces, each with a specific job.
+
+### 3.1 MSA / Market Intelligence Page
+
+**Page purpose:** "what's happening in this market generally"
+
+**Event placement:**
+- **Top banner strip:** Active major events affecting the MSA (transformative magnitude) — max 3 shown, click to expand
+- **Events timeline section:** Primary chart (Section 2.1) showing MSA-level metrics with MSA events overlaid. Default metric: rent growth; toggle to cap rate, permit velocity, transaction volume, migration.
+- **Events feed (right rail):** Chronological list of events affecting the MSA, filterable by category
+- **Playbook widgets:** For each currently-active MSA event, compact card showing forecast (Section 2.3) tracking
+
+### 3.2 Submarket Intelligence Page
+
+**Page purpose:** "what's happening in this submarket specifically"
+
+**Event placement:**
+- **Top banner:** Active submarket-scope events (including cascaded MSA events with submarket-specific magnitudes)
+- **Events timeline:** Primary chart with submarket metrics and both MSA + submarket events
+- **Event density strip:** Shows submarket event cadence
+- **Cascade panel:** "Events affecting this submarket from MSA level" collapsed by default, expand to see MSA events with their projected submarket impact
+
+### 3.3 Deal / Property Page (Deal Capsule)
+
+**Page purpose:** "what's happening to this specific deal"
+
+This is where the Capsule integration happens. Detailed in Section 4 below.
+
+### 3.4 Portfolio Dashboard
+
+**Page purpose:** "what should I be paying attention to across all my deals"
+
+**Event placement:**
+- **Active events feed:** Rolling list of events affecting any tracked property or submarket, severity-ranked
+- **Forecast divergence alerts:** When active forecasts diverge from actuals significantly, alert surfaces here
+- **Upcoming materializations:** Events at T-3mo to T-0 (things about to happen) — transit openings next quarter, zoning votes scheduled, etc.
+
+---
+
+## 4. Deal Capsule Integration
+
+The Capsule is where the Event Engine earns its keep — it's where a user decides whether to pursue or pass a deal, and event context is decision-critical.
+
+### 4.1 Capsule Structure (Current)
+
+Assuming standard Capsule sections (per project context):
+```
+Hero (property + JEDI Score)
+├── Deal Details (price, cap, PPU, GRM)
+├── Zoning & Property
+├── Market Intelligence
+├── Traffic & Competition
+├── Strategy (M08 output)
+├── Financial (F9 ProForma)
+├── Risk
+└── Events ← NEW
+```
+
+### 4.2 Events in the Capsule — Four Touch Points
+
+Events don't get their own isolated section **only**. They surface in four places throughout the Capsule, each with a specific cognitive job:
+
+**Touch 1 — Hero Event Badge (top of capsule)**
+
+If any critical event is active (transformative magnitude OR forecast divergence alert OR imminent materialization), a single-line badge appears at the top of the hero:
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│ 📣 3 active events affecting this deal — 1 transformative       │
+│ Amazon HQ2 (T+8mo, ahead of forecast), BRT Ph 2 (T-4mo pending), │
+│ FL Insurance Rate Cap (T+2mo materializes)                      │
+│ [View Event Timeline]                                           │
+└────────────────────────────────────────────────────────────────┘
+```
+
+Not a section you scroll to — a persistent banner. Purpose: the user must know events exist before digesting anything else. A deal's IRR might look great, but if the forecast driving it depends on an event, that dependency has to be visible immediately.
+
+**Touch 2 — Contextual Event Chips (inline throughout the Capsule)**
+
+Wherever an assumption or metric is event-attributed, a small chip appears inline. Not a new section — inline annotation.
+
+Examples:
+
+In the Financial section, on the Rent Growth Y2 row:
+```
+Rent Growth Y2: 5.8%  📣 +1.4pp from Amazon HQ2 (view)
+```
+
+In the Market Intelligence section, on the Absorption metric:
+```
+Absorption trend: +22% YoY  📣 Amazon HQ2 forecast +26%, tracking at +22% (-4pp vs forecast)
+```
+
+In the Zoning section, if a zoning vote is pending:
+```
+Current zoning: MF-16  📜 Upzone vote scheduled Q3 2026 (pending event)
+```
+
+These chips are small but cognitively heavy — they tell the user **which of the numbers on this page are event-dependent**. A deal with no event dependencies behaves differently than one where every key assumption has an event attached.
+
+**Touch 3 — Event Timeline Section (dedicated section)**
+
+A Capsule section between Risk and Strategy (or wherever natural in your flow) that shows the full event picture for this deal:
+
+```
+┌───────────────────────────────────────────────────────────────────┐
+│ EVENT TIMELINE                                                     │
+├───────────────────────────────────────────────────────────────────┤
+│                                                                    │
+│ [Multi-metric timeline chart — 4 metrics relevant to this deal:   │
+│  Rent Growth, Cap Rate, Absorption, Permits]                      │
+│                                                                    │
+│ Active events affecting this deal: 3                              │
+│                                                                    │
+│ ┌──────────────────────────────────────────────────────────────┐ │
+│ │ 📣 Amazon HQ2 Tampa (MSA event, property proximity 0.74)     │ │
+│ │ Status: T+8mo, ahead of forecast                              │ │
+│ │ Projected impact on this deal: IRR +1.8pp by Y2              │ │
+│ │ [View details]                                                │ │
+│ └──────────────────────────────────────────────────────────────┘ │
+│                                                                    │
+│ ┌──────────────────────────────────────────────────────────────┐ │
+│ │ 🚆 Tampa BRT Phase 2 (Submarket event, property 0.3mi away)  │ │
+│ │ Status: T-4mo, pending                                        │ │
+│ │ Projected impact on this deal: Rent +$85/unit by Y2          │ │
+│ └──────────────────────────────────────────────────────────────┘ │
+│                                                                    │
+│ ┌──────────────────────────────────────────────────────────────┐ │
+│ │ 📜 FL Insurance Rate Cap (State event)                        │ │
+│ │ Status: T+2mo, materializes                                   │ │
+│ │ Projected impact: Insurance expense -4% vs baseline          │ │
+│ └──────────────────────────────────────────────────────────────┘ │
+│                                                                    │
+│ [View full historical event list] [Add event]                     │
+└───────────────────────────────────────────────────────────────────┘
+```
+
+This is the dedicated surface for "show me every event attached to this deal with its projected impact."
+
+**Touch 4 — Decision Gate Modal (appears when running Strategy or F9)**
+
+When user clicks "Apply to ProForma" or "Run Strategy," if any event-dependent assumption is being used, a modal briefly shows:
+
+```
+┌───────────────────────────────────────────────────────────┐
+│ EVENT-DEPENDENT ASSUMPTIONS                                │
+│                                                            │
+│ This analysis depends on 3 event forecasts:               │
+│                                                            │
+│ ✓ Amazon HQ2 Tampa (fired, 74% confidence)                │
+│   Drives: Rent Growth Y1-3, Absorption Y1-2               │
+│                                                            │
+│ ⚠ Tampa BRT Phase 2 (pending, 60% confidence)             │
+│   Drives: Rent premium for property location              │
+│   Risk: if delayed, Y2 rent premium pushes to Y3          │
+│                                                            │
+│ ✓ FL Insurance Rate Cap (pending, 85% confidence)         │
+│   Drives: Insurance expense Y1+                           │
+│                                                            │
+│ [Proceed with forecasts] [Run without events] [Customize] │
+└───────────────────────────────────────────────────────────┘
+```
+
+Purpose: the user explicitly acknowledges which forecasts are baked into the model. "Run without events" gives them a counterfactual — what the deal looks like on baseline assumptions only. This is critical for stress testing.
+
+### 4.3 Capsule State — Event-Aware Flags
+
+The Capsule header already shows things like "JEDI Score 82" — add event-aware flags to the header:
+
+```
+Hero:
+  JEDI Score: 82
+  Event Sensitivity: HIGH  ← new
+  Event Concentration: 3 events contributing 42% of projected IRR uplift  ← new
+```
+
+**Event Sensitivity** = how much of the deal's return thesis depends on events firing per playbook. LOW = deal works without events. MEDIUM = events add 10-20% to IRR. HIGH = >20% of IRR depends on events.
+
+**Event Concentration** surfaces tail risk: if a single event is driving >30% of the return, that's concentration risk.
+
+### 4.4 Capsule Export / Memo Integration
+
+When user exports the Capsule to a deal memo (PDF / Docx), events appear in two places:
+
+1. **Executive summary** — one-paragraph event narrative, auto-generated: "This deal's underwriting incorporates 3 active event forecasts. The primary driver is the Amazon HQ2 relocation, tracking ahead of playbook forecasts at T+8mo. Secondary events include [...]."
+
+2. **Appendix — Event Dependencies** — full detail of each event, projected impact, confidence, divergence risks, alternative scenarios (ex-event and bear-case).
+
+---
+
+## 5. UI Component Library
+
+Build these as reusable components — they're used across all four surfaces (MSA / Submarket / Property / Dashboard).
+
+| Component | Job | Used In |
+|---|---|---|
+| `EventTimelineChart` | Metric timeline with event overlays (Section 2.1) | All surfaces |
+| `EventDensityStrip` | Horizontal density strip (Section 2.2) | MSA, Submarket |
+| `ForecastTracker` | Actual vs forecast cone (Section 2.3) | Event Detail, Capsule Touch 3 |
+| `CascadeMap` | Geographic cascade heat overlay (Section 2.4) | MSA Page, Event Detail |
+| `MultiMetricPanel` | 2x3 grid of mini timelines (Section 2.5) | Event Detail page |
+| `AttributionWaterfall` | Metric attribution decomposition (Section 2.6) | Financial section, Metric drill-down |
+| `EventCard` (compact) | Event + forecast + actuals summary | All surfaces |
+| `EventChip` (inline) | Small inline attribution tag | Capsule Touch 2 |
+| `EventHeroBanner` | Top-of-capsule persistent banner | Capsule Touch 1 |
+| `EventDependencyModal` | Pre-run acknowledgment (Capsule Touch 4) | Strategy + ProForma entry points |
+
+All components accept scope as a prop (`'msa' | 'submarket' | 'property'`) and adapt rendering.
+
+---
+
+## 6. Data Flow for the Capsule
+
+When a deal is loaded:
+
+```
+Deal load
+  ↓
+Resolve deal location → MSA, Submarket, Property parcel
+  ↓
+Query M35 for events at all three scopes:
+  GET /api/events?msa=X (cascaded to submarket, then property with proximity decay)
+  GET /api/events?submarket=Y (cascaded to property with proximity decay)
+  GET /api/events?propertyId=Z (direct)
+  ↓
+For each event, get active forecast for metrics relevant to this deal
+  ↓
+Compute event-attribution overlay on deal's metric projections
+  ↓
+Compute Event Sensitivity + Event Concentration flags
+  ↓
+Render Capsule with four event touch points populated
+```
+
+Cache the event-deal resolution at deal-load time for 15 minutes. Invalidate when new events ingest for affected scopes.
+
+### 6.1 Backend additions
+
+New endpoint:
+
+```
+GET /api/deals/:dealId/events-context
+→ {
+    events: Array<{
+      event: KeyEvent,
+      scope: 'msa' | 'submarket' | 'property',
+      proximityScore: number,           // 0-1, how applicable to this deal
+      projectedImpact: {
+        metric: string,
+        deltaAtT12: number,
+        deltaAtT24: number,
+        irrImpact: number,              // percentage points
+        confidence: number,
+      }[],
+    }>,
+    eventSensitivity: 'LOW' | 'MEDIUM' | 'HIGH',
+    eventConcentration: {
+      topEventSharePct: number,          // % of IRR uplift from #1 event
+      concentrationRisk: boolean,        // true if > 30%
+    },
+    timelineData: {
+      metrics: string[],
+      dataByMetric: Record<string, TimeSeriesPoint[]>,
+      eventMarkers: EventMarker[],
+    },
+  }
+```
+
+---
+
+## 7. Placement Decisions — Summary Table
+
+| Surface | Primary Event View | Inline Touches | Decision Support |
+|---|---|---|---|
+| MSA Intelligence | Timeline chart + density strip | Market metric annotations | Feed for submarket drill-down |
+| Submarket Intelligence | Timeline + cascade panel | Submarket metric annotations | Feed for property-level deals |
+| Property / Deal Capsule | Dedicated Event Timeline section | 4 touch points throughout | Hero banner + dependency modal |
+| Portfolio Dashboard | Rolling event feed + divergence alerts | Per-deal event counts | Priority queue |
+
+### 7.1 What to ship first
+
+Given limited build time, sequence:
+
+**Wave 1 — Capsule integration (highest leverage):**
+1. Hero Event Badge (Touch 1)
+2. Inline Event Chips (Touch 2)
+3. Dedicated Event Timeline section (Touch 3)
+4. Event Dependency Modal (Touch 4)
+
+**Wave 2 — Single metric timeline chart:**
+5. `EventTimelineChart` component (1-metric version)
+6. Embed in Capsule + Submarket pages
+
+**Wave 3 — Multi-metric + advanced:**
+7. `MultiMetricPanel`, `AttributionWaterfall`, `ForecastTracker`
+8. MSA Intelligence page full treatment
+
+**Wave 4 — Cascade + Portfolio:**
+9. `CascadeMap`, Portfolio Dashboard event feed
+
+This sequence gets the highest-leverage surface (Capsule) built first, so individual deal underwriting benefits from events before wider market intelligence pages get the full treatment.
+
+---
+
+## 8. Design Tokens
+
+- Event marker (fired, solid): vertical line 2px, color by scope (MSA gray `#6B7280`, Submarket cyan `#0891B2`, Property amber `#D97706`)
+- Event marker (forecast, dotted): same color, 2px dotted
+- Event icon: at top of line, 16px, category-specific (📣 Employment, 🚆 Transit, 📜 Regulatory, 🌀 Disaster, 🏢 Market Structure)
+- Forecast cone shading: 12% opacity of amber for "ahead," cyan for "on pace," red for "behind"
+- Impact band (post-event): 6% opacity of scope color, extends T+0 to T+24mo
+- Event chip (inline): compact pill, 10px font, scope-colored left border
+- Hero event banner: full-width, 48px tall, scope-colored left accent
+- Event Sensitivity flag: LOW green, MEDIUM amber, HIGH red with icon
+- Timeline axis: T-0 marker bold, grid lines 8% opacity
+- Cascade heatmap: 6-stop gradient from cool (low impact) to warm (high impact)
+
+---
+
+## 9. Test Cases
+
+1. Deal in Tampa submarket with 3 active events (Amazon HQ2 MSA-scope, BRT Phase 2 submarket-scope, FL insurance rate cap state-scope) → Capsule Hero shows banner with 3 events, each correctly scoped and with proximity-decayed impact on this property.
+
+2. Event Timeline chart for rent growth → displays 24mo history + 24mo forecast cone with 3 event markers at their actual/announced dates; hover reveals per-event projected contribution.
+
+3. Inline Event Chip on Rent Growth Y2 (5.8%) → tooltip shows decomposition: 3.2% baseline + 1.4pp from Amazon + 0.5pp from BRT + 0.4pp secular + 0.3pp unexplained = 5.8%.
+
+4. Capsule "Event Sensitivity" flag computation → deal with 22% of IRR uplift from events flagged MEDIUM; deal with 42% from events flagged HIGH.
+
+5. Event Dependency Modal pre-ProForma run → lists 3 events, confidence scores, primary assumptions each drives; "Run without events" button generates counterfactual with baseline-only assumptions.
+
+6. Property-scope zoning upzone event fires → cascades only to subject property (not to submarket). Capsule for subject property shows event; Capsule for neighboring property doesn't.
+
+7. MSA-scope hurricane event → cascades to all submarkets in MSA with geographic attenuation. Coastal submarkets show higher impact magnitudes than inland in same MSA.
+
+8. Event forecast ahead of playbook (Amazon HQ2 tracking +2.1% vs forecast +1.3%) → Forecast Tracker component shows actual point above forecast cone median; status badge "AHEAD."
+
+9. Event Density Strip on MSA page shows cluster at 14-18mo ago → user notices correlation with rent growth inflection in primary chart.
+
+10. Cascade map for Amazon HQ2 event → heat overlay peaks near HQ epicenter, decays with distance; tracked portfolio properties plotted with size by projected IRR impact.
+
+11. Multi-Metric Panel on Event Detail page → 6 mini timelines for rent/absorption/search/cap/permits/AADT, each with event marker; user scans to see coherent multi-metric response.
+
+12. Attribution Waterfall for 5.8% rent growth → stacked bar showing baseline + each event contribution + unexplained; click event bar → drills to event detail.
+
+13. Deal memo export → executive summary paragraph auto-generated with event narrative; appendix has full event dependencies with forecast vs actual tracking for fired events.
+
+14. Portfolio Dashboard event feed → active events affecting 12 properties shown; 3 flagged as divergence alerts (forecast materially off-pace).
+
+15. New event ingests (user submits) → Capsule for relevant deal auto-refreshes event count badge; hero banner updates on next page load.
+
+---
+
+## 10. The Sequencing Answer
+
+**Where do events live?** All three levels — MSA, Submarket, Property — with events assigned to their natural scope and cascading downward with attenuation.
+
+**What's the primary visualization?** Metric timeline with event overlays (Section 2.1) — it's the one chart that answers "what happened to this metric, when, because of what." Ship this component first; it's reusable across every surface.
+
+**Where in the Capsule?** Four touch points, not one section:
+1. Hero banner (can't be missed)
+2. Inline chips (contextual attribution)
+3. Dedicated Event Timeline section (full detail)
+4. Dependency modal (decision-gate acknowledgment)
+
+The Capsule shouldn't have an "Events tab" — that hides the event dependency. Events have to be woven through the Capsule because they affect every underwriting decision the user makes in it.
+
+**What to build first?** Capsule integration (Wave 1) before the general market pages. Individual deal underwriting is where events most affect revenue-generating decisions, so the Capsule investment returns first.
+
+---
+
+**End of spec.**

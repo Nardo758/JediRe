@@ -80,48 +80,53 @@ export function createCapsuleRoutes(pool: Pool): Router {
     try {
       const { user_id, status, search, limit = 50, offset = 0 } = req.query;
 
-      if (!user_id) {
-        return res.status(400).json({ error: 'Missing required parameter: user_id' });
+      const isValidUuid = (v: unknown) => typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+      const useUserFilter = isValidUuid(user_id);
+
+      let query = `SELECT * FROM capsule_summary`;
+      const params: any[] = [];
+      let paramIndex = 1;
+      const conditions: string[] = [];
+
+      if (useUserFilter) {
+        conditions.push(`user_id = $${paramIndex++}`);
+        params.push(user_id);
       }
 
-      let query = `
-        SELECT * FROM capsule_summary 
-        WHERE user_id = $1
-      `;
-      const params: any[] = [user_id];
-      let paramIndex = 2;
-
       if (status) {
-        query += ` AND status = $${paramIndex}`;
+        conditions.push(`status = $${paramIndex++}`);
         params.push(status);
-        paramIndex++;
       }
 
       if (search) {
-        query += ` AND (property_address ILIKE $${paramIndex})`;
+        conditions.push(`property_address ILIKE $${paramIndex++}`);
         params.push(`%${search}%`);
-        paramIndex++;
       }
 
+      if (conditions.length > 0) query += ` WHERE ${conditions.join(' AND ')}`;
       query += ` ORDER BY created_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
       params.push(parseInt(limit as string), parseInt(offset as string));
 
       const result = await pool.query(query, params);
 
-      let countQuery = `SELECT COUNT(*) FROM deal_capsules WHERE user_id = $1`;
-      const countParams: any[] = [user_id];
-      let countParamIndex = 2;
+      let countQuery = `SELECT COUNT(*) FROM deal_capsules`;
+      const countParams: any[] = [];
+      const countConditions: string[] = [];
+      let countParamIndex = 1;
 
-      if (status) {
-        countQuery += ` AND status = $${countParamIndex}`;
-        countParams.push(status);
-        countParamIndex++;
+      if (useUserFilter) {
+        countConditions.push(`user_id = $${countParamIndex++}`);
+        countParams.push(user_id);
       }
-
+      if (status) {
+        countConditions.push(`status = $${countParamIndex++}`);
+        countParams.push(status);
+      }
       if (search) {
-        countQuery += ` AND (property_address ILIKE $${countParamIndex})`;
+        countConditions.push(`property_address ILIKE $${countParamIndex++}`);
         countParams.push(`%${search}%`);
       }
+      if (countConditions.length > 0) countQuery += ` WHERE ${countConditions.join(' AND ')}`;
 
       const countResult = await pool.query(countQuery, countParams);
 
@@ -544,9 +549,43 @@ export function createCapsuleRoutes(pool: Pool): Router {
   });
 
   /**
-   * GET /api/capsules/:id/activity
-   * Get activity log for a capsule
+   * POST /api/capsules/:id/activity
+   * Push an intel item to a capsule's activity feed
    */
+  router.post('/:id/activity', async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { activity_type, activity_data } = req.body;
+
+      if (!activity_type) {
+        return res.status(400).json({ error: 'Missing required parameter: activity_type' });
+      }
+
+      const capsuleResult = await pool.query(
+        `SELECT id, user_id FROM deal_capsules WHERE id = $1`,
+        [id]
+      );
+
+      if (capsuleResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Capsule not found' });
+      }
+
+      const ownerUserId = capsuleResult.rows[0].user_id;
+
+      const result = await pool.query(
+        `INSERT INTO capsule_activity (capsule_id, user_id, activity_type, activity_data)
+         VALUES ($1, $2, $3, $4)
+         RETURNING *`,
+        [id, ownerUserId, activity_type, JSON.stringify(activity_data ?? {})]
+      );
+
+      res.status(201).json({ success: true, activity: result.rows[0] });
+    } catch (error) {
+      console.error('Error logging capsule activity:', error);
+      res.status(500).json({ error: 'Failed to log capsule activity' });
+    }
+  });
+
   router.get('/:id/activity', async (req: Request, res: Response) => {
     try {
       const { id } = req.params;

@@ -615,6 +615,16 @@ export class ResearchAgent {
       msaUnemploymentRate: 0, cpiYoY: 0,
     };
   }
+
+  async getMetricRecommendations(
+    marketGeoIds: Array<{ geoType: string; geoId: string }>,
+    userId: string,
+    topN: number = 5
+  ) {
+    const { MetricRecommendationAgent } = await import('./metric-recommendation.agent');
+    const agent = new MetricRecommendationAgent();
+    return agent.execute({ marketGeoIds, topN }, userId);
+  }
 }
 
 export const researchAgent = new ResearchAgent();

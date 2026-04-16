@@ -1,0 +1,657 @@
+# Debt Advisor Module — Strategy-Driven Debt Setup & Timing
+
+**Module:** M11 Debt (expanded) + new Debt Advisor layer
+**Status:** Implementation-grade spec — ready for Claude Code
+**Supersedes:** The Debt tab section of the F9 Complete Model Spec — adds the Advisor layer on top; preserves the existing modeling interface
+**Dependencies:** M08 Strategies (v2 detection + plan output), `capital-structure.service.ts` (742 lines), `rate-sheet-parser.service.ts`, `rate-index.service.ts`, FRED forward rate curve feed, rate cap pricing feed (Chatham/Pensford), S2 Ownership Intelligence (lender activity)
+
+---
+
+## 1. Core Architectural Shift
+
+Today's F9 Debt tab is a configuration surface — the user picks a loan type, fills in rate/term/fees, and the engine amortizes it. That's fine as a modeling tool, but it assumes the user already knows what product they should use. Most users don't — especially across asset classes and deal types.
+
+The fix: **Strategy drives Debt.** Once M08 detects a sub-strategy and produces a plan, the Debt Advisor reads that output and recommends the optimal debt stack, sizing, timing, and lender targets. The user sees a recommendation first, the configuration interface second.
+
+```
+M08 Strategy Output                    Market Context
+  • Detected sub-strategy                • FRED rates (SOFR curve, 10yr)
+  • Plan phases + timing                 • Lender rate sheets
+  • Value creation capex schedule        • Rate cap pricing
+  • Exit target                          • Correlation signals (COR-08 etc.)
+  • Monitoring triggers                  • Rate Strategy Score (RSS)
+         │                                       │
+         └─────────────┬─────────────────────────┘
+                       ▼
+          ┌─────────────────────────────┐
+          │   DEBT ADVISOR SERVICE      │
+          │                              │
+          │   1. Product selection      │
+          │   2. Sizing optimization    │
+          │   3. Timing sequence        │
+          │   4. Lender targeting       │
+          │   5. Monitoring triggers    │
+          └──────────────┬──────────────┘
+                         ▼
+          ┌──────────────────────────────┐
+          │  Recommended Debt Plan       │
+          │   Primary stack + refi events│
+          │   Rationale per loan         │
+          │   Alternatives per condition │
+          └──────────────┬───────────────┘
+                         │ user accepts
+                         ▼
+          ┌──────────────────────────────┐
+          │  F9 Debt Tab (Configure)     │
+          │  Auto-populated from plan    │
+          │  User modifies as needed     │
+          └──────────────────────────────┘
+```
+
+The existing Debt tab modeling capability stays intact — it's now the **Configure** view, reached by accepting (or overriding) the Advisor's recommendation.
+
+---
+
+## 2. The Debt Tab Becomes Two Views
+
+**Advisor** (default landing view) — Strategy-driven recommendation with rationale, timing sequence, lender targets, and monitoring triggers. Read-mostly; edits through "Modify Recommendation."
+
+**Configure** (existing modeling) — Full F9 Debt tab as specced: multi-loan stack, per-loan panels, amortization schedules, refi events, loan-level metrics panel. This is the raw interface for users who want to model a specific structure by hand.
+
+Toggle at top of tab: **[ Advisor ] [ Configure ]**. Default = Advisor after Strategy runs. If Strategy hasn't run (or user overrode detection), Advisor shows "Run Strategy first" CTA.
+
+---
+
+## 3. Strategy → Debt Product Mapping
+
+This is the core library — maps each M08 sub-strategy to its recommended debt product(s) and structure. Lives in a config table editable without code changes.
+
+### 3.1 Multifamily
+
+| Sub-Strategy | Primary Product | Alternatives | Structure |
+|---|---|---|---|
+| MF Core | Agency long-term fixed (Fannie DUS or Freddie Conventional) | CMBS 10yr, Life Co | 10yr term / 30yr amort / 1-3yr IO / 65-75% LTV / non-recourse |
+| MF Core-Plus | Agency with supplemental allowance | CMBS 10yr, portfolio bank | 10yr / 30yr amort / 2-5yr IO / 70-75% LTV / supplemental in Y3-5 |
+| MF Value-Add | Bridge-to-perm (bridge 2-3yr, refi to agency at stab) | Debt fund fixed 3-5yr | Bridge: 3yr+1+1 ext / IO full / 70-75% LTC / SOFR+250-350 / 65-75% LTSV |
+| MF Deep Value-Add | Bridge + mezz stack | Pref equity substitute for mezz | Senior bridge 70% LTC + mezz to 80-85% LTC / 12-14% pay + PIK |
+| MF Distressed | Private credit, often partial-recourse | Note purchase if lender willing | 1-2yr bridge / higher pricing / recourse burns off at DSCR triggers |
+| MF Lease-Up | Bridge-to-perm with earnout | Agency lease-up program if stabilization close | Agency earnout: fund at partial proceeds, release more at occ/DSCR milestones |
+| MF BTS Ground-Up | Construction loan → bridge-to-perm OR C/O sale | HUD 221(d)(4) if fits | Construction 36-42mo / floating / interest reserve / 70-75% LTC; refi or sell at stabilization |
+| MF Ground-Lease Hold | Long-term fixed on leasehold | CMBS with ground-lease endorsement | Ground-lease-aware lender required; term must fit within ground lease tail |
+
+### 3.2 SFR
+
+| Sub-Strategy | Primary Product | Alternatives | Structure |
+|---|---|---|---|
+| SFR Fix-and-Flip | Fix-flip hard money | Cash + HELOC + business credit | 6-12mo / 80-90% LTC acquisition + 100% rehab / 10-13% / exit fee |
+| SFR BRRRR | Acquisition: hard money (or cash) → Refi: DSCR loan | Conventional cash-out refi after 6mo seasoning | Acq: 12mo / 80% LTC / 10-12% → Refi: 30yr fixed / 75% ARV cash-out / 7-8% |
+| SFR Hold (Scattered) | Conventional investment loan | DSCR loan, portfolio loan | 30yr fixed / 75-80% LTV / DTI qualification OR DSCR > 1.25 |
+| SFR Portfolio Aggregation | Portfolio loan (multi-property blanket) | CMBS on stabilized portfolio (>$10M) | 5-10yr fixed / cross-collateralized / 65-75% LTV |
+| SFR BTR (Build-to-Rent) | Construction → mini-perm → agency (if scale) | Private credit construction | Construction: 30mo / 70% LTC → Mini-perm 3-5yr → Agency if >100 units |
+| SFR STR | DSCR loan with STR income recognition | Portfolio loan | 30yr / 20-25% down / higher rate (0.5-1.5pt premium) / STR-income OK |
+
+### 3.3 Retail
+
+| Sub-Strategy | Primary Product | Alternatives | Structure |
+|---|---|---|---|
+| Retail NNN Core (single-tenant credit) | CMBS long-term fixed | Life Co, portfolio bank | 10-25yr fixed (match lease tail) / non-recourse / 60-70% LTV |
+| Retail Grocery-Anchored | CMBS or Life Co | Bank 5-7yr | 10yr fixed / 65-75% LTV / 30yr amort / lease-rollover covenants |
+| Retail Value-Add Reposition | Bridge-to-perm | Debt fund 3-5yr | Bridge 2-3yr IO / higher spread / co-tenancy protection important |
+| Retail Flex/Last-Mile Conversion | Bridge + construction component | SBA 504 if owner-user | Conversion capital + lease-up flexibility |
+
+### 3.4 Office
+
+| Sub-Strategy | Primary Product | Alternatives | Structure |
+|---|---|---|---|
+| Office Core | CMBS or Life Co, conservative LTV | Portfolio bank 5-7yr | 10yr fixed / 55-65% LTV (office underwritten conservatively post-2023) |
+| Office Value-Add | Bridge with TI/LC reserve | Debt fund | Bridge 3yr / IO / TI/LC holdback / DSCR floor looser during lease-up |
+| Office Adaptive Reuse | HUD 221(d)(4) if residential | Construction + bridge-to-perm | HUD: 40yr fixed at completion / up to 85% LTC / non-recourse |
+| Office Medical Conversion | Bridge-to-perm | Bank portfolio | Standard bridge with medical-tenant underwriting |
+
+### 3.5 Industrial
+
+| Sub-Strategy | Primary Product | Alternatives | Structure |
+|---|---|---|---|
+| Industrial Core | CMBS or Life Co | Agency (if MF-adjacent use) | 10yr fixed / 65-70% LTV / long-term credit tenants underwrite well |
+| Industrial Value-Add | Bridge-to-perm | Bank portfolio | 2-3yr bridge through re-leasing, refi to fixed at stabilization |
+| Industrial Last-Mile Conversion | Construction + bridge | Owner-user SBA 504 | Varies by scope — conversion often light |
+| Industrial IOS | Bank portfolio or small-balance CMBS | Private credit | IOS lenders specific — smaller universe |
+
+### 3.6 Hospitality
+
+| Sub-Strategy | Primary Product | Alternatives | Structure |
+|---|---|---|---|
+| Hospitality Core (stabilized flag) | CMBS hospitality | Bank portfolio | 7-10yr fixed / 60-65% LTV / FF&E reserve required |
+| Hospitality Reflag / PIP | Bridge with PIP holdback | Debt fund, SASB CMBS | 3-4yr bridge / IO / PIP reserve / flag-conversion contingency |
+| Hospitality Extended-Stay Conversion | Bridge + conversion capital | HUD 223(f) if conversion to MF | Like adaptive reuse |
+
+### 3.7 The mapping logic
+
+The Advisor first looks up the detected sub-strategy in the matrix, then applies **context modifiers**:
+
+- Deal size modifier (agency DUS small-balance vs large; CMBS requires >$5M typically; SBL for <$7.5M multifamily)
+- Geography modifier (some lenders don't lend in certain states/metros)
+- Sponsor experience modifier (first-time sponsors can't access certain products)
+- Asset age modifier (pre-1980 multifamily tougher for agency)
+- Sponsor balance sheet modifier (recourse requirements scale with liquidity)
+
+Output: primary product + 1-2 ranked alternatives, each with a fit score.
+
+---
+
+## 4. Debt Plan Formulator — Phased & Timing-Aware
+
+The Advisor produces a **debt plan**, not a single-loan recommendation. The plan has phases that mirror the Strategy plan.
+
+### 4.1 Debt Plan Structure
+
+```
+Phase 1 — Acquisition (Month 0)
+  Product: [primary]
+  Amount: $X
+  Terms: Y yr / Z% rate / W bps fees
+  Rationale: [why this product for this phase]
+  Lender targets: [specific active lenders]
+
+Phase 2 — Stabilization / Value-Creation (Months 1-24)
+  Product continues (or extends)
+  Monitoring: [triggers that could change the plan]
+
+Phase 3 — Refi Event (Month 18-24)
+  Product: [new permanent loan]
+  Trigger conditions: stabilization metrics met (occ > 92%, DSCR > 1.35)
+  Rationale: [why refi now vs hold or extend]
+  Net proceeds to equity: $X
+  FL doc stamps / intangible: $Y (cross-ref Taxes tab)
+
+Phase 4 — Hold through exit (Months 24-36)
+  Product continues
+  Monitoring: [market triggers that could force early refi/exit]
+
+Phase 5 — Exit (Month 36)
+  Payoff: balance + prepay penalty if within lockout
+  Net proceeds: $X (cross-ref Capital tab waterfall)
+```
+
+Every phase:
+- Is tied to a specific month range that comes from the Strategy plan
+- Carries a rationale (why this product, not the alternative)
+- Has monitoring triggers that could change the plan before the phase runs
+- Cross-references the F9 Taxes tab for transfer taxes at origination + refi events
+
+### 4.2 Common Debt Plan Templates
+
+Templates per sub-strategy. Example patterns:
+
+**MF Value-Add template:**
+```
+M0: Bridge-to-perm close (bridge piece, 3yr + 1 + 1)
+M3-24: Draw interest reserve if built in; deploy reno capital
+M18: First look at refi (if stabilization ahead of schedule)
+M24: Refi to Fannie DUS (target product)
+M36: Exit — prepay DUS (yield maintenance if within lockout; defeasance cost calc'd live from Treasury curve)
+```
+
+**SFR BRRRR template:**
+```
+M0: Acquisition via hard money (12mo) or cash close
+M1-6: Rehab + lease
+M6: Refi seasoning clears (6mo for most conventional refi)
+M7-9: Refi to DSCR loan at 75% ARV → return capital to equity
+Hold indefinitely OR sell per strategy plan
+```
+
+**MF BTS Ground-Up template:**
+```
+M0: Construction loan (36-42mo, IO, interest reserve)
+M1-24: Construction draws per vertical schedule
+M25-30: C/O + lease-up begins
+M30-36: Stabilization
+M36: Decision gate — refi to permanent (Fannie DUS) OR sell at stabilization (if strategy = BTS)
+```
+
+**Retail NNN Core template:**
+```
+M0: CMBS long-term fixed at acquisition
+No refi events expected — match loan to lease tail
+M(Term-24): If within 2yr of maturity, begin refi/extension planning
+```
+
+Templates aren't rigid — the Advisor adjusts amounts/timing/rates based on current market and deal specifics. The template just provides the phase structure.
+
+---
+
+## 5. Market Context Integration
+
+The Advisor doesn't recommend in a vacuum — it reads current market conditions to pick the right **flavor** of the product and the right timing.
+
+### 5.1 Rate Environment Input (from FRED)
+
+Live feed from `rate-index.service.ts`:
+- 10yr Treasury
+- SOFR (1mo, 3mo)
+- SOFR forward curve (full strip)
+- Fed Funds target
+- Fed Funds futures (implied path)
+
+**Rate Environment Classification** (updates nightly):
+- **Dropping** — Forward curve shows SOFR declining > 50bps over 12mo
+- **Flat** — Forward curve within ±25bps
+- **Rising** — Forward curve shows SOFR rising > 50bps over 12mo
+
+**Classification → Advisor Decisions**
+
+| Environment | Fixed vs Floating | Term Length | Rate Cap Advice |
+|---|---|---|---|
+| Dropping | Floating (or short fixed with open prepay) | Shorter fixed 3-5yr | Buy cheap cap; priced in optimism |
+| Flat | Either — decide on other factors | Match hold | Standard cap |
+| Rising | Fixed, lock long | Long fixed 10yr+ | Cap expensive; consider higher strike |
+
+Example narrative generated by the Advisor:
+
+> "Forward curve shows SOFR at 3.1% today falling to 2.4% by Q4 2026. For a 3-year Value-Add bridge, floating SOFR+275 beats comparable 3yr fixed at 6.5% by an expected 40bps over the hold. Recommend floating with a rate cap at 4.5% strike ($380K cost, 2yr). Alternative if you want rate certainty: 3yr fixed at 6.5%."
+
+### 5.2 Rate Strategy Score (RSS) Input
+
+From the existing `rateStrategyScore.service.ts` (spec'd in `rate_strategy_formula.md`). The RSS components that bear on debt:
+
+| RSS Component | Debt Implication |
+|---|---|
+| Debt-Cost-vs-History < 60 (debt expensive) | Shorter terms; refi when rates drop |
+| Debt-Cost-vs-History > 80 (debt cheap) | Lock long; this is the pricing you want to keep |
+| Cap-Spread-to-Treasury > 250bps | Buyer-friendly pricing; debt supports higher leverage |
+| Cap-Spread-to-Treasury < 150bps | Over-levered market; reduce LTV recommendation |
+| Rate Trajectory dropping | Floating favored |
+| Rate Trajectory rising | Fixed favored |
+
+### 5.3 Correlation Signal Input
+
+Specific COR signals affect debt recommendations:
+
+| Correlation | Debt Implication |
+|---|---|
+| COR-08 permit velocity > +40% sustained | Shorten exit window → use shorter loan term or open prepay. Don't lock a 10yr if you need to exit in 18mo. |
+| COR-04 wage-rent reversal firing | Peak approaching → avoid long fixed; match loan term to compressed hold |
+| COR-01 traffic surge + rent growth leading | Underwriting will improve — plan refi event to capture lower cap rate |
+| COR-20 digital-physical gap > 15pp | Market repricing in 6-12mo → if refi planned, time it for after reprice |
+| COR-06 rate trajectory dropping | Confirms floating or short-fixed recommendation |
+
+### 5.4 Credit Market Conditions
+
+Separately from Treasury / SOFR, spreads and lender appetite move:
+- Agency (Fannie/Freddie) caps and pricing parameters — updated weekly from agency rate sheets
+- CMBS new-issue spreads — tracks Trepp or similar
+- Bridge lender activity — platform signal from rate-sheet-parser feeding Rate Environment module
+- Construction lender appetite — tracks bank vs debt-fund share
+
+If agency caps are constrained (hit quarterly limits), Advisor flags: "Fannie DUS limited capacity through Q1; pricing may widen 10-15bps. CMBS alternative at similar all-in."
+
+---
+
+## 6. Lender Targeting Engine
+
+For each recommended product, the Advisor surfaces **specific active lenders** in the deal's market and size range. Pulls from S2 Ownership Intelligence + `rate-sheet-parser.service.ts` + platform lender database.
+
+### 6.1 Lender Database Fields
+
+Per lender:
+- Name
+- Product types offered (agency DUS, CMBS conduit, bridge, construction, SBL, etc.)
+- Geography served (states, MSAs)
+- Loan size range (min/max)
+- Typical pricing vs benchmark (bps over SOFR for bridge, bps over Treasury for fixed)
+- Typical LTV/LTC range
+- Recourse preference
+- Sponsor experience requirements
+- Recent activity (deals closed last 90/180 days in this market)
+
+### 6.2 Targeting Output
+
+For each Advisor-recommended product:
+
+```
+Bridge-to-Perm Bridge (Phase 1)
+Target size: $28.5M at 65% LTC
+
+Active lenders in Tampa MSA, $20-40M bridge:
+  1. Acore Capital — 6 deals YTD, typical SOFR+290, 75% LTC max, non-recourse
+  2. Square Mile Capital — 4 deals YTD, SOFR+325, 70% LTC, limited guaranty
+  3. Bank OZK — 8 deals YTD (regional bank, aggressive), SOFR+275, partial recourse
+
+Best fit given your sizing (65% LTC, non-recourse preferred): Acore
+Alternative if you want lower spread: Bank OZK (requires partial recourse)
+
+[Request Quote] — template DM
+```
+
+When user clicks "Request Quote", the platform can open an email template pre-filled with deal facts, target terms, and the lender's contact. (Full quote-management feature is out of this scope — phase 1 is just surfacing names.)
+
+### 6.3 Lender Database Sourcing
+
+- Agency DUS lender roster (Fannie/Freddie publish the list)
+- Platform rate-sheet ingestion (users forward rate sheets → parser extracts lender + terms; builds market benchmark over time)
+- Transaction records (via ACRIS, CREXi, RCA feeds if accessible) showing which lender financed which deal
+- User-contributed lender feedback (post-deal)
+
+MVP lender database = agency DUS lenders + top-50 CMBS originators + top-50 bridge lenders by volume. Geographic filter applied.
+
+---
+
+## 7. Debt Monitoring Triggers
+
+The Advisor doesn't stop at close — it registers monitoring triggers that feed the Strategy module's Monitoring Dashboard. When triggers fire, the Advisor recommends action.
+
+Examples:
+
+**Refi-window triggers:**
+- "At M18 (stabilization target from Strategy plan), if occupancy > 92% AND DSCR > 1.35, agency refi eligible. Monitor weekly."
+- "If 10yr Treasury drops 75bps below current, agency rate improves enough to justify refi even with prepay penalty. Estimated rate-lock savings: $X."
+
+**Extension-vs-refi triggers:**
+- "Bridge extension fee is 50bps (at M36). If bridge replacement pricing is within 25bps of current all-in, refi instead of extend (saves future-exit prepay cost)."
+
+**Cap-replacement triggers:**
+- "Rate cap expires M24. At current SOFR curve, replacement cap at same strike costs $180K. Budget in capital reserves."
+
+**Covenant-breach triggers:**
+- "DSCR projected to hit 1.15 at Y3 (covenant minimum 1.20). If breaches, cash trap activates. Consider reducing distributions in Y3 to preserve covenant cushion."
+
+**Strategy-change triggers:**
+- "If M08 re-detects a sub-strategy pivot (e.g., zoning upzone passes → BTS pivot), debt plan must restructure. Current bridge has 18-month minimum hold; early payoff = YM of $X."
+
+**Market-condition triggers:**
+- "If COR-08 permit velocity breaks +60% sustained 6mo, exit window compresses. Recommend early refi to long fixed now to lock pricing before market deteriorates."
+
+Each trigger carries:
+- The condition (exact numeric threshold)
+- The current value
+- The monitoring frequency
+- The recommended action if the trigger fires
+- The severity (info / warning / critical)
+
+Triggers register to the same alert system used by Strategy plan monitoring, so they appear in the user's unified alert feed.
+
+---
+
+## 8. UI Layout
+
+### 8.1 Advisor View (default)
+
+Vertical flow:
+
+**Top — Recommendation Header**
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ RECOMMENDED DEBT STACK                                          │
+│ Bridge-to-Perm + Fannie DUS Refi                                │
+│                                                                 │
+│ Why: MF Value-Add needs flexibility during reno (bridge),      │
+│      then long-term fixed at stabilization (agency).            │
+│      Rate environment supports floating bridge with cap.        │
+│                                                                 │
+│ Total cost at close: $28.5M bridge, $320K origination + fees   │
+│                                                                 │
+│ [Accept and Populate Configure] [Modify] [Run Alt: Debt Fund]  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Middle — Debt Plan Timeline**
+
+Horizontal swim-lane showing phases:
+
+```
+  M0 ──────── M18 ──────── M24 ──────── M36
+  │            │            │            │
+  ├─ Bridge ──────────────┤            │
+  │  $28.5M, SOFR+275,    │            │
+  │  3yr+1+1, IO, 70% LTC  │            │
+  │                        │            │
+  │                        ├── Fannie DUS ──────┤
+  │                        │   $32M refi, 10yr,  │
+  │                        │   30yr amort, 5.1%, │
+  │                        │   65% LTV           │
+  │                        │                     │
+  │                                    ┌─ Exit ──┤
+  │                                    │ DUS     │
+  │                                    │ payoff  │
+  │                                    │ + YM    │
+```
+
+Click any phase → expands to show product details, terms, lender targets, rationale, monitoring triggers.
+
+**Per-Phase Detail (expanded)**
+
+Shows: product name + why, target sizing, expected pricing, fee breakdown, active lenders (3-5 named), alternative products ranked, monitoring triggers for this phase.
+
+**Market Context Panel (right rail, sticky)**
+
+Live updating:
+- 10yr Treasury / SOFR current + forward curve sparkline
+- Rate Environment classification
+- RSS current score
+- Active correlation signals that affect debt
+- "Pricing window" indicator — whether now is a good time to lock (based on composite of the above)
+
+**Alternative Structures Panel**
+
+Shows 1-2 alternatives with tradeoffs:
+- "If sponsor wants zero rate risk: 3yr fixed at 6.5% bridge (+40bps expected all-in cost vs floating with cap)"
+- "If leverage needs exceed 70% LTC: add 10% mezz at 13% pay + PIK (blended cost rises ~60bps)"
+
+**Monitoring Triggers Panel (bottom)**
+
+List of registered triggers with current values and thresholds. Links to the Strategy Monitoring Dashboard.
+
+### 8.2 Configure View (the existing F9 Debt tab)
+
+Unchanged from the F9 Complete Model Spec. This is where the Advisor's recommendation lands when user clicks "Accept and Populate Configure" — all loan fields, reserves, covenants, amort schedules auto-fill. User can then modify any value.
+
+If user modifies sizing or terms in Configure, Advisor view flags the divergence: "Configure has $30M loan vs Advisor recommendation $28.5M — IRR impact +0.3%, covenant cushion -8bps."
+
+---
+
+## 9. Backend Data Contract
+
+`GET /api/deals/:dealId/debt/advisor` returns:
+
+```ts
+interface DebtAdvisor {
+  dealId: string;
+  computedAt: string;
+
+  // Source: Strategy module
+  strategyInputs: {
+    subStrategyKey: string;
+    holdMonths: number;
+    phases: Array<{ phase: number; monthRange: [number, number]; capitalRequired: number; }>;
+    exitTargetQuarter: string;
+    exitBuyerType: string;
+    monitoringTriggers: string[];   // COR IDs that could change the plan
+  };
+
+  // Source: Market context
+  marketContext: {
+    rateEnvironment: 'dropping' | 'flat' | 'rising';
+    tenYrTreasury: number;
+    sofrCurrent: number;
+    sofrForwardCurve: Array<{ monthsOut: number; rate: number; }>;
+    rss: { overall: number; components: Record<string, number>; };
+    activeCorrelations: Array<{ id: string; debtImplication: string; }>;
+    pricingWindow: 'favorable' | 'neutral' | 'unfavorable';
+    pricingWindowRationale: string;
+  };
+
+  // Core output
+  recommendedStack: Array<{
+    phase: number;
+    phaseLabel: string;
+    monthRange: [number, number];
+    product: {
+      key: string;              // e.g. 'fannie_dus', 'bridge_to_perm', 'hard_money'
+      name: string;             // human-readable
+      rationale: string;
+    };
+    sizing: {
+      loanAmount: number;
+      ltv: number;
+      ltc: number;
+      ltsv?: number;
+      debtYield: number;
+      dscr: number;
+    };
+    pricing: {
+      rateType: 'fixed' | 'floating' | 'floating_capped';
+      index?: string;
+      spread?: number;
+      coupon: number;
+      allInRate: number;
+      rateCapDetails?: { strike: number; term: number; cost: number; };
+    };
+    term: {
+      termYears: number;
+      amortYears: number;
+      ioMonths: number;
+      extensionOptions: Array<{ length: number; feeBps: number; condition: string; }>;
+    };
+    fees: Record<string, number>;
+    prepay: { type: string; schedule?: number[]; };
+    recourse: { type: string; burnoff?: string; };
+    reserves: Record<string, number>;
+    lenderTargets: Array<{
+      name: string;
+      recentActivity: string;
+      fitScore: number;        // 0-1
+      typicalSpread: number;
+      typicalLTC: number;
+      recourseStance: string;
+      whyBestFit: string;
+    }>;
+    monitoringTriggers: Array<{
+      id: string;
+      condition: string;
+      currentValue: string;
+      threshold: string;
+      severity: 'info' | 'warning' | 'critical';
+      actionOnTrigger: string;
+    }>;
+  }>;
+
+  // Alternatives
+  alternatives: Array<{
+    scenarioName: string;        // "If sponsor wants zero rate risk"
+    changes: string;             // "3yr fixed at 6.5%"
+    allInCostDelta: number;      // basis points vs primary
+    irrImpact: number;           // percentage points
+    tradeoffs: string;
+  }>;
+
+  // Summary
+  summary: {
+    primaryProductNarrative: string;  // AI Coordinator synthesized "why this stack"
+    totalClosingCosts: number;
+    blendedCostOfCapital: number;
+    leverageSpread: number;           // going-in cap vs blended loan constant
+    positiveLeverage: boolean;
+  };
+}
+```
+
+`POST /api/deals/:dealId/debt/advisor/accept` populates the F9 Debt tab with the recommended stack as `platform`-layer values. User overrides in Configure sit on top as `user` layer.
+
+`POST /api/deals/:dealId/debt/advisor/recompute` re-runs the Advisor (triggered automatically when Strategy re-detects or market context shifts materially).
+
+---
+
+## 10. Implementation Sequence
+
+Each item = one Claude Code session unless noted.
+
+1. **Strategy → Debt product mapping table** — build the config table (Section 3) with all sub-strategy → product mappings. Editable Google Sheets or JSON; not hard-coded. **1 session.**
+
+2. **Context modifiers service** — `debt-context-modifier.service.ts`. Takes deal facts + sponsor profile and filters/re-ranks products (size, geography, age, experience, balance sheet). **1 session.**
+
+3. **Rate environment classifier** — new `rate-environment.service.ts` that reads FRED forward curve + SOFR futures and classifies dropping/flat/rising. Updates nightly. **1 session.**
+
+4. **Debt plan formulator** — `debt-plan-formulator.service.ts`. Takes Strategy plan + product mapping + market context → emits phased debt plan with sizing, pricing, timing, rationale per phase. **2.5 sessions** (the largest piece).
+
+5. **Lender database + targeting service** — MVP database populated with agency DUS roster + top bridge/CMBS lenders. `lender-targeting.service.ts` filters by geography/size/product and ranks fit. **2 sessions.**
+
+6. **Debt monitoring trigger registration** — extends the Strategy Monitoring Dashboard trigger system with debt-specific triggers (refi windows, cap replacement, covenant breach, market-condition gates). **1 session.**
+
+7. **Advisor API endpoints** — `GET /debt/advisor`, `POST /advisor/accept`, `POST /advisor/recompute`. Wire Kafka event so Strategy re-detect or material market shift auto-recomputes Advisor. **1 session.**
+
+8. **Frontend — Advisor view** — recommendation header, timeline swim-lane, per-phase detail panels, market context right rail, alternatives panel, monitoring triggers. **3 sessions** — this is the largest frontend piece.
+
+9. **Frontend — Advisor ↔ Configure toggle + divergence flagging** — toggle UI, accept flow populating Configure, divergence banner when user modifies Configure vs Advisor. **1 session.**
+
+10. **AI Coordinator narrative for debt plan** — endpoint generating the "why this stack" narrative citing strategy, rate environment, correlation signals, lender rationale. Cached 24h. **1 session.**
+
+11. **Lender quote request template** — email/DM template generation for outreach to targeted lenders, pre-filled with deal facts. **0.5 session.**
+
+12. **Testing + visual QA** — test cases below. **1 session.**
+
+**Total: ~15-16 sessions** for complete Debt Advisor build.
+
+**Critical path:** Items 1-3 (mapping + context + rate environment) block the formulator (4). Formulator blocks endpoints (7) which blocks frontend (8-9). Lender targeting (5) can run in parallel with formulator.
+
+---
+
+## 11. Test Cases
+
+1. MF Value-Add detected by M08 → Advisor recommends Bridge-to-Perm with Fannie DUS refi at M24. Phases mapped correctly to Strategy plan phases.
+
+2. SFR BRRRR detected → Advisor recommends hard money acquisition + DSCR refi at M7 (after 6mo seasoning). Cross-references ARV math from Evidence Report.
+
+3. MF BTS Ground-Up with 36-month construction plan → Advisor recommends construction loan with 36-42mo term, IO, interest reserve sized to projected draw schedule.
+
+4. Retail NNN Core with 12-year tenant lease → Advisor recommends 10yr CMBS fixed matching lease tail; no refi event.
+
+5. Office Adaptive Reuse → Advisor recommends HUD 221(d)(4) with conversion-construction framing; flags longer processing timeline (6-9mo).
+
+6. Rate environment classifier sees SOFR forward curve dropping 60bps over 12mo → Advisor recommends floating bridge with rate cap instead of 3yr fixed. Narrative explains expected 40bps savings.
+
+7. Rate environment sees forward curve rising 75bps over 12mo → Advisor recommends locking 10yr fixed now; flags "pricing window favorable" on market context panel.
+
+8. COR-08 permit velocity fires +42% sustained → Advisor shortens recommended loan term and suggests open prepay option; monitoring trigger registered to recheck in 6mo.
+
+9. Deal size $4M multifamily (below CMBS min) → Advisor excludes CMBS, recommends Freddie SBL or bank portfolio.
+
+10. First-time sponsor with limited liquidity → Advisor excludes non-recourse bridge products that require significant sponsor net worth; recommends recourse bridge alternatives with clear path to burn-off.
+
+11. Lender targeting for Tampa MSA bridge $30M → returns 3-5 active lenders (Acore, Square Mile, Bank OZK, etc.) with recent-activity counts and fit scores.
+
+12. User clicks "Accept and Populate Configure" → F9 Debt tab auto-fills with recommended loan params as Platform layer. User modifies amount → Advisor view flags divergence.
+
+13. Alternative structure: sponsor selects "zero rate risk" scenario → Advisor shows 3yr fixed alternative with explicit IRR impact (-25bps vs floating).
+
+14. Monitoring trigger fires: 10yr Treasury drops 80bps below closing rate → alert surfaces in user's feed recommending refi evaluation; Advisor recomputes showing net present value of refi vs hold.
+
+15. Strategy re-detects sub-strategy pivot (zoning upzone passes → BTS) → Advisor auto-recomputes; banner alerts user that current bridge has 18mo min hold and prepay cost is $X, factoring into pivot decision.
+
+16. Hospitality Reflag deal → Advisor recommends bridge with PIP holdback and flag-conversion contingency; lender targeting filters to hospitality-comfortable bridge lenders.
+
+17. MF Distressed with DSCR 0.85 → Advisor flags non-recourse unlikely; recommends private credit with partial recourse, explicit burn-off trigger at DSCR 1.25.
+
+18. Rate cap pricing feed shows 5yr cap at 4.5% strike for bridge = $380K → appears inline in Advisor recommendation, included in total closing cost.
+
+19. Lender database flags Agency hitting quarterly cap limits → Advisor adds note: "Fannie DUS capacity constrained through Q1; expect 10-15bps wider pricing" and elevates Freddie alternative.
+
+20. User switches Strategy adjacent (Deep Value-Add instead of Value-Add) → Advisor recomputes: higher leverage recommended, mezz added to stack, lender targets refreshed for mezz product.
+
+---
+
+## 12. Design tokens (Bloomberg dark, consistent with F9 / M08)
+
+- Advisor view header: cyan 3px left rule, RECOMMENDED badge amber
+- Timeline swim-lane: each phase colored by product family (bridge = orange, agency = cyan, CMBS = purple, construction = amber, hard money = red)
+- Market context right rail: sticky, 280px wide, JetBrains Mono for rate values
+- Pricing window indicator: green "favorable" / neutral gray / amber "unfavorable"
+- Lender target card: lender name in IBM Plex Sans bold, activity count + fit score monospace
+- Alternative structure card: muted border, expand on click
+- Divergence banner (Configure diverges from Advisor): amber left border, delta in monospace
+- Monitoring trigger severity: critical red / warning amber / info cyan
+- Accept button: filled cyan primary; Modify button: ghost cyan; Run Alternative: ghost purple
+
+---
+
+**End of spec.**

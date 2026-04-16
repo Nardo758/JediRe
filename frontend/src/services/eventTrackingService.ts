@@ -46,7 +46,6 @@ export async function trackEvent(event: PropertyEvent): Promise<void> {
     });
   } catch (error) {
     console.error('Failed to track event:', error);
-    // Don't throw - tracking failures shouldn't break the app
   }
 }
 
@@ -63,7 +62,6 @@ export async function trackBatch(events: PropertyEvent[]): Promise<void> {
     });
   } catch (error) {
     console.error('Failed to track batch events:', error);
-    // Don't throw - tracking failures shouldn't break the app
   }
 }
 

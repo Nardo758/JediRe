@@ -1,6 +1,6 @@
 /**
  * SectionCard - Expandable/collapsible accordion section for Deal Page
- * 
+ *
  * Features:
  * - Expandable/collapsible with smooth animation
  * - Icon, title, and expand/collapse arrow
@@ -10,29 +10,30 @@
  */
 
 import React, { useState, useEffect, useRef, ReactNode } from 'react';
+import { BT } from '@/components/deal/bloomberg-ui';
 
 export interface SectionCardProps {
   /** Unique identifier for localStorage */
   id: string;
-  
+
   /** Section icon (emoji or unicode character) */
   icon: string;
-  
+
   /** Section title */
   title: string;
-  
+
   /** Section content */
   children: ReactNode;
-  
+
   /** Optional: Start expanded (default: false) */
   defaultExpanded?: boolean;
-  
+
   /** Optional: Deal ID for unique localStorage keys */
   dealId?: string;
-  
+
   /** Optional: Show empty state when no children */
   showEmptyState?: boolean;
-  
+
   /** Optional: Custom empty state message */
   emptyStateMessage?: string;
 }
@@ -48,12 +49,12 @@ export const SectionCard: React.FC<SectionCardProps> = ({
   emptyStateMessage = 'No data yet',
 }) => {
   const storageKey = dealId ? `deal-${dealId}-section-${id}` : `deal-section-${id}`;
-  
+
   const [isExpanded, setIsExpanded] = useState(() => {
     const saved = localStorage.getItem(storageKey);
     return saved ? JSON.parse(saved) : defaultExpanded;
   });
-  
+
   const [contentHeight, setContentHeight] = useState<number>(0);
   const contentRef = useRef<HTMLDivElement>(null);
 
@@ -76,11 +77,12 @@ export const SectionCard: React.FC<SectionCardProps> = ({
   const isEmpty = !children || (React.Children.count(children) === 0);
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden transition-all duration-200 hover:shadow-md">
+    <div className="overflow-hidden transition-all duration-200" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
       {/* Header */}
       <button
         onClick={toggleExpanded}
-        className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"
+        className="w-full flex items-center justify-between px-6 py-4 text-left transition-colors focus:outline-none"
+        style={{ fontFamily: BT.font.mono }}
         aria-expanded={isExpanded}
         aria-controls={`section-${id}-content`}
       >
@@ -88,14 +90,15 @@ export const SectionCard: React.FC<SectionCardProps> = ({
           <span className="text-2xl" role="img" aria-hidden="true">
             {icon}
           </span>
-          <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
+          <h2 style={{ fontSize: 14, fontWeight: 600, color: BT.text.primary, fontFamily: BT.font.display }}>{title}</h2>
         </div>
-        
+
         {/* Expand/Collapse Arrow */}
         <svg
-          className={`w-5 h-5 text-gray-500 transition-transform duration-200 ${
+          className={`w-5 h-5 transition-transform duration-200 ${
             isExpanded ? 'transform rotate-180' : ''
           }`}
+          style={{ color: BT.text.secondary }}
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -123,7 +126,7 @@ export const SectionCard: React.FC<SectionCardProps> = ({
           {isEmpty && showEmptyState ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <div className="text-4xl mb-3 opacity-30">📭</div>
-              <p className="text-sm text-gray-500">{emptyStateMessage}</p>
+              <p style={{ fontSize: 10, color: BT.text.secondary }}>{emptyStateMessage}</p>
             </div>
           ) : (
             children

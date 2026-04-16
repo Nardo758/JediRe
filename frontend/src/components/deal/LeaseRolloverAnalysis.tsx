@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { BT } from '@/components/deal/bloomberg-ui';
 
 interface LeaseAnalysis {
   totalUnits: number;
@@ -48,12 +49,12 @@ export default function LeaseRolloverAnalysis({ dealId }: LeaseRolloverAnalysisP
 
   if (loading) {
     return (
-      <div className="bg-white rounded-lg shadow p-6 mt-6 animate-pulse">
-        <div className="h-6 bg-gray-200 rounded w-1/3 mb-4"></div>
+      <div className="p-6 mt-6" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, opacity: 0.5 }}>
+        <div className="h-6 mb-4" style={{ background: BT.bg.header, width: '33%' }}></div>
         <div className="grid grid-cols-3 gap-4">
-          <div className="h-20 bg-gray-200 rounded"></div>
-          <div className="h-20 bg-gray-200 rounded"></div>
-          <div className="h-20 bg-gray-200 rounded"></div>
+          <div className="h-20" style={{ background: BT.bg.header }}></div>
+          <div className="h-20" style={{ background: BT.bg.header }}></div>
+          <div className="h-20" style={{ background: BT.bg.header }}></div>
         </div>
       </div>
     );
@@ -61,53 +62,52 @@ export default function LeaseRolloverAnalysis({ dealId }: LeaseRolloverAnalysisP
 
   if (error || !leaseAnalysis) {
     return (
-      <div className="bg-white rounded-lg shadow p-6 mt-6">
-        <p className="text-gray-500 text-sm">{error || 'No lease data available'}</p>
+      <div className="p-6 mt-6" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}` }}>
+        <p style={{ color: BT.text.secondary, fontSize: 10, fontFamily: BT.font.mono }}>{error || 'No lease data available'}</p>
       </div>
     );
   }
 
   const maxTimelineCount = Math.max(...Object.values(leaseAnalysis.expirationTimeline), 1);
+  const riskColor = leaseAnalysis.rolloverRiskScore > 40 ? BT.text.red :
+    leaseAnalysis.rolloverRiskScore > 20 ? BT.text.amber : BT.text.green;
 
   return (
-    <div className="bg-white rounded-lg shadow p-6 mt-6">
-      <h3 className="text-lg font-semibold mb-4">Lease Rollover Analysis</h3>
+    <div className="p-6 mt-6" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, fontFamily: BT.font.mono }}>
+      <h3 style={{ fontSize: 14, fontWeight: 600, color: BT.text.primary, fontFamily: BT.font.display, marginBottom: 16 }}>Lease Rollover Analysis</h3>
 
       <div className="grid grid-cols-3 gap-4 mb-6">
         <div className="text-center">
-          <div className="text-3xl font-bold text-blue-600">
+          <div style={{ fontSize: 24, fontWeight: 800, color: BT.text.cyan }}>
             {leaseAnalysis.expiringNext30}
           </div>
-          <div className="text-sm text-gray-600">Expiring Next 30 Days</div>
+          <div style={{ fontSize: 10, color: BT.text.secondary }}>Expiring Next 30 Days</div>
         </div>
 
         <div className="text-center">
-          <div className="text-3xl font-bold text-purple-600">
+          <div style={{ fontSize: 24, fontWeight: 800, color: BT.text.purple }}>
             {leaseAnalysis.expiringNext90}
           </div>
-          <div className="text-sm text-gray-600">Expiring Next 90 Days</div>
+          <div style={{ fontSize: 10, color: BT.text.secondary }}>Expiring Next 90 Days</div>
         </div>
 
         <div className="text-center">
-          <div className={`text-3xl font-bold ${
-            leaseAnalysis.rolloverRiskScore > 40 ? 'text-red-600' :
-            leaseAnalysis.rolloverRiskScore > 20 ? 'text-yellow-600' : 'text-green-600'
-          }`}>
+          <div style={{ fontSize: 24, fontWeight: 800, color: riskColor }}>
             {leaseAnalysis.rolloverRiskScore}%
           </div>
-          <div className="text-sm text-gray-600">Rollover Risk Score</div>
+          <div style={{ fontSize: 10, color: BT.text.secondary }}>Rollover Risk Score</div>
         </div>
       </div>
 
       {leaseAnalysis.rentGapOpportunity.annualUpside > 0 && (
-        <div className="bg-green-50 border-l-4 border-green-500 p-4 mb-4">
+        <div className="p-4 mb-4" style={{ background: `${BT.text.green}11`, borderLeft: `2px solid ${BT.text.green}` }}>
           <div className="flex items-center">
-            <div className="mr-2 text-lg">$</div>
+            <div className="mr-2" style={{ fontSize: 14, color: BT.text.green }}>$</div>
             <div>
-              <div className="font-semibold text-green-900">
+              <div style={{ fontWeight: 600, color: BT.text.green, fontSize: 12 }}>
                 ${(leaseAnalysis.rentGapOpportunity.annualUpside / 1000).toFixed(0)}K Annual Upside
               </div>
-              <div className="text-sm text-green-700">
+              <div style={{ fontSize: 10, color: BT.text.green }}>
                 {leaseAnalysis.rentGapOpportunity.unitsBelow} units below market rate
                 (avg ${leaseAnalysis.rentGapOpportunity.monthlyGap} gap/mo)
               </div>
@@ -116,16 +116,16 @@ export default function LeaseRolloverAnalysis({ dealId }: LeaseRolloverAnalysisP
         </div>
       )}
 
-      <div className="text-sm text-gray-600 mb-2">Lease Expirations (Next 12 Months)</div>
+      <div style={{ fontSize: 10, color: BT.text.secondary, marginBottom: 8 }}>Lease Expirations (Next 12 Months)</div>
       <div className="flex gap-1 h-24 items-end">
         {Object.entries(leaseAnalysis.expirationTimeline).map(([month, count]) => (
           <div key={month} className="flex-1 flex flex-col items-center">
             <div
-              className="w-full bg-blue-500 rounded-t min-h-[2px]"
-              style={{ height: `${(count / maxTimelineCount) * 100}%` }}
+              className="w-full min-h-[2px]"
+              style={{ height: `${(count / maxTimelineCount) * 100}%`, background: BT.text.cyan }}
               title={`${month}: ${count} units`}
             />
-            <div className="text-[10px] mt-1 text-gray-500">
+            <div className="mt-1" style={{ fontSize: 9, color: BT.text.muted }}>
               {month.slice(5)}
             </div>
           </div>

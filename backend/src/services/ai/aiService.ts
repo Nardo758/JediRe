@@ -26,6 +26,7 @@ const MODEL_ROUTING: ModelRouting = {
     supply: 'claude-sonnet-4-20250514',
     cashflow: 'claude-sonnet-4-20250514',
     coordinator: 'claude-haiku-4-5-20251001',
+    commentary: 'claude-haiku-4-5-20251001',
   },
   operator: {
     research: 'claude-haiku-4-5-20251001',
@@ -33,6 +34,7 @@ const MODEL_ROUTING: ModelRouting = {
     supply: 'claude-sonnet-4-20250514',
     cashflow: 'claude-sonnet-4-20250514',
     coordinator: 'claude-sonnet-4-20250514',
+    commentary: 'claude-haiku-4-5-20251001',
   },
   principal: {
     research: 'claude-haiku-4-5-20251001',
@@ -40,6 +42,7 @@ const MODEL_ROUTING: ModelRouting = {
     supply: 'claude-sonnet-4-20250514',
     cashflow: 'claude-opus-4-20250514',
     coordinator: 'claude-sonnet-4-20250514',
+    commentary: 'claude-sonnet-4-20250514',
   },
   institutional: {
     research: 'claude-sonnet-4-20250514',
@@ -47,6 +50,7 @@ const MODEL_ROUTING: ModelRouting = {
     supply: 'claude-sonnet-4-20250514',
     cashflow: 'claude-opus-4-20250514',
     coordinator: 'claude-opus-4-20250514',
+    commentary: 'claude-sonnet-4-20250514',
   },
 };
 
@@ -68,6 +72,7 @@ const CREDIT_COSTS: Record<string, number> = {
   coordinator_report_lite: 10,
   coordinator_deal_bible: 40,
   coordinator_chat_response: 2,
+  commentary_generation: 2,
 };
 
 // ── Error Classes ──────────────────────────────────────────────

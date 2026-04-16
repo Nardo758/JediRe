@@ -13,6 +13,7 @@ import {
   ChevronUp,
 } from 'lucide-react';
 import { useDealModule } from '../../../contexts/DealModuleContext';
+import { BT } from '@/components/deal/bloomberg-ui';
 
 interface ExitDrivesCapitalProps {
   deal?: any;
@@ -195,23 +196,23 @@ export const ExitDrivesCapital: React.FC<ExitDrivesCapitalProps> = ({
 
   return (
     <div className="space-y-6">
-      <div className="bg-[#f8fafc] rounded-lg border border-[#e2e8f0] p-6">
+      <div className="p-6" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
         <div className="flex items-center justify-between mb-2">
           <div>
-            <h2 className="text-xl font-bold text-[#0f172a]">Exit & Capital Overview</h2>
-            <p className="text-[13px] text-[#64748b] mt-1">
+            <h2 className="text-xl font-bold" style={{ color: BT.text.primary, fontFamily: BT.font.display }}>Exit & Capital Overview</h2>
+            <p className="text-[13px] mt-1" style={{ color: BT.text.secondary }}>
               Three factors define the optimal exit window — rent growth, interest rates, and supply pipeline
             </p>
           </div>
           <div className="text-right">
-            <div className="text-[13px] font-medium text-[#64748b]">Optimal Window</div>
-            <div className="text-2xl font-extrabold text-emerald-600">Q3 2026</div>
+            <div className="text-[13px] font-medium" style={{ color: BT.text.secondary }}>Optimal Window</div>
+            <div className="text-2xl font-extrabold" style={{ color: BT.text.green, fontFamily: BT.font.mono }}>Q3 2026</div>
           </div>
         </div>
       </div>
 
-      <div className="bg-white rounded-lg border border-[#e2e8f0] p-6">
-        <h3 className="text-sm font-bold text-[#0f172a] uppercase tracking-wider mb-4">
+      <div className="p-6" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
+        <h3 className="text-sm font-bold uppercase tracking-wider mb-4" style={{ color: BT.text.primary, fontFamily: BT.font.display }}>
           Three-Factor Convergence Chart
         </h3>
         <div className="flex justify-center overflow-x-auto">
@@ -395,8 +396,8 @@ export const ExitDrivesCapital: React.FC<ExitDrivesCapitalProps> = ({
 
       <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-4">
         <FactorCard
-          icon={<TrendingUp className="w-6 h-6 text-emerald-600" />}
-          iconBg="bg-emerald-50"
+          icon={<TrendingUp className="w-6 h-6" style={{ color: BT.text.green }} />}
+          iconBg={`${BT.text.green}11`}
           title="Rent Growth"
           value={`${RENT_GROWTH[5]}%`}
           label="Current YoY"
@@ -405,8 +406,8 @@ export const ExitDrivesCapital: React.FC<ExitDrivesCapitalProps> = ({
           trend={RENT_GROWTH[5] > RENT_GROWTH[4] ? 'up' : 'down'}
         />
         <FactorCard
-          icon={<Percent className="w-6 h-6 text-blue-600" />}
-          iconBg="bg-blue-50"
+          icon={<Percent className="w-6 h-6" style={{ color: BT.text.cyan }} />}
+          iconBg={`${BT.text.cyan}11`}
           title="Interest Rates"
           value={`${RATES[5]}%`}
           label="10yr Treasury"
@@ -415,8 +416,8 @@ export const ExitDrivesCapital: React.FC<ExitDrivesCapitalProps> = ({
           trend="down"
         />
         <FactorCard
-          icon={<Building2 className="w-6 h-6 text-amber-600" />}
-          iconBg="bg-amber-50"
+          icon={<Building2 className="w-6 h-6" style={{ color: BT.text.amber }} />}
+          iconBg={`${BT.text.amber}11`}
           title="Supply Pipeline"
           value="1,000"
           label="Units delivering"
@@ -424,97 +425,97 @@ export const ExitDrivesCapital: React.FC<ExitDrivesCapitalProps> = ({
           sparkline={rentSparkline(SUPPLY_DELIVERING, 80, 24, '#f59e0b')}
           trend="up"
         />
-        <div className="bg-white rounded-lg border border-[#e2e8f0] p-4">
+        <div className="p-4" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
           <div className="flex items-start gap-3">
-            <div className="w-12 h-12 rounded-lg bg-emerald-50 flex items-center justify-center flex-shrink-0">
-              <Target className="w-6 h-6 text-emerald-600" />
+            <div className="w-12 h-12 flex items-center justify-center flex-shrink-0" style={{ background: `${BT.text.green}11`, borderRadius: 0 }}>
+              <Target className="w-6 h-6" style={{ color: BT.text.green }} />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-[13px] font-medium text-[#64748b]">Exit Score</div>
-              <div className="text-2xl font-bold text-[#0f172a]">{gaugeScore}</div>
-              <div className="text-[11px] text-[#64748b]">/ 100</div>
+              <div className="text-[13px] font-medium" style={{ color: BT.text.secondary }}>Exit Score</div>
+              <div className="text-2xl font-bold" style={{ color: BT.text.primary, fontFamily: BT.font.mono }}>{gaugeScore}</div>
+              <div className="text-[11px]" style={{ color: BT.text.secondary }}>/ 100</div>
             </div>
           </div>
           <div className="mt-3">
-            <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden">
+            <div className="w-full h-3 overflow-hidden" style={{ background: BT.bg.panelAlt, borderRadius: 0 }}>
               <div
-                className="h-full rounded-full transition-all"
+                className="h-full transition-all"
                 style={{
                   width: `${gaugeScore}%`,
-                  background: gaugeScore >= 70 ? '#10b981' : gaugeScore >= 40 ? '#f59e0b' : '#ef4444',
+                  background: gaugeScore >= 70 ? BT.text.green : gaugeScore >= 40 ? BT.text.amber : BT.text.red,
+                  borderRadius: 0,
                 }}
               />
             </div>
             <div className="flex justify-between mt-1">
-              <span className="text-[10px] text-[#94a3b8]">Weak</span>
-              <span className="text-[10px] text-[#94a3b8]">Strong</span>
+              <span className="text-[10px]" style={{ color: BT.text.muted }}>Weak</span>
+              <span className="text-[10px]" style={{ color: BT.text.muted }}>Strong</span>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="bg-white rounded-lg border border-[#e2e8f0] p-6">
-        <h3 className="text-sm font-bold text-[#0f172a] uppercase tracking-wider mb-4">
+      <div className="p-6" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
+        <h3 className="text-sm font-bold uppercase tracking-wider mb-4" style={{ color: BT.text.primary, fontFamily: BT.font.display }}>
           Exit Scenarios
         </h3>
         <div className="grid grid-cols-3 gap-3">
           {SCENARIOS.map((s, i) => {
             const isSelected = selectedScenario === i;
-            const borderColor = s.color === 'amber' ? 'border-amber-400' : s.color === 'emerald' ? 'border-emerald-400' : 'border-red-400';
-            const bgColor = s.color === 'amber' ? 'bg-amber-50' : s.color === 'emerald' ? 'bg-emerald-50' : 'bg-red-50';
-            const textColor = s.color === 'amber' ? 'text-amber-600' : s.color === 'emerald' ? 'text-emerald-600' : 'text-red-600';
+            const colorHex = s.color === 'amber' ? BT.text.amber : s.color === 'emerald' ? BT.text.green : BT.text.red;
             return (
               <button
                 key={i}
                 onClick={() => setSelectedScenario(i)}
-                className={`text-left p-4 rounded-lg border-2 transition-all ${
-                  isSelected
-                    ? `${borderColor} ${bgColor}`
-                    : 'border-[#e2e8f0] bg-white hover:border-gray-300'
-                }`}
+                className="text-left p-4 transition-all"
+                style={{
+                  borderRadius: 0,
+                  border: `2px solid ${isSelected ? colorHex : BT.border.subtle}`,
+                  background: isSelected ? `${colorHex}11` : BT.bg.panelAlt,
+                }}
               >
-                <div className={`text-[11px] font-bold uppercase tracking-wider ${textColor}`}>
+                <div className="text-[11px] font-bold uppercase tracking-wider" style={{ color: colorHex }}>
                   {s.label}
                 </div>
-                <div className="text-xl font-extrabold text-[#0f172a] mt-1">{s.quarter}</div>
-                <div className="text-[13px] text-[#64748b] mt-1">
+                <div className="text-xl font-extrabold mt-1" style={{ color: BT.text.primary, fontFamily: BT.font.mono }}>{s.quarter}</div>
+                <div className="text-[13px] mt-1" style={{ color: BT.text.secondary }}>
                   {s.irr}% IRR · {s.multiple}x
                 </div>
               </button>
             );
           })}
         </div>
-        <p className="text-[11px] text-[#94a3b8] mt-3">See Exit Windows tab for detailed year-by-year analysis</p>
+        <p className="text-[11px] mt-3" style={{ color: BT.text.muted }}>See Exit Windows tab for detailed year-by-year analysis</p>
       </div>
 
-      <div className="bg-white rounded-lg border border-[#e2e8f0] p-6">
-        <h3 className="text-sm font-bold text-[#0f172a] uppercase tracking-wider mb-4">
+      <div className="p-6" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
+        <h3 className="text-sm font-bold uppercase tracking-wider mb-4" style={{ color: BT.text.primary, fontFamily: BT.font.display }}>
           Causal Chain
         </h3>
         <div className="flex items-center justify-center gap-0 flex-wrap">
-          <CausalBox color="text-amber-600" bg="bg-amber-50" border="border-amber-200" label="High Rent Growth" sublabel="+ Low Supply" />
-          <ArrowRight className="w-5 h-5 text-[#94a3b8] mx-1 flex-shrink-0" />
-          <CausalBox color="text-blue-600" bg="bg-blue-50" border="border-blue-200" label="Low Rates" sublabel="Rates falling" />
-          <ArrowRight className="w-5 h-5 text-[#94a3b8] mx-1 flex-shrink-0" />
-          <CausalBox color="text-emerald-600" bg="bg-emerald-50" border="border-emerald-200" label="Exit Q3 2026" sublabel="3.5yr hold" />
-          <ArrowRight className="w-5 h-5 text-[#94a3b8] mx-1 flex-shrink-0" />
-          <CausalBox color="text-blue-600" bg="bg-blue-50" border="border-blue-200" label="5yr Fixed Debt" sublabel="Penalty-free @ Mo 36" />
-          <ArrowRight className="w-5 h-5 text-[#94a3b8] mx-1 flex-shrink-0" />
-          <CausalBox color="text-purple-600" bg="bg-purple-50" border="border-purple-200" label="20% Pref + 2-Tier" sublabel="GP promotes @ 4.3x" />
+          <CausalBox color={BT.text.amber} bg={`${BT.text.amber}11`} border={`${BT.text.amber}44`} label="High Rent Growth" sublabel="+ Low Supply" />
+          <ArrowRight className="w-5 h-5 mx-1 flex-shrink-0" style={{ color: BT.text.muted }} />
+          <CausalBox color={BT.text.cyan} bg={`${BT.text.cyan}11`} border={`${BT.text.cyan}44`} label="Low Rates" sublabel="Rates falling" />
+          <ArrowRight className="w-5 h-5 mx-1 flex-shrink-0" style={{ color: BT.text.muted }} />
+          <CausalBox color={BT.text.green} bg={`${BT.text.green}11`} border={`${BT.text.green}44`} label="Exit Q3 2026" sublabel="3.5yr hold" />
+          <ArrowRight className="w-5 h-5 mx-1 flex-shrink-0" style={{ color: BT.text.muted }} />
+          <CausalBox color={BT.text.cyan} bg={`${BT.text.cyan}11`} border={`${BT.text.cyan}44`} label="5yr Fixed Debt" sublabel="Penalty-free @ Mo 36" />
+          <ArrowRight className="w-5 h-5 mx-1 flex-shrink-0" style={{ color: BT.text.muted }} />
+          <CausalBox color={BT.text.purple} bg={`${BT.text.purple}11`} border={`${BT.text.purple}44`} label="20% Pref + 2-Tier" sublabel="GP promotes @ 4.3x" />
         </div>
       </div>
 
       {MISMATCH_WARNINGS.length > 0 && (
-        <div className="bg-red-50 rounded-lg border border-red-200 px-4 py-3">
+        <div className="px-4 py-3" style={{ background: `${BT.text.red}11`, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
           <div className="flex items-center gap-2 mb-2">
-            <ShieldAlert className="w-4 h-4 text-red-500 flex-shrink-0" />
-            <span className="text-[11px] font-bold text-red-700 uppercase tracking-wider">Structure Mismatches</span>
+            <ShieldAlert className="w-4 h-4 flex-shrink-0" style={{ color: BT.text.red }} />
+            <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: BT.text.red }}>Structure Mismatches</span>
           </div>
           <div className="space-y-1">
             {MISMATCH_WARNINGS.map((w, i) => (
               <div key={i} className="flex items-baseline gap-2">
-                <AlertTriangle className="w-3 h-3 text-red-400 flex-shrink-0 mt-0.5" />
-                <span className="text-[12px] text-red-700"><strong>{w.title}:</strong> {w.reason}</span>
+                <AlertTriangle className="w-3 h-3 flex-shrink-0 mt-0.5" style={{ color: BT.text.red }} />
+                <span className="text-[12px]" style={{ color: BT.text.red }}><strong>{w.title}:</strong> {w.reason}</span>
               </div>
             ))}
           </div>
@@ -523,23 +524,23 @@ export const ExitDrivesCapital: React.FC<ExitDrivesCapitalProps> = ({
 
       <CollapsibleSection
         title="Why This Structure"
-        icon={<Lock className="w-4 h-4 text-blue-500" />}
+        icon={<Lock className="w-4 h-4" style={{ color: BT.text.cyan }} />}
         expanded={whyExpanded}
         onToggle={() => setWhyExpanded(!whyExpanded)}
       >
         <div className="space-y-3">
           <ReasonRow
-            icon={<Lock className="w-4 h-4 text-blue-500" />}
+            icon={<Lock className="w-4 h-4" style={{ color: BT.text.cyan }} />}
             title="5yr fixed-rate agency debt"
             reason="Prepayment penalty burns off at Month 36 → exit at Month 42 is penalty-free. Shorter term (3yr bridge) would have saved 15bps but carried refi risk if window shifts."
           />
           <ReasonRow
-            icon={<DollarSign className="w-4 h-4 text-purple-500" />}
+            icon={<DollarSign className="w-4 h-4" style={{ color: BT.text.purple }} />}
             title="20% pref with 2-tier promote"
             reason="Optimal window projects 4.3x multiple, which clears both promote hurdles. Earlier exit misses second tier; later exit risks dropping below first tier due to cap rate expansion."
           />
           <ReasonRow
-            icon={<Target className="w-4 h-4 text-emerald-500" />}
+            icon={<Target className="w-4 h-4" style={{ color: BT.text.green }} />}
             title="65% LTV (conservative)"
             reason="Lower leverage preserves DSCR cushion during value-add phase. Can refinance into higher LTV agency product once stabilized if hold is extended."
           />
@@ -559,20 +560,20 @@ const FactorCard: React.FC<{
   sparkline: React.ReactNode;
   trend: 'up' | 'down';
 }> = ({ icon, iconBg, title, value, label, score, sparkline, trend }) => (
-  <div className="bg-white rounded-lg border border-[#e2e8f0] p-4">
+  <div className="p-4" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
     <div className="flex items-start gap-3">
-      <div className={`w-12 h-12 rounded-lg ${iconBg} flex items-center justify-center flex-shrink-0`}>
+      <div className="w-12 h-12 flex items-center justify-center flex-shrink-0" style={{ background: BT.bg.panelAlt, borderRadius: 0 }}>
         {icon}
       </div>
       <div className="flex-1 min-w-0">
-        <div className="text-[13px] font-medium text-[#64748b]">{title}</div>
-        <div className="text-2xl font-bold text-[#0f172a]">{value}</div>
-        <div className="text-[11px] text-[#64748b]">{label}</div>
+        <div className="text-[13px] font-medium" style={{ color: BT.text.secondary }}>{title}</div>
+        <div className="text-2xl font-bold" style={{ color: BT.text.primary, fontFamily: BT.font.mono }}>{value}</div>
+        <div className="text-[11px]" style={{ color: BT.text.secondary }}>{label}</div>
       </div>
     </div>
     <div className="flex items-center justify-between mt-2">
-      <div className="text-[11px] text-[#64748b]">
-        Score: <span className="font-semibold text-[#0f172a]">{Math.round(score)}</span>/100
+      <div className="text-[11px]" style={{ color: BT.text.secondary }}>
+        Score: <span className="font-semibold" style={{ color: BT.text.primary, fontFamily: BT.font.mono }}>{Math.round(score)}</span>/100
       </div>
       {sparkline}
     </div>
@@ -586,9 +587,9 @@ const CausalBox: React.FC<{
   label: string;
   sublabel: string;
 }> = ({ color, bg, border, label, sublabel }) => (
-  <div className={`${bg} ${border} border rounded-lg px-4 py-2.5 text-center min-w-[120px]`}>
-    <div className={`text-[12px] font-bold ${color}`}>{label}</div>
-    <div className="text-[10px] text-[#64748b] mt-0.5">{sublabel}</div>
+  <div className="px-4 py-2.5 text-center min-w-[120px]" style={{ background: bg, border: `1px solid ${border}`, borderRadius: 0 }}>
+    <div className="text-[12px] font-bold" style={{ color }}>{label}</div>
+    <div className="text-[10px] mt-0.5" style={{ color: BT.text.secondary }}>{sublabel}</div>
   </div>
 );
 
@@ -597,11 +598,11 @@ const ReasonRow: React.FC<{
   title: string;
   reason: string;
 }> = ({ icon, title, reason }) => (
-  <div className="flex items-start gap-3 bg-[#f8fafc] rounded-lg p-3 border border-[#e2e8f0]">
+  <div className="flex items-start gap-3 p-3" style={{ background: BT.bg.panelAlt, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
     <div className="mt-0.5 flex-shrink-0">{icon}</div>
     <div>
-      <div className="text-sm font-semibold text-[#0f172a]">{title}</div>
-      <div className="text-[12px] text-[#475569] mt-0.5 leading-relaxed">{reason}</div>
+      <div className="text-sm font-semibold" style={{ color: BT.text.primary }}>{title}</div>
+      <div className="text-[12px] mt-0.5 leading-relaxed" style={{ color: BT.text.secondary }}>{reason}</div>
     </div>
   </div>
 );
@@ -614,19 +615,21 @@ const CollapsibleSection: React.FC<{
   accentColor?: string;
   children: React.ReactNode;
 }> = ({ title, icon, expanded, onToggle, accentColor, children }) => (
-  <div className="bg-white rounded-lg border border-[#e2e8f0] overflow-hidden">
+  <div className="overflow-hidden" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
     <button
       onClick={onToggle}
-      className="w-full flex items-center justify-between p-4 hover:bg-[#f8fafc] transition-colors"
+      className="w-full flex items-center justify-between p-4 transition-colors"
+      onMouseEnter={e => (e.currentTarget.style.background = BT.bg.hover)}
+      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
     >
       <div className="flex items-center gap-2">
         {icon}
-        <span className="text-sm font-bold text-[#0f172a] uppercase tracking-wider">{title}</span>
+        <span className="text-sm font-bold uppercase tracking-wider" style={{ color: BT.text.primary, fontFamily: BT.font.display }}>{title}</span>
       </div>
       {expanded ? (
-        <ChevronUp className="w-4 h-4 text-[#64748b]" />
+        <ChevronUp className="w-4 h-4" style={{ color: BT.text.secondary }} />
       ) : (
-        <ChevronDown className="w-4 h-4 text-[#64748b]" />
+        <ChevronDown className="w-4 h-4" style={{ color: BT.text.secondary }} />
       )}
     </button>
     {expanded && <div className="px-4 pb-4">{children}</div>}

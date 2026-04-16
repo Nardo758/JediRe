@@ -1,0 +1,95 @@
+if (data.baseAssessment != null && data.assessedValue == null) {
+    data.assessedValue = data.baseAssessment;
+  }
+  if (data.totalAppraisal != null && data.fairMarketValue == null) {
+    data.fairMarketValue = data.totalAppraisal;
+  }
+
+  // ─── Quality warnings ───
+  if (data.totalAnnualTax === 0) warnings.push('Could not extract total annual tax');
+  if (!data.parcelId) warnings.push('Could not extract parcel ID');
+  if (data.appealStatus === 'pending' && !data.unappealedTaxAmount) {
+    warnings.push('Appeal pending but unappealed tax amount not captured');
+  }
+  if (data.authorities && data.authorities.length < 3) {
+    warnings.push(`Only ${data.authorities.length} taxing authorities parsed (expected 5+ for typical county bill)`);
+  }
+
+  return { data, warnings };
+}
+
+export function parseTaxBill(buffer: Buffer, filename: string): ExtractionResult {
+  // Sync entry point — only useful for non-PDF inputs (e.g., text dumps)
+  const text = buffer.toString('utf-8');
+  const { data, warnings } = parseFromText(text);
+  if (data.totalAnnualTax === 0 && !data.parcelId) {
+    return {
+      documentType: 'TAX_BILL', success: false,
+      error: 'Could not extract tax data from text — file may be a binary PDF requiring async extraction',
+      data: null, summary: {}, warnings,
+    };
+  }
+  return {
+    documentType: 'TAX_BILL', success: true, data: data as TaxBillData,
+    summary: {
+      parcelId: data.parcelId,
+      totalAnnualTax: data.totalAnnualTax,
+      appealStatus: data.appealStatus,
+      assessedValue: data.assessedValue,
+      taxYear: data.taxYear,
+    } as any,
+    warnings,
+  };
+}
+
+export async function parseTaxBillAsync(buffer: Buffer, filename: string): Promise<ExtractionResult> {
+  const text = await extractPdfText(buffer);
+
+  if (!text || text.length < 50) {
+    return {
+      documentType: 'TAX_BILL', success: false,
+      error: 'Could not extract text from PDF — may be scanned/image-based and require OCR',
+      data: null, summary: {}, warnings: [],
+    };
+  }
+
+  const { data, warnings } = parseFromText(text);
+
+  if (data.totalAnnualTax === 0 && !data.parcelId) {
+    return {
+      documentType: 'TAX_BILL', success: false,
+      error: 'PDF text extracted but no tax data fields recognized — format may not be supported',
+      data: null, summary: {}, warnings,
+    };
+  }
+
+  return {
+    documentType: 'TAX_BILL',
+    success: true,
+    data: data as TaxBillData,
+    summary: {
+      parcelId: data.parcelId,
+      countyPin: data.countyPin,
+      situsAddress: data.situsAddress,
+      taxDistrict: data.taxDistrict,
+      ownerName: data.ownerName,
+      ownerAddress: data.ownerAddress,
+      taxYear: data.taxYear,
+      totalAppraisal: data.totalAppraisal,
+      baseAssessment: data.baseAssessment,
+      appealAssessment: data.appealAssessment,
+      assessedValue: data.assessedValue,
+      millageRate: data.millageRate,
+      totalAnnualTax: data.totalAnnualTax,
+      unappealedTaxAmount: data.unappealedTaxAmount,
+      appealStatus: data.appealStatus,
+      countySubtotal: data.countySubtotal,
+      schoolSubtotal: data.schoolSubtotal,
+      otherSubtotal: data.otherSubtotal,
+      priorYearBalance: data.priorYearBalance,
+      totalPayoff: data.totalPayoff,
+      authorityCount: data.authorities?.length ?? 0,
+    } as any,
+    warnings,
+  };
+}

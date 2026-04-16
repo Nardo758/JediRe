@@ -145,16 +145,69 @@ export function parseFile(
     workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
   }
 
-  const sheetName = workbook.SheetNames[0];
-  if (!sheetName) throw new Error('File contains no sheets');
+  if (workbook.SheetNames.length === 0) throw new Error('File contains no sheets');
 
-  const sheet = workbook.Sheets[sheetName];
-  const rows = XLSX.utils.sheet_to_json<ParsedRow>(sheet, { defval: null });
+  let allRows: ParsedRow[] = [];
+  let allColumns = new Set<string>();
 
-  if (rows.length === 0) throw new Error('File contains no data rows');
+  for (const sheetName of workbook.SheetNames) {
+    const sheet = workbook.Sheets[sheetName];
+    const sheetRows = XLSX.utils.sheet_to_json<ParsedRow>(sheet, { defval: null });
+    if (sheetRows.length === 0) continue;
 
-  const columns = Object.keys(rows[0]);
-  return { rows, columns };
+    const cols = Object.keys(sheetRows[0]);
+    const normalizedCols = cols.map(c => c.toLowerCase().trim());
+
+    const hasDateCol = normalizedCols.some(c =>
+      ['month', 'date', 'period', 'reporting period', 'mo', 'month/year', 'report_month'].includes(c)
+    );
+
+    if (allRows.length === 0) {
+      allRows = sheetRows;
+      cols.forEach(c => allColumns.add(c));
+    } else if (hasDateCol) {
+      const existingCols = new Set(Array.from(allColumns).map(c => c.toLowerCase().trim()));
+      const newCols = cols.filter(c => !existingCols.has(c.toLowerCase().trim()));
+
+      if (newCols.length > 0) {
+        const dateCol = cols.find(c => {
+          const lc = c.toLowerCase().trim();
+          return ['month', 'date', 'period', 'reporting period', 'mo', 'month/year', 'report_month'].includes(lc);
+        });
+
+        if (dateCol) {
+          const existingDateCol = Array.from(allColumns).find(c => {
+            const lc = c.toLowerCase().trim();
+            return ['month', 'date', 'period', 'reporting period', 'mo', 'month/year', 'report_month'].includes(lc);
+          });
+
+          if (existingDateCol) {
+            const lookupMap = new Map<string, ParsedRow>();
+            for (const row of sheetRows) {
+              const key = String(row[dateCol] ?? '');
+              if (key) lookupMap.set(key, row);
+            }
+
+            for (const row of allRows) {
+              const key = String(row[existingDateCol] ?? '');
+              const match = lookupMap.get(key);
+              if (match) {
+                for (const col of newCols) {
+                  row[col] = match[col];
+                }
+              }
+            }
+            newCols.forEach(c => allColumns.add(c));
+          }
+        }
+      }
+    }
+  }
+
+  if (allRows.length === 0) throw new Error('File contains no data rows');
+
+  const columns = Array.from(allColumns);
+  return { rows: allRows, columns };
 }
 
 export function detectFormat(columns: string[]): string | null {
@@ -310,6 +363,7 @@ export function processRows(
         isBudget,
         isProforma: false,
         dataSource,
+        sourceDocumentType: isBudget ? 'budget' : 'income_statement',
       };
 
       for (const [targetCol, meta] of Object.entries(TARGET_COLUMNS)) {
@@ -330,6 +384,13 @@ export function processRows(
         } else {
           record[camelCase(targetCol)] = cleanNumeric(rawVal);
         }
+      }
+
+      if (record.reportMonth) {
+        try {
+          const d = new Date(record.reportMonth as string + 'T00:00:00');
+          record.sourcePeriodLabel = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+        } catch { /* ignore formatting error */ }
       }
 
       if (!record.reportMonth) {
@@ -431,6 +492,8 @@ export async function insertActuals(
         strRevenue: sql`EXCLUDED.str_revenue`,
         dataSource: sql`EXCLUDED.data_source`,
         uploadId: sql`EXCLUDED.upload_id`,
+        sourceDocumentType: sql`EXCLUDED.source_document_type`,
+        sourcePeriodLabel: sql`EXCLUDED.source_period_label`,
         updatedAt: sql`now()`,
       },
     });
