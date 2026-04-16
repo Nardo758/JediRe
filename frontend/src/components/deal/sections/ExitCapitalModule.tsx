@@ -682,6 +682,16 @@ interface M35Event {
   sourceUrl?: string;
 }
 
+function normalizeCat(raw: string): string {
+  const s = raw.toLowerCase();
+  if (s.startsWith('macro'))      return 'macro';
+  if (s.startsWith('technology')) return 'technology';
+  if (s.startsWith('regulatory')) return 'regulatory';
+  if (s.startsWith('disaster'))   return 'disaster';
+  if (s === 'market_structure')   return 'market_structure';
+  return s;
+}
+
 const M35_CAT_COLORS: Record<string, string> = {
   employment:      '#68D391',
   infrastructure:  '#63B3ED',
@@ -693,7 +703,7 @@ const M35_CAT_COLORS: Record<string, string> = {
 };
 
 function m35CatColor(cat: string): string {
-  return M35_CAT_COLORS[cat.toLowerCase()] ?? 'rgba(232,230,225,0.5)';
+  return M35_CAT_COLORS[normalizeCat(cat)] ?? 'rgba(232,230,225,0.5)';
 }
 
 function dateToQIdx(iso: string): number {
@@ -713,7 +723,7 @@ function eventPhase(ev: M35Event): 'past' | 'now' | 'future' {
 }
 
 function exitImpact(category: string, status: string): { label: string; color: string } {
-  const cat = category.toLowerCase();
+  const cat = normalizeCat(category);
   if (cat === 'disaster') return { label: 'NEGATIVE', color: '#FC8181' };
   if (cat === 'regulatory') return { label: 'WATCH', color: '#F6AD55' };
   if (status === 'reversed' || status === 'cancelled') return { label: 'NEUTRAL', color: 'rgba(232,230,225,0.4)' };
@@ -804,17 +814,18 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
 
   const caseForBullets = useMemo((): CaseForBullet[] | null => {
     const positive = m35Events
-      .filter(ev => POSITIVE_CATS.has(ev.category.toLowerCase()) && ev.status !== 'cancelled' && ev.status !== 'reversed')
+      .filter(ev => POSITIVE_CATS.has(normalizeCat(ev.category)) && ev.status !== 'cancelled' && ev.status !== 'reversed')
       .sort((a, b) => b.magnitudeScore - a.magnitudeScore)
       .slice(0, 4);
     if (positive.length === 0) return null;
     return positive.map(ev => {
-      const cat = ev.category.toLowerCase();
+      const cat = normalizeCat(ev.category);
       const suffix =
-        cat === 'employment'       ? 'supporting household formation and rental demand'
-        : cat === 'infrastructure' ? 'improving submarket access and long-term desirability'
-        : cat === 'macro'          ? 'creating macro tailwinds for real asset appreciation'
+        cat === 'employment'         ? 'supporting household formation and rental demand'
+        : cat === 'infrastructure'   ? 'improving submarket access and long-term desirability'
+        : cat === 'macro'            ? 'creating macro tailwinds for real asset appreciation'
         : cat === 'market_structure' ? 'driving favorable cap rate compression dynamics'
+        : cat === 'technology'       ? 'accelerating operational efficiency and asset positioning'
         : 'contributing to strengthened demand fundamentals';
       const shortName = ev.name.length > 60 ? ev.name.slice(0, 57) + '…' : ev.name;
       return {
@@ -841,7 +852,7 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
         n: String(i + 1).padStart(2, '0'),
         label: shortName,
         desc,
-        color: m35CatColor(ev.category.toLowerCase()),
+        color: m35CatColor(ev.category),
         done: ev.status === 'in_progress',
         isLive: true,
         urgency,
