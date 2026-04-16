@@ -6,7 +6,7 @@
  * quick-links to the /events/:id detail page.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowUpRight, Activity } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
@@ -31,6 +31,7 @@ interface LiveEvent {
   confidence: number;
   announcedDate: string | null;
   materializationDate: string | null;
+  updatedAt?: string;
 }
 
 // ─── Demo fallback ────────────────────────────────────────────────────────────
@@ -41,21 +42,25 @@ function demoEvents(submarketId: string): LiveEvent[] {
       id: 'ev-demo-01', name: `Major Employment Expansion — ${submarketId}`, category: 'employment',
       scope: 'submarket', status: 'in_progress', magnitudeScore: 4, confidence: 0.82,
       announcedDate: '2024-07-01', materializationDate: '2026-03-01',
+      updatedAt: '2026-04-14T03:00:00Z',
     },
     {
       id: 'ev-demo-02', name: 'BRT Corridor Opening', category: 'infrastructure',
       scope: 'submarket', status: 'announced', magnitudeScore: 3, confidence: 0.71,
       announcedDate: '2025-02-15', materializationDate: '2026-09-01',
+      updatedAt: '2026-04-12T16:45:00Z',
     },
     {
       id: 'ev-demo-03', name: 'New Supply Delivery Wave', category: 'supply',
       scope: 'submarket', status: 'in_progress', magnitudeScore: 3, confidence: 0.68,
       announcedDate: '2025-10-01', materializationDate: '2026-06-01',
+      updatedAt: '2026-04-11T09:30:00Z',
     },
     {
       id: 'ev-demo-04', name: 'Statewide Insurance Rate Shock', category: 'policy',
       scope: 'msa', status: 'announced', magnitudeScore: 2, confidence: 0.55,
       announcedDate: '2026-01-10', materializationDate: '2026-08-01',
+      updatedAt: '2026-04-10T14:00:00Z',
     },
   ];
 }
@@ -74,6 +79,14 @@ export const SubmarketEventsTab: React.FC<SubmarketEventsTabProps> = ({ submarke
   const [events, setEvents] = useState<LiveEvent[]>([]);
   const [selected, setSelected] = useState<LiveEvent | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const dataAsOf = useMemo((): string | null => {
+    const dates = events.map(e => e.updatedAt).filter(Boolean) as string[];
+    if (!dates.length) return null;
+    const latest = dates.reduce((a, b) => (a > b ? a : b));
+    const d = new Date(latest);
+    return isNaN(d.getTime()) ? null : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).toUpperCase();
+  }, [events]);
 
   useEffect(() => {
     let mounted = true;
@@ -102,6 +115,11 @@ export const SubmarketEventsTab: React.FC<SubmarketEventsTabProps> = ({ submarke
             <span style={{ color: BT.border.subtle }}>·</span>
             <span>Forecast Tracker</span>
           </div>
+          {!loading && dataAsOf && (
+            <div style={{ fontSize: 9, color: BT.text.muted, marginTop: 5, ...mono, letterSpacing: '0.05em' }}>
+              DATA AS OF {dataAsOf}
+            </div>
+          )}
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 10 }}>
           <div style={{ textAlign: 'right' }}>

@@ -5,7 +5,7 @@
  * and quick-link to the Event Detail page.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, ArrowUpRight, TrendingUp, TrendingDown, Activity, LayoutList, LayoutGrid } from 'lucide-react';
 import { EventDensityStrip } from '../../components/m35/EventDensityStrip';
@@ -36,6 +36,7 @@ interface PortfolioEventRow {
   status: 'AHEAD' | 'ON PACE' | 'BEHIND' | 'PRE-EVENT';
   triggerAt: string;
   peakAt: string;
+  updatedAt?: string;
 }
 
 // ─── Demo data ────────────────────────────────────────────────────────────────
@@ -44,26 +45,32 @@ const DEMO_ROWS: PortfolioEventRow[] = [
   {
     eventId: 'ev-01', eventName: 'Amazon HQ2 — Tampa', category: 'employment', scope: 'submarket', magnitude: 4,
     irrDelta: 2.1, rentGrowthDelta: 2.4, propertyId: 'p-01', propertyName: 'Westshore Heights', submarket: 'Westshore', msa: 'Tampa', status: 'AHEAD', triggerAt: '2024-Q3', peakAt: '2026-Q2',
+    updatedAt: '2026-04-14T03:00:00Z',
   },
   {
     eventId: 'ev-02', eventName: 'BRT Phase 1 — Denver', category: 'infrastructure', scope: 'submarket', magnitude: 3,
     irrDelta: 1.4, rentGrowthDelta: 1.8, propertyId: 'p-02', propertyName: 'LoDo Commons', submarket: 'Lower Downtown', msa: 'Denver', status: 'ON PACE', triggerAt: '2025-Q1', peakAt: '2026-Q4',
+    updatedAt: '2026-04-13T11:30:00Z',
   },
   {
     eventId: 'ev-03', eventName: 'FL Insurance Rate Shock', category: 'policy', scope: 'msa', magnitude: 2,
     irrDelta: -0.8, rentGrowthDelta: -0.4, propertyId: 'p-01', propertyName: 'Westshore Heights', submarket: 'Westshore', msa: 'Tampa', status: 'PRE-EVENT', triggerAt: '2026-Q3', peakAt: '2027-Q1',
+    updatedAt: '2026-04-12T08:15:00Z',
   },
   {
     eventId: 'ev-04', eventName: 'Midtown Upzone — Atlanta', category: 'policy', scope: 'submarket', magnitude: 2,
     irrDelta: 0.6, rentGrowthDelta: 0.8, propertyId: 'p-03', propertyName: 'Midtown Tower', submarket: 'Midtown', msa: 'Atlanta', status: 'ON PACE', triggerAt: '2025-Q4', peakAt: '2027-Q2',
+    updatedAt: '2026-04-10T19:45:00Z',
   },
   {
     eventId: 'ev-05', eventName: 'Tesla Gigafactory — Austin', category: 'employment', scope: 'msa', magnitude: 5,
     irrDelta: 3.4, rentGrowthDelta: 4.2, propertyId: 'p-04', propertyName: 'East Austin Lofts', submarket: 'East Austin', msa: 'Austin', status: 'AHEAD', triggerAt: '2023-Q4', peakAt: '2025-Q3',
+    updatedAt: '2026-04-14T01:20:00Z',
   },
   {
     eventId: 'ev-06', eventName: 'Supply Wave — Denver Q3', category: 'supply', scope: 'submarket', magnitude: 3,
     irrDelta: -1.1, rentGrowthDelta: -1.6, propertyId: 'p-02', propertyName: 'LoDo Commons', submarket: 'Lower Downtown', msa: 'Denver', status: 'BEHIND', triggerAt: '2026-Q1', peakAt: '2026-Q3',
+    updatedAt: '2026-04-09T22:00:00Z',
   },
 ];
 
@@ -151,6 +158,14 @@ const PortfolioEventFeedPage: React.FC = () => {
     AHEAD: C.green, 'ON PACE': C.cyan, BEHIND: C.red, 'PRE-EVENT': TEXT.muted,
   };
 
+  const dataAsOf = useMemo((): string | null => {
+    const dates = rows.map(r => r.updatedAt).filter(Boolean) as string[];
+    if (!dates.length) return null;
+    const latest = dates.reduce((a, b) => (a > b ? a : b));
+    const d = new Date(latest);
+    return isNaN(d.getTime()) ? null : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).toUpperCase();
+  }, [rows]);
+
   const filtered = rows
     .filter(r => {
       if (filter === 'ahead') return r.status === 'AHEAD' || r.status === 'ON PACE';
@@ -185,6 +200,11 @@ const PortfolioEventFeedPage: React.FC = () => {
             <div style={{ fontSize: 11, color: TEXT.muted, marginTop: 4, ...mono }}>
               M35 key events affecting owned assets · sorted by absolute IRR delta
             </div>
+            {dataAsOf && (
+              <div style={{ fontSize: 9, color: TEXT.muted, marginTop: 6, ...mono, letterSpacing: '0.05em' }}>
+                DATA AS OF {dataAsOf}
+              </div>
+            )}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button
