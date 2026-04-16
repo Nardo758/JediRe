@@ -25,6 +25,20 @@ import { TrendsAnalysisSection } from '../../components/deal/sections/TrendsAnal
 import OpportunityEngineSection from '../../components/deal/sections/OpportunityEngineSection';
 import DealCompAnalysisTab from '../../components/deal/sections/DealCompAnalysisTab';
 
+interface MetricCorrelation {
+  id: number;
+  metric_a: string;
+  metric_b: string;
+  geography_type: string;
+  geography_id: string;
+  window_months: number;
+  correlation_r: number;
+  lead_lag_months: number | null;
+  p_value: number | null;
+  sample_size: number;
+  computed_at: string;
+}
+
 interface MarketIntelData {
   economy: any;
   demographics: any;

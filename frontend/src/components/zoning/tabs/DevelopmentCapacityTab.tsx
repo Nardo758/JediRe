@@ -1488,6 +1488,72 @@ export default function DevelopmentCapacityTab({ dealId, deal, costPerSf: propCo
     }
   };
 
+  const handleSelectPathNew = async (pathId: string) => {
+    setSelectedPath(pathId);
+    const path = paths.find(p => p.id === pathId);
+    if (!path) return;
+
+    // Build envelope from path calculation
+    const envelope: BuildingEnvelope = {
+      max_units: path.envelope?.max_units || 0,
+      max_gfa_sf: path.envelope?.total_gfa_at_max_units || 0,
+      max_stories: path.envelope?.max_stories || 1,
+      max_footprint_sf: path.envelope?.footprint_sf || 0,
+      buildable_polygon: null,
+      required_parking_spaces: path.envelope?.parking?.total_spaces || 0,
+      parking_structure_type:
+        path.envelope?.max_units > 200
+          ? 'podium'
+          : path.envelope?.max_units > 100
+            ? 'garage'
+            : 'surface',
+      parking_levels: path.envelope?.parking?.parking_levels_needed || 0,
+      residential_floors: path.envelope?.residential_floors || path.envelope?.max_stories - 1,
+      ground_floor_retail_sf: path.envelope?.max_units > 150 ? 5000 : 0,
+      construction_type:
+        path.envelope?.max_stories <= 4
+          ? 'wood_frame'
+          : path.envelope?.max_stories <= 7
+            ? 'podium_wood'
+            : 'steel_concrete',
+    };
+
+    // Update Zustand store
+    selectDevelopmentPath(pathId as DevelopmentPath, envelope);
+
+    // Optionally persist to database (similar to handleSelectPath)
+    if (dealId) {
+      try {
+        const existingRes = await apiClient.get(`/api/v1/deals/${dealId}/scenarios`);
+        const existing = existingRes.data.scenarios?.find((s: any) => s.name === pathId);
+
+        if (existing) {
+          await apiClient.put(`/api/v1/deals/${dealId}/scenarios/${existing.id}/activate`);
+        } else {
+          const scenarioData = {
+            name: pathId,
+            is_active: true,
+            use_mix: { residential_pct: 100 },
+            avg_unit_size_sf: 850,
+            efficiency_factor: 0.85,
+            max_gba: path.envelope?.total_gfa_at_max_units || 0,
+            max_footprint: path.envelope?.footprint_sf || 0,
+            net_leasable_sf: Math.round((path.envelope?.total_gfa_at_max_units || 0) * 0.85),
+            parking_required: path.envelope?.parking?.total_spaces || 0,
+            max_stories: path.envelope?.max_stories || 1,
+            max_units: path.envelope?.max_units || 0,
+            applied_far: profile?.applied_far || null,
+            binding_constraint: path.envelope?.binding_constraint || null,
+          };
+          await apiClient.post(`/api/v1/deals/${dealId}/scenarios`, scenarioData);
+        }
+        await loadScenarios();
+      } catch (err) {
+        console.warn('Failed to persist path selection:', err);
+      }
+    }
+  };
+
   if (loading) {
     return (
       <div className="space-y-4">
@@ -1638,6 +1704,92 @@ export default function DevelopmentCapacityTab({ dealId, deal, costPerSf: propCo
 
   return (
     <div className="space-y-5">
+      {/* Development Path Selection Cards */}
+      {paths.length > 0 && (
+        <div style={{ padding: "20px", background: T.bg }}>
+          <PathComparisonCards
+            paths={paths}
+            selectedPath={selectedPath}
+            onSelectPath={handleSelectPathNew}
+          />
+          {selectedPath && (
+            <>
+              <div style={{ ...s.card, marginTop: 16 }}>
+                <ConstraintWaterfall
+                  constraints={
+                    paths.find(p => p.id === selectedPath)?.envelope?.constraints || []
+                  }
+                  maxPossible={
+                    Math.max(
+                      ...(paths.find(p => p.id === selectedPath)?.envelope?.constraints || []).map((c: any) => c.units || 0)
+                    ) || 100
+                  }
+                />
+              </div>
+
+              {/* AI Narrative Analysis */}
+              <div style={{ ...s.card, borderLeft: `3px solid ${T.accent}` }}>
+                <div
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    fontFamily: FONT.mono,
+                    color: T.accent,
+                    marginBottom: 6,
+                  }}
+                >
+                  AI ANALYSIS
+                </div>
+                <div style={{ fontSize: 12, color: T.text, lineHeight: 1.7 }}>
+                  {selectedPath === "by_right" && (
+                    <>
+                      Under current {profile?.base_district_code || 'zoning'}, the{" "}
+                      <strong>
+                        {paths
+                          .find(p => p.id === "by_right")
+                          ?.envelope?.binding_constraint?.toLowerCase()}
+                      </strong>{" "}
+                      is the binding constraint at{" "}
+                      <strong>{paths.find(p => p.id === "by_right")?.envelope?.max_units?.toLocaleString()}</strong> units.
+                      This represents your baseline development envelope—what you can build today without additional
+                      approvals. Parking is{" "}
+                      {paths.find(p => p.id === "by_right")?.envelope?.parking?.needs_structured
+                        ? `structured ($${(
+                            (paths.find(p => p.id === "by_right")?.envelope?.parking?.total_cost || 0) / 1e6
+                          ).toFixed(1)}M), which increases construction costs by ~${
+                            paths.find(p => p.id === "by_right")?.envelope?.parking?.pct_of_construction
+                          }%.`
+                        : "surface, giving you a cost advantage at this density."}
+                    </>
+                  )}
+                  {selectedPath === "variance" && (
+                    <>
+                      A Variance or SAP (Special Administrative Permit) request can typically add 20-30% density and
+                      height relief. This path models a 25% density increase and 10% height boost, reaching{" "}
+                      <strong>{paths.find(p => p.id === "variance")?.envelope?.max_units?.toLocaleString()}</strong>{" "}
+                      units. Approval probability is ~70%, with 6-16 months timeline and $75K soft costs. The trade-off:
+                      +
+                      {(
+                        (paths.find(p => p.id === "variance")?.envelope?.max_units || 0) -
+                        (paths.find(p => p.id === "by_right")?.envelope?.max_units || 0)
+                      )
+                        ?.toLocaleString()}
+                      {" "}additional units justify this path if the value delta exceeds $5M+ in property uplift.
+                    </>
+                  )}
+                  {!selectedPath && (
+                    <>
+                      Select a development path to see constraint analysis and AI insights about feasibility, timeline,
+                      and value creation.
+                    </>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       <div className="bg-white rounded-lg border border-gray-200 px-5 py-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
         <div className="flex items-center gap-2">
           <span className="text-gray-500 font-medium">Zoning:</span>

@@ -7,6 +7,31 @@ import { optionalAuth, AuthenticatedRequest } from '../../middleware/auth';
 const router = Router();
 const engine = new CorrelationEngineService(pool);
 
+/**
+ * Middleware: Require Admin API Key
+ */
+function requireAdminApiKey(req: AuthenticatedRequest, res: Response, next: Function) {
+  const apiKey = req.headers['x-api-key'] as string;
+
+  if (!apiKey) {
+    return res.status(401).json({
+      error: 'Unauthorized',
+      message: 'Admin API key required (X-API-Key header)'
+    });
+  }
+
+  const validKey = process.env.API_KEY_ADMIN;
+
+  if (!validKey || apiKey !== validKey) {
+    return res.status(403).json({
+      error: 'Forbidden',
+      message: 'Invalid admin API key'
+    });
+  }
+
+  next();
+}
+
 router.get('/report', async (req: Request, res: Response) => {
   try {
     const city = (req.query.city as string) || 'Atlanta';
