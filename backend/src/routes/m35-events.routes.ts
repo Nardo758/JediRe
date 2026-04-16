@@ -483,15 +483,53 @@ router.get('/deals/:dealId/events-context', async (req: Request, res: Response) 
       }));
     });
 
+    // Fetch news items linked to these events via news_item_ids
+    const allNewsIds: string[] = [];
+    for (const ev of events) {
+      const ids = Array.isArray(ev.news_item_ids) ? ev.news_item_ids : [];
+      for (const id of ids) {
+        if (typeof id === 'string' && !allNewsIds.includes(id)) allNewsIds.push(id);
+      }
+    }
+
+    const newsItemMap = new Map<string, object>();
+    if (allNewsIds.length > 0) {
+      const placeholders = allNewsIds.map((_, i) => `$${i + 1}`).join(', ');
+      const newsRes = await pool.query(
+        `SELECT id, title, summary, source_url, source_name, published_at, relevance_score
+         FROM news_items WHERE id IN (${placeholders})`,
+        allNewsIds
+      );
+      for (const row of newsRes.rows) {
+        newsItemMap.set(row.id, {
+          id:            row.id,
+          title:         row.title,
+          summary:       row.summary ?? null,
+          sourceUrl:     row.source_url ?? null,
+          sourceName:    row.source_name ?? null,
+          publishedAt:   row.published_at ? new Date(row.published_at).toISOString() : null,
+          relevanceScore: row.relevance_score !== null ? parseFloat(row.relevance_score) : null,
+        });
+      }
+    }
+
+    const enrichedEvents = events.map(ev => {
+      const ids: string[] = Array.isArray(ev.news_item_ids) ? ev.news_item_ids : [];
+      return {
+        ...ev,
+        newsItems: ids.map(id => newsItemMap.get(id)).filter(Boolean),
+      };
+    });
+
     res.json({
       dealId: req.params.dealId,
       msaId,
-      events,
+      events: enrichedEvents,
       sensitivity,
       sensitivityScore,
       concentration,
       inlineAttributions,
-      totalActiveEvents: events.length,
+      totalActiveEvents: enrichedEvents.length,
     });
   } catch (err: any) {
     logger.error('[M35 Events] events-context error', err);

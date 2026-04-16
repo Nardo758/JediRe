@@ -633,6 +633,16 @@ function RSSBreakdownCards({ rssData }: RSSBreakdownCardsProps) {
 // M35 KEY EVENT TYPES + HELPERS
 // ═══════════════════════════════════════════════════════════════════════════
 
+interface NewsItem {
+  id: string;
+  title: string;
+  summary?: string;
+  sourceUrl?: string;
+  sourceName?: string;
+  publishedAt?: string;
+  relevanceScore?: number;
+}
+
 interface M35Event {
   id: string;
   name: string;
@@ -648,6 +658,8 @@ interface M35Event {
   msaName?: string;
   submarketName?: string;
   ingestionSource?: string;
+  newsItems?: NewsItem[];
+  source_url?: string;
 }
 
 const M35_CAT_COLORS: Record<string, string> = {
@@ -710,12 +722,21 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
   const [liveRates, setLiveRates] = useState<LiveRates | null>(null);
   const [liveRatesLoading, setLiveRatesLoading] = useState(false);
   const [m35Events, setM35Events] = useState<M35Event[]>([]);
+  const [expandedEvents, setExpandedEvents] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     apiClient.get<{ events: M35Event[] }>(`/m35/deals/${dealId}/events-context`)
       .then(r => { if (Array.isArray(r.data?.events)) setM35Events(r.data.events); })
       .catch(() => null);
   }, [dealId]);
+
+  function toggleEventExpand(id: string) {
+    setExpandedEvents(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
 
   // Compute optimal exit quarter (highest RSS in forward window)
   const optimalFwd = useMemo(() => {
@@ -925,46 +946,124 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
                     const catColor = m35CatColor(ev.category);
                     const dateStr = ev.announcedDate ?? ev.materializationDate;
                     const displayDate = dateStr ? new Date(dateStr).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : null;
+                    const linkedNews: NewsItem[] = ev.newsItems ?? [];
+                    const hasExpandable = linkedNews.length > 0 || Boolean(ev.source_url);
+                    const isExpanded = expandedEvents.has(ev.id);
                     return (
-                      <div key={ev.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '10px 14px', background: 'rgba(255,255,255,0.018)', border: `1px solid ${catColor}20`, borderLeft: `3px solid ${catColor}`, borderRadius: 5 }}>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3, flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: 7, fontWeight: 700, padding: '1px 5px', background: `${catColor}15`, border: `1px solid ${catColor}40`, borderRadius: 2, color: catColor, fontFamily: "'JetBrains Mono'", textTransform: 'uppercase' }}>
-                              {ev.category.replace('_', ' ')}
-                            </span>
-                            <span style={{ fontSize: 7, fontWeight: 700, padding: '1px 5px', background: `${impact.color}10`, border: `1px solid ${impact.color}30`, borderRadius: 2, color: impact.color, fontFamily: "'JetBrains Mono'" }}>
-                              {impact.label}
-                            </span>
-                            {ev.ingestionSource === 'news' && (
-                              <span style={{ fontSize: 7, padding: '1px 5px', background: 'rgba(99,179,237,0.08)', border: '1px solid rgba(99,179,237,0.25)', borderRadius: 2, color: '#63B3ED', fontFamily: "'JetBrains Mono'" }}>
-                                NEWS
+                      <div key={ev.id} style={{ background: 'rgba(255,255,255,0.018)', border: `1px solid ${catColor}20`, borderLeft: `3px solid ${catColor}`, borderRadius: 5, overflow: 'hidden' }}>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '10px 14px' }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3, flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: 7, fontWeight: 700, padding: '1px 5px', background: `${catColor}15`, border: `1px solid ${catColor}40`, borderRadius: 2, color: catColor, fontFamily: "'JetBrains Mono'", textTransform: 'uppercase' }}>
+                                {ev.category.replace('_', ' ')}
                               </span>
+                              <span style={{ fontSize: 7, fontWeight: 700, padding: '1px 5px', background: `${impact.color}10`, border: `1px solid ${impact.color}30`, borderRadius: 2, color: impact.color, fontFamily: "'JetBrains Mono'" }}>
+                                {impact.label}
+                              </span>
+                              {ev.ingestionSource === 'news' && (
+                                <span style={{ fontSize: 7, padding: '1px 5px', background: 'rgba(99,179,237,0.08)', border: '1px solid rgba(99,179,237,0.25)', borderRadius: 2, color: '#63B3ED', fontFamily: "'JetBrains Mono'" }}>
+                                  NEWS
+                                </span>
+                              )}
+                              {ev.isVerified && (
+                                <span style={{ fontSize: 7, padding: '1px 5px', background: 'rgba(104,211,145,0.08)', border: '1px solid rgba(104,211,145,0.25)', borderRadius: 2, color: '#68D391', fontFamily: "'JetBrains Mono'" }}>
+                                  ✓ VERIFIED
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ fontSize: 11, fontWeight: 600, color: '#E8E6E1', marginBottom: ev.description ? 3 : 0, lineHeight: 1.4 }}>{ev.name}</div>
+                            {ev.description && (
+                              <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.45)', lineHeight: 1.5 }}>{ev.description}</div>
                             )}
-                            {ev.isVerified && (
-                              <span style={{ fontSize: 7, padding: '1px 5px', background: 'rgba(104,211,145,0.08)', border: '1px solid rgba(104,211,145,0.25)', borderRadius: 2, color: '#68D391', fontFamily: "'JetBrains Mono'" }}>
-                                ✓ VERIFIED
-                              </span>
+                            {hasExpandable && (
+                              <button
+                                onClick={() => toggleEventExpand(ev.id)}
+                                style={{ marginTop: 6, fontSize: 8, fontWeight: 700, fontFamily: "'JetBrains Mono'", color: '#63B3ED', background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 3 }}
+                              >
+                                {linkedNews.length > 0 ? `${linkedNews.length} SOURCE${linkedNews.length > 1 ? 'S' : ''}` : 'VIEW SOURCE'}
+                                <span style={{ fontSize: 8, transition: 'transform 0.15s', display: 'inline-block', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>▾</span>
+                              </button>
                             )}
                           </div>
-                          <div style={{ fontSize: 11, fontWeight: 600, color: '#E8E6E1', marginBottom: ev.description ? 3 : 0, lineHeight: 1.4 }}>{ev.name}</div>
-                          {ev.description && (
-                            <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.45)', lineHeight: 1.5 }}>{ev.description}</div>
-                          )}
-                        </div>
-                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                          <div style={{ fontSize: 8, fontWeight: 700, color: phase === 'past' ? 'rgba(232,230,225,0.3)' : phase === 'now' ? '#63B3ED' : '#F6AD55', fontFamily: "'JetBrains Mono'", marginBottom: 4 }}>
-                            {phase.toUpperCase()}
-                          </div>
-                          {displayDate && (
-                            <div style={{ fontSize: 8, color: 'rgba(232,230,225,0.3)', fontFamily: "'JetBrains Mono'" }}>{displayDate}</div>
-                          )}
-                          <div style={{ marginTop: 6 }}>
-                            <div style={{ fontSize: 8, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'", marginBottom: 1 }}>CONFIDENCE</div>
-                            <div style={{ fontSize: 10, fontWeight: 700, color: ev.confidence >= 0.7 ? '#68D391' : ev.confidence >= 0.5 ? '#F6E05E' : '#FC8181', fontFamily: "'JetBrains Mono'" }}>
-                              {Math.round(ev.confidence * 100)}%
+                          <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                            <div style={{ fontSize: 8, fontWeight: 700, color: phase === 'past' ? 'rgba(232,230,225,0.3)' : phase === 'now' ? '#63B3ED' : '#F6AD55', fontFamily: "'JetBrains Mono'", marginBottom: 4 }}>
+                              {phase.toUpperCase()}
+                            </div>
+                            {displayDate && (
+                              <div style={{ fontSize: 8, color: 'rgba(232,230,225,0.3)', fontFamily: "'JetBrains Mono'" }}>{displayDate}</div>
+                            )}
+                            <div style={{ marginTop: 6 }}>
+                              <div style={{ fontSize: 8, color: 'rgba(232,230,225,0.22)', fontFamily: "'JetBrains Mono'", marginBottom: 1 }}>CONFIDENCE</div>
+                              <div style={{ fontSize: 10, fontWeight: 700, color: ev.confidence >= 0.7 ? '#68D391' : ev.confidence >= 0.5 ? '#F6E05E' : '#FC8181', fontFamily: "'JetBrains Mono'" }}>
+                                {Math.round(ev.confidence * 100)}%
+                              </div>
                             </div>
                           </div>
                         </div>
+
+                        {isExpanded && (
+                          <div style={{ borderTop: `1px solid ${catColor}18`, padding: '8px 14px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            {linkedNews.length > 0 ? (
+                              linkedNews.map(item => (
+                                <div key={item.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '7px 10px', background: 'rgba(255,255,255,0.022)', borderRadius: 4, border: '1px solid rgba(255,255,255,0.05)' }}>
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    {item.sourceUrl ? (
+                                      <a
+                                        href={item.sourceUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        style={{ fontSize: 10, fontWeight: 600, color: '#E8E6E1', lineHeight: 1.4, textDecoration: 'none', display: 'block' }}
+                                        onMouseEnter={e => (e.currentTarget.style.color = '#63B3ED')}
+                                        onMouseLeave={e => (e.currentTarget.style.color = '#E8E6E1')}
+                                      >
+                                        {item.title}
+                                      </a>
+                                    ) : (
+                                      <div style={{ fontSize: 10, fontWeight: 600, color: '#E8E6E1', lineHeight: 1.4 }}>{item.title}</div>
+                                    )}
+                                    {item.summary && (
+                                      <div style={{ fontSize: 8, color: 'rgba(232,230,225,0.4)', lineHeight: 1.5, marginTop: 2 }}>{item.summary}</div>
+                                    )}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 3 }}>
+                                      {item.sourceName && (
+                                        <span style={{ fontSize: 7, color: 'rgba(232,230,225,0.3)', fontFamily: "'JetBrains Mono'" }}>{item.sourceName}</span>
+                                      )}
+                                      {item.publishedAt && (
+                                        <span style={{ fontSize: 7, color: 'rgba(232,230,225,0.25)', fontFamily: "'JetBrains Mono'" }}>
+                                          {new Date(item.publishedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                        </span>
+                                      )}
+                                      {item.relevanceScore !== undefined && item.relevanceScore !== null && (
+                                        <span style={{ fontSize: 7, color: 'rgba(232,230,225,0.25)', fontFamily: "'JetBrains Mono'" }}>
+                                          REL {Math.round(item.relevanceScore * 100)}%
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  {item.sourceUrl && (
+                                    <a
+                                      href={item.sourceUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      style={{ fontSize: 8, color: '#63B3ED', flexShrink: 0, textDecoration: 'none', fontFamily: "'JetBrains Mono'", fontWeight: 700 }}
+                                    >
+                                      ↗
+                                    </a>
+                                  )}
+                                </div>
+                              ))
+                            ) : ev.source_url ? (
+                              <a
+                                href={ev.source_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                style={{ fontSize: 9, color: '#63B3ED', fontFamily: "'JetBrains Mono'", fontWeight: 700, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}
+                              >
+                                <span>VIEW SOURCE ↗</span>
+                              </a>
+                            ) : null}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
