@@ -309,6 +309,8 @@ interface ConvergenceChart21Props {
   onSelectFwd: (idx: number) => void;
   optimalFwd: number;
   liveEvents?: M35Event[];
+  selectedEventId?: string | null;
+  onMarkerClick?: (id: string) => void;
 }
 
 const CHART_KEY_EVENTS: Array<{ idx: number; label: string; phase: 'past' | 'future'; color: string; sublabel: string }> = [
@@ -320,7 +322,7 @@ const CHART_KEY_EVENTS: Array<{ idx: number; label: string; phase: 'past' | 'fut
   { idx: 49, label: 'SUPPLY↓', phase: 'future',  color: 'rgba(167,139,250,0.8)', sublabel: 'Q2\'28 · Supply peak clears'  },
 ];
 
-function ConvergenceChart21({ selectedFwd, onSelectFwd, optimalFwd, liveEvents = [] }: ConvergenceChart21Props) {
+function ConvergenceChart21({ selectedFwd, onSelectFwd, optimalFwd, liveEvents = [], selectedEventId, onMarkerClick }: ConvergenceChart21Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const W = 920,
     H = 360;
@@ -558,8 +560,8 @@ function ConvergenceChart21({ selectedFwd, onSelectFwd, optimalFwd, liveEvents =
             <div
               key={`live-${ev.id}`}
               title={ev.name}
-              onClick={() => handleMarkerClick(ev.id)}
-              style={{ position: 'absolute', left: `${leftPct}%`, transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: 'pointer' }}
+              onClick={() => onMarkerClick?.(ev.id)}
+              style={{ position: 'absolute', left: `${leftPct}%`, transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: onMarkerClick ? 'pointer' : 'default' }}
             >
               <svg width="9" height="8" viewBox="0 0 9 8" style={{ display: 'block', filter: isMarkerSelected ? `drop-shadow(0 0 3px ${color})` : 'none' }}>
                 <polygon points="4.5,0.5 8.5,7.5 0.5,7.5" fill={color} />
@@ -1016,7 +1018,7 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
                   )}
                 </div>
               </div>
-              <ConvergenceChart21 selectedFwd={selectedFwd} onSelectFwd={setSelectedFwd} optimalFwd={optimalFwd} liveEvents={m35Events} />
+              <ConvergenceChart21 selectedFwd={selectedFwd} onSelectFwd={setSelectedFwd} optimalFwd={optimalFwd} liveEvents={m35Events.slice(0, 6)} selectedEventId={selectedEventId} onMarkerClick={handleMarkerClick} />
             </div>
 
             {/* RSS breakdown cards */}
