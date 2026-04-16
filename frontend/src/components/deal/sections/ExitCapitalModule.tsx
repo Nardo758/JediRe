@@ -778,15 +778,28 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
   const POSITIVE_CATS = new Set(['employment', 'infrastructure', 'macro', 'market_structure', 'technology']);
 
   interface CaseForBullet { text: string; color: string; isLive: boolean }
-  interface KeyTriggerItem { n: string; label: string; desc: string; color: string; done: boolean; isLive: boolean }
+  interface KeyTriggerItem {
+    n: string; label: string; desc: string; color: string;
+    done: boolean; isLive: boolean;
+    urgency: 'HIGH' | 'MEDIUM' | 'LOW'; icon: string;
+  }
 
-  const FALLBACK_CASE_FOR = 'The 21-year convergence model identifies this as the peak RSS window. By this quarter, the Fed normalization cycle will have compressed 10Y Treasuries enough to unlock agency cap rate compression, while the current supply pipeline will have largely been absorbed by sustained household formation. Institutional buyer demand is expected to produce premium pricing on well-positioned assets.';
+  const FALLBACK_CASE_FOR = 'By this quarter, the Fed normalization cycle will have compressed 10Y Treasuries enough to unlock agency cap rate compression, while the current supply pipeline will have largely been absorbed by sustained household formation. Institutional buyer demand is expected to produce premium pricing on well-positioned assets.';
+
+  function triggerUrgency(cat: string, status: string, magnitude: number): { urgency: 'HIGH' | 'MEDIUM' | 'LOW'; icon: string } {
+    const impact = exitImpact(cat, status);
+    if (impact.label === 'NEGATIVE') return { urgency: 'HIGH', icon: '▼' };
+    if (impact.label === 'WATCH')    return { urgency: 'MEDIUM', icon: '◆' };
+    if (impact.label === 'POSITIVE' && magnitude >= 4) return { urgency: 'HIGH', icon: '▲' };
+    if (impact.label === 'POSITIVE') return { urgency: 'MEDIUM', icon: '▲' };
+    return { urgency: 'LOW', icon: '●' };
+  }
 
   const FALLBACK_TRIGGERS: KeyTriggerItem[] = [
-    { n: '01', label: 'Rate normalization', desc: 'SOFR falls to 3.5–4.0% range, compressing cap rates 25–50bps', color: '#63B3ED', done: false, isLive: false },
-    { n: '02', label: 'Supply pipeline clears', desc: 'New starts YoY decline sustains, absorption outpaces deliveries', color: '#B794F4', done: false, isLive: false },
-    { n: '03', label: 'Asset stabilization', desc: 'Occupancy ≥ 93% at market rents for 2+ consecutive quarters', color: '#F6AD55', done: false, isLive: false },
-    { n: '04', label: 'RSS peaks above 80', desc: 'All sub-scores converge — institutional buyer window opens', color: '#10b981', done: false, isLive: false },
+    { n: '01', label: 'Rate normalization', desc: 'SOFR falls to 3.5–4.0% range, compressing cap rates 25–50bps', color: '#63B3ED', done: false, isLive: false, urgency: 'HIGH', icon: '▲' },
+    { n: '02', label: 'Supply pipeline clears', desc: 'New starts YoY decline sustains, absorption outpaces deliveries', color: '#B794F4', done: false, isLive: false, urgency: 'MEDIUM', icon: '◆' },
+    { n: '03', label: 'Asset stabilization', desc: 'Occupancy ≥ 93% at market rents for 2+ consecutive quarters', color: '#F6AD55', done: false, isLive: false, urgency: 'MEDIUM', icon: '◆' },
+    { n: '04', label: 'RSS peaks above 80', desc: 'All sub-scores converge — institutional buyer window opens', color: '#10b981', done: false, isLive: false, urgency: 'HIGH', icon: '▲' },
   ];
 
   const caseForBullets = useMemo((): CaseForBullet[] | null => {
@@ -814,7 +827,7 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
 
   const keyTriggers = useMemo((): KeyTriggerItem[] => {
     const live = m35Events
-      .filter(ev => (ev.status === 'announced' || ev.status === 'in_progress') && (ev.magnitudeScore >= 2.5 || ev.confidence >= 0.65))
+      .filter(ev => (ev.status === 'announced' || ev.status === 'in_progress') && (ev.magnitudeScore >= 3 || ev.confidence >= 0.65))
       .sort((a, b) => b.magnitudeScore - a.magnitudeScore)
       .slice(0, 4);
     if (live.length === 0) return FALLBACK_TRIGGERS;
@@ -823,6 +836,7 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
       const desc = ev.description
         ? (ev.description.length > 80 ? ev.description.slice(0, 77) + '…' : ev.description)
         : `${ev.category.replace('_', ' ')} event — confidence ${Math.round(ev.confidence * 100)}%`;
+      const { urgency, icon } = triggerUrgency(ev.category, ev.status, ev.magnitudeScore);
       return {
         n: String(i + 1).padStart(2, '0'),
         label: shortName,
@@ -830,6 +844,8 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
         color: m35CatColor(ev.category.toLowerCase()),
         done: ev.status === 'in_progress',
         isLive: true,
+        urgency,
+        icon,
       };
     });
     if (mapped.length < 4) {
@@ -992,18 +1008,24 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
                   )}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {keyTriggers.map(t => (
-                    <div key={t.n} style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-                      <span style={{ fontSize: 9, fontWeight: 800, fontFamily: "'JetBrains Mono'", color: t.color, flexShrink: 0, marginTop: 1 }}>{t.n}</span>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 1 }}>
-                          <div style={{ fontSize: 10, fontWeight: 600, color: t.done ? 'rgba(232,230,225,0.45)' : '#E8E6E1', textDecoration: t.done ? 'line-through' : 'none' }}>{t.label}</div>
-                          {t.done && <span style={{ fontSize: 7, color: '#68D391', fontFamily: "'JetBrains Mono'", fontWeight: 700 }}>IN PROGRESS</span>}
+                  {keyTriggers.map(t => {
+                    const urgencyColor = t.urgency === 'HIGH' ? '#FC8181' : t.urgency === 'MEDIUM' ? '#F6AD55' : 'rgba(232,230,225,0.3)';
+                    return (
+                      <div key={t.n} style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, gap: 2, minWidth: 18 }}>
+                          <span style={{ fontSize: 9, fontWeight: 800, fontFamily: "'JetBrains Mono'", color: t.color }}>{t.icon}</span>
+                          <span style={{ fontSize: 6, fontWeight: 700, fontFamily: "'JetBrains Mono'", color: urgencyColor, letterSpacing: 0.3 }}>{t.urgency}</span>
                         </div>
-                        <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.4)', lineHeight: 1.5 }}>{t.desc}</div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 1 }}>
+                            <div style={{ fontSize: 10, fontWeight: 600, color: t.done ? 'rgba(232,230,225,0.45)' : '#E8E6E1', textDecoration: t.done ? 'line-through' : 'none' }}>{t.label}</div>
+                            {t.done && <span style={{ fontSize: 7, color: '#68D391', fontFamily: "'JetBrains Mono'", fontWeight: 700 }}>IN PROGRESS</span>}
+                          </div>
+                          <div style={{ fontSize: 9, color: 'rgba(232,230,225,0.4)', lineHeight: 1.5 }}>{t.desc}</div>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </div>
