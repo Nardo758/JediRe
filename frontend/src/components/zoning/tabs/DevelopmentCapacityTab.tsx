@@ -7,6 +7,22 @@ import type { DevelopmentPath, BuildingEnvelope } from '../../../types/zoning.ty
 import { MunicodeLink } from '../SourceCitation';
 import RegulatoryMarketResearch from './RegulatoryMarketResearch';
 
+// ═══ DEAL-TYPE ADAPTATION IMPORTS ═══
+// Utilities for conformance checks and scenario generation
+import { computeConformanceMetrics, ConformanceCheckData } from '../../../utils/conformance.utils';
+import { generateExpansionScenarios, generateRedevelopmentScenarios, ExpansionScenario } from '../../../utils/scenarios.utils';
+import { getSubTabsForDealType, normalizeDealType } from '../../../utils/tabs.utils';
+import { generateInterpretationDecisions, getInterpretationOverrides, estimateUnitCountForMode } from '../../../utils/interpretation.utils';
+
+// UI Components for deal-type views
+import ConformanceCheckSection from './components/ConformanceCheckSection';
+import UntappedEntitlementCard from './components/UntappedEntitlementCard';
+import ExpansionScenariosCards from './components/ExpansionScenariosCards';
+import RedevelopmentScenariosCards from './components/RedevelopmentScenariosCards';
+import ComplianceTriggerAnalysisCard from './components/ComplianceTriggerAnalysisCard';
+import NonconformingWarning from './components/NonconformingWarning';
+import InterpretationPanel, { InterpretationDecision } from './components/InterpretationPanel';
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // COLOR TOKENS & FONTS — Bloomberg Dark Aesthetic
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -498,11 +514,31 @@ function ConstraintWaterfall({ constraints, maxPossible }: { constraints: any[],
   );
 }
 
-function PathComparisonCards({ paths, selectedPath, onSelectPath }: { paths: any[], selectedPath: string, onSelectPath: (id: string) => void }) {
+function PathComparisonCards({ paths, selectedPath, onSelectPath, nearbyEntitlements, currentCode }: { paths: any[], selectedPath: string, onSelectPath: (id: string) => void, nearbyEntitlements?: any, currentCode?: string }) {
+  const getPrecedentBadge = (pathId: string) => {
+    if (pathId !== 'rezone' || !nearbyEntitlements || !currentCode) return null;
+
+    const rezoneTransitions = nearbyEntitlements.commonTransitions || [];
+    const currentCodeTransitions = rezoneTransitions.filter((t: any) => t.fromCode.toUpperCase() === currentCode.toUpperCase());
+
+    if (currentCodeTransitions.length === 0) return null;
+
+    const avgApprovalRate = currentCodeTransitions.reduce((sum: number, t: any) => sum + (t.approvalRate || 0), 0) / currentCodeTransitions.length;
+
+    if (avgApprovalRate > 75) {
+      return { text: `Strong precedent — ${currentCodeTransitions.length} approved`, color: T.green, bg: T.greenDim };
+    } else if (avgApprovalRate >= 50) {
+      return { text: `Moderate precedent — ${avgApprovalRate.toFixed(0)}% approval`, color: T.amber, bg: T.amberDim };
+    } else {
+      return { text: 'Limited precedent — proceed with caution', color: T.amber, bg: T.amberDim };
+    }
+  };
+
   return (
     <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
       {paths.map(path => {
         const sel = selectedPath === path.id;
+        const precedent = getPrecedentBadge(path.id);
         return (
           <div
             key={path.id}
@@ -518,7 +554,22 @@ function PathComparisonCards({ paths, selectedPath, onSelectPath }: { paths: any
                   {path.sublabel}
                 </div>
               </div>
-              <span style={s.badge(path.color)}>{path.risk_level.toUpperCase()}</span>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-end" }}>
+                <span style={s.badge(path.color)}>{path.risk_level.toUpperCase()}</span>
+                {precedent && (
+                  <span style={{
+                    fontSize: 8,
+                    fontWeight: 700,
+                    color: precedent.color,
+                    background: precedent.bg + "40",
+                    padding: "2px 6px",
+                    borderRadius: 3,
+                    fontFamily: FONT.mono,
+                  }}>
+                    {precedent.text}
+                  </span>
+                )}
+              </div>
             </div>
             <div style={s.metric}>{path.envelope.max_units.toLocaleString()}</div>
             <div style={s.metricSub}>units — bound by {path.envelope.binding_constraint}</div>
@@ -683,6 +734,46 @@ export default function DevelopmentCapacityTab({ dealId, deal, costPerSf: propCo
   const [activeScenario, setActiveScenario] = useState<any>(null);
   const [activatingScenario, setActivatingScenario] = useState(false);
   const [pathScenarios, setPathScenarios] = useState<any>(null);
+
+  // ═══ DEAL-TYPE ADAPTATION STATE ═══
+  const [activeSubTab, setActiveSubTab] = useState<string>('');
+  const [conformance, setConformance] = useState<ConformanceCheckData | null>(null);
+
+  // ═══ INTERPRETATION STATE ═══
+  const [zoningInterpretation, setZoningInterpretation] = useState<any>(null);
+  const [interpretationLoading, setInterpretationLoading] = useState(false);
+  const [expansionScenarios, setExpansionScenarios] = useState<ExpansionScenario[]>([]);
+  const [redevelopmentScenarios, setRedevelopmentScenarios] = useState<ExpansionScenario[]>([]);
+
+  // ═══ INTERPRETATION PANEL STATE ═══
+  const [interpretationDecisions, setInterpretationDecisions] = useState<InterpretationDecision[]>([]);
+  const [interpretationWarnings, setInterpretationWarnings] = useState<string[]>([]);
+  const [userOverrides, setUserOverrides] = useState<Record<string, number>>({});
+  const [interpretationMode, setInterpretationMode] = useState<'conservative' | 'moderate' | 'aggressive'>('moderate');
+  const [unitCounts, setUnitCounts] = useState({
+    conservative: 0,
+    moderate: 0,
+    aggressive: 0,
+  });
+
+  // ═══ ENTITLEMENT ACTIVITY STATE ═══
+  const [nearbyEntitlements, setNearbyEntitlements] = useState<any>(null);
+  const [nearbyLoading, setNearbyLoading] = useState(false);
+
+  const fetchNearbyEntitlements = useCallback(async () => {
+    if (!dealId) return;
+    setNearbyLoading(true);
+    try {
+      const res = await apiClient.get(`/api/v1/deals/${dealId}/nearby-entitlements`);
+      if (res.data?.data) {
+        setNearbyEntitlements(res.data.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch nearby entitlements:', err);
+    } finally {
+      setNearbyLoading(false);
+    }
+  }, [dealId]);
 
   const loadScenarios = useCallback(async () => {
     if (!dealId) return;
@@ -1000,6 +1091,31 @@ export default function DevelopmentCapacityTab({ dealId, deal, costPerSf: propCo
         try {
           await apiClient.get(`/api/v1/deals/${dealId}/rezone-analysis`);
         } catch {}
+
+        // Fetch nearby entitlements for regulatory market research
+        try {
+          const nearbyRes = await apiClient.get(`/api/v1/deals/${dealId}/nearby-entitlements`);
+          if (nearbyRes.data?.data) {
+            setNearbyEntitlements(nearbyRes.data.data);
+          }
+        } catch (err) {
+          console.warn('Failed to fetch nearby entitlements:', err);
+        }
+
+        // Fetch zoning interpretation from Claude
+        setInterpretationLoading(true);
+        try {
+          const interpRes = await apiClient.post(`/api/v1/deals/${dealId}/zoning-interpretation`);
+          if (interpRes.data?.extraction) {
+            setZoningInterpretation(interpRes.data.extraction);
+          }
+        } catch (err) {
+          // Fall back to basic profile data if interpretation unavailable
+          console.warn('Could not load zoning interpretation:', err);
+          setZoningInterpretation(null);
+        } finally {
+          setInterpretationLoading(false);
+        }
       }
     } catch (err: any) {
       const msg = err?.response?.data?.error || err?.message || 'Failed to load capacity data';
@@ -1079,6 +1195,237 @@ export default function DevelopmentCapacityTab({ dealId, deal, costPerSf: propCo
     }, 500);
     return () => clearTimeout(timer);
   }, [variancePct, rezoneTargetCode, avgUnitSize, dealId]);
+
+  // ═══ DEAL-TYPE ADAPTATION EFFECTS ═══
+  // Initialize activeSubTab and compute conformance/scenarios based on deal type
+  useEffect(() => {
+    if (!profile) return;
+
+    // Determine deal type from deal prop or dealStore
+    const projectType = deal?.projectType || deal?.project_type || 'existing';
+    const dealType = normalizeDealType(projectType);
+
+    // Get available tabs for this deal type
+    const availableTabs = getSubTabsForDealType(dealType);
+    if (availableTabs.length > 0) {
+      setActiveSubTab(availableTabs[0].id);
+    }
+
+    // Compute conformance and scenarios for existing/redevelopment deals
+    if (dealType === 'existing' || dealType === 'redevelopment') {
+      const existingProperty = deal?.existingProperty || deal?.deal_data?.existingProperty;
+      if (existingProperty) {
+        try {
+          // Compute conformance metrics
+          const zoning = {
+            max_density_units_per_acre: profile.max_density_per_acre,
+            applied_far: profile.applied_far || profile.residential_far,
+            max_height_ft: profile.max_height_ft,
+            max_lot_coverage_pct: profile.max_lot_coverage_pct,
+            min_parking_per_unit: profile.min_parking_per_unit,
+            lot_area_sf: profile.lot_area_sf,
+          };
+
+          const conformanceData = computeConformanceMetrics(existingProperty, zoning, profile.lot_area_sf || 0);
+          setConformance(conformanceData);
+
+          // Compute max allowed from zoning for untapped entitlement card
+          const maxAllowed = {
+            units: Math.floor((profile.lot_area_sf || 0) / 43560 * (profile.max_density_per_acre || 100)),
+            gfa: Math.round((profile.lot_area_sf || 0) * (profile.applied_far || 3.0)),
+            stories: profile.max_stories || 8,
+          };
+
+          // Generate scenarios
+          if (dealType === 'existing') {
+            const scenarios = generateExpansionScenarios(existingProperty, maxAllowed, zoning);
+            setExpansionScenarios(scenarios);
+          } else {
+            const scenarios = generateRedevelopmentScenarios(existingProperty, maxAllowed, zoning);
+            setRedevelopmentScenarios(scenarios);
+          }
+
+          console.log(`✅ Computed ${dealType} metrics for deal`, {
+            conformance: conformanceData,
+            maxAllowed,
+          });
+        } catch (err) {
+          console.error(`Failed to compute ${dealType} metrics:`, err);
+        }
+      }
+    }
+  }, [profile, deal]);
+
+  // ═══ INTERPRETATION DECISIONS EFFECT ═══
+  // Generate interpretation decisions and compute unit counts for each mode
+  useEffect(() => {
+    if (!profile) return;
+
+    const { decisions, warnings } = generateInterpretationDecisions(profile, deal?.existingProperty, deal?.projectType);
+    setInterpretationDecisions(decisions);
+    setInterpretationWarnings(warnings);
+
+    // Compute unit counts for each mode
+    const lotSF = profile.lot_area_sf || 0;
+    const conservative = estimateUnitCountForMode(profile, 'conservative', lotSF);
+    const moderate = estimateUnitCountForMode(profile, 'moderate', lotSF);
+    const aggressive = estimateUnitCountForMode(profile, 'aggressive', lotSF);
+
+    setUnitCounts({ conservative, moderate, aggressive });
+
+    console.log(`✅ Generated interpretation decisions`, {
+      decisions: decisions.length,
+      warnings: warnings.length,
+      unitCounts: { conservative, moderate, aggressive },
+    });
+  }, [profile, deal?.existingProperty, deal?.projectType]);
+
+  // ═══ INTERPRETATION CALLBACKS ═══
+  const handleOverrideChange = useCallback(
+    (parameter: string, value: number | null) => {
+      const newOverrides = { ...userOverrides };
+      if (value === null) {
+        delete newOverrides[parameter];
+      } else {
+        newOverrides[parameter] = value;
+      }
+      setUserOverrides(newOverrides);
+
+      // TODO: STEP 2 OF INTERPRETATION PANEL
+      // When user overrides a parameter:
+      // 1. Re-run calculateEnvelope(parcel, zoningProfile, newOverrides)
+      //    The envelope calculation engine should accept overrides as 3rd argument
+      // 2. Update pathScenarios.paths[selectedColKey].envelope with new result
+      // 3. Waterfall will recalculate with new binding constraint
+      // 4. Unit count updates in real-time
+      // For now, state updates but envelope doesn't recalculate
+      console.log('Override changed:', parameter, value);
+    },
+    [userOverrides]
+  );
+
+  const handleInterpretationModeChange = useCallback(
+    (mode: 'conservative' | 'moderate' | 'aggressive') => {
+      setInterpretationMode(mode);
+      // Mode changes may trigger different unit counts via the envelope engine
+      // The unitCounts state already reflects each mode's max units
+    },
+    []
+  );
+
+  const handleReInterpret = useCallback(async () => {
+    if (!dealId) return;
+    setInterpretationLoading(true);
+    try {
+      const interpRes = await apiClient.post(`/api/v1/deals/${dealId}/zoning-interpretation`, {
+        force: true,
+      });
+      if (interpRes.data?.extraction) {
+        setZoningInterpretation(interpRes.data.extraction);
+        console.log('✅ Re-interpreted zoning parameters from Claude');
+      }
+    } catch (err) {
+      console.error('Failed to re-interpret zoning:', err);
+    } finally {
+      setInterpretationLoading(false);
+    }
+  }, [dealId]);
+
+  const saveOverridesToAPI = useCallback(async () => {
+    if (!dealId || Object.keys(userOverrides).length === 0) return;
+
+    try {
+      await apiClient.put(`/api/v1/deals/${dealId}/zoning-profile`, {
+        user_overrides: userOverrides,
+      });
+      console.log('✅ Saved interpretation overrides to API');
+    } catch (err) {
+      console.error('Failed to save overrides:', err);
+    }
+  }, [dealId, userOverrides]);
+
+  // ═══ HELPER FUNCTIONS ═══
+  const getMaxAllowedFromProfile = useCallback(() => {
+    if (!profile) return { units: 0, gfa: 0, stories: 0 };
+    const lotAreaSF = profile.lot_area_sf || 0;
+    const lotAcres = lotAreaSF / 43560;
+    return {
+      units: Math.floor(lotAcres * (profile.max_density_per_acre || 100)),
+      gfa: Math.round(lotAreaSF * (profile.applied_far || 3.0)),
+      stories: profile.max_stories || 8,
+    };
+  }, [profile]);
+
+  // ═══ SUB-TAB RENDERING ═══
+  const renderSubTabContent = useCallback(() => {
+    const projectType = deal?.projectType || deal?.project_type || 'existing';
+    const dealType = normalizeDealType(projectType);
+    const existingProperty = deal?.existingProperty || deal?.deal_data?.existingProperty;
+    const maxAllowed = getMaxAllowedFromProfile();
+
+    if (dealType === 'existing' && activeSubTab === 'conformance_check') {
+      return (
+        <>
+          {conformance && <ConformanceCheckSection conformance={conformance} />}
+          {existingProperty && (
+            <UntappedEntitlementCard
+              existingUnits={existingProperty.units || 0}
+              maxAllowedUnits={maxAllowed.units}
+              existingGFA={existingProperty.totalSF || 0}
+              maxAllowedGFA={maxAllowed.gfa}
+              existingStories={existingProperty.stories || 1}
+              maxAllowedStories={maxAllowed.stories}
+            />
+          )}
+        </>
+      );
+    }
+
+    if (dealType === 'existing' && activeSubTab === 'expansion_scenarios') {
+      return <ExpansionScenariosCards scenarios={expansionScenarios} />;
+    }
+
+    if (dealType === 'redevelopment' && activeSubTab === 'current_vs_allowed') {
+      return (
+        <>
+          {existingProperty && <NonconformingWarning nonconformingItems={conformance?.nonconformingItems.map(i => i.item) || []} yearBuilt={existingProperty.yearBuilt} />}
+          {conformance && <ConformanceCheckSection conformance={conformance} />}
+          {existingProperty && (
+            <UntappedEntitlementCard
+              existingUnits={existingProperty.units || 0}
+              maxAllowedUnits={maxAllowed.units}
+              existingGFA={existingProperty.totalSF || 0}
+              maxAllowedGFA={maxAllowed.gfa}
+              existingStories={existingProperty.stories || 1}
+              maxAllowedStories={maxAllowed.stories}
+            />
+          )}
+        </>
+      );
+    }
+
+    if (dealType === 'redevelopment' && activeSubTab === 'renovation_scenarios') {
+      return <RedevelopmentScenariosCards scenarios={redevelopmentScenarios} />;
+    }
+
+    if (dealType === 'redevelopment' && activeSubTab === 'compliance_analysis') {
+      return (
+        <ComplianceTriggerAnalysisCard
+          triggers={[]}  // Would be populated from redevelopmentScenarios
+          totalCost={1050000}  // $1.05M baseline
+          expansionThreshold={50}
+        />
+      );
+    }
+
+    // Development deals and default: show nothing (existing content handles it)
+    return null;
+  }, [activeSubTab, deal, conformance, expansionScenarios, redevelopmentScenarios, getMaxAllowedFromProfile]);
+
+  // ═══ GET DEAL TYPE FOR RENDERING ═══
+  const projectType = deal?.projectType || deal?.project_type || 'existing';
+  const dealType = normalizeDealType(projectType);
+  const availableSubTabs = getSubTabsForDealType(dealType);
 
   const handleResolveProfile = async () => {
     if (!dealId) return;
