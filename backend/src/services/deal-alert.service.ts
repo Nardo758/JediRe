@@ -47,7 +47,8 @@ export type AlertType =
   | 'supply_competition' 
   | 'demand_negative' 
   | 'score_change' 
-  | 'market_shift';
+  | 'market_shift'
+  | 'corporate_health_divergence';
 
 export type AlertSeverity = 'green' | 'yellow' | 'red';
 
@@ -571,6 +572,46 @@ export class DealAlertService {
       return 'Update demand forecast based on employment trends';
     }
     return 'Monitor situation and update deal notes';
+  }
+
+  async getCorporateHealthDivergenceAlerts(userId: string): Promise<DealAlert[]> {
+    const result = await query(
+      `SELECT d.id as deal_id, d.name as deal_name, p.submarket_id,
+              s.name as submarket_name,
+              sch.divergence_score, sch.schi_score, sch.re_health_score, sch.divergence_signal, sch.quarter
+       FROM deals d
+       JOIN deal_properties dp ON dp.deal_id = d.id
+       JOIN properties p ON p.id = dp.property_id
+       JOIN submarkets s ON s.id = CAST(p.submarket_id AS INTEGER)
+       JOIN submarket_corporate_health sch ON sch.submarket_id = CAST(p.submarket_id AS INTEGER)
+       WHERE d.user_id = $1
+         AND ABS(sch.divergence_score) > 15
+         AND sch.quarter = (SELECT MAX(quarter) FROM submarket_corporate_health WHERE submarket_id = sch.submarket_id)
+       ORDER BY ABS(sch.divergence_score) DESC`,
+      [userId]
+    );
+
+    return result.rows.map((row: any) => {
+      const div = parseFloat(row.divergence_score);
+      const signal = div > 0 ? 'bullish' : 'bearish';
+      const severity: AlertSeverity = Math.abs(div) > 25 ? 'red' : 'yellow';
+      return {
+        id: `corp-div-${row.deal_id}-${row.quarter}`,
+        userId,
+        dealId: row.deal_id,
+        alertType: 'corporate_health_divergence' as AlertType,
+        severity,
+        title: `${signal === 'bullish' ? 'Bullish' : 'Bearish'} Divergence — ${row.submarket_name}`,
+        message: `SCHI ${parseFloat(row.schi_score).toFixed(1)} vs RE Health ${parseFloat(row.re_health_score).toFixed(1)} (divergence: ${div > 0 ? '+' : ''}${div.toFixed(1)}) for ${row.deal_name || 'deal'} in ${row.submarket_name}.`,
+        suggestedAction: signal === 'bullish'
+          ? 'Corporate health outpacing real estate metrics — potential upside not yet priced in. Review rent growth assumptions.'
+          : 'Real estate metrics outpacing corporate health — watch for employer downsizing impact on demand.',
+        isRead: false,
+        isDismissed: false,
+        isArchived: false,
+        createdAt: new Date(),
+      };
+    });
   }
 
   private mapAlert(row: any): DealAlert {

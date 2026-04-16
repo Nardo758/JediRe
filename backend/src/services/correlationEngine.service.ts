@@ -1,5 +1,7 @@
 import { Pool } from 'pg';
+import { createHash } from 'crypto';
 import { logger } from '../utils/logger';
+import { translateMetricId, OUTCOME_METRICS_DB } from '../utils/metricTranslation';
 
 export interface CorrelationResult {
   id: string;
@@ -100,6 +102,23 @@ interface MSAData {
   avg_occupancy: number | null;
 }
 
+export interface MetricRecommendation {
+  rank: number;
+  metricId: string;
+  metricLabel: string;
+  columnId: string | null;
+  score: number;
+  reason: string;
+  correlationR: number;
+  leadLagMonths: number;
+  pairedMetric: string;
+  pairedMetricLabel: string;
+  geographyId: string;
+  geoCount: number;
+  trendDirection: string;
+  trendMagnitude: number;
+}
+
 export class CorrelationEngineService {
   private pool: Pool;
 
@@ -180,7 +199,7 @@ export class CorrelationEngineService {
          FROM metric_time_series
          WHERE geography_type = $1 AND geography_id = $2
          GROUP BY metric_id
-         HAVING COUNT(*) >= 24`,
+         HAVING COUNT(*) >= 12`,
         [geographyType, geographyId]
       );
 
@@ -230,14 +249,17 @@ export class CorrelationEngineService {
   }
 
   private async computePairCorrelation(
-    metricA: string,
-    metricB: string,
+    rawMetricA: string,
+    rawMetricB: string,
     geographyType: string,
     geographyId: string,
     windowMonths: number
   ): Promise<boolean> {
+    const [metricA, metricB] = [rawMetricA, rawMetricB].sort();
     try {
-      // Pull both time series aligned by period_date
+      const windowClause = windowMonths > 0
+        ? `AND ts_a.period_date >= (NOW() - INTERVAL '${windowMonths} months')`
+        : '';
       const dataRes = await this.pool.query(
         `WITH ts_a AS (
            SELECT period_date, value as val_a
@@ -255,44 +277,42 @@ export class CorrelationEngineService {
          FROM ts_a
          FULL OUTER JOIN ts_b ON ts_a.period_date = ts_b.period_date
          WHERE ts_a.val_a IS NOT NULL AND ts_b.val_b IS NOT NULL
+         ${windowClause}
          ORDER BY ts_a.period_date`,
         [metricA, geographyType, geographyId, metricB]
       );
 
       const data = dataRes.rows;
-      if (data.length < 24) {
-        return false; // Not enough aligned data points
+      if (data.length < 12) {
+        return false;
       }
 
-      // Compute Pearson correlation coefficient
       const correlation = this.computePearsonCorrelation(
         data.map((d: any) => d.val_a),
         data.map((d: any) => d.val_b)
       );
 
-      // Compute cross-correlation with lags -12 to +12 months
       const lagResults = this.computeLagCorrelations(
         data.map((d: any) => d.val_a),
         data.map((d: any) => d.val_b)
       );
 
-      // Compute p-value using t-distribution approximation
       const n = data.length;
       const pValue = this.computePValue(correlation.r, n);
 
-      // Insert into metric_correlations with ON CONFLICT DO UPDATE
+      const obsStart = data[0]?.period_date || null;
+      const obsEnd = data[data.length - 1]?.period_date || null;
+
+      await this.pool.query(
+        `DELETE FROM metric_correlations
+         WHERE metric_a = $1 AND metric_b = $2 AND geography_type = $3 AND geography_id = $4 AND window_months = $5`,
+        [metricA, metricB, geographyType, geographyId, windowMonths]
+      );
       await this.pool.query(
         `INSERT INTO metric_correlations
-         (metric_a, metric_b, geography_type, geography_id, window_months, correlation_r, lead_lag_months, p_value, sample_size, computed_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
-         ON CONFLICT (metric_a, metric_b, geography_type, geography_id, window_months)
-         DO UPDATE SET
-           correlation_r = $6,
-           lead_lag_months = $7,
-           p_value = $8,
-           sample_size = $9,
-           computed_at = NOW()`,
-        [metricA, metricB, geographyType, geographyId, 36, correlation.r, lagResults.bestLag, pValue, n]
+         (metric_a, metric_b, geography_type, geography_id, window_months, correlation_r, lead_lag_months, p_value, sample_size, observation_start, observation_end, computed_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())`,
+        [metricA, metricB, geographyType, geographyId, windowMonths, correlation.r, lagResults.bestLag, pValue, n, obsStart, obsEnd]
       );
 
       return true;
@@ -343,7 +363,7 @@ export class CorrelationEngineService {
         alignedY.push(...y);
       }
 
-      if (shiftedX.length >= 24) {
+      if (shiftedX.length >= 12) {
         const corr = this.computePearsonCorrelation(shiftedX, alignedY);
         const absR = Math.abs(corr.r);
         if (absR > bestAbsR) {
@@ -401,6 +421,380 @@ export class CorrelationEngineService {
     } catch (error) {
       logger.error(`Error retrieving correlations: ${String(error)}`);
       return [];
+    }
+  }
+
+  async getTopCorrelations(
+    geographyType: string,
+    geographyId: string,
+    targetMetric?: string,
+    limit: number = 10,
+    minAbsR: number = 0.5
+  ): Promise<MetricCorrelation[]> {
+    try {
+      let query: string;
+      let params: (string | number)[];
+
+      if (targetMetric) {
+        query = `SELECT id, metric_a, metric_b, geography_type, geography_id, window_months,
+                        correlation_r, lead_lag_months, p_value, sample_size, computed_at
+                 FROM metric_correlations
+                 WHERE geography_type = $1 AND geography_id = $2
+                   AND (metric_a = $3 OR metric_b = $3)
+                   AND ABS(correlation_r) >= $4
+                 ORDER BY ABS(correlation_r) DESC
+                 LIMIT $5`;
+        params = [geographyType, geographyId, targetMetric, minAbsR, limit];
+      } else {
+        query = `SELECT id, metric_a, metric_b, geography_type, geography_id, window_months,
+                        correlation_r, lead_lag_months, p_value, sample_size, computed_at
+                 FROM metric_correlations
+                 WHERE geography_type = $1 AND geography_id = $2
+                   AND ABS(correlation_r) >= $3
+                 ORDER BY ABS(correlation_r) DESC
+                 LIMIT $4`;
+        params = [geographyType, geographyId, minAbsR, limit];
+      }
+
+      const result = await this.pool.query(query, params);
+      return result.rows;
+    } catch (error) {
+      logger.error(`Error retrieving top correlations: ${String(error)}`);
+      return [];
+    }
+  }
+
+  async getBatchCorrelations(
+    queries: Array<{ geographyType: string; geographyId: string }>,
+    topN: number = 100,
+    minAbsR: number = 0
+  ): Promise<Record<string, MetricCorrelation[]>> {
+    if (queries.length === 0) return {};
+
+    try {
+      const geoTypes = queries.map(q => q.geographyType);
+      const geoIds = queries.map(q => q.geographyId);
+
+      const result = await this.pool.query(
+        `SELECT id, metric_a, metric_b, geography_type, geography_id, window_months,
+                correlation_r, lead_lag_months, p_value, sample_size, computed_at
+         FROM metric_correlations
+         WHERE (geography_type, geography_id) IN (
+           SELECT unnest($1::text[]), unnest($2::text[])
+         )
+         AND ABS(correlation_r) >= $3
+         ORDER BY geography_type, geography_id, ABS(correlation_r) DESC`,
+        [geoTypes, geoIds, minAbsR]
+      );
+
+      const results: Record<string, MetricCorrelation[]> = {};
+      const counts: Record<string, number> = {};
+      for (const q of queries) {
+        const key = `${q.geographyType}:${q.geographyId}`;
+        results[key] = [];
+        counts[key] = 0;
+      }
+      for (const row of result.rows) {
+        const key = `${row.geography_type}:${row.geography_id}`;
+        if (results[key] && counts[key] < topN) {
+          results[key].push(row);
+          counts[key]++;
+        }
+      }
+      return results;
+    } catch (error) {
+      logger.error(`Error in batch correlations: ${String(error)}`);
+      const results: Record<string, MetricCorrelation[]> = {};
+      for (const q of queries) {
+        results[`${q.geographyType}:${q.geographyId}`] = [];
+      }
+      return results;
+    }
+  }
+
+  async getFreshness(): Promise<Array<{
+    geography_type: string;
+    geography_id: string;
+    correlation_count: number;
+    oldest_computed_at: string;
+    newest_computed_at: string;
+    avg_abs_r: number;
+    stale: boolean;
+  }>> {
+    try {
+      const result = await this.pool.query(
+        `SELECT geography_type, geography_id,
+                COUNT(*)::int as correlation_count,
+                MIN(computed_at) as oldest_computed_at,
+                MAX(computed_at) as newest_computed_at,
+                ROUND(AVG(ABS(correlation_r))::numeric, 4) as avg_abs_r
+         FROM metric_correlations
+         GROUP BY geography_type, geography_id
+         ORDER BY MAX(computed_at) ASC`
+      );
+
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      return result.rows.map((row: Record<string, unknown>) => ({
+        geography_type: row.geography_type as string,
+        geography_id: row.geography_id as string,
+        correlation_count: row.correlation_count as number,
+        oldest_computed_at: String(row.oldest_computed_at),
+        newest_computed_at: String(row.newest_computed_at),
+        avg_abs_r: parseFloat(String(row.avg_abs_r)),
+        stale: new Date(String(row.newest_computed_at)) < sevenDaysAgo,
+      }));
+    } catch (error) {
+      logger.error(`Error retrieving freshness: ${String(error)}`);
+      return [];
+    }
+  }
+
+  async sweepAllGeographies(): Promise<{ processed: number; failed: number }> {
+    let processed = 0;
+    let failed = 0;
+
+    try {
+      const geoRes = await this.pool.query(
+        `SELECT DISTINCT geography_type, geography_id
+         FROM metric_time_series
+         ORDER BY geography_type, geography_id`
+      );
+
+      logger.info(`[CorrelationSweep] Starting sweep across ${geoRes.rows.length} geographies`);
+
+      for (const row of geoRes.rows) {
+        const geoType = row.geography_type as string;
+        const geoId = row.geography_id as string;
+        try {
+          await this.computeTimeSeriesCorrelations(geoType, geoId);
+          processed++;
+        } catch (err) {
+          logger.error(`[CorrelationSweep] Failed for ${geoType}:${geoId}: ${String(err)}`);
+          failed++;
+        }
+      }
+
+      logger.info(`[CorrelationSweep] Complete: ${processed} processed, ${failed} failed`);
+      return { processed, failed };
+    } catch (error) {
+      logger.error(`[CorrelationSweep] Fatal error: ${String(error)}`);
+      throw error;
+    }
+  }
+
+  async computeMatrix(
+    metricIds: string[],
+    scope: string,
+    geographyId?: string,
+    windowMonths: number = 36
+  ): Promise<{ computed: number; skipped: number; matrix: Array<{ metricA: string; metricB: string; r: number; pValue: number; sampleSize: number }> }> {
+    const matrix: Array<{ metricA: string; metricB: string; r: number; pValue: number; sampleSize: number }> = [];
+    let computed = 0;
+    let skipped = 0;
+
+    if (metricIds.length < 2) {
+      return { computed: 0, skipped: 0, matrix: [] };
+    }
+
+    if (geographyId) {
+      for (let i = 0; i < metricIds.length; i++) {
+        for (let j = i + 1; j < metricIds.length; j++) {
+          const success = await this.computePairCorrelation(metricIds[i], metricIds[j], scope, geographyId, windowMonths);
+          if (success) computed++;
+          else skipped++;
+        }
+      }
+      const cached = await this.getCorrelationMatrix(metricIds, scope, geographyId);
+      return { computed, skipped, matrix: cached };
+    }
+
+    const geoRes = await this.pool.query(
+      `SELECT DISTINCT geography_id FROM metric_time_series WHERE geography_type = $1 ORDER BY geography_id`,
+      [scope]
+    );
+
+    for (const row of geoRes.rows) {
+      const geoId = row.geography_id as string;
+      for (let i = 0; i < metricIds.length; i++) {
+        for (let j = i + 1; j < metricIds.length; j++) {
+          const success = await this.computePairCorrelation(metricIds[i], metricIds[j], scope, geoId, windowMonths);
+          if (success) computed++;
+          else skipped++;
+        }
+      }
+    }
+
+    for (let i = 0; i < metricIds.length; i++) {
+      for (let j = i + 1; j < metricIds.length; j++) {
+        const [mA, mB] = [metricIds[i], metricIds[j]].sort();
+        const aggRes = await this.pool.query(
+          `SELECT ROUND(AVG(correlation_r)::numeric, 4) as avg_r,
+                  ROUND(AVG(p_value)::numeric, 6) as avg_p,
+                  SUM(sample_size)::int as total_samples,
+                  ROUND(AVG(lead_lag_months))::int as avg_lag,
+                  MIN(observation_start) as obs_start,
+                  MAX(observation_end) as obs_end,
+                  COUNT(*) as geo_count
+           FROM metric_correlations
+           WHERE metric_a = $1 AND metric_b = $2 AND geography_type = $3
+             AND geography_id IS NOT NULL AND window_months = $4`,
+          [mA, mB, scope, windowMonths]
+        );
+        const agg = aggRes.rows[0];
+        if (agg && parseInt(agg.geo_count) > 0) {
+          await this.pool.query(
+            `DELETE FROM metric_correlations
+             WHERE metric_a = $1 AND metric_b = $2 AND geography_type = $3 AND geography_id IS NULL AND window_months = $4`,
+            [mA, mB, scope, windowMonths]
+          );
+          await this.pool.query(
+            `INSERT INTO metric_correlations
+             (metric_a, metric_b, geography_type, geography_id, window_months, correlation_r, lead_lag_months, p_value, sample_size, observation_start, observation_end, computed_at)
+             VALUES ($1, $2, $3, NULL, $4, $5, $6, $7, $8, $9, $10, NOW())`,
+            [mA, mB, scope, windowMonths, parseFloat(agg.avg_r), parseInt(agg.avg_lag) || 0, parseFloat(agg.avg_p), parseInt(agg.total_samples), agg.obs_start, agg.obs_end]
+          );
+        }
+      }
+    }
+
+    const aggregated = await this.getCorrelationMatrix(metricIds, scope);
+    return { computed, skipped, matrix: aggregated };
+  }
+
+  async getCorrelationMatrix(
+    metricIds: string[],
+    scope: string,
+    geographyId?: string
+  ): Promise<Array<{ metricA: string; metricB: string; r: number; pValue: number; sampleSize: number; leadLagMonths: number | null; observationStart: string | null; observationEnd: string | null }>> {
+    try {
+      let query: string;
+      let params: any[];
+
+      if (geographyId) {
+        query = `SELECT metric_a, metric_b, correlation_r, p_value, sample_size, lead_lag_months,
+                        observation_start, observation_end
+                 FROM metric_correlations
+                 WHERE geography_type = $1 AND geography_id = $2
+                   AND ((metric_a = ANY($3) AND metric_b = ANY($3)))
+                 ORDER BY ABS(correlation_r) DESC`;
+        params = [scope, geographyId, metricIds];
+      } else {
+        query = `SELECT metric_a, metric_b, correlation_r, p_value, sample_size, lead_lag_months,
+                        observation_start, observation_end
+                 FROM metric_correlations
+                 WHERE geography_type = $1 AND geography_id IS NULL
+                   AND ((metric_a = ANY($2) AND metric_b = ANY($2)))
+                 ORDER BY ABS(correlation_r) DESC`;
+        params = [scope, metricIds];
+      }
+
+      const result = await this.pool.query(query, params);
+      return result.rows.map((row: any) => ({
+        metricA: row.metric_a,
+        metricB: row.metric_b,
+        r: parseFloat(row.correlation_r) || 0,
+        pValue: parseFloat(row.p_value) || 0,
+        sampleSize: parseInt(row.sample_size) || 0,
+        leadLagMonths: row.lead_lag_months != null ? parseInt(row.lead_lag_months) : null,
+        observationStart: row.observation_start ? String(row.observation_start) : null,
+        observationEnd: row.observation_end ? String(row.observation_end) : null,
+      }));
+    } catch (error) {
+      logger.error(`Error retrieving correlation matrix: ${String(error)}`);
+      return [];
+    }
+  }
+
+  async getStrategyCorrelations(strategyId: string): Promise<{
+    strategyName: string;
+    conditionMetrics: string[];
+    outcomeMetrics: string[];
+    pairwise: Array<{ metricA: string; metricB: string; r: number; pValue: number; sampleSize: number; leadLagMonths: number | null; observationStart: string | null; observationEnd: string | null; type: 'condition-condition' | 'condition-outcome' }>;
+    redundant: Array<{ metricA: string; metricB: string; r: number }>;
+    complementary: Array<{ metricA: string; metricB: string; r: number }>;
+  }> {
+    const OUTCOME_METRICS = OUTCOME_METRICS_DB;
+
+    const stratRes = await this.pool.query(
+      `SELECT name, conditions, scope FROM strategy_definitions WHERE id = $1`,
+      [strategyId]
+    );
+
+    if (stratRes.rows.length === 0) {
+      throw new Error('Strategy not found');
+    }
+
+    const strategy = stratRes.rows[0];
+    const conditions = typeof strategy.conditions === 'string' ? JSON.parse(strategy.conditions) : (strategy.conditions || []);
+    const scope = strategy.scope || 'submarket';
+
+    const conditionMetricIds = [...new Set(conditions.map((c: any) => {
+      const raw = c.metricId || c.metric_id || '';
+      return translateMetricId(raw);
+    }))];
+
+    const allMetrics = [...new Set([...conditionMetricIds, ...OUTCOME_METRICS])];
+    const matrix = await this.getCorrelationMatrix(allMetrics, scope);
+
+    const pairwise = matrix
+      .filter(m => {
+        const aIsCondition = conditionMetricIds.includes(m.metricA);
+        const bIsCondition = conditionMetricIds.includes(m.metricB);
+        const aIsOutcome = OUTCOME_METRICS.includes(m.metricA);
+        const bIsOutcome = OUTCOME_METRICS.includes(m.metricB);
+        return (aIsCondition && bIsCondition) || (aIsCondition && bIsOutcome) || (bIsCondition && aIsOutcome);
+      })
+      .map(m => ({
+        ...m,
+        type: (conditionMetricIds.includes(m.metricA) && conditionMetricIds.includes(m.metricB))
+          ? 'condition-condition' as const
+          : 'condition-outcome' as const,
+      }));
+
+    const redundant = pairwise.filter(p => p.type === 'condition-condition' && Math.abs(p.r) > 0.85);
+    const complementary = pairwise.filter(p => p.type === 'condition-condition' && Math.abs(p.r) >= 0.3 && Math.abs(p.r) <= 0.7);
+
+    return {
+      strategyName: strategy.name,
+      conditionMetrics: conditionMetricIds,
+      outcomeMetrics: OUTCOME_METRICS,
+      pairwise,
+      redundant,
+      complementary,
+    };
+  }
+
+  async seedPresetStrategyCorrelations(): Promise<{ strategiesProcessed: number; correlationsComputed: number }> {
+    try {
+      const strategiesRes = await this.pool.query(
+        `SELECT id, name, conditions, scope FROM strategy_definitions WHERE type = 'preset'`
+      );
+
+      let totalComputed = 0;
+      for (const row of strategiesRes.rows) {
+        try {
+          const conditions = typeof row.conditions === 'string' ? JSON.parse(row.conditions) : (row.conditions || []);
+          const condMetrics = [...new Set(conditions.map((c: any) => {
+            const raw = c.metricId || c.metric_id || '';
+            return translateMetricId(raw);
+          }))];
+          const allMetrics = [...new Set([...condMetrics, ...OUTCOME_METRICS_DB])];
+
+          if (allMetrics.length >= 2) {
+            const result = await this.computeMatrix(allMetrics as string[], row.scope || 'submarket');
+            totalComputed += result.computed;
+            logger.info(`[CorrelationSeed] ${row.name}: ${result.computed} computed, ${result.skipped} skipped`);
+          }
+        } catch (e) {
+          logger.warn(`Skipping preset strategy ${row.name}: ${String(e)}`);
+        }
+      }
+
+      logger.info(`[CorrelationSeed] Seeded correlations for ${strategiesRes.rows.length} preset strategies (${totalComputed} total computed)`);
+      return { strategiesProcessed: strategiesRes.rows.length, correlationsComputed: totalComputed };
+    } catch (error) {
+      logger.error(`Error seeding preset strategy correlations: ${String(error)}`);
+      return { strategiesProcessed: 0, correlationsComputed: 0 };
     }
   }
 
@@ -1193,5 +1587,425 @@ export class CorrelationEngineService {
       return `${tier1Bullish.length} Tier-1 bullish signal(s): ${tier1Bullish.map(c => c.id).join(', ')}`;
     }
     return `${bullish.length} bullish signal(s) across tiers`;
+  }
+
+  async generateMetricRecommendations(
+    marketGeoIds: Array<{ geoType: string; geoId: string }>,
+    userId?: string,
+    topN: number = 5
+  ): Promise<MetricRecommendation[]> {
+    if (marketGeoIds.length === 0) return [];
+
+    try {
+      if (userId) {
+        const cached = await this.getCachedRecommendations(userId, marketGeoIds, topN);
+        if (cached) return cached;
+      }
+
+      const geoTypes = marketGeoIds.map(g => g.geoType);
+      const geoIds = marketGeoIds.map(g => g.geoId);
+
+      const corrRes = await this.pool.query(
+        `SELECT * FROM (
+          (SELECT metric_a, metric_b, geography_type, geography_id,
+                  correlation_r, lead_lag_months, p_value, sample_size, computed_at,
+                  FALSE as is_cross_geo
+           FROM metric_correlations
+           WHERE (geography_type, geography_id) IN (
+             SELECT unnest($1::text[]), unnest($2::text[])
+           )
+           AND ABS(correlation_r) >= 0.4
+           AND sample_size >= 12)
+          UNION ALL
+          (SELECT metric_a, metric_b, geography_type, geography_id,
+                  correlation_r, lead_lag_months, p_value, sample_size, computed_at,
+                  TRUE as is_cross_geo
+           FROM metric_correlations
+           WHERE (metric_a, metric_b) IN (
+             SELECT DISTINCT metric_a, metric_b FROM metric_correlations
+             WHERE (geography_type, geography_id) IN (
+               SELECT unnest($1::text[]), unnest($2::text[])
+             )
+           )
+           AND NOT ((geography_type, geography_id) IN (
+             SELECT unnest($1::text[]), unnest($2::text[])
+           ))
+           AND ABS(correlation_r) >= 0.6
+           AND sample_size >= 12
+           LIMIT 50)
+        ) combined ORDER BY ABS(correlation_r) DESC`,
+        [geoTypes, geoIds]
+      );
+
+      if (corrRes.rows.length === 0) return [];
+
+      const trendRes = await this.pool.query(
+        `SELECT metric_id, geography_type, geography_id,
+                value, period_date
+         FROM (
+           SELECT metric_id, geography_type, geography_id, value, period_date,
+                  ROW_NUMBER() OVER (PARTITION BY metric_id, geography_type, geography_id ORDER BY period_date DESC) as rn
+           FROM metric_time_series
+           WHERE (geography_type, geography_id) IN (
+             SELECT unnest($1::text[]), unnest($2::text[])
+           )
+         ) sub
+         WHERE rn <= 6`,
+        [geoTypes, geoIds]
+      );
+
+      const trendMap = new Map<string, Array<{ value: number; date: string }>>();
+      for (const row of trendRes.rows) {
+        const key = `${row.metric_id}:${row.geography_type}:${row.geography_id}`;
+        if (!trendMap.has(key)) trendMap.set(key, []);
+        const dateStr = row.period_date instanceof Date ? row.period_date.toISOString() : String(row.period_date);
+        trendMap.get(key)!.push({ value: parseFloat(row.value), date: dateStr });
+      }
+
+      const metricScores = new Map<string, {
+        totalScore: number;
+        appearances: number;
+        bestR: number;
+        bestLag: number;
+        bestPair: string;
+        bestGeo: string;
+        geoCount: number;
+        geos: Set<string>;
+        crossGeoSources: Set<string>;
+        trendDirection: string;
+        trendMagnitude: number;
+      }>();
+
+      const COLUMN_METRIC_MAP: Record<string, string> = {
+        rent_index: 'rent',
+        rent_index_yoy: 'rentD',
+        home_value_index: 'cap',
+        home_value_index_yoy: 'cap',
+        DEMO_MED_INCOME: 'medInc',
+        DEMO_POPULATION: 'popD',
+        DEMO_RENTER_PCT: 'vac',
+        T_AADT: 'dApt',
+        T_AADT_YOY: 'dApt',
+      };
+
+      for (const row of corrRes.rows) {
+        const metrics = [row.metric_a, row.metric_b];
+        const rowGeoId = row.geography_id;
+        const isTracked = !row.is_cross_geo;
+
+        for (const metric of metrics) {
+          const globalKey = metric;
+          const perMarketKeys: string[] = [];
+          if (isTracked) {
+            perMarketKeys.push(`${metric}::${rowGeoId}`);
+          } else {
+            for (const gId of geoIds) {
+              perMarketKeys.push(`${metric}::${gId}`);
+            }
+          }
+          const keysToScore = [globalKey, ...perMarketKeys];
+
+          for (const key of keysToScore) {
+            if (!metricScores.has(key)) {
+              metricScores.set(key, {
+                totalScore: 0,
+                appearances: 0,
+                bestR: 0,
+                bestLag: 0,
+                bestPair: '',
+                bestGeo: '',
+                geoCount: 0,
+                geos: new Set(),
+                crossGeoSources: new Set<string>(),
+                trendDirection: 'stable',
+                trendMagnitude: 0,
+              });
+            }
+
+            const entry = metricScores.get(key)!;
+            const absR = Math.abs(parseFloat(row.correlation_r));
+            const pVal = row.p_value ? parseFloat(row.p_value) : 1;
+            const sampleSize = parseInt(row.sample_size);
+            const age = (Date.now() - new Date(row.computed_at).getTime()) / (1000 * 60 * 60 * 24);
+            const crossGeoDiscount = isTracked ? 1.0 : 0.4;
+
+            let score = absR * 40 * crossGeoDiscount;
+            if (pVal < 0.01) score += 20;
+            else if (pVal < 0.05) score += 15;
+            else if (pVal < 0.1) score += 10;
+
+            if (sampleSize >= 36) score += 10;
+            else if (sampleSize >= 24) score += 5;
+
+            if (age <= 7) score += 10;
+            else if (age <= 14) score += 5;
+
+            if (row.lead_lag_months && Math.abs(parseInt(row.lead_lag_months)) > 0) {
+              score += 5;
+            }
+
+            entry.totalScore += score;
+            entry.appearances++;
+            entry.geos.add(`${row.geography_type}:${rowGeoId}`);
+            if (!isTracked && key.includes('::')) {
+              entry.crossGeoSources.add(rowGeoId);
+            }
+
+            if (absR > Math.abs(entry.bestR) || entry.bestR === 0) {
+              entry.bestR = parseFloat(row.correlation_r);
+              const rawLag = parseInt(row.lead_lag_months) || 0;
+              entry.bestLag = metric === row.metric_a ? rawLag : -rawLag;
+              entry.bestPair = metrics.find(m => m !== metric) || '';
+              entry.bestGeo = rowGeoId;
+            }
+          }
+        }
+      }
+
+      for (const [key, entry] of metricScores) {
+        entry.geoCount = entry.geos.size;
+
+        if (entry.geoCount > 1) {
+          entry.totalScore *= (1 + Math.min(entry.geoCount - 1, 5) * 0.1);
+        }
+
+        const baseMetric = key.includes('::') ? key.split('::')[0] : key;
+        for (const geo of entry.geos) {
+          const [geoType, geoId] = geo.split(':');
+          const trendKey = `${baseMetric}:${geoType}:${geoId}`;
+          const trends = trendMap.get(trendKey);
+          if (trends && trends.length >= 2) {
+            const sorted = trends.sort((a, b) => a.date.localeCompare(b.date));
+            const recent = sorted[sorted.length - 1].value;
+            const prior = sorted[0].value;
+            if (prior !== 0) {
+              const change = (recent - prior) / Math.abs(prior);
+              if (Math.abs(change) > Math.abs(entry.trendMagnitude)) {
+                entry.trendMagnitude = change;
+                entry.trendDirection = change > 0.01 ? 'rising' : change < -0.01 ? 'falling' : 'stable';
+              }
+            }
+          }
+        }
+
+        if (entry.trendDirection !== 'stable') {
+          entry.totalScore *= 1.15;
+        }
+      }
+
+      const perMarketEntries = Array.from(metricScores.entries())
+        .filter(([key]) => key.includes('::'));
+
+      const ranked: Array<{
+        metric: string;
+        score: number;
+        crossGeoCount: number;
+        totalScore: number;
+        appearances: number;
+        bestR: number;
+        bestLag: number;
+        bestPair: string;
+        bestGeo: string;
+        geoCount: number;
+        geos: Set<string>;
+        crossGeoSources: Set<string>;
+        trendDirection: string;
+        trendMagnitude: number;
+      }> = [];
+
+      if (perMarketEntries.length > 0) {
+        const byGeo = new Map<string, typeof perMarketEntries>();
+        for (const [key, entry] of perMarketEntries) {
+          const geoId = key.split('::')[1];
+          if (!byGeo.has(geoId)) byGeo.set(geoId, []);
+          byGeo.get(geoId)!.push([key, entry]);
+        }
+
+        for (const [geoId, entries] of byGeo) {
+          const sorted = entries
+            .map(([key, entry]) => {
+              const baseMetric = key.split('::')[0];
+              const globalEntry = metricScores.get(baseMetric);
+              const crossGeoCount = globalEntry ? globalEntry.geos.size - entry.geos.size : 0;
+              return {
+                metric: baseMetric,
+                score: entry.totalScore / Math.max(entry.appearances, 1),
+                crossGeoCount,
+                ...entry,
+                bestGeo: geoId,
+              };
+            })
+            .sort((a, b) => b.score - a.score)
+            .slice(0, topN);
+          ranked.push(...sorted);
+        }
+      } else {
+        const globalEntries = Array.from(metricScores.entries())
+          .filter(([key]) => !key.includes('::'));
+        const sorted = globalEntries
+          .map(([key, entry]) => ({
+            metric: key,
+            score: entry.totalScore / Math.max(entry.appearances, 1),
+            crossGeoCount: 0,
+            ...entry,
+          }))
+          .sort((a, b) => b.score - a.score)
+          .slice(0, topN);
+        ranked.push(...sorted);
+      }
+
+      const METRIC_LABELS: Record<string, string> = {
+        home_value_index: 'Home Value Index',
+        home_value_index_yoy: 'Home Value Growth (YoY)',
+        rent_index: 'Rent Index',
+        rent_index_yoy: 'Rent Growth (YoY)',
+        DEMO_MED_INCOME: 'Median Household Income',
+        DEMO_POPULATION: 'Population',
+        DEMO_RENTER_PCT: 'Renter Percentage',
+        T_AADT: 'Traffic Volume (AADT)',
+        T_AADT_YOY: 'Traffic Growth (YoY)',
+      };
+
+      const recommendations: MetricRecommendation[] = ranked.map((item, idx) => {
+        const columnId = COLUMN_METRIC_MAP[item.metric] || null;
+        const label = METRIC_LABELS[item.metric] || item.metric.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        const pairLabel = METRIC_LABELS[item.bestPair] || item.bestPair.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        const geoParts = item.bestGeo.split('-');
+        const geoCity = geoParts.slice(0, -2).join(' ').replace(/\b\w/g, c => c.toUpperCase());
+        const geoState = (geoParts[geoParts.length - 2] || '').toUpperCase();
+        const geoName = geoState ? `${geoCity}, ${geoState}` : geoCity;
+
+        let reason = '';
+        const rSign = item.bestR > 0 ? 'positively' : 'inversely';
+        const absR = Math.abs(item.bestR).toFixed(2);
+
+        if (item.bestLag !== 0) {
+          const lagDir = item.bestLag > 0 ? 'leads' : 'lags';
+          const lagAbs = Math.abs(item.bestLag);
+          reason = `${label} ${lagDir} ${pairLabel} by ${lagAbs} month${lagAbs > 1 ? 's' : ''} in ${geoName} (r=${absR}, ${rSign})`;
+        } else {
+          reason = `${label} ${rSign} correlates with ${pairLabel} in ${geoName} (r=${absR})`;
+        }
+
+        if (item.trendDirection !== 'stable') {
+          const pct = (Math.abs(item.trendMagnitude) * 100).toFixed(1);
+          reason += ` — currently ${item.trendDirection} ${pct}%`;
+        }
+
+        const globalEntry = metricScores.get(item.metric);
+        const totalGeos = globalEntry ? globalEntry.geos.size : item.geoCount;
+        const crossCount = item.crossGeoCount || 0;
+        if (totalGeos > 1 && crossCount > 0) {
+          const formatGeoName = (id: string) => {
+            const parts = id.split('-');
+            const city = parts.slice(0, -2).join(' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+            const st = (parts[parts.length - 2] || '').toUpperCase();
+            return st ? `${city}, ${st}` : city;
+          };
+          const topSources = Array.from(item.crossGeoSources).slice(0, 3).map(formatGeoName);
+          if (topSources.length > 0) {
+            reason += `. Also validated in ${topSources.join(', ')}${crossCount > 3 ? ` and ${crossCount - 3} other markets` : ''}`;
+          } else {
+            reason += `. Validated across ${totalGeos} markets (${crossCount} cross-market)`;
+          }
+        } else if (totalGeos > 1) {
+          reason += `. Consistent across ${totalGeos} markets`;
+        }
+
+        return {
+          rank: idx + 1,
+          metricId: item.metric,
+          metricLabel: label,
+          columnId,
+          score: Math.round(item.score * 10) / 10,
+          reason,
+          correlationR: item.bestR,
+          leadLagMonths: item.bestLag,
+          pairedMetric: item.bestPair,
+          pairedMetricLabel: pairLabel,
+          geographyId: item.bestGeo,
+          geoCount: item.geoCount,
+          trendDirection: item.trendDirection,
+          trendMagnitude: Math.round(item.trendMagnitude * 1000) / 1000,
+        };
+      });
+
+      if (userId && recommendations.length > 0) {
+        await this.cacheRecommendations(userId, marketGeoIds, recommendations, topN);
+      }
+
+      return recommendations;
+    } catch (error) {
+      logger.error(`Error generating metric recommendations: ${String(error)}`);
+      return [];
+    }
+  }
+
+  private batchCacheKey(marketGeoIds: Array<{ geoType: string; geoId: string }>, topN: number = 5): string {
+    const raw = marketGeoIds.map(g => `${g.geoType}:${g.geoId}`).sort().join(',') + `|topN=${topN}`;
+    return createHash('sha256').update(raw).digest('hex').slice(0, 64);
+  }
+
+  private async getCachedRecommendations(
+    userId: string,
+    marketGeoIds: Array<{ geoType: string; geoId: string }>,
+    topN: number = 5
+  ): Promise<MetricRecommendation[] | null> {
+    try {
+      const cacheKey = this.batchCacheKey(marketGeoIds, topN);
+      const geoTypes = marketGeoIds.map(g => g.geoType);
+      const geoIds = marketGeoIds.map(g => g.geoId);
+
+      const res = await this.pool.query(
+        `SELECT mr.recommendations, mr.computed_at as cache_computed_at
+         FROM metric_recommendations mr
+         WHERE mr.user_id = $1 AND mr.geography_type = 'batch' AND mr.geography_id = $2
+           AND mr.expires_at > NOW()
+         ORDER BY mr.computed_at DESC LIMIT 1`,
+        [userId, cacheKey]
+      );
+      if (res.rows.length === 0) return null;
+
+      const cacheTime = new Date(res.rows[0].cache_computed_at);
+
+      const freshRes = await this.pool.query(
+        `SELECT MAX(computed_at) as newest_corr
+         FROM metric_correlations
+         WHERE (geography_type, geography_id) IN (
+           SELECT unnest($1::text[]), unnest($2::text[])
+         )`,
+        [geoTypes, geoIds]
+      );
+      if (freshRes.rows[0]?.newest_corr) {
+        const newestCorr = new Date(freshRes.rows[0].newest_corr);
+        if (newestCorr > cacheTime) {
+          return null;
+        }
+      }
+
+      return res.rows[0].recommendations as MetricRecommendation[];
+    } catch {
+      return null;
+    }
+  }
+
+  private async cacheRecommendations(
+    userId: string,
+    marketGeoIds: Array<{ geoType: string; geoId: string }>,
+    recommendations: MetricRecommendation[],
+    topN: number = 5
+  ): Promise<void> {
+    try {
+      const cacheKey = this.batchCacheKey(marketGeoIds, topN);
+      await this.pool.query(
+        `INSERT INTO metric_recommendations (user_id, geography_type, geography_id, recommendations, computed_at, expires_at)
+         VALUES ($1, 'batch', $2, $3, NOW(), NOW() + INTERVAL '7 days')
+         ON CONFLICT (user_id, geography_type, geography_id)
+         DO UPDATE SET recommendations = $3, computed_at = NOW(), expires_at = NOW() + INTERVAL '7 days'`,
+        [userId, cacheKey, JSON.stringify(recommendations)]
+      );
+    } catch (error) {
+      logger.error(`Error caching recommendations: ${String(error)}`);
+    }
   }
 }

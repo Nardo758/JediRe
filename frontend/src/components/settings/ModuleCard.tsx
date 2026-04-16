@@ -1,4 +1,7 @@
 import React from 'react';
+import { BT } from '@/components/deal/bloomberg-ui';
+
+const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono','Fira Code','SF Mono',monospace" };
 
 interface ModuleDefinition {
   slug: string;
@@ -34,59 +37,23 @@ interface ModuleCardProps {
 
 export function ModuleCard({ module, userBundle, onToggle, onPurchase }: ModuleCardProps) {
   const { userSettings } = module;
-  
+
   const isSubscribed = userSettings?.subscribed || module.isFree;
   const isEnabled = userSettings?.enabled || false;
   const isInUserBundle = userBundle && module.bundles.includes(userBundle);
 
-  // Determine module status
   const getModuleStatus = () => {
-    if (module.isFree) {
-      return {
-        text: 'FREE',
-        color: 'text-green-600',
-        bgColor: 'bg-green-100',
-        canToggle: true,
-      };
-    }
-
-    if (isSubscribed && isEnabled) {
-      return {
-        text: 'Included ✓',
-        color: 'text-green-600',
-        bgColor: 'bg-green-100',
-        canToggle: true,
-      };
-    }
-
-    if (isSubscribed && !isEnabled) {
-      return {
-        text: 'Available',
-        color: 'text-blue-600',
-        bgColor: 'bg-blue-100',
-        canToggle: true,
-      };
-    }
-
-    // Not subscribed
-    return {
-      text: `$${module.priceMonthly}/mo`,
-      color: 'text-gray-700',
-      bgColor: 'bg-gray-100',
-      canToggle: false,
-    };
+    if (module.isFree) return { text: 'FREE', color: BT.text.green, canToggle: true };
+    if (isSubscribed && isEnabled) return { text: 'Included', color: BT.text.green, canToggle: true };
+    if (isSubscribed && !isEnabled) return { text: 'Available', color: BT.text.cyan, canToggle: true };
+    return { text: `$${module.priceMonthly}/mo`, color: BT.text.secondary, canToggle: false };
   };
 
   const status = getModuleStatus();
 
   const handleCheckboxClick = () => {
-    if (isSubscribed) {
-      // User has access, toggle enabled state
-      onToggle(module.slug, isEnabled);
-    } else {
-      // User doesn't have access, show purchase modal
-      onPurchase(module);
-    }
+    if (isSubscribed) onToggle(module.slug, isEnabled);
+    else onPurchase(module);
   };
 
   const handleAddModuleClick = (e: React.MouseEvent) => {
@@ -95,75 +62,59 @@ export function ModuleCard({ module, userBundle, onToggle, onPurchase }: ModuleC
   };
 
   return (
-    <div className="p-4 hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-b-0">
-      <div className="flex items-start gap-4">
-        {/* Checkbox */}
-        <div className="flex-shrink-0 pt-1">
+    <div style={{ padding: '12px 16px', borderBottom: `1px solid ${BT.border.subtle}` }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
+        <div style={{ flexShrink: 0, paddingTop: 2 }}>
           <button
             onClick={handleCheckboxClick}
-            className={`w-5 h-5 border-2 rounded flex items-center justify-center transition-colors ${
-              isEnabled
-                ? 'bg-blue-600 border-blue-600'
-                : isSubscribed
-                ? 'border-gray-300 hover:border-blue-400'
-                : 'border-gray-300 hover:border-gray-400'
-            }`}
             disabled={!isSubscribed && !module.isFree}
-            aria-label={`${isEnabled ? 'Disable' : 'Enable'} ${module.name}`}
+            style={{
+              width: 18,
+              height: 18,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              border: `2px solid ${isEnabled ? BT.text.cyan : BT.border.medium}`,
+              background: isEnabled ? BT.text.cyan : 'transparent',
+              cursor: isSubscribed || module.isFree ? 'pointer' : 'not-allowed',
+            }}
           >
             {isEnabled && (
-              <svg
-                className="w-3 h-3 text-white"
-                fill="currentColor"
-                viewBox="0 0 12 12"
-              >
+              <svg style={{ width: 10, height: 10, color: BT.bg.terminal }} fill="currentColor" viewBox="0 0 12 12">
                 <path d="M10 3L4.5 8.5L2 6" stroke="currentColor" strokeWidth="2" fill="none" />
               </svg>
             )}
           </button>
         </div>
 
-        {/* Icon */}
-        <div className="flex-shrink-0">
-          <span className="text-3xl">{module.icon}</span>
-        </div>
+        <div style={{ flexShrink: 0, fontSize: 24 }}>{module.icon}</div>
 
-        {/* Content */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-4 mb-2">
-            <div className="flex-1">
-              <h3 className="text-base font-bold text-gray-900 mb-1">
-                {module.name}
-              </h3>
-              <p className="text-sm text-gray-600 mb-2 line-clamp-2">
-                {module.description}
-              </p>
-              <div className="text-xs text-gray-500">
-                <strong>Enhances:</strong> {module.enhances.join(', ')}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, marginBottom: 4 }}>
+            <div style={{ flex: 1 }}>
+              <h3 style={{ fontSize: 13, fontWeight: 700, color: BT.text.primary, marginBottom: 4 }}>{module.name}</h3>
+              <p style={{ fontSize: 11, color: BT.text.secondary, marginBottom: 4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{module.description}</p>
+              <div style={{ fontSize: 10, color: BT.text.muted }}>
+                <strong style={{ color: BT.text.secondary }}>Enhances:</strong> {module.enhances.join(', ')}
               </div>
             </div>
 
-            {/* Status & Actions */}
-            <div className="flex-shrink-0 text-right">
-              <div
-                className={`inline-block px-3 py-1 rounded-full text-sm font-semibold mb-2 ${status.bgColor} ${status.color}`}
-              >
+            <div style={{ flexShrink: 0, textAlign: 'right' as const }}>
+              <div style={{ display: 'inline-block', padding: '2px 10px', fontSize: 10, fontWeight: 600, color: status.color, background: BT.bg.panelAlt, marginBottom: 6, ...mono }}>
                 {status.text}
               </div>
 
-              {/* Action Buttons */}
-              <div className="space-y-2">
+              <div>
                 {!isSubscribed && !module.isFree && (
                   <>
                     <button
                       onClick={handleAddModuleClick}
-                      className="block w-full px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+                      style={{ display: 'block', width: '100%', padding: '4px 12px', background: BT.text.cyan, color: BT.bg.terminal, border: 'none', fontSize: 10, fontWeight: 600, cursor: 'pointer', ...mono }}
                     >
                       Add Module
                     </button>
-                    
                     {!isInUserBundle && module.bundles.length > 0 && (
-                      <div className="text-xs text-gray-500">
+                      <div style={{ fontSize: 9, color: BT.text.muted, marginTop: 4 }}>
                         Not in {userBundle ? 'your bundle' : 'any bundle'}
                       </div>
                     )}
@@ -171,11 +122,8 @@ export function ModuleCard({ module, userBundle, onToggle, onPurchase }: ModuleC
                 )}
 
                 {isSubscribed && isEnabled && (
-                  <div className="text-xs text-gray-500">
-                    Active since{' '}
-                    {userSettings?.activatedAt
-                      ? new Date(userSettings.activatedAt).toLocaleDateString()
-                      : 'now'}
+                  <div style={{ fontSize: 9, color: BT.text.muted }}>
+                    Active since {userSettings?.activatedAt ? new Date(userSettings.activatedAt).toLocaleDateString() : 'now'}
                   </div>
                 )}
               </div>

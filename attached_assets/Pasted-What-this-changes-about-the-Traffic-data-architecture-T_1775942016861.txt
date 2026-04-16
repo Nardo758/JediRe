@@ -1,0 +1,22 @@
+What this changes about the Traffic data architecture
+The big shift: a single rent roll is no longer "thin fuel" for Traffic — it's the historical signing log. That changes the priority order on M22 ingestion. You don't need to wait for snapshot accumulation to start computing velocity, seasonality, expiration waterfalls, and trade-out trends. Day one of ingesting any property's rent roll, you can produce:
+
+Trailing 3/6/12-month signing velocity (with the survivor-bias caveat surfaced as a confidence flag for older periods)
+Monthly signing histogram going back as far as the oldest in-place lease
+Seasonality curve for that specific property, computed in-house rather than estimated from MSA averages
+Forward expiration waterfall for the next 12–24 months at unit-level granularity
+Renewal cliff detection — months where expirations cluster above some threshold (Alta Porter's October is a textbook case)
+Velocity-vs-seasonality variance — is this month's signing pace above or below the property's own historical curve for that calendar month? That's a much sharper signal than comparing to MSA benchmarks because it controls for the asset's specific lease-up history.
+Lease term distribution (expiration − move-in) — gives you the property's actual term mix, useful for the M03 unit-program / lease-strategy interaction
+Cohort retention curves when you do start accumulating snapshots — knowing how many leases were signed in May 2025 (true number, frozen at the time) vs. how many of that cohort are still in place at each subsequent snapshot is the cleanest possible retention metric
+
+The snapshot-diff work I described earlier still matters, but its role is now narrower and more specific:
+
+Freezing true signing counts for periods after ingestion begins (eliminates survivor bias going forward)
+Detecting cancellations of pre-signed leases (residents who appeared as future at T0 and are gone at T1 with no move-in)
+Measuring vacancy down-time between move-out and next move-in on the same unit
+Capturing notice-to-move-out lag distribution
+Trade-out (new resident's rent vs. prior resident's rent on same unit — requires the prior snapshot to know what the prior rent was)
+
+So the architecture splits cleanly into two layers: single-snapshot extractors (velocity, seasonality, waterfall, term mix, in-place trade-out vs. market) that run on every rent roll ingested, and diff extractors (cancellations, down-time, true historical counts, cohort retention) that activate once you have ≥2 snapshots.
+For the M22 ingestion path, I'd build the single-snapshot layer first — it gives every newly onboarded property an instant Traffic baseline rather than making them wait a month for the second snapshot to unlock anything. Want me to write that as the actual extractor module spec (input schema, output tables, the velocity/seasonality/waterfall computations, confidence flags for survivor bias)? That would slot directly into the M22 ingestion pipeline you've been building toward.

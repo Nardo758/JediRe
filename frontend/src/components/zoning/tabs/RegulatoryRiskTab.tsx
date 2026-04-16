@@ -80,6 +80,7 @@ export default function RegulatoryRiskTab({ dealId, deal }: RegulatoryRiskTabPro
   const { setRegulatoryAlerts } = useZoningModuleStore();
   const [analysis, setAnalysis] = useState<RiskAnalysis | null>(null);
   const [loading, setLoading] = useState(false);
+  const [queued, setQueued] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -88,16 +89,24 @@ export default function RegulatoryRiskTab({ dealId, deal }: RegulatoryRiskTabPro
 
     async function fetchAnalysis() {
       setLoading(true);
+      setQueued(false);
       setError(null);
       try {
         const token = localStorage.getItem('auth_token') || '';
         const resp = await axios.get(`/api/v1/deals/${dealId}/regulatory-risk-analysis`, {
           headers: { Authorization: `Bearer ${token}` },
+          validateStatus: (status) => status < 500,
         });
         if (!cancelled) {
-          setAnalysis(resp.data);
-          if (resp.data.alerts) {
-            setRegulatoryAlerts(resp.data.alerts);
+          // 202 means the analysis is being generated in the background
+          if (resp.status === 202 || !resp.data?.compositeScore) {
+            setQueued(true);
+            setAnalysis(null);
+          } else {
+            setAnalysis(resp.data);
+            if (resp.data.alerts) {
+              setRegulatoryAlerts(resp.data.alerts);
+            }
           }
         }
       } catch (err: any) {
@@ -140,6 +149,16 @@ export default function RegulatoryRiskTab({ dealId, deal }: RegulatoryRiskTabPro
     );
   }
 
+  if (queued) {
+    return (
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-8 text-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-3"></div>
+        <p className="text-sm font-medium text-blue-700">Regulatory risk analysis in progress</p>
+        <p className="text-xs text-blue-500 mt-1">AI is analyzing the regulatory environment. Check back in 30–60 seconds.</p>
+      </div>
+    );
+  }
+
   if (!analysis) {
     return (
       <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 text-center">
@@ -149,7 +168,7 @@ export default function RegulatoryRiskTab({ dealId, deal }: RegulatoryRiskTabPro
   }
 
   const levelCfg = LEVEL_CONFIG[analysis.compositeLevel] || LEVEL_CONFIG.moderate;
-  const dlCtx = analysis.dataLibraryContext;
+  const dlCtx = analysis.dataLibraryContext || { hasImpactFees: false, hasConstructionCosts: false, hasRentComps: false, recentProjectCount: 0, permitTimelineCount: 0 };
 
   return (
     <div className="space-y-6">
@@ -189,15 +208,23 @@ export default function RegulatoryRiskTab({ dealId, deal }: RegulatoryRiskTabPro
           </span>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="w-full table-fixed">
+            <colgroup>
+              <col className="w-[14%]" />
+              <col className="w-[10%]" />
+              <col className="w-[6%]" />
+              <col className="w-[5%]" />
+              <col className="w-[45%]" />
+              <col className="w-[20%]" />
+            </colgroup>
             <thead>
               <tr className="bg-gray-50">
-                <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wide px-4 py-3">Risk Category</th>
-                <th className="text-center text-xs font-medium text-gray-500 uppercase tracking-wide px-4 py-3">Level</th>
-                <th className="text-center text-xs font-medium text-gray-500 uppercase tracking-wide px-4 py-3">Score</th>
-                <th className="text-center text-xs font-medium text-gray-500 uppercase tracking-wide px-4 py-3">Trend</th>
-                <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wide px-4 py-3">Impact</th>
-                <th className="text-left text-xs font-medium text-gray-500 uppercase tracking-wide px-4 py-3">Cost Impact</th>
+                <th className="text-left text-[10px] font-medium text-gray-500 uppercase tracking-wide px-3 py-2">Category</th>
+                <th className="text-center text-[10px] font-medium text-gray-500 uppercase tracking-wide px-2 py-2">Level</th>
+                <th className="text-center text-[10px] font-medium text-gray-500 uppercase tracking-wide px-2 py-2">Score</th>
+                <th className="text-center text-[10px] font-medium text-gray-500 uppercase tracking-wide px-2 py-2">Trend</th>
+                <th className="text-left text-[10px] font-medium text-gray-500 uppercase tracking-wide px-3 py-2">Impact</th>
+                <th className="text-left text-[10px] font-medium text-gray-500 uppercase tracking-wide px-3 py-2">Cost Impact</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -205,21 +232,21 @@ export default function RegulatoryRiskTab({ dealId, deal }: RegulatoryRiskTabPro
                 const catLevelCfg = LEVEL_CONFIG[cat.level] || LEVEL_CONFIG.moderate;
                 return (
                   <tr key={cat.category} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{cat.label}</td>
-                    <td className="px-4 py-3 text-center">
-                      <span className={`inline-flex items-center gap-1.5 text-sm font-medium ${catLevelCfg.bg}`}>
+                    <td className="px-3 py-2 text-xs font-medium text-gray-900 truncate">{cat.label}</td>
+                    <td className="px-2 py-2 text-center">
+                      <span className={`inline-flex items-center gap-1 text-xs font-medium ${catLevelCfg.bg}`}>
                         <span>{catLevelCfg.dot}</span>
                         <span className="capitalize">{cat.level}</span>
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-center">
-                      <span className="text-sm font-mono text-gray-700">{cat.score}</span>
+                    <td className="px-2 py-2 text-center">
+                      <span className="text-xs font-mono text-gray-700">{cat.score}</span>
                     </td>
-                    <td className="px-4 py-3 text-center text-sm text-gray-600 font-mono">
+                    <td className="px-2 py-2 text-center text-xs text-gray-600 font-mono">
                       {TREND_ICONS[cat.trend] || '\u2192'}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-600 max-w-xs">{cat.impact}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">
+                    <td className="px-3 py-2 text-xs text-gray-600">{cat.impact}</td>
+                    <td className="px-3 py-2 text-xs text-gray-600">
                       {cat.costImpact || <span className="text-gray-400">&mdash;</span>}
                     </td>
                   </tr>

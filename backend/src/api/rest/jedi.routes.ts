@@ -11,6 +11,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { authMiddleware } from '../../middleware/auth';
 import { jediScoreService } from '../../services/jedi-score.service';
 import { dealAlertService } from '../../services/deal-alert.service';
+import { agentAlertService } from '../../services/agent-alert.service';
 
 const router = Router();
 const logger = { 
@@ -223,13 +224,16 @@ router.get('/alerts', authMiddleware.requireAuth, async (req: Request, res: Resp
     const userId = (req as any).user?.userId;
     const { unread_only = 'false', limit = 50, offset = 0 } = req.query;
 
-    const alerts = await dealAlertService.getUserAlerts(userId, {
-      unreadOnly: unread_only === 'true',
-      limit: parseInt(limit as string),
-      offset: parseInt(offset as string),
-    });
+    const [dbAlerts, corpDivAlerts] = await Promise.all([
+      dealAlertService.getUserAlerts(userId, {
+        unreadOnly: unread_only === 'true',
+        limit: parseInt(limit as string),
+        offset: parseInt(offset as string),
+      }),
+      dealAlertService.getCorporateHealthDivergenceAlerts(userId).catch(() => []),
+    ]);
+    const alerts = [...dbAlerts, ...corpDivAlerts];
 
-    // Group by severity
     const grouped = alerts.reduce((acc: any, alert) => {
       if (!acc[alert.severity]) {
         acc[alert.severity] = [];
@@ -371,20 +375,74 @@ router.patch('/alerts/settings', authMiddleware.requireAuth, async (req: Request
  * Manually trigger alert check for user's deals
  */
 router.post('/alerts/check', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  const userId = (req as any).user?.userId;
+  res.json({ success: true, data: { alertsGenerated: 0 }, message: 'Alert check queued' });
+  dealAlertService.checkDealsForAlerts(userId).catch((error: any) => {
+    logger.error('Error checking for alerts:', error);
+  });
+});
+
+// ============================================================================
+// Agent Alert Integration
+// ============================================================================
+
+/**
+ * POST /api/v1/jedi/alerts/from-agent
+ * Create alert from any of the 18 AI agents
+ */
+router.post('/alerts/from-agent', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = (req as any).user?.userId;
+    const { 
+      deal_id, 
+      agent_code, 
+      alert_type = 'info', 
+      severity = 'medium', 
+      title, 
+      message, 
+      data, 
+      suggested_actions 
+    } = req.body;
 
-    const alertsGenerated = await dealAlertService.checkDealsForAlerts(userId);
+    if (!agent_code || !title || !message) {
+      return res.status(400).json({
+        success: false,
+        message: 'agent_code, title, and message are required',
+      });
+    }
 
-    res.json({
-      success: true,
-      data: {
-        alertsGenerated,
-      },
-      message: `Generated ${alertsGenerated} new alert(s)`,
+    const result = await agentAlertService.createAlert({
+      dealId: deal_id,
+      userId,
+      agentCode: agent_code,
+      alertType: alert_type,
+      severity,
+      title,
+      message,
+      data,
+      suggestedActions: suggested_actions,
     });
+
+    res.status(201).json({ success: true, data: result });
   } catch (error) {
-    logger.error('Error checking for alerts:', error);
+    logger.error('Error creating agent alert:', error);
+    next(error);
+  }
+});
+
+/**
+ * POST /api/v1/jedi/alerts/read-all
+ * Mark all alerts as read
+ */
+router.post('/alerts/read-all', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = (req as any).user?.userId;
+    const { deal_id } = req.body;
+    
+    const count = await agentAlertService.markAllRead(userId, deal_id);
+    res.json({ success: true, data: { marked: count } });
+  } catch (error) {
+    logger.error('Error marking all alerts read:', error);
     next(error);
   }
 });
@@ -398,21 +456,10 @@ router.post('/alerts/check', authMiddleware.requireAuth, async (req: Request, re
  * Recalculate JEDI Scores for all active deals (admin only)
  */
 router.post('/recalculate-all', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    // TODO: Add admin check
-    const count = await jediScoreService.recalculateAllScores();
-
-    res.json({
-      success: true,
-      data: {
-        dealsProcessed: count,
-      },
-      message: `Recalculated scores for ${count} deal(s)`,
-    });
-  } catch (error) {
+  res.json({ success: true, data: { dealsProcessed: 0 }, message: 'Recalculation queued' });
+  jediScoreService.recalculateAllScores().catch((error: any) => {
     logger.error('Error recalculating all scores:', error);
-    next(error);
-  }
+  });
 });
 
 // ============================================================================

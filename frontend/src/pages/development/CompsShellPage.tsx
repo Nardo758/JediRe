@@ -1,0 +1,237 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { useParams } from 'react-router-dom';
+import { Trash2 } from 'lucide-react';
+import {
+  BT, BT_CSS,
+  PanelHeader, SubTabBar, BtTabWrapper, SectionPanel, TableHeader, TableRow, Bd, KpiTile,
+} from '../../components/deal/bloomberg-ui';
+import CompetitionPage from './CompetitionPage';
+import { apiClient } from '../../services/api.client';
+
+const TABS = ['COMPETITION ANALYSIS', 'SALE COMPS'];
+
+interface CompsShellPageProps {
+  dealId?: string;
+  deal?: Record<string, unknown>;
+  dealType?: string;
+  onUpdate?: () => void;
+}
+
+interface CompTransaction {
+  id: string;
+  recording_date: string;
+  property_address: string;
+  units: number;
+  year_built: number;
+  derived_sale_price: number;
+  price_per_unit: number;
+  implied_cap_rate: number | null;
+  buyer_type: string;
+  distance_miles: number;
+}
+
+interface CompSet {
+  comp_count: number;
+  avg_price_per_unit: number;
+  avg_implied_cap_rate: number | null;
+  comps: CompTransaction[];
+}
+
+function fmtUsd(v: number): string {
+  if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(2)}M`;
+  if (v >= 1_000)     return `$${(v / 1_000).toFixed(0)}K`;
+  return `$${v.toFixed(0)}`;
+}
+
+function fmtPct(v: number | null): string {
+  return v != null ? `${(v * 100).toFixed(2)}%` : '—';
+}
+
+function fmtDate(s: string): string {
+  return s ? s.slice(0, 10) : '—';
+}
+
+function fmtMi(v: number): string {
+  return `${v.toFixed(2)} mi`;
+}
+
+const COMP_COLS = [
+  { label: 'PROPERTY',   flex: 3, color: BT.text.secondary },
+  { label: 'DATE',       flex: 1, color: BT.text.muted     },
+  { label: 'PRICE',      flex: 1, color: BT.met.financial  },
+  { label: '$/UNIT',     flex: 1, color: BT.text.cyan      },
+  { label: 'CAP RATE',   flex: 1, color: BT.text.amber     },
+  { label: 'DIST',       flex: 1, color: BT.text.muted     },
+  { label: '',           flex: 0.4, color: BT.text.muted   },
+];
+
+export function CompsShellPage({ dealId: propDealId, deal }: CompsShellPageProps) {
+  const params = useParams<{ id?: string; dealId?: string }>();
+  const resolvedDealId = (deal?.id as string | undefined) ?? propDealId ?? params.dealId ?? params.id ?? '';
+
+  const [activeTab, setActiveTab] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [compSet, setCompSet] = useState<CompSet | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const loadComps = useCallback(() => {
+    if (!resolvedDealId) return;
+    setLoading(true);
+    apiClient
+      .get<{ data?: CompSet }>(`/api/v1/deals/${resolvedDealId}/comps`)
+      .then((res) => {
+        const payload = res.data?.data ?? (res.data as unknown as CompSet);
+        setCompSet(payload ?? null);
+      })
+      .catch(() => setCompSet(null))
+      .finally(() => setLoading(false));
+  }, [resolvedDealId]);
+
+  useEffect(() => { loadComps(); }, [loadComps]);
+
+  const handleDeleteComp = useCallback(async (compId: string, address: string) => {
+    if (!resolvedDealId || deletingId) return;
+    if (!window.confirm(`Remove comp "${address}" from this set?`)) return;
+    setDeletingId(compId);
+    try {
+      const res = await apiClient.delete<{ data?: CompSet }>(`/api/v1/deals/${resolvedDealId}/comps/${compId}`);
+      const payload = res.data?.data ?? (res.data as unknown as CompSet);
+      if (payload) {
+        setCompSet(payload);
+      } else {
+        loadComps();
+      }
+    } catch {
+      loadComps();
+    } finally {
+      setDeletingId(null);
+    }
+  }, [resolvedDealId, deletingId, loadComps]);
+
+  const count    = compSet?.comp_count ?? compSet?.comps?.length ?? 0;
+  const avgPpu   = compSet?.avg_price_per_unit ?? 0;
+  const avgCap   = compSet?.avg_implied_cap_rate ?? null;
+  const compScore = count >= 10 ? 'HIGH' : count >= 5 ? 'MED' : count > 0 ? 'LOW' : 'N/A';
+  const scoreColor = count >= 10 ? BT.met.financial : count >= 5 ? BT.text.amber : BT.text.muted;
+
+  const verdictOk = count >= 5;
+  const verdictTxt = verdictOk
+    ? `COMPS SUPPORTED — ${count} COMPARABLES IN DATABASE`
+    : count > 0
+      ? `THIN MARKET — ${count} COMPS ONLY · MANUAL REVIEW REQUIRED`
+      : 'NO COMPS LOADED — GENERATE OR IMPORT COMPS TO PROCEED';
+  const verdictColor = verdictOk ? BT.met.financial : count > 0 ? BT.text.amber : BT.text.muted;
+
+  const comps = compSet?.comps ?? [];
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BT.bg.terminal }}>
+      <style>{BT_CSS}</style>
+
+      <PanelHeader
+        title="COMPETITION & COMPS"
+        subtitle="M15 · COMPETITION ANALYSIS + SALE COMPS"
+        borderColor={BT.text.amber}
+        metrics={[
+          { l: 'SALE COMPS',  c: BT.text.amber    },
+          { l: 'F_CAP',       c: BT.met.financial },
+          { l: 'O_OCC',       c: BT.met.occupancy },
+          { l: 'COMP SCORE',  c: BT.text.cyan     },
+        ]}
+        right={<Bd c={scoreColor}>{compScore}</Bd>}
+      />
+
+      <div style={{ display: 'flex', gap: 1, background: BT.border.subtle, padding: 1, flexShrink: 0 }}>
+        <div style={{ flex: 1 }}><KpiTile label="COMP COUNT"    value={loading ? '…' : String(count)}                            color={BT.text.amber}    /></div>
+        <div style={{ flex: 1 }}><KpiTile label="AVG $/UNIT"   value={loading ? '…' : avgPpu > 0 ? fmtUsd(avgPpu) : '—'}       color={BT.met.financial} /></div>
+        <div style={{ flex: 1 }}><KpiTile label="AVG CAP RATE" value={loading ? '…' : fmtPct(avgCap)}                           color={BT.text.cyan}     /></div>
+        <div style={{ flex: 1 }}><KpiTile label="COMP SCORE"   value={loading ? '…' : compScore}                                 color={scoreColor}       /></div>
+      </div>
+
+      <div style={{
+        padding: '4px 10px', background: BT.bg.header,
+        borderBottom: `1px solid ${BT.border.subtle}`,
+        fontFamily: BT.font.mono, fontSize: 9, fontWeight: 700,
+        color: verdictColor, letterSpacing: 0.5, flexShrink: 0,
+      }}>
+        ▶ {verdictTxt}
+      </div>
+
+      <SubTabBar tabs={TABS} active={activeTab} setActive={setActiveTab} color={BT.text.amber} />
+
+      <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+        {activeTab === 0 && (
+          <BtTabWrapper>
+            <CompetitionPage />
+          </BtTabWrapper>
+        )}
+
+        {activeTab === 1 && (
+          <SectionPanel
+            title="SALE COMP TRANSACTIONS"
+            subtitle={`${count} RECORDS · PROPERTY / DATE / PRICE / $/UNIT / CAP RATE / DIST`}
+            borderColor={BT.text.amber}
+            style={{ minHeight: '100%' }}
+          >
+            {loading && (
+              <div style={{ padding: 24, color: BT.text.muted, fontFamily: BT.font.mono, fontSize: 11 }}>LOADING COMPS…</div>
+            )}
+            {!loading && comps.length === 0 && (
+              <div style={{ padding: 24, color: BT.text.muted, fontFamily: BT.font.mono, fontSize: 11 }}>NO COMP DATA — USE GENERATE COMPS ACTION</div>
+            )}
+            {!loading && comps.length > 0 && (
+              <div>
+                <TableHeader cols={COMP_COLS} />
+                {comps.map((c, i) => (
+                  <div key={c.id} style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <TableRow
+                        index={i}
+                        cells={[
+                          { value: c.property_address || '—',       flex: 3, color: BT.text.secondary, weight: 600 },
+                          { value: fmtDate(c.recording_date),        flex: 1, color: BT.text.muted                  },
+                          { value: fmtUsd(c.derived_sale_price),     flex: 1, color: BT.met.financial               },
+                          { value: fmtUsd(c.price_per_unit),         flex: 1, color: BT.text.cyan                   },
+                          { value: fmtPct(c.implied_cap_rate),       flex: 1, color: BT.text.amber                  },
+                          { value: fmtMi(c.distance_miles),          flex: 1, color: BT.text.muted                  },
+                          { value: '', flex: 0.4 },
+                        ]}
+                      />
+                    </div>
+                    <button
+                      onClick={() => handleDeleteComp(c.id, c.property_address || 'this comp')}
+                      disabled={deletingId === c.id}
+                      title="Remove comp"
+                      style={{
+                        position: 'absolute',
+                        right: 8,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: 20,
+                        height: 20,
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: deletingId === c.id ? 'wait' : 'pointer',
+                        color: deletingId === c.id ? BT.text.muted : BT.text.red,
+                        opacity: deletingId === c.id ? 0.4 : 0.6,
+                        padding: 0,
+                        transition: 'opacity 0.15s',
+                      }}
+                      onMouseEnter={(e) => { if (deletingId !== c.id) (e.currentTarget as HTMLButtonElement).style.opacity = '1'; }}
+                      onMouseLeave={(e) => { if (deletingId !== c.id) (e.currentTarget as HTMLButtonElement).style.opacity = '0.6'; }}
+                    >
+                      <Trash2 size={10} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </SectionPanel>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default CompsShellPage;

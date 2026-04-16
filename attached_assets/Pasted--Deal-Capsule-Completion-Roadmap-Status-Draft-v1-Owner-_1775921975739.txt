@@ -1,0 +1,217 @@
+# Deal Capsule Completion Roadmap
+
+**Status:** Draft v1 · **Owner:** Leon · **Scope:** Finalize Deal Capsule across the three deal-type variants, user input surfaces, assumption editing, input-needed alerts, and library/data pull patterns.
+
+---
+
+## 0. Framing: Agent-as-Computing-Platform → JEDI bindings
+
+The Deal Capsule is the concrete instantiation of the agent computing platform for a single deal. Every spoke in the reference architecture already has a home in JEDI:
+
+| Arch spoke | JEDI binding | State |
+|---|---|---|
+| **Files** (structured/unstructured) | Project knowledge, uploaded OM/rent roll/T12, Municode tables, county GIS layers, permits | Partial — upload pipeline gap (M28) |
+| **Memory** | `DealContext` 24h cache + `dealStore.ts` message bus | Built |
+| **LLM** | Claude compute engine (structured JSON snapshots) | Built |
+| **Sub-agents** | Research, Zoning, Supply, Cashflow + AI Coordinator | Built (4) |
+| **Tools** | FRED, RentCast, ArcGIS, county permits, SpyFu, NewsAPI, Google Places, FDOT, Freddie PMMS | Wired |
+| **Computer use** | Automated form fill, Municode scraping, GIS REST calls | Partial |
+| **Multi-modal prompt** | WhatsApp/Telegram chat, terminal web, document upload | Chat ✓ / upload gap |
+
+The Deal Capsule's job is to orchestrate these into a single typed object (`DealContext`) that every downstream module reads from and every user interaction writes to.
+
+---
+
+## 1. Deal-type variants — finalize the three OverviewRouters
+
+`resolveProjectType()` in `project-type.ts` dispatches. Each variant shares the same `DealContext` schema but populates different branches and exposes different editable surfaces.
+
+### 1.1 Existing (read-only + gap analysis)
+- **Baseline source:** T12 + rent roll upload → parsed to `DealContext.actuals`
+- **Editable surface:** Assumption overrides only (exit cap, hold period, refi, cap-ex plan)
+- **Locked:** Unit mix, building envelope, zoning (these are facts, not inputs)
+- **Primary agents:** Cashflow (full), Supply (comp set), Zoning (read-only verification)
+- **F3 Unit Program tab:** Read-only, shows actual mix with gap analysis vs. submarket optimum
+
+### 1.2 Redevelopment (baseline + delta layer)
+- **Baseline source:** Same as Existing
+- **Delta layer:** User-defined scope of work → `DealContext.redevelopment.deltas[]`
+- **Editable surface:** Baseline assumptions + delta scope (unit reconfiguration, amenity adds, envelope mods within existing FAR)
+- **Locked:** Lot area, existing structural envelope (unless demo specified)
+- **Primary agents:** All four; Zoning checks delta against current code (often triggers non-conforming review)
+- **F3 Unit Program tab:** Split view — "As-is" column vs. "As-reconfigured" column
+
+### 1.3 Development (full unit mix builder)
+- **Baseline source:** None — starts from lot + zoning envelope
+- **Editable surface:** Full — constrained only by zoning hard gates (M02→M03)
+- **Locked:** Zoning envelope parameters until user overrides with variance
+- **Primary agents:** All four; Zoning is the binding constraint upstream of everything
+- **F3 Unit Program tab:** Full massing builder, parking as binding constraint surfaced prominently
+
+### 1.4 Deliverables
+- [ ] `DealContext` schema with discriminated union on `dealType`
+- [ ] Three `OverviewRouter` components with shared layout shell, variant-specific tab visibility
+- [ ] `resolveProjectType()` unit tests covering edge cases (adaptive reuse, partial demo)
+- [ ] Migration path: existing deals default to `existing` until user reclassifies
+
+---
+
+## 2. User input surface — fields, pages, progressive disclosure
+
+### 2.1 Input taxonomy (the three classes)
+Every user-facing input falls into one of three classes, which determines where it lives and how it's alerted:
+
+1. **Identity inputs** — who/what/where. Address, deal type, sponsor, capital intent. *Required before any agent runs.*
+2. **Override inputs** — values the platform can default but the user may correct. Exit cap, rent growth, vacancy, construction cost/SF. *Optional; alerted when platform confidence is low.*
+3. **Scope inputs** — user-defined scope that has no platform default. Redev deltas, target unit mix, amenity package tier. *Required per deal type.*
+
+### 2.2 Input pages (F-key aligned)
+- **F1 Overview** — Identity inputs only. Blocks agent execution until complete.
+- **F3 Unit Program** — Scope inputs for Development/Redev; read-only for Existing.
+- **F7 Assumptions** — All override inputs, grouped by category (market, cost, capital, exit).
+- **F8 Financial Engine → Assumptions tab** — Mirror of F7 scoped to ProForma-affecting values; edits write through to the same `LayeredValue` store.
+- **`⌘K` command palette** — "Edit assumption: exit cap" for power users who know what they want.
+
+### 2.3 Progressive disclosure principle
+First pass shows only the 5–7 inputs that move the JEDI Score by >2 points (sensitivity-ranked). "Show all 47 assumptions" is a disclosure toggle, not the default view. Sensitivity ranking comes from the correlation engine (COR-*) pre-computed coefficients — don't calculate on the fly.
+
+### 2.4 Deliverables
+- [ ] Input taxonomy encoded in `DealContext` field metadata (`inputClass: 'identity' | 'override' | 'scope'`)
+- [ ] F1/F3/F7/F8 input pages wired to `dealStore`
+- [ ] Sensitivity-ranked disclosure using cached COR coefficients
+- [ ] `⌘K` assumption search
+
+---
+
+## 3. Input-needed alerts — `LayeredValue` as the backbone
+
+The broker > platform > user resolution already tells you everything needed to drive alerts. Add one field and the alert system falls out:
+
+```ts
+type LayeredValue<T> = {
+  broker?: { value: T; source: string; confidence: number };
+  platform?: { value: T; source: string; confidence: number };
+  user?: { value: T; editedAt: Date };
+  resolved: T;                    // existing
+  resolvedFrom: 'broker' | 'platform' | 'user';  // existing
+  alertLevel: 'none' | 'info' | 'warn' | 'block'; // NEW
+};
+```
+
+### 3.1 Alert level rules
+- **`block`** — Identity input missing, OR platform confidence < 0.4 on a high-sensitivity field. Blocks agent execution or ProForma finalization. Red marker in F1.
+- **`warn`** — Platform confidence 0.4–0.7, OR broker value contradicts platform by >15%. Shown as amber pip next to the field. Non-blocking.
+- **`info`** — Platform confidence > 0.7 but user has never reviewed. Shown as a subtle dot that disappears on first view.
+- **`none`** — User has explicitly edited, or confidence > 0.9 and user has viewed.
+
+### 3.2 Alert surfaces
+- **F1 Overview** — aggregate counter: "3 inputs need attention" with click-through
+- **Inline** — single-character pips next to each field (Bloomberg-style, no icons, use `T.warn` / `T.block` tokens)
+- **Chat surface** — Research Agent proactively asks: "I couldn't find reliable rent comps for this submarket — do you have a broker estimate?" Writes answer back into `LayeredValue.user`.
+
+### 3.3 Deliverables
+- [ ] `alertLevel` computed field on `LayeredValue<T>`
+- [ ] Aggregate alert counter component on F1
+- [ ] Inline pip component using `T` tokens
+- [ ] Chat surface elicitation prompts keyed off `block`/`warn` fields
+
+---
+
+## 4. Editable assumptions — write path
+
+Editing is just `LayeredValue.user = {...}`. The hard part is making sure every downstream module recalculates correctly and atomically.
+
+### 4.1 Write flow
+1. User edits value on F7 or F8 Assumptions tab
+2. `dealStore.updateAssumption(path, value)` writes `LayeredValue.user`
+3. Store emits `assumption:changed` event with the path
+4. Keystone cascade listener (`M02→M03→M08→M09`) re-runs affected modules
+5. ProForma recomputes via `wireCapitalStack()` → IRR, equity multiple, JEDI Score update
+6. Recharts subscribers re-render
+
+### 4.2 Edit history / reset
+- Every edit appends to `DealContext.editLog[]` (path, oldValue, newValue, timestamp, actor)
+- "Revert to platform default" per field → clears `LayeredValue.user`
+- "Revert all" → wipes user layer, returns to platform/broker resolution
+- No destructive edits — old values stay in log for the audit trail
+
+### 4.3 Guardrails
+- Hard-gate edits (zoning FAR, height, parking minimums) cannot be overridden without toggling a "variance assumed" flag that shows in the ProForma header as a risk banner
+- Edits that would push JEDI Score change > 10 points trigger a confirmation modal
+
+### 4.4 Deliverables
+- [ ] `dealStore.updateAssumption` with cascade emission
+- [ ] Edit log persistence
+- [ ] Revert UI on every editable field
+- [ ] Variance-assumed banner on ProForma header
+
+---
+
+## 5. Library pull — Files + Tools + Computer Use spokes
+
+This is where the agent architecture slide earns its keep. The Deal Capsule should be able to pull from the library with zero user friction.
+
+### 5.1 Library = Files spoke
+Structured sources (RentCast, FRED, county GIS) are queried via typed tool calls in the Research Agent. Unstructured sources (uploaded OMs, T12s, rent rolls, Municode PDFs) are parsed via the upload pipeline.
+
+### 5.2 Pull patterns
+- **Auto-pull (Research Agent)** — On deal creation, Research Agent runs a manifest of ~15 tool calls to populate `DealContext`. Cached 24h.
+- **On-demand pull (user-initiated)** — F-key command or chat: "pull latest SOFR" → targeted tool call, writes to `DealContext.market.rates.sofr` with `platform` layer + timestamp.
+- **Reference pull (library browser)** — User opens library panel (`⌘L`), searches/browses past deals, comp sets, Municode entries, formula library. Drag-to-apply writes into current deal's `broker` or `user` layer with provenance.
+
+### 5.3 Library browser UI
+- Left rail sections: **Deals** (past capsules), **Comps** (rent/sale comps by submarket), **Code** (Municode, zoning), **Formulas** (F01–F72+), **Correlations** (COR-*), **Signals** (D/S/M/P/R/T/DC/TA outputs)
+- Each item draggable onto a field in the current deal → opens "apply as" dialog (broker override, platform default, reference only)
+- Every applied value keeps a back-link to its library source for the audit trail
+
+### 5.4 Upload pipeline (the M28 gap)
+- Gmail Watch → Kafka → A01 Intake Agent → Document Parser → Deal Capsule auto-creation
+- Also accept direct upload on F1 Overview: "Drop OM, T12, or rent roll here"
+- Parser output writes to `broker` layer (since it's the sponsor's numbers)
+
+### 5.5 Deliverables
+- [ ] Research Agent manifest spec (the 15 default calls per deal type)
+- [ ] On-demand pull commands wired to `⌘K`
+- [ ] `⌘L` library browser with five sections
+- [ ] Drag-to-apply provenance tracking
+- [ ] M28 upload pipeline (critical path — unblocks Existing/Redev deals)
+
+---
+
+## 6. Phasing
+
+### Phase 0 — Schema lockdown (Week 1)
+Discriminated-union `DealContext`, `LayeredValue<T>` + `alertLevel`, `editLog[]`, input taxonomy metadata. Nothing ships without this.
+
+### Phase 1 — Development variant end-to-end (Weeks 2–3)
+Full Development `OverviewRouter`, F1/F3/F7/F8 input pages, alert pips, edit + revert, keystone cascade on assumption change. Development first because it exercises every code path.
+
+### Phase 2 — Existing variant + upload pipeline (Weeks 4–5)
+M28 upload → parser → `broker` layer population. Existing `OverviewRouter` with read-only surfaces. This unblocks real deal volume.
+
+### Phase 3 — Redevelopment variant (Week 6)
+Delta layer, split-view unit program, non-conforming review in Zoning Agent.
+
+### Phase 4 — Library browser (Weeks 7–8)
+`⌘L` panel, drag-to-apply, provenance back-links. Lower priority because manual workarounds exist.
+
+### Phase 5 — Chat surface elicitation (Week 9)
+Research Agent proactive prompts for `block`/`warn` fields via WhatsApp/Telegram. Closes the loop with Surface 1.
+
+---
+
+## 7. Open questions
+
+1. **Assumption granularity per submarket** — do override defaults live at the deal level or cascade from a submarket profile? (Leans: submarket profile with deal-level override.)
+2. **Edit conflict when broker upload arrives after user edits** — user layer wins, but do we surface "new broker data differs from your edit"? (Leans: yes, as `info` alert.)
+3. **Variance assumed flag** — does it nuke the JEDI Score or just annotate it? (Leans: annotate + confidence haircut, don't nuke.)
+4. **Library back-links across deal deletions** — if a source deal is deleted, what happens to deals that referenced its comps? (Leans: snapshot on apply, back-link becomes historical.)
+
+---
+
+## 8. What this does NOT cover
+
+- M34 UI Intelligence Agent (separate spec, depends on this being done)
+- M22 Post-Close variance engine (depends on `deal_monthly_actuals`, separate)
+- Org/collaboration layer (known gap, separate)
+- MLS Bridge API integration (data source addition, not capsule work)

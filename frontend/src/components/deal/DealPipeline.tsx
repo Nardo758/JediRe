@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../../services/api.client';
+import { BT } from '@/components/deal/bloomberg-ui';
 
 interface DealPipelineProps {
   dealId: string;
@@ -11,13 +12,22 @@ interface Pipeline {
   stageHistory: Array<{ stage: string; timestamp: string }>;
 }
 
+const stageColors: Record<string, { bg: string; text: string }> = {
+  lead: { bg: BT.bg.active, text: BT.text.secondary },
+  qualified: { bg: BT.bg.active, text: BT.text.cyan },
+  due_diligence: { bg: BT.bg.active, text: BT.text.amber },
+  under_contract: { bg: BT.bg.active, text: BT.text.orange },
+  closing: { bg: BT.bg.active, text: BT.text.purple },
+  closed: { bg: BT.bg.active, text: BT.text.green },
+};
+
 const stages = [
-  { key: 'lead', label: 'Lead', color: 'bg-gray-200 text-gray-800' },
-  { key: 'qualified', label: 'Qualified', color: 'bg-blue-200 text-blue-800' },
-  { key: 'due_diligence', label: 'Due Diligence', color: 'bg-yellow-200 text-yellow-800' },
-  { key: 'under_contract', label: 'Under Contract', color: 'bg-orange-200 text-orange-800' },
-  { key: 'closing', label: 'Closing', color: 'bg-purple-200 text-purple-800' },
-  { key: 'closed', label: 'Closed', color: 'bg-green-200 text-green-800' }
+  { key: 'lead', label: 'Lead' },
+  { key: 'qualified', label: 'Qualified' },
+  { key: 'due_diligence', label: 'Due Diligence' },
+  { key: 'under_contract', label: 'Under Contract' },
+  { key: 'closing', label: 'Closing' },
+  { key: 'closed', label: 'Closed' }
 ];
 
 export const DealPipeline: React.FC<DealPipelineProps> = ({ dealId }) => {
@@ -33,7 +43,7 @@ export const DealPipeline: React.FC<DealPipelineProps> = ({ dealId }) => {
   const fetchPipeline = async () => {
     setIsLoading(true);
     setError(null);
-    
+
     try {
       const response = await api.deals.pipeline(dealId);
       setPipeline(response.data);
@@ -48,7 +58,7 @@ export const DealPipeline: React.FC<DealPipelineProps> = ({ dealId }) => {
 
   const updateStage = async (newStage: string) => {
     setIsUpdating(true);
-    
+
     try {
       await api.deals.update(dealId, { pipelineStage: newStage });
       await fetchPipeline();
@@ -69,8 +79,8 @@ export const DealPipeline: React.FC<DealPipelineProps> = ({ dealId }) => {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading pipeline...</p>
+          <div className="animate-spin h-12 w-12 mx-auto mb-4" style={{ borderRadius: '50%', borderBottom: `2px solid ${BT.text.cyan}` }}></div>
+          <p style={{ color: BT.text.secondary, fontFamily: BT.font.label, fontSize: '11px' }}>Loading pipeline...</p>
         </div>
       </div>
     );
@@ -80,12 +90,13 @@ export const DealPipeline: React.FC<DealPipelineProps> = ({ dealId }) => {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
-          <div className="text-6xl mb-4">⚠️</div>
-          <p className="text-gray-900 font-semibold mb-2">Failed to load pipeline</p>
-          <p className="text-gray-600 mb-4">{error}</p>
+          <div style={{ fontSize: '48px' }} className="mb-4">⚠️</div>
+          <p style={{ color: BT.text.primary, fontWeight: 600, fontFamily: BT.font.mono, fontSize: '12px', marginBottom: '8px' }}>Failed to load pipeline</p>
+          <p style={{ color: BT.text.secondary, fontFamily: BT.font.label, fontSize: '11px', marginBottom: '16px' }}>{error}</p>
           <button
             onClick={fetchPipeline}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            className="px-4 py-2"
+            style={{ background: BT.text.cyan, color: BT.bg.terminal, borderRadius: 0, fontFamily: BT.font.mono, fontSize: '10px', fontWeight: 600, border: 'none' }}
           >
             Try Again
           </button>
@@ -98,8 +109,8 @@ export const DealPipeline: React.FC<DealPipelineProps> = ({ dealId }) => {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
-          <div className="text-6xl mb-4">📋</div>
-          <p className="text-gray-600">No pipeline data available</p>
+          <div style={{ fontSize: '48px' }} className="mb-4">📋</div>
+          <p style={{ color: BT.text.secondary, fontFamily: BT.font.label, fontSize: '11px' }}>No pipeline data available</p>
         </div>
       </div>
     );
@@ -112,20 +123,20 @@ export const DealPipeline: React.FC<DealPipelineProps> = ({ dealId }) => {
       <div className="max-w-5xl mx-auto space-y-8">
         {/* Header */}
         <div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Deal Pipeline</h2>
-          <p className="text-gray-600">Track your deal's progression through each stage</p>
+          <h2 style={{ fontSize: '20px', fontWeight: 700, color: BT.text.primary, fontFamily: BT.font.mono, marginBottom: '8px' }}>Deal Pipeline</h2>
+          <p style={{ color: BT.text.secondary, fontFamily: BT.font.label, fontSize: '11px' }}>Track your deal's progression through each stage</p>
         </div>
 
         {/* Pipeline Visual */}
-        <div className="bg-white rounded-lg shadow-lg p-8">
+        <div className="p-8" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.medium}` }}>
           <div className="relative">
             {/* Progress bar background */}
-            <div className="absolute top-5 left-0 right-0 h-2 bg-gray-200 rounded-full" />
-            
+            <div className="absolute top-5 left-0 right-0 h-2" style={{ background: BT.bg.active, borderRadius: '1px' }} />
+
             {/* Progress bar fill */}
             <div
-              className="absolute top-5 left-0 h-2 bg-blue-600 rounded-full transition-all duration-500"
-              style={{ width: `${(currentStageIndex / (stages.length - 1)) * 100}%` }}
+              className="absolute top-5 left-0 h-2 transition-all duration-500"
+              style={{ width: `${(currentStageIndex / (stages.length - 1)) * 100}%`, background: BT.text.cyan, borderRadius: '1px' }}
             />
 
             {/* Stage nodes */}
@@ -140,24 +151,28 @@ export const DealPipeline: React.FC<DealPipelineProps> = ({ dealId }) => {
                     {/* Node */}
                     <button
                       onClick={() => updateStage(stage.key)}
-                      className={`
-                        w-12 h-12 rounded-full flex items-center justify-center text-white font-bold
-                        transition-all duration-300 relative z-10
-                        ${isActive ? 'bg-blue-600 ring-4 ring-blue-200 scale-110' : ''}
-                        ${isPast ? 'bg-green-500' : ''}
-                        ${isFuture ? 'bg-gray-300 hover:bg-gray-400' : ''}
-                      `}
+                      className="w-12 h-12 flex items-center justify-center transition-all duration-300 relative z-10"
+                      style={{
+                        borderRadius: '50%',
+                        fontWeight: 700,
+                        fontFamily: BT.font.mono,
+                        fontSize: '11px',
+                        color: BT.text.primary,
+                        background: isActive ? BT.text.cyan : isPast ? BT.text.green : BT.bg.active,
+                        border: isActive ? `3px solid ${BT.text.cyan}` : 'none',
+                        transform: isActive ? 'scale(1.1)' : 'scale(1)',
+                      }}
                     >
                       {isPast ? '✓' : index + 1}
                     </button>
 
                     {/* Label */}
                     <div className="mt-3 text-center">
-                      <div className={`text-sm font-semibold ${isActive ? 'text-blue-600' : 'text-gray-700'}`}>
+                      <div style={{ fontSize: '10px', fontWeight: 600, fontFamily: BT.font.mono, color: isActive ? BT.text.cyan : BT.text.secondary }}>
                         {stage.label}
                       </div>
                       {isActive && pipeline && (
-                        <div className="text-xs text-gray-500 mt-1">
+                        <div style={{ fontSize: '9px', color: BT.text.muted, fontFamily: BT.font.label, marginTop: '4px' }}>
                           {pipeline.daysInStage} days
                         </div>
                       )}
@@ -171,18 +186,18 @@ export const DealPipeline: React.FC<DealPipelineProps> = ({ dealId }) => {
 
         {/* Current Stage Info */}
         {pipeline && (
-          <div className="bg-blue-50 rounded-lg p-6 border border-blue-200">
-            <h3 className="text-lg font-bold text-blue-900 mb-4">
+          <div className="p-6" style={{ background: BT.bg.panelAlt, borderRadius: 0, border: `1px solid ${BT.border.medium}` }}>
+            <h3 style={{ fontSize: '12px', fontWeight: 700, color: BT.text.cyan, fontFamily: BT.font.mono, marginBottom: '16px' }}>
               Current Stage: {stages[currentStageIndex]?.label}
             </h3>
-            <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className="grid grid-cols-2 gap-4">
               <div>
-                <div className="text-blue-700 font-medium mb-1">Days in Stage</div>
-                <div className="text-2xl font-bold text-blue-900">{pipeline.daysInStage}</div>
+                <div style={{ fontSize: '10px', color: BT.text.secondary, fontFamily: BT.font.label, marginBottom: '4px' }}>Days in Stage</div>
+                <div style={{ fontSize: '20px', fontWeight: 700, color: BT.text.primary, fontFamily: BT.font.mono }}>{pipeline.daysInStage}</div>
               </div>
               <div>
-                <div className="text-blue-700 font-medium mb-1">Total Stages Completed</div>
-                <div className="text-2xl font-bold text-blue-900">
+                <div style={{ fontSize: '10px', color: BT.text.secondary, fontFamily: BT.font.label, marginBottom: '4px' }}>Total Stages Completed</div>
+                <div style={{ fontSize: '20px', fontWeight: 700, color: BT.text.primary, fontFamily: BT.font.mono }}>
                   {currentStageIndex} of {stages.length}
                 </div>
               </div>
@@ -192,52 +207,60 @@ export const DealPipeline: React.FC<DealPipelineProps> = ({ dealId }) => {
 
         {/* Stage History */}
         {pipeline?.stageHistory && pipeline.stageHistory.length > 0 && (
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-4">Stage History</h3>
+          <div className="p-6" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.medium}` }}>
+            <h3 style={{ fontSize: '12px', fontWeight: 700, color: BT.text.primary, fontFamily: BT.font.mono, marginBottom: '16px' }}>Stage History</h3>
             <div className="space-y-3">
-              {pipeline.stageHistory.map((entry, index) => (
-                <div key={index} className="flex items-center gap-4 pb-3 border-b border-gray-200 last:border-0">
-                  <div className="w-32 text-sm text-gray-600">
-                    {new Date(entry.timestamp).toLocaleDateString()}
+              {pipeline.stageHistory.map((entry, index) => {
+                const sc = stageColors[entry.stage] || stageColors.lead;
+                return (
+                  <div key={index} className="flex items-center gap-4 pb-3" style={{ borderBottom: index < pipeline.stageHistory.length - 1 ? `1px solid ${BT.border.subtle}` : 'none' }}>
+                    <div className="w-32" style={{ fontSize: '10px', color: BT.text.muted, fontFamily: BT.font.mono }}>
+                      {new Date(entry.timestamp).toLocaleDateString()}
+                    </div>
+                    <div className="flex-1">
+                      <span
+                        className="inline-block px-3 py-1"
+                        style={{
+                          background: sc.bg,
+                          color: sc.text,
+                          borderRadius: '2px',
+                          fontSize: '10px',
+                          fontWeight: 500,
+                          fontFamily: BT.font.mono,
+                        }}
+                      >
+                        {stages.find(s => s.key === entry.stage)?.label || entry.stage}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex-1">
-                    <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
-                      stages.find(s => s.key === entry.stage)?.color || 'bg-gray-200 text-gray-800'
-                    }`}>
-                      {stages.find(s => s.key === entry.stage)?.label || entry.stage}
-                    </span>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
 
         {/* Stage Actions */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-bold text-gray-900 mb-4">Quick Actions</h3>
+        <div className="p-6" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.medium}` }}>
+          <h3 style={{ fontSize: '12px', fontWeight: 700, color: BT.text.primary, fontFamily: BT.font.mono, marginBottom: '16px' }}>Quick Actions</h3>
           <div className="grid grid-cols-2 gap-3">
-            <button className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition text-sm">
-              Add Task
-            </button>
-            <button className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition text-sm">
-              Add Note
-            </button>
-            <button className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition text-sm">
-              Upload Document
-            </button>
-            <button className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition text-sm">
-              Set Reminder
-            </button>
+            {['Add Task', 'Add Note', 'Upload Document', 'Set Reminder'].map((label) => (
+              <button
+                key={label}
+                className="px-4 py-2 transition"
+                style={{ border: `1px solid ${BT.border.medium}`, borderRadius: 0, color: BT.text.secondary, fontFamily: BT.font.mono, fontSize: '10px', background: 'transparent' }}
+              >
+                {label}
+              </button>
+            ))}
           </div>
         </div>
 
         {/* Stage Tips */}
-        <div className="bg-yellow-50 rounded-lg p-6 border border-yellow-200">
-          <h3 className="text-lg font-bold text-yellow-900 mb-3">
-            💡 Tips for {stages[currentStageIndex]?.label}
+        <div className="p-6" style={{ background: BT.bg.panelAlt, borderRadius: 0, border: `1px solid ${BT.border.medium}`, borderLeft: `4px solid ${BT.text.amber}` }}>
+          <h3 style={{ fontSize: '12px', fontWeight: 700, color: BT.text.amber, fontFamily: BT.font.mono, marginBottom: '12px' }}>
+            Tips for {stages[currentStageIndex]?.label}
           </h3>
-          <ul className="space-y-2 text-yellow-800 text-sm">
+          <ul className="space-y-2" style={{ fontSize: '11px', color: BT.text.secondary, fontFamily: BT.font.label }}>
             {currentStageIndex === 0 && (
               <>
                 <li>• Research comparable properties in the area</li>

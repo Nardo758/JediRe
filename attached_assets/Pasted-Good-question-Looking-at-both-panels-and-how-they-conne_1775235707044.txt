@@ -1,0 +1,21 @@
+Good question. Looking at both panels and how they connect to the broader data chain, there are a few structural issues plus the Unit Mix Program gap you identified. Let me lay this out.Looking at your wireframe, the existing structure is solid on the left panel (TRENDS → COMPS → PROGRAM flow is logical) and the F6 Comp Analysis hierarchy on the right is well-organized. The CSS issues you noted (Tailwind classes, borderRadius, mixed font patterns) are token cleanup — not structural.
+
+The real structural gap is exactly what you identified: the PROGRAM tab currently jumps from market signal synthesis straight to a generic unit row editor. There's no intelligence layer between "here's what the market wants" and "here's what you should build" — and critically, no deal-type awareness.
+
+Here's how I'd restructure it:Here's the breakdown of what changes and why:
+
+**What stays from your existing structure:** ProgramRationale is doing the right job — synthesizing signals from comps, zoning, and demand into a positioning recommendation. Keep it, but make sure it receives the F6 Comp Analysis outputs (mix % by type, rent by type, amenity gap scores) as first-class inputs rather than just text synthesis.
+
+**The key addition — Deal Type Selector.** This is the fork point that changes everything downstream. It sits right after ProgramRationale because the AI synthesis is deal-type-agnostic (market signals are market signals), but the *response* to those signals depends entirely on what you're working with:
+
+For **Development**, the builder is unconstrained by existing product — zoning envelope becomes the binding gate. The optimizer can freely allocate unit types within FAR/density/height limits, the amenity package is built from scratch, and it connects directly to M03 massing. This is where the massing solver output (max buildable GFA, unit count by type) becomes the ceiling that the market-driven mix recommendation fills.
+
+For **Redevelopment**, you're showing the existing baseline and computing deltas. The three modes you identified — add units, add SF, or both — should be toggle-selectable. A conversion cost layer is critical here because the ProForma needs to capture demo/rebuild costs per unit type. The amenity planner shows what the property has vs. what comps have (pulling directly from the F6 AmenityGapMatrix) and prices the gap.
+
+For **Existing**, no unit mix building at all — you import the actual mix from the Deal Capsule and show it against the market-optimal mix as a gap analysis. The value here is identifying rent lift opportunities: "your 2BR units are $75 below comps with similar amenity sets" or "adding package lockers closes a $50/unit gap identified in F6."
+
+**The Amenity Package Builder** should be its own discrete component below the unit mix editor, not embedded inside it. Amenities have their own cost-to-rent-lift math that applies across all three deal types (development budgets it from scratch, redev prices the upgrade, existing shows the gap). Structure it in tiers — base, competitive, premium — with each item showing cost to implement and projected rent lift from comp data.
+
+**Other structural notes on the left panel:** Your TRENDS tab structure (DemandMatrix → GapAnalysis → InventorySnapshot → MixMatrix) is clean. One thing I'd add is making MixMatrix the explicit input pipe to the Program tab's unit mix optimizer — right now those feel like separate modules when they should be a continuous chain. The COMPS tab's CompTable with unit type tabs (STU, 1BR, 2BR, 3BR) should push its per-type rent/SF/vacancy data directly into the Program tab's recommended mix ratios.
+
+**On the F6 right panel:** The tier hierarchy (Trade Area → Submarket → MSA) with collapsible accordions is the right structure. The issues you flagged are all token-level fixes, not structural. One addition: the `onToggleCompSet()` action should also push the selected comp set composition data into the Program tab's market context, so when the user curates their comp set in F6, the unit mix recommendations update accordingly.

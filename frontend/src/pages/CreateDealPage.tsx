@@ -4,7 +4,7 @@ import mapboxgl from 'mapbox-gl';
 import MapboxDraw from '@mapbox/mapbox-gl-draw';
 import { useDealStore } from '../stores/dealStore';
 import { useTradeAreaStore } from '../stores/tradeAreaStore';
-import { Button } from '../components/shared/Button';
+import { useTheme } from '../contexts/ThemeContext';
 import { GooglePlacesInput } from '../components/shared/GooglePlacesInput';
 import { TradeAreaDefinitionPanel } from '../components/trade-area';
 import { apiClient } from '../services/api.client';
@@ -14,8 +14,72 @@ import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
 
+// ─── Theme Tokens ─────────────────────────────────────────────────────────────
+const DARK = {
+  bg: {
+    page: '#0A0E17',
+    panel: '#0F1319',
+    panelAlt: '#131821',
+    header: '#1A1F2E',
+    input: '#0D1117',
+    hover: '#1E2538',
+    card: '#0F1319',
+    cardHover: '#1A1F2E',
+  },
+  text: {
+    primary: '#E8ECF1',
+    secondary: '#8B95A5',
+    muted: '#4A5568',
+    accent: '#F5A623',
+    accentHover: '#FFD166',
+    success: '#00D26A',
+    error: '#FF4757',
+    link: '#00BCD4',
+  },
+  border: {
+    subtle: '#1E2538',
+    medium: '#2A3348',
+    bright: '#3B4A6B',
+    focus: '#F5A623',
+  },
+  font: {
+    mono: "'JetBrains Mono','Fira Code','SF Mono',monospace",
+  },
+};
+
+const LIGHT = {
+  bg: {
+    page: '#F8FAFC',
+    panel: '#FFFFFF',
+    panelAlt: '#F1F5F9',
+    header: '#FFFFFF',
+    input: '#FFFFFF',
+    hover: '#F1F5F9',
+    card: '#FFFFFF',
+    cardHover: '#F8FAFC',
+  },
+  text: {
+    primary: '#0F172A',
+    secondary: '#475569',
+    muted: '#94A3B8',
+    accent: '#D97706',
+    accentHover: '#B45309',
+    success: '#059669',
+    error: '#DC2626',
+    link: '#0284C7',
+  },
+  border: {
+    subtle: '#E2E8F0',
+    medium: '#CBD5E1',
+    bright: '#94A3B8',
+    focus: '#D97706',
+  },
+  font: {
+    mono: "'JetBrains Mono','Fira Code','SF Mono',monospace",
+  },
+};
+
 type DealCategory = 'portfolio' | 'pipeline';
-type DevelopmentType = 'new' | 'existing';
 
 interface PropertyType {
   id: number;
@@ -28,23 +92,25 @@ interface PropertyType {
 
 const STEPS = {
   DETAILS_ADDRESS: 1,
-  TYPE: 2,
-  PROJECT_TYPE: 3,
-  CATEGORY: 4,
-  PROPERTY_TYPE: 5,
-  DOCUMENTS: 6,
-  TRADE_AREA: 7,
+  PROJECT_TYPE: 2,
+  CATEGORY: 3,
+  PROPERTY_TYPE: 4,
+  DOCUMENTS: 5,
+  TRADE_AREA: 6,
 } as const;
 
 export const CreateDealPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { theme } = useTheme();
+  const T = theme === 'dark' ? DARK : LIGHT;
+  const isDark = theme === 'dark';
+  
   const { createDeal, isLoading } = useDealStore();
 
   const locationState = location.state as { dealCategory?: DealCategory } | null;
   const [currentStep, setCurrentStep] = useState<number>(STEPS.DETAILS_ADDRESS);
   const [dealCategory, setDealCategory] = useState<DealCategory | null>(locationState?.dealCategory || null);
-  const [developmentType, setDevelopmentType] = useState<DevelopmentType | null>(null);
   const [projectType, setProjectType] = useState<DealType | null>(null);
   const [propertyType, setPropertyType] = useState<PropertyType | null>(null);
   const [availablePropertyTypes, setAvailablePropertyTypes] = useState<PropertyType[]>([]);
@@ -155,7 +221,7 @@ export const CreateDealPage: React.FC = () => {
     try {
       map.current = new mapboxgl.Map({
         container: mapContainer.current,
-        style: 'mapbox://styles/mapbox/streets-v12',
+        style: isDark ? 'mapbox://styles/mapbox/dark-v11' : 'mapbox://styles/mapbox/streets-v12',
         center: [-84.388, 33.749],
         zoom: 11,
       });
@@ -174,13 +240,20 @@ export const CreateDealPage: React.FC = () => {
     };
   }, []);
 
+  // Update map style when theme changes
+  useEffect(() => {
+    if (map.current) {
+      map.current.setStyle(isDark ? 'mapbox://styles/mapbox/dark-v11' : 'mapbox://styles/mapbox/streets-v12');
+    }
+  }, [isDark]);
+
   useEffect(() => {
     if (!map.current || !coordinates) return;
 
     if (marker.current) {
       marker.current.remove();
     }
-    marker.current = new mapboxgl.Marker({ color: '#3B82F6' })
+    marker.current = new mapboxgl.Marker({ color: T.text.accent })
       .setLngLat(coordinates)
       .addTo(map.current);
 
@@ -189,13 +262,7 @@ export const CreateDealPage: React.FC = () => {
       zoom: 16,
       duration: 1500,
     });
-  }, [coordinates]);
-
-  const handleSelectType = (type: DevelopmentType) => {
-    setDevelopmentType(type);
-    setCurrentStep(STEPS.PROJECT_TYPE);
-    setError(null);
-  };
+  }, [coordinates, T.text.accent]);
 
   const handleSelectProjectType = (type: DealType) => {
     setProjectType(type);
@@ -216,7 +283,6 @@ export const CreateDealPage: React.FC = () => {
   };
 
   const handleProceedFromDocuments = () => {
-    // All fields are now optional - user can skip
     setError(null);
     setCurrentStep(STEPS.TRADE_AREA);
   };
@@ -234,9 +300,7 @@ export const CreateDealPage: React.FC = () => {
         formData.append('file', file);
 
         const response = await apiClient.post('/api/v1/deals/upload-document', formData, {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
+          headers: { 'Content-Type': 'multipart/form-data' },
         });
 
         if (response.data.success) {
@@ -302,24 +366,16 @@ export const CreateDealPage: React.FC = () => {
     }
 
     try {
-      // Prepare deal creation payload
       const boundary = {
         type: 'Point',
         coordinates: coordinates,
-      };
-
-      const categoryToProjectType: Record<string, string> = {
-        'Residential': 'residential', 'Multifamily': 'multifamily',
-        'Commercial': 'office', 'Retail': 'retail', 'Industrial': 'industrial',
-        'Hospitality': 'hospitality', 'Mixed-Use': 'mixed_use',
-        'Land': 'land', 'Special Purpose': 'special_purpose',
       };
 
       const dealPayload: any = {
         name: dealName,
         description,
         deal_category: dealCategory!,
-        development_type: developmentType!,
+        development_type: projectType === 'development' ? 'new' : 'existing',
         property_type_id: propertyType?.id,
         property_type_key: propertyType?.type_key,
         project_type: projectType,
@@ -351,11 +407,9 @@ export const CreateDealPage: React.FC = () => {
         }
       }
 
-      // Redirect to the deal detail page
       if (result?.id) {
         navigate(`/deals/${result.id}/detail`);
       } else {
-        // Fallback to list view
         if (dealCategory === 'pipeline') {
           navigate('/deals');
         } else if (dealCategory === 'portfolio') {
@@ -373,12 +427,8 @@ export const CreateDealPage: React.FC = () => {
     setError(null);
 
     switch (currentStep) {
-      case STEPS.TYPE:
-        setCurrentStep(STEPS.DETAILS_ADDRESS);
-        setDevelopmentType(null);
-        break;
       case STEPS.PROJECT_TYPE:
-        setCurrentStep(STEPS.TYPE);
+        setCurrentStep(STEPS.DETAILS_ADDRESS);
         setProjectType(null);
         break;
       case STEPS.CATEGORY:
@@ -419,582 +469,633 @@ export const CreateDealPage: React.FC = () => {
       return;
     }
     setError(null);
-    setCurrentStep(STEPS.TYPE);
+    setCurrentStep(STEPS.PROJECT_TYPE);
+  };
+
+  // ─── Styles ─────────────────────────────────────────────────────────────────
+  const styles = {
+    page: {
+      position: 'fixed' as const,
+      inset: 0,
+      background: T.bg.page,
+      display: 'flex',
+      flexDirection: 'column' as const,
+    },
+    header: {
+      height: 48,
+      borderBottom: `1px solid ${T.border.subtle}`,
+      display: 'flex',
+      alignItems: 'center',
+      padding: '0 20px',
+      background: T.bg.header,
+      flexShrink: 0,
+    },
+    backButton: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+      color: T.text.secondary,
+      background: 'none',
+      border: 'none',
+      cursor: 'pointer',
+      fontFamily: T.font.mono,
+      fontSize: 11,
+      fontWeight: 500,
+      transition: 'color 0.15s',
+    },
+    main: {
+      flex: 1,
+      display: 'flex',
+      overflow: 'hidden',
+    },
+    sidebar: {
+      width: '40%',
+      overflowY: 'auto' as const,
+      background: T.bg.panelAlt,
+      borderRight: `1px solid ${T.border.subtle}`,
+    },
+    sidebarContent: {
+      maxWidth: 560,
+      margin: '0 auto',
+      padding: 32,
+    },
+    title: {
+      fontSize: 24,
+      fontWeight: 700,
+      color: T.text.primary,
+      marginBottom: 8,
+      fontFamily: T.font.mono,
+    },
+    subtitle: {
+      fontSize: 12,
+      color: T.text.secondary,
+      fontFamily: T.font.mono,
+    },
+    progressBar: {
+      display: 'flex',
+      gap: 6,
+      marginTop: 24,
+      marginBottom: 32,
+    },
+    progressStep: (active: boolean) => ({
+      flex: 1,
+      height: 3,
+      background: active ? T.text.accent : T.border.subtle,
+      transition: 'background 0.2s',
+    }),
+    sectionTitle: {
+      fontSize: 16,
+      fontWeight: 600,
+      color: T.text.primary,
+      marginBottom: 20,
+      fontFamily: T.font.mono,
+    },
+    label: {
+      display: 'block',
+      fontSize: 10,
+      fontWeight: 600,
+      color: T.text.secondary,
+      marginBottom: 8,
+      fontFamily: T.font.mono,
+      textTransform: 'uppercase' as const,
+      letterSpacing: 0.5,
+    },
+    input: {
+      width: '100%',
+      padding: '12px 14px',
+      background: T.bg.input,
+      border: `1px solid ${T.border.subtle}`,
+      color: T.text.primary,
+      fontSize: 13,
+      fontFamily: T.font.mono,
+      outline: 'none',
+      transition: 'border-color 0.15s',
+    },
+    textarea: {
+      width: '100%',
+      padding: '12px 14px',
+      background: T.bg.input,
+      border: `1px solid ${T.border.subtle}`,
+      color: T.text.primary,
+      fontSize: 13,
+      fontFamily: T.font.mono,
+      outline: 'none',
+      resize: 'vertical' as const,
+      minHeight: 80,
+    },
+    button: {
+      padding: '10px 20px',
+      background: T.text.accent,
+      color: isDark ? '#0A0E17' : '#FFFFFF',
+      border: 'none',
+      fontSize: 11,
+      fontWeight: 700,
+      fontFamily: T.font.mono,
+      cursor: 'pointer',
+      letterSpacing: 0.5,
+      transition: 'background 0.15s',
+    },
+    buttonSecondary: {
+      padding: '10px 20px',
+      background: 'transparent',
+      color: T.text.secondary,
+      border: `1px solid ${T.border.subtle}`,
+      fontSize: 11,
+      fontWeight: 600,
+      fontFamily: T.font.mono,
+      cursor: 'pointer',
+      transition: 'all 0.15s',
+    },
+    card: {
+      padding: 20,
+      background: T.bg.card,
+      border: `1px solid ${T.border.subtle}`,
+      cursor: 'pointer',
+      transition: 'all 0.15s',
+      marginBottom: 12,
+    },
+    cardHover: {
+      borderColor: T.text.accent,
+      background: T.bg.cardHover,
+    },
+    cardTitle: {
+      fontSize: 14,
+      fontWeight: 600,
+      color: T.text.primary,
+      marginBottom: 6,
+      fontFamily: T.font.mono,
+    },
+    cardDescription: {
+      fontSize: 12,
+      color: T.text.secondary,
+      lineHeight: 1.5,
+    },
+    cardIcon: {
+      fontSize: 28,
+      marginBottom: 12,
+    },
+    error: {
+      marginTop: 20,
+      padding: 14,
+      background: isDark ? '#FF475715' : '#FEE2E2',
+      border: `1px solid ${T.text.error}33`,
+      color: T.text.error,
+      fontSize: 12,
+      fontFamily: T.font.mono,
+    },
+    mapContainer: {
+      width: '60%',
+      position: 'relative' as const,
+      background: T.bg.panel,
+    },
+    mapOverlay: {
+      position: 'absolute' as const,
+      inset: 0,
+      background: isDark ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.4)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      pointerEvents: 'none' as const,
+    },
+    mapPlaceholder: {
+      background: T.bg.panel,
+      border: `1px solid ${T.border.subtle}`,
+      padding: 32,
+      textAlign: 'center' as const,
+      maxWidth: 320,
+    },
+  };
+
+  const TypeCard = ({ icon, title, description, onClick, color }: { icon: string; title: string; description: string; onClick: () => void; color: string }) => {
+    const [hovered, setHovered] = useState(false);
+    return (
+      <div
+        onClick={onClick}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{
+          ...styles.card,
+          ...(hovered ? { borderColor: color, background: T.bg.cardHover } : {}),
+        }}
+      >
+        <div style={styles.cardIcon}>{icon}</div>
+        <div style={{ ...styles.cardTitle, color: hovered ? color : T.text.primary }}>{title}</div>
+        <div style={styles.cardDescription}>{description}</div>
+      </div>
+    );
   };
 
   return (
-    <div className="fixed inset-0 bg-white flex flex-col">
-      <div className="h-16 border-b border-gray-200 flex items-center px-6 bg-white z-10">
+    <div style={styles.page}>
+      {/* Header */}
+      <div style={styles.header}>
         <button
           onClick={() => navigate('/dashboard')}
-          className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition"
+          style={styles.backButton}
+          onMouseEnter={(e) => (e.currentTarget.style.color = T.text.primary)}
+          onMouseLeave={(e) => (e.currentTarget.style.color = T.text.secondary)}
         >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
-          <span className="font-medium">Back to Dashboard</span>
+          <span>BACK TO DASHBOARD</span>
         </button>
       </div>
 
-      <div className="flex-1 flex overflow-hidden">
-        <div className="w-2/5 overflow-y-auto bg-gray-50 border-r border-gray-200">
-          <div className="max-w-2xl mx-auto p-8">
-            <div className="mb-8">
-              <h1 className="text-3xl font-bold text-gray-900 mb-2">Create New Deal</h1>
-              <p className="text-gray-600">
-                Step {currentStep} of {STEPS.TRADE_AREA} &bull; {
-                  currentStep === STEPS.DETAILS_ADDRESS ? 'Deal Details & Address' :
-                  currentStep === STEPS.TYPE ? 'Development Type' :
-                  currentStep === STEPS.PROJECT_TYPE ? 'Deal Type' :
-                  currentStep === STEPS.CATEGORY ? 'Deal Category' :
-                  currentStep === STEPS.PROPERTY_TYPE ? 'Property Type' :
-                  currentStep === STEPS.DOCUMENTS ? 'Documents & Data' :
-                  currentStep === STEPS.TRADE_AREA ? 'Trade Area' :
-                  'Setup'
-                }
-              </p>
+      <div style={styles.main}>
+        {/* Sidebar Form */}
+        <div style={styles.sidebar}>
+          <div style={styles.sidebarContent}>
+            <h1 style={styles.title}>CREATE NEW DEAL</h1>
+            <p style={styles.subtitle}>
+              STEP {currentStep} OF 6 • {
+                currentStep === STEPS.DETAILS_ADDRESS ? 'DEAL INFO & ADDRESS' :
+                currentStep === STEPS.PROJECT_TYPE ? 'DEAL TYPE' :
+                currentStep === STEPS.CATEGORY ? 'DEAL CATEGORY' :
+                currentStep === STEPS.PROPERTY_TYPE ? 'PROPERTY TYPE' :
+                currentStep === STEPS.DOCUMENTS ? 'DOCUMENTS & DATA' :
+                'TRADE AREA'
+              }
+            </p>
+
+            {/* Progress Bar */}
+            <div style={styles.progressBar}>
+              {Array.from({ length: 6 }).map((_, idx) => (
+                <div key={idx} style={styles.progressStep(idx + 1 <= currentStep)} />
+              ))}
             </div>
 
-            <div className="mb-8">
-              <div className="flex items-center gap-2">
-                {Array.from({ length: STEPS.TRADE_AREA }).map((_, idx) => (
-                  <div
-                    key={idx}
-                    className={`h-2 flex-1 rounded-full transition-all ${
-                      idx + 1 <= currentStep ? 'bg-blue-600' : 'bg-gray-200'
-                    }`}
-                  />
-                ))}
-              </div>
-            </div>
-
+            {/* Step 1: Details & Address */}
             {currentStep === STEPS.DETAILS_ADDRESS && (
-              <div className="space-y-6">
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900 mb-4">
-                    Deal Details & Property Location
-                  </h2>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Deal Name <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={dealName}
-                        onChange={(e) => setDealName(e.target.value)}
-                        placeholder="e.g., Midtown Crossing Apartments"
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Description (Optional)
-                      </label>
-                      <textarea
-                        value={description}
-                        onChange={(e) => setDescription(e.target.value)}
-                        placeholder="Brief description of the deal..."
-                        rows={3}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Property Address <span className="text-red-500">*</span>
-                      </label>
-                      <GooglePlacesInput
-                        value={address}
-                        onChange={handleAddressSelected}
-                        placeholder="Start typing an address..."
-                      />
-                      <p className="mt-2 text-xs text-gray-500">
-                        Start typing and select from the dropdown
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="mt-6 flex justify-end">
-                    <Button
-                      onClick={handleProceedToType}
-                      disabled={!dealName.trim() || !address.trim()}
-                      className="bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50"
-                    >
-                      Continue to Development Type &rarr;
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {currentStep === STEPS.TYPE && (
-              <div className="space-y-6">
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900 mb-4">
-                    Is this a new development or existing property?
-                  </h2>
-                  <div className="space-y-3">
-                    <button
-                      onClick={() => handleSelectType('new')}
-                      className="w-full p-6 border-2 border-gray-200 rounded-xl hover:border-purple-500 hover:bg-purple-50 transition text-left"
-                    >
-                      <div className="flex items-start gap-4">
-                        <div className="text-4xl">🏗️</div>
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-gray-900 text-lg mb-1">
-                            New Development
-                          </h3>
-                          <p className="text-gray-600">
-                            Ground-up construction or major redevelopment.
-                          </p>
-                        </div>
-                      </div>
-                    </button>
-                    <button
-                      onClick={() => handleSelectType('existing')}
-                      className="w-full p-6 border-2 border-gray-200 rounded-xl hover:border-orange-500 hover:bg-orange-50 transition text-left"
-                    >
-                      <div className="flex items-start gap-4">
-                        <div className="text-4xl">🏠</div>
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-gray-900 text-lg mb-1">
-                            Existing Property
-                          </h3>
-                          <p className="text-gray-600">
-                            Existing building or site acquisition.
-                          </p>
-                        </div>
-                      </div>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {currentStep === STEPS.PROJECT_TYPE && (
-              <div className="space-y-6">
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900 mb-4">
-                    What type of deal is this?
-                  </h2>
-                  <div className="space-y-3">
-                    <button
-                      onClick={() => handleSelectProjectType('existing')}
-                      className="w-full p-6 border-2 border-gray-200 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition text-left"
-                    >
-                      <div className="flex items-start gap-4">
-                        <div className="text-4xl">🏢</div>
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-gray-900 text-lg mb-1">
-                            Existing Acquisition
-                          </h3>
-                          <p className="text-gray-600">
-                            Buying an operating property (stabilized or value-add).
-                          </p>
-                        </div>
-                      </div>
-                    </button>
-                    <button
-                      onClick={() => handleSelectProjectType('development')}
-                      className="w-full p-6 border-2 border-gray-200 rounded-xl hover:border-green-500 hover:bg-green-50 transition text-left"
-                    >
-                      <div className="flex items-start gap-4">
-                        <div className="text-4xl">🏗️</div>
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-gray-900 text-lg mb-1">
-                            Development
-                          </h3>
-                          <p className="text-gray-600">
-                            Ground-up new construction on vacant or cleared land.
-                          </p>
-                        </div>
-                      </div>
-                    </button>
-                    <button
-                      onClick={() => handleSelectProjectType('redevelopment')}
-                      className="w-full p-6 border-2 border-gray-200 rounded-xl hover:border-orange-500 hover:bg-orange-50 transition text-left"
-                    >
-                      <div className="flex items-start gap-4">
-                        <div className="text-4xl">🔄</div>
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-gray-900 text-lg mb-1">
-                            Redevelopment
-                          </h3>
-                          <p className="text-gray-600">
-                            Tear-down, gut-rehab, or major repositioning of existing structure.
-                          </p>
-                        </div>
-                      </div>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {currentStep === STEPS.CATEGORY && (
-              <div className="space-y-6">
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900 mb-4">
-                    What type of deal is this?
-                  </h2>
-                  <div className="space-y-3">
-                    <button
-                      onClick={() => handleSelectCategory('portfolio')}
-                      className="w-full p-6 border-2 border-gray-200 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition text-left"
-                    >
-                      <div className="flex items-start gap-4">
-                        <div className="text-4xl">📁</div>
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-gray-900 text-lg mb-1">
-                            Portfolio
-                          </h3>
-                          <p className="text-gray-600">
-                            Properties you own or manage. Track performance, documents, and operations.
-                          </p>
-                        </div>
-                      </div>
-                    </button>
-                    <button
-                      onClick={() => handleSelectCategory('pipeline')}
-                      className="w-full p-6 border-2 border-gray-200 rounded-xl hover:border-green-500 hover:bg-green-50 transition text-left"
-                    >
-                      <div className="flex items-start gap-4">
-                        <div className="text-4xl">📈</div>
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-gray-900 text-lg mb-1">
-                            Pipeline
-                          </h3>
-                          <p className="text-gray-600">
-                            Deals you're prospecting. Track opportunities, analysis, and due diligence.
-                          </p>
-                        </div>
-                      </div>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {currentStep === STEPS.PROPERTY_TYPE && (
-              <div className="space-y-6">
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900 mb-4">
-                    What type of property is this?
-                  </h2>
-                  <div className="max-h-[500px] overflow-y-auto pr-2 space-y-6">
-                    {Object.entries(
-                      availablePropertyTypes.reduce((acc, type) => {
-                        if (!acc[type.category]) acc[type.category] = [];
-                        acc[type.category].push(type);
-                        return acc;
-                      }, {} as Record<string, PropertyType[]>)
-                    ).map(([category, types]) => (
-                      <div key={category}>
-                        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
-                          {category}
-                        </h3>
-                        <div className="grid grid-cols-1 gap-2">
-                          {types.map((type) => (
-                            <button
-                              key={type.id}
-                              onClick={() => handleSelectPropertyType(type)}
-                              className="w-full p-4 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition text-left"
-                            >
-                              <div className="flex items-center gap-3">
-                                <div className="text-2xl">{type.icon || '🏠'}</div>
-                                <div className="flex-1">
-                                  <h4 className="font-semibold text-gray-900 text-sm">
-                                    {type.display_name}
-                                  </h4>
-                                  <p className="text-xs text-gray-600 mt-0.5">
-                                    {type.description}
-                                  </p>
-                                </div>
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {currentStep === STEPS.DOCUMENTS && propertyType && (
-              <div className="space-y-6">
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900 mb-4">
-                    Upload Documents & Enter Deal Data{' '}
-                    <span className="text-base font-normal text-gray-500">(Optional)</span>
-                  </h2>
-                  <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                    <p className="text-sm text-blue-800">
-                      <span className="font-semibold">Property Type:</span> {propertyType.display_name}
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-6">
-                    <div className="space-y-4">
-                      <h3 className="font-semibold text-gray-900">Document Upload</h3>
-                      
-                      <div
-                        className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-500 transition cursor-pointer"
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          handleFileUpload(e.dataTransfer.files);
-                        }}
-                        onDragOver={(e) => e.preventDefault()}
-                        onClick={() => document.getElementById('file-upload')?.click()}
-                      >
-                        <div className="text-4xl mb-2">📄</div>
-                        <p className="text-sm text-gray-600 mb-2">
-                          Drag & drop files here, or click to browse
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          PDF, Excel, Word, Images
-                        </p>
-                        <input
-                          id="file-upload"
-                          type="file"
-                          multiple
-                          accept=".pdf,.xlsx,.xls,.docx,.doc,.jpg,.jpeg,.png"
-                          className="hidden"
-                          onChange={(e) => {
-                            if (e.target.files) {
-                              handleFileUpload(e.target.files);
-                            }
-                          }}
-                        />
-                      </div>
-
-                      <div className="text-xs text-gray-500 space-y-1">
-                        <p className="font-semibold">Suggested Documents:</p>
-                        <ul className="list-disc list-inside pl-2">
-                          <li>Offering Memorandum (OM)</li>
-                          <li>Rent Roll</li>
-                          <li>T-12 Operating Statements</li>
-                          <li>Broker Package</li>
-                          <li>Photos</li>
-                          <li>Other</li>
-                        </ul>
-                      </div>
-
-                      {uploadedDocuments.length > 0 && (
-                        <div className="space-y-2">
-                          <h4 className="text-sm font-semibold text-gray-700">Uploaded Files:</h4>
-                          {uploadedDocuments.map((doc, idx) => (
-                            <div
-                              key={idx}
-                              className="flex items-center justify-between p-2 bg-green-50 border border-green-200 rounded text-xs"
-                            >
-                              <span className="truncate flex-1">{doc.name}</span>
-                              <button
-                                onClick={() => {
-                                  setUploadedDocuments(uploadedDocuments.filter((_, i) => i !== idx));
-                                }}
-                                className="text-red-600 hover:text-red-800 ml-2"
-                              >
-                                ✕
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {isUploading && (
-                        <div className="text-sm text-blue-600 text-center">
-                          Uploading...
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="space-y-4">
-                      <h3 className="font-semibold text-gray-900">Deal Data</h3>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Purchase Price
-                        </label>
-                        <div className="relative">
-                          <span className="absolute left-3 top-3 text-gray-500">$</span>
-                          <input
-                            type="text"
-                            value={purchasePrice}
-                            onChange={(e) => {
-                              const value = e.target.value.replace(/[^0-9.]/g, '');
-                              setPurchasePrice(value ? parseFloat(value).toLocaleString() : '');
-                            }}
-                            placeholder="Enter now or skip"
-                            className="w-full pl-7 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Call for Offer Date
-                        </label>
-                        <input
-                          type="date"
-                          value={offerDate}
-                          onChange={(e) => setOfferDate(e.target.value)}
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        />
-                      </div>
-
-                      <div className="pt-4 border-t border-gray-200">
-                        <p className="text-xs text-gray-500 mb-3">Additional data (all fields are optional):</p>
-
-                        <div className="mb-3">
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Number of Units
-                          </label>
-                          <input
-                            type="number"
-                            value={units}
-                            onChange={(e) => setUnits(e.target.value)}
-                            placeholder="e.g., 150"
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          />
-                        </div>
-
-                        <div className="mb-3">
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Current Occupancy %
-                          </label>
-                          <input
-                            type="number"
-                            value={occupancy}
-                            onChange={(e) => setOccupancy(e.target.value)}
-                            placeholder="e.g., 92"
-                            min="0"
-                            max="100"
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          />
-                        </div>
-
-                        <div className="mb-3">
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Avg Rent per SF
-                          </label>
-                          <div className="relative">
-                            <span className="absolute left-3 top-2 text-gray-500">$</span>
-                            <input
-                              type="text"
-                              value={rentPerSf}
-                              onChange={(e) => setRentPerSf(e.target.value.replace(/[^0-9.]/g, ''))}
-                              placeholder="e.g., 1.85"
-                              className="w-full pl-7 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="mb-3">
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Cap Rate %
-                          </label>
-                          <input
-                            type="number"
-                            value={capRate}
-                            onChange={(e) => setCapRate(e.target.value)}
-                            placeholder="e.g., 5.5"
-                            step="0.1"
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          />
-                        </div>
-
-                        <div className="mb-3">
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            Renovation Budget
-                          </label>
-                          <div className="relative">
-                            <span className="absolute left-3 top-2 text-gray-500">$</span>
-                            <input
-                              type="text"
-                              value={renovationBudget}
-                              onChange={(e) => {
-                                const value = e.target.value.replace(/[^0-9.]/g, '');
-                                setRenovationBudget(value ? parseFloat(value).toLocaleString() : '');
-                              }}
-                              placeholder="0"
-                              className="w-full pl-7 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-6 flex justify-between">
-                    <Button
-                      onClick={handleProceedFromDocuments}
-                      className="bg-gray-200 hover:bg-gray-300 text-gray-700"
-                    >
-                      Skip for now
-                    </Button>
-                    <Button
-                      onClick={handleProceedFromDocuments}
-                      className="bg-blue-600 hover:bg-blue-700 text-white"
-                    >
-                      Continue to Trade Area &rarr;
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {currentStep === STEPS.TRADE_AREA && coordinates && (
-              <div className="space-y-6">
-                <div>
-                  <h2 className="text-xl font-semibold text-gray-900 mb-2">
-                    Define Trade Area{' '}
-                    <span className="text-base font-normal text-gray-500">(Optional)</span>
-                  </h2>
-                  <p className="text-gray-600 mb-6">
-                    Set the competitive radius around your property for market analysis. You can skip this and define it later.
-                  </p>
-
-                  <TradeAreaDefinitionPanel
-                    propertyLat={coordinates[1]}
-                    propertyLng={coordinates[0]}
-                    onSave={handleTradeAreaSave}
-                    onSkip={handleSkipTradeArea}
-                    onCustomDraw={handleCustomDraw}
-                    onCustomDrawCancel={handleCustomDrawCancel}
+              <div>
+                <h2 style={styles.sectionTitle}>Deal Info & Address</h2>
+                
+                <div style={{ marginBottom: 20 }}>
+                  <label style={styles.label}>
+                    DEAL NAME <span style={{ color: T.text.error }}>*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={dealName}
+                    onChange={(e) => setDealName(e.target.value)}
+                    placeholder="e.g., Midtown Crossing Apartments"
+                    style={styles.input}
+                    onFocus={(e) => (e.target.style.borderColor = T.border.focus)}
+                    onBlur={(e) => (e.target.style.borderColor = T.border.subtle)}
                   />
                 </div>
+
+                <div style={{ marginBottom: 20 }}>
+                  <label style={styles.label}>DESCRIPTION (OPTIONAL)</label>
+                  <textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Brief description of the deal..."
+                    style={styles.textarea}
+                    onFocus={(e) => (e.target.style.borderColor = T.border.focus)}
+                    onBlur={(e) => (e.target.style.borderColor = T.border.subtle)}
+                  />
+                </div>
+
+                <div style={{ marginBottom: 20 }}>
+                  <label style={styles.label}>
+                    PROPERTY ADDRESS <span style={{ color: T.text.error }}>*</span>
+                  </label>
+                  <GooglePlacesInput
+                    value={address}
+                    onChange={handleAddressSelected}
+                    placeholder="Start typing an address..."
+                  />
+                  <p style={{ marginTop: 8, fontSize: 10, color: T.text.muted, fontFamily: T.font.mono }}>
+                    Start typing and select from the dropdown
+                  </p>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 32 }}>
+                  <button
+                    onClick={handleProceedToType}
+                    disabled={!dealName.trim() || !address.trim()}
+                    style={{
+                      ...styles.button,
+                      opacity: (!dealName.trim() || !address.trim()) ? 0.5 : 1,
+                      cursor: (!dealName.trim() || !address.trim()) ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    CONTINUE →
+                  </button>
+                </div>
               </div>
             )}
 
+            {/* Step 2: Project Type */}
+            {currentStep === STEPS.PROJECT_TYPE && (
+              <div>
+                <h2 style={styles.sectionTitle}>What type of deal is this?</h2>
+                
+                <TypeCard
+                  icon="🏢"
+                  title="Existing Acquisition"
+                  description="Buying an operating property (stabilized or value-add)."
+                  onClick={() => handleSelectProjectType('existing')}
+                  color={T.text.link}
+                />
+                <TypeCard
+                  icon="🏗️"
+                  title="Development"
+                  description="Ground-up new construction on vacant or cleared land."
+                  onClick={() => handleSelectProjectType('development')}
+                  color={T.text.success}
+                />
+                <TypeCard
+                  icon="🔄"
+                  title="Redevelopment"
+                  description="Tear-down, gut-rehab, or major repositioning of existing structure."
+                  onClick={() => handleSelectProjectType('redevelopment')}
+                  color={T.text.accent}
+                />
+              </div>
+            )}
+
+            {/* Step 3: Category */}
+            {currentStep === STEPS.CATEGORY && (
+              <div>
+                <h2 style={styles.sectionTitle}>Deal Category</h2>
+                
+                <TypeCard
+                  icon="📁"
+                  title="Portfolio"
+                  description="Properties you own or manage. Track performance, documents, and operations."
+                  onClick={() => handleSelectCategory('portfolio')}
+                  color={T.text.link}
+                />
+                <TypeCard
+                  icon="📈"
+                  title="Pipeline"
+                  description="Deals you're prospecting. Track opportunities, analysis, and due diligence."
+                  onClick={() => handleSelectCategory('pipeline')}
+                  color={T.text.success}
+                />
+              </div>
+            )}
+
+            {/* Step 4: Property Type */}
+            {currentStep === STEPS.PROPERTY_TYPE && (
+              <div>
+                <h2 style={styles.sectionTitle}>Property Type</h2>
+                
+                <div style={{ maxHeight: 400, overflowY: 'auto', paddingRight: 8 }}>
+                  {Object.entries(
+                    availablePropertyTypes.reduce((acc, type) => {
+                      if (!acc[type.category]) acc[type.category] = [];
+                      acc[type.category].push(type);
+                      return acc;
+                    }, {} as Record<string, PropertyType[]>)
+                  ).map(([category, types]) => (
+                    <div key={category} style={{ marginBottom: 24 }}>
+                      <div style={{ 
+                        fontSize: 10, 
+                        fontWeight: 700, 
+                        color: T.text.muted, 
+                        marginBottom: 12,
+                        fontFamily: T.font.mono,
+                        letterSpacing: 1,
+                      }}>
+                        {category.toUpperCase()}
+                      </div>
+                      {types.map((type) => (
+                        <TypeCard
+                          key={type.id}
+                          icon={type.icon || '🏠'}
+                          title={type.display_name}
+                          description={type.description}
+                          onClick={() => handleSelectPropertyType(type)}
+                          color={T.text.accent}
+                        />
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Step 5: Documents */}
+            {currentStep === STEPS.DOCUMENTS && propertyType && (
+              <div>
+                <h2 style={styles.sectionTitle}>
+                  Documents & Data <span style={{ fontWeight: 400, color: T.text.muted }}>(Optional)</span>
+                </h2>
+                
+                <div style={{ 
+                  marginBottom: 20, 
+                  padding: 12, 
+                  background: isDark ? `${T.text.link}15` : '#EFF6FF',
+                  border: `1px solid ${T.text.link}33`,
+                }}>
+                  <span style={{ fontSize: 11, color: T.text.link, fontFamily: T.font.mono }}>
+                    <strong>Property Type:</strong> {propertyType.display_name}
+                  </span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+                  {/* Document Upload */}
+                  <div>
+                    <div style={{ ...styles.label, marginBottom: 12 }}>DOCUMENT UPLOAD</div>
+                    
+                    <div
+                      style={{
+                        border: `2px dashed ${T.border.medium}`,
+                        padding: 24,
+                        textAlign: 'center',
+                        cursor: 'pointer',
+                        transition: 'border-color 0.15s',
+                      }}
+                      onDrop={(e) => { e.preventDefault(); handleFileUpload(e.dataTransfer.files); }}
+                      onDragOver={(e) => e.preventDefault()}
+                      onClick={() => document.getElementById('file-upload')?.click()}
+                      onMouseEnter={(e) => (e.currentTarget.style.borderColor = T.text.accent)}
+                      onMouseLeave={(e) => (e.currentTarget.style.borderColor = T.border.medium)}
+                    >
+                      <div style={{ fontSize: 32, marginBottom: 8 }}>📄</div>
+                      <p style={{ fontSize: 11, color: T.text.secondary, marginBottom: 4, fontFamily: T.font.mono }}>
+                        Drag & drop or click to browse
+                      </p>
+                      <p style={{ fontSize: 10, color: T.text.muted, fontFamily: T.font.mono }}>
+                        PDF, Excel, Word, Images
+                      </p>
+                      <input
+                        id="file-upload"
+                        type="file"
+                        multiple
+                        accept=".pdf,.xlsx,.xls,.docx,.doc,.jpg,.jpeg,.png"
+                        style={{ display: 'none' }}
+                        onChange={(e) => { if (e.target.files) handleFileUpload(e.target.files); }}
+                      />
+                    </div>
+
+                    {uploadedDocuments.length > 0 && (
+                      <div style={{ marginTop: 16 }}>
+                        <div style={{ fontSize: 10, fontWeight: 600, color: T.text.secondary, marginBottom: 8, fontFamily: T.font.mono }}>
+                          UPLOADED FILES:
+                        </div>
+                        {uploadedDocuments.map((doc, idx) => (
+                          <div
+                            key={idx}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              padding: 8,
+                              background: isDark ? `${T.text.success}15` : '#ECFDF5',
+                              border: `1px solid ${T.text.success}33`,
+                              marginBottom: 6,
+                              fontSize: 10,
+                              fontFamily: T.font.mono,
+                            }}
+                          >
+                            <span style={{ color: T.text.primary, overflow: 'hidden', textOverflow: 'ellipsis' }}>{doc.name}</span>
+                            <button
+                              onClick={() => setUploadedDocuments(uploadedDocuments.filter((_, i) => i !== idx))}
+                              style={{ background: 'none', border: 'none', color: T.text.error, cursor: 'pointer', fontSize: 12 }}
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {isUploading && (
+                      <div style={{ marginTop: 12, fontSize: 11, color: T.text.link, fontFamily: T.font.mono }}>
+                        Uploading...
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Deal Data */}
+                  <div>
+                    <div style={{ ...styles.label, marginBottom: 12 }}>DEAL DATA</div>
+
+                    <div style={{ marginBottom: 16 }}>
+                      <label style={{ ...styles.label, fontSize: 9 }}>PURCHASE PRICE</label>
+                      <div style={{ position: 'relative' }}>
+                        <span style={{ position: 'absolute', left: 12, top: 12, color: T.text.muted, fontFamily: T.font.mono }}>$</span>
+                        <input
+                          type="text"
+                          value={purchasePrice}
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/[^0-9.]/g, '');
+                            setPurchasePrice(value ? parseFloat(value).toLocaleString() : '');
+                          }}
+                          placeholder="Enter amount"
+                          style={{ ...styles.input, paddingLeft: 28 }}
+                          onFocus={(e) => (e.target.style.borderColor = T.border.focus)}
+                          onBlur={(e) => (e.target.style.borderColor = T.border.subtle)}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ marginBottom: 16 }}>
+                      <label style={{ ...styles.label, fontSize: 9 }}>CALL FOR OFFER DATE</label>
+                      <input
+                        type="date"
+                        value={offerDate}
+                        onChange={(e) => setOfferDate(e.target.value)}
+                        style={styles.input}
+                        onFocus={(e) => (e.target.style.borderColor = T.border.focus)}
+                        onBlur={(e) => (e.target.style.borderColor = T.border.subtle)}
+                      />
+                    </div>
+
+                    <div style={{ borderTop: `1px solid ${T.border.subtle}`, paddingTop: 16, marginTop: 16 }}>
+                      <p style={{ fontSize: 9, color: T.text.muted, marginBottom: 12, fontFamily: T.font.mono }}>
+                        ADDITIONAL DATA (ALL OPTIONAL)
+                      </p>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                        <div>
+                          <label style={{ ...styles.label, fontSize: 9 }}>UNITS</label>
+                          <input type="number" value={units} onChange={(e) => setUnits(e.target.value)} placeholder="150" style={styles.input} />
+                        </div>
+                        <div>
+                          <label style={{ ...styles.label, fontSize: 9 }}>OCCUPANCY %</label>
+                          <input type="number" value={occupancy} onChange={(e) => setOccupancy(e.target.value)} placeholder="92" style={styles.input} />
+                        </div>
+                        <div>
+                          <label style={{ ...styles.label, fontSize: 9 }}>RENT/SF</label>
+                          <input type="text" value={rentPerSf} onChange={(e) => setRentPerSf(e.target.value.replace(/[^0-9.]/g, ''))} placeholder="1.85" style={styles.input} />
+                        </div>
+                        <div>
+                          <label style={{ ...styles.label, fontSize: 9 }}>CAP RATE %</label>
+                          <input type="number" value={capRate} onChange={(e) => setCapRate(e.target.value)} placeholder="5.5" step="0.1" style={styles.input} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 32 }}>
+                  <button onClick={handleProceedFromDocuments} style={styles.buttonSecondary}>
+                    SKIP FOR NOW
+                  </button>
+                  <button onClick={handleProceedFromDocuments} style={styles.button}>
+                    CONTINUE →
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Step 6: Trade Area */}
+            {currentStep === STEPS.TRADE_AREA && coordinates && (
+              <div>
+                <h2 style={styles.sectionTitle}>
+                  Define Trade Area <span style={{ fontWeight: 400, color: T.text.muted }}>(Optional)</span>
+                </h2>
+                <p style={{ fontSize: 12, color: T.text.secondary, marginBottom: 24, lineHeight: 1.6 }}>
+                  Set the competitive radius around your property for market analysis. You can skip this and define it later.
+                </p>
+
+                <TradeAreaDefinitionPanel
+                  propertyLat={coordinates[1]}
+                  propertyLng={coordinates[0]}
+                  onSave={handleTradeAreaSave}
+                  onSkip={handleSkipTradeArea}
+                  onCustomDraw={handleCustomDraw}
+                  onCustomDrawCancel={handleCustomDrawCancel}
+                />
+              </div>
+            )}
+
+            {/* Error Display */}
             {error && (
-              <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-                <p className="text-sm text-red-800">{error}</p>
+              <div style={styles.error}>
+                {error}
               </div>
             )}
 
-            <div className="mt-8 flex items-center gap-3">
-              {currentStep > STEPS.DETAILS_ADDRESS && (
-                <Button onClick={handleBack} disabled={isLoading}>
-                  ← Back
-                </Button>
-              )}
-            </div>
+            {/* Back Button */}
+            {currentStep > STEPS.DETAILS_ADDRESS && (
+              <div style={{ marginTop: 24 }}>
+                <button onClick={handleBack} disabled={isLoading} style={styles.buttonSecondary}>
+                  ← BACK
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
-        <div className="w-3/5 relative bg-gray-100">
-          <div ref={mapContainer} className="absolute inset-0" />
+        {/* Map */}
+        <div style={styles.mapContainer}>
+          <div ref={mapContainer} style={{ position: 'absolute', inset: 0 }} />
           
           {!coordinates && (
-            <div className="absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center pointer-events-none">
-              <div className="bg-white rounded-xl p-8 shadow-2xl max-w-md text-center">
-                <div className="text-6xl mb-4">🗺️</div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                  Map Preview
+            <div style={styles.mapOverlay}>
+              <div style={styles.mapPlaceholder}>
+                <div style={{ fontSize: 48, marginBottom: 16 }}>🗺️</div>
+                <h3 style={{ fontSize: 14, fontWeight: 600, color: T.text.primary, marginBottom: 8, fontFamily: T.font.mono }}>
+                  MAP PREVIEW
                 </h3>
-                <p className="text-gray-600">
-                  The map will show your property location once you enter an address in Step 1.
+                <p style={{ fontSize: 11, color: T.text.secondary, fontFamily: T.font.mono }}>
+                  The map will show your property location once you enter an address.
                 </p>
               </div>
             </div>
@@ -1004,3 +1105,5 @@ export const CreateDealPage: React.FC = () => {
     </div>
   );
 };
+
+export default CreateDealPage;

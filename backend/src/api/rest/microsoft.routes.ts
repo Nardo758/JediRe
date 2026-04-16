@@ -12,9 +12,46 @@ import {
   MicrosoftAuthService,
   MicrosoftGraphService,
 } from '../../services/microsoft-graph.service';
+import crypto from 'crypto';
 
 const router = Router();
 const authService = new MicrosoftAuthService();
+
+const OAUTH_STATE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+function signOAuthState(userId: string): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) throw new AppError(500, 'JWT_SECRET not configured');
+  const payload = Buffer.from(
+    JSON.stringify({ userId, nonce: crypto.randomBytes(16).toString('hex'), exp: Date.now() + OAUTH_STATE_TTL_MS })
+  ).toString('base64url');
+  const sig = crypto.createHmac('sha256', secret).update(payload).digest('base64url');
+  return `${payload}.${sig}`;
+}
+
+function verifyOAuthState(state: string): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) throw new AppError(500, 'JWT_SECRET not configured');
+  const dot = state.lastIndexOf('.');
+  if (dot === -1) throw new AppError(400, 'Invalid OAuth state');
+  const payload = state.slice(0, dot);
+  const sig = state.slice(dot + 1);
+  const expected = crypto.createHmac('sha256', secret).update(payload).digest('base64url');
+  const sigBuf = Buffer.from(sig);
+  const expBuf = Buffer.from(expected);
+  if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+    throw new AppError(400, 'OAuth state signature invalid');
+  }
+  let parsed: { userId: string; nonce: string; exp: number };
+  try {
+    parsed = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+  } catch {
+    throw new AppError(400, 'OAuth state payload malformed');
+  }
+  if (!parsed.userId || !parsed.exp) throw new AppError(400, 'OAuth state missing fields');
+  if (Date.now() > parsed.exp) throw new AppError(400, 'OAuth state expired');
+  return parsed.userId;
+}
 
 /**
  * GET /api/v1/microsoft/status
@@ -68,7 +105,8 @@ router.get('/auth/connect', requireAuth, async (req: AuthenticatedRequest, res: 
     }
     
     const userId = req.user!.userId;
-    const authUrl = authService.getAuthorizationUrl(userId);
+    const signedState = signOAuthState(userId);
+    const authUrl = authService.getAuthorizationUrl(signedState);
     
     logger.info('Starting Microsoft OAuth flow', { userId });
     
@@ -97,8 +135,12 @@ router.get('/auth/callback', async (req: Request, res: Response, next) => {
     if (!code || typeof code !== 'string') {
       throw new AppError(400, 'Authorization code missing');
     }
-    
-    const userId = state as string; // We passed userId as state
+
+    if (!state || typeof state !== 'string') {
+      throw new AppError(400, 'OAuth state missing');
+    }
+
+    const userId = verifyOAuthState(state);
     
     // Exchange code for tokens
     const tokens = await authService.getTokenFromCode(code);
@@ -447,7 +489,7 @@ router.post('/emails/:emailId/link-property', requireAuth, async (req: Authentic
     
     // Get email from local database or sync from Microsoft
     let emailRecord = await query(
-      'SELECT id FROM emails WHERE microsoft_message_id = $1 AND user_id = $2',
+      'SELECT id FROM emails WHERE external_id = $1 AND user_id = $2',
       [emailId, userId]
     );
     
@@ -457,19 +499,19 @@ router.post('/emails/:emailId/link-property', requireAuth, async (req: Authentic
       const email = await graphService.getEmail(emailId);
       
       const msAccount = await query(
-        'SELECT id FROM microsoft_accounts WHERE user_id = $1',
+        'SELECT id FROM email_accounts WHERE user_id = $1 LIMIT 1',
         [userId]
       );
       
       await query(
         `INSERT INTO emails (
-          user_id, microsoft_account_id, microsoft_message_id, subject,
-          from_name, from_email, received_at, body_preview, has_attachments,
-          is_read, linked_property_id
+          user_id, email_account_id, external_id, subject,
+          from_name, from_address, received_at, body_preview, has_attachments,
+          is_read, property_id
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
         [
           userId,
-          msAccount.rows[0].id,
+          msAccount.rows[0]?.id ?? null,
           email.id,
           email.subject,
           email.from.name,
@@ -483,24 +525,16 @@ router.post('/emails/:emailId/link-property', requireAuth, async (req: Authentic
       );
       
       emailRecord = await query(
-        'SELECT id FROM emails WHERE microsoft_message_id = $1 AND user_id = $2',
+        'SELECT id FROM emails WHERE external_id = $1 AND user_id = $2',
         [emailId, userId]
       );
     } else {
-      // Update existing email
+      // Update existing email with linked property
       await query(
-        'UPDATE emails SET linked_property_id = $1 WHERE id = $2',
+        'UPDATE emails SET property_id = $1 WHERE id = $2',
         [propertyId, emailRecord.rows[0].id]
       );
     }
-    
-    // Create link record
-    await query(
-      `INSERT INTO property_email_links (property_id, email_id, linked_by, link_type, notes)
-       VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (property_id, email_id) DO UPDATE SET notes = $5`,
-      [propertyId, emailRecord.rows[0].id, userId, 'manual', notes]
-    );
     
     logger.info('Email linked to property', { userId, emailId, propertyId });
     

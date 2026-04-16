@@ -80,22 +80,21 @@ function DealContextBar({ deal, developmentPath, unitCount, municipality, onSele
     { id: 'rezone', label: 'Rezone' },
   ];
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-4">
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div>
-          <label className="block text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Deal</label>
-          <div className="text-sm text-gray-900 border border-gray-200 rounded-md px-3 py-2 bg-gray-50 truncate">
-            {deal?.name || deal?.address || 'No deal selected'}
-          </div>
+    <div className="bg-white rounded border border-gray-200 px-3 py-2">
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[9px] font-medium text-gray-500 uppercase">Deal:</span>
+          <span className="text-[10px] text-gray-900 font-medium truncate max-w-[140px]">{deal?.name || deal?.address || 'No deal selected'}</span>
         </div>
-        <div className="md:col-span-2">
-          <label className="block text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Development Path</label>
-          <div className="flex items-center gap-1 bg-gray-50 border border-gray-200 rounded-md p-1">
+        <div className="w-px h-4 bg-gray-200" />
+        <div className="flex items-center gap-1.5">
+          <span className="text-[9px] font-medium text-gray-500 uppercase">Path:</span>
+          <div className="flex items-center gap-px bg-gray-50 border border-gray-200 rounded p-0.5">
             {paths.map(p => (
               <button
                 key={p.id}
                 onClick={() => onSelectPath(p.id)}
-                className={`flex-1 text-xs font-semibold px-2 py-1.5 rounded transition-all ${
+                className={`text-[9px] font-semibold px-2 py-1 rounded transition-all ${
                   developmentPath === p.id
                     ? 'bg-blue-600 text-white shadow-sm'
                     : 'text-gray-600 hover:bg-gray-200 hover:text-gray-800'
@@ -106,87 +105,124 @@ function DealContextBar({ deal, developmentPath, unitCount, municipality, onSele
             ))}
           </div>
         </div>
-        <div>
-          <label className="block text-[10px] font-medium text-gray-500 uppercase tracking-wide mb-1">Jurisdiction</label>
-          <div className="text-sm text-gray-900 border border-gray-200 rounded-md px-3 py-2 bg-gray-50">
-            {municipality || 'Unknown'}
-          </div>
+        <div className="w-px h-4 bg-gray-200" />
+        <div className="flex items-center gap-1.5">
+          <span className="text-[9px] font-medium text-gray-500 uppercase">Jurisdiction:</span>
+          <span className="text-[10px] text-gray-900 font-medium">{municipality || 'Unknown'}</span>
         </div>
       </div>
     </div>
   );
 }
 
-function MunicipalBenchmarkSection({ benchmarks, detailedSteps, dataSource, totalSampleCount }: {
-  benchmarks: MunicipalBenchmark[];
-  detailedSteps: DetailedStep[];
-  dataSource: 'real' | 'synthetic';
-  totalSampleCount: number;
-}) {
+// ========================================
+// SECTION 2: EVIDENCE BASE (RAW DATA)
+// ========================================
+
+function EvidenceBaseSection({ benchmarks, detailedSteps, dataSource, totalSampleCount, jurisdictions, jurisdictionDataSource }:
+  { benchmarks: MunicipalBenchmark[]; detailedSteps: DetailedStep[]; dataSource: 'real' | 'synthetic'; totalSampleCount: number; jurisdictions: JurisdictionComparison[]; jurisdictionDataSource: 'real' | 'synthetic' }) {
+
   const totalSampleSize = totalSampleCount || benchmarks.reduce((sum, b) => sum + b.sampleSize, 0);
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-      <div className="bg-gray-50 border-b border-gray-200 px-4 py-3 flex items-center justify-between">
-        <div>
-          <h3 className="text-sm font-semibold text-gray-900">Municipal Benchmarks</h3>
-          <p className="text-[10px] text-gray-500 mt-0.5">Historical processing times from benchmark projects</p>
-        </div>
-        <DataSourceBadge source={dataSource} count={totalSampleSize} />
+      <div className="bg-gray-50 border-b border-gray-200 px-4 py-2">
+        <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wide">Evidence Base</h3>
+        <p className="text-[10px] text-gray-500">Raw data from benchmark analysis</p>
       </div>
-      <div className="p-4">
-        <div className="mb-3">
-          <p className="text-xs font-semibold text-gray-800 uppercase tracking-wide">Historical Processing Times</p>
-          <p className="text-[11px] text-gray-500 mt-0.5">Based on {totalSampleSize} {dataSource === 'real' ? 'real entitlement records' : 'estimated applications'}</p>
-        </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b-2 border-gray-300">
-                <th className="text-left py-2 px-2 font-semibold text-gray-700 uppercase tracking-wide text-[10px]">Step</th>
-                <th className="text-right py-2 px-2 font-medium text-gray-500 text-[10px]">
-                  <div>P25</div><div className="font-normal text-gray-400">(Fast)</div>
-                </th>
-                <th className="text-right py-2 px-2 font-medium text-gray-500 text-[10px]">
-                  <div>Median</div><div className="font-normal text-gray-400">(Expected)</div>
-                </th>
-                <th className="text-right py-2 px-2 font-medium text-gray-500 text-[10px]">
-                  <div>P75</div><div className="font-normal text-gray-400">(Typical)</div>
-                </th>
-                <th className="text-right py-2 px-2 font-medium text-gray-500 text-[10px]">
-                  <div>P90</div><div className="font-normal text-gray-400">(Worst)</div>
-                </th>
-                <th className="text-right py-2 px-2 font-medium text-gray-500 text-[10px]">n=</th>
-              </tr>
-            </thead>
-            <tbody>
-              {detailedSteps.map((row, idx) => (
-                <tr key={idx} className={`border-b border-gray-100 ${row.isSubRow ? '' : 'hover:bg-gray-50'}`}>
-                  <td className={`py-1.5 px-2 ${row.isSubRow ? 'pl-6 text-gray-500 italic' : 'text-gray-900 font-medium'}`}>
-                    {row.isSubRow && <span className="text-gray-300 mr-1">{'\u251C\u2500'}</span>}
-                    {row.step}
-                  </td>
-                  <td className="py-1.5 px-2 text-right text-gray-600">{row.p25}</td>
-                  <td className="py-1.5 px-2 text-right text-gray-700 font-semibold">{row.median}</td>
-                  <td className="py-1.5 px-2 text-right text-gray-600">{row.p75}</td>
-                  <td className="py-1.5 px-2 text-right text-red-600 font-semibold">{row.p90}</td>
-                  <td className="py-1.5 px-2 text-right text-gray-400">{row.n}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <div className="px-4 py-3 space-y-3">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          {detailedSteps.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <div>
+                  <h4 className="text-[10px] font-semibold text-gray-800 uppercase tracking-wide">Historical Processing Timeline</h4>
+                  <p className="text-[9px] text-gray-500">{totalSampleSize} {dataSource === 'real' ? 'real records' : 'estimated'}</p>
+                </div>
+                <DataSourceBadge source={dataSource} count={totalSampleSize} />
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-[10px]">
+                  <thead>
+                    <tr className="border-b-2 border-gray-300">
+                      <th className="text-left py-1 px-1.5 font-semibold text-gray-700 uppercase tracking-wide text-[9px]">Step</th>
+                      <th className="text-right py-1 px-1.5 font-medium text-gray-500 text-[9px]">P25</th>
+                      <th className="text-right py-1 px-1.5 font-medium text-gray-500 text-[9px]">Median</th>
+                      <th className="text-right py-1 px-1.5 font-medium text-gray-500 text-[9px]">P75</th>
+                      <th className="text-right py-1 px-1.5 font-medium text-gray-500 text-[9px]">P90</th>
+                      <th className="text-right py-1 px-1.5 font-medium text-gray-500 text-[9px]">n=</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detailedSteps.map((row, idx) => (
+                      <tr key={idx} className={`border-b border-gray-100 ${row.isSubRow ? '' : 'hover:bg-gray-50'}`}>
+                        <td className={`py-1 px-1.5 ${row.isSubRow ? 'pl-4 text-gray-500 italic' : 'text-gray-900 font-medium'}`}>
+                          {row.isSubRow && <span className="text-gray-300 mr-0.5">{'\u251C\u2500'}</span>}
+                          {row.step}
+                        </td>
+                        <td className="py-1 px-1.5 text-right text-gray-600">{row.p25}</td>
+                        <td className="py-1 px-1.5 text-right text-gray-700 font-semibold">{row.median}</td>
+                        <td className="py-1 px-1.5 text-right text-gray-600">{row.p75}</td>
+                        <td className="py-1 px-1.5 text-right text-red-600 font-semibold">{row.p90}</td>
+                        <td className="py-1 px-1.5 text-right text-gray-400">{row.n}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {jurisdictions.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <div>
+                  <h4 className="text-[10px] font-semibold text-gray-800 uppercase tracking-wide">Jurisdiction Comparison</h4>
+                  <p className="text-[9px] text-gray-500">Median timeline across markets</p>
+                </div>
+                <DataSourceBadge source={jurisdictionDataSource} count={jurisdictions.length} />
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-[10px]">
+                  <thead>
+                    <tr className="border-b-2 border-gray-300">
+                      <th className="text-left py-1 px-1.5 font-semibold text-gray-700 text-[9px] uppercase tracking-wide">Jurisdiction</th>
+                      <th className="text-right py-1 px-1.5 font-medium text-gray-500 text-[9px]">TTS</th>
+                      <th className="text-center py-1 px-1.5 font-medium text-gray-500 text-[9px]">#</th>
+                      <th className="text-right py-1 px-1.5 font-medium text-gray-500 text-[9px]">Carry Cost</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {jurisdictions.map((j) => {
+                      const isSubject = j.carryCostDelta === 0 || (j as any).isSubject;
+                      return (
+                        <tr key={j.municipality} className={`border-b border-gray-100 ${isSubject ? 'bg-blue-50 border-l-2 border-l-blue-400' : 'hover:bg-gray-50'}`}>
+                          <td className="py-1 px-1.5 font-medium text-gray-900">{j.municipality}</td>
+                          <td className="py-1 px-1.5 text-right text-gray-700 font-semibold">{j.medianTts}mo</td>
+                          <td className="py-1 px-1.5 text-center text-gray-600">#{j.rank}</td>
+                          <td className={`py-1 px-1.5 text-right font-semibold text-[9px] ${j.carryCostDelta < 0 ? 'text-green-600' : j.carryCostDelta > 0 ? 'text-red-600' : 'text-blue-600'}`}>
+                            {j.carryCostDeltaLabel || (isSubject ? 'Subject' : '')}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
 
         {benchmarks.length > 0 && (
-          <div className="mt-4">
-            <p className="text-[10px] font-semibold text-gray-700 uppercase tracking-wide mb-2">By Entitlement Type</p>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          <div>
+            <h4 className="text-[10px] font-semibold text-gray-800 uppercase tracking-wide mb-1.5">Median Time by Entitlement Type</h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5">
               {benchmarks.map((b) => (
-                <div key={b.id || b.entitlementType} className="bg-gray-50 rounded-lg border border-gray-200 p-2">
-                  <p className="text-[10px] font-semibold text-gray-800 uppercase">{b.entitlementType}</p>
-                  <p className="text-lg font-bold text-gray-900">{b.medianMonths}<span className="text-xs font-normal text-gray-500"> mo</span></p>
-                  <p className="text-[10px] text-gray-500">n={b.sampleSize}</p>
+                <div key={b.id || b.entitlementType} className="bg-gray-50 rounded border border-gray-200 px-2 py-1.5">
+                  <p className="text-[9px] font-semibold text-gray-700 uppercase">{b.entitlementType}</p>
+                  <p className="text-lg font-bold text-gray-900">{b.medianMonths}<span className="text-[9px] font-normal text-gray-500"> mo</span></p>
+                  <p className="text-[8px] text-gray-500">n={b.sampleSize}</p>
                 </div>
               ))}
             </div>
@@ -197,12 +233,18 @@ function MunicipalBenchmarkSection({ benchmarks, detailedSteps, dataSource, tota
   );
 }
 
-function MonteCarloSection({ mcData, loading, error, onRerun, pathLabel }: { mcData: MonteCarloData | null; loading: boolean; error: string | null; onRerun: () => void; pathLabel: string }) {
+// ========================================
+// SECTION 1: TIMELINE ESTIMATE (ONE DEFINITIVE ANSWER)
+// ========================================
+
+function TimelineEstimateSection({ mcData, loading, error, onRerun, pathLabel, intelligence }:
+  { mcData: MonteCarloData | null; loading: boolean; error: string | null; onRerun: () => void; pathLabel: string; intelligence: TimelineIntelligence | null }) {
+
   if (loading) {
     return (
       <div className="bg-white border border-gray-200 rounded-lg p-6 flex items-center justify-center gap-3">
         <svg className="animate-spin h-5 w-5 text-blue-600" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-        <span className="text-sm text-gray-600">Running 10,000 Monte Carlo simulations...</span>
+        <span className="text-sm text-gray-600">Computing timeline estimate...</span>
       </div>
     );
   }
@@ -211,7 +253,7 @@ function MonteCarloSection({ mcData, loading, error, onRerun, pathLabel }: { mcD
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center justify-between">
         <div>
-          <p className="text-sm font-medium text-red-700">Monte Carlo Simulation Failed</p>
+          <p className="text-sm font-medium text-red-700">Timeline Analysis Failed</p>
           <p className="text-xs text-red-600 mt-1">{error}</p>
         </div>
         <button onClick={onRerun} className="text-xs text-red-600 hover:text-red-800 font-medium border border-red-300 rounded px-3 py-1.5 hover:bg-red-100">
@@ -221,138 +263,132 @@ function MonteCarloSection({ mcData, loading, error, onRerun, pathLabel }: { mcD
     );
   }
 
-  if (!mcData) return null;
+  if (!mcData && !intelligence) {
+    return (
+      <div className="bg-white border border-gray-200 rounded-lg p-6 text-center">
+        <p className="text-sm text-gray-500">Select a development path above to generate timeline estimates.</p>
+        <p className="text-xs text-gray-400 mt-1">The simulation requires a path selection to compute phase durations.</p>
+      </div>
+    );
+  }
 
-  const maxProb = Math.max(...mcData.histogram.map(h => h.probability));
+  // Use Monte Carlo estimates for hero values
+  const bestCase = mcData?.percentiles.p10 ?? 0;
+  const expectedCase = mcData?.percentiles.p50 ?? 0;
+  const worstCase = mcData?.percentiles.p90 ?? 0;
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-      <div className="px-5 py-3 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-purple-50 flex items-center justify-between">
+      <div className="px-4 py-2 border-b border-gray-200 bg-gradient-to-r from-teal-50 to-cyan-50 flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Monte Carlo Timeline Simulation</h3>
-          <p className="text-xs text-gray-500 mt-0.5">{mcData.nSimulations.toLocaleString()} simulations from {mcData.sampleSize} benchmark projects &mdash; <strong>{pathLabel}</strong> path</p>
+          <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wide">Timeline Estimate</h3>
+          <p className="text-[10px] text-gray-500">{pathLabel} path &mdash; Months to first shovel</p>
         </div>
-        <button onClick={onRerun} className="text-xs text-blue-600 hover:text-blue-800 font-medium">Re-run</button>
+        {mcData && <button onClick={onRerun} className="text-[10px] text-teal-600 hover:text-teal-800 font-medium">Recalculate</button>}
       </div>
 
-      <div className="px-5 py-4">
-        <div className="grid grid-cols-5 gap-3 mb-4">
-          {[
-            { label: 'Optimistic (P10)', value: mcData.percentiles.p10, color: 'text-green-700 bg-green-50 border-green-200' },
-            { label: 'Likely Low (P25)', value: mcData.percentiles.p25, color: 'text-blue-700 bg-blue-50 border-blue-200' },
-            { label: 'Median (P50)', value: mcData.percentiles.p50, color: 'text-gray-900 bg-gray-100 border-gray-300 ring-1 ring-gray-300' },
-            { label: 'Conservative (P75)', value: mcData.percentiles.p75, color: 'text-amber-700 bg-amber-50 border-amber-200' },
-            { label: 'Worst Case (P90)', value: mcData.percentiles.p90, color: 'text-red-700 bg-red-50 border-red-200' },
-          ].map(p => (
-            <div key={p.label} className={`text-center rounded-lg border p-3 ${p.color}`}>
-              <div className="text-2xl font-bold">{p.value}</div>
-              <div className="text-[10px] font-medium mt-0.5">months</div>
-              <div className="text-[9px] mt-1 opacity-75">{p.label}</div>
+      <div className="px-4 py-3">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <div>
+            <div className="grid grid-cols-3 gap-2 bg-gradient-to-b from-gray-50 to-white rounded border border-gray-200 p-2">
+              <div className="text-center">
+                <div className="text-[10px] font-medium text-gray-600 uppercase tracking-wide">Best Case</div>
+                <div className="text-2xl font-bold text-green-600 mt-1">{bestCase}</div>
+                <div className="text-[9px] text-gray-500">months</div>
+              </div>
+              <div className="text-center border-l border-r border-gray-300">
+                <div className="text-[10px] font-medium text-gray-600 uppercase tracking-wide">Expected</div>
+                <div className="text-2xl font-bold text-blue-700 mt-1">{expectedCase}</div>
+                <div className="text-[9px] text-gray-500">months</div>
+              </div>
+              <div className="text-center">
+                <div className="text-[10px] font-medium text-gray-600 uppercase tracking-wide">Worst Case</div>
+                <div className="text-2xl font-bold text-red-600 mt-1">{worstCase}</div>
+                <div className="text-[9px] text-gray-500">months</div>
+              </div>
             </div>
-          ))}
-        </div>
-
-        <div className="mb-4">
-          <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Probability Distribution</h4>
-          <div className="flex items-end gap-px h-24 bg-gray-50 rounded-lg p-2">
-            {mcData.histogram.filter(h => h.probability > 0.001).map((h, i) => {
-              const heightPct = (h.probability / maxProb) * 100;
-              const isP50Bucket = Math.abs(h.monthBucket - mcData!.percentiles.p50) < 2;
-              return (
-                <div key={i} className="flex-1 flex flex-col items-center justify-end group relative">
-                  <div
-                    className={`w-full rounded-t transition-colors ${isP50Bucket ? 'bg-blue-500' : 'bg-blue-300 group-hover:bg-blue-400'}`}
-                    style={{ height: `${Math.max(2, heightPct)}%` }}
-                  />
-                  {i % 3 === 0 && <span className="text-[8px] text-gray-400 mt-0.5">{h.monthBucket}m</span>}
-                </div>
-              );
-            })}
+            {mcData && (
+              <p className="text-[9px] text-gray-400 text-center mt-1.5">Monte Carlo ({mcData.nSimulations.toLocaleString()} iterations)</p>
+            )}
           </div>
-        </div>
 
-        <div className="mb-4">
-          <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Phase Breakdown (P10 / P50 / P90)</h4>
-          <div className="space-y-2">
-            {mcData.ganttPhases.map((phase, i) => {
-              const maxEnd = mcData!.ganttPhases.reduce((max, p) => Math.max(max, p.startMonth + p.p90Duration), 0);
-              const scale = 100 / Math.max(1, maxEnd);
-              return (
-                <div key={i} className="flex items-center gap-2">
-                  <span className="text-[10px] text-gray-600 w-32 text-right truncate">{phase.name}</span>
-                  <div className="flex-1 h-5 bg-gray-100 rounded relative">
-                    <div className="absolute h-full bg-red-100 rounded" style={{ left: `${phase.startMonth * scale}%`, width: `${phase.p90Duration * scale}%` }} />
-                    <div className="absolute h-full bg-blue-200 rounded" style={{ left: `${phase.startMonth * scale}%`, width: `${phase.p50Duration * scale}%` }} />
-                    <div className="absolute h-full bg-green-300 rounded" style={{ left: `${phase.startMonth * scale}%`, width: `${phase.p10Duration * scale}%` }} />
-                    <span className="absolute text-[8px] text-gray-600 font-medium" style={{ left: `${(phase.startMonth + phase.p50Duration / 2) * scale}%`, top: '2px', transform: 'translateX(-50%)' }}>
-                      {phase.p50Duration}mo
-                    </span>
+          {mcData && (() => {
+            const isConstruction = (name: string) => /construction/i.test(name);
+            const entitlementPhases = mcData.ganttPhases.filter(p => !isConstruction(p.name));
+            const constructionPhase = mcData.ganttPhases.find(p => isConstruction(p.name));
+            const entitlementMaxEnd = entitlementPhases.reduce((max, p) => Math.max(max, p.startMonth + p.p90Duration), 0.1);
+            const entitlementScale = 100 / entitlementMaxEnd;
+            return (
+              <div>
+                <h4 className="text-[10px] font-semibold text-gray-700 uppercase tracking-wide mb-1">Phase Timeline</h4>
+                {entitlementPhases.length > 0 && (
+                  <div className="space-y-1 mb-2">
+                    <div className="text-[8px] text-gray-400 uppercase tracking-wide">Entitlement — {entitlementMaxEnd.toFixed(1)} mo (p90)</div>
+                    {entitlementPhases.map((phase, i) => (
+                      <div key={i} className="flex items-center gap-1.5">
+                        <span className="text-[9px] text-gray-600 w-24 text-right truncate font-medium">{phase.name}</span>
+                        <div className="flex-1 h-4 bg-gray-100 rounded relative border border-gray-200 overflow-hidden">
+                          <div className="absolute h-full bg-red-200 rounded" style={{ left: `${phase.startMonth * entitlementScale}%`, width: `${Math.max(3, phase.p90Duration * entitlementScale)}%` }} />
+                          <div className="absolute h-full bg-blue-300 rounded" style={{ left: `${phase.startMonth * entitlementScale}%`, width: `${Math.max(3, phase.p50Duration * entitlementScale)}%` }} />
+                          <div className="absolute h-full bg-green-400 rounded" style={{ left: `${phase.startMonth * entitlementScale}%`, width: `${Math.max(3, phase.p10Duration * entitlementScale)}%` }} />
+                          <span className="absolute text-[8px] text-white font-bold" style={{ left: `${Math.min(88, (phase.startMonth + phase.p50Duration / 2) * entitlementScale)}%`, top: '0px', transform: 'translateX(-50%)', textShadow: '0 0 3px rgba(0,0,0,0.9), 0 1px 2px rgba(0,0,0,0.7)' }}>
+                            {phase.p50Duration}mo
+                          </span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                </div>
-              );
-            })}
-          </div>
-          <div className="flex items-center gap-4 mt-2 justify-center">
-            <span className="flex items-center gap-1 text-[9px] text-gray-500"><span className="w-3 h-2 bg-green-300 rounded" /> P10</span>
-            <span className="flex items-center gap-1 text-[9px] text-gray-500"><span className="w-3 h-2 bg-blue-200 rounded" /> P50</span>
-            <span className="flex items-center gap-1 text-[9px] text-gray-500"><span className="w-3 h-2 bg-red-100 rounded" /> P90</span>
-          </div>
-        </div>
-
-        <div>
-          <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Financial Impact of Timeline Uncertainty</h4>
-          <div className="grid grid-cols-3 gap-3">
-            {[
-              { label: 'Best Case (P10)', data: mcData.financialImpact.p10, color: 'border-green-200 bg-green-50' },
-              { label: 'Expected (P50)', data: mcData.financialImpact.p50, color: 'border-blue-200 bg-blue-50' },
-              { label: 'Worst Case (P90)', data: mcData.financialImpact.p90, color: 'border-red-200 bg-red-50' },
-            ].map(item => (
-              <div key={item.label} className={`border rounded-lg p-3 ${item.color}`}>
-                <div className="text-[10px] font-medium text-gray-500 uppercase">{item.label}</div>
-                <div className="text-sm font-bold text-gray-900 mt-1">${(item.data.carryingCost / 1000).toFixed(0)}K carrying cost</div>
-                <div className={`text-xs font-medium mt-0.5 ${item.data.irrImpact < -1 ? 'text-red-600' : 'text-amber-600'}`}>
-                  {item.data.irrImpact > 0 ? '+' : ''}{item.data.irrImpact}% IRR impact
+                )}
+                {constructionPhase && (
+                  <div className="space-y-1">
+                    <div className="text-[8px] text-gray-400 uppercase tracking-wide">Construction</div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[9px] text-gray-600 w-24 text-right truncate font-medium">{constructionPhase.name}</span>
+                      <div className="flex-1 h-4 bg-gray-100 rounded relative border border-gray-200 overflow-hidden">
+                        <div className="absolute h-full bg-orange-200 rounded" style={{ left: 0, width: '100%' }} />
+                        <div className="absolute h-full bg-orange-400 rounded" style={{ left: 0, width: `${(constructionPhase.p50Duration / Math.max(0.1, constructionPhase.p90Duration)) * 100}%` }} />
+                        <div className="absolute h-full bg-orange-500 rounded" style={{ left: 0, width: `${(constructionPhase.p10Duration / Math.max(0.1, constructionPhase.p90Duration)) * 100}%` }} />
+                        <span className="absolute text-[8px] text-white font-bold" style={{ left: '50%', top: '0px', transform: 'translateX(-50%)', textShadow: '0 0 3px rgba(0,0,0,0.9), 0 1px 2px rgba(0,0,0,0.7)' }}>
+                          {constructionPhase.p50Duration}mo
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <div className="flex items-center gap-3 mt-1.5 justify-center text-[8px] text-gray-500 flex-wrap">
+                  <span className="flex items-center gap-0.5"><span className="w-2 h-1.5 bg-green-400 rounded" />Best</span>
+                  <span className="flex items-center gap-0.5"><span className="w-2 h-1.5 bg-blue-300 rounded" />Expected</span>
+                  <span className="flex items-center gap-0.5"><span className="w-2 h-1.5 bg-red-200 rounded" />Worst</span>
+                  {constructionPhase && <span className="flex items-center gap-0.5"><span className="w-2 h-1.5 bg-orange-400 rounded" />Construction</span>}
                 </div>
               </div>
-            ))}
-          </div>
+            );
+          })()}
         </div>
       </div>
     </div>
   );
 }
 
-function TimelineIntelligenceSection({ dealId, developmentPath }: { dealId?: string; developmentPath: string | null }) {
-  const [intelligence, setIntelligence] = useState<TimelineIntelligence | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+// ========================================
+// SECTION 3: AI ANALYSIS (QUALITATIVE INSIGHTS)
+// ========================================
 
-  useEffect(() => {
-    if (!dealId || !developmentPath) return;
-    let cancelled = false;
+function AIAnalysisSection({ developmentPath, intelligence, intelligenceLoading, intelligenceError }: {
+  developmentPath: string | null;
+  intelligence: TimelineIntelligence | null;
+  intelligenceLoading: boolean;
+  intelligenceError: string | null;
+}) {
+  if (!developmentPath) {
+    return (
+      <div className="bg-white border border-gray-200 rounded-lg p-6 text-center">
+        <p className="text-sm text-gray-500">Select a development path to see AI timeline analysis.</p>
+      </div>
+    );
+  }
 
-    async function fetchIntelligence() {
-      setLoading(true);
-      setError(null);
-      try {
-        const resp = await apiClient.get(`/api/v1/deals/${dealId}/timeline-intelligence`, {
-          params: { path: developmentPath },
-        });
-        if (!cancelled) setIntelligence(resp.data);
-      } catch (err: any) {
-        if (!cancelled) setError(err.response?.data?.error || err.message || 'Failed to load timeline intelligence');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    fetchIntelligence();
-    return () => { cancelled = true; };
-  }, [dealId, developmentPath]);
-
-  if (!developmentPath) return null;
-
-  if (loading) {
+  if (intelligenceLoading) {
     return (
       <div className="bg-white border border-gray-200 rounded-lg p-6 flex flex-col items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mb-3"></div>
@@ -362,16 +398,23 @@ function TimelineIntelligenceSection({ dealId, developmentPath }: { dealId?: str
     );
   }
 
-  if (error) {
+  if (intelligenceError) {
     return (
       <div className="bg-red-50 border border-red-200 rounded-lg p-4">
         <p className="text-sm font-medium text-red-700">Timeline Intelligence Error</p>
-        <p className="text-xs text-red-600 mt-1">{error}</p>
+        <p className="text-xs text-red-600 mt-1">{intelligenceError}</p>
       </div>
     );
   }
 
-  if (!intelligence) return null;
+  if (!intelligence) {
+    return (
+      <div className="bg-white border border-gray-200 rounded-lg p-6 text-center">
+        <p className="text-sm text-gray-500">AI timeline analysis unavailable for this deal.</p>
+        <p className="text-xs text-gray-400 mt-1">Ensure zoning profile and benchmark data are loaded.</p>
+      </div>
+    );
+  }
 
   const severityColors: Record<string, string> = {
     low: 'text-green-700 bg-green-50 border-green-200',
@@ -381,66 +424,42 @@ function TimelineIntelligenceSection({ dealId, developmentPath }: { dealId?: str
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-      <div className="px-5 py-3 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-indigo-50 flex items-center justify-between">
+      <div className="px-4 py-2 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-indigo-50 flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">AI Timeline Intelligence</h3>
-          <p className="text-xs text-gray-500 mt-0.5">
-            Deal-specific analysis from {intelligence.dataLibraryContext.benchmarkCount} benchmarks
-            {intelligence.dataLibraryContext.hasCostData && ' + Data Library costs'}
+          <h3 className="text-xs font-bold text-gray-900 uppercase tracking-wide">AI Timeline Intelligence</h3>
+          <p className="text-[10px] text-gray-500">
+            {intelligence.dataLibraryContext?.benchmarkCount ?? '—'} benchmarks
+            {intelligence.dataLibraryContext?.hasCostData && ' + cost data'}
           </p>
         </div>
-        <span className="text-[10px] text-gray-400">Generated {new Date(intelligence.generatedAt).toLocaleDateString()}</span>
+        <span className="text-[9px] text-gray-400">{intelligence.generatedAt ? new Date(intelligence.generatedAt).toLocaleDateString() : '—'}</span>
       </div>
 
-      <div className="px-5 py-4 space-y-5">
-        <div className="grid grid-cols-3 gap-3">
-          <div className="text-center rounded-lg border border-green-200 bg-green-50 p-3">
-            <div className="text-2xl font-bold text-green-700">{intelligence.estimatedMonths.optimistic}</div>
-            <div className="text-[10px] font-medium text-green-600 mt-0.5">months (optimistic)</div>
-            {intelligence.shovelDateRange.earliest && (
-              <div className="text-[9px] text-green-500 mt-1">{intelligence.shovelDateRange.earliest}</div>
-            )}
-          </div>
-          <div className="text-center rounded-lg border border-gray-300 bg-gray-100 p-3 ring-1 ring-gray-300">
-            <div className="text-2xl font-bold text-gray-900">{intelligence.estimatedMonths.expected}</div>
-            <div className="text-[10px] font-medium text-gray-600 mt-0.5">months (expected)</div>
-            {intelligence.shovelDateRange.likely && (
-              <div className="text-[9px] text-gray-500 mt-1">{intelligence.shovelDateRange.likely}</div>
-            )}
-          </div>
-          <div className="text-center rounded-lg border border-red-200 bg-red-50 p-3">
-            <div className="text-2xl font-bold text-red-700">{intelligence.estimatedMonths.worstCase}</div>
-            <div className="text-[10px] font-medium text-red-600 mt-0.5">months (worst case)</div>
-            {intelligence.shovelDateRange.latest && (
-              <div className="text-[9px] text-red-500 mt-1">{intelligence.shovelDateRange.latest}</div>
-            )}
-          </div>
-        </div>
-
+      <div className="px-4 py-3 space-y-3">
         {intelligence.pathInsights && (
           <div>
-            <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Path Analysis</h4>
-            <p className="text-sm text-gray-700 mb-3">{intelligence.pathInsights.summary}</p>
-            <div className="grid grid-cols-2 gap-3">
-              {intelligence.pathInsights.advantages.length > 0 && (
-                <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-                  <p className="text-[10px] font-semibold text-green-800 uppercase mb-1">Advantages</p>
-                  <ul className="space-y-1">
+            <h4 className="text-[10px] font-semibold text-gray-700 uppercase tracking-wide mb-1">Path Analysis</h4>
+            <p className="text-[10px] text-gray-700 mb-2">{intelligence.pathInsights.summary}</p>
+            <div className="grid grid-cols-2 gap-2">
+              {(intelligence.pathInsights.advantages?.length ?? 0) > 0 && (
+                <div className="bg-green-50 border border-green-200 rounded px-2 py-1.5">
+                  <p className="text-[9px] font-semibold text-green-800 uppercase mb-0.5">Advantages</p>
+                  <ul className="space-y-0.5">
                     {intelligence.pathInsights.advantages.map((a, i) => (
-                      <li key={i} className="text-xs text-green-700 flex items-start gap-1">
-                        <span className="text-green-500 mt-0.5 flex-shrink-0">+</span> {a}
+                      <li key={i} className="text-[10px] text-green-700 flex items-start gap-1">
+                        <span className="text-green-500 flex-shrink-0">+</span> {a}
                       </li>
                     ))}
                   </ul>
                 </div>
               )}
-              {intelligence.pathInsights.challenges.length > 0 && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                  <p className="text-[10px] font-semibold text-amber-800 uppercase mb-1">Challenges</p>
-                  <ul className="space-y-1">
+              {(intelligence.pathInsights.challenges?.length ?? 0) > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+                  <p className="text-[9px] font-semibold text-amber-800 uppercase mb-0.5">Challenges</p>
+                  <ul className="space-y-0.5">
                     {intelligence.pathInsights.challenges.map((c, i) => (
-                      <li key={i} className="text-xs text-amber-700 flex items-start gap-1">
-                        <span className="text-amber-500 mt-0.5 flex-shrink-0">!</span> {c}
+                      <li key={i} className="text-[10px] text-amber-700 flex items-start gap-1">
+                        <span className="text-amber-500 flex-shrink-0">!</span> {c}
                       </li>
                     ))}
                   </ul>
@@ -448,49 +467,49 @@ function TimelineIntelligenceSection({ dealId, developmentPath }: { dealId?: str
               )}
             </div>
             {intelligence.pathInsights.alternativePath && (
-              <p className="text-xs text-gray-500 mt-2 italic">{intelligence.pathInsights.alternativePath}</p>
+              <p className="text-[9px] text-gray-500 mt-1.5 italic">{intelligence.pathInsights.alternativePath}</p>
             )}
           </div>
         )}
 
-        {intelligence.riskFactors.length > 0 && (
+        {(intelligence.riskFactors?.length ?? 0) > 0 && (
           <div>
-            <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Timeline Risk Factors</h4>
-            <div className="space-y-2">
+            <h4 className="text-[10px] font-semibold text-gray-700 uppercase tracking-wide mb-1">Timeline Risk Factors</h4>
+            <div className="space-y-1.5">
               {intelligence.riskFactors.map((rf, i) => (
-                <div key={i} className={`border rounded-lg p-3 ${severityColors[rf.severity] || severityColors.moderate}`}>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-bold uppercase">{rf.severity}</span>
-                    <span className="text-xs font-semibold">{rf.factor}</span>
+                <div key={i} className={`border rounded px-2 py-1.5 ${severityColors[rf.severity] || severityColors.moderate}`}>
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    <span className="text-[9px] font-bold uppercase">{rf.severity}</span>
+                    <span className="text-[10px] font-semibold">{rf.factor}</span>
                   </div>
-                  <p className="text-xs opacity-90 mb-1">{rf.impact}</p>
-                  <p className="text-[10px] opacity-75">Mitigation: {rf.mitigation}</p>
+                  <p className="text-[9px] opacity-90">{rf.impact}</p>
+                  <p className="text-[8px] opacity-75">Mitigation: {rf.mitigation}</p>
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        {intelligence.criticalMilestones.length > 0 && (
+        {(intelligence.criticalMilestones?.length ?? 0) > 0 && (
           <div>
-            <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Critical Milestones</h4>
+            <h4 className="text-[10px] font-semibold text-gray-700 uppercase tracking-wide mb-1">Critical Milestones</h4>
             <div className="overflow-x-auto">
-              <table className="w-full text-xs">
+              <table className="w-full text-[10px]">
                 <thead>
                   <tr className="border-b-2 border-gray-300">
-                    <th className="text-left py-2 px-2 font-semibold text-gray-700 text-[10px] uppercase">Milestone</th>
-                    <th className="text-center py-2 px-2 font-medium text-gray-500 text-[10px]">Month</th>
-                    <th className="text-center py-2 px-2 font-medium text-gray-500 text-[10px]">Critical Path</th>
-                    <th className="text-left py-2 px-2 font-medium text-gray-500 text-[10px]">Note</th>
+                    <th className="text-left py-1 px-1.5 font-semibold text-gray-700 text-[9px] uppercase">Milestone</th>
+                    <th className="text-center py-1 px-1.5 font-medium text-gray-500 text-[9px]">Month</th>
+                    <th className="text-center py-1 px-1.5 font-medium text-gray-500 text-[9px]">Critical</th>
+                    <th className="text-left py-1 px-1.5 font-medium text-gray-500 text-[9px]">Note</th>
                   </tr>
                 </thead>
                 <tbody>
                   {intelligence.criticalMilestones.map((ms, i) => (
                     <tr key={i} className="border-b border-gray-100">
-                      <td className="py-1.5 px-2 text-gray-900 font-medium">{ms.milestone}</td>
-                      <td className="py-1.5 px-2 text-center text-gray-700 font-semibold">{ms.estimatedMonth}</td>
-                      <td className="py-1.5 px-2 text-center">{ms.criticalPath ? <span className="text-red-600 font-bold">Yes</span> : <span className="text-gray-400">No</span>}</td>
-                      <td className="py-1.5 px-2 text-gray-600">{ms.note}</td>
+                      <td className="py-1 px-1.5 text-gray-900 font-medium">{ms.milestone}</td>
+                      <td className="py-1 px-1.5 text-center text-gray-700 font-semibold">{ms.estimatedMonth}</td>
+                      <td className="py-1 px-1.5 text-center">{ms.criticalPath ? <span className="text-red-600 font-bold">Yes</span> : <span className="text-gray-400">No</span>}</td>
+                      <td className="py-1 px-1.5 text-gray-600">{ms.note}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -499,29 +518,29 @@ function TimelineIntelligenceSection({ dealId, developmentPath }: { dealId?: str
           </div>
         )}
 
-        {intelligence.benchmarkComparison && intelligence.benchmarkComparison.summary && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-            <p className="text-[10px] font-semibold text-blue-800 uppercase mb-1">Benchmark Comparison</p>
-            <p className="text-xs text-blue-700">{intelligence.benchmarkComparison.summary}</p>
-            <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
+        {intelligence.benchmarkComparison?.summary && (
+          <div className="bg-blue-50 border border-blue-200 rounded px-2 py-1.5">
+            <p className="text-[9px] font-semibold text-blue-800 uppercase mb-0.5">Benchmark Comparison</p>
+            <p className="text-[10px] text-blue-700">{intelligence.benchmarkComparison.summary}</p>
+            <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
               {intelligence.benchmarkComparison.fastestComparable && (
-                <p className="text-[10px] text-blue-600">Fastest: {intelligence.benchmarkComparison.fastestComparable}</p>
+                <p className="text-[9px] text-blue-600">Fastest: {intelligence.benchmarkComparison.fastestComparable}</p>
               )}
               {intelligence.benchmarkComparison.slowestComparable && (
-                <p className="text-[10px] text-blue-600">Slowest: {intelligence.benchmarkComparison.slowestComparable}</p>
+                <p className="text-[9px] text-blue-600">Slowest: {intelligence.benchmarkComparison.slowestComparable}</p>
               )}
             </div>
           </div>
         )}
 
-        {intelligence.recommendations.length > 0 && (
+        {(intelligence.recommendations?.length ?? 0) > 0 && (
           <div>
-            <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Recommendations</h4>
-            <ul className="space-y-1.5">
+            <h4 className="text-[10px] font-semibold text-gray-700 uppercase tracking-wide mb-1">Recommendations</h4>
+            <ul className="space-y-0.5">
               {intelligence.recommendations.map((rec, i) => (
-                <li key={i} className="flex items-start gap-2">
-                  <span className="text-blue-500 mt-0.5 flex-shrink-0">&#x2713;</span>
-                  <span className="text-sm text-gray-700">{rec}</span>
+                <li key={i} className="flex items-start gap-1.5">
+                  <span className="text-blue-500 flex-shrink-0 text-[10px]">&#x2713;</span>
+                  <span className="text-[10px] text-gray-700">{rec}</span>
                 </li>
               ))}
             </ul>
@@ -532,51 +551,6 @@ function TimelineIntelligenceSection({ dealId, developmentPath }: { dealId?: str
   );
 }
 
-function JurisdictionComparisonSection({ jurisdictions, dataSource }: { jurisdictions: JurisdictionComparison[]; dataSource: 'real' | 'synthetic' }) {
-  return (
-    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-      <div className="bg-gray-50 border-b border-gray-200 px-4 py-3 flex items-center justify-between">
-        <div>
-          <h3 className="text-sm font-semibold text-gray-900">Jurisdiction Comparison</h3>
-          <p className="text-[10px] text-gray-500 mt-0.5">How fast can you break ground in different markets?</p>
-        </div>
-        <DataSourceBadge source={dataSource} count={jurisdictions.length} />
-      </div>
-      <div className="p-4">
-        <div className="overflow-x-auto mb-4">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b-2 border-gray-300">
-                <th className="text-left py-2 px-2 font-semibold text-gray-700 text-[10px] uppercase tracking-wide">Jurisdiction</th>
-                <th className="text-right py-2 px-2 font-medium text-gray-500 text-[10px]">Median TTS</th>
-                <th className="text-center py-2 px-2 font-medium text-gray-500 text-[10px]">Rank</th>
-                <th className="text-center py-2 px-2 font-medium text-gray-500 text-[10px]">Sample</th>
-                <th className="text-right py-2 px-2 font-medium text-gray-500 text-[10px]">Carry Cost Delta</th>
-              </tr>
-            </thead>
-            <tbody>
-              {jurisdictions.map((j) => {
-                const isSubject = j.carryCostDelta === 0 || (j as any).isSubject;
-                return (
-                  <tr key={j.municipality} className={`border-b border-gray-100 ${isSubject ? 'bg-blue-50 border-l-2 border-l-blue-400' : 'hover:bg-gray-50'}`}>
-                    <td className="py-2 px-2 font-medium text-gray-900">{j.municipality}</td>
-                    <td className="py-2 px-2 text-right text-gray-700 font-semibold">{j.medianTts}mo</td>
-                    <td className="py-2 px-2 text-center text-gray-600">#{j.rank}</td>
-                    <td className="py-2 px-2 text-center text-gray-400">{(j as any).sampleSize || ''}</td>
-                    <td className={`py-2 px-2 text-right font-semibold ${j.carryCostDelta < 0 ? 'text-green-600' : j.carryCostDelta > 0 ? 'text-red-600' : 'text-blue-600'}`}>
-                      {j.carryCostDeltaLabel || (isSubject ? 'Subject' : '')}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        <p className="text-[10px] text-gray-400">TTS = Time to Shovel (total pre-construction entitlement timeline)</p>
-      </div>
-    </div>
-  );
-}
 
 export default function TimeToShovelTab({ dealId, deal }: TimeToShovelTabProps = {}) {
   const { development_path, selected_envelope, selectDevelopmentPath } = useZoningModuleStore();
@@ -584,6 +558,9 @@ export default function TimeToShovelTab({ dealId, deal }: TimeToShovelTabProps =
   const [mcData, setMcData] = useState<MonteCarloData | null>(null);
   const [mcLoading, setMcLoading] = useState(false);
   const [mcError, setMcError] = useState<string | null>(null);
+  const [intelligence, setIntelligence] = useState<TimelineIntelligence | null>(null);
+  const [intelligenceLoading, setIntelligenceLoading] = useState(false);
+  const [intelligenceError, setIntelligenceError] = useState<string | null>(null);
   const [benchmarks, setBenchmarks] = useState<MunicipalBenchmark[]>([]);
   const [detailedSteps, setDetailedSteps] = useState<DetailedStep[]>([]);
   const [stepsDataSource, setStepsDataSource] = useState<'real' | 'synthetic'>('synthetic');
@@ -591,15 +568,25 @@ export default function TimeToShovelTab({ dealId, deal }: TimeToShovelTabProps =
   const [totalSampleCount, setTotalSampleCount] = useState(0);
   const [jurisdictions, setJurisdictions] = useState<JurisdictionComparison[]>([]);
   const [jurisdictionDataSource, setJurisdictionDataSource] = useState<'real' | 'synthetic'>('synthetic');
+  const [geographicState, setGeographicState] = useState<string>('GA');
+  const [geographicMunicipality, setGeographicMunicipality] = useState<string>('');
 
   const county = deal?.county || 'Fulton';
-  const state = deal?.state || 'GA';
-  const municipality = deal?.municipality || deal?.city || '';
+  const state = geographicState;
+  const municipality = geographicMunicipality || deal?.municipality || deal?.city || '';
   const unitCount = selected_envelope?.max_units || deal?.unit_count || 0;
   const pathLabel = { by_right: 'By-Right', overlay_bonus: 'Overlay Bonus', variance: 'Variance', rezone: 'Full Rezone' }[development_path || ''] || development_path || 'None';
 
+  // Default to 'by_right' path on first load
+  useEffect(() => {
+    if (!development_path && dealId) {
+      selectDevelopmentPath('by_right' as any, selected_envelope);
+    }
+  }, [dealId]);
+
   const runSimulation = useCallback(async () => {
     if (!dealId || !development_path) return;
+    setMcData(null);
     setMcLoading(true);
     setMcError(null);
     try {
@@ -625,6 +612,46 @@ export default function TimeToShovelTab({ dealId, deal }: TimeToShovelTabProps =
   }, [development_path, runSimulation]);
 
   useEffect(() => {
+    setGeographicState('GA');
+    setGeographicMunicipality('');
+  }, [dealId]);
+
+  useEffect(() => {
+    const fetchGeographicContext = async () => {
+      if (!dealId) return;
+      try {
+        const resp = await apiClient.get(`/api/v1/deals/${dealId}/zoning-confirmation`);
+        if (resp.data?.state) {
+          setGeographicState(resp.data.state);
+        }
+        if (resp.data?.municipality) {
+          setGeographicMunicipality(resp.data.municipality);
+        }
+      } catch {
+        setGeographicState('GA');
+      }
+    };
+
+    const fetchIntelligence = async () => {
+      if (!dealId || !development_path) return;
+      setIntelligenceLoading(true);
+      setIntelligenceError(null);
+      try {
+        const resp = await apiClient.get(`/api/v1/deals/${dealId}/timeline-intelligence`, {
+          params: { path: development_path },
+          timeout: 90000,
+        });
+        setIntelligence(resp.data);
+      } catch (err: any) {
+        setIntelligence(null);
+        setIntelligenceError(err.response?.data?.error || err.message || 'Failed to load intelligence');
+      } finally {
+        setIntelligenceLoading(false);
+      }
+    };
+
+    fetchGeographicContext();
+
     const fetchBenchmarks = async () => {
       try {
         const res = await apiClient.get('/api/v1/benchmark-timeline/benchmarks', { params: { county, state } });
@@ -688,7 +715,8 @@ export default function TimeToShovelTab({ dealId, deal }: TimeToShovelTabProps =
     fetchBenchmarks();
     fetchSteps();
     fetchJurisdictions();
-  }, [county, state, municipality]);
+    fetchIntelligence();
+  }, [county, state, municipality, dealId, development_path]);
 
   if (!dealId) {
     return (
@@ -699,7 +727,7 @@ export default function TimeToShovelTab({ dealId, deal }: TimeToShovelTabProps =
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <DealContextBar
         deal={deal}
         developmentPath={development_path}
@@ -708,22 +736,35 @@ export default function TimeToShovelTab({ dealId, deal }: TimeToShovelTabProps =
         onSelectPath={(pathId) => selectDevelopmentPath(pathId as any, selected_envelope)}
       />
 
-      <MonteCarloSection mcData={mcData} loading={mcLoading} error={mcError} onRerun={runSimulation} pathLabel={pathLabel} />
+      {/* SECTION 1: DEFINITIVE TIMELINE ESTIMATE (ONE ANSWER) */}
+      <TimelineEstimateSection
+        mcData={mcData}
+        loading={mcLoading}
+        error={mcError}
+        onRerun={runSimulation}
+        pathLabel={pathLabel}
+        intelligence={intelligence}
+      />
 
-      <TimelineIntelligenceSection dealId={dealId} developmentPath={development_path} />
-
-      {(benchmarks.length > 0 || detailedSteps.length > 0) && (
-        <MunicipalBenchmarkSection
+      {/* SECTION 2: EVIDENCE BASE (RAW DATA) */}
+      {(benchmarks.length > 0 || detailedSteps.length > 0 || jurisdictions.length > 0) && (
+        <EvidenceBaseSection
           benchmarks={benchmarks}
           detailedSteps={detailedSteps}
           dataSource={stepsDataSource === 'real' || benchmarkDataSource === 'real' ? 'real' : 'synthetic'}
           totalSampleCount={totalSampleCount}
+          jurisdictions={jurisdictions}
+          jurisdictionDataSource={jurisdictionDataSource}
         />
       )}
 
-      {jurisdictions.length > 0 && (
-        <JurisdictionComparisonSection jurisdictions={jurisdictions} dataSource={jurisdictionDataSource} />
-      )}
+      {/* SECTION 3: AI ANALYSIS (QUALITATIVE INSIGHTS) */}
+      <AIAnalysisSection
+        developmentPath={development_path}
+        intelligence={intelligence}
+        intelligenceLoading={intelligenceLoading}
+        intelligenceError={intelligenceError}
+      />
     </div>
   );
 }

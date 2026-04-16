@@ -3,6 +3,7 @@ import { Property } from '../../types';
 import { PropertyCard } from '../property/PropertyCard';
 import { calculateNegotiationPower } from '../../utils/leaseIntel';
 import { api } from '../../services/api.client';
+import { BT } from '@/components/deal/bloomberg-ui';
 
 interface DealPropertiesProps {
   dealId: string;
@@ -13,7 +14,7 @@ export const DealProperties: React.FC<DealPropertiesProps> = ({ dealId }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
-  
+
   // Filters
   const [filters, setFilters] = useState({
     class: '',
@@ -29,7 +30,7 @@ export const DealProperties: React.FC<DealPropertiesProps> = ({ dealId }) => {
   const fetchProperties = async () => {
     setIsLoading(true);
     setError(null);
-    
+
     try {
       const filterParams: any = {};
       if (filters.class) filterParams.class = filters.class;
@@ -63,20 +64,30 @@ export const DealProperties: React.FC<DealPropertiesProps> = ({ dealId }) => {
 
   const hasActiveFilters = Object.values(filters).some(v => v !== '');
 
+  const selectStyle: React.CSSProperties = {
+    background: BT.bg.input,
+    border: `1px solid ${BT.border.medium}`,
+    borderRadius: 0,
+    color: BT.text.primary,
+    fontFamily: BT.font.label,
+    fontSize: '11px',
+    outline: 'none',
+  };
+
   return (
     <div className="h-full flex">
       {/* Property List */}
       <div className="flex-1 flex flex-col">
         {/* Header with filters */}
-        <div className="bg-white border-b border-gray-200 p-6">
+        <div className="p-6" style={{ background: BT.bg.panel, borderBottom: `1px solid ${BT.border.medium}` }}>
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold text-gray-900">
+            <h2 style={{ fontSize: '14px', fontWeight: 700, color: BT.text.primary, fontFamily: BT.font.mono }}>
               Properties in Boundary
             </h2>
             {hasActiveFilters && (
               <button
                 onClick={clearFilters}
-                className="text-sm text-blue-600 hover:text-blue-700"
+                style={{ fontSize: '10px', color: BT.text.cyan, fontFamily: BT.font.mono, background: 'transparent', border: 'none', cursor: 'pointer' }}
               >
                 Clear Filters
               </button>
@@ -86,7 +97,7 @@ export const DealProperties: React.FC<DealPropertiesProps> = ({ dealId }) => {
           {/* Filters */}
           <div className="grid grid-cols-4 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block mb-1" style={{ fontSize: '10px', fontWeight: 500, color: BT.text.secondary, fontFamily: BT.font.label }}>
                 Class
               </label>
               <select
@@ -95,7 +106,8 @@ export const DealProperties: React.FC<DealPropertiesProps> = ({ dealId }) => {
                 value={filters.class}
                 onChange={(e) => handleFilterChange('class', e.target.value)}
                 aria-label="Property class filter"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                className="w-full px-3 py-2"
+                style={selectStyle}
               >
                 <option value="">All Classes</option>
                 <option value="A+">A+</option>
@@ -108,7 +120,7 @@ export const DealProperties: React.FC<DealPropertiesProps> = ({ dealId }) => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block mb-1" style={{ fontSize: '10px', fontWeight: 500, color: BT.text.secondary, fontFamily: BT.font.label }}>
                 Min Rent
               </label>
               <input
@@ -119,12 +131,13 @@ export const DealProperties: React.FC<DealPropertiesProps> = ({ dealId }) => {
                 onChange={(e) => handleFilterChange('minRent', e.target.value)}
                 placeholder="$1000"
                 aria-label="Minimum rent filter"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                className="w-full px-3 py-2"
+                style={selectStyle}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block mb-1" style={{ fontSize: '10px', fontWeight: 500, color: BT.text.secondary, fontFamily: BT.font.label }}>
                 Max Rent
               </label>
               <input
@@ -135,12 +148,13 @@ export const DealProperties: React.FC<DealPropertiesProps> = ({ dealId }) => {
                 onChange={(e) => handleFilterChange('maxRent', e.target.value)}
                 placeholder="$3000"
                 aria-label="Maximum rent filter"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                className="w-full px-3 py-2"
+                style={selectStyle}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block mb-1" style={{ fontSize: '10px', fontWeight: 500, color: BT.text.secondary, fontFamily: BT.font.label }}>
                 Bedrooms
               </label>
               <select
@@ -149,7 +163,8 @@ export const DealProperties: React.FC<DealPropertiesProps> = ({ dealId }) => {
                 value={filters.beds}
                 onChange={(e) => handleFilterChange('beds', e.target.value)}
                 aria-label="Bedrooms filter"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                className="w-full px-3 py-2"
+                style={selectStyle}
               >
                 <option value="">Any</option>
                 <option value="0">Studio</option>
@@ -165,33 +180,34 @@ export const DealProperties: React.FC<DealPropertiesProps> = ({ dealId }) => {
         <div className="flex-1 overflow-y-auto p-6">
           {error ? (
             <div className="text-center py-12">
-              <div className="text-6xl mb-4">⚠️</div>
-              <p className="text-gray-900 font-semibold mb-2">Failed to load properties</p>
-              <p className="text-gray-600 mb-4">{error}</p>
+              <div style={{ fontSize: '48px' }} className="mb-4">⚠️</div>
+              <p style={{ color: BT.text.primary, fontWeight: 600, fontFamily: BT.font.mono, fontSize: '12px', marginBottom: '8px' }}>Failed to load properties</p>
+              <p style={{ color: BT.text.secondary, fontFamily: BT.font.label, fontSize: '11px', marginBottom: '16px' }}>{error}</p>
               <button
                 onClick={fetchProperties}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                className="px-4 py-2"
+                style={{ background: BT.text.cyan, color: BT.bg.terminal, borderRadius: 0, fontFamily: BT.font.mono, fontSize: '10px', fontWeight: 600, border: 'none' }}
               >
                 Try Again
               </button>
             </div>
           ) : isLoading ? (
             <div className="text-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-              <p className="text-gray-600">Loading properties...</p>
+              <div className="animate-spin h-8 w-8 mx-auto mb-4" style={{ borderRadius: '50%', borderBottom: `2px solid ${BT.text.cyan}` }}></div>
+              <p style={{ color: BT.text.secondary, fontFamily: BT.font.label, fontSize: '11px' }}>Loading properties...</p>
             </div>
           ) : properties.length === 0 ? (
             <div className="text-center py-12">
-              <div className="text-6xl mb-4">🏢</div>
-              <p className="text-gray-600 font-semibold mb-2">
-                {hasActiveFilters 
+              <div style={{ fontSize: '48px' }} className="mb-4">🏢</div>
+              <p style={{ color: BT.text.secondary, fontWeight: 600, fontFamily: BT.font.label, fontSize: '11px', marginBottom: '8px' }}>
+                {hasActiveFilters
                   ? 'No properties match your filters'
                   : 'No properties found in this boundary'}
               </p>
               {hasActiveFilters && (
                 <button
                   onClick={clearFilters}
-                  className="text-blue-600 hover:text-blue-700 text-sm"
+                  style={{ color: BT.text.cyan, fontSize: '10px', fontFamily: BT.font.mono, background: 'transparent', border: 'none', cursor: 'pointer' }}
                 >
                   Clear filters to see all properties
                 </button>
@@ -213,13 +229,13 @@ export const DealProperties: React.FC<DealPropertiesProps> = ({ dealId }) => {
 
       {/* Property Detail Sidebar */}
       {selectedProperty && (
-        <div className="w-96 bg-white border-l border-gray-200 overflow-y-auto">
+        <div className="w-96 overflow-y-auto" style={{ background: BT.bg.panel, borderLeft: `1px solid ${BT.border.medium}` }}>
           <div className="p-6">
             <div className="flex items-start justify-between mb-4">
-              <h3 className="text-lg font-bold text-gray-900">Property Details</h3>
+              <h3 style={{ fontSize: '12px', fontWeight: 700, color: BT.text.primary, fontFamily: BT.font.mono }}>Property Details</h3>
               <button
                 onClick={() => setSelectedProperty(null)}
-                className="text-gray-400 hover:text-gray-600"
+                style={{ color: BT.text.muted, background: 'transparent', border: 'none', cursor: 'pointer' }}
               >
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -230,21 +246,21 @@ export const DealProperties: React.FC<DealPropertiesProps> = ({ dealId }) => {
             {/* Property info */}
             <div className="space-y-4">
               <div>
-                <h4 className="text-sm font-medium text-gray-700 mb-1">Address</h4>
-                <p className="text-gray-900">{selectedProperty.address}</p>
+                <h4 style={{ fontSize: '10px', fontWeight: 500, color: BT.text.secondary, fontFamily: BT.font.label, marginBottom: '4px' }}>Address</h4>
+                <p style={{ color: BT.text.primary, fontFamily: BT.font.label, fontSize: '11px' }}>{selectedProperty.address}</p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <h4 className="text-sm font-medium text-gray-700 mb-1">Rent</h4>
-                  <p className="text-xl font-bold text-gray-900">
+                  <h4 style={{ fontSize: '10px', fontWeight: 500, color: BT.text.secondary, fontFamily: BT.font.label, marginBottom: '4px' }}>Rent</h4>
+                  <p style={{ fontSize: '14px', fontWeight: 700, color: BT.text.primary, fontFamily: BT.font.mono }}>
                     ${selectedProperty.rent?.toLocaleString()}/mo
                   </p>
                 </div>
                 {selectedProperty.class && (
                   <div>
-                    <h4 className="text-sm font-medium text-gray-700 mb-1">Class</h4>
-                    <span className="inline-block px-3 py-1 bg-gray-100 rounded-full text-sm font-medium">
+                    <h4 style={{ fontSize: '10px', fontWeight: 500, color: BT.text.secondary, fontFamily: BT.font.label, marginBottom: '4px' }}>Class</h4>
+                    <span className="inline-block px-3 py-1" style={{ background: BT.bg.active, borderRadius: '2px', fontSize: '11px', fontWeight: 500, color: BT.text.primary, fontFamily: BT.font.mono }}>
                       {selectedProperty.class}
                     </span>
                   </div>
@@ -254,42 +270,42 @@ export const DealProperties: React.FC<DealPropertiesProps> = ({ dealId }) => {
               <div className="grid grid-cols-3 gap-4">
                 {selectedProperty.beds && (
                   <div>
-                    <h4 className="text-sm font-medium text-gray-700 mb-1">Beds</h4>
-                    <p className="text-gray-900">{selectedProperty.beds}</p>
+                    <h4 style={{ fontSize: '10px', fontWeight: 500, color: BT.text.secondary, fontFamily: BT.font.label, marginBottom: '4px' }}>Beds</h4>
+                    <p style={{ color: BT.text.primary, fontFamily: BT.font.mono, fontSize: '11px' }}>{selectedProperty.beds}</p>
                   </div>
                 )}
                 {selectedProperty.baths && (
                   <div>
-                    <h4 className="text-sm font-medium text-gray-700 mb-1">Baths</h4>
-                    <p className="text-gray-900">{selectedProperty.baths}</p>
+                    <h4 style={{ fontSize: '10px', fontWeight: 500, color: BT.text.secondary, fontFamily: BT.font.label, marginBottom: '4px' }}>Baths</h4>
+                    <p style={{ color: BT.text.primary, fontFamily: BT.font.mono, fontSize: '11px' }}>{selectedProperty.baths}</p>
                   </div>
                 )}
                 {selectedProperty.sqft && (
                   <div>
-                    <h4 className="text-sm font-medium text-gray-700 mb-1">Sqft</h4>
-                    <p className="text-gray-900">{selectedProperty.sqft}</p>
+                    <h4 style={{ fontSize: '10px', fontWeight: 500, color: BT.text.secondary, fontFamily: BT.font.label, marginBottom: '4px' }}>Sqft</h4>
+                    <p style={{ color: BT.text.primary, fontFamily: BT.font.mono, fontSize: '11px' }}>{selectedProperty.sqft}</p>
                   </div>
                 )}
               </div>
 
               {selectedProperty.yearBuilt && (
                 <div>
-                  <h4 className="text-sm font-medium text-gray-700 mb-1">Year Built</h4>
-                  <p className="text-gray-900">{selectedProperty.yearBuilt}</p>
+                  <h4 style={{ fontSize: '10px', fontWeight: 500, color: BT.text.secondary, fontFamily: BT.font.label, marginBottom: '4px' }}>Year Built</h4>
+                  <p style={{ color: BT.text.primary, fontFamily: BT.font.mono, fontSize: '11px' }}>{selectedProperty.yearBuilt}</p>
                 </div>
               )}
 
               {selectedProperty.comparableScore && (
                 <div>
-                  <h4 className="text-sm font-medium text-gray-700 mb-1">Comparable Score</h4>
+                  <h4 style={{ fontSize: '10px', fontWeight: 500, color: BT.text.secondary, fontFamily: BT.font.label, marginBottom: '4px' }}>Comparable Score</h4>
                   <div className="flex items-center gap-2">
-                    <div className="flex-1 bg-gray-200 rounded-full h-2">
-                      <div 
-                        className="bg-blue-600 h-2 rounded-full" 
-                        style={{ width: `${selectedProperty.comparableScore * 100}%` }}
+                    <div className="flex-1 h-2" style={{ background: BT.bg.active, borderRadius: '1px' }}>
+                      <div
+                        className="h-2"
+                        style={{ width: `${selectedProperty.comparableScore * 100}%`, background: BT.text.cyan, borderRadius: '1px' }}
                       />
                     </div>
-                    <span className="text-sm font-semibold text-blue-600">
+                    <span style={{ fontSize: '11px', fontWeight: 600, color: BT.text.cyan, fontFamily: BT.font.mono }}>
                       {(selectedProperty.comparableScore * 100).toFixed(0)}%
                     </span>
                   </div>
@@ -298,12 +314,13 @@ export const DealProperties: React.FC<DealPropertiesProps> = ({ dealId }) => {
 
               {selectedProperty.amenities && selectedProperty.amenities.length > 0 && (
                 <div>
-                  <h4 className="text-sm font-medium text-gray-700 mb-2">Amenities</h4>
+                  <h4 style={{ fontSize: '10px', fontWeight: 500, color: BT.text.secondary, fontFamily: BT.font.label, marginBottom: '8px' }}>Amenities</h4>
                   <div className="flex flex-wrap gap-2">
                     {selectedProperty.amenities.map((amenity, index) => (
                       <span
                         key={index}
-                        className="px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs"
+                        className="px-2 py-1"
+                        style={{ background: BT.bg.active, color: BT.text.cyan, borderRadius: '2px', fontSize: '10px', fontFamily: BT.font.label }}
                       >
                         {amenity}
                       </span>
@@ -314,48 +331,56 @@ export const DealProperties: React.FC<DealPropertiesProps> = ({ dealId }) => {
 
               {selectedProperty.notes && (
                 <div>
-                  <h4 className="text-sm font-medium text-gray-700 mb-1">Notes</h4>
-                  <p className="text-sm text-gray-600">{selectedProperty.notes}</p>
+                  <h4 style={{ fontSize: '10px', fontWeight: 500, color: BT.text.secondary, fontFamily: BT.font.label, marginBottom: '4px' }}>Notes</h4>
+                  <p style={{ fontSize: '11px', color: BT.text.secondary, fontFamily: BT.font.label }}>{selectedProperty.notes}</p>
                 </div>
               )}
 
               {(selectedProperty.lease_expiration_date || selectedProperty.current_lease_amount) && (
-                <div className="pt-4 border-t border-gray-200">
-                  <h4 className="text-sm font-semibold text-gray-700 mb-3">Lease Intelligence</h4>
+                <div className="pt-4" style={{ borderTop: `1px solid ${BT.border.subtle}` }}>
+                  <h4 style={{ fontSize: '11px', fontWeight: 600, color: BT.text.primary, fontFamily: BT.font.mono, marginBottom: '12px' }}>Lease Intelligence</h4>
                   <div className="space-y-3">
                     {selectedProperty.lease_expiration_date && (
                       <div>
-                        <div className="text-xs text-gray-500">Lease Expiration</div>
-                        <div className="text-sm font-medium text-gray-900">
+                        <div style={{ fontSize: '9px', color: BT.text.muted, fontFamily: BT.font.label }}>Lease Expiration</div>
+                        <div style={{ fontSize: '11px', fontWeight: 500, color: BT.text.primary, fontFamily: BT.font.mono }}>
                           {new Date(selectedProperty.lease_expiration_date).toLocaleDateString()}
                         </div>
                       </div>
                     )}
                     {selectedProperty.lease_start_date && (
                       <div>
-                        <div className="text-xs text-gray-500">Lease Start</div>
-                        <div className="text-sm text-gray-900">
+                        <div style={{ fontSize: '9px', color: BT.text.muted, fontFamily: BT.font.label }}>Lease Start</div>
+                        <div style={{ fontSize: '11px', color: BT.text.primary, fontFamily: BT.font.mono }}>
                           {new Date(selectedProperty.lease_start_date).toLocaleDateString()}
                         </div>
                       </div>
                     )}
                     {selectedProperty.current_lease_amount && (
                       <div>
-                        <div className="text-xs text-gray-500">Current Lease Amount</div>
-                        <div className="text-sm font-medium text-gray-900">
+                        <div style={{ fontSize: '9px', color: BT.text.muted, fontFamily: BT.font.label }}>Current Lease Amount</div>
+                        <div style={{ fontSize: '11px', fontWeight: 500, color: BT.text.primary, fontFamily: BT.font.mono }}>
                           ${selectedProperty.current_lease_amount.toLocaleString()}/mo
                         </div>
                       </div>
                     )}
                     {selectedProperty.renewal_status && (
                       <div>
-                        <div className="text-xs text-gray-500">Renewal Status</div>
-                        <span className={`inline-block px-2 py-0.5 text-xs font-medium rounded-full ${
-                          selectedProperty.renewal_status === 'renewed' ? 'bg-green-100 text-green-800' :
-                          selectedProperty.renewal_status === 'expiring' ? 'bg-red-100 text-red-800' :
-                          selectedProperty.renewal_status === 'month_to_month' ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-gray-100 text-gray-800'
-                        }`}>
+                        <div style={{ fontSize: '9px', color: BT.text.muted, fontFamily: BT.font.label }}>Renewal Status</div>
+                        <span
+                          className="inline-block px-2 py-0.5"
+                          style={{
+                            fontSize: '10px',
+                            fontWeight: 500,
+                            borderRadius: '2px',
+                            fontFamily: BT.font.mono,
+                            background: BT.bg.active,
+                            color: selectedProperty.renewal_status === 'renewed' ? BT.text.green :
+                                   selectedProperty.renewal_status === 'expiring' ? BT.text.red :
+                                   selectedProperty.renewal_status === 'month_to_month' ? BT.text.amber :
+                                   BT.text.secondary,
+                          }}
+                        >
                           {selectedProperty.renewal_status.replace('_', ' ')}
                         </span>
                       </div>
@@ -363,31 +388,29 @@ export const DealProperties: React.FC<DealPropertiesProps> = ({ dealId }) => {
                     {selectedProperty.lease_expiration_date && (() => {
                       const neg = calculateNegotiationPower(selectedProperty);
                       return neg.signal !== 'low' ? (
-                        <div className={`p-3 rounded-lg ${
-                          neg.signal === 'high' ? 'bg-green-50 border border-green-200' : 'bg-yellow-50 border border-yellow-200'
-                        }`}>
-                          <div className={`text-sm font-semibold ${
-                            neg.signal === 'high' ? 'text-green-800' : 'text-yellow-800'
-                          }`}>
+                        <div className="p-3" style={{
+                          borderRadius: 0,
+                          background: BT.bg.panelAlt,
+                          border: `1px solid ${neg.signal === 'high' ? BT.text.green : BT.text.amber}`,
+                        }}>
+                          <div style={{ fontSize: '11px', fontWeight: 600, fontFamily: BT.font.mono, color: neg.signal === 'high' ? BT.text.green : BT.text.amber }}>
                             {neg.signal === 'high' ? 'High' : 'Moderate'} Negotiation Power
                           </div>
-                          <div className={`text-xs mt-1 ${
-                            neg.signal === 'high' ? 'text-green-700' : 'text-yellow-700'
-                          }`}>
+                          <div style={{ fontSize: '10px', marginTop: '4px', fontFamily: BT.font.label, color: neg.signal === 'high' ? BT.text.green : BT.text.amber }}>
                             {neg.reason}
                           </div>
-                          <div className="mt-1 text-xs text-gray-500">
+                          <div style={{ marginTop: '4px', fontSize: '9px', color: BT.text.muted, fontFamily: BT.font.label }}>
                             Score: {neg.score}/100
                           </div>
                         </div>
                       ) : null;
                     })()}
                     {selectedProperty.current_lease_amount && selectedProperty.rent && selectedProperty.current_lease_amount < selectedProperty.rent && (
-                      <div className="p-3 rounded-lg bg-green-50 border border-green-200">
-                        <div className="text-sm font-semibold text-green-800">
+                      <div className="p-3" style={{ borderRadius: 0, background: BT.bg.panelAlt, border: `1px solid ${BT.text.green}` }}>
+                        <div style={{ fontSize: '11px', fontWeight: 600, color: BT.text.green, fontFamily: BT.font.mono }}>
                           Below Market Rent
                         </div>
-                        <div className="text-xs text-green-700 mt-1">
+                        <div style={{ fontSize: '10px', color: BT.text.green, fontFamily: BT.font.label, marginTop: '4px' }}>
                           ${(selectedProperty.rent - selectedProperty.current_lease_amount).toLocaleString()}/mo gap
                           (${((selectedProperty.rent - selectedProperty.current_lease_amount) * 12).toLocaleString()}/yr upside)
                         </div>
@@ -399,11 +422,17 @@ export const DealProperties: React.FC<DealPropertiesProps> = ({ dealId }) => {
             </div>
 
             {/* Actions */}
-            <div className="mt-6 pt-6 border-t border-gray-200 space-y-2">
-              <button className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+            <div className="mt-6 pt-6 space-y-2" style={{ borderTop: `1px solid ${BT.border.subtle}` }}>
+              <button
+                className="w-full px-4 py-2 transition"
+                style={{ background: BT.text.cyan, color: BT.bg.terminal, borderRadius: 0, fontFamily: BT.font.mono, fontSize: '10px', fontWeight: 600, border: 'none' }}
+              >
                 View on Map
               </button>
-              <button className="w-full px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition">
+              <button
+                className="w-full px-4 py-2 transition"
+                style={{ border: `1px solid ${BT.border.medium}`, borderRadius: 0, color: BT.text.secondary, fontFamily: BT.font.mono, fontSize: '10px', background: 'transparent' }}
+              >
                 Add Note
               </button>
             </div>

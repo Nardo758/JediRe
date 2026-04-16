@@ -1,0 +1,809 @@
+# M07 Traffic Engine — Calibration & Fine-Tuning Spec
+
+**Purpose.** Turn the Traffic Engine from a static FDOT-based predictor into a self-calibrating model that learns from every rent roll uploaded to the platform, then lets each deal override with its own actuals. This document is the implementation contract for Claude Code.
+
+**Scope.** Four pillars:
+1. Platform-wide calibration from all rent rolls
+2. Catalog metrics to feed the engine
+3. Factoring / weighting those metrics
+4. Deal-specific calibration in the Deal Capsule
+
+Plus the canonical rent roll + leasing report extraction schema that all four pillars depend on.
+
+---
+
+## 0. Mental Model
+
+The existing three-layer fusion (FDOT Static → FDOT Temporal → Digital Leading) gives you **vehicles per hour** at a property. The gap has always been the last-mile conversion:
+
+```
+vehicles_hr × visibility_rate × seeker_pct × stop_prob = walk_ins_hr
+walk_ins → tours → apps → signed_leases
+```
+
+Every coefficient in that chain (`visibility_rate`, `seeker_pct`, `stop_prob`, `walkin_to_tour`, `tour_to_app`, `app_to_signed`) is currently a **hard-coded default**. That's the calibration surface.
+
+Rent rolls + leasing reports are the ground truth that calibrates those coefficients. One rent roll on its own is noisy; **7,400+ rent rolls across the platform is a training set**.
+
+The architecture is a classic three-layer Bayesian resolution — identical to `LayeredValue<T>`:
+
+| Layer | Source | Updates | Stored In |
+|---|---|---|---|
+| **Baseline** | Catalog defaults (seeded from literature + FDOT studies) | Rarely | `traffic_catalog_defaults` |
+| **Platform** | All rent rolls in the submarket, rolled up | Nightly | `traffic_calibration_factors` |
+| **Deal** | This deal's rent roll + leasing log | On upload | `deal_traffic_overrides` |
+
+Resolution order when `trafficPredictionEngine.ts` runs: **Deal > Platform > Baseline** — same rule as `LayeredValue`.
+
+---
+
+## 1. Pillar 1 — Platform-Wide Calibration from All Rent Rolls
+
+### 1.1 What gets calibrated
+
+Every rent roll upload updates **five coefficient families**, scoped to `(msa, submarket, property_class, vintage_band)`:
+
+| Coefficient | Symbol | What it is | Source |
+|---|---|---|---|
+| Seasonality curve | `season[msa][month]` | Month-of-year signing multiplier (12 values, mean=1.0) | `lease_start_date` histogram |
+| Day-of-week curve | `dow[submarket][day]` | Day-of-week signing multiplier (7 values, mean=1.0) | `lease_start_date` DOW |
+| Walk-in → signed conversion | `conv_walkin_lease` | Point estimate + CI | Traffic log ÷ signed leases |
+| Tour → signed conversion | `conv_tour_lease` | Point estimate + CI | Leasing report |
+| Time-to-lease (days) | `days_to_lease` | Median + P25/P75 | Tour date → lease start date |
+
+**Why scoped.** A luxury high-rise in Miami Beach converts differently than a Class C garden in Lakeland. The engine needs to pull coefficients for the closest match to the subject deal, with graceful fallback:
+
+```
+try: coefficients(msa, submarket, property_class, vintage_band)
+  fallback: coefficients(msa, submarket, property_class, *)
+  fallback: coefficients(msa, *, property_class, *)
+  fallback: coefficients(msa, *, *, *)
+  fallback: baseline defaults
+```
+
+Record the level of match in `match_tier` so downstream confidence (T-10) can discount accordingly.
+
+### 1.2 Update mechanics
+
+**Nightly job** (`trafficCalibrationJob.ts`):
+
+```
+1. Pull all rent_roll_snapshots uploaded in last 24h
+2. For each snapshot:
+   a. Extract lease_events (see Section 5)
+   b. Compute per-property coefficients
+3. Roll up to (msa, submarket, class, vintage) buckets
+4. Bayesian update vs prior:
+   posterior = (prior × n_prior + evidence × n_evidence) / (n_prior + n_evidence)
+5. Write to traffic_calibration_factors with provenance
+6. Snapshot prior state to traffic_calibration_history (versioned)
+```
+
+Key rule: **never overwrite destructively**. Every update is a versioned row. You need this to roll back bad data and to explain why a prediction changed.
+
+### 1.3 Survivor bias guard
+
+From your own learning: *historical signing counts from a single snapshot are survivor-biased for older cohorts.* A lease signed 24 months ago is only visible in the rent roll if that resident is still there.
+
+**Fix:** weight lease_start_date observations by `(1 / survival_probability(months_ago, property_class))`, where survival probability comes from your actual renewal-rate data (computed from diff extractors once you have 2+ snapshots per property).
+
+Until you have enough diff data to compute survival curves, use industry defaults: ~52% year-1 retention, ~65% year-2 retention for Class B multifamily. Flag these as `calibration_source: "default"` so the UI can show low confidence.
+
+### 1.4 Kafka events
+
+Publish on update so downstream modules react:
+
+```
+traffic.calibration.updated {
+  scope: { msa, submarket, class, vintage },
+  coefficients_changed: [...],
+  delta_magnitude: 0.14,
+  n_evidence_added: 47
+}
+```
+
+M08 Strategy Arbitrage, M09 ProForma, M25 JEDI Score all subscribe.
+
+### 1.5 Annual analysis window
+
+Monthly or quarterly windows miss three things that matter for traffic:
+- **Full seasonality cycle** — Florida's snowbird surge Oct–Apr vs summer dip needs 12 months to render
+- **Lease-term cycle** — a 12-month lease signed last July only shows renewal behavior next July
+- **Turnover rhythm** — organic turnover peaks May–August for family movers; annual captures both the spike and the trough
+
+**Primary window: trailing 12 months (TTM).** All calibration coefficients compute over TTM by default.
+
+**Comparison window: prior 12 months (PYTM).** Everything gets a YoY delta — signing velocity YoY, renewal rate YoY, rent-per-unit-type YoY. These deltas are what flow into T-07 trajectory, not raw month-over-month noise.
+
+**Stability window: trailing 24 months (TTM-24).** For coefficients where sample size is marginal (new submarkets, small property classes), use TTM-24 to double the evidence before blending. Flag the longer window in `calibration_source` so the UI shows it.
+
+**Cohort analysis.** Every lease gets tagged with its signing cohort (`lease_start_month`). Cohorts are tracked across annual boundaries to compute:
+- Cohort renewal rate (what % of Jan 2024 signings renewed in Jan 2025)
+- Cohort rent growth (what those units rent for now vs then)
+- Cohort survival curve (what % of original cohort still in place)
+
+Expected Values (EVs) for each metric are computed over the full annual window with explicit distribution shape — not just point estimates. Store `{p10, p25, median, p75, p90}` for:
+- Walk-ins per week (seasonality-adjusted)
+- Leases signed per month
+- Absorption rate
+- Renewal rate
+- Trade-out percentage
+
+These percentile bands feed the confidence_low / confidence_high used everywhere downstream (ProForma sensitivity, JEDI Score confidence, Strategy Arbitrage Monte Carlo).
+
+---
+
+## 2. Pillar 2 — Which Catalog Metrics to Apply
+
+Your `correlation-metrics-engine.jsx` has 20+ pairings across 5 tiers. **Not all of them should feed traffic predictions** — many are lagging indicators (like rent growth, occupancy) that the traffic engine should *predict*, not consume. Feeding lagging metrics back in creates circular reasoning and overconfidence.
+
+Filter rule: a metric belongs in the traffic engine only if it satisfies **all three**:
+- r ≥ 0.45 with traffic or a direct traffic input
+- Leads traffic by ≥ 1 month OR is contemporaneous with demand
+- Available at submarket granularity or finer
+
+### 2.1 The curated list
+
+**Layer A — Leading (feed T-07 Trajectory + forward calibration)**
+
+| Metric | Source | Lead Time | Correlation Target | Priority |
+|---|---|---|---|---|
+| Search Momentum (QoQ) | SpyFu + Google Trends | 2–6 mo | → AADT, rent growth | P0 |
+| Business Formation Velocity | Census BFS by NAICS | 3–6 mo | → Search, then traffic | P0 |
+| Permit Velocity (residential) | County GIS | 18–24 mo | → Supply (dampener) | P1 |
+| Wage Growth YoY | BLS QCEW | 0–3 mo | → Rent ceiling | P0 |
+| Job Postings Density | Scraped / 3rd-party | 1–3 mo | → Search momentum | P2 |
+
+**Layer B — Coincident (feed T-02 Physical + T-03 Digital composites)**
+
+| Metric | Source | Correlation Target | Priority |
+|---|---|---|---|
+| FDOT AADT YoY | FDOT continuous stations | → Physical traffic | P0 |
+| Digital Traffic Share | SpyFu domain-level | → T-03 | P0 |
+| Google Trends Interest | pytrends | → Digital demand | P0 |
+| Google Reviews volume + velocity | Google Places | → Neighborhood demand | P1 |
+| Google Reviews sentiment | NLP on review text | → Conversion quality | P1 |
+| Transit ridership (where available) | FTA | → Walk-in generator | P2 |
+
+**Layer C — Supply-side dampers (scale down predicted conversion when stressed)**
+
+| Metric | Source | Effect on Traffic | Priority |
+|---|---|---|---|
+| Pipeline as % of existing | M04 Supply Pipeline | Suppresses conversion when >12% | P0 |
+| Quarterly deliveries | M04 | Drives concessions → conversion resistance | P0 |
+| Concession intensity (trade area) | Apartments.com scraper | Inverse conversion multiplier | P1 |
+| Months of Supply | M04 | >9 = bear signal | P1 |
+
+**Do NOT feed in** (these are outputs, not inputs):
+- Physical/economic occupancy — this is what traffic predicts
+- Rent growth — output of demand, not an input to traffic
+- RevPAU — same
+- JEDI Score — composite output
+- Cap rates — financial, not demand
+
+### 2.2 Data availability guard
+
+Every input metric carries a `freshness_sla` and `coverage_threshold`. If fewer than 60% of properties in a submarket have the metric within the SLA window, the engine **drops that input and redistributes the weight proportionally** rather than imputing. Log the drop in the prediction's audit trail.
+
+---
+
+## 3. Pillar 3 — How to Factor the Metrics
+
+Three distinct factoring mechanisms, each doing different work:
+
+### 3.1 Trajectory signal (T-07) — weighted sum
+
+Direct weighted combination, because these are all directional signals:
+
+```ts
+trajectory_raw =
+    0.35 × search_momentum_qoq
+  + 0.20 × business_formation_velocity
+  + 0.20 × aadt_yoy
+  + 0.15 × wage_growth_yoy
+  + 0.10 × seasonal_deviation
+
+// Then convert to {-1, 0, +1} band with thresholds:
+// > +0.15 : DEMAND SURGE
+// +0.05 to +0.15 : GROWING
+// -0.05 to +0.05 : STABLE
+// -0.15 to -0.05 : SOFTENING
+// < -0.15 : DECLINING
+```
+
+Weights come from the correlation strengths you documented. Store weights in config, not code, so the admin panel can retrain them.
+
+### 3.2 Conversion coefficients — Bayesian hierarchical update
+
+The walk-in-to-lease chain isn't additive; it's multiplicative and probabilistic. Use Bayesian updating:
+
+```
+posterior_conv = (
+    α_catalog × catalog_default
+  + α_platform × platform_submarket_value
+  + α_deal × deal_rent_roll_value
+) / (α_catalog + α_platform + α_deal)
+
+// α values are pseudo-counts (sample sizes):
+//   α_catalog = 100 (prior weight)
+//   α_platform = n_rent_rolls_in_bucket
+//   α_deal = n_signed_leases_in_this_deal
+```
+
+This cleanly handles all three cases:
+- **New submarket, no data:** falls back to catalog (α_platform=0, α_deal=0)
+- **Active submarket, new deal:** blends catalog + platform
+- **Active submarket, deal with long leasing history:** deal dominates as α_deal grows
+
+### 3.3 Supply-side dampers — multiplicative modifiers
+
+Applied AFTER the base walk-in prediction:
+
+```ts
+supply_damper =
+  1.0 
+  - 0.015 × max(0, pipeline_pct - 8)           // -1.5% per pt above 8%
+  - 0.02  × max(0, concession_intensity - 0.05) // -2% per pt above 5%
+  - 0.01  × max(0, months_of_supply - 6)        // -1% per mo above 6
+
+predicted_walkins = base_walkins × supply_damper
+```
+
+Floor at 0.5 (never less than 50% of base prediction, even in severe oversupply — some deals always lease).
+
+### 3.4 Weight retraining
+
+Monthly job compares predictions vs actuals (where rent rolls give us ground truth). Gradient descent on weights, constrained so weights stay interpretable (no coefficient can go negative, sum of L1 weights stays ~1.0).
+
+Store each retraining run in `traffic_weight_history` with R² on held-out validation set. Admin panel shows the drift.
+
+---
+
+## 4. Pillar 4 — Deal-Specific Calibration in Deal Capsule
+
+### 4.1 The three-layer resolution on the Deal page
+
+When a deal has its own rent roll + leasing report, the F10 Traffic tab shows **three stacked columns** for each coefficient:
+
+```
+┌─────────────────────┬──────────┬──────────┬──────────┐
+│ COEFFICIENT         │ BASELINE │ PLATFORM │ THIS DEAL│
+├─────────────────────┼──────────┼──────────┼──────────┤
+│ Walk-in → signed    │ 4.2%     │ 3.8%     │ 5.1%     │
+│ Tour → signed       │ 24%      │ 22%      │ 31%      │
+│ Days to lease       │ 18       │ 21       │ 14       │
+│ Summer seasonality  │ 0.91     │ 0.88     │ 0.94     │
+└─────────────────────┴──────────┴──────────┴──────────┘
+                                  ^effective values
+                                  resolved via Bayesian blend
+```
+
+Collision analysis panel fires when deal value diverges from platform by >1.5 std dev:
+
+> ⚠ **This asset's walk-in conversion is 34% better than submarket peers.**  
+> Possible reasons: above-average leasing team, superior curb appeal, pricing below market. Review before projecting into ProForma.
+
+### 4.2 The DealContext payload addition
+
+```ts
+dealContext.traffic = {
+  mode: "STABILIZED" | "LEASE_UP" | "REDEVELOPMENT",
+  startingState: StartingState,  // see Section 4.4 for shape per mode
+  coefficients: {
+    conv_walkin_lease: LayeredValue<number>,
+    conv_tour_lease: LayeredValue<number>,
+    days_to_lease: LayeredValue<number>,
+    seasonality: LayeredValue<number[12]>,
+    dow: LayeredValue<number[7]>,
+    renewal_rate: LayeredValue<number>,
+    renewal_rate_by_unit_type: LayeredValue<Record<string, number>>,
+    absorption_curve: LayeredValue<number[24]>  // only populated in LEASE_UP mode
+  },
+  prediction: TrafficPrediction,  // mode-shaped output from Section 4.4
+  confidence_band: { low, mid, high },
+  calibration_source: {
+    msa_match: bool, submarket_match: bool, class_match: bool, vintage_match: bool,
+    n_peer_properties: number,
+    n_deal_observations: number,
+    window: "TTM" | "TTM_24"
+  },
+  unit_type_breakdown: {
+    [unit_type: string]: {
+      signing_velocity: number,
+      renewal_rate: number,
+      rent_growth_yoy: number,
+      days_vacant_median: number
+    }
+  },
+  expiration_waterfall: number[],  // 24 months forward
+  t04_quadrant: "Hidden Gem" | "Validated Winner" | "Hype Check" | "Dead Zone"
+}
+```
+
+This then flows into M09 ProForma (vacancy ramp, lease-up period) and M25 JEDI Score.
+
+### 4.3 Editing & provenance
+
+Following your existing `LayeredValue<T>` pattern: users can override any resolved coefficient. Override is tagged `user` layer, reason field required (e.g., "new leasing team starting Q3"), flows through `dealStore`, cascades to ProForma. The override is **ephemeral** — doesn't pollute the platform calibration.
+
+### 4.4 Starting State Resolution — Stabilized vs Lease-Up vs Redevelopment
+
+This is the engine's most important branch point. The Traffic Engine cannot produce a useful prediction without knowing **where the asset starts**. A prediction of "you'll sign 16 leases per week" means something completely different for a 300-unit property sitting at 94% occupancy versus a 300-unit property that just got its CO.
+
+**Mode is set on the deal, resolved from Deal Capsule type:**
+
+| Deal Capsule Type | Default Mode | Can Override? |
+|---|---|---|
+| Existing | Stabilized | Yes → Redevelopment (if value-add with unit downtime) |
+| Development | Lease-Up | No |
+| Redevelopment | Redevelopment | Yes → Stabilized (if cosmetic-only, no unit downtime) |
+
+**Three modes, three different prediction behaviors:**
+
+#### Stabilized Mode (existing property, in place)
+
+- **Starting state** = current occupancy from rent roll (e.g., 240 of 300 units occupied = 80%)
+- **What the engine predicts:** marginal traffic needed to maintain/improve from here
+  - **Fill delta:** leases needed to reach stabilized target (usually 94–95% depending on submarket norms)
+  - **Churn replacement:** leases needed to replace annual turnover, derived from `1 − renewal_rate` × occupied_units
+  - **Expiration waterfall timing:** when the `lease_end_date` histogram tells you heavy-turnover months are coming
+- **Output shape:** 
+  - "You need X leases/month to maintain stabilized occupancy, Y leases/month to reach target by month N"
+  - Current rent roll = Year 0 of ProForma (M09 reads actuals, doesn't forecast a lease-up)
+- **Key inputs from rent roll:** current occupancy, renewal rate, expiration waterfall, current rent by unit type
+
+#### Lease-Up Mode (development / new construction)
+
+- **Starting state** = pre-leased units at CO (often 0, sometimes 5–15% from pre-leasing campaigns)
+- **What the engine predicts:** full absorption curve from CO to stabilization
+  - **Absorption rate** pulled from platform calibration — median lease-up pace for `(submarket, class, size_band)` peer set
+  - **Seasonality-adjusted curve** — a property delivering in November absorbs slower than one delivering in February in most FL markets
+  - **Concession lift** — early months almost always carry heavier concessions; factor into effective rent projection
+  - **Months-to-stabilization** — P25/P50/P75 from peer absorption histories
+- **Output shape:**
+  - Month-by-month absorption schedule: pre-leased → 20% → 50% → 80% → stabilized
+  - Concession intensity curve (typically front-loaded)
+  - Months-to-stabilization with confidence band
+  - Feeds M09 ProForma as a full lease-up model, not a Year 0 actual
+- **Key inputs:** unit count, unit mix, submarket peer absorption, seasonality of delivery month, pre-leasing campaign results (if any)
+
+#### Redevelopment Mode (value-add with unit downtime)
+
+- **Starting state** = current occupancy (like Stabilized) BUT with a renovation schedule that phases units offline
+- **What the engine predicts:** piecewise behavior
+  - **Occupied units** follow Stabilized Mode logic (churn replacement, renewal rate)
+  - **Renovated units** transition Stabilized → Offline → Mini Lease-Up → Stabilized
+  - Each renovation phase is a mini lease-up, typically with premium rent positioning
+- **Output shape:**
+  - Phased occupancy curve (dips during renovation, recovers with premium rents)
+  - Premium capture rate — what % of renovated units achieve the post-reno pro forma rent
+  - Total time to fully-renovated stabilization
+- **Key inputs:** current rent roll, renovation schedule from Deal Capsule, per-unit downtime estimate, submarket premium benchmarks
+
+#### Mode resolution logic
+
+```ts
+function resolveStartingState(deal: Deal, rentRoll: RentRollSnapshot | null): StartingState {
+  const mode = deal.capsule.type === "Development" ? "LEASE_UP"
+             : deal.capsule.type === "Redevelopment" ? "REDEVELOPMENT"
+             : "STABILIZED";
+
+  if (mode === "LEASE_UP") {
+    return {
+      mode,
+      startingOccupancy: deal.capsule.preLeasedUnits ?? 0,
+      totalUnits: deal.capsule.unitCount,
+      stabilizationTarget: peerStabilizationRate(deal.submarket, deal.propertyClass),
+      absorptionCurve: platformAbsorptionBenchmark(deal.submarket, deal.propertyClass, deal.sizeBand),
+      deliveryMonth: deal.capsule.expectedCODate,
+      confidence: calculateConfidence(peerCount, dataFreshness)
+    };
+  }
+
+  // STABILIZED and REDEVELOPMENT both need a rent roll to anchor
+  if (!rentRoll) {
+    return { mode, error: "RENT_ROLL_REQUIRED", canProceed: false };
+  }
+
+  const currentState = {
+    occupiedUnits: countByStatus(rentRoll, "OCCUPIED"),
+    vacantReady: countByStatus(rentRoll, "VACANT_READY"),
+    vacantNotReady: countByStatus(rentRoll, "VACANT_NOT_READY"),
+    notice: countByStatus(rentRoll, "NOTICE"),
+    renewalRate: computeRenewalRate(rentRoll, deal.property),
+    expirationWaterfall: computeExpirationWaterfall(rentRoll),
+    rentByUnitType: computeRentByUnitType(rentRoll)
+  };
+
+  if (mode === "STABILIZED") {
+    return {
+      mode,
+      ...currentState,
+      requiredChurnReplacement: currentState.occupiedUnits * (1 - currentState.renewalRate),
+      fillDelta: Math.max(0, stabilizationTarget(deal) - currentState.occupiedUnits)
+    };
+  }
+
+  // REDEVELOPMENT
+  return {
+    mode,
+    ...currentState,
+    renovationSchedule: deal.capsule.renovationSchedule,
+    unitsOfflinePerPhase: deal.capsule.renovationSchedule.map(p => p.unitCount),
+    premiumTarget: deal.capsule.postRenoRentTarget
+  };
+}
+```
+
+#### What this means for the prediction output
+
+The engine's public output gets a `mode` field and mode-appropriate payload:
+
+```ts
+type TrafficPrediction =
+  | { mode: "STABILIZED"; currentOccupancy: number; 
+      monthlyChurnReplacement: number; monthsToTarget: number | null;
+      expirationRisk: ExpirationRiskCurve; }
+  | { mode: "LEASE_UP"; monthlyAbsorption: AbsorptionCurve; 
+      monthsToStabilization: { p25, p50, p75 }; 
+      concessionIntensityCurve: number[]; }
+  | { mode: "REDEVELOPMENT"; phases: RenovationPhase[]; 
+      blendedOccupancyCurve: number[]; premiumCaptureRate: number; };
+```
+
+Downstream modules (M09 ProForma especially) must handle all three shapes. This is a breaking API change from the current engine — schedule it carefully in the build order.
+
+---
+
+## 5. Rent Roll + Leasing Report — Extraction Schema
+
+This is the data contract. Everything above depends on reliably pulling these fields from uploaded files.
+
+### 5.1 Rent Roll — required fields
+
+Standard rent rolls (Yardi, RealPage OneSite, Entrata, AppFolio, ResMan exports) contain these. Build extractors to a **normalized schema** regardless of source format.
+
+| Field | Type | Used For | Notes |
+|---|---|---|---|
+| `unit_number` | string | Deduping | Primary key within property |
+| `unit_type` | string | Mix analysis | "1BR/1BA", "2BR/2BA", etc. |
+| `sqft` | int | PSF calcs | |
+| `floor` / `building` | string | Premium analysis | |
+| `status` | enum | Occupancy, pipeline | OCCUPIED / VACANT_READY / VACANT_NOT_READY / NOTICE / MODEL / DOWN / ADMIN |
+| `resident_name` | string (hashed) | Diff extractor dedup | Hash, don't store PII |
+| `lease_start_date` | date | **Signing velocity, seasonality, DOW** | **Critical field** |
+| `lease_end_date` | date | Expiration waterfall | |
+| `move_in_date` | date | Downtime, time-to-occupy | |
+| `move_out_date` | date | (if notice/future vacate) | |
+| `market_rent` | decimal | LTL, rent position | |
+| `effective_rent` | decimal | Actual revenue | = market_rent − concession_amortized |
+| `concession_amount` | decimal | Concession intensity | |
+| `concession_type` | enum | | FREE_MONTHS / DOLLAR_OFF / DEPOSIT_WAIVED / OTHER |
+| `concession_term_months` | int | Amortize | |
+| `deposit` | decimal | | |
+| `pet_rent` | decimal | Ancillary breakout | |
+| `parking_fee` | decimal | Ancillary breakout | |
+| `utility_reimbursement` | decimal | RUBS analysis | |
+| `days_vacant` | int | Downtime | If status = VACANT_* |
+| `prior_lease_rent` | decimal | Trade-out (if renewal) | Sometimes in "previous rent" column |
+| `lease_term_months` | int | Renewal risk | |
+| `renewal_flag` | bool | Retention rate | |
+
+### 5.2 Rent Roll — derived fields (computed on ingest)
+
+| Derived | Formula |
+|---|---|
+| Loss-to-lease | `Σ(market_rent - effective_rent) / Σ(market_rent)` |
+| Physical occupancy | `count(OCCUPIED) / total_units` |
+| Economic occupancy | `Σ(effective_rent of OCCUPIED) / Σ(market_rent of all)` |
+| Concession intensity | `Σ(concession_amortized) / Σ(potential_gross_rent)` |
+| Lease expiration waterfall | Histogram of `lease_end_date` by month, forward 24 mo |
+| Signing velocity curve | Histogram of `lease_start_date` by month, backward 24 mo |
+
+### 5.3 Leasing Report / Traffic Log — required fields
+
+Less standardized than rent rolls. Supported formats: Knock, Funnel, Resite, RealPage ILM, Entrata CRM, plus a flexible CSV mapper for operators who export custom spreadsheets.
+
+| Field | Type | Used For |
+|---|---|---|
+| `event_date` | datetime | Time series |
+| `event_type` | enum | GUEST_CARD / TOUR_SCHEDULED / TOUR_COMPLETED / APP_STARTED / APP_SUBMITTED / APP_APPROVED / APP_DENIED / LEASE_SIGNED / CANCELLATION |
+| `source` | enum | APARTMENTS_COM / ZILLOW / RENT / GOOGLE / WALKIN / REFERRAL / DRIVE_BY / REPEAT / OTHER |
+| `unit_interest` | string | Which unit they wanted (if any) |
+| `prospect_id` | string (hashed) | Funnel tracking |
+| `assigned_agent` | string | Agent-level conversion (optional) |
+| `outcome_date` | datetime | For funnel timing |
+| `denial_reason` | enum | CREDIT / INCOME / RENTAL_HISTORY / PET / OTHER |
+
+### 5.4 Derived leasing metrics
+
+**Single-snapshot (activate immediately):**
+- Traffic by source (last 30/90 days)
+- Tour-to-app rate
+- App-to-approval rate
+- App-to-signed rate (walk-in through lease)
+- Source-to-signed rate (for marketing spend optimization)
+- Average time per funnel stage
+
+**Multi-snapshot (diff extractors, activate once you have two or more):**
+- True signing velocity (new move-ins between snapshots, not just "lease start date in this window")
+- Cancellation rate (signed but didn't move in)
+- Actual downtime (move-out date → next move-in date for same unit)
+- Trade-out rate (new lease rent vs prior lease rent, same unit)
+- Renewal rate (lease end approaching → renewal signed)
+- Net absorption (move-ins − move-outs)
+
+### 5.5 Extractor architecture
+
+```
+upload (PDF/XLSX/CSV)
+  → format_detector.service.ts         (Yardi vs RealPage vs Entrata vs generic)
+  → field_mapper.service.ts            (normalize column names)
+  → rent_roll_parser.service.ts        (extract rows → normalized schema)
+  → rent_roll_validator.service.ts     (sanity checks: no lease_start > today, etc.)
+  → PostgreSQL: rent_roll_snapshots + lease_events
+  → Kafka: rent_roll.ingested event
+  → Triggers: trafficCalibrationJob (if we just crossed threshold for this deal)
+             m22PostCloseUpdate (if this is an owned asset)
+             dealStoreUpdate (if this is active deal)
+```
+
+Store the **original file** in S3 and the **parsed JSON** in Postgres. Never lose the source — operators will dispute extractions and you need to show your work.
+
+### 5.6 Confidence flags per extraction
+
+Every extracted row carries:
+```ts
+{
+  extraction_confidence: 0.0 - 1.0,
+  extraction_method: "structured" | "ocr" | "fuzzy",
+  human_review_needed: bool,
+  original_row_ref: "page_3_row_47"
+}
+```
+
+Rows below 0.85 confidence get flagged for review before they feed calibration.
+
+### 5.7 Monthly signing velocity (derived)
+
+The rent roll's `lease_start_date` column is effectively a signing log. Group and count:
+
+```
+signings_by_month = lease_events
+  .filter(e => e.lease_start_date >= today - 24_months)
+  .groupBy(month_of(e.lease_start_date))
+  .count()
+```
+
+**Outputs:**
+- Raw monthly signing count (24-month history)
+- Seasonality-normalized signing velocity: `raw / msa_seasonality_factor[month]`
+- YoY signing count delta (TTM vs PYTM)
+- Signing velocity by unit type (group additionally by `unit_type`)
+- Peak signing month / trough signing month for this property
+
+**Caveats:**
+- Survivor-biased for older cohorts (see 1.3). Apply survival weighting.
+- Cancellations don't appear here — a signed lease that fell through before move-in is invisible in a rent roll. Leasing report fills this gap once ingested.
+
+### 5.8 Renewal rate calculation
+
+**Single-snapshot proxy** (works immediately):
+```
+// A resident whose lease_start_date is well before the property's "natural lease term"
+// ago, and who is currently occupied, has likely renewed at least once.
+renewal_proxy_rate = 
+  count(units where lease_start < today - 13_months AND status = OCCUPIED) 
+  / count(units where move_in < today - 13_months)
+```
+This is a rough proxy — captures "stayed past first lease term" but doesn't distinguish between a signed renewal and a month-to-month holdover. Flag as `renewal_rate_source: "single_snapshot_proxy"`.
+
+**True renewal rate** (requires 2+ snapshots):
+```
+for each unit in snapshot_T where lease_end_date fell between snapshot_T and snapshot_T+N:
+  if same resident_hash in snapshot_T+N with new lease_end_date:
+    counted_as_renewed
+  else:
+    counted_as_turnover
+
+renewal_rate = counted_as_renewed / (counted_as_renewed + counted_as_turnover)
+```
+
+Stratify by:
+- Unit type (1BR renewals vs 3BR renewals often differ materially)
+- Rent tier within the property (premium units vs garden-level)
+- Lease cohort (did the 2023 vintage renew differently than 2024?)
+
+Store as distribution, not point estimate: `{p25, median, p75}` across peer set.
+
+### 5.9 Unit type trends
+
+Every metric in the engine should be computable per `unit_type`, not just property-wide. Unit type composition drives risk in ways property-wide averages hide.
+
+**Per unit type, compute over TTM:**
+- Signing velocity (leases/month by type)
+- Days vacant between move-out and next signing (downtime by type)
+- Rent growth YoY (effective rent this year vs last year, same unit type)
+- Concession intensity (are 3BRs carrying heavier concessions than 1BRs?)
+- Renewal rate (do studios churn faster?)
+- Price elasticity (did rent changes move signing velocity?)
+
+**Signals this surfaces:**
+- 1BRs signing in 8 days, 3BRs sitting 40 days → mix problem, not a demand problem
+- Studios renewing at 35%, 2BRs at 68% → the studio tenant base is transient
+- Unit type with flat rent growth vs property-wide +4% → segment-specific softness
+- Concession intensity diverging across unit types → pricing inefficiency
+
+Feed these as filters on the Deal Capsule's rent-roll view and as inputs to M03 Dev Capacity when planning unit mix for a Development deal.
+
+### 5.10 Absorption schedule derivation
+
+For Lease-Up Mode (Section 4.4), the platform needs absorption benchmarks. Every rent roll from a property in its own lease-up phase becomes a data point:
+
+```
+absorption_curve[submarket][class][size_band] = 
+  median across peer properties of:
+    cumulative_occupancy(months_since_CO) for months 1..24
+```
+
+**Per-property absorption extraction (only applies if we have CO date or first-lease signal):**
+- Infer CO month from earliest `move_in_date` clustering (first big move-in cluster)
+- Track cumulative occupied-unit count by month_since_CO
+- Normalize by total unit count → occupancy percentage by month
+
+**Output per peer set:**
+- Median absorption curve: month_0 → month_24 (occupancy %)
+- P25 and P75 bands around median
+- Typical concession intensity by month (front-loaded pattern)
+- Typical months-to-80%, months-to-90%, months-to-stabilization
+
+**How it's used:**
+- Lease-Up Mode engine reads the curve for the subject deal's `(submarket, class, size_band)`
+- Applies seasonality adjustment based on CO month
+- Applies trajectory adjustment based on T-07 signal for the submarket
+- Outputs a deal-specific absorption schedule
+
+### 5.11 Expiration waterfall
+
+The `lease_end_date` histogram looking forward 24 months tells you when turnover pressure hits. Critical for Stabilized Mode predictions.
+
+```
+expiration_waterfall[month] = count(units where lease_end_date falls in month)
+```
+
+**Derived metrics:**
+- Monthly turnover exposure (% of total units expiring each month)
+- Turnover concentration risk — is 40% of the roll expiring in a single quarter?
+- Required signing rate to maintain occupancy month-by-month
+
+Feeds Stabilized Mode's churn replacement calculation directly.
+
+### 5.12 Trade-out calculation (requires 2+ snapshots or prior_lease_rent field)
+
+```
+// When a unit turns over between snapshots:
+trade_out = (new_lease_rent - prior_lease_rent) / prior_lease_rent
+```
+
+Aggregate to property-level and submarket-level:
+- Median trade-out for new signings (rent vs prior tenant)
+- Median trade-out for renewals (rent vs prior term)
+- Spread between new-signing and renewal trade-outs (tells you how much pricing discipline is on the table)
+
+---
+
+## 6. Database Schema Additions
+
+Three new tables (migrations needed):
+
+```sql
+-- Platform calibration store
+CREATE TABLE traffic_calibration_factors (
+  id BIGSERIAL PRIMARY KEY,
+  msa TEXT NOT NULL,
+  submarket TEXT,
+  property_class TEXT,
+  vintage_band TEXT,
+  coefficient_name TEXT NOT NULL,
+  value NUMERIC NOT NULL,
+  confidence_low NUMERIC,
+  confidence_high NUMERIC,
+  n_evidence INT NOT NULL,
+  last_updated TIMESTAMPTZ NOT NULL,
+  version INT NOT NULL,
+  UNIQUE(msa, submarket, property_class, vintage_band, coefficient_name, version)
+);
+
+-- Historical log (for rollback and drift analysis)
+CREATE TABLE traffic_calibration_history (
+  LIKE traffic_calibration_factors INCLUDING ALL,
+  superseded_at TIMESTAMPTZ NOT NULL
+);
+
+-- Rent roll snapshots (one row per uploaded file)
+CREATE TABLE rent_roll_snapshots (
+  id BIGSERIAL PRIMARY KEY,
+  property_id BIGINT NOT NULL,
+  deal_id BIGINT,
+  snapshot_date DATE NOT NULL,
+  uploaded_at TIMESTAMPTZ NOT NULL,
+  uploaded_by BIGINT,
+  source_file_s3 TEXT,
+  parser_version TEXT,
+  row_count INT,
+  extraction_confidence_avg NUMERIC
+);
+
+-- Normalized lease events (one row per unit × snapshot)
+CREATE TABLE lease_events (
+  id BIGSERIAL PRIMARY KEY,
+  snapshot_id BIGINT REFERENCES rent_roll_snapshots(id),
+  unit_number TEXT NOT NULL,
+  unit_type TEXT,
+  status TEXT,
+  lease_start_date DATE,
+  lease_end_date DATE,
+  move_in_date DATE,
+  market_rent NUMERIC,
+  effective_rent NUMERIC,
+  concession_amount NUMERIC,
+  -- ... full schema from Section 5.1
+  extraction_confidence NUMERIC
+);
+
+-- Leasing traffic events
+CREATE TABLE leasing_events (
+  id BIGSERIAL PRIMARY KEY,
+  property_id BIGINT NOT NULL,
+  event_date TIMESTAMPTZ NOT NULL,
+  event_type TEXT NOT NULL,
+  source TEXT,
+  prospect_id_hash TEXT,
+  -- ... full schema from Section 5.3
+);
+```
+
+---
+
+## 7. Build Order (Claude Code session scoping)
+
+**Session 1 — Foundation (2–3 hrs).** Migrations for all 4 new tables + `LayeredValue<TrafficCoefficients>` type + stub services. Include `deal_mode` enum column on deals table.
+
+**Session 2 — Rent roll parser, core fields (4–5 hrs).** `format_detector` → `field_mapper` → `rent_roll_parser` for Yardi + one other format. Ingest one test rent roll end-to-end to `lease_events`. Fields per Section 5.1 only — defer derivations to Session 3.
+
+**Session 3 — Rent roll derivations (4 hrs).** Implement 5.7 (monthly signings), 5.8 (renewal rate, single-snapshot proxy only), 5.9 (unit type trends), 5.11 (expiration waterfall). These are all single-snapshot; diff extractors wait for Session 8.
+
+**Session 4 — Leasing report parser (3–4 hrs).** Knock and Funnel first. Same pipeline pattern as rent roll.
+
+**Session 5 — Platform calibration job, annual windowing (4 hrs).** Nightly rollup with TTM window, PYTM comparison, Bayesian update. Versioned history. Scope to `(msa, submarket, class, vintage)`.
+
+**Session 6 — Starting State resolution + mode logic (4 hrs).** Implement `resolveStartingState()` from Section 4.4. Three mode branches. Update `trafficPredictionEngine.ts` to dispatch on mode. Breaking API change — coordinate with M09 ProForma team before deploying.
+
+**Session 7 — Absorption benchmarks for Lease-Up Mode (3 hrs).** Implement 5.10. Build platform-level absorption curves by `(submarket, class, size_band)` from historical rent roll data. Seasonality overlay.
+
+**Session 8 — Diff extractors (4 hrs).** True renewal rate (5.8), trade-out (5.12), actual downtime. Requires two snapshots of the same property. Light up metrics progressively as operators upload second/third rent rolls.
+
+**Session 9 — Catalog metrics wiring (4 hrs).** Wire the curated list from Section 2 into T-07 trajectory calculation with configurable weights.
+
+**Session 10 — Engine integration (3 hrs).** Modify `trafficPredictionEngine.ts` to resolve coefficients through Deal → Platform → Baseline. Add match_tier + confidence + annual window flag to outputs.
+
+**Session 11 — Deal Capsule UI (5 hrs).** Three-column coefficient display on F10 Traffic tab. Mode-specific views: Stabilized shows expiration waterfall + churn replacement; Lease-Up shows absorption curve + months-to-stabilization; Redevelopment shows phased occupancy. Collision analysis panel, override flow.
+
+**Session 12 — Weight retraining (3 hrs).** Monthly comparison job + admin panel with YoY drift visualization.
+
+---
+
+## 8. Success Criteria
+
+The engine is "tuned" when:
+- Backtesting on held-out rent rolls shows T-01 Weekly Walk-In prediction within ±20% of actual for 70%+ of owned assets
+- T-07 Trajectory signal leads observed AADT changes by ≥ 2 months with r ≥ 0.55
+- Stabilized Mode predicts monthly churn replacement within ±15% of actual across the peer set
+- Lease-Up Mode predicts months-to-stabilization within ±2 months for 70% of historical lease-ups (backtested)
+- Deal-level coefficient overrides resolve correctly through `LayeredValue` on every deal tested
+- Unit-type breakdown surfaces at least one actionable divergence (e.g., "your 3BRs are the issue") on 40%+ of Stabilized deals
+- Admin panel shows 6+ months of weight drift history with R² trending up, not down
+
+---
+
+**Next step.** Hand this doc to Claude Code with the instruction: *"Implement Session 1 — Foundation. Create the four migrations, the `LayeredValue<TrafficCoefficients>` type in `traffic-data-sources.service.ts`, and stub services for `rent_roll_parser.service.ts` and `trafficCalibrationJob.ts`. Do not wire anything yet — just establish the skeleton."*

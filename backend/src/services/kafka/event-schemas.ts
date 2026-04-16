@@ -386,6 +386,20 @@ export function validateEvent(event: BaseEvent): { valid: boolean; errors: strin
 }
 
 // ============================================================================
+// M07 Traffic Calibration Events
+// ============================================================================
+
+export interface TrafficCalibrationUpdatedMessage extends BaseEvent {
+  eventType: 'traffic.calibration.updated';
+  job_version: string;
+  run_at: string;
+  buckets_updated: number;
+  buckets_created: number;
+  properties_processed: number;
+  absorption_benchmarks_updated: number;
+}
+
+// ============================================================================
 // Topic Mapping
 // ============================================================================
 
@@ -400,7 +414,106 @@ export const KAFKA_TOPICS = {
   PROFORMA_ASSUMPTIONS: 'proforma.assumptions.updated',
   STRATEGY_RANKINGS: 'strategy.rankings.updated',
   USER_ALERTS: 'alerts.user.generated',
+  TRAFFIC_CALIBRATION: 'traffic.calibration.updated',
   DLQ: 'dlq.failed.events',
+  // M35 Event Impact Engine
+  M35_EVENT_INGESTED:      'event.ingested',
+  M35_EVENT_STATUS_CHANGED: 'event.status_changed',
+  M35_EVENT_VERIFIED:      'event.verified',
+  M35_IMPACT_MEASURED:     'event.impact_measured',
+  M35_PLAYBOOK_UPDATED:    'playbook.updated',
+  M35_FORECAST_CREATED:    'm35.forecast.created',
+  M35_FORECAST_DIVERGED:   'm35.forecast.diverged',
+  M35_REGIME_SHIFT_DETECTED: 'm35.regime.shift_detected',
 } as const;
+
+// ─── M35 Event Impact Engine — Kafka Message Types ────────────────────────────
+
+export type M35EventCategory =
+  | 'EMPLOYMENT' | 'INFRASTRUCTURE' | 'REGULATORY_POLICY'
+  | 'MARKET_STRUCTURE' | 'MACRO_DEMOGRAPHIC' | 'DISASTER_DISRUPTION'
+  | 'TECHNOLOGY_INDUSTRY';
+
+export type M35EventScope = 'MSA' | 'SUBMARKET' | 'PROPERTY' | 'STATE' | 'NATIONAL';
+
+export type M35EventStatus =
+  | 'draft' | 'announced' | 'in_progress' | 'materialized'
+  | 'delayed' | 'cancelled' | 'reversed';
+
+export interface M35EventIngestedMessage extends BaseEvent {
+  eventType: 'M35_EVENT_INGESTED';
+  eventId: string;         // key_events.id
+  msaId: string;
+  submarketId?: string;
+  category: M35EventCategory;
+  subtype: string;
+  scope: M35EventScope;
+  name: string;
+  announcedDate?: string;
+  materializationDate?: string;
+  magnitudeScore: number;
+  confidence: number;
+  ingestionSource: string;
+}
+
+export interface M35EventStatusChangedMessage extends BaseEvent {
+  eventType: 'M35_EVENT_STATUS_CHANGED';
+  eventId: string;
+  msaId: string;
+  fromStatus: M35EventStatus;
+  toStatus: M35EventStatus;
+  reason?: string;
+  changedBy?: string;
+}
+
+export interface M35EventVerifiedMessage extends BaseEvent {
+  eventType: 'M35_EVENT_VERIFIED';
+  eventId: string;
+  msaId: string;
+  verifiedBy: string;
+  verifiedAt: string;
+  confidence: number;
+}
+
+export interface M35ImpactMeasuredMessage extends BaseEvent {
+  eventType: 'M35_IMPACT_MEASURED';
+  keyEventId: string;       // key_events.id (renamed from eventId to avoid collision)
+  msaId: string;
+  category: string;
+  metricKey: string;
+  windowMonths: number;     // 3 | 12 | 24 | 36
+  delta: number | null;     // actual - OLS projected (null for partial/insufficient records)
+  deltaPct: number | null;  // delta / |projected| * 100
+  attributedDelta: number | null;  // DiD: delta - control_avg_delta
+  didConfidence: number;    // 0-1
+  dataQuality: 'complete' | 'partial' | 'insufficient';
+}
+
+export interface M35PlaybookUpdatedMessage extends BaseEvent {
+  eventType: 'M35_PLAYBOOK_UPDATED';
+  eventId: string;          // synthetic key: 'playbook:{subtype}:{msaTier}:{magnitude}:{regime}'
+  subtype: string;
+  stratum: {
+    msaTier: 'large' | 'mid' | 'small' | 'all';
+    magnitude: 'small' | 'medium' | 'large' | 'transformative' | 'all';
+    regime: 'pre_covid' | 'post_covid' | 'all';
+  };
+  metricWindowCount: number;
+  instanceCount: number;
+  updatedAt: string;        // ISO-8601
+}
+
+export interface M35RegimeShiftDetectedMessage extends BaseEvent {
+  eventType: 'M35_REGIME_SHIFT_DETECTED';
+  alertId: string;
+  subtype: string;
+  metricKey: string;    // '*' = subtype-level alert (not a specific metric track)
+  windowMonths: number; // 0   = subtype-level alert (not a specific window)
+  biasDirection: 'over' | 'under';
+  avgError: number;
+  stdError: number;
+  sampleSize: number;
+  detectedAt: string;
+}
 
 export type KafkaTopic = typeof KAFKA_TOPICS[keyof typeof KAFKA_TOPICS];

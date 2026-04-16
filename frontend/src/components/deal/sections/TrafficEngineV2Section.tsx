@@ -496,7 +496,7 @@ function LearningTab({ data }: { data: TrafficEngineV2Data }) {
             <div key={i} className="bg-slate-800/50 border border-slate-700 rounded-lg p-2 text-center">
               <div className={`text-sm font-extrabold text-${t.color}-400`}>{t.conf}</div>
               <div className="text-[9px] font-semibold text-white mt-1">{t.label}</div>
-              <div className="text-[8px] text-slate-500">{t.weeks} wks</div>
+              <div className="text-[9px] text-slate-500">{t.weeks} wks</div>
             </div>
           ))}
         </div>
@@ -618,7 +618,7 @@ function SeasonalTab({ data }: { data: TrafficEngineV2Data }) {
         </div>
       ))}
 
-      <div className="flex justify-between text-[8px] text-slate-500 px-1">
+      <div className="flex justify-between text-[9px] text-slate-500 px-1">
         {['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].map(m => (
           <span key={m}>{m}</span>
         ))}
@@ -708,8 +708,8 @@ function RawDataTab({ data }: { data: TrafficEngineV2Data }) {
                 <tr key={i} className={`border-t border-slate-800/30 ${w.phase === 'current' ? 'bg-cyan-900/10' : ''} hover:bg-slate-800/30`}>
                   <td className="px-2 py-1.5 text-slate-300 font-mono whitespace-nowrap">
                     {w.week}
-                    {w.phase === 'current' && <span className="ml-1 text-[8px] text-cyan-400 font-semibold">NOW</span>}
-                    {w.phase === 'future' && <span className="ml-1 text-[8px] text-slate-600">EST</span>}
+                    {w.phase === 'current' && <span className="ml-1 text-[9px] text-cyan-400 font-semibold">NOW</span>}
+                    {w.phase === 'future' && <span className="ml-1 text-[9px] text-slate-600">EST</span>}
                   </td>
                   <td className="px-2 py-1.5 text-right font-mono text-white">{m.traffic}</td>
                   <td className="px-2 py-1.5 text-right font-mono text-white">{m.tours}</td>

@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { pool } from '../../database';
 import { CorrelationEngineService } from '../../services/correlationEngine.service';
 import { requireAdminApiKey } from './admin-api-key.routes';
+import { optionalAuth, AuthenticatedRequest } from '../../middleware/auth';
 
 const router = Router();
 const engine = new CorrelationEngineService(pool);
@@ -117,6 +118,176 @@ router.post('/admin/correlations/compute', requireAdminApiKey, async (req: Reque
     }
   } catch (error: any) {
     console.error('Correlation computation error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/top', async (req: Request, res: Response) => {
+  try {
+    const geoType = req.query.geoType as string;
+    const geoId = req.query.geoId as string;
+    const targetMetric = req.query.targetMetric as string | undefined;
+    const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 10, 1), 200);
+    const minAbsR = Math.min(Math.max(parseFloat(req.query.minAbsR as string) || 0.5, 0), 1);
+
+    if (!geoType || !geoId) {
+      return res.status(400).json({ success: false, error: 'geoType and geoId are required' });
+    }
+
+    const correlations = await engine.getTopCorrelations(geoType, geoId, targetMetric, limit, minAbsR);
+    res.json({ success: true, count: correlations.length, data: correlations });
+  } catch (error: any) {
+    console.error('Top correlations error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/batch', async (req: Request, res: Response) => {
+  try {
+    const { queries, topN, minAbsR } = req.body;
+    if (!Array.isArray(queries) || queries.length === 0) {
+      return res.status(400).json({ success: false, error: 'queries array is required' });
+    }
+    if (queries.length > 50) {
+      return res.status(400).json({ success: false, error: 'Maximum 50 queries per batch' });
+    }
+
+    const clampedTopN = Math.min(Math.max(typeof topN === 'number' ? topN : 100, 1), 200);
+    const clampedMinAbsR = Math.min(Math.max(typeof minAbsR === 'number' ? minAbsR : 0, 0), 1);
+    const results = await engine.getBatchCorrelations(queries, clampedTopN, clampedMinAbsR);
+    res.json({ success: true, data: results });
+  } catch (error: any) {
+    console.error('Batch correlations error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/freshness', async (_req: Request, res: Response) => {
+  try {
+    const freshness = await engine.getFreshness();
+    const totalStale = freshness.filter(f => f.stale).length;
+    res.json({
+      success: true,
+      summary: {
+        total_geographies: freshness.length,
+        stale: totalStale,
+        fresh: freshness.length - totalStale,
+      },
+      data: freshness,
+    });
+  } catch (error: any) {
+    console.error('Freshness error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/recommendations', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { marketGeoIds, topN } = req.body;
+    if (!Array.isArray(marketGeoIds) || marketGeoIds.length === 0) {
+      return res.status(400).json({ success: false, error: 'marketGeoIds array is required' });
+    }
+    if (marketGeoIds.length > 50) {
+      return res.status(400).json({ success: false, error: 'Maximum 50 markets per request' });
+    }
+
+    const userId = req.user?.userId || null;
+    const clampedTopN = Math.min(Math.max(typeof topN === 'number' ? topN : 5, 1), 20);
+    const allRecs = await engine.generateMetricRecommendations(marketGeoIds, userId, clampedTopN);
+
+    const byMarket: Record<string, typeof allRecs> = {};
+    for (const geo of marketGeoIds) {
+      byMarket[geo.geoId] = [];
+    }
+    for (const rec of allRecs) {
+      if (byMarket[rec.geographyId]) {
+        byMarket[rec.geographyId].push(rec);
+      }
+    }
+    for (const geoId of Object.keys(byMarket)) {
+      byMarket[geoId] = byMarket[geoId].map((rec, idx) => ({ ...rec, rank: idx + 1 }));
+    }
+
+    const flatData = Object.values(byMarket).flat()
+      .sort((a, b) => b.score - a.score)
+      .map((rec, idx) => ({ ...rec, rank: idx + 1 }));
+
+    res.json({ success: true, count: flatData.length, data: flatData, byMarket });
+  } catch (error: any) {
+    console.error('Recommendations error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/compute', requireAdminApiKey, async (req: Request, res: Response) => {
+  try {
+    const { metricIds, scope, geographyId, windowMonths } = req.body;
+    if (!Array.isArray(metricIds) || metricIds.length < 2) {
+      return res.status(400).json({ success: false, error: 'metricIds array with at least 2 metrics is required' });
+    }
+    if (!scope) {
+      return res.status(400).json({ success: false, error: 'scope is required' });
+    }
+    if (metricIds.length > 20) {
+      return res.status(400).json({ success: false, error: 'Maximum 20 metrics per computation' });
+    }
+    const wm = windowMonths && Number(windowMonths) > 0 ? Number(windowMonths) : 36;
+
+    const result = await engine.computeMatrix(metricIds, scope, geographyId, wm);
+    res.json({
+      success: true,
+      computed: result.computed,
+      skipped: result.skipped,
+      matrix: result.matrix,
+      count: result.matrix.length,
+    });
+  } catch (error: any) {
+    console.error('Correlation compute error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/matrix', async (req: Request, res: Response) => {
+  try {
+    const metricIds = (req.query.metricIds as string || '').split(',').filter(Boolean);
+    const scope = req.query.scope as string;
+    const geographyId = req.query.geographyId as string | undefined;
+
+    if (metricIds.length < 2) {
+      return res.status(400).json({ success: false, error: 'At least 2 metricIds are required (comma-separated)' });
+    }
+    if (!scope) {
+      return res.status(400).json({ success: false, error: 'scope is required' });
+    }
+
+    const matrix = await engine.getCorrelationMatrix(metricIds, scope, geographyId);
+    res.json({ success: true, data: matrix, count: matrix.length });
+  } catch (error: any) {
+    console.error('Correlation matrix error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.get('/strategy/:strategyId', async (req: Request, res: Response) => {
+  try {
+    const { strategyId } = req.params;
+    const result = await engine.getStrategyCorrelations(strategyId);
+    res.json({
+      success: true,
+      data: result,
+    });
+  } catch (error: any) {
+    console.error('Strategy correlation error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/seed-presets', requireAdminApiKey, async (_req: Request, res: Response) => {
+  try {
+    const result = await engine.seedPresetStrategyCorrelations();
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    console.error('Seed presets error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

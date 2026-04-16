@@ -1,0 +1,35 @@
+#186 - M35 Playbook Engine — Aggregation, Forecasting + Backtesting
+What & Why
+Aggregate individual event impact records (from M35-2) into per-subtype playbooks — the platform's learned response function for each event type. Then use playbooks to forecast what a newly-observed event will do to key metrics, and run a monthly backtest job that measures prediction accuracy and updates playbook confidence. This is the "intelligence" layer of M35 that grows smarter with every event.
+
+Done looks like
+3 new DB tables: event_playbooks (aggregated response distributions per subtype × metric × window, with p25/median/p75 and confidence), event_forecasts (per-event × metric × window forward projections with intervals), event_backtest_results (monthly actuals-vs-forecast comparisons)
+GET /api/playbooks/:subtype returns the full playbook for a subtype with all metric × window response distributions
+GET /api/events/:id/forecast?metrics=&horizons= generates a submarket-adjusted forecast for any event, applying magnitude scaling + MSA-size attenuation + current supply/vacancy adjustment
+Playbooks are stratified by MSA size tier and regime era (pre/post-2020 flag) — HQ relocations in large MSAs are separate from small-MSA playbooks
+Monthly backtest job runs at first-of-month; for every event at T+12, T+24, T+36 milestone, fetches actual impact from event_impacts, compares to stored forecast, computes error, and updates playbook confidence via exponential weighted update
+Regime detection: if 5+ consecutive backtests for a subtype show systematic directional bias, an alert fires to admin notification and the playbook is flagged for manual review
+GET /api/playbooks/:subtype/backtest returns backtest history + hit rate + confidence calibration chart data
+Kafka publishes playbook.updated and forecast.diverged topics
+Out of scope
+UI rendering (M35-4)
+Direct ProForma / Strategy writes (M35-4)
+M06 / M08 consumer wiring (M35-4)
+Tasks
+Playbook aggregation — Service that reads all event_impacts for a given subtype and aggregates them into a playbook: for each metric × window, compute p25/median/p75 attributed delta across all instances, weighted by confidence score. Write to event_playbooks. Exponentially weight recent instances (accounting for regime shifts). Runs on demand and after each new event.impact_measured Kafka event.
+
+Subtype stratification — Sub-playbooks by MSA size tier (>2M pop, 500K-2M, <500K) and regime era (pre-2020 vs post-2020). Each stratum has its own event_playbooks row with the stratum key. Playbook lookup selects the best-matching stratum for a new event.
+
+Forecast generator — Takes a KeyEvent + submarket context and produces EventForecast per metric × window: (a) match to correct stratum playbook, (b) apply magnitude scaling formula from spec (jobs × 0.0002 = rent_growth_pp base, wage premium multiplier, MSA-size attenuator), (c) apply current-market adjustment (supply pipeline, current vacancy vs historical), (d) output point estimate + p25/p75 interval + confidence. Write to event_forecasts. Trigger automatically on event.ingested Kafka topic for high-confidence events.
+
+Kafka forecast publication — Publish forecast.ready event on event.ingested → forecast completion. Active forecasts register with the correlation engine as expected-value baselines so that divergence is measured as actuals arrive.
+
+Monthly backtest job — Scheduled first-of-month: for each event crossing T+12/T+24/T+36, pull actual impact from event_impacts, compare to stored event_forecasts, compute absolute and directional error, update playbook with new observation (weighted by confidence), write event_backtest_results. Detect regime shift if 5+ recent backtests show consistent directional bias; fire admin alert and flag subtype in event_playbooks.
+
+Playbook CRUD + backtest API — Endpoints for playbook lookup, forecast retrieval, backtest history. Admin-only endpoint to manually override a forecast (override is logged as training signal for the backtest).
+
+Relevant files
+backend/src/services/correlationEngine.service.ts
+backend/src/services/kafka/kafka-producer.service.ts
+backend/src/services/kafka/kafka-consumer-manager.service.ts
+backend/src/services/kafka/consumers/demand-consumer.ts

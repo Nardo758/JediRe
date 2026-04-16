@@ -19,6 +19,10 @@ import { trendPatternDetector } from './trend-pattern-detector';
 import type { TrendPattern } from './trend-pattern-detector';
 import { getDotTemporalProfilesService } from './dot-temporal-profiles.service';
 import type { TemporalMultiplierResult } from './dot-temporal-profiles.service';
+import { CoefficientResolverService, type ResolvedCoefficients } from './coefficient-resolver.service';
+import { StartingStateService } from './starting-state.service';
+import { CatalogMetricsWiringService } from './catalog-metrics-wiring.service';
+import type { CalibrationMeta, StartingState, LeaseUpState, RedevelopmentState } from '../types/traffic-calibration.types';
 
 export interface DataSourceSignals {
   visibility?: {
@@ -168,6 +172,11 @@ interface Property {
   
   // Competitive context
   competitor_count_500m?: number;
+
+  // Calibration context — populated from the deals/properties DB row
+  property_class?: string;   // 'A', 'B', 'C', or null
+  year_built?: string;       // stored as string in DB; parsed to int when needed
+  msa_id?: string;           // MSA identifier for scope-hierarchy resolution
 }
 
 export interface ConversionChainRates {
@@ -175,7 +184,7 @@ export interface ConversionChainRates {
   apartment_seeker_pct: number;
   stop_probability: number;
   combined_rate: number;
-  source: 'visibility_assessment' | 'submarket_calibrated' | 'default';
+  source: 'visibility_assessment' | 'submarket_calibrated' | 'bayesian_calibrated' | 'default';
 }
 
 export interface HourlyWalkInPotential {
@@ -260,9 +269,40 @@ interface TrafficPrediction {
   
   model_version: string;
   prediction_date: Date;
+
+  // M07: Calibration metadata (Deal → Platform → Baseline hierarchy)
+  calibration_meta?: CalibrationMeta;
+  starting_state?: StartingState;
+
+  // M07 §4.2: top-level convenience fields promoted from calibration_meta.
+  // Consumers may read these directly without drilling into calibration_meta.
+  match_tier?: 'DEAL' | 'PLATFORM' | 'BASELINE';
+  window?: 'TTM' | 'PYTM' | 'TTM_24';
+  calibration_source?: string;
+  confidence_band?: { low: number; mid: number; high: number };
+  deal_mode?: 'STABILIZED' | 'LEASE_UP' | 'REDEVELOPMENT';
+
+  // M07 §4.2: rent-roll derived enrichments (present when deal has uploaded rent rolls)
+  // Shape matches RentRollDerivationsService unit_type_breakdown output exactly.
+  unit_type_breakdown?: Array<{
+    unit_type: string;
+    signing_velocity: number;      // new leases/month in last 12 months
+    days_vacant_avg: number;       // average days between lease_end and next lease_start
+    concession_intensity: number;  // average concession months (free rent)
+    renewal_rate: number;          // fraction of leases that are renewals
+  }>;
+  expiration_waterfall?: Array<{
+    months_out: number;
+    expiring_units: number;
+    expiring_pct: number;
+  }>;
 }
 
 export class TrafficPredictionEngine {
+
+  private readonly coefficientResolver = new CoefficientResolverService(pool);
+  private readonly startingStateService = new StartingStateService(pool);
+  private readonly catalogMetricsService = new CatalogMetricsWiringService(pool);
   
   private readonly MODEL_VERSION = '1.2.0';
   private readonly JOBS_TO_UNITS_MULTIPLIER = 0.45;
@@ -300,6 +340,11 @@ export class TrafficPredictionEngine {
   private getConversionChainRates(
     signals: DataSourceSignals,
     submarketId?: string,
+    calibrationOverrides?: {
+      visibility_capture_rate?: number;
+      apartment_seeker_pct?: number;
+      stop_probability?: number;
+    },
   ): ConversionChainRates {
     let captureRate = this.DEFAULT_VISIBILITY_CAPTURE_RATE;
     let source: ConversionChainRates['source'] = 'default';
@@ -309,8 +354,22 @@ export class TrafficPredictionEngine {
       source = 'visibility_assessment';
     }
 
-    const seekerPct = this.DEFAULT_APARTMENT_SEEKER_PCT;
-    const stopProb = this.DEFAULT_STOP_PROBABILITY;
+    let seekerPct = this.DEFAULT_APARTMENT_SEEKER_PCT;
+    let stopProb = this.DEFAULT_STOP_PROBABILITY;
+
+    // Apply Bayesian-resolved coefficients when available (Deal → Platform → Baseline)
+    if (calibrationOverrides) {
+      if (calibrationOverrides.visibility_capture_rate != null && calibrationOverrides.visibility_capture_rate > 0) {
+        captureRate = calibrationOverrides.visibility_capture_rate;
+        source = 'bayesian_calibrated';
+      }
+      if (calibrationOverrides.apartment_seeker_pct != null && calibrationOverrides.apartment_seeker_pct > 0) {
+        seekerPct = calibrationOverrides.apartment_seeker_pct;
+      }
+      if (calibrationOverrides.stop_probability != null && calibrationOverrides.stop_probability > 0) {
+        stopProb = calibrationOverrides.stop_probability;
+      }
+    }
 
     return {
       visibility_capture_rate: captureRate,
@@ -936,13 +995,40 @@ export class TrafficPredictionEngine {
     };
   }
 
-  async predictTraffic(propertyId: string, targetWeek?: number): Promise<TrafficPrediction> {
+  async predictTraffic(propertyId: string, targetWeek?: number, dealId?: string): Promise<TrafficPrediction> {
     console.log(`🚶 Predicting traffic for property ${propertyId}`);
     
     const startTime = Date.now();
     
     const property = await this.loadProperty(propertyId);
-    
+
+    // §4.4 hierarchy resolution: augment property with calibration context from deal_data.
+    // Deals store property_class / year_built / msa_id in JSONB; the properties table
+    // may not have these if the deal was created via the deal form (not property import).
+    if (dealId && (!property.property_class || !property.msa_id)) {
+      try {
+        const dealCtx = await pool.query<{
+          property_class: string | null;
+          year_built: string | null;
+          msa_id: string | null;
+        }>(`
+          SELECT
+            (deal_data->>'property_class') AS property_class,
+            (deal_data->>'year_built')     AS year_built,
+            (deal_data->'market_intelligence'->'data'->'demographics'->'submarket'->>'msa_id') AS msa_id
+          FROM deals WHERE id = $1 LIMIT 1
+        `, [dealId]);
+        if (dealCtx.rows.length > 0) {
+          const ctx = dealCtx.rows[0];
+          if (!property.property_class && ctx.property_class) property.property_class = ctx.property_class;
+          if (!property.year_built && ctx.year_built) property.year_built = ctx.year_built;
+          if (!property.msa_id && ctx.msa_id) property.msa_id = ctx.msa_id;
+        }
+      } catch {
+        // Non-blocking — falls back to properties-table values only
+      }
+    }
+
     const marketResearch = await marketResearchEngine.getCachedReport(propertyId, 24);
     
     if (!marketResearch) {
@@ -1008,7 +1094,36 @@ export class TrafficPredictionEngine {
       marketResearch
     );
     
-    const conversionChain = this.getConversionChainRates(signals, property.submarket_id);
+    // M07 early resolution block — must happen before conversion chain.
+    // Resolves both Bayesian coefficients and starting state concurrently so that:
+    //   1. Bayesian values bake into the conversion chain math (§4.3)
+    //   2. Starting state drives mode-dispatched prediction paths (§4.4)
+    let earlyResolvedCoefficients: ResolvedCoefficients | null = null;
+    let earlyStartingState: StartingState | null = null;
+    try {
+      [earlyResolvedCoefficients, earlyStartingState] = await Promise.all([
+        this.coefficientResolver.resolveForDeal(
+          dealId ?? null,
+          property.submarket_id || null,
+          property.property_class || null,
+          property.year_built ? parseInt(property.year_built) : null,
+          property.msa_id || null,
+        ),
+        this.startingStateService.resolveStartingState(dealId ?? null),
+      ]);
+    } catch {
+      // Non-blocking — engine falls through to hard-coded defaults
+    }
+
+    const conversionChain = this.getConversionChainRates(
+      signals,
+      property.submarket_id,
+      earlyResolvedCoefficients ? {
+        visibility_capture_rate: earlyResolvedCoefficients.family.visibility_capture_rate?.resolved,
+        apartment_seeker_pct:    earlyResolvedCoefficients.family.apartment_seeker_pct?.resolved,
+        stop_probability:        earlyResolvedCoefficients.family.stop_probability?.resolved,
+      } : undefined,
+    );
 
     let hourlyPotential: HourlyWalkInPotential[] | undefined;
     let dailyBreakdown: DailyBreakdown[] | undefined;
@@ -1069,9 +1184,37 @@ export class TrafficPredictionEngine {
       ? { week: targetWeek, year: new Date().getFullYear() }
       : this.getCurrentWeek();
 
-    const finalWeeklyWalkins = conversionWeeklyWalkins !== undefined
+    const signalWeeklyWalkins = conversionWeeklyWalkins !== undefined
       ? Math.round(Math.max(conversionWeeklyWalkins, calibrated * 0.1))
       : Math.round(calibrated);
+
+    // M07 §4.4 — Mode-dispatched prediction adjustment.
+    // Starting state was resolved early (before conversion chain) so the mode
+    // is available here to branch traffic behavior by property lifecycle stage.
+    let finalWeeklyWalkins = signalWeeklyWalkins;
+    if (earlyStartingState) {
+      if (earlyStartingState.mode === 'LEASE_UP') {
+        const leaseUpState = earlyStartingState as LeaseUpState;
+        // Lease-up: early stage requires disproportionately more traffic per lease signed
+        // because the conversion funnel is less efficient (prospects haven't heard of the property).
+        // Boost is front-loaded: (1 + (1 - current_occ) × 0.5).
+        const currentOcc = leaseUpState.start_occupancy ?? 0;
+        const leaseUpMultiplier = 1.0 + (1.0 - Math.min(1.0, currentOcc)) * 0.5;
+        finalWeeklyWalkins = Math.round(signalWeeklyWalkins * leaseUpMultiplier);
+      } else if (earlyStartingState.mode === 'REDEVELOPMENT') {
+        const redevState = earlyStartingState as RedevelopmentState;
+        // Redevelopment: only the currently-online (non-offline) units generate traffic.
+        const onlineUnits = Math.max(0, redevState.total_units - redevState.offline_units);
+        const onlineRatio = redevState.total_units > 0
+          ? onlineUnits / redevState.total_units
+          : 1.0;
+        // Floor at 20% so prediction stays meaningful even for fully-offline properties
+        finalWeeklyWalkins = Math.round(signalWeeklyWalkins * Math.max(0.2, onlineRatio));
+      }
+      // STABILIZED mode: no adjustment — the multi-source signal blend already anchors to
+      // observed occupancy/ADT and is the most accurate path for stabilized properties.
+    }
+
 
     const peakHourWalkin = hourlyPotential && hourlyPotential.length > 0
       ? Math.round(Math.max(...hourlyPotential.map(h => h.walk_in_potential)) * 100) / 100
@@ -1155,11 +1298,112 @@ export class TrafficPredictionEngine {
       });
     }
     
-    // Step 12: Save prediction to database
+    // Step 12: M07 — Attach Bayesian calibration metadata + starting state + catalog adjustments.
+    // earlyResolvedCoefficients was already resolved above before the conversion chain,
+    // so no duplicate DB call is needed here.
+    try {
+      // Attach metadata from early resolution — no second DB round-trip needed
+      if (earlyResolvedCoefficients) {
+        const meta: CalibrationMeta = {
+          ...earlyResolvedCoefficients.meta,
+          mode: earlyStartingState?.mode ?? 'STABILIZED',
+        };
+        // §4.2 output contract: calibration_meta nested + top-level convenience fields
+        prediction.calibration_meta = meta;
+        prediction.match_tier = meta.match_tier;
+        prediction.window = meta.window;
+        prediction.calibration_source = meta.calibration_source;
+        prediction.confidence_band = meta.confidence_band;
+        prediction.deal_mode = meta.mode as 'STABILIZED' | 'LEASE_UP' | 'REDEVELOPMENT';
+      }
+      // starting_state was also resolved early (before mode dispatch) — attach it
+      if (earlyStartingState) {
+        prediction.starting_state = earlyStartingState;
+      }
+
+      // §4.2 output contract: populate unit_type_breakdown + expiration_waterfall[24]
+      // from the most recent rent roll snapshot if one exists for this deal.
+      if (dealId) {
+        try {
+          const rrResult = await pool.query<any>(`
+            SELECT rrs.id, rrs.derived_metrics,
+                   COUNT(le.id)                       AS total_units,
+                   json_agg(json_build_object(
+                     'months_out', EXTRACT(YEAR FROM age(le.lease_end, rrs.snapshot_date))::int * 12
+                                  + EXTRACT(MONTH FROM age(le.lease_end, rrs.snapshot_date))::int,
+                     'lease_end', le.lease_end
+                   )) FILTER (WHERE le.lease_end >= rrs.snapshot_date
+                                AND le.lease_end < rrs.snapshot_date + INTERVAL '24 months') AS expiry_rows
+            FROM rent_roll_snapshots rrs
+            LEFT JOIN leasing_events le ON le.snapshot_id = rrs.id
+            WHERE rrs.deal_id = $1 AND rrs.status IN ('derived', 'calibrated')
+            GROUP BY rrs.id, rrs.derived_metrics
+            ORDER BY rrs.snapshot_date DESC
+            LIMIT 1
+          `, [dealId]);
+
+          if (rrResult.rows.length > 0) {
+            const rr = rrResult.rows[0];
+
+            // unit_type_breakdown from derived_metrics
+            if (rr.derived_metrics?.unit_type_breakdown?.length) {
+              prediction.unit_type_breakdown = rr.derived_metrics.unit_type_breakdown;
+            }
+
+            // expiration_waterfall — bucket by months_out [1..24].
+            // months_out=1 means expiring in the current/next month,
+            // months_out=24 means expiring 24 months from now.
+            // The SQL age() result can be 0 for this month's expirations,
+            // so we add 1 to shift the range to 1-based.
+            if (rr.expiry_rows) {
+              const waterfall: Record<number, number> = {};
+              for (const row of rr.expiry_rows) {
+                const mo = Math.max(1, Math.min(24, (row.months_out as number) + 1));
+                waterfall[mo] = (waterfall[mo] || 0) + 1;
+              }
+              // Denominator is total units in the snapshot (not just the expiring set)
+              // so each bucket's expiring_pct reflects its share of the whole portfolio.
+              const totalUnits = Number(rr.total_units) || 1;
+              prediction.expiration_waterfall = Array.from({ length: 24 }, (_, i) => ({
+                months_out: i + 1,
+                expiring_units: waterfall[i + 1] || 0,
+                expiring_pct: Math.round(((waterfall[i + 1] || 0) / totalUnits) * 10000) / 100,
+              }));
+            }
+          }
+        } catch (rrErr: unknown) {
+          // Non-blocking — rent roll data enrichment is optional, but log so regressions are visible
+          console.warn('[TrafficEngine] §4.2 rent-roll enrichment failed (non-blocking):',
+            rrErr instanceof Error ? rrErr.message : String(rrErr));
+        }
+      }
+
+      // Apply catalog metric adjustments (Layer A boost + Layer C dampers)
+      if (property.submarket_id) {
+        const catalogMetrics = await this.catalogMetricsService.loadSubmarketMetrics(property.submarket_id);
+        const catalogAdjustment = await this.catalogMetricsService.applyAdjustments(
+          prediction.weekly_walk_ins,
+          catalogMetrics,
+        );
+        if (catalogAdjustment.adjusted_prediction !== prediction.weekly_walk_ins) {
+          prediction.weekly_walk_ins = catalogAdjustment.adjusted_prediction;
+          prediction.daily_average = Math.round(catalogAdjustment.adjusted_prediction / 7);
+        }
+      }
+    } catch (calibErr: unknown) {
+      // Log at warn so regressions in calibration or starting-state lookup are visible,
+      // but don't throw — the base prediction still reaches the caller.
+      console.warn(
+        '[TrafficEngine] M07 calibration step skipped (non-blocking):',
+        calibErr instanceof Error ? calibErr.message : String(calibErr)
+      );
+    }
+
+    // Step 13: Save prediction to database
     await this.savePrediction(prediction);
     
     const duration = Date.now() - startTime;
-    console.log(`✅ Traffic prediction generated in ${duration}ms: ${prediction.weekly_walk_ins} weekly walk-ins`);
+    console.log(`✅ Traffic prediction generated in ${duration}ms: ${prediction.weekly_walk_ins} weekly walk-ins (tier: ${prediction.calibration_meta?.match_tier || 'BASELINE'})`);
     
     return prediction;
   }
@@ -1433,7 +1677,7 @@ export class TrafficPredictionEngine {
     // Load active calibration factors
     const factors = await pool.query(`
       SELECT factor_type, factor_key, multiplier
-      FROM traffic_calibration_factors
+      FROM traffic_calibration_legacy_factors
       WHERE is_active = TRUE
       AND (effective_until IS NULL OR effective_until >= CURRENT_DATE)
     `);

@@ -78,6 +78,22 @@ router.post('/:dealId/upload', upload.single('file') as any, async (req: Request
   }
 });
 
+router.get('/file/:filename', async (req: Request, res: Response) => {
+  try {
+    const { filename } = req.params;
+    const filePath = path.join(uploadDir, filename);
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+
+    res.sendFile(filePath);
+  } catch (error) {
+    logger.error('[DesignReferences] File serve error:', error);
+    res.status(500).json({ error: 'Failed to serve file' });
+  }
+});
+
 router.get('/:dealId', async (req: Request, res: Response) => {
   try {
     const { dealId } = req.params;
@@ -209,22 +225,6 @@ router.post('/:dealId/:referenceId/analyze', async (req: Request, res: Response)
   } catch (error) {
     logger.error('[DesignReferences] Analyze error:', error);
     res.status(500).json({ error: 'Failed to analyze design reference' });
-  }
-});
-
-router.get('/file/:filename', async (req: Request, res: Response) => {
-  try {
-    const { filename } = req.params;
-    const filePath = path.join(uploadDir, filename);
-
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ error: 'File not found' });
-    }
-
-    res.sendFile(filePath);
-  } catch (error) {
-    logger.error('[DesignReferences] File serve error:', error);
-    res.status(500).json({ error: 'Failed to serve file' });
   }
 });
 

@@ -1,0 +1,445 @@
+import React, { useState, useCallback } from 'react';
+import { BT } from './bloomberg-ui';
+import { useAssumptions, SENSITIVITY_COEFFICIENTS, SENSITIVITY_PATHS, ASSUMPTION_PLATFORM_DEFAULTS } from '../../stores/dealStore';
+import type { LayeredValue, AlertLevel } from '../../stores/dealContext.types';
+import { INPUT_FIELD_REGISTRY } from '../../stores/dealContext.types';
+
+const MONO = BT.font.mono;
+const TOP_N = 5;
+
+const ZONING_FIELDS: { path: string; label: string; unit: string; formatMultiplier: number }[] = [
+  { path: 'zoning.maxDensity', label: 'Max Density', unit: 'u/ac', formatMultiplier: 1 },
+  { path: 'zoning.maxHeight', label: 'Max Height', unit: 'ft', formatMultiplier: 1 },
+  { path: 'zoning.maxFAR', label: 'Max FAR', unit: 'x', formatMultiplier: 1 },
+  { path: 'zoning.maxLotCoverage', label: 'Lot Coverage', unit: '%', formatMultiplier: 100 },
+  { path: 'zoning.parkingRatio', label: 'Parking Ratio', unit: '/unit', formatMultiplier: 1 },
+  { path: 'zoning.guestParkingRatio', label: 'Guest Parking', unit: '/unit', formatMultiplier: 1 },
+];
+
+const ALERT_COLORS: Record<AlertLevel, string> = {
+  none: BT.text.muted,
+  info: BT.text.cyan,
+  warn: BT.text.amber,
+  block: BT.text.red,
+};
+
+const SOURCE_COLORS: Record<string, string> = {
+  broker: BT.text.cyan,
+  platform: BT.text.purple,
+  user: BT.text.amber,
+  agent: BT.met.financial,
+  computed: BT.text.teal,
+};
+
+function SourceBadge({ source }: { source: string }) {
+  return (
+    <span style={{
+      fontFamily: MONO, fontSize: 8, padding: '1px 4px', borderRadius: 2,
+      color: SOURCE_COLORS[source] ?? BT.text.muted,
+      border: `1px solid ${(SOURCE_COLORS[source] ?? BT.text.muted)}40`,
+      letterSpacing: 0.5, textTransform: 'uppercase',
+    }}>{source}</span>
+  );
+}
+
+function AlertDot({ level }: { level: AlertLevel }) {
+  if (level === 'none') return null;
+  return (
+    <span style={{
+      display: 'inline-block', width: 6, height: 6, borderRadius: 3,
+      background: ALERT_COLORS[level],
+      boxShadow: level === 'block' ? `0 0 4px ${BT.text.red}88` : undefined,
+    }} title={`Alert: ${level}`} />
+  );
+}
+
+function formatFieldValue(value: number, path: string): string {
+  const meta = SENSITIVITY_COEFFICIENTS[path] ?? ZONING_FIELDS.find(z => z.path === path);
+  if (!meta) return String(value);
+  if (meta.unit === '%') return `${(value * meta.formatMultiplier).toFixed(2)}%`;
+  if (meta.unit === '$') return `$${Math.round(value).toLocaleString()}`;
+  if (meta.unit === 'yrs') return `${value} yrs`;
+  if (meta.unit === 'ft') return `${value} ft`;
+  if (meta.unit === 'u/ac') return `${value} u/ac`;
+  if (meta.unit === 'x') return `${value.toFixed(2)}x`;
+  if (meta.unit === '/unit') return `${value.toFixed(2)}/unit`;
+  return String(value);
+}
+
+function parseFieldInput(raw: string, path: string): number | null {
+  const cleaned = raw.replace(/[%$,\s]/g, '');
+  const n = parseFloat(cleaned);
+  if (isNaN(n)) return null;
+  const meta = SENSITIVITY_COEFFICIENTS[path] ?? ZONING_FIELDS.find(z => z.path === path);
+  if (!meta) return n;
+  if (meta.formatMultiplier > 1) return n / meta.formatMultiplier;
+  return n;
+}
+
+interface EditableFieldProps {
+  path: string;
+  lv: LayeredValue<number>;
+  onUpdate: (path: string, value: number) => void;
+  onRevert: (path: string) => void;
+}
+
+const ZONING_FIELD_META: Record<string, { label: string; rank: number; unit: string; formatMultiplier: number }> = {};
+for (const zf of ZONING_FIELDS) {
+  ZONING_FIELD_META[zf.path] = { label: zf.label, rank: 100, unit: zf.unit, formatMultiplier: zf.formatMultiplier };
+}
+
+function getFieldDisplayMeta(path: string) {
+  return SENSITIVITY_COEFFICIENTS[path] ?? ZONING_FIELD_META[path] ?? null;
+}
+
+function EditableField({ path, lv, onUpdate, onRevert }: EditableFieldProps) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const meta = getFieldDisplayMeta(path);
+  if (!meta) return null;
+
+  const hasNonUserFallback = !!(lv.layers?.platform || lv.layers?.broker);
+  const hasPlatformDefault = ASSUMPTION_PLATFORM_DEFAULTS[path] !== undefined;
+  const canRevert = !!lv.layers?.user && (hasNonUserFallback || hasPlatformDefault);
+  const platformValue = lv.layers?.platform?.value ?? lv.layers?.broker?.value ?? ASSUMPTION_PLATFORM_DEFAULTS[path];
+  const displayValue = formatFieldValue(lv.value, path);
+
+  const handleStartEdit = () => {
+    const raw = meta.unit === '%' ? (lv.value * meta.formatMultiplier).toFixed(2)
+      : meta.unit === '$' ? String(Math.round(lv.value))
+      : String(lv.value);
+    setDraft(raw);
+    setEditing(true);
+  };
+
+  const handleCommit = () => {
+    const parsed = parseFieldInput(draft, path);
+    if (parsed !== null && parsed !== lv.value) {
+      onUpdate(path, parsed);
+    }
+    setEditing(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') handleCommit();
+    if (e.key === 'Escape') setEditing(false);
+  };
+
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      padding: '4px 8px', borderBottom: `1px solid ${BT.border.subtle}`,
+      background: canRevert ? `${BT.text.amber}06` : 'transparent',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1 }}>
+        <AlertDot level={lv.alertLevel} />
+        <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary, minWidth: 90 }}>
+          {meta.label.toUpperCase()}
+        </span>
+        <SourceBadge source={lv.resolvedFrom} />
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        {canRevert && platformValue !== undefined && (
+          <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, textDecoration: 'line-through' }}>
+            {formatFieldValue(platformValue, path)}
+          </span>
+        )}
+
+        {editing ? (
+          <input
+            autoFocus
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onBlur={handleCommit}
+            onKeyDown={handleKeyDown}
+            style={{
+              fontFamily: MONO, fontSize: 10, color: BT.text.amber, fontWeight: 700,
+              background: BT.bg.input, border: `1px solid ${BT.text.amber}60`,
+              borderRadius: 2, padding: '1px 4px', width: 70, textAlign: 'right',
+              outline: 'none',
+            }}
+          />
+        ) : (
+          <span
+            onClick={handleStartEdit}
+            style={{
+              fontFamily: MONO, fontSize: 10,
+              color: canRevert ? BT.text.amber : BT.text.cyan,
+              fontWeight: 600, cursor: 'pointer',
+              borderBottom: `1px dashed ${canRevert ? BT.text.amber : BT.text.cyan}40`,
+              padding: '0 2px',
+            }}
+            title="Click to edit"
+          >
+            {displayValue}
+          </span>
+        )}
+
+        {canRevert && (
+          <button
+            onClick={() => onRevert(path)}
+            style={{
+              fontFamily: MONO, fontSize: 7, color: BT.text.muted, background: 'none',
+              border: `1px solid ${BT.border.subtle}`, borderRadius: 2, padding: '1px 3px',
+              cursor: 'pointer', letterSpacing: 0.5,
+            }}
+            title="Revert to platform default"
+          >
+            ↩
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ConfirmModal({ message, onConfirm, onCancel }: {
+  message: string; onConfirm: () => void; onCancel: () => void;
+}) {
+  return (
+    <div style={{
+      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+      background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      zIndex: 9999,
+    }}>
+      <div style={{
+        background: BT.bg.panel, border: `1px solid ${BT.text.amber}40`, borderRadius: 4,
+        padding: 16, maxWidth: 360, fontFamily: MONO,
+      }}>
+        <div style={{ fontSize: 9, color: BT.text.amber, marginBottom: 8, letterSpacing: 0.5 }}>
+          ⚠ JEDI SCORE IMPACT
+        </div>
+        <div style={{ fontSize: 10, color: BT.text.primary, marginBottom: 12, lineHeight: 1.5 }}>
+          {message}
+        </div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button
+            onClick={onCancel}
+            style={{
+              fontFamily: MONO, fontSize: 9, color: BT.text.muted, background: BT.bg.header,
+              border: `1px solid ${BT.border.medium}`, borderRadius: 2, padding: '4px 10px', cursor: 'pointer',
+            }}
+          >CANCEL</button>
+          <button
+            onClick={onConfirm}
+            style={{
+              fontFamily: MONO, fontSize: 9, color: BT.bg.terminal, background: BT.text.amber,
+              border: 'none', borderRadius: 2, padding: '4px 10px', cursor: 'pointer', fontWeight: 700,
+            }}
+          >APPLY CHANGE</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function AssumptionsPanel({ compact = false }: { compact?: boolean }) {
+  const {
+    assumptions, zoning, scores, cascadeStatus,
+    updateAssumption, revertAssumption, revertAllAssumptions,
+    toggleVarianceAssumed,
+  } = useAssumptions();
+
+  const [disclosureLevel, setDisclosureLevel] = useState<'top5' | 'sensitivity' | 'all'>('top5');
+  const [pendingEdit, setPendingEdit] = useState<{ path: string; value: number } | null>(null);
+
+  const ALL_OVERRIDE_PATHS = INPUT_FIELD_REGISTRY
+    .filter(f => f.inputClass === 'override' || f.inputClass === 'scope')
+    .map(f => f.path);
+  const visiblePaths = disclosureLevel === 'all'
+    ? ALL_OVERRIDE_PATHS
+    : disclosureLevel === 'sensitivity'
+      ? SENSITIVITY_PATHS
+      : SENSITIVITY_PATHS.slice(0, TOP_N);
+
+  const getLV = useCallback((path: string): LayeredValue<number> | null => {
+    const parts = path.split('.');
+    let current: Record<string, unknown> = { financial: { assumptions }, zoning } as Record<string, unknown>;
+    for (const part of parts) {
+      if (current === null || current === undefined) return null;
+      current = (current as Record<string, unknown>)[part] as Record<string, unknown>;
+    }
+    if (current && typeof current === 'object' && 'value' in current && 'layers' in current) {
+      return current as unknown as LayeredValue<number>;
+    }
+    return null;
+  }, [assumptions, zoning]);
+
+  const hasAnyUserOverride = ALL_OVERRIDE_PATHS.some(p => {
+    const lv = getLV(p);
+    return lv?.layers?.user && (lv?.layers?.platform || lv?.layers?.broker || ASSUMPTION_PLATFORM_DEFAULTS[p] !== undefined);
+  });
+
+  const handleUpdate = useCallback((path: string, value: number) => {
+    const currentScore = scores.overall;
+    const currentLV = getLV(path);
+    if (!currentLV) {
+      updateAssumption(path, value);
+      return;
+    }
+
+    const meta = SENSITIVITY_COEFFICIENTS[path];
+    const rank = meta?.rank ?? 99;
+    const sensitivityWeight = rank <= 3 ? 300 : rank <= 7 ? 150 : 50;
+    const rawDelta = Math.abs(value - currentLV.value);
+    const estimatedDelta = rawDelta * sensitivityWeight;
+
+    if (estimatedDelta > 10 && currentScore > 0) {
+      setPendingEdit({ path, value });
+      return;
+    }
+
+    updateAssumption(path, value);
+  }, [scores, getLV, updateAssumption]);
+
+  const handleConfirmEdit = () => {
+    if (pendingEdit) {
+      updateAssumption(pendingEdit.path, pendingEdit.value);
+      setPendingEdit(null);
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: compact ? 'auto' : '100%', overflow: 'auto' }}>
+      <div style={{
+        padding: '4px 8px', background: BT.bg.header,
+        borderBottom: `1px solid ${BT.border.medium}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, letterSpacing: 0.5 }}>
+            ASSUMPTIONS · SENSITIVITY RANKED
+          </span>
+          {cascadeStatus === 'computing' && (
+            <span style={{
+              fontFamily: MONO, fontSize: 8, color: BT.met.financial,
+              animation: 'bt-pulse 1s infinite',
+            }}>RECOMPUTING…</span>
+          )}
+          {cascadeStatus === 'error' && (
+            <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.red }}>CASCADE ERR</span>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {hasAnyUserOverride && (
+            <button
+              onClick={revertAllAssumptions}
+              style={{
+                fontFamily: MONO, fontSize: 8, color: BT.text.red, background: 'none',
+                border: `1px solid ${BT.text.red}40`, borderRadius: 2, padding: '1px 6px',
+                cursor: 'pointer', letterSpacing: 0.5,
+              }}
+            >REVERT ALL</button>
+          )}
+        </div>
+      </div>
+
+      <div style={{
+        padding: '4px 8px',
+        background: zoning.varianceAssumed ? `${BT.text.amber}12` : 'transparent',
+        borderBottom: `1px solid ${zoning.varianceAssumed ? BT.text.amber : BT.border.subtle}30`,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontFamily: MONO, fontSize: 8, color: zoning.varianceAssumed ? BT.text.amber : BT.text.muted }}>
+            {zoning.varianceAssumed
+              ? 'VARIANCE ASSUMED — Zoning overrides active. Entitlement risk applies.'
+              : 'ZONING VARIANCE — Enable to override zoning fields'}
+          </span>
+        </div>
+        <button
+          onClick={() => toggleVarianceAssumed(!zoning.varianceAssumed)}
+          style={{
+            fontFamily: MONO, fontSize: 8, padding: '1px 6px', borderRadius: 2, cursor: 'pointer',
+            color: zoning.varianceAssumed ? BT.text.amber : BT.text.muted,
+            background: zoning.varianceAssumed ? `${BT.text.amber}18` : BT.bg.header,
+            border: `1px solid ${zoning.varianceAssumed ? BT.text.amber : BT.border.medium}40`,
+          }}
+        >{zoning.varianceAssumed ? 'DISABLE' : 'ENABLE'}</button>
+      </div>
+
+      {zoning.varianceAssumed && (
+        <>
+          <div style={{
+            padding: '3px 8px', background: `${BT.text.amber}08`,
+            borderBottom: `1px solid ${BT.text.amber}20`,
+          }}>
+            <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.amber, letterSpacing: 0.5 }}>
+              HARD-GATE ZONING OVERRIDES
+            </span>
+          </div>
+          {ZONING_FIELDS.map(zf => {
+            const zoningKey = zf.path.split('.')[1];
+            const lv = (zoning as Record<string, unknown>)[zoningKey] as LayeredValue<number> | undefined;
+            if (!lv || typeof lv !== 'object' || !('value' in lv)) return null;
+            return (
+              <EditableField
+                key={zf.path}
+                path={zf.path}
+                lv={lv}
+                onUpdate={handleUpdate}
+                onRevert={revertAssumption}
+              />
+            );
+          })}
+        </>
+      )}
+
+      {visiblePaths.map(path => {
+        const lv = getLV(path);
+        if (!lv) return null;
+        return (
+          <EditableField
+            key={path}
+            path={path}
+            lv={lv}
+            onUpdate={handleUpdate}
+            onRevert={revertAssumption}
+          />
+        );
+      })}
+
+      <div
+        onClick={() => {
+          setDisclosureLevel(prev =>
+            prev === 'top5' ? 'sensitivity' : prev === 'sensitivity' ? 'all' : 'top5'
+          );
+        }}
+        style={{
+          padding: '4px 8px', cursor: 'pointer', textAlign: 'center',
+          borderBottom: `1px solid ${BT.border.subtle}`,
+        }}
+      >
+        <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.cyan, letterSpacing: 0.5 }}>
+          {disclosureLevel === 'top5'
+            ? `▾ SHOW ALL ${SENSITIVITY_PATHS.length} SENSITIVITY FIELDS`
+            : disclosureLevel === 'sensitivity'
+              ? `▾ SHOW ALL ${ALL_OVERRIDE_PATHS.length} ASSUMPTIONS`
+              : '▴ SHOW TOP 5 ONLY'}
+        </span>
+      </div>
+
+      <div style={{
+        padding: '3px 8px', display: 'flex', gap: 8,
+        borderBottom: `1px solid ${BT.border.subtle}`,
+      }}>
+        <span style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
+          LAYERS: <span style={{ color: SOURCE_COLORS.broker }}>■ BROKER</span>
+          {' '}<span style={{ color: SOURCE_COLORS.platform }}>■ PLATFORM</span>
+          {' '}<span style={{ color: SOURCE_COLORS.user }}>■ USER</span>
+        </span>
+      </div>
+
+      {pendingEdit && (
+        <ConfirmModal
+          message={`This change may significantly shift the JEDI Score (est. >10 pts). The model will recompute IRR, Equity Multiple, and Cash-on-Cash returns. Continue?`}
+          onConfirm={handleConfirmEdit}
+          onCancel={() => setPendingEdit(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+export default AssumptionsPanel;

@@ -328,6 +328,129 @@ export class CompSetService {
       comps
     };
   }
+  async deleteCompFromSet(dealId: string, compId: string): Promise<{ deleted: boolean; updatedSet: CompSetResult | null }> {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const compSetResult = await client.query(`
+        SELECT id FROM sale_comp_sets
+        WHERE deal_id = $1::uuid
+        ORDER BY created_at DESC
+        LIMIT 1
+      `, [dealId]);
+
+      if (compSetResult.rows.length === 0) {
+        throw new Error('Comp set not found');
+      }
+
+      const compSetId = compSetResult.rows[0].id;
+
+      const deleteResult = await client.query(`
+        DELETE FROM sale_comp_set_members
+        WHERE comp_set_id = $1::uuid AND transaction_id = $2::uuid
+      `, [compSetId, compId]);
+
+      if (deleteResult.rowCount === 0) {
+        throw new Error('Comp not found');
+      }
+
+      const remainingComps = await client.query(`
+        SELECT t.*, scm.sort_order, 0 as distance_miles
+        FROM sale_comp_set_members scm
+        JOIN recorded_transactions t ON t.id = scm.transaction_id
+        WHERE scm.comp_set_id = $1::uuid
+        ORDER BY scm.sort_order
+      `, [compSetId]);
+
+      const comps: CompTransaction[] = remainingComps.rows.map(row => ({
+        id: row.id,
+        recording_date: row.recording_date,
+        property_address: row.property_address,
+        units: row.units,
+        building_sf: row.building_sf,
+        year_built: row.year_built,
+        property_class: row.property_class,
+        derived_sale_price: parseFloat(row.derived_sale_price),
+        price_per_unit: parseFloat(row.price_per_unit),
+        price_per_sf: parseFloat(row.price_per_sf),
+        implied_cap_rate: row.implied_cap_rate ? parseFloat(row.implied_cap_rate) : null,
+        grantee_name: row.grantee_name,
+        buyer_type: row.buyer_type,
+        holding_period_months: row.holding_period_months,
+        distance_miles: parseFloat(row.distance_miles)
+      }));
+
+      const pricesPerUnit = comps.map(c => c.price_per_unit).sort((a, b) => a - b);
+      const pricesPerSf = comps.map(c => c.price_per_sf).filter(p => p > 0).sort((a, b) => a - b);
+      const capRates = comps.map(c => c.implied_cap_rate).filter(c => c !== null) as number[];
+
+      const median = (arr: number[]) => {
+        if (arr.length === 0) return 0;
+        const mid = Math.floor(arr.length / 2);
+        return arr.length % 2 === 0 ? (arr[mid - 1] + arr[mid]) / 2 : arr[mid];
+      };
+      const avg = (arr: number[]) => arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+      const stdDev = (arr: number[], mean: number) => {
+        if (arr.length === 0) return 0;
+        return Math.sqrt(arr.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / arr.length);
+      };
+
+      const avgPpu = avg(pricesPerUnit);
+      const medPpu = median(pricesPerUnit);
+
+      const subjectRow = await client.query(`
+        SELECT p.units, d.derived_sale_price
+        FROM deals d LEFT JOIN properties p ON p.deal_id = d.id
+        WHERE d.id = $1::uuid LIMIT 1
+      `, [dealId]);
+      const subj = subjectRow.rows[0];
+      const subjectPpu = subj?.units && subj?.derived_sale_price ? subj.derived_sale_price / subj.units : null;
+      const subjectVsMedianPct = subjectPpu && medPpu > 0 ? (subjectPpu - medPpu) / medPpu : null;
+      const subjectPercentile = subjectPpu && pricesPerUnit.length > 0
+        ? Math.round((pricesPerUnit.filter(p => p <= subjectPpu).length / pricesPerUnit.length) * 100)
+        : null;
+
+      await client.query(`
+        UPDATE sale_comp_sets SET
+          comp_count = $2,
+          median_price_per_unit = $3,
+          avg_price_per_unit = $4,
+          min_price_per_unit = $5,
+          max_price_per_unit = $6,
+          std_dev_price_per_unit = $7,
+          median_price_per_sf = $8,
+          median_implied_cap_rate = $9,
+          avg_implied_cap_rate = $10,
+          subject_vs_median_pct = $11,
+          subject_percentile = $12
+        WHERE id = $1::uuid
+      `, [
+        compSetId,
+        comps.length,
+        medPpu,
+        avgPpu,
+        pricesPerUnit[0] || 0,
+        pricesPerUnit[pricesPerUnit.length - 1] || 0,
+        stdDev(pricesPerUnit, avgPpu),
+        median(pricesPerSf),
+        capRates.length > 0 ? median(capRates) : null,
+        capRates.length > 0 ? avg(capRates) : null,
+        subjectVsMedianPct,
+        subjectPercentile,
+      ]);
+
+      await client.query('COMMIT');
+
+      const updatedSet = await this.getCompSetByDeal(dealId);
+      return { deleted: true, updatedSet };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
 }
 
 export const compSetService = new CompSetService();

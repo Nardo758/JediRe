@@ -4,11 +4,12 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { 
-  Brain, Database, Shield, TrendingUp, 
-  CheckCircle, Settings, FileText, Zap 
+import {
+  Brain, Database, Shield, TrendingUp,
+  CheckCircle, Settings, FileText, Zap
 } from 'lucide-react';
 import { apiClient } from '../../services/api.client';
+import { BT } from '@/components/deal/bloomberg-ui';
 
 interface IntelligencePreferences {
   semanticSearchEnabled: boolean;
@@ -106,7 +107,7 @@ export function IntelligenceSettings() {
   if (loading) {
     return (
       <div className="flex items-center justify-center p-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <div className="h-8 w-8" style={{ border: `2px solid ${BT.border.subtle}`, borderBottom: `2px solid ${BT.text.cyan}`, borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
       </div>
     );
   }
@@ -120,41 +121,41 @@ export function IntelligenceSettings() {
     : 0;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" style={{ fontFamily: BT.font.label }}>
       {/* My Document Intelligence */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div className="p-6" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
         <div className="flex items-center gap-2 mb-4">
-          <Database className="w-5 h-5 text-blue-600" />
-          <h2 className="text-lg font-semibold text-gray-900">My Document Intelligence</h2>
+          <Database className="w-5 h-5" style={{ color: BT.text.cyan }} />
+          <h2 className="text-lg font-semibold" style={{ color: BT.text.primary }}>My Document Intelligence</h2>
         </div>
 
         {stats ? (
           <div className="space-y-4">
             <div className="grid grid-cols-3 gap-4">
-              <div className="text-center p-4 bg-blue-50 rounded-lg">
-                <div className="text-2xl font-bold text-blue-600">{stats.myDocuments}</div>
-                <div className="text-xs text-gray-600 mt-1">Documents Uploaded</div>
+              <div className="text-center p-4" style={{ background: BT.bg.panelAlt, borderRadius: 0 }}>
+                <div className="text-2xl font-bold" style={{ color: BT.text.cyan, fontFamily: BT.font.mono }}>{stats.myDocuments}</div>
+                <div className="text-xs mt-1" style={{ color: BT.text.secondary }}>Documents Uploaded</div>
               </div>
-              <div className="text-center p-4 bg-green-50 rounded-lg">
-                <div className="text-2xl font-bold text-green-600">{stats.documentsEmbedded}</div>
-                <div className="text-xs text-gray-600 mt-1">With AI Embeddings</div>
+              <div className="text-center p-4" style={{ background: BT.bg.panelAlt, borderRadius: 0 }}>
+                <div className="text-2xl font-bold" style={{ color: BT.text.green, fontFamily: BT.font.mono }}>{stats.documentsEmbedded}</div>
+                <div className="text-xs mt-1" style={{ color: BT.text.secondary }}>With AI Embeddings</div>
               </div>
-              <div className="text-center p-4 bg-amber-50 rounded-lg">
-                <div className="text-2xl font-bold text-amber-600">{stats.pendingEmbeddings}</div>
-                <div className="text-xs text-gray-600 mt-1">Pending Processing</div>
+              <div className="text-center p-4" style={{ background: BT.bg.panelAlt, borderRadius: 0 }}>
+                <div className="text-2xl font-bold" style={{ color: BT.text.amber, fontFamily: BT.font.mono }}>{stats.pendingEmbeddings}</div>
+                <div className="text-xs mt-1" style={{ color: BT.text.secondary }}>Pending Processing</div>
               </div>
             </div>
 
             {/* Progress bar */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm text-gray-600">Embedding Progress</span>
-                <span className="text-sm font-medium text-gray-900">{embeddingPct}%</span>
+                <span className="text-sm" style={{ color: BT.text.secondary }}>Embedding Progress</span>
+                <span className="text-sm font-medium" style={{ color: BT.text.primary, fontFamily: BT.font.mono }}>{embeddingPct}%</span>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
+              <div className="w-full h-2" style={{ background: BT.bg.input, borderRadius: 0 }}>
                 <div
-                  className="bg-blue-600 h-2 rounded-full transition-all"
-                  style={{ width: `${embeddingPct}%` }}
+                  className="h-2 transition-all"
+                  style={{ width: `${embeddingPct}%`, background: BT.text.cyan, borderRadius: 0 }}
                 />
               </div>
             </div>
@@ -162,7 +163,8 @@ export function IntelligenceSettings() {
             {stats.pendingEmbeddings > 0 && (
               <button
                 onClick={generateEmbeddings}
-                className="w-full px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2"
+                className="w-full px-4 py-2 text-sm font-medium flex items-center justify-center gap-2"
+                style={{ background: BT.text.cyan, color: BT.bg.terminal, borderRadius: 0 }}
               >
                 <Zap className="w-4 h-4" />
                 Generate Embeddings for {stats.pendingEmbeddings} Pending Docs
@@ -171,24 +173,25 @@ export function IntelligenceSettings() {
           </div>
         ) : statsError ? (
           <div className="text-center py-4">
-            <p className="text-red-600 text-sm mb-2">Failed to load intelligence stats</p>
+            <p className="text-sm mb-2" style={{ color: BT.text.red }}>Failed to load intelligence stats</p>
             <button
               onClick={loadStats}
-              className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+              className="text-sm font-medium"
+              style={{ color: BT.text.cyan }}
             >
               Retry
             </button>
           </div>
         ) : (
-          <div className="text-center text-gray-500 py-4">Loading stats...</div>
+          <div className="text-center py-4" style={{ color: BT.text.muted }}>Loading stats...</div>
         )}
       </div>
 
       {/* Semantic Search Preferences */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div className="p-6" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
         <div className="flex items-center gap-2 mb-4">
-          <Brain className="w-5 h-5 text-purple-600" />
-          <h2 className="text-lg font-semibold text-gray-900">Semantic Search Preferences</h2>
+          <Brain className="w-5 h-5" style={{ color: BT.text.purple }} />
+          <h2 className="text-lg font-semibold" style={{ color: BT.text.primary }}>Semantic Search Preferences</h2>
         </div>
 
         <div className="space-y-4">
@@ -197,11 +200,12 @@ export function IntelligenceSettings() {
               type="checkbox"
               checked={preferences.semanticSearchEnabled}
               onChange={(e) => setPreferences({ ...preferences, semanticSearchEnabled: e.target.checked })}
-              className="mt-1 w-4 h-4 text-blue-600 rounded"
+              className="mt-1 w-4 h-4"
+              style={{ accentColor: BT.text.cyan }}
             />
             <div className="flex-1">
-              <div className="font-medium text-gray-900">Enable Semantic Search</div>
-              <div className="text-sm text-gray-600 mt-1">
+              <div className="font-medium" style={{ color: BT.text.primary }}>Enable Semantic Search</div>
+              <div className="text-sm mt-1" style={{ color: BT.text.secondary }}>
                 Uses AI to find more relevant documents based on meaning, not just keywords.
                 Falls back to keyword search if unavailable.
               </div>
@@ -211,7 +215,7 @@ export function IntelligenceSettings() {
           {preferences.semanticSearchEnabled && (
             <div className="pl-7 space-y-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium mb-2" style={{ color: BT.text.secondary }}>
                   Search Precision
                 </label>
                 <div className="space-y-2">
@@ -220,9 +224,10 @@ export function IntelligenceSettings() {
                       type="radio"
                       checked={preferences.semanticSearchThreshold === 0.8}
                       onChange={() => setPreferences({ ...preferences, semanticSearchThreshold: 0.8 })}
-                      className="w-4 h-4 text-blue-600"
+                      className="w-4 h-4"
+                      style={{ accentColor: BT.text.cyan }}
                     />
-                    <span className="text-sm text-gray-700">
+                    <span className="text-sm" style={{ color: BT.text.secondary }}>
                       High (only very similar, 0.8+ match)
                     </span>
                   </label>
@@ -231,10 +236,11 @@ export function IntelligenceSettings() {
                       type="radio"
                       checked={preferences.semanticSearchThreshold === 0.6}
                       onChange={() => setPreferences({ ...preferences, semanticSearchThreshold: 0.6 })}
-                      className="w-4 h-4 text-blue-600"
+                      className="w-4 h-4"
+                      style={{ accentColor: BT.text.cyan }}
                     />
-                    <span className="text-sm text-gray-700">
-                      Medium (balanced, 0.6+ match) <span className="text-gray-500">— Recommended</span>
+                    <span className="text-sm" style={{ color: BT.text.secondary }}>
+                      Medium (balanced, 0.6+ match) <span style={{ color: BT.text.muted }}>-- Recommended</span>
                     </span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer">
@@ -242,9 +248,10 @@ export function IntelligenceSettings() {
                       type="radio"
                       checked={preferences.semanticSearchThreshold === 0.4}
                       onChange={() => setPreferences({ ...preferences, semanticSearchThreshold: 0.4 })}
-                      className="w-4 h-4 text-blue-600"
+                      className="w-4 h-4"
+                      style={{ accentColor: BT.text.cyan }}
                     />
-                    <span className="text-sm text-gray-700">
+                    <span className="text-sm" style={{ color: BT.text.secondary }}>
                       Low (cast wide net, 0.4+ match)
                     </span>
                   </label>
@@ -256,10 +263,10 @@ export function IntelligenceSettings() {
       </div>
 
       {/* Agent Learning Preferences */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div className="p-6" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
         <div className="flex items-center gap-2 mb-4">
-          <TrendingUp className="w-5 h-5 text-green-600" />
-          <h2 className="text-lg font-semibold text-gray-900">Agent Learning Preferences</h2>
+          <TrendingUp className="w-5 h-5" style={{ color: BT.text.green }} />
+          <h2 className="text-lg font-semibold" style={{ color: BT.text.primary }}>Agent Learning Preferences</h2>
         </div>
 
         <div className="space-y-4">
@@ -268,11 +275,12 @@ export function IntelligenceSettings() {
               type="checkbox"
               checked={preferences.contributeToLearning}
               onChange={(e) => setPreferences({ ...preferences, contributeToLearning: e.target.checked })}
-              className="mt-1 w-4 h-4 text-blue-600 rounded"
+              className="mt-1 w-4 h-4"
+              style={{ accentColor: BT.text.cyan }}
             />
             <div className="flex-1">
-              <div className="font-medium text-gray-900">Help improve agent accuracy</div>
-              <div className="text-sm text-gray-600 mt-1">
+              <div className="font-medium" style={{ color: BT.text.primary }}>Help improve agent accuracy</div>
+              <div className="text-sm mt-1" style={{ color: BT.text.secondary }}>
                 Your corrections help agents learn patterns and improve over time
               </div>
             </div>
@@ -283,11 +291,12 @@ export function IntelligenceSettings() {
               type="checkbox"
               checked={preferences.requestFeedback}
               onChange={(e) => setPreferences({ ...preferences, requestFeedback: e.target.checked })}
-              className="mt-1 w-4 h-4 text-blue-600 rounded"
+              className="mt-1 w-4 h-4"
+              style={{ accentColor: BT.text.cyan }}
             />
             <div className="flex-1">
-              <div className="font-medium text-gray-900">Ask me to rate agent results</div>
-              <div className="text-sm text-gray-600 mt-1">
+              <div className="font-medium" style={{ color: BT.text.primary }}>Ask me to rate agent results</div>
+              <div className="text-sm mt-1" style={{ color: BT.text.secondary }}>
                 Quick thumbs up/down after each analysis to track accuracy
               </div>
             </div>
@@ -298,11 +307,12 @@ export function IntelligenceSettings() {
               type="checkbox"
               checked={preferences.autoSubmitCorrections}
               onChange={(e) => setPreferences({ ...preferences, autoSubmitCorrections: e.target.checked })}
-              className="mt-1 w-4 h-4 text-blue-600 rounded"
+              className="mt-1 w-4 h-4"
+              style={{ accentColor: BT.text.cyan }}
             />
             <div className="flex-1">
-              <div className="font-medium text-gray-900">Auto-submit corrections (advanced)</div>
-              <div className="text-sm text-gray-600 mt-1">
+              <div className="font-medium" style={{ color: BT.text.primary }}>Auto-submit corrections (advanced)</div>
+              <div className="text-sm mt-1" style={{ color: BT.text.secondary }}>
                 When you edit agent outputs, automatically submit as training data
               </div>
             </div>
@@ -311,10 +321,10 @@ export function IntelligenceSettings() {
       </div>
 
       {/* Data Privacy */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div className="p-6" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
         <div className="flex items-center gap-2 mb-4">
-          <Shield className="w-5 h-5 text-red-600" />
-          <h2 className="text-lg font-semibold text-gray-900">Data Privacy</h2>
+          <Shield className="w-5 h-5" style={{ color: BT.text.red }} />
+          <h2 className="text-lg font-semibold" style={{ color: BT.text.primary }}>Data Privacy</h2>
         </div>
 
         <div className="space-y-4">
@@ -323,11 +333,12 @@ export function IntelligenceSettings() {
               type="checkbox"
               checked={preferences.includeDocuments}
               onChange={(e) => setPreferences({ ...preferences, includeDocuments: e.target.checked })}
-              className="mt-1 w-4 h-4 text-blue-600 rounded"
+              className="mt-1 w-4 h-4"
+              style={{ accentColor: BT.text.cyan }}
             />
             <div className="flex-1">
-              <div className="font-medium text-gray-900">Include my documents in intelligence layer</div>
-              <div className="text-sm text-gray-600 mt-1">
+              <div className="font-medium" style={{ color: BT.text.primary }}>Include my documents in intelligence layer</div>
+              <div className="text-sm mt-1" style={{ color: BT.text.secondary }}>
                 Your documents help improve agent accuracy for similar deals.
                 Documents remain private to your organization.
               </div>
@@ -335,13 +346,14 @@ export function IntelligenceSettings() {
           </label>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium mb-2" style={{ color: BT.text.secondary }}>
               Keep agent task history for
             </label>
             <select
               value={preferences.taskHistoryRetentionDays}
               onChange={(e) => setPreferences({ ...preferences, taskHistoryRetentionDays: parseInt(e.target.value) })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg text-sm"
+              className="w-full px-4 py-2 text-sm"
+              style={{ background: BT.bg.input, color: BT.text.primary, border: `1px solid ${BT.border.medium}`, borderRadius: 0, fontFamily: BT.font.label }}
             >
               <option value={30}>30 days</option>
               <option value={60}>60 days</option>
@@ -351,7 +363,7 @@ export function IntelligenceSettings() {
               <option value={730}>2 years</option>
               <option value={-1}>Forever</option>
             </select>
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs mt-1" style={{ color: BT.text.muted }}>
               Older task history is automatically archived for compliance
             </p>
           </div>
@@ -360,64 +372,67 @@ export function IntelligenceSettings() {
 
       {/* My Intelligence Stats */}
       {stats && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <div className="p-6" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
-              <FileText className="w-5 h-5 text-gray-600" />
-              <h2 className="text-lg font-semibold text-gray-900">My Intelligence Stats (Last 30 Days)</h2>
+              <FileText className="w-5 h-5" style={{ color: BT.text.secondary }} />
+              <h2 className="text-lg font-semibold" style={{ color: BT.text.primary }}>My Intelligence Stats (Last 30 Days)</h2>
             </div>
             <a
               href="/admin/intelligence"
-              className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+              className="text-sm font-medium"
+              style={{ color: BT.text.cyan }}
             >
               View Detailed Analytics →
             </a>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <div className="p-4 bg-gray-50 rounded-lg">
-              <div className="text-2xl font-bold text-gray-900">{stats.agentTasksRun}</div>
-              <div className="text-sm text-gray-600 mt-1">Agent Tasks Run</div>
+            <div className="p-4" style={{ background: BT.bg.panelAlt, borderRadius: 0 }}>
+              <div className="text-2xl font-bold" style={{ color: BT.text.primary, fontFamily: BT.font.mono }}>{stats.agentTasksRun}</div>
+              <div className="text-sm mt-1" style={{ color: BT.text.secondary }}>Agent Tasks Run</div>
             </div>
-            <div className="p-4 bg-green-50 rounded-lg">
-              <div className="text-2xl font-bold text-green-600">{stats.resultsApproved}</div>
-              <div className="text-sm text-gray-600 mt-1">Results Approved ({approvalRate}%)</div>
+            <div className="p-4" style={{ background: BT.bg.panelAlt, borderRadius: 0 }}>
+              <div className="text-2xl font-bold" style={{ color: BT.text.green, fontFamily: BT.font.mono }}>{stats.resultsApproved}</div>
+              <div className="text-sm mt-1" style={{ color: BT.text.secondary }}>Results Approved ({approvalRate}%)</div>
             </div>
-            <div className="p-4 bg-amber-50 rounded-lg">
-              <div className="text-2xl font-bold text-amber-600">{stats.correctionsMade}</div>
-              <div className="text-sm text-gray-600 mt-1">Corrections Made</div>
+            <div className="p-4" style={{ background: BT.bg.panelAlt, borderRadius: 0 }}>
+              <div className="text-2xl font-bold" style={{ color: BT.text.amber, fontFamily: BT.font.mono }}>{stats.correctionsMade}</div>
+              <div className="text-sm mt-1" style={{ color: BT.text.secondary }}>Corrections Made</div>
             </div>
-            <div className="p-4 bg-purple-50 rounded-lg">
-              <div className="text-2xl font-bold text-purple-600">{stats.patternsDiscovered}</div>
-              <div className="text-sm text-gray-600 mt-1">Patterns Discovered</div>
+            <div className="p-4" style={{ background: BT.bg.panelAlt, borderRadius: 0 }}>
+              <div className="text-2xl font-bold" style={{ color: BT.text.purple, fontFamily: BT.font.mono }}>{stats.patternsDiscovered}</div>
+              <div className="text-sm mt-1" style={{ color: BT.text.secondary }}>Patterns Discovered</div>
             </div>
           </div>
         </div>
       )}
 
       {saveMessage && (
-        <div className={`px-4 py-3 rounded-lg text-sm ${
-          saveMessage.type === 'success'
-            ? 'bg-green-50 text-green-700 border border-green-200'
-            : 'bg-red-50 text-red-700 border border-red-200'
-        }`}>
+        <div className="px-4 py-3 text-sm" style={{
+          background: BT.bg.panelAlt,
+          color: saveMessage.type === 'success' ? BT.text.green : BT.text.red,
+          border: `1px solid ${saveMessage.type === 'success' ? BT.text.green : BT.text.red}`,
+          borderRadius: 0,
+        }}>
           {saveMessage.text}
         </div>
       )}
 
       {/* Save Button */}
-      <div className="flex items-center justify-between pt-4 border-t border-gray-200">
-        <div className="text-sm text-gray-500">
+      <div className="flex items-center justify-between pt-4" style={{ borderTop: `1px solid ${BT.border.subtle}` }}>
+        <div className="text-sm" style={{ color: BT.text.muted }}>
           Changes apply immediately to agent queries
         </div>
         <button
           onClick={savePreferences}
           disabled={saving}
-          className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+          className="px-6 py-2 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          style={{ background: BT.text.cyan, color: BT.bg.terminal, borderRadius: 0 }}
         >
           {saving ? (
             <>
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+              <div className="h-4 w-4" style={{ border: `2px solid transparent`, borderBottom: `2px solid ${BT.bg.terminal}`, borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
               Saving...
             </>
           ) : (

@@ -1,0 +1,1719 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>F4 Markets Tab — Commentary Enhancement Specification | JEDI RE</title>
+<style>
+@page {
+  size: letter;
+  margin: 1in 1.25in;
+  @top-left { content: "F4 Markets Tab — Commentary Enhancement Specification"; font-size: 8pt; color: #1E3A5F; font-family: Arial, sans-serif; }
+  @top-right { content: "Page " counter(page); font-size: 8pt; color: #1E3A5F; font-family: Arial, sans-serif; }
+  @bottom-center { content: "JEDI RE — Confidential"; font-size: 8pt; color: #999; font-family: Arial, sans-serif; }
+}
+@page :first {
+  @top-left { content: none; }
+  @top-right { content: none; }
+  @bottom-center { content: none; }
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif;
+  font-size: 11pt;
+  line-height: 1.6;
+  color: #333;
+  background: #fff;
+}
+
+.page-container {
+  max-width: 8.5in;
+  margin: 0 auto;
+  padding: 0 1.25in;
+}
+
+/* COVER PAGE */
+.cover-page {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  page-break-after: always;
+  position: relative;
+  background: linear-gradient(180deg, #fff 0%, #f8fafe 100%);
+}
+
+.cover-logo {
+  margin-bottom: 60px;
+}
+
+.cover-logo-text {
+  font-size: 42pt;
+  font-weight: 800;
+  color: #1E3A5F;
+  letter-spacing: 6px;
+  margin-bottom: 4px;
+}
+
+.cover-logo-bar {
+  width: 120px;
+  height: 4px;
+  background: #14B8A6;
+  margin: 0 auto;
+  border-radius: 2px;
+}
+
+.cover-title {
+  font-size: 28pt;
+  font-weight: 700;
+  color: #1E3A5F;
+  margin-bottom: 12px;
+  line-height: 1.2;
+  max-width: 600px;
+}
+
+.cover-subtitle {
+  font-size: 14pt;
+  color: #5a6e85;
+  margin-bottom: 60px;
+  font-weight: 400;
+}
+
+.cover-meta {
+  font-size: 10pt;
+  color: #7a8a9a;
+  line-height: 2;
+}
+
+.cover-meta strong {
+  color: #1E3A5F;
+}
+
+.cover-confidential {
+  position: absolute;
+  bottom: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 9pt;
+  letter-spacing: 3px;
+  color: #c0392b;
+  font-weight: 700;
+  border: 2px solid #c0392b;
+  padding: 6px 24px;
+  border-radius: 2px;
+}
+
+.cover-border-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  background: linear-gradient(90deg, #1E3A5F 0%, #14B8A6 100%);
+}
+
+.cover-border-bottom {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #14B8A6 0%, #1E3A5F 100%);
+}
+
+/* PAGE HEADER/FOOTER (screen) */
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid #e0e0e0;
+  font-size: 8pt;
+  color: #1E3A5F;
+  margin-bottom: 24px;
+}
+
+.page-footer {
+  text-align: center;
+  padding: 12px 0;
+  border-top: 1px solid #e0e0e0;
+  font-size: 8pt;
+  color: #999;
+  margin-top: 40px;
+}
+
+/* TABLE OF CONTENTS */
+.toc-page {
+  page-break-after: always;
+  padding: 60px 1.25in;
+}
+
+.toc-title {
+  font-size: 22pt;
+  font-weight: 700;
+  color: #1E3A5F;
+  border-bottom: 3px solid #14B8A6;
+  padding-bottom: 12px;
+  margin-bottom: 30px;
+}
+
+.toc-section {
+  margin-bottom: 6px;
+}
+
+.toc-h2 {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 8px 0;
+  font-size: 11pt;
+  font-weight: 700;
+  color: #1E3A5F;
+  border-bottom: 1px dotted #ccc;
+  text-decoration: none;
+}
+
+.toc-h3 {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 4px 0 4px 24px;
+  font-size: 10pt;
+  font-weight: 400;
+  color: #555;
+  border-bottom: 1px dotted #e8e8e8;
+  text-decoration: none;
+}
+
+.toc-h2:hover, .toc-h3:hover {
+  color: #14B8A6;
+}
+
+.toc-dots {
+  flex: 1;
+  border-bottom: 1px dotted #ccc;
+  margin: 0 8px;
+  min-width: 20px;
+}
+
+/* MAIN CONTENT */
+.content {
+  padding: 40px 1.25in 60px;
+}
+
+h1 {
+  font-size: 18pt;
+  font-weight: 700;
+  color: #1E3A5F;
+  border-bottom: 2px solid #14B8A6;
+  padding-bottom: 8px;
+  margin: 40px 0 20px;
+  page-break-after: avoid;
+}
+
+h1:first-of-type {
+  margin-top: 0;
+}
+
+h2 {
+  font-size: 14pt;
+  font-weight: 700;
+  color: #1E3A5F;
+  margin: 24pt 0 12px;
+  page-break-after: avoid;
+}
+
+h3 {
+  font-size: 12pt;
+  font-weight: 700;
+  font-style: italic;
+  color: #1E3A5F;
+  margin: 18pt 0 8px;
+  page-break-after: avoid;
+}
+
+h4 {
+  font-size: 11pt;
+  font-weight: 700;
+  color: #2c5282;
+  margin: 14pt 0 6px;
+  page-break-after: avoid;
+}
+
+p {
+  margin-bottom: 10px;
+  text-align: justify;
+}
+
+/* TABLES */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0 20px;
+  font-size: 9.5pt;
+  page-break-inside: avoid;
+}
+
+thead th {
+  background: #1E3A5F;
+  color: #fff;
+  font-weight: 700;
+  text-align: left;
+  padding: 8px 10px;
+  font-size: 9pt;
+  letter-spacing: 0.3px;
+}
+
+tbody td {
+  padding: 7px 10px;
+  border-bottom: 1px solid #e0e0e0;
+  vertical-align: top;
+}
+
+tbody tr:nth-child(even) {
+  background: #F5F5F5;
+}
+
+tbody tr:hover {
+  background: #eef6ff;
+}
+
+td.gap-col {
+  font-style: italic;
+  color: #888;
+}
+
+td code, th code {
+  background: #e8f0fe;
+  padding: 1px 4px;
+  border-radius: 2px;
+  font-family: 'JetBrains Mono', Consolas, 'Courier New', monospace;
+  font-size: 8.5pt;
+}
+
+/* CODE BLOCKS */
+pre {
+  background: #F8F9FA;
+  border-left: 3px solid #14B8A6;
+  border-radius: 4px;
+  padding: 14px 18px;
+  margin: 12px 0 20px;
+  overflow-x: auto;
+  font-family: 'JetBrains Mono', Consolas, 'Courier New', monospace;
+  font-size: 9pt;
+  line-height: 1.5;
+  color: #2d3748;
+  page-break-inside: avoid;
+}
+
+code {
+  font-family: 'JetBrains Mono', Consolas, 'Courier New', monospace;
+  font-size: 9pt;
+}
+
+/* INLINE CODE */
+p code, li code {
+  background: #e8f0fe;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 9.5pt;
+}
+
+/* CALLOUT BOXES */
+.callout {
+  padding: 16px 20px;
+  margin: 16px 0 20px;
+  border-radius: 4px;
+  page-break-inside: avoid;
+}
+
+.callout-title {
+  font-weight: 700;
+  font-size: 10pt;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.callout-finding {
+  border-left: 4px solid #14B8A6;
+  background: #f0fdfa;
+}
+
+.callout-finding .callout-title {
+  color: #0d9488;
+}
+
+.callout-impl {
+  border-left: 4px solid #1E3A5F;
+  background: #eef2f7;
+}
+
+.callout-impl .callout-title {
+  color: #1E3A5F;
+}
+
+/* LISTS */
+ul {
+  margin: 8px 0 16px 20px;
+  list-style: none;
+}
+
+ul li {
+  position: relative;
+  padding-left: 16px;
+  margin-bottom: 5px;
+}
+
+ul li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 7px;
+  width: 6px;
+  height: 6px;
+  background: #1E3A5F;
+  border-radius: 1px;
+}
+
+ol {
+  margin: 8px 0 16px 20px;
+  list-style: none;
+  counter-reset: item;
+}
+
+ol li {
+  counter-increment: item;
+  position: relative;
+  padding-left: 24px;
+  margin-bottom: 5px;
+}
+
+ol li::before {
+  content: counter(item) ".";
+  position: absolute;
+  left: 0;
+  font-weight: 700;
+  color: #1E3A5F;
+}
+
+/* CHECKBOX LIST */
+.checklist {
+  list-style: none;
+  margin-left: 0;
+  padding-left: 0;
+}
+
+.checklist li {
+  padding-left: 28px;
+  position: relative;
+}
+
+.checklist li::before {
+  content: '\2610';
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-size: 14pt;
+  color: #1E3A5F;
+  background: none;
+  width: auto;
+  height: auto;
+  border-radius: 0;
+}
+
+/* FILE MANIFEST */
+.file-manifest {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin: 16px 0 24px;
+}
+
+.file-manifest-col h4 {
+  font-size: 10pt;
+  color: #1E3A5F;
+  font-weight: 700;
+  border-bottom: 2px solid #14B8A6;
+  padding-bottom: 6px;
+  margin-bottom: 10px;
+  font-style: normal;
+}
+
+.file-manifest-col pre {
+  font-size: 8.5pt;
+  margin: 0;
+  border-left-color: #1E3A5F;
+}
+
+/* DIAGRAM */
+.flow-diagram {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  margin: 20px 0 28px;
+  page-break-inside: avoid;
+}
+
+.flow-box {
+  background: #1E3A5F;
+  color: #fff;
+  padding: 10px 32px;
+  font-size: 10pt;
+  font-weight: 600;
+  border-radius: 4px;
+  text-align: center;
+  min-width: 280px;
+}
+
+.flow-arrow {
+  width: 2px;
+  height: 24px;
+  background: #14B8A6;
+  position: relative;
+}
+
+.flow-arrow::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: -4px;
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid #14B8A6;
+}
+
+/* EXECUTIVE SUMMARY */
+.exec-summary {
+  font-size: 12pt;
+  line-height: 1.8;
+}
+
+.pull-quote {
+  border-left: 4px solid #14B8A6;
+  padding: 12px 20px;
+  margin: 16px 0;
+  background: #f0fdfa;
+  font-size: 12pt;
+  color: #1E3A5F;
+  font-weight: 600;
+}
+
+.pull-quote-label {
+  font-size: 9pt;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #0d9488;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+/* SECTION BREAK */
+.section-break {
+  border: none;
+  border-top: 1px solid #e0e0e0;
+  margin: 32px 0;
+}
+
+/* LAYOUT DIAGRAM */
+.layout-diagram {
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 8.5pt;
+  line-height: 1.4;
+  background: #f8f9fa;
+  padding: 16px;
+  border-radius: 4px;
+  border: 1px solid #e0e0e0;
+  margin: 12px 0 20px;
+  white-space: pre;
+  overflow-x: auto;
+  page-break-inside: avoid;
+}
+
+/* SIGNAL TABLE STYLES */
+.signal-table thead th {
+  font-size: 8pt;
+  padding: 6px 8px;
+}
+
+.signal-table tbody td {
+  font-size: 8.5pt;
+  padding: 5px 8px;
+}
+
+.print-header, .print-footer {
+  display: none;
+}
+
+/* PRINT STYLES */
+@media print {
+  body { font-size: 10pt; padding-top: 40px; padding-bottom: 30px; }
+  .cover-page { height: auto; min-height: 100vh; }
+  .page-container { max-width: none; padding: 0; }
+  .content { padding: 0; }
+  .toc-page { padding: 40px 0; }
+  .no-print { display: none; }
+  h1, h2, h3 { page-break-after: avoid; }
+  table, pre, .callout, .flow-diagram { page-break-inside: avoid; }
+  .page-header, .page-footer { display: none; }
+  .print-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    padding: 8px 0;
+    border-bottom: 1px solid #e0e0e0;
+    font-size: 8pt;
+    color: #1E3A5F;
+    font-family: Arial, 'Helvetica Neue', sans-serif;
+    background: #fff;
+    z-index: 9999;
+  }
+  .print-footer {
+    display: block;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    text-align: center;
+    padding: 8px 0;
+    border-top: 1px solid #e0e0e0;
+    font-size: 8pt;
+    color: #999;
+    font-family: Arial, 'Helvetica Neue', sans-serif;
+    background: #fff;
+    z-index: 9999;
+  }
+}
+</style>
+</head>
+<body>
+
+<div class="print-header">
+  <span>F4 Markets Tab — Commentary Enhancement Specification</span>
+  <span>JEDI RE</span>
+</div>
+<div class="print-footer">JEDI RE — Confidential &bull; Version 1.0 &bull; March 2026</div>
+
+<!-- COVER PAGE -->
+<div class="cover-page">
+  <div class="cover-border-top"></div>
+  <div class="cover-logo">
+    <div class="cover-logo-text">JEDI RE</div>
+    <div class="cover-logo-bar"></div>
+  </div>
+  <div class="cover-title">F4 Markets Tab<br>Commentary Enhancement Specification</div>
+  <div class="cover-subtitle">Technical Implementation Guide for Claude Code</div>
+  <div class="cover-meta">
+    <strong>Version</strong> 1.0<br>
+    <strong>Date</strong> March 2026<br>
+    <strong>Classification</strong> Internal Technical Specification
+  </div>
+  <div class="cover-confidential">INTERNAL USE ONLY</div>
+  <div class="cover-border-bottom"></div>
+</div>
+
+<!-- TABLE OF CONTENTS (auto-generated from h1/h2 headings) -->
+<div class="toc-page">
+  <div class="toc-title">Table of Contents</div>
+  <div id="toc-container"></div>
+</div>
+
+<!-- MAIN CONTENT -->
+<div class="content">
+
+<!-- DOCUMENT PURPOSE -->
+<h1 id="doc-purpose">Document Purpose</h1>
+<p>This document provides Claude Code with a comprehensive audit of all F4 Markets sections, identifies where narrative commentary is missing, and specifies implementation requirements for AI-generated market intelligence.</p>
+
+<hr class="section-break">
+
+<!-- EXECUTIVE SUMMARY -->
+<h1 id="exec-summary">Executive Summary</h1>
+
+<div class="exec-summary">
+<p>The F4 Markets module is the platform's market intelligence hub with a 5-level drill hierarchy: F4 Landing &rarr; MSA Terminal (12 tabs) &rarr; Submarket Terminal (8 tabs) &rarr; Property Card &rarr; Property Terminal.</p>
+
+<div class="pull-quote">
+  <div class="pull-quote-label">Core Finding</div>
+  Every tab displays metric grids and charts without contextual narrative. Users see numbers but receive no interpretation of what those numbers mean for their investment thesis.
+</div>
+
+<div class="pull-quote">
+  <div class="pull-quote-label">Solution</div>
+  Add AI-generated commentary panels that synthesize metrics into actionable insights. Commentary is generated per-MSA/submarket dynamically, cached for 24 hours aligned with DealContext caching.
+</div>
+</div>
+
+<hr class="section-break">
+
+<!-- CURRENT STATE AUDIT -->
+<h1 id="current-audit">Current State Audit</h1>
+
+<h2 id="f4-landing">F4 Landing Page</h2>
+<p><strong>Location:</strong> <code>frontend/src/pages/terminal/F4MarketsView.tsx</code> (852 lines)</p>
+
+<table>
+  <thead>
+    <tr><th>Sub-Tab</th><th>Current State</th><th>Commentary Gap</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>MSA DETAIL</td><td>BloombergMarketDetail embedded, grids only</td><td class="gap-col">No market narrative, no investment thesis</td></tr>
+    <tr><td>MSA INDEX</td><td>18-column market comparison table</td><td class="gap-col">No relative positioning commentary</td></tr>
+    <tr><td>SUBMARKETS</td><td>8-row submarket grid with signals</td><td class="gap-col">No submarket opportunity summary</td></tr>
+    <tr><td>WATCHLIST</td><td>3 starred markets display</td><td class="gap-col">No watchlist rationale or alerts</td></tr>
+    <tr><td>PEER COMP</td><td>Side-by-side comparison matrix</td><td class="gap-col">No competitive positioning narrative</td></tr>
+    <tr><td>PROPERTY STOCK</td><td>8-row property grid</td><td class="gap-col">No property-level insights</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-impl">
+  <div class="callout-title">Data Source</div>
+  All hardcoded mock arrays (<code>TRACKED_MARKETS</code>, <code>ALL_MSAS</code>, <code>SUBMARKET_INDEX</code>, <code>PROPERTY_INDEX</code>)
+</div>
+
+<hr class="section-break">
+
+<h2 id="msa-terminal">MSA Terminal (12 Tabs)</h2>
+<p><strong>Location:</strong> <code>frontend/src/components/terminal/MSATerminal.tsx</code></p>
+<p><strong>Tab Components:</strong> <code>frontend/src/components/terminal/tabs/msa/</code></p>
+
+<h3>Tab 0: OVERVIEW (564 lines)</h3>
+<p><strong>File:</strong> <code>MSAOverviewTab.tsx</code></p>
+
+<h4>Current Components</h4>
+<ul>
+  <li>6 Vitals Grid (population, rent, occupancy, JEDI, jobs ratio, income)</li>
+  <li>Coverage Bar (parcels, properties, units)</li>
+  <li>5-Signal Health Bar (Demand, Supply, Momentum, Dev Capacity, Traffic)</li>
+  <li>3 Market Alerts (brief headlines only)</li>
+  <li>Near-Term Supply (8 metrics) + Long-Term Dev Capacity (4 metrics)</li>
+  <li>Top Submarkets table</li>
+</ul>
+
+<h4>Commentary Gaps</h4>
+<table>
+  <thead>
+    <tr><th>Section</th><th>Current</th><th>Needed</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Health Bar</td><td>Bar charts only</td><td class="gap-col">Per-signal explanation with investment implications</td></tr>
+    <tr><td>Market Thesis</td><td>1 sentence hardcoded</td><td class="gap-col">2-3 paragraph dynamic narrative on market cycle position</td></tr>
+    <tr><td>Investment Thesis</td><td>None</td><td class="gap-col">Bulleted buy/hold/avoid signals with &#10003; and &#9888; markers</td></tr>
+    <tr><td>Risk Watch</td><td>In alerts, terse</td><td class="gap-col">Expanded panel with specific risks and monitoring</td></tr>
+    <tr><td>Opportunity Signals</td><td>None</td><td class="gap-col">Top 3 opportunities by submarket/strategy</td></tr>
+    <tr><td>Peer Context</td><td>None</td><td class="gap-col">1-2 sentence positioning vs comparable MSAs</td></tr>
+  </tbody>
+</table>
+
+<h3>Tab 1: SUBMARKETS (548 lines)</h3>
+<p><strong>File:</strong> <code>MSASubmarketsTab.tsx</code></p>
+<h4>Current Components</h4>
+<ul>
+  <li>14-column matrix (JEDI, Demand, Supply, Saturation, Rent Acc, 7 Dev Capacity signals, Traffic)</li>
+  <li>Map layer choropleth selector</li>
+  <li>Detail sections with signal breakdowns</li>
+  <li>Compare mode for 2 submarkets</li>
+</ul>
+<h4>Commentary Gaps</h4>
+<ul>
+  <li>No submarket tier narrative (A/B/C submarkets by opportunity)</li>
+  <li>No development capacity commentary explaining what constraint scores mean</li>
+  <li>No &ldquo;Where to buy now&rdquo; synthesis</li>
+  <li>Compare mode shows numbers but no analytical summary</li>
+</ul>
+
+<h3>Tab 2: DEALS (543 lines)</h3>
+<p><strong>File:</strong> <code>MSADealsTab.tsx</code></p>
+<h4>Current Components</h4>
+<ul>
+  <li>Featured Deal card (JEDI score, strategy, arb spread, LTL, traffic metrics)</li>
+  <li>Compact deal grid (5 deals)</li>
+  <li>Kanban pipeline (Intake &rarr; Screening &rarr; Analysis &rarr; Execution)</li>
+  <li>Quadrant filter (Hidden Gem, Validated Winner, Hype Risk, Dead Weight)</li>
+</ul>
+<h4>Commentary Gaps</h4>
+<ul>
+  <li>Featured deal has metrics but no investment thesis paragraph</li>
+  <li>No explanation of why deals are in each quadrant</li>
+  <li>Pipeline has no velocity commentary (&ldquo;avg 12 days to screening&rdquo;)</li>
+  <li>No &ldquo;top 3 reasons to pursue&rdquo; for featured deal</li>
+</ul>
+
+<h3>Tab 3: RANKINGS (486 lines)</h3>
+<p><strong>File:</strong> <code>MSAPowerRankingsTab.tsx</code></p>
+<h4>Current Components</h4>
+<ul>
+  <li>Property leaderboard with PCS scores</li>
+  <li>5-component breakdown (Traffic, Revenue, Ops, Asset, Market)</li>
+  <li>Filters by class, vintage, size</li>
+  <li>Movement indicators</li>
+</ul>
+<h4>Commentary Gaps</h4>
+<ul>
+  <li>No explanation of what PCS score means for each property</li>
+  <li>No &ldquo;why is this property ranked here&rdquo; narrative</li>
+  <li>No pattern recognition (&ldquo;B-class 1990s vintage outperforming&rdquo;)</li>
+</ul>
+
+<h3>Tab 4: PROPERTIES (583 lines)</h3>
+<p><strong>File:</strong> <code>MSAPropertiesTab.tsx</code></p>
+<h4>Current Components</h4>
+<ul>
+  <li>Full property grid with filters</li>
+  <li>Sortable columns</li>
+  <li>Click-through to Property Terminal</li>
+</ul>
+<h4>Commentary Gaps</h4>
+<ul>
+  <li>No property segment commentary</li>
+  <li>No vintage analysis narrative</li>
+  <li>Header summary is stats only, no insight</li>
+</ul>
+
+<h3>Tab 5: OWNERS (563 lines)</h3>
+<p><strong>File:</strong> <code>MSAOwnersTab.tsx</code></p>
+<h4>Current Components</h4>
+<ul>
+  <li>Owner rankings with buy/sell signals</li>
+  <li>Portfolio details per owner</li>
+  <li>Land positions</li>
+  <li>Motivation indicators</li>
+</ul>
+<h4>Commentary Gaps</h4>
+<ul>
+  <li>Signals shown but not explained (&ldquo;Why is Greystone a SELL signal?&rdquo;)</li>
+  <li>No owner strategy profiles</li>
+  <li>Land positions lack development probability rationale</li>
+</ul>
+
+<h3>Tab 6: SUPPLY (142 lines)</h3>
+<p><strong>File:</strong> <code>MSASupplyTab.tsx</code></p>
+<h4>Current Components</h4>
+<ul>
+  <li>Pipeline summary cards (Total, Lease-up, Under Construction, Planned)</li>
+  <li>Delivery vs Absorption chart</li>
+  <li>Pipeline by Submarket table</li>
+</ul>
+<h4>Commentary Gaps</h4>
+<ul>
+  <li>No supply wave narrative (&ldquo;Peak delivery Q2 2026, absorption catching up by Q4&rdquo;)</li>
+  <li>No submarket clustering commentary</li>
+  <li>No risk assessment on pipeline concentration</li>
+</ul>
+
+<h3>Tab 7: CAPITAL (120 lines)</h3>
+<p><strong>File:</strong> <code>MSACapitalTab.tsx</code></p>
+<h4>Current Components</h4>
+<ul>
+  <li>Transaction volume stats</li>
+  <li>Cap rate trends</li>
+  <li>Recent transactions table</li>
+</ul>
+<h4>Commentary Gaps</h4>
+<ul>
+  <li>No capital markets narrative</li>
+  <li>No buyer/seller sentiment analysis</li>
+  <li>No cap rate compression/expansion explanation</li>
+</ul>
+
+<h3>Tab 8: ECONOMICS (117 lines)</h3>
+<p><strong>File:</strong> <code>MSAEconomicsTab.tsx</code></p>
+<h4>Current Components</h4>
+<ul>
+  <li>Employment growth chart</li>
+  <li>Population trends</li>
+  <li>Income distribution</li>
+</ul>
+<h4>Commentary Gaps</h4>
+<ul>
+  <li>No economic cycle positioning</li>
+  <li>No sector concentration analysis</li>
+  <li>No wage-to-rent affordability narrative</li>
+</ul>
+
+<h3>Tab 9: TRENDS (565 lines)</h3>
+<p><strong>File:</strong> <code>MSATrendsTab.tsx</code></p>
+<h4>Current Components</h4>
+<ul>
+  <li>Correlation Analysis (Rent Growth vs Traffic vs Wage)</li>
+  <li>Supply Wave forecast (10-year projection)</li>
+  <li>Rent by Vintage breakdown</li>
+  <li>JEDI Score History</li>
+  <li>Affordability metrics</li>
+  <li>Concession trends</li>
+  <li>Transaction scatter</li>
+</ul>
+<h4>Commentary Gaps</h4>
+<ul>
+  <li>Charts lack interpretation</li>
+  <li>No trend inflection point identification</li>
+  <li>Correlation charts need &ldquo;what this means&rdquo; explanation</li>
+  <li>Supply wave needs strategic timing narrative</li>
+</ul>
+
+<h3>Tab 10: NEWS (125 lines)</h3>
+<p><strong>File:</strong> <code>MSANewsTab.tsx</code></p>
+<h4>Current Components</h4>
+<ul>
+  <li>News feed with headlines</li>
+  <li>Source badges</li>
+  <li>Date stamps</li>
+</ul>
+<h4>Commentary Gaps</h4>
+<ul>
+  <li>No impact analysis per article</li>
+  <li>No aggregated sentiment score</li>
+  <li>No &ldquo;key themes this week&rdquo; summary</li>
+</ul>
+
+<h3>Tab 11: COMPARE (352 lines)</h3>
+<p><strong>File:</strong> <code>MSACompareTab.tsx</code></p>
+<h4>Current Components</h4>
+<ul>
+  <li>Multi-market comparison matrix</li>
+  <li>6 metric categories (Demand, Supply, Momentum, Dev Capacity, Traffic, Risk)</li>
+  <li>24+ metrics with heat mapping</li>
+  <li>Market selector</li>
+</ul>
+<h4>Commentary Gaps</h4>
+<ul>
+  <li>Matrix shows numbers, no &ldquo;winner&rdquo; narrative</li>
+  <li>No relative strength summary per category</li>
+  <li>No &ldquo;Atlanta vs peers&rdquo; executive summary</li>
+</ul>
+
+<hr class="section-break">
+
+<h2 id="submarket-terminal">Submarket Terminal (8 Tabs)</h2>
+<p><strong>Location:</strong> <code>frontend/src/components/terminal/SubmarketTerminal.tsx</code></p>
+<p><strong>Tab Components:</strong> <code>frontend/src/components/terminal/tabs/submarket/</code></p>
+
+<table>
+  <thead>
+    <tr><th>Tab</th><th>Lines</th><th>Commentary Gap</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>OVERVIEW</td><td>336</td><td class="gap-col">Health score shown but not explained; no submarket positioning narrative</td></tr>
+    <tr><td>TRAFFIC</td><td>501</td><td class="gap-col">Traffic data displayed but no demand qualification explanation</td></tr>
+    <tr><td>FINANCIALS</td><td>134</td><td class="gap-col">Rent/cap rate grids without pricing power narrative</td></tr>
+    <tr><td>CAPITAL</td><td>144</td><td class="gap-col">Transaction data without buyer/seller analysis</td></tr>
+    <tr><td>MARKET</td><td>273</td><td class="gap-col">Supply/absorption charts without timing strategy</td></tr>
+    <tr><td>PROPERTIES</td><td>365</td><td class="gap-col">Property grid without segment insights</td></tr>
+    <tr><td>NEWS</td><td>184</td><td class="gap-col">Headlines without impact assessment</td></tr>
+    <tr><td>COMPARE</td><td>243</td><td class="gap-col">Peer comparison without &ldquo;why this submarket wins&rdquo;</td></tr>
+  </tbody>
+</table>
+
+<hr class="section-break">
+
+<!-- ARCHITECTURE -->
+<h1 id="architecture">Commentary Generation Architecture</h1>
+
+<h2>Approach: Claude-Generated Dynamic Commentary</h2>
+<p>Commentary is generated per-entity (MSA or Submarket) by Claude, not template-driven. This produces more insightful, contextual analysis that adapts to each market's unique characteristics.</p>
+
+<h2 id="data-flow">Data Flow</h2>
+
+<div class="flow-diagram">
+  <div class="flow-box">MSA Metrics (from API / Store)</div>
+  <div class="flow-arrow"></div>
+  <div class="flow-box">Commentary Generation Request</div>
+  <div class="flow-arrow"></div>
+  <div class="flow-box">Claude API (claude-sonnet-4-20250514)</div>
+  <div class="flow-arrow"></div>
+  <div class="flow-box">Structured JSON Response</div>
+  <div class="flow-arrow"></div>
+  <div class="flow-box">Cache (24-hour TTL, aligned with DealContext)</div>
+  <div class="flow-arrow"></div>
+  <div class="flow-box">Frontend Renders Commentary Panels</div>
+</div>
+
+<h2 id="request-schema">Commentary Request Schema</h2>
+
+<pre>interface CommentaryRequest {
+  entityType: 'msa' | 'submarket';
+  entityId: string;
+  entityName: string;
+  metrics: {
+    // Core signals
+    jediScore: number;
+    demandScore: number;
+    supplyScore: number;
+    momentumScore: number;
+    devCapacityScore: number;
+    trafficScore: number;
+
+    // Key metrics
+    population: number;
+    populationGrowth: number;
+    medianIncome: number;
+    employmentGrowth: number;
+    avgRent: number;
+    rentGrowth: number;
+    occupancy: number;
+    pipelinePercent: number;
+    capRate: number;
+    absorptionMonths: number;
+
+    // Comparative context
+    peerAvgJedi?: number;
+    nationalAvgRent?: number;
+    cyclePhase?: 'Expansion' | 'Peak' | 'Contraction'
+                | 'Trough' | 'Recovery';
+  };
+  sections: CommentarySection[];
+}
+
+type CommentarySection =
+  | 'market_narrative'
+  | 'investment_thesis'
+  | 'signal_commentary'
+  | 'risk_watch'
+  | 'opportunity_signals'
+  | 'peer_context'
+  | 'supply_narrative'
+  | 'capital_narrative'
+  | 'economic_narrative';</pre>
+
+<h2 id="response-schema">Commentary Response Schema</h2>
+
+<pre>interface CommentaryResponse {
+  entityId: string;
+  generatedAt: string;   // ISO timestamp
+  expiresAt: string;     // 24h from generation
+
+  marketNarrative?: {
+    summary: string;       // 1 sentence hook
+    body: string;          // 2-3 paragraphs
+    cyclePosition: string;
+  };
+
+  investmentThesis?: {
+    signals: Array&lt;{
+      type: 'positive' | 'caution' | 'negative';
+      text: string;
+    }&gt;;
+    recommendation: 'Buy' | 'Hold' | 'Avoid' | 'Selective';
+  };
+
+  signalCommentary?: {
+    demand: string;
+    supply: string;
+    momentum: string;
+    devCapacity: string;
+    traffic: string;
+  };
+
+  riskWatch?: {
+    risks: Array&lt;{
+      severity: 'high' | 'medium' | 'low';
+      title: string;
+      detail: string;
+    }&gt;;
+  };
+
+  opportunitySignals?: {
+    opportunities: Array&lt;{
+      submarket?: string;
+      strategy?: string;
+      rationale: string;
+    }&gt;;
+  };
+
+  peerContext?: {
+    summary: string;
+    strengths: string[];
+    weaknesses: string[];
+  };
+
+  supplyNarrative?: string;
+  capitalNarrative?: string;
+  economicNarrative?: string;
+}</pre>
+
+<hr class="section-break">
+
+<!-- IMPLEMENTATION PLAN -->
+<h1 id="impl-plan">Implementation Plan</h1>
+
+<h2 id="phase1">Phase 1: Core Infrastructure (Priority P0)</h2>
+
+<h3>1.1 Backend Service: Commentary Generator</h3>
+<p><strong>File:</strong> <code>backend/src/services/commentary/commentaryGenerator.ts</code></p>
+
+<pre>import Anthropic from '@anthropic-ai/sdk';
+
+export class CommentaryGenerator {
+  private client: Anthropic;
+  private cache: Map&lt;string,
+    { data: CommentaryResponse; expiresAt: Date }&gt;;
+
+  async generateMSACommentary(
+    msaId: string,
+    metrics: MSAMetrics,
+    sections: CommentarySection[]
+  ): Promise&lt;CommentaryResponse&gt;;
+
+  async generateSubmarketCommentary(
+    submarketId: string,
+    metrics: SubmarketMetrics,
+    sections: CommentarySection[]
+  ): Promise&lt;CommentaryResponse&gt;;
+
+  private buildPrompt(
+    entityType: string,
+    metrics: object,
+    sections: string[]
+  ): string;
+
+  private parseResponse(
+    response: string
+  ): CommentaryResponse;
+}</pre>
+
+<h3>1.2 API Endpoints</h3>
+<p><strong>Files:</strong> <code>commentary.routes.ts</code>, <code>commentary.controller.ts</code></p>
+
+<pre>GET  /api/v1/commentary/msa/:msaId
+GET  /api/v1/commentary/submarket/:submarketId
+POST /api/v1/commentary/refresh/:entityType/:entityId</pre>
+
+<h3>1.3 Frontend Store Integration</h3>
+<p><strong>File:</strong> <code>frontend/src/stores/commentaryStore.ts</code></p>
+
+<pre>interface CommentaryStore {
+  msaCommentary: Record&lt;string, CommentaryResponse&gt;;
+  submarketCommentary: Record&lt;string, CommentaryResponse&gt;;
+  loading: Record&lt;string, boolean&gt;;
+
+  fetchMSACommentary: (msaId: string) =&gt; Promise&lt;void&gt;;
+  fetchSubmarketCommentary:
+    (submarketId: string) =&gt; Promise&lt;void&gt;;
+}</pre>
+
+<h2 id="phase2">Phase 2: MSA Overview Tab Enhancement (Priority P0)</h2>
+
+<h3>2.1 New Components</h3>
+
+<table>
+  <thead>
+    <tr><th>Component</th><th>Purpose</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>MarketNarrativePanel.tsx</code></td><td>2-3 paragraph market cycle narrative with summary hook</td></tr>
+    <tr><td><code>InvestmentThesisPanel.tsx</code></td><td>Bulleted signals with &#10003;/&#9888;/&#10007; markers and recommendation</td></tr>
+    <tr><td><code>SignalCommentaryPanel.tsx</code></td><td>Per health-bar score explanation and implications</td></tr>
+    <tr><td><code>RiskOpportunityPanel.tsx</code></td><td>Split panel: risks with severity + opportunities with rationale</td></tr>
+    <tr><td><code>PeerContextPanel.tsx</code></td><td>1-2 sentence competitive positioning vs peer MSAs</td></tr>
+  </tbody>
+</table>
+
+<h3>2.2 MSAOverviewTab Integration</h3>
+<p>Update <code>MSAOverviewTab.tsx</code> to import <code>useCommentaryStore</code>, fetch commentary on mount/msaId change, add commentary panels between existing grid sections, and show loading skeletons while fetching.</p>
+
+<h4>Layout Structure</h4>
+<div class="layout-diagram">&#9484;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9488;
+&#9474; Vitals Grid (existing)                                  &#9474;
+&#9500;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9508;
+&#9474; Coverage Bar (existing)                                 &#9474;
+&#9500;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9516;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9508;
+&#9474; Market Narrative Panel     &#9474; Investment Thesis Panel    &#9474;
+&#9474; (NEW - 2-3 paragraphs)     &#9474; (NEW - bulleted signals)   &#9474;
+&#9500;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9524;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9508;
+&#9474; 5-Signal Health Bar (existing)                          &#9474;
+&#9474; + Signal Commentary below each bar (NEW)                &#9474;
+&#9500;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9516;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9508;
+&#9474; Risk Watch Panel (NEW)     &#9474; Opportunity Signals (NEW)  &#9474;
+&#9500;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9524;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9508;
+&#9474; Peer Context Panel (NEW - 1-2 sentences)                &#9474;
+&#9500;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9508;
+&#9474; Near-Term Supply (existing)                             &#9474;
+&#9500;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9508;
+&#9474; Long-Term Dev Capacity (existing)                       &#9474;
+&#9500;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9508;
+&#9474; Top Submarkets (existing)                               &#9474;
+&#9492;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9472;&#9496;</div>
+
+<h2 id="phase3">Phase 3: Remaining MSA Tabs (Priority P1)</h2>
+
+<table>
+  <thead>
+    <tr><th>Tab</th><th>Enhancement</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>SUBMARKETS</td><td>Add &ldquo;Submarket Tier Summary&rdquo; panel at top with opportunity narrative</td></tr>
+    <tr><td>DEALS</td><td>Add investment thesis paragraph to Featured Deal card; quadrant explanations</td></tr>
+    <tr><td>RANKINGS</td><td>Add &ldquo;Ranking Insights&rdquo; panel explaining top performers and patterns</td></tr>
+    <tr><td>OWNERS</td><td>Add strategy profile and motivation explanation per owner</td></tr>
+    <tr><td>SUPPLY</td><td>Add supply wave narrative panel above charts</td></tr>
+    <tr><td>CAPITAL</td><td>Add capital markets sentiment narrative</td></tr>
+    <tr><td>ECONOMICS</td><td>Add economic cycle positioning narrative</td></tr>
+    <tr><td>TRENDS</td><td>Add chart interpretation callouts</td></tr>
+    <tr><td>NEWS</td><td>Add weekly themes summary and impact scores</td></tr>
+    <tr><td>COMPARE</td><td>Add &ldquo;Competitive Summary&rdquo; panel at top</td></tr>
+  </tbody>
+</table>
+
+<h2 id="phase4">Phase 4: Submarket Terminal Tabs (Priority P1)</h2>
+<p>Apply same pattern as MSA tabs. Each submarket overview gets:</p>
+<ul>
+  <li>Market narrative (scaled to submarket context)</li>
+  <li>Investment thesis</li>
+  <li>Risk/opportunity panels</li>
+  <li>Property segment insights</li>
+</ul>
+
+<h2 id="phase5">Phase 5: Mock Data Migration (Priority P0 &mdash; Parallel)</h2>
+<p>All commentary fetching assumes API endpoints return real data. The following mock arrays in <code>F4MarketsView.tsx</code> must be replaced with API calls:</p>
+
+<table>
+  <thead>
+    <tr><th>Mock Array</th><th>Replacement</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>TRACKED_MARKETS</code></td><td><code>/api/v1/markets/tracked</code></td></tr>
+    <tr><td><code>ALL_MSAS</code></td><td><code>/api/v1/markets/all</code></td></tr>
+    <tr><td><code>SUBMARKET_INDEX</code></td><td><code>/api/v1/submarkets?msaId=:id</code></td></tr>
+    <tr><td><code>PROPERTY_INDEX</code></td><td><code>/api/v1/properties?msaId=:id</code></td></tr>
+  </tbody>
+</table>
+
+<hr class="section-break">
+
+<!-- PROMPT TEMPLATE -->
+<h1 id="prompt-template">Commentary Prompt Template</h1>
+
+<div class="callout callout-impl">
+  <div class="callout-title">System Prompt for AI Commentary Generation</div>
+  <p>Use this system prompt when generating MSA commentary:</p>
+</div>
+
+<pre>You are a real estate investment analyst generating market
+intelligence for a Bloomberg Terminal-style platform.
+Your commentary must be:
+
+1. PRECISE: Use specific numbers from the provided metrics
+2. ACTIONABLE: Every paragraph should inform an investment
+   decision
+3. PROFESSIONAL: Write like a CBRE or JLL market report
+4. CONCISE: Maximum 3 sentences per paragraph
+
+For the Investment Thesis section, use:
+  &#10003; for positive signals (score &gt; 70 or favorable trends)
+  &#9888; for caution signals (score 50-70 or mixed trends)
+  &#10007; for negative signals (score &lt; 50 or adverse trends)
+
+Always connect metrics to investment implications:
+  High DEMAND + Low SUPPLY = bullish for rent growth
+  High PIPELINE + Slowing ABSORPTION = caution on timing
+  Strong TRAFFIC + Weak CONVERSION = operational opportunity
+
+Format your response as valid JSON matching the
+CommentaryResponse schema.</pre>
+
+<hr class="section-break">
+
+<!-- ACCEPTANCE CRITERIA -->
+<h1 id="acceptance">Acceptance Criteria</h1>
+
+<h2>Phase 1 Complete When:</h2>
+<ul class="checklist">
+  <li><code>GET /api/v1/commentary/msa/:msaId</code> returns valid CommentaryResponse</li>
+  <li>Commentary cached for 24 hours</li>
+  <li><code>commentaryStore.ts</code> integrated with React components</li>
+  <li>Loading states render correctly</li>
+</ul>
+
+<h2>Phase 2 Complete When:</h2>
+<ul class="checklist">
+  <li>MSAOverviewTab displays Market Narrative panel</li>
+  <li>MSAOverviewTab displays Investment Thesis panel</li>
+  <li>Each health bar has tooltip/inline commentary</li>
+  <li>Risk Watch panel populated from API</li>
+  <li>Opportunity Signals panel populated from API</li>
+  <li>Peer Context summary visible</li>
+</ul>
+
+<h2>Full Implementation Complete When:</h2>
+<ul class="checklist">
+  <li>All 12 MSA tabs have commentary where specified</li>
+  <li>All 8 Submarket tabs have commentary where specified</li>
+  <li>No hardcoded mock arrays remain in F4MarketsView.tsx</li>
+  <li>Commentary refreshes automatically every 24 hours</li>
+  <li>Credit cost per commentary generation tracked via Stripe token meter</li>
+</ul>
+
+<hr class="section-break">
+
+<!-- FILE MANIFEST -->
+<h1 id="file-manifest">File Manifest</h1>
+
+<div class="file-manifest">
+  <div class="file-manifest-col">
+    <h4>New Files to Create</h4>
+<pre>backend/src/services/commentary/
+  &#9500;&#9472;&#9472; commentaryGenerator.ts
+  &#9500;&#9472;&#9472; commentaryCache.ts
+  &#9500;&#9472;&#9472; commentaryPrompts.ts
+  &#9492;&#9472;&#9472; index.ts
+
+backend/src/api/rest/
+  &#9500;&#9472;&#9472; commentary.routes.ts
+  &#9492;&#9472;&#9472; commentary.controller.ts
+
+frontend/src/stores/
+  &#9492;&#9472;&#9472; commentaryStore.ts
+
+frontend/src/components/terminal/commentary/
+  &#9500;&#9472;&#9472; MarketNarrativePanel.tsx
+  &#9500;&#9472;&#9472; InvestmentThesisPanel.tsx
+  &#9500;&#9472;&#9472; SignalCommentaryPanel.tsx
+  &#9500;&#9472;&#9472; RiskOpportunityPanel.tsx
+  &#9500;&#9472;&#9472; SupplyNarrativePanel.tsx
+  &#9500;&#9472;&#9472; PeerContextPanel.tsx
+  &#9492;&#9472;&#9472; index.ts</pre>
+  </div>
+  <div class="file-manifest-col">
+    <h4>Files to Modify</h4>
+<pre>frontend/src/components/terminal/
+  tabs/msa/MSAOverviewTab.tsx
+  tabs/msa/MSASubmarketsTab.tsx
+  tabs/msa/MSADealsTab.tsx
+  tabs/msa/MSAPowerRankingsTab.tsx
+  tabs/msa/MSAOwnersTab.tsx
+  tabs/msa/MSASupplyTab.tsx
+  tabs/msa/MSACapitalTab.tsx
+  tabs/msa/MSAEconomicsTab.tsx
+  tabs/msa/MSATrendsTab.tsx
+  tabs/msa/MSANewsTab.tsx
+  tabs/msa/MSACompareTab.tsx
+  tabs/submarket/SubmarketOverviewTab.tsx
+
+frontend/src/pages/terminal/
+  F4MarketsView.tsx
+
+backend/src/api/rest/
+  index.ts (mount new routes)</pre>
+  </div>
+</div>
+
+<hr class="section-break">
+
+<!-- STRATEGY ARBITRAGE ENGINE -->
+<h1 id="strategy-engine">Strategy Arbitrage Engine Metrics (M08)</h1>
+
+<p>The Strategy Arbitrage Engine simultaneously analyzes 4 investment strategies for every deal. These metrics should be incorporated into MSA and Deal-level commentary.</p>
+
+<h2>4 Strategies Analyzed</h2>
+<table>
+  <thead>
+    <tr><th>Strategy</th><th>Label</th><th>Key Indicators</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>build_to_sell</code></td><td>Build-to-Sell</td><td>Absorption &gt; supply pipeline, price appreciation accelerating, entitled land available, construction cost stability</td></tr>
+    <tr><td><code>flip</code></td><td>Flip</td><td>Distressed inventory rising, DOM declining, below-market distressed deals, renovation cost certainty</td></tr>
+    <tr><td><code>rental</code></td><td>Rental (Long-term)</td><td>Rent growth &gt; inflation, vacancy declining, cash flow positive at acquisition, low tenant default risk</td></tr>
+    <tr><td><code>str</code></td><td>Short-Term Rental</td><td>Tourism/business travel up, STR permits available, ADR growth positive, favorable regulatory environment</td></tr>
+  </tbody>
+</table>
+
+<h2 id="strategy-weights">Strategy Signal Weights</h2>
+<p>Each strategy weights the 5 core signals differently:</p>
+
+<table>
+  <thead>
+    <tr><th>Strategy</th><th>Demand</th><th>Supply</th><th>Momentum</th><th>Position</th><th>Risk</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Build-to-Sell</td><td>30%</td><td>25%</td><td>20%</td><td>15%</td><td>10%</td></tr>
+    <tr><td>Flip</td><td>15%</td><td>20%</td><td>30%</td><td>20%</td><td>15%</td></tr>
+    <tr><td>Rental</td><td>30%</td><td>25%</td><td>20%</td><td>15%</td><td>10%</td></tr>
+    <tr><td>STR</td><td>25%</td><td>20%</td><td>25%</td><td>20%</td><td>10%</td></tr>
+  </tbody>
+</table>
+
+<h2 id="arbitrage-detection">Arbitrage Detection</h2>
+<ul>
+  <li><strong>Arbitrage Flag:</strong> Triggered when delta between top strategies &gt; 15 points AND top score &gt; 70</li>
+  <li><strong>Arbitrage Delta:</strong> <code>recommended_score - second_best_score</code></li>
+</ul>
+
+<h2 id="envelope-adj">Envelope Adjustments (Development Path)</h2>
+<p>Strategy scores are modified based on selected development path:</p>
+
+<table>
+  <thead>
+    <tr><th>Path</th><th>BTS</th><th>Flip</th><th>Rental</th><th>STR</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>by_right</code></td><td>+8</td><td>+2</td><td>+5</td><td>+3</td></tr>
+    <tr><td><code>overlay_bonus</code></td><td>+6</td><td>+1</td><td>+7</td><td>+2</td></tr>
+    <tr><td><code>variance</code></td><td>+3</td><td>+2</td><td>+4</td><td>+1</td></tr>
+    <tr><td><code>rezone</code></td><td>+10</td><td>-2</td><td>+5</td><td>-5</td></tr>
+  </tbody>
+</table>
+
+<div class="callout callout-finding">
+  <div class="callout-title">Additional Modifiers</div>
+  <ul>
+    <li><strong>Timeline penalty:</strong> <code>entitlement_months &times; 0.5</code> (max 10), weighted by strategy sensitivity</li>
+    <li><strong>Scale bonus:</strong> +5 if &gt;200 units, +3 if &gt;100 units, weighted by strategy affinity</li>
+  </ul>
+</div>
+
+<h3>Deal Signals Extracted for Scoring</h3>
+<pre>{
+  supply_pressure: number;       // Inverted supply balance (0-1)
+  demand_growth: number;         // Normalized demand score (0-1)
+  rent_momentum: number;         // Rent growth normalized (0-1)
+  job_growth: number;            // Employment trend (0-1)
+  cap_rate_spread: number;       // Opportunity score (0-1)
+  irr_potential: number;         // IRR / 30 (0-1)
+  risk_score: number;            // Composite risk (0-1)
+  regulatory_risk: number;       // Regulatory component (0-1)
+  market_volatility: number;     // Supply-derived volatility (0-1)
+  project_type: string;          // 'existing' | 'development'
+                                 // | 'redevelopment'
+}</pre>
+
+<hr class="section-break">
+
+<!-- JEDI SCORE -->
+<h1 id="jedi-score">JEDI Score Composition</h1>
+
+<p>The JEDI Score (0-100) is the platform's master composite signal used across all levels (MSA, Submarket, Property).</p>
+
+<h2>Component Weights</h2>
+<table>
+  <thead>
+    <tr><th>Component</th><th>Weight</th><th>Source</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Demand</td><td>30%</td><td>D-01 through D-12 signals</td></tr>
+    <tr><td>Supply</td><td>25%</td><td>S-01 through S-10 signals</td></tr>
+    <tr><td>Momentum</td><td>20%</td><td>M-01 through M-10 signals</td></tr>
+    <tr><td>Position</td><td>15%</td><td>P-01 through P-12 signals</td></tr>
+    <tr><td>Risk</td><td>10%</td><td>R-01 through R-10 signals (inverted)</td></tr>
+  </tbody>
+</table>
+
+<h2>Score Interpretation</h2>
+<table>
+  <thead>
+    <tr><th>Score Range</th><th>Classification</th><th>Commentary Guidance</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>80&ndash;100</td><td>Strong Buy</td><td>Lead with opportunity signals, minimal caveats</td></tr>
+    <tr><td>60&ndash;79</td><td>Buy / Selective</td><td>Balanced thesis, highlight entry timing</td></tr>
+    <tr><td>40&ndash;59</td><td>Hold / Neutral</td><td>Emphasize specific conditions for entry</td></tr>
+    <tr><td>20&ndash;39</td><td>Avoid / Caution</td><td>Lead with risks, identify turnaround catalysts</td></tr>
+    <tr><td>0&ndash;19</td><td>Strong Avoid</td><td>Focus on risk factors, exit strategies</td></tr>
+  </tbody>
+</table>
+
+<hr class="section-break">
+
+<!-- SIGNAL REFERENCE -->
+<h1 id="signal-reference">Signal Group Reference (70+ Metrics)</h1>
+
+<h2 id="demand-signals">Demand Signals (D-01 to D-12)</h2>
+<table class="signal-table">
+  <thead>
+    <tr><th>ID</th><th>Metric</th><th>Level</th><th>Source</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>D-01</td><td>Jobs-to-Apartments Ratio</td><td>MSA</td><td>BLS API + S-01</td></tr>
+    <tr><td>D-02</td><td>New Jobs to New Units Ratio</td><td>MSA</td><td>BLS + S-02</td></tr>
+    <tr><td>D-03</td><td>Net Migration to New Supply</td><td>MSA</td><td>Census + S-02</td></tr>
+    <tr><td>D-04</td><td>Household Formation to Supply</td><td>MSA</td><td>Census + S-02</td></tr>
+    <tr><td>D-05</td><td>Traffic Count Growth Rate</td><td>Road Segment</td><td>State DOT</td></tr>
+    <tr><td>D-06</td><td>Traffic Acceleration</td><td>Road Segment</td><td>D-05 time series</td></tr>
+    <tr><td>D-07</td><td>Digital-Physical Traffic Gap</td><td>Submarket</td><td>Google Trends + DOT</td></tr>
+    <tr><td>D-08</td><td>Search Interest Volume</td><td>Submarket</td><td>Google Trends API</td></tr>
+    <tr><td>D-09</td><td>Demand Momentum Score</td><td>MSA</td><td>All D outputs</td></tr>
+    <tr><td>D-10</td><td>Employment Gravity Score</td><td>Submarket</td><td>BLS + Census LODES</td></tr>
+    <tr><td>D-11</td><td>Rent-to-Mortgage Discount</td><td>MSA</td><td>M-01 + Freddie Mac</td></tr>
+    <tr><td>D-12</td><td>Population &amp; Demographics</td><td>MSA</td><td>Census ACS</td></tr>
+  </tbody>
+</table>
+
+<h2 id="supply-signals">Supply Signals (S-01 to S-10)</h2>
+<table class="signal-table">
+  <thead>
+    <tr><th>ID</th><th>Metric</th><th>Level</th><th>Source</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>S-01</td><td>Existing Inventory Map</td><td>Property</td><td>Municipal Records</td></tr>
+    <tr><td>S-02</td><td>Pipeline: Under Construction</td><td>Project</td><td>Municipal Permits</td></tr>
+    <tr><td>S-03</td><td>Pipeline: Permitted Not Started</td><td>Project</td><td>Municipal Permits</td></tr>
+    <tr><td>S-04</td><td>Absorption Runway</td><td>MSA</td><td>S-02+03 / Historical</td></tr>
+    <tr><td>S-05</td><td>Delivery Clustering</td><td>Submarket</td><td>S-02 geospatial+time</td></tr>
+    <tr><td>S-06</td><td>Permit Momentum</td><td>MSA</td><td>S-03 trend</td></tr>
+    <tr><td>S-07</td><td>Construction Cost vs Rent Yield</td><td>MSA</td><td>RSMeans + M-01</td></tr>
+    <tr><td>S-08</td><td>Saturation Index</td><td>Submarket</td><td>S-01 / D-12 + S-02</td></tr>
+    <tr><td>S-09</td><td>Permit-to-Delivery Conversion</td><td>MSA</td><td>Historical S-03&rarr;S-02</td></tr>
+    <tr><td>S-10</td><td>Vintage Breakdown</td><td>MSA</td><td>P-01 year_built</td></tr>
+  </tbody>
+</table>
+
+<h2 id="momentum-signals">Momentum Signals (M-01 to M-10)</h2>
+<table class="signal-table">
+  <thead>
+    <tr><th>ID</th><th>Metric</th><th>Level</th><th>Source</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>M-01</td><td>Rent Trends by Vintage Class</td><td>MSA</td><td>Apartments.com</td></tr>
+    <tr><td>M-02</td><td>Rent Acceleration Rate</td><td>MSA</td><td>M-01 2nd derivative</td></tr>
+    <tr><td>M-03</td><td>Concession Tracking</td><td>Property</td><td>Apartments.com</td></tr>
+    <tr><td>M-04</td><td>Concession Velocity</td><td>MSA</td><td>M-03 trend</td></tr>
+    <tr><td>M-05</td><td>Rent vs Wage Growth Spread</td><td>MSA</td><td>M-01 + BLS wages</td></tr>
+    <tr><td>M-06</td><td>Occupancy Proxy</td><td>Property</td><td>Apartments.com</td></tr>
+    <tr><td>M-07</td><td>Traffic-to-Rent Elasticity</td><td>Submarket</td><td>D-05 + M-01</td></tr>
+    <tr><td>M-08</td><td>Cap Rate Trends</td><td>MSA</td><td>Municipal sale records</td></tr>
+    <tr><td>M-09</td><td>Investor Activity Index</td><td>MSA</td><td>Municipal deed freq.</td></tr>
+    <tr><td>M-10</td><td>Review Sentiment Score</td><td>Property</td><td>Google Places</td></tr>
+  </tbody>
+</table>
+
+<h2 id="position-signals">Position Signals (P-01 to P-12)</h2>
+<table class="signal-table">
+  <thead>
+    <tr><th>ID</th><th>Metric</th><th>Level</th><th>Source</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>P-01</td><td>Property Card (Municipal)</td><td>Property</td><td>Municipal Records</td></tr>
+    <tr><td>P-02</td><td>Vintage Classification</td><td>Property</td><td>P-01 year_built</td></tr>
+    <tr><td>P-03</td><td>Loss-to-Lease Estimate</td><td>Property</td><td>M-01 comp &minus; actual</td></tr>
+    <tr><td>P-04</td><td>Ownership Profile &amp; Hold Period</td><td>Property</td><td>Municipal Deeds</td></tr>
+    <tr><td>P-05</td><td>Seller Motivation Score</td><td>Property</td><td>P-04 + R-09 + patterns</td></tr>
+    <tr><td>P-06</td><td>Tax Assessment &amp; Step-Up Risk</td><td>Property</td><td>Municipal Tax Records</td></tr>
+    <tr><td>P-07</td><td>Price/Unit Benchmarks</td><td>MSA</td><td>Municipal sale records</td></tr>
+    <tr><td>P-08</td><td>Zoning &amp; Development Capacity</td><td>Property</td><td>Municipal Zoning</td></tr>
+    <tr><td>P-09</td><td>Amenity Density Score</td><td>Property</td><td>Google Places API</td></tr>
+    <tr><td>P-10</td><td>Revenue Conversion Efficiency</td><td>Property</td><td>PMS Integration</td></tr>
+    <tr><td>P-11</td><td>Expense Efficiency Gap</td><td>Property</td><td>PMS Integration</td></tr>
+    <tr><td>P-12</td><td>Turnover Cost Impact</td><td>Property</td><td>PMS Integration</td></tr>
+  </tbody>
+</table>
+
+<h2 id="risk-signals">Risk Signals (R-01 to R-10)</h2>
+<table class="signal-table">
+  <thead>
+    <tr><th>ID</th><th>Metric</th><th>Level</th><th>Source</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>R-01</td><td>Affordability Absorption Threshold</td><td>MSA</td><td>Census + M-01</td></tr>
+    <tr><td>R-02</td><td>Vintage Convergence Rate</td><td>MSA</td><td>M-01 spread trend</td></tr>
+    <tr><td>R-03</td><td>Concession Drag Rate</td><td>MSA</td><td>M-03 / M-01</td></tr>
+    <tr><td>R-04</td><td>Insurance Cost Trends</td><td>MSA</td><td>Industry reports</td></tr>
+    <tr><td>R-05</td><td>Tax Reassessment Risk</td><td>Property</td><td>P-06 + sale price</td></tr>
+    <tr><td>R-06</td><td>Deferred Maintenance Estimate</td><td>Property</td><td>P-01 age + P-10/11</td></tr>
+    <tr><td>R-07</td><td>Ownership Concentration Risk</td><td>Submarket</td><td>P-04 aggregated</td></tr>
+    <tr><td>R-08</td><td>Seasonal Traffic Swing</td><td>Property</td><td>D-05 seasonal var.</td></tr>
+    <tr><td>R-09</td><td>Owner Hold Period vs Market Cycle</td><td>Property</td><td>P-04 + M-08 trend</td></tr>
+    <tr><td>R-10</td><td>News Sentiment &amp; Alerts</td><td>MSA</td><td>NewsAPI + Email</td></tr>
+  </tbody>
+</table>
+
+<h2 id="composite-signals">Composite Signals (C-01 to C-10)</h2>
+<table class="signal-table">
+  <thead>
+    <tr><th>ID</th><th>Metric</th><th>Level</th><th>Source</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>C-01</td><td>JEDI Score (0-100)</td><td>All levels</td><td>All 5 master signals</td></tr>
+    <tr><td>C-02</td><td>Rent Growth Forecast (AI)</td><td>MSA</td><td>All demand+supply+momentum</td></tr>
+    <tr><td>C-03</td><td>Occupancy Trajectory Model</td><td>MSA</td><td>Supply + demand + momentum</td></tr>
+    <tr><td>C-04</td><td>Broker OM Variance Report</td><td>Property</td><td>OM inputs vs AI outputs</td></tr>
+    <tr><td>C-05</td><td>Strategy Arbitrage Score</td><td>Property</td><td>All strategy analyses</td></tr>
+    <tr><td>C-06</td><td>Apt-to-Condo Conversion Spread</td><td>Property</td><td>M-01 + condo comps</td></tr>
+    <tr><td>C-07</td><td>Build-to-Rent vs Hold Breakeven</td><td>Property</td><td>S-07 + P-07 + M-01</td></tr>
+    <tr><td>C-08</td><td>STR Hybrid Revenue Uplift</td><td>Property</td><td>LTR NOI vs STR model</td></tr>
+    <tr><td>C-09</td><td>Sensitivity Scenario Generator</td><td>Property</td><td>Monte Carlo</td></tr>
+    <tr><td>C-10</td><td>Submarket Ranking Report</td><td>Submarket</td><td>C-01 per submarket</td></tr>
+  </tbody>
+</table>
+
+<h2 id="traffic-signals">Traffic Signals (T-01 to T-10)</h2>
+<table class="signal-table">
+  <thead>
+    <tr><th>ID</th><th>Metric</th><th>Level</th><th>Source</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>T-01</td><td>Weekly Walk-In Prediction</td><td>Property</td><td>ADT + Census + Generators</td></tr>
+    <tr><td>T-02</td><td>Physical Traffic Score (0-100)</td><td>Property</td><td>State DOT + Road Class</td></tr>
+    <tr><td>T-03</td><td>Digital Traffic Score (0-100)</td><td>Property</td><td>Google Trends + Platform</td></tr>
+    <tr><td>T-04</td><td>Traffic Correlation Signal</td><td>Property</td><td>T-02 vs T-03 matrix</td></tr>
+    <tr><td>T-05</td><td>Traffic-to-Lease Prediction</td><td>Property</td><td>T-01 + T-03 ML model</td></tr>
+    <tr><td>T-06</td><td>Capture Rate</td><td>Property</td><td>Frontage + Corner + Setback</td></tr>
+    <tr><td>T-07</td><td>Property Traffic Trajectory</td><td>Property</td><td>T-01 8-week time series</td></tr>
+    <tr><td>T-08</td><td>Generator Proximity Score</td><td>Property</td><td>Census + BLS + Transit</td></tr>
+    <tr><td>T-09</td><td>Competitive Traffic Share</td><td>Property</td><td>T-01 subject / trade area</td></tr>
+    <tr><td>T-10</td><td>Traffic Validation Confidence</td><td>Property</td><td>User actuals vs predicted</td></tr>
+  </tbody>
+</table>
+
+<h2 id="devcap-signals">Dev Capacity Signals (DC-01 to DC-11)</h2>
+<table class="signal-table">
+  <thead>
+    <tr><th>ID</th><th>Metric</th><th>Level</th><th>Source</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>DC-01</td><td>Capacity Ratio</td><td>Submarket</td><td>Zoning + Vacant Parcels / S-01</td></tr>
+    <tr><td>DC-02</td><td>Buildout Timeline</td><td>Submarket</td><td>Weighted Capacity / Annual Abs.</td></tr>
+    <tr><td>DC-03</td><td>Supply Constraint Score (0-100)</td><td>Submarket</td><td>Composite: zoning + land</td></tr>
+    <tr><td>DC-04</td><td>Supply Overhang Risk</td><td>Submarket</td><td>(Capacity &minus; Pipeline) / Inventory</td></tr>
+    <tr><td>DC-05</td><td>Last Mover Advantage Flag</td><td>Submarket</td><td>Capacity &lt; 15% + Active Dev</td></tr>
+    <tr><td>DC-06</td><td>Development Probability</td><td>Parcel</td><td>Owner + zoning + infra + market</td></tr>
+    <tr><td>DC-07</td><td>Pricing Power Index (0-100)</td><td>Submarket</td><td>DC-03 40% + D-01 25% + M-06 20%</td></tr>
+    <tr><td>DC-08</td><td>Supply Wave Forecast (10yr)</td><td>MSA</td><td>S-02 + S-03 + DC-06 weighted</td></tr>
+    <tr><td>DC-09</td><td>Developer Land Bank Index</td><td>Submarket</td><td>Parcel ownership + DC-06</td></tr>
+    <tr><td>DC-10</td><td>Assemblage Opportunity Score</td><td>Parcel Cluster</td><td>Spatial adjacency + capacity</td></tr>
+    <tr><td>DC-11</td><td>Supply-Adjusted Rent Forecast</td><td>Submarket</td><td>C-02 base +/- DC-03 factor</td></tr>
+  </tbody>
+</table>
+
+<h2 id="tradearea-signals">Trade Area Signals (TA-01 to TA-04)</h2>
+<table class="signal-table">
+  <thead>
+    <tr><th>ID</th><th>Metric</th><th>Level</th><th>Source</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>TA-01</td><td>Trade Area Definition</td><td>Property</td><td>Radius / Drive-time / Custom</td></tr>
+    <tr><td>TA-02</td><td>Competitive Set</td><td>Property</td><td>S-01 in TA + P-02 vintage</td></tr>
+    <tr><td>TA-03</td><td>Trade Area Supply-Demand Balance</td><td>Trade Area</td><td>D-01 + S-01 within polygon</td></tr>
+    <tr><td>TA-04</td><td>Digital Competitive Intel</td><td>Property</td><td>SpyFu / SimilarWeb</td></tr>
+  </tbody>
+</table>
+
+<hr class="section-break">
+
+<!-- PCS -->
+<h1 id="pcs">Property Competitive Score (PCS)</h1>
+
+<p>Used for property rankings in the MSA Power Rankings tab.</p>
+
+<h2>Components &amp; Weights</h2>
+<table>
+  <thead>
+    <tr><th>Component</th><th>Weight</th><th>Description</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Traffic Performance</td><td>25%</td><td>T-02, T-03, T-07 composite</td></tr>
+    <tr><td>Revenue Strength</td><td>25%</td><td>M-01, M-03, P-03 composite</td></tr>
+    <tr><td>Operational Quality</td><td>20%</td><td>P-10, P-11 composite</td></tr>
+    <tr><td>Asset Condition</td><td>15%</td><td>P-02, R-06 composite</td></tr>
+    <tr><td>Market Position</td><td>15%</td><td>P-09, TA-02 composite</td></tr>
+  </tbody>
+</table>
+
+<hr class="section-break">
+
+<!-- QUADRANTS -->
+<h1 id="quadrants">Quadrant Classification</h1>
+
+<p>Deals/properties are classified into 4 quadrants based on JEDI Score and Traffic signals:</p>
+
+<table>
+  <thead>
+    <tr><th>Quadrant</th><th>Criteria</th><th>Commentary Tone</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Hidden Gem</td><td>High JEDI + Low Traffic visibility</td><td class="gap-col">&ldquo;Undervalued opportunity, catalysts ahead&rdquo;</td></tr>
+    <tr><td>Validated Winner</td><td>High JEDI + High Traffic visibility</td><td class="gap-col">&ldquo;Market consensus correct, premium warranted&rdquo;</td></tr>
+    <tr><td>Hype Risk</td><td>Low JEDI + High Traffic visibility</td><td class="gap-col">&ldquo;Overvalued, correction risk, find the short&rdquo;</td></tr>
+    <tr><td>Dead Weight</td><td>Low JEDI + Low Traffic visibility</td><td class="gap-col">&ldquo;Avoid, no catalysts, dead money&rdquo;</td></tr>
+  </tbody>
+</table>
+
+<hr class="section-break">
+
+<!-- LIFECYCLE -->
+<h1 id="lifecycle">Lifecycle Phases</h1>
+
+<p>Market/submarket cycle positioning:</p>
+
+<table>
+  <thead>
+    <tr><th>Phase</th><th>Indicators</th><th>Commentary Focus</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Emergence</td><td>Early demand signals, low supply, accelerating traffic</td><td class="gap-col">&ldquo;Early mover advantage, position now&rdquo;</td></tr>
+    <tr><td>Acceleration</td><td>Strong demand, supply responding, momentum positive</td><td class="gap-col">&ldquo;Peak opportunity window, execute quickly&rdquo;</td></tr>
+    <tr><td>Maturation</td><td>Demand stable, supply catching up, momentum flattening</td><td class="gap-col">&ldquo;Selective entry, focus on differentiated assets&rdquo;</td></tr>
+    <tr><td>Contraction</td><td>Demand softening, oversupply, negative momentum</td><td class="gap-col">&ldquo;Risk management, exit underperformers&rdquo;</td></tr>
+  </tbody>
+</table>
+
+<hr class="section-break">
+
+<!-- CREDIT COST -->
+<h1 id="credit-cost">Credit Cost Estimation</h1>
+
+<table>
+  <thead>
+    <tr><th>Operation</th><th>Est. Tokens</th><th>Est. Credits</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Full MSA Commentary (all sections)</td><td>~2,000 input + ~1,500 output</td><td>~3.5 credits</td></tr>
+    <tr><td>Single Section Refresh</td><td>~800 input + ~400 output</td><td>~1.2 credits</td></tr>
+    <tr><td>Submarket Commentary</td><td>~1,500 input + ~1,000 output</td><td>~2.5 credits</td></tr>
+  </tbody>
+</table>
+
+<p>With 24-hour caching, expected cost per active user: ~5&ndash;10 credits/day for market exploration.</p>
+
+<hr class="section-break">
+
+<div style="text-align: center; padding: 40px 0; color: #999; font-size: 10pt;">
+  <strong style="color: #1E3A5F;">JEDI RE</strong> &mdash; End of Specification<br>
+  Version 1.0 &bull; March 2026 &bull; Internal Use Only
+</div>
+
+</div><!-- .content -->
+
+<script>
+(function() {
+  var container = document.getElementById('toc-container');
+  var content = document.querySelector('.content');
+  var headings = content.querySelectorAll('h1[id], h2[id]');
+  var currentSection = null;
+
+  headings.forEach(function(h) {
+    var level = h.tagName.toLowerCase();
+    var id = h.id;
+    var text = h.textContent;
+
+    if (level === 'h1') {
+      currentSection = document.createElement('div');
+      currentSection.className = 'toc-section';
+      var link = document.createElement('a');
+      link.className = 'toc-h2';
+      link.href = '#' + id;
+      link.innerHTML = text + '<span class="toc-dots"></span>';
+      currentSection.appendChild(link);
+      container.appendChild(currentSection);
+    } else if (level === 'h2' && currentSection) {
+      var link = document.createElement('a');
+      link.className = 'toc-h3';
+      link.href = '#' + id;
+      link.innerHTML = text + '<span class="toc-dots"></span>';
+      currentSection.appendChild(link);
+    }
+  });
+})();
+</script>
+
+</body>
+</html>

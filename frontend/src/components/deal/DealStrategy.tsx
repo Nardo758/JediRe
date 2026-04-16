@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AnalysisResult } from '../../types';
+import { BT } from '@/components/deal/bloomberg-ui';
 import LeaseRolloverAnalysis from './LeaseRolloverAnalysis';
 
 interface DealStrategyProps {
@@ -77,26 +78,26 @@ export const DealStrategy: React.FC<DealStrategyProps> = ({ dealId }) => {
     }, 120000);
   };
 
-  const getVerdictColor = (verdict: string) => {
-    if (verdict.includes('strong')) return 'text-green-600 bg-green-50';
-    if (verdict.includes('opportunity')) return 'text-blue-600 bg-blue-50';
-    if (verdict.includes('caution')) return 'text-yellow-600 bg-yellow-50';
-    return 'text-gray-600 bg-gray-50';
+  const getVerdictStyle = (verdict: string): React.CSSProperties => {
+    if (verdict.includes('strong')) return { color: BT.text.green, background: BT.bg.active };
+    if (verdict.includes('opportunity')) return { color: BT.text.cyan, background: BT.bg.active };
+    if (verdict.includes('caution')) return { color: BT.text.amber, background: BT.bg.active };
+    return { color: BT.text.secondary, background: BT.bg.active };
   };
 
   const getScoreColor = (score: number) => {
-    if (score >= 80) return 'text-green-600';
-    if (score >= 60) return 'text-blue-600';
-    if (score >= 40) return 'text-yellow-600';
-    return 'text-red-600';
+    if (score >= 80) return BT.text.green;
+    if (score >= 60) return BT.text.cyan;
+    if (score >= 40) return BT.text.amber;
+    return BT.text.red;
   };
 
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading analysis...</p>
+          <div className="animate-spin h-12 w-12 mx-auto mb-4" style={{ borderRadius: '50%', borderBottom: `2px solid ${BT.text.cyan}` }}></div>
+          <p style={{ color: BT.text.secondary, fontFamily: BT.font.label, fontSize: '11px' }}>Loading analysis...</p>
         </div>
       </div>
     );
@@ -108,18 +109,19 @@ export const DealStrategy: React.FC<DealStrategyProps> = ({ dealId }) => {
         <div className="max-w-4xl mx-auto">
           <div className="flex items-center justify-center py-12">
             <div className="text-center max-w-md">
-              <div className="text-6xl mb-4">📊</div>
-              <h3 className="text-xl font-bold text-gray-900 mb-2">
+              <div className="mb-4" style={{ fontSize: '48px' }}>📊</div>
+              <h3 style={{ fontSize: '14px', fontWeight: 700, color: BT.text.primary, fontFamily: BT.font.mono, marginBottom: '8px' }}>
                 No Analysis Yet
               </h3>
-              <p className="text-gray-600 mb-6">
+              <p style={{ color: BT.text.secondary, fontFamily: BT.font.label, fontSize: '11px', marginBottom: '24px' }}>
                 Run a JEDI Score analysis to get insights on this deal's potential,
                 market conditions, and strategic recommendations.
               </p>
               <button
                 onClick={triggerAnalysis}
                 disabled={isAnalyzing}
-                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                className="px-6 py-3 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                style={{ background: BT.text.cyan, color: BT.bg.terminal, borderRadius: 0, fontFamily: BT.font.mono, fontSize: '11px', fontWeight: 600 }}
               >
                 {isAnalyzing ? 'Analyzing...' : 'Run Analysis'}
               </button>
@@ -142,34 +144,38 @@ export const DealStrategy: React.FC<DealStrategyProps> = ({ dealId }) => {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">Strategy Analysis</h2>
-            <p className="text-sm text-gray-600 mt-1">
+            <h2 style={{ fontSize: '20px', fontWeight: 700, color: BT.text.primary, fontFamily: BT.font.mono }}>Strategy Analysis</h2>
+            <p style={{ fontSize: '10px', color: BT.text.secondary, fontFamily: BT.font.label, marginTop: '4px' }}>
               Last updated: {new Date(analysis.createdAt).toLocaleString()}
             </p>
           </div>
           <button
             onClick={triggerAnalysis}
             disabled={isAnalyzing}
-            className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition text-sm"
+            className="px-4 py-2 disabled:opacity-50 transition"
+            style={{ border: `1px solid ${BT.border.medium}`, borderRadius: 0, color: BT.text.secondary, fontFamily: BT.font.mono, fontSize: '10px', background: 'transparent' }}
           >
             {isAnalyzing ? 'Analyzing...' : 'Refresh Analysis'}
           </button>
         </div>
 
         {/* JEDI Score Card */}
-        <div className="bg-white rounded-xl shadow-lg p-8 border-2 border-blue-200">
+        <div className="p-8" style={{ background: BT.bg.panel, borderRadius: 0, border: `2px solid ${BT.text.cyan}` }}>
           <div className="text-center">
-            <div className="text-sm font-semibold text-gray-600 uppercase tracking-wider mb-2">
+            <div style={{ fontSize: '10px', fontWeight: 600, color: BT.text.secondary, textTransform: 'uppercase', letterSpacing: '0.05em', fontFamily: BT.font.mono, marginBottom: '8px' }}>
               JEDI Score
             </div>
-            <div className={`text-7xl font-bold ${getScoreColor(score)} mb-2`}>
+            <div style={{ fontSize: '56px', fontWeight: 700, color: getScoreColor(score), fontFamily: BT.font.mono, marginBottom: '8px' }}>
               {score}
             </div>
-            <div className="text-gray-600 mb-4">out of 100</div>
-            <div className={`inline-block px-4 py-2 rounded-full font-semibold ${getVerdictColor(verdict)}`}>
+            <div style={{ color: BT.text.secondary, fontFamily: BT.font.label, fontSize: '11px', marginBottom: '16px' }}>out of 100</div>
+            <div
+              className="inline-block px-4 py-2"
+              style={{ ...getVerdictStyle(verdict), borderRadius: '2px', fontWeight: 600, fontFamily: BT.font.mono, fontSize: '11px' }}
+            >
               {verdict.replace(/_/g, ' ').toUpperCase()}
             </div>
-            <div className="mt-4 text-sm text-gray-600">
+            <div style={{ marginTop: '16px', fontSize: '10px', color: BT.text.secondary, fontFamily: BT.font.label }}>
               Confidence: {confidence.toFixed(0)}%
             </div>
           </div>
@@ -177,24 +183,24 @@ export const DealStrategy: React.FC<DealStrategyProps> = ({ dealId }) => {
 
         {/* Signal Breakdown */}
         {outputData.signals && (
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-4">Market Signals</h3>
+          <div className="p-6" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.medium}` }}>
+            <h3 style={{ fontSize: '12px', fontWeight: 700, color: BT.text.primary, fontFamily: BT.font.mono, marginBottom: '16px' }}>Market Signals</h3>
             <div className="grid grid-cols-3 gap-4">
-              <div className="text-center p-4 bg-gray-50 rounded-lg">
-                <div className="text-sm text-gray-600 mb-1">Growth Rate</div>
-                <div className="text-2xl font-bold text-gray-900">
+              <div className="text-center p-4" style={{ background: BT.bg.panelAlt, borderRadius: 0 }}>
+                <div style={{ fontSize: '10px', color: BT.text.secondary, fontFamily: BT.font.label, marginBottom: '4px' }}>Growth Rate</div>
+                <div style={{ fontSize: '20px', fontWeight: 700, color: BT.text.primary, fontFamily: BT.font.mono }}>
                   {outputData.signals.growthRate?.toFixed(1)}%
                 </div>
               </div>
-              <div className="text-center p-4 bg-gray-50 rounded-lg">
-                <div className="text-sm text-gray-600 mb-1">Trend</div>
-                <div className="text-2xl font-bold text-gray-900">
+              <div className="text-center p-4" style={{ background: BT.bg.panelAlt, borderRadius: 0 }}>
+                <div style={{ fontSize: '10px', color: BT.text.secondary, fontFamily: BT.font.label, marginBottom: '4px' }}>Trend</div>
+                <div style={{ fontSize: '20px', fontWeight: 700, color: BT.text.primary, fontFamily: BT.font.mono }}>
                   {outputData.signals.verdict || 'N/A'}
                 </div>
               </div>
-              <div className="text-center p-4 bg-gray-50 rounded-lg">
-                <div className="text-sm text-gray-600 mb-1">Signal Strength</div>
-                <div className="text-2xl font-bold text-gray-900">
+              <div className="text-center p-4" style={{ background: BT.bg.panelAlt, borderRadius: 0 }}>
+                <div style={{ fontSize: '10px', color: BT.text.secondary, fontFamily: BT.font.label, marginBottom: '4px' }}>Signal Strength</div>
+                <div style={{ fontSize: '20px', fontWeight: 700, color: BT.text.primary, fontFamily: BT.font.mono }}>
                   {(outputData.signals.confidence * 100).toFixed(0)}%
                 </div>
               </div>
@@ -204,30 +210,30 @@ export const DealStrategy: React.FC<DealStrategyProps> = ({ dealId }) => {
 
         {/* Capacity Analysis */}
         {outputData.capacity && (
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-4">Development Capacity</h3>
+          <div className="p-6" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.medium}` }}>
+            <h3 style={{ fontSize: '12px', fontWeight: 700, color: BT.text.primary, fontFamily: BT.font.mono, marginBottom: '16px' }}>Development Capacity</h3>
             <div className="grid grid-cols-2 gap-6">
               <div>
-                <div className="text-sm text-gray-600 mb-1">Maximum Units</div>
-                <div className="text-3xl font-bold text-gray-900">
+                <div style={{ fontSize: '10px', color: BT.text.secondary, fontFamily: BT.font.label, marginBottom: '4px' }}>Maximum Units</div>
+                <div style={{ fontSize: '24px', fontWeight: 700, color: BT.text.primary, fontFamily: BT.font.mono }}>
                   {outputData.capacity.maxUnits || 'N/A'}
                 </div>
               </div>
               <div>
-                <div className="text-sm text-gray-600 mb-1">Construction Cost</div>
-                <div className="text-3xl font-bold text-gray-900">
+                <div style={{ fontSize: '10px', color: BT.text.secondary, fontFamily: BT.font.label, marginBottom: '4px' }}>Construction Cost</div>
+                <div style={{ fontSize: '24px', fontWeight: 700, color: BT.text.primary, fontFamily: BT.font.mono }}>
                   ${((outputData.capacity.constructionCost || 0) / 1000000).toFixed(1)}M
                 </div>
               </div>
               <div>
-                <div className="text-sm text-gray-600 mb-1">Potential</div>
-                <div className="text-xl font-semibold text-blue-600">
+                <div style={{ fontSize: '10px', color: BT.text.secondary, fontFamily: BT.font.label, marginBottom: '4px' }}>Potential</div>
+                <div style={{ fontSize: '14px', fontWeight: 600, color: BT.text.cyan, fontFamily: BT.font.mono }}>
                   {outputData.capacity.potential || 'Unknown'}
                 </div>
               </div>
               <div>
-                <div className="text-sm text-gray-600 mb-1">Cost per Unit</div>
-                <div className="text-xl font-semibold text-gray-900">
+                <div style={{ fontSize: '10px', color: BT.text.secondary, fontFamily: BT.font.label, marginBottom: '4px' }}>Cost per Unit</div>
+                <div style={{ fontSize: '14px', fontWeight: 600, color: BT.text.primary, fontFamily: BT.font.mono }}>
                   ${((outputData.capacity.constructionCost || 0) / (outputData.capacity.maxUnits || 1)).toLocaleString()}
                 </div>
               </div>
@@ -237,17 +243,17 @@ export const DealStrategy: React.FC<DealStrategyProps> = ({ dealId }) => {
 
         {/* Recommendations */}
         {outputData.recommendations && outputData.recommendations.length > 0 && (
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-4">
+          <div className="p-6" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.medium}` }}>
+            <h3 style={{ fontSize: '12px', fontWeight: 700, color: BT.text.primary, fontFamily: BT.font.mono, marginBottom: '16px' }}>
               Strategic Recommendations
             </h3>
             <ul className="space-y-3">
-              {outputData.recommendations.map((rec, index) => (
+              {outputData.recommendations.map((rec: string, index: number) => (
                 <li key={index} className="flex items-start gap-3">
-                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-sm font-semibold">
+                  <span className="flex-shrink-0 w-6 h-6 flex items-center justify-center" style={{ borderRadius: '50%', background: BT.bg.active, color: BT.text.cyan, fontSize: '10px', fontWeight: 600, fontFamily: BT.font.mono }}>
                     {index + 1}
                   </span>
-                  <span className="text-gray-700">{rec}</span>
+                  <span style={{ color: BT.text.secondary, fontFamily: BT.font.label, fontSize: '11px' }}>{rec}</span>
                 </li>
               ))}
             </ul>
@@ -255,25 +261,25 @@ export const DealStrategy: React.FC<DealStrategyProps> = ({ dealId }) => {
         )}
 
         {/* Key Insights */}
-        <div className="bg-blue-50 rounded-lg p-6 border border-blue-200">
-          <h3 className="text-lg font-bold text-blue-900 mb-3">Key Insights</h3>
-          <ul className="space-y-2 text-blue-800">
+        <div className="p-6" style={{ background: BT.bg.panelAlt, borderRadius: 0, border: `1px solid ${BT.border.medium}` }}>
+          <h3 style={{ fontSize: '12px', fontWeight: 700, color: BT.text.cyan, fontFamily: BT.font.mono, marginBottom: '12px' }}>Key Insights</h3>
+          <ul className="space-y-2">
             {score >= 80 && (
               <li className="flex items-start gap-2">
-                <span className="text-green-500">+</span>
-                <span>Strong market conditions favor development</span>
+                <span style={{ color: BT.text.green }}>+</span>
+                <span style={{ color: BT.text.secondary, fontFamily: BT.font.label, fontSize: '11px' }}>Strong market conditions favor development</span>
               </li>
             )}
             {outputData.signals?.growthRate > 5 && (
               <li className="flex items-start gap-2">
-                <span className="text-green-500">+</span>
-                <span>Above-average rent growth indicates high demand</span>
+                <span style={{ color: BT.text.green }}>+</span>
+                <span style={{ color: BT.text.secondary, fontFamily: BT.font.label, fontSize: '11px' }}>Above-average rent growth indicates high demand</span>
               </li>
             )}
             {outputData.capacity?.maxUnits && (
               <li className="flex items-start gap-2">
-                <span className="text-blue-500">i</span>
-                <span>
+                <span style={{ color: BT.text.cyan }}>i</span>
+                <span style={{ color: BT.text.secondary, fontFamily: BT.font.label, fontSize: '11px' }}>
                   Development capacity of {outputData.capacity.maxUnits} units identified
                 </span>
               </li>

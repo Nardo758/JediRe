@@ -53,8 +53,8 @@ const COLORS = {
   border: 'rgba(255,255,255,0.06)',
   borderHover: 'rgba(255,255,255,0.12)',
   text: '#E8E6E1',
-  textMuted: 'rgba(232,230,225,0.5)',
-  textDim: 'rgba(232,230,225,0.22)',
+  textMuted: 'rgba(232,230,225,0.7)',
+  textDim: 'rgba(232,230,225,0.45)',
   accent: '#63B3ED',
   success: '#68D391',
   error: '#FC8181',
@@ -90,6 +90,9 @@ const METRIC_COLORS: Record<string, string> = {
   competition: COLORS.orange,
   risk: COLORS.error,
   ownership: COLORS.purple,
+  sfr: '#E2A96E',
+  demographic: '#9AE6B4',
+  macro: '#FBD38D',
 };
 
 export const StrategyBuilderPage: React.FC = () => {
@@ -112,21 +115,39 @@ export const StrategyBuilderPage: React.FC = () => {
   const [catalogFilter, setCatalogFilter] = useState<string | null>(null);
   const [previewResults, setPreviewResults] = useState<PreviewResult[]>([]);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [correlationData, setCorrelationData] = useState<Array<{ metricA: string; metricB: string; r: number; pValue: number; sampleSize: number }>>([]);
+  const [correlationLoading, setCorrelationLoading] = useState(false);
+  const [leadLagData, setLeadLagData] = useState<Record<string, { leadsOutcomes: any[]; ledByMetrics: any[] }>>({});
+  const [backtestSummaries, setBacktestSummaries] = useState<Record<string, any>>({});
+
+  // Peer-group dimension filters
+  const [peerVintage, setPeerVintage] = useState<'all' | 'pre1980' | '1980s' | '1990s' | '2000s' | '2010s' | '2020s'>('all');
+  const [peerTypology, setPeerTypology] = useState<'all' | 'garden' | 'low_rise_elevator' | 'mid_rise' | 'high_rise'>('all');
 
   // Fetch strategies on mount
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [strategiesRes, catalogRes] = await Promise.all([
-          api.get('/api/v1/strategies'),
-          api.get('/api/v1/metrics/catalog'),
+        const [strategiesRes, catalogRes, backtestRes] = await Promise.all([
+          api.get('/strategies'),
+          api.get('/metrics/catalog'),
+          api.get('/backtest/strategy/summaries').catch(() => ({ data: { data: {} } })),
         ]);
 
-        setStrategies(strategiesRes.data || []);
+        const raw = strategiesRes.data;
+        setStrategies(
+          Array.isArray(raw?.strategies) ? raw.strategies :
+          Array.isArray(raw?.data) ? raw.data :
+          Array.isArray(raw) ? raw : []
+        );
 
         if (catalogRes.data) {
           setMetrics(catalogRes.data.metrics || []);
           setMetricCategories(catalogRes.data.categories || []);
+        }
+
+        if (backtestRes.data?.data) {
+          setBacktestSummaries(backtestRes.data.data);
         }
       } catch (error) {
         console.error('Error fetching data:', error);
@@ -160,13 +181,24 @@ export const StrategyBuilderPage: React.FC = () => {
 
     try {
       setPreviewLoading(true);
-      const response = await api.post('/api/v1/strategies/preview', {
+      const response = await api.post('/strategies/preview', {
         conditions,
         scope,
+        combinator: 'AND',
         assetClasses: selectedAssetClasses,
         maxResults: 10,
+        peerGroup: {
+          vintage: peerVintage !== 'all' ? peerVintage : undefined,
+          typology: peerTypology !== 'all' ? peerTypology : undefined,
+        },
       });
-      setPreviewResults(response.data.results || []);
+      const resData = response.data?.data || response.data?.results || [];
+      setPreviewResults(Array.isArray(resData) ? resData.map((r: any) => ({
+        name: r.targetName || r.name || '',
+        market: r.targetType || r.market || '',
+        score: r.overallScore || r.score || 0,
+        metrics: r.metrics || {},
+      })) : []);
     } catch (error) {
       console.error('Error fetching preview:', error);
       setPreviewResults([]);
@@ -179,6 +211,59 @@ export const StrategyBuilderPage: React.FC = () => {
     const timer = setTimeout(debouncedPreview, 500);
     return () => clearTimeout(timer);
   }, [debouncedPreview]);
+
+  useEffect(() => {
+    if (conditions.length < 2) {
+      setCorrelationData([]);
+      return;
+    }
+    const METRIC_TRANSLATE: Record<string, string> = {
+      F_CAP_RATE: 'home_value_index', F_RENT_GROWTH: 'rent_index_yoy',
+      F_RENT_TO_INCOME: 'rent_index', SFR_HOME_VALUE_GROWTH: 'home_value_index_yoy',
+      C_SURGE_INDEX: 'home_value_index_yoy', C_TRAFFIC_GROWTH_INDEX: 'home_value_index_yoy',
+      C_SEARCH_GROWTH_INDEX: 'rent_index_yoy', D_SEARCH_MOMENTUM: 'rent_index_yoy',
+      D_DIGITAL_SCORE: 'rent_index', T_PHYSICAL_SCORE: 'home_value_index',
+      S_PIPELINE_TO_STOCK: 'home_value_index_yoy', S_PERMIT_VELOCITY: 'home_value_index_yoy',
+      S_PIPELINE_UNITS: 'home_value_index', E_EMPLOYMENT_GROWTH: 'rent_index_yoy',
+      E_WAGE_GROWTH: 'rent_index_yoy', E_POPULATION_GROWTH: 'home_value_index_yoy',
+      M_VACANCY: 'home_value_index', M_ABSORPTION: 'home_value_index_yoy',
+      O_DEBT_MATURITY_MO: 'home_value_index', DEMO_NET_MIGRATION: 'home_value_index_yoy',
+      HM_DISTRESS_SCORE: 'home_value_index_yoy',
+    };
+    const rawIds = [...new Set(conditions.map(c => c.metricId))];
+    const metricIds = [...new Set(rawIds.map(id => METRIC_TRANSLATE[id.toUpperCase()] || id.toLowerCase()))];
+    if (metricIds.length < 2) {
+      setCorrelationData([]);
+      return;
+    }
+
+    setCorrelationLoading(true);
+    api.get(`/correlations/matrix?metricIds=${metricIds.join(',')}&scope=${scope}`)
+      .then(res => {
+        const data = res.data?.data || [];
+        setCorrelationData(Array.isArray(data) ? data : []);
+      })
+      .catch(() => setCorrelationData([]))
+      .finally(() => setCorrelationLoading(false));
+  }, [conditions.map(c => c.metricId).join(','), scope]);
+
+  useEffect(() => {
+    if (conditions.length === 0) return;
+    const metricIds = [...new Set(conditions.map(c => c.metricId))];
+    const fetchAll = async () => {
+      const results: Record<string, { leadsOutcomes: any[]; ledByMetrics: any[] }> = {};
+      for (const mid of metricIds) {
+        try {
+          const res = await api.get(`/lead-lag/metric/${mid}`);
+          if (res.data?.success && res.data?.data) {
+            results[mid] = res.data.data;
+          }
+        } catch { /* ignore */ }
+      }
+      setLeadLagData(results);
+    };
+    fetchAll();
+  }, [conditions.map(c => c.metricId).join(',')]);
 
   const addCondition = (metricId: string) => {
     const metric = metrics.find(m => m.id === metricId);
@@ -202,12 +287,19 @@ export const StrategyBuilderPage: React.FC = () => {
     setConditions(conditions.map(c => c.id === id ? { ...c, [field]: value } : c));
   };
 
+  const [editingType, setEditingType] = useState<'preset' | 'custom'>('custom');
+
   const loadPreset = (strategy: Strategy) => {
-    setStrategyName(strategy.name);
-    setStrategyDescription(strategy.description);
-    setScope(strategy.scope);
-    setSelectedAssetClasses(strategy.assetClasses);
-    setConditions(strategy.conditions);
+    if (strategy.type === 'preset') {
+      setStrategyName(`${strategy.name} (Copy)`);
+    } else {
+      setStrategyName(strategy.name || '');
+    }
+    setStrategyDescription(strategy.description || '');
+    setScope(strategy.scope || 'submarket');
+    setSelectedAssetClasses(strategy.assetClasses || ['multifamily']);
+    setConditions(strategy.conditions || []);
+    setEditingType(strategy.type || 'custom');
     setActiveTab('builder');
   };
 
@@ -230,16 +322,22 @@ export const StrategyBuilderPage: React.FC = () => {
         description: strategyDescription,
         scope,
         conditions,
+        combinator: 'AND',
         assetClasses: selectedAssetClasses,
         type: 'custom',
+        peerGroup: {
+          vintage: peerVintage !== 'all' ? peerVintage : undefined,
+          typology: peerTypology !== 'all' ? peerTypology : undefined,
+        },
       };
 
-      if (strategyId) {
-        await api.put(`/api/v1/strategies/${strategyId}`, payload);
+      if (strategyId && editingType !== 'preset') {
+        await api.put(`/strategies/${strategyId}`, payload);
       } else {
-        await api.post('/api/v1/strategies', payload);
+        await api.post('/strategies', payload);
       }
 
+      setEditingType('custom');
       navigate('/strategies');
     } catch (error) {
       console.error('Error saving strategy:', error);
@@ -252,7 +350,7 @@ export const StrategyBuilderPage: React.FC = () => {
     if (!confirm('Are you sure you want to delete this strategy?')) return;
 
     try {
-      await api.delete(`/api/v1/strategies/${strategyId}`);
+      await api.delete(`/strategies/${strategyId}`);
       navigate('/strategies');
     } catch (error) {
       console.error('Error deleting strategy:', error);
@@ -260,13 +358,27 @@ export const StrategyBuilderPage: React.FC = () => {
     }
   };
 
+  const [runLoading, setRunLoading] = useState<string | null>(null);
+
   const handleRunStrategy = async (id: string) => {
     try {
-      const response = await api.post(`/api/v1/strategies/${id}/run`);
-      console.log('Strategy run results:', response.data);
-      // TODO: Show results in modal or expand inline
+      setRunLoading(id);
+      const response = await api.post(`/strategies/${id}/run`);
+      const results = response.data?.data || response.data?.results || [];
+      const strategy = strategies.find(s => s.id === id);
+      if (strategy) {
+        loadPreset(strategy);
+        setPreviewResults(results.map((r: any) => ({
+          name: r.targetName || r.name || '',
+          market: r.targetType || '',
+          score: r.overallScore || 0,
+          metrics: {},
+        })));
+      }
     } catch (error) {
       console.error('Error running strategy:', error);
+    } finally {
+      setRunLoading(null);
     }
   };
 
@@ -360,16 +472,39 @@ export const StrategyBuilderPage: React.FC = () => {
                     marginBottom: 8,
                   }}>
                     <span style={{ fontSize: 14 }}>📊</span>
-                    <span style={{
-                      fontSize: 8,
-                      fontWeight: 600,
-                      padding: '2px 8px',
-                      borderRadius: 10,
-                      background: strategy.type === 'preset' ? `${COLORS.success}15` : `${COLORS.accent}15`,
-                      color: strategy.type === 'preset' ? COLORS.success : COLORS.accent,
-                    }}>
-                      {strategy.type.toUpperCase()}
-                    </span>
+                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                      {(() => {
+                        const g = backtestSummaries[strategy.id]?.grade;
+                        if (!g || g === 'F') return null;
+                        return (
+                          <span style={{
+                            fontSize: 9,
+                            fontWeight: 700,
+                            padding: '2px 8px',
+                            borderRadius: 10,
+                            background: g === 'A' ? `${COLORS.success}20`
+                              : g.startsWith('B') ? `${COLORS.accent}20`
+                              : `${COLORS.warning}20`,
+                            color: g === 'A' ? COLORS.success
+                              : g.startsWith('B') ? COLORS.accent
+                              : COLORS.warning,
+                            fontFamily: 'monospace',
+                          }}>
+                            {g}
+                          </span>
+                        );
+                      })()}
+                      <span style={{
+                        fontSize: 9,
+                        fontWeight: 600,
+                        padding: '2px 8px',
+                        borderRadius: 10,
+                        background: strategy.type === 'preset' ? `${COLORS.success}15` : `${COLORS.accent}15`,
+                        color: strategy.type === 'preset' ? COLORS.success : COLORS.accent,
+                      }}>
+                        {(strategy.type || 'custom').toUpperCase()}
+                      </span>
+                    </div>
                   </div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.text, marginBottom: 4 }}>
                     {strategy.name}
@@ -378,14 +513,14 @@ export const StrategyBuilderPage: React.FC = () => {
                     {strategy.description}
                   </div>
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 10 }}>
-                    {strategy.conditions.slice(0, 3).map((cond, i) => {
+                    {(strategy.conditions || []).slice(0, 3).map((cond, i) => {
                       const metric = metrics.find(m => m.id === cond.metricId);
                       const color = metric ? METRIC_COLORS[metric.category] || COLORS.textMuted : COLORS.textMuted;
                       return (
                         <span
                           key={i}
                           style={{
-                            fontSize: 8,
+                            fontSize: 9,
                             padding: '2px 6px',
                             borderRadius: 4,
                             background: `${color}10`,
@@ -399,6 +534,23 @@ export const StrategyBuilderPage: React.FC = () => {
                       );
                     })}
                   </div>
+                  {(() => {
+                    const s = backtestSummaries[strategy.id];
+                    if (!s || !s.grade || s.grade === 'F') return null;
+                    return (
+                      <div style={{
+                        fontSize: 9,
+                        color: COLORS.textMuted,
+                        marginBottom: 6,
+                        fontFamily: 'monospace',
+                        display: 'flex',
+                        gap: 8,
+                      }}>
+                        <span>HR: {Number(s.avg_hit_rate).toFixed(0)}%</span>
+                        <span>Alpha: {Number(s.avg_alpha_1y) >= 0 ? '+' : ''}{Number(s.avg_alpha_1y).toFixed(1)}pp</span>
+                      </div>
+                    );
+                  })()}
                   <div style={{
                     display: 'flex',
                     justifyContent: 'space-between',
@@ -421,7 +573,7 @@ export const StrategyBuilderPage: React.FC = () => {
                         style={{
                           padding: '3px 10px',
                           borderRadius: 4,
-                          fontSize: 8,
+                          fontSize: 9,
                           fontWeight: 600,
                           cursor: 'pointer',
                           border: `1px solid ${COLORS.accent}40`,
@@ -429,25 +581,27 @@ export const StrategyBuilderPage: React.FC = () => {
                           color: COLORS.accent,
                         }}
                       >
-                        Edit
+                        {strategy.type === 'preset' ? 'Clone to Customize' : 'Edit'}
                       </button>
                       <button
                         onClick={e => {
                           e.stopPropagation();
                           handleRunStrategy(strategy.id);
                         }}
+                        disabled={runLoading === strategy.id}
                         style={{
                           padding: '3px 10px',
                           borderRadius: 4,
-                          fontSize: 8,
+                          fontSize: 9,
                           fontWeight: 600,
-                          cursor: 'pointer',
+                          cursor: runLoading === strategy.id ? 'wait' : 'pointer',
                           border: `1px solid ${COLORS.success}40`,
                           background: `${COLORS.success}08`,
                           color: COLORS.success,
+                          opacity: runLoading === strategy.id ? 0.5 : 1,
                         }}
                       >
-                        Run
+                        {runLoading === strategy.id ? 'Running...' : 'Run'}
                       </button>
                     </div>
                   </div>
@@ -560,6 +714,77 @@ export const StrategyBuilderPage: React.FC = () => {
                 </div>
               </div>
 
+              {/* Peer-Group Dimensions */}
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 10, fontWeight: 600, color: COLORS.textMuted, marginBottom: 6 }}>
+                  Peer-Group Dimensions
+                </div>
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                  <div>
+                    <div style={{ fontSize: 9, color: COLORS.textDim, marginBottom: 4 }}>VINTAGE (Year Built)</div>
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                      {(['all', 'pre1980', '1980s', '1990s', '2000s', '2010s', '2020s'] as const).map(v => (
+                        <button
+                          key={v}
+                          onClick={() => setPeerVintage(v)}
+                          style={{
+                            padding: '4px 8px', fontSize: 9, fontWeight: 600, cursor: 'pointer', borderRadius: 3,
+                            border: `1px solid ${peerVintage === v ? COLORS.warning + '60' : COLORS.border}`,
+                            background: peerVintage === v ? COLORS.warning + '10' : 'transparent',
+                            color: peerVintage === v ? COLORS.warning : COLORS.textDim,
+                          }}
+                        >
+                          {v === 'all' ? 'ALL' : v === 'pre1980' ? 'PRE-80' : v.toUpperCase()}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 9, color: COLORS.textDim, marginBottom: 4 }}>TYPOLOGY (Building Type)</div>
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                      {([
+                        { id: 'all', label: 'ALL' },
+                        { id: 'garden', label: 'GARDEN' },
+                        { id: 'low_rise_elevator', label: 'LOW-RISE ELEV' },
+                        { id: 'mid_rise', label: 'MID-RISE' },
+                        { id: 'high_rise', label: 'HIGH-RISE' },
+                      ] as const).map(t => (
+                        <button
+                          key={t.id}
+                          onClick={() => setPeerTypology(t.id)}
+                          style={{
+                            padding: '4px 8px', fontSize: 9, fontWeight: 600, cursor: 'pointer', borderRadius: 3,
+                            border: `1px solid ${peerTypology === t.id ? COLORS.cyan + '60' : COLORS.border}`,
+                            background: peerTypology === t.id ? COLORS.cyan + '10' : 'transparent',
+                            color: peerTypology === t.id ? COLORS.cyan : COLORS.textDim,
+                          }}
+                        >
+                          {t.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {(peerVintage !== 'all' || peerTypology !== 'all') && (
+                    <div style={{
+                      padding: '6px 10px',
+                      background: `${COLORS.warning}08`,
+                      border: `1px solid ${COLORS.warning}25`,
+                      borderRadius: 4,
+                      fontSize: 9,
+                      color: COLORS.textMuted,
+                      lineHeight: 1.5,
+                      maxWidth: 280,
+                    }}>
+                      Strategy conditions will be evaluated against{' '}
+                      <span style={{ color: COLORS.warning }}>
+                        {peerVintage !== 'all' ? `${peerVintage} ` : ''}
+                        {peerTypology !== 'all' ? { garden:'garden walkup', low_rise_elevator:'low-rise elevator', mid_rise:'mid-rise', high_rise:'high-rise' }[peerTypology] || peerTypology : 'all types'}
+                      </span>{' '}peer comps only.
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {/* Conditions */}
               <div style={{ marginBottom: 12 }}>
                 {conditions.map((cond, idx) => {
@@ -594,7 +819,7 @@ export const StrategyBuilderPage: React.FC = () => {
                         <div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                             <span style={{
-                              fontSize: 8,
+                              fontSize: 9,
                               color: metricColor,
                               padding: '1px 6px',
                               borderRadius: 3,
@@ -606,10 +831,22 @@ export const StrategyBuilderPage: React.FC = () => {
                               {metric?.name || cond.metricId}
                             </span>
                             {cond.required && (
-                              <span style={{ fontSize: 7, fontWeight: 700, color: COLORS.error }}>
+                              <span style={{ fontSize: 9, fontWeight: 700, color: COLORS.error }}>
                                 REQUIRED
                               </span>
                             )}
+                            {leadLagData[cond.metricId]?.leadsOutcomes?.length > 0 && (() => {
+                              const best = leadLagData[cond.metricId].leadsOutcomes[0];
+                              const outcomeName = best.metricBId?.replace(/_/g, ' ').replace(/yoy/gi, 'YoY');
+                              return (
+                                <span style={{
+                                  fontSize: 8, fontWeight: 700, padding: '1px 5px', borderRadius: 3,
+                                  background: `${COLORS.cyan}15`, color: COLORS.cyan, letterSpacing: 0.3,
+                                }}>
+                                  LEADS {outcomeName?.toUpperCase()} BY {best.optimalLagMonths}mo (r={best.rAtOptimalLag?.toFixed(2)})
+                                </span>
+                              );
+                            })()}
                           </div>
                           <div style={{ fontSize: 9, color: COLORS.textMuted, marginBottom: 8 }}>
                             {metric?.description}
@@ -635,11 +872,11 @@ export const StrategyBuilderPage: React.FC = () => {
                               ))}
                             </select>
 
-                            {!['increasing', 'decreasing'].includes(cond.operator) && (
+                            {!['increasing', 'decreasing'].includes(cond.operator) && cond.operator !== 'between' && (
                               <input
                                 type="number"
                                 step="0.1"
-                                value={cond.value || ''}
+                                value={typeof cond.value === 'number' ? cond.value : (Array.isArray(cond.value) ? cond.value[0] : (cond.value || ''))}
                                 onChange={e => updateCondition(cond.id, 'value', parseFloat(e.target.value) || 0)}
                                 style={{
                                   width: 80,
@@ -652,6 +889,51 @@ export const StrategyBuilderPage: React.FC = () => {
                                   textAlign: 'center',
                                 }}
                               />
+                            )}
+                            {cond.operator === 'between' && (
+                              <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                                <input
+                                  type="number"
+                                  step="0.1"
+                                  value={Array.isArray(cond.value) ? cond.value[0] : (cond.value || '')}
+                                  onChange={e => {
+                                    const min = parseFloat(e.target.value) || 0;
+                                    const max = Array.isArray(cond.value) ? cond.value[1] : 100;
+                                    updateCondition(cond.id, 'value', [min, max]);
+                                  }}
+                                  style={{
+                                    width: 60,
+                                    padding: '4px 6px',
+                                    borderRadius: 4,
+                                    border: `1px solid ${COLORS.border}`,
+                                    background: 'rgba(255,255,255,0.02)',
+                                    color: COLORS.text,
+                                    fontSize: 11,
+                                    textAlign: 'center',
+                                  }}
+                                />
+                                <span style={{ fontSize: 9, color: COLORS.textDim }}>to</span>
+                                <input
+                                  type="number"
+                                  step="0.1"
+                                  value={Array.isArray(cond.value) ? cond.value[1] : ''}
+                                  onChange={e => {
+                                    const max = parseFloat(e.target.value) || 0;
+                                    const min = Array.isArray(cond.value) ? cond.value[0] : 0;
+                                    updateCondition(cond.id, 'value', [min, max]);
+                                  }}
+                                  style={{
+                                    width: 60,
+                                    padding: '4px 6px',
+                                    borderRadius: 4,
+                                    border: `1px solid ${COLORS.border}`,
+                                    background: 'rgba(255,255,255,0.02)',
+                                    color: COLORS.text,
+                                    fontSize: 11,
+                                    textAlign: 'center',
+                                  }}
+                                />
+                              </div>
                             )}
 
                             <span style={{ fontSize: 9, color: COLORS.textDim }}>Weight:</span>
@@ -681,7 +963,7 @@ export const StrategyBuilderPage: React.FC = () => {
                               style={{
                                 padding: '2px 8px',
                                 borderRadius: 3,
-                                fontSize: 8,
+                                fontSize: 9,
                                 fontWeight: 600,
                                 cursor: 'pointer',
                                 border: `1px solid ${cond.required ? COLORS.error + '40' : COLORS.border}`,
@@ -766,7 +1048,7 @@ export const StrategyBuilderPage: React.FC = () => {
                       style={{
                         padding: '2px 8px',
                         borderRadius: 4,
-                        fontSize: 8,
+                        fontSize: 9,
                         fontWeight: 600,
                         cursor: 'pointer',
                         border: `1px solid ${!catalogFilter ? COLORS.accent + '40' : COLORS.border}`,
@@ -785,7 +1067,7 @@ export const StrategyBuilderPage: React.FC = () => {
                           style={{
                             padding: '2px 8px',
                             borderRadius: 4,
-                            fontSize: 8,
+                            fontSize: 9,
                             fontWeight: 600,
                             cursor: 'pointer',
                             border: `1px solid ${catalogFilter === cat ? color + '40' : COLORS.border}`,
@@ -827,7 +1109,7 @@ export const StrategyBuilderPage: React.FC = () => {
                             }}
                           >
                             <span style={{
-                              fontSize: 8,
+                              fontSize: 9,
                               fontFamily: 'monospace',
                               color,
                               padding: '1px 6px',
@@ -842,7 +1124,7 @@ export const StrategyBuilderPage: React.FC = () => {
                               <div style={{ fontSize: 10, fontWeight: 600, color: COLORS.text }}>
                                 {m.name}
                               </div>
-                              <div style={{ fontSize: 8, color: COLORS.textDim }}>
+                              <div style={{ fontSize: 9, color: COLORS.textDim }}>
                                 {m.description.slice(0, 80)}...
                               </div>
                             </div>
@@ -877,9 +1159,9 @@ export const StrategyBuilderPage: React.FC = () => {
                     color: COLORS.success,
                   }}
                 >
-                  Save Strategy
+                  {strategyId && editingType !== 'preset' ? 'Update Strategy' : 'Save as Custom Strategy'}
                 </button>
-                {strategyId && (
+                {strategyId && editingType !== 'preset' && (
                   <button
                     onClick={handleDeleteStrategy}
                     style={{
@@ -952,7 +1234,7 @@ export const StrategyBuilderPage: React.FC = () => {
                       const color = m ? METRIC_COLORS[m.category] : COLORS.textMuted;
                       return (
                         <div key={c.id} style={{
-                          fontSize: 8,
+                          fontSize: 9,
                           color: c.required ? COLORS.text : COLORS.textMuted,
                           padding: '2px 0',
                           fontFamily: 'monospace',
@@ -960,13 +1242,13 @@ export const StrategyBuilderPage: React.FC = () => {
                           {i > 0 && <span style={{ color: COLORS.textDim }}> AND </span>}
                           <span style={{ color }}>{m?.name?.split(' ').slice(0, 3).join(' ')}</span>
                           <span style={{ color: COLORS.textDim }}> {c.operator} </span>
-                          <span style={{ color: COLORS.text }}>{c.value}</span>
+                          <span style={{ color: COLORS.text }}>{Array.isArray(c.value) ? `${c.value[0]} - ${c.value[1]}` : c.value}</span>
                           {c.required && <span style={{ color: COLORS.error, marginLeft: 4 }}>*</span>}
                         </div>
                       );
                     })
                   ) : (
-                    <div style={{ fontSize: 8, color: COLORS.textDim }}>Add conditions to see preview</div>
+                    <div style={{ fontSize: 9, color: COLORS.textDim }}>Add conditions to see preview</div>
                   )}
                 </div>
 
@@ -1004,7 +1286,7 @@ export const StrategyBuilderPage: React.FC = () => {
                           <div style={{ fontSize: 10, fontWeight: 600, color: COLORS.text }}>
                             {r.name}
                           </div>
-                          <div style={{ fontSize: 8, color: COLORS.textDim }}>
+                          <div style={{ fontSize: 9, color: COLORS.textDim }}>
                             {r.market}
                           </div>
                         </div>
@@ -1017,16 +1299,283 @@ export const StrategyBuilderPage: React.FC = () => {
                           }}>
                             {r.score}
                           </div>
-                          <div style={{ fontSize: 7, color: COLORS.textDim }}>score</div>
+                          <div style={{ fontSize: 9, color: COLORS.textDim }}>score</div>
                         </div>
                       </div>
                     ))
                   ) : conditions.length > 0 ? (
-                    <div style={{ fontSize: 9, color: COLORS.textMuted, textAlign: 'center', padding: '10px' }}>
-                      No matches found
+                    <div style={{ textAlign: 'center', padding: '16px 10px' }}>
+                      <div style={{ fontSize: 9, color: COLORS.textMuted, marginBottom: 4 }}>No matching geographies found.</div>
+                      <div style={{ fontSize: 9, color: COLORS.textDim }}>Ensure market data has been ingested for the selected scope.</div>
                     </div>
                   ) : null}
                 </div>
+
+                {conditions.length >= 2 && (
+                  <div style={{
+                    marginTop: 14,
+                    padding: '10px 12px',
+                    background: 'rgba(255,255,255,0.015)',
+                    borderRadius: 6,
+                    border: `1px solid ${COLORS.border}`,
+                  }}>
+                    <div style={{
+                      fontSize: 9,
+                      fontWeight: 700,
+                      letterSpacing: 1,
+                      color: COLORS.textDim,
+                      marginBottom: 8,
+                    }}>
+                      SIGNAL CORRELATIONS
+                    </div>
+                    {correlationData.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {correlationData.map((c, i) => {
+                          const absR = Math.abs(c.r);
+                          const color = absR > 0.85 ? COLORS.error : absR > 0.5 ? COLORS.warning : COLORS.success;
+                          const label = absR > 0.85 ? 'REDUNDANT' : absR > 0.5 ? 'MODERATE' : 'COMPLEMENTARY';
+                          const metricAName = metrics.find(m => m.id.toLowerCase() === c.metricA)?.name?.split(' ').slice(0, 2).join(' ') || c.metricA;
+                          const metricBName = metrics.find(m => m.id.toLowerCase() === c.metricB)?.name?.split(' ').slice(0, 2).join(' ') || c.metricB;
+                          return (
+                            <div key={i} style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              padding: '4px 6px',
+                              borderRadius: 3,
+                              background: `${color}08`,
+                              border: `1px solid ${color}20`,
+                            }}>
+                              <div style={{ fontSize: 9, color: COLORS.text, flex: 1 }}>
+                                <span style={{ fontWeight: 600 }}>{metricAName}</span>
+                                <span style={{ color: COLORS.textDim }}> vs </span>
+                                <span style={{ fontWeight: 600 }}>{metricBName}</span>
+                              </div>
+                              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                <span style={{
+                                  fontSize: 10,
+                                  fontFamily: 'monospace',
+                                  fontWeight: 800,
+                                  color,
+                                }}>
+                                  r={c.r.toFixed(2)}
+                                </span>
+                                <span style={{
+                                  fontSize: 7,
+                                  fontWeight: 700,
+                                  padding: '1px 4px',
+                                  borderRadius: 2,
+                                  background: `${color}15`,
+                                  color,
+                                  letterSpacing: 0.5,
+                                }}>
+                                  {label}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {correlationData.filter(c => Math.abs(c.r) > 0.85).length > 0 && (
+                          <div style={{ fontSize: 8, color: COLORS.warning, marginTop: 4, fontStyle: 'italic' }}>
+                            Redundant signals (r {'>'} 0.85) may not add unique screening value. Consider replacing one.
+                          </div>
+                        )}
+                      </div>
+                    ) : correlationLoading ? (
+                      <div style={{ fontSize: 9, color: COLORS.textMuted, textAlign: 'center', padding: 6 }}>
+                        Loading correlations...
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 9, color: COLORS.textDim, textAlign: 'center', padding: 6 }}>
+                        No cached correlations available for these metrics. Run a correlation compute to populate.
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {conditions.length > 0 && Object.keys(leadLagData).length > 0 && (
+                  <div style={{
+                    padding: '10px 12px',
+                    background: 'rgba(255,255,255,0.015)',
+                    borderRadius: 6,
+                    border: `1px solid ${COLORS.border}`,
+                    marginTop: 8,
+                  }}>
+                    <div style={{
+                      fontSize: 9, fontWeight: 700, letterSpacing: 1,
+                      color: COLORS.textDim, marginBottom: 8,
+                    }}>
+                      SIGNAL TIMELINE
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {conditions.map(cond => {
+                        const ll = leadLagData[cond.metricId];
+                        if (!ll || ll.leadsOutcomes.length === 0) return null;
+                        const metricName = metrics.find(m => m.id === cond.metricId)?.name || cond.metricId;
+                        return (
+                          <div key={cond.id} style={{
+                            padding: '6px 8px', borderRadius: 4,
+                            background: `${COLORS.cyan}06`, border: `1px solid ${COLORS.cyan}15`,
+                          }}>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: COLORS.text, marginBottom: 4 }}>
+                              {metricName}
+                            </div>
+                            {ll.leadsOutcomes.slice(0, 3).map((lead: any, i: number) => {
+                              const outName = lead.metricBId?.replace(/_/g, ' ') || '';
+                              const confColor = lead.confidenceLevel === 'high' ? COLORS.success
+                                : lead.confidenceLevel === 'medium' ? COLORS.warning : COLORS.textDim;
+                              return (
+                                <div key={i} style={{
+                                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                  padding: '2px 0', fontSize: 9,
+                                }}>
+                                  <span style={{ color: COLORS.textMuted }}>
+                                    Leads <span style={{ fontWeight: 600, color: COLORS.text }}>{outName}</span> by {lead.optimalLagMonths}mo
+                                  </span>
+                                  <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                                    <span style={{ fontFamily: 'monospace', fontWeight: 700, color: COLORS.cyan }}>
+                                      r={lead.rAtOptimalLag?.toFixed(2)}
+                                    </span>
+                                    <span style={{
+                                      fontSize: 7, fontWeight: 700, padding: '1px 3px', borderRadius: 2,
+                                      background: `${confColor}15`, color: confColor,
+                                    }}>
+                                      {lead.confidenceLevel?.toUpperCase()}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      }).filter(Boolean)}
+                      {Object.values(leadLagData).every(d => d.leadsOutcomes.length === 0) && (
+                        <div style={{ fontSize: 9, color: COLORS.textDim, textAlign: 'center', padding: 6 }}>
+                          No leading indicator relationships found for current conditions.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {strategyId && backtestSummaries[strategyId] && (
+                  <div style={{
+                    marginTop: 14,
+                    padding: '10px 12px',
+                    background: 'rgba(255,255,255,0.015)',
+                    borderRadius: 6,
+                    border: `1px solid ${COLORS.border}`,
+                  }}>
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: 8,
+                    }}>
+                      <span style={{
+                        fontSize: 9, fontWeight: 700, letterSpacing: 1,
+                        color: COLORS.textDim,
+                      }}>
+                        HISTORICAL PERFORMANCE
+                      </span>
+                      <span style={{
+                        fontSize: 14,
+                        fontWeight: 800,
+                        fontFamily: 'monospace',
+                        color: backtestSummaries[strategyId].grade === 'A' ? COLORS.success
+                          : backtestSummaries[strategyId].grade?.startsWith('B') ? COLORS.accent
+                          : backtestSummaries[strategyId].grade === 'F' ? COLORS.error
+                          : COLORS.warning,
+                      }}>
+                        {backtestSummaries[strategyId].grade}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 8 }}>
+                      <div style={{
+                        padding: '6px 8px', borderRadius: 4,
+                        background: `${COLORS.success}06`, border: `1px solid ${COLORS.success}15`,
+                        textAlign: 'center',
+                      }}>
+                        <div style={{ fontSize: 14, fontWeight: 800, fontFamily: 'monospace', color: COLORS.success }}>
+                          {Number(backtestSummaries[strategyId].avg_hit_rate).toFixed(0)}%
+                        </div>
+                        <div style={{ fontSize: 8, color: COLORS.textDim }}>Hit Rate</div>
+                      </div>
+                      <div style={{
+                        padding: '6px 8px', borderRadius: 4,
+                        background: `${COLORS.accent}06`, border: `1px solid ${COLORS.accent}15`,
+                        textAlign: 'center',
+                      }}>
+                        <div style={{ fontSize: 14, fontWeight: 800, fontFamily: 'monospace', color: COLORS.accent }}>
+                          +{Number(backtestSummaries[strategyId].avg_alpha_1y).toFixed(1)}pp
+                        </div>
+                        <div style={{ fontSize: 8, color: COLORS.textDim }}>Alpha (1Y)</div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {backtestSummaries[strategyId].avg_alpha_3y != null && (
+                        <div style={{
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                          padding: '3px 6px', fontSize: 9,
+                        }}>
+                          <span style={{ color: COLORS.textMuted }}>Alpha (3Y avg)</span>
+                          <span style={{ fontFamily: 'monospace', fontWeight: 700, color: COLORS.text }}>
+                            +{Number(backtestSummaries[strategyId].avg_alpha_3y).toFixed(2)}pp
+                          </span>
+                        </div>
+                      )}
+                      {backtestSummaries[strategyId].avg_alpha_5y != null && (
+                        <div style={{
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                          padding: '3px 6px', fontSize: 9,
+                        }}>
+                          <span style={{ color: COLORS.textMuted }}>Alpha (5Y avg)</span>
+                          <span style={{ fontFamily: 'monospace', fontWeight: 700, color: COLORS.text }}>
+                            +{Number(backtestSummaries[strategyId].avg_alpha_5y).toFixed(2)}pp
+                          </span>
+                        </div>
+                      )}
+                      <div style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        padding: '3px 6px', fontSize: 9,
+                      }}>
+                        <span style={{ color: COLORS.textMuted }}>Consistency</span>
+                        <span style={{ fontFamily: 'monospace', fontWeight: 700, color: COLORS.text }}>
+                          {Number(backtestSummaries[strategyId].consistency_score).toFixed(0)}%
+                        </span>
+                      </div>
+                    </div>
+
+                    {backtestSummaries[strategyId].signal_decay && (
+                      <div style={{ marginTop: 8 }}>
+                        <div style={{ fontSize: 8, color: COLORS.textDim, marginBottom: 4 }}>SIGNAL DECAY (ALPHA)</div>
+                        <div style={{ display: 'flex', gap: 2, alignItems: 'flex-end', height: 24 }}>
+                          {(() => {
+                            const entries = Object.entries(backtestSummaries[strategyId].signal_decay as Record<string, number>)
+                              .sort(([a], [b]) => parseInt(a) - parseInt(b));
+                            const maxAlpha = Math.max(...entries.map(([, v]) => Math.abs(Number(v))), 0.1);
+                            return entries.map(([label, alpha]) => {
+                              const alphaNum = Number(alpha);
+                              const barH = Math.max(4, (Math.abs(alphaNum) / maxAlpha) * 24);
+                              const color = alphaNum > 1 ? COLORS.success : alphaNum > 0 ? COLORS.warning : COLORS.error;
+                              return (
+                                <div key={label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
+                                  <div style={{
+                                    width: '100%', height: barH, borderRadius: 2,
+                                    background: color + '40', border: `1px solid ${color}60`,
+                                  }} title={`${label}: ${alphaNum >= 0 ? '+' : ''}${alphaNum.toFixed(1)}pp alpha`} />
+                                  <div style={{ fontSize: 7, color: COLORS.textDim, marginTop: 2 }}>{label}</div>
+                                </div>
+                              );
+                            });
+                          })()}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
                   <button

@@ -1,129 +1,149 @@
 /**
- * Tasks API Routes
- * Global task management system integrated with deals, properties, and email
+ * Tasks API Routes - Database Version
+ * 
+ * REPLACE: backend/src/api/rest/tasks.routes.ts
+ * 
+ * Converts from in-memory store to PostgreSQL with:
+ * - Deal linking
+ * - Stage-based task generation
+ * - Agent-created tasks support
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
 import { authMiddleware } from '../../middleware/auth';
 import { logger } from '../../utils/logger';
+import { query } from '../../database/connection';
 
 const router = Router();
 
-// Temporary in-memory store (replace with database later)
-interface Task {
-  id: number;
-  title: string;
-  description?: string;
-  category: string;
-  priority: 'low' | 'medium' | 'high' | 'urgent';
-  status: 'todo' | 'in_progress' | 'blocked' | 'done' | 'cancelled';
-  dealId?: number;
-  propertyId?: number;
-  emailId?: string;
-  assignedToId?: number;
-  createdById?: number;
-  dueDate?: string;
-  completedAt?: string;
-  source: string;
-  blockedReason?: string;
-  tags?: string[];
-  createdAt: string;
-  updatedAt: string;
-}
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const isValidUUID = (s: string) => UUID_RE.test(s);
 
-// In-memory store
-let tasks: Task[] = [
-  {
-    id: 1,
-    title: 'Review Phase I Environmental Report',
-    description: 'Review the Phase I Environmental Site Assessment for potential contamination issues',
-    category: 'due_diligence',
-    priority: 'high',
-    status: 'todo',
-    dealId: 1,
-    assignedToId: 1,
-    createdById: 1,
-    dueDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
-    source: 'manual',
-    tags: ['environmental', 'urgent'],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: 2,
-    title: 'Submit Rent Roll to Lender',
-    description: 'Prepare and submit current rent roll to lender for financing review',
-    category: 'financing',
-    priority: 'medium',
-    status: 'in_progress',
-    dealId: 1,
-    assignedToId: 1,
-    createdById: 1,
-    dueDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
-    source: 'email_ai',
-    tags: ['financing', 'documentation'],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: 3,
-    title: 'Schedule Property Tour',
-    description: 'Coordinate with broker to schedule property walkthrough',
-    category: 'due_diligence',
-    priority: 'medium',
-    status: 'todo',
-    dealId: 1,
-    assignedToId: 1,
-    createdById: 1,
-    dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-    source: 'manual',
-    tags: ['site-visit'],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-];
-
-let nextTaskId = 4;
-
+// ============================================================================
 // GET /api/v1/tasks - Get all tasks with optional filters
-router.get('/', authMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+// ============================================================================
+router.get('/', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { status, dealId, assignedToId, category, priority } = req.query;
+    const userId = (req as any).user?.userId;
+    const { 
+      status, 
+      deal_id, 
+      assigned_to_id, 
+      category, 
+      priority,
+      limit = 100,
+      offset = 0,
+      include_completed = 'false',
+    } = req.query;
 
-    let filteredTasks = [...tasks];
+    let whereConditions: string[] = [];
+    const params: any[] = [];
+    let paramIndex = 1;
 
+    // Filter by status
     if (status) {
-      filteredTasks = filteredTasks.filter(t => t.status === status);
-    }
-    if (dealId) {
-      filteredTasks = filteredTasks.filter(t => t.dealId === parseInt(dealId as string));
-    }
-    if (assignedToId) {
-      filteredTasks = filteredTasks.filter(t => t.assignedToId === parseInt(assignedToId as string));
-    }
-    if (category) {
-      filteredTasks = filteredTasks.filter(t => t.category === category);
-    }
-    if (priority) {
-      filteredTasks = filteredTasks.filter(t => t.priority === priority);
+      whereConditions.push(`t.status = $${paramIndex}`);
+      params.push(status);
+      paramIndex++;
+    } else if (include_completed !== 'true') {
+      // Default: exclude completed/cancelled
+      whereConditions.push(`t.status NOT IN ('done', 'cancelled')`);
     }
 
-    // Sort by priority and due date
-    filteredTasks.sort((a, b) => {
-      const priorityOrder = { urgent: 4, high: 3, medium: 2, low: 1 };
-      const priorityDiff = (priorityOrder[b.priority] || 0) - (priorityOrder[a.priority] || 0);
-      if (priorityDiff !== 0) return priorityDiff;
-
-      if (a.dueDate && b.dueDate) {
-        return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+    // Filter by deal
+    if (deal_id) {
+      if (!isValidUUID(deal_id as string)) {
+        return res.status(400).json({ success: false, message: 'Invalid deal_id' });
       }
-      return 0;
-    });
+      whereConditions.push(`t.deal_id = $${paramIndex}`);
+      params.push(deal_id);
+      paramIndex++;
+    }
+
+    // Filter by assigned user
+    if (assigned_to_id) {
+      whereConditions.push(`t.assigned_to_id = $${paramIndex}`);
+      params.push(assigned_to_id);
+      paramIndex++;
+    } else {
+      // Default: show tasks assigned to current user OR unassigned
+      whereConditions.push(`(t.assigned_to_id = $${paramIndex} OR t.assigned_to_id IS NULL)`);
+      params.push(userId);
+      paramIndex++;
+    }
+
+    // Filter by category
+    if (category) {
+      whereConditions.push(`t.category = $${paramIndex}`);
+      params.push(category);
+      paramIndex++;
+    }
+
+    // Filter by priority
+    if (priority) {
+      whereConditions.push(`t.priority = $${paramIndex}`);
+      params.push(priority);
+      paramIndex++;
+    }
+
+    const whereClause = whereConditions.length > 0 
+      ? `WHERE ${whereConditions.join(' AND ')}`
+      : '';
+
+    params.push(parseInt(limit as string));
+    params.push(parseInt(offset as string));
+
+    const sql = `
+      SELECT 
+        t.*,
+        d.name as deal_name,
+        u.full_name as assigned_to_name
+      FROM tasks t
+      LEFT JOIN deals d ON t.deal_id = d.id
+      LEFT JOIN users u ON t.assigned_to_id = u.id
+      ${whereClause}
+      ORDER BY 
+        CASE t.priority 
+          WHEN 'urgent' THEN 1 
+          WHEN 'high' THEN 2 
+          WHEN 'medium' THEN 3 
+          WHEN 'low' THEN 4 
+        END,
+        t.due_date ASC NULLS LAST,
+        t.created_at DESC
+      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
+    `;
+
+    const result = await query(sql, params);
+
+    // Get total count
+    const countParams = params.slice(0, -2);
+    const countSql = `SELECT COUNT(*) as total FROM tasks t ${whereClause}`;
+    const countResult = await query(countSql, countParams);
 
     res.json({
       success: true,
-      data: filteredTasks,
-      count: filteredTasks.length,
+      data: result.rows.map(row => ({
+        id: row.id,
+        title: row.title,
+        description: row.description,
+        category: row.category,
+        priority: row.priority,
+        status: row.status,
+        dealId: row.deal_id,
+        dealName: row.deal_name,
+        assignedToId: row.assigned_to_id,
+        assignedTo: row.assigned_to_name,
+        dueDate: row.due_date,
+        source: row.source,
+        tags: row.tags,
+        createdAt: row.created_at,
+      })),
+      pagination: {
+        total: parseInt(countResult.rows[0].total),
+        limit: parseInt(limit as string),
+        offset: parseInt(offset as string),
+      },
     });
   } catch (error) {
     logger.error('Error fetching tasks:', error);
@@ -131,55 +151,56 @@ router.get('/', authMiddleware, async (req: Request, res: Response, next: NextFu
   }
 });
 
+// ============================================================================
 // GET /api/v1/tasks/stats - Get task statistics
-router.get('/stats', authMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+// ============================================================================
+router.get('/stats', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { userId } = req.query;
-    const targetUserId = userId ? parseInt(userId as string) : (req as any).user?.userId;
+    const userId = (req as any).user?.userId;
+    const { deal_id } = req.query;
 
-    let userTasks = tasks;
-    if (targetUserId) {
-      userTasks = tasks.filter(t => t.assignedToId === targetUserId);
+    let whereCondition = 'assigned_to_id = $1 OR assigned_to_id IS NULL';
+    const params: any[] = [userId];
+    
+    if (deal_id && isValidUUID(deal_id as string)) {
+      whereCondition = 'deal_id = $2 AND (' + whereCondition + ')';
+      params.push(deal_id);
     }
 
-    const byStatus = {
-      todo: userTasks.filter(t => t.status === 'todo').length,
-      in_progress: userTasks.filter(t => t.status === 'in_progress').length,
-      blocked: userTasks.filter(t => t.status === 'blocked').length,
-      done: userTasks.filter(t => t.status === 'done').length,
-      cancelled: userTasks.filter(t => t.status === 'cancelled').length,
-    };
+    const result = await query(
+      `SELECT 
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE status = 'todo') as todo,
+        COUNT(*) FILTER (WHERE status = 'in_progress') as in_progress,
+        COUNT(*) FILTER (WHERE status = 'blocked') as blocked,
+        COUNT(*) FILTER (WHERE status = 'done') as done,
+        COUNT(*) FILTER (WHERE status = 'cancelled') as cancelled,
+        COUNT(*) FILTER (WHERE due_date < NOW() AND status NOT IN ('done', 'cancelled')) as overdue,
+        COUNT(*) FILTER (WHERE due_date::date = CURRENT_DATE AND status NOT IN ('done', 'cancelled')) as due_today,
+        COUNT(*) FILTER (WHERE due_date > NOW() AND due_date < NOW() + INTERVAL '7 days' AND status NOT IN ('done', 'cancelled')) as due_soon,
+        COUNT(*) FILTER (WHERE priority = 'urgent' AND status NOT IN ('done', 'cancelled')) as urgent
+      FROM tasks
+      WHERE ${whereCondition}`,
+      params
+    );
 
-    const now = new Date();
-    const today = new Date(now.setHours(0, 0, 0, 0));
-
-    const overdue = userTasks.filter(t => 
-      t.dueDate && 
-      new Date(t.dueDate) < today && 
-      t.status !== 'done'
-    ).length;
-
-    const dueToday = userTasks.filter(t => 
-      t.dueDate && 
-      new Date(t.dueDate).toDateString() === today.toDateString() &&
-      t.status !== 'done'
-    ).length;
-
-    const dueSoon = userTasks.filter(t => 
-      t.dueDate && 
-      new Date(t.dueDate) > today &&
-      new Date(t.dueDate) < new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000) &&
-      t.status !== 'done'
-    ).length;
+    const stats = result.rows[0];
 
     res.json({
       success: true,
       data: {
-        total: userTasks.length,
-        byStatus,
-        overdue,
-        dueToday,
-        dueSoon,
+        total: parseInt(stats.total),
+        byStatus: {
+          todo: parseInt(stats.todo),
+          in_progress: parseInt(stats.in_progress),
+          blocked: parseInt(stats.blocked),
+          done: parseInt(stats.done),
+          cancelled: parseInt(stats.cancelled),
+        },
+        overdue: parseInt(stats.overdue),
+        dueToday: parseInt(stats.due_today),
+        dueSoon: parseInt(stats.due_soon),
+        urgent: parseInt(stats.urgent),
       },
     });
   } catch (error) {
@@ -188,22 +209,37 @@ router.get('/stats', authMiddleware, async (req: Request, res: Response, next: N
   }
 });
 
+// ============================================================================
 // GET /api/v1/tasks/:id - Get single task
-router.get('/:id', authMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+// ============================================================================
+router.get('/:id', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    const task = tasks.find(t => t.id === parseInt(id));
+    if (!isValidUUID(id)) {
+      return res.status(404).json({ success: false, message: 'Task not found' });
+    }
 
-    if (!task) {
-      return res.status(404).json({
-        success: false,
-        message: `Task with ID ${id} not found`,
-      });
+    const result = await query(
+      `SELECT 
+        t.*,
+        d.name as deal_name,
+        u.full_name as assigned_to_name,
+        creator.full_name as created_by_name
+      FROM tasks t
+      LEFT JOIN deals d ON t.deal_id = d.id
+      LEFT JOIN users u ON t.assigned_to_id = u.id
+      LEFT JOIN users creator ON t.created_by_id = creator.id
+      WHERE t.id = $1`,
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Task not found' });
     }
 
     res.json({
       success: true,
-      data: task,
+      data: result.rows[0],
     });
   } catch (error) {
     logger.error('Error fetching task:', error);
@@ -211,21 +247,25 @@ router.get('/:id', authMiddleware, async (req: Request, res: Response, next: Nex
   }
 });
 
+// ============================================================================
 // POST /api/v1/tasks - Create new task
-router.post('/', authMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+// ============================================================================
+router.post('/', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const userId = (req as any).user?.userId;
     const {
       title,
       description,
       category,
       priority = 'medium',
       status = 'todo',
-      dealId,
-      propertyId,
-      emailId,
-      assignedToId,
-      dueDate,
+      deal_id,
+      property_id,
+      email_id,
+      assigned_to_id,
+      due_date,
       source = 'manual',
+      source_ref,
       tags = [],
     } = req.body;
 
@@ -236,34 +276,37 @@ router.post('/', authMiddleware, async (req: Request, res: Response, next: NextF
       });
     }
 
-    const userId = (req as any).user?.userId || 1;
+    const result = await query(
+      `INSERT INTO tasks (
+        title, description, category, priority, status,
+        deal_id, property_id, email_id,
+        assigned_to_id, created_by_id,
+        due_date, source, source_ref, tags
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      RETURNING *`,
+      [
+        title,
+        description,
+        category,
+        priority,
+        status,
+        deal_id || null,
+        property_id || null,
+        email_id || null,
+        assigned_to_id || userId,
+        userId,
+        due_date || null,
+        source,
+        source_ref || null,
+        tags,
+      ]
+    );
 
-    const newTask: Task = {
-      id: nextTaskId++,
-      title,
-      description,
-      category,
-      priority,
-      status,
-      dealId: dealId ? parseInt(dealId) : undefined,
-      propertyId: propertyId ? parseInt(propertyId) : undefined,
-      emailId,
-      assignedToId: assignedToId ? parseInt(assignedToId) : userId,
-      createdById: userId,
-      dueDate,
-      source,
-      tags,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    tasks.push(newTask);
-
-    logger.info(`Task created: ${title}`, { taskId: newTask.id, userId });
+    logger.info(`Task created: ${title}`, { taskId: result.rows[0].id, userId });
 
     res.status(201).json({
       success: true,
-      data: newTask,
+      data: result.rows[0],
       message: 'Task created successfully',
     });
   } catch (error) {
@@ -272,42 +315,62 @@ router.post('/', authMiddleware, async (req: Request, res: Response, next: NextF
   }
 });
 
+// ============================================================================
 // PATCH /api/v1/tasks/:id - Update task
-router.patch('/:id', authMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+// ============================================================================
+router.patch('/:id', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
+    if (!isValidUUID(id)) {
+      return res.status(404).json({ success: false, message: 'Task not found' });
+    }
+
     const updates = req.body;
+    const allowedFields = [
+      'title', 'description', 'category', 'priority', 'status',
+      'deal_id', 'assigned_to_id', 'due_date', 'blocked_reason', 'tags'
+    ];
 
-    const taskIndex = tasks.findIndex(t => t.id === parseInt(id));
+    const setClauses: string[] = [];
+    const params: any[] = [];
+    let paramIndex = 1;
 
-    if (taskIndex === -1) {
-      return res.status(404).json({
-        success: false,
-        message: `Task with ID ${id} not found`,
-      });
+    for (const field of allowedFields) {
+      if (updates[field] !== undefined) {
+        setClauses.push(`${field} = $${paramIndex}`);
+        params.push(updates[field]);
+        paramIndex++;
+      }
     }
 
-    const oldTask = tasks[taskIndex];
-
-    // Auto-set completedAt when moving to done
-    if (updates.status === 'done' && oldTask.status !== 'done') {
-      updates.completedAt = new Date().toISOString();
+    // Auto-set completed_at when status changes to done
+    if (updates.status === 'done') {
+      setClauses.push(`completed_at = NOW()`);
     }
 
-    tasks[taskIndex] = {
-      ...oldTask,
-      ...updates,
-      updatedAt: new Date().toISOString(),
-    };
+    if (setClauses.length === 0) {
+      return res.status(400).json({ success: false, message: 'No valid updates provided' });
+    }
 
-    logger.info(`Task updated: ${tasks[taskIndex].title}`, {
-      taskId: tasks[taskIndex].id,
+    params.push(id);
+
+    const result = await query(
+      `UPDATE tasks SET ${setClauses.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
+      params
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Task not found' });
+    }
+
+    logger.info(`Task updated: ${result.rows[0].title}`, {
+      taskId: id,
       changes: Object.keys(updates),
     });
 
     res.json({
       success: true,
-      data: tasks[taskIndex],
+      data: result.rows[0],
       message: 'Task updated successfully',
     });
   } catch (error) {
@@ -316,22 +379,23 @@ router.patch('/:id', authMiddleware, async (req: Request, res: Response, next: N
   }
 });
 
+// ============================================================================
 // DELETE /api/v1/tasks/:id - Delete task
-router.delete('/:id', authMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+// ============================================================================
+router.delete('/:id', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    const taskIndex = tasks.findIndex(t => t.id === parseInt(id));
-
-    if (taskIndex === -1) {
-      return res.status(404).json({
-        success: false,
-        message: `Task with ID ${id} not found`,
-      });
+    if (!isValidUUID(id)) {
+      return res.status(404).json({ success: false, message: 'Task not found' });
     }
 
-    const deletedTask = tasks.splice(taskIndex, 1)[0];
+    const result = await query('DELETE FROM tasks WHERE id = $1 RETURNING id, title', [id]);
 
-    logger.info(`Task deleted: ${deletedTask.title}`, { taskId: deletedTask.id });
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Task not found' });
+    }
+
+    logger.info(`Task deleted: ${result.rows[0].title}`, { taskId: id });
 
     res.json({
       success: true,
@@ -339,6 +403,112 @@ router.delete('/:id', authMiddleware, async (req: Request, res: Response, next: 
     });
   } catch (error) {
     logger.error('Error deleting task:', error);
+    next(error);
+  }
+});
+
+// ============================================================================
+// POST /api/v1/tasks/generate-for-stage - Generate tasks for deal stage
+// ============================================================================
+router.post('/generate-for-stage', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = (req as any).user?.userId;
+    const { deal_id, stage } = req.body;
+
+    if (!deal_id || !stage) {
+      return res.status(400).json({
+        success: false,
+        message: 'deal_id and stage are required',
+      });
+    }
+
+    if (!isValidUUID(deal_id)) {
+      return res.status(400).json({ success: false, message: 'Invalid deal_id' });
+    }
+
+    // Call the database function to generate tasks
+    const result = await query(
+      'SELECT generate_stage_tasks($1, $2, $3) as task_count',
+      [deal_id, stage, userId]
+    );
+
+    const taskCount = result.rows[0].task_count;
+
+    logger.info(`Generated ${taskCount} tasks for deal stage transition`, {
+      dealId: deal_id,
+      stage,
+      userId,
+    });
+
+    res.json({
+      success: true,
+      data: { tasksGenerated: taskCount },
+      message: `Generated ${taskCount} tasks for ${stage} stage`,
+    });
+  } catch (error) {
+    logger.error('Error generating stage tasks:', error);
+    next(error);
+  }
+});
+
+// ============================================================================
+// POST /api/v1/tasks/from-agent - Create task from AI agent
+// ============================================================================
+router.post('/from-agent', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = (req as any).user?.userId;
+    const {
+      title,
+      description,
+      category,
+      priority = 'medium',
+      deal_id,
+      agent_code, // e.g., 'RISK', 'DD', 'MARKET'
+      due_days = 3, // Days from now
+    } = req.body;
+
+    if (!title || !category || !agent_code) {
+      return res.status(400).json({
+        success: false,
+        message: 'title, category, and agent_code are required',
+      });
+    }
+
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + due_days);
+
+    const result = await query(
+      `INSERT INTO tasks (
+        title, description, category, priority, status,
+        deal_id, assigned_to_id, 
+        due_date, source, source_ref
+      ) VALUES ($1, $2, $3, $4, 'todo', $5, $6, $7, 'agent', $8)
+      RETURNING *`,
+      [
+        title,
+        description,
+        category,
+        priority,
+        deal_id || null,
+        userId,
+        dueDate,
+        agent_code,
+      ]
+    );
+
+    logger.info(`Agent task created: ${title}`, { 
+      taskId: result.rows[0].id, 
+      agentCode: agent_code,
+      dealId: deal_id,
+    });
+
+    res.status(201).json({
+      success: true,
+      data: result.rows[0],
+      message: `Task created by ${agent_code} agent`,
+    });
+  } catch (error) {
+    logger.error('Error creating agent task:', error);
     next(error);
   }
 });

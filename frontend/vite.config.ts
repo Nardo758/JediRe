@@ -29,6 +29,10 @@ export default defineConfig({
         target: 'http://localhost:4000',
         changeOrigin: true,
         ws: true,
+      },
+      '/__mockup': {
+        target: 'http://localhost:23636',
+        changeOrigin: true,
       }
     }
   },

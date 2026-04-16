@@ -1,43 +1,22 @@
 /**
  * ModuleSuggestionModal - Suggests relevant modules after deal creation
- * 
+ *
  * Triggers:
  * - After successful deal creation
  * - Shows on deal detail page load (one-time, dismissible)
- * 
+ *
  * Features:
  * - Contextual module recommendations based on deal type + strategy
  * - Shows subscription status (included vs paid)
  * - Bulk module activation
  * - Persistent dismissal per deal
- * 
- * Visual Layout:
- * ┌────────────────────────────────────────────────────┐
- * │ 🎯 Recommended Modules for This Deal          [X] │
- * │ Based on your Multifamily Value-Add deal           │
- * ├────────────────────────────────────────────────────┤
- * │                                                    │
- * │ [✓] 💰 Financial Modeling Pro      [Included ✓]  │
- * │     Component-based pro-forma builder              │
- * │     Part of your Flipper bundle                    │
- * │                                                    │
- * │ [✓] 🎯 Strategy Arbitrage          [Included ✓]  │
- * │     AI-powered investment strategy                 │
- * │                                                    │
- * │ ─────────── Premium Add-Ons ─────────────         │
- * │                                                    │
- * │ 🏢 Comp Analysis                      $24/mo      │
- * │ Automated comparable analysis     [Add Module]    │
- * │                                                    │
- * ├────────────────────────────────────────────────────┤
- * │              [Skip]  [Activate Selected (2)]      │
- * └────────────────────────────────────────────────────┘
  */
 
 import React, { useEffect, useState } from 'react';
 import { getRecommendedModules, MODULE_METADATA, ModuleSuggestion } from '../../utils/moduleSuggestions';
 import { ModuleName, getBundleModules, getModulePricing } from '../../utils/modules';
 import { Button } from '../shared/Button';
+import { BT } from '@/components/deal/bloomberg-ui';
 
 interface ModuleSuggestionModalProps {
   isOpen: boolean;
@@ -72,25 +51,25 @@ export const ModuleSuggestionModal: React.FC<ModuleSuggestionModalProps> = ({
   const loadSuggestions = () => {
     // Get recommended modules for this deal type + strategy
     const recommendedModuleIds = getRecommendedModules(dealType, dealStrategy);
-    
+
     // Get bundle modules if user has a bundle
     const bundleModules = userBundle ? getBundleModules(userBundle) : [];
-    
+
     // Build suggestion objects
     const moduleSuggestions: ModuleSuggestion[] = recommendedModuleIds.map((moduleId) => {
       const metadata = MODULE_METADATA[moduleId];
       const pricing = getModulePricing(moduleId);
-      
+
       // Check if user has access
       const isIncludedInBundle = bundleModules.includes(moduleId);
       const isIndividuallySub = userModules.includes(moduleId);
       const isIncluded = isIncludedInBundle || isIndividuallySub;
-      
+
       let bundleInfo: string | undefined;
       if (isIncludedInBundle && userBundle) {
         bundleInfo = `Part of your ${userBundle.replace('-', ' ')} bundle`;
       }
-      
+
       return {
         moduleSlug: moduleId,
         name: metadata.name,
@@ -101,9 +80,9 @@ export const ModuleSuggestionModal: React.FC<ModuleSuggestionModalProps> = ({
         bundleInfo,
       };
     });
-    
+
     setSuggestions(moduleSuggestions);
-    
+
     // Pre-select all included modules
     const preSelected = new Set<ModuleName>(
       moduleSuggestions
@@ -151,7 +130,7 @@ export const ModuleSuggestionModal: React.FC<ModuleSuggestionModalProps> = ({
 
       // Mark as dismissed
       localStorage.setItem(`deal-${dealId}-suggestions-dismissed`, 'true');
-      
+
       // Close modal
       onClose();
     } catch (err: any) {
@@ -182,24 +161,24 @@ export const ModuleSuggestionModal: React.FC<ModuleSuggestionModalProps> = ({
   const paidSuggestions = suggestions.filter((s) => !s.isIncluded);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center animate-fade-in">
-      <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-hidden flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center animate-fade-in" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+      <div className="max-w-2xl w-full max-h-[85vh] overflow-hidden flex flex-col" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.medium}` }}>
         {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-blue-50 to-purple-50">
+        <div className="px-6 py-4 flex items-center justify-between" style={{ borderBottom: `1px solid ${BT.border.subtle}`, background: BT.bg.header }}>
           <div className="flex items-center gap-3">
-            <div className="text-3xl">🎯</div>
+            <div style={{ fontSize: 24 }}>🎯</div>
             <div>
-              <h2 className="text-xl font-bold text-gray-900">
+              <h2 style={{ fontSize: BT.fontSize.xl, fontWeight: 700, color: BT.text.primary, fontFamily: BT.font.mono }}>
                 Recommended Modules for This Deal
               </h2>
-              <p className="text-sm text-gray-600 mt-0.5">
+              <p style={{ fontSize: BT.fontSize.base, color: BT.text.secondary, fontFamily: BT.font.label, marginTop: 2 }}>
                 Based on your {dealType} {dealStrategy} deal
               </p>
             </div>
           </div>
           <button
             onClick={handleSkip}
-            className="text-gray-400 hover:text-gray-600 text-2xl font-light transition-colors"
+            style={{ color: BT.text.muted, fontSize: 20, fontWeight: 300, background: 'none', border: 'none', cursor: 'pointer' }}
             aria-label="Close"
           >
             ×
@@ -209,8 +188,8 @@ export const ModuleSuggestionModal: React.FC<ModuleSuggestionModalProps> = ({
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-6 py-6">
           {error && (
-            <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-sm text-red-800">{error}</p>
+            <div className="mb-4 p-4" style={{ background: `${BT.text.red}08`, border: `1px solid ${BT.text.red}33`, borderRadius: 0 }}>
+              <p style={{ fontSize: BT.fontSize.base, color: BT.text.red, fontFamily: BT.font.label }}>{error}</p>
             </div>
           )}
 
@@ -219,29 +198,31 @@ export const ModuleSuggestionModal: React.FC<ModuleSuggestionModalProps> = ({
             {includedSuggestions.map((suggestion) => (
               <div
                 key={suggestion.moduleSlug}
-                className={`p-4 border-2 rounded-lg transition-all cursor-pointer ${
-                  selectedModules.has(suggestion.moduleSlug)
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 bg-white hover:border-blue-300'
-                }`}
+                className="p-4 transition-all cursor-pointer"
+                style={{
+                  border: `2px solid ${selectedModules.has(suggestion.moduleSlug) ? BT.text.cyan : BT.border.subtle}`,
+                  background: selectedModules.has(suggestion.moduleSlug) ? `${BT.text.cyan}08` : BT.bg.panel,
+                  borderRadius: 0,
+                }}
                 onClick={() => toggleModule(suggestion.moduleSlug)}
               >
                 <div className="flex items-start gap-4">
                   {/* Checkbox */}
                   <div className="flex-shrink-0 mt-1">
                     <div
-                      className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
-                        selectedModules.has(suggestion.moduleSlug)
-                          ? 'border-blue-500 bg-blue-500'
-                          : 'border-gray-300 bg-white'
-                      }`}
+                      className="w-5 h-5 flex items-center justify-center transition-colors"
+                      style={{
+                        border: `2px solid ${selectedModules.has(suggestion.moduleSlug) ? BT.text.cyan : BT.border.medium}`,
+                        background: selectedModules.has(suggestion.moduleSlug) ? BT.text.cyan : 'transparent',
+                        borderRadius: 0,
+                      }}
                     >
                       {selectedModules.has(suggestion.moduleSlug) && (
                         <svg
-                          className="w-4 h-4 text-white"
+                          className="w-4 h-4"
                           fill="none"
                           viewBox="0 0 24 24"
-                          stroke="currentColor"
+                          stroke={BT.bg.terminal}
                         >
                           <path
                             strokeLinecap="round"
@@ -257,18 +238,18 @@ export const ModuleSuggestionModal: React.FC<ModuleSuggestionModalProps> = ({
                   {/* Content */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-2xl">{suggestion.icon}</span>
-                      <h3 className="font-semibold text-gray-900">{suggestion.name}</h3>
+                      <span style={{ fontSize: 20 }}>{suggestion.icon}</span>
+                      <h3 style={{ fontWeight: 600, color: BT.text.primary, fontFamily: BT.font.mono, fontSize: BT.fontSize.base }}>{suggestion.name}</h3>
                     </div>
-                    <p className="text-sm text-gray-600 mb-2">{suggestion.description}</p>
+                    <p style={{ fontSize: BT.fontSize.base, color: BT.text.secondary, fontFamily: BT.font.label, marginBottom: 8 }}>{suggestion.description}</p>
                     {suggestion.bundleInfo && (
-                      <p className="text-xs text-blue-600 font-medium">{suggestion.bundleInfo}</p>
+                      <p style={{ fontSize: BT.fontSize.xs, color: BT.text.cyan, fontWeight: 500, fontFamily: BT.font.label }}>{suggestion.bundleInfo}</p>
                     )}
                   </div>
 
                   {/* Badge */}
                   <div className="flex-shrink-0">
-                    <span className="inline-flex items-center gap-1 px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold">
+                    <span className="inline-flex items-center gap-1 px-3 py-1" style={{ background: `${BT.text.green}18`, color: BT.text.green, borderRadius: 0, fontSize: BT.fontSize.xs, fontWeight: 600, fontFamily: BT.font.mono }}>
                       <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                         <path
                           fillRule="evenodd"
@@ -286,8 +267,8 @@ export const ModuleSuggestionModal: React.FC<ModuleSuggestionModalProps> = ({
             {/* Paid Modules (Not in Subscription) */}
             {paidSuggestions.length > 0 && (
               <>
-                <div className="pt-4 border-t border-gray-200">
-                  <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                <div className="pt-4" style={{ borderTop: `1px solid ${BT.border.subtle}` }}>
+                  <h3 style={{ fontSize: BT.fontSize.xs, fontWeight: 600, color: BT.text.muted, letterSpacing: '0.05em', textTransform: 'uppercase', fontFamily: BT.font.mono, marginBottom: 12 }}>
                     Premium Add-Ons
                   </h3>
                 </div>
@@ -295,34 +276,36 @@ export const ModuleSuggestionModal: React.FC<ModuleSuggestionModalProps> = ({
                 {paidSuggestions.map((suggestion) => (
                   <div
                     key={suggestion.moduleSlug}
-                    className="p-4 border-2 border-gray-200 rounded-lg bg-gray-50"
+                    className="p-4"
+                    style={{ border: `2px solid ${BT.border.subtle}`, borderRadius: 0, background: BT.bg.panelAlt }}
                   >
                     <div className="flex items-start gap-4">
                       {/* Icon */}
                       <div className="flex-shrink-0">
-                        <span className="text-2xl opacity-60">{suggestion.icon}</span>
+                        <span style={{ fontSize: 20, opacity: 0.6 }}>{suggestion.icon}</span>
                       </div>
 
                       {/* Content */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
-                          <h3 className="font-semibold text-gray-700">{suggestion.name}</h3>
+                          <h3 style={{ fontWeight: 600, color: BT.text.secondary, fontFamily: BT.font.mono, fontSize: BT.fontSize.base }}>{suggestion.name}</h3>
                         </div>
-                        <p className="text-sm text-gray-600 mb-2">{suggestion.description}</p>
-                        <p className="text-xs text-gray-500">
+                        <p style={{ fontSize: BT.fontSize.base, color: BT.text.secondary, fontFamily: BT.font.label, marginBottom: 8 }}>{suggestion.description}</p>
+                        <p style={{ fontSize: BT.fontSize.xs, color: BT.text.muted, fontFamily: BT.font.label }}>
                           Not in your plan. Add for ${suggestion.price}/mo?
                         </p>
                       </div>
 
                       {/* Price & CTA */}
                       <div className="flex-shrink-0 text-right">
-                        <div className="text-lg font-bold text-gray-900 mb-2">
+                        <div style={{ fontSize: BT.fontSize.lg, fontWeight: 700, color: BT.text.amber, fontFamily: BT.font.mono, marginBottom: 8 }}>
                           ${suggestion.price}
-                          <span className="text-sm font-normal text-gray-500">/mo</span>
+                          <span style={{ fontSize: BT.fontSize.base, fontWeight: 400, color: BT.text.muted }}>/mo</span>
                         </div>
                         <button
                           onClick={() => handleAddModule(suggestion.moduleSlug)}
-                          className="px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                          className="px-3 py-1 transition-colors"
+                          style={{ background: BT.text.cyan, color: BT.bg.terminal, borderRadius: 0, border: 'none', fontSize: BT.fontSize.base, fontWeight: 500, fontFamily: BT.font.mono, cursor: 'pointer' }}
                         >
                           Add Module
                         </button>
@@ -336,7 +319,7 @@ export const ModuleSuggestionModal: React.FC<ModuleSuggestionModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
+        <div className="px-6 py-4 flex items-center justify-between" style={{ background: BT.bg.panelAlt, borderTop: `1px solid ${BT.border.subtle}` }}>
           <Button
             variant="ghost"
             onClick={handleSkip}

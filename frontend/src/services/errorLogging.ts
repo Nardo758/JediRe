@@ -34,7 +34,6 @@ class ErrorLoggingService {
   constructor() {
     this.loadQueue();
     this.setupOnlineListener();
-    // Try to process queue on initialization
     this.processQueue();
   }
 
@@ -58,7 +57,6 @@ class ErrorLoggingService {
 
   private saveQueue() {
     try {
-      // Keep only the most recent errors if queue is too large
       if (this.queue.length > MAX_QUEUE_SIZE) {
         this.queue = this.queue.slice(-MAX_QUEUE_SIZE);
       }
@@ -99,7 +97,6 @@ class ErrorLoggingService {
       for (let i = 0; i < errors.length; i++) {
         const queuedError = errors[i];
         
-        // Skip if exceeded retry count
         if (queuedError.retryCount >= MAX_RETRY_COUNT) {
           successfulIndices.push(i);
           continue;
@@ -111,12 +108,10 @@ class ErrorLoggingService {
         if (success) {
           successfulIndices.push(i);
         } else {
-          // Increment retry count
           this.queue[i].retryCount++;
         }
       }
 
-      // Remove successfully sent errors (in reverse to maintain indices)
       successfulIndices.reverse().forEach((index) => {
         this.queue.splice(index, 1);
       });
@@ -128,11 +123,9 @@ class ErrorLoggingService {
   }
 
   public async log(data: ErrorLogData): Promise<void> {
-    // Try to send immediately
     const success = await this.sendToBackend(data);
 
     if (!success) {
-      // Queue for later if failed
       this.queue.push({
         ...data,
         retryCount: 0,
@@ -140,7 +133,6 @@ class ErrorLoggingService {
       });
       this.saveQueue();
 
-      // Try to process queue (will skip if offline)
       setTimeout(() => this.processQueue(), 1000);
     }
   }
@@ -155,11 +147,9 @@ class ErrorLoggingService {
   }
 }
 
-// Singleton instance
 const errorLoggingService = new ErrorLoggingService();
 
 export const logErrorToBackend = (data: ErrorLogData): Promise<void> => {
-  // Add user info if available
   const enhancedData = {
     ...data,
     url: data.url || window.location.href,

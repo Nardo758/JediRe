@@ -265,6 +265,11 @@ export class DealsService {
       values.push(JSON.stringify(dto.boundary));
     }
 
+    if (dto.projectType) {
+      updates.push(`project_type = $${paramIndex++}`);
+      values.push(dto.projectType);
+    }
+
     if (dto.projectIntent) {
       updates.push(`project_intent = $${paramIndex++}`);
       values.push(dto.projectIntent);

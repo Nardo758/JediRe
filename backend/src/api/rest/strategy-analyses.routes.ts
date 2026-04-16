@@ -7,6 +7,8 @@ import { Router, Request, Response } from 'express';
 import { requireAuth } from '../../middleware/auth';
 import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
+import { bustAdvisorCache } from '../../services/debt-advisor/debt-plan-formulator.service';
+import { bustM08Cache } from '../../services/m08-strategies.service';
 
 const router = Router();
 
@@ -65,6 +67,12 @@ router.post('/', async (req: Request, res: Response) => {
       strategySlug,
       analysisId: result.rows[0].id
     });
+
+    // Bust M08 + Debt Advisor caches so next GET recomputes with updated strategy output.
+    // strategy_analyses is read by getPrimaryStrategyForDeal(), so M08 cache must be
+    // invalidated whenever the recommended strategy changes.
+    try { bustM08Cache(dealId); } catch (_) {}
+    try { bustAdvisorCache(dealId); } catch (_) {}
 
     res.json({
       success: true,
@@ -212,7 +220,7 @@ router.patch('/:id', async (req: Request, res: Response) => {
 
     // Verify the analysis exists and user has access to the deal
     const analysisCheck = await query(
-      `SELECT sa.id FROM strategy_analyses sa
+      `SELECT sa.id, sa.deal_id FROM strategy_analyses sa
        JOIN deals d ON sa.deal_id = d.id
        WHERE sa.id = $1 AND d.user_id = $2`,
       [id, userId]
@@ -224,6 +232,7 @@ router.patch('/:id', async (req: Request, res: Response) => {
         error: 'Strategy analysis not found or access denied'
       });
     }
+    const updatedDealId: string = analysisCheck.rows[0].deal_id;
 
     // Build update query dynamically
     const updates: string[] = [];
@@ -267,6 +276,10 @@ router.patch('/:id', async (req: Request, res: Response) => {
       userId,
       analysisId: id
     });
+
+    // Bust M08 + Debt Advisor caches — strategy content changed, next GET recomputes
+    try { bustM08Cache(updatedDealId); } catch (_) {}
+    try { bustAdvisorCache(updatedDealId); } catch (_) {}
 
     res.json({
       success: true,

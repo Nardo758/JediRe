@@ -1,0 +1,1032 @@
+# M08 Strategies Module — Rebuild Spec v2
+
+**Module:** M08 Strategy Arbitrage
+**Supersedes:** v1 spec
+**Status:** Implementation-grade spec — ready for Claude Code
+**Dependencies:** `strategy-arbitrage-engine.ts` (467 lines), `correlationEngine.service.ts`, `trafficPredictionEngine.ts`, `formula-engine.ts` (F23/F24), M02/M04/M05/M06/M07/M14, Strategy Matrix workbook, AI Coordinator
+
+---
+
+## 1. Core Architectural Shift
+
+v1 scored all four families (BTS / Flip / Rental / STR) equally for every deal. That's wrong. A 186-unit Class B multifamily with 8% loss-to-lease, Greystar C-tier management, and 72% occupancy **is a Value-Add deal** — the question isn't "should this be BTS vs Flip vs Rental vs STR," the question is "how do we execute the value-add play optimally given market signals, and are there adjacent strategies worth comparing?"
+
+v2 flips the architecture to **detect first, justify with math, then formulate**:
+
+```
+INPUT: Raw deal data (address, rent roll, T-12, zoning, parcel structure, etc.)
+         │
+         ▼
+  ┌─────────────────────────────────┐
+  │  STAGE 1 — DETECT              │
+  │  Asset Class + Deal Type       │
+  │  Primary Sub-Strategy           │
+  │  Confidence score               │
+  └─────────────┬───────────────────┘
+                │
+                ▼
+  ┌─────────────────────────────────┐
+  │  STAGE 2 — VALIDATE + COMPARE  │
+  │  Score detected primary         │
+  │  Score 2-3 relevant adjacencies │
+  │  Check for arbitrage            │
+  └─────────────┬───────────────────┘
+                │
+                ▼
+  ┌─────────────────────────────────┐
+  │  EVIDENCE LAYER — SHOW THE MATH │
+  │  Thesis (why this wins)         │
+  │  Metric stack vs benchmarks     │
+  │  Dual-lens comp evidence        │
+  │  Step-by-step IRR build         │
+  └─────────────┬───────────────────┘
+                │
+                ▼
+  ┌─────────────────────────────────┐
+  │  STAGE 3 — FORMULATE PLAN      │
+  │  Ingest all correlation signals │
+  │  Sequence actions + timing      │
+  │  Every action carries evidence  │
+  │    + correlation references     │
+  │  Map to F9 assumptions          │
+  └─────────────────────────────────┘
+```
+
+The page still shows strategy comparison — but the comparison is scoped to what the deal actually is, not a generic bake-off. A retail NNN deal doesn't get compared against STR. A vacant-land deal doesn't get compared against Rental Core. A scattered SFR portfolio doesn't get compared against MF Core.
+
+Three structural upgrades from v1:
+
+1. **Detection-first architecture** (Stages 1-2 above). Asset class + deal type detected from property data, rent roll structure, zoning, parcel structure. Scoring scoped to applicable sub-strategies only.
+
+2. **Evidence Layer — "Why This Strategy Wins" (Section 5).** Between scoring and planning, a four-block report (thesis, metric stack, dual-lens comps, math trail) shows the full justification chain. Plan actions carry evidence references — nothing is assertion.
+
+3. **SFR as a first-class asset class** (not a multifamily sub-type). Single-family rental has distinct economics, financing, exit channels, and sub-strategies (Fix-Flip, BRRRR, Hold, Portfolio Aggregation, BTR, STR, MTR, Wholesale). Detection rule: one house per parcel = SFR; one building many units = MF. BTR subdivisions are SFR, not MF.
+
+---
+
+## 2. Strategy Taxonomy — Two-Level
+
+### 2.1 Families and Sub-Strategies
+
+```
+BTS (Build-to-Sell)
+├── Ground-Up Development       — vacant land or teardown, fully new product
+├── Horizontal Development      — land entitlement + infrastructure, sell pad-ready
+├── Adaptive Reuse              — convert existing structure (office→residential, etc.)
+└── Infill BTS                  — small-footprint new construction in existing neighborhoods
+
+FLIP
+├── Quick Flip                  — 3-9 month hold, cosmetic only, arbitrage play
+├── Repositioning Flip          — 9-18 month, light-medium rehab, rebrand + reprice
+├── Condo Conversion            — buy rental, convert to for-sale condos
+└── Portfolio Break-Up          — acquire portfolio, sell assets individually
+
+RENTAL (expanded per Leon's spec note)
+├── Core                        — stabilized, Class A, minimal work, long hold
+├── Core-Plus                   — stabilized, minor upgrades, modest rent lift
+├── Value-Add                   — 40-80% unit renovation, management improvement, rent capture
+├── Deep Value-Add              — major cap-ex, amenity add, rebrand, 2-3 year lift
+├── Distressed / Opportunistic  — broken ops, physical or financial turnaround
+├── Lease-Up                    — recently delivered, absorb remaining units to stabilization
+└── Ground-Lease Hold           — own dirt, long-term ground lease, cash flow
+
+STR (Short-Term Rental)
+├── Pure STR                    — 100% nightly rental, tourist-grade
+├── Hybrid MTR                  — mid-term (30-90 day) corporate / medical
+├── STR Condo-Hotel             — individual unit ownership, common STR operator
+└── STR Portfolio Operations    — multi-property operator play
+
+Asset-class-specific sub-strategies outside the "Big Four":
+SFR (Single-Family Rental) — its own asset class, not a MF sub-type
+├── SFR Fix-and-Flip           — 3-9 month, cosmetic + rehab, resale to owner-occupant
+├── SFR BRRRR                  — buy/rehab/rent/refi/repeat — scale play
+├── SFR Hold (Scattered)       — buy-and-hold individual houses
+├── SFR Portfolio Aggregation  — assemble a portfolio for institutional sale
+├── SFR BTR (Build-to-Rent)    — ground-up SFR subdivision, rent out (new asset class entirely)
+├── SFR BTR Horizontal         — deliver lots for SFR BTR operator
+├── SFR STR (Vacation Rental)  — single-house nightly rental
+├── SFR MTR (Mid-Term)         — 30-90 day corporate / insurance
+└── SFR Wholesale              — contract-then-assign, no capital deployed
+
+RETAIL        → NNN Lease Play, Grocery/Drug-Anchored Reposition, Power Center Repositioning, Big-Box Breakup
+OFFICE        → Tenant-Rollup Reposition, Flex/Last-Mile Conversion, Medical Office Conversion, Adaptive Reuse to Residential
+INDUSTRIAL    → Last-Mile Conversion, Clear-Height Upgrade, IOS (Industrial Outdoor Storage)
+HOSPITALITY   → Reflag, PIP Execution, Extended-Stay Conversion
+MIXED-USE     → Ground-Floor Activation, Vertical Condo-ization
+```
+
+**SFR as a distinct asset class.** Single-family rental is not a multifamily sub-type — it's a different business. No scale operations, house-by-house management, residential (not commercial) financing on individual houses, different buyer pool at exit (owner-occupants for individual flips, institutional aggregators for portfolios). Bundling it into MF destroys the detection logic. SFR gets its own asset class, its own signal adapter, and its own sub-strategy library. SFR BTR communities (think Lennar's Quarterra, Wayfair Rentals portfolios) get classified as SFR — not MF — even though they look operationally similar, because the financing, exit, and zoning paths differ.
+
+### 2.2 Asset Class × Applicable Sub-Strategies
+
+The detection engine only scores sub-strategies applicable to the detected asset class. A retail deal never sees "MF Value-Add 40-80% unit renovation" as an option.
+
+Applicability matrix lives in Strategy Matrix workbook Sheet 7 (extended from Sheet 6). Editable without code changes.
+
+---
+
+## 3. STAGE 1 — Detection Engine
+
+### 3.1 Asset Class Detection
+
+Data sources + waterfall logic:
+
+| Signal | Source | Weight |
+|---|---|---|
+| County assessor property type code | County GIS | 0.45 |
+| Zoning classification | M02 zoning parser | 0.20 |
+| Rent roll structure (if present) | T-12 / rent roll parser | 0.15 |
+| NAICS code (for commercial) | Sunbiz / business registry | 0.10 |
+| Building structure (stories, SF, unit count) | Parcel data | 0.10 |
+
+Classification output: `{ assetClass: 'multifamily' | 'sfr' | 'retail' | 'office' | 'industrial' | 'hospitality' | 'mixed_use' | 'vacant_land' | 'other', confidence: 0-1 }`.
+
+Confidence < 0.7 → user is prompted to confirm before scoring proceeds.
+
+**SFR detection specifically:** a single parcel with a 1-4 unit detached structure on residentially-zoned land defaults to SFR. A portfolio deal of 20+ scattered SFR parcels defaults to SFR Portfolio. A 150-lot subdivision with horizontal infrastructure underway defaults to SFR BTR. A 186-unit garden apartment stays MF — the dividing line is parcel structure (one house per parcel = SFR) vs. building structure (one building, many units = MF).
+
+Sub-types per asset class captured:
+- **Multifamily:** Garden / Mid-rise / High-rise / Townhome / Student / Senior
+- **SFR:** Single House / 2-4 Unit / Scattered Portfolio / SFR BTR Subdivision / Townhome-Fee-Simple
+- **Retail:** Strip / Power Center / Grocery-Anchored / Mall / Outparcel / Single-Tenant NNN
+- **Office:** Class A Urban / Suburban / Medical / Flex / Creative
+- **Industrial:** Warehouse / Last-Mile / Flex / IOS / Cold Storage / Manufacturing
+- **Hospitality:** Full-Service / Select-Service / Extended-Stay / Limited-Service / Luxury / Resort
+
+### 3.2 Deal Type Detection
+
+This is the unlock. The engine classifies what kind of deal this actually is before scoring.
+
+Per asset class, deal type is inferred from a signal cascade:
+
+**Multifamily — deal-type decision tree:**
+
+```
+IF condition severely deteriorated OR DSCR < 1.0 OR occupancy < 75%
+   → DISTRESSED / OPPORTUNISTIC
+ELIF vacant_land OR teardown_candidate (building_value < 15% of total)
+   → GROUND-UP BTS candidate (density check required)
+ELIF recently_delivered (<24mo) AND occupancy < stabilization_threshold
+   → LEASE-UP
+ELIF loss_to_lease > 10% OR PCS_rank bottom_half OR ops_score < 60
+   → VALUE-ADD (depth determined by capital gap)
+      IF capital_gap > $40K/unit OR major_systems_due
+        → DEEP VALUE-ADD
+      ELSE
+        → VALUE-ADD (standard)
+ELIF loss_to_lease 3-10% AND ops_score 60-75
+   → CORE-PLUS
+ELIF PCS_rank top_quartile AND stabilized_12mo+ AND condition_good
+   → CORE
+ELIF zoning_allows_3x+_density AND land_residual_positive
+   → BTS candidate (even though existing building present)
+ELIF STR_zoning_permitted AND tourist_traffic_mix > 30%
+   → STR candidate
+```
+
+**Retail — deal-type decision tree:**
+
+```
+IF single_tenant_credit_lease (10yr+ remaining, investment_grade tenant)
+   → NNN CORE
+ELIF anchor_tenant_vacant OR >30% vacancy
+   → REPOSITION / VALUE-ADD (sub-type: Grocery / Power / Strip)
+ELIF class_B_or_C center in path_of_industrial_demand AND adjacent last-mile
+   → FLEX/LAST-MILE CONVERSION
+ELIF stabilized, <5% vacancy, inflation_escalator_leases
+   → CORE
+...
+```
+
+**Office** (specifically called out because of current structural stress):
+
+```
+IF vacancy > 30% AND location within 1mi of residential demand
+   → ADAPTIVE REUSE (office→residential) candidate
+ELIF medical_adjacency AND tenant_mix compatible
+   → MEDICAL OFFICE CONVERSION
+ELIF class_B urban, tenant_rollover > 40% in next 24mo
+   → TENANT ROLLUP REPOSITION
+...
+```
+
+**Industrial** deal-type detection factors in clear height, truck courts, adjacent use, location relative to population centers for last-mile.
+
+**Hospitality** looks at ADR, RevPAR, flag performance vs franchise standards (PIP due), age since last renovation.
+
+**SFR — deal-type decision tree:**
+
+```
+IF parcel_count > 20 AND scattered_across_submarket
+   → SFR PORTFOLIO AGGREGATION (exit channel: institutional SFR aggregator)
+ELIF new_construction_tract AND horizontal_infra_present
+   → SFR BTR (Build-to-Rent) — institutional-grade new SFR community
+ELIF vacant_lots_only AND zoned_SFR
+   → SFR BTR HORIZONTAL (deliver finished lots to BTR operator)
+ELIF single_house AND condition_poor AND ARV_gap > 25%
+   → SFR FIX-AND-FLIP (exit channel: owner-occupant)
+ELIF single_house AND loan_refi_eligible AND rental_comp_strong
+   → SFR BRRRR (buy/rehab/rent/refi/repeat)
+ELIF single_house AND tourist_zoning + high ADR submarket
+   → SFR STR (vacation rental)
+ELIF single_house AND corporate_housing_demand (medical center, military base, traveling nurse zone)
+   → SFR MTR (mid-term rental)
+ELIF single_house AND stabilized AND tenant_in_place
+   → SFR HOLD (buy-and-hold individual)
+ELIF wholesaler_contract AND no_capital_deployment
+   → SFR WHOLESALE
+```
+
+Distinct deal drivers vs MF: for SFR, the comp set is **resale comps (Zillow/MLS)** for flip exits and **rental comps (RentCast)** for hold plays. No T-12 on a single house — the underwriting uses 1% rule, DSCR on stabilized rent, and ARV analysis. BRRRR specifically depends on refi-out feasibility — a 75% ARV refi that clears the BRRRR thesis is the core test.
+
+### 3.3 Primary Sub-Strategy Output
+
+Detection emits:
+
+```ts
+{
+  assetClass: 'multifamily',
+  subType: 'garden',
+  detectedDealType: 'value_add',
+  detectedSubStrategy: 'mf_value_add_standard',
+  confidence: 0.84,
+  detectionSignals: [
+    { signal: 'loss_to_lease', value: '12%', threshold: '>8%', contribution: 0.35 },
+    { signal: 'pcs_rank', value: '#28 of 41', threshold: 'bottom_half', contribution: 0.30 },
+    { signal: 'ops_score', value: '52', threshold: '<60', contribution: 0.20 },
+    { signal: 'capital_gap', value: '$28K/unit', threshold: '<$40K', contribution: 0.15 },
+  ],
+  alternateSubStrategies: [
+    { key: 'mf_deep_value_add', fit: 0.62, reason: 'Capital gap borderline; if exterior scope added' },
+    { key: 'mf_core_plus', fit: 0.38, reason: 'If loss-to-lease capture is faster than modeled' },
+  ],
+}
+```
+
+This populates the page — no score matrix yet, just the detected primary + its alternates for comparison.
+
+---
+
+## 4. STAGE 2 — Validate + Compare
+
+Once the primary sub-strategy is detected, the engine:
+
+1. **Scores the primary** using F23 with the sub-strategy's specific weights (Asset × Sub-Strategy row from Sheet 7).
+2. **Scores 2-3 adjacent sub-strategies** — the detection engine's alternates plus any sub-strategies where asset-class + zoning allow a meaningful different play (e.g., if zoning permits 3x density, BTS Ground-Up becomes a comparable even on a value-add deal).
+3. **Applies gates** per sub-strategy (traffic, zoning, regulatory, capital).
+4. **Checks for arbitrage** — when an adjacent sub-strategy scores > 15 pts higher than the detected primary, that's the arbitrage flag. Rare, but when it fires it's the most valuable signal on the platform.
+
+The page now shows the **Detected Primary as the focal point**, with adjacent sub-strategies presented as comparisons (2-3 columns, not always 4).
+
+### 4.1 Asset-Class Signal Weights
+
+Same five signals (Demand, Supply, Momentum, Position, Risk) but weights differ by asset class × sub-strategy. Example:
+
+| Asset × Sub-Strategy | Demand | Supply | Momentum | Position | Risk |
+|---|---|---|---|---|---|
+| MF Value-Add | 0.30 | 0.25 | 0.20 | 0.15 | 0.10 |
+| MF Core | 0.25 | 0.20 | 0.15 | 0.25 | 0.15 |
+| MF Deep Value-Add | 0.25 | 0.20 | 0.25 | 0.15 | 0.15 |
+| MF BTS Ground-Up | 0.30 | 0.30 | 0.15 | 0.15 | 0.10 |
+| MF Distressed | 0.20 | 0.15 | 0.15 | 0.20 | 0.30 |
+| MF Lease-Up | 0.35 | 0.30 | 0.15 | 0.10 | 0.10 |
+| SFR Fix-and-Flip | 0.20 | 0.15 | 0.30 | 0.20 | 0.15 |
+| SFR BRRRR | 0.20 | 0.15 | 0.25 | 0.25 | 0.15 |
+| SFR Hold (Scattered) | 0.25 | 0.20 | 0.15 | 0.25 | 0.15 |
+| SFR Portfolio Aggregation | 0.30 | 0.25 | 0.20 | 0.15 | 0.10 |
+| SFR BTR | 0.30 | 0.30 | 0.15 | 0.15 | 0.10 |
+| SFR STR | 0.25 | 0.15 | 0.25 | 0.25 | 0.10 |
+| Retail NNN Core | 0.20 | 0.10 | 0.10 | 0.35 | 0.25 |
+| Retail Grocery-Anchored | 0.25 | 0.15 | 0.15 | 0.30 | 0.15 |
+| Retail Value-Add Reposition | 0.30 | 0.15 | 0.20 | 0.25 | 0.10 |
+| Industrial Last-Mile | 0.30 | 0.25 | 0.20 | 0.20 | 0.05 |
+| Industrial Core | 0.20 | 0.25 | 0.15 | 0.25 | 0.15 |
+| Office Value-Add | 0.15 | 0.20 | 0.25 | 0.20 | 0.20 |
+| Office Adaptive Reuse | 0.35 | 0.20 | 0.15 | 0.15 | 0.15 |
+| Hospitality Reflag | 0.25 | 0.20 | 0.20 | 0.25 | 0.10 |
+
+Weights live in the Strategy Matrix workbook Sheet 7. Editable without code changes. Signal inputs per asset class also differ — Retail "Demand" pulls from retail-specific signals (foot traffic, trade-area HH income trajectory, anchor tenant health) rather than apartment search momentum.
+
+### 4.2 Gates — Sub-Strategy-Specific
+
+Examples:
+
+| Sub-Strategy | Gate Checks |
+|---|---|
+| MF Value-Add | Loss-to-lease > 8% AND condition allows non-structural reno AND capital budget available |
+| MF Deep Value-Add | Capital > $40K/unit available AND major systems due OR class-tier mismatch |
+| MF Core | PCS rank top quartile AND stabilized 12mo+ AND NOI margin > submarket median |
+| MF Distressed | DSCR < 1.0 OR occupancy < 75% AND turnaround thesis present |
+| Retail NNN | Single tenant credit > BBB AND lease term > 7yr AND escalations present |
+| Office Adaptive Reuse | Floor plate < 12K SF AND zoning allows residential AND window mullion spacing compatible |
+| Industrial Last-Mile | Within 10mi of population > 250K AND truck access AND zoning compatible |
+| Hospitality Reflag | Franchise opportunity exists AND PIP feasible AND flag change ROI positive |
+| SFR Fix-and-Flip | ARV−(acq+rehab) margin > 18% AND resale DOM submarket < 45 days AND school rating > 5 |
+| SFR BRRRR | Refi-out LTV ≤ 75% of ARV clears BRRRR AND rental comp supports DSCR > 1.25 post-refi |
+| SFR BTR | Lot count > 50 AND institutional SFR aggregator active in market AND zoning permits rental SFR (some suburbs restrict) |
+| SFR STR | Single-family STR permitted by HOA AND by municipal ordinance AND tourist submarket AND parking/septic adequate |
+
+Gates return `qualified | marginal | disqualified` per sub-strategy. Disqualified means the sub-strategy is removed from scoring entirely, not scored-and-struck.
+
+---
+
+## 5. Evidence Layer — "Why This Strategy Wins" (THE MATH)
+
+Detection says *what* the deal is. Scoring says *how strong*. Before the Plan Formulator synthesizes the sequence, the Evidence Layer shows **why** — every metric, comp, and correlation that justifies the sub-strategy, with the math visible.
+
+This section sits between Stage 2 (scoring) and Stage 3 (planning) in the UI and in the service chain. It's the proof the user shows to their IC, their LP, their lender.
+
+### 5.1 The Evidence Report Structure
+
+Per detected sub-strategy, the Evidence Report produces four blocks:
+
+**Block A — The Thesis (one paragraph)**
+A declarative statement of why this strategy wins, written plainly. Generated by AI Coordinator from the structured evidence underneath. Example for MF Value-Add:
+
+> Westshore Commons is a value-add winner because the in-place rents sit $147/unit below submarket-renovated comps, ops score (52) is bottom-quartile, and the submarket's renovated comp set trades at a 4.7% cap vs. 6.1% for unrenovated — a 140bps compression the renovation captures. Capital gap of $28K/unit is within standard value-add budgets and well under the deep-value-add threshold. Current correlation state (COR-01 traffic surge + COR-20 digital-physical gap) supports 4-6% rent growth, reinforcing the rent-capture thesis.
+
+**Block B — The Metric Stack**
+A table of every operative metric with (a) subject property value, (b) comp set benchmark, (c) delta, (d) the dollar impact that delta represents for this strategy.
+
+**Block C — The Comp Evidence**
+Two panels (trade-area comps + like-kind comps from M05 dual-lens) showing specifically which comps support the thesis, with rent/cap rate/NOI margin positions plotted.
+
+**Block D — The Math Trail**
+The calculation chain that translates metrics into the expected return. Every number traceable to its source.
+
+### 5.2 Block A — Sub-Strategy-Specific Thesis Prompts
+
+The AI Coordinator generates the thesis from a structured prompt per sub-strategy. The prompts prescribe which metrics and comps to cite, keeping the narrative grounded in the math rather than vibes.
+
+**MF Value-Add thesis prompt inputs:**
+- Loss-to-lease % vs. submarket renovated-comp rent
+- PCS rank + specific rank delta achievable
+- Ops score + management-improvement correlation (COR-19)
+- Capital gap per unit vs. renovation-budget benchmarks
+- Renovated vs. unrenovated cap rate delta in submarket
+- Active correlations supporting rent growth
+
+**SFR Fix-and-Flip thesis prompt inputs:**
+- ARV from MLS comp set + comp selection rationale (±5 closed last 90d, ±500sf, ±5yr vintage, same school zone)
+- Rehab budget estimate vs. PCA findings + per-SF benchmarks
+- Resale DOM submarket + current inventory levels
+- Margin: ARV − (Acq + Rehab + Holding + Selling) with specific line items
+- School rating (#1 driver of SFR resale velocity)
+
+**SFR BRRRR thesis prompt inputs:**
+- Refi-out feasibility: projected ARV × 75% LTV vs. total-in basis
+- Rental comp median + DSCR at projected rent after refi
+- Local lender benchmarks for BRRRR product (what regional banks actually do on cash-out refi)
+
+**Retail Value-Add Reposition thesis prompt inputs:**
+- Anchor tenant health (credit rating, foot traffic trend, sales/SF if reported)
+- Inline vacancy vs. submarket inline vacancy
+- Rent/SF in place vs. submarket NNN asking rents for comparable center class
+- Trade-area HH income trajectory + demographic cohort shifts (COR-18 NAICS)
+- Co-tenancy clause exposure
+
+**Office Adaptive Reuse thesis prompt inputs:**
+- Current cap rate implied by T-12 + residential cap rate post-conversion
+- Conversion cost/SF estimate (Marshall & Swift / RSMeans)
+- Resulting residential PSF rent vs. submarket residential rent
+- Floor plate compatibility (< 12K SF ideal for residential)
+- Zoning certainty (by-right conversion vs. variance needed)
+
+**Industrial Last-Mile thesis prompt inputs:**
+- Population within 10mi + 20mi (density thresholds for last-mile economics)
+- Clear height + truck court dimensions vs. tenant requirements
+- Rent gap: current industrial lease vs. last-mile asking rent
+- E-commerce penetration trend in MSA
+
+Each sub-strategy has its own prompt template. Same Evidence Report shape; different evidence.
+
+### 5.3 Block B — The Metric Stack (per sub-strategy)
+
+**MF Value-Add — example stack:**
+
+| Metric | Subject | Submarket Benchmark | Delta | $ Impact |
+|---|---|---|---|---|
+| In-place rent/unit | $1,420 | $1,567 (renovated comp median) | −$147 | +$328K annual GPR at capture |
+| Loss-to-lease % | 9.4% | 3.2% (submarket avg) | +6.2pp | $328K captureable |
+| Physical occupancy | 89.1% | 94.2% (submarket) | −5.1pp | +$210K at stabilization |
+| Ops score (PCS) | 52 | 71 (submarket median) | −19 | Mgmt transition: +3-6% NOI margin (COR-19) |
+| NOI margin | 58% | 64% (submarket) | −6pp | +$145K NOI at margin parity |
+| Rank position | #28 of 41 | Target #9 post-reposition | +19 ranks | $1.6M exit-value lift (rank→cap correlation) |
+| Capital gap/unit | $28K | $12-40K value-add band | Within band | Renovation scope fits value-add budget |
+| Cap rate — unrenovated | 6.10% | — | — | Going-in |
+| Cap rate — renovated | 5.40% | Submarket renovated comps | −70bps | Cap compression = ~$4.8M value at same NOI |
+
+Every row is clickable → opens a drawer with the data source, the specific comps or formula feeding the benchmark, and a sparkline of the metric over time.
+
+**SFR Fix-and-Flip — example stack:**
+
+| Metric | Subject | Benchmark | Source |
+|---|---|---|---|
+| Acquisition price | $285,000 | — | Under contract |
+| Estimated rehab | $52,000 | $28-35/SF renovation | PCA + contractor bid |
+| ARV | $425,000 | 6 closed comps last 90d, avg $428K | MLS + platform regression |
+| Total invested | $337,000 | (Acq + Rehab + Holding 6mo + Closing) | Full underwriting |
+| Margin | $88,000 (26%) | >18% flip gate | Margin calc |
+| DOM submarket | 34 days | <45d gate | MLS |
+| School rating | 7/10 | >5 gate | GreatSchools |
+
+**Retail Value-Add — example stack:**
+
+| Metric | Subject | Benchmark | Source |
+|---|---|---|---|
+| Anchor: Publix | Stable, SPG co-tenancy OK | Grocery-anchored comp | Tenant disclosures |
+| Inline vacancy | 22% | 9% (submarket) | CoStar / platform scrape |
+| In-place rent/SF (NNN) | $14.50 | $22 (submarket asking, comparable class) | M05 |
+| Trade-area HH income (3mi) | $74K trajectory +4.2% | Rising | Census + platform |
+| Cap rate implied | 7.2% | 5.8% (stabilized grocery-anchored comps) | Transaction data |
+
+### 5.4 Block C — The Comp Evidence (dual-lens)
+
+Two panels side by side, both required:
+
+**Trade-Area Comps** — what this property competes with locally (apartments within the same trade area, or retail within 3mi, or SFR within the same school zone). Shows a scatter plot: X-axis = rent/SF (or price/SF for flips), Y-axis = condition-or-rank-or-ops score. Subject property marked as a red dot. Comps as blue. The **gap between subject and the top comps** visualizes the value-capture opportunity.
+
+**Like-Kind Comps** — cross-market comps (same vintage, class, size in other submarkets/MSAs). Reveals if the submarket itself is underpriced vs. like-kind nationally. For SFR, like-kind comps are same-county comps at the same price band; for MF, it's same-class-same-vintage across MSAs.
+
+Per comp, the panel shows: name, vintage, size, in-place rent, trailing NOI, and (most importantly) **why it's a comp** (selection criteria satisfied). No opaque "similar properties" list.
+
+### 5.5 Block D — The Math Trail
+
+The full calculation chain, one row per step, formulas visible:
+
+**MF Value-Add — IRR build:**
+
+```
+Step 1: Acquisition & basis
+  Purchase ........................ $42,800,000
+  + Closing costs (3.2%) .......... $1,370,000
+  + Acquisition fee (1.5%) ........ $642,000
+  + Initial CapEx reserve ......... $875,000
+  = Total basis ................... $45,687,000
+
+Step 2: Year-1 NOI (as acquired)
+  GPR at in-place rent ............ $3,173,000
+  − Vacancy 10.9% ................. ($346,000)
+  − OpEx at 42% ratio ............. ($1,187,000)
+  = Y1 NOI ........................ $1,640,000
+  Going-in cap .................... 3.83% (below market)
+
+Step 3: Stabilized NOI (Y3, post-reno)
+  GPR at captured rent ............ $3,501,000 (+$328K L2L + market growth)
+  − Vacancy 5.8% .................. ($203,000)
+  − OpEx at 36% ratio (mgmt) ...... ($1,188,000)
+  = Y3 NOI ........................ $2,110,000
+  Stabilized cap on basis ......... 4.62%
+
+Step 4: Renovation capital deployed
+  Phase 1 soft .................... $400,000
+  Phase 2 exterior ................ $1,200,000
+  Phase 3 unit reno (75 × $18K) ... $1,350,000
+  = Total reno capital ............ $2,950,000
+
+Step 5: Exit (Q4 2028)
+  Y+1 forward NOI ................. $2,235,000
+  ÷ Exit cap 5.25% ................ = $42,571,000
+  − Selling 2.5% .................. ($1,064,000)
+  − FL doc stamps 0.7% ............ ($298,000)
+  − Debt payoff (senior) .......... ($24,500,000)
+  = Net proceeds .................. $16,709,000
+
+Step 6: Return calc
+  Total equity in (acq + reno) .... $18,637,000
+  Cum distributions over hold ..... $4,820,000
+  + Net exit proceeds ............. $16,709,000
+  = Total distributions ........... $21,529,000
+  LP IRR .......................... 18.4%
+  LP EM ........................... 1.86x
+```
+
+Every line number in this trail is a live `LayeredValue` reference — click any row to see where it came from (which assumption, which correlation, which comp). The math is not decorative — it IS the recommendation.
+
+### 5.6 Evidence Report → Plan Formulator handoff
+
+The Plan Formulator consumes the Evidence Report. Every plan action now carries an **evidence reference** — not just a correlation reference. "Phase 3 unit renovation wave, 75 units at $18K" now traces back to Block B (capital gap $28K/unit within value-add band) and Block D (Step 4, $1.35M reno deployment) and Block C (renovated-comp rent target $1,567).
+
+The plan is no longer assertion. It's the synthesized output of a traceable evidence chain.
+
+### 5.7 Evidence Report data contract
+
+```ts
+interface EvidenceReport {
+  subStrategyKey: string;
+  thesis: string;                          // Block A — AI-generated paragraph
+  metricStack: Array<{
+    metric: string;
+    subjectValue: string;
+    benchmarkValue: string;
+    benchmarkSource: string;               // "submarket renovated comps", "FL carrier feed", etc.
+    delta: string;
+    dollarImpact?: string;
+    historicalSparkline?: number[];
+  }>;
+  compEvidence: {
+    tradeArea: {
+      selectionCriteria: string[];
+      comps: Array<{
+        id: string;
+        name: string;
+        vintage: number;
+        size: number;
+        keyMetrics: Record<string, number>;
+        whyIsComp: string;
+      }>;
+      visualization: 'scatter_rent_vs_condition' | 'scatter_price_vs_school' | 'bar_rank_by_ops';
+    };
+    likeKind: {
+      selectionCriteria: string[];
+      comps: Array<{ /* same shape */ }>;
+      visualization: string;
+    };
+  };
+  mathTrail: Array<{
+    stepNum: number;
+    stepName: string;
+    lines: Array<{
+      label: string;
+      value: number;
+      formula?: string;
+      sourceRef?: string;                  // layered-value path
+    }>;
+    subtotal?: number;
+  }>;
+  ultimateReturn: {
+    irr: number;
+    em: number;
+    coc: number;
+    rationale: string;                     // which step is the biggest driver
+  };
+}
+```
+
+### 5.8 UI placement
+
+The Evidence Report lives between the Sub-Strategy Comparison (6.2) and the Plan Document (6.5) in the page flow. It's the page's longest single section — expect ~800-1200 pixels of vertical real estate — but it's collapsible. Default: expanded for detected primary, collapsed for adjacents.
+
+---
+
+## 6. STAGE 3 — Plan Formulator (THE CORRELATION-DRIVEN CORE)
+
+This is where the correlation matrix results earn their keep. The old "correlation alerts" just displayed warnings. The Plan Formulator **synthesizes** them into a sequenced plan.
+
+### 6.1 Inputs to the Formulator
+
+- Detected primary sub-strategy + score
+- Adjacent sub-strategies + scores
+- All active correlation signals for the submarket (from `correlationEngine.service.ts`)
+- Golden Chain position (early / mid / late / post-peak)
+- Leading / Concurrent / Lagging indicators snapshot
+- Asset-class-specific signals (retail-specific, office-specific, etc.)
+- Capital constraints (user's target IRR, hold preference, liquidity window)
+- Debt maturity context (if existing loan assumed)
+- Traffic quadrant (T-04: Hidden Gem / Validated Winner / Hype / Dead)
+- Buyer pressure state from S2 Ownership Intelligence
+
+### 6.2 Plan Synthesis Algorithm
+
+The Formulator runs a rule-based synthesizer that maps correlation states to plan components. Seven plan dimensions, each informed by different correlation signals:
+
+**Dimension 1: Entry Timing** — *when* to buy
+
+| Correlation state | Implication |
+|---|---|
+| Golden Chain mid-cycle + COR-01 fired (traffic surge) | Buy now — window open |
+| Early chain + biz formation velocity spike (COR-10) | Land-bank; hard-close in 60-90 days |
+| COR-20 digital-physical gap > 15pp | Buy in next 90 days before prices reprice |
+| Late chain + cap compression slowing | Pass or bid aggressively short-term |
+| Post-peak + COR-08 permit wave firing | Pass entirely |
+
+**Dimension 2: Hold Structure** — how long, which vehicle
+
+| Correlation state | Implication |
+|---|---|
+| COR-04 wage-rent reversal firing | Compress hold to 18-36mo; target exit before peak |
+| COR-08 supply wave at +42% for 14mo | Hold must end before delivery wave (calculate specific month) |
+| Debt maturity 18-24mo out in strong market | Plan refi-or-sell decision gate |
+
+**Dimension 3: Value-Creation Sequence (for Value-Add / Reposition)** — what to do in what order
+
+For a MF Value-Add deal, the Formulator outputs a phased plan:
+
+```
+Phase 1 (Months 1-3): Day-1 takeover
+  • Management transition (per COR-19 ops signal, new manager lifts NOI margin 3-6%)
+  • Pricing audit (capture 30% of loss-to-lease immediately via new lease pricing)
+  • Deferred maintenance triage
+
+Phase 2 (Months 4-9): Exterior + amenity push
+  • Exterior paint + signage rebrand (PCS asset-quality component lift)
+  • Add amenity per trade-area gap (COR reference: amenity arms race detected)
+  • Launch Google review campaign (target sentiment +0.3 → NOI margin COR-19)
+
+Phase 3 (Months 10-24): Unit renovation wave
+  • Renovate 40% of units at turn: $18K scope, $165/unit premium
+  • Rent capture pace: 15 units/quarter at premium
+  • Begin stabilization metrics tracking
+
+Phase 4 (Months 25-36): Stabilization + exit prep
+  • Hold 12 months stabilized for institutional exit
+  • If market momentum > 80 (COR-04 monitor), consider early exit
+  • Target PCS rank improvement #28 → #9 (→ +$1.6M exit value per PCS-rank correlation)
+```
+
+Each phase item carries the correlation or signal that justified it. Nothing is asserted without a traceable "because."
+
+**Dimension 4: Capital Sequencing** — when to deploy capital
+
+Plan specifies acquisition capital, reserves needed, renovation capital by phase, and refi/recap events. Linked to Debt tab and S&U tab.
+
+**Dimension 5: Exit Targeting** — who to sell to, when, via what channel
+
+Pulls from S2 Ownership Intelligence + T-04 quadrant:
+
+| Context | Exit Plan |
+|---|---|
+| Traffic quadrant = Hidden Gem | Sell to local operator before institutions discover (capture gain yourself) |
+| Traffic quadrant = Validated Winner | Sell to institutional at premium, maximum competition |
+| Institutional acquisitions +12 in 180d | Target institutional buyers (name specific active firms from S2) |
+| 1031 inflow spike | Market to 1031 buyer pool, emphasize time-pressure leverage |
+| BTS arbitrage detected (developer-value > income-value) | Sell to developer, not operator |
+
+**Dimension 6: Risk Mitigations** — what to monitor, thresholds that change the plan
+
+Explicit monitoring triggers with specific actions:
+
+- "If COR-08 permit velocity breaks above +60% sustained 6mo → shorten hold, target exit within 18mo"
+- "If submarket PCS rank drops > 3 positions in 6mo → accelerate Phase 3 unit reno pace"
+- "If COR-04 wage-rent reversal fires (currently at +18%, threshold +30%) → begin broker interviews immediately"
+
+**Dimension 7: Adjacent-Strategy Pivot Conditions** — when to abandon the primary plan
+
+- "If zoning upzone passes in Q3 (currently pending, 65% probability per M02) → pivot from Value-Add to BTS Ground-Up. Retain acquisition, entitle for 18mo, then redevelop. Expected IRR pivot: 18.4% → 26.2%."
+
+### 6.3 Plan Output Format
+
+The plan is rendered as a structured document, not a narrative blob:
+
+```
+ACQUISITION PLAN — 186 Westshore Commons
+Detected: Multifamily Value-Add (confidence 0.84)
+Asset Class: Garden-style Multifamily, Class B, 2008 vintage
+
+ENTRY
+  Target: Close Q2 2026 (within 120 days)
+  Rationale: COR-20 digital-physical gap +18pp, window closes Q3
+  Acquisition price ceiling: $42.8M (7.5% going-in cap)
+  Debt: Bridge-to-perm 65% LTC, 18mo IO
+
+VALUE CREATION (phased)
+  Phase 1 (M1-M3):  Mgmt transition + pricing audit
+  Phase 2 (M4-M9):  Exterior + amenity (capital: $1.2M)
+  Phase 3 (M10-24): 75 units renovated at turn ($1.4M)
+  Phase 4 (M25-36): Stabilize, target PCS #9, prep for exit
+
+EXIT
+  Target: Q4 2028 (Month 32-36)
+  Buyer: Institutional
+  Active buyers in submarket: Cortland, Blackstone, Morgan Properties
+  Exit cap: 5.25% (target, -25bps from going-in)
+  Expected LP IRR: 18.4-21.7%
+
+MONITORING
+  ⚠ COR-08 Permit velocity (currently +42%, trigger +60%)
+      → If breaches, shorten hold to 18mo
+  ⚠ COR-04 Wage-rent gap (currently +18%, trigger +30%)
+      → If breaches, begin broker interviews
+  ✓ COR-01 Traffic surge (currently +0.28, 10wk)
+      → Supports thesis, no action needed
+
+PIVOT CONDITIONS
+  If Municode Ord 27-156 upzone passes (pending, est. Q3 2026)
+      → Pivot to BTS Ground-Up, expected IRR lift to 26%
+```
+
+Every line is machine-readable and maps back to F9 assumptions + Debt tab + S&U tab.
+
+### 6.4 Plan → F9 Integration
+
+"Apply Plan to ProForma" button at the top of the plan does the following in one action:
+
+1. Assumptions tab: loads the phased capex schedule into Section 4, sets hold period, applies strategy-specific assumptions (rent capture pace, stabilization curve, PCS-rank-driven exit cap)
+2. Debt tab: loads the bridge-to-perm loan config with IO period matching value-creation phase
+3. S&U tab: loads acquisition + renovation budget
+4. Capital tab: pre-configures waterfall for value-add typical (8% pref, 70/30 above, 60/40 above 15%)
+5. Monitoring triggers get registered with the alert system — if any correlation threshold breaches, user gets pinged
+
+Every loaded value sits at the **Platform layer** of the `LayeredValue`. User overrides preserved.
+
+---
+
+## 7. Page Architecture
+
+Vertical flow, top to bottom:
+
+### 7.1 Detection Banner (top)
+
+```
+┌────────────────────────────────────────────────────────────────────┐
+│  DETECTED: Multifamily · Value-Add             Confidence: 84%    │
+│  Garden-style · Class B · 2008 vintage · 186 units                │
+│                                                                    │
+│  Signals driving detection:                                       │
+│    • Loss-to-lease 12% (>8% threshold)                            │
+│    • PCS rank #28 of 41 (bottom half)                             │
+│    • Ops score 52 (<60 threshold)                                 │
+│                                                                    │
+│  [Confirm] [Adjust] [Override Classification]                     │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+### 7.2 Sub-Strategy Comparison (primary + 2-3 adjacents)
+
+Not four strategies. Not the old BTS/Flip/Rental/STR bake-off. The detected primary gets the focus column (amber top border) with 2-3 relevant adjacents for comparison:
+
+```
+┌──────────────┬──────────────┬──────────────┐
+│ VALUE-ADD    │ DEEP V-A     │ CORE-PLUS    │
+│ DETECTED ⚡  │              │              │
+│              │              │              │
+│    81        │    67        │    54        │
+│              │              │              │
+│ IRR  19.3%   │ IRR  22.1%   │ IRR  13.4%   │
+│ CoC   8.2%   │ CoC   6.8%   │ CoC   9.1%   │
+│ Hold 36mo    │ Hold 48mo    │ Hold 60mo    │
+│              │              │              │
+│ Primary      │ If scope +   │ Conservative │
+└──────────────┴──────────────┴──────────────┘
+```
+
+If arbitrage is detected (adjacent > detected primary by 15+ pts), the amber accent moves and an arbitrage banner fires.
+
+### 7.3 Signal × Sub-Strategy Heatmap
+
+Same five signals × detected + adjacent columns. Hover → underlying indicator. Click → source module.
+
+### 7.4 Evidence Report — "Why This Strategy Wins" (NEW)
+
+Four-block layout per detected sub-strategy (Block A thesis, Block B metric stack, Block C dual-lens comps, Block D math trail). Default expanded for detected primary; collapsed for adjacents. Each adjacent sub-strategy has its own Evidence Report one click away.
+
+### 7.5 Correlation Matrix — Timing Overlay
+
+Exactly as v1 spec:
+- Golden Chain position indicator (8-step cascade)
+- Active correlation alerts stack
+- Leading / Concurrent / Lagging panel
+
+But with one upgrade: alerts now show which plan dimension they're driving.
+
+### 7.6 The Plan (the page's action output)
+
+Sectioned plan document (per 6.3 format). Each section has:
+- The prescription
+- The correlations that justified it
+- "Apply to ProForma" button at section level
+- Editable — user can adjust any line, plan recomputes
+
+### 7.7 Monitoring Dashboard (bottom)
+
+Live feed of the monitoring triggers set up by the plan. When any fires, the plan auto-updates or flags a decision gate. Notifications also push to the user's alert feed.
+
+### 7.8 AI Coordinator Narrative
+
+One auto-generated paragraph synthesizing the whole picture:
+
+> "Westshore Commons is a classic Value-Add play (84% detection confidence) at a favorable entry point. The Golden Chain sits mid-cycle with traffic surge confirmed 10 weeks ago (COR-01), supporting 4-6% rent growth through Y2. The primary risk is COR-08 — permit velocity is elevated at +42%, if it breaks +60% your exit window compresses. The zoning upzone under consideration (65% probability, Q3 target) is a material pivot opportunity: if it passes, your BTS option lifts IRR from 19% to 26%, but construction risk and capital gap increase. Target institutional exit in Q4 2028 — Cortland and Blackstone have been active in this submarket. Watch Valid COR-08 and zoning docket monthly."
+
+---
+
+## 8. Backend Data Contract
+
+`GET /api/deals/:dealId/strategies`
+
+```ts
+interface StrategyAnalysis {
+  dealId: string;
+  computedAt: string;
+
+  // STAGE 1 — Detection
+  detection: {
+    assetClass: 'multifamily' | 'sfr' | 'retail' | 'office' | 'industrial' | 'hospitality' | 'mixed_use' | 'vacant_land' | 'other';
+    subType: string;
+    detectedDealType: string;
+    detectedSubStrategy: string;
+    confidence: number;
+    detectionSignals: Array<{
+      signal: string;
+      value: string;
+      threshold: string;
+      contribution: number;
+    }>;
+    alternateSubStrategies: Array<{
+      key: string;
+      fit: number;
+      reason: string;
+    }>;
+    userConfirmed: boolean;
+    userOverrideClassification?: string;
+  };
+
+  // STAGE 2 — Validate + Compare
+  signalScores: {
+    demand: number;
+    supply: number;
+    momentum: number;
+    position: number;
+    risk: number;
+    confidence: number;
+  };
+
+  subStrategies: Array<{
+    key: string;
+    family: 'bts' | 'flip' | 'rental' | 'str' | 'sfr' | 'retail_specific' | 'office_specific' | 'industrial_specific' | 'hospitality_specific';
+    name: string;
+    isDetectedPrimary: boolean;
+    isAdjacent: boolean;
+    gate: GateResult;
+    baseScore: number;
+    timingMultiplier: number;
+    gateAdjustment: number;
+    finalScore: number;
+    disqualified: boolean;
+    financialPreview: FinancialPreview;
+    strategyAssumptions: Record<string, LayeredValue<number | string>>;
+    appliedCorrelations: string[];       // COR IDs
+    evidenceReport: EvidenceReport;      // Section 5 — the "why this wins" math
+  }>;
+
+  arbitrage: {
+    detected: boolean;
+    winner: string;
+    detectedPrimary: string;
+    deltaPoints: number;
+    narrative: string;
+  };
+
+  // STAGE 3 — Plan
+  plan: {
+    entry: { targetQuarter: string; priceCeiling: number; rationale: string; debtStructure: string; };
+    valueCreation: Array<{
+      phase: number;
+      monthRange: [number, number];
+      actions: Array<{ action: string; capital?: number; correlationRefs: string[]; kpi?: string; }>;
+    }>;
+    exit: { targetQuarter: string; buyerType: string; activeBuyers: string[]; capRate: number; expectedIRR: [number, number]; };
+    monitoring: Array<{
+      correlationId: string;
+      currentValue: string;
+      triggerValue: string;
+      actionOnTrigger: string;
+      severity: 'critical' | 'warning' | 'info';
+    }>;
+    pivotConditions: Array<{
+      condition: string;
+      probability: number;
+      pivotToSubStrategy: string;
+      irrDelta: string;
+    }>;
+  };
+
+  goldenChain: GoldenChainState;
+  correlationAlerts: Array<CorrelationAlert & { drivesPlanDimension: string }>;
+  indicators: { leading: Indicator[]; concurrent: Indicator[]; lagging: Indicator[]; };
+  buyerTargeting: BuyerTargeting;
+  coordinatorNarrative: string;
+}
+```
+
+---
+
+## 9. Implementation Sequence
+
+1. **Detection engine (backend)** — `asset-class-detection.service.ts` + `deal-type-detection.service.ts`. Rule-based decision trees per asset class including SFR (parcel-count heuristic for portfolio vs single-house vs BTR). Takes property data, rent roll (if present), T-12, zoning, parcel structure; returns classification + confidence. **2 sessions.**
+
+2. **Sub-strategy library + weights** — extend Strategy Matrix workbook Sheet 7 with full asset-class × sub-strategy matrix including SFR family (Fix-Flip, BRRRR, Hold, Portfolio, BTR, STR, MTR, Wholesale). Ingest into `strategy-arbitrage-engine.ts`. **1 session.**
+
+3. **Sub-strategy gates** — extend `strategy-gate.service.ts` from v1 spec with sub-strategy-specific gate checks per asset class (SFR Flip: margin + DOM + school; SFR BRRRR: refi-out LTV test; SFR BTR: aggregator-activity check). **1 session.**
+
+4. **Rebuilt scoring** — `strategy-arbitrage-engine.ts` takes detected primary + adjacents, scores each with F23 using sub-strategy weights, applies gates, emits final scores + arbitrage flag. **1.5 sessions.**
+
+5. **Evidence Report service (NEW — Section 5)** — `evidence-report.service.ts` builds the four-block report per sub-strategy: thesis inputs, metric stack with benchmarks, dual-lens comp evidence from M05, math trail with step-by-step IRR build. Per-sub-strategy thesis prompts for AI Coordinator. **2.5 sessions.** This is the single largest new piece and the deal-closer for the module.
+
+6. **Plan Formulator** — `plan-formulator.service.ts`. Takes full correlation state + sub-strategy scores + asset class + user preferences + Evidence Report, runs seven-dimension synthesizer, emits structured plan with evidence + correlation references per action. **2.5 sessions.**
+
+7. **Golden Chain classifier + timing multiplier** (from v1 spec) — 1 session.
+
+8. **Correlation alert → plan dimension mapping** — each COR-ID tagged with which plan dimension it drives. Alert feed shows the link. **1 session.**
+
+9. **SFR-specific signal adapter** — SFR Demand (SFR rent-comp absorption, school-rating changes, owner-occupant demand), SFR Supply (SFR permits, BTR subdivision pipeline), SFR Momentum (SFR DOM, flip margin trend), SFR Position (school rank, lot attributes), SFR Risk (insurance per FL SFR carrier, HOA STR restrictions). Separate from MF adapter. **1.5 sessions.**
+
+10. **Asset-class signal adapters (Retail / Office / Industrial / Hospitality)** — Demand, Supply, Momentum, Position, Risk inputs per asset class. Retail: trade-area HH income, anchor health. Office: vacancy rate, tenant rollover. Industrial: e-comm penetration, port activity. Hospitality: ADR/RevPAR, flag performance. **3 sessions** (one per batch of two asset classes).
+
+11. **Frontend — Detection Banner + Sub-Strategy Comparison** — replaces old four-column matrix with detection-first UI (primary + 2-3 adjacents). **1.5 sessions.**
+
+12. **Frontend — Evidence Report renderer (NEW)** — four-block layout per sub-strategy: thesis block, metric stack table with drill-down drawers, dual-lens comp scatter plots, step-by-step math trail with source refs. Expand/collapse per adjacent. **2 sessions.**
+
+13. **Frontend — Plan Document renderer** — structured plan display with section-level "Apply" buttons, editable per line. Plan actions carry evidence refs + correlation refs. **2 sessions.**
+
+14. **Frontend — Monitoring Dashboard** — live trigger feed tied to plan monitoring block. **1 session.**
+
+15. **Plan → F9 integration** — "Apply Plan" loads Assumptions, Debt, S&U, Capital tabs in one action. Monitoring triggers registered with alert system. **1.5 sessions.**
+
+16. **AI Coordinator plan narrative + Evidence thesis prompts** — endpoints that take full plan + correlation state + Evidence Report and generate the synthesis paragraphs (thesis per sub-strategy + overall plan narrative). Cached 24h. **1.5 sessions.**
+
+17. **Testing + visual QA** — test cases below. **1 session.**
+
+**Total: ~25-26 sessions** for complete v2 rebuild.
+
+**Critical path:** detection engine (item 1) blocks everything. Sub-strategy library (2) + gates (3) + signal adapters (9, 10) unlock scoring (4). Evidence Report (5) is the single largest net-new service and blocks the Plan Formulator (6) since plan actions carry evidence references. Frontend can parallelize against backend once contract is stable.
+
+---
+
+## 10. Test Cases
+
+1. Multifamily deal with 12% loss-to-lease, PCS rank #28, ops score 52 → detected as MF Value-Add with confidence > 0.80, adjacent = Deep Value-Add + Core-Plus.
+
+2. Vacant 4-acre parcel zoned PD-C 18 DU/ac → detected as MF BTS Ground-Up with adjacent = Horizontal Development; Value-Add/Core/Flip not scored.
+
+3. 210K SF Class B office at 38% vacancy in Nashville core → detected as Office Adaptive Reuse (confidence 0.78) with adjacent = Tenant Rollup Reposition.
+
+4. 186-unit garden, 72% occ, DSCR 0.94, owner behind on taxes → detected as MF Distressed/Opportunistic with adjacent = Deep Value-Add.
+
+5. Single-tenant Walgreens NNN, 12yr remaining, BBB credit → detected as Retail NNN Core; adaptive-reuse not scored.
+
+6. Grocery-anchored center with Publix anchor + 22% inline vacancy → detected as Retail Grocery-Anchored Reposition.
+
+7. Detection confidence < 0.7 → user confirmation modal appears before Stage 2 runs.
+
+8. User overrides detection (says "this is BTS not Value-Add despite low confidence") → scoring runs for BTS sub-strategies, plan formulator emits BTS plan.
+
+9. Arbitrage detected (MF Value-Add scores 72, MF BTS Ground-Up scores 89 because of zoning upzone pending) → amber banner, arbitrage narrative explains, both plans available via toggle.
+
+10. Plan's Phase 3 unit renovation schedule (75 units over M10-24) → "Apply to ProForma" pushes the capex schedule to Assumptions Section 4 with month-level granularity.
+
+11. COR-08 permit velocity monitoring trigger breaches → push notification fires, plan updates to shortened hold, Debt tab recommends faster refi, user sees alert in Monitoring Dashboard.
+
+12. Zoning pivot condition (upzone passes in Q3) → plan's PIVOT section includes a "Pivot Now" button that swaps the full plan to BTS Ground-Up; Assumptions tab switches template preserving user overrides.
+
+13. Retail deal → Demand signal pulls from retail-demand adapter (trade area HH income trajectory, anchor tenant health) not apartment-search momentum.
+
+14. Office Adaptive Reuse → gates check floor plate < 12K SF AND zoning residential AND window mullion compatibility; fails if floor plate is 25K SF.
+
+15. AI Coordinator narrative names specific COR-IDs and active buyer firms (from S2) so user can drill into each.
+
+16. Changing hold period in plan → re-runs Formulator; exit target updates, monitoring triggers recalibrate, F9 Assumptions hold value gets flagged as potential-overwrite before user confirms.
+
+17. Industrial Last-Mile gate requires within 10mi of pop > 250K → deal 18mi from Tampa MSA center fails the gate with explanation.
+
+**SFR-specific test cases**
+
+18. Single house on 1 parcel, residential zoning, $52K rehab estimate, ARV $425K, 6 MLS comps within 90d/±500sf → detected as SFR Fix-and-Flip (confidence > 0.80), adjacents = SFR BRRRR + SFR Hold.
+
+19. 22 scattered SFR parcels across 3 submarkets under single LLC → detected as SFR Portfolio Aggregation, exit channel recommended as institutional SFR aggregator (platform names active firms from S2).
+
+20. 150-lot subdivision with horizontal infrastructure 40% complete → detected as SFR BTR with adjacent = SFR BTR Horizontal (deliver finished lots); MF sub-strategies not scored.
+
+21. SFR BRRRR deal: refi-out LTV test fails (projected ARV × 75% = $318K vs total-in $337K) → gate marks BRRRR as disqualified, adjacent Hold becomes primary.
+
+22. Single house in Miami Beach neighborhood with STR ban → SFR STR gate returns disqualified with specific ordinance citation, SFR Hold becomes primary.
+
+23. SFR Fix-and-Flip Evidence Report → Block B shows ARV derivation from 6 named MLS comps with selection criteria (90d, ±500sf, ±5yr vintage, same school zone), Block D shows full margin math: ARV − (Acq + Rehab + Holding 6mo + Selling) = $88K (26% margin).
+
+**Evidence Report test cases**
+
+24. MF Value-Add Evidence Block B → every metric has a sparkline, click any row opens drawer with data source + historical trend + specific comps feeding the benchmark.
+
+25. Evidence Block D math trail → click "Y3 NOI $2,110,000" row → drawer shows GPR calculation path back to Assumptions Section 1 (rent growth layer) + Section 2 (traffic-derived occupancy). Source trail is complete.
+
+26. Thesis paragraph (Block A) — AI Coordinator output for MF Value-Add cites loss-to-lease % vs renovated comp rent, PCS rank delta, renovated/unrenovated cap rate spread, and active correlations. No claim made without an Evidence Block reference.
+
+27. Switch detected primary from Value-Add to Deep Value-Add → Evidence Report regenerates with new thesis prompt (citing capital gap > $40K/unit test), new metric stack emphasizing major-systems age + class-tier mismatch, same dual-lens comps but new IRR trail.
+
+28. Evidence Report → Plan handoff: Plan Phase 3 action "renovate 75 units at $18K" shows evidence refs pointing to Block B capital-gap row + Block D Step 4 renovation-capital line + Block C renovated-comp-rent target row. Hover any plan action → evidence refs highlighted in the Evidence Report above.
+
+29. Retail Value-Add Reposition Evidence → Block B metric stack shows anchor-tenant credit health, inline vacancy vs submarket, in-place rent/SF vs submarket NNN asking, trade-area HH income trajectory — not MF metrics.
+
+30. Office Adaptive Reuse Evidence → Block B includes floor plate SF (gate check), window mullion spacing, residential zoning certainty, cap-rate arbitrage (office implied vs residential post-conversion). Block D math trail computes conversion cost/SF vs residential rent/SF to produce reuse yield.
+
+---
+
+## 11. Design tokens (consistent with F9 and framework v3.1)
+
+- Detection banner: cyan accent 3px left border
+- Detection confidence badge: green > 0.85, amber 0.7-0.85, red < 0.7
+- Detected primary sub-strategy column: amber top border + "DETECTED" badge
+- Arbitrage fires: same amber banner pattern from v1 + framework JSX
+- Evidence Report blocks: subtle left rule 2px, cyan for primary / muted for adjacents
+- Evidence metric-stack row: click opens 320px right drawer
+- Evidence Block D math trail: monospace font (JetBrains Mono), bold subtotal rows, step-divider 1px subtle
+- Evidence comp scatter: subject property = red dot 6px, comps = cyan dots 4px, benchmark line = dashed
+- Plan document sections: each section has a subtle left rule 2px, phase-colored
+- Monitoring trigger severity: critical red, warning amber, info cyan
+- Pivot condition: purple accent — distinct from current strategies, signals optionality
+- Plan "Apply" button: filled cyan primary, section-scoped or whole-plan
+- Coordinator narrative: italic smaller text, bordered top+bottom 1px subtle
+- Evidence → Plan hover linkage: highlight both the plan action and its referenced Evidence blocks simultaneously on hover
+
+---
+
+**End of v2 spec.**

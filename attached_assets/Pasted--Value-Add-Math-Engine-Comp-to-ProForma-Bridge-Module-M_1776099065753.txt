@@ -1,0 +1,609 @@
+# Value-Add Math Engine — Comp-to-ProForma Bridge
+
+**Module:** M08 Evidence Layer (Section 5) — Value-Add specific math engine
+**Status:** Implementation-grade spec
+**Scope:** Addresses the gap between comp tables (image 2) and strategy score (image 1) — the underlying math that proves "why this is a value-add" and auto-populates ProForma assumptions
+**Asset class:** Multifamily (template); analogous engines for SFR, Retail, etc.
+**Dependencies:** M05 comp service, M02 rent roll parser, Evidence Report framework, F9 Assumptions tab, `LayeredValue<T>` contract
+
+---
+
+## 1. The Gap This Closes
+
+Today's mockup shows:
+- DETECTED · MF VALUE-ADD (84% confidence)
+- Score 81
+- Execution plan: "Accelerate unit turns (12/mo), Refi or prep for exit"
+
+What's missing: **the unit-level math that makes the word "value-add" mean something specific.**
+
+A proper value-add analysis answers:
+1. Which of my unit types are underpriced vs comps — and by how much?
+2. Of the underpricing, how much is **loss-to-lease** (rent gap on existing units that capture at turn) vs **value-capture through renovation** (rent lift achievable with reno)?
+3. Which comp set is the right benchmark — unrenovated vs renovated, and at what PSF?
+4. What's the **ceiling** (highest comp rent) and the **floor** (the subject's current rent)? The gap between them is the value-add opportunity size.
+5. How fast can I capture it — given turnover rate, reno pace, and market absorption?
+6. What does this translate to in NOI, valuation, and IRR?
+
+This is the Evidence Block B metric stack for Value-Add, done with real comp math instead of generic percentages. Every number flows into the ProForma via the LayeredValue Platform layer.
+
+---
+
+## 2. Input Data Required
+
+From existing services:
+
+| Input | Source | Shape |
+|---|---|---|
+| Subject rent roll | M02 rent roll parser | Per-unit: type, SF, in-place rent, lease start, lease end |
+| Subject unit mix | Derived from rent roll | Unit-type aggregation |
+| Subject in-place rents by type | From rent roll | Weighted avg per type |
+| Rental comps | M05 comp service | Per-property: unit mix, rent by type, SF by type, amenities, vintage, reno status |
+| Comp set selection criteria | User-configurable + Platform default | Trade area radius, vintage band, size band, class |
+| Historical turnover rate | M02 lease-end dates | Annualized turnover % by unit type |
+| Submarket renovated-comp cap rate | M05 sales comps | For exit valuation math |
+| Submarket unrenovated cap rate | M05 sales comps | Going-in basis |
+| Renovation cost benchmarks | Platform library | $/unit by scope tier (light/medium/heavy) |
+| Renovation rent premium benchmarks | M05 renovated-comp regression | $/unit lift by scope tier |
+
+---
+
+## 3. The Four-Step Value-Add Math
+
+### 3.1 Step 1 — Comp Stratification
+
+The existing comp table (image 2) lists all comps in one bucket. The engine stratifies them into three tiers so the math distinguishes "rent I can hit without renovation" from "rent I can hit with renovation."
+
+For each unit type (1BR / 2BR / 3BR), the comp set is split:
+
+**Tier A — Like-Kind Unrenovated Comps**
+- Vintage within ±5yr of subject
+- Renovation status: not recently renovated (or "classic" units at mixed-reno properties)
+- Same class (A/B/C)
+- Same trade area
+- Purpose: defines **current market rent** — what subject could charge today at turn, no capex
+
+**Tier B — Like-Kind Renovated Comps**
+- Vintage within ±5yr of subject
+- Renovation status: renovated within last 5 years
+- Same class
+- Same trade area
+- Purpose: defines **post-renovation achievable rent** — what subject could charge after a reno program
+
+**Tier C — Ceiling Comps**
+- Top quartile of trade area by rent PSF, any vintage
+- Purpose: defines **ceiling** — the absolute upper bound, used for sensitivity analysis
+
+Each comp gets tagged with its tier. Comps can belong to multiple tiers (a renovated unit at an old property is both Tier B and a component of the full data set).
+
+**Output per unit type:**
+
+```
+1BR Unit Type — 715 SF at Bell Tech Corridor (subject)
+  Tier A (Unrenovated, ±5yr vintage):
+    Bexley at Anderson Mill ($1,198, $1.70/SF)
+    Broadstone 8 One Hundred ($1,026, $1.52/SF)
+    Camden Amber Oaks II ($1,022, $1.39/SF)
+    → Tier A median: $1,082 ($1.54/SF)
+    → Tier A mean: $1,082
+    → Tier A range: $1,022 — $1,198
+
+  Tier B (Renovated, ±5yr vintage):
+    IMT Residences at Riata ($1,326, $1.80/SF)
+    Windsor Republic Place ($1,227, $1.55/SF)
+    → Tier B median: $1,277 ($1.68/SF)
+
+  Tier C (Ceiling, top quartile):
+    IMT Residences at Riata ($1,326, $1.80/SF)
+    → Tier C: $1,326
+
+Subject in-place 1BR: $937 ($1.31/SF)
+```
+
+Same stratification runs for 2BR and 3BR.
+
+### 3.2 Step 2 — The Three Rent Gaps (The Core Math)
+
+From the stratified comp set, three specific rent gaps get computed per unit type. Each has a distinct strategic meaning.
+
+**Gap 1 — Loss-to-Lease (LTL)**
+```
+LTL_per_type = Tier_A_median - subject_in_place_rent
+```
+What this means: rent gap on *existing units* that captures at lease turn without any capex. Driven by mispricing, old lease roll, sub-market-aware management.
+
+**Gap 2 — Value-Capture Gap (VC)**
+```
+VC_per_type = Tier_B_median - Tier_A_median
+```
+What this means: the *additional* rent lift achievable by renovating — the premium renovated comps command over unrenovated comps. This is the capex-justified rent lift.
+
+**Gap 3 — Ceiling Gap (CG)**
+```
+CG_per_type = Tier_C - Tier_B_median
+```
+What this means: how far above the renovated-comp median the top-tier comps reach. Used for sensitivity upside case, not the base plan.
+
+**Subject's Total Upside Per Unit Type:**
+```
+Total_upside_per_unit = LTL + VC  (base case)
+                      = LTL + VC + CG (upside case)
+```
+
+**Worked example for Bell Tech Corridor 1BR:**
+```
+Subject in-place:  $937
+Tier A median:     $1,082
+Tier B median:     $1,277
+Tier C:            $1,326
+
+Gap 1 (LTL):       $1,082 - $937   = $145/unit/mo  (captures at turn, no capex)
+Gap 2 (VC):        $1,277 - $1,082 = $195/unit/mo  (requires renovation)
+Gap 3 (CG):        $1,326 - $1,277 = $49/unit/mo   (stretch case)
+
+Base-case total upside: $340/unit/mo
+Upside-case total:       $389/unit/mo
+```
+
+Same computation runs for 2BR and 3BR. The engine output is a 3×3 matrix: {unit type} × {LTL, VC, CG} with dollar values.
+
+### 3.3 Step 3 — Dollarize Across the Portfolio
+
+Gaps in $/unit/month roll up to portfolio economics:
+
+**Annual GPR uplift:**
+```
+Annual_LTL_capture_potential   = Σ (LTL_per_type × units_of_type × 12)
+Annual_VC_capture_potential    = Σ (VC_per_type  × units_of_type × 12)
+Annual_base_case_upside        = LTL + VC totals
+Annual_upside_case_total       = LTL + VC + CG totals
+```
+
+**Worked example for Bell Tech Corridor (144×1BR + 140×2BR + 40×3BR):**
+
+| Gap | 1BR (144u) | 2BR (140u) | 3BR (40u) | Annualized Total |
+|---|---|---|---|---|
+| LTL | $145 × 144 × 12 = $250,560 | $120 × 140 × 12 = $201,600 | $95 × 40 × 12 = $45,600 | **$497,760** |
+| VC | $195 × 144 × 12 = $336,960 | $175 × 140 × 12 = $294,000 | $140 × 40 × 12 = $67,200 | **$698,160** |
+| CG | $49 × 144 × 12 = $84,672 | $45 × 140 × 12 = $75,600 | $38 × 40 × 12 = $18,240 | **$178,512** |
+
+**Base-case annual GPR uplift at full capture: $1,195,920** (LTL + VC)
+**Upside-case annual GPR uplift: $1,374,432**
+
+This is the number the value-add thesis is built on — and it's computed from the comp table, not asserted.
+
+### 3.4 Step 4 — Capture Schedule (Time-Phasing)
+
+The math above shows *what's achievable at full capture*. The ProForma needs *per-year* values. The engine phases the capture across the hold period based on three mechanics:
+
+**Mechanic 1 — LTL capture rate via turnover**
+
+LTL captures only when a unit turns (new lease at market rent). Turnover rate drives pace.
+
+```
+annual_LTL_capture_year_N = annual_turnover_rate × LTL_unit_count_remaining
+```
+
+If the property has 50% annual turnover, roughly half the LTL captures in Y1, roughly half of the remainder in Y2, etc. Exponential decay curve. Most LTL captures in years 1-2.
+
+Some deals accelerate via **non-renewal pushes** — the operator elects not to renew below-market leases at expiration, forcing turn. This compresses the curve. The engine exposes this as a user toggle: `natural_turnover | accelerated_non_renewals | aggressive_repositioning`.
+
+**Mechanic 2 — VC capture rate via reno pace**
+
+VC captures only as units are renovated. Reno pace is a user input (units/month). Example: 12 units/month × 24 months = 288 renovated (capped at unit count).
+
+```
+annual_VC_capture_year_N = min(units_renovated_by_year_N, total_units) × VC_per_type
+```
+
+But there's a wrinkle: renovating a unit only captures the VC if that unit also turns (you can't just renovate an occupied unit without moving the tenant). So in practice, reno pace is bounded by turnover rate OR by buy-out / non-renewal pace.
+
+Platform default: reno-at-turn (the standard approach). Advanced users can model reno-with-buyout scenarios.
+
+**Mechanic 3 — Concession burnoff + stabilization lag**
+
+New leases at captured rent often carry concessions in the first months of a reposition (free month, reduced deposit) as the property rebuilds reputation. The engine models a concession burnoff curve: Y1 concessions at submarket avg, declining to stabilized submarket avg by Y3.
+
+```
+effective_rent_captured_year_N = gross_captured_rent - concession_burnoff_year_N
+```
+
+**Resulting per-year capture schedule output:**
+
+```
+                     Y1        Y2        Y3        Y4       Y5
+LTL captured:     $248,880  $398,208  $472,872  $497,760  $497,760
+VC captured:      $174,540  $523,620  $698,160  $698,160  $698,160
+  (reno pace)
+Concession drag: -$89,000  -$45,000  -$15,000   $0         $0
+------------------
+Net uplift:       $334,420  $876,828  $1,156,032 $1,195,920 $1,195,920
+```
+
+These numbers flow to ProForma Assumptions Section 1 (Rent side) as the rent-growth-plus-capture curve, year by year.
+
+---
+
+## 4. What Drives the Strategy Score
+
+The Score of 81 on the mockup comes from the F23 formula (weighted signal sum) — but with value-add, the **size of the detected upside** directly drives the score confidence.
+
+The engine produces a **Value-Add Opportunity Score** that feeds into the main score:
+
+```
+VA_Opportunity_Score = (
+    normalize(total_upside_as_pct_of_in_place_GPR, submarket) × 0.40
+  + normalize(VC_as_pct_of_total, [0,1])                       × 0.25
+  + normalize(capture_velocity_year1_pct, submarket)           × 0.20
+  + normalize(renovation_ROI, submarket)                       × 0.15
+)
+```
+
+Where:
+- **Total upside as % of in-place GPR** — how meaningful the opportunity is (a 3% upside isn't a value-add; a 35% upside is a big one)
+- **VC as % of total** — what portion of the upside requires capex (100% LTL is just mispricing; 60% VC suggests a "true" value-add with capex justification)
+- **Capture velocity in Y1** — can you realize upside quickly (high turnover + fast reno pace) or does it take 5 years to stabilize
+- **Renovation ROI** — `annualized_VC_capture / reno_capex_per_unit`; below 15% ROI suggests the renovation scope is too heavy for the rent lift it generates
+
+Values higher on all four factors → higher VA Opportunity Score → supports the 81 on the mockup. Values lower → the detection might be correct (it is a value-add) but the math says this specific deal is a marginal value-add.
+
+For Bell Tech Corridor:
+```
+Total upside: $1,195,920 / in-place GPR ~$2,900,000 = 41% uplift → 92nd pctile
+VC as % of total: $698,160 / $1,195,920 = 58% → mid-range, classic value-add
+Y1 capture velocity: $334K / $1,195K = 28% → moderate
+Reno ROI: $195/unit × 12 / $18K reno = 13% → borderline; flags "scope may be too heavy"
+
+VA Opportunity Score: 76
+```
+
+That 76 feeds F23 alongside the other signals. The mockup's 81 is consistent.
+
+---
+
+## 5. Evidence Report Output — Block B Replacement
+
+This replaces the generic "Metric Stack" in the v2 Evidence Report for Value-Add deals. Instead of showing "loss-to-lease 9.4%" as a single number, it shows the full math.
+
+### 5.1 Rendered layout (Evidence Block B for MF Value-Add)
+
+Three panels stacked:
+
+**Panel 1 — Comp Stratification Table**
+
+Per unit type, shows Tier A / Tier B / Tier C breakdown with the specific comps in each tier, their rent / SF / PSF. Matches the format of image 2 but with tier tags and subject row highlighted.
+
+```
+1BR Comparison (Subject = Bell Tech Corridor)
+
+Property                    Units   SF    Rent/Unit   PSF    Tier
+IMT Residences at Riata     195     738   $1,326      $1.80  B + C
+Windsor Republic Place      160     790   $1,227      $1.55  B
+Bexley at Anderson Mill     192     702   $1,198      $1.70  A
+Broadstone 8 One Hundred    268     674   $1,026      $1.52  A
+Camden Amber Oaks II        132     733   $1,022      $1.39  A
+─────────────────────────────────────────────────────────────
+Bell Tech Corridor          144     715   $937        $1.31  SUBJECT
+
+Tier A median (unrenovated, ±5yr): $1,082 ($1.54/SF)
+Tier B median (renovated, ±5yr):   $1,277 ($1.68/SF)
+Tier C (top quartile ceiling):     $1,326 ($1.80/SF)
+```
+
+**Panel 2 — The Three-Gap Visualization**
+
+A horizontal "rent ladder" per unit type showing subject's position and the three gaps, with dollar-flag annotations:
+
+```
+1BR Rent Ladder                                  $/unit/mo
+
+Tier C ceiling       ━━━━━━━━━━━━━━━━━━━━━━━━━  $1,326
+                     │ CG: +$49 (stretch)
+Tier B median  ━━━━━━━━━━━━━━━━━━━━━━━━         $1,277
+                     │ VC: +$195 (reno)
+Tier A median  ━━━━━━━━━━━━━━━━━━                $1,082
+                     │ LTL: +$145 (turn)
+Subject rent   ━━━━━━━━━━━━━                     $937
+```
+
+Same for 2BR and 3BR, stacked vertically. Total upside per unit type annotated on the right.
+
+**Panel 3 — Dollarized Portfolio Impact**
+
+The full roll-up table:
+
+```
+ANNUALIZED UPLIFT AT FULL CAPTURE
+
+                  LTL           VC            CG (stretch)  Total
+1BR (144u)       $250,560      $336,960      $84,672       $672,192
+2BR (140u)       $201,600      $294,000      $75,600       $571,200
+3BR (40u)        $45,600       $67,200       $18,240       $131,040
+─────────────────────────────────────────────────────────────────
+Portfolio        $497,760      $698,160      $178,512      $1,374,432
+
+Base case (LTL + VC):    $1,195,920 / yr  (41% uplift vs in-place GPR)
+Upside case (+CG):        $1,374,432 / yr  (47% uplift)
+
+Capex required to capture VC:
+  75 units renovated at $18K/unit = $1,350,000
+  Reno ROI at full capture: 52% (annualized VC / capex)
+```
+
+**Panel 4 — Per-Year Capture Schedule**
+
+Table showing how the uplift phases across Y1-Y5 with turnover + reno pace + concession drag, with the final net column that feeds ProForma.
+
+### 5.2 Interactive behaviors
+
+- **Click any comp row** → expands to show that property's full profile (amenities, vintage, ownership, recent sale)
+- **Click Tier A median** → drawer explaining selection criteria ("3 comps, ±5yr vintage 2008, non-renovated or classic-tier units, same trade area")
+- **Adjust comp selection** → user can exclude a comp they think isn't a real comp; math recomputes; ProForma assumption version-bumps
+- **Toggle capture scenarios** (natural turnover / accelerated / aggressive) → capture schedule re-phases
+- **Toggle reno pace slider** → capture schedule recomputes; capex ramps up accordingly
+
+Every change pushes updated numbers into ProForma as Platform-layer values with audit trail showing which comp or scenario drove the change.
+
+---
+
+## 6. ProForma Auto-Population
+
+The engine's output maps directly to F9 Assumptions fields.
+
+### 6.1 Assumptions Section 1 (Revenue — Rent side)
+
+The per-year capture schedule from Section 3.4 populates **Loss-to-Lease capture schedule** and modifies **Rent Growth** to layer market growth on top of capture:
+
+```
+ProForma Assumption Row: Rent Growth (blended)
+  Platform value Y1: (market_growth_Y1 + capture_uplift_Y1 / in_place_GPR)
+  Platform value Y2: similar per year
+  Derivation: "Captured from comp stratification: $334K LTL+VC in Y1 on $2.9M in-place
+               GPR = 11.5% blended uplift. Market rent growth 4.1%. Combined Y1: 15.6%.
+               Tapers to market growth by Y4 as capture plateaus."
+
+ProForma Assumption Row: Loss-to-Lease %
+  Platform value Y1: (in_place_LTL - captured_LTL_Y1) / in_place_rent
+  Derivation: "Starting LTL 13.4% ($145 on $937 for 1BR blended). Captures at turnover rate
+               50% annually. Y1 LTL declines to 8.9%, Y3 to 2.1%, fully captured by Y4."
+```
+
+### 6.2 Assumptions Section 4 (CapEx)
+
+Renovation capex schedule populates:
+
+```
+ProForma Assumption: Renovation CapEx schedule
+  Y1: 75 units × $18K = $1,350,000 (at planned 6 units/mo × 12 × cost)
+  Y2: 75 units × $18K = $1,350,000
+  Derivation: "Reno pace 12 units/mo, average $18K/unit (light-medium scope per submarket
+               benchmark). Pace aligns with turnover cadence."
+
+ProForma Assumption: Renovation rent premium
+  Platform value: $195/unit lift (1BR), $175/unit (2BR), $140/unit (3BR)
+  Derivation: "Tier B renovated comp median minus Tier A unrenovated comp median.
+               See Evidence Block B comp stratification."
+```
+
+### 6.3 Every value lands at the Platform layer
+
+Each auto-populated number carries:
+- Source attribution back to Evidence Block B
+- Confidence score based on comp set quality (more comps = higher; wider range = lower)
+- "View derivation" link opening the math trail back to the comp table
+
+User overrides sit on top at the User layer per the standard LayeredValue contract.
+
+---
+
+## 7. Parallel Engines for Other Sub-Strategies
+
+Same four-step structure, different math.
+
+### 7.1 MF Deep Value-Add
+Same as Value-Add but Tier B is split further into:
+- B1: Renovated, light scope (paint, floors)
+- B2: Renovated, heavy scope (full kitchen/bath, amenity add)
+
+Engine computes two VC gaps (VC-light, VC-heavy) and recommends the scope tier that maximizes renovation ROI given submarket rent ceilings.
+
+### 7.2 MF Core-Plus
+Same framework but only LTL matters (no VC). Tier A is the benchmark. Output is smaller but cleaner math.
+
+### 7.3 SFR Fix-and-Flip
+Different comp universe — MLS sold comps in ±90d / ±500sf / same school zone. No unit-type stratification (one house). Math is ARV − (acq + rehab + holding + selling) = margin. The engine uses platform-trained regression on school-rating × sq-ft × lot-size to predict ARV from 6-12 comps.
+
+### 7.4 Retail Value-Add Reposition
+Comp universe = centers within 3mi, same class, same anchor category. Three gaps:
+- In-place rent/SF vs submarket NNN asking rent (LTL analog)
+- Stabilized-post-reposition rent vs current (VC analog)
+- Top center rent/SF (CG analog)
+
+Plus a vacancy-capture layer (current 22% inline vacancy → stabilized 7% → $X in NOI recovered).
+
+### 7.5 Office Adaptive Reuse
+No comp-based rent math in the traditional sense. Engine computes:
+- Current office cap rate implied by in-place NOI
+- Post-conversion residential cap rate (M05 submarket residential)
+- Conversion cost/SF (Marshall & Swift / RSMeans)
+- Residential PSF rent × SF / conversion cost = reuse yield
+
+Every sub-strategy gets its own Block B math engine. Framework is the same (Stratify → Gap → Dollarize → Phase).
+
+---
+
+## 8. Backend Data Contract (Value-Add Engine Output)
+
+```ts
+interface ValueAddEvidence {
+  dealId: string;
+  computedAt: string;
+
+  // Step 1 output
+  compStratification: {
+    selectionCriteria: {
+      vintageBand: [number, number];
+      sizeBand: [number, number];
+      classTier: string;
+      tradeArea: string;
+    };
+    byUnitType: Array<{
+      unitType: string;             // e.g. "1BR"
+      subjectUnits: number;
+      subjectAvgSF: number;
+      subjectInPlaceRent: number;
+      subjectInPlacePSF: number;
+      tierA: { comps: CompRow[]; median: number; mean: number; psf: number; range: [number, number]; };
+      tierB: { comps: CompRow[]; median: number; mean: number; psf: number; range: [number, number]; };
+      tierC: { comps: CompRow[]; value: number; psf: number; };
+    }>;
+  };
+
+  // Step 2 output
+  rentGaps: Array<{
+    unitType: string;
+    units: number;
+    ltl: number;                     // $/unit/mo
+    vc: number;
+    cg: number;
+    totalBase: number;               // LTL + VC
+    totalUpside: number;              // LTL + VC + CG
+  }>;
+
+  // Step 3 output
+  portfolioImpact: {
+    annualLTLCapture: number;
+    annualVCCapture: number;
+    annualCGCapture: number;
+    annualBaseCase: number;           // LTL + VC portfolio
+    annualUpsideCase: number;         // + CG
+    pctUpliftVsInPlace: number;
+    renoCapexRequired: number;
+    renoROI: number;                  // annualized VC / capex
+  };
+
+  // Step 4 output
+  captureSchedule: Array<{
+    year: number;
+    ltlCaptured: number;
+    vcCaptured: number;
+    concessionDrag: number;
+    netUplift: number;
+    cumulativeLTLCapturedPct: number; // % of full LTL captured to-date
+    cumulativeVCCapturedPct: number;
+  }>;
+
+  // VA-specific opportunity score
+  vaOpportunityScore: {
+    overall: number;
+    components: {
+      upsideAsPctOfGPR: { value: number; percentile: number; weight: 0.40; };
+      vcAsPctOfTotal: { value: number; normalized: number; weight: 0.25; };
+      captureVelocityY1: { value: number; percentile: number; weight: 0.20; };
+      renovationROI: { value: number; percentile: number; weight: 0.15; };
+    };
+    flags: string[];                  // e.g. "Reno scope borderline — ROI 13% below typical VA 18-25%"
+  };
+
+  // User-editable scenarios
+  captureScenario: 'natural_turnover' | 'accelerated_non_renewals' | 'aggressive_repositioning';
+  renoPaceUnitsPerMonth: number;
+  renoScopeTier: 'light' | 'medium' | 'heavy';
+
+  // ProForma mapping
+  proformaAssumptionUpdates: Array<{
+    assumptionKey: string;
+    section: string;
+    yearlyValues: number[];
+    derivation: string;
+    confidenceScore: number;
+  }>;
+}
+
+interface CompRow {
+  propertyId: string;
+  name: string;
+  units: number;
+  avgSF: number;
+  rentPerUnit: number;
+  rentPSF: number;
+  vintage: number;
+  renovationStatus: 'unrenovated' | 'renovated_light' | 'renovated_heavy';
+  tierAssignment: 'A' | 'B' | 'B1' | 'B2' | 'C' | 'multi';
+  distanceMiles: number;
+}
+```
+
+---
+
+## 9. Implementation Sequence
+
+1. **Comp stratification service** — `comp-stratification.service.ts`. Takes M05 comp output + subject property, applies tier-assignment rules, emits stratified output. Handles edge cases (comp in multiple tiers, too-few comps in a tier). **1.5 sessions.**
+
+2. **Rent gap calculation service** — `rent-gap-calculator.service.ts`. The four-step math. Takes stratified comps + subject rent roll, emits the gap matrix + portfolio dollar impact. **1 session.**
+
+3. **Capture schedule phaser** — `capture-scheduler.service.ts`. Takes gap output + turnover rate + reno pace + scenario → emits per-year capture schedule with concession drag. **1 session.**
+
+4. **VA Opportunity Score calculator** — extends F23 framework with the four-component VA-specific score. Feeds main score. **0.5 session.**
+
+5. **ProForma assumption mapper** — `va-proforma-mapper.service.ts`. Takes capture schedule → emits the updated ProForma Assumption LayeredValue Platform-layer values with derivation strings. **1 session.**
+
+6. **Parallel engines for other sub-strategies** — SFR Fix-Flip math (ARV regression), Retail Value-Add (vacancy + rent-PSF gap), Office Adaptive Reuse (reuse yield calc). **2 sessions** across these.
+
+7. **Frontend — Evidence Block B rendering** — comp stratification table with tier tags, three-gap rent ladder visual, dollarized portfolio impact table, per-year capture schedule. Interactive (exclude comps, adjust pace). **2.5 sessions.**
+
+8. **Frontend — ProForma auto-population flow** — "Apply to ProForma" button on Evidence Block → writes LayeredValue Platform-layer values to Assumptions tab with full audit trail visible on hover. **1 session.**
+
+9. **Comp selection UI** — user can refine the auto-selected comp set (exclude a comp that's structurally dissimilar, add a comp the engine missed). Math recomputes live. **1 session.**
+
+10. **Testing + visual QA** — test cases below. **1 session.**
+
+**Total: ~11-12 sessions** for the Value-Add Math Engine.
+
+**Critical path:** Stratification (1) → Gap calc (2) → Phaser (3) → all backend. ProForma mapper (5) unblocks frontend. Other sub-strategy engines (6) can run in parallel.
+
+---
+
+## 10. Test Cases
+
+1. Bell Tech Corridor with 5 1BR comps → stratified correctly: 3 into Tier A, 2 into Tier B, top one flagged as Tier C ceiling.
+
+2. Subject rent $937, Tier A median $1,082 → LTL gap $145, annualized across 144 units = $250,560.
+
+3. Tier B median $1,277, Tier A median $1,082 → VC gap $195, annualized across 144 units = $336,960.
+
+4. Capture schedule with 50% turnover + 12 units/mo reno pace → Y1 LTL capture 50% × $497K = $249K; VC Y1 capture 72 units × $195 × 12 = $168K → Y1 total net (with concession drag) ≈ $335K.
+
+5. User toggles "aggressive repositioning" → capture curve compresses; Y1 total jumps from $335K to $560K; concession drag doubles; renovation capex ramps.
+
+6. User excludes IMT Residences at Riata from Tier B (says "too different") → Tier B median drops from $1,277 to $1,227 (Windsor only). VC gap for 1BR drops from $195 to $145. Portfolio annual VC capture drops by $86K. ProForma updates.
+
+7. Reno scope toggle light → medium → heavy: VC gap expands but capex expands faster; reno ROI decreases from 52% (medium) to 34% (heavy). Engine flags the scope optimum.
+
+8. VA Opportunity Score computation: 41% uplift (92nd pctile) × 0.40 + 58% VC (mid-range) × 0.25 + 28% Y1 velocity × 0.20 + 13% reno ROI × 0.15 → 76. Feeds F23; final strategy score 81 consistent with mockup.
+
+9. "Apply to ProForma" button → writes 5-year rent growth curve to Assumptions Section 1 as Platform-layer values. Y1 shows blended 15.6% (market 4.1% + capture 11.5%). Derivation string visible on hover.
+
+10. Deal with only 2 Tier A comps → confidence score for VA Opportunity drops from 0.85 to 0.55; UI flags "Comp set thin — expand radius or confirm Tier A selection."
+
+11. Deal with no Tier B comps (no recently-renovated comps in submarket) → engine defaults VC gap to 0 and flags: "No renovated comps found. Value-Add thesis reduces to LTL capture only. Consider expanding to like-kind across MSAs."
+
+12. Subject in-place rent > Tier A median (property is already at market) → LTL = 0; strategy detection flags "No meaningful LTL. This is Core or Core-Plus, not Value-Add." Detection confidence on Value-Add drops.
+
+13. Retail Value-Add Reposition test: center at 22% inline vacancy, $14.50/SF NNN vs submarket $22/SF → engine emits rent-PSF gap $7.50 × occupied SF + vacancy-capture on 22% → dollarized stabilized NOI uplift.
+
+14. Office Adaptive Reuse test: 18-story Class B office, 38% vacant, implied cap rate 8.2% on in-place NOI, residential post-conversion cap rate 5.1%, conversion cost $225/SF. Engine computes reuse yield and flags residential feasibility.
+
+15. SFR Fix-Flip test: single house with 6 MLS closed comps in same school zone → ARV regression emits $425K ± $18K. Margin math: $425K − ($285K acq + $52K rehab + $18K holding + $21K selling) = $49K margin → 14% on total invested. Engine flags "Below 18% flip-gate threshold — margin thin."
+
+---
+
+## 11. Connection to the Advisor Flow
+
+The Strategy Advisor page (image 1) shows the Evidence Block B math as the third section (between Sub-Strategy Comparison and Execution Plan). The math justifies the "DETECTED · VALUE-ADD" banner. The ProForma-apply flow is what ties the Strategy page to F9 — users click "Apply to ProForma" at the top of the page (visible in image 1 as the green button), the Value-Add math engine writes its Platform-layer values into Assumptions + CapEx, and the ProForma reflects the comp-justified upside.
+
+Every number in the Execution Plan (IRR 18.4-21.7%, Exit Cap 5.25%, Refi target) traces back through the engine to specific comp rows. Nothing is asserted — everything is computed.
+
+---
+
+**End of spec.**

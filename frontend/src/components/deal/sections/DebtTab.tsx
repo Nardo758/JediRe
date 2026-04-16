@@ -70,10 +70,8 @@ export const DebtTab: React.FC<DebtTabProps> = ({
   const [selectedStrategy, setSelectedStrategy] = useState<StrategyType>('rental_value_add');
   const [layers, setLayers] = useState<CapitalLayer[]>(defaultCapitalStack.layers);
 
-  const [liveStack, setLiveStack] = useState<any>(null);
   const [liveDebtProducts, setLiveDebtProducts] = useState<any>(null);
   const [liveRateData, setLiveRateData] = useState<any>(null);
-  const [liveInsights, setLiveInsights] = useState<any>(null);
 
   const [liveRates, setLiveRates] = useState<any>(null);
   const [rateHistory, setRateHistory] = useState<any>(null);
@@ -102,14 +100,14 @@ export const DebtTab: React.FC<DebtTabProps> = ({
   } = useDealModule();
 
   const template = strategyTemplates[selectedStrategy];
-  const stack = liveStack || defaultCapitalStack;
+  const stack = defaultCapitalStack;
 
   const exitConfig = useMemo<ExitStrategyConfig>(() => ({
     baseNOI: financial?.noi || 0,
-    equityInvested: capitalStructure?.totalEquity || stack?.metrics?.totalEquity || 8000000,
-    loanBalance: capitalStructure?.loanBalance?.[0] ?? stack?.metrics?.totalDebt ?? 19200000,
+    equityInvested: capitalStructure?.totalEquity || defaultCapitalStack.metrics.totalEquity || 8000000,
+    loanBalance: capitalStructure?.loanBalance?.[0] ?? defaultCapitalStack.metrics.totalDebt ?? 19200000,
     dealStatus: dealStatus || 'pipeline',
-  }), [financial?.noi, capitalStructure?.totalEquity, capitalStructure?.loanBalance, stack?.metrics?.totalEquity, stack?.metrics?.totalDebt, dealStatus]);
+  }), [financial?.noi, capitalStructure?.totalEquity, capitalStructure?.loanBalance, dealStatus]);
 
   const markTabLoading = useCallback((tab: TabId, loading: boolean) => {
     setTabLoading(prev => ({ ...prev, [tab]: loading }));
@@ -118,37 +116,6 @@ export const DebtTab: React.FC<DebtTabProps> = ({
   const markTabLive = useCallback((tab: TabId) => {
     setLiveDataSources(prev => new Set(prev).add(tab));
   }, []);
-
-  useEffect(() => {
-    const fetchStack = async () => {
-      try {
-        const res = await apiClient.post(`${API_BASE}/stack`, {
-          dealId: deal.id,
-          strategy: selectedStrategy,
-          layers: defaultCapitalStack.layers,
-          uses: defaultCapitalStack.uses,
-          noi: financial?.noi || 0,
-          propertyValue: defaultCapitalStack.uses.acquisitionPrice,
-        });
-        if (res.data?.stack) {
-          setLiveStack(res.data.stack);
-          if (res.data.stack.layers) setLayers(res.data.stack.layers);
-        }
-      } catch {
-      }
-
-      try {
-        const insRes = await apiClient.post(`${API_BASE}/insights`, {
-          metrics: defaultCapitalStack.metrics,
-        });
-        if (insRes.data?.insights) {
-          setLiveInsights(insRes.data.insights);
-        }
-      } catch {
-      }
-    };
-    fetchStack();
-  }, [deal.id]);
 
   useEffect(() => {
     if (activeTab === 'debt' && !fetchedTabs.current.has('debt')) {
@@ -1013,7 +980,7 @@ export const DebtTab: React.FC<DebtTabProps> = ({
         </div>
       </div>
 
-      {renderInsights(liveInsights || stackInsights)}
+      {renderInsights(stackInsights)}
     </div>
   );
 

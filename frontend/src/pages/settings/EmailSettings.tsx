@@ -1,10 +1,8 @@
-/**
- * Email Settings Page
- * Manage Gmail account connections and email sync
- */
-
 import React, { useEffect, useState } from 'react';
 import { apiClient } from '../../services/api.client';
+import { BT } from '@/components/deal/bloomberg-ui';
+
+const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono','Fira Code','SF Mono',monospace" };
 
 interface EmailAccount {
   id: string;
@@ -33,7 +31,6 @@ export function EmailSettings() {
 
   useEffect(() => {
     loadAccounts();
-    
     const params = new URLSearchParams(window.location.search);
     if (params.get('connected') === 'true') {
       showMessage('success', 'Gmail account connected successfully!');
@@ -49,9 +46,7 @@ export function EmailSettings() {
   const loadAccounts = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.get<{ success: boolean; data: EmailAccount[] }>(
-        '/api/v1/gmail/accounts'
-      );
+      const response = await apiClient.get<{ success: boolean; data: EmailAccount[] }>('/api/v1/gmail/accounts');
       setAccounts(response.data.data || []);
     } catch (error) {
       console.error('Failed to load email accounts:', error);
@@ -62,10 +57,7 @@ export function EmailSettings() {
 
   const handleConnectGmail = async () => {
     try {
-      const response = await apiClient.get<{ success: boolean; data: { authUrl: string } }>(
-        '/api/v1/gmail/auth-url'
-      );
-      
+      const response = await apiClient.get<{ success: boolean; data: { authUrl: string } }>('/api/v1/gmail/auth-url');
       if (response.data.success && response.data.data.authUrl) {
         window.location.href = response.data.data.authUrl;
       }
@@ -82,7 +74,6 @@ export function EmailSettings() {
         success: boolean;
         data: { fetched: number; stored: number; skipped: number };
       }>(`/api/v1/gmail/sync/${accountId}`);
-
       if (response.data.success) {
         const { fetched, stored, skipped } = response.data.data;
         showMessage('success', `Sync complete! Fetched: ${fetched}, Stored: ${stored}, Skipped: ${skipped}`);
@@ -116,9 +107,7 @@ export function EmailSettings() {
 
   const handleToggleSync = async (accountId: string, currentEnabled: boolean) => {
     try {
-      await apiClient.patch(`/api/v1/gmail/accounts/${accountId}`, {
-        syncEnabled: !currentEnabled,
-      });
+      await apiClient.patch(`/api/v1/gmail/accounts/${accountId}`, { syncEnabled: !currentEnabled });
       await loadAccounts();
     } catch (error) {
       console.error('Failed to toggle sync:', error);
@@ -126,186 +115,190 @@ export function EmailSettings() {
     }
   };
 
-  const renderContent = () => {
-    if (loading) {
-      return (
-        <div className="flex items-center justify-center h-64">
-          <div className="text-gray-500">Loading...</div>
-        </div>
-      );
-    }
-
-    return (
-        <div className="space-y-6">
-          {message && (
-            <div className={`px-4 py-3 rounded-lg text-sm flex items-center justify-between ${
-              message.type === 'success'
-                ? 'bg-green-50 text-green-700 border border-green-200'
-                : message.type === 'error'
-                ? 'bg-red-50 text-red-700 border border-red-200'
-                : 'bg-blue-50 text-blue-700 border border-blue-200'
-            }`}>
-              <span>{message.text}</span>
-              <button onClick={() => setMessage(null)} className="ml-3 font-medium hover:opacity-70">×</button>
-            </div>
-          )}
-
-          {confirmDisconnect && (
-            <div className="px-4 py-4 rounded-lg border border-amber-200 bg-amber-50">
-              <p className="text-sm text-amber-800 mb-3">
-                Are you sure you want to disconnect <strong>{confirmDisconnect.email}</strong>?
-              </p>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={executeDisconnect}
-                  className="px-3 py-1.5 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700"
-                >
-                  Disconnect
-                </button>
-                <button
-                  onClick={() => setConfirmDisconnect(null)}
-                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
-
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-xl font-semibold text-gray-900">Connected Accounts</h2>
-                <p className="text-sm text-gray-600 mt-1">
-                  Manage your Gmail connections and sync settings
-                </p>
-              </div>
-              <button
-                onClick={handleConnectGmail}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
-              >
-                + Connect Gmail
-              </button>
-            </div>
-
-            {accounts.length === 0 ? (
-              <div className="text-center py-12">
-                <div className="text-6xl mb-4">📧</div>
-                <h3 className="text-lg font-medium text-gray-900 mb-2">No accounts connected</h3>
-                <p className="text-gray-600 mb-4">
-                  Connect your Gmail account to start syncing emails
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {accounts.map((account) => (
-                  <div
-                    key={account.id}
-                    className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <h3 className="font-medium text-gray-900">{account.email_address}</h3>
-                          {account.is_primary && (
-                            <span className="px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-700 rounded">
-                              Primary
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4 text-sm">
-                          <div>
-                            <span className="text-gray-600">Last Sync:</span>{' '}
-                            <span className="text-gray-900">
-                              {account.last_sync_at
-                                ? new Date(account.last_sync_at).toLocaleString()
-                                : 'Never'}
-                            </span>
-                          </div>
-                          <div>
-                            <span className="text-gray-600">Sync Frequency:</span>{' '}
-                            <span className="text-gray-900">
-                              Every {account.sync_frequency_minutes} minutes
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2 mt-3">
-                          <label className="flex items-center gap-2 text-sm">
-                            <input
-                              type="checkbox"
-                              checked={account.sync_enabled}
-                              onChange={() => handleToggleSync(account.id, account.sync_enabled)}
-                              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                            />
-                            <span className="text-gray-700">Auto-sync enabled</span>
-                          </label>
-                        </div>
-                      </div>
-
-                      <div className="flex gap-2 ml-4">
-                        <button
-                          onClick={() => handleSyncAccount(account.id)}
-                          disabled={syncing === account.id}
-                          className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
-                        >
-                          {syncing === account.id ? 'Syncing...' : 'Sync Now'}
-                        </button>
-                        <button
-                          onClick={() => handleDisconnect(account.id, account.email_address)}
-                          className="px-3 py-1.5 text-sm text-red-600 border border-red-300 rounded-lg hover:bg-red-50"
-                        >
-                          Disconnect
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Quick Stats */}
-          {accounts.length > 0 && (
-            <div className="bg-blue-50 rounded-lg border border-blue-200 p-4">
-              <h3 className="font-medium text-blue-900 mb-2">📊 Quick Stats</h3>
-              <div className="grid grid-cols-3 gap-4 text-sm">
-                <div>
-                  <div className="text-blue-600">Total Accounts</div>
-                  <div className="text-xl font-semibold text-blue-900">{accounts.length}</div>
-                </div>
-                <div>
-                  <div className="text-blue-600">Active Sync</div>
-                  <div className="text-xl font-semibold text-blue-900">
-                    {accounts.filter((a) => a.sync_enabled).length}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-blue-600">Last Synced</div>
-                  <div className="text-sm font-medium text-blue-900">
-                    {accounts.some((a) => a.last_sync_at)
-                      ? new Date(
-                          Math.max(
-                            ...accounts
-                              .filter((a) => a.last_sync_at)
-                              .map((a) => new Date(a.last_sync_at!).getTime())
-                          )
-                        ).toLocaleTimeString()
-                      : 'Never'}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      );
+  const msgColors: Record<string, { color: string; border: string }> = {
+    success: { color: BT.text.green, border: BT.text.green },
+    error: { color: BT.text.red, border: BT.text.red },
+    info: { color: BT.text.cyan, border: BT.text.cyan },
   };
 
-  // Just render content directly (no ThreePanelLayout when embedded in Settings)
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 256, background: BT.bg.panel, border: `1px solid ${BT.border.subtle}` }}>
+        <div style={{ color: BT.text.muted, ...mono }}>Loading...</div>
+      </div>
+    );
+  }
+
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-      {renderContent()}
+    <div style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}` }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: 20 }}>
+        {message && (() => {
+          const mc = msgColors[message.type] || msgColors.info;
+          return (
+            <div style={{
+              padding: '10px 16px',
+              fontSize: 12,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              background: BT.bg.panelAlt,
+              color: mc.color,
+              border: `1px solid ${mc.border}`,
+            }}>
+              <span>{message.text}</span>
+              <button onClick={() => setMessage(null)} style={{ marginLeft: 12, fontWeight: 600, color: mc.color, background: 'none', border: 'none', cursor: 'pointer', fontSize: 14 }}>x</button>
+            </div>
+          );
+        })()}
+
+        {confirmDisconnect && (
+          <div style={{ padding: 16, border: `1px solid ${BT.text.amber}`, background: BT.bg.panelAlt }}>
+            <p style={{ fontSize: 12, color: BT.text.amber, marginBottom: 12 }}>
+              Are you sure you want to disconnect <strong style={{ color: BT.text.primary }}>{confirmDisconnect.email}</strong>?
+            </p>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={executeDisconnect}
+                style={{ padding: '6px 14px', fontSize: 11, background: BT.text.red, color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600 }}
+              >
+                Disconnect
+              </button>
+              <button
+                onClick={() => setConfirmDisconnect(null)}
+                style={{ padding: '6px 14px', fontSize: 11, background: 'transparent', color: BT.text.secondary, border: `1px solid ${BT.border.subtle}`, cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <div>
+              <h2 style={{ fontSize: 14, fontWeight: 700, color: BT.text.primary, letterSpacing: '0.04em' }}>Connected Accounts</h2>
+              <p style={{ fontSize: 11, color: BT.text.secondary, marginTop: 4 }}>Manage your Gmail connections and sync settings</p>
+            </div>
+            <button
+              onClick={handleConnectGmail}
+              style={{ padding: '8px 16px', background: BT.text.cyan, color: BT.bg.terminal, border: 'none', fontSize: 11, fontWeight: 600, cursor: 'pointer', ...mono }}
+            >
+              + Connect Gmail
+            </button>
+          </div>
+
+          {accounts.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '40px 0' }}>
+              <div style={{ fontSize: 12, color: BT.text.muted, ...mono }}>NO ACCOUNTS CONNECTED</div>
+              <div style={{ fontSize: 11, color: BT.text.muted, marginTop: 4 }}>Connect your Gmail account to start syncing emails</div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {accounts.map((account) => (
+                <div key={account.id} style={{ border: `1px solid ${BT.border.subtle}`, padding: 14, background: BT.bg.panelAlt }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                        <span style={{ fontWeight: 600, fontSize: 13, color: BT.text.primary }}>{account.email_address}</span>
+                        {account.is_primary && (
+                          <span style={{ padding: '2px 8px', fontSize: 9, fontWeight: 700, background: BT.bg.active, color: BT.text.cyan, ...mono }}>PRIMARY</span>
+                        )}
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, fontSize: 11 }}>
+                        <div>
+                          <span style={{ color: BT.text.muted }}>Last Sync: </span>
+                          <span style={{ color: BT.text.secondary, ...mono }}>
+                            {account.last_sync_at ? new Date(account.last_sync_at).toLocaleString() : 'Never'}
+                          </span>
+                        </div>
+                        <div>
+                          <span style={{ color: BT.text.muted }}>Frequency: </span>
+                          <span style={{ color: BT.text.secondary, ...mono }}>Every {account.sync_frequency_minutes} min</span>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: BT.text.secondary, cursor: 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            checked={account.sync_enabled}
+                            onChange={() => handleToggleSync(account.id, account.sync_enabled)}
+                            style={{ accentColor: BT.text.cyan }}
+                          />
+                          Auto-sync enabled
+                        </label>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, marginLeft: 16 }}>
+                      <button
+                        onClick={() => handleSyncAccount(account.id)}
+                        disabled={syncing === account.id}
+                        style={{
+                          padding: '6px 14px',
+                          fontSize: 10,
+                          border: `1px solid ${BT.border.subtle}`,
+                          background: 'transparent',
+                          color: BT.text.secondary,
+                          cursor: syncing === account.id ? 'wait' : 'pointer',
+                          opacity: syncing === account.id ? 0.5 : 1,
+                          ...mono,
+                        }}
+                      >
+                        {syncing === account.id ? 'Syncing...' : 'Sync Now'}
+                      </button>
+                      <button
+                        onClick={() => handleDisconnect(account.id, account.email_address)}
+                        style={{
+                          padding: '6px 14px',
+                          fontSize: 10,
+                          color: BT.text.red,
+                          border: `1px solid ${BT.text.red}`,
+                          background: 'transparent',
+                          cursor: 'pointer',
+                          ...mono,
+                        }}
+                      >
+                        Disconnect
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {accounts.length > 0 && (
+          <div style={{ padding: 14, background: BT.bg.panelAlt, border: `1px solid ${BT.border.subtle}` }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: BT.text.cyan, letterSpacing: '0.08em', marginBottom: 10, ...mono }}>QUICK STATS</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 10, color: BT.text.muted }}>Total Accounts</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: BT.text.primary, ...mono }}>{accounts.length}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: BT.text.muted }}>Active Sync</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: BT.text.green, ...mono }}>
+                  {accounts.filter((a) => a.sync_enabled).length}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: BT.text.muted }}>Last Synced</div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: BT.text.primary, ...mono }}>
+                  {accounts.some((a) => a.last_sync_at)
+                    ? new Date(
+                        Math.max(
+                          ...accounts
+                            .filter((a) => a.last_sync_at)
+                            .map((a) => new Date(a.last_sync_at!).getTime())
+                        )
+                      ).toLocaleTimeString()
+                    : 'Never'}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

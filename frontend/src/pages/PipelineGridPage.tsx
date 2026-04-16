@@ -11,6 +11,7 @@ import { ColumnDef, PipelineDeal, GridSort } from '../types/grid';
 import { apiClient } from '../services/api.client';
 import PipelineMapView from '../components/pipeline/PipelineMapView';
 import { MapIcon, TableCellsIcon } from '@heroicons/react/24/outline';
+import { BT } from '@/components/deal/bloomberg-ui';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
@@ -22,7 +23,7 @@ export function PipelineGridPage() {
   const [deals, setDeals] = useState<PipelineDeal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
+
   // Get view mode from URL or default to grid
   const [viewMode, setViewMode] = useState<ViewMode>(
     (searchParams.get('view') as ViewMode) || 'grid'
@@ -49,12 +50,12 @@ export function PipelineGridPage() {
     try {
       setLoading(true);
       setError(null);
-      
+
       const params = new URLSearchParams();
       if (sort) {
         params.append('sort', JSON.stringify(sort));
       }
-      
+
       const response = await apiClient.get(`${API_URL}/grid/pipeline?${params.toString()}`);
       setDeals(response.data.deals || []);
     } catch (err) {
@@ -79,7 +80,7 @@ export function PipelineGridPage() {
         },
         { responseType: 'blob' }
       );
-      
+
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -101,10 +102,10 @@ export function PipelineGridPage() {
   // Format helpers
   const formatCurrency = (value: any) =>
     value !== null && value !== undefined
-      ? new Intl.NumberFormat('en-US', { 
-          style: 'currency', 
-          currency: 'USD', 
-          maximumFractionDigits: 0 
+      ? new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency: 'USD',
+          maximumFractionDigits: 0
         }).format(Number(value))
       : '—';
 
@@ -117,17 +118,17 @@ export function PipelineGridPage() {
   // Column definitions (20 columns for MVP)
   const columns: ColumnDef[] = [
     // Identity & Status (7)
-    { 
-      key: 'property_name', 
-      label: 'Property', 
-      sortable: true, 
-      filterable: true, 
+    {
+      key: 'property_name',
+      label: 'Property',
+      sortable: true,
+      filterable: true,
       width: 200,
       render: (value, row) => (
         <div>
-          <div className="font-medium text-gray-900">{value || '—'}</div>
+          <div className="font-medium" style={{ color: BT.text.primary }}>{value || '—'}</div>
           {row.days_in_stage > 30 && (
-            <span className="text-xs text-orange-600">🚨 Stalled {row.days_in_stage}d</span>
+            <span style={{ fontSize: '11px', color: BT.text.orange }}>🚨 Stalled {row.days_in_stage}d</span>
           )}
         </div>
       )
@@ -137,12 +138,12 @@ export function PipelineGridPage() {
     { key: 'pipeline_stage', label: 'Stage', sortable: true, filterable: true, width: 120 },
     { key: 'days_in_stage', label: 'Days', sortable: true, filterable: true, width: 70, align: 'right',
       render: (value) => (
-        <span className={value > 30 ? 'text-orange-600 font-semibold' : 'text-gray-900'}>
+        <span style={{ color: value > 30 ? BT.text.orange : BT.text.primary, fontWeight: value > 30 ? 600 : 400 }}>
           {value || 0}
         </span>
       )
     },
-    { 
+    {
       key: 'ai_opportunity_score',
       label: 'AI Score',
       sortable: true,
@@ -150,25 +151,20 @@ export function PipelineGridPage() {
       width: 90,
       align: 'right',
       render: (value) => value ? (
-        <span className={`font-semibold ${
-          value >= 85 ? 'text-green-600' :
-          value >= 70 ? 'text-blue-600' :
-          value >= 50 ? 'text-yellow-600' :
-          'text-gray-600'
-        }`}>
+        <span style={{ fontWeight: 600, color: value >= 85 ? BT.text.green : value >= 70 ? BT.text.cyan : value >= 50 ? BT.text.amber : BT.text.secondary }}>
           {value >= 85 && '⭐ '}{value}
         </span>
-      ) : <span className="text-gray-400">—</span>
+      ) : <span style={{ color: BT.text.muted }}>—</span>
     },
 
     // Financial Snapshot (5)
     { key: 'ask_price', label: 'Ask Price', sortable: true, filterable: true, width: 130, align: 'right', format: formatCurrency },
-    { key: 'jedi_adjusted_price', label: 'JEDI Price', sortable: true, filterable: true, width: 130, align: 'right', 
+    { key: 'jedi_adjusted_price', label: 'JEDI Price', sortable: true, filterable: true, width: 130, align: 'right',
       render: (value, row) => (
         <div>
-          <div className="font-medium text-gray-900">{formatCurrency(value)}</div>
+          <div className="font-medium" style={{ color: BT.text.primary }}>{formatCurrency(value)}</div>
           {row.ask_price && value && value < row.ask_price && (
-            <div className="text-xs text-green-600">💰 ${Math.round((row.ask_price - value) / 1000000)}M gap</div>
+            <div style={{ fontSize: '11px', color: BT.text.green }}>💰 ${Math.round((row.ask_price - value) / 1000000)}M gap</div>
           )}
         </div>
       )
@@ -177,9 +173,9 @@ export function PipelineGridPage() {
     { key: 'jedi_adjusted_irr', label: 'IRR (JEDI)', sortable: true, filterable: true, width: 100, align: 'right',
       render: (value, row) => (
         <div>
-          <div className="font-medium text-gray-900">{formatPercent(value)}</div>
+          <div className="font-medium" style={{ color: BT.text.primary }}>{formatPercent(value)}</div>
           {row.broker_projected_irr && value && value > row.broker_projected_irr && (
-            <div className="text-xs text-green-600">+{(Number(value) - Number(row.broker_projected_irr)).toFixed(1)}%</div>
+            <div style={{ fontSize: '11px', color: BT.text.green }}>+{(Number(value) - Number(row.broker_projected_irr)).toFixed(1)}%</div>
           )}
         </div>
       )
@@ -189,15 +185,21 @@ export function PipelineGridPage() {
     // Strategy Arbitrage (2)
     { key: 'best_strategy', label: 'Strategy', sortable: true, filterable: true, width: 150,
       render: (value) => value ? (
-        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-          value === 'build_to_sell' || value === 'Build-to-Sell' ? 'bg-green-100 text-green-700' :
-          value === 'flip' || value === 'Flip' ? 'bg-blue-100 text-blue-700' :
-          value === 'rental' || value === 'Rental' ? 'bg-purple-100 text-purple-700' :
-          'bg-gray-100 text-gray-700'
-        }`}>
+        <span className="px-2 py-1 text-xs font-medium" style={{
+          borderRadius: 0,
+          background: value === 'build_to_sell' || value === 'Build-to-Sell' ? BT.bg.active :
+            value === 'flip' || value === 'Flip' ? BT.bg.active :
+            value === 'rental' || value === 'Rental' ? BT.bg.active :
+            BT.bg.panelAlt,
+          color: value === 'build_to_sell' || value === 'Build-to-Sell' ? BT.text.green :
+            value === 'flip' || value === 'Flip' ? BT.text.cyan :
+            value === 'rental' || value === 'Rental' ? BT.text.purple :
+            BT.text.secondary,
+          border: `1px solid ${BT.border.subtle}`
+        }}>
           {value.replace('_', ' ')}
         </span>
-      ) : <span className="text-gray-400">—</span>
+      ) : <span style={{ color: BT.text.muted }}>—</span>
     },
     { key: 'strategy_confidence', label: 'Confidence', sortable: true, filterable: true, width: 100, align: 'right',
       render: (value) => value ? `${value}%` : '—'
@@ -212,18 +214,16 @@ export function PipelineGridPage() {
       width: 110,
       align: 'center',
       render: (value) => value ? (
-        <span className="text-orange-600 font-medium">⚠️ Risk</span>
+        <span className="font-medium" style={{ color: BT.text.orange }}>⚠️ Risk</span>
       ) : (
-        <span className="text-gray-400">—</span>
+        <span style={{ color: BT.text.muted }}>—</span>
       )
     },
     { key: 'imbalance_score', label: 'Imbalance', sortable: true, filterable: true, width: 100, align: 'right',
       render: (value) => value ? (
-        <span className={`font-medium ${
-          value >= 70 ? 'text-green-600' :
-          value >= 40 ? 'text-yellow-600' :
-          'text-red-600'
-        }`}>
+        <span className="font-medium" style={{
+          color: value >= 70 ? BT.text.green : value >= 40 ? BT.text.amber : BT.text.red
+        }}>
           {value}
         </span>
       ) : '—'
@@ -236,77 +236,87 @@ export function PipelineGridPage() {
     { key: 'dd_checklist_pct', label: 'DD %', sortable: true, filterable: true, width: 70, align: 'right',
       render: (value) => value !== null && value !== undefined ? (
         <div className="flex items-center justify-end gap-2">
-          <div className="w-16 bg-gray-200 rounded-full h-2">
-            <div 
-              className={`h-2 rounded-full ${value >= 80 ? 'bg-green-500' : value >= 50 ? 'bg-yellow-500' : 'bg-blue-500'}`}
-              style={{ width: `${Math.min(100, value)}%` }}
+          <div className="w-16 h-2" style={{ background: BT.bg.active, borderRadius: 0 }}>
+            <div
+              className="h-2"
+              style={{
+                width: `${Math.min(100, value)}%`,
+                borderRadius: 0,
+                background: value >= 80 ? BT.text.green : value >= 50 ? BT.text.amber : BT.text.cyan
+              }}
             />
           </div>
-          <span className="text-xs text-gray-600">{value}%</span>
+          <span style={{ fontSize: '11px', color: BT.text.secondary }}>{value}%</span>
         </div>
-      ) : <span className="text-gray-400">—</span>
+      ) : <span style={{ color: BT.text.muted }}>—</span>
     },
   ];
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen" style={{ background: BT.bg.terminal }}>
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
+      <div className="px-6 py-4" style={{ background: BT.bg.panel, borderBottom: `1px solid ${BT.border.subtle}` }}>
         <div className="flex items-center justify-between">
           <div>
             <div className="flex items-center gap-3">
               <button
                 onClick={() => navigate('/deals')}
-                className="text-gray-400 hover:text-gray-600"
+                style={{ color: BT.text.muted }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = BT.text.secondary)}
+                onMouseLeave={(e) => (e.currentTarget.style.color = BT.text.muted)}
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
               </button>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">Pipeline Grid View</h1>
-                <p className="text-sm text-gray-600 mt-1">Track deals across acquisition pipeline</p>
+                <h1 className="text-2xl font-bold" style={{ color: BT.text.primary }}>Pipeline Grid View</h1>
+                <p className="text-sm mt-1" style={{ color: BT.text.secondary }}>Track deals across acquisition pipeline</p>
               </div>
             </div>
           </div>
           <div className="flex items-center gap-3">
             {/* View Mode Toggle */}
-            <div className="flex bg-gray-100 rounded-lg p-1">
+            <div className="flex p-1" style={{ background: BT.bg.panelAlt, borderRadius: 0 }}>
               <button
                 onClick={() => handleViewModeChange('grid')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-md transition-all ${
-                  viewMode === 'grid'
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
+                className="flex items-center gap-2 px-4 py-2 transition-all"
+                style={{
+                  borderRadius: 0,
+                  background: viewMode === 'grid' ? BT.bg.active : 'transparent',
+                  color: viewMode === 'grid' ? BT.text.primary : BT.text.secondary,
+                }}
               >
                 <TableCellsIcon className="w-5 h-5" />
                 <span className="font-medium">Grid View</span>
               </button>
               <button
                 onClick={() => handleViewModeChange('map')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-md transition-all ${
-                  viewMode === 'map'
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
+                className="flex items-center gap-2 px-4 py-2 transition-all"
+                style={{
+                  borderRadius: 0,
+                  background: viewMode === 'map' ? BT.bg.active : 'transparent',
+                  color: viewMode === 'map' ? BT.text.primary : BT.text.secondary,
+                }}
               >
                 <MapIcon className="w-5 h-5" />
                 <span className="font-medium">Map View</span>
               </button>
             </div>
 
-            <div className="h-8 w-px bg-gray-300" />
+            <div className="h-8 w-px" style={{ background: BT.border.medium }} />
 
             <button
               onClick={() => navigate('/deals')}
-              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors"
+              className="px-4 py-2 transition-colors"
+              style={{ background: BT.bg.panelAlt, color: BT.text.secondary, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}
             >
               Switch to Kanban
             </button>
             <button
               onClick={() => navigate('/dashboard')}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              className="px-4 py-2 transition-colors"
+              style={{ background: BT.text.cyan, color: BT.bg.terminal, borderRadius: 0 }}
             >
               + Create Deal
             </button>
@@ -318,11 +328,12 @@ export function PipelineGridPage() {
       {viewMode === 'grid' ? (
         <div className="p-6">
           {error ? (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-              <p className="text-red-800">{error}</p>
+            <div className="p-4" style={{ background: BT.bg.panel, border: `1px solid ${BT.text.red}`, borderRadius: 0 }}>
+              <p style={{ color: BT.text.red }}>{error}</p>
               <button
                 onClick={() => loadDeals()}
-                className="mt-2 text-red-600 hover:text-red-800 font-medium"
+                className="mt-2 font-medium"
+                style={{ color: BT.text.red }}
               >
                 Retry
               </button>
@@ -341,12 +352,13 @@ export function PipelineGridPage() {
       ) : (
         <div className="h-[calc(100vh-5rem)]">
           {error ? (
-            <div className="flex items-center justify-center h-full bg-gray-50">
-              <div className="bg-red-50 border border-red-200 rounded-lg p-4 max-w-md">
-                <p className="text-red-800">{error}</p>
+            <div className="flex items-center justify-center h-full" style={{ background: BT.bg.terminal }}>
+              <div className="p-4 max-w-md" style={{ background: BT.bg.panel, border: `1px solid ${BT.text.red}`, borderRadius: 0 }}>
+                <p style={{ color: BT.text.red }}>{error}</p>
                 <button
                   onClick={() => loadDeals()}
-                  className="mt-2 text-red-600 hover:text-red-800 font-medium"
+                  className="mt-2 font-medium"
+                  style={{ color: BT.text.red }}
                 >
                   Retry
                 </button>

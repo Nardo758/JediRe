@@ -15,9 +15,22 @@ export type MetricCategory =
   | 'risk'
   | 'ownership'
   | 'sfr'
-  | 'demographic';
+  | 'demographic'
+  | 'macro';
 
 export type MetricGranularity = 'property' | 'submarket' | 'zip' | 'county' | 'msa';
+
+export interface LeadLagRelationship {
+  metricId: string;
+  lagMonths: number;
+  typicalR: number;
+}
+
+export interface LaggedByRelationship {
+  metricId: string;
+  leadMonths: number;
+  typicalR: number;
+}
 
 export interface MetricDefinition {
   id: string;
@@ -32,10 +45,13 @@ export interface MetricDefinition {
   description: string;
   exampleValue: string;
   investmentSignal: string;
+  leadsMetrics?: LeadLagRelationship[];
+  laggedBy?: LaggedByRelationship[];
+  empiricallyValidated?: boolean;
 }
 
 /**
- * Complete metrics catalog — 40 metrics across 12 categories
+ * Complete metrics catalog — 44 metrics across 12 categories
  * Covers all signals needed for deal-level and market-level strategy building
  */
 export const METRICS_CATALOG: MetricDefinition[] = [
@@ -203,6 +219,10 @@ export const METRICS_CATALOG: MetricDefinition[] = [
     description: 'Real-time traffic vs historical baseline. Positive = market overperforming expectations. The demand pulse.',
     exampleValue: '+0.35 (35% above baseline)',
     investmentSignal: 'THE key metric. Sustained +20% = demand building before rents catch up. Buy window signal.',
+    leadsMetrics: [
+      { metricId: 'F_RENT_GROWTH', lagMonths: 6, typicalR: 0.58 },
+      { metricId: 'M_VACANCY', lagMonths: 9, typicalR: -0.50 },
+    ],
   },
   {
     id: 'C_DIGITAL_PHYSICAL_GAP',
@@ -263,6 +283,10 @@ export const METRICS_CATALOG: MetricDefinition[] = [
     description: 'Year-over-year change in rental rates. Fundamental income growth for rental properties.',
     exampleValue: '+3.2%',
     investmentSignal: '+2-4% = healthy. +5%+ = hot market. -1%+ = cooling/concern.',
+    laggedBy: [
+      { metricId: 'C_TRAFFIC_GROWTH_INDEX', leadMonths: 6, typicalR: 0.62 },
+      { metricId: 'DEMO_POPULATION_TREND_3Y', leadMonths: 12, typicalR: 0.55 },
+    ],
   },
   {
     id: 'F_RENT_INDEX',
@@ -337,6 +361,9 @@ export const METRICS_CATALOG: MetricDefinition[] = [
     description: 'New supply coming to market. High pipeline = future supply pressure.',
     exampleValue: '2,450 units',
     investmentSignal: 'High pipeline = rents under pressure soon. Low pipeline = supply constrained.',
+    leadsMetrics: [
+      { metricId: 'M_VACANCY', lagMonths: 12, typicalR: 0.48 },
+    ],
   },
   {
     id: 'S_PIPELINE_TO_STOCK',
@@ -397,6 +424,9 @@ export const METRICS_CATALOG: MetricDefinition[] = [
     description: 'Year-over-year change in total employment. Jobs = demand.',
     exampleValue: '+2.1%',
     investmentSignal: '+2-3% = healthy. +4%+ = booming. -1%+ = concern.',
+    leadsMetrics: [
+      { metricId: 'L_JOBS_PER_UNIT', lagMonths: 0, typicalR: 0.85 },
+    ],
   },
   {
     id: 'E_WAGE_GROWTH',
@@ -786,6 +816,153 @@ export const METRICS_CATALOG: MetricDefinition[] = [
     exampleValue: '+2.1%',
     investmentSignal: '+1-2% = healthy. +3%+ = rapid growth.',
   },
+  {
+    id: 'DEMO_POPULATION_DECLINE',
+    name: 'Population Decline Indicator',
+    category: 'demographic',
+    formula: 'Flag = 1 if YoY population growth < 0 for 2+ consecutive years; magnitude = avg decline %',
+    unit: 'boolean + %',
+    granularity: ['county', 'msa'],
+    source: 'Census ACS',
+    updateFrequency: 'annual',
+    higherIsBetter: false,
+    description: 'Flags sustained negative population growth (2+ consecutive decline years). Magnitude shows avg annual decline rate.',
+    exampleValue: 'TRUE (-0.8% avg)',
+    investmentSignal: 'Sustained decline = demand destruction. Exit signal for long-hold strategies. Check if migration-driven or aging.',
+  },
+  {
+    id: 'DEMO_POPULATION_TREND_3Y',
+    name: '3-Year Population CAGR',
+    category: 'demographic',
+    formula: '((Population_Current / Population_3YAgo) ^ (1/3) - 1) × 100',
+    unit: '%',
+    granularity: ['county', 'msa'],
+    source: 'Census ACS',
+    updateFrequency: 'annual',
+    higherIsBetter: true,
+    description: 'Compound annual growth rate of population over trailing 3 years. Smooths single-year Census noise.',
+    exampleValue: '+1.6% CAGR',
+    investmentSignal: '+1-2% = steady growth. +2.5%+ = rapid expansion. <0 = population loss.',
+    leadsMetrics: [
+      { metricId: 'F_RENT_GROWTH', lagMonths: 12, typicalR: 0.55 },
+    ],
+  },
+  {
+    id: 'L_JOBS_PER_UNIT',
+    name: 'Jobs-to-Housing Ratio',
+    category: 'demand',
+    formula: 'Total employed workers / Total apartment units in geography',
+    unit: 'jobs/unit',
+    granularity: ['submarket', 'county', 'msa'],
+    source: 'BLS QCEW + CoStar housing stock',
+    updateFrequency: 'quarterly',
+    higherIsBetter: true,
+    description: 'Ratio of total jobs to total apartment units. Measures housing demand pressure from employment base.',
+    exampleValue: '4.8 jobs/unit',
+    investmentSignal: '>4.0 in tight market = demand exceeds supply. <2.5 = oversupplied relative to jobs.',
+    laggedBy: [
+      { metricId: 'E_EMPLOYMENT_GROWTH', leadMonths: 0, typicalR: 0.85 },
+    ],
+  },
+  {
+    id: 'C_TRAFFIC_GROWTH_INDEX',
+    name: 'Traffic Growth Index (TGI)',
+    category: 'traffic_composite',
+    formula: '(Google Realtime ADT − DOT Historical Avg ADT) / DOT Historical Avg ADT × 100',
+    unit: '%',
+    granularity: ['property', 'submarket'],
+    source: 'Google Directions API (real-time) + State DOT AADT (historical baseline)',
+    updateFrequency: 'daily',
+    higherIsBetter: true,
+    description: 'Percentage increase in real-time traffic above the DOT historical baseline. Measures how much current Google-observed traffic exceeds the long-term average daily traffic count from DOT sensors. Positive = area gaining traffic; negative = area losing traffic vs historical norms.',
+    exampleValue: '+22% above DOT baseline',
+    investmentSignal: '+15%+ sustained = demand building ahead of rents. Leading indicator of rent growth by ~6 months.',
+    leadsMetrics: [
+      { metricId: 'F_RENT_GROWTH', lagMonths: 6, typicalR: 0.62 },
+      { metricId: 'M_VACANCY', lagMonths: 9, typicalR: -0.54 },
+      { metricId: 'M_ABSORPTION', lagMonths: 3, typicalR: 0.47 },
+    ],
+  },
+
+  // ════════════════════════════════════════════════════════════════
+  // SEARCH COMPOSITE (1 metric)
+  // ════════════════════════════════════════════════════════════════
+  {
+    id: 'C_SEARCH_GROWTH_INDEX',
+    name: 'Search Growth Index (SGI)',
+    category: 'traffic_digital',
+    formula: '(Current Google Trends Index − Historical Avg Google Trends Index) / Historical Avg Google Trends Index × 100',
+    unit: '%',
+    granularity: ['submarket', 'zip', 'county', 'msa'],
+    source: 'Google Trends (real-time) vs 5-year rolling average baseline',
+    updateFrequency: 'weekly',
+    higherIsBetter: true,
+    description: 'Percentage increase in current Google search interest above the 5-year historical average for that area. Mirrors TGI logic but for search demand instead of physical traffic. Positive = area trending hotter than normal; negative = search interest declining below historical norms. Uses Google Trends relative index (0-100) compared to the same area\'s long-term average.',
+    exampleValue: '+35% above 5yr search baseline',
+    investmentSignal: '+20%+ sustained = digital demand surge, often precedes physical traffic and rent growth by 6-12 months. Negative = market cooling or saturation.',
+    leadsMetrics: [
+      { metricId: 'C_TRAFFIC_GROWTH_INDEX', lagMonths: 3, typicalR: 0.58 },
+      { metricId: 'F_RENT_GROWTH', lagMonths: 9, typicalR: 0.52 },
+      { metricId: 'M_VACANCY', lagMonths: 12, typicalR: -0.45 },
+    ],
+  },
+
+  // ════════════════════════════════════════════════════════════════
+  // MACRO — ECONOMIC INDICATORS (3 metrics)
+  // ════════════════════════════════════════════════════════════════
+  {
+    id: 'MACRO_OIL_PRICE',
+    name: 'Crude Oil Price (WTI)',
+    category: 'macro',
+    formula: 'WTI Crude Oil spot price ($/barrel)',
+    unit: '$/barrel',
+    granularity: ['msa'],
+    source: 'U.S. Energy Information Administration (EIA) / FRED',
+    updateFrequency: 'daily',
+    higherIsBetter: false,
+    description: 'West Texas Intermediate crude oil spot price. Directly impacts transportation costs, construction material prices, and operating expenses for CRE. Rising oil prices compress NOI through higher utility and maintenance costs. Energy-dependent markets (Houston, Midland, OKC) see outsized employment and rent effects.',
+    exampleValue: '$78.50/barrel',
+    investmentSignal: 'Sustained >$90 = cost pressure on NOI, but energy-market metros benefit from job growth. <$50 = lower opex but energy-metro risk. Watch the delta, not the level.',
+    leadsMetrics: [
+      { metricId: 'F_CAP_RATE', lagMonths: 6, typicalR: 0.35 },
+      { metricId: 'E_EMPLOYMENT_GROWTH', lagMonths: 3, typicalR: 0.42 },
+    ],
+  },
+  {
+    id: 'MACRO_CPI_OFFICIAL',
+    name: 'CPI — Official (BLS)',
+    category: 'macro',
+    formula: 'Bureau of Labor Statistics CPI-U Year-over-Year % Change',
+    unit: '%',
+    granularity: ['msa'],
+    source: 'Bureau of Labor Statistics (BLS) CPI-U, MSA-level where available',
+    updateFrequency: 'monthly',
+    higherIsBetter: false,
+    description: 'Official Consumer Price Index for All Urban Consumers (CPI-U) year-over-year percentage change as reported by the Bureau of Labor Statistics. Uses current BLS methodology including hedonic adjustments, geometric weighting, and owner\'s equivalent rent (OER) substitution for housing costs. The standard inflation measure used by the Fed for policy decisions. Available at national and select MSA levels.',
+    exampleValue: '3.2% YoY',
+    investmentSignal: 'CPI 2-3% = healthy for CRE (rents rise with inflation). >5% = Fed tightening risk, cap rate expansion. <1% = deflation risk, demand weakness. CRE is a natural inflation hedge when lease escalators track CPI.',
+    leadsMetrics: [
+      { metricId: 'F_RENT_GROWTH', lagMonths: 0, typicalR: 0.65 },
+      { metricId: 'F_CAP_RATE', lagMonths: 6, typicalR: 0.48 },
+    ],
+  },
+  {
+    id: 'MACRO_CPI_SHADOW',
+    name: 'CPI — ShadowStats (1980-Based)',
+    category: 'macro',
+    formula: 'BLS CPI-U + ShadowStats adjustment differential (restores pre-1983 methodology)',
+    unit: '%',
+    granularity: ['msa'],
+    source: 'ShadowStats.com methodology (proxy: BLS CPI-U + ~5.5pp pre-1983 adjustment)',
+    updateFrequency: 'monthly',
+    higherIsBetter: false,
+    description: 'Alternative inflation measure using the pre-1983 BLS methodology before hedonic adjustments, geometric weighting, and OER substitution were introduced. Typically runs 4-8 percentage points higher than official CPI. Calculates inflation the way it was measured before the Boskin Commission changes. Useful for understanding true cost-of-living pressure on tenants and real (inflation-adjusted) returns on CRE investments. The gap between Official CPI and ShadowStats CPI reveals how much methodological changes mask actual price increases.',
+    exampleValue: '11.5% YoY (vs 3.2% official)',
+    investmentSignal: 'When ShadowStats CPI is high but official CPI is "controlled," real returns on CRE are lower than they appear. Wide gap (>6pts) = tenants under more cost pressure than official data shows, watch for rent affordability ceilings. Narrow gap = methodologies converging, official numbers more trustworthy.',
+    laggedBy: [
+      { metricId: 'MACRO_CPI_OFFICIAL', leadMonths: 0, typicalR: 0.95 },
+    ],
+  },
 ];
 
 /**
@@ -815,6 +992,39 @@ export function getAvailableGranularities(metricId: string): MetricGranularity[]
 /**
  * Get list of all unique categories with metric counts
  */
+export function applyEmpiricalLeadLag(overrides: Array<{
+  metricId: string;
+  leadsMetrics: Array<{ metricId: string; lagMonths: number; typicalR: number }>;
+  laggedBy: Array<{ metricId: string; leadMonths: number; typicalR: number }>;
+  empiricallyValidated: boolean;
+}>): number {
+  const overrideIds = new Set(overrides.map(o => o.metricId.toLowerCase()));
+  let applied = 0;
+
+  for (const override of overrides) {
+    const metric = METRICS_CATALOG.find(m => {
+      const id = m.id.toLowerCase();
+      return id === override.metricId.toLowerCase() || id === override.metricId;
+    });
+    if (metric) {
+      metric.leadsMetrics = override.leadsMetrics.length > 0 ? override.leadsMetrics : [];
+      metric.laggedBy = override.laggedBy.length > 0 ? override.laggedBy : [];
+      metric.empiricallyValidated = true;
+      applied++;
+    }
+  }
+
+  for (const metric of METRICS_CATALOG) {
+    if (!overrideIds.has(metric.id.toLowerCase())) {
+      metric.leadsMetrics = [];
+      metric.laggedBy = [];
+      metric.empiricallyValidated = false;
+    }
+  }
+
+  return applied;
+}
+
 export function getCategoriesWithCounts(): Array<{
   category: MetricCategory;
   name: string;
@@ -833,6 +1043,7 @@ export function getCategoriesWithCounts(): Array<{
     'ownership',
     'sfr',
     'demographic',
+    'macro',
   ];
 
   const categoryLabels: Record<MetricCategory, string> = {
@@ -848,6 +1059,7 @@ export function getCategoriesWithCounts(): Array<{
     ownership: 'Ownership & Financing',
     sfr: 'Single-Family Residential',
     demographic: 'Demographics',
+    macro: 'Macroeconomic Indicators',
   };
 
   return categories.map((cat) => ({

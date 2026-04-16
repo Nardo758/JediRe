@@ -100,8 +100,8 @@ class RegulatoryRiskScoringService {
       let stratScore = 0;
       for (const cat of categories) {
         const weight = (cat.weight || DEFAULT_WEIGHTS[cat.category] || 0.1) / totalWeight;
-        const stratImpact = cat.strategyImpact[strategy] ?? 1.0;
-        stratScore += cat.score * weight * stratImpact;
+        const stratImpact = (cat.strategyImpact?.[strategy]) ?? 1.0;
+        stratScore += (cat.score || 50) * weight * stratImpact;
       }
       strategyRiskScores[strategy] = parseFloat(stratScore.toFixed(1));
     }

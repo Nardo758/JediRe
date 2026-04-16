@@ -13,6 +13,7 @@ import { ProjectManagementSection } from '../components/deal/sections/ProjectMan
 import { MarketResearchSection } from '../components/deal/sections/MarketResearchSection';
 import { TrafficAnalysisSection } from '../components/deal/sections/TrafficAnalysisSection';
 import LeasingTrafficCard from '../components/analytics/LeasingTrafficCard';
+import { BT } from '../components/deal/bloomberg-ui';
 
 export const DealPage: React.FC = () => {
   const { dealId } = useParams<{ dealId: string }>();
@@ -28,7 +29,7 @@ export const DealPage: React.FC = () => {
   useEffect(() => {
     if (dealId) {
       loadDeal(dealId);
-      
+
       // Check if we should show module suggestions
       const dismissed = localStorage.getItem(`deal-${dealId}-suggestions-dismissed`);
       if (!dismissed) {
@@ -70,10 +71,10 @@ export const DealPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex items-center justify-center h-screen" style={{ background: BT.bg.terminal }}>
         <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-          <p className="text-gray-600">Loading deal...</p>
+          <div className="inline-block animate-spin h-12 w-12 mb-4" style={{ borderRadius: '50%', border: `2px solid ${BT.border.subtle}`, borderBottom: `2px solid ${BT.text.cyan}` }}></div>
+          <p style={{ color: BT.text.secondary }}>Loading deal...</p>
         </div>
       </div>
     );
@@ -81,14 +82,15 @@ export const DealPage: React.FC = () => {
 
   if (error || !deal) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex items-center justify-center h-screen" style={{ background: BT.bg.terminal }}>
         <div className="text-center">
-          <div className="text-red-600 text-5xl mb-4">⚠️</div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">{error || 'Deal not found'}</h2>
-          <p className="text-gray-600 mb-6">The requested deal could not be loaded.</p>
+          <div className="text-5xl mb-4" style={{ color: BT.text.red }}>⚠️</div>
+          <h2 className="text-2xl font-bold mb-2" style={{ color: BT.text.primary }}>{error || 'Deal not found'}</h2>
+          <p className="mb-6" style={{ color: BT.text.secondary }}>The requested deal could not be loaded.</p>
           <button
             onClick={handleBackToPipeline}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            className="px-4 py-2 transition-colors"
+            style={{ background: BT.text.cyan, color: BT.bg.terminal, borderRadius: 2 }}
           >
             ← Back to Pipeline
           </button>
@@ -99,45 +101,50 @@ export const DealPage: React.FC = () => {
 
   const pipelineStage = deal.stage?.toLowerCase().replace(/\s+/g, '_') || 'lead';
 
+  const getTierStyle = () => {
+    if (deal.tier === 'pro') return { background: BT.bg.active, color: BT.text.cyan };
+    if (deal.tier === 'enterprise') return { background: BT.bg.active, color: BT.text.green };
+    return { background: BT.bg.active, color: BT.text.amber };
+  };
+
+  const getStageStyle = () => {
+    if (pipelineStage === 'closed') return { background: BT.bg.active, color: BT.text.green };
+    if (pipelineStage === 'due_diligence') return { background: BT.bg.active, color: BT.text.cyan };
+    return { background: BT.bg.active, color: BT.text.amber };
+  };
+
   return (
-    <div className="h-full flex flex-col bg-gray-50">
+    <div className="h-full flex flex-col" style={{ background: BT.bg.terminal }}>
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
+      <div className="px-6 py-4" style={{ background: BT.bg.panel, borderBottom: `1px solid ${BT.border.subtle}` }}>
         <div className="flex items-center justify-between">
           {/* Left: Back button + Deal info */}
           <div className="flex-1">
             <button
               onClick={handleBackToPipeline}
-              className="text-sm text-gray-600 hover:text-gray-900 mb-2 flex items-center gap-1 transition-colors"
+              className="text-sm mb-2 flex items-center gap-1 transition-colors"
+              style={{ color: BT.text.secondary }}
             >
               ← Back to Pipeline (Grid)
             </button>
             <div className="flex items-start justify-between">
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">{deal.name}</h1>
-                <div className="flex items-center gap-3 mt-1 text-sm text-gray-600">
+                <h1 className="text-2xl font-bold" style={{ color: BT.text.primary }}>{deal.name}</h1>
+                <div className="flex items-center gap-3 mt-1 text-sm" style={{ color: BT.text.secondary }}>
                   <span className="flex items-center gap-1">
                     <span className="font-medium">Type:</span> {deal.projectType || deal.dealType || 'N/A'}
                   </span>
-                  <span className="text-gray-300">|</span>
+                  <span style={{ color: BT.text.muted }}>|</span>
                   <span className="flex items-center gap-1">
                     <span className="font-medium">Tier:</span>
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                      deal.tier === 'pro' ? 'bg-blue-100 text-blue-700'
-                        : deal.tier === 'enterprise' ? 'bg-green-100 text-green-700'
-                        : 'bg-yellow-100 text-yellow-700'
-                    }`}>
+                    <span className="px-2 py-0.5 text-xs font-medium" style={{ borderRadius: 2, ...getTierStyle() }}>
                       {(deal.tier || 'basic').toUpperCase()}
                     </span>
                   </span>
-                  <span className="text-gray-300">|</span>
+                  <span style={{ color: BT.text.muted }}>|</span>
                   <span className="flex items-center gap-1">
                     <span className="font-medium">Stage:</span>
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                      pipelineStage === 'closed' ? 'bg-green-100 text-green-700'
-                        : pipelineStage === 'due_diligence' ? 'bg-blue-100 text-blue-700'
-                        : 'bg-yellow-100 text-yellow-700'
-                    }`}>
+                    <span className="px-2 py-0.5 text-xs font-medium" style={{ borderRadius: 2, ...getStageStyle() }}>
                       {pipelineStage.replace(/_/g, ' ')}
                     </span>
                   </span>
@@ -149,19 +156,22 @@ export const DealPage: React.FC = () => {
           {/* Right: Action buttons */}
           <div className="flex items-center gap-3">
             <button
-              className="px-4 py-2 text-sm font-medium text-purple-700 bg-purple-50 border border-purple-300 rounded-lg hover:bg-purple-100 transition-colors"
+              className="px-4 py-2 text-sm font-medium transition-colors"
+              style={{ color: BT.text.purple, background: BT.bg.hover, border: `1px solid ${BT.border.subtle}`, borderRadius: 2 }}
               onClick={() => navigate(`/deals/${dealId}/enhanced`)}
             >
               ✨ Enhanced View
             </button>
             <button
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              className="px-4 py-2 text-sm font-medium transition-colors"
+              style={{ color: BT.text.primary, background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 2 }}
               onClick={() => console.log('Export deal')}
             >
               📤 Export
             </button>
             <button
-              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+              className="px-4 py-2 text-sm font-medium transition-colors"
+              style={{ color: BT.bg.terminal, background: BT.text.cyan, borderRadius: 2 }}
               onClick={() => console.log('Edit deal')}
             >
               ✏️ Edit Deal
@@ -178,40 +188,40 @@ export const DealPage: React.FC = () => {
             <div className="space-y-6">
               {/* Quick Stats Grid */}
               <div className="grid grid-cols-3 gap-4">
-                <div className="bg-blue-50 rounded-lg p-4">
-                  <div className="text-sm font-medium text-blue-600 mb-1">Properties</div>
-                  <div className="text-2xl font-bold text-blue-900">{deal.propertyCount || 0}</div>
+                <div className="p-4" style={{ background: BT.bg.panelAlt, borderRadius: 0 }}>
+                  <div className="text-sm font-medium mb-1" style={{ color: BT.text.cyan }}>Properties</div>
+                  <div className="text-2xl font-bold" style={{ color: BT.text.primary }}>{deal.propertyCount || 0}</div>
                 </div>
-                <div className="bg-green-50 rounded-lg p-4">
-                  <div className="text-sm font-medium text-green-600 mb-1">Est. Budget</div>
-                  <div className="text-2xl font-bold text-green-900">
+                <div className="p-4" style={{ background: BT.bg.panelAlt, borderRadius: 0 }}>
+                  <div className="text-sm font-medium mb-1" style={{ color: BT.text.green }}>Est. Budget</div>
+                  <div className="text-2xl font-bold" style={{ color: BT.text.primary }}>
                     ${(deal.budget || deal.dealValue || 0).toLocaleString()}
                   </div>
                 </div>
-                <div className="bg-purple-50 rounded-lg p-4">
-                  <div className="text-sm font-medium text-purple-600 mb-1">Acres</div>
-                  <div className="text-2xl font-bold text-purple-900">{deal.acres || '-'}</div>
+                <div className="p-4" style={{ background: BT.bg.panelAlt, borderRadius: 0 }}>
+                  <div className="text-sm font-medium mb-1" style={{ color: BT.text.purple }}>Acres</div>
+                  <div className="text-2xl font-bold" style={{ color: BT.text.primary }}>{deal.acres || '-'}</div>
                 </div>
               </div>
 
               {/* Map placeholder */}
-              <div className="bg-gray-100 rounded-lg h-64 flex items-center justify-center">
+              <div className="h-64 flex items-center justify-center" style={{ background: BT.bg.panelAlt, borderRadius: 0 }}>
                 <div className="text-center">
                   <div className="text-4xl mb-2">🗺️</div>
-                  <p className="text-gray-600 font-medium">Deal Map View</p>
-                  <p className="text-sm text-gray-500">Shows deal boundary and properties</p>
+                  <p className="font-medium" style={{ color: BT.text.secondary }}>Deal Map View</p>
+                  <p className="text-sm" style={{ color: BT.text.muted }}>Shows deal boundary and properties</p>
                 </div>
               </div>
 
               {/* Quick Actions */}
               <div className="flex gap-3">
-                <button className="px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors">
+                <button className="px-4 py-2 text-sm font-medium transition-colors" style={{ color: BT.text.cyan, background: BT.bg.hover, borderRadius: 2 }}>
                   🔍 Find Properties
                 </button>
-                <button className="px-4 py-2 text-sm font-medium text-green-600 bg-green-50 rounded-lg hover:bg-green-100 transition-colors">
+                <button className="px-4 py-2 text-sm font-medium transition-colors" style={{ color: BT.text.green, background: BT.bg.hover, borderRadius: 2 }}>
                   🎯 Run Analysis
                 </button>
-                <button className="px-4 py-2 text-sm font-medium text-purple-600 bg-purple-50 rounded-lg hover:bg-purple-100 transition-colors">
+                <button className="px-4 py-2 text-sm font-medium transition-colors" style={{ color: BT.text.purple, background: BT.bg.hover, borderRadius: 2 }}>
                   📊 Generate Report
                 </button>
               </div>
@@ -247,30 +257,30 @@ export const DealPage: React.FC = () => {
             <div className="space-y-8">
               {/* Market Research */}
               <div>
-                <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                <h3 className="text-lg font-bold mb-4 flex items-center gap-2" style={{ color: BT.text.primary }}>
                   <span>📊</span> Market Research
                 </h3>
                 <MarketResearchSection deal={deal} />
               </div>
 
               {/* Traffic Analysis */}
-              <div className="pt-6 border-t border-gray-200">
-                <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+              <div className="pt-6" style={{ borderTop: `1px solid ${BT.border.subtle}` }}>
+                <h3 className="text-lg font-bold mb-4 flex items-center gap-2" style={{ color: BT.text.primary }}>
                   <span>🚦</span> Traffic Analysis
                 </h3>
-                <TrafficAnalysisSection 
-                  deal={deal} 
-                  propertyId={deal.propertyId || deal.properties?.[0]?.id} 
+                <TrafficAnalysisSection
+                  deal={deal}
+                  propertyId={deal.propertyId || deal.properties?.[0]?.id}
                 />
               </div>
 
               {/* Leasing Traffic (Multifamily Only) */}
               {deal.projectType?.toLowerCase() === 'multifamily' && deal.propertyId && (
-                <div className="pt-6 border-t border-gray-200">
-                  <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                <div className="pt-6" style={{ borderTop: `1px solid ${BT.border.subtle}` }}>
+                  <h3 className="text-lg font-bold mb-4 flex items-center gap-2" style={{ color: BT.text.primary }}>
                     <span>🏢</span> Leasing Traffic
                   </h3>
-                  <LeasingTrafficCard 
+                  <LeasingTrafficCard
                     propertyId={deal.propertyId || deal.properties?.[0]?.id}
                     showForecast={true}
                   />

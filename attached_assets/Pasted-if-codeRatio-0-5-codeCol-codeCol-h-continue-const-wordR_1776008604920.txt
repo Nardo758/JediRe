@@ -1,0 +1,345 @@
+if (codeRatio > 0.5 && !codeCol) {
+      codeCol = h;
+      continue;
+    }
+
+    const wordRatio = stringSample.filter(s => /[a-zA-Z]{3,}/.test(s)).length / stringSample.length;
+    if (wordRatio > 0.5 && !descCol) {
+      descCol = h;
+    }
+  }
+
+  return { codeCol, descCol };
+}
+
+function detectMonthColumns(headers: string[]): Array<{ header: string; month: string }> {
+  const results: Array<{ header: string; month: string }> = [];
+  for (const header of headers) {
+    const lower = header.toLowerCase().trim();
+    // Skip "Total" / "YTD" / "Budget" columns
+    if (/^(total|ytd|budget|prior|variance|annual|year)\b/i.test(lower)) continue;
+
+    const dateMatch = lower.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
+    if (dateMatch) {
+      const yr = dateMatch[3].length === 2 ? `20${dateMatch[3]}` : dateMatch[3];
+      const monthNum = dateMatch[1].padStart(2, '0');
+      results.push({ header, month: `${yr}-${monthNum}-01` });
+      continue;
+    }
+
+    for (let i = 0; i < MONTH_NAMES.length; i++) {
+      const monthAbbr = MONTH_NAMES[i];
+      const re = new RegExp(`\\b${monthAbbr}[a-z]*[\\s\\-/_]+(\\d{2,4})\\b`, 'i');
+      const match = lower.match(re);
+      if (match) {
+        const year = match[1].length === 2 ? `20${match[1]}` : match[1];
+        const monthNum = String(i + 1).padStart(2, '0');
+        results.push({ header, month: `${year}-${monthNum}-01` });
+        break;
+      }
+    }
+  }
+  return results;
+}
+
+/**
+ * Categorize a single description string. Returns (field, isSubtotal, isHeader).
+ */
+function categorize(desc: string, glCode: string | null): {
+  field: string | null;
+  isSubtotal: boolean;
+  isHeader: boolean;
+} {
+  if (!desc || !desc.trim()) return { field: null, isSubtotal: false, isHeader: false };
+
+  const cleaned = desc.trim();
+
+  // GL-suffix subtotal detection (Yardi convention: -098, -099, -199, -990, -999 are rollups)
+  if (glCode && /-(0?9[89]|199|9[89]9)\b/.test(glCode)) {
+    return { field: null, isSubtotal: true, isHeader: false };
+  }
+
+  for (const rule of RULES) {
+    if (rule.pattern.test(cleaned)) {
+      if (rule.isHeader) return { field: null, isSubtotal: false, isHeader: true };
+      if (rule.isSubtotal) return { field: rule.field === 'noi' ? 'noi' : null, isSubtotal: true, isHeader: false };
+      return { field: rule.field as string, isSubtotal: false, isHeader: false };
+    }
+  }
+
+  return { field: null, isSubtotal: false, isHeader: false };
+}
+
+/**
+ * Add a value into a monthly bucket, summing if a value already exists.
+ * (Multiple GL lines can map to the same field — e.g., Concessions = OneTime + Renewal.)
+ */
+function addToMonth(month: ExtendedT12Month, field: string, value: number): void {
+  if (!(field in month)) return;
+  const current = (month as any)[field];
+  (month as any)[field] = (current ?? 0) + value;
+}
+
+export function parseT12(buffer: Buffer, filename: string): ExtractionResult & { chartFormat?: ChartFormat } {
+  const warnings: string[] = [];
+
+  try {
+    const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+
+    // Detect header row: prefer rows with multiple month abbreviations OR explicit period labels
+    const T12_HEADER_PATTERNS = [
+      /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i,
+      /\d{1,2}[/-]\d{1,2}[/-]\d{2,4}/,
+      /\b(total|period)\b/i,
+    ];
+    const headerRow = findHeaderRow(sheet, T12_HEADER_PATTERNS, 25, 2);
+    const { headers, rows } = parseSheetFromRow(sheet, headerRow);
+
+    if (rows.length === 0) {
+      return { documentType: 'T12', success: false, error: 'No data rows found below detected header', data: null, summary: {}, warnings };
+    }
+
+    const chartFormat = detectChartFormat(headers, rows);
+    const { codeCol, descCol } = identifyCodeAndDescColumns(headers, rows);
+
+    if (!descCol) {
+      return {
+        documentType: 'T12',
+        success: false,
+        error: 'Could not identify description column (no column had >50% text values)',
+        data: null,
+        summary: {},
+        warnings,
+        chartFormat,
+      };
+    }
+
+    const monthCols = detectMonthColumns(headers);
+    if (monthCols.length === 0) {
+      return {
+        documentType: 'T12',
+        success: false,
+        error: 'No monthly period columns detected',
+        data: null,
+        summary: {},
+        warnings,
+        chartFormat,
+      };
+    }
+
+    // Build empty months
+    const months: Map<string, ExtendedT12Month> = new Map();
+    for (const mc of monthCols) {
+      months.set(mc.month, createEmptyMonth(mc.month));
+    }
+
+    let foundInsurance = false;
+    let foundHoaDues = false;
+    let categorizedRows = 0;
+    let skippedSubtotalRows = 0;
+    let skippedHeaderRows = 0;
+
+    for (const row of rows) {
+      const desc = String(row[descCol] ?? '').trim();
+      const glCode = codeCol ? String(row[codeCol] ?? '').trim() : null;
+
+      // Empty-row guard
+      if (!desc && !glCode) continue;
+
+      // ROW-CONTENT-BASED HEADER DETECTION (more reliable than text-based)
+      // Yardi convention: section header rows have a description but ALL monthly
+      // columns are null. Line-item rows always have at least one numeric value
+      // across the period. This correctly distinguishes "  Management Fees" (header)
+      // from "    Management Fees" (line item with same text).
+      const hasAnyMonthValue = monthCols.some(mc => parseNum(row[mc.header]) != null);
+      const totalCellRaw = row['Total'];
+      const hasTotalValue = totalCellRaw != null && parseNum(totalCellRaw) != null;
+
+      if (!hasAnyMonthValue && !hasTotalValue) {
+        skippedHeaderRows++;
+        continue;
+      }
+
+      const { field, isSubtotal, isHeader } = categorize(desc, glCode);
+
+      if (isHeader) {
+        skippedHeaderRows++;
+        continue;
+      }
+
+      if (isSubtotal) {
+        skippedSubtotalRows++;
+        // Only NOI subtotal is captured — others are sums of children we already have
+        if (field === 'noi') {
+          for (const mc of monthCols) {
+            const v = parseNum(row[mc.header]);
+            const m = months.get(mc.month)!;
+            if (v != null) m.noi = v;
+          }
+        }
+        continue;
+      }
+
+      if (!field) continue;
+
+      if (field === 'insurance') foundInsurance = true;
+      if (field === 'hoaDues') foundHoaDues = true;
+
+      categorizedRows++;
+      for (const mc of monthCols) {
+        const v = parseNum(row[mc.header]);
+        if (v == null) continue;
+        addToMonth(months.get(mc.month)!, field, v);
+      }
+    }
+
+    // Roll up extended fields into the canonical T12Month shape
+    const monthArr = Array.from(months.values()).sort((a, b) => a.reportMonth.localeCompare(b.reportMonth));
+
+    for (const m of monthArr) {
+      // Concessions = oneTime + renewal (if either exists, override the bucket)
+      if (m.concessionsOneTime != null || m.concessionsRenewal != null) {
+        m.concessions = (m.concessionsOneTime ?? 0) + (m.concessionsRenewal ?? 0);
+      }
+
+      // Bad debt net = badDebt + recovery (recovery is positive; bad debt is negative)
+      if (m.badDebtRecovery != null) {
+        m.badDebt = (m.badDebt ?? 0) + m.badDebtRecovery;
+      }
+
+      // Net Rental Income — derive if not directly set
+      if (m.netRentalIncome == null) {
+        const gpr = m.grossPotentialRent ?? 0;
+        const ltl = m.lossToLease ?? 0;          // negative
+        const vac = m.vacancyLoss ?? 0;          // negative
+        const conc = m.concessions ?? 0;         // negative
+        const bd = m.badDebt ?? 0;               // negative
+        const nru = m.nonRevenueUnits ?? 0;      // negative
+        if (gpr > 0) m.netRentalIncome = gpr + ltl + vac + conc + bd + nru;
+      }
+
+      // EGI = NRI + Other Income components
+      if (m.effectiveGrossIncome == null) {
+        const nri = m.netRentalIncome ?? 0;
+        const oi = (m.otherIncome ?? 0) + (m.utilityReimbursement ?? 0) +
+                   (m.lateFees ?? 0) + (m.miscIncome ?? 0);
+        if (nri > 0 || oi > 0) m.effectiveGrossIncome = nri + oi;
+      }
+
+      // Total OpEx — sum all categorized expense buckets
+      if (m.totalOpex == null) {
+        const opex = (m.payroll ?? 0) + (m.repairsMaintenance ?? 0) + (m.turnover ?? 0) +
+                     (m.amenities ?? 0) + (m.contractServices ?? 0) + (m.marketing ?? 0) +
+                     (m.adminGeneral ?? 0) + (m.hoaDues ?? 0) + (m.utilities ?? 0) +
+                     (m.managementFee ?? 0) + (m.propertyTax ?? 0) + (m.insurance ?? 0);
+        if (opex > 0) m.totalOpex = opex;
+      }
+
+      // Map turnover → turnoverCosts (legacy schema field)
+      if (m.turnover != null && m.turnoverCosts == null) m.turnoverCosts = m.turnover;
+
+      // NOI fallback
+      if (m.noi == null) {
+        const egi = m.effectiveGrossIncome ?? 0;
+        const opex = m.totalOpex ?? 0;
+        if (egi > 0) m.noi = egi - opex;
+      }
+    }
+
+    // Summary aggregates (annual totals)
+    const t12GPR = monthArr.reduce((s, m) => s + (m.grossPotentialRent ?? 0), 0);
+    const t12NRI = monthArr.reduce((s, m) => s + (m.netRentalIncome ?? 0), 0);
+    const t12Revenue = monthArr.reduce((s, m) => s + (m.effectiveGrossIncome ?? 0), 0);
+    const t12OpEx = monthArr.reduce((s, m) => s + (m.totalOpex ?? 0), 0);
+    const t12NOI = monthArr.reduce((s, m) => s + (m.noi ?? 0), 0);
+    const t12LTL = monthArr.reduce((s, m) => s + (m.lossToLease ?? 0), 0);
+    const t12Vacancy = monthArr.reduce((s, m) => s + (m.vacancyLoss ?? 0), 0);
+    const t12Concessions = monthArr.reduce((s, m) => s + (m.concessions ?? 0), 0);
+    const t12BadDebt = monthArr.reduce((s, m) => s + (m.badDebt ?? 0), 0);
+    const t12Tax = monthArr.reduce((s, m) => s + (m.propertyTax ?? 0), 0);
+    const t12Mgmt = monthArr.reduce((s, m) => s + (m.managementFee ?? 0), 0);
+    const t12HoaDues = monthArr.reduce((s, m) => s + (m.hoaDues ?? 0), 0);
+
+    const expenseRatio = t12Revenue > 0 ? t12OpEx / t12Revenue : 0;
+    const noiMargin = t12Revenue > 0 ? t12NOI / t12Revenue : 0;
+    const mgmtFeePct = t12Revenue > 0 ? t12Mgmt / t12Revenue : 0;
+
+    // Quality warnings
+    if (!foundInsurance) {
+      warnings.push('No property insurance line found in T12 — proforma should use platform baseline');
+    }
+    if (foundHoaDues && t12HoaDues > 0) {
+      warnings.push(`HOA dues of $${Math.round(t12HoaDues).toLocaleString()} found — confirm property is part of master association`);
+    }
+    if (monthArr.length < 12) {
+      warnings.push(`Only ${monthArr.length} months captured (expected 12)`);
+    }
+    if (categorizedRows < 10) {
+      warnings.push(`Only ${categorizedRows} GL lines categorized — possible chart-of-accounts mismatch`);
+    }
+
+    // Hard-fail check
+    if (t12Revenue === 0 && t12OpEx === 0 && t12NOI === 0) {
+      return {
+        documentType: 'T12',
+        success: false,
+        error: `Categorization yielded zero financials (${categorizedRows} rows categorized, ${skippedSubtotalRows} subtotals skipped, format=${chartFormat})`,
+        data: null,
+        summary: {},
+        warnings,
+        chartFormat,
+      };
+    }
+
+    const data: T12Data = {
+      months: monthArr as T12Month[],
+      summary: {
+        t12Revenue,
+        t12OpEx,
+        t12NOI,
+        expenseRatio,
+        impliedOccupancy: null,
+        totalUnits: null,
+        periodStart: monthArr[0]?.reportMonth || '',
+        periodEnd: monthArr[monthArr.length - 1]?.reportMonth || '',
+      },
+    };
+
+    return {
+      documentType: 'T12',
+      success: true,
+      data,
+      summary: {
+        ...data.summary,
+        // Extended summary fields exposed for capsule mapping
+        chartFormat,
+        gpr: t12GPR,
+        netRentalIncome: t12NRI,
+        lossToLease: t12LTL,
+        vacancyLoss: t12Vacancy,
+        concessions: t12Concessions,
+        badDebt: t12BadDebt,
+        propertyTax: t12Tax,
+        managementFee: t12Mgmt,
+        hoaDues: t12HoaDues,
+        noiMargin,
+        mgmtFeePctOfEgi: mgmtFeePct,
+        insuranceMissing: !foundInsurance,
+        categorizedRows,
+        skippedSubtotalRows,
+      } as any,
+      warnings,
+      chartFormat,
+    };
+  } catch (err) {
+    return {
+      documentType: 'T12',
+      success: false,
+      error: err instanceof Error ? err.message : 'Unknown parse error',
+      data: null,
+      summary: {},
+      warnings,
+    };
+  }
+}

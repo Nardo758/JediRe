@@ -1,0 +1,747 @@
+# Asset-Class Math Engines — How the Comp Math Adapts
+
+**Module:** M08 Evidence Layer — Per-asset-class math engine specifications
+**Supersedes/extends:** Value-Add Math Engine Spec (MF only)
+**Status:** Implementation-grade spec
+**Scope:** Defines the math engine for every asset class × deal-type combination, so the Evidence Block B math adapts correctly when the Detection Engine classifies the deal.
+
+---
+
+## 1. The Framework Stays Constant; The Math Changes
+
+The four-step framework from the Value-Add engine applies universally:
+
+1. **Stratify** the comp set into tiers with distinct strategic meaning
+2. **Compute gaps** between subject and each tier — each gap is a specific opportunity
+3. **Dollarize** gaps across the portfolio / property
+4. **Phase** the capture across the hold period
+
+What changes per asset class:
+- **What's in the comp set** (units vs SF vs doors vs lease vs room)
+- **Tier definitions** (what separates A from B from C)
+- **Gap types** (loss-to-lease has no meaning for retail NNN)
+- **Dollarization unit** ($/unit/mo vs $/SF/yr vs $/room/yr vs $/day)
+- **Phasing mechanics** (turnover rate vs lease rollover schedule vs PIP timing)
+- **ProForma mapping** (which Assumption rows get populated)
+
+Each engine below defines these five dimensions for its asset class.
+
+---
+
+## 2. Multifamily (Reference Engine — from Value-Add Spec)
+
+Already specced in `Value_Add_Math_Engine_Spec.md`. Recap for context:
+
+- **Comp unit:** Per unit type (1BR / 2BR / 3BR), rent/unit/mo
+- **Tiers:** A = unrenovated ±5yr vintage same class; B = renovated ±5yr; C = top-quartile ceiling
+- **Gaps:** LTL (Tier A − subject), VC (Tier B − Tier A), CG (Tier C − Tier B)
+- **Dollarization:** Σ across unit types × units × 12
+- **Phasing:** Turnover rate drives LTL capture; reno pace drives VC capture; concession burnoff curve
+- **ProForma mapping:** Assumptions Section 1 (rent growth blended) + Section 4 (capex schedule)
+
+Applies to: MF Core (LTL only), Core-Plus (LTL + small VC), Value-Add (full engine), Deep Value-Add (Tier B split into B1/B2 light vs heavy), Lease-Up (stabilization curve instead of capture schedule), Distressed (occupancy recovery + LTL).
+
+---
+
+## 3. Single-Family Rental (SFR) — Two Engines
+
+SFR splits into two fundamentally different math engines because the business differs.
+
+### 3.1 SFR Fix-and-Flip Engine
+
+**Comp unit:** Per whole house, sold price. MLS closed comps, not rental comps.
+
+**Tiers:**
+- **Tier A — Unrenovated closed comps:** Similar condition houses closed in last 90-180 days, ±500sf, ±5yr vintage, same school zone. Defines "as-is" value.
+- **Tier B — Renovated closed comps:** Recently renovated houses same criteria. Defines **ARV (After-Repair Value)**.
+- **Tier C — Top-of-market ceiling:** Top quartile of renovated comps; stretch case for a high-end finish-out.
+
+**Gaps:**
+- **Acquisition gap:** `Contract_price - Tier_A_median` (negative = buying below market, positive = paying premium)
+- **Renovation lift:** `Tier_B_median - Tier_A_median` = the $ lift renovation creates
+- **ARV confidence band:** Tier B standard deviation, not a gap — confidence interval on the exit price
+
+**Dollarization:** Margin = `ARV − (Acquisition + Rehab + Holding_costs + Selling_costs)`
+
+```
+Example — Subject house Tampa suburbs:
+  Acquisition:     $285,000
+  Tier A median:   $295,000 (buying $10K below market — good)
+  Tier B median:   $425,000 (ARV target)
+  Tier C ceiling:  $455,000 (upside if high-end finishes)
+
+  Rehab budget:    $52,000
+  Holding (6mo):   $18,000
+  Selling costs:   $21,000  (6% broker + closing)
+  Total invested:  $376,000
+
+  Base margin:     $425K − $376K = $49,000 (13% on invested)
+  Upside margin:   $455K − $376K = $79,000 (21%)
+```
+
+**Phasing:** Not multi-year. Timeline is months, not years:
+- Acquisition: M0
+- Rehab: M1-4 (capex deployed per scope)
+- List: M4-5
+- Close resale: M5-6
+- Total hold: 6-9 months typical
+
+No year-over-year capture curve — single transaction.
+
+**ProForma mapping:** SFR uses a dedicated SFR Flip pro forma template, not the standard MF 10-year projection. Single-deal P&L:
+- Revenue: ARV
+- Costs: Acquisition + Rehab (itemized) + Holding + Selling
+- Margin: $ and %
+- Cash-on-cash: margin / equity deployed
+- Annualized IRR: based on actual hold months
+
+**Key platform inputs specific to SFR Flip:**
+- **School rating** (the #1 driver of SFR resale — a 4-point school vs 8-point school in the same ZIP is a 15-25% rent/value delta)
+- **MLS Days on Market** for comp selection and projected resale velocity
+- **HOA restrictions** (some HOAs limit resale, limit rentals, affect ARV)
+- **Flood zone + insurance cost** (FL-specific drag)
+
+**Margin flags:**
+- < 15% margin: Flag "thin — confirm rehab scope accuracy, submarket velocity"
+- < 10% margin: Flag "below flip-gate threshold, consider BRRRR instead"
+- > 25% margin: Flag "verify comp selection — outlier margins often mean bad comp set"
+
+### 3.2 SFR Hold / BRRRR Engine
+
+**Comp unit:** Per whole house, **rental rent/mo** (not sold price). RentCast or platform rental comps.
+
+**Tiers:**
+- **Tier A — As-is rental comps:** Houses in current subject condition, rented last 90d, same ZIP, ±300sf
+- **Tier B — Post-rehab rental comps:** Renovated houses rented same criteria. Post-rehab rent target.
+- **Tier C — Ceiling:** Top-quartile rented houses, same neighborhood
+
+**Gaps:**
+- **Rent gap (LTL analog):** `Tier_A_median - current_rent_or_tenant_pay` if already tenanted
+- **Rehab rent lift (VC analog):** `Tier_B_median - Tier_A_median`
+- **Ceiling gap:** `Tier_C - Tier_B_median`
+
+**Dollarization:** Monthly rent × 12, then NOI math:
+```
+Gross rent:              $2,400/mo × 12 = $28,800
+Vacancy (8%):           ($2,304)
+Net rent:                $26,496
+Property tax:           ($4,200)
+Insurance:              ($2,100)  (FL windstorm is a killer)
+Maintenance (5% gross): ($1,440)
+Management (8%):        ($2,120)
+HOA:                    ($1,800)
+NOI:                     $14,836
+DSCR at 75% LTV loan:    1.34x
+```
+
+**BRRRR-specific math — the refi-out test:**
+```
+ARV after rehab:             $425,000
+75% cash-out refi max:       $318,750
+Acquisition + rehab + closing: $349,000
+→ Capital stuck in deal:      $30,250 (can't pull all equity out)
+
+Or: if refi allows 80%:
+80% of $425K = $340,000
+→ Capital stuck:              $9,000 (near-perfect BRRRR)
+→ Near-infinite CoC return
+```
+
+BRRRR succeeds when refi proceeds ≥ total-in. The math explicitly tests this. If it fails, Advisor flags "BRRRR thesis fails — refi leaves $X stuck. Consider Hold-without-refi or Fix-and-Flip."
+
+**Phasing:**
+- Acquisition M0
+- Rehab M1-4
+- Tenant place M4-5
+- Seasoning (6mo typically required for refi) M5-11
+- Refi M11-12
+- Hold indefinitely after
+
+**ProForma mapping:** SFR Hold uses single-house projection (not portfolio 10yr). Year 1 is the operational ramp; Years 2+ flatline with rent growth + expense inflation.
+
+**Key platform inputs specific to SFR Hold:**
+- **Lender DSCR minimums** by product (conventional vs DSCR loan vs portfolio — each has different DSCR floors)
+- **FL insurance carrier availability** (Citizens vs private, wind-mitigation credits)
+- **Cash-out refi seasoning requirements** by lender
+
+---
+
+## 4. Retail — Two Engines
+
+Retail splits by anchor vs inline economics.
+
+### 4.1 Retail Value-Add Reposition Engine (Anchored or Unanchored Center)
+
+**Comp unit:** Per SF, rent/SF/yr NNN (not rent/unit — retail deals in SF)
+
+**Tiers:**
+- **Tier A — Same-class center rent:** Centers in trade area, same anchor class (grocery / power / strip), same vintage ±10yr, current in-place rents/SF
+- **Tier B — Stabilized asking rents:** Same centers, but *asking* rents for vacant space — what the market is charging new tenants in today's dollars
+- **Tier C — Top-center rents:** Top-quartile center in trade area; stretch rent for premium reposition
+
+**Gaps:**
+- **In-place rent gap:** `Tier_A_median_PSF - subject_in_place_PSF` → LTL analog, captures at lease rollover
+- **Mark-to-market gap:** `Tier_B_median_PSF - subject_in_place_PSF` → full rent-to-market on rollover
+- **Vacancy gap:** `subject_vacancy_pct - submarket_vacancy_pct` × subject_SF × Tier_B_rent → stabilization upside
+
+**Dollarization:** Two components, added:
+
+```
+Component 1 — Rent-to-market on rollover:
+  Rolling_SF_year_N = Σ leases expiring in Year N
+  Rent_lift_year_N  = Rolling_SF × (Tier_B − current_rent) × years_remaining_weight
+
+Component 2 — Vacancy fill:
+  Current_vacant_SF = 22,400 SF (22% of 102,000 GLA)
+  Stabilized_vacant_SF = 7,140 SF (7%)
+  Recoverable_SF = 15,260 SF
+  Stabilized_rent = $22/SF × 15,260 = $335,720 annual rent lift
+```
+
+**Example — 102K SF center, 22% vacancy, $14.50/SF in-place, submarket $22/SF asking:**
+
+```
+Component 1 — rent-to-market:
+  Leases rolling Y1-5: 45K SF (44% of occupied)
+  Avg rent lift: $22 - $14.50 = $7.50/SF
+  Year 5 full-rollover rent lift: 45K × $7.50 = $337,500/yr
+
+Component 2 — vacancy fill:
+  15,260 SF × $22 = $335,720/yr at stabilization
+
+Stabilized NOI uplift: ~$673K (before NNN recoveries)
+```
+
+**Phasing:**
+- Year 1-2: Lease-up + light capex (exterior, signage)
+- Year 2-3: Rent-to-market as leases roll (per actual lease expiration schedule)
+- Year 3: Stabilization
+- Year 4+: Market rent growth
+
+The engine consumes the actual rent roll's expiration schedule — per-lease, not averaged. Retail rent roll has specific expiration dates, not a turnover rate.
+
+**ProForma mapping:**
+- Assumptions Section 1: rent growth + rent-to-market capture per year
+- Assumptions Section 1: vacancy schedule with lease-up curve
+- Assumptions Section 3: TI/LC reserves (tenant improvement + leasing commission, retail-critical)
+- Assumptions Section 4: capex for exterior / signage / parking lot repaving (retail-typical reposition scope)
+
+**Key platform inputs specific to Retail:**
+- **Co-tenancy clauses** — if anchor leaves, inline rents drop or tenants can terminate
+- **Anchor health** — Publix stable, dollar-store expanding, big-box retreating
+- **Sales/SF if reportable** — health of existing tenants signals rollover risk
+- **Trade-area HH income trajectory** — drives which tenant categories will lease-up well
+- **Parking ratio** — many retail centers are parking-constrained, affects tenant mix options
+
+### 4.2 Retail NNN Core Engine (Single-Tenant Credit Lease)
+
+Different math entirely — no rent-to-market, no vacancy fill. NNN is a bond-like purchase.
+
+**Tiers:** Not comp-based. Market-based:
+- **Tier A — Credit cap rate:** Median cap rate for same-credit-class tenants (e.g., investment-grade pharmacy, unrated QSR) in same geography
+- **Tier B — Subject cap rate:** Cap rate implied by going-in NOI / contract price
+- **Tier C — Rent/SF vs submarket:** Whether the in-place rent is at, above, or below market (matters at lease rollover, if any)
+
+**Gaps:**
+- **Cap rate delta:** `Subject_cap − Tier_A_cap` → positive = buying at a premium yield (good); negative = overpaying
+- **Rent vs market at rollover:** Used only if lease has < 10yr remaining
+- **Credit quality spread:** Different credit tiers command different caps; engine normalizes to compare apples to apples
+
+**Dollarization:** Simple — NNN cash flow stream, no value-add.
+
+```
+Example — Walgreens NNN, 12yr remaining, BBB credit:
+  Price: $4.8M
+  NOI: $295,000
+  Subject cap: 6.15%
+  Submarket BBB-pharmacy median cap: 5.85%
+  → Buying 30bps above market = $143K better value than median
+```
+
+**No phasing** — the lease pays as scheduled with contractual escalations. ProForma is NOI + escalators + residual.
+
+**ProForma mapping:**
+- Assumptions Section 1: just the contractual escalator schedule (flat CPI, fixed %, or step increases)
+- Assumptions Section 6: exit — residual depends on remaining lease term + creditworthiness at exit year
+
+**Key platform inputs:**
+- **Tenant credit rating** (S&P / Moody's)
+- **Lease structure** (absolute NNN vs double-net vs ground lease)
+- **Escalator structure** (flat / CPI / fixed % / step)
+- **Remaining lease term** (directly drives cap rate — CMBS prices by lease term)
+- **Option periods** (and tenant's likelihood of exercising)
+
+---
+
+## 5. Office — Three Engines
+
+Office has the most fragmented deal-type space right now.
+
+### 5.1 Office Value-Add (Tenant Rollup / Reposition)
+
+**Comp unit:** Per SF, rent/SF/yr full-service or NNN (depending on market convention)
+
+**Tiers:**
+- **Tier A — Same-class office rent (in-place):** Class B office, same CBD or suburban submarket, current in-place rents
+- **Tier B — Post-renovation office rent:** Recently repositioned Class B → B+/A- in same submarket
+- **Tier C — Class A rent ceiling:** Top-tier office in submarket (defines reposition ceiling)
+
+**Gaps:** Similar to retail — rent-to-market on rollover + vacancy fill + class-tier lift
+
+**Dollarization:** Rent roll lease-by-lease analysis. Office has longer lease terms (5-10yr typical) so rent-to-market captures slower. Vacancy fill often the bigger lever in post-COVID office.
+
+**Phasing:**
+- Year 1: Capex (common areas, HVAC, lobby, tenant amenities)
+- Years 2-5: Lease-up on rolls + vacancy fill
+- Year 3-4: Stabilization
+
+**ProForma mapping:** Standard office projection with TI/LC reserves **much higher than retail or MF** — $75-150/SF TI is common for office repositioning.
+
+**Key platform inputs:**
+- **Tenant rollover schedule** from rent roll
+- **Weighted average lease term (WALT)** remaining
+- **Concessions in submarket** (free rent months, TI package)
+- **Amenity requirements** — post-COVID, office tenants want food, fitness, outdoor space; absent these = can't lease regardless of rent
+
+### 5.2 Office Adaptive Reuse (Conversion to Residential)
+
+The math isn't rent-vs-rent — it's cap-rate arbitrage between property types.
+
+**Tiers:** Not comp-tiers — use-tiers:
+- **Tier A — Current office cap:** Cap rate implied by in-place NOI / going-in price (will be high on distressed office — 8-12%)
+- **Tier B — Residential cap post-conversion:** MF submarket cap rate for similar class (5-6%)
+- **Tier C — Best-case residential cap:** Class A MF cap rate if conversion produces premium product
+
+**Gaps:**
+- **Cap rate arbitrage:** `Tier_A − Tier_B` = the compression opportunity (300-600bps typical for successful conversions)
+- **Post-conversion rent vs submarket residential:** Must meet or beat MF comp rents for thesis to hold
+
+**Dollarization:** Reuse yield math, not rent uplift:
+
+```
+Example — 18-story Class B office, 38% vacant, downtown Nashville:
+  Acquisition price:     $42,000,000  ($150/SF, distressed)
+  In-place NOI:          $3,440,000   (implied 8.2% cap)
+
+  Conversion scope:
+    18 floors × 22,000 SF = 396,000 GSF
+    NRSF factor 0.78 for residential = 309,000 NRSF
+    Unit count: ~310 units at 1,000 avg SF
+    Conversion cost/SF: $225 (mid-range Nashville)
+    Total conversion: $225 × 396,000 = $89,100,000
+    TI / FF&E / amenity: $12,000,000
+    Total project cost: $42M + $89M + $12M = $143,000,000
+
+  Stabilized:
+    Residential rent/SF: $2.85/mo ($34.20/yr) × 309,000 NRSF
+    Gross potential rent: $10,568,000
+    Vacancy 5%, OpEx 35%, NOI margin stack → Stabilized NOI $6,125,000
+    Yield on cost: $6.125M / $143M = 4.28%
+
+  Exit at residential cap 5.1%:
+    $6.125M / 0.051 = $120,100,000 stabilized value
+    vs total cost $143M
+    → Negative leverage, deal fails without cost reduction OR rent premium
+```
+
+The engine runs this math live and flags whether the arbitrage works. Common outcome: **most office conversions don't pencil** without subsidy, tax abatement, or a distressed-enough acquisition. The engine surfaces this honestly — flags "Cost basis too high for conversion thesis. Would need acquisition at $X for thesis to clear 6% YoC."
+
+**Phasing:**
+- Month 0: Acquisition
+- Months 1-6: Permitting / design
+- Months 7-30: Construction (conversions are 18-30mo)
+- Months 31-36: Lease-up to stabilization
+
+**ProForma mapping:** Development pro forma (not stabilized acquisition) — draws, interest reserve, S-curve, lease-up.
+
+**Key platform inputs:**
+- **Floor plate SF** (< 12,000 ideal for residential; larger requires atrium or complex layouts)
+- **Window mullion spacing** (bedrooms need ~10-14ft of window per unit; tight spacing = no go)
+- **Core-to-exterior depth** (< 30ft allows light penetration to residential units)
+- **Zoning** (by-right conversion vs variance required)
+- **Existing MEP capacity** (residential needs way more kitchens/bathrooms than office HVAC/plumbing was designed for)
+
+### 5.3 Office Medical Conversion
+
+Similar to Adaptive Reuse but exit is medical office (not residential). Cap rate arbitrage is smaller (medical caps 6-7% vs residential 5-6%) but conversion cost is typically lower ($80-120/SF). Math mirrors AR but with medical tenant underwriting.
+
+---
+
+## 6. Industrial — Two Engines
+
+### 6.1 Industrial Core / Value-Add
+
+**Comp unit:** Per SF, rent/SF/yr NNN, **warehouse vs last-mile vs cold storage rates differ** so comp set must match use case
+
+**Tiers:**
+- **Tier A — Same-use rent (in-place):** Warehouse or last-mile, ±10yr vintage, same submarket
+- **Tier B — Class A industrial rent:** Modern industrial with 32'+ clear height, ESFR sprinkler, heavy power
+- **Tier C — Last-mile premium:** Inner-ring last-mile (higher rent than suburban warehouse)
+
+**Gaps:**
+- **Rent-to-market on rollover:** Same as office/retail, but lease terms longer (5-10yr) and rollover is slower
+- **Class upgrade lift:** Warehouse → last-mile conversion can command 40-80% rent premium in the right location
+- **Clear height premium:** 24' → 32' clear = 15-25% rent premium (mezzanine capacity)
+
+**Dollarization:** Lease roll schedule × rent lift per lease, plus any conversion-driven premium
+
+**Phasing:**
+- Industrial leases roll slower than MF — typical 5-10yr terms with 2-3yr renewal cycles
+- Value-add industrial often just waits for rollover; capex is minimal vs retail/office
+- Conversion deals (warehouse → last-mile) require material capex (dock doors, truck courts, paving)
+
+**ProForma mapping:** Long-term NNN projection, lease rollover schedule, minimal TI/LC.
+
+**Key platform inputs:**
+- **Clear height** (primary building spec)
+- **Truck court depth** (130ft+ for modern logistics, 60-100ft for older product)
+- **Dock door count per SF**
+- **Power (amps / 1000 SF)** — especially for cold storage or manufacturing
+- **Proximity to population** (last-mile economics require < 10mi to dense population)
+- **Proximity to port / rail / airport** (logistics multiplier)
+
+### 6.2 Industrial Last-Mile Conversion
+
+**Tiers:**
+- **Tier A — Existing warehouse rent:** What the building earns as generic warehouse
+- **Tier B — Last-mile rent post-conversion:** Modern last-mile rent in submarket
+- **Tier C — Premium last-mile:** Same-day-delivery-tier, near dense urban
+
+**Gap:** Tier B − Tier A = last-mile premium captured after conversion
+
+**Dollarization:**
+```
+Example — 180K SF warehouse, converting to last-mile:
+  Pre-conversion rent:    $7.50/SF NNN = $1,350,000 annual
+  Conversion capex:       $3,200,000 (dock doors, truck court, concrete, paving)
+  Post-conversion rent:   $13.00/SF NNN = $2,340,000
+  Annual uplift:          $990,000
+  YoC on conversion capex: 31% — excellent
+```
+
+Last-mile economics depend heavily on location — the engine gates on "is this location within population reach to command last-mile rents?"
+
+**ProForma mapping:** Similar to office VA but with industrial-specific TI (minimal) and capex (material — paving, dock doors, truck courts).
+
+---
+
+## 7. Hospitality — Two Engines
+
+### 7.1 Hospitality Core (Stabilized Flag)
+
+**Comp unit:** Per room per day (ADR — Average Daily Rate), occupancy, **RevPAR** (Revenue per Available Room = ADR × Occupancy)
+
+**Tiers:**
+- **Tier A — Same-flag, same-segment properties:** Hampton Inn in Orlando vs other Hampton Inns in Orlando submarket
+- **Tier B — Flag-competitor RevPAR:** Competing upscale-select brands in same submarket (Hyatt Place vs Hampton vs Fairfield)
+- **Tier C — Segment-leader RevPAR:** Top-performing property in segment
+
+**Gaps:** RevPAR is the unit of comparison, not rent:
+- **RevPAR penetration index:** `Subject_RevPAR / Comp_Set_RevPAR` (100 = at comp set; 110 = outperforming; 85 = underperforming)
+- **Occupancy gap:** Subject occ vs fair share (comp set occupancy)
+- **ADR gap:** Subject ADR vs comp set ADR
+
+**Dollarization:** Revenue side, not rent:
+
+```
+Example — 145-room Hampton Inn:
+  Subject RevPAR: $78
+  Comp set RevPAR: $89
+  Penetration: 87.6 (underperforming by 12.4%)
+
+  If subject reaches fair share:
+  Revenue lift = 145 rooms × $11 RevPAR × 365 = $582K annual revenue lift
+  At 35% flow-through to NOI margin: $204K NOI lift
+  At submarket cap 8.5%: $2.4M value lift
+```
+
+**Phasing:** Hospitality stabilization can be fast (1-2yr) if the issue is operational, slower (3-4yr) if PIP / reflag required
+
+**ProForma mapping:**
+- Assumptions Section 1: ADR growth + occupancy ramp (not "rent growth")
+- Assumptions Section 3: FF&E reserve (4-5% of revenue is standard reserve for hospitality — much higher than MF)
+- Assumptions Section 7: Strategy-specific — flag, PIP schedule, seasonality curves
+
+**Key platform inputs:**
+- **STR (Smith Travel Research) data** if available for comp set RevPAR
+- **Flag reputation** and current franchise standards
+- **PIP (Property Improvement Plan) due date and estimated cost**
+- **Seasonality pattern** (beach markets are lumpy, convention markets steady)
+
+### 7.2 Hospitality Reflag / PIP Execution
+
+**Tiers:**
+- **Tier A — Current flag RevPAR:** What the property earns today
+- **Tier B — Target flag RevPAR:** What the same property could earn under better flag (requires PIP)
+- **Tier C — Best-in-class:** Highest RevPAR in the submarket segment
+
+**Gap:** Tier B − Tier A = reflag lift; typically 15-30% RevPAR uplift for meaningful brand upgrades
+
+**Dollarization:** Same RevPAR × rooms × 365 math, but capex side is dominated by the PIP.
+
+```
+Example — Older Ramada → reflag to Holiday Inn Express:
+  Current RevPAR:         $58
+  Target RevPAR post-reflag: $82  (+41%)
+  Revenue lift:           165 rooms × $24 × 365 = $1,446,000
+  PIP cost:               $4,500,000 ($27K/room)
+  YoC on PIP:             32% at full lift; more like 22-25% net of operational disruption
+```
+
+**Phasing:**
+- Months 1-12: Plan, permits, PIP execution (phased to avoid closing hotel)
+- Months 12-24: Soft reflag, marketing relaunch
+- Months 24-36: RevPAR ramp to stabilization
+
+**ProForma mapping:** Revenue ramp per year based on RevPAR stabilization curve + PIP capex schedule + potential revenue displacement during construction.
+
+---
+
+## 8. Vacant Land / Ground-Up — BTS Engine
+
+**Comp unit:** Per buildable unit or per FAR SF; also per-lot pricing for SFR BTR
+
+**Tiers:**
+- **Tier A — Land comps (recent sales):** $/buildable unit or $/FAR SF for similar zoning within trade area
+- **Tier B — Developer pro-forma value:** Residual land value implied by finished-product rent × stabilized NOI at target yield-on-cost
+- **Tier C — Stretch land value:** If zoning upzone occurs or density bonus applies
+
+**Gaps:**
+- **Land basis vs residual:** `Subject_price_per_unit − Tier_A_median` — overpaying or under?
+- **Residual upside:** `Tier_B − Subject_price` — if developer economics support higher basis
+
+**Dollarization:** Full development pro forma:
+```
+Example — 4-acre parcel, zoning PD-C 18 DU/ac, Tampa MSA:
+  Developable units: 72 (at density cap)
+  Tier A land comp median: $48K/buildable unit
+  Market land value: 72 × $48K = $3.46M
+
+  Subject contract: $3.2M ($44.4K/unit — 7.5% below market — favorable acquisition)
+
+  Developer residual check:
+  Projected stabilized NOI/unit: $12,500
+  Total NOI: $900K
+  At 5.5% yield-on-cost target → justified total project cost: $16.4M
+  − Construction cost at $180K/unit × 72 = $12.96M
+  − Soft costs + contingency: $1.8M
+  = Residual land value: $1.64M to $3.8M (range depending on assumptions)
+
+  At $3.2M land cost, YoC lands at 5.48% — right at target.
+  Passes — BTS thesis works.
+```
+
+**Phasing:** Pure development schedule:
+- Months 1-12: Entitlement, permits
+- Months 13-24: Horizontal + vertical construction
+- Months 25-30: Vertical completion, C/O
+- Months 31-36: Lease-up
+- Months 37+: Stabilization → refi or sell
+
+**ProForma mapping:** Full development pro forma — S-curve construction draws, interest reserve, lease-up absorption curve (from M07 Traffic Engine predictions), stabilized NOI, exit.
+
+---
+
+## 9. Cross-Asset Reference Table
+
+One-page summary:
+
+| Asset × Deal Type | Comp Unit | Tiers | Primary Gap | Dollarization | Phasing Driver |
+|---|---|---|---|---|---|
+| MF Value-Add | $/unit/mo by type | A unren / B ren / C top | LTL + VC | Σ units × $ × 12 | Turnover + reno pace |
+| MF Core | $/unit/mo | A only | LTL | Small | Turnover |
+| MF Deep Value-Add | $/unit/mo | A / B1 light / B2 heavy / C | LTL + VC-light or VC-heavy | Σ + scope decision | Turnover + aggressive reno |
+| MF Distressed | $/unit/mo + occupancy | A + occ benchmark | LTL + vacancy recovery | Σ + occ ramp | Stabilization curve |
+| MF Lease-Up | $/unit/mo | A at stabilization | Occupancy ramp | Absorption × rent | Leasing velocity |
+| SFR Fix-Flip | Per-house sold $ | A unren / B ren / C ceil | ARV − cost | Single-deal margin | 6-9 month cycle |
+| SFR Hold / BRRRR | Per-house rent/mo | A / B / C rental comps | Rent gap + refi test | NOI + DSCR | Acquire → rehab → refi |
+| SFR BTR | Per-lot $ for land; per-house for rental | Land comps + rental comps | Land + residual | Development pro forma | Construction schedule |
+| Retail Value-Add | $/SF/yr NNN | A in-place / B asking / C top | Rent-to-market + vacancy | Lease roll × $ lift + vacancy fill × rent | Lease roll schedule |
+| Retail NNN Core | Cap rate | Credit-class caps | Cap delta | NOI stream | Contractual escalators |
+| Office Value-Add | $/SF/yr | A / B reposition / C Class A | Rent-to-market + vacancy | Lease roll × $ + vacancy | Lease roll + capex |
+| Office Adaptive Reuse | Cap rate arbitrage | Office cap / Residential cap | Cap compression | Reuse yield pro forma | 18-30mo conversion |
+| Industrial Core / VA | $/SF/yr NNN | A same-use / B Class A / C last-mile | Rent-to-market + class upgrade | Lease roll × $ | Lease roll (slow) |
+| Industrial Last-Mile | $/SF/yr | Warehouse rent / last-mile rent / premium | Last-mile premium | SF × rent lift | Conversion capex |
+| Hospitality Core | RevPAR (ADR × Occ) | Same-flag / flag-competitor / segment-leader | RevPAR penetration | Rooms × RevPAR × 365 | Operational ramp |
+| Hospitality Reflag | RevPAR | Current / target / best-in-class | Reflag lift | Rooms × RevPAR delta × 365 | PIP execution schedule |
+| BTS Ground-Up | $/buildable unit + $/FAR SF | Land comps / residual / stretch | Residual land value | Development pro forma | Permits + construction |
+
+---
+
+## 10. Engine Architecture
+
+### 10.1 Service interface
+
+Every engine implements the same interface:
+
+```ts
+interface AssetClassMathEngine {
+  assetClass: AssetClassType;
+  subStrategy: SubStrategyKey;
+
+  execute(input: {
+    subject: SubjectProperty;
+    comps: CompSet;
+    marketContext: MarketContext;
+    userScenario?: UserScenarioToggle;
+  }): Promise<MathEngineOutput>;
+}
+
+interface MathEngineOutput {
+  stratification: CompStratification;       // Tier assignments
+  gaps: GapAnalysis;                         // Per-unit-or-SF gaps
+  portfolioDollarized: DollarizedOutput;     // Total $ opportunity
+  captureSchedule?: PhasingSchedule;         // Year-by-year for hold strategies
+  singleDealMath?: SingleDealPnL;            // For flips / ground-up
+  opportunityScore: ScoreBreakdown;          // Feeds F23
+  proformaUpdates: ProformaAssumptionUpdate[];
+  confidence: number;
+  flags: string[];                           // Warnings, edge cases
+}
+```
+
+### 10.2 Dispatch logic
+
+```ts
+function selectEngine(assetClass, subStrategy): AssetClassMathEngine {
+  const registry = {
+    'mf_value_add':           MFValueAddEngine,
+    'mf_core':                MFCoreEngine,
+    'mf_deep_value_add':      MFDeepValueAddEngine,
+    'mf_distressed':          MFDistressedEngine,
+    'mf_lease_up':            MFLeaseUpEngine,
+    'sfr_fix_flip':           SFRFlipEngine,
+    'sfr_hold':               SFRHoldEngine,
+    'sfr_brrrr':              SFRBRRRREngine,
+    'sfr_btr':                SFRBTREngine,
+    'retail_value_add':       RetailValueAddEngine,
+    'retail_nnn_core':        RetailNNNEngine,
+    'retail_grocery_anchored': RetailAnchoredEngine,
+    'office_value_add':       OfficeValueAddEngine,
+    'office_adaptive_reuse':  OfficeAdaptiveReuseEngine,
+    'office_medical':         OfficeMedicalEngine,
+    'industrial_core':        IndustrialCoreEngine,
+    'industrial_value_add':   IndustrialValueAddEngine,
+    'industrial_last_mile':   IndustrialLastMileEngine,
+    'hospitality_core':       HospitalityCoreEngine,
+    'hospitality_reflag':     HospitalityReflagEngine,
+    'bts_ground_up':          BTSGroundUpEngine,
+  };
+  return registry[`${assetClass}_${subStrategy}`];
+}
+```
+
+### 10.3 Shared infrastructure
+
+All engines share:
+- **Comp service adapter** (M05) — returns comp set with per-asset-class field shape
+- **Confidence scorer** — based on comp count, range width, recency, selection fidelity
+- **ProForma mapper** — base class with asset-class-specific subclasses
+- **Rendering schema** — Evidence Block B layout adapts per asset class but uses same component framework
+
+### 10.4 Evidence Block B per asset class
+
+The Evidence Block B layout adapts:
+
+| Asset | Panel 1 | Panel 2 | Panel 3 | Panel 4 |
+|---|---|---|---|---|
+| MF | Comp stratification by unit type | 3-gap rent ladder | Portfolio $ impact | Per-year capture schedule |
+| SFR Flip | Sold comps table + regression band | ARV ± confidence interval | Margin waterfall | 6-9mo timeline |
+| SFR Hold | Rental comps + DSCR test | Rent gap ladder + refi-out test | Per-house NOI | Seasoning + refi timeline |
+| Retail VA | Rent roll expiration table | Rent-to-market gap + vacancy gap | Lease roll $ + vacancy fill $ | Rollover-driven capture curve |
+| Retail NNN | Credit cap comps | Cap delta visualization | NOI stream | Contractual escalator schedule |
+| Office VA | Tenant rollover table | Rent-to-market + class-upgrade ladder | Lease roll + vacancy + class lift $ | Long-cycle (5-7yr) capture |
+| Office AR | Office-cap vs Res-cap scatter | Cap arbitrage visualization | Reuse yield calc | Development schedule |
+| Industrial VA | Lease expiration table | Rent ladder by use | Lease roll $ | Rollover schedule |
+| Industrial LM | Warehouse vs last-mile rent gap | Premium ladder | Conversion ROI | Conversion schedule |
+| Hospitality | Comp set RevPAR table + penetration | RevPAR ladder (ADR + Occ split) | Revenue × 365 × rooms | Operational ramp curve |
+| Hosp Reflag | Current flag vs target flag RevPAR | Reflag lift visualization | PIP capex + revenue lift | PIP execution schedule |
+| BTS | Land comps + density analysis | Residual land ladder | Development pro forma | Construction + lease-up |
+
+Same visual language, same component library, different content.
+
+---
+
+## 11. Implementation Sequence
+
+Build in dependency order:
+
+**Phase 1 — Shared infrastructure (3 sessions)**
+1. `asset-class-math-engine.interface.ts` + dispatch logic + confidence scorer
+2. Comp service adapter with per-asset field shapes
+3. ProForma mapper base class
+
+**Phase 2 — Multifamily family (already specced — 4 sessions)**
+Already covered in Value-Add Math Engine Spec.
+
+**Phase 3 — SFR family (3 sessions)**
+4. SFRFlipEngine — MLS comp regression, margin waterfall
+5. SFRHoldEngine + SFRBRRRREngine — rental comps + DSCR + refi-out test
+6. SFRBTREngine — hybrid land + rental (development pro forma)
+
+**Phase 4 — Retail family (2.5 sessions)**
+7. RetailValueAddEngine — lease roll + vacancy fill
+8. RetailNNNEngine — credit cap comparison
+9. RetailAnchoredEngine — specializes RetailValueAdd with anchor-tenant health
+
+**Phase 5 — Office family (3 sessions)**
+10. OfficeValueAddEngine — lease roll + class lift
+11. OfficeAdaptiveReuseEngine — cap arbitrage + reuse yield calc (most complex engine)
+12. OfficeMedicalEngine — specializes AR with medical underwriting
+
+**Phase 6 — Industrial family (2 sessions)**
+13. IndustrialCoreEngine + IndustrialValueAddEngine
+14. IndustrialLastMileEngine — conversion ROI
+
+**Phase 7 — Hospitality family (2 sessions)**
+15. HospitalityCoreEngine — RevPAR penetration, STR data integration
+16. HospitalityReflagEngine — PIP execution modeling
+
+**Phase 8 — Ground-Up (1.5 sessions)**
+17. BTSGroundUpEngine — residual land math + full dev pro forma
+
+**Phase 9 — Frontend adaptations (4 sessions)**
+18. Evidence Block B component library with asset-class-specific panels
+19. ProForma auto-population flows per asset class
+20. Comp selection UI adapted per asset class (MLS for SFR, STR data for hospitality, etc.)
+21. Cross-asset testing + visual QA
+
+**Total: ~24 sessions** for the complete asset-class math engine suite.
+
+**Critical path:** Phase 1 infrastructure blocks everything. Phases 2-8 parallelize with asset-class-specialist developers. Phase 9 follows backend stability.
+
+---
+
+## 12. Test Cases
+
+A sampling (full test matrix is per-engine):
+
+1. **MF:** Bell Tech Corridor (the image 2 comp set) → stratifies correctly, LTL $145 / VC $195 / CG $49 for 1BR, portfolio base case $1,196K annual.
+
+2. **SFR Flip:** $285K acquisition + $52K rehab, 6 MLS comps average $425K sold in 45d → ARV $425K ± $18K, margin $49K (13%), flagged thin.
+
+3. **SFR BRRRR:** Acquisition $285K + rehab $50K, rental comps support $2,400/mo, 75% refi on $425K ARV = $318,750 cash-out vs $335K total-in → $16K stuck, BRRRR near-successful, flag borderline.
+
+4. **Retail VA:** 102K SF center, 22% vacancy, $14.50/SF in-place vs $22/SF submarket asking → rent-to-market lift $338K at full rollover + vacancy fill $336K = $674K stabilized uplift.
+
+5. **Retail NNN:** Walgreens BBB 12yr lease, going-in cap 6.15% vs submarket 5.85% → 30bps premium, $143K value advantage.
+
+6. **Office AR:** Nashville 18-story Class B, 38% vacant, $150/SF acquisition, conversion $225/SF → reuse yield 4.28%, flagged "cost basis too high, would need acquisition at $115/SF for 6% YoC."
+
+7. **Industrial Last-Mile:** 180K SF warehouse at $7.50/SF converting to last-mile at $13/SF → $990K annual uplift, 31% YoC on $3.2M conversion capex.
+
+8. **Hospitality Core:** 145-room Hampton Inn, RevPAR $78 vs comp set $89 → penetration 87.6, $582K revenue lift at fair-share recovery.
+
+9. **Hospitality Reflag:** Ramada → Holiday Inn Express, RevPAR lift $58 → $82, PIP $4.5M, YoC 32% pre-disruption.
+
+10. **BTS:** 4-acre Tampa parcel, 18 DU/ac zoning, acquisition $3.2M → land $44.4K/unit vs market $48K/unit, residual land supports $3.2M at 5.48% YoC, thesis passes.
+
+11. **Cross-asset edge:** Mixed-use deal (ground-floor retail + MF above) → engine dispatches both RetailValueAdd AND MFValueAdd, combines outputs into single Evidence Report with dual panel.
+
+12. **Confidence edge:** Deal with only 2 SFR flip comps → confidence score drops from 0.85 to 0.45; ARV widening from ±$18K to ±$42K; UI flags "Expand comp search radius."
+
+13. **Engine failure modes:** Deal classified as Office AR but floor plate 25K SF (too deep for residential) → gate fails in detection, engine never runs, plan formulator suggests alternative strategy.
+
+---
+
+**End of spec.**

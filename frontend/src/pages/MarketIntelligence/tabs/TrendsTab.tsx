@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { SIGNAL_GROUPS } from '../signalGroups';
 import { apiClient } from '../../../api/client';
+import { useTabTheme } from '../../../hooks/useTabTheme';
 
 interface TrendsTabProps {
   marketId: string;
@@ -9,43 +10,58 @@ interface TrendsTabProps {
 }
 
 interface CorrelationMetric {
-  id: string;
-  name: string;
-  tier: number;
-  category: string;
-  xValue: number | null;
-  yValue: number | null;
-  correlation: number | null;
-  signal: string | null;
-  confidence: 'high' | 'medium' | 'low' | 'insufficient';
-  leadTime: string;
-  actionable: string | null;
-  dataSources: string[];
-  missingData: string[];
+  id: string; name: string; tier: number; category: string;
+  xValue: number | null; yValue: number | null; correlation: number | null;
+  signal: string | null; confidence: 'high' | 'medium' | 'low' | 'insufficient';
+  leadTime: string; actionable: string | null; dataSources: string[]; missingData: string[];
 }
 
 interface CorrelationReport {
-  market: string;
-  state: string;
-  computedAt: string;
-  snapshotDate: string | null;
-  metricsComputed: number;
-  metricsSkipped: number;
-  correlations: CorrelationMetric[];
+  market: string; state: string; computedAt: string; snapshotDate: string | null;
+  metricsComputed: number; metricsSkipped: number; correlations: CorrelationMetric[];
   summary: {
-    bullishSignals: number;
-    bearishSignals: number;
-    neutralSignals: number;
-    insufficientData: number;
-    rentRunway: string | null;
-    affordabilityCeiling: string | null;
-    supplyPressure: string | null;
-    topOpportunity: string | null;
+    bullishSignals: number; bearishSignals: number; neutralSignals: number;
+    insufficientData: number; rentRunway: string | null; affordabilityCeiling: string | null;
+    supplyPressure: string | null; topOpportunity: string | null;
   };
 }
 
+const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono', 'Fira Code', monospace" };
+const badge = (color: string): React.CSSProperties => ({
+  fontSize: 9, fontWeight: 700, color, background: color + '20',
+  padding: '1px 6px', borderRadius: 2, letterSpacing: 1, ...mono,
+});
+const insightBox = (color: string): React.CSSProperties => ({
+  background: color + '0A', border: `1px solid ${color}28`,
+  padding: '8px 10px', borderRadius: 2, marginTop: 6,
+});
+
+// ── STATIC DATA ──
 const TIME_RANGES = ['3M', '6M', '1Y', '3Y', '5Y', 'Max'] as const;
 const SUBMARKETS = ['All', 'Buckhead', 'Midtown', 'Decatur', 'Sandy Springs', 'East Atlanta'];
+
+const DEMAND_SIGNALS = [
+  { id: 'D-01', name: 'Jobs-to-Apartments Ratio',   value: '2.8x',     ok: true  },
+  { id: 'D-02', name: 'New Jobs to New Units',       value: '3.1x',     ok: true  },
+  { id: 'D-03', name: 'Net Migration to Supply',     value: '1.4x',     ok: true  },
+  { id: 'D-04', name: 'Household Formation',         value: '+12.4K/yr',ok: true  },
+  { id: 'D-05', name: 'Traffic Count Growth',        value: '+4.2%',    ok: true  },
+  { id: 'D-06', name: 'Traffic Acceleration',        value: '+0.8%',    ok: true  },
+  { id: 'D-07', name: 'Digital-Physical Gap',        value: '1.3x',     ok: true  },
+  { id: 'D-08', name: 'Search Interest Volume',      value: '↑ 18%',    ok: true  },
+  { id: 'D-09', name: 'Demand Momentum Score',       value: '78/100',   ok: true  },
+  { id: 'D-10', name: 'Employment Gravity',          value: '82/100',   ok: true  },
+  { id: 'D-11', name: 'Rent-to-Mortgage Discount',  value: '24%',      ok: true  },
+];
+
+const SUPPLY_SIGNALS = [
+  { id: 'S-04', name: 'Absorption Runway',           value: '14 mo',    ok: false },
+  { id: 'S-05', name: 'Delivery Clustering',         value: '3 clusters',ok: false},
+  { id: 'S-06', name: 'Permit Momentum',             value: '↓ 12%',    ok: true  },
+  { id: 'S-07', name: 'Construction Cost vs Yield',  value: '5.8%',     ok: true  },
+  { id: 'S-08', name: 'Saturation Index',            value: '0.92',     ok: true  },
+  { id: 'S-09', name: 'Permit-to-Delivery',          value: '68%',      ok: false },
+];
 
 const CORRELATION_QUARTERS = [
   { quarter: 'Q1 2024', rentGrowth: 1.8, trafficTrend: 1.2, wageGrowth: 3.4 },
@@ -59,64 +75,21 @@ const CORRELATION_QUARTERS = [
 ];
 
 const AFFORDABILITY_DATA = {
-  medianHouseholdIncome: 72500,
-  medianMonthlyRent: 1895,
-  thresholdPercent: 30,
-  currentPercent: 31.4,
+  medianHouseholdIncome: 72500, medianMonthlyRent: 1895,
+  thresholdPercent: 30, currentPercent: 31.4,
   historicalPercents: [26.8, 28.6, 29.2, 28.4, 29.0, 30.6, 31.4, 30.2],
 };
-
-const SIGNAL_STYLES: Record<string, { bg: string; text: string; icon: string }> = {
-  bullish: { bg: 'bg-green-50', text: 'text-green-700', icon: '\u25B2' },
-  bearish: { bg: 'bg-red-50', text: 'text-red-700', icon: '\u25BC' },
-  neutral: { bg: 'bg-gray-50', text: 'text-gray-600', icon: '\u25AC' },
-};
-
-const CONFIDENCE_STYLES: Record<string, string> = {
-  high: 'bg-green-100 text-green-800',
-  medium: 'bg-blue-100 text-blue-800',
-  low: 'bg-amber-100 text-amber-800',
-  insufficient: 'bg-gray-100 text-gray-500',
-};
-
-function computeCorrelation(xs: number[], ys: number[]): number {
-  const n = xs.length;
-  const meanX = xs.reduce((a, b) => a + b, 0) / n;
-  const meanY = ys.reduce((a, b) => a + b, 0) / n;
-  let num = 0, denX = 0, denY = 0;
-  for (let i = 0; i < n; i++) {
-    const dx = xs[i] - meanX;
-    const dy = ys[i] - meanY;
-    num += dx * dy;
-    denX += dx * dx;
-    denY += dy * dy;
-  }
-  return denX && denY ? num / Math.sqrt(denX * denY) : 0;
-}
-
-function checkDivergence(): boolean {
-  let consecutive = 0;
-  for (const q of CORRELATION_QUARTERS) {
-    if (q.rentGrowth > q.wageGrowth * 1.5) {
-      consecutive++;
-      if (consecutive >= 3) return true;
-    } else {
-      consecutive = 0;
-    }
-  }
-  return false;
-}
 
 const SUPPLY_WAVE_DATA = [
   { year: '2026', confirmed: 8200, capacity: 1200 },
   { year: '2027', confirmed: 6400, capacity: 1400 },
   { year: '2028', confirmed: 3800, capacity: 1600 },
   { year: '2029', confirmed: 1200, capacity: 1800 },
-  { year: '2030', confirmed: 400, capacity: 1600 },
-  { year: '2031', confirmed: 0, capacity: 1200 },
-  { year: '2032', confirmed: 0, capacity: 800 },
-  { year: '2033', confirmed: 0, capacity: 600 },
-  { year: '2034', confirmed: 0, capacity: 400 },
+  { year: '2030', confirmed: 400,  capacity: 1600 },
+  { year: '2031', confirmed: 0,    capacity: 1200 },
+  { year: '2032', confirmed: 0,    capacity: 800  },
+  { year: '2033', confirmed: 0,    capacity: 600  },
+  { year: '2034', confirmed: 0,    capacity: 400  },
 ];
 
 const RENT_VINTAGE_DATA = [
@@ -139,7 +112,7 @@ const SUPPLY_QUARTERLY = [
   { quarter: 'Q2 25', underConstruction: 3400, permitted: 2200 },
   { quarter: 'Q3 25', underConstruction: 2900, permitted: 1800 },
   { quarter: 'Q4 25', underConstruction: 1800, permitted: 1200 },
-  { quarter: 'Q1 26', underConstruction: 1500, permitted: 900 },
+  { quarter: 'Q1 26', underConstruction: 1500, permitted: 900  },
   { quarter: 'Q2 26', underConstruction: 2100, permitted: 1400 },
 ];
 
@@ -187,7 +160,36 @@ const JEDI_SCORE_HISTORY = [
   { quarter: 'Q4 25', composite: 81, demand: 76, supply: 65, momentum: 82 },
 ];
 
-const TrendsTab: React.FC<TrendsTabProps> = ({ marketId, summary }) => {
+function computeCorrelation(xs: number[], ys: number[]): number {
+  const n = xs.length;
+  const meanX = xs.reduce((a, b) => a + b, 0) / n;
+  const meanY = ys.reduce((a, b) => a + b, 0) / n;
+  let num = 0, denX = 0, denY = 0;
+  for (let i = 0; i < n; i++) {
+    const dx = xs[i] - meanX, dy = ys[i] - meanY;
+    num += dx * dy; denX += dx * dx; denY += dy * dy;
+  }
+  return denX && denY ? num / Math.sqrt(denX * denY) : 0;
+}
+
+function checkDivergence(): boolean {
+  let consecutive = 0;
+  for (const q of CORRELATION_QUARTERS) {
+    if (q.rentGrowth > q.wageGrowth * 1.5) { consecutive++; if (consecutive >= 3) return true; }
+    else consecutive = 0;
+  }
+  return false;
+}
+
+// ── COMPONENT ──
+const TrendsTab: React.FC<TrendsTabProps> = ({ marketId }) => {
+  const T = useTabTheme();
+  const card: React.CSSProperties = { background: T.panel, border: `1px solid ${T.border}`, borderRadius: 3, overflow: 'hidden' };
+  const hdr = (accent: string): React.CSSProperties => ({
+    padding: '8px 14px', background: T.dimBg,
+    borderBottom: `1px solid ${T.border}`, borderLeft: `3px solid ${accent}`,
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+  });
   const [timeRange, setTimeRange] = useState<string>('1Y');
   const [submarketFilter, setSubmarketFilter] = useState('All');
   const [supplyView, setSupplyView] = useState<'2yr' | '10yr'>('2yr');
@@ -200,19 +202,13 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId, summary }) => {
     let cancelled = false;
     const fetchCorrelations = async () => {
       try {
-        setCorrelationLoading(true);
-        setCorrelationError(null);
+        setCorrelationLoading(true); setCorrelationError(null);
         const response: any = await apiClient.get('/correlations/report');
         const report = response?.data || response;
-        if (!cancelled && report?.correlations) {
-          setCorrelationReport(report);
-        } else if (!cancelled) {
-          setCorrelationError('Invalid response format');
-        }
+        if (!cancelled && report?.correlations) setCorrelationReport(report);
+        else if (!cancelled) setCorrelationError('Invalid response format');
       } catch (err: any) {
-        if (!cancelled) {
-          setCorrelationError(err?.message || 'Failed to load correlation data');
-        }
+        if (!cancelled) setCorrelationError(err?.message || 'Failed to load correlation data');
       } finally {
         if (!cancelled) setCorrelationLoading(false);
       }
@@ -222,129 +218,181 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId, summary }) => {
   }, []);
 
   const computedMetrics = correlationReport?.correlations.filter(c => c.confidence !== 'insufficient') || [];
-  const pendingMetrics = correlationReport?.correlations.filter(c => c.confidence === 'insufficient') || [];
-
-  const getCorMetric = (id: string): CorrelationMetric | undefined => {
-    return correlationReport?.correlations.find(c => c.id === id);
-  };
-
+  const pendingMetrics  = correlationReport?.correlations.filter(c => c.confidence === 'insufficient') || [];
+  const getCorMetric = (id: string) => correlationReport?.correlations.find(c => c.id === id);
   const cor04 = getCorMetric('COR-04');
   const cor13 = getCorMetric('COR-13');
-
   const liveAffordabilityRatio = cor04?.xValue ?? cor13?.xValue ?? null;
   const liveRentRunway = cor04?.actionable ?? null;
-
   const maxSupplyVal = Math.max(...SUPPLY_WAVE_DATA.map(d => d.confirmed + d.capacity));
 
-  const renderSignalBadge = (signal: string | null) => {
-    if (!signal) return null;
-    const style = SIGNAL_STYLES[signal] || SIGNAL_STYLES.neutral;
-    return (
-      <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold ${style.bg} ${style.text}`}>
-        {style.icon} {signal.charAt(0).toUpperCase() + signal.slice(1)}
-      </span>
-    );
+  // Correlation metric renderers
+  const sigStyle: Record<string, { bg: string; color: string; icon: string }> = {
+    bullish: { bg: T.green + '12', color: T.green, icon: '▲' },
+    bearish: { bg: T.red   + '12', color: T.red,   icon: '▼' },
+    neutral: { bg: T.muted + '12', color: T.secondary, icon: '─' },
+  };
+  const confColor: Record<string, string> = {
+    high: T.green, medium: T.cyan, low: T.amber, insufficient: T.muted,
   };
 
-  const renderConfidenceBadge = (confidence: string) => {
-    const style = CONFIDENCE_STYLES[confidence] || CONFIDENCE_STYLES.insufficient;
+  const renderCorRow = (metric: CorrelationMetric) => {
+    const s = sigStyle[metric.signal || 'neutral'] || sigStyle.neutral;
     return (
-      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${style}`}>
-        {confidence}
-      </span>
-    );
-  };
-
-  const renderCorrelationMetricRow = (metric: CorrelationMetric) => {
-    const style = SIGNAL_STYLES[metric.signal || 'neutral'] || SIGNAL_STYLES.neutral;
-    return (
-      <div key={metric.id} className={`flex items-start gap-2 p-2.5 rounded-lg ${style.bg} border border-opacity-20`}>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[11px] font-bold text-gray-800">{metric.id}</span>
-            <span className={`text-[11px] font-semibold ${style.text}`}>{metric.name}</span>
-            {renderSignalBadge(metric.signal)}
-            {renderConfidenceBadge(metric.confidence)}
-            <span className="text-[9px] text-gray-400">Lead: {metric.leadTime}</span>
-          </div>
-          {metric.actionable && (
-            <p className={`text-[11px] mt-1 ${style.text}`}>{metric.actionable}</p>
-          )}
-          {metric.xValue !== null && (
-            <div className="flex items-center gap-3 mt-0.5">
-              <span className="text-[10px] text-gray-500">X: {metric.xValue}{metric.id === 'COR-16' || metric.id === 'COR-05' ? '' : '%'}</span>
-              {metric.yValue !== null && <span className="text-[10px] text-gray-500">Y: {metric.yValue}%</span>}
-              {metric.correlation !== null && <span className="text-[10px] text-gray-500">r: {metric.correlation}</span>}
-            </div>
-          )}
+      <div key={metric.id} style={{ padding: '6px 8px', background: s.bg, borderRadius: 2, marginBottom: 4 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: T.amber, ...mono }}>{metric.id}</span>
+          <span style={{ fontSize: 10, fontWeight: 600, color: s.color }}>{metric.name}</span>
+          <span style={{ fontSize: 9, fontWeight: 700, color: s.color, ...mono }}>{s.icon} {metric.signal}</span>
+          <span style={{ fontSize: 9, fontWeight: 700, color: confColor[metric.confidence], background: confColor[metric.confidence] + '20', padding: '1px 4px', borderRadius: 2, ...mono }}>{metric.confidence.toUpperCase()}</span>
+          <span style={{ fontSize: 9, color: T.muted, ...mono }}>Lead: {metric.leadTime}</span>
         </div>
+        {metric.actionable && <div style={{ fontSize: 10, color: s.color, marginTop: 3 }}>{metric.actionable}</div>}
+        {metric.xValue !== null && (
+          <div style={{ display: 'flex', gap: 10, marginTop: 2 }}>
+            <span style={{ fontSize: 9, color: T.secondary, ...mono }}>X: {metric.xValue}</span>
+            {metric.yValue !== null && <span style={{ fontSize: 9, color: T.secondary, ...mono }}>Y: {metric.yValue}%</span>}
+            {metric.correlation !== null && <span style={{ fontSize: 9, color: T.secondary, ...mono }}>r: {metric.correlation}</span>}
+          </div>
+        )}
       </div>
     );
   };
 
-  const renderPendingMetricRow = (metric: CorrelationMetric) => {
-    return (
-      <div key={metric.id} className="flex items-center gap-2 py-1.5 px-2 rounded bg-gray-50">
-        <span className="text-[10px] font-bold text-gray-400 w-12">{metric.id}</span>
-        <span className="text-[10px] text-gray-500 flex-1">{metric.name}</span>
-        <span className="text-[9px] text-gray-400 italic">
-          {metric.missingData.length > 0 ? metric.missingData[0] : 'Data pending'}
-        </span>
-      </div>
-    );
-  };
+  const renderPendingRow = (metric: CorrelationMetric) => (
+    <div key={metric.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 6px' }}>
+      <span style={{ fontSize: 9, fontWeight: 700, color: T.muted, width: 50, ...mono }}>{metric.id}</span>
+      <span style={{ fontSize: 9, color: T.secondary, flex: 1 }}>{metric.name}</span>
+      <span style={{ fontSize: 9, color: T.muted, fontStyle: 'italic', ...mono }}>
+        {metric.missingData[0] || 'pending'}
+      </span>
+    </div>
+  );
+
+  // ── Shared legend helper
+  const leg = (color: string, label: string, dashed = false) => (
+    <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, color: T.secondary, ...mono }}>
+      <span style={{ width: 14, height: 2, background: dashed ? 'none' : color, borderTop: dashed ? `2px dashed ${color}` : 'none', borderRadius: 1, flexShrink: 0 }} />
+      {label}
+    </span>
+  );
 
   return (
-    <div className="flex flex-col gap-6">
-      {/* TIME RANGE SELECTOR */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-1">
-            <span className="text-sm font-medium text-gray-600 mr-2">Time Range:</span>
-            {TIME_RANGES.map(range => (
-              <button
-                key={range}
-                onClick={() => setTimeRange(range)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                  timeRange === range
-                    ? 'bg-teal-600 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
-              >
-                {range}
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-gray-600">Submarket:</span>
-            <select
-              value={submarketFilter}
-              onChange={e => setSubmarketFilter(e.target.value)}
-              className="rounded-lg border border-gray-300 text-sm px-3 py-1.5 bg-white text-gray-700 focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '10px 12px', background: T.bg, minHeight: '100%' }}>
+
+      {/* ── TIME RANGE + SUBMARKET CONTROLS ── */}
+      <div style={{ background: T.panel, border: `1px solid ${T.border}`, borderRadius: 3, padding: '8px 14px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ fontSize: 9, color: T.secondary, ...mono, marginRight: 4 }}>RANGE:</span>
+          {TIME_RANGES.map(range => (
+            <button
+              key={range}
+              onClick={() => setTimeRange(range)}
+              style={{
+                fontSize: 9, fontWeight: 700, ...mono, cursor: 'pointer',
+                padding: '3px 9px', borderRadius: 2, border: 'none',
+                background: timeRange === range ? T.amber : T.dimBg,
+                color: timeRange === range ? '#000' : T.secondary,
+                outline: timeRange === range ? 'none' : `1px solid ${T.border}`,
+                transition: 'all 0.12s',
+              }}
             >
-              {SUBMARKETS.map(s => (
-                <option key={s} value={s}>{s === 'All' ? 'All \u25BC' : s}</option>
+              {range}
+            </button>
+          ))}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 9, color: T.secondary, ...mono }}>SUBMARKET:</span>
+          <select
+            value={submarketFilter}
+            onChange={e => setSubmarketFilter(e.target.value)}
+            style={{ fontSize: 9, background: T.dimBg, color: T.text, border: `1px solid ${T.border}`, borderRadius: 2, padding: '3px 8px', cursor: 'pointer', ...mono }}
+          >
+            {SUBMARKETS.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* ── SECTION 0: CURRENT MARKET SIGNALS (NEW) ── */}
+      <div style={card}>
+        <div style={hdr(T.green)}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: T.green, letterSpacing: 2, ...mono }}>CURRENT MARKET SIGNALS</span>
+            <span style={badge(T.green)}>SNAPSHOT</span>
+          </div>
+          <span style={{ fontSize: 9, color: T.muted, ...mono }}>D-01..D-11 DEMAND · S-04..S-09 SUPPLY · AS OF Q4 2025</span>
+        </div>
+        <div style={{ padding: '10px 14px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          {/* DEMAND column */}
+          <div>
+            <div style={{ fontSize: 9, fontWeight: 700, color: T.green, letterSpacing: 2, ...mono, marginBottom: 8, paddingBottom: 4, borderBottom: `1px solid ${T.green}30` }}>
+              DEMAND SIGNALS · {DEMAND_SIGNALS.filter(s => s.ok).length}/{DEMAND_SIGNALS.length} POSITIVE
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {DEMAND_SIGNALS.map(s => (
+                <div key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '3px 6px', borderRadius: 2 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 9, color: s.ok ? T.green : T.amber, ...mono }}>{s.ok ? '✓' : '⚠'}</span>
+                    <span style={{ fontSize: 9, color: T.muted, ...mono, width: 32 }}>{s.id}</span>
+                    <span style={{ fontSize: 10, color: T.secondary }}>{s.name}</span>
+                  </div>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: T.text, ...mono }}>{s.value}</span>
+                </div>
               ))}
-            </select>
+            </div>
+            <div style={{ ...insightBox(T.green), marginTop: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }}>
+                <span style={{ fontSize: 9, fontWeight: 700, color: T.green, ...mono }}>STRONG DEMAND</span>
+                <span style={{ fontSize: 9, color: T.green, ...mono }}>Confidence: 82%</span>
+              </div>
+              <p style={{ fontSize: 9, color: T.secondary, lineHeight: 1.5 }}>
+                Atlanta job growth at 2.8× apartments ratio. Net migration +48K/yr sustains demand pressure. Household formation outpaces supply in Class B/C segments.
+              </p>
+            </div>
+          </div>
+          {/* SUPPLY column */}
+          <div>
+            <div style={{ fontSize: 9, fontWeight: 700, color: T.amber, letterSpacing: 2, ...mono, marginBottom: 8, paddingBottom: 4, borderBottom: `1px solid ${T.amber}30` }}>
+              SUPPLY SIGNALS · {SUPPLY_SIGNALS.filter(s => s.ok).length}/{SUPPLY_SIGNALS.length} FAVORABLE
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {SUPPLY_SIGNALS.map(s => (
+                <div key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '3px 6px', borderRadius: 2 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 9, color: s.ok ? T.green : T.amber, ...mono }}>{s.ok ? '✓' : '⚠'}</span>
+                    <span style={{ fontSize: 9, color: T.muted, ...mono, width: 32 }}>{s.id}</span>
+                    <span style={{ fontSize: 10, color: T.secondary }}>{s.name}</span>
+                  </div>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: T.text, ...mono }}>{s.value}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ ...insightBox(T.amber), marginTop: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }}>
+                <span style={{ fontSize: 9, fontWeight: 700, color: T.amber, ...mono }}>MODERATE SUPPLY RISK</span>
+                <span style={{ fontSize: 9, color: T.amber, ...mono }}>Confidence: 68%</span>
+              </div>
+              <p style={{ fontSize: 9, color: T.secondary, lineHeight: 1.5 }}>
+                14-month absorption runway elevated from Class A deliveries in Midtown/Buckhead. Permit momentum slowing (−12%). Construction costs filtering marginal projects.
+              </p>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* SECTION 1: RENT TRENDS BY VINTAGE */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100 border-l-4" style={{ borderLeftColor: SIGNAL_GROUPS.MOMENTUM.color }}>
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base font-semibold text-gray-900">Rent Trends by Vintage</h3>
-                <span className="text-[10px] font-semibold text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded">{'\u2605'} ENHANCED</span>
-              </div>
-              <p className="text-sm text-gray-500 mt-0.5">Sources: M-01, M-02, R-02 + DC-11</p>
-            </div>
-            <span className="text-xs font-medium text-gray-400 bg-gray-50 px-2 py-1 rounded">4 outputs</span>
+      {/* ── SECTION 1: RENT TRENDS BY VINTAGE ── */}
+      <div style={card}>
+        <div style={hdr(SIGNAL_GROUPS.MOMENTUM.color)}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: T.amber, letterSpacing: 2, ...mono }}>RENT TRENDS BY VINTAGE</span>
+            <span style={badge(T.violet)}>★ ENHANCED</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 9, color: T.muted, ...mono }}>Sources: M-01, M-02, R-02 + DC-11</span>
+            <span style={badge(T.secondary)}>4 OUTPUTS</span>
           </div>
         </div>
-        <div className="p-4 space-y-3">
+        <div style={{ padding: '10px 14px' }}>
           {(() => {
             const allData = [...RENT_VINTAGE_DATA, ...RENT_FORECAST];
             const cW = 520, cH = 220, pL = 55, pR = 15, pT = 15, pB = 30;
@@ -353,257 +401,231 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId, summary }) => {
             const minV = Math.min(...allVals) - 100, maxV = Math.max(...allVals) + 100;
             const step = plotW / (allData.length - 1);
             const toY = (v: number) => pT + plotH - ((v - minV) / (maxV - minV)) * plotH;
-            const lines: { key: string; field: keyof typeof allData[0]; color: string; label: string }[] = [
-              { key: 'aPlus', field: 'aPlus', color: '#4f46e5', label: 'A+ Vintage' },
-              { key: 'a', field: 'a', color: '#3b82f6', label: 'A Vintage' },
-              { key: 'bPlus', field: 'bPlus', color: '#10b981', label: 'B+ Vintage' },
-              { key: 'b', field: 'b', color: '#f59e0b', label: 'B Vintage' },
-              { key: 'c', field: 'c', color: '#f87171', label: 'C Vintage' },
+            const lines = [
+              { field: 'aPlus' as const, color: '#4f46e5', label: 'A+ Vintage' },
+              { field: 'a'    as const, color: '#3b82f6', label: 'A Vintage'  },
+              { field: 'bPlus'as const, color: '#10b981', label: 'B+ Vintage' },
+              { field: 'b'    as const, color: '#f59e0b', label: 'B Vintage'  },
+              { field: 'c'    as const, color: '#f87171', label: 'C Vintage'  },
             ];
             const histLen = RENT_VINTAGE_DATA.length;
             return (
               <>
-                <svg viewBox={`0 0 ${cW} ${cH}`} className="w-full h-auto">
+                <svg viewBox={`0 0 ${cW} ${cH}`} style={{ height: '140px', width: 'auto', maxWidth: '100%' }}>
                   {[0, 0.25, 0.5, 0.75, 1].map(frac => {
                     const y = pT + plotH * (1 - frac);
                     const val = minV + (maxV - minV) * frac;
                     return (
                       <g key={frac}>
-                        <line x1={pL} y1={y} x2={cW - pR} y2={y} stroke="#e5e7eb" strokeWidth={1} />
-                        <text x={pL - 4} y={y + 3} textAnchor="end" className="fill-gray-400 text-[9px]">${Math.round(val).toLocaleString()}</text>
+                        <line x1={pL} y1={y} x2={cW - pR} y2={y} stroke={T.border} strokeWidth={1} />
+                        <text x={pL - 4} y={y + 3} textAnchor="end" fill={T.muted} fontSize={9}>${Math.round(val).toLocaleString()}</text>
                       </g>
                     );
                   })}
-                  {allData.map((d, i) => (
-                    <text key={d.quarter} x={pL + i * step} y={cH - 4} textAnchor="middle" className="fill-gray-500 text-[8px]">{d.quarter}</text>
-                  ))}
-                  <line x1={pL + (histLen - 1) * step} y1={pT} x2={pL + (histLen - 1) * step} y2={pT + plotH} stroke="#a78bfa" strokeWidth={1} strokeDasharray="4,3" />
-                  <text x={pL + (histLen - 1) * step + 4} y={pT + 10} className="fill-violet-500 text-[8px]">Forecast</text>
+                  {allData.map((d, i) => <text key={d.quarter} x={pL + i * step} y={cH - 4} textAnchor="middle" fill={T.muted} fontSize={8}>{d.quarter}</text>)}
+                  <line x1={pL + (histLen - 1) * step} y1={pT} x2={pL + (histLen - 1) * step} y2={pT + plotH} stroke={T.violet} strokeWidth={1} strokeDasharray="4,3" />
+                  <text x={pL + (histLen - 1) * step + 4} y={pT + 10} fill={T.violet} fontSize={8}>Forecast</text>
                   {lines.map(line => {
-                    const histPts = RENT_VINTAGE_DATA.map((d, i) => `${i === 0 ? 'M' : 'L'}${pL + i * step},${toY(d[line.field] as number)}`).join(' ');
-                    const fcPts = RENT_FORECAST.map((d, i) => `L${pL + (histLen + i) * step},${toY(d[line.field] as number)}`).join(' ');
-                    const lastHist = RENT_VINTAGE_DATA[histLen - 1];
+                    const histPts = RENT_VINTAGE_DATA.map((d, i) => `${i === 0 ? 'M' : 'L'}${pL + i * step},${toY(d[line.field])}`).join(' ');
+                    const fcPts   = RENT_FORECAST.map((d, i) => `L${pL + (histLen + i) * step},${toY(d[line.field])}`).join(' ');
+                    const lH = RENT_VINTAGE_DATA[histLen - 1];
                     return (
-                      <g key={line.key}>
+                      <g key={line.field}>
                         <path d={histPts} fill="none" stroke={line.color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-                        <path d={`M${pL + (histLen - 1) * step},${toY(lastHist[line.field] as number)} ${fcPts}`} fill="none" stroke={line.color} strokeWidth={2} strokeDasharray="6,4" strokeLinecap="round" />
+                        <path d={`M${pL + (histLen - 1) * step},${toY(lH[line.field])} ${fcPts}`} fill="none" stroke={line.color} strokeWidth={2} strokeDasharray="6,4" strokeLinecap="round" />
                       </g>
                     );
                   })}
                   {lines.map(line => {
-                    const lastVal = allData[allData.length - 1][line.field] as number;
-                    return <circle key={`dot-${line.key}`} cx={pL + (allData.length - 1) * step} cy={toY(lastVal)} r={3} fill={line.color} />;
+                    const lastVal = allData[allData.length - 1][line.field];
+                    return <circle key={line.field} cx={pL + (allData.length - 1) * step} cy={toY(lastVal)} r={3} fill={line.color} />;
                   })}
                 </svg>
-                <div className="flex flex-wrap justify-center gap-3">
-                  {lines.map(line => (
-                    <span key={line.key} className="flex items-center gap-1 text-xs"><span className="w-3 h-0.5 inline-block rounded" style={{ backgroundColor: line.color }} /> {line.label}</span>
-                  ))}
-                  <span className="flex items-center gap-1 text-xs"><span className="w-3 h-0.5 bg-violet-500 inline-block rounded border-dashed" /> DC-11 Forecast</span>
+                <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginTop: 6 }}>
+                  {lines.map(l => leg(l.color, l.label))}
+                  {leg(T.violet, 'DC-11 Forecast', true)}
+                </div>
+                <div style={insightBox(T.cyan)}>
+                  <span style={{ fontSize: 9, fontWeight: 700, color: T.cyan, ...mono }}>INSIGHT · </span>
+                  <span style={{ fontSize: 10, color: T.secondary }}>B/C vintages outpacing A by 2×. DC-11 forecast shows B accelerating further due to supply constraint in value-add corridors.</span>
                 </div>
               </>
             );
           })()}
-          <div className="bg-teal-50 border border-teal-100 rounded-lg p-3">
-            <p className="text-sm text-teal-800">
-              <span className="font-semibold">Insight:</span> B/C vintages outpacing A by 2x. DC-11 forecast shows B accelerating further due to supply constraint in value-add corridors.
-            </p>
-          </div>
         </div>
       </div>
 
-      {/* SECTION 2: SUPPLY PIPELINE TIMELINE */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100 border-l-4" style={{ borderLeftColor: SIGNAL_GROUPS.SUPPLY.color }}>
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base font-semibold text-gray-900">Supply Pipeline Timeline</h3>
-                <span className="text-[10px] font-semibold text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded">{'\u2605'} ENHANCED</span>
-              </div>
-              <p className="text-sm text-gray-500 mt-0.5">Sources: S-02, S-03, S-04, S-05, S-06 + DC-08</p>
-            </div>
-            <span className="text-xs font-medium text-gray-400 bg-gray-50 px-2 py-1 rounded">6 outputs</span>
+      {/* ── SECTION 2: SUPPLY PIPELINE TIMELINE ── */}
+      <div style={card}>
+        <div style={hdr(SIGNAL_GROUPS.SUPPLY.color)}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: T.amber, letterSpacing: 2, ...mono }}>SUPPLY PIPELINE TIMELINE</span>
+            <span style={badge(T.violet)}>★ ENHANCED</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 9, color: T.muted, ...mono }}>Sources: S-02, S-03, S-04, S-05, S-06 + DC-08</span>
+            <span style={badge(T.secondary)}>6 OUTPUTS</span>
           </div>
         </div>
-        <div className="p-4 space-y-3">
-          <div className="flex gap-2 mb-2">
-            <button
-              onClick={() => setSupplyView('2yr')}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                supplyView === '2yr' ? 'bg-red-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              2-Year Pipeline
-            </button>
-            <button
-              onClick={() => setSupplyView('10yr')}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                supplyView === '10yr' ? 'bg-violet-600 text-white' : 'bg-violet-50 text-violet-700 hover:bg-violet-100 border border-violet-200'
-              }`}
-            >
-              10-Year Supply Wave {'\u2605'}
-            </button>
+        <div style={{ padding: '10px 14px' }}>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+            {(['2yr', '10yr'] as const).map(v => (
+              <button key={v} onClick={() => setSupplyView(v)} style={{
+                fontSize: 9, fontWeight: 700, ...mono, cursor: 'pointer',
+                padding: '3px 10px', borderRadius: 2, border: 'none',
+                background: supplyView === v ? T.red : T.dimBg,
+                color: supplyView === v ? '#fff' : T.secondary,
+                outline: supplyView === v ? 'none' : `1px solid ${T.border}`,
+              }}>
+                {v === '2yr' ? '2-YEAR PIPELINE' : '10-YEAR SUPPLY WAVE ★'}
+              </button>
+            ))}
           </div>
 
           {supplyView === '2yr' ? (
-            <div className="w-full bg-gray-50 rounded-lg border border-gray-200 p-4">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-xs font-semibold text-gray-600">Quarterly Pipeline (S-02 + S-03)</span>
-                <div className="flex gap-3">
-                  <span className="flex items-center gap-1 text-xs"><span className="w-3 h-3 bg-red-500 rounded inline-block" /> Under Construction</span>
-                  <span className="flex items-center gap-1 text-xs"><span className="w-3 h-3 bg-amber-400 rounded inline-block" /> Permitted</span>
+            <div style={{ background: T.dimBg, border: `1px solid ${T.border}`, borderRadius: 2, padding: '10px 12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <span style={{ fontSize: 9, color: T.secondary, ...mono }}>Quarterly Pipeline (S-02 + S-03)</span>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  {leg(T.red, 'Under Construction')}
+                  {leg(T.amber, 'Permitted')}
                 </div>
               </div>
               {(() => {
                 const maxQ = Math.max(...SUPPLY_QUARTERLY.map(d => d.underConstruction + d.permitted));
                 const barW = 50, gap = 70;
                 return (
-                  <svg viewBox={`0 0 ${SUPPLY_QUARTERLY.length * gap + 20} 160`} className="w-full h-auto">
+                  <svg viewBox={`0 0 ${SUPPLY_QUARTERLY.length * gap + 20} 160`} style={{ height: '110px', width: 'auto', maxWidth: '100%' }}>
                     {SUPPLY_QUARTERLY.map((d, i) => {
                       const x = i * gap + 20;
-                      const ucH = (d.underConstruction / maxQ) * 110;
+                      const ucH  = (d.underConstruction / maxQ) * 110;
                       const prmH = (d.permitted / maxQ) * 110;
                       return (
                         <g key={d.quarter}>
-                          <rect x={x} y={130 - ucH - prmH} width={barW} height={prmH} rx={2} className="fill-amber-400" />
-                          <rect x={x} y={130 - ucH} width={barW} height={ucH} rx={2} className="fill-red-500" />
-                          <text x={x + barW / 2} y={148} textAnchor="middle" className="fill-gray-500 text-[9px]">{d.quarter}</text>
-                          <text x={x + barW / 2} y={130 - ucH - prmH - 4} textAnchor="middle" className="fill-gray-500 text-[8px]">{((d.underConstruction + d.permitted) / 1000).toFixed(1)}k</text>
+                          <rect x={x} y={130 - ucH - prmH} width={barW} height={prmH} rx={2} fill={T.amber} opacity={0.7} />
+                          <rect x={x} y={130 - ucH} width={barW} height={ucH} rx={2} fill={T.red} />
+                          <text x={x + barW / 2} y={148} textAnchor="middle" fill={T.muted} fontSize={9}>{d.quarter}</text>
+                          <text x={x + barW / 2} y={130 - ucH - prmH - 4} textAnchor="middle" fill={T.secondary} fontSize={8}>{((d.underConstruction + d.permitted) / 1000).toFixed(1)}k</text>
                         </g>
                       );
                     })}
-                    <line x1="15" y1="130" x2={SUPPLY_QUARTERLY.length * gap + 10} y2="130" className="stroke-gray-300" strokeWidth={1} />
+                    <line x1="15" y1="130" x2={SUPPLY_QUARTERLY.length * gap + 10} y2="130" stroke={T.border} strokeWidth={1} />
                   </svg>
                 );
               })()}
             </div>
           ) : (
-            <div className="w-full bg-gray-50 rounded-lg border border-gray-200 p-4">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-xs font-semibold text-gray-600">10-Year Supply Wave Forecast (DC-08)</span>
-                <div className="flex gap-3">
-                  <span className="flex items-center gap-1 text-xs"><span className="w-3 h-3 bg-red-500 rounded inline-block" /> Confirmed Pipeline</span>
-                  <span className="flex items-center gap-1 text-xs"><span className="w-3 h-3 bg-orange-300 rounded inline-block" /> Capacity Conversion</span>
+            <div style={{ background: T.dimBg, border: `1px solid ${T.border}`, borderRadius: 2, padding: '10px 12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <span style={{ fontSize: 9, color: T.secondary, ...mono }}>10-Year Supply Wave Forecast (DC-08)</span>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  {leg(T.red, 'Confirmed Pipeline')}
+                  {leg('#fb923c', 'Capacity Conversion')}
                 </div>
               </div>
-              <svg viewBox="0 0 450 160" className="w-full h-auto">
+              <svg viewBox="0 0 450 160" style={{ height: '110px', width: 'auto', maxWidth: '100%' }}>
                 {SUPPLY_WAVE_DATA.map((d, i) => {
-                  const barWidth = 35;
-                  const gap = 50;
-                  const x = i * gap + 15;
+                  const barWidth = 35, gap = 50, x = i * gap + 15;
                   const confirmedH = (d.confirmed / maxSupplyVal) * 120;
-                  const capacityH = (d.capacity / maxSupplyVal) * 120;
+                  const capacityH  = (d.capacity  / maxSupplyVal) * 120;
                   return (
                     <g key={d.year}>
-                      <rect x={x} y={140 - confirmedH - capacityH} width={barWidth} height={capacityH} rx={2} className="fill-orange-300" />
-                      <rect x={x} y={140 - confirmedH} width={barWidth} height={confirmedH} rx={2} className="fill-red-500" />
-                      <text x={x + barWidth / 2} y={155} textAnchor="middle" className="fill-gray-500 text-[10px]">{d.year}</text>
+                      <rect x={x} y={140 - confirmedH - capacityH} width={barWidth} height={capacityH} rx={2} fill="#fb923c" opacity={0.7} />
+                      <rect x={x} y={140 - confirmedH} width={barWidth} height={confirmedH} rx={2} fill={T.red} />
+                      <text x={x + barWidth / 2} y={155} textAnchor="middle" fill={T.muted} fontSize={9}>{d.year}</text>
                       {d.confirmed > 0 && (
-                        <text x={x + barWidth / 2} y={140 - confirmedH - capacityH - 4} textAnchor="middle" className="fill-gray-500 text-[8px]">
-                          {((d.confirmed + d.capacity) / 1000).toFixed(1)}k
-                        </text>
+                        <text x={x + barWidth / 2} y={140 - confirmedH - capacityH - 4} textAnchor="middle" fill={T.secondary} fontSize={8}>{((d.confirmed + d.capacity) / 1000).toFixed(1)}k</text>
                       )}
                     </g>
                   );
                 })}
-                <line x1="0" y1="140" x2="450" y2="140" className="stroke-gray-300" strokeWidth={1} />
+                <line x1="0" y1="140" x2="450" y2="140" stroke={T.border} strokeWidth={1} />
               </svg>
             </div>
           )}
-
-          <div className="bg-red-50 border border-red-100 rounded-lg p-3">
-            <p className="text-sm text-red-800">
-              <span className="font-semibold">Insight:</span> Peak year: 2026 (8,200u). Pipeline exhaustion: 2029. Capacity conversion tapers to ~800u/yr by 2032.
-            </p>
+          <div style={insightBox(T.red)}>
+            <span style={{ fontSize: 9, fontWeight: 700, color: T.red, ...mono }}>INSIGHT · </span>
+            <span style={{ fontSize: 10, color: T.secondary }}>Peak year: 2026 (8,200u). Pipeline exhaustion: 2029. Capacity conversion tapers to ~800u/yr by 2032.</span>
           </div>
         </div>
       </div>
 
-      {/* SECTION 3: DEMAND SIGNAL TRENDS */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100 border-l-4" style={{ borderLeftColor: SIGNAL_GROUPS.DEMAND.color }}>
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base font-semibold text-gray-900">Demand Signal Trends</h3>
-                <span className="text-[10px] font-semibold text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded">{'\u2605'} ENHANCED</span>
-              </div>
-              <p className="text-sm text-gray-500 mt-0.5">Sources: D-05, D-06, D-07, D-08, D-09 + T-02, T-03, T-07</p>
-            </div>
-            <span className="text-xs font-medium text-gray-400 bg-gray-50 px-2 py-1 rounded">8 outputs</span>
+      {/* ── SECTION 3: DEMAND SIGNAL TRENDS ── */}
+      <div style={card}>
+        <div style={hdr(SIGNAL_GROUPS.DEMAND.color)}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: T.amber, letterSpacing: 2, ...mono }}>DEMAND SIGNAL TRENDS</span>
+            <span style={badge(T.violet)}>★ ENHANCED</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 9, color: T.muted, ...mono }}>Sources: D-05, D-06, D-07, D-08, D-09 + T-02, T-03, T-07</span>
+            <span style={badge(T.secondary)}>8 OUTPUTS</span>
           </div>
         </div>
-        <div className="p-4 space-y-3">
+        <div style={{ padding: '10px 14px' }}>
           {(() => {
             const cW = 520, cH = 200, pL = 45, pR = 45, pT = 15, pB = 30;
             const plotW = cW - pL - pR, plotH = cH - pT - pB;
             const step = plotW / (DEMAND_SIGNAL_DATA.length - 1);
-            const maxLeft = 10;
-            const maxRight = 100;
+            const maxLeft = 10, maxRight = 100;
             const toYL = (v: number) => pT + plotH - (v / maxLeft) * plotH;
             const toYR = (v: number) => pT + plotH - (v / maxRight) * plotH;
-            const makeLine = (vals: number[], toY: (v: number) => number, color: string, dashed = false) => {
+            const mkLine = (vals: number[], toY: (v: number) => number, color: string, dashed = false) => {
               const pts = vals.map((v, i) => `${i === 0 ? 'M' : 'L'}${pL + i * step},${toY(v)}`).join(' ');
               return <path d={pts} fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" strokeDasharray={dashed ? '6,4' : undefined} />;
             };
             return (
               <>
-                <svg viewBox={`0 0 ${cW} ${cH}`} className="w-full h-auto">
+                <svg viewBox={`0 0 ${cW} ${cH}`} style={{ height: '140px', width: 'auto', maxWidth: '100%' }}>
                   {[0, 0.25, 0.5, 0.75, 1].map(frac => {
                     const y = pT + plotH * (1 - frac);
                     return (
                       <g key={frac}>
-                        <line x1={pL} y1={y} x2={cW - pR} y2={y} stroke="#e5e7eb" strokeWidth={1} />
-                        <text x={pL - 4} y={y + 3} textAnchor="end" className="fill-green-500 text-[9px]">{(maxLeft * frac).toFixed(1)}%</text>
-                        <text x={cW - pR + 4} y={y + 3} textAnchor="start" className="fill-blue-500 text-[9px]">{Math.round(maxRight * frac)}</text>
+                        <line x1={pL} y1={y} x2={cW - pR} y2={y} stroke={T.border} strokeWidth={1} />
+                        <text x={pL - 4} y={y + 3} textAnchor="end" fill={T.green} fontSize={9}>{(maxLeft * frac).toFixed(1)}%</text>
+                        <text x={cW - pR + 4} y={y + 3} textAnchor="start" fill={T.cyan} fontSize={9}>{Math.round(maxRight * frac)}</text>
                       </g>
                     );
                   })}
+                  {DEMAND_SIGNAL_DATA.map((d, i) => <text key={d.quarter} x={pL + i * step} y={cH - 4} textAnchor="middle" fill={T.muted} fontSize={8}>{d.quarter}</text>)}
+                  {mkLine(DEMAND_SIGNAL_DATA.map(d => d.trafficGrowth), toYL, T.green)}
+                  {mkLine(DEMAND_SIGNAL_DATA.map(d => d.t02Avg), toYR, T.green, true)}
+                  {mkLine(DEMAND_SIGNAL_DATA.map(d => d.searchInterest), toYR, T.cyan)}
+                  {mkLine(DEMAND_SIGNAL_DATA.map(d => d.t03Avg), toYR, T.violet, true)}
                   {DEMAND_SIGNAL_DATA.map((d, i) => (
-                    <text key={d.quarter} x={pL + i * step} y={cH - 4} textAnchor="middle" className="fill-gray-500 text-[8px]">{d.quarter}</text>
-                  ))}
-                  {makeLine(DEMAND_SIGNAL_DATA.map(d => d.trafficGrowth), toYL, '#10b981')}
-                  {makeLine(DEMAND_SIGNAL_DATA.map(d => d.t02Avg), toYR, '#059669', true)}
-                  {makeLine(DEMAND_SIGNAL_DATA.map(d => d.searchInterest), toYR, '#3b82f6')}
-                  {makeLine(DEMAND_SIGNAL_DATA.map(d => d.t03Avg), toYR, '#6366f1', true)}
-                  {DEMAND_SIGNAL_DATA.map((d, i) => (
-                    <g key={`dots-${i}`}>
-                      <circle cx={pL + i * step} cy={toYL(d.trafficGrowth)} r={2.5} className="fill-emerald-500" />
-                      <circle cx={pL + i * step} cy={toYR(d.searchInterest)} r={2.5} className="fill-blue-500" />
+                    <g key={i}>
+                      <circle cx={pL + i * step} cy={toYL(d.trafficGrowth)} r={2.5} fill={T.green} />
+                      <circle cx={pL + i * step} cy={toYR(d.searchInterest)} r={2.5} fill={T.cyan} />
                     </g>
                   ))}
-                  <text x={pL - 4} y={pT - 4} textAnchor="end" className="fill-green-500 text-[8px]">Physical</text>
-                  <text x={cW - pR + 4} y={pT - 4} textAnchor="start" className="fill-blue-500 text-[8px]">Digital</text>
+                  <text x={pL - 4} y={pT - 4} textAnchor="end" fill={T.green} fontSize={8}>Physical</text>
+                  <text x={cW - pR + 4} y={pT - 4} textAnchor="start" fill={T.cyan} fontSize={8}>Digital</text>
                 </svg>
-                <div className="flex flex-wrap justify-center gap-4">
-                  <span className="flex items-center gap-1 text-xs"><span className="w-3 h-0.5 bg-emerald-500 inline-block rounded" /> D-05 Traffic Growth</span>
-                  <span className="flex items-center gap-1 text-xs"><span className="w-3 h-0.5 bg-emerald-600 inline-block rounded border-dashed" /> T-02 Physical Score</span>
-                  <span className="flex items-center gap-1 text-xs"><span className="w-3 h-0.5 bg-blue-500 inline-block rounded" /> D-08 Search Interest</span>
-                  <span className="flex items-center gap-1 text-xs"><span className="w-3 h-0.5 bg-indigo-500 inline-block rounded border-dashed" /> T-03 Digital Score</span>
+                <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginTop: 6 }}>
+                  {leg(T.green,  'D-05 Traffic Growth')}
+                  {leg(T.green,  'T-02 Physical Score', true)}
+                  {leg(T.cyan,   'D-08 Search Interest')}
+                  {leg(T.violet, 'T-03 Digital Score', true)}
+                </div>
+                <div style={insightBox(T.green)}>
+                  <span style={{ fontSize: 9, fontWeight: 700, color: T.green, ...mono }}>INSIGHT · </span>
+                  <span style={{ fontSize: 10, color: T.secondary }}>Digital leads physical by 8–12 weeks. T-03 uptick in Decatur Q4 2025 → T-02 uptick Q1 2026.</span>
                 </div>
               </>
             );
           })()}
-          <div className="bg-green-50 border border-green-100 rounded-lg p-3">
-            <p className="text-sm text-green-800">
-              <span className="font-semibold">Insight:</span> Digital leads physical by 8-12 weeks. T-03 uptick in Decatur Q4 2025 {'\u2192'} T-02 uptick Q1 2026.
-            </p>
-          </div>
         </div>
       </div>
 
-      {/* SECTIONS 4 & 5: TRANSACTION & CONCESSION (side by side) */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-        {/* SECTION 4: TRANSACTION & CAP RATES (60%) */}
-        <div className="lg:col-span-3 bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100 border-l-4" style={{ borderLeftColor: SIGNAL_GROUPS.MOMENTUM.color }}>
-            <div>
-              <h3 className="text-base font-semibold text-gray-900">Transaction & Cap Rates</h3>
-              <p className="text-sm text-gray-500 mt-0.5">Sources: M-08, M-09, P-07</p>
-            </div>
+      {/* ── SECTION 4: TRANSACTION & CAP RATES + CONCESSION (side by side) ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 10 }}>
+        {/* Transaction & Cap Rates */}
+        <div style={card}>
+          <div style={hdr(SIGNAL_GROUPS.MOMENTUM.color)}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: T.amber, letterSpacing: 2, ...mono }}>TRANSACTION & CAP RATES</span>
+            <span style={{ fontSize: 9, color: T.muted, ...mono }}>Sources: M-08, M-09, P-07</span>
           </div>
-          <div className="p-4 space-y-3">
+          <div style={{ padding: '10px 14px' }}>
             {(() => {
               const cW = 380, cH = 200, pL = 55, pR = 15, pT = 15, pB = 30;
               const plotW = cW - pL - pR, plotH = cH - pT - pB;
@@ -611,283 +633,235 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId, summary }) => {
               const minP = Math.min(...prices) - 5000, maxP = Math.max(...prices) + 5000;
               const step = plotW / (TRANSACTION_DATA.length - 1);
               const toY = (v: number) => pT + plotH - ((v - minP) / (maxP - minP)) * plotH;
-              const capToColor = (cap: number) => cap < 5.1 ? '#10b981' : cap > 5.3 ? '#ef4444' : '#f59e0b';
+              const capColor = (cap: number) => cap < 5.1 ? T.green : cap > 5.3 ? T.red : T.amber;
               return (
-                <svg viewBox={`0 0 ${cW} ${cH}`} className="w-full h-auto">
+                <svg viewBox={`0 0 ${cW} ${cH}`} style={{ height: '130px', width: 'auto', maxWidth: '100%' }}>
                   {[0, 0.25, 0.5, 0.75, 1].map(frac => {
                     const y = pT + plotH * (1 - frac);
                     const val = minP + (maxP - minP) * frac;
                     return (
                       <g key={frac}>
-                        <line x1={pL} y1={y} x2={cW - pR} y2={y} stroke="#e5e7eb" strokeWidth={1} />
-                        <text x={pL - 4} y={y + 3} textAnchor="end" className="fill-gray-400 text-[8px]">${(val / 1000).toFixed(0)}k</text>
+                        <line x1={pL} y1={y} x2={cW - pR} y2={y} stroke={T.border} strokeWidth={1} />
+                        <text x={pL - 4} y={y + 3} textAnchor="end" fill={T.muted} fontSize={8}>${(val / 1000).toFixed(0)}k</text>
                       </g>
                     );
                   })}
                   {TRANSACTION_DATA.map((d, i) => (
                     <g key={d.date}>
-                      <text x={pL + i * step} y={cH - 4} textAnchor="middle" className="fill-gray-500 text-[8px]">{d.date}</text>
-                      <circle cx={pL + i * step} cy={toY(d.pricePerUnit)} r={Math.max(4, d.units / 40)} fill={capToColor(d.capRate)} fillOpacity={0.7} stroke={capToColor(d.capRate)} strokeWidth={1.5} />
-                      <text x={pL + i * step} y={toY(d.pricePerUnit) - Math.max(4, d.units / 40) - 4} textAnchor="middle" className="fill-gray-500 text-[7px]">{d.capRate}%</text>
+                      <text x={pL + i * step} y={cH - 4} textAnchor="middle" fill={T.muted} fontSize={8}>{d.date}</text>
+                      <circle cx={pL + i * step} cy={toY(d.pricePerUnit)} r={Math.max(4, d.units / 40)} fill={capColor(d.capRate)} fillOpacity={0.7} stroke={capColor(d.capRate)} strokeWidth={1.5} />
+                      <text x={pL + i * step} y={toY(d.pricePerUnit) - Math.max(4, d.units / 40) - 4} textAnchor="middle" fill={T.secondary} fontSize={7}>{d.capRate}%</text>
                     </g>
                   ))}
                 </svg>
               );
             })()}
-            <div className="flex justify-center gap-4 text-xs text-gray-500">
-              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-emerald-500 inline-block" /> Cap &lt; 5.1%</span>
-              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-amber-500 inline-block" /> Cap 5.1-5.3%</span>
-              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-red-500 inline-block" /> Cap &gt; 5.3%</span>
-              <span className="text-[10px] text-gray-400">Bubble size = unit count</span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginTop: 6 }}>
+              {[{ c: T.green, l: 'Cap < 5.1%' }, { c: T.amber, l: 'Cap 5.1-5.3%' }, { c: T.red, l: 'Cap > 5.3%' }].map(({ c, l }) => (
+                <span key={l} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 9, color: T.secondary, ...mono }}>
+                  <span style={{ width: 10, height: 10, borderRadius: '50%', background: c, display: 'inline-block' }} />
+                  {l}
+                </span>
+              ))}
+              <span style={{ fontSize: 9, color: T.muted, ...mono }}>Bubble size = unit count</span>
             </div>
-            <div className="bg-orange-50 border border-orange-100 rounded-lg p-3">
-              <p className="text-sm text-orange-800">
-                <span className="font-semibold">Cap rates:</span> 5.1% {'\u2192'} 5.5% expanding
-              </p>
+            <div style={insightBox(T.amber)}>
+              <span style={{ fontSize: 9, fontWeight: 700, color: T.amber, ...mono }}>CAP RATES · </span>
+              <span style={{ fontSize: 10, color: T.secondary }}>5.1% → 5.5% expanding</span>
             </div>
           </div>
         </div>
 
-        {/* SECTION 5: CONCESSION & OCCUPANCY (40%) */}
-        <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100 border-l-4" style={{ borderLeftColor: SIGNAL_GROUPS.MOMENTUM.color }}>
-            <div>
-              <h3 className="text-base font-semibold text-gray-900">Concession & Occupancy</h3>
-              <p className="text-sm text-gray-500 mt-0.5">Sources: M-03, M-04, M-06, R-03</p>
-            </div>
+        {/* Concession & Occupancy */}
+        <div style={card}>
+          <div style={hdr(SIGNAL_GROUPS.MOMENTUM.color)}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: T.amber, letterSpacing: 2, ...mono }}>CONCESSION & OCC</span>
+            <span style={{ fontSize: 9, color: T.muted, ...mono }}>M-03, M-04, M-06, R-03</span>
           </div>
-          <div className="p-4 space-y-3">
+          <div style={{ padding: '10px 14px' }}>
             {(() => {
               const cW = 300, cH = 180, pL = 35, pR = 35, pT = 15, pB = 30;
               const plotW = cW - pL - pR, plotH = cH - pT - pB;
               const step = plotW / (CONCESSION_DATA.length - 1);
-              const maxC = 8;
-              const minO = 90, maxO = 95;
+              const maxC = 8, minO = 90, maxO = 95;
               const toYC = (v: number) => pT + plotH - (v / maxC) * plotH;
               const toYO = (v: number) => pT + plotH - ((v - minO) / (maxO - minO)) * plotH;
               const areaPath = CONCESSION_DATA.map((d, i) => `${i === 0 ? 'M' : 'L'}${pL + i * step},${toYC(d.concessionPct)}`).join(' ')
                 + ` L${pL + (CONCESSION_DATA.length - 1) * step},${pT + plotH} L${pL},${pT + plotH} Z`;
               const occLine = CONCESSION_DATA.map((d, i) => `${i === 0 ? 'M' : 'L'}${pL + i * step},${toYO(d.occupancy)}`).join(' ');
               return (
-                <svg viewBox={`0 0 ${cW} ${cH}`} className="w-full h-auto">
+                <svg viewBox={`0 0 ${cW} ${cH}`} style={{ height: '120px', width: 'auto', maxWidth: '100%' }}>
                   {[0, 0.25, 0.5, 0.75, 1].map(frac => {
                     const y = pT + plotH * (1 - frac);
                     return (
                       <g key={frac}>
-                        <line x1={pL} y1={y} x2={cW - pR} y2={y} stroke="#e5e7eb" strokeWidth={1} />
-                        <text x={pL - 4} y={y + 3} textAnchor="end" className="fill-orange-400 text-[8px]">{(maxC * frac).toFixed(1)}%</text>
-                        <text x={cW - pR + 4} y={y + 3} textAnchor="start" className="fill-teal-500 text-[8px]">{(minO + (maxO - minO) * frac).toFixed(1)}</text>
+                        <line x1={pL} y1={y} x2={cW - pR} y2={y} stroke={T.border} strokeWidth={1} />
+                        <text x={pL - 4} y={y + 3} textAnchor="end" fill={T.orange} fontSize={8}>{(maxC * frac).toFixed(1)}%</text>
+                        <text x={cW - pR + 4} y={y + 3} textAnchor="start" fill={T.cyan} fontSize={8}>{(minO + (maxO - minO) * frac).toFixed(1)}</text>
                       </g>
                     );
                   })}
+                  {CONCESSION_DATA.map((d, i) => <text key={d.quarter} x={pL + i * step} y={cH - 4} textAnchor="middle" fill={T.muted} fontSize={7}>{d.quarter}</text>)}
+                  <path d={areaPath} fill={T.orange} fillOpacity={0.15} />
+                  <path d={CONCESSION_DATA.map((d, i) => `${i === 0 ? 'M' : 'L'}${pL + i * step},${toYC(d.concessionPct)}`).join(' ')} fill="none" stroke={T.orange} strokeWidth={2} strokeLinecap="round" />
+                  <path d={occLine} fill="none" stroke={T.cyan} strokeWidth={2} strokeLinecap="round" strokeDasharray="6,4" />
                   {CONCESSION_DATA.map((d, i) => (
-                    <text key={d.quarter} x={pL + i * step} y={cH - 4} textAnchor="middle" className="fill-gray-500 text-[7px]">{d.quarter}</text>
-                  ))}
-                  <path d={areaPath} fill="#fdba74" fillOpacity={0.3} stroke="none" />
-                  <path d={CONCESSION_DATA.map((d, i) => `${i === 0 ? 'M' : 'L'}${pL + i * step},${toYC(d.concessionPct)}`).join(' ')} fill="none" stroke="#f97316" strokeWidth={2} strokeLinecap="round" />
-                  <path d={occLine} fill="none" stroke="#14b8a6" strokeWidth={2} strokeLinecap="round" strokeDasharray="6,4" />
-                  {CONCESSION_DATA.map((d, i) => (
-                    <g key={`dots-${i}`}>
-                      <circle cx={pL + i * step} cy={toYC(d.concessionPct)} r={2.5} className="fill-orange-500" />
-                      <circle cx={pL + i * step} cy={toYO(d.occupancy)} r={2.5} className="fill-teal-500" />
+                    <g key={i}>
+                      <circle cx={pL + i * step} cy={toYC(d.concessionPct)} r={2.5} fill={T.orange} />
+                      <circle cx={pL + i * step} cy={toYO(d.occupancy)} r={2.5} fill={T.cyan} />
                     </g>
                   ))}
                 </svg>
               );
             })()}
-            <div className="flex justify-center gap-3 text-xs">
-              <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-orange-500 inline-block rounded" /> Concession % GPR</span>
-              <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-teal-500 inline-block rounded" /> Occupancy %</span>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 10, marginTop: 6 }}>
+              {leg(T.orange, 'Concession % GPR')}
+              {leg(T.cyan, 'Occupancy %', true)}
             </div>
-            <div className="bg-orange-50 border border-orange-100 rounded-lg p-3 space-y-1">
-              <p className="text-sm text-orange-800">
-                <span className="font-semibold">Concession as % GPR:</span> 4.8% {'\u2192'} 3.2% (declining)
-              </p>
-              <p className="text-sm text-orange-700">Availability declining</p>
+            <div style={insightBox(T.orange)}>
+              <span style={{ fontSize: 9, fontWeight: 700, color: T.orange, ...mono }}>CONCESSION · </span>
+              <span style={{ fontSize: 10, color: T.secondary }}>4.8% → 3.2% (declining). Availability declining.</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* SECTION 6: JEDI SCORE HISTORY */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100 border-l-4" style={{ borderLeftColor: SIGNAL_GROUPS.COMPOSITE.color }}>
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-base font-semibold text-gray-900">JEDI Score History</h3>
-              <p className="text-sm text-gray-500 mt-0.5">Source: C-01 time series</p>
-            </div>
-            <span className="text-xs font-medium text-gray-400 bg-gray-50 px-2 py-1 rounded">1 output</span>
+      {/* ── SECTION 5: JEDI SCORE HISTORY ── */}
+      <div style={card}>
+        <div style={hdr(SIGNAL_GROUPS.COMPOSITE.color)}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: T.amber, letterSpacing: 2, ...mono }}>JEDI SCORE HISTORY</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 9, color: T.muted, ...mono }}>Source: C-01 time series</span>
+            <span style={badge(T.secondary)}>1 OUTPUT</span>
           </div>
         </div>
-        <div className="p-4 space-y-3">
+        <div style={{ padding: '10px 14px' }}>
           {(() => {
             const cW = 520, cH = 200, pL = 35, pR = 15, pT = 15, pB = 30;
             const plotW = cW - pL - pR, plotH = cH - pT - pB;
             const step = plotW / (JEDI_SCORE_HISTORY.length - 1);
             const minS = 40, maxS = 100;
             const toY = (v: number) => pT + plotH - ((v - minS) / (maxS - minS)) * plotH;
-            const scoreSeries: { key: string; field: keyof typeof JEDI_SCORE_HISTORY[0]; color: string; label: string; width: number }[] = [
-              { key: 'composite', field: 'composite', color: '#0d9488', label: 'JEDI Composite', width: 3 },
-              { key: 'demand', field: 'demand', color: '#22c55e', label: 'Demand', width: 1.5 },
-              { key: 'supply', field: 'supply', color: '#ef4444', label: 'Supply', width: 1.5 },
-              { key: 'momentum', field: 'momentum', color: '#f97316', label: 'Momentum', width: 1.5 },
+            const scoreSeries = [
+              { field: 'composite' as const, color: T.cyan,  label: 'JEDI Composite', width: 3 },
+              { field: 'demand'    as const, color: T.green, label: 'Demand',          width: 1.5 },
+              { field: 'supply'    as const, color: T.red,   label: 'Supply',           width: 1.5 },
+              { field: 'momentum'  as const, color: T.amber, label: 'Momentum',         width: 1.5 },
             ];
             return (
               <>
-                <svg viewBox={`0 0 ${cW} ${cH}`} className="w-full h-auto">
+                <svg viewBox={`0 0 ${cW} ${cH}`} style={{ height: '140px', width: 'auto', maxWidth: '100%' }}>
                   {[0, 0.25, 0.5, 0.75, 1].map(frac => {
                     const y = pT + plotH * (1 - frac);
                     const val = minS + (maxS - minS) * frac;
                     return (
                       <g key={frac}>
-                        <line x1={pL} y1={y} x2={cW - pR} y2={y} stroke="#e5e7eb" strokeWidth={1} />
-                        <text x={pL - 4} y={y + 3} textAnchor="end" className="fill-gray-400 text-[9px]">{Math.round(val)}</text>
+                        <line x1={pL} y1={y} x2={cW - pR} y2={y} stroke={T.border} strokeWidth={1} />
+                        <text x={pL - 4} y={y + 3} textAnchor="end" fill={T.muted} fontSize={9}>{Math.round(val)}</text>
                       </g>
                     );
                   })}
-                  {JEDI_SCORE_HISTORY.map((d, i) => (
-                    <text key={d.quarter} x={pL + i * step} y={cH - 4} textAnchor="middle" className="fill-gray-500 text-[8px]">{d.quarter}</text>
-                  ))}
+                  {JEDI_SCORE_HISTORY.map((d, i) => <text key={d.quarter} x={pL + i * step} y={cH - 4} textAnchor="middle" fill={T.muted} fontSize={8}>{d.quarter}</text>)}
                   {scoreSeries.map(s => {
-                    const pts = JEDI_SCORE_HISTORY.map((d, i) => `${i === 0 ? 'M' : 'L'}${pL + i * step},${toY(d[s.field] as number)}`).join(' ');
-                    return <path key={s.key} d={pts} fill="none" stroke={s.color} strokeWidth={s.width} strokeLinecap="round" strokeLinejoin="round" />;
+                    const pts = JEDI_SCORE_HISTORY.map((d, i) => `${i === 0 ? 'M' : 'L'}${pL + i * step},${toY(d[s.field])}`).join(' ');
+                    return <path key={s.field} d={pts} fill="none" stroke={s.color} strokeWidth={s.width} strokeLinecap="round" strokeLinejoin="round" />;
                   })}
                   {scoreSeries.map(s =>
-                    JEDI_SCORE_HISTORY.map((d, i) => (
-                      <circle key={`${s.key}-${i}`} cx={pL + i * step} cy={toY(d[s.field] as number)} r={s.key === 'composite' ? 3 : 2} fill={s.color} />
-                    ))
+                    JEDI_SCORE_HISTORY.map((d, i) => <circle key={`${s.field}-${i}`} cx={pL + i * step} cy={toY(d[s.field])} r={s.field === 'composite' ? 3 : 2} fill={s.color} />)
                   )}
                 </svg>
-                <div className="flex flex-wrap justify-center gap-3">
-                  {scoreSeries.map(s => (
-                    <span key={s.key} className="flex items-center gap-1 text-xs"><span className="w-3 h-0.5 inline-block rounded" style={{ backgroundColor: s.color }} /> {s.label}</span>
-                  ))}
+                <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginTop: 6 }}>
+                  {scoreSeries.map(s => leg(s.color, s.label))}
+                </div>
+                <div style={insightBox(T.cyan)}>
+                  <span style={{ fontSize: 9, fontWeight: 700, color: T.cyan, ...mono }}>TRAJECTORY · </span>
+                  <span style={{ fontSize: 10, color: T.secondary }}>58 → 72 → 81 → 87 over 24 months. Primary driver: Demand acceleration (D-09: 55→82). Drag factor: Supply risk (S-composite: stable at 64).</span>
                 </div>
               </>
             );
           })()}
-          <div className="bg-teal-50 border border-teal-100 rounded-lg p-3 space-y-1">
-            <p className="text-sm text-teal-800">
-              <span className="font-semibold">Score trajectory:</span> 58 {'\u2192'} 72 {'\u2192'} 81 {'\u2192'} 87 over 24 months
-            </p>
-            <p className="text-sm text-teal-700">
-              <span className="font-semibold">Primary driver:</span> Demand acceleration (D-09: 55 {'\u2192'} 82)
-            </p>
-            <p className="text-sm text-teal-700">
-              <span className="font-semibold">Drag factor:</span> Supply risk (S-composite: stable at 64)
-            </p>
-          </div>
         </div>
       </div>
 
-      {/* SECTION 7: RENT–TRAFFIC–WAGE CORRELATION (Pearson Chart) */}
+      {/* ── SECTION 6: RENT–TRAFFIC–WAGE CORRELATION ── */}
       {(() => {
-        const rents = CORRELATION_QUARTERS.map(q => q.rentGrowth);
+        const rents   = CORRELATION_QUARTERS.map(q => q.rentGrowth);
         const traffic = CORRELATION_QUARTERS.map(q => q.trafficTrend);
-        const wages = CORRELATION_QUARTERS.map(q => q.wageGrowth);
+        const wages   = CORRELATION_QUARTERS.map(q => q.wageGrowth);
         const rRentTraffic = computeCorrelation(rents, traffic);
-        const rRentWage = computeCorrelation(rents, wages);
+        const rRentWage    = computeCorrelation(rents, wages);
         const maxVal = Math.max(...rents, ...traffic, ...wages);
-        const chartW = 480;
-        const chartH = 180;
-        const padL = 40;
-        const padR = 20;
-        const padT = 10;
-        const padB = 30;
-        const plotW = chartW - padL - padR;
-        const plotH = chartH - padT - padB;
+        const chartW = 480, chartH = 180, padL = 40, padR = 20, padT = 10, padB = 30;
+        const plotW = chartW - padL - padR, plotH = chartH - padT - padB;
         const step = plotW / (CORRELATION_QUARTERS.length - 1);
-
-        const makePath = (values: number[], color: string) => {
-          const pts = values.map((v, i) => {
-            const x = padL + i * step;
-            const y = padT + plotH - (v / maxVal) * plotH;
-            return `${i === 0 ? 'M' : 'L'}${x},${y}`;
-          }).join(' ');
+        const mkPath = (vals: number[], color: string) => {
+          const pts = vals.map((v, i) => `${i === 0 ? 'M' : 'L'}${padL + i * step},${padT + plotH - (v / maxVal) * plotH}`).join(' ');
           return <path d={pts} fill="none" stroke={color} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />;
         };
-
         return (
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100 border-l-4 border-l-indigo-500">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-base font-semibold text-gray-900">Rent{'\u2013'}Traffic{'\u2013'}Wage Correlation</h3>
-                    <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">CI ENGINE</span>
-                  </div>
-                  <p className="text-sm text-gray-500 mt-0.5">8-quarter overlay with Pearson r-values</p>
-                </div>
-                <div className="flex gap-3">
-                  <span className="text-xs font-medium text-gray-500 bg-gray-50 px-2 py-1 rounded">
-                    r(Rent,Traffic) = <span className="font-bold text-indigo-600">{rRentTraffic.toFixed(2)}</span>
-                  </span>
-                  <span className="text-xs font-medium text-gray-500 bg-gray-50 px-2 py-1 rounded">
-                    r(Rent,Wage) = <span className="font-bold text-red-500">{rRentWage.toFixed(2)}</span>
-                  </span>
-                </div>
+          <div style={card}>
+            <div style={hdr('#6366f1')}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: T.amber, letterSpacing: 2, ...mono }}>RENT–TRAFFIC–WAGE CORRELATION</span>
+                <span style={badge('#6366f1')}>CI ENGINE</span>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <span style={{ fontSize: 9, color: T.secondary, ...mono }}>r(Rent,Traffic) = <span style={{ fontWeight: 700, color: '#6366f1' }}>{rRentTraffic.toFixed(2)}</span></span>
+                <span style={{ fontSize: 9, color: T.secondary, ...mono }}>r(Rent,Wage) = <span style={{ fontWeight: 700, color: T.red }}>{rRentWage.toFixed(2)}</span></span>
               </div>
             </div>
-            <div className="p-4 space-y-3">
-              <svg viewBox={`0 0 ${chartW} ${chartH}`} className="w-full h-auto">
+            <div style={{ padding: '10px 14px' }}>
+              <svg viewBox={`0 0 ${chartW} ${chartH}`} style={{ height: '140px', width: 'auto', maxWidth: '100%' }}>
                 {[0, 0.25, 0.5, 0.75, 1].map(frac => {
                   const y = padT + plotH * (1 - frac);
                   return (
                     <g key={frac}>
-                      <line x1={padL} y1={y} x2={chartW - padR} y2={y} stroke="#e5e7eb" strokeWidth={1} />
-                      <text x={padL - 4} y={y + 3} textAnchor="end" className="fill-gray-400 text-[9px]">{(maxVal * frac).toFixed(1)}%</text>
+                      <line x1={padL} y1={y} x2={chartW - padR} y2={y} stroke={T.border} strokeWidth={1} />
+                      <text x={padL - 4} y={y + 3} textAnchor="end" fill={T.muted} fontSize={9}>{(maxVal * frac).toFixed(1)}%</text>
                     </g>
                   );
                 })}
-                {CORRELATION_QUARTERS.map((q, i) => (
-                  <text key={q.quarter} x={padL + i * step} y={chartH - 4} textAnchor="middle" className="fill-gray-500 text-[9px]">{q.quarter}</text>
-                ))}
-                {makePath(wages, '#10b981')}
-                {makePath(traffic, '#6366f1')}
-                {makePath(rents, '#ef4444')}
-                {rents.map((v, i) => (
-                  <circle key={`r${i}`} cx={padL + i * step} cy={padT + plotH - (v / maxVal) * plotH} r={3} className="fill-red-500" />
-                ))}
-                {traffic.map((v, i) => (
-                  <circle key={`t${i}`} cx={padL + i * step} cy={padT + plotH - (v / maxVal) * plotH} r={3} className="fill-indigo-500" />
-                ))}
-                {wages.map((v, i) => (
-                  <circle key={`w${i}`} cx={padL + i * step} cy={padT + plotH - (v / maxVal) * plotH} r={3} className="fill-emerald-500" />
-                ))}
+                {CORRELATION_QUARTERS.map((q, i) => <text key={q.quarter} x={padL + i * step} y={chartH - 4} textAnchor="middle" fill={T.muted} fontSize={9}>{q.quarter}</text>)}
+                {mkPath(wages,   T.green)}
+                {mkPath(traffic, '#6366f1')}
+                {mkPath(rents,   T.red)}
+                {rents.map((v, i)   => <circle key={`r${i}`} cx={padL + i * step} cy={padT + plotH - (v / maxVal) * plotH} r={3} fill={T.red} />)}
+                {traffic.map((v, i) => <circle key={`t${i}`} cx={padL + i * step} cy={padT + plotH - (v / maxVal) * plotH} r={3} fill="#6366f1" />)}
+                {wages.map((v, i)   => <circle key={`w${i}`} cx={padL + i * step} cy={padT + plotH - (v / maxVal) * plotH} r={3} fill={T.green} />)}
               </svg>
-              <div className="flex flex-wrap justify-center gap-4">
-                <span className="flex items-center gap-1.5 text-xs"><span className="w-3 h-0.5 bg-red-500 inline-block rounded" /> Rent Growth (%)</span>
-                <span className="flex items-center gap-1.5 text-xs"><span className="w-3 h-0.5 bg-indigo-500 inline-block rounded" /> Traffic Trend (%)</span>
-                <span className="flex items-center gap-1.5 text-xs"><span className="w-3 h-0.5 bg-emerald-500 inline-block rounded" /> Wage Growth (%)</span>
+              <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginTop: 6 }}>
+                {leg(T.red,   'Rent Growth (%)')}
+                {leg('#6366f1', 'Traffic Trend (%)')}
+                {leg(T.green, 'Wage Growth (%)')}
               </div>
-              <div className="bg-indigo-50 border border-indigo-100 rounded-lg p-3">
-                <p className="text-sm text-indigo-800">
-                  <span className="font-semibold">Insight:</span> Rent and traffic are highly correlated (r={rRentTraffic.toFixed(2)}), while wages have diverged significantly (r={rRentWage.toFixed(2)}), indicating affordability pressure.
-                </p>
+              <div style={insightBox('#6366f1')}>
+                <span style={{ fontSize: 9, fontWeight: 700, color: '#6366f1', ...mono }}>INSIGHT · </span>
+                <span style={{ fontSize: 10, color: T.secondary }}>Rent and traffic are highly correlated (r={rRentTraffic.toFixed(2)}), while wages have diverged significantly (r={rRentWage.toFixed(2)}), indicating affordability pressure.</span>
               </div>
             </div>
           </div>
         );
       })()}
 
-      {/* DIVERGENCE ALERT BANNER */}
+      {/* ── DIVERGENCE ALERT BANNER ── */}
       {checkDivergence() && (
-        <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 flex items-start gap-3">
-          <div className="flex-shrink-0 w-10 h-10 rounded-full bg-amber-400 flex items-center justify-center">
-            <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+        <div style={{ background: T.amber + '0C', border: `2px solid ${T.amber}50`, borderRadius: 3, padding: '10px 14px', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+          <div style={{ width: 32, height: 32, borderRadius: '50%', background: T.amber, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth={2.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86l-8.6 14.86A1 1 0 002.56 20h18.88a1 1 0 00.87-1.28l-8.6-14.86a1 1 0 00-1.74 0z" />
             </svg>
           </div>
           <div>
-            <h4 className="text-sm font-bold text-amber-900">Rent{'\u2013'}Wage Divergence Alert</h4>
-            <p className="text-sm text-amber-800 mt-0.5">
-              Rent growth has outpaced wage growth by &gt;1.5{'\u00D7'} for 3+ consecutive quarters. This divergence signals affordability stress and may lead to increased vacancy, concession pressure, or regulatory intervention.
+            <div style={{ fontSize: 10, fontWeight: 700, color: T.amber, ...mono, marginBottom: 4 }}>RENT–WAGE DIVERGENCE ALERT</div>
+            <p style={{ fontSize: 10, color: T.secondary, lineHeight: 1.5 }}>
+              Rent growth has outpaced wage growth by &gt;1.5× for 3+ consecutive quarters. This divergence signals affordability stress and may lead to increased vacancy, concession pressure, or regulatory intervention.
             </p>
-            <div className="flex gap-4 mt-2">
+            <div style={{ display: 'flex', gap: 10, marginTop: 6, flexWrap: 'wrap' }}>
               {CORRELATION_QUARTERS.slice(-4).map(q => (
-                <span key={q.quarter} className="text-xs text-amber-700">
-                  <span className="font-semibold">{q.quarter}:</span> Rent {q.rentGrowth}% vs Wage {q.wageGrowth}% ({(q.rentGrowth / q.wageGrowth).toFixed(1)}{'\u00D7'})
+                <span key={q.quarter} style={{ fontSize: 9, color: T.amber, background: T.amber + '15', padding: '2px 6px', borderRadius: 2, ...mono }}>
+                  <span style={{ fontWeight: 700 }}>{q.quarter}:</span> Rent {q.rentGrowth}% vs Wage {q.wageGrowth}% ({(q.rentGrowth / q.wageGrowth).toFixed(1)}×)
                 </span>
               ))}
             </div>
@@ -895,310 +869,226 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId, summary }) => {
         </div>
       )}
 
-      {/* SECTION 8: CORRELATION INTELLIGENCE (LIVE FROM API) */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100 border-l-4 border-l-indigo-500">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base font-semibold text-gray-900">Correlation Intelligence</h3>
-                <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">CI ENGINE</span>
-                {correlationLoading && (
-                  <span className="text-[10px] text-indigo-400 animate-pulse">Loading live data...</span>
-                )}
-                {!correlationLoading && !correlationError && correlationReport && (
-                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-green-100 text-green-700">
-                    LIVE DATA
-                  </span>
-                )}
-                {correlationError && (
-                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-700">
-                    SAMPLE DATA
-                  </span>
-                )}
-              </div>
-              <p className="text-sm text-gray-500 mt-0.5">
-                COR-01 through COR-20 {'\u2014'} 20 cross-module market correlation metrics
-                {correlationReport && (
-                  <span className="ml-2 text-indigo-500 font-medium">
-                    {correlationReport.metricsComputed}/{correlationReport.correlations.length} computed from live data
-                  </span>
-                )}
-              </p>
-            </div>
-            <span className="text-xs font-medium text-gray-400 bg-gray-50 px-2 py-1 rounded">20 metrics</span>
+      {/* ── SECTION 7: CORRELATION INTELLIGENCE (LIVE API) ── */}
+      <div style={card}>
+        <div style={hdr('#6366f1')}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: T.amber, letterSpacing: 2, ...mono }}>CORRELATION INTELLIGENCE</span>
+            <span style={badge('#6366f1')}>CI ENGINE</span>
+            {correlationLoading && <span style={{ fontSize: 9, color: T.violet, ...mono }}>Loading live data…</span>}
+            {!correlationLoading && !correlationError && correlationReport && (
+              <span style={{ fontSize: 9, fontWeight: 700, color: T.green, background: T.green + '20', padding: '1px 5px', borderRadius: 2, ...mono }}>LIVE DATA</span>
+            )}
+            {correlationError && (
+              <span style={{ fontSize: 9, fontWeight: 700, color: T.amber, background: T.amber + '20', padding: '1px 5px', borderRadius: 2, ...mono }}>SAMPLE DATA</span>
+            )}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 9, color: T.muted, ...mono }}>COR-01..COR-20 — 20 cross-module metrics</span>
+            {correlationReport && <span style={{ fontSize: 9, color: T.cyan, ...mono }}>{correlationReport.metricsComputed}/{correlationReport.correlations.length} computed</span>}
+            <span style={badge(T.secondary)}>20 METRICS</span>
           </div>
         </div>
-        <div className="p-4 space-y-3">
+        <div style={{ padding: '10px 14px' }}>
           {correlationReport && !correlationError ? (
             <>
-              <div className="flex items-center gap-3 flex-wrap p-3 bg-gray-50 rounded-lg">
-                <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">MARKET SIGNALS:</span>
-                <span className="text-[11px] text-green-600 font-bold">{correlationReport.summary.bullishSignals} bullish</span>
-                <span className="text-[11px] text-red-600 font-bold">{correlationReport.summary.bearishSignals} bearish</span>
-                <span className="text-[11px] text-gray-500 font-bold">{correlationReport.summary.neutralSignals} neutral</span>
-                <span className="text-[11px] text-gray-400">{correlationReport.summary.insufficientData} pending data</span>
+              <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12, padding: '6px 10px', background: T.dimBg, borderRadius: 2, marginBottom: 10 }}>
+                <span style={{ fontSize: 9, fontWeight: 700, color: T.muted, letterSpacing: 1.5, ...mono }}>MARKET SIGNALS:</span>
+                <span style={{ fontSize: 10, fontWeight: 700, color: T.green, ...mono }}>{correlationReport.summary.bullishSignals} bullish</span>
+                <span style={{ fontSize: 10, fontWeight: 700, color: T.red, ...mono }}>{correlationReport.summary.bearishSignals} bearish</span>
+                <span style={{ fontSize: 10, fontWeight: 700, color: T.secondary, ...mono }}>{correlationReport.summary.neutralSignals} neutral</span>
+                <span style={{ fontSize: 10, color: T.muted, ...mono }}>{correlationReport.summary.insufficientData} pending</span>
                 {correlationReport.summary.topOpportunity && (
-                  <span className="text-[11px] text-emerald-600 font-semibold">{'\u2605'} {correlationReport.summary.topOpportunity}</span>
+                  <span style={{ fontSize: 10, color: T.green, fontWeight: 600, ...mono }}>★ {correlationReport.summary.topOpportunity}</span>
                 )}
               </div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                {/* BULLISH COLUMN */}
-                <div>
-                  <div className="flex items-center gap-2 mb-2 pb-2 border-b border-green-200">
-                    <span className="text-[10px] font-bold text-green-700 bg-green-100 px-2 py-0.5 rounded uppercase tracking-wider">{'\u25B2'} Bullish</span>
-                    <span className="text-[10px] text-green-600 font-bold">{computedMetrics.filter(m => m.signal === 'bullish').length}</span>
-                  </div>
-                  <div className="space-y-2">
-                    {computedMetrics.filter(m => m.signal === 'bullish').map(m => renderCorrelationMetricRow(m))}
-                    {computedMetrics.filter(m => m.signal === 'bullish').length === 0 && (
-                      <p className="text-[11px] text-gray-400 italic py-3 text-center">No bullish signals</p>
-                    )}
-                  </div>
-                </div>
-
-                {/* NEUTRAL COLUMN */}
-                <div>
-                  <div className="flex items-center gap-2 mb-2 pb-2 border-b border-gray-200">
-                    <span className="text-[10px] font-bold text-gray-600 bg-gray-100 px-2 py-0.5 rounded uppercase tracking-wider">{'\u25AC'} Neutral</span>
-                    <span className="text-[10px] text-gray-500 font-bold">{computedMetrics.filter(m => m.signal === 'neutral').length}</span>
-                  </div>
-                  <div className="space-y-2">
-                    {computedMetrics.filter(m => m.signal === 'neutral').map(m => renderCorrelationMetricRow(m))}
-                    {computedMetrics.filter(m => m.signal === 'neutral').length === 0 && (
-                      <p className="text-[11px] text-gray-400 italic py-3 text-center">No neutral signals</p>
-                    )}
-                  </div>
-                </div>
-
-                {/* BEARISH COLUMN */}
-                <div>
-                  <div className="flex items-center gap-2 mb-2 pb-2 border-b border-red-200">
-                    <span className="text-[10px] font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded uppercase tracking-wider">{'\u25BC'} Bearish</span>
-                    <span className="text-[10px] text-red-600 font-bold">{computedMetrics.filter(m => m.signal === 'bearish').length}</span>
-                  </div>
-                  <div className="space-y-2">
-                    {computedMetrics.filter(m => m.signal === 'bearish').map(m => renderCorrelationMetricRow(m))}
-                    {computedMetrics.filter(m => m.signal === 'bearish').length === 0 && (
-                      <p className="text-[11px] text-gray-400 italic py-3 text-center">No bearish signals</p>
-                    )}
-                  </div>
-                </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+                {(['bullish', 'neutral', 'bearish'] as const).map(sig => {
+                  const s = sigStyle[sig];
+                  const items = computedMetrics.filter(m => m.signal === sig);
+                  return (
+                    <div key={sig}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, paddingBottom: 4, borderBottom: `1px solid ${s.color}30` }}>
+                        <span style={{ fontSize: 9, fontWeight: 700, color: s.color, background: s.bg, padding: '1px 6px', borderRadius: 2, ...mono }}>
+                          {s.icon} {sig.toUpperCase()}
+                        </span>
+                        <span style={{ fontSize: 9, fontWeight: 700, color: s.color, ...mono }}>{items.length}</span>
+                      </div>
+                      {items.map(m => renderCorRow(m))}
+                      {items.length === 0 && <p style={{ fontSize: 9, color: T.muted, fontStyle: 'italic', textAlign: 'center', padding: '10px 0' }}>No {sig} signals</p>}
+                    </div>
+                  );
+                })}
               </div>
-
               {pendingMetrics.length > 0 && (
-                <div className="mt-2">
-                  <button
-                    onClick={() => setShowPendingMetrics(!showPendingMetrics)}
-                    className="text-[11px] font-medium text-gray-400 hover:text-gray-600 underline"
-                  >
+                <div style={{ marginTop: 8 }}>
+                  <button onClick={() => setShowPendingMetrics(!showPendingMetrics)}
+                    style={{ fontSize: 9, color: T.muted, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', ...mono }}>
                     {showPendingMetrics ? 'Hide' : 'Show'} {pendingMetrics.length} pending metrics (awaiting data sources)
                   </button>
                   {showPendingMetrics && (
-                    <div className="mt-2 space-y-1 border border-gray-100 rounded-lg p-3">
-                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">AWAITING DATA SOURCES:</p>
-                      {pendingMetrics.map(m => renderPendingMetricRow(m))}
+                    <div style={{ marginTop: 6, border: `1px solid ${T.border}`, borderRadius: 2, padding: '6px 8px' }}>
+                      <div style={{ fontSize: 9, fontWeight: 700, color: T.muted, letterSpacing: 1, marginBottom: 4, ...mono }}>AWAITING DATA SOURCES:</div>
+                      {pendingMetrics.map(m => renderPendingRow(m))}
                     </div>
                   )}
                 </div>
               )}
             </>
           ) : correlationError ? (
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-              <p className="text-sm text-amber-700">
-                <span className="font-semibold">Correlation data unavailable:</span> {correlationError}. Showing static Pearson analysis above.
-              </p>
+            <div style={insightBox(T.amber)}>
+              <span style={{ fontSize: 9, fontWeight: 700, color: T.amber, ...mono }}>DATA UNAVAILABLE · </span>
+              <span style={{ fontSize: 10, color: T.secondary }}>{correlationError}. Showing static Pearson analysis above.</span>
             </div>
           ) : (
-            <div className="flex items-center justify-center py-8">
-              <span className="text-sm text-gray-400 animate-pulse">Loading correlation metrics...</span>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 0' }}>
+              <span style={{ fontSize: 10, color: T.secondary, ...mono }}>Loading correlation metrics…</span>
             </div>
           )}
         </div>
       </div>
 
-      {/* SECTION 9: AFFORDABILITY CEILING GAUGE */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100 border-l-4 border-l-rose-500">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base font-semibold text-gray-900">Affordability Ceiling Gauge</h3>
-                <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">CI ENGINE</span>
-                {liveAffordabilityRatio !== null && (
-                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-green-100 text-green-700">
-                    LIVE
-                  </span>
-                )}
-              </div>
-              <p className="text-sm text-gray-500 mt-0.5">Rent as % of median household income {'\u2014'} {AFFORDABILITY_DATA.thresholdPercent}% threshold</p>
-            </div>
-            <span className={`text-sm font-bold px-3 py-1 rounded-full ${
-              AFFORDABILITY_DATA.currentPercent > AFFORDABILITY_DATA.thresholdPercent
-                ? 'bg-red-100 text-red-700'
-                : 'bg-green-100 text-green-700'
-            }`}>
-              {AFFORDABILITY_DATA.currentPercent}%
-            </span>
+      {/* ── SECTION 8: AFFORDABILITY CEILING GAUGE ── */}
+      <div style={card}>
+        <div style={hdr('#f43f5e')}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: T.amber, letterSpacing: 2, ...mono }}>AFFORDABILITY CEILING GAUGE</span>
+            <span style={badge('#6366f1')}>CI ENGINE</span>
+            {liveAffordabilityRatio !== null && <span style={{ fontSize: 9, fontWeight: 700, color: T.green, background: T.green + '20', padding: '1px 5px', borderRadius: 2, ...mono }}>LIVE</span>}
           </div>
+          <span style={{
+            fontSize: 11, fontWeight: 800, color: AFFORDABILITY_DATA.currentPercent > AFFORDABILITY_DATA.thresholdPercent ? T.red : T.green,
+            background: (AFFORDABILITY_DATA.currentPercent > AFFORDABILITY_DATA.thresholdPercent ? T.red : T.green) + '20',
+            padding: '2px 8px', borderRadius: 12, ...mono,
+          }}>
+            {AFFORDABILITY_DATA.currentPercent}%
+          </span>
         </div>
-        <div className="p-4 space-y-4">
-          <div className="grid grid-cols-3 gap-4">
-            <div className="bg-gray-50 rounded-lg p-3 text-center">
-              <p className="text-xs text-gray-500">Median HH Income</p>
-              <p className="text-lg font-bold text-gray-900">${AFFORDABILITY_DATA.medianHouseholdIncome.toLocaleString()}</p>
-            </div>
-            <div className="bg-gray-50 rounded-lg p-3 text-center">
-              <p className="text-xs text-gray-500">Median Monthly Rent</p>
-              <p className="text-lg font-bold text-gray-900">${AFFORDABILITY_DATA.medianMonthlyRent.toLocaleString()}</p>
-            </div>
-            <div className="bg-gray-50 rounded-lg p-3 text-center">
-              <p className="text-xs text-gray-500">Rent-to-Income Ratio</p>
-              <p className={`text-lg font-bold ${AFFORDABILITY_DATA.currentPercent > AFFORDABILITY_DATA.thresholdPercent ? 'text-red-600' : 'text-green-600'}`}>
-                {AFFORDABILITY_DATA.currentPercent}%
-              </p>
-            </div>
+        <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+            {[
+              { label: 'Median HH Income',    val: `$${AFFORDABILITY_DATA.medianHouseholdIncome.toLocaleString()}`, color: T.text },
+              { label: 'Median Monthly Rent',  val: `$${AFFORDABILITY_DATA.medianMonthlyRent.toLocaleString()}`,    color: T.text },
+              { label: 'Rent-to-Income Ratio', val: `${AFFORDABILITY_DATA.currentPercent}%`,                        color: AFFORDABILITY_DATA.currentPercent > AFFORDABILITY_DATA.thresholdPercent ? T.red : T.green },
+            ].map(({ label, val, color }) => (
+              <div key={label} style={{ background: T.dimBg, border: `1px solid ${T.border}`, borderRadius: 2, padding: '8px 10px', textAlign: 'center' }}>
+                <div style={{ fontSize: 9, color: T.secondary, ...mono, marginBottom: 3 }}>{label}</div>
+                <div style={{ fontSize: 16, fontWeight: 800, color, ...mono }}>{val}</div>
+              </div>
+            ))}
           </div>
-
           {(() => {
-            const gaugeW = 480;
-            const gaugeH = 80;
-            const barY = 25;
-            const barH = 24;
-            const minP = 20;
-            const maxP = 40;
-            const range = maxP - minP;
+            const gaugeW = 480, gaugeH = 80, barY = 25, barH = 24;
+            const minP = 20, maxP = 40, range = maxP - minP;
             const toX = (pct: number) => ((pct - minP) / range) * (gaugeW - 60) + 30;
             const threshX = toX(AFFORDABILITY_DATA.thresholdPercent);
-            const currX = toX(AFFORDABILITY_DATA.currentPercent);
-
+            const currX   = toX(AFFORDABILITY_DATA.currentPercent);
+            const overThresh = AFFORDABILITY_DATA.currentPercent > AFFORDABILITY_DATA.thresholdPercent;
             return (
-              <svg viewBox={`0 0 ${gaugeW} ${gaugeH}`} className="w-full h-auto">
-                <rect x={30} y={barY} width={gaugeW - 60} height={barH} rx={4} className="fill-gray-100" />
-                <rect x={30} y={barY} width={Math.max(0, currX - 30)} height={barH} rx={4}
-                  className={AFFORDABILITY_DATA.currentPercent > AFFORDABILITY_DATA.thresholdPercent ? 'fill-red-400' : 'fill-emerald-400'} />
-                <line x1={threshX} y1={barY - 6} x2={threshX} y2={barY + barH + 6} stroke="#dc2626" strokeWidth={2.5} strokeDasharray="4,3" />
-                <text x={threshX} y={barY - 10} textAnchor="middle" className="fill-red-600 text-[10px] font-semibold">{AFFORDABILITY_DATA.thresholdPercent}% Threshold</text>
-                <circle cx={currX} cy={barY + barH / 2} r={6} className={AFFORDABILITY_DATA.currentPercent > AFFORDABILITY_DATA.thresholdPercent ? 'fill-red-600' : 'fill-emerald-600'} />
-                <text x={currX} y={barY + barH + 18} textAnchor="middle" className="fill-gray-700 text-[10px] font-bold">{AFFORDABILITY_DATA.currentPercent}%</text>
+              <svg viewBox={`0 0 ${gaugeW} ${gaugeH}`} style={{ height: '64px', width: 'auto', maxWidth: '100%' }}>
+                <rect x={30} y={barY} width={gaugeW - 60} height={barH} rx={4} fill={T.dimBg} stroke={T.border} strokeWidth={1} />
+                <rect x={30} y={barY} width={Math.max(0, currX - 30)} height={barH} rx={4} fill={overThresh ? T.red : T.green} opacity={0.7} />
+                <line x1={threshX} y1={barY - 6} x2={threshX} y2={barY + barH + 6} stroke={T.red} strokeWidth={2.5} strokeDasharray="4,3" />
+                <text x={threshX} y={barY - 10} textAnchor="middle" fill={T.red} fontSize={10} fontWeight={700}>{AFFORDABILITY_DATA.thresholdPercent}% Threshold</text>
+                <circle cx={currX} cy={barY + barH / 2} r={6} fill={overThresh ? T.red : T.green} />
+                <text x={currX} y={barY + barH + 18} textAnchor="middle" fill={overThresh ? T.red : T.green} fontSize={10} fontWeight={700}>{AFFORDABILITY_DATA.currentPercent}%</text>
                 {[20, 25, 30, 35, 40].map(tick => (
-                  <text key={tick} x={toX(tick)} y={barY + barH + 18} textAnchor="middle" className="fill-gray-400 text-[8px]">{tick}%</text>
+                  <text key={tick} x={toX(tick)} y={barY + barH + 18} textAnchor="middle" fill={T.muted} fontSize={8}>{tick}%</text>
                 ))}
               </svg>
             );
           })()}
-
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500">8-Quarter Trend:</span>
-            <div className="flex items-center gap-1">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 9, color: T.secondary, ...mono }}>8-QTR TREND:</span>
+            <div style={{ display: 'flex', gap: 4 }}>
               {AFFORDABILITY_DATA.historicalPercents.map((pct, i) => (
-                <div key={i} className="flex flex-col items-center">
-                  <div
-                    className={`w-8 h-5 rounded text-[9px] font-medium flex items-center justify-center ${
-                      pct > AFFORDABILITY_DATA.thresholdPercent ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
-                    }`}
-                  >
-                    {pct}
-                  </div>
-                  <span className="text-[8px] text-gray-400 mt-0.5">{CORRELATION_QUARTERS[i]?.quarter.replace(' ', '\n') || ''}</span>
+                <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <div style={{
+                    width: 28, height: 18, borderRadius: 2, fontSize: 9, fontWeight: 700,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', ...mono,
+                    background: pct > AFFORDABILITY_DATA.thresholdPercent ? T.red + '30' : T.green + '20',
+                    color: pct > AFFORDABILITY_DATA.thresholdPercent ? T.red : T.green,
+                  }}>{pct}</div>
+                  <span style={{ fontSize: 9, color: T.muted, ...mono, marginTop: 2 }}>{CORRELATION_QUARTERS[i]?.quarter.replace(' ', '\n') || ''}</span>
                 </div>
               ))}
             </div>
           </div>
-
-          <div className={`rounded-lg p-3 ${
-            AFFORDABILITY_DATA.currentPercent > AFFORDABILITY_DATA.thresholdPercent
-              ? 'bg-red-50 border border-red-100'
-              : 'bg-green-50 border border-green-100'
-          }`}>
-            <p className={`text-sm ${AFFORDABILITY_DATA.currentPercent > AFFORDABILITY_DATA.thresholdPercent ? 'text-red-800' : 'text-green-800'}`}>
-              <span className="font-semibold">
-                {AFFORDABILITY_DATA.currentPercent > AFFORDABILITY_DATA.thresholdPercent ? 'Warning:' : 'Status:'}
-              </span>
-              {' '}Rent-to-income ratio has {AFFORDABILITY_DATA.currentPercent > AFFORDABILITY_DATA.thresholdPercent ? 'exceeded' : 'not yet reached'} the {AFFORDABILITY_DATA.thresholdPercent}% affordability threshold.
-              {AFFORDABILITY_DATA.currentPercent > AFFORDABILITY_DATA.thresholdPercent && ' Markets above this level historically see increased turnover and concession pressure within 2-3 quarters.'}
-            </p>
+          <div style={insightBox(AFFORDABILITY_DATA.currentPercent > AFFORDABILITY_DATA.thresholdPercent ? T.red : T.green)}>
+            <span style={{ fontSize: 9, fontWeight: 700, color: AFFORDABILITY_DATA.currentPercent > AFFORDABILITY_DATA.thresholdPercent ? T.red : T.green, ...mono }}>
+              {AFFORDABILITY_DATA.currentPercent > AFFORDABILITY_DATA.thresholdPercent ? 'WARNING · ' : 'STATUS · '}
+            </span>
+            <span style={{ fontSize: 10, color: T.secondary }}>
+              Rent-to-income ratio has {AFFORDABILITY_DATA.currentPercent > AFFORDABILITY_DATA.thresholdPercent ? 'exceeded' : 'not yet reached'} the {AFFORDABILITY_DATA.thresholdPercent}% threshold.
+              {AFFORDABILITY_DATA.currentPercent > AFFORDABILITY_DATA.thresholdPercent && ' Markets above this level historically see increased turnover and concession pressure within 2–3 quarters.'}
+            </span>
           </div>
         </div>
       </div>
 
-      {/* SECTION 10: RENT RUNWAY INDICATOR */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100 border-l-4 border-l-emerald-500">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base font-semibold text-gray-900">Rent Runway Indicator</h3>
-                <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">CI ENGINE</span>
-                {liveRentRunway && (
-                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-green-100 text-green-700">
-                    LIVE
-                  </span>
-                )}
-              </div>
-              <p className="text-sm text-gray-500 mt-0.5">When wages outpace rents, the gap represents runway for rent increases (COR-04)</p>
-            </div>
+      {/* ── SECTION 9: RENT RUNWAY INDICATOR ── */}
+      <div style={card}>
+        <div style={hdr(T.green)}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, color: T.amber, letterSpacing: 2, ...mono }}>RENT RUNWAY INDICATOR</span>
+            <span style={badge('#6366f1')}>CI ENGINE</span>
+            {liveRentRunway && <span style={{ fontSize: 9, fontWeight: 700, color: T.green, background: T.green + '20', padding: '1px 5px', borderRadius: 2, ...mono }}>LIVE</span>}
           </div>
+          <span style={{ fontSize: 9, color: T.muted, ...mono }}>When wages outpace rents, the gap = runway (COR-04)</span>
         </div>
-        <div className="p-4 space-y-4">
+        <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
           {(() => {
             const wageGrowth = cor04?.xValue ?? 4.2;
             const rentGrowth = cor04?.yValue ?? 1.8;
-            const hasRunway = wageGrowth > rentGrowth;
+            const hasRunway  = wageGrowth > rentGrowth;
             const gapPct = Math.abs(wageGrowth - rentGrowth).toFixed(1);
-            const ratio = (wageGrowth / rentGrowth).toFixed(1);
-
-            const barW = 480;
-            const barH = 60;
-            const maxGrowth = Math.max(wageGrowth, rentGrowth) * 1.3;
+            const ratio  = (wageGrowth / rentGrowth).toFixed(1);
+            const barW = 480, barH = 60, maxGrowth = Math.max(wageGrowth, rentGrowth) * 1.3;
             const toBarWidth = (val: number) => (val / maxGrowth) * (barW - 80);
-
             return (
               <>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className={`rounded-lg p-3 text-center ${hasRunway ? 'bg-emerald-50 border border-emerald-100' : 'bg-red-50 border border-red-100'}`}>
-                    <p className="text-xs text-gray-500">Wage Growth</p>
-                    <p className="text-2xl font-bold text-emerald-600">{wageGrowth}%</p>
-                  </div>
-                  <div className="bg-gray-50 rounded-lg p-3 text-center border border-gray-100">
-                    <p className="text-xs text-gray-500">Rent Growth</p>
-                    <p className="text-2xl font-bold text-gray-700">{rentGrowth}%</p>
-                  </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  {[
+                    { label: 'Wage Growth', val: `${wageGrowth}%`, color: T.green },
+                    { label: 'Rent Growth', val: `${rentGrowth}%`, color: T.secondary },
+                  ].map(({ label, val, color }) => (
+                    <div key={label} style={{ background: T.dimBg, border: `1px solid ${T.border}`, borderRadius: 2, padding: '8px 12px', textAlign: 'center' }}>
+                      <div style={{ fontSize: 9, color: T.secondary, ...mono, marginBottom: 3 }}>{label}</div>
+                      <div style={{ fontSize: 22, fontWeight: 800, color, ...mono }}>{val}</div>
+                    </div>
+                  ))}
                 </div>
-
-                <svg viewBox={`0 0 ${barW} ${barH}`} className="w-full h-auto">
-                  <rect x={40} y={8} width={toBarWidth(wageGrowth)} height={18} rx={4} className="fill-emerald-400" />
-                  <text x={36} y={21} textAnchor="end" className="fill-gray-500 text-[10px] font-medium">Wages</text>
-                  <text x={44 + toBarWidth(wageGrowth)} y={21} className="fill-emerald-700 text-[10px] font-bold">{wageGrowth}%</text>
-                  <rect x={40} y={34} width={toBarWidth(rentGrowth)} height={18} rx={4} className="fill-gray-400" />
-                  <text x={36} y={47} textAnchor="end" className="fill-gray-500 text-[10px] font-medium">Rents</text>
-                  <text x={44 + toBarWidth(rentGrowth)} y={47} className="fill-gray-700 text-[10px] font-bold">{rentGrowth}%</text>
+                <svg viewBox={`0 0 ${barW} ${barH}`} style={{ height: '55px', width: 'auto', maxWidth: '100%' }}>
+                  <rect x={40} y={8}  width={toBarWidth(wageGrowth)} height={18} rx={4} fill={T.green} opacity={0.8} />
+                  <text x={36} y={21} textAnchor="end" fill={T.secondary} fontSize={10}>Wages</text>
+                  <text x={44 + toBarWidth(wageGrowth)} y={21} fill={T.green} fontSize={10} fontWeight={700}>{wageGrowth}%</text>
+                  <rect x={40} y={34} width={toBarWidth(rentGrowth)} height={18} rx={4} fill={T.secondary} opacity={0.5} />
+                  <text x={36} y={47} textAnchor="end" fill={T.secondary} fontSize={10}>Rents</text>
+                  <text x={44 + toBarWidth(rentGrowth)} y={47} fill={T.secondary} fontSize={10} fontWeight={700}>{rentGrowth}%</text>
                   {hasRunway && (
                     <>
-                      <rect x={40 + toBarWidth(rentGrowth)} y={34} width={toBarWidth(wageGrowth) - toBarWidth(rentGrowth)} height={18} rx={0} className="fill-emerald-200" strokeDasharray="4,3" />
-                      <text x={40 + toBarWidth(rentGrowth) + (toBarWidth(wageGrowth) - toBarWidth(rentGrowth)) / 2} y={47} textAnchor="middle" className="fill-emerald-700 text-[9px] font-bold">RUNWAY</text>
+                      <rect x={40 + toBarWidth(rentGrowth)} y={34} width={toBarWidth(wageGrowth) - toBarWidth(rentGrowth)} height={18} fill={T.green} fillOpacity={0.2} />
+                      <text x={40 + toBarWidth(rentGrowth) + (toBarWidth(wageGrowth) - toBarWidth(rentGrowth)) / 2} y={47} textAnchor="middle" fill={T.green} fontSize={9} fontWeight={700}>RUNWAY</text>
                     </>
                   )}
                 </svg>
-
-                <div className={`rounded-lg p-3 ${hasRunway ? 'bg-emerald-50 border border-emerald-100' : 'bg-red-50 border border-red-100'}`}>
-                  <p className={`text-sm ${hasRunway ? 'text-emerald-800' : 'text-red-800'}`}>
-                    <span className="font-semibold">{hasRunway ? 'Runway Available:' : 'No Runway:'}</span>
+                <div style={insightBox(hasRunway ? T.green : T.red)}>
+                  <span style={{ fontSize: 9, fontWeight: 700, color: hasRunway ? T.green : T.red, ...mono }}>
+                    {hasRunway ? 'RUNWAY AVAILABLE · ' : 'NO RUNWAY · '}
+                  </span>
+                  <span style={{ fontSize: 10, color: T.secondary }}>
                     {hasRunway
-                      ? ` Wages are growing ${ratio}\u00D7 faster than rents, creating a ${gapPct}% gap. This suggests room for rent increases before hitting affordability pressure.`
-                      : ` Rents are growing faster than wages. Affordability ceiling may limit further increases.`
-                    }
-                    {liveRentRunway && (
-                      <span className="block mt-1 text-[11px] text-emerald-600 font-medium">{liveRentRunway}</span>
-                    )}
-                  </p>
+                      ? `Wages growing ${ratio}× faster than rents, creating a ${gapPct}% gap. Room for rent increases before hitting affordability pressure.`
+                      : 'Rents growing faster than wages. Affordability ceiling may limit further increases.'}
+                  </span>
+                  {liveRentRunway && <div style={{ fontSize: 9, color: T.green, marginTop: 4, ...mono }}>{liveRentRunway}</div>}
                 </div>
               </>
             );
           })()}
         </div>
       </div>
+
     </div>
   );
 };

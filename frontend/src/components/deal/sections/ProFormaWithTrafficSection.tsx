@@ -449,7 +449,7 @@ function AssumptionsTab({ data }: { data: TrafficProFormaData }) {
                 <div className={`text-[10px] font-bold ${
                   src.conf > 80 ? 'text-emerald-600' : src.conf > 60 ? 'text-amber-600' : 'text-stone-400'
                 }`}>{src.conf}%</div>
-                <div className="text-[8px] text-stone-400">conf</div>
+                <div className="text-[9px] text-stone-400">conf</div>
               </div>
               {isExpanded ? <ChevronDown size={14} className="text-stone-400" /> : <ChevronRight size={14} className="text-stone-400" />}
             </div>
@@ -495,7 +495,7 @@ function AssumptionsTab({ data }: { data: TrafficProFormaData }) {
                         t.confidence > 80 ? 'bg-emerald-400' : t.confidence > 60 ? 'bg-amber-400' : 'bg-red-300'
                       }`} style={{ opacity: 0.5 + t.confidence / 200 }} title={`Y${t.year}: ${t.confidence}%`} />
                     ))}
-                    <span className="text-[8px] text-stone-400 min-w-[30px] text-right">
+                    <span className="text-[9px] text-stone-400 min-w-[30px] text-right">
                       {data.handoff.occupancyTrajectory[9]?.confidence}%
                     </span>
                   </div>
@@ -669,9 +669,9 @@ function IncomeTab({ data }: { data: TrafficProFormaData }) {
                   <tr key={`row-${ri}`} className="border-b border-stone-50">
                     <td className={`py-0.5 px-2 ${row.bold ? 'font-bold' : isDerived ? 'font-semibold' : ''} ${labelColor} ${isTraffic && row.feedsFinancial ? 'bg-cyan-50/40' : isDerived ? 'bg-amber-50/30' : row.highlight ? 'bg-cyan-50/20' : ''} sticky left-0 z-10 bg-white whitespace-nowrap`}>
                       {row.label}
-                      {isTraffic && !row.isConf && <span className="text-[7px] text-cyan-400 ml-1">M07</span>}
-                      {row.highlight && layer === 'platform' && <span className="text-[7px] text-cyan-400 ml-1">M07</span>}
-                      {isDerived && <span className="text-[7px] text-amber-400 ml-1">\u2192M09</span>}
+                      {isTraffic && !row.isConf && <span className="text-[9px] text-cyan-400 ml-1">M07</span>}
+                      {row.highlight && layer === 'platform' && <span className="text-[9px] text-cyan-400 ml-1">M07</span>}
+                      {isDerived && <span className="text-[9px] text-amber-400 ml-1">\u2192M09</span>}
                     </td>
                     {Array.from({ length: 10 }, (_, yi) => renderCell(row, yi))}
                   </tr>

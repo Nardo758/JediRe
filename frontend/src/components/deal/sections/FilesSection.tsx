@@ -5,6 +5,7 @@
  * - owned → Performance mode: Operational files, leases, reports, work orders
  */
 
+import { T as BT, mono as bMono, sans as bSans } from '../bloomberg-tokens';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Deal } from '../../../types/deal';
 import { useDealMode } from '../../../hooks/useDealMode';
@@ -225,7 +226,7 @@ export const FilesSection: React.FC<FilesSectionProps> = ({ deal }) => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const dealId = (deal as any).id;
+  const dealId = deal.id;
 
   const fetchFiles = useCallback(async () => {
     if (!dealId) return;
@@ -384,20 +385,20 @@ export const FilesSection: React.FC<FilesSectionProps> = ({ deal }) => {
         <div className="flex items-center gap-2">
           <div className={`px-3 py-1 rounded-full text-xs font-semibold inline-block ${
             isPipeline 
-              ? 'bg-blue-100 text-blue-700' 
-              : 'bg-green-100 text-green-700'
+              ? 'bg-blue-900/20 text-blue-300' 
+              : 'bg-green-900/20 text-green-300'
           }`}>
             {isPipeline ? '📋 Acquisition Files' : '📂 Property Files'}
           </div>
 
           {hasLiveData && (
-            <span className="px-2 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 animate-pulse">
+            <span className="px-2 py-1 rounded-full text-xs font-bold bg-emerald-900/20 text-emerald-300 animate-pulse">
               ● LIVE DATA
             </span>
           )}
 
           {isLoading && (
-            <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
+            <span className="px-2 py-1 rounded-full text-xs font-medium bg-[#1e2a3d] text-[#6B7585]">
               Loading...
             </span>
           )}
@@ -406,13 +407,13 @@ export const FilesSection: React.FC<FilesSectionProps> = ({ deal }) => {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setViewMode('grid')}
-            className={`p-2 rounded ${viewMode === 'grid' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}
+            className={`p-2 rounded ${viewMode === 'grid' ? 'bg-blue-900/20 text-blue-300' : 'bg-[#1e2a3d] text-[#6B7585]'}`}
           >
             ⊞
           </button>
           <button
             onClick={() => setViewMode('list')}
-            className={`p-2 rounded ${viewMode === 'list' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}
+            className={`p-2 rounded ${viewMode === 'list' ? 'bg-blue-900/20 text-blue-300' : 'bg-[#1e2a3d] text-[#6B7585]'}`}
           >
             ≡
           </button>
@@ -420,9 +421,9 @@ export const FilesSection: React.FC<FilesSectionProps> = ({ deal }) => {
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700 flex items-center justify-between">
+        <div className="bg-red-900/20 border border-red-500/40 rounded-lg p-3 text-sm text-red-400 flex items-center justify-between">
           <span>{error}</span>
-          <button onClick={() => setError(null)} className="text-red-500 hover:text-red-700">✕</button>
+          <button onClick={() => setError(null)} className="text-red-400 hover:text-red-300">✕</button>
         </div>
       )}
 
@@ -493,26 +494,26 @@ interface StatsGridProps {
 const StatsGrid: React.FC<StatsGridProps> = ({ stats }) => {
   return (
     <div>
-      <h3 className="text-sm font-semibold text-gray-700 mb-3">File Repository Overview</h3>
+      <h3 className="text-sm font-semibold text-[#9EA8B4] mb-3">File Repository Overview</h3>
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         {stats.map((stat, idx) => (
-          <div key={idx} className="bg-white border border-gray-200 rounded-lg p-4">
+          <div key={idx} style={{ background: "#0F1319", border: "1px solid #1e2a3d", borderRadius: 4, padding: 16 }}>
             <div className="flex items-center justify-between mb-2">
               <span className="text-2xl">{stat.icon}</span>
               {stat.trend && (
                 <span className={`text-xs font-medium ${
                   stat.trend.direction === 'up' ? 'text-green-600' : 
                   stat.trend.direction === 'down' ? 'text-red-600' : 
-                  'text-gray-600'
+                  'text-[#6B7585]'
                 }`}>
                   {stat.trend.direction === 'up' ? '↑' : stat.trend.direction === 'down' ? '↓' : '→'} {stat.trend.value}
                 </span>
               )}
             </div>
-            <div className="text-2xl font-bold text-gray-900 mb-1">
+            <div className="text-2xl font-bold text-[#E8E6E1] mb-1">
               {stat.value}
             </div>
-            <div className="text-xs text-gray-500">{stat.label}</div>
+            <div className="text-xs text-[#6B7585]">{stat.label}</div>
           </div>
         ))}
       </div>
@@ -526,15 +527,15 @@ interface QuickActionsBarProps {
 
 const QuickActionsBar: React.FC<QuickActionsBarProps> = ({ actions }) => {
   const colorClasses: Record<string, string> = {
-    blue: 'bg-blue-50 text-blue-700 hover:bg-blue-100',
-    purple: 'bg-purple-50 text-purple-700 hover:bg-purple-100',
-    green: 'bg-green-50 text-green-700 hover:bg-green-100',
-    orange: 'bg-orange-50 text-orange-700 hover:bg-orange-100',
-    indigo: 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
+    blue: 'bg-blue-900/20 text-blue-300 hover:bg-blue-900/30',
+    purple: 'bg-purple-900/20 text-purple-300 hover:bg-purple-900/30',
+    green: 'bg-green-900/20 text-green-300 hover:bg-green-900/30',
+    orange: 'bg-orange-900/20 text-orange-300 hover:bg-orange-900/30',
+    indigo: 'bg-indigo-900/20 text-indigo-300 hover:bg-indigo-900/30'
   };
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-4">
+    <div style={{ background: "#0F1319", border: "1px solid #1e2a3d", borderRadius: 4, padding: 16 }}>
       <div className="flex items-center gap-3 flex-wrap">
         {actions.map((action) => (
           <button
@@ -580,8 +581,8 @@ const FolderTreeCard: React.FC<FolderTreeCardProps> = ({ folders, currentPath, o
     return (
       <div key={folder.id}>
         <div
-          className={`flex items-center gap-2 py-2 px-3 rounded cursor-pointer hover:bg-gray-50 ${
-            isActive ? 'bg-blue-50 text-blue-700 font-medium' : ''
+          className={`flex items-center gap-2 py-2 px-3 rounded cursor-pointer hover:bg-[#131920] ${
+            isActive ? 'bg-blue-900/20 text-blue-300 font-medium' : ''
           }`}
           style={{ paddingLeft: `${depth * 16 + 12}px` }}
           onClick={() => {
@@ -590,14 +591,14 @@ const FolderTreeCard: React.FC<FolderTreeCardProps> = ({ folders, currentPath, o
           }}
         >
           {hasChildren && (
-            <span className="text-xs text-gray-400">
+            <span className="text-xs text-[#4a5568]">
               {isExpanded ? '▼' : '▶'}
             </span>
           )}
           <span className="text-lg">📁</span>
           <span className="text-sm truncate flex-1">{folder.name}</span>
           {folder.children && (
-            <span className="text-xs text-gray-400">
+            <span className="text-xs text-[#4a5568]">
               {folder.children.length}
             </span>
           )}
@@ -608,9 +609,9 @@ const FolderTreeCard: React.FC<FolderTreeCardProps> = ({ folders, currentPath, o
   };
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg">
-      <div className="p-4 border-b border-gray-200">
-        <h3 className="text-sm font-semibold text-gray-900">Folders</h3>
+    <div style={{ background: "#0F1319", border: "1px solid #1e2a3d", borderRadius: 4 }}>
+      <div className="p-4 border-b border-[#1e2a3d]">
+        <h3 className="text-sm font-semibold text-[#E8E6E1]">Folders</h3>
       </div>
       <div className="p-2 max-h-96 overflow-y-auto">
         {folders.map(folder => renderFolder(folder))}
@@ -629,11 +630,11 @@ const StorageCard: React.FC<StorageCardProps> = ({ mode }) => {
   const percentage = (usedStorage / totalStorage) * 100;
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-4 mt-4">
-      <h3 className="text-sm font-semibold text-gray-900 mb-3">Storage Usage</h3>
+    <div style={{ background: "#0F1319", border: "1px solid #1e2a3d", borderRadius: 4, padding: 16, marginTop: 16 }}>
+      <h3 className="text-sm font-semibold text-[#E8E6E1] mb-3">Storage Usage</h3>
       
       <div className="mb-3">
-        <div className="w-full bg-gray-200 rounded-full h-2">
+        <div className="w-full bg-[#253347] rounded-full h-2">
           <div
             className={`h-2 rounded-full ${
               percentage < 50 ? 'bg-green-500' :
@@ -646,25 +647,25 @@ const StorageCard: React.FC<StorageCardProps> = ({ mode }) => {
       </div>
 
       <div className="flex justify-between text-sm">
-        <span className="text-gray-600">{usedStorage} GB used</span>
-        <span className="text-gray-900 font-medium">{totalStorage} GB total</span>
+        <span className="text-[#6B7585]">{usedStorage} GB used</span>
+        <span className="font-medium text-[#E8E6E1]">{totalStorage} GB total</span>
       </div>
 
       <div className="mt-4 space-y-2 text-xs">
         <div className="flex justify-between">
-          <span className="text-gray-600">Documents</span>
+          <span className="text-[#6B7585]">Documents</span>
           <span className="font-medium">{(usedStorage * 0.4).toFixed(1)} GB</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-gray-600">Images</span>
+          <span className="text-[#6B7585]">Images</span>
           <span className="font-medium">{(usedStorage * 0.35).toFixed(1)} GB</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-gray-600">Spreadsheets</span>
+          <span className="text-[#6B7585]">Spreadsheets</span>
           <span className="font-medium">{(usedStorage * 0.15).toFixed(1)} GB</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-gray-600">Other</span>
+          <span className="text-[#6B7585]">Other</span>
           <span className="font-medium">{(usedStorage * 0.1).toFixed(1)} GB</span>
         </div>
       </div>
@@ -696,16 +697,16 @@ const FileBrowserCard: React.FC<FileBrowserCardProps> = ({
   onDownload,
 }) => {
   return (
-    <div className="bg-white border border-gray-200 rounded-lg">
+    <div style={{ background: "#0F1319", border: "1px solid #1e2a3d", borderRadius: 4 }}>
       
-      <div className="p-4 border-b border-gray-200">
+      <div className="p-4 border-b border-[#1e2a3d]">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-gray-900">File Browser</h3>
+          <h3 className="text-sm font-semibold text-[#E8E6E1]">File Browser</h3>
           <div className="flex items-center gap-2">
             {currentPath.length > 0 && (
               <button
                 onClick={onNavigateBack}
-                className="px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200 rounded"
+                className="px-3 py-1 text-sm bg-[#1e2a3d] hover:bg-[#253347] rounded"
               >
                 ← Back
               </button>
@@ -713,7 +714,7 @@ const FileBrowserCard: React.FC<FileBrowserCardProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2 text-sm text-gray-600">
+        <div className="flex items-center gap-2 text-sm text-[#6B7585]">
           <button 
             onClick={onNavigateToRoot}
             className="hover:text-blue-600 font-medium"
@@ -723,7 +724,7 @@ const FileBrowserCard: React.FC<FileBrowserCardProps> = ({
           {currentPath.map((pathPart, idx) => (
             <React.Fragment key={idx}>
               <span>/</span>
-              <span className={idx === currentPath.length - 1 ? 'text-gray-900 font-medium' : ''}>
+              <span className={idx === currentPath.length - 1 ? 'font-medium text-[#E8E6E1]' : ''}>
                 {pathPart}
               </span>
             </React.Fragment>
@@ -733,7 +734,7 @@ const FileBrowserCard: React.FC<FileBrowserCardProps> = ({
 
       <div className="p-4">
         {files.length === 0 ? (
-          <div className="text-center py-12 text-gray-500">
+          <div className="text-center py-12 text-[#6B7585]">
             <div className="text-4xl mb-3">📭</div>
             <p>No files in this folder</p>
           </div>
@@ -782,16 +783,16 @@ const FileCardGrid: React.FC<FileCardGridProps> = ({ file, onNavigate, hasLiveDa
 
   return (
     <div
-      className="bg-white border border-gray-200 rounded-lg p-4 hover:border-blue-400 hover:shadow-md transition-all cursor-pointer"
+      style={{ background: "#0F1319", border: "1px solid #1e2a3d", borderRadius: 4, padding: 16, cursor: "pointer" }}
       onClick={() => file.type === 'folder' && onNavigate(file)}
     >
       <div className="text-center">
         <div className="text-4xl mb-2">{file.thumbnail || icon}</div>
-        <div className="text-sm font-medium text-gray-900 truncate mb-1">
+        <div className="text-sm font-medium text-[#E8E6E1] truncate mb-1">
           {file.name}
         </div>
         {file.type === 'file' && file.size && (
-          <div className="text-xs text-gray-500">
+          <div className="text-xs text-[#6B7585]">
             {formatFileSize(file.size)}
           </div>
         )}
@@ -805,23 +806,23 @@ const FileCardGrid: React.FC<FileCardGridProps> = ({ file, onNavigate, hasLiveDa
         {file.tags && file.tags.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1 justify-center">
             {file.tags.slice(0, 2).map((tag, idx) => (
-              <span key={idx} className="text-xs px-2 py-0.5 bg-blue-50 text-blue-700 rounded">
+              <span key={idx} className="text-xs px-2 py-0.5 bg-blue-900/20 text-blue-300 rounded">
                 {tag}
               </span>
             ))}
           </div>
         )}
       </div>
-      <div className="mt-3 pt-3 border-t border-gray-100 text-xs text-gray-500">
+      <div className="mt-3 pt-3 border-t border-[#1e2a3d] text-xs text-[#6B7585]">
         <div className="truncate">{file.modifiedBy}</div>
         <div>{file.modified}</div>
       </div>
       {hasLiveData && file.type === 'file' && (
-        <div className="mt-2 pt-2 border-t border-gray-100 flex gap-1 justify-center">
+        <div className="mt-2 pt-2 border-t border-[#1e2a3d] flex gap-1 justify-center">
           {onDownload && (
             <button
               onClick={(e) => { e.stopPropagation(); onDownload(file.id, file.name); }}
-              className="px-2 py-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100"
+              className="px-2 py-1 text-xs bg-blue-900/20 text-blue-300 rounded hover:bg-blue-900/30"
             >
               ⬇️
             </button>
@@ -829,7 +830,7 @@ const FileCardGrid: React.FC<FileCardGridProps> = ({ file, onNavigate, hasLiveDa
           {onDelete && (
             <button
               onClick={(e) => { e.stopPropagation(); onDelete(file.id); }}
-              className="px-2 py-1 text-xs bg-red-50 text-red-600 rounded hover:bg-red-100"
+              className="px-2 py-1 text-xs bg-red-900/20 text-red-400 rounded hover:bg-red-900/40"
             >
               🗑️
             </button>
@@ -853,14 +854,14 @@ const FileCardList: React.FC<FileCardListProps> = ({ file, onNavigate, hasLiveDa
 
   return (
     <div
-      className="flex items-center gap-4 p-3 bg-white border border-gray-200 rounded-lg hover:border-blue-400 hover:shadow-sm transition-all cursor-pointer"
+      className="flex items-center gap-4 p-3 BLOOMBERG-CARD hover:border-blue-400 hover:shadow-sm transition-all cursor-pointer"
       onClick={() => file.type === 'folder' && onNavigate(file)}
     >
       <div className="text-2xl">{file.thumbnail || icon}</div>
       
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">
-          <div className="text-sm font-medium text-gray-900 truncate">
+          <div className="text-sm font-medium text-[#E8E6E1] truncate">
             {file.name}
           </div>
           {file.status && (
@@ -869,7 +870,7 @@ const FileCardList: React.FC<FileCardListProps> = ({ file, onNavigate, hasLiveDa
             </span>
           )}
         </div>
-        <div className="text-xs text-gray-500">
+        <div className="text-xs text-[#6B7585]">
           Modified by {file.modifiedBy} • {file.modified}
           {file.type === 'file' && file.size && ` • ${formatFileSize(file.size)}`}
         </div>
@@ -878,7 +879,7 @@ const FileCardList: React.FC<FileCardListProps> = ({ file, onNavigate, hasLiveDa
       {file.tags && file.tags.length > 0 && (
         <div className="flex gap-1">
           {file.tags.slice(0, 3).map((tag, idx) => (
-            <span key={idx} className="text-xs px-2 py-1 bg-blue-50 text-blue-700 rounded">
+            <span key={idx} className="text-xs px-2 py-1 bg-blue-900/20 text-blue-300 rounded">
               {tag}
             </span>
           ))}
@@ -889,7 +890,7 @@ const FileCardList: React.FC<FileCardListProps> = ({ file, onNavigate, hasLiveDa
         {hasLiveData && file.type === 'file' && onDownload && (
           <button
             onClick={(e) => { e.stopPropagation(); onDownload(file.id, file.name); }}
-            className="p-2 hover:bg-blue-100 rounded text-blue-600"
+            className="p-2 hover:bg-blue-900/30 rounded text-blue-600"
           >
             <span className="text-sm">⬇️</span>
           </button>
@@ -897,12 +898,12 @@ const FileCardList: React.FC<FileCardListProps> = ({ file, onNavigate, hasLiveDa
         {hasLiveData && file.type === 'file' && onDelete && (
           <button
             onClick={(e) => { e.stopPropagation(); onDelete(file.id); }}
-            className="p-2 hover:bg-red-100 rounded text-red-600"
+            className="p-2 hover:bg-red-900/20 rounded text-red-600"
           >
             <span className="text-sm">🗑️</span>
           </button>
         )}
-        <button className="p-2 hover:bg-gray-100 rounded text-gray-600">
+        <button className="p-2 hover:bg-[#1e2a3d] rounded text-[#6B7585]">
           <span className="text-sm">⋮</span>
         </button>
       </div>
@@ -921,13 +922,11 @@ const UploadZoneCard: React.FC<UploadZoneCardProps> = ({ isUploading, onUpload, 
 
   return (
     <div 
-      className={`bg-white border-2 border-dashed rounded-lg p-8 transition-all ${
-        isDragOver 
-          ? 'border-blue-500 bg-blue-50' 
-          : isUploading
-          ? 'border-yellow-400 bg-yellow-50'
-          : 'border-gray-300 hover:border-gray-400'
-      }`}
+      className="border-2 border-dashed rounded-lg p-8 transition-all"
+      style={{
+        background: isDragOver ? '#0d1e3d' : isUploading ? '#1a1200' : '#0F1319',
+        borderColor: isDragOver ? '#3B82F6' : isUploading ? '#F59E0B' : '#1e2a3d',
+      }}
       onDragOver={(e) => {
         e.preventDefault();
         setIsDragOver(true);
@@ -945,18 +944,18 @@ const UploadZoneCard: React.FC<UploadZoneCardProps> = ({ isUploading, onUpload, 
         {isUploading ? (
           <>
             <div className="text-5xl mb-3 animate-bounce">⏳</div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            <h3 className="text-lg font-semibold text-[#E8E6E1] mb-2">
               Uploading files...
             </h3>
-            <p className="text-sm text-gray-600">Please wait while your files are being uploaded</p>
+            <p className="text-sm text-[#6B7585]">Please wait while your files are being uploaded</p>
           </>
         ) : (
           <>
             <div className="text-5xl mb-3">📤</div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            <h3 className="text-lg font-semibold text-[#E8E6E1] mb-2">
               Drop files here to upload
             </h3>
-            <p className="text-sm text-gray-600 mb-4">
+            <p className="text-sm text-[#6B7585] mb-4">
               or click to browse files
             </p>
             <button
@@ -965,7 +964,7 @@ const UploadZoneCard: React.FC<UploadZoneCardProps> = ({ isUploading, onUpload, 
             >
               Select Files
             </button>
-            <p className="text-xs text-gray-500 mt-3">
+            <p className="text-xs text-[#6B7585] mt-3">
               Supports: PDF, DOC, XLS, JPG, PNG, ZIP (Max 50MB per file)
             </p>
           </>
@@ -983,39 +982,39 @@ interface RecentFilesCardProps {
 
 const RecentFilesCard: React.FC<RecentFilesCardProps> = ({ files, hasLiveData, onDownload }) => {
   return (
-    <div className="bg-white border border-gray-200 rounded-lg">
-      <div className="p-4 border-b border-gray-200 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-900">Recent Activity</h3>
+    <div style={{ background: "#0F1319", border: "1px solid #1e2a3d", borderRadius: 4 }}>
+      <div className="p-4 border-b border-[#1e2a3d] flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-[#E8E6E1]">Recent Activity</h3>
         {hasLiveData && (
           <span className="text-xs text-emerald-600 font-medium">Live</span>
         )}
       </div>
       <div className="divide-y divide-gray-100">
         {files.map((file) => (
-          <div key={file.id} className="p-4 hover:bg-gray-50 transition-colors">
+          <div key={file.id} className="p-4 hover:bg-[#131920] transition-colors">
             <div className="flex items-center gap-4">
               <div className="text-2xl">{getFileIcon(file.fileType)}</div>
               
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-gray-900 truncate mb-1">
+                <div className="text-sm font-medium text-[#E8E6E1] truncate mb-1">
                   {file.name}
                 </div>
-                <div className="text-xs text-gray-500">
+                <div className="text-xs text-[#6B7585]">
                   <span className="capitalize">{file.action}</span> by {file.user} • {file.timestamp}
                 </div>
               </div>
 
               <div className="flex items-center gap-2">
-                <button className="p-2 hover:bg-gray-100 rounded text-gray-600 text-sm">
+                <button className="p-2 hover:bg-[#1e2a3d] rounded text-[#6B7585] text-sm">
                   👁️
                 </button>
                 <button
                   onClick={() => hasLiveData && onDownload ? onDownload(file.id, file.name) : undefined}
-                  className="p-2 hover:bg-gray-100 rounded text-gray-600 text-sm"
+                  className="p-2 hover:bg-[#1e2a3d] rounded text-[#6B7585] text-sm"
                 >
                   ⬇️
                 </button>
-                <button className="p-2 hover:bg-gray-100 rounded text-gray-600 text-sm">
+                <button className="p-2 hover:bg-[#1e2a3d] rounded text-[#6B7585] text-sm">
                   ⋮
                 </button>
               </div>

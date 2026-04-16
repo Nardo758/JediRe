@@ -275,29 +275,36 @@ export default function HighestBestUseTab({ dealId, deal }: HighestBestUseTabPro
       )}
 
       {!aiAnalysis && bestUse && (
-        <div className="bg-gradient-to-r from-amber-50 to-amber-100/50 rounded-lg border border-amber-200 px-5 py-4">
-          <div className="flex items-center gap-3 mb-2">
-            <span className="text-[10px] bg-amber-200 text-amber-800 px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wide">Best Use</span>
-            <span className="text-base font-bold text-amber-900 capitalize">{bestUse.propertyType}</span>
-            <span className="ml-auto text-sm font-semibold text-amber-900">{fmtDollar(bestUse.estimatedValue)}</span>
+        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+          <div className="px-4 py-2 border-b border-gray-200 bg-gradient-to-r from-teal-50 to-cyan-50 flex items-center gap-3">
+            <span className="text-[10px] bg-teal-600 text-white px-2 py-0.5 rounded font-bold uppercase tracking-wide">Best Use</span>
+            <span className="text-xs font-bold text-gray-900 capitalize">{bestUse.propertyType}</span>
+            {permBadge(bestUse.permissionStatus)}
+            <span className="ml-auto text-xs font-bold text-gray-900">{fmtDollar(bestUse.estimatedValue)}</span>
           </div>
-          <p className="text-sm text-amber-800">{bestUse.reasoning}</p>
-          <div className="mt-3 grid grid-cols-4 gap-4">
-            <div>
-              <p className="text-[10px] text-amber-600 uppercase tracking-wide font-medium">Max Capacity</p>
-              <p className="text-sm font-semibold text-amber-900">{fmt(bestUse.maxCapacity)} units</p>
-            </div>
-            <div>
-              <p className="text-[10px] text-amber-600 uppercase tracking-wide font-medium">Max GFA</p>
-              <p className="text-sm font-semibold text-amber-900">{fmt(Math.round(bestUse.maxGFA))} SF</p>
-            </div>
-            <div>
-              <p className="text-[10px] text-amber-600 uppercase tracking-wide font-medium">Annual NOI</p>
-              <p className="text-sm font-semibold text-amber-900">{fmtDollar(bestUse.estimatedNOI)}</p>
-            </div>
-            <div>
-              <p className="text-[10px] text-amber-600 uppercase tracking-wide font-medium">Limiting Factor</p>
-              <p className="text-sm font-semibold text-red-700">{getLimitingLabel(bestUse.limitingFactor)}</p>
+          <div className="px-4 py-3">
+            <p className="text-xs text-gray-700 leading-relaxed mb-3">{bestUse.reasoning}</p>
+            <div className="grid grid-cols-5 gap-3">
+              <div className="bg-gray-50 rounded px-2.5 py-2 border border-gray-100">
+                <p className="text-[9px] text-gray-500 uppercase tracking-wide font-medium">Capacity</p>
+                <p className="text-sm font-bold text-gray-900">{fmt(bestUse.maxCapacity)} <span className="text-[9px] font-normal text-gray-500">units</span></p>
+              </div>
+              <div className="bg-gray-50 rounded px-2.5 py-2 border border-gray-100">
+                <p className="text-[9px] text-gray-500 uppercase tracking-wide font-medium">Max GFA</p>
+                <p className="text-sm font-bold text-gray-900">{fmt(Math.round(bestUse.maxGFA))} <span className="text-[9px] font-normal text-gray-500">SF</span></p>
+              </div>
+              <div className="bg-gray-50 rounded px-2.5 py-2 border border-gray-100">
+                <p className="text-[9px] text-gray-500 uppercase tracking-wide font-medium">Annual NOI</p>
+                <p className="text-sm font-bold text-gray-900">{fmtDollar(bestUse.estimatedNOI)}</p>
+              </div>
+              <div className="bg-gray-50 rounded px-2.5 py-2 border border-gray-100">
+                <p className="text-[9px] text-gray-500 uppercase tracking-wide font-medium">Cap Rate</p>
+                <p className="text-sm font-bold text-gray-900">{(bestUse.capRate * 100).toFixed(1)}%</p>
+              </div>
+              <div className="bg-gray-50 rounded px-2.5 py-2 border border-gray-100">
+                <p className="text-[9px] text-gray-500 uppercase tracking-wide font-medium">Constraint</p>
+                <p className="text-sm font-bold text-red-600">{getLimitingLabel(bestUse.limitingFactor)}</p>
+              </div>
             </div>
           </div>
         </div>
@@ -334,25 +341,19 @@ export default function HighestBestUseTab({ dealId, deal }: HighestBestUseTabPro
               {sortedResults.map((result, idx) => {
                 const isNotPermitted = result.permissionStatus === 'not-permitted';
                 const aiScore = aiScoreMap.get(result.propertyType.toLowerCase());
-                const rowBg = result.recommended
-                  ? 'bg-amber-50/50'
-                  : result.permissionStatus === 'by-right'
-                  ? 'bg-green-50/20'
-                  : result.permissionStatus === 'conditional'
-                  ? 'bg-amber-50/20'
-                  : 'bg-red-50/10';
+                const rowBg = result.recommended ? 'bg-teal-50/60' : '';
                 const textStyle = isNotPermitted ? 'text-gray-400 line-through' : 'text-gray-900';
 
                 return (
-                  <tr key={result.propertyType} className={`border-b border-gray-50 ${rowBg} hover:bg-gray-50/50`}>
+                  <tr key={result.propertyType} className={`border-b border-gray-100 ${rowBg} hover:bg-gray-50`}>
                     <td className="px-4 py-2">
                       <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] text-gray-400 font-medium w-4">#{idx + 1}</span>
-                        <span className={`text-xs font-semibold capitalize ${result.recommended ? 'text-amber-900' : isNotPermitted ? 'text-gray-400' : 'text-gray-900'}`}>
+                        <span className="text-[10px] text-gray-400 font-mono w-4">#{idx + 1}</span>
+                        <span className={`text-xs font-semibold capitalize ${isNotPermitted ? 'text-gray-400' : 'text-gray-900'}`}>
                           {result.propertyType}
                         </span>
                         {result.recommended && (
-                          <span className="text-[8px] bg-amber-200 text-amber-800 px-1 py-0.5 rounded font-bold">BEST</span>
+                          <span className="text-[8px] bg-teal-600 text-white px-1 py-0.5 rounded font-bold">BEST</span>
                         )}
                       </div>
                     </td>
@@ -384,11 +385,11 @@ export default function HighestBestUseTab({ dealId, deal }: HighestBestUseTabPro
                     <td className={`text-right px-3 py-2 text-xs ${textStyle}`}>{fmt(Math.round(result.maxGFA))} SF</td>
                     <td className={`text-right px-3 py-2 text-xs ${textStyle}`}>{fmtDollar(result.annualGrossRevenue)}</td>
                     <td className={`text-right px-3 py-2 text-xs ${textStyle}`}>{fmtDollar(result.estimatedNOI)}</td>
-                    <td className={`text-right px-3 py-2 text-xs font-semibold ${result.recommended ? 'text-amber-900' : textStyle}`}>
+                    <td className={`text-right px-3 py-2 text-xs font-semibold ${result.recommended ? 'text-teal-800' : textStyle}`}>
                       {fmtDollar(result.estimatedValue)}
                     </td>
                     <td className="text-center px-3 py-2">
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded border ${isNotPermitted ? 'bg-gray-50 text-gray-400 border-gray-200' : 'bg-red-50 text-red-600 border-red-200'}`}>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded border ${isNotPermitted ? 'bg-gray-50 text-gray-400 border-gray-200' : 'bg-gray-50 text-gray-600 border-gray-200'}`}>
                         {getLimitingLabel(result.limitingFactor)}
                       </span>
                     </td>

@@ -101,6 +101,7 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
   const [districtDetails, setDistrictDetails] = useState<DistrictDetails | null>(null);
   const [zoningDiscrepancy, setZoningDiscrepancy] = useState<{ liveCode: string; liveName: string; sourceUrl?: string } | null>(null);
   const [discrepancyUpdating, setDiscrepancyUpdating] = useState(false);
+
   const fetchDistrictDetails = useCallback(async (code: string, municipality?: string) => {
     try {
       const params: Record<string, string> = { code };
@@ -486,7 +487,7 @@ export default function BoundaryAndZoningTab({ deal, dealId, onComplete }: Bound
         />
       </div>
 
-      {/* ─── SECTION 2: Zoning Selection & Confirmation ─── */}
+      {/* ─── SECTION 2 (Formerly Section 3): Zoning Selection & Confirmation ─── */}
       <div className={`border rounded-lg overflow-hidden transition-opacity ${boundaryComplete ? 'opacity-100' : 'opacity-40 pointer-events-none'}`}>
         <div className="px-5 py-4 bg-white space-y-4">
 

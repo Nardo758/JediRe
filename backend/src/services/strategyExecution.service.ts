@@ -11,38 +11,7 @@ import { logger } from '../utils/logger';
  * Translates strategy metric IDs (both user-facing shortcodes and preset internal codes)
  * to actual metric_time_series metric_id values.
  */
-const METRIC_ID_TRANSLATE: Record<string, string> = {
-  // Standard user-facing codes
-  SFR_HOME_VALUE: 'home_value_index',
-  HOME_VALUE: 'home_value_index',
-  ZHVI: 'home_value_index',
-  ZHVI_ALL: 'home_value_index',
-  HOME_VALUE_YOY: 'home_value_index_yoy',
-  ZHVI_YOY: 'home_value_index_yoy',
-  RENT: 'rent_index',
-  SFR_RENT: 'rent_index',
-  ZORI: 'rent_index',
-  RENT_INDEX: 'rent_index',
-  ZORI_YOY: 'rent_index_yoy',
-  RENT_YOY: 'rent_index_yoy',
-  RENT_INDEX_YOY: 'rent_index_yoy',
-  // Preset strategy internal codes → best available real metric
-  C_SURGE_INDEX: 'home_value_index_yoy',
-  F_RENT_GROWTH: 'rent_index_yoy',
-  D_SEARCH_MOMENTUM: 'rent_index_yoy',
-  S_PIPELINE_TO_STOCK: 'home_value_index_yoy',
-  E_WAGE_GROWTH: 'rent_index_yoy',
-  M_VACANCY: 'home_value_index',
-  S_PERMIT_VELOCITY: 'home_value_index_yoy',
-  S_PIPELINE_UNITS: 'home_value_index',
-  M_ABSORPTION: 'home_value_index_yoy',
-  HM_DISTRESS_SCORE: 'home_value_index_yoy',
-};
-
-function translateMetricId(raw: string): string {
-  if (!raw) return raw;
-  return METRIC_ID_TRANSLATE[raw.toUpperCase()] ?? METRIC_ID_TRANSLATE[raw] ?? raw.toLowerCase();
-}
+import { translateMetricId } from '../utils/metricTranslation';
 
 export interface StrategyCondition {
   id: string;
@@ -160,10 +129,13 @@ export class StrategyExecutionService {
         return [];
       }
 
-      // Extract unique metric IDs
-      const metricIds = [...new Set(conditions.map((c) => c.metricId))];
+      const translatedConditions = conditions.map(c => ({
+        ...c,
+        dbMetricId: translateMetricId(c.metricId),
+      }));
 
-      // Get the latest value for each metric × geography
+      const metricIds = [...new Set(translatedConditions.map((c) => c.dbMetricId))];
+
       const latestMetricsResult = await this.pool.query(`
         WITH latest AS (
           SELECT DISTINCT ON (metric_id, geography_id)
@@ -217,8 +189,8 @@ export class StrategyExecutionService {
         const weightedScores: number[] = [];
         const weights: number[] = [];
 
-        for (const condition of conditions) {
-          const metricValue = geoData.metrics.get(condition.metricId);
+        for (const condition of translatedConditions) {
+          const metricValue = geoData.metrics.get(condition.dbMetricId);
 
           if (!metricValue) {
             // Metric not available for this geography
@@ -238,7 +210,7 @@ export class StrategyExecutionService {
 
           // Evaluate the condition
           const { passed, score, percentile } = await this.evaluateCondition(
-            condition,
+            { ...condition, metricId: condition.dbMetricId },
             metricValue.value,
             scope,
             metricIds

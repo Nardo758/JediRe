@@ -31,6 +31,7 @@ export const createDealSchema = z.object({
     coordinates: z.any(),
   }),
   projectType: z.string().optional(),
+  project_type: z.string().optional(),
   projectIntent: z.string().nullable().optional(),
   targetUnits: z.number().int().positive().nullable().optional(),
   budget: z.number().positive().nullable().optional(),
