@@ -6,9 +6,9 @@ modules = ["nodejs-20", "python-3.12", "bash", "web"]
 channel = "stable-25_05"
 
 [deployment]
-run = ["node", "backend/dist/index.replit.js"]
-deploymentTarget = "vm"
-build = ["bash", "build.sh"]
+run = ["npm", "start"]
+deploymentTarget = "autoscale"
+build = ["npm", "run", "build"]
 
 [[ports]]
 localPort = 3000
