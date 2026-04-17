@@ -188,7 +188,7 @@ export class FinancialModelEngineService {
     const modelId = insertResult.rows[0].id;
 
     try {
-      const result = await this.callClaudeForModel(enhancedAssumptions);
+      const result = await this.callClaudeForModel(enhancedAssumptions as any);
 
       await pool.query(
         `UPDATE deal_financial_models SET results = $1, status = 'complete', updated_at = NOW() WHERE id = $2`,

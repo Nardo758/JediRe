@@ -190,7 +190,7 @@ export class JediAIService {
       output_tokens: outputTokens,
       cache_creation_input_tokens: 0,
       cache_read_input_tokens: 0,
-    });
+    } as any);
     await this.logUsage(
       context,
       model,
@@ -199,7 +199,7 @@ export class JediAIService {
         output_tokens: outputTokens,
         cache_creation_input_tokens: 0,
         cache_read_input_tokens: 0,
-      },
+      } as any,
       creditCost,
       0
     );

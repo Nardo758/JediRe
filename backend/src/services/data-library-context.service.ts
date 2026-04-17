@@ -79,7 +79,7 @@ export class DataLibraryContextService {
               sourceSystem: 'data_library',
               propertyCity: params.municipality,
               validationStatus: ['validated', 'pending'],
-            },
+            } as any,
             limit: 20,
             minSimilarity: 0.6, // Lower threshold for broader results
           });

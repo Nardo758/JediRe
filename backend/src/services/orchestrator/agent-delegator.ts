@@ -243,7 +243,7 @@ export class AgentDelegator {
       return {
         agent: 'METRIC_RECOMMENDATIONS',
         agentType: 'specialist',
-        data: result,
+        data: result as unknown as Record<string, unknown>,
         summary: result.summary,
         executionTimeMs: Date.now() - startTime,
         success: result.success,

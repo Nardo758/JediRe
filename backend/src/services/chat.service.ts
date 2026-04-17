@@ -240,7 +240,7 @@ export async function processChat(message: string, conversationId?: string): Pro
     rounds++;
 
     const toolBlocks = response.content.filter(
-      (block): block is Anthropic.ContentBlockParam & { type: 'tool_use'; id: string; name: string; input: any } =>
+      (block): block is Anthropic.ToolUseBlock =>
         block.type === 'tool_use'
     );
 

@@ -106,11 +106,11 @@ router.post('/deals/:dealId/building-envelope', async (req: Request, res: Respon
       densityBonuses,
     };
 
-    const envelope = envelopeService.calculateEnvelope(envelopeInputs);
+    const envelope = envelopeService.calculateEnvelope(envelopeInputs as any);
 
     let hbuResults = null;
     if (includeHBU) {
-      hbuResults = envelopeService.calculateHighestBestUse(envelopeInputs, revenueAssumptions);
+      hbuResults = envelopeService.calculateHighestBestUse(envelopeInputs as any, revenueAssumptions);
     }
 
     let aiRecommendations = null;

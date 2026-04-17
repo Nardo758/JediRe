@@ -268,7 +268,7 @@ export class CapitalStructureService {
       dealId,
       strategy,
       totalSources,
-      totalUses: uses.total,
+      totalUses: Number(uses.total),
       layers: layersWithPct,
       isBalanced: balance.balanced,
       imbalance: balance.imbalance,
@@ -333,8 +333,8 @@ export class CapitalStructureService {
     notRecommended: DebtProduct[];
   } {
     const allowedTypes = STRATEGY_DEBT_MATRIX[strategy] || [];
-    const recommended = allProducts.filter(p => (p.bestForStrategies || []).includes(strategy) || allowedTypes.includes(p.productType || ''));
-    const notRecommended = allProducts.filter(p => !(p.bestForStrategies || []).includes(strategy) && !allowedTypes.includes(p.productType || ''));
+    const recommended = allProducts.filter(p => (p.bestForStrategies || []).includes(strategy) || allowedTypes.includes((p.productType || '') as DebtProductType));
+    const notRecommended = allProducts.filter(p => !(p.bestForStrategies || []).includes(strategy) && !allowedTypes.includes((p.productType || '') as DebtProductType));
     return { recommended, notRecommended };
   }
 
@@ -351,7 +351,7 @@ export class CapitalStructureService {
     const allowedTypes = STRATEGY_DEBT_MATRIX[strategy] || [];
 
     for (const product of debtProducts) {
-      if (!allowedTypes.includes(product.productType || '') && !(product.bestForStrategies || []).includes(strategy)) {
+      if (!allowedTypes.includes((product.productType || '') as DebtProductType) && !(product.bestForStrategies || []).includes(strategy)) {
         let issue = `${product.name} is not typically used for ${strategy} deals.`;
         let suggestion = `Consider products from: ${allowedTypes.join(', ')}.`;
 
@@ -555,8 +555,8 @@ export class CapitalStructureService {
     const results: ScenarioResult[] = scenarios.map(scenario => {
       const debtLayers = scenario.layers.filter(l => l.layerType === 'senior' || l.layerType === 'mezz');
       const equityLayers = scenario.layers.filter(l => l.layerType !== 'senior' && l.layerType !== 'mezz');
-      const totalDebt = debtLayers.reduce((sum, l) => sum + l.amount, 0);
-      const totalEquity = equityLayers.reduce((sum, l) => sum + l.amount, 0);
+      const totalDebt = debtLayers.reduce((sum, l) => sum + Number(l.amount), 0);
+      const totalEquity = equityLayers.reduce((sum, l) => sum + Number(l.amount), 0);
       const seniorLayer = debtLayers.find(l => l.layerType === 'senior');
       const seniorRate = seniorLayer?.rate || 0;
 

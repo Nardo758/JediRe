@@ -45,6 +45,8 @@ interface IngestionJob {
   logs: string[];
 }
 
+const isJobCancelled = (j: IngestionJob): boolean => j.status === 'cancelled';
+
 const activeJobs = new Map<string, IngestionJob>();
 let jobCounter = 0;
 
@@ -332,7 +334,7 @@ router.post('/ingest/full', requireAdminAuth, async (req: AuthenticatedRequest, 
         job.logs.push(`  Skipped municipalities: ${err.message?.slice(0, 80)}`);
       }
 
-      if (job.status === 'cancelled') return;
+      if (isJobCancelled(job)) return;
 
       job.logs.push('Step 2/5: Fetching zoning districts...');
       try {
@@ -340,7 +342,7 @@ router.post('/ingest/full', requireAdminAuth, async (req: AuthenticatedRequest, 
         const munis = await query(`SELECT id, name, state FROM municipalities WHERE has_api = true ORDER BY state, name`);
         let districtsSaved = 0;
         for (const muni of munis.rows) {
-          if (job.status === 'cancelled') break;
+          if (isJobCancelled(job)) break;
           if (!CITY_APIS[muni.id]) continue;
           const existing = await query(`SELECT COUNT(*) as cnt FROM zoning_districts WHERE municipality_id = $1`, [muni.id]);
           if (parseInt(existing.rows[0].cnt) > 0) {
@@ -364,7 +366,7 @@ router.post('/ingest/full', requireAdminAuth, async (req: AuthenticatedRequest, 
         job.logs.push(`  Skipped zoning: ${err.message?.slice(0, 80)}`);
       }
 
-      if (job.status === 'cancelled') return;
+      if (isJobCancelled(job)) return;
 
       job.logs.push('Step 3/5: Florida benchmarks...');
       try {
@@ -372,7 +374,7 @@ router.post('/ingest/full', requireAdminAuth, async (req: AuthenticatedRequest, 
         const counties = floridaBenchmarkIngestionService.getAvailableCounties();
         let totalRecords = 0;
         for (const countyId of counties) {
-          if (job.status === 'cancelled') break;
+          if (isJobCancelled(job)) break;
           try {
             const stats = await floridaBenchmarkIngestionService.ingest(countyId);
             totalRecords += stats.recordsUpserted || 0;
@@ -387,7 +389,7 @@ router.post('/ingest/full', requireAdminAuth, async (req: AuthenticatedRequest, 
         job.logs.push(`  Skipped benchmarks: ${err.message?.slice(0, 80)}`);
       }
 
-      if (job.status === 'cancelled') return;
+      if (isJobCancelled(job)) return;
 
       job.logs.push('Step 4/5: Mapping properties to zoning...');
       try {
@@ -399,7 +401,7 @@ router.post('/ingest/full', requireAdminAuth, async (req: AuthenticatedRequest, 
         );
         let mapped = 0;
         for (const deal of deals.rows) {
-          if (job.status === 'cancelled') break;
+          if (isJobCancelled(job)) break;
           try {
             const addressParts = (deal.address || '').split(',').map((s: string) => s.trim());
             const cityFromAddress = addressParts.length >= 2 ? addressParts[addressParts.length - 3] || addressParts[0] : '';
@@ -425,7 +427,7 @@ router.post('/ingest/full', requireAdminAuth, async (req: AuthenticatedRequest, 
         job.logs.push(`  Skipped property mapping: ${err.message?.slice(0, 80)}`);
       }
 
-      if (job.status === 'cancelled') return;
+      if (isJobCancelled(job)) return;
 
       job.logs.push('Step 5/5: Data quality cleanup...');
       try {
@@ -1218,7 +1220,7 @@ router.post('/ingest/bls-qcew', requireAdminAuth, async (req: AuthenticatedReque
       job.logs.push(`  Errors: ${result.errors.length}`);
 
       if (result.errors.length > 0) {
-        result.errors.slice(0, 10).forEach(err => {
+        result.errors.slice(0, 10).forEach((err: any) => {
           job.logs.push(`  ERROR: ${err.county} - ${err.error}`);
         });
       }
@@ -1249,18 +1251,19 @@ router.post('/ingest/census-acs', requireAdminAuth, async (req: AuthenticatedReq
       const { ingestCensusACS } = await import('../../services/ingestion/census-ingest.service');
       const result = await ingestCensusACS(censusApiKey);
 
-      job.recordsProcessed = result.rowsInserted;
-      job.recordsTotal = result.zipCodesProcessed * 3; // ~3 metrics per ZIP
+      const censusResult = result as any;
+      job.recordsProcessed = censusResult.rowsInserted;
+      job.recordsTotal = censusResult.zipCodesProcessed * 3; // ~3 metrics per ZIP
       job.status = 'completed';
       job.completedAt = new Date();
 
       job.logs.push(`Census ACS ingestion complete:`);
-      job.logs.push(`  ZIP codes processed: ${result.zipCodesProcessed}`);
-      job.logs.push(`  Rows inserted: ${result.rowsInserted}`);
-      job.logs.push(`  Errors: ${result.errors.length}`);
+      job.logs.push(`  ZIP codes processed: ${censusResult.zipCodesProcessed}`);
+      job.logs.push(`  Rows inserted: ${censusResult.rowsInserted}`);
+      job.logs.push(`  Errors: ${censusResult.errors.length}`);
 
-      if (result.errors.length > 0) {
-        result.errors.slice(0, 10).forEach(err => {
+      if (censusResult.errors.length > 0) {
+        censusResult.errors.slice(0, 10).forEach((err: any) => {
           job.logs.push(`  ERROR: ${err.zip} - ${err.error}`);
         });
       }
@@ -1302,7 +1305,7 @@ router.post('/ingest/census-building-permits', requireAdminAuth, async (req: Aut
       job.logs.push(`  Errors: ${result.errors.length}`);
 
       if (result.errors.length > 0) {
-        result.errors.slice(0, 10).forEach(err => {
+        result.errors.slice(0, 10).forEach((err: any) => {
           job.logs.push(`  ERROR: ${err.county} - ${err.error}`);
         });
       }

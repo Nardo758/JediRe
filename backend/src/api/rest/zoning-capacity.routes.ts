@@ -931,7 +931,7 @@ router.get('/zoning/parcel-lookup', async (req: Request, res: Response) => {
       if (mapboxToken) {
         const geoUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lngNum},${latNum}.json?types=place,locality,district&access_token=${mapboxToken}`;
         const geoRes = await fetch(geoUrl);
-        const geoData = await geoRes.json();
+        const geoData = await geoRes.json() as any;
         if (geoData.features?.length > 0) {
           cityName = geoData.features[0].text || '';
           const context = geoData.features[0].context || [];
@@ -962,7 +962,7 @@ router.get('/zoning/parcel-lookup', async (req: Request, res: Response) => {
           const layerId = cityConfig.layerId ?? 0;
           const queryUrl = `${cityConfig.serviceUrl}/${layerId}/query`;
           const arcRes = await fetch(`${queryUrl}?geometry=${lngNum},${latNum}&geometryType=esriGeometryPoint&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields=*&returnGeometry=false&f=json`);
-          const arcData = await arcRes.json();
+          const arcData = await arcRes.json() as any;
           if (arcData.features?.length > 0) {
             const attrs = arcData.features[0].attributes;
             const zoningCode = attrs[codeField] || '';
@@ -1145,7 +1145,7 @@ router.get('/reverse-geocode', async (req: Request, res: Response) => {
 
     const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?types=place,locality&access_token=${mapboxToken}`;
     const response = await fetch(url);
-    const data = await response.json();
+    const data = await response.json() as any;
 
     if (!data.features || data.features.length === 0) {
       return res.json({ found: false, message: 'No location found for coordinates' });
@@ -1348,9 +1348,9 @@ router.post('/deals/:dealId/zoning-interpretation', async (req: Request, res: Re
     }
 
     // Extract structured zoning using Claude
-    const buildingEnvelopeService = new BuildingEnvelopeService(pool);
+    const buildingEnvelopeService = new (BuildingEnvelopeService as any)(pool);
     const rezoneService = new RezoneAnalysisService(pool);
-    const orchestrator = new ZoningRecommendationOrchestrator(pool);
+    const orchestrator = new (ZoningRecommendationOrchestrator as any)(pool);
     const cache = new ZoningInterpretationCache(pool);
 
     const comparisonEngine = new EntitlementComparisonEngine(

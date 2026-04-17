@@ -497,7 +497,7 @@ router.get('/:dealId/financials', requireAuth, async (req: AuthenticatedRequest,
       const irr = computeIrr(cashFlows);
       const equityMultiple = lastProj.cumulativeEM ?? null;
       const cashOnCash = projs.length > 0 ? (projs[0].coc ?? null) : null;
-      returns = { irr, equityMultiple, cashOnCash };
+      returns = { irr, equityMultiple, cashOnCash } as any;
     }
 
     res.json({ success: true, data: { ...data, returns } });

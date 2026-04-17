@@ -1007,7 +1007,7 @@ router.post('/:dealId/analysis/trigger', requireAuth, async (req: AuthenticatedR
   }
 });
 
-router.post('/upload-document', requireAuth, documentUpload.single('file'), async (req: AuthenticatedRequest, res) => {
+router.post('/upload-document', requireAuth, documentUpload.single('file') as any, async (req: AuthenticatedRequest, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ success: false, error: 'No file uploaded' });
@@ -1136,7 +1136,7 @@ router.post('/:dealId/reprocess-documents', requireAuth, async (req: Authenticat
   }
 });
 
-router.post('/:dealId/extract-document', requireAuth, documentUpload.single('file'), async (req: AuthenticatedRequest, res) => {
+router.post('/:dealId/extract-document', requireAuth, documentUpload.single('file') as any, async (req: AuthenticatedRequest, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ success: false, error: 'No file uploaded' });

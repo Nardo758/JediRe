@@ -106,7 +106,7 @@ export function setupUnhandledRejectionHandler(): void {
       .sendErrorNotification(error, {
         type: 'unhandledRejection',
         environment: process.env.NODE_ENV,
-      })
+      } as any)
       .catch((webhookError) => {
         logger.error('Failed to send unhandled rejection webhook:', webhookError);
       });
@@ -128,7 +128,7 @@ export function setupUncaughtExceptionHandler(): void {
         type: 'uncaughtException',
         critical: true,
         environment: process.env.NODE_ENV,
-      })
+      } as any)
       .catch((webhookError) => {
         logger.error('Failed to send uncaught exception webhook:', webhookError);
       })

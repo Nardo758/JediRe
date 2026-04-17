@@ -149,7 +149,7 @@ class GeocodingService {
       throw new Error(`Mapbox geocoding failed: ${response.status} ${response.statusText}`);
     }
     
-    const data = await response.json();
+    const data = await response.json() as any;
     
     if (!data.features || data.features.length === 0) {
       return null;
@@ -192,7 +192,7 @@ class GeocodingService {
       throw new Error(`Mapbox reverse geocoding failed: ${response.status} ${response.statusText}`);
     }
     
-    const data = await response.json();
+    const data = await response.json() as any;
     
     if (!data.features || data.features.length === 0) {
       return null;
@@ -240,7 +240,7 @@ class GeocodingService {
       throw new Error(`Nominatim geocoding failed: ${response.status}`);
     }
     
-    const data = await response.json();
+    const data = await response.json() as any;
     
     if (!data || data.length === 0) {
       return null;
@@ -283,7 +283,7 @@ class GeocodingService {
       throw new Error(`Nominatim reverse geocoding failed: ${response.status}`);
     }
     
-    const result = await response.json();
+    const result = await response.json() as any;
     
     if (!result || result.error) {
       return null;

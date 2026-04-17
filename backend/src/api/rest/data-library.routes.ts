@@ -70,7 +70,7 @@ export function createDataLibraryRoutes(pool: Pool): Router {
     }
   });
 
-  router.post('/', upload.single('file'), async (req: Request, res: Response) => {
+  router.post('/', upload.single('file') as any, async (req: Request, res: Response) => {
     try {
       if (!req.file) return res.status(400).json({ error: 'File required' });
 

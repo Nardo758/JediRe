@@ -156,7 +156,7 @@ async function arcgisQuery(url: string, params: Record<string, string>): Promise
 
   const resp = await fetch(queryUrl.toString());
   if (!resp.ok) throw new Error(`ArcGIS query failed: ${resp.status}`);
-  const data = await resp.json();
+  const data = await resp.json() as any;
   if (data.error) {
     throw new Error(`ArcGIS error: ${data.error.message || JSON.stringify(data.error)}`);
   }

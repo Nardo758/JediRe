@@ -42,7 +42,7 @@ export class MetricRecommendationAgent {
       return {
         success: true,
         summary,
-        recommendations,
+        recommendations: recommendations as unknown as Record<string, unknown>[],
         marketCount: marketGeoIds.length,
         computedAt: new Date().toISOString(),
       };

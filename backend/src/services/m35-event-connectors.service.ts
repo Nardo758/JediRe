@@ -238,7 +238,7 @@ export async function runAtlantaPermitsConnector(
   try {
     const resp = await fetch(url.toString(), { signal: AbortSignal.timeout(20000) });
     if (!resp.ok) throw new Error(`Socrata HTTP ${resp.status}`);
-    permits = await resp.json();
+    permits = await resp.json() as any;
   } catch (err: any) {
     stats.errors.push(`Socrata fetch failed: ${err.message}`);
     stats.durationMs = Date.now() - start;
@@ -326,7 +326,7 @@ async function arcgisPaginatedQuery(layerUrl: string, where: string, outFields: 
     url.searchParams.set('resultRecordCount', String(PAGE));
     const resp = await fetch(url.toString(), { signal: AbortSignal.timeout(15000) });
     if (!resp.ok) throw new Error(`ArcGIS ${resp.status}`);
-    const data = await resp.json();
+    const data = await resp.json() as any;
     const features = data.features ?? [];
     all.push(...features);
     if (features.length < PAGE) break;

@@ -61,7 +61,7 @@ class KafkaProducerService {
       maxInFlightRequests: 5,
       idempotent: true, // Ensure exactly-once delivery
       compression: 1, // GZIP compression
-    });
+    } as any);
 
     this.setupEventHandlers();
   }

@@ -97,6 +97,7 @@ export interface DealFinancialContext {
     holdPeriodYears?: number;
     hardCostPsf?: number;
     softCostPct?: number;
+    purchasePrice?: number;
     provenance?: FinancialDataSource;
   };
 

@@ -284,7 +284,7 @@ router.get('/deals/:dealId/scenarios/hbu', async (req: Request, res: Response) =
       dealType: dealType as 'residential' | 'commercial' | 'mixed-use',
     };
 
-    const results = envelopeService.calculateHighestBestUse(inputs);
+    const results = envelopeService.calculateHighestBestUse(inputs as any);
 
     let permitted: string[] = [];
     let conditional: string[] = [];

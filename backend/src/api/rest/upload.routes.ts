@@ -40,7 +40,7 @@ const upload = multer({
 
 const uploadCache = new Map<string, { rows: any[]; columns: string[]; filename: string; fileType: string; buffer: Buffer }>();
 
-router.post('/preview', upload.single('file'), async (req: Request, res: Response) => {
+router.post('/preview', upload.single('file') as any, async (req: Request, res: Response) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });

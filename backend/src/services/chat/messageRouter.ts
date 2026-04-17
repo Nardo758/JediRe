@@ -65,8 +65,8 @@ export class MessageRouter {
       const platform = this.detectTwilioPlatform(Author);
       
       // Find or create user
-      const user = await this.sessionStore.findOrCreateUser(Author, platform);
-      const session = await this.sessionStore.loadOrCreateSession(user.userId, platform, Author);
+      const user = await this.sessionStore.findOrCreateUser(Author, platform as any);
+      const session = await this.sessionStore.loadOrCreateSession(user.userId, platform as any, Author);
 
       // Build orchestrator request
       const orchestratorRequest: OrchestratorRequest = {
@@ -74,9 +74,9 @@ export class MessageRouter {
         userId: user.userId,
         platform,
         platformUserId: Author,
-        sessionId: session.sessionId,
+        sessionId: (session as any).sessionId,
         conversationHistory: session.conversationHistory,
-        userTier: user.tier,
+        userTier: (user as any).tier,
         attachments: Media ? this.parseTwilioMedia(Media) : undefined,
       };
 
@@ -103,7 +103,7 @@ export class MessageRouter {
   private async sendTwilioReply(to: string, conversationSid: string, text: string): Promise<void> {
     try {
       const { getTwilioClient, getTwilioFromPhoneNumber } = await import('../twilio/twilioClient');
-      const client = await getTwilioClient();
+      const client = await getTwilioClient() as any;
       const fromNumber = await getTwilioFromPhoneNumber();
 
       if (conversationSid) {
@@ -158,9 +158,9 @@ export class MessageRouter {
         userId: user.userId,
         platform: 'telegram',
         platformUserId,
-        sessionId: session.sessionId,
+        sessionId: (session as any).sessionId,
         conversationHistory: session.conversationHistory,
-        userTier: user.tier,
+        userTier: (user as any).tier,
       };
 
       // Process through orchestrator
@@ -195,9 +195,9 @@ export class MessageRouter {
       userId: user.userId,
       platform: 'telegram',
       platformUserId,
-      sessionId: session.sessionId,
+      sessionId: (session as any).sessionId,
       conversationHistory: session.conversationHistory,
-      userTier: user.tier,
+      userTier: (user as any).tier,
     };
 
     const response = await unifiedOrchestrator.process(orchestratorRequest);
@@ -247,10 +247,10 @@ export class MessageRouter {
 
       // Check credits
       const balance = await this.creditService.getBalance(userId);
-      if (balance && balance.remaining <= 0) {
+      if (balance && (balance as any).remaining <= 0) {
         res.status(402).json({
           error: 'Insufficient credits',
-          remaining: balance.remaining,
+          remaining: (balance as any).remaining,
           periodEnd: balance.periodEnd,
         });
         return;
@@ -272,7 +272,7 @@ export class MessageRouter {
       // Update credits
       const updatedBalance = await this.creditService.getBalance(userId);
       if (updatedBalance) {
-        response.creditsRemaining = updatedBalance.remaining;
+        response.creditsRemaining = (updatedBalance as any).remaining;
       }
 
       res.json(response);

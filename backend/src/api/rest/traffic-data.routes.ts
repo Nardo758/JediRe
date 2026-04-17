@@ -20,7 +20,7 @@ const adtUpload = multer({
   },
 });
 
-router.post('/adt/upload', adtUpload.single('file'), async (req: Request, res: Response) => {
+router.post('/adt/upload', adtUpload.single('file') as any, async (req: Request, res: Response) => {
   try {
     const file = req.file;
     if (!file) {

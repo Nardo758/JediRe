@@ -83,7 +83,7 @@ router.post('/generate', async (req: Request, res: Response) => {
     } else {
       try {
         const fc = featureCollection(features);
-        const merged = union(fc);
+        const merged = union(fc as any);
         if (merged) {
           geometry = merged.geometry;
         } else {

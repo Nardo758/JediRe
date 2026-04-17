@@ -213,7 +213,7 @@ router.post('/:county/:state/scrape', requireAuth, requireAdmin, async (req: Aut
       throw new AppError(response.status, 'Failed to scrape properties from API');
     }
     
-    const data = await response.json();
+    const data = await response.json() as any;
     const duration = (Date.now() - startTime) / 1000;
     
     // Log activity
@@ -284,7 +284,7 @@ router.post('/refresh-stale', requireAuth, requireAdmin, async (req: Authenticat
         });
         
         if (response.ok) {
-          const data = await response.json();
+          const data = await response.json() as any;
           if (data.success && data.property) {
             // Property data returned, will be saved by the endpoint
             refreshed++;

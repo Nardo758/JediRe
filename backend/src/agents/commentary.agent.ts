@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
+import type { TextBlock } from '@anthropic-ai/sdk/resources';
 import { logger } from '../utils/logger';
 import { query } from '../database/connection';
 import {
@@ -192,7 +193,7 @@ Focus on demand dynamics, supply pipeline impact, and investment positioning. Re
     );
 
     const content = response.content
-      .filter((block): block is { type: 'text'; text: string } => block.type === 'text')
+      .filter((block): block is TextBlock => block.type === 'text')
       .map(block => block.text)
       .join('');
 

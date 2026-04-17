@@ -420,7 +420,7 @@ const weeklyUpload = multer({
     }
   });
 
-  router.post('/weekly-report/upload', weeklyUpload.single('file'), async (req: Request, res: Response) => {
+  router.post('/weekly-report/upload', weeklyUpload.single('file') as any, async (req: Request, res: Response) => {
     try {
       const file = req.file;
       const dealId = req.body.dealId;
@@ -571,7 +571,7 @@ const weeklyUpload = multer({
               try {
                 const digitalScore = await digitalTrafficService.calculateDigitalScore(propId);
                 if (digitalScore) {
-                  marketFactors.digital = 1 + Math.min(0.2, (digitalScore.trending_velocity || 0) * 0.01);
+                  marketFactors.digital = 1 + Math.min(0.2, (Number(digitalScore.trending_velocity) || 0) * 0.01);
                 }
               } catch (e) {
                 logger.debug('[LeasingTraffic] Digital traffic fetch skipped');
@@ -910,7 +910,7 @@ const weeklyUpload = multer({
     },
   });
 
-  router.post('/dot-profiles/ingest', dotProfileUpload.single('file'), async (req: Request, res: Response) => {
+  router.post('/dot-profiles/ingest', dotProfileUpload.single('file') as any, async (req: Request, res: Response) => {
     try {
       const file = req.file;
       const state = (req.body.state as string) || 'FL';

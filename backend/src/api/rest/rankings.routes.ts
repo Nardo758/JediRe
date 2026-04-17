@@ -501,12 +501,12 @@ router.get('/pipeline/:marketId', async (req: Request, res: Response) => {
 
     // Assign intelligence data to each property
     const intelligence = ranked.map(prop => {
-      const seed = (prop.units * 13 + prop.rank * 7) % 100;
+      const seed = (prop.units * 13 + (prop as any).rank * 7) % 100;
       const movement = (seed % 11) - 5;
       
       // Determine quadrant based on PCS score and rank position
       let quadrant: string;
-      const isTopRank = prop.rank <= 15;
+      const isTopRank = (prop as any).rank <= 15;
       const isHighScore = prop.pcsScore >= 75;
       
       if (isTopRank && isHighScore) quadrant = 'Validated Winner';
@@ -518,7 +518,7 @@ router.get('/pipeline/:marketId', async (req: Request, res: Response) => {
 
       return {
         id: prop.id,
-        pcs_rank: prop.rank,
+        pcs_rank: (prop as any).rank,
         pcs_movement: movement,
         t04_quadrant: quadrant,
         target_score: targetScore,

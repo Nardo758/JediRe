@@ -593,7 +593,7 @@ function buildMFCorePlan(ctx: PlanContext, corePlus: boolean): StrategyPlan {
       },
       ...(corePlus ? [{
         phase: 2,
-        monthRange: [7, 36],
+        monthRange: [7, 36] as [number, number],
         actions: [
           { action: `Select-unit upgrade program — ${upgradeUnits} units at $${Math.round(capGap / 1000)}K/unit scope`, capital: upgradeUnits * capGap, correlationRefs: ['COR-01', 'COR-18'], evidenceRef: 'blockC.tradeArea.rent_per_unit', kpi: `$${Math.round((ctx.avgRent || 1600) * 0.08)}/unit premium at turn` },
           { action: 'Amenity micro-upgrade (fitness, package lockers, co-working) — minimal capex, high visibility', correlationRefs: ['COR-20'], evidenceRef: 'blockC.tradeArea.amenity_score', kpi: 'Google review rating +0.2' },
@@ -601,7 +601,7 @@ function buildMFCorePlan(ctx: PlanContext, corePlus: boolean): StrategyPlan {
       }] : []),
       {
         phase: corePlus ? 3 : 2,
-        monthRange: [corePlus ? 37 : 7, holdMonths],
+        monthRange: [corePlus ? 37 : 7, holdMonths] as [number, number],
         actions: [
           { action: 'Hold stabilized; track occupancy and NOI vs. underwritten benchmarks monthly', correlationRefs: ['COR-04', 'COR-07'], evidenceRef: 'blockD.step4.stabilized_noi', kpi: 'Physical occ ≥ 94%, NOI margin ≥ 60%' },
           { action: 'Begin broker interviews Q-2 before exit target', correlationRefs: ['COR-04'], evidenceRef: 'blockD.step5.exit_value', kpi: 'LOIs from 3+ institutional buyers' },
@@ -611,7 +611,7 @@ function buildMFCorePlan(ctx: PlanContext, corePlus: boolean): StrategyPlan {
     capitalSequencing: [
       { phase: 1, monthRange: [1, 1],  capitalEvent: 'Equity close — acquisition', amount: Math.round(price * 0.30), source: 'equity' },
       { phase: 2, monthRange: [1, 1],  capitalEvent: 'Agency loan draw — 70% LTV',  amount: Math.round(price * 0.70), source: 'debt' },
-      ...(corePlus ? [{ phase: 3, monthRange: [7, 36], capitalEvent: 'Select-unit upgrade capex draws', amount: upgradeUnits * capGap, source: 'reserves' as const }] : []),
+      ...(corePlus ? [{ phase: 3, monthRange: [7, 36] as [number, number], capitalEvent: 'Select-unit upgrade capex draws', amount: upgradeUnits * capGap, source: 'reserves' as const }] : []),
     ],
     exit: {
       targetQuarter: nextQuarter(holdMonths),
@@ -1066,7 +1066,7 @@ function buildRetailPlan(ctx: PlanContext, subKey: string): StrategyPlan {
     capitalSequencing: [
       { phase: 1, monthRange: [1, 1],  capitalEvent: 'Equity close — acquisition',   amount: Math.round(price * 0.30), source: 'equity' },
       { phase: 2, monthRange: [1, 1],  capitalEvent: 'Loan draw',                     amount: Math.round(price * 0.70), source: 'debt' },
-      ...(isLastMile ? [{ phase: 3, monthRange: [1, 6], capitalEvent: 'Dock + clear height modification capex', amount: Math.round(price * 0.05), source: 'reserves' as const }] : []),
+      ...(isLastMile ? [{ phase: 3, monthRange: [1, 6] as [number, number], capitalEvent: 'Dock + clear height modification capex', amount: Math.round(price * 0.05), source: 'reserves' as const }] : []),
     ],
     exit: {
       targetQuarter: nextQuarter(holdMonths),
@@ -1200,7 +1200,7 @@ function buildIndustrialPlan(ctx: PlanContext, subKey: string): StrategyPlan {
     capitalSequencing: [
       { phase: 1, monthRange: [1, 1],  capitalEvent: 'Equity close — acquisition', amount: Math.round(price * 0.30), source: 'equity' },
       { phase: 2, monthRange: [1, 1],  capitalEvent: 'Loan draw',                   amount: Math.round(price * 0.70), source: 'debt' },
-      ...(isLastMile ? [{ phase: 3, monthRange: [1, 6], capitalEvent: 'Last-mile infrastructure capex', amount: Math.round(price * 0.03), source: 'reserves' as const }] : []),
+      ...(isLastMile ? [{ phase: 3, monthRange: [1, 6] as [number, number], capitalEvent: 'Last-mile infrastructure capex', amount: Math.round(price * 0.03), source: 'reserves' as const }] : []),
     ],
     exit: {
       targetQuarter: nextQuarter(holdMonths),

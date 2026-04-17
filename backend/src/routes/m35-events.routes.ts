@@ -52,7 +52,7 @@ import { m35TrafficApiService } from '../services/m35-traffic-api.service';
 const router = Router();
 
 interface AuthRequest extends Request {
-  user?: { email: string; id?: string };
+  user?: any;
 }
 
 function callerEmail(req: Request): string | undefined {

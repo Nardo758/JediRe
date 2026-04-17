@@ -52,7 +52,7 @@ function persistPstFile(buffer: Buffer, uploadId: string, originalFilename: stri
 }
 
 const handlePstUpload: RequestHandler = (req, res, next) => {
-  pstUpload.single('file')(req, res, (err) => {
+  pstUpload.single('file')(req as any, res as any, (err) => {
     if (err) {
       return res.status(400).json({ error: err.message });
     }

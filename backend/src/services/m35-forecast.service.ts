@@ -361,7 +361,7 @@ export async function generateForecast(eventId: string): Promise<ForecastRow[]> 
         metricWindowCount: newRows.length,
         overallConfidence: newRows.reduce((s, r) => s + r.confidence, 0) / newRows.length,
         generatedAt: new Date().toISOString(),
-      }, { key: eventId });
+      } as any, { key: eventId });
     } catch { /* non-blocking */ }
 
     logger.info(`[M35 Forecast] Generated ${newRows.length} forecast rows for event ${eventId} (${ev.subtype})`);
@@ -595,7 +595,7 @@ export async function runDivergenceTrackingJob(): Promise<{
             divergencePct,
             statusLabel,
             checkedAt: new Date().toISOString(),
-          },
+          } as any,
           { key: row.event_id },
         );
       } catch { /* non-blocking */ }

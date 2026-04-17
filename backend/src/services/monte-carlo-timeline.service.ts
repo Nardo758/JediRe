@@ -205,7 +205,7 @@ class MonteCarloTimelineService {
     entitlementType: string,
     projectType?: string,
   ): Promise<BenchmarkRow[]> {
-    const result = await query<BenchmarkRow>(
+    const result = await query(
       `SELECT total_entitlement_days, pre_app_days, site_plan_review_days,
               zoning_hearing_days, approval_days, permit_issuance_days,
               impact_fee_per_unit, unit_count

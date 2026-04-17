@@ -35,7 +35,7 @@ async function lookupFIPS(lat: number, lng: number): Promise<CensusFIPS | null> 
     const response = await fetch(url);
     if (!response.ok) return null;
 
-    const data = await response.json();
+    const data = await response.json() as any;
     const geos = data?.result?.geographies;
     if (!geos) return null;
 
@@ -78,7 +78,7 @@ async function fetchTractsForCounty(stateFips: string, countyFips: string): Prom
       return [];
     }
 
-    const rows: string[][] = await response.json();
+    const rows: string[][] = await response.json() as string[][];
     if (!rows || rows.length < 2) return [];
 
     return rows.slice(1).map((row) => ({

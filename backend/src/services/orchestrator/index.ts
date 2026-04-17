@@ -8,8 +8,8 @@
  * @date 2026-03-28
  */
 
-export { UnifiedOrchestrator } from './unified-orchestrator';
+export { UnifiedOrchestrator, unifiedOrchestrator } from './unified-orchestrator';
 export { IntentClassifier, type ExtractedIntent } from './intent-classifier';
 export { AgentDelegator, type DelegationResult } from './agent-delegator';
 export { ResponseSynthesizer } from './response-synthesizer';
-export type { OrchestratorRequest, OrchestratorResponse } from './unified-orchestrator';
+export type { OrchestratorRequest, OrchestratorResponse, ChatPlatform } from './unified-orchestrator';

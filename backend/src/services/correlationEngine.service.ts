@@ -733,7 +733,7 @@ export class CorrelationEngineService {
       return translateMetricId(raw);
     }))];
 
-    const allMetrics = [...new Set([...conditionMetricIds, ...OUTCOME_METRICS])];
+    const allMetrics = [...new Set([...(conditionMetricIds as string[]), ...OUTCOME_METRICS])];
     const matrix = await this.getCorrelationMatrix(allMetrics, scope);
 
     const pairwise = matrix
@@ -756,7 +756,7 @@ export class CorrelationEngineService {
 
     return {
       strategyName: strategy.name,
-      conditionMetrics: conditionMetricIds,
+      conditionMetrics: conditionMetricIds as string[],
       outcomeMetrics: OUTCOME_METRICS,
       pairwise,
       redundant,

@@ -405,7 +405,7 @@ router.get('/rates/history', async (req: Request, res: Response) => {
 // Rate Sheet Upload Endpoints
 // ============================================================================
 
-router.post('/rate-sheet/upload', upload.single('file'), async (req: Request, res: Response) => {
+router.post('/rate-sheet/upload', upload.single('file') as any, async (req: Request, res: Response) => {
   try {
     const file = req.file;
     const dealId = req.body.dealId;
@@ -417,7 +417,7 @@ router.post('/rate-sheet/upload', upload.single('file'), async (req: Request, re
     }
 
     const { parseRateSheet } = await import('../../services/rate-sheet-parser.service');
-    const result = await parseRateSheet(file.path, file.originalname, dealId);
+    const result = await (parseRateSheet as any)(file.path, file.originalname, dealId);
     res.json(result);
   } catch (error: any) {
     logger.error('[CapStructure Routes] Rate sheet upload failed', { error: error.message });
@@ -429,7 +429,7 @@ router.get('/rate-sheet/:dealId/latest', async (req: Request, res: Response) => 
   try {
     const { dealId } = req.params;
     const { getRateSheetLatest } = await import('../../services/rate-sheet-parser.service');
-    const result = await getRateSheetLatest(dealId);
+    const result = await (getRateSheetLatest as any)(dealId);
     if (!result) {
       return res.status(404).json({ error: 'No rate sheet found for this deal' });
     }

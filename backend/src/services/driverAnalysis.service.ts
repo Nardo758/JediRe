@@ -97,7 +97,6 @@ const DB_METRIC_NAMES: Record<string, string> = {
   DEMO_NET_MIGRATION: 'Net Migration (Households/Year)',
   DEMO_POPULATION_DECLINE: 'Population Decline Indicator',
   DEMO_POPULATION_TREND_3Y: '3-Year Population CAGR',
-  CS_UNDER_CONSTR_PCT: 'Under Construction % (CoStar)',
   CS_NET_DELIVERIES: 'Net Deliveries (CoStar)',
   CS_EFF_RENT_GROWTH_QTR: 'Eff Rent Growth QoQ (CoStar)',
   CS_STABILIZED_VACANCY: 'Stabilized Vacancy (CoStar)',

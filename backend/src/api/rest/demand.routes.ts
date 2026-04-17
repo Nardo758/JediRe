@@ -89,7 +89,7 @@ router.get('/trade-area/:id', async (req: Request, res: Response) => {
     }
     
     const forecast = await demandSignalService.getTradeAreaForecast(
-      tradeAreaId,
+      String(tradeAreaId),
       start_quarter as string,
       end_quarter as string
     );
