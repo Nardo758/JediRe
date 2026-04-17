@@ -1,6 +1,6 @@
 run = "bash run.sh"
 entrypoint = "run.sh"
-modules = ["nodejs-20", "python-3.12", "bash", "web", "postgresql-16"]
+modules = ["nodejs-20", "python-3.12", "bash", "web"]
 
 [nix]
 channel = "stable-25_05"
