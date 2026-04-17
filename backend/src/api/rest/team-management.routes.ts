@@ -91,7 +91,7 @@ router.post('/deals/:dealId/team/members', requireAuth, async (req: Request, res
     );
     res.json(result.rows[0]);
   } catch (error) {
-    if (error instanceof z.ZodError) return res.status(400).json({ error: 'Validation failed', details: error.errors });
+    if (error instanceof z.ZodError) return res.status(400).json({ error: 'Validation failed', details: error.issues });
     console.error('Error adding team member:', error);
     res.status(500).json({ error: 'Failed to add team member' });
   }
@@ -123,7 +123,7 @@ router.put('/deals/:dealId/team/members/:memberId', requireAuth, async (req: Req
     if (result.rows.length === 0) return res.status(404).json({ error: 'Member not found' });
     res.json(result.rows[0]);
   } catch (error) {
-    if (error instanceof z.ZodError) return res.status(400).json({ error: 'Validation failed', details: error.errors });
+    if (error instanceof z.ZodError) return res.status(400).json({ error: 'Validation failed', details: error.issues });
     console.error('Error updating member:', error);
     res.status(500).json({ error: 'Failed to update member' });
   }
@@ -178,7 +178,7 @@ router.post('/deals/:dealId/team/tasks', requireAuth, async (req: Request, res: 
     );
     res.json(result.rows[0]);
   } catch (error) {
-    if (error instanceof z.ZodError) return res.status(400).json({ error: 'Validation failed', details: error.errors });
+    if (error instanceof z.ZodError) return res.status(400).json({ error: 'Validation failed', details: error.issues });
     console.error('Error creating task:', error);
     res.status(500).json({ error: 'Failed to create task' });
   }
@@ -215,7 +215,7 @@ router.put('/deals/:dealId/team/tasks/:taskId', requireAuth, async (req: Request
     if (result.rows.length === 0) return res.status(404).json({ error: 'Task not found' });
     res.json(result.rows[0]);
   } catch (error) {
-    if (error instanceof z.ZodError) return res.status(400).json({ error: 'Validation failed', details: error.errors });
+    if (error instanceof z.ZodError) return res.status(400).json({ error: 'Validation failed', details: error.issues });
     console.error('Error updating task:', error);
     res.status(500).json({ error: 'Failed to update task' });
   }
@@ -268,7 +268,7 @@ router.post('/deals/:dealId/team/tasks/:taskId/comments', requireAuth, async (re
     );
     res.json(result.rows[0]);
   } catch (error) {
-    if (error instanceof z.ZodError) return res.status(400).json({ error: 'Validation failed', details: error.errors });
+    if (error instanceof z.ZodError) return res.status(400).json({ error: 'Validation failed', details: error.issues });
     console.error('Error adding comment:', error);
     res.status(500).json({ error: 'Failed to add comment' });
   }

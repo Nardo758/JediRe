@@ -195,7 +195,7 @@ router.post('/deals/:dealId/site-intelligence', async (req: Request, res: Respon
     res.json(result.rows[0]);
   } catch (error: any) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: 'Validation failed', details: error.errors });
+      return res.status(400).json({ error: 'Validation failed', details: error.issues });
     }
     console.error('Error saving site intelligence:', error);
     res.status(500).json({ error: 'Failed to save site intelligence' });

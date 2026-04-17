@@ -977,7 +977,7 @@ export function createMarketIntelligenceRoutes(pool: Pool) {
 }
 
 // Helper: Generate market alerts
-async function generateMarketAlerts(pool: Pool, userId: number, markets: any[]): Promise<MarketAlert[]> {
+async function generateMarketAlerts(pool: Pool, userId: string | undefined, markets: any[]): Promise<MarketAlert[]> {
   const alerts: MarketAlert[] = [];
 
   for (const market of markets) {

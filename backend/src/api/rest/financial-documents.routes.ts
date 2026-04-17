@@ -9,7 +9,7 @@ const pool = getPool();
 
 async function verifyDealOwnership(req: AuthenticatedRequest, res: Response): Promise<boolean> {
   const { dealId } = req.params;
-  const userId = req.user?.id;
+  const userId = req.user?.userId;
   if (!userId) {
     res.status(401).json({ error: 'Unauthorized' });
     return false;

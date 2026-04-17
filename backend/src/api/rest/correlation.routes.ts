@@ -1,7 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { pool } from '../../database';
 import { CorrelationEngineService } from '../../services/correlationEngine.service';
-import { requireAdminApiKey } from './admin-api-key.routes';
 import { optionalAuth, AuthenticatedRequest } from '../../middleware/auth';
 
 const router = Router();

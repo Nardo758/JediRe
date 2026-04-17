@@ -431,7 +431,7 @@ router.post('/wire/p1/:dealId', async (req: Request, res: Response) => {
   const dealId = req.params.dealId;
   res.status(202).json({ success: true, dealId, message: 'P1 pipeline queued' });
   wireP1Pipeline(dealId, req.body).catch((error: any) => {
-    logger.error(`[ModuleWiring] P1 pipeline failed for ${dealId}:`, error.message);
+    console.error(`[ModuleWiring] P1 pipeline failed for ${dealId}:`, error.message);
   });
 });
 
@@ -464,7 +464,7 @@ router.post('/wire/scenarios/:dealId', async (req: Request, res: Response) => {
   const dealId = req.params.dealId;
   res.status(202).json({ success: true, dealId, message: 'Scenario generation queued' });
   wireScenarioGeneration(dealId, req.body).catch((error: any) => {
-    logger.error(`[ModuleWiring] Scenario generation failed for ${dealId}:`, error.message);
+    console.error(`[ModuleWiring] Scenario generation failed for ${dealId}:`, error.message);
   });
 });
 

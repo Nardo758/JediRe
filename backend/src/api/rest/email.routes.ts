@@ -187,13 +187,13 @@ router.post('/:id/create-task', requireAuth, async (req: Request, res: Response,
       }),
     });
 
-    const taskData = await taskResponse.json();
+    const taskData = await taskResponse.json() as { success: boolean; message?: string; data?: { id: string } };
 
     if (!taskData.success) {
       throw new Error(taskData.message || 'Failed to create task');
     }
 
-    logger.info(`Task created from email ${id}:`, { taskId: taskData.data.id, title });
+    logger.info(`Task created from email ${id}:`, { taskId: taskData.data?.id, title });
 
     res.status(201).json({
       success: true,

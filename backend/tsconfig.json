@@ -18,8 +18,9 @@
     "noUnusedParameters": false,
     "noImplicitReturns": false,
     "noFallthroughCasesInSwitch": false,
-    "noImplicitAny": false
+    "noImplicitAny": false,
+    "typeRoots": ["./node_modules/@types"]
   },
-  "include": ["src/index.replit.ts"],
+  "include": ["src/index.replit.ts", "src/types/express-user.d.ts"],
   "exclude": ["node_modules", "dist", "**/*.test.ts"]
 }
