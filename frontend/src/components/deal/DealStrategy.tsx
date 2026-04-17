@@ -13,10 +13,15 @@ export const DealStrategy: React.FC<DealStrategyProps> = ({ dealId }) => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const visibilityListenerRef = useRef<(() => void) | null>(null);
 
   const stopPolling = () => {
     if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; }
     if (pollTimeoutRef.current) { clearTimeout(pollTimeoutRef.current); pollTimeoutRef.current = null; }
+    if (visibilityListenerRef.current) {
+      document.removeEventListener('visibilitychange', visibilityListenerRef.current);
+      visibilityListenerRef.current = null;
+    }
   };
 
   useEffect(() => {
@@ -56,7 +61,9 @@ export const DealStrategy: React.FC<DealStrategyProps> = ({ dealId }) => {
 
   const pollAnalysisStatus = (triggeredAt: number) => {
     stopPolling();
-    pollIntervalRef.current = setInterval(async () => {
+
+    const checkStatus = async () => {
+      if (document.visibilityState === 'hidden') return;
       try {
         const response = await fetch(`/api/v1/deals/${dealId}/analysis/latest`);
         if (response.ok) {
@@ -70,7 +77,15 @@ export const DealStrategy: React.FC<DealStrategyProps> = ({ dealId }) => {
       } catch {
         // swallow — timeout will clean up
       }
-    }, 2000);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') checkStatus();
+    };
+
+    pollIntervalRef.current = setInterval(checkStatus, 2000);
+    visibilityListenerRef.current = handleVisibilityChange;
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     pollTimeoutRef.current = setTimeout(() => {
       stopPolling();

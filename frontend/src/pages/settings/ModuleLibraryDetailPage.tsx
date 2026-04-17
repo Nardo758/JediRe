@@ -77,8 +77,23 @@ export function ModuleLibraryDetailPage() {
     if (module && moduleInfo) {
       loadFiles();
       loadLearningStatus();
-      const interval = setInterval(() => { loadFiles(); loadLearningStatus(); }, 3000);
-      return () => clearInterval(interval);
+
+      function poll() {
+        if (document.visibilityState === 'hidden') return;
+        loadFiles();
+        loadLearningStatus();
+      }
+
+      function handleVisibilityChange() {
+        if (document.visibilityState === 'visible') { loadFiles(); loadLearningStatus(); }
+      }
+
+      const interval = setInterval(poll, 3000);
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+      return () => {
+        clearInterval(interval);
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      };
     }
   }, [module]);
 

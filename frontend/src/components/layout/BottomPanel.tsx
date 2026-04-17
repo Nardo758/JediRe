@@ -755,9 +755,22 @@ export const BottomPanel: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    function poll() {
+      if (document.visibilityState === 'hidden') return;
+      fetchData();
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') fetchData();
+    }
+
     fetchData();
-    const id = setInterval(fetchData, 30000);
-    return () => clearInterval(id);
+    const id = setInterval(poll, 30000);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [fetchData]);
 
   // Calculate unread counts

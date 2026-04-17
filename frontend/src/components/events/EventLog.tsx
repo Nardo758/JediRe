@@ -49,8 +49,21 @@ export const EventLog: React.FC<EventLogProps> = ({ dealId, tradeAreaId, autoRef
     loadEvents();
     
     if (autoRefresh) {
-      const interval = setInterval(loadEvents, 30000); // Refresh every 30 seconds
-      return () => clearInterval(interval);
+      function poll() {
+        if (document.visibilityState === 'hidden') return;
+        loadEvents();
+      }
+
+      function handleVisibilityChange() {
+        if (document.visibilityState === 'visible') loadEvents();
+      }
+
+      const interval = setInterval(poll, 30000);
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+      return () => {
+        clearInterval(interval);
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      };
     }
   }, [dealId, tradeAreaId, topicFilter, eventTypeFilter, publisherFilter, page]);
 

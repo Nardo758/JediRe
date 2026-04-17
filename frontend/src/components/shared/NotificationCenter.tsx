@@ -98,11 +98,21 @@ export const NotificationCenter: React.FC = () => {
 
   // Poll for new notifications every 30 seconds
   useEffect(() => {
-    const interval = setInterval(() => {
+    function poll() {
+      if (document.visibilityState === 'hidden') return;
       fetchCounts();
-    }, 30000);
+    }
 
-    return () => clearInterval(interval);
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') fetchCounts();
+    }
+
+    const interval = setInterval(poll, 30000);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
 
   const fetchNotifications = async () => {

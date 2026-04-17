@@ -188,8 +188,22 @@ export function useMetricRecommendations(
 
   useEffect(() => {
     if (marketGeoIds.length === 0) return;
-    const id = setInterval(fetchData, RECS_POLL_INTERVAL_MS);
-    return () => clearInterval(id);
+
+    function poll() {
+      if (document.visibilityState === 'hidden') return;
+      fetchData();
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') fetchData();
+    }
+
+    const id = setInterval(poll, RECS_POLL_INTERVAL_MS);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [fetchData, marketGeoIds.length]);
 
   return { recommendations, loading, refresh: fetchData };

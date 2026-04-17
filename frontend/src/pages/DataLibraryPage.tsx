@@ -42,12 +42,17 @@ export const DataLibraryPage: React.FC = () => {
   const [pstEntities, setPstEntities] = useState<PstEntity[]>([]);
   const [showPstResults, setShowPstResults] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const visibilityPollListenerRef = useRef<(() => void) | null>(null);
 
   useEffect(() => { loadFiles(); }, [filters]);
 
   useEffect(() => {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
+      if (visibilityPollListenerRef.current) {
+        document.removeEventListener('visibilitychange', visibilityPollListenerRef.current);
+        visibilityPollListenerRef.current = null;
+      }
     };
   }, []);
 
@@ -121,13 +126,26 @@ export const DataLibraryPage: React.FC = () => {
 
   const startPolling = useCallback((jobId: string) => {
     if (pollRef.current) clearInterval(pollRef.current);
-    pollRef.current = setInterval(async () => {
+    if (visibilityPollListenerRef.current) {
+      document.removeEventListener('visibilitychange', visibilityPollListenerRef.current);
+      visibilityPollListenerRef.current = null;
+    }
+
+    const stopPoll = () => {
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+      if (visibilityPollListenerRef.current) {
+        document.removeEventListener('visibilitychange', visibilityPollListenerRef.current);
+        visibilityPollListenerRef.current = null;
+      }
+    };
+
+    const checkStatus = async () => {
+      if (document.visibilityState === 'hidden') return;
       try {
         const status = await pstUploadService.getJobStatus(jobId);
         setPstJob(status);
         if (status.status === 'completed' || status.status === 'failed') {
-          if (pollRef.current) clearInterval(pollRef.current);
-          pollRef.current = null;
+          stopPoll();
           if (status.status === 'completed') {
             try {
               const { entities } = await pstUploadService.getEntities(jobId, { limit: 50 });
@@ -136,10 +154,17 @@ export const DataLibraryPage: React.FC = () => {
           }
         }
       } catch {
-        if (pollRef.current) clearInterval(pollRef.current);
-        pollRef.current = null;
+        stopPoll();
       }
-    }, 3000);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') checkStatus();
+    };
+
+    pollRef.current = setInterval(checkStatus, 3000);
+    visibilityPollListenerRef.current = handleVisibilityChange;
+    document.addEventListener('visibilitychange', handleVisibilityChange);
   }, []);
 
   const handleDelete = async (id: number) => {

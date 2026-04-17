@@ -102,11 +102,21 @@ export function AssetMapRealtimeExample({ assetId }: AssetMapRealtimeExampleProp
   useEffect(() => {
     if (!isSubscribed) return;
 
-    const interval = setInterval(() => {
+    function poll() {
+      if (document.visibilityState === 'hidden') return;
       refreshActiveConnections();
-    }, 30000);
+    }
 
-    return () => clearInterval(interval);
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') refreshActiveConnections();
+    }
+
+    const interval = setInterval(poll, 30000);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [isSubscribed, refreshActiveConnections]);
 
   if (loading) {

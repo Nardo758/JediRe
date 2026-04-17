@@ -84,15 +84,24 @@ export function CommandCenterPage() {
   
   useEffect(() => {
     fetchStatus();
-    
-    // Poll for updates every 5 seconds if jobs are active
-    const interval = setInterval(() => {
+
+    function poll() {
+      if (document.visibilityState === 'hidden') return;
       if (activeJobs.length > 0) {
         fetchStatus();
       }
-    }, 5000);
-    
-    return () => clearInterval(interval);
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') fetchStatus();
+    }
+
+    const interval = setInterval(poll, 5000);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [activeJobs.length]);
   
   const fetchStatus = async () => {

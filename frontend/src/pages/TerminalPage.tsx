@@ -637,6 +637,7 @@ export default function TerminalPage() {
     }));
 
     const fetchTicker = async () => {
+      if (document.visibilityState === 'hidden') return;
       try {
         const res = await api.ticker.getFeed();
         const items: { symbol: string; value: string; change: string; direction: 'up'|'down'|'flat' }[] =
@@ -653,9 +654,17 @@ export default function TerminalPage() {
       }
     };
 
+    function handleVisibilityChangeTicker() {
+      if (document.visibilityState === 'visible') fetchTicker();
+    }
+
     fetchTicker();
     const intervalId = setInterval(fetchTicker, 60_000);
-    return () => clearInterval(intervalId);
+    document.addEventListener('visibilitychange', handleVisibilityChangeTicker);
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChangeTicker);
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync URL slug + browser tab title whenever fkey changes

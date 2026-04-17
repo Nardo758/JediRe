@@ -52,10 +52,22 @@ export default function CorroborationFeed({
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    function poll() {
+      if (document.visibilityState === 'hidden') return;
+      fetchCorroborations();
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') fetchCorroborations();
+    }
+
     fetchCorroborations();
-    // Optionally, set up polling for real-time updates
-    const interval = setInterval(fetchCorroborations, 60000); // Every minute
-    return () => clearInterval(interval);
+    const interval = setInterval(poll, 60000);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [limit]);
 
   const fetchCorroborations = async () => {
