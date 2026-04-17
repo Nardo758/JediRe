@@ -334,8 +334,8 @@ class ProformaGeneratorService {
         const totalPipeline = supplyResult.rows.reduce((sum: number, r: any) =>
           sum + (parseInt(r.units_planned) || 0) + (parseInt(r.units_under_construction) || 0), 0);
         if (totalPipeline > 1000) {
-          adjusted.vacancyRate = new Decimal(adjusted.vacancyRate).plus(0.01).min(new Decimal(0.12)).toFixed(4);
-          adjusted.rentGrowth = new Decimal(adjusted.rentGrowth).minus(0.005).max(new Decimal(0.005)).toFixed(4);
+          adjusted.vacancyRate = Decimal.min(new Decimal(adjusted.vacancyRate).plus(0.01), new Decimal(0.12)).toFixed(4);
+          adjusted.rentGrowth = Decimal.max(new Decimal(adjusted.rentGrowth).minus(0.005), new Decimal(0.005)).toFixed(4);
         }
       }
     } catch {

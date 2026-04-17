@@ -32,7 +32,7 @@ async function getCredentials() {
 
   const data = await response.json();
 
-  connectionSettings = data.items?.[0];
+  connectionSettings = (data as any).items?.[0];
 
   if (!connectionSettings || (!connectionSettings.settings.publishable || !connectionSettings.settings.secret)) {
     throw new Error(`Stripe ${targetEnvironment} connection not found`);

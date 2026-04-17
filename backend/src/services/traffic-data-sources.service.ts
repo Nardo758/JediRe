@@ -414,8 +414,8 @@ export class TrafficDataSourcesService {
       const response = await fetch(url);
       const data = await response.json();
 
-      if (data.status !== 'OK' || !data.routes || data.routes.length === 0) {
-        logger.debug('[TrafficDataSources] Google Directions API returned no routes', { status: data.status });
+      if ((data as any).status !== 'OK' || !(data as any).routes || (data as any).routes.length === 0) {
+        logger.debug('[TrafficDataSources] Google Directions API returned no routes', { status: (data as any).status });
         return {
           factor: 1.0,
           duration_in_traffic: null,
@@ -425,7 +425,7 @@ export class TrafficDataSourcesService {
         };
       }
 
-      const leg = data.routes[0].legs[0];
+      const leg = (data as any).routes[0].legs[0];
       const normalDuration = leg.duration?.value || 0;
       const trafficDuration = leg.duration_in_traffic?.value || normalDuration;
 

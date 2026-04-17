@@ -67,6 +67,9 @@ export interface LearnedRates {
   stabilized_occupancy: number | null;
   effective_rent_growth_rate: number | null;
   seasonal_index: number[];
+  tour_rate_trend?: number | null;
+  app_rate_trend?: number | null;
+  lease_rate_trend?: number | null;
   // Bias tracking
   consecutive_same_direction: number;
   bias_direction: 'over' | 'under' | null;

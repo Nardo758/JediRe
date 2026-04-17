@@ -711,11 +711,11 @@ export class ProFormaAdjustmentService {
     
     // Calculate differences
     const differences = {
-      rentGrowth: proforma.rentGrowth.effective - proforma.rentGrowth.baseline,
-      vacancy: proforma.vacancy.effective - proforma.vacancy.baseline,
-      opexGrowth: proforma.opexGrowth.effective - proforma.opexGrowth.baseline,
-      exitCap: proforma.exitCap.effective - proforma.exitCap.baseline,
-      absorption: proforma.absorption.effective - proforma.absorption.baseline
+      rentGrowth: parseFloat(proforma.rentGrowth.effective) - parseFloat(proforma.rentGrowth.baseline),
+      vacancy: parseFloat(proforma.vacancy.effective) - parseFloat(proforma.vacancy.baseline),
+      opexGrowth: parseFloat(proforma.opexGrowth.effective) - parseFloat(proforma.opexGrowth.baseline),
+      exitCap: parseFloat(proforma.exitCap.effective) - parseFloat(proforma.exitCap.baseline),
+      absorption: parseFloat(proforma.absorption.effective) - parseFloat(proforma.absorption.baseline)
     };
     
     return {
@@ -3124,7 +3124,7 @@ export async function getDealFinancials(
       const dscrAtMinus10PctNOI = annualDS_Y1 > 0 && noi_Y1 > 0
         ? +((noi_Y1 * 0.9) / annualDS_Y1).toFixed(4) : null;
       // Covenant cushion (assume no covenants seeded — show null)
-      const covenantDscrMin = debtStack?.loans?.find(l => l.id === 'senior')?.covenants?.minDscr ?? null;
+      const covenantDscrMin = (debtStack?.loans?.find(l => l.id === 'senior') as any)?.covenants?.minDscr ?? null;
       const dscrCushionBps = minDscrRow?.dscr != null && covenantDscrMin != null
         ? +((minDscrRow.dscr - covenantDscrMin) * 10000).toFixed(0) : null;
 
