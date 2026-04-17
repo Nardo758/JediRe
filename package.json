@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "bash start.sh",
     "build": "bash build.sh",
-    "start": "node backend/dist/index.replit.js",
+    "start": "node index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

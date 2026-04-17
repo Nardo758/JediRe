@@ -6,8 +6,8 @@ modules = ["nodejs-20", "python-3.12", "bash", "web"]
 channel = "stable-25_05"
 
 [deployment]
-run = ["npm", "start"]
-deploymentTarget = "autoscale"
+run = ["node", "index.js"]
+deploymentTarget = "vm"
 build = ["npm", "run", "build"]
 
 [[ports]]
