@@ -347,7 +347,7 @@ router.post('/:id/reply', requireAuth, async (req: Request, res: Response, next:
     const threadId = original.thread_id || `thread-${emailId}`;
 
     const accountResult = await pool.query(
-      'SELECT email_address FROM email_accounts WHERE id = $1 AND user_id = $2',
+      'SELECT email_address FROM user_email_accounts WHERE id = $1 AND user_id = $2',
       [original.email_account_id, userId]
     );
     if (accountResult.rows.length === 0) {

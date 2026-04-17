@@ -8,8 +8,146 @@ import { authMiddleware as authModule } from '../../middleware/auth';
 const requireAuth = authModule.requireAuth;
 import { logger } from '../../utils/logger';
 import { query } from '../../database/connection';
+import { gmailSyncService } from '../../services/gmail-sync.service';
 
 const router = Router();
+
+/**
+ * GET /api/v1/inbox/accounts
+ * Get user's connected email accounts
+ */
+router.get('/accounts', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = (req as any).user?.userId || 1;
+
+    const result = await query(
+      `SELECT
+        a.id, a.email_address, a.provider, a.last_sync_at, a.sync_enabled,
+        a.sync_frequency_minutes, a.is_primary, a.created_at,
+        (SELECT COUNT(*) FROM emails WHERE email_account_id::text = a.id::text) as email_count
+       FROM user_email_accounts a
+       WHERE a.user_id = $1
+       ORDER BY a.is_primary DESC, a.created_at DESC`,
+      [userId]
+    );
+
+    res.json({
+      success: true,
+      data: result.rows,
+    });
+  } catch (error) {
+    logger.error('Error fetching connected accounts:', error);
+    next(error);
+  }
+});
+
+/**
+ * POST /api/v1/inbox/accounts/:accountId/sync
+ * Trigger sync for a specific account
+ */
+router.post('/accounts/:accountId/sync', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { accountId } = req.params;
+    const userId = (req as any).user?.userId || 1;
+
+    const accountResult = await query(
+      'SELECT id FROM user_email_accounts WHERE id = $1 AND user_id = $2',
+      [accountId, userId]
+    );
+
+    if (accountResult.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Account not found or access denied' });
+    }
+
+    const result = await gmailSyncService.syncEmails(accountId);
+
+    res.json({
+      success: true,
+      data: { accountId, ...result },
+      message: 'Email sync completed successfully',
+    });
+  } catch (error) {
+    logger.error('Error syncing account:', error);
+    next(error);
+  }
+});
+
+/**
+ * GET /api/v1/inbox/:id/intel
+ * Get email intelligence (property extractions, news, action items, tasks)
+ */
+router.get('/:id/intel', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const userId = (req as any).user?.userId || 1;
+
+    // Verify email belongs to user
+    const emailResult = await query(
+      'SELECT id FROM emails WHERE id = $1 AND user_id = $2',
+      [id, userId]
+    );
+    if (emailResult.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Email not found' });
+    }
+
+    // Get property extractions
+    let propertyExtractions: any[] = [];
+    try {
+      const propResult = await query(
+        `SELECT * FROM email_property_extractions WHERE email_id = $1 ORDER BY created_at DESC`,
+        [id]
+      );
+      propertyExtractions = propResult.rows;
+    } catch { /* table may not exist */ }
+
+    // Get news extraction
+    let newsExtraction = null;
+    try {
+      const newsResult = await query(
+        `SELECT * FROM email_news_items WHERE email_id = $1 ORDER BY created_at DESC LIMIT 1`,
+        [id]
+      );
+      newsExtraction = newsResult.rows[0] || null;
+    } catch { /* table may not exist */ }
+
+    // Get action items from email classification data
+    let actionItems: any[] = [];
+    try {
+      const emailData = await query(
+        `SELECT raw_data FROM emails WHERE id = $1`,
+        [id]
+      );
+      const classification = emailData.rows[0]?.raw_data?.classification;
+      if (classification?.actionItems) {
+        actionItems = classification.actionItems;
+      }
+    } catch { /* ignore */ }
+
+    // Get linked tasks
+    let linkedTasks: any[] = [];
+    try {
+      const tasksResult = await query(
+        `SELECT * FROM deal_tasks WHERE description LIKE $1 ORDER BY created_at DESC`,
+        [`%email #${id}%`]
+      );
+      linkedTasks = tasksResult.rows;
+    } catch { /* table may not exist */ }
+
+    res.json({
+      success: true,
+      data: {
+        emailId: parseInt(id),
+        propertyExtractions,
+        newsExtraction,
+        actionItems,
+        linkedTasks,
+      },
+    });
+  } catch (error) {
+    logger.error('Error fetching email intel:', error);
+    next(error);
+  }
+});
 
 /**
  * GET /api/v1/inbox
@@ -143,7 +281,7 @@ router.get('/:id', requireAuth, async (req: Request, res: Response, next: NextFu
         ea.email_address as account_email
       FROM emails e
       LEFT JOIN deals d ON e.deal_id = d.id
-      LEFT JOIN email_accounts ea ON e.email_account_id = ea.id
+      LEFT JOIN user_email_accounts ea ON e.email_account_id::text = ea.id::text
       WHERE e.id = $1 AND e.user_id = $2`,
       [id, userId]
     );
@@ -300,7 +438,7 @@ router.post('/sync', requireAuth, async (req: Request, res: Response, next: Next
 
     // Get user's email accounts
     const accountsResult = await query(
-      'SELECT * FROM email_accounts WHERE user_id = $1 AND sync_enabled = TRUE',
+      'SELECT * FROM user_email_accounts WHERE user_id = $1 AND sync_enabled = TRUE',
       [userId]
     );
 
@@ -312,17 +450,25 @@ router.post('/sync', requireAuth, async (req: Request, res: Response, next: Next
       });
     }
 
-    // TODO: Implement actual provider sync
-    // For now, return success
-    logger.info('Email sync triggered', {
-      userId,
-      accounts: accountsResult.rows.length,
-    });
+    const syncResults: any[] = [];
+    for (const account of accountsResult.rows) {
+      try {
+        const result = await gmailSyncService.syncEmails(account.id, 50);
+        syncResults.push({ accountId: account.id, success: true, ...result });
+      } catch (error) {
+        logger.error(`Sync failed for account ${account.id}:`, error);
+        syncResults.push({
+          accountId: account.id,
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    }
 
     res.json({
       success: true,
-      message: 'Email sync started',
-      accounts: accountsResult.rows.length,
+      data: syncResults,
+      message: `Synced ${accountsResult.rows.length} accounts`,
     });
   } catch (error) {
     logger.error('Error syncing emails:', error);
