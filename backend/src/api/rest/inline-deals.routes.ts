@@ -1109,6 +1109,25 @@ router.post('/upload-document', requireAuth, documentUpload.single('file') as an
   }
 });
 
+router.get('/:dealId/extraction-accuracy', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { dealId } = req.params;
+    const ownerCheck = await pool.query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
+      [dealId, req.user!.userId]
+    );
+    if (ownerCheck.rows.length === 0) {
+      return res.status(403).json({ success: false, error: 'Not authorized' });
+    }
+    const { computeExtractionAccuracy } = await import('../../services/extraction-accuracy.service');
+    const report = await computeExtractionAccuracy(pool, dealId);
+    return res.json({ success: true, data: report });
+  } catch (error: any) {
+    console.error('extraction-accuracy error:', error);
+    return res.status(500).json({ success: false, error: error.message || 'Failed to compute accuracy' });
+  }
+});
+
 router.post('/:dealId/reprocess-documents', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { dealId } = req.params;

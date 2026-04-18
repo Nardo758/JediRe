@@ -416,6 +416,26 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
     return () => { cancelled = true; };
   }, [id]);
 
+  // Populate custom (unrecognized) GL line items from T12 into the expenses state
+  useEffect(() => {
+    const proforma = platformData?.proforma;
+    if (!proforma) return;
+    const customKeys = Object.keys(proforma).filter(k => k.startsWith('custom_opex_'));
+    if (customKeys.length === 0) return;
+    setExpenses(prev => {
+      const next = { ...prev };
+      for (const key of customKeys) {
+        const lv = proforma[key];
+        const rawLabel: string = (lv?._label as string) ?? key.replace(/^custom_opex_/, '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+        const amount: number = typeof lv?.resolved === 'number' ? lv.resolved : (typeof lv?.t12 === 'number' ? lv.t12 : 0);
+        if (amount > 0 && !next[rawLabel]) {
+          next[rawLabel] = { amount, type: 'total', growthRate: 0.03 };
+        }
+      }
+      return next;
+    });
+  }, [platformData]);
+
   const buildAssumptionsPayload = useCallback(() => {
     return {
       dealInfo: { dealName, totalUnits, netRentableSF, vintage, address, city, state },

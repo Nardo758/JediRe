@@ -378,6 +378,8 @@ export function parseT12(buffer: Buffer, filename: string): ExtractionResult & {
     let categorizedRows = 0;
     let skippedSubtotalRows = 0;
     let skippedHeaderRows = 0;
+    let uncategorizedRows = 0;
+    const customLineItems: Map<string, number> = new Map();
 
     for (const row of rows) {
       const desc = String(row[descCol] ?? '').trim();
@@ -420,7 +422,17 @@ export function parseT12(buffer: Buffer, filename: string): ExtractionResult & {
         continue;
       }
 
-      if (!field) continue;
+      if (!field) {
+        // Capture unrecognized GL rows as custom line items rather than silently dropping them.
+        // Only store rows that have a meaningful annual total (>$1) to filter noise.
+        const annualTotal = monthCols.reduce((s, mc) => s + (parseNum(row[mc.header]) ?? 0), 0);
+        if (Math.abs(annualTotal) > 1) {
+          const label = desc || glCode || 'Unknown';
+          customLineItems.set(label, (customLineItems.get(label) ?? 0) + annualTotal);
+        }
+        uncategorizedRows++;
+        continue;
+      }
 
       if (field === 'insurance') foundInsurance = true;
       if (field === 'hoaDues') foundHoaDues = true;
@@ -527,6 +539,15 @@ export function parseT12(buffer: Buffer, filename: string): ExtractionResult & {
     if (categorizedRows < 10) {
       warnings.push(`Only ${categorizedRows} GL lines categorized — possible chart-of-accounts mismatch`);
     }
+    if (uncategorizedRows > 0) {
+      const customTotal = Array.from(customLineItems.values()).reduce((s, v) => s + v, 0);
+      const customCount = customLineItems.size;
+      if (customCount > 0) {
+        warnings.push(
+          `${customCount} unrecognized GL line(s) captured as custom items ($${Math.round(customTotal).toLocaleString()} annual) — review in proforma`
+        );
+      }
+    }
 
     // Hard-fail check
     if (t12Revenue === 0 && t12OpEx === 0 && t12NOI === 0) {
@@ -588,6 +609,9 @@ export function parseT12(buffer: Buffer, filename: string): ExtractionResult & {
         utilities: t12Utilities,
         amenities: t12Amenities,
         insurance: t12Insurance > 0 ? t12Insurance : undefined,
+        // Custom (unrecognized) GL line items captured for proforma and accuracy reporting
+        customLineItems: Object.fromEntries(customLineItems) as Record<string, number>,
+        uncategorizedRows,
         // Canonical GL mapping: broker line descriptions → canonical field metadata
         // Each T12Month field corresponds to a CANONICAL_GL_MAP key for
         // source/confidence/benchmarkPosition enrichment in the F9 Pro Forma layer

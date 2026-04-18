@@ -307,6 +307,25 @@ function buildSeed(
   const utilities = opexFromT12('utilities', 'utilities', platformOpEx(platform.opex_per_unit_annual.utilities));
   const personalPropTax = opexFromT12('personal_property_tax', 'personal_property_tax', null);
 
+  // ───────── CUSTOM LINE ITEMS (unrecognized GL rows captured by parser) ─────────
+  // Keys are sanitized description labels prefixed with "custom_opex_".
+  // They are included in total_opex_resolved so NOI is accurate.
+  const rawCustomItems = (t12Opex?.custom_line_items ?? {}) as Record<string, number>;
+  const sanitizeKey = (label: string) =>
+    'custom_opex_' + label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 48);
+  const customOpexItems: Record<string, LayeredValue<number>> = {};
+  for (const [label, amount] of Object.entries(rawCustomItems)) {
+    if (typeof amount !== 'number' || Math.abs(amount) < 1) continue;
+    const key = sanitizeKey(label);
+    const existingOverride = getOverride(key);
+    customOpexItems[key] = resolve(key, null, {
+      t12: amount,
+      existingOverride,
+      priority: ['t12'],
+    });
+    (customOpexItems[key] as unknown as Record<string, unknown>)._label = label;
+  }
+
   const mgmt_t12_pct = t12egi > 0 ? (num(t12Opex, 'mgmt_fee') ?? 0) / t12egi : null;
   const mgmtFeePct = resolve('management_fee_pct', platform.management_fee_pct_egi, {
     t12: mgmt_t12_pct,
@@ -377,12 +396,14 @@ function buildSeed(
 
   const mgmtFeeDollar = egi_after_bad_debt * (mgmtFeePct.resolved ?? 0);
 
+  const customOpexTotal = Object.values(customOpexItems).reduce((s, lv) => s + (lv.resolved ?? 0), 0);
+
   const total_opex_resolved =
     (payroll.resolved ?? 0) + (repairsMaintenance.resolved ?? 0) + (turnover.resolved ?? 0) +
     (amenities.resolved ?? 0) + (contractServices.resolved ?? 0) + (marketing.resolved ?? 0) +
     (office.resolved ?? 0) + (gAndA.resolved ?? 0) + (hoaDues.resolved ?? 0) +
     (utilities.resolved ?? 0) + mgmtFeeDollar + (realEstateTax.resolved ?? 0) +
-    (personalPropTax.resolved ?? 0) + (insurance.resolved ?? 0);
+    (personalPropTax.resolved ?? 0) + (insurance.resolved ?? 0) + customOpexTotal;
 
   const totalOpex: LayeredValue<number> = {
     platform: null, override: null,
@@ -439,6 +460,8 @@ function buildSeed(
     },
     _unit_count: totalUnits,
     last_seeded_at: now(),
+    // Custom (previously unrecognized) GL line items from T12
+    ...customOpexItems,
   };
 }
 

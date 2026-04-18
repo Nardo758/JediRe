@@ -669,6 +669,7 @@ async function updateDealCapsule(pool: Pool, dealId: string, result: ExtractionR
           personal_property_tax: n('personalPropertyTax'),
           insurance: n('insurance') || null,
           total: n('t12OpEx'),
+          custom_line_items: ((s as Record<string, unknown>).customLineItems ?? {}) as Record<string, number>,
         },
         noi: n('t12NOI'),
         expense_ratio: n('expenseRatio'),

@@ -14,6 +14,7 @@ import { MarketResearchSection } from '../components/deal/sections/MarketResearc
 import { TrafficAnalysisSection } from '../components/deal/sections/TrafficAnalysisSection';
 import LeasingTrafficCard from '../components/analytics/LeasingTrafficCard';
 import { BT } from '../components/deal/bloomberg-ui';
+import { ExtractionAccuracyPanel } from '../components/deal/sections/ExtractionAccuracyPanel';
 
 export const DealPage: React.FC = () => {
   const { dealId } = useParams<{ dealId: string }>();
@@ -298,6 +299,9 @@ export const DealPage: React.FC = () => {
 
           {/* 9. Documents & Files (Unified) */}
           <SectionCard id="documents" icon="📁" title="Documents & Files" dealId={dealId}>
+            <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'flex-end' }}>
+              <ExtractionAccuracyPanel dealId={dealId!} />
+            </div>
             <DocumentsFilesSection deal={deal} />
           </SectionCard>
 
