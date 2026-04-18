@@ -889,7 +889,19 @@ async function updateDealCapsule(pool: Pool, dealId: string, result: ExtractionR
       [dealId]
     );
     const existingData = existingResult.rows[0]?.deal_data || {};
-    const merged = deepMergeJsonb(existingData, capsulePayload);
+    // Extraction capsules must be fully replaced (not deep-merged) so that a
+    // re-processed document never inherits floor_plan_mix / other arrays from a
+    // previous extraction of a different document file for the same type.
+    const REPLACE_CAPSULE_KEYS = [
+      'extraction_rent_roll', 'extraction_t12', 'extraction_aged_receivables',
+      'extraction_box_score', 'extraction_concession_burnoff', 'extraction_lto',
+      'extraction_tax_bill',
+    ];
+    const baseForMerge = { ...existingData };
+    for (const key of REPLACE_CAPSULE_KEYS) {
+      if (key in capsulePayload) delete baseForMerge[key];
+    }
+    const merged = deepMergeJsonb(baseForMerge, capsulePayload);
     await pool.query(
       `UPDATE deals SET
          deal_data = $2::jsonb,
