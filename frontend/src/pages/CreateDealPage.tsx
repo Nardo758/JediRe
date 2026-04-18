@@ -120,7 +120,13 @@ export const CreateDealPage: React.FC = () => {
   const [description, setDescription] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const [uploadedDocuments, setUploadedDocuments] = useState<any[]>([]);
+  const DRAFT_DOCS_KEY = 'jedire_create_deal_draft_docs';
+  const [uploadedDocuments, setUploadedDocuments] = useState<any[]>(() => {
+    try {
+      const saved = localStorage.getItem(DRAFT_DOCS_KEY);
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
   const [isUploading, setIsUploading] = useState(false);
 
   const [purchasePrice, setPurchasePrice] = useState('');
@@ -313,7 +319,9 @@ export const CreateDealPage: React.FC = () => {
         }
       }
 
-      setUploadedDocuments([...uploadedDocuments, ...uploadedFiles]);
+      const merged = [...uploadedDocuments, ...uploadedFiles];
+      setUploadedDocuments(merged);
+      localStorage.setItem(DRAFT_DOCS_KEY, JSON.stringify(merged));
     } catch (err: any) {
       setError(err.message || 'Failed to upload documents');
     } finally {
@@ -406,6 +414,8 @@ export const CreateDealPage: React.FC = () => {
           console.error('Failed to link geographic context:', contextErr);
         }
       }
+
+      localStorage.removeItem(DRAFT_DOCS_KEY);
 
       if (result?.id) {
         navigate(`/deals/${result.id}/detail`);
@@ -954,7 +964,11 @@ export const CreateDealPage: React.FC = () => {
                           >
                             <span style={{ color: T.text.primary, overflow: 'hidden', textOverflow: 'ellipsis' }}>{doc.name}</span>
                             <button
-                              onClick={() => setUploadedDocuments(uploadedDocuments.filter((_, i) => i !== idx))}
+                              onClick={() => {
+                                const updated = uploadedDocuments.filter((_, i) => i !== idx);
+                                setUploadedDocuments(updated);
+                                localStorage.setItem(DRAFT_DOCS_KEY, JSON.stringify(updated));
+                              }}
                               style={{ background: 'none', border: 'none', color: T.text.error, cursor: 'pointer', fontSize: 12 }}
                             >
                               ✕

@@ -1047,6 +1047,10 @@ router.post('/upload-document', requireAuth, documentUpload.single('file') as an
       uploadedBy: req.user!.userId,
     };
 
+    if (!verifiedDealId) {
+      console.warn(`[Upload] File "${req.file.originalname}" (id=${docId}) stored without a dealId — extraction deferred until linked to a deal`);
+    }
+
     if (verifiedDealId) {
       processDocument(req.file.path, req.file.originalname, verifiedDealId, req.user!.userId, docId)
         .then(async (result) => {

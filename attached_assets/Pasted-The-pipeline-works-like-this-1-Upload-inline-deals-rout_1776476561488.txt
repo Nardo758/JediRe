@@ -1,0 +1,25 @@
+The pipeline works like this:
+
+1. Upload → inline-deals.routes.ts receives file via multer
+2. Classify → extraction-pipeline.ts identifies doc type (T12, Rent Roll, Tax Bill, Box Score, etc.)
+3. Parse → Runs the appropriate parser (t12-parser, rent-roll-parser, etc.)
+4. Route → data-router.ts writes to multiple DB tables + updates deals.deal_data JSONB
+5. Seed ProForma → proforma-seeder.service.ts merges extractions into deal_assumptions.year1
+6. Cross-validate → Compares docs against each other for variance alerts
+
+Where it breaks down — likely culprits:
+
+1. Document classification fails silently
+The classifier needs to recognize your file format. If confidence is below 0.5, it still tries but warns. If it returns UNKNOWN, the whole pipeline stops for that file. Check: Look at your deal's deal_document_files table — does extraction_status show completed or failed?
+
+2. Data goes to deals.deal_data JSONB — but modules read from different places
+The data router writes extraction results into deals.deal_data (e.g., extraction_t12, extraction_rent_roll). But many module components on the frontend read from separate API endpoints or tables (deal_monthly_actuals, deal_lease_transactions, deal_assumptions). If the DB inserts fail (missing tables, constraint violations), the capsule updates but modules stay empty.
+
+3. ProForma seeder requires BOTH T12 and Rent Roll
+The seeder checks: if (!t12Capsule && !rrCapsule && !taxBillCapsule) — if none exist, it returns seeded: false. If you only uploaded one doc type, many fields will be null.
+
+4. Module Wiring Orchestrator is not auto-triggered
+The wiring orchestrator (module-wiring-orchestrator.ts) connects modules (JEDI Score → Overview, etc.), but it's NOT automatically called after document extraction. The data-router calls seedProFormaYear1 and runCrossValidation, but doesn't trigger the full module cascade.
+
+5. Processing is fire-and-forget
+In the upload handler (line ~1051), processDocument runs as .then() — it's async/background. If it errors, the upload still returns success but the modules never get populated.

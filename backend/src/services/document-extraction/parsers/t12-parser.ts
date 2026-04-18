@@ -332,7 +332,7 @@ export function parseT12(buffer: Buffer, filename: string): ExtractionResult & {
       /\d{1,2}[/-]\d{1,2}[/-]\d{2,4}/,
       /\b(total|period)\b/i,
     ];
-    const headerRow = findHeaderRow(sheet, T12_HEADER_PATTERNS, 25, 2);
+    const headerRow = findHeaderRow(sheet, T12_HEADER_PATTERNS, 25, 1);
     const { headers, rows } = parseSheetFromRow(sheet, headerRow);
 
     if (rows.length === 0) {
