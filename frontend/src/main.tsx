@@ -16,6 +16,12 @@ async function bootstrap() {
         }
       }
     } catch {}
+
+    // In production dev-login is blocked — redirect to login page instead of showing blank terminal
+    if (!localStorage.getItem('auth_token') && !window.location.pathname.startsWith('/login')) {
+      window.location.replace('/login');
+      return;
+    }
   }
 
   ReactDOM.createRoot(document.getElementById('root')!).render(
