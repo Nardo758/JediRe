@@ -1614,7 +1614,11 @@ export async function getDealFinancials(
 
   if (dealRes.rows.length === 0) throw new Error(`Deal not found: ${dealId}`);
   const deal = dealRes.rows[0];
-  const totalUnits = assumptionsRes.rows[0]?.total_units ?? deal.target_units ?? 0;
+  const rrCapsule = ((deal.deal_data ?? {}) as Record<string, unknown>).extraction_rent_roll as Record<string, unknown> | undefined;
+  const totalUnits: number = assumptionsRes.rows[0]?.total_units
+    ?? deal.target_units
+    ?? (rrCapsule?.total_units != null ? +rrCapsule.total_units : 0)
+    ?? 0;
   const year1Seed: Record<string, unknown> = (assumptionsRes.rows[0]?.year1 as Record<string, unknown>) ?? {};
 
   // ── Year-1 Operating Statement rows ────────────────────────────────────────
@@ -1951,16 +1955,38 @@ export async function getDealFinancials(
     originationFeePct,
   };
 
-  // ── Rent Roll Summary (unit mix from deal_assumptions.unit_mix) ─────────────
+  // ── Rent Roll Summary (unit mix from deal_assumptions.unit_mix, fallback to extraction_rent_roll.floor_plan_mix) ──
   type RawUnitMixEntry = Record<string, unknown>;
   const rawUnitMix: RawUnitMixEntry[] | null = (() => {
     const um = assumptionsRow?.unit_mix;
-    if (!um) return null;
-    if (Array.isArray(um)) return um.length > 0 ? (um as RawUnitMixEntry[]) : null;
-    if (typeof um === 'object' && um !== null && !Array.isArray(um)) {
-      const entries = Object.entries(um as Record<string, unknown>);
-      if (entries.length === 0) return null;
-      return entries.map(([k, v]) => ({ type: k, ...(typeof v === 'object' && v !== null ? (v as object) : {}) })) as RawUnitMixEntry[];
+    let fromAssumptions: RawUnitMixEntry[] | null = null;
+    if (um) {
+      if (Array.isArray(um) && um.length > 0) fromAssumptions = um as RawUnitMixEntry[];
+      else if (typeof um === 'object' && um !== null && !Array.isArray(um)) {
+        const entries = Object.entries(um as Record<string, unknown>);
+        if (entries.length > 0) {
+          fromAssumptions = entries.map(([k, v]) => ({ type: k, ...(typeof v === 'object' && v !== null ? (v as object) : {}) })) as RawUnitMixEntry[];
+        }
+      }
+    }
+    if (fromAssumptions) return fromAssumptions;
+
+    const fpm = rrCapsule?.floor_plan_mix as Record<string, unknown> | undefined;
+    if (fpm && typeof fpm === 'object') {
+      const entries = Object.entries(fpm);
+      if (entries.length > 0) {
+        return entries.map(([planName, v]) => {
+          const d = (typeof v === 'object' && v !== null ? v : {}) as Record<string, unknown>;
+          return {
+            type:           planName,
+            count:          d.count ?? 0,
+            avg_sqft:       d.avg_sqft ?? null,
+            in_place_rent:  d.avg_effective_rent ?? null,
+            market_rent:    (d.avg_market_rent != null && +d.avg_market_rent > 0) ? d.avg_market_rent : null,
+            occupancy_pct:  d.occupancy_pct ?? null,
+          } as RawUnitMixEntry;
+        });
+      }
     }
     return null;
   })();
@@ -1969,7 +1995,7 @@ export async function getDealFinancials(
     ? rawUnitMix.map(e => ({
         type:           String(e.type ?? e.unit_type ?? 'Unknown'),
         count:          +(e.count ?? e.units ?? 0),
-        avgSf:          e.avg_sf != null ? +e.avg_sf : null,
+        avgSf:          e.avg_sf != null ? +e.avg_sf : (e.avg_sqft != null ? +e.avg_sqft : null),
         inPlaceRent:    e.in_place_rent != null ? +e.in_place_rent : (e.avg_rent != null ? +e.avg_rent : null),
         marketRent:     e.market_rent != null ? +e.market_rent : null,
         occupancyPct:   e.occupancy_pct != null ? +e.occupancy_pct : null,
