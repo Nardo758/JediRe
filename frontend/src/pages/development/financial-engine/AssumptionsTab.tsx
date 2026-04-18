@@ -383,7 +383,7 @@ function buildRowDef(osRow: OSRow, section: 5|6, meta: FieldMeta): RowDef {
   };
 }
 
-// Section headers — v2 (9-section layout; 1-4 rendered as KeystonePanel above table)
+// Section headers — v2 (10-section layout; 1-4 rendered as KeystonePanel above table)
 const SEC: Record<number,string> = {
   1: '1  KEYSTONE',
   2: '2  DEAL INFO',
@@ -394,6 +394,7 @@ const SEC: Record<number,string> = {
   7: '7  CAPEX & RESERVES',
   8: '8  DISPOSITION & HOLD',
   9: '9  FINANCING  [→ Debt Tab]',
+  10: '10  FORWARD GROWTH RATES  [annual % by line item]',
 };
 
 // ─── Static row definitions (v2: Sections 5-9) ────────────────────────────────
@@ -716,6 +717,86 @@ const STATIC_ROWS: RowDef[] = [
     getBroker: (f, _yr) => f.capitalStack.ioPeriodMonths ?? null,
     getPlatform: (_f, _yr) => 24,
     getConfidence: _f => 80,
+  },
+
+  // ── Section 10: Forward Growth Rates ───────────────────────────────────────
+  // Each row shows the annual growth % applied to that line item each year.
+  // Platform defaults match the Excel model (3%/2%); user can override per-year.
+  {
+    key: 'growthRentPct', label: 'Rent Growth % / yr', section: 10, unit: 'pct',
+    format: fmtPct2, patchField: 'rentGrowthStabilized',
+    description: 'Annual rent growth rate applied to GPR each year from stabilization. Excel model: 3%/yr. M07 can override per-year based on demand trajectory.',
+    platformSource: 'M07 — Demand velocity implied rent growth', brokerSource: 'OM / Growth Rate Assumptions',
+    brokerPage: 'Growth Rate Assumptions', brokerLine: 'Rent Growth',
+    getBroker:   (f, yr) => pyr(f, yr)?.rentGrowthPct ?? f.assumptions.rentGrowthStabilized ?? 0.03,
+    getPlatform: (f, yr) => {
+      const t1 = tyr(f, yr);
+      const t0 = tyr(f, yr - 1);
+      if (t1?.effRent != null && t0?.effRent != null && t0.effRent > 0)
+        return +(t1.effRent / t0.effRent - 1).toFixed(4);
+      return pyr(f, yr)?.rentGrowthPct ?? f.assumptions.rentGrowthStabilized ?? 0.03;
+    },
+    getConfidence: f => f.trafficProjection?.leasingSignals?.confidence ?? 65,
+  },
+  {
+    key: 'growthAncillaryPct', label: 'Ancillary Income Growth % / yr', section: 10, unit: 'pct',
+    format: fmtPct2,
+    description: 'Annual growth rate for ancillary/other income (parking, RUBS, pet fees, valet trash, etc.). Excel model: 3%/yr.',
+    platformSource: 'JEDI — Historical ancillary income growth by market', brokerSource: 'OM / Growth Rate Assumptions',
+    brokerPage: 'Growth Rate Assumptions', brokerLine: 'Ancillary Income',
+    getBroker:   (_f, _yr) => 0.03,
+    getPlatform: (_f, _yr) => 0.03,
+    getConfidence: _f => 65,
+  },
+  {
+    key: 'growthOpexPct', label: 'Operating Expense Growth % / yr', section: 10, unit: 'pct',
+    format: fmtPct2,
+    description: 'Annual growth rate applied to variable operating expenses (payroll, R&M, marketing, contract services, G&A, turnover). Excel model: 2%/yr.',
+    platformSource: 'JEDI — CPI + labor market trends', brokerSource: 'OM / Growth Rate Assumptions',
+    brokerPage: 'Growth Rate Assumptions', brokerLine: 'OpEx Growth',
+    getBroker:   (_f, _yr) => 0.02,
+    getPlatform: (_f, _yr) => 0.02,
+    getConfidence: _f => 70,
+  },
+  {
+    key: 'growthUtilitiesPct', label: 'Utilities Growth % / yr', section: 10, unit: 'pct',
+    format: fmtPct2,
+    description: 'Annual growth rate for owner-paid utilities. Tracked separately from general OpEx due to energy price volatility. Excel model: 2%/yr.',
+    platformSource: 'JEDI — Energy price trend model by market', brokerSource: 'OM / Growth Rate Assumptions',
+    brokerPage: 'Growth Rate Assumptions', brokerLine: 'Utility Growth',
+    getBroker:   (_f, _yr) => 0.02,
+    getPlatform: (_f, _yr) => 0.02,
+    getConfidence: _f => 60,
+  },
+  {
+    key: 'growthInsurancePct', label: 'Insurance Growth % / yr', section: 10, unit: 'pct',
+    format: fmtPct2,
+    description: 'Annual growth rate for property insurance. Florida assets typically see 3.5–5% annual increases due to hurricane/flood exposure.',
+    platformSource: 'JEDI — Florida insurance market model', brokerSource: 'OM / Growth Rate Assumptions',
+    brokerPage: 'Growth Rate Assumptions', brokerLine: 'Insurance Growth',
+    getBroker:   (_f, _yr) => 0.035,
+    getPlatform: (_f, _yr) => 0.04,
+    getConfidence: _f => 60,
+  },
+  {
+    key: 'growthTaxPct', label: 'Property Tax Growth % / yr', section: 10, unit: 'pct',
+    format: fmtPct2,
+    description: 'Annual growth rate for real estate taxes. Florida Homestead cap exemption does not apply to multifamily — subject to full reassessment. Excel model: 2%/yr.',
+    platformSource: 'JEDI — County millage trend + assessment cap model', brokerSource: 'OM / Growth Rate Assumptions',
+    brokerPage: 'Growth Rate Assumptions', brokerLine: 'Property Tax Growth',
+    getBroker:   (_f, _yr) => 0.02,
+    getPlatform: (_f, _yr) => 0.02,
+    getConfidence: _f => 70,
+  },
+  {
+    key: 'growthReservesPct', label: 'Capital Reserves Growth % / yr', section: 10, unit: 'pct',
+    format: fmtPct2,
+    description: 'Annual escalation of replacement reserve contributions. Excel model: 2%/yr.',
+    platformSource: 'JEDI — Industry reserve escalation standard', brokerSource: 'OM / Growth Rate Assumptions',
+    brokerPage: 'Growth Rate Assumptions', brokerLine: 'Capital Reserves',
+    getBroker:   (_f, _yr) => 0.02,
+    getPlatform: (_f, _yr) => 0.02,
+    getConfidence: _f => 75,
   },
 ];
 

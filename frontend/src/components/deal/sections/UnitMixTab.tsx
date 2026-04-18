@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, Loader2, Activity, TrendingUp, TrendingDown, Minus, Info, Zap, Edit3, Check, X } from 'lucide-react';
+import {
+  RefreshCw, Loader2, Activity, TrendingUp, TrendingDown, Minus,
+  Info, Zap, Edit3, Check, X, AlertTriangle, ChevronDown, ChevronRight,
+} from 'lucide-react';
 import { BT } from '../bloomberg-ui';
 import { apiClient } from '../../../services/api.client';
 import { useDealType } from '../../../stores/dealStore';
@@ -67,7 +70,7 @@ const fmtPct = (v: number | null | undefined, decimals = 1) =>
 const fmtNum = (v: number | null | undefined) =>
   v == null ? '—' : Math.round(v).toLocaleString();
 
-function th(label: string, right = false): React.CSSProperties {
+function th(right = false): React.CSSProperties {
   return {
     padding: '5px 8px',
     fontFamily: LABEL,
@@ -122,6 +125,155 @@ function TrafficSignal({ label, value, unit, linked }: { label: string; value: s
   );
 }
 
+interface AncillaryLine {
+  key: string;
+  label: string;
+  amtPerUnit: number;
+  adoptionPct: number;
+  note: string;
+}
+
+const DEFAULT_ANCILLARY: AncillaryLine[] = [
+  { key: 'pet',      label: 'Pet Rent',                amtPerUnit: 27.50, adoptionPct: 0.30, note: '30% of units' },
+  { key: 'garage',   label: 'Garage / Parking',        amtPerUnit: 142.50, adoptionPct: 0.111, note: '~1 in 9 units' },
+  { key: 'storage',  label: 'Storage',                 amtPerUnit: 50.00,  adoptionPct: 0.083, note: '~1 in 12 units' },
+  { key: 'rubs',     label: 'RUBS / Utilities',        amtPerUnit: 65.00,  adoptionPct: 1.00,  note: 'All units' },
+  { key: 'revshare', label: 'Revenue Sharing (Internet)', amtPerUnit: 85.00, adoptionPct: 0.95, note: '95% occupied' },
+  { key: 'valet',    label: 'Valet Trash',             amtPerUnit: 30.00,  adoptionPct: 0.95,  note: '95% occupied' },
+  { key: 'admin',    label: 'Admin / App Fees',        amtPerUnit: 27.00,  adoptionPct: 0.65,  note: '65% of units' },
+  { key: 'late',     label: 'Late / NSF / Termination', amtPerUnit: 5.00,  adoptionPct: 1.00,  note: 'All units' },
+  { key: 'damages',  label: 'Damages',                 amtPerUnit: 2.44,   adoptionPct: 1.00,  note: 'All units' },
+  { key: 'other',    label: 'Other Income',            amtPerUnit: 7.00,   adoptionPct: 1.00,  note: 'All units' },
+];
+
+function AncillaryPanel({ totalUnits }: { totalUnits: number }) {
+  const [lines, setLines] = useState<AncillaryLine[]>(DEFAULT_ANCILLARY);
+  const [editingKey, setEditingKey] = useState<{ key: string; field: 'amt' | 'pct'; val: string } | null>(null);
+  const [collapsed, setCollapsed] = useState(false);
+
+  const totalMonthly = lines.reduce((s, l) => s + l.amtPerUnit * l.adoptionPct * totalUnits, 0);
+  const totalAnnual  = totalMonthly * 12;
+
+  const commit = () => {
+    if (!editingKey) return;
+    const num = parseFloat(editingKey.val);
+    if (isNaN(num)) { setEditingKey(null); return; }
+    setLines(prev => prev.map(l => {
+      if (l.key !== editingKey.key) return l;
+      if (editingKey.field === 'amt') return { ...l, amtPerUnit: num };
+      return { ...l, adoptionPct: Math.min(1, Math.max(0, num / 100)) };
+    }));
+    setEditingKey(null);
+  };
+
+  return (
+    <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 6, overflow: 'hidden', marginTop: 12 }}>
+      <div
+        onClick={() => setCollapsed(c => !c)}
+        style={{ padding: '8px 12px', borderBottom: collapsed ? undefined : `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}
+      >
+        {collapsed ? <ChevronRight size={12} color={C.muted} /> : <ChevronDown size={12} color={C.muted} />}
+        <span style={{ fontFamily: LABEL, fontSize: 9, fontWeight: 700, color: C.text, letterSpacing: '0.06em' }}>ANCILLARY INCOME BREAKDOWN</span>
+        <span style={{ fontFamily: MONO, fontSize: 10, color: C.amber, marginLeft: 'auto' }}>{fmt$(totalAnnual)}/yr</span>
+      </div>
+
+      {!collapsed && (
+        <>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: C.panelAlt }}>
+                  <th style={th()}>INCOME TYPE</th>
+                  <th style={th(true)}>$/UNIT/MO</th>
+                  <th style={th(true)}>ADOPTION</th>
+                  <th style={th(true)}>TOTAL/MO</th>
+                  <th style={th(true)}>TOTAL/YR</th>
+                  <th style={th()}>NOTE</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lines.map((l, idx) => {
+                  const monthlyTotal = l.amtPerUnit * l.adoptionPct * totalUnits;
+                  const annualTotal  = monthlyTotal * 12;
+                  const isEditingAmt = editingKey?.key === l.key && editingKey.field === 'amt';
+                  const isEditingPct = editingKey?.key === l.key && editingKey.field === 'pct';
+
+                  return (
+                    <tr key={l.key} style={{ background: idx % 2 === 0 ? C.panel : C.panelAlt }}>
+                      <td style={{ ...td(), color: C.cyan, fontWeight: 700 }}>{l.label}</td>
+
+                      <td style={{ ...td(true), position: 'relative' }}>
+                        {isEditingAmt ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                            <input autoFocus type="number" value={editingKey.val}
+                              onChange={e => setEditingKey({ ...editingKey, val: e.target.value })}
+                              onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditingKey(null); }}
+                              style={{ width: 64, background: C.panelAlt, border: `1px solid ${C.cyan}`, borderRadius: 3, color: C.cyan, fontFamily: MONO, fontSize: 10, padding: '2px 4px', textAlign: 'right' }}
+                            />
+                            <button onClick={commit} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.green, padding: 0 }}><Check size={10} /></button>
+                            <button onClick={() => setEditingKey(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.red, padding: 0 }}><X size={10} /></button>
+                          </div>
+                        ) : (
+                          <div onClick={() => setEditingKey({ key: l.key, field: 'amt', val: String(l.amtPerUnit) })}
+                            style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, cursor: 'pointer' }}>
+                            <span>${l.amtPerUnit.toFixed(2)}</span>
+                            <Edit3 size={8} color={C.dim} />
+                          </div>
+                        )}
+                      </td>
+
+                      <td style={{ ...td(true), position: 'relative' }}>
+                        {isEditingPct ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                            <input autoFocus type="number" value={editingKey.val}
+                              onChange={e => setEditingKey({ ...editingKey, val: e.target.value })}
+                              onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditingKey(null); }}
+                              style={{ width: 48, background: C.panelAlt, border: `1px solid ${C.amber}`, borderRadius: 3, color: C.amber, fontFamily: MONO, fontSize: 10, padding: '2px 4px', textAlign: 'right' }}
+                            />
+                            <button onClick={commit} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.green, padding: 0 }}><Check size={10} /></button>
+                            <button onClick={() => setEditingKey(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.red, padding: 0 }}><X size={10} /></button>
+                          </div>
+                        ) : (
+                          <div onClick={() => setEditingKey({ key: l.key, field: 'pct', val: String((l.adoptionPct * 100).toFixed(0)) })}
+                            style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, cursor: 'pointer' }}>
+                            <span style={{ color: C.muted }}>{(l.adoptionPct * 100).toFixed(0)}%</span>
+                            <Edit3 size={8} color={C.dim} />
+                          </div>
+                        )}
+                      </td>
+
+                      <td style={td(true, false, C.text)}>{fmt$(monthlyTotal)}</td>
+                      <td style={td(true, false, C.amber)}>{fmt$(annualTotal)}</td>
+                      <td style={{ ...td(), color: C.dim, fontSize: 8 }}>{l.note}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr style={{ background: '#050a0f', borderTop: `2px solid ${C.borderHi}` }}>
+                  <td style={{ ...td(), fontWeight: 700, color: C.text }}>TOTAL ANCILLARY</td>
+                  <td colSpan={2} />
+                  <td style={{ ...td(true), fontWeight: 700, color: C.amber }}>{fmt$(totalMonthly)}/mo</td>
+                  <td style={{ ...td(true), fontWeight: 700, color: C.amber }}>{fmt$(totalAnnual)}/yr</td>
+                  <td style={{ ...td(), color: C.dim, fontSize: 8 }}>{((totalAnnual / Math.max(totalUnits * 12, 1))).toFixed(0)}/unit/yr</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          <div style={{ padding: '8px 12px', background: C.amberDim, borderTop: `1px solid ${C.amber}33`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div style={{ width: 6, height: 6, borderRadius: '50%', background: C.amber }} />
+              <span style={{ fontFamily: LABEL, fontSize: 9, color: C.amber }}>ANCILLARY INCOME → FINANCIAL ENGINE (F9 EGI)</span>
+            </div>
+            <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: 700, color: C.amber }}>{fmt$(totalAnnual)}</span>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function UnitMixTab({ dealId, deal }: { dealId: string; deal?: any }) {
   const dealType = useDealType();
   const [data, setData] = useState<DealFinancials | null>(null);
@@ -151,18 +303,18 @@ export function UnitMixTab({ dealId, deal }: { dealId: string; deal?: any }) {
   const hasTraffic = ls != null && (ls.t06WeeklyLeases != null || ls.t07LeaseUpWeeksTo95 != null);
   const lv = data?.trafficProjection?.leasingVelocity;
 
-  const getEffectiveRent = (u: RentRollUnitType, idx: number) =>
+  const getEffectiveRent = (u: RentRollUnitType) =>
     rentOverrides[u.type]?.inPlace ?? u.inPlaceRent;
-  const getMarketRent = (u: RentRollUnitType, idx: number) =>
+  const getMarketRent = (u: RentRollUnitType) =>
     rentOverrides[u.type]?.market ?? u.marketRent;
 
   const totalGprAnnual = unitMix.reduce((s, u) => {
-    const r = getEffectiveRent(u, 0) ?? 0;
+    const r = getEffectiveRent(u) ?? 0;
     return s + u.count * r * 12;
   }, 0);
 
   const totalMarketGprAnnual = unitMix.reduce((s, u) => {
-    const r = getMarketRent(u, 0) ?? 0;
+    const r = getMarketRent(u) ?? 0;
     return s + u.count * r * 12;
   }, 0);
 
@@ -183,9 +335,20 @@ export function UnitMixTab({ dealId, deal }: { dealId: string; deal?: any }) {
 
   const stabilizedVac = data?.trafficProjection?.calibrated?.vacancyPct ?? 0.05;
 
-  const isExisting = dealType === 'existing';
-  const isValueAdd = dealType === 'redevelopment' || dealType === 'value-add';
-  const isDeveopment = dealType === 'development';
+  const isExisting    = dealType === 'existing';
+  const isValueAdd    = dealType === 'redevelopment' || dealType === 'value-add';
+  const isDevelopment = dealType === 'development';
+
+  const weightedAvgSf = totalUnits > 0 && unitMix.some(u => u.avgSf != null)
+    ? Math.round(unitMix.reduce((s, u) => s + (u.avgSf ?? 0) * u.count, 0) / totalUnits)
+    : null;
+
+  const totalNrsf = unitMix.reduce((s, u) => s + (u.avgSf ?? 0) * u.count, 0);
+
+  const assumedTotalUnits = deal?.deal_data?.deal_assumptions?.total_units
+    ?? deal?.deal_data?.extraction_rent_roll?.total_units
+    ?? null;
+  const unitCountMismatch = assumedTotalUnits != null && totalUnits > 0 && Math.abs(assumedTotalUnits - totalUnits) > 2;
 
   if (loading) {
     return (
@@ -210,7 +373,7 @@ export function UnitMixTab({ dealId, deal }: { dealId: string; deal?: any }) {
         <div>
           <span style={{ fontFamily: LABEL, fontSize: 10, fontWeight: 700, color: C.cyan, letterSpacing: '0.1em' }}>F13 · UNIT MIX</span>
           <span style={{ fontFamily: LABEL, fontSize: 9, color: C.muted, marginLeft: 12 }}>
-            {isDeveopment ? 'Target program · absorption model' : isValueAdd ? 'In-place · renovation upside · absorption' : 'In-place rents · floor plan economics · absorption link'}
+            {isDevelopment ? 'Target program · absorption model' : isValueAdd ? 'In-place · renovation upside · absorption' : 'In-place rents · floor plan economics · absorption link'}
           </span>
         </div>
         <button
@@ -221,24 +384,50 @@ export function UnitMixTab({ dealId, deal }: { dealId: string; deal?: any }) {
         </button>
       </div>
 
+      {/* ── Unit count reconciliation banner ── */}
+      {unitCountMismatch && (
+        <div style={{ background: '#1a0d00', borderBottom: `1px solid ${C.amber}44`, padding: '8px 20px', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <AlertTriangle size={13} color={C.amber} />
+          <span style={{ fontFamily: LABEL, fontSize: 9, color: C.amber }}>
+            UNIT COUNT MISMATCH — Assumptions show <strong>{assumedTotalUnits}</strong> units, rent roll extraction yields <strong>{totalUnits}</strong>.
+            Verify against the offering memorandum or update deal assumptions.
+          </span>
+        </div>
+      )}
+
       {/* ── KPI row ── */}
       <div style={{ display: 'flex', gap: 10, padding: '14px 20px', flexWrap: 'wrap' }}>
         <MetricPill label="TOTAL UNITS" value={totalUnits > 0 ? totalUnits.toLocaleString() : '—'} color={C.cyan} sub={`${unitMix.length} floor plan types`} />
         <MetricPill label="IN-PLACE GPR" value={totalGprAnnual > 0 ? fmt$(totalGprAnnual) : '—'} color={C.green} sub="annualized · feeds ProForma" />
         {totalMarketGprAnnual > 0 && <MetricPill label="MARKET GPR" value={fmt$(totalMarketGprAnnual)} color={C.amber} sub="at full market rents" />}
-        {totalLtl > 0 && <MetricPill label="LOSS-TO-LEASE" value={fmt$(totalLtl)} color={C.red} sub={fmtPct(totalMarketGprAnnual > 0 ? totalLtl / totalMarketGprAnnual : null) + ' of mkt GPR'} />}
-        <MetricPill label="OCCUPANCY" value={fmtPct(weightedOcc)} color={weightedOcc != null && weightedOcc >= 0.90 ? C.green : weightedOcc != null && weightedOcc >= 0.80 ? C.amber : C.red} sub={vacantUnits > 0 ? `${vacantUnits} vacant units` : undefined} />
+        {totalLtl > 0 && (
+          <MetricPill
+            label="LOSS-TO-LEASE"
+            value={fmt$(totalLtl)}
+            color={C.red}
+            sub={fmtPct(totalMarketGprAnnual > 0 ? totalLtl / totalMarketGprAnnual : null) + ' of mkt GPR'}
+          />
+        )}
+        <MetricPill
+          label="OCCUPANCY"
+          value={fmtPct(weightedOcc)}
+          color={weightedOcc != null && weightedOcc >= 0.90 ? C.green : weightedOcc != null && weightedOcc >= 0.80 ? C.amber : C.red}
+          sub={vacantUnits > 0 ? `${vacantUnits} vacant units` : undefined}
+        />
         <MetricPill
           label="LEASING VELOCITY"
           value={weeklyLeases != null ? `${weeklyLeases.toFixed(1)}/wk` : '—'}
           color={hasTraffic ? C.cyan : C.dim}
           sub={hasTraffic ? 'M07 TRAFFIC ENGINE' : 'no traffic data'}
         />
+        {weightedAvgSf != null && (
+          <MetricPill label="AVG UNIT SIZE" value={`${weightedAvgSf.toLocaleString()} SF`} color={C.muted} sub={totalNrsf > 0 ? `${Math.round(totalNrsf).toLocaleString()} NRSF total` : undefined} />
+        )}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 1, padding: '0 20px 20px' }}>
 
-        {/* ── LEFT: floor plan table ── */}
+        {/* ── LEFT: floor plan table + ancillary panel ── */}
         <div>
           {/* GPR Feed Banner */}
           <div style={{ background: C.greenDim, border: `1px solid ${C.green}33`, borderRadius: 6, padding: '8px 14px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -267,26 +456,28 @@ export function UnitMixTab({ dealId, deal }: { dealId: string; deal?: any }) {
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ background: C.panelAlt }}>
-                      <th style={th('TYPE')}>TYPE</th>
-                      <th style={th('', true)}>UNITS</th>
-                      <th style={th('', true)}>MIX %</th>
-                      <th style={th('', true)}>AVG SF</th>
-                      <th style={th('', true)}>IN-PLACE RENT</th>
-                      <th style={th('', true)}>MARKET RENT</th>
-                      <th style={th('', true)}>L-T-L</th>
-                      <th style={th('', true)}>OCC %</th>
-                      <th style={th('', true)}>ANNUAL GPR</th>
+                      <th style={th()}>TYPE</th>
+                      <th style={th(true)}>UNITS</th>
+                      <th style={th(true)}>MIX %</th>
+                      <th style={th(true)}>AVG SF</th>
+                      <th style={th(true)}>IN-PLACE RENT</th>
+                      <th style={th(true)}>$/SF/MO</th>
+                      <th style={th(true)}>MARKET RENT</th>
+                      <th style={th(true)}>L-T-L</th>
+                      <th style={th(true)}>OCC %</th>
+                      <th style={th(true)}>ANNUAL GPR</th>
                     </tr>
                   </thead>
                   <tbody>
                     {unitMix.map((u, idx) => {
-                      const effRent = getEffectiveRent(u, idx);
-                      const mktRent = getMarketRent(u, idx);
-                      const ltlAmt = mktRent != null && effRent != null ? mktRent - effRent : null;
-                      const ltlPct = mktRent != null && ltlAmt != null && mktRent > 0 ? ltlAmt / mktRent : null;
-                      const gpr = effRent != null ? u.count * effRent * 12 : null;
-                      const mixPct = totalUnits > 0 ? u.count / totalUnits : 0;
-                      const occ = u.occupancyPct;
+                      const effRent   = getEffectiveRent(u);
+                      const mktRent   = getMarketRent(u);
+                      const ltlAmt    = mktRent != null && effRent != null ? mktRent - effRent : null;
+                      const ltlPct    = mktRent != null && ltlAmt != null && mktRent > 0 ? ltlAmt / mktRent : null;
+                      const gpr       = effRent != null ? u.count * effRent * 12 : null;
+                      const mixPct    = totalUnits > 0 ? u.count / totalUnits : 0;
+                      const occ       = u.occupancyPct;
+                      const rentPerSf = effRent != null && u.avgSf != null && u.avgSf > 0 ? effRent / u.avgSf : null;
                       const isEditing = editingRent?.idx === idx;
 
                       return (
@@ -298,22 +489,20 @@ export function UnitMixTab({ dealId, deal }: { dealId: string; deal?: any }) {
 
                           {/* In-place rent — editable */}
                           <td style={{ ...td(true), position: 'relative' }}>
-                            {isEditing && editingRent.field === 'inPlace' ? (
+                            {isEditing && editingRent!.field === 'inPlace' ? (
                               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                                 <input
-                                  autoFocus
-                                  type="number"
-                                  value={editingRent.val}
-                                  onChange={e => setEditingRent({ ...editingRent, val: e.target.value })}
+                                  autoFocus type="number" value={editingRent!.val}
+                                  onChange={e => setEditingRent({ ...editingRent!, val: e.target.value })}
                                   onKeyDown={e => {
                                     if (e.key === 'Enter') {
-                                      setRentOverrides(prev => ({ ...prev, [u.type]: { ...(prev[u.type] ?? {}), inPlace: +editingRent.val } }));
+                                      setRentOverrides(prev => ({ ...prev, [u.type]: { ...(prev[u.type] ?? {}), inPlace: +editingRent!.val } }));
                                       setEditingRent(null);
                                     } else if (e.key === 'Escape') setEditingRent(null);
                                   }}
                                   style={{ width: 72, background: C.panelAlt, border: `1px solid ${C.cyan}`, borderRadius: 3, color: C.cyan, fontFamily: MONO, fontSize: 10, padding: '2px 4px', textAlign: 'right' }}
                                 />
-                                <button onClick={() => { setRentOverrides(prev => ({ ...prev, [u.type]: { ...(prev[u.type] ?? {}), inPlace: +editingRent.val } })); setEditingRent(null); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: C.green }}><Check size={11} /></button>
+                                <button onClick={() => { setRentOverrides(prev => ({ ...prev, [u.type]: { ...(prev[u.type] ?? {}), inPlace: +editingRent!.val } })); setEditingRent(null); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: C.green }}><Check size={11} /></button>
                                 <button onClick={() => setEditingRent(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: C.red }}><X size={11} /></button>
                               </div>
                             ) : (
@@ -327,24 +516,27 @@ export function UnitMixTab({ dealId, deal }: { dealId: string; deal?: any }) {
                             )}
                           </td>
 
+                          {/* $/SF/mo — computed, not editable */}
+                          <td style={td(true, false, C.dim)}>
+                            {rentPerSf != null ? `$${rentPerSf.toFixed(2)}` : '—'}
+                          </td>
+
                           {/* Market rent — editable */}
                           <td style={{ ...td(true), position: 'relative' }}>
-                            {isEditing && editingRent.field === 'market' ? (
+                            {isEditing && editingRent!.field === 'market' ? (
                               <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                                 <input
-                                  autoFocus
-                                  type="number"
-                                  value={editingRent.val}
-                                  onChange={e => setEditingRent({ ...editingRent, val: e.target.value })}
+                                  autoFocus type="number" value={editingRent!.val}
+                                  onChange={e => setEditingRent({ ...editingRent!, val: e.target.value })}
                                   onKeyDown={e => {
                                     if (e.key === 'Enter') {
-                                      setRentOverrides(prev => ({ ...prev, [u.type]: { ...(prev[u.type] ?? {}), market: +editingRent.val } }));
+                                      setRentOverrides(prev => ({ ...prev, [u.type]: { ...(prev[u.type] ?? {}), market: +editingRent!.val } }));
                                       setEditingRent(null);
                                     } else if (e.key === 'Escape') setEditingRent(null);
                                   }}
                                   style={{ width: 72, background: C.panelAlt, border: `1px solid ${C.amber}`, borderRadius: 3, color: C.amber, fontFamily: MONO, fontSize: 10, padding: '2px 4px', textAlign: 'right' }}
                                 />
-                                <button onClick={() => { setRentOverrides(prev => ({ ...prev, [u.type]: { ...(prev[u.type] ?? {}), market: +editingRent.val } })); setEditingRent(null); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: C.green }}><Check size={11} /></button>
+                                <button onClick={() => { setRentOverrides(prev => ({ ...prev, [u.type]: { ...(prev[u.type] ?? {}), market: +editingRent!.val } })); setEditingRent(null); }} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: C.green }}><Check size={11} /></button>
                                 <button onClick={() => setEditingRent(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: C.red }}><X size={11} /></button>
                               </div>
                             ) : (
@@ -379,12 +571,15 @@ export function UnitMixTab({ dealId, deal }: { dealId: string; deal?: any }) {
                       <td style={{ ...td(true), fontWeight: 700 }}>{totalUnits}</td>
                       <td style={{ ...td(true), color: C.muted }}>100%</td>
                       <td style={{ ...td(true), color: C.muted }}>
-                        {totalUnits > 0 && unitMix.some(u => u.avgSf != null)
-                          ? Math.round(unitMix.reduce((s, u) => s + (u.avgSf ?? 0) * u.count, 0) / totalUnits).toLocaleString()
-                          : '—'}
+                        {weightedAvgSf != null ? weightedAvgSf.toLocaleString() : '—'}
                       </td>
                       <td style={{ ...td(true), fontWeight: 700, color: C.text }}>
                         {totalUnits > 0 && totalGprAnnual > 0 ? fmt$(Math.round(totalGprAnnual / totalUnits / 12)) : '—'}/mo
+                      </td>
+                      <td style={{ ...td(true), color: C.dim }}>
+                        {weightedAvgSf != null && totalUnits > 0 && totalGprAnnual > 0
+                          ? `$${(totalGprAnnual / totalUnits / 12 / weightedAvgSf).toFixed(2)}`
+                          : '—'}
                       </td>
                       <td style={{ ...td(true), color: C.muted }}>
                         {totalMarketGprAnnual > 0 && totalUnits > 0 ? fmt$(Math.round(totalMarketGprAnnual / totalUnits / 12)) : '—'}/mo
@@ -412,6 +607,9 @@ export function UnitMixTab({ dealId, deal }: { dealId: string; deal?: any }) {
             </div>
           )}
 
+          {/* ── Ancillary Income Breakdown ── */}
+          {totalUnits > 0 && <AncillaryPanel totalUnits={totalUnits} />}
+
           {/* ── Value-Add Renovation Upside ── */}
           {isValueAdd && unitMix.length > 0 && (
             <div style={{ background: C.panel, border: `1px solid ${C.purple}44`, borderRadius: 6, overflow: 'hidden', marginTop: 12 }}>
@@ -421,21 +619,21 @@ export function UnitMixTab({ dealId, deal }: { dealId: string; deal?: any }) {
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: C.panelAlt }}>
-                    <th style={th('FLOOR PLAN')}>FLOOR PLAN</th>
-                    <th style={th('', true)}>UNITS</th>
-                    <th style={th('', true)}>IN-PLACE</th>
-                    <th style={th('', true)}>MARKET</th>
-                    <th style={th('', true)}>PREMIUM/UNIT</th>
-                    <th style={th('', true)}>ANNUAL UPSIDE</th>
-                    <th style={th('', true)}>PRIORITY</th>
+                    <th style={th()}>FLOOR PLAN</th>
+                    <th style={th(true)}>UNITS</th>
+                    <th style={th(true)}>IN-PLACE</th>
+                    <th style={th(true)}>MARKET</th>
+                    <th style={th(true)}>PREMIUM/UNIT</th>
+                    <th style={th(true)}>ANNUAL UPSIDE</th>
+                    <th style={th(true)}>PRIORITY</th>
                   </tr>
                 </thead>
                 <tbody>
                   {[...unitMix]
                     .map(u => ({
                       ...u,
-                      premium: (getMarketRent(u, 0) ?? 0) - (getEffectiveRent(u, 0) ?? 0),
-                      annualUpside: u.count * ((getMarketRent(u, 0) ?? 0) - (getEffectiveRent(u, 0) ?? 0)) * 12,
+                      premium: (getMarketRent(u) ?? 0) - (getEffectiveRent(u) ?? 0),
+                      annualUpside: u.count * ((getMarketRent(u) ?? 0) - (getEffectiveRent(u) ?? 0)) * 12,
                     }))
                     .filter(u => u.premium > 0)
                     .sort((a, b) => b.premium - a.premium)
@@ -443,8 +641,8 @@ export function UnitMixTab({ dealId, deal }: { dealId: string; deal?: any }) {
                       <tr key={u.type} style={{ background: idx % 2 === 0 ? C.panel : C.panelAlt }}>
                         <td style={{ ...td(), fontWeight: 700, color: C.purple }}>{u.type}</td>
                         <td style={td(true)}>{u.count}</td>
-                        <td style={td(true)}>{fmt$(getEffectiveRent(u, 0))}</td>
-                        <td style={td(true, false, C.amber)}>{fmt$(getMarketRent(u, 0))}</td>
+                        <td style={td(true)}>{fmt$(getEffectiveRent(u))}</td>
+                        <td style={td(true, false, C.amber)}>{fmt$(getMarketRent(u))}</td>
                         <td style={td(true, true, C.green)}>+{fmt$(u.premium)}/mo</td>
                         <td style={td(true, false, C.green)}>{fmt$(u.annualUpside)}</td>
                         <td style={{ ...td(true) }}>
@@ -471,9 +669,7 @@ export function UnitMixTab({ dealId, deal }: { dealId: string; deal?: any }) {
                 <div style={{ fontFamily: LABEL, fontSize: 9, fontWeight: 700, color: hasTraffic ? C.cyan : C.muted, letterSpacing: '0.06em' }}>M07 TRAFFIC ENGINE · ABSORPTION</div>
                 <div style={{ fontFamily: LABEL, fontSize: 7, color: C.dim }}>linked from F6 Traffic module</div>
               </div>
-              {hasTraffic && (
-                <Zap size={10} color={C.cyan} style={{ marginLeft: 'auto' }} />
-              )}
+              {hasTraffic && <Zap size={10} color={C.cyan} style={{ marginLeft: 'auto' }} />}
             </div>
             <div style={{ padding: '10px 12px' }}>
               <TrafficSignal label="T01 WEEKLY TOURS" value={ls?.t01WeeklyTours != null ? ls.t01WeeklyTours.toFixed(1) : '—'} unit="/wk" linked={ls?.t01WeeklyTours != null} />
@@ -491,6 +687,47 @@ export function UnitMixTab({ dealId, deal }: { dealId: string; deal?: any }) {
             )}
           </div>
 
+          {/* 5-Step EGI Waterfall */}
+          <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 6, overflow: 'hidden' }}>
+            <div style={{ padding: '8px 12px', borderBottom: `1px solid ${C.border}` }}>
+              <span style={{ fontFamily: LABEL, fontSize: 9, fontWeight: 700, color: C.text, letterSpacing: '0.06em' }}>EGI WATERFALL</span>
+            </div>
+            <div style={{ padding: 12 }}>
+              {(() => {
+                const vacancyLoss    = physicalVacancy != null && totalMarketGprAnnual > 0 ? physicalVacancy * totalMarketGprAnnual : null;
+                const badDebtPct     = 0.01;
+                const gri            = totalMarketGprAnnual > 0 && vacancyLoss != null ? totalMarketGprAnnual - totalLtl - vacancyLoss : null;
+                const badDebtLoss    = gri != null ? gri * badDebtPct : null;
+                const concessionPct  = unitMix.reduce((s, u) => s + (u.concessionPct ?? 0) * u.count, 0) / Math.max(totalUnits, 1);
+                const concessionLoss = totalMarketGprAnnual > 0 ? concessionPct * totalMarketGprAnnual : null;
+                const ancillaryTotal = DEFAULT_ANCILLARY.reduce((s, l) => s + l.amtPerUnit * l.adoptionPct * totalUnits * 12, 0);
+                const egi = gri != null && badDebtLoss != null
+                  ? gri - (concessionLoss ?? 0) - badDebtLoss + ancillaryTotal
+                  : null;
+
+                const rows = [
+                  { label: 'MARKET GPR',        value: fmt$(totalMarketGprAnnual > 0 ? totalMarketGprAnnual : null), color: C.amber,  sign: '' },
+                  { label: '– LOSS-TO-LEASE',   value: totalLtl > 0 ? `(${fmt$(totalLtl)})` : '—', color: C.red, sign: `${fmtPct(totalMarketGprAnnual > 0 ? totalLtl / totalMarketGprAnnual : null)}` },
+                  { label: '– PHYSICAL VACANCY',value: vacancyLoss != null ? `(${fmt$(vacancyLoss)})` : '—', color: C.red, sign: physicalVacancy != null ? fmtPct(physicalVacancy) : '' },
+                  { label: '– BAD DEBT (1%)',   value: badDebtLoss != null ? `(${fmt$(badDebtLoss)})` : '—', color: C.red, sign: '1.0%' },
+                  { label: '– CONCESSIONS',     value: concessionLoss != null && concessionLoss > 0 ? `(${fmt$(concessionLoss)})` : '—', color: C.red, sign: concessionPct > 0 ? fmtPct(concessionPct) : '' },
+                  { label: '+ ANCILLARY INCOME',value: fmt$(ancillaryTotal), color: C.amber, sign: '' },
+                  { label: '= EGI',             value: fmt$(egi), color: C.green, sign: '', bold: true },
+                ];
+
+                return rows.map((row, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderBottom: i < rows.length - 1 ? `1px solid ${C.border}` : undefined }}>
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <span style={{ fontFamily: LABEL, fontSize: 9, color: i === rows.length - 1 ? C.text : C.muted, fontWeight: i === rows.length - 1 ? 700 : 400 }}>{row.label}</span>
+                      {row.sign && <span style={{ fontFamily: LABEL, fontSize: 7, color: C.dim }}>{row.sign}</span>}
+                    </div>
+                    <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: (row as any).bold ? 700 : 400, color: row.color }}>{row.value}</span>
+                  </div>
+                ));
+              })()}
+            </div>
+          </div>
+
           {/* Lease-Up Timeline */}
           <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 6, overflow: 'hidden' }}>
             <div style={{ padding: '8px 12px', borderBottom: `1px solid ${C.border}` }}>
@@ -501,7 +738,7 @@ export function UnitMixTab({ dealId, deal }: { dealId: string; deal?: any }) {
                 { label: 'CURRENT OCC.', value: fmtPct(currentOcc), color: currentOcc >= 0.90 ? C.green : currentOcc >= 0.80 ? C.amber : C.red },
                 { label: 'VACANT UNITS', value: vacantUnits > 0 ? String(vacantUnits) : '0', color: C.muted },
                 { label: 'STABILIZED TARGET', value: fmtPct(1 - stabilizedVac), color: C.green },
-                { label: 'UNITS TO STABILIZE', value: fmtNum(Math.round((1 - stabilizedVac - currentOcc) * totalUnits)), color: C.amber },
+                { label: 'UNITS TO STABILIZE', value: fmtNum(Math.max(0, Math.round((1 - stabilizedVac - currentOcc) * totalUnits))), color: C.amber },
                 { label: 'VELOCITY', value: weeklyLeases != null ? `${weeklyLeases.toFixed(1)}/wk` : '—', color: hasTraffic ? C.cyan : C.dim },
                 { label: 'EXP. LEASE-UP', value: leaseUpMonths != null ? `${leaseUpMonths} months` : '—', color: hasTraffic ? C.purple : C.dim },
               ].map(row => (
@@ -510,8 +747,6 @@ export function UnitMixTab({ dealId, deal }: { dealId: string; deal?: any }) {
                   <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: 700, color: row.color }}>{row.value}</span>
                 </div>
               ))}
-
-              {/* Lease-up progress bar */}
               {totalUnits > 0 && (
                 <div style={{ marginTop: 6 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
@@ -533,42 +768,25 @@ export function UnitMixTab({ dealId, deal }: { dealId: string; deal?: any }) {
             </div>
           </div>
 
-          {/* Occupancy Bridge */}
-          <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 6, overflow: 'hidden' }}>
-            <div style={{ padding: '8px 12px', borderBottom: `1px solid ${C.border}` }}>
-              <span style={{ fontFamily: LABEL, fontSize: 9, fontWeight: 700, color: C.text, letterSpacing: '0.06em' }}>VACANCY WATERFALL</span>
-            </div>
-            <div style={{ padding: 12 }}>
-              {[
-                { label: 'MARKET GPR', value: fmt$(totalMarketGprAnnual > 0 ? totalMarketGprAnnual : null), color: C.amber },
-                { label: '– LOSS-TO-LEASE', value: totalLtl > 0 ? `(${fmt$(totalLtl)})` : '—', color: C.red },
-                { label: '– PHYSICAL VACANCY', value: physicalVacancy != null && totalMarketGprAnnual > 0 ? `(${fmt$(physicalVacancy * totalMarketGprAnnual)})` : '—', color: C.red },
-                { label: '= IN-PLACE GPR', value: fmt$(totalGprAnnual > 0 ? totalGprAnnual : null), color: C.green, bold: true },
-              ].map((row, i) => (
-                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderBottom: i < 3 ? `1px solid ${C.border}` : undefined }}>
-                  <span style={{ fontFamily: LABEL, fontSize: 9, color: C.muted }}>{row.label}</span>
-                  <span style={{ fontFamily: MONO, fontSize: 11, fontWeight: (row as any).bold ? 700 : 400, color: row.color }}>{row.value}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
           {/* Deal type badge */}
           <div style={{ background: C.panelAlt, border: `1px solid ${C.border}`, borderRadius: 6, padding: '10px 12px' }}>
             <div style={{ fontFamily: LABEL, fontSize: 8, color: C.dim, marginBottom: 6 }}>DEAL TYPE MODE</div>
             {[
-              { id: 'existing', label: 'EXISTING · STABILIZED', desc: 'Rent roll extracted, in-place analytics active' },
-              { id: 'redevelopment', label: 'VALUE-ADD · RENOVATION', desc: 'Upside ranking + renovation tracker active' },
-              { id: 'development', label: 'GROUND-UP', desc: 'Target program + absorption ramp active' },
-            ].map(dt => (
-              <div key={dt.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginBottom: 4 }}>
-                <div style={{ width: 7, height: 7, borderRadius: '50%', background: dealType === dt.id || (dt.id === 'existing' && isExisting) || (dt.id === 'redevelopment' && isValueAdd) || (dt.id === 'development' && isDeveopment) ? C.cyan : C.dim, marginTop: 3, flexShrink: 0 }} />
-                <div>
-                  <div style={{ fontFamily: LABEL, fontSize: 8, fontWeight: 700, color: (dealType === dt.id || (dt.id === 'existing' && isExisting) || (dt.id === 'redevelopment' && isValueAdd) || (dt.id === 'development' && isDeveopment)) ? C.cyan : C.dim }}>{dt.label}</div>
-                  <div style={{ fontFamily: LABEL, fontSize: 7, color: C.dim }}>{dt.desc}</div>
+              { id: 'existing',      label: 'EXISTING · STABILIZED',   desc: 'Rent roll extracted, in-place analytics active' },
+              { id: 'redevelopment', label: 'VALUE-ADD · RENOVATION',  desc: 'Upside ranking + renovation tracker active' },
+              { id: 'development',   label: 'GROUND-UP · DEVELOPMENT', desc: 'Target program + absorption ramp active' },
+            ].map(dt => {
+              const active = (dt.id === 'existing' && isExisting) || (dt.id === 'redevelopment' && isValueAdd) || (dt.id === 'development' && isDevelopment);
+              return (
+                <div key={dt.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginBottom: 4 }}>
+                  <div style={{ width: 7, height: 7, borderRadius: '50%', background: active ? C.cyan : C.dim, marginTop: 3, flexShrink: 0 }} />
+                  <div>
+                    <div style={{ fontFamily: LABEL, fontSize: 8, fontWeight: 700, color: active ? C.cyan : C.dim }}>{dt.label}</div>
+                    <div style={{ fontFamily: LABEL, fontSize: 7, color: C.dim }}>{dt.desc}</div>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
