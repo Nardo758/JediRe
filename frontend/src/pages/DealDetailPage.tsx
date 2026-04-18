@@ -34,7 +34,7 @@ import {
   DollarSign, Bot, TrendingUp,
   Building2, Target, Package, Calculator,
   ArrowLeft, ArrowRight, Activity, LayoutDashboard,
-  Landmark, HardHat, Shield, Box, FileText, Briefcase, Zap,
+  Landmark, HardHat, Shield, Box, FileText, Briefcase, Zap, LayoutList,
 } from 'lucide-react';
 import { Tab } from '../components/deal/TabGroup';
 import { DealScreenWrapper } from '../components/deal/DealScreenWrapper';
@@ -82,6 +82,7 @@ import { DealToolsSection } from '../components/deal/sections/DealToolsSection';
 import { FinancialEnginePage } from './development/FinancialEnginePage';
 import { Design3DShellPage } from './development/Design3DShellPage';
 import UnitMixIntelligence from '../components/deal/sections/UnitMixIntelligence';
+import { UnitMixTab } from '../components/deal/sections/UnitMixTab';
 import { ZoningModuleSection } from '../components/deal/sections/ZoningModuleSection';
 import { useZoningModuleStore } from '../stores/zoningModuleStore';
 import type { DevelopmentPath } from '../types/zoning.types';
@@ -190,6 +191,9 @@ const DebtCapitalScreen = (props: ScreenProps) => (
 );
 const RiskScreen = (props: ScreenProps) => (
   <RiskDDPage dealId={props.dealId} deal={props.deal as Record<string, unknown> | undefined} dealType={props.dealType} />
+);
+const UnitMixScreen = (props: ScreenProps) => (
+  <UnitMixTab dealId={props.dealId} deal={props.deal} />
 );
 const EXEC_TABS = [
   { id: 'timeline',           label: 'PROJECT TIMELINE',   title: 'PROJECT TIMELINE',   subtitle: 'M17 · MILESTONES + GANTT',        border: BT.text.cyan    },
@@ -598,7 +602,7 @@ const DealDetailPage: React.FC = () => {
         F1: 'overview',   F2: 'zoning',    F3: 'market',     F4: 'supply',
         F5: 'strategy',   F6: 'traffic',   F7: 'design-3d',
         F8: 'capital',    F9: 'proforma',  F10: 'risk',
-        F11: 'deal-tools',
+        F11: 'deal-tools', F12: 'events',  F13: 'unit-mix',
       };
       if (fKeyMap[e.key]) {
         e.preventDefault();
@@ -643,6 +647,7 @@ const DealDetailPage: React.FC = () => {
     { id: 'risk',        moduleId: 'M13', fkey: 'F10', code: 'M13', short: 'RISK',       label: 'Risk',             icon: <Shield size={14} />,          component: RiskScreen },
     { id: 'events',      moduleId: 'M35', fkey: 'F12', code: 'M35', short: 'EVENTS',     label: 'Event Timeline',   icon: <Zap size={14} />,             component: (props: any) => <EventTimelineSection {...props} /> },
     { id: 'deal-tools', moduleId: 'M21', fkey: 'F11', code: 'M21', short: 'TOOLS',      label: 'Deal Tools',       icon: <Briefcase size={14} />,       component: DealToolsScreen },
+    { id: 'unit-mix',   moduleId: 'M01', fkey: 'F13', code: 'M14', short: 'UNIT MIX',   label: 'Unit Mix',         icon: <LayoutList size={14} />,      component: UnitMixScreen },
   ];
 
   const dealScreens = allDealScreens.filter((s) => config.isModuleVisible(s.moduleId));

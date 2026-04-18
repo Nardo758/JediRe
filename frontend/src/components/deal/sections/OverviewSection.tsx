@@ -805,6 +805,7 @@ const ExistingOverview: React.FC<ExistingOverviewProps> = ({ deal, navigateToTab
             { key: 'F8', label: 'PRO FORMA', hint: '3-layer NOI model · Sensitivity', tab: 'proforma' },
             { key: 'F9', label: 'CAPITAL STRUCTURE', hint: 'Debt · Equity waterfall', tab: 'capital' },
             { key: 'F10', label: 'RISK & DUE DILIGENCE', hint: 'Monte Carlo · Insurance · DD checklist', tab: 'risk' },
+            { key: 'F13', label: 'UNIT MIX', hint: 'Floor plans · Absorption · GPR → ProForma', tab: 'unit-mix' },
           ].map((m, i) => (
             <button key={i} onClick={() => navigateToTab(m.tab)}
               style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '7px 8px', background: 'none', border: 'none', borderBottom: `1px solid ${BT.border}`, cursor: 'pointer', textAlign: 'left' } satisfies React.CSSProperties}>
