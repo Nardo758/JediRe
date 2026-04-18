@@ -499,6 +499,16 @@ export function parseT12(buffer: Buffer, filename: string): ExtractionResult & {
     const t12Tax = monthArr.reduce((s, m) => s + (m.propertyTax ?? 0), 0);
     const t12Mgmt = monthArr.reduce((s, m) => s + (m.managementFee ?? 0), 0);
     const t12HoaDues = monthArr.reduce((s, m) => s + (m.hoaDues ?? 0), 0);
+    // Opex line-item aggregates (required by capsule builder — data-router reads these from summary)
+    const t12Payroll = monthArr.reduce((s, m) => s + (m.payroll ?? 0), 0);
+    const t12RandM = monthArr.reduce((s, m) => s + (m.repairsMaintenance ?? 0), 0);
+    const t12Turnover = monthArr.reduce((s, m) => s + ((m.turnover ?? 0) || (m.turnoverCosts ?? 0)), 0);
+    const t12Contract = monthArr.reduce((s, m) => s + (m.contractServices ?? 0), 0);
+    const t12Marketing = monthArr.reduce((s, m) => s + (m.marketing ?? 0), 0);
+    const t12AdminGeneral = monthArr.reduce((s, m) => s + (m.adminGeneral ?? 0), 0);
+    const t12Utilities = monthArr.reduce((s, m) => s + (m.utilities ?? 0), 0);
+    const t12Amenities = monthArr.reduce((s, m) => s + (m.amenities ?? 0), 0);
+    const t12Insurance = monthArr.reduce((s, m) => s + (m.insurance ?? 0), 0);
 
     const expenseRatio = t12Revenue > 0 ? t12OpEx / t12Revenue : 0;
     const noiMargin = t12Revenue > 0 ? t12NOI / t12Revenue : 0;
@@ -567,6 +577,17 @@ export function parseT12(buffer: Buffer, filename: string): ExtractionResult & {
         insuranceMissing: !foundInsurance,
         categorizedRows,
         skippedSubtotalRows,
+        // Opex line items — consumed by data-router capsule builder (n() helper reads from here)
+        payroll: t12Payroll,
+        repairsMaintenance: t12RandM,
+        turnover: t12Turnover,
+        turnoverCosts: t12Turnover,
+        contractServices: t12Contract,
+        marketing: t12Marketing,
+        adminGeneral: t12AdminGeneral,
+        utilities: t12Utilities,
+        amenities: t12Amenities,
+        insurance: t12Insurance > 0 ? t12Insurance : undefined,
         // Canonical GL mapping: broker line descriptions → canonical field metadata
         // Each T12Month field corresponds to a CANONICAL_GL_MAP key for
         // source/confidence/benchmarkPosition enrichment in the F9 Pro Forma layer
