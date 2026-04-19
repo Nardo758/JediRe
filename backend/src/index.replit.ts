@@ -316,9 +316,22 @@ app.use('/api/v1/deals', dealAgentRunsRouter);
 import { serve } from 'inngest/express';
 import { inngest } from './lib/inngest';
 import { researchOnDealCreated } from './agents/research.inngest';
+import { zoningOnDealCreated } from './agents/zoning.inngest';
+import { supplyOnDealCreated } from './agents/supply.inngest';
+import { cashflowOnResearchCompleted } from './agents/cashflow.inngest';
+import { commentaryOnResearchCompleted } from './agents/commentary.inngest';
 app.use(
   '/api/inngest',
-  serve({ client: inngest, functions: [researchOnDealCreated] })
+  serve({
+    client: inngest,
+    functions: [
+      researchOnDealCreated,
+      zoningOnDealCreated,
+      supplyOnDealCreated,
+      cashflowOnResearchCompleted,
+      commentaryOnResearchCompleted,
+    ],
+  })
 );
 
 import chatRouter from './api/rest/chat.routes';

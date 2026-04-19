@@ -5,7 +5,11 @@
  * idempotency, and fan-out/fan-in patterns.
  *
  * Functions registered:
- *   - researchOnDealCreated: triggers on deal.created, Principal+ tier
+ *   - researchOnDealCreated:      triggers on deal.created, Principal+ tier
+ *   - zoningOnDealCreated:        triggers on deal.created, Principal+ tier
+ *   - supplyOnDealCreated:        triggers on deal.created, Principal+ tier
+ *   - cashflowOnResearchCompleted: triggers on research.completed
+ *   - commentaryOnResearchCompleted: triggers on research.completed
  *
  * In dev mode (no INNGEST_EVENT_KEY): Inngest operates in local mode
  * using the Dev Server or the built-in serve() middleware.
@@ -46,4 +50,55 @@ export type ResearchCompletedEvent = {
   };
 };
 
-export type JediEvents = DealCreatedEvent | ResearchCompletedEvent;
+export type ZoningCompletedEvent = {
+  name: 'zoning.completed';
+  data: {
+    dealId: string;
+    runId: string;
+    confidence_score: number;
+    zoning_code: string;
+    entitlement_risk: 'low' | 'medium' | 'high' | null;
+  };
+};
+
+export type SupplyCompletedEvent = {
+  name: 'supply.completed';
+  data: {
+    dealId: string;
+    runId: string;
+    confidence_score: number;
+    fields_written: string[];
+    supply_risk_level: 'low' | 'moderate' | 'high' | 'severe' | null;
+  };
+};
+
+export type CashflowCompletedEvent = {
+  name: 'cashflow.completed';
+  data: {
+    dealId: string;
+    runId: string;
+    confidence_score: number;
+    fields_written: string[];
+    investment_rating: 'strong' | 'adequate' | 'marginal' | 'weak' | null;
+  };
+};
+
+export type CommentaryCompletedEvent = {
+  name: 'commentary.completed';
+  data: {
+    dealId: string;
+    runId: string;
+    confidence_score: number;
+    jedi_score: number;
+    entity_id: string;
+    entity_type: string;
+  };
+};
+
+export type JediEvents =
+  | DealCreatedEvent
+  | ResearchCompletedEvent
+  | ZoningCompletedEvent
+  | SupplyCompletedEvent
+  | CashflowCompletedEvent
+  | CommentaryCompletedEvent;
