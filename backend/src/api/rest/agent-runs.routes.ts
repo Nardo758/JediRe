@@ -141,7 +141,11 @@ async function assertRunAccess(
 router.post('/:agentId/run', requireAuth, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const { agentId } = req.params;
-    const { deal_id, force_refresh, city, state_code, property_type } = req.body;
+    const {
+      deal_id, force_refresh, city, state_code, property_type,
+      // Commentary-specific fields
+      entity_type, entity_id, entity_name,
+    } = req.body;
 
     const agentEntry = AGENT_REGISTRY[agentId];
     if (!agentEntry) {
@@ -152,39 +156,68 @@ router.post('/:agentId/run', requireAuth, async (req: AuthenticatedRequest, res:
       );
     }
 
-    if (!deal_id || !UUID_RE.test(deal_id)) {
-      throw new AppError(400, 'deal_id must be a valid UUID');
+    // Commentary takes entity_type/entity_id instead of deal_id
+    if (agentId === 'commentary') {
+      if (!entity_type || !['msa', 'submarket', 'property'].includes(entity_type)) {
+        throw new AppError(400, 'commentary agent requires entity_type: msa | submarket | property');
+      }
+      if (!entity_id || typeof entity_id !== 'string') {
+        throw new AppError(400, 'commentary agent requires entity_id');
+      }
+    } else {
+      if (!deal_id || !UUID_RE.test(deal_id)) {
+        throw new AppError(400, 'deal_id must be a valid UUID');
+      }
+      // Ownership check — 404 if not accessible (IDOR-safe)
+      await assertDealAccess(deal_id, req.user!.userId);
     }
-
-    // Ownership check — 404 if not accessible (IDOR-safe)
-    await assertDealAccess(deal_id, req.user!.userId);
 
     // Seed prompt (idempotent)
     await agentEntry.seedFn();
 
-    // Resolve deal context from DB
-    const dealCtxRes = await query(
-      `SELECT d.address, d.property_address, d.city, d.state_code,
-              dp.property_id
-       FROM deals d
-       LEFT JOIN deal_properties dp ON dp.deal_id = d.id
-       WHERE d.id = $1
-       ORDER BY dp.created_at ASC
-       LIMIT 1`,
-      [deal_id]
-    );
-    const dRow = dealCtxRes.rows[0] ?? {};
-    const dealContext = {
-      address: (dRow.property_address ?? dRow.address ?? null) as string | null,
-      city: (city ?? dRow.city ?? null) as string | null,
-      state: (state_code ?? dRow.state_code ?? null) as string | null,
-      property_id: (dRow.property_id ?? null) as string | null,
-    };
-
     const requestId = crypto.randomUUID();
+    let runInput: Record<string, unknown>;
+
+    if (agentId === 'commentary') {
+      // Commentary takes entity-scoped input, not deal-scoped
+      runInput = {
+        entity_type,
+        entity_id,
+        entity_name: entity_name ?? entity_id,
+        force_refresh: force_refresh ?? false,
+      };
+    } else {
+      // Resolve deal context from DB for all other agents
+      const dealCtxRes = await query(
+        `SELECT d.address, d.property_address, d.city, d.state_code,
+                dp.property_id
+         FROM deals d
+         LEFT JOIN deal_properties dp ON dp.deal_id = d.id
+         WHERE d.id = $1
+         ORDER BY dp.created_at ASC
+         LIMIT 1`,
+        [deal_id]
+      );
+      const dRow = dealCtxRes.rows[0] ?? {};
+      const dealContext = {
+        address: (dRow.property_address ?? dRow.address ?? null) as string | null,
+        city: (city ?? dRow.city ?? null) as string | null,
+        state: (state_code ?? dRow.state_code ?? null) as string | null,
+        property_id: (dRow.property_id ?? null) as string | null,
+      };
+
+      runInput = {
+        deal_id,
+        ...(dealContext.address && { address: dealContext.address }),
+        ...(dealContext.city && { city: dealContext.city }),
+        ...(dealContext.state && { state: dealContext.state, state_code: dealContext.state }),
+        ...(dealContext.property_id && { property_id: dealContext.property_id }),
+        ...(property_type && { property_type }),
+      };
+    }
 
     const ctx: RunContext = {
-      dealId: deal_id,
+      dealId: agentId === 'commentary' ? undefined : deal_id,
       userId: req.user!.userId,
       triggeredBy: 'user',
       triggerContext: {
@@ -192,16 +225,6 @@ router.post('/:agentId/run', requireAuth, async (req: AuthenticatedRequest, res:
         force_refresh: force_refresh ?? false,
         request_id: requestId,
       },
-    };
-
-    // Build enriched run input — varies by agent type
-    const runInput: Record<string, unknown> = {
-      deal_id,
-      ...(dealContext.address && { address: dealContext.address }),
-      ...(dealContext.city && { city: dealContext.city }),
-      ...(dealContext.state && { state: dealContext.state, state_code: dealContext.state }),
-      ...(dealContext.property_id && { property_id: dealContext.property_id }),
-      ...(property_type && { property_type }),
     };
 
     // startAsync creates the agent_runs row and returns immediately;

@@ -551,15 +551,20 @@ Respond with a concise comparison highlighting which deal is stronger and why.`;
         context.userId
       );
 
+      // Support both Phase 4 snake_case schema and legacy fallback
+      const r = result as Record<string, unknown>;
+      const zoningCode = (r.zoning_code as string) ?? '';
+      const runtimeSummary = (r.summary as string) ?? (r.analysis as Record<string,unknown>)?.summary as string | undefined;
+
       return {
-        summary: result.analysis?.summary || `Zoned ${dealContext.zoning.district}. ${dealContext.zoning.maxBuildableUnits} units possible.`,
-        buildableUnits: dealContext.zoning.maxBuildableUnits,
+        summary: runtimeSummary || `Zoned ${zoningCode || dealContext.zoning.district}. ${dealContext.zoning.maxBuildableUnits} units possible.`,
+        buildableUnits: (r.est_max_units as number) ?? dealContext.zoning.maxBuildableUnits,
         maxStories: dealContext.zoning.maxStories,
-        farUtilization: dealContext.zoning.far,
+        farUtilization: (r.max_far as number) ?? dealContext.zoning.far,
         parkingRequired: dealContext.zoning.parkingRatio * dealContext.zoning.maxBuildableUnits,
         overlayRestrictions: dealContext.zoning.overlays,
-        developmentCapacity: `${dealContext.zoning.maxBuildableUnits} units, ${dealContext.zoning.maxStories} stories`,
-        confidence: dealContext.zoning.confidence,
+        developmentCapacity: `${(r.est_max_units as number) ?? dealContext.zoning.maxBuildableUnits} units, ${dealContext.zoning.maxStories} stories`,
+        confidence: (r.confidence_score as number) ?? dealContext.zoning.confidence,
         details: result,
       };
     } catch (error) {
@@ -622,15 +627,24 @@ Respond with a concise comparison highlighting which deal is stronger and why.`;
         context.userId
       );
 
+      // Support both Phase 4 snake_case schema and legacy fallback
+      const r = result as Record<string, unknown>;
+      const coc = (r.avg_cash_on_cash_pct as number) ?? (r.cashOnCashReturn as number) ?? 0;
+      const noi = (r.noi_year1 as number) ?? (r.annualNOI as number) ?? 0;
+      const irr = (r.irr_pct as number) ?? (r.irrEstimate as number) ?? 0;
+      const dscr = (r.dscr_year1 as number) ?? (r.dscr as number) ?? 0;
+      const rating = (r.investment_rating as string) ?? (r.recommendedStrategy as string) ?? 'hold';
+      const runtimeSummary = (r.summary as string);
+
       return {
-        summary: `${result.cashOnCashReturn?.toFixed(1) || '?'}% cash-on-cash at $${price.toLocaleString()}. Strategy: ${result.recommendedStrategy || 'hold'}.`,
-        noiProjection: result.annualNOI || 0,
-        cashOnCashReturn: result.cashOnCashReturn || 0,
-        irrEstimate: result.irrEstimate || 0,
-        dscr: result.dscr || 0,
-        recommendedStrategy: result.recommendedStrategy || 'hold',
-        riskFlags: result.riskFlags || [],
-        confidence: 0.7,
+        summary: runtimeSummary || `${coc.toFixed(1)}% cash-on-cash at $${price.toLocaleString()}. Rating: ${rating}.`,
+        noiProjection: noi,
+        cashOnCashReturn: coc,
+        irrEstimate: irr,
+        dscr,
+        recommendedStrategy: rating,
+        riskFlags: (r.riskFlags as string[]) ?? [],
+        confidence: (r.confidence_score as number) ?? 0.7,
         details: result,
       };
     } catch (error) {

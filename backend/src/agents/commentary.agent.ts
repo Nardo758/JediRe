@@ -108,6 +108,7 @@ export class CommentaryAgent {
     try {
       marketNarrative = await this.generateAINarrative(
         entityName, input.entityType, signals, arbitrageResult, jediScore, input.userId,
+        undefined, input.entityId,
       );
     } catch (err) {
       logger.warn('Commentary Agent: AI generation failed, using template fallback', { error: err });
@@ -164,6 +165,7 @@ export class CommentaryAgent {
     jediScore: number,
     userId?: string,
     businessType?: string,
+    entityId?: string,
   ): Promise<CommentarySection> {
     const levelLabel = entityType === 'msa' ? 'metro' : entityType === 'submarket' ? 'submarket' : 'property';
     const recommended = STRATEGY_LABELS[arb.recommended];
@@ -203,7 +205,7 @@ export class CommentaryAgent {
       const output = await commentaryRuntime.run(
         {
           entity_type: entityType,
-          entity_id: name,
+          entity_id: entityId ?? name,
           entity_name: name,
           context_block: contextBlock,
         },
