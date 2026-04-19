@@ -136,6 +136,25 @@ router.post('/:agentId/run', requireAuthOrApiKey, async (req: AuthenticatedReque
     // Seed prompt (idempotent)
     await seedResearchPrompt();
 
+    // Resolve deal context so tools receive address / property_id / MSA hints
+    const dealCtxRes = await query(
+      `SELECT d.address, d.property_address, d.city, d.state_code,
+              dp.property_id
+       FROM deals d
+       LEFT JOIN deal_properties dp ON dp.deal_id = d.id
+       WHERE d.id = $1
+       ORDER BY dp.created_at ASC
+       LIMIT 1`,
+      [deal_id]
+    );
+    const dRow = dealCtxRes.rows[0] ?? {};
+    const dealContext = {
+      address: (dRow.property_address ?? dRow.address ?? null) as string | null,
+      city: (dRow.city ?? null) as string | null,
+      state: (dRow.state_code ?? null) as string | null,
+      property_id: (dRow.property_id ?? null) as string | null,
+    };
+
     const requestId = crypto.randomUUID();
 
     const ctx: RunContext = {
@@ -149,10 +168,56 @@ router.post('/:agentId/run', requireAuthOrApiKey, async (req: AuthenticatedReque
       },
     };
 
-    // Fire run asynchronously — don't block the HTTP response
-    void researchRuntime.run({ deal_id }, ctx).catch(() => {
-      // Errors are persisted to agent_runs by AgentRuntime
-    });
+    // Enriched run input — LLM receives address/city/state/property_id so it
+    // can call all 6 tools (fetch_parcel, fetch_ownership, fetch_costar_metrics,
+    // fetch_tax_bill, fetch_comps, write_dealcontext) with valid parameters.
+    const runInput: Record<string, unknown> = {
+      deal_id,
+      ...(dealContext.address && { address: dealContext.address }),
+      ...(dealContext.city && { city: dealContext.city }),
+      ...(dealContext.state && { state: dealContext.state }),
+      ...(dealContext.property_id && { property_id: dealContext.property_id }),
+    };
+
+    // Fire run asynchronously — don't block the HTTP response.
+    // On completion, write an audit_log entry so the unified feed surfaces this run.
+    void researchRuntime.run(runInput, ctx)
+      .then(async (output) => {
+        // Recover run ID from DB (stamped by request_id in triggerContext)
+        const runRow = await query(
+          `SELECT id FROM agent_runs
+           WHERE agent_id = 'research' AND deal_id = $1
+             AND trigger_context->>'request_id' = $2
+           LIMIT 1`,
+          [deal_id, requestId]
+        ).catch(() => null);
+
+        const runId = runRow?.rows[0]?.id;
+        if (!runId) return;
+
+        const typed = output as { confidence_score?: number; fields_written?: string[]; summary?: string };
+        // Idempotent audit_log write — same WHERE NOT EXISTS guard as Inngest function
+        await query(
+          `INSERT INTO audit_log
+             (actor_id, actor_type, action, resource_type, resource_id, metadata, agent_run_id)
+           SELECT 'research', 'agent', 'research.completed', 'deal', $1, $2, $3
+           WHERE NOT EXISTS (SELECT 1 FROM audit_log WHERE agent_run_id = $3)`,
+          [
+            deal_id,
+            JSON.stringify({
+              confidence_score: typed.confidence_score ?? null,
+              fields_written: typed.fields_written ?? [],
+              summary: typed.summary ?? null,
+              run_id: runId,
+              triggered_by: 'user',
+            }),
+            runId,
+          ]
+        ).catch(() => { /* non-fatal */ });
+      })
+      .catch(() => {
+        // Errors are persisted to agent_runs by AgentRuntime
+      });
 
     // Give the INSERT time to land, then return the run reference
     await new Promise(r => setTimeout(r, 200));

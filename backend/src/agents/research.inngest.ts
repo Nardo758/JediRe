@@ -70,6 +70,29 @@ export const researchOnDealCreated = inngest.createFunction(
       return { seeded: true };
     });
 
+    // ── Step 2b: Resolve deal context for tool inputs ───────────────
+    // Provides address/city/state/property_id so LLM can call tools
+    // with correct parameters (fetch_parcel, fetch_ownership, fetch_costar_metrics).
+    const dealCtx = await step.run('resolve-deal-context', async () => {
+      const res = await query(
+        `SELECT d.address, d.property_address, d.city, d.state_code,
+                dp.property_id
+         FROM deals d
+         LEFT JOIN deal_properties dp ON dp.deal_id = d.id
+         WHERE d.id = $1
+         ORDER BY dp.created_at ASC
+         LIMIT 1`,
+        [dealId]
+      );
+      const row = res.rows[0] ?? {};
+      return {
+        address: (row.property_address ?? row.address ?? null) as string | null,
+        city: (row.city ?? null) as string | null,
+        state: (row.state_code ?? null) as string | null,
+        property_id: (row.property_id ?? null) as string | null,
+      };
+    });
+
     // ── Step 3: Execute Research Agent via AgentRuntime ─────────────
     // The Inngest event ID is stamped into triggerContext so we can
     // recover the exact agent_run row after this step completes.
@@ -89,7 +112,17 @@ export const researchOnDealCreated = inngest.createFunction(
 
       // AgentRuntime.run() creates agent_runs row (status=running) then executes.
       // On success: updates status to 'succeeded'. On failure: 'failed'/'budget_exceeded'.
-      const output = await researchRuntime.run({ deal_id: dealId }, ctx);
+      // Enriched input gives the LLM the context it needs to call all 6 tools correctly.
+      const output = await researchRuntime.run(
+        {
+          deal_id: dealId,
+          ...(dealCtx.address && { address: dealCtx.address }),
+          ...(dealCtx.city && { city: dealCtx.city }),
+          ...(dealCtx.state && { state: dealCtx.state }),
+          ...(dealCtx.property_id && { property_id: dealCtx.property_id }),
+        },
+        ctx
+      );
       const typed = output as ResearchOutput;
 
       // Recover the actual runId from the DB via the inngest_event_id stamp.

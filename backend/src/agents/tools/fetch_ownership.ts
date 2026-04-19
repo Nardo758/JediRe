@@ -10,6 +10,7 @@
 
 import { z } from 'zod';
 import { platformClient } from '../../lib/platform-client';
+import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import type { ToolDefinition } from '../runtime/types';
 
@@ -58,10 +59,43 @@ export const fetchOwnershipTool: ToolDefinition<
 
     const now = new Date().toISOString();
 
-    const propertyId = input.property_id;
+    // Resolve property_id — prefer explicit input, fall back to deal_properties lookup.
+    // This ensures the tool works when the LLM provides only deal_id.
+    let propertyId = input.property_id ?? null;
+
+    if (!propertyId && input.deal_id) {
+      logger.debug('fetch_ownership: resolving property_id from deal_id', {
+        dealId: input.deal_id,
+      });
+      try {
+        const res = await query(
+          `SELECT dp.property_id
+           FROM deal_properties dp
+           WHERE dp.deal_id = $1
+           ORDER BY dp.created_at ASC
+           LIMIT 1`,
+          [input.deal_id]
+        );
+        propertyId = res.rows[0]?.property_id ?? null;
+
+        if (propertyId) {
+          logger.debug('fetch_ownership: resolved property_id from deal', {
+            dealId: input.deal_id,
+            propertyId,
+          });
+        } else {
+          logger.debug('fetch_ownership: no linked property for deal', { dealId: input.deal_id });
+        }
+      } catch (err) {
+        logger.warn('fetch_ownership: deal-to-property lookup failed', {
+          dealId: input.deal_id,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
 
     if (!propertyId) {
-      logger.debug('fetch_ownership: no property_id, returning empty ownership', {
+      logger.debug('fetch_ownership: no property_id available, returning unavailable', {
         dealId: input.deal_id,
       });
       return {
@@ -71,7 +105,7 @@ export const fetchOwnershipTool: ToolDefinition<
         acquisition_date: null,
         acquisition_price: null,
         mailing_address: null,
-        source: 'unavailable',
+        source: 'no_linked_property',
         fetched_at: now,
       };
     }
