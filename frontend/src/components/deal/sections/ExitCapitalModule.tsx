@@ -1268,7 +1268,7 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
                                 style={{ marginTop: 6, fontSize: 8, fontWeight: 700, fontFamily: "'JetBrains Mono'", color: allInferred ? '#F6AD55' : '#63B3ED', background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 3 }}
                               >
                                 {linkedNews.length > 0
-                                  ? `${linkedNews.length} ${allInferred ? 'RELATED' : 'SOURCE'}${linkedNews.length > 1 ? 'S' : ''}`
+                                  ? `${linkedNews.length} SOURCE${linkedNews.length > 1 ? 'S' : ''}`
                                   : 'VIEW SOURCE'}
                                 <span style={{ fontSize: 8, transition: 'transform 0.15s', display: 'inline-block', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>▾</span>
                               </button>

@@ -523,14 +523,22 @@ router.get('/deals/:dealId/events-context', async (req: Request, res: Response) 
     });
 
     if (eventsNeedingFallback.length > 0) {
-      // One broad query: fetch all news items ordered by relevance/recency.
-      // We'll slice and filter per-event in JS to avoid N+1 queries.
+      // One broad query: fetch news items scoped to the deal's MSA.
+      // news_items carries an optional deal_id; we join through deals to get msaId.
+      // Items with deal_id IS NULL are treated as MSA-agnostic (global) and always included.
       const fallbackPool = await pool.query(
-        `SELECT id, title, summary, source_url, source_name, published_at, relevance_score, category
-         FROM news_items
-         WHERE published_at IS NOT NULL
-         ORDER BY relevance_score DESC NULLS LAST, published_at DESC
-         LIMIT 100`
+        `SELECT ni.id, ni.title, ni.summary, ni.source_url, ni.source_name,
+                ni.published_at, ni.relevance_score, ni.category
+         FROM news_items ni
+         LEFT JOIN deals d ON d.id = ni.deal_id
+         WHERE ni.published_at IS NOT NULL
+           AND (
+             ni.deal_id IS NULL
+             OR d.deal_data->>'msaId' = $1
+           )
+         ORDER BY ni.relevance_score DESC NULLS LAST, ni.published_at DESC
+         LIMIT 100`,
+        [msaId]
       );
       const candidatePool = fallbackPool.rows;
 
