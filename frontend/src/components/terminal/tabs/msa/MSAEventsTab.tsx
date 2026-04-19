@@ -5,7 +5,7 @@
  * The causality panel answers: "Did this event drive the market uptick,
  * or did the market uptick attract this event?"
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, Activity, ChevronDown, RefreshCw, AlertCircle, ArrowUpRight } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
@@ -78,6 +78,7 @@ interface LiveEvent {
   announcedDate: string | null;
   materializationDate: string | null;
   confidence: number;
+  updatedAt?: string;
 }
 
 interface PipelineSignal {
@@ -377,6 +378,15 @@ export const MSAEventsTab: React.FC<MSAEventsTabProps> = ({ msaId, msa }) => {
     }
   };
 
+  // DATA AS OF — most-recently updated event drives the freshness indicator
+  const dataAsOf = useMemo((): string | null => {
+    const dates = liveEvents.map(e => e.updatedAt).filter(Boolean) as string[];
+    if (!dates.length) return null;
+    const latest = dates.reduce((a, b) => (a > b ? a : b));
+    const d = new Date(latest);
+    return isNaN(d.getTime()) ? null : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).toUpperCase();
+  }, [liveEvents]);
+
   // Merge live events with causality data
   const eventsWithCausality = liveEvents.map(ev => ({
     ...ev,
@@ -406,6 +416,11 @@ export const MSAEventsTab: React.FC<MSAEventsTabProps> = ({ msaId, msa }) => {
             <span style={{ color: BT.border.subtle }}>·</span>
             <span>T-07 Trajectory Integration</span>
           </div>
+          {!loading && dataAsOf && (
+            <div style={{ fontSize: 9, color: BT.text.muted, marginTop: 5, ...mono, letterSpacing: '0.05em' }}>
+              DATA AS OF {dataAsOf}
+            </div>
+          )}
         </div>
         <div style={{ display: 'flex', gap: 16, alignItems: 'center', ...mono, fontSize: 11, padding: '8px 16px', background: BT.bg.elevated, border: `1px solid ${BT.border.subtle}` }}>
           <div>
