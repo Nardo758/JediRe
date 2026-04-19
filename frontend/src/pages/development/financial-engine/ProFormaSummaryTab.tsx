@@ -165,20 +165,22 @@ function SourceBadge({ source }: { source: string | null }) {
   );
 }
 
-// ─── Ancillary income breakdown (mirrors F13 UnitMixTab DEFAULT_ANCILLARY) ────
-interface AncillaryLine { key: string; label: string; amtPerUnit: number; adoptionPct: number; note: string }
-const DEFAULT_ANCILLARY: AncillaryLine[] = [
-  { key: 'pet',      label: 'Pet Rent',                  amtPerUnit: 27.50,  adoptionPct: 0.30,  note: '30% of units' },
-  { key: 'garage',   label: 'Garage / Parking',          amtPerUnit: 142.50, adoptionPct: 0.111, note: '~1 in 9 units' },
-  { key: 'storage',  label: 'Storage',                   amtPerUnit: 50.00,  adoptionPct: 0.083, note: '~1 in 12 units' },
-  { key: 'rubs',     label: 'RUBS / Utilities',          amtPerUnit: 65.00,  adoptionPct: 1.00,  note: 'All units' },
-  { key: 'revshare', label: 'Revenue Sharing (Internet)',amtPerUnit: 85.00,  adoptionPct: 0.95,  note: '95% occupied' },
-  { key: 'valet',    label: 'Valet Trash',               amtPerUnit: 30.00,  adoptionPct: 0.95,  note: '95% occupied' },
-  { key: 'admin',    label: 'Admin / App Fees',          amtPerUnit: 27.00,  adoptionPct: 0.65,  note: '65% of units' },
-  { key: 'late',     label: 'Late / NSF / Termination',  amtPerUnit: 5.00,   adoptionPct: 1.00,  note: 'All units' },
-  { key: 'damages',  label: 'Damages',                   amtPerUnit: 2.44,   adoptionPct: 1.00,  note: 'All units' },
-  { key: 'other',    label: 'Other Income',              amtPerUnit: 7.00,   adoptionPct: 1.00,  note: 'All units' },
-];
+// ─── Ancillary income breakdown (mirrors F13 UnitMixTab model) ───────────────
+interface AncillaryLine { key: string; label: string; qty: number; price: number; occupancy: number; note: string }
+function makeDefaultAncillary(u: number): AncillaryLine[] {
+  return [
+    { key: 'pet',      label: 'Pet Rent',                   qty: u,                     price: 27.50,  occupancy: 0.30, note: 'Est. 30% of units' },
+    { key: 'garage',   label: 'Garage / Parking',           qty: Math.round(u * 0.111), price: 142.50, occupancy: 1.00, note: '~1 garage per 9 units' },
+    { key: 'storage',  label: 'Storage',                    qty: Math.round(u * 0.083), price: 50.00,  occupancy: 1.00, note: '~1 storage per 12 units' },
+    { key: 'rubs',     label: 'RUBS / Utilities',           qty: u,                     price: 65.00,  occupancy: 1.00, note: 'All units' },
+    { key: 'revshare', label: 'Revenue Sharing (Internet)', qty: u,                     price: 85.00,  occupancy: 0.95, note: '95% of units' },
+    { key: 'valet',    label: 'Valet Trash',                qty: u,                     price: 30.00,  occupancy: 0.95, note: '95% of units' },
+    { key: 'admin',    label: 'Admin / App Fees',           qty: u,                     price: 27.00,  occupancy: 0.65, note: 'Est. 65% of units' },
+    { key: 'late',     label: 'Late / NSF / Termination',  qty: u,                     price: 5.00,   occupancy: 1.00, note: 'All units' },
+    { key: 'damages',  label: 'Damages',                    qty: u,                     price: 2.44,   occupancy: 1.00, note: 'All units' },
+    { key: 'other',    label: 'Other Income',               qty: u,                     price: 7.00,   occupancy: 1.00, note: 'All units' },
+  ];
+}
 
 // ─── Correction state ─────────────────────────────────────────────────────────
 interface CorrectionState {
@@ -488,60 +490,7 @@ export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange }: Financia
                 {r.field === 'other_income_per_unit' && showAncillary && (
                   <tr>
                     <td colSpan={9} style={{ background: '#050d12', padding: 0, borderBottom: '1px solid #0e2030' }}>
-                      <div style={{ padding: '10px 16px 14px 24px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                          <span style={{ fontFamily: LABEL, fontSize: 9, fontWeight: 700, color: '#06b6d4', letterSpacing: '0.08em' }}>
-                            ANCILLARY INCOME BREAKDOWN · 10 LINE ITEMS
-                          </span>
-                          <a
-                            href={`/deals/${dealId}/detail?tab=unit-mix`}
-                            style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: LABEL, fontSize: 8, color: '#475569', textDecoration: 'none' }}
-                          >
-                            <ExternalLink size={9} />
-                            Edit in F13 Unit Mix
-                          </a>
-                        </div>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 9 }}>
-                          <thead>
-                            <tr style={{ background: '#0a1520' }}>
-                              {['INCOME TYPE','$/UNIT/MO','ADOPTION','TOTAL/MO','TOTAL/YR','NOTE'].map(h => (
-                                <th key={h} style={{ padding: '3px 8px', textAlign: h === 'INCOME TYPE' || h === 'NOTE' ? 'left' : 'right', color: '#475569', fontWeight: 600, letterSpacing: '0.05em', borderBottom: '1px solid #1e2d3d' }}>{h}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {DEFAULT_ANCILLARY.map((line, li) => {
-                              const mo = line.amtPerUnit * line.adoptionPct * totalUnits;
-                              const yr = mo * 12;
-                              return (
-                                <tr key={line.key} style={{ background: li % 2 === 0 ? '#060e16' : '#080f18' }}>
-                                  <td style={{ padding: '3px 8px', color: '#94a3b8' }}>{line.label}</td>
-                                  <td style={{ padding: '3px 8px', textAlign: 'right', color: '#e2e8f0' }}>${line.amtPerUnit.toFixed(2)}</td>
-                                  <td style={{ padding: '3px 8px', textAlign: 'right', color: '#64748b' }}>{(line.adoptionPct * 100).toFixed(0)}%</td>
-                                  <td style={{ padding: '3px 8px', textAlign: 'right', color: '#e2e8f0' }}>{fmt$(mo)}</td>
-                                  <td style={{ padding: '3px 8px', textAlign: 'right', color: '#f59e0b', fontWeight: 600 }}>{fmt$(yr)}</td>
-                                  <td style={{ padding: '3px 8px', color: '#334155', fontSize: 8 }}>{line.note}</td>
-                                </tr>
-                              );
-                            })}
-                            <tr style={{ background: '#0a1a26', borderTop: '1px solid #1e3a5f' }}>
-                              <td style={{ padding: '4px 8px', color: '#06b6d4', fontWeight: 700, fontSize: 9 }}>TOTAL ANCILLARY</td>
-                              <td />
-                              <td />
-                              <td style={{ padding: '4px 8px', textAlign: 'right', color: '#06b6d4', fontWeight: 700 }}>
-                                {fmt$(DEFAULT_ANCILLARY.reduce((s, l) => s + l.amtPerUnit * l.adoptionPct * totalUnits, 0))}
-                              </td>
-                              <td style={{ padding: '4px 8px', textAlign: 'right', color: '#22c55e', fontWeight: 700 }}>
-                                {fmt$(DEFAULT_ANCILLARY.reduce((s, l) => s + l.amtPerUnit * l.adoptionPct * totalUnits, 0) * 12)}
-                              </td>
-                              <td />
-                            </tr>
-                          </tbody>
-                        </table>
-                        <div style={{ marginTop: 6, fontFamily: LABEL, fontSize: 8, color: '#334155' }}>
-                          * Defaults from F13 Unit Mix. Navigate to F13 to edit per-unit amounts and adoption rates.
-                        </div>
-                      </div>
+                      <AncillaryExpansionPanel totalUnits={totalUnits} dealId={dealId} />
                     </td>
                   </tr>
                 )}
@@ -884,6 +833,123 @@ function SubtotalRow({ label, row, color, textColor, egiResolved }: {
       </td>
       <td />
     </tr>
+  );
+}
+
+// ─── Ancillary expansion panel (self-contained, editable) ────────────────────
+function AncillaryExpansionPanel({ totalUnits, dealId }: { totalUnits: number; dealId: string }) {
+  const [lines, setLines] = useState<AncillaryLine[]>(() => makeDefaultAncillary(totalUnits));
+  const [editingKey, setEditingKey] = useState<{ key: string; field: 'qty' | 'price' | 'occ'; val: string } | null>(null);
+
+  const totalMonthly = lines.reduce((s, l) => s + l.qty * l.price * l.occupancy, 0);
+  const totalAnnual  = totalMonthly * 12;
+
+  const commit = () => {
+    if (!editingKey) return;
+    const num = parseFloat(editingKey.val);
+    if (isNaN(num)) { setEditingKey(null); return; }
+    setLines(prev => prev.map(l => {
+      if (l.key !== editingKey.key) return l;
+      if (editingKey.field === 'qty')   return { ...l, qty: Math.max(0, Math.round(num)) };
+      if (editingKey.field === 'price') return { ...l, price: Math.max(0, num) };
+      return { ...l, occupancy: Math.min(1, Math.max(0, num / 100)) };
+    }));
+    setEditingKey(null);
+  };
+
+  function EditCell({ lineKey, field, display, color }: { lineKey: string; field: 'qty' | 'price' | 'occ'; display: string; color?: string }) {
+    const isEditing = editingKey?.key === lineKey && editingKey.field === field;
+    if (isEditing) {
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+          <input autoFocus type="number" value={editingKey.val}
+            onChange={e => setEditingKey({ ...editingKey, val: e.target.value })}
+            onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditingKey(null); }}
+            style={{ width: field === 'qty' ? 56 : field === 'occ' ? 48 : 64, background: '#0f172a', border: '1px solid #06b6d4', color: '#06b6d4', fontFamily: MONO, fontSize: 9, padding: '2px 4px', textAlign: 'right', borderRadius: 2 }}
+          />
+          <button onClick={commit} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#22c55e', padding: 0, fontSize: 9 }}>✓</button>
+          <button onClick={() => setEditingKey(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: 0, fontSize: 9 }}>✕</button>
+        </div>
+      );
+    }
+    const line = lines.find(l => l.key === lineKey)!;
+    const rawVal = field === 'qty' ? String(line.qty) : field === 'price' ? String(line.price) : String((line.occupancy * 100).toFixed(0));
+    return (
+      <div onClick={() => setEditingKey({ key: lineKey, field, val: rawVal })}
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, cursor: 'pointer', userSelect: 'none' }}>
+        <span style={{ color: color ?? '#e2e8f0' }}>{display}</span>
+        <span style={{ color: '#334155', fontSize: 8 }}>✎</span>
+      </div>
+    );
+  }
+
+  const TH = ({ label, right }: { label: string; right?: boolean }) => (
+    <th style={{ padding: '3px 8px', textAlign: right ? 'right' : 'left', color: '#475569', fontWeight: 600, letterSpacing: '0.05em', borderBottom: '1px solid #1e2d3d', fontSize: 9 }}>{label}</th>
+  );
+
+  return (
+    <div style={{ padding: '10px 16px 14px 24px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <div>
+          <span style={{ fontFamily: LABEL, fontSize: 9, fontWeight: 700, color: '#06b6d4', letterSpacing: '0.08em' }}>
+            ANCILLARY INCOME BREAKDOWN · 10 LINE ITEMS
+          </span>
+          <span style={{ fontFamily: LABEL, fontSize: 8, color: '#334155', marginLeft: 8 }}>click QTY · $/MO · OCC% to edit</span>
+        </div>
+        <a href={`/deals/${dealId}/detail?tab=unit-mix`}
+          style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: LABEL, fontSize: 8, color: '#475569', textDecoration: 'none' }}>
+          <ExternalLink size={9} />Edit in F13 Unit Mix
+        </a>
+      </div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 9 }}>
+        <thead>
+          <tr style={{ background: '#0a1520' }}>
+            <TH label="INCOME TYPE" />
+            <TH label="QTY" right />
+            <TH label="$/MO" right />
+            <TH label="OCC %" right />
+            <TH label="TOTAL/MO" right />
+            <TH label="TOTAL/YR" right />
+            <TH label="NOTE" />
+          </tr>
+        </thead>
+        <tbody>
+          {lines.map((l, li) => {
+            const mo = l.qty * l.price * l.occupancy;
+            const yr = mo * 12;
+            return (
+              <tr key={l.key} style={{ background: li % 2 === 0 ? '#060e16' : '#080f18' }}>
+                <td style={{ padding: '3px 8px', color: '#94a3b8' }}>{l.label}</td>
+                <td style={{ padding: '3px 8px', textAlign: 'right' }}>
+                  <EditCell lineKey={l.key} field="qty" display={String(l.qty)} color="#e2e8f0" />
+                </td>
+                <td style={{ padding: '3px 8px', textAlign: 'right' }}>
+                  <EditCell lineKey={l.key} field="price" display={`$${l.price.toFixed(2)}`} color="#e2e8f0" />
+                </td>
+                <td style={{ padding: '3px 8px', textAlign: 'right' }}>
+                  <EditCell lineKey={l.key} field="occ" display={`${(l.occupancy * 100).toFixed(0)}%`} color="#64748b" />
+                </td>
+                <td style={{ padding: '3px 8px', textAlign: 'right', color: '#e2e8f0' }}>{fmt$(mo)}</td>
+                <td style={{ padding: '3px 8px', textAlign: 'right', color: '#f59e0b', fontWeight: 600 }}>{fmt$(yr)}</td>
+                <td style={{ padding: '3px 8px', color: '#334155', fontSize: 8 }}>{l.note}</td>
+              </tr>
+            );
+          })}
+          <tr style={{ background: '#0a1a26', borderTop: '1px solid #1e3a5f' }}>
+            <td style={{ padding: '4px 8px', color: '#06b6d4', fontWeight: 700 }}>TOTAL</td>
+            <td /><td /><td />
+            <td style={{ padding: '4px 8px', textAlign: 'right', color: '#06b6d4', fontWeight: 700 }}>{fmt$(totalMonthly)}/mo</td>
+            <td style={{ padding: '4px 8px', textAlign: 'right', color: '#22c55e', fontWeight: 700 }}>{fmt$(totalAnnual)}/yr</td>
+            <td style={{ padding: '4px 8px', color: '#334155', fontSize: 8 }}>
+              {totalUnits > 0 ? `$${(totalAnnual / totalUnits).toFixed(0)}/unit/yr` : ''}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <div style={{ marginTop: 6, fontFamily: LABEL, fontSize: 8, color: '#334155' }}>
+        * Defaults seeded from unit count. Navigate to F13 Unit Mix to persist edits across sessions.
+      </div>
+    </div>
   );
 }
 

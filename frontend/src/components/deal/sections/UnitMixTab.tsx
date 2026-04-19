@@ -128,30 +128,33 @@ function TrafficSignal({ label, value, unit, linked }: { label: string; value: s
 interface AncillaryLine {
   key: string;
   label: string;
-  amtPerUnit: number;
-  adoptionPct: number;
+  qty: number;
+  price: number;
+  occupancy: number;
   note: string;
 }
 
-const DEFAULT_ANCILLARY: AncillaryLine[] = [
-  { key: 'pet',      label: 'Pet Rent',                amtPerUnit: 27.50, adoptionPct: 0.30, note: '30% of units' },
-  { key: 'garage',   label: 'Garage / Parking',        amtPerUnit: 142.50, adoptionPct: 0.111, note: '~1 in 9 units' },
-  { key: 'storage',  label: 'Storage',                 amtPerUnit: 50.00,  adoptionPct: 0.083, note: '~1 in 12 units' },
-  { key: 'rubs',     label: 'RUBS / Utilities',        amtPerUnit: 65.00,  adoptionPct: 1.00,  note: 'All units' },
-  { key: 'revshare', label: 'Revenue Sharing (Internet)', amtPerUnit: 85.00, adoptionPct: 0.95, note: '95% occupied' },
-  { key: 'valet',    label: 'Valet Trash',             amtPerUnit: 30.00,  adoptionPct: 0.95,  note: '95% occupied' },
-  { key: 'admin',    label: 'Admin / App Fees',        amtPerUnit: 27.00,  adoptionPct: 0.65,  note: '65% of units' },
-  { key: 'late',     label: 'Late / NSF / Termination', amtPerUnit: 5.00,  adoptionPct: 1.00,  note: 'All units' },
-  { key: 'damages',  label: 'Damages',                 amtPerUnit: 2.44,   adoptionPct: 1.00,  note: 'All units' },
-  { key: 'other',    label: 'Other Income',            amtPerUnit: 7.00,   adoptionPct: 1.00,  note: 'All units' },
-];
+function makeDefaultAncillary(u: number): AncillaryLine[] {
+  return [
+    { key: 'pet',      label: 'Pet Rent',                    qty: u,                       price: 27.50,  occupancy: 0.30, note: 'Est. 30% of units' },
+    { key: 'garage',   label: 'Garage / Parking',            qty: Math.round(u * 0.111),   price: 142.50, occupancy: 1.00, note: '~1 garage per 9 units' },
+    { key: 'storage',  label: 'Storage',                     qty: Math.round(u * 0.083),   price: 50.00,  occupancy: 1.00, note: '~1 storage per 12 units' },
+    { key: 'rubs',     label: 'RUBS / Utilities',            qty: u,                       price: 65.00,  occupancy: 1.00, note: 'All units' },
+    { key: 'revshare', label: 'Revenue Sharing (Internet)',  qty: u,                       price: 85.00,  occupancy: 0.95, note: '95% of units' },
+    { key: 'valet',    label: 'Valet Trash',                 qty: u,                       price: 30.00,  occupancy: 0.95, note: '95% of units' },
+    { key: 'admin',    label: 'Admin / App Fees',            qty: u,                       price: 27.00,  occupancy: 0.65, note: 'Est. 65% of units' },
+    { key: 'late',     label: 'Late / NSF / Termination',   qty: u,                       price: 5.00,   occupancy: 1.00, note: 'All units' },
+    { key: 'damages',  label: 'Damages',                     qty: u,                       price: 2.44,   occupancy: 1.00, note: 'All units' },
+    { key: 'other',    label: 'Other Income',                qty: u,                       price: 7.00,   occupancy: 1.00, note: 'All units' },
+  ];
+}
 
 function AncillaryPanel({ totalUnits }: { totalUnits: number }) {
-  const [lines, setLines] = useState<AncillaryLine[]>(DEFAULT_ANCILLARY);
-  const [editingKey, setEditingKey] = useState<{ key: string; field: 'amt' | 'pct'; val: string } | null>(null);
+  const [lines, setLines] = useState<AncillaryLine[]>(() => makeDefaultAncillary(totalUnits));
+  const [editingKey, setEditingKey] = useState<{ key: string; field: 'qty' | 'price' | 'occ'; val: string } | null>(null);
   const [collapsed, setCollapsed] = useState(false);
 
-  const totalMonthly = lines.reduce((s, l) => s + l.amtPerUnit * l.adoptionPct * totalUnits, 0);
+  const totalMonthly = lines.reduce((s, l) => s + l.qty * l.price * l.occupancy, 0);
   const totalAnnual  = totalMonthly * 12;
 
   const commit = () => {
@@ -160,11 +163,38 @@ function AncillaryPanel({ totalUnits }: { totalUnits: number }) {
     if (isNaN(num)) { setEditingKey(null); return; }
     setLines(prev => prev.map(l => {
       if (l.key !== editingKey.key) return l;
-      if (editingKey.field === 'amt') return { ...l, amtPerUnit: num };
-      return { ...l, adoptionPct: Math.min(1, Math.max(0, num / 100)) };
+      if (editingKey.field === 'qty')   return { ...l, qty: Math.max(0, Math.round(num)) };
+      if (editingKey.field === 'price') return { ...l, price: Math.max(0, num) };
+      return { ...l, occupancy: Math.min(1, Math.max(0, num / 100)) };
     }));
     setEditingKey(null);
   };
+
+  function EditCell({ lineKey, field, display, color }: { lineKey: string; field: 'qty' | 'price' | 'occ'; display: string; color?: string }) {
+    const isEditing = editingKey?.key === lineKey && editingKey.field === field;
+    if (isEditing) {
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+          <input autoFocus type="number" value={editingKey.val}
+            onChange={e => setEditingKey({ ...editingKey, val: e.target.value })}
+            onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditingKey(null); }}
+            style={{ width: field === 'qty' ? 56 : field === 'occ' ? 48 : 64, background: C.panelAlt, border: `1px solid ${C.cyan}`, borderRadius: 3, color: C.cyan, fontFamily: MONO, fontSize: 10, padding: '2px 4px', textAlign: 'right' }}
+          />
+          <button onClick={commit} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.green, padding: 0 }}><Check size={10} /></button>
+          <button onClick={() => setEditingKey(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.red, padding: 0 }}><X size={10} /></button>
+        </div>
+      );
+    }
+    const line = lines.find(l => l.key === lineKey)!;
+    const rawVal = field === 'qty' ? String(line.qty) : field === 'price' ? String(line.price) : String((line.occupancy * 100).toFixed(0));
+    return (
+      <div onClick={() => setEditingKey({ key: lineKey, field, val: rawVal })}
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, cursor: 'pointer' }}>
+        <span style={{ color: color ?? C.text }}>{display}</span>
+        <Edit3 size={8} color={C.dim} />
+      </div>
+    );
+  }
 
   return (
     <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 6, overflow: 'hidden', marginTop: 12 }}>
@@ -174,6 +204,7 @@ function AncillaryPanel({ totalUnits }: { totalUnits: number }) {
       >
         {collapsed ? <ChevronRight size={12} color={C.muted} /> : <ChevronDown size={12} color={C.muted} />}
         <span style={{ fontFamily: LABEL, fontSize: 9, fontWeight: 700, color: C.text, letterSpacing: '0.06em' }}>ANCILLARY INCOME BREAKDOWN</span>
+        <span style={{ fontFamily: LABEL, fontSize: 8, color: C.dim, marginLeft: 4 }}>click cells to edit qty · price · occupancy</span>
         <span style={{ fontFamily: MONO, fontSize: 10, color: C.amber, marginLeft: 'auto' }}>{fmt$(totalAnnual)}/yr</span>
       </div>
 
@@ -184,8 +215,9 @@ function AncillaryPanel({ totalUnits }: { totalUnits: number }) {
               <thead>
                 <tr style={{ background: C.panelAlt }}>
                   <th style={th()}>INCOME TYPE</th>
-                  <th style={th(true)}>$/UNIT/MO</th>
-                  <th style={th(true)}>ADOPTION</th>
+                  <th style={th(true)}>QTY</th>
+                  <th style={th(true)}>$/MO</th>
+                  <th style={th(true)}>OCC %</th>
                   <th style={th(true)}>TOTAL/MO</th>
                   <th style={th(true)}>TOTAL/YR</th>
                   <th style={th()}>NOTE</th>
@@ -193,53 +225,23 @@ function AncillaryPanel({ totalUnits }: { totalUnits: number }) {
               </thead>
               <tbody>
                 {lines.map((l, idx) => {
-                  const monthlyTotal = l.amtPerUnit * l.adoptionPct * totalUnits;
+                  const monthlyTotal = l.qty * l.price * l.occupancy;
                   const annualTotal  = monthlyTotal * 12;
-                  const isEditingAmt = editingKey?.key === l.key && editingKey.field === 'amt';
-                  const isEditingPct = editingKey?.key === l.key && editingKey.field === 'pct';
 
                   return (
                     <tr key={l.key} style={{ background: idx % 2 === 0 ? C.panel : C.panelAlt }}>
                       <td style={{ ...td(), color: C.cyan, fontWeight: 700 }}>{l.label}</td>
 
                       <td style={{ ...td(true), position: 'relative' }}>
-                        {isEditingAmt ? (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                            <input autoFocus type="number" value={editingKey.val}
-                              onChange={e => setEditingKey({ ...editingKey, val: e.target.value })}
-                              onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditingKey(null); }}
-                              style={{ width: 64, background: C.panelAlt, border: `1px solid ${C.cyan}`, borderRadius: 3, color: C.cyan, fontFamily: MONO, fontSize: 10, padding: '2px 4px', textAlign: 'right' }}
-                            />
-                            <button onClick={commit} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.green, padding: 0 }}><Check size={10} /></button>
-                            <button onClick={() => setEditingKey(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.red, padding: 0 }}><X size={10} /></button>
-                          </div>
-                        ) : (
-                          <div onClick={() => setEditingKey({ key: l.key, field: 'amt', val: String(l.amtPerUnit) })}
-                            style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, cursor: 'pointer' }}>
-                            <span>${l.amtPerUnit.toFixed(2)}</span>
-                            <Edit3 size={8} color={C.dim} />
-                          </div>
-                        )}
+                        <EditCell lineKey={l.key} field="qty" display={String(l.qty)} color={C.text} />
                       </td>
 
                       <td style={{ ...td(true), position: 'relative' }}>
-                        {isEditingPct ? (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                            <input autoFocus type="number" value={editingKey.val}
-                              onChange={e => setEditingKey({ ...editingKey, val: e.target.value })}
-                              onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditingKey(null); }}
-                              style={{ width: 48, background: C.panelAlt, border: `1px solid ${C.amber}`, borderRadius: 3, color: C.amber, fontFamily: MONO, fontSize: 10, padding: '2px 4px', textAlign: 'right' }}
-                            />
-                            <button onClick={commit} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.green, padding: 0 }}><Check size={10} /></button>
-                            <button onClick={() => setEditingKey(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.red, padding: 0 }}><X size={10} /></button>
-                          </div>
-                        ) : (
-                          <div onClick={() => setEditingKey({ key: l.key, field: 'pct', val: String((l.adoptionPct * 100).toFixed(0)) })}
-                            style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, cursor: 'pointer' }}>
-                            <span style={{ color: C.muted }}>{(l.adoptionPct * 100).toFixed(0)}%</span>
-                            <Edit3 size={8} color={C.dim} />
-                          </div>
-                        )}
+                        <EditCell lineKey={l.key} field="price" display={`$${l.price.toFixed(2)}`} color={C.text} />
+                      </td>
+
+                      <td style={{ ...td(true), position: 'relative' }}>
+                        <EditCell lineKey={l.key} field="occ" display={`${(l.occupancy * 100).toFixed(0)}%`} color={C.muted} />
                       </td>
 
                       <td style={td(true, false, C.text)}>{fmt$(monthlyTotal)}</td>
@@ -252,7 +254,7 @@ function AncillaryPanel({ totalUnits }: { totalUnits: number }) {
               <tfoot>
                 <tr style={{ background: '#050a0f', borderTop: `2px solid ${C.borderHi}` }}>
                   <td style={{ ...td(), fontWeight: 700, color: C.text }}>TOTAL ANCILLARY</td>
-                  <td colSpan={2} />
+                  <td colSpan={3} />
                   <td style={{ ...td(true), fontWeight: 700, color: C.amber }}>{fmt$(totalMonthly)}/mo</td>
                   <td style={{ ...td(true), fontWeight: 700, color: C.amber }}>{fmt$(totalAnnual)}/yr</td>
                   <td style={{ ...td(), color: C.dim, fontSize: 8 }}>{((totalAnnual / Math.max(totalUnits * 12, 1))).toFixed(0)}/unit/yr</td>
@@ -700,7 +702,7 @@ export function UnitMixTab({ dealId, deal }: { dealId: string; deal?: any }) {
                 const badDebtLoss    = gri != null ? gri * badDebtPct : null;
                 const concessionPct  = unitMix.reduce((s, u) => s + (u.concessionPct ?? 0) * u.count, 0) / Math.max(totalUnits, 1);
                 const concessionLoss = totalMarketGprAnnual > 0 ? concessionPct * totalMarketGprAnnual : null;
-                const ancillaryTotal = DEFAULT_ANCILLARY.reduce((s, l) => s + l.amtPerUnit * l.adoptionPct * totalUnits * 12, 0);
+                const ancillaryTotal = makeDefaultAncillary(totalUnits).reduce((s, l) => s + l.qty * l.price * l.occupancy * 12, 0);
                 const egi = gri != null && badDebtLoss != null
                   ? gri - (concessionLoss ?? 0) - badDebtLoss + ancillaryTotal
                   : null;
