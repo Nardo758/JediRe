@@ -271,29 +271,34 @@ export class CreditService {
     userId: string,
     estimatedCost: number
   ): Promise<boolean> {
-    const result = await query(
+    // Phase 1: read tier + current balance to determine hard-cap vs overage policy.
+    // This SELECT is NOT used as the deduction guard — that happens atomically in
+    // the conditional UPDATE below to prevent concurrent oversubscription.
+    const selectResult = await query(
       `SELECT credits_remaining, monthly_credit_cap
        FROM user_credit_balances WHERE user_id = $1`,
       [userId]
     );
 
-    if (result.rows.length === 0) {
+    if (selectResult.rows.length === 0) {
       // No credit record — allow through (new user or pre-billing setup).
       // Caller must treat this as not-deducted and charge full actual cost.
       logger.warn('reserveCredits: no credit record, allowing through', { userId });
       return false;
     }
 
-    const { credits_remaining, monthly_credit_cap } = result.rows[0];
+    const { credits_remaining, monthly_credit_cap } = selectResult.rows[0];
 
+    // Hard-cap enforcement: throw before attempting any deduction
+    if (credits_remaining <= 0 && monthly_credit_cap !== null) {
+      throw new Error(
+        `Insufficient credits: ${credits_remaining} remaining, ${estimatedCost.toFixed(4)} estimated`
+      );
+    }
+
+    // Overage path: balance is positive but below estimate, or cap is null.
+    // Allow through — Stripe meters capture actual usage. No deduction.
     if (credits_remaining < estimatedCost) {
-      if (monthly_credit_cap !== null && credits_remaining <= 0) {
-        throw new Error(
-          `Insufficient credits: ${credits_remaining} remaining, ${estimatedCost.toFixed(4)} estimated`
-        );
-      }
-      // Overage allowed — Stripe meters will capture it.
-      // No deduction made; caller must charge full actual cost post-call.
       logger.info('reserveCredits: user in overage, proceeding (no deduction)', {
         userId,
         remaining: credits_remaining,
@@ -302,17 +307,29 @@ export class CreditService {
       return false;
     }
 
-    // Deduct estimate upfront — reconcile with debitActualCost() post-call
-    await query(
+    // Phase 2: Atomic conditional deduction.
+    // The WHERE guard (credits_remaining >= $1) prevents concurrent oversubscription:
+    // if another request drained the balance between our SELECT and this UPDATE,
+    // 0 rows are returned and we treat the caller as overage rather than double-spending.
+    const updateResult = await query(
       `UPDATE user_credit_balances
        SET credits_remaining = credits_remaining - $1,
            credits_used_this_period = credits_used_this_period + $1,
            updated_at = NOW()
-       WHERE user_id = $2`,
+       WHERE user_id = $2
+         AND credits_remaining >= $1
+       RETURNING credits_remaining`,
       [estimatedCost, userId]
     );
 
-    return true; // estimate was deducted; debitActualCost() will settle the delta
+    if (updateResult.rows.length === 0) {
+      // Concurrent drain: another request consumed the balance in the window between
+      // our SELECT and this UPDATE. Treat as overage — Stripe meters capture actual usage.
+      logger.warn('reserveCredits: concurrent drain detected, proceeding in overage', { userId });
+      return false;
+    }
+
+    return true; // estimate was atomically deducted; debitActualCost() will settle the delta
   }
 
   /**

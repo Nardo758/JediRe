@@ -72,8 +72,11 @@ export const fetchCostarMetricsTool: ToolDefinition<
   requiresCapability: 'read:costar',
 
   execute: async (input, ctx) => {
+    // Use caller's agent identity from RunContext (stamped by AgentRuntime from
+    // AgentConfig.agentId) so attribution/auth is correct regardless of which
+    // agent executes this tool.
     const client = platformClient.as({
-      agentId: 'supply',
+      agentId: ctx.agentId ?? 'supply',
       runId: ctx.correlationId,
     });
 

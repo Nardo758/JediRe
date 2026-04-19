@@ -62,8 +62,11 @@ export const fetchParcelTool: ToolDefinition<
   requiresCapability: 'read:parcels',
 
   execute: async (input, ctx) => {
+    // Use caller's agent identity from RunContext (stamped by AgentRuntime from
+    // AgentConfig.agentId) so attribution/auth is correct regardless of which
+    // agent executes this tool.
     const client = platformClient.as({
-      agentId: 'research',
+      agentId: ctx.agentId ?? 'research',
       runId: ctx.correlationId,
     });
 

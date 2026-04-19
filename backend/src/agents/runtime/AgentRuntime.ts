@@ -168,8 +168,9 @@ export class AgentRuntime {
         `Analyze real estate data and respond with structured JSON.`;
 
       // Step 4: Tool-calling loop
-      // Stamp correlationId with run.id so all tools can attribute to this run
-      const ctxWithRun: RunContext = { ...ctx, correlationId: run.id };
+      // Stamp correlationId with run.id and agentId from config so tools use
+      // the caller's identity for platformClient.as() instead of hardcoding.
+      const ctxWithRun: RunContext = { ...ctx, correlationId: run.id, agentId: this.config.agentId };
       const result = await this.loop({ run, systemPrompt, userMessage: JSON.stringify(input), ctx: ctxWithRun, accrued });
 
       // Step 5: Validate output

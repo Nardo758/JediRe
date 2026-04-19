@@ -1,8 +1,9 @@
 /**
  * Default budget caps per agent.
+ * All five Layer 1 agents have explicit caps here.
  * Tune from telemetry once production data is available.
- * Commentary agent intentionally omitted — it generates short summaries
- * and shares the deal-daily cap with other agents.
+ * All agents share the same maxCostUsdPerDealPerDay cap;
+ * BudgetEnforcer.check() enforces it across the deal regardless of agent.
  */
 
 import type { BudgetCaps } from '../runtime/types';

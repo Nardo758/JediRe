@@ -48,6 +48,10 @@ export class BudgetExceededError extends Error {
 export interface RunContext {
   dealId?: string;
   userId?: string;
+  /** The AgentId of the agent executing this run.
+   *  Stamped from AgentConfig.agentId by AgentRuntime before the loop.
+   *  Tools use this for platformClient.as() identity instead of hardcoding. */
+  agentId?: AgentId;
   triggeredBy: 'user' | 'event' | 'cron';
   triggerContext?: Record<string, unknown>;
   correlationId?: string;
