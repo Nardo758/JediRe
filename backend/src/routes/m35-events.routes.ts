@@ -294,8 +294,10 @@ router.get('/portfolio/events', async (req: Request, res: Response) => {
           entry.rentGrowthDelta = delta;
         }
       }
-    } catch {
-      // event_impacts may be empty or schema mismatch — defaults remain 0
+    } catch (impactErr: unknown) {
+      logger.warn('[M35 Events] portfolio/events: could not load event_impacts, defaulting to 0', {
+        error: impactErr instanceof Error ? impactErr.message : String(impactErr),
+      });
     }
 
     // 4. Cross-join events × deals on msaId and assemble portfolio rows
