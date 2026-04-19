@@ -23,7 +23,6 @@ import { query, getPool } from '../database/connection';
 import { logger } from '../utils/logger';
 import { IntelligenceContextService } from '../services/intelligence-context.service';
 import { MetricRecommendationAgent } from './metric-recommendation.agent';
-import { CommentaryAgent } from './commentary.agent';
 import type { AgentRuntime } from './runtime/AgentRuntime';
 
 // AgentRuntime singletons — loaded lazily to avoid circular imports at startup
@@ -31,6 +30,7 @@ import { researchRuntime } from './research.config';
 import { zoningRuntime } from './zoning.config';
 import { supplyRuntime } from './supply.config';
 import { cashflowRuntime } from './cashflow.config';
+import { commentaryRuntime } from './commentary.config';
 
 // ── Task queue types ──────────────────────────────────────────────
 
@@ -56,6 +56,7 @@ const AGENT_RUNTIME_MAP: Record<string, AgentRuntime> = {
   zoning_analysis: zoningRuntime,
   supply_analysis: supplyRuntime,
   cashflow_analysis: cashflowRuntime,
+  commentary_generation: commentaryRuntime,
 };
 
 // ── Orchestrator Shim ─────────────────────────────────────────────
@@ -64,9 +65,8 @@ export class AgentOrchestrator {
   private isProcessing = false;
   private intelligenceService: IntelligenceContextService;
 
-  // Legacy agents kept only for task types that haven't migrated to AgentRuntime
+  // Legacy agents — only metric_recommendations remains (commentary now routes via AGENT_RUNTIME_MAP)
   private legacyAgents = {
-    commentary_generation: new CommentaryAgent(),
     metric_recommendations: new MetricRecommendationAgent(),
   } as unknown as Record<string, { execute: (input: Record<string, unknown>, userId: string) => Promise<unknown> }>;
 

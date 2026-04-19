@@ -653,59 +653,44 @@ IMPORTANT CITATION RULES:
   private async getCachedCommentary(
     entityType: string,
     entityId: string,
-    userId?: string,
+    _userId?: string,
   ): Promise<CommentaryResult | null> {
     try {
       const result = await query(
-        `SELECT output_data, created_at FROM agent_tasks
-         WHERE task_type = 'commentary_generation'
-           AND input_data->>'entityType' = $1
-           AND input_data->>'entityId' = $2
-           AND (input_data->>'userId' = $3 OR input_data->>'userId' IS NULL OR $3 IS NULL)
-           AND status = 'completed'
-         ORDER BY completed_at DESC
+        `SELECT commentary FROM market_commentary
+         WHERE entity_type = $1
+           AND entity_id   = $2
+           AND cache_expires_at > NOW()
+         ORDER BY generated_at DESC
          LIMIT 1`,
-        [entityType, entityId, userId || null],
+        [entityType, entityId],
       );
 
       if (result.rows.length === 0) return null;
 
-      const row = result.rows[0];
-      const ageHours = (Date.now() - new Date(row.created_at).getTime()) / (1000 * 60 * 60);
-
-      if (ageHours > CACHE_TTL_HOURS) return null;
-
-      const data = typeof row.output_data === 'string'
-        ? JSON.parse(row.output_data)
-        : row.output_data;
+      const data = typeof result.rows[0].commentary === 'string'
+        ? JSON.parse(result.rows[0].commentary)
+        : result.rows[0].commentary;
       return data as CommentaryResult;
     } catch {
       return null;
     }
   }
 
-  private async cacheCommentary(result: CommentaryResult, userId?: string): Promise<void> {
+  private async cacheCommentary(result: CommentaryResult, _userId?: string): Promise<void> {
     try {
       await query(
-        `INSERT INTO agent_tasks (
-          task_type, input_data, output_data, status, user_id, progress, completed_at
-        ) VALUES (
-          'commentary_generation',
-          $1, $2, 'completed', $3, 100, NOW()
-        )`,
+        `INSERT INTO market_commentary
+           (entity_type, entity_id, tab_context, commentary, cache_expires_at)
+         VALUES ($1, $2, 'commentary', $3, NOW() + INTERVAL '${CACHE_TTL_HOURS} hours')`,
         [
-          JSON.stringify({
-            entityType: result.entityType,
-            entityId: result.entityId,
-            entityName: result.entityName,
-            userId: userId || null,
-          }),
+          result.entityType,
+          result.entityId,
           JSON.stringify(result),
-          userId || 'system',
         ],
       );
     } catch (err) {
-      logger.warn('Commentary Agent: failed to cache result', { error: err });
+      logger.warn('Commentary Agent: failed to cache result in market_commentary', { error: err });
     }
   }
 }

@@ -24,25 +24,47 @@ import type { RunContext } from './runtime/types';
 export interface SupplyAgentParams {
   dealId?: string;
   userId?: string;
-  city: string;
-  stateCode: string;
+  city?: string;
+  stateCode?: string;
+  /** Legacy callers may pass address instead of city/stateCode */
+  address?: string;
+  /** Legacy fields passed by coordinator — accepted but not forwarded to runtime */
+  market?: unknown;
+  pipeline?: unknown;
+  comps?: unknown;
   propertyType?: string;
   msaId?: string;
+}
+
+// Parse "City, ST" or "City, STATE 12345" from an address string
+function parseCityState(address: string): { city?: string; stateCode?: string } {
+  const m = address.match(/,\s*([^,]+),\s*([A-Z]{2})\b/);
+  return m ? { city: m[1].trim(), stateCode: m[2] } : {};
 }
 
 export class SupplyAgent {
   /**
    * Execute supply analysis for a market.
    *
-   * Routes through `supplyRuntime.run()` — the Phase 4 authoritative path.
+   * Accepts either { city, stateCode } (new) or { address } (legacy coordinator
+   * shape). Routes through `supplyRuntime.run()` — the Phase 4 authoritative path.
    */
   async execute(params: SupplyAgentParams, userId?: string): Promise<SupplyAgentOutput> {
     const resolvedUserId = params.userId ?? userId ?? 'unknown';
     const now = new Date().toISOString();
 
-    if (!params.city || !params.stateCode) {
-      logger.warn('[SupplyAgent] execute() called without city/stateCode');
-      return this.defaultResult(params, now);
+    // Resolve city/stateCode — support legacy callers that only pass address
+    let city = params.city;
+    let stateCode = params.stateCode;
+    if ((!city || !stateCode) && params.address) {
+      const parsed = parseCityState(params.address);
+      city = city ?? parsed.city;
+      stateCode = stateCode ?? parsed.stateCode;
+    }
+
+    if (!city || !stateCode) {
+      logger.warn('[SupplyAgent] execute() called without city/stateCode (and could not parse from address)');
+      return this.defaultResult(params as { city?: string; stateCode?: string }, now);
     }
 
     const ctx: RunContext = {
@@ -51,8 +73,8 @@ export class SupplyAgent {
       triggeredBy: 'user',
       triggerContext: {
         source: 'legacy_adapter',
-        city: params.city,
-        state_code: params.stateCode,
+        city,
+        state_code: stateCode,
         property_type: params.propertyType,
       },
     };
@@ -60,8 +82,8 @@ export class SupplyAgent {
     try {
       const output = await supplyRuntime.run(
         {
-          city: params.city,
-          state_code: params.stateCode,
+          city,
+          state_code: stateCode,
           ...(params.propertyType && { property_type: params.propertyType }),
           ...(params.msaId && { msa_id: params.msaId }),
         },
@@ -69,7 +91,7 @@ export class SupplyAgent {
       ) as SupplyAgentOutput;
 
       logger.info('[SupplyAgent] execute() completed via AgentRuntime', {
-        city: params.city,
+        city,
         supplyRisk: output.supply_risk_level,
         confidence: output.confidence_score,
       });

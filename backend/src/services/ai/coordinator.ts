@@ -282,10 +282,11 @@ export class AICoordinator {
     });
 
     // Step 3: Run 3 analytical agents in parallel
+    const dealId = session.dealId;
     const [zoningResult, supplyResult, cashflowResult] = await Promise.all([
-      this.runZoningAgent(context, dealContext),
-      this.runSupplyAgent(context, dealContext),
-      this.runCashflowAgent(context, dealContext, intent.price),
+      this.runZoningAgent(context, dealContext, dealId),
+      this.runSupplyAgent(context, dealContext, dealId),
+      this.runCashflowAgent(context, dealContext, intent.price, dealId),
     ]);
 
     // Step 4: Synthesize results
@@ -360,7 +361,8 @@ export class AICoordinator {
     const cashflowResult = await this.runCashflowAgent(
       context,
       activeDeal.dealContext,
-      intent.price
+      intent.price,
+      activeDeal.dealId
     );
 
     // Re-synthesize with cached zoning/supply + new cashflow
@@ -535,11 +537,14 @@ Respond with a concise comparison highlighting which deal is stronger and why.`;
 
   private async runZoningAgent(
     context: AICallContext,
-    dealContext: DealContext
+    dealContext: DealContext,
+    dealId?: string
   ): Promise<ZoningResult> {
     try {
       const result = await this.zoningAgent.execute(
         {
+          dealId,
+          userId: context.userId,
           address: dealContext.address,
           lotSizeSqft: dealContext.parcel.lotSizeSqFt,
         },
@@ -565,11 +570,14 @@ Respond with a concise comparison highlighting which deal is stronger and why.`;
 
   private async runSupplyAgent(
     context: AICallContext,
-    dealContext: DealContext
+    dealContext: DealContext,
+    dealId?: string
   ): Promise<SupplyResult> {
     try {
       const result = await this.supplyAgent.execute(
         {
+          dealId,
+          userId: context.userId,
           address: dealContext.address,
           market: dealContext.market,
           pipeline: dealContext.pipeline,
@@ -598,12 +606,15 @@ Respond with a concise comparison highlighting which deal is stronger and why.`;
   private async runCashflowAgent(
     context: AICallContext,
     dealContext: DealContext,
-    askingPrice?: number
+    askingPrice?: number,
+    dealId?: string
   ): Promise<CashflowResult> {
     try {
       const price = askingPrice || dealContext.parcel.assessedValue || 1_000_000;
       const result = await this.cashflowAgent.execute(
         {
+          dealId,
+          userId: context.userId,
           purchasePrice: price,
           monthlyRent: dealContext.market.avgRent,
           units: dealContext.zoning.maxBuildableUnits || 1,
