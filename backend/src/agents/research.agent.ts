@@ -112,10 +112,9 @@ export class ResearchAgent {
       // Cast through unknown to avoid TS "insufficient overlap" on index signature.
       const ctx2Obj = ctx2 as unknown as Record<string, unknown>;
       for (const [path, value] of Object.entries(fieldMap)) {
-        const dotIdx = path.indexOf('.');
-        if (dotIdx === -1) continue;
-        const section = path.slice(0, dotIdx);
-        const field = snakeToCamel(path.slice(dotIdx + 1));
+        const resolved = resolveFieldName(path);
+        if (!resolved) continue;
+        const { section, field } = resolved;
         const target = ctx2Obj[section];
         if (target && typeof target === 'object' && field) {
           (target as Record<string, unknown>)[field] = value;
@@ -210,4 +209,37 @@ export const researchAgent = new ResearchAgent();
 /** Convert snake_case field name to camelCase: vacancy_rate → vacancyRate */
 function snakeToCamel(s: string): string {
   return s.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
+}
+
+/**
+ * Deterministic translation from tool/prompt field paths to DealContext keys.
+ * The LLM writes paths in snake_case (market.vacancy_rate) which snakeToCamel
+ * converts automatically. Only add entries here for paths that rename the field
+ * entirely (not just casing), e.g. parcel.sqft → parcel.lotSizeSqFt.
+ * Format: "<section>.<snake_field>" → "<camelCaseField>"
+ */
+const FIELD_PATH_ALIASES: Record<string, string> = {
+  'parcel.sqft':          'lotSizeSqFt',
+  'parcel.sq_ft':         'lotSizeSqFt',
+  'parcel.total_sqft':    'lotSizeSqFt',
+  'parcel.acres':         'lotSizeAcres',
+  'parcel.lot_acres':     'lotSizeAcres',
+  'parcel.lot_size_sqft': 'lotSizeSqFt',
+  'parcel.building_sqft': 'buildingSqFt',
+  'parcel.bldg_sqft':     'buildingSqFt',
+  'parcel.last_sale':     'lastSalePrice',
+  'parcel.sale_price':    'lastSalePrice',
+};
+
+/**
+ * Resolve a "section.snake_field" path to the canonical DealContext field name.
+ * Checks FIELD_PATH_ALIASES first, then falls back to snakeToCamel conversion.
+ */
+function resolveFieldName(dotPath: string): { section: string; field: string } | null {
+  const dotIdx = dotPath.indexOf('.');
+  if (dotIdx === -1) return null;
+  const section = dotPath.slice(0, dotIdx);
+  const alias = FIELD_PATH_ALIASES[dotPath];
+  if (alias) return { section, field: alias };
+  return { section, field: snakeToCamel(dotPath.slice(dotIdx + 1)) };
 }
