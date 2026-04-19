@@ -2,19 +2,44 @@
  * MSAEconomicsTab - Employment, population, income, sector composition
  */
 
-import React, { useMemo, useEffect } from 'react';
-import { Users, Briefcase, DollarSign, MapPin } from 'lucide-react';
+import React, { useMemo, useEffect, useState } from 'react';
+import { Users, Briefcase, DollarSign, MapPin, Database } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
 import { TerminalChart, ChartDataPoint } from '../../TerminalChart';
 import { TerminalSection, DataTable } from '../../TerminalLayouts';
 import { MSAData } from '../../MSATerminal';
 import { useCommentaryStore } from '../../../../stores/commentaryStore';
 import { SignalCommentary } from '../../commentary';
+import { apiClient } from '../../../../services/api.client';
+
+interface LaborRow {
+  naics_code: string;
+  naics_label: string;
+  total_employment: number | null;
+  yoy_change_pct: number | null;
+  avg_weekly_wage: number | null;
+  establishment_count: number | null;
+  bls_citation_tag: string | null;
+}
+
+interface MacroSnapshot {
+  ffr: number | null;
+  sofr: number | null;
+  t10y: number | null;
+  t30y_mtg: number | null;
+  gdp_growth_pct: number | null;
+  cpi_yoy_pct: number | null;
+  unrate: number | null;
+  consumer_sentiment: number | null;
+  snapshot_date: string | null;
+}
 
 interface MSAEconomicsTabProps {
   msaId: string;
   msa: MSAData;
 }
+
+const NAICS_ORDER = ['531', '236', '522', '623', '611', '621', '493', '721'];
 
 export const MSAEconomicsTab: React.FC<MSAEconomicsTabProps> = ({ msaId, msa }) => {
   const msaName = msa?.name || msaId || 'Atlanta';
@@ -23,9 +48,36 @@ export const MSAEconomicsTab: React.FC<MSAEconomicsTabProps> = ({ msaId, msa }) 
   const loading = isLoading('msa', msaId);
   const error = getError('msa', msaId);
 
+  const [econData, setEconData] = useState<{ macro: MacroSnapshot | null; labor: LaborRow[] }>({ macro: null, labor: [] });
+  const [econLoading, setEconLoading] = useState(false);
+
   useEffect(() => {
     fetchCommentary('msa', msaId, msaName);
   }, [msaId, msaName]);
+
+  useEffect(() => {
+    if (!msaId) return;
+    const numericId = msaId.match(/^\d+$/) ? msaId : null;
+    if (!numericId) return;
+    setEconLoading(true);
+    apiClient.get<{ success: boolean; data: { macro: MacroSnapshot; labor: LaborRow[] } }>(
+      `/api/v1/economic-context?msaId=${numericId}&businessType=multifamily`
+    ).then(res => {
+      if (res.data.success) setEconData({ macro: res.data.data.macro, labor: res.data.data.labor });
+    }).catch(() => {}).finally(() => setEconLoading(false));
+  }, [msaId]);
+
+  const sortedLabor = useMemo(() => {
+    if (!econData.labor.length) return [];
+    return [...econData.labor].sort((a, b) => {
+      const ai = NAICS_ORDER.indexOf(a.naics_code);
+      const bi = NAICS_ORDER.indexOf(b.naics_code);
+      if (ai === -1 && bi === -1) return 0;
+      if (ai === -1) return 1;
+      if (bi === -1) return -1;
+      return ai - bi;
+    });
+  }, [econData.labor]);
 
   const employmentData: ChartDataPoint[] = useMemo(() => [
     { date: '2020', employment: 2850, population: 5900 },
@@ -76,6 +128,9 @@ export const MSAEconomicsTab: React.FC<MSAEconomicsTabProps> = ({ msaId, msa }) 
     { bracket: '$150K+', pct: 15.1, renters: 8 },
   ], []);
 
+  const macro = econData.macro;
+  const citationDate = macro?.snapshot_date ? macro.snapshot_date.slice(0, 10) : 'N/A';
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -88,6 +143,82 @@ export const MSAEconomicsTab: React.FC<MSAEconomicsTabProps> = ({ msaId, msa }) 
           </span>
         </div>
       </div>
+
+      {macro && (
+        <div style={{ border: `1px solid ${BT.border.medium}`, borderRadius: 3, padding: 14, background: BT.bg.card }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <Database size={11} color={BT.text.cyan} />
+            <span style={{ fontFamily: "'JetBrains Mono'", fontSize: 9, fontWeight: 700, color: BT.text.muted, letterSpacing: '0.1em' }}>
+              NATIONAL MACRO INDICATORS
+            </span>
+            <span style={{ fontFamily: "'JetBrains Mono'", fontSize: 8, color: BT.text.dim, marginLeft: 'auto' }}>
+              FRED {citationDate}
+            </span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+            {[
+              { label: 'GDP GROWTH', value: macro.gdp_growth_pct !== null ? `${macro.gdp_growth_pct > 0 ? '+' : ''}${macro.gdp_growth_pct.toFixed(2)}%` : 'N/A', good: macro.gdp_growth_pct !== null && macro.gdp_growth_pct >= 2, warn: macro.gdp_growth_pct !== null && macro.gdp_growth_pct >= 0 && macro.gdp_growth_pct < 2 },
+              { label: 'CPI YoY', value: macro.cpi_yoy_pct !== null ? `${macro.cpi_yoy_pct.toFixed(2)}%` : 'N/A', good: macro.cpi_yoy_pct !== null && macro.cpi_yoy_pct <= 2.5, warn: macro.cpi_yoy_pct !== null && macro.cpi_yoy_pct > 2.5 && macro.cpi_yoy_pct <= 3.5 },
+              { label: 'UNEMPLOYMENT', value: macro.unrate !== null ? `${macro.unrate.toFixed(1)}%` : 'N/A', good: macro.unrate !== null && macro.unrate <= 4.5, warn: macro.unrate !== null && macro.unrate > 4.5 && macro.unrate <= 5.5 },
+              { label: 'SENTIMENT', value: macro.consumer_sentiment !== null ? macro.consumer_sentiment.toFixed(1) : 'N/A', good: macro.consumer_sentiment !== null && macro.consumer_sentiment >= 70, warn: macro.consumer_sentiment !== null && macro.consumer_sentiment >= 55 && macro.consumer_sentiment < 70 },
+            ].map(({ label, value, good, warn }) => {
+              const color = good ? BT.text.green : warn ? BT.text.amber : BT.accent.red;
+              return (
+                <div key={label} style={{ textAlign: 'center', padding: '8px 0', borderRight: `1px solid ${BT.border.subtle}` }}>
+                  <div style={{ fontFamily: "'JetBrains Mono'", fontSize: 8, color: BT.text.muted, marginBottom: 4 }}>{label}</div>
+                  <div style={{ fontFamily: "'JetBrains Mono'", fontSize: 14, fontWeight: 700, color }}>{value}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {(sortedLabor.length > 0 || econLoading) && (
+        <TerminalSection title={`BLS LABOR — ${msaName.toUpperCase()} [QCEW]`} icon={<Database size={13} style={{ marginRight: 8, verticalAlign: 'middle', color: BT.text.cyan }} />}>
+          {econLoading && !sortedLabor.length ? (
+            <div style={{ padding: 12, color: BT.text.muted, fontSize: 11 }}>Loading BLS data…</div>
+          ) : (
+            <DataTable>
+              <thead>
+                <tr>
+                  <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Sector</th>
+                  <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Employment</th>
+                  <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>YoY</th>
+                  <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Avg Wage/Wk</th>
+                  <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Establishments</th>
+                  <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Citation</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedLabor.map(row => {
+                  const yoyColor = row.yoy_change_pct === null ? BT.text.muted : row.yoy_change_pct >= 1 ? BT.text.green : row.yoy_change_pct >= 0 ? BT.text.amber : BT.accent.red;
+                  return (
+                    <tr key={row.naics_code} style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
+                      <td style={{ ...terminalStyles.tableCell, fontWeight: 500 }}>{row.naics_label || `NAICS ${row.naics_code}`}</td>
+                      <td style={{ ...terminalStyles.tableCell, textAlign: 'right', fontFamily: "'JetBrains Mono'" }}>
+                        {row.total_employment !== null ? row.total_employment.toLocaleString() : 'N/A'}
+                      </td>
+                      <td style={{ ...terminalStyles.tableCell, textAlign: 'right', fontFamily: "'JetBrains Mono'", color: yoyColor, fontWeight: 600 }}>
+                        {row.yoy_change_pct !== null ? `${row.yoy_change_pct >= 0 ? '+' : ''}${row.yoy_change_pct.toFixed(1)}%` : '—'}
+                      </td>
+                      <td style={{ ...terminalStyles.tableCell, textAlign: 'right', fontFamily: "'JetBrains Mono'", color: BT.text.cyan }}>
+                        {row.avg_weekly_wage !== null ? `$${row.avg_weekly_wage.toLocaleString()}` : '—'}
+                      </td>
+                      <td style={{ ...terminalStyles.tableCell, textAlign: 'right', fontFamily: "'JetBrains Mono'" }}>
+                        {row.establishment_count !== null ? row.establishment_count.toLocaleString() : '—'}
+                      </td>
+                      <td style={{ ...terminalStyles.tableCell, fontSize: 9, color: BT.text.dim }}>
+                        {row.bls_citation_tag || '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </DataTable>
+          )}
+        </TerminalSection>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
         <div style={{ ...terminalStyles.card, textAlign: 'center' }}>

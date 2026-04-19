@@ -340,6 +340,28 @@ function MarketContextPanel({ env }: { env: RateEnvironmentResult }) {
           <span style={{ color: C.textMuted, fontSize: 10 }}>{env.termPreference}</span>
         </div>
       </div>
+      {env.macroContext && (
+        <div style={{ marginTop: 12, borderTop: `1px solid ${C.border}`, paddingTop: 10 }}>
+          <div style={{ ...mono, color: C.textMuted, fontSize: 9, fontWeight: 700, marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>MACRO BACKDROP</span>
+            <span style={{ color: C.textDim, fontWeight: 400 }}>{env.macroContext.citationTag}</span>
+          </div>
+          {[
+            ['GDP Growth', env.macroContext.gdpGrowthPct !== null ? `${env.macroContext.gdpGrowthPct > 0 ? '+' : ''}${env.macroContext.gdpGrowthPct.toFixed(2)}%` : 'N/A', env.macroContext.gdpSignal, env.macroContext.gdpGrowthPct !== null && env.macroContext.gdpGrowthPct >= 2 ? C.green : env.macroContext.gdpGrowthPct !== null && env.macroContext.gdpGrowthPct >= 0 ? C.amber : C.red],
+            ['CPI YoY', env.macroContext.cpiYoYPct !== null ? `${env.macroContext.cpiYoYPct.toFixed(2)}%` : 'N/A', env.macroContext.cpiLabel, env.macroContext.cpiYoYPct !== null && env.macroContext.cpiYoYPct <= 2.5 ? C.green : env.macroContext.cpiYoYPct !== null && env.macroContext.cpiYoYPct <= 3.5 ? C.amber : C.red],
+            ['Unemployment', env.macroContext.unrate !== null ? `${env.macroContext.unrate.toFixed(1)}%` : 'N/A', env.macroContext.laborSignal, env.macroContext.unrate !== null && env.macroContext.unrate <= 4.5 ? C.green : C.amber],
+            ['Sentiment', env.macroContext.consumerSentiment !== null ? env.macroContext.consumerSentiment.toFixed(1) : 'N/A', env.macroContext.sentimentLabel, env.macroContext.consumerSentiment !== null && env.macroContext.consumerSentiment >= 70 ? C.green : env.macroContext.consumerSentiment !== null && env.macroContext.consumerSentiment >= 55 ? C.amber : C.red],
+          ].map(([label, value, signal, color]) => (
+            <div key={label as string} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderBottom: `1px solid ${C.border}20` }}>
+              <span style={{ color: C.textMuted, fontSize: 9 }}>{label}</span>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ ...mono, color: color as string, fontSize: 11, fontWeight: 700 }}>{value}</div>
+                <div style={{ ...mono, color: C.textDim, fontSize: 8 }}>{signal}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
       <div style={{ marginTop: 10 }}>
         <div style={{ ...mono, color: C.textMuted, fontSize: 9, marginBottom: 4 }}>SOFR FORWARD CURVE</div>
         <svg width="100%" height={32} viewBox="0 0 200 32">

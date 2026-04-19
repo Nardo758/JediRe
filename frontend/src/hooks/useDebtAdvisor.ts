@@ -82,6 +82,18 @@ export interface RateEnvironmentResult {
   pricingWindowScore: number;
   pricingWindowLabel: string;
   computedAt: string;
+  macroContext?: {
+    gdpGrowthPct: number | null;
+    gdpSignal: string;
+    cpiYoYPct: number | null;
+    cpiLabel: string;
+    unrate: number | null;
+    laborSignal: string;
+    consumerSentiment: number | null;
+    sentimentLabel: string;
+    snapshotDate: string | null;
+    citationTag: string;
+  };
 }
 
 export interface DebtAdvisorResponse {
