@@ -189,6 +189,7 @@ dealUnderwritingRouter.get(
       // the broadest bucket (submarket_id=NULL) with n_samples >= 5.
       // Tier-gated: Scout tier does not see archive context.
       let archiveContext: Record<string, unknown> | null = null;
+      let archiveEnabled = false;
       try {
         const tierCheckResult = await query(
           `SELECT COALESCE(u.tier, 'scout') AS tier FROM users u WHERE u.id = $1 LIMIT 1`,
@@ -196,8 +197,9 @@ dealUnderwritingRouter.get(
         );
         const userTierForArchive = ((tierCheckResult.rows[0] as Record<string, unknown> | undefined)?.tier as string | undefined) ?? 'scout';
         if (userTierForArchive.toLowerCase() === 'scout') {
-          // Scout tier: no archive context
+          // Scout tier: no archive context — archiveEnabled stays false
         } else {
+          archiveEnabled = true;
         const dealMetaResult = await query(
           `SELECT COALESCE(d.asset_class, 'unknown') AS asset_class,
                   COALESCE(d.deal_type, 'existing')  AS deal_type
@@ -271,6 +273,7 @@ dealUnderwritingRouter.get(
           evidence: null,
           active_override: activeOverride,
           archive_context: archiveContext,
+          archive_enabled: archiveEnabled,
           deal_id: dealId,
           field_path: fieldPath,
         });
@@ -296,6 +299,7 @@ dealUnderwritingRouter.get(
         },
         active_override: activeOverride,
         archive_context: archiveContext,
+        archive_enabled: archiveEnabled,
         deal_id: dealId,
         field_path: fieldPath,
       });

@@ -157,40 +157,62 @@ export const archiveAggregationFunction = inngest.createFunction(
            * Positive gap_bps = underwriting assumed higher than achieved (aggressive)
            * Negative gap_bps = underwriting assumed lower than achieved (conservative)
            */
-          // Include deal_type in grouping so achieved cohort aligns with the
-          // same bucket dimensions used in Step 1.  Only deals with at least
-          // 3 months of actuals are considered "closed" here.
+          // Two-level aggregation so every deal contributes ONE value to the
+          // bucket median (prevents deals with many months from dominating):
+          //   Level 1: per-deal achieved value (median of that deal's monthly readings)
+          //   Level 2: bucket median across all per-deal values
+          //
+          // "Closed deal" proxy: >= 3 months of actuals for the deal.
+          // Include deal_type so bucket cohort aligns with Step 1.
           const result = await query(
-            `WITH vacancy_actuals AS (
+            `WITH per_deal_vacancy AS (
                SELECT
-                 COALESCE(d.asset_class, 'unknown')  AS asset_class,
-                 COALESCE(d.deal_type,   'existing') AS deal_type,
+                 d.id                                         AS deal_id,
+                 COALESCE(d.asset_class, 'unknown')           AS asset_class,
+                 COALESCE(d.deal_type,   'existing')          AS deal_type,
                  d.submarket_id,
-                 'vacancy_pct' AS assumption_name,
                  PERCENTILE_CONT(0.50) WITHIN GROUP (
                    ORDER BY 1.0 - (ma.occupied_units::numeric / NULLIF(ma.total_units, 0))
-                 ) AS achieved_median,
-                 COUNT(DISTINCT d.id) AS n_closed_deals
+                 )                                            AS deal_achieved_vacancy
                FROM deal_monthly_actuals ma
                JOIN deals d ON d.id = ma.deal_id
                WHERE ma.total_units > 0
                  AND ma.occupied_units IS NOT NULL
-               GROUP BY d.asset_class, d.deal_type, d.submarket_id
-               HAVING COUNT(DISTINCT d.id) >= 3
+               GROUP BY d.id, d.asset_class, d.deal_type, d.submarket_id
+               HAVING COUNT(*) >= 3
              ),
-             noi_actuals AS (
+             vacancy_actuals AS (
                SELECT
+                 asset_class, deal_type, submarket_id,
+                 'vacancy_pct'                                                    AS assumption_name,
+                 PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY deal_achieved_vacancy) AS achieved_median,
+                 COUNT(DISTINCT deal_id)                                          AS n_closed_deals
+               FROM per_deal_vacancy
+               GROUP BY asset_class, deal_type, submarket_id
+               HAVING COUNT(DISTINCT deal_id) >= 3
+             ),
+             per_deal_noi AS (
+               SELECT
+                 d.id                                AS deal_id,
                  COALESCE(d.asset_class, 'unknown')  AS asset_class,
                  COALESCE(d.deal_type,   'existing') AS deal_type,
                  d.submarket_id,
-                 'noi' AS assumption_name,
-                 PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY ma.noi) AS achieved_median,
-                 COUNT(DISTINCT d.id) AS n_closed_deals
+                 PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY ma.noi) AS deal_achieved_noi
                FROM deal_monthly_actuals ma
                JOIN deals d ON d.id = ma.deal_id
                WHERE ma.noi IS NOT NULL
-               GROUP BY d.asset_class, d.deal_type, d.submarket_id
-               HAVING COUNT(DISTINCT d.id) >= 3
+               GROUP BY d.id, d.asset_class, d.deal_type, d.submarket_id
+               HAVING COUNT(*) >= 3
+             ),
+             noi_actuals AS (
+               SELECT
+                 asset_class, deal_type, submarket_id,
+                 'noi'                                                         AS assumption_name,
+                 PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY deal_achieved_noi) AS achieved_median,
+                 COUNT(DISTINCT deal_id)                                       AS n_closed_deals
+               FROM per_deal_noi
+               GROUP BY asset_class, deal_type, submarket_id
+               HAVING COUNT(DISTINCT deal_id) >= 3
              ),
              combined AS (
                SELECT * FROM vacancy_actuals

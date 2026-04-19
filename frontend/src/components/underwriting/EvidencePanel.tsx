@@ -111,6 +111,7 @@ export function EvidencePanel({ dealId, fieldPath, fieldLabel, onClose, onOverri
   const [activeOverride, setActiveOverride] = useState<ActiveOverride | null>(null);
   const [reverting, setReverting] = useState(false);
   const [archiveContext, setArchiveContext] = useState<ArchiveContext | null>(null);
+  const [archiveEnabled, setArchiveEnabled] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -124,6 +125,7 @@ export function EvidencePanel({ dealId, fieldPath, fieldLabel, onClose, onOverri
           setEvidence(data.evidence ?? null);
           setActiveOverride(data.active_override ?? null);
           setArchiveContext(data.archive_context ?? null);
+          setArchiveEnabled(data.archive_enabled === true);
           setLoading(false);
         }
       })
@@ -378,8 +380,8 @@ export function EvidencePanel({ dealId, fieldPath, fieldLabel, onClose, onOverri
                     ))
                   )}
 
-                  {/* ── ARCHIVE CONTEXT ──────────────────────────── */}
-                  {archiveContext && (
+                  {/* ── ARCHIVE CONTEXT — only shown for Operator+ tier ──────── */}
+                  {archiveEnabled && archiveContext && (
                     <div style={{
                       marginTop: 16, padding: '10px 12px',
                       background: `${BT.text.purple}10`,
@@ -451,8 +453,8 @@ export function EvidencePanel({ dealId, fieldPath, fieldLabel, onClose, onOverri
                     </div>
                   )}
 
-                  {/* No archive data message */}
-                  {!archiveContext && (
+                  {/* Accumulating message — only for Operator+ tier without enough data */}
+                  {archiveEnabled && !archiveContext && (
                     <div style={{
                       marginTop: 16, padding: '8px 10px',
                       background: BT.bg.header, borderRadius: 3,
