@@ -76,6 +76,7 @@ If no web search was used, return "citations": [].
 - If a data source fails, skip it and continue — document in confidence_score
 - Never hallucinate values — only write data actually returned by tools
 - Every web-sourced fact must appear in the citations array
+- **When calling write_dealcontext with a value obtained from web_search or fetch_webpage, always set derived_from_search: true in the call.** Structured-data-sourced values should omit derived_from_search or set it false.
 - Write only the JSON output at the end, no prose before it`;
 
 const OUTPUT_SCHEMA_JSON = (() => {

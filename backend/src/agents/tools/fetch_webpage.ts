@@ -148,14 +148,11 @@ export const fetchWebpageTool: ToolDefinition<FetchWebpageInput, FetchWebpageOut
     const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
     try {
-      const response = await fetch(input.url, {
-        signal: controller.signal,
-        headers: {
-          'User-Agent': 'JediRE-ResearchAgent/1.0 (commercial real estate intelligence)',
-          'Accept': 'text/html,application/xhtml+xml',
-        },
-        redirect: 'follow',
-      });
+      const response = await fetchWithRedirectValidation(
+        input.url,
+        controller.signal,
+        config,
+      );
 
       if (!response.ok) {
         logger.warn('fetch_webpage: HTTP error', { url: input.url, status: response.status });
@@ -178,6 +175,14 @@ export const fetchWebpageTool: ToolDefinition<FetchWebpageInput, FetchWebpageOut
         retrieved_at: retrievedAt,
       };
     } catch (err: unknown) {
+      if (err instanceof SSRFRedirectError) {
+        logger.warn('fetch_webpage: SSRF redirect blocked', { url: input.url, redirectTarget: err.target });
+        return { title: '', content_text: '', retrieved_at: retrievedAt, error: 'ssrf_blocked' };
+      }
+      if (err instanceof DomainRedirectError) {
+        logger.warn('fetch_webpage: domain-blocked redirect', { url: input.url, redirectTarget: err.target });
+        return { title: '', content_text: '', retrieved_at: retrievedAt, error: 'domain_blocked' };
+      }
       const isAbort = err instanceof Error && err.name === 'AbortError';
       logger.warn('fetch_webpage: fetch failed', { url: input.url, error: isAbort ? 'timeout' : String(err) });
       return {
@@ -191,6 +196,82 @@ export const fetchWebpageTool: ToolDefinition<FetchWebpageInput, FetchWebpageOut
     }
   },
 };
+
+// ── Redirect-safe fetch ───────────────────────────────────────────────────────
+
+const MAX_REDIRECTS = 5;
+
+class SSRFRedirectError extends Error {
+  target: string;
+  constructor(target: string) {
+    super(`SSRF redirect blocked: ${target}`);
+    this.target = target;
+  }
+}
+
+class DomainRedirectError extends Error {
+  target: string;
+  constructor(target: string) {
+    super(`Domain-blocked redirect: ${target}`);
+    this.target = target;
+  }
+}
+
+/**
+ * Fetches a URL with manual redirect handling. Each redirect target is validated
+ * against the same SSRF + scheme + domain-policy checks as the original URL,
+ * preventing server-side request forgery via redirect chains.
+ */
+async function fetchWithRedirectValidation(
+  url: string,
+  signal: AbortSignal,
+  config: import('../config/search').SearchConfig,
+  hopCount = 0,
+): Promise<Response> {
+  if (hopCount > MAX_REDIRECTS) {
+    throw new Error(`Too many redirects (max ${MAX_REDIRECTS})`);
+  }
+
+  const response = await fetch(url, {
+    signal,
+    redirect: 'manual',
+    headers: {
+      'User-Agent': 'JediRE-ResearchAgent/1.0 (commercial real estate intelligence)',
+      'Accept': 'text/html,application/xhtml+xml',
+    },
+  });
+
+  // Handle 3xx redirects manually so we can re-validate each hop
+  if (response.status >= 300 && response.status < 400) {
+    const location = response.headers.get('location');
+    if (!location) {
+      throw new Error(`Redirect ${response.status} with no Location header`);
+    }
+
+    // Resolve relative redirects against the current URL
+    const nextUrl = new URL(location, url).toString();
+
+    // Enforce https/http on redirect target
+    const scheme = new URL(nextUrl).protocol;
+    if (scheme !== 'https:' && scheme !== 'http:') {
+      throw new SSRFRedirectError(nextUrl);
+    }
+
+    // Domain policy re-check on redirect target
+    if (!isDomainAllowed(nextUrl, config)) {
+      throw new DomainRedirectError(nextUrl);
+    }
+
+    // SSRF re-check on redirect target
+    if (await isSSRFTarget(nextUrl)) {
+      throw new SSRFRedirectError(nextUrl);
+    }
+
+    return fetchWithRedirectValidation(nextUrl, signal, config, hopCount + 1);
+  }
+
+  return response;
+}
 
 // ── Content extraction ────────────────────────────────────────────────────────
 
