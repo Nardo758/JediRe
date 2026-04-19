@@ -692,6 +692,7 @@ interface NewsItem {
   sourceName?: string;
   publishedAt?: string;
   relevanceScore?: number;
+  isInferred?: boolean;
 }
 
 interface M35Event {
@@ -1216,6 +1217,7 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
                     const dateStr = ev.announcedDate ?? ev.materializationDate;
                     const displayDate = dateStr ? new Date(dateStr).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : null;
                     const linkedNews: NewsItem[] = ev.newsItems ?? [];
+                    const allInferred = linkedNews.length > 0 && linkedNews.every(n => n.isInferred);
                     const hasExpandable = linkedNews.length > 0 || Boolean(ev.sourceUrl);
                     const isExpanded = expandedEvents.has(ev.id);
                     const isSelected = selectedEventId === ev.id;
@@ -1263,9 +1265,11 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
                             {hasExpandable && (
                               <button
                                 onClick={e => { e.stopPropagation(); toggleEventExpand(ev.id); }}
-                                style={{ marginTop: 6, fontSize: 8, fontWeight: 700, fontFamily: "'JetBrains Mono'", color: '#63B3ED', background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 3 }}
+                                style={{ marginTop: 6, fontSize: 8, fontWeight: 700, fontFamily: "'JetBrains Mono'", color: allInferred ? '#F6AD55' : '#63B3ED', background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center', gap: 3 }}
                               >
-                                {linkedNews.length > 0 ? `${linkedNews.length} SOURCE${linkedNews.length > 1 ? 'S' : ''}` : 'VIEW SOURCE'}
+                                {linkedNews.length > 0
+                                  ? `${linkedNews.length} ${allInferred ? 'RELATED' : 'SOURCE'}${linkedNews.length > 1 ? 'S' : ''}`
+                                  : 'VIEW SOURCE'}
                                 <span style={{ fontSize: 8, transition: 'transform 0.15s', display: 'inline-block', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>▾</span>
                               </button>
                             )}
@@ -1310,6 +1314,11 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
                                       <div style={{ fontSize: 8, color: 'rgba(232,230,225,0.4)', lineHeight: 1.5, marginTop: 2 }}>{item.summary}</div>
                                     )}
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 3 }}>
+                                      {item.isInferred && (
+                                        <span style={{ fontSize: 7, fontWeight: 700, padding: '1px 4px', background: 'rgba(246,173,85,0.1)', border: '1px solid rgba(246,173,85,0.3)', borderRadius: 2, color: '#F6AD55', fontFamily: "'JetBrains Mono'" }}>
+                                          AUTO-MATCHED
+                                        </span>
+                                      )}
                                       {item.sourceName && (
                                         <span style={{ fontSize: 7, color: 'rgba(232,230,225,0.3)', fontFamily: "'JetBrains Mono'" }}>{item.sourceName}</span>
                                       )}

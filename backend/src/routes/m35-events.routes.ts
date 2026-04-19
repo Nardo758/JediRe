@@ -513,8 +513,68 @@ router.get('/deals/:dealId/events-context', async (req: Request, res: Response) 
       }
     }
 
+    // Fallback: for events with no linked news_item_ids, auto-surface related
+    // articles by date proximity (±90 days) and optional category match.
+    // Results are flagged isInferred: true so the UI can differentiate.
+    const fallbackNewsMap = new Map<string, object[]>(); // ev.id → inferred articles
+    const eventsNeedingFallback = events.filter(ev => {
+      const ids = Array.isArray(ev.news_item_ids) ? ev.news_item_ids : [];
+      return ids.length === 0;
+    });
+
+    if (eventsNeedingFallback.length > 0) {
+      // One broad query: fetch all news items ordered by relevance/recency.
+      // We'll slice and filter per-event in JS to avoid N+1 queries.
+      const fallbackPool = await pool.query(
+        `SELECT id, title, summary, source_url, source_name, published_at, relevance_score, category
+         FROM news_items
+         WHERE published_at IS NOT NULL
+         ORDER BY relevance_score DESC NULLS LAST, published_at DESC
+         LIMIT 100`
+      );
+      const candidatePool = fallbackPool.rows;
+
+      for (const ev of eventsNeedingFallback) {
+        const evDate = ev.announced_date ?? ev.materialization_date;
+        const evTime = evDate ? new Date(evDate as string).getTime() : null;
+        const evCategory: string | null = (ev.category as string) ?? null;
+
+        // Filter candidates by date proximity (±90 days) when an event date is known
+        const dateFiltered = evTime
+          ? candidatePool.filter(item => {
+              const itemTime = new Date(item.published_at).getTime();
+              return Math.abs(evTime - itemTime) <= 90 * 24 * 60 * 60 * 1000;
+            })
+          : candidatePool;
+
+        // Further filter by category if both the event and news item have one
+        const categoryFiltered = (evCategory && dateFiltered.some(i => i.category))
+          ? dateFiltered.filter(i => !i.category || (i.category as string).toUpperCase() === evCategory.toUpperCase())
+          : dateFiltered;
+
+        const top3 = (categoryFiltered.length > 0 ? categoryFiltered : dateFiltered).slice(0, 3);
+        if (top3.length > 0) {
+          fallbackNewsMap.set(ev.id as string, top3.map(row => ({
+            id:            row.id,
+            title:         row.title,
+            summary:       row.summary ?? null,
+            sourceUrl:     row.source_url ?? null,
+            sourceName:    row.source_name ?? null,
+            publishedAt:   row.published_at ? new Date(row.published_at).toISOString() : null,
+            relevanceScore: row.relevance_score !== null ? parseFloat(row.relevance_score) : null,
+            isInferred:    true,
+          })));
+        }
+      }
+    }
+
     const enrichedEvents = events.map(ev => {
       const ids: string[] = Array.isArray(ev.news_item_ids) ? ev.news_item_ids : [];
+      const directNews = ids.map(id => newsItemMap.get(id)).filter(Boolean);
+      // Use explicit news items when available; otherwise fall back to inferred articles
+      const newsItems = directNews.length > 0
+        ? directNews
+        : (fallbackNewsMap.get(ev.id as string) ?? []);
       return {
         id:                 ev.id as string,
         name:               ev.name as string,
@@ -535,7 +595,7 @@ router.get('/deals/:dealId/events-context', async (req: Request, res: Response) 
         ingestionSource:    ev.ingestion_source as string | undefined,
         sourceUrl:          ev.source_url as string | undefined,
         updatedAt:          ev.updated_at ? new Date(ev.updated_at as string).toISOString() : undefined,
-        newsItems:          ids.map(id => newsItemMap.get(id)).filter(Boolean),
+        newsItems,
       };
     });
 
