@@ -13,6 +13,9 @@ import { ZoningAgent } from '../../agents/zoning.agent';
 import { SupplyAgent } from '../../agents/supply.agent';
 import { CashFlowAgent } from '../../agents/cashflow.agent';
 import { logger } from '../../utils/logger';
+import { buildPersonaPrompt, getPersona } from '../../coordinator/personas/index';
+import { buildFragmentPrompt, type FragmentDealContext } from '../../coordinator/context-fragments';
+import { SPECIALIST_PERSONA_MAP, type SpecialistKey } from '../../coordinator/dispatch';
 import type {
   AICallContext,
   ChatSession,
@@ -467,7 +470,47 @@ Respond with a concise comparison highlighting which deal is stronger and why.`;
   ): Promise<CoordinatorResult> {
     const activeDeal = session.activeDeals[session.activeDeals.length - 1];
 
-    let systemContext = 'You are the JEDI RE real estate investment assistant.';
+    // ── Persona + fragment selection ─────────────────────────────
+    const specialistKey = this.detectSpecialistFromQuestion(intent.question || '');
+    const personaEntry = specialistKey ? SPECIALIST_PERSONA_MAP[specialistKey] : null;
+
+    let personaHeader: string | undefined;
+    let systemContext: string;
+
+    if (personaEntry) {
+      const persona = getPersona(personaEntry.personaId);
+      const personaBlock = buildPersonaPrompt(personaEntry.personaId);
+
+      // Build deal context for fragment injection
+      const dealCtx: FragmentDealContext | undefined = activeDeal
+        ? {
+            address: activeDeal.address,
+            city: activeDeal.dealContext?.market?.msa,
+            marketStats: activeDeal.dealContext
+              ? {
+                  vacancyRate: activeDeal.dealContext.market.vacancyRate,
+                  avgRent: activeDeal.dealContext.market.avgRent,
+                  rentGrowthYoY: activeDeal.dealContext.market.rentGrowthYoY,
+                  absorptionRate: activeDeal.dealContext.market.absorptionUnitsPerMonth,
+                }
+              : undefined,
+          }
+        : undefined;
+
+      const fragmentBlock = personaEntry.fragmentKey
+        ? buildFragmentPrompt(personaEntry.fragmentKey, dealCtx)
+        : '';
+
+      systemContext = personaBlock + fragmentBlock;
+
+      if (persona) {
+        personaHeader = `${persona.displayName} — ${personaEntry.domainLabel}`;
+      }
+    } else {
+      systemContext = 'You are the JEDI RE real estate investment assistant.';
+    }
+
+    // Append active deal context regardless of persona
     if (activeDeal) {
       systemContext += `\n\nCurrent active deal: ${activeDeal.address}`;
       systemContext += `\nJEDI Score: ${activeDeal.jediScore}/100`;
@@ -491,7 +534,28 @@ Respond with a concise comparison highlighting which deal is stronger and why.`;
       .map((b) => b.text)
       .join('');
 
-    return this.textResult(session, text);
+    const result = this.textResult(session, text);
+    return personaHeader ? { ...result, personaHeader } : result;
+  }
+
+  /**
+   * Detect which specialist domain the user's question belongs to using keyword
+   * matching. Returns null when no strong signal is present (falls back to
+   * generic assistant voice).
+   */
+  private detectSpecialistFromQuestion(question: string): SpecialistKey | null {
+    const q = question.toLowerCase();
+    if (/zoning|entitlement|setback|\bfar\b|density|height limit|permitted use|building code|overlay/.test(q)) return 'ZONING';
+    if (/cash flow|irr\b|noi\b|roi\b|yield|cap rate|dscr|proforma|underwrite|returns/.test(q)) return 'CASH';
+    if (/supply|inventory|pipeline|absorption|deliveries|units coming|new development|permits/.test(q)) return 'SUPPLY';
+    if (/demand|employment|jobs|population|rent growth|occupancy|migration|demographics/.test(q)) return 'DEMAND';
+    if (/\bcomps?\b|comparable|comp sale|rent comp|benchmark|similar properties|nearby deals|price per unit/.test(q)) return 'COMPS';
+    if (/\brisk\b|red flag|downside|concern|warning|exposure|alert/.test(q)) return 'RISK';
+    if (/\bdebt\b|loan|mortgage|financing|interest rate|lender|refinance|leverage|bridge/.test(q)) return 'DEBT';
+    if (/\bnews\b|headlines|sentiment|announcement|recent|market news|what.s happening/.test(q)) return 'NEWS';
+    if (/strategy|should i|hold or sell|exit|timing|best approach|recommendation/.test(q)) return 'STRATEGY';
+    if (/research|data|look up|find out|tell me about|market study/.test(q)) return 'RESEARCH';
+    return null;
   }
 
   // ── Handler: Greeting ────────────────────────────────────────

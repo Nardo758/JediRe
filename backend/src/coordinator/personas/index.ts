@@ -35,6 +35,8 @@ export type PersonaId =
 
 export interface AnalystPersona {
   id: PersonaId;
+  /** Human display name shown in the chat response header (e.g. "Marcus Chen") */
+  displayName: string;
   role: string;
   voicePrefix: string;
   emphasizeMetrics: string[];
@@ -51,6 +53,7 @@ export interface AnalystPersona {
 export const ANALYST_PERSONAS: Record<PersonaId, AnalystPersona> = {
   CFO: {
     id: 'CFO',
+    displayName: 'Jordan Wells',
     role: 'Chief Financial Officer',
     focus: 'returns, risk metrics, investment performance',
     voicePrefix:
@@ -67,6 +70,7 @@ export const ANALYST_PERSONAS: Record<PersonaId, AnalystPersona> = {
 
   ACCOUNTANT: {
     id: 'ACCOUNTANT',
+    displayName: 'Lynn Chen',
     role: 'Accountant',
     focus: 'tax implications, GAAP compliance, depreciation',
     voicePrefix:
@@ -83,6 +87,7 @@ export const ANALYST_PERSONAS: Record<PersonaId, AnalystPersona> = {
 
   MARKETING: {
     id: 'MARKETING',
+    displayName: 'Sofia Reyes',
     role: 'Marketing Expert',
     focus: 'positioning, lease-up strategy, branding',
     voicePrefix:
@@ -99,6 +104,7 @@ export const ANALYST_PERSONAS: Record<PersonaId, AnalystPersona> = {
 
   DEVELOPER: {
     id: 'DEVELOPER',
+    displayName: 'Marcus Chen',
     role: 'Developer',
     focus: 'construction feasibility, value-add, renovations',
     voicePrefix:
@@ -115,6 +121,7 @@ export const ANALYST_PERSONAS: Record<PersonaId, AnalystPersona> = {
 
   LEGAL: {
     id: 'LEGAL',
+    displayName: 'Eli Stern',
     role: 'Legal Advisor',
     focus: 'contracts, compliance, legal risk',
     voicePrefix:
@@ -131,6 +138,7 @@ export const ANALYST_PERSONAS: Record<PersonaId, AnalystPersona> = {
 
   LENDER: {
     id: 'LENDER',
+    displayName: 'Dasha Ivanova',
     role: 'Lender',
     focus: 'debt perspective, underwriting, financing',
     voicePrefix:
@@ -147,6 +155,7 @@ export const ANALYST_PERSONAS: Record<PersonaId, AnalystPersona> = {
 
   ACQUISITIONS: {
     id: 'ACQUISITIONS',
+    displayName: 'Reyna Torres',
     role: 'Acquisitions Director',
     focus: 'deal sourcing, negotiations, LOI terms',
     voicePrefix:
@@ -163,6 +172,7 @@ export const ANALYST_PERSONAS: Record<PersonaId, AnalystPersona> = {
 
   ASSET_MANAGER: {
     id: 'ASSET_MANAGER',
+    displayName: 'Victor Osei',
     role: 'Asset Manager',
     focus: 'NOI optimization, operations, business plan',
     voicePrefix:
@@ -179,6 +189,7 @@ export const ANALYST_PERSONAS: Record<PersonaId, AnalystPersona> = {
 
   PROPERTY_MANAGER: {
     id: 'PROPERTY_MANAGER',
+    displayName: 'Priya Nair',
     role: 'Property Manager',
     focus: 'tenant relations, maintenance, operations',
     voicePrefix:
@@ -195,6 +206,7 @@ export const ANALYST_PERSONAS: Record<PersonaId, AnalystPersona> = {
 
   LEASING: {
     id: 'LEASING',
+    displayName: 'Jake Monroe',
     role: 'Leasing Director',
     focus: 'vacancy reduction, renewals, rent pricing',
     voicePrefix:
@@ -211,6 +223,7 @@ export const ANALYST_PERSONAS: Record<PersonaId, AnalystPersona> = {
 
   FACILITIES: {
     id: 'FACILITIES',
+    displayName: 'Ben Carter',
     role: 'Facilities Manager',
     focus: 'CapEx planning, vendors, building systems',
     voicePrefix:
@@ -227,6 +240,7 @@ export const ANALYST_PERSONAS: Record<PersonaId, AnalystPersona> = {
 
   INVESTMENT_ANALYST: {
     id: 'INVESTMENT_ANALYST',
+    displayName: 'Alex Kim',
     role: 'Investment Analyst',
     focus: 'hold/sell analysis, refinance, exit strategy',
     voicePrefix:
@@ -243,6 +257,7 @@ export const ANALYST_PERSONAS: Record<PersonaId, AnalystPersona> = {
 
   ESG: {
     id: 'ESG',
+    displayName: 'Maya Green',
     role: 'ESG Specialist',
     focus: 'sustainability, energy efficiency, green certifications',
     voicePrefix:
@@ -259,6 +274,7 @@ export const ANALYST_PERSONAS: Record<PersonaId, AnalystPersona> = {
 
   COMPLIANCE: {
     id: 'COMPLIANCE',
+    displayName: 'Sam Davis',
     role: 'Compliance Officer',
     focus: 'insurance, permits, regulatory requirements',
     voicePrefix:
@@ -275,6 +291,7 @@ export const ANALYST_PERSONAS: Record<PersonaId, AnalystPersona> = {
 
   TAX: {
     id: 'TAX',
+    displayName: 'Rita Patel',
     role: 'Tax Strategist',
     focus: 'cost segregation, 1031 exchanges, depreciation',
     voicePrefix:
@@ -291,6 +308,7 @@ export const ANALYST_PERSONAS: Record<PersonaId, AnalystPersona> = {
 
   RESEARCHER: {
     id: 'RESEARCHER',
+    displayName: 'Elena Park',
     role: 'Market Researcher',
     focus: 'demographics, trends, competitive intelligence',
     voicePrefix:
@@ -315,7 +333,7 @@ export function buildPersonaPrompt(personaId: PersonaId): string {
   if (!persona) return '';
 
   return [
-    `## Analyst Persona: ${persona.role}`,
+    `## Analyst Persona: ${persona.displayName} — ${persona.role}`,
     '',
     persona.voicePrefix,
     '',

@@ -77,6 +77,14 @@ export interface OrchestratorResponse {
   inlineKeyboard?: {
     inline_keyboard: Array<Array<{ text: string; callback_data: string }>>;
   };
+
+  /**
+   * Persona header shown in the chat UI above the response text.
+   * Format: "{displayName} — {domainLabel}"
+   * e.g. "Dasha Ivanova — Debt & Financing"
+   * Present only when a specialist domain was activated.
+   */
+  personaHeader?: string;
   
   // Credits (for billing)
   creditsUsed?: number;

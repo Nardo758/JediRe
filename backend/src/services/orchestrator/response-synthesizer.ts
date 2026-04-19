@@ -12,6 +12,8 @@ import { generateCompletion, isLLMAvailable } from '../llm.service';
 import { logger } from '../../utils/logger';
 import type { DelegationResult } from './agent-delegator';
 import type { ExtractedIntent } from './intent-classifier';
+import { getPersona } from '../../coordinator/personas/index';
+import { SPECIALIST_PERSONA_MAP, type SpecialistKey } from '../../coordinator/dispatch';
 
 // ============================================================================
 // Types
@@ -47,6 +49,13 @@ export interface SynthesizedResponse {
     inline_keyboard: Array<Array<{ text: string; callback_data: string }>>;
   };
   
+  /**
+   * Persona header shown in the chat UI above the response text.
+   * Format: "{displayName} — {domainLabel}"
+   * e.g. "Reyna Torres — Comparable Sales"
+   */
+  personaHeader?: string;
+
   // Metadata
   executionTimeMs: number;
   timestamp: number;
@@ -108,10 +117,13 @@ export class ResponseSynthesizer {
       recommendation = this.getRecommendation(jediScore);
     }
     
-    // Synthesize text response
+    // Derive persona header from the primary analyst or specialist result
+    const personaHeader = this.derivePersonaHeader(successfulResults);
+
+    // Synthesize text response — inject persona voice when available
     let text: string;
     if (isLLMAvailable()) {
-      text = await this.llmSynthesize(intent, successfulResults, jediScore, recommendation);
+      text = await this.llmSynthesize(intent, successfulResults, jediScore, recommendation, personaHeader);
     } else {
       text = this.fallbackSynthesize(successfulResults);
     }
@@ -138,6 +150,7 @@ export class ResponseSynthesizer {
       agentContributions,
       suggestedFollowups,
       inlineKeyboard,
+      personaHeader,
       executionTimeMs: Date.now() - startTime,
       timestamp: Date.now(),
     };
@@ -219,24 +232,84 @@ export class ResponseSynthesizer {
   }
   
   /**
+   * Derive persona header from the primary analyst or specialist result.
+   * Priority: analyst results first (they carry a personaId), then
+   * fragment specialist results (they carry personaId + domainLabel).
+   */
+  private derivePersonaHeader(results: DelegationResult[]): string | undefined {
+    // 1. Primary analyst result with a known personaId
+    const analystResult = results.find(r => r.agentType === 'analyst' && r.personaId && r.success);
+    if (analystResult?.personaId) {
+      const persona = getPersona(analystResult.personaId);
+      if (persona) {
+        // Use domain label from SPECIALIST_PERSONA_MAP if we can match the agent key,
+        // otherwise fall back to the persona's own role name.
+        const mapEntry = SPECIALIST_PERSONA_MAP[analystResult.agent as SpecialistKey];
+        const domainLabel = mapEntry?.domainLabel ?? persona.role;
+        return `${persona.displayName} — ${domainLabel}`;
+      }
+    }
+
+    // 2. Fragment specialist result with a personaId + domainLabel
+    const fragmentResult = results.find(
+      r => r.agentType === 'specialist' && r.personaId && r.domainLabel && r.success
+    );
+    if (fragmentResult?.personaId && fragmentResult?.domainLabel) {
+      const persona = getPersona(fragmentResult.personaId);
+      if (persona) {
+        return `${persona.displayName} — ${fragmentResult.domainLabel}`;
+      }
+    }
+
+    // 3. Layer 1 specialist — derive from SPECIALIST_PERSONA_MAP
+    const layer1Result = results.find(
+      r => r.agentType === 'specialist' && !r.domainLabel && r.success &&
+        Object.keys(SPECIALIST_PERSONA_MAP).includes(r.agent)
+    );
+    if (layer1Result) {
+      const mapEntry = SPECIALIST_PERSONA_MAP[layer1Result.agent as SpecialistKey];
+      if (mapEntry) {
+        const persona = getPersona(mapEntry.personaId);
+        if (persona) {
+          return `${persona.displayName} — ${mapEntry.domainLabel}`;
+        }
+      }
+    }
+
+    return undefined;
+  }
+
+  /**
    * LLM-powered synthesis
    */
   private async llmSynthesize(
     intent: ExtractedIntent,
     results: DelegationResult[],
     jediScore?: number,
-    recommendation?: string
+    recommendation?: string,
+    personaHeader?: string
   ): Promise<string> {
     const dataContext = results
       .map(r => `[${r.agent}]:\n${JSON.stringify(r.data, null, 2)}`)
       .join('\n\n');
+
+    // Build persona voice block for the primary agent when available
+    const primaryAnalyst = results.find(r => r.agentType === 'analyst' && r.personaId && r.success);
+    const personaVoice = primaryAnalyst?.personaId
+      ? (() => {
+          const p = getPersona(primaryAnalyst.personaId);
+          if (!p) return '';
+          return `\n\nYou are responding as ${p.displayName} (${p.role}). ${p.voicePrefix}\nEmphasize: ${p.emphasizeMetrics.slice(0, 3).join(', ')}.`;
+        })()
+      : '';
     
-    const prompt = `You are JEDI, the AI orchestrator for a real estate investment platform.
+    const prompt = `You are JEDI, the AI orchestrator for a real estate investment platform.${personaVoice}
 Synthesize this analysis into a clear, actionable response.
 
 User Query: "${intent.question}"
 ${intent.address ? `Property: ${intent.address}` : ''}
 ${jediScore !== undefined ? `JEDI Score: ${jediScore}/100 (${recommendation})` : ''}
+${personaHeader ? `Responding as: ${personaHeader}` : ''}
 
 Agent Data:
 ${dataContext}
@@ -248,7 +321,8 @@ Guidelines:
 - Use bullet points for multiple metrics
 - Format numbers nicely ($1.5M, 8.5%, etc.)
 - End with a clear next step or question
-${jediScore !== undefined ? `- Reference the JEDI score and what's driving it` : ''}`;
+${jediScore !== undefined ? `- Reference the JEDI score and what's driving it` : ''}
+${personaVoice ? `- Respond in the voice and framing of the persona above` : ''}`;
 
     try {
       const response = await generateCompletion({

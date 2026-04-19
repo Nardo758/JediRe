@@ -353,6 +353,13 @@ export interface CoordinatorResult {
   creditsUsed: number;
   creditsRemaining: number;
   mapThumbnailUrl?: string;
+  /**
+   * Persona header shown in the chat UI above the response text.
+   * Format: "{displayName} — {domainLabel}"
+   * e.g. "Marcus Chen — Zoning & Entitlements"
+   * Present only when a specialist domain was detected in the user's question.
+   */
+  personaHeader?: string;
 }
 
 // ── Chat Types ──────────────────────────────────────────────────

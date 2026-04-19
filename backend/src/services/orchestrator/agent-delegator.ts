@@ -24,6 +24,7 @@ import { MetricRecommendationService } from '../metricRecommendation.service';
 // ── Coordinator layer ─────────────────────────────────────────────
 import {
   INTENT_DISPATCH,
+  SPECIALIST_PERSONA_MAP,
   isAgentDispatch,
   isFragmentDispatch,
   type SpecialistKey,
@@ -47,6 +48,16 @@ export interface DelegationResult {
   executionTimeMs: number;
   success: boolean;
   error?: string;
+  /**
+   * For analyst results: the PersonaId that was used to generate the response.
+   * Used by ResponseSynthesizer to build the persona header.
+   */
+  personaId?: string;
+  /**
+   * For specialist results mapped via SPECIALIST_PERSONA_MAP: the domain label
+   * used in the persona header (e.g. "Zoning & Entitlements").
+   */
+  domainLabel?: string;
 }
 
 export interface DelegationRequest {
@@ -154,6 +165,7 @@ export class AgentDelegator {
     // ── Layer 2: Context fragment injection ───────────────────────
     if (isFragmentDispatch(dispatch)) {
       const fragmentPrompt = buildFragmentPrompt(dispatch.fragmentKey);
+      const personaMapEntry = SPECIALIST_PERSONA_MAP[agent as SpecialistKey];
       return {
         agent,
         agentType: 'specialist',
@@ -164,6 +176,8 @@ export class AgentDelegator {
         },
         executionTimeMs: Date.now() - startTime,
         success: true,
+        personaId: personaMapEntry?.personaId,
+        domainLabel: personaMapEntry?.domainLabel,
       };
     }
 
@@ -372,6 +386,7 @@ export class AgentDelegator {
         summary: response.text,
         executionTimeMs: Date.now() - startTime,
         success: true,
+        personaId: agent,
       };
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);

@@ -19,6 +19,7 @@ import { researchRuntime } from '../agents/research.config';
 import { zoningRuntime } from '../agents/zoning.config';
 import { supplyRuntime } from '../agents/supply.config';
 import { cashflowRuntime } from '../agents/cashflow.config';
+import type { PersonaId } from './personas/index';
 
 export type SpecialistKey =
   | 'RESEARCH' | 'ZONING' | 'SUPPLY' | 'CASH'
@@ -115,3 +116,38 @@ export function isAgentDispatch(entry: DispatchEntry): entry is AgentDispatch {
 export function isFragmentDispatch(entry: DispatchEntry): entry is FragmentDispatch {
   return entry.type === 'fragment';
 }
+
+// ── Specialist → Persona mapping ────────────────────────────────────────────
+
+export interface SpecialistPersonaEntry {
+  /** PersonaId whose voice prefix is injected for this specialist domain */
+  personaId: PersonaId;
+  /** Human-readable domain label used in the chat response header */
+  domainLabel: string;
+  /**
+   * fragmentKey for Layer 2 specialists — used to inject the context fragment
+   * alongside the persona voice prefix. Undefined for Layer 1 agent specialists.
+   */
+  fragmentKey?: string;
+}
+
+/**
+ * Maps each SpecialistKey to the persona that speaks for that domain.
+ * Used by AICoordinator.handleQuestion() and ResponseSynthesizer to select
+ * the analyst voice and build the response header.
+ *
+ * Header format: "{persona.displayName} — {domainLabel}"
+ * e.g. "Marcus Chen — Zoning & Entitlements"
+ */
+export const SPECIALIST_PERSONA_MAP: Record<SpecialistKey, SpecialistPersonaEntry> = {
+  ZONING:    { personaId: 'DEVELOPER',          domainLabel: 'Zoning & Entitlements' },
+  SUPPLY:    { personaId: 'RESEARCHER',          domainLabel: 'Supply & Pipeline' },
+  CASH:      { personaId: 'CFO',                 domainLabel: 'Cash Flow & Returns' },
+  RESEARCH:  { personaId: 'RESEARCHER',          domainLabel: 'Market Research' },
+  DEMAND:    { personaId: 'RESEARCHER',          domainLabel: 'Demand Analysis',       fragmentKey: 'demand' },
+  COMPS:     { personaId: 'ACQUISITIONS',        domainLabel: 'Comparable Sales',      fragmentKey: 'comps' },
+  RISK:      { personaId: 'LEGAL',               domainLabel: 'Risk Assessment',       fragmentKey: 'risk' },
+  DEBT:      { personaId: 'LENDER',              domainLabel: 'Debt & Financing',      fragmentKey: 'debt' },
+  NEWS:      { personaId: 'RESEARCHER',          domainLabel: 'Market News & Sentiment', fragmentKey: 'news' },
+  STRATEGY:  { personaId: 'INVESTMENT_ANALYST',  domainLabel: 'Investment Strategy',   fragmentKey: 'strategy' },
+};

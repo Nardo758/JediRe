@@ -135,6 +135,23 @@ For the recommended strategy, provide:
 };
 
 /**
+ * Optional deal context injected into fragment prompts to make them
+ * more specific to the active property.
+ */
+export interface FragmentDealContext {
+  address?: string;
+  city?: string;
+  stateCode?: string;
+  propertyType?: string;
+  marketStats?: {
+    vacancyRate?: number;
+    avgRent?: number;
+    rentGrowthYoY?: number;
+    absorptionRate?: number;
+  };
+}
+
+/**
  * Get a context fragment by key. Returns null if not found.
  */
 export function getContextFragment(fragmentKey: string): ContextFragment | null {
@@ -144,9 +161,32 @@ export function getContextFragment(fragmentKey: string): ContextFragment | null 
 /**
  * Build a system prompt injection string for a given fragment key.
  * Combines the fragment title + systemSnippet for insertion into the general LLM handler.
+ * When dealCtx is provided, appends a concise property-specific context block so
+ * the specialist grounds its analysis in the active deal's data points.
  */
-export function buildFragmentPrompt(fragmentKey: string): string {
+export function buildFragmentPrompt(fragmentKey: string, dealCtx?: FragmentDealContext): string {
   const fragment = getContextFragment(fragmentKey);
   if (!fragment) return '';
-  return `\n\n## ${fragment.title} Focus\n\n${fragment.systemSnippet}\n\n**Output guidance**: ${fragment.outputGuidance}`;
+
+  let prompt = `\n\n## ${fragment.title} Focus\n\n${fragment.systemSnippet}\n\n**Output guidance**: ${fragment.outputGuidance}`;
+
+  if (dealCtx) {
+    const lines: string[] = [];
+    if (dealCtx.address) lines.push(`Property: ${dealCtx.address}`);
+    if (dealCtx.city && dealCtx.stateCode) lines.push(`Market: ${dealCtx.city}, ${dealCtx.stateCode}`);
+    else if (dealCtx.city) lines.push(`Market: ${dealCtx.city}`);
+    if (dealCtx.propertyType) lines.push(`Asset type: ${dealCtx.propertyType}`);
+    if (dealCtx.marketStats) {
+      const s = dealCtx.marketStats;
+      if (s.vacancyRate !== undefined) lines.push(`Vacancy: ${s.vacancyRate}%`);
+      if (s.avgRent !== undefined) lines.push(`Avg rent: $${s.avgRent.toLocaleString()}/mo`);
+      if (s.rentGrowthYoY !== undefined) lines.push(`Rent growth YoY: ${s.rentGrowthYoY}%`);
+      if (s.absorptionRate !== undefined) lines.push(`Absorption: ${s.absorptionRate} units/mo`);
+    }
+    if (lines.length > 0) {
+      prompt += `\n\n**Active deal context**:\n${lines.map(l => `- ${l}`).join('\n')}`;
+    }
+  }
+
+  return prompt;
 }
