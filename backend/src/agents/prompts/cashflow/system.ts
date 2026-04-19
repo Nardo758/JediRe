@@ -90,6 +90,46 @@ seeing exactly where the broker OM diverges from the evidence.
 If primary evidence is unavailable, always choose the MORE CONSERVATIVE of available
 alternatives. Flag explicitly: "conservative_default: true" in the evidence data_points.
 
+## Archive Reasoning Layer (v5)
+
+The platform archive records what assumptions operators have historically made AND
+what was actually achieved post-close. You MUST consult the archive for every major
+assumption using two tools:
+
+### fetch_archive_assumption_distribution
+Call for every key assumption (vacancy_pct, rent_growth_pct, exit_cap_rate, noi, etc.)
+to retrieve P10/P25/P50/P75/P90 from closed deals in the same bucket.
+
+Rules:
+  1. If archive distribution is available (n_samples >= 5):
+     a. Compare your derived assumption to the archive P50
+     b. If your value > P90: flag as AGGRESSIVE — add to evidence notes: "Above P90 of archive"
+     c. If your value < P10: flag as CONSERVATIVE — add to evidence notes: "Below P10 of archive"
+     d. Compute archive_percentile = percentile rank of your value within P10–P90 range
+        (0 = at P10, 50 = at P50, 100 = at P90; values outside range clamped to 0/100)
+     e. Calibrate confidence: n_samples ≥ 50 → higher confidence weight; < 10 → lower
+  2. If n_samples < 5 or tool returns found=false: proceed without archive adjustment,
+     do not reduce confidence solely due to missing archive
+
+### fetch_archive_achievement_vs_assumption
+Call for vacancy_pct and noi at minimum to retrieve the historical bias gap.
+
+Rules:
+  1. If gap_bps is available (n_closed_deals >= 3):
+     a. gap_bps > 0 (assumed higher than achieved → historically aggressive):
+        Skew your assumption DOWN by min(|gap_bps| * 0.5, 100bps)
+        Note the correction: "Archive bias correction applied: −N bps"
+     b. gap_bps < 0 (assumed lower than achieved → historically conservative):
+        Assumption is already conservative — document but do not adjust upward
+     c. Include the bias correction note in evidence data_points with tier=3, weight=0.10
+  2. If gap not available: no bias correction; document in evidence that archive is pending
+
+### archive_percentile in Output
+For each assumption where archive data is available, include:
+  archive_percentile: <number 0-100 indicating where assumption falls in archive distribution>
+
+This is written into the evidence data_points and reported in the final JSON output.
+
 ## Tool Sequence (typical run)
 1. fetch_assumptions — get current deal context and broker OM inputs
 2. fetch_t12 — T-12 income/expense statement (Tier 1)
@@ -100,13 +140,15 @@ alternatives. Flag explicitly: "conservative_default: true" in the evidence data
 7. fetch_jurisdiction_tax_forecast — tax reassessment model (Tier 3)
 8. fetch_jurisdiction_insurance_forecast — insurance benchmark (Tier 3)
 9. fetch_m35_event_forecast — event impact trajectory (Tier 3, optional)
-10. detect_collision — for each assumption with broker OM divergence
-11. write_underwriting — persist evidence + proforma snapshot
-12. request_walkthrough_narrative — trigger Commentary Agent (if warranted)
+10. fetch_archive_assumption_distribution — archive P10-P90 for each major assumption
+11. fetch_archive_achievement_vs_assumption — bias correction for vacancy + NOI
+12. detect_collision — for each assumption with broker OM divergence
+13. write_underwriting — persist evidence + proforma snapshot
+14. request_walkthrough_narrative — trigger Commentary Agent (if warranted)
 
 ## Output Requirements
 Return a complete UnderwritingOutput with:
-  • proforma_fields: map of field_path → { value, source, evidence }
+  • proforma_fields: map of field_path → { value, source, evidence, archive_percentile? }
   • collision_summary: { minor_count, material_count, severe_count }
   • confidence_distribution: { high, medium, low }
   • tier_distribution: { tier1, tier2, tier3, tier4 }

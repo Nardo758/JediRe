@@ -5,8 +5,7 @@
  *   • Collision counter (minor / material / severe) — click to filter
  *   • Confidence distribution (high / medium / low)
  *   • Tier distribution (T1 / T2 / T3 / T4)
- *
- * Archive Percentile is deferred to task #244.
+ *   • Archive Percentile chip — shows after archive has >= 10 deals in the bucket
  */
 
 import React from 'react';
@@ -35,6 +34,7 @@ interface F9SummaryBarProps {
   collision_summary?: CollisionSummary;
   confidence_distribution?: ConfidenceDistribution;
   tier_distribution?: TierDistribution;
+  archive_percentile?: number | null;
   onFilterChange?: (filter: { type: 'collision' | 'confidence' | 'tier'; value: string } | null) => void;
   activeFilter?: { type: 'collision' | 'confidence' | 'tier'; value: string } | null;
 }
@@ -76,12 +76,13 @@ export function F9SummaryBar({
   collision_summary,
   confidence_distribution,
   tier_distribution,
+  archive_percentile,
   onFilterChange,
   activeFilter,
 }: F9SummaryBarProps) {
   const mono = BT.font.mono;
 
-  if (!collision_summary && !confidence_distribution && !tier_distribution) {
+  if (!collision_summary && !confidence_distribution && !tier_distribution && archive_percentile == null) {
     return null;
   }
 
@@ -192,6 +193,29 @@ export function F9SummaryBar({
             />
           )}
         </div>
+      )}
+
+      {/* Archive percentile chip — only shown when archive has enough data */}
+      {archive_percentile != null && (
+        <>
+          <div style={{ width: 1, height: 16, background: BT.border.subtle }} />
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 4,
+            padding: '2px 8px', borderRadius: 3,
+            background: `${BT.text.purple}18`,
+            border: `1px solid ${BT.text.purple}44`,
+          }}>
+            <span style={{ fontFamily: mono, fontSize: 7, color: BT.text.purple, letterSpacing: 0.5 }}>
+              ARCHIVE
+            </span>
+            <span style={{ fontFamily: mono, fontSize: 9, fontWeight: 700, color: BT.text.amber }}>
+              {archive_percentile}th pct
+            </span>
+            <span style={{ fontFamily: mono, fontSize: 7, color: BT.text.muted }}>
+              {archive_percentile >= 75 ? '▲ AGGRESSIVE' : archive_percentile <= 25 ? '▼ CONSERVATIVE' : '● IN RANGE'}
+            </span>
+          </div>
+        </>
       )}
 
       {/* Clear filter button */}

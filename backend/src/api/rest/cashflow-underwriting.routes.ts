@@ -184,6 +184,78 @@ dealUnderwritingRouter.get(
         ),
       ]);
 
+      // ── Archive context: lookup most recent benchmark for this field ──────
+      // Uses the deal's asset_class and deal_type if available; falls back to
+      // the broadest bucket (submarket_id=NULL) with n_samples >= 5.
+      // Tier-gated: Scout tier does not see archive context.
+      let archiveContext: Record<string, unknown> | null = null;
+      try {
+        const tierCheckResult = await query(
+          `SELECT COALESCE(u.tier, 'scout') AS tier FROM users u WHERE u.id = $1 LIMIT 1`,
+          [req.user!.userId]
+        );
+        const userTierForArchive = ((tierCheckResult.rows[0] as Record<string, unknown> | undefined)?.tier as string | undefined) ?? 'scout';
+        if (userTierForArchive.toLowerCase() === 'scout') {
+          // Scout tier: no archive context
+        } else {
+        const dealMetaResult = await query(
+          `SELECT COALESCE(d.asset_class, 'unknown') AS asset_class,
+                  COALESCE(d.deal_type, 'existing')  AS deal_type
+           FROM deals d WHERE d.id = $1 LIMIT 1`,
+          [dealId]
+        );
+        const dealMeta = dealMetaResult.rows[0] as Record<string, unknown> | undefined;
+        if (dealMeta) {
+          const archiveResult = await query(
+            `SELECT p10, p25, p50, p75, p90, n_samples, as_of
+             FROM archive_assumption_benchmarks
+             WHERE asset_class     = $1
+               AND deal_type       = $2
+               AND assumption_name = $3
+               AND n_samples      >= 5
+             ORDER BY as_of DESC
+             LIMIT 1`,
+            [dealMeta.asset_class, dealMeta.deal_type, fieldPath]
+          );
+          if (archiveResult.rows.length > 0) {
+            const ar = archiveResult.rows[0] as Record<string, unknown>;
+            const p10 = ar.p10 !== null ? Number(ar.p10) : null;
+            const p90 = ar.p90 !== null ? Number(ar.p90) : null;
+            const evidenceRow = result.rows[0] as Record<string, unknown> | undefined;
+            const assumedValue = evidenceRow
+              ? (evidenceRow.value_numeric !== null ? Number(evidenceRow.value_numeric) : null)
+              : null;
+            let archivePercentile: number | null = null;
+            if (assumedValue !== null && p10 !== null && p90 !== null && p90 !== p10) {
+              archivePercentile = Math.round(
+                Math.max(0, Math.min(100, ((assumedValue - p10) / (p90 - p10)) * 100))
+              );
+            }
+            archiveContext = {
+              p10,
+              p25: ar.p25 !== null ? Number(ar.p25) : null,
+              p50: ar.p50 !== null ? Number(ar.p50) : null,
+              p75: ar.p75 !== null ? Number(ar.p75) : null,
+              p90,
+              n_samples: Number(ar.n_samples),
+              as_of: ar.as_of,
+              archive_percentile: archivePercentile,
+              range_label: (() => {
+                if (archivePercentile === null) return null;
+                if (archivePercentile >= 90) return 'AGGRESSIVE · Above P90';
+                if (archivePercentile >= 75) return 'ABOVE MEDIAN';
+                if (archivePercentile >= 25) return 'IN RANGE · Near P50';
+                if (archivePercentile >= 10) return 'BELOW MEDIAN';
+                return 'CONSERVATIVE · Below P10';
+              })(),
+            };
+          }
+        }
+        } // end else (non-Scout tier)
+      } catch {
+        // Archive context is non-blocking — evidence is still returned without it
+      }
+
       const overrideRow = overrideResult.rows[0] as Record<string, unknown> | undefined;
       const activeOverride = overrideRow
         ? {
@@ -194,7 +266,14 @@ dealUnderwritingRouter.get(
         : null;
 
       if (result.rows.length === 0) {
-        res.json({ success: true, evidence: null, active_override: activeOverride, deal_id: dealId, field_path: fieldPath });
+        res.json({
+          success: true,
+          evidence: null,
+          active_override: activeOverride,
+          archive_context: archiveContext,
+          deal_id: dealId,
+          field_path: fieldPath,
+        });
         return;
       }
 
@@ -216,6 +295,7 @@ dealUnderwritingRouter.get(
           agent_run_id: row.agent_run_id,
         },
         active_override: activeOverride,
+        archive_context: archiveContext,
         deal_id: dealId,
         field_path: fieldPath,
       });
@@ -557,12 +637,87 @@ dealUnderwritingRouter.get(
 
       const int = (v: unknown) => parseInt(String(v ?? 0), 10);
 
+      // ── Archive percentile: compute deal-level position vs archive ──────────
+      // Median archive_percentile across all underwritten fields for this deal,
+      // using the deal's asset_class + deal_type as the bucket key.
+      // Only computed when the archive table has >= 10 deals in the bucket.
+      // Tier-gated: Scout tier does not see archive percentile.
+      let archivePercentile: number | null = null;
+      try {
+        const summaryTierCheck = await query(
+          `SELECT COALESCE(u.tier, 'scout') AS tier FROM users u WHERE u.id = $1 LIMIT 1`,
+          [req.user!.userId]
+        );
+        const summaryUserTier = ((summaryTierCheck.rows[0] as Record<string, unknown> | undefined)?.tier as string | undefined) ?? 'scout';
+        if (summaryUserTier.toLowerCase() === 'scout') {
+          // Scout: no archive percentile
+        } else {
+        const dealMetaRes = await query(
+          `SELECT COALESCE(d.asset_class, 'unknown') AS asset_class,
+                  COALESCE(d.deal_type, 'existing')  AS deal_type
+           FROM deals d WHERE d.id = $1 LIMIT 1`,
+          [dealId]
+        );
+        const dm = dealMetaRes.rows[0] as Record<string, unknown> | undefined;
+        if (dm) {
+          const apResult = await query(
+            `WITH field_percentiles AS (
+               SELECT
+                 ue.field_path,
+                 ue.value_numeric,
+                 ab.p10,
+                 ab.p90,
+                 ab.n_samples,
+                 CASE
+                   WHEN ue.value_numeric IS NULL OR ab.p10 IS NULL OR ab.p90 IS NULL OR ab.p90 = ab.p10
+                   THEN NULL
+                   ELSE GREATEST(0, LEAST(100,
+                     ((ue.value_numeric - ab.p10) / (ab.p90 - ab.p10)) * 100
+                   ))
+                 END AS field_archive_pct
+               FROM (
+                 SELECT DISTINCT ON (field_path)
+                   field_path, value_numeric
+                 FROM underwriting_evidence
+                 WHERE deal_id = $1
+                 ORDER BY field_path, created_at DESC
+               ) ue
+               LEFT JOIN LATERAL (
+                 SELECT p10, p90, n_samples
+                 FROM archive_assumption_benchmarks
+                 WHERE asset_class     = $2
+                   AND deal_type       = $3
+                   AND assumption_name = ue.field_path
+                   AND n_samples      >= 10
+                 ORDER BY as_of DESC
+                 LIMIT 1
+               ) ab ON true
+             )
+             SELECT
+               ROUND(PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY field_archive_pct))::int AS median_archive_pct,
+               COUNT(*) FILTER (WHERE field_archive_pct IS NOT NULL) AS matched_fields
+             FROM field_percentiles`,
+            [dealId, dm.asset_class, dm.deal_type]
+          );
+          const apRow = apResult.rows[0] as Record<string, unknown> | undefined;
+          if (apRow && Number(apRow.matched_fields) >= 3) {
+            archivePercentile = apRow.median_archive_pct !== null
+              ? Math.round(Number(apRow.median_archive_pct))
+              : null;
+          }
+        }
+        } // end else (non-Scout tier)
+      } catch {
+        // Archive percentile is non-blocking
+      }
+
       res.json({
         success: true,
         deal_id: dealId,
         field_count: int(row?.field_count),
         latest_run_at: row?.latest_run_at ?? null,
         snapshot_id: snapshotId,
+        archive_percentile: archivePercentile,
         collision_summary: {
           total_collisions: int(row?.total_collisions),
           severe_count: int(row?.severe_collisions),

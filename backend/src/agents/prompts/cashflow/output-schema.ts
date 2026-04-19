@@ -2,7 +2,8 @@
  * CashFlow Agent — Structured Output Schema
  *
  * Every proforma field is an UnderwritingOutputField with full evidence chain.
- * Archive percentile is deferred to task #244.
+ * archive_percentile (0-100) indicates where the assumption lands in the
+ * platform archive distribution — only present when archive has >= 5 samples.
  */
 
 export const CASHFLOW_OUTPUT_SCHEMA = {
@@ -22,6 +23,12 @@ export const CASHFLOW_OUTPUT_SCHEMA = {
           source: {
             type: 'string',
             description: 'LayeredValueSource — e.g. tier1:t12, tier2:owned_asset, tier3:platform',
+          },
+          archive_percentile: {
+            oneOf: [{ type: 'number', minimum: 0, maximum: 100 }, { type: 'null' }],
+            description:
+              'Where this assumption falls in the platform archive distribution (0=P10, 50=P50, 100=P90). ' +
+              'Null when archive has < 5 samples for this bucket.',
           },
           evidence: {
             type: 'object',

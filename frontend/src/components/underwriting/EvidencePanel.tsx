@@ -82,6 +82,18 @@ const MAGNITUDE_COLOR: Record<string, string> = {
   severe: BT.text.red,
 };
 
+interface ArchiveContext {
+  p10: number | null;
+  p25: number | null;
+  p50: number | null;
+  p75: number | null;
+  p90: number | null;
+  n_samples: number;
+  as_of: string;
+  archive_percentile: number | null;
+  range_label: string | null;
+}
+
 interface ActiveOverride {
   value: unknown;
   overridden_at: string;
@@ -98,6 +110,7 @@ export function EvidencePanel({ dealId, fieldPath, fieldLabel, onClose, onOverri
   const [overrideDone, setOverrideDone] = useState(false);
   const [activeOverride, setActiveOverride] = useState<ActiveOverride | null>(null);
   const [reverting, setReverting] = useState(false);
+  const [archiveContext, setArchiveContext] = useState<ArchiveContext | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -110,6 +123,7 @@ export function EvidencePanel({ dealId, fieldPath, fieldLabel, onClose, onOverri
         if (mounted) {
           setEvidence(data.evidence ?? null);
           setActiveOverride(data.active_override ?? null);
+          setArchiveContext(data.archive_context ?? null);
           setLoading(false);
         }
       })
@@ -362,6 +376,90 @@ export function EvidencePanel({ dealId, fieldPath, fieldLabel, onClose, onOverri
                         )}
                       </div>
                     ))
+                  )}
+
+                  {/* ── ARCHIVE CONTEXT ──────────────────────────── */}
+                  {archiveContext && (
+                    <div style={{
+                      marginTop: 16, padding: '10px 12px',
+                      background: `${BT.text.purple}10`,
+                      border: `1px solid ${BT.text.purple}33`, borderRadius: 4,
+                    }}>
+                      <div style={{ fontFamily: mono, fontSize: 7, color: BT.text.purple, letterSpacing: 0.5, marginBottom: 8 }}>
+                        ARCHIVE CONTEXT · {archiveContext.n_samples} DEALS · as of {String(archiveContext.as_of).slice(0, 10)}
+                      </div>
+
+                      {/* P10–P90 range bar */}
+                      <div style={{ marginBottom: 8 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                          <span style={{ fontFamily: mono, fontSize: 7, color: BT.text.muted }}>P10</span>
+                          <span style={{ fontFamily: mono, fontSize: 7, color: BT.text.muted }}>P50</span>
+                          <span style={{ fontFamily: mono, fontSize: 7, color: BT.text.muted }}>P90</span>
+                        </div>
+                        <div style={{
+                          position: 'relative', height: 6, background: BT.bg.header, borderRadius: 3, overflow: 'visible',
+                        }}>
+                          {/* Filled bar from P25 to P75 */}
+                          <div style={{
+                            position: 'absolute', left: '25%', width: '50%', top: 0, bottom: 0,
+                            background: `${BT.text.purple}44`, borderRadius: 2,
+                          }} />
+                          {/* P50 marker */}
+                          <div style={{
+                            position: 'absolute', left: '50%', top: -2, width: 2, bottom: -2,
+                            background: BT.text.purple, transform: 'translateX(-50%)',
+                          }} />
+                          {/* Current value marker */}
+                          {archiveContext.archive_percentile !== null && (
+                            <div style={{
+                              position: 'absolute',
+                              left: `${archiveContext.archive_percentile}%`,
+                              top: -4, width: 3, height: 14,
+                              background: BT.text.amber,
+                              borderRadius: 1,
+                              transform: 'translateX(-50%)',
+                            }}
+                              title={`This assumption: ${archiveContext.archive_percentile}th percentile`}
+                            />
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+                          {[
+                            { label: 'P10', v: archiveContext.p10 },
+                            { label: 'P50', v: archiveContext.p50 },
+                            { label: 'P90', v: archiveContext.p90 },
+                          ].map(({ label, v }) => (
+                            <span key={label} style={{ fontFamily: mono, fontSize: 8, color: BT.text.secondary }}>
+                              {v !== null ? v.toFixed(3) : '—'}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      {archiveContext.archive_percentile !== null && (
+                        <div style={{
+                          fontFamily: mono, fontSize: 8, color: BT.text.amber, fontWeight: 700,
+                        }}>
+                          {archiveContext.archive_percentile}th percentile
+                          {archiveContext.range_label && (
+                            <span style={{ color: BT.text.muted, fontWeight: 400, marginLeft: 4 }}>
+                              — {archiveContext.range_label}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* No archive data message */}
+                  {!archiveContext && (
+                    <div style={{
+                      marginTop: 16, padding: '8px 10px',
+                      background: BT.bg.header, borderRadius: 3,
+                      fontFamily: mono, fontSize: 8, color: BT.text.muted,
+                    }}>
+                      ARCHIVE CONTEXT: Accumulating — will appear after 5+ comparable deals have been underwritten.
+                    </div>
                   )}
                 </div>
               )}

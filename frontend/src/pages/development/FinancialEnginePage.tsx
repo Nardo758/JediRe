@@ -82,6 +82,7 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
     collision_summary?: { minor_count: number; material_count: number; severe_count: number };
     confidence_distribution?: { high: number; medium: number; low: number };
     tier_distribution?: { tier1: number; tier2: number; tier3: number; tier4: number };
+    archive_percentile?: number | null;
   } | null>(null);
   const [evidenceFilter, setEvidenceFilter] = useState<{ type: 'collision' | 'confidence' | 'tier'; value: string } | null>(null);
 
@@ -481,6 +482,7 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
           collision_summary={evidenceSummary.collision_summary}
           confidence_distribution={evidenceSummary.confidence_distribution}
           tier_distribution={evidenceSummary.tier_distribution}
+          archive_percentile={evidenceSummary.archive_percentile}
           onFilterChange={setEvidenceFilter}
           activeFilter={evidenceFilter}
         />

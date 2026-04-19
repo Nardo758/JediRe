@@ -36,6 +36,8 @@ import { fetchM35EventForecastTool } from './tools/fetch_m35_event_forecast';
 import { detectCollisionTool } from './tools/detect_collision';
 import { writeUnderwritingTool } from './tools/write_underwriting';
 import { requestWalkthroughNarrativeTool } from './tools/request_walkthrough_narrative';
+import { fetchArchiveAssumptionDistributionTool } from './tools/fetch_archive_assumption_distribution';
+import { fetchArchiveAchievementVsAssumptionTool } from './tools/fetch_archive_achievement_vs_assumption';
 
 // ── Evidence-system output schema (v4) ───────────────────────────
 //
@@ -85,6 +87,9 @@ const ProformaFieldSchema = z.object({
   value: z.union([z.number(), z.string(), z.null()]),
   source: z.string(),
   evidence: EvidenceSchema,
+  archive_percentile: z.number().min(0).max(100).nullable().optional().describe(
+    'Where this assumption falls in the archive distribution (0=P10, 50=P50, 100=P90). Null if < 5 samples.'
+  ),
 });
 
 export const CashflowOutputSchema = z.object({
@@ -198,8 +203,8 @@ export async function buildCompositePrompt(dealRow: Record<string, unknown>): Pr
 
 export const CASHFLOW_AGENT_CONFIG: AgentConfig = {
   agentId: 'cashflow',
-  agentVersion: '3.0.0',
-  promptVersion: 'cashflow-v4-evidence',
+  agentVersion: '3.1.0',
+  promptVersion: 'cashflow-v5-archive',
   tools: [
     fetchT12Tool,
     fetchRentRollTool,
@@ -210,6 +215,8 @@ export const CASHFLOW_AGENT_CONFIG: AgentConfig = {
     fetchJurisdictionTaxForecastTool,
     fetchJurisdictionInsuranceForecastTool,
     fetchM35EventForecastTool,
+    fetchArchiveAssumptionDistributionTool,
+    fetchArchiveAchievementVsAssumptionTool,
     detectCollisionTool,
     computeProformaTool,
     writeProjectionTool,
