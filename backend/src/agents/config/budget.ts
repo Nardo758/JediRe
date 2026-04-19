@@ -31,10 +31,10 @@ export const DEFAULT_BUDGET_CAPS: Record<string, BudgetCaps> = {
     maxCostUsdPerUserPerMonth: Infinity,
   },
   cashflow: {
-    maxTokensPerRun: 300_000,
-    maxCostUsdPerRun: 3.00,
-    maxStepsPerRun: 25,
-    maxCostUsdPerDealPerDay: 20.00,
+    maxTokensPerRun: 800_000,
+    maxCostUsdPerRun: 8.00,
+    maxStepsPerRun: 35,
+    maxCostUsdPerDealPerDay: 25.00,
     maxCostUsdPerUserPerMonth: Infinity,
   },
   commentary: {

@@ -109,6 +109,7 @@ import columnPreferencesRoutes from './column-preferences.routes';
 import timeSeriesRoutes from './time-series.routes';
 import driverAnalysisRoutes from './driver-analysis.routes';
 import agentRunsRoutes, { dealAgentRunsRouter } from './agent-runs.routes';
+import cashflowUnderwritingRoutes, { dealUnderwritingRouter } from './cashflow-underwriting.routes';
 
 const API_PREFIX = '/api/v1';
 
@@ -162,6 +163,12 @@ export function setupRESTRoutes(app: Application): void {
 
   // Deal agent-run listing: GET /deals/:dealId/agent-runs
   app.use(`${API_PREFIX}/deals`, dealAgentRunsRouter);
+
+  // CashFlow Evidence System routes: /agents/cashflow/underwrite, /agents/runs/:runId/underwriting
+  app.use(`${API_PREFIX}/agents`, cashflowUnderwritingRoutes);
+
+  // Deal-scoped underwriting routes: assumptions evidence, overrides, walkthrough
+  app.use(`${API_PREFIX}/deals`, dealUnderwritingRouter);
 
   // Agent Settings routes (model selection, workforce config)
   app.use(`${API_PREFIX}/settings/agents`, agentSettingsRoutes);

@@ -1,104 +1,118 @@
 /**
- * CashFlow Agent Prompt Seed
- * Seeds the cashflow agent's active system prompt into prompt_versions.
+ * CashFlow Agent Prompt Seed (v4 — Evidence System)
+ *
+ * Seeds 6 prompt_versions entries for the cashflow agent:
+ *   • 1 core prompt    (prompt_type: 'core')
+ *   • 5 variant prompts (prompt_type: 'variant:existing', 'variant:value-add', etc.)
+ *
+ * Idempotent — safe to call on every agent run startup.
+ * The new prompt_type column (added in 20260419_cashflow_evidence.sql) allows one
+ * active row per (agent_id, prompt_type), enabling multi-variant prompts.
  */
 
 import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { CashflowOutputSchema } from '../cashflow.config';
+import { CASHFLOW_SYSTEM_PROMPT } from '../prompts/cashflow/system';
+import { CASHFLOW_OUTPUT_SCHEMA } from '../prompts/cashflow/output-schema';
+import { CASHFLOW_VARIANT_EXISTING } from '../prompts/cashflow/variants/existing';
+import { CASHFLOW_VARIANT_VALUE_ADD } from '../prompts/cashflow/variants/value-add';
+import { CASHFLOW_VARIANT_LEASE_UP } from '../prompts/cashflow/variants/lease-up';
+import { CASHFLOW_VARIANT_DEVELOPMENT } from '../prompts/cashflow/variants/development';
+import { CASHFLOW_VARIANT_REDEVELOPMENT } from '../prompts/cashflow/variants/redevelopment';
 import { z } from 'zod';
 
-const CASHFLOW_SYSTEM_PROMPT = `You are the JediRE CashFlow Agent — the financial modeling specialist for commercial real estate deals.
-
-Your mission is to build a rigorous multi-year pro forma projection from deal actuals and assumptions, then persist findings.
-
-## Workflow
-
-For each deal, execute this cashflow analysis sequence:
-1. **Deal assumptions** — use fetch_assumptions to retrieve purchase price, LTV, interest rate, vacancy, rent growth, exit cap rate, and hold period
-2. **T-12 actuals** — use fetch_t12 to retrieve trailing 12-month revenue, expenses, and NOI from uploaded operating statements
-3. **Rent roll** — use fetch_rent_roll to retrieve occupied/vacant units, average in-place rent, and lease expirations
-4. **Pro forma** — use compute_proforma to build year-by-year projections (NOI, debt service, cash flow, IRR, DSCR)
-5. **Persist** — call write_projection once with all computed fields as a structured object
-
-## Fields to pass to write_projection
-Call write_projection with a single object containing any or all of:
-- year1_noi: Year 1 NOI in dollars (from compute_proforma)
-- stabilized_yield_pct: Stabilized cap rate / yield as a percentage (e.g. 6.0 for 6%)
-- five_yr_irr: Projected 5-year IRR as a percentage (e.g. 14.2 for 14.2%)
-- breakeven_occupancy: Occupancy % required to cover debt service (e.g. 78.5 for 78.5%)
-- assumptions: Object with key modeling assumptions (purchase_price, ltv, interest_rate, vacancy_pct, rent_growth_pct, exit_cap_rate, hold_period_yrs, equity_invested, annual_debt_service, exit_value, dscr_year1, avg_cash_on_cash_pct, investment_rating)
-- summary: 2-4 sentence cashflow summary
-
-## Investment rating classification
-
-Rate the deal as:
-- **strong**: IRR > 15% AND DSCR > 1.4 AND cash-on-cash > 10%
-- **adequate**: IRR 10-15% AND DSCR 1.2-1.4 AND cash-on-cash 7-10%
-- **marginal**: IRR 7-10% OR DSCR 1.0-1.2 OR cash-on-cash 4-7%
-- **weak**: IRR < 7% OR DSCR < 1.0 OR cash-on-cash < 4%
-
-## Output format
-
-After persisting all data, respond with a JSON object matching this schema:
-{
-  "purchase_price": 5000000,
-  "noi_year1": 300000,
-  "year1_cap_rate_pct": 6.0,
-  "irr_pct": 14.2,
-  "avg_cash_on_cash_pct": 8.5,
-  "dscr_year1": 1.35,
-  "equity_invested": 1750000,
-  "exit_value": 6800000,
-  "investment_rating": "adequate",
-  "summary": "2-4 sentence cashflow and returns summary",
-  "has_t12_data": true,
-  "has_rent_roll": false,
-  "confidence_score": 0.0-1.0,
-  "fields_written": ["year1_noi", "five_yr_irr", "stabilized_yield_pct", "breakeven_occupancy", "assumptions", "summary"],
-  "completed_at": "<ISO timestamp>"
-}
-
-## Web Search
-
-**The CashFlow Agent does NOT have web search access.** Use only structured data tools:
-fetch_assumptions, fetch_t12, fetch_rent_roll, compute_proforma, write_projection.
-
-Financial underwriting requires deterministic, auditable inputs from structured sources. Do not attempt to use web_search — it is not registered for this agent.
-
-## Rules
-- When T-12 actuals are available, use them as the primary NOI source
-- When T-12 is absent, derive from rent roll and assumptions
-- Never hallucinate financial data — only use tool-returned values
-- Do not use web_search — it is not available to the CashFlow Agent
-- Document data source gaps in confidence_score
-- Write only the JSON output at the end, no prose before it`;
-
-const OUTPUT_SCHEMA_JSON = (() => {
+const LEGACY_OUTPUT_SCHEMA_JSON = (() => {
   return z.toJSONSchema(CashflowOutputSchema) as Record<string, unknown>;
 })();
 
+const EVIDENCE_PROMPTS: Array<{
+  id: string;
+  promptType: string;
+  version: string;
+  systemPrompt: string;
+}> = [
+  {
+    id: 'cashflow-v4-core',
+    promptType: 'core',
+    version: '4.0.0',
+    systemPrompt: CASHFLOW_SYSTEM_PROMPT,
+  },
+  {
+    id: 'cashflow-v4-variant-existing',
+    promptType: 'variant:existing',
+    version: '4.0.0',
+    systemPrompt: CASHFLOW_VARIANT_EXISTING,
+  },
+  {
+    id: 'cashflow-v4-variant-value-add',
+    promptType: 'variant:value-add',
+    version: '4.0.0',
+    systemPrompt: CASHFLOW_VARIANT_VALUE_ADD,
+  },
+  {
+    id: 'cashflow-v4-variant-lease-up',
+    promptType: 'variant:lease-up',
+    version: '4.0.0',
+    systemPrompt: CASHFLOW_VARIANT_LEASE_UP,
+  },
+  {
+    id: 'cashflow-v4-variant-development',
+    promptType: 'variant:development',
+    version: '4.0.0',
+    systemPrompt: CASHFLOW_VARIANT_DEVELOPMENT,
+  },
+  {
+    id: 'cashflow-v4-variant-redevelopment',
+    promptType: 'variant:redevelopment',
+    version: '4.0.0',
+    systemPrompt: CASHFLOW_VARIANT_REDEVELOPMENT,
+  },
+];
+
 export async function seedCashflowPrompt(): Promise<void> {
   try {
+    // Deactivate any stale active prompts for cashflow (except ones we're about to upsert)
+    const upcomingIds = EVIDENCE_PROMPTS.map(p => p.id);
     await query(
-      `UPDATE prompt_versions SET active = false
-       WHERE agent_id = 'cashflow' AND active = true AND id != 'cashflow-v3'`
+      `UPDATE prompt_versions
+       SET active = false
+       WHERE agent_id = 'cashflow'
+         AND active = true
+         AND id != ALL($1::text[])`,
+      [upcomingIds]
     );
 
-    await query(
-      `INSERT INTO prompt_versions
-         (id, agent_id, version, system_prompt, output_schema, active, created_at, created_by)
-       VALUES
-         ('cashflow-v3', 'cashflow', '3.0.0', $1, $2, true, NOW(), 'system')
-       ON CONFLICT (id) DO UPDATE
-         SET system_prompt = EXCLUDED.system_prompt,
-             output_schema = EXCLUDED.output_schema,
-             active = EXCLUDED.active`,
-      [CASHFLOW_SYSTEM_PROMPT, JSON.stringify(OUTPUT_SCHEMA_JSON)]
-    );
+    // Seed / update each prompt version (idempotent upsert by id)
+    for (const p of EVIDENCE_PROMPTS) {
+      await query(
+        `INSERT INTO prompt_versions
+           (id, agent_id, version, prompt_type, system_prompt, output_schema, tools, active, created_at, created_by)
+         VALUES
+           ($1, 'cashflow', $2, $3, $4, $5, '[]'::jsonb, true, NOW(), 'system')
+         ON CONFLICT (id) DO UPDATE
+           SET system_prompt  = EXCLUDED.system_prompt,
+               output_schema  = EXCLUDED.output_schema,
+               prompt_type    = EXCLUDED.prompt_type,
+               version        = EXCLUDED.version,
+               active         = true`,
+        [
+          p.id,
+          p.version,
+          p.promptType,
+          p.systemPrompt,
+          JSON.stringify(
+            p.promptType === 'core' ? CASHFLOW_OUTPUT_SCHEMA : LEGACY_OUTPUT_SCHEMA_JSON
+          ),
+        ]
+      );
+    }
 
-    logger.info('CashFlow Agent prompt seeded: cashflow-v3 (active)');
+    logger.info('CashFlow Agent prompts seeded (v4 evidence system)', {
+      count: EVIDENCE_PROMPTS.length,
+      ids: upcomingIds,
+    });
   } catch (err) {
-    logger.error('Failed to seed cashflow agent prompt', { err });
+    logger.error('Failed to seed cashflow agent prompts', { err });
   }
 }

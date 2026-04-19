@@ -22,6 +22,9 @@ import { exportToExcel } from './financial-engine/excel-export';
 import type { ModelAssumptions, ModelResults, ModelVersion, DealType, F9DealFinancials } from './financial-engine/types';
 import { fmt$, fmtPct, fmtX } from './financial-engine/types';
 import { apiClient } from '../../services/api.client';
+import { F9SummaryBar } from '../../components/f9/F9SummaryBar';
+import { EvidencePanel } from '../../components/underwriting/EvidencePanel';
+import { UnderwritingWalkthrough } from '../../components/f9/UnderwritingWalkthrough';
 
 const MONO = BT.font.mono;
 
@@ -39,6 +42,7 @@ const TAB_LABELS = [
   '⇔ COMPARE',
   '% RETURNS',
   '₵ COST SHEET',
+  '⊟ WALKTHROUGH',
 ];
 
 interface FinancialEnginePageProps {
@@ -72,6 +76,14 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
   const [integrityBlocked, setIntegrityBlocked] = useState(false);
   // F9 DealFinancials — fetched here so F1/F8/F10 tabs can consume it
   const [f9Financials, setF9Financials] = useState<F9DealFinancials | null>(null);
+  // Evidence system — field click panel + summary bar
+  const [evidenceField, setEvidenceField] = useState<{ path: string; label: string } | null>(null);
+  const [evidenceSummary, setEvidenceSummary] = useState<{
+    collision_summary?: { minor_count: number; material_count: number; severe_count: number };
+    confidence_distribution?: { high: number; medium: number; low: number };
+    tier_distribution?: { tier1: number; tier2: number; tier3: number; tier4: number };
+  } | null>(null);
+  const [evidenceFilter, setEvidenceFilter] = useState<{ type: 'collision' | 'confidence' | 'tier'; value: string } | null>(null);
 
   const kpi = useMemo(() => modelResults?.summary ?? null, [modelResults]);
 
@@ -144,6 +156,28 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
   useEffect(() => {
     fetchF9Financials();
   }, [fetchF9Financials]);
+
+  // ── Evidence Summary — fetch collision/confidence/tier stats ─────────────
+  useEffect(() => {
+    if (!resolvedDealId) return;
+    apiClient.get(`/api/v1/deals/${resolvedDealId}/underwriting/evidence-summary`)
+      .then((res: any) => {
+        const d = res?.data?.data ?? res?.data ?? null;
+        if (d) setEvidenceSummary(d);
+      })
+      .catch(() => {});
+  }, [resolvedDealId]);
+
+  // ── Evidence panel trigger — child tabs dispatch 'fe-evidence-click' ──────
+  // Usage from any child tab: window.dispatchEvent(new CustomEvent('fe-evidence-click', { detail: { path: 'income.gpr', label: 'Gross Potential Rent' } }))
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { path, label } = (e as CustomEvent<{ path: string; label: string }>).detail ?? {};
+      if (path) setEvidenceField({ path, label: label ?? path });
+    };
+    window.addEventListener('fe-evidence-click', handler);
+    return () => window.removeEventListener('fe-evidence-click', handler);
+  }, []);
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -441,6 +475,16 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
         </div>
       </div>
 
+      {evidenceSummary && (
+        <F9SummaryBar
+          collision_summary={evidenceSummary.collision_summary}
+          confidence_distribution={evidenceSummary.confidence_distribution}
+          tier_distribution={evidenceSummary.tier_distribution}
+          onFilterChange={setEvidenceFilter}
+          activeFilter={evidenceFilter}
+        />
+      )}
+
       <SubTabBar
         tabs={TAB_LABELS}
         active={activeTab}
@@ -610,8 +654,27 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
               />
             </div>
           )}
+          {activeTab === 13 && (
+            <BtTabWrapper>
+              <UnderwritingWalkthrough dealId={resolvedDealId} />
+            </BtTabWrapper>
+          )}
         </div>
       </div>
+
+      {/* ── EVIDENCE PANEL OVERLAY ──────────────────────────────────────────── */}
+      {evidenceField && (
+        <EvidencePanel
+          dealId={resolvedDealId}
+          fieldPath={evidenceField.path}
+          fieldLabel={evidenceField.label}
+          onClose={() => setEvidenceField(null)}
+          onOverride={(fieldPath, value, reason) => {
+            console.log('[EvidencePanel] override', fieldPath, value, reason);
+            setEvidenceField(null);
+          }}
+        />
+      )}
 
       <style>{`
         @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }

@@ -1,9 +1,17 @@
 /**
- * CashFlow Agent — AgentRuntime configuration (Phase 4)
+ * CashFlow Agent — AgentRuntime configuration (Phase 5: Evidence System)
  *
  * Tools registered:
- *   fetch_t12, fetch_rent_roll, fetch_assumptions,
- *   compute_proforma, write_projection
+ *   Tier 1: fetch_t12, fetch_rent_roll, fetch_assumptions
+ *   Tier 2: fetch_owned_asset_actuals, fetch_owned_asset_opex_ratios
+ *   Tier 3: fetch_peer_comp_noi_metrics, fetch_jurisdiction_tax_forecast,
+ *            fetch_jurisdiction_insurance_forecast, fetch_m35_event_forecast
+ *   Analysis: detect_collision
+ *   Compute: compute_proforma
+ *   Write: write_projection, write_underwriting, request_walkthrough_narrative
+ *
+ * Budget caps elevated for evidence-system depth:
+ *   maxTokensPerRun: 800,000 | maxCostUsdPerRun: $8.00 | maxStepsPerRun: 35
  */
 
 import { z } from 'zod';
@@ -18,8 +26,18 @@ import { fetchRentRollTool } from './tools/fetch_rent_roll';
 import { fetchAssumptionsTool } from './tools/fetch_assumptions';
 import { computeProformaTool } from './tools/compute_proforma';
 import { writeProjectionTool } from './tools/write_projection';
+import { fetchOwnedAssetActualsTool } from './tools/fetch_owned_asset_actuals';
+import { fetchOwnedAssetOpexRatiosTool } from './tools/fetch_owned_asset_opex_ratios';
+import { fetchJurisdictionTaxForecastTool } from './tools/fetch_jurisdiction_tax_forecast';
+import { fetchJurisdictionInsuranceForecastTool } from './tools/fetch_jurisdiction_insurance_forecast';
+import { fetchPeerCompNOIMetricsTool } from './tools/fetch_peer_comp_noi_metrics';
+import { fetchM35EventForecastTool } from './tools/fetch_m35_event_forecast';
+import { detectCollisionTool } from './tools/detect_collision';
+import { writeUnderwritingTool } from './tools/write_underwriting';
+import { requestWalkthroughNarrativeTool } from './tools/request_walkthrough_narrative';
 
-// ── Output schema ─────────────────────────────────────────────────
+// ── Legacy output schema (kept for backward compatibility) ─────────
+// New evidence-system output lives in src/types/layered-value.ts
 
 export const CashflowOutputSchema = z.object({
   purchase_price: z.number().nullable(),
@@ -41,18 +59,64 @@ export const CashflowOutputSchema = z.object({
 
 export type CashflowAgentOutput = z.infer<typeof CashflowOutputSchema>;
 
+// ── Deal type → prompt_type mapping ───────────────────────────────
+
+export type CashflowDealType =
+  | 'existing'
+  | 'value-add'
+  | 'lease-up'
+  | 'development'
+  | 'redevelopment';
+
+export const CASHFLOW_DEAL_TYPE_TO_PROMPT_TYPE: Record<CashflowDealType, string> = {
+  existing: 'variant:existing',
+  'value-add': 'variant:value-add',
+  'lease-up': 'variant:lease-up',
+  development: 'variant:development',
+  redevelopment: 'variant:redevelopment',
+};
+
+/** Resolve deal type from deal context fields and property data. */
+export function resolveProjectType(dealRow: Record<string, unknown>): CashflowDealType {
+  const raw = String(dealRow.project_type ?? dealRow.deal_type ?? dealRow.property_type ?? '').toLowerCase();
+  if (raw.includes('redevelopment') || raw.includes('conversion')) return 'redevelopment';
+  if (raw.includes('development') && !raw.includes('re')) return 'development';
+  if (raw.includes('value') || raw.includes('rehab') || raw.includes('renovation')) return 'value-add';
+  if (raw.includes('lease') || raw.includes('stabiliz') || raw.includes('delivery')) return 'lease-up';
+  return 'existing';
+}
+
+/** Returns permitted trigger modes for a given user tier. */
+export function getAllowedTriggerModes(tier: string): string[] {
+  const t = tier.toLowerCase();
+  if (t === 'scout') return ['manual'];
+  if (t === 'operator') return ['manual', 'event-driven'];
+  if (t === 'principal') return ['manual', 'event-driven', 'weekly-refresh'];
+  if (t === 'institutional') return ['manual', 'event-driven', 'weekly-refresh', 'portfolio-batch'];
+  return ['manual'];
+}
+
 // ── Agent config ──────────────────────────────────────────────────
 
 export const CASHFLOW_AGENT_CONFIG: AgentConfig = {
   agentId: 'cashflow',
-  agentVersion: '2.0.0',
-  promptVersion: 'cashflow-v3',
+  agentVersion: '3.0.0',
+  promptVersion: 'cashflow-v4-evidence',
   tools: [
     fetchT12Tool,
     fetchRentRollTool,
     fetchAssumptionsTool,
+    fetchOwnedAssetActualsTool,
+    fetchOwnedAssetOpexRatiosTool,
+    fetchPeerCompNOIMetricsTool,
+    fetchJurisdictionTaxForecastTool,
+    fetchJurisdictionInsuranceForecastTool,
+    fetchM35EventForecastTool,
+    detectCollisionTool,
     computeProformaTool,
     writeProjectionTool,
+    writeUnderwritingTool,
+    requestWalkthroughNarrativeTool,
   ],
   outputSchema: CashflowOutputSchema,
   budgetCaps: DEFAULT_BUDGET_CAPS.cashflow,

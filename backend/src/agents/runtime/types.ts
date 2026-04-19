@@ -64,7 +64,7 @@ export interface ToolDefinition<TInput = unknown, TOutput = unknown> {
   description: string;
   inputSchema: z.ZodSchema<TInput>;
   outputSchema: z.ZodSchema<TOutput>;
-  requiresCapability: string;
+  requiresCapability?: string;
   execute: (input: TInput, ctx: RunContext) => Promise<TOutput>;
 }
 
