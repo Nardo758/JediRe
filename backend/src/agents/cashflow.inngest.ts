@@ -26,45 +26,12 @@ import {
 } from '../lib/inngest';
 import {
   cashflowRuntime,
-  resolveProjectType,
-  CASHFLOW_DEAL_TYPE_TO_PROMPT_TYPE,
+  buildCompositePrompt,
 } from './cashflow.config';
 import type { CashflowAgentOutput } from './cashflow.config';
 import { query } from '../database/connection';
 import { logger } from '../utils/logger';
 import type { RunContext } from './runtime/types';
-
-// ── Helpers ───────────────────────────────────────────────────────
-
-/**
- * Load and compose the core cashflow system prompt with the deal-type variant.
- * Returns the concatenated text — or the core-only text if no variant is found.
- */
-async function buildCompositePrompt(dealRow: Record<string, unknown>): Promise<string> {
-  const dealType = resolveProjectType(dealRow);
-  const variantType = CASHFLOW_DEAL_TYPE_TO_PROMPT_TYPE[dealType];
-
-  const coreRow = await query(
-    `SELECT system_prompt FROM prompt_versions
-     WHERE agent_id = 'cashflow' AND prompt_type = 'core' AND active = true
-     ORDER BY created_at DESC LIMIT 1`
-  );
-  const corePrompt: string =
-    coreRow.rows[0]?.system_prompt ??
-    'You are the CashFlow Agent for JEDI RE. Analyze real estate data and return structured JSON.';
-
-  const variantRow = await query(
-    `SELECT system_prompt FROM prompt_versions
-     WHERE agent_id = 'cashflow' AND prompt_type = $1 AND active = true
-     ORDER BY created_at DESC LIMIT 1`,
-    [variantType]
-  );
-  const variantPrompt: string = variantRow.rows[0]?.system_prompt ?? '';
-
-  return variantPrompt
-    ? `${corePrompt}\n\n## Deal-Type Addendum (${dealType})\n${variantPrompt}`
-    : corePrompt;
-}
 
 const ALLOWED_TIERS: readonly string[] = [
   'professional', 'enterprise', 'principal', 'institutional',

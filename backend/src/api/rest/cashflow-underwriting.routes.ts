@@ -13,8 +13,14 @@ import { Router, Response } from 'express';
 import { query } from '../../database/connection';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { AppError } from '../../middleware/errorHandler';
-import { cashflowRuntime } from '../../agents/cashflow.config';
+import {
+  cashflowRuntime,
+  resolveProjectType,
+  CASHFLOW_DEAL_TYPE_TO_PROMPT_TYPE,
+} from '../../agents/cashflow.config';
 import { seedCashflowPrompt } from '../../agents/seeds/cashflow.seed';
+import { inngest } from '../../lib/inngest';
+import type { JediEvents } from '../../lib/inngest';
 import type { RunContext } from '../../agents/runtime/types';
 
 const router = Router();
@@ -47,6 +53,19 @@ router.post('/cashflow/underwrite', requireAuth, async (req: AuthenticatedReques
     await assertDealAccess(deal_id, req.user!.userId);
     await seedCashflowPrompt();
 
+    // Build deal-type-aware composite prompt for deterministic prompt selection
+    const dealRow = await query(
+      `SELECT dp.property_type, d.deal_type
+       FROM deals d
+       LEFT JOIN deal_properties dp ON dp.deal_id = d.id
+       WHERE d.id = $1
+       ORDER BY dp.created_at ASC LIMIT 1`,
+      [deal_id]
+    );
+    const systemPromptOverride = await buildCompositePrompt(
+      (dealRow.rows[0] as Record<string, unknown>) ?? {}
+    );
+
     const ctx: RunContext = {
       dealId: deal_id,
       userId: req.user!.userId,
@@ -56,6 +75,7 @@ router.post('/cashflow/underwrite', requireAuth, async (req: AuthenticatedReques
         trigger,
         request_id: crypto.randomUUID(),
       },
+      systemPromptOverride,
     };
 
     const { runId, done } = await cashflowRuntime.startAsync({ deal_id }, ctx);
@@ -272,11 +292,20 @@ dealUnderwritingRouter.post(
 
       await assertDealAccess(dealId, req.user!.userId);
 
-      const { focus } = req.body;
+      const { focus, snapshot_id } = req.body;
       const eventId = crypto.randomUUID();
       const generatedAt = new Date().toISOString();
 
-      // Log the request in audit_log
+      // Check for the latest agent_run_id for this deal (for context in the event)
+      const runRow = await query(
+        `SELECT id FROM agent_runs
+         WHERE agent_id = 'cashflow' AND deal_id = $1 AND status = 'succeeded'
+         ORDER BY completed_at DESC LIMIT 1`,
+        [dealId]
+      );
+      const agentRunId = (runRow.rows[0] as Record<string, unknown> | undefined)?.id as string | null ?? null;
+
+      // 1. Log the request in audit_log
       await query(
         `INSERT INTO audit_log
            (actor_id, actor_type, action, resource_type, resource_id, metadata)
@@ -293,7 +322,20 @@ dealUnderwritingRouter.post(
         ]
       );
 
-      // Check for existing walkthrough narrative in audit_log
+      // 2. Emit Inngest event so Commentary Agent picks it up asynchronously
+      await inngest.send({
+        name: 'cashflow.walkthrough_requested' as const,
+        data: {
+          dealId,
+          agentRunId,
+          snapshotId: (snapshot_id as string | null) ?? null,
+          focus: (focus as string | null) ?? null,
+          triggerReason: 'user_requested',
+          eventId,
+        },
+      } satisfies JediEvents);
+
+      // 3. Return any already-completed narrative (previous runs)
       const existingResult = await query(
         `SELECT metadata FROM audit_log
          WHERE resource_type = 'deal' AND resource_id = $1
@@ -316,7 +358,7 @@ dealUnderwritingRouter.post(
         status: narrative ? 'available' : 'pending',
         message: narrative
           ? 'Walkthrough narrative is available.'
-          : 'Walkthrough narrative generation requested. Check back in a few moments.',
+          : 'Walkthrough narrative generation requested. Commentary Agent is generating it — check back in a few moments.',
       });
     } catch (error) {
       next(error);
@@ -396,9 +438,9 @@ dealUnderwritingRouter.get(
         snapshot_id: snapshotId,
         collision_summary: {
           total_collisions: int(row?.total_collisions),
-          severe: int(row?.severe_collisions),
-          material: int(row?.material_collisions),
-          minor: int(row?.minor_collisions),
+          severe_count: int(row?.severe_collisions),
+          material_count: int(row?.material_collisions),
+          minor_count: int(row?.minor_collisions),
           fields_with_collision: (row?.collision_fields as string[] | null) ?? [],
         },
         confidence_distribution: {

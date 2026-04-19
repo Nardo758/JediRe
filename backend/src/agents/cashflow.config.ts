@@ -19,6 +19,7 @@ import { AgentRuntime } from './runtime/AgentRuntime';
 import { MeteringAdapter } from './runtime/MeteringAdapter';
 import { BudgetEnforcer } from './runtime/BudgetEnforcer';
 import { DEFAULT_BUDGET_CAPS } from './config/budget';
+import { query } from '../database/connection';
 import type { AgentConfig } from './runtime/types';
 
 import { fetchT12Tool } from './tools/fetch_t12';
@@ -122,6 +123,43 @@ export function getAllowedTriggerModes(tier: string): string[] {
   if (t === 'principal') return ['manual', 'event-driven', 'weekly-refresh'];
   if (t === 'institutional') return ['manual', 'event-driven', 'weekly-refresh', 'portfolio-batch'];
   return ['manual'];
+}
+
+// ── Composite prompt builder ──────────────────────────────────────
+
+/**
+ * Load and compose the core cashflow system prompt with the deal-type variant.
+ * Queries prompt_versions by prompt_type (not by active=true alone) to avoid
+ * ambiguity when multiple prompt_types are active simultaneously.
+ * Returns the concatenated text — or the core-only text if no variant is found.
+ *
+ * Used by both cashflow.inngest.ts (event-driven runs) and
+ * cashflow-underwriting.routes.ts (manual REST-triggered runs).
+ */
+export async function buildCompositePrompt(dealRow: Record<string, unknown>): Promise<string> {
+  const dealType = resolveProjectType(dealRow);
+  const variantType = CASHFLOW_DEAL_TYPE_TO_PROMPT_TYPE[dealType];
+
+  const coreRow = await query(
+    `SELECT system_prompt FROM prompt_versions
+     WHERE agent_id = 'cashflow' AND prompt_type = 'core' AND active = true
+     ORDER BY created_at DESC LIMIT 1`
+  );
+  const corePrompt: string =
+    coreRow.rows[0]?.system_prompt ??
+    'You are the CashFlow Agent for JEDI RE. Analyze real estate data and return structured JSON.';
+
+  const variantRow = await query(
+    `SELECT system_prompt FROM prompt_versions
+     WHERE agent_id = 'cashflow' AND prompt_type = $1 AND active = true
+     ORDER BY created_at DESC LIMIT 1`,
+    [variantType]
+  );
+  const variantPrompt: string = variantRow.rows[0]?.system_prompt ?? '';
+
+  return variantPrompt
+    ? `${corePrompt}\n\n## Deal-Type Addendum (${dealType})\n${variantPrompt}`
+    : corePrompt;
 }
 
 // ── Agent config ──────────────────────────────────────────────────
