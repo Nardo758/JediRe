@@ -2,15 +2,19 @@
  * Research Agent — Inngest durable function
  *
  * Triggers on `deal.created` with Principal+ tier gating.
- * Each step uses `step.run()` for durable execution — a simulated
- * mid-run crash will replay from the last completed step without
- * double-writes (Inngest's built-in idempotency).
+ * Each major side effect uses `step.run()` for durable execution.
+ * A crash/timeout mid-function will replay from the last completed step
+ * without re-running earlier steps (Inngest step idempotency).
+ *
+ * Run ID is recovered via the Inngest event ID stamped into
+ * `trigger_context.inngest_event_id` before calling AgentRuntime.run(),
+ * then queried back from `agent_runs` after the run step returns.
  *
  * Flow:
  *   Step 1: tier-gate check
  *   Step 2: seed prompt (idempotent ON CONFLICT DO UPDATE)
- *   Step 3: run AgentRuntime
- *   Step 4: write audit_log entry
+ *   Step 3: run AgentRuntime  ← single durable step; agent_run row is the DB record of truth
+ *   Step 4: write audit_log entry with guaranteed non-empty agent_run_id
  *   Step 5: emit research.completed event
  */
 
@@ -67,19 +71,49 @@ export const researchOnDealCreated = inngest.createFunction(
     });
 
     // ── Step 3: Execute Research Agent via AgentRuntime ─────────────
+    // The Inngest event ID is stamped into triggerContext so we can
+    // recover the exact agent_run row after this step completes.
+    // AgentRuntime creates the agent_run row before the LLM loop starts.
+    const inngestEventId = event.id;
+
     const runResult = await step.run('execute-research-agent', async () => {
       const ctx: RunContext = {
         dealId,
         userId,
         triggeredBy: (triggeredBy as 'user' | 'event' | 'cron') ?? 'event',
-        triggerContext: { source: 'deal.created', inngest_event_id: event.id },
+        triggerContext: {
+          source: 'deal.created',
+          inngest_event_id: inngestEventId,
+        },
       };
 
+      // AgentRuntime.run() creates agent_runs row (status=running) then executes.
+      // On success: updates status to 'succeeded'. On failure: 'failed'/'budget_exceeded'.
       const output = await researchRuntime.run({ deal_id: dealId }, ctx);
       const typed = output as ResearchOutput;
 
+      // Recover the actual runId from the DB via the inngest_event_id stamp.
+      // This is the guaranteed-correct row because inngest_event_id is globally unique.
+      const runRow = await query(
+        `SELECT id FROM agent_runs
+         WHERE agent_id = 'research'
+           AND deal_id = $1
+           AND trigger_context->>'inngest_event_id' = $2
+         ORDER BY started_at DESC LIMIT 1`,
+        [dealId, inngestEventId]
+      );
+
+      const runId = runRow.rows[0]?.id ?? '';
+
+      if (!runId) {
+        logger.warn('research.inngest: could not recover run ID after step', {
+          dealId,
+          inngestEventId,
+        });
+      }
+
       return {
-        runId: ctx.correlationId ?? '',
+        runId,
         confidence_score: typed.confidence_score,
         fields_written: typed.fields_written,
         summary: typed.summary,
@@ -88,19 +122,26 @@ export const researchOnDealCreated = inngest.createFunction(
 
     // ── Step 4: Write audit_log entry ───────────────────────────────
     await step.run('write-audit-log', async () => {
+      if (!runResult.runId) {
+        logger.warn('research.inngest: skipping audit_log write — no run ID', { dealId });
+        return { logged: false };
+      }
+
       try {
         await query(
           `INSERT INTO audit_log
              (actor_id, actor_type, action, resource_type, resource_id, metadata, agent_run_id)
-           VALUES ('research', 'agent', 'research.completed', 'deal', $1, $2, $3)`,
+           VALUES ('research', 'agent', 'research.completed', 'deal', $1, $2, $3)
+           ON CONFLICT DO NOTHING`,
           [
             dealId,
             JSON.stringify({
               confidence_score: runResult.confidence_score,
               fields_written: runResult.fields_written,
               summary: runResult.summary,
+              run_id: runResult.runId,
             }),
-            runResult.runId || null,
+            runResult.runId,
           ]
         );
       } catch (err) {
@@ -111,15 +152,17 @@ export const researchOnDealCreated = inngest.createFunction(
     });
 
     // ── Step 5: Emit downstream event ──────────────────────────────
-    await step.sendEvent('emit-research-completed', {
-      name: 'research.completed' as const,
-      data: {
-        dealId,
-        runId: runResult.runId,
-        confidence_score: runResult.confidence_score,
-        fields_written: runResult.fields_written,
-      },
-    } satisfies JediEvents);
+    if (runResult.runId) {
+      await step.sendEvent('emit-research-completed', {
+        name: 'research.completed' as const,
+        data: {
+          dealId,
+          runId: runResult.runId,
+          confidence_score: runResult.confidence_score,
+          fields_written: runResult.fields_written,
+        },
+      } satisfies JediEvents);
+    }
 
     return {
       runId: runResult.runId,

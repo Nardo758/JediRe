@@ -1,10 +1,13 @@
 import React, { useState, useCallback } from 'react';
 import {
-  Activity, Search, Filter, ChevronDown, MapPin,
+  Activity, Search, Filter, ChevronDown, ChevronRight, MapPin,
   FileText, Users, TrendingUp, Edit, CheckCircle, Bot,
-  RefreshCw, AlertTriangle, Clock, Zap
+  RefreshCw, AlertTriangle, Clock, Zap, DollarSign, XCircle,
+  Copy, Check
 } from 'lucide-react';
 import { Deal } from '@/types';
+
+// ── Types ─────────────────────────────────────────────────────────
 
 interface ActivityItem {
   id: string;
@@ -18,12 +21,16 @@ interface ActivityItem {
   kind: 'activity';
 }
 
+/** Normalized display status (maps backend succeeded→completed, aborted→cancelled) */
+type DisplayStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'budget_exceeded';
+
 interface AgentRunItem {
   id: string;
   dealId: string;
   agentId: string;
   agentVersion: string;
-  status: 'running' | 'completed' | 'failed' | 'cancelled';
+  /** display_status is pre-normalized by the API */
+  status: DisplayStatus;
   triggeredBy: string;
   tokensIn: number;
   tokensOut: number;
@@ -35,11 +42,24 @@ interface AgentRunItem {
   kind: 'agent_run';
 }
 
+interface RunStep {
+  id: string;
+  step_index: number;
+  step_type: string;
+  tool_name: string | null;
+  duration_ms: number | null;
+  tokens_in: number;
+  tokens_out: number;
+  created_at: string;
+}
+
 type FeedItem = ActivityItem | AgentRunItem;
 
 interface ActivityFeedSectionProps {
   deal: Deal;
 }
+
+// ── Config ────────────────────────────────────────────────────────
 
 const ACTIVITY_CONFIG: Record<string, {
   icon: React.ComponentType<any>;
@@ -60,17 +80,44 @@ const ACTIVITY_CONFIG: Record<string, {
   default: { icon: Activity, color: 'text-gray-600', bgColor: 'bg-gray-100', label: 'Activity' },
 };
 
-const AGENT_STATUS_CONFIG: Record<AgentRunItem['status'], {
+const AGENT_STATUS_CONFIG: Record<DisplayStatus, {
   icon: React.ComponentType<any>;
   color: string;
   bgColor: string;
   badgeColor: string;
   label: string;
+  spin?: boolean;
 }> = {
-  running: { icon: RefreshCw, color: 'text-blue-600', bgColor: 'bg-blue-100', badgeColor: 'bg-blue-100 text-blue-800', label: 'Running' },
-  completed: { icon: Bot, color: 'text-violet-600', bgColor: 'bg-violet-100', badgeColor: 'bg-violet-100 text-violet-800', label: 'Completed' },
-  failed: { icon: AlertTriangle, color: 'text-red-600', bgColor: 'bg-red-100', badgeColor: 'bg-red-100 text-red-800', label: 'Failed' },
-  cancelled: { icon: Clock, color: 'text-gray-500', bgColor: 'bg-gray-100', badgeColor: 'bg-gray-100 text-gray-600', label: 'Cancelled' },
+  pending: {
+    icon: Clock,
+    color: 'text-gray-500', bgColor: 'bg-gray-100',
+    badgeColor: 'bg-gray-100 text-gray-600', label: 'Pending',
+  },
+  running: {
+    icon: RefreshCw,
+    color: 'text-blue-600', bgColor: 'bg-blue-100',
+    badgeColor: 'bg-blue-100 text-blue-800', label: 'Running', spin: true,
+  },
+  completed: {
+    icon: Bot,
+    color: 'text-violet-600', bgColor: 'bg-violet-100',
+    badgeColor: 'bg-violet-100 text-violet-800', label: 'Completed',
+  },
+  failed: {
+    icon: AlertTriangle,
+    color: 'text-red-600', bgColor: 'bg-red-100',
+    badgeColor: 'bg-red-100 text-red-800', label: 'Failed',
+  },
+  cancelled: {
+    icon: XCircle,
+    color: 'text-gray-500', bgColor: 'bg-gray-100',
+    badgeColor: 'bg-gray-100 text-gray-600', label: 'Cancelled',
+  },
+  budget_exceeded: {
+    icon: DollarSign,
+    color: 'text-amber-600', bgColor: 'bg-amber-100',
+    badgeColor: 'bg-amber-100 text-amber-800', label: 'Budget Exceeded',
+  },
 };
 
 const ACTIVITY_TYPES = [
@@ -90,8 +137,9 @@ const AGENT_LABELS: Record<string, string> = {
   research: 'Research Agent',
   underwriting: 'Underwriting Agent',
   risk: 'Risk Agent',
-  default: 'AI Agent',
 };
+
+// ── Helpers ───────────────────────────────────────────────────────
 
 function formatTimestamp(date: Date): string {
   const now = new Date();
@@ -124,17 +172,97 @@ function formatDuration(ms: number | null): string {
   return `${Math.floor(secs / 60)}m ${secs % 60}s`;
 }
 
-function AgentRunCard({ run, index, isLast }: { run: AgentRunItem; index: number; isLast: boolean }) {
-  const cfg = AGENT_STATUS_CONFIG[run.status];
+// ── Run detail panel ──────────────────────────────────────────────
+
+function RunDetailPanel({ runId }: { runId: string }) {
+  const [steps, setSteps] = useState<RunStep[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    fetch(`/api/v1/agents/runs/${runId}/steps`)
+      .then(r => r.json())
+      .then(data => setSteps(data.steps ?? []))
+      .catch(() => setError('Could not load run steps'))
+      .finally(() => setLoading(false));
+  }, [runId]);
+
+  if (loading) {
+    return (
+      <div className="py-3 text-xs text-gray-500 flex items-center gap-2">
+        <RefreshCw className="w-3 h-3 animate-spin" /> Loading steps...
+      </div>
+    );
+  }
+
+  if (error) {
+    return <div className="py-2 text-xs text-red-500">{error}</div>;
+  }
+
+  if (steps.length === 0) {
+    return <div className="py-2 text-xs text-gray-500">No steps recorded yet</div>;
+  }
+
+  return (
+    <div className="mt-3 space-y-1">
+      {steps.map((step) => (
+        <div key={step.id} className="flex items-center gap-3 text-xs py-1 border-t border-gray-100">
+          <span className="w-5 text-gray-400 text-right">{step.step_index + 1}</span>
+          <span className="font-medium text-gray-700 capitalize">{step.step_type.replace('_', ' ')}</span>
+          {step.tool_name && (
+            <span className="text-violet-600 font-mono">{step.tool_name}</span>
+          )}
+          {step.duration_ms != null && (
+            <span className="text-gray-400 ml-auto">{formatDuration(step.duration_ms)}</span>
+          )}
+          {(step.tokens_in + step.tokens_out) > 0 && (
+            <span className="text-gray-400">{(step.tokens_in + step.tokens_out).toLocaleString()} tok</span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Copy-to-clipboard mini component ─────────────────────────────
+
+function CopyId({ id }: { id: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(id).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+  return (
+    <button
+      onClick={handleCopy}
+      className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition-colors"
+      title="Copy run ID"
+    >
+      {copied ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+      <span className="font-mono">{id.slice(0, 8)}…</span>
+    </button>
+  );
+}
+
+// ── AgentRunCard ──────────────────────────────────────────────────
+
+function AgentRunCard({ run, isLast }: { run: AgentRunItem; isLast: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const cfg = AGENT_STATUS_CONFIG[run.status] ?? AGENT_STATUS_CONFIG.failed;
   const Icon = cfg.icon;
-  const agentLabel = AGENT_LABELS[run.agentId] ?? AGENT_LABELS.default;
+  const agentLabel = AGENT_LABELS[run.agentId] ?? `${run.agentId} Agent`;
 
   return (
     <div className="p-4 hover:bg-gray-50 transition-colors">
       <div className="flex items-start gap-4">
+        {/* Timeline icon */}
         <div className="relative flex flex-col items-center">
-          <div className={`w-10 h-10 rounded-full ${cfg.bgColor} flex items-center justify-center flex-shrink-0 ${run.status === 'running' ? 'animate-pulse' : ''}`}>
-            <Icon className={`w-5 h-5 ${cfg.color}`} />
+          <div className={`w-10 h-10 rounded-full ${cfg.bgColor} flex items-center justify-center flex-shrink-0`}>
+            <Icon className={`w-5 h-5 ${cfg.color} ${cfg.spin ? 'animate-spin' : ''}`} />
           </div>
           {!isLast && (
             <div className="w-0.5 h-full bg-gray-200 absolute top-10 bottom-0" />
@@ -142,13 +270,14 @@ function AgentRunCard({ run, index, isLast }: { run: AgentRunItem; index: number
         </div>
 
         <div className="flex-1 min-w-0 pt-1">
+          {/* Header row */}
           <div className="flex items-start justify-between gap-4 mb-1">
             <div className="flex items-center gap-2 flex-wrap">
               <p className="text-sm font-medium text-gray-900">{agentLabel}</p>
               <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${cfg.badgeColor}`}>
                 {cfg.label}
               </span>
-              {run.durationMs && (
+              {run.durationMs != null && (
                 <span className="inline-flex items-center gap-1 text-xs text-gray-500">
                   <Clock className="w-3 h-3" />
                   {formatDuration(run.durationMs)}
@@ -160,6 +289,7 @@ function AgentRunCard({ run, index, isLast }: { run: AgentRunItem; index: number
             </span>
           </div>
 
+          {/* Meta row */}
           <div className="flex items-center gap-3 text-xs text-gray-500 flex-wrap">
             <span className="flex items-center gap-1">
               <Zap className="w-3 h-3" />
@@ -168,23 +298,42 @@ function AgentRunCard({ run, index, isLast }: { run: AgentRunItem; index: number
             {(run.tokensIn + run.tokensOut) > 0 && (
               <span>{(run.tokensIn + run.tokensOut).toLocaleString()} tokens</span>
             )}
-            {run.costUsd != null && (
+            {run.costUsd != null && run.costUsd > 0 && (
               <span>${run.costUsd.toFixed(4)}</span>
             )}
+            <CopyId id={run.id} />
           </div>
 
-          {run.status === 'failed' && run.error && (
+          {/* Error */}
+          {(run.status === 'failed' || run.status === 'budget_exceeded') && run.error && (
             <div className="mt-2 text-xs text-red-600 bg-red-50 rounded px-2 py-1 border border-red-100 font-mono">
-              {run.error.slice(0, 200)}{run.error.length > 200 ? '…' : ''}
+              {run.error.slice(0, 240)}{run.error.length > 240 ? '…' : ''}
             </div>
           )}
+
+          {/* Expandable steps */}
+          <div className="mt-2">
+            <button
+              onClick={() => setExpanded(e => !e)}
+              className="inline-flex items-center gap-1 text-xs text-violet-600 hover:text-violet-800 transition-colors"
+            >
+              {expanded
+                ? <ChevronDown className="w-3 h-3" />
+                : <ChevronRight className="w-3 h-3" />}
+              {expanded ? 'Hide steps' : 'View steps'}
+            </button>
+
+            {expanded && <RunDetailPanel runId={run.id} />}
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-function ActivityCard({ activity, index, isLast }: { activity: ActivityItem; index: number; isLast: boolean }) {
+// ── ActivityCard ──────────────────────────────────────────────────
+
+function ActivityCard({ activity, isLast }: { activity: ActivityItem; isLast: boolean }) {
   const config = ACTIVITY_CONFIG[activity.type] || ACTIVITY_CONFIG.default;
   const Icon = config.icon;
 
@@ -240,12 +389,13 @@ function ActivityCard({ activity, index, isLast }: { activity: ActivityItem; ind
   );
 }
 
+// ── Main component ────────────────────────────────────────────────
+
 export function ActivityFeedSection({ deal }: ActivityFeedSectionProps) {
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [agentRuns, setAgentRuns] = useState<AgentRunItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState('all');
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
@@ -284,7 +434,8 @@ export function ActivityFeedSection({ deal }: ActivityFeedSectionProps) {
           dealId: r.deal_id,
           agentId: r.agent_id,
           agentVersion: r.agent_version,
-          status: r.status,
+          // API returns pre-normalized display_status; fall back to raw status normalization
+          status: (r.display_status ?? r.status ?? 'failed') as DisplayStatus,
           triggeredBy: r.triggered_by,
           tokensIn: r.tokens_in || 0,
           tokensOut: r.tokens_out || 0,
@@ -328,8 +479,8 @@ export function ActivityFeedSection({ deal }: ActivityFeedSectionProps) {
           item.userName.toLowerCase().includes(q)
         );
       }
-      const agentLabel = (AGENT_LABELS[item.agentId] ?? AGENT_LABELS.default).toLowerCase();
-      return agentLabel.includes(q) || item.agentId.includes(q);
+      const agentLabel = (AGENT_LABELS[item.agentId] ?? item.agentId).toLowerCase();
+      return agentLabel.includes(q) || item.agentId.toLowerCase().includes(q);
     })
     .sort((a, b) => {
       const ta = a.kind === 'activity' ? a.timestamp : a.startedAt;
@@ -339,7 +490,7 @@ export function ActivityFeedSection({ deal }: ActivityFeedSectionProps) {
     })
     .slice(0, displayCount);
 
-  const hasMore = filteredItems.length < allItems.length;
+  const hasMore = filteredItems.length < Math.min(allItems.length, displayCount + 1);
 
   if (loading) {
     return (
@@ -370,6 +521,9 @@ export function ActivityFeedSection({ deal }: ActivityFeedSectionProps) {
       </div>
     );
   }
+
+  const runningCount = agentRuns.filter(r => r.status === 'running').length;
+  const completedCount = agentRuns.filter(r => r.status === 'completed').length;
 
   return (
     <div className="space-y-6">
@@ -414,19 +568,21 @@ export function ActivityFeedSection({ deal }: ActivityFeedSectionProps) {
           </button>
         </div>
 
-        {/* Agent run summary badge */}
+        {/* Agent summary bar */}
         {agentRuns.length > 0 && (
-          <div className="mt-3 flex items-center gap-2">
+          <div className="mt-3 flex items-center gap-3 text-xs">
             <Bot className="w-4 h-4 text-violet-600" />
-            <span className="text-xs text-gray-600">
-              {agentRuns.filter(r => r.status === 'completed').length} agent run{agentRuns.filter(r => r.status === 'completed').length !== 1 ? 's' : ''} completed
-              {agentRuns.filter(r => r.status === 'running').length > 0 && (
-                <span className="ml-2 inline-flex items-center gap-1 text-blue-600">
-                  <RefreshCw className="w-3 h-3 animate-spin" />
-                  {agentRuns.filter(r => r.status === 'running').length} running
-                </span>
-              )}
-            </span>
+            {completedCount > 0 && (
+              <span className="text-gray-600">
+                {completedCount} run{completedCount !== 1 ? 's' : ''} completed
+              </span>
+            )}
+            {runningCount > 0 && (
+              <span className="inline-flex items-center gap-1 text-blue-600">
+                <RefreshCw className="w-3 h-3 animate-spin" />
+                {runningCount} running
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -448,9 +604,9 @@ export function ActivityFeedSection({ deal }: ActivityFeedSectionProps) {
             {filteredItems.map((item, index) => {
               const isLast = index === filteredItems.length - 1;
               if (item.kind === 'agent_run') {
-                return <AgentRunCard key={`run-${item.id}`} run={item} index={index} isLast={isLast} />;
+                return <AgentRunCard key={`run-${item.id}`} run={item} isLast={isLast} />;
               }
-              return <ActivityCard key={`act-${item.id}`} activity={item} index={index} isLast={isLast} />;
+              return <ActivityCard key={`act-${item.id}`} activity={item} isLast={isLast} />;
             })}
           </div>
 

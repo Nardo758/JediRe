@@ -2,10 +2,25 @@
  * Agent Runs REST Routes — Phase 3: Research Agent End-to-End
  *
  * Endpoints:
- *   POST   /api/v1/agents/:agentId/run          Manual trigger
- *   GET    /api/v1/agents/runs/:runId            Run detail
- *   GET    /api/v1/agents/runs/:runId/steps      Run step log
- *   GET    /api/v1/deals/:dealId/agent-runs      All runs for a deal
+ *   POST   /api/v1/agents/:agentId/run          Manual trigger (deal ownership required)
+ *   GET    /api/v1/agents/runs/:runId            Run detail (ownership gated)
+ *   GET    /api/v1/agents/runs/:runId/steps      Run step log (ownership gated)
+ *   GET    /api/v1/deals/:dealId/agent-runs      All runs for a deal (ownership gated)
+ *
+ * Authorization pattern:
+ *   All endpoints check that the requesting user either owns the deal
+ *   directly (deals.user_id = userId) or is a member of the deal's org
+ *   (org_members.user_id = userId AND org_members.org_id = deals.org_id).
+ *
+ * Status normalization:
+ *   Backend stores: pending | running | succeeded | failed | aborted | budget_exceeded
+ *   API exposes a normalized display_status for UI consumption:
+ *     running        → "running"
+ *     succeeded      → "completed"
+ *     failed         → "failed"
+ *     aborted        → "cancelled"
+ *     budget_exceeded→ "budget_exceeded"
+ *     pending        → "pending"
  */
 
 import { Router, Response } from 'express';
@@ -19,9 +34,85 @@ import type { RunContext } from '../../agents/runtime/types';
 const router = Router();
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// ── Helpers ───────────────────────────────────────────────────────
+
+type BackendRunStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'aborted' | 'budget_exceeded';
+type DisplayStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'budget_exceeded';
+
+function normalizeStatus(raw: string): DisplayStatus {
+  const map: Record<BackendRunStatus, DisplayStatus> = {
+    pending: 'pending',
+    running: 'running',
+    succeeded: 'completed',
+    failed: 'failed',
+    aborted: 'cancelled',
+    budget_exceeded: 'budget_exceeded',
+  };
+  return map[raw as BackendRunStatus] ?? 'failed';
+}
+
+function normalizeRun(row: Record<string, unknown>) {
+  return { ...row, display_status: normalizeStatus(row.status as string) };
+}
+
+/**
+ * Verify the authenticated user has access to the given deal.
+ * Returns the deal row if accessible, throws 403/404 otherwise.
+ */
+async function assertDealAccess(dealId: string, userId: string): Promise<{ id: string }> {
+  const result = await query(
+    `SELECT d.id
+     FROM deals d
+     LEFT JOIN org_members om ON om.org_id = d.org_id AND om.user_id = $2
+     WHERE d.id = $1
+       AND d.archived_at IS NULL
+       AND (d.user_id = $2 OR om.user_id IS NOT NULL)`,
+    [dealId, userId]
+  );
+
+  if (result.rows.length === 0) {
+    // Use 404 to avoid leaking deal existence to unauthorized users
+    throw new AppError(404, `Deal ${dealId} not found`);
+  }
+
+  return result.rows[0] as { id: string };
+}
+
+/**
+ * Verify the authenticated user has access to the given agent run.
+ * Returns the run row if accessible, throws 403/404 otherwise.
+ */
+async function assertRunAccess(
+  runId: string,
+  userId: string
+): Promise<Record<string, unknown>> {
+  const result = await query(
+    `SELECT r.id, r.agent_id, r.agent_version, r.prompt_version,
+            r.deal_id, r.user_id, r.triggered_by, r.trigger_context,
+            r.status, r.input, r.output, r.error,
+            r.tokens_in, r.tokens_out, r.cost_usd,
+            r.started_at, r.completed_at, r.duration_ms
+     FROM agent_runs r
+     LEFT JOIN deals d ON d.id = r.deal_id AND d.archived_at IS NULL
+     LEFT JOIN org_members om ON om.org_id = d.org_id AND om.user_id = $2
+     WHERE r.id = $1
+       AND (
+         r.user_id = $2
+         OR d.user_id = $2
+         OR om.user_id IS NOT NULL
+       )`,
+    [runId, userId]
+  );
+
+  if (result.rows.length === 0) {
+    throw new AppError(404, `Run ${runId} not found`);
+  }
+
+  return result.rows[0] as Record<string, unknown>;
+}
+
 // ── POST /api/v1/agents/:agentId/run ─────────────────────────────
-// Manually trigger a research run for a deal.
-// Only agentId='research' is supported in Phase 3.
+// Manually trigger a research run for a deal the user owns.
 
 router.post('/:agentId/run', requireAuthOrApiKey, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
@@ -29,21 +120,23 @@ router.post('/:agentId/run', requireAuthOrApiKey, async (req: AuthenticatedReque
     const { deal_id, force_refresh } = req.body;
 
     if (agentId !== 'research') {
-      throw new AppError(400, `Agent "${agentId}" is not available for manual runs in Phase 3. Only "research" is supported.`);
+      throw new AppError(
+        400,
+        `Agent "${agentId}" is not available for manual runs in Phase 3. Only "research" is supported.`
+      );
     }
 
     if (!deal_id || !UUID_RE.test(deal_id)) {
       throw new AppError(400, 'deal_id must be a valid UUID');
     }
 
-    // Verify deal exists
-    const dealCheck = await query('SELECT id FROM deals WHERE id = $1', [deal_id]);
-    if (dealCheck.rows.length === 0) {
-      throw new AppError(404, `Deal ${deal_id} not found`);
-    }
+    // Ownership check — 404 if not accessible (IDOR-safe)
+    await assertDealAccess(deal_id, req.user!.userId);
 
     // Seed prompt (idempotent)
     await seedResearchPrompt();
+
+    const requestId = crypto.randomUUID();
 
     const ctx: RunContext = {
       dealId: deal_id,
@@ -52,44 +145,49 @@ router.post('/:agentId/run', requireAuthOrApiKey, async (req: AuthenticatedReque
       triggerContext: {
         source: 'manual_trigger',
         force_refresh: force_refresh ?? false,
+        request_id: requestId,
       },
     };
 
-    // Run asynchronously and return run ID immediately
-    const runPromise = researchRuntime.run({ deal_id }, ctx).catch(err => {
+    // Fire run asynchronously — don't block the HTTP response
+    void researchRuntime.run({ deal_id }, ctx).catch(() => {
       // Errors are persisted to agent_runs by AgentRuntime
-      // and logged — don't crash the response
     });
 
-    // The run ID is written synchronously before the loop starts.
-    // We poll agent_runs for the newly created run.
-    // Allow a small window for the INSERT to complete.
-    await new Promise(r => setTimeout(r, 150));
+    // Give the INSERT time to land, then return the run reference
+    await new Promise(r => setTimeout(r, 200));
 
     const runRow = await query(
       `SELECT id, status, started_at FROM agent_runs
-       WHERE agent_id = 'research' AND deal_id = $1 AND user_id = $2
+       WHERE agent_id = 'research'
+         AND deal_id = $1
+         AND trigger_context->>'request_id' = $2
        ORDER BY started_at DESC LIMIT 1`,
-      [deal_id, req.user!.userId]
+      [deal_id, requestId]
     );
+
+    // Fallback: newest run for this deal
+    const row = runRow.rows[0] ?? (await query(
+      `SELECT id, status, started_at FROM agent_runs
+       WHERE agent_id = 'research' AND deal_id = $1
+       ORDER BY started_at DESC LIMIT 1`,
+      [deal_id]
+    )).rows[0];
 
     res.status(202).json({
       success: true,
       message: 'Research run started',
-      run_id: runRow.rows[0]?.id ?? null,
-      status: runRow.rows[0]?.status ?? 'running',
+      run_id: row?.id ?? null,
+      display_status: normalizeStatus(row?.status ?? 'running'),
       deal_id,
     });
-
-    // Fire and forget — run continues in background
-    void runPromise;
   } catch (error) {
     next(error);
   }
 });
 
 // ── GET /api/v1/agents/runs/:runId ───────────────────────────────
-// Fetch a single agent run by ID.
+// Fetch a single agent run by ID (ownership gated).
 
 router.get('/runs/:runId', requireAuthOrApiKey, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
@@ -99,30 +197,15 @@ router.get('/runs/:runId', requireAuthOrApiKey, async (req: AuthenticatedRequest
       throw new AppError(400, 'Invalid run ID');
     }
 
-    const result = await query(
-      `SELECT
-         id, agent_id, agent_version, prompt_version,
-         deal_id, user_id, triggered_by, trigger_context,
-         status, input, output, error,
-         tokens_in, tokens_out, cost_usd,
-         started_at, completed_at, duration_ms
-       FROM agent_runs
-       WHERE id = $1`,
-      [runId]
-    );
-
-    if (result.rows.length === 0) {
-      throw new AppError(404, `Run ${runId} not found`);
-    }
-
-    res.json({ success: true, run: result.rows[0] });
+    const row = await assertRunAccess(runId, req.user!.userId);
+    res.json({ success: true, run: normalizeRun(row) });
   } catch (error) {
     next(error);
   }
 });
 
 // ── GET /api/v1/agents/runs/:runId/steps ─────────────────────────
-// Fetch all steps for a run (tool calls, prompt steps, output).
+// Fetch all steps for a run — ownership gated via run → deal.
 
 router.get('/runs/:runId/steps', requireAuthOrApiKey, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
@@ -131,6 +214,9 @@ router.get('/runs/:runId/steps', requireAuthOrApiKey, async (req: AuthenticatedR
     if (!UUID_RE.test(runId)) {
       throw new AppError(400, 'Invalid run ID');
     }
+
+    // Verify access first
+    await assertRunAccess(runId, req.user!.userId);
 
     const result = await query(
       `SELECT
@@ -151,57 +237,71 @@ router.get('/runs/:runId/steps', requireAuthOrApiKey, async (req: AuthenticatedR
 
 // ── GET /api/v1/deals/:dealId/agent-runs ─────────────────────────
 // Mounted under /deals prefix by index.ts.
-// Returns all agent runs for a deal, newest first.
+// Returns all agent runs for a deal with normalized display_status.
 
 export const dealAgentRunsRouter = Router({ mergeParams: true });
 
-dealAgentRunsRouter.get('/:dealId/agent-runs', requireAuthOrApiKey, async (req: AuthenticatedRequest, res: Response, next) => {
-  try {
-    const { dealId } = req.params;
+dealAgentRunsRouter.get(
+  '/:dealId/agent-runs',
+  requireAuthOrApiKey,
+  async (req: AuthenticatedRequest, res: Response, next) => {
+    try {
+      const { dealId } = req.params;
 
-    if (!UUID_RE.test(dealId)) {
-      throw new AppError(400, 'Invalid deal ID');
+      if (!UUID_RE.test(dealId)) {
+        throw new AppError(400, 'Invalid deal ID');
+      }
+
+      // Ownership check — 404 if not accessible
+      await assertDealAccess(dealId, req.user!.userId);
+
+      const { agent_id, status, limit = '50', offset = '0' } = req.query;
+
+      let queryText = `
+        SELECT
+          id, agent_id, agent_version, deal_id, user_id,
+          triggered_by, status, tokens_in, tokens_out, cost_usd,
+          started_at, completed_at, duration_ms, error
+        FROM agent_runs
+        WHERE deal_id = $1
+      `;
+      const params: unknown[] = [dealId];
+      let paramIndex = 2;
+
+      if (agent_id) {
+        queryText += ` AND agent_id = $${paramIndex}`;
+        params.push(agent_id);
+        paramIndex++;
+      }
+
+      // Map normalized display_status back to DB statuses for filtering
+      if (status) {
+        if (status === 'completed') {
+          queryText += ` AND status = 'succeeded'`;
+        } else if (status === 'cancelled') {
+          queryText += ` AND status = 'aborted'`;
+        } else {
+          queryText += ` AND status = $${paramIndex}`;
+          params.push(status);
+          paramIndex++;
+        }
+      }
+
+      queryText += ` ORDER BY started_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+      params.push(parseInt(limit as string, 10), parseInt(offset as string, 10));
+
+      const result = await query(queryText, params);
+
+      res.json({
+        success: true,
+        runs: result.rows.map(normalizeRun),
+        count: result.rows.length,
+        deal_id: dealId,
+      });
+    } catch (error) {
+      next(error);
     }
-
-    const { agent_id, status, limit = '50', offset = '0' } = req.query;
-
-    let queryText = `
-      SELECT
-        id, agent_id, agent_version, deal_id, user_id,
-        triggered_by, status, tokens_in, tokens_out, cost_usd,
-        started_at, completed_at, duration_ms, error
-      FROM agent_runs
-      WHERE deal_id = $1
-    `;
-    const params: unknown[] = [dealId];
-    let paramIndex = 2;
-
-    if (agent_id) {
-      queryText += ` AND agent_id = $${paramIndex}`;
-      params.push(agent_id);
-      paramIndex++;
-    }
-
-    if (status) {
-      queryText += ` AND status = $${paramIndex}`;
-      params.push(status);
-      paramIndex++;
-    }
-
-    queryText += ` ORDER BY started_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
-    params.push(parseInt(limit as string, 10), parseInt(offset as string, 10));
-
-    const result = await query(queryText, params);
-
-    res.json({
-      success: true,
-      runs: result.rows,
-      count: result.rows.length,
-      deal_id: dealId,
-    });
-  } catch (error) {
-    next(error);
   }
-});
+);
 
 export default router;
