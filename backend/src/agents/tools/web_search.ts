@@ -7,7 +7,7 @@
  *
  * Per-agent policy (from AGENT_SEARCH_CONFIG):
  *   research:  10 searches/run, broad access, 24h cache
- *   commentary: 5 searches/run, broad access, 24h cache
+ *   commentary: 5 searches/run, CRE/financial domain allowlist, 24h cache
  *   zoning:    3 searches/run, gov-only allowlist, 7-day cache
  *   supply:    NOT AVAILABLE
  *   cashflow:  NOT AVAILABLE

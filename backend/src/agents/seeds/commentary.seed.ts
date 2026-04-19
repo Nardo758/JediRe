@@ -92,8 +92,8 @@ JEDI Score (0-100):
 - Use precise numbers (percentages, dollar figures) from the context
 - Write in crisp, professional financial voice — no marketing language
 - Sentiment must match the underlying data
-- Every web-sourced fact must appear in the citations array
-- **When calling write_dealcontext with a value obtained from web_search or fetch_webpage, always set derived_from_search: true in the call.** Structured-data-sourced values should omit derived_from_search or set it false.`;
+- Every web-sourced fact must appear in the citations array with source_url, retrieved_at, and influenced_fields populated
+- When a web search result influences a commentary finding (e.g., a vacancy rate, absorption trend, or rent trajectory), list the source URL in citations alongside the field it influenced`;
 
 const OUTPUT_SCHEMA_JSON = (() => {
   return z.toJSONSchema(CommentaryOutputSchema) as Record<string, unknown>;
