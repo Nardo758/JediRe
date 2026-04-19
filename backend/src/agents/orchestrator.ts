@@ -199,8 +199,11 @@ export class AgentOrchestrator {
       const runtime = AGENT_RUNTIME_MAP[taskType];
       if (runtime) {
         // Phase 4: Route through AgentRuntime
+        // Normalize dealId: task payloads submitted via REST use deal_id (snake_case);
+        // context objects use dealId (camelCase). Accept both so write-tools don't no-op.
+        const dealId = (inputData.dealId ?? inputData.deal_id) as string | undefined;
         const runCtx = {
-          dealId: inputData.dealId as string | undefined,
+          dealId,
           userId,
           triggeredBy: 'user' as const,
           triggerContext: { source: 'orchestrator', task_type: taskType },
