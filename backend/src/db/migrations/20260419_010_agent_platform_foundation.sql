@@ -140,3 +140,29 @@ CREATE TABLE IF NOT EXISTS market_commentary (
 
 CREATE INDEX IF NOT EXISTS idx_commentary_lookup
   ON market_commentary(entity_type, entity_id, tab_context, generated_at DESC);
+
+-- ── deal_context_fields ───────────────────────────────────────────────────────
+-- Assembly target for Research Agent output. One row per (deal, field_path).
+-- Stores layered values produced by agent tool write_dealcontext.
+-- field_path is a dot-separated key e.g. "parcel.zoning_code", "market.vacancy_rate".
+-- value is JSONB so it can hold any scalar, array, or sub-object.
+-- source_label identifies the writing agent/run e.g. "agent:research".
+-- agent_run_id links back to agent_runs for auditability.
+
+CREATE TABLE IF NOT EXISTS deal_context_fields (
+  id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  deal_id       UUID        NOT NULL REFERENCES deals(id) ON DELETE CASCADE,
+  field_path    TEXT        NOT NULL,
+  value         JSONB       NOT NULL,
+  source_label  TEXT        NOT NULL DEFAULT 'agent:research',
+  agent_run_id  UUID        REFERENCES agent_runs(id),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Unique constraint: one value per (deal, field_path) at a time — upsert target
+CREATE UNIQUE INDEX IF NOT EXISTS idx_deal_context_fields_lookup
+  ON deal_context_fields(deal_id, field_path);
+
+CREATE INDEX IF NOT EXISTS idx_deal_context_fields_deal
+  ON deal_context_fields(deal_id, updated_at DESC);

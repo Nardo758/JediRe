@@ -53,75 +53,42 @@ export const writeDealContextTool: ToolDefinition<
   execute: async (input, ctx) => {
     // Direct DB write — the one documented exception to the platformClient pattern.
     // See CLAUDE.md "write_dealcontext exception" for full rationale.
+    //
+    // Table deal_context_fields was created in migration 010 (agent_platform_foundation).
+    // Schema: (deal_id, field_path) UNIQUE, value JSONB, source_label, agent_run_id.
 
     const now = new Date().toISOString();
 
-    try {
-      // Upsert into deal_context_fields — the layered value store for assembly data
-      await query(
-        `INSERT INTO deal_context_fields
-           (deal_id, field_path, value, source_label, agent_run_id, updated_at)
-         VALUES ($1, $2, $3, $4, $5, NOW())
-         ON CONFLICT (deal_id, field_path)
-         DO UPDATE SET
-           value       = EXCLUDED.value,
-           source_label = EXCLUDED.source_label,
-           agent_run_id = EXCLUDED.agent_run_id,
-           updated_at  = NOW()`,
-        [
-          input.deal_id,
-          input.field_path,
-          JSON.stringify(input.value),
-          input.source_label,
-          ctx.correlationId ?? null,
-        ]
-      );
+    await query(
+      `INSERT INTO deal_context_fields
+         (deal_id, field_path, value, source_label, agent_run_id, updated_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())
+       ON CONFLICT (deal_id, field_path)
+       DO UPDATE SET
+         value        = EXCLUDED.value,
+         source_label = EXCLUDED.source_label,
+         agent_run_id = EXCLUDED.agent_run_id,
+         updated_at   = NOW()`,
+      [
+        input.deal_id,
+        input.field_path,
+        JSON.stringify(input.value),
+        input.source_label,
+        ctx.correlationId ?? null,
+      ]
+    );
 
-      logger.debug('write_dealcontext: field written', {
-        dealId: input.deal_id,
-        fieldPath: input.field_path,
-        source: input.source_label,
-      });
+    logger.debug('write_dealcontext: field written', {
+      dealId: input.deal_id,
+      fieldPath: input.field_path,
+      source: input.source_label,
+    });
 
-      return {
-        success: true,
-        deal_id: input.deal_id,
-        field_path: input.field_path,
-        updated_at: now,
-      };
-
-    } catch (err) {
-      // deal_context_fields table may not exist yet in all environments.
-      // Fall back to deal_ai_data JSON column if present.
-      const message = err instanceof Error ? err.message : String(err);
-      logger.warn('write_dealcontext: primary write failed, trying fallback', {
-        err: message,
-        dealId: input.deal_id,
-      });
-
-      await query(
-        `UPDATE deals
-         SET ai_data = jsonb_set(
-               COALESCE(ai_data, '{}'),
-               string_to_array($1, '.')::text[],
-               $2::jsonb,
-               true
-             ),
-             updated_at = NOW()
-         WHERE id = $3`,
-        [
-          input.field_path,
-          JSON.stringify(input.value),
-          input.deal_id,
-        ]
-      );
-
-      return {
-        success: true,
-        deal_id: input.deal_id,
-        field_path: input.field_path,
-        updated_at: now,
-      };
-    }
+    return {
+      success: true,
+      deal_id: input.deal_id,
+      field_path: input.field_path,
+      updated_at: now,
+    };
   },
 };

@@ -261,12 +261,16 @@ export class CreditService {
    * Deducts the estimate immediately so concurrent requests are blocked.
    * Use debitActualCost() post-call to reconcile the true cost.
    *
-   * Throws CreditExhaustedError if the user cannot cover the estimate.
+   * Returns TRUE if the estimated cost was actually deducted from the user's
+   * credit balance. Returns FALSE when the call is allowed to proceed without
+   * deduction (e.g. overage-allowed tier, no credit record).
+   * Throws CreditExhaustedError if the user cannot cover the estimate and
+   * has exhausted their credit cap.
    */
   async reserveCredits(
     userId: string,
     estimatedCost: number
-  ): Promise<void> {
+  ): Promise<boolean> {
     const result = await query(
       `SELECT credits_remaining, monthly_credit_cap
        FROM user_credit_balances WHERE user_id = $1`,
@@ -274,9 +278,10 @@ export class CreditService {
     );
 
     if (result.rows.length === 0) {
-      // No credit record — allow through (new user or pre-billing setup)
+      // No credit record — allow through (new user or pre-billing setup).
+      // Caller must treat this as not-deducted and charge full actual cost.
       logger.warn('reserveCredits: no credit record, allowing through', { userId });
-      return;
+      return false;
     }
 
     const { credits_remaining, monthly_credit_cap } = result.rows[0];
@@ -287,13 +292,14 @@ export class CreditService {
           `Insufficient credits: ${credits_remaining} remaining, ${estimatedCost.toFixed(4)} estimated`
         );
       }
-      // Overage allowed — Stripe meters will capture it
-      logger.info('reserveCredits: user in overage, proceeding', {
+      // Overage allowed — Stripe meters will capture it.
+      // No deduction made; caller must charge full actual cost post-call.
+      logger.info('reserveCredits: user in overage, proceeding (no deduction)', {
         userId,
         remaining: credits_remaining,
         estimated: estimatedCost,
       });
-      return;
+      return false;
     }
 
     // Deduct estimate upfront — reconcile with debitActualCost() post-call
@@ -305,6 +311,8 @@ export class CreditService {
        WHERE user_id = $2`,
       [estimatedCost, userId]
     );
+
+    return true; // estimate was deducted; debitActualCost() will settle the delta
   }
 
   /**

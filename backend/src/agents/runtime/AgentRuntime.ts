@@ -174,6 +174,10 @@ export class AgentRuntime {
 
     const startMs = Date.now();
 
+    // Shared mutable container so the catch block can persist whatever was
+    // accrued before the failure — critical for BudgetEnforcer daily-cap accuracy.
+    const accrued = { tokensIn: 0, tokensOut: 0, cost: 0 };
+
     try {
       // Step 3: Load system prompt
       const promptRow = await query(
@@ -191,7 +195,7 @@ export class AgentRuntime {
       // Step 4: Tool-calling loop
       // Stamp correlationId with run.id so all tools can attribute to this run
       const ctxWithRun: RunContext = { ...ctx, correlationId: run.id };
-      const result = await this.loop({ run, systemPrompt, userMessage: JSON.stringify(input), ctx: ctxWithRun });
+      const result = await this.loop({ run, systemPrompt, userMessage: JSON.stringify(input), ctx: ctxWithRun, accrued });
 
       // Step 5: Validate output
       const validated = this.config.outputSchema.parse(result.content);
@@ -227,13 +231,16 @@ export class AgentRuntime {
       const status = err instanceof BudgetExceededError ? 'budget_exceeded' : 'failed';
       const message = err instanceof Error ? err.message : String(err);
 
+      // Write accrued cost/tokens so BudgetEnforcer.checkRunCap() daily-cap sums
+      // are accurate even for failed/budget-exceeded runs.
       await query(
         `UPDATE agent_runs
          SET status = $1, error = $2,
+             tokens_in = $3, tokens_out = $4, cost_usd = $5,
              completed_at = NOW(),
-             duration_ms = $3
-         WHERE id = $4`,
-        [status, message, Date.now() - startMs, runId]
+             duration_ms = $6
+         WHERE id = $7`,
+        [status, message, accrued.tokensIn, accrued.tokensOut, accrued.cost, Date.now() - startMs, runId]
       ).catch(dbErr => logger.error('AgentRuntime: failed to mark run failed', { dbErr }));
 
       throw err;
@@ -247,8 +254,11 @@ export class AgentRuntime {
     systemPrompt: string;
     userMessage: string;
     ctx: RunContext;
+    /** Mutable container updated each step so execute() catch block can persist
+     *  accrued spend even when the loop terminates early (budget cap, tool error). */
+    accrued: { tokensIn: number; tokensOut: number; cost: number };
   }): Promise<LoopResult> {
-    const { run, systemPrompt, userMessage, ctx } = params;
+    const { run, systemPrompt, userMessage, ctx, accrued } = params;
     const messages: Anthropic.MessageParam[] = [
       { role: 'user', content: userMessage },
     ];
@@ -282,6 +292,11 @@ export class AgentRuntime {
       totalTokensIn += response.usage.input_tokens;
       totalTokensOut += response.usage.output_tokens;
       totalCost += response.usage.cost_usd;
+
+      // Keep shared container in sync so catch block can persist partial spend
+      accrued.tokensIn = totalTokensIn;
+      accrued.tokensOut = totalTokensOut;
+      accrued.cost = totalCost;
 
       // Per-run cap check AFTER the call so over-limit is caught even on last step
       await this.budget.checkRunCap(run.id, totalCost, this.config.budgetCaps);

@@ -82,12 +82,13 @@ export class MeteringAdapter {
     const { metadata, ...apiParams } = params;
     const estimate = preflightEstimate(apiParams.model);
 
-    // Pre-flight credit reservation (user-triggered only — fail-fast)
-    const reserved =
-      metadata.triggered_by === 'user' && metadata.user_id ? estimate : 0;
-
-    if (reserved > 0) {
-      await creditService.reserveCredits(metadata.user_id!, estimate);
+    // Pre-flight credit reservation (user-triggered only — fail-fast).
+    // wasReserved is TRUE only when the estimate was actually deducted from the
+    // user balance. FALSE when the call is allowed without deduction (overage
+    // tier, no credit record). This distinction controls refund/settlement logic.
+    let wasReserved = false;
+    if (metadata.triggered_by === 'user' && metadata.user_id) {
+      wasReserved = await creditService.reserveCredits(metadata.user_id, estimate);
     }
 
     let response: Anthropic.Message;
@@ -101,9 +102,10 @@ export class MeteringAdapter {
         max_tokens: apiParams.max_tokens,
       });
     } catch (err) {
-      // Model call failed — refund the full reservation so no credits are leaked
-      if (reserved > 0 && metadata.user_id) {
-        await creditService.debitActualCost(metadata.user_id, reserved, 0).catch(
+      // Model call failed — refund the reservation ONLY if a deduction was made.
+      // Prevents phantom credits if reserveCredits allowed without deducting.
+      if (wasReserved && metadata.user_id) {
+        await creditService.debitActualCost(metadata.user_id, estimate, 0).catch(
           refundErr => logger.error('MeteringAdapter: failed to refund reservation', { refundErr })
         );
       }
@@ -116,8 +118,10 @@ export class MeteringAdapter {
       response.usage.output_tokens
     );
 
-    // Synchronous post-call settlement — guaranteed before returning to caller
-    await this.settle(metadata, response, actualCost, estimate, apiParams.model);
+    // Synchronous post-call settlement — guaranteed before returning to caller.
+    // Pass the effective reserved amount: if no deduction occurred, treat as 0
+    // so settle() charges full actualCost rather than only the delta.
+    await this.settle(metadata, response, actualCost, wasReserved ? estimate : 0, apiParams.model);
 
     return {
       ...response,
