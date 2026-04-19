@@ -40,13 +40,15 @@ export const taxService = {
     // Platform assessed value = purchase price (post-acquisition reassessment)
     const platformAssessedValue = ctx.assessedValueOverride ?? ctx.purchasePrice;
 
-    // Build per-year schedule (minimum 10 years for grid completeness)
+    // Build per-year schedule (minimum 10 years for grid completeness).
+    // Carryforward uses _rawAssessedValue (unrounded) when available to avoid
+    // cumulative rounding drift in jurisdictions with annual assessment caps (FL SOH).
     const perYear: ReTaxYear[] = [];
     let prevAssessedValue = platformAssessedValue ?? 0;
     for (let yr = 1; yr <= Math.max(holdYears, 10); yr++) {
       const yearRecord = ruleset.annualPropertyTax(ctx, yr, prevAssessedValue);
       perYear.push(yearRecord);
-      prevAssessedValue = yearRecord.assessedValue;
+      prevAssessedValue = yearRecord._rawAssessedValue ?? yearRecord.assessedValue;
     }
 
     const y1TaxAmt = perYear[0]?.taxAmount ?? null;

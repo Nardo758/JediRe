@@ -31,6 +31,13 @@ export interface TaxContext {
 export interface ReTaxYear {
   year: number;
   assessedValue: number;
+  /**
+   * Internal unrounded assessed value — used by taxService to carry forward the exact
+   * cap-limited baseline to the next year, avoiding cumulative rounding drift in
+   * jurisdictions with an annual assessment cap (e.g. FL SOH cap).
+   * Display always uses the rounded `assessedValue`; callers outside taxService should ignore this.
+   */
+  _rawAssessedValue?: number;
   millageRate: number;
   taxAmount: number;
   sohCapBinding: boolean;

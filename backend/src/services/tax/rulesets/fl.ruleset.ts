@@ -42,16 +42,43 @@ const MIAMI_DADE_CITIES_FALLBACK = new Set([
 ]);
 
 /**
+ * Normalize a county string to canonical lowercase, stripping punctuation and
+ * trailing 'county' for loose-match lookups.
+ * Examples:
+ *   'Miami-Dade'       → 'miami dade'
+ *   'Miami Dade County'→ 'miami dade'
+ *   'Dade County'      → 'dade'
+ *   'miami-dade'       → 'miami dade'
+ */
+function normalizeCounty(s: string): string {
+  return s.toLowerCase()
+    .replace(/[-_]/g, ' ')
+    .replace(/\bcounty\b/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+const MIAMI_DADE_COUNTY_VARIANTS = new Set([
+  'miami dade',
+  'miami-dade',
+  'dade',
+  'miami dade county',
+]);
+
+/**
  * Determine if a deal is in Miami-Dade county.
  *
  * Resolution order:
  * 1. countyOverride (explicit user override: 1=Miami-Dade, 0=statewide)
- * 2. ctx.county field (preferred — resolved upstream via resolver.deriveCounty())
+ * 2. ctx.county field, normalized (preferred — resolved upstream via resolver.deriveCounty())
  * 3. City-name fallback (safety net when county resolution fails)
  */
 function resolveIsMiamiDade(ctx: TaxContext): boolean {
   if (ctx.countyOverride !== null) return ctx.countyOverride;
-  if (ctx.county != null) return ctx.county.toLowerCase().includes('miami-dade');
+  if (ctx.county != null) {
+    const normalized = normalizeCounty(ctx.county);
+    return MIAMI_DADE_COUNTY_VARIANTS.has(normalized) || normalized.includes('miami dade');
+  }
   if (ctx.city) return MIAMI_DADE_CITIES_FALLBACK.has(ctx.city.toLowerCase().trim());
   return false;
 }
@@ -74,16 +101,28 @@ export const flRuleset: TaxRuleset = {
     let assessedValue: number;
     let sohCapBinding = false;
 
+    let rawAssessedValue: number;
+
     if (year === 1) {
+      rawAssessedValue = baseAssessed;
       assessedValue = baseAssessed;
     } else {
       const capLimited = Math.min(marketValue, prevAssessedValue * (1 + FL_SOH_CAP));
       sohCapBinding = marketValue > capLimited + 1;
-      assessedValue = Math.round(capLimited);
+      rawAssessedValue = capLimited;          // preserve full precision for next-year compounding
+      assessedValue = Math.round(capLimited); // rounded value for display / tax calculation
     }
 
     const taxAmount = Math.round(assessedValue * (millageRate / 1000));
-    return { year, assessedValue, millageRate, taxAmount, sohCapBinding, reassessmentEvent: isReassessment };
+    return {
+      year,
+      assessedValue,
+      _rawAssessedValue: rawAssessedValue,
+      millageRate,
+      taxAmount,
+      sohCapBinding,
+      reassessmentEvent: isReassessment,
+    };
   },
 
   acquisitionTransferTax(ctx: TaxContext): TransferTaxResult {
