@@ -193,10 +193,33 @@ interface UnitMixEdit {
 }
 
 // ─── Main component ────────────────────────────────────────────────────────────
+/**
+ * Maps a proforma row's `source` / `resolution` string to an evidence tier number.
+ * Evidence tier spec (from CASHFLOW_OUTPUT_SCHEMA):
+ *   Tier 1 — Uploaded documents: T12, rent roll, tax bill
+ *   Tier 2 — Platform-computed: proforma estimates, calibration, user overrides
+ *   Tier 3 — Public / research datasets: BLS, CoStar, market research, agent
+ *   Tier 4 — Broker OM (self-reported, lowest quality)
+ */
+function sourceToTier(source: string | null): number {
+  const s = (source ?? '').toLowerCase();
+  if (s === 't12' || s === 't12_trailing' || s === 'trailing_12' ||
+      s === 'rent_roll' || s === 'rentroll' ||
+      s === 'tax_bill'  || s === 'taxbill'  ||
+      s === 'document'  || s === 'uploaded') return 1;
+  if (s === 'platform' || s === 'computed' || s === 'proforma' ||
+      s === 'calibration' || s === 'estimate' || s === 'user') return 2;
+  if (s === 'bls' || s === 'costar'  || s === 'public'  ||
+      s === 'research' || s === 'market' ||
+      s === 'agent'   || s === 'capsule') return 3;
+  if (s === 'broker' || s === 'om' || s === 'offering_memorandum' ||
+      s === 'offering') return 4;
+  return 0;
+}
+
 /** Filter proforma rows by the active evidence summary-bar pill selection.
  *  - confidence: matched against row.confidence (0–1) using high/medium/low buckets.
- *  - tier: matched against row.source as a proxy (tier1=broker, tier2=platform/agent,
- *           tier3=public/govt, tier4=synthetic/estimated).
+ *  - tier: F9SummaryBar emits values '1'|'2'|'3'|'4'; mapped via sourceToTier().
  *  - collision: per-row collision data is not embedded in proforma rows — all rows
  *               are shown when this filter type is active (graceful degradation).
  */
@@ -215,16 +238,15 @@ function applyEvidenceFilter(
     });
   }
   if (filter.type === 'tier') {
+    // F9SummaryBar emits '1'|'2'|'3'|'4' (not 'tier1'|…)
+    const targetTier = parseInt(filter.value, 10);
     return rows.filter(r => {
-      const src = (r.source ?? '').toLowerCase();
-      if (filter.value === 'tier1') return src === 'broker';
-      if (filter.value === 'tier2') return src === 'platform' || src === 'agent';
-      if (filter.value === 'tier3') return src === 'bls' || src === 'sec' || src === 'public';
-      if (filter.value === 'tier4') return src === 'synthetic' || src === 'estimated' || src === '';
-      return true;
+      const rowTier = sourceToTier(r.source ?? r.resolution);
+      return rowTier === targetTier;
     });
   }
-  // collision: no per-row collision data available — show all rows
+  // collision: per-row collision data is not embedded in proforma rows.
+  // Show all rows to avoid hiding valid data; the summary bar count remains informational.
   return rows;
 }
 
