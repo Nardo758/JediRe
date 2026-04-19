@@ -1127,9 +1127,7 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8, paddingLeft: 2, flexWrap: 'wrap' }}>
                     {[...seen.entries()].map(([norm, color]) => (
                       <div key={norm} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <svg width="7" height="6" viewBox="0 0 9 8" style={{ flexShrink: 0 }}>
-                          <polygon points="4.5,0.5 8.5,7.5 0.5,7.5" fill={color} />
-                        </svg>
+                        <div style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0 }} />
                         <span style={{ fontSize: 7.5, color: 'rgba(232,230,225,0.35)', fontFamily: "'JetBrains Mono'", letterSpacing: 0.4 }}>
                           {CAT_LABELS[norm] ?? norm.replace('_', ' ').toUpperCase()}
                         </span>
