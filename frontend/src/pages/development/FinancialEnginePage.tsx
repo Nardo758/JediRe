@@ -351,7 +351,8 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
     onTabChange: setActiveTab,
     onF9Refresh: fetchF9Financials,
     onHoldChange: handleHoldChange,
-  }), [resolvedDealId, propDeal, resolvedDealType, assumptions, modelResults, handleAssumptionsChange, handleBuildModel, building, versions, activeVersion, f9Financials, fetchF9Financials, handleHoldChange]);
+    evidenceFilter,
+  }), [resolvedDealId, propDeal, resolvedDealType, assumptions, modelResults, handleAssumptionsChange, handleBuildModel, building, versions, activeVersion, f9Financials, fetchF9Financials, handleHoldChange, evidenceFilter]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BT.bg.terminal }}>

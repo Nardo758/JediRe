@@ -193,7 +193,42 @@ interface UnitMixEdit {
 }
 
 // ─── Main component ────────────────────────────────────────────────────────────
-export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange }: FinancialEngineTabProps) {
+/** Filter proforma rows by the active evidence summary-bar pill selection.
+ *  - confidence: matched against row.confidence (0–1) using high/medium/low buckets.
+ *  - tier: matched against row.source as a proxy (tier1=broker, tier2=platform/agent,
+ *           tier3=public/govt, tier4=synthetic/estimated).
+ *  - collision: per-row collision data is not embedded in proforma rows — all rows
+ *               are shown when this filter type is active (graceful degradation).
+ */
+function applyEvidenceFilter(
+  rows: OperatingStatementRow[],
+  filter: { type: 'collision' | 'confidence' | 'tier'; value: string }
+): OperatingStatementRow[] {
+  if (filter.type === 'confidence') {
+    return rows.filter(r => {
+      const c = r.confidence;
+      if (c == null) return false;
+      if (filter.value === 'high')   return c >= 0.8;
+      if (filter.value === 'medium') return c >= 0.4 && c < 0.8;
+      if (filter.value === 'low')    return c < 0.4;
+      return true;
+    });
+  }
+  if (filter.type === 'tier') {
+    return rows.filter(r => {
+      const src = (r.source ?? '').toLowerCase();
+      if (filter.value === 'tier1') return src === 'broker';
+      if (filter.value === 'tier2') return src === 'platform' || src === 'agent';
+      if (filter.value === 'tier3') return src === 'bls' || src === 'sec' || src === 'public';
+      if (filter.value === 'tier4') return src === 'synthetic' || src === 'estimated' || src === '';
+      return true;
+    });
+  }
+  // collision: no per-row collision data available — show all rows
+  return rows;
+}
+
+export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange, evidenceFilter }: FinancialEngineTabProps) {
   const [data, setData] = useState<DealFinancials | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -331,12 +366,15 @@ export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange }: Financia
   const checks = data.proforma.integrityChecks;
   const totalUnits = data.totalUnits;
 
+  // Apply evidence summary-bar filter when a pill is active
+  const displayRows = evidenceFilter ? applyEvidenceFilter(rows, evidenceFilter) : rows;
+
   const byField: Record<string, OperatingStatementRow> = {};
   rows.forEach(r => { byField[r.field] = r; });
 
-  const revRows  = rows.filter(r => REVENUE_FIELDS.has(r.field) && !SUBTOTALS.has(r.field));
-  const ctrlRows = rows.filter(r => CTRL_OPEX_FIELDS.has(r.field));
-  const nctrlRows = rows.filter(r => NCTRL_OPEX_FIELDS.has(r.field) && !SUBTOTALS.has(r.field));
+  const revRows  = displayRows.filter(r => REVENUE_FIELDS.has(r.field) && !SUBTOTALS.has(r.field));
+  const ctrlRows = displayRows.filter(r => CTRL_OPEX_FIELDS.has(r.field));
+  const nctrlRows = displayRows.filter(r => NCTRL_OPEX_FIELDS.has(r.field) && !SUBTOTALS.has(r.field));
   const noiRow   = rows.find(r => r.field === 'noi');
 
   const egiRow       = byField['egi'];
@@ -1007,18 +1045,27 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
 
   return (
     <tr style={{ background: rowBg, borderBottom: `1px solid #161616` }}>
-      {/* LINE ITEM */}
-      <td style={{
-        padding: '4px 8px', whiteSpace: 'nowrap',
-        color: isSubtotal ? '#e2e8f0' : '#94a3b8',
-        fontWeight: isSubtotal ? 700 : 400,
-        fontFamily: 'Inter, sans-serif', fontSize: 9,
-        position: 'sticky', left: 0, background: rowBg,
-        paddingLeft: isSubtotal ? 8 : 16,
-      }}>
+      {/* LINE ITEM — click label to open evidence panel */}
+      <td
+        title="Click to view evidence for this assumption"
+        onClick={() => {
+          window.dispatchEvent(new CustomEvent('fe-evidence-click', {
+            detail: { path: row.field, label: row.label },
+          }));
+        }}
+        style={{
+          padding: '4px 8px', whiteSpace: 'nowrap',
+          color: isSubtotal ? '#e2e8f0' : '#94a3b8',
+          fontWeight: isSubtotal ? 700 : 400,
+          fontFamily: 'Inter, sans-serif', fontSize: 9,
+          position: 'sticky', left: 0, background: rowBg,
+          paddingLeft: isSubtotal ? 8 : 16,
+          cursor: 'pointer',
+        }}
+      >
         {onToggleAncillary ? (
           <button
-            onClick={onToggleAncillary}
+            onClick={e => { e.stopPropagation(); onToggleAncillary(); }}
             style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#94a3b8', fontFamily: 'Inter, sans-serif', fontSize: 9 }}
             title="Expand ancillary income breakdown"
           >

@@ -64,7 +64,9 @@ export function UnderwritingWalkthrough({ dealId }: UnderwritingWalkthroughProps
         );
         if (!r.ok) return;
         const result: WalkthroughData = await r.json();
-        if (result.narrative) {
+        // Stop polling when backend signals completion (status === 'available'),
+        // even if narrative is an empty string, to prevent indefinite spinner.
+        if (result.status === 'available') {
           setData(result);
           clearInterval(interval);
         }

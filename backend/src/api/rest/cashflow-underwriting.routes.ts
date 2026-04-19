@@ -16,6 +16,7 @@ import { AppError } from '../../middleware/errorHandler';
 import {
   cashflowRuntime,
   buildCompositePrompt,
+  getAllowedTriggerModes,
 } from '../../agents/cashflow.config';
 import { seedCashflowPrompt } from '../../agents/seeds/cashflow.seed';
 import { inngest } from '../../lib/inngest';
@@ -50,6 +51,17 @@ router.post('/cashflow/underwrite', requireAuth, async (req: AuthenticatedReques
     }
 
     await assertDealAccess(deal_id, req.user!.userId);
+
+    // Tier-trigger policy: verify the user's tier permits manual runs
+    const userTierRes = await query(
+      `SELECT u.tier FROM users u JOIN deals d ON d.user_id = u.id WHERE d.id = $1`,
+      [deal_id]
+    );
+    const userTier = (userTierRes.rows[0]?.tier as string | null) ?? '';
+    if (!getAllowedTriggerModes(userTier).includes('manual')) {
+      throw new AppError(403, `Tier '${userTier}' does not permit manual underwriting runs`);
+    }
+
     await seedCashflowPrompt();
 
     // Build deal-type-aware composite prompt for deterministic prompt selection

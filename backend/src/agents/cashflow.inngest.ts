@@ -27,18 +27,16 @@ import {
 import {
   cashflowRuntime,
   buildCompositePrompt,
+  getAllowedTriggerModes,
 } from './cashflow.config';
 import type { CashflowAgentOutput } from './cashflow.config';
 import { query } from '../database/connection';
 import { logger } from '../utils/logger';
 import type { RunContext } from './runtime/types';
 
-const ALLOWED_TIERS: readonly string[] = [
-  'professional', 'enterprise', 'principal', 'institutional',
-];
-
-function isTierAllowed(tier: string): boolean {
-  return ALLOWED_TIERS.includes(tier.toLowerCase());
+/** Event-driven runs require at minimum 'event-driven' trigger mode. */
+function isTierAllowedForEventDriven(tier: string): boolean {
+  return getAllowedTriggerModes(tier).includes('event-driven');
 }
 
 export const cashflowOnResearchCompleted = inngest.createFunction(
@@ -69,9 +67,9 @@ export const cashflowOnResearchCompleted = inngest.createFunction(
         logger.info('CashFlow Agent: deal not found, skipping', { dealId });
         return { allowed: false, userId: '', userTier: '' };
       }
-      const allowed = isTierAllowed(row.tier ?? '');
+      const allowed = isTierAllowedForEventDriven(row.tier ?? '');
       if (!allowed) {
-        logger.info('CashFlow Agent: tier gate blocked', { dealId, tier: row.tier });
+        logger.info('CashFlow Agent: tier gate blocked (event-driven not permitted)', { dealId, tier: row.tier });
       }
       return { allowed, userId: row.user_id as string, userTier: row.tier as string };
     });

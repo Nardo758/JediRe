@@ -510,6 +510,8 @@ export interface FinancialEngineTabProps {
   onF9Refresh?: () => void;
   /** Called when the Projections tab timeline (hold period) changes, so parent can re-fetch with ?hold=N */
   onHoldChange?: (years: number) => void;
+  /** Active summary-bar filter — passed into tabs that support per-row filtering */
+  evidenceFilter?: { type: 'collision' | 'confidence' | 'tier'; value: string } | null;
 }
 
 // ─── F9 Debt Stack (v2) ───────────────────────────────────────────────────────
