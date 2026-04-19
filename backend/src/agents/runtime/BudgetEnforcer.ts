@@ -24,7 +24,9 @@ function startOfDayUTC(): string {
 export class BudgetEnforcer {
   /**
    * Pre-flight check: enforces the per-deal daily cost cap.
-   * Sums cost_usd across all running/succeeded agent_runs for the deal today.
+   * Sums cost_usd across ALL agent_runs for the deal today, regardless of status.
+   * Failed and budget_exceeded runs have their accrued cost persisted since v6,
+   * so excluding them would allow repeated failing runs to bypass the daily cap.
    */
   async check(ctx: RunContext, caps: BudgetCaps): Promise<void> {
     if (!ctx.dealId) return;
@@ -33,8 +35,7 @@ export class BudgetEnforcer {
       `SELECT COALESCE(SUM(cost_usd), 0) AS spent
        FROM agent_runs
        WHERE deal_id = $1
-         AND started_at >= $2
-         AND status IN ('succeeded', 'running')`,
+         AND started_at >= $2`,
       [ctx.dealId, startOfDayUTC()]
     );
 

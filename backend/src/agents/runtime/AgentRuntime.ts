@@ -14,6 +14,7 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import Anthropic from '@anthropic-ai/sdk';
+import { z } from 'zod';
 import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { BudgetEnforcer } from './BudgetEnforcer';
@@ -28,77 +29,51 @@ import {
 
 // ── Anthropic tool schema conversion ─────────────────────────────
 
-type JsonSchemaObj = {
-  type: string;
-  description?: string;
-  properties?: Record<string, unknown>;
+/**
+ * JSON Schema property object as expected by the Anthropic tool-use API.
+ * Typed explicitly so there are no `any` casts in the conversion path.
+ */
+interface AnthropicInputSchema {
+  type: 'object';
+  properties: Record<string, { type: string; description?: string; [k: string]: unknown }>;
   required?: string[];
-};
+}
 
 /**
- * Convert a Zod schema to a minimal JSON Schema object for Anthropic tool_use.
- * Supports ZodObject shapes; all other schemas fall back to a permissive object schema.
+ * Convert a Zod schema to an Anthropic-compatible JSON Schema object.
+ *
+ * Uses Zod v4's native `z.toJSONSchema()` API — no internal `_def` access
+ * or `as any` casts. Falls back to a permissive object schema for types
+ * that produce no properties (e.g. ZodUnknown at root level).
  */
-function zodToJsonSchema(schema: import('zod').ZodSchema): JsonSchemaObj {
-  const def = (schema as any)._def;
-  if (!def) return { type: 'object' };
+function zodToAnthropicInputSchema(schema: z.ZodSchema): AnthropicInputSchema {
+  const json = z.toJSONSchema(schema) as Record<string, unknown>;
 
-  if (def.typeName === 'ZodObject') {
-    const shape: Record<string, import('zod').ZodSchema> = def.shape();
-    const properties: Record<string, unknown> = {};
-    const required: string[] = [];
+  const properties =
+    json.properties != null &&
+    typeof json.properties === 'object' &&
+    !Array.isArray(json.properties)
+      ? (json.properties as Record<string, { type: string; description?: string }>)
+      : {};
 
-    for (const [key, fieldSchema] of Object.entries(shape)) {
-      const fieldDef = (fieldSchema as any)._def;
-      const isOptional =
-        fieldDef?.typeName === 'ZodOptional' ||
-        fieldDef?.typeName === 'ZodDefault';
+  const required =
+    Array.isArray(json.required) && json.required.length > 0
+      ? (json.required as string[])
+      : undefined;
 
-      const innerDef = isOptional ? (fieldDef?.innerType?._def ?? fieldDef?.innerType) : fieldDef;
-      const typeName: string = innerDef?.typeName ?? 'ZodString';
-
-      let type: string;
-      switch (typeName) {
-        case 'ZodNumber': type = 'number'; break;
-        case 'ZodBoolean': type = 'boolean'; break;
-        case 'ZodArray': type = 'array'; break;
-        case 'ZodRecord':
-        case 'ZodObject': type = 'object'; break;
-        default: type = 'string';
-      }
-
-      const description: string | undefined =
-        (fieldSchema as any).description ?? undefined;
-
-      properties[key] = description ? { type, description } : { type };
-
-      if (!isOptional) required.push(key);
-    }
-
-    return {
-      type: 'object',
-      properties,
-      ...(required.length > 0 ? { required } : {}),
-    };
-  }
-
-  return { type: 'object' };
+  return { type: 'object', properties, ...(required ? { required } : {}) };
 }
 
 function toAnthropicToolSchema(tool: AgentConfig['tools'][number]): Anthropic.Tool {
-  const inputSchema = zodToJsonSchema(tool.inputSchema);
   return {
     name: tool.name,
     description: tool.description,
-    input_schema: {
-      type: 'object' as const,
-      ...(inputSchema.properties ? { properties: inputSchema.properties } : {}),
-      ...(inputSchema.required ? { required: inputSchema.required } : {}),
-    },
+    input_schema: zodToAnthropicInputSchema(tool.inputSchema),
   };
 }
 
-// ── AgentRuntime ──────────────────────────────────────────────────
+/** Export for reuse in ToolRegistry. */
+export { zodToAnthropicInputSchema };
 
 // ── Capability check (supports wildcard read:all / write:all) ─────
 
