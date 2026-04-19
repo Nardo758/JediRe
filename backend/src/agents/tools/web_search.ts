@@ -141,8 +141,17 @@ export const webSearchTool: ToolDefinition<WebSearchInput, WebSearchOutput> = {
       return { results: cached, cached: true };
     }
 
-    // Build domain filter arrays for Tavily
-    const includeDomains = config.allowlistDomains?.filter(d => !d.startsWith('*')) ?? undefined;
+    // Build domain filter arrays for Tavily.
+    //
+    // includeDomains is only sent to Tavily when ALL allowlist entries are exact hostnames
+    // (no wildcards like '*.gov' or '.state.fl.us'). Wildcards are not supported by the
+    // Tavily API; stripping them and sending only the remainder would under-restrict results
+    // (e.g., zoning would lose the entire *.gov space). Instead, when wildcards are present
+    // we pass no includeDomains and let the post-filter (isDomainAllowed) enforce policy.
+    const hasWildcardAllowlist =
+      !!config.allowlistDomains?.some(d => d.startsWith('*') || d.startsWith('.'));
+    const includeDomains =
+      config.allowlistDomains && !hasWildcardAllowlist ? config.allowlistDomains : undefined;
     const excludeDomains = config.blocklistDomains ?? undefined;
 
     let rawResults: Array<{ title: string; url: string; content: string; publishedDate?: string }>;

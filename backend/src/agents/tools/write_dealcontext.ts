@@ -64,36 +64,40 @@ export const writeDealContextTool: ToolDefinition<
 
     const now = new Date().toISOString();
 
-    // When the value was obtained via web_search, append ':web' to source_label
-    // so the UI can distinguish web-sourced from structured-data-sourced fields.
-    const effectiveSourceLabel = input.derived_from_search
-      ? `${input.source_label}:web`
-      : input.source_label;
+    // Build field metadata. derived_from_search: true marks that this value was
+    // sourced via web_search rather than structured data — fulfils the LayeredValue
+    // metadata.derived_from_search provenance requirement in the agent spec.
+    const fieldMetadata: Record<string, unknown> = {};
+    if (input.derived_from_search) {
+      fieldMetadata['derived_from_search'] = true;
+    }
 
     await query(
       `INSERT INTO deal_context_fields
-         (deal_id, field_path, value, source_label, agent_run_id, updated_at)
-       VALUES ($1, $2, $3, $4, $5, NOW())
+         (deal_id, field_path, value, source_label, agent_run_id, metadata, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, NOW())
        ON CONFLICT (deal_id, field_path)
        DO UPDATE SET
          value        = EXCLUDED.value,
          source_label = EXCLUDED.source_label,
          agent_run_id = EXCLUDED.agent_run_id,
+         metadata     = EXCLUDED.metadata,
          updated_at   = NOW()`,
       [
         input.deal_id,
         input.field_path,
         JSON.stringify(input.value),
-        effectiveSourceLabel,
+        input.source_label,
         ctx.correlationId ?? null,
+        JSON.stringify(fieldMetadata),
       ]
     );
 
     logger.debug('write_dealcontext: field written', {
       dealId: input.deal_id,
       fieldPath: input.field_path,
-      source: effectiveSourceLabel,
-      webSourced: input.derived_from_search ?? false,
+      source: input.source_label,
+      metadata: fieldMetadata,
     });
 
     return {

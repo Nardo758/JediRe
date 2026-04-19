@@ -21,3 +21,9 @@ UPDATE users SET capabilities = '["read:financials","write:projections"]'::jsonb
 
 UPDATE users SET capabilities = '["read:market_data","read:economic","write:market_commentary","web:search"]'::jsonb
   WHERE id = '00000000-0000-0000-0000-000000000005'; -- commentary
+
+-- Add metadata JSONB column to deal_context_fields for field-level provenance tracking.
+-- When derived_from_search = true, value was obtained via web_search (not structured data).
+ALTER TABLE deal_context_fields ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}';
+COMMENT ON COLUMN deal_context_fields.metadata IS
+  'Optional provenance metadata. Keys: derived_from_search (bool).';

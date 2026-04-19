@@ -47,6 +47,9 @@ interface EnvironmentConfig {
   claudeModel?: string;
   openaiApiKey?: string;
   openaiModel?: string;
+
+  // Web Search (optional — required for agent web_search capability)
+  tavilyApiKey?: string;
   
   // Microsoft (optional)
   microsoftClientId?: string;
@@ -119,6 +122,9 @@ class Environment {
       claudeModel: process.env.CLAUDE_MODEL || 'claude-3-5-sonnet-20241022',
       openaiApiKey: process.env.OPENAI_API_KEY,
       openaiModel: process.env.OPENAI_MODEL || 'gpt-4-turbo-preview',
+
+      // Web Search
+      tavilyApiKey: process.env.TAVILY_API_KEY,
       
       // Microsoft
       microsoftClientId: process.env.MICROSOFT_CLIENT_ID,
@@ -181,6 +187,16 @@ class Environment {
       if (!hasLLM) {
         console.warn('⚠️  WARNING: No LLM API key configured. AI features will be disabled.');
       }
+    }
+
+    // Warn (always) when web search key is absent — agents degrade gracefully but this
+    // surfaces the missing config early rather than silently at first search call.
+    if (!this.config.tavilyApiKey) {
+      console.warn(
+        '⚠️  WARNING: TAVILY_API_KEY is not configured. ' +
+        'Agent web search (research, commentary, zoning) will be unavailable. ' +
+        'Set TAVILY_API_KEY in environment secrets to enable.'
+      );
     }
     
     if (errors.length > 0) {
