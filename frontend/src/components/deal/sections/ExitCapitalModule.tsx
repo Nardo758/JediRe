@@ -584,9 +584,26 @@ function ConvergenceChart21({ selectedFwd, onSelectFwd, optimalFwd, liveEvents =
               key={`live-${ev.id}`}
               title={ev.name}
               onClick={() => onMarkerClick?.(ev.id)}
-              style={{ position: 'absolute', left: `${leftPct}%`, transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, cursor: onMarkerClick ? 'pointer' : 'default' }}
+              style={{
+                position: 'absolute',
+                left: `${leftPct}%`,
+                transform: `translateX(-50%) scale(${isMarkerSelected ? 1.55 : 1})`,
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+                cursor: onMarkerClick ? 'pointer' : 'default',
+                transition: 'transform 0.18s ease',
+                zIndex: isMarkerSelected ? 10 : 1,
+              }}
             >
-              <svg width="9" height="8" viewBox="0 0 9 8" style={{ display: 'block', filter: isMarkerSelected ? `drop-shadow(0 0 3px ${color})` : 'none' }}>
+              <svg
+                width="9" height="8" viewBox="0 0 9 8"
+                style={{
+                  display: 'block',
+                  filter: isMarkerSelected
+                    ? `drop-shadow(0 0 5px ${color}) drop-shadow(0 0 2px ${color})`
+                    : 'none',
+                  transition: 'filter 0.18s ease',
+                }}
+              >
                 <polygon points="4.5,0.5 8.5,7.5 0.5,7.5" fill={color} />
               </svg>
               <span style={{ fontSize: 7, fontWeight: 700, fontFamily: '"JetBrains Mono", monospace', color, whiteSpace: 'nowrap', letterSpacing: 0.3, opacity: isMarkerSelected ? 1 : 0.85 }}>{truncLabel}</span>
@@ -788,6 +805,7 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
   const [expandedEvents, setExpandedEvents] = useState<Set<string>>(new Set());
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const keyEventRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const chartStripRef = useRef<HTMLDivElement>(null);
 
   function handleMarkerClick(id: string) {
     const next = selectedEventId === id ? null : id;
@@ -795,6 +813,16 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
     if (next) {
       requestAnimationFrame(() => {
         keyEventRefs.current[next]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      });
+    }
+  }
+
+  function handleCardClick(id: string) {
+    const next = selectedEventId === id ? null : id;
+    setSelectedEventId(next);
+    if (next) {
+      requestAnimationFrame(() => {
+        chartStripRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       });
     }
   }
@@ -1082,7 +1110,9 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
                   <span style={{ fontSize: 8, color: 'rgba(232,230,225,0.35)', fontFamily: "'JetBrains Mono'", letterSpacing: 0.4 }}>NOW</span>
                 </div>
               </div>
-              <ConvergenceChart21 selectedFwd={selectedFwd} onSelectFwd={setSelectedFwd} optimalFwd={optimalFwd} liveEvents={m35Events.slice(0, 6)} selectedEventId={selectedEventId} onMarkerClick={handleMarkerClick} />
+              <div ref={chartStripRef}>
+                <ConvergenceChart21 selectedFwd={selectedFwd} onSelectFwd={setSelectedFwd} optimalFwd={optimalFwd} liveEvents={m35Events.slice(0, 6)} selectedEventId={selectedEventId} onMarkerClick={handleMarkerClick} />
+              </div>
             </div>
 
             {/* RSS breakdown cards */}
@@ -1236,7 +1266,7 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
                         }}
                       >
                         <div
-                          onClick={() => setSelectedEventId(prev => prev === ev.id ? null : ev.id)}
+                          onClick={() => handleCardClick(ev.id)}
                           style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '10px 14px', cursor: 'pointer' }}
                         >
                           <div style={{ flex: 1, minWidth: 0 }}>
