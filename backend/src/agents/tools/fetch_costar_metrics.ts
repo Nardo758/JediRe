@@ -25,7 +25,10 @@ import { logger } from '../../utils/logger';
 import type { ToolDefinition } from '../runtime/types';
 
 const InputSchema = z.object({
-  msa_id: z.string().describe('CBSA code, e.g. "12060" for Atlanta'),
+  msa_id: z.string().optional().describe(
+    'CBSA code, e.g. "12060" for Atlanta. Optional — if absent, the tool will ' +
+    'use the deal supply endpoint (via ctx.dealId) or fall back to city+state lookup.'
+  ),
   city: z.string().optional().describe('City name for market lookup (e.g. "Atlanta")'),
   state: z.string().optional().describe('Two-letter state code (e.g. "GA")'),
   metric_types: z.array(
@@ -81,6 +84,8 @@ export const fetchCostarMetricsTool: ToolDefinition<
     });
 
     const now = new Date().toISOString();
+    // msa_id is optional — use provided value or fall back to dealId for labelling.
+    const msaLabel = input.msa_id ?? (ctx.dealId ? `deal:${ctx.dealId}` : 'unknown');
 
     // Path 1: deal-scoped supply pipeline
     if (ctx.dealId) {
@@ -93,7 +98,7 @@ export const fetchCostarMetricsTool: ToolDefinition<
         }>(`/supply/deals/${ctx.dealId}/supply`);
 
         if (resp.success && resp.data) {
-          return normalizeSupplyPipeline(resp.data, input.msa_id, ctx.dealId, now);
+          return normalizeSupplyPipeline(resp.data, msaLabel, ctx.dealId, now);
         }
       } catch (err) {
         logger.warn('fetch_costar_metrics: deal supply failed, trying market fallback', {
@@ -116,7 +121,7 @@ export const fetchCostarMetricsTool: ToolDefinition<
       }>(`/market/inventory/${encodeURIComponent(city)}/${encodeURIComponent(state)}`);
 
       const rows = resp?.data ?? [];
-      return normalizeMarketInventoryRows(rows, input.msa_id, city, state, now);
+      return normalizeMarketInventoryRows(rows, msaLabel, city, state, now);
 
     } catch (err) {
       logger.warn('fetch_costar_metrics: market inventory fallback failed', {
@@ -126,7 +131,7 @@ export const fetchCostarMetricsTool: ToolDefinition<
 
       // Return stub so model can handle gracefully
       return {
-        msa_id: input.msa_id,
+        msa_id: msaLabel,
         source_path: 'unavailable',
         metrics: Object.fromEntries(
           input.metric_types.map(t => [t, { value: null, unit: null }])

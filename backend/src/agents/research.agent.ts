@@ -82,7 +82,6 @@ export class ResearchAgent {
           deal_id: input.dealId,
           address: input.address,
           ...(input.propertyId && { property_id: input.propertyId }),
-          ...(input.coordinates?.lat && { city: String(input.coordinates.lat) }),
         },
         ctx
       ) as ResearchOutput;
@@ -107,14 +106,16 @@ export class ResearchAgent {
       ctx2.meta.sourcesSucceeded = output.fields_written ?? [];
       ctx2.meta.assemblyTimeMs = Date.now() - new Date(now).getTime();
 
-      // Map dot-path field entries: 'parcel.ownerName' → ctx.parcel.ownerName
-      // Cast through unknown to avoid TS "insufficient overlap" error on index signature.
+      // Map dot-path field entries written by write_dealcontext tool back into
+      // DealContext fields. Prompt uses snake_case paths (market.vacancy_rate);
+      // DealContext uses camelCase (market.vacancyRate). Translate both.
+      // Cast through unknown to avoid TS "insufficient overlap" on index signature.
       const ctx2Obj = ctx2 as unknown as Record<string, unknown>;
       for (const [path, value] of Object.entries(fieldMap)) {
         const dotIdx = path.indexOf('.');
         if (dotIdx === -1) continue;
         const section = path.slice(0, dotIdx);
-        const field = path.slice(dotIdx + 1);
+        const field = snakeToCamel(path.slice(dotIdx + 1));
         const target = ctx2Obj[section];
         if (target && typeof target === 'object' && field) {
           (target as Record<string, unknown>)[field] = value;
@@ -203,3 +204,10 @@ export class ResearchAgent {
 }
 
 export const researchAgent = new ResearchAgent();
+
+// ── Utilities ────────────────────────────────────────────────────
+
+/** Convert snake_case field name to camelCase: vacancy_rate → vacancyRate */
+function snakeToCamel(s: string): string {
+  return s.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
+}
