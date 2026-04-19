@@ -162,7 +162,8 @@ export const archiveAggregationFunction = inngest.createFunction(
           //   Level 1: per-deal achieved value (median of that deal's monthly readings)
           //   Level 2: bucket median across all per-deal values
           //
-          // "Closed deal" proxy: >= 3 months of actuals for the deal.
+          // "Closed deal" = deals with status = 'closed_won' that also have
+          // >= 3 months of actuals recorded (ensures real post-close data).
           // Include deal_type so bucket cohort aligns with Step 1.
           const result = await query(
             `WITH per_deal_vacancy AS (
@@ -176,7 +177,8 @@ export const archiveAggregationFunction = inngest.createFunction(
                  )                                            AS deal_achieved_vacancy
                FROM deal_monthly_actuals ma
                JOIN deals d ON d.id = ma.deal_id
-               WHERE ma.total_units > 0
+               WHERE d.status = 'closed_won'
+                 AND ma.total_units > 0
                  AND ma.occupied_units IS NOT NULL
                GROUP BY d.id, d.asset_class, d.deal_type, d.submarket_id
                HAVING COUNT(*) >= 3
@@ -200,7 +202,8 @@ export const archiveAggregationFunction = inngest.createFunction(
                  PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY ma.noi) AS deal_achieved_noi
                FROM deal_monthly_actuals ma
                JOIN deals d ON d.id = ma.deal_id
-               WHERE ma.noi IS NOT NULL
+               WHERE d.status = 'closed_won'
+                 AND ma.noi IS NOT NULL
                GROUP BY d.id, d.asset_class, d.deal_type, d.submarket_id
                HAVING COUNT(*) >= 3
              ),

@@ -202,25 +202,48 @@ dealUnderwritingRouter.get(
           archiveEnabled = true;
         const dealMetaResult = await query(
           `SELECT COALESCE(d.asset_class, 'unknown') AS asset_class,
-                  COALESCE(d.deal_type, 'existing')  AS deal_type
+                  COALESCE(d.deal_type, 'existing')  AS deal_type,
+                  d.submarket_id
            FROM deals d WHERE d.id = $1 LIMIT 1`,
           [dealId]
         );
         const dealMeta = dealMetaResult.rows[0] as Record<string, unknown> | undefined;
         if (dealMeta) {
-          const archiveResult = await query(
-            `SELECT p10, p25, p50, p75, p90, n_samples, as_of
-             FROM archive_assumption_benchmarks
-             WHERE asset_class     = $1
-               AND deal_type       = $2
-               AND assumption_name = $3
-               AND n_samples      >= 5
-             ORDER BY as_of DESC
-             LIMIT 1`,
-            [dealMeta.asset_class, dealMeta.deal_type, fieldPath]
-          );
-          if (archiveResult.rows.length > 0) {
-            const ar = archiveResult.rows[0] as Record<string, unknown>;
+          // Progressive bucket fallback — mirrors fetch_archive_assumption_distribution tool:
+          // 1) Exact submarket match (if deal has one), 2) Broadest bucket (submarket_id IS NULL)
+          // All values are parameterized to prevent injection.
+          const bucketCandidates: Array<{ subClause: string; params: unknown[] }> = [];
+          if (dealMeta.submarket_id) {
+            bucketCandidates.push({
+              subClause: 'AND submarket_id = $4',
+              params: [dealMeta.asset_class, dealMeta.deal_type, fieldPath, dealMeta.submarket_id],
+            });
+          }
+          bucketCandidates.push({
+            subClause: 'AND submarket_id IS NULL',
+            params: [dealMeta.asset_class, dealMeta.deal_type, fieldPath],
+          });
+
+          let ar: Record<string, unknown> | undefined;
+          for (const { subClause, params: qParams } of bucketCandidates) {
+            const archiveResult = await query(
+              `SELECT p10, p25, p50, p75, p90, n_samples, as_of
+               FROM archive_assumption_benchmarks
+               WHERE asset_class     = $1
+                 AND deal_type       = $2
+                 AND assumption_name = $3
+                 ${subClause}
+                 AND n_samples      >= 5
+               ORDER BY as_of DESC
+               LIMIT 1`,
+              qParams
+            );
+            if (archiveResult.rows.length > 0) {
+              ar = archiveResult.rows[0] as Record<string, unknown>;
+              break;
+            }
+          }
+          if (ar) {
             const p10 = ar.p10 !== null ? Number(ar.p10) : null;
             const p90 = ar.p90 !== null ? Number(ar.p90) : null;
             const evidenceRow = result.rows[0] as Record<string, unknown> | undefined;
