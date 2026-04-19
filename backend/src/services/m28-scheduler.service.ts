@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import { ingestRateData } from '../scripts/ingest-rate-data';
 import { ingestLeadingIndicators } from '../scripts/ingest-leading-indicators';
+import { ingestMsaData } from '../scripts/ingest-msa-economic-data';
 import { classifyAllMarkets } from '../scripts/classify-market-cycles';
 import { MarketMetricsAggregator } from './market-metrics-aggregator.service';
 import { CorrelationEngineService } from './correlationEngine.service';
@@ -83,8 +84,20 @@ export function startM28Scheduler() {
     }
   }, { timezone: 'America/New_York' });
 
+  // MSA economic data ingestion — runs at 8:30 AM ET (after rate ingest at 8:00 AM)
+  cron.schedule('30 8 * * *', async () => {
+    console.log('[M28 Scheduler] Running MSA economic data ingestion...');
+    try {
+      await ingestMsaData();
+      console.log('[M28 Scheduler] MSA economic data ingestion complete.');
+    } catch (err: any) {
+      console.error('[M28 Scheduler] MSA economic data ingestion failed:', err.message);
+    }
+  }, { timezone: 'America/New_York' });
+
   console.log('[M28 Scheduler] Scheduled:');
-  console.log('  - Rate ingestion: daily at 8:00 AM ET');
+  console.log('  - Rate + macro ingestion: daily at 8:00 AM ET');
+  console.log('  - MSA economic data (BLS): daily at 8:30 AM ET');
   console.log('  - Leading indicators: 5th of each month at 9:00 AM ET');
   console.log('  - Cycle classification: 1st of each month at 10:00 AM ET');
   console.log('  - Market metrics refresh: every 6 hours');

@@ -2,8 +2,11 @@
  * Rate Environment Service
  * Classifies rate environment as Dropping | Flat | Rising based on SOFR forward curve.
  * Provides fixed/floating recommendation and narrative for the Debt Advisor.
+ * Enriched with FRED macro indicators (GDP, CPI, UNRATE, consumer sentiment)
+ * read from the m28_rate_environment DB table.
  */
 import { fetchLiveRates, LiveRates } from '../rate-index.service';
+import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
 
 export type RateEnvironment = 'Dropping' | 'Flat' | 'Rising';
@@ -23,6 +26,17 @@ export interface RateEnvironmentResult {
   pricingWindowScore: number;
   pricingWindowLabel: string;
   computedAt: string;
+  // FRED macro enrichment (from m28_rate_environment DB)
+  macroContext?: {
+    gdpGrowthPct: number | null;
+    cpiYoyPct: number | null;
+    unrate: number | null;
+    consumerSentiment: number | null;
+    m2Yoy: number | null;
+    dxy: number | null;
+    snapshotDate: string | null;
+    narrativeBlock: string;
+  };
 }
 
 interface CacheEntry {
@@ -105,24 +119,74 @@ function computePricingWindowScore(
   return { score: clamped, label };
 }
 
+interface MacroDbRow {
+  gdp_growth_pct: number | null;
+  cpi_yoy_pct: number | null;
+  unrate: number | null;
+  consumer_sentiment: number | null;
+  m2_yoy: number | null;
+  dxy: number | null;
+  snapshot_date: string | null;
+}
+
+async function fetchLatestMacroFromDb(): Promise<MacroDbRow | null> {
+  try {
+    const result = await query(
+      `SELECT gdp_growth_pct, cpi_yoy_pct, unrate, consumer_sentiment,
+              m2_yoy, dxy, snapshot_date::text
+       FROM m28_rate_environment
+       WHERE gdp_growth_pct IS NOT NULL OR cpi_yoy_pct IS NOT NULL
+       ORDER BY snapshot_date DESC LIMIT 1`,
+      []
+    );
+    return result.rows[0] ?? null;
+  } catch (err: any) {
+    logger.warn('[RateEnvironment] Failed to fetch macro DB context', { error: err.message });
+    return null;
+  }
+}
+
+function buildMacroNarrativeBlock(macro: MacroDbRow): string {
+  const parts: string[] = [];
+  if (macro.gdp_growth_pct !== null) {
+    const gdpSignal = macro.gdp_growth_pct >= 2.5 ? 'solid' : macro.gdp_growth_pct >= 1.0 ? 'moderate' : 'weak';
+    parts.push(`Real GDP growth ${macro.gdp_growth_pct >= 0 ? '+' : ''}${macro.gdp_growth_pct}% YoY (${gdpSignal}) [FRED GDPC1]`);
+  }
+  if (macro.cpi_yoy_pct !== null) {
+    const inflSignal = macro.cpi_yoy_pct > 4 ? 'elevated — upward rate pressure' : macro.cpi_yoy_pct > 2.5 ? 'moderately elevated' : 'near-target';
+    parts.push(`CPI inflation ${macro.cpi_yoy_pct}% YoY (${inflSignal}) [FRED CPIAUCSL]`);
+  }
+  if (macro.unrate !== null) {
+    const unrateSignal = macro.unrate < 4.5 ? 'tight labor market supports rent growth' : macro.unrate < 6 ? 'softening labor — watch occupancy trends' : 'elevated unemployment — demand risk factor';
+    parts.push(`Unemployment ${macro.unrate}% (${unrateSignal}) [FRED UNRATE]`);
+  }
+  if (macro.consumer_sentiment !== null) {
+    const sentSignal = macro.consumer_sentiment >= 80 ? 'strong consumer confidence' : macro.consumer_sentiment >= 65 ? 'neutral consumer confidence' : 'weak consumer confidence — demand headwind';
+    parts.push(`Consumer sentiment ${macro.consumer_sentiment} (${sentSignal}) [FRED UMCSENT]`);
+  }
+  return parts.length > 0 ? '\nMacro backdrop: ' + parts.join('. ') + '.' : '';
+}
+
 function buildNarrative(
   env: RateEnvironment,
   sofr: number,
   forward12moBps: number,
-  treasury10y: number
+  treasury10y: number,
+  macroBlock?: string
 ): string {
   const sofrPct = (sofr * 100).toFixed(2);
   const forwardChange = Math.abs(forward12moBps).toFixed(0);
   const forwardDir = forward12moBps < 0 ? 'falling' : 'rising';
   const projectedSofr = ((sofr + forward12moBps / 10000) * 100).toFixed(2);
+  const macro = macroBlock || '';
 
   if (env === 'Dropping') {
-    return `Forward curve shows SOFR at ${sofrPct}% today ${forwardDir} ~${forwardChange}bps to ${projectedSofr}% over the next 12 months. For bridge loans, floating SOFR+ pricing beats comparable fixed-rate by an expected 30-50bps over a 3-year hold. Recommend floating with a rate cap. Alternative if rate certainty is required: short-term fixed (3-5yr) with open prepay.`;
+    return `Forward curve shows SOFR at ${sofrPct}% today ${forwardDir} ~${forwardChange}bps to ${projectedSofr}% over the next 12 months. For bridge loans, floating SOFR+ pricing beats comparable fixed-rate by an expected 30-50bps over a 3-year hold. Recommend floating with a rate cap. Alternative if rate certainty is required: short-term fixed (3-5yr) with open prepay.${macro}`;
   }
   if (env === 'Rising') {
-    return `Forward curve shows SOFR at ${sofrPct}% today ${forwardDir} ~${forwardChange}bps to ${projectedSofr}% over the next 12 months. Fixed-rate financing significantly outperforms floating over the hold. Recommend locking long (10yr+) now. Rate caps are expensive in rising environments — consider higher strike or fixed alternative. 10yr Treasury at ${(treasury10y * 100).toFixed(2)}%.`;
+    return `Forward curve shows SOFR at ${sofrPct}% today ${forwardDir} ~${forwardChange}bps to ${projectedSofr}% over the next 12 months. Fixed-rate financing significantly outperforms floating over the hold. Recommend locking long (10yr+) now. Rate caps are expensive in rising environments — consider higher strike or fixed alternative. 10yr Treasury at ${(treasury10y * 100).toFixed(2)}%.${macro}`;
   }
-  return `Forward curve shows SOFR at ${sofrPct}% in a stable range (±25bps over 12mo). Fixed vs floating decision driven by hold period and prepayment needs. Match loan term to strategy timeline. 10yr Treasury at ${(treasury10y * 100).toFixed(2)}%.`;
+  return `Forward curve shows SOFR at ${sofrPct}% in a stable range (±25bps over 12mo). Fixed vs floating decision driven by hold period and prepayment needs. Match loan term to strategy timeline. 10yr Treasury at ${(treasury10y * 100).toFixed(2)}%.${macro}`;
 }
 
 export async function classifyRateEnvironment(): Promise<RateEnvironmentResult> {
@@ -131,7 +195,12 @@ export async function classifyRateEnvironment(): Promise<RateEnvironmentResult> 
   }
 
   try {
-    const liveRates: LiveRates = await fetchLiveRates();
+    // Fetch live rates + macro DB context in parallel
+    const [liveRates, macroRow] = await Promise.all([
+      fetchLiveRates(),
+      fetchLatestMacroFromDb(),
+    ]);
+
     const sofr = (liveRates.sofr || 5.3) / 100;
     const sofrAvg30  = (liveRates.sofrAvg30  || 0) / 100;
     const sofrAvg90  = (liveRates.sofrAvg90  || 0) / 100;
@@ -139,8 +208,6 @@ export async function classifyRateEnvironment(): Promise<RateEnvironmentResult> 
     const treasury10y = (liveRates.treasury10Y || 4.3) / 100;
     const fedFundsTarget = ((liveRates.effrTargetLow || 5.25) + (liveRates.effrTargetHigh || 5.5)) / 2 / 100;
 
-    // Pass real trailing averages so buildSofrForwardCurve uses observed
-    // rate-of-change rather than a static level-shift heuristic.
     const fwdCurve = buildSofrForwardCurve(sofr, sofrAvg30, sofrAvg90, sofrAvg180);
     const sofrForward12moBps = (fwdCurve[4] - fwdCurve[0]) * 10000;
 
@@ -160,9 +227,23 @@ export async function classifyRateEnvironment(): Promise<RateEnvironmentResult> 
       classification === 'Rising' ? 'Cap expensive; consider higher strike or fixed alternative' :
       'Standard rate cap sizing';
 
-    const narrative = buildNarrative(classification, sofr, sofrForward12moBps, treasury10y);
+    // Build macro narrative block from DB data (GDP, CPI, UNRATE, sentiment)
+    const macroBlock = macroRow ? buildMacroNarrativeBlock(macroRow) : '';
+    const narrative = buildNarrative(classification, sofr, sofrForward12moBps, treasury10y, macroBlock);
+
     const { score: pricingWindowScore, label: pricingWindowLabel } =
       computePricingWindowScore(classification, sofr, treasury10y);
+
+    const macroContext = macroRow ? {
+      gdpGrowthPct: macroRow.gdp_growth_pct,
+      cpiYoyPct: macroRow.cpi_yoy_pct,
+      unrate: macroRow.unrate,
+      consumerSentiment: macroRow.consumer_sentiment,
+      m2Yoy: macroRow.m2_yoy,
+      dxy: macroRow.dxy,
+      snapshotDate: macroRow.snapshot_date,
+      narrativeBlock: macroBlock,
+    } : undefined;
 
     const result: RateEnvironmentResult = {
       classification,
@@ -179,6 +260,7 @@ export async function classifyRateEnvironment(): Promise<RateEnvironmentResult> 
       pricingWindowScore,
       pricingWindowLabel,
       computedAt: new Date().toISOString(),
+      macroContext,
     };
 
     cache = { data: result, expiresAt: Date.now() + CACHE_TTL_MS };

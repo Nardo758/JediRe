@@ -30,6 +30,10 @@ interface RateDataPoint {
   dxy: number | null;
   policy_stance: string;
   forward_direction: string;
+  gdp_growth_pct: number | null;
+  cpi_yoy_pct: number | null;
+  unrate: number | null;
+  consumer_sentiment: number | null;
 }
 
 async function ingestRateData(dateOverride?: string) {
@@ -40,59 +44,70 @@ async function ingestRateData(dateOverride?: string) {
   console.log(`═══════════════════════════════════════════════════\n`);
 
   try {
-    // Check if data already exists for this date
+    // Check if macro indicators need updating (allow upsert even if row exists)
     const existing = await pool.query(
-      'SELECT 1 FROM m28_rate_environment WHERE snapshot_date = $1',
+      'SELECT gdp_growth_pct FROM m28_rate_environment WHERE snapshot_date = $1',
       [targetDate]
     );
+    const macroAlreadyFilled = existing.rows.length > 0 && existing.rows[0].gdp_growth_pct !== null;
 
-    if (existing.rows.length > 0) {
-      console.log(`⏭️  Data already exists for ${targetDate}. Skipping.`);
+    if (existing.rows.length > 0 && macroAlreadyFilled) {
+      console.log(`⏭️  Complete data already exists for ${targetDate}. Skipping.`);
       return;
     }
 
-    // Fetch all series
-    console.log('📊 Fetching rate data from FRED...');
-    
-    const latestValues = await fredApiClient.getMultipleLatest([
-      FRED_SERIES.FFR,
-      FRED_SERIES.SOFR,
-      FRED_SERIES.T10Y,
-      FRED_SERIES.MTG30Y,
-      FRED_SERIES.M2,
-      FRED_SERIES.FED_ASSETS,
-      FRED_SERIES.DXY,
+    // Fetch rate series + macro indicators in parallel
+    console.log('📊 Fetching rate + macro data from FRED...');
+    const [latestValues, m2Historical, ffrHistorical, cpiHistorical, gdpHistorical] = await Promise.all([
+      fredApiClient.getMultipleLatest([
+        FRED_SERIES.FFR,
+        FRED_SERIES.SOFR,
+        FRED_SERIES.T10Y,
+        FRED_SERIES.MTG30Y,
+        FRED_SERIES.M2,
+        FRED_SERIES.FED_ASSETS,
+        FRED_SERIES.DXY,
+        FRED_SERIES.UNRATE,
+        FRED_SERIES.UMCSENT,
+      ]),
+      // sortDesc=true fetches most recent N observations, then reverses to ascending order
+      fredApiClient.getSeries(FRED_SERIES.M2, undefined, undefined, 13, true),
+      fredApiClient.getSeries(FRED_SERIES.FFR, undefined, undefined, 90, true),
+      fredApiClient.getSeries(FRED_SERIES.CPI, undefined, undefined, 14, true),
+      fredApiClient.getSeries(FRED_SERIES.GDP, undefined, undefined, 6, true),
     ]);
 
-    // Calculate M2 YoY (need historical data)
-    console.log('📈 Calculating M2 year-over-year growth...');
-    const m2Historical = await fredApiClient.getSeries(
-      FRED_SERIES.M2,
-      undefined,
-      undefined,
-      13 // Last 13 months
-    );
-    
+    // M2 YoY
     const m2YoyData = calculateM2YoY(m2Historical);
-    const m2Yoy = m2YoyData.length > 0 
+    const m2Yoy = m2YoyData.length > 0
       ? parseFloat(m2YoyData[m2YoyData.length - 1].value)
       : null;
 
-    // Determine policy stance
-    const ffrHistorical = await fredApiClient.getSeries(
-      FRED_SERIES.FFR,
-      undefined,
-      undefined,
-      90 // Last 90 days
-    );
-    const policyStance = determinePolicyStance(ffrHistorical);
+    // CPI YoY (month-over-month-ago-12)
+    let cpiYoy: number | null = null;
+    if (cpiHistorical.length >= 13) {
+      const latest = parseFloat(cpiHistorical[cpiHistorical.length - 1].value);
+      const yearAgo = parseFloat(cpiHistorical[cpiHistorical.length - 13].value);
+      if (!isNaN(latest) && !isNaN(yearAgo) && yearAgo > 0) {
+        cpiYoy = parseFloat(((latest - yearAgo) / yearAgo * 100).toFixed(2));
+      }
+    }
 
-    // Determine forward direction
+    // GDP YoY (quarterly — compare to 4 quarters ago)
+    let gdpYoy: number | null = null;
+    if (gdpHistorical.length >= 5) {
+      const gdpLatest = parseFloat(gdpHistorical[gdpHistorical.length - 1].value);
+      const gdpYearAgo = parseFloat(gdpHistorical[gdpHistorical.length - 5].value);
+      if (!isNaN(gdpLatest) && !isNaN(gdpYearAgo) && gdpYearAgo > 0) {
+        gdpYoy = parseFloat(((gdpLatest - gdpYearAgo) / gdpYearAgo * 100).toFixed(2));
+      }
+    }
+
+    const policyStance = determinePolicyStance(ffrHistorical);
     const ffr = latestValues[FRED_SERIES.FFR] || 0;
     const t10y = latestValues[FRED_SERIES.T10Y] || 0;
     const forwardDirection = determineForwardDirection(ffr, t10y);
 
-    // Build data object
     const rateData: RateDataPoint = {
       snapshot_date: targetDate,
       ffr: latestValues[FRED_SERIES.FFR],
@@ -105,15 +120,35 @@ async function ingestRateData(dateOverride?: string) {
       dxy: latestValues[FRED_SERIES.DXY],
       policy_stance: policyStance,
       forward_direction: forwardDirection,
+      gdp_growth_pct: gdpYoy,
+      cpi_yoy_pct: cpiYoy,
+      unrate: latestValues[FRED_SERIES.UNRATE],
+      consumer_sentiment: latestValues[FRED_SERIES.UMCSENT],
     };
 
-    // Insert into database
+    // Upsert — insert or update macro columns if row already exists
     console.log('💾 Storing in database...');
     await pool.query(
       `INSERT INTO m28_rate_environment (
         snapshot_date, ffr, sofr, t10y, t30y_mtg, m2_yoy, m2_level,
-        fed_balance_sheet, dxy, policy_stance, forward_direction
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        fed_balance_sheet, dxy, policy_stance, forward_direction,
+        gdp_growth_pct, cpi_yoy_pct, unrate, consumer_sentiment
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      ON CONFLICT (snapshot_date) DO UPDATE SET
+        ffr                = EXCLUDED.ffr,
+        sofr               = EXCLUDED.sofr,
+        t10y               = EXCLUDED.t10y,
+        t30y_mtg           = EXCLUDED.t30y_mtg,
+        m2_yoy             = EXCLUDED.m2_yoy,
+        m2_level           = EXCLUDED.m2_level,
+        fed_balance_sheet  = EXCLUDED.fed_balance_sheet,
+        dxy                = EXCLUDED.dxy,
+        policy_stance      = EXCLUDED.policy_stance,
+        forward_direction  = EXCLUDED.forward_direction,
+        gdp_growth_pct     = EXCLUDED.gdp_growth_pct,
+        cpi_yoy_pct        = EXCLUDED.cpi_yoy_pct,
+        unrate             = EXCLUDED.unrate,
+        consumer_sentiment = EXCLUDED.consumer_sentiment`,
       [
         rateData.snapshot_date,
         rateData.ffr,
@@ -126,20 +161,17 @@ async function ingestRateData(dateOverride?: string) {
         rateData.dxy,
         rateData.policy_stance,
         rateData.forward_direction,
+        rateData.gdp_growth_pct,
+        rateData.cpi_yoy_pct,
+        rateData.unrate,
+        rateData.consumer_sentiment,
       ]
     );
 
-    // Calculate cap spread (if we have market data)
-    // This would pull from M05 market intelligence for current cap rates
-    // For now, we'll skip this and calculate on-demand
-
-    console.log('\n✅ Rate data ingestion complete!');
-    console.log(`   FFR: ${rateData.ffr}%`);
-    console.log(`   10Y: ${rateData.t10y}%`);
-    console.log(`   30Y Mortgage: ${rateData.t30y_mtg}%`);
-    console.log(`   M2 YoY: ${rateData.m2_yoy?.toFixed(2)}%`);
-    console.log(`   Policy Stance: ${rateData.policy_stance}`);
-    console.log(`   Forward Direction: ${rateData.forward_direction}`);
+    console.log('\n✅ Rate + macro data ingestion complete!');
+    console.log(`   FFR: ${rateData.ffr}%  |  10Y: ${rateData.t10y}%  |  Mortgage: ${rateData.t30y_mtg}%`);
+    console.log(`   M2 YoY: ${rateData.m2_yoy?.toFixed(2)}%  |  Policy: ${rateData.policy_stance}  |  Direction: ${rateData.forward_direction}`);
+    console.log(`   GDP YoY: ${rateData.gdp_growth_pct?.toFixed(2)}%  |  CPI YoY: ${rateData.cpi_yoy_pct?.toFixed(2)}%  |  UNRATE: ${rateData.unrate}%  |  Sentiment: ${rateData.consumer_sentiment}`);
     console.log('');
 
   } catch (error: any) {

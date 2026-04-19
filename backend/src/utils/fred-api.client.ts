@@ -45,7 +45,8 @@ export class FREDApiClient {
     seriesId: string,
     startDate?: string,
     endDate?: string,
-    limit?: number
+    limit?: number,
+    sortDesc?: boolean
   ): Promise<FREDSeriesObservation[]> {
     try {
       const params: any = {
@@ -55,10 +56,16 @@ export class FREDApiClient {
       if (startDate) params.observation_start = startDate;
       if (endDate) params.observation_end = endDate;
       if (limit) params.limit = limit;
+      if (sortDesc) params.sort_order = 'desc';
 
       const response = await this.client.get('/series/observations', { params });
-      
-      return response.data.observations || [];
+
+      const obs: FREDSeriesObservation[] = response.data.observations || [];
+      // Filter out missing values ('.' placeholder from FRED)
+      const valid = obs.filter(o => o.value !== '.' && o.value !== '');
+      // If we fetched desc for recency, reverse so callers get ascending order
+      if (sortDesc) valid.reverse();
+      return valid;
     } catch (error: any) {
       console.error(`FRED API error for series ${seriesId}:`, error.message);
       throw new Error(`Failed to fetch FRED series ${seriesId}: ${error.message}`);
@@ -66,10 +73,10 @@ export class FREDApiClient {
   }
 
   /**
-   * Get the most recent observation for a series
+   * Get the most recent observation for a series (uses sort_order=desc for correctness)
    */
   async getLatest(seriesId: string): Promise<FREDSeriesObservation | null> {
-    const observations = await this.getSeries(seriesId, undefined, undefined, 1);
+    const observations = await this.getSeries(seriesId, undefined, undefined, 1, true);
     return observations.length > 0 ? observations[0] : null;
   }
 
@@ -124,26 +131,29 @@ export const FRED_SERIES = {
   // Fed Policy
   FFR: 'DFF',              // Federal Funds Rate (daily)
   SOFR: 'SOFR',            // Secured Overnight Financing Rate
-  
+
   // Treasury Yields
   T10Y: 'DGS10',           // 10-Year Treasury Constant Maturity Rate
   T30Y: 'DGS30',           // 30-Year Treasury
-  
+
   // Mortgage Rates
   MTG30Y: 'MORTGAGE30US',  // 30-Year Fixed Rate Mortgage Average
-  
+
   // Money Supply
   M2: 'M2SL',              // M2 Money Stock (billions, seasonally adjusted)
   M2_YOY: 'M2YOY',         // M2 Year-over-Year % Change (calculated series)
-  
+
   // Fed Balance Sheet
   FED_ASSETS: 'WALCL',     // Fed Total Assets (billions)
-  
+
   // Dollar Index
   DXY: 'DTWEXBGS',         // Trade Weighted U.S. Dollar Index: Broad, Goods
-  
-  // Spreads (calculated)
-  // Cap spread = actual cap rate - 10Y (calculated in application)
+
+  // Macro Indicators (added for economic context framework)
+  GDP: 'GDPC1',            // Real GDP (quarterly, seasonally adjusted annual rate)
+  CPI: 'CPIAUCSL',         // Consumer Price Index for All Urban Consumers (monthly)
+  UNRATE: 'UNRATE',        // Civilian Unemployment Rate (monthly)
+  UMCSENT: 'UMCSENT',      // University of Michigan: Consumer Sentiment (monthly)
 } as const;
 
 // ═══════════════════════════════════════════════════════════════

@@ -102,6 +102,7 @@ import corporateHealthRoutes from './corporate-health.routes';
 import opportunityEngineRoutes from './opportunity-engine.routes';
 import benchmarkTimelineRoutes from './benchmark-timeline.routes';
 import tickerRoutes from './ticker.routes';
+import economicContextRoutes from './economic-context.routes';
 import agentSettingsRoutes from './agent-settings.routes';
 import columnPreferencesRoutes from './column-preferences.routes';
 import timeSeriesRoutes from './time-series.routes';
@@ -412,6 +413,9 @@ export function setupRESTRoutes(app: Application): void {
   // Ticker feed — public macro data (FRED: 10Y Treasury, SOFR, CPI, Unemployment)
   // No auth required — mounts before the 404 handler so it is always reachable
   app.use(`${API_PREFIX}/ticker`, tickerRoutes);
+
+  // Economic context — FRED macro + BLS MSA labor data
+  app.use(`${API_PREFIX}/economic-context`, economicContextRoutes);
 
   // Inline Deals routes (Deal Capsule document upload, extraction, reprocessing)
   app.use(`${API_PREFIX}/inline-deals`, inlineDealsRoutes);
