@@ -1,0 +1,762 @@
+# JEDI RE — CashFlow Agent Underwriting Specification
+
+> How the CashFlow Agent underwrites deals using platform data, owned-asset actuals, and the archive — and how it shows its work to the user.
+>
+> Companion to `AGENT_PLATFORM_SPEC.md`, `AGENT_TAXONOMY_ADDENDUM.md`, and `AGENT_TASK_INVENTORY.md`.
+>
+> Related: `TRAFFIC_ENGINE_CALIBRATION_SPEC.md` (three-layer calibration pattern), `F4_Commentary_Enhancement_Spec.docx` (narrative generation pattern), `rate_strategy_formula.md` (RSS formula).
+
+---
+
+## Purpose
+
+The CashFlow Agent produces an underwriting view of a deal — the full ProForma, returns, sensitivities — using three tiers of evidence ranked by authority, and shows the user exactly which evidence was used for which assumption and why. This is not just a proforma generator. It is an institutional-grade underwriting engine with a transparent reasoning trail that the user can audit, challenge, and override at any field.
+
+The goal: a user should be able to look at any cell in the model and ask "where did this number come from?" and get a direct, sourced answer.
+
+---
+
+## The Three Evidence Tiers
+
+Every assumption the agent produces is backed by evidence drawn from one or more of these tiers, in this order of authority:
+
+### Tier 1 — This Deal's Own Data (highest authority)
+
+Source-of-truth for this specific property, uploaded by the user or extracted from docs.
+
+- T12 operating statement (historical NOI, opex line items, revenue mix)
+- Rent roll with lease charges (current leased rents, unit mix, concessions, renewal patterns)
+- Tax bill PDF (current assessed value, millage, exemptions)
+- Broker OM assumptions (for collision comparison)
+- Service contracts (insurance, management, utilities)
+- Environmental reports, PCA, cap-ex history
+
+If a number comes from Tier 1, that number IS the number. The agent does not average it with other tiers; it uses the deal's own data as ground truth.
+
+### Tier 2 — Owned Portfolio Actuals (second authority)
+
+Actual performance from properties the user already owns that are comparable to the subject deal. This is your institutional edge — you have real operating data that other underwriters don't.
+
+- Same-submarket owned assets: strongest comparable (same labor pool, same competitive set, same tax jurisdiction)
+- Same-class + same-MSA owned assets: second-strongest
+- Same-class + similar-MSA (via MSA cluster mapping): third-strongest
+
+Pulled from `deal_monthly_actuals` table (when M22 Post-Close Intelligence is live). Each Tier 2 data point carries a comparability score (0-1) based on how similar the comparable is to the subject.
+
+**Key insight:** Tier 2 is more authoritative than Tier 3 for assumption benchmarks because it's YOUR data on YOUR properties. It already reflects your operating standards, your management philosophy, your renovation quality. Generic platform benchmarks don't.
+
+### Tier 3 — Platform Intelligence (third authority)
+
+Market-wide data from the platform's intelligence stack. Authoritative when Tier 1 and Tier 2 don't apply or have insufficient sample.
+
+- M05 Market Intelligence (submarket rent growth, occupancy trends, cap rates)
+- M07 Traffic Engine (peer property signing velocity, renewal rates, seasonality)
+- M04 Supply Pipeline (forward supply pressure by submarket)
+- M06 Demand Signals (employment drivers, population inflow, wage growth)
+- M14 Risk Assessment (insurance benchmarks, regulatory risk)
+- M15 Comp Engine (transaction-based cap rates, price per unit)
+- M35 Event Impact Engine (event-adjusted trajectory forecasts)
+- Archive intelligence (underwriting benchmarks from prior deals on the platform — tier below user's own but above generic market data)
+
+### Tier 4 — Broker Assumptions (reference only, not authority)
+
+The broker's OM is used ONLY for collision detection, never as a source of authority. The agent compares its output against broker assumptions and flags divergence so the user knows what's being smoothed over or inflated in the marketing package.
+
+### Resolution order
+
+```
+For each assumption:
+  if Tier 1 data exists with >= 12 months history → use Tier 1 (confidence: high)
+  elif Tier 2 data exists with >= 3 comparable assets → use Tier 2 (confidence: high)
+  elif Tier 2 data exists with 1-2 comparable assets → blend Tier 2 × Tier 3 (confidence: medium)
+  elif Tier 3 data exists → use Tier 3 (confidence: medium)
+  else → use conservative default with explicit flag (confidence: low)
+
+Always compare to Tier 4 (broker) for collision report.
+```
+
+---
+
+## Output: The Sourced ProForma
+
+Every mutable field in the ProForma is a `LayeredValue<T>` per the existing platform pattern, extended to carry full evidence metadata.
+
+### Extended `LayeredValue<T>` for underwriting
+
+```typescript
+interface UnderwritingValue<T> extends LayeredValue<T> {
+  value: T;
+  source: 'agent:cashflow' | 'tier1:t12' | 'tier1:rent_roll' | 'tier1:tax_bill'
+         | 'tier2:owned_asset' | 'tier3:platform' | 'tier4:broker' | 'override';
+
+  // New evidence fields
+  evidence: Evidence;
+  confidence: 'high' | 'medium' | 'low';
+  agent_run_id?: string;
+  set_at: string;
+  set_by?: string;
+}
+
+interface Evidence {
+  primary_tier: 1 | 2 | 3;                 // which tier drove this value
+  data_points: EvidencePoint[];            // actual observations used
+  reasoning: string;                       // the agent's explanation in plain English
+  alternatives_considered: Alternative[];  // what the agent rejected and why
+  collision?: CollisionReport;             // if broker assumption differs materially
+}
+
+interface EvidencePoint {
+  source_type: 't12_line' | 'rent_roll_lease' | 'tax_bill'
+             | 'owned_asset_actual' | 'platform_metric' | 'archive_deal'
+             | 'news_event' | 'comp_transaction';
+  source_id: string;                       // e.g. 'asset:summit_ridge:2025-09'
+                                           //      'platform:m05:submarket:tampa_westshore:rent_growth_yoy'
+                                           //      'archive:deal_847:rent_growth_achieved'
+  value: number | string;
+  as_of: string;                           // date the source data was recorded
+  weight: number;                          // 0-1, how much this point contributed
+  url?: string;                            // link back to source view in the UI
+}
+
+interface Alternative {
+  tier: number;
+  value: number | string;
+  reason_rejected: string;                 // e.g. "Insufficient sample (1 comparable)"
+}
+
+interface CollisionReport {
+  broker_value: number | string;
+  platform_value: number | string;
+  delta_pct: number;
+  magnitude: 'minor' | 'material' | 'severe';  // <5%, 5-15%, >15%
+  direction: 'broker_inflated' | 'broker_conservative';
+  narrative: string;                       // e.g. "Broker assumes 4.5% rent growth. Submarket TTM is 3.1% and owned-portfolio actual is 2.8%. Broker is materially aggressive."
+}
+```
+
+### Example: a single assumption
+
+```typescript
+// Year 1 rent growth assumption for a Tampa Class B multifamily deal
+yr1_rent_growth: {
+  value: 3.2,  // percent
+  source: 'agent:cashflow',
+  confidence: 'high',
+  evidence: {
+    primary_tier: 2,
+    data_points: [
+      {
+        source_type: 'owned_asset_actual',
+        source_id: 'asset:summit_ridge:ttm',
+        value: 3.4,
+        as_of: '2026-03-31',
+        weight: 0.45,
+        url: '/portfolio/summit-ridge#noi-tab'
+      },
+      {
+        source_type: 'owned_asset_actual',
+        source_id: 'asset:bay_heights:ttm',
+        value: 2.9,
+        as_of: '2026-03-31',
+        weight: 0.35,
+        url: '/portfolio/bay-heights#noi-tab'
+      },
+      {
+        source_type: 'platform_metric',
+        source_id: 'platform:m05:westshore_tampa:rent_growth_yoy',
+        value: 3.1,
+        as_of: '2026-04-01',
+        weight: 0.20,
+        url: '/markets/tampa/westshore#rent-trends'
+      }
+    ],
+    reasoning: "Your two Westshore Class B assets delivered 3.4% and 2.9% YoY rent growth over the TTM. Westshore submarket composite is 3.1%. Weighted toward your own data (80% of signal) with submarket as cross-check. Applied small downward adjustment for the 280-unit competitor pipeline delivering Q3 2027.",
+    alternatives_considered: [
+      {
+        tier: 3,
+        value: 4.2,
+        reason_rejected: "Platform archive average for Class B value-add underwriting was 4.2%, but your actuals are consistently 80-100bps below this benchmark — likely reflects your conservative rent push philosophy. Using your data."
+      },
+      {
+        tier: 4,
+        value: 4.5,
+        reason_rejected: "Broker OM assumption of 4.5% is 130bps above owned-portfolio actuals. Flagged as material collision."
+      }
+    ],
+    collision: {
+      broker_value: 4.5,
+      platform_value: 3.2,
+      delta_pct: 40.6,
+      magnitude: 'material',
+      direction: 'broker_inflated',
+      narrative: "Broker OM projects 4.5% Y1 rent growth. Your Westshore portfolio has averaged 3.15% over TTM; submarket is 3.1%. Broker assumption is 130bps above your operating reality, which would overstate Y1 NOI by ~$42K on 200 units at $1,850 average rent."
+    }
+  },
+  agent_run_id: 'run_abc123',
+  set_at: '2026-04-19T14:32:08Z'
+}
+```
+
+User sees a small `AGENT` badge on the field. Hover reveals the reasoning. Click opens the full evidence panel.
+
+---
+
+## Deal Type Variants
+
+The agent produces different proformas for different deal types. Detection happens first (deterministic, via `resolveProjectType`), then the agent loads the matching workflow.
+
+### Existing / Stabilized
+
+- Ground truth: T12 NOI + rent roll
+- Year 1 projection anchored to trailing actuals with explicit growth/expense adjustments
+- Vacancy ramp: not applicable (already stabilized)
+- Key assumption classes: rent growth, expense growth, renewal rate, vacancy loss, cap-ex reserve, exit cap
+
+### Value-Add (subtype of Existing)
+
+- Same as Existing, plus:
+- Renovation program assumptions (units/month pace, cost per unit, premium per renovated unit)
+- Post-renovation vacancy loss during turn period
+- Premium ramp schedule over 24-36 months
+- Cross-check: archive data on premium-achieved vs premium-underwritten by renovation tier
+
+### Lease-Up
+
+- No stabilized T12 (property not yet leased)
+- Ground truth: construction budget, unit mix, delivery schedule
+- Absorption curve: pulled from M07 Traffic Engine per `TRAFFIC_ENGINE_CALIBRATION_SPEC.md` Section 4.4
+- Rent assumption: drawn from comparable Class/submarket peer comps with freshness weighting
+- Post-stabilization: transitions to Existing model at TCO + absorption period
+- Critical cross-check: archive data on actual absorption vs underwritten absorption in similar submarkets
+
+### Development
+
+- Ground truth: zoning entitlement (from Zoning Agent), construction cost basis, land basis
+- Development budget build-up (hard costs, soft costs, financing costs, contingency)
+- Delivery timeline from `Time-to-Shovel` module output
+- Then transitions to Lease-Up model at TCO
+- Exit assumptions: cap rate at stabilization, hold period post-stabilization
+- Risk overlay: construction cost variance, entitlement variance, delivery variance
+
+### Redevelopment
+
+- Hybrid: partial T12 from in-place units, construction budget for redevelopment scope
+- Phased model: some units operating while others under renovation
+- Transitions through three phases: current operations → repositioning → stabilized
+- Most complex proforma variant; agent uses existing `proforma-adjustment.service.ts` phased logic
+
+The agent selects the variant from `deal.project_type` and loads the matching prompt template + tool sequence. Output schema is the same across variants; the populated fields differ.
+
+---
+
+## Assumption Derivation Rules
+
+Each assumption class has explicit rules for how the agent derives it. This is not the agent "thinking freely" — it is the agent executing a structured reasoning process with documented logic. Below are the core assumption classes. Every rule is auditable.
+
+### Rent growth (Y1, Y2, Y3+)
+
+```
+Inputs considered:
+  - Tier 1: current rent roll trends, recent renewal increases
+  - Tier 2: TTM rent growth achieved on user's comparable owned assets
+  - Tier 3: submarket rent growth (M05), peer comp rent growth (M15),
+            archive average for similar deal types
+  - Market-level: wage growth (COR-04), supply pressure (M04),
+                  event-driven demand shifts (M35)
+
+Derivation:
+  if comparable owned asset TTM rent growth exists with >= 3 assets:
+      Y1 = weighted avg of owned assets × 0.7 + submarket × 0.3
+  elif comparable owned asset exists with 1-2 assets:
+      Y1 = weighted avg of owned assets × 0.5 + submarket × 0.5
+  else:
+      Y1 = submarket × 0.5 + archive avg × 0.3 + wage growth × 0.2
+
+  Y2 = Y1 trajectory adjusted by supply pressure (6-12mo lag)
+  Y3+ = fade toward long-term inflation + wage growth floor
+
+Flags:
+  - If rent-to-wage ratio projects above 35%, cap growth at wage growth rate
+  - If M35 predicts material demand event (new employer >500 jobs), add premium
+  - If M04 shows supply wave >500 units within 1mi + 12mo, reduce by 50-100bps
+```
+
+### Vacancy loss
+
+```
+Inputs considered:
+  - Tier 1: historical vacancy from T12
+  - Tier 2: owned-asset vacancy actuals in same submarket
+  - Tier 3: submarket vacancy rate, peer comp vacancy (M05, M15)
+  - Traffic Engine: signing velocity + absorption curve (M07)
+
+Derivation:
+  Stabilized: weighted average of Tier 1 T12 and Tier 2 owned actuals.
+              Floor at submarket structural vacancy.
+  Lease-Up: M07 absorption curve → monthly vacancy projection
+  Development: M07 stabilized projection after TCO + absorption period
+
+Flags:
+  - If vacancy < 5% and pipeline pressure > 8% of inventory, raise floor
+  - If tenant concentration risk (single employer), add stress buffer
+```
+
+### Operating expenses
+
+```
+Inputs considered:
+  - Tier 1: T12 opex detail (line by line)
+  - Tier 2: owned-asset opex ratios per category (taxes, insurance, utilities,
+            payroll, R&M, admin, management fee)
+  - Tier 3: submarket/class archive averages
+
+Derivation:
+  Each line item independently:
+    if Tier 1 T12 has >= 12 months, use T12 × growth factor
+    if Tier 2 owned actual exists for same class/submarket, cross-validate T12
+    if T12 is >20% below owned-portfolio actuals, flag as potentially understated
+
+Property tax line item:
+    Always derived from taxService.forecast(deal) using jurisdiction ruleset
+    (per inventory task 6.5). Never trusted from T12 unless assessed value hasn't changed.
+
+Insurance line item:
+    Derived from insuranceService.forecast(deal) using jurisdiction ruleset.
+    Critical in FL (wind zone) and CA (wildfire/earthquake) — never trust broker OM.
+
+Flags:
+  - Property tax reassessment: modeled per jurisdiction ruleset
+  - Insurance step-ups: flagged if T12 doesn't reflect current market quotes
+  - Management fee: benchmarked to owned-portfolio actuals, not broker assumption
+```
+
+### Exit cap rate
+
+```
+Inputs considered:
+  - Tier 2: cap rates achieved on user's dispositions of similar assets
+  - Tier 3: recent submarket transactions (M15 comps),
+            cap rate trajectory from Rate Strategy Score inputs,
+            forward cap rate given hold period
+  - Rate environment: 10yr Treasury forward curve,
+                      cap spread historical average
+
+Derivation:
+  Base exit cap = entry cap × (1 + cap_trajectory_over_hold_period)
+  Adjust for:
+    - Rate environment at projected exit (SOFR curve + spread assumption)
+    - Asset class and condition at exit (post-renovation premium)
+    - Supply context at exit (use M04 projection + M35 forecast)
+
+  Cross-check against Tier 2 actual dispositions:
+    if user has sold comparable asset, cap at disposition becomes primary anchor
+
+Flags:
+  - If exit cap < entry cap + 25bps, flag "tight exit assumption"
+  - If hold period > 5yr and cap curve is flat, note rate regime assumption
+```
+
+### Cap-ex reserves
+
+```
+Inputs considered:
+  - Tier 1: T12 cap-ex spend (if disclosed)
+  - Tier 2: per-unit cap-ex run-rate on owned assets by vintage
+  - Tier 3: platform benchmarks by vintage and condition
+  - Property Condition Assessment (if uploaded)
+
+Derivation:
+  Recurring reserve = owned-portfolio per-unit actual × unit count
+  Discretionary cap-ex = from value-add plan or PCA findings
+  Roof/HVAC/envelope reserves: vintage-adjusted depreciation schedule
+
+Flags:
+  - If proforma cap-ex < 50% of owned-portfolio actual, flag as understated
+  - If vintage > 30yr and reserve < $350/unit/yr, flag conservative floor
+```
+
+### Debt terms
+
+```
+Inputs considered:
+  - Current rate sheets from lender email intelligence
+    (when Email Intelligence pipeline is live)
+  - Agency DSCR/LTV limits per product
+  - User's lender relationships on file
+  - Capital Structure Engine output (M11)
+
+Derivation:
+  Rate: current rate sheet for product type × user's typical spread
+  LTV: lower of product max and stabilized DSCR constraint
+  Amortization: user's portfolio default or product default
+  IO period: typical for product
+
+This section defers to Capital Structure Engine — CashFlow Agent consumes M11 output.
+```
+
+---
+
+## Archive Intelligence — The Flywheel
+
+Per the CI Engine S7 spec, every deal underwritten becomes training data for future underwriting. The CashFlow Agent reads from the archive in specific, bounded ways:
+
+### What the archive provides
+
+Not raw deal data (privacy). Aggregated benchmarks keyed on deal type × submarket × class × vintage × strategy.
+
+- **Assumption distributions:** "Users underwriting Class B value-add in Westshore assumed rent growth ranging P25=2.8%, median=3.4%, P75=4.1%"
+- **Achievement distributions:** "Actual TTM achieved rent growth on closed deals: P25=2.6%, median=3.1%, P75=3.7%" — shows the systematic gap between assumption and reality
+- **Bid-to-win patterns:** "Winning bids averaged 6.8% premium over platform-generated underwriting values in this submarket"
+- **Strategy validation:** "Deals that followed platform strategy recommendation achieved +X pts IRR vs deals that didn't"
+- **Risk realization:** "Deals flagged as severe collision at underwriting underperformed by 180bps IRR on average"
+
+### How the agent uses it
+
+The archive is a **Tier 3.5 source** — between Tier 3 platform metrics and Tier 2 owned actuals. Applied specifically for:
+
+1. **Benchmark comparison** — agent compares user's current assumption against archive distribution, flags if user is in P90+ aggressive or P10- conservative range
+2. **Systematic bias correction** — if archive shows users in this submarket systematically overestimate rent growth by 80bps vs actuals, agent reflects that in its own derivation
+3. **Calibration of confidence** — assumptions in well-trafficked markets (large archive sample) get higher confidence; sparse markets get lower
+4. **Outcome-weighted benchmarks** — archive benchmarks are weighted toward deals with post-close actuals tracked, not just deals underwritten
+
+### Archive queries available to the agent
+
+New tools added to the CashFlow Agent's registry:
+
+```typescript
+fetch_archive_assumption_distribution({
+  asset_class, deal_type, submarket, vintage_band, strategy, assumption_name
+}) → { p10, p25, median, p75, p90, n_samples, as_of }
+
+fetch_archive_achievement_vs_assumption({
+  asset_class, submarket, assumption_name, lookback_years
+}) → { assumed_median, achieved_median, gap_bps, n_closed_deals }
+
+fetch_archive_strategy_outcomes({
+  asset_class, submarket, strategy_recommended, strategy_chosen
+}) → { avg_irr_followed, avg_irr_deviated, n_samples }
+```
+
+All archive queries return aggregated data only. Individual deal details never leave the archive.
+
+---
+
+## Showing the Work — UX Contract
+
+The agent is useless to an institutional user if it produces a black-box proforma. Every output surface must expose the reasoning trail. These are the UI contracts the agent adheres to.
+
+### Per-field disclosure
+
+Every LayeredValue field in the F9 ProForma tab renders:
+
+- The value
+- A small source badge: `AGENT` (agent-derived), `T12` (Tier 1 doc), `OWNED` (Tier 2 actual), `MARKET` (Tier 3), `EDIT` (user override)
+- Tooltip on hover: one-sentence summary of source ("Derived from 3 comparable owned assets (weight 80%) and Westshore submarket TTM (20%)")
+- Click opens the full evidence panel (see below)
+
+### Evidence panel (per-field drill-down)
+
+When the user clicks a field, a side panel opens with:
+
+**Header:**
+- Field name, current value, confidence badge (high/medium/low)
+- Last updated timestamp, source: agent name + run ID
+
+**Reasoning (Primary Tab):**
+- Plain-English paragraph explaining how the value was derived
+- Written in Commentary Agent voice for consistency
+- 3-5 sentences, names the primary tier and the key data points
+
+**Evidence (Second Tab):**
+- Table of evidence points with weights
+- Each row: source type, source ID (linked), value, as-of date, weight
+- User can click any source to navigate to the source view (e.g., owned asset NOI page, submarket rent trend chart)
+
+**Alternatives Considered (Third Tab):**
+- What the agent rejected and why
+- Shown even when the user agrees with the choice — demonstrates thoroughness
+
+**Collision Report (if present):**
+- Broker value vs agent value
+- Delta percentage and magnitude
+- Plain-English narrative of the mismatch
+- User can accept agent, accept broker, or override with custom value
+
+**User Override:**
+- If user has overridden, shows override value alongside agent-derived value
+- "Revert to Agent" button
+- Override reason field (optional, saved to audit log)
+
+### Deal-level summary
+
+The F9 ProForma tab header includes:
+
+- **Collision Counter:** "3 material collisions, 1 severe collision" (click to list)
+- **Confidence Distribution:** "8 assumptions high / 12 medium / 3 low" (click to filter)
+- **Tier Distribution:** "Tier 1 drove 6 values, Tier 2 drove 11, Tier 3 drove 6" (click to filter)
+- **Archive Context:** "This underwriting is 18th percentile conservative vs platform archive for Class B Westshore deals"
+
+### The "Walkthrough" view
+
+A new F9 sub-tab: **Reasoning Walkthrough**. Long-form view where the Commentary Agent (invoked by the CashFlow Agent at the end of its run) produces a narrative summary of the underwriting:
+
+> "This is a stabilized Class B value-add deal in Westshore Tampa at 200 units, asking $58M. My underwriting uses your owned portfolio data as the primary signal — you have two comparable Westshore Class B assets that delivered 3.4% and 2.9% YoY rent growth over the trailing twelve months. I've modeled Y1 rent growth at 3.2%, which sits between those observations and anchors to the submarket TTM of 3.1%.
+>
+> Broker assumes 4.5%, which would overstate Y1 NOI by roughly $42K. I've flagged that as a material collision. Over the 5-year hold, broker assumptions compound to roughly $340K of NOI overstatement — which at a 5.5% exit cap is ~$6.2M of value.
+>
+> Three assumptions drove my lowest confidence scores: Year 3 rent growth (I have less data on post-2027 supply), stabilized insurance premium (FL wind zone rates moving fast, your two comparables are older-year renewals), and cap-ex reserves (T12 doesn't disclose cap-ex; I used your portfolio per-unit run-rate at $425/unit/year which may be conservative for this vintage).
+>
+> Archive context: this underwriting lands at the 18th percentile for conservativeness vs similar Westshore deals on the platform. Your deals historically achieve 95% of underwritten NOI Year 1 and 102% by Year 3, so some conservatism at entry is consistent with your track record."
+
+This view is the thing a user can paste into an IC memo. It is the thing that makes the deal feel defensible to a partner or LP.
+
+---
+
+## API Surface
+
+### Agent endpoints
+
+```
+POST /api/agents/cashflow/underwrite
+  Body: { deal_id, trigger: 'user' | 'event' | 'cron' }
+  Returns: { agent_run_id, status: 'running' }
+
+GET /api/agents/runs/:runId/underwriting
+  Returns: { proforma: ProForma, evidence_map: Record<FieldPath, Evidence> }
+
+GET /api/deals/:dealId/assumptions/:fieldPath/evidence
+  Returns: Evidence  (for the evidence drill-down panel)
+
+POST /api/deals/:dealId/assumptions/:fieldPath/override
+  Body: { value, reason? }
+  Returns: { success: true, new_value: LayeredValue }
+
+POST /api/deals/:dealId/underwriting/walkthrough
+  Body: { focus?: 'full' | 'collisions_only' | 'low_confidence_only' }
+  Returns: { narrative: string, generated_at: string }
+  (Dispatches to Commentary Agent for narrative wrap)
+```
+
+### Tool registry (additions to CashFlow Agent)
+
+New tools to add beyond the baseline in the platform spec:
+
+| Tool | Purpose | Tier |
+|------|---------|------|
+| `fetch_owned_asset_actuals` | TTM, TTM-24 performance per owned asset matching filter | Tier 2 |
+| `fetch_owned_asset_opex_ratios` | Per-line-item opex ratios on owned assets | Tier 2 |
+| `fetch_archive_assumption_distribution` | Aggregated assumption distributions | Archive |
+| `fetch_archive_achievement_vs_assumption` | Historical gap between underwritten and achieved | Archive |
+| `fetch_jurisdiction_tax_forecast` | Calls taxService.forecast with ruleset | Tier 3 |
+| `fetch_jurisdiction_insurance_forecast` | Calls insuranceService.forecast with ruleset | Tier 3 |
+| `fetch_peer_comp_noi_metrics` | M15 comp NOI rollups | Tier 3 |
+| `fetch_m35_event_forecast` | Event-adjusted trajectory forecast for submarket | Tier 3 |
+| `detect_collision` | Compare agent value to broker OM value | Derived |
+| `write_underwriting` | Persists full proforma + evidence map via API | Write |
+| `request_walkthrough_narrative` | Dispatches Commentary Agent for the walkthrough view | Chain |
+
+All tools return Zod-validated output. All writes go through the platform API (no direct-to-DB writes in this agent).
+
+---
+
+## Database
+
+### Evidence persistence
+
+```sql
+-- One row per assumption per deal per agent run
+CREATE TABLE underwriting_evidence (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  deal_id UUID NOT NULL REFERENCES deals(id) ON DELETE CASCADE,
+  agent_run_id UUID REFERENCES agent_runs(id),
+  field_path TEXT NOT NULL,          -- e.g. 'assumptions.rent_growth.y1'
+  value_numeric NUMERIC,              -- for numeric fields
+  value_text TEXT,                    -- for non-numeric
+  primary_tier INTEGER NOT NULL,
+  data_points JSONB NOT NULL,         -- array of EvidencePoint
+  reasoning TEXT NOT NULL,
+  alternatives JSONB NOT NULL,        -- array of Alternative
+  collision JSONB,                    -- nullable CollisionReport
+  confidence TEXT NOT NULL CHECK (confidence IN ('high','medium','low')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_evidence_deal_field ON underwriting_evidence(deal_id, field_path, created_at DESC);
+CREATE INDEX idx_evidence_run ON underwriting_evidence(agent_run_id);
+
+-- Quick lookup: latest evidence for each field on a deal
+CREATE UNIQUE INDEX idx_evidence_latest
+  ON underwriting_evidence(deal_id, field_path, created_at DESC);
+```
+
+Each agent run writes a full evidence map. Older rows are retained (history) but the UI reads the latest per field.
+
+### User override audit
+
+When a user overrides an agent value, both the agent value and the override go into LayeredValue history. The override reason lands in `audit_log` with `action='assumption.override'` and metadata including the previous agent value.
+
+---
+
+## Interaction with the Flywheel
+
+Every underwriting run feeds the archive:
+
+1. Run completes → full proforma + evidence snapshot stored in `deal_underwriting_snapshots` (existing table, per CI Engine S7 spec)
+2. Deal outcome tracked over time:
+   - If user wins → deal enters owned portfolio, `deal_monthly_actuals` begins populating (post-M22)
+   - If user loses → loss reason logged (outbid, passed, dropped), winning price captured where known
+3. Nightly job aggregates: for each deal_type × submarket × assumption_name, compute P10/P25/P50/P75/P90 distribution, achievement gap vs assumption, sample size
+4. Aggregates land in `archive_assumption_benchmarks` table → queryable by `fetch_archive_assumption_distribution` tool
+
+This closes the loop. The agent's assumptions get better because it learns (via archive queries, not ML training) from what actually happened on similar deals over time.
+
+---
+
+## Budget & Performance
+
+### Budget caps (per run)
+
+Higher than default CashFlow Agent caps because this workflow is data-heavy:
+
+```typescript
+underwrite_caps: {
+  maxTokensPerRun: 800_000,
+  maxCostUsdPerRun: 8.00,
+  maxStepsPerRun: 35,
+  maxCostUsdPerDealPerDay: 25,
+  maxCostUsdPerUserPerMonth: tier_based
+}
+```
+
+Tier gating for auto-underwriting:
+- Scout: manual only, one run at a time, standard caps
+- Operator: manual + event-driven (on material assumption change), standard caps
+- Principal: manual + event-driven + weekly refresh on active deals, elevated caps
+- Institutional: all of above + batch underwriting for portfolio screening, custom caps
+
+### Target performance
+
+- Full underwriting run on a stabilized Class B deal with complete Tier 1 data: 2-4 minutes
+- Lease-up deal with M07 traffic integration: 4-7 minutes
+- Development deal with full Zoning + Supply + CashFlow chain: 8-15 minutes (chained workflow)
+
+### Caching
+
+- DealContext has 24h cache; CashFlow Agent honors this cache
+- Evidence snapshots are NOT cached — every run produces a fresh evidence map
+- Archive benchmarks are cached server-side with 24h TTL (they aggregate slowly)
+
+---
+
+## Prompt Strategy
+
+The agent's system prompt is built from three concatenated layers:
+
+1. **Core underwriting prompt** (stable, versioned in `prompt_versions`): defines the reasoning methodology, tier authority rules, and output format contract.
+
+2. **Deal-type variant prompt** (Existing / Value-Add / Lease-Up / Development / Redevelopment): loaded at runtime based on `resolveProjectType(deal)`. Contains the assumption classes relevant to that variant.
+
+3. **Context packet** (dynamically built per run): DealContext + owned asset summary + applicable archive benchmarks + collision candidates from broker OM.
+
+The agent's system prompt makes three things non-negotiable:
+
+- Every assumption must cite evidence from at least one of the three tiers
+- Every assumption must show alternatives considered
+- Every collision must be reported, not smoothed over — even if the broker assumption happens to agree with the platform
+
+Prompts live under `src/agents/prompts/cashflow/`:
+
+```
+src/agents/prompts/cashflow/
+├── system.ts                  # core methodology
+├── output-schema.ts           # Zod schema for UnderwritingOutput
+└── variants/
+    ├── existing.ts
+    ├── value-add.ts
+    ├── lease-up.ts
+    ├── development.ts
+    └── redevelopment.ts
+```
+
+---
+
+## Acceptance Criteria
+
+This spec is complete when all of the following hold for a real deal run end-to-end:
+
+**Data sourcing**
+
+- [ ] Agent reads Tier 1 data (T12, rent roll, tax bill) when present and uses it as primary authority
+- [ ] Agent queries owned-portfolio actuals and weights them ahead of platform metrics when comparables exist
+- [ ] Agent falls back to platform metrics with explicit flag when Tier 1 and Tier 2 are insufficient
+- [ ] Agent pulls archive benchmarks and applies systematic bias correction where archive data shows historical gap
+
+**Output quality**
+
+- [ ] Every mutable field in the ProForma is a LayeredValue with full Evidence object
+- [ ] Every Evidence object contains: primary_tier, data_points[], reasoning (plain English), alternatives_considered[]
+- [ ] Every broker-divergent assumption has a CollisionReport with plain-English narrative
+- [ ] Every field has a confidence rating (high/medium/low)
+
+**UI surfaces**
+
+- [ ] Per-field source badges render correctly (AGENT / T12 / OWNED / MARKET / EDIT)
+- [ ] Evidence panel opens on field click and shows Reasoning / Evidence / Alternatives tabs
+- [ ] Deal-level summary shows collision counter, confidence distribution, tier distribution, archive percentile
+- [ ] Reasoning Walkthrough tab renders the Commentary Agent narrative
+
+**Overrides**
+
+- [ ] User can override any field
+- [ ] Override is persisted and appears in audit_log with previous agent value in metadata
+- [ ] "Revert to Agent" restores the agent-derived value
+- [ ] Override reason is optional but captured when provided
+
+**Archive feedback loop**
+
+- [ ] Every run persists a full evidence snapshot to `deal_underwriting_snapshots`
+- [ ] Nightly aggregation job computes archive benchmarks
+- [ ] `fetch_archive_*` tools return current benchmarks with sample size metadata
+
+**Deal-type coverage**
+
+- [ ] Existing variant produces valid underwriting for a stabilized deal
+- [ ] Value-Add variant adds renovation program math layer
+- [ ] Lease-Up variant uses M07 absorption curve
+- [ ] Development variant consumes Zoning Agent output and produces phased budget
+- [ ] Redevelopment variant handles phased current/repositioning/stabilized model
+
+**Integration**
+
+- [ ] M09 ProForma tab renders agent output with full evidence display
+- [ ] M25 JEDI Score consumes agent output for scoring
+- [ ] M11 Capital Structure consumes debt-relevant agent output
+- [ ] M14 Risk reads confidence distribution to inform risk scoring
+- [ ] M22 Post-Close (when live) compares actuals to this underwriting snapshot
+
+---
+
+## What NOT to Do
+
+- Do not let the agent "average" Tier 1 deal data with Tier 3 platform data. Tier 1 is ground truth when present.
+- Do not suppress collision reports when the broker assumption happens to match the platform. Always show the comparison.
+- Do not hide low-confidence assumptions. Flagging uncertainty is a feature, not a bug.
+- Do not let the agent invent cap-ex reserves or insurance premiums when the ruleset service exists. Always call the service.
+- Do not generate reasoning text in the CashFlow Agent itself. Dispatch the walkthrough narrative to Commentary Agent for voice consistency.
+- Do not cache evidence snapshots. Every run should produce fresh evidence; cached DealContext is fine, but the evidence map should not be stale.
+- Do not write underwriting data outside the standard `LayeredValue` pattern. The evidence fields are new but the wrapper is the same.
+- Do not skip alternatives_considered. If the agent can't name what it rejected, it didn't reason — it guessed.
+
+---
+
+## Open Decisions
+
+1. **Archive benchmark visibility to user.** Should the user see raw archive distributions (P10-P90) or only the comparison to their own deal? Proposal: show percentile context ("your assumption is at 18th percentile of archive") but not raw distributions until user explicitly asks. Reduces information overload.
+
+2. **Tier 2 comparability scoring.** Exact formula for matching owned assets to subject deal. Proposal: weighted composite of submarket match (40%), class match (30%), vintage match (15%), size match (15%). Callibrate against retro-testing on archive.
+
+3. **Walkthrough narrative generation timing.** Generate on every run, or only on demand? Proposal: only on demand — it's a chained Commentary Agent call that adds cost. Generate automatically only for Principal+ tiers.
+
+4. **Collision severity thresholds.** Minor <5%, material 5-15%, severe >15% is a first pass. Tune from user feedback on what feels actionable.
+
+5. **Evidence retention.** Store every run's full evidence snapshot forever, or prune after N days/runs? Proposal: keep full evidence for last 10 runs per deal, snapshot summary only for older runs. Storage vs audit value trade-off.

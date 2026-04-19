@@ -1,0 +1,547 @@
+# JEDI RE — Comprehensive Agent Task Inventory
+
+> Every automated task explicitly or implicitly specified across your documents,
+> classified by how it should be built: **Workflow / Tool / Agent / Code**.
+>
+> Source documents scanned: `jedi_re_full_platform_vision.md`, `Jedi_RE_Technical_Architecture_Framework.md`,
+> `FEATURE_EXPANSION.md`, `Event_Impact_Engine_Spec.md`, `TRAFFIC_ENGINE_CALIBRATION_SPEC.md`,
+> `F4_Commentary_Enhancement_Spec.docx`, `competitive-intelligence-opportunity-engine.jsx`,
+> `ci-engine-frontend-integration-map.jsx`, `exit_timing_dashboard.jsx`,
+> `jedi_re_wireframe_blueprint.jsx`, `jedi_re_audit_vs_progress.jsx`, `rate_strategy_formula.md`.
+
+---
+
+## Classification Legend
+
+| Tag | Meaning |
+|-----|---------|
+| **WF** | Workflow — Inngest function, deterministic sequence of steps, may invoke agents and tools |
+| **T** | Tool — a single typed function an agent calls (via `platformClient`) |
+| **A** | Agent — new reasoning loop required (warning: this bar is high) |
+| **C** | Code — deterministic service/cron/DB trigger, no LLM, no agent |
+| **+T** | Tool that needs to be added to an existing agent's registry |
+
+---
+
+## Category 1 — Deal Intake & Sourcing
+
+The "read my email, if a deal fits, pull docs and model it up" workflow.
+
+| # | Task | Classification | Notes |
+|---|------|----------------|-------|
+| 1.1 | Detect deal opportunity in incoming broker emails | **WF** | Inngest trigger on `gmail.message_received` filtered by broker list |
+| 1.2 | Read Gmail thread + extract attachments | **T** | New tool: `read_gmail_thread` |
+| 1.3 | Classify email as deal opportunity (yes/no + confidence) | **T** | New tool: `classify_as_deal_opportunity` (single LLM call) |
+| 1.4 | Extract structured deal fields from OM/email body | **T** | New tool: `extract_deal_fields` (structured JSON output) |
+| 1.5 | OCR offering memos and broker attachments | **T** | New tool: `ocr_document` → calls existing document pipeline |
+| 1.6 | Score deal fit against user's saved investment profile | **T** | New tool: `score_fit_against_profile` (deterministic scoring) |
+| 1.7 | Create draft deal in pipeline with status `awaiting_review` | **T** | New tool: `create_deal_draft` → hits existing `POST /api/deals` |
+| 1.8 | Parse Yardi T12 from attached PDF | **+T** | Tool exists; add to CashFlow Agent registry |
+| 1.9 | Parse RRwLC rent roll from attached Excel | **+T** | Parser exists; add tool wrapper |
+| 1.10 | Parse tax bill PDF | **+T** | Parser exists; add tool wrapper |
+| 1.11 | Trigger DealContext assembly after draft created | **C** | Kafka event: `deal_created` → fires Research Agent via Inngest |
+| 1.12 | Monitor public listings (LoopNet, Crexi, Costar Marketplace) for matches | **WF** | Scheduled scraper → classify → fit score → draft if match |
+| 1.13 | Detect distressed owner signals (tax lien, receivership filings) | **WF** | Scheduled scraper of county records → alert if owner in user's watchlist |
+| 1.14 | Send "new deal ready" notification | **C** | Notification service, no AI needed |
+
+**Unlocks once built:** Every variant of "source deals automatically" — because the tool library below is composable into any trigger → classify → filter → create workflow.
+
+---
+
+## Category 2 — Deal Research & DealContext Assembly
+
+Already covered by the Research Agent; listing for completeness.
+
+| # | Task | Classification | Notes |
+|---|------|----------------|-------|
+| 2.1 | Assemble DealContext JSON from all platform APIs | **A** | Research Agent (existing) |
+| 2.2 | Fetch parcel data by address | **+T** | Already in Research Agent |
+| 2.3 | Fetch CoStar submarket metrics | **+T** | Already in Research Agent |
+| 2.4 | Fetch county records / ownership | **+T** | Already in Research Agent |
+| 2.5 | Fetch FRED macro indicators | **+T** | Already in Research Agent |
+| 2.6 | Fetch BLS QCEW employment data | **+T** | Already in Research Agent |
+| 2.7 | Fetch RentCast rent comps | **+T** | Already in Research Agent |
+| 2.8 | Fetch Google Places reviews + NLP | **+T** | Already in Research Agent |
+| 2.9 | Fetch FDOT traffic counts | **+T** | Already in Research Agent |
+| 2.10 | Fetch Municode zoning text | **+T** | Already in Research Agent (shared with Zoning Agent) |
+| 2.11 | Refresh DealContext weekly (stale check + re-run) | **WF** | Inngest cron, Principal+ tier only |
+| 2.12 | Refresh DealContext when new comp trades within 1 mile | **WF** | Kafka event `comp_trade_detected` → refresh relevant deals |
+
+---
+
+## Category 3 — Market & Commentary Generation
+
+| # | Task | Classification | Notes |
+|---|------|----------------|-------|
+| 3.1 | Generate MSA market narrative commentary | **A** | Commentary Agent (new, per Layer 1 roster) |
+| 3.2 | Generate submarket market narrative | **A** | Same agent, different context |
+| 3.3 | Generate investment thesis paragraph per tab | **A** | Same agent |
+| 3.4 | Generate risk/opportunity panel copy | **A** | Same agent |
+| 3.5 | Generate peer MSA context 1-2 sentences | **A** | Same agent |
+| 3.6 | Cache commentary for 24h per MSA/submarket | **C** | Cache layer, no AI |
+| 3.7 | Pre-generate commentary for user's tracked markets each morning | **WF** | Inngest cron, dispatches Commentary Agent |
+
+---
+
+## Category 4 — Zoning & Entitlement
+
+| # | Task | Classification | Notes |
+|---|------|----------------|-------|
+| 4.1 | Analyze zoning code for a parcel (FAR, height, setbacks, uses) | **A** | Zoning Agent (existing) |
+| 4.2 | Compute buildable envelope | **+T** | Already in Zoning Agent |
+| 4.3 | Flag zoning changes affecting user's portfolio | **WF** | Scheduled scrape of Municode → diff → alert on changes |
+| 4.4 | Entitlement path recommendation | **+T** | Add to Zoning Agent |
+| 4.5 | Variance probability estimation | **+T** | Add to Zoning Agent |
+| 4.6 | Track zoning applications filed in user's tracked submarkets | **WF** | Scheduled scrape + classify + alert |
+
+---
+
+## Category 5 — Supply & Pipeline Intelligence
+
+| # | Task | Classification | Notes |
+|---|------|----------------|-------|
+| 5.1 | Quantify pipeline supply per submarket | **A** | Supply Agent (existing) |
+| 5.2 | Fetch permits filed | **+T** | Already in Supply Agent |
+| 5.3 | Fetch construction starts | **+T** | Already in Supply Agent |
+| 5.4 | Fetch delivery timelines | **+T** | Already in Supply Agent |
+| 5.5 | Supply wave narrative (6-12mo + 24mo view) | **+T** | Add to Supply Agent |
+| 5.6 | Detect new permits within user's submarkets | **WF** | Scheduled scrape → Kafka event `permit_filed` → alert + recompute supply scores |
+| 5.7 | Alert on major deliveries (>500 units) announcing in 6-12mo | **WF** | Event trigger on permit/delivery data |
+
+---
+
+## Category 6 — Financial Modeling & ProForma
+
+| # | Task | Classification | Notes |
+|---|------|----------------|-------|
+| 6.1 | Build ProForma projection from T12 + assumptions | **A** | CashFlow Agent (existing) |
+| 6.2 | Calculate NOI, IRR, equity multiple | **+T** | Already in CashFlow Agent |
+| 6.3 | Monte Carlo simulation (1000 runs) | **C** | `monte-carlo-timeline.service.ts` — deterministic, no agent |
+| 6.4 | Sensitivity tables (rent growth × cap rate × hold period) | **C** | Deterministic compute, no agent |
+| 6.5 | Jurisdiction-aware tax math service (pluggable ruleset per state/county) | **C** | Deterministic service with per-jurisdiction rule files. See detail below. |
+| 6.6 | Sources & Uses breakdown | **C** | Deterministic |
+| 6.7 | Debt schedule generation | **C** | Deterministic |
+| 6.8 | Capital & waterfall math | **C** | Deterministic |
+| 6.9 | Returns to LP / GP split | **C** | Deterministic |
+| 6.10 | Insurance premium estimate (jurisdiction-aware: wind/flood/wildfire zones, state rate regulations) | **C** | Deterministic service with per-state ruleset |
+| 6.11 | Refresh ProForma when interest rates move >25 bps | **WF** | Cron checks FRED → triggers CashFlow Agent on affected deals |
+| 6.12 | Detect assumption collision (broker vs platform vs user) | **C** | Deterministic comparison service |
+
+### Task 6.5 — Tax Math Service Design
+
+Replaces the Florida-specific mechanics with a pluggable architecture. Florida is one ruleset; Texas (DFW), Georgia (ATL), and others are additional rulesets loaded at runtime based on the deal's jurisdiction.
+
+```
+src/services/tax/
+├── taxService.ts                    # Main entry: computes tax forecast for a deal
+├── rulesets/
+│   ├── fl.ruleset.ts                # FL: 10% non-homestead cap, doc stamps,
+│   │                                #     intangible tax, reassessment on sale,
+│   │                                #     truth-in-millage
+│   ├── tx.ruleset.ts                # TX: no state income tax, Chapter 313
+│   │                                #     abatements, Harris/Dallas county
+│   │                                #     protest windows, 10% homestead cap
+│   ├── ga.ruleset.ts                # GA: Fulton/DeKalb millage, homestead
+│   │                                #     exemptions, conservation use, annual
+│   │                                #     assessment freeze rules
+│   ├── ny.ruleset.ts                # Future: NYC 421-a, J-51, ICAP
+│   ├── ca.ruleset.ts                # Future: Prop 13, Mello-Roos
+│   └── default.ruleset.ts           # Generic fallback: ad valorem + transfer tax
+├── types.ts                         # TaxRuleset interface, TaxForecast type
+└── resolver.ts                      # Deal → jurisdiction → ruleset lookup
+```
+
+**Interface contract every ruleset implements:**
+
+```typescript
+interface TaxRuleset {
+  jurisdiction: string;               // e.g. 'FL', 'TX-Harris', 'GA-Fulton'
+
+  // Annual property tax at year N given assessed value + millage + exemptions
+  annualPropertyTax(ctx: TaxContext, year: number): number;
+
+  // Transfer taxes due at acquisition (doc stamps, deed recording, etc.)
+  acquisitionTransferTax(purchasePrice: number): number;
+
+  // Transfer taxes due at sale (may differ from acquisition)
+  dispositionTransferTax(salePrice: number): number;
+
+  // Reassessment trigger: what happens to assessed value on sale?
+  reassessmentOnSale(ctx: TaxContext): 'full' | 'capped' | 'none';
+
+  // Annual assessment cap (e.g. FL 10% non-homestead, TX 10% homestead)
+  annualAssessmentCap(): number | null;
+
+  // Special taxes (intangible tax, mortgage recording tax, etc.)
+  specialTaxes(ctx: TaxContext): SpecialTax[];
+
+  // Abatement/exemption eligibility check
+  abatementEligibility(ctx: TaxContext): AbatementProgram[];
+
+  // Metadata
+  requiresInputs(): string[];         // e.g. ['millage', 'exemptions', 'assessed_value']
+  dataSourceHints(): string[];        // e.g. ['county_assessor_api', 'truth_in_millage_pdf']
+}
+```
+
+**Resolver logic:**
+
+```typescript
+function resolveRuleset(deal: Deal): TaxRuleset {
+  const key = `${deal.state}-${deal.county}`;
+  if (rulesets[key]) return rulesets[key];       // most specific
+  if (rulesets[deal.state]) return rulesets[deal.state];  // state-level
+  return rulesets.default;                        // generic fallback
+}
+```
+
+**Adding a new jurisdiction is a new file in `rulesets/`, not a code change elsewhere.** The CashFlow Agent doesn't know or care which ruleset applies — it calls `taxService.forecast(deal, assumptions)` and gets back a typed `TaxForecast`.
+
+**Launch rulesets (matches your current market coverage):**
+- `fl.ruleset.ts` — full implementation (existing logic migrates here)
+- `tx.ruleset.ts` — Dallas/Houston baseline
+- `ga.ruleset.ts` — Atlanta baseline
+- `default.ruleset.ts` — everywhere else, conservative fallback
+
+**Jurisdictions added post-launch** become data projects, not engineering projects — you gather the rules, a domain expert encodes them into a new ruleset file, the ruleset registers itself via a convention-over-configuration pattern.
+
+---
+
+## Category 7 — Strategy Classification & Detection
+
+| # | Task | Classification | Notes |
+|---|------|----------------|-------|
+| 7.1 | Classify deal asset class (multifamily/SFR/retail/office/industrial/hospitality) | **C** | Deterministic detection from parcel + square footage data |
+| 7.2 | Classify deal type (Existing / Development / Redevelopment) | **C** | `resolveProjectType()` already exists, no agent |
+| 7.3 | Classify sub-strategy (Core / Core-Plus / Value-Add / Deep Value / Distressed / Lease-Up) | **C** | Deterministic scoring |
+| 7.4 | Strategy Arbitrage — recommend BTS vs Flip vs Rental vs STR | **C** | `strategy-arbitrage-engine.ts` — deterministic math |
+| 7.5 | Surface strategy recommendation on deal card | **C** | UI read of existing service |
+| 7.6 | Flag arbitrage opportunities (delta >15pts between strategies) | **C** | Deterministic threshold check |
+
+**Note:** STRATEGY is a routing specialist (Layer 2). When it graduates to an agent per the promotion criteria, that's a future decision — not a launch requirement.
+
+---
+
+## Category 8 — Rankings & Performance Composite
+
+| # | Task | Classification | Notes |
+|---|------|----------------|-------|
+| 8.1 | Calculate PCS (Performance Composite Score) per property | **C** | Deterministic formula: F40 |
+| 8.2 | Rank all properties 1-N within vantage group (class × vintage × size) | **C** | Deterministic sort |
+| 8.3 | Detect rank movement (↑/↓) period-over-period | **C** | Deterministic diff |
+| 8.4 | Project where a new deal will rank after close | **C** | `rankProjection.service.ts` — deterministic |
+| 8.5 | Generate "action plan to reach rank X" | **A** | New tool on Commentary Agent or dedicated STRATEGY agent later |
+| 8.6 | Track PCS rank of user's owned properties monthly | **WF** | Inngest cron, writes to `pcs_history` table |
+| 8.7 | Alert when PCS rank drops >5 positions | **WF** | Event-driven on PCS recompute |
+
+---
+
+## Category 9 — Acquisition Target Detection
+
+| # | Task | Classification | Notes |
+|---|------|----------------|-------|
+| 9.1 | Detect Triple Trigger targets (underperformance + hold stress + debt maturity) | **WF** | Composite rule over 3 deterministic services; emits alerts |
+| 9.2 | Estimate debt maturity per property | **C** | Deterministic inference from purchase_date + typical 5-7yr fund holds |
+| 9.3 | Detect owner distress signals (tax liens, receivership, court filings) | **WF** | Scheduled scraper + pattern match |
+| 9.4 | Identify owner portfolio patterns (same registered agent across entities) | **C** | Graph query over ownership DB |
+| 9.5 | Rank management companies by avg performance gap | **C** | Deterministic aggregation |
+| 9.6 | Auto-generate acquisition target list per user's markets | **WF** | Combines 9.1 + user profile filter |
+| 9.7 | Write broker outreach draft for an acquisition target | **+T** | Add to Commentary Agent (narrative generation) |
+
+---
+
+## Category 10 — Comp Intelligence
+
+| # | Task | Classification | Notes |
+|---|------|----------------|-------|
+| 10.1 | Build trade-area comp set per property | **C** | `dualCompAnalysis.service.ts` — deterministic geo + filter |
+| 10.2 | Build like-kind comp set (cross-market) | **C** | Deterministic selection algorithm |
+| 10.3 | Detect new comp trade in user's submarkets | **WF** | Scheduled scrape + alert |
+| 10.4 | Track competitor rent changes (apartments.com scrape) | **WF** | Scheduled scrape, diff, alert |
+| 10.5 | Track competitor concessions | **WF** | Scraper + diff |
+| 10.6 | Track competitor Google review sentiment shifts | **WF** | Scheduled Google Places pull + NLP sentiment |
+| 10.7 | Detect amenity gaps vs top competitors | **C** | Deterministic set-diff on amenity arrays |
+| 10.8 | Alert when competitor renovates + raises rents >$100 | **WF** | Pattern over scraped data |
+
+---
+
+## Category 11 — News & Event Intelligence
+
+| # | Task | Classification | Notes |
+|---|------|----------------|-------|
+| 11.1 | Ingest news from NewsAPI / RSS / email newsletters | **WF** | Scheduled ingestion pipeline, no agent needed |
+| 11.2 | Classify news article into event taxonomy (HR/Infra/Regulatory/Market/Macro/Disaster) | **T** | LLM call — single-shot, not agent loop |
+| 11.3 | Extract structured event fields (jobs, timeline, geography) | **T** | Single-shot LLM with schema |
+| 11.4 | Geocode event to MSA + submarket + trade area | **C** | Deterministic via geocoding service |
+| 11.5 | Fire event into M35 Event Impact Engine | **C** | Deterministic event bus publish |
+| 11.6 | Match new event to historical playbook | **C** | Deterministic similarity search over event embeddings |
+| 11.7 | Compute event forecast (magnitude × decay × proximity) | **C** | Deterministic math from playbook |
+| 11.8 | Backtest forecast against actuals at T+12, T+24, T+36 | **C** | Scheduled analytical job |
+| 11.9 | Detect regime shift (forecasts consistently over/under) | **C** | Statistical test |
+| 11.10 | Alert on high-impact event in user's tracked market | **WF** | Event classification threshold → notification |
+| 11.11 | Generate weekly news digest for user | **WF** | Inngest cron + Commentary Agent for narrative |
+
+---
+
+## Category 12 — Risk Monitoring
+
+| # | Task | Classification | Notes |
+|---|------|----------------|-------|
+| 12.1 | Compute 6-component risk score (supply/regulatory/market/execution/climate/insurance) | **C** | `risk-scoring.service.ts` — deterministic |
+| 12.2 | Track 30-day risk trend per category | **C** | Deterministic diff |
+| 12.3 | Alert on risk category crossing user-defined threshold | **WF** | Event on risk recompute |
+| 12.4 | Natural disaster alerts for owned properties (hurricane, flood, wildfire, earthquake) | **WF** | NOAA / USGS / Cal Fire feeds + geo match; per-hazard rules loaded per jurisdiction |
+| 12.5 | State insurance regulation monitoring (carrier exits, rate cap changes, admitted-market shifts) | **WF** | Scheduled scrape per active state; jurisdiction-aware watch list |
+| 12.6 | Climate risk scoring (flood zone, wind zone, wildfire, earthquake, extreme heat) | **C** | Deterministic overlay using FEMA, USGS, NOAA, First Street |
+| 12.7 | Stress test IRR under risk scenarios | **C** | Deterministic scenario compute |
+
+---
+
+## Category 13 — Exit & Disposition Timing
+
+| # | Task | Classification | Notes |
+|---|------|----------------|-------|
+| 13.1 | Compute Rate Strategy Score (RSS) — 5-component | **C** | Deterministic formula per rate_strategy_formula.md |
+| 13.2 | Recompute RSS monthly for owned properties | **WF** | Inngest cron |
+| 13.3 | Alert when RSS crosses >85 ("sell trigger") | **WF** | Event-driven |
+| 13.4 | Alert when RSS drops >10pts in a quarter ("abort hold") | **WF** | Event-driven |
+| 13.5 | Hold period optimization (max IRR timing) | **C** | Deterministic optimization |
+| 13.6 | Disposition strategy compare (sell vs refi vs 1031) | **C** | Deterministic comparison |
+| 13.7 | Generate "exit action plan" narrative | **+T** | Add to Commentary Agent |
+| 13.8 | Track prepayment penalty trajectory per owned asset | **C** | Deterministic time math |
+
+---
+
+## Category 14 — Post-Close Intelligence (M22)
+
+| # | Task | Classification | Notes |
+|---|------|----------------|-------|
+| 14.1 | Accept monthly actuals upload (T12, rent roll, GL) | **C** | File upload + parse service |
+| 14.2 | Compare actuals vs underwritten projections | **C** | Deterministic variance report |
+| 14.3 | Flag variances >10% per line item | **C** | Deterministic threshold |
+| 14.4 | Generate monthly variance narrative | **+T** | Add to Commentary Agent |
+| 14.5 | Track cap-ex spend vs budget | **C** | Deterministic running total |
+| 14.6 | Alert on budget overrun >20% | **WF** | Event-driven |
+| 14.7 | Generate quarterly LP investor letter | **WF** | Template + Commentary Agent + deterministic data pull |
+| 14.8 | Generate annual audit package | **WF** | Composite report, mostly deterministic |
+
+---
+
+## Category 15 — Reports & Deliverables
+
+| # | Task | Classification | Notes |
+|---|------|----------------|-------|
+| 15.1 | Auto-generate deal memo (IC format) | **WF** | Commentary Agent + deterministic data + PDF renderer |
+| 15.2 | LP quarterly report | **WF** | Same pattern |
+| 15.3 | Market report per MSA | **WF** | Commentary Agent + data pull + PDF |
+| 15.4 | Excel export for any module | **C** | `excel-export.service.ts` exists — no agent |
+| 15.5 | PDF export for any module | **C** | Deterministic rendering |
+| 15.6 | Deal deck share (send to broker/LP) | **C** | Service wraps deal data into shareable link |
+
+---
+
+## Category 16 — Metric & View Recommendations
+
+| # | Task | Classification | Notes |
+|---|------|----------------|-------|
+| 16.1 | Recommend metrics relevant to current deal context | **C** | `metricRecommendation.service.ts` — retrieval + optional LLM rank |
+| 16.2 | Recommend tabs/views to check given current deal state | **C** | Rule-based + single LLM rank call |
+| 16.3 | Personalized daily "what's changed" briefing | **WF** | Cron + Commentary Agent for narrative wrapper |
+
+---
+
+## Category 17 — Chat & Coordinator (Session-Time)
+
+| # | Task | Classification | Notes |
+|---|------|----------------|-------|
+| 17.1 | Classify user intent into 1 of 10 routing specialists | **C** | Single LLM call with tight prompt — not an agent |
+| 17.2 | Select analyst persona from 16 options based on intent | **C** | Deterministic mapping or single LLM pick |
+| 17.3 | Route to Research/Zoning/Supply/CashFlow agent if match | **C** | Coordinator dispatch table |
+| 17.4 | Handle general LLM response for DEMAND/COMPS/RISK/NEWS/STRATEGY/DEBT | **C** | General LLM handler, not agent |
+| 17.5 | Maintain conversation context across turns | **C** | Standard chat state management |
+| 17.6 | Cite data sources in responses | **C** | Template enforcement |
+
+---
+
+## Category 18 — Platform-Level Flywheel
+
+| # | Task | Classification | Notes |
+|---|------|----------------|-------|
+| 18.1 | Archive every deal's underwriting snapshot | **C** | DB trigger on deal status change |
+| 18.2 | Compute assumption benchmarks (user avg vs actuals) | **C** | Deterministic analytical query |
+| 18.3 | Bid-to-win pattern analysis per submarket | **C** | Deterministic rollup |
+| 18.4 | Outcome validation (TOS>70 achieved X IRR) | **C** | Deterministic rollup over time |
+| 18.5 | Strategy accuracy (did Arbitrage recommendations play out?) | **C** | Deterministic rollup |
+| 18.6 | Traffic weight retraining (monthly gradient descent) | **C** | Scheduled ML job, not agent |
+| 18.7 | Correlation engine incremental updates (Kafka stream) | **C** | Streaming service, not agent |
+
+---
+
+## Category 19 — Web Search as an Agent Capability
+
+Agents need the ability to look up information that isn't in structured data sources. This is a **fallback capability, not a primary research path.** Agents reach for web search only when the relevant data isn't available via a dedicated tool (FRED, CoStar, county GIS, RentCast, etc.).
+
+### When web search helps
+
+- **Jurisdiction rules that aren't in APIs** — county millage rates, municipal ordinances, recently-passed legislation, TIF/abatement program specifics. These are often buried in PDFs and local government sites that don't have API access.
+- **Regulatory changes between scheduled data refreshes** — a state insurance regulator just changed admitted-market rules; your structured source updates monthly but the change happened yesterday.
+- **Trade press intelligence** — cap rate benchmarks, market commentary, deal gossip from GlobeSt, Bisnow, Multi-Housing News, CoStar News that hasn't propagated to structured data.
+- **Fresh news that hasn't hit the ingestion pipeline** — the gap between a news event firing and Category 11 processing it.
+- **Stale Municode lookups** — zoning amendments where Municode's last update is older than the amendment date.
+
+### When web search is the wrong answer
+
+- Anything in FRED / BLS / Census — your direct API is cleaner, faster, cheaper, and more reliable.
+- Anything in CoStar, RentCast, county GIS — structured sources are authoritative.
+- Property-specific data (parcel, ownership, tax history) — public records APIs win.
+- Computation — agents compute; they don't Google the answer.
+- General knowledge the model already has — no search needed.
+
+### Task list
+
+| # | Task | Classification | Notes |
+|---|------|----------------|-------|
+| 19.1 | Provision web search tool with scoped access | **T** | New tool: `web_search` — Tavily recommended, Brave as cheaper alternative |
+| 19.2 | Add `fetch_webpage` tool for deep reads of a specific URL | **T** | Complements search — search to find URLs, fetch to read them |
+| 19.3 | Register search tool on Research Agent + Commentary Agent only | **C** | Capability-gated; Zoning/Supply/CashFlow don't get it |
+| 19.4 | Per-run search budget (e.g. 10 searches max per agent run) | **C** | Prevents runaway research loops |
+| 19.5 | Cache search results for 24h per query (identical query dedup) | **C** | Reduces cost + improves consistency across users |
+| 19.6 | Domain allowlist/blocklist per agent | **C** | Zoning Agent: only `.gov`, municode.com, state regulators. Research Agent: broader allowlist. Block: spam SEO sites, content farms. |
+| 19.7 | Citation enforcement in agent outputs that used search | **C** | Output schema requires source URL + retrieval date when search was used |
+| 19.8 | Search result provenance in LayeredValue | **C** | Fields sourced from web search get `source: 'agent:research'` + metadata flag `derived_from_search: true` |
+
+### Recommendation: Tavily over Brave
+
+**Tavily** — purpose-built for AI agents. Returns cleaner, pre-summarized results optimized for LLM consumption. Handles the "find information and cite sources" pattern natively. Pricing: ~$0.01-0.02 per search. Better quality, especially for research tasks.
+
+**Brave** — general-purpose search API. Cheaper (~$0.003 per search at volume). Raw results, more like Google SERP. Fine for simple lookups but requires more work from the agent to synthesize.
+
+**SerpAPI / Serper** — proxies Google results. Best quality, most expensive ($0.01-0.05 per search), legal gray area for some use cases. Overkill for this.
+
+**Exa** — semantic/vector search. Excellent for research where query intent matters more than keyword match. Worth considering specifically for Commentary Agent.
+
+**Recommendation:** Start with Tavily for both Research and Commentary agents. Measure usage. If search costs become significant (>5% of total Claude spend), evaluate migrating Research Agent to Brave for the volume and keeping Tavily on Commentary for quality-critical narrative work.
+
+### Configuration pattern
+
+```typescript
+// src/agents/config/search.ts
+export const AGENT_SEARCH_CONFIG: Record<AgentId, SearchConfig> = {
+  research: {
+    provider: 'tavily',
+    maxSearchesPerRun: 10,
+    domainAllowlist: null,  // broad access
+    domainBlocklist: ['*.pinterest.com', '*.quora.com', '*.reddit.com'],
+    cacheHours: 24
+  },
+  commentary: {
+    provider: 'tavily',
+    maxSearchesPerRun: 5,
+    domainAllowlist: ['*.gov', '*.edu', 'globest.com', 'bisnow.com',
+                      'multihousingnews.com', 'costar.com', 'bls.gov', 'fred.stlouisfed.org'],
+    domainBlocklist: null,
+    cacheHours: 24
+  },
+  zoning: {
+    provider: 'tavily',
+    maxSearchesPerRun: 3,
+    domainAllowlist: ['*.gov', 'municode.com', 'municipode.com', '*.us'],  // gov-focused
+    domainBlocklist: null,
+    cacheHours: 168  // 7 days — zoning codes change slowly
+  },
+  supply: { provider: null },     // no web search; structured data sources only
+  cashflow: { provider: null }    // no web search; structured data sources only
+};
+```
+
+### Guardrails
+
+- **Budget cap applies.** Web search counts against per-run cost cap. An agent that tries to search 50 times fails safely.
+- **Citations are mandatory.** Any agent output containing information from a web search must include the source URL and retrieval timestamp. Enforced at the output schema level.
+- **Not a primary source.** If a tool exists for the data (e.g. `fetch_fred_indicators`), the agent should use it first. Web search is fallback. Enforce in the system prompt: "Use structured data tools first. Only use web_search when structured tools cannot answer the question."
+- **Stale-data tolerance.** Cached search results may be up to 24h old. The agent should not claim real-time certainty based on cached search.
+
+---
+
+## Summary — The Real Shape of the Work
+
+| Classification | Count | % |
+|----------------|-------|---|
+| **C** (deterministic code/service/cron) | 69 | 57% |
+| **WF** (Inngest workflow composing tools + agents) | 28 | 23% |
+| **+T** (tools to add to existing agent registries) | 14 | 12% |
+| **T** (standalone tools not yet mapped to an agent) | 10 | 8% |
+| **A** (new agents needed) | **0** | **0%** |
+
+**Critical finding: you do not need new agents.** The 5-agent roster (Research, Zoning, Supply, CashFlow, Commentary) handles every task in this inventory. Everything else is either deterministic code, workflows that chain tools, or tools to add to the existing agents.
+
+---
+
+## The Tool Gap — Build These First
+
+Ten net-new tools unlock the majority of workflows in this inventory. Build these in order:
+
+| # | Tool | Used By | Unlocks |
+|---|------|---------|---------|
+| 1 | `read_gmail_thread` | Coordinator + workflows | All of Category 1 (deal intake from email) |
+| 2 | `classify_as_deal_opportunity` | Deal intake workflow | 1.1, 1.12 |
+| 3 | `extract_deal_fields` | Deal intake workflow | 1.4 |
+| 4 | `ocr_document` | Deal intake + post-close | 1.5, 14.1 |
+| 5 | `score_fit_against_profile` | Deal intake + acquisition detection | 1.6, 9.6 |
+| 6 | `create_deal_draft` | Deal intake + scrapers | 1.7, 1.12, 1.13 |
+| 7 | `classify_news_event` | News ingestion pipeline | All of Category 11 |
+| 8 | `extract_event_fields` | News ingestion pipeline | 11.3 |
+| 9 | `web_search` | Research + Commentary agents | Category 19, fallback for 2.x, 3.x, 11.x |
+| 10 | `fetch_webpage` | Research + Commentary agents | Deep reads from search results |
+
+Build these ten tools and roughly 90 tasks in this inventory become achievable with minor workflow wiring.
+
+---
+
+## The Workflow Priority List — Top 10
+
+Of the 28 workflows identified, these are the highest leverage:
+
+1. **Deal intake from broker email** (Category 1) — unlocks the hero narrative
+2. **DealContext weekly refresh** (2.11) — keeps deals fresh with zero user action
+3. **PCS rank monitoring for owned portfolio** (8.6 + 8.7) — institutional retention driver
+4. **RSS crosses threshold → exit alert** (13.3 + 13.4) — timing advantage = moat
+5. **New comp trade in tracked submarkets → alert + DealContext refresh** (10.3 + 2.12)
+6. **Permit filed in tracked submarket → supply score recompute + alert** (5.6)
+7. **News event classification pipeline** (Category 11 as single pipeline) — feeds M35 Event Impact Engine
+8. **Triple Trigger acquisition detection + outreach draft** (9.1 + 9.6 + 9.7)
+9. **Post-close variance reporting (monthly)** (14.2 + 14.3 + 14.4)
+10. **Commentary pre-generation for tracked markets** (3.7) — makes F4 feel instant
+
+---
+
+## What's NOT on This List (And Shouldn't Be)
+
+The following got rejected as "not agent work":
+
+- Notifications, emails, SMS dispatch → deterministic service
+- Stripe webhook handling → deterministic service
+- Credit balance accounting → deterministic service
+- PDF/Excel rendering → deterministic service
+- Geocoding → deterministic service
+- Monte Carlo simulation → deterministic compute
+- Florida tax math → deterministic compute
+- Debt schedule generation → deterministic compute
+- Correlation engine updates → streaming service
+- Traffic weight retraining → scheduled ML job
+- Deal archive snapshots → DB triggers
+- Asset class / deal type / sub-strategy classification → deterministic detection logic
+
+None of these involve reasoning under uncertainty with tool use. They are functions, not employees. Keep them that way.
+
+---
+
+## Decision Points for Leon
+
+Before Replit starts building, decide:
+
+1. **Tool build order** — the 8 gap tools listed above. Confirm this order or reprioritize.
+2. **Workflow build order** — the top 10 list. Confirm this order or reprioritize.
+3. **Gmail vs broader email integration** — Gmail only for launch, or also Apple Mail / Outlook? (Gmail API is simplest; others require different auth.)
+4. **Tier gating on scraped monitoring** (permit watch, comp watch, news watch) — which tier benefits get which monitors at which frequency? This affects Inngest cron schedules.
+5. **Notification channels per workflow** — in-app only, in-app + email, or in-app + email + SMS? Varies per workflow; decide per workflow class.

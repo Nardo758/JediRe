@@ -1,0 +1,341 @@
+# Replit Agent — Implementation Prompt: Agent Platform
+
+## Context
+
+You are implementing the agent runtime layer for JEDI RE — an AI-powered real estate deal intelligence platform. This is a foundational build-out that will power 113+ automated tasks across the platform. Three specification documents have been prepared and are authoritative:
+
+1. **`AGENT_PLATFORM_SPEC.md`** — The architecture: identity, runtime, metering, budget, tools, durable workflows. This is the primary build spec.
+2. **`AGENT_TAXONOMY_ADDENDUM.md`** — Reconciles the existing 7 Core Agents / 10 Routing Specialists / 16 Analyst Personas roster. Clarifies what IS an agent (5 things) vs what is intent routing (10 things) vs what is a persona (16 things).
+3. **`AGENT_TASK_INVENTORY.md`** — 113 tasks across 18 categories classified as Workflow / Tool / Agent / Code. Serves as your task backlog and priority list.
+
+**All three documents are in the project knowledge / repo root. Read them in full before writing any code.** Do not start implementation until you have read all three documents end-to-end.
+
+## Ground Rules (Non-Negotiable)
+
+These are architectural constraints. Do not violate them without explicit written approval:
+
+1. **Agents are service-account users, not privileged services.** Every agent has a row in the `users` table with `user_type='agent'` and authenticates through the same auth middleware as human users. No god-mode DB access.
+
+2. **Dogfooding.** Agents write through the platform API via `platformClient.ts` — the same client the frontend uses. The only documented exception is DealContext assembly writes, which may go direct-to-service. Do not add other exceptions without written approval.
+
+3. **One source of truth.** Agent outputs land in existing domain tables (parcels, zoning, comps, deal_financials, etc.) wrapped in `LayeredValue<T>` with `source: 'agent:*'`. Do not create parallel "agent_outputs" tables or shadow storage. The only agent-specific tables are: `agent_runs`, `agent_run_steps`, `prompt_versions`, and one new table `market_commentary` for the Commentary Agent.
+
+4. **Five agents only.** Research, Zoning, Supply, CashFlow, Commentary. Do not create new agents. The 10 routing specialists are intent labels and dispatch to either one of the 5 agents or to a general LLM handler. The 16 analyst personas are system prompt variants on the Coordinator — not agents.
+
+5. **Budget caps are mandatory.** Every agent run has per-run, per-deal-per-day, and per-user-per-month cost ceilings enforced at the metering layer before any Claude call fires. Runs that exceed caps abort with status `budget_exceeded`.
+
+6. **All writes are audited.** Every API write (human or agent) flows through audit middleware that inserts into the unified `audit_log` table. Agent writes have `actor_type='agent'` and a non-null `agent_run_id`.
+
+7. **Prompts are versioned and stored in DB, not inline in code.** The `prompt_versions` table holds system prompts and output schemas. Code loads the active version at runtime.
+
+8. **If a task can be written as deterministic `if X then Y` logic, it is NOT an agent.** It is a service, cron job, DB trigger, or Inngest function. Claude-in-a-loop is reserved for reasoning under uncertainty with tool use. Per the task inventory, 56% of tasks are deterministic code — do not overbuild those as agents.
+
+9. **Web search is a fallback, not a primary data path.** Only Research and Commentary agents get the `web_search` tool. Zoning may optionally get it with strict gov-only allowlist. Supply and CashFlow do NOT get web search. System prompts must instruct agents to prefer structured data tools first. Every search-derived fact requires a citation in the output.
+
+10. **Nothing is hardcoded to Florida outside the FL ruleset files.** Tax math, insurance mechanics, DOT data sources, regulator monitoring — all use jurisdiction-aware pluggable rulesets. If you find yourself writing `if (state === 'FL')` outside a ruleset file, stop and architect it as a ruleset instead. Florida is the first market, not the only market.
+
+## Build Order — Mandatory Sequencing
+
+Execute phases in order. Do not start a phase until the previous phase is fully merged, tested, and reviewed. Each phase ends with a review checkpoint.
+
+### Phase 1 — Foundation (Infrastructure Only, No Agent Prompts Yet)
+
+**Goal:** All infrastructure for agents to exist and authenticate, without any agents actually running yet. This phase is pure plumbing. No LLM calls should be made in this phase.
+
+**Deliverables:**
+
+1. DB migrations (in this exact order):
+   - `users.user_type` column + `agent_metadata` jsonb column + check constraint
+   - Seed migration inserting 5 agent user rows: `agent_research`, `agent_zoning`, `agent_supply`, `agent_cashflow`, `agent_commentary` (idempotent via ON CONFLICT)
+   - `agent_runs` table with all indexes specified in spec
+   - `agent_run_steps` table with FK cascade to agent_runs
+   - `prompt_versions` table with partial unique index on `(agent_id) WHERE active = true`
+   - `audit_log` table with three indexes specified in spec
+   - `market_commentary` table with lookup index
+
+2. Extend `LayeredValue<T>` type in `src/types/layered-value.ts`:
+   - Add 5 new source values: `agent:research`, `agent:zoning`, `agent:supply`, `agent:cashflow`, `agent:commentary`
+   - Add optional `agent_run_id?: string` field
+   - Update merge-order logic: `platform` → `agent:*` → `t12/rent_roll/tax_bill` → `override`
+
+3. Auth middleware extension:
+   - New internal endpoint `POST /api/auth/agent-token` — issues scoped JWTs for agent service accounts (not publicly exposed, requires internal service credential)
+   - `authMiddleware` enhancement to decode `user_type` from token
+   - New `requireCapability(capability: string)` middleware factory
+   - Token TTL of 1 hour with auto-refresh; capability list from `agent_metadata`
+
+4. `SourceBadge` frontend component in `frontend/src/components/primitives/SourceBadge.tsx`:
+   - Reads `source` from LayeredValue wrapper
+   - Renders small badge with tooltip (agent name + timestamp when applicable)
+   - Add `T.accent.agent` to the design token system (match existing T-token conventions — Bloomberg dark, max 2px radius, no shadows)
+
+**Phase 1 Acceptance Criteria:**
+- All 7 migrations run clean up and down
+- Seed migration creates exactly 5 agent rows; rerunning is idempotent
+- `POST /api/auth/agent-token` returns a valid JWT for a known agent ID; rejects unknown agent IDs
+- A dummy endpoint protected by `requireCapability('read:parcels')` accepts a token for `agent_research` (which has the capability) and rejects a token for `agent_zoning` (which doesn't)
+- LayeredValue merge order is unit-tested: `platform < agent:* < t12 < override`
+- `SourceBadge` renders correctly for all 9 source values in Storybook or equivalent
+
+**STOP. Review checkpoint with Leon before proceeding to Phase 2.**
+
+---
+
+### Phase 2 — Runtime (Still No Agent Prompts)
+
+**Goal:** The `AgentRuntime` class and all supporting primitives exist and are unit-tested. Still no actual agent prompts or end-to-end runs — this phase proves the runtime works with a test fixture.
+
+**Deliverables:**
+
+1. `MeteringAdapter` class in `src/lib/metering/MeteringAdapter.ts`:
+   - Wraps existing `@stripe/token-meter` + `@anthropic-ai/sdk` integration
+   - Accepts `MeteringMetadata` object on every call (actor_type, actor_id, agent_run_id, deal_id, user_id, triggered_by)
+   - Routes cost to correct bucket per three-bucket rule:
+     - `triggered_by: 'user'` → debits user's credit balance via existing `creditService`
+     - `triggered_by: 'event' | 'cron'` → platform expense, not charged to user
+   - Fails fast if user has insufficient credits (pre-flight reserve)
+
+2. `BudgetEnforcer` class in `src/agents/runtime/BudgetEnforcer.ts`:
+   - Per-deal daily cap check via `agent_runs` aggregation
+   - Per-run cap check called between each tool-calling iteration
+   - Throws typed `BudgetExceededError` that the runtime catches and marks run as `budget_exceeded`
+   - Default caps configured in `src/agents/config/budget.ts` per the table in the spec
+
+3. `ToolDefinition` interface and `ToolRegistry` pattern in `src/agents/runtime/`:
+   - Zod-validated input and output schemas on every tool
+   - `requiresCapability` field enforced before tool execution
+   - Helper function `toAnthropicToolSchema(tool)` that converts to the SDK's tool format
+
+4. `AgentRuntime` class in `src/agents/runtime/AgentRuntime.ts`:
+   - Constructor signature per spec
+   - `run(input, ctx)` method implementing the full loop:
+     - Pre-flight budget check
+     - Create `agent_runs` row
+     - Load active prompt from `prompt_versions`
+     - Tool-calling loop (up to `maxStepsPerRun` iterations)
+     - Per-step budget check
+     - Tool input/output validation against Zod schemas
+     - Log every step to `agent_run_steps`
+     - Final output schema validation
+     - Mark run complete (succeeded / failed / budget_exceeded)
+     - Return validated output or throw typed error
+
+5. OpenTelemetry instrumentation:
+   - Each agent run is a trace; `agent_run_id` is the correlation key
+   - Each tool call is a span
+   - Standard attributes: `agent.id`, `agent.version`, `deal.id`, `triggered_by`, `agent.cost_usd`
+   - Exporter configured for project's existing observability backend (or OSS default if none yet)
+
+6. `platformClient.ts` extension:
+   - New method `platformClient.as({ agentId, runId })` returns a client scoped to that agent's service-account token
+   - Attaches correlation headers for tracing
+
+7. One test-fixture tool (`echo_tool`) + test-fixture agent (`echo_agent`) for runtime validation:
+   - `echo_tool` takes a string, returns the string uppercased
+   - `echo_agent` uses `echo_tool`, has a trivial system prompt ("uppercase the input"), writes no side effects
+   - Full end-to-end test: create run → loop executes → tool validates → output validates → run marked succeeded → all steps logged → budget enforced
+
+**Phase 2 Acceptance Criteria:**
+- `echo_agent` successfully runs end-to-end against live Claude API with full metering attribution
+- Budget cap test: setting `maxCostUsdPerRun: 0.001` causes the run to abort with `budget_exceeded` status
+- Tool input validation test: passing invalid input to `echo_tool` causes the loop to feed the Zod error back to Claude for self-correction (not crash)
+- OTel traces appear in the observability backend with full parent-child span relationships
+- Credits test: user-triggered `echo_agent` run debits user's credit balance; event-triggered run does not
+- Run records in `agent_runs` and `agent_run_steps` are complete and queryable
+
+**STOP. Review checkpoint with Leon before proceeding to Phase 3.**
+
+---
+
+### Phase 3 — First Real Agent (Research Agent)
+
+**Goal:** Research Agent is the pattern every other agent follows. Get it right before replicating.
+
+**Deliverables:**
+
+1. Research Agent tools (in `src/agents/tools/`):
+   - `fetch_parcel` — lookup by parcel_id OR address+county
+   - `fetch_costar_metrics` — submarket metric time-series fetch
+   - `fetch_county_records` — ownership history + tax records
+   - `fetch_fred_indicators` — FRED macro series
+   - `fetch_bls_employment` — QCEW data by county/MSA
+   - `fetch_rentcast_comps` — rent comp pull
+   - `fetch_google_places_reviews` — reviews + NLP sentiment
+   - `fetch_fdot_traffic` — traffic count data (note: Florida-specific tool; add parallel tools for other states' DOT sources post-launch)
+   - `fetch_municode_zoning` — zoning code text (shared with Zoning Agent)
+   - `web_search` — Tavily-backed fallback search (scoped per `AGENT_SEARCH_CONFIG` in inventory Category 19). System prompt must instruct: "Use structured data tools first. Use web_search only when structured tools cannot answer."
+   - `fetch_webpage` — deep read of a specific URL returned by search
+   - `write_dealcontext` — the ONE exception: goes direct-to-service, not through API (document this in the tool file)
+
+   Every tool has: Zod input + output schemas, `requiresCapability` field, unit tests with mocked external APIs, integration tests against real APIs (opt-in, expensive to run).
+
+   **Web search specifics:**
+   - Per-run search cap of 10 (enforced by `BudgetEnforcer` as a new cap type)
+   - 24h result cache keyed on normalized query string
+   - Domain blocklist: `*.pinterest.com`, `*.quora.com`, `*.reddit.com` for Research Agent
+   - Output schema requires citation fields (source URL + retrieval timestamp) when search results influenced any returned value
+   - `LayeredValue<T>` fields derived from web search get metadata flag `derived_from_search: true`
+
+2. Research Agent system prompt in `src/agents/prompts/research/system.ts` + output schema in `src/agents/prompts/research/output-schema.ts`. Seed both into `prompt_versions` as the active version for `agent_id='research'`.
+
+3. Research Agent wiring in `src/agents/research.agent.ts`:
+   - Instantiates `AgentRuntime` with the research config
+   - Exports a singleton
+
+4. Inngest function in `src/inngest/functions/research.function.ts`:
+   - Triggered on event `deal.created`
+   - Tier-gated (Principal+ for auto-trigger; Operator gets manual-only)
+   - Calls `researchAgent.run(...)` inside `step.run(...)` for durability
+   - Publishes `research.completed` event on success
+
+5. API endpoints (all follow existing route conventions):
+   - `POST /api/agents/research/run` — user-initiated trigger
+   - `GET /api/agents/runs/:runId` — run status + output
+   - `GET /api/agents/runs/:runId/steps` — detailed step trace
+   - `GET /api/deals/:dealId/agent-runs` — list runs for a deal
+
+6. Frontend integration:
+   - Deal activity feed reads from `audit_log`; agent activities show with a distinct "AGENT" actor badge
+   - Drill-down from a run entry surfaces the step trace in a debug panel (Principal tier only for launch)
+   - SourceBadge component now actually appears on DealContext fields flowing into the UI
+
+**Phase 3 Acceptance Criteria:**
+- Creating a new deal via the UI as a Principal-tier user triggers Research Agent automatically
+- Research Agent completes a full DealContext assembly for a real Florida multifamily deal within 5 minutes
+- Output validates against the Zod schema; invalid outputs trigger self-correction, not crash
+- DealContext cache hit on a re-run within 24h returns without calling Claude (60-70% credit savings as specced)
+- Deal activity feed shows the agent run; clicking drills into the step trace
+- Budget enforcement: artificially lowering the per-run cap aborts a mid-flight run cleanly
+- User credit balance debits correctly for user-triggered runs; does not debit for event-triggered runs on Principal tier
+- OTel traces show full tool-by-tool execution in the observability backend
+
+**STOP. Review checkpoint with Leon before proceeding to Phase 4.**
+
+---
+
+### Phase 4 — Remaining Four Agents
+
+**Goal:** Replicate the Research Agent pattern for the other four agents. Each is a smaller build than Research because the runtime and tool patterns are proven.
+
+Build in this order (each is its own sub-phase with its own review):
+
+**Phase 4A — Zoning Agent**
+- Tools: `fetch_zoning_code`, `fetch_municode`, `fetch_parcel` (reused), `compute_envelope`, `write_zoning_analysis` (via API)
+- Prompt + output schema seeded to `prompt_versions`
+- Inngest trigger: `deal.created` (after research) + `zoning.change_detected` (event-driven)
+- Writes to existing `zoning_analysis` table via API, wrapped in LayeredValue with `source: 'agent:zoning'`
+
+**Phase 4B — Supply Agent**
+- Tools: `fetch_permits`, `fetch_costar_pipeline`, `fetch_submarket_deliveries`, `write_supply_analysis` (via API)
+- Trigger: `deal.created` + weekly cron for all active deals' submarkets
+- Writes to `supply_analysis` table
+
+**Phase 4C — CashFlow Agent**
+- **Prerequisite:** Implement the jurisdiction-agnostic tax math service first (inventory task 6.5). Do NOT hardcode Florida tax logic in CashFlow Agent tools. Build `src/services/tax/` with ruleset pattern, seed rulesets for FL, TX, GA, and default. This unblocks multi-state support for DFW and Atlanta chat users.
+- **Prerequisite:** Same pattern for `src/services/insurance/` — pluggable rulesets per state (FL wind zone logic is one ruleset, not a hardcoded assumption).
+- Tools: `fetch_t12`, `fetch_rent_roll`, `fetch_assumptions`, `fetch_tax_bill`, `compute_proforma` (wraps existing deterministic proforma service, which in turn calls `taxService.forecast(deal)` using the resolved ruleset), `write_projection` (via API)
+- Trigger: user-initiated (Analyze button in F9 tab) + event on assumption change
+- Writes to `cashflow_projection` table
+- No `web_search` tool — CashFlow Agent uses structured data only
+
+**Phase 4D — Commentary Agent**
+- Tools: `fetch_market_metrics`, `fetch_strategy_classification`, `fetch_traffic_outputs`, `fetch_news_events`, `write_commentary` (via API, writes to new `market_commentary` table)
+- Trigger: user opens F4 MSA/submarket tab (cache-gated — 24h) + pre-generation cron for tracked markets
+- Writes to `market_commentary` table
+- UI wiring per existing `F4_Commentary_Enhancement_Spec.docx` — render commentary panels across all 12 MSA tabs and 8 submarket tabs
+
+**Phase 4 Acceptance Criteria (per sub-phase):**
+- Agent runs end-to-end for a test deal
+- Budget caps enforce correctly
+- Output lands in existing domain table via API (except Commentary which gets its new table)
+- Deal activity feed surfaces the run
+- Tier gating works per spec
+- No regressions in prior phases
+
+**STOP. Review checkpoint after all four agents are running.**
+
+---
+
+### Phase 5 — Hardening
+
+**Goal:** Production readiness.
+
+**Deliverables:**
+- Synthetic runaway-loop test: verify per-run cap aborts infinite tool-calling loops
+- Tier gating stress test: low-tier user cannot trigger Principal-tier workflows
+- Prompt rollback test: flipping `active` flag on prompt_versions row takes effect immediately on next run
+- Admin stats dashboard at `/admin/agents` showing per-agent runs/day, success rate, p50/p99 latency, total cost
+- Rate limiting at the metering layer: prevent thundering herd when many events fire simultaneously
+- Runbook documentation: how to debug a failed agent run, how to roll back a prompt, how to quarantine a misbehaving agent
+
+---
+
+## Task Inventory Integration
+
+After Phase 5, you will have the foundation to start implementing the 113-task inventory in `AGENT_TASK_INVENTORY.md`. That inventory is NOT part of this initial build. Do not attempt to implement any tasks from Categories 1-18 until Phase 5 is complete and reviewed.
+
+When you do begin implementing the inventory:
+
+- **56% of tasks are deterministic code (tag `C`).** Build as services, cron jobs, or DB triggers. No agents involved.
+- **25% are workflows (tag `WF`).** Build as Inngest functions that compose existing tools + agents.
+- **12% are tools to add to existing agents (tag `+T`).** Register them in the appropriate agent's tool registry. No new agents.
+- **7% are standalone tools (tag `T`).** Build and register on the correct agent based on domain fit.
+- **0% are new agents.** Do not create new agents.
+
+The 8-tool build order and top-10 workflow priority list are specified at the bottom of the inventory document. Follow that order unless Leon explicitly reprioritizes.
+
+## What NOT to Do
+
+- Do not create agents beyond the 5 specified. If you think one is needed, write up the case and get explicit approval before coding.
+- Do not create parallel storage for agent outputs. Everything lands in existing domain tables via LayeredValue.
+- Do not inline system prompts as string literals in agent code. Use `prompt_versions`.
+- Do not bypass the platform API for writes (except the one documented DealContext exception).
+- Do not skip output schema validation. Unvalidated output will corrupt downstream caches.
+- Do not implement agent-to-agent direct function calls. Agents communicate via Kafka/Inngest events only.
+- Do not skip budget caps. Every agent has caps. Every run enforces them.
+- Do not expand the "DealContext direct-write" exception to other tools without written approval.
+- Do not build MetricRecommendation or AgentOrchestrator as agents — they are a service and the runtime layer respectively (see taxonomy addendum).
+- Do not implement anything from the 113-task inventory until Phase 5 foundation is approved.
+- Do not give web search to Supply or CashFlow agents. They operate on structured data only.
+- Do not let agents use web search as a primary research path. It is a fallback. If a structured data tool (FRED, CoStar, RentCast, etc.) covers the question, use that instead. Enforce in system prompts.
+- Do not hardcode Florida-specific logic outside ruleset files. If you're writing `if (state === 'FL')` or `// TODO: handle other states later`, you are building the wrong abstraction. Use the ruleset pattern from day one.
+- Do not let search results get written to the DB without citations. Every field derived from web search must carry source URL + retrieval date in its LayeredValue metadata.
+
+## Communication Protocol
+
+- At the end of every phase, produce a written summary: what was built, what tests pass, what's blocked, what needs Leon's input. No progress until acknowledged.
+- If a ground rule conflicts with a practical constraint you encounter, flag it in writing and wait for approval. Do not silently work around ground rules.
+- If a spec is ambiguous, ask rather than guess. Log ambiguities in a `SPEC_QUESTIONS.md` file as you go; don't block on them if you have a reasonable default.
+- If you discover that an existing platform feature already does something the spec asks you to build, flag it. Don't duplicate.
+- If you think a design decision in the spec is wrong, say so — but implement as specced unless overridden.
+
+## Environment Notes
+
+- Repo: `github.com/Nardo758/JediRe.git`
+- Stack: React/TypeScript frontend, Node.js/TypeScript backend, PostgreSQL with PostGIS, Drizzle ORM, Kafka event streaming, Zustand stores
+- Existing billing: `@stripe/token-meter` wrapping `@anthropic-ai/sdk`
+- Telegram Bot API is live; Twilio Conversations API for WhatsApp is planned but not blocking
+- Primary model: `claude-opus-4-7` for Research (reasoning-heavy) and Commentary (narrative quality); `claude-sonnet-4-6` for Zoning / Supply / CashFlow (structured extraction)
+- Durable workflow engine: Inngest (install: `npm install inngest`)
+- Web search provider: **Tavily** (`npm install @tavily/core`) for Research + Commentary agents. Zoning may use Tavily with strict gov-only allowlist. Supply and CashFlow do not get web search.
+- Design system: T-token object, JetBrains Mono, IBM Plex Sans, max 2px border radius, no shadows/gradients, Bloomberg dark aesthetic
+- Tax math: jurisdiction-agnostic architecture with pluggable rulesets (see `AGENT_TASK_INVENTORY.md` Task 6.5). Launch rulesets: FL, TX, GA, default. NOT Florida-hardcoded.
+- Geographic scope: The platform serves multiple markets (Florida via web app + chat; Atlanta and Dallas via chat surface at launch). Do not hardcode Florida-specific logic anywhere outside `src/services/tax/rulesets/fl.ruleset.ts` and `src/services/insurance/rulesets/fl.ruleset.ts` (or equivalent ruleset directories for other domain concerns).
+
+## Known Platform State to Respect
+
+- There are 25 mock data files in `frontend/src/data/` that are being retired. If an agent touches a domain that still has mock data, retire the mock file as part of the work. Track retirements.
+- M07 Traffic Engine has empty migration files (0 bytes) — this is a separate workstream; do not attempt to fix as part of agent build.
+- `deal_monthly_actuals` table does not yet exist — this blocks M22 Post-Close Intelligence. When you reach task Category 14 in the inventory (post-Phase 5), this migration becomes a prerequisite.
+- The existing Research/Zoning/Supply/CashFlow agents referenced in code may be stub implementations or earlier designs. Treat this spec as the authoritative replacement. If you find conflicting existing code, flag it — do not silently coexist.
+
+## First Action
+
+Read all three spec documents end-to-end. Then produce a written plan for Phase 1 including:
+- Migration file names and order
+- Any questions about ambiguous fields
+- Estimated lines of code per file
+- Test fixtures you'll set up
+- Anything in the existing codebase you think conflicts with the spec
+
+Do not write any code until this plan is approved.
