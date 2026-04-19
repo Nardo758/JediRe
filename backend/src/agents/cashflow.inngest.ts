@@ -167,12 +167,19 @@ export const cashflowOnResearchCompleted = inngest.createFunction(
         const cached = typeof prior.output === 'string'
           ? JSON.parse(prior.output)
           : prior.output as CashflowAgentOutput;
+        const cConf = cached.confidence_distribution;
+        const cTotal = cConf ? cConf.high + cConf.medium + cConf.low : 0;
+        const cConfScore = (cTotal > 0 && cConf)
+          ? cConf.high / cTotal
+          : (cached.confidence_score ?? 0);
         return {
           runId: prior.id as string,
-          confidence_score: cached.confidence_score ?? 0,
+          confidence_score: cConfScore,
           summary: cached.summary ?? '',
           investment_rating: cached.investment_rating ?? null,
-          fields_written: cached.fields_written ?? [],
+          fields_written: cached.fields_written?.length
+            ? cached.fields_written
+            : Object.keys(cached.proforma_fields ?? {}),
           has_t12_data: cached.has_t12_data ?? false,
           has_rent_roll: cached.has_rent_roll ?? false,
         };
@@ -212,6 +219,18 @@ export const cashflowOnResearchCompleted = inngest.createFunction(
       );
       const typed = output as CashflowAgentOutput;
 
+      // Derive run metadata from the evidence output schema.
+      // confidence_score = fraction of high-confidence fields
+      const confDist = typed.confidence_distribution;
+      const totalFields = confDist ? confDist.high + confDist.medium + confDist.low : 0;
+      const derivedConfidenceScore = (totalFields > 0 && confDist)
+        ? confDist.high / totalFields
+        : (typed.confidence_score ?? 0);
+
+      const derivedFieldsWritten: string[] = typed.fields_written?.length
+        ? typed.fields_written
+        : Object.keys(typed.proforma_fields ?? {});
+
       const runRow = await query(
         `SELECT id FROM agent_runs
          WHERE agent_id = 'cashflow'
@@ -228,12 +247,12 @@ export const cashflowOnResearchCompleted = inngest.createFunction(
 
       return {
         runId,
-        confidence_score: typed.confidence_score,
+        confidence_score: derivedConfidenceScore,
         summary: typed.summary,
-        investment_rating: typed.investment_rating,
-        fields_written: typed.fields_written,
-        has_t12_data: typed.has_t12_data,
-        has_rent_roll: typed.has_rent_roll,
+        investment_rating: typed.investment_rating ?? null,
+        fields_written: derivedFieldsWritten,
+        has_t12_data: typed.has_t12_data ?? dealCtx.hasT12Data,
+        has_rent_roll: typed.has_rent_roll ?? dealCtx.hasRentRoll,
       };
     });
 

@@ -37,52 +37,84 @@ import { detectCollisionTool } from './tools/detect_collision';
 import { writeUnderwritingTool } from './tools/write_underwriting';
 import { requestWalkthroughNarrativeTool } from './tools/request_walkthrough_narrative';
 
-// ── Evidence-system output schema (v4) ──────────────────────────
+// ── Evidence-system output schema (v4) ───────────────────────────
 //
-// Extends the legacy proforma fields with optional evidence-map,
-// collision-summary, and per-field underwriting tier metadata
-// so the runtime's outputSchema.parse() accepts evidence-style outputs.
+// Matches CASHFLOW_OUTPUT_SCHEMA (prompts/cashflow/output-schema.ts) exactly,
+// so AgentRuntime.outputSchema.parse() accepts evidence-style JSON without errors.
+// Optional legacy fields (investment_rating, has_t12_data, etc.) allow the
+// inngest handler to extract run metadata without breaking the contract.
 
-const CollisionSummarySchema = z.object({
-  total_collisions: z.number().int().nonnegative(),
-  severe: z.number().int().nonnegative(),
-  material: z.number().int().nonnegative(),
-  minor: z.number().int().nonnegative(),
-  fields_with_collision: z.array(z.string()),
-}).optional();
+const DataPointSchema = z.object({
+  tier: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
+  source: z.string(),
+  label: z.string(),
+  value: z.union([z.number(), z.string(), z.null()]),
+  weight: z.number().min(0).max(1),
+  notes: z.string().optional(),
+});
 
-const EvidenceSummaryEntrySchema = z.object({
+const AlternativeSchema = z.object({
+  source: z.string(),
+  label: z.string(),
+  value: z.union([z.number(), z.string(), z.null()]),
+  delta_pct: z.union([z.number(), z.null()]).optional(),
+  reason_rejected: z.string(),
+});
+
+const FieldCollisionSchema = z.object({
+  field_path: z.string(),
+  agent_value: z.union([z.number(), z.string(), z.null()]),
+  broker_value: z.union([z.number(), z.string(), z.null()]),
+  delta_pct: z.union([z.number(), z.null()]),
+  magnitude: z.enum(['minor', 'material', 'severe']),
+  direction: z.enum(['agent_higher', 'agent_lower', 'equal']),
+  narrative: z.string(),
+}).nullable().optional();
+
+const EvidenceSchema = z.object({
+  field_path: z.string(),
   primary_tier: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
   confidence: z.enum(['high', 'medium', 'low']),
-  source_count: z.number().int().nonnegative(),
-  has_collision: z.boolean(),
-}).optional();
+  reasoning: z.string(),
+  data_points: z.array(DataPointSchema),
+  alternatives: z.array(AlternativeSchema),
+  collision: FieldCollisionSchema,
+});
+
+const ProformaFieldSchema = z.object({
+  value: z.union([z.number(), z.string(), z.null()]),
+  source: z.string(),
+  evidence: EvidenceSchema,
+});
 
 export const CashflowOutputSchema = z.object({
-  // ── Core proforma metrics ─────────────────────────────────────
-  purchase_price: z.number().nullable(),
-  noi_year1: z.number().nullable(),
-  year1_cap_rate_pct: z.number().nullable(),
-  irr_pct: z.number().nullable(),
-  avg_cash_on_cash_pct: z.number().nullable(),
-  dscr_year1: z.number().nullable(),
-  equity_invested: z.number().nullable(),
-  exit_value: z.number().nullable(),
-  investment_rating: z.enum(['strong', 'adequate', 'marginal', 'weak']).nullable(),
-  summary: z.string().describe('2-4 sentence cashflow analysis summary'),
-  has_t12_data: z.boolean(),
-  has_rent_roll: z.boolean(),
-  confidence_score: z.number().min(0).max(1),
-  fields_written: z.array(z.string()),
+  // ── Primary evidence structure (matches CASHFLOW_OUTPUT_SCHEMA prompt JSON) ─
+  proforma_fields: z.record(z.string(), ProformaFieldSchema)
+    .describe('Map of field_path → UnderwritingOutputField with full evidence chain'),
+  collision_summary: z.object({
+    minor_count: z.number().int().nonnegative(),
+    material_count: z.number().int().nonnegative(),
+    severe_count: z.number().int().nonnegative(),
+  }),
+  confidence_distribution: z.object({
+    high: z.number().int().nonnegative(),
+    medium: z.number().int().nonnegative(),
+    low: z.number().int().nonnegative(),
+  }),
+  tier_distribution: z.object({
+    tier1: z.number().int().nonnegative(),
+    tier2: z.number().int().nonnegative(),
+    tier3: z.number().int().nonnegative(),
+    tier4: z.number().int().nonnegative(),
+  }),
+  summary: z.string().describe('3-5 sentence synthesis of key findings'),
   completed_at: z.string(),
-  // ── Evidence-system fields (optional, populated when write_underwriting ran) ──
-  /** Map of field_path → evidence summary for the F9 evidence panel. */
-  evidence_map: z.record(z.string(), EvidenceSummaryEntrySchema).optional(),
-  /** High-level collision report (agent vs. broker OM). */
-  collision_summary: CollisionSummarySchema,
-  /** IDs of persisted underwriting_evidence rows from this run. */
-  underwriting_evidence_ids: z.array(z.string()).optional(),
-  /** ID of the deal_underwriting_snapshots row, if written. */
+  // ── Optional run metadata (inngest handler + backward compat) ──
+  investment_rating: z.enum(['strong', 'adequate', 'marginal', 'weak']).nullable().optional(),
+  has_t12_data: z.boolean().optional(),
+  has_rent_roll: z.boolean().optional(),
+  fields_written: z.array(z.string()).optional(),
+  confidence_score: z.number().min(0).max(1).optional(),
   snapshot_id: z.string().nullable().optional(),
 });
 

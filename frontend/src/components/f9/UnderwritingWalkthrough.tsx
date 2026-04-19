@@ -52,17 +52,16 @@ export function UnderwritingWalkthrough({ dealId }: UnderwritingWalkthroughProps
     }
   };
 
-  // Poll for narrative if status is pending
+  // Poll for narrative if status is pending — uses GET /status to avoid
+  // emitting duplicate Inngest events on every poll tick.
   useEffect(() => {
     if (!data || data.status !== 'pending') return;
     const interval = setInterval(async () => {
       try {
-        const r = await fetch(`/api/v1/deals/${dealId}/underwriting/walkthrough`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({}),
-        });
+        const r = await fetch(
+          `/api/v1/deals/${dealId}/underwriting/walkthrough/status`,
+          { method: 'GET', credentials: 'include' }
+        );
         if (!r.ok) return;
         const result: WalkthroughData = await r.json();
         if (result.narrative) {

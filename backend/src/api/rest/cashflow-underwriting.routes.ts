@@ -15,8 +15,7 @@ import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { AppError } from '../../middleware/errorHandler';
 import {
   cashflowRuntime,
-  resolveProjectType,
-  CASHFLOW_DEAL_TYPE_TO_PROMPT_TYPE,
+  buildCompositePrompt,
 } from '../../agents/cashflow.config';
 import { seedCashflowPrompt } from '../../agents/seeds/cashflow.seed';
 import { inngest } from '../../lib/inngest';
@@ -359,6 +358,47 @@ dealUnderwritingRouter.post(
         message: narrative
           ? 'Walkthrough narrative is available.'
           : 'Walkthrough narrative generation requested. Commentary Agent is generating it — check back in a few moments.',
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// ── GET /api/v1/deals/:dealId/underwriting/walkthrough/status ─────
+/**
+ * Status-only polling endpoint — returns current walkthrough narrative
+ * (if available) WITHOUT emitting any new Inngest events.
+ * Frontend uses this instead of POST when polling for pending results.
+ */
+dealUnderwritingRouter.get(
+  '/:dealId/underwriting/walkthrough/status',
+  requireAuth,
+  async (req: AuthenticatedRequest, res: Response, next) => {
+    try {
+      const { dealId } = req.params;
+      if (!UUID_RE.test(dealId)) throw new AppError(400, 'Invalid deal ID');
+
+      await assertDealAccess(dealId, req.user!.userId);
+
+      const existingResult = await query(
+        `SELECT metadata FROM audit_log
+         WHERE resource_type = 'deal' AND resource_id = $1
+           AND action = 'cashflow.walkthrough_completed'
+         ORDER BY created_at DESC LIMIT 1`,
+        [dealId]
+      );
+
+      const existing = existingResult.rows[0] as Record<string, unknown> | undefined;
+      const narrative = existing?.metadata
+        ? (existing.metadata as Record<string, unknown>).narrative ?? null
+        : null;
+
+      res.json({
+        success: true,
+        deal_id: dealId,
+        narrative,
+        status: narrative ? 'available' : 'pending',
       });
     } catch (error) {
       next(error);
