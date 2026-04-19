@@ -28,7 +28,12 @@ const FL_MARKET_GROWTH = 0.12; // 12%/yr appreciation assumption — exceeds cap
 const FL_MILLAGE_MIAMI_DADE = 23.09;  // mills per $1,000 assessed (FY2024/25)
 const FL_MILLAGE_STATEWIDE = 20.00;   // mills per $1,000 assessed
 
-const MIAMI_DADE_CITIES = new Set([
+/**
+ * Fallback city set — only used when county is not resolvable.
+ * Primary path: caller supplies ctx.county = 'Miami-Dade' via resolver.deriveCounty().
+ * This set exists as a safety net for direct callers that bypass the standard resolver path.
+ */
+const MIAMI_DADE_CITIES_FALLBACK = new Set([
   'miami', 'miami beach', 'hialeah', 'coral gables', 'doral', 'miami gardens', 'homestead',
   'north miami', 'north miami beach', 'opa-locka', 'aventura', 'bal harbour',
   'florida city', 'golden beach', 'indian creek', 'key biscayne', 'medley', 'miami shores',
@@ -36,10 +41,18 @@ const MIAMI_DADE_CITIES = new Set([
   'sunny isles beach', 'surfside', 'sweetwater', 'virginia gardens', 'west miami',
 ]);
 
+/**
+ * Determine if a deal is in Miami-Dade county.
+ *
+ * Resolution order:
+ * 1. countyOverride (explicit user override: 1=Miami-Dade, 0=statewide)
+ * 2. ctx.county field (preferred — resolved upstream via resolver.deriveCounty())
+ * 3. City-name fallback (safety net when county resolution fails)
+ */
 function resolveIsMiamiDade(ctx: TaxContext): boolean {
   if (ctx.countyOverride !== null) return ctx.countyOverride;
-  if (ctx.county?.toLowerCase().includes('miami-dade')) return true;
-  if (ctx.city) return MIAMI_DADE_CITIES.has(ctx.city.toLowerCase().trim());
+  if (ctx.county != null) return ctx.county.toLowerCase().includes('miami-dade');
+  if (ctx.city) return MIAMI_DADE_CITIES_FALLBACK.has(ctx.city.toLowerCase().trim());
   return false;
 }
 

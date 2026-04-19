@@ -16,6 +16,7 @@ import { logger } from '../utils/logger';
 import { Pool } from 'pg';
 import { taxService } from './tax/taxService';
 import type { TaxContext } from './tax/taxService';
+import { deriveCounty } from './tax/resolver';
 
 // ============================================================================
 // Types
@@ -2135,10 +2136,16 @@ export async function getDealFinancials(
   const refiNewLoanTypeRaw = (refiRawPyr['debt:senior:refiNewLoanType'] as Record<string, unknown> | null)?.value;
   const refiNewLoanType = refiNewLoanTypeRaw != null ? String(refiNewLoanTypeRaw) : null;
 
+  // Resolve county: prefer deal_data.county (if present) then city→county derivation
+  const dealDataJson = (deal.deal_data ?? {}) as Record<string, unknown>;
+  const dealCountyRaw = (dealDataJson.county ?? dealDataJson.property_county ?? null) as string | null;
+  const dealState = (deal.state_code ?? '').toUpperCase().trim();
+  const resolvedCounty = dealCountyRaw ?? deriveCounty(deal.city ?? null, dealState);
+
   // Build tax context and invoke jurisdiction-agnostic tax service
   const taxCtx: TaxContext = {
-    state: (deal.state_code ?? '').toUpperCase().trim(),
-    county: null,      // not in deals table; FL Miami-Dade resolved via city within fl.ruleset
+    state: dealState,
+    county: resolvedCounty,
     city: deal.city ?? null,
     purchasePrice,
     loanAmount,
