@@ -1,8 +1,17 @@
 -- Migration: agent_capabilities
 -- Date: 2026-04-19
 -- Adds capabilities[] tracking to users table for agent service accounts.
--- Capabilities are also embedded in JWT payloads (agent-auth.routes.ts);
--- this column provides a durable, queryable source of truth.
+--
+-- Canonical capability store:
+--   users.capabilities (this column) is the authoritative, queryable source of truth
+--   for agent service account capabilities. The task spec referenced "agent_metadata"
+--   but no such table exists; using users.capabilities is the correct approach since
+--   agent service accounts are already rows in the users table.
+--
+-- JWT runtime:
+--   agent-auth.routes.ts reads capability grants from AGENT_JWT_CONFIGS (in-process)
+--   and embeds them in JWT payloads. The users.capabilities column is the persisted
+--   counterpart for audit, admin tooling, and capability introspection queries.
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS capabilities JSONB NOT NULL DEFAULT '[]';
 
