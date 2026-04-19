@@ -125,10 +125,13 @@ export class BudgetEnforcer {
       cap: config.maxSearchesPerRun,
     });
 
-    if (count >= config.maxSearchesPerRun) {
+    // AgentRuntime persists the tool_call step BEFORE calling tool.execute(), so by the time
+    // this check runs, the current search is already counted. Use strict greater-than so the
+    // Nth allowed search is correctly permitted (count=N, max=N → N>N = false = allow).
+    if (count > config.maxSearchesPerRun) {
       throw new BudgetExceededError(
         `Agent ${agentId} exceeded search cap of ${config.maxSearchesPerRun} web searches per run. ` +
-        `Already used ${count} searches in run ${runId}.`
+        `Already used ${count - 1} searches in run ${runId} (cap reached).`
       );
     }
   }

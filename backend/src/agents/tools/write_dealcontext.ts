@@ -30,8 +30,8 @@ const InputSchema = z.object({
   ),
   derived_from_search: z.boolean().optional().describe(
     'Set true when this value was sourced via web_search rather than structured data. ' +
-    'Appends ":web" to source_label so the UI can display a "sourced from web" indicator. ' +
-    'Example: source_label="agent:research" + derived_from_search=true → stored as "agent:research:web"'
+    'Writes { derived_from_search: true } into the deal_context_fields.metadata column ' +
+    'so the UI can surface a "sourced from web" indicator per the LayeredValue provenance spec.'
   ),
 });
 
