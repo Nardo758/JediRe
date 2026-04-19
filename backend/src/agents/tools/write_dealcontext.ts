@@ -28,6 +28,11 @@ const InputSchema = z.object({
   source_label: z.string().default('agent:research').describe(
     'LayeredValueSource tag, e.g. "agent:research"'
   ),
+  derived_from_search: z.boolean().optional().describe(
+    'Set true when this value was sourced via web_search rather than structured data. ' +
+    'Appends ":web" to source_label so the UI can display a "sourced from web" indicator. ' +
+    'Example: source_label="agent:research" + derived_from_search=true → stored as "agent:research:web"'
+  ),
 });
 
 const OutputSchema = z.object({
@@ -59,6 +64,12 @@ export const writeDealContextTool: ToolDefinition<
 
     const now = new Date().toISOString();
 
+    // When the value was obtained via web_search, append ':web' to source_label
+    // so the UI can distinguish web-sourced from structured-data-sourced fields.
+    const effectiveSourceLabel = input.derived_from_search
+      ? `${input.source_label}:web`
+      : input.source_label;
+
     await query(
       `INSERT INTO deal_context_fields
          (deal_id, field_path, value, source_label, agent_run_id, updated_at)
@@ -73,7 +84,7 @@ export const writeDealContextTool: ToolDefinition<
         input.deal_id,
         input.field_path,
         JSON.stringify(input.value),
-        input.source_label,
+        effectiveSourceLabel,
         ctx.correlationId ?? null,
       ]
     );
@@ -81,7 +92,8 @@ export const writeDealContextTool: ToolDefinition<
     logger.debug('write_dealcontext: field written', {
       dealId: input.deal_id,
       fieldPath: input.field_path,
-      source: input.source_label,
+      source: effectiveSourceLabel,
+      webSourced: input.derived_from_search ?? false,
     });
 
     return {

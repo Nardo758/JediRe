@@ -111,7 +111,8 @@ export class BudgetEnforcer {
       `SELECT COUNT(*)::int AS count
        FROM agent_run_steps
        WHERE agent_run_id = $1
-         AND tool_name = 'web_search'`,
+         AND tool_name = 'web_search'
+         AND step_type = 'tool_call'`,
       [runId]
     );
 

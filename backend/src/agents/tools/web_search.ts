@@ -54,6 +54,18 @@ const OutputSchema = z.object({
 export type WebSearchInput = z.infer<typeof InputSchema>;
 export type WebSearchOutput = z.infer<typeof OutputSchema>;
 
+// ── TAVILY_API_KEY startup validation ────────────────────────────────────────
+// Emit a single warning at module-load time if the key is absent.
+// This ensures ops visibility without crashing; runtime calls degrade gracefully.
+if (!process.env['TAVILY_API_KEY']) {
+  logger.warn(
+    '[web_search] TAVILY_API_KEY is not configured. ' +
+    'web_search and fetch_webpage calls will return search_unavailable for all agents. ' +
+    'Set TAVILY_API_KEY in environment secrets to enable web search.',
+    { impact: 'agents_with_web_search_capability_degraded', affectedAgents: ['research', 'commentary', 'zoning'] }
+  );
+}
+
 // ── In-memory cache ───────────────────────────────────────────────────────────
 
 interface CacheEntry {

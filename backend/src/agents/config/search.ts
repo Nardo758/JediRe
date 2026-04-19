@@ -46,16 +46,37 @@ export const AGENT_SEARCH_CONFIG: Record<AgentId, SearchConfig | null> = {
 
   commentary: {
     maxSearchesPerRun: 5,
-    allowlistDomains: null,
-    blocklistDomains: [
-      'reddit.com',
-      'twitter.com',
-      'x.com',
-      'facebook.com',
-      'instagram.com',
-      'tiktok.com',
-      'pinterest.com',
+    allowlistDomains: [
+      // Multifamily / CRE trade press
+      'costar.com',
+      'globest.com',
+      'multifamilyexecutive.com',
+      'nrei.com',
+      'bisnow.com',
+      'connect.media',
+      'therealdeal.com',
+      'commercialobserver.com',
+      // National CRE / NMHC / NAR
+      'nmhc.org',
+      'nar.realtor',
+      'cbre.com',
+      'jll.com',
+      'colliers.com',
+      'cushmanwakefield.com',
+      // Economic / government data
+      'bls.gov',
+      'census.gov',
+      'hud.gov',
+      'fred.stlouisfed.org',
+      'federalreserve.gov',
+      // Financial newswires
+      'wsj.com',
+      'bloomberg.com',
+      'reuters.com',
+      'ft.com',
+      'apnews.com',
     ],
+    blocklistDomains: null,
     cacheHours: 24,
   },
 
