@@ -78,6 +78,9 @@ export const cashflowOnResearchCompleted = inngest.createFunction(
     });
 
     // ── Step 3: Resolve deal context + document availability ────────
+    // Gate: only proceed if T12 financials OR rent-roll data exist.
+    // Without financial documents the proforma would be pure estimation
+    // with no deal-specific data to ground it — deferred until docs arrive.
     const dealCtx = await step.run('resolve-deal-context', async () => {
       const res = await query(
         `SELECT d.address, d.property_address, d.city, d.state_code,
@@ -91,7 +94,14 @@ export const cashflowOnResearchCompleted = inngest.createFunction(
       );
       const row = res.rows[0] ?? {};
 
-      // Check for rent roll snapshots (proxy for "has financial document data")
+      // Check T12 availability: deal_financials rows with at least one month of data
+      const t12Res = await query(
+        `SELECT COUNT(*) AS cnt FROM deal_financials WHERE deal_id = $1 LIMIT 1`,
+        [dealId]
+      );
+      const hasT12Data = parseInt(t12Res.rows[0]?.cnt ?? '0', 10) > 0;
+
+      // Check rent-roll availability via rent_roll_snapshots
       const rrRes = await query(
         `SELECT COUNT(*) AS cnt FROM rent_roll_snapshots WHERE deal_id = $1 LIMIT 1`,
         [dealId]
@@ -105,9 +115,22 @@ export const cashflowOnResearchCompleted = inngest.createFunction(
         property_id: (row.property_id ?? null) as string | null,
         property_type: (row.property_type ?? null) as string | null,
         purchase_price: (row.purchase_price ?? null) as number | null,
+        hasT12Data,
         hasRentRoll,
       };
     });
+
+    // Document gate: skip cashflow analysis when no financial data is available.
+    // The run will be triggered again by a future deal.document_uploaded event
+    // once the user uploads T12 or rent-roll files.
+    if (!dealCtx.hasT12Data && !dealCtx.hasRentRoll) {
+      logger.info('CashFlow Agent: no T12 or rent-roll data found — deferring run', {
+        dealId,
+        hasT12Data: false,
+        hasRentRoll: false,
+      });
+      return { runId: '', confidence_score: 0 };
+    }
 
     // ── Step 4: Execute CashFlow Agent via AgentRuntime ─────────────
     const inngestEventId = event.id;
@@ -163,6 +186,7 @@ export const cashflowOnResearchCompleted = inngest.createFunction(
           ...(dealCtx.property_id && { property_id: dealCtx.property_id }),
           ...(dealCtx.property_type && { property_type: dealCtx.property_type }),
           ...(dealCtx.purchase_price != null && { purchase_price: dealCtx.purchase_price }),
+          has_t12_data: dealCtx.hasT12Data,
           has_rent_roll: dealCtx.hasRentRoll,
         },
         ctx
