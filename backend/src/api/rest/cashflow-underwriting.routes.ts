@@ -390,15 +390,18 @@ dealUnderwritingRouter.get(
       );
 
       const existing = existingResult.rows[0] as Record<string, unknown> | undefined;
-      const narrative = existing?.metadata
-        ? (existing.metadata as Record<string, unknown>).narrative ?? null
-        : null;
+      const meta = existing?.metadata as Record<string, unknown> | null | undefined;
+      const narrative = meta?.narrative ?? null;
+      // Mark available when the persisted record explicitly signals completion
+      // OR when a non-empty narrative is present. This prevents infinite pending
+      // states when narrative is an empty string due to agent output variance.
+      const isDone = meta?.completion_status === 'done' || Boolean(narrative);
 
       res.json({
         success: true,
         deal_id: dealId,
         narrative,
-        status: narrative ? 'available' : 'pending',
+        status: isDone ? 'available' : 'pending',
       });
     } catch (error) {
       next(error);

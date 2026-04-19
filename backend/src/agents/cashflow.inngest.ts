@@ -359,7 +359,25 @@ export const cashflowOnWalkthroughRequested = inngest.createFunction(
       };
     });
 
-    // Step 2: Invoke Commentary Agent to generate the narrative
+    // Step 2: Load deal entity identity needed by Commentary Agent
+    const entityCtx = await step.run('load-entity-context', async () => {
+      const res = await query(
+        `SELECT d.property_id, d.property_type,
+                COALESCE(p.name, d.deal_name, d.id::text) AS entity_name,
+                COALESCE(p.id::text, d.property_id::text, d.id::text) AS entity_id
+         FROM deals d
+         LEFT JOIN properties p ON p.id = d.property_id
+         WHERE d.id = $1`,
+        [dealId]
+      );
+      const row = res.rows[0] as Record<string, unknown> | undefined;
+      return {
+        entity_id: (row?.entity_id as string | null) ?? dealId,
+        entity_name: (row?.entity_name as string | null) ?? dealId,
+      };
+    });
+
+    // Step 3: Invoke Commentary Agent to generate the walkthrough narrative
     const result = await step.run('generate-walkthrough', async () => {
       const { commentaryRuntime } = await import('./commentary.config');
       const ctx: RunContext = {
@@ -372,10 +390,14 @@ export const cashflowOnWalkthroughRequested = inngest.createFunction(
         },
       };
 
+      // Commentary Agent expects entity identity in the input together with
+      // deal evidence context so the LLM has full underwriting data available.
       const output = await commentaryRuntime.run(
         {
-          deal_id: dealId,
-          mode: 'walkthrough',
+          entity_type: 'property',
+          entity_id: entityCtx.entity_id,
+          entity_name: entityCtx.entity_name,
+          walkthrough_mode: true,
           focus: focus ?? 'proforma_evidence',
           proforma_snapshot: evidenceCtx.proforma,
           evidence_map: evidenceCtx.evidence,
@@ -383,13 +405,31 @@ export const cashflowOnWalkthroughRequested = inngest.createFunction(
         ctx
       );
 
+      // Extract narrative from Commentary Agent's validated output contract.
+      // CommentaryOutputSchema fields: market_narrative.content (string),
+      // investment_thesis.recommendation (string), summary (string).
+      // Compose a human-readable walkthrough from the three natural-language fields.
+      type CommentaryOut = {
+        market_narrative?: { content?: string };
+        investment_thesis?: { recommendation?: string };
+        summary?: string;
+      };
+      const typed = output as CommentaryOut;
+      const parts: string[] = [];
+      if (typed.market_narrative?.content) parts.push(typed.market_narrative.content);
+      if (typed.investment_thesis?.recommendation) parts.push(typed.investment_thesis.recommendation);
+      if (typed.summary) parts.push(typed.summary);
+      const narrative = parts.join('\n\n').trim();
+
       return {
-        narrative: (output as Record<string, unknown>).commentary_text as string ?? '',
+        narrative,
         runId: ctx.correlationId ?? '',
       };
     });
 
-    // Step 3: Write narrative to audit_log for UI consumption
+    // Step 4: Write narrative to audit_log for UI consumption.
+    // `completion_status` is always set so the polling endpoint can distinguish
+    // "truly done (even with empty narrative)" from "still in-flight".
     await step.run('persist-walkthrough', async () => {
       await query(
         `INSERT INTO audit_log
@@ -400,6 +440,7 @@ export const cashflowOnWalkthroughRequested = inngest.createFunction(
           JSON.stringify({
             event_id: eventId,
             narrative: result.narrative,
+            completion_status: 'done',
             agent_run_id: agentRunId,
             walkthrough_run_id: result.runId,
             focus: focus ?? 'proforma_evidence',
