@@ -108,6 +108,7 @@ import agentSettingsRoutes from './agent-settings.routes';
 import columnPreferencesRoutes from './column-preferences.routes';
 import timeSeriesRoutes from './time-series.routes';
 import driverAnalysisRoutes from './driver-analysis.routes';
+import agentRunsRoutes, { dealAgentRunsRouter } from './agent-runs.routes';
 
 const API_PREFIX = '/api/v1';
 
@@ -155,6 +156,12 @@ export function setupRESTRoutes(app: Application): void {
 
   // Agent routes (orchestration)
   app.use(`${API_PREFIX}/agents`, agentRoutes);
+
+  // Agent runtime routes (Phase 3): /agents/:agentId/run, /agents/runs/:runId, etc.
+  app.use(`${API_PREFIX}/agents`, agentRunsRoutes);
+
+  // Deal agent-run listing: GET /deals/:dealId/agent-runs
+  app.use(`${API_PREFIX}/deals`, dealAgentRunsRouter);
 
   // Agent Settings routes (model selection, workforce config)
   app.use(`${API_PREFIX}/settings/agents`, agentSettingsRoutes);

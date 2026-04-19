@@ -305,6 +305,22 @@ app.use('/api/v1/portfolio', portfolioRouter);
 import agentRouter from './api/rest/agent.routes';
 app.use('/api/v1/agents', agentRouter);
 
+// Agent runtime routes (Phase 3): trigger, run detail, steps
+import agentRunsRouter, { dealAgentRunsRouter } from './api/rest/agent-runs.routes';
+app.use('/api/v1/agents', agentRunsRouter);
+app.use('/api/v1/deals', dealAgentRunsRouter);
+
+// Inngest durable function serve handler
+// In dev: Inngest Dev Server proxies to /api/inngest
+// In prod: Inngest cloud calls this endpoint
+import { serve } from 'inngest/express';
+import { inngest } from './lib/inngest';
+import { researchOnDealCreated } from './agents/research.inngest';
+app.use(
+  '/api/inngest',
+  serve({ client: inngest, functions: [researchOnDealCreated] })
+);
+
 import chatRouter from './api/rest/chat.routes';
 app.use('/api/v1/chat', chatRouter);
 

@@ -275,6 +275,26 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
       });
     }
 
+    // Emit deal.created event for durable agent processing (Inngest)
+    setImmediate(async () => {
+      try {
+        const { inngest } = await import('../../lib/inngest');
+        await inngest.send({
+          name: 'deal.created',
+          data: {
+            dealId: row.id,
+            userId: req.user!.userId,
+            userTier: row.tier || 'basic',
+            address: row.address || undefined,
+            triggeredBy: 'user',
+          },
+        });
+      } catch (inngestErr) {
+        // Non-fatal — platform still functional without agent run
+        console.error('[Inngest] Failed to emit deal.created:', inngestErr instanceof Error ? inngestErr.message : inngestErr);
+      }
+    });
+
     res.status(201).json({
       success: true,
       deal: {
