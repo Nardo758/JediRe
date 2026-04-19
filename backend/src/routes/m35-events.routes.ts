@@ -603,14 +603,15 @@ router.get('/deals/:dealId/events-context', async (req: Request, res: Response) 
   try {
     const pool = getPool();
 
-    // Resolve deal's MSA
+    // Resolve deal's MSA — prefer explicit msaId on deal_data, fall back to city
     const dealRes = await pool.query(`
-      SELECT d.id, d.name, d.deal_data->>'msaId' AS msa_id_from_deal
+      SELECT d.id, d.name,
+        COALESCE(d.deal_data->>'msaId', lower(trim(d.city))) AS msa_id
       FROM deals d WHERE d.id = $1 LIMIT 1
     `, [req.params.dealId]);
 
     const deal = dealRes.rows[0];
-    const msaId = deal?.msa_id_from_deal ?? null;
+    const msaId = deal?.msa_id ?? null;
 
     let events: any[] = [];
     if (msaId) {
@@ -621,15 +622,6 @@ router.get('/deals/:dealId/events-context', async (req: Request, res: Response) 
         ORDER BY ke.magnitude_score DESC, ke.announced_date DESC NULLS LAST
         LIMIT 20
       `, [msaId]);
-      events = evRes.rows;
-    } else {
-      // Fallback: return all non-cancelled events ordered by magnitude
-      const evRes = await pool.query(`
-        SELECT ke.* FROM key_events ke
-        WHERE ke.status NOT IN ('cancelled','reversed')
-        ORDER BY ke.magnitude_score DESC, ke.announced_date DESC NULLS LAST
-        LIMIT 20
-      `);
       events = evRes.rows;
     }
 
