@@ -316,9 +316,9 @@ export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange }: Financia
   const byField: Record<string, OperatingStatementRow> = {};
   rows.forEach(r => { byField[r.field] = r; });
 
-  const revRows  = rows.filter(r => REVENUE_FIELDS.has(r.field));
+  const revRows  = rows.filter(r => REVENUE_FIELDS.has(r.field) && !SUBTOTALS.has(r.field));
   const ctrlRows = rows.filter(r => CTRL_OPEX_FIELDS.has(r.field));
-  const nctrlRows = rows.filter(r => NCTRL_OPEX_FIELDS.has(r.field));
+  const nctrlRows = rows.filter(r => NCTRL_OPEX_FIELDS.has(r.field) && !SUBTOTALS.has(r.field));
   const noiRow   = rows.find(r => r.field === 'noi');
 
   const egiRow       = byField['egi'];
