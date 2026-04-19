@@ -15,6 +15,7 @@
  * GET    /api/v1/m35/events/:id/control-group        — get DiD control group (M35-2)
  * POST   /api/v1/m35/events/:id/compute-impact       — trigger on-demand impact (M35-2)
  * POST   /api/v1/m35/events/promote/:draftId         — promote from draft queue
+ * GET    /api/v1/m35/portfolio/events                 — cross-portfolio event feed (PortfolioEventRow[])
  * GET    /api/v1/m35/deals/:dealId/events            — events affecting a deal
  * GET    /api/v1/m35/submarkets/:id/active-forecasts — active events for submarket
  * POST   /api/v1/m35/impact-job/run                  — manually trigger nightly job (M35-2)
@@ -193,6 +194,191 @@ router.get('/events/feed', async (req: Request, res: Response) => {
     res.json({ items: enriched, total: result.total ?? enriched.length });
   } catch (err: unknown) {
     logger.error('[M35 Events] feed error', err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Unknown error' });
+  }
+});
+
+/**
+ * GET /api/v1/m35/portfolio/events
+ *
+ * Returns a PortfolioEventRow[] — one entry per (deal × event) pair where
+ * the event's msaId matches the deal's msaId. Includes updatedAt from the
+ * key_events.updated_at column so the frontend DATA AS OF timestamp works
+ * with live API data instead of demo fallback data.
+ *
+ * Impact deltas (irrDelta, rentGrowthDelta) are sourced from event_impacts
+ * where available; otherwise they default to 0.
+ */
+router.get('/portfolio/events', async (req: Request, res: Response) => {
+  try {
+    const userEmail = callerEmail(req);
+    if (!userEmail) {
+      res.status(401).json({ error: 'Authentication required' });
+      return;
+    }
+
+    const pool = getPool();
+
+    // 1. Fetch the user's active deals with msaId + deal name
+    const dealRows = await pool.query<{
+      deal_id: string;
+      deal_name: string;
+      msa_id: string;
+      msa_name: string | null;
+      submarket_id: string | null;
+      submarket_name: string | null;
+    }>(
+      `SELECT
+         d.id                                   AS deal_id,
+         COALESCE(d.deal_data->>'name', d.deal_data->>'address', 'Unnamed Deal') AS deal_name,
+         d.deal_data->>'msaId'                  AS msa_id,
+         d.deal_data->>'msaName'                AS msa_name,
+         d.deal_data->>'submarketId'            AS submarket_id,
+         d.deal_data->>'submarketName'          AS submarket_name
+       FROM deals d
+       WHERE d.deal_data->>'msaId' IS NOT NULL
+         AND (d.status IS NULL OR d.status NOT IN ('archived','closed'))
+         AND (d.created_by = $1 OR d.deal_data->>'createdBy' = $1 OR d.user_id = $1)
+       LIMIT 50`,
+      [userEmail],
+    );
+
+    if (dealRows.rows.length === 0) {
+      res.json([]);
+      return;
+    }
+
+    // 2. Collect distinct msaIds and fetch relevant events
+    const msaIdSet = new Set(dealRows.rows.map(r => r.msa_id).filter(Boolean));
+    const msaIds = [...msaIdSet];
+
+    const feedStatuses: M35EventStatus[] = ['announced', 'in_progress', 'materialized'];
+    const eventsResult = await searchEvents({
+      msaIds,
+      status: feedStatuses,
+      limit: 100,
+      offset: 0,
+    });
+    const events = eventsResult.items ?? [];
+
+    if (events.length === 0) {
+      res.json([]);
+      return;
+    }
+
+    // 3. Pull attributed impact deltas from event_impacts for rent_growth_yoy
+    const eventIds = events.map(e => String(e.id));
+    let impactMap: Map<string, { irrDelta: number; rentGrowthDelta: number }> = new Map();
+    try {
+      const impactRows = await pool.query<{
+        event_id: string;
+        attributed_delta: string | null;
+        metric_key: string;
+      }>(
+        `SELECT event_id::text, metric_key, attributed_delta
+         FROM event_impacts
+         WHERE event_id = ANY($1::uuid[])
+           AND metric_key IN ('rent_growth_yoy', 'effective_rent_growth', 'irr')
+         ORDER BY computed_at DESC`,
+        [eventIds],
+      );
+      for (const row of impactRows.rows) {
+        if (!impactMap.has(row.event_id)) {
+          impactMap.set(row.event_id, { irrDelta: 0, rentGrowthDelta: 0 });
+        }
+        const entry = impactMap.get(row.event_id)!;
+        const delta = parseFloat(String(row.attributed_delta ?? '0')) || 0;
+        if (row.metric_key === 'irr') {
+          entry.irrDelta = delta;
+        } else {
+          entry.rentGrowthDelta = delta;
+        }
+      }
+    } catch {
+      // event_impacts may be empty or schema mismatch — defaults remain 0
+    }
+
+    // 4. Cross-join events × deals on msaId and assemble portfolio rows
+    const rows: Array<{
+      eventId: string;
+      eventName: string;
+      category: string;
+      scope: string;
+      magnitude: number;
+      irrDelta: number;
+      rentGrowthDelta: number;
+      propertyId: string;
+      propertyName: string;
+      submarket: string;
+      msa: string;
+      status: string;
+      triggerAt: string;
+      peakAt: string;
+      updatedAt: string;
+    }> = [];
+
+    for (const event of events) {
+      const matchingDeals = dealRows.rows.filter(d => d.msa_id === event.msaId);
+      const impacts = impactMap.get(String(event.id)) ?? { irrDelta: 0, rentGrowthDelta: 0 };
+
+      // Map event status to portfolio display status
+      let portfolioStatus: string;
+      if (event.status === 'materialized') {
+        portfolioStatus = impacts.irrDelta > 0 ? 'AHEAD' : (impacts.irrDelta < 0 ? 'BEHIND' : 'ON PACE');
+      } else if (event.status === 'in_progress') {
+        portfolioStatus = 'ON PACE';
+      } else {
+        portfolioStatus = 'PRE-EVENT';
+      }
+
+      const triggerAt = event.announcedDate
+        ? (() => {
+            const d = new Date(event.announcedDate);
+            const q = Math.ceil((d.getMonth() + 1) / 3);
+            return `${d.getFullYear()}-Q${q}`;
+          })()
+        : 'TBD';
+      const peakAt = event.materializationDate
+        ? (() => {
+            const d = new Date(event.materializationDate);
+            const q = Math.ceil((d.getMonth() + 1) / 3);
+            return `${d.getFullYear()}-Q${q}`;
+          })()
+        : 'TBD';
+
+      for (const deal of matchingDeals) {
+        rows.push({
+          eventId:         String(event.id),
+          eventName:       event.name,
+          category:        event.category,
+          scope:           event.scope,
+          magnitude:       event.magnitudeScore ?? 2,
+          irrDelta:        impacts.irrDelta,
+          rentGrowthDelta: impacts.rentGrowthDelta,
+          propertyId:      deal.deal_id,
+          propertyName:    deal.deal_name,
+          submarket:       deal.submarket_name ?? event.submarketName ?? '',
+          msa:             deal.msa_name ?? event.msaName ?? event.msaId ?? '',
+          status:          portfolioStatus,
+          triggerAt,
+          peakAt,
+          updatedAt:       event.updatedAt,
+        });
+      }
+    }
+
+    // Deduplicate by eventId+propertyId and limit to 50
+    const seen = new Set<string>();
+    const deduped = rows.filter(r => {
+      const key = `${r.eventId}:${r.propertyId}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).slice(0, 50);
+
+    res.json(deduped);
+  } catch (err: unknown) {
+    logger.error('[M35 Events] portfolio/events error', err);
     res.status(500).json({ error: err instanceof Error ? err.message : 'Unknown error' });
   }
 });
