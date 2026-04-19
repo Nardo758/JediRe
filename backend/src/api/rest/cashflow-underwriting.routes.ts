@@ -166,18 +166,35 @@ dealUnderwritingRouter.get(
 
       await assertDealAccess(dealId, req.user!.userId);
 
-      const result = await query(
-        `SELECT id, field_path, value_numeric, value_text, primary_tier,
-                data_points, reasoning, alternatives, collision, confidence, created_at, agent_run_id
-         FROM underwriting_evidence
-         WHERE deal_id = $1 AND field_path = $2
-         ORDER BY created_at DESC
-         LIMIT 1`,
-        [dealId, fieldPath]
-      );
+      const [result, overrideResult] = await Promise.all([
+        query(
+          `SELECT id, field_path, value_numeric, value_text, primary_tier,
+                  data_points, reasoning, alternatives, collision, confidence, created_at, agent_run_id
+           FROM underwriting_evidence
+           WHERE deal_id = $1 AND field_path = $2
+           ORDER BY created_at DESC
+           LIMIT 1`,
+          [dealId, fieldPath]
+        ),
+        query(
+          `SELECT value, metadata, updated_at
+           FROM deal_context_fields
+           WHERE deal_id = $1 AND field_path = $2 AND source_label = 'override'`,
+          [dealId, fieldPath]
+        ),
+      ]);
+
+      const overrideRow = overrideResult.rows[0] as Record<string, unknown> | undefined;
+      const activeOverride = overrideRow
+        ? {
+            value: overrideRow.value,
+            overridden_at: (overrideRow.metadata as Record<string, unknown>)?.overridden_at as string ?? overrideRow.updated_at,
+            reason: (overrideRow.metadata as Record<string, unknown>)?.override_reason as string | null ?? null,
+          }
+        : null;
 
       if (result.rows.length === 0) {
-        res.json({ success: true, evidence: null, deal_id: dealId, field_path: fieldPath });
+        res.json({ success: true, evidence: null, active_override: activeOverride, deal_id: dealId, field_path: fieldPath });
         return;
       }
 
@@ -198,6 +215,7 @@ dealUnderwritingRouter.get(
           created_at: row.created_at,
           agent_run_id: row.agent_run_id,
         },
+        active_override: activeOverride,
         deal_id: dealId,
         field_path: fieldPath,
       });
@@ -278,14 +296,63 @@ dealUnderwritingRouter.post(
         ]
       );
 
+      const overriddenAt = new Date().toISOString();
+      const prevValue = prev
+        ? ((prev as Record<string, unknown>).value_numeric ?? (prev as Record<string, unknown>).value_text)
+        : null;
+
       res.json({
         success: true,
         deal_id: dealId,
         field_path: fieldPath,
-        value,
-        source: 'override',
-        overridden_at: new Date().toISOString(),
+        layered_value: {
+          platform: prevValue,
+          override: value,
+          resolved: value,
+          resolution: 'override',
+          updated_at: overriddenAt,
+          updated_by: req.user!.userId,
+        },
       });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+// ── DELETE /api/v1/deals/:dealId/assumptions/:fieldPath/override ───
+/**
+ * Revert a user override, restoring the agent-resolved value.
+ * Removes the `override` row from deal_context_fields and writes an audit entry.
+ */
+dealUnderwritingRouter.delete(
+  '/:dealId/assumptions/:fieldPath/override',
+  requireAuth,
+  async (req: AuthenticatedRequest, res: Response, next) => {
+    try {
+      const { dealId, fieldPath } = req.params;
+      if (!UUID_RE.test(dealId)) throw new AppError(400, 'Invalid deal ID');
+
+      await assertDealAccess(dealId, req.user!.userId);
+
+      await query(
+        `DELETE FROM deal_context_fields
+         WHERE deal_id = $1 AND field_path = $2 AND source_label = 'override'`,
+        [dealId, fieldPath]
+      );
+
+      await query(
+        `INSERT INTO audit_log
+           (actor_id, actor_type, action, resource_type, resource_id, metadata)
+         VALUES ($1, 'user', 'assumption.override_reverted', 'deal', $2, $3)`,
+        [
+          req.user!.userId,
+          dealId,
+          JSON.stringify({ field_path: fieldPath, reverted_at: new Date().toISOString() }),
+        ]
+      );
+
+      res.json({ success: true, deal_id: dealId, field_path: fieldPath, reverted: true });
     } catch (error) {
       next(error);
     }
@@ -408,12 +475,17 @@ dealUnderwritingRouter.get(
       // OR when a non-empty narrative is present. This prevents infinite pending
       // states when narrative is an empty string due to agent output variance.
       const isDone = meta?.completion_status === 'done' || Boolean(narrative);
+      const generatedAt = (meta?.generated_at as string | undefined) ?? (existing?.created_at as string | undefined) ?? new Date().toISOString();
 
       res.json({
         success: true,
         deal_id: dealId,
         narrative,
         status: isDone ? 'available' : 'pending',
+        generated_at: generatedAt,
+        message: isDone
+          ? 'Walkthrough narrative is available.'
+          : 'Walkthrough narrative generation is in progress — check back in a few moments.',
       });
     } catch (error) {
       next(error);

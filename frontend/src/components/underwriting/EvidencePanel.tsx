@@ -82,6 +82,12 @@ const MAGNITUDE_COLOR: Record<string, string> = {
   severe: BT.text.red,
 };
 
+interface ActiveOverride {
+  value: unknown;
+  overridden_at: string;
+  reason: string | null;
+}
+
 export function EvidencePanel({ dealId, fieldPath, fieldLabel, onClose, onOverride }: EvidencePanelProps) {
   const [evidence, setEvidence] = useState<Evidence | null>(null);
   const [loading, setLoading] = useState(true);
@@ -90,6 +96,8 @@ export function EvidencePanel({ dealId, fieldPath, fieldLabel, onClose, onOverri
   const [overrideReason, setOverrideReason] = useState('');
   const [overriding, setOverriding] = useState(false);
   const [overrideDone, setOverrideDone] = useState(false);
+  const [activeOverride, setActiveOverride] = useState<ActiveOverride | null>(null);
+  const [reverting, setReverting] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -98,7 +106,13 @@ export function EvidencePanel({ dealId, fieldPath, fieldLabel, onClose, onOverri
       credentials: 'include',
     })
       .then(r => r.json())
-      .then(data => { if (mounted) { setEvidence(data.evidence ?? null); setLoading(false); } })
+      .then(data => {
+        if (mounted) {
+          setEvidence(data.evidence ?? null);
+          setActiveOverride(data.active_override ?? null);
+          setLoading(false);
+        }
+      })
       .catch(() => { if (mounted) setLoading(false); });
     return () => { mounted = false; };
   }, [dealId, fieldPath]);
@@ -122,9 +136,26 @@ export function EvidencePanel({ dealId, fieldPath, fieldLabel, onClose, onOverri
         body: JSON.stringify({ value, reason }),
       });
       setOverrideDone(true);
+      setActiveOverride({ value, overridden_at: new Date().toISOString(), reason: reason ?? null });
       onOverride?.(fieldPath, value, reason);
     } finally {
       setOverriding(false);
+    }
+  };
+
+  const handleRevert = async () => {
+    setReverting(true);
+    try {
+      await fetch(`/api/v1/deals/${dealId}/assumptions/${encodeURIComponent(fieldPath)}/override`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      setActiveOverride(null);
+      setOverrideDone(false);
+      setOverrideValue('');
+      setOverrideReason('');
+    } finally {
+      setReverting(false);
     }
   };
 
@@ -405,6 +436,41 @@ export function EvidencePanel({ dealId, fieldPath, fieldLabel, onClose, onOverri
                     >
                       ACCEPT BROKER
                     </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ── ACTIVE OVERRIDE BANNER + REVERT ─────────────── */}
+              {activeOverride && (
+                <div style={{
+                  marginTop: 12, padding: '10px 12px',
+                  background: `${BT.text.amber}12`,
+                  border: `1px solid ${BT.text.amber}44`, borderRadius: 4,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <span style={{ fontFamily: mono, fontSize: 7, color: BT.text.amber, letterSpacing: 0.5 }}>
+                      ACTIVE OVERRIDE
+                    </span>
+                    <button
+                      onClick={handleRevert}
+                      disabled={reverting}
+                      style={{
+                        background: 'none', border: `1px solid ${BT.border.medium}`,
+                        color: BT.text.secondary, fontFamily: mono, fontSize: 7,
+                        padding: '2px 8px', borderRadius: 3, cursor: reverting ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      {reverting ? 'REVERTING…' : 'REVERT TO AGENT'}
+                    </button>
+                  </div>
+                  <div style={{ fontFamily: mono, fontSize: 9, color: BT.text.primary }}>
+                    Value: <strong>{String(activeOverride.value)}</strong>
+                    {activeOverride.reason && (
+                      <span style={{ color: BT.text.muted, marginLeft: 6 }}>— {activeOverride.reason}</span>
+                    )}
+                  </div>
+                  <div style={{ fontFamily: mono, fontSize: 7, color: BT.text.muted, marginTop: 2 }}>
+                    Set {new Date(activeOverride.overridden_at).toLocaleString()}
                   </div>
                 </div>
               )}
