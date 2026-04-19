@@ -684,7 +684,10 @@ IMPORTANT CITATION RULES:
       await query(
         `INSERT INTO market_commentary
            (entity_type, entity_id, tab_context, commentary, cache_expires_at)
-         VALUES ($1, $2, 'commentary', $3, NOW() + INTERVAL '${CACHE_TTL_HOURS} hours')`,
+         VALUES ($1, $2, 'commentary', $3, NOW() + INTERVAL '${CACHE_TTL_HOURS} hours')
+         ON CONFLICT (entity_type, entity_id, tab_context)
+         DO UPDATE SET commentary     = EXCLUDED.commentary,
+                       cache_expires_at = EXCLUDED.cache_expires_at`,
         [
           result.entityType,
           result.entityId,
