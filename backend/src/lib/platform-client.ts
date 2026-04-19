@@ -41,7 +41,10 @@ export class AgentApiClient {
   private baseUrl: string;
 
   constructor(agentId: string, runId?: string) {
-    const jwtSecret = process.env.JWT_SECRET || 'your-secret-key-change-this';
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) {
+      throw new Error('platformClient.as(): JWT_SECRET env var is not set. Cannot mint agent tokens.');
+    }
     const userId = AGENT_USER_IDS[agentId];
 
     if (!userId) {
@@ -68,13 +71,22 @@ export class AgentApiClient {
       `http://localhost:${process.env.PORT ?? 4000}/api/v1`;
   }
 
-  async get<T = unknown>(path: string, params?: Record<string, string>): Promise<T> {
-    const url = new URL(path, this.baseUrl);
-    if (params) {
-      Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
-    }
+  private buildUrl(path: string, params?: Record<string, string>): string {
+    // Preserve the /api/v1 prefix: strip leading slash from path before concatenating.
+    // Using `new URL(path, baseUrl)` with a leading slash would drop the base path.
+    const base = this.baseUrl.replace(/\/$/, '');
+    const segment = path.replace(/^\//, '');
+    const fullUrl = `${base}/${segment}`;
+    if (!params || Object.keys(params).length === 0) return fullUrl;
+    const u = new URL(fullUrl);
+    Object.entries(params).forEach(([k, v]) => u.searchParams.set(k, v));
+    return u.toString();
+  }
 
-    const res = await fetch(url.toString(), {
+  async get<T = unknown>(path: string, params?: Record<string, string>): Promise<T> {
+    const url = this.buildUrl(path, params);
+
+    const res = await fetch(url, {
       headers: {
         Authorization: `Bearer ${this.token}`,
         'Content-Type': 'application/json',
@@ -90,9 +102,9 @@ export class AgentApiClient {
   }
 
   async post<T = unknown>(path: string, body: unknown): Promise<T> {
-    const url = new URL(path, this.baseUrl);
+    const url = this.buildUrl(path);
 
-    const res = await fetch(url.toString(), {
+    const res = await fetch(url, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${this.token}`,

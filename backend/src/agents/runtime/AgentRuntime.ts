@@ -103,7 +103,7 @@ export class AgentRuntime {
       // Step 3: Load system prompt
       const promptRow = await query(
         `SELECT system_prompt FROM prompt_versions
-         WHERE agent_id = $1 AND is_active = true
+         WHERE agent_id = $1 AND active = true
          ORDER BY created_at DESC LIMIT 1`,
         [this.config.agentId]
       );
@@ -205,6 +205,9 @@ export class AgentRuntime {
       totalTokensIn += response.usage.input_tokens;
       totalTokensOut += response.usage.output_tokens;
       totalCost += response.usage.cost_usd;
+
+      // Per-run cap check AFTER the call so over-limit is caught even on last step
+      await this.budget.checkRunCap(run.id, totalCost, this.config.budgetCaps);
 
       // Log prompt step
       await this.persistStep({

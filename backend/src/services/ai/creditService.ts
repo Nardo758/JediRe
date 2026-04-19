@@ -256,6 +256,80 @@ export class CreditService {
   }
 
   /**
+   * Pre-flight credit reservation for agent-triggered runs.
+   * Checks that the user has sufficient credits for the estimated cost.
+   * Deducts the estimate immediately so concurrent requests are blocked.
+   * Use debitActualCost() post-call to reconcile the true cost.
+   *
+   * Throws CreditExhaustedError if the user cannot cover the estimate.
+   */
+  async reserveCredits(
+    userId: string,
+    estimatedCost: number
+  ): Promise<void> {
+    const result = await query(
+      `SELECT credits_remaining, monthly_credit_cap
+       FROM user_credit_balances WHERE user_id = $1`,
+      [userId]
+    );
+
+    if (result.rows.length === 0) {
+      // No credit record — allow through (new user or pre-billing setup)
+      logger.warn('reserveCredits: no credit record, allowing through', { userId });
+      return;
+    }
+
+    const { credits_remaining, monthly_credit_cap } = result.rows[0];
+
+    if (credits_remaining < estimatedCost) {
+      if (monthly_credit_cap !== null && credits_remaining <= 0) {
+        throw new Error(
+          `Insufficient credits: ${credits_remaining} remaining, ${estimatedCost.toFixed(4)} estimated`
+        );
+      }
+      // Overage allowed — Stripe meters will capture it
+      logger.info('reserveCredits: user in overage, proceeding', {
+        userId,
+        remaining: credits_remaining,
+        estimated: estimatedCost,
+      });
+      return;
+    }
+
+    // Deduct estimate upfront — reconcile with debitActualCost() post-call
+    await query(
+      `UPDATE user_credit_balances
+       SET credits_remaining = credits_remaining - $1,
+           credits_used_this_period = credits_used_this_period + $1,
+           updated_at = NOW()
+       WHERE user_id = $2`,
+      [estimatedCost, userId]
+    );
+  }
+
+  /**
+   * Post-call reconciliation: adds back the over-reservation if actual cost
+   * was lower than the estimate, or deducts the remainder if higher.
+   */
+  async debitActualCost(
+    userId: string,
+    estimatedCost: number,
+    actualCost: number
+  ): Promise<void> {
+    const delta = actualCost - estimatedCost;
+    if (Math.abs(delta) < 0.0001) return; // negligible difference
+
+    await query(
+      `UPDATE user_credit_balances
+       SET credits_remaining = credits_remaining - $1,
+           credits_used_this_period = credits_used_this_period + $1,
+           updated_at = NOW()
+       WHERE user_id = $2`,
+      [delta, userId]
+    );
+  }
+
+  /**
    * Check if user should receive a low-credit alert.
    */
   async shouldAlert(userId: string): Promise<boolean> {
