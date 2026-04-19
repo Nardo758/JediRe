@@ -12,7 +12,7 @@ import { generateCompletion, isLLMAvailable } from '../llm.service';
 import { logger } from '../../utils/logger';
 import type { DelegationResult } from './agent-delegator';
 import type { ExtractedIntent } from './intent-classifier';
-import { getPersona } from '../../coordinator/personas/index';
+import { ANALYST_PERSONAS, getPersona } from '../../coordinator/personas/index';
 import { SPECIALIST_PERSONA_MAP, type SpecialistKey } from '../../coordinator/dispatch';
 
 // ============================================================================
@@ -301,15 +301,10 @@ export class ResponseSynthesizer {
       (() => {
         // Derive from personaHeader string as last resort (e.g. "Reyna Torres — Comparable Sales")
         if (!personaHeader) return undefined;
-        // Find persona whose displayName matches the header prefix
+        // Find persona whose displayName matches the header prefix using typed ANALYST_PERSONAS
         const headerName = personaHeader.split(' — ')[0];
-        for (const [k, p] of Object.entries(
-          (SPECIALIST_PERSONA_MAP as unknown as Record<string, { personaId: string }>)
-        )) {
-          const persona = getPersona(p.personaId as any);
-          if (persona?.displayName === headerName) return p.personaId;
-        }
-        return undefined;
+        const matched = Object.values(ANALYST_PERSONAS).find(p => p.displayName === headerName);
+        return matched?.id;
       })();
 
     const personaVoice = primaryPersonaId

@@ -69,7 +69,7 @@ export interface ExtractedIntent {
 // Agent Capabilities (for routing)
 // ============================================================================
 
-const SPECIALIST_TRIGGERS: Record<SpecialistAgent, string[]> = {
+export const SPECIALIST_TRIGGERS: Record<SpecialistAgent, string[]> = {
   SUPPLY: ['supply', 'inventory', 'pipeline', 'construction', 'absorption', 'deliveries', 'units coming', 'new development', 'permits'],
   DEMAND: ['demand', 'employment', 'jobs', 'population', 'rent growth', 'occupancy', 'migration', 'economic', 'demographics'],
   CASH: ['cash flow', 'irr', 'returns', 'noi', 'distributions', 'proforma', 'roi', 'yield', 'cap rate', 'financial', 'underwrite'],

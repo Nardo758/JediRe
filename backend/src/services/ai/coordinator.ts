@@ -16,6 +16,7 @@ import { logger } from '../../utils/logger';
 import { buildPersonaPrompt, getPersona } from '../../coordinator/personas/index';
 import { buildFragmentPrompt, type FragmentDealContext } from '../../coordinator/context-fragments';
 import { SPECIALIST_PERSONA_MAP, type SpecialistKey } from '../../coordinator/dispatch';
+import { SPECIALIST_TRIGGERS } from '../orchestrator/intent-classifier';
 import type {
   AICallContext,
   ChatSession,
@@ -539,22 +540,18 @@ Respond with a concise comparison highlighting which deal is stronger and why.`;
   }
 
   /**
-   * Detect which specialist domain the user's question belongs to using keyword
-   * matching. Returns null when no strong signal is present (falls back to
-   * generic assistant voice).
+   * Detect which specialist domain the user's question belongs to.
+   * Delegates to the same `SPECIALIST_TRIGGERS` table used by IntentClassifier
+   * so routing logic has a single source of truth.
+   * Returns null when no trigger matches (falls back to generic assistant voice).
    */
   private detectSpecialistFromQuestion(question: string): SpecialistKey | null {
-    const q = question.toLowerCase();
-    if (/zoning|entitlement|setback|\bfar\b|density|height limit|permitted use|building code|overlay/.test(q)) return 'ZONING';
-    if (/cash flow|irr\b|noi\b|roi\b|yield|cap rate|dscr|proforma|underwrite|returns/.test(q)) return 'CASH';
-    if (/supply|inventory|pipeline|absorption|deliveries|units coming|new development|permits/.test(q)) return 'SUPPLY';
-    if (/demand|employment|jobs|population|rent growth|occupancy|migration|demographics/.test(q)) return 'DEMAND';
-    if (/\bcomps?\b|comparable|comp sale|rent comp|benchmark|similar properties|nearby deals|price per unit/.test(q)) return 'COMPS';
-    if (/\brisk\b|red flag|downside|concern|warning|exposure|alert/.test(q)) return 'RISK';
-    if (/\bdebt\b|loan|mortgage|financing|interest rate|lender|refinance|leverage|bridge/.test(q)) return 'DEBT';
-    if (/\bnews\b|headlines|sentiment|announcement|recent|market news|what.s happening/.test(q)) return 'NEWS';
-    if (/strategy|should i|hold or sell|exit|timing|best approach|recommendation/.test(q)) return 'STRATEGY';
-    if (/research|data|look up|find out|tell me about|market study/.test(q)) return 'RESEARCH';
+    const lower = question.toLowerCase();
+    for (const [agent, triggers] of Object.entries(SPECIALIST_TRIGGERS) as Array<[SpecialistKey, string[]]>) {
+      if (triggers.some(trigger => lower.includes(trigger))) {
+        return agent;
+      }
+    }
     return null;
   }
 
