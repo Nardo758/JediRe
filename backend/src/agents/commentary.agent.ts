@@ -11,6 +11,7 @@ import {
 } from '../services/module-wiring/strategy-arbitrage-engine';
 import { jediAI } from '../services/ai/aiService';
 import type { AICallContext } from '../types/dealContext';
+import { buildEconomicContextBlock } from '../services/economic-context.service';
 
 export interface CommentaryInput {
   entityType: 'msa' | 'submarket' | 'property';
@@ -160,6 +161,7 @@ export class CommentaryAgent {
     arb: ArbitrageResult,
     jediScore: number,
     userId?: string,
+    businessType?: string,
   ): Promise<CommentarySection> {
     const context: AICallContext = {
       userId: userId || 'system',
@@ -170,10 +172,24 @@ export class CommentaryAgent {
       dealId: undefined,
     };
 
-    const systemPrompt = `You are a senior multifamily real estate analyst writing institutional-grade market commentary for a Bloomberg Terminal-style platform called JediRE. Write in a professional, data-driven tone. Be concise and specific. Output only the narrative text, no headers or formatting.`;
+    const systemPrompt = `You are a senior multifamily real estate analyst writing institutional-grade market commentary for a Bloomberg Terminal-style platform called JediRE. Write in a professional, data-driven tone. Be concise and specific. Output only the narrative text, no headers or formatting.
+
+IMPORTANT CITATION RULES:
+- When you reference a statistic from the Economic & Industry Context block below, you MUST cite the source tag in brackets exactly as shown (e.g., "[FRED, 2025-04-19]" or "[BLS QCEW 2024]" or "[SEC 10-K FY2024]").
+- Do NOT fabricate or guess at any economic numbers. Only use figures provided in the context block.
+- If the context block shows "N/A" for a data point, omit that statistic entirely.`;
 
     const levelLabel = entityType === 'msa' ? 'metro' : entityType === 'submarket' ? 'submarket' : 'property';
     const recommended = STRATEGY_LABELS[arb.recommended];
+
+    // Fetch economic context block (FRED + BLS + SEC), catching errors gracefully
+    let econContextText = '';
+    try {
+      const econCtx = await buildEconomicContextBlock(businessType, true);
+      econContextText = econCtx.text;
+    } catch (err: any) {
+      logger.warn('[Commentary] Economic context fetch failed, omitting from prompt', { error: err.message });
+    }
 
     const userMessage = `Write a 2-3 sentence market narrative for ${name} (${levelLabel} level).
 
@@ -182,14 +198,14 @@ JEDI Composite Score: ${jediScore}
 Recommended Strategy: ${recommended} (score: ${arb.recommendedScore.toFixed(0)})
 Arbitrage Flag: ${arb.arbitrageFlag ? `Yes, ${arb.arbitrageDelta.toFixed(0)}pt spread` : 'No'}
 Strategy Rankings: ${arb.strategies.map(s => `${s.label}: ${s.score.toFixed(0)}`).join(', ')}
-
-Focus on demand dynamics, supply pipeline impact, and investment positioning. Reference specific signal strengths/weaknesses.`;
+${econContextText ? `\n${econContextText}\n` : ''}
+Focus on demand dynamics, supply pipeline impact, and investment positioning. Reference specific signal strengths/weaknesses. Where relevant, cite macroeconomic or industry data from the context block above using the provided citation tags.`;
 
     const response = await jediAI.generate(
       context,
       systemPrompt,
       [{ role: 'user', content: userMessage }],
-      { maxTokens: 256, temperature: 0.3 },
+      { maxTokens: 320, temperature: 0.3 },
     );
 
     const content = response.content
