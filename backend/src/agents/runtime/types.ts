@@ -74,6 +74,11 @@ export interface AgentConfig {
   outputSchema: z.ZodSchema;
   budgetCaps: BudgetCaps;
   modelName: ModelName;
+  /** Capability strings for this agent, e.g. ['read:all', 'write:deal_context'].
+   *  Used by AgentRuntime.executeTool() to enforce requiresCapability at runtime.
+   *  Supports wildcard: 'read:all' grants any 'read:*' capability.
+   */
+  capabilities: string[];
 }
 
 // ── Run tracking ──────────────────────────────────────────────────────────────

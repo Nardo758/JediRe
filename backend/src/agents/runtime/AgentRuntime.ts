@@ -100,6 +100,22 @@ function toAnthropicToolSchema(tool: AgentConfig['tools'][number]): Anthropic.To
 
 // ── AgentRuntime ──────────────────────────────────────────────────
 
+// ── Capability check (supports wildcard read:all / write:all) ─────
+
+/**
+ * Check that an agent has the required capability.
+ * Supports wildcard shorthand: 'read:all' grants any 'read:*' capability;
+ * 'write:all' grants any 'write:*' capability.
+ */
+function hasCapability(agentCapabilities: string[], required: string): boolean {
+  if (agentCapabilities.includes(required)) return true;
+  const [prefix] = required.split(':');
+  if (agentCapabilities.includes(`${prefix}:all`)) return true;
+  return false;
+}
+
+// ── AgentRuntime ──────────────────────────────────────────────────
+
 export class AgentRuntime {
   constructor(
     private config: AgentConfig,
@@ -325,6 +341,15 @@ export class AgentRuntime {
     const tool = this.config.tools.find(t => t.name === toolUse.name);
     if (!tool) {
       throw new Error(`Unknown tool requested by model: "${toolUse.name}"`);
+    }
+
+    // Capability enforcement at execution time (supports wildcard read:all/write:all)
+    const agentCaps: string[] = this.config.capabilities ?? [];
+    if (tool.requiresCapability && !hasCapability(agentCaps, tool.requiresCapability)) {
+      throw new Error(
+        `Capability check failed: tool "${tool.name}" requires "${tool.requiresCapability}" ` +
+        `but agent "${this.config.agentId}" has [${agentCaps.join(', ')}]`
+      );
     }
 
     const input = tool.inputSchema.parse(toolUse.input);

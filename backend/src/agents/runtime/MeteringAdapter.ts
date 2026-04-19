@@ -83,17 +83,32 @@ export class MeteringAdapter {
     const estimate = preflightEstimate(apiParams.model);
 
     // Pre-flight credit reservation (user-triggered only — fail-fast)
-    if (metadata.triggered_by === 'user' && metadata.user_id) {
-      await creditService.reserveCredits(metadata.user_id, estimate);
+    const reserved =
+      metadata.triggered_by === 'user' && metadata.user_id ? estimate : 0;
+
+    if (reserved > 0) {
+      await creditService.reserveCredits(metadata.user_id!, estimate);
     }
 
-    const response = await this.anthropic.messages.create({
-      model: apiParams.model,
-      system: apiParams.system,
-      messages: apiParams.messages,
-      tools: apiParams.tools,
-      max_tokens: apiParams.max_tokens,
-    });
+    let response: Anthropic.Message;
+
+    try {
+      response = await this.anthropic.messages.create({
+        model: apiParams.model,
+        system: apiParams.system,
+        messages: apiParams.messages,
+        tools: apiParams.tools,
+        max_tokens: apiParams.max_tokens,
+      });
+    } catch (err) {
+      // Model call failed — refund the full reservation so no credits are leaked
+      if (reserved > 0 && metadata.user_id) {
+        await creditService.debitActualCost(metadata.user_id, reserved, 0).catch(
+          refundErr => logger.error('MeteringAdapter: failed to refund reservation', { refundErr })
+        );
+      }
+      throw err;
+    }
 
     const actualCost = estimateCost(
       apiParams.model,

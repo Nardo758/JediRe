@@ -35,8 +35,9 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res: Response, ne
     let paramIndex = 1;
 
     // Address search — used by agent fetch_parcel tool for address-based lookup
+    // Column is address_line1 (the canonical address field in the properties table)
     if (address) {
-      queryText += ` AND address ILIKE $${paramIndex}`;
+      queryText += ` AND address_line1 ILIKE $${paramIndex}`;
       params.push(`%${address}%`);
       paramIndex++;
     }
