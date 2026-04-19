@@ -23,6 +23,7 @@ import { query, getPool } from '../database/connection';
 import { logger } from '../utils/logger';
 import { IntelligenceContextService } from '../services/intelligence-context.service';
 import { MetricRecommendationAgent } from './metric-recommendation.agent';
+import type { MetricRecommendationInput } from '../services/metricRecommendation.service';
 import type { AgentRuntime } from './runtime/AgentRuntime';
 
 // AgentRuntime singletons — loaded lazily to avoid circular imports at startup
@@ -49,6 +50,7 @@ interface Task {
   userId: string;
 }
 
+
 // ── Runtime dispatch map ──────────────────────────────────────────
 
 const AGENT_RUNTIME_MAP: Record<string, AgentRuntime> = {
@@ -65,10 +67,8 @@ export class AgentOrchestrator {
   private isProcessing = false;
   private intelligenceService: IntelligenceContextService;
 
-  // Legacy agents — only metric_recommendations remains (commentary now routes via AGENT_RUNTIME_MAP)
-  private legacyAgents = {
-    metric_recommendations: new MetricRecommendationAgent(),
-  } as unknown as Record<string, { execute: (input: Record<string, unknown>, userId: string) => Promise<unknown> }>;
+  // Only legacy agent: metric_recommendations. Commentary now routes via AGENT_RUNTIME_MAP.
+  private readonly metricRecommendationAgent = new MetricRecommendationAgent();
 
   constructor() {
     this.intelligenceService = new IntelligenceContextService(getPool());
@@ -176,8 +176,8 @@ export class AgentOrchestrator {
    * Execute a task by routing to the appropriate AgentRuntime or legacy agent.
    *
    * Priority order:
-   *  1. AGENT_RUNTIME_MAP  — Phase 4 runtimes (research, zoning, supply, cashflow)
-   *  2. legacyAgents       — commentary, metric_recommendations
+   *  1. AGENT_RUNTIME_MAP  — Phase 4 runtimes: research, zoning, supply, cashflow, commentary_generation
+   *  2. legacyAgents       — metric_recommendations (deprecated service shim)
    */
   private async executeTask(task: Record<string, unknown>): Promise<void> {
     const taskId = task.id as string;
@@ -206,13 +206,36 @@ export class AgentOrchestrator {
           triggerContext: { source: 'orchestrator', task_type: taskType },
         };
         result = await runtime.run(inputData, runCtx);
-      } else {
-        // Legacy: CommentaryAgent / MetricRecommendationAgent
-        const legacyAgent = this.legacyAgents[taskType];
-        if (!legacyAgent) {
-          throw new Error(`No runtime or legacy agent registered for task type: ${taskType}`);
+
+        // commentary_generation: persist output to market_commentary (authoritative cache)
+        if (taskType === 'commentary_generation') {
+          const out = result as {
+            entity_type?: string;
+            entity_id?: string;
+            [key: string]: unknown;
+          };
+          if (out.entity_type && out.entity_id) {
+            await query(
+              `INSERT INTO market_commentary
+                 (entity_type, entity_id, tab_context, commentary, cache_expires_at)
+               VALUES ($1, $2, 'commentary', $3, NOW() + INTERVAL '24 hours')
+               ON CONFLICT (entity_type, entity_id, tab_context)
+               DO UPDATE SET commentary = EXCLUDED.commentary,
+                             cache_expires_at = EXCLUDED.cache_expires_at`,
+              [out.entity_type, out.entity_id, JSON.stringify(out)]
+            ).catch((err) => {
+              logger.warn('Orchestrator: failed to cache commentary result', { error: err });
+            });
+          }
         }
-        result = await legacyAgent.execute(inputData, userId);
+      } else if (taskType === 'metric_recommendations') {
+        // Only remaining legacy path — typed directly to avoid unsafe casts
+        result = await this.metricRecommendationAgent.execute(
+          inputData as unknown as MetricRecommendationInput,
+          userId,
+        );
+      } else {
+        throw new Error(`No runtime registered for task type: ${taskType}`);
       }
 
       const executionTime = Date.now() - startTime;

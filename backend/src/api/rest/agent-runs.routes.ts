@@ -238,27 +238,45 @@ router.post('/:agentId/run', requireAuth, async (req: AuthenticatedRequest, res:
           confidence_score?: number;
           fields_written?: string[];
           summary?: string;
+          entity_type?: string;
+          entity_id?: string;
           [key: string]: unknown;
         };
-        await query(
-          `INSERT INTO audit_log
-             (actor_id, actor_type, action, resource_type, resource_id, metadata, agent_run_id)
-           SELECT $4, 'agent', $5, 'deal', $1, $2, $3
-           WHERE NOT EXISTS (SELECT 1 FROM audit_log WHERE agent_run_id = $3)`,
-          [
-            deal_id,
-            JSON.stringify({
-              confidence_score: typed.confidence_score ?? null,
-              fields_written: typed.fields_written ?? [],
-              summary: typed.summary ?? null,
-              run_id: runId,
-              triggered_by: 'user',
-            }),
-            runId,
-            agentId,
-            `${agentId}.completed`,
-          ]
-        ).catch(() => { /* non-fatal */ });
+
+        // Commentary runtime path: persist result to market_commentary (authoritative cache)
+        if (agentId === 'commentary' && typed.entity_type && typed.entity_id) {
+          const CACHE_TTL_HOURS = 24;
+          await query(
+            `INSERT INTO market_commentary
+               (entity_type, entity_id, tab_context, commentary, cache_expires_at)
+             VALUES ($1, $2, 'commentary', $3, NOW() + INTERVAL '${CACHE_TTL_HOURS} hours')
+             ON CONFLICT (entity_type, entity_id, tab_context)
+             DO UPDATE SET commentary = EXCLUDED.commentary,
+                           cache_expires_at = EXCLUDED.cache_expires_at`,
+            [typed.entity_type, typed.entity_id, JSON.stringify(typed)]
+          ).catch(() => { /* non-fatal */ });
+        } else if (agentId !== 'commentary') {
+          // Deal-based agents: write audit log entry
+          await query(
+            `INSERT INTO audit_log
+               (actor_id, actor_type, action, resource_type, resource_id, metadata, agent_run_id)
+             SELECT $4, 'agent', $5, 'deal', $1, $2, $3
+             WHERE NOT EXISTS (SELECT 1 FROM audit_log WHERE agent_run_id = $3)`,
+            [
+              deal_id,
+              JSON.stringify({
+                confidence_score: typed.confidence_score ?? null,
+                fields_written: typed.fields_written ?? [],
+                summary: typed.summary ?? null,
+                run_id: runId,
+                triggered_by: 'user',
+              }),
+              runId,
+              agentId,
+              `${agentId}.completed`,
+            ]
+          ).catch(() => { /* non-fatal */ });
+        }
       })
       .catch(() => {
         // Errors are persisted to agent_runs by AgentRuntime
