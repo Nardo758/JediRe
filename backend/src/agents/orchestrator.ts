@@ -1,20 +1,42 @@
 /**
- * Agent Orchestration Framework
- * Manages task queue and agent execution
+ * Agent Orchestrator — Shim (Phase 4 Refactor)
+ *
+ * This class is a thin shim that manages the agent_tasks job queue and
+ * routes execution to the AgentRuntime singletons registered in the
+ * coordinator dispatch table.
+ *
+ * Phase 4 changes:
+ *   - Removed the agents Map with ZoningAgent/SupplyAgent/CashFlowAgent/CommentaryAgent class instances
+ *   - executeTask() now routes via AGENT_RUNTIME_MAP to the appropriate runtime
+ *   - Retry logic, task queue, and logAgentLearning() are unchanged
+ *
+ * task_type → runtime mapping:
+ *   'zoning_analysis'       → zoningRuntime.run()
+ *   'supply_analysis'       → supplyRuntime.run()
+ *   'cashflow_analysis'     → cashflowRuntime.run()
+ *   'research_analysis'     → researchRuntime.run()
+ *   'commentary_generation' → CommentaryAgent (rich orchestration, not pure runtime)
+ *   'metric_recommendations'→ MetricRecommendationAgent (unchanged)
  */
 
-import { query, transaction, getPool } from '../database/connection';
+import { query, getPool } from '../database/connection';
 import { logger } from '../utils/logger';
-import { ZoningAgent } from './zoning.agent';
-import { SupplyAgent } from './supply.agent';
-import { CashFlowAgent } from './cashflow.agent';
-import { CommentaryAgent } from './commentary.agent';
 import { IntelligenceContextService } from '../services/intelligence-context.service';
 import { MetricRecommendationAgent } from './metric-recommendation.agent';
+import { CommentaryAgent } from './commentary.agent';
+import type { AgentRuntime } from './runtime/AgentRuntime';
+
+// AgentRuntime singletons — loaded lazily to avoid circular imports at startup
+import { researchRuntime } from './research.config';
+import { zoningRuntime } from './zoning.config';
+import { supplyRuntime } from './supply.config';
+import { cashflowRuntime } from './cashflow.config';
+
+// ── Task queue types ──────────────────────────────────────────────
 
 interface TaskInput {
   taskType: string;
-  inputData: any;
+  inputData: Record<string, unknown>;
   userId: string;
   priority?: number;
 }
@@ -22,32 +44,39 @@ interface TaskInput {
 interface Task {
   id: string;
   taskType: string;
-  inputData: any;
+  inputData: Record<string, unknown>;
   status: string;
   userId: string;
 }
 
+// ── Runtime dispatch map ──────────────────────────────────────────
+
+const AGENT_RUNTIME_MAP: Record<string, AgentRuntime> = {
+  research_analysis: researchRuntime,
+  zoning_analysis: zoningRuntime,
+  supply_analysis: supplyRuntime,
+  cashflow_analysis: cashflowRuntime,
+};
+
+// ── Orchestrator Shim ─────────────────────────────────────────────
+
 export class AgentOrchestrator {
   private isProcessing = false;
-  private agents: Map<string, any> = new Map();
   private intelligenceService: IntelligenceContextService;
 
+  // Legacy agents kept only for task types that haven't migrated to AgentRuntime
+  private legacyAgents = {
+    commentary_generation: new CommentaryAgent(),
+    metric_recommendations: new MetricRecommendationAgent(),
+  } as unknown as Record<string, { execute: (input: Record<string, unknown>, userId: string) => Promise<unknown> }>;
+
   constructor() {
-    this.agents.set('zoning_analysis', new ZoningAgent());
-    this.agents.set('supply_analysis', new SupplyAgent());
-    this.agents.set('cashflow_analysis', new CashFlowAgent());
-    this.agents.set('commentary_generation', new CommentaryAgent());
-    this.agents.set('metric_recommendations', new MetricRecommendationAgent());
-
-    // Initialize intelligence service
     this.intelligenceService = new IntelligenceContextService(getPool());
-
-    // Start processing loop
     this.startProcessingLoop();
   }
 
   /**
-   * Submit a new task to the queue
+   * Submit a new task to the queue.
    */
   async submitTask(input: TaskInput): Promise<Task> {
     try {
@@ -67,7 +96,6 @@ export class AgentOrchestrator {
         userId: input.userId,
       });
 
-      // Trigger processing
       this.processNextTask();
 
       return {
@@ -84,30 +112,45 @@ export class AgentOrchestrator {
   }
 
   /**
-   * Start the task processing loop
+   * Get task status by ID.
    */
+  async getTaskStatus(taskId: string): Promise<unknown> {
+    const result = await query('SELECT * FROM agent_tasks WHERE id = $1', [taskId]);
+    return result.rows.length === 0 ? null : result.rows[0];
+  }
+
+  /**
+   * Cancel a pending or processing task.
+   */
+  async cancelTask(taskId: string, userId: string): Promise<boolean> {
+    const result = await query(
+      `UPDATE agent_tasks
+       SET status = 'cancelled', completed_at = NOW()
+       WHERE id = $1 AND user_id = $2 AND status IN ('pending', 'processing')
+       RETURNING id`,
+      [taskId, userId]
+    );
+    return result.rows.length > 0;
+  }
+
+  // ── Private: processing loop ──────────────────────────────────
+
   private startProcessingLoop(): void {
     setInterval(() => {
       if (!this.isProcessing) {
         this.processNextTask();
       }
-    }, 5000); // Check every 5 seconds
+    }, 5000);
 
-    logger.info('Agent orchestrator processing loop started');
+    logger.info('AgentOrchestrator shim: processing loop started');
   }
 
-  /**
-   * Process the next pending task
-   */
   private async processNextTask(): Promise<void> {
-    if (this.isProcessing) {
-      return;
-    }
+    if (this.isProcessing) return;
 
     try {
       this.isProcessing = true;
 
-      // Get next pending task (highest priority first)
       const result = await query(
         `SELECT * FROM agent_tasks
          WHERE status = 'pending'
@@ -121,11 +164,7 @@ export class AgentOrchestrator {
         return;
       }
 
-      const task = result.rows[0];
-
-      // Process the task
-      await this.executeTask(task);
-
+      await this.executeTask(result.rows[0]);
     } catch (error) {
       logger.error('Error processing task:', error);
     } finally {
@@ -134,37 +173,50 @@ export class AgentOrchestrator {
   }
 
   /**
-   * Execute a specific task
+   * Execute a task by routing to the appropriate AgentRuntime or legacy agent.
+   *
+   * Priority order:
+   *  1. AGENT_RUNTIME_MAP  — Phase 4 runtimes (research, zoning, supply, cashflow)
+   *  2. legacyAgents       — commentary, metric_recommendations
    */
-  private async executeTask(task: any): Promise<void> {
-    const taskId = task.id;
-    const taskType = task.task_type;
+  private async executeTask(task: Record<string, unknown>): Promise<void> {
+    const taskId = task.id as string;
+    const taskType = task.task_type as string;
+    const inputData = (task.input_data as Record<string, unknown>) || {};
+    const userId = task.user_id as string;
     const startTime = Date.now();
 
     try {
       logger.info('Executing task:', { taskId, taskType });
 
-      // Update status to processing
       await query(
-        `UPDATE agent_tasks
-         SET status = 'processing', started_at = NOW()
-         WHERE id = $1`,
+        `UPDATE agent_tasks SET status = 'processing', started_at = NOW() WHERE id = $1`,
         [taskId]
       );
 
-      // Get the appropriate agent
-      const agent = this.agents.get(taskType);
+      let result: unknown;
 
-      if (!agent) {
-        throw new Error(`No agent registered for task type: ${taskType}`);
+      const runtime = AGENT_RUNTIME_MAP[taskType];
+      if (runtime) {
+        // Phase 4: Route through AgentRuntime
+        const runCtx = {
+          dealId: inputData.dealId as string | undefined,
+          userId,
+          triggeredBy: 'user' as const,
+          triggerContext: { source: 'orchestrator', task_type: taskType },
+        };
+        result = await runtime.run(inputData, runCtx);
+      } else {
+        // Legacy: CommentaryAgent / MetricRecommendationAgent
+        const legacyAgent = this.legacyAgents[taskType];
+        if (!legacyAgent) {
+          throw new Error(`No runtime or legacy agent registered for task type: ${taskType}`);
+        }
+        result = await legacyAgent.execute(inputData, userId);
       }
-
-      // Execute the agent
-      const result = await agent.execute(task.input_data, task.user_id);
 
       const executionTime = Date.now() - startTime;
 
-      // Update task with success
       await query(
         `UPDATE agent_tasks
          SET status = 'completed',
@@ -176,27 +228,17 @@ export class AgentOrchestrator {
         [JSON.stringify(result), executionTime, taskId]
       );
 
-      logger.info('Task completed:', {
-        taskId,
-        taskType,
-        executionTime: `${executionTime}ms`,
-      });
+      logger.info('Task completed:', { taskId, taskType, executionTime: `${executionTime}ms` });
 
-      // Log agent learning (async, don't block)
       this.logAgentLearning(task, result, executionTime).catch(err => {
         logger.warn('Failed to log agent learning:', err);
       });
-
-    } catch (error: any) {
-      logger.error('Task execution failed:', {
-        taskId,
-        taskType,
-        error: error.message,
-      });
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.error('Task execution failed:', { taskId, taskType, error: msg });
 
       const executionTime = Date.now() - startTime;
 
-      // Update task with failure
       await query(
         `UPDATE agent_tasks
          SET status = 'failed',
@@ -205,20 +247,18 @@ export class AgentOrchestrator {
              execution_time_ms = $2,
              retry_count = retry_count + 1
          WHERE id = $3`,
-        [error.message, executionTime, taskId]
+        [msg, executionTime, taskId]
       );
 
-      // Retry logic
+      // Retry with exponential backoff
       const retryResult = await query(
         'SELECT retry_count, max_retries FROM agent_tasks WHERE id = $1',
         [taskId]
       );
-
       const { retry_count, max_retries } = retryResult.rows[0];
 
       if (retry_count < max_retries) {
-        // Reschedule with exponential backoff
-        const delaySeconds = Math.pow(2, retry_count) * 60; // 1min, 2min, 4min, etc.
+        const delaySeconds = Math.pow(2, retry_count) * 60;
         await query(
           `UPDATE agent_tasks
            SET status = 'pending',
@@ -226,86 +266,41 @@ export class AgentOrchestrator {
            WHERE id = $1`,
           [taskId]
         );
-
-        logger.info('Task scheduled for retry:', {
-          taskId,
-          retryCount: retry_count,
-          delaySeconds,
-        });
+        logger.info('Task scheduled for retry:', { taskId, retryCount: retry_count, delaySeconds });
       }
     }
   }
 
-  /**
-   * Get task status
-   */
-  async getTaskStatus(taskId: string): Promise<any> {
-    const result = await query('SELECT * FROM agent_tasks WHERE id = $1', [taskId]);
-
-    if (result.rows.length === 0) {
-      return null;
-    }
-
-    return result.rows[0];
-  }
-
-  /**
-   * Cancel a task
-   */
-  async cancelTask(taskId: string, userId: string): Promise<boolean> {
-    const result = await query(
-      `UPDATE agent_tasks
-       SET status = 'cancelled', completed_at = NOW()
-       WHERE id = $1 AND user_id = $2 AND status IN ('pending', 'processing')
-       RETURNING id`,
-      [taskId, userId]
-    );
-
-    return result.rows.length > 0;
-  }
-
-  /**
-   * Log agent learning to intelligence layer
-   */
   private async logAgentLearning(
-    task: any,
-    outputResult: any,
+    task: Record<string, unknown>,
+    outputResult: unknown,
     executionTimeMs: number
   ): Promise<void> {
     try {
-      // Extract output confidence if available
-      const outputConfidence = outputResult?.confidence || outputResult?.confidenceScore;
+      const output = outputResult as Record<string, unknown> | null | undefined;
+      const outputConfidence = output?.confidence ?? output?.confidence_score;
+      const inputData = task.input_data as Record<string, unknown>;
 
-      // Determine data sources used (can be enhanced later)
       const dataSources = ['agent_tasks'];
-      
-      // If task has deal_id in input, it used deal data
-      if (task.input_data?.dealId) {
-        dataSources.push('deal_capsules');
-      }
+      if (inputData?.dealId) dataSources.push('deal_capsules');
 
       await this.intelligenceService.logAgentLearning({
-        agentType: task.task_type,
-        taskId: task.id,
-        dealCapsuleId: task.input_data?.dealId,
-        contextDocuments: [], // Will be populated when agents query unified_documents
-        inputParams: task.input_data || {},
-        outputResult: outputResult || {},
-        outputConfidence,
+        agentType: task.task_type as string,
+        taskId: task.id as string,
+        dealCapsuleId: inputData?.dealId as string | undefined,
+        contextDocuments: [],
+        inputParams: inputData || {},
+        outputResult: output || {},
+        outputConfidence: outputConfidence as number | undefined,
         executionTimeMs,
         dataSourcesUsed: dataSources,
-        userId: task.user_id,
+        userId: task.user_id as string,
       });
 
-      logger.debug('Agent learning logged:', {
-        taskId: task.id,
-        agentType: task.task_type,
-      });
-    } catch (error: any) {
-      logger.error('Failed to log agent learning:', {
-        taskId: task.id,
-        error: error.message,
-      });
+      logger.debug('Agent learning logged:', { taskId: task.id, agentType: task.task_type });
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.error('Failed to log agent learning:', { taskId: task.id, error: msg });
       throw error;
     }
   }

@@ -28,8 +28,32 @@ import { query } from '../../database/connection';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { AppError } from '../../middleware/errorHandler';
 import { researchRuntime } from '../../agents/research.config';
+import { zoningRuntime } from '../../agents/zoning.config';
+import { supplyRuntime } from '../../agents/supply.config';
+import { cashflowRuntime } from '../../agents/cashflow.config';
+import { commentaryRuntime } from '../../agents/commentary.config';
 import { seedResearchPrompt } from '../../agents/seeds/research.seed';
+import { seedZoningPrompt } from '../../agents/seeds/zoning.seed';
+import { seedSupplyPrompt } from '../../agents/seeds/supply.seed';
+import { seedCashflowPrompt } from '../../agents/seeds/cashflow.seed';
+import { seedCommentaryPrompt } from '../../agents/seeds/commentary.seed';
 import type { RunContext } from '../../agents/runtime/types';
+import type { AgentRuntime } from '../../agents/runtime/AgentRuntime';
+
+// ── Agent registry — maps agentId → { runtime, seedFn, label } ───
+interface AgentEntry {
+  runtime: AgentRuntime;
+  seedFn: () => Promise<void>;
+  label: string;
+}
+
+const AGENT_REGISTRY: Record<string, AgentEntry> = {
+  research:   { runtime: researchRuntime,   seedFn: seedResearchPrompt,   label: 'Research' },
+  zoning:     { runtime: zoningRuntime,     seedFn: seedZoningPrompt,     label: 'Zoning' },
+  supply:     { runtime: supplyRuntime,     seedFn: seedSupplyPrompt,     label: 'Supply' },
+  cashflow:   { runtime: cashflowRuntime,   seedFn: seedCashflowPrompt,   label: 'CashFlow' },
+  commentary: { runtime: commentaryRuntime, seedFn: seedCommentaryPrompt, label: 'Commentary' },
+};
 
 const router = Router();
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -117,12 +141,14 @@ async function assertRunAccess(
 router.post('/:agentId/run', requireAuth, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const { agentId } = req.params;
-    const { deal_id, force_refresh } = req.body;
+    const { deal_id, force_refresh, city, state_code, property_type } = req.body;
 
-    if (agentId !== 'research') {
+    const agentEntry = AGENT_REGISTRY[agentId];
+    if (!agentEntry) {
       throw new AppError(
         400,
-        `Agent "${agentId}" is not available for manual runs in Phase 3. Only "research" is supported.`
+        `Agent "${agentId}" is not available for manual runs. ` +
+        `Supported agents: ${Object.keys(AGENT_REGISTRY).join(', ')}.`
       );
     }
 
@@ -134,9 +160,9 @@ router.post('/:agentId/run', requireAuth, async (req: AuthenticatedRequest, res:
     await assertDealAccess(deal_id, req.user!.userId);
 
     // Seed prompt (idempotent)
-    await seedResearchPrompt();
+    await agentEntry.seedFn();
 
-    // Resolve deal context so tools receive address / property_id / MSA hints
+    // Resolve deal context from DB
     const dealCtxRes = await query(
       `SELECT d.address, d.property_address, d.city, d.state_code,
               dp.property_id
@@ -150,8 +176,8 @@ router.post('/:agentId/run', requireAuth, async (req: AuthenticatedRequest, res:
     const dRow = dealCtxRes.rows[0] ?? {};
     const dealContext = {
       address: (dRow.property_address ?? dRow.address ?? null) as string | null,
-      city: (dRow.city ?? null) as string | null,
-      state: (dRow.state_code ?? null) as string | null,
+      city: (city ?? dRow.city ?? null) as string | null,
+      state: (state_code ?? dRow.state_code ?? null) as string | null,
       property_id: (dRow.property_id ?? null) as string | null,
     };
 
@@ -168,30 +194,33 @@ router.post('/:agentId/run', requireAuth, async (req: AuthenticatedRequest, res:
       },
     };
 
-    // Enriched run input — LLM receives address/city/state/property_id so it
-    // can call all 6 tools (fetch_parcel, fetch_ownership, fetch_costar_metrics,
-    // fetch_tax_bill, fetch_comps, write_dealcontext) with valid parameters.
+    // Build enriched run input — varies by agent type
     const runInput: Record<string, unknown> = {
       deal_id,
       ...(dealContext.address && { address: dealContext.address }),
       ...(dealContext.city && { city: dealContext.city }),
-      ...(dealContext.state && { state: dealContext.state }),
+      ...(dealContext.state && { state: dealContext.state, state_code: dealContext.state }),
       ...(dealContext.property_id && { property_id: dealContext.property_id }),
+      ...(property_type && { property_type }),
     };
 
-    // startAsync creates the agent_runs row and returns the runId before the
-    // LLM loop begins — eliminates the setTimeout polling race condition.
-    const { runId, done } = await researchRuntime.startAsync(runInput, ctx);
+    // startAsync creates the agent_runs row and returns immediately;
+    // done resolves when the LLM loop completes.
+    const { runId, done } = await agentEntry.runtime.startAsync(runInput, ctx);
 
     // Fire completion handler in background (non-blocking)
     void done
       .then(async (output) => {
-        const typed = output as { confidence_score?: number; fields_written?: string[]; summary?: string };
-        // Idempotent audit_log write — same WHERE NOT EXISTS guard as Inngest function
+        const typed = output as {
+          confidence_score?: number;
+          fields_written?: string[];
+          summary?: string;
+          [key: string]: unknown;
+        };
         await query(
           `INSERT INTO audit_log
              (actor_id, actor_type, action, resource_type, resource_id, metadata, agent_run_id)
-           SELECT 'research', 'agent', 'research.completed', 'deal', $1, $2, $3
+           SELECT $4, 'agent', $5, 'deal', $1, $2, $3
            WHERE NOT EXISTS (SELECT 1 FROM audit_log WHERE agent_run_id = $3)`,
           [
             deal_id,
@@ -203,6 +232,8 @@ router.post('/:agentId/run', requireAuth, async (req: AuthenticatedRequest, res:
               triggered_by: 'user',
             }),
             runId,
+            agentId,
+            `${agentId}.completed`,
           ]
         ).catch(() => { /* non-fatal */ });
       })
@@ -212,9 +243,10 @@ router.post('/:agentId/run', requireAuth, async (req: AuthenticatedRequest, res:
 
     res.status(202).json({
       success: true,
-      message: 'Research run started',
+      message: `${agentEntry.label} run started`,
       run_id: runId,
       display_status: 'running',
+      agent_id: agentId,
       deal_id,
     });
   } catch (error) {

@@ -1,175 +1,111 @@
+/**
+ * CashFlow Agent — AgentRuntime Adapter (Phase 4 Refactor)
+ *
+ * This class is an adapter that routes legacy callers through the Phase 4
+ * AgentRuntime execution path (cashflow.config.ts).
+ *
+ * Previous implementation: computed mortgage math and cash flow metrics
+ * inline from user-supplied params and DealFinancialContext. That direct
+ * path is retired; this class now delegates to `cashflowRuntime.run()`
+ * which calls:
+ *   fetch_t12, fetch_rent_roll, fetch_assumptions,
+ *   compute_proforma, write_projection
+ *
+ * When `dealId` is provided, the runtime fetches actuals from the DB.
+ * When absent, a zeroed skeleton is returned for backward compatibility.
+ */
+
 import { logger } from '../utils/logger';
-import type { DealFinancialContext } from '../services/deal-financial-context.service';
+import { cashflowRuntime, type CashflowAgentOutput } from './cashflow.config';
+import type { RunContext } from './runtime/types';
+
+export interface CashflowAgentParams {
+  dealId?: string;
+  userId?: string;
+  purchasePrice?: number;
+  monthlyRent?: number;
+  vacancy?: number;
+  interestRate?: number;
+  downPaymentPercent?: number;
+  loanTermYears?: number;
+  [key: string]: unknown;
+}
 
 export class CashFlowAgent {
-  async execute(inputData: any, userId: string): Promise<any> {
-    logger.info('Cash flow agent executing...', { dealId: inputData.dealId });
+  /**
+   * Execute cashflow analysis for a deal.
+   *
+   * Routes through `cashflowRuntime.run()` when dealId is present.
+   * Legacy callers not providing dealId receive a zeroed result.
+   */
+  async execute(params: CashflowAgentParams, userId?: string): Promise<CashflowAgentOutput> {
+    const resolvedUserId = params.userId ?? userId ?? 'unknown';
+    const now = new Date().toISOString();
+
+    if (!params.dealId) {
+      logger.warn(
+        '[CashFlowAgent] execute() called without dealId — cannot use AgentRuntime path. ' +
+        'Pass dealId to enable full cashflow analysis.'
+      );
+      return this.defaultResult(now);
+    }
+
+    const ctx: RunContext = {
+      dealId: params.dealId,
+      userId: resolvedUserId,
+      triggeredBy: 'user',
+      triggerContext: {
+        source: 'legacy_adapter',
+        purchase_price: params.purchasePrice,
+        monthly_rent: params.monthlyRent,
+      },
+    };
 
     try {
-      const finCtx: DealFinancialContext | undefined = inputData.financialContext;
-
-      const purchasePrice = inputData.purchasePrice
-        || finCtx?.assumptions?.purchasePrice
-        || 0;
-
-      const monthlyRent = inputData.monthlyRent
-        || (finCtx?.leases?.totalMonthlyIncome ? finCtx.leases.totalMonthlyIncome : undefined)
-        || (finCtx?.assumptions?.rentPerUnit && finCtx?.assumptions?.totalUnits
-          ? finCtx.assumptions.rentPerUnit * finCtx.assumptions.totalUnits
-          : undefined)
-        || 0;
-
-      const vacancy = inputData.vacancy
-        ?? finCtx?.assumptions?.vacancyRate
-        ?? 0.05;
-
-      const interestRate = inputData.interestRate
-        ?? (finCtx?.debt?.weightedAvgRate ? finCtx.debt.weightedAvgRate : undefined)
-        ?? (finCtx?.assumptions?.interestRate ? finCtx.assumptions.interestRate * 100 : undefined)
-        ?? 7.0;
-
-      const downPaymentPercent = inputData.downPaymentPercent
-        ?? (finCtx?.assumptions?.ltc ? (1 - finCtx.assumptions.ltc) * 100 : undefined)
-        ?? 20;
-
-      const loanTermYears = inputData.loanTermYears || 30;
-      const propertyTaxRate = inputData.propertyTaxRate || 1.2;
-      const insurance = inputData.insurance || 1200;
-      const maintenance = inputData.maintenance || 1000;
-
-      if (!purchasePrice || !monthlyRent) {
-        return {
-          status: 'incomplete',
-          message: 'Missing required data. Please provide purchase price and rent, or upload a P&L and rent roll.',
-          missingFields: [
-            ...(!purchasePrice ? ['purchasePrice'] : []),
-            ...(!monthlyRent ? ['monthlyRent (or upload a rent roll)'] : []),
-          ],
-          dataSourcesUsed: this.getDataSources(finCtx),
-        };
-      }
-
-      const downPayment = purchasePrice * (downPaymentPercent / 100);
-      const loanAmount = purchasePrice - downPayment;
-      const monthlyRate = interestRate / 100 / 12;
-      const numPayments = loanTermYears * 12;
-
-      const monthlyMortgage =
-        monthlyRate > 0
-          ? (loanAmount * monthlyRate * Math.pow(1 + monthlyRate, numPayments)) /
-            (Math.pow(1 + monthlyRate, numPayments) - 1)
-          : loanAmount / numPayments;
-
-      const monthlyPropertyTax = (purchasePrice * (propertyTaxRate / 100)) / 12;
-      const monthlyInsurance = insurance / 12;
-      const monthlyMaintenance = maintenance / 12;
-
-      const totalMonthlyExpenses =
-        monthlyMortgage + monthlyPropertyTax + monthlyInsurance + monthlyMaintenance;
-
-      const adjustedMonthlyRent = monthlyRent * (1 - vacancy);
-      const monthlyCashFlow = adjustedMonthlyRent - totalMonthlyExpenses;
-      const annualCashFlow = monthlyCashFlow * 12;
-
-      const totalInvestment = downPayment;
-      const cashOnCashReturn = totalInvestment > 0 ? (annualCashFlow / totalInvestment) * 100 : 0;
-
-      const annualNOI = finCtx?.trailingTwelveNOI || (adjustedMonthlyRent * 12 - (monthlyPropertyTax + monthlyInsurance + monthlyMaintenance) * 12);
-      const actualCapRate = purchasePrice > 0 ? (annualNOI / purchasePrice) * 100 : 0;
-
-      const annualDebtService = monthlyMortgage * 12;
-      const dscr = annualDebtService > 0 ? annualNOI / annualDebtService : 0;
-
-      const result: any = {
-        purchasePrice,
-        downPayment,
-        loanAmount,
-        monthlyMortgage,
-        monthlyExpenses: {
-          mortgage: monthlyMortgage,
-          propertyTax: monthlyPropertyTax,
-          insurance: monthlyInsurance,
-          maintenance: monthlyMaintenance,
-          total: totalMonthlyExpenses,
+      const output = await cashflowRuntime.run(
+        {
+          deal_id: params.dealId,
+          ...(params.purchasePrice && { purchase_price_hint: params.purchasePrice }),
         },
-        monthlyRent: adjustedMonthlyRent,
-        monthlyCashFlow,
-        annualCashFlow,
-        cashOnCashReturn,
-        capRate: actualCapRate,
-        dscr,
-        annualNOI,
-        opportunityScore: this.calculateOpportunityScore(cashOnCashReturn, monthlyCashFlow, dscr),
-        dataSourcesUsed: this.getDataSources(finCtx),
-        status: 'success',
-      };
+        ctx
+      ) as CashflowAgentOutput;
 
-      if (finCtx?.trailingTwelveNOI !== null && finCtx?.trailingTwelveNOI !== undefined) {
-        result.trailingTwelveActuals = {
-          noi: finCtx.trailingTwelveNOI,
-          revenue: finCtx.trailingTwelveRevenue,
-          expenses: finCtx.trailingTwelveExpenses,
-          monthsOfData: finCtx.recentActuals.length,
-          avgOccupancy: finCtx.avgOccupancy,
-        };
-      }
+      logger.info('[CashFlowAgent] execute() completed via AgentRuntime', {
+        dealId: params.dealId,
+        irr: output.irr_pct,
+        rating: output.investment_rating,
+        confidence: output.confidence_score,
+      });
 
-      if (finCtx?.debt && finCtx.debt.items.length > 0) {
-        result.existingDebt = {
-          totalBalance: finCtx.debt.totalBalance,
-          weightedAvgRate: finCtx.debt.weightedAvgRate,
-          monthlyService: finCtx.debt.totalMonthlyService,
-          nearestMaturity: finCtx.debt.nearestMaturity,
-          loanCount: finCtx.debt.items.length,
-        };
-      }
-
-      if (finCtx?.leases) {
-        result.rentRollSummary = {
-          occupiedUnits: finCtx.leases.totalUnitsLeased,
-          vacantUnits: finCtx.leases.totalUnitsVacant,
-          avgRent: finCtx.leases.avgRent,
-          totalMonthlyIncome: finCtx.leases.totalMonthlyIncome,
-          upcomingExpirations: finCtx.leases.upcomingExpirations,
-        };
-      }
-
-      return result;
-    } catch (error: any) {
-      logger.error('Cash flow agent execution failed:', error);
-      throw error;
+      return output;
+    } catch (err) {
+      logger.error('[CashFlowAgent] execute(): runtime run failed', {
+        dealId: params.dealId,
+        err: err instanceof Error ? err.message : String(err),
+      });
+      return this.defaultResult(now);
     }
   }
 
-  private getDataSources(finCtx?: DealFinancialContext | null): string[] {
-    if (!finCtx) return ['user_input'];
-    const sources: string[] = [];
-    if (finCtx.dataSources.hasUploadedPnL) sources.push('uploaded_pnl');
-    if (finCtx.dataSources.hasUploadedRentRoll) sources.push('uploaded_rent_roll');
-    if (finCtx.dataSources.hasUploadedBalanceSheet) sources.push('uploaded_balance_sheet');
-    if (finCtx.dataSources.hasUploadedDebt) sources.push('uploaded_debt_schedule');
-    if (finCtx.dataSources.hasManualAssumptions) sources.push('manual_assumptions');
-    if (sources.length === 0) sources.push('deal_assumptions');
-    return sources;
-  }
-
-  private calculateOpportunityScore(cashOnCashReturn: number, monthlyCashFlow: number, dscr: number): number {
-    let score = 50;
-
-    if (monthlyCashFlow > 0) score += 15;
-    if (monthlyCashFlow > 500) score += 5;
-    if (monthlyCashFlow > 2000) score += 5;
-
-    if (cashOnCashReturn > 8) score += 10;
-    if (cashOnCashReturn > 12) score += 5;
-    if (cashOnCashReturn > 15) score += 5;
-
-    if (dscr > 1.25) score += 5;
-    if (dscr > 1.5) score += 5;
-
-    if (monthlyCashFlow < 0) score -= 20;
-    if (dscr > 0 && dscr < 1.0) score -= 15;
-
-    return Math.min(100, Math.max(0, score));
+  private defaultResult(now: string): CashflowAgentOutput {
+    return {
+      purchase_price: null,
+      noi_year1: null,
+      year1_cap_rate_pct: null,
+      irr_pct: null,
+      avg_cash_on_cash_pct: null,
+      dscr_year1: null,
+      equity_invested: null,
+      exit_value: null,
+      investment_rating: null,
+      summary: 'Cashflow analysis unavailable — dealId required',
+      has_t12_data: false,
+      has_rent_roll: false,
+      confidence_score: 0,
+      fields_written: [],
+      completed_at: now,
+    };
   }
 }
+
+export const cashFlowAgent = new CashFlowAgent();

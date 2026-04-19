@@ -1,120 +1,106 @@
 /**
- * Supply Agent
- * Analyzes market inventory and supply trends
+ * Supply Agent — AgentRuntime Adapter (Phase 4 Refactor)
+ *
+ * This class is an adapter that routes legacy callers through the Phase 4
+ * AgentRuntime execution path (supply.config.ts).
+ *
+ * Previous implementation: queried market_inventory table directly and
+ * computed metrics inline. That path is retired; this class now delegates
+ * to `supplyRuntime.run()` which calls the registered tools:
+ *   fetch_permits, fetch_costar_pipeline, fetch_submarket_deliveries,
+ *   write_supply_analysis
+ *
+ * When no city/stateCode is provided, a zeroed skeleton is returned and
+ * a warning is logged.
+ *
+ * Migration path for callers:
+ *   Pass `dealId` in params, or trigger directly via `supplyRuntime.run()`.
  */
 
-import { query } from '../database/connection';
 import { logger } from '../utils/logger';
+import { supplyRuntime, type SupplyAgentOutput } from './supply.config';
+import type { RunContext } from './runtime/types';
+
+export interface SupplyAgentParams {
+  dealId?: string;
+  userId?: string;
+  city: string;
+  stateCode: string;
+  propertyType?: string;
+  msaId?: string;
+}
 
 export class SupplyAgent {
   /**
-   * Execute supply analysis task
+   * Execute supply analysis for a market.
+   *
+   * Routes through `supplyRuntime.run()` — the Phase 4 authoritative path.
    */
-  async execute(inputData: any, userId: string): Promise<any> {
-    logger.info('Supply agent executing...', { inputData });
+  async execute(params: SupplyAgentParams, userId?: string): Promise<SupplyAgentOutput> {
+    const resolvedUserId = params.userId ?? userId ?? 'unknown';
+    const now = new Date().toISOString();
+
+    if (!params.city || !params.stateCode) {
+      logger.warn('[SupplyAgent] execute() called without city/stateCode');
+      return this.defaultResult(params, now);
+    }
+
+    const ctx: RunContext = {
+      dealId: params.dealId,
+      userId: resolvedUserId,
+      triggeredBy: 'user',
+      triggerContext: {
+        source: 'legacy_adapter',
+        city: params.city,
+        state_code: params.stateCode,
+        property_type: params.propertyType,
+      },
+    };
 
     try {
-      const { city, stateCode, propertyType } = inputData;
-
-      // Validate input
-      if (!city || !stateCode) {
-        throw new Error('City and stateCode are required');
-      }
-
-      // Get market inventory (with type casting for safety)
-      const inventoryResult = await query(
-        `SELECT *
-         FROM market_inventory
-         WHERE city ILIKE $1 AND state_code = $2
-           AND snapshot_date >= NOW() - INTERVAL '30 days'
-         ORDER BY snapshot_date DESC`,
-        [city, stateCode]
-      );
-
-      // Calculate trends (cast columns to numeric to avoid type errors)
-      const trendsResult = await query(
-        `SELECT 
-          AVG(CAST(active_listings AS NUMERIC)) as avg_listings,
-          AVG(CAST(median_price AS NUMERIC)) as avg_price,
-          AVG(CAST(avg_days_on_market AS NUMERIC)) as avg_dom,
-          AVG(CAST(absorption_rate AS NUMERIC)) as avg_absorption
-         FROM market_inventory
-         WHERE city ILIKE $1 AND state_code = $2
-           AND snapshot_date >= NOW() - INTERVAL '90 days'`,
-        [city, stateCode]
-      );
-
-      const trends = trendsResult.rows[0] || {};
-      const inventory = inventoryResult.rows;
-
-      // Extract metrics from inventory data
-      const latestSnapshot = inventory.length > 0 ? inventory[0] : null;
-
-      return {
-        status: 'success',
-        market: `${city}, ${stateCode}`,
-        propertyType,
-        
-        // Current metrics from latest snapshot
-        activeListings: latestSnapshot?.active_listings || 0,
-        medianPrice: parseFloat(latestSnapshot?.median_price) || 0,
-        avgPrice: parseFloat(latestSnapshot?.avg_price) || 0,
-        pricePerSqft: parseFloat(latestSnapshot?.price_per_sqft) || 0,
-        avgDaysOnMarket: latestSnapshot?.avg_days_on_market || 0,
-        medianDaysOnMarket: latestSnapshot?.median_days_on_market || 0,
-        
-        // Supply metrics
-        absorptionRate: parseFloat(latestSnapshot?.absorption_rate) || 0,
-        monthsOfSupply: parseFloat(latestSnapshot?.months_of_supply) || 0,
-        vacancyRate: parseFloat(latestSnapshot?.vacancy_rate) || 0,
-        
-        // 30-day activity
-        newListings30d: latestSnapshot?.new_listings_30d || 0,
-        closedSales30d: latestSnapshot?.closed_sales_30d || 0,
-        
-        // Property details
-        avgSqft: latestSnapshot?.avg_sqft || 0,
-        avgYearBuilt: latestSnapshot?.avg_year_built || 0,
-        
-        // 90-day trends
-        trends: {
-          avgListings: parseFloat(trends.avg_listings) || 0,
-          avgPrice: parseFloat(trends.avg_price) || 0,
-          avgDaysOnMarket: parseFloat(trends.avg_dom) || 0,
-          avgAbsorption: parseFloat(trends.avg_absorption) || 0,
+      const output = await supplyRuntime.run(
+        {
+          city: params.city,
+          state_code: params.stateCode,
+          ...(params.propertyType && { property_type: params.propertyType }),
+          ...(params.msaId && { msa_id: params.msaId }),
         },
-        
-        // Raw inventory data for reference
-        inventory: inventory.map((item: any) => ({
-          snapshotDate: item.snapshot_date,
-          activeListings: item.active_listings,
-          medianPrice: parseFloat(item.median_price),
-          avgDaysOnMarket: item.avg_days_on_market,
-          absorptionRate: parseFloat(item.absorption_rate),
-        })),
-        
-        opportunityScore: this.calculateOpportunityScore(trends),
-      };
-    } catch (error: any) {
-      logger.error('Supply agent execution failed:', error);
-      // Return clean error message
-      throw new Error(error.message || 'Supply analysis failed');
+        ctx
+      ) as SupplyAgentOutput;
+
+      logger.info('[SupplyAgent] execute() completed via AgentRuntime', {
+        city: params.city,
+        supplyRisk: output.supply_risk_level,
+        confidence: output.confidence_score,
+      });
+
+      return output;
+    } catch (err) {
+      logger.error('[SupplyAgent] execute(): runtime run failed', {
+        city: params.city,
+        err: err instanceof Error ? err.message : String(err),
+      });
+      return this.defaultResult(params, now);
     }
   }
 
-  private calculateOpportunityScore(trends: any): number {
-    // Simple scoring logic - can be enhanced
-    let score = 50;
-
-    // Safely handle null/undefined values
-    const avgDom = parseFloat(trends.avg_dom) || 0;
-    const avgAbsorption = parseFloat(trends.avg_absorption) || 0;
-    const avgListings = parseFloat(trends.avg_listings) || 0;
-
-    if (avgDom > 0 && avgDom < 30) score += 20; // Low days on market is good
-    if (avgAbsorption > 15) score += 15; // High absorption is good
-    if (avgListings > 0 && avgListings < 100) score += 15; // Low inventory is good
-
-    return Math.min(100, Math.max(0, score));
+  private defaultResult(params: SupplyAgentParams, now: string): SupplyAgentOutput {
+    return {
+      city: params.city ?? '',
+      state_code: params.stateCode ?? '',
+      under_construction_units: null,
+      deliveries_12mo: null,
+      absorption_rate: null,
+      months_of_supply: null,
+      pipeline_as_pct_of_stock: null,
+      demand_supply_ratio: null,
+      supply_risk_level: null,
+      summary: 'Supply analysis unavailable',
+      confidence_score: 0,
+      fields_written: [],
+      completed_at: now,
+    };
   }
 }
+
+export const supplyAgent = new SupplyAgent();

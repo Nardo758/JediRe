@@ -1,11 +1,17 @@
 /**
  * Agent Delegator
- * 
- * Routes requests to specialist and analyst agents.
- * Executes agents in parallel when independent.
- * 
- * @version 1.0.0
- * @date 2026-03-28
+ *
+ * Routes requests to specialist and analyst agents via the INTENT_DISPATCH
+ * table (Phase 4 coordinator layer).
+ *
+ * Layer 1 specialists (RESEARCH, ZONING, SUPPLY, CASH) route to AgentRuntime.
+ * Layer 2 specialists (DEMAND, COMPS, RISK, DEBT, NEWS, STRATEGY) route to
+ * context fragment injection — no separate agent run, just prompt enrichment.
+ *
+ * Analyst agents (16 personas) use the persona voice prefix from coordinator/personas.
+ *
+ * @version 2.0.0
+ * @date 2026-04-19
  */
 
 import { logger } from '../../utils/logger';
@@ -13,14 +19,21 @@ import { query } from '../../database/connection';
 import { generateCompletion, isLLMAvailable } from '../llm.service';
 import type { SpecialistAgent, AnalystAgent, ExtractedIntent } from './intent-classifier';
 import { getDealFinancialContext, formatFinancialContextForPrompt, DealFinancialContext } from '../deal-financial-context.service';
-
-// Import agent executors
-import { SupplyAgent } from '../../agents/supply.agent';
-import { CashFlowAgent } from '../../agents/cashflow.agent';
-import { ZoningAgent } from '../../agents/zoning.agent';
-import { ResearchAgent } from '../../agents/research.agent';
-import { CommentaryAgent } from '../../agents/commentary.agent';
 import { MetricRecommendationService } from '../metricRecommendation.service';
+
+// ── Coordinator layer ─────────────────────────────────────────────
+import {
+  INTENT_DISPATCH,
+  isAgentDispatch,
+  isFragmentDispatch,
+  type SpecialistKey,
+} from '../../coordinator/dispatch';
+import { buildFragmentPrompt } from '../../coordinator/context-fragments';
+import {
+  buildPersonaPrompt,
+  getPersona,
+  type PersonaId,
+} from '../../coordinator/personas/index';
 
 // ============================================================================
 // Types
@@ -44,46 +57,10 @@ export interface DelegationRequest {
 }
 
 // ============================================================================
-// Agent Executor Registry
-// ============================================================================
-
-const SPECIALIST_EXECUTORS: Partial<Record<SpecialistAgent, any>> = {
-  SUPPLY: new SupplyAgent(),
-  CASH: new CashFlowAgent(),
-  ZONING: new ZoningAgent(),
-  RESEARCH: new ResearchAgent(),
-  // DEMAND, COMPS, RISK, DEBT, NEWS — stubs until implemented
-};
-
-// Analyst agent system prompts
-const ANALYST_PROMPTS: Record<AnalystAgent, { role: string; focus: string }> = {
-  CFO: { role: 'Chief Financial Officer', focus: 'returns, risk metrics, investment performance' },
-  ACCOUNTANT: { role: 'Accountant', focus: 'tax implications, GAAP compliance, depreciation' },
-  MARKETING: { role: 'Marketing Expert', focus: 'positioning, lease-up strategy, branding' },
-  DEVELOPER: { role: 'Developer', focus: 'construction feasibility, value-add, renovations' },
-  LEGAL: { role: 'Legal Advisor', focus: 'contracts, compliance, legal risk' },
-  LENDER: { role: 'Lender', focus: 'debt perspective, underwriting, financing' },
-  ACQUISITIONS: { role: 'Acquisitions Director', focus: 'deal sourcing, negotiations, LOI terms' },
-  ASSET_MANAGER: { role: 'Asset Manager', focus: 'NOI optimization, operations, business plan' },
-  PROPERTY_MANAGER: { role: 'Property Manager', focus: 'tenant relations, maintenance, operations' },
-  LEASING: { role: 'Leasing Director', focus: 'vacancy reduction, renewals, rent pricing' },
-  FACILITIES: { role: 'Facilities Manager', focus: 'CapEx planning, vendors, building systems' },
-  INVESTMENT_ANALYST: { role: 'Investment Analyst', focus: 'hold/sell analysis, refinance, exit strategy' },
-  ESG: { role: 'ESG Specialist', focus: 'sustainability, energy efficiency, green certifications' },
-  COMPLIANCE: { role: 'Compliance Officer', focus: 'insurance, permits, regulatory requirements' },
-  TAX: { role: 'Tax Strategist', focus: 'cost segregation, 1031 exchanges, depreciation' },
-  RESEARCHER: { role: 'Market Researcher', focus: 'demographics, trends, competitive intelligence' },
-};
-
-// ============================================================================
 // Agent Delegator
 // ============================================================================
 
 export class AgentDelegator {
-  
-  /**
-   * Delegate to all required agents based on intent
-   */
   private static METRIC_REC_TRIGGERS = [
     'what metrics', 'which metrics', 'metrics to watch', 'recommended metrics',
     'metric recommendations', 'what should i watch', 'what should i track',
@@ -95,10 +72,14 @@ export class AgentDelegator {
     return AgentDelegator.METRIC_REC_TRIGGERS.some(t => lower.includes(t));
   }
 
+  /**
+   * Delegate to all required agents based on extracted intent.
+   * Specialist agents run in parallel; analysts receive specialist output as context.
+   */
   async delegate(request: DelegationRequest): Promise<DelegationResult[]> {
     const { intent, userId, modelOverrides } = request;
     const results: DelegationResult[] = [];
-    
+
     const params = this.buildParams(intent);
 
     let financialContext: DealFinancialContext | null = null;
@@ -115,20 +96,20 @@ export class AgentDelegator {
       const recResult = await this.executeMetricRecommendations(params, userId);
       results.push(recResult);
     }
-    
+
     if (intent.specialists.length > 0) {
       const specialistPromises = intent.specialists.map(agent =>
-        this.executeSpecialist(agent, params, userId)
+        this.executeSpecialist(agent, params, userId, intent.dealId)
       );
       const specialistResults = await Promise.all(specialistPromises);
       results.push(...specialistResults);
     }
-    
+
     if (intent.analysts.length > 0) {
       const specialistData = results
         .filter(r => r.success && r.agentType === 'specialist')
-        .reduce((acc, r) => ({ ...acc, [r.agent]: r.data }), {});
-      
+        .reduce((acc, r) => ({ ...acc, [r.agent]: r.data }), {} as Record<string, unknown>);
+
       if (financialContext && financialContext.hasFinancialData) {
         specialistData['FINANCIAL_DATA'] = financialContext;
       }
@@ -139,57 +120,137 @@ export class AgentDelegator {
       const analystResults = await Promise.all(analystPromises);
       results.push(...analystResults);
     }
-    
+
     return results;
   }
-  
+
   /**
-   * Execute a specialist agent (data-focused)
+   * Execute a specialist agent.
+   *
+   * Layer 1 (RESEARCH, ZONING, SUPPLY, CASH): calls AgentRuntime.run() via dispatch table.
+   * Layer 2 (DEMAND, COMPS, RISK, DEBT, NEWS, STRATEGY): returns context fragment for
+   *   injection into analyst prompts.
    */
   private async executeSpecialist(
     agent: SpecialistAgent,
     params: Record<string, unknown>,
-    userId: string
+    userId: string,
+    dealId?: string
   ): Promise<DelegationResult> {
     const startTime = Date.now();
-    
-    const executor = SPECIALIST_EXECUTORS[agent];
-    if (!executor) {
-      // Return stub for unimplemented agents
+
+    const dispatch = INTENT_DISPATCH[agent as SpecialistKey];
+    if (!dispatch) {
       return {
         agent,
         agentType: 'specialist',
-        data: { message: `${agent} agent coming soon` },
+        data: { message: `${agent} agent not found in dispatch table` },
         executionTimeMs: Date.now() - startTime,
         success: false,
-        error: 'Agent not yet implemented',
+        error: 'No dispatch entry',
       };
     }
-    
-    try {
-      logger.info(`Executing specialist: ${agent}`, { params });
-      const result = await executor.execute(params, userId);
-      
+
+    // ── Layer 2: Context fragment injection ───────────────────────
+    if (isFragmentDispatch(dispatch)) {
+      const fragmentPrompt = buildFragmentPrompt(dispatch.fragmentKey);
       return {
         agent,
         agentType: 'specialist',
-        data: result,
+        data: {
+          fragmentKey: dispatch.fragmentKey,
+          fragmentPrompt,
+          description: dispatch.description,
+        },
         executionTimeMs: Date.now() - startTime,
         success: true,
       };
-    } catch (error: any) {
-      logger.error(`Specialist ${agent} failed:`, error);
-      return {
-        agent,
-        agentType: 'specialist',
-        data: {},
-        executionTimeMs: Date.now() - startTime,
-        success: false,
-        error: error.message,
-      };
+    }
+
+    // ── Layer 1: AgentRuntime execution ───────────────────────────
+    if (isAgentDispatch(dispatch)) {
+      try {
+        logger.info(`[AgentDelegator] Executing specialist via runtime: ${agent}`, {
+          agentId: dispatch.agentId,
+          dealId,
+        });
+
+        const runCtx = {
+          dealId,
+          userId,
+          triggeredBy: 'user' as const,
+          triggerContext: { source: 'agent_delegator', specialist: agent },
+        };
+
+        const input = this.buildRuntimeInput(agent, params);
+        const result = await dispatch.runtime.run(input, runCtx);
+
+        return {
+          agent,
+          agentType: 'specialist',
+          data: result as Record<string, unknown>,
+          executionTimeMs: Date.now() - startTime,
+          success: true,
+        };
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : String(error);
+        logger.error(`[AgentDelegator] Specialist ${agent} runtime failed:`, error);
+        return {
+          agent,
+          agentType: 'specialist',
+          data: {},
+          executionTimeMs: Date.now() - startTime,
+          success: false,
+          error: msg,
+        };
+      }
+    }
+
+    return {
+      agent,
+      agentType: 'specialist',
+      data: { message: 'Unknown dispatch type' },
+      executionTimeMs: Date.now() - startTime,
+      success: false,
+      error: 'Unknown dispatch type',
+    };
+  }
+
+  /**
+   * Build runtime input payload for a Layer 1 specialist.
+   */
+  private buildRuntimeInput(
+    agent: SpecialistAgent,
+    params: Record<string, unknown>
+  ): Record<string, unknown> {
+    switch (agent) {
+      case 'RESEARCH':
+        return {
+          deal_id: params.dealId,
+          address: params.address,
+          property_id: params.propertyId,
+        };
+      case 'ZONING':
+        return {
+          deal_id: params.dealId,
+          address: params.address,
+        };
+      case 'SUPPLY':
+        return {
+          city: params.city,
+          state_code: params.stateCode,
+          property_type: params.propertyType,
+        };
+      case 'CASH':
+        return {
+          deal_id: params.dealId,
+          purchase_price_hint: params.price,
+        };
+      default:
+        return { ...params };
     }
   }
-  
+
   private async executeMetricRecommendations(
     params: Record<string, unknown>,
     userId: string
@@ -248,7 +309,8 @@ export class AgentDelegator {
         executionTimeMs: Date.now() - startTime,
         success: result.success,
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
       logger.error('MetricRecommendation delegation failed:', error);
       return {
         agent: 'METRIC_RECOMMENDATIONS',
@@ -256,7 +318,7 @@ export class AgentDelegator {
         data: {},
         executionTimeMs: Date.now() - startTime,
         success: false,
-        error: error.message,
+        error: msg,
       };
     }
   }
@@ -269,7 +331,7 @@ export class AgentDelegator {
     modelOverride?: string
   ): Promise<DelegationResult> {
     const startTime = Date.now();
-    
+
     if (!isLLMAvailable()) {
       return {
         agent,
@@ -280,29 +342,29 @@ export class AgentDelegator {
         error: 'LLM service unavailable',
       };
     }
-    
-    const analystConfig = ANALYST_PROMPTS[agent];
-    if (!analystConfig) {
+
+    const persona = getPersona(agent);
+    if (!persona) {
       return {
         agent,
         agentType: 'analyst',
         data: {},
         executionTimeMs: Date.now() - startTime,
         success: false,
-        error: 'Unknown analyst agent',
+        error: 'Unknown analyst persona',
       };
     }
-    
+
     try {
-      const prompt = this.buildAnalystPrompt(agent, analystConfig, params, contextData);
-      
+      const prompt = this.buildAnalystPrompt(agent as PersonaId, params, contextData);
+
       const response = await generateCompletion({
         prompt,
         maxTokens: 800,
         temperature: 0.7,
         model: modelOverride,
       });
-      
+
       return {
         agent,
         agentType: 'analyst',
@@ -311,7 +373,8 @@ export class AgentDelegator {
         executionTimeMs: Date.now() - startTime,
         success: true,
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
       logger.error(`Analyst ${agent} failed:`, error);
       return {
         agent,
@@ -319,13 +382,13 @@ export class AgentDelegator {
         data: {},
         executionTimeMs: Date.now() - startTime,
         success: false,
-        error: error.message,
+        error: msg,
       };
     }
   }
-  
+
   /**
-   * Build params from intent
+   * Build params from extracted intent
    */
   private buildParams(intent: ExtractedIntent): Record<string, unknown> {
     return {
@@ -338,64 +401,69 @@ export class AgentDelegator {
       question: intent.question,
     };
   }
-  
+
   /**
-   * Build prompt for analyst agent
+   * Build prompt for analyst agent using persona voice prefix +
+   * any context fragments from Layer 2 specialist results.
    */
   private buildAnalystPrompt(
-    agent: AnalystAgent,
-    config: { role: string; focus: string },
+    agent: PersonaId,
     params: Record<string, unknown>,
     contextData: Record<string, unknown>
   ): string {
-    let prompt = `You are the ${config.role} for JEDI RE, a real estate investment platform.
-Your expertise: ${config.focus}
+    const personaBlock = buildPersonaPrompt(agent);
+    let prompt = personaBlock ? `${personaBlock}\n\n` : '';
 
-`;
+    if (params.address) prompt += `Property: ${params.address}\n`;
+    if (params.city && params.stateCode) prompt += `Market: ${params.city}, ${params.stateCode}\n`;
+    if (params.price) prompt += `Price: $${Number(params.price).toLocaleString()}\n`;
 
-    if (params.address) {
-      prompt += `Property: ${params.address}\n`;
-    }
-    if (params.city && params.stateCode) {
-      prompt += `Market: ${params.city}, ${params.stateCode}\n`;
-    }
-    if (params.price) {
-      prompt += `Price: $${Number(params.price).toLocaleString()}\n`;
-    }
-    
     if (contextData['FINANCIAL_DATA']) {
       const finCtx = contextData['FINANCIAL_DATA'] as DealFinancialContext;
       prompt += formatFinancialContextForPrompt(finCtx);
       prompt += '\n';
     }
 
-    const nonFinancialData = Object.entries(contextData).filter(([k]) => k !== 'FINANCIAL_DATA');
-    if (nonFinancialData.length > 0) {
+    // Inject Layer 2 context fragments (DEMAND, COMPS, RISK, DEBT, NEWS, STRATEGY)
+    const fragmentEntries = Object.entries(contextData).filter(
+      ([, v]) => v && typeof v === 'object' && 'fragmentPrompt' in (v as object)
+    );
+    for (const [, fragData] of fragmentEntries) {
+      const frag = fragData as { fragmentPrompt: string };
+      prompt += frag.fragmentPrompt + '\n\n';
+    }
+
+    // Inject Layer 1 specialist results
+    const specialistEntries = Object.entries(contextData).filter(
+      ([k, v]) => k !== 'FINANCIAL_DATA' &&
+        !(v && typeof v === 'object' && 'fragmentPrompt' in (v as object))
+    );
+    if (specialistEntries.length > 0) {
       prompt += `\nAvailable Data:\n`;
-      for (const [source, data] of nonFinancialData) {
+      for (const [source, data] of specialistEntries) {
         prompt += `\n[${source}]:\n${JSON.stringify(data, null, 2)}\n`;
       }
     }
-    
+
     prompt += `\nUser Question: ${params.question || 'Provide your analysis'}
 
-Respond as the ${config.role}. Be specific, actionable, and concise (under 200 words).
+Respond as the ${getPersona(agent)?.role ?? agent}. Be specific, actionable, and concise (under 200 words).
 Reference the data when relevant. Flag any concerns or opportunities.`;
 
     return prompt;
   }
-  
+
   /**
    * Get user's model preferences for agents
    */
   async getUserModelPreferences(userId: string): Promise<Record<string, string>> {
     try {
       const result = await query(
-        `SELECT settings_json FROM user_agent_settings 
+        `SELECT settings_json FROM user_agent_settings
          WHERE user_id = $1 AND setting_type = 'models'`,
         [userId]
       );
-      
+
       if (result.rows.length > 0) {
         const settings = result.rows[0].settings_json;
         return settings.agentOverrides || {};

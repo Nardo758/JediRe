@@ -12,6 +12,8 @@ import {
 import { jediAI } from '../services/ai/aiService';
 import type { AICallContext } from '../types/dealContext';
 import { buildEconomicContextBlock } from '../services/economic-context.service';
+import { commentaryRuntime } from './commentary.config';
+import type { CommentaryAgentOutput } from './commentary.config';
 
 export interface CommentaryInput {
   entityType: 'msa' | 'submarket' | 'property';
@@ -163,6 +165,66 @@ export class CommentaryAgent {
     userId?: string,
     businessType?: string,
   ): Promise<CommentarySection> {
+    const levelLabel = entityType === 'msa' ? 'metro' : entityType === 'submarket' ? 'submarket' : 'property';
+    const recommended = STRATEGY_LABELS[arb.recommended];
+
+    // Fetch economic context block (FRED + BLS + SEC), catching errors gracefully
+    let econContextText = '';
+    try {
+      const econCtx = await buildEconomicContextBlock(businessType, true);
+      econContextText = econCtx.text;
+    } catch (err: any) {
+      logger.warn('[Commentary] Economic context fetch failed, omitting from prompt', { error: err.message });
+    }
+
+    const contextBlock = [
+      `Entity: ${name} (${levelLabel})`,
+      `Signal scores (0-100): Demand=${signals.demandScore}, Supply=${signals.supplyScore}, Momentum=${signals.momentumScore}, Position=${signals.positionScore}, Risk=${signals.riskScore}`,
+      `JEDI Composite Score: ${jediScore}`,
+      `Recommended Strategy: ${recommended} (score: ${arb.recommendedScore.toFixed(0)})`,
+      `Arbitrage Flag: ${arb.arbitrageFlag ? `Yes, ${arb.arbitrageDelta.toFixed(0)}pt spread` : 'No'}`,
+      `Strategy Rankings: ${arb.strategies.map(s => `${s.label}: ${s.score.toFixed(0)}`).join(', ')}`,
+      econContextText ? `\n${econContextText}` : '',
+    ].filter(Boolean).join('\n');
+
+    const sentiment: 'bullish' | 'neutral' | 'bearish' =
+      signals.demandScore >= 60 && signals.momentumScore >= 55 ? 'bullish' :
+      signals.demandScore < 45 || signals.momentumScore < 40 ? 'bearish' : 'neutral';
+
+    // ── Primary path: AgentRuntime (commentary-v2 system prompt) ────
+    try {
+      const rtCtx = {
+        dealId: undefined as string | undefined,
+        userId: userId ?? 'system',
+        triggeredBy: 'user' as const,
+        triggerContext: { source: 'commentary_agent', entity_type: entityType, entity_name: name },
+      };
+
+      const output = await commentaryRuntime.run(
+        {
+          entity_type: entityType,
+          entity_id: name,
+          entity_name: name,
+          context_block: contextBlock,
+        },
+        rtCtx
+      ) as CommentaryAgentOutput;
+
+      const narrativeContent = output.market_narrative?.content
+        ?? `${name} analysis generated with JEDI Score ${jediScore}.`;
+
+      return {
+        title: 'Market Narrative',
+        content: narrativeContent,
+        sentiment: output.market_narrative?.sentiment ?? sentiment,
+      };
+    } catch (runtimeErr: unknown) {
+      logger.warn('[Commentary] commentaryRuntime.run() failed, falling back to jediAI.generate()', {
+        error: runtimeErr instanceof Error ? runtimeErr.message : String(runtimeErr),
+      });
+    }
+
+    // ── Fallback path: direct jediAI.generate() ─────────────────────
     const context: AICallContext = {
       userId: userId || 'system',
       stripeCustomerId: '',
@@ -179,27 +241,7 @@ IMPORTANT CITATION RULES:
 - Do NOT fabricate or guess at any economic numbers. Only use figures provided in the context block.
 - If the context block shows "N/A" for a data point, omit that statistic entirely.`;
 
-    const levelLabel = entityType === 'msa' ? 'metro' : entityType === 'submarket' ? 'submarket' : 'property';
-    const recommended = STRATEGY_LABELS[arb.recommended];
-
-    // Fetch economic context block (FRED + BLS + SEC), catching errors gracefully
-    let econContextText = '';
-    try {
-      const econCtx = await buildEconomicContextBlock(businessType, true);
-      econContextText = econCtx.text;
-    } catch (err: any) {
-      logger.warn('[Commentary] Economic context fetch failed, omitting from prompt', { error: err.message });
-    }
-
-    const userMessage = `Write a 2-3 sentence market narrative for ${name} (${levelLabel} level).
-
-Signal scores (0-100): Demand=${signals.demandScore}, Supply=${signals.supplyScore}, Momentum=${signals.momentumScore}, Position=${signals.positionScore}, Risk=${signals.riskScore}
-JEDI Composite Score: ${jediScore}
-Recommended Strategy: ${recommended} (score: ${arb.recommendedScore.toFixed(0)})
-Arbitrage Flag: ${arb.arbitrageFlag ? `Yes, ${arb.arbitrageDelta.toFixed(0)}pt spread` : 'No'}
-Strategy Rankings: ${arb.strategies.map(s => `${s.label}: ${s.score.toFixed(0)}`).join(', ')}
-${econContextText ? `\n${econContextText}\n` : ''}
-Focus on demand dynamics, supply pipeline impact, and investment positioning. Reference specific signal strengths/weaknesses. Where relevant, cite macroeconomic or industry data from the context block above using the provided citation tags.`;
+    const userMessage = `Write a 2-3 sentence market narrative for ${name} (${levelLabel} level).\n\n${contextBlock}\n\nFocus on demand dynamics, supply pipeline impact, and investment positioning.`;
 
     const response = await jediAI.generate(
       context,
@@ -212,10 +254,6 @@ Focus on demand dynamics, supply pipeline impact, and investment positioning. Re
       .filter((block): block is TextBlock => block.type === 'text')
       .map(block => block.text)
       .join('');
-
-    const sentiment: 'bullish' | 'neutral' | 'bearish' =
-      signals.demandScore >= 60 && signals.momentumScore >= 55 ? 'bullish' :
-      signals.demandScore < 45 || signals.momentumScore < 40 ? 'bearish' : 'neutral';
 
     return { title: 'Market Narrative', content, sentiment };
   }
