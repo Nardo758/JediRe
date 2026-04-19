@@ -1092,7 +1092,7 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
                 </div>
               </div>
               {/* Chart legend */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 18, marginBottom: 8, paddingLeft: 2 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 18, marginBottom: 4, paddingLeft: 2 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                   <svg width="9" height="8" viewBox="0 0 9 8" style={{ flexShrink: 0 }}>
                     <polygon points="4.5,0.5 8.5,7.5 0.5,7.5" fill="none" stroke="rgba(232,230,225,0.35)" strokeWidth="1.2" />
@@ -1110,6 +1110,34 @@ export function ExitCapitalModule({ deal, dealId, dealType: propDealType, embedd
                   <span style={{ fontSize: 8, color: 'rgba(232,230,225,0.35)', fontFamily: "'JetBrains Mono'", letterSpacing: 0.4 }}>NOW</span>
                 </div>
               </div>
+              {/* M35 category color key — only categories present on the chart */}
+              {(() => {
+                const CAT_LABELS: Record<string, string> = {
+                  employment: 'Employment', infrastructure: 'Infrastructure',
+                  regulatory: 'Regulatory', market_structure: 'Market Structure',
+                  macro: 'Macro', disaster: 'Disaster', technology: 'Technology',
+                };
+                const seen = new Map<string, string>();
+                for (const ev of m35Events.slice(0, 6)) {
+                  const norm = normalizeCat(ev.category);
+                  if (!seen.has(norm)) seen.set(norm, m35CatColor(ev.category));
+                }
+                if (seen.size === 0) return null;
+                return (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8, paddingLeft: 2, flexWrap: 'wrap' }}>
+                    {[...seen.entries()].map(([norm, color]) => (
+                      <div key={norm} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <svg width="7" height="6" viewBox="0 0 9 8" style={{ flexShrink: 0 }}>
+                          <polygon points="4.5,0.5 8.5,7.5 0.5,7.5" fill={color} />
+                        </svg>
+                        <span style={{ fontSize: 7.5, color: 'rgba(232,230,225,0.35)', fontFamily: "'JetBrains Mono'", letterSpacing: 0.4 }}>
+                          {CAT_LABELS[norm] ?? norm.replace('_', ' ').toUpperCase()}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
               <div ref={chartStripRef}>
                 <ConvergenceChart21 selectedFwd={selectedFwd} onSelectFwd={setSelectedFwd} optimalFwd={optimalFwd} liveEvents={m35Events.slice(0, 6)} selectedEventId={selectedEventId} onMarkerClick={handleMarkerClick} />
               </div>
