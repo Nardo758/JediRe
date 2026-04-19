@@ -38,6 +38,7 @@ interface BucketAssumption {
 
 interface ClosedDealGap {
   asset_class: string;
+  deal_type: string;
   submarket_id: string | null;
   assumption_name: string;
   achieved_median: number;
@@ -156,10 +157,14 @@ export const archiveAggregationFunction = inngest.createFunction(
            * Positive gap_bps = underwriting assumed higher than achieved (aggressive)
            * Negative gap_bps = underwriting assumed lower than achieved (conservative)
            */
+          // Include deal_type in grouping so achieved cohort aligns with the
+          // same bucket dimensions used in Step 1.  Only deals with at least
+          // 3 months of actuals are considered "closed" here.
           const result = await query(
             `WITH vacancy_actuals AS (
                SELECT
-                 d.asset_class,
+                 COALESCE(d.asset_class, 'unknown')  AS asset_class,
+                 COALESCE(d.deal_type,   'existing') AS deal_type,
                  d.submarket_id,
                  'vacancy_pct' AS assumption_name,
                  PERCENTILE_CONT(0.50) WITHIN GROUP (
@@ -170,12 +175,13 @@ export const archiveAggregationFunction = inngest.createFunction(
                JOIN deals d ON d.id = ma.deal_id
                WHERE ma.total_units > 0
                  AND ma.occupied_units IS NOT NULL
-               GROUP BY d.asset_class, d.submarket_id
-               HAVING COUNT(*) >= 3
+               GROUP BY d.asset_class, d.deal_type, d.submarket_id
+               HAVING COUNT(DISTINCT d.id) >= 3
              ),
              noi_actuals AS (
                SELECT
-                 d.asset_class,
+                 COALESCE(d.asset_class, 'unknown')  AS asset_class,
+                 COALESCE(d.deal_type,   'existing') AS deal_type,
                  d.submarket_id,
                  'noi' AS assumption_name,
                  PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY ma.noi) AS achieved_median,
@@ -183,8 +189,8 @@ export const archiveAggregationFunction = inngest.createFunction(
                FROM deal_monthly_actuals ma
                JOIN deals d ON d.id = ma.deal_id
                WHERE ma.noi IS NOT NULL
-               GROUP BY d.asset_class, d.submarket_id
-               HAVING COUNT(*) >= 3
+               GROUP BY d.asset_class, d.deal_type, d.submarket_id
+               HAVING COUNT(DISTINCT d.id) >= 3
              ),
              combined AS (
                SELECT * FROM vacancy_actuals
@@ -196,6 +202,7 @@ export const archiveAggregationFunction = inngest.createFunction(
 
           return result.rows.map((r: Record<string, unknown>) => ({
             asset_class: String(r.asset_class ?? 'unknown'),
+            deal_type: String(r.deal_type ?? 'existing'),
             submarket_id: r.submarket_id as string | null,
             assumption_name: String(r.assumption_name),
             achieved_median: Number(r.achieved_median),
@@ -215,22 +222,20 @@ export const archiveAggregationFunction = inngest.createFunction(
     logger.info('archive-aggregation: step 2 complete', { gap_count: closedGaps.length });
 
     // ── Step 3: Upsert to archive_assumption_benchmarks ─────────────────────
+    // Uses INSERT ... ON CONFLICT DO UPDATE so the operation is idempotent and
+    // safe to re-run any number of times on the same as_of date.
     const upsertResult = await step.run('upsert-archive-benchmarks', async () => {
       let inserted = 0;
       let errors = 0;
 
-      // Delete today's existing rows (idempotent re-run support)
-      await query(
-        `DELETE FROM archive_assumption_benchmarks WHERE as_of = $1`,
-        [asOf]
-      );
-
       for (const bucket of buckets) {
         try {
-          // Find matching closed-deal gap if available
+          // Find matching closed-deal gap for this exact bucket
+          // (asset_class + deal_type + submarket_id + assumption_name)
           const gap = closedGaps.find(
             g =>
               g.asset_class === bucket.asset_class &&
+              g.deal_type   === bucket.deal_type &&
               g.assumption_name === bucket.assumption_name &&
               (g.submarket_id === bucket.submarket_id ||
                 (g.submarket_id === null && bucket.submarket_id === null))
@@ -243,13 +248,32 @@ export const archiveAggregationFunction = inngest.createFunction(
               : null;
           const nClosedDeals = gap?.n_closed_deals ?? 0;
 
+          // ON CONFLICT uses expression index on COALESCE for nullable bucket dims
           await query(
             `INSERT INTO archive_assumption_benchmarks
                (asset_class, deal_type, submarket_id, vintage_band, strategy,
                 assumption_name, p10, p25, p50, p75, p90,
                 assumed_median, achieved_median, gap_bps,
                 n_samples, n_closed_deals, as_of)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+             ON CONFLICT (
+               asset_class, deal_type,
+               COALESCE(submarket_id, ''),
+               COALESCE(vintage_band, ''),
+               COALESCE(strategy, ''),
+               assumption_name, as_of
+             )
+             DO UPDATE SET
+               p10             = EXCLUDED.p10,
+               p25             = EXCLUDED.p25,
+               p50             = EXCLUDED.p50,
+               p75             = EXCLUDED.p75,
+               p90             = EXCLUDED.p90,
+               assumed_median  = EXCLUDED.assumed_median,
+               achieved_median = EXCLUDED.achieved_median,
+               gap_bps         = EXCLUDED.gap_bps,
+               n_samples       = EXCLUDED.n_samples,
+               n_closed_deals  = EXCLUDED.n_closed_deals`,
             [
               bucket.asset_class,
               bucket.deal_type,

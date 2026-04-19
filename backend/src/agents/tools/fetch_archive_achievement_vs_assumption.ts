@@ -53,9 +53,11 @@ export const fetchArchiveAchievementVsAssumptionTool = {
       const lookbackStr = lookbackDate.toISOString().slice(0, 10);
 
       const params: unknown[] = [asset_class, assumption_name, lookbackStr];
+      // When submarket_id is supplied, match that exact submarket.
+      // When not supplied, use the broadest bucket (submarket_id IS NULL).
       const submarketClause = submarket_id
         ? (() => { params.push(submarket_id); return `AND submarket_id = $${params.length}`; })()
-        : 'AND (submarket_id IS NULL OR submarket_id = $1)';
+        : 'AND submarket_id IS NULL';
 
       // Intentionally broad: no vintage_band or strategy filter so we maximize closed-deal samples
       const result = await query(
