@@ -14,6 +14,8 @@
 import { query } from '../database/connection';
 import { logger } from '../utils/logger';
 import { Pool } from 'pg';
+import { taxService } from './tax/taxService';
+import type { TaxContext } from './tax/taxService';
 
 // ============================================================================
 // Types
@@ -1400,7 +1402,7 @@ export interface DealFinancials {
       aggregateDscr:   number|null;
     };
   } | null;
-  /** FL tax computations — RE tax, TPP, income tax/depreciation, transfer taxes */
+  /** Tax computations — RE tax, TPP, income tax/depreciation, transfer taxes (jurisdiction-agnostic) */
   taxes: {
     reTax: {
       t12AssessedValue: number | null;
@@ -2094,18 +2096,7 @@ export async function getDealFinancials(
     }
   }
 
-  // ── Florida Tax Engine ────────────────────────────────────────────────────────
-  const FL_SOH_CAP = 0.10;  // FL Save Our Homes: max 10% annual assessed-value increase
-  const FL_MIAMI_DADE_CITIES = new Set([
-    'miami','miami beach','hialeah','coral gables','doral','miami gardens','homestead',
-    'north miami','north miami beach','opa-locka','aventura','bal harbour',
-    'florida city','golden beach','indian creek','key biscayne','medley','miami shores',
-    'miami springs','north bay village','palmetto bay','pinecrest','south miami',
-    'sunny isles beach','surfside','sweetwater','virginia gardens','west miami',
-  ]);
-  const isMiamiDade = FL_MIAMI_DADE_CITIES.has((deal.city ?? '').toLowerCase().trim());
-  const millageRate = isMiamiDade ? 23.09 : 20.00;   // mills per $1,000 assessed value
-
+  // ── Tax Forecast (jurisdiction-agnostic) ─────────────────────────────────────
   // T-12 RE tax from proforma year1 seed (real_estate_tax field)
   const taxLvObj = lv(year1Seed, 'real_estate_tax') as Record<string, unknown> | null;
   const layerN = (lvo: Record<string, unknown> | null, key: string): number | null => {
@@ -2114,7 +2105,6 @@ export async function getDealFinancials(
     return v != null && !isNaN(Number(v)) ? Number(v) : null;
   };
   const t12AnnualTax: number | null = layerN(taxLvObj, 'broker') ?? layerN(taxLvObj, 't12') ?? layerN(taxLvObj, 'resolved');
-  const t12AssessedValue: number | null = t12AnnualTax != null ? Math.round(t12AnnualTax / (millageRate / 1000)) : null;
 
   // Read user tax overrides from per_year_overrides
   const rawTaxOvs = (assumptionsRow?.per_year_overrides ?? {}) as Record<string, Record<string, unknown> | null>;
@@ -2135,57 +2125,8 @@ export async function getDealFinancials(
     const v = rawTaxOvs['tax:county_override:yr1'];
     return v?.value != null ? Number(v.value) === 1 : null;
   })();
-  const resolvedIsMiamiDade = taxCountyOvr ?? isMiamiDade;
 
-  // Platform assessed value: purchase price post-acquisition reassessment (resolved or override)
-  const platformAssessedValue: number | null = taxAssessedValueOvr ?? purchasePrice;
-  const resolvedMillage = taxMillageRateOvr ?? (resolvedIsMiamiDade ? 23.09 : 20.00);
-  const platformAnnualTax: number | null = platformAssessedValue != null
-    ? Math.round(platformAssessedValue * (resolvedMillage / 1000)) : null;
-
-  // Y1-Y10 RE tax projection (SOH cap applies after Y1 acquisition reassessment)
-  // Always generate minimum 10 years so Section A grid is complete regardless of hold period
-  const reTaxPerYear: Array<{
-    year: number; assessedValue: number; millageRate: number;
-    taxAmount: number; sohCapBinding: boolean; reassessmentEvent: boolean;
-  }> = [];
-  const baseAssessed = platformAssessedValue ?? 0;
-  let prevCapped = baseAssessed;
-  const mktGrowthRate = 0.12;  // FL market appreciation (12%/yr) — exceeds 10% SOH cap so cap binds
-  for (let yr = 1; yr <= Math.max(holdYears, 10); yr++) {
-    const isReassessment = yr === 1;
-    const marketValue = baseAssessed * Math.pow(1 + mktGrowthRate, yr - 1);
-    const capLimited = yr === 1 ? baseAssessed : Math.min(marketValue, prevCapped * (1 + FL_SOH_CAP));
-    const sohCapBinding = yr > 1 && marketValue > capLimited + 1;
-    const assessedValue = Math.round(capLimited);
-    const taxAmount = Math.round(assessedValue * (resolvedMillage / 1000));
-    reTaxPerYear.push({ year: yr, assessedValue, millageRate: resolvedMillage, taxAmount, sohCapBinding, reassessmentEvent: isReassessment });
-    prevCapped = capLimited;
-  }
-  const y1TaxAmt = reTaxPerYear[0]?.taxAmount ?? null;
-  const deltaVsT12Pct = y1TaxAmt != null && t12AnnualTax != null && t12AnnualTax > 0
-    ? (y1TaxAmt - t12AnnualTax) / t12AnnualTax : null;
-
-  // TPP (Tangible Personal Property) estimates
-  const rrLv = lv(year1Seed, 'replacement_reserves') as Record<string, unknown> | null;
-  const rrBroker = layerN(rrLv, 'broker') ?? layerN(rrLv, 't12');
-  const tppBroker: number | null = rrBroker != null ? Math.round(rrBroker * 0.5) : (totalUnits > 0 ? totalUnits * 150 : null);
-  const tppPlatform: number | null = totalUnits > 0 ? totalUnits * 200 : null;
-
-  // Income tax / depreciation
-  const LAND_PCT = 0.20;
-  const depreciableBase = purchasePrice != null ? Math.round(purchasePrice * (1 - LAND_PCT)) : null;
-  const annualDepreciation = depreciableBase != null ? Math.round(depreciableBase / 27.5) : null;
-  const currentYear = new Date().getFullYear();
-  const bonusRate = currentYear >= 2027 ? 0.20 : 0.40;  // 2026=40%, 2027=20%
-
-  // FL transfer taxes — use resolvedIsMiamiDade so county override persists to Sources & Uses
-  const docStampRate = resolvedIsMiamiDade ? 0.0105 : 0.0070;
-  const docStampAmount = purchasePrice != null ? Math.round(purchasePrice * docStampRate) : null;
-  const intangibleTaxAmount = loanAmount != null ? Math.round(loanAmount * 0.002) : null;
-  const totalTransferTax = ((docStampAmount ?? 0) + (intangibleTaxAmount ?? 0)) || null;
-
-  // Refi event taxes — read directly from per_year_overrides (debtOvr/debtOvrStr not yet available here)
+  // Refi overrides — read before taxService call (passed into TaxContext)
   const refiRawPyr = (assumptionsRow?.per_year_overrides ?? {}) as Record<string, unknown>;
   const refiEnabledRaw = (refiRawPyr['debt:senior:refiEnabled'] as Record<string, unknown> | null)?.value;
   const refiEnabled = typeof refiEnabledRaw === 'number' ? refiEnabledRaw !== 0 : !!refiEnabledRaw;
@@ -2193,19 +2134,43 @@ export async function getDealFinancials(
   const refiTriggerYear = typeof refiTriggerYearRaw === 'number' ? refiTriggerYearRaw : 3;
   const refiNewLoanTypeRaw = (refiRawPyr['debt:senior:refiNewLoanType'] as Record<string, unknown> | null)?.value;
   const refiNewLoanType = refiNewLoanTypeRaw != null ? String(refiNewLoanTypeRaw) : null;
-  // For FL mortgage refi: doc stamp $0.35/$100 = 0.0035; intangible tax 0.2% on new note
-  const refiLoanAmount = loanAmount;
-  const refiDocStampAmount = refiEnabled && refiLoanAmount != null ? Math.round(refiLoanAmount * 0.0035) : null;
-  const refiIntangibleTaxAmount = refiEnabled && refiLoanAmount != null ? Math.round(refiLoanAmount * 0.002) : null;
-  const refiTotalTax = refiEnabled && (refiDocStampAmount != null || refiIntangibleTaxAmount != null)
-    ? ((refiDocStampAmount ?? 0) + (refiIntangibleTaxAmount ?? 0)) : null;
 
+  // Build tax context and invoke jurisdiction-agnostic tax service
+  const taxCtx: TaxContext = {
+    state: (deal.state_code ?? '').toUpperCase().trim(),
+    county: null,      // not in deals table; FL Miami-Dade resolved via city within fl.ruleset
+    city: deal.city ?? null,
+    purchasePrice,
+    loanAmount,
+    assessedValueOverride: taxAssessedValueOvr,
+    millageRateOverride: taxMillageRateOvr,
+    countyOverride: taxCountyOvr,
+    units: totalUnits,
+    t12AnnualTax,
+    holdYears,
+    isRefi: refiEnabled,
+    refiEnabled,
+    refiTriggerYear,
+    refiNewLoanType,
+  };
+  const taxForecast = taxService.forecast(taxCtx);
+
+  // TPP (Tangible Personal Property) estimates — generic per-unit, not state-specific
+  const rrLv = lv(year1Seed, 'replacement_reserves') as Record<string, unknown> | null;
+  const rrBroker = layerN(rrLv, 'broker') ?? layerN(rrLv, 't12');
+  const tppBroker: number | null = rrBroker != null ? Math.round(rrBroker * 0.5) : (totalUnits > 0 ? totalUnits * 150 : null);
+  const tppPlatform: number | null = totalUnits > 0 ? totalUnits * 200 : null;
+
+  // Income tax / depreciation — federal-level, not state-specific
+  const LAND_PCT = 0.20;
+  const depreciableBase = purchasePrice != null ? Math.round(purchasePrice * (1 - LAND_PCT)) : null;
+  const annualDepreciation = depreciableBase != null ? Math.round(depreciableBase / 27.5) : null;
+  const currentYear = new Date().getFullYear();
+  const bonusRate = currentYear >= 2027 ? 0.20 : 0.40;  // 2026=40%, 2027=20%
+
+  // Assemble taxes object — shape preserved for backward compatibility
   const taxes = {
-    reTax: {
-      t12AssessedValue, t12MillageRate: millageRate, t12AnnualTax,
-      platformAssessedValue, platformAnnualTax, isMiamiDade: resolvedIsMiamiDade,
-      sohCapPct: FL_SOH_CAP, perYear: reTaxPerYear, deltaVsT12Pct,
-    },
+    reTax: taxForecast.reTax,
     tpp: { broker: tppBroker, platform: tppPlatform },
     incomeTax: {
       purchasePrice, landValuePct: LAND_PCT, depreciableBase,
@@ -2215,19 +2180,8 @@ export async function getDealFinancials(
       marginalTaxRate: 0.37,
     },
     transferTax: {
-      purchasePrice, isMiamiDade: resolvedIsMiamiDade,
-      miamiDadeRatePct: 0.0105, statewideFlatRatePct: 0.0070,
-      appliedRatePct: docStampRate, docStampAmount, intangibleTaxAmount,
-      loanAmount, totalTransferTax,
-      refi: {
-        enabled: refiEnabled,
-        triggerYear: refiTriggerYear,
-        newLoanType: refiNewLoanType,
-        refiLoanAmount: refiEnabled ? refiLoanAmount : null,
-        refiDocStampAmount,
-        refiIntangibleTaxAmount,
-        refiTotalTax,
-      },
+      purchasePrice,
+      ...taxForecast.transferTax,
     },
     userOverrides: {
       taxAssessedValue: taxAssessedValueOvr,
@@ -2418,7 +2372,7 @@ export async function getDealFinancials(
     ? suClosingCostsOvr
     : suPurchasePrice > 0 ? Math.round(suPurchasePrice * 0.02) : 0;
 
-  const suTransferTax = totalTransferTax ?? 0;
+  const suTransferTax = taxForecast.transferTax.totalTransferTax ?? 0;
   const suOrigFee = suSeniorLoan * (capitalStackWithOverrides.originationFeePct ?? 0.01);
 
   // Lender reserves — use debt overrides or standard industry defaults
