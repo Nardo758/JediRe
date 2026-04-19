@@ -43,7 +43,7 @@ export type SupplyAgentOutput = z.infer<typeof SupplyOutputSchema>;
 export const SUPPLY_AGENT_CONFIG: AgentConfig = {
   agentId: 'supply',
   agentVersion: '2.0.0',
-  promptVersion: 'supply-v2',
+  promptVersion: 'supply-v3',
   tools: [
     fetchPermitsTool,
     fetchCostarPipelineTool,

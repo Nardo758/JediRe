@@ -18,22 +18,27 @@ For each deal, execute this supply analysis sequence:
 1. **Permit pipeline** — use fetch_permits to retrieve current permit activity in the submarket
 2. **CoStar pipeline** — use fetch_costar_pipeline to retrieve units under construction, planned deliveries over 12/24 months, and pipeline as % of stock
 3. **Historical deliveries** — use fetch_submarket_deliveries to retrieve 5-year delivery and absorption history
-4. **Persist** — for each supply metric, call write_supply_analysis with the field_path and value
+4. **Persist** — call write_supply_analysis once with all computed fields as a structured object
 
-## Field paths to write
-Use these dot-separated paths when calling write_supply_analysis:
-- supply.under_construction_units
-- supply.deliveries_12mo
-- supply.deliveries_24mo
-- supply.absorption_rate
-- supply.months_of_supply
-- supply.pipeline_as_pct_of_stock
-- supply.demand_supply_ratio
-- supply.supply_risk_level
+## Fields to pass to write_supply_analysis
+Call write_supply_analysis with a single object containing any or all of:
+- pipeline_units: Total units currently in the construction pipeline (integer)
+- delivery_risk: Overall delivery risk level — one of "low", "medium", or "high"
+- yoy_pct: Year-over-year % change in the supply pipeline (e.g. 4.2 for 4.2%)
+- peak_delivery_year: Calendar year with the highest projected deliveries (integer, e.g. 2026)
+- top_developments: Array of notable pipeline projects, each with name, units, and est_delivery
+- summary: 2-4 sentence supply risk summary
 
-## Supply risk classification
+## Delivery risk classification (for write_supply_analysis)
 
-Classify supply_risk_level as:
+Set delivery_risk when calling write_supply_analysis:
+- **low**: Pipeline < 3% of stock OR demand_supply_ratio > 1.2
+- **medium**: Pipeline 3-8% of stock OR demand_supply_ratio 0.7-1.2
+- **high**: Pipeline > 8% of stock OR demand_supply_ratio < 0.7
+
+## Supply risk level (for final JSON output only)
+
+The final JSON output uses supply_risk_level with four levels:
 - **low**: Pipeline < 3% of stock OR demand_supply_ratio > 1.2
 - **moderate**: Pipeline 3-6% of stock OR demand_supply_ratio 0.8-1.2
 - **high**: Pipeline 6-10% of stock OR demand_supply_ratio 0.5-0.8
@@ -54,7 +59,7 @@ After persisting all data, respond with a JSON object matching this schema:
   "supply_risk_level": "moderate",
   "summary": "2-4 sentence supply risk summary",
   "confidence_score": 0.0-1.0,
-  "fields_written": ["supply.under_construction_units", ...],
+  "fields_written": ["pipeline_units", "delivery_risk", "yoy_pct", "summary"],
   "completed_at": "<ISO timestamp>"
 }
 
@@ -71,14 +76,14 @@ export async function seedSupplyPrompt(): Promise<void> {
   try {
     await query(
       `UPDATE prompt_versions SET active = false
-       WHERE agent_id = 'supply' AND active = true AND id != 'supply-v2'`
+       WHERE agent_id = 'supply' AND active = true AND id != 'supply-v3'`
     );
 
     await query(
       `INSERT INTO prompt_versions
          (id, agent_id, version, system_prompt, output_schema, active, created_at, created_by)
        VALUES
-         ('supply-v2', 'supply', '2.0.0', $1, $2, true, NOW(), 'system')
+         ('supply-v3', 'supply', '3.0.0', $1, $2, true, NOW(), 'system')
        ON CONFLICT (id) DO UPDATE
          SET system_prompt = EXCLUDED.system_prompt,
              output_schema = EXCLUDED.output_schema,
@@ -86,7 +91,7 @@ export async function seedSupplyPrompt(): Promise<void> {
       [SUPPLY_SYSTEM_PROMPT, JSON.stringify(OUTPUT_SCHEMA_JSON)]
     );
 
-    logger.info('Supply Agent prompt seeded: supply-v2 (active)');
+    logger.info('Supply Agent prompt seeded: supply-v3 (active)');
   } catch (err) {
     logger.error('Failed to seed supply agent prompt', { err });
   }

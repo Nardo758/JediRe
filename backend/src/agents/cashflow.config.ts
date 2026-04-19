@@ -46,7 +46,7 @@ export type CashflowAgentOutput = z.infer<typeof CashflowOutputSchema>;
 export const CASHFLOW_AGENT_CONFIG: AgentConfig = {
   agentId: 'cashflow',
   agentVersion: '2.0.0',
-  promptVersion: 'cashflow-v2',
+  promptVersion: 'cashflow-v3',
   tools: [
     fetchT12Tool,
     fetchRentRollTool,
