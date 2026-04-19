@@ -3,7 +3,7 @@ import {
   Activity, Search, Filter, ChevronDown, ChevronRight, MapPin,
   FileText, Users, TrendingUp, Edit, CheckCircle, Bot,
   RefreshCw, AlertTriangle, Clock, Zap, DollarSign, XCircle,
-  Copy, Check
+  Copy, Check, ExternalLink
 } from 'lucide-react';
 import { Deal } from '@/types';
 
@@ -172,6 +172,55 @@ function formatDuration(ms: number | null): string {
   return `${Math.floor(secs / 60)}m ${secs % 60}s`;
 }
 
+// ── Run detail link ───────────────────────────────────────────────
+
+/**
+ * Fetches full run detail from GET /api/v1/agents/runs/:runId and renders
+ * a compact summary. Linked from AgentRunCard via the "View run detail" button.
+ */
+function RunDetailView({ runId }: { runId: string }) {
+  const [detail, setDetail] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    fetch(`/api/v1/agents/runs/${runId}`)
+      .then(r => r.json())
+      .then(data => setDetail(data.run ?? data))
+      .catch(() => setError('Could not load run detail'))
+      .finally(() => setLoading(false));
+  }, [runId]);
+
+  if (loading) return (
+    <div className="py-2 text-xs text-gray-500 flex items-center gap-1">
+      <RefreshCw className="w-3 h-3 animate-spin" /> Loading...
+    </div>
+  );
+  if (error) return <div className="py-2 text-xs text-red-500">{error}</div>;
+  if (!detail) return null;
+
+  return (
+    <div className="mt-2 p-2 bg-gray-50 rounded border border-gray-200 text-xs space-y-1">
+      <div className="flex gap-2 text-gray-600">
+        <span className="font-medium">Agent:</span>
+        <span>{detail.agent_id} v{detail.agent_version}</span>
+      </div>
+      {detail.output?.summary && (
+        <div className="text-gray-700 italic">{detail.output.summary}</div>
+      )}
+      {detail.output?.fields_written?.length > 0 && (
+        <div className="flex gap-1 flex-wrap">
+          {(detail.output.fields_written as string[]).map((f: string) => (
+            <span key={f} className="px-1.5 py-0.5 bg-violet-100 text-violet-700 rounded font-mono">
+              {f}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Run detail panel ──────────────────────────────────────────────
 
 function RunDetailPanel({ runId }: { runId: string }) {
@@ -251,6 +300,7 @@ function CopyId({ id }: { id: string }) {
 
 function AgentRunCard({ run, isLast }: { run: AgentRunItem; isLast: boolean }) {
   const [expanded, setExpanded] = useState(false);
+  const [showDetail, setShowDetail] = useState(false);
 
   const cfg = AGENT_STATUS_CONFIG[run.status] ?? AGENT_STATUS_CONFIG.failed;
   const Icon = cfg.icon;
@@ -311,8 +361,8 @@ function AgentRunCard({ run, isLast }: { run: AgentRunItem; isLast: boolean }) {
             </div>
           )}
 
-          {/* Expandable steps */}
-          <div className="mt-2">
+          {/* Expandable controls */}
+          <div className="mt-2 flex items-center gap-3 flex-wrap">
             <button
               onClick={() => setExpanded(e => !e)}
               className="inline-flex items-center gap-1 text-xs text-violet-600 hover:text-violet-800 transition-colors"
@@ -323,8 +373,18 @@ function AgentRunCard({ run, isLast }: { run: AgentRunItem; isLast: boolean }) {
               {expanded ? 'Hide steps' : 'View steps'}
             </button>
 
-            {expanded && <RunDetailPanel runId={run.id} />}
+            <button
+              onClick={() => setShowDetail(d => !d)}
+              className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 transition-colors"
+              title={`/api/v1/agents/runs/${run.id}`}
+            >
+              <ExternalLink className="w-3 h-3" />
+              {showDetail ? 'Hide detail' : 'Run detail'}
+            </button>
           </div>
+
+          {showDetail && <RunDetailView runId={run.id} />}
+          {expanded && <RunDetailPanel runId={run.id} />}
         </div>
       </div>
     </div>

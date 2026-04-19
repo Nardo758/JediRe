@@ -273,10 +273,12 @@ export class AICoordinator {
       return this.textResult(session, 'Please provide a property address to analyze.');
     }
 
-    // Step 2: Research Agent — assemble DealContext
+    // Step 2: Research Agent — assemble DealContext via AgentRuntime adapter.
+    // Provide dealId from session so the adapter uses the Phase 3 runtime path.
     const dealContext = await this.researchAgent.execute({
       address: intent.address,
       userId: session.userId,
+      dealId: session.dealId,
     });
 
     // Step 3: Run 3 analytical agents in parallel
