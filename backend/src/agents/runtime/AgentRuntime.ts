@@ -99,6 +99,122 @@ export class AgentRuntime {
   ) {}
 
   /**
+   * Start an agent run asynchronously.
+   * Creates the DB row immediately and returns the run ID, then fires the
+   * rest of the execution in the background. Use this when the caller needs
+   * a deterministic run ID without waiting for completion (e.g. manual trigger
+   * HTTP endpoints that need to return a 202 immediately).
+   *
+   * @returns `{ runId, done }` — runId is ready to use; `done` resolves on completion.
+   */
+  async startAsync(
+    input: unknown,
+    ctx: RunContext
+  ): Promise<{ runId: string; done: Promise<Record<string, unknown>> }> {
+    // Pre-flight and row creation happen synchronously before we detach.
+    // We create the row here by extracting the first two steps of run().
+    await this.budget.check(ctx, this.config.budgetCaps);
+    const runId = uuidv4();
+    await query(
+      `INSERT INTO agent_runs
+         (id, agent_id, agent_version, prompt_version,
+          deal_id, user_id, triggered_by, trigger_context,
+          status, input, tokens_in, tokens_out, cost_usd, started_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'running',$9,0,0,0,NOW())`,
+      [
+        runId,
+        this.config.agentId,
+        this.config.agentVersion,
+        this.config.promptVersion,
+        ctx.dealId ?? null,
+        ctx.userId ?? null,
+        ctx.triggeredBy,
+        ctx.triggerContext ? JSON.stringify(ctx.triggerContext) : null,
+        JSON.stringify(input),
+      ]
+    );
+    // Enrich context so tools see the correct runId / agentId.
+    const ctxWithRun: RunContext = { ...ctx, correlationId: runId, agentId: this.config.agentId };
+    // Fire the rest of the loop in the background using the pre-created runId.
+    const done = this._continueRun(runId, input, ctxWithRun);
+    return { runId, done };
+  }
+
+  /**
+   * Continue execution for a pre-created run (used by startAsync).
+   * The caller is responsible for having already inserted the agent_runs row.
+   */
+  private async _continueRun(
+    runId: string,
+    input: unknown,
+    ctxWithRun: RunContext
+  ): Promise<Record<string, unknown>> {
+    const startMs = Date.now();
+    const accrued = { tokensIn: 0, tokensOut: 0, cost: 0 };
+    const run: AgentRun = {
+      id: runId,
+      agent_id: this.config.agentId,
+      agent_version: this.config.agentVersion,
+      prompt_version: this.config.promptVersion,
+      deal_id: ctxWithRun.dealId,
+      user_id: ctxWithRun.userId,
+      triggered_by: ctxWithRun.triggeredBy,
+      trigger_context: ctxWithRun.triggerContext,
+      status: 'running',
+      input: input as Record<string, unknown>,
+      tokens_in: 0,
+      tokens_out: 0,
+      cost_usd: 0,
+      started_at: new Date().toISOString(),
+    };
+
+    try {
+      const promptRow = await query(
+        `SELECT system_prompt FROM prompt_versions
+         WHERE agent_id = $1 AND active = true
+         ORDER BY created_at DESC LIMIT 1`,
+        [this.config.agentId]
+      );
+      const systemPrompt: string =
+        promptRow.rows[0]?.system_prompt ??
+        `You are the ${this.config.agentId} agent for JEDI RE. ` +
+        `Analyze real estate data and respond with structured JSON.`;
+
+      const result = await this.loop({ run, systemPrompt, userMessage: JSON.stringify(input), ctx: ctxWithRun, accrued });
+      const validated = this.config.outputSchema.parse(result.content);
+
+      await query(
+        `UPDATE agent_runs
+         SET status = 'succeeded', output = $1,
+             tokens_in = $2, tokens_out = $3, cost_usd = $4,
+             completed_at = NOW(), duration_ms = $5
+         WHERE id = $6`,
+        [JSON.stringify(validated), result.totalTokensIn, result.totalTokensOut, result.totalCost, Date.now() - startMs, runId]
+      );
+
+      logger.info('AgentRuntime: run succeeded', {
+        runId, agentId: this.config.agentId,
+        tokens: result.totalTokensIn + result.totalTokensOut,
+        costUsd: result.totalCost,
+      });
+      return validated as Record<string, unknown>;
+
+    } catch (err) {
+      const status = err instanceof BudgetExceededError ? 'budget_exceeded' : 'failed';
+      const message = err instanceof Error ? err.message : String(err);
+      await query(
+        `UPDATE agent_runs
+         SET status = $1, error = $2,
+             tokens_in = $3, tokens_out = $4, cost_usd = $5,
+             completed_at = NOW(), duration_ms = $6
+         WHERE id = $7`,
+        [status, message, accrued.tokensIn, accrued.tokensOut, accrued.cost, Date.now() - startMs, runId]
+      ).catch(dbErr => logger.error('AgentRuntime: failed to mark run failed', { dbErr }));
+      throw err;
+    }
+  }
+
+  /**
    * Execute a full agent run.
    * Handles DB bookkeeping, loop, schema validation, error capture.
    */

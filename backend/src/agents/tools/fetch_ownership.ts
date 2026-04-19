@@ -2,8 +2,12 @@
  * Tool: fetch_ownership
  *
  * Fetches ownership information for a property/parcel.
- * Routes through GET /properties/:propertyId (ownership fields) via the platform API.
- * Falls back to address lookup if propertyId is unavailable.
+ * Resolution order:
+ *   1. Uses input.property_id directly if provided.
+ *   2. Falls back to ctx.dealId → looks up deal_properties to find property_id.
+ *   3. Calls GET /properties/:propertyId for ownership fields via platform API.
+ * Note: address-based lookup is not implemented; a property_id or deal_id with
+ * an associated property is required for a successful fetch.
  *
  * Required capability: read:parcels
  */

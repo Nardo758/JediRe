@@ -179,22 +179,13 @@ router.post('/:agentId/run', requireAuthOrApiKey, async (req: AuthenticatedReque
       ...(dealContext.property_id && { property_id: dealContext.property_id }),
     };
 
-    // Fire run asynchronously — don't block the HTTP response.
-    // On completion, write an audit_log entry so the unified feed surfaces this run.
-    void researchRuntime.run(runInput, ctx)
+    // startAsync creates the agent_runs row and returns the runId before the
+    // LLM loop begins — eliminates the setTimeout polling race condition.
+    const { runId, done } = await researchRuntime.startAsync(runInput, ctx);
+
+    // Fire completion handler in background (non-blocking)
+    void done
       .then(async (output) => {
-        // Recover run ID from DB (stamped by request_id in triggerContext)
-        const runRow = await query(
-          `SELECT id FROM agent_runs
-           WHERE agent_id = 'research' AND deal_id = $1
-             AND trigger_context->>'request_id' = $2
-           LIMIT 1`,
-          [deal_id, requestId]
-        ).catch(() => null);
-
-        const runId = runRow?.rows[0]?.id;
-        if (!runId) return;
-
         const typed = output as { confidence_score?: number; fields_written?: string[]; summary?: string };
         // Idempotent audit_log write — same WHERE NOT EXISTS guard as Inngest function
         await query(
@@ -219,31 +210,11 @@ router.post('/:agentId/run', requireAuthOrApiKey, async (req: AuthenticatedReque
         // Errors are persisted to agent_runs by AgentRuntime
       });
 
-    // Give the INSERT time to land, then return the run reference
-    await new Promise(r => setTimeout(r, 200));
-
-    const runRow = await query(
-      `SELECT id, status, started_at FROM agent_runs
-       WHERE agent_id = 'research'
-         AND deal_id = $1
-         AND trigger_context->>'request_id' = $2
-       ORDER BY started_at DESC LIMIT 1`,
-      [deal_id, requestId]
-    );
-
-    // Fallback: newest run for this deal
-    const row = runRow.rows[0] ?? (await query(
-      `SELECT id, status, started_at FROM agent_runs
-       WHERE agent_id = 'research' AND deal_id = $1
-       ORDER BY started_at DESC LIMIT 1`,
-      [deal_id]
-    )).rows[0];
-
     res.status(202).json({
       success: true,
       message: 'Research run started',
-      run_id: row?.id ?? null,
-      display_status: normalizeStatus(row?.status ?? 'running'),
+      run_id: runId,
+      display_status: 'running',
       deal_id,
     });
   } catch (error) {
