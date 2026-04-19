@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { CheckCircle2, AlertTriangle, Pencil, RotateCcw, RefreshCw, Loader2, XCircle } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Pencil, RotateCcw, RefreshCw, Loader2, XCircle, ChevronDown, ChevronRight, ExternalLink } from 'lucide-react';
 import { BT } from '../../../components/deal/bloomberg-ui';
 import { apiClient } from '../../../services/api.client';
 import type { FinancialEngineTabProps } from './types';
@@ -165,6 +165,21 @@ function SourceBadge({ source }: { source: string | null }) {
   );
 }
 
+// ─── Ancillary income breakdown (mirrors F13 UnitMixTab DEFAULT_ANCILLARY) ────
+interface AncillaryLine { key: string; label: string; amtPerUnit: number; adoptionPct: number; note: string }
+const DEFAULT_ANCILLARY: AncillaryLine[] = [
+  { key: 'pet',      label: 'Pet Rent',                  amtPerUnit: 27.50,  adoptionPct: 0.30,  note: '30% of units' },
+  { key: 'garage',   label: 'Garage / Parking',          amtPerUnit: 142.50, adoptionPct: 0.111, note: '~1 in 9 units' },
+  { key: 'storage',  label: 'Storage',                   amtPerUnit: 50.00,  adoptionPct: 0.083, note: '~1 in 12 units' },
+  { key: 'rubs',     label: 'RUBS / Utilities',          amtPerUnit: 65.00,  adoptionPct: 1.00,  note: 'All units' },
+  { key: 'revshare', label: 'Revenue Sharing (Internet)',amtPerUnit: 85.00,  adoptionPct: 0.95,  note: '95% occupied' },
+  { key: 'valet',    label: 'Valet Trash',               amtPerUnit: 30.00,  adoptionPct: 0.95,  note: '95% occupied' },
+  { key: 'admin',    label: 'Admin / App Fees',          amtPerUnit: 27.00,  adoptionPct: 0.65,  note: '65% of units' },
+  { key: 'late',     label: 'Late / NSF / Termination',  amtPerUnit: 5.00,   adoptionPct: 1.00,  note: 'All units' },
+  { key: 'damages',  label: 'Damages',                   amtPerUnit: 2.44,   adoptionPct: 1.00,  note: 'All units' },
+  { key: 'other',    label: 'Other Income',              amtPerUnit: 7.00,   adoptionPct: 1.00,  note: 'All units' },
+];
+
 // ─── Correction state ─────────────────────────────────────────────────────────
 interface CorrectionState {
   [field: string]: { editing: boolean; original: number | null; draft: string; savedAt?: string };
@@ -183,6 +198,7 @@ export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange }: Financia
   const [reparsing, setReparsing] = useState(false);
   const [corrections, setCorrections] = useState<CorrectionState>({});
   const [unitMixEdits, setUnitMixEdits] = useState<UnitMixEdit>({});
+  const [showAncillary, setShowAncillary] = useState(false);
 
   const load = useCallback(async () => {
     if (!dealId) return;
@@ -460,11 +476,76 @@ export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange }: Financia
             {/* ── REVENUE ── */}
             <SectionHeader label="Revenue" accentColor="#06b6d4" bg="#051a24" />
             {revRows.map((r, i) => (
-              <DataRow key={r.field} row={r} isEven={i % 2 === 0} shade="blue"
-                corrections={corrections} setCorrections={setCorrections}
-                totalUnits={totalUnits} egiResolved={egiResolved}
-                onSaveCorrection={handleSaveCorrection}
-                onResetCorrection={handleResetCorrection} />
+              <React.Fragment key={r.field}>
+                <DataRow row={r} isEven={i % 2 === 0} shade="blue"
+                  corrections={corrections} setCorrections={setCorrections}
+                  totalUnits={totalUnits} egiResolved={egiResolved}
+                  onSaveCorrection={handleSaveCorrection}
+                  onResetCorrection={handleResetCorrection}
+                  onToggleAncillary={r.field === 'other_income_per_unit' ? () => setShowAncillary(v => !v) : undefined}
+                  ancillaryOpen={r.field === 'other_income_per_unit' ? showAncillary : undefined}
+                />
+                {r.field === 'other_income_per_unit' && showAncillary && (
+                  <tr>
+                    <td colSpan={9} style={{ background: '#050d12', padding: 0, borderBottom: '1px solid #0e2030' }}>
+                      <div style={{ padding: '10px 16px 14px 24px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                          <span style={{ fontFamily: LABEL, fontSize: 9, fontWeight: 700, color: '#06b6d4', letterSpacing: '0.08em' }}>
+                            ANCILLARY INCOME BREAKDOWN · 10 LINE ITEMS
+                          </span>
+                          <a
+                            href={`/deals/${dealId}/detail?tab=unit-mix`}
+                            style={{ display: 'flex', alignItems: 'center', gap: 4, fontFamily: LABEL, fontSize: 8, color: '#475569', textDecoration: 'none' }}
+                          >
+                            <ExternalLink size={9} />
+                            Edit in F13 Unit Mix
+                          </a>
+                        </div>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 9 }}>
+                          <thead>
+                            <tr style={{ background: '#0a1520' }}>
+                              {['INCOME TYPE','$/UNIT/MO','ADOPTION','TOTAL/MO','TOTAL/YR','NOTE'].map(h => (
+                                <th key={h} style={{ padding: '3px 8px', textAlign: h === 'INCOME TYPE' || h === 'NOTE' ? 'left' : 'right', color: '#475569', fontWeight: 600, letterSpacing: '0.05em', borderBottom: '1px solid #1e2d3d' }}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {DEFAULT_ANCILLARY.map((line, li) => {
+                              const mo = line.amtPerUnit * line.adoptionPct * totalUnits;
+                              const yr = mo * 12;
+                              return (
+                                <tr key={line.key} style={{ background: li % 2 === 0 ? '#060e16' : '#080f18' }}>
+                                  <td style={{ padding: '3px 8px', color: '#94a3b8' }}>{line.label}</td>
+                                  <td style={{ padding: '3px 8px', textAlign: 'right', color: '#e2e8f0' }}>${line.amtPerUnit.toFixed(2)}</td>
+                                  <td style={{ padding: '3px 8px', textAlign: 'right', color: '#64748b' }}>{(line.adoptionPct * 100).toFixed(0)}%</td>
+                                  <td style={{ padding: '3px 8px', textAlign: 'right', color: '#e2e8f0' }}>{fmt$(mo)}</td>
+                                  <td style={{ padding: '3px 8px', textAlign: 'right', color: '#f59e0b', fontWeight: 600 }}>{fmt$(yr)}</td>
+                                  <td style={{ padding: '3px 8px', color: '#334155', fontSize: 8 }}>{line.note}</td>
+                                </tr>
+                              );
+                            })}
+                            <tr style={{ background: '#0a1a26', borderTop: '1px solid #1e3a5f' }}>
+                              <td style={{ padding: '4px 8px', color: '#06b6d4', fontWeight: 700, fontSize: 9 }}>TOTAL ANCILLARY</td>
+                              <td />
+                              <td />
+                              <td style={{ padding: '4px 8px', textAlign: 'right', color: '#06b6d4', fontWeight: 700 }}>
+                                {fmt$(DEFAULT_ANCILLARY.reduce((s, l) => s + l.amtPerUnit * l.adoptionPct * totalUnits, 0))}
+                              </td>
+                              <td style={{ padding: '4px 8px', textAlign: 'right', color: '#22c55e', fontWeight: 700 }}>
+                                {fmt$(DEFAULT_ANCILLARY.reduce((s, l) => s + l.amtPerUnit * l.adoptionPct * totalUnits, 0) * 12)}
+                              </td>
+                              <td />
+                            </tr>
+                          </tbody>
+                        </table>
+                        <div style={{ marginTop: 6, fontFamily: LABEL, fontSize: 8, color: '#334155' }}>
+                          * Defaults from F13 Unit Mix. Navigate to F13 to edit per-unit amounts and adoption rates.
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
             ))}
 
             {/* ── EGI SUBTOTAL ── */}
@@ -806,7 +887,7 @@ function SubtotalRow({ label, row, color, textColor, egiResolved }: {
   );
 }
 
-function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, egiResolved, onSaveCorrection, onResetCorrection }: {
+function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, egiResolved, onSaveCorrection, onResetCorrection, onToggleAncillary, ancillaryOpen }: {
   row: OperatingStatementRow;
   isEven: boolean;
   shade?: 'blue' | 'warm' | 'purple';
@@ -816,6 +897,8 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
   egiResolved: number | null;
   onSaveCorrection: (field: string, value: number | null, original: number | null) => Promise<void>;
   onResetCorrection: (field: string) => Promise<void>;
+  onToggleAncillary?: () => void;
+  ancillaryOpen?: boolean;
 }) {
   const isSubtotal = SUBTOTALS.has(row.field);
   const isDeviant = row.benchmarkPosition === 'above' || row.benchmarkPosition === 'below';
@@ -867,7 +950,18 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
         position: 'sticky', left: 0, background: rowBg,
         paddingLeft: isSubtotal ? 8 : 16,
       }}>
-        {row.label}
+        {onToggleAncillary ? (
+          <button
+            onClick={onToggleAncillary}
+            style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#94a3b8', fontFamily: 'Inter, sans-serif', fontSize: 9 }}
+            title="Expand ancillary income breakdown"
+          >
+            {ancillaryOpen
+              ? <ChevronDown size={10} color="#06b6d4" />
+              : <ChevronRight size={10} color="#475569" />}
+            {row.label}
+          </button>
+        ) : row.label}
       </td>
 
       {/* BROKER */}
