@@ -28,13 +28,72 @@ import {
 
 // ── Anthropic tool schema conversion ─────────────────────────────
 
+type JsonSchemaObj = {
+  type: string;
+  description?: string;
+  properties?: Record<string, unknown>;
+  required?: string[];
+};
+
+/**
+ * Convert a Zod schema to a minimal JSON Schema object for Anthropic tool_use.
+ * Supports ZodObject shapes; all other schemas fall back to a permissive object schema.
+ */
+function zodToJsonSchema(schema: import('zod').ZodSchema): JsonSchemaObj {
+  const def = (schema as any)._def;
+  if (!def) return { type: 'object' };
+
+  if (def.typeName === 'ZodObject') {
+    const shape: Record<string, import('zod').ZodSchema> = def.shape();
+    const properties: Record<string, unknown> = {};
+    const required: string[] = [];
+
+    for (const [key, fieldSchema] of Object.entries(shape)) {
+      const fieldDef = (fieldSchema as any)._def;
+      const isOptional =
+        fieldDef?.typeName === 'ZodOptional' ||
+        fieldDef?.typeName === 'ZodDefault';
+
+      const innerDef = isOptional ? (fieldDef?.innerType?._def ?? fieldDef?.innerType) : fieldDef;
+      const typeName: string = innerDef?.typeName ?? 'ZodString';
+
+      let type: string;
+      switch (typeName) {
+        case 'ZodNumber': type = 'number'; break;
+        case 'ZodBoolean': type = 'boolean'; break;
+        case 'ZodArray': type = 'array'; break;
+        case 'ZodRecord':
+        case 'ZodObject': type = 'object'; break;
+        default: type = 'string';
+      }
+
+      const description: string | undefined =
+        (fieldSchema as any).description ?? undefined;
+
+      properties[key] = description ? { type, description } : { type };
+
+      if (!isOptional) required.push(key);
+    }
+
+    return {
+      type: 'object',
+      properties,
+      ...(required.length > 0 ? { required } : {}),
+    };
+  }
+
+  return { type: 'object' };
+}
+
 function toAnthropicToolSchema(tool: AgentConfig['tools'][number]): Anthropic.Tool {
+  const inputSchema = zodToJsonSchema(tool.inputSchema);
   return {
     name: tool.name,
     description: tool.description,
     input_schema: {
       type: 'object' as const,
-      description: tool.description,
+      ...(inputSchema.properties ? { properties: inputSchema.properties } : {}),
+      ...(inputSchema.required ? { required: inputSchema.required } : {}),
     },
   };
 }
@@ -114,7 +173,9 @@ export class AgentRuntime {
         `Analyze real estate data and respond with structured JSON.`;
 
       // Step 4: Tool-calling loop
-      const result = await this.loop({ run, systemPrompt, userMessage: JSON.stringify(input), ctx });
+      // Stamp correlationId with run.id so all tools can attribute to this run
+      const ctxWithRun: RunContext = { ...ctx, correlationId: run.id };
+      const result = await this.loop({ run, systemPrompt, userMessage: JSON.stringify(input), ctx: ctxWithRun });
 
       // Step 5: Validate output
       const validated = this.config.outputSchema.parse(result.content);

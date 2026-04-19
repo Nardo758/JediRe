@@ -2,13 +2,14 @@
  * MeteringAdapter — Wraps @anthropic-ai/sdk with attribution metadata
  * and three-bucket cost routing.
  *
- * Three-bucket charging rule:
- *  - triggered_by: 'user'  → pre-flight credit reservation; post-call debit reconciliation
- *  - triggered_by: 'event' → platform absorbs (tier benefit, not metered to user)
- *  - triggered_by: 'cron'  → platform absorbs (tier benefit, not metered to user)
+ * Three-bucket charging rule (deterministic, synchronous before returning):
+ *  - triggered_by: 'user'  → pre-flight reservation; post-call debit reconciliation
+ *                            + Stripe billing meter events
+ *  - triggered_by: 'event' → platform absorbs; logged to ai_usage_log only
+ *  - triggered_by: 'cron'  → platform absorbs; logged to ai_usage_log only
  *
- * Integrates with the existing creditService (reserveCredits / debitActualCost)
- * and reports token usage to the ai_usage_log table matching JediAIService patterns.
+ * Mirrors the Stripe metering pattern in JediAIService.reportStripeUsage():
+ *  jedi_input_tokens + jedi_output_tokens meter events per call.
  *
  * Tier gating for event/cron is enforced at the trigger level, not here.
  */
@@ -30,8 +31,7 @@ const COST_PER_MTK: Record<string, { input: number; output: number }> = {
 };
 
 /**
- * Estimate cost in USD for a given model and token counts.
- * Used for pre-flight reservation — actual cost computed post-call.
+ * Calculate cost in USD for a given model and token counts.
  */
 export function estimateCost(
   model: string,
@@ -75,19 +75,14 @@ export class MeteringAdapter {
   /**
    * Create a metered Claude message.
    *
-   * For user-triggered runs:
-   *   1. Pre-flight: reserve estimated credits (fail-fast if insufficient)
-   *   2. Call Anthropic API
-   *   3. Post-call: reconcile actual cost vs reservation
-   *
-   * For event/cron-triggered runs:
-   *   - No reservation; platform absorbs cost via platformExpense logging
+   * Settlement is synchronous (awaited) before returning — accounting is
+   * guaranteed complete regardless of caller error handling.
    */
   async createMessage(params: MessageParams): Promise<MeteredMessage> {
     const { metadata, ...apiParams } = params;
     const estimate = preflightEstimate(apiParams.model);
 
-    // Pre-flight credit reservation (user-triggered only)
+    // Pre-flight credit reservation (user-triggered only — fail-fast)
     if (metadata.triggered_by === 'user' && metadata.user_id) {
       await creditService.reserveCredits(metadata.user_id, estimate);
     }
@@ -106,14 +101,8 @@ export class MeteringAdapter {
       response.usage.output_tokens
     );
 
-    // Post-call: reconcile reservation vs actual and log usage
-    Promise.resolve()
-      .then(() =>
-        this.postCallSettle(metadata, response, actualCost, estimate, apiParams.model)
-      )
-      .catch(err =>
-        logger.error('MeteringAdapter: post-call settlement failed', { err })
-      );
+    // Synchronous post-call settlement — guaranteed before returning to caller
+    await this.settle(metadata, response, actualCost, estimate, apiParams.model);
 
     return {
       ...response,
@@ -123,15 +112,17 @@ export class MeteringAdapter {
 
   // ── Private helpers ────────────────────────────────────────────
 
-  private async postCallSettle(
+  private async settle(
     metadata: MeteringMetadata,
     response: Anthropic.Message,
     actualCost: number,
     reservedCost: number,
     model: string
   ): Promise<void> {
+    // 1. Log to internal ai_usage_log (matches JediAIService.logUsage pattern)
     await this.logUsage(metadata, response, actualCost, model);
 
+    // 2. Bucket-specific settlement
     if (metadata.triggered_by === 'user' && metadata.user_id) {
       // Reconcile reservation with actual cost
       await creditService.debitActualCost(
@@ -139,13 +130,70 @@ export class MeteringAdapter {
         reservedCost,
         actualCost
       );
+
+      // Report to Stripe billing meters (matches JediAIService.reportStripeUsage)
+      await this.reportStripeUsage(metadata, response.usage, model);
+
     } else {
-      // event / cron — platform absorbs; log for cost monitoring
-      logger.info('MeteringAdapter: platform expense', {
+      // event / cron — platform absorbs; log for cost attribution
+      logger.info('MeteringAdapter: platform expense (event/cron)', {
         trigger: metadata.triggered_by,
-        cost: actualCost,
+        costUsd: actualCost.toFixed(4),
         agentId: metadata.actor_id,
+        agentRunId: metadata.agent_run_id,
         dealId: metadata.deal_id,
+        model,
+      });
+    }
+  }
+
+  /**
+   * Report token usage to Stripe billing meters.
+   * Mirrors JediAIService.reportStripeUsage() — same meter names.
+   */
+  private async reportStripeUsage(
+    metadata: MeteringMetadata,
+    usage: { input_tokens: number; output_tokens: number },
+    _model: string
+  ): Promise<void> {
+    if (!process.env.STRIPE_SECRET_KEY || !metadata.user_id) return;
+
+    try {
+      // Resolve stripe customer id from user record
+      const userRow = await query(
+        `SELECT stripe_customer_id FROM user_credit_balances WHERE user_id = $1`,
+        [metadata.user_id]
+      );
+
+      const stripeCustomerId: string | undefined =
+        userRow.rows[0]?.stripe_customer_id;
+
+      if (!stripeCustomerId) return;
+
+      const Stripe = (await import('stripe')).default;
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+      await stripe.billing.meterEvents.create({
+        event_name: 'jedi_input_tokens',
+        payload: {
+          stripe_customer_id: stripeCustomerId,
+          value: String(usage.input_tokens),
+        },
+      });
+
+      await stripe.billing.meterEvents.create({
+        event_name: 'jedi_output_tokens',
+        payload: {
+          stripe_customer_id: stripeCustomerId,
+          value: String(usage.output_tokens),
+        },
+      });
+
+    } catch (err) {
+      // Non-fatal: Stripe reporting failures should not fail the agent run
+      logger.error('MeteringAdapter: Stripe meter event failed', {
+        userId: metadata.user_id,
+        err,
       });
     }
   }
@@ -175,7 +223,7 @@ export class MeteringAdapter {
         ]
       );
     } catch (err) {
-      logger.warn('MeteringAdapter: failed to log usage to ai_usage_log', { err });
+      logger.warn('MeteringAdapter: failed to write ai_usage_log', { err });
     }
   }
 }
