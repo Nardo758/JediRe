@@ -101,9 +101,9 @@ export class SecApiClient {
     if (!this.apiKey) return null;
     try {
       // Query latest 10-K filing via sec-api.io
-      const queryUrl = `${this.baseURL}/query`;
+      // SEC-API.io query endpoint is the base URL (no path suffix)
       const response = await axios.post(
-        queryUrl,
+        this.baseURL,
         {
           query: {
             query_string: {
