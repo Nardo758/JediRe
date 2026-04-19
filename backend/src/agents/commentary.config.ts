@@ -6,12 +6,14 @@
  * 24-hour cache is enforced via the cache_key column.
  *
  * Tools registered:
- *   (Commentary uses only the general LLM loop — no external tool calls.
- *    Data is supplied in the prompt via context fragments.)
+ *   web_search, fetch_webpage
+ *   (Commentary remains primarily a generation agent receiving pre-structured
+ *    data via the system prompt. Web search is used as a fallback only — e.g.
+ *    to verify a recent employer announcement or confirm a news item.)
  *
- * NOTE: The Commentary Agent does NOT use tool-calling — it's a pure
- * generation agent that receives pre-structured data via the system prompt
- * and outputs a complete JSON object in one turn.
+ * NOTE: Commentary uses a single-turn LLM completion for its main output.
+ * Web search tools fire only when the agent determines structured context is
+ * insufficient, per the "structured first" search policy.
  */
 
 import { z } from 'zod';
@@ -20,6 +22,10 @@ import { MeteringAdapter } from './runtime/MeteringAdapter';
 import { BudgetEnforcer } from './runtime/BudgetEnforcer';
 import { DEFAULT_BUDGET_CAPS } from './config/budget';
 import type { AgentConfig } from './runtime/types';
+
+import { webSearchTool } from './tools/web_search';
+import { fetchWebpageTool } from './tools/fetch_webpage';
+import { CitationSchema } from './research.config';
 
 // ── Output schema ─────────────────────────────────────────────────
 
@@ -50,22 +56,25 @@ export const CommentaryOutputSchema = z.object({
   summary: z.string(),
   confidence_score: z.number().min(0).max(1),
   completed_at: z.string(),
+  citations: z.array(CitationSchema).optional().default([]),
 });
 
 export type CommentaryAgentOutput = z.infer<typeof CommentaryOutputSchema>;
 
 // ── Agent config ──────────────────────────────────────────────────
-// No tools — Commentary is a pure generation agent (single-turn LLM completion).
 
 export const COMMENTARY_AGENT_CONFIG: AgentConfig = {
   agentId: 'commentary',
-  agentVersion: '2.0.0',
-  promptVersion: 'commentary-v2',
-  tools: [],
+  agentVersion: '3.0.0',
+  promptVersion: 'commentary-v3',
+  tools: [
+    webSearchTool,
+    fetchWebpageTool,
+  ],
   outputSchema: CommentaryOutputSchema,
   budgetCaps: DEFAULT_BUDGET_CAPS.commentary,
   modelName: 'claude-haiku-4-5-20251001',
-  capabilities: ['read:all'],
+  capabilities: ['read:all', 'web:search'],
 };
 
 // ── Singleton runtime ─────────────────────────────────────────────

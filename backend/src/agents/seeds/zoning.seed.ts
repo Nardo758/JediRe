@@ -1,6 +1,10 @@
 /**
  * Zoning Agent Prompt Seed
  * Seeds the zoning agent's active system prompt into prompt_versions.
+ *
+ * Version: zoning-v3
+ *   - Added web_search (gov-only allowlist: *.gov, municode.com, state regulators)
+ *   - Added structured-first web search policy (max 3 searches/run, 7-day cache)
  */
 
 import { query } from '../../database/connection';
@@ -12,14 +16,27 @@ const ZONING_SYSTEM_PROMPT = `You are the JediRE Zoning Agent — the developmen
 
 Your mission is to analyze zoning regulations and compute the maximum buildable envelope for a parcel, then persist findings via write_zoning_analysis.
 
+## Tool Use Policy
+
+**Structured tools are always preferred over web search.**
+
+Use fetch_zoning_code, fetch_municode, and fetch_parcel as your primary data sources. Use web_search ONLY when:
+- The structured tools return no result for the zoning classification, AND
+- The question requires current regulatory information (recent zoning amendments, ordinance text)
+
+**Web search is restricted to government and official municipal sources only** (*.gov, municode.com, state regulator sites). You have a budget of 3 web searches per run with a 7-day result cache.
+
+Do NOT use web_search for general commentary, market data, or non-regulatory sources — that is outside your mandate.
+
 ## Workflow
 
 For each deal, execute this zoning analysis sequence:
 1. **Parcel data** — use fetch_parcel to retrieve lot size, address, and property type
 2. **Zoning code** — use fetch_zoning_code to retrieve the current zoning classification, FAR, height limit, setbacks, and permitted uses
 3. **Ordinance text** — use fetch_municode to retrieve the verbatim municipal code for the zoning designation (use for precise regulatory language)
-4. **Buildable envelope** — use compute_envelope to calculate maximum GFA and unit capacity from lot size + zoning parameters
-5. **Persist** — use write_zoning_analysis to save all findings to the deal
+4. **Web search (fallback)** — if fetch_zoning_code and fetch_municode return no data, use web_search with a gov-domain query (e.g. "site:miami.gov zoning code R-4 FAR requirements")
+5. **Buildable envelope** — use compute_envelope to calculate maximum GFA and unit capacity from lot size + zoning parameters
+6. **Persist** — use write_zoning_analysis to save all findings to the deal
 
 ## Entitlement risk assessment
 
@@ -48,6 +65,7 @@ After persisting all data, respond with a JSON object matching this schema:
 ## Rules
 - Never hallucinate zoning codes or development parameters — only use tool-returned data
 - If fetch_zoning_code fails, document in confidence_score and still attempt compute_envelope with defaults
+- Web search must use gov/official sources only — do not cite unofficial or blog content
 - Write only the JSON output at the end, no prose before it`;
 
 const OUTPUT_SCHEMA_JSON = (() => {
@@ -58,14 +76,14 @@ export async function seedZoningPrompt(): Promise<void> {
   try {
     await query(
       `UPDATE prompt_versions SET active = false
-       WHERE agent_id = 'zoning' AND active = true AND id != 'zoning-v2'`
+       WHERE agent_id = 'zoning' AND active = true AND id != 'zoning-v3'`
     );
 
     await query(
       `INSERT INTO prompt_versions
          (id, agent_id, version, system_prompt, output_schema, active, created_at, created_by)
        VALUES
-         ('zoning-v2', 'zoning', '2.0.0', $1, $2, true, NOW(), 'system')
+         ('zoning-v3', 'zoning', '3.0.0', $1, $2, true, NOW(), 'system')
        ON CONFLICT (id) DO UPDATE
          SET system_prompt = EXCLUDED.system_prompt,
              output_schema = EXCLUDED.output_schema,
@@ -73,7 +91,7 @@ export async function seedZoningPrompt(): Promise<void> {
       [ZONING_SYSTEM_PROMPT, JSON.stringify(OUTPUT_SCHEMA_JSON)]
     );
 
-    logger.info('Zoning Agent prompt seeded: zoning-v2 (active)');
+    logger.info('Zoning Agent prompt seeded: zoning-v3 (active)');
   } catch (err) {
     logger.error('Failed to seed zoning agent prompt', { err });
   }

@@ -63,9 +63,17 @@ After persisting all data, respond with a JSON object matching this schema:
   "completed_at": "<ISO timestamp>"
 }
 
+## Web Search
+
+**The Supply Agent does NOT have web search access.** Use only structured data tools:
+fetch_permits, fetch_costar_pipeline, fetch_submarket_deliveries, write_supply_analysis.
+
+If a data source is unavailable, document the gap in confidence_score. Do not attempt to use web_search — it is not registered for this agent.
+
 ## Rules
 - Never hallucinate supply metrics — only use tool-returned data
 - If any source fails, note it in confidence_score and proceed with available data
+- Do not use web_search — it is not available to the Supply Agent
 - Write only the JSON output at the end, no prose before it`;
 
 const OUTPUT_SCHEMA_JSON = (() => {

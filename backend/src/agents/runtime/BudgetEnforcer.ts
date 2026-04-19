@@ -1,11 +1,10 @@
 /**
  * BudgetEnforcer — Circuit breakers for agent cost caps.
  *
- * Two enforcement points:
- *  1. check(ctx, caps) — pre-flight, called before creating agent_run row
- *  2. checkRunCap(runId, currentCost, caps) — intra-loop, called each step
- *     Queries agent_runs AND agent_run_steps for accumulated cost so
- *     in-memory tracking cannot be bypassed.
+ * Enforcement points:
+ *  1. check(ctx, caps)                  — pre-flight daily deal cap
+ *  2. checkRunCap(runId, cost, caps)    — intra-loop per-run cost cap
+ *  3. checkSearchCap(agentId, runId)    — per-run Tavily search count cap
  *
  * Per-user monthly cap is delegated to CreditService (existing).
  */
@@ -14,6 +13,7 @@ import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { BudgetExceededError } from './types';
 import type { BudgetCaps, RunContext } from './types';
+import { AGENT_SEARCH_CONFIG } from '../config/search';
 
 function startOfDayUTC(): string {
   const d = new Date();
@@ -66,7 +66,6 @@ export class BudgetEnforcer {
     currentCost: number,
     caps: BudgetCaps
   ): Promise<void> {
-    // Fetch accumulated cost stored in DB for this run
     const result = await query(
       `SELECT COALESCE(cost_usd, 0) AS db_cost
        FROM agent_runs WHERE id = $1`,
@@ -91,6 +90,44 @@ export class BudgetEnforcer {
       throw new BudgetExceededError(
         `Run ${runId} exceeded per-run cap ($${caps.maxCostUsdPerRun}). ` +
         `Accumulated $${total.toFixed(4)} (DB: $${dbCost.toFixed(4)} + current: $${currentCost.toFixed(4)}).`
+      );
+    }
+  }
+
+  /**
+   * Per-run search cap check.
+   * Counts web_search tool calls in agent_run_steps for the given run,
+   * then compares against AGENT_SEARCH_CONFIG[agentId].maxSearchesPerRun.
+   *
+   * Called by the web_search tool before each Tavily request.
+   * Throws BudgetExceededError if the cap is reached.
+   * No-ops when the agent has no search config (null = search not permitted at tool level).
+   */
+  async checkSearchCap(agentId: string, runId: string): Promise<void> {
+    const config = AGENT_SEARCH_CONFIG[agentId as keyof typeof AGENT_SEARCH_CONFIG];
+    if (!config) return;
+
+    const result = await query(
+      `SELECT COUNT(*)::int AS count
+       FROM agent_run_steps
+       WHERE agent_run_id = $1
+         AND tool_name = 'web_search'`,
+      [runId]
+    );
+
+    const count: number = parseInt(result.rows[0]?.count ?? '0', 10);
+
+    logger.debug('BudgetEnforcer.checkSearchCap', {
+      agentId,
+      runId,
+      searchCount: count,
+      cap: config.maxSearchesPerRun,
+    });
+
+    if (count >= config.maxSearchesPerRun) {
+      throw new BudgetExceededError(
+        `Agent ${agentId} exceeded search cap of ${config.maxSearchesPerRun} web searches per run. ` +
+        `Already used ${count} searches in run ${runId}.`
       );
     }
   }

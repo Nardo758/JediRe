@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
+    "@tavily/core": "^0.7.2",
     "@turf/area": "^7.3.4",
     "@turf/circle": "^7.3.4",
     "@turf/helpers": "^7.3.4",

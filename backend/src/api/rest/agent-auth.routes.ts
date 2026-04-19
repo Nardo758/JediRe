@@ -21,11 +21,11 @@ const router = Router();
 const AGENT_CONFIGS: Record<string, { email: string; capabilities: string[] }> = {
   research: {
     email: 'research@agents.jediplatform.internal',
-    capabilities: ['read:all', 'write:deal_context'],
+    capabilities: ['read:all', 'write:deal_context', 'web:search'],
   },
   zoning: {
     email: 'zoning@agents.jediplatform.internal',
-    capabilities: ['read:zoning', 'read:parcels', 'write:zoning_analysis'],
+    capabilities: ['read:zoning', 'read:parcels', 'write:zoning_analysis', 'web:search'],
   },
   supply: {
     email: 'supply@agents.jediplatform.internal',
@@ -37,7 +37,7 @@ const AGENT_CONFIGS: Record<string, { email: string; capabilities: string[] }> =
   },
   commentary: {
     email: 'commentary@agents.jediplatform.internal',
-    capabilities: ['read:market_data', 'read:economic', 'write:market_commentary'],
+    capabilities: ['read:market_data', 'read:economic', 'write:market_commentary', 'web:search'],
   },
 };
 

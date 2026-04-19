@@ -3,7 +3,13 @@
  *
  * Tools registered:
  *   fetch_parcel, fetch_zoning_code, fetch_municode,
- *   compute_envelope, write_zoning_analysis
+ *   compute_envelope, write_zoning_analysis,
+ *   web_search (gov-only allowlist — no fetch_webpage)
+ *
+ * Web search policy: gov-only allowlist (*.gov, municode.com, state regulator sites),
+ * 7-day cache (zoning codes change slowly), max 3 searches per run.
+ * fetch_webpage is not available to Zoning — gov sites are handled by
+ * fetch_municode and fetch_zoning_code structured tools.
  */
 
 import { z } from 'zod';
@@ -18,6 +24,7 @@ import { fetchZoningCodeTool } from './tools/fetch_zoning_code';
 import { fetchMunicodeTool } from './tools/fetch_municode';
 import { computeEnvelopeTool } from './tools/compute_envelope';
 import { writeZoningAnalysisTool } from './tools/write_zoning_analysis';
+import { webSearchTool } from './tools/web_search';
 
 // ── Output schema ─────────────────────────────────────────────────
 
@@ -41,19 +48,20 @@ export type ZoningAgentOutput = z.infer<typeof ZoningOutputSchema>;
 
 export const ZONING_AGENT_CONFIG: AgentConfig = {
   agentId: 'zoning',
-  agentVersion: '2.0.0',
-  promptVersion: 'zoning-v2',
+  agentVersion: '3.0.0',
+  promptVersion: 'zoning-v3',
   tools: [
     fetchParcelTool,
     fetchZoningCodeTool,
     fetchMunicodeTool,
     computeEnvelopeTool,
     writeZoningAnalysisTool,
+    webSearchTool,
   ],
   outputSchema: ZoningOutputSchema,
   budgetCaps: DEFAULT_BUDGET_CAPS.zoning,
   modelName: 'claude-haiku-4-5-20251001',
-  capabilities: ['read:all', 'write:zoning_analysis'],
+  capabilities: ['read:all', 'write:zoning_analysis', 'web:search'],
 };
 
 // ── Singleton runtime ─────────────────────────────────────────────

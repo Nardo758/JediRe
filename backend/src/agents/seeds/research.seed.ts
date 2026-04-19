@@ -2,14 +2,12 @@
  * Research Agent Prompt Seed
  *
  * Seeds the research agent's active system prompt into prompt_versions.
- * Run once at startup (idempotent via ON CONFLICT DO NOTHING).
+ * Run once at startup (idempotent via ON CONFLICT DO UPDATE).
  *
- * The AgentRuntime loads the active prompt at run-time via:
- *   SELECT system_prompt FROM prompt_versions
- *   WHERE agent_id = 'research' AND active = true
- *
- * To roll back to a previous version: set active = false for current,
- * active = true for the previous version.
+ * Version: research-v3
+ *   - Added web_search and fetch_webpage tools (fallback only — structured first)
+ *   - Added citation requirement for web-sourced facts
+ *   - Added citations[] to output schema
  */
 
 import { query } from '../../database/connection';
@@ -21,6 +19,20 @@ const RESEARCH_SYSTEM_PROMPT = `You are the JediRE Research Agent — the data a
 
 Your mission is to gather comprehensive property intelligence for a deal and persist it into the DealContext assembly target using the write_dealcontext tool.
 
+## Tool Use Policy
+
+**Structured data tools are ALWAYS preferred over web search.**
+
+Use structured tools (fetch_parcel, fetch_costar_metrics, fetch_tax_bill, fetch_comps, fetch_ownership) as your primary research path. Use web_search ONLY when:
+- A structured tool returns no data for a specific question, AND
+- The question is factual and answerable from authoritative web sources
+
+After using web_search, you may use fetch_webpage to retrieve full content from a result URL if the snippet is insufficient.
+
+**Every fact sourced from web search must be cited in the citations array of your output.**
+
+You have a budget of 10 web searches per run. Use them judiciously.
+
 ## Workflow
 
 For each deal, execute this research sequence:
@@ -29,7 +41,8 @@ For each deal, execute this research sequence:
 3. **Tax bill** — use fetch_tax_bill to retrieve annual taxes, effective rate, assessed value
 4. **Comps** — use fetch_comps to retrieve comparable properties with rents and occupancy
 5. **Ownership** — use fetch_ownership to retrieve owner entity type and acquisition history
-6. **Persist** — for each data category fetched, call write_dealcontext with the field_path and value
+6. **Web search (fallback)** — if structured tools returned no data for a critical field, use web_search to fill gaps
+7. **Persist** — for each data category fetched, call write_dealcontext with the field_path and value
 
 ## Field paths to write
 Use these dot-separated paths when calling write_dealcontext:
@@ -46,13 +59,23 @@ After persisting all data, respond with a JSON object matching this schema:
   "summary": "Brief 1-3 sentence summary of key findings",
   "confidence_score": 0.0-1.0 (ratio of successful data sources),
   "fields_written": ["parcel.sqft", "market.vacancy_rate", ...],
-  "completed_at": "<ISO timestamp>"
+  "completed_at": "<ISO timestamp>",
+  "citations": [
+    {
+      "source_url": "https://example.gov/data",
+      "retrieved_at": "<ISO timestamp>",
+      "influenced_fields": ["tax.assessed_value"]
+    }
+  ]
 }
+
+If no web search was used, return "citations": [].
 
 ## Rules
 - Always call write_dealcontext after each successful data fetch
 - If a data source fails, skip it and continue — document in confidence_score
 - Never hallucinate values — only write data actually returned by tools
+- Every web-sourced fact must appear in the citations array
 - Write only the JSON output at the end, no prose before it`;
 
 const OUTPUT_SCHEMA_JSON = (() => {
@@ -62,17 +85,16 @@ const OUTPUT_SCHEMA_JSON = (() => {
 
 export async function seedResearchPrompt(): Promise<void> {
   try {
-    // Deactivate any previous active version first
     await query(
       `UPDATE prompt_versions SET active = false
-       WHERE agent_id = 'research' AND active = true AND id != 'research-v2'`
+       WHERE agent_id = 'research' AND active = true AND id != 'research-v3'`
     );
 
     await query(
       `INSERT INTO prompt_versions
          (id, agent_id, version, system_prompt, output_schema, active, created_at, created_by)
        VALUES
-         ('research-v2', 'research', '2.0.0', $1, $2, true, NOW(), 'system')
+         ('research-v3', 'research', '3.0.0', $1, $2, true, NOW(), 'system')
        ON CONFLICT (id) DO UPDATE
          SET system_prompt = EXCLUDED.system_prompt,
              output_schema = EXCLUDED.output_schema,
@@ -80,9 +102,8 @@ export async function seedResearchPrompt(): Promise<void> {
       [RESEARCH_SYSTEM_PROMPT, JSON.stringify(OUTPUT_SCHEMA_JSON)]
     );
 
-    logger.info('Research Agent prompt seeded: research-v2 (active)');
+    logger.info('Research Agent prompt seeded: research-v3 (active)');
   } catch (err) {
     logger.error('Failed to seed research agent prompt', { err });
-    // Non-fatal: AgentRuntime falls back to default prompt if none found
   }
 }
