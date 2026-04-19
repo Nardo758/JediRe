@@ -241,6 +241,104 @@ router.get('/runs/:runId/steps', requireAuthOrApiKey, async (req: AuthenticatedR
 
 export const dealAgentRunsRouter = Router({ mergeParams: true });
 
+// ── GET /api/v1/deals/:dealId/audit-log ──────────────────────────
+// Unified audit_log feed for a deal — used as primary source for agent events in the UI.
+// Returns audit_log entries where resource_type='deal' AND resource_id=dealId,
+// joined with agent_runs metadata when agent_run_id is present.
+
+dealAgentRunsRouter.get(
+  '/:dealId/audit-log',
+  requireAuthOrApiKey,
+  async (req: AuthenticatedRequest, res: Response, next) => {
+    try {
+      const { dealId } = req.params;
+
+      if (!UUID_RE.test(dealId)) {
+        throw new AppError(400, 'Invalid deal ID');
+      }
+
+      await assertDealAccess(dealId, req.user!.userId);
+
+      const { actor_type, limit = '100', offset = '0' } = req.query;
+
+      let queryText = `
+        SELECT
+          al.id,
+          al.actor_id,
+          al.actor_type,
+          al.action,
+          al.resource_type,
+          al.resource_id AS deal_id,
+          al.metadata,
+          al.agent_run_id,
+          al.created_at,
+          -- Agent run join
+          ar.agent_id,
+          ar.agent_version,
+          ar.status                                          AS run_status,
+          ar.triggered_by,
+          ar.tokens_in,
+          ar.tokens_out,
+          ar.cost_usd,
+          ar.started_at,
+          ar.completed_at,
+          ar.duration_ms,
+          ar.error                                           AS run_error
+        FROM audit_log al
+        LEFT JOIN agent_runs ar ON ar.id = al.agent_run_id
+        WHERE al.resource_type = 'deal'
+          AND al.resource_id   = $1
+      `;
+
+      const params: unknown[] = [dealId];
+      let paramIndex = 2;
+
+      if (actor_type) {
+        queryText += ` AND al.actor_type = $${paramIndex}`;
+        params.push(actor_type);
+        paramIndex++;
+      }
+
+      queryText += ` ORDER BY al.created_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+      params.push(parseInt(limit as string, 10), parseInt(offset as string, 10));
+
+      const result = await query(queryText, params);
+
+      const entries = result.rows.map(row => ({
+        id: row.id,
+        actor_id: row.actor_id,
+        actor_type: row.actor_type,
+        action: row.action,
+        deal_id: row.deal_id,
+        metadata: row.metadata,
+        agent_run_id: row.agent_run_id,
+        created_at: row.created_at,
+        // Normalized agent run details (only present when actor_type='agent')
+        agent_run: row.agent_run_id
+          ? {
+              id: row.agent_run_id,
+              agent_id: row.agent_id,
+              agent_version: row.agent_version,
+              display_status: normalizeStatus(row.run_status ?? 'failed'),
+              triggered_by: row.triggered_by,
+              tokens_in: row.tokens_in ?? 0,
+              tokens_out: row.tokens_out ?? 0,
+              cost_usd: row.cost_usd ?? null,
+              started_at: row.started_at,
+              completed_at: row.completed_at,
+              duration_ms: row.duration_ms ?? null,
+              error: row.run_error ?? null,
+            }
+          : null,
+      }));
+
+      res.json({ success: true, entries, count: entries.length, deal_id: dealId });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 dealAgentRunsRouter.get(
   '/:dealId/agent-runs',
   requireAuthOrApiKey,

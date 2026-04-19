@@ -128,11 +128,16 @@ export const researchOnDealCreated = inngest.createFunction(
       }
 
       try {
+        // Idempotent write: skip if a row already exists for this agent_run_id.
+        // audit_log has no UNIQUE constraint on agent_run_id so we use an
+        // explicit NOT EXISTS check — safe to replay on step retry.
         await query(
           `INSERT INTO audit_log
              (actor_id, actor_type, action, resource_type, resource_id, metadata, agent_run_id)
-           VALUES ('research', 'agent', 'research.completed', 'deal', $1, $2, $3)
-           ON CONFLICT DO NOTHING`,
+           SELECT 'research', 'agent', 'research.completed', 'deal', $1, $2, $3
+           WHERE NOT EXISTS (
+             SELECT 1 FROM audit_log WHERE agent_run_id = $3
+           )`,
           [
             dealId,
             JSON.stringify({

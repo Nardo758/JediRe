@@ -406,11 +406,15 @@ export function ActivityFeedSection({ deal }: ActivityFeedSectionProps) {
     setError(null);
 
     try {
-      const [activityRes, runsRes] = await Promise.allSettled([
+      // Fetch human-team activity and agent audit-log entries in parallel.
+      // Agent events come from the unified audit_log endpoint (actor_type=agent),
+      // which joins agent_run metadata so we get a single authoritative source.
+      const [activityRes, auditLogRes] = await Promise.allSettled([
         fetch(`/api/v1/deals/${deal.id}/team/activity`),
-        fetch(`/api/v1/deals/${deal.id}/agent-runs`),
+        fetch(`/api/v1/deals/${deal.id}/audit-log?actor_type=agent`),
       ]);
 
+      // ── Human-initiated team activity ────────────────────────────
       if (activityRes.status === 'fulfilled' && activityRes.value.ok) {
         const data = await activityRes.value.json();
         const items: ActivityItem[] = (data || []).map((a: any) => ({
@@ -427,25 +431,54 @@ export function ActivityFeedSection({ deal }: ActivityFeedSectionProps) {
         setActivities(items);
       }
 
-      if (runsRes.status === 'fulfilled' && runsRes.value.ok) {
-        const data = await runsRes.value.json();
-        const runs: AgentRunItem[] = (data.runs || []).map((r: any) => ({
-          id: r.id,
-          dealId: r.deal_id,
-          agentId: r.agent_id,
-          agentVersion: r.agent_version,
-          // API returns pre-normalized display_status; fall back to raw status normalization
-          status: (r.display_status ?? r.status ?? 'failed') as DisplayStatus,
-          triggeredBy: r.triggered_by,
-          tokensIn: r.tokens_in || 0,
-          tokensOut: r.tokens_out || 0,
-          costUsd: r.cost_usd ?? null,
-          startedAt: new Date(r.started_at),
-          completedAt: r.completed_at ? new Date(r.completed_at) : null,
-          durationMs: r.duration_ms ?? null,
-          error: r.error ?? null,
-          kind: 'agent_run' as const,
-        }));
+      // ── Agent events from unified audit_log ──────────────────────
+      // Each entry may have an `agent_run` sub-object with run metadata.
+      // Entries without a linked agent_run (partial writes) are surfaced
+      // as lightweight activity items instead of run cards.
+      if (auditLogRes.status === 'fulfilled' && auditLogRes.value.ok) {
+        const data = await auditLogRes.value.json();
+        const runs: AgentRunItem[] = [];
+
+        for (const entry of (data.entries ?? [])) {
+          const r = entry.agent_run;
+          if (r) {
+            runs.push({
+              id: r.id,
+              dealId: entry.deal_id,
+              agentId: r.agent_id,
+              agentVersion: r.agent_version ?? '',
+              // display_status is pre-normalized by the API
+              status: (r.display_status ?? 'failed') as DisplayStatus,
+              triggeredBy: r.triggered_by ?? 'system',
+              tokensIn: r.tokens_in ?? 0,
+              tokensOut: r.tokens_out ?? 0,
+              costUsd: r.cost_usd ?? null,
+              startedAt: new Date(r.started_at ?? entry.created_at),
+              completedAt: r.completed_at ? new Date(r.completed_at) : null,
+              durationMs: r.duration_ms ?? null,
+              error: r.error ?? null,
+              kind: 'agent_run' as const,
+            });
+          } else {
+            // Audit entry exists but run details are not yet joined — show as
+            // a lightweight agent activity item.
+            setActivities(prev => [
+              ...prev,
+              {
+                id: entry.id,
+                dealId: entry.deal_id,
+                type: entry.action ?? 'research.completed',
+                description: entry.metadata?.summary ?? entry.action ?? 'Agent activity',
+                userId: entry.actor_id ?? 'agent',
+                userName: entry.actor_id ?? 'Agent',
+                timestamp: new Date(entry.created_at),
+                metadata: entry.metadata ?? {},
+                kind: 'activity' as const,
+              },
+            ]);
+          }
+        }
+
         setAgentRuns(runs);
       }
     } catch (err) {

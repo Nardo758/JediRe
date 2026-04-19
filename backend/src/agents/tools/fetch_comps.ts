@@ -1,8 +1,20 @@
 /**
  * Tool: fetch_comps
  *
- * Fetches comparable properties (comps) for a given deal from the M27 comps service.
- * Routes through GET /deals/:dealId/comps/summary via the platform API.
+ * Fetches comp set summary for a deal via GET /deals/:dealId/comps/summary.
+ *
+ * Actual endpoint response shape:
+ *   { success: true, data: {
+ *       hasCompSet: boolean,
+ *       comp_count?: number,              ← total comps in set
+ *       median_price_per_unit?: number,   ← $/unit at median
+ *       median_implied_cap_rate?: number, ← 0–1 fraction
+ *       price_range?: { min: number, max: number }
+ *   }}
+ *
+ * Note: this endpoint returns sale-comp aggregates (price/cap rate), not
+ * rental comps. avg_market_rent and avg_occupancy are not available
+ * from this source and will be returned as null.
  *
  * Required capability: read:comps
  */
@@ -14,30 +26,29 @@ import type { ToolDefinition } from '../runtime/types';
 
 const InputSchema = z.object({
   deal_id: z.string().uuid('deal_id must be a valid UUID'),
-  limit: z.number().int().min(1).max(50).default(10).describe(
-    'Maximum number of comps to return. Defaults to 10.'
-  ),
-});
-
-const CompSchema = z.object({
-  id: z.string(),
-  address: z.string().nullable(),
-  property_name: z.string().nullable(),
-  distance_miles: z.number().nullable(),
-  units: z.number().nullable(),
-  year_built: z.number().nullable(),
-  avg_rent: z.number().nullable(),
-  occupancy_rate: z.number().nullable(),
 });
 
 const OutputSchema = z.object({
   deal_id: z.string(),
-  comps: z.array(CompSchema),
-  avg_market_rent: z.number().nullable(),
-  avg_occupancy: z.number().nullable(),
-  comp_count: z.number(),
+  comp_count: z.number().nullable(),
+  median_price_per_unit: z.number().nullable(),
+  median_implied_cap_rate: z.number().nullable(),
+  price_range_min: z.number().nullable(),
+  price_range_max: z.number().nullable(),
+  source: z.string(),
   fetched_at: z.string(),
 });
+
+type CompSummaryResponse = {
+  success: boolean;
+  data?: {
+    hasCompSet?: boolean;
+    comp_count?: number | null;
+    median_price_per_unit?: number | null;
+    median_implied_cap_rate?: number | null;
+    price_range?: { min?: number | null; max?: number | null } | null;
+  };
+};
 
 export const fetchCompsTool: ToolDefinition<
   z.infer<typeof InputSchema>,
@@ -45,8 +56,8 @@ export const fetchCompsTool: ToolDefinition<
 > = {
   name: 'fetch_comps',
   description:
-    'Fetch comparable rental properties (comps) for a deal. ' +
-    'Returns nearby properties with rent, occupancy, and unit mix data for underwriting support.',
+    'Fetch the comp set summary for a deal: count, median price per unit, ' +
+    'and implied cap rate from comparable sales. Use to benchmark deal pricing vs market.',
   inputSchema: InputSchema,
   outputSchema: OutputSchema,
   requiresCapability: 'read:comps',
@@ -60,43 +71,40 @@ export const fetchCompsTool: ToolDefinition<
     const now = new Date().toISOString();
 
     try {
-      const data = await client.get<{
-        comps?: Array<{
-          id?: string;
-          address?: string | null;
-          propertyName?: string | null;
-          distanceMiles?: number | null;
-          units?: number | null;
-          yearBuilt?: number | null;
-          avgRent?: number | null;
-          occupancyRate?: number | null;
-        }>;
-        avgMarketRent?: number | null;
-        avgOccupancy?: number | null;
-      }>(`/deals/${input.deal_id}/comps/summary`);
+      const resp = await client.get<CompSummaryResponse>(
+        `/deals/${input.deal_id}/comps/summary`
+      );
 
-      const comps = (data?.comps ?? []).slice(0, input.limit).map(c => ({
-        id: c.id ?? '',
-        address: c.address ?? null,
-        property_name: c.propertyName ?? null,
-        distance_miles: c.distanceMiles ?? null,
-        units: c.units ?? null,
-        year_built: c.yearBuilt ?? null,
-        avg_rent: c.avgRent ?? null,
-        occupancy_rate: c.occupancyRate ?? null,
-      }));
+      if (!resp.success || !resp.data?.hasCompSet) {
+        logger.debug('fetch_comps: no comp set available', { dealId: input.deal_id });
+        return {
+          deal_id: input.deal_id,
+          comp_count: null,
+          median_price_per_unit: null,
+          median_implied_cap_rate: null,
+          price_range_min: null,
+          price_range_max: null,
+          source: 'no_comp_set',
+          fetched_at: now,
+        };
+      }
 
-      logger.debug('fetch_comps: fetched comps summary', {
+      const d = resp.data;
+
+      logger.debug('fetch_comps: fetched comp set summary', {
         dealId: input.deal_id,
-        count: comps.length,
+        compCount: d.comp_count,
+        medianPrice: d.median_price_per_unit,
       });
 
       return {
         deal_id: input.deal_id,
-        comps,
-        avg_market_rent: data?.avgMarketRent ?? null,
-        avg_occupancy: data?.avgOccupancy ?? null,
-        comp_count: comps.length,
+        comp_count: d.comp_count ?? null,
+        median_price_per_unit: d.median_price_per_unit ?? null,
+        median_implied_cap_rate: d.median_implied_cap_rate ?? null,
+        price_range_min: d.price_range?.min ?? null,
+        price_range_max: d.price_range?.max ?? null,
+        source: 'comp_set_service',
         fetched_at: now,
       };
     } catch (err) {
@@ -107,10 +115,12 @@ export const fetchCompsTool: ToolDefinition<
 
       return {
         deal_id: input.deal_id,
-        comps: [],
-        avg_market_rent: null,
-        avg_occupancy: null,
-        comp_count: 0,
+        comp_count: null,
+        median_price_per_unit: null,
+        median_implied_cap_rate: null,
+        price_range_min: null,
+        price_range_max: null,
+        source: 'unavailable',
         fetched_at: now,
       };
     }
