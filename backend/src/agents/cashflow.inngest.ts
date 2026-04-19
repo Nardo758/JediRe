@@ -302,6 +302,25 @@ export const cashflowOnResearchCompleted = inngest.createFunction(
       } satisfies JediEvents);
     }
 
+    // ── Step 7: Auto-trigger walkthrough for Principal+ tiers ────────
+    // Principal and Institutional users receive a narrative walkthrough
+    // automatically after every cashflow run completes, so they don't
+    // need to manually request it via the UI or tool call.
+    const WALKTHROUGH_AUTO_TIERS = ['principal', 'institutional'];
+    if (runResult.runId && WALKTHROUGH_AUTO_TIERS.includes(tierCheckResult.userTier.toLowerCase())) {
+      await step.sendEvent('emit-auto-walkthrough', {
+        name: 'cashflow.walkthrough_requested' as const,
+        data: {
+          dealId,
+          agentRunId: runResult.runId,
+          snapshotId: null,
+          focus: 'proforma_evidence',
+          triggerReason: 'auto_principal',
+          eventId: inngestEventId,
+        },
+      } satisfies JediEvents);
+    }
+
     return {
       runId: runResult.runId,
       confidence_score: runResult.confidence_score,

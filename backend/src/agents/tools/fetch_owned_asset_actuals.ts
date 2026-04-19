@@ -86,7 +86,8 @@ export const fetchOwnedAssetActualsTool: ToolDefinition<
          p.address        AS address,
          p.submarket      AS submarket,
          p.units          AS units,
-         p.year_built     AS year_built
+         p.year_built     AS year_built,
+         p.asset_class    AS asset_class
        FROM properties p
        WHERE EXISTS (
          SELECT 1 FROM deal_monthly_actuals dma
@@ -118,11 +119,23 @@ export const fetchOwnedAssetActualsTool: ToolDefinition<
       if (input.submarket && p.submarket === input.submarket) score += 0.40;
       else if (!input.submarket) score += 0.40;
 
-      if (input.asset_class) {
-        // Asset class heuristic by rent level (not stored explicitly)
-        score += 0.30;
+      if (input.asset_class && p.asset_class != null) {
+        // Exact class match (A/B/C) = full weight; adjacent class = partial; no match = minimal
+        const pClass = String(p.asset_class).trim().toUpperCase();
+        const tClass = input.asset_class.trim().toUpperCase();
+        if (pClass === tClass) score += 0.30;
+        else if (
+          (pClass === 'A' && tClass === 'B') ||
+          (pClass === 'B' && (tClass === 'A' || tClass === 'C')) ||
+          (pClass === 'C' && tClass === 'B')
+        ) score += 0.15;
+        else score += 0.02;
+      } else if (input.asset_class && p.asset_class == null) {
+        // Class was specified but property has no stored class — degrade to partial credit
+        score += 0.10;
       } else {
-        score += 0.30;
+        // No class filter provided — treat all assets as neutral (partial credit)
+        score += 0.15;
       }
 
       if (input.year_built && p.year_built != null) {

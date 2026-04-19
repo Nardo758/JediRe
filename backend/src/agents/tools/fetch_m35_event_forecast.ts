@@ -86,13 +86,23 @@ export const fetchM35EventForecastTool: ToolDefinition<
       const horizonDate = new Date();
       horizonDate.setMonth(horizonDate.getMonth() + input.horizon_months);
 
-      // Try to query demand_events with a geo radius filter
+      // Geo-radius filter using Haversine formula (miles).
+      // demand_events must have latitude/longitude columns; if not, the query
+      // throws and the catch block returns m35_available=false.
       const eventsResult = await query(
         `SELECT
            de.id              AS event_id,
            de.name            AS event_name,
            det.name           AS event_type,
-           NULL               AS distance_miles,
+           ROUND(
+             (3959 * acos(LEAST(1.0,
+               cos(radians($2::double precision)) *
+               cos(radians(de.latitude::double precision)) *
+               cos(radians(de.longitude::double precision) - radians($3::double precision)) +
+               sin(radians($2::double precision)) *
+               sin(radians(de.latitude::double precision))
+             )))::numeric, 2
+           )                  AS distance_miles,
            'occupancy_boost'  AS impact_type,
            COALESCE(tiea.occupancy_impact, 0.01) AS impact_magnitude,
            'medium'           AS confidence,
@@ -105,9 +115,18 @@ export const fetchM35EventForecastTool: ToolDefinition<
            ON tiea.event_id = de.id
          WHERE de.start_date <= $1
            AND (de.end_date IS NULL OR de.end_date >= NOW())
+           AND de.latitude  IS NOT NULL
+           AND de.longitude IS NOT NULL
+           AND (3959 * acos(LEAST(1.0,
+               cos(radians($2::double precision)) *
+               cos(radians(de.latitude::double precision)) *
+               cos(radians(de.longitude::double precision) - radians($3::double precision)) +
+               sin(radians($2::double precision)) *
+               sin(radians(de.latitude::double precision))
+             ))) <= $4
          ORDER BY tiea.occupancy_impact DESC NULLS LAST
          LIMIT 5`,
-        [horizonDate.toISOString()]
+        [horizonDate.toISOString(), latitude, longitude, input.radius_miles]
       );
 
       m35Available = true;
