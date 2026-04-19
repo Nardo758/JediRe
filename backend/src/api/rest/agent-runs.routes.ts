@@ -25,7 +25,7 @@
 
 import { Router, Response } from 'express';
 import { query } from '../../database/connection';
-import { requireAuthOrApiKey, AuthenticatedRequest } from '../../middleware/auth';
+import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { AppError } from '../../middleware/errorHandler';
 import { researchRuntime } from '../../agents/research.config';
 import { seedResearchPrompt } from '../../agents/seeds/research.seed';
@@ -114,7 +114,7 @@ async function assertRunAccess(
 // ── POST /api/v1/agents/:agentId/run ─────────────────────────────
 // Manually trigger a research run for a deal the user owns.
 
-router.post('/:agentId/run', requireAuthOrApiKey, async (req: AuthenticatedRequest, res: Response, next) => {
+router.post('/:agentId/run', requireAuth, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const { agentId } = req.params;
     const { deal_id, force_refresh } = req.body;
@@ -225,7 +225,7 @@ router.post('/:agentId/run', requireAuthOrApiKey, async (req: AuthenticatedReque
 // ── GET /api/v1/agents/runs/:runId ───────────────────────────────
 // Fetch a single agent run by ID (ownership gated).
 
-router.get('/runs/:runId', requireAuthOrApiKey, async (req: AuthenticatedRequest, res: Response, next) => {
+router.get('/runs/:runId', requireAuth, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const { runId } = req.params;
 
@@ -243,7 +243,7 @@ router.get('/runs/:runId', requireAuthOrApiKey, async (req: AuthenticatedRequest
 // ── GET /api/v1/agents/runs/:runId/steps ─────────────────────────
 // Fetch all steps for a run — ownership gated via run → deal.
 
-router.get('/runs/:runId/steps', requireAuthOrApiKey, async (req: AuthenticatedRequest, res: Response, next) => {
+router.get('/runs/:runId/steps', requireAuth, async (req: AuthenticatedRequest, res: Response, next) => {
   try {
     const { runId } = req.params;
 
@@ -284,7 +284,7 @@ export const dealAgentRunsRouter = Router({ mergeParams: true });
 
 dealAgentRunsRouter.get(
   '/:dealId/audit-log',
-  requireAuthOrApiKey,
+  requireAuth,
   async (req: AuthenticatedRequest, res: Response, next) => {
     try {
       const { dealId } = req.params;
@@ -377,7 +377,7 @@ dealAgentRunsRouter.get(
 
 dealAgentRunsRouter.get(
   '/:dealId/agent-runs',
-  requireAuthOrApiKey,
+  requireAuth,
   async (req: AuthenticatedRequest, res: Response, next) => {
     try {
       const { dealId } = req.params;
