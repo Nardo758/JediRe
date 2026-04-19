@@ -25,8 +25,14 @@ import { logger } from '../utils/logger';
 import type { RunContext } from './runtime/types';
 import type { ResearchOutput } from './research.config';
 
-// Tiers that are allowed to trigger automated research runs
-const ALLOWED_TIERS: readonly string[] = ['principal', 'institutional', 'enterprise'];
+// Tiers that are allowed to trigger automated research runs.
+// Matches actual platform tier values emitted by inline-deals.routes.ts:
+// basic | professional | enterprise (professional = "Principal+" in business terms).
+const ALLOWED_TIERS: readonly string[] = [
+  'professional', 'enterprise',
+  // Legacy / future tier aliases kept for forward compatibility:
+  'principal', 'institutional',
+];
 
 function isTierAllowed(tier: string): boolean {
   return ALLOWED_TIERS.includes(tier.toLowerCase());
@@ -100,6 +106,39 @@ export const researchOnDealCreated = inngest.createFunction(
     const inngestEventId = event.id;
 
     const runResult = await step.run('execute-research-agent', async () => {
+      // ── Idempotency guard ─────────────────────────────────────────
+      // Inngest may replay this step if the function crashed before the step
+      // checkpoint was committed (mid-execution crash). Guard against
+      // duplicate agent_runs rows by checking for a prior succeeded run
+      // keyed on inngest_event_id. If found, return the cached result.
+      const priorRun = await query(
+        `SELECT id, output FROM agent_runs
+         WHERE agent_id = 'research'
+           AND deal_id   = $1
+           AND trigger_context->>'inngest_event_id' = $2
+           AND status = 'succeeded'
+         ORDER BY started_at DESC LIMIT 1`,
+        [dealId, inngestEventId]
+      );
+
+      const prior = priorRun.rows[0];
+      if (prior?.id && prior?.output) {
+        logger.info('research.inngest: step idempotency — returning memoized run', {
+          dealId,
+          inngestEventId,
+          runId: prior.id,
+        });
+        const cached = typeof prior.output === 'string'
+          ? JSON.parse(prior.output)
+          : prior.output as ResearchOutput;
+        return {
+          runId: prior.id as string,
+          confidence_score: cached.confidence_score ?? 0,
+          fields_written: cached.fields_written ?? [],
+          summary: cached.summary ?? '',
+        };
+      }
+
       const ctx: RunContext = {
         dealId,
         userId,
