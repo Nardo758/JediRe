@@ -1,0 +1,303 @@
+# JEDI RE — Agent Taxonomy & Layers
+
+> Addendum to `AGENT_PLATFORM_SPEC.md`. Reconciles the existing 7 Core Agents / 10 Routing Specialists / 16 Analyst Personas roster with the `AgentRuntime` architecture.
+>
+> **TL;DR:** The platform has three distinct layers currently labeled "agents." Only Layer 1 is an agent in the runtime sense. Layers 2 and 3 are intent routing and persona prompt variants.
+
+---
+
+## The Three Layers
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ User message                                                        │
+└────────────────────────────────┬────────────────────────────────────┘
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ COORDINATOR (runs in user session, no service account)              │
+│                                                                     │
+│   1. Intent classifier      → maps to 1 of 10 Routing Specialists   │
+│   2. Persona selector       → maps to 1 of 16 Analyst Personas      │
+│   3. Dispatch decision      → Agent? General LLM? Both?             │
+└────────────────────────────────┬────────────────────────────────────┘
+                                 ▼
+         ┌───────────────────────┴───────────────────────┐
+         ▼                                               ▼
+┌──────────────────────┐                    ┌───────────────────────────┐
+│ LAYER 1 — AGENTS     │                    │ GENERAL LLM HANDLER       │
+│ (AgentRuntime)       │                    │ (persona-flavored reply)  │
+│                      │                    │                           │
+│ Research, Zoning,    │                    │ Used for routing          │
+│ Supply, CashFlow,    │                    │ specialists without a     │
+│ Commentary           │                    │ dedicated agent           │
+└──────────┬───────────┘                    └───────────────────────────┘
+           ▼
+┌──────────────────────┐
+│ Platform API         │ ◀── dogfooded by both humans and agents
+│ (RBAC + audit)       │
+└──────────┬───────────┘
+           ▼
+┌──────────────────────┐
+│ Postgres             │ ◀── single source of truth
+│ (domain tables +     │     agent writes wrapped in LayeredValue<T>
+│  LayeredValue)       │     with source = 'agent:*'
+└──────────────────────┘
+```
+
+---
+
+## Layer 1 — Agents (5 total)
+
+These are `AgentRuntime` instances per the main spec. Each has:
+- A service-account user (`agent_research`, `agent_zoning`, etc.)
+- A capability list enforced by `authMiddleware`
+- A versioned system prompt and output schema in `prompt_versions`
+- A tool registry with Zod-typed inputs/outputs
+- Per-run budget caps enforced by `BudgetEnforcer`
+- Runs tracked in `agent_runs` + `agent_run_steps`
+
+### Roster
+
+| Agent | Purpose | Primary Output Tables | Data Sources (via tools) |
+|-------|---------|------------------------|--------------------------|
+| **Research** | Assemble DealContext from all platform APIs | `deal_context` | County records, ArcGIS, Municode, FRED, BLS, RentCast, Google Places, CoStar |
+| **Zoning** | Zoning regulations, setbacks, FAR, height, entitlement | `zoning_analysis` | Municode, county GIS, parcel records |
+| **Supply** | Pipeline inventory, absorption, deliveries | `supply_analysis` | Permits, CoStar pipeline, submarket deliveries |
+| **CashFlow** | NOI, IRR, proforma projections | `cashflow_projection`, `deal_financials` (fields) | T12, rent roll, assumptions, tax bill parser |
+| **Commentary** | Institutional-grade narrative for MSAs, submarkets, properties | `market_commentary` (new table) | FRED, BLS, strategy signals, M07 traffic, CoStar |
+
+### Commentary Agent — notes
+
+Commentary was missing from the original spec. It fits the `AgentRuntime` pattern cleanly:
+- Structured input (MSA/submarket/property context)
+- Tool use (fetch FRED indicators, BLS data, strategy classifications, traffic outputs)
+- Structured output per the `F4_Commentary_Enhancement_Spec.docx` (health bar explanation, market thesis paragraphs, investment thesis bullets, risk watch panel, opportunity signals, peer context)
+- 24h cache aligned with DealContext caching
+
+**New DB table:**
+
+```sql
+CREATE TABLE market_commentary (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  entity_type TEXT NOT NULL CHECK (entity_type IN ('msa', 'submarket', 'property')),
+  entity_id TEXT NOT NULL,
+  tab_context TEXT,                  -- e.g. 'overview', 'supply', 'capital', 'trends'
+  commentary JSONB NOT NULL,         -- structured per output schema
+  agent_run_id UUID REFERENCES agent_runs(id),
+  generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  cache_expires_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX idx_commentary_lookup
+  ON market_commentary(entity_type, entity_id, tab_context, generated_at DESC);
+```
+
+### Reclassifications — things that are NOT agents
+
+| Existing name | Reality | What it should be |
+|---------------|---------|-------------------|
+| **MetricRecommendation** | Retrieval + ranking over a fixed metric catalog | Service (`metricRecommendationService.ts`) — may use a single LLM call for ranking but has no loop, no tool use, no multi-step reasoning. Lives in `src/services/`, not `src/agents/`. |
+| **AgentOrchestrator** | Job queue manager, dispatches work, tracks status, retries | The runtime layer itself — Inngest functions + the dispatch table in the Coordinator. Not an agent; it's what *invokes* agents. |
+
+**Action:** Move these two out of `src/agents/` into their correct homes. Do not provision service accounts for them. Do not give them entries in `prompt_versions`.
+
+---
+
+## Layer 2 — Intent Routing (10 specialists)
+
+The Coordinator's intent classifier maps each user message to one of these ten categories. This is a classification label, not an agent.
+
+| Specialist | Current dispatch | Why |
+|-----------|------------------|-----|
+| `SUPPLY` | → Supply Agent | Supply Agent exists |
+| `CASH` | → CashFlow Agent | CashFlow Agent exists |
+| `ZONING` | → Zoning Agent | Zoning Agent exists |
+| `RESEARCH` | → Research Agent | Research Agent exists |
+| `DEMAND` | → General LLM handler | No agent yet |
+| `COMPS` | → General LLM handler | No agent yet |
+| `RISK` | → General LLM handler | No agent yet |
+| `DEBT` | → General LLM handler | No agent yet |
+| `NEWS` | → General LLM handler | No agent yet |
+| `STRATEGY` | → General LLM handler | No agent yet |
+
+**Current state is correct. Do not preemptively build agents for the remaining six.**
+
+### Intent → dispatch table
+
+```typescript
+// src/coordinator/dispatch.ts
+export const INTENT_DISPATCH: Record<RoutingSpecialist, DispatchTarget> = {
+  SUPPLY:   { type: 'agent', agentId: 'supply' },
+  CASH:     { type: 'agent', agentId: 'cashflow' },
+  ZONING:   { type: 'agent', agentId: 'zoning' },
+  RESEARCH: { type: 'agent', agentId: 'research' },
+
+  // General LLM handler for the rest, with intent-specific system prompt fragments
+  DEMAND:   { type: 'llm', contextFragment: 'demand_signals' },
+  COMPS:    { type: 'llm', contextFragment: 'comp_analysis' },
+  RISK:     { type: 'llm', contextFragment: 'risk_factors' },
+  DEBT:     { type: 'llm', contextFragment: 'debt_terms' },
+  NEWS:     { type: 'llm', contextFragment: 'news_summary' },
+  STRATEGY: { type: 'llm', contextFragment: 'strategy_lens' },
+};
+```
+
+The `contextFragment` is a named prompt snippet that gets injected into the general LLM handler's system prompt, giving the response an intent-appropriate lens without requiring a full agent.
+
+### Graduation criteria — when a routing specialist becomes an agent
+
+Promote to Layer 1 only when **three conditions** hold:
+
+1. **Volume:** The routing specialist accounts for ≥5% of Coordinator dispatches over a 30-day rolling window.
+2. **Structured output needed:** The response needs typed JSON output that the frontend renders structurally (not just prose). Example: STRATEGY should probably become an agent because M08 strategy classification produces a structured detection tree with asset class + deal type + sub-strategy — that's not a chat response, it's a data object.
+3. **Tool use would materially improve answers:** The general LLM handler is clearly underperforming because it can't fetch fresh data, run calculations, or chain operations.
+
+If only condition 1 is met, add intent-specific prompt fragments and more DealContext. If only conditions 2 and 3 are met, wait for volume. If all three hold, promote.
+
+**Likely graduation order** (based on current module investment): `STRATEGY` → `RISK` → `COMPS` → `NEWS` → `DEMAND` → `DEBT`. Not a roadmap commitment, just an ordering if/when volume arrives.
+
+---
+
+## Layer 3 — Analyst Personas (16 personas)
+
+These are system prompt variants on the Coordinator. They change the voice, emphasis, and framing of the response — they do not change what tools run or what data is fetched.
+
+| Persona | Voice/lens |
+|---------|-----------|
+| CFO | Capital structure, returns hurdles, covenant math |
+| ACCOUNTANT | GAAP treatment, tax basis, reconciliation |
+| MARKETING | Positioning, unit mix, amenity trade-offs |
+| DEVELOPER | Entitlement path, construction budget, GC risk |
+| LEGAL | Title, zoning variance, contract language |
+| LENDER | DSCR, debt yield, loan-to-value, LTC |
+| ACQUISITIONS | Deal thesis, underwriting gaps, closing certainty |
+| ASSET_MANAGER | NOI growth, opex discipline, cap-ex prioritization |
+| PROPERTY_MANAGER | Day-to-day ops, vendor mgmt, resident experience |
+| LEASING | Concessions, absorption pace, rent roll health |
+| FACILITIES | Building systems, cap-ex timing, energy |
+| INVESTMENT_ANALYST | Memo framing, sensitivity tables, peer comps |
+| ESG | Efficiency, climate risk, social impact |
+| COMPLIANCE | Fair housing, Reg D, OFAC, KYC |
+| TAX | Depreciation, 1031, opportunity zone, property tax |
+| RESEARCHER | Market sizing, methodology, source quality |
+
+### Implementation
+
+```typescript
+// src/coordinator/personas/index.ts
+export const PERSONA_PROMPTS: Record<AnalystPersona, PersonaDefinition> = {
+  CFO: {
+    voicePrefix: "Respond as a real estate CFO. Lead with capital structure implications...",
+    emphasizeMetrics: ['dscr', 'debt_yield', 'irr', 'equity_multiple', 'cash_on_cash'],
+    framingHints: ['covenant risk', 'refinance timing', 'distribution waterfall']
+  },
+  // ... 15 more
+};
+```
+
+The Coordinator composes the final system prompt as:
+
+```
+[base Coordinator prompt]
++ [persona voice prefix for detected persona]
++ [intent contextFragment if Layer 2 dispatched to general LLM handler]
++ [DealContext / user context]
+```
+
+Personas apply **regardless** of whether the dispatch goes to an agent or the general LLM handler. If an agent runs and returns structured output, the Coordinator wraps the response in the persona voice when presenting it to the user.
+
+### Personas are not stored per-user as a preference (by default)
+
+Persona selection is per-message, driven by intent detection. Leon asking "what's the DSCR look like?" triggers CFO persona regardless of his previous message. This keeps the system responsive to user intent rather than siloed into a single chosen voice. Add a user setting later only if product feedback demands it.
+
+---
+
+## File / Directory Layout — Updated
+
+```
+src/
+├── agents/                         # LAYER 1 ONLY
+│   ├── runtime/
+│   │   ├── AgentRuntime.ts
+│   │   ├── ToolRegistry.ts
+│   │   ├── BudgetEnforcer.ts
+│   │   └── MeteringAdapter.ts
+│   ├── tools/
+│   ├── prompts/
+│   │   ├── research/
+│   │   ├── zoning/
+│   │   ├── supply/
+│   │   ├── cashflow/
+│   │   └── commentary/             # NEW
+│   ├── research.agent.ts
+│   ├── zoning.agent.ts
+│   ├── supply.agent.ts
+│   ├── cashflow.agent.ts
+│   └── commentary.agent.ts         # NEW
+│
+├── coordinator/                    # LAYER 2 + 3
+│   ├── Coordinator.ts              # user-session orchestrator
+│   ├── intent/
+│   │   ├── classifier.ts           # user message → routing specialist
+│   │   └── context-fragments/      # prompt snippets for non-agent intents
+│   │       ├── demand_signals.ts
+│   │       ├── comp_analysis.ts
+│   │       ├── risk_factors.ts
+│   │       └── ...
+│   ├── personas/
+│   │   ├── index.ts                # persona prompt registry
+│   │   ├── cfo.ts
+│   │   ├── accountant.ts
+│   │   └── ...
+│   ├── dispatch.ts                 # INTENT_DISPATCH table
+│   └── general-llm-handler.ts      # non-agent response path
+│
+├── services/                       # NOT AGENTS
+│   ├── metricRecommendation.service.ts    # reclassified from agent
+│   ├── dealContext.service.ts
+│   ├── credit.service.ts
+│   └── ...
+│
+└── inngest/                        # DURABLE RUNTIME
+    ├── functions/
+    │   ├── research.function.ts
+    │   ├── zoning.function.ts
+    │   ├── supply.function.ts
+    │   ├── cashflow.function.ts
+    │   └── commentary.function.ts
+    └── client.ts
+```
+
+---
+
+## Migration Checklist — From Current State to Spec
+
+### Reclassify (move files)
+- [ ] Move `MetricRecommendation` from agents to `src/services/metricRecommendation.service.ts`
+- [ ] Move `AgentOrchestrator` logic into `src/inngest/` as Inngest functions + into `src/coordinator/dispatch.ts`
+- [ ] Ensure neither has a `user_type='agent'` row in the `users` table
+
+### Promote (complete the agent roster)
+- [ ] Commentary Agent — wire up per spec with new `market_commentary` table
+
+### Reframe (no code change, just mental model)
+- [ ] Routing specialists stay where they are; document that they are intent labels, not agents
+- [ ] Analyst personas stay where they are; document that they are prompt variants
+
+### Clarify in CLAUDE.md
+- [ ] Add "Agents vs Intents vs Personas" section explaining the three layers
+- [ ] Update any references to "20+ agents" to reflect the 5-agent reality
+- [ ] Document the graduation criteria for Layer 2 → Layer 1 promotion
+
+---
+
+## Summary — The Corrected Count
+
+| Layer | Count | What they are |
+|-------|-------|---------------|
+| Layer 1 — Agents | **5** | Research, Zoning, Supply, CashFlow, Commentary |
+| Layer 2 — Routing specialists | 10 | Intent categories (4 dispatch to agents, 6 to general LLM) |
+| Layer 3 — Analyst personas | 16 | System prompt variants on the Coordinator |
+| Reclassified | 2 | MetricRecommendation → service, AgentOrchestrator → runtime |
+
+**You do not have 20+ agents. You have 5 agents, 10 intent categories, and 16 personas — composed at runtime.** That composition gives you the *expressive range* of a 20+ agent system (5 × 10 × 16 = many distinct response shapes) without the *maintenance cost* of 20+ agents.

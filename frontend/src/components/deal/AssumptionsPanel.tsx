@@ -3,6 +3,7 @@ import { BT } from './bloomberg-ui';
 import { useAssumptions, SENSITIVITY_COEFFICIENTS, SENSITIVITY_PATHS, ASSUMPTION_PLATFORM_DEFAULTS } from '../../stores/dealStore';
 import type { LayeredValue, AlertLevel } from '../../stores/dealContext.types';
 import { INPUT_FIELD_REGISTRY } from '../../stores/dealContext.types';
+import { SourceBadge as AgentSourceBadge } from '../primitives/SourceBadge';
 
 const MONO = BT.font.mono;
 const TOP_N = 5;
@@ -137,6 +138,7 @@ function EditableField({ path, lv, onUpdate, onRevert }: EditableFieldProps) {
           {meta.label.toUpperCase()}
         </span>
         <SourceBadge source={lv.resolvedFrom} />
+        <AgentSourceBadge source={lv.source} agentRunId={lv.agent_run_id} />
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

@@ -20,7 +20,7 @@ import { CashFlowAgent } from '../../agents/cashflow.agent';
 import { ZoningAgent } from '../../agents/zoning.agent';
 import { ResearchAgent } from '../../agents/research.agent';
 import { CommentaryAgent } from '../../agents/commentary.agent';
-import { MetricRecommendationAgent } from '../../agents/metric-recommendation.agent';
+import { MetricRecommendationService } from '../metricRecommendation.service';
 
 // ============================================================================
 // Types
@@ -196,7 +196,7 @@ export class AgentDelegator {
   ): Promise<DelegationResult> {
     const startTime = Date.now();
     try {
-      const agent = new MetricRecommendationAgent();
+      const agent = new MetricRecommendationService();
       let marketGeoIds: Array<{ geoType: string; geoId: string }> = [];
 
       const city = (params.city as string) || '';

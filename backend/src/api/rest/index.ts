@@ -5,6 +5,7 @@
 
 import { Application } from 'express';
 import authRoutes from './auth.routes';
+import agentAuthRoutes from './agent-auth.routes';
 import propertyRoutes from './property.routes';
 import createUnifiedPropertiesRoutes from './unified-properties.routes';
 import zoningRoutes from './zoning.routes';
@@ -113,6 +114,7 @@ const API_PREFIX = '/api/v1';
 export function setupRESTRoutes(app: Application): void {
   // Authentication routes
   app.use(`${API_PREFIX}/auth`, authRoutes);
+  app.use(`${API_PREFIX}/auth`, agentAuthRoutes);
 
   // Dashboard routes
   app.use(`${API_PREFIX}/dashboard`, dashboardRoutes);

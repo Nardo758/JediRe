@@ -13,6 +13,15 @@ export interface JWTPayload {
   userId: string;
   email: string;
   role: string;
+  user_type?: 'human' | 'agent';
+  agent_id?: string;
+  capabilities?: string[];
+}
+
+export interface AgentJWTPayload extends JWTPayload {
+  user_type: 'agent';
+  agent_id: string;
+  capabilities: string[];
 }
 
 export interface TokenPair {

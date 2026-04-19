@@ -1,3 +1,87 @@
+## Agent Platform Architecture
+
+> Full spec: `attached_assets/Pasted--JEDI-RE-Agent-Platform-Specification-In-platform-agent_1776612030506.txt`
+> Taxonomy: `attached_assets/Pasted--JEDI-RE-Agent-Taxonomy-Layers-Addendum-to-AGENT-PLATFO_1776612009027.txt`
+
+### Three-Layer System
+
+The platform has three distinct layers. Only Layer 1 is an "agent" in the runtime sense.
+
+```
+User message
+     ↓
+COORDINATOR (runs in user session, no service account)
+  1. Intent classifier  → one of 10 Routing Specialists (Layer 2)
+  2. Persona selector   → one of 16 Analyst Personas (Layer 3)
+  3. Dispatch decision  → Agent (Layer 1)? General LLM? Both?
+     ↓                           ↓
+LAYER 1 — AGENTS          GENERAL LLM HANDLER
+(AgentRuntime)             (persona-flavored reply)
+Research, Zoning,          Used when no dedicated agent
+Supply, CashFlow,          handles that routing specialist
+Commentary
+     ↓
+Platform API (RBAC + audit)
+     ↓
+Postgres (domain tables, agent writes wrapped in LayeredValue<T>)
+```
+
+**Corrected count: 5 agents, 10 intent categories, 16 personas — composed at runtime.**
+The composition gives expressive range of many response shapes without 20+ agent maintenance cost.
+
+### Layer 1 — Agents (5 total)
+
+Each has: service account, capability list, versioned prompt in `prompt_versions`, typed tool registry, `BudgetEnforcer`, and run tracking in `agent_runs` + `agent_run_steps`.
+
+| Agent ID | Primary Output | Service Account ID |
+|----------|---------------|-------------------|
+| `research` | `deal_context` | `00000000-0000-0000-0000-000000000001` |
+| `zoning` | `zoning_analysis` | `00000000-0000-0000-0000-000000000002` |
+| `supply` | `supply_analysis` | `00000000-0000-0000-0000-000000000003` |
+| `cashflow` | `cashflow_projection` | `00000000-0000-0000-0000-000000000004` |
+| `commentary` | `market_commentary` | `00000000-0000-0000-0000-000000000005` |
+
+### Layer 2 — Routing Specialists (10 intent labels)
+
+Not agents. The Coordinator's intent classifier maps each message to one of these:
+
+- `SUPPLY`, `CASH`, `ZONING`, `RESEARCH` → dispatch to Layer 1 agent
+- `DEMAND`, `COMPS`, `RISK`, `DEBT`, `NEWS`, `STRATEGY` → general LLM handler with context fragment
+
+**Do not preemptively build agents for DEMAND, COMPS, RISK, DEBT, NEWS, STRATEGY.**
+Graduation criteria (all three must hold): ≥5% of dispatches over 30 days, structured output needed, tool use would materially improve answers.
+
+### Layer 3 — Analyst Personas (16 prompt variants)
+
+System prompt variants on the Coordinator. Change voice/emphasis, not what data is fetched.
+CFO, ACCOUNTANT, MARKETING, DEVELOPER, LEGAL, LENDER, ACQUISITIONS, ASSET_MANAGER, PROPERTY_MANAGER, LEASING, FACILITIES, INVESTMENT_ANALYST, ESG, COMPLIANCE, TAX, RESEARCHER.
+
+### Reclassified (NOT agents)
+
+| Name | Where it lives | Why not an agent |
+|------|---------------|-----------------|
+| `MetricRecommendation` | `src/services/metricRecommendation.service.ts` | No tool loop, no multi-step reasoning — pure retrieval + ranking |
+| `AgentOrchestrator` | `src/inngest/` + `src/coordinator/dispatch.ts` | This is the runtime layer itself, not an agent |
+
+### Key Architectural Constraints
+
+1. **Dogfooding.** Agents call the platform API (same API humans use). No private DB backdoor.
+2. **One exception:** `write_dealcontext` may write directly to the DealContext service for cache efficiency. This is the ONLY documented exception. Do not expand it.
+3. **No parallel storage.** Agent outputs land in existing domain tables via `LayeredValue<T>` with `source: 'agent:*'` tags.
+4. **Budget caps are non-optional.** Every agent run enforces per-run, per-deal-per-day caps via `BudgetEnforcer`.
+5. **Prompts must be versioned.** No inline prompt strings in agent code. Load from `prompt_versions` table at runtime.
+6. **Output schema validation is non-optional.** Unvalidated agent output poisons the DealContext cache.
+7. **No agent-to-agent direct calls.** Agents hand off via Inngest events, never via function calls.
+
+### LayeredValue Merge Order
+
+```
+platform < agent:* < t12/rent_roll/tax_bill < override (user edit)
+```
+User edits always win. Agent-written values remain in history and can be recalled.
+
+---
+
 ## M07 Traffic Engine — Current State (F6 Traffic Module)
 
 ### Shipped

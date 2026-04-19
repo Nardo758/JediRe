@@ -65,6 +65,11 @@ export const BT = {
     hero: '32px',
   },
   // No gradients — terminal aesthetic uses solid colors only
+  accent: {
+    agent: '#00E5A0',   // teal — agent-written values (SourceBadge)
+    doc:   '#00BCD4',   // cyan — document-derived values (T12, RR, TAX)
+    user:  '#F5A623',   // amber — user overrides
+  },
 } as const;
 
 const MONO = BT.font.mono;

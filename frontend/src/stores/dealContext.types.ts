@@ -23,6 +23,33 @@
 
 export type DataSource = 'broker' | 'platform' | 'user' | 'agent' | 'computed';
 
+/**
+ * Fine-grained LayeredValueSource for the Agent Platform.
+ *
+ * Merge order (lowest → highest priority):
+ *   1. platform  (defaults)
+ *   2. agent:*   (any agent-written value)
+ *   3. t12 / rent_roll / tax_bill  (document-derived)
+ *   4. override  (user edit — always wins)
+ *
+ * User overrides always sit on top. Agent-written values remain in history
+ * after an override and can be recalled on rollback.
+ */
+export type LayeredValueSource =
+  | 'platform'           // default / fallback values
+  | 'broker'             // broker-supplied data
+  | 'agent:research'     // written by Research Agent
+  | 'agent:zoning'       // written by Zoning Agent
+  | 'agent:supply'       // written by Supply Agent
+  | 'agent:cashflow'     // written by CashFlow Agent
+  | 'agent:commentary'   // written by Commentary Agent
+  | 't12'                // from uploaded T12 document
+  | 'rent_roll'          // from uploaded Rent Roll
+  | 'tax_bill'           // from uploaded Tax Bill
+  | 'override'           // user edit
+  | 'user'               // user-entered value
+  | 'computed';          // derived value
+
 export type AlertLevel = 'none' | 'info' | 'warn' | 'block';
 
 export type InputClass = 'identity' | 'override' | 'scope';
@@ -30,8 +57,8 @@ export type InputClass = 'identity' | 'override' | 'scope';
 export interface LayeredValue<T> {
   /** The resolved value (what modules should render) */
   value: T;
-  /** Who set this value */
-  source: DataSource;
+  /** Fine-grained source tag — use LayeredValueSource for agent platform fields */
+  source: LayeredValueSource | DataSource;
   /** Which layer the resolved value came from */
   resolvedFrom: 'broker' | 'platform' | 'user';
   /** ISO timestamp of last update */
@@ -42,6 +69,8 @@ export interface LayeredValue<T> {
   alertLevel: AlertLevel;
   /** Whether the user has viewed/reviewed this value at least once */
   userReviewed: boolean;
+  /** Links to agent_runs table when source starts with 'agent:' */
+  agent_run_id?: string;
   /** Preserved original layers for collision display */
   layers?: {
     broker?: { value: T; updatedAt: string; confidence: number; source?: string };

@@ -13,6 +13,9 @@ export interface AuthenticatedRequest extends Request {
     userId: string;
     email: string;
     role: string;
+    user_type?: 'human' | 'agent';
+    agent_id?: string;
+    capabilities?: string[];
   };
 }
 
@@ -95,6 +98,31 @@ export function requireRole(...roles: string[]) {
 }
 
 /**
+ * Require a specific capability (for agent tokens).
+ * Human users pass unconditionally — capability enforcement only applies to agent tokens.
+ * Usage: router.post('/path', requireAuth, requireCapability('write:zoning_analysis'), handler)
+ */
+export function requireCapability(required: string) {
+  return (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
+    if (!req.user) {
+      res.status(401).json({ error: 'Unauthorized', message: 'Authentication required' });
+      return;
+    }
+    if (req.user.user_type === 'agent') {
+      const caps = req.user.capabilities ?? [];
+      if (!caps.includes(required) && !caps.includes('read:all') && !caps.includes('write:all')) {
+        res.status(403).json({
+          error: 'Forbidden',
+          message: `Agent lacks capability: ${required}`,
+        });
+        return;
+      }
+    }
+    next();
+  };
+}
+
+/**
  * Require API Key (for external integrations)
  */
 export function requireApiKey(
@@ -165,5 +193,6 @@ export const authMiddleware = {
   requireAuth,
   optionalAuth,
   requireRole,
+  requireCapability,
   requireApiKey,
 };
