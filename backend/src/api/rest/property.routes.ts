@@ -25,6 +25,7 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res: Response, ne
       propertyType,
       minLotSize,
       maxLotSize,
+      address,
       limit = 50,
       offset = 0,
     } = req.query;
@@ -32,6 +33,13 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res: Response, ne
     let queryText = 'SELECT * FROM properties WHERE 1=1';
     const params: any[] = [];
     let paramIndex = 1;
+
+    // Address search — used by agent fetch_parcel tool for address-based lookup
+    if (address) {
+      queryText += ` AND address ILIKE $${paramIndex}`;
+      params.push(`%${address}%`);
+      paramIndex++;
+    }
 
     // Apply filters
     if (city) {

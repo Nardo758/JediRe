@@ -1,13 +1,18 @@
 /**
  * Tool: fetch_parcel
  *
- * Fetches parcel and property data by parcel_id (as property UUID) or by address.
+ * Fetches parcel/property data from the platform database.
  * Routes through the platform API under the research agent's service-account
  * identity (dogfooding pattern — no private backdoor).
  *
- * Endpoint mapping to existing routes:
- *   - parcel_id → GET /properties/:id  (property.routes.ts)
- *   - address   → GET /pipeline/analyze/:parcelId via POST /pipeline/analyze
+ * API contracts:
+ *   parcel_id → GET /properties/:id
+ *               Response: property row ({ id, address_line1, city, state_code,
+ *               property_type, year_built, sqft, units, avg_rent, ... })
+ *
+ *   address   → GET /properties/?address=<query>&limit=1
+ *               Response: { properties: [...rows], count: N }
+ *               (address filter added to property.routes.ts list endpoint)
  *
  * Required capability: read:parcels
  */
@@ -18,9 +23,9 @@ import { logger } from '../../utils/logger';
 import type { ToolDefinition } from '../runtime/types';
 
 const InputSchema = z.object({
-  parcel_id: z.string().optional().describe('Platform property UUID or parcel ID'),
-  address: z.string().optional().describe('Full street address'),
-  county: z.string().optional().describe('County name, used with address for disambiguation'),
+  parcel_id: z.string().optional().describe('Platform property UUID'),
+  address: z.string().optional().describe('Full or partial street address'),
+  county: z.string().optional().describe('County for disambiguation (logged only)'),
 }).refine(
   d => d.parcel_id || d.address,
   { message: 'Must provide parcel_id or address' }
@@ -29,16 +34,16 @@ const InputSchema = z.object({
 const OutputSchema = z.object({
   parcel_id: z.string(),
   address: z.string().nullable(),
-  acres: z.number().nullable(),
-  zoning_code: z.string().nullable(),
-  land_use: z.string().nullable(),
-  assessed_value: z.number().nullable(),
-  legal_description: z.string().nullable(),
-  owner_name: z.string().nullable(),
+  city: z.string().nullable(),
+  state: z.string().nullable(),
+  property_type: z.string().nullable(),
   year_built: z.number().nullable(),
   square_feet: z.number().nullable(),
-  county: z.string().nullable(),
-  state: z.string().nullable(),
+  units: z.number().nullable(),
+  avg_rent: z.number().nullable(),
+  occupancy_rate: z.number().nullable(),
+  lat: z.number().nullable(),
+  lng: z.number().nullable(),
   source: z.string().default('platform_api'),
 }).passthrough();
 
@@ -50,8 +55,8 @@ export const fetchParcelTool: ToolDefinition<
 > = {
   name: 'fetch_parcel',
   description:
-    'Fetch parcel data by property ID or by address. ' +
-    'Returns zoning code, acres, assessed value, owner, and year built.',
+    'Fetch property/parcel data by ID or by address. ' +
+    'Returns property type, year built, square footage, units, avg rent, and occupancy.',
   inputSchema: InputSchema,
   outputSchema: OutputSchema,
   requiresCapability: 'read:parcels',
@@ -63,68 +68,75 @@ export const fetchParcelTool: ToolDefinition<
     });
 
     if (input.parcel_id) {
-      // Look up by property UUID via GET /properties/:id
-      const data = await client.get<Record<string, unknown>>(
+      // Look up by UUID — GET /properties/:id returns a single property row
+      const row = await client.get<Record<string, unknown>>(
         `/properties/${encodeURIComponent(input.parcel_id)}`
       );
-      return normalizePropertyRow(data, input.parcel_id);
+      return normalizeRow(row);
     }
 
-    // Address lookup via POST /pipeline/analyze
-    try {
-      const data = await client.post<Record<string, unknown>>(
-        '/pipeline/analyze',
-        { address: input.address, county: input.county }
-      );
-      return normalizePropertyRow(data, (data.id as string) ?? input.address ?? 'unknown');
-    } catch (err) {
-      logger.warn('fetch_parcel: /pipeline/analyze failed, returning partial result', {
+    // Address lookup — GET /properties/?address=<query>&limit=1
+    // Returns { properties: [...], count: N }
+    const listResp = await client.get<{ properties: Record<string, unknown>[]; count: number }>(
+      '/properties',
+      { address: input.address!, limit: '1' }
+    );
+
+    const rows = listResp?.properties;
+
+    if (!rows || rows.length === 0) {
+      logger.warn('fetch_parcel: no property found for address', {
         address: input.address,
-        err: err instanceof Error ? err.message : String(err),
+        county: input.county,
       });
-      // Return minimal structure so model can handle gracefully
       return {
         parcel_id: input.address ?? 'unknown',
         address: input.address ?? null,
-        acres: null,
-        zoning_code: null,
-        land_use: null,
-        assessed_value: null,
-        legal_description: null,
-        owner_name: null,
+        city: null,
+        state: null,
+        property_type: null,
         year_built: null,
         square_feet: null,
-        county: input.county ?? null,
-        state: null,
+        units: null,
+        avg_rent: null,
+        occupancy_rate: null,
+        lat: null,
+        lng: null,
         source: 'platform_api',
-        error: err instanceof Error ? err.message : String(err),
+        not_found: true,
       };
     }
+
+    return normalizeRow(rows[0]);
   },
 };
 
-function normalizePropertyRow(
-  row: Record<string, unknown>,
-  fallbackId: string
-): ParcelOutput {
+// ── Response normalization ────────────────────────────────────────
+
+function normalizeRow(row: Record<string, unknown>): ParcelOutput {
   return {
-    parcel_id: (row.id as string) ?? (row.parcel_id as string) ?? fallbackId,
-    address: (row.address as string) ?? (row.full_address as string) ?? null,
-    acres: toNumber(row.lot_size_acres ?? row.acres),
-    zoning_code: (row.zoning_code as string) ?? (row.zoning as string) ?? null,
-    land_use: (row.land_use as string) ?? (row.property_type as string) ?? null,
-    assessed_value: toNumber(row.assessed_value ?? row.tax_assessed_value),
-    legal_description: (row.legal_description as string) ?? null,
-    owner_name: (row.owner_name as string) ?? (row.owner as string) ?? null,
-    year_built: toNumber(row.year_built),
-    square_feet: toNumber(row.square_feet ?? row.gross_sf ?? row.building_sf),
-    county: (row.county as string) ?? null,
-    state: (row.state as string) ?? null,
+    parcel_id: str(row.id),
+    address: str(row.address_line1 ?? row.address ?? row.full_address),
+    city: str(row.city),
+    state: str(row.state_code ?? row.state),
+    property_type: str(row.property_type),
+    year_built: num(row.year_built),
+    square_feet: num(row.sqft ?? row.square_feet),
+    units: num(row.units),
+    avg_rent: num(row.avg_rent ?? row.market_rent),
+    occupancy_rate: num(row.current_occupancy ?? row.occupancy_rate),
+    lat: num(row.lat),
+    lng: num(row.lng),
     source: 'platform_api',
   };
 }
 
-function toNumber(val: unknown): number | null {
+function str(val: unknown): string | null {
+  if (val === null || val === undefined) return null;
+  return String(val);
+}
+
+function num(val: unknown): number | null {
   if (val === null || val === undefined) return null;
   const n = Number(val);
   return isNaN(n) ? null : n;
