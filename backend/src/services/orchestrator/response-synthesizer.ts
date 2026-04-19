@@ -293,11 +293,28 @@ export class ResponseSynthesizer {
       .map(r => `[${r.agent}]:\n${JSON.stringify(r.data, null, 2)}`)
       .join('\n\n');
 
-    // Build persona voice block for the primary agent when available
-    const primaryAnalyst = results.find(r => r.agentType === 'analyst' && r.personaId && r.success);
-    const personaVoice = primaryAnalyst?.personaId
+    // Build persona voice block for the primary agent when available.
+    // Priority: analyst result → fragment specialist → Layer 1 specialist (via header).
+    const primaryPersonaId: string | undefined =
+      results.find(r => r.agentType === 'analyst' && r.personaId && r.success)?.personaId ??
+      results.find(r => r.personaId && r.domainLabel && r.success)?.personaId ??
+      (() => {
+        // Derive from personaHeader string as last resort (e.g. "Reyna Torres — Comparable Sales")
+        if (!personaHeader) return undefined;
+        // Find persona whose displayName matches the header prefix
+        const headerName = personaHeader.split(' — ')[0];
+        for (const [k, p] of Object.entries(
+          (SPECIALIST_PERSONA_MAP as unknown as Record<string, { personaId: string }>)
+        )) {
+          const persona = getPersona(p.personaId as any);
+          if (persona?.displayName === headerName) return p.personaId;
+        }
+        return undefined;
+      })();
+
+    const personaVoice = primaryPersonaId
       ? (() => {
-          const p = getPersona(primaryAnalyst.personaId);
+          const p = getPersona(primaryPersonaId);
           if (!p) return '';
           return `\n\nYou are responding as ${p.displayName} (${p.role}). ${p.voicePrefix}\nEmphasize: ${p.emphasizeMetrics.slice(0, 3).join(', ')}.`;
         })()

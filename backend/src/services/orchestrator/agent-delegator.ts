@@ -29,7 +29,7 @@ import {
   isFragmentDispatch,
   type SpecialistKey,
 } from '../../coordinator/dispatch';
-import { buildFragmentPrompt } from '../../coordinator/context-fragments';
+import { buildFragmentPrompt, type FragmentDealContext } from '../../coordinator/context-fragments';
 import {
   buildPersonaPrompt,
   getPersona,
@@ -164,7 +164,27 @@ export class AgentDelegator {
 
     // ── Layer 2: Context fragment injection ───────────────────────
     if (isFragmentDispatch(dispatch)) {
-      const fragmentPrompt = buildFragmentPrompt(dispatch.fragmentKey);
+      // Build deal context from delegation params so the fragment prompt
+      // is grounded in the active property's data points.
+      const dealCtx: FragmentDealContext = {
+        address: params.address as string | undefined,
+        city: params.city as string | undefined,
+        stateCode: params.stateCode as string | undefined,
+        propertyType: params.propertyType as string | undefined,
+        marketStats: (params.vacancyRate !== undefined ||
+                      params.avgRent !== undefined ||
+                      params.rentGrowthYoY !== undefined ||
+                      params.absorptionRate !== undefined)
+          ? {
+              vacancyRate: params.vacancyRate as number | undefined,
+              avgRent: params.avgRent as number | undefined,
+              rentGrowthYoY: params.rentGrowthYoY as number | undefined,
+              absorptionRate: params.absorptionRate as number | undefined,
+            }
+          : undefined,
+      };
+
+      const fragmentPrompt = buildFragmentPrompt(dispatch.fragmentKey, dealCtx);
       const personaMapEntry = SPECIALIST_PERSONA_MAP[agent as SpecialistKey];
       return {
         agent,
