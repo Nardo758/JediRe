@@ -95,10 +95,23 @@ export type CommentaryCompletedEvent = {
   };
 };
 
+export type CashflowWalkthroughRequestedEvent = {
+  name: 'cashflow.walkthrough_requested';
+  data: {
+    dealId: string;
+    agentRunId: string | null;
+    snapshotId: string | null;
+    focus: string | null;
+    triggerReason: 'auto_principal' | 'user_requested' | 'post_run';
+    eventId: string;
+  };
+};
+
 export type JediEvents =
   | DealCreatedEvent
   | ResearchCompletedEvent
   | ZoningCompletedEvent
   | SupplyCompletedEvent
   | CashflowCompletedEvent
+  | CashflowWalkthroughRequestedEvent
   | CommentaryCompletedEvent;

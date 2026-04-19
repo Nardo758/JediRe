@@ -55,6 +55,12 @@ export interface RunContext {
   triggeredBy: 'user' | 'event' | 'cron';
   triggerContext?: Record<string, unknown>;
   correlationId?: string;
+  /**
+   * Optional system prompt override — when set, AgentRuntime skips the prompt_versions
+   * DB query and uses this string directly. Used by cashflow orchestration to inject
+   * a deal-type-specific composite prompt (core + variant) without DB contention.
+   */
+  systemPromptOverride?: string;
 }
 
 // ── Tool definitions ──────────────────────────────────────────────────────────

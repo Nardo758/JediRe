@@ -36,10 +36,29 @@ import { detectCollisionTool } from './tools/detect_collision';
 import { writeUnderwritingTool } from './tools/write_underwriting';
 import { requestWalkthroughNarrativeTool } from './tools/request_walkthrough_narrative';
 
-// ── Legacy output schema (kept for backward compatibility) ─────────
-// New evidence-system output lives in src/types/layered-value.ts
+// ── Evidence-system output schema (v4) ──────────────────────────
+//
+// Extends the legacy proforma fields with optional evidence-map,
+// collision-summary, and per-field underwriting tier metadata
+// so the runtime's outputSchema.parse() accepts evidence-style outputs.
+
+const CollisionSummarySchema = z.object({
+  total_collisions: z.number().int().nonnegative(),
+  severe: z.number().int().nonnegative(),
+  material: z.number().int().nonnegative(),
+  minor: z.number().int().nonnegative(),
+  fields_with_collision: z.array(z.string()),
+}).optional();
+
+const EvidenceSummaryEntrySchema = z.object({
+  primary_tier: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
+  confidence: z.enum(['high', 'medium', 'low']),
+  source_count: z.number().int().nonnegative(),
+  has_collision: z.boolean(),
+}).optional();
 
 export const CashflowOutputSchema = z.object({
+  // ── Core proforma metrics ─────────────────────────────────────
   purchase_price: z.number().nullable(),
   noi_year1: z.number().nullable(),
   year1_cap_rate_pct: z.number().nullable(),
@@ -55,6 +74,15 @@ export const CashflowOutputSchema = z.object({
   confidence_score: z.number().min(0).max(1),
   fields_written: z.array(z.string()),
   completed_at: z.string(),
+  // ── Evidence-system fields (optional, populated when write_underwriting ran) ──
+  /** Map of field_path → evidence summary for the F9 evidence panel. */
+  evidence_map: z.record(z.string(), EvidenceSummaryEntrySchema).optional(),
+  /** High-level collision report (agent vs. broker OM). */
+  collision_summary: CollisionSummarySchema,
+  /** IDs of persisted underwriting_evidence rows from this run. */
+  underwriting_evidence_ids: z.array(z.string()).optional(),
+  /** ID of the deal_underwriting_snapshots row, if written. */
+  snapshot_id: z.string().nullable().optional(),
 });
 
 export type CashflowAgentOutput = z.infer<typeof CashflowOutputSchema>;

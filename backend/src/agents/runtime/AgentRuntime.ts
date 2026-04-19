@@ -169,16 +169,23 @@ export class AgentRuntime {
     };
 
     try {
-      const promptRow = await query(
-        `SELECT system_prompt FROM prompt_versions
-         WHERE agent_id = $1 AND active = true
-         ORDER BY created_at DESC LIMIT 1`,
-        [this.config.agentId]
-      );
-      const systemPrompt: string =
-        promptRow.rows[0]?.system_prompt ??
-        `You are the ${this.config.agentId} agent for JEDI RE. ` +
-        `Analyze real estate data and respond with structured JSON.`;
+      // Honor per-run system prompt override (e.g. deal-type-composed prompt)
+      // when provided; otherwise fall back to the latest active DB prompt.
+      let systemPrompt: string;
+      if (ctxWithRun.systemPromptOverride) {
+        systemPrompt = ctxWithRun.systemPromptOverride;
+      } else {
+        const promptRow = await query(
+          `SELECT system_prompt FROM prompt_versions
+           WHERE agent_id = $1 AND active = true
+           ORDER BY created_at DESC LIMIT 1`,
+          [this.config.agentId]
+        );
+        systemPrompt =
+          promptRow.rows[0]?.system_prompt ??
+          `You are the ${this.config.agentId} agent for JEDI RE. ` +
+          `Analyze real estate data and respond with structured JSON.`;
+      }
 
       const result = await this.loop({ run, systemPrompt, userMessage: JSON.stringify(input), ctx: ctxWithRun, accrued });
       const validated = this.config.outputSchema.parse(result.content);
@@ -270,18 +277,23 @@ export class AgentRuntime {
     const accrued = { tokensIn: 0, tokensOut: 0, cost: 0 };
 
     try {
-      // Step 3: Load system prompt
-      const promptRow = await query(
-        `SELECT system_prompt FROM prompt_versions
-         WHERE agent_id = $1 AND active = true
-         ORDER BY created_at DESC LIMIT 1`,
-        [this.config.agentId]
-      );
-
-      const systemPrompt: string =
-        promptRow.rows[0]?.system_prompt ??
-        `You are the ${this.config.agentId} agent for JEDI RE. ` +
-        `Analyze real estate data and respond with structured JSON.`;
+      // Step 3: Load system prompt — honor per-run override when provided,
+      // otherwise query the latest active prompt from prompt_versions.
+      let systemPrompt: string;
+      if (ctx.systemPromptOverride) {
+        systemPrompt = ctx.systemPromptOverride;
+      } else {
+        const promptRow = await query(
+          `SELECT system_prompt FROM prompt_versions
+           WHERE agent_id = $1 AND active = true
+           ORDER BY created_at DESC LIMIT 1`,
+          [this.config.agentId]
+        );
+        systemPrompt =
+          promptRow.rows[0]?.system_prompt ??
+          `You are the ${this.config.agentId} agent for JEDI RE. ` +
+          `Analyze real estate data and respond with structured JSON.`;
+      }
 
       // Step 4: Tool-calling loop
       // Stamp correlationId with run.id and agentId from config so tools use

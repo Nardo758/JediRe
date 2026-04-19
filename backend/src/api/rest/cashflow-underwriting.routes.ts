@@ -324,4 +324,99 @@ dealUnderwritingRouter.post(
   }
 );
 
+// ── GET /api/v1/deals/:dealId/underwriting/evidence-summary ──────
+/**
+ * Aggregates evidence distribution, collision summary, and confidence
+ * breakdown for the frontend's F9 EvidencePanel overview header.
+ *
+ * Returns:
+ *   - collision_summary: {total, severe, material, minor, fields_with_collision}
+ *   - confidence_distribution: {high, medium, low}
+ *   - tier_distribution: {tier1, tier2, tier3, tier4}
+ *   - field_count: total distinct underwritten fields
+ *   - latest_run_at: timestamp of the most recent evidence row
+ *   - snapshot_id: latest snapshot ID for this deal
+ */
+dealUnderwritingRouter.get(
+  '/:dealId/underwriting/evidence-summary',
+  requireAuth,
+  async (req: AuthenticatedRequest, res: Response, next) => {
+    try {
+      const { dealId } = req.params;
+      if (!UUID_RE.test(dealId)) throw new AppError(400, 'Invalid deal ID');
+
+      await assertDealAccess(dealId, req.user!.userId);
+
+      // Aggregate evidence rows for this deal (latest row per field_path)
+      const evidenceResult = await query(
+        `WITH latest_evidence AS (
+           SELECT DISTINCT ON (field_path)
+             field_path, primary_tier, confidence, collision, created_at
+           FROM underwriting_evidence
+           WHERE deal_id = $1
+           ORDER BY field_path, created_at DESC
+         )
+         SELECT
+           COUNT(*) AS field_count,
+           MAX(created_at) AS latest_run_at,
+           SUM(CASE WHEN confidence = 'high'   THEN 1 ELSE 0 END) AS high_confidence,
+           SUM(CASE WHEN confidence = 'medium' THEN 1 ELSE 0 END) AS medium_confidence,
+           SUM(CASE WHEN confidence = 'low'    THEN 1 ELSE 0 END) AS low_confidence,
+           SUM(CASE WHEN primary_tier = 1 THEN 1 ELSE 0 END) AS tier1,
+           SUM(CASE WHEN primary_tier = 2 THEN 1 ELSE 0 END) AS tier2,
+           SUM(CASE WHEN primary_tier = 3 THEN 1 ELSE 0 END) AS tier3,
+           SUM(CASE WHEN primary_tier = 4 THEN 1 ELSE 0 END) AS tier4,
+           SUM(CASE WHEN collision IS NOT NULL THEN 1 ELSE 0 END) AS total_collisions,
+           SUM(CASE WHEN collision->>'magnitude' = 'severe'   THEN 1 ELSE 0 END) AS severe_collisions,
+           SUM(CASE WHEN collision->>'magnitude' = 'material' THEN 1 ELSE 0 END) AS material_collisions,
+           SUM(CASE WHEN collision->>'magnitude' = 'minor'    THEN 1 ELSE 0 END) AS minor_collisions,
+           array_agg(field_path) FILTER (WHERE collision IS NOT NULL) AS collision_fields
+         FROM latest_evidence`,
+        [dealId]
+      );
+
+      const row = evidenceResult.rows[0] as Record<string, unknown> | undefined;
+
+      // Latest snapshot ID
+      const snapResult = await query(
+        `SELECT id FROM deal_underwriting_snapshots
+         WHERE deal_id = $1
+         ORDER BY created_at DESC LIMIT 1`,
+        [dealId]
+      );
+      const snapshotId = (snapResult.rows[0] as Record<string, unknown> | undefined)?.id ?? null;
+
+      const int = (v: unknown) => parseInt(String(v ?? 0), 10);
+
+      res.json({
+        success: true,
+        deal_id: dealId,
+        field_count: int(row?.field_count),
+        latest_run_at: row?.latest_run_at ?? null,
+        snapshot_id: snapshotId,
+        collision_summary: {
+          total_collisions: int(row?.total_collisions),
+          severe: int(row?.severe_collisions),
+          material: int(row?.material_collisions),
+          minor: int(row?.minor_collisions),
+          fields_with_collision: (row?.collision_fields as string[] | null) ?? [],
+        },
+        confidence_distribution: {
+          high: int(row?.high_confidence),
+          medium: int(row?.medium_confidence),
+          low: int(row?.low_confidence),
+        },
+        tier_distribution: {
+          tier1: int(row?.tier1),
+          tier2: int(row?.tier2),
+          tier3: int(row?.tier3),
+          tier4: int(row?.tier4),
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 export default router;

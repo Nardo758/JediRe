@@ -1,25 +1,70 @@
 /**
- * CashFlow Agent — Inngest durable function
+ * CashFlow Agent — Inngest durable functions
  *
- * Triggers on `research.completed` and runs proforma analysis when the deal
- * has T12 / rent-roll documents available (has_t12_data / has_rent_roll flags).
- * Each major side effect uses `step.run()` for durable execution.
+ * cashflowOnResearchCompleted: triggers on `research.completed`
+ *   Runs proforma analysis when the deal has T12 / rent-roll documents.
+ *   Each major side effect uses `step.run()` for durable execution.
  *
- * Flow:
- *   Step 1: tier-gate check (from deal's user tier)
- *   Step 2: seed prompt (idempotent)
- *   Step 3: resolve deal context + check document availability
- *   Step 4: execute CashflowRuntime (idempotent on inngest_event_id)
- *   Step 5: write audit_log entry
- *   Step 6: emit cashflow.completed event
+ *   Flow:
+ *     Step 1: tier-gate check (from deal's user tier)
+ *     Step 2: seed prompt (idempotent)
+ *     Step 3: resolve deal context + check document availability
+ *     Step 4: compose deal-type prompt (core + variant) + execute CashflowRuntime
+ *     Step 5: write audit_log entry
+ *     Step 6: emit cashflow.completed event
+ *
+ * cashflowOnWalkthroughRequested: triggers on `cashflow.walkthrough_requested`
+ *   Invokes the Commentary Agent to generate the walkthrough narrative and
+ *   write it to `deal_walkthrough_narratives`.
  */
 
-import { inngest, type ResearchCompletedEvent, type JediEvents } from '../lib/inngest';
-import { cashflowRuntime } from './cashflow.config';
+import {
+  inngest,
+  type ResearchCompletedEvent,
+  type CashflowWalkthroughRequestedEvent,
+  type JediEvents,
+} from '../lib/inngest';
+import {
+  cashflowRuntime,
+  resolveProjectType,
+  CASHFLOW_DEAL_TYPE_TO_PROMPT_TYPE,
+} from './cashflow.config';
 import type { CashflowAgentOutput } from './cashflow.config';
 import { query } from '../database/connection';
 import { logger } from '../utils/logger';
 import type { RunContext } from './runtime/types';
+
+// ── Helpers ───────────────────────────────────────────────────────
+
+/**
+ * Load and compose the core cashflow system prompt with the deal-type variant.
+ * Returns the concatenated text — or the core-only text if no variant is found.
+ */
+async function buildCompositePrompt(dealRow: Record<string, unknown>): Promise<string> {
+  const dealType = resolveProjectType(dealRow);
+  const variantType = CASHFLOW_DEAL_TYPE_TO_PROMPT_TYPE[dealType];
+
+  const coreRow = await query(
+    `SELECT system_prompt FROM prompt_versions
+     WHERE agent_id = 'cashflow' AND prompt_type = 'core' AND active = true
+     ORDER BY created_at DESC LIMIT 1`
+  );
+  const corePrompt: string =
+    coreRow.rows[0]?.system_prompt ??
+    'You are the CashFlow Agent for JEDI RE. Analyze real estate data and return structured JSON.';
+
+  const variantRow = await query(
+    `SELECT system_prompt FROM prompt_versions
+     WHERE agent_id = 'cashflow' AND prompt_type = $1 AND active = true
+     ORDER BY created_at DESC LIMIT 1`,
+    [variantType]
+  );
+  const variantPrompt: string = variantRow.rows[0]?.system_prompt ?? '';
+
+  return variantPrompt
+    ? `${corePrompt}\n\n## Deal-Type Addendum (${dealType})\n${variantPrompt}`
+    : corePrompt;
+}
 
 const ALLOWED_TIERS: readonly string[] = [
   'professional', 'enterprise', 'principal', 'institutional',
@@ -166,6 +211,12 @@ export const cashflowOnResearchCompleted = inngest.createFunction(
         };
       }
 
+      // Build deal-type-aware system prompt (core + variant) so the model
+      // receives instructions calibrated to the specific project strategy.
+      const systemPromptOverride = await buildCompositePrompt({
+        property_type: dealCtx.property_type ?? '',
+      });
+
       const ctx: RunContext = {
         dealId,
         userId,
@@ -175,6 +226,7 @@ export const cashflowOnResearchCompleted = inngest.createFunction(
           inngest_event_id: inngestEventId,
           research_run_id: (event as unknown as ResearchCompletedEvent).data.runId,
         },
+        systemPromptOverride,
       };
 
       const output = await cashflowRuntime.run(
@@ -270,5 +322,114 @@ export const cashflowOnResearchCompleted = inngest.createFunction(
       runId: runResult.runId,
       confidence_score: runResult.confidence_score,
     };
+  }
+);
+
+// ── Walkthrough handler ───────────────────────────────────────────
+
+/**
+ * Triggered by `cashflow.walkthrough_requested` (emitted by request_walkthrough_narrative tool).
+ * Invokes the Commentary Agent with the underwriting snapshot to generate a
+ * natural-language walkthrough narrative written to `audit_log`.
+ */
+export const cashflowOnWalkthroughRequested = inngest.createFunction(
+  {
+    id: 'cashflow-on-walkthrough-requested',
+    name: 'CashFlow Agent: generate walkthrough narrative',
+    triggers: [{ event: 'cashflow.walkthrough_requested' }],
+    retries: 2,
+    concurrency: {
+      limit: 3,
+      key: 'event.data.dealId',
+    },
+  },
+  async ({ event, step }): Promise<{ narrative: string; runId: string }> => {
+    const data = (event as unknown as CashflowWalkthroughRequestedEvent).data;
+    const { dealId, agentRunId, snapshotId, focus, eventId } = data;
+
+    // Step 1: Load snapshot or latest evidence for context
+    const evidenceCtx = await step.run('load-evidence-context', async () => {
+      if (snapshotId) {
+        const snap = await query(
+          `SELECT proforma_json, evidence_map FROM deal_underwriting_snapshots
+           WHERE id = $1`,
+          [snapshotId]
+        );
+        return {
+          proforma: snap.rows[0]?.proforma_json ?? null,
+          evidence: snap.rows[0]?.evidence_map ?? null,
+        };
+      }
+      // Fall back to latest snapshot for this deal
+      const snap = await query(
+        `SELECT proforma_json, evidence_map FROM deal_underwriting_snapshots
+         WHERE deal_id = $1
+         ORDER BY created_at DESC LIMIT 1`,
+        [dealId]
+      );
+      return {
+        proforma: snap.rows[0]?.proforma_json ?? null,
+        evidence: snap.rows[0]?.evidence_map ?? null,
+      };
+    });
+
+    // Step 2: Invoke Commentary Agent to generate the narrative
+    const result = await step.run('generate-walkthrough', async () => {
+      const { commentaryRuntime } = await import('./commentary.config');
+      const ctx: RunContext = {
+        dealId,
+        triggeredBy: 'event',
+        triggerContext: {
+          source: 'cashflow.walkthrough_requested',
+          event_id: eventId,
+          agent_run_id: agentRunId,
+        },
+      };
+
+      const output = await commentaryRuntime.run(
+        {
+          deal_id: dealId,
+          mode: 'walkthrough',
+          focus: focus ?? 'proforma_evidence',
+          proforma_snapshot: evidenceCtx.proforma,
+          evidence_map: evidenceCtx.evidence,
+        },
+        ctx
+      );
+
+      return {
+        narrative: (output as Record<string, unknown>).commentary_text as string ?? '',
+        runId: ctx.correlationId ?? '',
+      };
+    });
+
+    // Step 3: Write narrative to audit_log for UI consumption
+    await step.run('persist-walkthrough', async () => {
+      await query(
+        `INSERT INTO audit_log
+           (actor_id, actor_type, action, resource_type, resource_id, metadata)
+         VALUES ('cashflow', 'agent', 'cashflow.walkthrough_completed', 'deal', $1, $2)`,
+        [
+          dealId,
+          JSON.stringify({
+            event_id: eventId,
+            narrative: result.narrative,
+            agent_run_id: agentRunId,
+            walkthrough_run_id: result.runId,
+            focus: focus ?? 'proforma_evidence',
+            completed_at: new Date().toISOString(),
+          }),
+        ]
+      );
+      return { persisted: true };
+    });
+
+    logger.info('cashflow.walkthrough: narrative generated', {
+      dealId,
+      eventId,
+      narrativeLength: result.narrative.length,
+    });
+
+    return { narrative: result.narrative, runId: result.runId };
   }
 );

@@ -11,6 +11,8 @@
 import { z } from 'zod';
 import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
+import { inngest } from '../../lib/inngest';
+import type { JediEvents } from '../../lib/inngest';
 import type { ToolDefinition } from '../runtime/types';
 
 const InputSchema = z.object({
@@ -42,10 +44,11 @@ export const requestWalkthroughNarrativeTool: ToolDefinition<
   requiresCapability: 'write:deal_context',
 
   execute: async (input, ctx) => {
-    // Write a pending walkthrough record to DB so the UI can poll
     const eventId = crypto.randomUUID();
+    const agentRunId = ctx.correlationId ?? null;
 
     try {
+      // 1. Persist an audit record so the UI can poll for walkthrough status.
       await query(
         `INSERT INTO audit_log
            (actor_id, actor_type, action, resource_type, resource_id, metadata)
@@ -58,14 +61,28 @@ export const requestWalkthroughNarrativeTool: ToolDefinition<
             snapshot_id: input.snapshot_id ?? null,
             focus: input.focus ?? null,
             trigger_reason: input.trigger_reason,
-            agent_run_id: ctx.dealId ?? null,
+            agent_run_id: agentRunId,
             requested_at: new Date().toISOString(),
           }),
         ]
       );
 
-      logger.info('request_walkthrough_narrative: event logged', {
-        runId: ctx.dealId,
+      // 2. Emit the Inngest event so the Commentary Agent picks it up
+      //    asynchronously and generates the walkthrough narrative.
+      await inngest.send({
+        name: 'cashflow.walkthrough_requested' as const,
+        data: {
+          dealId: input.deal_id,
+          agentRunId,
+          snapshotId: input.snapshot_id ?? null,
+          focus: input.focus ?? null,
+          triggerReason: input.trigger_reason,
+          eventId,
+        },
+      } satisfies JediEvents);
+
+      logger.info('request_walkthrough_narrative: event fired', {
+        runId: agentRunId,
         dealId: input.deal_id,
         eventId,
         triggerReason: input.trigger_reason,
@@ -77,11 +94,11 @@ export const requestWalkthroughNarrativeTool: ToolDefinition<
         message: 'Walkthrough narrative requested. Commentary Agent will generate it asynchronously.',
       };
     } catch (err) {
-      logger.warn('request_walkthrough_narrative: failed to log event', { err });
+      logger.warn('request_walkthrough_narrative: failed to fire event', { err });
       return {
         event_fired: false,
         event_id: eventId,
-        message: 'Walkthrough request could not be persisted. It will not appear in the UI.',
+        message: 'Walkthrough request could not be dispatched. It will not appear in the UI.',
       };
     }
   },

@@ -318,7 +318,10 @@ import { inngest } from './lib/inngest';
 import { researchOnDealCreated } from './agents/research.inngest';
 import { zoningOnDealCreated } from './agents/zoning.inngest';
 import { supplyOnDealCreated } from './agents/supply.inngest';
-import { cashflowOnResearchCompleted } from './agents/cashflow.inngest';
+import {
+  cashflowOnResearchCompleted,
+  cashflowOnWalkthroughRequested,
+} from './agents/cashflow.inngest';
 import { commentaryOnResearchCompleted } from './agents/commentary.inngest';
 app.use(
   '/api/inngest',
@@ -329,6 +332,7 @@ app.use(
       zoningOnDealCreated,
       supplyOnDealCreated,
       cashflowOnResearchCompleted,
+      cashflowOnWalkthroughRequested,
       commentaryOnResearchCompleted,
     ],
   })

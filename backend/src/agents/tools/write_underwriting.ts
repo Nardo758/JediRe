@@ -92,7 +92,7 @@ export const writeUnderwritingTool: ToolDefinition<
          RETURNING id`,
         [
           input.deal_id,
-          ctx.dealId ?? null,
+          ctx.correlationId ?? null,
           row.field_path,
           row.value_numeric ?? null,
           row.value_text ?? null,
@@ -116,7 +116,7 @@ export const writeUnderwritingTool: ToolDefinition<
          RETURNING id`,
         [
           input.deal_id,
-          ctx.dealId ?? null,
+          ctx.correlationId ?? null,
           JSON.stringify(input.proforma_snapshot),
           JSON.stringify(input.evidence_map),
         ]
@@ -125,7 +125,7 @@ export const writeUnderwritingTool: ToolDefinition<
     }
 
     logger.info('write_underwriting', {
-      runId: ctx.dealId,
+      runId: ctx.correlationId,
       dealId: input.deal_id,
       evidenceCount: evidenceIds.length,
       snapshotId,
