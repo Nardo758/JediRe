@@ -77,14 +77,10 @@ export const researchOnDealCreated = inngest.createFunction(
       return { runId: '', confidence_score: 0 };
     }
 
-    // ── Step 2: Ensure research prompt is seeded ────────────────────
-    await step.run('seed-prompt', async () => {
-      const { seedResearchPrompt } = await import('./seeds/research.seed');
-      await seedResearchPrompt();
-      return { seeded: true };
-    });
-
     // ── Step 2b: Resolve deal context for tool inputs ───────────────
+    // NOTE: prompt seeding is handled at server startup only (seedAllAgentPrompts).
+    // Per-run seeding was removed in Phase 5 so that operator rollbacks
+    // (flipping prompt_versions.active) are authoritative for all subsequent runs.
     // Provides address/city/state/property_id so LLM can call tools
     // with correct parameters (fetch_parcel, fetch_ownership, fetch_costar_metrics).
     const dealCtx = await step.run('resolve-deal-context', async () => {

@@ -85,14 +85,9 @@ export const commentaryOnResearchCompleted = inngest.createFunction(
 
     const { userId } = tierCheckResult;
 
-    // ── Step 2: Seed prompt ─────────────────────────────────────────
-    await step.run('seed-prompt', async () => {
-      const { seedCommentaryPrompt } = await import('./seeds/commentary.seed');
-      await seedCommentaryPrompt();
-      return { seeded: true };
-    });
-
     // ── Step 3: Resolve deal context + entity identity ──────────────
+    // NOTE: prompt seeding is handled at server startup only (seedAllAgentPrompts).
+    // Per-run seeding was removed in Phase 5 to make rollback authoritative.
     // Commentary uses entity_type/entity_id rather than deal_id.
     // For a deal trigger, the entity is the property (entity_type = 'property').
     const dealCtx = await step.run('resolve-deal-context', async () => {

@@ -66,14 +66,9 @@ export const zoningOnDealCreated = inngest.createFunction(
       return { runId: '', confidence_score: 0 };
     }
 
-    // ── Step 2: Seed prompt ─────────────────────────────────────────
-    await step.run('seed-prompt', async () => {
-      const { seedZoningPrompt } = await import('./seeds/zoning.seed');
-      await seedZoningPrompt();
-      return { seeded: true };
-    });
-
     // ── Step 3: Resolve deal context ────────────────────────────────
+    // NOTE: prompt seeding is handled at server startup only (seedAllAgentPrompts).
+    // Per-run seeding was removed in Phase 5 to make rollback authoritative.
     const dealCtx = await step.run('resolve-deal-context', async () => {
       const res = await query(
         `SELECT d.address, d.property_address, d.city, d.state_code,

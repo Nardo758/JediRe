@@ -92,14 +92,9 @@ export const cashflowOnResearchCompleted = inngest.createFunction(
 
     const { userId } = tierCheckResult;
 
-    // ── Step 2: Seed prompt ─────────────────────────────────────────
-    await step.run('seed-prompt', async () => {
-      const { seedCashflowPrompt } = await import('./seeds/cashflow.seed');
-      await seedCashflowPrompt();
-      return { seeded: true };
-    });
-
     // ── Step 3: Resolve deal context + document availability ────────
+    // NOTE: prompt seeding is handled at server startup only (seedAllAgentPrompts).
+    // Per-run seeding was removed in Phase 5 to make rollback authoritative.
     // Gate: only proceed if T12 financials OR rent-roll data exist.
     // Without financial documents the proforma would be pure estimation
     // with no deal-specific data to ground it — deferred until docs arrive.

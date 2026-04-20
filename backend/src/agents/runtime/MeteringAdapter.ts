@@ -115,20 +115,29 @@ class DealRunStartLimiter {
 
   /**
    * Acquire a run-start slot for this deal.
-   * If the 60-second window is full, queues the caller until a slot opens.
-   * Never rejects — call release() when the run row has been created.
+   * If the 60-second sliding window is full (≥ MAX_RUN_STARTS_PER_DEAL starts
+   * recorded in the last 60 s), the caller is queued — never rejected — until
+   * the oldest recorded timestamp exits the window, which is handled by the
+   * setTimeout scheduled below.
+   *
+   * The window manages its own cleanup: no release call is needed.  The caller
+   * simply awaits this method; it resolves as soon as a slot is available.
    */
-  async acquire(dealId: string): Promise<() => void> {
+  async acquire(dealId: string): Promise<void> {
     const w = this.getWindow(dealId);
     this.prune(w);
 
     if (w.starts.length < MAX_RUN_STARTS_PER_DEAL) {
+      // Slot available — record start timestamp and return immediately.
       const ts = Date.now();
       w.starts.push(ts);
-      return () => this.releaseStart(dealId, ts);
+      // Schedule pruning when this timestamp exits the window so later
+      // callers don't stay blocked past the actual 60-second boundary.
+      setTimeout(() => this.drainQueue(dealId), RUN_START_WINDOW_MS + 1);
+      return;
     }
 
-    // Window full — queue and wait until oldest start exits the 60-second window.
+    // Window full — queue and wait until the oldest start exits the 60-second window.
     const waitMs = this.msUntilNextSlot(w);
     logger.warn('MeteringAdapter: deal run-start window full, queuing run', {
       dealId,
@@ -138,7 +147,7 @@ class DealRunStartLimiter {
       estimatedWaitMs: waitMs,
     });
 
-    return new Promise<() => void>((resolve) => {
+    return new Promise<void>((resolve) => {
       let warnTimer: ReturnType<typeof setInterval>;
 
       const proceed = () => {
@@ -146,7 +155,8 @@ class DealRunStartLimiter {
         const ts = Date.now();
         w.starts.push(ts);
         logger.info('MeteringAdapter: queued run acquired run-start slot', { dealId });
-        resolve(() => this.releaseStart(dealId, ts));
+        setTimeout(() => this.drainQueue(dealId), RUN_START_WINDOW_MS + 1);
+        resolve();
       };
 
       warnTimer = setInterval(() => {
@@ -155,16 +165,9 @@ class DealRunStartLimiter {
 
       w.queue.push(proceed);
 
-      // Schedule a release check when the oldest start would exit the window.
+      // Schedule the drain when the oldest recorded start exits the window.
       setTimeout(() => this.drainQueue(dealId), Math.max(waitMs, 1));
     });
-  }
-
-  private releaseStart(dealId: string, ts: number): void {
-    const w = runStartWindows.get(dealId);
-    if (!w) return;
-    w.starts = w.starts.filter(t => t !== ts);
-    this.drainQueue(dealId);
   }
 
   private drainQueue(dealId: string): void {
