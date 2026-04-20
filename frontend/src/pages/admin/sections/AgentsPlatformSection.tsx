@@ -157,8 +157,8 @@ export function AgentsPlatformSection() {
                   {agentId}
                 </span>
                 {s ? (
-                  <span className="text-xs" style={{ color: rateColor }}>
-                    {s.success_rate_pct ?? '0'}% ok
+                  <span className="text-xs" title="All-time success rate" style={{ color: rateColor }}>
+                    {s.success_rate_pct ?? '0'}% ok (all-time)
                   </span>
                 ) : (
                   <span className="text-xs" style={{ color: BT.text.muted }}>no runs</span>

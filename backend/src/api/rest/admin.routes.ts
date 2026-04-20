@@ -1568,6 +1568,15 @@ router.get('/agents/stats', requireAdminAuth, async (req: AuthenticatedRequest, 
     res.json({
       success: true,
       generated_at: new Date().toISOString(),
+      // success_rate_pct is computed all-time (not windowed).
+      // runs_last_30d/runs_last_1d and cost_usd_30d use rolling windows.
+      metric_periods: {
+        success_rate_pct: 'all_time',
+        runs_last_30d: '30_days',
+        runs_last_1d: '1_day',
+        cost_usd_30d: '30_days',
+        total_cost_usd: 'all_time',
+      },
       agents,
     });
   } catch (err: any) {
