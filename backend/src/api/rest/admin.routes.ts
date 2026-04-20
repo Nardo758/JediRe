@@ -1638,8 +1638,9 @@ router.get('/agents/test-budget-cap', requireAdminAuth, async (req: Authenticate
     });
   }
 
-  // Sentinel deal ID — no FK constraint on agent_runs.deal_id so any UUID works.
-  const FIXTURE_DEAL_ID = '00000000-0000-0000-0000-000000000099';
+  // Unique fixture deal ID per invocation — avoids run-start limiter queuing
+  // repeated rapid calls to this test endpoint.  No FK constraint on deal_id.
+  const FIXTURE_DEAL_ID = `00000000-0000-0000-0000-${Date.now().toString().slice(-12)}`;
   const FIXTURE_AGENT_VERSION = 'budget-test-v1';
 
   try {
