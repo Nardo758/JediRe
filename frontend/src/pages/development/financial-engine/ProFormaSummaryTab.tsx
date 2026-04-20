@@ -272,7 +272,10 @@ function applyEvidenceFilter(
     // F9SummaryBar emits '1'|'2'|'3'|'4' (not 'tier1'|…)
     const targetTier = parseInt(filter.value, 10);
     return rows.filter(r => {
-      const rowTier = sourceToTier(r.source ?? r.resolution);
+      // Prefer tier from underwriting evidence when available; fall back to
+      // legacy source-string mapping so rows without evidence still filter.
+      const evidenceTier = resolveEvidence(r.field, evidenceFieldMap)?.meta.tier;
+      const rowTier = evidenceTier ?? sourceToTier(r.source ?? r.resolution);
       return rowTier === targetTier;
     });
   }
