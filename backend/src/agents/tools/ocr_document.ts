@@ -26,19 +26,33 @@ import os from 'os';
 import crypto from 'crypto';
 import { logger } from '../../utils/logger';
 
-const SUPPORTED_MIME_TYPES = new Set([
-  'application/pdf',
+const PDF_MIME = 'application/pdf';
+const EXCEL_MIMES = new Set([
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'application/vnd.ms-excel',
+]);
+// Image MIME types are recognised but cannot produce text without an OCR
+// service (Tesseract / Google Vision). They return empty string so the
+// caller degrades gracefully to email body text alone, rather than
+// throwing an unsupported-type error.
+const IMAGE_MIMES = new Set([
+  'image/jpeg', 'image/jpg', 'image/png', 'image/tiff', 'image/webp',
+]);
+
+const SUPPORTED_MIME_TYPES = new Set([
+  PDF_MIME,
+  ...EXCEL_MIMES,
+  ...IMAGE_MIMES,
 ]);
 
 const MAX_PDF_CHARS = 20000;
 const MAX_EXCEL_CHARS = 20000;
 
 /**
- * Extract plain text from a base64-encoded PDF or Excel file.
- * - PDF: uses pdftotext (poppler-utils) via execFileSync with arg array
- * - Excel: uses the xlsx package to read all sheets and flatten to text
+ * Extract plain text from a base64-encoded PDF, Excel, or image file.
+ * - PDF:   pdftotext (poppler-utils) via execFileSync with arg array (no shell injection)
+ * - Excel: xlsx package, reads all sheets in-memory → CSV text
+ * - Image: returns empty string (no image-OCR service available at runtime)
  *
  * Returns empty string on unsupported type or extraction failure.
  */
@@ -47,8 +61,17 @@ export async function ocrDocument(
   mimeType: string,
   filename: string
 ): Promise<string> {
-  if (!SUPPORTED_MIME_TYPES.has(mimeType.toLowerCase())) {
+  const normalizedMime = mimeType.toLowerCase();
+
+  if (!SUPPORTED_MIME_TYPES.has(normalizedMime)) {
     logger.debug('ocr_document: unsupported MIME type, skipping', { mimeType, filename });
+    return '';
+  }
+
+  // Image types: recognised for future extensibility, but return empty
+  // string until an image-OCR service (e.g. Google Vision) is integrated.
+  if (IMAGE_MIMES.has(normalizedMime)) {
+    logger.debug('ocr_document: image attachment — no OCR service configured, skipping', { mimeType, filename });
     return '';
   }
 
@@ -58,10 +81,7 @@ export async function ocrDocument(
     // ── Excel extraction via xlsx package ────────────────────────────────
     // Broker packages are frequently sent as .xlsx summaries. The xlsx package
     // reads sheets in-memory — no temp file or shell command needed.
-    if (
-      mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
-      mimeType === 'application/vnd.ms-excel'
-    ) {
+    if (EXCEL_MIMES.has(normalizedMime)) {
       try {
         const XLSX = await import('xlsx');
         const workbook = XLSX.read(buffer, { type: 'buffer' });
@@ -84,7 +104,7 @@ export async function ocrDocument(
     // Use execFileSync with an explicit argument array — never interpolate
     // user-supplied filenames into a shell command string.
     // Temp file uses a MIME-derived extension (never from user input).
-    if (mimeType === 'application/pdf') {
+    if (normalizedMime === PDF_MIME) {
       const ext = '.pdf';
       const tmpPath = path.join(os.tmpdir(), `jedire-ocr-${crypto.randomBytes(8).toString('hex')}${ext}`);
       try {

@@ -429,7 +429,7 @@ router.post('/:emailId/import-as-deal', requireAuth, async (req: AuthenticatedRe
     // Load the email from DB.
     // external_id is the Gmail message ID (consistent with how gmail-sync stores it).
     const emailResult = await pool.query(
-      `SELECT id, subject, body_text, from_address, external_id, account_id
+      `SELECT id, subject, body_text, from_address, external_id
        FROM emails WHERE id = $1 AND user_id = $2 LIMIT 1`,
       [emailId, userId]
     );
