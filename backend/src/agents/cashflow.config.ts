@@ -156,7 +156,10 @@ export function resolveProjectType(dealRow: Record<string, unknown>): CashflowDe
 export function getAllowedTriggerModes(tier: string): string[] {
   const t = tier.toLowerCase();
   if (t === 'scout') return ['manual'];
+  if (t === 'basic') return ['manual', 'event-driven'];  // Allow basic tier for dev/testing
   if (t === 'operator') return ['manual', 'event-driven'];
+  if (t === 'professional') return ['manual', 'event-driven'];
+  if (t === 'enterprise') return ['manual', 'event-driven', 'weekly-refresh'];
   if (t === 'principal') return ['manual', 'event-driven', 'weekly-refresh'];
   if (t === 'institutional') return ['manual', 'event-driven', 'weekly-refresh', 'portfolio-batch'];
   return ['manual'];

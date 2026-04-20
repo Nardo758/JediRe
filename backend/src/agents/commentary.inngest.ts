@@ -39,7 +39,7 @@ const COMMENTARY_CACHE_TTL_HOURS = 24;
 // Manual commentary runs via the market intelligence UI are tier-unrestricted.
 // ────────────────────────────────────────────────────────────────────────────
 const ALLOWED_TIERS: readonly string[] = [
-  'professional', 'enterprise', 'principal', 'institutional',
+  'operator', 'professional', 'enterprise', 'principal', 'institutional', 'basic',
 ];
 
 function isTierAllowed(tier: string): boolean {
