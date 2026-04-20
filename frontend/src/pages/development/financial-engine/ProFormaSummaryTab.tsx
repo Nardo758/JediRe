@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { CheckCircle2, AlertTriangle, Pencil, RotateCcw, RefreshCw, Loader2, XCircle, ChevronDown, ChevronRight, ExternalLink } from 'lucide-react';
 import { BT } from '../../../components/deal/bloomberg-ui';
 import { apiClient } from '../../../services/api.client';
-import type { FinancialEngineTabProps } from './types';
+import type { FinancialEngineTabProps, EvidenceFieldMeta } from './types';
 
 const MONO = BT.font.mono;
 const LABEL = BT.font.label;
@@ -217,15 +217,32 @@ function sourceToTier(source: string | null): number {
   return 0;
 }
 
-/** Filter proforma rows by the active evidence summary-bar pill selection.
- *  - confidence: matched against row.confidence (0–1) using high/medium/low buckets.
- *  - tier: F9SummaryBar emits values '1'|'2'|'3'|'4'; mapped via sourceToTier().
- *  - collision: per-row collision data is not embedded in proforma rows — all rows
- *               are shown when this filter type is active (graceful degradation).
+/**
+ * Resolve evidence metadata for a ProForma row field.
+ *
+ * The underwriting evidence system stores field_paths like 'income.gpr' or 'expense.real_estate_tax'
+ * while ProForma rows use short field names like 'gpr' or 'real_estate_tax'.
+ * We try exact match first, then strip any dot-separated prefix.
  */
+function resolveEvidenceMeta(
+  rowField: string,
+  evidenceFieldMap?: Record<string, EvidenceFieldMeta>
+): EvidenceFieldMeta | null {
+  if (!evidenceFieldMap) return null;
+  // 1. Exact match
+  if (evidenceFieldMap[rowField]) return evidenceFieldMap[rowField];
+  // 2. Suffix match — e.g. 'income.gpr' → matches 'gpr'
+  const suffix = `.${rowField}`;
+  for (const key of Object.keys(evidenceFieldMap)) {
+    if (key.endsWith(suffix)) return evidenceFieldMap[key];
+  }
+  return null;
+}
+
 function applyEvidenceFilter(
   rows: OperatingStatementRow[],
-  filter: { type: 'collision' | 'confidence' | 'tier'; value: string }
+  filter: { type: 'collision' | 'confidence' | 'tier'; value: string },
+  evidenceFieldMap?: Record<string, EvidenceFieldMeta>
 ): OperatingStatementRow[] {
   if (filter.type === 'confidence') {
     return rows.filter(r => {
@@ -245,12 +262,17 @@ function applyEvidenceFilter(
       return rowTier === targetTier;
     });
   }
-  // collision: per-row collision data is not embedded in proforma rows.
-  // Show all rows to avoid hiding valid data; the summary bar count remains informational.
+  if (filter.type === 'collision') {
+    if (!evidenceFieldMap) return rows;
+    return rows.filter(r => {
+      const meta = resolveEvidenceMeta(r.field, evidenceFieldMap);
+      return meta?.has_collision === true;
+    });
+  }
   return rows;
 }
 
-export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange, evidenceFilter }: FinancialEngineTabProps) {
+export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange, evidenceFilter, evidenceFieldMap }: FinancialEngineTabProps) {
   const [data, setData] = useState<DealFinancials | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -389,7 +411,7 @@ export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange, evidenceFi
   const totalUnits = data.totalUnits;
 
   // Apply evidence summary-bar filter when a pill is active
-  const displayRows = evidenceFilter ? applyEvidenceFilter(rows, evidenceFilter) : rows;
+  const displayRows = evidenceFilter ? applyEvidenceFilter(rows, evidenceFilter, evidenceFieldMap) : rows;
 
   const byField: Record<string, OperatingStatementRow> = {};
   rows.forEach(r => { byField[r.field] = r; });
@@ -546,6 +568,7 @@ export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange, evidenceFi
                   onResetCorrection={handleResetCorrection}
                   onToggleAncillary={r.field === 'other_income_per_unit' ? () => setShowAncillary(v => !v) : undefined}
                   ancillaryOpen={r.field === 'other_income_per_unit' ? showAncillary : undefined}
+                  evidenceMeta={resolveEvidenceMeta(r.field, evidenceFieldMap)}
                 />
                 {r.field === 'other_income_per_unit' && showAncillary && (
                   <tr>
@@ -567,7 +590,8 @@ export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange, evidenceFi
                 corrections={corrections} setCorrections={setCorrections}
                 totalUnits={totalUnits} egiResolved={egiResolved}
                 onSaveCorrection={handleSaveCorrection}
-                onResetCorrection={handleResetCorrection} />
+                onResetCorrection={handleResetCorrection}
+                evidenceMeta={resolveEvidenceMeta(r.field, evidenceFieldMap)} />
             ))}
             <tr style={{ background: '#1a110a' }}>
               <td style={{ padding: '4px 8px', color: '#fb923c', fontWeight: 700, fontFamily: LABEL, fontSize: 9, paddingLeft: 12 }}>─── CONTROLLABLE OPEX ───</td>
@@ -588,7 +612,8 @@ export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange, evidenceFi
                 corrections={corrections} setCorrections={setCorrections}
                 totalUnits={totalUnits} egiResolved={egiResolved}
                 onSaveCorrection={handleSaveCorrection}
-                onResetCorrection={handleResetCorrection} />
+                onResetCorrection={handleResetCorrection}
+                evidenceMeta={resolveEvidenceMeta(r.field, evidenceFieldMap)} />
             ))}
 
             {/* ── TOTAL OPEX ── */}
@@ -1013,7 +1038,13 @@ function AncillaryExpansionPanel({ totalUnits, dealId }: { totalUnits: number; d
   );
 }
 
-function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, egiResolved, onSaveCorrection, onResetCorrection, onToggleAncillary, ancillaryOpen }: {
+const COLLISION_COLOR: Record<string, string> = {
+  severe:   '#ef4444',
+  material: '#f59e0b',
+  minor:    '#94a3b8',
+};
+
+function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, egiResolved, onSaveCorrection, onResetCorrection, onToggleAncillary, ancillaryOpen, evidenceMeta }: {
   row: OperatingStatementRow;
   isEven: boolean;
   shade?: 'blue' | 'warm' | 'purple';
@@ -1025,6 +1056,7 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
   onResetCorrection: (field: string) => Promise<void>;
   onToggleAncillary?: () => void;
   ancillaryOpen?: boolean;
+  evidenceMeta?: EvidenceFieldMeta | null;
 }) {
   const isSubtotal = SUBTOTALS.has(row.field);
   const isDeviant = row.benchmarkPosition === 'above' || row.benchmarkPosition === 'below';
@@ -1156,6 +1188,23 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
       {/* FLAG + ACTIONS */}
       <td style={{ padding: '4px 6px', whiteSpace: 'nowrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          {evidenceMeta?.has_collision && (
+            <span
+              title={`Collision · Agent vs Broker OM${evidenceMeta.collision_magnitude ? ` (${evidenceMeta.collision_magnitude})` : ''}`}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 3,
+                fontSize: 8, fontFamily: LABEL, letterSpacing: 0.3,
+                color: COLLISION_COLOR[evidenceMeta.collision_magnitude ?? 'minor'] ?? '#94a3b8',
+              }}
+            >
+              <span style={{
+                display: 'inline-block', width: 6, height: 6, borderRadius: '50%',
+                background: COLLISION_COLOR[evidenceMeta.collision_magnitude ?? 'minor'] ?? '#94a3b8',
+                flexShrink: 0,
+              }} />
+              {(evidenceMeta.collision_magnitude ?? 'minor').toUpperCase()}
+            </span>
+          )}
           {isDeviant && (
             <span title={`${row.benchmarkPosition === 'above' ? 'Above' : 'Below'} platform benchmark`}
               style={{ fontSize: 8, color: '#f59e0b', letterSpacing: 0.3, fontFamily: LABEL }}>

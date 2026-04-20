@@ -624,32 +624,47 @@ dealUnderwritingRouter.get(
       await assertDealAccess(dealId, req.user!.userId);
 
       // Aggregate evidence rows for this deal (latest row per field_path)
-      const evidenceResult = await query(
-        `WITH latest_evidence AS (
-           SELECT DISTINCT ON (field_path)
-             field_path, primary_tier, confidence, collision, created_at
+      const [evidenceResult, fieldMapResult] = await Promise.all([
+        query(
+          `WITH latest_evidence AS (
+             SELECT DISTINCT ON (field_path)
+               field_path, primary_tier, confidence, collision, created_at
+             FROM underwriting_evidence
+             WHERE deal_id = $1
+             ORDER BY field_path, created_at DESC
+           )
+           SELECT
+             COUNT(*) AS field_count,
+             MAX(created_at) AS latest_run_at,
+             SUM(CASE WHEN confidence = 'high'   THEN 1 ELSE 0 END) AS high_confidence,
+             SUM(CASE WHEN confidence = 'medium' THEN 1 ELSE 0 END) AS medium_confidence,
+             SUM(CASE WHEN confidence = 'low'    THEN 1 ELSE 0 END) AS low_confidence,
+             SUM(CASE WHEN primary_tier = 1 THEN 1 ELSE 0 END) AS tier1,
+             SUM(CASE WHEN primary_tier = 2 THEN 1 ELSE 0 END) AS tier2,
+             SUM(CASE WHEN primary_tier = 3 THEN 1 ELSE 0 END) AS tier3,
+             SUM(CASE WHEN primary_tier = 4 THEN 1 ELSE 0 END) AS tier4,
+             SUM(CASE WHEN collision IS NOT NULL THEN 1 ELSE 0 END) AS total_collisions,
+             SUM(CASE WHEN collision->>'magnitude' = 'severe'   THEN 1 ELSE 0 END) AS severe_collisions,
+             SUM(CASE WHEN collision->>'magnitude' = 'material' THEN 1 ELSE 0 END) AS material_collisions,
+             SUM(CASE WHEN collision->>'magnitude' = 'minor'    THEN 1 ELSE 0 END) AS minor_collisions,
+             array_agg(field_path) FILTER (WHERE collision IS NOT NULL) AS collision_fields
+           FROM latest_evidence`,
+          [dealId]
+        ),
+        // Per-field metadata — keyed by field_path for collision dot rendering
+        query(
+          `SELECT DISTINCT ON (field_path)
+             field_path,
+             primary_tier,
+             confidence,
+             (collision IS NOT NULL)         AS has_collision,
+             collision->>'magnitude'          AS collision_magnitude
            FROM underwriting_evidence
            WHERE deal_id = $1
-           ORDER BY field_path, created_at DESC
-         )
-         SELECT
-           COUNT(*) AS field_count,
-           MAX(created_at) AS latest_run_at,
-           SUM(CASE WHEN confidence = 'high'   THEN 1 ELSE 0 END) AS high_confidence,
-           SUM(CASE WHEN confidence = 'medium' THEN 1 ELSE 0 END) AS medium_confidence,
-           SUM(CASE WHEN confidence = 'low'    THEN 1 ELSE 0 END) AS low_confidence,
-           SUM(CASE WHEN primary_tier = 1 THEN 1 ELSE 0 END) AS tier1,
-           SUM(CASE WHEN primary_tier = 2 THEN 1 ELSE 0 END) AS tier2,
-           SUM(CASE WHEN primary_tier = 3 THEN 1 ELSE 0 END) AS tier3,
-           SUM(CASE WHEN primary_tier = 4 THEN 1 ELSE 0 END) AS tier4,
-           SUM(CASE WHEN collision IS NOT NULL THEN 1 ELSE 0 END) AS total_collisions,
-           SUM(CASE WHEN collision->>'magnitude' = 'severe'   THEN 1 ELSE 0 END) AS severe_collisions,
-           SUM(CASE WHEN collision->>'magnitude' = 'material' THEN 1 ELSE 0 END) AS material_collisions,
-           SUM(CASE WHEN collision->>'magnitude' = 'minor'    THEN 1 ELSE 0 END) AS minor_collisions,
-           array_agg(field_path) FILTER (WHERE collision IS NOT NULL) AS collision_fields
-         FROM latest_evidence`,
-        [dealId]
-      );
+           ORDER BY field_path, created_at DESC`,
+          [dealId]
+        ),
+      ]);
 
       const row = evidenceResult.rows[0] as Record<string, unknown> | undefined;
 
@@ -738,6 +753,23 @@ dealUnderwritingRouter.get(
         // Archive percentile is non-blocking
       }
 
+      // Build per-field metadata map keyed by field_path
+      const fieldMetadata: Record<string, {
+        tier: number;
+        confidence: string;
+        has_collision: boolean;
+        collision_magnitude: string | null;
+      }> = {};
+      for (const r of fieldMapResult.rows as Array<Record<string, unknown>>) {
+        const fp = r.field_path as string;
+        fieldMetadata[fp] = {
+          tier: Number(r.primary_tier),
+          confidence: String(r.confidence ?? 'medium'),
+          has_collision: Boolean(r.has_collision),
+          collision_magnitude: (r.collision_magnitude as string | null) ?? null,
+        };
+      }
+
       res.json({
         success: true,
         deal_id: dealId,
@@ -763,6 +795,7 @@ dealUnderwritingRouter.get(
           tier3: int(row?.tier3),
           tier4: int(row?.tier4),
         },
+        field_metadata: fieldMetadata,
       });
     } catch (error) {
       next(error);

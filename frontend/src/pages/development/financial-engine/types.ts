@@ -487,6 +487,14 @@ export interface F9NarrativeBlock {
   status: 'ok' | 'warn' | 'info';
 }
 
+/** Per-field evidence metadata from the underwriting evidence system */
+export interface EvidenceFieldMeta {
+  tier: number;
+  confidence: string;
+  has_collision: boolean;
+  collision_magnitude: 'minor' | 'material' | 'severe' | null;
+}
+
 export interface FinancialEngineTabProps {
   dealId: string;
   deal?: Record<string, unknown>;
@@ -512,6 +520,12 @@ export interface FinancialEngineTabProps {
   onHoldChange?: (years: number) => void;
   /** Active summary-bar filter — passed into tabs that support per-row filtering */
   evidenceFilter?: { type: 'collision' | 'confidence' | 'tier'; value: string } | null;
+  /**
+   * Per-field evidence metadata from the underwriting evidence system.
+   * Keyed by field_path (e.g. 'income.gpr', 'gpr').
+   * Used to render collision indicators and tier badges on ProForma rows.
+   */
+  evidenceFieldMap?: Record<string, EvidenceFieldMeta>;
 }
 
 // ─── F9 Debt Stack (v2) ───────────────────────────────────────────────────────

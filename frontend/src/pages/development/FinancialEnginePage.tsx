@@ -19,7 +19,7 @@ import { DecisionTab } from './financial-engine/DecisionTab';
 import { CompareTab } from './financial-engine/CompareTab';
 import { CostSheetTab } from '../../components/deal/sections/CostSheetTab';
 import { exportToExcel } from './financial-engine/excel-export';
-import type { ModelAssumptions, ModelResults, ModelVersion, DealType, F9DealFinancials } from './financial-engine/types';
+import type { ModelAssumptions, ModelResults, ModelVersion, DealType, F9DealFinancials, EvidenceFieldMeta } from './financial-engine/types';
 import { fmt$, fmtPct, fmtX } from './financial-engine/types';
 import { apiClient } from '../../services/api.client';
 import { F9SummaryBar } from '../../components/f9/F9SummaryBar';
@@ -83,6 +83,7 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
     confidence_distribution?: { high: number; medium: number; low: number };
     tier_distribution?: { tier1: number; tier2: number; tier3: number; tier4: number };
     archive_percentile?: number | null;
+    field_metadata?: Record<string, EvidenceFieldMeta>;
   } | null>(null);
   const [evidenceFilter, setEvidenceFilter] = useState<{ type: 'collision' | 'confidence' | 'tier'; value: string } | null>(null);
 
@@ -353,7 +354,8 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
     onF9Refresh: fetchF9Financials,
     onHoldChange: handleHoldChange,
     evidenceFilter,
-  }), [resolvedDealId, propDeal, resolvedDealType, assumptions, modelResults, handleAssumptionsChange, handleBuildModel, building, versions, activeVersion, f9Financials, fetchF9Financials, handleHoldChange, evidenceFilter]);
+    evidenceFieldMap: evidenceSummary?.field_metadata ?? undefined,
+  }), [resolvedDealId, propDeal, resolvedDealType, assumptions, modelResults, handleAssumptionsChange, handleBuildModel, building, versions, activeVersion, f9Financials, fetchF9Financials, handleHoldChange, evidenceFilter, evidenceSummary]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BT.bg.terminal }}>
