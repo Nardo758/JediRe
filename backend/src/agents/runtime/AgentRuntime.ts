@@ -114,10 +114,13 @@ export class AgentRuntime {
     // Pre-flight and row creation happen synchronously before we detach.
     // We create the row here by extracting the first two steps of run().
 
+    // Pre-flight budget check runs before the rate-limiter so that a rejected
+    // preflight (daily cap already hit) does not consume a run-start slot.
+    await this.budget.check(ctx, this.config.budgetCaps);
+
     // Rate-limit: max 3 run starts per deal in any 60-second window.
     if (ctx.dealId) await dealRunStartLimiter.acquire(ctx.dealId);
 
-    await this.budget.check(ctx, this.config.budgetCaps);
     const runId = uuidv4();
     await query(
       `INSERT INTO agent_runs
@@ -233,11 +236,12 @@ export class AgentRuntime {
     input: unknown,
     ctx: RunContext
   ): Promise<Record<string, unknown>> {
+    // Step 1: Pre-flight budget check (before rate-limiter — failed preflight
+    // should not consume a run-start slot).
+    await this.budget.check(ctx, this.config.budgetCaps);
+
     // Rate-limit: max 3 run starts per deal in any 60-second window.
     if (ctx.dealId) await dealRunStartLimiter.acquire(ctx.dealId);
-
-    // Step 1: Pre-flight budget check
-    await this.budget.check(ctx, this.config.budgetCaps);
 
     // Step 2: Create agent_run row
     const runId = uuidv4();
