@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Bot, RefreshCw, CheckCircle, XCircle, Clock, TrendingUp, DollarSign } from 'lucide-react';
+import { Bot, RefreshCw, Clock } from 'lucide-react';
 import { apiClient } from '../../../services/api.client';
 import { BT } from '@/components/deal/bloomberg-ui';
 
