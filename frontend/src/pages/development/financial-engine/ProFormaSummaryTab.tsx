@@ -218,26 +218,40 @@ function sourceToTier(source: string | null): number {
 }
 
 /**
- * Resolve evidence metadata for a ProForma row field.
+ * Resolve evidence metadata AND canonical field_path for a ProForma row field.
  *
  * The underwriting evidence system stores field_paths like 'income.gpr' or 'expense.real_estate_tax'
  * while ProForma rows use short field names like 'gpr' or 'real_estate_tax'.
- * We try exact match first, then strip any dot-separated prefix.
+ * Returns both the metadata and the matched canonical path (used to open EvidencePanel).
  */
-function resolveEvidenceMeta(
+function resolveEvidence(
   rowField: string,
   evidenceFieldMap?: Record<string, EvidenceFieldMeta>
-): EvidenceFieldMeta | null {
+): { meta: EvidenceFieldMeta; path: string } | null {
   if (!evidenceFieldMap) return null;
   // 1. Exact match
-  if (evidenceFieldMap[rowField]) return evidenceFieldMap[rowField];
+  if (evidenceFieldMap[rowField]) return { meta: evidenceFieldMap[rowField], path: rowField };
   // 2. Suffix match — e.g. 'income.gpr' → matches 'gpr'
   const suffix = `.${rowField}`;
   for (const key of Object.keys(evidenceFieldMap)) {
-    if (key.endsWith(suffix)) return evidenceFieldMap[key];
+    if (key.endsWith(suffix)) return { meta: evidenceFieldMap[key], path: key };
   }
   return null;
 }
+
+const TIER_BADGE_COLOR: Record<number, string> = {
+  1: BT.accent.doc,    // cyan — deal docs (T12, rent roll, tax bill)
+  2: '#60A5FA',        // blue — owned portfolio actuals
+  3: BT.text.purple,   // purple — platform market intelligence
+  4: BT.text.orange,   // orange — broker OM (low authority)
+};
+const TIER_LABEL: Record<number, string> = { 1: 'T1', 2: 'T2', 3: 'T3', 4: 'T4' };
+const TIER_TOOLTIP: Record<number, string> = {
+  1: 'Tier 1 · Deal documents (T12, rent roll, tax bill)',
+  2: 'Tier 2 · Owned portfolio actuals',
+  3: 'Tier 3 · Platform market intelligence',
+  4: 'Tier 4 · Broker OM (unverified)',
+};
 
 function applyEvidenceFilter(
   rows: OperatingStatementRow[],
@@ -265,8 +279,8 @@ function applyEvidenceFilter(
   if (filter.type === 'collision') {
     if (!evidenceFieldMap) return rows;
     return rows.filter(r => {
-      const meta = resolveEvidenceMeta(r.field, evidenceFieldMap);
-      return meta?.has_collision === true;
+      const resolved = resolveEvidence(r.field, evidenceFieldMap);
+      return resolved?.meta.has_collision === true;
     });
   }
   return rows;
@@ -568,7 +582,7 @@ export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange, evidenceFi
                   onResetCorrection={handleResetCorrection}
                   onToggleAncillary={r.field === 'other_income_per_unit' ? () => setShowAncillary(v => !v) : undefined}
                   ancillaryOpen={r.field === 'other_income_per_unit' ? showAncillary : undefined}
-                  evidenceMeta={resolveEvidenceMeta(r.field, evidenceFieldMap)}
+                  evidenceResolved={resolveEvidence(r.field, evidenceFieldMap)}
                 />
                 {r.field === 'other_income_per_unit' && showAncillary && (
                   <tr>
@@ -591,7 +605,7 @@ export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange, evidenceFi
                 totalUnits={totalUnits} egiResolved={egiResolved}
                 onSaveCorrection={handleSaveCorrection}
                 onResetCorrection={handleResetCorrection}
-                evidenceMeta={resolveEvidenceMeta(r.field, evidenceFieldMap)} />
+                evidenceResolved={resolveEvidence(r.field, evidenceFieldMap)} />
             ))}
             <tr style={{ background: '#1a110a' }}>
               <td style={{ padding: '4px 8px', color: '#fb923c', fontWeight: 700, fontFamily: LABEL, fontSize: 9, paddingLeft: 12 }}>─── CONTROLLABLE OPEX ───</td>
@@ -613,7 +627,7 @@ export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange, evidenceFi
                 totalUnits={totalUnits} egiResolved={egiResolved}
                 onSaveCorrection={handleSaveCorrection}
                 onResetCorrection={handleResetCorrection}
-                evidenceMeta={resolveEvidenceMeta(r.field, evidenceFieldMap)} />
+                evidenceResolved={resolveEvidence(r.field, evidenceFieldMap)} />
             ))}
 
             {/* ── TOTAL OPEX ── */}
@@ -1044,7 +1058,7 @@ const COLLISION_COLOR: Record<string, string> = {
   minor:    '#94a3b8',
 };
 
-function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, egiResolved, onSaveCorrection, onResetCorrection, onToggleAncillary, ancillaryOpen, evidenceMeta }: {
+function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, egiResolved, onSaveCorrection, onResetCorrection, onToggleAncillary, ancillaryOpen, evidenceResolved }: {
   row: OperatingStatementRow;
   isEven: boolean;
   shade?: 'blue' | 'warm' | 'purple';
@@ -1056,7 +1070,8 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
   onResetCorrection: (field: string) => Promise<void>;
   onToggleAncillary?: () => void;
   ancillaryOpen?: boolean;
-  evidenceMeta?: EvidenceFieldMeta | null;
+  /** Resolved evidence metadata + canonical field_path for this row (null when no underwriting evidence exists) */
+  evidenceResolved?: { meta: EvidenceFieldMeta; path: string } | null;
 }) {
   const isSubtotal = SUBTOTALS.has(row.field);
   const isDeviant = row.benchmarkPosition === 'above' || row.benchmarkPosition === 'below';
@@ -1104,7 +1119,7 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
         title="Click to view evidence for this assumption"
         onClick={() => {
           window.dispatchEvent(new CustomEvent('fe-evidence-click', {
-            detail: { path: row.field, label: row.label },
+            detail: { path: evidenceResolved?.path ?? row.field, label: row.label },
           }));
         }}
         style={{
@@ -1140,12 +1155,21 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
       {/* PLATFORM */}
       <td style={{ padding: '4px 8px', textAlign: 'right', color: '#06b6d4', fontSize: 9 }}>{fmtDisplay(row.platform)}</td>
 
-      {/* RESOLVED */}
-      <td style={{
-        padding: '4px 8px', textAlign: 'right',
-        color: resolvedColor, fontWeight: isSubtotal ? 700 : 600,
-        background: '#0d1f2d',
-      }}>
+      {/* RESOLVED — clickable to open EvidencePanel when evidence exists */}
+      <td
+        onClick={evidenceResolved ? () => {
+          window.dispatchEvent(new CustomEvent('fe-evidence-click', {
+            detail: { path: evidenceResolved.path, label: row.label },
+          }));
+        } : undefined}
+        title={evidenceResolved ? 'Click to view evidence for this value' : undefined}
+        style={{
+          padding: '4px 8px', textAlign: 'right',
+          color: resolvedColor, fontWeight: isSubtotal ? 700 : 600,
+          background: '#0d1f2d',
+          cursor: evidenceResolved ? 'pointer' : undefined,
+        }}
+      >
         {corr?.editing ? (
           <input
             autoFocus
@@ -1177,8 +1201,43 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
         {egiPct != null ? `${egiPct.toFixed(1)}%` : '—'}
       </td>
 
-      {/* SOURCE BADGE */}
-      <td style={{ padding: '4px 8px' }}><SourceBadge source={row.source} /></td>
+      {/* SOURCE BADGE — shows financials-API source + evidence tier badge when underwriting evidence exists */}
+      <td
+        onClick={evidenceResolved ? () => {
+          window.dispatchEvent(new CustomEvent('fe-evidence-click', {
+            detail: { path: evidenceResolved.path, label: row.label },
+          }));
+        } : undefined}
+        title={evidenceResolved
+          ? `${TIER_TOOLTIP[evidenceResolved.meta.tier] ?? 'Underwriting evidence'} · Click to open evidence panel`
+          : undefined}
+        style={{
+          padding: '4px 8px',
+          cursor: evidenceResolved ? 'pointer' : undefined,
+          display: 'table-cell',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <SourceBadge source={row.source} />
+          {evidenceResolved && (
+            <span
+              title={TIER_TOOLTIP[evidenceResolved.meta.tier]}
+              style={{
+                display: 'inline-block',
+                fontFamily: MONO, fontSize: 7, fontWeight: 700,
+                letterSpacing: 0.3,
+                color: TIER_BADGE_COLOR[evidenceResolved.meta.tier] ?? '#64748b',
+                border: `1px solid ${TIER_BADGE_COLOR[evidenceResolved.meta.tier] ?? '#64748b'}`,
+                borderRadius: 2,
+                padding: '0px 3px',
+                lineHeight: '12px',
+              }}
+            >
+              {TIER_LABEL[evidenceResolved.meta.tier] ?? '?'}
+            </span>
+          )}
+        </div>
+      </td>
 
       {/* $/UNIT */}
       <td style={{ padding: '4px 8px', textAlign: 'right', color: '#475569', fontSize: 9 }}>
@@ -1188,21 +1247,21 @@ function DataRow({ row, isEven, shade, corrections, setCorrections, totalUnits, 
       {/* FLAG + ACTIONS */}
       <td style={{ padding: '4px 6px', whiteSpace: 'nowrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          {evidenceMeta?.has_collision && (
+          {evidenceResolved?.meta.has_collision && (
             <span
-              title={`Collision · Agent vs Broker OM${evidenceMeta.collision_magnitude ? ` (${evidenceMeta.collision_magnitude})` : ''}`}
+              title={`Collision · Agent vs Broker OM${evidenceResolved.meta.collision_magnitude ? ` (${evidenceResolved.meta.collision_magnitude})` : ''} · Click badge to see detail`}
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 3,
                 fontSize: 8, fontFamily: LABEL, letterSpacing: 0.3,
-                color: COLLISION_COLOR[evidenceMeta.collision_magnitude ?? 'minor'] ?? '#94a3b8',
+                color: COLLISION_COLOR[evidenceResolved.meta.collision_magnitude ?? 'minor'] ?? '#94a3b8',
               }}
             >
               <span style={{
                 display: 'inline-block', width: 6, height: 6, borderRadius: '50%',
-                background: COLLISION_COLOR[evidenceMeta.collision_magnitude ?? 'minor'] ?? '#94a3b8',
+                background: COLLISION_COLOR[evidenceResolved.meta.collision_magnitude ?? 'minor'] ?? '#94a3b8',
                 flexShrink: 0,
               }} />
-              {(evidenceMeta.collision_magnitude ?? 'minor').toUpperCase()}
+              {(evidenceResolved.meta.collision_magnitude ?? 'minor').toUpperCase()}
             </span>
           )}
           {isDeviant && (
