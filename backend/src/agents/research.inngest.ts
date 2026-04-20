@@ -10,12 +10,14 @@
  * `trigger_context.inngest_event_id` before calling AgentRuntime.run(),
  * then queried back from `agent_runs` after the run step returns.
  *
+ * Note: prompt seeding runs at server startup (seedAllAgentPrompts) — not per invocation.
+ * Operator rollbacks via prompt_versions.active are preserved across restarts.
+ *
  * Flow:
  *   Step 1: tier-gate check
- *   Step 2: seed prompt (idempotent ON CONFLICT DO UPDATE)
- *   Step 3: run AgentRuntime  ← single durable step; agent_run row is the DB record of truth
- *   Step 4: write audit_log entry with guaranteed non-empty agent_run_id
- *   Step 5: emit research.completed event
+ *   Step 2: run AgentRuntime  ← single durable step; agent_run row is the DB record of truth
+ *   Step 3: write audit_log entry with guaranteed non-empty agent_run_id
+ *   Step 4: emit research.completed event
  */
 
 import { inngest, type DealCreatedEvent, type JediEvents } from '../lib/inngest';

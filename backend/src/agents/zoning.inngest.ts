@@ -6,13 +6,15 @@
  * A crash/timeout mid-function replays from the last completed step
  * without re-running earlier steps (Inngest step idempotency).
  *
+ * Note: prompt seeding runs at server startup (seedAllAgentPrompts) — not per invocation.
+ * Operator rollbacks via prompt_versions.active are preserved across restarts.
+ *
  * Flow:
  *   Step 1: tier-gate check
- *   Step 2: seed prompt (idempotent ON CONFLICT DO UPDATE)
- *   Step 3: resolve deal context (address, city, state, lot_size_sqft)
- *   Step 4: execute ZoningRuntime (idempotent on inngest_event_id)
- *   Step 5: write audit_log entry
- *   Step 6: emit zoning.completed event
+ *   Step 2: resolve deal context (address, city, state, lot_size_sqft)
+ *   Step 3: execute ZoningRuntime (idempotent on inngest_event_id)
+ *   Step 4: write audit_log entry
+ *   Step 5: emit zoning.completed event
  */
 
 import { inngest, type DealCreatedEvent, type JediEvents } from '../lib/inngest';

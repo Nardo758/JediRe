@@ -7,14 +7,16 @@
  *
  * Each major side effect uses `step.run()` for durable execution.
  *
+ * Note: prompt seeding runs at server startup (seedAllAgentPrompts) — not per invocation.
+ * Operator rollbacks via prompt_versions.active are preserved across restarts.
+ *
  * Flow:
  *   Step 1: tier-gate check (from deal's user tier)
- *   Step 2: seed prompt (idempotent)
- *   Step 3: resolve deal context + derive entity identity
- *   Step 4: execute CommentaryRuntime (idempotent on inngest_event_id)
- *   Step 5: persist output to market_commentary (ON CONFLICT upsert)
- *   Step 6: write audit_log entry
- *   Step 7: emit commentary.completed event
+ *   Step 2: resolve deal context + derive entity identity
+ *   Step 3: execute CommentaryRuntime (idempotent on inngest_event_id)
+ *   Step 4: persist output to market_commentary (ON CONFLICT upsert)
+ *   Step 5: write audit_log entry
+ *   Step 6: emit commentary.completed event
  */
 
 import { inngest, type ResearchCompletedEvent, type JediEvents } from '../lib/inngest';

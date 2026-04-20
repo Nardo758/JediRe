@@ -5,13 +5,15 @@
  * Analyzes construction pipeline and submarket supply risk for the deal's city/market.
  * Each major side effect uses `step.run()` for durable execution.
  *
+ * Note: prompt seeding runs at server startup (seedAllAgentPrompts) — not per invocation.
+ * Operator rollbacks via prompt_versions.active are preserved across restarts.
+ *
  * Flow:
  *   Step 1: tier-gate check
- *   Step 2: seed prompt (idempotent)
- *   Step 3: resolve deal context (city, state, address)
- *   Step 4: execute SupplyRuntime (idempotent on inngest_event_id)
- *   Step 5: write audit_log entry
- *   Step 6: emit supply.completed event
+ *   Step 2: resolve deal context (city, state, address)
+ *   Step 3: execute SupplyRuntime (idempotent on inngest_event_id)
+ *   Step 4: write audit_log entry
+ *   Step 5: emit supply.completed event
  */
 
 import { inngest, type DealCreatedEvent, type JediEvents } from '../lib/inngest';

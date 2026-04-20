@@ -5,13 +5,15 @@
  *   Runs proforma analysis when the deal has T12 / rent-roll documents.
  *   Each major side effect uses `step.run()` for durable execution.
  *
+ *   Note: prompt seeding runs at server startup (seedAllAgentPrompts) — not per invocation.
+ *   Operator rollbacks via prompt_versions.active are preserved across restarts.
+ *
  *   Flow:
  *     Step 1: tier-gate check (from deal's user tier)
- *     Step 2: seed prompt (idempotent)
- *     Step 3: resolve deal context + check document availability
- *     Step 4: compose deal-type prompt (core + variant) + execute CashflowRuntime
- *     Step 5: write audit_log entry
- *     Step 6: emit cashflow.completed event
+ *     Step 2: resolve deal context + check document availability
+ *     Step 3: compose deal-type prompt (core + variant) + execute CashflowRuntime
+ *     Step 4: write audit_log entry
+ *     Step 5: emit cashflow.completed event
  *
  * cashflowOnWalkthroughRequested: triggers on `cashflow.walkthrough_requested`
  *   Invokes the Commentary Agent to generate the walkthrough narrative and
