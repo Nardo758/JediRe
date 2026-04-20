@@ -461,24 +461,31 @@ export class GmailSyncService {
           const emailId = emailResult.rows[0].id;
           stored++;
 
-          // Fire deal intake event for new messages — the email-intake Inngest
-          // function will classify, extract, and create a draft deal if appropriate.
-          inngest.send({
-            name: 'gmail.message_received',
-            data: {
-              message_id: message.id!,
-              user_id: account.user_id,
-              account_id: accountId,
-              from_address: headers.from.email,
-              subject: headers.subject,
-              received_at: receivedAt.toISOString(),
-              has_attachments: (fullMessage.data.payload?.parts ?? []).some(
-                p => p.filename && p.filename.length > 0
-              ),
-            },
-          }).catch(err => {
-            logger.warn('gmail-sync: failed to send gmail.message_received event', { emailId, err });
-          });
+          // Fire deal intake event only for inbound INBOX messages.
+          // Exclude SENT, DRAFTS, CHAT, and system-generated mail so the
+          // email-intake pipeline processes only true incoming broker emails.
+          const labelIds = fullMessage.data.labelIds ?? [];
+          const isInbound = labelIds.includes('INBOX') &&
+            !labelIds.includes('SENT') &&
+            !labelIds.includes('DRAFT');
+          if (isInbound) {
+            inngest.send({
+              name: 'gmail.message_received',
+              data: {
+                message_id: message.id!,
+                user_id: account.user_id,
+                account_id: accountId,
+                from_address: headers.from.email,
+                subject: headers.subject,
+                received_at: receivedAt.toISOString(),
+                has_attachments: (fullMessage.data.payload?.parts ?? []).some(
+                  p => p.filename && p.filename.length > 0
+                ),
+              },
+            }).catch(err => {
+              logger.warn('gmail-sync: failed to send gmail.message_received event', { emailId, err });
+            });
+          }
 
           // ========================================
           // AUTO-EXTRACTION PIPELINE

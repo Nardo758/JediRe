@@ -41,23 +41,28 @@ export async function ocrDocument(
     return '';
   }
 
-  const ext = filename.includes('.') ? path.extname(filename) : extensionForMime(mimeType);
+  // Always derive the temp-file extension from the whitelisted MIME map,
+  // never from the (potentially attacker-controlled) attachment filename.
+  const ext = extensionForMime(mimeType);
   const tmpPath = path.join(os.tmpdir(), `jedire-ocr-${crypto.randomBytes(8).toString('hex')}${ext}`);
 
   try {
     const buffer = Buffer.from(base64Content, 'base64');
     fs.writeFileSync(tmpPath, buffer);
 
-    // For PDFs, use pdftotext (poppler-utils) if available for fast extraction
+    // For PDFs, use pdftotext (poppler-utils) if available for fast extraction.
+    // Use execFileSync with an explicit argument array — never interpolate
+    // user-supplied filenames into a shell command string.
     if (mimeType === 'application/pdf') {
       try {
-        const { execSync } = await import('child_process');
-        const text = execSync(`pdftotext "${tmpPath}" -`, { timeout: 15000 })
+        const { execFileSync } = await import('child_process');
+        // Args: input file, output file ('-' = stdout)
+        const text = execFileSync('pdftotext', [tmpPath, '-'], { timeout: 15000 })
           .toString('utf-8')
           .slice(0, MAX_PDF_CHARS);
         if (text.trim().length > 50) return text;
       } catch {
-        // pdftotext not available — fall through to classifier
+        // pdftotext not available — fall through
       }
     }
 

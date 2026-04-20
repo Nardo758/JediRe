@@ -4,22 +4,23 @@
  * Triggered on `gmail.message_received`. Implements the broker email →
  * draft deal pipeline:
  *
- *   Step 1: Dedupe — skip if this message already created a deal
- *   Step 2: Broker filter — skip if sender not in user's broker allow-list
+ *   Step 1: Tier gate — Principal+/Professional+/Enterprise only; skip otherwise
+ *   Step 2: Dedupe — skip if this message already created a deal
+ *   Step 3: Broker filter — skip if sender not in user's broker allow-list
  *           (when list is empty, all senders are allowed)
- *   Step 3: Classify — is this a deal opportunity? (confidence > 0.7 required)
  *   Step 4: Read full thread + attachments from Gmail
- *   Step 5: OCR any PDF/image attachments
- *   Step 6: Extract structured deal fields
- *   Step 7: Score fit against investment profile
- *   Step 8: Create draft deal (status = awaiting_review)
- *   Step 9: Emit deal.created → Research Agent auto-assembles for Principal+ users
- *   Step 10: Log to audit_log
+ *   Step 5: Classify with full subject + body + sender (confidence > 0.7 required)
+ *   Step 6: OCR any PDF attachments
+ *   Step 7: Extract structured deal fields
+ *   Step 8: Score fit against investment profile
+ *   Step 9: Create draft deal (status = awaiting_review, source = email_intake)
+ *   Step 10: Emit deal.created → Research Agent chains from here
+ *   Step 11: Log to audit_log
  *
  * Idempotent by gmail_message_id (stored in deal_data JSONB).
  * Retries: 3 (Inngest default backoff).
- * Tier gating: auto-create is Principal+; Operator gets the draft but
- *   deal.created is still emitted (Research Agent applies its own tier gate).
+ * Tier gating: auto-intake is Principal+/Professional+/Enterprise only.
+ *   Operator/Scout users skip this pipeline (manual import path to be added separately).
  */
 
 import { inngest, GmailMessageReceivedEvent, JediEvents } from '../../lib/inngest';
@@ -34,9 +35,32 @@ import { ocrDocument } from '../../agents/tools/ocr_document';
 
 const CONFIDENCE_THRESHOLD = 0.7;
 
+// Tier values that qualify for automated email-intake deal creation.
+// Operator and Scout users are directed to the manual import path instead.
+const AUTO_INTAKE_TIERS = new Set([
+  'professional',
+  'enterprise',
+  'principal',
+  'institutional',
+]);
+
+/**
+ * Returns the user's subscription tier.
+ */
+async function getUserTier(userId: string): Promise<string> {
+  const res = await query(
+    `SELECT COALESCE(ucb.subscription_tier, u.subscription_tier, 'scout') AS tier
+     FROM users u
+     LEFT JOIN user_credit_balances ucb ON ucb.user_id = u.id
+     WHERE u.id = $1`,
+    [userId]
+  );
+  return String(res.rows[0]?.tier ?? 'scout').toLowerCase();
+}
+
 /**
  * Returns the user's broker sender domain allow-list from preferences.
- * Empty array = no filter (all senders allowed).
+ * Empty array = no filter (all senders are allowed).
  */
 async function getBrokerAllowList(userId: string): Promise<string[]> {
   const res = await query(
@@ -47,17 +71,6 @@ async function getBrokerAllowList(userId: string): Promise<string[]> {
   const list = prefs?.broker_sender_domains;
   if (!Array.isArray(list)) return [];
   return list.map(String).map(d => d.toLowerCase().trim()).filter(Boolean);
-}
-
-/**
- * Returns the user's subscription tier for deal.created tier gating.
- */
-async function getUserTier(userId: string): Promise<string> {
-  const res = await query(
-    `SELECT subscription_tier FROM users WHERE id = $1`,
-    [userId]
-  );
-  return String(res.rows[0]?.subscription_tier ?? 'operator');
 }
 
 export const emailIntakeFunction = inngest.createFunction(
@@ -75,7 +88,25 @@ export const emailIntakeFunction = inngest.createFunction(
     const { message_id, user_id, from_address, subject, has_attachments } =
       (event as unknown as GmailMessageReceivedEvent).data;
 
-    // ── Step 1: Dedupe — bail if a deal already exists for this message ──
+    // ── Step 1: Tier gate ────────────────────────────────────────────────
+    // Auto-intake is restricted to Principal+/Professional+/Enterprise.
+    // Operator and Scout users must use the manual import path (to be built
+    // as a separate feature — see follow-up task #260).
+    const tierResult = await step.run('tier-gate', async () => {
+      const tier = await getUserTier(user_id);
+      return { tier, allowed: AUTO_INTAKE_TIERS.has(tier) };
+    });
+
+    if (!tierResult.allowed) {
+      logger.info('email-intake: tier gate — user not on auto-intake tier', {
+        tier: tierResult.tier,
+        user_id,
+        message_id,
+      });
+      return { status: 'skipped', reason: 'tier_not_allowed', tier: tierResult.tier };
+    }
+
+    // ── Step 2: Dedupe — bail if a deal already exists for this message ──
     const dedupeResult = await step.run('dedupe-check', async () => {
       const existing = await query(
         `SELECT id FROM deals
@@ -91,7 +122,7 @@ export const emailIntakeFunction = inngest.createFunction(
       return { status: 'skipped', reason: 'already_processed' };
     }
 
-    // ── Step 2: Broker filter ────────────────────────────────────────────
+    // ── Step 3: Broker filter ────────────────────────────────────────────
     const filterResult = await step.run('broker-filter', async () => {
       const allowList = await getBrokerAllowList(user_id);
       if (allowList.length === 0) return { allowed: true };
@@ -105,9 +136,16 @@ export const emailIntakeFunction = inngest.createFunction(
       return { status: 'skipped', reason: 'sender_not_in_allow_list' };
     }
 
-    // ── Step 3: Classify ─────────────────────────────────────────────────
+    // ── Step 4: Read full thread + attachments ───────────────────────────
+    // Read the thread BEFORE classification so we can classify with the
+    // full message body, not just the subject line.
+    const thread = await step.run('read-gmail-thread', async () => {
+      return readGmailThread(message_id, user_id);
+    });
+
+    // ── Step 5: Classify with full subject + body + sender ───────────────
     const classification = await step.run('classify-email', async () => {
-      return classifyAsDealOpportunity(subject, '', from_address);
+      return classifyAsDealOpportunity(thread.subject, thread.body_text, thread.from);
     });
 
     if (!classification.is_deal || classification.confidence < CONFIDENCE_THRESHOLD) {
@@ -120,25 +158,7 @@ export const emailIntakeFunction = inngest.createFunction(
       return { status: 'skipped', reason: 'not_a_deal', classification };
     }
 
-    // ── Step 4: Read full thread + attachments ───────────────────────────
-    const thread = await step.run('read-gmail-thread', async () => {
-      return readGmailThread(message_id, user_id);
-    });
-
-    // ── Step 5: Re-classify with full body text ──────────────────────────
-    const fullClassification = await step.run('classify-with-body', async () => {
-      return classifyAsDealOpportunity(thread.subject, thread.body_text, thread.from);
-    });
-
-    if (!fullClassification.is_deal || fullClassification.confidence < CONFIDENCE_THRESHOLD) {
-      logger.info('email-intake: full body reclassification — not a deal', {
-        confidence: fullClassification.confidence,
-        message_id,
-      });
-      return { status: 'skipped', reason: 'not_a_deal_after_full_body', classification: fullClassification };
-    }
-
-    // ── Step 5b: OCR PDF/image attachments ──────────────────────────────
+    // ── Step 6: OCR PDF attachments ──────────────────────────────────────
     const ocrResults = await step.run('ocr-attachments', async () => {
       if (!has_attachments || thread.attachments.length === 0) return { combined_text: '' };
 
@@ -153,45 +173,43 @@ export const emailIntakeFunction = inngest.createFunction(
       return { combined_text: texts.join('\n\n') };
     });
 
-    // ── Step 6: Extract deal fields ──────────────────────────────────────
+    // ── Step 7: Extract structured deal fields ───────────────────────────
     // Cast: Inngest wraps step results in JsonifyObject<T> which widens
     // optional → undefined; cast back to concrete type for downstream steps.
     const fields = await step.run('extract-deal-fields', async () => {
       return extractDealFields(thread.subject, thread.body_text, ocrResults.combined_text);
     }) as ExtractedDealFields;
 
-    // ── Step 7: Score fit ────────────────────────────────────────────────
+    // ── Step 8: Score fit against investment profile ─────────────────────
     const fitScore = await step.run('score-fit', async () => {
       return scoreFitAgainstProfile(fields, user_id);
     }) as FitScoreResult;
 
-    // ── Step 8: Create draft deal ────────────────────────────────────────
+    // ── Step 9: Create draft deal ────────────────────────────────────────
     const draft = await step.run('create-draft-deal', async () => {
       return createDealDraft(fields, user_id, {
         gmail_message_id: message_id,
         from_address,
-        classification_confidence: fullClassification.confidence,
-        asset_class_hint: fullClassification.asset_class_hint,
+        classification_confidence: classification.confidence,
+        asset_class_hint: classification.asset_class_hint,
         fit_score: fitScore.fit_score,
         fit_breakdown: fitScore.fit_breakdown,
       });
     });
 
-    // ── Step 9: Emit deal.created → Research Agent ───────────────────────
-    const userTier = await step.run('get-user-tier', async () => getUserTier(user_id));
-
+    // ── Step 10: Emit deal.created → Research Agent ──────────────────────
     await step.sendEvent('emit-deal-created', {
       name: 'deal.created' as const,
       data: {
         dealId: draft.deal_id,
         userId: user_id,
-        userTier,
+        userTier: tierResult.tier,
         address: fields.address ?? undefined,
         triggeredBy: 'event',
       },
     } satisfies JediEvents);
 
-    // ── Step 10: Audit log ───────────────────────────────────────────────
+    // ── Step 11: Audit log ───────────────────────────────────────────────
     await step.run('write-audit-log', async () => {
       await query(
         `INSERT INTO audit_log
@@ -203,8 +221,8 @@ export const emailIntakeFunction = inngest.createFunction(
             gmail_message_id: message_id,
             from_address,
             subject,
-            classification_confidence: fullClassification.confidence,
-            asset_class_hint: fullClassification.asset_class_hint,
+            classification_confidence: classification.confidence,
+            asset_class_hint: classification.asset_class_hint,
             fit_score: fitScore.fit_score,
             deal_fits: fitScore.deal_fits,
             fields_extracted: Object.keys(fields as object).filter(
@@ -220,7 +238,7 @@ export const emailIntakeFunction = inngest.createFunction(
       dealId: draft.deal_id,
       dealName: draft.deal_name,
       fitScore: fitScore.fit_score,
-      confidence: fullClassification.confidence,
+      confidence: classification.confidence,
       user_id,
     });
 
@@ -229,7 +247,7 @@ export const emailIntakeFunction = inngest.createFunction(
       deal_id: draft.deal_id,
       deal_name: draft.deal_name,
       fit_score: fitScore.fit_score,
-      classification_confidence: fullClassification.confidence,
+      classification_confidence: classification.confidence,
       fields_extracted: fields,
     };
   }
