@@ -1584,9 +1584,10 @@ router.get('/agents/recent-runs', requireAdminAuth, async (req: AuthenticatedReq
 });
 
 // ── GET /api/v1/admin/agents/test-budget-cap ─────────────────────
-// Dev/staging only. Verifies that BudgetEnforcer correctly sets
-// budget_exceeded status when maxCostUsdPerRun is set to $0.001.
-// Returns the resulting agent_run record to confirm enforcement.
+// Dev/staging only. Verifies that BudgetEnforcer correctly enforces both
+// the per-run cap and the per-deal-per-day cap by inserting a real
+// fixture agent_run row and exercising the actual DB-backed check paths.
+// Returns the fixture run record and check results.
 
 router.get('/agents/test-budget-cap', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   if (process.env.NODE_ENV === 'production') {
@@ -1596,49 +1597,84 @@ router.get('/agents/test-budget-cap', requireAdminAuth, async (req: Authenticate
     });
   }
 
+  // Sentinel deal/run IDs that won't collide with real data.
+  const FIXTURE_DEAL_ID = '00000000-0000-0000-0000-000000000001';
+  const FIXTURE_RUN_ID  = '00000000-0000-0000-0000-000000000002';
+
   try {
-    // Find the most recent budget_exceeded run as proof of enforcement,
-    // or synthesize the check result by querying the budget enforcer directly.
-    const recentBudgetHit = await query(`
-      SELECT id, agent_id, deal_id, status, cost_usd, started_at, error
-      FROM agent_runs
-      WHERE status = 'budget_exceeded'
-      ORDER BY started_at DESC
-      LIMIT 5
-    `);
+    const { BudgetEnforcer } = await import('../../agents/runtime/BudgetEnforcer');
+    const { BudgetExceededError } = await import('../../agents/runtime/types');
+    const enforcer = new BudgetEnforcer();
 
-    // Also run a live check: instantiate BudgetEnforcer with a $0.001 cap
-    // against a hypothetical $1 accumulated cost to confirm it throws.
-    let liveCheckPassed = false;
-    let liveCheckError: string | null = null;
+    // ── Fixture setup: insert a real agent_run row with $1.00 cost ──
+    // This causes the daily deal cap check to see $1.00 spent today,
+    // so a cap of $0.001 must fire.
+    await query(`
+      INSERT INTO agent_runs
+        (id, agent_id, deal_id, user_id, triggered_by, status, cost_usd, started_at)
+      VALUES
+        ($1, 'test-fixture', $2, NULL, 'user', 'succeeded', 1.00, NOW())
+      ON CONFLICT (id) DO UPDATE
+        SET cost_usd   = EXCLUDED.cost_usd,
+            started_at = EXCLUDED.started_at
+    `, [FIXTURE_RUN_ID, FIXTURE_DEAL_ID]);
 
+    const results: Record<string, { passed: boolean; description: string }> = {};
+
+    // ── Test 1: Per-deal daily cap (BudgetEnforcer.check) ─────────
+    // Fixture has $1.00 spent today. Cap = $0.001 → must throw.
     try {
-      const { BudgetEnforcer } = await import('../../agents/runtime/BudgetEnforcer');
-      const enforcer = new BudgetEnforcer();
-      // checkRunCap queries agent_runs by runId — use a sentinel UUID that
-      // won't exist, so db_cost = 0, and currentCost = 1.00 > cap of 0.001.
-      await enforcer.checkRunCap('00000000-0000-0000-0000-000000000000', 1.00, {
+      await enforcer.check(
+        { dealId: FIXTURE_DEAL_ID, userId: 'test', triggeredBy: 'user' },
+        { maxCostUsdPerRun: 999, maxCostUsdPerDealPerDay: 0.001 }
+      );
+      results.daily_deal_cap = { passed: false, description: 'BudgetEnforcer.check did NOT throw' };
+    } catch (err: any) {
+      const isBudgetErr = err instanceof BudgetExceededError
+        || err?.constructor?.name === 'BudgetExceededError'
+        || (err?.message ?? '').includes('daily agent cap');
+      results.daily_deal_cap = {
+        passed: isBudgetErr,
+        description: isBudgetErr
+          ? `BudgetEnforcer.check correctly threw BudgetExceededError (${err.message.slice(0, 120)})`
+          : `Unexpected error type: ${err.message}`,
+      };
+    }
+
+    // ── Test 2: Per-run cap (BudgetEnforcer.checkRunCap) ──────────
+    // Fixture run has $1.00 in DB. Per-run cap = $0.001 → must throw.
+    try {
+      await enforcer.checkRunCap(FIXTURE_RUN_ID, 0, {
         maxCostUsdPerRun: 0.001,
         maxCostUsdPerDealPerDay: 999,
       });
-      liveCheckError = 'BudgetEnforcer did NOT throw — enforcement is broken';
+      results.per_run_cap = { passed: false, description: 'BudgetEnforcer.checkRunCap did NOT throw' };
     } catch (err: any) {
-      if (err.constructor?.name === 'BudgetExceededError' || err.message?.includes('exceeded per-run cap')) {
-        liveCheckPassed = true;
-      } else {
-        liveCheckError = `Unexpected error type: ${err.message}`;
-      }
+      const isBudgetErr = err instanceof BudgetExceededError
+        || err?.constructor?.name === 'BudgetExceededError'
+        || (err?.message ?? '').includes('exceeded per-run cap');
+      results.per_run_cap = {
+        passed: isBudgetErr,
+        description: isBudgetErr
+          ? `BudgetEnforcer.checkRunCap correctly threw BudgetExceededError (${err.message.slice(0, 120)})`
+          : `Unexpected error type: ${err.message}`,
+      };
     }
 
+    // ── Fixture row for response ──────────────────────────────────
+    const fixtureRow = await query(
+      `SELECT id, agent_id, deal_id, status, cost_usd, started_at
+       FROM agent_runs WHERE id = $1`,
+      [FIXTURE_RUN_ID]
+    );
+
+    const allPassed = Object.values(results).every(r => r.passed);
+
     res.json({
-      success: true,
-      live_check: {
-        passed: liveCheckPassed,
-        description: liveCheckPassed
-          ? 'BudgetEnforcer correctly throws BudgetExceededError when cost exceeds cap'
-          : liveCheckError,
-      },
-      historical_budget_exceeded_runs: recentBudgetHit.rows,
+      success: allPassed,
+      note: 'Fixture agent_run row written to DB for test; safe to delete manually.',
+      fixture_run: fixtureRow.rows[0] ?? null,
+      checks: results,
     });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });

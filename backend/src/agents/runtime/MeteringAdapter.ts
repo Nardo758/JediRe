@@ -62,14 +62,16 @@ export interface MeteredMessage extends Anthropic.Message {
 }
 
 // ── Per-deal thundering-herd rate limiter ─────────────────────────
-// Tracks in-flight agent runs per deal to prevent burst concurrency.
-// If > MAX_CONCURRENT_RUNS_PER_DEAL runs are started within WINDOW_MS,
-// additional callers are queued (not rejected) until a slot opens.
+// Tracks in-flight model calls per deal to prevent burst concurrency.
+// If more than MAX_CONCURRENT_RUNS_PER_DEAL model calls are already
+// active for a deal, additional callers are queued (never rejected)
+// and proceed as soon as a slot is released.
+//
 // State is process-local; resets on restart (intentional — only guards
 // burst concurrency within a single server process).
 
 const MAX_CONCURRENT_RUNS_PER_DEAL = 3;
-const QUEUE_TIMEOUT_MS = 30_000; // 30 s max queue wait
+const QUEUE_WARN_INTERVAL_MS = 30_000; // log a warning every 30 s while queued
 
 interface DealSlot {
   active: number;
@@ -85,6 +87,12 @@ function getDealSlot(dealId: string): DealSlot {
   return dealSlots.get(dealId)!;
 }
 
+/**
+ * Acquire a concurrency slot for a deal.
+ * Returns a release function that MUST be called exactly once when the
+ * model call (and post-call settlement) is complete.
+ * Never rejects — queued callers wait indefinitely until a slot opens.
+ */
 async function acquireDealSlot(dealId: string): Promise<() => void> {
   const slot = getDealSlot(dealId);
 
@@ -93,28 +101,36 @@ async function acquireDealSlot(dealId: string): Promise<() => void> {
     return () => releaseDealSlot(dealId);
   }
 
-  // Slot full — queue and wait
+  // Slot full — queue the caller and warn at regular intervals while waiting.
+  const queuedAt = Date.now();
   logger.warn('MeteringAdapter: deal concurrency cap reached, queuing run', {
     dealId,
     active: slot.active,
-    queued: slot.queue.length,
+    queued: slot.queue.length + 1,
     cap: MAX_CONCURRENT_RUNS_PER_DEAL,
   });
 
-  return new Promise<() => void>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      const idx = slot.queue.indexOf(proceed);
-      if (idx !== -1) slot.queue.splice(idx, 1);
-      reject(new Error(
-        `MeteringAdapter: deal ${dealId} rate-limit queue timeout after ${QUEUE_TIMEOUT_MS}ms`
-      ));
-    }, QUEUE_TIMEOUT_MS);
+  return new Promise<() => void>((resolve) => {
+    let warnTimer: ReturnType<typeof setInterval>;
 
     function proceed() {
-      clearTimeout(timer);
+      clearInterval(warnTimer);
       slot.active++;
+      logger.info('MeteringAdapter: queued run acquired slot', {
+        dealId,
+        waitedMs: Date.now() - queuedAt,
+      });
       resolve(() => releaseDealSlot(dealId));
     }
+
+    // Emit a periodic warning while queued so long waits are observable.
+    warnTimer = setInterval(() => {
+      logger.warn('MeteringAdapter: run still queued (waiting for deal slot)', {
+        dealId,
+        waitedMs: Date.now() - queuedAt,
+        queueDepth: slot.queue.indexOf(proceed),
+      });
+    }, QUEUE_WARN_INTERVAL_MS);
 
     slot.queue.push(proceed);
   });
@@ -159,60 +175,64 @@ export class MeteringAdapter {
     const estimate = preflightEstimate(apiParams.model);
 
     // Acquire deal concurrency slot (queues if over limit, no-ops if no deal_id).
+    // The slot is released in a finally block that wraps the entire call chain,
+    // guaranteeing release regardless of where an error occurs.
     let releaseSlot: (() => void) | null = null;
     if (metadata.deal_id) {
       releaseSlot = await acquireDealSlot(metadata.deal_id);
     }
 
-    // Pre-flight credit reservation (user-triggered only — fail-fast).
-    // wasReserved is TRUE only when the estimate was actually deducted from the
-    // user balance. FALSE when the call is allowed without deduction (overage
-    // tier, no credit record). This distinction controls refund/settlement logic.
-    let wasReserved = false;
-    if (metadata.triggered_by === 'user' && metadata.user_id) {
-      wasReserved = await creditService.reserveCredits(metadata.user_id, estimate);
-    }
-
-    let response: Anthropic.Message;
-
     try {
-      response = await this.anthropic.messages.create({
-        model: apiParams.model,
-        system: apiParams.system,
-        messages: apiParams.messages,
-        tools: apiParams.tools,
-        max_tokens: apiParams.max_tokens,
-      });
-    } catch (err) {
-      // Model call failed — refund the reservation ONLY if a deduction was made.
-      // Prevents phantom credits if reserveCredits allowed without deducting.
-      if (wasReserved && metadata.user_id) {
-        await creditService.debitActualCost(metadata.user_id, estimate, 0).catch(
-          refundErr => logger.error('MeteringAdapter: failed to refund reservation', { refundErr })
-        );
+      // Pre-flight credit reservation (user-triggered only — fail-fast).
+      // wasReserved is TRUE only when the estimate was actually deducted from the
+      // user balance. FALSE when the call is allowed without deduction (overage
+      // tier, no credit record). This distinction controls refund/settlement logic.
+      let wasReserved = false;
+      if (metadata.triggered_by === 'user' && metadata.user_id) {
+        wasReserved = await creditService.reserveCredits(metadata.user_id, estimate);
       }
+
+      let response: Anthropic.Message;
+
+      try {
+        response = await this.anthropic.messages.create({
+          model: apiParams.model,
+          system: apiParams.system,
+          messages: apiParams.messages,
+          tools: apiParams.tools,
+          max_tokens: apiParams.max_tokens,
+        });
+      } catch (err) {
+        // Model call failed — refund the reservation ONLY if a deduction was made.
+        // Prevents phantom credits if reserveCredits allowed without deducting.
+        if (wasReserved && metadata.user_id) {
+          await creditService.debitActualCost(metadata.user_id, estimate, 0).catch(
+            refundErr => logger.error('MeteringAdapter: failed to refund reservation', { refundErr })
+          );
+        }
+        throw err;
+      }
+
+      const actualCost = estimateCost(
+        apiParams.model,
+        response.usage.input_tokens,
+        response.usage.output_tokens
+      );
+
+      // Synchronous post-call settlement — guaranteed before returning to caller.
+      // Pass the effective reserved amount: if no deduction occurred, treat as 0
+      // so settle() charges full actualCost rather than only the delta.
+      await this.settle(metadata, response, actualCost, wasReserved ? estimate : 0, apiParams.model);
+
+      return {
+        ...response,
+        usage: { ...response.usage, cost_usd: actualCost },
+      };
+    } finally {
+      // Always release the concurrency slot — covers success, model errors,
+      // reservation failures, and settlement errors.
       releaseSlot?.();
-      throw err;
     }
-
-    const actualCost = estimateCost(
-      apiParams.model,
-      response.usage.input_tokens,
-      response.usage.output_tokens
-    );
-
-    // Synchronous post-call settlement — guaranteed before returning to caller.
-    // Pass the effective reserved amount: if no deduction occurred, treat as 0
-    // so settle() charges full actualCost rather than only the delta.
-    await this.settle(metadata, response, actualCost, wasReserved ? estimate : 0, apiParams.model);
-
-    // Release concurrency slot after settlement completes.
-    releaseSlot?.();
-
-    return {
-      ...response,
-      usage: { ...response.usage, cost_usd: actualCost },
-    };
   }
 
   // ── Private helpers ────────────────────────────────────────────
