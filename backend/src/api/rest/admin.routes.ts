@@ -4,13 +4,11 @@ import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { logger } from '../../utils/logger';
 import axios from 'axios';
 import { z } from 'zod';
-import { MeteringAdapter } from '../../agents/runtime/MeteringAdapter';
 import { AgentRuntime } from '../../agents/runtime/AgentRuntime';
 import { BudgetEnforcer } from '../../agents/runtime/BudgetEnforcer';
 import { BudgetExceededError } from '../../agents/runtime/types';
 import type { AgentConfig } from '../../agents/runtime/types';
-import type { MessageParams, MeteredMessage } from '../../agents/runtime/MeteringAdapter';
-import type Anthropic from '@anthropic-ai/sdk';
+import { StubMeteringAdapter } from '../../agents/runtime/StubMeteringAdapter';
 
 const router = Router();
 
@@ -1645,31 +1643,10 @@ router.get('/agents/test-budget-cap', requireAdminAuth, async (req: Authenticate
   const FIXTURE_AGENT_VERSION = 'budget-test-v1';
 
   try {
-    // Stub adapter: returns cost_usd=0.10, exceeding the $0.001 cap immediately.
-    // Dummy Anthropic client prevents SDK API-key validation (client is never called).
-    const AnthropicSdk = (await import('@anthropic-ai/sdk')).default;
-    const dummyAnthropicClient = new AnthropicSdk({ apiKey: 'stub-not-used' });
-
-    class StubMeteringAdapter extends MeteringAdapter {
-      constructor() { super(dummyAnthropicClient); }
-      override async createMessage(_params: MessageParams): Promise<MeteredMessage> {
-        return {
-          id: 'stub-msg-budget-test',
-          type: 'message',
-          role: 'assistant' as const,
-          content: [] as Anthropic.Message['content'],   // empty — budget check fires before parsing
-          model: _params.model,
-          stop_reason: 'end_turn',
-          stop_sequence: null,
-          usage: {
-            input_tokens: 1000,
-            output_tokens: 500,
-            cost_usd: 0.10,    // exceeds maxCostUsdPerRun=0.001 → checkRunCap throws
-          },
-        } as MeteredMessage;
-      }
-    }
-
+    // StubMeteringAdapter is injected via constructor DI into AgentRuntime.
+    // It returns cost_usd=0.10 on every call, triggering BudgetEnforcer at the
+    // $0.001 per-run cap without any Anthropic API call. See:
+    //   backend/src/agents/runtime/StubMeteringAdapter.ts
     const testConfig: AgentConfig = {
       agentId: 'research',
       agentVersion: FIXTURE_AGENT_VERSION,
