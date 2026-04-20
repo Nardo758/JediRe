@@ -96,7 +96,11 @@ export function AgentsPlatformSection() {
     }
   }, [selectedAgent]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+    const interval = setInterval(load, 30_000);
+    return () => clearInterval(interval);
+  }, [load]);
 
   const agentIds = ['research', 'zoning', 'supply', 'cashflow', 'commentary'];
 
