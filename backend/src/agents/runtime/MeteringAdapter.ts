@@ -61,24 +61,10 @@ export interface MeteredMessage extends Anthropic.Message {
   usage: Anthropic.Message['usage'] & { cost_usd: number };
 }
 
-// ── Per-deal thundering-herd rate limiter ─────────────────────────────────
-//
-// TWO complementary controls guard against burst concurrency per deal:
-//
-// 1. RUN-START WINDOW LIMITER (DealRunStartLimiter, exported)
-//    Tracks the timestamps of run starts per deal in a 60-second sliding
-//    window.  If more than MAX_RUN_STARTS_PER_DEAL starts are recorded in
-//    the last 60 s, the next caller is queued (never rejected) until the
-//    oldest recorded start exits the window.
-//    Call `dealRunStartLimiter.acquire(dealId)` at the top of AgentRuntime
-//    before creating the agent_runs row.
-//
-// 2. MODEL-CALL CONCURRENCY SLOT (acquireDealSlot, module-private)
-//    Limits the number of in-flight model calls (inside the LLM loop) to
-//    MAX_CONCURRENT_MODEL_CALLS per deal.  Queues excess callers until a
-//    slot is released.
-//
-// State is process-local; resets on restart (only guards within one process).
+// ── Per-deal burst guards (process-local) ─────────────────────────────────
+// 1. DealRunStartLimiter — sliding-window cap on run starts per deal (60 s).
+// 2. acquireDealSlot     — concurrency cap on simultaneous model calls per deal.
+// Both queue (never reject) excess callers and emit warnings.
 
 const MAX_RUN_STARTS_PER_DEAL    = 3;    // max run starts per deal within WINDOW_MS
 const RUN_START_WINDOW_MS        = 60_000; // 60-second sliding window for run starts
@@ -113,31 +99,18 @@ class DealRunStartLimiter {
     return Math.max(0, oldest + RUN_START_WINDOW_MS - Date.now());
   }
 
-  /**
-   * Acquire a run-start slot for this deal.
-   * If the 60-second sliding window is full (≥ MAX_RUN_STARTS_PER_DEAL starts
-   * recorded in the last 60 s), the caller is queued — never rejected — until
-   * the oldest recorded timestamp exits the window, which is handled by the
-   * setTimeout scheduled below.
-   *
-   * The window manages its own cleanup: no release call is needed.  The caller
-   * simply awaits this method; it resolves as soon as a slot is available.
-   */
+  /** Queue (never reject) until a run-start slot is available for this deal. */
   async acquire(dealId: string): Promise<void> {
     const w = this.getWindow(dealId);
     this.prune(w);
 
     if (w.starts.length < MAX_RUN_STARTS_PER_DEAL) {
-      // Slot available — record start timestamp and return immediately.
       const ts = Date.now();
       w.starts.push(ts);
-      // Schedule pruning when this timestamp exits the window so later
-      // callers don't stay blocked past the actual 60-second boundary.
       setTimeout(() => this.drainQueue(dealId), RUN_START_WINDOW_MS + 1);
       return;
     }
 
-    // Window full — queue and wait until the oldest start exits the 60-second window.
     const waitMs = this.msUntilNextSlot(w);
     logger.warn('MeteringAdapter: deal run-start window full, queuing run', {
       dealId,
@@ -164,8 +137,6 @@ class DealRunStartLimiter {
       }, QUEUE_WARN_INTERVAL_MS);
 
       w.queue.push(proceed);
-
-      // Schedule the drain when the oldest recorded start exits the window.
       setTimeout(() => this.drainQueue(dealId), Math.max(waitMs, 1));
     });
   }

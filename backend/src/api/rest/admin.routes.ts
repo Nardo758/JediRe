@@ -1617,17 +1617,9 @@ router.get('/agents/recent-runs', requireAdminAuth, async (req: AuthenticatedReq
 });
 
 // ── GET /api/v1/admin/agents/test-budget-cap ─────────────────────
-// Dev/staging only. Executes a REAL AgentRuntime.run() invocation with a
-// stub transport (no Anthropic API call) to verify that BudgetEnforcer
-// correctly terminates a runaway loop and persists budget_exceeded status.
-//
-// Flow (mirrors the real production loop exactly):
-//  1. StubMeteringAdapter.createMessage() returns cost_usd=0.10 instantly
-//     (skips the Anthropic HTTP call but fires every other runtime path).
-//  2. AgentRuntime accumulates cost=0.10 and calls checkRunCap(runId, 0.10, caps).
-//  3. cap.maxCostUsdPerRun=0.001 → 0.10 ≥ 0.001 → BudgetExceededError thrown.
-//  4. AgentRuntime.catch() UPDATEs the real agent_runs row to status=budget_exceeded.
-//  5. This endpoint catches the error, queries the DB, and returns the run row.
+// Dev/staging only. Runs a real AgentRuntime loop with a stub metering
+// transport (no Anthropic call) that returns cost_usd=0.10, triggering
+// BudgetEnforcer at the $0.001 cap and persisting budget_exceeded status.
 
 router.get('/agents/test-budget-cap', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   if (process.env.NODE_ENV === 'production') {
@@ -1642,13 +1634,8 @@ router.get('/agents/test-budget-cap', requireAdminAuth, async (req: Authenticate
   const FIXTURE_AGENT_VERSION = 'budget-test-v1';
 
   try {
-    // ── Stub transport — bypasses Anthropic API ──────────────────────────────
-    // createMessage() returns a synthetic expensive response (cost_usd=0.10)
-    // so BudgetEnforcer.checkRunCap() fires on the very first loop iteration.
-    // All other AgentRuntime paths (row creation, step persistence, error
-    // capture, status update) run on real DB tables.
-    // Pass a dummy Anthropic instance so the SDK constructor never validates the
-    // API key. The real client is never called — createMessage is fully overridden.
+    // Stub adapter: returns cost_usd=0.10, exceeding the $0.001 cap immediately.
+    // Dummy Anthropic client prevents SDK API-key validation (client is never called).
     const AnthropicSdk = (await import('@anthropic-ai/sdk')).default;
     const dummyAnthropicClient = new AnthropicSdk({ apiKey: 'stub-not-used' });
 
@@ -1672,7 +1659,6 @@ router.get('/agents/test-budget-cap', requireAdminAuth, async (req: Authenticate
       }
     }
 
-    // ── Test runtime — $0.001 per-run cap ───────────────────────────────────
     const testConfig: AgentConfig = {
       agentId: 'research',
       agentVersion: FIXTURE_AGENT_VERSION,
@@ -1693,13 +1679,11 @@ router.get('/agents/test-budget-cap', requireAdminAuth, async (req: Authenticate
       new BudgetEnforcer()
     );
 
-    // ── Cleanup any leftover runs from prior test invocations ────────────────
     await query(
       `DELETE FROM agent_runs WHERE deal_id = $1 AND agent_version = $2`,
       [FIXTURE_DEAL_ID, FIXTURE_AGENT_VERSION]
     );
 
-    // ── Execute the real runtime — expect BudgetExceededError ───────────────
     let budgetErrCaught = false;
     try {
       await testRuntime.run(
@@ -1708,8 +1692,6 @@ router.get('/agents/test-budget-cap', requireAdminAuth, async (req: Authenticate
           dealId: FIXTURE_DEAL_ID,
           userId: 'test-admin',
           triggeredBy: 'user',
-          // systemPromptOverride skips the DB prompt lookup so no prompt_versions
-          // row is needed for this fixture agent.
           systemPromptOverride: 'You are a test agent. Return an empty JSON object.',
         }
       );
@@ -1720,7 +1702,6 @@ router.get('/agents/test-budget-cap', requireAdminAuth, async (req: Authenticate
         (err?.message ?? '').includes('per-run cap');
     }
 
-    // ── Query the real DB row that AgentRuntime.catch() persisted ────────────
     const runRow = await query(
       `SELECT id, agent_id, deal_id, status, cost_usd, error, completed_at
        FROM agent_runs
