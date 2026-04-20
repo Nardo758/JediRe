@@ -22,6 +22,15 @@ import { query } from '../database/connection';
 import { logger } from '../utils/logger';
 import type { RunContext } from './runtime/types';
 
+// ── Tier gating ─────────────────────────────────────────────────────────────
+// Tiers that allow AUTOMATED (event-driven) Zoning Agent runs.
+//   basic        → blocked (manual trigger only)
+//   operator     → blocked (manual trigger only)
+//   professional → ALLOWED (auto-triggers on deal.created)
+//   enterprise   → ALLOWED (auto-triggers on deal.created)
+//
+// Manual runs are available to any authenticated user regardless of tier.
+// ────────────────────────────────────────────────────────────────────────────
 const ALLOWED_TIERS: readonly string[] = [
   'professional', 'enterprise', 'principal', 'institutional',
 ];

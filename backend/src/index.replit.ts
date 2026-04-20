@@ -1024,6 +1024,15 @@ httpServer.listen(Number(PORT), '0.0.0.0', async () => {
     console.error('Lead/lag discovery startup failed (non-fatal):', error);
   }
 
+  // Agent prompt seeding — ensures all 5 agents have active prompt_versions on cold start.
+  // Idempotent (ON CONFLICT DO UPDATE), so safe to run on every restart.
+  try {
+    const { seedAllAgentPrompts } = await import('./agents/seeds/index');
+    await seedAllAgentPrompts();
+  } catch (error) {
+    console.error('Agent prompt seeding failed (non-fatal):', error);
+  }
+
   await initStripe();
 
   // M35 Phase 4: Nightly divergence tracking — fires at 2:00 AM UTC each day

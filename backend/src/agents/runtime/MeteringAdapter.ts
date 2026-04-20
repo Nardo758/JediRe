@@ -61,6 +61,77 @@ export interface MeteredMessage extends Anthropic.Message {
   usage: Anthropic.Message['usage'] & { cost_usd: number };
 }
 
+// ── Per-deal thundering-herd rate limiter ─────────────────────────
+// Tracks in-flight agent runs per deal to prevent burst concurrency.
+// If > MAX_CONCURRENT_RUNS_PER_DEAL runs are started within WINDOW_MS,
+// additional callers are queued (not rejected) until a slot opens.
+// State is process-local; resets on restart (intentional — only guards
+// burst concurrency within a single server process).
+
+const MAX_CONCURRENT_RUNS_PER_DEAL = 3;
+const QUEUE_TIMEOUT_MS = 30_000; // 30 s max queue wait
+
+interface DealSlot {
+  active: number;
+  queue: Array<() => void>;
+}
+
+const dealSlots = new Map<string, DealSlot>();
+
+function getDealSlot(dealId: string): DealSlot {
+  if (!dealSlots.has(dealId)) {
+    dealSlots.set(dealId, { active: 0, queue: [] });
+  }
+  return dealSlots.get(dealId)!;
+}
+
+async function acquireDealSlot(dealId: string): Promise<() => void> {
+  const slot = getDealSlot(dealId);
+
+  if (slot.active < MAX_CONCURRENT_RUNS_PER_DEAL) {
+    slot.active++;
+    return () => releaseDealSlot(dealId);
+  }
+
+  // Slot full — queue and wait
+  logger.warn('MeteringAdapter: deal concurrency cap reached, queuing run', {
+    dealId,
+    active: slot.active,
+    queued: slot.queue.length,
+    cap: MAX_CONCURRENT_RUNS_PER_DEAL,
+  });
+
+  return new Promise<() => void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      const idx = slot.queue.indexOf(proceed);
+      if (idx !== -1) slot.queue.splice(idx, 1);
+      reject(new Error(
+        `MeteringAdapter: deal ${dealId} rate-limit queue timeout after ${QUEUE_TIMEOUT_MS}ms`
+      ));
+    }, QUEUE_TIMEOUT_MS);
+
+    function proceed() {
+      clearTimeout(timer);
+      slot.active++;
+      resolve(() => releaseDealSlot(dealId));
+    }
+
+    slot.queue.push(proceed);
+  });
+}
+
+function releaseDealSlot(dealId: string): void {
+  const slot = dealSlots.get(dealId);
+  if (!slot) return;
+  slot.active = Math.max(0, slot.active - 1);
+  if (slot.queue.length > 0) {
+    const next = slot.queue.shift()!;
+    next();
+  } else if (slot.active === 0) {
+    dealSlots.delete(dealId);
+  }
+}
+
 export class MeteringAdapter {
   private anthropic: Anthropic;
 
@@ -77,10 +148,21 @@ export class MeteringAdapter {
    *
    * Settlement is synchronous (awaited) before returning — accounting is
    * guaranteed complete regardless of caller error handling.
+   *
+   * Rate limiting: if a deal_id is present in metadata and more than
+   * MAX_CONCURRENT_RUNS_PER_DEAL model calls are already in-flight for
+   * the same deal, this call is queued (not rejected) until a slot opens.
+   * The queue times out after QUEUE_TIMEOUT_MS (30 s) to prevent starvation.
    */
   async createMessage(params: MessageParams): Promise<MeteredMessage> {
     const { metadata, ...apiParams } = params;
     const estimate = preflightEstimate(apiParams.model);
+
+    // Acquire deal concurrency slot (queues if over limit, no-ops if no deal_id).
+    let releaseSlot: (() => void) | null = null;
+    if (metadata.deal_id) {
+      releaseSlot = await acquireDealSlot(metadata.deal_id);
+    }
 
     // Pre-flight credit reservation (user-triggered only — fail-fast).
     // wasReserved is TRUE only when the estimate was actually deducted from the
@@ -109,6 +191,7 @@ export class MeteringAdapter {
           refundErr => logger.error('MeteringAdapter: failed to refund reservation', { refundErr })
         );
       }
+      releaseSlot?.();
       throw err;
     }
 
@@ -122,6 +205,9 @@ export class MeteringAdapter {
     // Pass the effective reserved amount: if no deduction occurred, treat as 0
     // so settle() charges full actualCost rather than only the delta.
     await this.settle(metadata, response, actualCost, wasReserved ? estimate : 0, apiParams.model);
+
+    // Release concurrency slot after settlement completes.
+    releaseSlot?.();
 
     return {
       ...response,

@@ -26,6 +26,16 @@ import type { RunContext } from './runtime/types';
 
 const COMMENTARY_CACHE_TTL_HOURS = 24;
 
+// ── Tier gating ─────────────────────────────────────────────────────────────
+// Tiers that allow AUTOMATED (event-driven) Commentary Agent runs.
+//   basic        → blocked (manual trigger only)
+//   operator     → blocked (manual trigger only)
+//   professional → ALLOWED (auto-triggers on research.completed)
+//   enterprise   → ALLOWED (auto-triggers on research.completed)
+//
+// Unlike CashFlow, Commentary auto-triggers require professional+ (not operator).
+// Manual commentary runs via the market intelligence UI are tier-unrestricted.
+// ────────────────────────────────────────────────────────────────────────────
 const ALLOWED_TIERS: readonly string[] = [
   'professional', 'enterprise', 'principal', 'institutional',
 ];

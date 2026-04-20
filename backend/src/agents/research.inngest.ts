@@ -25,9 +25,17 @@ import { logger } from '../utils/logger';
 import type { RunContext } from './runtime/types';
 import type { ResearchOutput } from './research.config';
 
-// Tiers that are allowed to trigger automated research runs.
+// ── Tier gating ─────────────────────────────────────────────────────────────
+// Tiers that allow AUTOMATED (event-driven) Research Agent runs.
 // Matches actual platform tier values emitted by inline-deals.routes.ts:
-// basic | professional | enterprise (professional = "Principal+" in business terms).
+//   basic        → blocked (manual trigger only via /api/v1/agents/research/run)
+//   operator     → blocked (manual trigger only)
+//   professional → ALLOWED (auto-triggers on deal.created)
+//   enterprise   → ALLOWED (auto-triggers on deal.created)
+//
+// Manual runs (any authenticated user via POST /api/v1/agents/:agentId/run)
+// are not gated by this check — only the Inngest function applies it.
+// ────────────────────────────────────────────────────────────────────────────
 const ALLOWED_TIERS: readonly string[] = [
   'professional', 'enterprise',
   // Legacy / future tier aliases kept for forward compatibility:
