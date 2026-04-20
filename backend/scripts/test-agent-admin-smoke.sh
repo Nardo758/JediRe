@@ -84,23 +84,26 @@ assert_json_field \
 
 # 5. Budget cap test endpoint:
 #    - In dev: success=true + budget_exceeded_run.status == 'budget_exceeded'
-#    - In prod: HTTP 403 with error containing 'production'
-body=$(curl -sf -H "x-api-key: $KEY" "$BASE/api/v1/admin/agents/test-budget-cap" 2>/dev/null || echo "{}")
-if echo "$body" | python3 -c "
+#    - In prod: HTTP 403 (production guard) — test passes either way
+http_code=$(curl -s -o /dev/null -w "%{http_code}" -H "x-api-key: $KEY" \
+  "$BASE/api/v1/admin/agents/test-budget-cap" 2>/dev/null)
+if [[ "$http_code" == "403" ]]; then
+  echo "PASS [test-budget-cap: production guard returned 403 (expected in prod)]"
+  PASS=$((PASS + 1))
+else
+  body=$(curl -s -H "x-api-key: $KEY" "$BASE/api/v1/admin/agents/test-budget-cap" 2>/dev/null || echo "{}")
+  if echo "$body" | python3 -c "
 import sys, json
 d = json.load(sys.stdin)
-# Production guard: endpoint returns 403 in prod (curl -f gives empty body)
-if d.get('error','').find('production') >= 0:
-    exit(0)
-# Dev: success=true and budget_exceeded_run.status == 'budget_exceeded'
 run = d.get('budget_exceeded_run') or {}
 exit(0 if d.get('success') and run.get('status') == 'budget_exceeded' else 1)
 " 2>/dev/null; then
-  echo "PASS [test-budget-cap: budget_exceeded persisted or production-blocked]"
-  PASS=$((PASS + 1))
-else
-  echo "FAIL [test-budget-cap]: unexpected response: $body" >&2
-  FAIL=$((FAIL + 1))
+    echo "PASS [test-budget-cap: budget_exceeded persisted]"
+    PASS=$((PASS + 1))
+  else
+    echo "FAIL [test-budget-cap]: http_code=$http_code body=$body" >&2
+    FAIL=$((FAIL + 1))
+  fi
 fi
 
 echo ""
