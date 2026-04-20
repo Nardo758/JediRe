@@ -42,7 +42,7 @@ Common errors:
 - `BudgetExceededError` — the run hit the per-run or per-deal-per-day cost cap (see §3)
 - `AnthropicError: rate_limit_exceeded` — Anthropic API rate limit; the run will retry via Inngest
 - `Tool execution failed` — one of the agent tools (fetch_parcel, write_zoning_analysis, etc.) threw; check step log
-- `No active prompt version found` — `prompt_versions` has no `active = true` row for this agent; re-run seed
+- Agent runs with generic fallback prompt (no custom system prompt) — `prompt_versions` has no `active = true` row for this agent; AgentRuntime will continue but with a generic prompt. Re-run seed or flip `active` to restore domain-specific behavior.
 
 ### Step 3 — Inspect step-level detail
 

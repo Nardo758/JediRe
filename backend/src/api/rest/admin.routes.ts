@@ -1600,7 +1600,7 @@ router.get('/agents/stats', requireAdminAuth, async (req: AuthenticatedRequest, 
 
 router.get('/agents/recent-runs', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+    const limit = Math.max(1, Math.min(parseInt(req.query.limit as string) || 50, 200));
     const agentId = req.query.agent_id as string | undefined;
 
     let queryText = `
