@@ -265,8 +265,13 @@ function releaseDealSlot(dealId: string): void {
 export class MeteringAdapter {
   private anthropic: Anthropic;
 
-  constructor() {
-    this.anthropic = new Anthropic({
+  /**
+   * @param anthropicClient Optional pre-built Anthropic client.
+   *   Pass one in test/stub contexts to avoid SDK-level API key validation.
+   *   When omitted, the production client is constructed from environment variables.
+   */
+  constructor(anthropicClient?: Anthropic) {
+    this.anthropic = anthropicClient ?? new Anthropic({
       apiKey:
         process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY ||
         process.env.ANTHROPIC_API_KEY,

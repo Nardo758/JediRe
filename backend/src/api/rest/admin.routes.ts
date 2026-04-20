@@ -1546,13 +1546,29 @@ router.get('/agents/stats', requireAdminAuth, async (req: AuthenticatedRequest, 
       promptsByAgent[row.agent_id].push(row);
     }
 
+    // Index stats by agent_id; agents with no runs will not appear in the query result.
+    const statsByAgent: Record<string, typeof statsResult.rows[number]> = {};
+    for (const row of statsResult.rows) {
+      statsByAgent[row.agent_id] = row;
+    }
+
+    // Always return all 5 canonical agents, filling zeros for any with no runs.
+    const CANONICAL_AGENTS = ['research', 'zoning', 'supply', 'cashflow', 'commentary'] as const;
+    const zero = {
+      total_runs: '0', runs_last_30d: '0', runs_last_1d: '0',
+      success_rate_pct: null, p50_duration_ms: null, p99_duration_ms: null,
+      total_cost_usd: '0', cost_usd_30d: '0', last_run_at: null,
+    };
+
+    const agents = CANONICAL_AGENTS.map(agentId => ({
+      ...(statsByAgent[agentId] ?? { agent_id: agentId, ...zero }),
+      active_prompts: promptsByAgent[agentId] ?? [],
+    }));
+
     res.json({
       success: true,
       generated_at: new Date().toISOString(),
-      agents: statsResult.rows.map(row => ({
-        ...row,
-        active_prompts: promptsByAgent[row.agent_id] ?? [],
-      })),
+      agents,
     });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
@@ -1622,7 +1638,13 @@ router.get('/agents/test-budget-cap', requireAdminAuth, async (req: Authenticate
     // so BudgetEnforcer.checkRunCap() fires on the very first loop iteration.
     // All other AgentRuntime paths (row creation, step persistence, error
     // capture, status update) run on real DB tables.
+    // Pass a dummy Anthropic instance so the SDK constructor never validates the
+    // API key. The real client is never called — createMessage is fully overridden.
+    const AnthropicSdk = (await import('@anthropic-ai/sdk')).default;
+    const dummyAnthropicClient = new AnthropicSdk({ apiKey: 'stub-not-used' });
+
     class StubMeteringAdapter extends MeteringAdapter {
+      constructor() { super(dummyAnthropicClient); }
       override async createMessage(_params: MessageParams): Promise<MeteredMessage> {
         return {
           id: 'stub-msg-budget-test',
