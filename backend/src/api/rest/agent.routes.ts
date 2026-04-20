@@ -10,7 +10,7 @@ import { AppError } from '../../middleware/errorHandler';
 import { AgentJobQueue } from '../../agents/runtime/job-queue';
 
 const router = Router();
-const orchestrator = new AgentJobQueue();
+const jobQueue = new AgentJobQueue();
 
 /**
  * POST /api/v1/agents/tasks
@@ -24,7 +24,7 @@ router.post('/tasks', requireAuthOrApiKey, async (req: AuthenticatedRequest, res
       throw new AppError(400, 'taskType and inputData are required');
     }
 
-    const task = await orchestrator.submitTask({
+    const task = await jobQueue.submitTask({
       taskType,
       inputData,
       userId: req.user!.userId,
