@@ -1,9 +1,17 @@
 /**
  * read_gmail_thread
  *
- * Fetches a Gmail message with attachment content for deal intake.
+ * Fetches a Gmail thread (all messages) for deal intake processing.
  * Uses stored OAuth tokens from user_email_accounts.
- * Returns subject, sender, body text, and base64-encoded attachment content.
+ *
+ * Returns the triggering message's subject, sender, combined body text from
+ * all thread messages, and base64-encoded attachment content from the
+ * triggering message.
+ *
+ * We use `users.threads.get` (not `messages.get`) so that body text from
+ * prior messages in the conversation is available for the LLM classifier and
+ * field extractor — brokers frequently include the offering memo details in
+ * earlier replies.
  */
 
 import { google } from 'googleapis';
@@ -20,6 +28,7 @@ export interface GmailAttachment {
 
 export interface GmailThreadResult {
   message_id: string;
+  thread_id: string;
   subject: string;
   from: string;
   from_domain: string;
@@ -50,19 +59,17 @@ function extractBodyText(payload: any): string {
   return text;
 }
 
-function parseFromHeader(headers: { name?: string | null; value?: string | null }[]): string {
-  const fromHeader = headers.find(h => h.name?.toLowerCase() === 'from');
-  return fromHeader?.value ?? '';
-}
-
-function parseSubject(headers: { name?: string | null; value?: string | null }[]): string {
-  const subjectHeader = headers.find(h => h.name?.toLowerCase() === 'subject');
-  return subjectHeader?.value ?? '(no subject)';
+function getHeader(
+  headers: { name?: string | null; value?: string | null }[],
+  name: string
+): string {
+  return headers.find(h => h.name?.toLowerCase() === name.toLowerCase())?.value ?? '';
 }
 
 /**
- * Fetch a Gmail message with full content and attachments for deal intake processing.
- * Looks up Gmail credentials from user_email_accounts for the given userId.
+ * Fetch a full Gmail thread for deal intake.
+ * Returns combined body text from all messages in the thread, plus attachments
+ * from the triggering message (identified by messageId).
  */
 export async function readGmailThread(
   messageId: string,
@@ -93,57 +100,90 @@ export async function readGmailThread(
 
   const gmail = google.gmail({ version: 'v1', auth: oauth2 });
 
+  // ── Step A: Fetch the triggering message to get its threadId ────────────
   const msgRes = await gmail.users.messages.get({
     userId: 'me',
     id: messageId,
+    format: 'metadata',
+    metadataHeaders: ['Subject', 'From', 'Date'],
+  });
+
+  const triggerMsg = msgRes.data;
+  const threadId = triggerMsg.threadId ?? messageId;
+  const triggerHeaders = triggerMsg.payload?.headers ?? [];
+  const subject = getHeader(triggerHeaders, 'subject') || '(no subject)';
+  const from = getHeader(triggerHeaders, 'from');
+  const receivedAt = triggerMsg.internalDate
+    ? new Date(parseInt(triggerMsg.internalDate)).toISOString()
+    : new Date().toISOString();
+
+  // ── Step B: Fetch the full thread (all messages, full format) ───────────
+  const threadRes = await gmail.users.threads.get({
+    userId: 'me',
+    id: threadId,
     format: 'full',
   });
 
-  const msg = msgRes.data;
-  const headers = msg.payload?.headers ?? [];
-  const subject = parseSubject(headers);
-  const from = parseFromHeader(headers);
-  const bodyText = extractBodyText(msg.payload);
-  const receivedAt = msg.internalDate
-    ? new Date(parseInt(msg.internalDate)).toISOString()
-    : new Date().toISOString();
+  const threadMessages = threadRes.data.messages ?? [];
 
+  // Combine body text from all messages, newest-last so the most recent
+  // message appears at the bottom (as brokers typically append new content).
+  const combinedBodies: string[] = [];
   const attachments: GmailAttachment[] = [];
 
-  const collectParts = async (part: any) => {
-    if (!part) return;
-    if (part.filename && part.filename.length > 0 && part.body?.attachmentId) {
-      try {
-        const attRes = await gmail.users.messages.attachments.get({
-          userId: 'me',
-          messageId,
-          id: part.body.attachmentId,
-        });
-        const data = attRes.data.data ?? '';
-        attachments.push({
-          name: part.filename,
-          mime_type: part.mimeType ?? 'application/octet-stream',
-          content_base64: data,
-          size_bytes: part.body.size ?? 0,
-        });
-      } catch (err) {
-        logger.warn('read_gmail_thread: failed to fetch attachment', { filename: part.filename, err });
-      }
-    }
-    if (part.parts) {
-      for (const p of part.parts) await collectParts(p);
-    }
-  };
+  for (const msg of threadMessages) {
+    const bodyText = extractBodyText(msg.payload);
+    if (bodyText.trim()) combinedBodies.push(bodyText.trim());
 
-  await collectParts(msg.payload);
+    // Collect attachments only from the triggering message to avoid
+    // including attachments from unrelated prior replies.
+    if (msg.id === messageId && msg.payload) {
+      await collectAttachments(gmail, msg.payload, messageId, attachments);
+    }
+  }
 
   return {
     message_id: messageId,
+    thread_id: threadId,
     subject,
     from,
     from_domain: extractDomain(from),
-    body_text: bodyText,
+    body_text: combinedBodies.join('\n\n---\n\n').slice(0, 50_000),
     received_at: receivedAt,
     attachments,
   };
+}
+
+async function collectAttachments(
+  gmail: ReturnType<typeof google.gmail>,
+  part: any,
+  messageId: string,
+  out: GmailAttachment[]
+): Promise<void> {
+  if (!part) return;
+
+  if (part.filename && part.filename.length > 0 && part.body?.attachmentId) {
+    try {
+      const attRes = await gmail.users.messages.attachments.get({
+        userId: 'me',
+        messageId,
+        id: part.body.attachmentId,
+      });
+      const data = attRes.data.data ?? '';
+      out.push({
+        name: part.filename,
+        mime_type: part.mimeType ?? 'application/octet-stream',
+        content_base64: data,
+        size_bytes: part.body.size ?? 0,
+      });
+    } catch (err) {
+      logger.warn('read_gmail_thread: failed to fetch attachment', { filename: part.filename, err });
+    }
+  }
+
+  if (part.parts) {
+    for (const p of part.parts) {
+      await collectAttachments(gmail, p, messageId, out);
+    }
+  }
 }

@@ -1,12 +1,23 @@
 /**
  * ocr_document
  *
- * Thin wrapper around the existing document extraction pipeline.
- * Writes base64-encoded PDF/image content to a temp file, runs the
- * extraction pipeline's text extraction, then cleans up.
+ * Extracts plain text from base64-encoded PDF attachments for deal intake.
  *
- * Returns extracted plain text. For offering memos and PDFs, this
- * provides the text that extract_deal_fields needs for field extraction.
+ * Design note — why we do NOT use services/document-extraction:
+ *   The existing extraction pipeline (processDocument / processDealDocuments)
+ *   is a *structured-format parser*: it classifies documents as T12, Rent
+ *   Roll, Tax Bill, etc., runs schema-specific parsers, and writes structured
+ *   rows into deal capsule tables.  It requires a dealId, an uploadedBy user,
+ *   and a file path on disk — it is not a generic text extractor, and it
+ *   has no handler for generic "offering memo" PDFs.
+ *
+ *   For email intake we need a lightweight text extractor that works on any
+ *   PDF (offering memos, OM summaries, broker flyers).  pdftotext (poppler)
+ *   is the right tool here: fast, reliable on text-layer PDFs, and produces
+ *   the raw text the LLM extractor needs.  Once a deal is created and the
+ *   user uploads documents formally, the structured pipeline runs as normal.
+ *
+ * Returns extracted plain text, or empty string on failure / unsupported type.
  */
 
 import fs from 'fs';

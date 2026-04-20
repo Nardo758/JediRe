@@ -197,7 +197,31 @@ export const emailIntakeFunction = inngest.createFunction(
       });
     });
 
-    // ── Step 10: Emit deal.created → Research Agent ──────────────────────
+    // ── Step 10: Notify user — new deal arrived in inbox ─────────────────
+    await step.run('notify-user', async () => {
+      const dealName = draft.deal_name || fields.address || 'New Deal';
+      const fitPct = Math.round((fitScore.fit_score ?? 0) * 100);
+      await query(
+        `INSERT INTO deal_notifications
+           (deal_id, user_id, type, message, metadata)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [
+          draft.deal_id,
+          user_id,
+          'deal_from_email',
+          `New broker email: "${subject}" — ${dealName} (fit score ${fitPct}%)`,
+          JSON.stringify({
+            from_address,
+            subject,
+            fit_score: fitScore.fit_score,
+            classification_confidence: classification.confidence,
+          }),
+        ]
+      );
+      return { notified: true };
+    });
+
+    // ── Step 11: Emit deal.created → Research Agent ──────────────────────
     await step.sendEvent('emit-deal-created', {
       name: 'deal.created' as const,
       data: {
@@ -209,7 +233,7 @@ export const emailIntakeFunction = inngest.createFunction(
       },
     } satisfies JediEvents);
 
-    // ── Step 11: Audit log ───────────────────────────────────────────────
+    // ── Step 12: Audit log ───────────────────────────────────────────────
     await step.run('write-audit-log', async () => {
       await query(
         `INSERT INTO audit_log
