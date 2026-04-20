@@ -34,6 +34,10 @@ const MONO = BT.font.mono;
 
 export function confColor(c: number) { return c >= 0.85 ? BT.text.green : c >= 0.70 ? BT.text.amber : BT.text.red; }
 export function sevColor(s: 'critical' | 'warning' | 'info') { return s === 'critical' ? BT.text.red : s === 'warning' ? BT.text.amber : BT.text.cyan; }
+const fmtSafe = (value: unknown, digits: number) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n.toFixed(digits) : '—';
+};
 export function gateColor(ss: SubStrategyScore): string {
   if (ss.gate?.disqualified) return BT.text.red;
   if (ss.gate?.marginal) return BT.text.amber;
@@ -373,7 +377,7 @@ export function SubStrategyComparison({ subStrategies, arbitrage }: {
           <Bd c={BT.text.amber}>⚡ ARBITRAGE DETECTED</Bd>
           <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.primary }}>{arbitrage.narrative}</span>
           <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.amber }}>
-            Δ {(arbitrage.deltaPoints ?? 0).toFixed(1)} pts
+            Δ {fmtSafe(arbitrage.deltaPoints, 1)} pts
           </span>
         </div>
       )}
@@ -404,14 +408,14 @@ export function SubStrategyComparison({ subStrategies, arbitrage }: {
               <div style={{ display: 'flex', justifyContent: 'center', padding: '10px 8px 4px' }}>
                 <ScoreRing score={ss.finalScore} color={color} size={56} />
               </div>
-              <DataRow label="IRR" value={fp ? `${fp.irr.toFixed(1)}%` : '—'} valueColor={BT.met.financial} />
-              <DataRow label="CoC" value={fp ? `${fp.cocReturn.toFixed(1)}%` : '—'} valueColor={BT.text.cyan} />
-              <DataRow label="EM" value={fp ? `${fp.equityMultiple.toFixed(2)}x` : '—'} valueColor={BT.text.amber} />
-              <DataRow label="EXIT CAP" value={fp ? `${(fp.exitCapRate * 100).toFixed(2)}%` : '—'} valueColor={BT.text.secondary} />
-              <DataRow label="HOLD" value={fp ? `${fp.holdMonths}mo` : '—'} valueColor={BT.text.purple} />
+              <DataRow label="IRR" value={fp ? `${fmtSafe(fp.irr, 1)}%` : '—'} valueColor={BT.met.financial} />
+              <DataRow label="CoC" value={fp ? `${fmtSafe(fp.cocReturn, 1)}%` : '—'} valueColor={BT.text.cyan} />
+              <DataRow label="EM" value={fp ? `${fmtSafe(fp.equityMultiple, 2)}x` : '—'} valueColor={BT.text.amber} />
+              <DataRow label="EXIT CAP" value={fp ? `${fmtSafe(Number(fp.exitCapRate) * 100, 2)}%` : '—'} valueColor={BT.text.secondary} />
+              <DataRow label="HOLD" value={fp ? `${fmtSafe(fp.holdMonths, 0)}mo` : '—'} valueColor={BT.text.purple} />
               <div style={{ padding: '4px 8px', borderTop: `1px solid ${BT.border.subtle}` }}>
                 <span style={{ fontFamily: MONO, fontSize: 7, color: BT.text.muted }}>
-                  BASE {fmtScore(ss.baseScore)} × {(ss.timingMultiplier ?? 1).toFixed(2)} + ADJ {fmtScore(ss.gateAdjustment)}
+                  BASE {fmtScore(ss.baseScore)} × {fmtSafe(ss.timingMultiplier, 2)} + ADJ {fmtScore(ss.gateAdjustment)}
                 </span>
               </div>
               {ss.gate?.reasons?.length > 0 && (
