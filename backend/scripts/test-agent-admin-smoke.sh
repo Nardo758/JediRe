@@ -82,9 +82,20 @@ assert_json_field \
   "['success']" "True" \
   "recent-runs.success=true"
 
-# 5. Budget cap test endpoint returns budget_exceeded in dev (skipped in prod)
+# 5. Budget cap test endpoint:
+#    - In dev: success=true + budget_exceeded_run.status == 'budget_exceeded'
+#    - In prod: HTTP 403 with error containing 'production'
 body=$(curl -sf -H "x-api-key: $KEY" "$BASE/api/v1/admin/agents/test-budget-cap" 2>/dev/null || echo "{}")
-if echo "$body" | python3 -c "import sys,json; d=json.load(sys.stdin); exit(0 if d.get('persisted_status')=='budget_exceeded' or d.get('error','').find('production')>=0 else 1)" 2>/dev/null; then
+if echo "$body" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+# Production guard: endpoint returns 403 in prod (curl -f gives empty body)
+if d.get('error','').find('production') >= 0:
+    exit(0)
+# Dev: success=true and budget_exceeded_run.status == 'budget_exceeded'
+run = d.get('budget_exceeded_run') or {}
+exit(0 if d.get('success') and run.get('status') == 'budget_exceeded' else 1)
+" 2>/dev/null; then
   echo "PASS [test-budget-cap: budget_exceeded persisted or production-blocked]"
   PASS=$((PASS + 1))
 else
