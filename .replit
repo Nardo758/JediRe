@@ -4,6 +4,7 @@ modules = ["nodejs-20", "python-3.12", "bash", "web", "postgresql-16"]
 
 [nix]
 channel = "stable-25_05"
+packages = ["orbiton"]
 
 [deployment]
 run = ["node", "index.js"]
