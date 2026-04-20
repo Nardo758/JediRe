@@ -651,7 +651,7 @@ export function StrategiesTab() {
         <DataIntegrationPanel assetClass={activeAssetClass} />
 
         {/* 1. Detection Banner */}
-        <div style={{ borderLeft: `3px solid ${C.cyan}`, backgroundColor: C.panel, border: `1px solid ${C.border}`, borderLeft: `3px solid ${C.cyan}`, padding: '12px 16px', marginBottom: 16, borderRadius: 2 }}>
+        <div style={{ backgroundColor: C.panel, border: `1px solid ${C.border}`, borderLeft: `3px solid ${C.cyan}`, padding: '12px 16px', marginBottom: 16, borderRadius: 2 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
