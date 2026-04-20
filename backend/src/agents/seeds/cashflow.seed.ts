@@ -71,48 +71,32 @@ const EVIDENCE_PROMPTS: Array<{
 ];
 
 export async function seedCashflowPrompt(): Promise<void> {
-  try {
-    // Deactivate any stale active prompts for cashflow (except ones we're about to upsert)
-    const upcomingIds = EVIDENCE_PROMPTS.map(p => p.id);
+  // ON CONFLICT DO NOTHING: existing prompt rows are never overwritten on restart.
+  // Preserves any operator rollback (active-flag flip) across process restarts.
+  // Initial inserts set active=true so agents are ready on first deploy.
+  const upcomingIds = EVIDENCE_PROMPTS.map(p => p.id);
+
+  for (const p of EVIDENCE_PROMPTS) {
     await query(
-      `UPDATE prompt_versions
-       SET active = false
-       WHERE agent_id = 'cashflow'
-         AND active = true
-         AND id != ALL($1::text[])`,
-      [upcomingIds]
+      `INSERT INTO prompt_versions
+         (id, agent_id, version, prompt_type, system_prompt, output_schema, tools, active, created_at, created_by)
+       VALUES
+         ($1, 'cashflow', $2, $3, $4, $5, '[]'::jsonb, true, NOW(), 'system')
+       ON CONFLICT (id) DO NOTHING`,
+      [
+        p.id,
+        p.version,
+        p.promptType,
+        p.systemPrompt,
+        JSON.stringify(
+          p.promptType === 'core' ? CASHFLOW_OUTPUT_SCHEMA : LEGACY_OUTPUT_SCHEMA_JSON
+        ),
+      ]
     );
-
-    // Seed / update each prompt version (idempotent upsert by id)
-    for (const p of EVIDENCE_PROMPTS) {
-      await query(
-        `INSERT INTO prompt_versions
-           (id, agent_id, version, prompt_type, system_prompt, output_schema, tools, active, created_at, created_by)
-         VALUES
-           ($1, 'cashflow', $2, $3, $4, $5, '[]'::jsonb, true, NOW(), 'system')
-         ON CONFLICT (id) DO UPDATE
-           SET system_prompt  = EXCLUDED.system_prompt,
-               output_schema  = EXCLUDED.output_schema,
-               prompt_type    = EXCLUDED.prompt_type,
-               version        = EXCLUDED.version,
-               active         = true`,
-        [
-          p.id,
-          p.version,
-          p.promptType,
-          p.systemPrompt,
-          JSON.stringify(
-            p.promptType === 'core' ? CASHFLOW_OUTPUT_SCHEMA : LEGACY_OUTPUT_SCHEMA_JSON
-          ),
-        ]
-      );
-    }
-
-    logger.info('CashFlow Agent prompts seeded (v4 evidence system)', {
-      count: EVIDENCE_PROMPTS.length,
-      ids: upcomingIds,
-    });
-  } catch (err) {
-    logger.error('Failed to seed cashflow agent prompts', { err });
   }
+
+  logger.info('CashFlow Agent prompts seeded (v4 evidence system)', {
+    count: EVIDENCE_PROMPTS.length,
+    ids: upcomingIds,
+  });
 }

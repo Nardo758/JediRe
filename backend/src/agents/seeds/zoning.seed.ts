@@ -73,26 +73,16 @@ const OUTPUT_SCHEMA_JSON = (() => {
 })();
 
 export async function seedZoningPrompt(): Promise<void> {
-  try {
-    await query(
-      `UPDATE prompt_versions SET active = false
-       WHERE agent_id = 'zoning' AND active = true AND id != 'zoning-v3'`
-    );
+  // ON CONFLICT DO NOTHING: existing prompt rows are never overwritten on restart.
+  // Preserves any operator rollback (active-flag flip) across process restarts.
+  await query(
+    `INSERT INTO prompt_versions
+       (id, agent_id, version, system_prompt, output_schema, active, created_at, created_by)
+     VALUES
+       ('zoning-v3', 'zoning', '3.0.0', $1, $2, true, NOW(), 'system')
+     ON CONFLICT (id) DO NOTHING`,
+    [ZONING_SYSTEM_PROMPT, JSON.stringify(OUTPUT_SCHEMA_JSON)]
+  );
 
-    await query(
-      `INSERT INTO prompt_versions
-         (id, agent_id, version, system_prompt, output_schema, active, created_at, created_by)
-       VALUES
-         ('zoning-v3', 'zoning', '3.0.0', $1, $2, true, NOW(), 'system')
-       ON CONFLICT (id) DO UPDATE
-         SET system_prompt = EXCLUDED.system_prompt,
-             output_schema = EXCLUDED.output_schema,
-             active = EXCLUDED.active`,
-      [ZONING_SYSTEM_PROMPT, JSON.stringify(OUTPUT_SCHEMA_JSON)]
-    );
-
-    logger.info('Zoning Agent prompt seeded: zoning-v3 (active)');
-  } catch (err) {
-    logger.error('Failed to seed zoning agent prompt', { err });
-  }
+  logger.info('Zoning Agent prompt seeded: zoning-v3 (active)');
 }

@@ -85,26 +85,17 @@ const OUTPUT_SCHEMA_JSON = (() => {
 })();
 
 export async function seedResearchPrompt(): Promise<void> {
-  try {
-    await query(
-      `UPDATE prompt_versions SET active = false
-       WHERE agent_id = 'research' AND active = true AND id != 'research-v3'`
-    );
+  // ON CONFLICT DO NOTHING: existing prompt rows are never overwritten on restart.
+  // This preserves any operator rollback (active-flag flip) across process restarts.
+  // The initial insert sets active=true so the agent is ready on first deploy.
+  await query(
+    `INSERT INTO prompt_versions
+       (id, agent_id, version, system_prompt, output_schema, active, created_at, created_by)
+     VALUES
+       ('research-v3', 'research', '3.0.0', $1, $2, true, NOW(), 'system')
+     ON CONFLICT (id) DO NOTHING`,
+    [RESEARCH_SYSTEM_PROMPT, JSON.stringify(OUTPUT_SCHEMA_JSON)]
+  );
 
-    await query(
-      `INSERT INTO prompt_versions
-         (id, agent_id, version, system_prompt, output_schema, active, created_at, created_by)
-       VALUES
-         ('research-v3', 'research', '3.0.0', $1, $2, true, NOW(), 'system')
-       ON CONFLICT (id) DO UPDATE
-         SET system_prompt = EXCLUDED.system_prompt,
-             output_schema = EXCLUDED.output_schema,
-             active = EXCLUDED.active`,
-      [RESEARCH_SYSTEM_PROMPT, JSON.stringify(OUTPUT_SCHEMA_JSON)]
-    );
-
-    logger.info('Research Agent prompt seeded: research-v3 (active)');
-  } catch (err) {
-    logger.error('Failed to seed research agent prompt', { err });
-  }
+  logger.info('Research Agent prompt seeded: research-v3 (active)');
 }

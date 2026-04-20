@@ -17,11 +17,22 @@ import { seedCashflowPrompt } from './cashflow.seed';
 import { seedCommentaryPrompt } from './commentary.seed';
 import { logger } from '../../utils/logger';
 
+/**
+ * Seed all 5 agent prompt versions in parallel.
+ *
+ * Fail-fast: throws if ANY seed fails so cold-start deploy readiness is
+ * guaranteed — a partial seed (some agents missing active prompts) is worse
+ * than a failed startup that the health-check can catch.
+ *
+ * Seed semantics: ON CONFLICT DO NOTHING — prompts already in the DB are
+ * preserved as-is, including any active-flag state set by an operator rollback.
+ */
 export async function seedAllAgentPrompts(): Promise<void> {
   const start = Date.now();
   logger.info('Agent seeds: starting parallel prompt seeding for all 5 agents');
 
-  const results = await Promise.allSettled([
+  // Promise.all — let any individual failure propagate and abort startup.
+  await Promise.all([
     seedResearchPrompt(),
     seedZoningPrompt(),
     seedSupplyPrompt(),
@@ -29,20 +40,6 @@ export async function seedAllAgentPrompts(): Promise<void> {
     seedCommentaryPrompt(),
   ]);
 
-  const agents = ['research', 'zoning', 'supply', 'cashflow', 'commentary'];
-  let failed = 0;
-
-  results.forEach((result, i) => {
-    if (result.status === 'rejected') {
-      failed++;
-      logger.error(`Agent seeds: failed to seed ${agents[i]} prompt`, { err: result.reason });
-    }
-  });
-
   const elapsed = Date.now() - start;
-  if (failed === 0) {
-    logger.info(`Agent seeds: all 5 agent prompts seeded successfully (${elapsed}ms)`);
-  } else {
-    logger.warn(`Agent seeds: ${failed}/5 seed(s) failed (${elapsed}ms) — agents may fall back to lazy seeding`);
-  }
+  logger.info(`Agent seeds: all 5 agent prompts seeded successfully (${elapsed}ms)`);
 }

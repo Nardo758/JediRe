@@ -100,26 +100,16 @@ const OUTPUT_SCHEMA_JSON = (() => {
 })();
 
 export async function seedCommentaryPrompt(): Promise<void> {
-  try {
-    await query(
-      `UPDATE prompt_versions SET active = false
-       WHERE agent_id = 'commentary' AND active = true AND id != 'commentary-v3'`
-    );
+  // ON CONFLICT DO NOTHING: existing prompt rows are never overwritten on restart.
+  // Preserves any operator rollback (active-flag flip) across process restarts.
+  await query(
+    `INSERT INTO prompt_versions
+       (id, agent_id, version, system_prompt, output_schema, active, created_at, created_by)
+     VALUES
+       ('commentary-v3', 'commentary', '3.0.0', $1, $2, true, NOW(), 'system')
+     ON CONFLICT (id) DO NOTHING`,
+    [COMMENTARY_SYSTEM_PROMPT, JSON.stringify(OUTPUT_SCHEMA_JSON)]
+  );
 
-    await query(
-      `INSERT INTO prompt_versions
-         (id, agent_id, version, system_prompt, output_schema, active, created_at, created_by)
-       VALUES
-         ('commentary-v3', 'commentary', '3.0.0', $1, $2, true, NOW(), 'system')
-       ON CONFLICT (id) DO UPDATE
-         SET system_prompt = EXCLUDED.system_prompt,
-             output_schema = EXCLUDED.output_schema,
-             active = EXCLUDED.active`,
-      [COMMENTARY_SYSTEM_PROMPT, JSON.stringify(OUTPUT_SCHEMA_JSON)]
-    );
-
-    logger.info('Commentary Agent prompt seeded: commentary-v3 (active)');
-  } catch (err) {
-    logger.error('Failed to seed commentary agent prompt', { err });
-  }
+  logger.info('Commentary Agent prompt seeded: commentary-v3 (active)');
 }

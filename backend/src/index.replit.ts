@@ -1025,13 +1025,11 @@ httpServer.listen(Number(PORT), '0.0.0.0', async () => {
   }
 
   // Agent prompt seeding — ensures all 5 agents have active prompt_versions on cold start.
-  // Idempotent (ON CONFLICT DO UPDATE), so safe to run on every restart.
-  try {
-    const { seedAllAgentPrompts } = await import('./agents/seeds/index');
-    await seedAllAgentPrompts();
-  } catch (error) {
-    console.error('Agent prompt seeding failed (non-fatal):', error);
-  }
+  // Idempotent (ON CONFLICT DO NOTHING), preserves operator rollback state.
+  // Fail-fast: errors propagate so the health check fails instead of starting
+  // a server with uninitialized agents.
+  const { seedAllAgentPrompts } = await import('./agents/seeds/index');
+  await seedAllAgentPrompts();
 
   await initStripe();
 

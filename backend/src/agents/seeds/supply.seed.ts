@@ -81,26 +81,16 @@ const OUTPUT_SCHEMA_JSON = (() => {
 })();
 
 export async function seedSupplyPrompt(): Promise<void> {
-  try {
-    await query(
-      `UPDATE prompt_versions SET active = false
-       WHERE agent_id = 'supply' AND active = true AND id != 'supply-v3'`
-    );
+  // ON CONFLICT DO NOTHING: existing prompt rows are never overwritten on restart.
+  // Preserves any operator rollback (active-flag flip) across process restarts.
+  await query(
+    `INSERT INTO prompt_versions
+       (id, agent_id, version, system_prompt, output_schema, active, created_at, created_by)
+     VALUES
+       ('supply-v3', 'supply', '3.0.0', $1, $2, true, NOW(), 'system')
+     ON CONFLICT (id) DO NOTHING`,
+    [SUPPLY_SYSTEM_PROMPT, JSON.stringify(OUTPUT_SCHEMA_JSON)]
+  );
 
-    await query(
-      `INSERT INTO prompt_versions
-         (id, agent_id, version, system_prompt, output_schema, active, created_at, created_by)
-       VALUES
-         ('supply-v3', 'supply', '3.0.0', $1, $2, true, NOW(), 'system')
-       ON CONFLICT (id) DO UPDATE
-         SET system_prompt = EXCLUDED.system_prompt,
-             output_schema = EXCLUDED.output_schema,
-             active = EXCLUDED.active`,
-      [SUPPLY_SYSTEM_PROMPT, JSON.stringify(OUTPUT_SCHEMA_JSON)]
-    );
-
-    logger.info('Supply Agent prompt seeded: supply-v3 (active)');
-  } catch (err) {
-    logger.error('Failed to seed supply agent prompt', { err });
-  }
+  logger.info('Supply Agent prompt seeded: supply-v3 (active)');
 }

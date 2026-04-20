@@ -1584,21 +1584,17 @@ router.get('/agents/recent-runs', requireAdminAuth, async (req: AuthenticatedReq
 });
 
 // ── GET /api/v1/admin/agents/test-budget-cap ─────────────────────
-// Dev/staging only. Smoke-tests the full AgentRuntime budget-enforcement
-// path WITHOUT calling the Anthropic API by simulating exactly what
-// AgentRuntime does during one loop iteration:
+// Dev/staging only. Executes a REAL AgentRuntime.run() invocation with a
+// stub transport (no Anthropic API call) to verify that BudgetEnforcer
+// correctly terminates a runaway loop and persists budget_exceeded status.
 //
-//  1. Insert a fixture agent_run row in status='running' with cost_usd=0.10
-//     (representing the accrued cost after the first model call).
-//  2. Call BudgetEnforcer.checkRunCap() against that row with a $0.001 cap.
-//     The enforcer reads cost_usd=0.10 from the DB → 0.10 ≥ 0.001 → throws
-//     BudgetExceededError (same path as the real loop-iteration check).
-//  3. Catch BudgetExceededError → UPDATE the row to status='budget_exceeded'
-//     (this is exactly what AgentRuntime.catch does).
-//  4. Return the persisted budget_exceeded row as proof.
-//
-// A second fixture run (sentinel cost row for the deal) verifies the daily
-// deal-level cap fires via BudgetEnforcer.check().
+// Flow (mirrors the real production loop exactly):
+//  1. StubMeteringAdapter.createMessage() returns cost_usd=0.10 instantly
+//     (skips the Anthropic HTTP call but fires every other runtime path).
+//  2. AgentRuntime accumulates cost=0.10 and calls checkRunCap(runId, 0.10, caps).
+//  3. cap.maxCostUsdPerRun=0.001 → 0.10 ≥ 0.001 → BudgetExceededError thrown.
+//  4. AgentRuntime.catch() UPDATEs the real agent_runs row to status=budget_exceeded.
+//  5. This endpoint catches the error, queries the DB, and returns the run row.
 
 router.get('/agents/test-budget-cap', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   if (process.env.NODE_ENV === 'production') {
@@ -1608,115 +1604,111 @@ router.get('/agents/test-budget-cap', requireAdminAuth, async (req: Authenticate
     });
   }
 
-  // Sentinel IDs that won't collide with real deal/run data.
-  const FIXTURE_DEAL_ID        = '00000000-0000-0000-0000-000000000001';
-  const FIXTURE_RUN_ID         = '00000000-0000-0000-0000-000000000002'; // run under test
-  const FIXTURE_COST_ROW_ID    = '00000000-0000-0000-0000-000000000003'; // daily-cap sentinel
+  // Sentinel deal ID — no FK constraint on agent_runs.deal_id so any UUID works.
+  const FIXTURE_DEAL_ID = '00000000-0000-0000-0000-000000000099';
+  const FIXTURE_AGENT_VERSION = 'budget-test-v1';
 
   try {
+    const { AgentRuntime } = await import('../../agents/runtime/AgentRuntime');
+    const { MeteringAdapter } = await import('../../agents/runtime/MeteringAdapter');
     const { BudgetEnforcer } = await import('../../agents/runtime/BudgetEnforcer');
     const { BudgetExceededError } = await import('../../agents/runtime/types');
-    const enforcer = new BudgetEnforcer();
+    const { z } = await import('zod');
 
-    // ── Fixture A: running run (simulates first loop iteration completed) ──
-    // cost_usd=0.10 represents accrued cost after the first model call.
-    await query(`
-      INSERT INTO agent_runs
-        (id, agent_id, agent_version, prompt_version, deal_id, user_id,
-         triggered_by, status, cost_usd, tokens_in, tokens_out, started_at)
-      VALUES
-        ($1, 'test-fixture', 'test-v1', 'test-prompt-v1', $2, NULL,
-         'user', 'running', 0.10, 500, 200, NOW())
-      ON CONFLICT (id) DO UPDATE
-        SET status     = 'running',
-            cost_usd   = 0.10,
-            started_at = NOW()
-    `, [FIXTURE_RUN_ID, FIXTURE_DEAL_ID]);
-
-    // ── Fixture B: sentinel cost row for daily deal-cap test ──────
-    await query(`
-      INSERT INTO agent_runs
-        (id, agent_id, agent_version, prompt_version, deal_id, user_id,
-         triggered_by, status, cost_usd, tokens_in, tokens_out, started_at)
-      VALUES
-        ($1, 'test-fixture', 'test-v1', 'test-prompt-v1', $2, NULL,
-         'user', 'succeeded', 1.00, 1000, 400, NOW())
-      ON CONFLICT (id) DO UPDATE
-        SET cost_usd   = 1.00,
-            started_at = NOW()
-    `, [FIXTURE_COST_ROW_ID, FIXTURE_DEAL_ID]);
-
-    const results: Record<string, { passed: boolean; description: string }> = {};
-
-    // ── Test 1: Per-run cap — full AgentRuntime catch-path simulation ──
-    // checkRunCap reads cost_usd=0.10 from DB, adds currentCost=0 → 0.10 ≥ 0.001 → throws.
-    // We then UPDATE the row to budget_exceeded, exactly as AgentRuntime.catch does.
-    try {
-      await enforcer.checkRunCap(FIXTURE_RUN_ID, 0, {
-        maxCostUsdPerRun: 0.001,
-        maxCostUsdPerDealPerDay: 999,
-      });
-      results.per_run_cap = { passed: false, description: 'checkRunCap did NOT throw — enforcement broken' };
-    } catch (err: any) {
-      const isBudgetErr = err instanceof BudgetExceededError
-        || err?.constructor?.name === 'BudgetExceededError'
-        || (err?.message ?? '').includes('per-run cap');
-
-      if (isBudgetErr) {
-        // Simulate AgentRuntime.catch: persist budget_exceeded status.
-        await query(
-          `UPDATE agent_runs
-           SET status = 'budget_exceeded', error = $1, completed_at = NOW(),
-               duration_ms = 0
-           WHERE id = $2`,
-          [err.message, FIXTURE_RUN_ID]
-        );
-        results.per_run_cap = {
-          passed: true,
-          description: `checkRunCap threw BudgetExceededError; run status persisted as budget_exceeded (${err.message.slice(0, 120)})`,
-        };
-      } else {
-        results.per_run_cap = {
-          passed: false,
-          description: `Unexpected error type: ${err.message}`,
+    // ── Stub transport — bypasses Anthropic API ──────────────────────────────
+    // createMessage() returns a synthetic expensive response (cost_usd=0.10)
+    // so BudgetEnforcer.checkRunCap() fires on the very first loop iteration.
+    // All other AgentRuntime paths (row creation, step persistence, error
+    // capture, status update) run on real DB tables.
+    class StubMeteringAdapter extends MeteringAdapter {
+      override async createMessage(_params: any): Promise<any> {
+        return {
+          id: 'stub-msg-budget-test',
+          type: 'message',
+          role: 'assistant',
+          content: [],           // no content needed — budget check fires before content is parsed
+          model: _params.model,
+          stop_reason: 'end_turn',
+          stop_sequence: null,
+          usage: {
+            input_tokens: 1000,
+            output_tokens: 500,
+            cost_usd: 0.10,    // exceeds maxCostUsdPerRun=0.001 → checkRunCap throws
+          },
         };
       }
     }
 
-    // ── Test 2: Per-deal daily cap (pre-flight path via BudgetEnforcer.check) ──
-    // Sentinel cost row puts $1.00 today; $0.001 cap must throw.
-    try {
-      await enforcer.check(
-        { dealId: FIXTURE_DEAL_ID, userId: 'test', triggeredBy: 'user' },
-        { maxCostUsdPerRun: 999, maxCostUsdPerDealPerDay: 0.001 }
-      );
-      results.daily_deal_cap = { passed: false, description: 'BudgetEnforcer.check did NOT throw' };
-    } catch (err: any) {
-      const isBudgetErr = err instanceof BudgetExceededError
-        || err?.constructor?.name === 'BudgetExceededError'
-        || (err?.message ?? '').includes('daily agent cap');
-      results.daily_deal_cap = {
-        passed: isBudgetErr,
-        description: isBudgetErr
-          ? `BudgetEnforcer.check correctly threw BudgetExceededError (${err.message.slice(0, 120)})`
-          : `Unexpected error type: ${err.message}`,
-      };
-    }
-
-    // ── Return the persisted budget_exceeded run row as proof ──────
-    const finalRunRow = await query(
-      `SELECT id, agent_id, deal_id, status, cost_usd, error, completed_at
-       FROM agent_runs WHERE id = $1`,
-      [FIXTURE_RUN_ID]
+    // ── Test runtime — $0.001 per-run cap ───────────────────────────────────
+    const testRuntime = new AgentRuntime(
+      {
+        agentId: 'research' as any,
+        agentVersion: FIXTURE_AGENT_VERSION,
+        promptVersion: 'test-prompt-v1',
+        tools: [],
+        outputSchema: (z.object({}) as any).passthrough(),
+        budgetCaps: {
+          maxCostUsdPerRun: 0.001,        // stub cost $0.10 >> this cap
+          maxCostUsdPerDealPerDay: 999,   // daily cap not under test here
+          maxStepsPerRun: 10,
+        },
+        modelName: 'claude-haiku-4-5-20251001' as any,
+        capabilities: [],
+      },
+      new StubMeteringAdapter(),
+      new BudgetEnforcer()
     );
 
-    const allPassed = Object.values(results).every(r => r.passed);
+    // ── Cleanup any leftover runs from prior test invocations ────────────────
+    await query(
+      `DELETE FROM agent_runs WHERE deal_id = $1 AND agent_version = $2`,
+      [FIXTURE_DEAL_ID, FIXTURE_AGENT_VERSION]
+    );
+
+    // ── Execute the real runtime — expect BudgetExceededError ───────────────
+    let budgetErrCaught = false;
+    try {
+      await testRuntime.run(
+        { test: true },
+        {
+          dealId: FIXTURE_DEAL_ID,
+          userId: 'test-admin',
+          triggeredBy: 'user',
+          // systemPromptOverride skips the DB prompt lookup so no prompt_versions
+          // row is needed for this fixture agent.
+          systemPromptOverride: 'You are a test agent. Return an empty JSON object.',
+        }
+      );
+    } catch (err: any) {
+      budgetErrCaught =
+        err instanceof BudgetExceededError ||
+        err?.constructor?.name === 'BudgetExceededError' ||
+        (err?.message ?? '').includes('per-run cap');
+    }
+
+    // ── Query the real DB row that AgentRuntime.catch() persisted ────────────
+    const runRow = await query(
+      `SELECT id, agent_id, deal_id, status, cost_usd, error, completed_at
+       FROM agent_runs
+       WHERE deal_id = $1 AND agent_version = $2
+       ORDER BY started_at DESC LIMIT 1`,
+      [FIXTURE_DEAL_ID, FIXTURE_AGENT_VERSION]
+    );
+    const persistedRun = runRow.rows[0] ?? null;
+
+    const success =
+      budgetErrCaught &&
+      persistedRun !== null &&
+      persistedRun.status === 'budget_exceeded';
 
     res.json({
-      success: allPassed,
-      note: 'Fixture rows written to DB (ids: ...000002, ...000003). Safe to delete manually.',
-      budget_exceeded_run: finalRunRow.rows[0] ?? null,
-      checks: results,
+      success,
+      description:
+        'Real AgentRuntime.run() with stub transport (no Anthropic API call). ' +
+        'StubMeteringAdapter returns cost_usd=0.10; checkRunCap fires (cap=$0.001); ' +
+        'AgentRuntime.catch() persists budget_exceeded to the real agent_runs table.',
+      budget_exceeded_run: persistedRun,
+      budget_exceeded_error_thrown: budgetErrCaught,
     });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
