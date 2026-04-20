@@ -1,39 +1,20 @@
 /**
- * Agent Orchestrator — Shim (Phase 4 Refactor)
+ * Agent Job Queue
  *
- * This class is a thin shim that manages the agent_tasks job queue and
- * routes execution to the AgentRuntime singletons registered in the
- * coordinator dispatch table.
+ * Manages the `agent_tasks` table: submission, polling, execution, retry, and
+ * learning-log emission.  This is the REST/legacy path for task dispatch.
+ * Event-driven execution uses the individual Inngest functions directly.
  *
- * Phase 4 changes:
- *   - Removed the agents Map with ZoningAgent/SupplyAgent/CashFlowAgent/CommentaryAgent class instances
- *   - executeTask() now routes via AGENT_RUNTIME_MAP to the appropriate runtime
- *   - Retry logic, task queue, and logAgentLearning() are unchanged
- *
- * task_type → runtime mapping:
- *   'zoning_analysis'       → zoningRuntime.run()
- *   'supply_analysis'       → supplyRuntime.run()
- *   'cashflow_analysis'     → cashflowRuntime.run()
- *   'research_analysis'     → researchRuntime.run()
- *   'commentary_generation' → CommentaryAgent (rich orchestration, not pure runtime)
- *   'metric_recommendations'→ MetricRecommendationAgent (unchanged)
+ * Task-type routing uses TASK_TYPE_RUNTIME_MAP from coordinator/dispatch.ts
+ * so the mapping is a single source of truth.
  */
 
-import { query, getPool } from '../database/connection';
-import { logger } from '../utils/logger';
-import { IntelligenceContextService } from '../services/intelligence-context.service';
-import { MetricRecommendationAgent } from './metric-recommendation.agent';
-import type { MetricRecommendationInput } from '../services/metricRecommendation.service';
-import type { AgentRuntime } from './runtime/AgentRuntime';
-
-// AgentRuntime singletons — loaded lazily to avoid circular imports at startup
-import { researchRuntime } from './research.config';
-import { zoningRuntime } from './zoning.config';
-import { supplyRuntime } from './supply.config';
-import { cashflowRuntime } from './cashflow.config';
-import { commentaryRuntime } from './commentary.config';
-
-// ── Task queue types ──────────────────────────────────────────────
+import { query, getPool } from '../../database/connection';
+import { logger } from '../../utils/logger';
+import { IntelligenceContextService } from '../../services/intelligence-context.service';
+import { MetricRecommendationService } from '../../services/metricRecommendation.service';
+import type { MetricRecommendationInput } from '../../services/metricRecommendation.service';
+import { TASK_TYPE_RUNTIME_MAP } from '../../coordinator/dispatch';
 
 interface TaskInput {
   taskType: string;
@@ -50,34 +31,16 @@ interface Task {
   userId: string;
 }
 
-
-// ── Runtime dispatch map ──────────────────────────────────────────
-
-const AGENT_RUNTIME_MAP: Record<string, AgentRuntime> = {
-  research_analysis: researchRuntime,
-  zoning_analysis: zoningRuntime,
-  supply_analysis: supplyRuntime,
-  cashflow_analysis: cashflowRuntime,
-  commentary_generation: commentaryRuntime,
-};
-
-// ── Orchestrator Shim ─────────────────────────────────────────────
-
-export class AgentOrchestrator {
+export class AgentJobQueue {
   private isProcessing = false;
-  private intelligenceService: IntelligenceContextService;
-
-  // Only legacy agent: metric_recommendations. Commentary now routes via AGENT_RUNTIME_MAP.
-  private readonly metricRecommendationAgent = new MetricRecommendationAgent();
+  private readonly intelligenceService: IntelligenceContextService;
+  private readonly metricRecommendationService = new MetricRecommendationService();
 
   constructor() {
     this.intelligenceService = new IntelligenceContextService(getPool());
     this.startProcessingLoop();
   }
 
-  /**
-   * Submit a new task to the queue.
-   */
   async submitTask(input: TaskInput): Promise<Task> {
     try {
       const result = await query(
@@ -85,7 +48,7 @@ export class AgentOrchestrator {
           task_type, input_data, user_id, priority, status
         ) VALUES ($1, $2, $3, $4, 'pending')
         RETURNING *`,
-        [input.taskType, JSON.stringify(input.inputData), input.userId, input.priority || 0]
+        [input.taskType, JSON.stringify(input.inputData), input.userId, input.priority ?? 0]
       );
 
       const task = result.rows[0];
@@ -111,17 +74,11 @@ export class AgentOrchestrator {
     }
   }
 
-  /**
-   * Get task status by ID.
-   */
   async getTaskStatus(taskId: string): Promise<unknown> {
     const result = await query('SELECT * FROM agent_tasks WHERE id = $1', [taskId]);
     return result.rows.length === 0 ? null : result.rows[0];
   }
 
-  /**
-   * Cancel a pending or processing task.
-   */
   async cancelTask(taskId: string, userId: string): Promise<boolean> {
     const result = await query(
       `UPDATE agent_tasks
@@ -133,8 +90,6 @@ export class AgentOrchestrator {
     return result.rows.length > 0;
   }
 
-  // ── Private: processing loop ──────────────────────────────────
-
   private startProcessingLoop(): void {
     setInterval(() => {
       if (!this.isProcessing) {
@@ -142,7 +97,7 @@ export class AgentOrchestrator {
       }
     }, 5000);
 
-    logger.info('AgentOrchestrator shim: processing loop started');
+    logger.info('AgentJobQueue: processing loop started');
   }
 
   private async processNextTask(): Promise<void> {
@@ -172,17 +127,10 @@ export class AgentOrchestrator {
     }
   }
 
-  /**
-   * Execute a task by routing to the appropriate AgentRuntime or legacy agent.
-   *
-   * Priority order:
-   *  1. AGENT_RUNTIME_MAP  — Phase 4 runtimes: research, zoning, supply, cashflow, commentary_generation
-   *  2. legacyAgents       — metric_recommendations (deprecated service shim)
-   */
   private async executeTask(task: Record<string, unknown>): Promise<void> {
     const taskId = task.id as string;
     const taskType = task.task_type as string;
-    const inputData = (task.input_data as Record<string, unknown>) || {};
+    const inputData = (task.input_data as Record<string, unknown>) ?? {};
     const userId = task.user_id as string;
     const startTime = Date.now();
 
@@ -196,27 +144,18 @@ export class AgentOrchestrator {
 
       let result: unknown;
 
-      const runtime = AGENT_RUNTIME_MAP[taskType];
+      const runtime = TASK_TYPE_RUNTIME_MAP[taskType];
       if (runtime) {
-        // Phase 4: Route through AgentRuntime
-        // Normalize dealId: task payloads submitted via REST use deal_id (snake_case);
-        // context objects use dealId (camelCase). Accept both so write-tools don't no-op.
         const dealId = (inputData.dealId ?? inputData.deal_id) as string | undefined;
-        const runCtx = {
+        result = await runtime.run(inputData, {
           dealId,
           userId,
-          triggeredBy: 'user' as const,
-          triggerContext: { source: 'orchestrator', task_type: taskType },
-        };
-        result = await runtime.run(inputData, runCtx);
+          triggeredBy: 'user',
+          triggerContext: { source: 'job-queue', task_type: taskType },
+        });
 
-        // commentary_generation: persist output to market_commentary (authoritative cache)
         if (taskType === 'commentary_generation') {
-          const out = result as {
-            entity_type?: string;
-            entity_id?: string;
-            [key: string]: unknown;
-          };
+          const out = result as { entity_type?: string; entity_id?: string; [k: string]: unknown };
           if (out.entity_type && out.entity_id) {
             await query(
               `INSERT INTO market_commentary
@@ -227,13 +166,12 @@ export class AgentOrchestrator {
                              cache_expires_at = EXCLUDED.cache_expires_at`,
               [out.entity_type, out.entity_id, JSON.stringify(out)]
             ).catch((err) => {
-              logger.warn('Orchestrator: failed to cache commentary result', { error: err });
+              logger.warn('JobQueue: failed to cache commentary result', { error: err });
             });
           }
         }
       } else if (taskType === 'metric_recommendations') {
-        // Only remaining legacy path — typed directly to avoid unsafe casts
-        result = await this.metricRecommendationAgent.execute(
+        result = await this.metricRecommendationService.execute(
           inputData as unknown as MetricRecommendationInput,
           userId,
         );
@@ -276,7 +214,6 @@ export class AgentOrchestrator {
         [msg, executionTime, taskId]
       );
 
-      // Retry with exponential backoff
       const retryResult = await query(
         'SELECT retry_count, max_retries FROM agent_tasks WHERE id = $1',
         [taskId]

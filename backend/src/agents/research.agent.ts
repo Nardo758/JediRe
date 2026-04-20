@@ -142,9 +142,9 @@ export class ResearchAgent {
     userId: string,
     topN: number = 5
   ) {
-    const { MetricRecommendationAgent } = await import('./metric-recommendation.agent');
-    const agent = new MetricRecommendationAgent();
-    return agent.execute({ marketGeoIds, topN }, userId);
+    const { MetricRecommendationService } = await import('../services/metricRecommendation.service');
+    const svc = new MetricRecommendationService();
+    return svc.execute({ marketGeoIds, topN }, userId);
   }
 
   // ── Default/fallback context ────────────────────────────────────

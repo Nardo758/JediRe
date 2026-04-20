@@ -19,6 +19,7 @@ import { researchRuntime } from '../agents/research.config';
 import { zoningRuntime } from '../agents/zoning.config';
 import { supplyRuntime } from '../agents/supply.config';
 import { cashflowRuntime } from '../agents/cashflow.config';
+import { commentaryRuntime } from '../agents/commentary.config';
 import type { PersonaId } from './personas/index';
 
 export type SpecialistKey =
@@ -101,6 +102,20 @@ export const INTENT_DISPATCH: Record<SpecialistKey, DispatchEntry> = {
     fragmentKey: 'strategy',
     description: 'Investment strategy options: core, value-add, opportunistic, development',
   },
+};
+
+/**
+ * TASK_TYPE_RUNTIME_MAP — maps agent_tasks.task_type strings to their AgentRuntime.
+ *
+ * Used by the AgentJobQueue (REST/legacy task submission path).
+ * Inngest event-driven functions import their runtimes directly from *.config.ts.
+ */
+export const TASK_TYPE_RUNTIME_MAP: Record<string, AgentRuntime> = {
+  research_analysis:    researchRuntime,
+  zoning_analysis:      zoningRuntime,
+  supply_analysis:      supplyRuntime,
+  cashflow_analysis:    cashflowRuntime,
+  commentary_generation: commentaryRuntime,
 };
 
 /**

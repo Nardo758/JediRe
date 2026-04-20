@@ -7,10 +7,10 @@ import { Router, Response } from 'express';
 import { query } from '../../database/connection';
 import { requireAuthOrApiKey, AuthenticatedRequest } from '../../middleware/auth';
 import { AppError } from '../../middleware/errorHandler';
-import { AgentOrchestrator } from '../../agents/orchestrator';
+import { AgentJobQueue } from '../../agents/runtime/job-queue';
 
 const router = Router();
-const orchestrator = new AgentOrchestrator();
+const orchestrator = new AgentJobQueue();
 
 /**
  * POST /api/v1/agents/tasks
