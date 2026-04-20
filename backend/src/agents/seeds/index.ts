@@ -2,8 +2,9 @@
  * Agent Prompt Seed Orchestrator
  *
  * Calls all 5 agent seed functions in parallel on server startup.
- * Each individual seed is idempotent (ON CONFLICT DO UPDATE) so this
+ * Each individual seed is idempotent (ON CONFLICT DO NOTHING) so this
  * is safe to call every time the process starts — cold-start or hot-reload.
+ * Existing rows (including operator-set active flags) are never overwritten.
  *
  * Usage (in server startup):
  *   import { seedAllAgentPrompts } from './agents/seeds';

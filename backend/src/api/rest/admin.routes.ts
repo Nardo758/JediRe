@@ -3,6 +3,14 @@ import { query, transaction } from '../../database/connection';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { logger } from '../../utils/logger';
 import axios from 'axios';
+import { z } from 'zod';
+import { MeteringAdapter } from '../../agents/runtime/MeteringAdapter';
+import { AgentRuntime } from '../../agents/runtime/AgentRuntime';
+import { BudgetEnforcer } from '../../agents/runtime/BudgetEnforcer';
+import { BudgetExceededError } from '../../agents/runtime/types';
+import type { AgentConfig } from '../../agents/runtime/types';
+import type { MessageParams, MeteredMessage } from '../../agents/runtime/MeteringAdapter';
+import type Anthropic from '@anthropic-ai/sdk';
 
 const router = Router();
 
@@ -1609,24 +1617,18 @@ router.get('/agents/test-budget-cap', requireAdminAuth, async (req: Authenticate
   const FIXTURE_AGENT_VERSION = 'budget-test-v1';
 
   try {
-    const { AgentRuntime } = await import('../../agents/runtime/AgentRuntime');
-    const { MeteringAdapter } = await import('../../agents/runtime/MeteringAdapter');
-    const { BudgetEnforcer } = await import('../../agents/runtime/BudgetEnforcer');
-    const { BudgetExceededError } = await import('../../agents/runtime/types');
-    const { z } = await import('zod');
-
     // ── Stub transport — bypasses Anthropic API ──────────────────────────────
     // createMessage() returns a synthetic expensive response (cost_usd=0.10)
     // so BudgetEnforcer.checkRunCap() fires on the very first loop iteration.
     // All other AgentRuntime paths (row creation, step persistence, error
     // capture, status update) run on real DB tables.
     class StubMeteringAdapter extends MeteringAdapter {
-      override async createMessage(_params: any): Promise<any> {
+      override async createMessage(_params: MessageParams): Promise<MeteredMessage> {
         return {
           id: 'stub-msg-budget-test',
           type: 'message',
-          role: 'assistant',
-          content: [],           // no content needed — budget check fires before content is parsed
+          role: 'assistant' as const,
+          content: [] as Anthropic.Message['content'],   // empty — budget check fires before parsing
           model: _params.model,
           stop_reason: 'end_turn',
           stop_sequence: null,
@@ -1635,26 +1637,27 @@ router.get('/agents/test-budget-cap', requireAdminAuth, async (req: Authenticate
             output_tokens: 500,
             cost_usd: 0.10,    // exceeds maxCostUsdPerRun=0.001 → checkRunCap throws
           },
-        };
+        } as MeteredMessage;
       }
     }
 
     // ── Test runtime — $0.001 per-run cap ───────────────────────────────────
-    const testRuntime = new AgentRuntime(
-      {
-        agentId: 'research' as any,
-        agentVersion: FIXTURE_AGENT_VERSION,
-        promptVersion: 'test-prompt-v1',
-        tools: [],
-        outputSchema: (z.object({}) as any).passthrough(),
-        budgetCaps: {
-          maxCostUsdPerRun: 0.001,        // stub cost $0.10 >> this cap
-          maxCostUsdPerDealPerDay: 999,   // daily cap not under test here
-          maxStepsPerRun: 10,
-        },
-        modelName: 'claude-haiku-4-5-20251001' as any,
-        capabilities: [],
+    const testConfig: AgentConfig = {
+      agentId: 'research',
+      agentVersion: FIXTURE_AGENT_VERSION,
+      promptVersion: 'test-prompt-v1',
+      tools: [],
+      outputSchema: z.unknown(),           // accepts any output; parse is never reached
+      budgetCaps: {
+        maxCostUsdPerRun: 0.001,           // stub cost $0.10 >> this cap
+        maxCostUsdPerDealPerDay: 999,      // daily cap not under test here
+        maxStepsPerRun: 10,
       },
+      modelName: 'claude-haiku-4-5-20251001',
+      capabilities: [],
+    };
+    const testRuntime = new AgentRuntime(
+      testConfig,
       new StubMeteringAdapter(),
       new BudgetEnforcer()
     );

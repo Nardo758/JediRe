@@ -109,7 +109,16 @@ The rollback version should show `active = true`. All subsequent agent runs for 
 
 ### Re-seeding
 
-To restore the latest prompt versions (e.g. after a bad rollback), restart the server — startup seeding (`seedAllAgentPrompts`) runs automatically and will re-activate the current canonical versions.
+Startup seeding uses `ON CONFLICT DO NOTHING` — a server restart will **not** overwrite any active-flag state set by an operator rollback. Rollback state is preserved across restarts by design.
+
+To promote a specific version to active after an investigation, use `rollback-prompt.sql` with the desired `<ROLLBACK_VERSION_ID>`, or run the two-UPDATE pattern directly:
+
+```sql
+BEGIN;
+UPDATE prompt_versions SET active = false WHERE agent_id = '<AGENT_ID>';
+UPDATE prompt_versions SET active = true  WHERE id = '<VERSION_ID>';
+COMMIT;
+```
 
 ---
 
@@ -217,9 +226,15 @@ To verify enforcement is working: `GET /api/v1/admin/agents/test-budget-cap` (de
 
 ## 7. Concurrency Rate Limiting
 
-`MeteringAdapter` enforces a per-deal concurrency cap of **3 simultaneous model calls** per deal. Additional calls are queued (not rejected) and proceed as slots free up. Queued calls time out after 30 s and throw an error that is logged but does not set `budget_exceeded` status.
+Two complementary controls guard against per-deal bursts:
 
-This prevents thundering-herd bursts when multiple Inngest functions fire simultaneously on a single deal (e.g., after `deal.created` triggers Research + Zoning + Supply in parallel).
+**Run-start window limiter** (enforced at `AgentRuntime.run()` entry, before the `agent_runs` row is created):  
+`dealRunStartLimiter` (exported from `MeteringAdapter.ts`) tracks run-start timestamps in a 60-second sliding window per deal. If more than `MAX_RUN_STARTS_PER_DEAL` starts are recorded within any 60 s window, additional callers are queued (not rejected) until the oldest start exits the window. This is the first gate: it limits how many runs a deal can open in a short burst.
+
+**Model-call concurrency slot** (enforced at `MeteringAdapter.createMessage()` call site):  
+A maximum of 3 simultaneous Anthropic API calls per deal are allowed. Additional calls are queued and proceed as slots free up. Queued calls time out after 30 s and throw an error that is logged but does not set `budget_exceeded` status.
+
+Together these prevent thundering-herd bursts when multiple Inngest functions fire simultaneously on a single deal (e.g., `deal.created` triggers Research + Zoning + Supply in parallel).
 
 ---
 
