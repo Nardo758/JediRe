@@ -20,8 +20,9 @@
 BEGIN;
 
 -- Step 1: Deactivate the current active version(s) for this agent.
--- This leaves the table in a state where no version is active —
--- agents will refuse to run until Step 2 completes.
+-- Between Step 1 and Step 2, no version is active — runs will use the
+-- AgentRuntime generic fallback prompt (degraded quality, not halted).
+-- Run both UPDATEs in the same transaction to minimize this window.
 UPDATE prompt_versions
 SET active = false
 WHERE agent_id       = '<AGENT_ID>'         -- e.g. 'cashflow'
