@@ -1508,29 +1508,40 @@ router.get('/jobs/:id/logs', requireAdminAuth, async (req: AuthenticatedRequest,
 
 router.get('/agents/stats', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
+    // Percentile metrics are computed over completed runs only (status not in
+    // running/pending) to avoid in-progress rows with NULL duration_ms skewing
+    // p50/p99. Counts and cost metrics use all rows.
     const statsResult = await query(`
-      SELECT
-        agent_id,
-        COUNT(*)                                                              AS total_runs,
-        COUNT(*) FILTER (WHERE started_at >= NOW() - INTERVAL '30 days')     AS runs_last_30d,
-        COUNT(*) FILTER (WHERE started_at >= NOW() - INTERVAL '1 day')       AS runs_last_1d,
-        ROUND(
-          100.0 * COUNT(*) FILTER (WHERE status = 'succeeded')
-          / NULLIF(COUNT(*), 0), 1
-        )                                                                     AS success_rate_pct,
-        ROUND(
-          PERCENTILE_DISC(0.50) WITHIN GROUP (ORDER BY duration_ms)
-        )                                                                     AS p50_duration_ms,
-        ROUND(
-          PERCENTILE_DISC(0.99) WITHIN GROUP (ORDER BY duration_ms)
-        )                                                                     AS p99_duration_ms,
-        COALESCE(SUM(cost_usd), 0)                                           AS total_cost_usd,
-        COALESCE(SUM(cost_usd) FILTER (WHERE started_at >= NOW() - INTERVAL '30 days'), 0)
-                                                                              AS cost_usd_30d,
-        MAX(started_at)                                                       AS last_run_at
-      FROM agent_runs
-      GROUP BY agent_id
-      ORDER BY agent_id
+      WITH counts AS (
+        SELECT
+          agent_id,
+          COUNT(*)                                                              AS total_runs,
+          COUNT(*) FILTER (WHERE started_at >= NOW() - INTERVAL '30 days')     AS runs_last_30d,
+          COUNT(*) FILTER (WHERE started_at >= NOW() - INTERVAL '1 day')       AS runs_last_1d,
+          ROUND(
+            100.0 * COUNT(*) FILTER (WHERE status = 'succeeded')
+            / NULLIF(COUNT(*), 0), 1
+          )                                                                     AS success_rate_pct,
+          COALESCE(SUM(cost_usd), 0)                                           AS total_cost_usd,
+          COALESCE(SUM(cost_usd) FILTER (WHERE started_at >= NOW() - INTERVAL '30 days'), 0)
+                                                                                AS cost_usd_30d,
+          MAX(started_at)                                                       AS last_run_at
+        FROM agent_runs
+        GROUP BY agent_id
+      ),
+      latency AS (
+        SELECT
+          agent_id,
+          ROUND(PERCENTILE_DISC(0.50) WITHIN GROUP (ORDER BY duration_ms))    AS p50_duration_ms,
+          ROUND(PERCENTILE_DISC(0.99) WITHIN GROUP (ORDER BY duration_ms))    AS p99_duration_ms
+        FROM agent_runs
+        WHERE status NOT IN ('running', 'pending') AND duration_ms IS NOT NULL
+        GROUP BY agent_id
+      )
+      SELECT c.*, l.p50_duration_ms, l.p99_duration_ms
+      FROM counts c
+      LEFT JOIN latency l USING (agent_id)
+      ORDER BY c.agent_id
     `);
 
     const promptResult = await query(`
