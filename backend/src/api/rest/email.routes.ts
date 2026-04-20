@@ -5,8 +5,13 @@
 
 import { Router, Request, Response, NextFunction } from 'express';
 import { requireAuth } from '../../middleware/auth';
+import { AuthenticatedRequest } from '../../middleware/auth';
 import { logger } from '../../utils/logger';
 import { getPool } from '../../database/connection';
+import { classifyAsDealOpportunity } from '../../agents/tools/classify_as_deal_opportunity';
+import { extractDealFields } from '../../agents/tools/extract_deal_fields';
+import { scoreFitAgainstProfile } from '../../agents/tools/score_fit_against_profile';
+import { createDealDraft } from '../../agents/tools/create_deal_draft';
 
 const router = Router();
 
@@ -394,6 +399,86 @@ router.post('/:id/reply', requireAuth, async (req: Request, res: Response, next:
     });
   } catch (error) {
     logger.error('Error saving reply:', error);
+    next(error);
+  }
+});
+
+/**
+ * POST /api/v1/emails/:emailId/import-as-deal
+ *
+ * Manual deal import path — available to ALL tiers (including Operator).
+ * Runs the same classify → extract → score → create pipeline as the
+ * auto-intake Inngest workflow, but triggered by explicit user action.
+ *
+ * This satisfies the Operator tier requirement where auto-trigger is
+ * disabled but users can still import deals from specific emails on demand.
+ */
+router.post('/:emailId/import-as-deal', requireAuth, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  const userId = req.user?.userId;
+  const { emailId } = req.params;
+
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const pool = getPool();
+
+    // Load the email from DB
+    const emailResult = await pool.query(
+      `SELECT id, subject, body_text, from_address, gmail_message_id
+       FROM emails WHERE id = $1 AND user_id = $2 LIMIT 1`,
+      [emailId, userId]
+    );
+
+    if (emailResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Email not found' });
+    }
+
+    const email = emailResult.rows[0];
+    const { subject, body_text, from_address, gmail_message_id } = email;
+
+    // Step 1: Classify
+    const classification = await classifyAsDealOpportunity(subject, body_text ?? '', from_address);
+
+    if (!classification.is_deal) {
+      return res.status(422).json({
+        error: 'Email does not appear to be a deal opportunity',
+        classification,
+      });
+    }
+
+    // Step 2: Extract deal fields
+    const fields = await extractDealFields(subject, body_text ?? '', '');
+
+    // Step 3: Score fit against profile
+    const fitScore = await scoreFitAgainstProfile(fields, userId);
+
+    // Step 4: Create draft
+    const draft = await createDealDraft(fields, userId, {
+      gmail_message_id: gmail_message_id ?? emailId,
+      from_address: from_address,
+      classification_confidence: classification.confidence,
+      asset_class_hint: classification.asset_class_hint,
+      fit_score: fitScore.fit_score,
+      fit_breakdown: fitScore.fit_breakdown,
+    });
+
+    logger.info('email.routes: manual deal import', {
+      dealId: draft.deal_id,
+      emailId,
+      userId,
+      fitScore: fitScore.fit_score,
+    });
+
+    return res.status(201).json({
+      success: true,
+      deal_id: draft.deal_id,
+      deal_name: draft.deal_name,
+      fit_score: fitScore.fit_score,
+      classification_confidence: classification.confidence,
+      fields,
+    });
+  } catch (error) {
+    logger.error('email.routes: import-as-deal failed', { emailId, userId, error });
     next(error);
   }
 });

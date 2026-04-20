@@ -158,9 +158,13 @@ export const emailIntakeFunction = inngest.createFunction(
       return { status: 'skipped', reason: 'not_a_deal', classification };
     }
 
-    // ── Step 6: OCR PDF attachments ──────────────────────────────────────
+    // ── Step 6: OCR PDF/Excel attachments ───────────────────────────────
+    // Gate on thread.attachments.length (populated by readGmailThread which
+    // recursively traverses the full MIME tree). We do NOT use `has_attachments`
+    // from the event payload because that flag is computed from only top-level
+    // payload.parts in gmail-sync and misses nested multipart attachments.
     const ocrResults = await step.run('ocr-attachments', async () => {
-      if (!has_attachments || thread.attachments.length === 0) return { combined_text: '' };
+      if (thread.attachments.length === 0) return { combined_text: '' };
 
       const texts: string[] = [];
       for (const att of thread.attachments.slice(0, 3)) {
