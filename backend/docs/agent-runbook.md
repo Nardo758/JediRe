@@ -15,7 +15,7 @@ JediRE has five AI agents that run via the AgentRuntime loop (Claude + structure
 | Zoning | `deal.created` (auto), manual | Principal+ |
 | Supply | `deal.created` (auto), manual | Principal+ |
 | CashFlow | `research.completed` (auto), manual | Operator+ (any non-basic tier) |
-| Commentary | manual only | any authenticated user |
+| Commentary | `research.completed` (auto), manual | Principal+ for auto-trigger (professional/enterprise/principal/institutional); manual unrestricted |
 
 All runs are recorded in `agent_runs` with full step-level detail in `agent_run_steps`.
 
@@ -187,20 +187,28 @@ If `success_rate_pct` drops below 70% or `p99_duration_ms` exceeds 5 min, invest
 
 ### Auto-trigger tiers (Inngest functions)
 
-| Tier string | Research | Zoning | Supply | CashFlow |
-|-------------|----------|--------|--------|----------|
-| `basic` | blocked | blocked | blocked | blocked |
-| `operator` | blocked | blocked | blocked | allowed |
-| `professional` | allowed | allowed | allowed | allowed |
-| `enterprise` | allowed | allowed | allowed | allowed |
+| Tier string | Research | Zoning | Supply | CashFlow | Commentary |
+|-------------|----------|--------|--------|----------|------------|
+| `basic` | blocked | blocked | blocked | blocked | blocked |
+| `operator` | blocked | blocked | blocked | allowed | blocked |
+| `professional` | allowed | allowed | allowed | allowed | allowed |
+| `enterprise` | allowed | allowed | allowed | allowed | allowed |
+| `principal` | allowed | allowed | allowed | allowed | allowed |
+| `institutional` | allowed | allowed | allowed | allowed | allowed |
 
-CashFlow uses `getAllowedTriggerModes(tier)` from `cashflow.config.ts`:
-- `operator`+ → `event-driven` mode allowed
-- `basic` → manual-only
+Notes:
+- Research/Zoning/Supply trigger on `deal.created`; CashFlow/Commentary trigger on `research.completed`
+- CashFlow uses `getAllowedTriggerModes(tier)` from `cashflow.config.ts` (`operator`+ → event-driven; `basic` → manual-only)
+- Commentary auto-trigger is principal+ (professional/enterprise/principal/institutional); manual runs are unrestricted for all tiers
 
 ### Manual trigger (all tiers)
 
 Any authenticated user can manually trigger any agent via `POST /api/v1/agents/:agentId/run`. Tier gating only controls automatic Inngest-triggered runs.
+
+### API base path
+
+All admin endpoints use the prefix `/api/v1/admin/...` (e.g. `GET /api/v1/admin/agents/stats`).
+This is the standard path for this codebase — the `/v1` prefix is always present.
 
 ---
 
