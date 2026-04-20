@@ -61,17 +61,130 @@ export interface MeteredMessage extends Anthropic.Message {
   usage: Anthropic.Message['usage'] & { cost_usd: number };
 }
 
-// ── Per-deal thundering-herd rate limiter ─────────────────────────
-// Tracks in-flight model calls per deal to prevent burst concurrency.
-// If more than MAX_CONCURRENT_RUNS_PER_DEAL model calls are already
-// active for a deal, additional callers are queued (never rejected)
-// and proceed as soon as a slot is released.
+// ── Per-deal thundering-herd rate limiter ─────────────────────────────────
 //
-// State is process-local; resets on restart (intentional — only guards
-// burst concurrency within a single server process).
+// TWO complementary controls guard against burst concurrency per deal:
+//
+// 1. RUN-START WINDOW LIMITER (DealRunStartLimiter, exported)
+//    Tracks the timestamps of run starts per deal in a 60-second sliding
+//    window.  If more than MAX_RUN_STARTS_PER_DEAL starts are recorded in
+//    the last 60 s, the next caller is queued (never rejected) until the
+//    oldest recorded start exits the window.
+//    Call `dealRunStartLimiter.acquire(dealId)` at the top of AgentRuntime
+//    before creating the agent_runs row.
+//
+// 2. MODEL-CALL CONCURRENCY SLOT (acquireDealSlot, module-private)
+//    Limits the number of in-flight model calls (inside the LLM loop) to
+//    MAX_CONCURRENT_MODEL_CALLS per deal.  Queues excess callers until a
+//    slot is released.
+//
+// State is process-local; resets on restart (only guards within one process).
 
-const MAX_CONCURRENT_RUNS_PER_DEAL = 3;
-const QUEUE_WARN_INTERVAL_MS = 30_000; // log a warning every 30 s while queued
+const MAX_RUN_STARTS_PER_DEAL    = 3;    // max run starts per deal within WINDOW_MS
+const RUN_START_WINDOW_MS        = 60_000; // 60-second sliding window for run starts
+const MAX_CONCURRENT_MODEL_CALLS = 3;    // max simultaneous model calls per deal
+const QUEUE_WARN_INTERVAL_MS     = 30_000; // periodic warn interval while a call is queued
+
+// ── 1. Run-start window limiter ──────────────────────────────────
+
+interface StartWindow {
+  starts: number[];                // timestamps of recent run starts
+  queue: Array<() => void>;        // callers waiting for a slot in the window
+}
+
+const runStartWindows = new Map<string, StartWindow>();
+
+class DealRunStartLimiter {
+  private getWindow(dealId: string): StartWindow {
+    if (!runStartWindows.has(dealId)) {
+      runStartWindows.set(dealId, { starts: [], queue: [] });
+    }
+    return runStartWindows.get(dealId)!;
+  }
+
+  private prune(w: StartWindow): void {
+    const cutoff = Date.now() - RUN_START_WINDOW_MS;
+    w.starts = w.starts.filter(ts => ts > cutoff);
+  }
+
+  private msUntilNextSlot(w: StartWindow): number {
+    if (w.starts.length < MAX_RUN_STARTS_PER_DEAL) return 0;
+    const oldest = Math.min(...w.starts);
+    return Math.max(0, oldest + RUN_START_WINDOW_MS - Date.now());
+  }
+
+  /**
+   * Acquire a run-start slot for this deal.
+   * If the 60-second window is full, queues the caller until a slot opens.
+   * Never rejects — call release() when the run row has been created.
+   */
+  async acquire(dealId: string): Promise<() => void> {
+    const w = this.getWindow(dealId);
+    this.prune(w);
+
+    if (w.starts.length < MAX_RUN_STARTS_PER_DEAL) {
+      const ts = Date.now();
+      w.starts.push(ts);
+      return () => this.releaseStart(dealId, ts);
+    }
+
+    // Window full — queue and wait until oldest start exits the 60-second window.
+    const waitMs = this.msUntilNextSlot(w);
+    logger.warn('MeteringAdapter: deal run-start window full, queuing run', {
+      dealId,
+      startsInWindow: w.starts.length,
+      cap: MAX_RUN_STARTS_PER_DEAL,
+      windowMs: RUN_START_WINDOW_MS,
+      estimatedWaitMs: waitMs,
+    });
+
+    return new Promise<() => void>((resolve) => {
+      let warnTimer: ReturnType<typeof setInterval>;
+
+      const proceed = () => {
+        clearInterval(warnTimer);
+        const ts = Date.now();
+        w.starts.push(ts);
+        logger.info('MeteringAdapter: queued run acquired run-start slot', { dealId });
+        resolve(() => this.releaseStart(dealId, ts));
+      };
+
+      warnTimer = setInterval(() => {
+        logger.warn('MeteringAdapter: run still queued (waiting for run-start window slot)', { dealId });
+      }, QUEUE_WARN_INTERVAL_MS);
+
+      w.queue.push(proceed);
+
+      // Schedule a release check when the oldest start would exit the window.
+      setTimeout(() => this.drainQueue(dealId), Math.max(waitMs, 1));
+    });
+  }
+
+  private releaseStart(dealId: string, ts: number): void {
+    const w = runStartWindows.get(dealId);
+    if (!w) return;
+    w.starts = w.starts.filter(t => t !== ts);
+    this.drainQueue(dealId);
+  }
+
+  private drainQueue(dealId: string): void {
+    const w = runStartWindows.get(dealId);
+    if (!w) return;
+    this.prune(w);
+    while (w.queue.length > 0 && w.starts.length < MAX_RUN_STARTS_PER_DEAL) {
+      const next = w.queue.shift()!;
+      next();
+    }
+    if (w.starts.length === 0 && w.queue.length === 0) {
+      runStartWindows.delete(dealId);
+    }
+  }
+}
+
+/** Singleton — import and call `dealRunStartLimiter.acquire(dealId)` in AgentRuntime. */
+export const dealRunStartLimiter = new DealRunStartLimiter();
+
+// ── 2. Model-call concurrency slot limiter ──────────────────────
 
 interface DealSlot {
   active: number;
@@ -88,26 +201,26 @@ function getDealSlot(dealId: string): DealSlot {
 }
 
 /**
- * Acquire a concurrency slot for a deal.
- * Returns a release function that MUST be called exactly once when the
- * model call (and post-call settlement) is complete.
+ * Acquire a model-call concurrency slot for a deal.
+ * Returns a release function — MUST be called exactly once when the
+ * model call (and post-call settlement) completes.
  * Never rejects — queued callers wait indefinitely until a slot opens.
  */
 async function acquireDealSlot(dealId: string): Promise<() => void> {
   const slot = getDealSlot(dealId);
 
-  if (slot.active < MAX_CONCURRENT_RUNS_PER_DEAL) {
+  if (slot.active < MAX_CONCURRENT_MODEL_CALLS) {
     slot.active++;
     return () => releaseDealSlot(dealId);
   }
 
-  // Slot full — queue the caller and warn at regular intervals while waiting.
+  // Slot full — queue and warn periodically while waiting.
   const queuedAt = Date.now();
-  logger.warn('MeteringAdapter: deal concurrency cap reached, queuing run', {
+  logger.warn('MeteringAdapter: deal model-call concurrency cap reached, queuing', {
     dealId,
     active: slot.active,
     queued: slot.queue.length + 1,
-    cap: MAX_CONCURRENT_RUNS_PER_DEAL,
+    cap: MAX_CONCURRENT_MODEL_CALLS,
   });
 
   return new Promise<() => void>((resolve) => {
@@ -116,19 +229,17 @@ async function acquireDealSlot(dealId: string): Promise<() => void> {
     function proceed() {
       clearInterval(warnTimer);
       slot.active++;
-      logger.info('MeteringAdapter: queued run acquired slot', {
+      logger.info('MeteringAdapter: queued model call acquired slot', {
         dealId,
         waitedMs: Date.now() - queuedAt,
       });
       resolve(() => releaseDealSlot(dealId));
     }
 
-    // Emit a periodic warning while queued so long waits are observable.
     warnTimer = setInterval(() => {
-      logger.warn('MeteringAdapter: run still queued (waiting for deal slot)', {
+      logger.warn('MeteringAdapter: model call still queued (waiting for concurrency slot)', {
         dealId,
         waitedMs: Date.now() - queuedAt,
-        queueDepth: slot.queue.indexOf(proceed),
       });
     }, QUEUE_WARN_INTERVAL_MS);
 

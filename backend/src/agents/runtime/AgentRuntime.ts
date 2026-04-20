@@ -18,7 +18,7 @@ import { z } from 'zod';
 import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { BudgetEnforcer } from './BudgetEnforcer';
-import { MeteringAdapter } from './MeteringAdapter';
+import { MeteringAdapter, dealRunStartLimiter } from './MeteringAdapter';
 import {
   BudgetExceededError,
   type AgentConfig,
@@ -113,6 +113,10 @@ export class AgentRuntime {
   ): Promise<{ runId: string; done: Promise<Record<string, unknown>> }> {
     // Pre-flight and row creation happen synchronously before we detach.
     // We create the row here by extracting the first two steps of run().
+
+    // Rate-limit: max 3 run starts per deal in any 60-second window.
+    if (ctx.dealId) await dealRunStartLimiter.acquire(ctx.dealId);
+
     await this.budget.check(ctx, this.config.budgetCaps);
     const runId = uuidv4();
     await query(
@@ -229,6 +233,9 @@ export class AgentRuntime {
     input: unknown,
     ctx: RunContext
   ): Promise<Record<string, unknown>> {
+    // Rate-limit: max 3 run starts per deal in any 60-second window.
+    if (ctx.dealId) await dealRunStartLimiter.acquire(ctx.dealId);
+
     // Step 1: Pre-flight budget check
     await this.budget.check(ctx, this.config.budgetCaps);
 
