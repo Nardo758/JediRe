@@ -12,6 +12,8 @@ import { classifyAsDealOpportunity } from '../../agents/tools/classify_as_deal_o
 import { extractDealFields } from '../../agents/tools/extract_deal_fields';
 import { scoreFitAgainstProfile } from '../../agents/tools/score_fit_against_profile';
 import { createDealDraft } from '../../agents/tools/create_deal_draft';
+import { readGmailThread } from '../../agents/tools/read_gmail_thread';
+import { ocrDocument } from '../../agents/tools/ocr_document';
 
 const router = Router();
 
@@ -407,11 +409,13 @@ router.post('/:id/reply', requireAuth, async (req: Request, res: Response, next:
  * POST /api/v1/emails/:emailId/import-as-deal
  *
  * Manual deal import path — available to ALL tiers (including Operator).
- * Runs the same classify → extract → score → create pipeline as the
- * auto-intake Inngest workflow, but triggered by explicit user action.
+ * Runs the same classify → read thread → OCR → extract → score → create
+ * pipeline as the auto-intake Inngest workflow, but triggered by explicit
+ * user action rather than an incoming email event.
  *
- * This satisfies the Operator tier requirement where auto-trigger is
- * disabled but users can still import deals from specific emails on demand.
+ * Thread enrichment is attempted via Gmail API (using stored OAuth tokens).
+ * If the user has no connected Gmail account, falls back to the stored
+ * body_text from the emails table — still useful for basic extraction.
  */
 router.post('/:emailId/import-as-deal', requireAuth, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   const userId = req.user?.userId;
@@ -422,9 +426,10 @@ router.post('/:emailId/import-as-deal', requireAuth, async (req: AuthenticatedRe
   try {
     const pool = getPool();
 
-    // Load the email from DB
+    // Load the email from DB.
+    // external_id is the Gmail message ID (consistent with how gmail-sync stores it).
     const emailResult = await pool.query(
-      `SELECT id, subject, body_text, from_address, gmail_message_id
+      `SELECT id, subject, body_text, from_address, external_id, account_id
        FROM emails WHERE id = $1 AND user_id = $2 LIMIT 1`,
       [emailId, userId]
     );
@@ -434,10 +439,36 @@ router.post('/:emailId/import-as-deal', requireAuth, async (req: AuthenticatedRe
     }
 
     const email = emailResult.rows[0];
-    const { subject, body_text, from_address, gmail_message_id } = email;
+    const { subject, body_text, from_address, external_id } = email;
 
-    // Step 1: Classify
-    const classification = await classifyAsDealOpportunity(subject, body_text ?? '', from_address);
+    // Attempt to enrich with full Gmail thread + attachments (best-effort).
+    // Falls back to stored body_text if Gmail OAuth is not available.
+    let enrichedBodyText: string = body_text ?? '';
+    let ocrText = '';
+
+    if (external_id) {
+      try {
+        const thread = await readGmailThread(external_id, userId);
+        enrichedBodyText = thread.body_text || enrichedBodyText;
+
+        // OCR any PDF/Excel attachments from the thread
+        for (const att of thread.attachments.slice(0, 3)) {
+          const mimeType = att.mime_type.split(';')[0].trim();
+          if (att.size_bytes < 20_000_000) {
+            const text = await ocrDocument(att.content_base64, mimeType, att.name);
+            if (text.trim()) ocrText += `\n\n${text}`;
+          }
+        }
+      } catch {
+        // Gmail OAuth not available or call failed — continue with stored body
+        logger.debug('email.routes: import-as-deal — Gmail enrichment unavailable, using stored body', { emailId });
+      }
+    }
+
+    // Step 1: Classify with enriched content
+    const classification = await classifyAsDealOpportunity(
+      subject ?? '', enrichedBodyText, from_address ?? ''
+    );
 
     if (!classification.is_deal) {
       return res.status(422).json({
@@ -446,27 +477,28 @@ router.post('/:emailId/import-as-deal', requireAuth, async (req: AuthenticatedRe
       });
     }
 
-    // Step 2: Extract deal fields
-    const fields = await extractDealFields(subject, body_text ?? '', '');
+    // Step 2: Extract deal fields (body + any OCR text)
+    const fields = await extractDealFields(subject ?? '', enrichedBodyText, ocrText);
 
     // Step 3: Score fit against profile
     const fitScore = await scoreFitAgainstProfile(fields, userId);
 
-    // Step 4: Create draft
+    // Step 4: Create draft (idempotent by external_id stored as gmail_message_id)
     const draft = await createDealDraft(fields, userId, {
-      gmail_message_id: gmail_message_id ?? emailId,
-      from_address: from_address,
+      gmail_message_id: external_id ?? emailId,
+      from_address: from_address ?? '',
       classification_confidence: classification.confidence,
       asset_class_hint: classification.asset_class_hint,
       fit_score: fitScore.fit_score,
       fit_breakdown: fitScore.fit_breakdown,
     });
 
-    logger.info('email.routes: manual deal import', {
+    logger.info('email.routes: manual deal import completed', {
       dealId: draft.deal_id,
       emailId,
       userId,
       fitScore: fitScore.fit_score,
+      enrichedViaGmail: !!external_id,
     });
 
     return res.status(201).json({
