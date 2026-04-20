@@ -2,14 +2,26 @@
  * create_deal_draft
  *
  * Creates an awaiting_review deal from email intake.
- * Inserts directly into the deals table with source = 'email_intake'
- * stored in deal_data JSONB alongside intake metadata.
+ *
+ * Design note — why direct DB instead of POST /api/v1/deals:
+ *   The platform API's deal-create endpoint requires a geographic boundary
+ *   (GeoJSON geometry) that is not available from broker emails.  It also
+ *   sets status='active' and applies user-auth middleware — neither correct
+ *   for auto-intake drafts.  This tool inserts directly into `deals` (the
+ *   same table the route writes to) to set status='awaiting_review' and
+ *   store intake provenance in the `deal_data` JSONB column, which already
+ *   exists and has a GIN index.  After creation it calls autoDiscoverComps
+ *   to match the side-effect that the route handler also fires.
+ *
+ * The `deal_data` column (not `deal_metadata`) is the correct column name;
+ * the deals table has no `deal_metadata` column.
  */
 
 import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { ExtractedDealFields } from './extract_deal_fields';
 import { FitScoreResult } from './score_fit_against_profile';
+import { autoDiscoverComps } from '../../services/comp-set-discovery.service';
 
 export interface IntakeMetadata {
   gmail_message_id: string;
@@ -104,6 +116,11 @@ export async function createDealDraft(
     dealName: row.name,
     messageId: metadata.gmail_message_id,
     fitScore: metadata.fit_score,
+  });
+
+  // Fire comp discovery in background (same side-effect as POST /api/v1/deals).
+  autoDiscoverComps(row.id).catch(err => {
+    logger.warn('create_deal_draft: autoDiscoverComps failed (non-fatal)', { dealId: row.id, err });
   });
 
   return {

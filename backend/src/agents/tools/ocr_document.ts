@@ -28,19 +28,19 @@ import { logger } from '../../utils/logger';
 
 const SUPPORTED_MIME_TYPES = new Set([
   'application/pdf',
-  'image/jpeg',
-  'image/jpg',
-  'image/png',
-  'image/tiff',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'application/vnd.ms-excel',
 ]);
 
 const MAX_PDF_CHARS = 20000;
+const MAX_EXCEL_CHARS = 20000;
 
 /**
- * Extract plain text from a base64-encoded PDF, image, or Excel file.
- * Returns empty string if extraction fails or MIME type is unsupported.
+ * Extract plain text from a base64-encoded PDF or Excel file.
+ * - PDF: uses pdftotext (poppler-utils) via execFileSync with arg array
+ * - Excel: uses the xlsx package to read all sheets and flatten to text
+ *
+ * Returns empty string on unsupported type or extraction failure.
  */
 export async function ocrDocument(
   base64Content: string,
@@ -52,52 +52,62 @@ export async function ocrDocument(
     return '';
   }
 
-  // Always derive the temp-file extension from the whitelisted MIME map,
-  // never from the (potentially attacker-controlled) attachment filename.
-  const ext = extensionForMime(mimeType);
-  const tmpPath = path.join(os.tmpdir(), `jedire-ocr-${crypto.randomBytes(8).toString('hex')}${ext}`);
-
   try {
     const buffer = Buffer.from(base64Content, 'base64');
-    fs.writeFileSync(tmpPath, buffer);
 
-    // For PDFs, use pdftotext (poppler-utils) if available for fast extraction.
-    // Use execFileSync with an explicit argument array — never interpolate
-    // user-supplied filenames into a shell command string.
-    if (mimeType === 'application/pdf') {
+    // ── Excel extraction via xlsx package ────────────────────────────────
+    // Broker packages are frequently sent as .xlsx summaries. The xlsx package
+    // reads sheets in-memory — no temp file or shell command needed.
+    if (
+      mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+      mimeType === 'application/vnd.ms-excel'
+    ) {
       try {
-        const { execFileSync } = await import('child_process');
-        // Args: input file, output file ('-' = stdout)
-        const text = execFileSync('pdftotext', [tmpPath, '-'], { timeout: 15000 })
-          .toString('utf-8')
-          .slice(0, MAX_PDF_CHARS);
-        if (text.trim().length > 50) return text;
-      } catch {
-        // pdftotext not available — fall through
+        const XLSX = await import('xlsx');
+        const workbook = XLSX.read(buffer, { type: 'buffer' });
+        const lines: string[] = [];
+        for (const sheetName of workbook.SheetNames) {
+          const sheet = workbook.Sheets[sheetName];
+          const csv = XLSX.utils.sheet_to_csv(sheet, { blankrows: false });
+          if (csv.trim()) lines.push(`[Sheet: ${sheetName}]\n${csv}`);
+        }
+        const text = lines.join('\n\n').slice(0, MAX_EXCEL_CHARS);
+        logger.debug('ocr_document: excel extracted', { filename, chars: text.length });
+        return text;
+      } catch (err) {
+        logger.warn('ocr_document: excel extraction failed', { filename, err });
+        return '';
       }
     }
 
-    // pdftotext not available — no fallback text extractor.
-    // Return empty string so the caller degrades gracefully on email body alone.
-    logger.debug('ocr_document: no text extractor available for', { mimeType, filename });
+    // ── PDF extraction via pdftotext ─────────────────────────────────────
+    // Use execFileSync with an explicit argument array — never interpolate
+    // user-supplied filenames into a shell command string.
+    // Temp file uses a MIME-derived extension (never from user input).
+    if (mimeType === 'application/pdf') {
+      const ext = '.pdf';
+      const tmpPath = path.join(os.tmpdir(), `jedire-ocr-${crypto.randomBytes(8).toString('hex')}${ext}`);
+      try {
+        fs.writeFileSync(tmpPath, buffer);
+        const { execFileSync } = await import('child_process');
+        const text = execFileSync('pdftotext', [tmpPath, '-'], { timeout: 15000 })
+          .toString('utf-8')
+          .slice(0, MAX_PDF_CHARS);
+        if (text.trim().length > 50) {
+          logger.debug('ocr_document: pdf extracted via pdftotext', { filename, chars: text.length });
+          return text;
+        }
+      } catch {
+        // pdftotext not available — fall through to return ''
+      } finally {
+        try { fs.unlinkSync(tmpPath); } catch { /* ignore cleanup errors */ }
+      }
+    }
+
+    logger.debug('ocr_document: no text extractor succeeded for', { mimeType, filename });
     return '';
   } catch (err) {
     logger.warn('ocr_document: extraction failed', { filename, err });
     return '';
-  } finally {
-    try { fs.unlinkSync(tmpPath); } catch { /* ignore cleanup errors */ }
   }
-}
-
-function extensionForMime(mime: string): string {
-  const map: Record<string, string> = {
-    'application/pdf': '.pdf',
-    'image/jpeg': '.jpg',
-    'image/jpg': '.jpg',
-    'image/png': '.png',
-    'image/tiff': '.tiff',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
-    'application/vnd.ms-excel': '.xls',
-  };
-  return map[mime] ?? '.bin';
 }
