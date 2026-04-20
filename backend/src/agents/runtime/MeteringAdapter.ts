@@ -280,9 +280,10 @@ export class MeteringAdapter {
    * guaranteed complete regardless of caller error handling.
    *
    * Rate limiting: if a deal_id is present in metadata and more than
-   * MAX_CONCURRENT_RUNS_PER_DEAL model calls are already in-flight for
+   * MAX_CONCURRENT_MODEL_CALLS (3) model calls are already in-flight for
    * the same deal, this call is queued (not rejected) until a slot opens.
-   * The queue times out after QUEUE_TIMEOUT_MS (30 s) to prevent starvation.
+   * Queued calls wait indefinitely — a warning is logged every
+   * QUEUE_WARN_INTERVAL_MS (30 s) to surface stale queues in logs.
    */
   async createMessage(params: MessageParams): Promise<MeteredMessage> {
     const { metadata, ...apiParams } = params;

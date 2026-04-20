@@ -232,7 +232,7 @@ Two complementary controls guard against per-deal bursts:
 `dealRunStartLimiter` (exported from `MeteringAdapter.ts`) tracks run-start timestamps in a 60-second sliding window per deal. If more than `MAX_RUN_STARTS_PER_DEAL` starts are recorded within any 60 s window, additional callers are queued (not rejected) until the oldest start exits the window. This is the first gate: it limits how many runs a deal can open in a short burst.
 
 **Model-call concurrency slot** (enforced at `MeteringAdapter.createMessage()` call site):  
-A maximum of 3 simultaneous Anthropic API calls per deal are allowed. Additional calls are queued and proceed as slots free up. Queued calls time out after 30 s and throw an error that is logged but does not set `budget_exceeded` status.
+A maximum of `MAX_CONCURRENT_MODEL_CALLS` (3) simultaneous Anthropic API calls per deal are allowed. Additional calls are queued (not rejected) and proceed as slots free up. There is no hard timeout — a warning is logged every `QUEUE_WARN_INTERVAL_MS` (30 s) to surface stale queues in logs.
 
 Together these prevent thundering-herd bursts when multiple Inngest functions fire simultaneously on a single deal (e.g., `deal.created` triggers Research + Zoning + Supply in parallel).
 
