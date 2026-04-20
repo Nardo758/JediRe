@@ -141,7 +141,9 @@ Agents and their Inngest files:
 
 Set `maxCostUsdPerDealPerDay: 0` in the agent's runtime config. `BudgetEnforcer.check()` will immediately throw `BudgetExceededError` on every new run attempt, halting the agent without changing code.
 
-### Option C — Deactivate the prompt
+### Option C — Strip the active prompt (partial mitigation only)
+
+> **Note**: Deactivating all prompts does **not** halt the agent. AgentRuntime falls back to a generic default system prompt and continues running. Use this only to neutralize bad prompt instructions — to fully stop runs use Option A or B.
 
 ```sql
 UPDATE prompt_versions
@@ -149,7 +151,7 @@ SET active = false
 WHERE agent_id = 'cashflow';
 ```
 
-With no active prompt, AgentRuntime falls back to a generic default system prompt (`"You are the <agentId> agent for JEDI RE. Analyze real estate data and respond with structured JSON."`). This keeps the agent functional but produces lower-quality outputs. To intentionally disable an agent while you investigate, either deactivate its Inngest trigger (comment out the `createFunction` export and restart) or set `budgetCaps.maxCostUsdPerRun = 0` to fail-fast on the first model call.
+After this update, new runs will use the fallback prompt (`"You are the cashflow agent for JEDI RE. Analyze real estate data and respond with structured JSON."`). Outputs will degrade but token spend continues. To re-enable custom behavior, run the seed or promote a specific version active.
 
 ---
 
