@@ -310,12 +310,63 @@ function buildSeed(
   // ───────── CUSTOM LINE ITEMS (unrecognized GL rows captured by parser) ─────────
   // Keys are sanitized description labels prefixed with "custom_opex_".
   // They are included in total_opex_resolved so NOI is accurate.
+  // IMPORTANT: We filter out revenue lines, rollup/subtotal rows, and below-the-line
+  // items (debt service, interest) that the parser didn't categorize but are NOT opex.
   const rawCustomItems = (t12Opex?.custom_line_items ?? {}) as Record<string, number>;
   const sanitizeKey = (label: string) =>
     'custom_opex_' + label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 48);
+  
+  // Patterns to EXCLUDE from custom opex (revenue, rollups, below-the-line)
+  const EXCLUDE_FROM_CUSTOM_OPEX: RegExp[] = [
+    // Revenue lines and rollups
+    /\b(gross\s+potential|gross\s+scheduled|market)\s+rent\b/i,
+    /\b(effective\s+gross|collected)\s+(income|rent|revenue)\b/i,
+    /\b(rental|other)\s+income\b/i,
+    /\b(net\s+rental|nri)\b/i,
+    /\bloss\s+to\s+lease\b/i,
+    /\bvacancy\s+(loss)?\b/i,
+    /\bconcession/i,
+    /\bbad\s+debt\b/i,
+    // Rollup/subtotal rows
+    /^total\s+/i,
+    /\btotal\s+(income|revenue|expenses?|opex|operating)\b/i,
+    /\b(net\s+)?operating\s+income/i,
+    /\bnoi\b/i,
+    /\bcontrollable\s+operating/i,
+    /\b(sub)?total\b/i,
+    // Below-the-line (non-operating)
+    /\bdebt\s+service/i,
+    /\binterest\s+expense/i,
+    /\bmortgage\b/i,
+    /\bloan\s+(payment|principal)/i,
+    /\bdepreciation\b/i,
+    /\bamortization\b/i,
+    /\bcapital\s+(expenditure|reserve|improvement)/i,
+    /\bcapex\b/i,
+    /\breplacement\s+reserve/i,
+    /\bnon[\s-]?operating/i,
+    /\bcash\s+flow/i,
+    /\b(before|after)\s+tax/i,
+  ];
+  
+  const isExcludedFromOpex = (label: string): boolean => {
+    return EXCLUDE_FROM_CUSTOM_OPEX.some(pattern => pattern.test(label));
+  };
+  
   const customOpexItems: Record<string, LayeredValue<number>> = {};
+  let excludedCustomTotal = 0;
+  const excludedLabels: string[] = [];
+  
   for (const [label, amount] of Object.entries(rawCustomItems)) {
     if (typeof amount !== 'number' || Math.abs(amount) < 1) continue;
+    
+    // Filter out non-opex items
+    if (isExcludedFromOpex(label)) {
+      excludedCustomTotal += amount;
+      excludedLabels.push(label);
+      continue;
+    }
+    
     const key = sanitizeKey(label);
     const existingOverride = getOverride(key);
     customOpexItems[key] = resolve(key, null, {
@@ -324,6 +375,11 @@ function buildSeed(
       priority: ['t12'],
     });
     (customOpexItems[key] as unknown as Record<string, unknown>)._label = label;
+  }
+  
+  // Log excluded items for debugging (only if significant)
+  if (excludedLabels.length > 0 && Math.abs(excludedCustomTotal) > 10000) {
+    console.log(`[proforma-seeder] Excluded ${excludedLabels.length} non-opex custom items totaling $${Math.round(excludedCustomTotal).toLocaleString()}: ${excludedLabels.slice(0, 5).join(', ')}${excludedLabels.length > 5 ? '...' : ''}`);
   }
 
   const mgmt_t12_pct = t12egi > 0 ? (num(t12Opex, 'mgmt_fee') ?? 0) / t12egi : null;
