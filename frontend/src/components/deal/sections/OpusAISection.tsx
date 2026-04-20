@@ -457,7 +457,7 @@ const RoleSelector: React.FC<RoleSelectorProps> = ({ selectedRole, onRoleChange,
   return (
     <div className="p-6" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
       <h3 className="text-lg font-bold mb-4" style={{ color: BT.text.primary, fontFamily: BT.font.display }}>
-        Select AI Analyst Role
+        Select AI Agent Skill
       </h3>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {Object.values(ROLE_PERSONAS).map((persona) => (
