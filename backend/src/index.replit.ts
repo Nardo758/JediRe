@@ -912,7 +912,20 @@ async function initStripe() {
   }
 }
 
-httpServer.listen(Number(PORT), '0.0.0.0', async () => {
+async function startServer() {
+  // ── Agent prompt seeding — runs before the server accepts any traffic ────
+  // Fail-fast with explicit process.exit(1): do not rely on unhandled-rejection
+  // behavior to catch seed errors. A partial seed is worse than a clean abort.
+  try {
+    const { seedAllAgentPrompts } = await import('./agents/seeds/index');
+    await seedAllAgentPrompts();
+  } catch (err: any) {
+    console.error('[FATAL] Agent prompt seeding failed — aborting startup:', err.message);
+    process.exit(1);
+    return;
+  }
+
+  httpServer.listen(Number(PORT), '0.0.0.0', async () => {
   console.log('='.repeat(60));
   console.log('🚀 JediRe Backend (Replit Edition)');
   console.log('='.repeat(60));
@@ -1024,13 +1037,6 @@ httpServer.listen(Number(PORT), '0.0.0.0', async () => {
     console.error('Lead/lag discovery startup failed (non-fatal):', error);
   }
 
-  // Agent prompt seeding — ensures all 5 agents have active prompt_versions on cold start.
-  // Idempotent (ON CONFLICT DO NOTHING), preserves operator rollback state.
-  // Fail-fast: errors propagate so the health check fails instead of starting
-  // a server with uninitialized agents.
-  const { seedAllAgentPrompts } = await import('./agents/seeds/index');
-  await seedAllAgentPrompts();
-
   await initStripe();
 
   // M35 Phase 4: Nightly divergence tracking — fires at 2:00 AM UTC each day
@@ -1077,6 +1083,12 @@ httpServer.listen(Number(PORT), '0.0.0.0', async () => {
       await processForecastRegenQueue();
     } catch (err) { /* non-blocking */ }
   }, 60_000).unref();
+  });
+}
+
+startServer().catch((err: any) => {
+  console.error('[FATAL] Server startup failed:', err.message);
+  process.exit(1);
 });
 
 process.on('SIGTERM', async () => {
