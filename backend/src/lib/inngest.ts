@@ -5,11 +5,12 @@
  * idempotency, and fan-out/fan-in patterns.
  *
  * Functions registered:
- *   - researchOnDealCreated:      triggers on deal.created, Principal+ tier
- *   - zoningOnDealCreated:        triggers on deal.created, Principal+ tier
- *   - supplyOnDealCreated:        triggers on deal.created, Principal+ tier
+ *   - researchOnDealCreated:       triggers on deal.created, Principal+ tier
+ *   - zoningOnDealCreated:         triggers on deal.created, Principal+ tier
+ *   - supplyOnDealCreated:         triggers on deal.created, Principal+ tier
  *   - cashflowOnResearchCompleted: triggers on research.completed
  *   - commentaryOnResearchCompleted: triggers on research.completed
+ *   - emailIntakeFunction:         triggers on gmail.message_received
  *
  * In dev mode (no INNGEST_EVENT_KEY): Inngest operates in local mode
  * using the Dev Server or the built-in serve() middleware.
@@ -107,6 +108,19 @@ export type CashflowWalkthroughRequestedEvent = {
   };
 };
 
+export type GmailMessageReceivedEvent = {
+  name: 'gmail.message_received';
+  data: {
+    message_id: string;
+    user_id: string;
+    account_id: string;
+    from_address: string;
+    subject: string;
+    received_at: string;
+    has_attachments: boolean;
+  };
+};
+
 export type JediEvents =
   | DealCreatedEvent
   | ResearchCompletedEvent
@@ -114,4 +128,5 @@ export type JediEvents =
   | SupplyCompletedEvent
   | CashflowCompletedEvent
   | CashflowWalkthroughRequestedEvent
-  | CommentaryCompletedEvent;
+  | CommentaryCompletedEvent
+  | GmailMessageReceivedEvent;

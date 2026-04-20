@@ -12,6 +12,7 @@ import { AppError } from '../middleware/errorHandler';
 import { classifyEmail } from './email-classification.service';
 import { processEmailForProperty } from './email-property-automation.service';
 import { processEmailForNews } from './email-news-extraction.service';
+import { inngest } from '../lib/inngest';
 
 interface GmailMessage {
   id: string;
@@ -459,6 +460,25 @@ export class GmailSyncService {
 
           const emailId = emailResult.rows[0].id;
           stored++;
+
+          // Fire deal intake event for new messages — the email-intake Inngest
+          // function will classify, extract, and create a draft deal if appropriate.
+          inngest.send({
+            name: 'gmail.message_received',
+            data: {
+              message_id: message.id!,
+              user_id: account.user_id,
+              account_id: accountId,
+              from_address: headers.from.email,
+              subject: headers.subject,
+              received_at: receivedAt.toISOString(),
+              has_attachments: (fullMessage.data.payload?.parts ?? []).some(
+                p => p.filename && p.filename.length > 0
+              ),
+            },
+          }).catch(err => {
+            logger.warn('gmail-sync: failed to send gmail.message_received event', { emailId, err });
+          });
 
           // ========================================
           // AUTO-EXTRACTION PIPELINE

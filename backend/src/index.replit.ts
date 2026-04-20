@@ -324,6 +324,7 @@ import {
 } from './agents/cashflow.inngest';
 import { commentaryOnResearchCompleted } from './agents/commentary.inngest';
 import { archiveAggregationFunction } from './inngest/functions/archive-aggregation.function';
+import { emailIntakeFunction } from './inngest/functions/email-intake.function';
 app.use(
   '/api/inngest',
   serve({
@@ -336,6 +337,7 @@ app.use(
       cashflowOnWalkthroughRequested,
       commentaryOnResearchCompleted,
       archiveAggregationFunction,
+      emailIntakeFunction,
     ],
   })
 );
