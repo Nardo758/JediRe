@@ -14,7 +14,7 @@ JediRE has five AI agents that run via the AgentRuntime loop (Claude + structure
 | Research | `deal.created` (auto), manual | Principal+ (professional/enterprise) |
 | Zoning | `deal.created` (auto), manual | Principal+ |
 | Supply | `deal.created` (auto), manual | Principal+ |
-| CashFlow | `research.completed` (auto), manual | Operator+ (any non-basic tier) |
+| CashFlow | `research.completed` (auto), manual | operator / principal / institutional (for auto); manual unrestricted |
 | Commentary | `research.completed` (auto), manual | Principal+ for auto-trigger (professional/enterprise/principal/institutional); manual unrestricted |
 
 All runs are recorded in `agent_runs` with full step-level detail in `agent_run_steps`.
@@ -149,7 +149,7 @@ SET active = false
 WHERE agent_id = 'cashflow';
 ```
 
-With no active prompt, AgentRuntime will throw `No active prompt version found` before making any model call. This prevents token spend while you investigate.
+With no active prompt, AgentRuntime falls back to a generic default system prompt (`"You are the <agentId> agent for JEDI RE. Analyze real estate data and respond with structured JSON."`). This keeps the agent functional but produces lower-quality outputs. To intentionally disable an agent while you investigate, either deactivate its Inngest trigger (comment out the `createFunction` export and restart) or set `budgetCaps.maxCostUsdPerRun = 0` to fail-fast on the first model call.
 
 ---
 
@@ -191,14 +191,14 @@ If `success_rate_pct` drops below 70% or `p99_duration_ms` exceeds 5 min, invest
 |-------------|----------|--------|--------|----------|------------|
 | `basic` | blocked | blocked | blocked | blocked | blocked |
 | `operator` | blocked | blocked | blocked | allowed | blocked |
-| `professional` | allowed | allowed | allowed | allowed | allowed |
-| `enterprise` | allowed | allowed | allowed | allowed | allowed |
+| `professional` | allowed | allowed | allowed | blocked | allowed |
+| `enterprise` | allowed | allowed | allowed | blocked | allowed |
 | `principal` | allowed | allowed | allowed | allowed | allowed |
 | `institutional` | allowed | allowed | allowed | allowed | allowed |
 
 Notes:
 - Research/Zoning/Supply trigger on `deal.created`; CashFlow/Commentary trigger on `research.completed`
-- CashFlow uses `getAllowedTriggerModes(tier)` from `cashflow.config.ts` (`operator`+ → event-driven; `basic` → manual-only)
+- CashFlow uses `getAllowedTriggerModes(tier)` from `cashflow.config.ts`; only `operator`, `principal`, `institutional` include `'event-driven'`. `professional` and `enterprise` map to manual-only.
 - Commentary auto-trigger is principal+ (professional/enterprise/principal/institutional); manual runs are unrestricted for all tiers
 
 ### Manual trigger (all tiers)

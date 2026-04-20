@@ -37,16 +37,15 @@ import { logger } from '../utils/logger';
 import type { RunContext } from './runtime/types';
 
 // ── Tier gating ─────────────────────────────────────────────────────────────
-// CashFlow uses getAllowedTriggerModes(tier) from cashflow.config.ts
-// to determine which trigger modes each tier may use:
-//   basic        → ['manual'] only — blocked for event-driven auto-runs
-//   operator     → ['manual', 'event-driven'] — ALLOWED for auto-runs on research.completed
-//   professional → ['manual', 'event-driven'] — ALLOWED
-//   enterprise   → ['manual', 'event-driven'] — ALLOWED
-//
-// This means the CashFlow Agent has a broader auto-trigger gate than Research/Zoning/Supply
-// (which require professional+). Operator-tier users get CashFlow analysis on deal events.
-// Manual runs via POST /api/v1/agents/cashflow/run are available to any authenticated user.
+// CashFlow uses getAllowedTriggerModes(tier) from cashflow.config.ts.
+// Tiers that include 'event-driven' (auto-runs on research.completed):
+//   operator      → ['manual', 'event-driven']
+//   principal     → ['manual', 'event-driven', 'weekly-refresh']
+//   institutional → ['manual', 'event-driven', 'weekly-refresh', 'portfolio-batch']
+// Tiers that are manual-only (no auto-trigger):
+//   scout, professional, enterprise → ['manual']
+// Note: CashFlow grants event-driven access to operator+, broader than Research/Zoning/Supply
+// (principal+ only). Manual runs are available to any authenticated user.
 // ────────────────────────────────────────────────────────────────────────────
 /** Event-driven runs require at minimum 'event-driven' trigger mode. */
 function isTierAllowedForEventDriven(tier: string): boolean {
