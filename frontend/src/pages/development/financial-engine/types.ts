@@ -528,6 +528,10 @@ export interface FinancialEngineTabProps {
   evidenceFieldMap?: Record<string, EvidenceFieldMeta>;
   /** Field paths that have collision data — used by collision filter to narrow grid to flagged rows */
   collisionFields?: string[] | null;
+  /** Field paths with severe collisions only — used when SEV pill is clicked */
+  severeCollisionFields?: string[] | null;
+  /** Field paths with material collisions only — used when MAT pill is clicked */
+  materialCollisionFields?: string[] | null;
 }
 
 // ─── F9 Debt Stack (v2) ───────────────────────────────────────────────────────

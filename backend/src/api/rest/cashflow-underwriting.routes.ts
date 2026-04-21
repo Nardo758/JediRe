@@ -647,7 +647,9 @@ dealUnderwritingRouter.get(
              SUM(CASE WHEN collision->>'magnitude' = 'severe'   THEN 1 ELSE 0 END) AS severe_collisions,
              SUM(CASE WHEN collision->>'magnitude' = 'material' THEN 1 ELSE 0 END) AS material_collisions,
              SUM(CASE WHEN collision->>'magnitude' = 'minor'    THEN 1 ELSE 0 END) AS minor_collisions,
-             array_agg(field_path) FILTER (WHERE collision IS NOT NULL) AS collision_fields
+              array_agg(field_path) FILTER (WHERE collision IS NOT NULL)                  AS collision_fields,
+             array_agg(field_path) FILTER (WHERE collision->>'magnitude' = 'severe')   AS severe_collision_fields,
+             array_agg(field_path) FILTER (WHERE collision->>'magnitude' = 'material') AS material_collision_fields
            FROM latest_evidence`,
           [dealId]
         ),
@@ -783,6 +785,8 @@ dealUnderwritingRouter.get(
           material_count: int(row?.material_collisions),
           minor_count: int(row?.minor_collisions),
           fields_with_collision: (row?.collision_fields as string[] | null) ?? [],
+          severe_collision_fields: (row?.severe_collision_fields as string[] | null) ?? [],
+          material_collision_fields: (row?.material_collision_fields as string[] | null) ?? [],
         },
         confidence_distribution: {
           high: int(row?.high_confidence),

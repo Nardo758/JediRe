@@ -263,7 +263,9 @@ function applyEvidenceFilter(
   rows: OperatingStatementRow[],
   filter: { type: 'collision' | 'confidence' | 'tier'; value: string },
   evidenceFieldMap?: Record<string, EvidenceFieldMeta>,
-  collisionFields?: string[] | null
+  collisionFields?: string[] | null,
+  severeCollisionFields?: string[] | null,
+  materialCollisionFields?: string[] | null
 ): OperatingStatementRow[] {
   if (filter.type === 'confidence') {
     return rows.filter(r => {
@@ -287,7 +289,24 @@ function applyEvidenceFilter(
     });
   }
   if (filter.type === 'collision') {
-    // Prefer evidenceFieldMap (has per-field has_collision flag); fall back to collisionFields path list.
+    // Severity-specific filtering: 'severe' and 'material' use per-severity field lists.
+    if (filter.value === 'severe' || filter.value === 'material') {
+      const severityFields = filter.value === 'severe' ? severeCollisionFields : materialCollisionFields;
+      // Prefer per-severity field list from backend when available.
+      if (severityFields && severityFields.length > 0) {
+        const fieldSet = new Set(severityFields);
+        return rows.filter(r => fieldSet.has(r.field));
+      }
+      // Fall back to evidenceFieldMap magnitude check.
+      if (evidenceFieldMap) {
+        return rows.filter(r => {
+          const resolved = resolveEvidence(r.field, evidenceFieldMap);
+          return resolved?.meta.collision_magnitude === filter.value;
+        });
+      }
+      return rows;
+    }
+    // Generic collision filter — prefer evidenceFieldMap; fall back to collisionFields path list.
     if (evidenceFieldMap) {
       return rows.filter(r => {
         const resolved = resolveEvidence(r.field, evidenceFieldMap);
@@ -303,7 +322,7 @@ function applyEvidenceFilter(
   return rows;
 }
 
-export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange, evidenceFilter, evidenceFieldMap, collisionFields }: FinancialEngineTabProps) {
+export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange, evidenceFilter, evidenceFieldMap, collisionFields, severeCollisionFields, materialCollisionFields }: FinancialEngineTabProps) {
   const [data, setData] = useState<DealFinancials | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -442,7 +461,7 @@ export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange, evidenceFi
   const totalUnits = data.totalUnits;
 
   // Apply evidence summary-bar filter when a pill is active
-  const displayRows = evidenceFilter ? applyEvidenceFilter(rows, evidenceFilter, evidenceFieldMap, collisionFields) : rows;
+  const displayRows = evidenceFilter ? applyEvidenceFilter(rows, evidenceFilter, evidenceFieldMap, collisionFields, severeCollisionFields, materialCollisionFields) : rows;
 
   const byField: Record<string, OperatingStatementRow> = {};
   rows.forEach(r => { byField[r.field] = r; });
