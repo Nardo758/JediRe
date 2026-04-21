@@ -20,7 +20,7 @@ router.get('/metrics', requireAuth, async (req: AuthenticatedRequest, res: Respo
     const result = await query(`
       SELECT 
         COUNT(*) as total_assets,
-        COALESCE(SUM(d.deal_data->>'unit_count')::int, 0) as total_units,
+        COALESCE(SUM((d.deal_data->>'unit_count')::int), 0) as total_units,
         COALESCE(SUM((d.deal_data->>'purchase_price')::numeric), 0) as total_value,
         COALESCE(AVG((d.deal_data->>'occupancy_rate')::numeric), 0) as avg_occupancy,
         COALESCE(AVG((d.deal_data->>'cap_rate')::numeric), 0) as avg_cap_rate,

@@ -1,0 +1,418 @@
+[4/20/2026 10:02 PM] RocketManOpenClaw2: This is a big build. Let me sequence it properly and tackle each one. Starting with disposition tracking, then reforecast, then the others.
+[4/20/2026 10:04 PM] RocketManOpenClaw2: Now let me create the services:
+[4/20/2026 10:07 PM] RocketManOpenClaw2: Now let me create the API routes for all these services:
+[4/20/2026 10:08 PM] RocketManOpenClaw2: Now wire it into the main app:
+[4/20/2026 10:08 PM] RocketManOpenClaw2: Now let me commit everything:
+[4/20/2026 10:09 PM] RocketManOpenClaw2: Done. Here's the complete system architecture:
+
+───
+
+Complete Lifecycle Architecture
+
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                           JEDI RE - FULL LIFECYCLE                                   │
+├─────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                      │
+│  ┌─────────────┐                                                                     │
+│  │ ACQUISITION │                                                                     │
+│  │  UNDERWRITE │                                                                     │
+│  └──────┬──────┘                                                                     │
+│         │                                                                            │
+│         │ Creates:                                                                   │
+│         │ • assumption_snapshot (frozen projections)                                 │
+│         │ • competitive_sets (from underwriting)                                     │
+│         │ • debt_positions (initial financing)                                       │
+│         │ • proforma_projections (monthly line items)                                │
+│         │ • refi_test_scenarios (scenario_type='underwriting')                       │
+│         ▼                                                                            │
+│  ┌─────────────┐     ┌─────────────────────────────────────────────────────────┐    │
+│  │    OWN &    │────▶│                  OPERATIONS TRACKING                     │    │
+│  │   OPERATE   │     │                                                          │    │
+│  └─────────────┘     │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐   │    │
+│                      │  │   Actuals    │  │  Rent Roll   │  │   Traffic    │   │    │
+│                      │  │  (monthly)   │  │  (unit level)│  │   Funnel     │   │    │
+│                      │  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘   │    │
+│                      │         │                 │                 │            │    │
+│                      │         ▼                 ▼                 ▼            │    │
+│                      │  ┌─────────────────────────────────────────────────┐    │    │
+│                      │  │              VARIANCE ANALYSIS                   │    │    │
+│                      │  │  (Projected vs Actual, Line-by-Line)            │    │    │
+│                      │  └─────────────────────────┬───────────────────────┘    │    │
+│                      │                            │                            │    │
+│                      │         ┌──────────────────┼──────────────────┐         │    │
+│                      │         ▼                  ▼                  ▼         │    │
+│                      │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │    │
+│                      │  │   Revenue    │  │   Expense    │  │   Traffic    │  │    │
+│                      │  │    Mgmt      │  │    Recs      │  │    Recs      │  │    │
+│                      │  │ (renewals,   │  │ (over/under  │  │ (conversion, │  │    │
+│                      │  │  pricing)    │  │   budget)    │  │   lead gen)  │  │    │
+│                      │  └──────────────┘  └──────────────┘  └──────────────┘  │    │
+│                      └─────────────────────────────────────────────────────────┘    │
+│         │                                                                            │
+│         │ Monitors:                                                                  │
+│         │ • comp_pricing_snapshots → alerts on competitor changes                    │
+│         │ • debt covenant compliance → status = compliant/watch/breach               │
+[4/20/2026 10:09 PM] RocketManOpenClaw2: │         │ • capex_actuals vs capex_budget → variance tracking                        │
+[4/20/2026 10:09 PM] RocketManOpenClaw2: │         │ • lease_expiration_schedule → renewal recommendations                      │
+│         │                                                                            │
+│         ▼                                                                            │
+│  ┌─────────────┐                                                                     │
+│  │  REFORECAST │◄─── Triggered by: variance > threshold for 2+ months               │
+│  │ (when needed)│                                                                    │
+│  └──────┬──────┘                                                                     │
+│         │                                                                            │
+│         │ Outputs:                                                                   │
+│         │ • reforecast_noi_year1 vs original_noi_year1                              │
+│         │ • reforecast_irr vs original_irr                                          │
+│         │ • change_drivers: [{"driver": "vacancy", "impact_bps": -45}]              │
+│         │                                                                            │
+│         ▼                                                                            │
+│  ┌─────────────┐                                                                     │
+│  │    REFI     │◄─── When: maturity approaching, or opportunity arises              │
+│  │  (optional) │                                                                     │
+│  └──────┬──────┘                                                                     │
+│         │                                                                            │
+│         │ Records:                                                                   │
+│         │ • refinance_events (old debt → new debt)                                   │
+│         │ • cash_out or paydown                                                      │
+│         │ • was_projected vs actual (learning signal)                               │
+│         │                                                                            │
+│         ▼                                                                            │
+│  ┌─────────────┐                                                                     │
+│  │ DISPOSITION │◄─── Sale Event                                                      │
+│  │   (EXIT)    │                                                                     │
+│  └──────┬──────┘                                                                     │
+│         │                                                                            │
+│         │ Records:                                                                   │
+│         │ • actual_irr vs projected_irr                                             │
+│         │ • actual_exit_cap vs projected_exit_cap                                   │
+│         │ • irr_variance_bps (THE ULTIMATE LEARNING SIGNAL)                         │
+│         │ • lessons_learned (human notes)                                            │
+│         │                                                                            │
+│         ▼                                                                            │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐    │
+│  │                         LEARNING SYSTEM                                      │    │
+│  │                                                                              │    │
+│  │  disposition → assumption_outcomes → learning_adjustments → future deals    │    │
+│  │                                                                              │    │
+│  │  "Class B Atlanta deals historically underestimated vacancy by 1.2pp"       │    │
+│  │  → Next underwrite: agent applies +0.6pp adjustment                         │    │
+[4/20/2026 10:09 PM] RocketManOpenClaw2: │  └─────────────────────────────────────────────────────────────────────────────┘    │
+[4/20/2026 10:09 PM] RocketManOpenClaw2: │                                                                                      │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+
+───
+
+Key Features Built
+
+| Feature               | What It Does                                                                       |
+| --------------------- | ---------------------------------------------------------------------------------- |
+| Disposition Tracking  | Records sale, computes actual vs projected returns, feeds ultimate learning signal |
+| Reforecast Automation | Auto-updates projections when actuals diverge, shows change drivers                |
+| Debt Tracking         | Multiple loans, covenant monitoring, maturity calendar, floating rate exposure     |
+| Refi Testing          | Run scenarios during underwriting AND operations, compare projected vs actual refi |
+| Competitive Sets      | Preserved from underwriting, add during ops, pricing alerts on changes             |
+| Seasonality           | Monthly factors for traffic/leasing by market                                      |
+| CapEx Tracking        | Budget vs actual by category                                                       |
+| Market Data Schema    | Ready for CoStar, ATTOM, municipal data connections                                |
+| User Preferences      | Configurable columns, sort, filters per view                                       |
+
+───
+
+Migrations to Run
+
+psql $DATABASE_URL -f src/database/migrations/20260420_disposition_and_debt_tracking.sql
+
+───
+
+Pull in Replit and run the migration. The complete lifecycle is now tracked from underwriting through disposition, with everything feeding back to make future underwriting better. 🎯
+[4/20/2026 10:15 PM] Leon D: which agents and agent skills need to be connected to these?
+[4/20/2026 10:16 PM] RocketManOpenClaw2: Good question. Let me map out which agents need access to which lifecycle features:
+
+───
+
+Agent ↔ Lifecycle Feature Matrix
+
+| Agent            | Needs Access To                                              | Why                                                                                                                  |
+| ---------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| CashFlow Agent   | Debt positions, Refi tests, Comp sets, Disposition learnings | Underwrites deals — needs to model debt, test refi exits, benchmark against comps, and apply lessons from past exits |
+| Research Agent   | Comp sets, Market data connections, Competitive position     | Gathers market intel — should populate comp sets and pull market comps                                               |
+| Supply Agent     | Seasonality factors, Market trends                           | Pipeline/supply analysis benefits from seasonality patterns                                                          |
+| Commentary Agent | Reforecast results, Variance analysis, Disposition learnings | Writes narratives — needs to explain what changed and why                                                            |
+| Zoning Agent     | (none directly)                                              | Focuses on entitlements, not lifecycle                                                                               |
+
+───
+
+New Tools Needed
+
+┌─────────────────────────────────────────────────────────────────┐
+│                    CASHFLOW AGENT TOOLS                         │
+├─────────────────────────────────────────────────────────────────┤
+│ EXISTING:                                                       │
+│ • fetch_line_item_benchmarks                                    │
+│ • fetch_market_trends                                           │
+│ • fetch_learning_adjustments                                    │
+│ • write_underwriting                                            │
+│                                                                 │
+│ NEW NEEDED:                                                     │
+│ • fetch_debt_assumptions    → Get typical debt terms by market  │
+│ • run_refi_test            → Test refi feasibility at exit     │
+│ • fetch_comp_set           → Get/create competitive set        │
+│ • fetch_disposition_learnings → Exit performance by market     │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                    RESEARCH AGENT TOOLS                         │
+├─────────────────────────────────────────────────────────────────┤
+│ EXISTING:                                                       │
+│ • web search, fetch                                             │
+│ • write research findings                                       │
+│                                                                 │
+│ NEW NEEDED:                                                     │
+│ • write_comp_set           → Add comps found during research   │
+│ • fetch_market_comps       → Pull from market_sale_comps,      │
+│                              market_rent_comps tables          │
+│ • write_market_comps       → Store comps discovered            │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│                   COMMENTARY AGENT TOOLS                        │
+├─────────────────────────────────────────────────────────────────┤
+│ EXISTING:                                                       │
+│ • read deal data, modules                                       │
+│ • write commentary                                              │
+│                                                                 │
+[4/20/2026 10:16 PM] RocketManOpenClaw2: │ NEW NEEDED:                                                     │
+│ • fetch_reforecast_summary  → What changed since underwriting  │
+│ • fetch_variance_summary    → Projected vs actual deltas       │
+│ • fetch_exit_comparison     → If sold: actual vs projected     │
+└─────────────────────────────────────────────────────────────────┘
+
+───
+
+Implementation Priority
+
+Phase 1 — CashFlow Agent (most impactful):
+
+1. fetch_debt_assumptions — typical terms for agency/bridge/CMBS by market
+2. run_refi_test — test exit refi as part of underwriting
+3. fetch_comp_set — read comps for rent benchmarking
+4. fetch_disposition_learnings — "how did similar exits perform?"
+
+Phase 2 — Research Agent:
+5. write_comp_set — save discovered comps
+6. write_market_comps — store sale/rent comps found
+
+Phase 3 — Commentary Agent:
+7. fetch_reforecast_summary — for operational commentary
+8. fetch_variance_summary — explain divergences
+
+───
+
+Want me to build the Phase 1 CashFlow tools? They'd slot into the existing 5-phase tool sequence:
+
+Phase 1: fetch_line_item_benchmarks
+Phase 2: fetch_market_trends  
+Phase 3: fetch_learning_adjustments
+Phase 4: fetch_debt_assumptions + run_refi_test + fetch_comp_set  ← NEW
+Phase 5: fetch_disposition_learnings                              ← NEW
+Phase 6: write_underwriting (with all context)
+[4/20/2026 10:22 PM] Leon D: ok
+[4/20/2026 10:25 PM] RocketManOpenClaw2: Now update the CashFlow agent config and prompt to use these new tools:
+[4/20/2026 10:25 PM] RocketManOpenClaw2: Now update the system prompt to include the new tool sequence:
+[4/20/2026 10:26 PM] RocketManOpenClaw2: Now commit and push:
+[4/20/2026 10:26 PM] RocketManOpenClaw2: Done. Here's the updated agent-tool architecture:
+
+───
+
+CashFlow Agent — Complete Tool Set
+
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                         CASHFLOW AGENT — 22-STEP TOOL SEQUENCE                       │
+├─────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                      │
+│  PHASE 1: CONTEXT & LEARNING ───────────────────────────────────────────────────    │
+│  ┌──────────────────┐  ┌─────────────────────┐  ┌─────────────────────┐             │
+│  │ fetch_assumptions│  │fetch_learning_adj.  │  │ fetch_market_trends │             │
+│  │ (deal context)   │  │(bias corrections)   │  │ (rent, vacancy, cap)│             │
+│  └──────────────────┘  └─────────────────────┘  └─────────────────────┘             │
+│  ┌──────────────────┐  ┌─────────────────────┐                                      │
+│  │    fetch_t12     │  │  fetch_rent_roll    │                                      │
+│  │   (Tier 1 data)  │  │   (Tier 1 data)     │                                      │
+│  └──────────────────┘  └─────────────────────┘                                      │
+│                                                                                      │
+│  PHASE 2: BENCHMARK RETRIEVAL ──────────────────────────────────────────────────    │
+│  ┌──────────────────────────┐  ┌────────────────────────┐                           │
+│  │fetch_line_item_benchmarks│  │fetch_owned_asset_actuals│                          │
+│  │   (P10-P90 for OpEx)     │  │     (Tier 2 comps)      │                          │
+│  └──────────────────────────┘  └────────────────────────┘                           │
+│  ┌────────────────────────────┐  ┌────────────────────────┐                         │
+│  │fetch_owned_asset_opex_ratios│  │fetch_peer_comp_noi    │                         │
+│  │       (Tier 2 ratios)       │  │    (Tier 3 M15)       │                         │
+│  └────────────────────────────┘  └────────────────────────┘                         │
+│                                                                                      │
+│  PHASE 3: FIXED COST FORECASTS ─────────────────────────────────────────────────    │
+│  ┌─────────────────────────┐  ┌─────────────────────────────┐                       │
+│  │fetch_jurisdiction_tax   │  │fetch_jurisdiction_insurance │                       │
+│  │   (reassessment model)  │  │    (state benchmarks)       │                       │
+│  └─────────────────────────┘  └─────────────────────────────┘                       │
+│  ┌─────────────────────────┐                                                        │
+│  │  fetch_m35_event_forecast│                                                       │
+│  │   (supply/event impact)  │                                                       │
+│  └─────────────────────────┘                                                        │
+│                                                                                      │
+│  PHASE 4: ARCHIVE CALIBRATION ──────────────────────────────────────────────────    │
+│  ┌────────────────────────────────┐  ┌──────────────────────────────────┐           │
+│  │fetch_archive_assumption_distrib│  │fetch_archive_achievement_vs_assum│           │
+│  │   (P10-P90 from closed deals)  │  │    (bias gap: assumed vs actual) │           │
+│  └────────────────────────────────┘  └──────────────────────────────────┘           │
+│                                                                                      │
+│  PHASE 5: DEBT, COMPS & EXIT CALIBRATION ──────────────────────────── NEW ───────   │
+│  ┌─────────────────────────┐  ┌─────────────────────────┐                           │
+│  │ fetch_debt_assumptions  │  │     run_refi_test       │                           │
+[4/20/2026 10:26 PM] RocketManOpenClaw2: │  │ (terms by loan type)    │  │ (exit refi feasibility) │                           │
+[4/20/2026 10:26 PM] RocketManOpenClaw2: │  └─────────────────────────┘  └─────────────────────────┘                           │
+│  ┌─────────────────────────┐  ┌─────────────────────────────────┐                   │
+│  │    fetch_comp_set       │  │ fetch_disposition_learnings     │                   │
+│  │ (rent benchmarking)     │  │ (ULTIMATE EXIT CALIBRATION)     │                   │
+│  └─────────────────────────┘  └─────────────────────────────────┘                   │
+│                                                                                      │
+│  PHASE 6: OUTPUT ───────────────────────────────────────────────────────────────    │
+│  ┌─────────────────────┐  ┌───────────────────────┐  ┌───────────────────────────┐  │
+│  │   detect_collision  │  │   write_underwriting  │  │request_walkthrough_narr.  │  │
+│  │  (broker OM check)  │  │  (persist evidence)   │  │  (trigger Commentary)     │  │
+│  └─────────────────────┘  └───────────────────────┘  └───────────────────────────┘  │
+│                                                                                      │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+
+───
+
+Remaining Agents to Connect
+
+| Agent            | Tools Still Needed                               | Status |
+| ---------------- | ------------------------------------------------ | ------ |
+| Research Agent   | write_comp_set, write_market_comps               | Queued |
+| Commentary Agent | fetch_reforecast_summary, fetch_variance_summary | Queued |
+| Supply Agent     | Already has what it needs                        | ✅      |
+| Zoning Agent     | No lifecycle dependencies                        | ✅      |
+
+Want me to build the Research and Commentary tools next?
+[4/20/2026 10:32 PM] Leon D: yes
+[4/20/2026 10:33 PM] RocketManOpenClaw2: Now the Commentary Agent tools:
+[4/20/2026 10:34 PM] RocketManOpenClaw2: Now update the Research and Commentary agent configs:
+[4/20/2026 10:34 PM] RocketManOpenClaw2: Now the Commentary agent:
+[4/20/2026 10:35 PM] RocketManOpenClaw2: Now commit and push:
+[4/20/2026 10:35 PM] RocketManOpenClaw2: Done. Here's the complete agent-tool architecture:
+
+───
+
+Agent ↔ Lifecycle Tool Matrix
+
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                            AGENT ↔ LIFECYCLE TOOLS                                   │
+├─────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                      │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐    │
+│  │                         CASHFLOW AGENT (22 tools)                            │    │
+│  ├─────────────────────────────────────────────────────────────────────────────┤    │
+│  │  Phase 1: Context & Learning                                                 │    │
+│  │    fetch_assumptions, fetch_learning_adjustments, fetch_market_trends,       │    │
+│  │    fetch_t12, fetch_rent_roll                                                │    │
+│  │                                                                              │    │
+│  │  Phase 2: Benchmarks                                                         │    │
+│  │    fetch_line_item_benchmarks, fetch_owned_asset_actuals,                    │    │
+│  │    fetch_owned_asset_opex_ratios, fetch_peer_comp_noi_metrics                │    │
+│  │                                                                              │    │
+│  │  Phase 3: Fixed Cost Forecasts                                               │    │
+│  │    fetch_jurisdiction_tax_forecast, fetch_jurisdiction_insurance_forecast,   │    │
+│  │    fetch_m35_event_forecast                                                  │    │
+│  │                                                                              │    │
+│  │  Phase 4: Archive Calibration                                                │    │
+│  │    fetch_archive_assumption_distribution, fetch_archive_achievement_vs_assum │    │
+│  │                                                                              │    │
+│  │  Phase 5: Debt, Comps & Exit (NEW)                                          │    │
+│  │    ★ fetch_debt_assumptions     → Typical debt terms by loan type            │    │
+│  │    ★ run_refi_test              → Exit refi feasibility testing              │    │
+│  │    ★ fetch_comp_set             → Competitive set with pricing               │    │
+│  │    ★ fetch_disposition_learnings → Exit performance calibration              │    │
+│  │                                                                              │    │
+│  │  Phase 6: Output                                                             │    │
+│  │    detect_collision, compute_proforma, write_projection,                     │    │
+│  │    write_underwriting, request_walkthrough_narrative                         │    │
+│  └─────────────────────────────────────────────────────────────────────────────┘    │
+│                                                                                      │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐    │
+│  │                         RESEARCH AGENT (10 tools)                            │    │
+│  ├─────────────────────────────────────────────────────────────────────────────┤    │
+│  │  Core Research:                                                              │    │
+│  │    fetch_parcel, fetch_costar_metrics, fetch_tax_bill, fetch_comps,         │    │
+│  │    fetch_ownership, write_dealcontext, web_search, fetch_webpage             │    │
+│  │                                                                              │    │
+│  │  Lifecycle Tools (NEW):                                                      │    │
+│  │    ★ write_comp_set       → Add discovered comps with pricing                │    │
+│  │    ★ write_market_comps   → Record sale/rent comps to platform DB            │    │
+[4/20/2026 10:35 PM] RocketManOpenClaw2: │  └─────────────────────────────────────────────────────────────────────────────┘    │
+[4/20/2026 10:35 PM] RocketManOpenClaw2: │                                                                                      │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐    │
+│  │                        COMMENTARY AGENT (5 tools)                            │    │
+│  ├─────────────────────────────────────────────────────────────────────────────┤    │
+│  │  Core:                                                                       │    │
+│  │    web_search, fetch_webpage                                                 │    │
+│  │                                                                              │    │
+│  │  Lifecycle Tools (NEW):                                                      │    │
+│  │    ★ fetch_reforecast_summary   → What changed since underwriting            │    │
+│  │    ★ fetch_variance_summary     → Projected vs actual analysis               │    │
+│  │    ★ fetch_disposition_learnings → Exit performance context                  │    │
+│  └─────────────────────────────────────────────────────────────────────────────┘    │
+│                                                                                      │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐    │
+│  │                          SUPPLY AGENT (4 tools)                              │    │
+│  ├─────────────────────────────────────────────────────────────────────────────┤    │
+│  │    fetch_m35_pipeline, fetch_permit_data, fetch_supply_forecast,             │    │
+│  │    write_supply_analysis                                                     │    │
+│  │                                                                              │    │
+│  │  (Uses fetch_market_trends from shared tools for seasonality context)        │    │
+│  └─────────────────────────────────────────────────────────────────────────────┘    │
+│                                                                                      │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐    │
+│  │                          ZONING AGENT (4 tools)                              │    │
+│  ├─────────────────────────────────────────────────────────────────────────────┤    │
+│  │    fetch_zoning_code, fetch_parcel_zoning, fetch_variance_history,           │    │
+│  │    write_zoning_analysis                                                     │    │
+│  │                                                                              │    │
+│  │  (No direct lifecycle dependencies)                                          │    │
+│  └─────────────────────────────────────────────────────────────────────────────┘    │
+│                                                                                      │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+
+───
+
+New Tools Summary
+
+| Tool                        | Agent                | Purpose                                 |
+| --------------------------- | -------------------- | --------------------------------------- |
+| fetch_debt_assumptions      | CashFlow             | Typical debt terms by loan type/market  |
+| run_refi_test               | CashFlow             | Test refi feasibility at projected exit |
+| fetch_comp_set              | CashFlow             | Get competitive set with pricing data   |
+| fetch_disposition_learnings | CashFlow, Commentary | Exit performance calibration            |
+| write_comp_set              | Research             | Add discovered comps during research    |
+| write_market_comps          | Research             | Record sale/rent comps to platform DB   |
+| fetch_reforecast_summary    | Commentary           | What changed since underwriting         |
+| fetch_variance_summary      | Commentary           | Projected vs actual analysis            |
+
+───
+
+Migrations Pending
+
+Run in Replit:
+[4/20/2026 10:35 PM] RocketManOpenClaw2: psql $DATABASE_URL -f src/database/migrations/20260420_disposition_and_debt_tracking.sql
+[4/20/2026 10:35 PM] RocketManOpenClaw2: This creates all the tables the new tools need:
+
+• dispositions, disposition_cash_flows
+• debt_positions, refinance_events, refi_test_scenarios
+• reforecasts
+• competitive_sets, comp_pricing_snapshots, comp_pricing_alerts
+• market_sale_comps, market_rent_comps
+• capex_budget, capex_actuals
+• seasonality_factors
+• user_view_preferences

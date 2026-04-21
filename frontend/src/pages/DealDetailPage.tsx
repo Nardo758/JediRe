@@ -35,7 +35,7 @@ import {
   Building2, Target, Package, Calculator,
   ArrowLeft, ArrowRight, Activity, LayoutDashboard,
   Landmark, HardHat, Shield, Box, FileText, Briefcase, Zap, LayoutList,
-  CheckCircle, X, Loader2,
+  CheckCircle, X, Loader2, Users,
 } from 'lucide-react';
 import { Tab } from '../components/deal/TabGroup';
 import { DealScreenWrapper } from '../components/deal/DealScreenWrapper';
@@ -703,6 +703,7 @@ const DealDetailPage: React.FC = () => {
     { id: 'events',      moduleId: 'M35', fkey: 'F12', code: 'M35', short: 'EVENTS',     label: 'Event Timeline',   icon: <Zap size={14} />,             component: (props: any) => <EventTimelineSection {...props} /> },
     { id: 'deal-tools', moduleId: 'M21', fkey: 'F11', code: 'M21', short: 'TOOLS',      label: 'Deal Tools',       icon: <Briefcase size={14} />,       component: DealToolsScreen },
     { id: 'unit-mix',   moduleId: 'M01', fkey: 'F13', code: 'M14', short: 'UNIT MIX',   label: 'Unit Mix',         icon: <LayoutList size={14} />,      component: UnitMixScreen },
+    { id: 'team',       moduleId: 'M01', fkey: '',    code: 'M00', short: 'TEAM',       label: 'Deal Team',        icon: <Users size={14} />,           component: CollaborationSection },
   ];
 
   const dealScreens = allDealScreens.filter((s) => config.isModuleVisible(s.moduleId));

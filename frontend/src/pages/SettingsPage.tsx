@@ -9,10 +9,11 @@ import { NotificationSettings } from './settings/NotificationSettings';
 import { SubscriptionSettings } from './settings/SubscriptionSettings';
 import { DataLibrarySettings } from './settings/DataLibrarySettings';
 import AgentSettingsPage from './settings/AgentSettingsPage';
+import { TemplatesSettings } from './settings/TemplatesSettings';
 import { apiClient } from '../services/api.client';
 import { BT } from '@/components/deal/bloomberg-ui';
 
-type SettingsTab = 'profile' | 'subscription' | 'modules' | 'integrations' | 'notifications' | 'markets' | 'property-types' | 'intelligence' | 'ai-model' | 'data-library' | 'agents';
+type SettingsTab = 'profile' | 'subscription' | 'modules' | 'integrations' | 'notifications' | 'markets' | 'property-types' | 'intelligence' | 'ai-model' | 'data-library' | 'agents' | 'templates';
 
 const TIER_LABELS: Record<string, { label: string; textColor: string; bgColor: string }> = {
   scout: { label: 'Scout', textColor: BT.text.secondary, bgColor: BT.bg.panelAlt },
@@ -24,7 +25,7 @@ const TIER_LABELS: Record<string, { label: string; textColor: string; bgColor: s
   enterprise: { label: 'Enterprise', textColor: BT.text.purple, bgColor: BT.bg.active },
 };
 
-const VALID_TABS: SettingsTab[] = ['profile', 'subscription', 'modules', 'integrations', 'notifications', 'markets', 'property-types', 'intelligence', 'ai-model', 'data-library', 'agents'];
+const VALID_TABS: SettingsTab[] = ['profile', 'subscription', 'modules', 'integrations', 'notifications', 'markets', 'property-types', 'intelligence', 'ai-model', 'data-library', 'agents', 'templates'];
 
 function getInitialTab(): SettingsTab {
   const params = new URLSearchParams(window.location.search);
@@ -208,6 +209,13 @@ export function SettingsPage() {
           >
             Notifications
           </button>
+          <button
+            onClick={() => setActiveTab('templates')}
+            className="w-full text-left px-4 py-3"
+            style={tabButtonStyle(activeTab === 'templates')}
+          >
+            Templates
+          </button>
         </div>
 
         <div className="col-span-2">
@@ -345,6 +353,10 @@ export function SettingsPage() {
 
           {activeTab === 'agents' && (
             <AgentSettingsPage />
+          )}
+
+          {activeTab === 'templates' && (
+            <TemplatesSettings />
           )}
         </div>
       </div>

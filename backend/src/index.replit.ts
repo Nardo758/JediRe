@@ -379,6 +379,7 @@ app.use('/api/v1/jedi', jediRoutes);
 app.use('/api/v1/agents', agentChatRouter);
 app.use('/api/v1/corporate-health', requireAuth, corporateHealthRouter);
 app.use('/api/media', mediaRouter);
+// org.routes.ts: role-gated org CRUD, member management, invitations (/api/v1/orgs/:orgId/...)
 app.use('/api/v1/orgs', requireAuth, orgRouter);
 
 // Phase 10: Cross-Module Validation
@@ -491,7 +492,7 @@ app.use('/api/v1/operations', operationsRouter);
 import lifecycleRouter from './api/rest/lifecycle.routes';
 app.use('/api/v1/lifecycle', lifecycleRouter);
 
-// Organization routes (multi-tenant, team assignments, integrations)
+// organization.routes.ts: deal team assignments, phase handoffs, context tracker, DocuSign/Notarize/Plaid credentials (/api/v1/organization/...)
 import organizationRouter from './api/rest/organization.routes';
 app.use('/api/v1/organization', organizationRouter);
 

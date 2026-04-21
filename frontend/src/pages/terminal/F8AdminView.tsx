@@ -11,7 +11,7 @@
  * REMOVED (moved to F9 Settings):
  * - AI Config → F9 ai-model
  * - Notifications → F9 notifications  
- * - Templates → F9 templates (TODO)
+ * - Templates → F9 templates ✓
  * - Billing → F9 subscription
  * - User Integrations → F9 integrations
  */
@@ -282,50 +282,171 @@ function MarketDataSection({ T }: { T: ThemeType }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// ORG INTEGRATIONS SECTION (NEW)
+// ORG INTEGRATIONS SECTION
 // ═══════════════════════════════════════════════════════════════════
 
+type IntegrationKey = 'docusign' | 'notarize' | 'plaid' | 'stripe' | 'gmail' | 'outlook';
+
+interface IntegrationDef {
+  key: IntegrationKey;
+  name: string;
+  icon: string;
+  description: string;
+  category: string;
+  credentialFields?: { key: string; label: string; placeholder: string; secret?: boolean }[];
+  apiPath?: string;
+}
+
+const INTEGRATION_DEFS: IntegrationDef[] = [
+  {
+    key: 'docusign', name: 'DocuSign', icon: '✍️', description: 'Document signing for PSAs, LOIs, loan docs', category: 'Signing',
+    apiPath: '/api/v1/organization/integrations/docusign/credentials',
+    credentialFields: [
+      { key: 'accountId', label: 'Account ID', placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx' },
+      { key: 'integrationKey', label: 'Integration Key', placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx' },
+      { key: 'secretKey', label: 'Secret Key', placeholder: 'Your DocuSign secret key', secret: true },
+      { key: 'baseUrl', label: 'Base URL', placeholder: 'https://demo.docusign.net/restapi' },
+    ],
+  },
+  {
+    key: 'notarize', name: 'Notarize', icon: '📜', description: 'Remote online notarization', category: 'Signing',
+    apiPath: '/api/v1/organization/integrations/notarize/credentials',
+    credentialFields: [
+      { key: 'apiKey', label: 'API Key', placeholder: 'Your Notarize API key', secret: true },
+      { key: 'environment', label: 'Environment', placeholder: 'sandbox or production' },
+    ],
+  },
+  {
+    key: 'plaid', name: 'Plaid', icon: '🏦', description: 'Identity & bank account verification (KYC/KYB)', category: 'KYC',
+    apiPath: '/api/v1/organization/integrations/plaid/credentials',
+    credentialFields: [
+      { key: 'clientId', label: 'Client ID', placeholder: 'Your Plaid client_id' },
+      { key: 'secret', label: 'Secret', placeholder: 'Your Plaid secret', secret: true },
+      { key: 'environment', label: 'Environment', placeholder: 'sandbox, development, or production' },
+    ],
+  },
+  { key: 'stripe', name: 'Stripe', icon: '💳', description: 'Payment processing & billing', category: 'Billing' },
+  { key: 'gmail', name: 'Gmail', icon: '📧', description: 'Email sync for deal context tracking', category: 'Email' },
+  { key: 'outlook', name: 'Outlook', icon: '📬', description: 'Email sync for deal context tracking', category: 'Email' },
+];
+
 function OrgIntegrationsSection({ T }: { T: ThemeType }) {
-  const integrations = [
-    { name: 'DocuSign', icon: '✍️', description: 'Document signing for PSAs, LOIs, loan docs', status: 'not_configured', category: 'Signing' },
-    { name: 'Notarize', icon: '📜', description: 'Remote online notarization', status: 'not_configured', category: 'Signing' },
-    { name: 'Plaid', icon: '🏦', description: 'Identity & bank account verification', status: 'not_configured', category: 'KYC' },
-    { name: 'Stripe', icon: '💳', description: 'Payment processing & billing', status: 'connected', category: 'Billing' },
-    { name: 'Gmail', icon: '📧', description: 'Email sync for deal tracking', status: 'available', category: 'Email' },
-    { name: 'Outlook', icon: '📬', description: 'Email sync for deal tracking', status: 'available', category: 'Email' },
-  ];
+  const [statuses, setStatuses] = useState<Record<string, string>>({ stripe: 'connected', gmail: 'available', outlook: 'available' });
+  const [openForm, setOpenForm] = useState<IntegrationKey | null>(null);
+  const [formValues, setFormValues] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<{ key: IntegrationKey; type: 'success' | 'error'; text: string } | null>(null);
 
   const statusColor = (s: string) => s === 'connected' ? T.text.green : s === 'available' ? T.text.cyan : T.text.muted;
   const statusLabel = (s: string) => s === 'connected' ? '● CONNECTED' : s === 'available' ? '○ AVAILABLE' : '○ NOT CONFIGURED';
 
+  const handleConnect = async (def: IntegrationDef) => {
+    if (!def.apiPath || !def.credentialFields) return;
+    setSaving(true);
+    setMessage(null);
+    try {
+      const body: Record<string, string> = {};
+      def.credentialFields.forEach(f => { body[f.key] = formValues[f.key] || ''; });
+      await apiClient.post(def.apiPath, body);
+      setStatuses(prev => ({ ...prev, [def.key]: 'connected' }));
+      setOpenForm(null);
+      setFormValues({});
+      setMessage({ key: def.key, type: 'success', text: `${def.name} connected successfully` });
+      setTimeout(() => setMessage(null), 4000);
+    } catch (err: any) {
+      setMessage({ key: def.key, type: 'error', text: err?.response?.data?.error || `Failed to connect ${def.name}` });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%', fontSize: 10, padding: '5px 8px',
+    background: T.bg.panelAlt, border: `1px solid ${T.border.medium}`,
+    color: T.text.primary, outline: 'none', fontFamily: T.font.mono,
+  };
+
   return (
     <div style={{ padding: 20 }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: T.text.primary, marginBottom: 8, fontFamily: T.font.mono }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: T.text.primary, marginBottom: 6, fontFamily: T.font.mono }}>
         🔌 ORGANIZATION INTEGRATIONS
       </div>
       <div style={{ fontSize: 10, color: T.text.secondary, marginBottom: 20 }}>
-        Connect third-party services at the organization level. Members bring their own email accounts.
+        Connect third-party services at the organization level. Credentials are encrypted at rest.
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
-        {integrations.map((int, i) => (
-          <div key={i} style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, padding: 16 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 20 }}>{int.icon}</span>
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: T.text.primary }}>{int.name}</div>
-                  <div style={{ fontSize: 9, color: T.text.muted }}>{int.category}</div>
+        {INTEGRATION_DEFS.map((def) => {
+          const status = statuses[def.key] || 'not_configured';
+          const isOpen = openForm === def.key;
+          const msg = message?.key === def.key ? message : null;
+          return (
+            <div key={def.key} style={{ background: T.bg.panel, border: `1px solid ${isOpen ? T.text.amber + '88' : T.border.subtle}`, padding: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 20 }}>{def.icon}</span>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: T.text.primary }}>{def.name}</div>
+                    <div style={{ fontSize: 9, color: T.text.muted }}>{def.category}</div>
+                  </div>
                 </div>
+                <span style={{ fontSize: 9, color: statusColor(status) }}>{statusLabel(status)}</span>
               </div>
-              <span style={{ fontSize: 9, color: statusColor(int.status) }}>{statusLabel(int.status)}</span>
+              <div style={{ fontSize: 10, color: T.text.secondary, marginBottom: 12 }}>{def.description}</div>
+
+              {msg && (
+                <div style={{ fontSize: 9, padding: '4px 8px', marginBottom: 8, color: msg.type === 'success' ? T.text.green : T.text.red, background: (msg.type === 'success' ? T.text.green : T.text.red) + '11', border: `1px solid ${(msg.type === 'success' ? T.text.green : T.text.red)}44` }}>
+                  {msg.text}
+                </div>
+              )}
+
+              {isOpen && def.credentialFields && (
+                <div style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {def.credentialFields.map(f => (
+                    <div key={f.key}>
+                      <div style={{ fontSize: 9, color: T.text.secondary, marginBottom: 2, fontFamily: T.font.mono }}>{f.label}</div>
+                      <input
+                        type={f.secret ? 'password' : 'text'}
+                        placeholder={f.placeholder}
+                        value={formValues[f.key] || ''}
+                        onChange={e => setFormValues(prev => ({ ...prev, [f.key]: e.target.value }))}
+                        style={inputStyle}
+                      />
+                    </div>
+                  ))}
+                  <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                    <button
+                      onClick={() => handleConnect(def)}
+                      disabled={saving}
+                      style={{ fontSize: 9, fontWeight: 700, padding: '5px 12px', background: T.text.amber, color: T.bg.terminal, border: 'none', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}
+                    >
+                      {saving ? 'SAVING...' : 'SAVE CREDENTIALS'}
+                    </button>
+                    <button
+                      onClick={() => { setOpenForm(null); setFormValues({}); }}
+                      style={{ fontSize: 9, padding: '5px 10px', background: 'transparent', color: T.text.muted, border: `1px solid ${T.border.medium}`, cursor: 'pointer' }}
+                    >
+                      CANCEL
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {!isOpen && (
+                <button
+                  onClick={() => { if (def.credentialFields) { setOpenForm(def.key); setFormValues({}); } }}
+                  style={{ width: '100%', fontSize: 10, fontWeight: 600, color: status === 'connected' ? T.text.muted : T.text.amber, background: 'transparent', border: `1px solid ${status === 'connected' ? T.text.muted : T.text.amber}44`, padding: '6px 12px', cursor: def.credentialFields ? 'pointer' : 'default' }}
+                >
+                  {status === 'connected' ? 'RECONFIGURE' : def.credentialFields ? 'CONNECT' : 'MANAGED VIA STRIPE'}
+                </button>
+              )}
             </div>
-            <div style={{ fontSize: 10, color: T.text.secondary, marginBottom: 12 }}>{int.description}</div>
-            <button style={{ width: '100%', fontSize: 10, fontWeight: 600, color: int.status === 'connected' ? T.text.muted : T.text.amber, background: 'transparent', border: `1px solid ${int.status === 'connected' ? T.text.muted : T.text.amber}44`, padding: '6px 12px', cursor: 'pointer' }}>
-              {int.status === 'connected' ? 'MANAGE' : 'CONNECT'}
-            </button>
-          </div>
-        ))}
+          );
+        })}
+      </div>
+
+      <div style={{ marginTop: 16, padding: '8px 12px', background: T.bg.panelAlt, border: `1px solid ${T.border.subtle}`, fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>
+        Credentials are AES-256 encrypted before storage. API keys are never exposed in logs.
       </div>
     </div>
   );
