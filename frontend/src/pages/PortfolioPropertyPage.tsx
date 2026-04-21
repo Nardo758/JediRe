@@ -16,7 +16,7 @@ type TabType =
   | 'ops-intel' | 'revenue' | 'actuals'
   | 'investors' | 'lifecycle' | 'debt-monitor'
   | 'ai-learning' | 'events'
-  | 'documents' | 'deal-team';
+  | 'documents' | 'reports' | 'deal-team';
 
 interface DealSummary {
   deal: {
@@ -226,57 +226,297 @@ const CompSetTab: React.FC<{ dealId: string }> = ({ dealId }) => {
   );
 };
 
-const RevenueMgmtTab: React.FC<{ dealId: string }> = ({ dealId }) => {
-  const [subTab, setSubTab] = useState<'pva' | 'position'>('pva');
+const PerformanceTab: React.FC<{ dealId: string; financials: MonthlyFinancial[] }> = ({ dealId, financials }) => {
+  const [timeframe, setTimeframe] = useState<'mtd' | 'qtd' | 'ytd' | 'ltm'>('ltm');
   const [pvaData, setPvaData] = useState<any[]>([]);
-  const [position, setPosition] = useState<any>(null);
-  const [pvaLoading, setPvaLoading] = useState(false);
-  const [posLoading, setPosLoading] = useState(false);
+  const [pvaLoading, setPvaLoading] = useState(true);
 
   useEffect(() => {
-    setPvaLoading(true);
     apiClient.get(`/api/v1/operations/${dealId}/projected-vs-actual`)
       .then(r => setPvaData(r.data?.data ?? []))
       .catch(() => setPvaData([]))
       .finally(() => setPvaLoading(false));
   }, [dealId]);
 
+  const fmt$ = (v: any) => v == null ? '—' : `$${Number(v).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+
+  const now = new Date();
+  const filtered = financials.filter(f => {
+    const d = new Date(f.report_month);
+    if (timeframe === 'mtd') return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    if (timeframe === 'qtd') {
+      const q = Math.floor(now.getMonth() / 3);
+      return d.getFullYear() === now.getFullYear() && Math.floor(d.getMonth() / 3) === q;
+    }
+    if (timeframe === 'ytd') return d.getFullYear() === now.getFullYear();
+    return d >= new Date(now.getFullYear() - 1, now.getMonth(), 1);
+  });
+
+  const totNOI = filtered.reduce((s, f) => s + (parseFloat(f.noi as any) || 0), 0);
+  const totRev = filtered.reduce((s, f) => s + (parseFloat(f.net_rental_income as any) || 0), 0);
+  const totOpex = filtered.reduce((s, f) => s + (parseFloat(f.total_opex as any) || 0), 0);
+  const avgOcc = filtered.length ? filtered.reduce((s, f) => s + (parseFloat(f.occupancy_rate as any) || 0), 0) / filtered.length * 100 : null;
+
+  return (
+    <div className="space-y-4 p-6 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+      <div className="flex items-center gap-2">
+        {(['mtd', 'qtd', 'ytd', 'ltm'] as const).map(tf => (
+          <button
+            key={tf}
+            onClick={() => setTimeframe(tf)}
+            className={`px-4 py-1.5 text-xs font-bold rounded transition-colors ${timeframe === tf ? 'bg-amber-500 text-white' : 'bg-white border border-stone-200 text-stone-600 hover:bg-stone-50'}`}
+          >
+            {tf.toUpperCase()}
+          </button>
+        ))}
+        <span className="text-xs text-stone-400 ml-2">
+          {filtered.length} month{filtered.length !== 1 ? 's' : ''} of data
+        </span>
+      </div>
+
+      <div className="grid grid-cols-4 gap-4">
+        {[
+          { label: 'Total NOI', value: fmt$(totNOI), color: 'text-blue-700' },
+          { label: 'Total Revenue', value: fmt$(totRev), color: 'text-stone-700' },
+          { label: 'Total OpEx', value: fmt$(totOpex), color: 'text-red-600' },
+          { label: 'Avg Occupancy', value: avgOcc != null ? `${avgOcc.toFixed(1)}%` : '—', color: 'text-emerald-700' },
+        ].map((k, i) => (
+          <div key={i} className="bg-white border border-stone-200 rounded-lg p-4">
+            <div className="text-xs text-stone-400 mb-1">{k.label}</div>
+            <div className={`text-xl font-bold ${k.color}`}>{k.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {pvaLoading ? (
+        <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" /></div>
+      ) : pvaData.length > 0 ? (
+        <div className="bg-white border border-stone-200 rounded-lg overflow-hidden">
+          <div className="px-4 py-2 bg-stone-50 border-b text-xs font-semibold text-stone-500 uppercase tracking-wide">Projected vs Actual — NOI</div>
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-stone-400">
+                {['Month', 'Projected NOI', 'Actual NOI', 'Variance $', 'Variance %', 'Proj Occ', 'Actual Occ'].map(h => (
+                  <th key={h} className="text-left px-3 py-2">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {pvaData.map((row: any, i: number) => {
+                const varD = (row.actual_noi ?? 0) - (row.projected_noi ?? 0);
+                const varPct = row.projected_noi ? (varD / row.projected_noi) * 100 : null;
+                return (
+                  <tr key={i} className="border-t border-stone-50 hover:bg-blue-50/30">
+                    <td className="px-3 py-1.5 font-medium text-stone-700">{row.report_month?.slice(0, 7)}</td>
+                    <td className="px-3 py-1.5">{fmt$(row.projected_noi)}</td>
+                    <td className="px-3 py-1.5">{fmt$(row.actual_noi)}</td>
+                    <td className={`px-3 py-1.5 font-medium ${varD >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                      {varD >= 0 ? '+' : ''}{fmt$(varD)}
+                    </td>
+                    <td className={`px-3 py-1.5 ${(varPct ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                      {varPct != null ? `${varPct >= 0 ? '+' : ''}${varPct.toFixed(1)}%` : '—'}
+                    </td>
+                    <td className="px-3 py-1.5 text-stone-500">{row.projected_occupancy != null ? `${(Number(row.projected_occupancy) * 100).toFixed(1)}%` : '—'}</td>
+                    <td className="px-3 py-1.5 text-stone-500">{row.actual_occupancy != null ? `${(Number(row.actual_occupancy) * 100).toFixed(1)}%` : '—'}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="bg-white border border-stone-200 rounded-lg p-8 text-center">
+          <div className="text-2xl mb-2">📊</div>
+          <div className="text-sm font-medium text-stone-500">No variance data yet</div>
+          <div className="text-xs text-stone-400 mt-1">Add Monthly Actuals to enable projected vs actual comparison</div>
+        </div>
+      )}
+
+      {filtered.length > 0 && (
+        <div className="bg-white border border-stone-200 rounded-lg overflow-hidden">
+          <div className="px-4 py-2 bg-stone-50 border-b text-xs font-semibold text-stone-500 uppercase tracking-wide">Monthly P&L Detail</div>
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-stone-400">
+                {['Month', 'NOI', 'Occ %', 'Avg Rent', 'OpEx', 'Cash Flow'].map(h => (
+                  <th key={h} className="text-left px-3 py-2">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((f, i) => (
+                <tr key={i} className="border-t border-stone-50 hover:bg-blue-50/30">
+                  <td className="px-3 py-1.5 font-medium text-stone-700">{f.report_month?.slice(0, 7)}</td>
+                  <td className="px-3 py-1.5 text-blue-700 font-semibold">{fmt$(parseFloat(f.noi as any))}</td>
+                  <td className="px-3 py-1.5">{f.occupancy_rate != null ? `${(Number(f.occupancy_rate) * 100).toFixed(1)}%` : '—'}</td>
+                  <td className="px-3 py-1.5">{fmt$(parseFloat(f.avg_effective_rent as any))}</td>
+                  <td className="px-3 py-1.5 text-red-600">{fmt$(parseFloat(f.total_opex as any))}</td>
+                  <td className={`px-3 py-1.5 font-medium ${parseFloat(f.cash_flow_before_tax as any) < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                    {fmt$(parseFloat(f.cash_flow_before_tax as any))}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const RevenueMgmtTab: React.FC<{ dealId: string }> = ({ dealId }) => {
+  const [subTab, setSubTab] = useState<'rent-roll' | 'other-income' | 'pva' | 'position'>('pva');
+  const [pvaData, setPvaData] = useState<any[]>([]);
+  const [position, setPosition] = useState<any>(null);
+  const [rentRoll, setRentRoll] = useState<{ units: any[]; snapshots: string[] } | null>(null);
+  const [otherIncome, setOtherIncome] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
   useEffect(() => {
-    if (subTab !== 'position') return;
-    if (position) return;
-    setPosLoading(true);
-    apiClient.get(`/api/v1/lifecycle/${dealId}/competitive-position`)
-      .then(r => setPosition(r.data))
-      .catch(() => setPosition(null))
-      .finally(() => setPosLoading(false));
-  }, [dealId, subTab, position]);
+    apiClient.get(`/api/v1/operations/${dealId}/projected-vs-actual`)
+      .then(r => setPvaData(r.data?.data ?? [])).catch(() => {});
+  }, [dealId]);
+
+  useEffect(() => {
+    if (subTab === 'position' && !position) {
+      setLoading(true);
+      apiClient.get(`/api/v1/lifecycle/${dealId}/competitive-position`)
+        .then(r => setPosition(r.data)).catch(() => setPosition(null))
+        .finally(() => setLoading(false));
+    }
+    if (subTab === 'rent-roll' && !rentRoll) {
+      setLoading(true);
+      apiClient.get(`/api/v1/operations/${dealId}/rent-roll`)
+        .then(r => setRentRoll({ units: r.data?.units ?? [], snapshots: r.data?.snapshots ?? [] }))
+        .catch(() => setRentRoll({ units: [], snapshots: [] }))
+        .finally(() => setLoading(false));
+    }
+    if (subTab === 'other-income' && !otherIncome.length) {
+      setLoading(true);
+      apiClient.get(`/api/v1/operations/${dealId}/other-income`)
+        .then(r => setOtherIncome(r.data?.data ?? []))
+        .catch(() => setOtherIncome([]))
+        .finally(() => setLoading(false));
+    }
+  }, [dealId, subTab]);
 
   const fmt$ = (v: any) => v == null ? '—' : `$${Number(v).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
-  const fmtPct = (v: any, mult = true) => v == null ? '—' : `${(mult ? Number(v) * 100 : Number(v)).toFixed(1)}%`;
+  const fmtPct = (v: any) => v == null ? '—' : `${(Number(v) * 100).toFixed(1)}%`;
 
   const subTabs = [
+    { id: 'rent-roll', label: 'Rent Roll' },
+    { id: 'other-income', label: 'Other Income' },
     { id: 'pva', label: 'Projected vs Actual' },
     { id: 'position', label: 'Competitive Position' },
   ] as const;
 
   return (
     <div className="space-y-4 p-6 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap">
         {subTabs.map(s => (
           <button
             key={s.id}
             onClick={() => setSubTab(s.id)}
-            className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${subTab === s.id ? 'bg-blue-100 text-blue-700' : 'text-stone-600 hover:bg-stone-100'}`}
+            className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${subTab === s.id ? 'bg-blue-100 text-blue-700' : 'text-stone-600 hover:bg-stone-100 border border-stone-200'}`}
           >
             {s.label}
           </button>
         ))}
       </div>
 
-      {subTab === 'pva' && (
-        pvaLoading ? (
-          <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>
-        ) : pvaData.length === 0 ? (
+      {loading && <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>}
+
+      {!loading && subTab === 'rent-roll' && (
+        !rentRoll || rentRoll.units.length === 0 ? (
+          <div className="text-center py-16 text-stone-400">
+            <div className="text-3xl mb-2">📋</div>
+            <div className="text-sm font-medium">No rent roll imported</div>
+            <div className="text-xs mt-1">Use the Actuals tab to import rent roll snapshots</div>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {rentRoll.snapshots.length > 0 && (
+              <div className="text-xs text-stone-400">Snapshots: {rentRoll.snapshots.join(', ')}</div>
+            )}
+            <div className="bg-white border border-stone-200 rounded-lg overflow-hidden">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-stone-50 text-stone-500">
+                    {['Unit', 'Type', 'Status', 'Current Rent', 'Market Rent', 'LTL $', 'Lease End'].map(h => (
+                      <th key={h} className="text-left px-3 py-2 font-medium">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rentRoll.units.slice(0, 200).map((u: any, i: number) => {
+                    const ltl = u.current_rent && u.market_rent ? Number(u.current_rent) - Number(u.market_rent) : null;
+                    return (
+                      <tr key={i} className="border-t border-stone-50 hover:bg-blue-50/30">
+                        <td className="px-3 py-1.5 font-medium text-stone-700">{u.unit_number}</td>
+                        <td className="px-3 py-1.5 text-stone-500">{u.unit_type}</td>
+                        <td className="px-3 py-1.5">
+                          <span className={`px-1.5 py-0.5 rounded text-xs ${u.status === 'occupied' ? 'bg-emerald-100 text-emerald-700' : u.status === 'vacant' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                            {u.status}
+                          </span>
+                        </td>
+                        <td className="px-3 py-1.5">{fmt$(u.current_rent)}</td>
+                        <td className="px-3 py-1.5">{fmt$(u.market_rent)}</td>
+                        <td className={`px-3 py-1.5 font-medium ${ltl != null && ltl < 0 ? 'text-red-600' : 'text-emerald-600'}`}>{fmt$(ltl)}</td>
+                        <td className="px-3 py-1.5 text-stone-500">{u.lease_end?.slice(0, 10) ?? '—'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )
+      )}
+
+      {!loading && subTab === 'other-income' && (
+        otherIncome.length === 0 ? (
+          <div className="text-center py-16 text-stone-400">
+            <div className="text-3xl mb-2">💰</div>
+            <div className="text-sm font-medium">No other income data imported</div>
+            <div className="text-xs mt-1">Import parking, pet fees, storage, and ancillary income</div>
+          </div>
+        ) : (
+          <div className="bg-white border border-stone-200 rounded-lg overflow-hidden">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-stone-50 text-stone-500">
+                  {['Period', 'Parking', 'Pet Fees', 'Pet Rent', 'Storage', 'App Fees', 'Late Fees', 'Utility Reimb', 'Other', 'Total Est'].map(h => (
+                    <th key={h} className="text-left px-3 py-2 font-medium">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {otherIncome.map((row: any, i: number) => {
+                  const total = [row.parking, row.pet_fees, row.pet_rent, row.storage, row.application_fees, row.late_fees, row.utility_reimbursement, row.other]
+                    .reduce((s, v) => s + (Number(v) || 0), 0);
+                  return (
+                    <tr key={i} className="border-t border-stone-50 hover:bg-blue-50/30">
+                      <td className="px-3 py-1.5 font-medium text-stone-700">{row.period_start?.slice(0, 7)}</td>
+                      <td className="px-3 py-1.5">{fmt$(row.parking)}</td>
+                      <td className="px-3 py-1.5">{fmt$(row.pet_fees)}</td>
+                      <td className="px-3 py-1.5">{fmt$(row.pet_rent)}</td>
+                      <td className="px-3 py-1.5">{fmt$(row.storage)}</td>
+                      <td className="px-3 py-1.5">{fmt$(row.application_fees)}</td>
+                      <td className="px-3 py-1.5">{fmt$(row.late_fees)}</td>
+                      <td className="px-3 py-1.5">{fmt$(row.utility_reimbursement)}</td>
+                      <td className="px-3 py-1.5">{fmt$(row.other)}</td>
+                      <td className="px-3 py-1.5 font-semibold text-stone-700">{fmt$(total)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )
+      )}
+
+      {!loading && subTab === 'pva' && (
+        pvaData.length === 0 ? (
           <div className="text-center py-16 text-stone-400">
             <div className="text-3xl mb-2">📊</div>
             <div className="text-sm">No projected vs actual data available</div>
@@ -318,10 +558,8 @@ const RevenueMgmtTab: React.FC<{ dealId: string }> = ({ dealId }) => {
         )
       )}
 
-      {subTab === 'position' && (
-        posLoading ? (
-          <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>
-        ) : !position ? (
+      {!loading && subTab === 'position' && (
+        !position ? (
           <div className="text-center py-16 text-stone-400">
             <div className="text-3xl mb-2">🏙</div>
             <div className="text-sm">No competitive position data available</div>
@@ -332,7 +570,7 @@ const RevenueMgmtTab: React.FC<{ dealId: string }> = ({ dealId }) => {
               <div className="grid grid-cols-3 gap-4">
                 {[
                   { label: 'Market Rank', value: position.summary.market_rank ?? '—' },
-                  { label: 'Rent Premium / Discount', value: position.summary.rent_premium_pct != null ? `${Number(position.summary.rent_premium_pct).toFixed(1)}%` : '—' },
+                  { label: 'Rent Premium/Discount', value: position.summary.rent_premium_pct != null ? `${Number(position.summary.rent_premium_pct).toFixed(1)}%` : '—' },
                   { label: 'Occ vs Market', value: position.summary.occ_vs_market != null ? `${Number(position.summary.occ_vs_market) > 0 ? '+' : ''}${Number(position.summary.occ_vs_market).toFixed(1)}pp` : '—' },
                 ].map((m, i) => (
                   <div key={i} className="bg-white border border-stone-200 rounded-lg p-4 text-center">
@@ -373,54 +611,92 @@ const RevenueMgmtTab: React.FC<{ dealId: string }> = ({ dealId }) => {
   );
 };
 
-const AILearningTab: React.FC = () => (
-  <div className="space-y-6 p-6 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
-    <div className="grid grid-cols-2 gap-6">
-      <div className="bg-white border border-stone-200 rounded-lg p-5">
-        <h3 className="text-sm font-semibold text-stone-700 mb-4 uppercase tracking-wide">Agent Accuracy</h3>
-        <div className="grid grid-cols-2 gap-3">
-          {[
-            { label: 'Hit Rate (±10%)', value: '72%', color: 'text-emerald-600' },
-            { label: 'Hit Rate (±20%)', value: '89%', color: 'text-emerald-600' },
-            { label: 'Mean Bias', value: '+2.3%', color: 'text-amber-600' },
-            { label: 'Predictions', value: '847', color: 'text-stone-800' },
-          ].map((m, i) => (
-            <div key={i} className="bg-stone-50 rounded-lg p-3 text-center">
-              <div className={`text-2xl font-bold ${m.color}`}>{m.value}</div>
-              <div className="text-xs text-stone-400 mt-1">{m.label}</div>
+const AILearningTab: React.FC<{ dealId: string }> = ({ dealId }) => {
+  const [actuals, setActuals] = useState<{ count: number; tier: number } | null>(null);
+
+  useEffect(() => {
+    apiClient.get(`/api/v1/operations/${dealId}/monthly-actuals?limit=36`)
+      .then(r => {
+        const data = r.data?.data ?? [];
+        const count = data.length;
+        const tier = count >= 3 ? 2 : count > 0 ? 3 : 4;
+        setActuals({ count, tier });
+      }).catch(() => setActuals({ count: 0, tier: 4 }));
+  }, [dealId]);
+
+  return (
+    <div className="space-y-6 p-6 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+      {actuals && (
+        <div className="bg-white border border-stone-200 rounded-lg p-5">
+          <h3 className="text-sm font-semibold text-stone-700 mb-3 uppercase tracking-wide">This Asset's Learning Status</h3>
+          <div className="grid grid-cols-3 gap-4">
+            <div className="text-center">
+              <div className={`text-3xl font-bold ${actuals.tier === 2 ? 'text-emerald-600' : actuals.tier === 3 ? 'text-amber-500' : 'text-stone-400'}`}>
+                Tier {actuals.tier}
+              </div>
+              <div className="text-xs text-stone-400 mt-1">Evidence Layer Active</div>
             </div>
-          ))}
+            <div className="text-center">
+              <div className={`text-3xl font-bold ${actuals.count >= 3 ? 'text-emerald-600' : 'text-amber-500'}`}>
+                {actuals.count}
+              </div>
+              <div className="text-xs text-stone-400 mt-1">Months Recorded</div>
+            </div>
+            <div className="text-center">
+              <div className={`text-3xl font-bold ${actuals.count >= 3 ? 'text-emerald-600' : 'text-stone-400'}`}>
+                {actuals.count >= 3 ? '✓' : `${3 - actuals.count} more`}
+              </div>
+              <div className="text-xs text-stone-400 mt-1">{actuals.count >= 3 ? 'Contributing to benchmarks' : 'Until Tier 2 activation'}</div>
+            </div>
+          </div>
+          <p className="text-xs text-stone-500 leading-relaxed mt-4">
+            Monthly Actuals feed the CashFlow Agent's <span className="font-semibold text-blue-600">Tier {actuals.tier} evidence layer</span>.
+            {actuals.count >= 3
+              ? " This asset's performance data is live and contributing to future underwriting benchmarks."
+              : ` Record ${3 - actuals.count} more month${3 - actuals.count !== 1 ? 's' : ''} of actuals to activate Tier 2 and contribute to portfolio comparables.`
+            }
+          </p>
         </div>
-      </div>
-      <div className="bg-white border border-stone-200 rounded-lg p-5">
-        <h3 className="text-sm font-semibold text-stone-700 mb-4 uppercase tracking-wide">By Assumption Type</h3>
-        <div className="space-y-2">
-          {[
-            { type: 'Rent Growth', hit: '78%', bias: '+1.2%', n: 312 },
-            { type: 'Vacancy Rate', hit: '71%', bias: '+3.1%', n: 298 },
-            { type: 'Exit Cap Rate', hit: '69%', bias: '-0.8%', n: 145 },
-            { type: 'OpEx Ratio', hit: '82%', bias: '+0.6%', n: 92 },
-          ].map((r, i) => (
-            <div key={i} className="flex items-center justify-between py-1.5 border-t border-stone-50 text-xs">
-              <span className="text-stone-600 w-28">{r.type}</span>
-              <span className="text-emerald-600 font-semibold w-10 text-right">{r.hit}</span>
-              <span className={`w-12 text-right font-medium ${r.bias.startsWith('+') ? 'text-amber-600' : 'text-blue-600'}`}>{r.bias}</span>
-              <span className="text-stone-400 w-8 text-right">n={r.n}</span>
-            </div>
-          ))}
+      )}
+      <div className="grid grid-cols-2 gap-6">
+        <div className="bg-white border border-stone-200 rounded-lg p-5">
+          <h3 className="text-sm font-semibold text-stone-700 mb-4 uppercase tracking-wide">Portfolio-Wide Agent Accuracy</h3>
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { label: 'Hit Rate (±10%)', value: '72%', color: 'text-emerald-600' },
+              { label: 'Hit Rate (±20%)', value: '89%', color: 'text-emerald-600' },
+              { label: 'Mean Bias', value: '+2.3%', color: 'text-amber-600' },
+              { label: 'Predictions', value: '847', color: 'text-stone-800' },
+            ].map((m, i) => (
+              <div key={i} className="bg-stone-50 rounded-lg p-3 text-center">
+                <div className={`text-2xl font-bold ${m.color}`}>{m.value}</div>
+                <div className="text-xs text-stone-400 mt-1">{m.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="bg-white border border-stone-200 rounded-lg p-5">
+          <h3 className="text-sm font-semibold text-stone-700 mb-4 uppercase tracking-wide">By Assumption Type</h3>
+          <div className="space-y-2">
+            {[
+              { type: 'Rent Growth', hit: '78%', bias: '+1.2%', n: 312 },
+              { type: 'Vacancy Rate', hit: '71%', bias: '+3.1%', n: 298 },
+              { type: 'Exit Cap Rate', hit: '69%', bias: '-0.8%', n: 145 },
+              { type: 'OpEx Ratio', hit: '82%', bias: '+0.6%', n: 92 },
+            ].map((r, i) => (
+              <div key={i} className="flex items-center justify-between py-1.5 border-t border-stone-50 text-xs">
+                <span className="text-stone-600 w-28">{r.type}</span>
+                <span className="text-emerald-600 font-semibold w-10 text-right">{r.hit}</span>
+                <span className={`w-12 text-right font-medium ${r.bias.startsWith('+') ? 'text-amber-600' : 'text-blue-600'}`}>{r.bias}</span>
+                <span className="text-stone-400 w-8 text-right">n={r.n}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>
-    <div className="bg-white border border-stone-200 rounded-lg p-5">
-      <h3 className="text-sm font-semibold text-stone-700 mb-4 uppercase tracking-wide">This Asset's Contribution to Portfolio Learning</h3>
-      <p className="text-xs text-stone-500 leading-relaxed">
-        Monthly Actuals recorded for this asset feed the CashFlow Agent's <span className="font-semibold text-blue-600">Tier 2 evidence layer</span>.
-        Once 3+ months are recorded, this deal's performance data becomes a comparable for similar assets in the same submarket.
-        Nightly aggregation runs produce non-empty percentile benchmarks on future underwriting pro formas, improving suggestion accuracy across the portfolio.
-      </p>
-    </div>
-  </div>
-);
+  );
+};
 
 export default function PortfolioPropertyPage() {
   const { dealId } = useParams<{ dealId: string }>();
@@ -506,6 +782,7 @@ export default function PortfolioPropertyPage() {
     ]},
     { label: 'ADMIN', tabs: [
       { id: 'documents',  short: 'Documents' },
+      { id: 'reports',    short: 'Reports' },
       { id: 'deal-team',  short: 'Deal Team' },
     ]},
   ];
@@ -913,7 +1190,7 @@ export default function PortfolioPropertyPage() {
             ← Assets Owned
           </button>
           <span className="text-stone-300">·</span>
-          <button onClick={() => navigate(`/deals/${dealId}`)} className="text-blue-500 hover:text-blue-700 text-sm">
+          <button onClick={() => navigate(`/deals/${dealId}/detail`)} className="text-blue-500 hover:text-blue-700 text-sm">
             View Underwriting →
           </button>
         </div>
@@ -983,7 +1260,7 @@ export default function PortfolioPropertyPage() {
 
       <div className="flex-1 overflow-hidden">
         {activeTab === 'overview'     && renderOverview()}
-        {activeTab === 'performance'  && <RevenueMgmtTab dealId={dealId!} />}
+        {activeTab === 'performance'  && <PerformanceTab dealId={dealId!} financials={financials} />}
         {activeTab === 'comp-set'     && <CompSetTab dealId={dealId!} />}
         {activeTab === 'leasing'      && renderLeasing()}
         {activeTab === 'unit-mix'     && renderUnitMix()}
@@ -1014,7 +1291,7 @@ export default function PortfolioPropertyPage() {
             <MonitorTab dealStatus="owned" />
           </div>
         )}
-        {activeTab === 'ai-learning'  && <AILearningTab />}
+        {activeTab === 'ai-learning'  && <AILearningTab dealId={dealId!} />}
         {activeTab === 'events'       && (
           <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
             <EventTimelineSection dealId={dealId!} deal={deal as any} />
@@ -1023,6 +1300,33 @@ export default function PortfolioPropertyPage() {
         {activeTab === 'documents'    && (
           <div className="overflow-y-auto p-6" style={{ maxHeight: 'calc(100vh - 280px)' }}>
             <DocumentsSection deal={deal as any} />
+          </div>
+        )}
+        {activeTab === 'reports'      && (
+          <div className="space-y-6 p-6 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+            <div className="bg-white border border-stone-200 rounded-lg p-8 text-center">
+              <div className="text-3xl mb-3">📑</div>
+              <h3 className="text-lg font-semibold text-stone-700 mb-2">Asset Reports</h3>
+              <p className="text-sm text-stone-400 max-w-md mx-auto">
+                Export financial summaries, investor reports, and performance packages for this asset.
+              </p>
+              <div className="grid grid-cols-3 gap-4 mt-6 text-left">
+                {[
+                  { title: 'Monthly Performance Summary', desc: 'NOI, occupancy, cash flow trends', icon: '📊' },
+                  { title: 'Investor Report', desc: 'LP-ready quarterly update with returns', icon: '👥' },
+                  { title: 'Rent Roll Export', desc: 'Unit-by-unit current status and rent', icon: '📋' },
+                ].map((r, i) => (
+                  <div key={i} className="border border-stone-200 rounded-lg p-4">
+                    <div className="text-xl mb-2">{r.icon}</div>
+                    <div className="text-sm font-medium text-stone-700">{r.title}</div>
+                    <div className="text-xs text-stone-400 mt-1">{r.desc}</div>
+                    <button className="mt-3 text-xs px-3 py-1.5 bg-stone-100 text-stone-600 rounded hover:bg-stone-200 transition-colors">
+                      Export CSV
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         )}
         {activeTab === 'deal-team'    && (

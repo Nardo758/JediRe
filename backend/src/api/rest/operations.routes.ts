@@ -363,6 +363,57 @@ router.post('/:dealId/rent-roll', requireAuth, async (req: AuthenticatedRequest,
   }
 });
 
+/**
+ * GET /api/v1/operations/:dealId/rent-roll
+ * Retrieve latest rent roll snapshot
+ */
+router.get('/:dealId/rent-roll', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const ownerCheck = await query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
+      [dealId, req.user!.userId]
+    );
+    if (ownerCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
+    const result = await query(
+      `SELECT * FROM rent_roll_units WHERE deal_id = $1 ORDER BY as_of_date DESC, unit_number LIMIT 500`,
+      [dealId]
+    );
+    const asDates = [...new Set(result.rows.map((r: any) => r.as_of_date?.slice?.(0, 10)).filter(Boolean))];
+    res.json({ success: true, units: result.rows, snapshots: asDates });
+  } catch (err) {
+    logger.error('Get rent roll error:', err);
+    res.status(500).json({ success: false, error: 'Failed to get rent roll' });
+  }
+});
+
+/**
+ * GET /api/v1/operations/:dealId/other-income
+ * Retrieve other income history
+ */
+router.get('/:dealId/other-income', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const ownerCheck = await query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
+      [dealId, req.user!.userId]
+    );
+    if (ownerCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
+    const result = await query(
+      `SELECT * FROM other_income_tracking WHERE deal_id = $1 ORDER BY period_start DESC LIMIT 36`,
+      [dealId]
+    );
+    res.json({ success: true, data: result.rows });
+  } catch (err) {
+    logger.error('Get other income error:', err);
+    res.status(500).json({ success: false, error: 'Failed to get other income' });
+  }
+});
+
 // ─── Traffic Analysis ─────────────────────────────────────────────────
 
 /**
