@@ -518,7 +518,9 @@ router.post('/:dealId/feed-learning', requireAuth, async (req: AuthenticatedRequ
 router.get('/:dealId/monthly-actuals', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
-    const { limit = '36', is_budget = 'false' } = req.query as Record<string, string>;
+    const { limit: limitRaw = '36', is_budget = 'false' } = req.query as Record<string, string>;
+
+    const limitNum = Math.min(Math.max(parseInt(limitRaw, 10) || 36, 1), 120);
 
     const result = await query(
       `SELECT
@@ -534,7 +536,7 @@ router.get('/:dealId/monthly-actuals', requireAuth, async (req: AuthenticatedReq
        WHERE deal_id = $1 AND is_budget = $2
        ORDER BY report_month DESC
        LIMIT $3`,
-      [dealId, is_budget === 'true', parseInt(limit, 10)]
+      [dealId, is_budget === 'true', limitNum]
     );
 
     res.json({ data: result.rows, total: result.rows.length });
@@ -547,7 +549,6 @@ router.get('/:dealId/monthly-actuals', requireAuth, async (req: AuthenticatedReq
 interface MonthlyActualInput {
   report_month: string;
   is_budget?: boolean;
-  is_proforma?: boolean;
   occupied_units?: number;
   total_units?: number;
   occupancy_rate?: number;
@@ -691,9 +692,11 @@ router.post('/:dealId/monthly-actuals', requireAuth, async (req: AuthenticatedRe
                 a.notes ?? null,
               ]
             );
+            imported++;
           } else {
-            // No property linked: insert with deal_id only (no unique-conflict resolution)
-            await client.query(
+            // No property linked: insert with deal_id only.
+            // ON CONFLICT DO NOTHING so rowCount tells us whether a row was actually inserted.
+            const fallbackResult = await client.query(
               `INSERT INTO deal_monthly_actuals (
                  deal_id, report_month, is_budget, is_proforma,
                  occupied_units, total_units, occupancy_rate,
@@ -725,8 +728,8 @@ router.post('/:dealId/monthly-actuals', requireAuth, async (req: AuthenticatedRe
                 a.notes ?? null,
               ]
             );
+            if ((fallbackResult.rowCount ?? 0) > 0) imported++;
           }
-          imported++;
         } catch (rowErr: unknown) {
           const rowMsg = rowErr instanceof Error ? rowErr.message : String(rowErr);
           errors.push({ row: i + 1, error: rowMsg });
