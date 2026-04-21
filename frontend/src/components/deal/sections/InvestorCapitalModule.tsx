@@ -534,7 +534,7 @@ function DistributionsTab({ dists, summary, loading, error, onLoadDistItems, onC
                         <table style={S.subTable}>
                           <thead>
                             <tr>
-                              {['Investor','Gross','Ret. Capital','Pref Return','Profit','Fed W/H','State W/H','Net','K-1'].map(h => <th key={h} style={S.subTh}>{h}</th>)}
+                              {['Investor','Gross','Ret. Capital','Pref Return','Profit','Fed W/H','State W/H','Foreign W/H','Net','K-1'].map(h => <th key={h} style={S.subTh}>{h}</th>)}
                             </tr>
                           </thead>
                           <tbody>
@@ -547,6 +547,7 @@ function DistributionsTab({ dists, summary, loading, error, onLoadDistItems, onC
                                 <td style={{ ...S.subTd, textAlign: 'right' as const }}>{fmtAmt(item.profit_share)}</td>
                                 <td style={{ ...S.subTd, textAlign: 'right' as const, color: BT.text.red }}>{fmtAmt(item.federal_withholding)}</td>
                                 <td style={{ ...S.subTd, textAlign: 'right' as const, color: BT.text.red }}>{fmtAmt(item.state_withholding)}</td>
+                                <td style={{ ...S.subTd, textAlign: 'right' as const, color: BT.text.red }}>{fmtAmt(item.foreign_withholding)}</td>
                                 <td style={{ ...S.subTd, textAlign: 'right' as const, color: BT.text.green }}>{fmtAmt(item.net_amount)}</td>
                                 <td style={S.subTd}><span style={S.badge(item.k1_included ? BT.text.green : BT.text.muted)}>{item.k1_included ? 'YES' : 'NO'}</span></td>
                               </tr>

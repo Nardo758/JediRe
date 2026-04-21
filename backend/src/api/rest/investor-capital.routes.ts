@@ -560,14 +560,12 @@ router.put('/deals/:dealId/waterfall', requireAuth, async (req: AuthenticatedReq
        RETURNING *`,
       [req.params.dealId, pref_rate, catchup_pct, clawback, clawback_lookback_months, lp_gp_split_base, notes ?? null],
     );
-    if (tiers.length) {
-      await query('DELETE FROM waterfall_tiers WHERE waterfall_id=$1', [wf.rows[0].id]);
-      for (const t of tiers) {
-        await query(
-          'INSERT INTO waterfall_tiers (waterfall_id,tier_order,irr_hurdle_low,irr_hurdle_high,lp_pct,gp_pct,notes) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-          [wf.rows[0].id, t.tier_order, t.irr_hurdle_low ?? null, t.irr_hurdle_high ?? null, t.lp_pct, t.gp_pct, t.notes ?? null],
-        );
-      }
+    await query('DELETE FROM waterfall_tiers WHERE waterfall_id=$1', [wf.rows[0].id]);
+    for (const t of tiers) {
+      await query(
+        'INSERT INTO waterfall_tiers (waterfall_id,tier_order,irr_hurdle_low,irr_hurdle_high,lp_pct,gp_pct,notes) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+        [wf.rows[0].id, t.tier_order, t.irr_hurdle_low ?? null, t.irr_hurdle_high ?? null, t.lp_pct, t.gp_pct, t.notes ?? null],
+      );
     }
     const savedTiers = await query('SELECT * FROM waterfall_tiers WHERE waterfall_id=$1 ORDER BY tier_order', [wf.rows[0].id]);
     res.json({ success: true, waterfall: { ...wf.rows[0], tiers: savedTiers.rows } });
