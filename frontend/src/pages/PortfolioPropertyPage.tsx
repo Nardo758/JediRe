@@ -431,8 +431,8 @@ const PerformanceTab: React.FC<{ dealId: string; financials: MonthlyFinancial[] 
 };
 
 // ─── Revenue Management Tab ───────────────────────────────────
-const RevenueMgmtTab: React.FC<{ dealId: string; deal?: Record<string, unknown> }> = ({ dealId, deal }) => {
-  const [subTab, setSubTab] = useState<'rent-roll' | 'other-income' | 'expenses' | 'variance' | 'recommendations' | 'lease-expirations' | 'enter-actuals'>('rent-roll');
+const RevenueMgmtTab: React.FC<{ dealId: string; deal?: Record<string, unknown> }> = ({ dealId, deal: _deal }) => {
+  const [subTab, setSubTab] = useState<'rent-roll' | 'other-income' | 'expenses' | 'variance' | 'recommendations' | 'lease-expirations'>('rent-roll');
   const [rentRoll, setRentRoll] = useState<{ units: any[]; snapshots: string[] } | null>(null);
   const [otherIncome, setOtherIncome] = useState<any[]>([]);
   const [actuals, setActuals] = useState<any[]>([]);
@@ -486,7 +486,6 @@ const RevenueMgmtTab: React.FC<{ dealId: string; deal?: Record<string, unknown> 
     { id: 'variance',           label: 'VARIANCE' },
     { id: 'recommendations',    label: 'AI RECOMMENDATIONS' },
     { id: 'lease-expirations',  label: 'LEASE EXPIRATIONS' },
-    { id: 'enter-actuals',      label: 'ENTER ACTUALS' },
   ] as const;
 
   const emptyState = (icon: string, msg: string, sub?: string) => (
@@ -758,12 +757,33 @@ const RevenueMgmtTab: React.FC<{ dealId: string; deal?: Record<string, unknown> 
           <OperationsIntelligenceSection dealId={dealId} initialPanel="leases" compact />
         </div>
       )}
-      {subTab === 'enter-actuals' && (
-        <div style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 320px)' }}>
-          <MonthlyActualsSection dealId={dealId} deal={deal ?? {}} />
+
+    </div>
+  );
+};
+
+// ─── Documents Hub (Files + Enter Actuals) ────────────────────
+const DocumentsHub: React.FC<{ dealId: string; deal: Record<string, unknown> }> = ({ dealId, deal }) => {
+  const [docSubTab, setDocSubTab] = useState<'files' | 'enter-actuals'>('files');
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{ display: 'flex', gap: 6, padding: '10px 16px', borderBottom: `1px solid ${T.border.subtle}`, flexShrink: 0 }}>
+        {([{ id: 'files' as const, label: 'FILES' }, { id: 'enter-actuals' as const, label: 'ENTER ACTUALS' }]).map(s => (
+          <button key={s.id} onClick={() => setDocSubTab(s.id)} style={{ padding: '4px 12px', fontSize: 10, fontWeight: 700, background: docSubTab === s.id ? T.bg.active : 'transparent', color: docSubTab === s.id ? T.text.cyan : T.text.muted, border: `1px solid ${docSubTab === s.id ? T.text.cyan : T.border.subtle}`, borderRadius: 3, cursor: 'pointer', fontFamily: T.font.mono }}>
+            {s.label}
+          </button>
+        ))}
+      </div>
+      {docSubTab === 'files' && (
+        <div style={{ overflowY: 'auto', padding: 16, maxHeight: 'calc(100vh - 320px)' }}>
+          <DocumentsSection deal={deal as unknown as Deal} />
         </div>
       )}
-
+      {docSubTab === 'enter-actuals' && (
+        <div style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 320px)' }}>
+          <MonthlyActualsSection dealId={dealId} deal={deal} />
+        </div>
+      )}
     </div>
   );
 };
@@ -1884,9 +1904,7 @@ export default function PortfolioPropertyPage() {
           </div>
         )}
         {activeTab === 'documents'    && (
-          <div style={{ overflowY: 'auto', padding: 16, maxHeight: 'calc(100vh - 280px)' }}>
-            <DocumentsSection deal={deal as unknown as Deal} />
-          </div>
+          <DocumentsHub dealId={dealId!} deal={deal as Record<string, unknown>} />
         )}
         {activeTab === 'reports'      && (
           <ReportsTab dealId={dealId!} financials={financials} deal={deal} />
