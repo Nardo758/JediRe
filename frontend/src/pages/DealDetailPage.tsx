@@ -35,6 +35,7 @@ import {
   Building2, Target, Package, Calculator,
   ArrowLeft, ArrowRight, Activity, LayoutDashboard,
   Landmark, HardHat, Shield, Box, FileText, Briefcase, Zap, LayoutList,
+  CheckCircle, X, Loader2,
 } from 'lucide-react';
 import { Tab } from '../components/deal/TabGroup';
 import { DealScreenWrapper } from '../components/deal/DealScreenWrapper';
@@ -448,6 +449,19 @@ const DealDetailPage: React.FC = () => {
   const [eventSensitivity, setEventSensitivity] = useState<EventSensitivity>('LOW');
   const [eventConcentration, setEventConcentration] = useState<{topEventName:string;irrShare:number;isConcentrated:boolean}|null>(null);
 
+  const [showCloseDealModal, setShowCloseDealModal] = useState(false);
+  const [closingDeal, setClosingDeal] = useState(false);
+  const [closeDealSuccess, setCloseDealSuccess] = useState(false);
+  const [closeForm, setCloseForm] = useState({
+    closingDate: new Date().toISOString().slice(0, 10),
+    salePrice: '',
+    totalEquityInvested: '',
+    trailingNoi: '',
+    totalDistributions: '0',
+    buyerName: '',
+    dispositionNotes: '',
+  });
+
   const handleDealTypeChange = useCallback(async (newType: DealType) => {
     if (!dealId || newType === dealType) return;
     setSavingDealType(true);
@@ -461,6 +475,47 @@ const DealDetailPage: React.FC = () => {
       setSavingDealType(false);
     }
   }, [dealId, dealType, fetchDealContext]);
+
+  const handleCloseDealSubmit = useCallback(async () => {
+    if (!dealId) return;
+    const salePrice = parseFloat(closeForm.salePrice);
+    const totalEquityInvested = parseFloat(closeForm.totalEquityInvested);
+    const trailingNoi = parseFloat(closeForm.trailingNoi || '0');
+    const totalDistributions = parseFloat(closeForm.totalDistributions || '0');
+    if (!closeForm.closingDate || isNaN(salePrice) || isNaN(totalEquityInvested)) return;
+    const netSaleProceeds = salePrice * 0.97;
+    const actualEquityMultiple = totalEquityInvested > 0
+      ? (netSaleProceeds + totalDistributions) / totalEquityInvested
+      : 0;
+    setClosingDeal(true);
+    try {
+      await apiClient.patch(`/api/v1/deals/${dealId}`, {
+        status: 'owned',
+      });
+      await apiClient.post(`/api/v1/lifecycle/${dealId}/disposition`, {
+        closingDate: closeForm.closingDate,
+        salePrice,
+        totalEquityInvested,
+        trailingNoi,
+        totalDistributions,
+        netSaleProceeds,
+        actualIrr: 0,
+        actualEquityMultiple,
+        buyerName: closeForm.buyerName || undefined,
+        dispositionNotes: closeForm.dispositionNotes || undefined,
+      });
+      setDeal((prev: any) => prev ? { ...prev, status: 'owned' } : prev);
+      setCloseDealSuccess(true);
+      setTimeout(() => {
+        setShowCloseDealModal(false);
+        setCloseDealSuccess(false);
+      }, 2200);
+    } catch (err) {
+      console.error('[CloseDeal] Failed:', err);
+    } finally {
+      setClosingDeal(false);
+    }
+  }, [dealId, closeForm]);
   
   useEffect(() => {
     if (dealId) {
@@ -751,6 +806,40 @@ const DealDetailPage: React.FC = () => {
                   </span>
                 </>
               )}
+              {deal && !['owned','closed','Owned','Closed'].includes(deal.pipeline_stage || deal.status || '') && (
+                <>
+                  <span style={{ color: BORDER, margin: '0 8px', fontSize: 10 }}>│</span>
+                  <button
+                    onClick={() => setShowCloseDealModal(true)}
+                    style={{
+                      background: 'transparent',
+                      border: '1px solid #10B98155',
+                      cursor: 'pointer',
+                      padding: '2px 8px',
+                      fontFamily: MONO,
+                      fontSize: 9,
+                      fontWeight: 800,
+                      color: '#10B981',
+                      letterSpacing: 0.8,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      flexShrink: 0,
+                      transition: 'border-color 0.15s, background 0.15s',
+                    }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.borderColor = '#10B981';
+                      e.currentTarget.style.background = '#10B98110';
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.borderColor = '#10B98155';
+                      e.currentTarget.style.background = 'transparent';
+                    }}
+                  >
+                    ✓ CLOSE DEAL
+                  </button>
+                </>
+              )}
               {deal.jedi_score != null && (
                 <span style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0, marginLeft: 10 }}>
                   <span style={{ color: AMBER, fontSize: 9, fontWeight: 700, letterSpacing: 0.3 }}>
@@ -981,6 +1070,180 @@ const DealDetailPage: React.FC = () => {
         <BottomPanel />
         <AgentBar />
       </div>
+
+      {/* ── Close Deal Modal ── */}
+      {showCloseDealModal && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          background: 'rgba(0,0,0,0.75)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}
+          onClick={e => { if (e.target === e.currentTarget && !closingDeal) setShowCloseDealModal(false); }}
+        >
+          <div style={{
+            background: '#0F1319',
+            border: '1px solid #1e2a3d',
+            borderTop: '2px solid #10B981',
+            width: 480,
+            maxWidth: '95vw',
+            fontFamily: MONO,
+            boxShadow: '0 20px 60px rgba(0,0,0,0.8)',
+          }}>
+            {/* Header */}
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '10px 16px', borderBottom: '1px solid #1e2a3d',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#10B981' }} />
+                <span style={{ fontSize: 11, fontWeight: 800, color: '#10B981', letterSpacing: 1.2 }}>
+                  CLOSE DEAL — RECORD DISPOSITION
+                </span>
+              </div>
+              {!closingDeal && (
+                <button
+                  onClick={() => setShowCloseDealModal(false)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6B7A8D', padding: 4 }}
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+
+            {closeDealSuccess ? (
+              <div style={{ padding: 40, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+                <CheckCircle size={36} color="#10B981" />
+                <p style={{ color: '#10B981', fontSize: 13, fontWeight: 700, letterSpacing: 0.5, margin: 0 }}>
+                  DEAL CLOSED SUCCESSFULLY
+                </p>
+                <p style={{ color: '#6B7A8D', fontSize: 10, margin: 0 }}>
+                  Disposition recorded · Portfolio updated · Learning loop triggered
+                </p>
+              </div>
+            ) : (
+              <div style={{ padding: 20 }}>
+                <p style={{ color: '#6B7A8D', fontSize: 9, letterSpacing: 0.5, marginBottom: 18, marginTop: 0 }}>
+                  DEAL: {deal?.name || deal?.address || dealId?.slice(0, 8).toUpperCase()}
+                </p>
+
+                {/* Form grid */}
+                {([
+                  { key: 'closingDate', label: 'CLOSING DATE', type: 'date', required: true, placeholder: '' },
+                  { key: 'salePrice', label: 'SALE PRICE ($)', type: 'text', required: true, placeholder: 'e.g. 48500000' },
+                  { key: 'totalEquityInvested', label: 'TOTAL EQUITY INVESTED ($)', type: 'text', required: true, placeholder: 'e.g. 12000000' },
+                  { key: 'trailingNoi', label: 'TRAILING 12-MO NOI ($)', type: 'text', required: false, placeholder: 'e.g. 2800000' },
+                  { key: 'totalDistributions', label: 'TOTAL DISTRIBUTIONS PAID ($)', type: 'text', required: false, placeholder: '0' },
+                  { key: 'buyerName', label: 'BUYER NAME', type: 'text', required: false, placeholder: 'Optional' },
+                ] as const).map(f => (
+                  <div key={f.key} style={{ marginBottom: 12 }}>
+                    <label style={{
+                      display: 'block', fontSize: 8, fontWeight: 700,
+                      color: f.required ? '#9EA8B4' : '#6B7A8D',
+                      letterSpacing: 0.8, marginBottom: 4,
+                    }}>
+                      {f.label}{f.required && <span style={{ color: '#10B981', marginLeft: 2 }}>*</span>}
+                    </label>
+                    <input
+                      type={f.type}
+                      value={closeForm[f.key as keyof typeof closeForm]}
+                      onChange={e => setCloseForm(prev => ({ ...prev, [f.key]: e.target.value }))}
+                      placeholder={f.placeholder}
+                      style={{
+                        width: '100%', boxSizing: 'border-box',
+                        background: '#060A12', border: '1px solid #1e2a3d',
+                        color: '#E2E8F0', fontFamily: MONO, fontSize: 11,
+                        padding: '6px 10px', outline: 'none',
+                        colorScheme: 'dark',
+                      }}
+                    />
+                  </div>
+                ))}
+
+                <div style={{ marginBottom: 20 }}>
+                  <label style={{ display: 'block', fontSize: 8, fontWeight: 700, color: '#6B7A8D', letterSpacing: 0.8, marginBottom: 4 }}>
+                    NOTES / LESSONS LEARNED
+                  </label>
+                  <textarea
+                    value={closeForm.dispositionNotes}
+                    onChange={e => setCloseForm(prev => ({ ...prev, dispositionNotes: e.target.value }))}
+                    rows={3}
+                    placeholder="Optional — what did this deal teach us?"
+                    style={{
+                      width: '100%', boxSizing: 'border-box',
+                      background: '#060A12', border: '1px solid #1e2a3d',
+                      color: '#E2E8F0', fontFamily: MONO, fontSize: 11,
+                      padding: '6px 10px', outline: 'none', resize: 'vertical',
+                      colorScheme: 'dark',
+                    }}
+                  />
+                </div>
+
+                {/* Computed preview */}
+                {closeForm.salePrice && closeForm.totalEquityInvested && (
+                  <div style={{
+                    background: '#060A12', border: '1px solid #10B98122',
+                    padding: '8px 12px', marginBottom: 16,
+                    display: 'flex', gap: 24,
+                  }}>
+                    {(() => {
+                      const sp = parseFloat(closeForm.salePrice) || 0;
+                      const eq = parseFloat(closeForm.totalEquityInvested) || 0;
+                      const dist = parseFloat(closeForm.totalDistributions) || 0;
+                      const nsp = sp * 0.97;
+                      const em = eq > 0 ? ((nsp + dist) / eq).toFixed(2) : '—';
+                      return (
+                        <>
+                          <div>
+                            <div style={{ fontSize: 8, color: '#6B7A8D', letterSpacing: 0.5 }}>NET PROCEEDS</div>
+                            <div style={{ fontSize: 11, color: '#10B981', fontWeight: 700 }}>
+                              ${Math.round(nsp).toLocaleString()}
+                            </div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 8, color: '#6B7A8D', letterSpacing: 0.5 }}>EQUITY MULTIPLE</div>
+                            <div style={{ fontSize: 11, color: '#10B981', fontWeight: 700 }}>{em}x</div>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <button
+                    onClick={() => setShowCloseDealModal(false)}
+                    disabled={closingDeal}
+                    style={{
+                      padding: '7px 18px', background: 'transparent',
+                      border: '1px solid #1e2a3d', color: '#6B7A8D',
+                      fontFamily: MONO, fontSize: 10, fontWeight: 700,
+                      letterSpacing: 0.6, cursor: 'pointer',
+                    }}
+                  >
+                    CANCEL
+                  </button>
+                  <button
+                    onClick={handleCloseDealSubmit}
+                    disabled={closingDeal || !closeForm.closingDate || !closeForm.salePrice || !closeForm.totalEquityInvested}
+                    style={{
+                      padding: '7px 22px',
+                      background: closingDeal ? '#0d3d2a' : '#10B981',
+                      border: 'none', color: closingDeal ? '#10B981' : '#0A0E17',
+                      fontFamily: MONO, fontSize: 10, fontWeight: 800,
+                      letterSpacing: 0.6, cursor: closingDeal ? 'not-allowed' : 'pointer',
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      opacity: (!closeForm.closingDate || !closeForm.salePrice || !closeForm.totalEquityInvested) ? 0.5 : 1,
+                    }}
+                  >
+                    {closingDeal ? <><Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> CLOSING…</> : '✓ CONFIRM CLOSE'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </DealModuleProvider>
   );
 };
