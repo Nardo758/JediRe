@@ -135,6 +135,10 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
     try { return localStorage.getItem(`collision_dismissed:${deal?.id ?? ''}`); } catch { return null; }
   });
 
+  useEffect(() => {
+    try { setDismissedCollisionKey(localStorage.getItem(`collision_dismissed:${deal?.id ?? ''}`)); } catch { /* ignore */ }
+  }, [deal?.id]);
+
   // Load JEDI Score
   const loadJediScore = useCallback(async () => {
     if (!deal?.id) return;
