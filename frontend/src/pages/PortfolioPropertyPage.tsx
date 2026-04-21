@@ -432,25 +432,12 @@ const PerformanceTab: React.FC<{ dealId: string; financials: MonthlyFinancial[] 
 
 // ─── Revenue Management Tab ───────────────────────────────────
 const RevenueMgmtTab: React.FC<{ dealId: string }> = ({ dealId }) => {
-  const [subTab, setSubTab] = useState<'rent-roll' | 'other-income' | 'pva' | 'position'>('pva');
-  const [pvaData, setPvaData] = useState<any[]>([]);
-  const [position, setPosition] = useState<any>(null);
+  const [subTab, setSubTab] = useState<'rent-roll' | 'other-income'>('rent-roll');
   const [rentRoll, setRentRoll] = useState<{ units: any[]; snapshots: string[] } | null>(null);
   const [otherIncome, setOtherIncome] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    apiClient.get(`/api/v1/operations/${dealId}/projected-vs-actual`)
-      .then(r => setPvaData(r.data?.data ?? [])).catch(() => {});
-  }, [dealId]);
-
-  useEffect(() => {
-    if (subTab === 'position' && !position) {
-      setLoading(true);
-      apiClient.get(`/api/v1/lifecycle/${dealId}/competitive-position`)
-        .then(r => setPosition(r.data)).catch(() => setPosition(null))
-        .finally(() => setLoading(false));
-    }
     if (subTab === 'rent-roll' && !rentRoll) {
       setLoading(true);
       apiClient.get(`/api/v1/operations/${dealId}/rent-roll`)
@@ -468,13 +455,10 @@ const RevenueMgmtTab: React.FC<{ dealId: string }> = ({ dealId }) => {
   }, [dealId, subTab]);
 
   const fmt$ = (v: any) => v == null ? '—' : `$${Number(v).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
-  const fmtPct = (v: any) => v == null ? '—' : `${(Number(v) * 100).toFixed(1)}%`;
 
   const subTabs = [
     { id: 'rent-roll', label: 'RENT ROLL' },
     { id: 'other-income', label: 'OTHER INCOME' },
-    { id: 'pva', label: 'PROJ VS ACTUAL' },
-    { id: 'position', label: 'COMPETITIVE POSITION' },
   ] as const;
 
   const emptyState = (icon: string, msg: string, sub?: string) => (
@@ -567,82 +551,6 @@ const RevenueMgmtTab: React.FC<{ dealId: string }> = ({ dealId }) => {
         )
       )}
 
-      {!loading && subTab === 'pva' && (
-        pvaData.length === 0 ? emptyState('📊', 'NO PROJECTED VS ACTUAL DATA', 'Enter Monthly Actuals to populate this view') : (
-          <Panel title="PROJECTED VS ACTUAL">
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: T.font.mono }}>
-              <thead>
-                <tr style={{ background: T.bg.panelAlt }}>
-                  {['MONTH', 'PROJ NOI', 'ACTUAL NOI', 'VARIANCE $', 'VARIANCE %', 'PROJ OCC', 'ACTUAL OCC'].map(h => (
-                    <th key={h} style={{ textAlign: 'left', padding: '7px 10px', color: T.text.muted, fontWeight: 600, fontSize: 9 }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {pvaData.map((row: any, i: number) => {
-                  const varD = (row.actual_noi ?? 0) - (row.projected_noi ?? 0);
-                  const varPct = row.projected_noi ? (varD / row.projected_noi) * 100 : null;
-                  return (
-                    <tr key={i} style={{ borderBottom: `1px solid ${T.border.subtle}` }}>
-                      <td style={{ padding: '6px 10px', color: T.text.primary, fontWeight: 600 }}>{row.report_month?.slice(0, 7)}</td>
-                      <td style={{ padding: '6px 10px', color: T.text.secondary }}>{fmt$(row.projected_noi)}</td>
-                      <td style={{ padding: '6px 10px', color: T.text.primary }}>{fmt$(row.actual_noi)}</td>
-                      <td style={{ padding: '6px 10px', fontWeight: 600, color: varD >= 0 ? T.text.green : T.text.red }}>{varD >= 0 ? '+' : ''}{fmt$(varD)}</td>
-                      <td style={{ padding: '6px 10px', color: (varPct ?? 0) >= 0 ? T.text.green : T.text.red }}>{varPct != null ? `${varPct >= 0 ? '+' : ''}${varPct.toFixed(1)}%` : '—'}</td>
-                      <td style={{ padding: '6px 10px', color: T.text.secondary }}>{fmtPct(row.projected_occupancy)}</td>
-                      <td style={{ padding: '6px 10px', color: T.text.secondary }}>{fmtPct(row.actual_occupancy)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </Panel>
-        )
-      )}
-
-      {!loading && subTab === 'position' && (
-        !position ? emptyState('🏙', 'NO COMPETITIVE POSITION DATA AVAILABLE') : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {position.summary && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
-                {[
-                  { label: 'MARKET RANK', value: position.summary.market_rank ?? '—' },
-                  { label: 'RENT PREMIUM/DISCOUNT', value: position.summary.rent_premium_pct != null ? `${Number(position.summary.rent_premium_pct).toFixed(1)}%` : '—' },
-                  { label: 'OCC VS MARKET', value: position.summary.occ_vs_market != null ? `${Number(position.summary.occ_vs_market) > 0 ? '+' : ''}${Number(position.summary.occ_vs_market).toFixed(1)}pp` : '—' },
-                ].map((m, i) => (
-                  <div key={i} style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 4, padding: 12, textAlign: 'center' }}>
-                    <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono, marginBottom: 4 }}>{m.label}</div>
-                    <div style={{ fontSize: 20, fontWeight: 700, color: T.text.primary, fontFamily: T.font.mono }}>{m.value}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-            {position.comps && position.comps.length > 0 && (
-              <Panel title="COMPETITIVE SET">
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: T.font.mono }}>
-                  <thead>
-                    <tr style={{ background: T.bg.panelAlt }}>
-                      {['PROPERTY', 'AVG RENT', 'OCCUPANCY', 'DISTANCE'].map(h => (
-                        <th key={h} style={{ textAlign: 'left', padding: '7px 10px', color: T.text.muted, fontWeight: 600, fontSize: 9 }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {position.comps.map((c: any, i: number) => (
-                      <tr key={i} style={{ borderBottom: `1px solid ${T.border.subtle}` }}>
-                        <td style={{ padding: '6px 10px', color: T.text.primary }}>{c.comp_name ?? '—'}</td>
-                        <td style={{ padding: '6px 10px', color: T.text.green }}>{fmt$(c.avg_rent)}</td>
-                        <td style={{ padding: '6px 10px', color: T.text.cyan }}>{fmtPct(c.occupancy_rate)}</td>
-                        <td style={{ padding: '6px 10px', color: T.text.secondary }}>{c.distance_miles != null ? `${Number(c.distance_miles).toFixed(1)} mi` : '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </Panel>
-            )}
-          </div>
-        )
-      )}
     </div>
   );
 };
@@ -758,20 +666,6 @@ interface ReportsTabProps {
   deal: Record<string, unknown>;
 }
 const ReportsTab: React.FC<ReportsTabProps> = ({ dealId, financials, deal }) => {
-  type AccRow = { assumptionName: string; hitRate10Pct: number; hitRate20Pct: number; meanBias: number; nPredictions: number };
-  const [accuracy, setAccuracy] = useState<AccRow[]>([]);
-
-  useEffect(() => {
-    apiClient.get(`/api/v1/learning/outcomes/deal/${dealId}/summary`)
-      .then(r => setAccuracy((r.data?.summary ?? []).map((row: Record<string, unknown>) => ({
-        assumptionName: String(row.assumption_name ?? '').replace(/_/g, ' '),
-        hitRate10Pct: Number(row.hit_rate_10pct ?? 0) * 100,
-        hitRate20Pct: Number(row.hit_rate_20pct ?? 0) * 100,
-        meanBias: Number(row.mean_gap_pct ?? 0),
-        nPredictions: Number(row.n_predictions ?? 0),
-      }))))
-      .catch(() => setAccuracy([]));
-  }, [dealId]);
 
   const propName = (deal.property_name ?? deal.project_name ?? `property-${dealId}`) as string;
   const safeSlug = propName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
@@ -902,54 +796,6 @@ const ReportsTab: React.FC<ReportsTabProps> = ({ dealId, financials, deal }) => 
           </div>
         </Panel>
 
-        <Panel title="UNDERWRITING ACCURACY">
-          <div style={{ padding: 12 }}>
-            {accuracy.length === 0 ? (
-              <div style={{ fontSize: 10, color: T.text.muted, fontFamily: T.font.mono }}>{financials.length === 0 ? 'REQUIRES ACTUALS DATA' : 'NO PREDICTION OUTCOMES YET'}</div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {accuracy.slice(0, 4).map(a => (
-                  <div key={a.assumptionName}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, fontFamily: T.font.mono, marginBottom: 3 }}>
-                      <span style={{ textTransform: 'capitalize', color: T.text.secondary }}>{a.assumptionName}</span>
-                      <span style={{ fontWeight: 600, color: a.hitRate10Pct >= 70 ? T.text.green : a.hitRate10Pct >= 50 ? T.text.amber : T.text.red }}>{a.hitRate10Pct.toFixed(0)}% within 10%</span>
-                    </div>
-                    <div style={{ height: 4, background: T.bg.panelAlt, borderRadius: 2, overflow: 'hidden' }}>
-                      <div style={{ height: '100%', background: a.hitRate10Pct >= 70 ? T.text.green : a.hitRate10Pct >= 50 ? T.text.amber : T.text.red, borderRadius: 2, width: `${a.hitRate10Pct}%`, opacity: 0.8 }} />
-                    </div>
-                  </div>
-                ))}
-                <div style={{ paddingTop: 4, fontSize: 10, color: T.text.muted, fontFamily: T.font.mono }}>{accuracy.reduce((s, a) => s + a.nPredictions, 0)} total predictions evaluated</div>
-              </div>
-            )}
-          </div>
-        </Panel>
-
-        <Panel title="OCCUPANCY TREND" style={{ gridColumn: '1 / -1' }}>
-          <div style={{ padding: 12 }}>
-            {financials.length === 0 ? (
-              <div style={{ fontSize: 10, color: T.text.muted, fontFamily: T.font.mono }}>NO ACTUALS LOADED YET</div>
-            ) : (
-              <>
-                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 64 }}>
-                  {financials.slice(-18).map((f, i) => {
-                    const occ = Math.min(1, parseFloat(f.occupancy_rate as string) || 0);
-                    return (
-                      <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%' }} title={`${(occ * 100).toFixed(1)}%`}>
-                        <div style={{ width: '100%', borderRadius: '2px 2px 0 0', background: occ >= 0.93 ? T.text.green : occ >= 0.85 ? T.text.amber : T.text.red, height: `${occ * 100}%`, opacity: 0.85 }} />
-                      </div>
-                    );
-                  })}
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: T.text.muted, fontFamily: T.font.mono, marginTop: 4 }}>
-                  <span>{financials.length > 18 ? (financials[financials.length - 18]?.period_label as string | undefined) ?? '18 mo ago' : 'Earliest'}</span>
-                  <span style={{ color: T.text.amber, fontWeight: 700 }}>Avg {fmtP(avgOcc)} occupancy over {financials.length} months</span>
-                  <span>Latest</span>
-                </div>
-              </>
-            )}
-          </div>
-        </Panel>
       </div>
     </div>
   );
@@ -1160,40 +1006,6 @@ export default function PortfolioPropertyPage() {
           </Panel>
         </div>
 
-        <Panel title="MONTHLY P&L">
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: T.font.mono }}>
-              <thead>
-                <tr style={{ background: T.bg.panelAlt }}>
-                  {['MONTH', 'GPR', 'NET REVENUE', 'TOTAL OPEX', 'NOI', 'NOI/UNIT', 'CAPEX', 'DEBT SVC', 'CASH FLOW', 'OCC %'].map((h, j) => (
-                    <th key={h} style={{ textAlign: j === 0 ? 'left' : 'right', padding: '7px 10px', color: T.text.muted, fontWeight: 600, fontSize: 9, whiteSpace: 'nowrap' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {financials.map((f, i) => (
-                  <tr key={i} style={{ borderBottom: `1px solid ${T.border.subtle}` }}>
-                    <td style={{ padding: '6px 10px', color: T.text.primary, fontWeight: 600 }}>{fmtMonth(f.report_month)}</td>
-                    <td style={{ padding: '6px 10px', textAlign: 'right', color: T.text.secondary }}>{fmt(toNum(f.gross_potential_rent), 'currency')}</td>
-                    <td style={{ padding: '6px 10px', textAlign: 'right', color: T.text.secondary }}>{fmt(toNum(f.net_rental_income), 'currency')}</td>
-                    <td style={{ padding: '6px 10px', textAlign: 'right', color: T.text.red }}>{fmt(toNum(f.total_opex), 'currency')}</td>
-                    <td style={{ padding: '6px 10px', textAlign: 'right', color: T.text.blue, fontWeight: 700 }}>{fmt(toNum(f.noi), 'currency')}</td>
-                    <td style={{ padding: '6px 10px', textAlign: 'right', color: T.text.secondary }}>{fmt(toNum(f.noi_per_unit), 'currency')}</td>
-                    <td style={{ padding: '6px 10px', textAlign: 'right', color: T.text.secondary }}>{fmt(toNum(f.capex), 'currency')}</td>
-                    <td style={{ padding: '6px 10px', textAlign: 'right', color: T.text.secondary }}>{fmt(toNum(f.debt_service), 'currency')}</td>
-                    <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 600, color: toNum(f.cash_flow_before_tax) < 0 ? T.text.red : T.text.green }}>{fmt(toNum(f.cash_flow_before_tax), 'currency')}</td>
-                    <td style={{ padding: '6px 10px', textAlign: 'right', color: T.text.secondary }}>{fmt(toNum(f.occupancy_rate) * 100, 'percent', 1)}</td>
-                  </tr>
-                ))}
-                {financials.length === 0 && (
-                  <tr>
-                    <td colSpan={10} style={{ padding: 24, textAlign: 'center', color: T.text.muted, fontFamily: T.font.mono, fontSize: 10 }}>NO MONTHLY ACTUALS LOADED — USE THE ACTUALS TAB TO IMPORT DATA</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </Panel>
       </div>
     );
   };
