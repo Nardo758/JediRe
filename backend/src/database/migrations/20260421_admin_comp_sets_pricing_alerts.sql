@@ -1,4 +1,7 @@
--- Admin-level comp set properties (org-wide)
+-- Admin-level comp set supplemental overlay (org-wide)
+-- Primary comp data lives in rent_scrape_targets + comp_unit_types.
+-- This table stores supplemental fields those tables lack (distance_mi,
+-- occupancy_pct, notes) keyed by normalized property_name.
 CREATE TABLE IF NOT EXISTS admin_comp_set_properties (
   id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   property_name TEXT        NOT NULL,
@@ -11,7 +14,8 @@ CREATE TABLE IF NOT EXISTS admin_comp_set_properties (
   notes         TEXT,
   is_active     BOOLEAN     NOT NULL DEFAULT true,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT admin_comp_set_properties_property_name_key UNIQUE (property_name)
 );
 
 -- User-configured pricing alert rules

@@ -1742,7 +1742,7 @@ router.get('/comp-sets', requireAdminAuth, async (_req: AuthenticatedRequest, re
         acp.distance_mi,
         ROUND(AVG(cut.avg_rent)::numeric, 2)               AS avg_rent_sf,
         acp.occupancy_pct,
-        GREATEST(MAX(cp.scraped_at), rst.updated_at)       AS last_scraped
+        COALESCE(MAX(cp.scraped_at), rst.updated_at)       AS last_scraped
       FROM rent_scrape_targets rst
       LEFT JOIN comp_properties cp
         ON LOWER(cp.name) = LOWER(rst.property_name)
@@ -1781,7 +1781,14 @@ router.post('/comp-sets', requireAdminAuth, async (req: AuthenticatedRequest, re
       await query(`
         INSERT INTO admin_comp_set_properties (property_name, address, submarket, distance_mi, avg_rent_sf, occupancy_pct, notes)
         VALUES ($1, $2, $3, $4, $5, $6, $7)
-        ON CONFLICT DO NOTHING
+        ON CONFLICT (property_name) DO UPDATE SET
+          address = EXCLUDED.address,
+          submarket = EXCLUDED.submarket,
+          distance_mi = EXCLUDED.distance_mi,
+          avg_rent_sf = EXCLUDED.avg_rent_sf,
+          occupancy_pct = EXCLUDED.occupancy_pct,
+          notes = EXCLUDED.notes,
+          updated_at = NOW()
       `, [property_name, address ?? null, submarket ?? null, distance_mi ?? null, avg_rent_sf ?? null, occupancy_pct ?? null, notes ?? null]);
     }
 
