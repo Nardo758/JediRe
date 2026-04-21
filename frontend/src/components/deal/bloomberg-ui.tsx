@@ -72,7 +72,7 @@ export const BT = {
   },
 } as const;
 
-const MONO = BT.font.mono;
+export const MONO = BT.font.mono;
 
 // ─── CSS animations injected once ─────────────────────────────────────────────
 export const BT_CSS = `

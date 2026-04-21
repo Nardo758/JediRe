@@ -90,6 +90,7 @@ import type { DevelopmentPath } from '../types/zoning.types';
 import { EventTimelineSection } from '../components/deal/sections/EventTimelineSection';
 import { EventHeroBanner } from '../components/m35/EventHeroBanner';
 import MonthlyActualsSection from '../components/deal/sections/MonthlyActualsSection';
+import { OperationsIntelligenceSection } from '../components/deal/sections/OperationsIntelligenceSection';
 import type { HeroBannerEvent, EventSensitivity } from '../components/m35/EventHeroBanner';
 
 interface DealTab extends Tab {
@@ -706,6 +707,7 @@ const DealDetailPage: React.FC = () => {
     { id: 'unit-mix',   moduleId: 'M01', fkey: 'F13', code: 'M14', short: 'UNIT MIX',   label: 'Unit Mix',         icon: <LayoutList size={14} />,      component: UnitMixScreen },
     { id: 'team',           moduleId: 'M01', fkey: '',    code: 'M00', short: 'TEAM',       label: 'Deal Team',        icon: <Users size={14} />,           component: CollaborationSection },
     { id: 'monthly-actuals', moduleId: 'M22', fkey: '',   code: 'M22', short: 'ACTUALS',    label: 'Monthly Actuals',  icon: <Database size={14} />,        component: (p: ScreenProps) => <MonthlyActualsSection dealId={p.dealId} deal={p.deal} /> },
+    { id: 'operations',      moduleId: 'M20', fkey: '',   code: 'M20', short: 'OPS INTEL',  label: 'Operations Intel', icon: <Activity size={14} />,        component: (p: ScreenProps) => <OperationsIntelligenceSection dealId={p.dealId} deal={p.deal as Record<string, unknown>} /> },
   ];
 
   const dealScreens = allDealScreens.filter((s) => config.isModuleVisible(s.moduleId));

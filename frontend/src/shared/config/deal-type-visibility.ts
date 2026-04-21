@@ -431,6 +431,19 @@ export const MODULE_TABS: ModuleTabDefinition[] = [
     },
   },
 
+  // ─── S6: Post-Close — Operations Intelligence ─────────────────────────────
+
+  {
+    moduleId: 'M20',
+    name: 'Operations Intelligence',
+    fKey: null,
+    station: 'S6',
+    stationLabel: 'Post-Close',
+    category: 'Operations',
+    showFor: { existing: 'full', development: 'hidden', redevelopment: 'full' },
+    dealTypeNotes: 'Variance analysis, AI recommendations, lease expirations, and traffic funnel for operating properties.',
+  },
+
   // ─── Deal Tools (Universal) ────────────────────────────────────────────────
 
   {
