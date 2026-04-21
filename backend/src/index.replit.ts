@@ -471,6 +471,14 @@ app.use('/api/v1', requireAuth, zoningTriangulationRouter);
 import archiveRouter from './api/rest/archive.routes';
 app.use('/api/v1/archive', archiveRouter);
 
+// Cloud storage integration routes
+import cloudStorageRouter from './api/rest/cloud-storage.routes';
+app.use('/api/v1/cloud-storage', cloudStorageRouter);
+
+// Bulk upload routes
+import bulkUploadRouter from './api/rest/bulk-upload.routes';
+app.use('/api/v1/bulk-upload', bulkUploadRouter);
+
 app.use('/api/v1/unit-mix', requireAuth, createUnitMixRoutes(pool));
 
 app.get('/api/v1/apartment-sync/trends', requireAuth, async (req: any, res) => {
