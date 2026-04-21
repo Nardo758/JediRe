@@ -917,6 +917,7 @@ const RefiMonitorTab: React.FC<{ dealId: string; deal: any }> = ({ dealId, deal 
   const [runLoading, setRunLoading] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
   const [scenarioName, setScenarioName] = useState('Refi Test');
+  const [dealFiles, setDealFiles] = useState<any[]>([]);
 
   /* ── Fetch ── */
   useEffect(() => {
@@ -937,6 +938,19 @@ const RefiMonitorTab: React.FC<{ dealId: string; deal: any }> = ({ dealId, deal 
       .then((r: any) => setHistory(r.data?.scenarios ?? []))
       .catch(() => {})
       .finally(() => setHistLoading(false));
+
+    apiClient.get(`/api/v1/deals/${dealId}/files?onlyLatestVersions=true`)
+      .then((r: any) => {
+        const files: any[] = r.data?.files ?? [];
+        const priority = ['financing', 'appraisal', 'legal', 'financial-statements', 'due_diligence', 'lease'];
+        const sorted = [...files].sort((a, b) => {
+          const ai = priority.indexOf(a.category);
+          const bi = priority.indexOf(b.category);
+          if (ai !== bi) return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        });
+        setDealFiles(sorted);
+      }).catch(() => {});
   }, [dealId]);
 
   /* ── Computed ── */
@@ -1155,8 +1169,50 @@ const RefiMonitorTab: React.FC<{ dealId: string; deal: any }> = ({ dealId, deal 
             </div>
           </div>
 
+          {/* Deal Context Files */}
+          <div style={{ background: T2.panel, border: `1px solid ${T2.border}`, borderRadius: 6, padding: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <div style={{ fontSize: 9, fontWeight: 700, fontFamily: T2.mono, color: '#63B3ED', letterSpacing: 0.5 }}>DEAL CONTEXT</div>
+              {dealFiles.length > 0 && (
+                <span style={{ fontSize: 7, color: T2.muted, fontFamily: T2.mono }}>{dealFiles.length} FILE{dealFiles.length !== 1 ? 'S' : ''}</span>
+              )}
+            </div>
+            {dealFiles.length === 0 ? (
+              <div style={{ fontSize: 8, color: T2.muted, fontFamily: T2.mono, padding: '8px 0', textAlign: 'center' }}>
+                No files uploaded<br />
+                <span style={{ fontSize: 7 }}>Upload deal docs in the Documents tab</span>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3, maxHeight: 160, overflowY: 'auto' }}>
+                {dealFiles.map(f => {
+                  const ext = (f.file_extension ?? '').replace('.', '').toUpperCase() || 'FILE';
+                  const extColor = ext === 'PDF' ? '#FC8181' : ext === 'XLSX' || ext === 'XLS' ? '#68D391' : ext === 'DOCX' || ext === 'DOC' ? '#63B3ED' : '#F6AD55';
+                  const catLabel = (f.category ?? '').replace(/_/g, ' ').replace(/-/g, ' ');
+                  return (
+                    <a
+                      key={f.id}
+                      href={`/api/v1/deals/${dealId}/files/${f.id}/download`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px', borderRadius: 3, background: 'rgba(255,255,255,0.025)', border: `1px solid ${T2.border}`, textDecoration: 'none', cursor: 'pointer' }}
+                    >
+                      <span style={{ fontSize: 6, fontFamily: T2.mono, fontWeight: 700, background: extColor + '18', border: `1px solid ${extColor}44`, borderRadius: 2, padding: '1px 3px', color: extColor, flexShrink: 0, minWidth: 22, textAlign: 'center' }}>
+                        {ext.slice(0, 4)}
+                      </span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 8, color: '#E8E6E1', fontFamily: T2.mono, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.original_filename}</div>
+                        <div style={{ fontSize: 7, color: T2.muted, fontFamily: T2.mono, textTransform: 'uppercase' }}>{catLabel}</div>
+                      </div>
+                      <span style={{ fontSize: 8, color: T2.muted, flexShrink: 0 }}>↗</span>
+                    </a>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           {/* Constraint Parameters */}
-          <div style={{ background: T2.panel, border: `1px solid ${T2.border}`, borderRadius: 6, padding: 12, flex: 1 }}>
+          <div style={{ background: T2.panel, border: `1px solid ${T2.border}`, borderRadius: 6, padding: 12 }}>
             {secHdr('CONSTRAINT PARAMETERS')}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
               <div>
