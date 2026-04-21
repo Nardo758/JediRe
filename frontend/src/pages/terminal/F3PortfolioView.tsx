@@ -15,7 +15,8 @@ import {
   TrendingUp, TrendingDown, Building2, DollarSign, 
   FileText, Download, ChevronRight, ChevronDown,
   BarChart3, PieChart, Activity, Target, Brain,
-  Calendar, AlertTriangle, CheckCircle, Clock
+  Calendar, AlertTriangle, CheckCircle, Clock,
+  Upload, X, Loader2,
 } from 'lucide-react';
 import { apiClient } from '../../services/api.client';
 
@@ -128,7 +129,30 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
   const [compsLoading, setCompsLoading] = useState<Set<string>>(new Set());
   const [compsExpanded, setCompsExpanded] = useState<Set<string>>(new Set());
   const [discovering, setDiscovering] = useState<string | null>(null);
-  
+
+  // Upload Actuals modal
+  const [showActualsModal, setShowActualsModal] = useState(false);
+  const [actualsMode, setActualsMode] = useState<'manual' | 'file'>('manual');
+  const [actualsAssetId, setActualsAssetId] = useState('');
+  const [actualsPeriod, setActualsPeriod] = useState(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [actualsForm, setActualsForm] = useState({
+    net_operating_income: '',
+    physical_occupancy_pct: '',
+    effective_gross_income: '',
+    total_operating_expenses: '',
+    units_occupied: '',
+    avg_rent_achieved: '',
+    collections_rate: '',
+  });
+  const [actualsFile, setActualsFile] = useState<File | null>(null);
+  const [submittingActuals, setSubmittingActuals] = useState(false);
+  const [actualsSuccess, setActualsSuccess] = useState(false);
+  const [actualsError, setActualsError] = useState<string | null>(null);
+
   // Load data
   useEffect(() => {
     loadPortfolioData();
@@ -167,6 +191,50 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
     }
   };
   
+  // ─── Upload Actuals Handler ────────────────────────────────────
+
+  const handleActualsSubmit = useCallback(async () => {
+    if (!actualsAssetId || !actualsPeriod) return;
+    setActualsError(null);
+    setSubmittingActuals(true);
+    try {
+      const periodStart = `${actualsPeriod}-01`;
+      if (actualsMode === 'manual') {
+        const row: Record<string, any> = {
+          period_start: periodStart,
+          source: 'manual',
+        };
+        if (actualsForm.net_operating_income)    row.net_operating_income    = parseFloat(actualsForm.net_operating_income);
+        if (actualsForm.physical_occupancy_pct)  row.physical_occupancy_pct  = parseFloat(actualsForm.physical_occupancy_pct);
+        if (actualsForm.effective_gross_income)  row.effective_gross_income  = parseFloat(actualsForm.effective_gross_income);
+        if (actualsForm.total_operating_expenses)row.total_operating_expenses= parseFloat(actualsForm.total_operating_expenses);
+        if (actualsForm.units_occupied)          row.units_occupied          = parseInt(actualsForm.units_occupied);
+        if (actualsForm.avg_rent_achieved)       row.avg_rent_achieved       = parseFloat(actualsForm.avg_rent_achieved);
+        if (actualsForm.collections_rate)        row.collections_rate        = parseFloat(actualsForm.collections_rate);
+        await apiClient.post(`/api/v1/operations/${actualsAssetId}/actuals`, { actuals: [row] });
+      } else {
+        if (!actualsFile) return;
+        const fd = new FormData();
+        fd.append('file', actualsFile);
+        await apiClient.post(`/api/v1/data-upload/${actualsAssetId}/actuals/upload`, fd, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        });
+      }
+      setActualsSuccess(true);
+      setTimeout(() => {
+        setShowActualsModal(false);
+        setActualsSuccess(false);
+        setActualsForm({ net_operating_income: '', physical_occupancy_pct: '', effective_gross_income: '', total_operating_expenses: '', units_occupied: '', avg_rent_achieved: '', collections_rate: '' });
+        setActualsFile(null);
+        loadPortfolioData();
+      }, 1800);
+    } catch (err: any) {
+      setActualsError(err?.response?.data?.error || 'Upload failed — check your inputs and try again');
+    } finally {
+      setSubmittingActuals(false);
+    }
+  }, [actualsAssetId, actualsPeriod, actualsMode, actualsForm, actualsFile]);
+
   // ─── Comp Set Functions ───────────────────────────────────────
 
   const loadCompSet = (assetId: string) => {
@@ -417,26 +485,58 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
   
   const renderPerformance = () => (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-      {/* Timeframe Selector */}
-      <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 8 }}>
-        {(['mtd', 'qtd', 'ytd', 'ltm'] as const).map(tf => (
-          <button
-            key={tf}
-            onClick={() => setSelectedTimeframe(tf)}
-            style={{
-              padding: '6px 16px',
-              background: selectedTimeframe === tf ? T.text.amber : T.bg.panel,
-              color: selectedTimeframe === tf ? T.bg.terminal : T.text.secondary,
-              border: `1px solid ${selectedTimeframe === tf ? T.text.amber : T.border.subtle}`,
-              fontSize: 10,
-              fontWeight: 600,
-              fontFamily: MONO,
-              cursor: 'pointer',
-            }}
-          >
-            {tf.toUpperCase()}
-          </button>
-        ))}
+      {/* Timeframe Selector + Upload Button */}
+      <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {(['mtd', 'qtd', 'ytd', 'ltm'] as const).map(tf => (
+            <button
+              key={tf}
+              onClick={() => setSelectedTimeframe(tf)}
+              style={{
+                padding: '6px 16px',
+                background: selectedTimeframe === tf ? T.text.amber : T.bg.panel,
+                color: selectedTimeframe === tf ? T.bg.terminal : T.text.secondary,
+                border: `1px solid ${selectedTimeframe === tf ? T.text.amber : T.border.subtle}`,
+                fontSize: 10,
+                fontWeight: 600,
+                fontFamily: MONO,
+                cursor: 'pointer',
+              }}
+            >
+              {tf.toUpperCase()}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={() => {
+            setActualsAssetId(assets[0]?.id || '');
+            setActualsSuccess(false);
+            setActualsError(null);
+            setShowActualsModal(true);
+          }}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '6px 14px',
+            background: 'transparent',
+            border: `1px solid ${T.text.cyan}55`,
+            color: T.text.cyan,
+            fontSize: 10, fontWeight: 700,
+            fontFamily: MONO, letterSpacing: 0.6,
+            cursor: 'pointer',
+            transition: 'border-color 0.15s, background 0.15s',
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.borderColor = T.text.cyan;
+            e.currentTarget.style.background = `${T.text.cyan}10`;
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.borderColor = `${T.text.cyan}55`;
+            e.currentTarget.style.background = 'transparent';
+          }}
+        >
+          <Upload size={11} />
+          UPLOAD ACTUALS
+        </button>
       </div>
       
       {/* NOI Performance */}
@@ -935,6 +1035,221 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
           {activeTab === 'reports' && renderReports()}
           {activeTab === 'learning' && renderLearning()}
         </>
+      )}
+
+      {/* ── Upload Actuals Modal ── */}
+      {showActualsModal && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.75)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+          onClick={e => { if (e.target === e.currentTarget && !submittingActuals) setShowActualsModal(false); }}
+        >
+          <div style={{
+            background: '#0F1319',
+            border: '1px solid #1e2a3d',
+            borderTop: `2px solid ${T.text.cyan}`,
+            width: 520, maxWidth: '96vw',
+            fontFamily: MONO,
+            boxShadow: '0 20px 60px rgba(0,0,0,0.8)',
+          }}>
+            {/* Header */}
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '10px 16px', borderBottom: '1px solid #1e2a3d',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Upload size={12} color={T.text.cyan} />
+                <span style={{ fontSize: 11, fontWeight: 800, color: T.text.cyan, letterSpacing: 1.2 }}>
+                  UPLOAD ACTUALS — MONTHLY DATA INGESTION
+                </span>
+              </div>
+              {!submittingActuals && (
+                <button onClick={() => setShowActualsModal(false)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6B7A8D', padding: 4 }}>
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+
+            {actualsSuccess ? (
+              <div style={{ padding: 40, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+                <CheckCircle size={36} color={T.text.green} />
+                <p style={{ color: T.text.green, fontSize: 13, fontWeight: 700, letterSpacing: 0.5, margin: 0 }}>
+                  ACTUALS RECORDED
+                </p>
+                <p style={{ color: '#6B7A8D', fontSize: 10, margin: 0 }}>
+                  Variance analysis triggered · Performance charts updating
+                </p>
+              </div>
+            ) : (
+              <div style={{ padding: 20 }}>
+                {/* Asset + Period selectors */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 8, fontWeight: 700, color: '#9EA8B4', letterSpacing: 0.8, marginBottom: 4 }}>
+                      ASSET <span style={{ color: T.text.cyan }}>*</span>
+                    </label>
+                    <select
+                      value={actualsAssetId}
+                      onChange={e => setActualsAssetId(e.target.value)}
+                      style={{
+                        width: '100%', boxSizing: 'border-box',
+                        background: '#060A12', border: '1px solid #1e2a3d',
+                        color: '#E2E8F0', fontFamily: MONO, fontSize: 11,
+                        padding: '6px 10px', outline: 'none', colorScheme: 'dark',
+                      }}
+                    >
+                      <option value="">Select asset…</option>
+                      {assets.map(a => (
+                        <option key={a.id} value={a.id}>{a.name || a.address}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 8, fontWeight: 700, color: '#9EA8B4', letterSpacing: 0.8, marginBottom: 4 }}>
+                      PERIOD (YYYY-MM) <span style={{ color: T.text.cyan }}>*</span>
+                    </label>
+                    <input
+                      type="month"
+                      value={actualsPeriod}
+                      onChange={e => setActualsPeriod(e.target.value)}
+                      style={{
+                        width: '100%', boxSizing: 'border-box',
+                        background: '#060A12', border: '1px solid #1e2a3d',
+                        color: '#E2E8F0', fontFamily: MONO, fontSize: 11,
+                        padding: '6px 10px', outline: 'none', colorScheme: 'dark',
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Mode tabs */}
+                <div style={{ display: 'flex', gap: 0, marginBottom: 16, borderBottom: '1px solid #1e2a3d' }}>
+                  {(['manual', 'file'] as const).map(m => (
+                    <button key={m} onClick={() => setActualsMode(m)} style={{
+                      padding: '7px 20px',
+                      background: 'transparent',
+                      border: 'none',
+                      borderBottom: actualsMode === m ? `2px solid ${T.text.cyan}` : '2px solid transparent',
+                      color: actualsMode === m ? T.text.cyan : '#6B7A8D',
+                      fontFamily: MONO, fontSize: 10, fontWeight: 700,
+                      letterSpacing: 0.6, cursor: 'pointer',
+                    }}>
+                      {m === 'manual' ? 'MANUAL ENTRY' : 'FILE UPLOAD (CSV / Excel)'}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Manual entry fields */}
+                {actualsMode === 'manual' && (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+                    {([
+                      { key: 'net_operating_income',     label: 'NOI ($)',              placeholder: 'e.g. 280000' },
+                      { key: 'physical_occupancy_pct',   label: 'OCCUPANCY (%)',        placeholder: 'e.g. 94.5' },
+                      { key: 'effective_gross_income',   label: 'EFF. GROSS INCOME ($)',placeholder: 'e.g. 410000' },
+                      { key: 'total_operating_expenses', label: 'TOTAL EXPENSES ($)',   placeholder: 'e.g. 130000' },
+                      { key: 'units_occupied',           label: 'UNITS OCCUPIED',       placeholder: 'e.g. 188' },
+                      { key: 'avg_rent_achieved',        label: 'AVG RENT ($)',         placeholder: 'e.g. 1850' },
+                      { key: 'collections_rate',         label: 'COLLECTIONS RATE (%)', placeholder: 'e.g. 97.2' },
+                    ] as const).map(f => (
+                      <div key={f.key}>
+                        <label style={{ display: 'block', fontSize: 8, fontWeight: 700, color: '#6B7A8D', letterSpacing: 0.8, marginBottom: 4 }}>
+                          {f.label}
+                        </label>
+                        <input
+                          type="text"
+                          value={actualsForm[f.key as keyof typeof actualsForm]}
+                          onChange={e => setActualsForm(prev => ({ ...prev, [f.key]: e.target.value }))}
+                          placeholder={f.placeholder}
+                          style={{
+                            width: '100%', boxSizing: 'border-box',
+                            background: '#060A12', border: '1px solid #1e2a3d',
+                            color: '#E2E8F0', fontFamily: MONO, fontSize: 11,
+                            padding: '6px 10px', outline: 'none',
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* File upload */}
+                {actualsMode === 'file' && (
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ display: 'block', fontSize: 8, fontWeight: 700, color: '#6B7A8D', letterSpacing: 0.8, marginBottom: 8 }}>
+                      CSV / XLSX / XLS FILE
+                    </label>
+                    <label style={{
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                      gap: 8, padding: '28px 16px',
+                      border: `1px dashed ${actualsFile ? T.text.cyan : '#1e2a3d'}`,
+                      background: actualsFile ? `${T.text.cyan}08` : '#060A12',
+                      cursor: 'pointer',
+                    }}>
+                      <Upload size={20} color={actualsFile ? T.text.cyan : '#6B7A8D'} />
+                      <span style={{ fontSize: 10, color: actualsFile ? T.text.cyan : '#6B7A8D', fontFamily: MONO }}>
+                        {actualsFile ? actualsFile.name : 'Click or drag to upload operating statement'}
+                      </span>
+                      <span style={{ fontSize: 8, color: '#6B7A8D', fontFamily: MONO }}>
+                        Yardi · Entrata · AppFolio · MRI · Custom CSV
+                      </span>
+                      <input type="file" accept=".csv,.xlsx,.xls,.tsv" style={{ display: 'none' }}
+                        onChange={e => setActualsFile(e.target.files?.[0] || null)} />
+                    </label>
+                  </div>
+                )}
+
+                {/* Error */}
+                {actualsError && (
+                  <div style={{ padding: '8px 12px', background: '#1a0a0a', border: '1px solid #EF444433', marginBottom: 12 }}>
+                    <span style={{ fontSize: 10, color: '#EF4444', fontFamily: MONO }}>{actualsError}</span>
+                  </div>
+                )}
+
+                {/* Info note */}
+                <div style={{ fontSize: 9, color: '#6B7A8D', fontFamily: MONO, marginBottom: 16, lineHeight: 1.5 }}>
+                  Data stored in same file system as deal documents · Variance vs. projection auto-computed on save · Charts refresh immediately
+                </div>
+
+                {/* Actions */}
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <button onClick={() => setShowActualsModal(false)} disabled={submittingActuals}
+                    style={{
+                      padding: '7px 18px', background: 'transparent',
+                      border: '1px solid #1e2a3d', color: '#6B7A8D',
+                      fontFamily: MONO, fontSize: 10, fontWeight: 700,
+                      letterSpacing: 0.6, cursor: 'pointer',
+                    }}>
+                    CANCEL
+                  </button>
+                  <button
+                    onClick={handleActualsSubmit}
+                    disabled={submittingActuals || !actualsAssetId || !actualsPeriod || (actualsMode === 'file' && !actualsFile)}
+                    style={{
+                      padding: '7px 22px',
+                      background: submittingActuals ? `${T.text.cyan}22` : T.text.cyan,
+                      border: 'none',
+                      color: submittingActuals ? T.text.cyan : '#0A0E17',
+                      fontFamily: MONO, fontSize: 10, fontWeight: 800,
+                      letterSpacing: 0.6,
+                      cursor: (submittingActuals || !actualsAssetId || !actualsPeriod) ? 'not-allowed' : 'pointer',
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      opacity: (!actualsAssetId || !actualsPeriod) ? 0.5 : 1,
+                    }}
+                  >
+                    {submittingActuals
+                      ? <><Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> SAVING…</>
+                      : <><Upload size={11} /> SAVE ACTUALS</>
+                    }
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );
