@@ -9,7 +9,7 @@ import { NewsIntelligencePage } from "./NewsIntelligencePage";
 import { SettingsPage } from "./SettingsPage";
 import F3PortfolioView from "./terminal/F3PortfolioView";
 import F4MarketsView, { type MarketMover } from "./terminal/F4MarketsView";
-import F9AdminView from "./terminal/F9AdminView";
+import F8AdminView from "./terminal/F8AdminView";
 import { M08StrategyBuilderPage } from "./settings/M08StrategyBuilderPage";
 import { StrategyBuilderPage } from "./StrategyBuilderPage";
 import { BottomPanel } from "../components/layout/BottomPanel";
@@ -2479,7 +2479,7 @@ export default function TerminalPage() {
       case "F5": return ViewEmail();
       case "F6": return ViewNews();
       case "F7": return ViewStrategies();
-      case "F8": return <F9AdminView T={T} />;
+      case "F8": return <F8AdminView T={T} />;
       case "F9": return ViewSettings();
       default: return null;
     }
