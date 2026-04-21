@@ -121,8 +121,10 @@ const MonthlyActualsSection: React.FC<Props> = ({ dealId, deal }) => {
     try {
       const res = await apiClient.get(`/api/v1/operations/${dealId}/monthly-actuals?limit=36`);
       setActuals(res.data?.data ?? []);
-    } catch (e: any) {
-      setError(e?.response?.data?.error ?? 'Failed to load actuals');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Failed to load actuals';
+      const apiErr = (e as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      setError(apiErr ?? msg);
     } finally {
       setLoading(false);
     }
@@ -169,8 +171,10 @@ const MonthlyActualsSection: React.FC<Props> = ({ dealId, deal }) => {
       setShowForm(false);
       await load();
       setTimeout(() => setSubmitSuccess(false), 3000);
-    } catch (e: any) {
-      setSubmitError(e?.response?.data?.error ?? 'Failed to save actuals');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Failed to save actuals';
+      const apiErr = (e as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      setSubmitError(apiErr ?? msg);
     } finally {
       setSubmitting(false);
     }
@@ -364,25 +368,27 @@ const MonthlyActualsSection: React.FC<Props> = ({ dealId, deal }) => {
             OPERATING EXPENSES (monthly $, optional)
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
-            {[
-              { key: 'payroll', label: 'Payroll' },
-              { key: 'repairs_maintenance', label: 'Repairs & Maint' },
-              { key: 'utilities', label: 'Utilities' },
-              { key: 'marketing', label: 'Marketing' },
-              { key: 'admin_general', label: 'Admin & General' },
-              { key: 'management_fee', label: 'Mgmt Fee ($)' },
-              { key: 'management_fee_pct', label: 'Mgmt Fee (%)' },
-              { key: 'turnover_costs', label: 'Turnover' },
-              { key: 'real_estate_taxes', label: 'RE Taxes' },
-              { key: 'insurance', label: 'Insurance' },
-              { key: 'capex', label: 'CapEx' },
-            ].map(({ key, label }) => (
+            {(
+              [
+                { key: 'payroll',            label: 'Payroll' },
+                { key: 'repairs_maintenance', label: 'Repairs & Maint' },
+                { key: 'utilities',          label: 'Utilities' },
+                { key: 'marketing',          label: 'Marketing' },
+                { key: 'admin_general',      label: 'Admin & General' },
+                { key: 'management_fee',     label: 'Mgmt Fee ($)' },
+                { key: 'management_fee_pct', label: 'Mgmt Fee (%)' },
+                { key: 'turnover_costs',     label: 'Turnover' },
+                { key: 'real_estate_taxes',  label: 'RE Taxes' },
+                { key: 'insurance',          label: 'Insurance' },
+                { key: 'capex',              label: 'CapEx' },
+              ] as { key: keyof FormState; label: string }[]
+            ).map(({ key, label }) => (
               <div key={key}>
                 <label style={labelStyle}>{label}</label>
                 <input
                   type="number"
                   placeholder="0"
-                  value={(form as any)[key]}
+                  value={form[key]}
                   onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
                   style={inputStyle}
                 />
