@@ -609,8 +609,12 @@ router.get('/deals/:dealId/ledger', requireAuth, async (req: AuthenticatedReques
              i.name AS investor_name,
              COALESCE(
                e.running_balance,
-               SUM(CASE WHEN e.entry_type = 'distribution' THEN -e.amount ELSE e.amount END)
-                 OVER (PARTITION BY e.investor_id ORDER BY e.entry_date ASC, e.created_at ASC
+               SUM(
+                 CASE WHEN e.entry_type IN ('contribution','interest','appreciation')
+                      THEN e.amount
+                      ELSE -e.amount  -- distribution, fee, clawback, promote, etc. are outflows
+                 END
+               ) OVER (PARTITION BY e.investor_id ORDER BY e.entry_date ASC, e.created_at ASC
                        ROWS UNBOUNDED PRECEDING)
              ) AS running_balance
            FROM capital_account_entries e

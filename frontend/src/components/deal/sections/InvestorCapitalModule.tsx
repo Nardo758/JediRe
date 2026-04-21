@@ -278,6 +278,8 @@ function CapitalCallsTab({ calls, summary, loading, error, onLoadCallItems, onCr
     setLoadingItems(prev => ({ ...prev, [callId]: false }));
   }, [expanded, items, onLoadCallItems]);
 
+  const [pendingActions, setPendingActions] = useState<Record<string, boolean>>({});
+
   const handleCreate = async () => {
     if (!form.call_date || !form.due_date || !form.total_amount) { setFormErr('Call date, due date, and amount are required.'); return; }
     setSaving(true);
@@ -291,7 +293,9 @@ function CapitalCallsTab({ calls, summary, loading, error, onLoadCallItems, onCr
   };
 
   const handleSend = async (callId: string) => {
+    setPendingActions(prev => ({ ...prev, [callId]: true }));
     try { await onSendCall(callId); } catch { /* silent */ }
+    setPendingActions(prev => ({ ...prev, [callId]: false }));
   };
 
   if (loading) return <div style={S.empty}>Loading capital calls…</div>;
@@ -354,7 +358,7 @@ function CapitalCallsTab({ calls, summary, loading, error, onLoadCallItems, onCr
                   <td style={{ ...S.td, color: BT.text.muted }}>{c.purpose ?? '—'}</td>
                   <td style={S.td}><span style={S.badge(statusColor(c.status))}>{c.status.replace(/_/g,' ').toUpperCase()}</span></td>
                   <td style={S.td} onClick={e => e.stopPropagation()}>
-                    {c.status === 'draft' && <button style={S.btn(BT.text.amber)} onClick={() => handleSend(c.id)}>SEND</button>}
+                    {c.status === 'draft' && <button style={S.btn(BT.text.amber)} onClick={() => handleSend(c.id)} disabled={pendingActions[c.id]}>{pendingActions[c.id] ? 'SENDING…' : 'SEND'}</button>}
                     <span style={{ color: BT.text.muted, fontSize: 9, marginLeft: 4 }}>{expanded === c.id ? '▲' : '▼'}</span>
                   </td>
                 </tr>
@@ -434,6 +438,14 @@ function DistributionsTab({ dists, summary, loading, error, onLoadDistItems, onC
     setLoadingItems(prev => ({ ...prev, [distId]: false }));
   }, [expanded, items, onLoadDistItems]);
 
+  const [pendingActions, setPendingActions] = useState<Record<string, boolean>>({});
+
+  const handleAction = async (id: string, fn: (id: string) => Promise<void>) => {
+    setPendingActions(prev => ({ ...prev, [id]: true }));
+    try { await fn(id); } catch { /* silent */ }
+    setPendingActions(prev => ({ ...prev, [id]: false }));
+  };
+
   const handleCreate = async () => {
     if (!form.distribution_date || !form.total_amount) { setFormErr('Date and amount are required.'); return; }
     setSaving(true);
@@ -498,8 +510,8 @@ function DistributionsTab({ dists, summary, loading, error, onLoadDistItems, onC
                   <td style={S.td}>{d.tax_year}</td>
                   <td style={S.td}><span style={S.badge(statusColor(d.status))}>{d.status.toUpperCase()}</span></td>
                   <td style={{ ...S.td, display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
-                    {d.status === 'draft'    && <button style={S.btn(BT.text.amber)} onClick={() => onApprove(d.id)}>APPROVE</button>}
-                    {d.status === 'approved' && <button style={S.btn(BT.text.green)} onClick={() => onProcess(d.id)}>PROCESS</button>}
+                    {d.status === 'draft'    && <button style={S.btn(BT.text.amber)} onClick={() => handleAction(d.id, onApprove)} disabled={pendingActions[d.id]}>{pendingActions[d.id] ? 'APPROVING…' : 'APPROVE'}</button>}
+                    {d.status === 'approved' && <button style={S.btn(BT.text.green)} onClick={() => handleAction(d.id, onProcess)} disabled={pendingActions[d.id]}>{pendingActions[d.id] ? 'PROCESSING…' : 'PROCESS'}</button>}
                     <span style={{ color: BT.text.muted, fontSize: 9, marginLeft: 4 }}>{expanded === d.id ? '▲' : '▼'}</span>
                   </td>
                 </tr>
