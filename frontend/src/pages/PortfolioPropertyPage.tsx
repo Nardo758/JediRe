@@ -714,11 +714,11 @@ const AILearningTab: React.FC<{ dealId: string }> = ({ dealId }) => {
       }).catch(() => setActuals({ count: 0, tier: 4 }));
     apiClient.get(`/api/v1/learning/outcomes/deal/${dealId}/summary`)
       .then(r => setAccuracy((r.data?.summary ?? []).map((row: Record<string, unknown>) => ({
-        assumptionName: ((row.assumption_name as string) ?? '').replace(/_/g, ' '),
-        hitRate10Pct: ((row.hit_rate_10pct as number) ?? 0) * 100,
-        hitRate20Pct: ((row.hit_rate_20pct as number) ?? 0) * 100,
-        meanBias: (row.mean_gap_pct as number) ?? 0,
-        nPredictions: (row.n_predictions as number) ?? 0,
+        assumptionName: String(row.assumption_name ?? '').replace(/_/g, ' '),
+        hitRate10Pct: Number(row.hit_rate_10pct ?? 0) * 100,
+        hitRate20Pct: Number(row.hit_rate_20pct ?? 0) * 100,
+        meanBias: Number(row.mean_gap_pct ?? 0),
+        nPredictions: Number(row.n_predictions ?? 0),
       }))))
       .catch(() => setAccuracy([]))
       .finally(() => setAccuracyLoading(false));
@@ -825,11 +825,11 @@ const ReportsTab: React.FC<ReportsTabProps> = ({ dealId, financials, deal }) => 
   useEffect(() => {
     apiClient.get(`/api/v1/learning/outcomes/deal/${dealId}/summary`)
       .then(r => setAccuracy((r.data?.summary ?? []).map((row: Record<string, unknown>) => ({
-        assumptionName: ((row.assumption_name as string) ?? '').replace(/_/g, ' '),
-        hitRate10Pct: ((row.hit_rate_10pct as number) ?? 0) * 100,
-        hitRate20Pct: ((row.hit_rate_20pct as number) ?? 0) * 100,
-        meanBias: (row.mean_gap_pct as number) ?? 0,
-        nPredictions: (row.n_predictions as number) ?? 0,
+        assumptionName: String(row.assumption_name ?? '').replace(/_/g, ' '),
+        hitRate10Pct: Number(row.hit_rate_10pct ?? 0) * 100,
+        hitRate20Pct: Number(row.hit_rate_20pct ?? 0) * 100,
+        meanBias: Number(row.mean_gap_pct ?? 0),
+        nPredictions: Number(row.n_predictions ?? 0),
       }))))
       .catch(() => setAccuracy([]));
   }, [dealId]);
