@@ -297,8 +297,10 @@ function CapitalCallsTab({ calls, summary, loading, error, onLoadCallItems, onCr
   const handleSend = async (callId: string) => {
     setActionErr(null);
     setPendingActions(prev => ({ ...prev, [callId]: true }));
-    try { await onSendCall(callId); }
-    catch { setActionErr('Failed to send call. Please try again.'); }
+    try {
+      await onSendCall(callId);
+      setItems(prev => { const next = { ...prev }; delete next[callId]; return next; });
+    } catch { setActionErr('Failed to send call. Please try again.'); }
     setPendingActions(prev => ({ ...prev, [callId]: false }));
   };
 
@@ -452,7 +454,10 @@ function DistributionsTab({ dists, summary, loading, error, onLoadDistItems, onC
   const handleAction = async (id: string, fn: (id: string) => Promise<void>, errMsg: string) => {
     setActionErr(null);
     setPendingActions(prev => ({ ...prev, [id]: true }));
-    try { await fn(id); } catch { setActionErr(errMsg); }
+    try {
+      await fn(id);
+      setItems(prev => { const next = { ...prev }; delete next[id]; return next; });
+    } catch { setActionErr(errMsg); }
     setPendingActions(prev => ({ ...prev, [id]: false }));
   };
 
