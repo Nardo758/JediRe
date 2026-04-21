@@ -491,6 +491,10 @@ app.use('/api/v1/portfolio', portfolioRouter);
 import operationsRouter from './api/rest/operations.routes';
 app.use('/api/v1/operations', operationsRouter);
 
+// Full lifecycle routes (disposition, reforecast, debt, comp sets, capex)
+import lifecycleRouter from './api/rest/lifecycle.routes';
+app.use('/api/v1/lifecycle', lifecycleRouter);
+
 app.use('/api/v1/unit-mix', requireAuth, createUnitMixRoutes(pool));
 
 app.get('/api/v1/apartment-sync/trends', requireAuth, async (req: any, res) => {
