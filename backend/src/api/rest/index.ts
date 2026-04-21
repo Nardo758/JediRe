@@ -93,6 +93,7 @@ import strategiesRoutes from './strategy-definitions.routes';
 import m08StrategiesRoutes from './strategies.routes';
 import { createCapsuleRoutes } from './capsule.routes';
 import inlineDealsRoutes from './inline-deals.routes';
+import dealTemplatesRoutes from './deal-templates.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 import { createUnitMixRoutes } from './unitMix.routes';
 import dealCompSetsRoutes from './deal-comp-sets.routes';
@@ -435,6 +436,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Inline Deals routes (Deal Capsule document upload, extraction, reprocessing)
   app.use(`${API_PREFIX}/inline-deals`, inlineDealsRoutes);
+
+  // Deal Templates routes (F9 Settings — org-scoped template CRUD)
+  app.use(`${API_PREFIX}/org/templates`, dealTemplatesRoutes);
 
   // 404 handler for API routes
   app.use(`${API_PREFIX}/*`, notFoundHandler);
