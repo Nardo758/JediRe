@@ -16,7 +16,9 @@ import {
 } from '../../services/archive-ingestion.service';
 import { 
   refreshArchiveBenchmarks, 
-  getArchiveBenchmarkStats 
+  getArchiveBenchmarkStats,
+  refreshLineItemBenchmarks,
+  getLineItemBenchmarkStats
 } from '../../services/archive-benchmark-aggregator';
 import { getPool } from '../../database/connection';
 import { logger } from '../../utils/logger';
@@ -405,6 +407,156 @@ router.get('/benchmarks/distribution', requireAuth, async (req: AuthenticatedReq
     res.status(500).json({ 
       success: false, 
       error: err instanceof Error ? err.message : 'Query failed' 
+    });
+  }
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// Line Item Benchmark Endpoints
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * POST /api/v1/archive/line-items/refresh
+ * Recompute line-item benchmarks from all archive data
+ */
+router.post('/line-items/refresh', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    logger.info('[archive.routes] Starting line item benchmark refresh...');
+    const result = await refreshLineItemBenchmarks();
+    
+    res.json({ 
+      success: true, 
+      ...result,
+      message: `Refreshed ${result.lineItemsWritten} line items across ${result.bucketsWritten} buckets`,
+    });
+  } catch (err) {
+    logger.error('Line item benchmark refresh error:', err);
+    res.status(500).json({ 
+      success: false, 
+      error: err instanceof Error ? err.message : 'Refresh failed' 
+    });
+  }
+});
+
+/**
+ * GET /api/v1/archive/line-items/stats
+ * Get summary stats for line item benchmarks
+ */
+router.get('/line-items/stats', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const stats = await getLineItemBenchmarkStats();
+    res.json({ success: true, ...stats });
+  } catch (err) {
+    logger.error('Line item stats error:', err);
+    res.status(500).json({ 
+      success: false, 
+      error: err instanceof Error ? err.message : 'Stats query failed' 
+    });
+  }
+});
+
+/**
+ * GET /api/v1/archive/line-items/query
+ * Query line item benchmarks for a specific location/deal type
+ */
+router.get('/line-items/query', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { state, msa, asset_class, deal_type, vintage_band, line_items, category } = req.query;
+    
+    const pool = getPool();
+    const params: unknown[] = [];
+    const conditions: string[] = ['n_samples >= 3'];
+    
+    if (state) {
+      params.push(state);
+      conditions.push(`state = $${params.length}`);
+    }
+    if (msa) {
+      params.push(msa);
+      conditions.push(`msa = $${params.length}`);
+    }
+    if (asset_class) {
+      params.push(asset_class);
+      conditions.push(`asset_class = $${params.length}`);
+    }
+    if (deal_type) {
+      params.push(deal_type);
+      conditions.push(`deal_type = $${params.length}`);
+    }
+    if (vintage_band) {
+      params.push(vintage_band);
+      conditions.push(`vintage_band = $${params.length}`);
+    }
+    if (category) {
+      params.push(category);
+      conditions.push(`category = $${params.length}`);
+    }
+    if (line_items) {
+      const items = (line_items as string).split(',').map(s => s.trim());
+      params.push(items);
+      conditions.push(`line_item = ANY($${params.length})`);
+    }
+    
+    const result = await pool.query(
+      `SELECT 
+        line_item, category,
+        per_unit_p10, per_unit_p25, per_unit_p50, per_unit_p75, per_unit_p90,
+        per_unit_mean, per_unit_stddev,
+        pct_egi_p10, pct_egi_p50, pct_egi_p90,
+        n_samples, as_of,
+        state, msa, asset_class, deal_type, vintage_band
+      FROM line_item_benchmarks
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY category, line_item, n_samples DESC`,
+      params
+    );
+    
+    res.json({ 
+      success: true, 
+      benchmarks: result.rows,
+      count: result.rows.length,
+    });
+  } catch (err) {
+    logger.error('Line item query error:', err);
+    res.status(500).json({ 
+      success: false, 
+      error: err instanceof Error ? err.message : 'Query failed' 
+    });
+  }
+});
+
+/**
+ * POST /api/v1/archive/refresh-all
+ * Refresh both archive assumption benchmarks AND line item benchmarks
+ */
+router.post('/refresh-all', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    logger.info('[archive.routes] Starting full benchmark refresh...');
+    
+    const [assumptionResult, lineItemResult] = await Promise.all([
+      refreshArchiveBenchmarks(),
+      refreshLineItemBenchmarks(),
+    ]);
+    
+    res.json({ 
+      success: true,
+      assumptions: {
+        bucketsWritten: assumptionResult.bucketsWritten,
+        rowsWritten: assumptionResult.rowsWritten,
+        errors: assumptionResult.errors,
+      },
+      lineItems: {
+        bucketsWritten: lineItemResult.bucketsWritten,
+        lineItemsWritten: lineItemResult.lineItemsWritten,
+        errors: lineItemResult.errors,
+      },
+      message: `Refreshed ${assumptionResult.rowsWritten} assumption benchmarks and ${lineItemResult.lineItemsWritten} line item benchmarks`,
+    });
+  } catch (err) {
+    logger.error('Full benchmark refresh error:', err);
+    res.status(500).json({ 
+      success: false, 
+      error: err instanceof Error ? err.message : 'Refresh failed' 
     });
   }
 });

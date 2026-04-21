@@ -421,3 +421,408 @@ export async function getArchiveBenchmarkStats(): Promise<{
     lastRefresh: row?.last_refresh ? String(row.last_refresh) : null,
   };
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Line Item Benchmark Aggregation
+// ──────────────────────────────────────────────────────────────────────────────
+
+interface LineItemBucket {
+  state: string | null;
+  msa: string | null;
+  submarket: string | null;
+  asset_class: string | null;
+  deal_type: string | null;
+  vintage_band: string | null;
+  unit_count_band: string | null;
+  stories_band: string | null;
+}
+
+interface LineItemData {
+  per_unit_values: number[];
+  pct_egi_values: number[];
+  egi_values: number[];  // To compute % EGI
+}
+
+function getUnitCountBand(units: number | null): string | null {
+  if (!units) return null;
+  if (units < 100) return '<100';
+  if (units < 200) return '100-200';
+  if (units < 350) return '200-350';
+  return '350+';
+}
+
+function getStoriesBand(stories: number | null): string | null {
+  if (!stories) return null;
+  if (stories <= 3) return 'garden';
+  if (stories <= 8) return 'mid-rise';
+  return 'high-rise';
+}
+
+function normalizeLineItem(name: string): string {
+  return name.toLowerCase()
+    .replace(/[^a-z0-9\s]/g, '')
+    .replace(/\s+/g, '_')
+    .trim();
+}
+
+// Map common T-12 line names to standard names
+const LINE_ITEM_ALIASES: Record<string, string> = {
+  // Revenue
+  'gpr': 'gross_potential_rent',
+  'potential_rent': 'gross_potential_rent',
+  'scheduled_rent': 'gross_potential_rent',
+  'ltl': 'loss_to_lease',
+  'lease_loss': 'loss_to_lease',
+  'vacancy': 'vacancy_loss',
+  'physical_vacancy': 'vacancy_loss',
+  'economic_vacancy': 'vacancy_loss',
+  'concession': 'concessions',
+  'collections_loss': 'bad_debt',
+  'write_offs': 'bad_debt',
+  'delinquency': 'bad_debt',
+  'ancillary': 'other_income',
+  'misc_income': 'other_income',
+  'fee_income': 'other_income',
+  'egi': 'effective_gross_income',
+  'total_revenue': 'effective_gross_income',
+  'gross_income': 'effective_gross_income',
+  
+  // Payroll
+  'salaries': 'payroll',
+  'wages': 'payroll',
+  'personnel': 'payroll',
+  'employee_costs': 'payroll',
+  'property_management': 'management_fee',
+  'mgmt_fee': 'management_fee',
+  'pm_fee': 'management_fee',
+  
+  // Utilities
+  'electricity': 'utilities_electric',
+  'power': 'utilities_electric',
+  'electric': 'utilities_electric',
+  'natural_gas': 'utilities_gas',
+  'gas': 'utilities_gas',
+  'water': 'utilities_water_sewer',
+  'sewer': 'utilities_water_sewer',
+  'w_s': 'utilities_water_sewer',
+  'trash': 'utilities_trash',
+  'garbage': 'utilities_trash',
+  'refuse': 'utilities_trash',
+  'utilities': 'utilities_total',
+  'utility_expense': 'utilities_total',
+  
+  // R&M
+  'r_m': 'repairs_maintenance',
+  'r&m': 'repairs_maintenance',
+  'maintenance': 'repairs_maintenance',
+  'repairs': 'repairs_maintenance',
+  'turnover': 'make_ready',
+  'turn_costs': 'make_ready',
+  'unit_turn': 'make_ready',
+  'grounds': 'landscaping',
+  'lawn_care': 'landscaping',
+  'contracted_services': 'contract_services',
+  
+  // Admin
+  'g_a': 'admin_general',
+  'g&a': 'admin_general',
+  'admin': 'admin_general',
+  'office_expense': 'admin_general',
+  'advertising': 'marketing',
+  'leasing_marketing': 'marketing',
+  'promotion': 'marketing',
+  'legal': 'professional_fees',
+  'accounting': 'professional_fees',
+  
+  // Fixed
+  'property_insurance': 'insurance',
+  'liability_insurance': 'insurance',
+  'hazard_insurance': 'insurance',
+  'property_taxes': 'real_estate_taxes',
+  'taxes': 'real_estate_taxes',
+  'tax_expense': 'real_estate_taxes',
+  're_taxes': 'real_estate_taxes',
+  
+  // Totals
+  'total_opex': 'total_operating_expenses',
+  'opex': 'total_operating_expenses',
+  'operating_expenses': 'total_operating_expenses',
+  'noi': 'net_operating_income',
+  'reserves': 'replacement_reserves',
+  'capex_reserves': 'replacement_reserves',
+  'capex': 'capital_improvements',
+  'capital_expenditures': 'capital_improvements',
+};
+
+function standardizeLineItem(name: string): string {
+  const normalized = normalizeLineItem(name);
+  return LINE_ITEM_ALIASES[normalized] ?? normalized;
+}
+
+/**
+ * Extract line item data from archive deals
+ */
+async function extractArchiveLineItems(): Promise<Map<string, Map<string, LineItemData>>> {
+  // Map: bucketKey -> lineItem -> data
+  const bucketMap = new Map<string, Map<string, LineItemData>>();
+
+  // Query archive deals with T-12 data
+  const result = await query(`
+    SELECT 
+      state, msa_name, submarket_name, asset_class,
+      deal_type, year_built, unit_count, stories,
+      extracted_financials,
+      broker_pro_forma
+    FROM data_library_assets
+    WHERE extracted_financials IS NOT NULL
+      AND unit_count > 0
+      AND data_quality_score >= 40
+  `);
+
+  for (const row of result.rows as Record<string, unknown>[]) {
+    const unitCount = Number(row.unit_count ?? 0);
+    if (unitCount <= 0) continue;
+
+    const bucket: LineItemBucket = {
+      state: row.state as string | null,
+      msa: row.msa_name as string | null,
+      submarket: row.submarket_name as string | null,
+      asset_class: row.asset_class as string | null,
+      deal_type: getDealType(row.deal_type as string | null),
+      vintage_band: getVintageBand(row.year_built as number | null),
+      unit_count_band: getUnitCountBand(unitCount),
+      stories_band: getStoriesBand(row.stories as number | null),
+    };
+    const bucketKey = JSON.stringify(bucket);
+
+    if (!bucketMap.has(bucketKey)) {
+      bucketMap.set(bucketKey, new Map());
+    }
+    const lineItems = bucketMap.get(bucketKey)!;
+
+    // Extract from extracted_financials (T-12 parser output)
+    const financials = row.extracted_financials as Record<string, unknown> | null;
+    if (financials) {
+      const egi = Number(financials.effective_gross_income ?? financials.egi ?? financials.total_revenue ?? 0);
+
+      // Process income lines
+      const incomeLines = financials.income_lines as Record<string, number>[] | null;
+      if (Array.isArray(incomeLines)) {
+        for (const line of incomeLines) {
+          if (line.name && line.total != null) {
+            const stdName = standardizeLineItem(String(line.name));
+            addLineItemValue(lineItems, stdName, 'revenue', Number(line.total), unitCount, egi);
+          }
+        }
+      }
+
+      // Process expense lines
+      const expenseLines = financials.expense_lines as Record<string, number>[] | null;
+      if (Array.isArray(expenseLines)) {
+        for (const line of expenseLines) {
+          if (line.name && line.total != null) {
+            const stdName = standardizeLineItem(String(line.name));
+            addLineItemValue(lineItems, stdName, 'opex', Number(line.total), unitCount, egi);
+          }
+        }
+      }
+
+      // Add summary metrics
+      if (financials.total_revenue) {
+        addLineItemValue(lineItems, 'effective_gross_income', 'revenue', Number(financials.total_revenue), unitCount, egi);
+      }
+      if (financials.total_expenses) {
+        addLineItemValue(lineItems, 'total_operating_expenses', 'opex', Number(financials.total_expenses), unitCount, egi);
+      }
+      if (financials.noi) {
+        addLineItemValue(lineItems, 'net_operating_income', 'noi', Number(financials.noi), unitCount, egi);
+      }
+    }
+  }
+
+  return bucketMap;
+}
+
+function addLineItemValue(
+  lineItems: Map<string, LineItemData>,
+  name: string,
+  _category: string,
+  total: number,
+  unitCount: number,
+  egi: number
+): void {
+  if (!name || total === 0 || !isFinite(total)) return;
+  
+  const perUnit = total / unitCount;
+  if (!isFinite(perUnit) || perUnit < 0 || perUnit > 50000) return; // Sanity check
+
+  if (!lineItems.has(name)) {
+    lineItems.set(name, { per_unit_values: [], pct_egi_values: [], egi_values: [] });
+  }
+  const data = lineItems.get(name)!;
+  data.per_unit_values.push(perUnit);
+  
+  if (egi > 0) {
+    const pctEgi = (total / egi) * 100;
+    if (isFinite(pctEgi) && pctEgi >= 0 && pctEgi <= 200) {
+      data.pct_egi_values.push(pctEgi);
+      data.egi_values.push(egi / unitCount);
+    }
+  }
+}
+
+/**
+ * Refresh line item benchmarks
+ */
+export async function refreshLineItemBenchmarks(): Promise<{
+  bucketsWritten: number;
+  lineItemsWritten: number;
+  errors: string[];
+}> {
+  const errors: string[] = [];
+  let bucketsWritten = 0;
+  let lineItemsWritten = 0;
+  const asOf = new Date().toISOString().slice(0, 10);
+
+  try {
+    logger.info('[archive-benchmark-aggregator] Starting line item benchmark refresh...');
+
+    const bucketMap = await extractArchiveLineItems();
+    
+    logger.info('[archive-benchmark-aggregator] Extracted line items', {
+      buckets: bucketMap.size,
+    });
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      for (const [bucketKey, lineItems] of bucketMap) {
+        const bucket = JSON.parse(bucketKey) as LineItemBucket;
+        bucketsWritten++;
+
+        for (const [lineItem, data] of lineItems) {
+          const n = data.per_unit_values.length;
+          if (n < 3) continue;
+
+          // Get category from standard line items
+          const catResult = await client.query(
+            'SELECT category FROM standard_line_items WHERE line_item = $1',
+            [lineItem]
+          );
+          const category = (catResult.rows[0] as { category?: string })?.category ?? 'opex';
+
+          const perUnitP10 = percentile(data.per_unit_values, 10);
+          const perUnitP25 = percentile(data.per_unit_values, 25);
+          const perUnitP50 = percentile(data.per_unit_values, 50);
+          const perUnitP75 = percentile(data.per_unit_values, 75);
+          const perUnitP90 = percentile(data.per_unit_values, 90);
+          const perUnitMean = data.per_unit_values.reduce((a, b) => a + b, 0) / n;
+          const variance = data.per_unit_values.reduce((sum, v) => sum + Math.pow(v - perUnitMean, 2), 0) / n;
+          const perUnitStddev = Math.sqrt(variance);
+
+          const pctEgiP10 = data.pct_egi_values.length >= 3 ? percentile(data.pct_egi_values, 10) : null;
+          const pctEgiP25 = data.pct_egi_values.length >= 3 ? percentile(data.pct_egi_values, 25) : null;
+          const pctEgiP50 = data.pct_egi_values.length >= 3 ? percentile(data.pct_egi_values, 50) : null;
+          const pctEgiP75 = data.pct_egi_values.length >= 3 ? percentile(data.pct_egi_values, 75) : null;
+          const pctEgiP90 = data.pct_egi_values.length >= 3 ? percentile(data.pct_egi_values, 90) : null;
+
+          await client.query(
+            `INSERT INTO line_item_benchmarks (
+              state, msa, submarket, asset_class, deal_type,
+              vintage_band, unit_count_band, stories_band,
+              category, line_item,
+              per_unit_p10, per_unit_p25, per_unit_p50, per_unit_p75, per_unit_p90,
+              per_unit_mean, per_unit_stddev,
+              pct_egi_p10, pct_egi_p25, pct_egi_p50, pct_egi_p75, pct_egi_p90,
+              n_samples, n_deals, as_of
+            ) VALUES (
+              $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+              $11, $12, $13, $14, $15, $16, $17,
+              $18, $19, $20, $21, $22,
+              $23, $24, $25
+            ) ON CONFLICT ON CONSTRAINT uq_line_item_benchmark DO UPDATE SET
+              per_unit_p10 = EXCLUDED.per_unit_p10,
+              per_unit_p25 = EXCLUDED.per_unit_p25,
+              per_unit_p50 = EXCLUDED.per_unit_p50,
+              per_unit_p75 = EXCLUDED.per_unit_p75,
+              per_unit_p90 = EXCLUDED.per_unit_p90,
+              per_unit_mean = EXCLUDED.per_unit_mean,
+              per_unit_stddev = EXCLUDED.per_unit_stddev,
+              pct_egi_p10 = EXCLUDED.pct_egi_p10,
+              pct_egi_p25 = EXCLUDED.pct_egi_p25,
+              pct_egi_p50 = EXCLUDED.pct_egi_p50,
+              pct_egi_p75 = EXCLUDED.pct_egi_p75,
+              pct_egi_p90 = EXCLUDED.pct_egi_p90,
+              n_samples = EXCLUDED.n_samples,
+              n_deals = EXCLUDED.n_deals`,
+            [
+              bucket.state, bucket.msa, bucket.submarket, bucket.asset_class, bucket.deal_type,
+              bucket.vintage_band, bucket.unit_count_band, bucket.stories_band,
+              category, lineItem,
+              perUnitP10, perUnitP25, perUnitP50, perUnitP75, perUnitP90,
+              perUnitMean, perUnitStddev,
+              pctEgiP10, pctEgiP25, pctEgiP50, pctEgiP75, pctEgiP90,
+              n, n, asOf,
+            ]
+          );
+          lineItemsWritten++;
+        }
+      }
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    logger.info('[archive-benchmark-aggregator] Line item benchmark refresh complete', {
+      bucketsWritten,
+      lineItemsWritten,
+    });
+
+    return { bucketsWritten, lineItemsWritten, errors };
+
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('[archive-benchmark-aggregator] Line item refresh failed', { error: msg });
+    errors.push(msg);
+    return { bucketsWritten, lineItemsWritten, errors };
+  }
+}
+
+/**
+ * Get line item benchmark stats
+ */
+export async function getLineItemBenchmarkStats(): Promise<{
+  totalLineItems: number;
+  totalBuckets: number;
+  lineItemTypes: string[];
+  lastRefresh: string | null;
+}> {
+  const result = await query(`
+    SELECT 
+      COUNT(DISTINCT line_item) as total_line_items,
+      COUNT(DISTINCT (state, msa, asset_class)) as total_buckets,
+      MAX(as_of) as last_refresh
+    FROM line_item_benchmarks
+    WHERE n_samples >= 3
+  `);
+
+  const typesResult = await query(`
+    SELECT DISTINCT line_item 
+    FROM line_item_benchmarks 
+    WHERE n_samples >= 3
+    ORDER BY line_item
+  `);
+
+  const row = result.rows[0] as Record<string, unknown>;
+  return {
+    totalLineItems: Number(row?.total_line_items ?? 0),
+    totalBuckets: Number(row?.total_buckets ?? 0),
+    lineItemTypes: (typesResult.rows as { line_item: string }[]).map(r => r.line_item),
+    lastRefresh: row?.last_refresh ? String(row.last_refresh) : null,
+  };
+}

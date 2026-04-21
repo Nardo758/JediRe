@@ -38,6 +38,8 @@ import { writeUnderwritingTool } from './tools/write_underwriting';
 import { requestWalkthroughNarrativeTool } from './tools/request_walkthrough_narrative';
 import { fetchArchiveAssumptionDistributionTool } from './tools/fetch_archive_assumption_distribution';
 import { fetchArchiveAchievementVsAssumptionTool } from './tools/fetch_archive_achievement_vs_assumption';
+import { fetchLineItemBenchmarksTool } from './tools/fetch_line_item_benchmarks';
+import { fetchMarketTrendsTool } from './tools/fetch_market_trends';
 
 // ── Evidence-system output schema (v4) ───────────────────────────
 //
@@ -209,17 +211,24 @@ export const CASHFLOW_AGENT_CONFIG: AgentConfig = {
   agentVersion: '3.1.0',
   promptVersion: 'cashflow-v5-archive',
   tools: [
+    // Tier 1: Deal documents
     fetchT12Tool,
     fetchRentRollTool,
     fetchAssumptionsTool,
+    // Tier 2: Portfolio actuals
     fetchOwnedAssetActualsTool,
     fetchOwnedAssetOpexRatiosTool,
+    // Tier 3: Platform intelligence
     fetchPeerCompNOIMetricsTool,
     fetchJurisdictionTaxForecastTool,
     fetchJurisdictionInsuranceForecastTool,
     fetchM35EventForecastTool,
+    // Archive & benchmarks
     fetchArchiveAssumptionDistributionTool,
     fetchArchiveAchievementVsAssumptionTool,
+    fetchLineItemBenchmarksTool,
+    fetchMarketTrendsTool,
+    // Analysis & output
     detectCollisionTool,
     computeProformaTool,
     writeProjectionTool,
