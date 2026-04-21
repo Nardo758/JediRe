@@ -16,3 +16,4 @@ CREATE TABLE IF NOT EXISTS deal_templates (
 );
 
 CREATE INDEX IF NOT EXISTS idx_deal_templates_org_id ON deal_templates(org_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_deal_templates_org_name ON deal_templates(org_id, name);

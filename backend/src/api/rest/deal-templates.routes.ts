@@ -63,7 +63,7 @@ async function seedDefaultTemplates(orgId: string, userId: string): Promise<void
     await query(
       `INSERT INTO deal_templates (org_id, name, category, description, sections, is_default, created_by)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
-       ON CONFLICT DO NOTHING`,
+       ON CONFLICT (org_id, name) DO NOTHING`,
       [orgId, t.name, t.category, t.description, JSON.stringify(t.sections), t.is_default, userId]
     );
   }
