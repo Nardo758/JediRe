@@ -591,14 +591,14 @@ function WaterfallTab({ waterfall, defaultTiers, loading, error, onUpdate }: Wat
       clawback:         w?.clawback ?? false,
       lp_gp_split_base: String(Number(w?.lp_gp_split_base ?? 80)),
     });
-    setEditTiers((w?.tiers ?? defaultTiers).map(t => ({ ...t })));
+    setEditTiers((w?.tiers ?? defaultTiers).map(t => ({ ...t, lp_pct: Number(t.lp_pct), gp_pct: Number(t.gp_pct) })));
     setEditing(true);
     setSaveErr(null);
   };
 
   const handleSave = async () => {
-    const invalidTier = editTiers.find(t => Math.round(t.lp_pct + t.gp_pct) !== 100);
-    if (invalidTier) { setSaveErr(`LP% + GP% must equal 100 for every tier (found ${invalidTier.lp_pct}% + ${invalidTier.gp_pct}% = ${invalidTier.lp_pct + invalidTier.gp_pct}%).`); return; }
+    const invalidTier = editTiers.find(t => Math.round(Number(t.lp_pct) + Number(t.gp_pct)) !== 100);
+    if (invalidTier) { const lp = Number(invalidTier.lp_pct), gp = Number(invalidTier.gp_pct); setSaveErr(`LP% + GP% must equal 100 for every tier (found ${lp}% + ${gp}% = ${lp + gp}%).`); return; }
     setSaving(true);
     setSaveErr(null);
     try {
@@ -686,8 +686,8 @@ function WaterfallTab({ waterfall, defaultTiers, loading, error, onUpdate }: Wat
               </div>
               <div>
                 <div style={S.kpiLabel}>GP %</div>
-                <input type="number" min="0" max="100" value={String(t.gp_pct)} onChange={e => updateTier(i, 'gp_pct', e.target.value)} style={{ ...S.inp, borderColor: Math.round(t.lp_pct + t.gp_pct) !== 100 ? BT.text.amber : undefined }} />
-                {Math.round(t.lp_pct + t.gp_pct) !== 100 && <div style={{ fontSize: 8, color: BT.text.amber, marginTop: 2 }}>LP+GP≠100</div>}
+                <input type="number" min="0" max="100" value={String(t.gp_pct)} onChange={e => updateTier(i, 'gp_pct', e.target.value)} style={{ ...S.inp, borderColor: Math.round(Number(t.lp_pct) + Number(t.gp_pct)) !== 100 ? BT.text.amber : undefined }} />
+                {Math.round(Number(t.lp_pct) + Number(t.gp_pct)) !== 100 && <div style={{ fontSize: 8, color: BT.text.amber, marginTop: 2 }}>LP+GP≠100</div>}
               </div>
               <button style={S.btn(BT.text.red)} onClick={() => removeTier(i)}>✕</button>
             </div>
