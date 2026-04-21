@@ -16,7 +16,7 @@
  * - User Integrations → F9 integrations
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { apiClient } from '../../services/api.client';
 
 // Existing section imports
@@ -221,62 +221,465 @@ function LearningSystemSection({ T }: { T: ThemeType }) {
   );
 }
 
+interface CompProp {
+  id: string;
+  property_name: string;
+  address: string | null;
+  submarket: string | null;
+  distance_mi: number | null;
+  avg_rent_sf: number | null;
+  occupancy_pct: number | null;
+  last_scraped: string | null;
+}
+
+interface PropertySearchResult {
+  id: string;
+  address: string;
+  city: string;
+  state: string;
+  owner_name: string | null;
+  units: number | null;
+}
+
 function CompetitiveSetsSection({ T }: { T: ThemeType }) {
+  const [comps, setComps] = useState<CompProp[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+
+  // Add comp form state
+  const [form, setForm] = useState({ property_name: '', address: '', submarket: '', distance_mi: '', avg_rent_sf: '', occupancy_pct: '' });
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<PropertySearchResult[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    apiClient.get('/api/v1/admin/comp-sets')
+      .then(r => setComps(r.data.comps ?? []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleSearch = (q: string) => {
+    setSearchQuery(q);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (q.length < 2) { setSearchResults([]); return; }
+    debounceRef.current = setTimeout(() => {
+      setSearchLoading(true);
+      apiClient.get(`/api/v1/admin/comp-sets/property-search?q=${encodeURIComponent(q)}`)
+        .then(r => setSearchResults(r.data.results ?? []))
+        .catch(() => setSearchResults([]))
+        .finally(() => setSearchLoading(false));
+    }, 350);
+  };
+
+  const selectProperty = (p: PropertySearchResult) => {
+    setForm(f => ({
+      ...f,
+      property_name: f.property_name || p.owner_name || p.address,
+      address: `${p.address}, ${p.city}, ${p.state}`,
+    }));
+    setSearchQuery('');
+    setSearchResults([]);
+  };
+
+  const handleAdd = async () => {
+    if (!form.property_name.trim()) { setError('Property name is required'); return; }
+    setSaving(true);
+    setError(null);
+    try {
+      await apiClient.post('/api/v1/admin/comp-sets', {
+        property_name: form.property_name,
+        address: form.address || null,
+        submarket: form.submarket || null,
+        distance_mi: form.distance_mi ? parseFloat(form.distance_mi) : null,
+        avg_rent_sf: form.avg_rent_sf ? parseFloat(form.avg_rent_sf) : null,
+        occupancy_pct: form.occupancy_pct ? parseFloat(form.occupancy_pct) : null,
+      });
+      setShowModal(false);
+      setForm({ property_name: '', address: '', submarket: '', distance_mi: '', avg_rent_sf: '', occupancy_pct: '' });
+      load();
+    } catch (e: any) {
+      setError(e?.response?.data?.error || 'Failed to add comp');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRemove = async (id: string) => {
+    try {
+      await apiClient.delete(`/api/v1/admin/comp-sets/${id}`);
+      setComps(c => c.filter(x => x.id !== id));
+    } catch {}
+  };
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%', fontSize: 10, padding: '5px 8px',
+    background: T.bg.panelAlt, border: `1px solid ${T.border.medium}`,
+    color: T.text.primary, outline: 'none', fontFamily: T.font.mono, boxSizing: 'border-box',
+  };
+
   return (
     <div style={{ padding: 20 }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: T.text.primary, marginBottom: 8, fontFamily: T.font.mono }}>
-        🏘️ COMPETITIVE SET MONITORING
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: T.text.primary, fontFamily: T.font.mono }}>
+          🏘️ COMPETITIVE SET MONITORING
+        </div>
+        <button
+          onClick={() => setShowModal(true)}
+          style={{ fontSize: 10, fontWeight: 700, padding: '5px 14px', background: T.text.amber, color: T.bg.terminal, border: 'none', cursor: 'pointer' }}
+        >
+          + ADD COMP
+        </button>
       </div>
-      <div style={{ fontSize: 10, color: T.text.secondary, marginBottom: 20 }}>
-        Track competitor pricing changes across portfolio. Alerts on &gt;3% rent changes.
+      <div style={{ fontSize: 10, color: T.text.secondary, marginBottom: 16 }}>
+        Org-wide comp properties tracked for pricing benchmarks and variance alerts.
       </div>
-      <div style={{ background: T.bg.panel, padding: 24, textAlign: 'center' }}>
-        <div style={{ fontSize: 20, marginBottom: 8 }}>🔔</div>
-        <div style={{ fontSize: 11, color: T.text.secondary }}>No pricing alerts</div>
-      </div>
+
+      {loading ? (
+        <div style={{ padding: 20, color: T.text.muted, fontSize: 10 }}>Loading...</div>
+      ) : comps.length === 0 ? (
+        <div style={{ background: T.bg.panel, padding: 32, textAlign: 'center' }}>
+          <div style={{ fontSize: 20, marginBottom: 8 }}>🏘️</div>
+          <div style={{ fontSize: 11, color: T.text.secondary }}>No comp properties configured</div>
+          <div style={{ fontSize: 9, color: T.text.muted, marginTop: 4 }}>Click "+ ADD COMP" to add your first comp property</div>
+        </div>
+      ) : (
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ background: T.bg.header }}>
+              {['PROPERTY', 'SUBMARKET', 'DIST (MI)', 'AVG RENT/SF', 'OCC %', 'LAST SCRAPED', ''].map(h => (
+                <th key={h} style={{ padding: '8px 10px', fontSize: 9, color: T.text.muted, textAlign: 'left', fontFamily: T.font.mono, whiteSpace: 'nowrap' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {comps.map((c, i) => (
+              <tr key={c.id} style={{ borderBottom: `1px solid ${T.border.subtle}`, background: i % 2 === 0 ? T.bg.panel : T.bg.panelAlt }}>
+                <td style={{ padding: '8px 10px' }}>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: T.text.primary }}>{c.property_name}</div>
+                  {c.address && <div style={{ fontSize: 9, color: T.text.muted }}>{c.address}</div>}
+                </td>
+                <td style={{ padding: '8px 10px', fontSize: 10, color: T.text.secondary }}>{c.submarket || '—'}</td>
+                <td style={{ padding: '8px 10px', fontSize: 10, fontFamily: T.font.mono, color: T.text.secondary }}>{c.distance_mi != null ? c.distance_mi.toFixed(1) : '—'}</td>
+                <td style={{ padding: '8px 10px', fontSize: 10, fontFamily: T.font.mono }}>{c.avg_rent_sf != null ? `$${c.avg_rent_sf.toFixed(2)}` : '—'}</td>
+                <td style={{ padding: '8px 10px', fontSize: 10, fontFamily: T.font.mono, color: c.occupancy_pct != null && c.occupancy_pct < 88 ? T.text.red : T.text.green }}>{c.occupancy_pct != null ? `${c.occupancy_pct.toFixed(1)}%` : '—'}</td>
+                <td style={{ padding: '8px 10px', fontSize: 9, color: T.text.muted }}>{c.last_scraped ? new Date(c.last_scraped).toLocaleDateString() : '—'}</td>
+                <td style={{ padding: '8px 10px' }}>
+                  <button
+                    onClick={() => handleRemove(c.id)}
+                    style={{ fontSize: 9, color: T.text.red, background: 'transparent', border: `1px solid ${T.text.red}44`, padding: '3px 8px', cursor: 'pointer' }}
+                  >
+                    REMOVE
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      {/* Add Comp Modal */}
+      {showModal && (
+        <div style={{ position: 'fixed', inset: 0, background: '#00000088', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: T.bg.panel, border: `1px solid ${T.border.bright}`, width: 480, padding: 24, position: 'relative' }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: T.text.primary, marginBottom: 16, fontFamily: T.font.mono }}>+ ADD COMP PROPERTY</div>
+
+            {/* Property search */}
+            <div style={{ marginBottom: 14, position: 'relative' }}>
+              <div style={{ fontSize: 9, color: T.text.secondary, marginBottom: 4, fontFamily: T.font.mono }}>SEARCH PROPERTY RECORDS</div>
+              <input
+                type="text"
+                placeholder="Type address or owner name..."
+                value={searchQuery}
+                onChange={e => handleSearch(e.target.value)}
+                style={inputStyle}
+              />
+              {searchLoading && <div style={{ fontSize: 9, color: T.text.muted, marginTop: 2 }}>Searching...</div>}
+              {searchResults.length > 0 && (
+                <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: T.bg.panelAlt, border: `1px solid ${T.border.medium}`, zIndex: 10, maxHeight: 160, overflowY: 'auto' }}>
+                  {searchResults.map(p => (
+                    <div
+                      key={p.id}
+                      onClick={() => selectProperty(p)}
+                      style={{ padding: '6px 10px', fontSize: 10, color: T.text.primary, cursor: 'pointer', borderBottom: `1px solid ${T.border.subtle}` }}
+                      onMouseEnter={e => (e.currentTarget.style.background = T.bg.hover)}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                    >
+                      <div style={{ fontWeight: 600 }}>{p.address}</div>
+                      <div style={{ fontSize: 9, color: T.text.muted }}>{p.city}, {p.state} · {p.units ?? '?'} units</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+              {([
+                { key: 'property_name', label: 'PROPERTY NAME *', placeholder: 'The Lofts at Midtown' },
+                { key: 'address', label: 'ADDRESS', placeholder: '123 Main St, Atlanta, GA' },
+                { key: 'submarket', label: 'SUBMARKET', placeholder: 'Midtown' },
+                { key: 'distance_mi', label: 'DISTANCE (MI)', placeholder: '0.8' },
+                { key: 'avg_rent_sf', label: 'AVG RENT / SF', placeholder: '1.95' },
+                { key: 'occupancy_pct', label: 'OCCUPANCY %', placeholder: '93.5' },
+              ] as { key: keyof typeof form; label: string; placeholder: string }[]).map(f => (
+                <div key={f.key}>
+                  <div style={{ fontSize: 9, color: T.text.secondary, marginBottom: 2, fontFamily: T.font.mono }}>{f.label}</div>
+                  <input
+                    type="text"
+                    placeholder={f.placeholder}
+                    value={form[f.key]}
+                    onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))}
+                    style={inputStyle}
+                  />
+                </div>
+              ))}
+            </div>
+
+            {error && (
+              <div style={{ fontSize: 9, color: T.text.red, marginBottom: 10, padding: '4px 8px', background: T.text.red + '11', border: `1px solid ${T.text.red}44` }}>{error}</div>
+            )}
+
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={handleAdd}
+                disabled={saving}
+                style={{ fontSize: 10, fontWeight: 700, padding: '6px 16px', background: T.text.amber, color: T.bg.terminal, border: 'none', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}
+              >
+                {saving ? 'SAVING...' : 'ADD COMP'}
+              </button>
+              <button
+                onClick={() => { setShowModal(false); setError(null); setSearchQuery(''); setSearchResults([]); }}
+                style={{ fontSize: 10, padding: '6px 14px', background: 'transparent', color: T.text.muted, border: `1px solid ${T.border.medium}`, cursor: 'pointer' }}
+              >
+                CANCEL
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function MarketDataSection({ T }: { T: ThemeType }) {
-  const connections = [
-    { provider: 'CoStar', status: 'not_configured', dataTypes: 'Sale comps, rent comps, market stats' },
-    { provider: 'Yardi Matrix', status: 'not_configured', dataTypes: 'Rent comps, supply pipeline' },
-    { provider: 'ATTOM', status: 'not_configured', dataTypes: 'Sale comps, tax records' },
-    { provider: 'US Census', status: 'available', dataTypes: 'Demographics, employment' },
-    { provider: 'BLS', status: 'available', dataTypes: 'Employment, wages, CPI' },
-  ];
+interface PricingAlertRule {
+  id: string;
+  submarket: string;
+  metric: 'avg_rent' | 'occupancy';
+  threshold_pct: number;
+  direction: 'above' | 'below';
+  notification_pref: 'email' | 'sms' | 'both' | 'none';
+  is_enabled: boolean;
+  created_at: string;
+}
 
-  const statusColor = (s: string) => s === 'connected' ? T.text.green : s === 'available' ? T.text.cyan : T.text.muted;
+const EMPTY_ALERT_FORM = { submarket: '', metric: 'avg_rent' as const, threshold_pct: '', direction: 'below' as const, notification_pref: 'email' as const };
+
+function MarketDataSection({ T }: { T: ThemeType }) {
+  const [alerts, setAlerts] = useState<PricingAlertRule[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState(EMPTY_ALERT_FORM);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const loadAlerts = useCallback(() => {
+    setLoading(true);
+    apiClient.get('/api/v1/admin/pricing-alerts')
+      .then(r => setAlerts(r.data.alerts ?? []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { loadAlerts(); }, [loadAlerts]);
+
+  const handleAdd = async () => {
+    if (!form.submarket.trim()) { setFormError('Submarket is required'); return; }
+    if (!form.threshold_pct || isNaN(parseFloat(form.threshold_pct))) { setFormError('Threshold must be a number'); return; }
+    setSaving(true);
+    setFormError(null);
+    try {
+      await apiClient.post('/api/v1/admin/pricing-alerts', {
+        submarket: form.submarket,
+        metric: form.metric,
+        threshold_pct: parseFloat(form.threshold_pct),
+        direction: form.direction,
+        notification_pref: form.notification_pref,
+      });
+      setShowForm(false);
+      setForm(EMPTY_ALERT_FORM);
+      loadAlerts();
+    } catch (e: any) {
+      setFormError(e?.response?.data?.error || 'Failed to save alert');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleToggle = async (alert: PricingAlertRule) => {
+    try {
+      await apiClient.put(`/api/v1/admin/pricing-alerts/${alert.id}`, { is_enabled: !alert.is_enabled });
+      setAlerts(prev => prev.map(a => a.id === alert.id ? { ...a, is_enabled: !a.is_enabled } : a));
+    } catch {}
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      await apiClient.delete(`/api/v1/admin/pricing-alerts/${id}`);
+      setAlerts(prev => prev.filter(a => a.id !== id));
+    } catch {}
+  };
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%', fontSize: 10, padding: '5px 8px',
+    background: T.bg.panelAlt, border: `1px solid ${T.border.medium}`,
+    color: T.text.primary, outline: 'none', fontFamily: T.font.mono, boxSizing: 'border-box',
+  };
+
+  const metricLabel = (m: string) => m === 'avg_rent' ? 'Avg Rent/SF' : 'Occupancy %';
+  const dirLabel = (d: string, pct: number) => `${d === 'below' ? 'drops' : 'rises'} >${pct}%`;
+  const notifLabel = (n: string) => ({ email: '📧 Email', sms: '📱 SMS', both: '📧+📱 Both', none: '🔕 None' }[n] ?? n);
 
   return (
     <div style={{ padding: 20 }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: T.text.primary, marginBottom: 16, fontFamily: T.font.mono }}>
-        📡 MARKET DATA CONNECTIONS
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: T.text.primary, fontFamily: T.font.mono }}>
+          📡 PRICING ALERT RULES
+        </div>
+        <button
+          onClick={() => setShowForm(s => !s)}
+          style={{ fontSize: 10, fontWeight: 700, padding: '5px 14px', background: showForm ? T.bg.panelAlt : T.text.amber, color: showForm ? T.text.muted : T.bg.terminal, border: showForm ? `1px solid ${T.border.medium}` : 'none', cursor: 'pointer' }}
+        >
+          {showForm ? 'CANCEL' : '+ NEW ALERT'}
+        </button>
       </div>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead>
-          <tr style={{ background: T.bg.header }}>
-            {['PROVIDER', 'STATUS', 'DATA TYPES', ''].map(h => (
-              <th key={h} style={{ padding: '10px', fontSize: 9, color: T.text.muted, textAlign: 'left', fontFamily: T.font.mono }}>{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {connections.map((conn, i) => (
-            <tr key={i} style={{ borderBottom: `1px solid ${T.border.subtle}` }}>
-              <td style={{ padding: '12px 10px', fontSize: 11, fontWeight: 600 }}>{conn.provider}</td>
-              <td style={{ padding: '12px 10px', fontSize: 10, color: statusColor(conn.status) }}>{conn.status === 'connected' ? '● CONNECTED' : conn.status === 'available' ? '○ AVAILABLE' : '○ NOT CONFIGURED'}</td>
-              <td style={{ padding: '12px 10px', fontSize: 10, color: T.text.secondary }}>{conn.dataTypes}</td>
-              <td style={{ padding: '12px 10px' }}>
-                <button style={{ fontSize: 10, color: T.text.amber, background: 'transparent', border: `1px solid ${T.text.amber}44`, padding: '4px 12px', cursor: 'pointer' }}>
-                  {conn.status === 'not_configured' ? 'CONFIGURE' : 'SYNC'}
-                </button>
-              </td>
-            </tr>
+      <div style={{ fontSize: 10, color: T.text.secondary, marginBottom: 16 }}>
+        Get notified when submarket metrics breach configured thresholds.
+      </div>
+
+      {/* Add alert form */}
+      {showForm && (
+        <div style={{ background: T.bg.panel, border: `1px solid ${T.border.bright}`, padding: 18, marginBottom: 20 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: T.text.amber, marginBottom: 14, fontFamily: T.font.mono }}>NEW PRICING ALERT</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 14 }}>
+            <div>
+              <div style={{ fontSize: 9, color: T.text.secondary, marginBottom: 3, fontFamily: T.font.mono }}>SUBMARKET *</div>
+              <input type="text" placeholder="e.g. Midtown" value={form.submarket} onChange={e => setForm(f => ({ ...f, submarket: e.target.value }))} style={inputStyle} />
+            </div>
+            <div>
+              <div style={{ fontSize: 9, color: T.text.secondary, marginBottom: 3, fontFamily: T.font.mono }}>METRIC</div>
+              <select value={form.metric} onChange={e => setForm(f => ({ ...f, metric: e.target.value as any }))} style={inputStyle}>
+                <option value="avg_rent">Avg Rent / SF</option>
+                <option value="occupancy">Occupancy %</option>
+              </select>
+            </div>
+            <div>
+              <div style={{ fontSize: 9, color: T.text.secondary, marginBottom: 3, fontFamily: T.font.mono }}>THRESHOLD %</div>
+              <input type="number" placeholder="3.0" min="0" step="0.5" value={form.threshold_pct} onChange={e => setForm(f => ({ ...f, threshold_pct: e.target.value }))} style={inputStyle} />
+            </div>
+            <div>
+              <div style={{ fontSize: 9, color: T.text.secondary, marginBottom: 3, fontFamily: T.font.mono }}>DIRECTION</div>
+              <select value={form.direction} onChange={e => setForm(f => ({ ...f, direction: e.target.value as any }))} style={inputStyle}>
+                <option value="below">Drops below</option>
+                <option value="above">Rises above</option>
+              </select>
+            </div>
+            <div>
+              <div style={{ fontSize: 9, color: T.text.secondary, marginBottom: 3, fontFamily: T.font.mono }}>NOTIFICATION</div>
+              <select value={form.notification_pref} onChange={e => setForm(f => ({ ...f, notification_pref: e.target.value as any }))} style={inputStyle}>
+                <option value="email">Email</option>
+                <option value="sms">SMS</option>
+                <option value="both">Email + SMS</option>
+                <option value="none">None (log only)</option>
+              </select>
+            </div>
+          </div>
+          {formError && (
+            <div style={{ fontSize: 9, color: T.text.red, marginBottom: 10, padding: '4px 8px', background: T.text.red + '11', border: `1px solid ${T.text.red}44` }}>{formError}</div>
+          )}
+          <button
+            onClick={handleAdd}
+            disabled={saving}
+            style={{ fontSize: 10, fontWeight: 700, padding: '6px 18px', background: T.text.amber, color: T.bg.terminal, border: 'none', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}
+          >
+            {saving ? 'SAVING...' : 'CREATE ALERT'}
+          </button>
+        </div>
+      )}
+
+      {loading ? (
+        <div style={{ padding: 20, color: T.text.muted, fontSize: 10 }}>Loading...</div>
+      ) : alerts.length === 0 ? (
+        <div style={{ background: T.bg.panel, padding: 32, textAlign: 'center' }}>
+          <div style={{ fontSize: 20, marginBottom: 8 }}>🔔</div>
+          <div style={{ fontSize: 11, color: T.text.secondary }}>No pricing alerts configured</div>
+          <div style={{ fontSize: 9, color: T.text.muted, marginTop: 4 }}>Click "+ NEW ALERT" to create your first rule</div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {alerts.map(a => (
+            <div
+              key={a.id}
+              style={{
+                background: T.bg.panel,
+                border: `1px solid ${a.is_enabled ? T.text.amber + '44' : T.border.subtle}`,
+                padding: '12px 16px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 16,
+                opacity: a.is_enabled ? 1 : 0.55,
+              }}
+            >
+              {/* Toggle */}
+              <button
+                onClick={() => handleToggle(a)}
+                title={a.is_enabled ? 'Disable alert' : 'Enable alert'}
+                style={{
+                  width: 32, height: 18, borderRadius: 9,
+                  background: a.is_enabled ? T.text.amber : T.border.medium,
+                  border: 'none', cursor: 'pointer', position: 'relative', flexShrink: 0, transition: 'background 0.2s',
+                }}
+              >
+                <span style={{
+                  position: 'absolute', top: 2, width: 14, height: 14, borderRadius: '50%',
+                  background: '#fff', transition: 'left 0.2s',
+                  left: a.is_enabled ? 16 : 2,
+                }} />
+              </button>
+
+              {/* Description */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: T.text.primary }}>
+                  Notify when <span style={{ color: T.text.amber }}>{metricLabel(a.metric)}</span> in{' '}
+                  <span style={{ color: T.text.cyan }}>{a.submarket}</span>{' '}
+                  {dirLabel(a.direction, a.threshold_pct)}
+                </div>
+                <div style={{ fontSize: 9, color: T.text.muted, marginTop: 2, fontFamily: T.font.mono }}>
+                  {notifLabel(a.notification_pref)} · Created {new Date(a.created_at).toLocaleDateString()}
+                </div>
+              </div>
+
+              {/* Badges */}
+              <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 7px', background: (a.direction === 'below' ? T.text.red : T.text.green) + '22', color: a.direction === 'below' ? T.text.red : T.text.green, flexShrink: 0 }}>
+                {a.direction.toUpperCase()} {a.threshold_pct}%
+              </span>
+
+              {/* Delete */}
+              <button
+                onClick={() => handleDelete(a.id)}
+                style={{ fontSize: 9, color: T.text.red, background: 'transparent', border: `1px solid ${T.text.red}44`, padding: '3px 8px', cursor: 'pointer', flexShrink: 0 }}
+              >
+                DELETE
+              </button>
+            </div>
           ))}
-        </tbody>
-      </table>
+        </div>
+      )}
     </div>
   );
 }

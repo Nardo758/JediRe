@@ -1721,4 +1721,135 @@ router.get('/agents/test-budget-cap', requireAdminAuth, async (req: Authenticate
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════
+// COMP SET MANAGEMENT  /api/v1/admin/comp-sets
+// ═══════════════════════════════════════════════════════════════════
+
+router.get('/comp-sets', requireAuth, async (_req: AuthenticatedRequest, res: Response) => {
+  try {
+    const result = await query(`
+      SELECT id, property_name, address, submarket, distance_mi,
+             avg_rent_sf, occupancy_pct, last_scraped, notes, is_active, created_at
+      FROM admin_comp_set_properties
+      WHERE is_active = true
+      ORDER BY created_at DESC
+    `);
+    res.json({ comps: result.rows });
+  } catch (err: any) {
+    logger.error('comp-sets list error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/comp-sets', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { property_name, address, submarket, distance_mi, avg_rent_sf, occupancy_pct, notes } = req.body;
+    if (!property_name) return res.status(400).json({ error: 'property_name is required' });
+    const result = await query(`
+      INSERT INTO admin_comp_set_properties
+        (property_name, address, submarket, distance_mi, avg_rent_sf, occupancy_pct, notes)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING *
+    `, [property_name, address ?? null, submarket ?? null, distance_mi ?? null, avg_rent_sf ?? null, occupancy_pct ?? null, notes ?? null]);
+    res.status(201).json({ comp: result.rows[0] });
+  } catch (err: any) {
+    logger.error('comp-sets create error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/comp-sets/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    await query(`UPDATE admin_comp_set_properties SET is_active = false, updated_at = NOW() WHERE id = $1`, [req.params.id]);
+    res.json({ success: true });
+  } catch (err: any) {
+    logger.error('comp-sets delete error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/comp-sets/property-search', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { q } = req.query;
+    if (!q || typeof q !== 'string' || q.length < 2) return res.json({ results: [] });
+    const result = await query(`
+      SELECT id, address, city, state, owner_name, units
+      FROM property_records
+      WHERE address ILIKE $1 OR city ILIKE $1 OR owner_name ILIKE $1
+      ORDER BY address
+      LIMIT 15
+    `, [`%${q}%`]);
+    res.json({ results: result.rows });
+  } catch (err: any) {
+    logger.error('comp-sets property-search error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// PRICING ALERT RULES  /api/v1/admin/pricing-alerts
+// ═══════════════════════════════════════════════════════════════════
+
+router.get('/pricing-alerts', requireAuth, async (_req: AuthenticatedRequest, res: Response) => {
+  try {
+    const result = await query(`SELECT * FROM admin_pricing_alert_rules ORDER BY created_at DESC`);
+    res.json({ alerts: result.rows });
+  } catch (err: any) {
+    logger.error('pricing-alerts list error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/pricing-alerts', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { submarket, metric, threshold_pct, direction, notification_pref } = req.body;
+    if (!submarket || !metric || threshold_pct == null || !direction) {
+      return res.status(400).json({ error: 'submarket, metric, threshold_pct, direction are required' });
+    }
+    const result = await query(`
+      INSERT INTO admin_pricing_alert_rules (submarket, metric, threshold_pct, direction, notification_pref)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING *
+    `, [submarket, metric, threshold_pct, direction, notification_pref ?? 'email']);
+    res.status(201).json({ alert: result.rows[0] });
+  } catch (err: any) {
+    logger.error('pricing-alerts create error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/pricing-alerts/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { is_enabled, submarket, metric, threshold_pct, direction, notification_pref } = req.body;
+    const result = await query(`
+      UPDATE admin_pricing_alert_rules
+      SET
+        is_enabled = COALESCE($2, is_enabled),
+        submarket = COALESCE($3, submarket),
+        metric = COALESCE($4, metric),
+        threshold_pct = COALESCE($5, threshold_pct),
+        direction = COALESCE($6, direction),
+        notification_pref = COALESCE($7, notification_pref),
+        updated_at = NOW()
+      WHERE id = $1
+      RETURNING *
+    `, [req.params.id, is_enabled ?? null, submarket ?? null, metric ?? null, threshold_pct ?? null, direction ?? null, notification_pref ?? null]);
+    if (!result.rows.length) return res.status(404).json({ error: 'Alert not found' });
+    res.json({ alert: result.rows[0] });
+  } catch (err: any) {
+    logger.error('pricing-alerts update error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/pricing-alerts/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    await query(`DELETE FROM admin_pricing_alert_rules WHERE id = $1`, [req.params.id]);
+    res.json({ success: true });
+  } catch (err: any) {
+    logger.error('pricing-alerts delete error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;
