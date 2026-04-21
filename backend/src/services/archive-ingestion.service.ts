@@ -15,6 +15,7 @@ import { getPool } from '../database/connection';
 import { parseT12 } from './document-extraction/parsers/t12-parser';
 import { parseRentRoll } from './document-extraction/parsers/rent-roll-parser';
 import { parseTaxBillAsync } from './document-extraction/parsers/tax-bill-parser';
+import { parseOMAsync, type OMExtraction } from './document-extraction/parsers/om-parser';
 import { logger } from '../utils/logger';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -295,6 +296,48 @@ async function parseArchiveDeal(folder: ArchiveDealFolder): Promise<ParsedArchiv
     }
   }
   
+  // Find and parse OM (AI-assisted)
+  let omData: OMExtraction | null = null;
+  let brokerClaims: Record<string, unknown> = {};
+  let yearBuilt: number | null = null;
+  let city: string | null = null;
+  
+  const omFiles = folder.files.filter(f => f.type === 'OM' && f.extension === 'pdf');
+  if (omFiles.length > 0) {
+    const omFile = omFiles[0];
+    try {
+      const buffer = fs.readFileSync(omFile.path);
+      const result = await parseOMAsync(buffer, omFile.name);
+      
+      if (result.success && result.data) {
+        omData = result.data;
+        extractionData.om = omData;
+        
+        // Extract metadata from OM
+        if (omData.property.yearBuilt) yearBuilt = omData.property.yearBuilt;
+        if (omData.property.city) city = omData.property.city;
+        if (omData.property.units && !units) units = omData.property.units;
+        
+        // Build broker claims object
+        brokerClaims = {
+          proforma: omData.brokerProforma,
+          replacementCost: omData.replacementCost,
+          capitalPlan: omData.capitalPlan,
+          investmentHighlights: omData.investmentHighlights,
+          metadata: omData.metadata,
+        };
+        
+        if (result.warnings?.length) {
+          warnings.push(...result.warnings.map(w => `[OM] ${w}`));
+        }
+      } else {
+        warnings.push(`[OM] Parse failed: ${result.error || 'unknown'}`);
+      }
+    } catch (err) {
+      warnings.push(`[OM] Error reading ${omFile.name}: ${err}`);
+    }
+  }
+  
   // Calculate derived metrics
   const opexRatio = trailingRevenue && trailingRevenue > 0 && trailingOpex 
     ? trailingOpex / trailingRevenue 
@@ -309,16 +352,20 @@ async function parseArchiveDeal(folder: ArchiveDealFolder): Promise<ParsedArchiv
   // Try to extract city/state from folder name or OM
   const locationMatch = folder.name.match(/[-–]\s*([A-Z]{2})$/i) || 
                         folder.name.match(/,\s*([A-Z]{2})$/i);
-  const state = locationMatch ? locationMatch[1].toUpperCase() : null;
+  let state = locationMatch ? locationMatch[1].toUpperCase() : null;
+  
+  // Override with OM data if available
+  if (omData?.property.state) state = omData.property.state;
+  if (omData?.property.city) city = omData.property.city;
   
   return {
     folderName: folder.name,
     folderPath: folder.path,
-    propertyName: folder.name.replace(/[-–]\s*[A-Z]{2}$/i, '').trim(),
-    city: null, // Would need OM parsing to extract
+    propertyName: omData?.property.name || folder.name.replace(/[-–]\s*[A-Z]{2}$/i, '').trim(),
+    city,
     state,
     units,
-    yearBuilt: null, // Would need OM parsing to extract
+    yearBuilt,
     trailingNoi,
     trailingRevenue,
     trailingOpex,
@@ -330,7 +377,7 @@ async function parseArchiveDeal(folder: ArchiveDealFolder): Promise<ParsedArchiv
     lossToLeasePct,
     annualTax,
     assessedValue,
-    brokerClaims: {}, // TODO: OM parsing
+    brokerClaims,
     extractionData,
     sourceFiles: folder.files,
     parseWarnings: warnings,
