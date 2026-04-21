@@ -714,21 +714,29 @@ const PAGE_SIZE = 50;
 
 interface LedgerTabProps {
   entries: LedgerEntry[];
+  totalEntries: number;
   loading: boolean;
   error: string | null;
   onFilter: (params: { date_from?: string; date_to?: string; limit?: number; offset?: number }) => void;
 }
 
-function LedgerTab({ entries, loading, error, onFilter }: LedgerTabProps) {
+function LedgerTab({ entries, totalEntries, loading, error, onFilter }: LedgerTabProps) {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo,   setDateTo]   = useState('');
   const [page, setPage] = useState(0);
 
-  const applyFilter = () => { setPage(0); onFilter({ date_from: dateFrom || undefined, date_to: dateTo || undefined }); };
-  const clearFilter = () => { setPage(0); setDateFrom(''); setDateTo(''); onFilter({}); };
+  const totalPages = Math.max(1, Math.ceil(totalEntries / PAGE_SIZE));
 
-  // Build running balance: prefer server-persisted running_balance; fall back to
-  // client-side accumulation (oldest→newest) when the column is null/absent.
+  // Fetch the right server page via limit/offset
+  const fetchPage = (p: number, from?: string, to?: string) => {
+    setPage(p);
+    onFilter({ date_from: from || undefined, date_to: to || undefined, limit: PAGE_SIZE, offset: p * PAGE_SIZE });
+  };
+
+  const applyFilter = () => fetchPage(0, dateFrom, dateTo);
+  const clearFilter = () => { setDateFrom(''); setDateTo(''); fetchPage(0); };
+
+  // Build display rows: prefer server running_balance; fall back to client-computed
   const sorted = [...entries].sort((a, b) => {
     const d = a.entry_date.localeCompare(b.entry_date);
     return d !== 0 ? d : a.id.localeCompare(b.id);
@@ -739,10 +747,7 @@ function LedgerTab({ entries, loading, error, onFilter }: LedgerTabProps) {
     const sign = e.entry_type === 'distribution' ? -1 : 1;
     running += sign * n(e.amount);
     return { ...e, runningBalance: serverBalance ?? running };
-  }).reverse(); // newest first
-
-  const totalPages = Math.max(1, Math.ceil(withBalance.length / PAGE_SIZE));
-  const paginated  = withBalance.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  }).reverse(); // newest first for display
 
   if (loading) return <div style={S.empty}>Loading ledger…</div>;
   if (error)   return <div style={S.err}>{error}</div>;
@@ -762,8 +767,8 @@ function LedgerTab({ entries, loading, error, onFilter }: LedgerTabProps) {
         <button style={S.btn(BT.text.cyan)} onClick={applyFilter}>APPLY</button>
         {(dateFrom || dateTo) && <button style={S.btn(BT.text.muted)} onClick={clearFilter}>CLEAR</button>}
         <span style={{ fontSize: 9, color: BT.text.muted, fontFamily: mono, marginLeft: 'auto' }}>
-          {entries.length} {entries.length === 1 ? 'entry' : 'entries'}
-          {entries.length > PAGE_SIZE ? ` · Page ${page + 1} of ${totalPages}` : ''}
+          {totalEntries} {totalEntries === 1 ? 'entry' : 'entries'}
+          {totalEntries > PAGE_SIZE ? ` · Page ${page + 1} of ${totalPages}` : ''}
         </span>
       </div>
 
@@ -775,7 +780,7 @@ function LedgerTab({ entries, loading, error, onFilter }: LedgerTabProps) {
             <table style={S.table}>
               <thead><RowHdr headers={['Date','Investor','Type','Amount','Running Balance','Reference','Description']} /></thead>
               <tbody>
-                {paginated.map(e => (
+                {withBalance.map(e => (
                   <tr key={e.id}>
                     <td style={S.td}>{e.entry_date?.slice(0, 10)}</td>
                     <td style={{ ...S.td, color: BT.text.primary, fontWeight: 600 }}>{e.investor_name}</td>
@@ -794,14 +799,14 @@ function LedgerTab({ entries, loading, error, onFilter }: LedgerTabProps) {
             </table>
           </div>
 
-          {/* Pagination controls */}
+          {/* Pagination controls — server-side: each click fetches the correct page */}
           {totalPages > 1 && (
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'center', padding: '10px 0', fontSize: 9, fontFamily: mono, color: BT.text.muted }}>
-              <button style={S.btn(page === 0 ? BT.text.muted : BT.text.cyan)} onClick={() => setPage(0)} disabled={page === 0}>«</button>
-              <button style={S.btn(page === 0 ? BT.text.muted : BT.text.cyan)} onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}>‹ PREV</button>
-              <span>Page {page + 1} of {totalPages} · rows {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, withBalance.length)} of {withBalance.length}</span>
-              <button style={S.btn(page >= totalPages - 1 ? BT.text.muted : BT.text.cyan)} onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1}>NEXT ›</button>
-              <button style={S.btn(page >= totalPages - 1 ? BT.text.muted : BT.text.cyan)} onClick={() => setPage(totalPages - 1)} disabled={page >= totalPages - 1}>»</button>
+              <button style={S.btn(page === 0 ? BT.text.muted : BT.text.cyan)} onClick={() => fetchPage(0, dateFrom, dateTo)} disabled={page === 0}>«</button>
+              <button style={S.btn(page === 0 ? BT.text.muted : BT.text.cyan)} onClick={() => fetchPage(page - 1, dateFrom, dateTo)} disabled={page === 0}>‹ PREV</button>
+              <span>Page {page + 1} of {totalPages} · rows {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, totalEntries)} of {totalEntries}</span>
+              <button style={S.btn(page >= totalPages - 1 ? BT.text.muted : BT.text.cyan)} onClick={() => fetchPage(page + 1, dateFrom, dateTo)} disabled={page >= totalPages - 1}>NEXT ›</button>
+              <button style={S.btn(page >= totalPages - 1 ? BT.text.muted : BT.text.cyan)} onClick={() => fetchPage(totalPages - 1, dateFrom, dateTo)} disabled={page >= totalPages - 1}>»</button>
             </div>
           )}
         </>
@@ -833,7 +838,7 @@ export function InvestorCapitalModule({ dealId }: InvestorCapitalModuleProps) {
 
   const {
     summary, investments, allInvestors, calls, dists,
-    waterfall, defaultTiers, entries,
+    waterfall, defaultTiers, entries, totalEntries,
     loading, errors,
     reload,
     mutations,
@@ -937,6 +942,7 @@ export function InvestorCapitalModule({ dealId }: InvestorCapitalModuleProps) {
         {activeTab === 'ledger' && (
           <LedgerTab
             entries={entries}
+            totalEntries={totalEntries}
             loading={loading.entries}
             error={errors.entries ?? null}
             onFilter={reload.entries}

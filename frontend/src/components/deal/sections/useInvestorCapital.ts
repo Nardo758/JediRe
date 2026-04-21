@@ -124,6 +124,7 @@ interface LoadingState {
 
 export function useInvestorCapital(dealId: string) {
   const [summary, setSummary]             = useState<CapSummary | null>(null);
+  const [summaryErr, setSummaryErr]       = useState<string | null>(null);
   const [investments, setInvestments]     = useState<Investment[]>([]);
   const [allInvestors, setAllInvestors]   = useState<Array<{ id: string; name: string; type: string; kyc_status: string }>>([]);
   const [calls, setCalls]                 = useState<CapitalCall[]>([]);
@@ -131,6 +132,7 @@ export function useInvestorCapital(dealId: string) {
   const [waterfall, setWaterfall]         = useState<Waterfall | null>(null);
   const [defaultTiers, setDefaultTiers]   = useState<WaterfallTier[]>([]);
   const [entries, setEntries]             = useState<LedgerEntry[]>([]);
+  const [totalEntries, setTotalEntries]   = useState<number>(0);
 
   const [loading, setLoading] = useState<LoadingState>({
     summary: true, investments: true, calls: true,
@@ -149,7 +151,8 @@ export function useInvestorCapital(dealId: string) {
     try {
       const r = await apiClient.get(`/api/v1/capital/deals/${dealId}/summary`);
       setSummary(r.data?.summary ?? null);
-    } catch { /* silent */ }
+      setSummaryErr(null);
+    } catch { setSummaryErr('Failed to load summary.'); }
     setLoad('summary', false);
   }, [dealId]);
 
@@ -210,6 +213,7 @@ export function useInvestorCapital(dealId: string) {
       const url = `/api/v1/capital/deals/${dealId}/ledger` + (qs.toString() ? `?${qs.toString()}` : '');
       const r = await apiClient.get(url);
       setEntries(r.data?.entries ?? []);
+      setTotalEntries(Number(r.data?.total ?? r.data?.entries?.length ?? 0));
     } catch { setErr('entries', 'Failed to load ledger.'); }
     setLoad('entries', false);
   }, [dealId]);
@@ -280,8 +284,8 @@ export function useInvestorCapital(dealId: string) {
   };
 
   return {
-    summary, investments, allInvestors, calls, dists,
-    waterfall, defaultTiers, entries,
+    summary, summaryErr, investments, allInvestors, calls, dists,
+    waterfall, defaultTiers, entries, totalEntries,
     loading, errors,
     reload: {
       summary: loadSummary, investments: loadInvestments,

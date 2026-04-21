@@ -592,17 +592,29 @@ router.get('/deals/:dealId/ledger', requireAuth, async (req: AuthenticatedReques
     if (date_from)   { params.push(String(date_from)); filters.push(`e.entry_date>=$${params.length}::date`); }
     if (date_to)     { params.push(String(date_to));   filters.push(`e.entry_date<=$${params.length}::date`); }
     const where = filters.length ? `AND ${filters.join(' AND ')}` : '';
-    const limitClause  = lim  ? `LIMIT $${params.push(Number(lim))}` : 'LIMIT 500';
-    const offsetClause = off  ? `OFFSET $${params.push(Number(off))}` : '';
-    const r = await query(
-      `SELECT e.*, i.name AS investor_name
-         FROM capital_account_entries e JOIN investors i ON i.id=e.investor_id
-        WHERE e.deal_id=$1 ${where}
-        ORDER BY e.entry_date DESC, e.created_at DESC
-        ${limitClause} ${offsetClause}`,
-      params,
-    );
-    res.json({ success: true, entries: r.rows });
+    // Capture filter-only params for the COUNT query before adding limit/offset
+    const filterParams = [...params];
+    const limitVal  = lim  ? Math.max(1, Math.min(500, Number(lim)))  : 500;
+    const offsetVal = off  ? Math.max(0, Number(off))                 : 0;
+    params.push(limitVal);  const limitIdx  = params.length;
+    params.push(offsetVal); const offsetIdx = params.length;
+    const [r, countResult] = await Promise.all([
+      query(
+        `SELECT e.*, i.name AS investor_name
+           FROM capital_account_entries e JOIN investors i ON i.id=e.investor_id
+          WHERE e.deal_id=$1 ${where}
+          ORDER BY e.entry_date DESC, e.created_at DESC
+          LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+        params,
+      ),
+      query(
+        `SELECT COUNT(*) AS total
+           FROM capital_account_entries e
+          WHERE e.deal_id=$1 ${where}`,
+        filterParams,
+      ),
+    ]);
+    res.json({ success: true, entries: r.rows, total: Number(countResult.rows[0]?.total ?? 0) });
   } catch (err) {
     logger.error('GET ledger', err);
     res.status(500).json({ success: false, error: 'Failed to fetch ledger' });
