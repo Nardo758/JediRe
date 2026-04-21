@@ -15,6 +15,7 @@ import { getPool } from '../database/connection';
 import { parseT12 } from './document-extraction/parsers/t12-parser';
 import { parseRentRoll } from './document-extraction/parsers/rent-roll-parser';
 import { parseTaxBillAsync } from './document-extraction/parsers/tax-bill-parser';
+import { parseOMAsync, type OMExtraction } from './document-extraction/parsers/om-parser';
 import { logger } from '../utils/logger';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -48,8 +49,12 @@ export interface ParsedArchiveDeal {
   propertyName: string;
   city: string | null;
   state: string | null;
+  msa: string | null;
   units: number | null;
   yearBuilt: number | null;
+  stories: number | null;
+  assetClass: string | null;  // A, B, C, D
+  dealType: string | null;    // stabilized, value-add, lease-up, development
   
   // Financial metrics (from T12)
   trailingNoi: number | null;
@@ -58,6 +63,11 @@ export interface ParsedArchiveDeal {
   opexRatio: number | null;
   noiPerUnit: number | null;
   opexPerUnit: number | null;
+  
+  // Cap rates (from OM)
+  goingInCapRate: number | null;
+  stabilizedCapRate: number | null;
+  exitCapRate: number | null;
   
   // Rent roll metrics
   avgRent: number | null;
@@ -138,6 +148,135 @@ function getPropertyType(stories: number | null, units: number | null): string {
   if (stories <= 3) return 'garden';
   if (stories <= 6) return 'mid-rise';
   return 'high-rise';
+}
+
+// MSA mapping (simplified - major metros)
+const CITY_TO_MSA: Record<string, string> = {
+  // Georgia
+  'atlanta': 'Atlanta-Sandy Springs-Alpharetta, GA',
+  'sandy springs': 'Atlanta-Sandy Springs-Alpharetta, GA',
+  'alpharetta': 'Atlanta-Sandy Springs-Alpharetta, GA',
+  'marietta': 'Atlanta-Sandy Springs-Alpharetta, GA',
+  'roswell': 'Atlanta-Sandy Springs-Alpharetta, GA',
+  'johns creek': 'Atlanta-Sandy Springs-Alpharetta, GA',
+  'duluth': 'Atlanta-Sandy Springs-Alpharetta, GA',
+  'lawrenceville': 'Atlanta-Sandy Springs-Alpharetta, GA',
+  'kennesaw': 'Atlanta-Sandy Springs-Alpharetta, GA',
+  'smyrna': 'Atlanta-Sandy Springs-Alpharetta, GA',
+  'decatur': 'Atlanta-Sandy Springs-Alpharetta, GA',
+  // Florida
+  'miami': 'Miami-Fort Lauderdale-Pompano Beach, FL',
+  'fort lauderdale': 'Miami-Fort Lauderdale-Pompano Beach, FL',
+  'pompano beach': 'Miami-Fort Lauderdale-Pompano Beach, FL',
+  'boca raton': 'Miami-Fort Lauderdale-Pompano Beach, FL',
+  'west palm beach': 'Miami-Fort Lauderdale-Pompano Beach, FL',
+  'orlando': 'Orlando-Kissimmee-Sanford, FL',
+  'kissimmee': 'Orlando-Kissimmee-Sanford, FL',
+  'tampa': 'Tampa-St. Petersburg-Clearwater, FL',
+  'st. petersburg': 'Tampa-St. Petersburg-Clearwater, FL',
+  'clearwater': 'Tampa-St. Petersburg-Clearwater, FL',
+  'jacksonville': 'Jacksonville, FL',
+  // Texas
+  'dallas': 'Dallas-Fort Worth-Arlington, TX',
+  'fort worth': 'Dallas-Fort Worth-Arlington, TX',
+  'arlington': 'Dallas-Fort Worth-Arlington, TX',
+  'plano': 'Dallas-Fort Worth-Arlington, TX',
+  'frisco': 'Dallas-Fort Worth-Arlington, TX',
+  'houston': 'Houston-The Woodlands-Sugar Land, TX',
+  'the woodlands': 'Houston-The Woodlands-Sugar Land, TX',
+  'sugar land': 'Houston-The Woodlands-Sugar Land, TX',
+  'austin': 'Austin-Round Rock-Georgetown, TX',
+  'round rock': 'Austin-Round Rock-Georgetown, TX',
+  'san antonio': 'San Antonio-New Braunfels, TX',
+  // North Carolina
+  'charlotte': 'Charlotte-Concord-Gastonia, NC-SC',
+  'concord': 'Charlotte-Concord-Gastonia, NC-SC',
+  'raleigh': 'Raleigh-Cary, NC',
+  'cary': 'Raleigh-Cary, NC',
+  'durham': 'Durham-Chapel Hill, NC',
+  'chapel hill': 'Durham-Chapel Hill, NC',
+  // Tennessee
+  'nashville': 'Nashville-Davidson-Murfreesboro-Franklin, TN',
+  'murfreesboro': 'Nashville-Davidson-Murfreesboro-Franklin, TN',
+  'franklin': 'Nashville-Davidson-Murfreesboro-Franklin, TN',
+  // South Carolina
+  'charleston': 'Charleston-North Charleston, SC',
+  'greenville': 'Greenville-Anderson, SC',
+  'columbia': 'Columbia, SC',
+  // Arizona
+  'phoenix': 'Phoenix-Mesa-Chandler, AZ',
+  'mesa': 'Phoenix-Mesa-Chandler, AZ',
+  'scottsdale': 'Phoenix-Mesa-Chandler, AZ',
+  'chandler': 'Phoenix-Mesa-Chandler, AZ',
+  // Colorado
+  'denver': 'Denver-Aurora-Lakewood, CO',
+  'aurora': 'Denver-Aurora-Lakewood, CO',
+};
+
+function inferMSA(city: string | null, state: string | null): string | null {
+  if (!city) return null;
+  const key = city.toLowerCase().trim();
+  return CITY_TO_MSA[key] || null;
+}
+
+function inferAssetClass(
+  yearBuilt: number | null, 
+  avgRent: number | null,
+  amenities: string[] | undefined
+): string {
+  // Simple heuristic based on year built and rent levels
+  const currentYear = new Date().getFullYear();
+  const age = yearBuilt ? currentYear - yearBuilt : null;
+  
+  // Premium amenities suggest Class A
+  const premiumAmenities = ['rooftop', 'concierge', 'valet', 'wine', 'co-working', 'smart home'];
+  const hasPremiumAmenities = amenities?.some(a => 
+    premiumAmenities.some(p => a.toLowerCase().includes(p))
+  );
+  
+  if (hasPremiumAmenities) return 'A';
+  if (age !== null && age <= 10) return 'A';
+  if (age !== null && age <= 20) return 'B';
+  if (age !== null && age <= 35) return 'C';
+  if (age !== null && age > 35) return 'D';
+  
+  // Fallback to rent-based classification
+  if (avgRent && avgRent >= 2000) return 'A';
+  if (avgRent && avgRent >= 1400) return 'B';
+  if (avgRent && avgRent >= 1000) return 'C';
+  
+  return 'B'; // default
+}
+
+function inferDealType(
+  omData: OMExtraction | null,
+  occupancyPct: number | null
+): string {
+  // Check OM signals
+  if (omData?.keyEvents.leaseUpInProgress) return 'lease-up';
+  if (omData?.keyEvents.renovationPlanned) return 'value-add';
+  if (omData?.capitalPlan.totalCapexBudget && omData.capitalPlan.totalCapexBudget > 1000000) return 'value-add';
+  if (omData?.capitalPlan.valueAddStrategy) return 'value-add';
+  
+  // Check occupancy
+  if (occupancyPct !== null && occupancyPct < 0.85) return 'lease-up';
+  
+  // Check investment thesis keywords
+  const thesis = omData?.investmentThesis?.toLowerCase() || '';
+  const highlights = (omData?.investmentHighlights || []).join(' ').toLowerCase();
+  const combined = thesis + ' ' + highlights;
+  
+  if (combined.includes('value-add') || combined.includes('renovation') || combined.includes('upgrade')) {
+    return 'value-add';
+  }
+  if (combined.includes('lease-up') || combined.includes('stabiliz')) {
+    return 'lease-up';
+  }
+  if (combined.includes('development') || combined.includes('new construction')) {
+    return 'development';
+  }
+  
+  return 'stabilized'; // default
 }
 
 // ─── Folder Scanner ───────────────────────────────────────────────────────────
@@ -295,6 +434,48 @@ async function parseArchiveDeal(folder: ArchiveDealFolder): Promise<ParsedArchiv
     }
   }
   
+  // Find and parse OM (AI-assisted)
+  let omData: OMExtraction | null = null;
+  let brokerClaims: Record<string, unknown> = {};
+  let yearBuilt: number | null = null;
+  let city: string | null = null;
+  
+  const omFiles = folder.files.filter(f => f.type === 'OM' && f.extension === 'pdf');
+  if (omFiles.length > 0) {
+    const omFile = omFiles[0];
+    try {
+      const buffer = fs.readFileSync(omFile.path);
+      const result = await parseOMAsync(buffer, omFile.name);
+      
+      if (result.success && result.data) {
+        omData = result.data;
+        extractionData.om = omData;
+        
+        // Extract metadata from OM
+        if (omData.property.yearBuilt) yearBuilt = omData.property.yearBuilt;
+        if (omData.property.city) city = omData.property.city;
+        if (omData.property.units && !units) units = omData.property.units;
+        
+        // Build broker claims object
+        brokerClaims = {
+          proforma: omData.brokerProforma,
+          replacementCost: omData.replacementCost,
+          capitalPlan: omData.capitalPlan,
+          investmentHighlights: omData.investmentHighlights,
+          metadata: omData.metadata,
+        };
+        
+        if (result.warnings?.length) {
+          warnings.push(...result.warnings.map(w => `[OM] ${w}`));
+        }
+      } else {
+        warnings.push(`[OM] Parse failed: ${result.error || 'unknown'}`);
+      }
+    } catch (err) {
+      warnings.push(`[OM] Error reading ${omFile.name}: ${err}`);
+    }
+  }
+  
   // Calculate derived metrics
   const opexRatio = trailingRevenue && trailingRevenue > 0 && trailingOpex 
     ? trailingOpex / trailingRevenue 
@@ -309,28 +490,58 @@ async function parseArchiveDeal(folder: ArchiveDealFolder): Promise<ParsedArchiv
   // Try to extract city/state from folder name or OM
   const locationMatch = folder.name.match(/[-–]\s*([A-Z]{2})$/i) || 
                         folder.name.match(/,\s*([A-Z]{2})$/i);
-  const state = locationMatch ? locationMatch[1].toUpperCase() : null;
+  let state = locationMatch ? locationMatch[1].toUpperCase() : null;
+  
+  // Override with OM data if available
+  if (omData?.property.state) state = omData.property.state;
+  if (omData?.property.city) city = omData.property.city;
+  
+  // Extract stories from OM
+  const stories = omData?.property.stories || null;
+  
+  // Extract cap rates from OM
+  const goingInCapRate = omData?.brokerProforma.goingInCapRate || null;
+  const stabilizedCapRate = omData?.brokerProforma.stabilizedNOI && omData?.metadata.askingPrice
+    ? omData.brokerProforma.stabilizedNOI / omData.metadata.askingPrice
+    : null;
+  const exitCapRate = omData?.brokerProforma.exitCapRate || null;
+  
+  // Infer MSA from city/state (simplified mapping)
+  const msa = inferMSA(city, state);
+  
+  // Infer asset class from year built and rent levels
+  const assetClass = inferAssetClass(yearBuilt, avgRent, omData?.property.amenities);
+  
+  // Infer deal type from OM signals
+  const dealType = inferDealType(omData, occupancyPct);
   
   return {
     folderName: folder.name,
     folderPath: folder.path,
-    propertyName: folder.name.replace(/[-–]\s*[A-Z]{2}$/i, '').trim(),
-    city: null, // Would need OM parsing to extract
+    propertyName: omData?.property.name || folder.name.replace(/[-–]\s*[A-Z]{2}$/i, '').trim(),
+    city,
     state,
+    msa,
     units,
-    yearBuilt: null, // Would need OM parsing to extract
+    yearBuilt,
+    stories,
+    assetClass,
+    dealType,
     trailingNoi,
     trailingRevenue,
     trailingOpex,
     opexRatio,
     noiPerUnit,
     opexPerUnit,
+    goingInCapRate,
+    stabilizedCapRate,
+    exitCapRate,
     avgRent,
     occupancyPct,
     lossToLeasePct,
     annualTax,
     assessedValue,
-    brokerClaims: {}, // TODO: OM parsing
+    brokerClaims,
     extractionData,
     sourceFiles: folder.files,
     parseWarnings: warnings,
@@ -342,13 +553,15 @@ async function parseArchiveDeal(folder: ArchiveDealFolder): Promise<ParsedArchiv
 async function upsertArchiveDeal(pool: Pool, deal: ParsedArchiveDeal): Promise<string> {
   const vintageBand = getVintageBand(deal.yearBuilt);
   const unitCountBand = getUnitCountBand(deal.units);
-  const propertyType = getPropertyType(null, deal.units);
+  const propertyType = deal.stories ? getPropertyType(deal.stories, deal.units) : 'garden';
   
   const result = await pool.query(
     `INSERT INTO data_library_assets (
       property_name, city, state, unit_count, year_built,
       source_type, archive_folder_path,
       property_type, vintage_band, unit_count_band,
+      stories, msa, asset_class, deal_type,
+      going_in_cap_rate, stabilized_cap_rate, exit_cap_rate,
       trailing_noi, trailing_revenue, trailing_opex, opex_ratio, noi_per_unit, opex_per_unit,
       avg_rent, occupancy_pct, loss_to_lease_pct,
       broker_claims, extraction_data, source_files, parse_warnings,
@@ -357,9 +570,11 @@ async function upsertArchiveDeal(pool: Pool, deal: ParsedArchiveDeal): Promise<s
       $1, $2, $3, $4, $5,
       'archive', $6,
       $7, $8, $9,
-      $10, $11, $12, $13, $14, $15,
-      $16, $17, $18,
-      $19, $20, $21, $22,
+      $10, $11, $12, $13,
+      $14, $15, $16,
+      $17, $18, $19, $20, $21, $22,
+      $23, $24, $25,
+      $26, $27, $28, $29,
       'complete', NOW(), 60, NOW(), NOW()
     )
     ON CONFLICT (archive_folder_path) WHERE archive_folder_path IS NOT NULL
@@ -371,6 +586,13 @@ async function upsertArchiveDeal(pool: Pool, deal: ParsedArchiveDeal): Promise<s
       property_type = EXCLUDED.property_type,
       vintage_band = EXCLUDED.vintage_band,
       unit_count_band = EXCLUDED.unit_count_band,
+      stories = COALESCE(EXCLUDED.stories, data_library_assets.stories),
+      msa = COALESCE(EXCLUDED.msa, data_library_assets.msa),
+      asset_class = COALESCE(EXCLUDED.asset_class, data_library_assets.asset_class),
+      deal_type = COALESCE(EXCLUDED.deal_type, data_library_assets.deal_type),
+      going_in_cap_rate = COALESCE(EXCLUDED.going_in_cap_rate, data_library_assets.going_in_cap_rate),
+      stabilized_cap_rate = COALESCE(EXCLUDED.stabilized_cap_rate, data_library_assets.stabilized_cap_rate),
+      exit_cap_rate = COALESCE(EXCLUDED.exit_cap_rate, data_library_assets.exit_cap_rate),
       trailing_noi = EXCLUDED.trailing_noi,
       trailing_revenue = EXCLUDED.trailing_revenue,
       trailing_opex = EXCLUDED.trailing_opex,
@@ -398,6 +620,13 @@ async function upsertArchiveDeal(pool: Pool, deal: ParsedArchiveDeal): Promise<s
       propertyType,
       vintageBand,
       unitCountBand,
+      deal.stories,
+      deal.msa,
+      deal.assetClass,
+      deal.dealType,
+      deal.goingInCapRate,
+      deal.stabilizedCapRate,
+      deal.exitCapRate,
       deal.trailingNoi,
       deal.trailingRevenue,
       deal.trailingOpex,
@@ -486,8 +715,12 @@ export interface ArchiveCompQuery {
   propertyType?: string;
   vintageBand?: string;
   unitCountBand?: string;
+  assetClass?: string;
+  dealType?: string;
   minUnits?: number;
   maxUnits?: number;
+  minStories?: number;
+  maxStories?: number;
 }
 
 export interface ArchiveCompStats {
@@ -502,7 +735,7 @@ export interface ArchiveCompStats {
 
 export async function getArchiveCompStats(
   query: ArchiveCompQuery,
-  fields: string[] = ['opex_ratio', 'noi_per_unit', 'opex_per_unit', 'occupancy_pct', 'avg_rent']
+  fields: string[] = ['opex_ratio', 'noi_per_unit', 'opex_per_unit', 'occupancy_pct', 'avg_rent', 'going_in_cap_rate', 'stabilized_cap_rate', 'exit_cap_rate']
 ): Promise<ArchiveCompStats[]> {
   const pool = getPool();
   const conditions: string[] = ["source_type = 'archive'"];
@@ -524,6 +757,14 @@ export async function getArchiveCompStats(
   if (query.unitCountBand) {
     conditions.push(`unit_count_band = $${paramIndex++}`);
     params.push(query.unitCountBand);
+  }
+  if (query.assetClass) {
+    conditions.push(`asset_class = $${paramIndex++}`);
+    params.push(query.assetClass);
+  }
+  if (query.dealType) {
+    conditions.push(`deal_type = $${paramIndex++}`);
+    params.push(query.dealType);
   }
   if (query.minUnits) {
     conditions.push(`unit_count >= $${paramIndex++}`);

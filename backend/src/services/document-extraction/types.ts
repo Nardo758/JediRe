@@ -7,6 +7,7 @@ export type DocumentType =
   | 'T30_LTO'
   | 'TAX_BILL'
   | 'OTHER_INCOME'
+  | 'OM'
   | 'UNKNOWN';
 
 export interface ClassificationResult {

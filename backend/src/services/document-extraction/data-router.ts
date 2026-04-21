@@ -1,6 +1,7 @@
 import { Pool } from 'pg';
 import { getPool } from '../../database/connection';
 import { ExtractionResult, DocumentType, T12Data, RentRollData, AgedReceivablesData, BoxScoreData, ConcessionBurnoffData, LTOData, TaxBillData, OtherIncomeData } from './types';
+import type { OMExtraction } from './parsers/om-parser';
 import { computeAndPersistTrafficSnapshot } from '../traffic-analytics.service';
 import { seedProFormaYear1 } from '../proforma-seeder.service';
 import { runCrossValidation } from '../multi-doc-cross-validation.service';
@@ -107,6 +108,9 @@ export async function routeExtractionResult(
       break;
     case 'OTHER_INCOME':
       rowsInserted = await routeOtherIncome(pool, result.data as OtherIncomeData, ctx.dealId, sourceRef, sourceDate);
+      break;
+    case 'OM':
+      rowsInserted = await routeOM(pool, result.data as unknown as OMExtraction, ctx.dealId, sourceRef, sourceDate, alerts);
       break;
   }
 
@@ -556,6 +560,149 @@ async function routeOtherIncome(pool: Pool, data: OtherIncomeData, dealId: strin
   );
 
   return data.categories.length;
+}
+
+async function routeOM(
+  pool: Pool,
+  data: OMExtraction,
+  dealId: string,
+  sourceRef: string,
+  sourceDate: string,
+  alerts: string[]
+): Promise<number> {
+  // Store broker claims in deal_data for collision detection
+  const brokerClaims = {
+    property: data.property,
+    proforma: data.brokerProforma,
+    replacementCost: data.replacementCost,
+    capitalPlan: data.capitalPlan,
+    debtAssumptions: data.debtAssumptions,
+    investmentHighlights: data.investmentHighlights,
+    investmentThesis: data.investmentThesis,
+    metadata: data.metadata,
+  };
+
+  // Update deal with broker claims
+  await pool.query(
+    `UPDATE deals SET
+       deal_data = COALESCE(deal_data, '{}'::jsonb) || $2::jsonb,
+       updated_at = NOW()
+     WHERE id = $1`,
+    [dealId, JSON.stringify({
+      broker_claims: brokerClaims,
+      extraction_om: {
+        source: 'platform',
+        updatedAt: new Date().toISOString(),
+        document_id: null,
+        source_ref: sourceRef,
+        source_date: sourceDate,
+        ...data.metadata,
+      },
+    })]
+  );
+
+  // Update deal metadata from OM if not already set
+  const dealUpdate: string[] = [];
+  const dealParams: (string | number | null)[] = [dealId];
+  let paramIdx = 2;
+
+  if (data.property.name) {
+    dealUpdate.push(`name = COALESCE(name, $${paramIdx++})`);
+    dealParams.push(data.property.name);
+  }
+  if (data.property.city) {
+    dealUpdate.push(`city = COALESCE(city, $${paramIdx++})`);
+    dealParams.push(data.property.city);
+  }
+  if (data.property.state) {
+    dealUpdate.push(`state_code = COALESCE(state_code, $${paramIdx++})`);
+    dealParams.push(data.property.state);
+  }
+  if (data.property.units) {
+    dealUpdate.push(`target_units = COALESCE(target_units, $${paramIdx++})`);
+    dealParams.push(data.property.units);
+  }
+  if (data.metadata.askingPrice) {
+    dealUpdate.push(`acquisition_price = COALESCE(acquisition_price, $${paramIdx++})`);
+    dealParams.push(data.metadata.askingPrice);
+  }
+
+  if (dealUpdate.length > 0) {
+    await pool.query(
+      `UPDATE deals SET ${dealUpdate.join(', ')}, updated_at = NOW() WHERE id = $1`,
+      dealParams
+    );
+  }
+
+  // Store key events in platform_intel
+  const keyEvents: Array<{ type: string; title: string; detail: Record<string, unknown> }> = [];
+
+  if (data.keyEvents.taxAppealPending) {
+    keyEvents.push({
+      type: 'tax_appeal_pending',
+      title: `Tax appeal pending${data.keyEvents.taxAppealAmount ? ` ($${data.keyEvents.taxAppealAmount.toLocaleString()})` : ''}`,
+      detail: { amount: data.keyEvents.taxAppealAmount },
+    });
+  }
+
+  if (data.keyEvents.insuranceClaimPending) {
+    keyEvents.push({
+      type: 'insurance_claim_pending',
+      title: `Insurance claim pending${data.keyEvents.insuranceClaimAmount ? ` ($${data.keyEvents.insuranceClaimAmount.toLocaleString()})` : ''}`,
+      detail: { amount: data.keyEvents.insuranceClaimAmount },
+    });
+  }
+
+  if (data.keyEvents.renovationPlanned) {
+    keyEvents.push({
+      type: 'renovation_planned',
+      title: `Renovation planned: ${data.capitalPlan.valueAddStrategy || 'Value-add scope'}`,
+      detail: {
+        budget: data.capitalPlan.totalCapexBudget,
+        timeline: data.capitalPlan.renovationTimeline,
+        rentPremium: data.capitalPlan.rentPremiumPostReno,
+      },
+    });
+  }
+
+  if (data.keyEvents.leaseUpInProgress) {
+    keyEvents.push({
+      type: 'lease_up_in_progress',
+      title: `Lease-up in progress${data.keyEvents.stabilizationDate ? ` (target: ${data.keyEvents.stabilizationDate})` : ''}`,
+      detail: { stabilizationDate: data.keyEvents.stabilizationDate },
+    });
+  }
+
+  for (const event of keyEvents) {
+    await pool.query(
+      `INSERT INTO platform_intel (deal_id, alert_type, severity, title, detail, source_document_type, source_ref, created_at)
+       VALUES ($1, $2, 'info', $3, $4::jsonb, 'OM', $5, NOW())
+       ON CONFLICT DO NOTHING`,
+      [dealId, event.type, event.title, JSON.stringify(event.detail), sourceRef]
+    );
+  }
+
+  // Store rent comps
+  if (data.marketComps.rentComps.length > 0) {
+    alerts.push(`OM includes ${data.marketComps.rentComps.length} rent comps`);
+  }
+
+  // Store sale comps
+  if (data.marketComps.saleComps.length > 0) {
+    alerts.push(`OM includes ${data.marketComps.saleComps.length} sale comps`);
+  }
+
+  // Alert on replacement cost
+  if (data.replacementCost.replacementCostPerUnit) {
+    alerts.push(`Replacement cost: $${data.replacementCost.replacementCostPerUnit.toLocaleString()}/unit`);
+  }
+
+  // Alert on value-add strategy
+  if (data.capitalPlan.totalCapexBudget) {
+    alerts.push(`CapEx budget: $${data.capitalPlan.totalCapexBudget.toLocaleString()}`);
+  }
+
+  return 1;
 }
 
 async function upsertDataLibraryAsset(pool: Pool, dealId: string, result: ExtractionResult): Promise<void> {
