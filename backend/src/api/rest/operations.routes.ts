@@ -614,7 +614,7 @@ router.post('/:dealId/monthly-actuals', requireAuth, async (req: AuthenticatedRe
     try {
       await client.query('BEGIN');
 
-      const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])(-\d{2})?$/;
+      const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 
       for (let i = 0; i < actuals.length; i++) {
         const a = actuals[i];
@@ -625,7 +625,7 @@ router.post('/:dealId/monthly-actuals', requireAuth, async (req: AuthenticatedRe
           continue;
         }
         if (!MONTH_RE.test(a.report_month)) {
-          errors.push({ row: i + 1, error: 'report_month must be YYYY-MM or YYYY-MM-DD' });
+          errors.push({ row: i + 1, error: 'report_month must be YYYY-MM (e.g. 2025-06)' });
           continue;
         }
 

@@ -158,7 +158,10 @@ const MonthlyActualsSection: React.FC<Props> = ({ dealId, deal }) => {
       if (form.marketing) row.marketing = parseNum(form.marketing);
       if (form.admin_general) row.admin_general = parseNum(form.admin_general);
       if (form.management_fee) row.management_fee = parseNum(form.management_fee);
-      if (form.management_fee_pct) row.management_fee_pct = parseNum(form.management_fee_pct) ? parseFloat(form.management_fee_pct) / 100 : null;
+      if (form.management_fee_pct.trim()) {
+        const pct = parseFloat(form.management_fee_pct);
+        row.management_fee_pct = !isNaN(pct) ? pct / 100 : null;
+      }
       if (form.turnover_costs) row.turnover_costs = parseNum(form.turnover_costs);
       if (form.real_estate_taxes) row.real_estate_taxes = parseNum(form.real_estate_taxes);
       if (form.insurance) row.insurance = parseNum(form.insurance);
