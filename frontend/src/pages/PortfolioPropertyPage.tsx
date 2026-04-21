@@ -143,13 +143,15 @@ const MiniLineChart = ({ data, color = '#3b82f6', height = 80 }: { data: number[
 const CompSetTab: React.FC<{ dealId: string }> = ({ dealId }) => {
   const [comps, setComps] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [discovering, setDiscovering] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [formData, setFormData] = useState({ comp_name: '', address: '', units: '', year_built: '', avg_rent: '', occupancy_rate: '', distance_miles: '', tier: '2' });
   const [msg, setMsg] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await apiClient.get(`/api/v1/deals/${dealId}/comp-set`);
+      const res = await apiClient.get(`/api/v1/lifecycle/${dealId}/comp-set`);
       setComps(res.data?.comps ?? []);
     } catch { setComps([]); }
     finally { setLoading(false); }
@@ -157,13 +159,32 @@ const CompSetTab: React.FC<{ dealId: string }> = ({ dealId }) => {
 
   useEffect(() => { load(); }, [load]);
 
-  const discover = async () => {
-    setDiscovering(true); setMsg(null);
+  const addComp = async () => {
+    if (!formData.comp_name.trim()) return;
+    setAdding(true); setMsg(null);
     try {
-      await apiClient.post(`/api/v1/deals/${dealId}/comp-set/discover`);
-      setMsg('Discovery complete'); await load();
-    } catch { setMsg('Discovery failed'); }
-    finally { setDiscovering(false); }
+      await apiClient.post(`/api/v1/lifecycle/${dealId}/comp-set`, {
+        comp_name: formData.comp_name,
+        address: formData.address,
+        units: formData.units ? parseInt(formData.units) : null,
+        year_built: formData.year_built ? parseInt(formData.year_built) : null,
+        avg_rent: formData.avg_rent ? parseFloat(formData.avg_rent) : null,
+        occupancy_rate: formData.occupancy_rate ? parseFloat(formData.occupancy_rate) / 100 : null,
+        distance_miles: formData.distance_miles ? parseFloat(formData.distance_miles) : null,
+        tier: parseInt(formData.tier),
+      });
+      setMsg('Comp added'); setShowAddForm(false);
+      setFormData({ comp_name: '', address: '', units: '', year_built: '', avg_rent: '', occupancy_rate: '', distance_miles: '', tier: '2' });
+      await load();
+    } catch { setMsg('Failed to add comp'); }
+    finally { setAdding(false); }
+  };
+
+  const removeComp = async (compId: string) => {
+    try {
+      await apiClient.delete(`/api/v1/lifecycle/comp-set/${compId}`);
+      await load();
+    } catch { setMsg('Failed to remove comp'); }
   };
 
   const fmt$ = (v: any) => v == null ? '—' : `$${Number(v).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
@@ -173,28 +194,65 @@ const CompSetTab: React.FC<{ dealId: string }> = ({ dealId }) => {
     <div className="space-y-4 p-6 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
       <div className="flex items-center gap-3">
         <button
-          onClick={discover}
-          disabled={discovering}
-          className="px-4 py-2 text-xs font-semibold bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-60"
+          onClick={() => setShowAddForm(f => !f)}
+          className="px-4 py-2 text-xs font-semibold bg-blue-600 text-white rounded hover:bg-blue-700"
         >
-          {discovering ? '⟳ Discovering...' : '⚡ Auto-Discover Comps'}
+          + Add Comp Property
         </button>
-        {msg && <span className="text-xs text-stone-500">{msg}</span>}
+        {msg && <span className={`text-xs ${msg.includes('Failed') ? 'text-red-500' : 'text-emerald-600'}`}>{msg}</span>}
       </div>
+
+      {showAddForm && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="text-xs font-semibold text-blue-700 mb-3 uppercase tracking-wide">New Competitive Property</div>
+          <div className="grid grid-cols-4 gap-3">
+            {[
+              { key: 'comp_name', label: 'Property Name *', placeholder: 'The Reserve at...' },
+              { key: 'address', label: 'Address', placeholder: '123 Main St...' },
+              { key: 'units', label: 'Units', placeholder: '250' },
+              { key: 'year_built', label: 'Year Built', placeholder: '2018' },
+              { key: 'avg_rent', label: 'Avg Rent ($)', placeholder: '1850' },
+              { key: 'occupancy_rate', label: 'Occupancy (%)', placeholder: '94.5' },
+              { key: 'distance_miles', label: 'Distance (mi)', placeholder: '0.8' },
+              { key: 'tier', label: 'Tier', placeholder: '2' },
+            ].map(f => (
+              <div key={f.key}>
+                <div className="text-xs text-blue-600 mb-1">{f.label}</div>
+                <input
+                  type="text"
+                  placeholder={f.placeholder}
+                  value={(formData as any)[f.key]}
+                  onChange={e => setFormData(d => ({ ...d, [f.key]: e.target.value }))}
+                  className="w-full text-xs px-2 py-1.5 border border-blue-200 rounded bg-white focus:outline-none focus:border-blue-500"
+                />
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2 mt-3">
+            <button onClick={addComp} disabled={adding} className="px-4 py-1.5 text-xs font-semibold bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-60">
+              {adding ? 'Saving...' : 'Add to Comp Set'}
+            </button>
+            <button onClick={() => setShowAddForm(false)} className="px-4 py-1.5 text-xs text-stone-600 hover:bg-stone-100 rounded">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>
       ) : comps.length === 0 ? (
         <div className="text-center py-16 text-stone-400">
           <div className="text-3xl mb-2">🏙</div>
           <div className="text-sm font-medium">No comps tracked yet</div>
-          <div className="text-xs mt-1">Use Auto-Discover to populate the comp set</div>
+          <div className="text-xs mt-1">Add properties to this asset's competitive set above</div>
         </div>
       ) : (
         <div className="bg-white border border-stone-200 rounded-lg overflow-hidden">
           <table className="w-full text-xs">
             <thead>
               <tr className="bg-stone-50 text-stone-500">
-                {['Property', 'Units', 'Year Built', 'Distance', 'Avg Rent', 'Occupancy', 'Type', 'Tier'].map(h => (
+                {['Property', 'Units', 'Year Built', 'Distance', 'Avg Rent', 'Occupancy', 'Tier', ''].map(h => (
                   <th key={h} className="text-left px-3 py-2 font-medium">{h}</th>
                 ))}
               </tr>
@@ -208,13 +266,15 @@ const CompSetTab: React.FC<{ dealId: string }> = ({ dealId }) => {
                   <td className="px-3 py-2 text-stone-600">{c.distance_miles != null ? `${Number(c.distance_miles).toFixed(1)} mi` : '—'}</td>
                   <td className="px-3 py-2 text-stone-700">{fmt$(c.avg_rent)}</td>
                   <td className="px-3 py-2 text-stone-700">{fmtPct(c.occupancy_rate)}</td>
-                  <td className="px-3 py-2 text-stone-500">{c.property_type ?? '—'}</td>
                   <td className="px-3 py-2">
                     {c.tier && (
                       <span className={`px-2 py-0.5 rounded text-xs font-medium ${c.tier === 1 ? 'bg-blue-100 text-blue-700' : c.tier === 2 ? 'bg-amber-100 text-amber-700' : 'bg-stone-100 text-stone-600'}`}>
                         T{c.tier}
                       </span>
                     )}
+                  </td>
+                  <td className="px-3 py-2">
+                    <button onClick={() => removeComp(c.id)} className="text-red-500 hover:text-red-700 text-xs">✕</button>
                   </td>
                 </tr>
               ))}
@@ -613,6 +673,8 @@ const RevenueMgmtTab: React.FC<{ dealId: string }> = ({ dealId }) => {
 
 const AILearningTab: React.FC<{ dealId: string }> = ({ dealId }) => {
   const [actuals, setActuals] = useState<{ count: number; tier: number } | null>(null);
+  const [accuracy, setAccuracy] = useState<any[]>([]);
+  const [accuracyLoading, setAccuracyLoading] = useState(true);
 
   useEffect(() => {
     apiClient.get(`/api/v1/operations/${dealId}/monthly-actuals?limit=36`)
@@ -622,7 +684,22 @@ const AILearningTab: React.FC<{ dealId: string }> = ({ dealId }) => {
         const tier = count >= 3 ? 2 : count > 0 ? 3 : 4;
         setActuals({ count, tier });
       }).catch(() => setActuals({ count: 0, tier: 4 }));
+    apiClient.get('/api/v1/learning/outcomes/summary')
+      .then(r => setAccuracy((r.data?.summary ?? []).map((row: any) => ({
+        assumptionName: (row.assumption_name ?? '').replace(/_/g, ' '),
+        hitRate10Pct: ((row.hit_rate_10pct ?? 0) * 100),
+        hitRate20Pct: ((row.hit_rate_20pct ?? 0) * 100),
+        meanBias: row.mean_gap_pct ?? 0,
+        nPredictions: row.n_predictions ?? 0,
+      }))))
+      .catch(() => setAccuracy([]))
+      .finally(() => setAccuracyLoading(false));
   }, [dealId]);
+
+  const totPredictions = accuracy.reduce((s, a) => s + a.nPredictions, 0);
+  const avgHit10 = accuracy.length ? accuracy.reduce((s, a) => s + a.hitRate10Pct, 0) / accuracy.length : null;
+  const avgHit20 = accuracy.length ? accuracy.reduce((s, a) => s + a.hitRate20Pct, 0) / accuracy.length : null;
+  const avgBias = accuracy.length ? accuracy.reduce((s, a) => s + a.meanBias, 0) / accuracy.length : null;
 
   return (
     <div className="space-y-6 p-6 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
@@ -658,15 +735,21 @@ const AILearningTab: React.FC<{ dealId: string }> = ({ dealId }) => {
           </p>
         </div>
       )}
+      {accuracyLoading ? (
+        <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" /></div>
+      ) : (
       <div className="grid grid-cols-2 gap-6">
         <div className="bg-white border border-stone-200 rounded-lg p-5">
           <h3 className="text-sm font-semibold text-stone-700 mb-4 uppercase tracking-wide">Portfolio-Wide Agent Accuracy</h3>
+          {accuracy.length === 0 ? (
+            <div className="text-center py-6 text-stone-400 text-xs">No prediction outcomes recorded yet</div>
+          ) : (
           <div className="grid grid-cols-2 gap-3">
             {[
-              { label: 'Hit Rate (±10%)', value: '72%', color: 'text-emerald-600' },
-              { label: 'Hit Rate (±20%)', value: '89%', color: 'text-emerald-600' },
-              { label: 'Mean Bias', value: '+2.3%', color: 'text-amber-600' },
-              { label: 'Predictions', value: '847', color: 'text-stone-800' },
+              { label: 'Hit Rate (±10%)', value: avgHit10 != null ? `${avgHit10.toFixed(0)}%` : '—', color: (avgHit10 ?? 0) >= 70 ? 'text-emerald-600' : 'text-amber-600' },
+              { label: 'Hit Rate (±20%)', value: avgHit20 != null ? `${avgHit20.toFixed(0)}%` : '—', color: (avgHit20 ?? 0) >= 80 ? 'text-emerald-600' : 'text-amber-600' },
+              { label: 'Mean Bias', value: avgBias != null ? `${avgBias >= 0 ? '+' : ''}${avgBias.toFixed(1)}%` : '—', color: Math.abs(avgBias ?? 0) < 5 ? 'text-emerald-600' : 'text-amber-600' },
+              { label: 'Total Predictions', value: totPredictions.toString(), color: 'text-stone-800' },
             ].map((m, i) => (
               <div key={i} className="bg-stone-50 rounded-lg p-3 text-center">
                 <div className={`text-2xl font-bold ${m.color}`}>{m.value}</div>
@@ -674,26 +757,29 @@ const AILearningTab: React.FC<{ dealId: string }> = ({ dealId }) => {
               </div>
             ))}
           </div>
+          )}
         </div>
         <div className="bg-white border border-stone-200 rounded-lg p-5">
           <h3 className="text-sm font-semibold text-stone-700 mb-4 uppercase tracking-wide">By Assumption Type</h3>
+          {accuracy.length === 0 ? (
+            <div className="text-center py-6 text-stone-400 text-xs">No assumption tracking data available</div>
+          ) : (
           <div className="space-y-2">
-            {[
-              { type: 'Rent Growth', hit: '78%', bias: '+1.2%', n: 312 },
-              { type: 'Vacancy Rate', hit: '71%', bias: '+3.1%', n: 298 },
-              { type: 'Exit Cap Rate', hit: '69%', bias: '-0.8%', n: 145 },
-              { type: 'OpEx Ratio', hit: '82%', bias: '+0.6%', n: 92 },
-            ].map((r, i) => (
+            {accuracy.map((r, i) => (
               <div key={i} className="flex items-center justify-between py-1.5 border-t border-stone-50 text-xs">
-                <span className="text-stone-600 w-28">{r.type}</span>
-                <span className="text-emerald-600 font-semibold w-10 text-right">{r.hit}</span>
-                <span className={`w-12 text-right font-medium ${r.bias.startsWith('+') ? 'text-amber-600' : 'text-blue-600'}`}>{r.bias}</span>
-                <span className="text-stone-400 w-8 text-right">n={r.n}</span>
+                <span className="text-stone-600 w-28 capitalize">{r.assumptionName}</span>
+                <span className={`font-semibold w-10 text-right ${r.hitRate10Pct >= 70 ? 'text-emerald-600' : 'text-amber-600'}`}>{r.hitRate10Pct.toFixed(0)}%</span>
+                <span className={`w-12 text-right font-medium ${Math.abs(r.meanBias) < 5 ? 'text-emerald-600' : 'text-amber-600'}`}>
+                  {r.meanBias >= 0 ? '+' : ''}{r.meanBias.toFixed(1)}%
+                </span>
+                <span className="text-stone-400 w-8 text-right">n={r.nPredictions}</span>
               </div>
             ))}
           </div>
+          )}
         </div>
       </div>
+      )}
     </div>
   );
 };
@@ -1302,33 +1388,76 @@ export default function PortfolioPropertyPage() {
             <DocumentsSection deal={deal as any} />
           </div>
         )}
-        {activeTab === 'reports'      && (
-          <div className="space-y-6 p-6 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
-            <div className="bg-white border border-stone-200 rounded-lg p-8 text-center">
-              <div className="text-3xl mb-3">📑</div>
-              <h3 className="text-lg font-semibold text-stone-700 mb-2">Asset Reports</h3>
-              <p className="text-sm text-stone-400 max-w-md mx-auto">
-                Export financial summaries, investor reports, and performance packages for this asset.
-              </p>
-              <div className="grid grid-cols-3 gap-4 mt-6 text-left">
-                {[
-                  { title: 'Monthly Performance Summary', desc: 'NOI, occupancy, cash flow trends', icon: '📊' },
-                  { title: 'Investor Report', desc: 'LP-ready quarterly update with returns', icon: '👥' },
-                  { title: 'Rent Roll Export', desc: 'Unit-by-unit current status and rent', icon: '📋' },
-                ].map((r, i) => (
-                  <div key={i} className="border border-stone-200 rounded-lg p-4">
-                    <div className="text-xl mb-2">{r.icon}</div>
-                    <div className="text-sm font-medium text-stone-700">{r.title}</div>
-                    <div className="text-xs text-stone-400 mt-1">{r.desc}</div>
-                    <button className="mt-3 text-xs px-3 py-1.5 bg-stone-100 text-stone-600 rounded hover:bg-stone-200 transition-colors">
-                      Export CSV
+        {activeTab === 'reports'      && (() => {
+          const propName = summary?.deal?.property_name ?? summary?.deal?.project_name ?? `property-${dealId}`;
+          const safeSlug = propName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+
+          const downloadCSV = (filename: string, rows: string[][], headers: string[]) => {
+            const csv = [headers.join(','), ...rows.map(r => r.map(v => `"${(v ?? '').toString().replace(/"/g, '""')}"`).join(','))].join('\n');
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
+            URL.revokeObjectURL(url);
+          };
+
+          const exportFinancials = () => {
+            downloadCSV(`${safeSlug}-performance.csv`, financials.map(f => [
+              f.report_month?.slice(0, 7) ?? '', String(f.noi ?? ''), String(f.occupancy_rate ?? ''),
+              String(f.avg_effective_rent ?? ''), String(f.net_rental_income ?? ''), String(f.total_opex ?? ''),
+              String(f.cash_flow_before_tax ?? ''), String(f.new_leases ?? ''), String(f.renewals ?? ''),
+            ]), ['Month', 'NOI', 'Occupancy Rate', 'Avg Rent', 'Revenue', 'Total OpEx', 'Cash Flow', 'New Leases', 'Renewals']);
+          };
+
+          const exportRentRoll = async () => {
+            const r = await apiClient.get(`/api/v1/operations/${dealId}/rent-roll`).catch(() => ({ data: { units: [] } }));
+            const units = r.data?.units ?? [];
+            downloadCSV(`${safeSlug}-rent-roll.csv`, units.map((u: any) => [
+              u.unit_number, u.unit_type, u.status, u.current_rent, u.market_rent,
+              u.bedrooms, u.bathrooms, u.sqft, u.lease_start?.slice(0, 10) ?? '', u.lease_end?.slice(0, 10) ?? '',
+            ]), ['Unit', 'Type', 'Status', 'Current Rent', 'Market Rent', 'Beds', 'Baths', 'Sqft', 'Lease Start', 'Lease End']);
+          };
+
+          const exportInvestorSummary = () => {
+            const lf = financials[financials.length - 1];
+            downloadCSV(`${safeSlug}-investor-report.csv`, [
+              ['Property', propName],
+              ['As of Date', new Date().toISOString().slice(0, 10)],
+              ['Latest NOI/mo', lf ? String(lf.noi) : 'N/A'],
+              ['Annualized NOI', lf ? String(parseFloat(lf.noi as any) * 12) : 'N/A'],
+              ['Avg Occupancy (LTM)', financials.length ? String((financials.reduce((s, f) => s + (parseFloat(f.occupancy_rate as any) || 0), 0) / financials.length * 100).toFixed(1)) : 'N/A'],
+              ['Avg Effective Rent', lf ? String(lf.avg_effective_rent) : 'N/A'],
+              ['Months of Actuals', String(financials.length)],
+            ], ['Metric', 'Value']);
+          };
+
+          const reports = [
+            { title: 'Monthly Performance Summary', desc: `${financials.length} months of NOI, occupancy, and cash flow data`, icon: '📊', action: exportFinancials, available: financials.length > 0 },
+            { title: 'Investor Report', desc: 'LP-ready summary of key metrics and returns', icon: '👥', action: exportInvestorSummary, available: financials.length > 0 },
+            { title: 'Rent Roll Export', desc: 'Unit-by-unit current status, rent, and lease dates', icon: '📋', action: exportRentRoll, available: true },
+          ];
+
+          return (
+            <div className="space-y-6 p-6 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+              <div className="text-xs text-stone-500 font-medium uppercase tracking-wide">Asset Reports — {propName}</div>
+              <div className="grid grid-cols-3 gap-4">
+                {reports.map((r, i) => (
+                  <div key={i} className="bg-white border border-stone-200 rounded-lg p-5">
+                    <div className="text-2xl mb-2">{r.icon}</div>
+                    <div className="text-sm font-semibold text-stone-800 mb-1">{r.title}</div>
+                    <div className="text-xs text-stone-400 mb-4">{r.desc}</div>
+                    <button
+                      onClick={r.action}
+                      disabled={!r.available}
+                      className={`w-full text-xs px-3 py-2 rounded font-medium transition-colors ${r.available ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-stone-100 text-stone-400 cursor-not-allowed'}`}
+                    >
+                      {r.available ? '⬇ Download CSV' : 'No data yet'}
                     </button>
                   </div>
                 ))}
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
         {activeTab === 'deal-team'    && (
           <div className="overflow-y-auto p-6" style={{ maxHeight: 'calc(100vh - 280px)' }}>
             <TeamSection deal={{ ...deal, status: deal.status || 'owned' } as any} />
