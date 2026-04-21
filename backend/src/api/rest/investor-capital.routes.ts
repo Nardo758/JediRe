@@ -594,17 +594,30 @@ router.get('/deals/:dealId/ledger', requireAuth, async (req: AuthenticatedReques
     const where = filters.length ? `AND ${filters.join(' AND ')}` : '';
     // Capture filter-only params for the COUNT query before adding limit/offset
     const filterParams = [...params];
-    const limitVal  = lim  ? Math.max(1, Math.min(500, Number(lim)))  : 500;
+    const limitVal  = lim  ? Math.max(1, Math.min(500, Number(lim)))  : 50;
     const offsetVal = off  ? Math.max(0, Number(off))                 : 0;
     params.push(limitVal);  const limitIdx  = params.length;
     params.push(offsetVal); const offsetIdx = params.length;
+    // Window function computes authoritative running_balance per investor, ordered
+    // oldest-to-newest, then we paginate the result set.
     const [r, countResult] = await Promise.all([
       query(
-        `SELECT e.*, i.name AS investor_name
-           FROM capital_account_entries e JOIN investors i ON i.id=e.investor_id
-          WHERE e.deal_id=$1 ${where}
-          ORDER BY e.entry_date DESC, e.created_at DESC
-          LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+        `WITH computed AS (
+           SELECT e.*,
+             i.name AS investor_name,
+             COALESCE(
+               e.running_balance,
+               SUM(CASE WHEN e.entry_type = 'distribution' THEN -e.amount ELSE e.amount END)
+                 OVER (PARTITION BY e.investor_id ORDER BY e.entry_date ASC, e.created_at ASC
+                       ROWS UNBOUNDED PRECEDING)
+             ) AS running_balance
+           FROM capital_account_entries e
+           JOIN investors i ON i.id = e.investor_id
+           WHERE e.deal_id=$1 ${where}
+         )
+         SELECT * FROM computed
+         ORDER BY entry_date DESC, created_at DESC
+         LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
         params,
       ),
       query(

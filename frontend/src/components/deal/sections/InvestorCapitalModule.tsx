@@ -736,18 +736,12 @@ function LedgerTab({ entries, totalEntries, loading, error, onFilter }: LedgerTa
   const applyFilter = () => fetchPage(0, dateFrom, dateTo);
   const clearFilter = () => { setDateFrom(''); setDateTo(''); fetchPage(0); };
 
-  // Build display rows: prefer server running_balance; fall back to client-computed
-  const sorted = [...entries].sort((a, b) => {
-    const d = a.entry_date.localeCompare(b.entry_date);
-    return d !== 0 ? d : a.id.localeCompare(b.id);
-  });
-  let running = 0;
-  const withBalance = sorted.map(e => {
-    const serverBalance = e.running_balance != null ? Number(e.running_balance) : null;
-    const sign = e.entry_type === 'distribution' ? -1 : 1;
-    running += sign * n(e.amount);
-    return { ...e, runningBalance: serverBalance ?? running };
-  }).reverse(); // newest first for display
+  // Server always provides running_balance via SQL window function.
+  // Entries arrive newest-first (ORDER BY entry_date DESC from backend).
+  const withBalance = entries.map(e => ({
+    ...e,
+    runningBalance: Number(e.running_balance ?? 0),
+  }));
 
   if (loading) return <div style={S.empty}>Loading ledger…</div>;
   if (error)   return <div style={S.err}>{error}</div>;
