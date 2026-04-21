@@ -57,6 +57,23 @@ const router = Router();
 // ═══════════════════════════════════════════════════════════════════════
 
 /**
+ * GET /api/v1/lifecycle/:dealId/dispositions
+ * Get all dispositions recorded for a deal
+ */
+router.get('/:dealId/dispositions', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const result = await query(
+      `SELECT * FROM dispositions WHERE deal_id = $1 ORDER BY closing_date DESC`,
+      [req.params.dealId]
+    );
+    res.json({ success: true, dispositions: result.rows });
+  } catch (err) {
+    logger.error('Get dispositions error:', err);
+    res.status(500).json({ success: false, error: 'Failed to get dispositions' });
+  }
+});
+
+/**
  * POST /api/v1/lifecycle/:dealId/disposition
  * Record a disposition (sale) event
  */
