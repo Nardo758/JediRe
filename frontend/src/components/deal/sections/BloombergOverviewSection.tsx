@@ -131,6 +131,9 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
     field_count: number;
     latest_run_at: string | null;
   } | null>(null);
+  const [dismissedCollisionKey, setDismissedCollisionKey] = useState<string | null>(() => {
+    try { return localStorage.getItem(`collision_dismissed:${deal?.id ?? ''}`); } catch { return null; }
+  });
 
   // Load JEDI Score
   const loadJediScore = useCallback(async () => {
@@ -262,6 +265,17 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
     (async () => { stopPolling = await loadStrategy(); })();
     return () => { stopPolling?.(); };
   }, [deal?.id]);
+
+  // ─── Collision banner dismiss ────────────────────────────────────────────────
+
+  const collisionRunKey = uwEvidenceSummary?.latest_run_at ?? null;
+  const isBannerDismissed = collisionRunKey != null && dismissedCollisionKey === collisionRunKey;
+
+  const handleDismissCollisionBanner = useCallback(() => {
+    if (!deal?.id || !collisionRunKey) return;
+    try { localStorage.setItem(`collision_dismissed:${deal.id}`, collisionRunKey); } catch { /* ignore */ }
+    setDismissedCollisionKey(collisionRunKey);
+  }, [deal?.id, collisionRunKey]);
 
   // ─── Derived values ─────────────────────────────────────────────────────────
 
@@ -472,7 +486,7 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
       <AlertCounter />
 
       {/* ── Underwriting collision review banner ── */}
-      {uwEvidenceSummary && uwEvidenceSummary.severe_count > 0 && (
+      {uwEvidenceSummary && uwEvidenceSummary.severe_count > 0 && !isBannerDismissed && (
         <AlertBanner
           label="REVIEW REQUIRED"
           text={`CashFlow Agent detected ${uwEvidenceSummary.severe_count} severe collision${uwEvidenceSummary.severe_count !== 1 ? 's' : ''}${uwEvidenceSummary.material_count > 0 ? ` and ${uwEvidenceSummary.material_count} material collision${uwEvidenceSummary.material_count !== 1 ? 's' : ''}` : ''} in the latest underwriting run. Open the ProForma tab and click the SEV counter to filter and review flagged fields.`}
@@ -489,6 +503,7 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
               {uwEvidenceSummary.severe_count} SEV
             </span>
           }
+          onDismiss={handleDismissCollisionBanner}
         />
       )}
 

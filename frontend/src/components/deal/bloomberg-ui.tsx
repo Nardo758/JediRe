@@ -541,9 +541,9 @@ export function VerifiedLink({ source }: { source: string }) {
 
 // ─── AlertBanner — colored left-border alert strip ────────────────────────────
 export function AlertBanner({
-  label, text, color, badge,
+  label, text, color, badge, onDismiss,
 }: {
-  label: string; text: string; color: string; badge?: React.ReactNode;
+  label: string; text: string; color: string; badge?: React.ReactNode; onDismiss?: () => void;
 }) {
   return (
     <div style={{
@@ -558,6 +558,22 @@ export function AlertBanner({
       </span>
       <span style={{ fontSize: 9, color: BT.text.secondary, fontFamily: MONO, flex: 1 }}>{text}</span>
       {badge}
+      {onDismiss && (
+        <button
+          onClick={onDismiss}
+          title="Dismiss — will reappear if a new underwriting run detects severe collisions"
+          style={{
+            background: 'none', border: 'none', cursor: 'pointer',
+            color: BT.text.muted, fontSize: 11, lineHeight: 1,
+            padding: '0 2px', flexShrink: 0,
+            fontFamily: MONO, opacity: 0.7,
+          }}
+          onMouseEnter={e => (e.currentTarget.style.opacity = '1')}
+          onMouseLeave={e => (e.currentTarget.style.opacity = '0.7')}
+        >
+          ×
+        </button>
+      )}
     </div>
   );
 }
