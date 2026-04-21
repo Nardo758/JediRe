@@ -44,28 +44,33 @@ interface DealSummary {
 
 interface MonthlyFinancial {
   report_month: string;
-  occupancy_rate: number;
-  avg_effective_rent: number;
-  gross_potential_rent: number;
-  net_rental_income: number;
-  total_opex: number;
-  noi: number;
-  noi_per_unit: number;
-  capex: number;
-  cash_flow_before_tax: number;
-  debt_service: number;
-  new_leases: number;
-  renewals: number;
-  payroll: number;
-  repairs_maintenance: number;
-  turnover_costs: number;
-  marketing: number;
-  admin_general: number;
-  management_fee: number;
-  utilities: number;
-  property_tax: number;
-  insurance: number;
+  period_label?: string;
+  occupancy_rate: number | string;
+  avg_effective_rent: number | string;
+  gross_potential_rent: number | string;
+  net_rental_income: number | string;
+  total_opex: number | string;
+  noi: number | string;
+  noi_per_unit: number | string;
+  capex: number | string;
+  cash_flow_before_tax: number | string;
+  debt_service: number | string;
+  new_leases: number | string;
+  renewals: number | string;
+  payroll: number | string;
+  repairs_maintenance: number | string;
+  turnover_costs: number | string;
+  marketing: number | string;
+  admin_general: number | string;
+  management_fee: number | string;
+  utilities: number | string;
+  property_tax: number | string;
+  insurance: number | string;
+  effective_gross_income?: number | string;
+  total_operating_expenses?: number | string;
+  [key: string]: unknown;
 }
+const toNum = (v: number | string | unknown): number => Number(v) || 0;
 
 interface LeaseMonthly {
   month: string;
@@ -335,10 +340,10 @@ const PerformanceTab: React.FC<{ dealId: string; financials: MonthlyFinancial[] 
     return d >= new Date(now.getFullYear() - 1, now.getMonth(), 1);
   });
 
-  const totNOI = filtered.reduce((s, f) => s + (parseFloat(f.noi as any) || 0), 0);
-  const totRev = filtered.reduce((s, f) => s + (parseFloat(f.net_rental_income as any) || 0), 0);
-  const totOpex = filtered.reduce((s, f) => s + (parseFloat(f.total_opex as any) || 0), 0);
-  const avgOcc = filtered.length ? filtered.reduce((s, f) => s + (parseFloat(f.occupancy_rate as any) || 0), 0) / filtered.length * 100 : null;
+  const totNOI = filtered.reduce((s, f) => s + (toNum(f.noi) || 0), 0);
+  const totRev = filtered.reduce((s, f) => s + (toNum(f.net_rental_income) || 0), 0);
+  const totOpex = filtered.reduce((s, f) => s + (toNum(f.total_opex) || 0), 0);
+  const avgOcc = filtered.length ? filtered.reduce((s, f) => s + (toNum(f.occupancy_rate) || 0), 0) / filtered.length * 100 : null;
 
   return (
     <div className="space-y-4 p-6 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
@@ -430,12 +435,12 @@ const PerformanceTab: React.FC<{ dealId: string; financials: MonthlyFinancial[] 
               {filtered.map((f, i) => (
                 <tr key={i} className="border-t border-stone-50 hover:bg-blue-50/30">
                   <td className="px-3 py-1.5 font-medium text-stone-700">{f.report_month?.slice(0, 7)}</td>
-                  <td className="px-3 py-1.5 text-blue-700 font-semibold">{fmt$(parseFloat(f.noi as any))}</td>
+                  <td className="px-3 py-1.5 text-blue-700 font-semibold">{fmt$(toNum(f.noi))}</td>
                   <td className="px-3 py-1.5">{f.occupancy_rate != null ? `${(Number(f.occupancy_rate) * 100).toFixed(1)}%` : '—'}</td>
-                  <td className="px-3 py-1.5">{fmt$(parseFloat(f.avg_effective_rent as any))}</td>
-                  <td className="px-3 py-1.5 text-red-600">{fmt$(parseFloat(f.total_opex as any))}</td>
-                  <td className={`px-3 py-1.5 font-medium ${parseFloat(f.cash_flow_before_tax as any) < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                    {fmt$(parseFloat(f.cash_flow_before_tax as any))}
+                  <td className="px-3 py-1.5">{fmt$(toNum(f.avg_effective_rent))}</td>
+                  <td className="px-3 py-1.5 text-red-600">{fmt$(toNum(f.total_opex))}</td>
+                  <td className={`px-3 py-1.5 font-medium ${toNum(f.cash_flow_before_tax) < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                    {fmt$(toNum(f.cash_flow_before_tax))}
                   </td>
                 </tr>
               ))}
@@ -1139,10 +1144,10 @@ export default function PortfolioPropertyPage() {
   };
 
   const renderOverview = () => {
-    const noiData = financials.map(f => parseFloat(f.noi as any) || 0);
-    const occData = financials.map(f => (parseFloat(f.occupancy_rate as any) || 0) * 100);
-    const revenueData = financials.map(f => parseFloat(f.net_rental_income as any) || 0);
-    const opexData = financials.map(f => parseFloat(f.total_opex as any) || 0);
+    const noiData = financials.map(f => toNum(f.noi) || 0);
+    const occData = financials.map(f => (toNum(f.occupancy_rate) || 0) * 100);
+    const revenueData = financials.map(f => toNum(f.net_rental_income) || 0);
+    const opexData = financials.map(f => toNum(f.total_opex) || 0);
 
     return (
       <div className="space-y-6 p-6 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
@@ -1170,8 +1175,8 @@ export default function PortfolioPropertyPage() {
             <h3 className="text-sm font-semibold text-stone-700 mb-3">Revenue vs Expenses</h3>
             <div className="flex items-end gap-0.5" style={{ height: 120 }}>
               {financials.map((f, i) => {
-                const rev = parseFloat(f.net_rental_income as any) || 0;
-                const exp = parseFloat(f.total_opex as any) || 0;
+                const rev = toNum(f.net_rental_income) || 0;
+                const exp = toNum(f.total_opex) || 0;
                 const max = Math.max(...revenueData, ...opexData, 1);
                 return (
                   <div key={i} className="flex-1 flex flex-col items-center gap-0.5" style={{ height: '100%', justifyContent: 'flex-end' }}>
@@ -1240,17 +1245,17 @@ export default function PortfolioPropertyPage() {
                 {financials.map((f, i) => (
                   <tr key={i} className="border-t border-stone-50 hover:bg-blue-50/30">
                     <td className="px-3 py-1.5 text-stone-700 font-medium">{fmtMonth(f.report_month)}</td>
-                    <td className="px-3 py-1.5 text-right text-stone-600">{fmt(parseFloat(f.gross_potential_rent as any), 'currency')}</td>
-                    <td className="px-3 py-1.5 text-right text-stone-600">{fmt(parseFloat(f.net_rental_income as any), 'currency')}</td>
-                    <td className="px-3 py-1.5 text-right text-red-600">{fmt(parseFloat(f.total_opex as any), 'currency')}</td>
-                    <td className="px-3 py-1.5 text-right font-semibold text-blue-700">{fmt(parseFloat(f.noi as any), 'currency')}</td>
-                    <td className="px-3 py-1.5 text-right text-stone-500">{fmt(parseFloat(f.noi_per_unit as any), 'currency')}</td>
-                    <td className="px-3 py-1.5 text-right text-stone-500">{fmt(parseFloat(f.capex as any), 'currency')}</td>
-                    <td className="px-3 py-1.5 text-right text-stone-500">{fmt(parseFloat(f.debt_service as any), 'currency')}</td>
-                    <td className={`px-3 py-1.5 text-right font-semibold ${parseFloat(f.cash_flow_before_tax as any) < 0 ? 'text-red-600' : 'text-emerald-700'}`}>
-                      {fmt(parseFloat(f.cash_flow_before_tax as any), 'currency')}
+                    <td className="px-3 py-1.5 text-right text-stone-600">{fmt(toNum(f.gross_potential_rent), 'currency')}</td>
+                    <td className="px-3 py-1.5 text-right text-stone-600">{fmt(toNum(f.net_rental_income), 'currency')}</td>
+                    <td className="px-3 py-1.5 text-right text-red-600">{fmt(toNum(f.total_opex), 'currency')}</td>
+                    <td className="px-3 py-1.5 text-right font-semibold text-blue-700">{fmt(toNum(f.noi), 'currency')}</td>
+                    <td className="px-3 py-1.5 text-right text-stone-500">{fmt(toNum(f.noi_per_unit), 'currency')}</td>
+                    <td className="px-3 py-1.5 text-right text-stone-500">{fmt(toNum(f.capex), 'currency')}</td>
+                    <td className="px-3 py-1.5 text-right text-stone-500">{fmt(toNum(f.debt_service), 'currency')}</td>
+                    <td className={`px-3 py-1.5 text-right font-semibold ${toNum(f.cash_flow_before_tax) < 0 ? 'text-red-600' : 'text-emerald-700'}`}>
+                      {fmt(toNum(f.cash_flow_before_tax), 'currency')}
                     </td>
-                    <td className="px-3 py-1.5 text-right text-stone-600">{fmt(parseFloat(f.occupancy_rate as any) * 100, 'percent', 1)}</td>
+                    <td className="px-3 py-1.5 text-right text-stone-600">{fmt(toNum(f.occupancy_rate) * 100, 'percent', 1)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1271,9 +1276,9 @@ export default function PortfolioPropertyPage() {
     }
 
     const ms = leaseData.monthlyStats;
-    const newRentData = ms.map(m => parseFloat(m.avg_new_rent as any) || 0);
-    const renewalRentData = ms.map(m => parseFloat(m.avg_renewal_rent as any) || 0);
-    const ltlData = ms.map(m => parseFloat(m.avg_loss_to_lease_pct as any) || 0);
+    const newRentData = ms.map(m => toNum(m.avg_new_rent) || 0);
+    const renewalRentData = ms.map(m => toNum(m.avg_renewal_rent) || 0);
+    const ltlData = ms.map(m => toNum(m.avg_loss_to_lease_pct) || 0);
     const retData = leaseData.retentionByQuarter;
 
     return (
@@ -1451,9 +1456,9 @@ export default function PortfolioPropertyPage() {
     }
 
     const last52 = trafficData.slice(-52);
-    const trafficNums = last52.map(w => parseFloat(w.traffic as any) || 0);
-    const closingNums = last52.map(w => parseFloat(w.closing_ratio as any) || 0);
-    const occNums = last52.map(w => parseFloat(w.occ_pct as any) || 0);
+    const trafficNums = last52.map(w => toNum(w.traffic) || 0);
+    const closingNums = last52.map(w => toNum(w.closing_ratio) || 0);
+    const occNums = last52.map(w => toNum(w.occ_pct) || 0);
 
     return (
       <div className="space-y-6 p-6 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
@@ -1493,7 +1498,7 @@ export default function PortfolioPropertyPage() {
 
         <div className="bg-white border border-stone-200 rounded-lg p-4">
           <h3 className="text-sm font-semibold text-stone-700 mb-3">Occupancy Trend</h3>
-          <MiniLineChart data={trafficData.map(w => parseFloat(w.occ_pct as any) || 0)} color="#7c3aed" height={100} />
+          <MiniLineChart data={trafficData.map(w => toNum(w.occ_pct) || 0)} color="#7c3aed" height={100} />
           <div className="flex justify-between text-xs text-stone-400 mt-1">
             {trafficData.length > 0 && <span>{new Date(trafficData[0].week_ending).toLocaleDateString('en-US', { month: 'short', year: '2-digit' })}</span>}
             {trafficData.length > 1 && <span>{new Date(trafficData[trafficData.length - 1].week_ending).toLocaleDateString('en-US', { month: 'short', year: '2-digit' })}</span>}

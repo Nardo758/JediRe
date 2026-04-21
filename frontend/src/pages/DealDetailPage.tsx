@@ -842,7 +842,7 @@ const DealDetailPage: React.FC = () => {
                   </span>
                 </>
               )}
-              {deal && ['owned','closed','Owned','Closed'].includes(deal.pipeline_stage || deal.status || '') && (
+              {deal && isOwnedDeal(deal.status, deal.pipeline_stage) && (
                 <>
                   <span style={{ color: BORDER, margin: '0 8px', fontSize: 10 }}>│</span>
                   <button
@@ -876,7 +876,7 @@ const DealDetailPage: React.FC = () => {
                   </button>
                 </>
               )}
-              {deal && !['owned','closed','Owned','Closed'].includes(deal.pipeline_stage || deal.status || '') && (
+              {deal && !isOwnedDeal(deal.status, deal.pipeline_stage) && (
                 <>
                   <span style={{ color: BORDER, margin: '0 8px', fontSize: 10 }}>│</span>
                   <button
