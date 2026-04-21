@@ -298,9 +298,29 @@ function CopyId({ id }: { id: string }) {
 
 // ── AgentRunCard ──────────────────────────────────────────────────
 
-function AgentRunCard({ run, isLast }: { run: AgentRunItem; isLast: boolean }) {
+function AgentRunCard({ run, isLast, onRerun }: { run: AgentRunItem; isLast: boolean; onRerun?: (agentId: string, dealId: string) => void }) {
   const [expanded, setExpanded] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
+  const [rerunning, setRerunning] = useState(false);
+
+  const handleRerun = async () => {
+    if (rerunning || run.status === 'running') return;
+    setRerunning(true);
+    try {
+      const res = await fetch(`/api/v1/agents/${run.agentId}/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deal_id: run.dealId, force_refresh: true }),
+      });
+      if (res.ok && onRerun) {
+        onRerun(run.agentId, run.dealId);
+      }
+    } catch (err) {
+      console.error('Re-run failed:', err);
+    } finally {
+      setRerunning(false);
+    }
+  };
 
   const cfg = AGENT_STATUS_CONFIG[run.status] ?? AGENT_STATUS_CONFIG.failed;
   const Icon = cfg.icon;
@@ -381,6 +401,18 @@ function AgentRunCard({ run, isLast }: { run: AgentRunItem; isLast: boolean }) {
               <ExternalLink className="w-3 h-3" />
               {showDetail ? 'Hide detail' : 'Run detail'}
             </button>
+
+            {/* Re-run button */}
+            {run.status !== 'running' && run.status !== 'pending' && (
+              <button
+                onClick={handleRerun}
+                disabled={rerunning}
+                className="inline-flex items-center gap-1 text-xs text-amber-600 hover:text-amber-800 transition-colors disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3 h-3 ${rerunning ? 'animate-spin' : ''}`} />
+                {rerunning ? 'Starting...' : 'Re-run'}
+              </button>
+            )}
           </div>
 
           {showDetail && <RunDetailView runId={run.id} />}
