@@ -11,6 +11,14 @@ import { DocumentsSection } from '../components/deal/sections/DocumentsSection';
 import { TeamSection } from '../components/deal/sections/TeamSection';
 import { MonitorTab } from '../components/deal/sections/ExitStrategyTabs';
 
+// ─── Bloomberg Terminal Theme ─────────────────────────────────
+const T = {
+  bg: { terminal:'#0A0E17', panel:'#0F1319', panelAlt:'#131821', header:'#1A1F2E', hover:'#1E2538', active:'#252D40', input:'#0D1117' },
+  text: { primary:'#E8ECF1', secondary:'#8B95A5', muted:'#4A5568', amber:'#F5A623', green:'#00D26A', red:'#FF4757', cyan:'#00BCD4', orange:'#FF8C42', purple:'#A78BFA', white:'#FFFFFF', blue:'#4A9EFF' },
+  border: { subtle:'#1E2538', medium:'#2A3348', bright:'#3B4A6B' },
+  font: { mono:"'JetBrains Mono','Fira Code','SF Mono',monospace" },
+};
+
 type TabType =
   | 'overview' | 'performance' | 'comp-set'
   | 'leasing' | 'unit-mix' | 'traffic'
@@ -47,6 +55,7 @@ interface MonthlyFinancial {
   period_label?: string;
   occupancy_rate: number | string;
   avg_effective_rent: number | string;
+  avg_market_rent: number | string;
   gross_potential_rent: number | string;
   net_rental_income: number | string;
   total_opex: number | string;
@@ -79,73 +88,73 @@ interface LeaseMonthly {
   renewals: number;
   avg_new_rent: number;
   avg_renewal_rent: number;
-  avg_renewal_bump: number;
-  avg_renewal_bump_pct: number;
   avg_loss_to_lease_pct: number;
-  avg_market_rent: number;
 }
 
 interface TrafficWeek {
   week_ending: string;
-  traffic: number;
-  in_person_tours: number;
-  apps: number;
-  net_leases: number;
-  closing_ratio: number;
-  move_ins: number;
-  move_outs: number;
-  occ_pct: number;
+  traffic: number | string;
+  closing_ratio: number | string;
+  occ_pct: number | string;
 }
 
-const fmt = (v: number | null | undefined, style: 'currency' | 'percent' | 'number' = 'number', decimals = 0) => {
-  if (v === null || v === undefined) return '—';
-  if (style === 'currency') return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: decimals }).format(v);
-  if (style === 'percent') return `${Number(v).toFixed(decimals)}%`;
-  return new Intl.NumberFormat('en-US', { maximumFractionDigits: decimals }).format(v);
+const fmt = (v: number | null | undefined, type: 'currency' | 'percent' | 'number' = 'number', decimals = 0): string => {
+  if (v == null || isNaN(v)) return '—';
+  if (type === 'currency') return `$${v >= 1_000_000 ? (v / 1_000_000).toFixed(2) + 'M' : v >= 1000 ? v.toLocaleString('en-US', { maximumFractionDigits: 0 }) : v.toFixed(0)}`;
+  if (type === 'percent') return `${v.toFixed(decimals)}%`;
+  return v.toLocaleString('en-US', { maximumFractionDigits: decimals });
 };
+const fmtMonth = (s: string) => { try { return new Date(s).toLocaleDateString('en-US', { month: 'short', year: '2-digit' }); } catch { return s; } };
+const fmtP = (v: number | null) => v == null ? '—' : `${(v * 100).toFixed(1)}%`;
 
-const fmtMonth = (d: string) => {
-  const dt = new Date(d);
-  return dt.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-};
-
-const MiniBarChart = ({ data, color = '#3b82f6', height = 80 }: { data: number[]; color?: string; height?: number }) => {
-  if (!data.length) return null;
+// ─── Chart Components ─────────────────────────────────────────
+const MiniBarChart = ({ data, color = T.text.blue, height = 80 }: { data: number[]; color?: string; height?: number }) => {
+  if (!data.length) return <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.text.muted, fontSize: 10, fontFamily: T.font.mono }}>NO DATA</div>;
   const max = Math.max(...data, 1);
-  const w = 100 / data.length;
   return (
-    <svg viewBox={`0 0 100 ${height}`} className="w-full" style={{ height }}>
-      {data.map((v, i) => (
-        <rect
-          key={i}
-          x={i * w + w * 0.1}
-          y={height - (v / max) * height}
-          width={w * 0.8}
-          height={(v / max) * height}
-          fill={color}
-          rx={1}
-          opacity={0.85}
-        />
-      ))}
+    <svg viewBox={`0 0 ${data.length * 6} ${height}`} style={{ width: '100%', height }}>
+      {data.map((v, i) => {
+        const barH = Math.max(2, (v / max) * (height - 4));
+        return <rect key={i} x={i * 6 + 0.5} y={height - barH} width={5} height={barH} fill={color} opacity={0.85} rx={1} />;
+      })}
     </svg>
   );
 };
 
-const MiniLineChart = ({ data, color = '#3b82f6', height = 80 }: { data: number[]; color?: string; height?: number }) => {
+const MiniLineChart = ({ data, color = T.text.blue, height = 80 }: { data: number[]; color?: string; height?: number }) => {
   if (!data.length) return null;
   const max = Math.max(...data, 1);
   const min = Math.min(...data, 0);
   const range = max - min || 1;
   const points = data.map((v, i) => `${(i / Math.max(data.length - 1, 1)) * 100},${height - ((v - min) / range) * (height - 10) - 5}`).join(' ');
   return (
-    <svg viewBox={`0 0 100 ${height}`} className="w-full" style={{ height }}>
+    <svg viewBox={`0 0 100 ${height}`} style={{ width: '100%', height }}>
       <polyline points={points} fill="none" stroke={color} strokeWidth="1.5" />
     </svg>
   );
 };
 
-// ─── Inline sub-tab components ───────────────────────────────────────────────
+// ─── Shared panel component ───────────────────────────────────
+const Panel: React.FC<{ title?: string; titleColor?: string; children: React.ReactNode; style?: React.CSSProperties }> = ({ title, titleColor, children, style }) => (
+  <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 4, overflow: 'hidden', ...style }}>
+    {title && (
+      <div style={{ padding: '6px 12px', background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}`, fontSize: 10, fontWeight: 700, color: titleColor || T.text.amber, fontFamily: T.font.mono, letterSpacing: '0.05em' }}>
+        {title}
+      </div>
+    )}
+    {children}
+  </div>
+);
 
+// ─── Spinner ──────────────────────────────────────────────────
+const Spinner = () => (
+  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 48 }}>
+    <div style={{ width: 28, height: 28, border: `2px solid ${T.border.medium}`, borderTopColor: T.text.amber, borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+    <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+  </div>
+);
+
+// ─── CompSet Tab ─────────────────────────────────────────────
 type CompFormKey = 'comp_name' | 'address' | 'units' | 'year_built' | 'avg_rent' | 'occupancy_rate' | 'distance_miles' | 'tier';
 type CompForm = Record<CompFormKey, string>;
 
@@ -211,29 +220,23 @@ const CompSetTab: React.FC<{ dealId: string }> = ({ dealId }) => {
   const fmt$ = (v: any) => v == null ? '—' : `$${Number(v).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
   const fmtPct = (v: any) => v == null ? '—' : `${(Number(v) * 100).toFixed(1)}%`;
 
+  const inputStyle: React.CSSProperties = { width: '100%', fontSize: 11, padding: '4px 8px', background: T.bg.input, border: `1px solid ${T.border.medium}`, color: T.text.primary, borderRadius: 3, outline: 'none', fontFamily: T.font.mono };
+
   return (
-    <div className="space-y-4 p-6 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
-      <div className="flex items-center gap-3">
-        <button
-          onClick={discover}
-          disabled={discovering}
-          className="px-4 py-2 text-xs font-semibold bg-amber-500 text-white rounded hover:bg-amber-600 disabled:opacity-60"
-        >
-          {discovering ? '⟳ Discovering...' : '⚡ Auto-Discover Comps'}
+    <div style={{ padding: 16, overflowY: 'auto', maxHeight: 'calc(100vh - 280px)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <button onClick={discover} disabled={discovering} style={{ padding: '5px 12px', fontSize: 10, fontWeight: 700, background: T.text.amber, color: '#000', border: 'none', borderRadius: 3, cursor: 'pointer', fontFamily: T.font.mono, opacity: discovering ? 0.6 : 1 }}>
+          {discovering ? '⟳ DISCOVERING...' : '⚡ AUTO-DISCOVER COMPS'}
         </button>
-        <button
-          onClick={() => setShowAddForm(f => !f)}
-          className="px-4 py-2 text-xs font-semibold bg-blue-600 text-white rounded hover:bg-blue-700"
-        >
-          + Add Manually
+        <button onClick={() => setShowAddForm(f => !f)} style={{ padding: '5px 12px', fontSize: 10, fontWeight: 700, background: T.bg.active, color: T.text.cyan, border: `1px solid ${T.border.medium}`, borderRadius: 3, cursor: 'pointer', fontFamily: T.font.mono }}>
+          + ADD MANUALLY
         </button>
-        {msg && <span className={`text-xs ${msg.includes('failed') || msg.includes('Failed') ? 'text-red-500' : 'text-emerald-600'}`}>{msg}</span>}
+        {msg && <span style={{ fontSize: 10, color: msg.includes('failed') || msg.includes('Failed') ? T.text.red : T.text.green, fontFamily: T.font.mono }}>{msg}</span>}
       </div>
 
       {showAddForm && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <div className="text-xs font-semibold text-blue-700 mb-3 uppercase tracking-wide">New Competitive Property</div>
-          <div className="grid grid-cols-4 gap-3">
+        <Panel title="NEW COMPETITIVE PROPERTY" titleColor={T.text.cyan}>
+          <div style={{ padding: 12, display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8 }}>
             {[
               { key: 'comp_name' as CompFormKey, label: 'Property Name *', placeholder: 'The Reserve at...' },
               { key: 'address' as CompFormKey, label: 'Address', placeholder: '123 Main St...' },
@@ -245,75 +248,68 @@ const CompSetTab: React.FC<{ dealId: string }> = ({ dealId }) => {
               { key: 'tier' as CompFormKey, label: 'Tier', placeholder: '2' },
             ].map(f => (
               <div key={f.key}>
-                <div className="text-xs text-blue-600 mb-1">{f.label}</div>
-                <input
-                  type="text"
-                  placeholder={f.placeholder}
-                  value={formData[f.key]}
-                  onChange={e => setFormData(d => ({ ...d, [f.key]: e.target.value }))}
-                  className="w-full text-xs px-2 py-1.5 border border-blue-200 rounded bg-white focus:outline-none focus:border-blue-500"
-                />
+                <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono, marginBottom: 3 }}>{f.label}</div>
+                <input type="text" placeholder={f.placeholder} value={formData[f.key]} onChange={e => setFormData(d => ({ ...d, [f.key]: e.target.value }))} style={inputStyle} />
               </div>
             ))}
           </div>
-          <div className="flex gap-2 mt-3">
-            <button onClick={addComp} disabled={adding} className="px-4 py-1.5 text-xs font-semibold bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-60">
-              {adding ? 'Saving...' : 'Add to Comp Set'}
+          <div style={{ padding: '8px 12px', display: 'flex', gap: 8, borderTop: `1px solid ${T.border.subtle}` }}>
+            <button onClick={addComp} disabled={adding} style={{ padding: '5px 12px', fontSize: 10, fontWeight: 700, background: T.text.cyan, color: '#000', border: 'none', borderRadius: 3, cursor: 'pointer', fontFamily: T.font.mono, opacity: adding ? 0.6 : 1 }}>
+              {adding ? 'SAVING...' : 'ADD TO COMP SET'}
             </button>
-            <button onClick={() => setShowAddForm(false)} className="px-4 py-1.5 text-xs text-stone-600 hover:bg-stone-100 rounded">
-              Cancel
+            <button onClick={() => setShowAddForm(false)} style={{ padding: '5px 12px', fontSize: 10, color: T.text.secondary, background: 'transparent', border: `1px solid ${T.border.subtle}`, borderRadius: 3, cursor: 'pointer', fontFamily: T.font.mono }}>
+              CANCEL
             </button>
           </div>
-        </div>
+        </Panel>
       )}
 
-      {loading ? (
-        <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>
-      ) : comps.length === 0 ? (
-        <div className="text-center py-16 text-stone-400">
-          <div className="text-3xl mb-2">🏙</div>
-          <div className="text-sm font-medium">No comps tracked yet</div>
-          <div className="text-xs mt-1">Add properties to this asset's competitive set above</div>
+      {loading ? <Spinner /> : comps.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '48px 0', color: T.text.muted, fontFamily: T.font.mono, fontSize: 11 }}>
+          <div style={{ fontSize: 28, marginBottom: 8 }}>🏙</div>
+          <div>NO COMPS TRACKED YET</div>
+          <div style={{ fontSize: 10, marginTop: 4, color: T.text.muted }}>Add properties to this asset's competitive set above</div>
         </div>
       ) : (
-        <div className="bg-white border border-stone-200 rounded-lg overflow-hidden">
-          <table className="w-full text-xs">
+        <Panel title="COMPETITIVE SET">
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: T.font.mono }}>
             <thead>
-              <tr className="bg-stone-50 text-stone-500">
-                {['Property', 'Units', 'Year Built', 'Distance', 'Avg Rent', 'Occupancy', 'Tier', ''].map(h => (
-                  <th key={h} className="text-left px-3 py-2 font-medium">{h}</th>
+              <tr style={{ background: T.bg.panelAlt }}>
+                {['PROPERTY', 'UNITS', 'YR BUILT', 'DISTANCE', 'AVG RENT', 'OCCUPANCY', 'TIER', ''].map(h => (
+                  <th key={h} style={{ textAlign: 'left', padding: '8px 10px', color: T.text.muted, fontWeight: 600, letterSpacing: '0.04em', fontSize: 9 }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {comps.map((c: any, i: number) => (
-                <tr key={i} className="border-t border-stone-50 hover:bg-blue-50/30">
-                  <td className="px-3 py-2 font-medium text-stone-800">{c.comp_name || c.property_name || '—'}</td>
-                  <td className="px-3 py-2 text-stone-600">{c.units ?? '—'}</td>
-                  <td className="px-3 py-2 text-stone-600">{c.year_built ?? '—'}</td>
-                  <td className="px-3 py-2 text-stone-600">{c.distance_miles != null ? `${Number(c.distance_miles).toFixed(1)} mi` : '—'}</td>
-                  <td className="px-3 py-2 text-stone-700">{fmt$(c.avg_rent)}</td>
-                  <td className="px-3 py-2 text-stone-700">{fmtPct(c.occupancy_rate)}</td>
-                  <td className="px-3 py-2">
+                <tr key={i} style={{ borderBottom: `1px solid ${T.border.subtle}` }}>
+                  <td style={{ padding: '8px 10px', color: T.text.primary, fontWeight: 500 }}>{c.comp_name || c.property_name || '—'}</td>
+                  <td style={{ padding: '8px 10px', color: T.text.secondary }}>{c.units ?? '—'}</td>
+                  <td style={{ padding: '8px 10px', color: T.text.secondary }}>{c.year_built ?? '—'}</td>
+                  <td style={{ padding: '8px 10px', color: T.text.secondary }}>{c.distance_miles != null ? `${Number(c.distance_miles).toFixed(1)} mi` : '—'}</td>
+                  <td style={{ padding: '8px 10px', color: T.text.green }}>{fmt$(c.avg_rent)}</td>
+                  <td style={{ padding: '8px 10px', color: T.text.cyan }}>{fmtPct(c.occupancy_rate)}</td>
+                  <td style={{ padding: '8px 10px' }}>
                     {c.tier && (
-                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${c.tier === 1 ? 'bg-blue-100 text-blue-700' : c.tier === 2 ? 'bg-amber-100 text-amber-700' : 'bg-stone-100 text-stone-600'}`}>
+                      <span style={{ padding: '2px 6px', background: c.tier === 1 ? '#4A9EFF22' : c.tier === 2 ? '#F5A62322' : '#4A556822', color: c.tier === 1 ? T.text.blue : c.tier === 2 ? T.text.amber : T.text.secondary, borderRadius: 3, fontWeight: 600, fontSize: 9 }}>
                         T{c.tier}
                       </span>
                     )}
                   </td>
-                  <td className="px-3 py-2">
-                    <button onClick={() => removeComp(c.id)} className="text-red-500 hover:text-red-700 text-xs">✕</button>
+                  <td style={{ padding: '8px 10px' }}>
+                    <button onClick={() => removeComp(c.id)} style={{ color: T.text.red, background: 'none', border: 'none', cursor: 'pointer', fontSize: 12 }}>✕</button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
+        </Panel>
       )}
     </div>
   );
 };
 
+// ─── Performance Tab ──────────────────────────────────────────
 const PerformanceTab: React.FC<{ dealId: string; financials: MonthlyFinancial[] }> = ({ dealId, financials }) => {
   const [timeframe, setTimeframe] = useState<'mtd' | 'qtd' | 'ytd' | 'ltm'>('ltm');
   const [pvaData, setPvaData] = useState<any[]>([]);
@@ -346,46 +342,37 @@ const PerformanceTab: React.FC<{ dealId: string; financials: MonthlyFinancial[] 
   const avgOcc = filtered.length ? filtered.reduce((s, f) => s + (toNum(f.occupancy_rate) || 0), 0) / filtered.length * 100 : null;
 
   return (
-    <div className="space-y-4 p-6 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
-      <div className="flex items-center gap-2">
+    <div style={{ padding: 16, overflowY: 'auto', maxHeight: 'calc(100vh - 280px)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         {(['mtd', 'qtd', 'ytd', 'ltm'] as const).map(tf => (
-          <button
-            key={tf}
-            onClick={() => setTimeframe(tf)}
-            className={`px-4 py-1.5 text-xs font-bold rounded transition-colors ${timeframe === tf ? 'bg-amber-500 text-white' : 'bg-white border border-stone-200 text-stone-600 hover:bg-stone-50'}`}
-          >
+          <button key={tf} onClick={() => setTimeframe(tf)} style={{ padding: '4px 10px', fontSize: 10, fontWeight: 700, background: timeframe === tf ? T.text.amber : T.bg.active, color: timeframe === tf ? '#000' : T.text.secondary, border: `1px solid ${timeframe === tf ? T.text.amber : T.border.medium}`, borderRadius: 3, cursor: 'pointer', fontFamily: T.font.mono }}>
             {tf.toUpperCase()}
           </button>
         ))}
-        <span className="text-xs text-stone-400 ml-2">
-          {filtered.length} month{filtered.length !== 1 ? 's' : ''} of data
-        </span>
+        <span style={{ fontSize: 10, color: T.text.muted, fontFamily: T.font.mono, marginLeft: 8 }}>{filtered.length} month{filtered.length !== 1 ? 's' : ''} of data</span>
       </div>
 
-      <div className="grid grid-cols-4 gap-4">
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
         {[
-          { label: 'Total NOI', value: fmt$(totNOI), color: 'text-blue-700' },
-          { label: 'Total Revenue', value: fmt$(totRev), color: 'text-stone-700' },
-          { label: 'Total OpEx', value: fmt$(totOpex), color: 'text-red-600' },
-          { label: 'Avg Occupancy', value: avgOcc != null ? `${avgOcc.toFixed(1)}%` : '—', color: 'text-emerald-700' },
+          { label: 'TOTAL NOI', value: fmt$(totNOI), color: T.text.blue },
+          { label: 'TOTAL REVENUE', value: fmt$(totRev), color: T.text.primary },
+          { label: 'TOTAL OPEX', value: fmt$(totOpex), color: T.text.red },
+          { label: 'AVG OCCUPANCY', value: avgOcc != null ? `${avgOcc.toFixed(1)}%` : '—', color: T.text.green },
         ].map((k, i) => (
-          <div key={i} className="bg-white border border-stone-200 rounded-lg p-4">
-            <div className="text-xs text-stone-400 mb-1">{k.label}</div>
-            <div className={`text-xl font-bold ${k.color}`}>{k.value}</div>
+          <div key={i} style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 4, padding: 12 }}>
+            <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono, marginBottom: 4 }}>{k.label}</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: k.color, fontFamily: T.font.mono }}>{k.value}</div>
           </div>
         ))}
       </div>
 
-      {pvaLoading ? (
-        <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" /></div>
-      ) : pvaData.length > 0 ? (
-        <div className="bg-white border border-stone-200 rounded-lg overflow-hidden">
-          <div className="px-4 py-2 bg-stone-50 border-b text-xs font-semibold text-stone-500 uppercase tracking-wide">Projected vs Actual — NOI</div>
-          <table className="w-full text-xs">
+      {pvaLoading ? <Spinner /> : pvaData.length > 0 ? (
+        <Panel title="PROJECTED VS ACTUAL — NOI">
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: T.font.mono }}>
             <thead>
-              <tr className="text-stone-400">
-                {['Month', 'Projected NOI', 'Actual NOI', 'Variance $', 'Variance %', 'Proj Occ', 'Actual Occ'].map(h => (
-                  <th key={h} className="text-left px-3 py-2">{h}</th>
+              <tr style={{ background: T.bg.panelAlt }}>
+                {['MONTH', 'PROJECTED NOI', 'ACTUAL NOI', 'VARIANCE $', 'VARIANCE %', 'PROJ OCC', 'ACTUAL OCC'].map(h => (
+                  <th key={h} style={{ textAlign: 'left', padding: '7px 10px', color: T.text.muted, fontWeight: 600, fontSize: 9 }}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -394,64 +381,56 @@ const PerformanceTab: React.FC<{ dealId: string; financials: MonthlyFinancial[] 
                 const varD = (row.actual_noi ?? 0) - (row.projected_noi ?? 0);
                 const varPct = row.projected_noi ? (varD / row.projected_noi) * 100 : null;
                 return (
-                  <tr key={i} className="border-t border-stone-50 hover:bg-blue-50/30">
-                    <td className="px-3 py-1.5 font-medium text-stone-700">{row.report_month?.slice(0, 7)}</td>
-                    <td className="px-3 py-1.5">{fmt$(row.projected_noi)}</td>
-                    <td className="px-3 py-1.5">{fmt$(row.actual_noi)}</td>
-                    <td className={`px-3 py-1.5 font-medium ${varD >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                      {varD >= 0 ? '+' : ''}{fmt$(varD)}
-                    </td>
-                    <td className={`px-3 py-1.5 ${(varPct ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                      {varPct != null ? `${varPct >= 0 ? '+' : ''}${varPct.toFixed(1)}%` : '—'}
-                    </td>
-                    <td className="px-3 py-1.5 text-stone-500">{row.projected_occupancy != null ? `${(Number(row.projected_occupancy) * 100).toFixed(1)}%` : '—'}</td>
-                    <td className="px-3 py-1.5 text-stone-500">{row.actual_occupancy != null ? `${(Number(row.actual_occupancy) * 100).toFixed(1)}%` : '—'}</td>
+                  <tr key={i} style={{ borderBottom: `1px solid ${T.border.subtle}` }}>
+                    <td style={{ padding: '6px 10px', color: T.text.primary, fontWeight: 600 }}>{row.report_month?.slice(0, 7)}</td>
+                    <td style={{ padding: '6px 10px', color: T.text.secondary }}>{fmt$(row.projected_noi)}</td>
+                    <td style={{ padding: '6px 10px', color: T.text.primary }}>{fmt$(row.actual_noi)}</td>
+                    <td style={{ padding: '6px 10px', fontWeight: 600, color: varD >= 0 ? T.text.green : T.text.red }}>{varD >= 0 ? '+' : ''}{fmt$(varD)}</td>
+                    <td style={{ padding: '6px 10px', color: (varPct ?? 0) >= 0 ? T.text.green : T.text.red }}>{varPct != null ? `${varPct >= 0 ? '+' : ''}${varPct.toFixed(1)}%` : '—'}</td>
+                    <td style={{ padding: '6px 10px', color: T.text.secondary }}>{row.projected_occupancy != null ? `${(Number(row.projected_occupancy) * 100).toFixed(1)}%` : '—'}</td>
+                    <td style={{ padding: '6px 10px', color: T.text.secondary }}>{row.actual_occupancy != null ? `${(Number(row.actual_occupancy) * 100).toFixed(1)}%` : '—'}</td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
-        </div>
+        </Panel>
       ) : (
-        <div className="bg-white border border-stone-200 rounded-lg p-8 text-center">
-          <div className="text-2xl mb-2">📊</div>
-          <div className="text-sm font-medium text-stone-500">No variance data yet</div>
-          <div className="text-xs text-stone-400 mt-1">Add Monthly Actuals to enable projected vs actual comparison</div>
-        </div>
+        <Panel>
+          <div style={{ textAlign: 'center', padding: 32, color: T.text.muted, fontFamily: T.font.mono, fontSize: 10 }}>NO VARIANCE DATA YET — ADD MONTHLY ACTUALS TO ENABLE COMPARISON</div>
+        </Panel>
       )}
 
       {filtered.length > 0 && (
-        <div className="bg-white border border-stone-200 rounded-lg overflow-hidden">
-          <div className="px-4 py-2 bg-stone-50 border-b text-xs font-semibold text-stone-500 uppercase tracking-wide">Monthly P&L Detail</div>
-          <table className="w-full text-xs">
+        <Panel title="MONTHLY P&L DETAIL">
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: T.font.mono }}>
             <thead>
-              <tr className="text-stone-400">
-                {['Month', 'NOI', 'Occ %', 'Avg Rent', 'OpEx', 'Cash Flow'].map(h => (
-                  <th key={h} className="text-left px-3 py-2">{h}</th>
+              <tr style={{ background: T.bg.panelAlt }}>
+                {['MONTH', 'NOI', 'OCC %', 'AVG RENT', 'OPEX', 'CASH FLOW'].map(h => (
+                  <th key={h} style={{ textAlign: 'left', padding: '7px 10px', color: T.text.muted, fontWeight: 600, fontSize: 9 }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {filtered.map((f, i) => (
-                <tr key={i} className="border-t border-stone-50 hover:bg-blue-50/30">
-                  <td className="px-3 py-1.5 font-medium text-stone-700">{f.report_month?.slice(0, 7)}</td>
-                  <td className="px-3 py-1.5 text-blue-700 font-semibold">{fmt$(toNum(f.noi))}</td>
-                  <td className="px-3 py-1.5">{f.occupancy_rate != null ? `${(Number(f.occupancy_rate) * 100).toFixed(1)}%` : '—'}</td>
-                  <td className="px-3 py-1.5">{fmt$(toNum(f.avg_effective_rent))}</td>
-                  <td className="px-3 py-1.5 text-red-600">{fmt$(toNum(f.total_opex))}</td>
-                  <td className={`px-3 py-1.5 font-medium ${toNum(f.cash_flow_before_tax) < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                    {fmt$(toNum(f.cash_flow_before_tax))}
-                  </td>
+                <tr key={i} style={{ borderBottom: `1px solid ${T.border.subtle}` }}>
+                  <td style={{ padding: '6px 10px', color: T.text.primary, fontWeight: 600 }}>{f.report_month?.slice(0, 7)}</td>
+                  <td style={{ padding: '6px 10px', color: T.text.blue, fontWeight: 600 }}>{fmt$(toNum(f.noi))}</td>
+                  <td style={{ padding: '6px 10px', color: T.text.secondary }}>{f.occupancy_rate != null ? `${(Number(f.occupancy_rate) * 100).toFixed(1)}%` : '—'}</td>
+                  <td style={{ padding: '6px 10px', color: T.text.secondary }}>{fmt$(toNum(f.avg_effective_rent))}</td>
+                  <td style={{ padding: '6px 10px', color: T.text.red }}>{fmt$(toNum(f.total_opex))}</td>
+                  <td style={{ padding: '6px 10px', fontWeight: 600, color: toNum(f.cash_flow_before_tax) < 0 ? T.text.red : T.text.green }}>{fmt$(toNum(f.cash_flow_before_tax))}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
+        </Panel>
       )}
     </div>
   );
 };
 
+// ─── Revenue Management Tab ───────────────────────────────────
 const RevenueMgmtTab: React.FC<{ dealId: string }> = ({ dealId }) => {
   const [subTab, setSubTab] = useState<'rent-roll' | 'other-income' | 'pva' | 'position'>('pva');
   const [pvaData, setPvaData] = useState<any[]>([]);
@@ -492,89 +471,79 @@ const RevenueMgmtTab: React.FC<{ dealId: string }> = ({ dealId }) => {
   const fmtPct = (v: any) => v == null ? '—' : `${(Number(v) * 100).toFixed(1)}%`;
 
   const subTabs = [
-    { id: 'rent-roll', label: 'Rent Roll' },
-    { id: 'other-income', label: 'Other Income' },
-    { id: 'pva', label: 'Projected vs Actual' },
-    { id: 'position', label: 'Competitive Position' },
+    { id: 'rent-roll', label: 'RENT ROLL' },
+    { id: 'other-income', label: 'OTHER INCOME' },
+    { id: 'pva', label: 'PROJ VS ACTUAL' },
+    { id: 'position', label: 'COMPETITIVE POSITION' },
   ] as const;
 
+  const emptyState = (icon: string, msg: string, sub?: string) => (
+    <div style={{ textAlign: 'center', padding: '48px 0', color: T.text.muted, fontFamily: T.font.mono, fontSize: 11 }}>
+      <div style={{ fontSize: 28, marginBottom: 8 }}>{icon}</div>
+      <div>{msg}</div>
+      {sub && <div style={{ fontSize: 10, marginTop: 4 }}>{sub}</div>}
+    </div>
+  );
+
   return (
-    <div className="space-y-4 p-6 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
-      <div className="flex gap-2 flex-wrap">
+    <div style={{ padding: 16, overflowY: 'auto', maxHeight: 'calc(100vh - 280px)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         {subTabs.map(s => (
-          <button
-            key={s.id}
-            onClick={() => setSubTab(s.id)}
-            className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${subTab === s.id ? 'bg-blue-100 text-blue-700' : 'text-stone-600 hover:bg-stone-100 border border-stone-200'}`}
-          >
+          <button key={s.id} onClick={() => setSubTab(s.id)} style={{ padding: '4px 10px', fontSize: 10, fontWeight: 700, background: subTab === s.id ? T.bg.active : 'transparent', color: subTab === s.id ? T.text.cyan : T.text.muted, border: `1px solid ${subTab === s.id ? T.text.cyan : T.border.subtle}`, borderRadius: 3, cursor: 'pointer', fontFamily: T.font.mono }}>
             {s.label}
           </button>
         ))}
       </div>
 
-      {loading && <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>}
+      {loading && <Spinner />}
 
       {!loading && subTab === 'rent-roll' && (
-        !rentRoll || rentRoll.units.length === 0 ? (
-          <div className="text-center py-16 text-stone-400">
-            <div className="text-3xl mb-2">📋</div>
-            <div className="text-sm font-medium">No rent roll imported</div>
-            <div className="text-xs mt-1">Use the Actuals tab to import rent roll snapshots</div>
-          </div>
-        ) : (
-          <div className="space-y-2">
+        !rentRoll || rentRoll.units.length === 0 ? emptyState('📋', 'NO RENT ROLL IMPORTED', 'Use the Actuals tab to import rent roll snapshots') : (
+          <Panel title="RENT ROLL">
             {rentRoll.snapshots.length > 0 && (
-              <div className="text-xs text-stone-400">Snapshots: {rentRoll.snapshots.join(', ')}</div>
+              <div style={{ padding: '6px 12px', fontSize: 9, color: T.text.muted, fontFamily: T.font.mono, borderBottom: `1px solid ${T.border.subtle}` }}>Snapshots: {rentRoll.snapshots.join(', ')}</div>
             )}
-            <div className="bg-white border border-stone-200 rounded-lg overflow-hidden">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="bg-stone-50 text-stone-500">
-                    {['Unit', 'Type', 'Status', 'Current Rent', 'Market Rent', 'LTL $', 'Lease End'].map(h => (
-                      <th key={h} className="text-left px-3 py-2 font-medium">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rentRoll.units.slice(0, 200).map((u: any, i: number) => {
-                    const ltl = u.current_rent && u.market_rent ? Number(u.current_rent) - Number(u.market_rent) : null;
-                    return (
-                      <tr key={i} className="border-t border-stone-50 hover:bg-blue-50/30">
-                        <td className="px-3 py-1.5 font-medium text-stone-700">{u.unit_number}</td>
-                        <td className="px-3 py-1.5 text-stone-500">{u.unit_type}</td>
-                        <td className="px-3 py-1.5">
-                          <span className={`px-1.5 py-0.5 rounded text-xs ${u.status === 'occupied' ? 'bg-emerald-100 text-emerald-700' : u.status === 'vacant' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
-                            {u.status}
-                          </span>
-                        </td>
-                        <td className="px-3 py-1.5">{fmt$(u.current_rent)}</td>
-                        <td className="px-3 py-1.5">{fmt$(u.market_rent)}</td>
-                        <td className={`px-3 py-1.5 font-medium ${ltl != null && ltl < 0 ? 'text-red-600' : 'text-emerald-600'}`}>{fmt$(ltl)}</td>
-                        <td className="px-3 py-1.5 text-stone-500">{u.lease_end?.slice(0, 10) ?? '—'}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: T.font.mono }}>
+              <thead>
+                <tr style={{ background: T.bg.panelAlt }}>
+                  {['UNIT', 'TYPE', 'STATUS', 'CURRENT RENT', 'MARKET RENT', 'LTL $', 'LEASE END'].map(h => (
+                    <th key={h} style={{ textAlign: 'left', padding: '7px 10px', color: T.text.muted, fontWeight: 600, fontSize: 9 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rentRoll.units.slice(0, 200).map((u: any, i: number) => {
+                  const ltl = u.current_rent && u.market_rent ? Number(u.current_rent) - Number(u.market_rent) : null;
+                  return (
+                    <tr key={i} style={{ borderBottom: `1px solid ${T.border.subtle}` }}>
+                      <td style={{ padding: '6px 10px', color: T.text.primary, fontWeight: 600 }}>{u.unit_number}</td>
+                      <td style={{ padding: '6px 10px', color: T.text.secondary }}>{u.unit_type}</td>
+                      <td style={{ padding: '6px 10px' }}>
+                        <span style={{ padding: '2px 6px', background: u.status === 'occupied' ? '#00D26A22' : u.status === 'vacant' ? '#FF475722' : '#F5A62322', color: u.status === 'occupied' ? T.text.green : u.status === 'vacant' ? T.text.red : T.text.amber, borderRadius: 3, fontSize: 9, fontWeight: 600 }}>
+                          {u.status?.toUpperCase()}
+                        </span>
+                      </td>
+                      <td style={{ padding: '6px 10px', color: T.text.primary }}>{fmt$(u.current_rent)}</td>
+                      <td style={{ padding: '6px 10px', color: T.text.secondary }}>{fmt$(u.market_rent)}</td>
+                      <td style={{ padding: '6px 10px', fontWeight: 600, color: ltl != null && ltl < 0 ? T.text.red : T.text.green }}>{fmt$(ltl)}</td>
+                      <td style={{ padding: '6px 10px', color: T.text.secondary }}>{u.lease_end?.slice(0, 10) ?? '—'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </Panel>
         )
       )}
 
       {!loading && subTab === 'other-income' && (
-        otherIncome.length === 0 ? (
-          <div className="text-center py-16 text-stone-400">
-            <div className="text-3xl mb-2">💰</div>
-            <div className="text-sm font-medium">No other income data imported</div>
-            <div className="text-xs mt-1">Import parking, pet fees, storage, and ancillary income</div>
-          </div>
-        ) : (
-          <div className="bg-white border border-stone-200 rounded-lg overflow-hidden">
-            <table className="w-full text-xs">
+        otherIncome.length === 0 ? emptyState('💰', 'NO OTHER INCOME DATA', 'Import parking, pet fees, storage, and ancillary income') : (
+          <Panel title="OTHER INCOME TRACKING">
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: T.font.mono }}>
               <thead>
-                <tr className="bg-stone-50 text-stone-500">
-                  {['Period', 'Parking', 'Pet Fees', 'Pet Rent', 'Storage', 'App Fees', 'Late Fees', 'Utility Reimb', 'Other', 'Total Est'].map(h => (
-                    <th key={h} className="text-left px-3 py-2 font-medium">{h}</th>
+                <tr style={{ background: T.bg.panelAlt }}>
+                  {['PERIOD', 'PARKING', 'PET FEES', 'PET RENT', 'STORAGE', 'APP FEES', 'LATE FEES', 'UTIL REIMB', 'OTHER', 'TOTAL'].map(h => (
+                    <th key={h} style={{ textAlign: 'left', padding: '7px 10px', color: T.text.muted, fontWeight: 600, fontSize: 9 }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -583,40 +552,29 @@ const RevenueMgmtTab: React.FC<{ dealId: string }> = ({ dealId }) => {
                   const total = [row.parking, row.pet_fees, row.pet_rent, row.storage, row.application_fees, row.late_fees, row.utility_reimbursement, row.other]
                     .reduce((s, v) => s + (Number(v) || 0), 0);
                   return (
-                    <tr key={i} className="border-t border-stone-50 hover:bg-blue-50/30">
-                      <td className="px-3 py-1.5 font-medium text-stone-700">{row.period_start?.slice(0, 7)}</td>
-                      <td className="px-3 py-1.5">{fmt$(row.parking)}</td>
-                      <td className="px-3 py-1.5">{fmt$(row.pet_fees)}</td>
-                      <td className="px-3 py-1.5">{fmt$(row.pet_rent)}</td>
-                      <td className="px-3 py-1.5">{fmt$(row.storage)}</td>
-                      <td className="px-3 py-1.5">{fmt$(row.application_fees)}</td>
-                      <td className="px-3 py-1.5">{fmt$(row.late_fees)}</td>
-                      <td className="px-3 py-1.5">{fmt$(row.utility_reimbursement)}</td>
-                      <td className="px-3 py-1.5">{fmt$(row.other)}</td>
-                      <td className="px-3 py-1.5 font-semibold text-stone-700">{fmt$(total)}</td>
+                    <tr key={i} style={{ borderBottom: `1px solid ${T.border.subtle}` }}>
+                      <td style={{ padding: '6px 10px', color: T.text.primary, fontWeight: 600 }}>{row.period_start?.slice(0, 7)}</td>
+                      {[row.parking, row.pet_fees, row.pet_rent, row.storage, row.application_fees, row.late_fees, row.utility_reimbursement, row.other].map((v, j) => (
+                        <td key={j} style={{ padding: '6px 10px', color: T.text.secondary }}>{fmt$(v)}</td>
+                      ))}
+                      <td style={{ padding: '6px 10px', color: T.text.green, fontWeight: 600 }}>{fmt$(total)}</td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
-          </div>
+          </Panel>
         )
       )}
 
       {!loading && subTab === 'pva' && (
-        pvaData.length === 0 ? (
-          <div className="text-center py-16 text-stone-400">
-            <div className="text-3xl mb-2">📊</div>
-            <div className="text-sm">No projected vs actual data available</div>
-            <div className="text-xs mt-1">Enter Monthly Actuals to populate this view</div>
-          </div>
-        ) : (
-          <div className="bg-white border border-stone-200 rounded-lg overflow-hidden">
-            <table className="w-full text-xs">
+        pvaData.length === 0 ? emptyState('📊', 'NO PROJECTED VS ACTUAL DATA', 'Enter Monthly Actuals to populate this view') : (
+          <Panel title="PROJECTED VS ACTUAL">
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: T.font.mono }}>
               <thead>
-                <tr className="bg-stone-50 text-stone-500">
-                  {['Month', 'Proj NOI', 'Actual NOI', 'Variance $', 'Variance %', 'Proj Occ', 'Actual Occ'].map(h => (
-                    <th key={h} className="text-left px-3 py-2 font-medium">{h}</th>
+                <tr style={{ background: T.bg.panelAlt }}>
+                  {['MONTH', 'PROJ NOI', 'ACTUAL NOI', 'VARIANCE $', 'VARIANCE %', 'PROJ OCC', 'ACTUAL OCC'].map(h => (
+                    <th key={h} style={{ textAlign: 'left', padding: '7px 10px', color: T.text.muted, fontWeight: 600, fontSize: 9 }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -625,72 +583,62 @@ const RevenueMgmtTab: React.FC<{ dealId: string }> = ({ dealId }) => {
                   const varD = (row.actual_noi ?? 0) - (row.projected_noi ?? 0);
                   const varPct = row.projected_noi ? (varD / row.projected_noi) * 100 : null;
                   return (
-                    <tr key={i} className="border-t border-stone-50 hover:bg-blue-50/30">
-                      <td className="px-3 py-2 font-medium text-stone-700">{row.report_month?.slice(0, 7)}</td>
-                      <td className="px-3 py-2">{fmt$(row.projected_noi)}</td>
-                      <td className="px-3 py-2">{fmt$(row.actual_noi)}</td>
-                      <td className={`px-3 py-2 font-medium ${varD >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                        {varD >= 0 ? '+' : ''}{fmt$(varD)}
-                      </td>
-                      <td className={`px-3 py-2 ${(varPct ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                        {varPct != null ? `${varPct >= 0 ? '+' : ''}${varPct.toFixed(1)}%` : '—'}
-                      </td>
-                      <td className="px-3 py-2">{fmtPct(row.projected_occupancy)}</td>
-                      <td className="px-3 py-2">{fmtPct(row.actual_occupancy)}</td>
+                    <tr key={i} style={{ borderBottom: `1px solid ${T.border.subtle}` }}>
+                      <td style={{ padding: '6px 10px', color: T.text.primary, fontWeight: 600 }}>{row.report_month?.slice(0, 7)}</td>
+                      <td style={{ padding: '6px 10px', color: T.text.secondary }}>{fmt$(row.projected_noi)}</td>
+                      <td style={{ padding: '6px 10px', color: T.text.primary }}>{fmt$(row.actual_noi)}</td>
+                      <td style={{ padding: '6px 10px', fontWeight: 600, color: varD >= 0 ? T.text.green : T.text.red }}>{varD >= 0 ? '+' : ''}{fmt$(varD)}</td>
+                      <td style={{ padding: '6px 10px', color: (varPct ?? 0) >= 0 ? T.text.green : T.text.red }}>{varPct != null ? `${varPct >= 0 ? '+' : ''}${varPct.toFixed(1)}%` : '—'}</td>
+                      <td style={{ padding: '6px 10px', color: T.text.secondary }}>{fmtPct(row.projected_occupancy)}</td>
+                      <td style={{ padding: '6px 10px', color: T.text.secondary }}>{fmtPct(row.actual_occupancy)}</td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
-          </div>
+          </Panel>
         )
       )}
 
       {!loading && subTab === 'position' && (
-        !position ? (
-          <div className="text-center py-16 text-stone-400">
-            <div className="text-3xl mb-2">🏙</div>
-            <div className="text-sm">No competitive position data available</div>
-          </div>
-        ) : (
-          <div className="space-y-4">
+        !position ? emptyState('🏙', 'NO COMPETITIVE POSITION DATA AVAILABLE') : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {position.summary && (
-              <div className="grid grid-cols-3 gap-4">
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
                 {[
-                  { label: 'Market Rank', value: position.summary.market_rank ?? '—' },
-                  { label: 'Rent Premium/Discount', value: position.summary.rent_premium_pct != null ? `${Number(position.summary.rent_premium_pct).toFixed(1)}%` : '—' },
-                  { label: 'Occ vs Market', value: position.summary.occ_vs_market != null ? `${Number(position.summary.occ_vs_market) > 0 ? '+' : ''}${Number(position.summary.occ_vs_market).toFixed(1)}pp` : '—' },
+                  { label: 'MARKET RANK', value: position.summary.market_rank ?? '—' },
+                  { label: 'RENT PREMIUM/DISCOUNT', value: position.summary.rent_premium_pct != null ? `${Number(position.summary.rent_premium_pct).toFixed(1)}%` : '—' },
+                  { label: 'OCC VS MARKET', value: position.summary.occ_vs_market != null ? `${Number(position.summary.occ_vs_market) > 0 ? '+' : ''}${Number(position.summary.occ_vs_market).toFixed(1)}pp` : '—' },
                 ].map((m, i) => (
-                  <div key={i} className="bg-white border border-stone-200 rounded-lg p-4 text-center">
-                    <div className="text-xs text-stone-400 mb-1">{m.label}</div>
-                    <div className="text-xl font-bold text-stone-800">{m.value}</div>
+                  <div key={i} style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 4, padding: 12, textAlign: 'center' }}>
+                    <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono, marginBottom: 4 }}>{m.label}</div>
+                    <div style={{ fontSize: 20, fontWeight: 700, color: T.text.primary, fontFamily: T.font.mono }}>{m.value}</div>
                   </div>
                 ))}
               </div>
             )}
             {position.comps && position.comps.length > 0 && (
-              <div className="bg-white border border-stone-200 rounded-lg overflow-hidden">
-                <div className="px-4 py-2 bg-stone-50 border-b text-xs font-semibold text-stone-500">COMPETITIVE SET</div>
-                <table className="w-full text-xs">
+              <Panel title="COMPETITIVE SET">
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: T.font.mono }}>
                   <thead>
-                    <tr className="text-stone-400">
-                      {['Property', 'Avg Rent', 'Occupancy', 'Distance'].map(h => (
-                        <th key={h} className="text-left px-3 py-2">{h}</th>
+                    <tr style={{ background: T.bg.panelAlt }}>
+                      {['PROPERTY', 'AVG RENT', 'OCCUPANCY', 'DISTANCE'].map(h => (
+                        <th key={h} style={{ textAlign: 'left', padding: '7px 10px', color: T.text.muted, fontWeight: 600, fontSize: 9 }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {position.comps.map((c: any, i: number) => (
-                      <tr key={i} className="border-t border-stone-50">
-                        <td className="px-3 py-2 text-stone-700">{c.comp_name ?? '—'}</td>
-                        <td className="px-3 py-2">{fmt$(c.avg_rent)}</td>
-                        <td className="px-3 py-2">{fmtPct(c.occupancy_rate)}</td>
-                        <td className="px-3 py-2 text-stone-500">{c.distance_miles != null ? `${Number(c.distance_miles).toFixed(1)} mi` : '—'}</td>
+                      <tr key={i} style={{ borderBottom: `1px solid ${T.border.subtle}` }}>
+                        <td style={{ padding: '6px 10px', color: T.text.primary }}>{c.comp_name ?? '—'}</td>
+                        <td style={{ padding: '6px 10px', color: T.text.green }}>{fmt$(c.avg_rent)}</td>
+                        <td style={{ padding: '6px 10px', color: T.text.cyan }}>{fmtPct(c.occupancy_rate)}</td>
+                        <td style={{ padding: '6px 10px', color: T.text.secondary }}>{c.distance_miles != null ? `${Number(c.distance_miles).toFixed(1)} mi` : '—'}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </Panel>
             )}
           </div>
         )
@@ -699,6 +647,7 @@ const RevenueMgmtTab: React.FC<{ dealId: string }> = ({ dealId }) => {
   );
 };
 
+// ─── AI Learning Tab ──────────────────────────────────────────
 const AILearningTab: React.FC<{ dealId: string }> = ({ dealId }) => {
   const [actuals, setActuals] = useState<{ count: number; tier: number } | null>(null);
   const [accuracy, setAccuracy] = useState<any[]>([]);
@@ -730,89 +679,79 @@ const AILearningTab: React.FC<{ dealId: string }> = ({ dealId }) => {
   const avgBias = accuracy.length ? accuracy.reduce((s, a) => s + a.meanBias, 0) / accuracy.length : null;
 
   return (
-    <div className="space-y-6 p-6 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+    <div style={{ padding: 16, overflowY: 'auto', maxHeight: 'calc(100vh - 280px)', display: 'flex', flexDirection: 'column', gap: 12 }}>
       {actuals && (
-        <div className="bg-white border border-stone-200 rounded-lg p-5">
-          <h3 className="text-sm font-semibold text-stone-700 mb-3 uppercase tracking-wide">This Asset's Learning Status</h3>
-          <div className="grid grid-cols-3 gap-4">
-            <div className="text-center">
-              <div className={`text-3xl font-bold ${actuals.tier === 2 ? 'text-emerald-600' : actuals.tier === 3 ? 'text-amber-500' : 'text-stone-400'}`}>
-                Tier {actuals.tier}
+        <Panel title="LEARNING STATUS — THIS ASSET" titleColor={T.text.green}>
+          <div style={{ padding: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginBottom: 12 }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 28, fontWeight: 700, color: actuals.tier === 2 ? T.text.green : actuals.tier === 3 ? T.text.amber : T.text.muted, fontFamily: T.font.mono }}>Tier {actuals.tier}</div>
+                <div style={{ fontSize: 10, color: T.text.muted, fontFamily: T.font.mono, marginTop: 2 }}>Evidence Layer Active</div>
               </div>
-              <div className="text-xs text-stone-400 mt-1">Evidence Layer Active</div>
-            </div>
-            <div className="text-center">
-              <div className={`text-3xl font-bold ${actuals.count >= 3 ? 'text-emerald-600' : 'text-amber-500'}`}>
-                {actuals.count}
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 28, fontWeight: 700, color: actuals.count >= 3 ? T.text.green : T.text.amber, fontFamily: T.font.mono }}>{actuals.count}</div>
+                <div style={{ fontSize: 10, color: T.text.muted, fontFamily: T.font.mono, marginTop: 2 }}>Months Recorded</div>
               </div>
-              <div className="text-xs text-stone-400 mt-1">Months Recorded</div>
-            </div>
-            <div className="text-center">
-              <div className={`text-3xl font-bold ${actuals.count >= 3 ? 'text-emerald-600' : 'text-stone-400'}`}>
-                {actuals.count >= 3 ? '✓' : `${3 - actuals.count} more`}
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 28, fontWeight: 700, color: actuals.count >= 3 ? T.text.green : T.text.muted, fontFamily: T.font.mono }}>{actuals.count >= 3 ? '✓' : `${3 - actuals.count} more`}</div>
+                <div style={{ fontSize: 10, color: T.text.muted, fontFamily: T.font.mono, marginTop: 2 }}>{actuals.count >= 3 ? 'Contributing to benchmarks' : 'Until Tier 2 activation'}</div>
               </div>
-              <div className="text-xs text-stone-400 mt-1">{actuals.count >= 3 ? 'Contributing to benchmarks' : 'Until Tier 2 activation'}</div>
             </div>
+            <p style={{ fontSize: 11, color: T.text.secondary, lineHeight: 1.6, fontFamily: T.font.mono }}>
+              Monthly Actuals feed the CashFlow Agent's <span style={{ color: T.text.cyan }}>Tier {actuals.tier} evidence layer</span>.
+              {actuals.count >= 3 ? " This asset's performance data is live and contributing to future underwriting benchmarks." : ` Record ${3 - actuals.count} more month${3 - actuals.count !== 1 ? 's' : ''} of actuals to activate Tier 2.`}
+            </p>
           </div>
-          <p className="text-xs text-stone-500 leading-relaxed mt-4">
-            Monthly Actuals feed the CashFlow Agent's <span className="font-semibold text-blue-600">Tier {actuals.tier} evidence layer</span>.
-            {actuals.count >= 3
-              ? " This asset's performance data is live and contributing to future underwriting benchmarks."
-              : ` Record ${3 - actuals.count} more month${3 - actuals.count !== 1 ? 's' : ''} of actuals to activate Tier 2 and contribute to portfolio comparables.`
-            }
-          </p>
-        </div>
+        </Panel>
       )}
-      {accuracyLoading ? (
-        <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" /></div>
-      ) : (
-      <div className="grid grid-cols-2 gap-6">
-        <div className="bg-white border border-stone-200 rounded-lg p-5">
-          <h3 className="text-sm font-semibold text-stone-700 mb-4 uppercase tracking-wide">CashFlow Agent Accuracy — This Asset</h3>
-          {accuracy.length === 0 ? (
-            <div className="text-center py-6 text-stone-400 text-xs">No prediction outcomes recorded yet</div>
-          ) : (
-          <div className="grid grid-cols-2 gap-3">
-            {[
-              { label: 'Hit Rate (±10%)', value: avgHit10 != null ? `${avgHit10.toFixed(0)}%` : '—', color: (avgHit10 ?? 0) >= 70 ? 'text-emerald-600' : 'text-amber-600' },
-              { label: 'Hit Rate (±20%)', value: avgHit20 != null ? `${avgHit20.toFixed(0)}%` : '—', color: (avgHit20 ?? 0) >= 80 ? 'text-emerald-600' : 'text-amber-600' },
-              { label: 'Mean Bias', value: avgBias != null ? `${avgBias >= 0 ? '+' : ''}${avgBias.toFixed(1)}%` : '—', color: Math.abs(avgBias ?? 0) < 5 ? 'text-emerald-600' : 'text-amber-600' },
-              { label: 'Total Predictions', value: totPredictions.toString(), color: 'text-stone-800' },
-            ].map((m, i) => (
-              <div key={i} className="bg-stone-50 rounded-lg p-3 text-center">
-                <div className={`text-2xl font-bold ${m.color}`}>{m.value}</div>
-                <div className="text-xs text-stone-400 mt-1">{m.label}</div>
-              </div>
-            ))}
-          </div>
-          )}
+      {accuracyLoading ? <Spinner /> : (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <Panel title="CASHFLOW AGENT ACCURACY — THIS ASSET">
+            <div style={{ padding: 12 }}>
+              {accuracy.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 24, color: T.text.muted, fontFamily: T.font.mono, fontSize: 10 }}>NO PREDICTION OUTCOMES RECORDED YET</div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  {[
+                    { label: 'HIT RATE (±10%)', value: avgHit10 != null ? `${avgHit10.toFixed(0)}%` : '—', color: (avgHit10 ?? 0) >= 70 ? T.text.green : T.text.amber },
+                    { label: 'HIT RATE (±20%)', value: avgHit20 != null ? `${avgHit20.toFixed(0)}%` : '—', color: (avgHit20 ?? 0) >= 80 ? T.text.green : T.text.amber },
+                    { label: 'MEAN BIAS', value: avgBias != null ? `${avgBias >= 0 ? '+' : ''}${avgBias.toFixed(1)}%` : '—', color: Math.abs(avgBias ?? 0) < 5 ? T.text.green : T.text.amber },
+                    { label: 'TOTAL PREDICTIONS', value: totPredictions.toString(), color: T.text.primary },
+                  ].map((m, i) => (
+                    <div key={i} style={{ background: T.bg.panelAlt, borderRadius: 4, padding: 10, textAlign: 'center' }}>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: m.color, fontFamily: T.font.mono }}>{m.value}</div>
+                      <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono, marginTop: 3 }}>{m.label}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </Panel>
+          <Panel title="BY ASSUMPTION TYPE">
+            <div style={{ padding: 12 }}>
+              {accuracy.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 24, color: T.text.muted, fontFamily: T.font.mono, fontSize: 10 }}>NO ASSUMPTION TRACKING DATA</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {accuracy.map((r, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '5px 0', borderBottom: `1px solid ${T.border.subtle}`, fontSize: 10, fontFamily: T.font.mono }}>
+                      <span style={{ color: T.text.secondary, textTransform: 'capitalize', width: 112 }}>{r.assumptionName}</span>
+                      <span style={{ fontWeight: 600, color: r.hitRate10Pct >= 70 ? T.text.green : T.text.amber }}>{r.hitRate10Pct.toFixed(0)}%</span>
+                      <span style={{ color: Math.abs(r.meanBias) < 5 ? T.text.green : T.text.amber }}>{r.meanBias >= 0 ? '+' : ''}{r.meanBias.toFixed(1)}%</span>
+                      <span style={{ color: T.text.muted }}>n={r.nPredictions}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </Panel>
         </div>
-        <div className="bg-white border border-stone-200 rounded-lg p-5">
-          <h3 className="text-sm font-semibold text-stone-700 mb-4 uppercase tracking-wide">By Assumption Type</h3>
-          {accuracy.length === 0 ? (
-            <div className="text-center py-6 text-stone-400 text-xs">No assumption tracking data available</div>
-          ) : (
-          <div className="space-y-2">
-            {accuracy.map((r, i) => (
-              <div key={i} className="flex items-center justify-between py-1.5 border-t border-stone-50 text-xs">
-                <span className="text-stone-600 w-28 capitalize">{r.assumptionName}</span>
-                <span className={`font-semibold w-10 text-right ${r.hitRate10Pct >= 70 ? 'text-emerald-600' : 'text-amber-600'}`}>{r.hitRate10Pct.toFixed(0)}%</span>
-                <span className={`w-12 text-right font-medium ${Math.abs(r.meanBias) < 5 ? 'text-emerald-600' : 'text-amber-600'}`}>
-                  {r.meanBias >= 0 ? '+' : ''}{r.meanBias.toFixed(1)}%
-                </span>
-                <span className="text-stone-400 w-8 text-right">n={r.nPredictions}</span>
-              </div>
-            ))}
-          </div>
-          )}
-        </div>
-      </div>
       )}
     </div>
   );
 };
 
-// ─── Reports Tab Component (needs own accuracy state) ─────────────────────────
+// ─── Reports Tab ──────────────────────────────────────────────
 interface ReportsTabProps {
   dealId: string;
   financials: MonthlyFinancial[];
@@ -878,152 +817,145 @@ const ReportsTab: React.FC<ReportsTabProps> = ({ dealId, financials, deal }) => 
   };
 
   const lf = financials[financials.length - 1];
-  const avgOcc = financials.length
-    ? financials.reduce((s, f) => s + (parseFloat(f.occupancy_rate as string) || 0), 0) / financials.length
-    : null;
+  const avgOcc = financials.length ? financials.reduce((s, f) => s + (parseFloat(f.occupancy_rate as string) || 0), 0) / financials.length : null;
   const annNoi = lf ? parseFloat(lf.noi as string) * 12 : null;
   const fmtD = (v: number | null) => v == null ? '—' : `$${v >= 1_000_000 ? (v / 1_000_000).toFixed(2) + 'M' : v.toLocaleString()}`;
-  const fmtP = (v: number | null) => v == null ? '—' : `${(v * 100).toFixed(1)}%`;
+  const fmtP2 = (v: number | null) => v == null ? '—' : `${(v * 100).toFixed(1)}%`;
+  const btnStyle: React.CSSProperties = { padding: '5px 10px', fontSize: 10, fontWeight: 600, background: T.bg.active, color: T.text.secondary, border: `1px solid ${T.border.medium}`, borderRadius: 3, cursor: 'pointer', fontFamily: T.font.mono };
 
   return (
-    <div className="space-y-6 p-6 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
-      <div className="flex items-center justify-between">
-        <div className="text-xs text-stone-500 font-medium uppercase tracking-wide">Asset Reports — {propName}</div>
-        <div className="flex gap-2">
-          <button onClick={exportFinancials} disabled={financials.length === 0} className="text-xs px-3 py-1.5 border border-stone-200 rounded text-stone-600 hover:bg-stone-50 disabled:opacity-40">⬇ Monthly CSV</button>
-          <button onClick={exportInvestorSummary} disabled={financials.length === 0} className="text-xs px-3 py-1.5 border border-stone-200 rounded text-stone-600 hover:bg-stone-50 disabled:opacity-40">⬇ Investor CSV</button>
-          <button onClick={exportRentRoll} className="text-xs px-3 py-1.5 border border-stone-200 rounded text-stone-600 hover:bg-stone-50">⬇ Rent Roll CSV</button>
+    <div style={{ padding: 16, overflowY: 'auto', maxHeight: 'calc(100vh - 280px)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ fontSize: 10, color: T.text.muted, fontFamily: T.font.mono, fontWeight: 700, letterSpacing: '0.05em' }}>ASSET REPORTS — {propName.toUpperCase()}</div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button onClick={exportFinancials} disabled={financials.length === 0} style={{ ...btnStyle, opacity: financials.length === 0 ? 0.4 : 1 }}>⬇ MONTHLY CSV</button>
+          <button onClick={exportInvestorSummary} disabled={financials.length === 0} style={{ ...btnStyle, opacity: financials.length === 0 ? 0.4 : 1 }}>⬇ INVESTOR CSV</button>
+          <button onClick={exportRentRoll} style={btnStyle}>⬇ RENT ROLL CSV</button>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        {/* 1. NOI Waterfall */}
-        <div className="bg-white border border-stone-200 rounded-lg p-5">
-          <div className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-3">NOI Waterfall</div>
-          {!lf ? (
-            <div className="text-xs text-stone-400">No actuals loaded yet</div>
-          ) : (
-            <div className="space-y-2">
-              {([
-                { label: 'Eff. Gross Income', val: parseFloat(lf.effective_gross_income as string) || null, color: 'bg-emerald-500', negative: false, bold: false },
-                { label: 'Operating Expenses', val: parseFloat(lf.total_operating_expenses as string) || null, color: 'bg-red-400', negative: true, bold: false },
-                { label: 'Net Operating Income', val: parseFloat(lf.noi as string) || null, color: 'bg-blue-500', negative: false, bold: true },
-              ] as { label: string; val: number | null; color: string; negative: boolean; bold: boolean }[]).map(row => {
-                const base = parseFloat(lf.effective_gross_income as string) || 1;
-                const width = row.val ? Math.min(100, Math.abs(row.val) / base * 100) : 0;
-                return (
-                  <div key={row.label}>
-                    <div className="flex justify-between text-xs mb-0.5">
-                      <span className={row.bold ? 'font-semibold text-stone-800' : 'text-stone-500'}>{row.label}</span>
-                      <span className={`font-mono ${row.negative ? 'text-red-600' : 'text-stone-800'}`}>{fmtD(row.val)}</span>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <Panel title="NOI WATERFALL">
+          <div style={{ padding: 12 }}>
+            {!lf ? <div style={{ fontSize: 10, color: T.text.muted, fontFamily: T.font.mono }}>NO ACTUALS LOADED YET</div> : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {([
+                  { label: 'Eff. Gross Income', val: parseFloat(lf.effective_gross_income as string) || null, color: T.text.green, negative: false, bold: false },
+                  { label: 'Operating Expenses', val: parseFloat(lf.total_operating_expenses as string) || null, color: T.text.red, negative: true, bold: false },
+                  { label: 'Net Operating Income', val: parseFloat(lf.noi as string) || null, color: T.text.blue, negative: false, bold: true },
+                ] as { label: string; val: number | null; color: string; negative: boolean; bold: boolean }[]).map(row => {
+                  const base = parseFloat(lf.effective_gross_income as string) || 1;
+                  const width = row.val ? Math.min(100, Math.abs(row.val) / base * 100) : 0;
+                  return (
+                    <div key={row.label}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, fontFamily: T.font.mono, marginBottom: 3 }}>
+                        <span style={{ color: row.bold ? T.text.primary : T.text.secondary, fontWeight: row.bold ? 700 : 400 }}>{row.label}</span>
+                        <span style={{ color: row.negative ? T.text.red : T.text.primary, fontWeight: 600 }}>{fmtD(row.val)}</span>
+                      </div>
+                      <div style={{ height: 4, background: T.bg.panelAlt, borderRadius: 2, overflow: 'hidden' }}>
+                        <div style={{ height: '100%', background: row.color, borderRadius: 2, width: `${width}%`, opacity: 0.8 }} />
+                      </div>
                     </div>
-                    <div className="h-1.5 bg-stone-100 rounded overflow-hidden">
-                      <div className={`h-full ${row.color} rounded`} style={{ width: `${width}%` }} />
-                    </div>
-                  </div>
-                );
-              })}
-              <div className="pt-2 border-t border-stone-100 text-xs text-stone-400">Annualized NOI: <span className="text-stone-700 font-semibold">{fmtD(annNoi)}</span></div>
-            </div>
-          )}
-        </div>
+                  );
+                })}
+                <div style={{ paddingTop: 8, borderTop: `1px solid ${T.border.subtle}`, fontSize: 10, color: T.text.muted, fontFamily: T.font.mono }}>
+                  Annualized NOI: <span style={{ color: T.text.amber, fontWeight: 600 }}>{fmtD(annNoi)}</span>
+                </div>
+              </div>
+            )}
+          </div>
+        </Panel>
 
-        {/* 2. Deal Performance */}
-        <div className="bg-white border border-stone-200 rounded-lg p-5">
-          <div className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-3">Deal Performance</div>
-          <div className="space-y-3">
+        <Panel title="DEAL PERFORMANCE">
+          <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
             {([
-              { label: 'Underwritten IRR', val: deal.target_irr != null ? fmtP((deal.target_irr as number) / 100) : deal.irr != null ? fmtP((deal.irr as number) / 100) : '—' },
+              { label: 'Underwritten IRR', val: deal.target_irr != null ? fmtP2((deal.target_irr as number) / 100) : deal.irr != null ? fmtP2((deal.irr as number) / 100) : '—' },
               { label: 'Equity Multiple (UW)', val: deal.equity_multiple != null ? `${parseFloat(deal.equity_multiple as string).toFixed(2)}×` : '—' },
-              { label: 'Avg Occupancy (Actuals)', val: fmtP(avgOcc) },
+              { label: 'Avg Occupancy (Actuals)', val: fmtP2(avgOcc) },
               { label: 'Months of Actuals', val: String(financials.length) },
               { label: 'Latest NOI/mo', val: fmtD(lf ? parseFloat(lf.noi as string) : null) },
               { label: 'Annualized NOI', val: fmtD(annNoi) },
             ] as { label: string; val: string }[]).map(row => (
-              <div key={row.label} className="flex justify-between text-xs">
-                <span className="text-stone-500">{row.label}</span>
-                <span className="font-semibold text-stone-800">{row.val}</span>
+              <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, fontFamily: T.font.mono, borderBottom: `1px solid ${T.border.subtle}`, paddingBottom: 6 }}>
+                <span style={{ color: T.text.secondary }}>{row.label}</span>
+                <span style={{ color: T.text.primary, fontWeight: 600 }}>{row.val}</span>
               </div>
             ))}
           </div>
-        </div>
+        </Panel>
 
-        {/* 3. Debt Summary */}
-        <div className="bg-white border border-stone-200 rounded-lg p-5">
-          <div className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-3">Debt Summary</div>
-          <div className="space-y-3">
+        <Panel title="DEBT SUMMARY">
+          <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
             {([
               { label: 'Loan Amount', val: deal.loan_amount != null ? fmtD(parseFloat(deal.loan_amount as string)) : '—' },
-              { label: 'Interest Rate', val: deal.loan_rate != null ? fmtP(parseFloat(deal.loan_rate as string) / 100) : '—' },
+              { label: 'Interest Rate', val: deal.loan_rate != null ? fmtP2(parseFloat(deal.loan_rate as string) / 100) : '—' },
               { label: 'Loan Term', val: deal.loan_term != null ? `${deal.loan_term} yrs` : '—' },
-              { label: 'LTV (at close)', val: deal.ltv != null ? fmtP(parseFloat(deal.ltv as string) / 100) : (deal.loan_amount && deal.purchase_price ? fmtP(parseFloat(deal.loan_amount as string) / parseFloat(deal.purchase_price as string)) : '—') },
+              { label: 'LTV (at close)', val: deal.ltv != null ? fmtP2(parseFloat(deal.ltv as string) / 100) : (deal.loan_amount && deal.purchase_price ? fmtP2(parseFloat(deal.loan_amount as string) / parseFloat(deal.purchase_price as string)) : '—') },
               { label: 'DSCR (UW)', val: deal.dscr != null ? `${parseFloat(deal.dscr as string).toFixed(2)}×` : '—' },
               { label: 'Lender', val: (deal.lender as string) ?? '—' },
             ] as { label: string; val: string }[]).map(row => (
-              <div key={row.label} className="flex justify-between text-xs">
-                <span className="text-stone-500">{row.label}</span>
-                <span className="font-semibold text-stone-800">{row.val}</span>
+              <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, fontFamily: T.font.mono, borderBottom: `1px solid ${T.border.subtle}`, paddingBottom: 6 }}>
+                <span style={{ color: T.text.secondary }}>{row.label}</span>
+                <span style={{ color: T.text.primary, fontWeight: 600 }}>{row.val}</span>
               </div>
             ))}
           </div>
-        </div>
+        </Panel>
 
-        {/* 4. Underwriting Accuracy */}
-        <div className="bg-white border border-stone-200 rounded-lg p-5">
-          <div className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-3">Underwriting Accuracy</div>
-          {accuracy.length === 0 ? (
-            <div className="text-xs text-stone-400">{financials.length === 0 ? 'Requires actuals data' : 'No prediction outcomes recorded yet'}</div>
-          ) : (
-            <div className="space-y-2">
-              {accuracy.slice(0, 4).map(a => (
-                <div key={a.assumptionName}>
-                  <div className="flex justify-between text-xs mb-0.5">
-                    <span className="capitalize text-stone-600">{a.assumptionName}</span>
-                    <span className={`font-mono font-semibold ${a.hitRate10Pct >= 70 ? 'text-emerald-600' : a.hitRate10Pct >= 50 ? 'text-amber-600' : 'text-red-500'}`}>{a.hitRate10Pct.toFixed(0)}% within 10%</span>
-                  </div>
-                  <div className="h-1.5 bg-stone-100 rounded overflow-hidden">
-                    <div className={`h-full rounded ${a.hitRate10Pct >= 70 ? 'bg-emerald-500' : a.hitRate10Pct >= 50 ? 'bg-amber-400' : 'bg-red-400'}`} style={{ width: `${a.hitRate10Pct}%` }} />
-                  </div>
-                </div>
-              ))}
-              <div className="pt-2 text-xs text-stone-400">{accuracy.reduce((s, a) => s + a.nPredictions, 0)} total predictions evaluated</div>
-            </div>
-          )}
-        </div>
-
-        {/* 5. Occupancy Trend */}
-        <div className="bg-white border border-stone-200 rounded-lg p-5 col-span-2">
-          <div className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-3">Occupancy Trend</div>
-          {financials.length === 0 ? (
-            <div className="text-xs text-stone-400">No actuals loaded yet</div>
-          ) : (
-            <>
-              <div className="flex items-end gap-1" style={{ height: 64 }}>
-                {financials.slice(-18).map((f, i) => {
-                  const occ = Math.min(1, parseFloat(f.occupancy_rate as string) || 0);
-                  return (
-                    <div key={i} className="flex-1 flex flex-col items-center justify-end" title={`${(occ * 100).toFixed(1)}%`}>
-                      <div
-                        className={`w-full rounded-t ${occ >= 0.93 ? 'bg-emerald-500' : occ >= 0.85 ? 'bg-amber-400' : 'bg-red-400'}`}
-                        style={{ height: `${occ * 100}%` }}
-                      />
+        <Panel title="UNDERWRITING ACCURACY">
+          <div style={{ padding: 12 }}>
+            {accuracy.length === 0 ? (
+              <div style={{ fontSize: 10, color: T.text.muted, fontFamily: T.font.mono }}>{financials.length === 0 ? 'REQUIRES ACTUALS DATA' : 'NO PREDICTION OUTCOMES YET'}</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {accuracy.slice(0, 4).map(a => (
+                  <div key={a.assumptionName}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, fontFamily: T.font.mono, marginBottom: 3 }}>
+                      <span style={{ textTransform: 'capitalize', color: T.text.secondary }}>{a.assumptionName}</span>
+                      <span style={{ fontWeight: 600, color: a.hitRate10Pct >= 70 ? T.text.green : a.hitRate10Pct >= 50 ? T.text.amber : T.text.red }}>{a.hitRate10Pct.toFixed(0)}% within 10%</span>
                     </div>
-                  );
-                })}
+                    <div style={{ height: 4, background: T.bg.panelAlt, borderRadius: 2, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', background: a.hitRate10Pct >= 70 ? T.text.green : a.hitRate10Pct >= 50 ? T.text.amber : T.text.red, borderRadius: 2, width: `${a.hitRate10Pct}%`, opacity: 0.8 }} />
+                    </div>
+                  </div>
+                ))}
+                <div style={{ paddingTop: 4, fontSize: 10, color: T.text.muted, fontFamily: T.font.mono }}>{accuracy.reduce((s, a) => s + a.nPredictions, 0)} total predictions evaluated</div>
               </div>
-              <div className="flex justify-between text-xs text-stone-400 mt-1">
-                <span>{financials.length > 18 ? (financials[financials.length - 18]?.period_label as string | undefined) ?? '18 mo ago' : 'Earliest'}</span>
-                <span className="font-semibold text-stone-700">Avg {fmtP(avgOcc)} occupancy over {financials.length} months</span>
-                <span>Latest</span>
-              </div>
-            </>
-          )}
-        </div>
+            )}
+          </div>
+        </Panel>
+
+        <Panel title="OCCUPANCY TREND" style={{ gridColumn: '1 / -1' }}>
+          <div style={{ padding: 12 }}>
+            {financials.length === 0 ? (
+              <div style={{ fontSize: 10, color: T.text.muted, fontFamily: T.font.mono }}>NO ACTUALS LOADED YET</div>
+            ) : (
+              <>
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 64 }}>
+                  {financials.slice(-18).map((f, i) => {
+                    const occ = Math.min(1, parseFloat(f.occupancy_rate as string) || 0);
+                    return (
+                      <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%' }} title={`${(occ * 100).toFixed(1)}%`}>
+                        <div style={{ width: '100%', borderRadius: '2px 2px 0 0', background: occ >= 0.93 ? T.text.green : occ >= 0.85 ? T.text.amber : T.text.red, height: `${occ * 100}%`, opacity: 0.85 }} />
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: T.text.muted, fontFamily: T.font.mono, marginTop: 4 }}>
+                  <span>{financials.length > 18 ? (financials[financials.length - 18]?.period_label as string | undefined) ?? '18 mo ago' : 'Earliest'}</span>
+                  <span style={{ color: T.text.amber, fontWeight: 700 }}>Avg {fmtP(avgOcc)} occupancy over {financials.length} months</span>
+                  <span>Latest</span>
+                </div>
+              </>
+            )}
+          </div>
+        </Panel>
       </div>
     </div>
   );
 };
 
+// ─── Main Page ────────────────────────────────────────────────
 export default function PortfolioPropertyPage() {
   const { dealId } = useParams<{ dealId: string }>();
   const navigate = useNavigate();
@@ -1065,17 +997,18 @@ export default function PortfolioPropertyPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-gray-50">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600" />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', background: T.bg.terminal }}>
+        <div style={{ width: 32, height: 32, border: `2px solid ${T.border.medium}`, borderTopColor: T.text.amber, borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     );
   }
 
   if (error || !summary) {
     return (
-      <div className="flex flex-col items-center justify-center h-screen bg-gray-50 gap-4">
-        <div className="text-red-600 text-lg">{error || 'Property not found'}</div>
-        <button onClick={() => navigate('/assets-owned')} className="text-blue-600 hover:underline">Back to Assets Owned</button>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', background: T.bg.terminal, gap: 12, fontFamily: T.font.mono }}>
+        <div style={{ color: T.text.red, fontSize: 14 }}>{error || 'PROPERTY NOT FOUND'}</div>
+        <button onClick={() => navigate('/assets-owned')} style={{ color: T.text.cyan, background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, textDecoration: 'underline' }}>← Back to Assets Owned</button>
       </div>
     );
   }
@@ -1122,21 +1055,21 @@ export default function PortfolioPropertyPage() {
     const ltl = leaseStats ? parseFloat(leaseStats.avg_loss_to_lease_pct) : null;
 
     const kpis = [
-      { label: 'Annual NOI', value: fmt(annualNOI, 'currency'), sub: lf ? `${fmt(parseFloat(lf.noi), 'currency')}/mo` : '', color: 'blue' },
-      { label: 'Occupancy', value: fmt(occ, 'percent', 1), sub: `${units} units`, color: 'green' },
-      { label: 'Avg Eff. Rent', value: fmt(avgRent, 'currency'), sub: lf ? `${fmt(parseFloat(lf.avg_market_rent), 'currency')} market` : '', color: 'purple' },
-      { label: 'Monthly Cash Flow', value: fmt(cashFlow, 'currency'), sub: debtSvc ? `${fmt(debtSvc, 'currency')} debt svc` : '', color: cashFlow && cashFlow < 0 ? 'red' : 'emerald' },
-      { label: 'DSCR', value: debtSvc && debtSvc !== 0 && lf ? (parseFloat(lf.noi) / Math.abs(debtSvc)).toFixed(2) + 'x' : '—', sub: 'debt svc coverage', color: 'amber' },
-      { label: 'Loss-to-Lease', value: fmt(ltl, 'percent', 1), sub: leaseStats ? `${fmt(parseFloat(leaseStats.avg_rent), 'currency')} avg rent` : '', color: ltl && ltl < -5 ? 'red' : 'stone' },
+      { label: 'ANNUAL NOI', value: fmt(annualNOI, 'currency'), sub: lf ? `${fmt(parseFloat(lf.noi), 'currency')}/mo` : '', color: T.text.blue },
+      { label: 'OCCUPANCY', value: fmt(occ, 'percent', 1), sub: `${units} units`, color: T.text.green },
+      { label: 'AVG EFF. RENT', value: fmt(avgRent, 'currency'), sub: lf ? `${fmt(parseFloat(lf.avg_market_rent), 'currency')} market` : '', color: T.text.cyan },
+      { label: 'MONTHLY CASH FLOW', value: fmt(cashFlow, 'currency'), sub: debtSvc ? `${fmt(debtSvc, 'currency')} debt svc` : '', color: cashFlow && cashFlow < 0 ? T.text.red : T.text.green },
+      { label: 'DSCR', value: debtSvc && debtSvc !== 0 && lf ? (parseFloat(lf.noi) / Math.abs(debtSvc)).toFixed(2) + 'x' : '—', sub: 'debt svc coverage', color: T.text.amber },
+      { label: 'LOSS-TO-LEASE', value: fmt(ltl, 'percent', 1), sub: leaseStats ? `${fmt(parseFloat(leaseStats.avg_rent), 'currency')} avg rent` : '', color: ltl && ltl < -5 ? T.text.red : T.text.secondary },
     ];
 
     return (
-      <div className="grid grid-cols-6 gap-3 px-6 py-4">
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 8, padding: '10px 16px', background: T.bg.panelAlt, borderBottom: `1px solid ${T.border.subtle}` }}>
         {kpis.map(k => (
-          <div key={k.label} className="bg-white border border-stone-200 rounded-lg p-3">
-            <div className="text-xs text-stone-500 font-medium mb-1">{k.label}</div>
-            <div className={`text-xl font-bold text-${k.color}-700`}>{k.value}</div>
-            {k.sub && <div className="text-xs text-stone-400 mt-0.5">{k.sub}</div>}
+          <div key={k.label} style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 4, padding: '10px 12px' }}>
+            <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono, letterSpacing: '0.05em', marginBottom: 4 }}>{k.label}</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: k.color, fontFamily: T.font.mono }}>{k.value}</div>
+            {k.sub && <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono, marginTop: 2 }}>{k.sub}</div>}
           </div>
         ))}
       </div>
@@ -1150,130 +1083,123 @@ export default function PortfolioPropertyPage() {
     const opexData = financials.map(f => toNum(f.total_opex) || 0);
 
     return (
-      <div className="space-y-6 p-6 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
-        <div className="grid grid-cols-2 gap-6">
-          <div className="bg-white border border-stone-200 rounded-lg p-4">
-            <h3 className="text-sm font-semibold text-stone-700 mb-3">NOI Trend</h3>
-            <MiniBarChart data={noiData} color="#2563eb" height={120} />
-            <div className="flex justify-between text-xs text-stone-400 mt-1">
-              {financials.length > 0 && <span>{fmtMonth(financials[0].report_month)}</span>}
-              {financials.length > 1 && <span>{fmtMonth(financials[financials.length - 1].report_month)}</span>}
+      <div style={{ padding: 16, overflowY: 'auto', maxHeight: 'calc(100vh - 280px)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <Panel title="NOI TREND" titleColor={T.text.blue}>
+            <div style={{ padding: 12 }}>
+              <MiniBarChart data={noiData} color={T.text.blue} height={120} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: T.text.muted, fontFamily: T.font.mono, marginTop: 4 }}>
+                {financials.length > 0 && <span>{fmtMonth(financials[0].report_month)}</span>}
+                {financials.length > 1 && <span>{fmtMonth(financials[financials.length - 1].report_month)}</span>}
+              </div>
             </div>
-          </div>
-          <div className="bg-white border border-stone-200 rounded-lg p-4">
-            <h3 className="text-sm font-semibold text-stone-700 mb-3">Occupancy Trend</h3>
-            <MiniLineChart data={occData} color="#059669" height={120} />
-            <div className="flex justify-between text-xs text-stone-400 mt-1">
-              {financials.length > 0 && <span>{fmtMonth(financials[0].report_month)}</span>}
-              {financials.length > 1 && <span>{fmtMonth(financials[financials.length - 1].report_month)}</span>}
+          </Panel>
+          <Panel title="OCCUPANCY TREND" titleColor={T.text.green}>
+            <div style={{ padding: 12 }}>
+              <MiniLineChart data={occData} color={T.text.green} height={120} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: T.text.muted, fontFamily: T.font.mono, marginTop: 4 }}>
+                {financials.length > 0 && <span>{fmtMonth(financials[0].report_month)}</span>}
+                {financials.length > 1 && <span>{fmtMonth(financials[financials.length - 1].report_month)}</span>}
+              </div>
             </div>
-          </div>
+          </Panel>
         </div>
 
-        <div className="grid grid-cols-2 gap-6">
-          <div className="bg-white border border-stone-200 rounded-lg p-4">
-            <h3 className="text-sm font-semibold text-stone-700 mb-3">Revenue vs Expenses</h3>
-            <div className="flex items-end gap-0.5" style={{ height: 120 }}>
-              {financials.map((f, i) => {
-                const rev = toNum(f.net_rental_income) || 0;
-                const exp = toNum(f.total_opex) || 0;
-                const max = Math.max(...revenueData, ...opexData, 1);
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <Panel title="REVENUE VS EXPENSES">
+            <div style={{ padding: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 1, height: 120 }}>
+                {financials.map((f, i) => {
+                  const rev = toNum(f.net_rental_income) || 0;
+                  const exp = toNum(f.total_opex) || 0;
+                  const max = Math.max(...revenueData, ...opexData, 1);
+                  return (
+                    <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1, height: '100%', justifyContent: 'flex-end' }}>
+                      <div style={{ width: '100%', background: T.text.blue, borderRadius: '2px 2px 0 0', height: `${(rev / max) * 100}%`, minHeight: 2, opacity: 0.8 }} />
+                      <div style={{ width: '100%', background: T.text.red, borderRadius: '2px 2px 0 0', height: `${(exp / max) * 100}%`, minHeight: 2, opacity: 0.6 }} />
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ display: 'flex', gap: 12, marginTop: 6, fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 8, height: 8, background: T.text.blue, borderRadius: 2, display: 'inline-block', opacity: 0.8 }} /> Revenue</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><span style={{ width: 8, height: 8, background: T.text.red, borderRadius: 2, display: 'inline-block', opacity: 0.6 }} /> Expenses</span>
+              </div>
+            </div>
+          </Panel>
+          <Panel title="EXPENSE BREAKDOWN (LATEST MONTH)" titleColor={T.text.amber}>
+            <div style={{ padding: 12 }}>
+              {lf ? (() => {
+                const expenses = [
+                  { label: 'Property Tax', value: parseFloat(lf.property_tax) || 0 },
+                  { label: 'Payroll', value: parseFloat(lf.payroll) || 0 },
+                  { label: 'Utilities', value: parseFloat(lf.utilities) || 0 },
+                  { label: 'Insurance', value: parseFloat(lf.insurance) || 0 },
+                  { label: 'Mgmt Fee', value: parseFloat(lf.management_fee) || 0 },
+                  { label: 'Repairs', value: parseFloat(lf.repairs_maintenance) || 0 },
+                  { label: 'Turnover', value: parseFloat(lf.turnover_costs) || 0 },
+                  { label: 'Marketing', value: parseFloat(lf.marketing) || 0 },
+                  { label: 'Admin', value: parseFloat(lf.admin_general) || 0 },
+                ].sort((a, b) => b.value - a.value);
+                const max = Math.max(...expenses.map(e => e.value), 1);
                 return (
-                  <div key={i} className="flex-1 flex flex-col items-center gap-0.5" style={{ height: '100%', justifyContent: 'flex-end' }}>
-                    <div className="w-full bg-blue-400 rounded-t" style={{ height: `${(rev / max) * 100}%`, minHeight: 2 }} />
-                    <div className="w-full bg-red-300 rounded-t" style={{ height: `${(exp / max) * 100}%`, minHeight: 2 }} />
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                    {expenses.map(e => (
+                      <div key={e.label} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 9, fontFamily: T.font.mono }}>
+                        <span style={{ color: T.text.muted, width: 64, textAlign: 'right' }}>{e.label}</span>
+                        <div style={{ flex: 1, background: T.bg.panelAlt, borderRadius: 2, height: 12, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', background: T.text.amber, borderRadius: 2, width: `${(e.value / max) * 100}%`, opacity: 0.8 }} />
+                        </div>
+                        <span style={{ color: T.text.secondary, width: 56, textAlign: 'right' }}>{fmt(e.value, 'currency')}</span>
+                      </div>
+                    ))}
                   </div>
                 );
-              })}
+              })() : <div style={{ fontSize: 10, color: T.text.muted, fontFamily: T.font.mono }}>NO ACTUALS LOADED</div>}
             </div>
-            <div className="flex gap-4 mt-2 text-xs text-stone-500">
-              <span className="flex items-center gap-1"><span className="w-2 h-2 bg-blue-400 rounded" /> Revenue</span>
-              <span className="flex items-center gap-1"><span className="w-2 h-2 bg-red-300 rounded" /> Expenses</span>
-            </div>
-          </div>
-          <div className="bg-white border border-stone-200 rounded-lg p-4">
-            <h3 className="text-sm font-semibold text-stone-700 mb-3">Expense Breakdown (Latest Month)</h3>
-            {lf && (() => {
-              const expenses = [
-                { label: 'Property Tax', value: parseFloat(lf.property_tax) || 0 },
-                { label: 'Payroll', value: parseFloat(lf.payroll) || 0 },
-                { label: 'Utilities', value: parseFloat(lf.utilities) || 0 },
-                { label: 'Insurance', value: parseFloat(lf.insurance) || 0 },
-                { label: 'Mgmt Fee', value: parseFloat(lf.management_fee) || 0 },
-                { label: 'Repairs', value: parseFloat(lf.repairs_maintenance) || 0 },
-                { label: 'Turnover', value: parseFloat(lf.turnover_costs) || 0 },
-                { label: 'Marketing', value: parseFloat(lf.marketing) || 0 },
-                { label: 'Admin', value: parseFloat(lf.admin_general) || 0 },
-              ].sort((a, b) => b.value - a.value);
-              const max = Math.max(...expenses.map(e => e.value), 1);
-              return (
-                <div className="space-y-1.5">
-                  {expenses.map(e => (
-                    <div key={e.label} className="flex items-center gap-2">
-                      <span className="text-xs text-stone-500 w-20 text-right">{e.label}</span>
-                      <div className="flex-1 bg-stone-100 rounded h-4">
-                        <div className="bg-amber-500 h-4 rounded" style={{ width: `${(e.value / max) * 100}%` }} />
-                      </div>
-                      <span className="text-xs text-stone-600 w-16 text-right">{fmt(e.value, 'currency')}</span>
-                    </div>
-                  ))}
-                </div>
-              );
-            })()}
-          </div>
+          </Panel>
         </div>
 
-        <div className="bg-white border border-stone-200 rounded-lg overflow-hidden">
-          <h3 className="text-sm font-semibold text-stone-700 px-4 py-3 border-b border-stone-100">Monthly P&L</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
+        <Panel title="MONTHLY P&L">
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: T.font.mono }}>
               <thead>
-                <tr className="bg-stone-50 text-stone-500">
-                  <th className="text-left px-3 py-2 font-medium">Month</th>
-                  <th className="text-right px-3 py-2 font-medium">GPR</th>
-                  <th className="text-right px-3 py-2 font-medium">Net Revenue</th>
-                  <th className="text-right px-3 py-2 font-medium">Total OpEx</th>
-                  <th className="text-right px-3 py-2 font-medium">NOI</th>
-                  <th className="text-right px-3 py-2 font-medium">NOI/Unit</th>
-                  <th className="text-right px-3 py-2 font-medium">CapEx</th>
-                  <th className="text-right px-3 py-2 font-medium">Debt Svc</th>
-                  <th className="text-right px-3 py-2 font-medium">Cash Flow</th>
-                  <th className="text-right px-3 py-2 font-medium">Occ %</th>
+                <tr style={{ background: T.bg.panelAlt }}>
+                  {['MONTH', 'GPR', 'NET REVENUE', 'TOTAL OPEX', 'NOI', 'NOI/UNIT', 'CAPEX', 'DEBT SVC', 'CASH FLOW', 'OCC %'].map((h, j) => (
+                    <th key={h} style={{ textAlign: j === 0 ? 'left' : 'right', padding: '7px 10px', color: T.text.muted, fontWeight: 600, fontSize: 9, whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 {financials.map((f, i) => (
-                  <tr key={i} className="border-t border-stone-50 hover:bg-blue-50/30">
-                    <td className="px-3 py-1.5 text-stone-700 font-medium">{fmtMonth(f.report_month)}</td>
-                    <td className="px-3 py-1.5 text-right text-stone-600">{fmt(toNum(f.gross_potential_rent), 'currency')}</td>
-                    <td className="px-3 py-1.5 text-right text-stone-600">{fmt(toNum(f.net_rental_income), 'currency')}</td>
-                    <td className="px-3 py-1.5 text-right text-red-600">{fmt(toNum(f.total_opex), 'currency')}</td>
-                    <td className="px-3 py-1.5 text-right font-semibold text-blue-700">{fmt(toNum(f.noi), 'currency')}</td>
-                    <td className="px-3 py-1.5 text-right text-stone-500">{fmt(toNum(f.noi_per_unit), 'currency')}</td>
-                    <td className="px-3 py-1.5 text-right text-stone-500">{fmt(toNum(f.capex), 'currency')}</td>
-                    <td className="px-3 py-1.5 text-right text-stone-500">{fmt(toNum(f.debt_service), 'currency')}</td>
-                    <td className={`px-3 py-1.5 text-right font-semibold ${toNum(f.cash_flow_before_tax) < 0 ? 'text-red-600' : 'text-emerald-700'}`}>
-                      {fmt(toNum(f.cash_flow_before_tax), 'currency')}
-                    </td>
-                    <td className="px-3 py-1.5 text-right text-stone-600">{fmt(toNum(f.occupancy_rate) * 100, 'percent', 1)}</td>
+                  <tr key={i} style={{ borderBottom: `1px solid ${T.border.subtle}` }}>
+                    <td style={{ padding: '6px 10px', color: T.text.primary, fontWeight: 600 }}>{fmtMonth(f.report_month)}</td>
+                    <td style={{ padding: '6px 10px', textAlign: 'right', color: T.text.secondary }}>{fmt(toNum(f.gross_potential_rent), 'currency')}</td>
+                    <td style={{ padding: '6px 10px', textAlign: 'right', color: T.text.secondary }}>{fmt(toNum(f.net_rental_income), 'currency')}</td>
+                    <td style={{ padding: '6px 10px', textAlign: 'right', color: T.text.red }}>{fmt(toNum(f.total_opex), 'currency')}</td>
+                    <td style={{ padding: '6px 10px', textAlign: 'right', color: T.text.blue, fontWeight: 700 }}>{fmt(toNum(f.noi), 'currency')}</td>
+                    <td style={{ padding: '6px 10px', textAlign: 'right', color: T.text.secondary }}>{fmt(toNum(f.noi_per_unit), 'currency')}</td>
+                    <td style={{ padding: '6px 10px', textAlign: 'right', color: T.text.secondary }}>{fmt(toNum(f.capex), 'currency')}</td>
+                    <td style={{ padding: '6px 10px', textAlign: 'right', color: T.text.secondary }}>{fmt(toNum(f.debt_service), 'currency')}</td>
+                    <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 600, color: toNum(f.cash_flow_before_tax) < 0 ? T.text.red : T.text.green }}>{fmt(toNum(f.cash_flow_before_tax), 'currency')}</td>
+                    <td style={{ padding: '6px 10px', textAlign: 'right', color: T.text.secondary }}>{fmt(toNum(f.occupancy_rate) * 100, 'percent', 1)}</td>
                   </tr>
                 ))}
+                {financials.length === 0 && (
+                  <tr>
+                    <td colSpan={10} style={{ padding: 24, textAlign: 'center', color: T.text.muted, fontFamily: T.font.mono, fontSize: 10 }}>NO MONTHLY ACTUALS LOADED — USE THE ACTUALS TAB TO IMPORT DATA</td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
-        </div>
+        </Panel>
       </div>
     );
   };
 
   const renderLeasing = () => {
-    if (!leaseData) {
-      return (
-        <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-        </div>
-      );
-    }
+    if (!leaseData) return <Spinner />;
 
     const ms = leaseData.monthlyStats;
     const newRentData = ms.map(m => toNum(m.avg_new_rent) || 0);
@@ -1282,82 +1208,78 @@ export default function PortfolioPropertyPage() {
     const retData = leaseData.retentionByQuarter;
 
     return (
-      <div className="space-y-6 p-6 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
-        <div className="grid grid-cols-2 gap-6">
-          <div className="bg-white border border-stone-200 rounded-lg p-4">
-            <h3 className="text-sm font-semibold text-stone-700 mb-3">New Lease Rent Trend</h3>
-            <MiniLineChart data={newRentData} color="#2563eb" height={100} />
-            <div className="flex justify-between text-xs text-stone-400 mt-1">
-              {ms.length > 0 && <span>{fmtMonth(ms[0].month)}</span>}
-              {ms.length > 1 && <span>{fmtMonth(ms[ms.length - 1].month)}</span>}
+      <div style={{ padding: 16, overflowY: 'auto', maxHeight: 'calc(100vh - 280px)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <Panel title="NEW LEASE RENT TREND" titleColor={T.text.blue}>
+            <div style={{ padding: 12 }}>
+              <MiniLineChart data={newRentData} color={T.text.blue} height={100} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: T.text.muted, fontFamily: T.font.mono, marginTop: 4 }}>
+                {ms.length > 0 && <span>{fmtMonth(ms[0].month)}</span>}
+                {ms.length > 1 && <span>{fmtMonth(ms[ms.length - 1].month)}</span>}
+              </div>
+              <div style={{ display: 'flex', gap: 12, marginTop: 4, fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>
+                <span>Peak: {fmt(Math.max(...newRentData), 'currency')}</span>
+                <span>Current: {fmt(newRentData[newRentData.length - 1], 'currency')}</span>
+              </div>
             </div>
-            <div className="flex gap-4 mt-2 text-xs text-stone-500">
-              <span>Peak: {fmt(Math.max(...newRentData), 'currency')}</span>
-              <span>Current: {fmt(newRentData[newRentData.length - 1], 'currency')}</span>
+          </Panel>
+          <Panel title="LOSS-TO-LEASE TREND" titleColor={T.text.red}>
+            <div style={{ padding: 12 }}>
+              <MiniLineChart data={ltlData} color={T.text.red} height={100} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: T.text.muted, fontFamily: T.font.mono, marginTop: 4 }}>
+                {ms.length > 0 && <span>{fmtMonth(ms[0].month)}</span>}
+                {ms.length > 1 && <span>{fmtMonth(ms[ms.length - 1].month)}</span>}
+              </div>
             </div>
-          </div>
-          <div className="bg-white border border-stone-200 rounded-lg p-4">
-            <h3 className="text-sm font-semibold text-stone-700 mb-3">Loss-to-Lease Trend</h3>
-            <MiniLineChart data={ltlData} color="#dc2626" height={100} />
-            <div className="flex justify-between text-xs text-stone-400 mt-1">
-              {ms.length > 0 && <span>{fmtMonth(ms[0].month)}</span>}
-              {ms.length > 1 && <span>{fmtMonth(ms[ms.length - 1].month)}</span>}
-            </div>
-          </div>
+          </Panel>
         </div>
 
-        <div className="grid grid-cols-2 gap-6">
-          <div className="bg-white border border-stone-200 rounded-lg p-4">
-            <h3 className="text-sm font-semibold text-stone-700 mb-3">Renewal Rent Trend</h3>
-            <MiniLineChart data={renewalRentData} color="#7c3aed" height={100} />
-          </div>
-          <div className="bg-white border border-stone-200 rounded-lg p-4">
-            <h3 className="text-sm font-semibold text-stone-700 mb-3">Retention Rate by Quarter</h3>
-            <MiniBarChart data={retData.map(r => parseFloat(r.retention_rate) || 0)} color="#059669" height={100} />
-            <div className="flex justify-between text-xs text-stone-400 mt-1">
-              {retData.length > 0 && <span>{retData[0].quarter?.substring(0, 7)}</span>}
-              {retData.length > 1 && <span>{retData[retData.length - 1].quarter?.substring(0, 7)}</span>}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <Panel title="RENEWAL RENT TREND" titleColor={T.text.purple}>
+            <div style={{ padding: 12 }}>
+              <MiniLineChart data={renewalRentData} color={T.text.purple} height={100} />
             </div>
-          </div>
+          </Panel>
+          <Panel title="RETENTION RATE BY QUARTER" titleColor={T.text.green}>
+            <div style={{ padding: 12 }}>
+              <MiniBarChart data={retData.map(r => parseFloat(r.retention_rate) || 0)} color={T.text.green} height={100} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: T.text.muted, fontFamily: T.font.mono, marginTop: 4 }}>
+                {retData.length > 0 && <span>{retData[0].quarter?.substring(0, 7)}</span>}
+                {retData.length > 1 && <span>{retData[retData.length - 1].quarter?.substring(0, 7)}</span>}
+              </div>
+            </div>
+          </Panel>
         </div>
 
-        <div className="bg-white border border-stone-200 rounded-lg overflow-hidden">
-          <h3 className="text-sm font-semibold text-stone-700 px-4 py-3 border-b border-stone-100">Recent Transactions</h3>
-          <div className="overflow-x-auto" style={{ maxHeight: 400 }}>
-            <table className="w-full text-xs">
-              <thead className="sticky top-0 bg-stone-50">
-                <tr className="text-stone-500">
-                  <th className="text-left px-3 py-2 font-medium">Unit</th>
-                  <th className="text-left px-3 py-2 font-medium">Type</th>
-                  <th className="text-left px-3 py-2 font-medium">Lease Type</th>
-                  <th className="text-left px-3 py-2 font-medium">Start</th>
-                  <th className="text-right px-3 py-2 font-medium">SF</th>
-                  <th className="text-right px-3 py-2 font-medium">New Rent</th>
-                  <th className="text-right px-3 py-2 font-medium">Prior</th>
-                  <th className="text-right px-3 py-2 font-medium">Market</th>
-                  <th className="text-right px-3 py-2 font-medium">Change</th>
-                  <th className="text-right px-3 py-2 font-medium">LTL %</th>
+        <Panel title="RECENT TRANSACTIONS">
+          <div style={{ overflowX: 'auto', maxHeight: 400 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: T.font.mono }}>
+              <thead style={{ position: 'sticky', top: 0, background: T.bg.panelAlt }}>
+                <tr>
+                  {['UNIT', 'TYPE', 'LEASE TYPE', 'START', 'SF', 'NEW RENT', 'PRIOR', 'MARKET', 'CHANGE', 'LTL %'].map((h, j) => (
+                    <th key={h} style={{ textAlign: j < 4 ? 'left' : 'right', padding: '7px 10px', color: T.text.muted, fontWeight: 600, fontSize: 9 }}>{h}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 {leaseData.recentTransactions.map((t: any, i: number) => (
-                  <tr key={i} className="border-t border-stone-50 hover:bg-blue-50/30">
-                    <td className="px-3 py-1.5 text-stone-700 font-medium">{t.unit_number}</td>
-                    <td className="px-3 py-1.5 text-stone-500">{t.unit_type}</td>
-                    <td className="px-3 py-1.5">
-                      <span className={`text-xs px-1.5 py-0.5 rounded ${t.lease_type?.trim().toLowerCase() === 'new' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
-                        {t.lease_type?.trim()}
+                  <tr key={i} style={{ borderBottom: `1px solid ${T.border.subtle}` }}>
+                    <td style={{ padding: '6px 10px', color: T.text.primary, fontWeight: 600 }}>{t.unit_number}</td>
+                    <td style={{ padding: '6px 10px', color: T.text.secondary }}>{t.unit_type}</td>
+                    <td style={{ padding: '6px 10px' }}>
+                      <span style={{ padding: '2px 6px', background: t.lease_type?.trim().toLowerCase() === 'new' ? '#4A9EFF22' : '#A78BFA22', color: t.lease_type?.trim().toLowerCase() === 'new' ? T.text.blue : T.text.purple, borderRadius: 3, fontSize: 9, fontWeight: 600 }}>
+                        {t.lease_type?.trim().toUpperCase()}
                       </span>
                     </td>
-                    <td className="px-3 py-1.5 text-stone-500">{t.lease_start ? new Date(t.lease_start).toLocaleDateString() : '—'}</td>
-                    <td className="px-3 py-1.5 text-right text-stone-500">{fmt(t.sqft)}</td>
-                    <td className="px-3 py-1.5 text-right font-medium text-stone-700">{fmt(parseFloat(t.new_rent), 'currency')}</td>
-                    <td className="px-3 py-1.5 text-right text-stone-500">{t.prior_rent ? fmt(parseFloat(t.prior_rent), 'currency') : '—'}</td>
-                    <td className="px-3 py-1.5 text-right text-stone-500">{fmt(parseFloat(t.market_rent), 'currency')}</td>
-                    <td className={`px-3 py-1.5 text-right ${parseFloat(t.rent_change_dollar) > 0 ? 'text-emerald-600' : parseFloat(t.rent_change_dollar) < 0 ? 'text-red-600' : 'text-stone-400'}`}>
+                    <td style={{ padding: '6px 10px', color: T.text.secondary }}>{t.lease_start ? new Date(t.lease_start).toLocaleDateString() : '—'}</td>
+                    <td style={{ padding: '6px 10px', textAlign: 'right', color: T.text.secondary }}>{fmt(t.sqft)}</td>
+                    <td style={{ padding: '6px 10px', textAlign: 'right', color: T.text.primary, fontWeight: 600 }}>{fmt(parseFloat(t.new_rent), 'currency')}</td>
+                    <td style={{ padding: '6px 10px', textAlign: 'right', color: T.text.secondary }}>{t.prior_rent ? fmt(parseFloat(t.prior_rent), 'currency') : '—'}</td>
+                    <td style={{ padding: '6px 10px', textAlign: 'right', color: T.text.secondary }}>{fmt(parseFloat(t.market_rent), 'currency')}</td>
+                    <td style={{ padding: '6px 10px', textAlign: 'right', color: parseFloat(t.rent_change_dollar) > 0 ? T.text.green : parseFloat(t.rent_change_dollar) < 0 ? T.text.red : T.text.muted }}>
                       {t.rent_change_dollar ? `${parseFloat(t.rent_change_dollar) > 0 ? '+' : ''}${fmt(parseFloat(t.rent_change_dollar), 'currency')}` : '—'}
                     </td>
-                    <td className={`px-3 py-1.5 text-right ${parseFloat(t.loss_to_lease_pct) < -5 ? 'text-red-600' : 'text-stone-500'}`}>
+                    <td style={{ padding: '6px 10px', textAlign: 'right', color: parseFloat(t.loss_to_lease_pct) < -5 ? T.text.red : T.text.secondary }}>
                       {t.loss_to_lease_pct ? `${parseFloat(t.loss_to_lease_pct).toFixed(1)}%` : '—'}
                     </td>
                   </tr>
@@ -1365,7 +1287,7 @@ export default function PortfolioPropertyPage() {
               </tbody>
             </table>
           </div>
-        </div>
+        </Panel>
       </div>
     );
   };
@@ -1374,9 +1296,9 @@ export default function PortfolioPropertyPage() {
     const config = unitProgram?.unit_config || [];
     if (!config.length) {
       return (
-        <div className="text-center py-12 text-stone-500">
-          <div className="text-3xl mb-2">🏠</div>
-          <div>No unit mix data available</div>
+        <div style={{ textAlign: 'center', padding: 48, color: T.text.muted, fontFamily: T.font.mono, fontSize: 11 }}>
+          <div style={{ fontSize: 28, marginBottom: 8 }}>🏠</div>
+          <div>NO UNIT MIX DATA AVAILABLE</div>
         </div>
       );
     }
@@ -1384,8 +1306,8 @@ export default function PortfolioPropertyPage() {
     const totalUnits = config.reduce((s: number, u: any) => s + (u.count || 0), 0);
 
     return (
-      <div className="space-y-6 p-6 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
-        <div className="grid grid-cols-4 gap-4">
+      <div style={{ padding: 16, overflowY: 'auto', maxHeight: 'calc(100vh - 280px)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
           {['Studio', '1BR', '2BR', '3BR'].map(bed => {
             const types = config.filter((u: any) => {
               const bc = u.bedroom_count || 0;
@@ -1397,63 +1319,50 @@ export default function PortfolioPropertyPage() {
             const count = types.reduce((s: number, u: any) => s + (u.count || 0), 0);
             const avgRent = types.length ? types.reduce((s: number, u: any) => s + (u.avg_rent || 0) * (u.count || 0), 0) / Math.max(count, 1) : 0;
             return (
-              <div key={bed} className="bg-white border border-stone-200 rounded-lg p-3 text-center">
-                <div className="text-lg font-bold text-stone-700">{count}</div>
-                <div className="text-xs text-stone-500">{bed} units</div>
-                <div className="text-sm font-medium text-blue-600 mt-1">{fmt(avgRent, 'currency')}</div>
-                <div className="text-xs text-stone-400">{totalUnits > 0 ? `${((count / totalUnits) * 100).toFixed(0)}% of mix` : ''}</div>
+              <div key={bed} style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 4, padding: 12, textAlign: 'center' }}>
+                <div style={{ fontSize: 22, fontWeight: 700, color: T.text.primary, fontFamily: T.font.mono }}>{count}</div>
+                <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono, marginTop: 2 }}>{bed.toUpperCase()} UNITS</div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: T.text.blue, fontFamily: T.font.mono, marginTop: 4 }}>{fmt(avgRent, 'currency')}</div>
+                <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>{totalUnits > 0 ? `${((count / totalUnits) * 100).toFixed(0)}% of mix` : ''}</div>
               </div>
             );
           })}
         </div>
 
-        <div className="bg-white border border-stone-200 rounded-lg overflow-hidden">
-          <h3 className="text-sm font-semibold text-stone-700 px-4 py-3 border-b border-stone-100">Unit Types ({config.length} types, {totalUnits} units)</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
+        <Panel title={`UNIT TYPES (${config.length} types, ${totalUnits} units)`}>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: T.font.mono }}>
               <thead>
-                <tr className="bg-stone-50 text-stone-500">
-                  <th className="text-left px-3 py-2 font-medium">Type</th>
-                  <th className="text-right px-3 py-2 font-medium">Beds</th>
-                  <th className="text-right px-3 py-2 font-medium">SF</th>
-                  <th className="text-right px-3 py-2 font-medium">Count</th>
-                  <th className="text-right px-3 py-2 font-medium">% Mix</th>
-                  <th className="text-right px-3 py-2 font-medium">Avg Rent</th>
-                  <th className="text-right px-3 py-2 font-medium">Min Rent</th>
-                  <th className="text-right px-3 py-2 font-medium">Max Rent</th>
-                  <th className="text-right px-3 py-2 font-medium">$/SF</th>
+                <tr style={{ background: T.bg.panelAlt }}>
+                  {['TYPE', 'BEDS', 'SF', 'COUNT', '% MIX', 'AVG RENT', 'MIN RENT', 'MAX RENT', '$/SF'].map((h, j) => (
+                    <th key={h} style={{ textAlign: j === 0 ? 'left' : 'right', padding: '7px 10px', color: T.text.muted, fontWeight: 600, fontSize: 9 }}>{h}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 {config.sort((a: any, b: any) => (b.count || 0) - (a.count || 0)).map((u: any, i: number) => (
-                  <tr key={i} className="border-t border-stone-50 hover:bg-blue-50/30">
-                    <td className="px-3 py-1.5 text-stone-700 font-medium">{u.type || u.unit_type}</td>
-                    <td className="px-3 py-1.5 text-right text-stone-600">{u.bedroom_count ?? '—'}</td>
-                    <td className="px-3 py-1.5 text-right text-stone-600">{fmt(u.sqft)}</td>
-                    <td className="px-3 py-1.5 text-right text-stone-600">{u.count || '—'}</td>
-                    <td className="px-3 py-1.5 text-right text-stone-500">{totalUnits > 0 ? `${(((u.count || 0) / totalUnits) * 100).toFixed(1)}%` : '—'}</td>
-                    <td className="px-3 py-1.5 text-right font-medium text-blue-700">{fmt(u.avg_rent, 'currency')}</td>
-                    <td className="px-3 py-1.5 text-right text-stone-500">{fmt(u.min_rent, 'currency')}</td>
-                    <td className="px-3 py-1.5 text-right text-stone-500">{fmt(u.max_rent, 'currency')}</td>
-                    <td className="px-3 py-1.5 text-right text-stone-500">{u.sqft && u.avg_rent ? `$${(u.avg_rent / u.sqft).toFixed(2)}` : '—'}</td>
+                  <tr key={i} style={{ borderBottom: `1px solid ${T.border.subtle}` }}>
+                    <td style={{ padding: '6px 10px', color: T.text.primary, fontWeight: 600 }}>{u.type || u.unit_type}</td>
+                    <td style={{ padding: '6px 10px', textAlign: 'right', color: T.text.secondary }}>{u.bedroom_count ?? '—'}</td>
+                    <td style={{ padding: '6px 10px', textAlign: 'right', color: T.text.secondary }}>{fmt(u.sqft)}</td>
+                    <td style={{ padding: '6px 10px', textAlign: 'right', color: T.text.primary }}>{u.count || '—'}</td>
+                    <td style={{ padding: '6px 10px', textAlign: 'right', color: T.text.secondary }}>{totalUnits > 0 ? `${(((u.count || 0) / totalUnits) * 100).toFixed(1)}%` : '—'}</td>
+                    <td style={{ padding: '6px 10px', textAlign: 'right', color: T.text.blue, fontWeight: 600 }}>{fmt(u.avg_rent, 'currency')}</td>
+                    <td style={{ padding: '6px 10px', textAlign: 'right', color: T.text.secondary }}>{fmt(u.min_rent, 'currency')}</td>
+                    <td style={{ padding: '6px 10px', textAlign: 'right', color: T.text.secondary }}>{fmt(u.max_rent, 'currency')}</td>
+                    <td style={{ padding: '6px 10px', textAlign: 'right', color: T.text.secondary }}>{u.sqft && u.avg_rent ? `$${(u.avg_rent / u.sqft).toFixed(2)}` : '—'}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        </div>
+        </Panel>
       </div>
     );
   };
 
   const renderTraffic = () => {
-    if (!trafficData.length) {
-      return (
-        <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-        </div>
-      );
-    }
+    if (!trafficData.length) return <Spinner />;
 
     const last52 = trafficData.slice(-52);
     const trafficNums = last52.map(w => toNum(w.traffic) || 0);
@@ -1461,118 +1370,121 @@ export default function PortfolioPropertyPage() {
     const occNums = last52.map(w => toNum(w.occ_pct) || 0);
 
     return (
-      <div className="space-y-6 p-6 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
-        <div className="grid grid-cols-4 gap-4">
-          <div className="bg-white border border-stone-200 rounded-lg p-3 text-center">
-            <div className="text-lg font-bold text-stone-700">{trafficData.length}</div>
-            <div className="text-xs text-stone-500">Weeks of Data</div>
-          </div>
-          <div className="bg-white border border-stone-200 rounded-lg p-3 text-center">
-            <div className="text-lg font-bold text-blue-700">{fmt(trafficNums.reduce((a, b) => a + b, 0) / trafficNums.length, 'number', 1)}</div>
-            <div className="text-xs text-stone-500">Avg Weekly Traffic</div>
-          </div>
-          <div className="bg-white border border-stone-200 rounded-lg p-3 text-center">
-            <div className="text-lg font-bold text-emerald-700">{fmt(closingNums.reduce((a, b) => a + b, 0) / closingNums.length, 'percent', 1)}</div>
-            <div className="text-xs text-stone-500">Avg Closing Ratio</div>
-          </div>
-          <div className="bg-white border border-stone-200 rounded-lg p-3 text-center">
-            <div className="text-lg font-bold text-purple-700">{fmt(occNums[occNums.length - 1], 'percent', 1)}</div>
-            <div className="text-xs text-stone-500">Latest Occupancy</div>
-          </div>
+      <div style={{ padding: 16, overflowY: 'auto', maxHeight: 'calc(100vh - 280px)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
+          {[
+            { label: 'WEEKS OF DATA', value: trafficData.length, color: T.text.primary },
+            { label: 'AVG WEEKLY TRAFFIC', value: fmt(trafficNums.reduce((a, b) => a + b, 0) / trafficNums.length, 'number', 1), color: T.text.blue },
+            { label: 'AVG CLOSING RATIO', value: fmt(closingNums.reduce((a, b) => a + b, 0) / closingNums.length, 'percent', 1), color: T.text.green },
+            { label: 'LATEST OCCUPANCY', value: fmt(occNums[occNums.length - 1], 'percent', 1), color: T.text.purple },
+          ].map((k, i) => (
+            <div key={i} style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 4, padding: 12, textAlign: 'center' }}>
+              <div style={{ fontSize: 22, fontWeight: 700, color: k.color, fontFamily: T.font.mono }}>{k.value}</div>
+              <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono, marginTop: 2 }}>{k.label}</div>
+            </div>
+          ))}
         </div>
 
-        <div className="grid grid-cols-2 gap-6">
-          <div className="bg-white border border-stone-200 rounded-lg p-4">
-            <h3 className="text-sm font-semibold text-stone-700 mb-3">Weekly Traffic (Last 52 Weeks)</h3>
-            <MiniBarChart data={trafficNums} color="#3b82f6" height={120} />
-            <div className="flex justify-between text-xs text-stone-400 mt-1">
-              {last52.length > 0 && <span>{new Date(last52[0].week_ending).toLocaleDateString('en-US', { month: 'short', year: '2-digit' })}</span>}
-              {last52.length > 1 && <span>{new Date(last52[last52.length - 1].week_ending).toLocaleDateString('en-US', { month: 'short', year: '2-digit' })}</span>}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <Panel title="WEEKLY TRAFFIC (LAST 52 WEEKS)" titleColor={T.text.blue}>
+            <div style={{ padding: 12 }}>
+              <MiniBarChart data={trafficNums} color={T.text.blue} height={120} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: T.text.muted, fontFamily: T.font.mono, marginTop: 4 }}>
+                {last52.length > 0 && <span>{new Date(last52[0].week_ending).toLocaleDateString('en-US', { month: 'short', year: '2-digit' })}</span>}
+                {last52.length > 1 && <span>{new Date(last52[last52.length - 1].week_ending).toLocaleDateString('en-US', { month: 'short', year: '2-digit' })}</span>}
+              </div>
+            </div>
+          </Panel>
+          <Panel title="CLOSING RATIO TREND" titleColor={T.text.green}>
+            <div style={{ padding: 12 }}>
+              <MiniLineChart data={closingNums} color={T.text.green} height={120} />
+            </div>
+          </Panel>
+        </div>
+
+        <Panel title="OCCUPANCY TREND" titleColor={T.text.purple}>
+          <div style={{ padding: 12 }}>
+            <MiniLineChart data={trafficData.map(w => toNum(w.occ_pct) || 0)} color={T.text.purple} height={100} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: T.text.muted, fontFamily: T.font.mono, marginTop: 4 }}>
+              {trafficData.length > 0 && <span>{new Date(trafficData[0].week_ending).toLocaleDateString('en-US', { month: 'short', year: '2-digit' })}</span>}
+              {trafficData.length > 1 && <span>{new Date(trafficData[trafficData.length - 1].week_ending).toLocaleDateString('en-US', { month: 'short', year: '2-digit' })}</span>}
             </div>
           </div>
-          <div className="bg-white border border-stone-200 rounded-lg p-4">
-            <h3 className="text-sm font-semibold text-stone-700 mb-3">Closing Ratio Trend</h3>
-            <MiniLineChart data={closingNums} color="#059669" height={120} />
-          </div>
-        </div>
-
-        <div className="bg-white border border-stone-200 rounded-lg p-4">
-          <h3 className="text-sm font-semibold text-stone-700 mb-3">Occupancy Trend</h3>
-          <MiniLineChart data={trafficData.map(w => toNum(w.occ_pct) || 0)} color="#7c3aed" height={100} />
-          <div className="flex justify-between text-xs text-stone-400 mt-1">
-            {trafficData.length > 0 && <span>{new Date(trafficData[0].week_ending).toLocaleDateString('en-US', { month: 'short', year: '2-digit' })}</span>}
-            {trafficData.length > 1 && <span>{new Date(trafficData[trafficData.length - 1].week_ending).toLocaleDateString('en-US', { month: 'short', year: '2-digit' })}</span>}
-          </div>
-        </div>
+        </Panel>
       </div>
     );
   };
 
   return (
-    <div className="h-full flex flex-col bg-gray-50">
-      <div className="bg-white border-b border-stone-200 px-6 py-4 flex-shrink-0">
-        <div className="flex items-center gap-3 mb-1">
-          <button onClick={() => navigate('/assets-owned')} className="text-stone-400 hover:text-stone-600 text-sm">
-            ← Assets Owned
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg.terminal }}>
+      {/* Header */}
+      <div style={{ background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}`, padding: '10px 16px', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, fontSize: 10, fontFamily: T.font.mono }}>
+          <button onClick={() => navigate('/assets-owned')} style={{ color: T.text.muted, background: 'none', border: 'none', cursor: 'pointer', fontSize: 10, fontFamily: T.font.mono }}>
+            ← ASSETS OWNED
           </button>
-          <span className="text-stone-300">·</span>
-          <button onClick={() => navigate(`/deals/${dealId}/detail`)} className="text-blue-500 hover:text-blue-700 text-sm">
-            View Underwriting →
+          <span style={{ color: T.border.medium }}>·</span>
+          <button onClick={() => navigate(`/deals/${dealId}/detail`)} style={{ color: T.text.cyan, background: 'none', border: 'none', cursor: 'pointer', fontSize: 10, fontFamily: T.font.mono }}>
+            VIEW UNDERWRITING →
           </button>
         </div>
-        <div className="flex items-center justify-between">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-xl font-bold text-stone-900">{deal.name}</h1>
-              <span className="text-xs px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full font-medium">OWNED</span>
-              {deal.class && <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full font-medium">Class {deal.class}</span>}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <h1 style={{ fontSize: 18, fontWeight: 700, color: T.text.primary, fontFamily: T.font.mono, margin: 0 }}>{deal.name}</h1>
+              <span style={{ fontSize: 9, padding: '2px 8px', background: '#00D26A22', color: T.text.green, borderRadius: 3, fontWeight: 700, fontFamily: T.font.mono }}>OWNED</span>
+              {deal.class && <span style={{ fontSize: 9, padding: '2px 8px', background: '#4A9EFF22', color: T.text.blue, borderRadius: 3, fontWeight: 700, fontFamily: T.font.mono }}>CLASS {deal.class}</span>}
             </div>
-            <div className="text-sm text-stone-500 mt-0.5">
+            <div style={{ fontSize: 11, color: T.text.secondary, fontFamily: T.font.mono, marginTop: 3 }}>
               {deal.address}
               {deal.county && ` · ${deal.county} County`}
               {deal.operator && ` · ${deal.operator}`}
             </div>
           </div>
-          <div className="flex items-center gap-6 text-sm">
-            <div className="text-center">
-              <div className="text-lg font-bold text-stone-700">{units}</div>
-              <div className="text-xs text-stone-400">Units</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 20, fontSize: 11, fontFamily: T.font.mono }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 18, fontWeight: 700, color: T.text.primary }}>{units}</div>
+              <div style={{ fontSize: 9, color: T.text.muted }}>UNITS</div>
             </div>
             {deal.vintage && (
-              <div className="text-center">
-                <div className="text-lg font-bold text-stone-700">{deal.vintage}</div>
-                <div className="text-xs text-stone-400">Vintage</div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 18, fontWeight: 700, color: T.text.primary }}>{deal.vintage}</div>
+                <div style={{ fontSize: 9, color: T.text.muted }}>VINTAGE</div>
               </div>
             )}
             {trafficStats && (
-              <div className="text-center">
-                <div className="text-lg font-bold text-stone-700">{parseFloat(trafficStats.total_weeks)}</div>
-                <div className="text-xs text-stone-400">Weeks Data</div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 18, fontWeight: 700, color: T.text.primary }}>{parseFloat(trafficStats.total_weeks)}</div>
+                <div style={{ fontSize: 9, color: T.text.muted }}>WEEKS DATA</div>
               </div>
             )}
           </div>
         </div>
       </div>
 
+      {/* KPI Cards */}
       {renderKPICards()}
 
-      <div className="border-b border-stone-200 bg-white flex-shrink-0 overflow-x-auto">
-        <div className="flex items-end gap-0 px-4 min-w-max">
+      {/* Tab Bar */}
+      <div style={{ background: T.bg.panel, borderBottom: `1px solid ${T.border.subtle}`, flexShrink: 0, overflowX: 'auto' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-end', padding: '0 8px', minWidth: 'max-content' }}>
           {TAB_GROUPS.map((group, gi) => (
             <React.Fragment key={group.label}>
-              {gi > 0 && <div className="w-px h-6 bg-stone-200 self-center mx-1" />}
-              <div className="flex flex-col">
-                <div className="text-[8px] font-bold text-stone-400 px-2 pt-1.5 pb-0.5 tracking-widest">{group.label}</div>
-                <div className="flex items-center gap-0.5 pb-1">
+              {gi > 0 && <div style={{ width: 1, height: 24, background: T.border.subtle, alignSelf: 'center', margin: '0 4px' }} />}
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <div style={{ fontSize: 8, fontWeight: 700, color: T.text.muted, padding: '5px 6px 2px', letterSpacing: '0.08em', fontFamily: T.font.mono }}>{group.label}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 2, paddingBottom: 4 }}>
                   {group.tabs.map(tab => (
                     <button
                       key={tab.id}
                       onClick={() => setActiveTab(tab.id)}
-                      className={`px-3 py-1 rounded text-xs font-medium transition-colors whitespace-nowrap ${
-                        activeTab === tab.id
-                          ? 'bg-blue-100 text-blue-700'
-                          : 'text-stone-500 hover:text-stone-800 hover:bg-stone-100'
-                      }`}
+                      style={{
+                        padding: '3px 8px', borderRadius: 3, fontSize: 10, fontFamily: T.font.mono, cursor: 'pointer', whiteSpace: 'nowrap', border: 'none',
+                        background: activeTab === tab.id ? T.bg.active : 'transparent',
+                        color: activeTab === tab.id ? T.text.amber : T.text.secondary,
+                        borderBottom: activeTab === tab.id ? `2px solid ${T.text.amber}` : '2px solid transparent',
+                        fontWeight: activeTab === tab.id ? 700 : 400,
+                      }}
                     >
                       {tab.short}
                     </button>
@@ -1584,7 +1496,8 @@ export default function PortfolioPropertyPage() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-hidden">
+      {/* Tab Content */}
+      <div style={{ flex: 1, overflow: 'hidden', background: T.bg.terminal }}>
         {activeTab === 'overview'     && renderOverview()}
         {activeTab === 'performance'  && <PerformanceTab dealId={dealId!} financials={financials} />}
         {activeTab === 'comp-set'     && <CompSetTab dealId={dealId!} />}
@@ -1592,39 +1505,39 @@ export default function PortfolioPropertyPage() {
         {activeTab === 'unit-mix'     && renderUnitMix()}
         {activeTab === 'traffic'      && renderTraffic()}
         {activeTab === 'ops-intel'    && (
-          <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+          <div style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 280px)' }}>
             <OperationsIntelligenceSection dealId={dealId!} deal={deal as Record<string, unknown>} />
           </div>
         )}
         {activeTab === 'revenue'      && <RevenueMgmtTab dealId={dealId!} />}
         {activeTab === 'actuals'      && (
-          <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+          <div style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 280px)' }}>
             <MonthlyActualsSection dealId={dealId!} deal={deal as Record<string, unknown>} />
           </div>
         )}
         {activeTab === 'investors'    && (
-          <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+          <div style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 280px)' }}>
             <InvestorCapitalModule dealId={dealId!} />
           </div>
         )}
         {activeTab === 'lifecycle'    && (
-          <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+          <div style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 280px)' }}>
             <LifecycleSection dealId={dealId!} />
           </div>
         )}
         {activeTab === 'debt-monitor' && (
-          <div className="overflow-y-auto p-6" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+          <div style={{ overflowY: 'auto', padding: 16, maxHeight: 'calc(100vh - 280px)' }}>
             <MonitorTab dealStatus="owned" />
           </div>
         )}
         {activeTab === 'ai-learning'  && <AILearningTab dealId={dealId!} />}
         {activeTab === 'events'       && (
-          <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+          <div style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 280px)' }}>
             <EventTimelineSection dealId={dealId!} deal={deal} />
           </div>
         )}
         {activeTab === 'documents'    && (
-          <div className="overflow-y-auto p-6" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+          <div style={{ overflowY: 'auto', padding: 16, maxHeight: 'calc(100vh - 280px)' }}>
             <DocumentsSection deal={deal as unknown as Deal} />
           </div>
         )}
@@ -1632,7 +1545,7 @@ export default function PortfolioPropertyPage() {
           <ReportsTab dealId={dealId!} financials={financials} deal={deal} />
         )}
         {activeTab === 'deal-team'    && (
-          <div className="overflow-y-auto p-6" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+          <div style={{ overflowY: 'auto', padding: 16, maxHeight: 'calc(100vh - 280px)' }}>
             <TeamSection deal={{ ...deal, status: deal.status || 'owned' } as unknown as Deal} />
           </div>
         )}
