@@ -744,9 +744,9 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
                     );
                   })}
                 </div>
-                {/* Projected line SVG overlay — always rendered */}
+                {/* Projected line SVG overlay — always rendered; circles are clickable */}
                 <svg
-                  style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: `${BAR_H}px`, pointerEvents: 'none', overflow: 'visible' }}
+                  style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: `${BAR_H}px`, overflow: 'visible' }}
                   viewBox={`0 0 100 ${BAR_H}`}
                   preserveAspectRatio="none"
                 >
@@ -757,12 +757,25 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
                     strokeWidth="1.5"
                     strokeDasharray="4,3"
                     vectorEffect="non-scaling-stroke"
+                    style={{ pointerEvents: 'none' }}
                   />
                   {slice.map((p, i) => {
                     const proj = p.projected_noi ?? 0;
                     const x = ((i + 0.5) / n) * 100;
                     const y = (1 - Math.min(proj / maxNoi, 1)) * BAR_H;
-                    return <circle key={i} cx={x} cy={y} r="2" fill={T.text.amber} vectorEffect="non-scaling-stroke" />;
+                    const isSelected = selectedPeriod === p.period;
+                    return (
+                      <circle
+                        key={i}
+                        cx={x} cy={y} r="4"
+                        fill={isSelected ? T.text.cyan : T.text.amber}
+                        vectorEffect="non-scaling-stroke"
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => setSelectedPeriod(isSelected ? null : p.period)}
+                      >
+                        <title>{p.period}: {(p.projected_noi ?? 0) >= 1e6 ? `$${((p.projected_noi ?? 0)/1e6).toFixed(1)}M` : `$${(p.projected_noi ?? 0).toFixed(0)}`} projected</title>
+                      </circle>
+                    );
                   })}
                 </svg>
                 {/* Period labels */}
@@ -874,9 +887,9 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
                     );
                   })}
                 </div>
-                {/* Projected line SVG overlay */}
+                {/* Projected line SVG overlay — circles are clickable */}
                 <svg
-                  style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: `${BAR_H}px`, pointerEvents: 'none', overflow: 'visible' }}
+                  style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: `${BAR_H}px`, overflow: 'visible' }}
                   viewBox={`0 0 100 ${BAR_H}`}
                   preserveAspectRatio="none"
                 >
@@ -887,12 +900,26 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
                     strokeWidth="1.5"
                     strokeDasharray="4,3"
                     vectorEffect="non-scaling-stroke"
+                    style={{ pointerEvents: 'none' }}
                   />
                   {slice.map((p, i) => {
-                    const proj = p.projected_occupancy ?? p.occupancy ?? 0;
+                    const proj = p.projected_occupancy ?? 0;
+                    if (!proj) return null;
                     const x = ((i + 0.5) / n) * 100;
                     const y = toY(proj);
-                    return <circle key={i} cx={x} cy={y} r="2" fill={T.text.amber} vectorEffect="non-scaling-stroke" />;
+                    const isSelected = selectedPeriod === p.period;
+                    return (
+                      <circle
+                        key={i}
+                        cx={x} cy={y} r="4"
+                        fill={isSelected ? T.text.cyan : T.text.amber}
+                        vectorEffect="non-scaling-stroke"
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => setSelectedPeriod(isSelected ? null : p.period)}
+                      >
+                        <title>{p.period}: {proj.toFixed(1)}% projected</title>
+                      </circle>
+                    );
                   })}
                 </svg>
                 {/* Period labels */}

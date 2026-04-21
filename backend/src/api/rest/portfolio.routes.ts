@@ -139,6 +139,7 @@ router.get('/performance', requireAuth, async (req: AuthenticatedRequest, res: R
         FROM deals
         WHERE (deal_data->>'noi') IS NOT NULL
           AND (deal_data->>'noi')::numeric > 0
+          AND (status IN ('owned', 'closed', 'portfolio') OR deal_category = 'portfolio')
       ),
       date_series AS (
         SELECT generate_series(
@@ -225,6 +226,7 @@ router.get('/performance/contributors', requireAuth, async (req: AuthenticatedRe
       FROM actual_performance ap
       JOIN deals d ON d.id = ap.deal_id
       WHERE DATE_TRUNC('month', ap.period_start) = DATE_TRUNC('month', $1::date)
+        AND (d.status IN ('owned', 'closed', 'portfolio') OR d.deal_category = 'portfolio')
       ORDER BY ap.actual_noi DESC NULLS LAST
     `, [period]);
 
