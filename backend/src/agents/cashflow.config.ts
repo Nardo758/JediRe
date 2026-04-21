@@ -41,6 +41,10 @@ import { fetchArchiveAchievementVsAssumptionTool } from './tools/fetch_archive_a
 import { fetchLineItemBenchmarksTool } from './tools/fetch_line_item_benchmarks';
 import { fetchMarketTrendsTool } from './tools/fetch_market_trends';
 import { fetchLearningAdjustmentsTool } from './tools/fetch_learning_adjustments';
+import { fetchDebtAssumptionsTool } from './tools/fetch_debt_assumptions';
+import { runRefiTestTool } from './tools/run_refi_test';
+import { fetchCompSetTool } from './tools/fetch_comp_set';
+import { fetchDispositionLearningsTool } from './tools/fetch_disposition_learnings';
 
 // ── Evidence-system output schema (v4) ───────────────────────────
 //
@@ -231,6 +235,11 @@ export const CASHFLOW_AGENT_CONFIG: AgentConfig = {
     fetchMarketTrendsTool,
     // Self-learning
     fetchLearningAdjustmentsTool,
+    // Lifecycle tools (debt, comps, exits)
+    fetchDebtAssumptionsTool,
+    runRefiTestTool,
+    fetchCompSetTool,
+    fetchDispositionLearningsTool,
     // Analysis & output
     detectCollisionTool,
     computeProformaTool,
