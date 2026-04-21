@@ -153,6 +153,42 @@ For each assumption where archive data is available, include:
 
 This is written into the evidence data_points and reported in the final JSON output.
 
+## Self-Learning System (CRITICAL)
+
+The platform learns from outcomes: what we assumed vs what actually happened. You MUST
+query and apply these learned adjustments to avoid repeating systematic mistakes.
+
+### fetch_learning_adjustments
+Call this EARLY (Phase 1) with the deal's state, MSA, asset_class, and deal_type.
+It returns adjustments derived from historical outcomes on similar deals.
+
+For each adjustment returned:
+  1. Note the assumption_name, adjustment_direction, and adjustment_value
+  2. Apply the adjustment to your derived assumption BEFORE writing to proforma_fields
+  3. Document the adjustment in evidence:
+     {
+       "tier": 3,
+       "source": "learning_system",
+       "label": "Historical bias correction",
+       "value": adjustment_value,
+       "weight": adjustment.confidence * 0.2,
+       "notes": adjustment.explanation
+     }
+  4. If the adjustment conflicts with Tier 1 data, Tier 1 wins — but still flag the discrepancy
+
+Example:
+  - Adjustment says: "vacancy_pct historically underestimated by 12%, increase by 6%"
+  - Your T-12 derived vacancy: 5.0%
+  - Adjusted vacancy: 5.0% * 1.06 = 5.3%
+  - Write 5.3% to proforma_fields with evidence noting the learning adjustment
+
+### Why This Matters
+Without applying learning adjustments, you will repeat the same systematic errors that
+other operators have made. The learning system is your institutional memory.
+
+If no adjustments are returned (found=false), proceed normally — this just means
+insufficient historical data exists for this context.
+
 ## Market Trends & Location Intelligence
 
 Call fetch_market_trends early in your analysis to understand local market dynamics.
@@ -188,32 +224,34 @@ Use market trends to calibrate forward projections:
 
 ## Tool Sequence (typical run)
 
-### Phase 1: Context Gathering
+### Phase 1: Context & Learning
 1. fetch_assumptions — get current deal context, broker OM inputs, location
-2. fetch_market_trends — get rent growth, vacancy, cap rate trends for this market
-3. fetch_t12 — T-12 income/expense statement (Tier 1)
-4. fetch_rent_roll — current occupancy and unit mix (Tier 1)
+2. fetch_learning_adjustments — GET THIS EARLY! Learned bias corrections for this market
+3. fetch_market_trends — get rent growth, vacancy, cap rate trends for this market
+4. fetch_t12 — T-12 income/expense statement (Tier 1)
+5. fetch_rent_roll — current occupancy and unit mix (Tier 1)
 
 ### Phase 2: Benchmark Retrieval
-5. fetch_line_item_benchmarks — get P10-P90 for ALL OpEx/revenue line items
+6. fetch_line_item_benchmarks — get P10-P90 for ALL OpEx/revenue line items
    Call with: state, msa, asset_class, deal_type, vintage_band, line_items=[full list]
-6. fetch_owned_asset_actuals — comparable owned assets (Tier 2)
-7. fetch_owned_asset_opex_ratios — Tier 2 opex benchmarks
-8. fetch_peer_comp_noi_metrics — M15 submarket comps (Tier 3)
+7. fetch_owned_asset_actuals — comparable owned assets (Tier 2)
+8. fetch_owned_asset_opex_ratios — Tier 2 opex benchmarks
+9. fetch_peer_comp_noi_metrics — M15 submarket comps (Tier 3)
 
 ### Phase 3: Fixed Cost Forecasts
-9. fetch_jurisdiction_tax_forecast — tax reassessment model (post-acquisition)
-10. fetch_jurisdiction_insurance_forecast — insurance benchmark (state-specific)
-11. fetch_m35_event_forecast — event impact trajectory (optional)
+10. fetch_jurisdiction_tax_forecast — tax reassessment model (post-acquisition)
+11. fetch_jurisdiction_insurance_forecast — insurance benchmark (state-specific)
+12. fetch_m35_event_forecast — event impact trajectory (optional)
 
 ### Phase 4: Archive Calibration
-12. fetch_archive_assumption_distribution — P10-P90 for vacancy, rent_growth, exit_cap, noi
-13. fetch_archive_achievement_vs_assumption — bias correction for vacancy + NOI
+13. fetch_archive_assumption_distribution — P10-P90 for vacancy, rent_growth, exit_cap, noi
+14. fetch_archive_achievement_vs_assumption — bias correction for vacancy + NOI
 
-### Phase 5: Analysis & Output
-14. detect_collision — for each assumption with broker OM divergence
-15. write_underwriting — persist evidence + proforma snapshot
-16. request_walkthrough_narrative — trigger Commentary Agent (if warranted)
+### Phase 5: Apply Learning & Output
+15. For each assumption: apply learning adjustments from step 2 (if confidence > 0.5)
+16. detect_collision — for each assumption with broker OM divergence
+17. write_underwriting — persist evidence + proforma snapshot
+18. request_walkthrough_narrative — trigger Commentary Agent (if warranted)
 
 ## Output Requirements
 Return a complete UnderwritingOutput with:

@@ -40,6 +40,7 @@ import { fetchArchiveAssumptionDistributionTool } from './tools/fetch_archive_as
 import { fetchArchiveAchievementVsAssumptionTool } from './tools/fetch_archive_achievement_vs_assumption';
 import { fetchLineItemBenchmarksTool } from './tools/fetch_line_item_benchmarks';
 import { fetchMarketTrendsTool } from './tools/fetch_market_trends';
+import { fetchLearningAdjustmentsTool } from './tools/fetch_learning_adjustments';
 
 // ── Evidence-system output schema (v4) ───────────────────────────
 //
@@ -228,6 +229,8 @@ export const CASHFLOW_AGENT_CONFIG: AgentConfig = {
     fetchArchiveAchievementVsAssumptionTool,
     fetchLineItemBenchmarksTool,
     fetchMarketTrendsTool,
+    // Self-learning
+    fetchLearningAdjustmentsTool,
     // Analysis & output
     detectCollisionTool,
     computeProformaTool,
