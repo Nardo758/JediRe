@@ -467,6 +467,10 @@ app.use('/api/v1/calibration', requireAuth, m07CalibrationRouter);
 app.use('/api/v1/macro', requireAuth, macroIndicatorsRouter);
 app.use('/api/v1', requireAuth, zoningTriangulationRouter);
 
+// Archive management routes
+import archiveRouter from './api/rest/archive.routes';
+app.use('/api/v1/archive', archiveRouter);
+
 app.use('/api/v1/unit-mix', requireAuth, createUnitMixRoutes(pool));
 
 app.get('/api/v1/apartment-sync/trends', requireAuth, async (req: any, res) => {
