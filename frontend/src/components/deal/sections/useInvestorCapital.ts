@@ -225,8 +225,8 @@ export function useInvestorCapital(dealId: string) {
     loadCalls();
     loadDists();
     loadWaterfall();
-    loadEntries();
-  }, [loadSummary, loadInvestments, loadCalls, loadDists, loadWaterfall, loadEntries]);
+    // LedgerTab fetches on mount via its own effect; no initial hook fetch needed
+  }, [loadSummary, loadInvestments, loadCalls, loadDists, loadWaterfall]);
 
   // ─── mutations ────────────────────────────────────────────────────────────
 

@@ -265,6 +265,7 @@ function CapitalCallsTab({ calls, summary, loading, error, onLoadCallItems, onCr
   const [expanded,  setExpanded]   = useState<string | null>(null);
   const [items,     setItems]      = useState<Record<string, CallItem[]>>({});
   const [loadingItems, setLoadingItems] = useState<Record<string, boolean>>({});
+  const [itemErrs, setItemErrs]        = useState<Record<string, string>>({});
 
   const toggleExpand = useCallback(async (callId: string) => {
     if (expanded === callId) { setExpanded(null); return; }
@@ -274,7 +275,7 @@ function CapitalCallsTab({ calls, summary, loading, error, onLoadCallItems, onCr
     try {
       const fetched = await onLoadCallItems(callId);
       setItems(prev => ({ ...prev, [callId]: fetched }));
-    } catch { /* silent */ }
+    } catch { setItemErrs(prev => ({ ...prev, [callId]: 'Failed to load investor items.' })); }
     setLoadingItems(prev => ({ ...prev, [callId]: false }));
   }, [expanded, items, onLoadCallItems]);
 
@@ -372,6 +373,8 @@ function CapitalCallsTab({ calls, summary, loading, error, onLoadCallItems, onCr
                     <td colSpan={9} style={{ padding: '8px 16px' }}>
                       {loadingItems[c.id] ? (
                         <div style={{ ...S.empty, padding: '8px 0' }}>Loading items…</div>
+                      ) : itemErrs[c.id] ? (
+                        <div style={{ ...S.formErr, padding: '8px 0' }}>{itemErrs[c.id]}</div>
                       ) : (items[c.id] ?? []).length === 0 ? (
                         <div style={{ ...S.empty, padding: '8px 0' }}>No investor items yet — investors are allocated when the call is created with committed investors on the deal.</div>
                       ) : (
@@ -429,6 +432,7 @@ function DistributionsTab({ dists, summary, loading, error, onLoadDistItems, onC
   const [expanded,  setExpanded] = useState<string | null>(null);
   const [items, setItems] = useState<Record<string, DistItem[]>>({});
   const [loadingItems, setLoadingItems] = useState<Record<string, boolean>>({});
+  const [itemErrs, setItemErrs]        = useState<Record<string, string>>({});
 
   const toggleExpand = useCallback(async (distId: string) => {
     if (expanded === distId) { setExpanded(null); return; }
@@ -438,7 +442,7 @@ function DistributionsTab({ dists, summary, loading, error, onLoadDistItems, onC
     try {
       const fetched = await onLoadDistItems(distId);
       setItems(prev => ({ ...prev, [distId]: fetched }));
-    } catch { /* silent */ }
+    } catch { setItemErrs(prev => ({ ...prev, [distId]: 'Failed to load investor breakdown.' })); }
     setLoadingItems(prev => ({ ...prev, [distId]: false }));
   }, [expanded, items, onLoadDistItems]);
 
@@ -528,6 +532,8 @@ function DistributionsTab({ dists, summary, loading, error, onLoadDistItems, onC
                     <td colSpan={8} style={{ padding: '8px 16px' }}>
                       {loadingItems[d.id] ? (
                         <div style={{ ...S.empty, padding: '8px 0' }}>Loading breakdown…</div>
+                      ) : itemErrs[d.id] ? (
+                        <div style={{ ...S.formErr, padding: '8px 0' }}>{itemErrs[d.id]}</div>
                       ) : (items[d.id] ?? []).length === 0 ? (
                         <div style={{ ...S.empty, padding: '8px 0' }}>No per-investor items yet — items are allocated on creation.</div>
                       ) : (
