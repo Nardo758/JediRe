@@ -277,6 +277,34 @@ router.post('/debt/:debtId/covenant-check', requireAuth, async (req: Authenticat
 });
 
 /**
+ * GET /api/v1/lifecycle/:dealId/refi-test
+ * Fetch past refi test scenarios for a deal
+ */
+router.get('/:dealId/refi-test', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { rows } = await query(
+      `SELECT id, scenario_name, scenario_type, test_date,
+              assumed_noi, assumed_value, assumed_cap_rate, assumed_all_in_rate,
+              max_ltv, min_dscr, min_debt_yield,
+              max_loan_by_ltv, max_loan_by_dscr, max_loan_by_dy,
+              constrained_by, max_loan_proceeds,
+              existing_balance, cash_out_available,
+              new_debt_service, dscr_post_refi,
+              is_feasible, feasibility_notes
+       FROM refi_test_scenarios
+       WHERE deal_id = $1
+       ORDER BY test_date DESC
+       LIMIT 20`,
+      [req.params.dealId]
+    );
+    res.json({ success: true, scenarios: rows });
+  } catch (err) {
+    logger.error('Get refi scenarios error:', err);
+    res.status(500).json({ success: false, error: 'Failed to get refi scenarios' });
+  }
+});
+
+/**
  * POST /api/v1/lifecycle/:dealId/refi-test
  * Run a refinance test scenario
  */
