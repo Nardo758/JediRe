@@ -323,8 +323,9 @@ router.get('/outcomes', requireAuth, async (req: AuthenticatedRequest, res: Resp
 router.get('/outcomes/deal/:dealId/summary', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
-    // Verify deal exists before returning any data (prevents IDOR fishing)
-    const dealCheck = await query('SELECT id FROM deals WHERE id = $1', [dealId]);
+    const userId = (req as unknown as { user?: { userId?: string } }).user?.userId;
+    // Verify deal belongs to requesting user (prevents IDOR)
+    const dealCheck = await query('SELECT id FROM deals WHERE id = $1 AND user_id = $2', [dealId, userId]);
     if (dealCheck.rows.length === 0) {
       return res.status(404).json({ success: false, error: 'Deal not found' });
     }
