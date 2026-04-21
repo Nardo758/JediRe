@@ -395,50 +395,124 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
       
       {/* NOI Performance */}
       <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, padding: 16 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: T.text.cyan, letterSpacing: 1, marginBottom: 16, fontFamily: MONO }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: T.text.cyan, letterSpacing: 1, marginBottom: 12, fontFamily: MONO }}>
           NOI PERFORMANCE
         </div>
-        <div style={{ height: 200, overflow: 'hidden', display: 'flex', alignItems: 'flex-end', gap: 8, padding: '0 8px' }}>
-          {(() => {
-            const slice = performance.slice(-12);
-            const maxNoi = Math.max(...slice.map(x => x.noi ?? 0), 1);
-            return slice.map((p, i) => (
-              <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <div 
-                  style={{ 
-                    width: '100%', 
-                    background: T.text.green, 
-                    height: `${Math.max(((p.noi ?? 0) / maxNoi) * 170, 4)}px`,
-                    borderRadius: '2px 2px 0 0',
-                  }} 
-                />
-                <div style={{ fontSize: 8, color: T.text.muted, marginTop: 4, fontFamily: MONO }}>{p.period}</div>
+        {(() => {
+          const slice = performance.slice(-12);
+          const maxNoi = Math.max(...slice.map(x => x.noi ?? 0), 1);
+          const BAR_H = 160;
+          const fmt = (v: number) => v >= 1e6 ? `$${(v/1e6).toFixed(1)}M` : v >= 1e3 ? `$${(v/1e3).toFixed(0)}K` : `$${v.toFixed(0)}`;
+          return (
+            <div style={{ display: 'flex', gap: 6 }}>
+              {/* Y-axis */}
+              <div style={{ width: 36, position: 'relative', height: BAR_H + 20, flexShrink: 0 }}>
+                {[1, 0.5, 0].map((frac) => (
+                  <div key={frac} style={{
+                    position: 'absolute',
+                    right: 0,
+                    top: `${(1 - frac) * BAR_H}px`,
+                    transform: 'translateY(-50%)',
+                    fontSize: 7,
+                    color: T.text.muted,
+                    fontFamily: MONO,
+                    textAlign: 'right',
+                    lineHeight: 1,
+                  }}>
+                    {fmt(maxNoi * frac)}
+                  </div>
+                ))}
+                {/* tick lines */}
+                {[1, 0.5, 0].map((frac) => (
+                  <div key={`t${frac}`} style={{
+                    position: 'absolute',
+                    left: 32,
+                    top: `${(1 - frac) * BAR_H}px`,
+                    width: 4,
+                    height: 1,
+                    background: T.border.subtle,
+                  }} />
+                ))}
               </div>
-            ));
-          })()}
-        </div>
+              {/* Bars */}
+              <div style={{ flex: 1, height: BAR_H + 20, overflow: 'hidden', display: 'flex', alignItems: 'flex-end', gap: 4 }}>
+                {slice.map((p, i) => (
+                  <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    <div style={{
+                      width: '100%',
+                      background: T.text.green,
+                      height: `${Math.max(((p.noi ?? 0) / maxNoi) * BAR_H, 4)}px`,
+                      borderRadius: '2px 2px 0 0',
+                    }} />
+                    <div style={{ fontSize: 7, color: T.text.muted, marginTop: 3, fontFamily: MONO }}>{p.period}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
       </div>
       
       {/* Occupancy Trend */}
       <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, padding: 16 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: T.text.cyan, letterSpacing: 1, marginBottom: 16, fontFamily: MONO }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: T.text.cyan, letterSpacing: 1, marginBottom: 12, fontFamily: MONO }}>
           OCCUPANCY TREND
         </div>
-        <div style={{ height: 200, overflow: 'hidden', display: 'flex', alignItems: 'flex-end', gap: 8, padding: '0 8px' }}>
-          {performance.slice(-12).map((p, i) => (
-            <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <div 
-                style={{ 
-                  width: '100%', 
-                  background: (p.occupancy ?? 0) > 93 ? T.text.green : (p.occupancy ?? 0) > 90 ? T.text.amber : T.text.red, 
-                  height: `${Math.max(Math.min((p.occupancy ?? 0) * 1.8, 170), 4)}px`,
-                  borderRadius: '2px 2px 0 0',
-                }} 
-              />
-              <div style={{ fontSize: 8, color: T.text.muted, marginTop: 4, fontFamily: MONO }}>{p.period}</div>
+        {(() => {
+          const slice = performance.slice(-12);
+          const minOcc = 85; // floor for visual range
+          const maxOcc = 100;
+          const range = maxOcc - minOcc;
+          const BAR_H = 160;
+          const toBarH = (occ: number) => Math.max(((Math.max(occ, minOcc) - minOcc) / range) * BAR_H, 4);
+          const ticks = [100, 95, 90, 85];
+          return (
+            <div style={{ display: 'flex', gap: 6 }}>
+              {/* Y-axis */}
+              <div style={{ width: 36, position: 'relative', height: BAR_H + 20, flexShrink: 0 }}>
+                {ticks.map((t) => (
+                  <div key={t} style={{
+                    position: 'absolute',
+                    right: 0,
+                    top: `${((maxOcc - t) / range) * BAR_H}px`,
+                    transform: 'translateY(-50%)',
+                    fontSize: 7,
+                    color: T.text.muted,
+                    fontFamily: MONO,
+                    textAlign: 'right',
+                    lineHeight: 1,
+                  }}>
+                    {t}%
+                  </div>
+                ))}
+                {ticks.map((t) => (
+                  <div key={`t${t}`} style={{
+                    position: 'absolute',
+                    left: 32,
+                    top: `${((maxOcc - t) / range) * BAR_H}px`,
+                    width: 4,
+                    height: 1,
+                    background: T.border.subtle,
+                  }} />
+                ))}
+              </div>
+              {/* Bars */}
+              <div style={{ flex: 1, height: BAR_H + 20, overflow: 'hidden', display: 'flex', alignItems: 'flex-end', gap: 4 }}>
+                {slice.map((p, i) => (
+                  <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    <div style={{
+                      width: '100%',
+                      background: (p.occupancy ?? 0) > 93 ? T.text.green : (p.occupancy ?? 0) > 90 ? T.text.amber : T.text.red,
+                      height: `${toBarH(p.occupancy ?? 0)}px`,
+                      borderRadius: '2px 2px 0 0',
+                    }} />
+                    <div style={{ fontSize: 7, color: T.text.muted, marginTop: 3, fontFamily: MONO }}>{p.period}</div>
+                  </div>
+                ))}
+              </div>
             </div>
-          ))}
-        </div>
+          );
+        })()}
       </div>
       
       {/* Expense Analysis */}
