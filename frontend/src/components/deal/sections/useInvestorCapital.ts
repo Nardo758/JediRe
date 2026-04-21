@@ -93,6 +93,7 @@ export interface LedgerEntry {
   id: string;
   entry_type: string;
   amount: number | string;
+  running_balance: number | string | null;
   investor_name: string;
   entry_date: string;
   description: string | null;

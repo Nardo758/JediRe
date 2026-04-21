@@ -223,12 +223,13 @@ function InvestorsTab({ investments, allInvestors, summary, loading, error, onCr
       ) : (
         <div style={{ overflowX: 'auto' }}>
           <table style={S.table}>
-            <thead><RowHdr headers={['Investor','Type','KYC','Commitment','Funded','Unfunded','Own %','Status']} /></thead>
+            <thead><RowHdr headers={['Investor','Type','Class','KYC','Commitment','Funded','Unfunded','Own %','Status']} /></thead>
             <tbody>
               {investments.map(inv => (
                 <tr key={inv.id}>
                   <td style={{ ...S.td, color: BT.text.primary, fontWeight: 600 }}>{inv.investor_name}</td>
                   <td style={S.td}><span style={S.badge(BT.text.cyan)}>{inv.investor_type.toUpperCase()}</span></td>
+                  <td style={S.td}><span style={S.badge(BT.text.muted)}>{(inv.class ?? 'A').toUpperCase()}</span></td>
                   <td style={S.td}><span style={S.badge(kycColor(inv.kyc_status))}>{inv.kyc_status.replace('_',' ').toUpperCase()}</span></td>
                   <td style={{ ...S.td, textAlign: 'right' as const }}>{fmtAmt(inv.commitment_amount)}</td>
                   <td style={{ ...S.td, textAlign: 'right' as const, color: BT.text.green }}>{fmtAmt(inv.funded_amount)}</td>
@@ -726,16 +727,18 @@ function LedgerTab({ entries, loading, error, onFilter }: LedgerTabProps) {
   const applyFilter = () => { setPage(0); onFilter({ date_from: dateFrom || undefined, date_to: dateTo || undefined }); };
   const clearFilter = () => { setPage(0); setDateFrom(''); setDateTo(''); onFilter({}); };
 
-  // Build running balance across ALL entries (oldest→newest), then reverse for newest-first display
+  // Build running balance: prefer server-persisted running_balance; fall back to
+  // client-side accumulation (oldest→newest) when the column is null/absent.
   const sorted = [...entries].sort((a, b) => {
     const d = a.entry_date.localeCompare(b.entry_date);
     return d !== 0 ? d : a.id.localeCompare(b.id);
   });
   let running = 0;
   const withBalance = sorted.map(e => {
+    const serverBalance = e.running_balance != null ? Number(e.running_balance) : null;
     const sign = e.entry_type === 'distribution' ? -1 : 1;
     running += sign * n(e.amount);
-    return { ...e, runningBalance: running };
+    return { ...e, runningBalance: serverBalance ?? running };
   }).reverse(); // newest first
 
   const totalPages = Math.max(1, Math.ceil(withBalance.length / PAGE_SIZE));
