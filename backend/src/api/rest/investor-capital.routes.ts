@@ -551,7 +551,7 @@ router.put('/deals/:dealId/waterfall', requireAuth, async (req: AuthenticatedReq
   try {
     if (!(await ownsDeal(req.params.dealId, req.user!.userId)))
       return res.status(404).json({ success: false, error: 'Deal not found' });
-    const { pref_rate = 0.08, catchup_pct = 1.0, clawback = false, clawback_lookback_months = 24, lp_gp_split_base = 80, notes, tiers = [] } = req.body;
+    const { pref_rate = 0.08, catchup_pct = 1.0, clawback = false, clawback_lookback_months = 24, lp_gp_split_base = 80, notes, tiers } = req.body;
     const wf = await query(
       `INSERT INTO deal_waterfalls (deal_id,pref_rate,catchup_pct,clawback,clawback_lookback_months,lp_gp_split_base,notes)
        VALUES ($1,$2,$3,$4,$5,$6,$7)
@@ -560,12 +560,15 @@ router.put('/deals/:dealId/waterfall', requireAuth, async (req: AuthenticatedReq
        RETURNING *`,
       [req.params.dealId, pref_rate, catchup_pct, clawback, clawback_lookback_months, lp_gp_split_base, notes ?? null],
     );
-    await query('DELETE FROM waterfall_tiers WHERE waterfall_id=$1', [wf.rows[0].id]);
-    for (const t of tiers) {
-      await query(
-        'INSERT INTO waterfall_tiers (waterfall_id,tier_order,irr_hurdle_low,irr_hurdle_high,lp_pct,gp_pct,notes) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-        [wf.rows[0].id, t.tier_order, t.irr_hurdle_low ?? null, t.irr_hurdle_high ?? null, t.lp_pct, t.gp_pct, t.notes ?? null],
-      );
+    // Only replace tiers when explicitly provided; omitting `tiers` preserves existing rows
+    if (Array.isArray(tiers)) {
+      await query('DELETE FROM waterfall_tiers WHERE waterfall_id=$1', [wf.rows[0].id]);
+      for (const t of tiers) {
+        await query(
+          'INSERT INTO waterfall_tiers (waterfall_id,tier_order,irr_hurdle_low,irr_hurdle_high,lp_pct,gp_pct,notes) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+          [wf.rows[0].id, t.tier_order, t.irr_hurdle_low ?? null, t.irr_hurdle_high ?? null, t.lp_pct, t.gp_pct, t.notes ?? null],
+        );
+      }
     }
     const savedTiers = await query('SELECT * FROM waterfall_tiers WHERE waterfall_id=$1 ORDER BY tier_order', [wf.rows[0].id]);
     res.json({ success: true, waterfall: { ...wf.rows[0], tiers: savedTiers.rows } });
