@@ -148,6 +148,7 @@ export function useInvestorCapital(dealId: string) {
   // ─── loaders ──────────────────────────────────────────────────────────────
 
   const loadSummary = useCallback(async () => {
+    setLoad('summary', true);
     try {
       const r = await apiClient.get(`/api/v1/capital/deals/${dealId}/summary`);
       setSummary(r.data?.summary ?? null);

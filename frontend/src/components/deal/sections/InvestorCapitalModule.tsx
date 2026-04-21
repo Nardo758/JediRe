@@ -279,6 +279,7 @@ function CapitalCallsTab({ calls, summary, loading, error, onLoadCallItems, onCr
   }, [expanded, items, onLoadCallItems]);
 
   const [pendingActions, setPendingActions] = useState<Record<string, boolean>>({});
+  const [actionErr, setActionErr] = useState<string | null>(null);
 
   const handleCreate = async () => {
     if (!form.call_date || !form.due_date || !form.total_amount) { setFormErr('Call date, due date, and amount are required.'); return; }
@@ -293,8 +294,10 @@ function CapitalCallsTab({ calls, summary, loading, error, onLoadCallItems, onCr
   };
 
   const handleSend = async (callId: string) => {
+    setActionErr(null);
     setPendingActions(prev => ({ ...prev, [callId]: true }));
-    try { await onSendCall(callId); } catch { /* silent */ }
+    try { await onSendCall(callId); }
+    catch { setActionErr('Failed to send call. Please try again.'); }
     setPendingActions(prev => ({ ...prev, [callId]: false }));
   };
 
@@ -305,6 +308,7 @@ function CapitalCallsTab({ calls, summary, loading, error, onLoadCallItems, onCr
 
   return (
     <div>
+      {actionErr && <div style={S.err}>{actionErr}</div>}
       <div style={S.kpiRow}>
         <KpiCard label="Total Calls"   value={String(calls.length)} sub="All time" color={BT.text.cyan} />
         <KpiCard label="Total Called"  value={fmtAmt(summary?.total_called)} sub="Aggregate notified" />
@@ -439,10 +443,12 @@ function DistributionsTab({ dists, summary, loading, error, onLoadDistItems, onC
   }, [expanded, items, onLoadDistItems]);
 
   const [pendingActions, setPendingActions] = useState<Record<string, boolean>>({});
+  const [actionErr, setActionErr] = useState<string | null>(null);
 
-  const handleAction = async (id: string, fn: (id: string) => Promise<void>) => {
+  const handleAction = async (id: string, fn: (id: string) => Promise<void>, errMsg: string) => {
+    setActionErr(null);
     setPendingActions(prev => ({ ...prev, [id]: true }));
-    try { await fn(id); } catch { /* silent */ }
+    try { await fn(id); } catch { setActionErr(errMsg); }
     setPendingActions(prev => ({ ...prev, [id]: false }));
   };
 
@@ -463,6 +469,7 @@ function DistributionsTab({ dists, summary, loading, error, onLoadDistItems, onC
 
   return (
     <div>
+      {actionErr && <div style={S.err}>{actionErr}</div>}
       <div style={S.kpiRow}>
         <KpiCard label="Distributions"   value={String(dists.length)} color={BT.text.cyan} />
         <KpiCard label="Total Distributed" value={fmtAmt(summary?.total_distributed)} sub="Completed" color={BT.text.green} />
@@ -510,8 +517,8 @@ function DistributionsTab({ dists, summary, loading, error, onLoadDistItems, onC
                   <td style={S.td}>{d.tax_year}</td>
                   <td style={S.td}><span style={S.badge(statusColor(d.status))}>{d.status.toUpperCase()}</span></td>
                   <td style={{ ...S.td, display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
-                    {d.status === 'draft'    && <button style={S.btn(BT.text.amber)} onClick={() => handleAction(d.id, onApprove)} disabled={pendingActions[d.id]}>{pendingActions[d.id] ? 'APPROVING…' : 'APPROVE'}</button>}
-                    {d.status === 'approved' && <button style={S.btn(BT.text.green)} onClick={() => handleAction(d.id, onProcess)} disabled={pendingActions[d.id]}>{pendingActions[d.id] ? 'PROCESSING…' : 'PROCESS'}</button>}
+                    {d.status === 'draft'    && <button style={S.btn(BT.text.amber)} onClick={() => handleAction(d.id, onApprove, 'Failed to approve distribution.')} disabled={pendingActions[d.id]}>{pendingActions[d.id] ? 'APPROVING…' : 'APPROVE'}</button>}
+                    {d.status === 'approved' && <button style={S.btn(BT.text.green)} onClick={() => handleAction(d.id, onProcess, 'Failed to process distribution.')} disabled={pendingActions[d.id]}>{pendingActions[d.id] ? 'PROCESSING…' : 'PROCESS'}</button>}
                     <span style={{ color: BT.text.muted, fontSize: 9, marginLeft: 4 }}>{expanded === d.id ? '▲' : '▼'}</span>
                   </td>
                 </tr>
