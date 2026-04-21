@@ -118,6 +118,27 @@ export async function createDealDraft(
     fitScore: metadata.fit_score,
   });
 
+  // Write intake notification so the inbox surface can surface this deal.
+  // A second notification (type='cashflow.collision_severe') is written by
+  // the CashFlow Inngest step if underwriting detects severe collisions.
+  query(
+    `INSERT INTO deal_notifications (deal_id, user_id, type, message, metadata)
+     VALUES ($1, $2, 'email_intake', $3, $4)
+     ON CONFLICT DO NOTHING`,
+    [
+      row.id,
+      userId,
+      `Broker email deal imported: ${row.name}. Underwriting analysis will run automatically — check back for collision alerts.`,
+      JSON.stringify({
+        gmail_message_id: metadata.gmail_message_id,
+        from_address: metadata.from_address,
+        fit_score: metadata.fit_score,
+      }),
+    ]
+  ).catch(err => {
+    logger.warn('create_deal_draft: deal_notifications insert failed (non-fatal)', { dealId: row.id, err });
+  });
+
   // Fire comp discovery in background (same side-effect as POST /api/v1/deals).
   autoDiscoverComps(row.id).catch(err => {
     logger.warn('create_deal_draft: autoDiscoverComps failed (non-fatal)', { dealId: row.id, err });

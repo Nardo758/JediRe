@@ -13,7 +13,9 @@
  *     Step 2: resolve deal context + check document availability
  *     Step 3: compose deal-type prompt (core + variant) + execute CashflowRuntime
  *     Step 4: write audit_log entry
- *     Step 5: emit cashflow.completed event
+ *     Step 5: emit cashflow.collision_severe alert + deal_notification (when severe collisions > 0)
+ *     Step 6: emit cashflow.completed event
+ *     Step 7: auto-trigger walkthrough for Principal+ tiers
  *
  * cashflowOnWalkthroughRequested: triggers on `cashflow.walkthrough_requested`
  *   Invokes the Commentary Agent to generate the walkthrough narrative and
@@ -188,6 +190,7 @@ export const cashflowOnResearchCompleted = inngest.createFunction(
             : Object.keys(cached.proforma_fields ?? {}),
           has_t12_data: cached.has_t12_data ?? false,
           has_rent_roll: cached.has_rent_roll ?? false,
+          collision_summary: cached.collision_summary ?? { minor_count: 0, material_count: 0, severe_count: 0 },
         };
       }
 
@@ -259,6 +262,7 @@ export const cashflowOnResearchCompleted = inngest.createFunction(
         fields_written: derivedFieldsWritten,
         has_t12_data: typed.has_t12_data ?? dealCtx.hasT12Data,
         has_rent_roll: typed.has_rent_roll ?? dealCtx.hasRentRoll,
+        collision_summary: typed.collision_summary ?? { minor_count: 0, material_count: 0, severe_count: 0 },
       };
     });
 
@@ -296,7 +300,67 @@ export const cashflowOnResearchCompleted = inngest.createFunction(
       return { logged: true };
     });
 
-    // ── Step 6: Emit downstream event ──────────────────────────────
+    // ── Step 6: Emit collision alert when severe collisions detected ─
+    await step.run('emit-collision-alert', async () => {
+      const severeCount = runResult.collision_summary?.severe_count ?? 0;
+      if (!runResult.runId || severeCount === 0) {
+        return { skipped: true };
+      }
+      const materialCount = runResult.collision_summary?.material_count ?? 0;
+      const alertTitle = `Underwriting Review Required — ${severeCount} Severe Collision${severeCount !== 1 ? 's' : ''} Detected`;
+      const alertMessage = `CashFlow Agent flagged ${severeCount} severe and ${materialCount} material data collisions that require manual review before this deal can be underwritten with confidence.`;
+      try {
+        // Write to deal_alerts (JEDI alerts feed) with cashflow.collision_severe type
+        await query(
+          `INSERT INTO deal_alerts
+             (deal_id, user_id, alert_type, severity, title, message, source_type, source_ref, metadata, is_read, is_dismissed)
+           SELECT $1, d.user_id, 'cashflow.collision_severe', 'red', $2, $3, 'agent', 'cashflow', $4, FALSE, FALSE
+           FROM deals d
+           WHERE d.id = $1
+             AND NOT EXISTS (
+               SELECT 1 FROM deal_alerts
+               WHERE deal_id = $1
+                 AND alert_type = 'cashflow.collision_severe'
+                 AND metadata->>'agent_run_id' = $5
+             )`,
+          [
+            dealId,
+            alertTitle,
+            alertMessage,
+            JSON.stringify({
+              agent_run_id: runResult.runId,
+              severe_count: severeCount,
+              material_count: materialCount,
+              minor_count: runResult.collision_summary?.minor_count ?? 0,
+            }),
+            runResult.runId,
+          ]
+        );
+        // Write to deal_notifications so the inbox surface sees it
+        await query(
+          `INSERT INTO deal_notifications
+             (deal_id, user_id, type, message, metadata)
+           SELECT $1, d.user_id, 'cashflow.collision_severe', $2, $3
+           FROM deals d
+           WHERE d.id = $1`,
+          [
+            dealId,
+            alertMessage,
+            JSON.stringify({
+              agent_run_id: runResult.runId,
+              severe_count: severeCount,
+              material_count: materialCount,
+            }),
+          ]
+        );
+        logger.info('cashflow.inngest: collision alert emitted', { dealId, severeCount, materialCount });
+      } catch (err) {
+        logger.warn('cashflow.inngest: failed to write collision alert', { err, dealId });
+      }
+      return { alerted: true, severe_count: severeCount };
+    });
+
+    // ── Step 7: Emit downstream event ──────────────────────────────
     if (runResult.runId) {
       await step.sendEvent('emit-cashflow-completed', {
         name: 'cashflow.completed' as const,

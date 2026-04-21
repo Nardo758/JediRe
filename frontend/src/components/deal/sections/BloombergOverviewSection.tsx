@@ -124,6 +124,13 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
   const [activity, setActivity] = useState<any[]>([]);
   const [scoreLoading, setScoreLoading] = useState(true);
+  const [uwEvidenceSummary, setUwEvidenceSummary] = useState<{
+    severe_count: number;
+    material_count: number;
+    minor_count: number;
+    field_count: number;
+    latest_run_at: string | null;
+  } | null>(null);
 
   // Load JEDI Score
   const loadJediScore = useCallback(async () => {
@@ -225,6 +232,25 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
     } catch { /* silent */ }
   }, [deal?.id]);
 
+  // Load underwriting evidence summary for collision banner
+  const loadUwEvidenceSummary = useCallback(async () => {
+    if (!deal?.id) return;
+    try {
+      const res = await apiClient.get(`/api/v1/deals/${deal.id}/underwriting/evidence-summary`);
+      const d = res.data?.data ?? res.data ?? null;
+      if (d) {
+        const cs = (d.collision_summary as Record<string, unknown>) ?? {};
+        setUwEvidenceSummary({
+          severe_count: Number(cs.severe_count ?? 0),
+          material_count: Number(cs.material_count ?? 0),
+          minor_count: Number(cs.minor_count ?? 0),
+          field_count: Number(d.field_count ?? 0),
+          latest_run_at: (d.latest_run_at as string | null) ?? null,
+        });
+      }
+    } catch { /* non-blocking — banner is optional */ }
+  }, [deal?.id]);
+
   useEffect(() => {
     if (!deal?.id) return;
     let stopPolling: (() => void) | undefined;
@@ -232,6 +258,7 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
     loadCapitalStack();
     loadTeam();
     loadActivity();
+    loadUwEvidenceSummary();
     (async () => { stopPolling = await loadStrategy(); })();
     return () => { stopPolling?.(); };
   }, [deal?.id]);
@@ -443,6 +470,27 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
 
       <IdentityGateBanner />
       <AlertCounter />
+
+      {/* ── Underwriting collision review banner ── */}
+      {uwEvidenceSummary && uwEvidenceSummary.severe_count > 0 && (
+        <AlertBanner
+          label="REVIEW REQUIRED"
+          text={`CashFlow Agent detected ${uwEvidenceSummary.severe_count} severe collision${uwEvidenceSummary.severe_count !== 1 ? 's' : ''}${uwEvidenceSummary.material_count > 0 ? ` and ${uwEvidenceSummary.material_count} material collision${uwEvidenceSummary.material_count !== 1 ? 's' : ''}` : ''} in the latest underwriting run. Open the ProForma tab and click the SEV counter to filter and review flagged fields.`}
+          color={BTV.text.red}
+          badge={
+            <span style={{
+              fontFamily: bMono, fontSize: 9, fontWeight: 700,
+              color: BTV.text.red,
+              background: `${BTV.text.red}15`,
+              border: `1px solid ${BTV.text.red}44`,
+              padding: '1px 6px', borderRadius: 2,
+              whiteSpace: 'nowrap' as const,
+            }}>
+              {uwEvidenceSummary.severe_count} SEV
+            </span>
+          }
+        />
+      )}
 
       {/* ── Row 1: JEDI Score | 5 Signals | Deal Details ── */}
       <div style={{ display: 'grid', gridTemplateColumns: '170px 1fr 228px', gap: 1, background: BTV.border.subtle, flexShrink: 0 }}>

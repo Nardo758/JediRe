@@ -526,6 +526,8 @@ export interface FinancialEngineTabProps {
    * Used to render collision indicators and tier badges on ProForma rows.
    */
   evidenceFieldMap?: Record<string, EvidenceFieldMeta>;
+  /** Field paths that have collision data — used by collision filter to narrow grid to flagged rows */
+  collisionFields?: string[] | null;
 }
 
 // ─── F9 Debt Stack (v2) ───────────────────────────────────────────────────────

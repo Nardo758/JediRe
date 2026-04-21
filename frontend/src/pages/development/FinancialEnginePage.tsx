@@ -79,7 +79,7 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
   // Evidence system — field click panel + summary bar
   const [evidenceField, setEvidenceField] = useState<{ path: string; label: string } | null>(null);
   const [evidenceSummary, setEvidenceSummary] = useState<{
-    collision_summary?: { minor_count: number; material_count: number; severe_count: number };
+    collision_summary?: { severe_count: number; material_count: number; minor_count: number; fields_with_collision?: string[] };
     confidence_distribution?: { high: number; medium: number; low: number };
     tier_distribution?: { tier1: number; tier2: number; tier3: number; tier4: number };
     archive_percentile?: number | null;
@@ -355,6 +355,7 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
     onHoldChange: handleHoldChange,
     evidenceFilter,
     evidenceFieldMap: evidenceSummary?.field_metadata ?? undefined,
+    collisionFields: evidenceSummary?.collision_summary?.fields_with_collision ?? null,
   }), [resolvedDealId, propDeal, resolvedDealType, assumptions, modelResults, handleAssumptionsChange, handleBuildModel, building, versions, activeVersion, f9Financials, fetchF9Financials, handleHoldChange, evidenceFilter, evidenceSummary]);
 
   return (

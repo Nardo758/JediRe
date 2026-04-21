@@ -253,10 +253,17 @@ const TIER_TOOLTIP: Record<number, string> = {
   4: 'Tier 4 · Broker OM (unverified)',
 };
 
+/** Filter proforma rows by the active evidence summary-bar pill selection.
+ *  - confidence: matched against row.confidence (0–1) using high/medium/low buckets.
+ *  - tier: F9SummaryBar emits values '1'|'2'|'3'|'4'; mapped via sourceToTier().
+ *  - collision: rows filtered to fields with collisions. Uses evidenceFieldMap (has_collision flag)
+ *               when available; falls back to collisionFields path list otherwise.
+ */
 function applyEvidenceFilter(
   rows: OperatingStatementRow[],
   filter: { type: 'collision' | 'confidence' | 'tier'; value: string },
-  evidenceFieldMap?: Record<string, EvidenceFieldMeta>
+  evidenceFieldMap?: Record<string, EvidenceFieldMeta>,
+  collisionFields?: string[] | null
 ): OperatingStatementRow[] {
   if (filter.type === 'confidence') {
     return rows.filter(r => {
@@ -280,16 +287,23 @@ function applyEvidenceFilter(
     });
   }
   if (filter.type === 'collision') {
-    if (!evidenceFieldMap) return rows;
-    return rows.filter(r => {
-      const resolved = resolveEvidence(r.field, evidenceFieldMap);
-      return resolved?.meta.has_collision === true;
-    });
+    // Prefer evidenceFieldMap (has per-field has_collision flag); fall back to collisionFields path list.
+    if (evidenceFieldMap) {
+      return rows.filter(r => {
+        const resolved = resolveEvidence(r.field, evidenceFieldMap);
+        return resolved?.meta.has_collision === true;
+      });
+    }
+    if (collisionFields && collisionFields.length > 0) {
+      const fieldSet = new Set(collisionFields);
+      return rows.filter(r => fieldSet.has(r.field));
+    }
+    return rows;
   }
   return rows;
 }
 
-export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange, evidenceFilter, evidenceFieldMap }: FinancialEngineTabProps) {
+export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange, evidenceFilter, evidenceFieldMap, collisionFields }: FinancialEngineTabProps) {
   const [data, setData] = useState<DealFinancials | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -428,7 +442,7 @@ export function ProFormaSummaryTab({ dealId, deal, onIntegrityChange, evidenceFi
   const totalUnits = data.totalUnits;
 
   // Apply evidence summary-bar filter when a pill is active
-  const displayRows = evidenceFilter ? applyEvidenceFilter(rows, evidenceFilter, evidenceFieldMap) : rows;
+  const displayRows = evidenceFilter ? applyEvidenceFilter(rows, evidenceFilter, evidenceFieldMap, collisionFields) : rows;
 
   const byField: Record<string, OperatingStatementRow> = {};
   rows.forEach(r => { byField[r.field] = r; });
