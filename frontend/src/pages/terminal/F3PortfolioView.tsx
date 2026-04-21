@@ -398,21 +398,24 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
         <div style={{ fontSize: 11, fontWeight: 700, color: T.text.cyan, letterSpacing: 1, marginBottom: 16, fontFamily: MONO }}>
           NOI PERFORMANCE
         </div>
-        <div style={{ height: 200, display: 'flex', alignItems: 'flex-end', gap: 8, padding: '0 8px' }}>
-          {performance.slice(-12).map((p, i) => (
-            <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <div 
-                style={{ 
-                  width: '100%', 
-                  background: T.text.green, 
-                  height: `${(p.noi / (metrics?.portfolioNoi || 1)) * 150}px`,
-                  minHeight: 4,
-                  borderRadius: '2px 2px 0 0',
-                }} 
-              />
-              <div style={{ fontSize: 8, color: T.text.muted, marginTop: 4, fontFamily: MONO }}>{p.period}</div>
-            </div>
-          ))}
+        <div style={{ height: 200, overflow: 'hidden', display: 'flex', alignItems: 'flex-end', gap: 8, padding: '0 8px' }}>
+          {(() => {
+            const slice = performance.slice(-12);
+            const maxNoi = Math.max(...slice.map(x => x.noi ?? 0), 1);
+            return slice.map((p, i) => (
+              <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                <div 
+                  style={{ 
+                    width: '100%', 
+                    background: T.text.green, 
+                    height: `${Math.max(((p.noi ?? 0) / maxNoi) * 170, 4)}px`,
+                    borderRadius: '2px 2px 0 0',
+                  }} 
+                />
+                <div style={{ fontSize: 8, color: T.text.muted, marginTop: 4, fontFamily: MONO }}>{p.period}</div>
+              </div>
+            ));
+          })()}
         </div>
       </div>
       
@@ -421,15 +424,14 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
         <div style={{ fontSize: 11, fontWeight: 700, color: T.text.cyan, letterSpacing: 1, marginBottom: 16, fontFamily: MONO }}>
           OCCUPANCY TREND
         </div>
-        <div style={{ height: 200, display: 'flex', alignItems: 'flex-end', gap: 8, padding: '0 8px' }}>
+        <div style={{ height: 200, overflow: 'hidden', display: 'flex', alignItems: 'flex-end', gap: 8, padding: '0 8px' }}>
           {performance.slice(-12).map((p, i) => (
             <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
               <div 
                 style={{ 
                   width: '100%', 
-                  background: p.occupancy > 93 ? T.text.green : p.occupancy > 90 ? T.text.amber : T.text.red, 
-                  height: `${p.occupancy * 1.5}px`,
-                  minHeight: 4,
+                  background: (p.occupancy ?? 0) > 93 ? T.text.green : (p.occupancy ?? 0) > 90 ? T.text.amber : T.text.red, 
+                  height: `${Math.max(Math.min((p.occupancy ?? 0) * 1.8, 170), 4)}px`,
                   borderRadius: '2px 2px 0 0',
                 }} 
               />
