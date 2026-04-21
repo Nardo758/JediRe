@@ -614,15 +614,23 @@ router.post('/:dealId/monthly-actuals', requireAuth, async (req: AuthenticatedRe
     try {
       await client.query('BEGIN');
 
+      const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])(-\d{2})?$/;
+
       for (let i = 0; i < actuals.length; i++) {
         const a = actuals[i];
+
+        // Lightweight format validation before touching the DB
         if (!a.report_month) {
           errors.push({ row: i + 1, error: 'report_month is required' });
           continue;
         }
+        if (!MONTH_RE.test(a.report_month)) {
+          errors.push({ row: i + 1, error: 'report_month must be YYYY-MM or YYYY-MM-DD' });
+          continue;
+        }
 
         // Normalise to first-of-month
-        const reportMonth = (a.report_month as string).slice(0, 7) + '-01';
+        const reportMonth = a.report_month.slice(0, 7) + '-01';
         const isBudget = !!(a.is_budget);
 
         const totalUnits = a.total_units ?? dealUnits;
@@ -634,6 +642,9 @@ router.post('/:dealId/monthly-actuals', requireAuth, async (req: AuthenticatedRe
         const noiVal = a.noi ?? null;
         const expenses = a.expenses ?? (egi != null && noiVal != null ? egi - noiVal : null);
 
+        // Per-row savepoint: allows partial-batch success when individual rows fail
+        const sp = `sp_m22_row_${i}`;
+        await client.query(`SAVEPOINT ${sp}`);
         try {
           if (propertyId) {
             await client.query(
@@ -754,7 +765,10 @@ router.post('/:dealId/monthly-actuals', requireAuth, async (req: AuthenticatedRe
             );
             if ((fallbackResult.rowCount ?? 0) > 0) imported++;
           }
+          await client.query(`RELEASE SAVEPOINT ${sp}`);
         } catch (rowErr: unknown) {
+          await client.query(`ROLLBACK TO SAVEPOINT ${sp}`);
+          await client.query(`RELEASE SAVEPOINT ${sp}`);
           const rowMsg = rowErr instanceof Error ? rowErr.message : String(rowErr);
           errors.push({ row: i + 1, error: rowMsg });
         }
