@@ -14,6 +14,10 @@ import {
   getArchiveComps,
   type ArchiveCompQuery 
 } from '../../services/archive-ingestion.service';
+import { 
+  refreshArchiveBenchmarks, 
+  getArchiveBenchmarkStats 
+} from '../../services/archive-benchmark-aggregator';
 import { getPool } from '../../database/connection';
 import { logger } from '../../utils/logger';
 
@@ -312,6 +316,95 @@ router.get('/stats', requireAuth, async (req: AuthenticatedRequest, res: Respons
     res.status(500).json({ 
       success: false, 
       error: err instanceof Error ? err.message : 'Stats query failed' 
+    });
+  }
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// Archive Benchmark Endpoints (for CashFlow Agent calibration)
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * POST /api/v1/archive/benchmarks/refresh
+ * Recompute P10-P90 distributions from all archive + live deal data
+ * Writes to archive_assumption_benchmarks table
+ */
+router.post('/benchmarks/refresh', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    logger.info('[archive.routes] Starting benchmark refresh...');
+    const result = await refreshArchiveBenchmarks();
+    
+    res.json({ 
+      success: true, 
+      ...result,
+      message: `Refreshed ${result.rowsWritten} benchmark rows across ${result.bucketsWritten} buckets`,
+    });
+  } catch (err) {
+    logger.error('Benchmark refresh error:', err);
+    res.status(500).json({ 
+      success: false, 
+      error: err instanceof Error ? err.message : 'Refresh failed' 
+    });
+  }
+});
+
+/**
+ * GET /api/v1/archive/benchmarks/stats
+ * Get summary stats for the benchmark table
+ */
+router.get('/benchmarks/stats', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const stats = await getArchiveBenchmarkStats();
+    res.json({ success: true, ...stats });
+  } catch (err) {
+    logger.error('Benchmark stats error:', err);
+    res.status(500).json({ 
+      success: false, 
+      error: err instanceof Error ? err.message : 'Stats query failed' 
+    });
+  }
+});
+
+/**
+ * GET /api/v1/archive/benchmarks/distribution
+ * Query benchmark distribution for a specific assumption
+ */
+router.get('/benchmarks/distribution', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { asset_class, deal_type, assumption_name, vintage_band } = req.query;
+    
+    if (!assumption_name) {
+      return res.status(400).json({ success: false, error: 'assumption_name is required' });
+    }
+    
+    const pool = getPool();
+    const result = await pool.query(
+      `SELECT p10, p25, p50, p75, p90, assumed_median, achieved_median, gap_bps, n_samples, n_closed_deals, as_of
+       FROM archive_assumption_benchmarks
+       WHERE ($1::text IS NULL OR asset_class = $1)
+         AND ($2::text IS NULL OR deal_type = $2)
+         AND assumption_name = $3
+         AND ($4::text IS NULL OR vintage_band = $4)
+         AND n_samples >= 5
+       ORDER BY n_samples DESC, as_of DESC
+       LIMIT 1`,
+      [asset_class || null, deal_type || null, assumption_name, vintage_band || null]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.json({ 
+        success: true, 
+        found: false, 
+        message: 'No benchmark data for this query (need >= 5 samples)' 
+      });
+    }
+    
+    res.json({ success: true, found: true, benchmark: result.rows[0] });
+  } catch (err) {
+    logger.error('Benchmark distribution error:', err);
+    res.status(500).json({ 
+      success: false, 
+      error: err instanceof Error ? err.message : 'Query failed' 
     });
   }
 });
