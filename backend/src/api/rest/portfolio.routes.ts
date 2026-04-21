@@ -281,4 +281,156 @@ router.get('/allocation', requireAuth, async (req: AuthenticatedRequest, res: Re
   }
 });
 
+/**
+ * GET /api/v1/portfolio/:dealId/summary
+ * Get deal-level summary for the PortfolioPropertyPage
+ */
+router.get('/:dealId/summary', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const userId = req.user!.userId;
+
+    const dealResult = await query(
+      `SELECT id, name, address, state, project_type, budget, target_units,
+              status, deal_category, deal_data, created_at
+       FROM deals
+       WHERE id = $1 AND user_id = $2 AND archived_at IS NULL
+       LIMIT 1`,
+      [dealId, userId]
+    );
+
+    if (dealResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Deal not found' });
+    }
+
+    const row = dealResult.rows[0] as Record<string, unknown>;
+    const dealData = (typeof row.deal_data === 'string'
+      ? JSON.parse(row.deal_data as string)
+      : (row.deal_data as Record<string, unknown>)) || {};
+
+    const deal = {
+      id:          row.id as string,
+      name:        row.name as string,
+      address:     (row.address as string | null) || (dealData.address as string | null) || '',
+      units:       Number(dealData.unit_count ?? row.target_units ?? 0),
+      projectType: (row.project_type as string | null) || '',
+      status:      (row.status as string | null) || '',
+      state:       (row.state as string | null) || '',
+      category:    (row.deal_category as string | null) || '',
+      budget:      Number(row.budget ?? 0),
+      vintage:     (dealData.vintage as string | null) || null,
+      class:       (dealData.class as string | null) || '',
+      operator:    (dealData.operator as string | null) || null,
+      county:      (dealData.county as string | null) || null,
+      createdAt:   row.created_at as string,
+    };
+
+    // Latest actuals row
+    const latestRes = await query(
+      `SELECT *
+       FROM deal_monthly_actuals
+       WHERE deal_id = $1 AND is_budget = false AND is_proforma = false
+       ORDER BY report_month DESC LIMIT 1`,
+      [dealId]
+    ).catch(() => ({ rows: [] as Record<string, unknown>[] }));
+
+    const latestFinancials = latestRes.rows[0] || null;
+
+    // Lease stats (avg loss-to-lease, avg rent)
+    const leaseRes = await query(
+      `SELECT
+         AVG(CASE WHEN avg_market_rent > 0
+           THEN (avg_market_rent - avg_effective_rent) / avg_market_rent * 100
+           ELSE NULL END) AS avg_loss_to_lease_pct,
+         AVG(avg_effective_rent) AS avg_rent
+       FROM deal_monthly_actuals
+       WHERE deal_id = $1 AND is_budget = false AND is_proforma = false
+         AND avg_effective_rent IS NOT NULL`,
+      [dealId]
+    ).catch(() => ({ rows: [] as Record<string, unknown>[] }));
+
+    const leaseStats = leaseRes.rows[0]?.avg_rent != null ? leaseRes.rows[0] : null;
+
+    // Traffic stats: count of available traffic periods
+    const trafficRes = await query(
+      `SELECT COUNT(*) AS total_weeks
+       FROM traffic_funnel
+       WHERE deal_id = $1`,
+      [dealId]
+    ).catch(() => ({ rows: [{ total_weeks: 0 }] as Record<string, unknown>[] }));
+
+    const trafficStats = trafficRes.rows[0] || null;
+
+    res.json({
+      deal,
+      latestFinancials,
+      unitProgram: null,
+      leaseStats,
+      trafficStats,
+    });
+  } catch (err) {
+    logger.error('Portfolio property summary error:', err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to get property summary' });
+  }
+});
+
+/**
+ * GET /api/v1/portfolio/:dealId/financials
+ * Get monthly financial history for a deal property
+ */
+router.get('/:dealId/financials', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const userId = req.user!.userId;
+
+    // Verify deal ownership
+    const ownerCheck = await query(
+      `SELECT id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL LIMIT 1`,
+      [dealId, userId]
+    );
+    if (ownerCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Deal not found' });
+    }
+
+    const result = await query(
+      `SELECT
+         report_month,
+         to_char(report_month, 'Mon YYYY') AS period_label,
+         occupancy_rate,
+         avg_effective_rent,
+         avg_market_rent,
+         gross_potential_rent,
+         net_rental_income,
+         effective_gross_income,
+         total_opex,
+         noi,
+         noi_per_unit,
+         capex,
+         cash_flow_before_tax,
+         debt_service,
+         new_leases,
+         renewals,
+         payroll,
+         repairs_maintenance,
+         turnover_costs,
+         marketing,
+         admin_general,
+         management_fee,
+         utilities,
+         property_tax,
+         insurance
+       FROM deal_monthly_actuals
+       WHERE deal_id = $1 AND is_budget = false AND is_proforma = false
+       ORDER BY report_month ASC`,
+      [dealId]
+    );
+
+    res.json({ data: result.rows });
+  } catch (err) {
+    logger.error('Portfolio property financials error:', err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to get property financials' });
+  }
+});
+
 export default router;
+
