@@ -509,4 +509,221 @@ router.post('/:dealId/feed-learning', requireAuth, async (req: AuthenticatedRequ
   }
 });
 
+// ─── M22: Post-Close Actuals Write Path ──────────────────────────────────────
+
+/**
+ * GET /api/v1/operations/:dealId/monthly-actuals
+ * List recorded monthly actuals for a deal (M22 Tier-2 evidence write path).
+ */
+router.get('/:dealId/monthly-actuals', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const { limit = '36', is_budget = 'false' } = req.query as Record<string, string>;
+
+    const result = await query(
+      `SELECT
+         id, deal_id, property_id, report_month, is_budget,
+         occupied_units, total_units, occupancy_rate,
+         gross_potential_rent, avg_effective_rent, effective_gross_income,
+         noi, expenses,
+         payroll, repairs_maintenance, utilities, marketing,
+         admin_general, management_fee, management_fee_pct, turnover_costs,
+         real_estate_taxes, insurance, capex,
+         data_source AS source, notes, created_at, updated_at
+       FROM deal_monthly_actuals
+       WHERE deal_id = $1 AND is_budget = $2
+       ORDER BY report_month DESC
+       LIMIT $3`,
+      [dealId, is_budget === 'true', parseInt(limit, 10)]
+    );
+
+    res.json({ data: result.rows, total: result.rows.length });
+  } catch (err) {
+    logger.error('Monthly actuals GET error:', err);
+    res.status(500).json({ error: 'Failed to fetch monthly actuals' });
+  }
+});
+
+/**
+ * POST /api/v1/operations/:dealId/monthly-actuals
+ * Upsert one or more monthly actuals for a deal (M22 Tier-2 evidence write path).
+ *
+ * Body: { actuals: MonthlyActualRow[] }
+ * Each row must include report_month (YYYY-MM-DD or YYYY-MM).
+ * property_id is resolved automatically from deal_properties.
+ */
+router.post('/:dealId/monthly-actuals', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const { actuals } = req.body;
+
+    if (!Array.isArray(actuals) || actuals.length === 0) {
+      return res.status(400).json({ error: 'actuals array required' });
+    }
+
+    // Resolve property_id from deal_properties (first linked property)
+    const propRes = await query(
+      `SELECT property_id FROM deal_properties WHERE deal_id = $1 ORDER BY created_at LIMIT 1`,
+      [dealId]
+    );
+    const propertyId: string | null = propRes.rows[0]?.property_id ?? null;
+
+    // Fallback unit count from deal_data for occupancy_rate computation
+    const dealRes = await query(`SELECT deal_data FROM deals WHERE id = $1`, [dealId]);
+    const dealData = dealRes.rows[0]?.deal_data ?? {};
+    const dealUnits = parseInt(String(dealData.unit_count ?? dealData.units ?? 0), 10) || null;
+
+    if (!propertyId) {
+      // Insert without conflict key — unique constraint requires property_id;
+      // fall back to a no-conflict insert keyed on deal_id + report_month only.
+      // This handles deals that have no linked property record yet.
+      logger.warn('monthly-actuals: no property linked to deal', { dealId });
+    }
+
+    const client = await getClient();
+    let imported = 0;
+    const errors: { row: number; error: string }[] = [];
+
+    try {
+      await client.query('BEGIN');
+
+      for (let i = 0; i < actuals.length; i++) {
+        const a = actuals[i];
+        if (!a.report_month) {
+          errors.push({ row: i + 1, error: 'report_month is required' });
+          continue;
+        }
+
+        // Normalise to first-of-month
+        const reportMonth = (a.report_month as string).slice(0, 7) + '-01';
+        const isBudget = !!(a.is_budget);
+
+        const totalUnits = a.total_units ?? dealUnits;
+        const occupiedUnits = a.occupied_units ?? null;
+        const occupancyRate = a.occupancy_rate ??
+          (occupiedUnits != null && totalUnits ? occupiedUnits / totalUnits : null);
+
+        const egi = a.effective_gross_income ?? null;
+        const noiVal = a.noi ?? null;
+        const expenses = a.expenses ?? (egi != null && noiVal != null ? egi - noiVal : null);
+
+        try {
+          if (propertyId) {
+            await client.query(
+              `INSERT INTO deal_monthly_actuals (
+                 deal_id, property_id, report_month, is_budget, is_proforma,
+                 occupied_units, total_units, occupancy_rate,
+                 gross_potential_rent, avg_effective_rent, effective_gross_income,
+                 noi, expenses,
+                 payroll, repairs_maintenance, utilities, marketing,
+                 admin_general, management_fee, management_fee_pct, turnover_costs,
+                 real_estate_taxes, insurance, capex,
+                 data_source, notes
+               ) VALUES (
+                 $1, $2, $3, $4, false,
+                 $5, $6, $7,
+                 $8, $9, $10,
+                 $11, $12,
+                 $13, $14, $15, $16,
+                 $17, $18, $19, $20,
+                 $21, $22, $23,
+                 'manual', $24
+               )
+               ON CONFLICT (property_id, report_month, is_budget, is_proforma)
+               DO UPDATE SET
+                 deal_id                = EXCLUDED.deal_id,
+                 occupied_units         = COALESCE(EXCLUDED.occupied_units, deal_monthly_actuals.occupied_units),
+                 total_units            = COALESCE(EXCLUDED.total_units, deal_monthly_actuals.total_units),
+                 occupancy_rate         = COALESCE(EXCLUDED.occupancy_rate, deal_monthly_actuals.occupancy_rate),
+                 gross_potential_rent   = COALESCE(EXCLUDED.gross_potential_rent, deal_monthly_actuals.gross_potential_rent),
+                 avg_effective_rent     = COALESCE(EXCLUDED.avg_effective_rent, deal_monthly_actuals.avg_effective_rent),
+                 effective_gross_income = COALESCE(EXCLUDED.effective_gross_income, deal_monthly_actuals.effective_gross_income),
+                 noi                    = COALESCE(EXCLUDED.noi, deal_monthly_actuals.noi),
+                 expenses               = COALESCE(EXCLUDED.expenses, deal_monthly_actuals.expenses),
+                 payroll                = COALESCE(EXCLUDED.payroll, deal_monthly_actuals.payroll),
+                 repairs_maintenance    = COALESCE(EXCLUDED.repairs_maintenance, deal_monthly_actuals.repairs_maintenance),
+                 utilities              = COALESCE(EXCLUDED.utilities, deal_monthly_actuals.utilities),
+                 marketing              = COALESCE(EXCLUDED.marketing, deal_monthly_actuals.marketing),
+                 admin_general          = COALESCE(EXCLUDED.admin_general, deal_monthly_actuals.admin_general),
+                 management_fee         = COALESCE(EXCLUDED.management_fee, deal_monthly_actuals.management_fee),
+                 management_fee_pct     = COALESCE(EXCLUDED.management_fee_pct, deal_monthly_actuals.management_fee_pct),
+                 turnover_costs         = COALESCE(EXCLUDED.turnover_costs, deal_monthly_actuals.turnover_costs),
+                 real_estate_taxes      = COALESCE(EXCLUDED.real_estate_taxes, deal_monthly_actuals.real_estate_taxes),
+                 insurance              = COALESCE(EXCLUDED.insurance, deal_monthly_actuals.insurance),
+                 capex                  = COALESCE(EXCLUDED.capex, deal_monthly_actuals.capex),
+                 notes                  = COALESCE(EXCLUDED.notes, deal_monthly_actuals.notes),
+                 data_source            = 'manual',
+                 updated_at             = NOW()`,
+              [
+                dealId, propertyId, reportMonth, isBudget,
+                occupiedUnits, totalUnits, occupancyRate,
+                a.gross_potential_rent ?? null, a.avg_effective_rent ?? null, egi,
+                noiVal, expenses,
+                a.payroll ?? null, a.repairs_maintenance ?? null, a.utilities ?? null, a.marketing ?? null,
+                a.admin_general ?? null, a.management_fee ?? null, a.management_fee_pct ?? null, a.turnover_costs ?? null,
+                a.real_estate_taxes ?? null, a.insurance ?? null, a.capex ?? null,
+                a.notes ?? null,
+              ]
+            );
+          } else {
+            // No property linked: insert with deal_id only (no unique-conflict resolution)
+            await client.query(
+              `INSERT INTO deal_monthly_actuals (
+                 deal_id, report_month, is_budget, is_proforma,
+                 occupied_units, total_units, occupancy_rate,
+                 gross_potential_rent, avg_effective_rent, effective_gross_income,
+                 noi, expenses,
+                 payroll, repairs_maintenance, utilities, marketing,
+                 admin_general, management_fee, management_fee_pct, turnover_costs,
+                 real_estate_taxes, insurance, capex,
+                 data_source, notes
+               ) VALUES (
+                 $1, $2, $3, false,
+                 $4, $5, $6,
+                 $7, $8, $9,
+                 $10, $11,
+                 $12, $13, $14, $15,
+                 $16, $17, $18, $19,
+                 $20, $21, $22,
+                 'manual', $23
+               )
+               ON CONFLICT DO NOTHING`,
+              [
+                dealId, reportMonth, isBudget,
+                occupiedUnits, totalUnits, occupancyRate,
+                a.gross_potential_rent ?? null, a.avg_effective_rent ?? null, egi,
+                noiVal, expenses,
+                a.payroll ?? null, a.repairs_maintenance ?? null, a.utilities ?? null, a.marketing ?? null,
+                a.admin_general ?? null, a.management_fee ?? null, a.management_fee_pct ?? null, a.turnover_costs ?? null,
+                a.real_estate_taxes ?? null, a.insurance ?? null, a.capex ?? null,
+                a.notes ?? null,
+              ]
+            );
+          }
+          imported++;
+        } catch (rowErr: any) {
+          errors.push({ row: i + 1, error: rowErr.message });
+        }
+      }
+
+      await client.query('COMMIT');
+    } catch (txErr) {
+      await client.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      client.release();
+    }
+
+    res.json({
+      success: true,
+      imported,
+      errors,
+      message: `Imported ${imported} month(s) of actuals for deal ${dealId}`,
+    });
+  } catch (err) {
+    logger.error('Monthly actuals POST error:', err);
+    res.status(500).json({ error: 'Failed to import monthly actuals' });
+  }
+});
+
 export default router;
