@@ -487,6 +487,10 @@ app.use('/api/v1/learning', learningRouter);
 import portfolioRouter from './api/rest/portfolio.routes';
 app.use('/api/v1/portfolio', portfolioRouter);
 
+// Operations intelligence routes (revenue management)
+import operationsRouter from './api/rest/operations.routes';
+app.use('/api/v1/operations', operationsRouter);
+
 app.use('/api/v1/unit-mix', requireAuth, createUnitMixRoutes(pool));
 
 app.get('/api/v1/apartment-sync/trends', requireAuth, async (req: any, res) => {
