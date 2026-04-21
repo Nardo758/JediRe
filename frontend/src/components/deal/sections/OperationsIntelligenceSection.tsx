@@ -10,54 +10,42 @@ import {
   Activity, AlertTriangle, BarChart3, CheckCircle2, ChevronRight,
   Clock, Loader2, TrendingUp, Users,
 } from 'lucide-react';
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  Legend, ResponsiveContainer,
+} from 'recharts';
 import { apiClient } from '../../../services/api.client';
 import { BT, MONO } from '../bloomberg-ui';
 
-// ─── API response types (mirrors backend revenue-management.service.ts) ────────
-
-interface VarianceItem {
-  lineItem: string;
-  category: string;
-  projected: number;
-  actual: number;
-  varianceAmount: number;
-  variancePct: number;
-  varianceType: 'favorable' | 'unfavorable' | 'neutral';
-  severity: 'minor' | 'moderate' | 'major';
-  trend: 'improving' | 'stable' | 'worsening';
-  consecutiveMonths: number;
-  noiImpact: number;
-}
+// ─── DB row types (column names exactly as returned by Postgres) ──────────────
 
 interface DbVarianceRow {
   line_item: string;
   category: string;
-  projected_amount: number;
-  actual_amount: number;
-  variance_amount: number;
-  variance_pct: number;
+  projected_value: string | number;
+  actual_value: string | number;
+  variance_amount: string | number;
+  variance_pct: string | number;
   variance_type: 'favorable' | 'unfavorable' | 'neutral';
   severity: 'minor' | 'moderate' | 'major';
-  trend: 'improving' | 'stable' | 'worsening';
-  consecutive_months: number;
-  noi_impact: number;
+  noi_impact: string | number;
 }
 
-interface OperationsRecommendation {
+interface DbRecommendation {
   id: string;
   category: 'pricing' | 'occupancy' | 'expense' | 'renewal' | 'traffic' | 'collections' | 'other_income';
   priority: 'critical' | 'high' | 'medium' | 'low';
   title: string;
   description: string;
   rationale: string;
-  estimated_monthly_impact: number;
-  estimated_annual_impact: number;
-  confidence: number;
+  estimated_monthly_impact: string | number | null;
+  estimated_annual_impact: string | number | null;
+  confidence_pct: string | number | null;
   suggested_actions: { action: string; detail?: string }[] | null;
   status: string;
 }
 
-interface LeaseExpirationRow {
+interface DbLeaseRow {
   month: string;
   expiringUnits: number;
   expiringPct: number;
@@ -69,7 +57,7 @@ interface LeaseExpirationRow {
   recommendedIncreasePct: number;
 }
 
-interface TrafficRow {
+interface DbTrafficRow {
   period: string;
   projectedLeads: number;
   actualLeads: number;
@@ -89,24 +77,26 @@ interface OperationsIntelligenceSectionProps {
   deal?: Record<string, unknown>;
 }
 
-// ─── Sub-panel types ───────────────────────────────────────────────────────────
-
 type SubPanel = 'variance' | 'recommendations' | 'leases' | 'traffic';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
-const fmt$ = (v: number | null | undefined): string => {
+const n = (v: string | number | null | undefined): number => Number(v ?? 0);
+
+const fmt$ = (v: string | number | null | undefined): string => {
+  const num = n(v);
   if (v == null) return '—';
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(v);
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(num);
 };
 
-const fmtPct = (v: number | null | undefined): string => {
+const fmtPct = (v: string | number | null | undefined): string => {
   if (v == null) return '—';
-  const sign = v > 0 ? '+' : '';
-  return `${sign}${v.toFixed(1)}%`;
+  const num = n(v);
+  const sign = num > 0 ? '+' : '';
+  return `${sign}${num.toFixed(1)}%`;
 };
 
-const severityColor = (s: 'minor' | 'moderate' | 'major'): string => {
+const severityColor = (s: string): string => {
   if (s === 'major') return BT.text.red;
   if (s === 'moderate') return BT.text.amber;
   return BT.text.green;
@@ -118,13 +108,13 @@ const priorityColor = (p: string): string => {
   return BT.text.muted;
 };
 
-const varianceColor = (type: string, amount: number): string => {
+const varColor = (type: string): string => {
   if (type === 'favorable') return BT.text.green;
   if (type === 'unfavorable') return BT.text.red;
   return BT.text.muted;
 };
 
-// ─── Loading & error states ───────────────────────────────────────────────────
+// ─── Loading / error / empty shared components ────────────────────────────────
 
 const LoadingRow: React.FC = () => (
   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '48px 0', gap: 8 }}>
@@ -157,7 +147,7 @@ const ErrorRow: React.FC<{ message: string; onRetry: () => void }> = ({ message,
 // ─── Variance panel ───────────────────────────────────────────────────────────
 
 const VariancePanel: React.FC<{ dealId: string }> = ({ dealId }) => {
-  const [rows, setRows] = useState<VarianceItem[]>([]);
+  const [rows, setRows] = useState<DbVarianceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -169,24 +159,10 @@ const VariancePanel: React.FC<{ dealId: string }> = ({ dealId }) => {
         `/api/v1/operations/${dealId}/variances`
       );
       const raw = res.data?.variances ?? [];
-      const mapped: VarianceItem[] = raw.map((r) => ({
-        lineItem: r.line_item,
-        category: r.category,
-        projected: r.projected_amount,
-        actual: r.actual_amount,
-        varianceAmount: r.variance_amount,
-        variancePct: r.variance_pct,
-        varianceType: r.variance_type,
-        severity: r.severity,
-        trend: r.trend,
-        consecutiveMonths: r.consecutive_months,
-        noiImpact: r.noi_impact,
-      }));
-      const sorted = [...mapped].sort((a, b) => Math.abs(b.varianceAmount) - Math.abs(a.varianceAmount));
+      const sorted = [...raw].sort((a, b) => Math.abs(n(b.noi_impact)) - Math.abs(n(a.noi_impact)));
       setRows(sorted);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Failed to load variances';
-      setError(msg);
+      setError(e instanceof Error ? e.message : 'Failed to load variances');
     } finally {
       setLoading(false);
     }
@@ -194,9 +170,9 @@ const VariancePanel: React.FC<{ dealId: string }> = ({ dealId }) => {
 
   useEffect(() => { load(); }, [load]);
 
-  const COL = { color: BT.text.secondary, fontSize: 10, fontFamily: MONO, letterSpacing: 0.8 };
-  const CELL = { color: BT.text.primary, fontSize: 11, fontFamily: MONO };
   const ROW_BORDER = `1px solid ${BT.border.subtle}`;
+  const COL: React.CSSProperties = { color: BT.text.secondary, fontSize: 10, fontFamily: MONO, letterSpacing: 0.8 };
+  const CELL: React.CSSProperties = { color: BT.text.primary, fontSize: 11, fontFamily: MONO };
 
   if (loading) return <LoadingRow />;
   if (error != null) return <ErrorRow message={error} onRetry={load} />;
@@ -208,102 +184,100 @@ const VariancePanel: React.FC<{ dealId: string }> = ({ dealId }) => {
     />
   );
 
-  const totalNoiImpact = rows.reduce((sum, r) => sum + r.noiImpact, 0);
+  const totalNoi = rows.reduce((sum, r) => sum + n(r.noi_impact), 0);
 
   return (
     <div>
-      {/* Summary bar */}
-      <div style={{ display: 'flex', gap: 24, padding: '10px 16px', background: BT.bg.header, borderBottom: ROW_BORDER, marginBottom: 0 }}>
+      {/* Summary */}
+      <div style={{ display: 'flex', gap: 24, padding: '10px 16px', background: BT.bg.header, borderBottom: ROW_BORDER }}>
         <div>
-          <div style={{ ...COL }}>TOTAL NOI IMPACT</div>
-          <div style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: totalNoiImpact >= 0 ? BT.text.green : BT.text.red }}>
-            {fmt$(totalNoiImpact)}
+          <div style={COL}>TOTAL NOI IMPACT</div>
+          <div style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: totalNoi >= 0 ? BT.text.green : BT.text.red }}>
+            {fmt$(totalNoi)}
           </div>
         </div>
         <div>
-          <div style={{ ...COL }}>LINE ITEMS</div>
+          <div style={COL}>LINE ITEMS</div>
           <div style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: BT.text.primary }}>{rows.length}</div>
         </div>
         <div>
-          <div style={{ ...COL }}>MAJOR VARIANCES</div>
+          <div style={COL}>MAJOR VARIANCES</div>
           <div style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: BT.text.red }}>
             {rows.filter((r) => r.severity === 'major').length}
           </div>
         </div>
       </div>
 
-      {/* Table header */}
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 0.8fr 0.7fr', padding: '6px 16px', background: BT.bg.panelAlt, borderBottom: ROW_BORDER }}>
-        {['LINE ITEM', 'PROJECTED', 'ACTUAL', 'VAR $', 'VAR %', 'NOI IMPACT', 'SEVERITY'].map((h) => (
-          <div key={h} style={{ ...COL }}>{h}</div>
+      {/* Header */}
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 0.7fr', padding: '6px 16px', background: BT.bg.panelAlt, borderBottom: ROW_BORDER }}>
+        {['LINE ITEM', 'PROJECTED', 'ACTUAL', 'VAR $', 'VAR %', 'NOI IMPACT', 'SEV'].map((h) => (
+          <div key={h} style={COL}>{h}</div>
         ))}
       </div>
 
       {/* Rows */}
-      <div>
-        {rows.map((row, i) => (
-          <div
-            key={`${row.lineItem}-${i}`}
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 0.8fr 0.7fr',
-              padding: '7px 16px',
-              borderBottom: ROW_BORDER,
-              background: i % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt,
-            }}
-          >
-            <div>
-              <div style={{ ...CELL, fontWeight: 600 }}>{row.lineItem}</div>
-              <div style={{ color: BT.text.muted, fontSize: 9, fontFamily: MONO, textTransform: 'uppercase' }}>{row.category}</div>
-            </div>
-            <div style={{ ...CELL }}>{fmt$(row.projected)}</div>
-            <div style={{ ...CELL }}>{fmt$(row.actual)}</div>
-            <div style={{ ...CELL, color: varianceColor(row.varianceType, row.varianceAmount) }}>
-              {fmt$(row.varianceAmount)}
-            </div>
-            <div style={{ ...CELL, color: varianceColor(row.varianceType, row.varianceAmount) }}>
-              {fmtPct(row.variancePct)}
-            </div>
-            <div style={{ ...CELL, color: row.noiImpact >= 0 ? BT.text.green : BT.text.red }}>
-              {fmt$(row.noiImpact)}
-            </div>
-            <div>
-              <span style={{
-                fontSize: 9, fontFamily: MONO, fontWeight: 700, letterSpacing: 0.8,
-                color: severityColor(row.severity),
-                padding: '2px 5px',
-                border: `1px solid ${severityColor(row.severity)}44`,
-                textTransform: 'uppercase',
-              }}>
-                {row.severity}
-              </span>
-            </div>
+      {rows.map((row, i) => (
+        <div
+          key={`${row.line_item}-${i}`}
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr 1fr 0.7fr',
+            padding: '7px 16px',
+            borderBottom: ROW_BORDER,
+            background: i % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt,
+          }}
+        >
+          <div>
+            <div style={{ ...CELL, fontWeight: 600 }}>{row.line_item.replace(/_/g, ' ').toUpperCase()}</div>
+            <div style={{ color: BT.text.muted, fontSize: 9, fontFamily: MONO, textTransform: 'uppercase' }}>{row.category}</div>
           </div>
-        ))}
-      </div>
+          <div style={CELL}>{fmt$(row.projected_value)}</div>
+          <div style={CELL}>{fmt$(row.actual_value)}</div>
+          <div style={{ ...CELL, color: varColor(row.variance_type) }}>{fmt$(row.variance_amount)}</div>
+          <div style={{ ...CELL, color: varColor(row.variance_type) }}>{fmtPct(row.variance_pct)}</div>
+          <div style={{ ...CELL, color: n(row.noi_impact) >= 0 ? BT.text.green : BT.text.red }}>{fmt$(row.noi_impact)}</div>
+          <div>
+            <span style={{
+              fontSize: 9, fontFamily: MONO, fontWeight: 700, letterSpacing: 0.6,
+              color: severityColor(row.severity),
+              padding: '1px 4px',
+              border: `1px solid ${severityColor(row.severity)}44`,
+              textTransform: 'uppercase',
+            }}>
+              {row.severity}
+            </span>
+          </div>
+        </div>
+      ))}
     </div>
   );
 };
 
 // ─── Recommendations panel ────────────────────────────────────────────────────
 
+const CATEGORY_LABELS: Record<string, string> = {
+  pricing: 'PRICING', occupancy: 'OCCUPANCY', expense: 'EXPENSE',
+  renewal: 'RENEWAL', traffic: 'TRAFFIC', collections: 'COLLECTIONS', other_income: 'OTHER INCOME',
+};
+
+const CATEGORY_ORDER = ['pricing', 'occupancy', 'renewal', 'expense', 'traffic', 'collections', 'other_income'];
+
 const RecommendationsPanel: React.FC<{ dealId: string }> = ({ dealId }) => {
-  const [recs, setRecs] = useState<OperationsRecommendation[]>([]);
+  const [recs, setRecs] = useState<DbRecommendation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [resolving, setResolving] = useState<Record<string, boolean>>({});
+  const [sending, setSending] = useState<Record<string, boolean>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiClient.get<{ success: boolean; recommendations: OperationsRecommendation[] }>(
+      const res = await apiClient.get<{ success: boolean; recommendations: DbRecommendation[] }>(
         `/api/v1/operations/${dealId}/recommendations?status=pending`
       );
       setRecs(res.data?.recommendations ?? []);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Failed to load recommendations';
-      setError(msg);
+      setError(e instanceof Error ? e.message : 'Failed to load recommendations');
     } finally {
       setLoading(false);
     }
@@ -311,21 +285,20 @@ const RecommendationsPanel: React.FC<{ dealId: string }> = ({ dealId }) => {
 
   useEffect(() => { load(); }, [load]);
 
-  const handleResolve = async (id: string) => {
-    setResolving((prev) => ({ ...prev, [id]: true }));
+  const handleSendToFeed = async (rec: DbRecommendation) => {
+    setSending((prev) => ({ ...prev, [rec.id]: true }));
     try {
-      await apiClient.patch(`/api/v1/operations/recommendations/${id}`, { status: 'resolved' });
-      setRecs((prev) => prev.filter((r) => r.id !== id));
+      await apiClient.patch(`/api/v1/operations/recommendations/${rec.id}`, {
+        status: 'implemented',
+        implementation_notes: 'Sent to feed from Operations Intelligence UI',
+      });
+      await apiClient.post(`/api/v1/operations/${dealId}/feed-learning`, {});
+      setRecs((prev) => prev.filter((r) => r.id !== rec.id));
     } catch (e: unknown) {
-      console.error('[OperationsRecs] resolve failed:', e);
+      console.error('[OperationsRecs] send to feed failed:', e);
     } finally {
-      setResolving((prev) => ({ ...prev, [id]: false }));
+      setSending((prev) => ({ ...prev, [rec.id]: false }));
     }
-  };
-
-  const CATEGORY_LABELS: Record<string, string> = {
-    pricing: 'PRICING', occupancy: 'OCCUPANCY', expense: 'EXPENSE',
-    renewal: 'RENEWAL', traffic: 'TRAFFIC', collections: 'COLLECTIONS', other_income: 'OTHER INCOME',
   };
 
   const ROW_BORDER = `1px solid ${BT.border.subtle}`;
@@ -336,118 +309,146 @@ const RecommendationsPanel: React.FC<{ dealId: string }> = ({ dealId }) => {
     <EmptyState
       icon={<CheckCircle2 size={32} />}
       message="NO ACTIVE RECOMMENDATIONS"
-      sub="Generate recommendations after importing actuals or use the generate endpoint"
+      sub="Generate recommendations after importing actuals via the generate endpoint"
     />
   );
 
+  // Group by category
+  const byCategory: Record<string, DbRecommendation[]> = {};
+  for (const rec of recs) {
+    const cat = rec.category ?? 'other_income';
+    if (byCategory[cat] == null) byCategory[cat] = [];
+    byCategory[cat].push(rec);
+  }
+
+  const orderedCategories = CATEGORY_ORDER.filter((c) => byCategory[c] != null);
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-      {recs.map((rec) => (
-        <div
-          key={rec.id}
-          style={{
-            background: BT.bg.panel,
+    <div>
+      {orderedCategories.map((cat) => (
+        <div key={cat}>
+          {/* Category header */}
+          <div style={{
+            padding: '6px 16px',
+            background: BT.bg.header,
             borderBottom: ROW_BORDER,
-            padding: '12px 16px',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-            <div style={{ flex: 1 }}>
-              {/* Header row */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                <span style={{
-                  fontSize: 9, fontFamily: MONO, fontWeight: 700, letterSpacing: 0.8,
-                  color: priorityColor(rec.priority),
-                  border: `1px solid ${priorityColor(rec.priority)}44`,
-                  padding: '1px 6px',
-                  textTransform: 'uppercase',
-                }}>
-                  {rec.priority}
-                </span>
-                <span style={{
-                  fontSize: 9, fontFamily: MONO, fontWeight: 600, letterSpacing: 0.5,
-                  color: BT.text.cyan, border: `1px solid ${BT.text.cyan}33`, padding: '1px 6px',
-                  textTransform: 'uppercase',
-                }}>
-                  {CATEGORY_LABELS[rec.category] ?? rec.category}
-                </span>
-                <span style={{ color: BT.text.muted, fontSize: 10, fontFamily: MONO }}>
-                  {rec.confidence != null ? `${Math.round(rec.confidence * 100)}% CONFIDENCE` : ''}
-                </span>
-              </div>
-
-              {/* Title */}
-              <div style={{ color: BT.text.primary, fontSize: 12, fontWeight: 700, fontFamily: MONO, marginBottom: 4 }}>
-                {rec.title}
-              </div>
-
-              {/* Description */}
-              <div style={{ color: BT.text.secondary, fontSize: 11, marginBottom: 8, lineHeight: 1.5 }}>
-                {rec.description}
-              </div>
-
-              {/* Impact row */}
-              <div style={{ display: 'flex', gap: 20 }}>
-                {rec.estimated_monthly_impact != null && (
-                  <div>
-                    <div style={{ color: BT.text.muted, fontSize: 9, fontFamily: MONO, letterSpacing: 0.6 }}>MONTHLY IMPACT</div>
-                    <div style={{ color: rec.estimated_monthly_impact >= 0 ? BT.text.green : BT.text.red, fontSize: 12, fontFamily: MONO, fontWeight: 700 }}>
-                      {fmt$(rec.estimated_monthly_impact)}
-                    </div>
-                  </div>
-                )}
-                {rec.estimated_annual_impact != null && (
-                  <div>
-                    <div style={{ color: BT.text.muted, fontSize: 9, fontFamily: MONO, letterSpacing: 0.6 }}>ANNUAL IMPACT</div>
-                    <div style={{ color: rec.estimated_annual_impact >= 0 ? BT.text.green : BT.text.red, fontSize: 12, fontFamily: MONO, fontWeight: 700 }}>
-                      {fmt$(rec.estimated_annual_impact)}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Suggested actions */}
-              {Array.isArray(rec.suggested_actions) && rec.suggested_actions.length > 0 && (
-                <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {rec.suggested_actions.map((sa, idx) => (
-                    <span
-                      key={idx}
-                      style={{
-                        fontSize: 10, fontFamily: MONO, color: BT.text.secondary,
-                        border: `1px solid ${BT.border.medium}`, padding: '2px 8px',
-                        display: 'flex', alignItems: 'center', gap: 4,
-                      }}
-                    >
-                      <ChevronRight size={10} />
-                      {sa.action}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Resolve button */}
-            <button
-              onClick={() => handleResolve(rec.id)}
-              disabled={resolving[rec.id] === true}
-              style={{
-                background: 'transparent',
-                border: `1px solid ${BT.text.green}55`,
-                color: BT.text.green,
-                fontSize: 10, fontFamily: MONO, fontWeight: 700, letterSpacing: 0.8,
-                padding: '4px 10px',
-                cursor: resolving[rec.id] ? 'wait' : 'pointer',
-                flexShrink: 0,
-                display: 'flex', alignItems: 'center', gap: 4,
-                opacity: resolving[rec.id] ? 0.6 : 1,
-              }}
-            >
-              {resolving[rec.id] === true
-                ? <><Loader2 size={10} className="animate-spin" /> SENDING…</>
-                : <><CheckCircle2 size={10} /> MARK RESOLVED</>
-              }
-            </button>
+            display: 'flex', alignItems: 'center', gap: 8,
+          }}>
+            <span style={{ color: BT.text.cyan, fontSize: 10, fontFamily: MONO, fontWeight: 700, letterSpacing: 0.8 }}>
+              {CATEGORY_LABELS[cat] ?? cat.toUpperCase()}
+            </span>
+            <span style={{ color: BT.text.muted, fontSize: 10, fontFamily: MONO }}>
+              ({byCategory[cat].length})
+            </span>
           </div>
+
+          {/* Cards in this category */}
+          {byCategory[cat].map((rec) => {
+            const confidencePct = n(rec.confidence_pct);
+            const monthlyImpact = rec.estimated_monthly_impact != null ? n(rec.estimated_monthly_impact) : null;
+            const annualImpact = rec.estimated_annual_impact != null ? n(rec.estimated_annual_impact) : null;
+            const isSending = sending[rec.id] === true;
+
+            return (
+              <div
+                key={rec.id}
+                style={{ padding: '12px 16px', borderBottom: ROW_BORDER, background: BT.bg.panel }}
+              >
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                  <div style={{ flex: 1 }}>
+                    {/* Priority + confidence */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                      <span style={{
+                        fontSize: 9, fontFamily: MONO, fontWeight: 700, letterSpacing: 0.8,
+                        color: priorityColor(rec.priority),
+                        border: `1px solid ${priorityColor(rec.priority)}44`,
+                        padding: '1px 6px',
+                        textTransform: 'uppercase',
+                      }}>
+                        {rec.priority}
+                      </span>
+                      {confidencePct > 0 && (
+                        <span style={{ color: BT.text.muted, fontSize: 10, fontFamily: MONO }}>
+                          {confidencePct.toFixed(0)}% CONFIDENCE
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Title */}
+                    <div style={{ color: BT.text.primary, fontSize: 12, fontWeight: 700, fontFamily: MONO, marginBottom: 4 }}>
+                      {rec.title}
+                    </div>
+
+                    {/* Description */}
+                    <div style={{ color: BT.text.secondary, fontSize: 11, marginBottom: 8, lineHeight: 1.5 }}>
+                      {rec.description}
+                    </div>
+
+                    {/* Impact */}
+                    <div style={{ display: 'flex', gap: 20 }}>
+                      {monthlyImpact != null && (
+                        <div>
+                          <div style={{ color: BT.text.muted, fontSize: 9, fontFamily: MONO, letterSpacing: 0.6 }}>MO IMPACT</div>
+                          <div style={{ color: monthlyImpact >= 0 ? BT.text.green : BT.text.red, fontSize: 12, fontFamily: MONO, fontWeight: 700 }}>
+                            {fmt$(monthlyImpact)}
+                          </div>
+                        </div>
+                      )}
+                      {annualImpact != null && (
+                        <div>
+                          <div style={{ color: BT.text.muted, fontSize: 9, fontFamily: MONO, letterSpacing: 0.6 }}>ANN IMPACT</div>
+                          <div style={{ color: annualImpact >= 0 ? BT.text.green : BT.text.red, fontSize: 12, fontFamily: MONO, fontWeight: 700 }}>
+                            {fmt$(annualImpact)}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Suggested actions */}
+                    {Array.isArray(rec.suggested_actions) && rec.suggested_actions.length > 0 && (
+                      <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {rec.suggested_actions.map((sa, idx) => (
+                          <span
+                            key={idx}
+                            style={{
+                              fontSize: 10, fontFamily: MONO, color: BT.text.secondary,
+                              border: `1px solid ${BT.border.medium}`, padding: '2px 8px',
+                              display: 'flex', alignItems: 'center', gap: 4,
+                            }}
+                          >
+                            <ChevronRight size={10} />
+                            {sa.action}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Send to feed button */}
+                  <button
+                    onClick={() => handleSendToFeed(rec)}
+                    disabled={isSending}
+                    style={{
+                      background: 'transparent',
+                      border: `1px solid ${BT.text.cyan}55`,
+                      color: BT.text.cyan,
+                      fontSize: 10, fontFamily: MONO, fontWeight: 700, letterSpacing: 0.8,
+                      padding: '4px 10px',
+                      cursor: isSending ? 'wait' : 'pointer',
+                      flexShrink: 0,
+                      display: 'flex', alignItems: 'center', gap: 4,
+                      opacity: isSending ? 0.6 : 1,
+                    }}
+                  >
+                    {isSending
+                      ? <><Loader2 size={10} className="animate-spin" /> SENDING…</>
+                      : <>SEND TO FEED</>
+                    }
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       ))}
     </div>
@@ -457,7 +458,7 @@ const RecommendationsPanel: React.FC<{ dealId: string }> = ({ dealId }) => {
 // ─── Lease Expirations panel ──────────────────────────────────────────────────
 
 const LeaseExpirationsPanel: React.FC<{ dealId: string }> = ({ dealId }) => {
-  const [rows, setRows] = useState<LeaseExpirationRow[]>([]);
+  const [rows, setRows] = useState<DbLeaseRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -465,13 +466,12 @@ const LeaseExpirationsPanel: React.FC<{ dealId: string }> = ({ dealId }) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiClient.get<{ success: boolean; expirations: LeaseExpirationRow[] }>(
+      const res = await apiClient.get<{ success: boolean; expirations: DbLeaseRow[] }>(
         `/api/v1/operations/${dealId}/lease-expirations?months=12`
       );
       setRows(res.data?.expirations ?? []);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Failed to load lease expirations';
-      setError(msg);
+      setError(e instanceof Error ? e.message : 'Failed to load lease expirations');
     } finally {
       setLoading(false);
     }
@@ -480,8 +480,8 @@ const LeaseExpirationsPanel: React.FC<{ dealId: string }> = ({ dealId }) => {
   useEffect(() => { load(); }, [load]);
 
   const ROW_BORDER = `1px solid ${BT.border.subtle}`;
-  const COL = { color: BT.text.secondary, fontSize: 10, fontFamily: MONO, letterSpacing: 0.8 };
-  const CELL = { color: BT.text.primary, fontSize: 11, fontFamily: MONO };
+  const COL: React.CSSProperties = { color: BT.text.secondary, fontSize: 10, fontFamily: MONO, letterSpacing: 0.8 };
+  const CELL: React.CSSProperties = { color: BT.text.primary, fontSize: 11, fontFamily: MONO };
 
   if (loading) return <LoadingRow />;
   if (error != null) return <ErrorRow message={error} onRetry={load} />;
@@ -502,36 +502,30 @@ const LeaseExpirationsPanel: React.FC<{ dealId: string }> = ({ dealId }) => {
       {/* Summary */}
       <div style={{ display: 'flex', gap: 24, padding: '10px 16px', background: BT.bg.header, borderBottom: ROW_BORDER }}>
         <div>
-          <div style={{ ...COL }}>TOTAL UNITS AT RISK</div>
+          <div style={COL}>TOTAL UNITS EXPIRING (12 MO)</div>
           <div style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: BT.text.amber }}>{totalUnits}</div>
         </div>
         <div>
-          <div style={{ ...COL }}>RENT AT RISK (12 MO)</div>
+          <div style={COL}>RENT AT RISK</div>
           <div style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: BT.text.red }}>{fmt$(totalRentAtRisk)}</div>
         </div>
       </div>
 
-      {/* Column headers */}
+      {/* Columns */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 0.8fr 0.8fr 1fr 1fr 1fr 2fr', padding: '6px 16px', background: BT.bg.panelAlt, borderBottom: ROW_BORDER }}>
-        {['MONTH', 'UNITS', '% OF TOTAL', 'RENT AT RISK', 'AVG CURR RENT', 'LOSS-TO-LEASE', 'RECOMMENDED ACTION'].map((h) => (
-          <div key={h} style={{ ...COL }}>{h}</div>
+        {['MONTH', 'UNITS', '% TOTAL', 'RENT AT RISK', 'AVG CURR RENT', 'LOSS-TO-LEASE', 'RECOMMENDED ACTION'].map((h) => (
+          <div key={h} style={COL}>{h}</div>
         ))}
       </div>
 
-      {/* Bar + data rows */}
       {rows.map((row, i) => {
         const barWidth = maxUnits > 0 ? (row.expiringUnits / maxUnits) * 100 : 0;
-        const isHighRisk = row.expiringPct > 15;
+        const isHighRisk = (row.expiringPct ?? 0) > 15;
+        const barColor = isHighRisk ? BT.text.red : (row.expiringPct ?? 0) > 8 ? BT.text.amber : BT.text.green;
         return (
           <div key={`${row.month}-${i}`} style={{ borderBottom: ROW_BORDER }}>
-            {/* Bar visualization */}
             <div style={{ height: 3, background: BT.bg.panelAlt }}>
-              <div style={{
-                height: '100%',
-                width: `${barWidth}%`,
-                background: isHighRisk ? BT.text.red : row.expiringPct > 8 ? BT.text.amber : BT.text.green,
-                transition: 'width 0.3s ease',
-              }} />
+              <div style={{ height: '100%', width: `${barWidth}%`, background: barColor, transition: 'width 0.3s ease' }} />
             </div>
             <div style={{
               display: 'grid',
@@ -540,14 +534,12 @@ const LeaseExpirationsPanel: React.FC<{ dealId: string }> = ({ dealId }) => {
               background: i % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt,
             }}>
               <div style={{ ...CELL, fontWeight: 600 }}>{row.month}</div>
-              <div style={{ ...CELL, color: isHighRisk ? BT.text.red : BT.text.primary }}>
-                {row.expiringUnits ?? '—'}
-              </div>
+              <div style={{ ...CELL, color: isHighRisk ? BT.text.red : BT.text.primary }}>{row.expiringUnits ?? '—'}</div>
               <div style={{ ...CELL, color: isHighRisk ? BT.text.red : BT.text.primary }}>
                 {row.expiringPct != null ? `${row.expiringPct.toFixed(1)}%` : '—'}
               </div>
-              <div style={{ ...CELL }}>{fmt$(row.rentAtRisk)}</div>
-              <div style={{ ...CELL }}>{fmt$(row.avgCurrentRent)}</div>
+              <div style={CELL}>{fmt$(row.rentAtRisk)}</div>
+              <div style={CELL}>{fmt$(row.avgCurrentRent)}</div>
               <div style={{ ...CELL, color: (row.lossToLeasePct ?? 0) > 5 ? BT.text.red : BT.text.amber }}>
                 {row.lossToLeasePct != null ? `${row.lossToLeasePct.toFixed(1)}%` : '—'}
               </div>
@@ -562,10 +554,17 @@ const LeaseExpirationsPanel: React.FC<{ dealId: string }> = ({ dealId }) => {
   );
 };
 
-// ─── Traffic panel ────────────────────────────────────────────────────────────
+// ─── Traffic panel (line chart) ───────────────────────────────────────────────
+
+const CHART_COLORS = {
+  projectedLeads: BT.text.cyan,
+  actualLeads: BT.text.amber,
+  projectedMoveIns: BT.text.purple,
+  actualMoveIns: BT.text.green,
+};
 
 const TrafficPanel: React.FC<{ dealId: string }> = ({ dealId }) => {
-  const [rows, setRows] = useState<TrafficRow[]>([]);
+  const [rows, setRows] = useState<DbTrafficRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -573,15 +572,13 @@ const TrafficPanel: React.FC<{ dealId: string }> = ({ dealId }) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiClient.get<{ success: boolean; traffic: TrafficRow[] | TrafficRow }>(
+      const res = await apiClient.get<{ success: boolean; traffic: DbTrafficRow | DbTrafficRow[] }>(
         `/api/v1/operations/${dealId}/traffic?months=12`
       );
       const raw = res.data?.traffic;
-      const arr = Array.isArray(raw) ? raw : raw != null ? [raw] : [];
-      setRows(arr);
+      setRows(Array.isArray(raw) ? raw : raw != null ? [raw] : []);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Failed to load traffic data';
-      setError(msg);
+      setError(e instanceof Error ? e.message : 'Failed to load traffic data');
     } finally {
       setLoading(false);
     }
@@ -590,8 +587,6 @@ const TrafficPanel: React.FC<{ dealId: string }> = ({ dealId }) => {
   useEffect(() => { load(); }, [load]);
 
   const ROW_BORDER = `1px solid ${BT.border.subtle}`;
-  const COL = { color: BT.text.secondary, fontSize: 10, fontFamily: MONO, letterSpacing: 0.8 };
-  const CELL = { color: BT.text.primary, fontSize: 11, fontFamily: MONO };
 
   if (loading) return <LoadingRow />;
   if (error != null) return <ErrorRow message={error} onRetry={load} />;
@@ -603,68 +598,121 @@ const TrafficPanel: React.FC<{ dealId: string }> = ({ dealId }) => {
     />
   );
 
+  // Summary stats
+  const totalProjLeads = rows.reduce((s, r) => s + (r.projectedLeads ?? 0), 0);
+  const totalActLeads = rows.reduce((s, r) => s + (r.actualLeads ?? 0), 0);
+  const totalProjMoveIns = rows.reduce((s, r) => s + (r.projectedMoveIns ?? 0), 0);
+  const totalActMoveIns = rows.reduce((s, r) => s + (r.actualMoveIns ?? 0), 0);
+  const leadDelta = totalProjLeads > 0 ? ((totalActLeads - totalProjLeads) / totalProjLeads) * 100 : 0;
+  const moveInDelta = totalProjMoveIns > 0 ? ((totalActMoveIns - totalProjMoveIns) / totalProjMoveIns) * 100 : 0;
+
+  // Chart data
+  const chartData = rows.map((r) => ({
+    period: r.period,
+    'Proj Leads': r.projectedLeads ?? 0,
+    'Act Leads': r.actualLeads ?? 0,
+    'Proj Move-Ins': r.projectedMoveIns ?? 0,
+    'Act Move-Ins': r.actualMoveIns ?? 0,
+  }));
+
+  const tooltipStyle: React.CSSProperties = {
+    background: BT.bg.panelAlt,
+    border: `1px solid ${BT.border.medium}`,
+    fontFamily: MONO,
+    fontSize: 11,
+    color: BT.text.primary,
+  };
+
   return (
     <div>
-      {/* Column headers */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1fr 1fr 1fr 0.8fr 0.8fr', padding: '6px 16px', background: BT.bg.panelAlt, borderBottom: ROW_BORDER }}>
-        {['PERIOD', 'PROJ LEADS', 'ACT LEADS', 'LEAD VAR', 'PROJ MOVE-INS', 'ACT MOVE-INS', 'MOVE-IN VAR', 'CONV RATE'].map((h) => (
-          <div key={h} style={{ ...COL }}>{h}</div>
-        ))}
+      {/* Summary bar */}
+      <div style={{ display: 'flex', gap: 32, padding: '10px 16px', background: BT.bg.header, borderBottom: ROW_BORDER }}>
+        <div>
+          <div style={{ color: BT.text.secondary, fontSize: 10, fontFamily: MONO, letterSpacing: 0.8 }}>TOTAL LEADS (PROJ)</div>
+          <div style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: BT.text.cyan }}>{totalProjLeads.toLocaleString()}</div>
+        </div>
+        <div>
+          <div style={{ color: BT.text.secondary, fontSize: 10, fontFamily: MONO, letterSpacing: 0.8 }}>TOTAL LEADS (ACT)</div>
+          <div style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: BT.text.amber }}>{totalActLeads.toLocaleString()}</div>
+        </div>
+        <div>
+          <div style={{ color: BT.text.secondary, fontSize: 10, fontFamily: MONO, letterSpacing: 0.8 }}>LEAD VARIANCE</div>
+          <div style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: leadDelta >= 0 ? BT.text.green : BT.text.red }}>
+            {fmtPct(leadDelta)}
+          </div>
+        </div>
+        <div>
+          <div style={{ color: BT.text.secondary, fontSize: 10, fontFamily: MONO, letterSpacing: 0.8 }}>MOVE-IN VARIANCE</div>
+          <div style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: moveInDelta >= 0 ? BT.text.green : BT.text.red }}>
+            {fmtPct(moveInDelta)}
+          </div>
+        </div>
       </div>
 
-      {rows.map((row, i) => {
-        const leadVar = row.leadVariancePct ?? 0;
-        const moveInVar = row.moveInVariancePct ?? 0;
-        return (
-          <div key={`${row.period}-${i}`}>
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: '1.2fr 1fr 1fr 1fr 1fr 1fr 0.8fr 0.8fr',
-              padding: '7px 16px',
-              borderBottom: ROW_BORDER,
-              background: i % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt,
-            }}>
-              <div style={{ ...CELL, fontWeight: 600 }}>{row.period}</div>
-              <div style={{ ...CELL }}>{row.projectedLeads ?? '—'}</div>
-              <div style={{ ...CELL }}>{row.actualLeads ?? '—'}</div>
-              <div style={{ ...CELL, color: leadVar >= 0 ? BT.text.green : BT.text.red }}>
-                {row.leadVariancePct != null ? fmtPct(row.leadVariancePct) : '—'}
-              </div>
-              <div style={{ ...CELL }}>{row.projectedMoveIns ?? '—'}</div>
-              <div style={{ ...CELL }}>{row.actualMoveIns ?? '—'}</div>
-              <div style={{ ...CELL, color: moveInVar >= 0 ? BT.text.green : BT.text.red }}>
-                {row.moveInVariancePct != null ? fmtPct(row.moveInVariancePct) : '—'}
-              </div>
-              <div style={{ ...CELL, color: (row.conversionRate ?? 0) >= (row.benchmarkConversion ?? 0) ? BT.text.green : BT.text.amber }}>
-                {row.conversionRate != null ? `${(row.conversionRate * 100).toFixed(1)}%` : '—'}
-              </div>
-            </div>
-            {/* Inline recommendations */}
-            {Array.isArray(row.recommendations) && row.recommendations.length > 0 && (
-              <div style={{ padding: '4px 16px 8px', background: BT.bg.panelAlt, borderBottom: ROW_BORDER }}>
-                {row.recommendations.map((rec, ri) => (
-                  <div key={ri} style={{ fontSize: 10, color: BT.text.muted, fontFamily: MONO, display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <ChevronRight size={9} style={{ color: BT.text.cyan }} />
-                    {rec}
-                  </div>
-                ))}
-              </div>
-            )}
+      {/* Leads chart */}
+      <div style={{ padding: '16px', borderBottom: ROW_BORDER }}>
+        <div style={{ color: BT.text.secondary, fontSize: 10, fontFamily: MONO, letterSpacing: 0.8, marginBottom: 8 }}>
+          PREDICTED VS ACTUAL LEADS/WEEK — TRAILING 12 MONTHS
+        </div>
+        <ResponsiveContainer width="100%" height={200}>
+          <LineChart data={chartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+            <CartesianGrid stroke={BT.border.subtle} strokeDasharray="3 3" />
+            <XAxis dataKey="period" tick={{ fill: BT.text.muted, fontSize: 10, fontFamily: MONO }} tickLine={false} axisLine={{ stroke: BT.border.subtle }} />
+            <YAxis tick={{ fill: BT.text.muted, fontSize: 10, fontFamily: MONO }} tickLine={false} axisLine={false} />
+            <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: BT.text.secondary }} />
+            <Legend wrapperStyle={{ fontSize: 10, fontFamily: MONO, color: BT.text.secondary }} />
+            <Line type="monotone" dataKey="Proj Leads" stroke={CHART_COLORS.projectedLeads} strokeWidth={1.5} dot={false} strokeDasharray="4 2" />
+            <Line type="monotone" dataKey="Act Leads" stroke={CHART_COLORS.actualLeads} strokeWidth={2} dot={{ r: 3, fill: CHART_COLORS.actualLeads }} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Move-ins chart */}
+      <div style={{ padding: '16px', borderBottom: ROW_BORDER }}>
+        <div style={{ color: BT.text.secondary, fontSize: 10, fontFamily: MONO, letterSpacing: 0.8, marginBottom: 8 }}>
+          PREDICTED VS ACTUAL MOVE-INS — TRAILING 12 MONTHS
+        </div>
+        <ResponsiveContainer width="100%" height={200}>
+          <LineChart data={chartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+            <CartesianGrid stroke={BT.border.subtle} strokeDasharray="3 3" />
+            <XAxis dataKey="period" tick={{ fill: BT.text.muted, fontSize: 10, fontFamily: MONO }} tickLine={false} axisLine={{ stroke: BT.border.subtle }} />
+            <YAxis tick={{ fill: BT.text.muted, fontSize: 10, fontFamily: MONO }} tickLine={false} axisLine={false} />
+            <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: BT.text.secondary }} />
+            <Legend wrapperStyle={{ fontSize: 10, fontFamily: MONO, color: BT.text.secondary }} />
+            <Line type="monotone" dataKey="Proj Move-Ins" stroke={CHART_COLORS.projectedMoveIns} strokeWidth={1.5} dot={false} strokeDasharray="4 2" />
+            <Line type="monotone" dataKey="Act Move-Ins" stroke={CHART_COLORS.actualMoveIns} strokeWidth={2} dot={{ r: 3, fill: CHART_COLORS.actualMoveIns }} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Conversion rate & recommendations rows */}
+      {rows.some((r) => Array.isArray(r.recommendations) && r.recommendations.length > 0) && (
+        <div style={{ padding: '12px 16px', borderBottom: ROW_BORDER }}>
+          <div style={{ color: BT.text.secondary, fontSize: 10, fontFamily: MONO, letterSpacing: 0.8, marginBottom: 8 }}>
+            AI OBSERVATIONS
           </div>
-        );
-      })}
+          {rows.flatMap((r) => r.recommendations ?? []).slice(0, 6).map((obs, idx) => (
+            <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginBottom: 4 }}>
+              <ChevronRight size={10} style={{ color: BT.text.cyan, flexShrink: 0, marginTop: 2 }} />
+              <span style={{ color: BT.text.secondary, fontSize: 10, fontFamily: MONO }}>{obs}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
 
-// ─── Main component ───────────────────────────────────────────────────────────
+// ─── Sub-panel tab definitions ────────────────────────────────────────────────
 
 const PANELS: { id: SubPanel; label: string; icon: React.ReactNode }[] = [
-  { id: 'variance',        label: 'VARIANCE',        icon: <BarChart3 size={12} /> },
-  { id: 'recommendations', label: 'RECOMMENDATIONS',  icon: <TrendingUp size={12} /> },
-  { id: 'leases',          label: 'LEASE EXPIRATIONS', icon: <Clock size={12} /> },
-  { id: 'traffic',         label: 'TRAFFIC FUNNEL',   icon: <Users size={12} /> },
+  { id: 'variance',        label: 'VARIANCE',          icon: <BarChart3 size={12} /> },
+  { id: 'recommendations', label: 'RECOMMENDATIONS',    icon: <TrendingUp size={12} /> },
+  { id: 'leases',          label: 'LEASE EXPIRATIONS',  icon: <Clock size={12} /> },
+  { id: 'traffic',         label: 'TRAFFIC FUNNEL',     icon: <Users size={12} /> },
 ];
+
+// ─── Main component ───────────────────────────────────────────────────────────
 
 export const OperationsIntelligenceSection: React.FC<OperationsIntelligenceSectionProps> = ({ dealId, deal }) => {
   const [activePanel, setActivePanel] = useState<SubPanel>('variance');
@@ -692,17 +740,12 @@ export const OperationsIntelligenceSection: React.FC<OperationsIntelligenceSecti
           </span>
         </div>
         <span style={{ color: BT.text.muted, fontSize: 9, fontFamily: MONO }}>
-          {deal?.property_name as string || deal?.name as string || dealId}
+          {(deal?.property_name as string) ?? (deal?.name as string) ?? dealId}
         </span>
       </div>
 
       {/* Sub-panel tabs */}
-      <div style={{
-        display: 'flex', gap: 0,
-        borderBottom: BORDER,
-        background: BT.bg.panelAlt,
-        flexShrink: 0,
-      }}>
+      <div style={{ display: 'flex', gap: 0, borderBottom: BORDER, background: BT.bg.panelAlt, flexShrink: 0 }}>
         {PANELS.map((p) => {
           const isActive = activePanel === p.id;
           return (

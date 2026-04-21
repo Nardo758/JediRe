@@ -440,8 +440,8 @@ export const MODULE_TABS: ModuleTabDefinition[] = [
     station: 'S6',
     stationLabel: 'Post-Close',
     category: 'Operations',
-    showFor: { existing: 'full', development: 'hidden', redevelopment: 'full' },
-    dealTypeNotes: 'Variance analysis, AI recommendations, lease expirations, and traffic funnel for operating properties.',
+    showFor: { existing: 'full', development: 'hidden', redevelopment: 'hidden' },
+    dealTypeNotes: 'Variance analysis, AI recommendations, lease expirations, and traffic funnel for acquisition and value-add operating properties.',
   },
 
   // ─── Deal Tools (Universal) ────────────────────────────────────────────────
