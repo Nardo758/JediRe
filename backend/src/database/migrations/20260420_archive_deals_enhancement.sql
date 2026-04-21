@@ -49,6 +49,28 @@ BEGIN
     ALTER TABLE data_library_assets ADD COLUMN msa TEXT;
   END IF;
 
+  -- Deal type (stabilized, value-add, lease-up, development)
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                 WHERE table_name = 'data_library_assets' AND column_name = 'deal_type') THEN
+    ALTER TABLE data_library_assets ADD COLUMN deal_type TEXT;
+  END IF;
+
+  -- Cap rates
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                 WHERE table_name = 'data_library_assets' AND column_name = 'going_in_cap_rate') THEN
+    ALTER TABLE data_library_assets ADD COLUMN going_in_cap_rate NUMERIC;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                 WHERE table_name = 'data_library_assets' AND column_name = 'stabilized_cap_rate') THEN
+    ALTER TABLE data_library_assets ADD COLUMN stabilized_cap_rate NUMERIC;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                 WHERE table_name = 'data_library_assets' AND column_name = 'exit_cap_rate') THEN
+    ALTER TABLE data_library_assets ADD COLUMN exit_cap_rate NUMERIC;
+  END IF;
+
   -- Unit count bands for bucketing
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
                  WHERE table_name = 'data_library_assets' AND column_name = 'unit_count_band') THEN
@@ -133,8 +155,13 @@ END $$;
 
 -- Index for archive comp queries
 CREATE INDEX IF NOT EXISTS idx_data_library_archive_comps
-  ON data_library_assets (source_type, state, msa, property_type, vintage_band, unit_count_band)
+  ON data_library_assets (source_type, state, msa, property_type, vintage_band, unit_count_band, asset_class, deal_type)
   WHERE source_type = 'archive';
+
+-- Index for cap rate queries
+CREATE INDEX IF NOT EXISTS idx_data_library_cap_rates
+  ON data_library_assets (source_type, going_in_cap_rate, stabilized_cap_rate)
+  WHERE going_in_cap_rate IS NOT NULL;
 
 -- Index for financial metric queries
 CREATE INDEX IF NOT EXISTS idx_data_library_financials
