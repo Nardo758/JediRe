@@ -372,9 +372,9 @@ function CompetitiveSetsSection({ T }: { T: ThemeType }) {
                   {c.address && <div style={{ fontSize: 9, color: T.text.muted }}>{c.address}</div>}
                 </td>
                 <td style={{ padding: '8px 10px', fontSize: 10, color: T.text.secondary }}>{c.submarket || '—'}</td>
-                <td style={{ padding: '8px 10px', fontSize: 10, fontFamily: T.font.mono, color: T.text.secondary }}>{c.distance_mi != null ? c.distance_mi.toFixed(1) : '—'}</td>
-                <td style={{ padding: '8px 10px', fontSize: 10, fontFamily: T.font.mono }}>{c.avg_rent_sf != null ? `$${c.avg_rent_sf.toFixed(2)}` : '—'}</td>
-                <td style={{ padding: '8px 10px', fontSize: 10, fontFamily: T.font.mono, color: c.occupancy_pct != null && c.occupancy_pct < 88 ? T.text.red : T.text.green }}>{c.occupancy_pct != null ? `${c.occupancy_pct.toFixed(1)}%` : '—'}</td>
+                <td style={{ padding: '8px 10px', fontSize: 10, fontFamily: T.font.mono, color: T.text.secondary }}>{c.distance_mi != null ? Number(c.distance_mi).toFixed(1) : '—'}</td>
+                <td style={{ padding: '8px 10px', fontSize: 10, fontFamily: T.font.mono }}>{c.avg_rent_sf != null ? `$${Number(c.avg_rent_sf).toFixed(2)}` : '—'}</td>
+                <td style={{ padding: '8px 10px', fontSize: 10, fontFamily: T.font.mono, color: c.occupancy_pct != null && Number(c.occupancy_pct) < 88 ? T.text.red : T.text.green }}>{c.occupancy_pct != null ? `${Number(c.occupancy_pct).toFixed(1)}%` : '—'}</td>
                 <td style={{ padding: '8px 10px', fontSize: 9, color: T.text.muted }}>{c.last_scraped ? new Date(c.last_scraped).toLocaleDateString() : '—'}</td>
                 <td style={{ padding: '8px 10px' }}>
                   <button

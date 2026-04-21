@@ -1739,9 +1739,9 @@ router.get('/comp-sets', requireAdminAuth, async (_req: AuthenticatedRequest, re
         rst.city,
         rst.state,
         rst.submarket,
-        acp.distance_mi,
-        ROUND(AVG(cut.avg_rent)::numeric, 2)               AS avg_rent_sf,
-        acp.occupancy_pct,
+        acp.distance_mi::float8,
+        ROUND(AVG(cut.avg_rent)::numeric, 2)::float8       AS avg_rent_sf,
+        acp.occupancy_pct::float8,
         COALESCE(MAX(cp.scraped_at), rst.updated_at)       AS last_scraped
       FROM rent_scrape_targets rst
       LEFT JOIN comp_properties cp
@@ -1769,10 +1769,16 @@ router.post('/comp-sets', requireAdminAuth, async (req: AuthenticatedRequest, re
     const { property_name, address, city, state, submarket, distance_mi, avg_rent_sf, occupancy_pct, notes } = req.body;
     if (!property_name) return res.status(400).json({ error: 'property_name is required' });
 
-    // Insert into canonical comp infrastructure
+    // Insert into canonical comp infrastructure (upsert: reactivate if same address+city exist)
     const rstResult = await query(`
       INSERT INTO rent_scrape_targets (property_name, address, city, state, submarket, active, source)
       VALUES ($1, $2, $3, $4, $5, true, 'admin_manual')
+      ON CONFLICT (lower(TRIM(BOTH FROM address)), lower(TRIM(BOTH FROM city)))
+      DO UPDATE SET
+        property_name = COALESCE(EXCLUDED.property_name, rent_scrape_targets.property_name),
+        submarket     = COALESCE(EXCLUDED.submarket, rent_scrape_targets.submarket),
+        active        = true,
+        updated_at    = NOW()
       RETURNING id
     `, [property_name, address ?? null, city ?? null, state ?? null, submarket ?? null]);
 
