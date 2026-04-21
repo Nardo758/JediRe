@@ -249,7 +249,13 @@ export function useInvestorCapital(dealId: string) {
     commitment_amount: number; ownership_pct?: number;
   }) => {
     const inv = await createInvestor({ name: data.name, type: data.type, email: data.email });
-    await linkInvestment({ investor_id: inv.id, commitment_amount: data.commitment_amount, ownership_pct: data.ownership_pct });
+    try {
+      await linkInvestment({ investor_id: inv.id, commitment_amount: data.commitment_amount, ownership_pct: data.ownership_pct });
+    } catch (linkErr) {
+      // Best-effort cleanup: remove the orphan investor record if linking fails
+      try { await apiClient.delete(`/api/v1/capital/investors/${inv.id}`); } catch { /* ignore cleanup errors */ }
+      throw linkErr;
+    }
   };
 
   const createCall = async (data: { call_date: string; due_date: string; total_amount: number; purpose?: string }) => {
