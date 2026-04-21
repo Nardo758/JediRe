@@ -5,7 +5,7 @@
  * Data sourced entirely from /api/v1/capital/* via useInvestorCapital hook.
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { BT, BT_CSS, AlertBanner, Bd } from '../bloomberg-ui';
 import { mono } from '../bloomberg-tokens';
 import {
@@ -742,6 +742,12 @@ function LedgerTab({ entries, totalEntries, loading, error, onFilter }: LedgerTa
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo,   setDateTo]   = useState('');
   const [page, setPage] = useState(0);
+
+  // On mount, reset data to match default filter controls so tab switches don't
+  // leave stale filtered results visible alongside blank filter inputs.
+  const onFilterRef = useRef(onFilter);
+  onFilterRef.current = onFilter;
+  useEffect(() => { onFilterRef.current({ limit: PAGE_SIZE, offset: 0 }); }, []);
 
   const totalPages = Math.max(1, Math.ceil(totalEntries / PAGE_SIZE));
 
