@@ -21,7 +21,7 @@ const T = {
 
 type TabType =
   | 'overview' | 'performance' | 'comp-set'
-  | 'leasing' | 'unit-mix' | 'traffic'
+  | 'leasing'
   | 'ops-intel' | 'revenue' | 'actuals'
   | 'investors' | 'lifecycle' | 'exit-timing' | 'refi-monitor'
   | 'ai-learning' | 'events'
@@ -1362,14 +1362,12 @@ export default function PortfolioPropertyPage() {
 
   useEffect(() => {
     if (!dealId || activeTab !== 'leasing') return;
-    if (leaseData) return;
-    apiClient.get(`/api/v1/portfolio/${dealId}/leasing?limit=100`).then(r => setLeaseData(r.data));
-  }, [dealId, activeTab]);
-
-  useEffect(() => {
-    if (!dealId || activeTab !== 'traffic') return;
-    if (trafficData.length) return;
-    apiClient.get(`/api/v1/portfolio/${dealId}/traffic`).then(r => setTrafficData(r.data?.data || []));
+    if (!leaseData) {
+      apiClient.get(`/api/v1/portfolio/${dealId}/leasing?limit=100`).then(r => setLeaseData(r.data));
+    }
+    if (!trafficData.length) {
+      apiClient.get(`/api/v1/portfolio/${dealId}/traffic`).then(r => setTrafficData(r.data?.data || []));
+    }
   }, [dealId, activeTab]);
 
   if (loading) {
@@ -1400,9 +1398,7 @@ export default function PortfolioPropertyPage() {
       { id: 'comp-set',  short: 'Comp Set' },
     ]},
     { label: 'REVENUE & OPS', tabs: [
-      { id: 'leasing',   short: 'Leasing' },
-      { id: 'unit-mix',  short: 'Unit Mix' },
-      { id: 'traffic',   short: 'Traffic' },
+      { id: 'leasing',   short: 'Leasing & Traffic' },
       { id: 'ops-intel', short: 'Ops Intel' },
       { id: 'revenue',   short: 'Revenue Mgmt' },
       { id: 'actuals',   short: 'Actuals' },
@@ -1543,218 +1539,215 @@ export default function PortfolioPropertyPage() {
   };
 
   const renderLeasing = () => {
-    if (!leaseData) return <Spinner />;
+    const config = unitProgram?.unit_config || [];
+    const totalUnits = config.reduce((s: number, u: any) => s + (u.count || 0), 0);
 
-    const ms = leaseData.monthlyStats;
+    // Leasing data (may still be loading)
+    const ms = leaseData?.monthlyStats ?? [];
+    const retData = leaseData?.retentionByQuarter ?? [];
     const newRentData = ms.map(m => toNum(m.avg_new_rent) || 0);
     const renewalRentData = ms.map(m => toNum(m.avg_renewal_rent) || 0);
     const ltlData = ms.map(m => toNum(m.avg_loss_to_lease_pct) || 0);
-    const retData = leaseData.retentionByQuarter;
 
-    return (
-      <div style={{ padding: 16, overflowY: 'auto', maxHeight: 'calc(100vh - 280px)', display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <Panel title="NEW LEASE RENT TREND" titleColor={T.text.blue}>
-            <div style={{ padding: 12 }}>
-              <MiniLineChart data={newRentData} color={T.text.blue} height={100} />
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: T.text.muted, fontFamily: T.font.mono, marginTop: 4 }}>
-                {ms.length > 0 && <span>{fmtMonth(ms[0].month)}</span>}
-                {ms.length > 1 && <span>{fmtMonth(ms[ms.length - 1].month)}</span>}
-              </div>
-              <div style={{ display: 'flex', gap: 12, marginTop: 4, fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>
-                <span>Peak: {fmt(Math.max(...newRentData), 'currency')}</span>
-                <span>Current: {fmt(newRentData[newRentData.length - 1], 'currency')}</span>
-              </div>
-            </div>
-          </Panel>
-          <Panel title="LOSS-TO-LEASE TREND" titleColor={T.text.red}>
-            <div style={{ padding: 12 }}>
-              <MiniLineChart data={ltlData} color={T.text.red} height={100} />
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: T.text.muted, fontFamily: T.font.mono, marginTop: 4 }}>
-                {ms.length > 0 && <span>{fmtMonth(ms[0].month)}</span>}
-                {ms.length > 1 && <span>{fmtMonth(ms[ms.length - 1].month)}</span>}
-              </div>
-            </div>
-          </Panel>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <Panel title="RENEWAL RENT TREND" titleColor={T.text.purple}>
-            <div style={{ padding: 12 }}>
-              <MiniLineChart data={renewalRentData} color={T.text.purple} height={100} />
-            </div>
-          </Panel>
-          <Panel title="RETENTION RATE BY QUARTER" titleColor={T.text.green}>
-            <div style={{ padding: 12 }}>
-              <MiniBarChart data={retData.map(r => parseFloat(r.retention_rate) || 0)} color={T.text.green} height={100} />
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: T.text.muted, fontFamily: T.font.mono, marginTop: 4 }}>
-                {retData.length > 0 && <span>{retData[0].quarter?.substring(0, 7)}</span>}
-                {retData.length > 1 && <span>{retData[retData.length - 1].quarter?.substring(0, 7)}</span>}
-              </div>
-            </div>
-          </Panel>
-        </div>
-
-        <Panel title="RECENT TRANSACTIONS">
-          <div style={{ overflowX: 'auto', maxHeight: 400 }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: T.font.mono }}>
-              <thead style={{ position: 'sticky', top: 0, background: T.bg.panelAlt }}>
-                <tr>
-                  {['UNIT', 'TYPE', 'LEASE TYPE', 'START', 'SF', 'NEW RENT', 'PRIOR', 'MARKET', 'CHANGE', 'LTL %'].map((h, j) => (
-                    <th key={h} style={{ textAlign: j < 4 ? 'left' : 'right', padding: '7px 10px', color: T.text.muted, fontWeight: 600, fontSize: 9 }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {leaseData.recentTransactions.map((t: any, i: number) => (
-                  <tr key={i} style={{ borderBottom: `1px solid ${T.border.subtle}` }}>
-                    <td style={{ padding: '6px 10px', color: T.text.primary, fontWeight: 600 }}>{t.unit_number}</td>
-                    <td style={{ padding: '6px 10px', color: T.text.secondary }}>{t.unit_type}</td>
-                    <td style={{ padding: '6px 10px' }}>
-                      <span style={{ padding: '2px 6px', background: t.lease_type?.trim().toLowerCase() === 'new' ? '#4A9EFF22' : '#A78BFA22', color: t.lease_type?.trim().toLowerCase() === 'new' ? T.text.blue : T.text.purple, borderRadius: 3, fontSize: 9, fontWeight: 600 }}>
-                        {t.lease_type?.trim().toUpperCase()}
-                      </span>
-                    </td>
-                    <td style={{ padding: '6px 10px', color: T.text.secondary }}>{t.lease_start ? new Date(t.lease_start).toLocaleDateString() : '—'}</td>
-                    <td style={{ padding: '6px 10px', textAlign: 'right', color: T.text.secondary }}>{fmt(t.sqft)}</td>
-                    <td style={{ padding: '6px 10px', textAlign: 'right', color: T.text.primary, fontWeight: 600 }}>{fmt(parseFloat(t.new_rent), 'currency')}</td>
-                    <td style={{ padding: '6px 10px', textAlign: 'right', color: T.text.secondary }}>{t.prior_rent ? fmt(parseFloat(t.prior_rent), 'currency') : '—'}</td>
-                    <td style={{ padding: '6px 10px', textAlign: 'right', color: T.text.secondary }}>{fmt(parseFloat(t.market_rent), 'currency')}</td>
-                    <td style={{ padding: '6px 10px', textAlign: 'right', color: parseFloat(t.rent_change_dollar) > 0 ? T.text.green : parseFloat(t.rent_change_dollar) < 0 ? T.text.red : T.text.muted }}>
-                      {t.rent_change_dollar ? `${parseFloat(t.rent_change_dollar) > 0 ? '+' : ''}${fmt(parseFloat(t.rent_change_dollar), 'currency')}` : '—'}
-                    </td>
-                    <td style={{ padding: '6px 10px', textAlign: 'right', color: parseFloat(t.loss_to_lease_pct) < -5 ? T.text.red : T.text.secondary }}>
-                      {t.loss_to_lease_pct ? `${parseFloat(t.loss_to_lease_pct).toFixed(1)}%` : '—'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Panel>
-      </div>
-    );
-  };
-
-  const renderUnitMix = () => {
-    const config = unitProgram?.unit_config || [];
-    if (!config.length) {
-      return (
-        <div style={{ textAlign: 'center', padding: 48, color: T.text.muted, fontFamily: T.font.mono, fontSize: 11 }}>
-          <div style={{ fontSize: 28, marginBottom: 8 }}>🏠</div>
-          <div>NO UNIT MIX DATA AVAILABLE</div>
-        </div>
-      );
-    }
-
-    const totalUnits = config.reduce((s: number, u: any) => s + (u.count || 0), 0);
-
-    return (
-      <div style={{ padding: 16, overflowY: 'auto', maxHeight: 'calc(100vh - 280px)', display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
-          {['Studio', '1BR', '2BR', '3BR'].map(bed => {
-            const types = config.filter((u: any) => {
-              const bc = u.bedroom_count || 0;
-              if (bed === 'Studio') return bc === 0;
-              if (bed === '1BR') return bc === 1;
-              if (bed === '2BR') return bc === 2;
-              return bc >= 3;
-            });
-            const count = types.reduce((s: number, u: any) => s + (u.count || 0), 0);
-            const avgRent = types.length ? types.reduce((s: number, u: any) => s + (u.avg_rent || 0) * (u.count || 0), 0) / Math.max(count, 1) : 0;
-            return (
-              <div key={bed} style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 4, padding: 12, textAlign: 'center' }}>
-                <div style={{ fontSize: 22, fontWeight: 700, color: T.text.primary, fontFamily: T.font.mono }}>{count}</div>
-                <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono, marginTop: 2 }}>{bed.toUpperCase()} UNITS</div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: T.text.blue, fontFamily: T.font.mono, marginTop: 4 }}>{fmt(avgRent, 'currency')}</div>
-                <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>{totalUnits > 0 ? `${((count / totalUnits) * 100).toFixed(0)}% of mix` : ''}</div>
-              </div>
-            );
-          })}
-        </div>
-
-        <Panel title={`UNIT TYPES (${config.length} types, ${totalUnits} units)`}>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: T.font.mono }}>
-              <thead>
-                <tr style={{ background: T.bg.panelAlt }}>
-                  {['TYPE', 'BEDS', 'SF', 'COUNT', '% MIX', 'AVG RENT', 'MIN RENT', 'MAX RENT', '$/SF'].map((h, j) => (
-                    <th key={h} style={{ textAlign: j === 0 ? 'left' : 'right', padding: '7px 10px', color: T.text.muted, fontWeight: 600, fontSize: 9 }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {config.sort((a: any, b: any) => (b.count || 0) - (a.count || 0)).map((u: any, i: number) => (
-                  <tr key={i} style={{ borderBottom: `1px solid ${T.border.subtle}` }}>
-                    <td style={{ padding: '6px 10px', color: T.text.primary, fontWeight: 600 }}>{u.type || u.unit_type}</td>
-                    <td style={{ padding: '6px 10px', textAlign: 'right', color: T.text.secondary }}>{u.bedroom_count ?? '—'}</td>
-                    <td style={{ padding: '6px 10px', textAlign: 'right', color: T.text.secondary }}>{fmt(u.sqft)}</td>
-                    <td style={{ padding: '6px 10px', textAlign: 'right', color: T.text.primary }}>{u.count || '—'}</td>
-                    <td style={{ padding: '6px 10px', textAlign: 'right', color: T.text.secondary }}>{totalUnits > 0 ? `${(((u.count || 0) / totalUnits) * 100).toFixed(1)}%` : '—'}</td>
-                    <td style={{ padding: '6px 10px', textAlign: 'right', color: T.text.blue, fontWeight: 600 }}>{fmt(u.avg_rent, 'currency')}</td>
-                    <td style={{ padding: '6px 10px', textAlign: 'right', color: T.text.secondary }}>{fmt(u.min_rent, 'currency')}</td>
-                    <td style={{ padding: '6px 10px', textAlign: 'right', color: T.text.secondary }}>{fmt(u.max_rent, 'currency')}</td>
-                    <td style={{ padding: '6px 10px', textAlign: 'right', color: T.text.secondary }}>{u.sqft && u.avg_rent ? `$${(u.avg_rent / u.sqft).toFixed(2)}` : '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Panel>
-      </div>
-    );
-  };
-
-  const renderTraffic = () => {
-    if (!trafficData.length) return <Spinner />;
-
+    // Traffic data (may still be loading)
     const last52 = trafficData.slice(-52);
     const trafficNums = last52.map(w => toNum(w.traffic) || 0);
     const closingNums = last52.map(w => toNum(w.closing_ratio) || 0);
     const occNums = last52.map(w => toNum(w.occ_pct) || 0);
+    const latestOcc = occNums.length ? occNums[occNums.length - 1] : null;
+    const avgTraffic = trafficNums.length ? trafficNums.reduce((a, b) => a + b, 0) / trafficNums.length : null;
+    const avgClosing = closingNums.length ? closingNums.reduce((a, b) => a + b, 0) / closingNums.length : null;
+    const currentNewRent = newRentData.length ? newRentData[newRentData.length - 1] : null;
+    const currentLtl = ltlData.length ? ltlData[ltlData.length - 1] : null;
+    const latestRetention = retData.length ? parseFloat(retData[retData.length - 1].retention_rate) : null;
+
+    // Bed-type mix tiles
+    const bedTypes = ['Studio', '1BR', '2BR', '3BR+'].map(bed => {
+      const filtered = config.filter((u: any) => {
+        const bc = u.bedroom_count || 0;
+        if (bed === 'Studio') return bc === 0;
+        if (bed === '1BR') return bc === 1;
+        if (bed === '2BR') return bc === 2;
+        return bc >= 3;
+      });
+      const count = filtered.reduce((s: number, u: any) => s + (u.count || 0), 0);
+      const avgRent = filtered.length
+        ? filtered.reduce((s: number, u: any) => s + (u.avg_rent || 0) * (u.count || 0), 0) / Math.max(count, 1)
+        : 0;
+      return { bed, count, avgRent, pct: totalUnits > 0 ? (count / totalUnits) * 100 : 0 };
+    });
+
+    const kpis = [
+      { l: 'OCCUPANCY', v: latestOcc != null ? `${latestOcc.toFixed(1)}%` : '—', c: T.text.purple, sub: 'latest week' },
+      { l: 'AVG TRAFFIC / WK', v: avgTraffic != null ? avgTraffic.toFixed(1) : '—', c: T.text.blue, sub: 'trailing 52wk' },
+      { l: 'CLOSING RATIO', v: avgClosing != null ? `${avgClosing.toFixed(1)}%` : '—', c: T.text.green, sub: 'avg leads→leases' },
+      { l: 'NEW LEASE AVG', v: currentNewRent ? fmt(currentNewRent, 'currency') : '—', c: T.text.primary, sub: 'most recent mo' },
+      { l: 'LOSS-TO-LEASE', v: currentLtl != null ? `${currentLtl.toFixed(1)}%` : '—', c: currentLtl != null && currentLtl < -5 ? T.text.red : T.text.amber, sub: 'rent vs. market' },
+      { l: 'RETENTION', v: latestRetention != null ? `${latestRetention.toFixed(0)}%` : '—', c: T.text.green, sub: 'latest quarter' },
+    ];
 
     return (
       <div style={{ padding: 16, overflowY: 'auto', maxHeight: 'calc(100vh - 280px)', display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
-          {[
-            { label: 'WEEKS OF DATA', value: trafficData.length, color: T.text.primary },
-            { label: 'AVG WEEKLY TRAFFIC', value: fmt(trafficNums.reduce((a, b) => a + b, 0) / trafficNums.length, 'number', 1), color: T.text.blue },
-            { label: 'AVG CLOSING RATIO', value: fmt(closingNums.reduce((a, b) => a + b, 0) / closingNums.length, 'percent', 1), color: T.text.green },
-            { label: 'LATEST OCCUPANCY', value: fmt(occNums[occNums.length - 1], 'percent', 1), color: T.text.purple },
-          ].map((k, i) => (
-            <div key={i} style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 4, padding: 12, textAlign: 'center' }}>
-              <div style={{ fontSize: 22, fontWeight: 700, color: k.color, fontFamily: T.font.mono }}>{k.value}</div>
-              <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono, marginTop: 2 }}>{k.label}</div>
+
+        {/* ── KPI strip ── */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 8 }}>
+          {kpis.map(k => (
+            <div key={k.l} style={{ background: T.bg.panelAlt, border: `1px solid ${T.border.subtle}`, borderRadius: 4, padding: '10px 12px' }}>
+              <div style={{ fontSize: 8, color: T.text.muted, fontFamily: T.font.mono, marginBottom: 4, letterSpacing: 0.5 }}>{k.l}</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: k.c, fontFamily: T.font.mono }}>{k.v}</div>
+              <div style={{ fontSize: 8, color: T.text.muted, fontFamily: T.font.mono, marginTop: 2 }}>{k.sub}</div>
             </div>
           ))}
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <Panel title="WEEKLY TRAFFIC (LAST 52 WEEKS)" titleColor={T.text.blue}>
-            <div style={{ padding: 12 }}>
-              <MiniBarChart data={trafficNums} color={T.text.blue} height={120} />
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: T.text.muted, fontFamily: T.font.mono, marginTop: 4 }}>
-                {last52.length > 0 && <span>{new Date(last52[0].week_ending).toLocaleDateString('en-US', { month: 'short', year: '2-digit' })}</span>}
-                {last52.length > 1 && <span>{new Date(last52[last52.length - 1].week_ending).toLocaleDateString('en-US', { month: 'short', year: '2-digit' })}</span>}
+        {/* ── Main body: unit mix left + charts right ── */}
+        <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 12 }}>
+
+          {/* Left: Unit Mix */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ fontSize: 9, fontWeight: 700, color: T.text.muted, fontFamily: T.font.mono, letterSpacing: 1, marginBottom: 2 }}>UNIT MIX — {totalUnits} UNITS</div>
+            {/* Bedroom type tiles */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+              {bedTypes.filter(b => b.count > 0).map(b => (
+                <div key={b.bed} style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 4, padding: '8px 10px' }}>
+                  <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>{b.bed}</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: T.text.primary, fontFamily: T.font.mono }}>{b.count}</div>
+                  <div style={{ fontSize: 9, color: T.text.blue, fontFamily: T.font.mono }}>{b.avgRent > 0 ? fmt(b.avgRent, 'currency') : '—'}</div>
+                  <div style={{ height: 3, background: 'rgba(255,255,255,0.04)', borderRadius: 2, marginTop: 6, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${b.pct}%`, background: T.text.blue, opacity: 0.5, borderRadius: 2 }} />
+                  </div>
+                  <div style={{ fontSize: 8, color: T.text.muted, fontFamily: T.font.mono, marginTop: 2 }}>{b.pct.toFixed(0)}% of mix</div>
+                </div>
+              ))}
+              {bedTypes.every(b => b.count === 0) && (
+                <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: 16, color: T.text.muted, fontSize: 9, fontFamily: T.font.mono }}>NO UNIT MIX DATA</div>
+              )}
+            </div>
+
+            {/* Compact type table */}
+            {config.length > 0 && (
+              <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 4, overflow: 'hidden' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 9, fontFamily: T.font.mono }}>
+                  <thead>
+                    <tr style={{ background: T.bg.panelAlt }}>
+                      {['TYPE', 'CT', 'SF', 'AVG RENT', '$/SF'].map((h, j) => (
+                        <th key={h} style={{ textAlign: j === 0 ? 'left' : 'right', padding: '5px 8px', color: T.text.muted, fontWeight: 600, fontSize: 8 }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...config].sort((a: any, b: any) => (b.count || 0) - (a.count || 0)).map((u: any, i: number) => (
+                      <tr key={i} style={{ borderBottom: `1px solid ${T.border.subtle}` }}>
+                        <td style={{ padding: '4px 8px', color: T.text.primary, fontWeight: 600 }}>{u.type || u.unit_type}</td>
+                        <td style={{ padding: '4px 8px', textAlign: 'right', color: T.text.secondary }}>{u.count}</td>
+                        <td style={{ padding: '4px 8px', textAlign: 'right', color: T.text.secondary }}>{u.sqft ? u.sqft.toLocaleString() : '—'}</td>
+                        <td style={{ padding: '4px 8px', textAlign: 'right', color: T.text.blue }}>{fmt(u.avg_rent, 'currency')}</td>
+                        <td style={{ padding: '4px 8px', textAlign: 'right', color: T.text.secondary }}>{u.sqft && u.avg_rent ? `$${(u.avg_rent / u.sqft).toFixed(2)}` : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            </div>
-          </Panel>
-          <Panel title="CLOSING RATIO TREND" titleColor={T.text.green}>
-            <div style={{ padding: 12 }}>
-              <MiniLineChart data={closingNums} color={T.text.green} height={120} />
-            </div>
-          </Panel>
+            )}
+          </div>
+
+          {/* Right: 2×2 chart grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: '1fr 1fr', gap: 10 }}>
+            <Panel title="NEW LEASE RENT" titleColor={T.text.blue}>
+              <div style={{ padding: '6px 12px 10px' }}>
+                {ms.length > 0
+                  ? <><MiniLineChart data={newRentData} color={T.text.blue} height={90} />
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 8, color: T.text.muted, fontFamily: T.font.mono, marginTop: 3 }}>
+                        <span>{fmtMonth(ms[0].month)}</span><span>{fmtMonth(ms[ms.length - 1].month)}</span>
+                      </div></>
+                  : <div style={{ height: 90, display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.text.muted, fontSize: 9, fontFamily: T.font.mono }}>No leasing data</div>
+                }
+              </div>
+            </Panel>
+
+            <Panel title="LOSS-TO-LEASE %" titleColor={T.text.red}>
+              <div style={{ padding: '6px 12px 10px' }}>
+                {ms.length > 0
+                  ? <><MiniLineChart data={ltlData} color={T.text.red} height={90} />
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 8, color: T.text.muted, fontFamily: T.font.mono, marginTop: 3 }}>
+                        <span>{fmtMonth(ms[0].month)}</span><span>{fmtMonth(ms[ms.length - 1].month)}</span>
+                      </div></>
+                  : <div style={{ height: 90, display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.text.muted, fontSize: 9, fontFamily: T.font.mono }}>No leasing data</div>
+                }
+              </div>
+            </Panel>
+
+            <Panel title="WEEKLY TRAFFIC" titleColor={T.text.blue}>
+              <div style={{ padding: '6px 12px 10px' }}>
+                {trafficNums.length > 0
+                  ? <><MiniBarChart data={trafficNums} color={T.text.blue} height={90} />
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 8, color: T.text.muted, fontFamily: T.font.mono, marginTop: 3 }}>
+                        {last52[0] && <span>{new Date(last52[0].week_ending).toLocaleDateString('en-US', { month: 'short', year: '2-digit' })}</span>}
+                        {last52[last52.length - 1] && <span>{new Date(last52[last52.length - 1].week_ending).toLocaleDateString('en-US', { month: 'short', year: '2-digit' })}</span>}
+                      </div></>
+                  : <div style={{ height: 90, display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.text.muted, fontSize: 9, fontFamily: T.font.mono }}>No traffic data</div>
+                }
+              </div>
+            </Panel>
+
+            <Panel title="CLOSING RATIO & RENEWAL RENT" titleColor={T.text.green}>
+              <div style={{ padding: '6px 12px 10px' }}>
+                {closingNums.length > 0
+                  ? <><MiniLineChart data={closingNums} color={T.text.green} height={44} />
+                      <MiniLineChart data={renewalRentData.length ? renewalRentData : closingNums} color={T.text.purple} height={40} /></>
+                  : <div style={{ height: 90, display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.text.muted, fontSize: 9, fontFamily: T.font.mono }}>No traffic data</div>
+                }
+              </div>
+            </Panel>
+          </div>
         </div>
 
-        <Panel title="OCCUPANCY TREND" titleColor={T.text.purple}>
-          <div style={{ padding: 12 }}>
-            <MiniLineChart data={trafficData.map(w => toNum(w.occ_pct) || 0)} color={T.text.purple} height={100} />
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: T.text.muted, fontFamily: T.font.mono, marginTop: 4 }}>
-              {trafficData.length > 0 && <span>{new Date(trafficData[0].week_ending).toLocaleDateString('en-US', { month: 'short', year: '2-digit' })}</span>}
-              {trafficData.length > 1 && <span>{new Date(trafficData[trafficData.length - 1].week_ending).toLocaleDateString('en-US', { month: 'short', year: '2-digit' })}</span>}
-            </div>
-          </div>
+        {/* ── Recent Transactions ── */}
+        <Panel title="RECENT LEASE TRANSACTIONS">
+          {!leaseData
+            ? <div style={{ padding: 24, textAlign: 'center', color: T.text.muted, fontSize: 9, fontFamily: T.font.mono }}>Loading transactions...</div>
+            : leaseData.recentTransactions.length === 0
+            ? <div style={{ padding: 24, textAlign: 'center', color: T.text.muted, fontSize: 9, fontFamily: T.font.mono }}>No recent transactions</div>
+            : (
+              <div style={{ overflowX: 'auto', maxHeight: 320 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: T.font.mono }}>
+                  <thead style={{ position: 'sticky', top: 0, background: T.bg.panelAlt }}>
+                    <tr>
+                      {['UNIT', 'TYPE', 'LEASE', 'START', 'SF', 'NEW RENT', 'PRIOR', 'MARKET', 'Δ RENT', 'LTL %'].map((h, j) => (
+                        <th key={h} style={{ textAlign: j < 4 ? 'left' : 'right', padding: '6px 10px', color: T.text.muted, fontWeight: 600, fontSize: 9 }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {leaseData.recentTransactions.map((t: any, i: number) => (
+                      <tr key={i} style={{ borderBottom: `1px solid ${T.border.subtle}` }}>
+                        <td style={{ padding: '5px 10px', color: T.text.primary, fontWeight: 600 }}>{t.unit_number}</td>
+                        <td style={{ padding: '5px 10px', color: T.text.secondary }}>{t.unit_type}</td>
+                        <td style={{ padding: '5px 10px' }}>
+                          <span style={{ padding: '2px 5px', background: t.lease_type?.trim().toLowerCase() === 'new' ? '#4A9EFF22' : '#A78BFA22', color: t.lease_type?.trim().toLowerCase() === 'new' ? T.text.blue : T.text.purple, borderRadius: 2, fontSize: 8, fontWeight: 600 }}>
+                            {t.lease_type?.trim().toUpperCase()}
+                          </span>
+                        </td>
+                        <td style={{ padding: '5px 10px', color: T.text.secondary }}>{t.lease_start ? new Date(t.lease_start).toLocaleDateString() : '—'}</td>
+                        <td style={{ padding: '5px 10px', textAlign: 'right', color: T.text.secondary }}>{fmt(t.sqft)}</td>
+                        <td style={{ padding: '5px 10px', textAlign: 'right', color: T.text.primary, fontWeight: 600 }}>{fmt(parseFloat(t.new_rent), 'currency')}</td>
+                        <td style={{ padding: '5px 10px', textAlign: 'right', color: T.text.secondary }}>{t.prior_rent ? fmt(parseFloat(t.prior_rent), 'currency') : '—'}</td>
+                        <td style={{ padding: '5px 10px', textAlign: 'right', color: T.text.secondary }}>{fmt(parseFloat(t.market_rent), 'currency')}</td>
+                        <td style={{ padding: '5px 10px', textAlign: 'right', color: parseFloat(t.rent_change_dollar) > 0 ? T.text.green : parseFloat(t.rent_change_dollar) < 0 ? T.text.red : T.text.muted }}>
+                          {t.rent_change_dollar ? `${parseFloat(t.rent_change_dollar) > 0 ? '+' : ''}${fmt(parseFloat(t.rent_change_dollar), 'currency')}` : '—'}
+                        </td>
+                        <td style={{ padding: '5px 10px', textAlign: 'right', color: parseFloat(t.loss_to_lease_pct) < -5 ? T.text.red : T.text.secondary }}>
+                          {t.loss_to_lease_pct ? `${parseFloat(t.loss_to_lease_pct).toFixed(1)}%` : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+          }
         </Panel>
+
       </div>
     );
   };
@@ -1846,8 +1839,6 @@ export default function PortfolioPropertyPage() {
         {activeTab === 'performance'  && <PerformanceTab dealId={dealId!} financials={financials} />}
         {activeTab === 'comp-set'     && <CompSetTab dealId={dealId!} />}
         {activeTab === 'leasing'      && renderLeasing()}
-        {activeTab === 'unit-mix'     && renderUnitMix()}
-        {activeTab === 'traffic'      && renderTraffic()}
         {activeTab === 'ops-intel'    && (
           <div style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 280px)' }}>
             <OperationsIntelligenceSection dealId={dealId!} deal={deal as Record<string, unknown>} />
