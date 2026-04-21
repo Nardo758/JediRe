@@ -1,0 +1,702 @@
+/**
+ * F3 Portfolio & Reports View
+ * 
+ * Unified terminal view combining:
+ * - Portfolio asset management
+ * - Performance analytics
+ * - Financial reporting
+ * - Agent learning metrics
+ * - Archive benchmarking
+ */
+
+import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { 
+  TrendingUp, TrendingDown, Building2, DollarSign, 
+  FileText, Download, ChevronRight, ChevronDown,
+  BarChart3, PieChart, Activity, Target, Brain,
+  Calendar, AlertTriangle, CheckCircle, Clock
+} from 'lucide-react';
+import { apiClient } from '../../services/api.client';
+
+// ─── Theme System ─────────────────────────────────────────────
+interface Theme {
+  bg: { terminal: string; panel: string; panelAlt: string; hover: string; active: string };
+  text: { primary: string; secondary: string; muted: string; amber: string; green: string; red: string; cyan: string };
+  border: { subtle: string; medium: string };
+  font: { mono: string };
+}
+
+const MONO = "'JetBrains Mono','Fira Code','SF Mono',monospace";
+
+// ─── Types ────────────────────────────────────────────────────
+
+interface PortfolioAsset {
+  id: string;
+  name: string;
+  address: string;
+  city: string;
+  state: string;
+  msa: string;
+  units: number;
+  assetClass: string;
+  vintage: number;
+  acquisitionDate: string;
+  purchasePrice: number;
+  currentValue: number;
+  noi: number;
+  occupancy: number;
+  capRate: number;
+  irr: number;
+  equity: number;
+  debt: number;
+  status: 'performing' | 'watch' | 'distressed';
+}
+
+interface PortfolioMetrics {
+  totalAssets: number;
+  totalUnits: number;
+  totalValue: number;
+  totalEquity: number;
+  totalDebt: number;
+  avgOccupancy: number;
+  avgCapRate: number;
+  portfolioNoi: number;
+  ytdReturn: number;
+  ltmCashOnCash: number;
+}
+
+interface PerformanceData {
+  period: string;
+  noi: number;
+  occupancy: number;
+  collections: number;
+  expenses: number;
+}
+
+interface AgentAccuracy {
+  assumptionName: string;
+  hitRate10Pct: number;
+  hitRate20Pct: number;
+  meanBias: number;
+  nPredictions: number;
+  trend: 'improving' | 'stable' | 'worsening';
+}
+
+interface ReportDefinition {
+  id: string;
+  name: string;
+  description: string;
+  category: 'portfolio' | 'deal' | 'market' | 'agent';
+  icon: React.ReactNode;
+  lastGenerated?: string;
+}
+
+// ─── Component ────────────────────────────────────────────────
+
+interface F3PortfolioViewProps {
+  theme: Theme;
+}
+
+export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
+  const navigate = useNavigate();
+  
+  // State
+  const [activeTab, setActiveTab] = useState<'overview' | 'assets' | 'performance' | 'reports' | 'learning'>('overview');
+  const [loading, setLoading] = useState(true);
+  const [metrics, setMetrics] = useState<PortfolioMetrics | null>(null);
+  const [assets, setAssets] = useState<PortfolioAsset[]>([]);
+  const [performance, setPerformance] = useState<PerformanceData[]>([]);
+  const [agentAccuracy, setAgentAccuracy] = useState<AgentAccuracy[]>([]);
+  const [expandedAssets, setExpandedAssets] = useState<Set<string>>(new Set());
+  const [selectedTimeframe, setSelectedTimeframe] = useState<'mtd' | 'qtd' | 'ytd' | 'ltm'>('ytd');
+  
+  // Load data
+  useEffect(() => {
+    loadPortfolioData();
+  }, []);
+  
+  const loadPortfolioData = async () => {
+    setLoading(true);
+    try {
+      // Load portfolio metrics
+      const metricsRes = await apiClient.get('/api/v1/portfolio/metrics').catch(() => ({ data: null }));
+      if (metricsRes.data) setMetrics(metricsRes.data);
+      
+      // Load assets
+      const assetsRes = await apiClient.get('/api/v1/portfolio/assets').catch(() => ({ data: { assets: [] } }));
+      setAssets(assetsRes.data.assets || []);
+      
+      // Load performance data
+      const perfRes = await apiClient.get('/api/v1/portfolio/performance?timeframe=ytd').catch(() => ({ data: { data: [] } }));
+      setPerformance(perfRes.data.data || []);
+      
+      // Load agent learning metrics
+      const learningRes = await apiClient.get('/api/v1/learning/outcomes/summary').catch(() => ({ data: { summary: [] } }));
+      setAgentAccuracy((learningRes.data.summary || []).map((r: any) => ({
+        assumptionName: r.assumption_name,
+        hitRate10Pct: (r.hit_rate_10pct || 0) * 100,
+        hitRate20Pct: (r.hit_rate_20pct || 0) * 100,
+        meanBias: r.mean_gap_pct || 0,
+        nPredictions: r.n_predictions || 0,
+        trend: r.mean_gap_pct > 5 ? 'worsening' : r.mean_gap_pct < -5 ? 'worsening' : 'stable',
+      })));
+      
+    } catch (err) {
+      console.error('Failed to load portfolio data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  // Report definitions
+  const reports: ReportDefinition[] = [
+    { id: 'portfolio-summary', name: 'Portfolio Summary', description: 'Executive overview of all assets, metrics, and performance', category: 'portfolio', icon: <Building2 size={16} /> },
+    { id: 'quarterly-report', name: 'Quarterly Report', description: 'Detailed Q/Q performance with variance analysis', category: 'portfolio', icon: <Calendar size={16} /> },
+    { id: 'noi-waterfall', name: 'NOI Waterfall', description: 'Revenue and expense breakdown by property', category: 'portfolio', icon: <BarChart3 size={16} /> },
+    { id: 'occupancy-trend', name: 'Occupancy Trend', description: 'Historical occupancy with lease expiration schedule', category: 'portfolio', icon: <Activity size={16} /> },
+    { id: 'debt-summary', name: 'Debt Summary', description: 'Loan details, maturities, and refinancing timeline', category: 'portfolio', icon: <DollarSign size={16} /> },
+    { id: 'deal-performance', name: 'Deal Performance', description: 'IRR, cash-on-cash, and equity multiple by deal', category: 'deal', icon: <Target size={16} /> },
+    { id: 'underwriting-accuracy', name: 'Underwriting Accuracy', description: 'Assumed vs actual performance across closed deals', category: 'agent', icon: <Brain size={16} /> },
+    { id: 'market-benchmark', name: 'Market Benchmark', description: 'Portfolio performance vs market indices', category: 'market', icon: <TrendingUp size={16} /> },
+    { id: 'risk-report', name: 'Risk Report', description: 'Concentration, exposure, and watch list assets', category: 'portfolio', icon: <AlertTriangle size={16} /> },
+  ];
+  
+  // Format helpers
+  const fmt = (v: number | null | undefined, prefix = '', suffix = '') => {
+    if (v == null) return '—';
+    return `${prefix}${v.toLocaleString()}${suffix}`;
+  };
+  
+  const fmtCurrency = (v: number | null | undefined) => {
+    if (v == null) return '—';
+    if (Math.abs(v) >= 1e9) return `$${(v / 1e9).toFixed(1)}B`;
+    if (Math.abs(v) >= 1e6) return `$${(v / 1e6).toFixed(1)}M`;
+    if (Math.abs(v) >= 1e3) return `$${(v / 1e3).toFixed(0)}K`;
+    return `$${v.toFixed(0)}`;
+  };
+  
+  const fmtPct = (v: number | null | undefined) => {
+    if (v == null) return '—';
+    return `${v.toFixed(1)}%`;
+  };
+  
+  // ─── Tab Content Renderers ──────────────────────────────────
+  
+  const renderOverview = () => (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+      {/* Portfolio KPIs */}
+      <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, padding: 16 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: T.text.cyan, letterSpacing: 1, marginBottom: 16, fontFamily: MONO }}>
+          PORTFOLIO SUMMARY
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+          {[
+            { label: 'TOTAL VALUE', value: fmtCurrency(metrics?.totalValue), color: T.text.amber },
+            { label: 'TOTAL UNITS', value: fmt(metrics?.totalUnits), color: T.text.primary },
+            { label: 'ASSETS', value: fmt(metrics?.totalAssets), color: T.text.primary },
+            { label: 'AVG OCCUPANCY', value: fmtPct(metrics?.avgOccupancy), color: (metrics?.avgOccupancy ?? 0) > 93 ? T.text.green : T.text.amber },
+            { label: 'PORTFOLIO NOI', value: fmtCurrency(metrics?.portfolioNoi), color: T.text.green },
+            { label: 'AVG CAP RATE', value: fmtPct(metrics?.avgCapRate), color: T.text.cyan },
+            { label: 'TOTAL EQUITY', value: fmtCurrency(metrics?.totalEquity), color: T.text.primary },
+            { label: 'TOTAL DEBT', value: fmtCurrency(metrics?.totalDebt), color: T.text.secondary },
+            { label: 'YTD RETURN', value: fmtPct(metrics?.ytdReturn), color: (metrics?.ytdReturn ?? 0) > 0 ? T.text.green : T.text.red },
+          ].map((kpi, i) => (
+            <div key={i} style={{ padding: 12, background: T.bg.panelAlt, border: `1px solid ${T.border.subtle}` }}>
+              <div style={{ fontSize: 9, color: T.text.muted, fontFamily: MONO, marginBottom: 4 }}>{kpi.label}</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: kpi.color, fontFamily: MONO }}>{kpi.value}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      
+      {/* Asset Allocation */}
+      <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, padding: 16 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: T.text.cyan, letterSpacing: 1, marginBottom: 16, fontFamily: MONO }}>
+          ASSET ALLOCATION
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {[
+            { label: 'Class A', pct: 35, value: '$142M', color: '#00D26A' },
+            { label: 'Class B', pct: 45, value: '$183M', color: '#00BCD4' },
+            { label: 'Class C', pct: 20, value: '$81M', color: '#F5A623' },
+          ].map((alloc, i) => (
+            <div key={i}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                <span style={{ fontSize: 11, color: T.text.primary, fontFamily: MONO }}>{alloc.label}</span>
+                <span style={{ fontSize: 11, color: T.text.secondary, fontFamily: MONO }}>{alloc.value} ({alloc.pct}%)</span>
+              </div>
+              <div style={{ height: 8, background: T.bg.panelAlt, borderRadius: 4, overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${alloc.pct}%`, background: alloc.color, borderRadius: 4 }} />
+              </div>
+            </div>
+          ))}
+        </div>
+        
+        {/* Geographic Distribution */}
+        <div style={{ marginTop: 20 }}>
+          <div style={{ fontSize: 10, color: T.text.muted, fontFamily: MONO, marginBottom: 8 }}>BY MARKET</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {[
+              { market: 'Atlanta', units: 1240 },
+              { market: 'Tampa', units: 890 },
+              { market: 'Charlotte', units: 650 },
+              { market: 'Raleigh', units: 420 },
+            ].map((m, i) => (
+              <div key={i} style={{ padding: '4px 10px', background: T.bg.panelAlt, border: `1px solid ${T.border.subtle}`, borderRadius: 4 }}>
+                <span style={{ fontSize: 10, color: T.text.primary, fontFamily: MONO }}>{m.market}</span>
+                <span style={{ fontSize: 10, color: T.text.muted, fontFamily: MONO, marginLeft: 6 }}>{m.units} units</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+      
+      {/* Top Performers */}
+      <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, padding: 16 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: T.text.green, letterSpacing: 1, marginBottom: 16, fontFamily: MONO }}>
+          TOP PERFORMERS
+        </div>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 10 }}>
+          <thead>
+            <tr style={{ borderBottom: `1px solid ${T.border.subtle}` }}>
+              <th style={{ textAlign: 'left', padding: '6px 0', color: T.text.muted }}>ASSET</th>
+              <th style={{ textAlign: 'right', padding: '6px 0', color: T.text.muted }}>NOI</th>
+              <th style={{ textAlign: 'right', padding: '6px 0', color: T.text.muted }}>OCC</th>
+              <th style={{ textAlign: 'right', padding: '6px 0', color: T.text.muted }}>IRR</th>
+            </tr>
+          </thead>
+          <tbody>
+            {assets.slice(0, 5).map((asset, i) => (
+              <tr key={i} style={{ borderBottom: `1px solid ${T.border.subtle}` }}>
+                <td style={{ padding: '8px 0', color: T.text.primary }}>{asset.name}</td>
+                <td style={{ textAlign: 'right', color: T.text.green }}>{fmtCurrency(asset.noi)}</td>
+                <td style={{ textAlign: 'right', color: asset.occupancy > 93 ? T.text.green : T.text.amber }}>{fmtPct(asset.occupancy)}</td>
+                <td style={{ textAlign: 'right', color: T.text.cyan }}>{fmtPct(asset.irr)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      
+      {/* Watch List */}
+      <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, padding: 16 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: T.text.amber, letterSpacing: 1, marginBottom: 16, fontFamily: MONO }}>
+          WATCH LIST
+        </div>
+        {assets.filter(a => a.status === 'watch').length === 0 ? (
+          <div style={{ textAlign: 'center', padding: 24, color: T.text.muted }}>
+            <CheckCircle size={24} style={{ marginBottom: 8, opacity: 0.5 }} />
+            <div style={{ fontSize: 11, fontFamily: MONO }}>No assets on watch list</div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {assets.filter(a => a.status === 'watch').map((asset, i) => (
+              <div key={i} style={{ padding: 12, background: T.bg.panelAlt, border: `1px solid ${T.border.subtle}`, borderLeft: `3px solid ${T.text.amber}` }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: T.text.primary, fontFamily: MONO }}>{asset.name}</div>
+                <div style={{ fontSize: 10, color: T.text.secondary, fontFamily: MONO, marginTop: 4 }}>
+                  Occupancy: {fmtPct(asset.occupancy)} • NOI: {fmtCurrency(asset.noi)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+  
+  const renderAssets = () => (
+    <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}` }}>
+      <div style={{ padding: '12px 16px', borderBottom: `1px solid ${T.border.subtle}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: T.text.cyan, letterSpacing: 1, fontFamily: MONO }}>
+          PORTFOLIO ASSETS ({assets.length})
+        </div>
+        <button 
+          onClick={() => navigate('/deals/create', { state: { dealCategory: 'portfolio' } })}
+          style={{ padding: '4px 12px', background: T.text.amber, color: T.bg.terminal, border: 'none', fontSize: 10, fontWeight: 700, fontFamily: MONO, cursor: 'pointer' }}
+        >
+          + ADD ASSET
+        </button>
+      </div>
+      
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 10 }}>
+        <thead>
+          <tr style={{ background: T.bg.panelAlt }}>
+            <th style={{ textAlign: 'left', padding: '10px 16px', color: T.text.muted, fontWeight: 600 }}>PROPERTY</th>
+            <th style={{ textAlign: 'left', padding: '10px 8px', color: T.text.muted, fontWeight: 600 }}>MARKET</th>
+            <th style={{ textAlign: 'center', padding: '10px 8px', color: T.text.muted, fontWeight: 600 }}>CLASS</th>
+            <th style={{ textAlign: 'right', padding: '10px 8px', color: T.text.muted, fontWeight: 600 }}>UNITS</th>
+            <th style={{ textAlign: 'right', padding: '10px 8px', color: T.text.muted, fontWeight: 600 }}>VALUE</th>
+            <th style={{ textAlign: 'right', padding: '10px 8px', color: T.text.muted, fontWeight: 600 }}>NOI</th>
+            <th style={{ textAlign: 'right', padding: '10px 8px', color: T.text.muted, fontWeight: 600 }}>OCC</th>
+            <th style={{ textAlign: 'right', padding: '10px 8px', color: T.text.muted, fontWeight: 600 }}>CAP</th>
+            <th style={{ textAlign: 'right', padding: '10px 16px', color: T.text.muted, fontWeight: 600 }}>IRR</th>
+          </tr>
+        </thead>
+        <tbody>
+          {assets.map((asset, i) => (
+            <tr 
+              key={asset.id} 
+              style={{ borderBottom: `1px solid ${T.border.subtle}`, cursor: 'pointer' }}
+              onClick={() => navigate(`/deals/${asset.id}`)}
+            >
+              <td style={{ padding: '12px 16px' }}>
+                <div style={{ color: T.text.primary, fontWeight: 500 }}>{asset.name}</div>
+                <div style={{ color: T.text.muted, fontSize: 9 }}>{asset.address}</div>
+              </td>
+              <td style={{ padding: '12px 8px', color: T.text.secondary }}>{asset.city}, {asset.state}</td>
+              <td style={{ textAlign: 'center', padding: '12px 8px' }}>
+                <span style={{ 
+                  padding: '2px 8px', 
+                  background: asset.assetClass === 'A' ? '#00D26A22' : asset.assetClass === 'B' ? '#00BCD422' : '#F5A62322',
+                  color: asset.assetClass === 'A' ? '#00D26A' : asset.assetClass === 'B' ? '#00BCD4' : '#F5A623',
+                  borderRadius: 4,
+                  fontWeight: 600,
+                }}>
+                  {asset.assetClass}
+                </span>
+              </td>
+              <td style={{ textAlign: 'right', padding: '12px 8px', color: T.text.primary }}>{asset.units}</td>
+              <td style={{ textAlign: 'right', padding: '12px 8px', color: T.text.amber }}>{fmtCurrency(asset.currentValue)}</td>
+              <td style={{ textAlign: 'right', padding: '12px 8px', color: T.text.green }}>{fmtCurrency(asset.noi)}</td>
+              <td style={{ textAlign: 'right', padding: '12px 8px', color: asset.occupancy > 93 ? T.text.green : T.text.amber }}>{fmtPct(asset.occupancy)}</td>
+              <td style={{ textAlign: 'right', padding: '12px 8px', color: T.text.cyan }}>{fmtPct(asset.capRate)}</td>
+              <td style={{ textAlign: 'right', padding: '12px 16px', color: asset.irr > 15 ? T.text.green : T.text.primary }}>{fmtPct(asset.irr)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+  
+  const renderPerformance = () => (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+      {/* Timeframe Selector */}
+      <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 8 }}>
+        {(['mtd', 'qtd', 'ytd', 'ltm'] as const).map(tf => (
+          <button
+            key={tf}
+            onClick={() => setSelectedTimeframe(tf)}
+            style={{
+              padding: '6px 16px',
+              background: selectedTimeframe === tf ? T.text.amber : T.bg.panel,
+              color: selectedTimeframe === tf ? T.bg.terminal : T.text.secondary,
+              border: `1px solid ${selectedTimeframe === tf ? T.text.amber : T.border.subtle}`,
+              fontSize: 10,
+              fontWeight: 600,
+              fontFamily: MONO,
+              cursor: 'pointer',
+            }}
+          >
+            {tf.toUpperCase()}
+          </button>
+        ))}
+      </div>
+      
+      {/* NOI Performance */}
+      <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, padding: 16 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: T.text.cyan, letterSpacing: 1, marginBottom: 16, fontFamily: MONO }}>
+          NOI PERFORMANCE
+        </div>
+        <div style={{ height: 200, display: 'flex', alignItems: 'flex-end', gap: 8, padding: '0 8px' }}>
+          {performance.slice(-12).map((p, i) => (
+            <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <div 
+                style={{ 
+                  width: '100%', 
+                  background: T.text.green, 
+                  height: `${(p.noi / (metrics?.portfolioNoi || 1)) * 150}px`,
+                  minHeight: 4,
+                  borderRadius: '2px 2px 0 0',
+                }} 
+              />
+              <div style={{ fontSize: 8, color: T.text.muted, marginTop: 4, fontFamily: MONO }}>{p.period}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      
+      {/* Occupancy Trend */}
+      <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, padding: 16 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: T.text.cyan, letterSpacing: 1, marginBottom: 16, fontFamily: MONO }}>
+          OCCUPANCY TREND
+        </div>
+        <div style={{ height: 200, display: 'flex', alignItems: 'flex-end', gap: 8, padding: '0 8px' }}>
+          {performance.slice(-12).map((p, i) => (
+            <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <div 
+                style={{ 
+                  width: '100%', 
+                  background: p.occupancy > 93 ? T.text.green : p.occupancy > 90 ? T.text.amber : T.text.red, 
+                  height: `${p.occupancy * 1.5}px`,
+                  minHeight: 4,
+                  borderRadius: '2px 2px 0 0',
+                }} 
+              />
+              <div style={{ fontSize: 8, color: T.text.muted, marginTop: 4, fontFamily: MONO }}>{p.period}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      
+      {/* Expense Analysis */}
+      <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, padding: 16 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: T.text.cyan, letterSpacing: 1, marginBottom: 16, fontFamily: MONO }}>
+          EXPENSE BREAKDOWN
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {[
+            { label: 'Payroll', pct: 28, budget: 1.2, actual: 1.15 },
+            { label: 'Utilities', pct: 18, budget: 0.75, actual: 0.82 },
+            { label: 'R&M', pct: 15, budget: 0.62, actual: 0.58 },
+            { label: 'Insurance', pct: 12, budget: 0.50, actual: 0.55 },
+            { label: 'Taxes', pct: 22, budget: 0.92, actual: 0.90 },
+            { label: 'Other', pct: 5, budget: 0.21, actual: 0.19 },
+          ].map((exp, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ width: 80, fontSize: 10, color: T.text.secondary, fontFamily: MONO }}>{exp.label}</div>
+              <div style={{ flex: 1, height: 8, background: T.bg.panelAlt, borderRadius: 4, overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${exp.pct}%`, background: exp.actual > exp.budget ? T.text.red : T.text.green, borderRadius: 4 }} />
+              </div>
+              <div style={{ width: 50, textAlign: 'right', fontSize: 10, color: exp.actual > exp.budget ? T.text.red : T.text.green, fontFamily: MONO }}>
+                {fmtCurrency(exp.actual * 1e6)}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      
+      {/* Collections */}
+      <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, padding: 16 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: T.text.cyan, letterSpacing: 1, marginBottom: 16, fontFamily: MONO }}>
+          COLLECTIONS RATE
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 150 }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 48, fontWeight: 700, color: T.text.green, fontFamily: MONO }}>97.2%</div>
+            <div style={{ fontSize: 11, color: T.text.secondary, fontFamily: MONO, marginTop: 8 }}>TTM Collection Rate</div>
+            <div style={{ fontSize: 10, color: T.text.muted, fontFamily: MONO, marginTop: 4 }}>+0.8% vs Prior Year</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+  
+  const renderReports = () => (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+        {reports.map(report => (
+          <div 
+            key={report.id}
+            style={{ 
+              background: T.bg.panel, 
+              border: `1px solid ${T.border.subtle}`, 
+              padding: 16,
+              cursor: 'pointer',
+              transition: 'border-color 0.2s',
+            }}
+            onClick={() => console.log('Generate report:', report.id)}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <div style={{ color: T.text.cyan }}>{report.icon}</div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: T.text.primary, fontFamily: MONO }}>{report.name}</div>
+            </div>
+            <div style={{ fontSize: 10, color: T.text.secondary, lineHeight: 1.4, marginBottom: 12 }}>{report.description}</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 9, color: T.text.muted, fontFamily: MONO, textTransform: 'uppercase' }}>{report.category}</span>
+              <button style={{ 
+                padding: '4px 10px', 
+                background: T.bg.panelAlt, 
+                border: `1px solid ${T.border.subtle}`, 
+                color: T.text.cyan, 
+                fontSize: 9, 
+                fontFamily: MONO, 
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+              }}>
+                <Download size={10} /> GENERATE
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+  
+  const renderLearning = () => (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+      {/* Overall Accuracy */}
+      <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, padding: 16 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: T.text.cyan, letterSpacing: 1, marginBottom: 16, fontFamily: MONO }}>
+          AGENT ACCURACY
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
+          {[
+            { label: 'HIT RATE (±10%)', value: '72%', color: T.text.green },
+            { label: 'HIT RATE (±20%)', value: '89%', color: T.text.green },
+            { label: 'MEAN BIAS', value: '+2.3%', color: T.text.amber },
+            { label: 'PREDICTIONS', value: '847', color: T.text.primary },
+          ].map((m, i) => (
+            <div key={i} style={{ padding: 12, background: T.bg.panelAlt, border: `1px solid ${T.border.subtle}`, textAlign: 'center' }}>
+              <div style={{ fontSize: 24, fontWeight: 700, color: m.color, fontFamily: MONO }}>{m.value}</div>
+              <div style={{ fontSize: 9, color: T.text.muted, fontFamily: MONO, marginTop: 4 }}>{m.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      
+      {/* Accuracy by Assumption */}
+      <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, padding: 16 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: T.text.cyan, letterSpacing: 1, marginBottom: 16, fontFamily: MONO }}>
+          BY ASSUMPTION TYPE
+        </div>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: MONO, fontSize: 10 }}>
+          <thead>
+            <tr style={{ borderBottom: `1px solid ${T.border.subtle}` }}>
+              <th style={{ textAlign: 'left', padding: '6px 0', color: T.text.muted }}>ASSUMPTION</th>
+              <th style={{ textAlign: 'right', padding: '6px 0', color: T.text.muted }}>±10%</th>
+              <th style={{ textAlign: 'right', padding: '6px 0', color: T.text.muted }}>BIAS</th>
+              <th style={{ textAlign: 'right', padding: '6px 0', color: T.text.muted }}>N</th>
+            </tr>
+          </thead>
+          <tbody>
+            {agentAccuracy.map((a, i) => (
+              <tr key={i} style={{ borderBottom: `1px solid ${T.border.subtle}` }}>
+                <td style={{ padding: '8px 0', color: T.text.primary }}>{a.assumptionName.replace(/_/g, ' ')}</td>
+                <td style={{ textAlign: 'right', color: a.hitRate10Pct > 70 ? T.text.green : T.text.amber }}>{a.hitRate10Pct.toFixed(0)}%</td>
+                <td style={{ textAlign: 'right', color: Math.abs(a.meanBias) < 5 ? T.text.green : T.text.amber }}>
+                  {a.meanBias > 0 ? '+' : ''}{a.meanBias.toFixed(1)}%
+                </td>
+                <td style={{ textAlign: 'right', color: T.text.muted }}>{a.nPredictions}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      
+      {/* Learning Loop Status */}
+      <div style={{ gridColumn: '1 / -1', background: T.bg.panel, border: `1px solid ${T.border.subtle}`, padding: 16 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: T.text.cyan, letterSpacing: 1, marginBottom: 16, fontFamily: MONO }}>
+          LEARNING LOOP STATUS
+        </div>
+        <div style={{ display: 'flex', gap: 24 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 10, color: T.text.muted, fontFamily: MONO, marginBottom: 8 }}>FEEDBACK CYCLE</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              {[
+                { step: 'Underwrite', icon: <FileText size={14} />, done: true },
+                { step: 'Track Actuals', icon: <Activity size={14} />, done: true },
+                { step: 'Compute Outcomes', icon: <BarChart3 size={14} />, done: true },
+                { step: 'Update Adjustments', icon: <Brain size={14} />, done: false },
+              ].map((s, i) => (
+                <React.Fragment key={i}>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ 
+                      width: 32, height: 32, borderRadius: '50%', 
+                      background: s.done ? T.text.green : T.bg.panelAlt,
+                      border: `2px solid ${s.done ? T.text.green : T.border.subtle}`,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: s.done ? T.bg.terminal : T.text.muted,
+                      marginBottom: 4,
+                    }}>
+                      {s.icon}
+                    </div>
+                    <div style={{ fontSize: 9, color: s.done ? T.text.primary : T.text.muted, fontFamily: MONO }}>{s.step}</div>
+                  </div>
+                  {i < 3 && <ChevronRight size={16} style={{ color: T.border.medium }} />}
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+          <div style={{ borderLeft: `1px solid ${T.border.subtle}`, paddingLeft: 24 }}>
+            <div style={{ fontSize: 10, color: T.text.muted, fontFamily: MONO, marginBottom: 8 }}>NEXT REFRESH</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: T.text.primary, fontFamily: MONO }}>2h 34m</div>
+            <button
+              onClick={() => apiClient.post('/api/v1/learning/run-cycle').then(loadPortfolioData)}
+              style={{ marginTop: 8, padding: '4px 12px', background: T.text.amber, color: T.bg.terminal, border: 'none', fontSize: 10, fontWeight: 600, fontFamily: MONO, cursor: 'pointer' }}
+            >
+              RUN NOW
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+  
+  // ─── Main Render ────────────────────────────────────────────
+  
+  const TABS = [
+    { id: 'overview', label: 'OVERVIEW', icon: <PieChart size={12} /> },
+    { id: 'assets', label: 'ASSETS', icon: <Building2 size={12} /> },
+    { id: 'performance', label: 'PERFORMANCE', icon: <Activity size={12} /> },
+    { id: 'reports', label: 'REPORTS', icon: <FileText size={12} /> },
+    { id: 'learning', label: 'AI LEARNING', icon: <Brain size={12} /> },
+  ] as const;
+  
+  return (
+    <div style={{ padding: 16, background: T.bg.terminal, minHeight: '100%' }}>
+      {/* Header */}
+      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <h1 style={{ fontSize: 16, fontWeight: 700, color: T.text.amber, letterSpacing: 1, margin: 0, fontFamily: MONO }}>
+            PORTFOLIO & REPORTS
+          </h1>
+          <p style={{ fontSize: 11, color: T.text.secondary, margin: '4px 0 0', fontFamily: MONO }}>
+            Asset management, performance analytics, and AI insights
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button style={{ padding: '6px 12px', background: T.bg.panel, border: `1px solid ${T.border.subtle}`, color: T.text.secondary, fontSize: 10, fontFamily: MONO, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Download size={12} /> EXPORT
+          </button>
+        </div>
+      </div>
+      
+      {/* Tabs */}
+      <div style={{ display: 'flex', gap: 0, marginBottom: 16, borderBottom: `1px solid ${T.border.subtle}` }}>
+        {TABS.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            style={{
+              padding: '10px 20px',
+              background: 'transparent',
+              border: 'none',
+              borderBottom: activeTab === tab.id ? `2px solid ${T.text.amber}` : '2px solid transparent',
+              color: activeTab === tab.id ? T.text.amber : T.text.muted,
+              fontSize: 11,
+              fontWeight: 600,
+              fontFamily: MONO,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              letterSpacing: 0.5,
+            }}
+          >
+            {tab.icon}
+            {tab.label}
+          </button>
+        ))}
+      </div>
+      
+      {/* Content */}
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: 48, color: T.text.muted }}>
+          <Clock size={24} style={{ marginBottom: 8, opacity: 0.5 }} />
+          <div style={{ fontSize: 11, fontFamily: MONO }}>Loading portfolio data...</div>
+        </div>
+      ) : (
+        <>
+          {activeTab === 'overview' && renderOverview()}
+          {activeTab === 'assets' && renderAssets()}
+          {activeTab === 'performance' && renderPerformance()}
+          {activeTab === 'reports' && renderReports()}
+          {activeTab === 'learning' && renderLearning()}
+        </>
+      )}
+    </div>
+  );
+}

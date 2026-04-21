@@ -483,6 +483,10 @@ app.use('/api/v1/bulk-upload', bulkUploadRouter);
 import learningRouter from './api/rest/learning.routes';
 app.use('/api/v1/learning', learningRouter);
 
+// Portfolio management routes
+import portfolioRouter from './api/rest/portfolio.routes';
+app.use('/api/v1/portfolio', portfolioRouter);
+
 app.use('/api/v1/unit-mix', requireAuth, createUnitMixRoutes(pool));
 
 app.get('/api/v1/apartment-sync/trends', requireAuth, async (req: any, res) => {
