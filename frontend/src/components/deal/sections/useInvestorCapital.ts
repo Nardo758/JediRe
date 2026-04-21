@@ -197,13 +197,15 @@ export function useInvestorCapital(dealId: string) {
     setLoad('waterfall', false);
   }, [dealId]);
 
-  const loadEntries = useCallback(async (params?: { date_from?: string; date_to?: string }) => {
+  const loadEntries = useCallback(async (params?: { date_from?: string; date_to?: string; limit?: number; offset?: number }) => {
     setLoad('entries', true);
     setErr('entries', null);
     try {
       const qs = new URLSearchParams();
       if (params?.date_from) qs.set('date_from', params.date_from);
       if (params?.date_to)   qs.set('date_to',   params.date_to);
+      if (params?.limit)     qs.set('limit',      String(params.limit));
+      if (params?.offset)    qs.set('offset',     String(params.offset));
       const url = `/api/v1/capital/deals/${dealId}/ledger` + (qs.toString() ? `?${qs.toString()}` : '');
       const r = await apiClient.get(url);
       setEntries(r.data?.entries ?? []);

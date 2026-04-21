@@ -709,30 +709,37 @@ function WaterfallTab({ waterfall, defaultTiers, loading, error, onUpdate }: Wat
 
 // ─── LEDGER TAB ───────────────────────────────────────────────────────────────
 
+const PAGE_SIZE = 50;
+
 interface LedgerTabProps {
   entries: LedgerEntry[];
   loading: boolean;
   error: string | null;
-  onFilter: (params: { date_from?: string; date_to?: string }) => void;
+  onFilter: (params: { date_from?: string; date_to?: string; limit?: number; offset?: number }) => void;
 }
 
 function LedgerTab({ entries, loading, error, onFilter }: LedgerTabProps) {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo,   setDateTo]   = useState('');
+  const [page, setPage] = useState(0);
 
-  const applyFilter = () => onFilter({ date_from: dateFrom || undefined, date_to: dateTo || undefined });
-  const clearFilter = () => { setDateFrom(''); setDateTo(''); onFilter({}); };
+  const applyFilter = () => { setPage(0); onFilter({ date_from: dateFrom || undefined, date_to: dateTo || undefined }); };
+  const clearFilter = () => { setPage(0); setDateFrom(''); setDateTo(''); onFilter({}); };
 
+  // Build running balance across ALL entries (oldest→newest), then reverse for newest-first display
   const sorted = [...entries].sort((a, b) => {
     const d = a.entry_date.localeCompare(b.entry_date);
-    return d !== 0 ? d : 0;
+    return d !== 0 ? d : a.id.localeCompare(b.id);
   });
   let running = 0;
   const withBalance = sorted.map(e => {
     const sign = e.entry_type === 'distribution' ? -1 : 1;
     running += sign * n(e.amount);
     return { ...e, runningBalance: running };
-  }).reverse();
+  }).reverse(); // newest first
+
+  const totalPages = Math.max(1, Math.ceil(withBalance.length / PAGE_SIZE));
+  const paginated  = withBalance.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   if (loading) return <div style={S.empty}>Loading ledger…</div>;
   if (error)   return <div style={S.err}>{error}</div>;
@@ -740,7 +747,7 @@ function LedgerTab({ entries, loading, error, onFilter }: LedgerTabProps) {
   return (
     <div>
       {/* Date-range filter */}
-      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginBottom: 10, background: BT.bg.panel, padding: 10, borderRadius: 4, border: `1px solid ${BT.border.subtle}` }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' as const, marginBottom: 10, background: BT.bg.panel, padding: 10, borderRadius: 4, border: `1px solid ${BT.border.subtle}` }}>
         <div>
           <div style={S.kpiLabel}>From</div>
           <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={{ ...S.inp, width: 130 }} />
@@ -751,34 +758,50 @@ function LedgerTab({ entries, loading, error, onFilter }: LedgerTabProps) {
         </div>
         <button style={S.btn(BT.text.cyan)} onClick={applyFilter}>APPLY</button>
         {(dateFrom || dateTo) && <button style={S.btn(BT.text.muted)} onClick={clearFilter}>CLEAR</button>}
-        <span style={{ fontSize: 9, color: BT.text.muted, fontFamily: mono, marginLeft: 4 }}>{entries.length} entries</span>
+        <span style={{ fontSize: 9, color: BT.text.muted, fontFamily: mono, marginLeft: 'auto' }}>
+          {entries.length} {entries.length === 1 ? 'entry' : 'entries'}
+          {entries.length > PAGE_SIZE ? ` · Page ${page + 1} of ${totalPages}` : ''}
+        </span>
       </div>
 
-      {entries.length === 0 ? (
+      {withBalance.length === 0 ? (
         <div style={S.empty}>No ledger entries. Entries are created automatically when capital calls are paid and distributions are processed.</div>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={S.table}>
-            <thead><RowHdr headers={['Date','Investor','Type','Amount','Running Balance','Reference','Description']} /></thead>
-            <tbody>
-              {withBalance.map(e => (
-                <tr key={e.id}>
-                  <td style={S.td}>{e.entry_date?.slice(0, 10)}</td>
-                  <td style={{ ...S.td, color: BT.text.primary, fontWeight: 600 }}>{e.investor_name}</td>
-                  <td style={S.td}><span style={S.badge(entryColor(e.entry_type))}>{e.entry_type.toUpperCase()}</span></td>
-                  <td style={{ ...S.td, textAlign: 'right' as const, color: e.entry_type === 'distribution' ? BT.text.red : BT.text.green }}>
-                    {e.entry_type === 'distribution' ? '-' : '+'}{fmtAmt(Math.abs(n(e.amount)))}
-                  </td>
-                  <td style={{ ...S.td, textAlign: 'right' as const, color: e.runningBalance >= 0 ? BT.text.green : BT.text.amber }}>
-                    {fmtAmt(e.runningBalance)}
-                  </td>
-                  <td style={{ ...S.td, color: BT.text.muted }}>{e.reference_type ?? '—'}</td>
-                  <td style={{ ...S.td, color: BT.text.muted }}>{e.description ?? '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={S.table}>
+              <thead><RowHdr headers={['Date','Investor','Type','Amount','Running Balance','Reference','Description']} /></thead>
+              <tbody>
+                {paginated.map(e => (
+                  <tr key={e.id}>
+                    <td style={S.td}>{e.entry_date?.slice(0, 10)}</td>
+                    <td style={{ ...S.td, color: BT.text.primary, fontWeight: 600 }}>{e.investor_name}</td>
+                    <td style={S.td}><span style={S.badge(entryColor(e.entry_type))}>{e.entry_type.toUpperCase()}</span></td>
+                    <td style={{ ...S.td, textAlign: 'right' as const, color: e.entry_type === 'distribution' ? BT.text.red : BT.text.green }}>
+                      {e.entry_type === 'distribution' ? '−' : '+'}{fmtAmt(Math.abs(n(e.amount)))}
+                    </td>
+                    <td style={{ ...S.td, textAlign: 'right' as const, color: e.runningBalance >= 0 ? BT.text.green : BT.text.amber }}>
+                      {fmtAmt(e.runningBalance)}
+                    </td>
+                    <td style={{ ...S.td, color: BT.text.muted }}>{e.reference_type ?? '—'}</td>
+                    <td style={{ ...S.td, color: BT.text.muted }}>{e.description ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination controls */}
+          {totalPages > 1 && (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'center', padding: '10px 0', fontSize: 9, fontFamily: mono, color: BT.text.muted }}>
+              <button style={S.btn(page === 0 ? BT.text.muted : BT.text.cyan)} onClick={() => setPage(0)} disabled={page === 0}>«</button>
+              <button style={S.btn(page === 0 ? BT.text.muted : BT.text.cyan)} onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}>‹ PREV</button>
+              <span>Page {page + 1} of {totalPages} · rows {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, withBalance.length)} of {withBalance.length}</span>
+              <button style={S.btn(page >= totalPages - 1 ? BT.text.muted : BT.text.cyan)} onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1}>NEXT ›</button>
+              <button style={S.btn(page >= totalPages - 1 ? BT.text.muted : BT.text.cyan)} onClick={() => setPage(totalPages - 1)} disabled={page >= totalPages - 1}>»</button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
