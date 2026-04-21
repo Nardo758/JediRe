@@ -126,7 +126,7 @@ export function useInvestorCapital(dealId: string) {
   const [summary, setSummary]             = useState<CapSummary | null>(null);
   const [summaryErr, setSummaryErr]       = useState<string | null>(null);
   const [investments, setInvestments]     = useState<Investment[]>([]);
-  const [allInvestors, setAllInvestors]   = useState<Array<{ id: string; name: string; type: string; kyc_status: string }>>([]);
+  const [allInvestors, setAllInvestors]   = useState<Array<{ id: string; name: string; type: string; kycStatus: string }>>([]);
   const [calls, setCalls]                 = useState<CapitalCall[]>([]);
   const [dists, setDists]                 = useState<Distribution[]>([]);
   const [waterfall, setWaterfall]         = useState<Waterfall | null>(null);
