@@ -255,7 +255,7 @@ export function useInvestorCapital(dealId: string) {
 
   const sendCall = async (callId: string) => {
     await apiClient.post(`/api/v1/capital/deals/${dealId}/capital-calls/${callId}/send`);
-    await loadCalls();
+    await Promise.all([loadCalls(), loadSummary()]);
   };
 
   const createDistribution = async (data: {
@@ -268,7 +268,7 @@ export function useInvestorCapital(dealId: string) {
 
   const approveDistribution = async (distId: string) => {
     await apiClient.post(`/api/v1/capital/deals/${dealId}/distributions/${distId}/approve`);
-    await loadDists();
+    await Promise.all([loadDists(), loadSummary()]);
   };
 
   const processDistribution = async (distId: string) => {
