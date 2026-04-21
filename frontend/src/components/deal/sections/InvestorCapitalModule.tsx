@@ -790,8 +790,8 @@ function LedgerTab({ entries, totalEntries, loading, error, onFilter }: LedgerTa
                     <td style={S.td}>{e.entry_date?.slice(0, 10)}</td>
                     <td style={{ ...S.td, color: BT.text.primary, fontWeight: 600 }}>{e.investor_name}</td>
                     <td style={S.td}><span style={S.badge(entryColor(e.entry_type))}>{e.entry_type.toUpperCase()}</span></td>
-                    <td style={{ ...S.td, textAlign: 'right' as const, color: e.entry_type === 'distribution' ? BT.text.red : BT.text.green }}>
-                      {e.entry_type === 'distribution' ? '−' : '+'}{fmtAmt(Math.abs(n(e.amount)))}
+                    <td style={{ ...S.td, textAlign: 'right' as const, color: ['contribution','interest','appreciation'].includes(e.entry_type) ? BT.text.green : BT.text.red }}>
+                      {['contribution','interest','appreciation'].includes(e.entry_type) ? '+' : '−'}{fmtAmt(Math.abs(n(e.amount)))}
                     </td>
                     <td style={{ ...S.td, textAlign: 'right' as const, color: e.runningBalance >= 0 ? BT.text.green : BT.text.amber }}>
                       {fmtAmt(e.runningBalance)}

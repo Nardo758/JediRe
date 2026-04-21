@@ -586,25 +586,29 @@ router.get('/deals/:dealId/ledger', requireAuth, async (req: AuthenticatedReques
     if (!(await ownsDeal(req.params.dealId, req.user!.userId)))
       return res.status(404).json({ success: false, error: 'Deal not found' });
     const { investor_id, date_from, date_to, limit: lim, offset: off } = req.query;
-    const params: unknown[] = [req.params.dealId];
-    const filters: string[] = [];
-    if (investor_id) { params.push(investor_id); filters.push(`e.investor_id=$${params.length}`); }
-    if (date_from)   { params.push(String(date_from)); filters.push(`e.entry_date>=$${params.length}::date`); }
-    if (date_to)     { params.push(String(date_to));   filters.push(`e.entry_date<=$${params.length}::date`); }
-    const where = filters.length ? `AND ${filters.join(' AND ')}` : '';
+
+    // Build outer (pagination + filter) params separate from deal-only param
+    const outerFilters: string[] = [];
+    const outerParams: unknown[] = [req.params.dealId]; // $1 = dealId used in both CTEs
+    if (investor_id) { outerParams.push(investor_id); outerFilters.push(`c.investor_id=$${outerParams.length}`); }
+    if (date_from)   { outerParams.push(String(date_from)); outerFilters.push(`c.entry_date>=$${outerParams.length}::date`); }
+    if (date_to)     { outerParams.push(String(date_to));   outerFilters.push(`c.entry_date<=$${outerParams.length}::date`); }
+    const outerWhere = outerFilters.length ? `WHERE ${outerFilters.join(' AND ')}` : '';
+
     // Capture filter-only params for the COUNT query before adding limit/offset
-    const filterParams = [...params];
+    const filterParams = [...outerParams];
     const parsedLim = Number(lim);
     const parsedOff = Number(off);
     const limitVal  = lim  ? (isFinite(parsedLim) ? Math.max(1, Math.min(500, parsedLim)) : 50) : 50;
     const offsetVal = off  ? (isFinite(parsedOff) ? Math.max(0, parsedOff)                : 0)  : 0;
-    params.push(limitVal);  const limitIdx  = params.length;
-    params.push(offsetVal); const offsetIdx = params.length;
-    // Window function computes authoritative running_balance per investor, ordered
-    // oldest-to-newest, then we paginate the result set.
+    outerParams.push(limitVal);  const limitIdx  = outerParams.length;
+    outerParams.push(offsetVal); const offsetIdx = outerParams.length;
+
+    // CTE computes running_balance over the FULL deal history (no date filter inside),
+    // so filtered views always carry forward the correct historical opening balance.
     const [r, countResult] = await Promise.all([
       query(
-        `WITH computed AS (
+        `WITH full_history AS (
            SELECT e.*,
              i.name AS investor_name,
              COALESCE(
@@ -612,24 +616,28 @@ router.get('/deals/:dealId/ledger', requireAuth, async (req: AuthenticatedReques
                SUM(
                  CASE WHEN e.entry_type IN ('contribution','interest','appreciation')
                       THEN e.amount
-                      ELSE -e.amount  -- distribution, fee, clawback, promote, etc. are outflows
+                      ELSE -e.amount
                  END
                ) OVER (PARTITION BY e.investor_id ORDER BY e.entry_date ASC, e.created_at ASC
                        ROWS UNBOUNDED PRECEDING)
              ) AS running_balance
            FROM capital_account_entries e
            JOIN investors i ON i.id = e.investor_id
-           WHERE e.deal_id=$1 ${where}
+           WHERE e.deal_id=$1
+         ),
+         filtered AS (
+           SELECT c.* FROM full_history c
+           ${outerWhere}
          )
-         SELECT * FROM computed
+         SELECT * FROM filtered
          ORDER BY entry_date DESC, created_at DESC
          LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
-        params,
+        outerParams,
       ),
       query(
         `SELECT COUNT(*) AS total
-           FROM capital_account_entries e
-          WHERE e.deal_id=$1 ${where}`,
+           FROM capital_account_entries c
+          WHERE c.deal_id=$1 ${outerFilters.length ? `AND ${outerFilters.join(' AND ')}` : ''}`,
         filterParams,
       ),
     ]);
