@@ -234,10 +234,11 @@ interface CompProp {
 
 interface PropertySearchResult {
   id: string;
+  property_name: string;
   address: string;
-  city: string;
-  state: string;
-  owner_name: string | null;
+  city: string | null;
+  state: string | null;
+  submarket: string | null;
   units: number | null;
 }
 
@@ -246,8 +247,8 @@ function CompetitiveSetsSection({ T }: { T: ThemeType }) {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
 
-  // Add comp form state
-  const [form, setForm] = useState({ property_name: '', address: '', submarket: '', distance_mi: '', avg_rent_sf: '', occupancy_pct: '' });
+  // Add comp form state (city/state populated from search result, not shown as fields)
+  const [form, setForm] = useState({ property_name: '', address: '', city: '', state: '', submarket: '', distance_mi: '', avg_rent_sf: '', occupancy_pct: '' });
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<PropertySearchResult[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -281,8 +282,11 @@ function CompetitiveSetsSection({ T }: { T: ThemeType }) {
   const selectProperty = (p: PropertySearchResult) => {
     setForm(f => ({
       ...f,
-      property_name: f.property_name || p.owner_name || p.address,
-      address: `${p.address}, ${p.city}, ${p.state}`,
+      property_name: f.property_name || p.property_name,
+      address: p.address,
+      city: p.city ?? '',
+      state: p.state ?? '',
+      submarket: f.submarket || p.submarket || '',
     }));
     setSearchQuery('');
     setSearchResults([]);
@@ -296,13 +300,15 @@ function CompetitiveSetsSection({ T }: { T: ThemeType }) {
       await apiClient.post('/api/v1/admin/comp-sets', {
         property_name: form.property_name,
         address: form.address || null,
+        city: form.city || null,
+        state: form.state || null,
         submarket: form.submarket || null,
         distance_mi: form.distance_mi ? parseFloat(form.distance_mi) : null,
         avg_rent_sf: form.avg_rent_sf ? parseFloat(form.avg_rent_sf) : null,
         occupancy_pct: form.occupancy_pct ? parseFloat(form.occupancy_pct) : null,
       });
       setShowModal(false);
-      setForm({ property_name: '', address: '', submarket: '', distance_mi: '', avg_rent_sf: '', occupancy_pct: '' });
+      setForm({ property_name: '', address: '', city: '', state: '', submarket: '', distance_mi: '', avg_rent_sf: '', occupancy_pct: '' });
       load();
     } catch (e: any) {
       setError(e?.response?.data?.error || 'Failed to add comp');
@@ -411,8 +417,8 @@ function CompetitiveSetsSection({ T }: { T: ThemeType }) {
                       onMouseEnter={e => (e.currentTarget.style.background = T.bg.hover)}
                       onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                     >
-                      <div style={{ fontWeight: 600 }}>{p.address}</div>
-                      <div style={{ fontSize: 9, color: T.text.muted }}>{p.city}, {p.state} · {p.units ?? '?'} units</div>
+                      <div style={{ fontWeight: 600 }}>{p.property_name}</div>
+                      <div style={{ fontSize: 9, color: T.text.muted }}>{[p.address, p.city, p.state].filter(Boolean).join(', ')} · {p.submarket ?? ''} · {p.units ?? '?'} units</div>
                     </div>
                   ))}
                 </div>
@@ -454,7 +460,7 @@ function CompetitiveSetsSection({ T }: { T: ThemeType }) {
                 {saving ? 'SAVING...' : 'ADD COMP'}
               </button>
               <button
-                onClick={() => { setShowModal(false); setError(null); setSearchQuery(''); setSearchResults([]); }}
+                onClick={() => { setShowModal(false); setError(null); setSearchQuery(''); setSearchResults([]); setForm({ property_name: '', address: '', city: '', state: '', submarket: '', distance_mi: '', avg_rent_sf: '', occupancy_pct: '' }); }}
                 style={{ fontSize: 10, padding: '6px 14px', background: 'transparent', color: T.text.muted, border: `1px solid ${T.border.medium}`, cursor: 'pointer' }}
               >
                 CANCEL
@@ -573,7 +579,7 @@ function MarketDataSection({ T }: { T: ThemeType }) {
             </div>
             <div>
               <div style={{ fontSize: 9, color: T.text.secondary, marginBottom: 3, fontFamily: T.font.mono }}>METRIC</div>
-              <select value={form.metric} onChange={e => setForm(f => ({ ...f, metric: e.target.value as any }))} style={inputStyle}>
+              <select value={form.metric} onChange={e => setForm(f => ({ ...f, metric: e.target.value as 'avg_rent' | 'occupancy' }))} style={inputStyle}>
                 <option value="avg_rent">Avg Rent / SF</option>
                 <option value="occupancy">Occupancy %</option>
               </select>
@@ -584,14 +590,14 @@ function MarketDataSection({ T }: { T: ThemeType }) {
             </div>
             <div>
               <div style={{ fontSize: 9, color: T.text.secondary, marginBottom: 3, fontFamily: T.font.mono }}>DIRECTION</div>
-              <select value={form.direction} onChange={e => setForm(f => ({ ...f, direction: e.target.value as any }))} style={inputStyle}>
+              <select value={form.direction} onChange={e => setForm(f => ({ ...f, direction: e.target.value as 'above' | 'below' }))} style={inputStyle}>
                 <option value="below">Drops below</option>
                 <option value="above">Rises above</option>
               </select>
             </div>
             <div>
               <div style={{ fontSize: 9, color: T.text.secondary, marginBottom: 3, fontFamily: T.font.mono }}>NOTIFICATION</div>
-              <select value={form.notification_pref} onChange={e => setForm(f => ({ ...f, notification_pref: e.target.value as any }))} style={inputStyle}>
+              <select value={form.notification_pref} onChange={e => setForm(f => ({ ...f, notification_pref: e.target.value as 'email' | 'sms' | 'both' | 'none' }))} style={inputStyle}>
                 <option value="email">Email</option>
                 <option value="sms">SMS</option>
                 <option value="both">Email + SMS</option>

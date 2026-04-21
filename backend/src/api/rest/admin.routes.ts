@@ -1723,16 +1723,39 @@ router.get('/agents/test-budget-cap', requireAdminAuth, async (req: Authenticate
 
 // ═══════════════════════════════════════════════════════════════════
 // COMP SET MANAGEMENT  /api/v1/admin/comp-sets
+// Reads from the canonical rent_scrape_targets table (existing comp
+// infrastructure), joins comp_unit_types for avg_rent, and uses
+// admin_comp_set_properties only for supplemental fields
+// (distance_mi, occupancy_pct) that rent_scrape_targets lacks.
 // ═══════════════════════════════════════════════════════════════════
 
-router.get('/comp-sets', requireAuth, async (_req: AuthenticatedRequest, res: Response) => {
+router.get('/comp-sets', requireAdminAuth, async (_req: AuthenticatedRequest, res: Response) => {
   try {
     const result = await query(`
-      SELECT id, property_name, address, submarket, distance_mi,
-             avg_rent_sf, occupancy_pct, last_scraped, notes, is_active, created_at
-      FROM admin_comp_set_properties
-      WHERE is_active = true
-      ORDER BY created_at DESC
+      SELECT
+        rst.id::text                                       AS id,
+        rst.property_name,
+        rst.address,
+        rst.city,
+        rst.state,
+        rst.submarket,
+        acp.distance_mi,
+        ROUND(AVG(cut.avg_rent)::numeric, 2)               AS avg_rent_sf,
+        acp.occupancy_pct,
+        GREATEST(MAX(cp.scraped_at), rst.updated_at)       AS last_scraped
+      FROM rent_scrape_targets rst
+      LEFT JOIN comp_properties cp
+        ON LOWER(cp.name) = LOWER(rst.property_name)
+      LEFT JOIN comp_unit_types cut
+        ON cut.comp_id = cp.id
+      LEFT JOIN admin_comp_set_properties acp
+        ON LOWER(acp.property_name) = LOWER(rst.property_name)
+        AND acp.is_active = true
+      WHERE rst.active = true
+      GROUP BY rst.id, rst.property_name, rst.address, rst.city, rst.state,
+               rst.submarket, acp.distance_mi, acp.occupancy_pct, rst.updated_at
+      ORDER BY rst.updated_at DESC
+      LIMIT 200
     `);
     res.json({ comps: result.rows });
   } catch (err: any) {
@@ -1741,26 +1764,38 @@ router.get('/comp-sets', requireAuth, async (_req: AuthenticatedRequest, res: Re
   }
 });
 
-router.post('/comp-sets', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/comp-sets', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { property_name, address, submarket, distance_mi, avg_rent_sf, occupancy_pct, notes } = req.body;
+    const { property_name, address, city, state, submarket, distance_mi, avg_rent_sf, occupancy_pct, notes } = req.body;
     if (!property_name) return res.status(400).json({ error: 'property_name is required' });
-    const result = await query(`
-      INSERT INTO admin_comp_set_properties
-        (property_name, address, submarket, distance_mi, avg_rent_sf, occupancy_pct, notes)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
-      RETURNING *
-    `, [property_name, address ?? null, submarket ?? null, distance_mi ?? null, avg_rent_sf ?? null, occupancy_pct ?? null, notes ?? null]);
-    res.status(201).json({ comp: result.rows[0] });
+
+    // Insert into canonical comp infrastructure
+    const rstResult = await query(`
+      INSERT INTO rent_scrape_targets (property_name, address, city, state, submarket, active, source)
+      VALUES ($1, $2, $3, $4, $5, true, 'admin_manual')
+      RETURNING id
+    `, [property_name, address ?? null, city ?? null, state ?? null, submarket ?? null]);
+
+    // Insert supplemental admin data if provided
+    if (distance_mi != null || occupancy_pct != null || notes) {
+      await query(`
+        INSERT INTO admin_comp_set_properties (property_name, address, submarket, distance_mi, avg_rent_sf, occupancy_pct, notes)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT DO NOTHING
+      `, [property_name, address ?? null, submarket ?? null, distance_mi ?? null, avg_rent_sf ?? null, occupancy_pct ?? null, notes ?? null]);
+    }
+
+    res.status(201).json({ comp: { id: String(rstResult.rows[0].id), property_name } });
   } catch (err: any) {
     logger.error('comp-sets create error:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
-router.delete('/comp-sets/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+router.delete('/comp-sets/:id', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    await query(`UPDATE admin_comp_set_properties SET is_active = false, updated_at = NOW() WHERE id = $1`, [req.params.id]);
+    // Deactivate in canonical rent_scrape_targets
+    await query(`UPDATE rent_scrape_targets SET active = false, updated_at = NOW() WHERE id = $1`, [req.params.id]);
     res.json({ success: true });
   } catch (err: any) {
     logger.error('comp-sets delete error:', err);
@@ -1768,18 +1803,29 @@ router.delete('/comp-sets/:id', requireAuth, async (req: AuthenticatedRequest, r
   }
 });
 
-router.get('/comp-sets/property-search', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+router.get('/comp-sets/property-search', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { q } = req.query;
     if (!q || typeof q !== 'string' || q.length < 2) return res.json({ results: [] });
-    const result = await query(`
-      SELECT id, address, city, state, owner_name, units
-      FROM property_records
-      WHERE address ILIKE $1 OR city ILIKE $1 OR owner_name ILIKE $1
-      ORDER BY address
-      LIMIT 15
+    // Search within existing scraper-discovered properties first
+    const rst = await query(`
+      SELECT id::text AS id, property_name, address, city, state, submarket,
+             unit_count AS units
+      FROM rent_scrape_targets
+      WHERE property_name ILIKE $1 OR address ILIKE $1 OR submarket ILIKE $1
+      ORDER BY updated_at DESC
+      LIMIT 12
     `, [`%${q}%`]);
-    res.json({ results: result.rows });
+    // Supplement with property_records for truly new entries
+    const pr = await query(`
+      SELECT id::text AS id, address AS property_name, address, city, state,
+             NULL AS submarket, units
+      FROM property_records
+      WHERE address ILIKE $1 OR owner_name ILIKE $1
+      ORDER BY address
+      LIMIT 6
+    `, [`%${q}%`]);
+    res.json({ results: [...rst.rows, ...pr.rows].slice(0, 15) });
   } catch (err: any) {
     logger.error('comp-sets property-search error:', err);
     res.status(500).json({ error: err.message });
@@ -1790,7 +1836,7 @@ router.get('/comp-sets/property-search', requireAuth, async (req: AuthenticatedR
 // PRICING ALERT RULES  /api/v1/admin/pricing-alerts
 // ═══════════════════════════════════════════════════════════════════
 
-router.get('/pricing-alerts', requireAuth, async (_req: AuthenticatedRequest, res: Response) => {
+router.get('/pricing-alerts', requireAdminAuth, async (_req: AuthenticatedRequest, res: Response) => {
   try {
     const result = await query(`SELECT * FROM admin_pricing_alert_rules ORDER BY created_at DESC`);
     res.json({ alerts: result.rows });
@@ -1800,7 +1846,7 @@ router.get('/pricing-alerts', requireAuth, async (_req: AuthenticatedRequest, re
   }
 });
 
-router.post('/pricing-alerts', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/pricing-alerts', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { submarket, metric, threshold_pct, direction, notification_pref } = req.body;
     if (!submarket || !metric || threshold_pct == null || !direction) {
@@ -1818,7 +1864,7 @@ router.post('/pricing-alerts', requireAuth, async (req: AuthenticatedRequest, re
   }
 });
 
-router.put('/pricing-alerts/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+router.put('/pricing-alerts/:id', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { is_enabled, submarket, metric, threshold_pct, direction, notification_pref } = req.body;
     const result = await query(`
@@ -1842,7 +1888,7 @@ router.put('/pricing-alerts/:id', requireAuth, async (req: AuthenticatedRequest,
   }
 });
 
-router.delete('/pricing-alerts/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+router.delete('/pricing-alerts/:id', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     await query(`DELETE FROM admin_pricing_alert_rules WHERE id = $1`, [req.params.id]);
     res.json({ success: true });
