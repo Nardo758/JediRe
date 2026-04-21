@@ -116,7 +116,7 @@ function RowHdr({ headers }: { headers: string[] }) {
 
 interface InvestorsTabProps {
   investments: Investment[];
-  allInvestors: Array<{ id: string; name: string; type: string; kyc_status: string }>;
+  allInvestors: Array<{ id: string; name: string; type: string; kycStatus: string }>;
   summary: CapSummary | null;
   loading: boolean;
   error: string | null;
