@@ -22,7 +22,7 @@ const T = {
 type TabType =
   | 'overview' | 'performance' | 'comp-set'
   | 'leasing'
-  | 'revenue' | 'actuals'
+  | 'revenue'
   | 'investors' | 'lifecycle' | 'exit-timing' | 'refi-monitor'
   | 'ai-learning' | 'events'
   | 'documents' | 'reports' | 'deal-team';
@@ -431,8 +431,8 @@ const PerformanceTab: React.FC<{ dealId: string; financials: MonthlyFinancial[] 
 };
 
 // ─── Revenue Management Tab ───────────────────────────────────
-const RevenueMgmtTab: React.FC<{ dealId: string }> = ({ dealId }) => {
-  const [subTab, setSubTab] = useState<'rent-roll' | 'other-income' | 'expenses' | 'variance' | 'recommendations' | 'lease-expirations'>('rent-roll');
+const RevenueMgmtTab: React.FC<{ dealId: string; deal?: Record<string, unknown> }> = ({ dealId, deal }) => {
+  const [subTab, setSubTab] = useState<'rent-roll' | 'other-income' | 'expenses' | 'variance' | 'recommendations' | 'lease-expirations' | 'enter-actuals'>('rent-roll');
   const [rentRoll, setRentRoll] = useState<{ units: any[]; snapshots: string[] } | null>(null);
   const [otherIncome, setOtherIncome] = useState<any[]>([]);
   const [actuals, setActuals] = useState<any[]>([]);
@@ -486,6 +486,7 @@ const RevenueMgmtTab: React.FC<{ dealId: string }> = ({ dealId }) => {
     { id: 'variance',           label: 'VARIANCE' },
     { id: 'recommendations',    label: 'AI RECOMMENDATIONS' },
     { id: 'lease-expirations',  label: 'LEASE EXPIRATIONS' },
+    { id: 'enter-actuals',      label: 'ENTER ACTUALS' },
   ] as const;
 
   const emptyState = (icon: string, msg: string, sub?: string) => (
@@ -755,6 +756,11 @@ const RevenueMgmtTab: React.FC<{ dealId: string }> = ({ dealId }) => {
       {subTab === 'lease-expirations' && (
         <div style={{ flex: 1, minHeight: 0 }}>
           <OperationsIntelligenceSection dealId={dealId} initialPanel="leases" compact />
+        </div>
+      )}
+      {subTab === 'enter-actuals' && (
+        <div style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 320px)' }}>
+          <MonthlyActualsSection dealId={dealId} deal={deal ?? {}} />
         </div>
       )}
 
@@ -1420,7 +1426,6 @@ export default function PortfolioPropertyPage() {
     { label: 'REVENUE & OPS', tabs: [
       { id: 'leasing',   short: 'Leasing & Traffic' },
       { id: 'revenue',   short: 'Operations' },
-      { id: 'actuals',   short: 'Actuals' },
     ]},
     { label: 'CAPITAL & DEBT', tabs: [
       { id: 'investors',    short: 'Investors' },
@@ -1858,12 +1863,8 @@ export default function PortfolioPropertyPage() {
         {activeTab === 'performance'  && <PerformanceTab dealId={dealId!} financials={financials} />}
         {activeTab === 'comp-set'     && <CompSetTab dealId={dealId!} />}
         {activeTab === 'leasing'      && renderLeasing()}
-        {activeTab === 'revenue'      && <RevenueMgmtTab dealId={dealId!} />}
-        {activeTab === 'actuals'      && (
-          <div style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 280px)' }}>
-            <MonthlyActualsSection dealId={dealId!} deal={deal as Record<string, unknown>} />
-          </div>
-        )}
+        {activeTab === 'revenue'      && <RevenueMgmtTab dealId={dealId!} deal={deal as Record<string, unknown>} />}
+
         {activeTab === 'investors'    && (
           <div style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 280px)' }}>
             <InvestorCapitalModule dealId={dealId!} />
