@@ -368,9 +368,9 @@ async function parseArchiveDeal(folder: ArchiveDealFolder): Promise<ParsedArchiv
       const result = parseT12(buffer, t12File.name);
       
       if (result.success && result.summary) {
-        trailingRevenue = result.summary.t12Revenue || null;
-        trailingOpex = result.summary.t12OpEx || null;
-        trailingNoi = result.summary.t12NOI || null;
+        trailingRevenue = result.summary.t12Revenue ? Number(result.summary.t12Revenue) : null;
+        trailingOpex = result.summary.t12OpEx ? Number(result.summary.t12OpEx) : null;
+        trailingNoi = result.summary.t12NOI ? Number(result.summary.t12NOI) : null;
         extractionData.t12 = result.summary;
         
         if (result.warnings?.length) {
@@ -395,10 +395,10 @@ async function parseArchiveDeal(folder: ArchiveDealFolder): Promise<ParsedArchiv
       const result = parseRentRoll(buffer, rrFile.name);
       
       if (result.success && result.summary) {
-        units = result.summary.totalUnits || null;
-        avgRent = result.summary.avgEffectiveRent || result.summary.avgMarketRent || null;
-        occupancyPct = result.summary.occupancyRate || null;
-        lossToLeasePct = result.summary.lossToLeasePct || null;
+        units = result.summary.totalUnits ? Number(result.summary.totalUnits) : null;
+        avgRent = result.summary.avgEffectiveRent ? Number(result.summary.avgEffectiveRent) : (result.summary.avgMarketRent ? Number(result.summary.avgMarketRent) : null);
+        occupancyPct = result.summary.occupancyRate ? Number(result.summary.occupancyRate) : null;
+        lossToLeasePct = result.summary.lossToLeasePct ? Number(result.summary.lossToLeasePct) : null;
         extractionData.rentRoll = result.summary;
         
         if (result.warnings?.length) {
@@ -423,8 +423,9 @@ async function parseArchiveDeal(folder: ArchiveDealFolder): Promise<ParsedArchiv
       const result = await parseTaxBillAsync(buffer, taxFile.name);
       
       if (result.success && result.data) {
-        annualTax = result.data.totalAnnualTax || null;
-        assessedValue = result.data.assessedValue || null;
+        const taxData = result.data as any;
+        annualTax = taxData.totalAnnualTax || null;
+        assessedValue = taxData.assessedValue || null;
         extractionData.taxBill = result.data;
       } else {
         warnings.push(`[TAX] Parse failed: ${result.error || 'unknown'}`);

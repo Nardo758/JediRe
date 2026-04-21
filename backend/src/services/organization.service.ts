@@ -4,7 +4,7 @@
  * Multi-tenant organization management, team assignments, and handoffs.
  */
 
-import { query, pool } from '../database/connection';
+import { query, getClient } from '../database/connection';
 import { logger } from '../utils/logger';
 import {
   TeamAssignment,
@@ -332,7 +332,7 @@ export async function completeHandoff(
   approvedBy: string,
   checklistCompleted: Record<string, boolean>
 ): Promise<void> {
-  const client = await pool.connect();
+  const client = await getClient();
   
   try {
     await client.query('BEGIN');

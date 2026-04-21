@@ -12,7 +12,7 @@
  * between what we projected and what's actually happening.
  */
 
-import { query, pool } from '../database/connection';
+import { query, getClient } from '../database/connection';
 import { logger } from '../utils/logger';
 
 // ─── Types ────────────────────────────────────────────────────────────
@@ -166,7 +166,7 @@ export async function computeVarianceAnalysis(
   }
   
   // Save to database
-  const client = await pool.connect();
+  const client = await getClient();
   try {
     await client.query('BEGIN');
     
@@ -570,7 +570,7 @@ export async function generateOperationsRecommendations(
     }
     
     // Save recommendations to database
-    const client = await pool.connect();
+    const client = await getClient();
     try {
       await client.query('BEGIN');
       

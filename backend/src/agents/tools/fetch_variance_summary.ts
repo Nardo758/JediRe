@@ -190,7 +190,7 @@ export async function fetchVarianceSummary(
       actual,
       variance,
       variancePct,
-      direction: isFavorable ? 'favorable' : 'unfavorable' as const,
+      direction: (isFavorable ? 'favorable' : 'unfavorable') as 'favorable' | 'unfavorable',
       consecutiveMonths,
       explanation: generateVarianceExplanation(lineItem, variancePct, consecutiveMonths, isFavorable),
     };
@@ -385,6 +385,7 @@ Returns:
 Supports periods: ytd, trailing_3mo, trailing_6mo, trailing_12mo, latest_month
 
 Use for operational commentary and investor reports.`,
-  schema: fetchVarianceSummarySchema,
+  inputSchema: fetchVarianceSummarySchema,
+  outputSchema: z.any(),
   execute: fetchVarianceSummary,
 };

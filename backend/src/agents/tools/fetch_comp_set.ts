@@ -287,6 +287,7 @@ Returns list of comparable properties with their:
 Also returns summary metrics and the subject's competitive position (premium/market/discount).
 
 Use to benchmark underwriting rent assumptions against local comps.`,
-  schema: fetchCompSetSchema,
+  inputSchema: fetchCompSetSchema,
+  outputSchema: z.any(),
   execute: fetchCompSet,
 };

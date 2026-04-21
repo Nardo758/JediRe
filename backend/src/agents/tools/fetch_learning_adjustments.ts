@@ -143,7 +143,7 @@ export const fetchLearningAdjustmentsTool = {
 export function applyAdjustment(
   value: number,
   adjustment: z.infer<typeof AdjustmentSchema>
-): { adjustedValue: number; note: string } {
+): { adjustedValue: number; adjustmentNote: string } {
   return applyLearningAdjustment(value, {
     assumptionName: adjustment.assumption_name,
     adjustmentType: adjustment.adjustment_type as 'additive_bps' | 'multiplicative',

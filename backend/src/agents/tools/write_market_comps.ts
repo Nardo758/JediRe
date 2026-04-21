@@ -6,7 +6,7 @@
  */
 
 import { z } from 'zod';
-import { query, pool } from '../../database/connection';
+import { query, getClient } from '../../database/connection';
 import { logger } from '../../utils/logger';
 
 const SaleCompSchema = z.object({
@@ -103,7 +103,7 @@ export async function writeMarketComps(input: WriteMarketCompsInput): Promise<Wr
     rentComps: input.rent_comps?.length ?? 0,
   });
 
-  const client = await pool.connect();
+  const client = await getClient();
   const saleCompIds: string[] = [];
   const rentCompIds: string[] = [];
   let duplicatesSkipped = 0;
@@ -257,6 +257,7 @@ Rent comps include:
 
 Can optionally associate comps with a specific deal for targeted analysis.
 Automatically skips duplicates (same property + date).`,
-  schema: writeMarketCompsSchema,
+  inputSchema: writeMarketCompsSchema,
+  outputSchema: z.any(),
   execute: writeMarketComps,
 };

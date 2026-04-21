@@ -483,10 +483,6 @@ app.use('/api/v1/bulk-upload', bulkUploadRouter);
 import learningRouter from './api/rest/learning.routes';
 app.use('/api/v1/learning', learningRouter);
 
-// Portfolio management routes
-import portfolioRouter from './api/rest/portfolio.routes';
-app.use('/api/v1/portfolio', portfolioRouter);
-
 // Operations intelligence routes (revenue management)
 import operationsRouter from './api/rest/operations.routes';
 app.use('/api/v1/operations', operationsRouter);

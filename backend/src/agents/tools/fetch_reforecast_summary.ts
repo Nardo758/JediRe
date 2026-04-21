@@ -314,6 +314,7 @@ Returns:
 - Historical reforecast trajectory
 
 Use for operational commentary and investor updates.`,
-  schema: fetchReforecastSummarySchema,
+  inputSchema: fetchReforecastSummarySchema,
+  outputSchema: z.any(),
   execute: fetchReforecastSummary,
 };

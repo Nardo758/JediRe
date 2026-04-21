@@ -5,7 +5,7 @@
  * Integrates with both underwriting (refi tests) and operations (real-time monitoring).
  */
 
-import { query, pool } from '../database/connection';
+import { query, getClient } from '../database/connection';
 import { logger } from '../utils/logger';
 
 // ─── Types ────────────────────────────────────────────────────────────

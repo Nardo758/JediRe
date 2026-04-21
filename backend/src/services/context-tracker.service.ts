@@ -5,7 +5,7 @@
  * Wired to emails for automatic extraction and linking.
  */
 
-import { query, pool } from '../database/connection';
+import { query, getClient } from '../database/connection';
 import { logger } from '../utils/logger';
 import {
   DealContextItem,

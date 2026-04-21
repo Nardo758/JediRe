@@ -14,7 +14,7 @@ import {
   getOperationsSummary,
   feedOperationsToLearning,
 } from '../../services/revenue-management.service';
-import { query, pool } from '../../database/connection';
+import { query, getClient } from '../../database/connection';
 import { logger } from '../../utils/logger';
 
 const router = Router();
@@ -93,7 +93,7 @@ router.post('/:dealId/projections', requireAuth, async (req: AuthenticatedReques
       return res.status(400).json({ success: false, error: 'projections array required' });
     }
     
-    const client = await pool.connect();
+    const client = await getClient();
     let imported = 0;
     
     try {
@@ -159,7 +159,7 @@ router.post('/:dealId/actuals', requireAuth, async (req: AuthenticatedRequest, r
       return res.status(400).json({ success: false, error: 'actuals array required' });
     }
     
-    const client = await pool.connect();
+    const client = await getClient();
     let imported = 0;
     
     try {
@@ -256,7 +256,7 @@ router.post('/:dealId/rent-roll', requireAuth, async (req: AuthenticatedRequest,
       return res.status(400).json({ success: false, error: 'units array required' });
     }
     
-    const client = await pool.connect();
+    const client = await getClient();
     let imported = 0;
     
     try {

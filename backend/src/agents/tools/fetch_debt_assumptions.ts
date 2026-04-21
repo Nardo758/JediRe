@@ -271,6 +271,7 @@ Returns max LTV, min DSCR, spreads, terms, and current rate environment.
 Use to model realistic debt scenarios in underwriting.
 
 Loan types: agency (Fannie/Freddie), cmbs, bridge, bank, life_co, debt_fund`,
-  schema: fetchDebtAssumptionsSchema,
+  inputSchema: fetchDebtAssumptionsSchema,
+  outputSchema: z.any(),
   execute: fetchDebtAssumptions,
 };

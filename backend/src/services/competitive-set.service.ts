@@ -5,7 +5,7 @@
  * Tracks competitor pricing changes and generates alerts.
  */
 
-import { query, pool } from '../database/connection';
+import { query, getClient } from '../database/connection';
 import { logger } from '../utils/logger';
 
 // ─── Types ────────────────────────────────────────────────────────────

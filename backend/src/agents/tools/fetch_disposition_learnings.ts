@@ -321,6 +321,7 @@ Returns:
 - Individual deal learnings with lessons
 
 Use to calibrate underwriting assumptions based on actual exits in similar markets/asset classes.`,
-  schema: fetchDispositionLearningsSchema,
+  inputSchema: fetchDispositionLearningsSchema,
+  outputSchema: z.any(),
   execute: fetchDispositionLearnings,
 };

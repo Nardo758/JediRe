@@ -255,6 +255,7 @@ Shows which constraint is binding and whether cash-out is achievable.
 
 Use during underwriting to validate exit assumptions.
 Use during operations to test current refi options.`,
-  schema: runRefiTestSchema,
+  inputSchema: runRefiTestSchema,
+  outputSchema: z.any(),
   execute: runRefiTest,
 };

@@ -11,7 +11,7 @@
  *   2. deals — live deals with underwriting snapshots and (for closed deals) actual outcomes
  */
 
-import { query, pool } from '../database/connection';
+import { query, getClient } from '../database/connection';
 import { logger } from '../utils/logger';
 
 // ─── Types ────────────────────────────────────────────────────────────
@@ -310,7 +310,7 @@ export async function refreshArchiveBenchmarks(): Promise<{
     }
 
     // Write aggregated benchmarks
-    const client = await pool.connect();
+    const client = await getClient();
     try {
       await client.query('BEGIN');
 
@@ -693,7 +693,7 @@ export async function refreshLineItemBenchmarks(): Promise<{
       buckets: bucketMap.size,
     });
 
-    const client = await pool.connect();
+    const client = await getClient();
     try {
       await client.query('BEGIN');
 

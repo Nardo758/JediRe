@@ -6,7 +6,7 @@
  */
 
 import { z } from 'zod';
-import { query, pool } from '../../database/connection';
+import { query, getClient } from '../../database/connection';
 import { logger } from '../../utils/logger';
 
 export const writeCompSetSchema = z.object({
@@ -127,7 +127,7 @@ export async function writeCompSet(input: WriteCompSetInput): Promise<WriteCompS
   );
   const dealContext = dealResult.rows[0] as { units?: number; year_built?: number; asset_class?: string } | undefined;
 
-  const client = await pool.connect();
+  const client = await getClient();
   const compIds: string[] = [];
   let duplicatesSkipped = 0;
   let pricingSnapshotsCreated = 0;
@@ -256,6 +256,7 @@ Automatically:
 - Calculates relevance score based on similarity to subject
 - Skips duplicates (updates pricing if new data available)
 - Creates pricing snapshots for trend tracking`,
-  schema: writeCompSetSchema,
+  inputSchema: writeCompSetSchema,
+  outputSchema: z.any(),
   execute: writeCompSet,
 };

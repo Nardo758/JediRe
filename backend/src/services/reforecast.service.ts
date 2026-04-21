@@ -5,7 +5,7 @@
  * Shows real-time comparison of original projections vs current trajectory.
  */
 
-import { query, pool } from '../database/connection';
+import { query, getClient } from '../database/connection';
 import { logger } from '../utils/logger';
 
 // ─── Types ────────────────────────────────────────────────────────────
@@ -156,7 +156,7 @@ export async function computeReforecast(
     }
     
     // Save reforecast
-    const client = await pool.connect();
+    const client = await getClient();
     try {
       await client.query('BEGIN');
       

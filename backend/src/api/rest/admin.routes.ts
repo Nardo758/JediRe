@@ -1655,9 +1655,11 @@ router.get('/agents/test-budget-cap', requireAdminAuth, async (req: Authenticate
       tools: [],
       outputSchema: z.unknown(),           // accepts any output; parse is never reached
       budgetCaps: {
+        maxTokensPerRun: 999999,
         maxCostUsdPerRun: 0.001,           // stub cost $0.10 >> this cap
         maxCostUsdPerDealPerDay: 999,      // daily cap not under test here
         maxStepsPerRun: 10,
+        maxCostUsdPerUserPerMonth: 999,
       },
       modelName: 'claude-haiku-4-5-20251001',
       capabilities: [],
