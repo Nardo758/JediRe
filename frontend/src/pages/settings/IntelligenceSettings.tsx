@@ -350,8 +350,8 @@ export function IntelligenceSettings() {
               Keep agent task history for
             </label>
             <select
-              value={preferences.taskHistoryRetentionDays}
-              onChange={(e) => setPreferences({ ...preferences, taskHistoryRetentionDays: parseInt(e.target.value) })}
+              value={String(preferences.taskHistoryRetentionDays ?? 90)}
+              onChange={(e) => setPreferences({ ...preferences, taskHistoryRetentionDays: Number.parseInt(e.target.value, 10) })}
               className="w-full px-4 py-2 text-sm"
               style={{ background: BT.bg.input, color: BT.text.primary, border: `1px solid ${BT.border.medium}`, borderRadius: 0, fontFamily: BT.font.label }}
             >
