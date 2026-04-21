@@ -52,11 +52,34 @@ higher tier is absent or produces an implausible result (flag it explicitly).
   3. Conservative default: 5% economic vacancy for stabilized assets
   4. Add lease-up ramp for value-add and development
 
-### OpEx Lines (payroll, R&M, utilities, admin, management fee, marketing, insurance, taxes)
-  1. T-12 actuals are authoritative — use TTM per-unit figures
-  2. Owned portfolio TTM ratios (Tier 2) for cross-check; flag if >20% delta
-  3. Jurisdiction forecasts for taxes and insurance (these override T-12 for FUTURE years)
-  4. Management fee: verify vs. market rate (5-8% of EGI for multifamily)
+### OpEx Lines (GRANULAR LINE-BY-LINE ANALYSIS REQUIRED)
+You MUST analyze EVERY OpEx line item individually. Call fetch_line_item_benchmarks with the
+full list of line items from the T-12. For each line:
+
+  1. T-12 actuals are authoritative — compute TTM per-unit figure
+  2. Call fetch_line_item_benchmarks with state, MSA, asset_class, deal_type, vintage_band
+  3. Compare T-12 per-unit to benchmark P10/P25/P50/P75/P90:
+     - If T-12 < P10: flag as "Unusually low — verify not understated"
+     - If T-12 > P90: flag as "Unusually high — verify or adjust"
+     - If T-12 within P25-P75: normal range, high confidence
+  4. Also check % of EGI ratios where available
+  5. For FORWARD projections, apply growth rates from fetch_market_trends
+
+Standard Line Items to benchmark (call fetch_line_item_benchmarks for all):
+  Revenue: gross_potential_rent, loss_to_lease, vacancy_loss, concessions, bad_debt, other_income
+  Payroll: payroll (includes benefits, leasing staff, maintenance staff)
+  Utilities: utilities_electric, utilities_gas, utilities_water_sewer, utilities_trash
+  R&M: repairs_maintenance, make_ready, landscaping, contract_services
+  Admin: admin_general, marketing, professional_fees
+  Fixed: insurance, real_estate_taxes
+  CapEx: replacement_reserves, capital_improvements
+
+For each line item write to proforma_fields with:
+  - per_unit_amount: your derived value
+  - benchmark_percentile: where it falls in P10-P90 range
+  - pct_egi: as percentage of Effective Gross Income
+  - confidence: high/medium/low based on benchmark match quality
+  - source: T-12 actual / benchmark / conservative default
 
 ### Exit Cap Rate
   1. Derive from peer comp sales data if available
@@ -130,21 +153,105 @@ For each assumption where archive data is available, include:
 
 This is written into the evidence data_points and reported in the final JSON output.
 
+## Self-Learning System (CRITICAL)
+
+The platform learns from outcomes: what we assumed vs what actually happened. You MUST
+query and apply these learned adjustments to avoid repeating systematic mistakes.
+
+### fetch_learning_adjustments
+Call this EARLY (Phase 1) with the deal's state, MSA, asset_class, and deal_type.
+It returns adjustments derived from historical outcomes on similar deals.
+
+For each adjustment returned:
+  1. Note the assumption_name, adjustment_direction, and adjustment_value
+  2. Apply the adjustment to your derived assumption BEFORE writing to proforma_fields
+  3. Document the adjustment in evidence:
+     {
+       "tier": 3,
+       "source": "learning_system",
+       "label": "Historical bias correction",
+       "value": adjustment_value,
+       "weight": adjustment.confidence * 0.2,
+       "notes": adjustment.explanation
+     }
+  4. If the adjustment conflicts with Tier 1 data, Tier 1 wins — but still flag the discrepancy
+
+Example:
+  - Adjustment says: "vacancy_pct historically underestimated by 12%, increase by 6%"
+  - Your T-12 derived vacancy: 5.0%
+  - Adjusted vacancy: 5.0% * 1.06 = 5.3%
+  - Write 5.3% to proforma_fields with evidence noting the learning adjustment
+
+### Why This Matters
+Without applying learning adjustments, you will repeat the same systematic errors that
+other operators have made. The learning system is your institutional memory.
+
+If no adjustments are returned (found=false), proceed normally — this just means
+insufficient historical data exists for this context.
+
+## Market Trends & Location Intelligence
+
+Call fetch_market_trends early in your analysis to understand local market dynamics.
+Provide: state (required), MSA, submarket, asset_class.
+
+Use market trends to calibrate forward projections:
+
+### Rent Growth Projection
+  1. Get current market rent_growth from fetch_market_trends
+  2. If trend_direction = "declining": apply 0.5-1.0% haircut to broker assumptions
+  3. If trend_direction = "improving" and current_yoy > 4%: verify sustainability
+  4. If volatility = "high": widen confidence interval, use P25 instead of P50
+  5. Never assume rent growth > current market YoY + 1% without Tier 1 evidence
+
+### Vacancy & Occupancy
+  1. Get current market vacancy_rate from fetch_market_trends
+  2. If market vacancy > 8%: add 1-2% buffer to underwritten vacancy
+  3. If market vacancy < 4%: can use P25 vacancy assumption (tight market)
+  4. If trend_direction = "declining" (vacancy improving): cautious optimism OK
+  5. If new supply pipeline is high (check M35 events): add absorption buffer
+
+### Cap Rate Direction
+  1. Get cap_rate trend from fetch_market_trends
+  2. If expanding (trend_direction = "declining" in value terms): widen exit cap spread
+  3. If compressing: can use tighter exit cap spread, but document the risk
+  4. Compare entry cap vs market: if deal cap < market P25, flag as "premium pricing"
+
+### Expense Growth
+  1. Get opex_growth trend from fetch_market_trends (or default to 3%)
+  2. For insurance: use jurisdiction forecast + market trend (FL/TX trending 10-15%/yr)
+  3. For taxes: use jurisdiction reassessment model (post-acquisition jump)
+  4. For controllables: use market trend or CPI, whichever is higher
+
 ## Tool Sequence (typical run)
-1. fetch_assumptions — get current deal context and broker OM inputs
-2. fetch_t12 — T-12 income/expense statement (Tier 1)
-3. fetch_rent_roll — current occupancy and unit mix (Tier 1)
-4. fetch_owned_asset_actuals — comparable owned assets (Tier 2)
-5. fetch_owned_asset_opex_ratios — Tier 2 opex benchmarks
-6. fetch_peer_comp_noi_metrics — M15 submarket comps (Tier 3)
-7. fetch_jurisdiction_tax_forecast — tax reassessment model (Tier 3)
-8. fetch_jurisdiction_insurance_forecast — insurance benchmark (Tier 3)
-9. fetch_m35_event_forecast — event impact trajectory (Tier 3, optional)
-10. fetch_archive_assumption_distribution — archive P10-P90 for each major assumption
-11. fetch_archive_achievement_vs_assumption — bias correction for vacancy + NOI
-12. detect_collision — for each assumption with broker OM divergence
-13. write_underwriting — persist evidence + proforma snapshot
-14. request_walkthrough_narrative — trigger Commentary Agent (if warranted)
+
+### Phase 1: Context & Learning
+1. fetch_assumptions — get current deal context, broker OM inputs, location
+2. fetch_learning_adjustments — GET THIS EARLY! Learned bias corrections for this market
+3. fetch_market_trends — get rent growth, vacancy, cap rate trends for this market
+4. fetch_t12 — T-12 income/expense statement (Tier 1)
+5. fetch_rent_roll — current occupancy and unit mix (Tier 1)
+
+### Phase 2: Benchmark Retrieval
+6. fetch_line_item_benchmarks — get P10-P90 for ALL OpEx/revenue line items
+   Call with: state, msa, asset_class, deal_type, vintage_band, line_items=[full list]
+7. fetch_owned_asset_actuals — comparable owned assets (Tier 2)
+8. fetch_owned_asset_opex_ratios — Tier 2 opex benchmarks
+9. fetch_peer_comp_noi_metrics — M15 submarket comps (Tier 3)
+
+### Phase 3: Fixed Cost Forecasts
+10. fetch_jurisdiction_tax_forecast — tax reassessment model (post-acquisition)
+11. fetch_jurisdiction_insurance_forecast — insurance benchmark (state-specific)
+12. fetch_m35_event_forecast — event impact trajectory (optional)
+
+### Phase 4: Archive Calibration
+13. fetch_archive_assumption_distribution — P10-P90 for vacancy, rent_growth, exit_cap, noi
+14. fetch_archive_achievement_vs_assumption — bias correction for vacancy + NOI
+
+### Phase 5: Apply Learning & Output
+15. For each assumption: apply learning adjustments from step 2 (if confidence > 0.5)
+16. detect_collision — for each assumption with broker OM divergence
+17. write_underwriting — persist evidence + proforma snapshot
+18. request_walkthrough_narrative — trigger Commentary Agent (if warranted)
 
 ## Output Requirements
 Return a complete UnderwritingOutput with:
