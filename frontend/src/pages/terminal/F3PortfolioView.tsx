@@ -69,14 +69,28 @@ interface PortfolioMetrics {
 
 interface PerformanceData {
   period: string;
+  period_date?: string;
   noi: number;
   occupancy: number;
-  collections: number;
-  expenses: number;
-  actual_noi?: number;
+  collections?: number;
+  expenses?: number | null;
+  actual_noi?: number | null;
   projected_noi?: number;
-  actual_occupancy?: number;
+  actual_occupancy?: number | null;
   projected_occupancy?: number;
+  n_actual_deals?: number;
+}
+
+interface PeriodContributor {
+  id: string;
+  name: string;
+  address: string;
+  city: string;
+  state: string;
+  actual_noi: number | null;
+  actual_occupancy_pct: number | null;
+  actual_rent_per_unit: number | null;
+  variance_from_projection_pct: number | null;
 }
 
 interface AgentAccuracy {
@@ -128,6 +142,8 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
   const [expandedAssets, setExpandedAssets] = useState<Set<string>>(new Set());
   const [selectedTimeframe, setSelectedTimeframe] = useState<'mtd' | 'qtd' | 'ytd' | 'ltm'>('ytd');
   const [selectedPeriod, setSelectedPeriod] = useState<string | null>(null);
+  const [periodContributors, setPeriodContributors] = useState<PeriodContributor[]>([]);
+  const [contributorsLoading, setContributorsLoading] = useState(false);
 
   // Comp Sets state
   const [comps, setComps] = useState<Record<string, PortfolioComp[]>>({});
@@ -169,7 +185,27 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
       .then(res => setPerformance(res.data.data || []))
       .catch(() => {});
     setSelectedPeriod(null);
+    setPeriodContributors([]);
   }, [selectedTimeframe]);
+
+  // Fetch contributors when a period is selected
+  useEffect(() => {
+    if (!selectedPeriod) {
+      setPeriodContributors([]);
+      return;
+    }
+    const periodEntry = performance.find(p => p.period === selectedPeriod);
+    const periodDate = periodEntry?.period_date;
+    if (!periodDate) {
+      setPeriodContributors([]);
+      return;
+    }
+    setContributorsLoading(true);
+    apiClient.get(`/api/v1/portfolio/performance/contributors?period=${periodDate}`)
+      .then(res => setPeriodContributors(res.data.contributors || []))
+      .catch(() => setPeriodContributors([]))
+      .finally(() => setContributorsLoading(false));
+  }, [selectedPeriod, performance]);
   
   const loadPortfolioData = async () => {
     setLoading(true);
@@ -638,15 +674,15 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
         {(() => {
           const slice = performance.slice(-12);
           const maxNoi = Math.max(
-            ...slice.map(x => x.actual_noi ?? x.noi ?? 0),
-            ...slice.map(x => x.projected_noi ?? x.noi ?? 0),
+            ...slice.map(x => x.actual_noi != null ? x.actual_noi : 0),
+            ...slice.map(x => x.projected_noi ?? 0),
             1,
           );
           const BAR_H = 160;
           const fmt = (v: number) => v >= 1e6 ? `$${(v/1e6).toFixed(1)}M` : v >= 1e3 ? `$${(v/1e3).toFixed(0)}K` : `$${v.toFixed(0)}`;
           const n = slice.length || 1;
           const projPoints = slice.map((p, i) => {
-            const proj = p.projected_noi ?? p.noi ?? 0;
+            const proj = p.projected_noi ?? 0;
             const x = ((i + 0.5) / n) * 100;
             const y = (1 - Math.min(proj / maxNoi, 1)) * BAR_H;
             return `${x},${y}`;
@@ -673,31 +709,42 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
               </div>
               {/* Bars + SVG overlay */}
               <div style={{ flex: 1, position: 'relative', height: BAR_H + 20 }}>
-                {/* Bars */}
+                {/* Bars — only render when actuals exist */}
                 <div style={{ height: BAR_H, display: 'flex', alignItems: 'flex-end', gap: 4, overflow: 'hidden' }}>
                   {slice.map((p, i) => {
-                    const actual = p.actual_noi ?? p.noi ?? 0;
+                    const hasActual = p.actual_noi != null;
+                    const actual = p.actual_noi ?? 0;
                     const isSelected = selectedPeriod === p.period;
                     return (
                       <div
                         key={i}
                         style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer' }}
                         onClick={() => setSelectedPeriod(isSelected ? null : p.period)}
-                        title={`${p.period}: ${fmt(actual)} actual`}
+                        title={hasActual ? `${p.period}: ${fmt(actual)} actual` : `${p.period}: no actuals uploaded`}
                       >
-                        <div style={{
-                          width: '100%',
-                          background: isSelected ? T.text.cyan : T.text.green,
-                          height: `${Math.max((actual / maxNoi) * BAR_H, 4)}px`,
-                          borderRadius: '2px 2px 0 0',
-                          opacity: selectedPeriod && !isSelected ? 0.5 : 1,
-                          transition: 'all 0.15s',
-                        }} />
+                        {hasActual ? (
+                          <div style={{
+                            width: '100%',
+                            background: isSelected ? T.text.cyan : T.text.green,
+                            height: `${Math.max((actual / maxNoi) * BAR_H, 4)}px`,
+                            borderRadius: '2px 2px 0 0',
+                            opacity: selectedPeriod && !isSelected ? 0.45 : 1,
+                            transition: 'all 0.15s',
+                          }} />
+                        ) : (
+                          <div style={{
+                            width: '100%',
+                            height: 4,
+                            border: `1px dashed ${T.border.subtle}`,
+                            borderRadius: '2px 2px 0 0',
+                            opacity: 0.5,
+                          }} />
+                        )}
                       </div>
                     );
                   })}
                 </div>
-                {/* Projected line SVG overlay */}
+                {/* Projected line SVG overlay — always rendered */}
                 <svg
                   style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: `${BAR_H}px`, pointerEvents: 'none', overflow: 'visible' }}
                   viewBox={`0 0 100 ${BAR_H}`}
@@ -712,7 +759,7 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
                     vectorEffect="non-scaling-stroke"
                   />
                   {slice.map((p, i) => {
-                    const proj = p.projected_noi ?? p.noi ?? 0;
+                    const proj = p.projected_noi ?? 0;
                     const x = ((i + 0.5) / n) * 100;
                     const y = (1 - Math.min(proj / maxNoi, 1)) * BAR_H;
                     return <circle key={i} cx={x} cy={y} r="2" fill={T.text.amber} vectorEffect="non-scaling-stroke" />;
@@ -750,10 +797,10 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
         {(() => {
           const slice = performance.slice(-12);
           const allOcc = [
-            ...slice.map(p => p.actual_occupancy ?? p.occupancy ?? 0),
-            ...slice.map(p => p.projected_occupancy ?? p.occupancy ?? 0),
+            ...slice.filter(p => p.actual_occupancy != null).map(p => p.actual_occupancy as number),
+            ...slice.filter(p => p.projected_occupancy != null).map(p => p.projected_occupancy as number),
           ].filter(v => v > 0);
-          const minOcc = Math.max(Math.min(...allOcc, 85) - 2, 0);
+          const minOcc = allOcc.length ? Math.max(Math.min(...allOcc) - 2, 0) : 85;
           const maxOcc = 100;
           const range = maxOcc - minOcc || 1;
           const BAR_H = 160;
@@ -761,12 +808,15 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
           const toY    = (occ: number) => (1 - (Math.max(occ, minOcc) - minOcc) / range) * BAR_H;
           const ticks = [100, 95, 90, 85].filter(t => t >= minOcc);
           const n = slice.length || 1;
-          const projPoints = slice.map((p, i) => {
-            const proj = p.projected_occupancy ?? p.occupancy ?? 0;
-            const x = ((i + 0.5) / n) * 100;
-            const y = toY(proj);
-            return `${x},${y}`;
-          }).join(' ');
+          const projPoints = slice
+            .filter(p => p.projected_occupancy != null)
+            .map((p, _, arr) => {
+              const idx = slice.indexOf(p);
+              const proj = p.projected_occupancy!;
+              const x = ((idx + 0.5) / n) * 100;
+              const y = toY(proj);
+              return `${x},${y}`;
+            }).join(' ');
           return (
             <div style={{ display: 'flex', gap: 6 }}>
               {/* Y-axis */}
@@ -791,7 +841,8 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
               <div style={{ flex: 1, position: 'relative', height: BAR_H + 20 }}>
                 <div style={{ height: BAR_H, display: 'flex', alignItems: 'flex-end', gap: 4, overflow: 'hidden' }}>
                   {slice.map((p, i) => {
-                    const occ = p.actual_occupancy ?? p.occupancy ?? 0;
+                    const hasActual = p.actual_occupancy != null;
+                    const occ = p.actual_occupancy ?? 0;
                     const isSelected = selectedPeriod === p.period;
                     const barColor = occ > 93 ? T.text.green : occ > 90 ? T.text.amber : T.text.red;
                     return (
@@ -799,16 +850,26 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
                         key={i}
                         style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer' }}
                         onClick={() => setSelectedPeriod(isSelected ? null : p.period)}
-                        title={`${p.period}: ${occ.toFixed(1)}% actual`}
+                        title={hasActual ? `${p.period}: ${occ.toFixed(1)}% actual` : `${p.period}: no actuals uploaded`}
                       >
-                        <div style={{
-                          width: '100%',
-                          background: isSelected ? T.text.cyan : barColor,
-                          height: `${toBarH(occ)}px`,
-                          borderRadius: '2px 2px 0 0',
-                          opacity: selectedPeriod && !isSelected ? 0.5 : 1,
-                          transition: 'all 0.15s',
-                        }} />
+                        {hasActual ? (
+                          <div style={{
+                            width: '100%',
+                            background: isSelected ? T.text.cyan : barColor,
+                            height: `${toBarH(occ)}px`,
+                            borderRadius: '2px 2px 0 0',
+                            opacity: selectedPeriod && !isSelected ? 0.45 : 1,
+                            transition: 'all 0.15s',
+                          }} />
+                        ) : (
+                          <div style={{
+                            width: '100%',
+                            height: 4,
+                            border: `1px dashed ${T.border.subtle}`,
+                            borderRadius: '2px 2px 0 0',
+                            opacity: 0.5,
+                          }} />
+                        )}
                       </div>
                     );
                   })}
@@ -846,6 +907,75 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
         })()}
       </div>
       
+      {/* Period Contributor Table — full width, visible when a period is selected */}
+      {selectedPeriod && (
+        <div style={{
+          gridColumn: '1 / -1',
+          background: T.bg.panel,
+          border: `1px solid ${T.border.medium}`,
+          padding: 16,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: T.text.cyan, letterSpacing: 1, fontFamily: MONO }}>
+              CONTRIBUTING ASSETS — {selectedPeriod}
+            </div>
+            {contributorsLoading && (
+              <div style={{ fontSize: 9, color: T.text.muted, fontFamily: MONO }}>LOADING...</div>
+            )}
+          </div>
+          {!contributorsLoading && periodContributors.length === 0 && (
+            <div style={{ fontSize: 10, color: T.text.muted, fontFamily: MONO, padding: '12px 0' }}>
+              No actuals uploaded for this period. Upload actuals via the button above.
+            </div>
+          )}
+          {periodContributors.length > 0 && (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: MONO }}>
+              <thead>
+                <tr style={{ borderBottom: `1px solid ${T.border.subtle}` }}>
+                  {['ASSET', 'LOCATION', 'ACTUAL NOI', 'OCCUPANCY', 'AVG RENT/UNIT', 'VS PROJECTION'].map(h => (
+                    <th key={h} style={{ textAlign: h === 'ASSET' || h === 'LOCATION' ? 'left' : 'right', padding: '4px 10px', fontSize: 8, color: T.text.muted, fontWeight: 600, letterSpacing: 0.5 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {periodContributors.map((c, i) => {
+                  const varPct = c.variance_from_projection_pct;
+                  const varColor = varPct == null ? T.text.muted : varPct >= 0 ? T.text.green : T.text.red;
+                  return (
+                    <tr
+                      key={c.id}
+                      onClick={() => navigate(`/deals/${c.id}`)}
+                      style={{
+                        borderBottom: `1px solid ${T.border.subtle}`,
+                        cursor: 'pointer',
+                        background: i % 2 === 0 ? 'transparent' : T.bg.panelAlt,
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.background = T.bg.hover)}
+                      onMouseLeave={e => (e.currentTarget.style.background = i % 2 === 0 ? 'transparent' : T.bg.panelAlt)}
+                    >
+                      <td style={{ padding: '8px 10px', color: T.text.primary, fontWeight: 500 }}>{c.name}</td>
+                      <td style={{ padding: '8px 10px', color: T.text.secondary }}>{c.city}, {c.state}</td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right', color: T.text.green }}>
+                        {c.actual_noi != null ? (c.actual_noi >= 1e6 ? `$${(c.actual_noi/1e6).toFixed(2)}M` : `$${c.actual_noi.toLocaleString()}`) : '—'}
+                      </td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right', color: (c.actual_occupancy_pct ?? 0) > 93 ? T.text.green : T.text.amber }}>
+                        {c.actual_occupancy_pct != null ? `${c.actual_occupancy_pct.toFixed(1)}%` : '—'}
+                      </td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right', color: T.text.secondary }}>
+                        {c.actual_rent_per_unit != null ? `$${c.actual_rent_per_unit.toFixed(0)}` : '—'}
+                      </td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right', color: varColor, fontWeight: 600 }}>
+                        {varPct != null ? `${varPct >= 0 ? '+' : ''}${varPct.toFixed(1)}%` : '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
       {/* Expense Analysis */}
       <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, padding: 16 }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: T.text.cyan, letterSpacing: 1, marginBottom: 16, fontFamily: MONO }}>

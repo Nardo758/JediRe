@@ -116,7 +116,9 @@ router.get('/assets', requireAuth, async (req: AuthenticatedRequest, res: Respon
 
 /**
  * GET /api/v1/portfolio/performance
- * Get portfolio performance time series with projected vs actual comparison
+ * Get portfolio performance time series with projected vs actual comparison.
+ * Always emits all months in the requested range; actuals are LEFT-JOINed so
+ * the projected line renders even for periods without uploaded actuals.
  */
 router.get('/performance', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -126,75 +128,111 @@ router.get('/performance', requireAuth, async (req: AuthenticatedRequest, res: R
     if (timeframe === 'mtd') months = 1;
     if (timeframe === 'qtd') months = 3;
     if (timeframe === 'ltm') months = 12;
-    
-    // Try to get actuals joined with pro forma projections from deal_data
-    const result = await query(`
-      SELECT 
-        TO_CHAR(ap.period_start, 'Mon YY') as period,
-        ap.period_start,
-        COALESCE(SUM(ap.actual_noi), 0) as actual_noi,
-        COALESCE(AVG(ap.actual_occupancy_pct), 0) as actual_occupancy,
-        COALESCE(SUM((d.deal_data->>'noi')::numeric / 12.0), 0) as projected_noi,
-        COALESCE(AVG((d.deal_data->>'occupancy_rate')::numeric), 0) as projected_occupancy,
-        COUNT(DISTINCT ap.deal_id) as n_deals
-      FROM actual_performance ap
-      JOIN deals d ON d.id = ap.deal_id
-      WHERE ap.period_start >= NOW() - INTERVAL '${months} months'
-      GROUP BY ap.period_start
-      ORDER BY ap.period_start
-    `);
 
-    if (result.rows.length > 0) {
-      res.json({ 
-        data: result.rows.map((r: Record<string, unknown>) => {
-          const actualNoi = Number(r.actual_noi);
-          const projectedNoi = Number(r.projected_noi);
-          const actualOcc = Number(r.actual_occupancy);
-          const projectedOcc = Number(r.projected_occupancy);
-          return {
-            period: r.period,
-            actual_noi: actualNoi,
-            projected_noi: projectedNoi || actualNoi * 0.95,
-            actual_occupancy: actualOcc,
-            projected_occupancy: projectedOcc || actualOcc * 0.98,
-            noi: actualNoi,
-            occupancy: actualOcc,
-            collections: 97 + Math.random() * 2,
-            expenses: actualNoi * 0.45,
-          };
-        })
-      });
-    } else {
-      // Generate illustrative data with projected vs actual variance when no actuals exist
-      const data = [];
-      const now = new Date();
-      const baseNoi = 450000;
-      const baseOcc = 93.5;
-      for (let i = months - 1; i >= 0; i--) {
-        const d = new Date(now);
-        d.setMonth(d.getMonth() - i);
-        const projNoi = baseNoi + 10000 * (months - 1 - i);
-        const actualNoi = projNoi * (0.92 + Math.random() * 0.16);
-        const projOcc = baseOcc + 0.1 * (months - 1 - i);
-        const actualOcc = Math.min(projOcc * (0.97 + Math.random() * 0.06), 100);
-        data.push({
-          period: d.toLocaleString('default', { month: 'short', year: '2-digit' }),
+    // Portfolio-wide pro forma projections (monthly) from deal_data
+    // These are aggregated once and applied to every period bucket.
+    const result = await query(`
+      WITH portfolio_projection AS (
+        SELECT
+          COALESCE(SUM((deal_data->>'noi')::numeric / 12.0), 0) AS projected_noi,
+          COALESCE(AVG((deal_data->>'occupancy_rate')::numeric), 0) AS projected_occupancy
+        FROM deals
+        WHERE (deal_data->>'noi') IS NOT NULL
+          AND (deal_data->>'noi')::numeric > 0
+      ),
+      date_series AS (
+        SELECT generate_series(
+          DATE_TRUNC('month', NOW() - ($1 - 1) * INTERVAL '1 month'),
+          DATE_TRUNC('month', NOW()),
+          '1 month'::interval
+        )::date AS period_date
+      ),
+      actuals AS (
+        SELECT
+          DATE_TRUNC('month', period_start)::date AS period_date,
+          SUM(actual_noi) AS actual_noi,
+          AVG(actual_occupancy_pct) AS actual_occupancy,
+          COUNT(DISTINCT deal_id) AS n_deals
+        FROM actual_performance
+        WHERE period_start >= NOW() - $1 * INTERVAL '1 month'
+        GROUP BY DATE_TRUNC('month', period_start)::date
+      )
+      SELECT
+        TO_CHAR(ds.period_date, 'Mon YY') AS period,
+        ds.period_date,
+        a.actual_noi,
+        a.actual_occupancy,
+        a.n_deals AS n_actual_deals,
+        pp.projected_noi,
+        pp.projected_occupancy
+      FROM date_series ds
+      CROSS JOIN portfolio_projection pp
+      LEFT JOIN actuals a ON a.period_date = ds.period_date
+      ORDER BY ds.period_date
+    `, [months]);
+
+    res.json({
+      data: result.rows.map((r: Record<string, unknown>) => {
+        const actualNoi  = r.actual_noi  != null ? Number(r.actual_noi)  : null;
+        const actualOcc  = r.actual_occupancy != null ? Number(r.actual_occupancy) : null;
+        const projNoi    = Number(r.projected_noi);
+        const projOcc    = Number(r.projected_occupancy);
+        return {
+          period: r.period,
+          period_date: r.period_date,
           actual_noi: actualNoi,
           projected_noi: projNoi,
           actual_occupancy: actualOcc,
           projected_occupancy: projOcc,
-          noi: actualNoi,
-          occupancy: actualOcc,
-          collections: 96 + Math.random() * 3,
-          expenses: actualNoi * 0.45,
-        });
-      }
-      res.json({ data });
-    }
+          // Legacy aliases for other panels that still use p.noi / p.occupancy
+          noi: actualNoi ?? 0,
+          occupancy: actualOcc ?? 0,
+          expenses: actualNoi != null ? actualNoi * 0.45 : null,
+          n_actual_deals: r.n_actual_deals != null ? Number(r.n_actual_deals) : 0,
+        };
+      }),
+    });
   } catch (err) {
     logger.error('Portfolio performance error:', err);
     res.status(500).json({ 
       error: err instanceof Error ? err.message : 'Failed to get portfolio performance' 
+    });
+  }
+});
+
+/**
+ * GET /api/v1/portfolio/performance/contributors
+ * Returns per-deal actuals for a specific period (YYYY-MM-DD month start).
+ */
+router.get('/performance/contributors', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { period } = req.query;
+    if (!period || typeof period !== 'string') {
+      return res.status(400).json({ error: 'period query param required (YYYY-MM-DD)' });
+    }
+
+    const result = await query(`
+      SELECT
+        d.id,
+        d.name,
+        d.address,
+        d.deal_data->>'city' AS city,
+        d.deal_data->>'state' AS state,
+        ap.actual_noi,
+        ap.actual_occupancy_pct,
+        ap.actual_rent_per_unit,
+        ap.variance_from_projection_pct
+      FROM actual_performance ap
+      JOIN deals d ON d.id = ap.deal_id
+      WHERE DATE_TRUNC('month', ap.period_start) = DATE_TRUNC('month', $1::date)
+      ORDER BY ap.actual_noi DESC NULLS LAST
+    `, [period]);
+
+    res.json({ contributors: result.rows });
+  } catch (err) {
+    logger.error('Portfolio performance contributors error:', err);
+    res.status(500).json({
+      error: err instanceof Error ? err.message : 'Failed to get period contributors',
     });
   }
 });
