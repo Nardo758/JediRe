@@ -92,6 +92,18 @@ interface ReportDefinition {
   lastGenerated?: string;
 }
 
+interface PortfolioComp {
+  id?: string;
+  comp_name?: string;
+  comp_property_address?: string;
+  avg_rent?: number;
+  occupancy?: number;
+  distance_miles?: number;
+  match_score?: number;
+  units?: number;
+  year_built?: number;
+}
+
 // ─── Component ────────────────────────────────────────────────
 
 interface F3PortfolioViewProps {
@@ -102,7 +114,7 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
   const navigate = useNavigate();
   
   // State
-  const [activeTab, setActiveTab] = useState<'overview' | 'assets' | 'performance' | 'reports' | 'learning'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'assets' | 'performance' | 'reports' | 'learning' | 'comps'>('overview');
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState<PortfolioMetrics | null>(null);
   const [assets, setAssets] = useState<PortfolioAsset[]>([]);
@@ -110,6 +122,12 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
   const [agentAccuracy, setAgentAccuracy] = useState<AgentAccuracy[]>([]);
   const [expandedAssets, setExpandedAssets] = useState<Set<string>>(new Set());
   const [selectedTimeframe, setSelectedTimeframe] = useState<'mtd' | 'qtd' | 'ytd' | 'ltm'>('ytd');
+
+  // Comp Sets state
+  const [comps, setComps] = useState<Record<string, PortfolioComp[]>>({});
+  const [compsLoading, setCompsLoading] = useState<Set<string>>(new Set());
+  const [compsExpanded, setCompsExpanded] = useState<Set<string>>(new Set());
+  const [discovering, setDiscovering] = useState<string | null>(null);
   
   // Load data
   useEffect(() => {
@@ -149,6 +167,34 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
     }
   };
   
+  // ─── Comp Set Functions ───────────────────────────────────────
+
+  const loadCompSet = (assetId: string) => {
+    setCompsLoading(prev => new Set(prev).add(assetId));
+    apiClient.get(`/api/v1/deals/${assetId}/comp-set`)
+      .then(res => setComps(prev => ({ ...prev, [assetId]: res.data?.comps || [] })))
+      .catch(() => setComps(prev => ({ ...prev, [assetId]: [] })))
+      .finally(() => setCompsLoading(prev => { const s = new Set(prev); s.delete(assetId); return s; }));
+  };
+
+  const discoverCompsForAsset = async (assetId: string) => {
+    setDiscovering(assetId);
+    try {
+      await apiClient.post(`/api/v1/deals/${assetId}/comp-set/discover`);
+      loadCompSet(assetId);
+    } catch (e) { console.error('Discover comps failed:', e); }
+    finally { setDiscovering(null); }
+  };
+
+  const toggleCompsRow = (assetId: string) => {
+    setCompsExpanded(prev => {
+      const n = new Set(prev);
+      if (n.has(assetId)) { n.delete(assetId); }
+      else { n.add(assetId); if (!comps[assetId]) loadCompSet(assetId); }
+      return n;
+    });
+  };
+
   // Report definitions
   const reports: ReportDefinition[] = [
     { id: 'portfolio-summary', name: 'Portfolio Summary', description: 'Executive overview of all assets, metrics, and performance', category: 'portfolio', icon: <Building2 size={16} /> },
@@ -558,6 +604,121 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
     </div>
   );
   
+  const renderComps = () => {
+    const totalComps = Object.values(comps).reduce((s, c) => s + c.length, 0);
+    return (
+      <div>
+        {/* Summary strip */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }}>
+          {[
+            { label: 'OWNED ASSETS', value: String(assets.length), color: T.text.primary },
+            { label: 'TOTAL COMPS TRACKED', value: String(totalComps), color: T.text.cyan },
+            { label: 'DISCOVERY FACTORS', value: 'Trade area · Proximity · Vintage · Size · Class', color: T.text.secondary, small: true },
+          ].map((s, i) => (
+            <div key={i} style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, padding: 12 }}>
+              <div style={{ fontSize: 9, color: T.text.muted, letterSpacing: 1, fontFamily: MONO, marginBottom: 4 }}>{s.label}</div>
+              <div style={{ fontSize: s.small ? 10 : 20, fontWeight: s.small ? 400 : 800, color: s.color, fontFamily: MONO }}>{s.value}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Per-asset table */}
+        {assets.length === 0 ? (
+          <div style={{ padding: 32, textAlign: 'center', color: T.text.muted, fontFamily: MONO, fontSize: 10 }}>No assets to show comp sets for</div>
+        ) : (
+          <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}` }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: T.bg.active, borderBottom: `1px solid ${T.border.subtle}` }}>
+                  {['OWNED ASSET', 'AVG RENT', 'OCCUPANCY', 'COMPS', 'ACTIONS'].map(h => (
+                    <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontSize: 9, color: T.text.muted, fontFamily: MONO, fontWeight: 700, letterSpacing: 1 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {assets.map((asset, i) => {
+                  const assetComps = comps[asset.id] || [];
+                  const expanded = compsExpanded.has(asset.id);
+                  const isLoadingComp = compsLoading.has(asset.id);
+                  const isDiscovering = discovering === asset.id;
+                  return (
+                    <React.Fragment key={asset.id || i}>
+                      <tr
+                        onClick={() => toggleCompsRow(asset.id)}
+                        style={{ borderBottom: `1px solid ${T.border.subtle}`, background: expanded ? T.bg.active : i % 2 === 0 ? T.bg.panel : T.bg.panelAlt, cursor: 'pointer' }}
+                      >
+                        <td style={{ padding: '10px 12px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ color: T.text.muted, fontSize: 10, fontFamily: MONO }}>{expanded ? '▼' : '▶'}</span>
+                            <div>
+                              <div style={{ fontSize: 11, fontWeight: 700, color: T.text.primary, fontFamily: MONO }}>{asset.name || '—'}</div>
+                              <div style={{ fontSize: 9, color: T.text.muted, marginTop: 1 }}>{asset.assetClass || ''} · {asset.units || '—'} units</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td style={{ padding: '10px 12px', fontSize: 10, fontFamily: MONO, color: T.text.primary }}>
+                          {asset.noi != null ? fmtCurrency(asset.noi) : '—'}
+                        </td>
+                        <td style={{ padding: '10px 12px', fontSize: 10, fontFamily: MONO, color: T.text.green }}>
+                          {asset.occupancy != null ? `${Number(asset.occupancy).toFixed(1)}%` : '—'}
+                        </td>
+                        <td style={{ padding: '10px 12px', fontSize: 11, fontWeight: 700, fontFamily: MONO, color: T.text.cyan }}>
+                          {assetComps.length || '—'}
+                        </td>
+                        <td style={{ padding: '10px 12px' }} onClick={e => e.stopPropagation()}>
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button
+                              onClick={() => loadCompSet(asset.id)}
+                              style={{ fontFamily: MONO, fontSize: 9, color: '#A78BFA', background: 'transparent', border: '1px solid #A78BFA44', padding: '3px 10px', cursor: 'pointer' }}
+                            >
+                              {isLoadingComp ? '…' : 'REFRESH'}
+                            </button>
+                            <button
+                              onClick={() => discoverCompsForAsset(asset.id)}
+                              disabled={!!isDiscovering}
+                              style={{ fontFamily: MONO, fontSize: 9, color: T.text.green, background: 'transparent', border: `1px solid ${T.text.green}44`, padding: '3px 10px', cursor: 'pointer', opacity: isDiscovering ? 0.5 : 1 }}
+                            >
+                              {isDiscovering ? 'DISCOVERING…' : 'DISCOVER'}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+
+                      {/* Expanded comps rows */}
+                      {expanded && isLoadingComp && (
+                        <tr style={{ background: T.bg.hover }}>
+                          <td colSpan={5} style={{ padding: '8px 32px', fontSize: 10, color: T.text.muted, fontFamily: MONO }}>Loading comps…</td>
+                        </tr>
+                      )}
+                      {expanded && !isLoadingComp && assetComps.length === 0 && (
+                        <tr style={{ background: T.bg.hover }}>
+                          <td colSpan={5} style={{ padding: '8px 32px', fontSize: 10, color: T.text.muted, fontFamily: MONO }}>No comps found — click DISCOVER to find competitors</td>
+                        </tr>
+                      )}
+                      {expanded && assetComps.map((comp, j) => (
+                        <tr key={comp.id || j} style={{ background: T.bg.hover, borderBottom: `1px solid ${T.border.subtle}` }}>
+                          <td style={{ padding: '6px 12px 6px 36px', fontSize: 10, color: T.text.secondary }}>{comp.comp_name || comp.comp_property_address || '—'}</td>
+                          <td style={{ padding: '6px 12px', fontSize: 10, fontFamily: MONO, color: T.text.muted }}>{comp.avg_rent != null ? `$${comp.avg_rent}` : '—'}</td>
+                          <td style={{ padding: '6px 12px', fontSize: 10, fontFamily: MONO, color: T.text.muted }}>{comp.occupancy != null ? `${comp.occupancy}%` : '—'}</td>
+                          <td style={{ padding: '6px 12px', fontSize: 10, color: T.text.muted }}>
+                            {comp.distance_miles != null ? `${Number(comp.distance_miles).toFixed(1)}mi` : '—'} · {comp.units || '—'} units · {comp.year_built || '—'}
+                          </td>
+                          <td style={{ padding: '6px 12px', fontSize: 10, fontWeight: 700, fontFamily: MONO, color: (comp.match_score ?? 0) >= 80 ? T.text.green : (comp.match_score ?? 0) >= 60 ? T.text.amber : T.text.muted }}>
+                            {comp.match_score != null ? `${comp.match_score}% match` : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const renderReports = () => (
     <div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
@@ -707,6 +868,7 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
     { id: 'overview', label: 'OVERVIEW', icon: <PieChart size={12} /> },
     { id: 'assets', label: 'ASSETS', icon: <Building2 size={12} /> },
     { id: 'performance', label: 'PERFORMANCE', icon: <Activity size={12} /> },
+    { id: 'comps', label: 'COMP SETS', icon: <Target size={12} /> },
     { id: 'reports', label: 'REPORTS', icon: <FileText size={12} /> },
     { id: 'learning', label: 'AI LEARNING', icon: <Brain size={12} /> },
   ] as const;
@@ -769,6 +931,7 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
           {activeTab === 'overview' && renderOverview()}
           {activeTab === 'assets' && renderAssets()}
           {activeTab === 'performance' && renderPerformance()}
+          {activeTab === 'comps' && renderComps()}
           {activeTab === 'reports' && renderReports()}
           {activeTab === 'learning' && renderLearning()}
         </>
