@@ -807,6 +807,218 @@ const AILearningTab: React.FC<{ dealId: string }> = ({ dealId }) => {
   );
 };
 
+// ─── Reports Tab Component (needs own accuracy state) ─────────────────────────
+interface ReportsTabProps {
+  dealId: string;
+  financials: MonthlyFinancial[];
+  deal: Record<string, unknown>;
+}
+const ReportsTab: React.FC<ReportsTabProps> = ({ dealId, financials, deal }) => {
+  type AccRow = { assumptionName: string; hitRate10Pct: number; hitRate20Pct: number; meanBias: number; nPredictions: number };
+  const [accuracy, setAccuracy] = useState<AccRow[]>([]);
+
+  useEffect(() => {
+    apiClient.get(`/api/v1/learning/outcomes/deal/${dealId}/summary`)
+      .then(r => setAccuracy((r.data?.summary ?? []).map((row: Record<string, unknown>) => ({
+        assumptionName: ((row.assumption_name as string) ?? '').replace(/_/g, ' '),
+        hitRate10Pct: ((row.hit_rate_10pct as number) ?? 0) * 100,
+        hitRate20Pct: ((row.hit_rate_20pct as number) ?? 0) * 100,
+        meanBias: (row.mean_gap_pct as number) ?? 0,
+        nPredictions: (row.n_predictions as number) ?? 0,
+      }))))
+      .catch(() => setAccuracy([]));
+  }, [dealId]);
+
+  const propName = (deal.property_name ?? deal.project_name ?? `property-${dealId}`) as string;
+  const safeSlug = propName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+
+  const downloadCSV = (filename: string, rows: string[][], headers: string[]) => {
+    const csv = [headers.join(','), ...rows.map(r => r.map(v => `"${(v ?? '').toString().replace(/"/g, '""')}"`).join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportFinancials = () => {
+    downloadCSV(`${safeSlug}-performance.csv`, financials.map(f => [
+      (f.report_month as string)?.slice(0, 7) ?? '', String(f.noi ?? ''), String(f.occupancy_rate ?? ''),
+      String(f.avg_effective_rent ?? ''), String(f.net_rental_income ?? ''), String(f.total_opex ?? ''),
+      String(f.cash_flow_before_tax ?? ''), String(f.new_leases ?? ''), String(f.renewals ?? ''),
+    ]), ['Month', 'NOI', 'Occupancy Rate', 'Avg Rent', 'Revenue', 'Total OpEx', 'Cash Flow', 'New Leases', 'Renewals']);
+  };
+
+  const exportRentRoll = async () => {
+    const r = await apiClient.get(`/api/v1/operations/${dealId}/rent-roll`).catch(() => ({ data: { units: [] } }));
+    const units = r.data?.units ?? [];
+    downloadCSV(`${safeSlug}-rent-roll.csv`, units.map((u: Record<string, unknown>) => [
+      String(u.unit_number ?? ''), String(u.unit_type ?? ''), String(u.status ?? ''),
+      String(u.current_rent ?? ''), String(u.market_rent ?? ''),
+      String(u.bedrooms ?? ''), String(u.bathrooms ?? ''), String(u.sqft ?? ''),
+      ((u.lease_start as string) ?? '').slice(0, 10), ((u.lease_end as string) ?? '').slice(0, 10),
+    ]), ['Unit', 'Type', 'Status', 'Current Rent', 'Market Rent', 'Beds', 'Baths', 'Sqft', 'Lease Start', 'Lease End']);
+  };
+
+  const exportInvestorSummary = () => {
+    const lf = financials[financials.length - 1];
+    downloadCSV(`${safeSlug}-investor-report.csv`, [
+      ['Property', propName],
+      ['As of Date', new Date().toISOString().slice(0, 10)],
+      ['Latest NOI/mo', lf ? String(lf.noi) : 'N/A'],
+      ['Annualized NOI', lf ? String(parseFloat(lf.noi as string) * 12) : 'N/A'],
+      ['Avg Occupancy (LTM)', financials.length ? String((financials.reduce((s, f) => s + (parseFloat(f.occupancy_rate as string) || 0), 0) / financials.length * 100).toFixed(1)) : 'N/A'],
+      ['Avg Effective Rent', lf ? String(lf.avg_effective_rent) : 'N/A'],
+      ['Months of Actuals', String(financials.length)],
+    ], ['Metric', 'Value']);
+  };
+
+  const lf = financials[financials.length - 1];
+  const avgOcc = financials.length
+    ? financials.reduce((s, f) => s + (parseFloat(f.occupancy_rate as string) || 0), 0) / financials.length
+    : null;
+  const annNoi = lf ? parseFloat(lf.noi as string) * 12 : null;
+  const fmtD = (v: number | null) => v == null ? '—' : `$${v >= 1_000_000 ? (v / 1_000_000).toFixed(2) + 'M' : v.toLocaleString()}`;
+  const fmtP = (v: number | null) => v == null ? '—' : `${(v * 100).toFixed(1)}%`;
+
+  return (
+    <div className="space-y-6 p-6 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+      <div className="flex items-center justify-between">
+        <div className="text-xs text-stone-500 font-medium uppercase tracking-wide">Asset Reports — {propName}</div>
+        <div className="flex gap-2">
+          <button onClick={exportFinancials} disabled={financials.length === 0} className="text-xs px-3 py-1.5 border border-stone-200 rounded text-stone-600 hover:bg-stone-50 disabled:opacity-40">⬇ Monthly CSV</button>
+          <button onClick={exportInvestorSummary} disabled={financials.length === 0} className="text-xs px-3 py-1.5 border border-stone-200 rounded text-stone-600 hover:bg-stone-50 disabled:opacity-40">⬇ Investor CSV</button>
+          <button onClick={exportRentRoll} className="text-xs px-3 py-1.5 border border-stone-200 rounded text-stone-600 hover:bg-stone-50">⬇ Rent Roll CSV</button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        {/* 1. NOI Waterfall */}
+        <div className="bg-white border border-stone-200 rounded-lg p-5">
+          <div className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-3">NOI Waterfall</div>
+          {!lf ? (
+            <div className="text-xs text-stone-400">No actuals loaded yet</div>
+          ) : (
+            <div className="space-y-2">
+              {([
+                { label: 'Eff. Gross Income', val: parseFloat(lf.effective_gross_income as string) || null, color: 'bg-emerald-500', negative: false, bold: false },
+                { label: 'Operating Expenses', val: parseFloat(lf.total_operating_expenses as string) || null, color: 'bg-red-400', negative: true, bold: false },
+                { label: 'Net Operating Income', val: parseFloat(lf.noi as string) || null, color: 'bg-blue-500', negative: false, bold: true },
+              ] as { label: string; val: number | null; color: string; negative: boolean; bold: boolean }[]).map(row => {
+                const base = parseFloat(lf.effective_gross_income as string) || 1;
+                const width = row.val ? Math.min(100, Math.abs(row.val) / base * 100) : 0;
+                return (
+                  <div key={row.label}>
+                    <div className="flex justify-between text-xs mb-0.5">
+                      <span className={row.bold ? 'font-semibold text-stone-800' : 'text-stone-500'}>{row.label}</span>
+                      <span className={`font-mono ${row.negative ? 'text-red-600' : 'text-stone-800'}`}>{fmtD(row.val)}</span>
+                    </div>
+                    <div className="h-1.5 bg-stone-100 rounded overflow-hidden">
+                      <div className={`h-full ${row.color} rounded`} style={{ width: `${width}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+              <div className="pt-2 border-t border-stone-100 text-xs text-stone-400">Annualized NOI: <span className="text-stone-700 font-semibold">{fmtD(annNoi)}</span></div>
+            </div>
+          )}
+        </div>
+
+        {/* 2. Deal Performance */}
+        <div className="bg-white border border-stone-200 rounded-lg p-5">
+          <div className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-3">Deal Performance</div>
+          <div className="space-y-3">
+            {([
+              { label: 'Underwritten IRR', val: deal.target_irr != null ? fmtP((deal.target_irr as number) / 100) : deal.irr != null ? fmtP((deal.irr as number) / 100) : '—' },
+              { label: 'Equity Multiple (UW)', val: deal.equity_multiple != null ? `${parseFloat(deal.equity_multiple as string).toFixed(2)}×` : '—' },
+              { label: 'Avg Occupancy (Actuals)', val: fmtP(avgOcc) },
+              { label: 'Months of Actuals', val: String(financials.length) },
+              { label: 'Latest NOI/mo', val: fmtD(lf ? parseFloat(lf.noi as string) : null) },
+              { label: 'Annualized NOI', val: fmtD(annNoi) },
+            ] as { label: string; val: string }[]).map(row => (
+              <div key={row.label} className="flex justify-between text-xs">
+                <span className="text-stone-500">{row.label}</span>
+                <span className="font-semibold text-stone-800">{row.val}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* 3. Debt Summary */}
+        <div className="bg-white border border-stone-200 rounded-lg p-5">
+          <div className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-3">Debt Summary</div>
+          <div className="space-y-3">
+            {([
+              { label: 'Loan Amount', val: deal.loan_amount != null ? fmtD(parseFloat(deal.loan_amount as string)) : '—' },
+              { label: 'Interest Rate', val: deal.loan_rate != null ? fmtP(parseFloat(deal.loan_rate as string) / 100) : '—' },
+              { label: 'Loan Term', val: deal.loan_term != null ? `${deal.loan_term} yrs` : '—' },
+              { label: 'LTV (at close)', val: deal.ltv != null ? fmtP(parseFloat(deal.ltv as string) / 100) : (deal.loan_amount && deal.purchase_price ? fmtP(parseFloat(deal.loan_amount as string) / parseFloat(deal.purchase_price as string)) : '—') },
+              { label: 'DSCR (UW)', val: deal.dscr != null ? `${parseFloat(deal.dscr as string).toFixed(2)}×` : '—' },
+              { label: 'Lender', val: (deal.lender as string) ?? '—' },
+            ] as { label: string; val: string }[]).map(row => (
+              <div key={row.label} className="flex justify-between text-xs">
+                <span className="text-stone-500">{row.label}</span>
+                <span className="font-semibold text-stone-800">{row.val}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* 4. Underwriting Accuracy */}
+        <div className="bg-white border border-stone-200 rounded-lg p-5">
+          <div className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-3">Underwriting Accuracy</div>
+          {accuracy.length === 0 ? (
+            <div className="text-xs text-stone-400">{financials.length === 0 ? 'Requires actuals data' : 'No prediction outcomes recorded yet'}</div>
+          ) : (
+            <div className="space-y-2">
+              {accuracy.slice(0, 4).map(a => (
+                <div key={a.assumptionName}>
+                  <div className="flex justify-between text-xs mb-0.5">
+                    <span className="capitalize text-stone-600">{a.assumptionName}</span>
+                    <span className={`font-mono font-semibold ${a.hitRate10Pct >= 70 ? 'text-emerald-600' : a.hitRate10Pct >= 50 ? 'text-amber-600' : 'text-red-500'}`}>{a.hitRate10Pct.toFixed(0)}% within 10%</span>
+                  </div>
+                  <div className="h-1.5 bg-stone-100 rounded overflow-hidden">
+                    <div className={`h-full rounded ${a.hitRate10Pct >= 70 ? 'bg-emerald-500' : a.hitRate10Pct >= 50 ? 'bg-amber-400' : 'bg-red-400'}`} style={{ width: `${a.hitRate10Pct}%` }} />
+                  </div>
+                </div>
+              ))}
+              <div className="pt-2 text-xs text-stone-400">{accuracy.reduce((s, a) => s + a.nPredictions, 0)} total predictions evaluated</div>
+            </div>
+          )}
+        </div>
+
+        {/* 5. Occupancy Trend */}
+        <div className="bg-white border border-stone-200 rounded-lg p-5 col-span-2">
+          <div className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-3">Occupancy Trend</div>
+          {financials.length === 0 ? (
+            <div className="text-xs text-stone-400">No actuals loaded yet</div>
+          ) : (
+            <>
+              <div className="flex items-end gap-1" style={{ height: 64 }}>
+                {financials.slice(-18).map((f, i) => {
+                  const occ = Math.min(1, parseFloat(f.occupancy_rate as string) || 0);
+                  return (
+                    <div key={i} className="flex-1 flex flex-col items-center justify-end" title={`${(occ * 100).toFixed(1)}%`}>
+                      <div
+                        className={`w-full rounded-t ${occ >= 0.93 ? 'bg-emerald-500' : occ >= 0.85 ? 'bg-amber-400' : 'bg-red-400'}`}
+                        style={{ height: `${occ * 100}%` }}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="flex justify-between text-xs text-stone-400 mt-1">
+                <span>{financials.length > 18 ? (financials[financials.length - 18]?.period_label as string | undefined) ?? '18 mo ago' : 'Earliest'}</span>
+                <span className="font-semibold text-stone-700">Avg {fmtP(avgOcc)} occupancy over {financials.length} months</span>
+                <span>Latest</span>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export default function PortfolioPropertyPage() {
   const { dealId } = useParams<{ dealId: string }>();
   const navigate = useNavigate();
@@ -1411,195 +1623,9 @@ export default function PortfolioPropertyPage() {
             <DocumentsSection deal={deal as unknown as Deal} />
           </div>
         )}
-        {activeTab === 'reports'      && (() => {
-          const propName = summary?.deal?.property_name ?? summary?.deal?.project_name ?? `property-${dealId}`;
-          const safeSlug = propName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-
-          const downloadCSV = (filename: string, rows: string[][], headers: string[]) => {
-            const csv = [headers.join(','), ...rows.map(r => r.map(v => `"${(v ?? '').toString().replace(/"/g, '""')}"`).join(','))].join('\n');
-            const blob = new Blob([csv], { type: 'text/csv' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
-            URL.revokeObjectURL(url);
-          };
-
-          const exportFinancials = () => {
-            downloadCSV(`${safeSlug}-performance.csv`, financials.map(f => [
-              f.report_month?.slice(0, 7) ?? '', String(f.noi ?? ''), String(f.occupancy_rate ?? ''),
-              String(f.avg_effective_rent ?? ''), String(f.net_rental_income ?? ''), String(f.total_opex ?? ''),
-              String(f.cash_flow_before_tax ?? ''), String(f.new_leases ?? ''), String(f.renewals ?? ''),
-            ]), ['Month', 'NOI', 'Occupancy Rate', 'Avg Rent', 'Revenue', 'Total OpEx', 'Cash Flow', 'New Leases', 'Renewals']);
-          };
-
-          const exportRentRoll = async () => {
-            const r = await apiClient.get(`/api/v1/operations/${dealId}/rent-roll`).catch(() => ({ data: { units: [] } }));
-            const units = r.data?.units ?? [];
-            downloadCSV(`${safeSlug}-rent-roll.csv`, units.map((u: any) => [
-              u.unit_number, u.unit_type, u.status, u.current_rent, u.market_rent,
-              u.bedrooms, u.bathrooms, u.sqft, u.lease_start?.slice(0, 10) ?? '', u.lease_end?.slice(0, 10) ?? '',
-            ]), ['Unit', 'Type', 'Status', 'Current Rent', 'Market Rent', 'Beds', 'Baths', 'Sqft', 'Lease Start', 'Lease End']);
-          };
-
-          const exportInvestorSummary = () => {
-            const lf = financials[financials.length - 1];
-            downloadCSV(`${safeSlug}-investor-report.csv`, [
-              ['Property', propName],
-              ['As of Date', new Date().toISOString().slice(0, 10)],
-              ['Latest NOI/mo', lf ? String(lf.noi) : 'N/A'],
-              ['Annualized NOI', lf ? String(parseFloat(lf.noi as any) * 12) : 'N/A'],
-              ['Avg Occupancy (LTM)', financials.length ? String((financials.reduce((s, f) => s + (parseFloat(f.occupancy_rate as any) || 0), 0) / financials.length * 100).toFixed(1)) : 'N/A'],
-              ['Avg Effective Rent', lf ? String(lf.avg_effective_rent) : 'N/A'],
-              ['Months of Actuals', String(financials.length)],
-            ], ['Metric', 'Value']);
-          };
-
-          const lf = financials[financials.length - 1];
-          const avgOcc = financials.length
-            ? financials.reduce((s, f) => s + (parseFloat(f.occupancy_rate as string) || 0), 0) / financials.length
-            : null;
-          const annNoi = lf ? parseFloat(lf.noi as string) * 12 : null;
-          const fmtDollar = (v: number | null) => v == null ? '—' : `$${v >= 1_000_000 ? (v / 1_000_000).toFixed(2) + 'M' : v.toLocaleString()}`;
-          const fmtPctR = (v: number | null) => v == null ? '—' : `${(v * 100).toFixed(1)}%`;
-
-          return (
-            <div className="space-y-6 p-6 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
-              <div className="flex items-center justify-between">
-                <div className="text-xs text-stone-500 font-medium uppercase tracking-wide">Asset Reports — {propName}</div>
-                <div className="flex gap-2">
-                  <button onClick={exportFinancials} disabled={financials.length === 0} className="text-xs px-3 py-1.5 border border-stone-200 rounded text-stone-600 hover:bg-stone-50 disabled:opacity-40">⬇ Monthly CSV</button>
-                  <button onClick={exportInvestorSummary} disabled={financials.length === 0} className="text-xs px-3 py-1.5 border border-stone-200 rounded text-stone-600 hover:bg-stone-50 disabled:opacity-40">⬇ Investor CSV</button>
-                  <button onClick={exportRentRoll} className="text-xs px-3 py-1.5 border border-stone-200 rounded text-stone-600 hover:bg-stone-50">⬇ Rent Roll CSV</button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                {/* 1. NOI Waterfall */}
-                <div className="bg-white border border-stone-200 rounded-lg p-5">
-                  <div className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-3">NOI Waterfall</div>
-                  {!lf ? (
-                    <div className="text-xs text-stone-400">No actuals loaded yet</div>
-                  ) : (
-                    <div className="space-y-2">
-                      {[
-                        { label: 'Eff. Gross Income', val: parseFloat(lf.effective_gross_income as string) || null, color: 'bg-emerald-500' },
-                        { label: 'Operating Expenses', val: parseFloat(lf.total_operating_expenses as string) || null, color: 'bg-red-400', negative: true },
-                        { label: 'Net Operating Income', val: parseFloat(lf.noi as string) || null, color: 'bg-blue-500', bold: true },
-                      ].map(row => {
-                        const base = parseFloat(lf.effective_gross_income as string) || 1;
-                        const width = row.val ? Math.min(100, Math.abs(row.val) / base * 100) : 0;
-                        return (
-                          <div key={row.label}>
-                            <div className="flex justify-between text-xs mb-0.5">
-                              <span className={row.bold ? 'font-semibold text-stone-800' : 'text-stone-500'}>{row.label}</span>
-                              <span className={`font-mono ${row.negative ? 'text-red-600' : 'text-stone-800'}`}>{fmtDollar(row.val)}</span>
-                            </div>
-                            <div className="h-1.5 bg-stone-100 rounded overflow-hidden">
-                              <div className={`h-full ${row.color} rounded`} style={{ width: `${width}%` }} />
-                            </div>
-                          </div>
-                        );
-                      })}
-                      <div className="pt-2 border-t border-stone-100 text-xs text-stone-400">Annualized NOI: <span className="text-stone-700 font-semibold">{fmtDollar(annNoi)}</span></div>
-                    </div>
-                  )}
-                </div>
-
-                {/* 2. Deal Performance */}
-                <div className="bg-white border border-stone-200 rounded-lg p-5">
-                  <div className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-3">Deal Performance</div>
-                  <div className="space-y-3">
-                    {[
-                      { label: 'Underwritten IRR', val: deal.target_irr != null ? fmtPctR(deal.target_irr as number / 100) : (deal.irr != null ? fmtPctR(deal.irr as number / 100) : '—') },
-                      { label: 'Equity Multiple (UW)', val: deal.equity_multiple != null ? `${parseFloat(deal.equity_multiple as string).toFixed(2)}×` : '—' },
-                      { label: 'Avg Occupancy (Actuals)', val: fmtPctR(avgOcc) },
-                      { label: 'Months of Actuals', val: String(financials.length) },
-                      { label: 'Latest NOI/mo', val: fmtDollar(lf ? parseFloat(lf.noi as string) : null) },
-                      { label: 'Annualized NOI', val: fmtDollar(annNoi) },
-                    ].map(row => (
-                      <div key={row.label} className="flex justify-between text-xs">
-                        <span className="text-stone-500">{row.label}</span>
-                        <span className="font-semibold text-stone-800">{row.val}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* 3. Debt Summary */}
-                <div className="bg-white border border-stone-200 rounded-lg p-5">
-                  <div className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-3">Debt Summary</div>
-                  <div className="space-y-3">
-                    {[
-                      { label: 'Loan Amount', val: deal.loan_amount != null ? fmtDollar(parseFloat(deal.loan_amount as string)) : '—' },
-                      { label: 'Interest Rate', val: deal.loan_rate != null ? fmtPctR(parseFloat(deal.loan_rate as string) / 100) : '—' },
-                      { label: 'Loan Term', val: deal.loan_term != null ? `${deal.loan_term} yrs` : '—' },
-                      { label: 'LTV (at close)', val: deal.ltv != null ? fmtPctR(parseFloat(deal.ltv as string) / 100) : deal.loan_amount && deal.purchase_price ? fmtPctR(parseFloat(deal.loan_amount as string) / parseFloat(deal.purchase_price as string)) : '—' },
-                      { label: 'DSCR (UW)', val: deal.dscr != null ? `${parseFloat(deal.dscr as string).toFixed(2)}×` : '—' },
-                      { label: 'Lender', val: (deal.lender as string) ?? '—' },
-                    ].map(row => (
-                      <div key={row.label} className="flex justify-between text-xs">
-                        <span className="text-stone-500">{row.label}</span>
-                        <span className="font-semibold text-stone-800">{String(row.val)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* 4. Underwriting Accuracy */}
-                <div className="bg-white border border-stone-200 rounded-lg p-5">
-                  <div className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-3">Underwriting Accuracy</div>
-                  {accuracy.length === 0 ? (
-                    <div className="text-xs text-stone-400">{financials.length === 0 ? 'Requires actuals data' : 'No prediction outcomes recorded yet'}</div>
-                  ) : (
-                    <div className="space-y-2">
-                      {accuracy.slice(0, 4).map(a => (
-                        <div key={a.assumptionName}>
-                          <div className="flex justify-between text-xs mb-0.5">
-                            <span className="capitalize text-stone-600">{a.assumptionName}</span>
-                            <span className={`font-mono font-semibold ${a.hitRate10Pct >= 70 ? 'text-emerald-600' : a.hitRate10Pct >= 50 ? 'text-amber-600' : 'text-red-500'}`}>{a.hitRate10Pct.toFixed(0)}% within 10%</span>
-                          </div>
-                          <div className="h-1.5 bg-stone-100 rounded overflow-hidden">
-                            <div className={`h-full rounded ${a.hitRate10Pct >= 70 ? 'bg-emerald-500' : a.hitRate10Pct >= 50 ? 'bg-amber-400' : 'bg-red-400'}`} style={{ width: `${a.hitRate10Pct}%` }} />
-                          </div>
-                        </div>
-                      ))}
-                      <div className="pt-2 text-xs text-stone-400">{accuracy.reduce((s, a) => s + a.nPredictions, 0)} total predictions evaluated</div>
-                    </div>
-                  )}
-                </div>
-
-                {/* 5. Occupancy Trend */}
-                <div className="bg-white border border-stone-200 rounded-lg p-5 col-span-2">
-                  <div className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-3">Occupancy Trend</div>
-                  {financials.length === 0 ? (
-                    <div className="text-xs text-stone-400">No actuals loaded yet</div>
-                  ) : (
-                    <>
-                      <div className="flex items-end gap-1" style={{ height: 64 }}>
-                        {financials.slice(-18).map((f, i) => {
-                          const occ = Math.min(1, parseFloat(f.occupancy_rate as string) || 0);
-                          const pct = occ * 100;
-                          return (
-                            <div key={i} className="flex-1 flex flex-col items-center justify-end" title={`${pct.toFixed(1)}%`}>
-                              <div
-                                className={`w-full rounded-t ${occ >= 0.93 ? 'bg-emerald-500' : occ >= 0.85 ? 'bg-amber-400' : 'bg-red-400'}`}
-                                style={{ height: `${pct}%` }}
-                              />
-                            </div>
-                          );
-                        })}
-                      </div>
-                      <div className="flex justify-between text-xs text-stone-400 mt-1">
-                        <span>{financials.length > 18 ? financials[financials.length - 18]?.period_label ?? '18 mo ago' : 'Earliest'}</span>
-                        <span className="font-semibold text-stone-700">Avg {fmtPctR(avgOcc)} occupancy over {financials.length} months</span>
-                        <span>Latest</span>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-          );
-        })()}
+        {activeTab === 'reports'      && (
+          <ReportsTab dealId={dealId!} financials={financials} deal={deal} />
+        )}
         {activeTab === 'deal-team'    && (
           <div className="overflow-y-auto p-6" style={{ maxHeight: 'calc(100vh - 280px)' }}>
             <TeamSection deal={{ ...deal, status: deal.status || 'owned' } as unknown as Deal} />

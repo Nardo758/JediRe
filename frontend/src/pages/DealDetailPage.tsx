@@ -198,7 +198,9 @@ const PortfolioAssetBridge: React.FC<{ dealId: string; featureName: string }> = 
     </div>
   );
 };
-const isOwnedDeal = (status?: string) => ['owned', 'closed'].includes(status ?? '');
+const isOwnedDeal = (status?: string, pipelineStage?: string) =>
+  ['owned', 'closed'].includes((status ?? '').toLowerCase()) ||
+  ['closed', 'owned'].includes((pipelineStage ?? '').toLowerCase());
 
 const DebtCapitalScreen = (props: ScreenProps) => (
   <DealScreenWrapper
@@ -214,7 +216,7 @@ const DebtCapitalScreen = (props: ScreenProps) => (
     accentColor={BT.text.cyan}
     tabs={[
       { id: 'exit',     label: 'Exit & Debt Analysis',   component: (p: ScreenProps) => <ExitCapitalModule dealId={p.dealId} deal={p.deal} dealType={p.dealType} /> },
-      { id: 'investors', label: 'Investor Capital',       component: (p: ScreenProps) => isOwnedDeal(p.deal?.status)
+      { id: 'investors', label: 'Investor Capital',       component: (p: ScreenProps) => isOwnedDeal(p.deal?.status, p.deal?.pipeline_stage)
           ? <PortfolioAssetBridge dealId={p.dealId} featureName="Investor Capital" />
           : <InvestorCapitalModule dealId={p.dealId} deal={p.deal} /> },
     ]}
@@ -734,9 +736,9 @@ const DealDetailPage: React.FC = () => {
     { id: 'deal-tools', moduleId: 'M21', fkey: 'F11', code: 'M21', short: 'TOOLS',      label: 'Deal Tools',       icon: <Briefcase size={14} />,       component: DealToolsScreen },
     { id: 'unit-mix',   moduleId: 'M01', fkey: 'F13', code: 'M14', short: 'UNIT MIX',   label: 'Unit Mix',         icon: <LayoutList size={14} />,      component: UnitMixScreen },
     { id: 'team',           moduleId: 'M01', fkey: '',    code: 'M00', short: 'TEAM',       label: 'Deal Team',        icon: <Users size={14} />,           component: CollaborationSection },
-    { id: 'monthly-actuals', moduleId: 'M22', fkey: '',   code: 'M22', short: 'ACTUALS',    label: 'Monthly Actuals',  icon: <Database size={14} />,        component: (p: ScreenProps) => isOwnedDeal(p.deal?.status) ? <PortfolioAssetBridge dealId={p.dealId} featureName="Monthly Actuals" /> : <MonthlyActualsSection dealId={p.dealId} deal={p.deal} /> },
-    { id: 'operations',      moduleId: 'M20', fkey: '',   code: 'M20', short: 'OPS INTEL',  label: 'Operations Intel', icon: <Activity size={14} />,        component: (p: ScreenProps) => isOwnedDeal(p.deal?.status) ? <PortfolioAssetBridge dealId={p.dealId} featureName="Operations Intel" /> : <OperationsIntelligenceSection dealId={p.dealId} deal={p.deal as Record<string, unknown>} /> },
-    { id: 'lifecycle',       moduleId: 'M01', fkey: '',   code: 'M22', short: 'LIFECYCLE',  label: 'Lifecycle',        icon: <RefreshCcw size={14} />,      component: (p: ScreenProps) => isOwnedDeal(p.deal?.status) ? <PortfolioAssetBridge dealId={p.dealId} featureName="Lifecycle" /> : <LifecycleSection dealId={p.dealId} deal={p.deal as Record<string, unknown>} /> },
+    { id: 'monthly-actuals', moduleId: 'M22', fkey: '',   code: 'M22', short: 'ACTUALS',    label: 'Monthly Actuals',  icon: <Database size={14} />,        component: (p: ScreenProps) => isOwnedDeal(p.deal?.status, p.deal?.pipeline_stage) ? <PortfolioAssetBridge dealId={p.dealId} featureName="Monthly Actuals" /> : <MonthlyActualsSection dealId={p.dealId} deal={p.deal} /> },
+    { id: 'operations',      moduleId: 'M20', fkey: '',   code: 'M20', short: 'OPS INTEL',  label: 'Operations Intel', icon: <Activity size={14} />,        component: (p: ScreenProps) => isOwnedDeal(p.deal?.status, p.deal?.pipeline_stage) ? <PortfolioAssetBridge dealId={p.dealId} featureName="Operations Intel" /> : <OperationsIntelligenceSection dealId={p.dealId} deal={p.deal as Record<string, unknown>} /> },
+    { id: 'lifecycle',       moduleId: 'M01', fkey: '',   code: 'M22', short: 'LIFECYCLE',  label: 'Lifecycle',        icon: <RefreshCcw size={14} />,      component: (p: ScreenProps) => isOwnedDeal(p.deal?.status, p.deal?.pipeline_stage) ? <PortfolioAssetBridge dealId={p.dealId} featureName="Lifecycle" /> : <LifecycleSection dealId={p.dealId} deal={p.deal as Record<string, unknown>} /> },
   ];
 
   const dealScreens = allDealScreens.filter((s) => config.isModuleVisible(s.moduleId));
