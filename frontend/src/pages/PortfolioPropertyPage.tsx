@@ -872,15 +872,20 @@ interface RefiScenarioRow {
 }
 
 const RefiMonitorTab: React.FC<{ dealId: string; deal: any }> = ({ dealId, deal }) => {
-  const T2 = {
-    mono: '"JetBrains Mono",monospace',
-    panel: '#0F1319',
-    panelAlt: '#131821',
-    border: 'rgba(255,255,255,0.06)',
-    borderActive: 'rgba(99,179,237,0.35)',
-    dim: 'rgba(232,230,225,0.55)',
-    muted: 'rgba(232,230,225,0.25)',
-    input: '#0D1117',
+  const R = {
+    amber:  T.text.amber,
+    green:  T.text.green,
+    red:    T.text.red,
+    purple: T.text.purple,
+    orange: T.text.orange,
+    panel:  T.bg.panel,
+    hdr:    T.bg.header,
+    input:  T.bg.input,
+    bs:     T.border.subtle,
+    bm:     T.border.medium,
+    pri:    T.text.primary,
+    sec:    T.text.secondary,
+    mono:   T.font.mono,
   };
 
   const fm = (n: number | null | undefined, dec = 0) =>
@@ -888,9 +893,9 @@ const RefiMonitorTab: React.FC<{ dealId: string; deal: any }> = ({ dealId, deal 
   const fp = (n: number | null | undefined, dec = 2) =>
     n == null ? '—' : `${(n * 100).toFixed(dec)}%`;
   const constraintColor = (c: string) =>
-    c?.toLowerCase().includes('ltv') ? '#FC8181' :
-    c?.toLowerCase().includes('dscr') ? '#F6AD55' :
-    c?.toLowerCase().includes('yield') ? '#B794F4' : '#63B3ED';
+    c?.toLowerCase().includes('ltv') ? T.text.red :
+    c?.toLowerCase().includes('dscr') ? T.text.orange :
+    c?.toLowerCase().includes('yield') ? T.text.purple : T.text.amber;
 
   /* ── State ── */
   const [liveRates, setLiveRates] = useState<Record<string, number> | null>(null);
@@ -1064,28 +1069,34 @@ const RefiMonitorTab: React.FC<{ dealId: string; deal: any }> = ({ dealId, deal 
     trendData.map((d, i) => `${toX(i)},${toY(d[key])}`).join(' ');
 
   const fieldStyle: React.CSSProperties = {
-    background: T2.input, border: `1px solid ${T2.border}`, borderRadius: 4,
-    padding: '5px 8px', fontSize: 10, fontFamily: T2.mono, color: '#E8E6E1',
+    background: R.input, border: `1px solid ${R.bm}`, borderRadius: 3,
+    padding: '5px 8px', fontSize: 10, fontFamily: R.mono, color: R.pri,
     width: '100%', outline: 'none', boxSizing: 'border-box',
   };
   const labelStyle: React.CSSProperties = {
-    fontSize: 8, color: T2.muted, fontFamily: T2.mono, marginBottom: 2,
-    display: 'block', letterSpacing: 0.3,
+    fontSize: 8, color: R.sec, fontFamily: R.mono, marginBottom: 2,
+    display: 'block', letterSpacing: '0.06em', textTransform: 'uppercase' as const,
   };
-  const secHdr = (label: string, sub?: string) => (
-    <div style={{ marginBottom: 10 }}>
-      <div style={{ fontSize: 9, fontWeight: 700, fontFamily: T2.mono, color: '#63B3ED', letterSpacing: 0.5 }}>{label}</div>
-      {sub && <div style={{ fontSize: 8, color: T2.muted, fontFamily: T2.mono, marginTop: 1 }}>{sub}</div>}
+  const PanelHdr = ({ title, right, sub }: { title: string; right?: React.ReactNode; sub?: string }) => (
+    <div style={{ background: R.hdr, borderBottom: `1px solid ${R.bm}`, padding: '6px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div>
+        <span style={{ fontSize: 9, fontWeight: 700, fontFamily: R.mono, color: R.amber, letterSpacing: '0.08em' }}>{title}</span>
+        {sub && <span style={{ fontSize: 8, color: R.sec, fontFamily: R.mono, marginLeft: 8 }}>{sub}</span>}
+      </div>
+      {right}
     </div>
   );
   const pill = (label: string, active: boolean, onClick: () => void) => (
     <button key={label} onClick={onClick} style={{
-      padding: '3px 9px', fontSize: 9, fontFamily: T2.mono, fontWeight: active ? 700 : 400,
-      background: active ? 'rgba(99,179,237,0.18)' : 'transparent',
-      border: `1px solid ${active ? 'rgba(99,179,237,0.45)' : T2.border}`,
-      borderRadius: 3, color: active ? '#63B3ED' : T2.muted,
-      cursor: 'pointer',
+      padding: '2px 8px', fontSize: 9, fontFamily: R.mono, fontWeight: active ? 700 : 400,
+      background: active ? R.amber + '1A' : 'transparent',
+      border: `1px solid ${active ? R.amber + '88' : R.bm}`,
+      borderRadius: 2, color: active ? R.amber : R.sec,
+      cursor: 'pointer', letterSpacing: '0.04em',
     }}>{label}</button>
+  );
+  const LiveDot = () => (
+    <span style={{ display: 'inline-block', width: 5, height: 5, borderRadius: '50%', background: R.green, boxShadow: `0 0 6px ${R.green}`, verticalAlign: 'middle' }} />
   );
 
   /* ── Loan at close derived values ── */
@@ -1098,347 +1109,371 @@ const RefiMonitorTab: React.FC<{ dealId: string; deal: any }> = ({ dealId, deal 
   })();
 
   return (
-    <div style={{ padding: 16, overflowY: 'auto', maxHeight: 'calc(100vh - 280px)' }}>
+    <div style={{ background: T.bg.terminal, overflowY: 'auto', maxHeight: 'calc(100vh - 280px)' }}>
+      <style>{`
+        @keyframes refi-pulse { 0%,100%{opacity:1;box-shadow:0 0 5px ${R.green}} 50%{opacity:.5;box-shadow:0 0 2px ${R.green}} }
+        .refi-live-dot { animation: refi-pulse 2.4s ease-in-out infinite; }
+      `}</style>
 
-      {/* ── Header ── */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 700, fontFamily: T2.mono, color: '#E8E6E1', letterSpacing: 1 }}>REFI MONITOR</div>
-          <div style={{ fontSize: 8, color: T2.muted, fontFamily: T2.mono, marginTop: 2 }}>LTV · DSCR · DEBT YIELD — live constraint engine powered by FRED rates</div>
+      {/* ══ Top header bar ══ */}
+      <div style={{ background: R.hdr, borderBottom: `2px solid ${R.amber}22`, padding: '8px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div>
+            <span style={{ fontSize: 11, fontWeight: 700, fontFamily: R.mono, color: R.amber, letterSpacing: '0.1em' }}>REFI MONITOR</span>
+            <span style={{ fontSize: 8, color: R.sec, fontFamily: R.mono, marginLeft: 10 }}>LTV · DSCR · DEBT YIELD  |  LIVE FRED RATES  |  ACTUALS-DRIVEN</span>
+          </div>
+          {!ratesLoading && liveRates && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <span className="refi-live-dot" style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: R.green }} />
+              <span style={{ fontSize: 8, color: R.green, fontFamily: R.mono, fontWeight: 700 }}>RATES LIVE</span>
+            </div>
+          )}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 8, color: T2.muted, fontFamily: T2.mono }}>NOI BASIS:</span>
-          {(['T12', 'T6', 'T3'] as const).map(p => pill(p, noiPeriod === p, () => setNoiPeriod(p)))}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 8, color: R.sec, fontFamily: R.mono, letterSpacing: '0.06em' }}>NOI BASIS</span>
+          <div style={{ display: 'flex', gap: 3 }}>
+            {(['T12', 'T6', 'T3'] as const).map(p => pill(p, noiPeriod === p, () => setNoiPeriod(p)))}
+          </div>
         </div>
       </div>
 
-      {/* ── Rate Strip ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8, marginBottom: 12 }}>
+      {/* ══ Rate Strip ══ */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 0, borderBottom: `1px solid ${R.bm}` }}>
         {[
-          { label: 'SOFR', val: liveRates?.sofr, color: '#63B3ED' },
-          { label: 'T5Y',  val: liveRates?.treasury5Y, color: '#63B3ED' },
-          { label: 'T10Y', val: liveRates?.treasury10Y, color: '#63B3ED' },
-          { label: 'SPREAD', val: spreadBps / 100, color: '#F6AD55', suffix: 'bps' },
-          { label: 'ALL-IN RATE', val: allInRate != null ? allInRate * 100 : null, color: '#68D391' },
-          { label: 'BENCHMARK', val: null, color: T2.dim, isToggle: true },
-        ].map((tile) => (
-          <div key={tile.label} style={{ background: T2.panel, border: `1px solid ${T2.border}`, borderRadius: 5, padding: '8px 10px' }}>
-            <div style={{ fontSize: 8, color: T2.muted, fontFamily: T2.mono, marginBottom: 3 }}>{tile.label}</div>
-            {tile.isToggle ? (
-              <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
-                {(['SOFR', 'T5Y', 'T10Y'] as const).map(b =>
-                  pill(b, benchmark === b, () => setBenchmark(b))
-                )}
-              </div>
-            ) : ratesLoading && tile.label !== 'SPREAD' && tile.label !== 'ALL-IN RATE' ? (
-              <div style={{ fontSize: 10, color: T2.muted, fontFamily: T2.mono }}>…</div>
-            ) : (
-              <div style={{ fontSize: 14, fontWeight: 800, fontFamily: T2.mono, color: tile.color }}>
-                {tile.val != null ? `${tile.val.toFixed(2)}%` : '—'}
-              </div>
-            )}
+          { label: 'SOFR', val: liveRates?.sofr, isLive: true, color: R.pri },
+          { label: 'T5Y TREASURY', val: liveRates?.treasury5Y, isLive: true, color: R.pri },
+          { label: 'T10Y TREASURY', val: liveRates?.treasury10Y, isLive: true, color: R.pri },
+          { label: `SPREAD (${benchmark})`, val: spreadBps / 100, color: R.orange },
+          { label: 'ALL-IN RATE', val: allInRate != null ? allInRate * 100 : null, color: R.amber, bold: true },
+          { label: 'BENCHMARK INDEX', val: null, isToggle: true },
+        ].map((tile, ti) => (
+          <div key={tile.label} style={{ background: ti === 4 ? R.amber + '08' : R.panel, borderRight: `1px solid ${R.bm}`, padding: 0, overflow: 'hidden' }}>
+            <div style={{ background: R.hdr, borderBottom: `1px solid ${R.bm}`, padding: '4px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: 7, color: ti === 4 ? R.amber : R.sec, fontFamily: R.mono, letterSpacing: '0.05em', fontWeight: ti === 4 ? 700 : 400 }}>{tile.label}</span>
+              {tile.isLive && !ratesLoading && liveRates && (
+                <span className="refi-live-dot" style={{ display: 'inline-block', width: 4, height: 4, borderRadius: '50%', background: R.green }} />
+              )}
+            </div>
+            <div style={{ padding: '10px 8px' }}>
+              {tile.isToggle ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  {(['SOFR', 'T5Y', 'T10Y'] as const).map(b => pill(b, benchmark === b, () => setBenchmark(b)))}
+                </div>
+              ) : ratesLoading && tile.isLive ? (
+                <span style={{ fontSize: 10, color: R.sec, fontFamily: R.mono }}>…</span>
+              ) : (
+                <div style={{ fontSize: tile.bold ? 16 : 14, fontWeight: 800, fontFamily: R.mono, color: tile.color ?? R.pri }}>
+                  {tile.val != null ? `${(tile.val as number).toFixed(2)}%` : '—'}
+                </div>
+              )}
+            </div>
           </div>
         ))}
       </div>
 
-      {/* ── Main 3-column grid ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr 240px', gap: 10, marginBottom: 10 }}>
+      <div style={{ padding: 12 }}>
+        {/* ══ Main 3-column grid ══ */}
+        <div style={{ display: 'grid', gridTemplateColumns: '236px 1fr 240px', gap: 8, marginBottom: 8 }}>
 
-        {/* ── LEFT: Loan at Close + Inputs ── */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {/* ── LEFT ── */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
 
-          {/* Loan at Close */}
-          <div style={{ background: T2.panel, border: `1px solid ${T2.border}`, borderRadius: 6, padding: 12 }}>
-            {secHdr('LOAN AT CLOSE', 'Acquisition anchor')}
-            {[
-              { label: 'PURCHASE PRICE', val: purchasePrice > 0 ? fm(purchasePrice) : '—' },
-              { label: 'ORIG. LOAN (EST.)', val: origLoan > 0 ? fm(origLoan) : '—' },
-              { label: 'ACQ. DATE', val: acqDate },
-              { label: 'ACQ. CAP RATE', val: acqCapRate > 0 ? `${acqCapRate.toFixed(2)}%` : '—' },
-            ].map(row => (
-              <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: `1px solid ${T2.border}` }}>
-                <span style={{ fontSize: 8, color: T2.muted, fontFamily: T2.mono }}>{row.label}</span>
-                <span style={{ fontSize: 9, fontWeight: 600, fontFamily: T2.mono, color: '#E8E6E1' }}>{row.val}</span>
+            {/* Loan at Close */}
+            <div style={{ background: R.panel, border: `1px solid ${R.bm}`, borderRadius: 4, overflow: 'hidden' }}>
+              <PanelHdr title="LOAN AT CLOSE" sub="acquisition anchor" />
+              <div style={{ padding: '8px 10px' }}>
+                {[
+                  { label: 'PURCHASE PRICE', val: purchasePrice > 0 ? fm(purchasePrice) : '—' },
+                  { label: 'EST. ORIG. LOAN', val: origLoan > 0 ? fm(origLoan) : '—' },
+                  { label: 'ACQ. DATE', val: acqDate },
+                  { label: 'ACQ. CAP RATE', val: acqCapRate > 0 ? `${acqCapRate.toFixed(2)}%` : '—' },
+                ].map(row => (
+                  <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', borderBottom: `1px solid ${R.bs}` }}>
+                    <span style={{ fontSize: 8, color: R.sec, fontFamily: R.mono }}>{row.label}</span>
+                    <span style={{ fontSize: 9, fontWeight: 600, fontFamily: R.mono, color: R.pri }}>{row.val}</span>
+                  </div>
+                ))}
+                <div style={{ marginTop: 7 }}>
+                  <label style={labelStyle}>CURRENT BALANCE ($)</label>
+                  <input style={fieldStyle} type="number" value={existingBalance || ''}
+                    onChange={e => setExistingBalance(Number(e.target.value))} placeholder="0 if unencumbered" />
+                </div>
               </div>
-            ))}
-            <div style={{ marginTop: 8 }}>
-              <label style={labelStyle}>CURRENT BALANCE ($)</label>
-              <input style={fieldStyle} type="number" value={existingBalance || ''}
-                onChange={e => setExistingBalance(Number(e.target.value))}
-                placeholder="0 if unencumbered" />
+            </div>
+
+            {/* Deal Context */}
+            <div style={{ background: R.panel, border: `1px solid ${R.bm}`, borderRadius: 4, overflow: 'hidden' }}>
+              <PanelHdr title="DEAL CONTEXT" right={
+                dealFiles.length > 0
+                  ? <span style={{ fontSize: 7, color: R.sec, fontFamily: R.mono }}>{dealFiles.length} FILE{dealFiles.length !== 1 ? 'S' : ''}</span>
+                  : undefined
+              } />
+              <div style={{ padding: '6px 8px' }}>
+                {dealFiles.length === 0 ? (
+                  <div style={{ fontSize: 8, color: R.sec, fontFamily: R.mono, padding: '8px 2px', textAlign: 'center' }}>
+                    No files — upload docs in <span style={{ color: R.amber }}>Documents</span> tab
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 148, overflowY: 'auto' }}>
+                    {dealFiles.map(f => {
+                      const ext = (f.file_extension ?? '').replace('.', '').toUpperCase() || 'FILE';
+                      const extColor = ext === 'PDF' ? R.red : ext === 'XLSX' || ext === 'XLS' ? R.green : ext === 'DOCX' || ext === 'DOC' ? T.text.cyan : R.amber;
+                      return (
+                        <a key={f.id} href={`/api/v1/deals/${dealId}/files/${f.id}/download`} target="_blank" rel="noopener noreferrer"
+                          style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '4px 5px', borderRadius: 3, background: R.hdr, border: `1px solid ${R.bs}`, textDecoration: 'none' }}>
+                          <span style={{ fontSize: 6, fontFamily: R.mono, fontWeight: 700, background: extColor + '1A', border: `1px solid ${extColor}55`, borderRadius: 2, padding: '1px 3px', color: extColor, flexShrink: 0, minWidth: 22, textAlign: 'center' }}>{ext.slice(0, 4)}</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 8, color: R.pri, fontFamily: R.mono, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.original_filename}</div>
+                            <div style={{ fontSize: 7, color: R.sec, fontFamily: R.mono, textTransform: 'uppercase' }}>{(f.category ?? '').replace(/_/g, ' ')}</div>
+                          </div>
+                          <span style={{ fontSize: 9, color: R.amber, flexShrink: 0 }}>↗</span>
+                        </a>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Constraint Parameters */}
+            <div style={{ background: R.panel, border: `1px solid ${R.bm}`, borderRadius: 4, overflow: 'hidden', flex: 1 }}>
+              <PanelHdr title="CONSTRAINT PARAMETERS" />
+              <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div>
+                  <label style={labelStyle}>SPREAD OVER {benchmark} (bps)</label>
+                  <input style={fieldStyle} type="number" value={spreadBps} onChange={e => setSpreadBps(Number(e.target.value))} />
+                </div>
+                <div>
+                  <label style={labelStyle}>CAP RATE (%)</label>
+                  <input style={fieldStyle} type="number" step="0.1" value={capRatePct} onChange={e => setCapRatePct(Number(e.target.value))} />
+                </div>
+                <div>
+                  <label style={labelStyle}>MAX LTV (%)</label>
+                  <input style={fieldStyle} type="number" step="1" value={maxLtv} onChange={e => setMaxLtv(Number(e.target.value))} />
+                </div>
+                <div>
+                  <label style={labelStyle}>MIN DSCR</label>
+                  <input style={fieldStyle} type="number" step="0.05" value={minDscr} onChange={e => setMinDscr(Number(e.target.value))} />
+                </div>
+                <div>
+                  <label style={labelStyle}>MIN DEBT YIELD (%)</label>
+                  <input style={fieldStyle} type="number" step="0.1" value={minDebtYield} onChange={e => setMinDebtYield(Number(e.target.value))} />
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* Deal Context Files */}
-          <div style={{ background: T2.panel, border: `1px solid ${T2.border}`, borderRadius: 6, padding: 12 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <div style={{ fontSize: 9, fontWeight: 700, fontFamily: T2.mono, color: '#63B3ED', letterSpacing: 0.5 }}>DEAL CONTEXT</div>
-              {dealFiles.length > 0 && (
-                <span style={{ fontSize: 7, color: T2.muted, fontFamily: T2.mono }}>{dealFiles.length} FILE{dealFiles.length !== 1 ? 'S' : ''}</span>
-              )}
-            </div>
-            {dealFiles.length === 0 ? (
-              <div style={{ fontSize: 8, color: T2.muted, fontFamily: T2.mono, padding: '8px 0', textAlign: 'center' }}>
-                No files uploaded<br />
-                <span style={{ fontSize: 7 }}>Upload deal docs in the Documents tab</span>
+          {/* ── CENTER: Chart ── */}
+          <div style={{ background: R.panel, border: `1px solid ${R.bm}`, borderRadius: 4, overflow: 'hidden' }}>
+            <PanelHdr title="DEBT PROCEEDS TREND" sub={`${noiPeriod} NOI · ${benchmark}+${spreadBps}bps all-in`} right={
+              <div style={{ display: 'flex', gap: 8 }}>
+                {[
+                  { color: R.red, label: 'LTV' },
+                  { color: R.orange, label: 'DSCR' },
+                  { color: R.purple, label: 'DY' },
+                  { color: R.amber, label: 'BINDING', dash: true },
+                ].map(l => (
+                  <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                    <svg width="12" height="8"><line x1="0" y1="4" x2="12" y2="4" stroke={l.color} strokeWidth="1.5" strokeDasharray={l.dash ? '3,2' : undefined} /></svg>
+                    <span style={{ fontSize: 7, color: R.sec, fontFamily: R.mono }}>{l.label}</span>
+                  </div>
+                ))}
               </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 3, maxHeight: 160, overflowY: 'auto' }}>
-                {dealFiles.map(f => {
-                  const ext = (f.file_extension ?? '').replace('.', '').toUpperCase() || 'FILE';
-                  const extColor = ext === 'PDF' ? '#FC8181' : ext === 'XLSX' || ext === 'XLS' ? '#68D391' : ext === 'DOCX' || ext === 'DOC' ? '#63B3ED' : '#F6AD55';
-                  const catLabel = (f.category ?? '').replace(/_/g, ' ').replace(/-/g, ' ');
-                  return (
-                    <a
-                      key={f.id}
-                      href={`/api/v1/deals/${dealId}/files/${f.id}/download`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px', borderRadius: 3, background: 'rgba(255,255,255,0.025)', border: `1px solid ${T2.border}`, textDecoration: 'none', cursor: 'pointer' }}
-                    >
-                      <span style={{ fontSize: 6, fontFamily: T2.mono, fontWeight: 700, background: extColor + '18', border: `1px solid ${extColor}44`, borderRadius: 2, padding: '1px 3px', color: extColor, flexShrink: 0, minWidth: 22, textAlign: 'center' }}>
-                        {ext.slice(0, 4)}
-                      </span>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 8, color: '#E8E6E1', fontFamily: T2.mono, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.original_filename}</div>
-                        <div style={{ fontSize: 7, color: T2.muted, fontFamily: T2.mono, textTransform: 'uppercase' }}>{catLabel}</div>
-                      </div>
-                      <span style={{ fontSize: 8, color: T2.muted, flexShrink: 0 }}>↗</span>
-                    </a>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+            } />
 
-          {/* Constraint Parameters */}
-          <div style={{ background: T2.panel, border: `1px solid ${T2.border}`, borderRadius: 6, padding: 12 }}>
-            {secHdr('CONSTRAINT PARAMETERS')}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-              <div>
-                <label style={labelStyle}>SPREAD OVER {benchmark} (bps)</label>
-                <input style={fieldStyle} type="number" value={spreadBps}
-                  onChange={e => setSpreadBps(Number(e.target.value))} />
-              </div>
-              <div>
-                <label style={labelStyle}>CAP RATE ASSUMPTION (%)</label>
-                <input style={fieldStyle} type="number" step="0.1" value={capRatePct}
-                  onChange={e => setCapRatePct(Number(e.target.value))} />
-              </div>
-              <div>
-                <label style={labelStyle}>MAX LTV (%)</label>
-                <input style={fieldStyle} type="number" step="1" value={maxLtv}
-                  onChange={e => setMaxLtv(Number(e.target.value))} />
-              </div>
-              <div>
-                <label style={labelStyle}>MIN DSCR</label>
-                <input style={fieldStyle} type="number" step="0.05" value={minDscr}
-                  onChange={e => setMinDscr(Number(e.target.value))} />
-              </div>
-              <div>
-                <label style={labelStyle}>MIN DEBT YIELD (%)</label>
-                <input style={fieldStyle} type="number" step="0.1" value={minDebtYield}
-                  onChange={e => setMinDebtYield(Number(e.target.value))} />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* ── CENTER: Trend Chart ── */}
-        <div style={{ background: T2.panel, border: `1px solid ${T2.border}`, borderRadius: 6, padding: 12 }}>
-          {secHdr('DEBT PROCEEDS TREND', `Max proceeds by constraint · actuals ${noiPeriod} NOI · ${benchmark}+${spreadBps}bps`)}
-
-          {/* NOI summary strip */}
-          <div style={{ display: 'flex', gap: 12, marginBottom: 10 }}>
-            {([
-              { label: `${noiPeriod} NOI`, val: noiAnnualized != null ? fm(noiAnnualized) : actualsWithNoi.length === 0 ? 'No actuals' : '—', c: '#E8E6E1' },
-              { label: 'PROPERTY VALUE', val: propertyValue ? fm(propertyValue) : '—', c: T2.dim },
-              { label: `ACTUALS (${actualsWithNoi.length}mo)`, val: actualsWithNoi.length > 0 ? 'LIVE' : 'NO DATA', c: actualsWithNoi.length > 0 ? '#68D391' : '#FC8181' },
-            ]).map(s => (
-              <div key={s.label} style={{ background: T2.panelAlt, border: `1px solid ${T2.border}`, borderRadius: 4, padding: '5px 10px' }}>
-                <div style={{ fontSize: 7, color: T2.muted, fontFamily: T2.mono }}>{s.label}</div>
-                <div style={{ fontSize: 11, fontWeight: 700, fontFamily: T2.mono, color: s.c, marginTop: 2 }}>{s.val}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* SVG Chart */}
-          {trendData.length < 2 ? (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 160, color: T2.muted, fontSize: 9, fontFamily: T2.mono }}>
-              {actualsWithNoi.length === 0
-                ? 'Enter actuals data to see proceeds trend'
-                : 'Need ≥ 2 months of actuals to plot trend'}
-            </div>
-          ) : (
-            <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto' }}>
-              {/* Grid */}
-              {[0.25, 0.5, 0.75, 1].map(f => {
-                const y = toY(chartMax * f);
-                const v = chartMax * f;
-                return (
-                  <g key={f}>
-                    <line x1={PL} y1={y} x2={W - PR} y2={y} stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
-                    <text x={PL - 4} y={y + 3} textAnchor="end" fontSize="7" fill="rgba(232,230,225,0.3)" fontFamily="JetBrains Mono,monospace">
-                      {v >= 1e6 ? `$${(v / 1e6).toFixed(1)}M` : `$${(v / 1e3).toFixed(0)}k`}
-                    </text>
-                  </g>
-                );
-              })}
-              {/* X labels */}
-              {trendData.map((d, i) => (
-                (i === 0 || i === trendData.length - 1 || i % Math.ceil(trendData.length / 5) === 0) && (
-                  <text key={i} x={toX(i)} y={H - 4} textAnchor="middle" fontSize="7"
-                    fill="rgba(232,230,225,0.3)" fontFamily="JetBrains Mono,monospace">{d.month}</text>
-                )
+            {/* KPI strip */}
+            <div style={{ display: 'flex', borderBottom: `1px solid ${R.bm}` }}>
+              {[
+                { label: `${noiPeriod} NOI (ANN.)`, val: noiAnnualized != null ? fm(noiAnnualized) : actualsWithNoi.length === 0 ? 'NO ACTUALS' : '—', c: R.pri },
+                { label: 'PROPERTY VALUE', val: propertyValue ? fm(propertyValue) : '—', c: R.sec },
+                { label: 'DATA MONTHS', val: actualsWithNoi.length > 0 ? `${actualsWithNoi.length} MO` : 'NONE', c: actualsWithNoi.length > 0 ? R.green : R.red },
+                { label: 'MAX PROCEEDS', val: fm(maxProceeds), c: R.amber },
+              ].map((s, si) => (
+                <div key={s.label} style={{ flex: 1, padding: '7px 10px', borderRight: si < 3 ? `1px solid ${R.bm}` : undefined }}>
+                  <div style={{ fontSize: 7, color: R.sec, fontFamily: R.mono, letterSpacing: '0.04em' }}>{s.label}</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, fontFamily: R.mono, color: s.c, marginTop: 2 }}>{s.val}</div>
+                </div>
               ))}
-              {/* Lines */}
-              <polyline points={pts('ltv')}  fill="none" stroke="#FC8181" strokeWidth="1.5" strokeOpacity="0.7" />
-              <polyline points={pts('dscr')} fill="none" stroke="#F6AD55" strokeWidth="1.5" strokeOpacity="0.7" />
-              <polyline points={pts('dy')}   fill="none" stroke="#B794F4" strokeWidth="1.5" strokeOpacity="0.7" />
-              <polyline points={pts('binding')} fill="none" stroke="#63B3ED" strokeWidth="2" strokeDasharray="4,2" />
-              {/* Last point dot */}
-              {trendData.length > 0 && (() => {
-                const last = trendData[trendData.length - 1];
-                const li = trendData.length - 1;
-                return <circle cx={toX(li)} cy={toY(last.binding)} r="3" fill="#63B3ED" />;
-              })()}
-            </svg>
-          )}
+            </div>
 
-          {/* Legend */}
-          <div style={{ display: 'flex', gap: 14, marginTop: 6 }}>
-            {[
-              { color: '#FC8181', label: 'LTV Proceeds' },
-              { color: '#F6AD55', label: 'DSCR Proceeds' },
-              { color: '#B794F4', label: 'DY Proceeds' },
-              { color: '#63B3ED', label: 'Binding (min)', dash: true },
-            ].map(l => (
-              <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <svg width="14" height="8">
-                  <line x1="0" y1="4" x2="14" y2="4" stroke={l.color} strokeWidth={l.dash ? '1.5' : '1.5'}
-                    strokeDasharray={l.dash ? '3,1' : undefined} />
+            {/* SVG */}
+            <div style={{ padding: '8px 8px 4px' }}>
+              {trendData.length < 2 ? (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 160, color: R.sec, fontSize: 9, fontFamily: R.mono }}>
+                  {actualsWithNoi.length === 0 ? 'Enter actuals to see proceeds trend' : 'Need ≥ 2 months of actuals'}
+                </div>
+              ) : (
+                <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto' }}>
+                  {/* Grid lines */}
+                  {[0.25, 0.5, 0.75, 1].map(f => {
+                    const y = toY(chartMax * f);
+                    const v = chartMax * f;
+                    return (
+                      <g key={f}>
+                        <line x1={PL} y1={y} x2={W - PR} y2={y} stroke={R.bs} strokeWidth="1" />
+                        <text x={PL - 4} y={y + 3} textAnchor="end" fontSize="7" fill={R.sec} fontFamily="JetBrains Mono,monospace">
+                          {v >= 1e6 ? `$${(v / 1e6).toFixed(1)}M` : `$${(v / 1e3).toFixed(0)}k`}
+                        </text>
+                      </g>
+                    );
+                  })}
+                  {/* X axis */}
+                  <line x1={PL} y1={H - PB} x2={W - PR} y2={H - PB} stroke={R.bm} strokeWidth="1" />
+                  {trendData.map((d, i) => (
+                    (i === 0 || i === trendData.length - 1 || i % Math.ceil(trendData.length / 5) === 0) && (
+                      <text key={i} x={toX(i)} y={H - 4} textAnchor="middle" fontSize="7" fill={R.sec} fontFamily="JetBrains Mono,monospace">{d.month}</text>
+                    )
+                  ))}
+                  {/* Constraint lines */}
+                  <polyline points={pts('ltv')}  fill="none" stroke={R.red}    strokeWidth="1.5" strokeOpacity="0.65" />
+                  <polyline points={pts('dscr')} fill="none" stroke={R.orange} strokeWidth="1.5" strokeOpacity="0.65" />
+                  <polyline points={pts('dy')}   fill="none" stroke={R.purple} strokeWidth="1.5" strokeOpacity="0.65" />
+                  {/* Binding line — amber dashed */}
+                  <polyline points={pts('binding')} fill="none" stroke={R.amber} strokeWidth="2" strokeDasharray="5,3" />
+                  {/* Area fill under binding */}
+                  <polygon points={`${PL},${H - PB} ${pts('binding')} ${toX(trendData.length - 1)},${H - PB}`} fill={R.amber} fillOpacity="0.04" />
+                  {/* Last point callout */}
+                  {(() => {
+                    const last = trendData[trendData.length - 1];
+                    const li = trendData.length - 1;
+                    const cx = toX(li), cy = toY(last.binding);
+                    return (
+                      <g>
+                        <circle cx={cx} cy={cy} r="4" fill={R.amber} />
+                        <circle cx={cx} cy={cy} r="7" fill="none" stroke={R.amber} strokeWidth="1" strokeOpacity="0.4" />
+                      </g>
+                    );
+                  })()}
                 </svg>
-                <span style={{ fontSize: 8, color: T2.muted, fontFamily: T2.mono }}>{l.label}</span>
-              </div>
-            ))}
+              )}
+            </div>
+          </div>
+
+          {/* ── RIGHT: Result ── */}
+          <div style={{ background: R.panel, border: `1px solid ${binding ? constraintColor(binding) + '55' : R.bm}`, borderRadius: 4, overflow: 'hidden' }}>
+            <PanelHdr title="CURRENT ANALYSIS" sub={`${noiPeriod} actuals`} right={
+              noiAnnualized && binding
+                ? <span style={{ fontSize: 7, fontWeight: 700, fontFamily: R.mono, color: constraintColor(binding), background: constraintColor(binding) + '18', border: `1px solid ${constraintColor(binding)}44`, borderRadius: 2, padding: '2px 5px' }}>{binding} BINDING</span>
+                : undefined
+            } />
+
+            <div style={{ padding: '10px' }}>
+              {!noiAnnualized ? (
+                <div style={{ color: R.sec, fontSize: 9, fontFamily: R.mono, padding: '20px 0', textAlign: 'center', lineHeight: 1.7 }}>
+                  {actualsWithNoi.length === 0
+                    ? <>No actuals data<br /><span style={{ fontSize: 8, color: R.sec }}>Enter monthly actuals in Documents tab</span></>
+                    : 'Computing…'}
+                </div>
+              ) : (
+                <>
+                  {/* Feasibility badge */}
+                  <div style={{ marginBottom: 10 }}>
+                    <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 2, fontWeight: 700, fontSize: 9, fontFamily: R.mono, letterSpacing: '0.06em',
+                      background: isFeasible ? R.green + '1A' : R.red + '1A',
+                      border: `1px solid ${isFeasible ? R.green + '55' : R.red + '55'}`,
+                      color: isFeasible ? R.green : R.red }}>
+                      {isFeasible ? '◆ REFINANCEABLE' : '✕ NOT FEASIBLE'}
+                    </span>
+                  </div>
+
+                  {/* Constraint rows */}
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ fontSize: 8, color: R.sec, fontFamily: R.mono, marginBottom: 5, letterSpacing: '0.05em' }}>MAX PROCEEDS BY CONSTRAINT</div>
+                    {[
+                      { label: 'LTV', val: maxByLtv, c: R.red },
+                      { label: 'DSCR', val: maxByDscr, c: R.orange },
+                      { label: 'DEBT YIELD', val: maxByDy, c: R.purple },
+                    ].map(r => (
+                      <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderBottom: `1px solid ${R.bs}` }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                          <div style={{ width: 4, height: 4, borderRadius: '50%', background: r.c }} />
+                          <span style={{ fontSize: 8, fontFamily: R.mono, color: R.sec }}>{r.label}</span>
+                          {binding === r.label && (
+                            <span style={{ fontSize: 7, fontWeight: 700, fontFamily: R.mono, color: r.c, background: r.c + '1A', border: `1px solid ${r.c}55`, borderRadius: 2, padding: '0px 4px' }}>▲ BINDING</span>
+                          )}
+                        </div>
+                        <span style={{ fontSize: 9, fontWeight: 700, fontFamily: R.mono, color: binding === r.label ? r.c : R.pri }}>{fm(r.val)}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Metric tiles */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5, marginBottom: 10 }}>
+                    {[
+                      { label: 'MAX PROCEEDS', val: fm(maxProceeds), c: R.amber },
+                      { label: 'CASH OUT/(PAY)', val: cashOut != null ? cashOut >= 0 ? fm(cashOut) : `(${fm(-cashOut)})` : '—', c: cashOut != null && cashOut >= 0 ? R.green : R.red },
+                      { label: 'POST-REFI DSCR', val: dscrCheck ? dscrCheck.toFixed(2) + 'x' : '—', c: (dscrCheck ?? 0) >= minDscr ? R.green : R.red },
+                      { label: 'ANNUAL DEBT SVC', val: fm(annualDebtSvc), c: R.sec },
+                    ].map(m => (
+                      <div key={m.label} style={{ background: R.hdr, border: `1px solid ${R.bm}`, borderRadius: 3, padding: '6px 7px' }}>
+                        <div style={{ fontSize: 7, color: R.sec, fontFamily: R.mono, marginBottom: 3, letterSpacing: '0.04em' }}>{m.label}</div>
+                        <div style={{ fontSize: 12, fontWeight: 800, fontFamily: R.mono, color: m.c }}>{m.val}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Save */}
+                  <label style={labelStyle}>SCENARIO NAME</label>
+                  <input style={{ ...fieldStyle, marginBottom: 6 }} value={scenarioName} onChange={e => setScenarioName(e.target.value)} />
+                  {runError && <div style={{ marginBottom: 5, fontSize: 8, color: R.red, fontFamily: R.mono }}>{runError}</div>}
+                  <button onClick={saveScenario} disabled={runLoading || !noiAnnualized}
+                    style={{ width: '100%', padding: '7px 0', background: runLoading ? R.hdr : R.amber + '1A', border: `1px solid ${runLoading ? R.bm : R.amber + '77'}`, borderRadius: 3, fontSize: 9, fontWeight: 700, fontFamily: R.mono, color: runLoading ? R.sec : R.amber, cursor: runLoading ? 'not-allowed' : 'pointer', letterSpacing: '0.06em' }}>
+                    {runLoading ? 'SAVING...' : '▶ SAVE TO HISTORY'}
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* ── RIGHT: Live Result ── */}
-        <div style={{ background: T2.panel, border: `1px solid ${binding ? constraintColor(binding) + '40' : T2.border}`, borderRadius: 6, padding: 12 }}>
-          {secHdr('CURRENT ANALYSIS', `Based on ${noiPeriod} NOI actuals`)}
-
-          {!noiAnnualized ? (
-            <div style={{ color: T2.muted, fontSize: 9, fontFamily: T2.mono, marginTop: 20 }}>
-              {actualsWithNoi.length === 0
-                ? 'No actuals data — enter monthly actuals to enable live analysis.'
-                : 'Computing…'}
+        {/* ══ Scenario History ══ */}
+        <div style={{ background: R.panel, border: `1px solid ${R.bm}`, borderRadius: 4, overflow: 'hidden' }}>
+          <PanelHdr title="SCENARIO HISTORY" sub="last 20 saved tests" right={
+            <span style={{ fontSize: 7, color: R.sec, fontFamily: R.mono }}>{history.length} RECORDS</span>
+          } />
+          {histLoading && <div style={{ padding: 14, textAlign: 'center', fontSize: 9, color: R.sec, fontFamily: R.mono }}>Loading…</div>}
+          {!histLoading && history.length === 0 && (
+            <div style={{ padding: 16, textAlign: 'center', fontSize: 9, color: R.sec, fontFamily: R.mono }}>
+              No scenarios saved yet — fill out the analysis above and click <span style={{ color: R.amber }}>SAVE TO HISTORY</span>
             </div>
-          ) : (
-            <>
-              {/* Feasibility */}
-              <div style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 3, marginBottom: 12,
-                background: isFeasible ? 'rgba(104,211,145,0.12)' : 'rgba(252,129,129,0.12)',
-                border: `1px solid ${isFeasible ? '#68D39155' : '#FC818155'}`,
-                fontSize: 9, fontWeight: 700, fontFamily: T2.mono,
-                color: isFeasible ? '#68D391' : '#FC8181' }}>
-                {isFeasible ? 'REFINANCEABLE' : 'NOT FEASIBLE'}
-              </div>
-
-              {/* Constraint rows */}
-              <div style={{ marginBottom: 12 }}>
-                <div style={{ fontSize: 8, color: T2.muted, fontFamily: T2.mono, marginBottom: 6 }}>MAX PROCEEDS BY CONSTRAINT</div>
-                {[
-                  { label: 'LTV', val: maxByLtv, c: '#FC8181' },
-                  { label: 'DSCR', val: maxByDscr, c: '#F6AD55' },
-                  { label: 'DEBT YIELD', val: maxByDy, c: '#B794F4' },
-                ].map(r => (
-                  <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${T2.border}` }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <div style={{ width: 5, height: 5, borderRadius: '50%', background: r.c }} />
-                      <span style={{ fontSize: 8, fontFamily: T2.mono, color: T2.dim }}>{r.label}</span>
-                      {binding === r.label && (
-                        <span style={{ fontSize: 7, background: r.c + '22', border: `1px solid ${r.c}55`, color: r.c, fontFamily: T2.mono, borderRadius: 2, padding: '1px 4px' }}>BINDING</span>
-                      )}
-                    </div>
-                    <span style={{ fontSize: 9, fontWeight: 700, fontFamily: T2.mono, color: '#E8E6E1' }}>{fm(r.val)}</span>
-                  </div>
+          )}
+          {!histLoading && history.length > 0 && (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 8, fontFamily: R.mono }}>
+              <thead>
+                <tr style={{ background: T.bg.terminal }}>
+                  {[
+                    { h: 'DATE', r: false }, { h: 'SCENARIO', r: false }, { h: 'NOI', r: true },
+                    { h: 'CAP', r: true }, { h: 'BINDING', r: false }, { h: 'MAX PROCEEDS', r: true },
+                    { h: 'CASH OUT', r: true }, { h: 'DSCR', r: false }, { h: 'STATUS', r: false },
+                  ].map(({ h, r }) => (
+                    <th key={h} style={{ padding: '5px 10px', textAlign: r ? 'right' : 'left', color: R.amber, fontWeight: 700, letterSpacing: '0.05em', borderBottom: `1px solid ${R.bm}`, borderRight: `1px solid ${R.bs}` }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {history.map((row, i) => (
+                  <tr key={row.id} style={{ background: i % 2 === 0 ? 'transparent' : R.hdr + '80', borderBottom: `1px solid ${R.bs}` }}>
+                    <td style={{ padding: '4px 10px', color: R.sec, borderRight: `1px solid ${R.bs}` }}>{new Date(row.test_date).toLocaleDateString()}</td>
+                    <td style={{ padding: '4px 10px', color: R.pri, borderRight: `1px solid ${R.bs}` }}>{row.scenario_name}</td>
+                    <td style={{ padding: '4px 10px', textAlign: 'right', color: R.sec, borderRight: `1px solid ${R.bs}` }}>{row.assumed_noi ? `$${(row.assumed_noi / 1000).toFixed(0)}k` : '—'}</td>
+                    <td style={{ padding: '4px 10px', textAlign: 'right', color: R.sec, borderRight: `1px solid ${R.bs}` }}>{row.assumed_cap_rate ? fp(row.assumed_cap_rate, 1) : '—'}</td>
+                    <td style={{ padding: '4px 10px', color: constraintColor(row.constrained_by), fontWeight: 700, borderRight: `1px solid ${R.bs}` }}>{row.constrained_by?.toUpperCase() ?? '—'}</td>
+                    <td style={{ padding: '4px 10px', textAlign: 'right', color: R.amber, fontWeight: 700, borderRight: `1px solid ${R.bs}` }}>{row.max_loan_proceeds ? `$${(row.max_loan_proceeds / 1e6).toFixed(2)}M` : '—'}</td>
+                    <td style={{ padding: '4px 10px', textAlign: 'right', color: row.cash_out_available >= 0 ? R.green : R.red, borderRight: `1px solid ${R.bs}` }}>
+                      {row.cash_out_available != null ? (row.cash_out_available >= 0 ? `$${(row.cash_out_available / 1000).toFixed(0)}k` : `(${((-row.cash_out_available) / 1000).toFixed(0)}k)`) : '—'}
+                    </td>
+                    <td style={{ padding: '4px 10px', color: (row.dscr_post_refi ?? 0) >= 1.25 ? R.green : R.red, borderRight: `1px solid ${R.bs}` }}>{row.dscr_post_refi ? row.dscr_post_refi.toFixed(2) + 'x' : '—'}</td>
+                    <td style={{ padding: '4px 10px' }}>
+                      <span style={{ padding: '2px 6px', borderRadius: 2, fontSize: 7, fontWeight: 700, background: row.is_feasible ? R.green + '18' : R.red + '18', border: `1px solid ${row.is_feasible ? R.green + '44' : R.red + '44'}`, color: row.is_feasible ? R.green : R.red }}>
+                        {row.is_feasible ? 'FEASIBLE' : 'INFEASIBLE'}
+                      </span>
+                    </td>
+                  </tr>
                 ))}
-              </div>
-
-              {/* Key metrics grid */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 12 }}>
-                {[
-                  { label: 'MAX PROCEEDS', val: fm(maxProceeds), c: '#63B3ED' },
-                  { label: 'CASH OUT / (PAY)', val: cashOut != null ? cashOut >= 0 ? fm(cashOut) : `(${fm(-cashOut)})` : '—', c: cashOut != null && cashOut >= 0 ? '#68D391' : '#FC8181' },
-                  { label: 'POST-REFI DSCR', val: dscrCheck ? dscrCheck.toFixed(2) + 'x' : '—', c: (dscrCheck ?? 0) >= minDscr ? '#68D391' : '#FC8181' },
-                  { label: 'ANNUAL DEBT SVC', val: fm(annualDebtSvc), c: T2.dim },
-                ].map(m => (
-                  <div key={m.label} style={{ background: T2.panelAlt, border: `1px solid ${T2.border}`, borderRadius: 4, padding: '7px 8px' }}>
-                    <div style={{ fontSize: 7, color: T2.muted, fontFamily: T2.mono, marginBottom: 3 }}>{m.label}</div>
-                    <div style={{ fontSize: 11, fontWeight: 800, fontFamily: T2.mono, color: m.c }}>{m.val}</div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Save to history */}
-              <div>
-                <label style={labelStyle}>SCENARIO NAME</label>
-                <input style={{ ...fieldStyle, marginBottom: 6 }} value={scenarioName}
-                  onChange={e => setScenarioName(e.target.value)} />
-              </div>
-              {runError && (
-                <div style={{ marginBottom: 6, fontSize: 8, color: '#FC8181', fontFamily: T2.mono }}>{runError}</div>
-              )}
-              <button onClick={saveScenario} disabled={runLoading || !noiAnnualized}
-                style={{ width: '100%', padding: '7px 0', background: runLoading ? 'rgba(99,179,237,0.08)' : 'rgba(99,179,237,0.18)', border: '1px solid rgba(99,179,237,0.4)', borderRadius: 4, fontSize: 9, fontWeight: 700, fontFamily: T2.mono, color: runLoading ? T2.muted : '#63B3ED', cursor: runLoading ? 'not-allowed' : 'pointer', letterSpacing: 0.5 }}>
-                {runLoading ? 'SAVING...' : 'SAVE TO HISTORY →'}
-              </button>
-            </>
+              </tbody>
+            </table>
           )}
         </div>
-      </div>
-
-      {/* ── Scenario History ── */}
-      <div style={{ background: T2.panel, border: `1px solid ${T2.border}`, borderRadius: 6, overflow: 'hidden' }}>
-        <div style={{ padding: '8px 14px', borderBottom: `1px solid ${T2.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: 9, fontWeight: 700, fontFamily: T2.mono, color: T2.dim, letterSpacing: 0.5 }}>SCENARIO HISTORY</span>
-          <span style={{ fontSize: 8, color: T2.muted, fontFamily: T2.mono }}>Last 20 tests</span>
-        </div>
-        {histLoading && <div style={{ padding: 14, textAlign: 'center', fontSize: 9, color: T2.muted, fontFamily: T2.mono }}>Loading history…</div>}
-        {!histLoading && history.length === 0 && <div style={{ padding: 14, textAlign: 'center', fontSize: 9, color: T2.muted, fontFamily: T2.mono }}>No scenarios saved yet — run analysis above and save to build history</div>}
-        {!histLoading && history.length > 0 && (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 8, fontFamily: T2.mono }}>
-            <thead>
-              <tr style={{ background: '#0A0E17' }}>
-                {['DATE', 'NAME', 'NOI', 'CAP', 'BINDING', 'MAX PROCEEDS', 'CASH OUT', 'DSCR', 'STATUS'].map(h => (
-                  <th key={h} style={{ padding: '5px 10px', textAlign: h === 'MAX PROCEEDS' || h === 'CASH OUT' || h === 'NOI' ? 'right' : 'left', color: T2.muted, fontWeight: 700, borderBottom: `1px solid ${T2.border}` }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {history.map((row, i) => (
-                <tr key={row.id} style={{ background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.012)', borderBottom: `1px solid ${T2.border}` }}>
-                  <td style={{ padding: '4px 10px', color: T2.muted }}>{new Date(row.test_date).toLocaleDateString()}</td>
-                  <td style={{ padding: '4px 10px', color: '#E8E6E1' }}>{row.scenario_name}</td>
-                  <td style={{ padding: '4px 10px', textAlign: 'right', color: T2.dim }}>{row.assumed_noi ? `$${(row.assumed_noi / 1000).toFixed(0)}k` : '—'}</td>
-                  <td style={{ padding: '4px 10px', textAlign: 'right', color: T2.dim }}>{row.assumed_cap_rate ? fp(row.assumed_cap_rate, 1) : '—'}</td>
-                  <td style={{ padding: '4px 10px', color: constraintColor(row.constrained_by) }}>{row.constrained_by?.toUpperCase() ?? '—'}</td>
-                  <td style={{ padding: '4px 10px', textAlign: 'right', color: '#E8E6E1' }}>{row.max_loan_proceeds ? `$${(row.max_loan_proceeds / 1e6).toFixed(2)}M` : '—'}</td>
-                  <td style={{ padding: '4px 10px', textAlign: 'right', color: row.cash_out_available >= 0 ? '#68D391' : '#FC8181' }}>
-                    {row.cash_out_available != null ? (row.cash_out_available >= 0 ? `$${(row.cash_out_available / 1000).toFixed(0)}k` : `(${((-row.cash_out_available) / 1000).toFixed(0)}k)`) : '—'}
-                  </td>
-                  <td style={{ padding: '4px 10px', color: (row.dscr_post_refi ?? 0) >= 1.25 ? '#68D391' : '#FC8181' }}>{row.dscr_post_refi ? row.dscr_post_refi.toFixed(2) + 'x' : '—'}</td>
-                  <td style={{ padding: '4px 10px' }}>
-                    <span style={{ padding: '2px 5px', borderRadius: 2, fontSize: 7, fontWeight: 700, background: row.is_feasible ? 'rgba(104,211,145,0.1)' : 'rgba(252,129,129,0.1)', border: `1px solid ${row.is_feasible ? '#68D39140' : '#FC818140'}`, color: row.is_feasible ? '#68D391' : '#FC8181' }}>
-                      {row.is_feasible ? 'FEASIBLE' : 'INFEASIBLE'}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
       </div>
     </div>
   );
