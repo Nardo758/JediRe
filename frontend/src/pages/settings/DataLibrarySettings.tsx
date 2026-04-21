@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { BT } from '@/components/deal/bloomberg-ui';
 import { apiClient } from '../../services/api.client';
+import { CloudStoragePanel, BulkUploadPanel } from '../../components/data-library';
+import { Upload, Cloud, Database, ChevronDown, ChevronRight } from 'lucide-react';
 
 interface Asset {
   id: string;
@@ -68,6 +70,10 @@ export function DataLibrarySettings() {
   const [total, setTotal] = useState(0);
   const [sortBy, setSortBy] = useState('created_at');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  
+  // Upload panels state
+  const [activePanel, setActivePanel] = useState<'none' | 'upload' | 'cloud'>('none');
+  const [showUploadSection, setShowUploadSection] = useState(true);
 
   const fetchAssets = useCallback(async () => {
     setLoading(true);
@@ -125,12 +131,96 @@ export function DataLibrarySettings() {
     return `$${v.toFixed(0)}`;
   };
 
+  const handleUploadComplete = () => {
+    fetchAssets();
+    fetchStats();
+  };
+
   return (
     <div style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}` }}>
+      {/* Upload Section */}
+      <div style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
+        <button
+          onClick={() => setShowUploadSection(!showUploadSection)}
+          style={{
+            width: '100%',
+            padding: '12px 20px',
+            background: BT.bg.panelAlt,
+            border: 'none',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            cursor: 'pointer',
+            color: BT.text.primary,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Upload size={16} style={{ color: BT.text.cyan }} />
+            <span style={{ fontSize: 12, fontWeight: 600, fontFamily: MONO }}>BULK UPLOAD & CLOUD SYNC</span>
+          </div>
+          {showUploadSection ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+        </button>
+        
+        {showUploadSection && (
+          <div style={{ padding: '16px 20px' }}>
+            {/* Tab buttons */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+              <button
+                onClick={() => setActivePanel(activePanel === 'upload' ? 'none' : 'upload')}
+                style={{
+                  padding: '8px 16px',
+                  background: activePanel === 'upload' ? BT.bg.accent : BT.bg.input,
+                  border: `1px solid ${activePanel === 'upload' ? BT.border.accent : BT.border.medium}`,
+                  borderRadius: 4,
+                  color: activePanel === 'upload' ? BT.text.amber : BT.text.secondary,
+                  fontFamily: MONO,
+                  fontSize: 11,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                <Upload size={14} />
+                Upload Files
+              </button>
+              <button
+                onClick={() => setActivePanel(activePanel === 'cloud' ? 'none' : 'cloud')}
+                style={{
+                  padding: '8px 16px',
+                  background: activePanel === 'cloud' ? BT.bg.accent : BT.bg.input,
+                  border: `1px solid ${activePanel === 'cloud' ? BT.border.accent : BT.border.medium}`,
+                  borderRadius: 4,
+                  color: activePanel === 'cloud' ? BT.text.amber : BT.text.secondary,
+                  fontFamily: MONO,
+                  fontSize: 11,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                <Cloud size={14} />
+                Cloud Storage
+              </button>
+            </div>
+            
+            {/* Panel content */}
+            {activePanel === 'upload' && (
+              <BulkUploadPanel onUploadComplete={handleUploadComplete} />
+            )}
+            {activePanel === 'cloud' && (
+              <CloudStoragePanel onSyncComplete={handleUploadComplete} />
+            )}
+          </div>
+        )}
+      </div>
+
       <div style={{ padding: '16px 20px', borderBottom: `1px solid ${BT.border.subtle}` }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <div>
             <h2 style={{ fontSize: 16, fontWeight: 700, color: BT.text.amber, fontFamily: MONO, letterSpacing: 1, margin: 0 }}>
+              <Database size={16} style={{ display: 'inline', marginRight: 8, verticalAlign: 'middle' }} />
               DATA LIBRARY
             </h2>
             <p style={{ fontSize: 11, color: BT.text.secondary, margin: '4px 0 0', fontFamily: MONO }}>
