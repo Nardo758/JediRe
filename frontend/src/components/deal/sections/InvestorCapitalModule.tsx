@@ -6,7 +6,6 @@
  */
 
 import React, { useState, useCallback } from 'react';
-import { apiClient } from '@/services/api.client';
 import { BT, BT_CSS, AlertBanner, Bd } from '../bloomberg-ui';
 import { mono } from '../bloomberg-tokens';
 import {
@@ -249,16 +248,16 @@ function InvestorsTab({ investments, allInvestors, summary, loading, error, onCr
 // ─── CAPITAL CALLS TAB ────────────────────────────────────────────────────────
 
 interface CallsTabProps {
-  dealId: string;
   calls: CapitalCall[];
   summary: CapSummary | null;
   loading: boolean;
   error: string | null;
+  onLoadCallItems: (callId: string) => Promise<CallItem[]>;
   onCreateCall: (d: { call_date: string; due_date: string; total_amount: number; purpose?: string }) => Promise<void>;
   onSendCall: (id: string) => Promise<void>;
 }
 
-function CapitalCallsTab({ dealId, calls, summary, loading, error, onCreateCall, onSendCall }: CallsTabProps) {
+function CapitalCallsTab({ calls, summary, loading, error, onLoadCallItems, onCreateCall, onSendCall }: CallsTabProps) {
   const [showForm,  setShowForm]   = useState(false);
   const [form,      setForm]       = useState({ call_date: '', due_date: '', total_amount: '', purpose: '' });
   const [saving,    setSaving]     = useState(false);
@@ -273,11 +272,11 @@ function CapitalCallsTab({ dealId, calls, summary, loading, error, onCreateCall,
     if (items[callId]) return;
     setLoadingItems(prev => ({ ...prev, [callId]: true }));
     try {
-      const r = await apiClient.get(`/api/v1/capital/deals/${dealId}/capital-calls/${callId}`);
-      setItems(prev => ({ ...prev, [callId]: r.data?.capitalCall?.items ?? [] }));
+      const fetched = await onLoadCallItems(callId);
+      setItems(prev => ({ ...prev, [callId]: fetched }));
     } catch { /* silent */ }
     setLoadingItems(prev => ({ ...prev, [callId]: false }));
-  }, [dealId, expanded, items]);
+  }, [expanded, items, onLoadCallItems]);
 
   const handleCreate = async () => {
     if (!form.call_date || !form.due_date || !form.total_amount) { setFormErr('Call date, due date, and amount are required.'); return; }
@@ -404,17 +403,17 @@ function CapitalCallsTab({ dealId, calls, summary, loading, error, onCreateCall,
 // ─── DISTRIBUTIONS TAB ────────────────────────────────────────────────────────
 
 interface DistsTabProps {
-  dealId: string;
   dists: Distribution[];
   summary: CapSummary | null;
   loading: boolean;
   error: string | null;
+  onLoadDistItems: (distId: string) => Promise<DistItem[]>;
   onCreate: (d: { distribution_date: string; total_amount: number; distribution_type: string; tax_year: number }) => Promise<void>;
   onApprove: (id: string) => Promise<void>;
   onProcess: (id: string) => Promise<void>;
 }
 
-function DistributionsTab({ dealId, dists, summary, loading, error, onCreate, onApprove, onProcess }: DistsTabProps) {
+function DistributionsTab({ dists, summary, loading, error, onLoadDistItems, onCreate, onApprove, onProcess }: DistsTabProps) {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ distribution_date: '', total_amount: '', distribution_type: 'operating', tax_year: String(new Date().getFullYear()) });
   const [saving, setSaving] = useState(false);
@@ -429,11 +428,11 @@ function DistributionsTab({ dealId, dists, summary, loading, error, onCreate, on
     if (items[distId]) return;
     setLoadingItems(prev => ({ ...prev, [distId]: true }));
     try {
-      const r = await apiClient.get(`/api/v1/capital/deals/${dealId}/distributions/${distId}`);
-      setItems(prev => ({ ...prev, [distId]: r.data?.distribution?.items ?? [] }));
+      const fetched = await onLoadDistItems(distId);
+      setItems(prev => ({ ...prev, [distId]: fetched }));
     } catch { /* silent */ }
     setLoadingItems(prev => ({ ...prev, [distId]: false }));
-  }, [dealId, expanded, items]);
+  }, [expanded, items, onLoadDistItems]);
 
   const handleCreate = async () => {
     if (!form.distribution_date || !form.total_amount) { setFormErr('Date and amount are required.'); return; }
@@ -831,10 +830,10 @@ export function InvestorCapitalModule({ dealId }: InvestorCapitalModuleProps) {
   const [activeTab, setActiveTab] = useState<TabId>('investors');
 
   const {
-    summary, investments, allInvestors, calls, dists,
+    summary, summaryErr, investments, allInvestors, calls, dists,
     waterfall, defaultTiers, entries, totalEntries,
     loading, errors,
-    reload,
+    reload, loaders,
     mutations,
   } = useInvestorCapital(dealId);
 
@@ -854,6 +853,12 @@ export function InvestorCapitalModule({ dealId }: InvestorCapitalModuleProps) {
           color={BT.text.amber}
           badge={<Bd c={BT.text.amber}>{pendingCalls} OUTSTANDING</Bd>}
         />
+      )}
+
+      {summaryErr && (
+        <div style={{ background: `${BT.text.amber}18`, borderBottom: `1px solid ${BT.text.amber}44`, padding: '4px 12px', fontSize: 9, fontFamily: mono, color: BT.text.amber }}>
+          ⚠ {summaryErr} — KPI figures may be stale.
+        </div>
       )}
 
       {/* Global KPI summary row */}
@@ -903,22 +908,22 @@ export function InvestorCapitalModule({ dealId }: InvestorCapitalModuleProps) {
         )}
         {activeTab === 'calls' && (
           <CapitalCallsTab
-            dealId={dealId}
             calls={calls}
             summary={summary}
             loading={loading.calls}
             error={errors.calls ?? null}
+            onLoadCallItems={loaders.loadCallItems}
             onCreateCall={mutations.createCall}
             onSendCall={mutations.sendCall}
           />
         )}
         {activeTab === 'distributions' && (
           <DistributionsTab
-            dealId={dealId}
             dists={dists}
             summary={summary}
             loading={loading.dists}
             error={errors.dists ?? null}
+            onLoadDistItems={loaders.loadDistItems}
             onCreate={mutations.createDistribution}
             onApprove={mutations.approveDistribution}
             onProcess={mutations.processDistribution}

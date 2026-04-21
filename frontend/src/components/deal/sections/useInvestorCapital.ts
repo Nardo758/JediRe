@@ -283,6 +283,18 @@ export function useInvestorCapital(dealId: string) {
     await loadWaterfall();
   };
 
+  // ─── detail loaders (call items / dist items) ─────────────────────────────
+
+  const loadCallItems = useCallback(async (callId: string): Promise<CallItem[]> => {
+    const r = await apiClient.get(`/api/v1/capital/deals/${dealId}/capital-calls/${callId}`);
+    return r.data?.capitalCall?.items ?? [];
+  }, [dealId]);
+
+  const loadDistItems = useCallback(async (distId: string): Promise<DistItem[]> => {
+    const r = await apiClient.get(`/api/v1/capital/deals/${dealId}/distributions/${distId}`);
+    return r.data?.distribution?.items ?? [];
+  }, [dealId]);
+
   return {
     summary, summaryErr, investments, allInvestors, calls, dists,
     waterfall, defaultTiers, entries, totalEntries,
@@ -292,6 +304,7 @@ export function useInvestorCapital(dealId: string) {
       calls: loadCalls, dists: loadDists,
       waterfall: loadWaterfall, entries: loadEntries,
     },
+    loaders: { loadCallItems, loadDistItems },
     mutations: {
       createAndLink, linkInvestment,
       createCall, sendCall,

@@ -594,8 +594,10 @@ router.get('/deals/:dealId/ledger', requireAuth, async (req: AuthenticatedReques
     const where = filters.length ? `AND ${filters.join(' AND ')}` : '';
     // Capture filter-only params for the COUNT query before adding limit/offset
     const filterParams = [...params];
-    const limitVal  = lim  ? Math.max(1, Math.min(500, Number(lim)))  : 50;
-    const offsetVal = off  ? Math.max(0, Number(off))                 : 0;
+    const parsedLim = Number(lim);
+    const parsedOff = Number(off);
+    const limitVal  = lim  ? (isFinite(parsedLim) ? Math.max(1, Math.min(500, parsedLim)) : 50) : 50;
+    const offsetVal = off  ? (isFinite(parsedOff) ? Math.max(0, parsedOff)                : 0)  : 0;
     params.push(limitVal);  const limitIdx  = params.length;
     params.push(offsetVal); const offsetIdx = params.length;
     // Window function computes authoritative running_balance per investor, ordered
