@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { apiClient } from '../services/api.client';
 import type { Deal } from '../types/agent';
@@ -1584,15 +1584,117 @@ const AILearningTab: React.FC<{ dealId: string }> = ({ dealId }) => {
 };
 
 // ─── Reports Tab ──────────────────────────────────────────────
+interface ReportMessage {
+  id: string;
+  role: 'user' | 'agent';
+  content: string;
+  ts: Date;
+  copied?: boolean;
+}
+
 interface ReportsTabProps {
   dealId: string;
   financials: MonthlyFinancial[];
   deal: Record<string, unknown>;
 }
-const ReportsTab: React.FC<ReportsTabProps> = ({ dealId, financials, deal }) => {
 
+const REPORT_PROMPTS: { category: string; prompts: string[] }[] = [
+  { category: 'NOI & REVENUE', prompts: [
+    'Generate an NOI waterfall report',
+    'Analyze revenue vs operating expenses',
+    'Year-over-year revenue trend summary',
+  ]},
+  { category: 'PERFORMANCE', prompts: [
+    'Deal performance vs underwriting',
+    'Occupancy trend and lease-up analysis',
+    'Cash-on-cash return summary',
+  ]},
+  { category: 'DEBT & CAPITAL', prompts: [
+    'Debt summary and maturity schedule',
+    'Refi readiness assessment',
+    'LTV and DSCR covenant analysis',
+  ]},
+  { category: 'INVESTOR', prompts: [
+    'Quarterly investor update memo',
+    'Return of capital and distribution timeline',
+    'Asset-level investment thesis review',
+  ]},
+];
+
+const ReportsTab: React.FC<ReportsTabProps> = ({ dealId, financials, deal }) => {
   const propName = (deal.property_name ?? deal.project_name ?? `property-${dealId}`) as string;
   const safeSlug = propName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+
+  const [messages, setMessages] = useState<ReportMessage[]>([]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [conversationId] = useState(() => `report-${dealId}-${Date.now()}`);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  useEffect(() => { scrollToBottom(); }, [messages]);
+
+  /* Build deal context block to inject with every message */
+  const dealContext = useMemo(() => {
+    const lf = financials[financials.length - 1];
+    const avgOcc = financials.length
+      ? (financials.reduce((s, f) => s + (parseFloat(f.occupancy_rate as string) || 0), 0) / financials.length * 100).toFixed(1)
+      : null;
+    const latestNoi = lf ? parseFloat(lf.noi as string) : null;
+    const annNoi = latestNoi ? latestNoi * 12 : null;
+    const lines = [
+      `Property: ${propName}`,
+      `Units: ${deal.units ?? '—'}`,
+      `Project type: ${deal.projectType ?? deal.project_type ?? '—'}`,
+      `Status: ${deal.status ?? '—'}`,
+      `Months of actuals loaded: ${financials.length}`,
+      avgOcc ? `Avg occupancy (actuals): ${avgOcc}%` : null,
+      latestNoi ? `Latest monthly NOI: $${latestNoi.toLocaleString()}` : null,
+      annNoi ? `Annualized NOI: $${annNoi.toLocaleString()}` : null,
+      lf?.avg_effective_rent ? `Avg effective rent: $${parseFloat(lf.avg_effective_rent as string).toLocaleString()}` : null,
+      deal.purchase_price ? `Purchase price: $${parseFloat(deal.purchase_price as string).toLocaleString()}` : null,
+      deal.loan_amount ? `Loan amount: $${parseFloat(deal.loan_amount as string).toLocaleString()}` : null,
+      deal.loan_rate ? `Interest rate: ${deal.loan_rate}%` : null,
+      deal.target_irr ? `Target IRR: ${deal.target_irr}%` : null,
+      deal.equity_multiple ? `Equity multiple (UW): ${deal.equity_multiple}×` : null,
+      deal.capRate ? `Cap rate: ${deal.capRate}%` : null,
+    ].filter(Boolean).join('\n');
+    return `[DEAL CONTEXT]\n${lines}\n[/DEAL CONTEXT]`;
+  }, [deal, financials, propName]);
+
+  const sendMessage = async (text: string) => {
+    if (!text.trim() || loading) return;
+    const userMsg: ReportMessage = { id: Date.now().toString(), role: 'user', content: text.trim(), ts: new Date() };
+    setMessages(prev => [...prev, userMsg]);
+    setInput('');
+    setLoading(true);
+    try {
+      const fullMessage = messages.length === 0
+        ? `${dealContext}\n\nUser request: ${text.trim()}`
+        : text.trim();
+      const res: any = await apiClient.post('/api/v1/chat', { message: fullMessage, conversationId });
+      const agentMsg: ReportMessage = {
+        id: (Date.now() + 1).toString(),
+        role: 'agent',
+        content: res.data?.response ?? res.data?.message ?? 'No response received.',
+        ts: new Date(),
+      };
+      setMessages(prev => [...prev, agentMsg]);
+    } catch {
+      setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'agent', content: 'Error reaching the report agent. Please try again.', ts: new Date() }]);
+    } finally {
+      setLoading(false);
+      setTimeout(() => textareaRef.current?.focus(), 50);
+    }
+  };
+
+  const copyMsg = (id: string, content: string) => {
+    navigator.clipboard.writeText(content).then(() => {
+      setMessages(prev => prev.map(m => m.id === id ? { ...m, copied: true } : m));
+      setTimeout(() => setMessages(prev => prev.map(m => m.id === id ? { ...m, copied: false } : m)), 1500);
+    });
+  };
 
   const downloadCSV = (filename: string, rows: string[][], headers: string[]) => {
     const csv = [headers.join(','), ...rows.map(r => r.map(v => `"${(v ?? '').toString().replace(/"/g, '""')}"`).join(','))].join('\n');
@@ -1601,125 +1703,159 @@ const ReportsTab: React.FC<ReportsTabProps> = ({ dealId, financials, deal }) => 
     const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
     URL.revokeObjectURL(url);
   };
-
   const exportFinancials = () => {
     downloadCSV(`${safeSlug}-performance.csv`, financials.map(f => [
       (f.report_month as string)?.slice(0, 7) ?? '', String(f.noi ?? ''), String(f.occupancy_rate ?? ''),
       String(f.avg_effective_rent ?? ''), String(f.net_rental_income ?? ''), String(f.total_opex ?? ''),
-      String(f.cash_flow_before_tax ?? ''), String(f.new_leases ?? ''), String(f.renewals ?? ''),
-    ]), ['Month', 'NOI', 'Occupancy Rate', 'Avg Rent', 'Revenue', 'Total OpEx', 'Cash Flow', 'New Leases', 'Renewals']);
+    ]), ['Month', 'NOI', 'Occupancy', 'Avg Rent', 'Revenue', 'OpEx']);
   };
-
   const exportRentRoll = async () => {
     const r = await apiClient.get(`/api/v1/operations/${dealId}/rent-roll`).catch(() => ({ data: { units: [] } }));
     const units = r.data?.units ?? [];
     downloadCSV(`${safeSlug}-rent-roll.csv`, units.map((u: Record<string, unknown>) => [
       String(u.unit_number ?? ''), String(u.unit_type ?? ''), String(u.status ?? ''),
-      String(u.current_rent ?? ''), String(u.market_rent ?? ''),
-      String(u.bedrooms ?? ''), String(u.bathrooms ?? ''), String(u.sqft ?? ''),
+      String(u.current_rent ?? ''), String(u.market_rent ?? ''), String(u.sqft ?? ''),
       ((u.lease_start as string) ?? '').slice(0, 10), ((u.lease_end as string) ?? '').slice(0, 10),
-    ]), ['Unit', 'Type', 'Status', 'Current Rent', 'Market Rent', 'Beds', 'Baths', 'Sqft', 'Lease Start', 'Lease End']);
+    ]), ['Unit', 'Type', 'Status', 'Rent', 'Market Rent', 'Sqft', 'Lease Start', 'Lease End']);
   };
 
-  const exportInvestorSummary = () => {
-    const lf = financials[financials.length - 1];
-    downloadCSV(`${safeSlug}-investor-report.csv`, [
-      ['Property', propName],
-      ['As of Date', new Date().toISOString().slice(0, 10)],
-      ['Latest NOI/mo', lf ? String(lf.noi) : 'N/A'],
-      ['Annualized NOI', lf ? String(parseFloat(lf.noi as string) * 12) : 'N/A'],
-      ['Avg Occupancy (LTM)', financials.length ? String((financials.reduce((s, f) => s + (parseFloat(f.occupancy_rate as string) || 0), 0) / financials.length * 100).toFixed(1)) : 'N/A'],
-      ['Avg Effective Rent', lf ? String(lf.avg_effective_rent) : 'N/A'],
-      ['Months of Actuals', String(financials.length)],
-    ], ['Metric', 'Value']);
+  const btnStyle: React.CSSProperties = {
+    padding: '4px 10px', fontSize: 9, fontWeight: 600, background: T.bg.active,
+    color: T.text.secondary, border: `1px solid ${T.border.medium}`,
+    borderRadius: 2, cursor: 'pointer', fontFamily: T.font.mono, letterSpacing: '0.04em',
   };
-
-  const lf = financials[financials.length - 1];
-  const avgOcc = financials.length ? financials.reduce((s, f) => s + (parseFloat(f.occupancy_rate as string) || 0), 0) / financials.length : null;
-  const annNoi = lf ? parseFloat(lf.noi as string) * 12 : null;
-  const fmtD = (v: number | null) => v == null ? '—' : `$${v >= 1_000_000 ? (v / 1_000_000).toFixed(2) + 'M' : v.toLocaleString()}`;
-  const fmtP2 = (v: number | null) => v == null ? '—' : `${(v * 100).toFixed(1)}%`;
-  const btnStyle: React.CSSProperties = { padding: '5px 10px', fontSize: 10, fontWeight: 600, background: T.bg.active, color: T.text.secondary, border: `1px solid ${T.border.medium}`, borderRadius: 3, cursor: 'pointer', fontFamily: T.font.mono };
 
   return (
-    <div style={{ padding: 16, overflowY: 'auto', maxHeight: 'calc(100vh - 280px)', display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ fontSize: 10, color: T.text.muted, fontFamily: T.font.mono, fontWeight: 700, letterSpacing: '0.05em' }}>ASSET REPORTS — {propName.toUpperCase()}</div>
-        <div style={{ display: 'flex', gap: 6 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 280px)', background: T.bg.terminal, overflow: 'hidden' }}>
+
+      {/* ══ Top bar ══ */}
+      <div style={{ background: T.bg.header, borderBottom: `2px solid ${T.text.amber}22`, padding: '7px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, fontFamily: T.font.mono, color: T.text.amber, letterSpacing: '0.1em' }}>REPORT AGENT</span>
+          <span style={{ fontSize: 8, color: T.text.secondary, fontFamily: T.font.mono }}>{propName.toUpperCase()}  ·  ASK FOR ANY REPORT</span>
+        </div>
+        <div style={{ display: 'flex', gap: 5 }}>
           <button onClick={exportFinancials} disabled={financials.length === 0} style={{ ...btnStyle, opacity: financials.length === 0 ? 0.4 : 1 }}>⬇ MONTHLY CSV</button>
-          <button onClick={exportInvestorSummary} disabled={financials.length === 0} style={{ ...btnStyle, opacity: financials.length === 0 ? 0.4 : 1 }}>⬇ INVESTOR CSV</button>
           <button onClick={exportRentRoll} style={btnStyle}>⬇ RENT ROLL CSV</button>
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        <Panel title="NOI WATERFALL">
-          <div style={{ padding: 12 }}>
-            {!lf ? <div style={{ fontSize: 10, color: T.text.muted, fontFamily: T.font.mono }}>NO ACTUALS LOADED YET</div> : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {([
-                  { label: 'Eff. Gross Income', val: parseFloat(lf.effective_gross_income as string) || null, color: T.text.green, negative: false, bold: false },
-                  { label: 'Operating Expenses', val: parseFloat(lf.total_operating_expenses as string) || null, color: T.text.red, negative: true, bold: false },
-                  { label: 'Net Operating Income', val: parseFloat(lf.noi as string) || null, color: T.text.blue, negative: false, bold: true },
-                ] as { label: string; val: number | null; color: string; negative: boolean; bold: boolean }[]).map(row => {
-                  const base = parseFloat(lf.effective_gross_income as string) || 1;
-                  const width = row.val ? Math.min(100, Math.abs(row.val) / base * 100) : 0;
-                  return (
-                    <div key={row.label}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, fontFamily: T.font.mono, marginBottom: 3 }}>
-                        <span style={{ color: row.bold ? T.text.primary : T.text.secondary, fontWeight: row.bold ? 700 : 400 }}>{row.label}</span>
-                        <span style={{ color: row.negative ? T.text.red : T.text.primary, fontWeight: 600 }}>{fmtD(row.val)}</span>
-                      </div>
-                      <div style={{ height: 4, background: T.bg.panelAlt, borderRadius: 2, overflow: 'hidden' }}>
-                        <div style={{ height: '100%', background: row.color, borderRadius: 2, width: `${width}%`, opacity: 0.8 }} />
-                      </div>
-                    </div>
-                  );
-                })}
-                <div style={{ paddingTop: 8, borderTop: `1px solid ${T.border.subtle}`, fontSize: 10, color: T.text.muted, fontFamily: T.font.mono }}>
-                  Annualized NOI: <span style={{ color: T.text.amber, fontWeight: 600 }}>{fmtD(annNoi)}</span>
+      {/* ══ Body: sidebar + chat ══ */}
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+
+        {/* Prompt sidebar */}
+        <div style={{ width: 198, borderRight: `1px solid ${T.border.medium}`, overflowY: 'auto', flexShrink: 0, background: T.bg.panel }}>
+          <div style={{ padding: '8px 10px 4px', fontSize: 8, color: T.text.amber, fontFamily: T.font.mono, fontWeight: 700, letterSpacing: '0.07em', borderBottom: `1px solid ${T.border.subtle}` }}>
+            REPORT TEMPLATES
+          </div>
+          {REPORT_PROMPTS.map(group => (
+            <div key={group.category}>
+              <div style={{ padding: '7px 10px 3px', fontSize: 7, color: T.text.secondary, fontFamily: T.font.mono, letterSpacing: '0.06em', fontWeight: 700 }}>{group.category}</div>
+              {group.prompts.map(p => (
+                <button key={p} onClick={() => sendMessage(p)}
+                  style={{ display: 'block', width: '100%', textAlign: 'left', padding: '5px 10px', fontSize: 9, fontFamily: T.font.mono, color: T.text.secondary, background: 'transparent', border: 'none', borderBottom: `1px solid ${T.border.subtle}`, cursor: 'pointer', lineHeight: 1.35 }}>
+                  {p}
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
+
+        {/* Chat area */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
+          {/* Messages */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {messages.length === 0 && (
+              <div style={{ margin: 'auto', textAlign: 'center', paddingTop: 60 }}>
+                <div style={{ fontSize: 28, marginBottom: 10 }}>📊</div>
+                <div style={{ fontSize: 12, fontWeight: 700, fontFamily: T.font.mono, color: T.text.amber, letterSpacing: '0.08em', marginBottom: 6 }}>REPORT AGENT READY</div>
+                <div style={{ fontSize: 10, color: T.text.secondary, fontFamily: T.font.mono, maxWidth: 360, lineHeight: 1.6 }}>
+                  Ask for any custom report — NOI analysis, investor memo, debt summary, occupancy trend, or anything else. Choose a template on the left or type your own request below.
                 </div>
               </div>
             )}
-          </div>
-        </Panel>
 
-        <Panel title="DEAL PERFORMANCE">
-          <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {([
-              { label: 'Underwritten IRR', val: deal.target_irr != null ? fmtP2((deal.target_irr as number) / 100) : deal.irr != null ? fmtP2((deal.irr as number) / 100) : '—' },
-              { label: 'Equity Multiple (UW)', val: deal.equity_multiple != null ? `${parseFloat(deal.equity_multiple as string).toFixed(2)}×` : '—' },
-              { label: 'Avg Occupancy (Actuals)', val: fmtP2(avgOcc) },
-              { label: 'Months of Actuals', val: String(financials.length) },
-              { label: 'Latest NOI/mo', val: fmtD(lf ? parseFloat(lf.noi as string) : null) },
-              { label: 'Annualized NOI', val: fmtD(annNoi) },
-            ] as { label: string; val: string }[]).map(row => (
-              <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, fontFamily: T.font.mono, borderBottom: `1px solid ${T.border.subtle}`, paddingBottom: 6 }}>
-                <span style={{ color: T.text.secondary }}>{row.label}</span>
-                <span style={{ color: T.text.primary, fontWeight: 600 }}>{row.val}</span>
+            {messages.map(msg => (
+              <div key={msg.id} style={{ display: 'flex', flexDirection: 'column', alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '85%', alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
+                {msg.role === 'agent' && (
+                  <div style={{ fontSize: 7, color: T.text.amber, fontFamily: T.font.mono, fontWeight: 700, letterSpacing: '0.07em', marginBottom: 3 }}>REPORT AGENT · {msg.ts.toLocaleTimeString()}</div>
+                )}
+                <div style={{
+                  background: msg.role === 'user' ? T.bg.active : T.bg.panelAlt,
+                  border: `1px solid ${msg.role === 'user' ? T.text.amber + '44' : T.border.medium}`,
+                  borderRadius: msg.role === 'user' ? '6px 6px 2px 6px' : '6px 6px 6px 2px',
+                  padding: '10px 13px',
+                  fontSize: 10,
+                  fontFamily: T.font.mono,
+                  color: T.text.primary,
+                  whiteSpace: 'pre-wrap',
+                  lineHeight: 1.65,
+                }}>
+                  {msg.content}
+                </div>
+                {msg.role === 'agent' && (
+                  <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                    <button onClick={() => copyMsg(msg.id, msg.content)} style={{ fontSize: 7, fontFamily: T.font.mono, color: msg.copied ? T.text.green : T.text.secondary, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px' }}>
+                      {msg.copied ? '✓ COPIED' : 'COPY'}
+                    </button>
+                    <button onClick={() => {
+                      const blob = new Blob([msg.content], { type: 'text/plain' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a'); a.href = url; a.download = `${safeSlug}-report-${msg.ts.toISOString().slice(0,10)}.txt`; a.click();
+                    }} style={{ fontSize: 7, fontFamily: T.font.mono, color: T.text.secondary, background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px' }}>
+                      ⬇ EXPORT
+                    </button>
+                  </div>
+                )}
+                {msg.role === 'user' && (
+                  <div style={{ fontSize: 7, color: T.text.secondary, fontFamily: T.font.mono, marginTop: 3 }}>{msg.ts.toLocaleTimeString()}</div>
+                )}
               </div>
             ))}
-          </div>
-        </Panel>
 
-        <Panel title="DEBT SUMMARY">
-          <div style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {([
-              { label: 'Loan Amount', val: deal.loan_amount != null ? fmtD(parseFloat(deal.loan_amount as string)) : '—' },
-              { label: 'Interest Rate', val: deal.loan_rate != null ? fmtP2(parseFloat(deal.loan_rate as string) / 100) : '—' },
-              { label: 'Loan Term', val: deal.loan_term != null ? `${deal.loan_term} yrs` : '—' },
-              { label: 'LTV (at close)', val: deal.ltv != null ? fmtP2(parseFloat(deal.ltv as string) / 100) : (deal.loan_amount && deal.purchase_price ? fmtP2(parseFloat(deal.loan_amount as string) / parseFloat(deal.purchase_price as string)) : '—') },
-              { label: 'DSCR (UW)', val: deal.dscr != null ? `${parseFloat(deal.dscr as string).toFixed(2)}×` : '—' },
-              { label: 'Lender', val: (deal.lender as string) ?? '—' },
-            ] as { label: string; val: string }[]).map(row => (
-              <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, fontFamily: T.font.mono, borderBottom: `1px solid ${T.border.subtle}`, paddingBottom: 6 }}>
-                <span style={{ color: T.text.secondary }}>{row.label}</span>
-                <span style={{ color: T.text.primary, fontWeight: 600 }}>{row.val}</span>
+            {loading && (
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, maxWidth: '85%' }}>
+                <div style={{ background: T.bg.panelAlt, border: `1px solid ${T.border.medium}`, borderRadius: '6px 6px 6px 2px', padding: '10px 14px' }}>
+                  <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                    {[0, 0.2, 0.4].map(d => (
+                      <div key={d} style={{ width: 5, height: 5, borderRadius: '50%', background: T.text.amber, opacity: 0.7, animation: `raTyping 1.2s ${d}s ease-in-out infinite` }} />
+                    ))}
+                  </div>
+                </div>
               </div>
-            ))}
+            )}
+            <div ref={messagesEndRef} />
           </div>
-        </Panel>
 
+          {/* Input bar */}
+          <div style={{ borderTop: `1px solid ${T.border.medium}`, background: T.bg.panel, padding: '10px 14px', flexShrink: 0 }}>
+            <style>{`
+              @keyframes raTyping { 0%,80%,100%{transform:scale(0.7);opacity:0.4} 40%{transform:scale(1);opacity:1} }
+              .ra-textarea:focus { outline: none; border-color: ${T.text.amber}66 !important; }
+              .ra-prompt-btn:hover { background: ${T.bg.hover} !important; color: ${T.text.primary} !important; }
+            `}</style>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+              <textarea
+                ref={textareaRef}
+                className="ra-textarea"
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(input); } }}
+                placeholder="Describe the report you need… (Enter to send, Shift+Enter for new line)"
+                rows={2}
+                style={{ flex: 1, background: T.bg.input, border: `1px solid ${T.border.medium}`, borderRadius: 3, padding: '8px 10px', fontSize: 10, fontFamily: T.font.mono, color: T.text.primary, resize: 'none', lineHeight: 1.5 }}
+              />
+              <button onClick={() => sendMessage(input)} disabled={loading || !input.trim()}
+                style={{ padding: '0 18px', height: 48, background: loading || !input.trim() ? T.bg.active : T.text.amber + '22', border: `1px solid ${loading || !input.trim() ? T.border.medium : T.text.amber + '88'}`, borderRadius: 3, fontSize: 9, fontWeight: 700, fontFamily: T.font.mono, color: loading || !input.trim() ? T.text.secondary : T.text.amber, cursor: loading || !input.trim() ? 'not-allowed' : 'pointer', letterSpacing: '0.07em', flexShrink: 0 }}>
+                {loading ? '...' : 'SEND →'}
+              </button>
+            </div>
+            <div style={{ marginTop: 5, fontSize: 7, color: T.text.secondary, fontFamily: T.font.mono }}>
+              Deal context auto-included  ·  {financials.length} months of actuals available  ·  Shift+Enter for new line
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
