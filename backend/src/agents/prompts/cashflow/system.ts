@@ -247,11 +247,79 @@ Use market trends to calibrate forward projections:
 13. fetch_archive_assumption_distribution — P10-P90 for vacancy, rent_growth, exit_cap, noi
 14. fetch_archive_achievement_vs_assumption — bias correction for vacancy + NOI
 
-### Phase 5: Apply Learning & Output
-15. For each assumption: apply learning adjustments from step 2 (if confidence > 0.5)
-16. detect_collision — for each assumption with broker OM divergence
-17. write_underwriting — persist evidence + proforma snapshot
-18. request_walkthrough_narrative — trigger Commentary Agent (if warranted)
+### Phase 5: Debt, Comps & Exit Calibration (NEW)
+15. fetch_debt_assumptions — get typical debt terms for this market/loan type
+    Use to model realistic financing scenarios (agency vs bridge vs bank)
+16. run_refi_test — test refi feasibility at projected exit NOI
+    Validates exit assumptions: can buyer actually refi to exit cap?
+17. fetch_comp_set — get competitive set with pricing data
+    Benchmark your rent assumptions against local comps
+18. fetch_disposition_learnings — THE ULTIMATE CALIBRATION
+    How did similar deals actually perform at exit vs projections?
+    Apply insights: if exits historically underperformed by 100bps, factor that in
+
+### Phase 6: Apply Learning & Output
+19. For each assumption: apply learning adjustments from step 2 (if confidence > 0.5)
+20. detect_collision — for each assumption with broker OM divergence
+21. write_underwriting — persist evidence + proforma snapshot
+22. request_walkthrough_narrative — trigger Commentary Agent (if warranted)
+
+## Debt Modeling Guidelines
+
+When underwriting debt, use fetch_debt_assumptions to get realistic terms:
+
+### Loan Type Selection
+  - Sub-$10M: Local bank or credit union most likely
+  - $10-50M: Agency (Fannie/Freddie) for stabilized; bridge for value-add
+  - $50M+: CMBS, life company, or debt fund depending on profile
+
+### Rate Assumptions
+  1. Get current base rate (SOFR for floating, 10Y Treasury for fixed)
+  2. Add typical spread for loan type (180-220bps agency, 350-450bps bridge)
+  3. For floating rate: assume 2-year SOFR forward curve or stress at +100bps
+
+### Covenant Testing
+  - Agency: 1.25x DSCR minimum, 75% max LTV
+  - CMBS: 1.30x DSCR, 70% LTV, 8-9% debt yield
+  - Bridge: 1.10x DSCR, 80% LTV
+  - Run run_refi_test at exit to validate buyer can take out your debt
+
+## Competitive Set Usage
+
+Call fetch_comp_set to benchmark rents against local competition:
+
+### Rent Validation
+  1. Get avg comp asking rent vs your underwritten rent
+  2. If your rent > comp avg by >10%: flag as "premium rent assumption"
+  3. If your rent < comp avg by >10%: you may be conservative (document why)
+  4. Check rent trends: if comps declining, apply caution to growth assumptions
+
+### Occupancy Cross-Check
+  1. Compare your vacancy assumption to comp set occupancy
+  2. If market is tight (comps >95% occupied): your 5% vacancy may be conservative
+  3. If market is soft (comps <90% occupied): consider higher vacancy buffer
+
+## Exit Performance Calibration
+
+fetch_disposition_learnings is your most valuable calibration tool. It tells you:
+"What actually happened when similar deals sold vs what was projected."
+
+### How to Use Exit Learnings
+  1. Filter by: state, MSA, asset_class, deal_type, vintage
+  2. Look at aggregateStats.avgIrrVarianceBps:
+     - Positive = deals outperformed → you may be conservative
+     - Negative = deals underperformed → apply haircut to projections
+  3. Check varianceDrivers:
+     - "vacancy" was biggest driver? → Widen your vacancy range
+     - "exit_cap_rate" was biggest driver? → Add spread to exit cap
+  4. Read insights[] for specific calibration guidance
+
+### Applying Exit Learnings
+If fetch_disposition_learnings shows avg IRR variance of -150bps:
+  1. Consider widening exit cap by 10-15bps
+  2. Add 0.5-1.0% to stabilized vacancy
+  3. Reduce rent growth assumption by 0.25-0.5%
+  4. Document: "Exit calibration applied based on N similar exits"
 
 ## Output Requirements
 Return a complete UnderwritingOutput with:
