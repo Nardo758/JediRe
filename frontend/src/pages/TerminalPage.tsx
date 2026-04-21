@@ -6,8 +6,8 @@ import { useCorporateHealthStore, useCorporateHealth } from "../store/corporateH
 import { useDealStore } from "../stores/dealStore";
 import { layersService } from "../services/layers.service";
 import { NewsIntelligencePage } from "./NewsIntelligencePage";
-import { ReportsPage } from "./ReportsPage";
 import { SettingsPage } from "./SettingsPage";
+import F3PortfolioView from "./terminal/F3PortfolioView";
 import F4MarketsView, { type MarketMover } from "./terminal/F4MarketsView";
 import F9AdminView from "./terminal/F9AdminView";
 import { M08StrategyBuilderPage } from "./settings/M08StrategyBuilderPage";
@@ -143,19 +143,18 @@ interface RankedPortfolioAsset {
 const PORTFOLIO_NAV = [
   {key:"F1",label:"DASHBOARD"},
   {key:"F2",label:"PIPELINE"},
-  {key:"F3",label:"PORTFOLIO"},
+  {key:"F3",label:"PORTFOLIO"},  // Now includes Reports
   {key:"F4",label:"MARKETS"},
   {key:"F5",label:"EMAIL"},
   {key:"F6",label:"NEWS"},
   {key:"F7",label:"STRATEGIES"},
-  {key:"F8",label:"REPORTS"},
-  {key:"F9",label:"ADMIN"},
-  {key:"F10",label:"SETTINGS"},
+  {key:"F8",label:"ADMIN"},      // Moved from F9
+  {key:"F9",label:"SETTINGS"},   // Moved from F10
 ];
 
 const FKEY_SLUG: Record<string,string> = {
   F1:"dashboard", F2:"pipeline", F3:"portfolio", F4:"markets",
-  F5:"email",     F6:"news",     F7:"strategies", F8:"reports", F9:"admin", F10:"settings",
+  F5:"email",     F6:"news",     F7:"strategies", F8:"admin", F9:"settings",
 };
 const SLUG_FKEY: Record<string,string> = Object.fromEntries(
   Object.entries(FKEY_SLUG).map(([k,v])=>[v,k])
@@ -2415,14 +2414,10 @@ export default function TerminalPage() {
     );
   };
 
-  // ─── VIEW: F7 REPORTS (ReportsPage) ────────────────────────
-  const ViewReports = () => (
-    <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
-      <ReportsPage />
-    </div>
-  );
+  // ─── F8: ADMIN (moved from F9) ─────────────────────────────
+  // F9AdminView is now used for F8
 
-  // ─── F8: SETTINGS (SettingsPage) ─────────────────────────
+  // ─── F9: SETTINGS (moved from F10) ─────────────────────────
 
   const fetchSubmarketHealth = useCorporateHealthStore(s => s.fetchSubmarketHealth);
   const dealStoreFetchSubmarketHealth = useDealStore(s => s.fetchSubmarketHealth);
@@ -2479,14 +2474,13 @@ export default function TerminalPage() {
     switch(fkey) {
       case "F1": return ViewDashboard();
       case "F2": return DealGrid();
-      case "F3": return ViewPortfolio();
+      case "F3": return <F3PortfolioView theme={T} />;
       case "F4": return ViewMarkets();
       case "F5": return ViewEmail();
       case "F6": return ViewNews();
       case "F7": return ViewStrategies();
-      case "F8": return ViewReports();
-      case "F9": return <F9AdminView T={T} />;
-      case "F10": return ViewSettings();
+      case "F8": return <F9AdminView T={T} />;
+      case "F9": return ViewSettings();
       default: return null;
     }
   };
