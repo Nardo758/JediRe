@@ -156,6 +156,15 @@ export async function recordDisposition(data: DispositionData): Promise<string> 
   // Feed to learning system
   await feedDispositionToLearning(data.dealId);
 
+  // Push to Data Library as a permanent comp record
+  await pushSoldDealToDataLibrary(data.dealId, {
+    salePrice: data.salePrice,
+    saleDate: data.closingDate,
+    trailingNoi: data.trailingNoi,
+    pricePerUnit,
+    buyerName: data.buyerName,
+  });
+
   return result.rows[0]?.id;
 }
 
@@ -226,6 +235,122 @@ export function calculateIRR(cashFlows: { date: Date; amount: number }[]): numbe
   }
   
   return null;
+}
+
+/**
+ * Push a sold deal into the Data Library as a permanent comp record.
+ * Called automatically at the end of recordDisposition.
+ *
+ * Uses the existing populate_data_library_from_deal() SQL function to create
+ * the base asset record, then enriches it with final sale financials and the
+ * last month of operational actuals (rent, occupancy, NOI).
+ */
+export async function pushSoldDealToDataLibrary(
+  dealId: string,
+  sale: {
+    salePrice: number;
+    saleDate: Date;
+    trailingNoi: number;
+    pricePerUnit: number;
+    buyerName?: string;
+  }
+): Promise<void> {
+  try {
+    // 1. Create / upsert the base Data Library asset record from the deal.
+    //    The function is idempotent via ON CONFLICT on deal_id if it already exists.
+    const assetResult = await query(
+      `SELECT id FROM data_library_assets WHERE deal_id = $1`,
+      [dealId]
+    );
+
+    let assetId: string;
+
+    if (assetResult.rows.length > 0) {
+      assetId = assetResult.rows[0].id as string;
+    } else {
+      const created = await query(
+        `SELECT populate_data_library_from_deal($1) AS asset_id`,
+        [dealId]
+      );
+      assetId = created.rows[0]?.asset_id as string;
+    }
+
+    if (!assetId) {
+      logger.warn('[disposition] Could not create Data Library asset', { dealId });
+      return;
+    }
+
+    // 2. Pull the last month of actuals for rent / occupancy.
+    const actualsResult = await query(
+      `SELECT avg_effective_rent, occupancy_rate, noi, noi_per_unit
+       FROM deal_monthly_actuals
+       WHERE deal_id = $1
+       ORDER BY report_month DESC LIMIT 1`,
+      [dealId]
+    );
+    const actuals = actualsResult.rows[0] as Record<string, unknown> | undefined;
+
+    // 3. Compute cap rate from trailing NOI and sale price.
+    const annualNoi = sale.trailingNoi;
+    const capRate = sale.salePrice > 0 ? annualNoi / sale.salePrice : null;
+
+    // 4. Get seller name from deal record.
+    const dealRow = await query(`SELECT name FROM deals WHERE id = $1`, [dealId]);
+    const sellerName = dealRow.rows[0]?.name as string | undefined;
+
+    // 5. Enrich the Data Library asset with final sale + operational financials.
+    await query(
+      `UPDATE data_library_assets SET
+         source_type        = 'owned_deal',
+         sale_price         = $2,
+         sale_date          = $3,
+         price_per_unit     = $4,
+         cap_rate           = $5,
+         buyer              = $6,
+         seller             = $7,
+         noi                = $8,
+         noi_per_unit       = $9,
+         avg_rent           = $10,
+         occupancy_rate     = $11,
+         noi_as_of_date     = $3,
+         rent_as_of_date    = $3,
+         occupancy_as_of_date = $3,
+         updated_at         = NOW()
+       WHERE id = $1`,
+      [
+        assetId,
+        sale.salePrice,
+        sale.saleDate,
+        sale.pricePerUnit,
+        capRate,
+        sale.buyerName ?? null,
+        sellerName ?? null,
+        annualNoi,
+        actuals?.noi_per_unit ? Number(actuals.noi_per_unit) : (sale.trailingNoi / Math.max(sale.pricePerUnit > 0 ? Math.round(sale.salePrice / sale.pricePerUnit) : 1, 1)),
+        actuals?.avg_effective_rent ? Number(actuals.avg_effective_rent) : null,
+        actuals?.occupancy_rate ? Number(actuals.occupancy_rate) * 100 : null,
+      ]
+    );
+
+    // 6. Also link any documents attached to the deal into data_library_files
+    //    by setting their deal_id reference — they stay where they are but are
+    //    now discoverable from the Data Library via the asset's deal_id.
+    //    (No file copy needed; the deal_id FK on data_library_assets is the link.)
+
+    logger.info('[disposition] Pushed sold deal to Data Library', {
+      dealId,
+      assetId,
+      salePrice: sale.salePrice,
+      capRate,
+    });
+
+  } catch (err) {
+    // Non-fatal — don't block the disposition record if this step fails.
+    logger.error('[disposition] Failed to push to Data Library', {
+      dealId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 /**
