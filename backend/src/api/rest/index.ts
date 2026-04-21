@@ -111,6 +111,7 @@ import timeSeriesRoutes from './time-series.routes';
 import driverAnalysisRoutes from './driver-analysis.routes';
 import agentRunsRoutes, { dealAgentRunsRouter } from './agent-runs.routes';
 import cashflowUnderwritingRoutes, { dealUnderwritingRouter } from './cashflow-underwriting.routes';
+import investorCapitalRoutes from './investor-capital.routes';
 
 const API_PREFIX = '/api/v1';
 
@@ -439,6 +440,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Deal Templates routes (F9 Settings — org-scoped template CRUD)
   app.use(`${API_PREFIX}/org/templates`, dealTemplatesRoutes);
+
+  // Investor Capital routes (LP/GP investors, capital calls, distributions, waterfall)
+  app.use(`${API_PREFIX}/capital`, investorCapitalRoutes);
 
   // 404 handler for API routes
   app.use(`${API_PREFIX}/*`, notFoundHandler);

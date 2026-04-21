@@ -1,0 +1,66 @@
+Here's what I built:
+
+───
+
+Investor & Capital Tracking System
+
+Database Tables (10 new tables)
+
+| Table                   | Purpose                                          |
+| ----------------------- | ------------------------------------------------ |
+| investors               | LP/GP entities with KYC, banking, withholding    |
+| deal_investments        | Commitments to deals with ownership %            |
+| capital_calls           | Call notices with due dates                      |
+| capital_call_items      | Per-investor call line items                     |
+| distributions           | Distribution events (operating, refi, sale)      |
+| distribution_items      | Per-investor distribution allocations            |
+| deal_waterfalls         | Waterfall config (pref rate, catch-up, clawback) |
+| waterfall_tiers         | Promote splits at IRR hurdles                    |
+| capital_account_entries | Running ledger of all capital movements          |
+| commitment_tranches     | Staged funding schedules                         |
+Waterfall Integration
+
+The system ties directly to your existing capital-structure.service.ts:
+
+Waterfall Flow:
+─────────────────────────────────────────────────────
+1. Return of Capital      → LP/GP pro-rata
+2. Preferred Return       → LP accrued at pref_rate (8% default)
+3. GP Catch-Up           → GP catches up to promote split
+4. Tier 1 (0-12% IRR)    → 80% LP / 20% GP
+5. Tier 2 (12-18% IRR)   → 70% LP / 30% GP
+6. Tier 3 (18%+ IRR)     → 60% LP / 40% GP
+Key Features
+
+Capital Calls:
+
+• Auto-allocates by pro-rata, commitment %, or custom
+• Tracks days overdue, default interest
+• Triggers update deal_investments on payment
+
+Distributions:
+
+• Simple pro-rata OR full waterfall allocation
+• Withholding tracking (federal, state, foreign)
+• Breaks down: return_of_capital, pref, profit_share, promote
+• K-1 tax year tracking
+
+Ledger:
+
+• Every capital movement creates a ledger entry
+• Running balance per investor per deal
+• Full audit trail
+
+API Endpoints (~40 total)
+
+/api/v1/capital/investors              → CRUD investors
+/api/v1/capital/deals/:id/investments  → Add/list investors on deal
+/api/v1/capital/deals/:id/capital-calls → Create/send/record payments
+/api/v1/capital/deals/:id/distributions → Create/approve/process
+/api/v1/capital/deals/:id/waterfall    → Configure waterfall tiers
+Next Steps
+
+1. Run migration in Replit
+2. Build UI for investor management
+3. Wire to DocuSign for subscription docs
+4. Add email notifications for capital calls/distributions

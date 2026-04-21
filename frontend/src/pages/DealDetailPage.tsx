@@ -64,6 +64,7 @@ import { TrendsAnalysisSection } from '../components/deal/sections/TrendsAnalysi
 import OpportunityEngineSection from '../components/deal/sections/OpportunityEngineSection';
 import { TrafficModule } from '../components/deal/sections/TrafficModule';
 import { ExitCapitalModule } from '../components/deal/sections/ExitCapitalModule';
+import { InvestorCapitalModule } from '../components/deal/sections/InvestorCapitalModule';
 
 import { StrategyArbitragePage } from './development/StrategyArbitragePage';
 import { RiskDDPage } from './development/RiskDDPage';
@@ -189,7 +190,8 @@ const DebtCapitalScreen = (props: ScreenProps) => (
     ]}
     accentColor={BT.text.cyan}
     tabs={[
-      { id: 'exit', label: 'Exit & Debt Analysis', component: (p: ScreenProps) => <ExitCapitalModule dealId={p.dealId} deal={p.deal} dealType={p.dealType} /> },
+      { id: 'exit',     label: 'Exit & Debt Analysis',   component: (p: ScreenProps) => <ExitCapitalModule dealId={p.dealId} deal={p.deal} dealType={p.dealType} /> },
+      { id: 'investors', label: 'Investor Capital',       component: (p: ScreenProps) => <InvestorCapitalModule dealId={p.dealId} deal={p.deal} /> },
     ]}
   />
 );
