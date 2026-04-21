@@ -493,6 +493,85 @@ router.post('/:dealId/other-income', requireAuth, async (req: AuthenticatedReque
   }
 });
 
+// ─── Projected vs Actual ─────────────────────────────────────────────
+
+/**
+ * GET /api/v1/operations/:dealId/projected-vs-actual
+ * Returns merged monthly rows of proforma (budget) vs actual performance.
+ * Joins deal_monthly_actuals budget rows with actuals rows on report_month.
+ */
+router.get('/:dealId/projected-vs-actual', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+
+    // Fetch budget (proforma) rows
+    const budgetRes = await query(
+      `SELECT
+         TO_CHAR(report_month, 'Mon') AS month,
+         TO_CHAR(report_month, 'YYYY-MM') AS period,
+         noi              AS proj_noi,
+         occupancy_rate   AS proj_occ,
+         avg_effective_rent AS proj_rent,
+         report_month
+       FROM deal_monthly_actuals
+       WHERE deal_id = $1 AND is_budget = true
+       ORDER BY report_month ASC`,
+      [dealId]
+    );
+
+    // Fetch actual rows
+    const actualRes = await query(
+      `SELECT
+         TO_CHAR(report_month, 'YYYY-MM') AS period,
+         noi              AS act_noi,
+         occupancy_rate   AS act_occ,
+         avg_effective_rent AS act_rent
+       FROM deal_monthly_actuals
+       WHERE deal_id = $1 AND is_budget = false AND is_proforma = false
+       ORDER BY report_month ASC`,
+      [dealId]
+    );
+
+    // Index actuals by period for fast lookup
+    const actualsMap: Record<string, typeof actualRes.rows[0]> = {};
+    for (const row of actualRes.rows) {
+      actualsMap[row.period as string] = row;
+    }
+
+    const rows = budgetRes.rows.map(b => {
+      const a = actualsMap[b.period as string];
+      return {
+        month:   b.month,
+        period:  b.period,
+        projNOI: b.proj_noi  != null ? Number(b.proj_noi)  : null,
+        actNOI:  a?.act_noi  != null ? Number(a.act_noi)   : null,
+        projOcc: b.proj_occ  != null ? Number(b.proj_occ) * 100 : null,
+        actOcc:  a?.act_occ  != null ? Number(a.act_occ)  * 100 : null,
+        projRent: b.proj_rent != null ? Number(b.proj_rent) : null,
+        actRent:  a?.act_rent != null ? Number(a.act_rent)  : null,
+      };
+    });
+
+    // If no budget rows exist, return actuals-only rows so the UI shows what's available
+    if (rows.length === 0 && actualRes.rows.length > 0) {
+      const actualsOnly = actualRes.rows.map(a => ({
+        month:   a.period ? String(a.period).slice(5, 7) : null,
+        period:  a.period,
+        projNOI: null, actNOI: a.act_noi != null ? Number(a.act_noi) : null,
+        projOcc: null, actOcc: a.act_occ != null ? Number(a.act_occ) * 100 : null,
+        projRent: null, actRent: a.act_rent != null ? Number(a.act_rent) : null,
+      }));
+      return res.json({ success: true, data: actualsOnly, hasProjections: false, hasActuals: true });
+    }
+
+    const hasActuals = rows.some(r => r.actNOI != null || r.actOcc != null);
+    res.json({ success: true, data: rows, hasProjections: rows.length > 0, hasActuals });
+  } catch (err) {
+    logger.error('Projected vs actual error:', err);
+    res.status(500).json({ success: false, error: 'Failed to get projected vs actual data' });
+  }
+});
+
 // ─── Learning Integration ─────────────────────────────────────────────
 
 /**
