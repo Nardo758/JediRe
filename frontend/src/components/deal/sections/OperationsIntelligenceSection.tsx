@@ -75,6 +75,8 @@ interface DbTrafficRow {
 interface OperationsIntelligenceSectionProps {
   dealId: string;
   deal?: Record<string, unknown>;
+  initialPanel?: SubPanel;
+  compact?: boolean;
 }
 
 type SubPanel = 'variance' | 'recommendations' | 'leases' | 'traffic';
@@ -714,64 +716,68 @@ const PANELS: { id: SubPanel; label: string; icon: React.ReactNode }[] = [
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export const OperationsIntelligenceSection: React.FC<OperationsIntelligenceSectionProps> = ({ dealId, deal }) => {
-  const [activePanel, setActivePanel] = useState<SubPanel>('variance');
+export const OperationsIntelligenceSection: React.FC<OperationsIntelligenceSectionProps> = ({ dealId, deal, initialPanel, compact }) => {
+  const [activePanel, setActivePanel] = useState<SubPanel>(initialPanel ?? 'variance');
 
   const BORDER = `1px solid ${BT.border.subtle}`;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BT.bg.terminal, overflow: 'hidden' }}>
 
-      {/* Module header */}
-      <div style={{
-        padding: '8px 16px',
-        background: BT.bg.header,
-        borderBottom: BORDER,
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        flexShrink: 0,
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Activity size={14} style={{ color: BT.text.cyan }} />
-          <span style={{ color: BT.text.primary, fontSize: 11, fontFamily: MONO, fontWeight: 700, letterSpacing: 1 }}>
-            M20 · OPERATIONS INTELLIGENCE
-          </span>
+      {/* Module header — hidden in compact mode */}
+      {!compact && (
+        <div style={{
+          padding: '8px 16px',
+          background: BT.bg.header,
+          borderBottom: BORDER,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          flexShrink: 0,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Activity size={14} style={{ color: BT.text.cyan }} />
+            <span style={{ color: BT.text.primary, fontSize: 11, fontFamily: MONO, fontWeight: 700, letterSpacing: 1 }}>
+              M20 · OPERATIONS INTELLIGENCE
+            </span>
+            <span style={{ color: BT.text.muted, fontSize: 9, fontFamily: MONO }}>
+              VARIANCE · AI RECS · LEASE EXPIRATIONS · TRAFFIC
+            </span>
+          </div>
           <span style={{ color: BT.text.muted, fontSize: 9, fontFamily: MONO }}>
-            VARIANCE · AI RECS · LEASE EXPIRATIONS · TRAFFIC
+            {(deal?.property_name as string) ?? (deal?.name as string) ?? dealId}
           </span>
         </div>
-        <span style={{ color: BT.text.muted, fontSize: 9, fontFamily: MONO }}>
-          {(deal?.property_name as string) ?? (deal?.name as string) ?? dealId}
-        </span>
-      </div>
+      )}
 
-      {/* Sub-panel tabs */}
-      <div style={{ display: 'flex', gap: 0, borderBottom: BORDER, background: BT.bg.panelAlt, flexShrink: 0 }}>
-        {PANELS.map((p) => {
-          const isActive = activePanel === p.id;
-          return (
-            <button
-              key={p.id}
-              onClick={() => setActivePanel(p.id)}
-              style={{
-                background: isActive ? BT.bg.active : 'transparent',
-                border: 'none',
-                borderRight: BORDER,
-                borderBottom: isActive ? `2px solid ${BT.text.cyan}` : '2px solid transparent',
-                color: isActive ? BT.text.cyan : BT.text.muted,
-                fontSize: 10, fontFamily: MONO, fontWeight: isActive ? 700 : 400,
-                letterSpacing: 0.8,
-                padding: '8px 16px',
-                cursor: 'pointer',
-                display: 'flex', alignItems: 'center', gap: 6,
-                transition: 'color 0.15s, background 0.15s',
-              }}
-            >
-              {p.icon}
-              {p.label}
-            </button>
-          );
-        })}
-      </div>
+      {/* Sub-panel tabs — hidden in compact mode (parent controls active panel) */}
+      {!compact && (
+        <div style={{ display: 'flex', gap: 0, borderBottom: BORDER, background: BT.bg.panelAlt, flexShrink: 0 }}>
+          {PANELS.map((p) => {
+            const isActive = activePanel === p.id;
+            return (
+              <button
+                key={p.id}
+                onClick={() => setActivePanel(p.id)}
+                style={{
+                  background: isActive ? BT.bg.active : 'transparent',
+                  border: 'none',
+                  borderRight: BORDER,
+                  borderBottom: isActive ? `2px solid ${BT.text.cyan}` : '2px solid transparent',
+                  color: isActive ? BT.text.cyan : BT.text.muted,
+                  fontSize: 10, fontFamily: MONO, fontWeight: isActive ? 700 : 400,
+                  letterSpacing: 0.8,
+                  padding: '8px 16px',
+                  cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  transition: 'color 0.15s, background 0.15s',
+                }}
+              >
+                {p.icon}
+                {p.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Panel content */}
       <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>

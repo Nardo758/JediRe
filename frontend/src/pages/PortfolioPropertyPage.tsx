@@ -22,7 +22,7 @@ const T = {
 type TabType =
   | 'overview' | 'performance' | 'comp-set'
   | 'leasing'
-  | 'ops-intel' | 'revenue' | 'actuals'
+  | 'revenue' | 'actuals'
   | 'investors' | 'lifecycle' | 'exit-timing' | 'refi-monitor'
   | 'ai-learning' | 'events'
   | 'documents' | 'reports' | 'deal-team';
@@ -432,7 +432,7 @@ const PerformanceTab: React.FC<{ dealId: string; financials: MonthlyFinancial[] 
 
 // ─── Revenue Management Tab ───────────────────────────────────
 const RevenueMgmtTab: React.FC<{ dealId: string }> = ({ dealId }) => {
-  const [subTab, setSubTab] = useState<'rent-roll' | 'other-income' | 'expenses'>('rent-roll');
+  const [subTab, setSubTab] = useState<'rent-roll' | 'other-income' | 'expenses' | 'variance' | 'recommendations' | 'lease-expirations'>('rent-roll');
   const [rentRoll, setRentRoll] = useState<{ units: any[]; snapshots: string[] } | null>(null);
   const [otherIncome, setOtherIncome] = useState<any[]>([]);
   const [actuals, setActuals] = useState<any[]>([]);
@@ -480,9 +480,12 @@ const RevenueMgmtTab: React.FC<{ dealId: string }> = ({ dealId }) => {
   ];
 
   const subTabs = [
-    { id: 'rent-roll',   label: 'RENT ROLL' },
-    { id: 'other-income',label: 'OTHER INCOME' },
-    { id: 'expenses',    label: 'EXPENSES' },
+    { id: 'rent-roll',          label: 'RENT ROLL' },
+    { id: 'other-income',       label: 'OTHER INCOME' },
+    { id: 'expenses',           label: 'EXPENSES' },
+    { id: 'variance',           label: 'VARIANCE' },
+    { id: 'recommendations',    label: 'AI RECOMMENDATIONS' },
+    { id: 'lease-expirations',  label: 'LEASE EXPIRATIONS' },
   ] as const;
 
   const emptyState = (icon: string, msg: string, sub?: string) => (
@@ -737,6 +740,23 @@ const RevenueMgmtTab: React.FC<{ dealId: string }> = ({ dealId }) => {
           </>
         );
       })()}
+
+      {/* ── Ops Intel sub-tabs (compact mode — no double nav) ── */}
+      {subTab === 'variance' && (
+        <div style={{ flex: 1, minHeight: 0 }}>
+          <OperationsIntelligenceSection dealId={dealId} initialPanel="variance" compact />
+        </div>
+      )}
+      {subTab === 'recommendations' && (
+        <div style={{ flex: 1, minHeight: 0 }}>
+          <OperationsIntelligenceSection dealId={dealId} initialPanel="recommendations" compact />
+        </div>
+      )}
+      {subTab === 'lease-expirations' && (
+        <div style={{ flex: 1, minHeight: 0 }}>
+          <OperationsIntelligenceSection dealId={dealId} initialPanel="leases" compact />
+        </div>
+      )}
 
     </div>
   );
@@ -1399,8 +1419,7 @@ export default function PortfolioPropertyPage() {
     ]},
     { label: 'REVENUE & OPS', tabs: [
       { id: 'leasing',   short: 'Leasing & Traffic' },
-      { id: 'ops-intel', short: 'Ops Intel' },
-      { id: 'revenue',   short: 'Revenue Mgmt' },
+      { id: 'revenue',   short: 'Operations' },
       { id: 'actuals',   short: 'Actuals' },
     ]},
     { label: 'CAPITAL & DEBT', tabs: [
@@ -1839,11 +1858,6 @@ export default function PortfolioPropertyPage() {
         {activeTab === 'performance'  && <PerformanceTab dealId={dealId!} financials={financials} />}
         {activeTab === 'comp-set'     && <CompSetTab dealId={dealId!} />}
         {activeTab === 'leasing'      && renderLeasing()}
-        {activeTab === 'ops-intel'    && (
-          <div style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 280px)' }}>
-            <OperationsIntelligenceSection dealId={dealId!} deal={deal as Record<string, unknown>} />
-          </div>
-        )}
         {activeTab === 'revenue'      && <RevenueMgmtTab dealId={dealId!} />}
         {activeTab === 'actuals'      && (
           <div style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 280px)' }}>
