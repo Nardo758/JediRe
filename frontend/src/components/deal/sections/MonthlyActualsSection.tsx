@@ -482,9 +482,14 @@ const MonthlyActualsSection: React.FC<Props> = ({ dealId, deal }) => {
 
           {actuals.map((a) => {
             const isExpanded = expandedRow === a.id;
-            const occ = a.occupancy_rate ?? (a.occupied_units && a.total_units ? a.occupied_units / a.total_units : null);
-            const expensesVal = a.expenses ?? (a.effective_gross_income && a.noi ? a.effective_gross_income - a.noi : null);
-            const opexRatio = expensesVal && a.effective_gross_income ? expensesVal / a.effective_gross_income : null;
+            const occ = a.occupancy_rate ??
+              (a.occupied_units != null && a.total_units != null && a.total_units !== 0
+                ? a.occupied_units / a.total_units : null);
+            const expensesVal = a.expenses ??
+              (a.effective_gross_income != null && a.noi != null
+                ? a.effective_gross_income - a.noi : null);
+            const opexRatio = expensesVal != null && a.effective_gross_income != null && a.effective_gross_income !== 0
+              ? expensesVal / a.effective_gross_income : null;
 
             return (
               <div key={a.id} style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
@@ -581,7 +586,9 @@ const MonthlyActualsSection: React.FC<Props> = ({ dealId, deal }) => {
               label: 'AVG OCCUPANCY',
               value: (() => {
                 const valid = actuals
-                  .map(a => a.occupancy_rate ?? (a.occupied_units && a.total_units ? a.occupied_units / a.total_units : null))
+                  .map(a => a.occupancy_rate ??
+                    (a.occupied_units != null && a.total_units != null && a.total_units !== 0
+                      ? a.occupied_units / a.total_units : null))
                   .filter((v): v is number => v != null);
                 return valid.length ? fmtPct(valid.reduce((a, b) => a + b, 0) / valid.length) : '—';
               })(),
