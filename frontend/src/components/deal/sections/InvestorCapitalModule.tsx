@@ -176,12 +176,15 @@ function InvestorsTab({ dealId, summary, onRefresh }: { dealId: string; summary:
   const [investments, setInvestments] = useState<Investment[]>([]);
   const [allInvestors, setAllInvestors] = useState<Array<{ id: string; name: string; type: string; kyc_status: string }>>([]);
   const [loading, setLoading] = useState(true);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ investor_id: '', commitment_amount: '', ownership_pct: '' });
   const [saving, setSaving] = useState(false);
+  const [formErr, setFormErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadErr(null);
     try {
       const [invRes, allRes] = await Promise.all([
         apiClient.get(`/api/v1/capital/deals/${dealId}/investments`),
@@ -189,7 +192,7 @@ function InvestorsTab({ dealId, summary, onRefresh }: { dealId: string; summary:
       ]);
       setInvestments(invRes.data?.investments ?? []);
       setAllInvestors(allRes.data?.investors ?? []);
-    } catch { /* silent */ }
+    } catch { setLoadErr('Failed to load investor data. Please try again.'); }
     setLoading(false);
   }, [dealId]);
 
@@ -198,6 +201,7 @@ function InvestorsTab({ dealId, summary, onRefresh }: { dealId: string; summary:
   const handleAdd = async () => {
     if (!form.investor_id || !form.commitment_amount) return;
     setSaving(true);
+    setFormErr(null);
     try {
       await apiClient.post(`/api/v1/capital/deals/${dealId}/investments`, {
         investor_id: form.investor_id,
@@ -208,11 +212,12 @@ function InvestorsTab({ dealId, summary, onRefresh }: { dealId: string; summary:
       setShowAdd(false);
       load();
       onRefresh();
-    } catch { /* silent */ }
+    } catch { setFormErr('Failed to add investor. Check the form and try again.'); }
     setSaving(false);
   };
 
   if (loading) return <div style={S.emptyState}>Loading investor roster…</div>;
+  if (loadErr) return <div style={{ ...S.emptyState, color: BT.text.red }}>{loadErr}</div>;
 
   const totalCommitted = investments.reduce((s, x) => s + Number(x.commitment_amount), 0);
 
@@ -268,6 +273,7 @@ function InvestorsTab({ dealId, summary, onRefresh }: { dealId: string; summary:
               {saving ? 'SAVING…' : 'ADD'}
             </button>
           </div>
+          {formErr && <div style={{ marginTop: 8, fontSize: 9, color: BT.text.red, fontFamily: mono }}>{formErr}</div>}
           <div style={{ marginTop: 8, fontSize: 8, color: BT.text.muted, fontFamily: mono }}>
             No investors yet? Create one first via the org-level investor registry.
           </div>
@@ -312,16 +318,19 @@ function InvestorsTab({ dealId, summary, onRefresh }: { dealId: string; summary:
 function CapitalCallsTab({ dealId, summary, onRefresh }: { dealId: string; summary: CapSummary | null; onRefresh: () => void }) {
   const [calls, setCalls] = useState<CapitalCall[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ call_date: '', due_date: '', total_amount: '', purpose: '' });
   const [saving, setSaving] = useState(false);
+  const [formErr, setFormErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadErr(null);
     try {
       const r = await apiClient.get(`/api/v1/capital/deals/${dealId}/capital-calls`);
       setCalls(r.data?.capitalCalls ?? []);
-    } catch { /* silent */ }
+    } catch { setLoadErr('Failed to load capital calls. Please try again.'); }
     setLoading(false);
   }, [dealId]);
 
@@ -330,6 +339,7 @@ function CapitalCallsTab({ dealId, summary, onRefresh }: { dealId: string; summa
   const handleCreate = async () => {
     if (!form.call_date || !form.due_date || !form.total_amount) return;
     setSaving(true);
+    setFormErr(null);
     try {
       await apiClient.post(`/api/v1/capital/deals/${dealId}/capital-calls`, {
         call_date: form.call_date, due_date: form.due_date,
@@ -338,7 +348,7 @@ function CapitalCallsTab({ dealId, summary, onRefresh }: { dealId: string; summa
       setForm({ call_date: '', due_date: '', total_amount: '', purpose: '' });
       setShowForm(false);
       load(); onRefresh();
-    } catch { /* silent */ }
+    } catch { setFormErr('Failed to create capital call. Please try again.'); }
     setSaving(false);
   };
 
@@ -346,10 +356,11 @@ function CapitalCallsTab({ dealId, summary, onRefresh }: { dealId: string; summa
     try {
       await apiClient.post(`/api/v1/capital/deals/${dealId}/capital-calls/${callId}/send`);
       load();
-    } catch { /* silent */ }
+    } catch { /* silent — row will not update if send fails */ }
   };
 
   if (loading) return <div style={S.emptyState}>Loading capital calls…</div>;
+  if (loadErr) return <div style={{ ...S.emptyState, color: BT.text.red }}>{loadErr}</div>;
 
   const pendingAmt = calls.filter(c => !['fully_paid','defaulted'].includes(c.status)).reduce((s, c) => s + (Number(c.total_amount) - Number(c.collected_amount)), 0);
 
@@ -392,6 +403,7 @@ function CapitalCallsTab({ dealId, summary, onRefresh }: { dealId: string; summa
               {saving ? 'SAVING…' : 'CREATE'}
             </button>
           </div>
+          {formErr && <div style={{ marginTop: 8, fontSize: 9, color: BT.text.red, fontFamily: mono }}>{formErr}</div>}
         </div>
       )}
 
@@ -438,16 +450,19 @@ function CapitalCallsTab({ dealId, summary, onRefresh }: { dealId: string; summa
 function DistributionsTab({ dealId, summary, onRefresh }: { dealId: string; summary: CapSummary | null; onRefresh: () => void }) {
   const [dists, setDists] = useState<Distribution[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ distribution_date: '', total_amount: '', distribution_type: 'operating', tax_year: String(new Date().getFullYear()) });
   const [saving, setSaving] = useState(false);
+  const [formErr, setFormErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadErr(null);
     try {
       const r = await apiClient.get(`/api/v1/capital/deals/${dealId}/distributions`);
       setDists(r.data?.distributions ?? []);
-    } catch { /* silent */ }
+    } catch { setLoadErr('Failed to load distributions. Please try again.'); }
     setLoading(false);
   }, [dealId]);
 
@@ -456,6 +471,7 @@ function DistributionsTab({ dealId, summary, onRefresh }: { dealId: string; summ
   const handleCreate = async () => {
     if (!form.distribution_date || !form.total_amount) return;
     setSaving(true);
+    setFormErr(null);
     try {
       await apiClient.post(`/api/v1/capital/deals/${dealId}/distributions`, {
         distribution_date: form.distribution_date,
@@ -466,7 +482,7 @@ function DistributionsTab({ dealId, summary, onRefresh }: { dealId: string; summ
       });
       setShowForm(false);
       load(); onRefresh();
-    } catch { /* silent */ }
+    } catch { setFormErr('Failed to create distribution. Please try again.'); }
     setSaving(false);
   };
 
@@ -485,6 +501,7 @@ function DistributionsTab({ dealId, summary, onRefresh }: { dealId: string; summ
   };
 
   if (loading) return <div style={S.emptyState}>Loading distributions…</div>;
+  if (loadErr) return <div style={{ ...S.emptyState, color: BT.text.red }}>{loadErr}</div>;
 
   return (
     <div>
@@ -527,6 +544,7 @@ function DistributionsTab({ dealId, summary, onRefresh }: { dealId: string; summ
               {saving ? 'SAVING…' : 'CREATE'}
             </button>
           </div>
+          {formErr && <div style={{ marginTop: 8, fontSize: 9, color: BT.text.red, fontFamily: mono }}>{formErr}</div>}
         </div>
       )}
 
@@ -810,12 +828,15 @@ export function InvestorCapitalModule({ dealId }: InvestorCapitalModuleProps) {
   useEffect(() => { loadSummary(); }, [loadSummary]);
 
   const pendingCalls = Number(summary?.pending_calls ?? 0);
+  const totalCommitted = Number(summary?.total_committed ?? 0);
+  const totalCalled = Number(summary?.total_called ?? 0);
+  const pctCalled = totalCommitted > 0 ? (totalCalled / totalCommitted) * 100 : null;
 
   return (
     <div style={S.root}>
       <style>{BT_CSS}</style>
 
-      {/* ── header banner ── */}
+      {/* ── pending calls alert ── */}
       {pendingCalls > 0 && (
         <AlertBanner
           label="PENDING CALLS"
@@ -824,6 +845,34 @@ export function InvestorCapitalModule({ dealId }: InvestorCapitalModuleProps) {
           badge={<Bd c={BT.text.amber}>{pendingCalls} OUTSTANDING</Bd>}
         />
       )}
+
+      {/* ── global KPI summary row ── */}
+      <div style={{ ...S.kpiRow, padding: '8px 12px', margin: 0, borderBottom: `1px solid ${BT.border.subtle}`, background: BT.bg.panel }}>
+        <KpiCard
+          label="Total Committed"
+          value={fmtAmt(totalCommitted)}
+          sub={`${Number(summary?.investor_count ?? 0)} investor${Number(summary?.investor_count ?? 0) !== 1 ? 's' : ''}`}
+          color={BT.text.primary}
+        />
+        <KpiCard
+          label="% Called"
+          value={pctCalled != null ? `${pctCalled.toFixed(1)}%` : '—'}
+          sub={`${fmtAmt(totalCalled)} called`}
+          color={pctCalled != null && pctCalled >= 75 ? BT.text.amber : BT.text.cyan}
+        />
+        <KpiCard
+          label="Total Distributed"
+          value={fmtAmt(summary?.total_distributed)}
+          sub="Completed payments"
+          color={BT.text.green}
+        />
+        <KpiCard
+          label="Investors"
+          value={String(Number(summary?.investor_count ?? 0))}
+          sub={pendingCalls > 0 ? `${pendingCalls} call${pendingCalls > 1 ? 's' : ''} pending` : 'All active'}
+          color={pendingCalls > 0 ? BT.text.amber : BT.text.muted}
+        />
+      </div>
 
       {/* ── tab bar ── */}
       <div style={S.tabBar}>
