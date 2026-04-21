@@ -116,54 +116,77 @@ router.get('/assets', requireAuth, async (req: AuthenticatedRequest, res: Respon
 
 /**
  * GET /api/v1/portfolio/performance
- * Get portfolio performance time series
+ * Get portfolio performance time series with projected vs actual comparison
  */
 router.get('/performance', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { timeframe = 'ytd' } = req.query;
     
-    // Determine date range based on timeframe
     let months = 12;
     if (timeframe === 'mtd') months = 1;
     if (timeframe === 'qtd') months = 3;
     if (timeframe === 'ltm') months = 12;
     
-    // Try to get from actual_performance if available
+    // Try to get actuals joined with pro forma projections from deal_data
     const result = await query(`
       SELECT 
-        TO_CHAR(period_start, 'Mon YY') as period,
-        COALESCE(SUM(actual_noi), 0) as noi,
-        COALESCE(AVG(actual_occupancy_pct), 0) as occupancy,
-        COUNT(DISTINCT deal_id) as n_deals
-      FROM actual_performance
-      WHERE period_start >= NOW() - INTERVAL '${months} months'
-      GROUP BY period_start
-      ORDER BY period_start
+        TO_CHAR(ap.period_start, 'Mon YY') as period,
+        ap.period_start,
+        COALESCE(SUM(ap.actual_noi), 0) as actual_noi,
+        COALESCE(AVG(ap.actual_occupancy_pct), 0) as actual_occupancy,
+        COALESCE(SUM((d.deal_data->>'noi')::numeric / 12.0), 0) as projected_noi,
+        COALESCE(AVG((d.deal_data->>'occupancy_rate')::numeric), 0) as projected_occupancy,
+        COUNT(DISTINCT ap.deal_id) as n_deals
+      FROM actual_performance ap
+      JOIN deals d ON d.id = ap.deal_id
+      WHERE ap.period_start >= NOW() - INTERVAL '${months} months'
+      GROUP BY ap.period_start
+      ORDER BY ap.period_start
     `);
 
     if (result.rows.length > 0) {
       res.json({ 
-        data: result.rows.map((r: Record<string, unknown>) => ({
-          period: r.period,
-          noi: Number(r.noi),
-          occupancy: Number(r.occupancy),
-          collections: 97 + Math.random() * 2,
-          expenses: Number(r.noi) * 0.45,
-        }))
+        data: result.rows.map((r: Record<string, unknown>) => {
+          const actualNoi = Number(r.actual_noi);
+          const projectedNoi = Number(r.projected_noi);
+          const actualOcc = Number(r.actual_occupancy);
+          const projectedOcc = Number(r.projected_occupancy);
+          return {
+            period: r.period,
+            actual_noi: actualNoi,
+            projected_noi: projectedNoi || actualNoi * 0.95,
+            actual_occupancy: actualOcc,
+            projected_occupancy: projectedOcc || actualOcc * 0.98,
+            noi: actualNoi,
+            occupancy: actualOcc,
+            collections: 97 + Math.random() * 2,
+            expenses: actualNoi * 0.45,
+          };
+        })
       });
     } else {
-      // Generate placeholder data if no actuals
+      // Generate illustrative data with projected vs actual variance when no actuals exist
       const data = [];
       const now = new Date();
+      const baseNoi = 450000;
+      const baseOcc = 93.5;
       for (let i = months - 1; i >= 0; i--) {
         const d = new Date(now);
         d.setMonth(d.getMonth() - i);
+        const projNoi = baseNoi + 10000 * (months - 1 - i);
+        const actualNoi = projNoi * (0.92 + Math.random() * 0.16);
+        const projOcc = baseOcc + 0.1 * (months - 1 - i);
+        const actualOcc = Math.min(projOcc * (0.97 + Math.random() * 0.06), 100);
         data.push({
           period: d.toLocaleString('default', { month: 'short', year: '2-digit' }),
-          noi: 450000 + Math.random() * 50000,
-          occupancy: 92 + Math.random() * 5,
+          actual_noi: actualNoi,
+          projected_noi: projNoi,
+          actual_occupancy: actualOcc,
+          projected_occupancy: projOcc,
+          noi: actualNoi,
+          occupancy: actualOcc,
           collections: 96 + Math.random() * 3,
-          expenses: 200000 + Math.random() * 30000,
+          expenses: actualNoi * 0.45,
         });
       }
       res.json({ data });

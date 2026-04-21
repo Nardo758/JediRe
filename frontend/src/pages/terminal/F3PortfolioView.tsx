@@ -73,6 +73,10 @@ interface PerformanceData {
   occupancy: number;
   collections: number;
   expenses: number;
+  actual_noi?: number;
+  projected_noi?: number;
+  actual_occupancy?: number;
+  projected_occupancy?: number;
 }
 
 interface AgentAccuracy {
@@ -123,6 +127,7 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
   const [agentAccuracy, setAgentAccuracy] = useState<AgentAccuracy[]>([]);
   const [expandedAssets, setExpandedAssets] = useState<Set<string>>(new Set());
   const [selectedTimeframe, setSelectedTimeframe] = useState<'mtd' | 'qtd' | 'ytd' | 'ltm'>('ytd');
+  const [selectedPeriod, setSelectedPeriod] = useState<string | null>(null);
 
   // Comp Sets state
   const [comps, setComps] = useState<Record<string, PortfolioComp[]>>({});
@@ -157,6 +162,14 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
   useEffect(() => {
     loadPortfolioData();
   }, []);
+
+  // Reload performance data when timeframe changes
+  useEffect(() => {
+    apiClient.get(`/api/v1/portfolio/performance?timeframe=${selectedTimeframe}`)
+      .then(res => setPerformance(res.data.data || []))
+      .catch(() => {});
+    setSelectedPeriod(null);
+  }, [selectedTimeframe]);
   
   const loadPortfolioData = async () => {
     setLoading(true);
@@ -170,7 +183,7 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
       setAssets(assetsRes.data.assets || []);
       
       // Load performance data
-      const perfRes = await apiClient.get('/api/v1/portfolio/performance?timeframe=ytd').catch(() => ({ data: { data: [] } }));
+      const perfRes = await apiClient.get(`/api/v1/portfolio/performance?timeframe=${selectedTimeframe}`).catch(() => ({ data: { data: [] } }));
       setPerformance(perfRes.data.data || []);
       
       // Load agent learning metrics
@@ -539,60 +552,178 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
         </button>
       </div>
       
+      {/* Variance Summary Banner — full width */}
+      {(() => {
+        const slice = performance.slice(-12);
+        const totalActualNoi = slice.reduce((s, p) => s + (p.actual_noi ?? p.noi ?? 0), 0);
+        const totalProjNoi   = slice.reduce((s, p) => s + (p.projected_noi ?? p.noi ?? 0), 0);
+        const avgActualOcc   = slice.length ? slice.reduce((s, p) => s + (p.actual_occupancy ?? p.occupancy ?? 0), 0) / slice.length : 0;
+        const avgProjOcc     = slice.length ? slice.reduce((s, p) => s + (p.projected_occupancy ?? p.occupancy ?? 0), 0) / slice.length : 0;
+        const noiVar = totalProjNoi > 0 ? ((totalActualNoi - totalProjNoi) / totalProjNoi) * 100 : 0;
+        const occVar = avgProjOcc > 0 ? ((avgActualOcc - avgProjOcc) / avgProjOcc) * 100 : 0;
+        const fmtBig = (v: number) => v >= 1e6 ? `$${(v/1e6).toFixed(1)}M` : v >= 1e3 ? `$${(v/1e3).toFixed(0)}K` : `$${v.toFixed(0)}`;
+        const varColor = (v: number) => v >= 0 ? T.text.green : T.text.red;
+        const varSign  = (v: number) => v >= 0 ? '+' : '';
+        return (
+          <div style={{
+            gridColumn: '1 / -1',
+            background: T.bg.panel,
+            border: `1px solid ${T.border.subtle}`,
+            padding: '10px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 32,
+          }}>
+            <div style={{ fontSize: 9, fontWeight: 700, color: T.text.muted, fontFamily: MONO, letterSpacing: 1, flexShrink: 0 }}>
+              {selectedTimeframe.toUpperCase()} VARIANCE
+            </div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+              <span style={{ fontSize: 9, color: T.text.muted, fontFamily: MONO }}>NOI</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: T.text.primary, fontFamily: MONO }}>{fmtBig(totalActualNoi)}</span>
+              <span style={{ fontSize: 9, color: T.text.muted, fontFamily: MONO }}>actual vs</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: T.text.amber, fontFamily: MONO }}>{fmtBig(totalProjNoi)}</span>
+              <span style={{ fontSize: 9, color: T.text.muted, fontFamily: MONO }}>projected</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: varColor(noiVar), fontFamily: MONO }}>
+                ({varSign(noiVar)}{noiVar.toFixed(1)}%)
+              </span>
+            </div>
+            <div style={{ width: 1, height: 24, background: T.border.subtle }} />
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+              <span style={{ fontSize: 9, color: T.text.muted, fontFamily: MONO }}>OCC</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: T.text.primary, fontFamily: MONO }}>{avgActualOcc.toFixed(1)}%</span>
+              <span style={{ fontSize: 9, color: T.text.muted, fontFamily: MONO }}>actual vs</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: T.text.amber, fontFamily: MONO }}>{avgProjOcc.toFixed(1)}%</span>
+              <span style={{ fontSize: 9, color: T.text.muted, fontFamily: MONO }}>projected</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: varColor(occVar), fontFamily: MONO }}>
+                ({varSign(occVar)}{occVar.toFixed(1)}%)
+              </span>
+            </div>
+            {selectedPeriod && (
+              <>
+                <div style={{ width: 1, height: 24, background: T.border.subtle }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 9, color: T.text.amber, fontFamily: MONO, letterSpacing: 0.5 }}>
+                    SELECTED: {selectedPeriod}
+                  </span>
+                  <button
+                    onClick={() => setSelectedPeriod(null)}
+                    style={{ background: 'none', border: 'none', color: T.text.muted, cursor: 'pointer', fontSize: 10, padding: 0, fontFamily: MONO }}
+                  >
+                    ×
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        );
+      })()}
+
       {/* NOI Performance */}
       <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, padding: 16 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: T.text.cyan, letterSpacing: 1, marginBottom: 12, fontFamily: MONO }}>
-          NOI PERFORMANCE
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: T.text.cyan, letterSpacing: 1, fontFamily: MONO }}>
+            NOI PERFORMANCE
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <div style={{ width: 10, height: 8, background: T.text.green, borderRadius: 1 }} />
+              <span style={{ fontSize: 8, color: T.text.muted, fontFamily: MONO }}>ACTUAL</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <svg width="16" height="8"><line x1="0" y1="4" x2="16" y2="4" stroke={T.text.amber} strokeWidth="1.5" strokeDasharray="3,2" /></svg>
+              <span style={{ fontSize: 8, color: T.text.muted, fontFamily: MONO }}>PROJECTED</span>
+            </div>
+          </div>
         </div>
         {(() => {
           const slice = performance.slice(-12);
-          const maxNoi = Math.max(...slice.map(x => x.noi ?? 0), 1);
+          const maxNoi = Math.max(
+            ...slice.map(x => x.actual_noi ?? x.noi ?? 0),
+            ...slice.map(x => x.projected_noi ?? x.noi ?? 0),
+            1,
+          );
           const BAR_H = 160;
           const fmt = (v: number) => v >= 1e6 ? `$${(v/1e6).toFixed(1)}M` : v >= 1e3 ? `$${(v/1e3).toFixed(0)}K` : `$${v.toFixed(0)}`;
+          const n = slice.length || 1;
+          const projPoints = slice.map((p, i) => {
+            const proj = p.projected_noi ?? p.noi ?? 0;
+            const x = ((i + 0.5) / n) * 100;
+            const y = (1 - Math.min(proj / maxNoi, 1)) * BAR_H;
+            return `${x},${y}`;
+          }).join(' ');
           return (
             <div style={{ display: 'flex', gap: 6 }}>
               {/* Y-axis */}
               <div style={{ width: 36, position: 'relative', height: BAR_H + 20, flexShrink: 0 }}>
                 {[1, 0.5, 0].map((frac) => (
                   <div key={frac} style={{
-                    position: 'absolute',
-                    right: 0,
-                    top: `${(1 - frac) * BAR_H}px`,
-                    transform: 'translateY(-50%)',
-                    fontSize: 7,
-                    color: T.text.muted,
-                    fontFamily: MONO,
-                    textAlign: 'right',
-                    lineHeight: 1,
+                    position: 'absolute', right: 0,
+                    top: `${(1 - frac) * BAR_H}px`, transform: 'translateY(-50%)',
+                    fontSize: 7, color: T.text.muted, fontFamily: MONO, textAlign: 'right', lineHeight: 1,
                   }}>
                     {fmt(maxNoi * frac)}
                   </div>
                 ))}
-                {/* tick lines */}
                 {[1, 0.5, 0].map((frac) => (
                   <div key={`t${frac}`} style={{
-                    position: 'absolute',
-                    left: 32,
-                    top: `${(1 - frac) * BAR_H}px`,
-                    width: 4,
-                    height: 1,
-                    background: T.border.subtle,
+                    position: 'absolute', left: 32, top: `${(1 - frac) * BAR_H}px`,
+                    width: 4, height: 1, background: T.border.subtle,
                   }} />
                 ))}
               </div>
-              {/* Bars */}
-              <div style={{ flex: 1, height: BAR_H + 20, overflow: 'hidden', display: 'flex', alignItems: 'flex-end', gap: 4 }}>
-                {slice.map((p, i) => (
-                  <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                    <div style={{
-                      width: '100%',
-                      background: T.text.green,
-                      height: `${Math.max(((p.noi ?? 0) / maxNoi) * BAR_H, 4)}px`,
-                      borderRadius: '2px 2px 0 0',
-                    }} />
-                    <div style={{ fontSize: 7, color: T.text.muted, marginTop: 3, fontFamily: MONO }}>{p.period}</div>
-                  </div>
-                ))}
+              {/* Bars + SVG overlay */}
+              <div style={{ flex: 1, position: 'relative', height: BAR_H + 20 }}>
+                {/* Bars */}
+                <div style={{ height: BAR_H, display: 'flex', alignItems: 'flex-end', gap: 4, overflow: 'hidden' }}>
+                  {slice.map((p, i) => {
+                    const actual = p.actual_noi ?? p.noi ?? 0;
+                    const isSelected = selectedPeriod === p.period;
+                    return (
+                      <div
+                        key={i}
+                        style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer' }}
+                        onClick={() => setSelectedPeriod(isSelected ? null : p.period)}
+                        title={`${p.period}: ${fmt(actual)} actual`}
+                      >
+                        <div style={{
+                          width: '100%',
+                          background: isSelected ? T.text.cyan : T.text.green,
+                          height: `${Math.max((actual / maxNoi) * BAR_H, 4)}px`,
+                          borderRadius: '2px 2px 0 0',
+                          opacity: selectedPeriod && !isSelected ? 0.5 : 1,
+                          transition: 'all 0.15s',
+                        }} />
+                      </div>
+                    );
+                  })}
+                </div>
+                {/* Projected line SVG overlay */}
+                <svg
+                  style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: `${BAR_H}px`, pointerEvents: 'none', overflow: 'visible' }}
+                  viewBox={`0 0 100 ${BAR_H}`}
+                  preserveAspectRatio="none"
+                >
+                  <polyline
+                    points={projPoints}
+                    fill="none"
+                    stroke={T.text.amber}
+                    strokeWidth="1.5"
+                    strokeDasharray="4,3"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                  {slice.map((p, i) => {
+                    const proj = p.projected_noi ?? p.noi ?? 0;
+                    const x = ((i + 0.5) / n) * 100;
+                    const y = (1 - Math.min(proj / maxNoi, 1)) * BAR_H;
+                    return <circle key={i} cx={x} cy={y} r="2" fill={T.text.amber} vectorEffect="non-scaling-stroke" />;
+                  })}
+                </svg>
+                {/* Period labels */}
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {slice.map((p, i) => (
+                    <div key={i} style={{ flex: 1, textAlign: 'center', fontSize: 7, color: T.text.muted, marginTop: 3, fontFamily: MONO }}>{p.period}</div>
+                  ))}
+                </div>
               </div>
             </div>
           );
@@ -601,60 +732,114 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
       
       {/* Occupancy Trend */}
       <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, padding: 16 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: T.text.cyan, letterSpacing: 1, marginBottom: 12, fontFamily: MONO }}>
-          OCCUPANCY TREND
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: T.text.cyan, letterSpacing: 1, fontFamily: MONO }}>
+            OCCUPANCY TREND
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <div style={{ width: 10, height: 8, background: T.text.green, borderRadius: 1 }} />
+              <span style={{ fontSize: 8, color: T.text.muted, fontFamily: MONO }}>ACTUAL</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <svg width="16" height="8"><line x1="0" y1="4" x2="16" y2="4" stroke={T.text.amber} strokeWidth="1.5" strokeDasharray="3,2" /></svg>
+              <span style={{ fontSize: 8, color: T.text.muted, fontFamily: MONO }}>PROJECTED</span>
+            </div>
+          </div>
         </div>
         {(() => {
           const slice = performance.slice(-12);
-          const minOcc = 85; // floor for visual range
+          const allOcc = [
+            ...slice.map(p => p.actual_occupancy ?? p.occupancy ?? 0),
+            ...slice.map(p => p.projected_occupancy ?? p.occupancy ?? 0),
+          ].filter(v => v > 0);
+          const minOcc = Math.max(Math.min(...allOcc, 85) - 2, 0);
           const maxOcc = 100;
-          const range = maxOcc - minOcc;
+          const range = maxOcc - minOcc || 1;
           const BAR_H = 160;
           const toBarH = (occ: number) => Math.max(((Math.max(occ, minOcc) - minOcc) / range) * BAR_H, 4);
-          const ticks = [100, 95, 90, 85];
+          const toY    = (occ: number) => (1 - (Math.max(occ, minOcc) - minOcc) / range) * BAR_H;
+          const ticks = [100, 95, 90, 85].filter(t => t >= minOcc);
+          const n = slice.length || 1;
+          const projPoints = slice.map((p, i) => {
+            const proj = p.projected_occupancy ?? p.occupancy ?? 0;
+            const x = ((i + 0.5) / n) * 100;
+            const y = toY(proj);
+            return `${x},${y}`;
+          }).join(' ');
           return (
             <div style={{ display: 'flex', gap: 6 }}>
               {/* Y-axis */}
               <div style={{ width: 36, position: 'relative', height: BAR_H + 20, flexShrink: 0 }}>
                 {ticks.map((t) => (
                   <div key={t} style={{
-                    position: 'absolute',
-                    right: 0,
-                    top: `${((maxOcc - t) / range) * BAR_H}px`,
-                    transform: 'translateY(-50%)',
-                    fontSize: 7,
-                    color: T.text.muted,
-                    fontFamily: MONO,
-                    textAlign: 'right',
-                    lineHeight: 1,
+                    position: 'absolute', right: 0,
+                    top: `${((maxOcc - t) / range) * BAR_H}px`, transform: 'translateY(-50%)',
+                    fontSize: 7, color: T.text.muted, fontFamily: MONO, textAlign: 'right', lineHeight: 1,
                   }}>
                     {t}%
                   </div>
                 ))}
                 {ticks.map((t) => (
                   <div key={`t${t}`} style={{
-                    position: 'absolute',
-                    left: 32,
-                    top: `${((maxOcc - t) / range) * BAR_H}px`,
-                    width: 4,
-                    height: 1,
-                    background: T.border.subtle,
+                    position: 'absolute', left: 32, top: `${((maxOcc - t) / range) * BAR_H}px`,
+                    width: 4, height: 1, background: T.border.subtle,
                   }} />
                 ))}
               </div>
-              {/* Bars */}
-              <div style={{ flex: 1, height: BAR_H + 20, overflow: 'hidden', display: 'flex', alignItems: 'flex-end', gap: 4 }}>
-                {slice.map((p, i) => (
-                  <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                    <div style={{
-                      width: '100%',
-                      background: (p.occupancy ?? 0) > 93 ? T.text.green : (p.occupancy ?? 0) > 90 ? T.text.amber : T.text.red,
-                      height: `${toBarH(p.occupancy ?? 0)}px`,
-                      borderRadius: '2px 2px 0 0',
-                    }} />
-                    <div style={{ fontSize: 7, color: T.text.muted, marginTop: 3, fontFamily: MONO }}>{p.period}</div>
-                  </div>
-                ))}
+              {/* Bars + SVG overlay */}
+              <div style={{ flex: 1, position: 'relative', height: BAR_H + 20 }}>
+                <div style={{ height: BAR_H, display: 'flex', alignItems: 'flex-end', gap: 4, overflow: 'hidden' }}>
+                  {slice.map((p, i) => {
+                    const occ = p.actual_occupancy ?? p.occupancy ?? 0;
+                    const isSelected = selectedPeriod === p.period;
+                    const barColor = occ > 93 ? T.text.green : occ > 90 ? T.text.amber : T.text.red;
+                    return (
+                      <div
+                        key={i}
+                        style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer' }}
+                        onClick={() => setSelectedPeriod(isSelected ? null : p.period)}
+                        title={`${p.period}: ${occ.toFixed(1)}% actual`}
+                      >
+                        <div style={{
+                          width: '100%',
+                          background: isSelected ? T.text.cyan : barColor,
+                          height: `${toBarH(occ)}px`,
+                          borderRadius: '2px 2px 0 0',
+                          opacity: selectedPeriod && !isSelected ? 0.5 : 1,
+                          transition: 'all 0.15s',
+                        }} />
+                      </div>
+                    );
+                  })}
+                </div>
+                {/* Projected line SVG overlay */}
+                <svg
+                  style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: `${BAR_H}px`, pointerEvents: 'none', overflow: 'visible' }}
+                  viewBox={`0 0 100 ${BAR_H}`}
+                  preserveAspectRatio="none"
+                >
+                  <polyline
+                    points={projPoints}
+                    fill="none"
+                    stroke={T.text.amber}
+                    strokeWidth="1.5"
+                    strokeDasharray="4,3"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                  {slice.map((p, i) => {
+                    const proj = p.projected_occupancy ?? p.occupancy ?? 0;
+                    const x = ((i + 0.5) / n) * 100;
+                    const y = toY(proj);
+                    return <circle key={i} cx={x} cy={y} r="2" fill={T.text.amber} vectorEffect="non-scaling-stroke" />;
+                  })}
+                </svg>
+                {/* Period labels */}
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {slice.map((p, i) => (
+                    <div key={i} style={{ flex: 1, textAlign: 'center', fontSize: 7, color: T.text.muted, marginTop: 3, fontFamily: MONO }}>{p.period}</div>
+                  ))}
+                </div>
               </div>
             </div>
           );
