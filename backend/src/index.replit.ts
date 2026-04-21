@@ -495,6 +495,10 @@ app.use('/api/v1/operations', operationsRouter);
 import lifecycleRouter from './api/rest/lifecycle.routes';
 app.use('/api/v1/lifecycle', lifecycleRouter);
 
+// Organization routes (multi-tenant, team assignments, integrations)
+import organizationRouter from './api/rest/organization.routes';
+app.use('/api/v1/organization', organizationRouter);
+
 app.use('/api/v1/unit-mix', requireAuth, createUnitMixRoutes(pool));
 
 app.get('/api/v1/apartment-sync/trends', requireAuth, async (req: any, res) => {
