@@ -371,8 +371,19 @@ router.post('/:dealId/rent-roll', requireAuth, async (req: AuthenticatedRequest,
  */
 router.get('/:dealId/traffic', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
+    const { dealId } = req.params;
     const { months = '3' } = req.query;
-    const analysis = await analyzeTrafficPerformance(req.params.dealId, parseInt(months as string, 10));
+
+    // Verify deal ownership
+    const ownerCheck = await query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
+      [dealId, req.user!.userId]
+    );
+    if (ownerCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
+
+    const analysis = await analyzeTrafficPerformance(dealId, parseInt(months as string, 10));
     res.json({ success: true, traffic: analysis });
   } catch (err) {
     logger.error('Traffic analysis error:', err);
