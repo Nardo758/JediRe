@@ -1,0 +1,295 @@
+[4/20/2026 11:04 PM] RocketManOpenClaw2: Done. Here's the complete architecture:
+
+───
+
+Organization & Integration Architecture
+
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                         MULTI-TENANT ORGANIZATION MODEL                              │
+├─────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                      │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐    │
+│  │                           ORGANIZATION                                       │    │
+│  │  • name, slug, plan_tier (starter/professional/enterprise)                   │    │
+│  │  • stripe_customer_id, stripe_subscription_id                               │    │
+│  │  • max_users, max_deals, max_storage_gb                                     │    │
+│  │  • branding (logo, colors)                                                  │    │
+│  └─────────────────────────────────────────────────────────────────────────────┘    │
+│              │                                                                       │
+│              │ has many                                                             │
+│              ▼                                                                       │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐    │
+│  │                        ORGANIZATION MEMBERS                                  │    │
+│  │  • user_id, role (owner/admin/member/viewer)                                │    │
+│  │  • title ("VP of Acquisitions"), department ("Acquisitions")                │    │
+│  │  • work_email (BYOE - Bring Your Own Email)                                 │    │
+│  │  • email_connected, email_provider (gmail/outlook)                          │    │
+│  │  • email_oauth_token_encrypted                                              │    │
+│  └─────────────────────────────────────────────────────────────────────────────┘    │
+│              │                                                                       │
+│              │ assigned to                                                          │
+│              ▼                                                                       │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐    │
+│  │                        DEAL TEAM ASSIGNMENTS                                 │    │
+│  │  • deal_id, member_id                                                       │    │
+│  │  • deal_role (lead/analyst/asset_manager/legal/finance/observer)            │    │
+│  │  • phase (underwriting/due_diligence/closing/operations)                    │    │
+│  │  • can_edit, can_approve, can_sign, receives_notifications                  │    │
+│  └─────────────────────────────────────────────────────────────────────────────┘    │
+│                                                                                      │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                         THIRD-PARTY INTEGRATIONS                                     │
+├─────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                      │
+│  ┌───────────────────┐  ┌───────────────────┐  ┌───────────────────┐               │
+│  │     DOCUSIGN      │  │     NOTARIZE      │  │       PLAID       │               │
+│  │  ───────────────  │  │  ───────────────  │  │  ───────────────  │               │
+│  │  • PSA signing    │  │  • Remote online  │  │  • Identity       │               │
+│  │  • LOI signing    │  │    notarization   │  │    verification   │               │
+│  │  • Loan docs      │  │  • Any document   │  │  • KYC / KYB      │               │
+[4/20/2026 11:04 PM] RocketManOpenClaw2: │  │  • Amendments     │  │  • Audit trail    │  │  • Bank account   │               │
+│  │                   │  │                   │  │    verification   │               │
+│  │  Webhook: status  │  │  Webhook: status  │  │  Webhook: results │               │
+│  └───────────────────┘  └───────────────────┘  └───────────────────┘               │
+│                                                                                      │
+│  Pattern: Stripe-like credential wrapper                                            │
+│  • credentials_encrypted (AES-256-CBC)                                             │
+│  • access_token_encrypted, refresh_token_encrypted                                 │
+│  • environment: sandbox | production                                               │
+│  • webhook_secret for verification                                                 │
+│                                                                                      │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                         CONTEXT TRACKER (Email-Wired)                                │
+├─────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                      │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐    │
+│  │                        DEAL CONTEXT ITEMS                                    │    │
+│  │  context_type: decision | action_item | key_info | risk | contact | note    │    │
+│  │  • title, description, category, priority, status                           │    │
+│  │  • due_date (for action items), assigned_to                                 │    │
+│  │  • source_type: manual | email | document | ai_extracted                    │    │
+│  │  • source_email_id → links to email                                         │    │
+│  │  • ai_extracted, ai_confidence, ai_source_snippet                           │    │
+│  └─────────────────────────────────────────────────────────────────────────────┘    │
+│              │                                                                       │
+│              │ linked via                                                           │
+│              ▼                                                                       │
+│  ┌─────────────────────────────────────────────────────────────────────────────┐    │
+│  │                     DEAL CONTEXT EMAIL LINKS                                 │    │
+│  │  link_type: mentioned | created_from | follow_up | resolved_by              │    │
+│  └─────────────────────────────────────────────────────────────────────────────┘    │
+│                                                                                      │
+│  AI Extraction: Patterns for action_required, decided, risk detected               │
+│  → Creates context items automatically from incoming emails                        │
+│                                                                                      │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+
+───
+
+F8 Admin — Final Structure
+
+| Group           | Sections                                                                            |
+| --------------- | ----------------------------------------------------------------------------------- |
+| ⚡ PLATFORM      | System Health, Background Jobs, AI Agents, Platform Users                           |
+| 🔍 INTELLIGENCE | Deal Oversight, Enrichment, Data Coverage                                           |
+| 🔄 LIFECYCLE    | Lifecycle Monitor, Learning System, Comp Sets, Market Data                          |
+| 🏢 ORGANIZATION | Team Management, Org Integrations (NEW), Data Room, KYC/Compliance, Data Operations |
+[4/20/2026 11:04 PM] RocketManOpenClaw2: Removed from F8 (now in F9 Settings):
+
+• AI Config → ai-model
+[4/20/2026 11:04 PM] RocketManOpenClaw2: • Notifications → notifications
+• Templates → templates (TODO: add tab)
+• Billing → subscription
+
+───
+
+Migrations to Run
+
+psql $DATABASE_URL -f src/database/migrations/20260421_organization_and_integrations.sql
+[4/20/2026 11:08 PM] Leon D: how do user manually trigger an agent
+[4/20/2026 11:09 PM] RocketManOpenClaw2: Currently agents are triggered through Inngest functions in the backend. Let me trace the flow:
+[4/20/2026 11:09 PM] RocketManOpenClaw2: Let me check for the actual agent trigger endpoint in the capsule or deal routes:
+[4/20/2026 11:09 PM] RocketManOpenClaw2: Found it. Let me look at the agent-runs routes and cashflow-underwriting routes:
+[4/20/2026 11:09 PM] RocketManOpenClaw2: Now I have the full picture. Here's how users manually trigger agents:
+
+───
+
+Manual Agent Trigger Methods
+
+1. REST API Endpoint (Primary Method)
+
+POST /api/v1/agents/:agentId/run
+
+Supported agents:
+
+• research — Market research, property data
+• zoning — Zoning analysis
+• supply — Supply pipeline analysis
+• cashflow — Underwriting/proforma
+• commentary — Market commentary
+
+Request body:
+
+{
+  "deal_id": "uuid-of-deal",
+  "force_refresh": true  // optional, re-run even if cached
+}
+
+For Commentary agent:
+
+{
+  "entity_type": "msa" | "submarket" | "property",
+  "entity_id": "atlanta-sandy-springs-roswell-ga",
+  "entity_name": "Atlanta MSA"
+}
+
+Response:
+
+{
+  "success": true,
+  "message": "Research run started",
+  "run_id": "uuid-of-run",
+  "display_status": "running",
+  "agent_id": "research",
+  "deal_id": "uuid"
+}
+
+───
+
+2. Agent Chat API (Conversational)
+
+POST /api/v1/agents/chat
+
+Request:
+
+{
+  "agentCode": "CASH",  // ORCHESTRATOR, SUPPLY, DEMAND, NEWS, DEBT, STRATEGY, CASH, ZONING, COMPS, RISK
+  "message": "Analyze this deal",
+  "dealId": "uuid",
+  "sessionId": "optional-session-id"
+}
+
+───
+
+3. UI Trigger Points (Frontend)
+
+Currently there's no obvious "Run Agent" button in the UI. Let me check:
+[4/20/2026 11:09 PM] RocketManOpenClaw2: Let me check the OpusAI section which likely has agent triggers:
+[4/20/2026 11:09 PM] RocketManOpenClaw2: The UI doesn't have a direct "Run Agent" button exposed. Let me check the DealCapsule which might have agent triggers:
+[4/20/2026 11:09 PM] RocketManOpenClaw2: Users don't have an explicit UI button to trigger agents right now. The agents are triggered:
+
+1. Automatically when documents are uploaded (Research → CashFlow → Commentary chain)
+2. Via API if they know the endpoint
+3. Via Inngest events from other system events
+
+───
+
+Recommendation: Add UI Agent Trigger
+
+You should add a simple agent trigger panel. Here are the options:
+
+Option A: Add to Deal View (Quick Actions)
+
+In the deal header or sidebar, add "Run Agent" dropdown.
+
+Option B: Add to F8 Admin → AI Agents Section
+
+Add manual trigger capability in the admin panel.
+
+Option C: Add to Deal Activity Feed
+
+Add "Re-run" buttons next to completed agent runs.
+
+───
+
+Want me to add a proper agent trigger UI? I'd recommend:
+
+1. Deal-level agent controls — buttons in the deal view to manually run Research, CashFlow, or Commentary
+2. Progress tracking — show real-time status via polling
+3. Result display — show what changed after the run
+[4/20/2026 11:19 PM] Leon D: ok.  all three make sense
+[4/20/2026 11:20 PM] RocketManOpenClaw2: Now let me add the re-run button to the Activity Feed:
+[4/20/2026 11:20 PM] RocketManOpenClaw2: Now I need to add a re-run button to the AgentRunCard. Let me update that section:
+[4/20/2026 11:20 PM] RocketManOpenClaw2: Now let me add the AgentControlPanel to the admin section:
+[4/20/2026 11:20 PM] RocketManOpenClaw2: The admin section looks good already. Now let's create an export file and update the index:
+[4/20/2026 11:20 PM] RocketManOpenClaw2: Now commit everything:
+[4/20/2026 11:21 PM] RocketManOpenClaw2: Done. Here's the summary of manual agent trigger methods:
+
+───
+
+Manual Agent Trigger UI — Complete
+
+1. AgentControlPanel (New Component)
+
+import { AgentControlPanel } from '@/components/deal';
+
+// Full panel mode
+<AgentControlPanel dealId={deal.id} />
+
+// Compact mode (button that expands)
+<AgentControlPanel dealId={deal.id} compact />
+
+// With callback
+<AgentControlPanel 
+  dealId={deal.id} 
+  onRunComplete={(agentId, result) => {
+    console.log(`${agentId} completed:`, result);
+  }} 
+/>
+
+Features:
+
+• Shows all 5 agents with status indicators
+• ▶ RUN / ↻ RE-RUN buttons per agent
+• Dependency awareness (CashFlow needs Research first)
+• Real-time polling during runs
+• Metrics: duration, tokens, cost
+• "Run All Agents" button
+
+───
+
+2. Activity Feed Re-run Button
+
+In ActivityFeedSection.tsx, each completed agent run now has:
+
+• Re-run button (↻ icon)
+• Calls POST /api/v1/agents/:agentId/run with force_refresh: true
+• Shows spinner while starting
+
+───
+
+3. API Endpoints (Direct)
+
+# Trigger agent
+POST /api/v1/agents/{agentId}/run
+{
+  "deal_id": "uuid",
+  "force_refresh": true
+}
+
+# Available agents:
+# research, supply, zoning, cashflow, commentary
+
+───
+
+Where to Place AgentControlPanel
+
+Recommended locations in your deal views:
+
+1. Deal Header/Sidebar — always visible
+2. Overview Tab — prominent placement
+3. Activity Tab — near the feed
+4. Documents Tab — after upload, suggest running agents
+
+Example integration:
+
+// In your DealPage or DealCapsule
+import { AgentControlPanel } from '@/components/deal';
+
+<div className="deal-sidebar">
+  <AgentControlPanel dealId={deal.id} compact />
+</div>

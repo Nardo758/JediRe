@@ -27,7 +27,7 @@ router.get('/metrics', requireAuth, async (req: AuthenticatedRequest, res: Respo
         COALESCE(SUM((d.deal_data->>'noi')::numeric), 0) as portfolio_noi
       FROM deals d
       WHERE d.status IN ('owned', 'closed', 'portfolio')
-        OR d.deal_data->>'deal_category' = 'portfolio'
+        OR d.deal_category = 'portfolio'
     `);
 
     const row = result.rows[0] as Record<string, unknown>;
@@ -79,7 +79,7 @@ router.get('/assets', requireAuth, async (req: AuthenticatedRequest, res: Respon
         d.status
       FROM deals d
       WHERE d.status IN ('owned', 'closed', 'portfolio')
-        OR d.deal_data->>'deal_category' = 'portfolio'
+        OR d.deal_category = 'portfolio'
       ORDER BY d.created_at DESC
     `);
 
@@ -189,7 +189,7 @@ router.get('/allocation', requireAuth, async (req: AuthenticatedRequest, res: Re
         COALESCE(SUM((d.deal_data->>'current_value')::numeric), 0) as value
       FROM deals d
       WHERE d.status IN ('owned', 'closed', 'portfolio')
-        OR d.deal_data->>'deal_category' = 'portfolio'
+        OR d.deal_category = 'portfolio'
       GROUP BY d.deal_data->>'asset_class'
     `);
 
@@ -200,7 +200,7 @@ router.get('/allocation', requireAuth, async (req: AuthenticatedRequest, res: Re
         COALESCE(SUM((d.deal_data->>'unit_count')::int), 0) as units
       FROM deals d
       WHERE d.status IN ('owned', 'closed', 'portfolio')
-        OR d.deal_data->>'deal_category' = 'portfolio'
+        OR d.deal_category = 'portfolio'
       GROUP BY COALESCE(d.deal_data->>'msa', d.deal_data->>'city', 'Unknown')
       ORDER BY units DESC
       LIMIT 10
