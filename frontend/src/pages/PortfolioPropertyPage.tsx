@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { apiClient } from '../services/api.client';
+import type { Deal } from '../types/agent';
 import MonthlyActualsSection from '../components/deal/sections/MonthlyActualsSection';
 import { OperationsIntelligenceSection } from '../components/deal/sections/OperationsIntelligenceSection';
 import { LifecycleSection } from '../components/deal/sections/LifecycleSection';
@@ -140,12 +141,16 @@ const MiniLineChart = ({ data, color = '#3b82f6', height = 80 }: { data: number[
 
 // ─── Inline sub-tab components ───────────────────────────────────────────────
 
+type CompFormKey = 'comp_name' | 'address' | 'units' | 'year_built' | 'avg_rent' | 'occupancy_rate' | 'distance_miles' | 'tier';
+type CompForm = Record<CompFormKey, string>;
+
 const CompSetTab: React.FC<{ dealId: string }> = ({ dealId }) => {
   const [comps, setComps] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
+  const [discovering, setDiscovering] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [formData, setFormData] = useState({ comp_name: '', address: '', units: '', year_built: '', avg_rent: '', occupancy_rate: '', distance_miles: '', tier: '2' });
+  const [formData, setFormData] = useState<CompForm>({ comp_name: '', address: '', units: '', year_built: '', avg_rent: '', occupancy_rate: '', distance_miles: '', tier: '2' });
   const [msg, setMsg] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -158,6 +163,17 @@ const CompSetTab: React.FC<{ dealId: string }> = ({ dealId }) => {
   }, [dealId]);
 
   useEffect(() => { load(); }, [load]);
+
+  const discover = async () => {
+    setDiscovering(true); setMsg(null);
+    try {
+      const res = await apiClient.post(`/api/v1/deals/${dealId}/comp-set/discover`);
+      const count = res.data?.discovered ?? 0;
+      setMsg(`Discovered ${count} comp${count !== 1 ? 's' : ''}`);
+      await load();
+    } catch { setMsg('Discovery failed — deal may need a map boundary'); }
+    finally { setDiscovering(false); }
+  };
 
   const addComp = async () => {
     if (!formData.comp_name.trim()) return;
@@ -194,12 +210,19 @@ const CompSetTab: React.FC<{ dealId: string }> = ({ dealId }) => {
     <div className="space-y-4 p-6 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
       <div className="flex items-center gap-3">
         <button
+          onClick={discover}
+          disabled={discovering}
+          className="px-4 py-2 text-xs font-semibold bg-amber-500 text-white rounded hover:bg-amber-600 disabled:opacity-60"
+        >
+          {discovering ? '⟳ Discovering...' : '⚡ Auto-Discover Comps'}
+        </button>
+        <button
           onClick={() => setShowAddForm(f => !f)}
           className="px-4 py-2 text-xs font-semibold bg-blue-600 text-white rounded hover:bg-blue-700"
         >
-          + Add Comp Property
+          + Add Manually
         </button>
-        {msg && <span className={`text-xs ${msg.includes('Failed') ? 'text-red-500' : 'text-emerald-600'}`}>{msg}</span>}
+        {msg && <span className={`text-xs ${msg.includes('failed') || msg.includes('Failed') ? 'text-red-500' : 'text-emerald-600'}`}>{msg}</span>}
       </div>
 
       {showAddForm && (
@@ -207,21 +230,21 @@ const CompSetTab: React.FC<{ dealId: string }> = ({ dealId }) => {
           <div className="text-xs font-semibold text-blue-700 mb-3 uppercase tracking-wide">New Competitive Property</div>
           <div className="grid grid-cols-4 gap-3">
             {[
-              { key: 'comp_name', label: 'Property Name *', placeholder: 'The Reserve at...' },
-              { key: 'address', label: 'Address', placeholder: '123 Main St...' },
-              { key: 'units', label: 'Units', placeholder: '250' },
-              { key: 'year_built', label: 'Year Built', placeholder: '2018' },
-              { key: 'avg_rent', label: 'Avg Rent ($)', placeholder: '1850' },
-              { key: 'occupancy_rate', label: 'Occupancy (%)', placeholder: '94.5' },
-              { key: 'distance_miles', label: 'Distance (mi)', placeholder: '0.8' },
-              { key: 'tier', label: 'Tier', placeholder: '2' },
+              { key: 'comp_name' as CompFormKey, label: 'Property Name *', placeholder: 'The Reserve at...' },
+              { key: 'address' as CompFormKey, label: 'Address', placeholder: '123 Main St...' },
+              { key: 'units' as CompFormKey, label: 'Units', placeholder: '250' },
+              { key: 'year_built' as CompFormKey, label: 'Year Built', placeholder: '2018' },
+              { key: 'avg_rent' as CompFormKey, label: 'Avg Rent ($)', placeholder: '1850' },
+              { key: 'occupancy_rate' as CompFormKey, label: 'Occupancy (%)', placeholder: '94.5' },
+              { key: 'distance_miles' as CompFormKey, label: 'Distance (mi)', placeholder: '0.8' },
+              { key: 'tier' as CompFormKey, label: 'Tier', placeholder: '2' },
             ].map(f => (
               <div key={f.key}>
                 <div className="text-xs text-blue-600 mb-1">{f.label}</div>
                 <input
                   type="text"
                   placeholder={f.placeholder}
-                  value={(formData as any)[f.key]}
+                  value={formData[f.key]}
                   onChange={e => setFormData(d => ({ ...d, [f.key]: e.target.value }))}
                   className="w-full text-xs px-2 py-1.5 border border-blue-200 rounded bg-white focus:outline-none focus:border-blue-500"
                 />
@@ -684,13 +707,13 @@ const AILearningTab: React.FC<{ dealId: string }> = ({ dealId }) => {
         const tier = count >= 3 ? 2 : count > 0 ? 3 : 4;
         setActuals({ count, tier });
       }).catch(() => setActuals({ count: 0, tier: 4 }));
-    apiClient.get('/api/v1/learning/outcomes/summary')
-      .then(r => setAccuracy((r.data?.summary ?? []).map((row: any) => ({
-        assumptionName: (row.assumption_name ?? '').replace(/_/g, ' '),
-        hitRate10Pct: ((row.hit_rate_10pct ?? 0) * 100),
-        hitRate20Pct: ((row.hit_rate_20pct ?? 0) * 100),
-        meanBias: row.mean_gap_pct ?? 0,
-        nPredictions: row.n_predictions ?? 0,
+    apiClient.get(`/api/v1/learning/outcomes/deal/${dealId}/summary`)
+      .then(r => setAccuracy((r.data?.summary ?? []).map((row: Record<string, unknown>) => ({
+        assumptionName: ((row.assumption_name as string) ?? '').replace(/_/g, ' '),
+        hitRate10Pct: ((row.hit_rate_10pct as number) ?? 0) * 100,
+        hitRate20Pct: ((row.hit_rate_20pct as number) ?? 0) * 100,
+        meanBias: (row.mean_gap_pct as number) ?? 0,
+        nPredictions: (row.n_predictions as number) ?? 0,
       }))))
       .catch(() => setAccuracy([]))
       .finally(() => setAccuracyLoading(false));
@@ -740,7 +763,7 @@ const AILearningTab: React.FC<{ dealId: string }> = ({ dealId }) => {
       ) : (
       <div className="grid grid-cols-2 gap-6">
         <div className="bg-white border border-stone-200 rounded-lg p-5">
-          <h3 className="text-sm font-semibold text-stone-700 mb-4 uppercase tracking-wide">Portfolio-Wide Agent Accuracy</h3>
+          <h3 className="text-sm font-semibold text-stone-700 mb-4 uppercase tracking-wide">CashFlow Agent Accuracy — This Asset</h3>
           {accuracy.length === 0 ? (
             <div className="text-center py-6 text-stone-400 text-xs">No prediction outcomes recorded yet</div>
           ) : (
@@ -1380,12 +1403,12 @@ export default function PortfolioPropertyPage() {
         {activeTab === 'ai-learning'  && <AILearningTab dealId={dealId!} />}
         {activeTab === 'events'       && (
           <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
-            <EventTimelineSection dealId={dealId!} deal={deal as any} />
+            <EventTimelineSection dealId={dealId!} deal={deal} />
           </div>
         )}
         {activeTab === 'documents'    && (
           <div className="overflow-y-auto p-6" style={{ maxHeight: 'calc(100vh - 280px)' }}>
-            <DocumentsSection deal={deal as any} />
+            <DocumentsSection deal={deal as unknown as Deal} />
           </div>
         )}
         {activeTab === 'reports'      && (() => {
@@ -1430,37 +1453,156 @@ export default function PortfolioPropertyPage() {
             ], ['Metric', 'Value']);
           };
 
-          const reports = [
-            { title: 'Monthly Performance Summary', desc: `${financials.length} months of NOI, occupancy, and cash flow data`, icon: '📊', action: exportFinancials, available: financials.length > 0 },
-            { title: 'Investor Report', desc: 'LP-ready summary of key metrics and returns', icon: '👥', action: exportInvestorSummary, available: financials.length > 0 },
-            { title: 'Rent Roll Export', desc: 'Unit-by-unit current status, rent, and lease dates', icon: '📋', action: exportRentRoll, available: true },
-          ];
+          const lf = financials[financials.length - 1];
+          const avgOcc = financials.length
+            ? financials.reduce((s, f) => s + (parseFloat(f.occupancy_rate as string) || 0), 0) / financials.length
+            : null;
+          const annNoi = lf ? parseFloat(lf.noi as string) * 12 : null;
+          const fmtDollar = (v: number | null) => v == null ? '—' : `$${v >= 1_000_000 ? (v / 1_000_000).toFixed(2) + 'M' : v.toLocaleString()}`;
+          const fmtPctR = (v: number | null) => v == null ? '—' : `${(v * 100).toFixed(1)}%`;
 
           return (
             <div className="space-y-6 p-6 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
-              <div className="text-xs text-stone-500 font-medium uppercase tracking-wide">Asset Reports — {propName}</div>
-              <div className="grid grid-cols-3 gap-4">
-                {reports.map((r, i) => (
-                  <div key={i} className="bg-white border border-stone-200 rounded-lg p-5">
-                    <div className="text-2xl mb-2">{r.icon}</div>
-                    <div className="text-sm font-semibold text-stone-800 mb-1">{r.title}</div>
-                    <div className="text-xs text-stone-400 mb-4">{r.desc}</div>
-                    <button
-                      onClick={r.action}
-                      disabled={!r.available}
-                      className={`w-full text-xs px-3 py-2 rounded font-medium transition-colors ${r.available ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-stone-100 text-stone-400 cursor-not-allowed'}`}
-                    >
-                      {r.available ? '⬇ Download CSV' : 'No data yet'}
-                    </button>
+              <div className="flex items-center justify-between">
+                <div className="text-xs text-stone-500 font-medium uppercase tracking-wide">Asset Reports — {propName}</div>
+                <div className="flex gap-2">
+                  <button onClick={exportFinancials} disabled={financials.length === 0} className="text-xs px-3 py-1.5 border border-stone-200 rounded text-stone-600 hover:bg-stone-50 disabled:opacity-40">⬇ Monthly CSV</button>
+                  <button onClick={exportInvestorSummary} disabled={financials.length === 0} className="text-xs px-3 py-1.5 border border-stone-200 rounded text-stone-600 hover:bg-stone-50 disabled:opacity-40">⬇ Investor CSV</button>
+                  <button onClick={exportRentRoll} className="text-xs px-3 py-1.5 border border-stone-200 rounded text-stone-600 hover:bg-stone-50">⬇ Rent Roll CSV</button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                {/* 1. NOI Waterfall */}
+                <div className="bg-white border border-stone-200 rounded-lg p-5">
+                  <div className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-3">NOI Waterfall</div>
+                  {!lf ? (
+                    <div className="text-xs text-stone-400">No actuals loaded yet</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {[
+                        { label: 'Eff. Gross Income', val: parseFloat(lf.effective_gross_income as string) || null, color: 'bg-emerald-500' },
+                        { label: 'Operating Expenses', val: parseFloat(lf.total_operating_expenses as string) || null, color: 'bg-red-400', negative: true },
+                        { label: 'Net Operating Income', val: parseFloat(lf.noi as string) || null, color: 'bg-blue-500', bold: true },
+                      ].map(row => {
+                        const base = parseFloat(lf.effective_gross_income as string) || 1;
+                        const width = row.val ? Math.min(100, Math.abs(row.val) / base * 100) : 0;
+                        return (
+                          <div key={row.label}>
+                            <div className="flex justify-between text-xs mb-0.5">
+                              <span className={row.bold ? 'font-semibold text-stone-800' : 'text-stone-500'}>{row.label}</span>
+                              <span className={`font-mono ${row.negative ? 'text-red-600' : 'text-stone-800'}`}>{fmtDollar(row.val)}</span>
+                            </div>
+                            <div className="h-1.5 bg-stone-100 rounded overflow-hidden">
+                              <div className={`h-full ${row.color} rounded`} style={{ width: `${width}%` }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <div className="pt-2 border-t border-stone-100 text-xs text-stone-400">Annualized NOI: <span className="text-stone-700 font-semibold">{fmtDollar(annNoi)}</span></div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. Deal Performance */}
+                <div className="bg-white border border-stone-200 rounded-lg p-5">
+                  <div className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-3">Deal Performance</div>
+                  <div className="space-y-3">
+                    {[
+                      { label: 'Underwritten IRR', val: deal.target_irr != null ? fmtPctR(deal.target_irr as number / 100) : (deal.irr != null ? fmtPctR(deal.irr as number / 100) : '—') },
+                      { label: 'Equity Multiple (UW)', val: deal.equity_multiple != null ? `${parseFloat(deal.equity_multiple as string).toFixed(2)}×` : '—' },
+                      { label: 'Avg Occupancy (Actuals)', val: fmtPctR(avgOcc) },
+                      { label: 'Months of Actuals', val: String(financials.length) },
+                      { label: 'Latest NOI/mo', val: fmtDollar(lf ? parseFloat(lf.noi as string) : null) },
+                      { label: 'Annualized NOI', val: fmtDollar(annNoi) },
+                    ].map(row => (
+                      <div key={row.label} className="flex justify-between text-xs">
+                        <span className="text-stone-500">{row.label}</span>
+                        <span className="font-semibold text-stone-800">{row.val}</span>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                </div>
+
+                {/* 3. Debt Summary */}
+                <div className="bg-white border border-stone-200 rounded-lg p-5">
+                  <div className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-3">Debt Summary</div>
+                  <div className="space-y-3">
+                    {[
+                      { label: 'Loan Amount', val: deal.loan_amount != null ? fmtDollar(parseFloat(deal.loan_amount as string)) : '—' },
+                      { label: 'Interest Rate', val: deal.loan_rate != null ? fmtPctR(parseFloat(deal.loan_rate as string) / 100) : '—' },
+                      { label: 'Loan Term', val: deal.loan_term != null ? `${deal.loan_term} yrs` : '—' },
+                      { label: 'LTV (at close)', val: deal.ltv != null ? fmtPctR(parseFloat(deal.ltv as string) / 100) : deal.loan_amount && deal.purchase_price ? fmtPctR(parseFloat(deal.loan_amount as string) / parseFloat(deal.purchase_price as string)) : '—' },
+                      { label: 'DSCR (UW)', val: deal.dscr != null ? `${parseFloat(deal.dscr as string).toFixed(2)}×` : '—' },
+                      { label: 'Lender', val: (deal.lender as string) ?? '—' },
+                    ].map(row => (
+                      <div key={row.label} className="flex justify-between text-xs">
+                        <span className="text-stone-500">{row.label}</span>
+                        <span className="font-semibold text-stone-800">{String(row.val)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 4. Underwriting Accuracy */}
+                <div className="bg-white border border-stone-200 rounded-lg p-5">
+                  <div className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-3">Underwriting Accuracy</div>
+                  {accuracy.length === 0 ? (
+                    <div className="text-xs text-stone-400">{financials.length === 0 ? 'Requires actuals data' : 'No prediction outcomes recorded yet'}</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {accuracy.slice(0, 4).map(a => (
+                        <div key={a.assumptionName}>
+                          <div className="flex justify-between text-xs mb-0.5">
+                            <span className="capitalize text-stone-600">{a.assumptionName}</span>
+                            <span className={`font-mono font-semibold ${a.hitRate10Pct >= 70 ? 'text-emerald-600' : a.hitRate10Pct >= 50 ? 'text-amber-600' : 'text-red-500'}`}>{a.hitRate10Pct.toFixed(0)}% within 10%</span>
+                          </div>
+                          <div className="h-1.5 bg-stone-100 rounded overflow-hidden">
+                            <div className={`h-full rounded ${a.hitRate10Pct >= 70 ? 'bg-emerald-500' : a.hitRate10Pct >= 50 ? 'bg-amber-400' : 'bg-red-400'}`} style={{ width: `${a.hitRate10Pct}%` }} />
+                          </div>
+                        </div>
+                      ))}
+                      <div className="pt-2 text-xs text-stone-400">{accuracy.reduce((s, a) => s + a.nPredictions, 0)} total predictions evaluated</div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 5. Occupancy Trend */}
+                <div className="bg-white border border-stone-200 rounded-lg p-5 col-span-2">
+                  <div className="text-xs font-semibold text-stone-500 uppercase tracking-wide mb-3">Occupancy Trend</div>
+                  {financials.length === 0 ? (
+                    <div className="text-xs text-stone-400">No actuals loaded yet</div>
+                  ) : (
+                    <>
+                      <div className="flex items-end gap-1" style={{ height: 64 }}>
+                        {financials.slice(-18).map((f, i) => {
+                          const occ = Math.min(1, parseFloat(f.occupancy_rate as string) || 0);
+                          const pct = occ * 100;
+                          return (
+                            <div key={i} className="flex-1 flex flex-col items-center justify-end" title={`${pct.toFixed(1)}%`}>
+                              <div
+                                className={`w-full rounded-t ${occ >= 0.93 ? 'bg-emerald-500' : occ >= 0.85 ? 'bg-amber-400' : 'bg-red-400'}`}
+                                style={{ height: `${pct}%` }}
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="flex justify-between text-xs text-stone-400 mt-1">
+                        <span>{financials.length > 18 ? financials[financials.length - 18]?.period_label ?? '18 mo ago' : 'Earliest'}</span>
+                        <span className="font-semibold text-stone-700">Avg {fmtPctR(avgOcc)} occupancy over {financials.length} months</span>
+                        <span>Latest</span>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           );
         })()}
         {activeTab === 'deal-team'    && (
           <div className="overflow-y-auto p-6" style={{ maxHeight: 'calc(100vh - 280px)' }}>
-            <TeamSection deal={{ ...deal, status: deal.status || 'owned' } as any} />
+            <TeamSection deal={{ ...deal, status: deal.status || 'owned' } as unknown as Deal} />
           </div>
         )}
       </div>

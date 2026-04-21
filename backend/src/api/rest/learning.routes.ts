@@ -317,6 +317,33 @@ router.get('/outcomes', requireAuth, async (req: AuthenticatedRequest, res: Resp
 });
 
 /**
+ * GET /api/v1/learning/outcomes/deal/:dealId/summary
+ * Deal-scoped accuracy summary — aggregates assumption outcomes for a specific deal
+ */
+router.get('/outcomes/deal/:dealId/summary', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const result = await query(
+      `SELECT
+         assumption_name,
+         COUNT(*) AS n_predictions,
+         AVG(CASE WHEN ABS(gap_pct) <= 0.10 THEN 1.0 ELSE 0.0 END) AS hit_rate_10pct,
+         AVG(CASE WHEN ABS(gap_pct) <= 0.20 THEN 1.0 ELSE 0.0 END) AS hit_rate_20pct,
+         AVG(gap_pct) AS mean_gap_pct
+       FROM assumption_outcomes
+       WHERE deal_id = $1
+       GROUP BY assumption_name
+       ORDER BY n_predictions DESC`,
+      [dealId]
+    );
+    res.json({ success: true, summary: result.rows });
+  } catch (err) {
+    logger.error('Deal learning summary error:', err);
+    res.status(500).json({ success: false, error: 'Failed to get deal learning summary' });
+  }
+});
+
+/**
  * GET /api/v1/learning/outcomes/summary
  * Aggregated view of outcomes by assumption type
  */
