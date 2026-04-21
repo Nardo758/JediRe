@@ -8,6 +8,7 @@ import { Router, Response } from 'express';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
+import Anthropic from '@anthropic-ai/sdk';
 
 const router = Router();
 
@@ -429,6 +430,327 @@ router.get('/:dealId/financials', requireAuth, async (req: AuthenticatedRequest,
   } catch (err) {
     logger.error('Portfolio property financials error:', err);
     res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to get property financials' });
+  }
+});
+
+// ─── Agent Report Endpoint ────────────────────────────────────────────────────
+// Uses real agent tool functions (T12, rent roll, variance) to generate
+// deal-specific reports backed by live database data, not just frontend context.
+
+const REPORT_AGENT_SYSTEM = `You are the JediRe Report Agent — a senior commercial real estate analyst specializing in institutional-quality asset reporting.
+
+You have access to live database tools that pull real financial data for the subject property. Always use these tools to ground your analysis before writing — never make up numbers.
+
+Report writing principles:
+- Lead with the most important number or finding
+- Use structured sections with clear headers
+- State actuals precisely (e.g., "$1.23M annualized NOI") then give context (vs prior year, vs underwriting)
+- Flag unfavorable trends explicitly — do not soften
+- Keep reports concise and professional — a lender or LP should be able to read this in 90 seconds
+- Always note the date range the data covers
+- Where data is unavailable, say so clearly rather than estimating
+
+Format: Plain text with section headers using ALL CAPS and dashes. Numbers always formatted with $ and commas.`;
+
+const REPORT_TOOLS: Anthropic.Tool[] = [
+  {
+    name: 'fetch_t12_actuals',
+    description: 'Fetch trailing 12-month financial data for this deal from the database — gross revenue, total expenses, NOI, occupancy, and revenue per unit.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        months: { type: 'number', description: 'Months to aggregate (default 12)', default: 12 },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'fetch_rent_roll_summary',
+    description: 'Fetch current rent roll summary — occupied/vacant units, avg in-place rent, total monthly income, leases expiring in 90 and 180 days, market rent spread.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'fetch_actuals_trend',
+    description: 'Fetch monthly actuals trend data — NOI, occupancy, and effective rent over the last N months. Use for trend analysis, YoY comparison, and quarterly reporting.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        months: { type: 'number', description: 'Number of months of history to return (default 24)', default: 24 },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'fetch_variance_vs_underwriting',
+    description: 'Fetch variance between projected (underwritten) and actual performance — NOI variance, revenue variance, expense variance, and key drivers.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        period: { type: 'string', enum: ['ytd', 'trailing_3mo', 'trailing_6mo', 'trailing_12mo'], default: 'trailing_12mo' },
+      },
+      required: [],
+    },
+  },
+];
+
+async function executeReportTool(
+  toolName: string,
+  toolInput: Record<string, unknown>,
+  dealId: string
+): Promise<string> {
+  const n = (v: unknown) => (v != null && !isNaN(Number(v)) ? Number(v) : null);
+  const fmt = (v: number | null) => v == null ? 'N/A' : `$${v.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+  const fmtPct = (v: number | null) => v == null ? 'N/A' : `${(Number(v) * 100).toFixed(1)}%`;
+
+  try {
+    if (toolName === 'fetch_t12_actuals') {
+      const months = Number(toolInput.months ?? 12);
+      const r = await query(
+        `SELECT
+           COUNT(*)::int                                             AS months_available,
+           SUM(effective_gross_income)                              AS gross_revenue,
+           SUM(effective_gross_income - noi)                        AS total_expenses,
+           SUM(noi)                                                 AS noi,
+           AVG(occupancy_rate)                                      AS avg_occupancy,
+           AVG(avg_effective_rent)                                  AS avg_effective_rent,
+           MAX(total_units)                                         AS total_units,
+           MAX(report_month)                                        AS latest_month,
+           MIN(report_month)                                        AS earliest_month
+         FROM deal_monthly_actuals
+         WHERE deal_id = $1
+           AND report_month >= CURRENT_DATE - ($2 * INTERVAL '1 month')
+           AND is_budget = false`,
+        [dealId, months]
+      );
+      const row = r.rows[0] as Record<string, unknown>;
+      const mo = n(row.months_available) ?? 0;
+      if (mo === 0) return JSON.stringify({ has_data: false, note: 'No actuals uploaded for this deal' });
+      const rev = n(row.gross_revenue);
+      const exp = n(row.total_expenses);
+      const noi = n(row.noi);
+      const units = n(row.total_units);
+      return JSON.stringify({
+        has_data: true,
+        months_available: mo,
+        period: `${row.earliest_month} to ${row.latest_month}`,
+        gross_revenue_ttm: fmt(rev),
+        total_expenses_ttm: fmt(exp),
+        noi_ttm: fmt(noi),
+        noi_annualized: fmt(noi ? (noi / mo) * 12 : null),
+        avg_occupancy: fmtPct(n(row.avg_occupancy)),
+        avg_effective_rent: fmt(n(row.avg_effective_rent)),
+        expense_ratio: rev && exp ? `${((exp / rev) * 100).toFixed(1)}%` : 'N/A',
+        noi_per_unit_annual: units && noi ? fmt((noi / mo * 12) / units) : 'N/A',
+      });
+    }
+
+    if (toolName === 'fetch_rent_roll_summary') {
+      const r = await query(
+        `SELECT
+           COUNT(*)                                        AS total_units,
+           COUNT(*) FILTER (WHERE status = 'occupied')    AS occupied_units,
+           COUNT(*) FILTER (WHERE status = 'vacant')      AS vacant_units,
+           AVG(current_rent) FILTER (WHERE status = 'occupied')  AS avg_in_place_rent,
+           SUM(current_rent) FILTER (WHERE status = 'occupied')  AS total_monthly_income,
+           AVG(market_rent)                               AS avg_market_rent,
+           COUNT(*) FILTER (WHERE lease_end BETWEEN CURRENT_DATE AND CURRENT_DATE + 90)  AS expiring_90d,
+           COUNT(*) FILTER (WHERE lease_end BETWEEN CURRENT_DATE AND CURRENT_DATE + 180) AS expiring_180d
+         FROM deal_units
+         WHERE deal_id = $1`,
+        [dealId]
+      );
+      const row = r.rows[0] as Record<string, unknown>;
+      const total = n(row.total_units) ?? 0;
+      const occ = n(row.occupied_units) ?? 0;
+      const inPlace = n(row.avg_in_place_rent);
+      const market = n(row.avg_market_rent);
+      if (total === 0) return JSON.stringify({ has_data: false, note: 'No unit-level data available' });
+      return JSON.stringify({
+        has_data: true,
+        total_units: total,
+        occupied_units: occ,
+        vacant_units: n(row.vacant_units) ?? (total - occ),
+        occupancy_pct: `${((occ / total) * 100).toFixed(1)}%`,
+        avg_in_place_rent: fmt(inPlace),
+        avg_market_rent: fmt(market),
+        rent_to_market_spread: inPlace && market ? fmt(market - inPlace) : 'N/A',
+        total_monthly_income: fmt(n(row.total_monthly_income)),
+        leases_expiring_90d: n(row.expiring_90d) ?? 0,
+        leases_expiring_180d: n(row.expiring_180d) ?? 0,
+      });
+    }
+
+    if (toolName === 'fetch_actuals_trend') {
+      const months = Number(toolInput.months ?? 24);
+      const r = await query(
+        `SELECT
+           report_month,
+           noi,
+           occupancy_rate,
+           avg_effective_rent,
+           effective_gross_income,
+           total_units
+         FROM deal_monthly_actuals
+         WHERE deal_id = $1
+           AND report_month >= CURRENT_DATE - ($2 * INTERVAL '1 month')
+           AND is_budget = false
+         ORDER BY report_month ASC`,
+        [dealId, months]
+      );
+      if (r.rows.length === 0) return JSON.stringify({ has_data: false, note: 'No trend data available' });
+      const rows = r.rows as Record<string, unknown>[];
+      const trend = rows.map(row => ({
+        month: String(row.report_month).slice(0, 7),
+        noi: fmt(n(row.noi)),
+        occupancy: fmtPct(n(row.occupancy_rate)),
+        avg_rent: fmt(n(row.avg_effective_rent)),
+        egi: fmt(n(row.effective_gross_income)),
+      }));
+      const first = rows[0], last = rows[rows.length - 1];
+      const noiFirst = n(first.noi), noiLast = n(last.noi);
+      return JSON.stringify({
+        has_data: true,
+        months_of_data: rows.length,
+        trend,
+        noi_change: noiFirst && noiLast ? `${(((noiLast - noiFirst) / Math.abs(noiFirst)) * 100).toFixed(1)}% over period` : 'N/A',
+      });
+    }
+
+    if (toolName === 'fetch_variance_vs_underwriting') {
+      const r = await query(
+        `SELECT
+           line_item,
+           line_item_category,
+           SUM(projected_value)  AS projected,
+           SUM(actual_value)     AS actual,
+           SUM(variance_amount)  AS variance,
+           AVG(variance_pct)     AS variance_pct
+         FROM variance_analysis
+         WHERE deal_id = $1
+           AND period_start >= CURRENT_DATE - INTERVAL '12 months'
+         GROUP BY line_item, line_item_category
+         ORDER BY ABS(SUM(variance_amount)) DESC
+         LIMIT 15`,
+        [dealId]
+      );
+      if (r.rows.length === 0) return JSON.stringify({ has_data: false, note: 'No variance data — underwriting benchmarks not loaded' });
+      const rows = r.rows as Record<string, unknown>[];
+      const items = rows.map(row => ({
+        line_item: row.line_item,
+        category: row.line_item_category,
+        projected: fmt(n(row.projected)),
+        actual: fmt(n(row.actual)),
+        variance: fmt(n(row.variance)),
+        variance_pct: `${Number(row.variance_pct ?? 0).toFixed(1)}%`,
+        direction: (n(row.variance) ?? 0) >= 0 ? 'favorable' : 'unfavorable',
+      }));
+      return JSON.stringify({ has_data: true, variance_items: items });
+    }
+
+    return JSON.stringify({ error: `Unknown tool: ${toolName}` });
+  } catch (err) {
+    logger.error(`[agent-report] Tool ${toolName} failed`, { dealId, err });
+    return JSON.stringify({ error: 'Tool execution failed', detail: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+/**
+ * POST /api/v1/portfolio/:dealId/agent-report
+ * Run the Report Agent with real database tool calls for this deal.
+ */
+router.post('/:dealId/agent-report', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  const { dealId } = req.params;
+  const { prompt, conversationId } = req.body;
+
+  if (!prompt || typeof prompt !== 'string') {
+    res.status(400).json({ error: 'prompt is required' });
+    return;
+  }
+
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    res.status(500).json({ error: 'AI service not configured' });
+    return;
+  }
+
+  try {
+    // Load deal summary for initial context
+    const dealRes = await query(
+      `SELECT d.name, d.status, d.deal_data, d.category
+       FROM deals d WHERE d.id = $1 LIMIT 1`,
+      [dealId]
+    );
+    if (dealRes.rows.length === 0) {
+      res.status(404).json({ error: 'Deal not found' });
+      return;
+    }
+    const dealRow = dealRes.rows[0] as Record<string, unknown>;
+    const dealData = (dealRow.deal_data as Record<string, unknown>) ?? {};
+    const dealSummary = `Property: ${dealRow.name ?? dealId} | Status: ${dealRow.status} | Category: ${dealRow.category} | Units: ${dealData.unit_count ?? dealData.units ?? 'unknown'}`;
+
+    const anthropic = new Anthropic({ apiKey });
+    const messages: Anthropic.MessageParam[] = [
+      { role: 'user', content: `${dealSummary}\n\nRequest: ${prompt}` },
+    ];
+
+    let finalText = '';
+    let iterations = 0;
+    const MAX_ITER = 6;
+
+    while (iterations < MAX_ITER) {
+      iterations++;
+      const response = await anthropic.messages.create({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 4096,
+        system: REPORT_AGENT_SYSTEM,
+        tools: REPORT_TOOLS,
+        messages,
+      });
+
+      messages.push({ role: 'assistant', content: response.content });
+
+      if (response.stop_reason === 'end_turn') {
+        finalText = response.content
+          .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+          .map(b => b.text)
+          .join('');
+        break;
+      }
+
+      if (response.stop_reason === 'tool_use') {
+        const toolResults: Anthropic.ToolResultBlockParam[] = [];
+        const toolUseBlocks = response.content.filter(
+          (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use'
+        );
+
+        for (const toolUse of toolUseBlocks) {
+          logger.info(`[agent-report] Tool call: ${toolUse.name}`, { dealId, conversationId });
+          const result = await executeReportTool(toolUse.name, toolUse.input as Record<string, unknown>, dealId);
+          toolResults.push({
+            type: 'tool_result',
+            tool_use_id: toolUse.id,
+            content: result,
+          });
+        }
+        messages.push({ role: 'user', content: toolResults });
+      } else {
+        finalText = response.content
+          .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+          .map(b => b.text)
+          .join('');
+        break;
+      }
+    }
+
+    logger.info('[agent-report] Report generated', { dealId, iterations, length: finalText.length });
+    res.json({ response: finalText, conversationId });
+  } catch (err: any) {
+    logger.error('[agent-report] Failed', { dealId, err: err.message });
+    res.status(500).json({ error: 'Report generation failed. Please try again.' });
   }
 });
 

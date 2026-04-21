@@ -1635,33 +1635,8 @@ const ReportsTab: React.FC<ReportsTabProps> = ({ dealId, financials, deal }) => 
   const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   useEffect(() => { scrollToBottom(); }, [messages]);
 
-  /* Build deal context block to inject with every message */
-  const dealContext = useMemo(() => {
-    const lf = financials[financials.length - 1];
-    const avgOcc = financials.length
-      ? (financials.reduce((s, f) => s + (parseFloat(f.occupancy_rate as string) || 0), 0) / financials.length * 100).toFixed(1)
-      : null;
-    const latestNoi = lf ? parseFloat(lf.noi as string) : null;
-    const annNoi = latestNoi ? latestNoi * 12 : null;
-    const lines = [
-      `Property: ${propName}`,
-      `Units: ${deal.units ?? '—'}`,
-      `Project type: ${deal.projectType ?? deal.project_type ?? '—'}`,
-      `Status: ${deal.status ?? '—'}`,
-      `Months of actuals loaded: ${financials.length}`,
-      avgOcc ? `Avg occupancy (actuals): ${avgOcc}%` : null,
-      latestNoi ? `Latest monthly NOI: $${latestNoi.toLocaleString()}` : null,
-      annNoi ? `Annualized NOI: $${annNoi.toLocaleString()}` : null,
-      lf?.avg_effective_rent ? `Avg effective rent: $${parseFloat(lf.avg_effective_rent as string).toLocaleString()}` : null,
-      deal.purchase_price ? `Purchase price: $${parseFloat(deal.purchase_price as string).toLocaleString()}` : null,
-      deal.loan_amount ? `Loan amount: $${parseFloat(deal.loan_amount as string).toLocaleString()}` : null,
-      deal.loan_rate ? `Interest rate: ${deal.loan_rate}%` : null,
-      deal.target_irr ? `Target IRR: ${deal.target_irr}%` : null,
-      deal.equity_multiple ? `Equity multiple (UW): ${deal.equity_multiple}×` : null,
-      deal.capRate ? `Cap rate: ${deal.capRate}%` : null,
-    ].filter(Boolean).join('\n');
-    return `[DEAL CONTEXT]\n${lines}\n[/DEAL CONTEXT]`;
-  }, [deal, financials, propName]);
+  /* Agent fetches its own data from the database via tool calls —
+     no manual context injection needed. financials.length is shown in the footer. */
 
   const sendMessage = async (text: string) => {
     if (!text.trim() || loading) return;
@@ -1670,10 +1645,10 @@ const ReportsTab: React.FC<ReportsTabProps> = ({ dealId, financials, deal }) => 
     setInput('');
     setLoading(true);
     try {
-      const fullMessage = messages.length === 0
-        ? `${dealContext}\n\nUser request: ${text.trim()}`
-        : text.trim();
-      const res: any = await apiClient.post('/api/v1/chat', { message: fullMessage, conversationId });
+      const res: any = await apiClient.post(
+        `/api/v1/portfolio/${dealId}/agent-report`,
+        { prompt: text.trim(), conversationId }
+      );
       const agentMsg: ReportMessage = {
         id: (Date.now() + 1).toString(),
         role: 'agent',
