@@ -544,18 +544,44 @@ router.get('/:dealId/monthly-actuals', requireAuth, async (req: AuthenticatedReq
   }
 });
 
+interface MonthlyActualInput {
+  report_month: string;
+  is_budget?: boolean;
+  is_proforma?: boolean;
+  occupied_units?: number;
+  total_units?: number;
+  occupancy_rate?: number;
+  gross_potential_rent?: number;
+  avg_effective_rent?: number;
+  effective_gross_income?: number;
+  noi?: number;
+  expenses?: number;
+  payroll?: number;
+  repairs_maintenance?: number;
+  utilities?: number;
+  marketing?: number;
+  admin_general?: number;
+  management_fee?: number;
+  management_fee_pct?: number;
+  turnover_costs?: number;
+  real_estate_taxes?: number;
+  insurance?: number;
+  capex?: number;
+  notes?: string;
+}
+
 /**
  * POST /api/v1/operations/:dealId/monthly-actuals
  * Upsert one or more monthly actuals for a deal (M22 Tier-2 evidence write path).
  *
- * Body: { actuals: MonthlyActualRow[] }
+ * Body: { actuals: MonthlyActualInput[] }
  * Each row must include report_month (YYYY-MM-DD or YYYY-MM).
  * property_id is resolved automatically from deal_properties.
  */
 router.post('/:dealId/monthly-actuals', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
-    const { actuals } = req.body;
+    const actuals = req.body.actuals as MonthlyActualInput[];
 
     if (!Array.isArray(actuals) || actuals.length === 0) {
       return res.status(400).json({ error: 'actuals array required' });
@@ -701,8 +727,9 @@ router.post('/:dealId/monthly-actuals', requireAuth, async (req: AuthenticatedRe
             );
           }
           imported++;
-        } catch (rowErr: any) {
-          errors.push({ row: i + 1, error: rowErr.message });
+        } catch (rowErr: unknown) {
+          const rowMsg = rowErr instanceof Error ? rowErr.message : String(rowErr);
+          errors.push({ row: i + 1, error: rowMsg });
         }
       }
 
