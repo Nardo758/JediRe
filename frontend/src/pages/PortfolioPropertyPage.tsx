@@ -432,9 +432,11 @@ const PerformanceTab: React.FC<{ dealId: string; financials: MonthlyFinancial[] 
 
 // ─── Revenue Management Tab ───────────────────────────────────
 const RevenueMgmtTab: React.FC<{ dealId: string }> = ({ dealId }) => {
-  const [subTab, setSubTab] = useState<'rent-roll' | 'other-income'>('rent-roll');
+  const [subTab, setSubTab] = useState<'rent-roll' | 'other-income' | 'expenses'>('rent-roll');
   const [rentRoll, setRentRoll] = useState<{ units: any[]; snapshots: string[] } | null>(null);
   const [otherIncome, setOtherIncome] = useState<any[]>([]);
+  const [actuals, setActuals] = useState<any[]>([]);
+  const [actualsLoaded, setActualsLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -452,13 +454,35 @@ const RevenueMgmtTab: React.FC<{ dealId: string }> = ({ dealId }) => {
         .catch(() => setOtherIncome([]))
         .finally(() => setLoading(false));
     }
+    if (subTab === 'expenses' && !actualsLoaded) {
+      setLoading(true);
+      apiClient.get(`/api/v1/operations/${dealId}/monthly-actuals?limit=24`)
+        .then(r => { setActuals(r.data?.data ?? []); setActualsLoaded(true); })
+        .catch(() => { setActuals([]); setActualsLoaded(true); })
+        .finally(() => setLoading(false));
+    }
   }, [dealId, subTab]);
 
   const fmt$ = (v: any) => v == null ? '—' : `$${Number(v).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+  const toN = (v: any) => v == null ? 0 : Number(v) || 0;
+
+  const EXPENSE_LINES: { key: string; label: string; color: string }[] = [
+    { key: 'payroll',            label: 'Payroll',       color: '#63B3ED' },
+    { key: 'repairs_maintenance',label: 'R&M',           color: '#68D391' },
+    { key: 'utilities',          label: 'Utilities',     color: '#F6AD55' },
+    { key: 'real_estate_taxes',  label: 'RE Taxes',      color: '#FC8181' },
+    { key: 'management_fee',     label: 'Mgmt Fee',      color: '#B794F4' },
+    { key: 'insurance',          label: 'Insurance',     color: '#4FD1C5' },
+    { key: 'marketing',          label: 'Marketing',     color: '#F687B3' },
+    { key: 'admin_general',      label: 'Admin/G&A',     color: '#FBD38D' },
+    { key: 'turnover_costs',     label: 'Turnover',      color: '#9F7AEA' },
+    { key: 'capex',              label: 'CapEx',         color: '#76E4F7' },
+  ];
 
   const subTabs = [
-    { id: 'rent-roll', label: 'RENT ROLL' },
-    { id: 'other-income', label: 'OTHER INCOME' },
+    { id: 'rent-roll',   label: 'RENT ROLL' },
+    { id: 'other-income',label: 'OTHER INCOME' },
+    { id: 'expenses',    label: 'EXPENSES' },
   ] as const;
 
   const emptyState = (icon: string, msg: string, sub?: string) => (
@@ -550,6 +574,169 @@ const RevenueMgmtTab: React.FC<{ dealId: string }> = ({ dealId }) => {
           </Panel>
         )
       )}
+
+      {/* ── EXPENSES ── */}
+      {!loading && subTab === 'expenses' && (() => {
+        if (!actualsLoaded || actuals.length === 0) {
+          return emptyState('📊', 'NO EXPENSE DATA', 'Enter monthly actuals in the Actuals tab to populate this view');
+        }
+
+        const sorted = [...actuals].sort((a, b) => a.report_month.localeCompare(b.report_month));
+        const latest = sorted[sorted.length - 1];
+        const trailing12 = sorted.slice(-12);
+
+        const rowTotal = (row: any) =>
+          EXPENSE_LINES.reduce((s, l) => s + toN(row[l.key]), 0) || toN(row.expenses);
+
+        const latestTotal = rowTotal(latest);
+        const latestRevenue = toN(latest?.effective_gross_income);
+        const latestUnits = toN(latest?.total_units) || 1;
+        const opexRatio = latestRevenue > 0 ? latestTotal / latestRevenue : null;
+
+        // Bar chart — trailing 12 months total opex
+        const chartW = 820, chartH = 140;
+        const chartPad = { t: 10, r: 20, b: 30, l: 64 };
+        const maxOpex = Math.max(...trailing12.map(r => rowTotal(r)), 1);
+        const barW = Math.floor(((chartW - chartPad.l - chartPad.r) / trailing12.length) * 0.65);
+        const barGap = (chartW - chartPad.l - chartPad.r) / trailing12.length;
+        const bH = (v: number) => ((v / maxOpex) * (chartH - chartPad.t - chartPad.b));
+        const bX = (i: number) => chartPad.l + i * barGap + (barGap - barW) / 2;
+        const bY = (v: number) => chartH - chartPad.b - bH(v);
+
+        return (
+          <>
+            {/* KPI row */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 12 }}>
+              {[
+                { l: 'TOTAL OPEX (LATEST MO)', v: fmt$(latestTotal), c: '#FC8181' },
+                { l: 'OPEX / UNIT / MO', v: latestUnits > 1 ? fmt$(latestTotal / latestUnits) : '—', c: T.text.amber },
+                { l: 'OPEX RATIO', v: opexRatio ? `${(opexRatio * 100).toFixed(1)}%` : '—', c: T.text.blue },
+                { l: 'PERIOD', v: latest.report_month?.slice(0, 7) ?? '—', c: T.text.muted },
+              ].map(k => (
+                <div key={k.l} style={{ background: T.bg.panelAlt, border: `1px solid ${T.border.subtle}`, borderRadius: 4, padding: '10px 14px' }}>
+                  <div style={{ fontSize: 8, color: T.text.muted, fontFamily: T.font.mono, marginBottom: 4 }}>{k.l}</div>
+                  <div style={{ fontSize: 15, fontWeight: 800, fontFamily: T.font.mono, color: k.c }}>{k.v}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Trend bar chart */}
+            <Panel title="TOTAL OPEX TREND — TRAILING 12 MONTHS">
+              <div style={{ padding: '8px 12px 0' }}>
+                <svg width="100%" viewBox={`0 0 ${chartW} ${chartH}`} style={{ display: 'block' }}>
+                  {/* Gridlines */}
+                  {[0.25, 0.5, 0.75, 1].map(pct => (
+                    <g key={pct}>
+                      <line x1={chartPad.l} y1={chartH - chartPad.b - (chartH - chartPad.t - chartPad.b) * pct} x2={chartW - chartPad.r} y2={chartH - chartPad.b - (chartH - chartPad.t - chartPad.b) * pct} stroke="rgba(255,255,255,0.04)" strokeWidth={0.5} />
+                      <text x={chartPad.l - 4} y={chartH - chartPad.b - (chartH - chartPad.t - chartPad.b) * pct + 3} textAnchor="end" fill="rgba(232,230,225,0.2)" fontSize={7} fontFamily="JetBrains Mono">${((maxOpex * pct) / 1000).toFixed(0)}k</text>
+                    </g>
+                  ))}
+                  {/* Bars */}
+                  {trailing12.map((row, i) => {
+                    const total = rowTotal(row);
+                    const h = bH(total);
+                    return (
+                      <g key={i}>
+                        <rect x={bX(i)} y={bY(total)} width={barW} height={h} fill="#FC8181" opacity={0.65} rx={1} />
+                        <text x={bX(i) + barW / 2} y={chartH - chartPad.b + 12} textAnchor="middle" fill="rgba(232,230,225,0.3)" fontSize={7} fontFamily="JetBrains Mono">{row.report_month?.slice(2, 7)}</text>
+                      </g>
+                    );
+                  })}
+                  <line x1={chartPad.l} y1={chartH - chartPad.b} x2={chartW - chartPad.r} y2={chartH - chartPad.b} stroke="rgba(255,255,255,0.08)" strokeWidth={0.5} />
+                </svg>
+              </div>
+            </Panel>
+
+            {/* Latest month breakdown */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <Panel title={`EXPENSE COMPOSITION — ${latest.report_month?.slice(0, 7)}`}>
+                <div style={{ padding: '6px 14px 12px' }}>
+                  {EXPENSE_LINES.map(line => {
+                    const v = toN(latest[line.key]);
+                    if (v === 0 && latestTotal === 0) return null;
+                    const pct = latestTotal > 0 ? v / latestTotal : 0;
+                    return (
+                      <div key={line.key} style={{ marginBottom: 8 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                          <span style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.secondary }}>{line.label}</span>
+                          <span style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.primary, fontWeight: 600 }}>
+                            {v > 0 ? fmt$(v) : '—'}
+                            {v > 0 && <span style={{ color: T.text.muted, fontWeight: 400, marginLeft: 6 }}>{(pct * 100).toFixed(1)}%</span>}
+                          </span>
+                        </div>
+                        <div style={{ height: 4, background: 'rgba(255,255,255,0.04)', borderRadius: 2, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${pct * 100}%`, background: line.color, borderRadius: 2, opacity: 0.7 }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${T.border.subtle}`, display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.muted, fontWeight: 700 }}>TOTAL OPEX</span>
+                    <span style={{ fontSize: 10, fontFamily: T.font.mono, color: '#FC8181', fontWeight: 800 }}>{fmt$(latestTotal)}</span>
+                  </div>
+                </div>
+              </Panel>
+
+              {/* NOI bridge */}
+              <Panel title="NOI BRIDGE — LATEST MONTH">
+                <div style={{ padding: '6px 14px 12px' }}>
+                  {[
+                    { l: 'Gross Potential Rent', v: toN(latest.gross_potential_rent), c: '#68D391', sign: '' },
+                    { l: 'Effective Gross Income', v: toN(latest.effective_gross_income), c: '#63B3ED', sign: '' },
+                    { l: 'Total Operating Expenses', v: latestTotal, c: '#FC8181', sign: '−' },
+                    { l: 'NET OPERATING INCOME', v: toN(latest.noi), c: '#10b981', sign: '=' },
+                  ].map((row, i) => (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderBottom: i < 3 ? `1px solid ${T.border.subtle}` : 'none', marginTop: i === 3 ? 4 : 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {i === 3 && <div style={{ width: 3, height: 14, background: '#10b981', borderRadius: 1 }} />}
+                        <span style={{ fontSize: i === 3 ? 10 : 9, fontFamily: T.font.mono, color: i === 3 ? T.text.primary : T.text.secondary, fontWeight: i === 3 ? 700 : 400 }}>{row.l}</span>
+                      </div>
+                      <span style={{ fontSize: i === 3 ? 12 : 10, fontFamily: T.font.mono, fontWeight: i === 3 ? 800 : 600, color: row.c }}>
+                        {row.sign}{fmt$(row.v)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </Panel>
+            </div>
+
+            {/* Monthly detail table */}
+            <Panel title="EXPENSE DETAIL — TRAILING 24 MONTHS">
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 9, fontFamily: T.font.mono, minWidth: 900 }}>
+                  <thead>
+                    <tr style={{ background: T.bg.panelAlt }}>
+                      <th style={{ textAlign: 'left', padding: '6px 10px', color: T.text.muted, fontWeight: 600, position: 'sticky', left: 0, background: T.bg.panelAlt }}>MONTH</th>
+                      {EXPENSE_LINES.map(l => (
+                        <th key={l.key} style={{ textAlign: 'right', padding: '6px 10px', color: l.color, fontWeight: 600, opacity: 0.8 }}>{l.label.toUpperCase()}</th>
+                      ))}
+                      <th style={{ textAlign: 'right', padding: '6px 10px', color: '#FC8181', fontWeight: 700 }}>TOTAL</th>
+                      <th style={{ textAlign: 'right', padding: '6px 10px', color: T.text.muted, fontWeight: 600 }}>NOI</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...sorted].reverse().map((row, i) => {
+                      const total = rowTotal(row);
+                      return (
+                        <tr key={i} style={{ background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.012)', borderBottom: `1px solid ${T.border.subtle}` }}>
+                          <td style={{ padding: '5px 10px', color: T.text.primary, fontWeight: 600, position: 'sticky', left: 0, background: i % 2 === 0 ? T.bg.panel : T.bg.panelAlt }}>{row.report_month?.slice(0, 7)}</td>
+                          {EXPENSE_LINES.map(l => (
+                            <td key={l.key} style={{ padding: '5px 10px', textAlign: 'right', color: toN(row[l.key]) > 0 ? T.text.secondary : T.text.muted }}>
+                              {toN(row[l.key]) > 0 ? fmt$(row[l.key]) : '—'}
+                            </td>
+                          ))}
+                          <td style={{ padding: '5px 10px', textAlign: 'right', fontWeight: 700, color: '#FC8181' }}>{total > 0 ? fmt$(total) : '—'}</td>
+                          <td style={{ padding: '5px 10px', textAlign: 'right', fontWeight: 600, color: toN(row.noi) >= 0 ? T.text.green : T.text.red }}>{fmt$(row.noi)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </Panel>
+          </>
+        );
+      })()}
 
     </div>
   );
