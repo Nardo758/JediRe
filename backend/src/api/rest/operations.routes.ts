@@ -27,8 +27,53 @@ const router = Router();
  */
 router.get('/:dealId/summary', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const summary = await getOperationsSummary(req.params.dealId);
-    res.json({ success: true, ...summary });
+    const { dealId } = req.params;
+
+    // Verify deal ownership
+    const ownerCheck = await query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
+      [dealId, req.user!.userId]
+    );
+    if (ownerCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
+
+    const summary = await getOperationsSummary(dealId);
+
+    // Augment with latest occupancy, rent, and collections from deal_monthly_actuals
+    const latestActualsRes = await query(
+      `SELECT
+         occupancy_rate,
+         avg_effective_rent,
+         noi,
+         effective_gross_income,
+         management_fee_pct
+       FROM deal_monthly_actuals
+       WHERE deal_id = $1 AND is_budget = false AND is_proforma = false
+         AND occupancy_rate IS NOT NULL
+       ORDER BY report_month DESC
+       LIMIT 1`,
+      [dealId]
+    );
+    const latest = latestActualsRes.rows[0] as Record<string, unknown> | undefined;
+    const latestOccupancy: number | null = latest?.occupancy_rate != null ? Number(latest.occupancy_rate) * 100 : null;
+    const latestNOI: number | null = latest?.noi != null ? Number(latest.noi) : null;
+    const latestRent: number | null = latest?.avg_effective_rent != null ? Number(latest.avg_effective_rent) : null;
+    const collectionsRate: number | null =
+      latest?.effective_gross_income != null && Number(latest.effective_gross_income) > 0 && latest.noi != null
+        ? (Number(latest.noi) / Number(latest.effective_gross_income)) * 100
+        : null;
+
+    res.json({
+      success: true,
+      ...summary,
+      latestMetrics: {
+        occupancyPct: latestOccupancy,
+        noi:          latestNOI,
+        avgRent:      latestRent,
+        collectionsRate,
+      },
+    });
   } catch (err) {
     logger.error('Operations summary error:', err);
     res.status(500).json({ 
@@ -503,6 +548,15 @@ router.post('/:dealId/other-income', requireAuth, async (req: AuthenticatedReque
 router.get('/:dealId/projected-vs-actual', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
+
+    // Verify deal ownership
+    const ownerCheck = await query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
+      [dealId, req.user!.userId]
+    );
+    if (ownerCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
 
     // Fetch budget (proforma) rows
     const budgetRes = await query(

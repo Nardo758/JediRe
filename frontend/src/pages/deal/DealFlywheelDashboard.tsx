@@ -66,6 +66,12 @@ interface SummaryData {
     favorableCount: number;
   };
   healthScore: number;
+  latestMetrics: {
+    occupancyPct: number | null;
+    noi: number | null;
+    avgRent: number | null;
+    collectionsRate: number | null;
+  } | null;
 }
 
 const FLYWHEEL_FEEDS = [
@@ -131,20 +137,31 @@ const FLYWHEEL_FEEDS = [
   },
 ];
 
-function MiniBarChart({ data, keyA, keyB, colorA, colorB, labelA, labelB, height = 80 }: any) {
-  const vals = data.filter((d: any) => d[keyA] != null && d[keyB] != null);
+interface MiniBarChartProps {
+  data: Record<string, number | null>[];
+  keyA: string;
+  keyB: string;
+  colorA: string;
+  colorB: string;
+  labelA: string;
+  labelB: string;
+  height?: number;
+}
+
+function MiniBarChart({ data, keyA, keyB, colorA, colorB, labelA, labelB, height = 80 }: MiniBarChartProps) {
+  const vals = data.filter(d => d[keyA] != null && d[keyB] != null);
   if (vals.length === 0) return null;
-  const max = Math.max(...vals.flatMap((d: any) => [d[keyA], d[keyB]]));
+  const max = Math.max(...vals.flatMap(d => [d[keyA] as number, d[keyB] as number]));
   const barW = 100 / (vals.length * 3);
 
   return (
     <div style={{ position:"relative", height, width:"100%", overflow:"hidden" }}>
       <svg width="100%" height={height} viewBox={`0 0 100 ${height}`} preserveAspectRatio="none">
-        {vals.map((d: any, i: number) => {
+        {vals.map((d, i) => {
           const x = i * (100 / vals.length);
           const w = barW;
-          const hA = (d[keyA] / max) * (height - 12);
-          const hB = (d[keyB] / max) * (height - 12);
+          const hA = ((d[keyA] as number) / max) * (height - 12);
+          const hB = ((d[keyB] as number) / max) * (height - 12);
           return (
             <g key={i}>
               <rect x={x + 0.5} y={height - hA - 4} width={w} height={hA} fill={colorA} opacity={0.7} rx="0.5" />
@@ -167,26 +184,35 @@ function MiniBarChart({ data, keyA, keyB, colorA, colorB, labelA, labelB, height
   );
 }
 
-function MiniLineChart({ data, keyA, keyB, colorA, colorB, height = 70 }: any) {
-  const vals = data.filter((d: any) => d[keyA] != null && d[keyB] != null);
+interface MiniLineChartProps {
+  data: Record<string, number | null>[];
+  keyA: string;
+  keyB: string;
+  colorA: string;
+  colorB: string;
+  height?: number;
+}
+
+function MiniLineChart({ data, keyA, keyB, colorA, colorB, height = 70 }: MiniLineChartProps) {
+  const vals = data.filter(d => d[keyA] != null && d[keyB] != null);
   if (vals.length < 2) return null;
-  const minV = Math.min(...vals.flatMap((d: any) => [d[keyA], d[keyB]])) * 0.97;
-  const maxV = Math.max(...vals.flatMap((d: any) => [d[keyA], d[keyB]])) * 1.03;
+  const minV = Math.min(...vals.flatMap(d => [d[keyA] as number, d[keyB] as number])) * 0.97;
+  const maxV = Math.max(...vals.flatMap(d => [d[keyA] as number, d[keyB] as number])) * 1.03;
   const range = maxV - minV || 1;
   const toY = (v: number) => height - ((v - minV) / range) * (height - 4) - 2;
   const toX = (i: number) => (i / (vals.length - 1)) * 100;
 
-  const pathA = vals.map((d: any, i: number) => `${i === 0 ? "M" : "L"}${toX(i).toFixed(1)},${toY(d[keyA]).toFixed(1)}`).join(" ");
-  const pathB = vals.map((d: any, i: number) => `${i === 0 ? "M" : "L"}${toX(i).toFixed(1)},${toY(d[keyB]).toFixed(1)}`).join(" ");
+  const pathA = vals.map((d, i) => `${i === 0 ? "M" : "L"}${toX(i).toFixed(1)},${toY(d[keyA] as number).toFixed(1)}`).join(" ");
+  const pathB = vals.map((d, i) => `${i === 0 ? "M" : "L"}${toX(i).toFixed(1)},${toY(d[keyB] as number).toFixed(1)}`).join(" ");
 
   return (
     <svg width="100%" height={height} viewBox={`0 0 100 ${height}`} preserveAspectRatio="none">
       <path d={pathA} fill="none" stroke={colorA} strokeWidth="1.5" />
       <path d={pathB} fill="none" stroke={colorB} strokeWidth="1.5" strokeDasharray="2 1" />
-      {vals.map((d: any, i: number) => (
+      {vals.map((d, i) => (
         <g key={i}>
-          <circle cx={toX(i)} cy={toY(d[keyA])} r="1.2" fill={colorA} />
-          <circle cx={toX(i)} cy={toY(d[keyB])} r="1.2" fill={colorB} />
+          <circle cx={toX(i)} cy={toY(d[keyA] as number)} r="1.2" fill={colorA} />
+          <circle cx={toX(i)} cy={toY(d[keyB] as number)} r="1.2" fill={colorB} />
         </g>
       ))}
     </svg>
@@ -238,7 +264,8 @@ function Variance({ proj, act, isPositiveGood = true }: { proj: number | null; a
   );
 }
 
-function KPICard({ label, value, sub, color = T.amber, small = false }: any) {
+interface KPICardProps { label: string; value: string | number; sub?: string; color?: string; small?: boolean; }
+function KPICard({ label, value, sub, color = T.amber, small = false }: KPICardProps) {
   return (
     <div style={{
       background: T.panel, border:`1px solid ${T.border}`, borderRadius:6,
@@ -251,10 +278,11 @@ function KPICard({ label, value, sub, color = T.amber, small = false }: any) {
   );
 }
 
-function TabBar({ tabs, active, onChange }: any) {
+interface TabDef { id: string; label: string; }
+function TabBar({ tabs, active, onChange }: { tabs: TabDef[]; active: string; onChange: (id: string) => void }) {
   return (
     <div style={{ display:"flex", gap:1, background:T.surface, borderRadius:6, padding:2, border:`1px solid ${T.border}` }}>
-      {tabs.map((t: any) => (
+      {tabs.map((t) => (
         <button key={t.id} onClick={() => onChange(t.id)} style={{
           flex:1, padding:"6px 10px", borderRadius:5, border:"none", cursor:"pointer",
           background: active === t.id ? T.panel : "transparent",
@@ -292,8 +320,10 @@ function EmptyState({ message, sub }: { message: string; sub?: string }) {
   );
 }
 
-function PerformanceTab({ proformaData }: { proformaData: ProformaRow[] }) {
-  if (proformaData.length === 0) {
+function PerformanceTab({ proformaData, summaryData }: { proformaData: ProformaRow[]; summaryData: SummaryData | null }) {
+  const lm = summaryData?.latestMetrics ?? null;
+
+  if (proformaData.length === 0 && lm == null) {
     return <EmptyState message="No Performance Data" sub="Upload monthly actuals and proforma projections to track performance here." />;
   }
 
@@ -303,6 +333,19 @@ function PerformanceTab({ proformaData }: { proformaData: ProformaRow[] }) {
   if (completed.length === 0) {
     return (
       <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+        {lm && (
+          <div>
+            <div style={{ fontSize:9, color:T.textDim, fontFamily:T.mono, marginBottom:6, textTransform:"uppercase", letterSpacing:"0.08em" }}>
+              Live Metrics · from Operations Summary
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10 }}>
+              <KPICard label="Occupancy Rate" value={lm.occupancyPct != null ? `${lm.occupancyPct.toFixed(1)}%` : "—"} sub="Latest reported month" color={lm.occupancyPct != null && lm.occupancyPct >= 90 ? T.green : T.amber} />
+              <KPICard label="Monthly NOI" value={lm.noi != null ? fmtK(lm.noi) : "—"} sub="Latest actual month" color={T.green} />
+              <KPICard label="Avg Effective Rent" value={lm.avgRent != null ? `$${lm.avgRent.toLocaleString()}` : "—"} sub="Per unit, latest month" color={T.cyan} />
+              <KPICard label="Collections Rate" value={lm.collectionsRate != null ? `${lm.collectionsRate.toFixed(1)}%` : "—"} sub="NOI / EGI, latest month" color={lm.collectionsRate != null && lm.collectionsRate >= 60 ? T.green : T.amber} />
+            </div>
+          </div>
+        )}
         <div style={{ background:T.panel, border:`1px solid ${T.border}`, borderRadius:6, padding:14 }}>
           <SectionHeader label="Full Actuals Log" tag={`${proformaData.length} PROJECTED MONTHS`} />
           <div style={{ overflowX:"auto" }}>
@@ -344,6 +387,22 @@ function PerformanceTab({ proformaData }: { proformaData: ProformaRow[] }) {
 
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+      {/* Summary KPI row — sourced directly from /summary endpoint */}
+      {lm && (
+        <div>
+          <div style={{ fontSize:9, color:T.textDim, fontFamily:T.mono, marginBottom:6, textTransform:"uppercase", letterSpacing:"0.08em" }}>
+            Live Metrics · from Operations Summary
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10 }}>
+            <KPICard label="Occupancy Rate" value={lm.occupancyPct != null ? `${lm.occupancyPct.toFixed(1)}%` : "—"} sub="Latest reported month" color={lm.occupancyPct != null && lm.occupancyPct >= 90 ? T.green : T.amber} />
+            <KPICard label="Monthly NOI" value={lm.noi != null ? fmtK(lm.noi) : "—"} sub="Latest actual month" color={T.green} />
+            <KPICard label="Avg Effective Rent" value={lm.avgRent != null ? `$${lm.avgRent.toLocaleString()}` : "—"} sub="Per unit, latest month" color={T.cyan} />
+            <KPICard label="Collections Rate" value={lm.collectionsRate != null ? `${lm.collectionsRate.toFixed(1)}%` : "—"} sub="NOI / EGI, latest month" color={lm.collectionsRate != null && lm.collectionsRate >= 60 ? T.green : T.amber} />
+          </div>
+        </div>
+      )}
+
+      {/* Proforma KPI row */}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", gap:10 }}>
         <KPICard label="Cumulative NOI" value={fmtK(totalActNOI)} sub={`Proj: ${fmtK(totalProjNOI)}`} color={totalActNOI > totalProjNOI ? T.green : T.red} />
         <KPICard label="NOI Variance" value={totalProjNOI > 0 ? `${((totalActNOI/totalProjNOI - 1)*100) >= 0 ? "+" : ""}${((totalActNOI/totalProjNOI - 1)*100).toFixed(1)}%` : "—"} sub="vs underwritten model" color={totalActNOI >= totalProjNOI ? T.green : T.red} />
@@ -673,7 +732,6 @@ export function M22PostCloseIntelligence() {
     setTrafficData([]);
     setSummaryData(null);
 
-    const headers = apiClient.defaults.headers.common;
     const pva = apiClient.get(`/api/v1/operations/${selectedDealId}/projected-vs-actual`);
     const traffic = apiClient.get(`/api/v1/operations/${selectedDealId}/traffic`, { params: { months: 24 } });
     const summary = apiClient.get(`/api/v1/operations/${selectedDealId}/summary`);
@@ -790,7 +848,7 @@ export function M22PostCloseIntelligence() {
             <div style={{ marginBottom:16 }}>
               <TabBar tabs={tabs} active={tab} onChange={setTab} />
             </div>
-            {tab === "performance" && <PerformanceTab proformaData={proformaData} />}
+            {tab === "performance" && <PerformanceTab proformaData={proformaData} summaryData={summaryData} />}
             {tab === "traffic"     && <TrafficValidationTab trafficData={trafficData} />}
             {tab === "flywheel"    && <PlatformFeedTab />}
             {tab === "bible"       && <DealBibleTab />}
