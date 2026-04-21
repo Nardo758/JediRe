@@ -591,10 +591,13 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
       {/* Variance Summary Banner — full width */}
       {(() => {
         const slice = performance.slice(-12);
-        const totalActualNoi = slice.reduce((s, p) => s + (p.actual_noi ?? p.noi ?? 0), 0);
-        const totalProjNoi   = slice.reduce((s, p) => s + (p.projected_noi ?? p.noi ?? 0), 0);
-        const avgActualOcc   = slice.length ? slice.reduce((s, p) => s + (p.actual_occupancy ?? p.occupancy ?? 0), 0) / slice.length : 0;
-        const avgProjOcc     = slice.length ? slice.reduce((s, p) => s + (p.projected_occupancy ?? p.occupancy ?? 0), 0) / slice.length : 0;
+        const actualNoiSlice = slice.filter(p => p.actual_noi != null);
+        const totalActualNoi = actualNoiSlice.reduce((s, p) => s + p.actual_noi!, 0);
+        const totalProjNoi   = slice.reduce((s, p) => s + (p.projected_noi ?? 0), 0);
+        const actualOccSlice = slice.filter(p => p.actual_occupancy != null);
+        const avgActualOcc   = actualOccSlice.length ? actualOccSlice.reduce((s, p) => s + p.actual_occupancy!, 0) / actualOccSlice.length : 0;
+        const projOccSlice   = slice.filter(p => p.projected_occupancy != null);
+        const avgProjOcc     = projOccSlice.length ? projOccSlice.reduce((s, p) => s + p.projected_occupancy!, 0) / projOccSlice.length : 0;
         const noiVar = totalProjNoi > 0 ? ((totalActualNoi - totalProjNoi) / totalProjNoi) * 100 : 0;
         const occVar = avgProjOcc > 0 ? ((avgActualOcc - avgProjOcc) / avgProjOcc) * 100 : 0;
         const fmtBig = (v: number) => v >= 1e6 ? `$${(v/1e6).toFixed(1)}M` : v >= 1e3 ? `$${(v/1e3).toFixed(0)}K` : `$${v.toFixed(0)}`;
