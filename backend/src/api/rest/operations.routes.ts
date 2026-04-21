@@ -716,7 +716,31 @@ router.post('/:dealId/monthly-actuals', requireAuth, async (req: AuthenticatedRe
                  $20, $21, $22,
                  'manual', $23
                )
-               ON CONFLICT DO NOTHING`,
+               ON CONFLICT (deal_id, report_month, is_budget, is_proforma)
+               WHERE property_id IS NULL
+               DO UPDATE SET
+                 occupied_units         = COALESCE(EXCLUDED.occupied_units, deal_monthly_actuals.occupied_units),
+                 total_units            = COALESCE(EXCLUDED.total_units, deal_monthly_actuals.total_units),
+                 occupancy_rate         = COALESCE(EXCLUDED.occupancy_rate, deal_monthly_actuals.occupancy_rate),
+                 gross_potential_rent   = COALESCE(EXCLUDED.gross_potential_rent, deal_monthly_actuals.gross_potential_rent),
+                 avg_effective_rent     = COALESCE(EXCLUDED.avg_effective_rent, deal_monthly_actuals.avg_effective_rent),
+                 effective_gross_income = COALESCE(EXCLUDED.effective_gross_income, deal_monthly_actuals.effective_gross_income),
+                 noi                    = COALESCE(EXCLUDED.noi, deal_monthly_actuals.noi),
+                 expenses               = COALESCE(EXCLUDED.expenses, deal_monthly_actuals.expenses),
+                 payroll                = COALESCE(EXCLUDED.payroll, deal_monthly_actuals.payroll),
+                 repairs_maintenance    = COALESCE(EXCLUDED.repairs_maintenance, deal_monthly_actuals.repairs_maintenance),
+                 utilities              = COALESCE(EXCLUDED.utilities, deal_monthly_actuals.utilities),
+                 marketing              = COALESCE(EXCLUDED.marketing, deal_monthly_actuals.marketing),
+                 admin_general          = COALESCE(EXCLUDED.admin_general, deal_monthly_actuals.admin_general),
+                 management_fee         = COALESCE(EXCLUDED.management_fee, deal_monthly_actuals.management_fee),
+                 management_fee_pct     = COALESCE(EXCLUDED.management_fee_pct, deal_monthly_actuals.management_fee_pct),
+                 turnover_costs         = COALESCE(EXCLUDED.turnover_costs, deal_monthly_actuals.turnover_costs),
+                 real_estate_taxes      = COALESCE(EXCLUDED.real_estate_taxes, deal_monthly_actuals.real_estate_taxes),
+                 insurance              = COALESCE(EXCLUDED.insurance, deal_monthly_actuals.insurance),
+                 capex                  = COALESCE(EXCLUDED.capex, deal_monthly_actuals.capex),
+                 notes                  = COALESCE(EXCLUDED.notes, deal_monthly_actuals.notes),
+                 data_source            = 'manual',
+                 updated_at             = NOW()`,
               [
                 dealId, reportMonth, isBudget,
                 occupiedUnits, totalUnits, occupancyRate,

@@ -96,6 +96,12 @@ CREATE INDEX IF NOT EXISTS idx_deal_monthly_actuals_property
   ON deal_monthly_actuals(property_id, report_month DESC)
   WHERE property_id IS NOT NULL;
 
+-- Partial unique index for rows where no property is linked (fallback path).
+-- Enables deterministic ON CONFLICT for the no-property upsert path.
+CREATE UNIQUE INDEX IF NOT EXISTS uidx_deal_monthly_actuals_no_prop
+  ON deal_monthly_actuals(deal_id, report_month, is_budget, is_proforma)
+  WHERE property_id IS NULL;
+
 -- Trigger: auto-fill occupancy_rate and expenses when not supplied
 CREATE OR REPLACE FUNCTION deal_monthly_actuals_m22_fill_derived()
 RETURNS trigger LANGUAGE plpgsql AS $$
