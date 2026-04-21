@@ -585,15 +585,21 @@ router.get('/deals/:dealId/ledger', requireAuth, async (req: AuthenticatedReques
   try {
     if (!(await ownsDeal(req.params.dealId, req.user!.userId)))
       return res.status(404).json({ success: false, error: 'Deal not found' });
-    const { investor_id } = req.query;
+    const { investor_id, date_from, date_to, limit: lim, offset: off } = req.query;
     const params: unknown[] = [req.params.dealId];
-    let filter = '';
-    if (investor_id) { params.push(investor_id); filter = `AND e.investor_id=$${params.length}`; }
+    const filters: string[] = [];
+    if (investor_id) { params.push(investor_id); filters.push(`e.investor_id=$${params.length}`); }
+    if (date_from)   { params.push(String(date_from)); filters.push(`e.entry_date>=$${params.length}::date`); }
+    if (date_to)     { params.push(String(date_to));   filters.push(`e.entry_date<=$${params.length}::date`); }
+    const where = filters.length ? `AND ${filters.join(' AND ')}` : '';
+    const limitClause  = lim  ? `LIMIT $${params.push(Number(lim))}` : 'LIMIT 500';
+    const offsetClause = off  ? `OFFSET $${params.push(Number(off))}` : '';
     const r = await query(
       `SELECT e.*, i.name AS investor_name
          FROM capital_account_entries e JOIN investors i ON i.id=e.investor_id
-        WHERE e.deal_id=$1 ${filter}
-        ORDER BY e.entry_date DESC, e.created_at DESC`,
+        WHERE e.deal_id=$1 ${where}
+        ORDER BY e.entry_date DESC, e.created_at DESC
+        ${limitClause} ${offsetClause}`,
       params,
     );
     res.json({ success: true, entries: r.rows });
