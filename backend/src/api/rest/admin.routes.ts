@@ -1755,7 +1755,6 @@ router.get('/comp-sets', requireAdminAuth, async (_req: AuthenticatedRequest, re
       GROUP BY rst.id, rst.property_name, rst.address, rst.city, rst.state,
                rst.submarket, acp.distance_mi, acp.occupancy_pct, rst.updated_at
       ORDER BY rst.updated_at DESC
-      LIMIT 200
     `);
     res.json({ comps: result.rows });
   } catch (err: any) {
@@ -1783,7 +1782,7 @@ router.post('/comp-sets', requireAdminAuth, async (req: AuthenticatedRequest, re
     `, [property_name, address ?? null, city ?? null, state ?? null, submarket ?? null]);
 
     // Insert supplemental admin data if provided
-    if (distance_mi != null || occupancy_pct != null || notes) {
+    if (distance_mi != null || avg_rent_sf != null || occupancy_pct != null || notes) {
       await query(`
         INSERT INTO admin_comp_set_properties (property_name, address, submarket, distance_mi, avg_rent_sf, occupancy_pct, notes)
         VALUES ($1, $2, $3, $4, $5, $6, $7)
