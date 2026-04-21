@@ -815,6 +815,40 @@ const DealDetailPage: React.FC = () => {
                   </span>
                 </>
               )}
+              {deal && ['owned','closed','Owned','Closed'].includes(deal.pipeline_stage || deal.status || '') && (
+                <>
+                  <span style={{ color: BORDER, margin: '0 8px', fontSize: 10 }}>│</span>
+                  <button
+                    onClick={() => navigate(`/assets-owned/${dealId}/property`)}
+                    style={{
+                      background: 'transparent',
+                      border: '1px solid #F5A62355',
+                      cursor: 'pointer',
+                      padding: '2px 8px',
+                      fontFamily: MONO,
+                      fontSize: 9,
+                      fontWeight: 800,
+                      color: AMBER,
+                      letterSpacing: 0.8,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      flexShrink: 0,
+                      transition: 'border-color 0.15s, background 0.15s',
+                    }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.borderColor = AMBER;
+                      e.currentTarget.style.background = `${AMBER}10`;
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.borderColor = `${AMBER}55`;
+                      e.currentTarget.style.background = 'transparent';
+                    }}
+                  >
+                    ▶ PORTFOLIO ASSET PAGE
+                  </button>
+                </>
+              )}
               {deal && !['owned','closed','Owned','Closed'].includes(deal.pipeline_stage || deal.status || '') && (
                 <>
                   <span style={{ color: BORDER, margin: '0 8px', fontSize: 10 }}>│</span>

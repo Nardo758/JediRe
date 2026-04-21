@@ -501,7 +501,7 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
             <tr 
               key={asset.id} 
               style={{ borderBottom: `1px solid ${T.border.subtle}`, cursor: 'pointer' }}
-              onClick={() => navigate(`/deals/${asset.id}`)}
+              onClick={() => navigate(`/assets-owned/${asset.id}/property`)}
             >
               <td style={{ padding: '12px 16px' }}>
                 <div style={{ color: T.text.primary, fontWeight: 500 }}>{asset.name}</div>

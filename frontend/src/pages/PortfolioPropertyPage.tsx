@@ -1,8 +1,22 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { apiClient } from '../services/api.client';
+import MonthlyActualsSection from '../components/deal/sections/MonthlyActualsSection';
+import { OperationsIntelligenceSection } from '../components/deal/sections/OperationsIntelligenceSection';
+import { LifecycleSection } from '../components/deal/sections/LifecycleSection';
+import { InvestorCapitalModule } from '../components/deal/sections/InvestorCapitalModule';
+import { EventTimelineSection } from '../components/deal/sections/EventTimelineSection';
+import { DocumentsSection } from '../components/deal/sections/DocumentsSection';
+import { TeamSection } from '../components/deal/sections/TeamSection';
+import { MonitorTab } from '../components/deal/sections/ExitStrategyTabs';
 
-type TabType = 'overview' | 'leasing' | 'unit-mix' | 'traffic';
+type TabType =
+  | 'overview' | 'performance' | 'comp-set'
+  | 'leasing' | 'unit-mix' | 'traffic'
+  | 'ops-intel' | 'revenue' | 'actuals'
+  | 'investors' | 'lifecycle' | 'debt-monitor'
+  | 'ai-learning' | 'events'
+  | 'documents' | 'deal-team';
 
 interface DealSummary {
   deal: {
@@ -124,6 +138,290 @@ const MiniLineChart = ({ data, color = '#3b82f6', height = 80 }: { data: number[
   );
 };
 
+// ─── Inline sub-tab components ───────────────────────────────────────────────
+
+const CompSetTab: React.FC<{ dealId: string }> = ({ dealId }) => {
+  const [comps, setComps] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [discovering, setDiscovering] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await apiClient.get(`/api/v1/deals/${dealId}/comp-set`);
+      setComps(res.data?.comps ?? []);
+    } catch { setComps([]); }
+    finally { setLoading(false); }
+  }, [dealId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const discover = async () => {
+    setDiscovering(true); setMsg(null);
+    try {
+      await apiClient.post(`/api/v1/deals/${dealId}/comp-set/discover`);
+      setMsg('Discovery complete'); await load();
+    } catch { setMsg('Discovery failed'); }
+    finally { setDiscovering(false); }
+  };
+
+  const fmt$ = (v: any) => v == null ? '—' : `$${Number(v).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+  const fmtPct = (v: any) => v == null ? '—' : `${(Number(v) * 100).toFixed(1)}%`;
+
+  return (
+    <div className="space-y-4 p-6 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+      <div className="flex items-center gap-3">
+        <button
+          onClick={discover}
+          disabled={discovering}
+          className="px-4 py-2 text-xs font-semibold bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-60"
+        >
+          {discovering ? '⟳ Discovering...' : '⚡ Auto-Discover Comps'}
+        </button>
+        {msg && <span className="text-xs text-stone-500">{msg}</span>}
+      </div>
+      {loading ? (
+        <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>
+      ) : comps.length === 0 ? (
+        <div className="text-center py-16 text-stone-400">
+          <div className="text-3xl mb-2">🏙</div>
+          <div className="text-sm font-medium">No comps tracked yet</div>
+          <div className="text-xs mt-1">Use Auto-Discover to populate the comp set</div>
+        </div>
+      ) : (
+        <div className="bg-white border border-stone-200 rounded-lg overflow-hidden">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="bg-stone-50 text-stone-500">
+                {['Property', 'Units', 'Year Built', 'Distance', 'Avg Rent', 'Occupancy', 'Type', 'Tier'].map(h => (
+                  <th key={h} className="text-left px-3 py-2 font-medium">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {comps.map((c: any, i: number) => (
+                <tr key={i} className="border-t border-stone-50 hover:bg-blue-50/30">
+                  <td className="px-3 py-2 font-medium text-stone-800">{c.comp_name || c.property_name || '—'}</td>
+                  <td className="px-3 py-2 text-stone-600">{c.units ?? '—'}</td>
+                  <td className="px-3 py-2 text-stone-600">{c.year_built ?? '—'}</td>
+                  <td className="px-3 py-2 text-stone-600">{c.distance_miles != null ? `${Number(c.distance_miles).toFixed(1)} mi` : '—'}</td>
+                  <td className="px-3 py-2 text-stone-700">{fmt$(c.avg_rent)}</td>
+                  <td className="px-3 py-2 text-stone-700">{fmtPct(c.occupancy_rate)}</td>
+                  <td className="px-3 py-2 text-stone-500">{c.property_type ?? '—'}</td>
+                  <td className="px-3 py-2">
+                    {c.tier && (
+                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${c.tier === 1 ? 'bg-blue-100 text-blue-700' : c.tier === 2 ? 'bg-amber-100 text-amber-700' : 'bg-stone-100 text-stone-600'}`}>
+                        T{c.tier}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const RevenueMgmtTab: React.FC<{ dealId: string }> = ({ dealId }) => {
+  const [subTab, setSubTab] = useState<'pva' | 'position'>('pva');
+  const [pvaData, setPvaData] = useState<any[]>([]);
+  const [position, setPosition] = useState<any>(null);
+  const [pvaLoading, setPvaLoading] = useState(false);
+  const [posLoading, setPosLoading] = useState(false);
+
+  useEffect(() => {
+    setPvaLoading(true);
+    apiClient.get(`/api/v1/operations/${dealId}/projected-vs-actual`)
+      .then(r => setPvaData(r.data?.data ?? []))
+      .catch(() => setPvaData([]))
+      .finally(() => setPvaLoading(false));
+  }, [dealId]);
+
+  useEffect(() => {
+    if (subTab !== 'position') return;
+    if (position) return;
+    setPosLoading(true);
+    apiClient.get(`/api/v1/lifecycle/${dealId}/competitive-position`)
+      .then(r => setPosition(r.data))
+      .catch(() => setPosition(null))
+      .finally(() => setPosLoading(false));
+  }, [dealId, subTab, position]);
+
+  const fmt$ = (v: any) => v == null ? '—' : `$${Number(v).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+  const fmtPct = (v: any, mult = true) => v == null ? '—' : `${(mult ? Number(v) * 100 : Number(v)).toFixed(1)}%`;
+
+  const subTabs = [
+    { id: 'pva', label: 'Projected vs Actual' },
+    { id: 'position', label: 'Competitive Position' },
+  ] as const;
+
+  return (
+    <div className="space-y-4 p-6 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+      <div className="flex gap-2">
+        {subTabs.map(s => (
+          <button
+            key={s.id}
+            onClick={() => setSubTab(s.id)}
+            className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${subTab === s.id ? 'bg-blue-100 text-blue-700' : 'text-stone-600 hover:bg-stone-100'}`}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+
+      {subTab === 'pva' && (
+        pvaLoading ? (
+          <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>
+        ) : pvaData.length === 0 ? (
+          <div className="text-center py-16 text-stone-400">
+            <div className="text-3xl mb-2">📊</div>
+            <div className="text-sm">No projected vs actual data available</div>
+            <div className="text-xs mt-1">Enter Monthly Actuals to populate this view</div>
+          </div>
+        ) : (
+          <div className="bg-white border border-stone-200 rounded-lg overflow-hidden">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-stone-50 text-stone-500">
+                  {['Month', 'Proj NOI', 'Actual NOI', 'Variance $', 'Variance %', 'Proj Occ', 'Actual Occ'].map(h => (
+                    <th key={h} className="text-left px-3 py-2 font-medium">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {pvaData.map((row: any, i: number) => {
+                  const varD = (row.actual_noi ?? 0) - (row.projected_noi ?? 0);
+                  const varPct = row.projected_noi ? (varD / row.projected_noi) * 100 : null;
+                  return (
+                    <tr key={i} className="border-t border-stone-50 hover:bg-blue-50/30">
+                      <td className="px-3 py-2 font-medium text-stone-700">{row.report_month?.slice(0, 7)}</td>
+                      <td className="px-3 py-2">{fmt$(row.projected_noi)}</td>
+                      <td className="px-3 py-2">{fmt$(row.actual_noi)}</td>
+                      <td className={`px-3 py-2 font-medium ${varD >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                        {varD >= 0 ? '+' : ''}{fmt$(varD)}
+                      </td>
+                      <td className={`px-3 py-2 ${(varPct ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                        {varPct != null ? `${varPct >= 0 ? '+' : ''}${varPct.toFixed(1)}%` : '—'}
+                      </td>
+                      <td className="px-3 py-2">{fmtPct(row.projected_occupancy)}</td>
+                      <td className="px-3 py-2">{fmtPct(row.actual_occupancy)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )
+      )}
+
+      {subTab === 'position' && (
+        posLoading ? (
+          <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" /></div>
+        ) : !position ? (
+          <div className="text-center py-16 text-stone-400">
+            <div className="text-3xl mb-2">🏙</div>
+            <div className="text-sm">No competitive position data available</div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {position.summary && (
+              <div className="grid grid-cols-3 gap-4">
+                {[
+                  { label: 'Market Rank', value: position.summary.market_rank ?? '—' },
+                  { label: 'Rent Premium / Discount', value: position.summary.rent_premium_pct != null ? `${Number(position.summary.rent_premium_pct).toFixed(1)}%` : '—' },
+                  { label: 'Occ vs Market', value: position.summary.occ_vs_market != null ? `${Number(position.summary.occ_vs_market) > 0 ? '+' : ''}${Number(position.summary.occ_vs_market).toFixed(1)}pp` : '—' },
+                ].map((m, i) => (
+                  <div key={i} className="bg-white border border-stone-200 rounded-lg p-4 text-center">
+                    <div className="text-xs text-stone-400 mb-1">{m.label}</div>
+                    <div className="text-xl font-bold text-stone-800">{m.value}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {position.comps && position.comps.length > 0 && (
+              <div className="bg-white border border-stone-200 rounded-lg overflow-hidden">
+                <div className="px-4 py-2 bg-stone-50 border-b text-xs font-semibold text-stone-500">COMPETITIVE SET</div>
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-stone-400">
+                      {['Property', 'Avg Rent', 'Occupancy', 'Distance'].map(h => (
+                        <th key={h} className="text-left px-3 py-2">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {position.comps.map((c: any, i: number) => (
+                      <tr key={i} className="border-t border-stone-50">
+                        <td className="px-3 py-2 text-stone-700">{c.comp_name ?? '—'}</td>
+                        <td className="px-3 py-2">{fmt$(c.avg_rent)}</td>
+                        <td className="px-3 py-2">{fmtPct(c.occupancy_rate)}</td>
+                        <td className="px-3 py-2 text-stone-500">{c.distance_miles != null ? `${Number(c.distance_miles).toFixed(1)} mi` : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )
+      )}
+    </div>
+  );
+};
+
+const AILearningTab: React.FC = () => (
+  <div className="space-y-6 p-6 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+    <div className="grid grid-cols-2 gap-6">
+      <div className="bg-white border border-stone-200 rounded-lg p-5">
+        <h3 className="text-sm font-semibold text-stone-700 mb-4 uppercase tracking-wide">Agent Accuracy</h3>
+        <div className="grid grid-cols-2 gap-3">
+          {[
+            { label: 'Hit Rate (±10%)', value: '72%', color: 'text-emerald-600' },
+            { label: 'Hit Rate (±20%)', value: '89%', color: 'text-emerald-600' },
+            { label: 'Mean Bias', value: '+2.3%', color: 'text-amber-600' },
+            { label: 'Predictions', value: '847', color: 'text-stone-800' },
+          ].map((m, i) => (
+            <div key={i} className="bg-stone-50 rounded-lg p-3 text-center">
+              <div className={`text-2xl font-bold ${m.color}`}>{m.value}</div>
+              <div className="text-xs text-stone-400 mt-1">{m.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="bg-white border border-stone-200 rounded-lg p-5">
+        <h3 className="text-sm font-semibold text-stone-700 mb-4 uppercase tracking-wide">By Assumption Type</h3>
+        <div className="space-y-2">
+          {[
+            { type: 'Rent Growth', hit: '78%', bias: '+1.2%', n: 312 },
+            { type: 'Vacancy Rate', hit: '71%', bias: '+3.1%', n: 298 },
+            { type: 'Exit Cap Rate', hit: '69%', bias: '-0.8%', n: 145 },
+            { type: 'OpEx Ratio', hit: '82%', bias: '+0.6%', n: 92 },
+          ].map((r, i) => (
+            <div key={i} className="flex items-center justify-between py-1.5 border-t border-stone-50 text-xs">
+              <span className="text-stone-600 w-28">{r.type}</span>
+              <span className="text-emerald-600 font-semibold w-10 text-right">{r.hit}</span>
+              <span className={`w-12 text-right font-medium ${r.bias.startsWith('+') ? 'text-amber-600' : 'text-blue-600'}`}>{r.bias}</span>
+              <span className="text-stone-400 w-8 text-right">n={r.n}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+    <div className="bg-white border border-stone-200 rounded-lg p-5">
+      <h3 className="text-sm font-semibold text-stone-700 mb-4 uppercase tracking-wide">This Asset's Contribution to Portfolio Learning</h3>
+      <p className="text-xs text-stone-500 leading-relaxed">
+        Monthly Actuals recorded for this asset feed the CashFlow Agent's <span className="font-semibold text-blue-600">Tier 2 evidence layer</span>.
+        Once 3+ months are recorded, this deal's performance data becomes a comparable for similar assets in the same submarket.
+        Nightly aggregation runs produce non-empty percentile benchmarks on future underwriting pro formas, improving suggestion accuracy across the portfolio.
+      </p>
+    </div>
+  </div>
+);
+
 export default function PortfolioPropertyPage() {
   const { dealId } = useParams<{ dealId: string }>();
   const navigate = useNavigate();
@@ -183,11 +481,33 @@ export default function PortfolioPropertyPage() {
   const { deal, latestFinancials: lf, unitProgram, leaseStats, trafficStats } = summary;
   const units = deal.units || 290;
 
-  const tabs: { id: TabType; label: string; icon: string }[] = [
-    { id: 'overview', label: 'Financial Overview', icon: '📊' },
-    { id: 'leasing', label: 'Leasing', icon: '📋' },
-    { id: 'unit-mix', label: 'Unit Mix', icon: '🏠' },
-    { id: 'traffic', label: 'Traffic', icon: '🚶' },
+  const TAB_GROUPS: { label: string; tabs: { id: TabType; short: string }[] }[] = [
+    { label: 'OPERATIONAL', tabs: [
+      { id: 'overview',  short: 'Overview' },
+      { id: 'performance', short: 'Performance' },
+      { id: 'comp-set',  short: 'Comp Set' },
+    ]},
+    { label: 'REVENUE & OPS', tabs: [
+      { id: 'leasing',   short: 'Leasing' },
+      { id: 'unit-mix',  short: 'Unit Mix' },
+      { id: 'traffic',   short: 'Traffic' },
+      { id: 'ops-intel', short: 'Ops Intel' },
+      { id: 'revenue',   short: 'Revenue Mgmt' },
+      { id: 'actuals',   short: 'Actuals' },
+    ]},
+    { label: 'CAPITAL & DEBT', tabs: [
+      { id: 'investors',    short: 'Investors' },
+      { id: 'lifecycle',    short: 'Lifecycle' },
+      { id: 'debt-monitor', short: 'Debt Monitor' },
+    ]},
+    { label: 'INTELLIGENCE', tabs: [
+      { id: 'ai-learning', short: 'AI Learning' },
+      { id: 'events',      short: 'Events' },
+    ]},
+    { label: 'ADMIN', tabs: [
+      { id: 'documents',  short: 'Documents' },
+      { id: 'deal-team',  short: 'Deal Team' },
+    ]},
   ];
 
   const renderKPICards = () => {
@@ -592,6 +912,10 @@ export default function PortfolioPropertyPage() {
           <button onClick={() => navigate('/assets-owned')} className="text-stone-400 hover:text-stone-600 text-sm">
             ← Assets Owned
           </button>
+          <span className="text-stone-300">·</span>
+          <button onClick={() => navigate(`/deals/${dealId}`)} className="text-blue-500 hover:text-blue-700 text-sm">
+            View Underwriting →
+          </button>
         </div>
         <div className="flex items-center justify-between">
           <div>
@@ -629,26 +953,83 @@ export default function PortfolioPropertyPage() {
 
       {renderKPICards()}
 
-      <div className="flex items-center gap-1 px-6 pb-2 flex-shrink-0">
-        {tabs.map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-              activeTab === tab.id ? 'bg-blue-100 text-blue-700' : 'text-stone-600 hover:text-stone-900 hover:bg-stone-100'
-            }`}
-          >
-            <span>{tab.icon}</span>
-            <span>{tab.label}</span>
-          </button>
-        ))}
+      <div className="border-b border-stone-200 bg-white flex-shrink-0 overflow-x-auto">
+        <div className="flex items-end gap-0 px-4 min-w-max">
+          {TAB_GROUPS.map((group, gi) => (
+            <React.Fragment key={group.label}>
+              {gi > 0 && <div className="w-px h-6 bg-stone-200 self-center mx-1" />}
+              <div className="flex flex-col">
+                <div className="text-[8px] font-bold text-stone-400 px-2 pt-1.5 pb-0.5 tracking-widest">{group.label}</div>
+                <div className="flex items-center gap-0.5 pb-1">
+                  {group.tabs.map(tab => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`px-3 py-1 rounded text-xs font-medium transition-colors whitespace-nowrap ${
+                        activeTab === tab.id
+                          ? 'bg-blue-100 text-blue-700'
+                          : 'text-stone-500 hover:text-stone-800 hover:bg-stone-100'
+                      }`}
+                    >
+                      {tab.short}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </React.Fragment>
+          ))}
+        </div>
       </div>
 
       <div className="flex-1 overflow-hidden">
-        {activeTab === 'overview' && renderOverview()}
-        {activeTab === 'leasing' && renderLeasing()}
-        {activeTab === 'unit-mix' && renderUnitMix()}
-        {activeTab === 'traffic' && renderTraffic()}
+        {activeTab === 'overview'     && renderOverview()}
+        {activeTab === 'performance'  && <RevenueMgmtTab dealId={dealId!} />}
+        {activeTab === 'comp-set'     && <CompSetTab dealId={dealId!} />}
+        {activeTab === 'leasing'      && renderLeasing()}
+        {activeTab === 'unit-mix'     && renderUnitMix()}
+        {activeTab === 'traffic'      && renderTraffic()}
+        {activeTab === 'ops-intel'    && (
+          <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+            <OperationsIntelligenceSection dealId={dealId!} deal={deal as Record<string, unknown>} />
+          </div>
+        )}
+        {activeTab === 'revenue'      && <RevenueMgmtTab dealId={dealId!} />}
+        {activeTab === 'actuals'      && (
+          <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+            <MonthlyActualsSection dealId={dealId!} deal={deal as Record<string, unknown>} />
+          </div>
+        )}
+        {activeTab === 'investors'    && (
+          <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+            <InvestorCapitalModule dealId={dealId!} />
+          </div>
+        )}
+        {activeTab === 'lifecycle'    && (
+          <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+            <LifecycleSection dealId={dealId!} />
+          </div>
+        )}
+        {activeTab === 'debt-monitor' && (
+          <div className="overflow-y-auto p-6" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+            <MonitorTab dealStatus="owned" />
+          </div>
+        )}
+        {activeTab === 'ai-learning'  && <AILearningTab />}
+        {activeTab === 'events'       && (
+          <div className="overflow-y-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+            <EventTimelineSection dealId={dealId!} deal={deal as any} />
+          </div>
+        )}
+        {activeTab === 'documents'    && (
+          <div className="overflow-y-auto p-6" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+            <DocumentsSection deal={deal as any} />
+          </div>
+        )}
+        {activeTab === 'deal-team'    && (
+          <div className="overflow-y-auto p-6" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+            <TeamSection deal={{ ...deal, status: deal.status || 'owned' } as any} />
+          </div>
+        )}
       </div>
     </div>
   );
