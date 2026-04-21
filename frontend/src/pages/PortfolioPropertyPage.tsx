@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { apiClient } from '../services/api.client';
 import type { Deal } from '../types/agent';
@@ -842,17 +842,6 @@ const ExitTimingTab: React.FC<{ dealId: string }> = () => {
 };
 
 // ─── Refi Monitor Tab ─────────────────────────────────────────
-interface RefiForm {
-  scenarioName: string;
-  assumedNoi: string;
-  assumedCapRate: string;
-  existingBalance: string;
-  assumedSpreadBps: string;
-  maxLtv: string;
-  minDscr: string;
-  minDebtYield: string;
-}
-
 interface RefiResult {
   maxLoanByLtv: number;
   maxLoanByDscr: number;
@@ -882,7 +871,7 @@ interface RefiScenarioRow {
   is_feasible: boolean;
 }
 
-const RefiMonitorTab: React.FC<{ dealId: string }> = ({ dealId }) => {
+const RefiMonitorTab: React.FC<{ dealId: string; deal: any }> = ({ dealId, deal }) => {
   const T2 = {
     mono: '"JetBrains Mono",monospace',
     panel: '#0F1319',
@@ -894,231 +883,498 @@ const RefiMonitorTab: React.FC<{ dealId: string }> = ({ dealId }) => {
     input: '#0D1117',
   };
 
-  const [form, setForm] = useState<RefiForm>({
-    scenarioName: 'Q2 2026 Refi Test',
-    assumedNoi: '',
-    assumedCapRate: '5.0',
-    existingBalance: '',
-    assumedSpreadBps: '185',
-    maxLtv: '75',
-    minDscr: '1.25',
-    minDebtYield: '8.0',
-  });
-  const [result, setResult] = useState<RefiResult | null>(null);
-  const [history, setHistory] = useState<RefiScenarioRow[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [histLoading, setHistLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    apiClient.get(`/api/v1/lifecycle/${dealId}/refi-test`)
-      .then((res: any) => setHistory(res.data?.scenarios ?? []))
-      .catch(() => {})
-      .finally(() => setHistLoading(false));
-  }, [dealId]);
-
-  const runTest = async () => {
-    setLoading(true);
-    setError(null);
-    setResult(null);
-    try {
-      const payload = {
-        scenarioName: form.scenarioName,
-        scenarioType: 'operational',
-        assumedNoi: parseFloat(form.assumedNoi),
-        assumedValue: form.assumedNoi && form.assumedCapRate
-          ? parseFloat(form.assumedNoi) / (parseFloat(form.assumedCapRate) / 100)
-          : undefined,
-        assumedCapRate: parseFloat(form.assumedCapRate) / 100,
-        existingBalance: form.existingBalance ? parseFloat(form.existingBalance) : undefined,
-        assumedSpreadBps: parseFloat(form.assumedSpreadBps),
-        maxLtv: parseFloat(form.maxLtv) / 100,
-        minDscr: parseFloat(form.minDscr),
-        minDebtYield: parseFloat(form.minDebtYield) / 100,
-      };
-      const res: any = await apiClient.post(`/api/v1/lifecycle/${dealId}/refi-test`, payload);
-      if (res.data?.success) {
-        setResult(res.data.result);
-        // Refresh history
-        const hRes: any = await apiClient.get(`/api/v1/lifecycle/${dealId}/refi-test`);
-        setHistory(hRes.data?.scenarios ?? []);
-      } else {
-        setError(res.data?.error ?? 'Test failed');
-      }
-    } catch (e: any) {
-      setError(e?.response?.data?.error ?? 'Network error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fieldStyle = {
-    background: T2.input,
-    border: `1px solid ${T2.border}`,
-    borderRadius: 4,
-    padding: '6px 10px',
-    fontSize: 11,
-    fontFamily: T2.mono,
-    color: '#E8E6E1',
-    width: '100%',
-    outline: 'none',
-  };
-  const labelStyle = { fontSize: 9, color: T2.muted, fontFamily: T2.mono, marginBottom: 3, display: 'block' as const };
+  const fm = (n: number | null | undefined, dec = 0) =>
+    n == null ? '—' : `$${n.toLocaleString('en-US', { maximumFractionDigits: dec })}`;
+  const fp = (n: number | null | undefined, dec = 2) =>
+    n == null ? '—' : `${(n * 100).toFixed(dec)}%`;
   const constraintColor = (c: string) =>
     c?.toLowerCase().includes('ltv') ? '#FC8181' :
     c?.toLowerCase().includes('dscr') ? '#F6AD55' :
     c?.toLowerCase().includes('yield') ? '#B794F4' : '#63B3ED';
 
-  const fm = (n: number | null | undefined, dec = 0) =>
-    n == null ? '—' : `$${n.toLocaleString('en-US', { maximumFractionDigits: dec })}`;
-  const fp = (n: number | null | undefined, dec = 2) =>
-    n == null ? '—' : `${(n * 100).toFixed(dec)}%`;
+  /* ── State ── */
+  const [liveRates, setLiveRates] = useState<Record<string, number> | null>(null);
+  const [actuals, setActuals] = useState<any[]>([]);
+  const [history, setHistory] = useState<RefiScenarioRow[]>([]);
+  const [histLoading, setHistLoading] = useState(true);
+  const [ratesLoading, setRatesLoading] = useState(true);
+
+  const [noiPeriod, setNoiPeriod] = useState<'T12' | 'T6' | 'T3'>('T12');
+  const [benchmark, setBenchmark] = useState<'SOFR' | 'T5Y' | 'T10Y'>('T10Y');
+  const [spreadBps, setSpreadBps] = useState(185);
+  const [maxLtv, setMaxLtv] = useState(75);
+  const [minDscr, setMinDscr] = useState(1.25);
+  const [minDebtYield, setMinDebtYield] = useState(8.0);
+  const [capRatePct, setCapRatePct] = useState<number>(() => {
+    const cr = Number(deal?.capRate ?? 0);
+    return cr > 1 ? cr * 100 : cr > 0 ? cr : 5.5;
+  });
+  const [existingBalance, setExistingBalance] = useState<number>(() => {
+    const pp = Number(deal?.purchasePrice ?? 0);
+    return pp > 0 ? Math.round(pp * 0.65) : 0;
+  });
+
+  const [runLoading, setRunLoading] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
+  const [scenarioName, setScenarioName] = useState('Refi Test');
+
+  /* ── Fetch ── */
+  useEffect(() => {
+    apiClient.get('/api/v1/capital-structure/rates/live')
+      .then((r: any) => setLiveRates(r.data))
+      .catch(() => {})
+      .finally(() => setRatesLoading(false));
+
+    apiClient.get(`/api/v1/operations/${dealId}/monthly-actuals?limit=24`)
+      .then((r: any) => {
+        const rows = r.data?.data ?? [];
+        setActuals(rows.slice().sort((a: any, b: any) =>
+          new Date(a.period_month).getTime() - new Date(b.period_month).getTime()
+        ));
+      }).catch(() => {});
+
+    apiClient.get(`/api/v1/lifecycle/${dealId}/refi-test`)
+      .then((r: any) => setHistory(r.data?.scenarios ?? []))
+      .catch(() => {})
+      .finally(() => setHistLoading(false));
+  }, [dealId]);
+
+  /* ── Computed ── */
+  const benchmarkRate = useMemo(() => {
+    if (!liveRates) return null;
+    if (benchmark === 'SOFR') return liveRates.sofr ?? null;
+    if (benchmark === 'T5Y')  return liveRates.treasury5Y ?? null;
+    return liveRates.treasury10Y ?? null;
+  }, [liveRates, benchmark]);
+
+  const allInRate = benchmarkRate != null ? (benchmarkRate + spreadBps / 100) / 100 : null;
+
+  const debtConstant = useMemo(() => {
+    if (!allInRate || allInRate <= 0) return null;
+    const mr = allInRate / 12;
+    const n = 360;
+    return (mr * Math.pow(1 + mr, n)) / (Math.pow(1 + mr, n) - 1) * 12;
+  }, [allInRate]);
+
+  const actualsWithNoi = useMemo(() =>
+    actuals.filter(a => Number(a.noi ?? 0) > 0 || Number(a.effective_gross_income ?? 0) > 0),
+    [actuals]
+  );
+
+  const noiAnnualized = useMemo(() => {
+    if (!actualsWithNoi.length) return null;
+    const n = noiPeriod === 'T3' ? 3 : noiPeriod === 'T6' ? 6 : 12;
+    const slice = actualsWithNoi.slice(-n);
+    if (!slice.length) return null;
+    const sum = slice.reduce((acc: number, a: any) => acc + Number(a.noi ?? 0), 0);
+    return (sum / slice.length) * 12;
+  }, [actualsWithNoi, noiPeriod]);
+
+  const propertyValue = noiAnnualized && capRatePct > 0
+    ? noiAnnualized / (capRatePct / 100) : null;
+  const maxByLtv  = propertyValue ? propertyValue * (maxLtv / 100) : null;
+  const maxByDscr = noiAnnualized && debtConstant && debtConstant > 0
+    ? noiAnnualized / (minDscr * debtConstant) : null;
+  const maxByDy   = noiAnnualized ? noiAnnualized / (minDebtYield / 100) : null;
+  const maxProceeds = (maxByLtv != null && maxByDscr != null && maxByDy != null)
+    ? Math.min(maxByLtv, maxByDscr, maxByDy) : null;
+  const binding = maxProceeds == null ? null
+    : maxProceeds === maxByLtv ? 'LTV'
+    : maxProceeds === maxByDscr ? 'DSCR'
+    : 'DEBT YIELD';
+  const cashOut = maxProceeds != null ? maxProceeds - existingBalance : null;
+  const annualDebtSvc = maxProceeds != null && debtConstant ? maxProceeds * debtConstant : null;
+  const dscrCheck = annualDebtSvc && noiAnnualized ? noiAnnualized / annualDebtSvc : null;
+  const isFeasible = maxProceeds != null && maxProceeds > 0;
+
+  /* ── Trend data ── */
+  const trendData = useMemo(() => {
+    if (!allInRate || !debtConstant || !capRatePct) return [];
+    return actualsWithNoi.map((a: any) => {
+      const noi = Number(a.noi ?? 0);
+      const noiAnn = noi * 12;
+      const val = noiAnn / (capRatePct / 100);
+      const ltv  = val * (maxLtv / 100);
+      const dscr = noiAnn / (minDscr * debtConstant);
+      const dy   = noiAnn / (minDebtYield / 100);
+      return {
+        month: String(a.period_month ?? '').slice(0, 7),
+        ltv, dscr, dy,
+        binding: Math.min(ltv, dscr, dy),
+      };
+    });
+  }, [actualsWithNoi, allInRate, debtConstant, capRatePct, maxLtv, minDscr, minDebtYield]);
+
+  /* ── Save scenario to history ── */
+  const saveScenario = async () => {
+    if (!noiAnnualized) return;
+    setRunLoading(true);
+    setRunError(null);
+    try {
+      const payload = {
+        scenarioName,
+        scenarioType: 'operational',
+        assumedNoi: noiAnnualized,
+        assumedValue: propertyValue,
+        assumedCapRate: capRatePct / 100,
+        existingBalance,
+        assumedSpreadBps: spreadBps,
+        maxLtv: maxLtv / 100,
+        minDscr,
+        minDebtYield: minDebtYield / 100,
+      };
+      const res: any = await apiClient.post(`/api/v1/lifecycle/${dealId}/refi-test`, payload);
+      if (res.data?.success) {
+        const hRes: any = await apiClient.get(`/api/v1/lifecycle/${dealId}/refi-test`);
+        setHistory(hRes.data?.scenarios ?? []);
+      } else {
+        setRunError(res.data?.error ?? 'Save failed');
+      }
+    } catch (e: any) {
+      setRunError(e?.response?.data?.error ?? 'Network error');
+    } finally {
+      setRunLoading(false);
+    }
+  };
+
+  /* ── Chart helpers ── */
+  const W = 520, H = 160, PL = 58, PR = 12, PT = 10, PB = 28;
+  const iW = W - PL - PR, iH = H - PT - PB;
+  const chartMax = trendData.length
+    ? Math.max(...trendData.flatMap(d => [d.ltv, d.dscr, d.dy])) * 1.12 : 1;
+  const toX = (i: number) =>
+    trendData.length < 2 ? PL + iW / 2
+    : PL + (i / (trendData.length - 1)) * iW;
+  const toY = (v: number) => H - PB - (v / chartMax) * iH;
+  const pts = (key: 'ltv' | 'dscr' | 'dy' | 'binding') =>
+    trendData.map((d, i) => `${toX(i)},${toY(d[key])}`).join(' ');
+
+  const fieldStyle: React.CSSProperties = {
+    background: T2.input, border: `1px solid ${T2.border}`, borderRadius: 4,
+    padding: '5px 8px', fontSize: 10, fontFamily: T2.mono, color: '#E8E6E1',
+    width: '100%', outline: 'none', boxSizing: 'border-box',
+  };
+  const labelStyle: React.CSSProperties = {
+    fontSize: 8, color: T2.muted, fontFamily: T2.mono, marginBottom: 2,
+    display: 'block', letterSpacing: 0.3,
+  };
+  const secHdr = (label: string, sub?: string) => (
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ fontSize: 9, fontWeight: 700, fontFamily: T2.mono, color: '#63B3ED', letterSpacing: 0.5 }}>{label}</div>
+      {sub && <div style={{ fontSize: 8, color: T2.muted, fontFamily: T2.mono, marginTop: 1 }}>{sub}</div>}
+    </div>
+  );
+  const pill = (label: string, active: boolean, onClick: () => void) => (
+    <button key={label} onClick={onClick} style={{
+      padding: '3px 9px', fontSize: 9, fontFamily: T2.mono, fontWeight: active ? 700 : 400,
+      background: active ? 'rgba(99,179,237,0.18)' : 'transparent',
+      border: `1px solid ${active ? 'rgba(99,179,237,0.45)' : T2.border}`,
+      borderRadius: 3, color: active ? '#63B3ED' : T2.muted,
+      cursor: 'pointer',
+    }}>{label}</button>
+  );
+
+  /* ── Loan at close derived values ── */
+  const purchasePrice = Number(deal?.purchasePrice ?? 0);
+  const origLoan = purchasePrice > 0 ? Math.round(purchasePrice * 0.65) : 0;
+  const acqDate = deal?.acquisitionDate ? String(deal.acquisitionDate).slice(0, 10) : '—';
+  const acqCapRate = (() => {
+    const v = Number(deal?.capRate ?? 0);
+    return v > 1 ? v : v * 100;
+  })();
 
   return (
     <div style={{ padding: 16, overflowY: 'auto', maxHeight: 'calc(100vh - 280px)' }}>
-      <div style={{ fontSize: 11, fontWeight: 700, fontFamily: T2.mono, color: '#E8E6E1', letterSpacing: 1, marginBottom: 4 }}>REFI MONITOR — CONSTRAINT ENGINE</div>
-      <div style={{ fontSize: 9, color: T2.muted, fontFamily: T2.mono, marginBottom: 16 }}>LTV · DSCR · Debt Yield — binding constraint determines max proceeds</div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        {/* ── Left: Form ── */}
-        <div style={{ background: T2.panel, border: `1px solid ${T2.border}`, borderRadius: 6, padding: 16 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, fontFamily: T2.mono, color: '#63B3ED', marginBottom: 12, letterSpacing: 0.5 }}>RUN REFI TEST</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <div style={{ gridColumn: '1 / -1' }}>
-              <label style={labelStyle}>SCENARIO NAME</label>
-              <input style={fieldStyle} value={form.scenarioName} onChange={e => setForm(f => ({ ...f, scenarioName: e.target.value }))} />
-            </div>
-            <div>
-              <label style={labelStyle}>ASSUMED NOI ($)</label>
-              <input style={fieldStyle} type="number" placeholder="e.g. 850000" value={form.assumedNoi} onChange={e => setForm(f => ({ ...f, assumedNoi: e.target.value }))} />
-            </div>
-            <div>
-              <label style={labelStyle}>ASSUMED CAP RATE (%)</label>
-              <input style={fieldStyle} type="number" step="0.1" value={form.assumedCapRate} onChange={e => setForm(f => ({ ...f, assumedCapRate: e.target.value }))} />
-            </div>
-            <div>
-              <label style={labelStyle}>EXISTING BALANCE ($)</label>
-              <input style={fieldStyle} type="number" placeholder="0 if unencumbered" value={form.existingBalance} onChange={e => setForm(f => ({ ...f, existingBalance: e.target.value }))} />
-            </div>
-            <div>
-              <label style={labelStyle}>SPREAD (bps)</label>
-              <input style={fieldStyle} type="number" value={form.assumedSpreadBps} onChange={e => setForm(f => ({ ...f, assumedSpreadBps: e.target.value }))} />
-            </div>
-            <div>
-              <label style={labelStyle}>MAX LTV (%)</label>
-              <input style={fieldStyle} type="number" step="1" value={form.maxLtv} onChange={e => setForm(f => ({ ...f, maxLtv: e.target.value }))} />
-            </div>
-            <div>
-              <label style={labelStyle}>MIN DSCR</label>
-              <input style={fieldStyle} type="number" step="0.05" value={form.minDscr} onChange={e => setForm(f => ({ ...f, minDscr: e.target.value }))} />
-            </div>
-            <div style={{ gridColumn: '1 / -1' }}>
-              <label style={labelStyle}>MIN DEBT YIELD (%)</label>
-              <input style={fieldStyle} type="number" step="0.1" value={form.minDebtYield} onChange={e => setForm(f => ({ ...f, minDebtYield: e.target.value }))} />
+      {/* ── Header ── */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, fontFamily: T2.mono, color: '#E8E6E1', letterSpacing: 1 }}>REFI MONITOR</div>
+          <div style={{ fontSize: 8, color: T2.muted, fontFamily: T2.mono, marginTop: 2 }}>LTV · DSCR · DEBT YIELD — live constraint engine powered by FRED rates</div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 8, color: T2.muted, fontFamily: T2.mono }}>NOI BASIS:</span>
+          {(['T12', 'T6', 'T3'] as const).map(p => pill(p, noiPeriod === p, () => setNoiPeriod(p)))}
+        </div>
+      </div>
+
+      {/* ── Rate Strip ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8, marginBottom: 12 }}>
+        {[
+          { label: 'SOFR', val: liveRates?.sofr, color: '#63B3ED' },
+          { label: 'T5Y',  val: liveRates?.treasury5Y, color: '#63B3ED' },
+          { label: 'T10Y', val: liveRates?.treasury10Y, color: '#63B3ED' },
+          { label: 'SPREAD', val: spreadBps / 100, color: '#F6AD55', suffix: 'bps' },
+          { label: 'ALL-IN RATE', val: allInRate != null ? allInRate * 100 : null, color: '#68D391' },
+          { label: 'BENCHMARK', val: null, color: T2.dim, isToggle: true },
+        ].map((tile) => (
+          <div key={tile.label} style={{ background: T2.panel, border: `1px solid ${T2.border}`, borderRadius: 5, padding: '8px 10px' }}>
+            <div style={{ fontSize: 8, color: T2.muted, fontFamily: T2.mono, marginBottom: 3 }}>{tile.label}</div>
+            {tile.isToggle ? (
+              <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                {(['SOFR', 'T5Y', 'T10Y'] as const).map(b =>
+                  pill(b, benchmark === b, () => setBenchmark(b))
+                )}
+              </div>
+            ) : ratesLoading && tile.label !== 'SPREAD' && tile.label !== 'ALL-IN RATE' ? (
+              <div style={{ fontSize: 10, color: T2.muted, fontFamily: T2.mono }}>…</div>
+            ) : (
+              <div style={{ fontSize: 14, fontWeight: 800, fontFamily: T2.mono, color: tile.color }}>
+                {tile.val != null ? `${tile.val.toFixed(2)}%` : '—'}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* ── Main 3-column grid ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr 240px', gap: 10, marginBottom: 10 }}>
+
+        {/* ── LEFT: Loan at Close + Inputs ── */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+
+          {/* Loan at Close */}
+          <div style={{ background: T2.panel, border: `1px solid ${T2.border}`, borderRadius: 6, padding: 12 }}>
+            {secHdr('LOAN AT CLOSE', 'Acquisition anchor')}
+            {[
+              { label: 'PURCHASE PRICE', val: purchasePrice > 0 ? fm(purchasePrice) : '—' },
+              { label: 'ORIG. LOAN (EST.)', val: origLoan > 0 ? fm(origLoan) : '—' },
+              { label: 'ACQ. DATE', val: acqDate },
+              { label: 'ACQ. CAP RATE', val: acqCapRate > 0 ? `${acqCapRate.toFixed(2)}%` : '—' },
+            ].map(row => (
+              <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: `1px solid ${T2.border}` }}>
+                <span style={{ fontSize: 8, color: T2.muted, fontFamily: T2.mono }}>{row.label}</span>
+                <span style={{ fontSize: 9, fontWeight: 600, fontFamily: T2.mono, color: '#E8E6E1' }}>{row.val}</span>
+              </div>
+            ))}
+            <div style={{ marginTop: 8 }}>
+              <label style={labelStyle}>CURRENT BALANCE ($)</label>
+              <input style={fieldStyle} type="number" value={existingBalance || ''}
+                onChange={e => setExistingBalance(Number(e.target.value))}
+                placeholder="0 if unencumbered" />
             </div>
           </div>
-          {error && (
-            <div style={{ marginTop: 10, padding: '8px 12px', background: 'rgba(252,129,129,0.08)', border: '1px solid rgba(252,129,129,0.25)', borderRadius: 4, fontSize: 9, color: '#FC8181', fontFamily: T2.mono }}>{error}</div>
-          )}
-          <button
-            onClick={runTest}
-            disabled={loading || !form.assumedNoi}
-            style={{ marginTop: 12, width: '100%', padding: '10px 0', background: loading ? 'rgba(99,179,237,0.12)' : 'rgba(99,179,237,0.18)', border: '1px solid rgba(99,179,237,0.4)', borderRadius: 4, fontSize: 10, fontWeight: 700, fontFamily: T2.mono, color: loading ? T2.muted : '#63B3ED', cursor: loading || !form.assumedNoi ? 'not-allowed' : 'pointer', letterSpacing: 0.5 }}
-          >
-            {loading ? 'RUNNING...' : 'RUN CONSTRAINT TEST →'}
-          </button>
+
+          {/* Constraint Parameters */}
+          <div style={{ background: T2.panel, border: `1px solid ${T2.border}`, borderRadius: 6, padding: 12, flex: 1 }}>
+            {secHdr('CONSTRAINT PARAMETERS')}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+              <div>
+                <label style={labelStyle}>SPREAD OVER {benchmark} (bps)</label>
+                <input style={fieldStyle} type="number" value={spreadBps}
+                  onChange={e => setSpreadBps(Number(e.target.value))} />
+              </div>
+              <div>
+                <label style={labelStyle}>CAP RATE ASSUMPTION (%)</label>
+                <input style={fieldStyle} type="number" step="0.1" value={capRatePct}
+                  onChange={e => setCapRatePct(Number(e.target.value))} />
+              </div>
+              <div>
+                <label style={labelStyle}>MAX LTV (%)</label>
+                <input style={fieldStyle} type="number" step="1" value={maxLtv}
+                  onChange={e => setMaxLtv(Number(e.target.value))} />
+              </div>
+              <div>
+                <label style={labelStyle}>MIN DSCR</label>
+                <input style={fieldStyle} type="number" step="0.05" value={minDscr}
+                  onChange={e => setMinDscr(Number(e.target.value))} />
+              </div>
+              <div>
+                <label style={labelStyle}>MIN DEBT YIELD (%)</label>
+                <input style={fieldStyle} type="number" step="0.1" value={minDebtYield}
+                  onChange={e => setMinDebtYield(Number(e.target.value))} />
+              </div>
+            </div>
+          </div>
         </div>
 
-        {/* ── Right: Result ── */}
-        <div style={{ background: T2.panel, border: `1px solid ${result ? constraintColor(result.constrainedBy) + '40' : T2.border}`, borderRadius: 6, padding: 16 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, fontFamily: T2.mono, color: result ? constraintColor(result.constrainedBy) : T2.muted, marginBottom: 12, letterSpacing: 0.5 }}>
-            {result ? `BINDING CONSTRAINT: ${result.constrainedBy?.toUpperCase()}` : 'RESULTS'}
+        {/* ── CENTER: Trend Chart ── */}
+        <div style={{ background: T2.panel, border: `1px solid ${T2.border}`, borderRadius: 6, padding: 12 }}>
+          {secHdr('DEBT PROCEEDS TREND', `Max proceeds by constraint · actuals ${noiPeriod} NOI · ${benchmark}+${spreadBps}bps`)}
+
+          {/* NOI summary strip */}
+          <div style={{ display: 'flex', gap: 12, marginBottom: 10 }}>
+            {([
+              { label: `${noiPeriod} NOI`, val: noiAnnualized != null ? fm(noiAnnualized) : actualsWithNoi.length === 0 ? 'No actuals' : '—', c: '#E8E6E1' },
+              { label: 'PROPERTY VALUE', val: propertyValue ? fm(propertyValue) : '—', c: T2.dim },
+              { label: `ACTUALS (${actualsWithNoi.length}mo)`, val: actualsWithNoi.length > 0 ? 'LIVE' : 'NO DATA', c: actualsWithNoi.length > 0 ? '#68D391' : '#FC8181' },
+            ]).map(s => (
+              <div key={s.label} style={{ background: T2.panelAlt, border: `1px solid ${T2.border}`, borderRadius: 4, padding: '5px 10px' }}>
+                <div style={{ fontSize: 7, color: T2.muted, fontFamily: T2.mono }}>{s.label}</div>
+                <div style={{ fontSize: 11, fontWeight: 700, fontFamily: T2.mono, color: s.c, marginTop: 2 }}>{s.val}</div>
+              </div>
+            ))}
           </div>
-          {!result && !loading && (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 180, color: T2.muted, fontSize: 10, fontFamily: T2.mono }}>Run a test to see results</div>
+
+          {/* SVG Chart */}
+          {trendData.length < 2 ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 160, color: T2.muted, fontSize: 9, fontFamily: T2.mono }}>
+              {actualsWithNoi.length === 0
+                ? 'Enter actuals data to see proceeds trend'
+                : 'Need ≥ 2 months of actuals to plot trend'}
+            </div>
+          ) : (
+            <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto' }}>
+              {/* Grid */}
+              {[0.25, 0.5, 0.75, 1].map(f => {
+                const y = toY(chartMax * f);
+                const v = chartMax * f;
+                return (
+                  <g key={f}>
+                    <line x1={PL} y1={y} x2={W - PR} y2={y} stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
+                    <text x={PL - 4} y={y + 3} textAnchor="end" fontSize="7" fill="rgba(232,230,225,0.3)" fontFamily="JetBrains Mono,monospace">
+                      {v >= 1e6 ? `$${(v / 1e6).toFixed(1)}M` : `$${(v / 1e3).toFixed(0)}k`}
+                    </text>
+                  </g>
+                );
+              })}
+              {/* X labels */}
+              {trendData.map((d, i) => (
+                (i === 0 || i === trendData.length - 1 || i % Math.ceil(trendData.length / 5) === 0) && (
+                  <text key={i} x={toX(i)} y={H - 4} textAnchor="middle" fontSize="7"
+                    fill="rgba(232,230,225,0.3)" fontFamily="JetBrains Mono,monospace">{d.month}</text>
+                )
+              ))}
+              {/* Lines */}
+              <polyline points={pts('ltv')}  fill="none" stroke="#FC8181" strokeWidth="1.5" strokeOpacity="0.7" />
+              <polyline points={pts('dscr')} fill="none" stroke="#F6AD55" strokeWidth="1.5" strokeOpacity="0.7" />
+              <polyline points={pts('dy')}   fill="none" stroke="#B794F4" strokeWidth="1.5" strokeOpacity="0.7" />
+              <polyline points={pts('binding')} fill="none" stroke="#63B3ED" strokeWidth="2" strokeDasharray="4,2" />
+              {/* Last point dot */}
+              {trendData.length > 0 && (() => {
+                const last = trendData[trendData.length - 1];
+                const li = trendData.length - 1;
+                return <circle cx={toX(li)} cy={toY(last.binding)} r="3" fill="#63B3ED" />;
+              })()}
+            </svg>
           )}
-          {loading && (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 180, color: T2.dim, fontSize: 10, fontFamily: T2.mono }}>Computing constraints...</div>
-          )}
-          {result && !loading && (
+
+          {/* Legend */}
+          <div style={{ display: 'flex', gap: 14, marginTop: 6 }}>
+            {[
+              { color: '#FC8181', label: 'LTV Proceeds' },
+              { color: '#F6AD55', label: 'DSCR Proceeds' },
+              { color: '#B794F4', label: 'DY Proceeds' },
+              { color: '#63B3ED', label: 'Binding (min)', dash: true },
+            ].map(l => (
+              <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <svg width="14" height="8">
+                  <line x1="0" y1="4" x2="14" y2="4" stroke={l.color} strokeWidth={l.dash ? '1.5' : '1.5'}
+                    strokeDasharray={l.dash ? '3,1' : undefined} />
+                </svg>
+                <span style={{ fontSize: 8, color: T2.muted, fontFamily: T2.mono }}>{l.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ── RIGHT: Live Result ── */}
+        <div style={{ background: T2.panel, border: `1px solid ${binding ? constraintColor(binding) + '40' : T2.border}`, borderRadius: 6, padding: 12 }}>
+          {secHdr('CURRENT ANALYSIS', `Based on ${noiPeriod} NOI actuals`)}
+
+          {!noiAnnualized ? (
+            <div style={{ color: T2.muted, fontSize: 9, fontFamily: T2.mono, marginTop: 20 }}>
+              {actualsWithNoi.length === 0
+                ? 'No actuals data — enter monthly actuals to enable live analysis.'
+                : 'Computing…'}
+            </div>
+          ) : (
             <>
-              {/* Feasibility badge */}
-              <div style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 3, background: result.isFeasible ? 'rgba(104,211,145,0.12)' : 'rgba(252,129,129,0.12)', border: `1px solid ${result.isFeasible ? '#68D39155' : '#FC818155'}`, fontSize: 9, fontWeight: 700, fontFamily: T2.mono, color: result.isFeasible ? '#68D391' : '#FC8181', marginBottom: 14 }}>
-                {result.isFeasible ? 'FEASIBLE' : 'NOT FEASIBLE'}
-                {result.feasibilityNotes && <span style={{ fontWeight: 400, color: T2.muted, marginLeft: 8 }}>{result.feasibilityNotes}</span>}
+              {/* Feasibility */}
+              <div style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 3, marginBottom: 12,
+                background: isFeasible ? 'rgba(104,211,145,0.12)' : 'rgba(252,129,129,0.12)',
+                border: `1px solid ${isFeasible ? '#68D39155' : '#FC818155'}`,
+                fontSize: 9, fontWeight: 700, fontFamily: T2.mono,
+                color: isFeasible ? '#68D391' : '#FC8181' }}>
+                {isFeasible ? 'REFINANCEABLE' : 'NOT FEASIBLE'}
               </div>
 
-              {/* Constraint comparison */}
-              <div style={{ marginBottom: 14 }}>
-                <div style={{ fontSize: 9, color: T2.muted, fontFamily: T2.mono, marginBottom: 6 }}>MAX LOAN BY CONSTRAINT</div>
+              {/* Constraint rows */}
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 8, color: T2.muted, fontFamily: T2.mono, marginBottom: 6 }}>MAX PROCEEDS BY CONSTRAINT</div>
                 {[
-                  { label: 'LTV', val: result.maxLoanByLtv, c: '#FC8181' },
-                  { label: 'DSCR', val: result.maxLoanByDscr, c: '#F6AD55' },
-                  { label: 'DEBT YIELD', val: result.maxLoanByDy, c: '#B794F4' },
+                  { label: 'LTV', val: maxByLtv, c: '#FC8181' },
+                  { label: 'DSCR', val: maxByDscr, c: '#F6AD55' },
+                  { label: 'DEBT YIELD', val: maxByDy, c: '#B794F4' },
                 ].map(r => (
                   <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: `1px solid ${T2.border}` }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <div style={{ width: 6, height: 6, borderRadius: '50%', background: r.c }} />
-                      <span style={{ fontSize: 9, fontFamily: T2.mono, color: T2.dim }}>{r.label}</span>
-                      {result.constrainedBy?.toUpperCase().includes(r.label) && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <div style={{ width: 5, height: 5, borderRadius: '50%', background: r.c }} />
+                      <span style={{ fontSize: 8, fontFamily: T2.mono, color: T2.dim }}>{r.label}</span>
+                      {binding === r.label && (
                         <span style={{ fontSize: 7, background: r.c + '22', border: `1px solid ${r.c}55`, color: r.c, fontFamily: T2.mono, borderRadius: 2, padding: '1px 4px' }}>BINDING</span>
                       )}
                     </div>
-                    <span style={{ fontSize: 10, fontWeight: 700, fontFamily: T2.mono, color: '#E8E6E1' }}>{fm(r.val)}</span>
+                    <span style={{ fontSize: 9, fontWeight: 700, fontFamily: T2.mono, color: '#E8E6E1' }}>{fm(r.val)}</span>
                   </div>
                 ))}
               </div>
 
-              {/* Key metrics */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              {/* Key metrics grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 12 }}>
                 {[
-                  { label: 'MAX PROCEEDS', val: fm(result.maxLoanProceeds), c: '#63B3ED' },
-                  { label: 'CASH OUT / (PAYDOWN)', val: result.cashOutAvailable >= 0 ? fm(result.cashOutAvailable) : `(${fm(-result.cashOutAvailable)})`, c: result.cashOutAvailable >= 0 ? '#68D391' : '#FC8181' },
-                  { label: 'POST-REFI DSCR', val: result.dscrPostRefi ? result.dscrPostRefi.toFixed(2) + 'x' : '—', c: (result.dscrPostRefi ?? 0) >= 1.25 ? '#68D391' : '#FC8181' },
-                  { label: 'ANNUAL DEBT SVC', val: fm(result.newDebtService), c: T2.dim },
+                  { label: 'MAX PROCEEDS', val: fm(maxProceeds), c: '#63B3ED' },
+                  { label: 'CASH OUT / (PAY)', val: cashOut != null ? cashOut >= 0 ? fm(cashOut) : `(${fm(-cashOut)})` : '—', c: cashOut != null && cashOut >= 0 ? '#68D391' : '#FC8181' },
+                  { label: 'POST-REFI DSCR', val: dscrCheck ? dscrCheck.toFixed(2) + 'x' : '—', c: (dscrCheck ?? 0) >= minDscr ? '#68D391' : '#FC8181' },
+                  { label: 'ANNUAL DEBT SVC', val: fm(annualDebtSvc), c: T2.dim },
                 ].map(m => (
-                  <div key={m.label} style={{ background: T2.panelAlt, border: `1px solid ${T2.border}`, borderRadius: 4, padding: '8px 10px' }}>
-                    <div style={{ fontSize: 8, color: T2.muted, fontFamily: T2.mono, marginBottom: 4 }}>{m.label}</div>
-                    <div style={{ fontSize: 13, fontWeight: 800, fontFamily: T2.mono, color: m.c }}>{m.val}</div>
+                  <div key={m.label} style={{ background: T2.panelAlt, border: `1px solid ${T2.border}`, borderRadius: 4, padding: '7px 8px' }}>
+                    <div style={{ fontSize: 7, color: T2.muted, fontFamily: T2.mono, marginBottom: 3 }}>{m.label}</div>
+                    <div style={{ fontSize: 11, fontWeight: 800, fontFamily: T2.mono, color: m.c }}>{m.val}</div>
                   </div>
                 ))}
               </div>
+
+              {/* Save to history */}
+              <div>
+                <label style={labelStyle}>SCENARIO NAME</label>
+                <input style={{ ...fieldStyle, marginBottom: 6 }} value={scenarioName}
+                  onChange={e => setScenarioName(e.target.value)} />
+              </div>
+              {runError && (
+                <div style={{ marginBottom: 6, fontSize: 8, color: '#FC8181', fontFamily: T2.mono }}>{runError}</div>
+              )}
+              <button onClick={saveScenario} disabled={runLoading || !noiAnnualized}
+                style={{ width: '100%', padding: '7px 0', background: runLoading ? 'rgba(99,179,237,0.08)' : 'rgba(99,179,237,0.18)', border: '1px solid rgba(99,179,237,0.4)', borderRadius: 4, fontSize: 9, fontWeight: 700, fontFamily: T2.mono, color: runLoading ? T2.muted : '#63B3ED', cursor: runLoading ? 'not-allowed' : 'pointer', letterSpacing: 0.5 }}>
+                {runLoading ? 'SAVING...' : 'SAVE TO HISTORY →'}
+              </button>
             </>
           )}
         </div>
       </div>
 
-      {/* ── History ── */}
-      <div style={{ marginTop: 16, background: T2.panel, border: `1px solid ${T2.border}`, borderRadius: 6, overflow: 'hidden' }}>
-        <div style={{ padding: '10px 14px', borderBottom: `1px solid ${T2.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: 10, fontWeight: 700, fontFamily: T2.mono, color: T2.dim, letterSpacing: 0.5 }}>SCENARIO HISTORY</span>
-          <span style={{ fontSize: 9, color: T2.muted, fontFamily: T2.mono }}>Last 20 tests</span>
+      {/* ── Scenario History ── */}
+      <div style={{ background: T2.panel, border: `1px solid ${T2.border}`, borderRadius: 6, overflow: 'hidden' }}>
+        <div style={{ padding: '8px 14px', borderBottom: `1px solid ${T2.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 9, fontWeight: 700, fontFamily: T2.mono, color: T2.dim, letterSpacing: 0.5 }}>SCENARIO HISTORY</span>
+          <span style={{ fontSize: 8, color: T2.muted, fontFamily: T2.mono }}>Last 20 tests</span>
         </div>
-        {histLoading && <div style={{ padding: 16, textAlign: 'center', fontSize: 9, color: T2.muted, fontFamily: T2.mono }}>Loading history...</div>}
-        {!histLoading && history.length === 0 && <div style={{ padding: 16, textAlign: 'center', fontSize: 9, color: T2.muted, fontFamily: T2.mono }}>No scenarios run yet for this deal</div>}
+        {histLoading && <div style={{ padding: 14, textAlign: 'center', fontSize: 9, color: T2.muted, fontFamily: T2.mono }}>Loading history…</div>}
+        {!histLoading && history.length === 0 && <div style={{ padding: 14, textAlign: 'center', fontSize: 9, color: T2.muted, fontFamily: T2.mono }}>No scenarios saved yet — run analysis above and save to build history</div>}
         {!histLoading && history.length > 0 && (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 9, fontFamily: T2.mono }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 8, fontFamily: T2.mono }}>
             <thead>
               <tr style={{ background: '#0A0E17' }}>
-                {['DATE', 'NAME', 'TYPE', 'NOI', 'CAP', 'BINDING', 'MAX PROCEEDS', 'CASH OUT', 'DSCR', 'STATUS'].map(h => (
-                  <th key={h} style={{ padding: '6px 10px', textAlign: h === 'MAX PROCEEDS' || h === 'CASH OUT' || h === 'NOI' ? 'right' : 'left', color: T2.muted, fontWeight: 700, borderBottom: `1px solid ${T2.border}` }}>{h}</th>
+                {['DATE', 'NAME', 'NOI', 'CAP', 'BINDING', 'MAX PROCEEDS', 'CASH OUT', 'DSCR', 'STATUS'].map(h => (
+                  <th key={h} style={{ padding: '5px 10px', textAlign: h === 'MAX PROCEEDS' || h === 'CASH OUT' || h === 'NOI' ? 'right' : 'left', color: T2.muted, fontWeight: 700, borderBottom: `1px solid ${T2.border}` }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {history.map((row, i) => (
                 <tr key={row.id} style={{ background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.012)', borderBottom: `1px solid ${T2.border}` }}>
-                  <td style={{ padding: '5px 10px', color: T2.muted }}>{new Date(row.test_date).toLocaleDateString()}</td>
-                  <td style={{ padding: '5px 10px', color: '#E8E6E1' }}>{row.scenario_name}</td>
-                  <td style={{ padding: '5px 10px', color: T2.muted }}>{row.scenario_type}</td>
-                  <td style={{ padding: '5px 10px', textAlign: 'right', color: T2.dim }}>{row.assumed_noi ? `$${(row.assumed_noi / 1000).toFixed(0)}k` : '—'}</td>
-                  <td style={{ padding: '5px 10px', textAlign: 'right', color: T2.dim }}>{row.assumed_cap_rate ? fp(row.assumed_cap_rate, 1) : '—'}</td>
-                  <td style={{ padding: '5px 10px', color: constraintColor(row.constrained_by) }}>{row.constrained_by?.toUpperCase() ?? '—'}</td>
-                  <td style={{ padding: '5px 10px', textAlign: 'right', color: '#E8E6E1' }}>{row.max_loan_proceeds ? `$${(row.max_loan_proceeds / 1000000).toFixed(2)}M` : '—'}</td>
-                  <td style={{ padding: '5px 10px', textAlign: 'right', color: row.cash_out_available >= 0 ? '#68D391' : '#FC8181' }}>{row.cash_out_available != null ? (row.cash_out_available >= 0 ? `$${(row.cash_out_available / 1000).toFixed(0)}k` : `(${((-row.cash_out_available) / 1000).toFixed(0)}k)`) : '—'}</td>
-                  <td style={{ padding: '5px 10px', color: (row.dscr_post_refi ?? 0) >= 1.25 ? '#68D391' : '#FC8181' }}>{row.dscr_post_refi ? row.dscr_post_refi.toFixed(2) + 'x' : '—'}</td>
-                  <td style={{ padding: '5px 10px' }}>
-                    <span style={{ padding: '2px 6px', borderRadius: 2, fontSize: 8, fontWeight: 700, background: row.is_feasible ? 'rgba(104,211,145,0.1)' : 'rgba(252,129,129,0.1)', border: `1px solid ${row.is_feasible ? '#68D39140' : '#FC818140'}`, color: row.is_feasible ? '#68D391' : '#FC8181' }}>
+                  <td style={{ padding: '4px 10px', color: T2.muted }}>{new Date(row.test_date).toLocaleDateString()}</td>
+                  <td style={{ padding: '4px 10px', color: '#E8E6E1' }}>{row.scenario_name}</td>
+                  <td style={{ padding: '4px 10px', textAlign: 'right', color: T2.dim }}>{row.assumed_noi ? `$${(row.assumed_noi / 1000).toFixed(0)}k` : '—'}</td>
+                  <td style={{ padding: '4px 10px', textAlign: 'right', color: T2.dim }}>{row.assumed_cap_rate ? fp(row.assumed_cap_rate, 1) : '—'}</td>
+                  <td style={{ padding: '4px 10px', color: constraintColor(row.constrained_by) }}>{row.constrained_by?.toUpperCase() ?? '—'}</td>
+                  <td style={{ padding: '4px 10px', textAlign: 'right', color: '#E8E6E1' }}>{row.max_loan_proceeds ? `$${(row.max_loan_proceeds / 1e6).toFixed(2)}M` : '—'}</td>
+                  <td style={{ padding: '4px 10px', textAlign: 'right', color: row.cash_out_available >= 0 ? '#68D391' : '#FC8181' }}>
+                    {row.cash_out_available != null ? (row.cash_out_available >= 0 ? `$${(row.cash_out_available / 1000).toFixed(0)}k` : `(${((-row.cash_out_available) / 1000).toFixed(0)}k)`) : '—'}
+                  </td>
+                  <td style={{ padding: '4px 10px', color: (row.dscr_post_refi ?? 0) >= 1.25 ? '#68D391' : '#FC8181' }}>{row.dscr_post_refi ? row.dscr_post_refi.toFixed(2) + 'x' : '—'}</td>
+                  <td style={{ padding: '4px 10px' }}>
+                    <span style={{ padding: '2px 5px', borderRadius: 2, fontSize: 7, fontWeight: 700, background: row.is_feasible ? 'rgba(104,211,145,0.1)' : 'rgba(252,129,129,0.1)', border: `1px solid ${row.is_feasible ? '#68D39140' : '#FC818140'}`, color: row.is_feasible ? '#68D391' : '#FC8181' }}>
                       {row.is_feasible ? 'FEASIBLE' : 'INFEASIBLE'}
                     </span>
                   </td>
@@ -1896,7 +2152,7 @@ export default function PortfolioPropertyPage() {
           </div>
         )}
         {activeTab === 'exit-timing'  && <ExitTimingTab dealId={dealId!} />}
-        {activeTab === 'refi-monitor' && <RefiMonitorTab dealId={dealId!} />}
+        {activeTab === 'refi-monitor' && <RefiMonitorTab dealId={dealId!} deal={deal} />}
         {activeTab === 'ai-learning'  && <AILearningTab dealId={dealId!} />}
         {activeTab === 'events'       && (
           <div style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 280px)' }}>
