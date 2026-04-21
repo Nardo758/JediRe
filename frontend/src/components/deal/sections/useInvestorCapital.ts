@@ -136,7 +136,8 @@ export function useInvestorCapital(dealId: string) {
 
   const [loading, setLoading] = useState<LoadingState>({
     summary: true, investments: true, calls: true,
-    dists: true, waterfall: true, entries: true,
+    dists: true, waterfall: true,
+    entries: false, // LedgerTab fetches on mount; no pre-load, no premature spinner
   });
   const [errors, setErrors] = useState<Partial<Record<keyof LoadingState, string | null>>>({});
 
@@ -225,7 +226,10 @@ export function useInvestorCapital(dealId: string) {
     loadCalls();
     loadDists();
     loadWaterfall();
-    // LedgerTab fetches on mount via its own effect; no initial hook fetch needed
+    // Ledger entries are intentionally NOT pre-loaded here.
+    // LedgerTab's own mount effect calls onFilter({ limit, offset }) on every
+    // tab open, which resets controls + data to a consistent default state.
+    // Pre-loading would create a redundant request on first tab visit.
   }, [loadSummary, loadInvestments, loadCalls, loadDists, loadWaterfall]);
 
   // ─── mutations ────────────────────────────────────────────────────────────
