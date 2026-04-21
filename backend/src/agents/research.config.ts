@@ -28,6 +28,8 @@ import { fetchOwnershipTool } from './tools/fetch_ownership';
 import { writeDealContextTool } from './tools/write_dealcontext';
 import { webSearchTool } from './tools/web_search';
 import { fetchWebpageTool } from './tools/fetch_webpage';
+import { writeCompSetTool } from './tools/write_comp_set';
+import { writeMarketCompsTool } from './tools/write_market_comps';
 
 // ── Citation schema (shared with commentary.config) ────────────────────────
 
@@ -68,6 +70,9 @@ export const RESEARCH_AGENT_CONFIG: AgentConfig = {
     writeDealContextTool,
     webSearchTool,
     fetchWebpageTool,
+    // Lifecycle tools for market research
+    writeCompSetTool,
+    writeMarketCompsTool,
   ],
   outputSchema: ResearchOutputSchema,
   budgetCaps: DEFAULT_BUDGET_CAPS.research,

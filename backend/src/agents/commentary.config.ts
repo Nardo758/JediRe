@@ -26,6 +26,9 @@ import type { AgentConfig } from './runtime/types';
 import { webSearchTool } from './tools/web_search';
 import { fetchWebpageTool } from './tools/fetch_webpage';
 import { CitationSchema } from './research.config';
+import { fetchReforecastSummaryTool } from './tools/fetch_reforecast_summary';
+import { fetchVarianceSummaryTool } from './tools/fetch_variance_summary';
+import { fetchDispositionLearningsTool } from './tools/fetch_disposition_learnings';
 
 // ── Output schema ─────────────────────────────────────────────────
 
@@ -70,6 +73,10 @@ export const COMMENTARY_AGENT_CONFIG: AgentConfig = {
   tools: [
     webSearchTool,
     fetchWebpageTool,
+    // Lifecycle tools for operational commentary
+    fetchReforecastSummaryTool,
+    fetchVarianceSummaryTool,
+    fetchDispositionLearningsTool,
   ],
   outputSchema: CommentaryOutputSchema,
   budgetCaps: DEFAULT_BUDGET_CAPS.commentary,
