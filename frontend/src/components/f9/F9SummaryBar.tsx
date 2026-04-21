@@ -86,7 +86,7 @@ export function F9SummaryBar({
     return null;
   }
 
-  const totalCollisions = (collision_summary?.material_count ?? 0) + (collision_summary?.severe_count ?? 0);
+  const totalCollisions = (collision_summary?.minor_count ?? 0) + (collision_summary?.material_count ?? 0) + (collision_summary?.severe_count ?? 0);
 
   return (
     <div style={{
@@ -118,6 +118,15 @@ export function F9SummaryBar({
               color={BT.text.amber}
               onClick={() => onFilterChange?.({ type: 'collision', value: 'material' })}
               active={activeFilter?.type === 'collision' && activeFilter.value === 'material'}
+            />
+          )}
+          {collision_summary.minor_count > 0 && (
+            <MetricPill
+              label="MIN"
+              value={collision_summary.minor_count}
+              color={BT.text.secondary}
+              onClick={() => onFilterChange?.({ type: 'collision', value: 'minor' })}
+              active={activeFilter?.type === 'collision' && activeFilter.value === 'minor'}
             />
           )}
           {totalCollisions === 0 && (

@@ -532,6 +532,8 @@ export interface FinancialEngineTabProps {
   severeCollisionFields?: string[] | null;
   /** Field paths with material collisions only — used when MAT pill is clicked */
   materialCollisionFields?: string[] | null;
+  /** Field paths with minor collisions only — used when MIN pill is clicked */
+  minorCollisionFields?: string[] | null;
 }
 
 // ─── F9 Debt Stack (v2) ───────────────────────────────────────────────────────
