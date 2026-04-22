@@ -25,6 +25,7 @@ import emailRoutes from './email.routes';
 import inboxRoutes from './inbox.routes';
 import gmailRoutes from './gmail.routes';
 import newsRoutes from './news.routes';
+import newsConnectionsRoutes from './news-connections.routes';
 import tradeAreasRoutes from './trade-areas.routes';
 import geographicContextRoutes from './geographic-context.routes';
 import geographyRoutes from './geography.routes';
