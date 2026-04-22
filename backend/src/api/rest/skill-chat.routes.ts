@@ -30,7 +30,7 @@ const router = Router();
 router.post('/:dealId/skills/chat', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
-    const { message, conversationId } = req.body;
+    const { message, conversationId, forcedSkillId } = req.body;
     const userId = req.user!.userId;
 
     if (!message || typeof message !== 'string') {
@@ -59,6 +59,7 @@ router.post('/:dealId/skills/chat', requireAuth, async (req: AuthenticatedReques
       dealId,
       userId,
       conversationId,
+      forcedSkillId: typeof forcedSkillId === 'string' ? forcedSkillId : undefined,
     });
 
     return res.json({

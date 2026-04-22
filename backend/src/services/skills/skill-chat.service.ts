@@ -34,6 +34,12 @@ export interface ChatRequest {
   dealId: string;
   userId: string;
   conversationId?: string;
+  /**
+   * If set, force the orchestrator's first turn to call this exact skill.
+   * Used for @mention persona routing (e.g. forcedSkillId='consult_cfo').
+   * The skill must exist in the registry.
+   */
+  forcedSkillId?: string;
 }
 
 export interface ChatResponse {
@@ -79,7 +85,7 @@ You're currently viewing a specific deal. Use the skills to fetch its data rathe
 // ============================================================================
 
 export async function skillChat(request: ChatRequest): Promise<ChatResponse> {
-  const { message, dealId, userId, conversationId } = request;
+  const { message, dealId, userId, conversationId, forcedSkillId } = request;
   const convId = conversationId || `conv_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
   const context: SkillContext = {
@@ -106,6 +112,26 @@ export async function skillChat(request: ChatRequest): Promise<ChatResponse> {
     // Get tool definitions
     const tools = skillRegistry.getToolDefinitions();
 
+    // If a forced skill is requested (e.g. @persona mention), force tool_choice
+    // for the first turn only. Subsequent turns use auto.
+    let initialToolChoice: Anthropic.MessageCreateParams['tool_choice'] | undefined;
+    if (forcedSkillId) {
+      const forced = skillRegistry.get(forcedSkillId);
+      // Only advisor personas may be forced via @mention. This prevents clients
+      // from forcing arbitrary action/data skills.
+      const isAdvisor =
+        !!forced &&
+        forced.category === 'advisor' &&
+        forcedSkillId.startsWith('consult_');
+      if (!forced) {
+        logger.warn(`Forced skill ${forcedSkillId} not found in registry; ignoring`);
+      } else if (!isAdvisor) {
+        logger.warn(`Forced skill ${forcedSkillId} is not an advisor persona; ignoring`);
+      } else {
+        initialToolChoice = { type: 'tool', name: forcedSkillId };
+      }
+    }
+
     // Initial API call
     let response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
@@ -113,6 +139,7 @@ export async function skillChat(request: ChatRequest): Promise<ChatResponse> {
       system: SYSTEM_PROMPT,
       tools,
       messages,
+      ...(initialToolChoice ? { tool_choice: initialToolChoice } : {}),
     });
 
     // Process tool calls in a loop until Claude is done

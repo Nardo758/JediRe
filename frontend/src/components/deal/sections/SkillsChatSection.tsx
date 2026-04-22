@@ -30,6 +30,8 @@ interface ChatMessage {
   content: string;
   skillCalls?: SkillCall[];
   timestamp: Date;
+  /** If user explicitly @mentioned an advisor, the advisor name shown in header */
+  forcedAdvisor?: { name: string; color: string; icon: string };
 }
 
 interface Skill {
@@ -37,6 +39,81 @@ interface Skill {
   name: string;
   description: string;
   category: string;
+}
+
+interface Advisor {
+  /** Skill ID, e.g. 'consult_cfo' */
+  id: string;
+  /** Display name, e.g. 'CFO' */
+  name: string;
+  /** Mention slug, e.g. 'CFO' (no spaces) */
+  mention: string;
+  icon: string;
+  color: string;
+}
+
+const ADVISOR_COLOR = '#FF6FB5';
+
+// Reverse-build mention slug from skill id: 'consult_chief_financial_officer' -> 'ChiefFinancialOfficer'
+// We'll instead use the display name with spaces removed.
+function buildAdvisorList(skills: Skill[]): Advisor[] {
+  return skills
+    .filter(s => s.category === 'advisor' && s.id.startsWith('consult_'))
+    .map(s => ({
+      id: s.id,
+      name: s.name,
+      mention: s.name.replace(/[^A-Za-z0-9]/g, ''),
+      icon: '🧠',
+      color: ADVISOR_COLOR,
+    }));
+}
+
+/**
+ * Parse a leading @Mention from the message. Returns the matched advisor + the
+ * stripped message body, or null if no leading mention.
+ */
+function parseLeadingMention(
+  text: string,
+  advisors: Advisor[]
+): { advisor: Advisor; body: string } | null {
+  const trimmed = text.trimStart();
+  if (!trimmed.startsWith('@')) return null;
+  // Match @Word(s) up to first whitespace
+  const m = trimmed.match(/^@([A-Za-z0-9]+)\s*([\s\S]*)$/);
+  if (!m) return null;
+  const slug = m[1].toLowerCase();
+  const body = m[2];
+  const advisor = advisors.find(a => a.mention.toLowerCase() === slug);
+  if (!advisor) return null;
+  return { advisor, body: body.trim() || `Please weigh in on this deal.` };
+}
+
+/**
+ * Detect an in-progress @ token at the cursor position. Returns the partial
+ * text after the @ if the cursor is currently inside a mention being typed.
+ */
+function detectMentionAtCursor(
+  text: string,
+  cursorPos: number
+): { start: number; partial: string } | null {
+  // Walk backward from cursor to find @ or whitespace
+  let i = cursorPos - 1;
+  while (i >= 0) {
+    const c = text[i];
+    if (c === '@') {
+      // Must be at start, or preceded by whitespace
+      if (i === 0 || /\s/.test(text[i - 1])) {
+        const partial = text.slice(i + 1, cursorPos);
+        // Reject if partial contains whitespace (closed mention)
+        if (/\s/.test(partial)) return null;
+        return { start: i, partial };
+      }
+      return null;
+    }
+    if (/\s/.test(c)) return null;
+    i--;
+  }
+  return null;
 }
 
 interface SkillsChatSectionProps {
@@ -80,8 +157,20 @@ export function SkillsChatSection({ dealId }: SkillsChatSectionProps) {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [skills, setSkills] = useState<Skill[]>([]);
   const [showSkills, setShowSkills] = useState(false);
+  const [mentionState, setMentionState] = useState<{ start: number; partial: string } | null>(null);
+  const [mentionIndex, setMentionIndex] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  const advisors = React.useMemo(() => buildAdvisorList(skills), [skills]);
+
+  const mentionMatches = React.useMemo(() => {
+    if (!mentionState) return [];
+    const q = mentionState.partial.toLowerCase();
+    return advisors
+      .filter(a => a.mention.toLowerCase().startsWith(q) || a.name.toLowerCase().includes(q))
+      .slice(0, 8);
+  }, [mentionState, advisors]);
 
   // Load available skills
   useEffect(() => {
@@ -98,21 +187,32 @@ export function SkillsChatSection({ dealId }: SkillsChatSectionProps) {
   const sendMessage = async () => {
     if (!input.trim() || loading) return;
 
+    const raw = input.trim();
+    const mention = parseLeadingMention(raw, advisors);
+    const forcedSkillId = mention?.advisor.id;
+    const forcedAdvisor = mention
+      ? { name: mention.advisor.name, color: mention.advisor.color, icon: mention.advisor.icon }
+      : undefined;
+    const sentMessage = mention ? mention.body : raw;
+
     const userMessage: ChatMessage = {
       id: `user_${Date.now()}`,
       role: 'user',
-      content: input.trim(),
+      content: raw,
       timestamp: new Date(),
+      forcedAdvisor,
     };
 
     setMessages(prev => [...prev, userMessage]);
     setInput('');
+    setMentionState(null);
     setLoading(true);
 
     try {
       const res = await api.post(`/deals/${dealId}/skills/chat`, {
-        message: userMessage.content,
+        message: sentMessage,
         conversationId,
+        ...(forcedSkillId ? { forcedSkillId } : {}),
       });
 
       if (res.data?.success) {
@@ -124,6 +224,7 @@ export function SkillsChatSection({ dealId }: SkillsChatSectionProps) {
           content: res.data.message,
           skillCalls: res.data.skillCalls,
           timestamp: new Date(),
+          forcedAdvisor,
         };
         
         setMessages(prev => [...prev, assistantMessage]);
@@ -148,7 +249,57 @@ export function SkillsChatSection({ dealId }: SkillsChatSectionProps) {
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const acceptMention = (advisor: Advisor) => {
+    if (!mentionState) return;
+    const before = input.slice(0, mentionState.start);
+    const after = input.slice(mentionState.start + 1 + mentionState.partial.length);
+    const replaced = `${before}@${advisor.mention} ${after.trimStart()}`;
+    setInput(replaced);
+    setMentionState(null);
+    setMentionIndex(0);
+    // Restore focus & put cursor after the mention + space
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      const pos = before.length + 2 + advisor.mention.length;
+      el.focus();
+      el.setSelectionRange(pos, pos);
+    });
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value;
+    setInput(value);
+    const cursor = e.target.selectionStart ?? value.length;
+    const detected = detectMentionAtCursor(value, cursor);
+    setMentionState(detected);
+    setMentionIndex(0);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Mention autocomplete navigation
+    if (mentionState && mentionMatches.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setMentionIndex(i => (i + 1) % mentionMatches.length);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setMentionIndex(i => (i - 1 + mentionMatches.length) % mentionMatches.length);
+        return;
+      }
+      if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+        e.preventDefault();
+        acceptMention(mentionMatches[mentionIndex]);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setMentionState(null);
+        return;
+      }
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
@@ -286,6 +437,30 @@ export function SkillsChatSection({ dealId }: SkillsChatSectionProps) {
               alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start',
             }}
           >
+            {/* Advisor header (if user @mentioned an advisor) */}
+            {msg.forcedAdvisor && (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '3px 8px',
+                marginBottom: 6,
+                background: msg.forcedAdvisor.color + '22',
+                border: `1px solid ${msg.forcedAdvisor.color}66`,
+                borderRadius: 4,
+                fontSize: 9,
+                fontFamily: T.font.mono,
+                color: msg.forcedAdvisor.color,
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: 0.5,
+              }}>
+                <span>{msg.forcedAdvisor.icon}</span>
+                <span>{msg.role === 'user' ? '→' : ''} {msg.forcedAdvisor.name}</span>
+                {msg.role === 'assistant' && <span style={{ opacity: 0.7 }}>responding</span>}
+              </div>
+            )}
+
             {/* Skill calls (if any) */}
             {msg.skillCalls && msg.skillCalls.length > 0 && (
               <div style={{ 
@@ -389,18 +564,74 @@ export function SkillsChatSection({ dealId }: SkillsChatSectionProps) {
         padding: 16,
         borderTop: `1px solid ${T.border.subtle}`,
         background: T.bg.panel,
+        position: 'relative',
       }}>
+        {/* Mention autocomplete dropdown */}
+        {mentionState && mentionMatches.length > 0 && (
+          <div
+            style={{
+              position: 'absolute',
+              bottom: 'calc(100% - 4px)',
+              left: 16,
+              right: 16,
+              maxHeight: 220,
+              overflowY: 'auto',
+              background: T.bg.terminal,
+              border: `1px solid ${ADVISOR_COLOR}55`,
+              borderRadius: 6,
+              boxShadow: '0 -8px 24px rgba(0,0,0,0.4)',
+              zIndex: 50,
+            }}
+          >
+            <div style={{
+              padding: '6px 10px',
+              fontSize: 9,
+              color: T.text.muted,
+              fontFamily: T.font.mono,
+              borderBottom: `1px solid ${T.border.subtle}`,
+            }}>
+              ADVISORS — ↑↓ to navigate, Tab/Enter to select, Esc to close
+            </div>
+            {mentionMatches.map((a, i) => (
+              <div
+                key={a.id}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  acceptMention(a);
+                }}
+                onMouseEnter={() => setMentionIndex(i)}
+                style={{
+                  padding: '8px 10px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  cursor: 'pointer',
+                  background: i === mentionIndex ? ADVISOR_COLOR + '22' : 'transparent',
+                  borderLeft: `3px solid ${i === mentionIndex ? ADVISOR_COLOR : 'transparent'}`,
+                  fontFamily: T.font.mono,
+                  fontSize: 11,
+                }}
+              >
+                <span style={{ fontSize: 14 }}>{a.icon}</span>
+                <span style={{ color: ADVISOR_COLOR, fontWeight: 700 }}>@{a.mention}</span>
+                <span style={{ color: T.text.secondary, marginLeft: 4 }}>{a.name}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div style={{
           display: 'flex',
           gap: 10,
           alignItems: 'flex-end',
+          position: 'relative',
         }}>
           <textarea
             ref={inputRef}
             value={input}
-            onChange={e => setInput(e.target.value)}
+            onChange={handleInputChange}
             onKeyDown={handleKeyDown}
-            placeholder="Ask about this deal..."
+            placeholder="Ask about this deal... (type @ to consult an advisor)"
             rows={1}
             style={{
               flex: 1,
