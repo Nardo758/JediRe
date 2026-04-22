@@ -12,6 +12,7 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { apiClient } from '../services/api.client';
+import { Deal } from '../types/deal';
 
 // Existing components to reuse
 import MonthlyActualsSection from '../components/deal/sections/MonthlyActualsSection';
@@ -575,7 +576,7 @@ export default function AssetOwnedPage() {
         {documentsSubTab === 'upload' && <UploadPackageTab dealId={dealId!} />}
         {documentsSubTab === 'archive' && <DocumentsSection dealId={dealId!} />}
         {documentsSubTab === 'activity' && <ActivityTab dealId={dealId!} />}
-        {documentsSubTab === 'team' && <TeamSection dealId={dealId!} />}
+        {documentsSubTab === 'team' && deal && <TeamSection deal={deal as unknown as Deal} />}
       </div>
     );
   };
