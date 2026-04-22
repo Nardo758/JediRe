@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties } from 'react';
-import { BT } from '../../theme/bloombergTokens';
+import { BT } from '@/components/deal/bloomberg-ui';
 
 interface Connection {
   id: string;
