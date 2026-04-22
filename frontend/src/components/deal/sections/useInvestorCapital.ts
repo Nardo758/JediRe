@@ -111,6 +111,47 @@ export interface CapSummary {
   total_distributed: string | number;
 }
 
+export interface Communication {
+  id: string;
+  deal_id: string;
+  investor_id: string | null;
+  investor_name: string | null;
+  comm_type: string;
+  subject: string;
+  body: string | null;
+  delivery_method: string;
+  status: string;
+  sent_at: string | null;
+  created_at: string;
+}
+
+export interface WaterfallCalcResult {
+  config: {
+    lpCapital: number;
+    gpCapital: number;
+    totalEquity: number;
+    prefRate: number;
+    tiers: Array<{ order: number; lpPct: number; gpPct: number }>;
+  };
+  result: {
+    distributions: Array<{
+      tierId: string;
+      tierName: string;
+      lpDistribution: number;
+      gpDistribution: number;
+      totalDistribution: number;
+    }>;
+    lpTotalReturn: number;
+    gpTotalReturn: number;
+    lpEquityMultiple: number;
+    gpEquityMultiple: number;
+    gpEffectiveShare: number;
+    totalDistributed: number;
+  };
+  exitProceeds: number;
+  holdYears: number;
+}
+
 interface LoadingState {
   summary: boolean;
   investments: boolean;
@@ -118,6 +159,7 @@ interface LoadingState {
   dists: boolean;
   waterfall: boolean;
   entries: boolean;
+  comms: boolean;
 }
 
 // ─── hook ─────────────────────────────────────────────────────────────────────
@@ -133,11 +175,13 @@ export function useInvestorCapital(dealId: string) {
   const [defaultTiers, setDefaultTiers]   = useState<WaterfallTier[]>([]);
   const [entries, setEntries]             = useState<LedgerEntry[]>([]);
   const [totalEntries, setTotalEntries]   = useState<number>(0);
+  const [comms, setComms]                 = useState<Communication[]>([]);
 
   const [loading, setLoading] = useState<LoadingState>({
     summary: true, investments: true, calls: true,
     dists: true, waterfall: true,
     entries: false, // LedgerTab fetches on mount; no pre-load, no premature spinner
+    comms: false,   // CommsTab fetches on mount
   });
   const [errors, setErrors] = useState<Partial<Record<keyof LoadingState, string | null>>>({});
 
@@ -220,16 +264,25 @@ export function useInvestorCapital(dealId: string) {
     setLoad('entries', false);
   }, [dealId]);
 
+  const loadCommunications = useCallback(async () => {
+    setLoad('comms', true);
+    setErr('comms', null);
+    try {
+      const r = await apiClient.get(`/api/v1/capital/deals/${dealId}/communications`);
+      setComms(r.data?.communications ?? []);
+    } catch { setErr('comms', 'Failed to load communications.'); }
+    setLoad('comms', false);
+  }, [dealId]);
+
   useEffect(() => {
     loadSummary();
     loadInvestments();
     loadCalls();
     loadDists();
     loadWaterfall();
-    // Ledger entries are intentionally NOT pre-loaded here.
-    // LedgerTab's own mount effect calls onFilter({ limit, offset }) on every
-    // tab open, which resets controls + data to a consistent default state.
-    // Pre-loading would create a redundant request on first tab visit.
+    // Ledger and comms intentionally NOT pre-loaded here.
+    // Each tab's mount effect calls its loader on every tab open,
+    // resetting controls and data to a consistent default state.
   }, [loadSummary, loadInvestments, loadCalls, loadDists, loadWaterfall]);
 
   // ─── mutations ────────────────────────────────────────────────────────────
@@ -268,6 +321,14 @@ export function useInvestorCapital(dealId: string) {
     await Promise.all([loadCalls(), loadSummary()]);
   };
 
+  const recordCallPayment = async (callId: string, itemId: string, paidAmount: number, paidAt?: string) => {
+    await apiClient.patch(
+      `/api/v1/capital/deals/${dealId}/capital-calls/${callId}/items/${itemId}/pay`,
+      { paid_amount: paidAmount, paid_at: paidAt ?? null },
+    );
+    await Promise.all([loadInvestments(), loadCalls(), loadSummary()]);
+  };
+
   const createDistribution = async (data: {
     distribution_date: string; total_amount: number;
     distribution_type: string; tax_year: number;
@@ -294,6 +355,27 @@ export function useInvestorCapital(dealId: string) {
     await loadWaterfall();
   };
 
+  const calculateWaterfall = useCallback(async (exitProceeds: number, holdYears: number = 5): Promise<WaterfallCalcResult | null> => {
+    const r = await apiClient.post(`/api/v1/capital/deals/${dealId}/waterfall/calculate`, {
+      exit_proceeds: exitProceeds,
+      hold_years: holdYears,
+    });
+    return r.data?.waterfall ?? null;
+  }, [dealId]);
+
+  const createCommunication = async (data: {
+    comm_type: string; subject: string; body?: string;
+    investor_id?: string; delivery_method?: string;
+  }) => {
+    await apiClient.post(`/api/v1/capital/deals/${dealId}/communications`, data);
+    await loadCommunications();
+  };
+
+  const sendCommunication = async (commId: string) => {
+    await apiClient.post(`/api/v1/capital/deals/${dealId}/communications/${commId}/send`);
+    await loadCommunications();
+  };
+
   // ─── detail loaders (call items / dist items) ─────────────────────────────
 
   const loadCallItems = useCallback(async (callId: string): Promise<CallItem[]> => {
@@ -308,19 +390,21 @@ export function useInvestorCapital(dealId: string) {
 
   return {
     summary, summaryErr, investments, allInvestors, calls, dists,
-    waterfall, defaultTiers, entries, totalEntries,
+    waterfall, defaultTiers, entries, totalEntries, comms,
     loading, errors,
     reload: {
       summary: loadSummary, investments: loadInvestments,
       calls: loadCalls, dists: loadDists,
       waterfall: loadWaterfall, entries: loadEntries,
+      comms: loadCommunications,
     },
     loaders: { loadCallItems, loadDistItems },
     mutations: {
       createAndLink, linkInvestment,
-      createCall, sendCall,
+      createCall, sendCall, recordCallPayment,
       createDistribution, approveDistribution, processDistribution,
-      updateWaterfall,
+      updateWaterfall, calculateWaterfall,
+      createCommunication, sendCommunication,
     },
   };
 }

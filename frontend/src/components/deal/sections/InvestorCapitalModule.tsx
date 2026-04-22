@@ -1,7 +1,7 @@
 /**
  * InvestorCapitalModule
  * Bloomberg Terminal-style LP/GP investor & capital tracking.
- * Tabs: Investors · Capital Calls · Distributions · Waterfall · Ledger
+ * Tabs: Investors · Capital Calls · Distributions · Waterfall · Ledger · Comms
  * Data sourced entirely from /api/v1/capital/* via useInvestorCapital hook.
  */
 
@@ -14,6 +14,7 @@ import {
   type Distribution, type DistItem,
   type WaterfallTier, type Waterfall,
   type LedgerEntry, type CapSummary,
+  type Communication, type WaterfallCalcResult,
 } from './useInvestorCapital';
 
 // ─── style constants ──────────────────────────────────────────────────────────
@@ -255,9 +256,10 @@ interface CallsTabProps {
   onLoadCallItems: (callId: string) => Promise<CallItem[]>;
   onCreateCall: (d: { call_date: string; due_date: string; total_amount: number; purpose?: string }) => Promise<void>;
   onSendCall: (id: string) => Promise<void>;
+  onRecordPayment: (callId: string, itemId: string, paidAmount: number) => Promise<void>;
 }
 
-function CapitalCallsTab({ calls, summary, loading, error, onLoadCallItems, onCreateCall, onSendCall }: CallsTabProps) {
+function CapitalCallsTab({ calls, summary, loading, error, onLoadCallItems, onCreateCall, onSendCall, onRecordPayment }: CallsTabProps) {
   const [showForm,  setShowForm]   = useState(false);
   const [form,      setForm]       = useState({ call_date: '', due_date: '', total_amount: '', purpose: '' });
   const [saving,    setSaving]     = useState(false);
@@ -266,6 +268,9 @@ function CapitalCallsTab({ calls, summary, loading, error, onLoadCallItems, onCr
   const [items,     setItems]      = useState<Record<string, CallItem[]>>({});
   const [loadingItems, setLoadingItems] = useState<Record<string, boolean>>({});
   const [itemErrs, setItemErrs]        = useState<Record<string, string>>({});
+  const [payForm, setPayForm] = useState<Record<string, { amount: string; open: boolean }>>({});
+  const [payingItem, setPayingItem] = useState<Record<string, boolean>>({});
+  const [payErr, setPayErr] = useState<string | null>(null);
 
   const toggleExpand = useCallback(async (callId: string) => {
     if (expanded === callId) { setExpanded(null); return; }
@@ -302,6 +307,30 @@ function CapitalCallsTab({ calls, summary, loading, error, onLoadCallItems, onCr
       setItems(prev => { const next = { ...prev }; delete next[callId]; return next; });
     } catch { setActionErr('Failed to send call. Please try again.'); }
     setPendingActions(prev => ({ ...prev, [callId]: false }));
+  };
+
+  const togglePayForm = (itemId: string, allocatedAmount: number | string) => {
+    setPayErr(null);
+    setPayForm(prev => ({
+      ...prev,
+      [itemId]: prev[itemId]?.open
+        ? { ...prev[itemId], open: false }
+        : { amount: String(Number(allocatedAmount)), open: true },
+    }));
+  };
+
+  const handleRecordPayment = async (callId: string, itemId: string) => {
+    const amt = Number(payForm[itemId]?.amount);
+    if (!amt || amt <= 0) { setPayErr('Enter a valid payment amount.'); return; }
+    setPayErr(null);
+    setPayingItem(prev => ({ ...prev, [itemId]: true }));
+    try {
+      await onRecordPayment(callId, itemId, amt);
+      setPayForm(prev => ({ ...prev, [itemId]: { amount: '', open: false } }));
+      // Evict cached items so sub-table re-fetches fresh data on next expand
+      setItems(prev => { const next = { ...prev }; delete next[callId]; return next; });
+    } catch { setPayErr('Failed to record payment. Please try again.'); }
+    setPayingItem(prev => ({ ...prev, [itemId]: false }));
   };
 
   if (loading) return <div style={S.empty}>Loading capital calls…</div>;
@@ -380,26 +409,63 @@ function CapitalCallsTab({ calls, summary, loading, error, onLoadCallItems, onCr
                       ) : (items[c.id] ?? []).length === 0 ? (
                         <div style={{ ...S.empty, padding: '8px 0' }}>No investor items yet — investors are allocated when the call is created with committed investors on the deal.</div>
                       ) : (
-                        <table style={S.subTable}>
-                          <thead>
-                            <tr>
-                              {['Investor','Email','Allocated','Paid','Outstanding','Days Overdue','Status'].map(h => <th key={h} style={S.subTh}>{h}</th>)}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {(items[c.id] ?? []).map(item => (
-                              <tr key={item.id}>
-                                <td style={{ ...S.subTd, color: BT.text.primary, fontWeight: 600 }}>{item.investor_name}</td>
-                                <td style={{ ...S.subTd, color: BT.text.muted }}>{item.investor_email ?? '—'}</td>
-                                <td style={{ ...S.subTd, textAlign: 'right' as const }}>{fmtAmt(item.allocated_amount)}</td>
-                                <td style={{ ...S.subTd, textAlign: 'right' as const, color: BT.text.green }}>{fmtAmt(item.paid_amount)}</td>
-                                <td style={{ ...S.subTd, textAlign: 'right' as const, color: n(item.outstanding) > 0 ? BT.text.amber : BT.text.muted }}>{fmtAmt(item.outstanding)}</td>
-                                <td style={{ ...S.subTd, textAlign: 'center' as const, color: n(item.days_overdue) > 0 ? BT.text.red : BT.text.muted }}>{n(item.days_overdue) > 0 ? String(n(item.days_overdue)) : '—'}</td>
-                                <td style={S.subTd}><span style={S.badge(statusColor(item.status))}>{item.status.toUpperCase()}</span></td>
+                        <>
+                          {payErr && <div style={{ ...S.formErr, marginBottom: 6 }}>{payErr}</div>}
+                          <table style={S.subTable}>
+                            <thead>
+                              <tr>
+                                {['Investor','Email','Allocated','Paid','Outstanding','Days Overdue','Status',''].map(h => <th key={h} style={S.subTh}>{h}</th>)}
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                            </thead>
+                            <tbody>
+                              {(items[c.id] ?? []).map(item => (
+                                <React.Fragment key={item.id}>
+                                  <tr>
+                                    <td style={{ ...S.subTd, color: BT.text.primary, fontWeight: 600 }}>{item.investor_name}</td>
+                                    <td style={{ ...S.subTd, color: BT.text.muted }}>{item.investor_email ?? '—'}</td>
+                                    <td style={{ ...S.subTd, textAlign: 'right' as const }}>{fmtAmt(item.allocated_amount)}</td>
+                                    <td style={{ ...S.subTd, textAlign: 'right' as const, color: BT.text.green }}>{fmtAmt(item.paid_amount)}</td>
+                                    <td style={{ ...S.subTd, textAlign: 'right' as const, color: n(item.outstanding) > 0 ? BT.text.amber : BT.text.muted }}>{fmtAmt(item.outstanding)}</td>
+                                    <td style={{ ...S.subTd, textAlign: 'center' as const, color: n(item.days_overdue) > 0 ? BT.text.red : BT.text.muted }}>{n(item.days_overdue) > 0 ? String(n(item.days_overdue)) : '—'}</td>
+                                    <td style={S.subTd}><span style={S.badge(statusColor(item.status))}>{item.status.toUpperCase()}</span></td>
+                                    <td style={S.subTd}>
+                                      {item.status !== 'paid' && (
+                                        <button
+                                          style={S.btn(BT.text.green)}
+                                          onClick={() => togglePayForm(item.id, item.outstanding)}
+                                        >
+                                          {payForm[item.id]?.open ? 'CANCEL' : 'RECORD PMT'}
+                                        </button>
+                                      )}
+                                    </td>
+                                  </tr>
+                                  {payForm[item.id]?.open && (
+                                    <tr style={{ background: `${BT.text.green}08` }}>
+                                      <td colSpan={8} style={{ padding: '6px 8px' }}>
+                                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                          <div style={S.kpiLabel}>AMOUNT ($)</div>
+                                          <input
+                                            type="number"
+                                            value={payForm[item.id]?.amount ?? ''}
+                                            onChange={e => setPayForm(prev => ({ ...prev, [item.id]: { ...prev[item.id], amount: e.target.value } }))}
+                                            style={{ ...S.inp, width: 140 }}
+                                          />
+                                          <button
+                                            style={S.btn(BT.text.green)}
+                                            onClick={() => handleRecordPayment(c.id, item.id)}
+                                            disabled={payingItem[item.id]}
+                                          >
+                                            {payingItem[item.id] ? 'SAVING…' : 'CONFIRM'}
+                                          </button>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  )}
+                                </React.Fragment>
+                              ))}
+                            </tbody>
+                          </table>
+                        </>
                       )}
                     </td>
                   </tr>
@@ -586,14 +652,35 @@ interface WaterfallTabProps {
   loading: boolean;
   error: string | null;
   onUpdate: (d: { pref_rate: number; catchup_pct: number; clawback: boolean; lp_gp_split_base: number; tiers: WaterfallTier[] }) => Promise<void>;
+  onCalculate: (exitProceeds: number, holdYears: number) => Promise<WaterfallCalcResult | null>;
 }
 
-function WaterfallTab({ waterfall, defaultTiers, loading, error, onUpdate }: WaterfallTabProps) {
+function WaterfallTab({ waterfall, defaultTiers, loading, error, onUpdate, onCalculate }: WaterfallTabProps) {
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({ pref_rate: '8', catchup_pct: '100', clawback: false, lp_gp_split_base: '80' });
   const [editTiers, setEditTiers] = useState<WaterfallTier[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState<string | null>(null);
+
+  const [calcOpen, setCalcOpen] = useState(false);
+  const [calcForm, setCalcForm] = useState({ exitProceeds: '', holdYears: '5' });
+  const [calcLoading, setCalcLoading] = useState(false);
+  const [calcErr, setCalcErr] = useState<string | null>(null);
+  const [calcResult, setCalcResult] = useState<WaterfallCalcResult | null>(null);
+
+  const handleCalculate = async () => {
+    const ep = Number(calcForm.exitProceeds);
+    const hy = Number(calcForm.holdYears) || 5;
+    if (!ep || ep <= 0) { setCalcErr('Enter a valid exit proceeds amount.'); return; }
+    setCalcLoading(true);
+    setCalcErr(null);
+    setCalcResult(null);
+    try {
+      const result = await onCalculate(ep, hy);
+      setCalcResult(result);
+    } catch { setCalcErr('Calculation failed. Please try again.'); }
+    setCalcLoading(false);
+  };
 
   const startEdit = () => {
     const w = waterfall;
@@ -737,6 +824,60 @@ function WaterfallTab({ waterfall, defaultTiers, loading, error, onUpdate }: Wat
           ))}
         </div>
       )}
+
+      {/* ── Calculate Distribution ───────────────────────────────────────── */}
+      <div style={{ marginTop: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <SecTitle>Calculate Distribution</SecTitle>
+          <button style={S.btn(BT.text.amber)} onClick={() => { setCalcOpen(v => !v); setCalcResult(null); setCalcErr(null); }}>
+            {calcOpen ? '− CLOSE' : '⊞ CALCULATE'}
+          </button>
+        </div>
+
+        {calcOpen && (
+          <div style={S.formPanel}>
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr auto', gap: 8, alignItems: 'end', marginBottom: 10 }}>
+              <div>
+                <div style={S.kpiLabel}>Exit Proceeds ($)</div>
+                <input type="number" placeholder="50000000" value={calcForm.exitProceeds} onChange={e => setCalcForm(f => ({ ...f, exitProceeds: e.target.value }))} style={S.inp} />
+              </div>
+              <div>
+                <div style={S.kpiLabel}>Hold Years</div>
+                <input type="number" min="1" max="30" value={calcForm.holdYears} onChange={e => setCalcForm(f => ({ ...f, holdYears: e.target.value }))} style={S.inp} />
+              </div>
+              <button style={{ ...S.btn(BT.text.amber), height: 30 }} onClick={handleCalculate} disabled={calcLoading}>
+                {calcLoading ? 'CALCULATING…' : 'RUN'}
+              </button>
+            </div>
+            {calcErr && <div style={S.formErr}>{calcErr}</div>}
+
+            {calcResult && (
+              <div style={{ marginTop: 10 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8, marginBottom: 10 }}>
+                  <KpiCard label="Exit Proceeds"  value={fmtAmt(calcResult.exitProceeds)}               color={BT.text.cyan} />
+                  <KpiCard label="LP Total"       value={fmtAmt(calcResult.result.lpTotalReturn)}       color={BT.text.green} sub={`${calcResult.result.lpEquityMultiple.toFixed(2)}x EM`} />
+                  <KpiCard label="GP Total"       value={fmtAmt(calcResult.result.gpTotalReturn)}       color={BT.text.amber} sub={`${(calcResult.result.gpEffectiveShare * 100).toFixed(1)}% eff. share`} />
+                  <KpiCard label="Total Distrib." value={fmtAmt(calcResult.result.totalDistributed)}    color={BT.text.primary} />
+                </div>
+                <div style={S.kpiLabel}>TIER-BY-TIER BREAKDOWN</div>
+                <table style={{ ...S.table, marginTop: 4 }}>
+                  <thead><RowHdr headers={['Tier','LP Distribution','GP Distribution','Total']} /></thead>
+                  <tbody>
+                    {calcResult.result.distributions.map((d, i) => (
+                      <tr key={i}>
+                        <td style={{ ...S.td, color: BT.text.primary, fontWeight: 600 }}>{d.tierName}</td>
+                        <td style={{ ...S.td, textAlign: 'right' as const, color: BT.text.green }}>{fmtAmt(d.lpDistribution)}</td>
+                        <td style={{ ...S.td, textAlign: 'right' as const, color: BT.text.amber }}>{fmtAmt(d.gpDistribution)}</td>
+                        <td style={{ ...S.td, textAlign: 'right' as const }}>{fmtAmt(d.totalDistribution)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -848,6 +989,158 @@ function LedgerTab({ entries, totalEntries, loading, error, onFilter }: LedgerTa
   );
 }
 
+// ─── COMMUNICATIONS TAB ───────────────────────────────────────────────────────
+
+const COMM_TYPES = [
+  { value: 'capital_call_notice',  label: 'Capital Call Notice' },
+  { value: 'distribution_notice',  label: 'Distribution Notice' },
+  { value: 'quarterly_report',     label: 'Quarterly Report' },
+  { value: 'annual_report',        label: 'Annual Report' },
+  { value: 'general',              label: 'General' },
+];
+
+function commTypeLabel(ct: string): string {
+  return COMM_TYPES.find(t => t.value === ct)?.label ?? ct;
+}
+function commStatusColor(s: string): string {
+  if (s === 'sent')    return BT.text.green;
+  if (s === 'draft')   return BT.text.amber;
+  if (s === 'failed')  return BT.text.red;
+  return BT.text.muted;
+}
+
+interface CommsTabProps {
+  comms: Communication[];
+  loading: boolean;
+  error: string | null;
+  allInvestors: Array<{ id: string; name: string; type: string; kycStatus: string }>;
+  onLoad: () => void;
+  onCreate: (d: { comm_type: string; subject: string; body?: string; investor_id?: string }) => Promise<void>;
+  onSend: (commId: string) => Promise<void>;
+}
+
+function CommsTab({ comms, loading, error, allInvestors, onLoad, onCreate, onSend }: CommsTabProps) {
+  const onLoadRef = useRef(onLoad);
+  onLoadRef.current = onLoad;
+  useEffect(() => { onLoadRef.current(); }, []);
+
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ comm_type: 'capital_call_notice', investor_id: '', subject: '', body: '' });
+  const [saving, setSaving] = useState(false);
+  const [formErr, setFormErr] = useState<string | null>(null);
+  const [sendingId, setSendingId] = useState<string | null>(null);
+  const [sendErr, setSendErr] = useState<string | null>(null);
+
+  const handleCreate = async () => {
+    if (!form.subject.trim()) { setFormErr('Subject is required.'); return; }
+    setSaving(true);
+    setFormErr(null);
+    try {
+      await onCreate({
+        comm_type:   form.comm_type,
+        subject:     form.subject.trim(),
+        body:        form.body.trim() || undefined,
+        investor_id: form.investor_id || undefined,
+      });
+      setForm({ comm_type: 'capital_call_notice', investor_id: '', subject: '', body: '' });
+      setShowForm(false);
+    } catch { setFormErr('Failed to create notice. Please try again.'); }
+    setSaving(false);
+  };
+
+  const handleSend = async (commId: string) => {
+    setSendErr(null);
+    setSendingId(commId);
+    try { await onSend(commId); }
+    catch { setSendErr('Failed to mark as sent. Please try again.'); }
+    setSendingId(null);
+  };
+
+  if (loading) return <div style={S.empty}>Loading communications…</div>;
+  if (error)   return <div style={S.err}>{error}</div>;
+
+  return (
+    <div>
+      {sendErr && <div style={S.err}>{sendErr}</div>}
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <SecTitle>Investor Notices</SecTitle>
+        <button style={S.btn()} onClick={() => setShowForm(v => !v)}>{showForm ? '− CANCEL' : '+ NEW NOTICE'}</button>
+      </div>
+
+      {showForm && (
+        <div style={S.formPanel}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+            <div>
+              <div style={S.kpiLabel}>Type</div>
+              <select value={form.comm_type} onChange={e => setForm(f => ({ ...f, comm_type: e.target.value }))} style={S.inp}>
+                {COMM_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <div style={S.kpiLabel}>Investor (optional — leave blank for all)</div>
+              <select value={form.investor_id} onChange={e => setForm(f => ({ ...f, investor_id: e.target.value }))} style={S.inp}>
+                <option value="">All Investors</option>
+                {allInvestors.map(inv => <option key={inv.id} value={inv.id}>{inv.name}</option>)}
+              </select>
+            </div>
+          </div>
+          <div style={{ marginBottom: 8 }}>
+            <div style={S.kpiLabel}>Subject</div>
+            <input type="text" value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))} style={S.inp} placeholder="Q3 Capital Call Notice — Fund II" />
+          </div>
+          <div style={{ marginBottom: 8 }}>
+            <div style={S.kpiLabel}>Body (optional)</div>
+            <textarea
+              value={form.body}
+              onChange={e => setForm(f => ({ ...f, body: e.target.value }))}
+              style={{ ...S.inp, resize: 'vertical' as const, minHeight: 80 }}
+              placeholder="Dear Investor, please find enclosed…"
+            />
+          </div>
+          {formErr && <div style={S.formErr}>{formErr}</div>}
+          <button style={S.btn(BT.text.green)} onClick={handleCreate} disabled={saving}>{saving ? 'SAVING…' : 'CREATE DRAFT'}</button>
+        </div>
+      )}
+
+      {comms.length === 0 ? (
+        <div style={S.empty}>No notices yet. Create the first one above.</div>
+      ) : (
+        <table style={S.table}>
+          <thead><RowHdr headers={['Date','Type','Investor','Subject','Status','']} /></thead>
+          <tbody>
+            {comms.map(c => (
+              <tr key={c.id}>
+                <td style={{ ...S.td, color: BT.text.muted }}>{c.created_at?.slice(0, 10)}</td>
+                <td style={S.td}><Bd c={BT.text.cyan}>{commTypeLabel(c.comm_type)}</Bd></td>
+                <td style={{ ...S.td, color: BT.text.primary }}>{c.investor_name ?? 'All Investors'}</td>
+                <td style={{ ...S.td, color: BT.text.secondary }}>{c.subject}</td>
+                <td style={S.td}><span style={S.badge(commStatusColor(c.status))}>{c.status.toUpperCase()}</span></td>
+                <td style={S.td}>
+                  {c.status === 'draft' && (
+                    <button
+                      style={S.btn(BT.text.green)}
+                      onClick={() => handleSend(c.id)}
+                      disabled={sendingId === c.id}
+                    >
+                      {sendingId === c.id ? 'MARKING…' : 'MARK SENT'}
+                    </button>
+                  )}
+                  {c.status === 'sent' && c.sent_at && (
+                    <span style={{ fontSize: 8, color: BT.text.muted, fontFamily: mono }}>
+                      {c.sent_at.slice(0, 10)}
+                    </span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // MAIN MODULE
 // ═══════════════════════════════════════════════════════════════════════════
@@ -857,13 +1150,14 @@ export interface InvestorCapitalModuleProps {
   deal?: Record<string, unknown>;
 }
 
-type TabId = 'investors' | 'calls' | 'distributions' | 'waterfall' | 'ledger';
+type TabId = 'investors' | 'calls' | 'distributions' | 'waterfall' | 'ledger' | 'comms';
 const TABS: Array<{ id: TabId; label: string }> = [
   { id: 'investors',     label: 'Investor Roster' },
   { id: 'calls',         label: 'Capital Calls' },
   { id: 'distributions', label: 'Distributions' },
   { id: 'waterfall',     label: 'Waterfall' },
   { id: 'ledger',        label: 'Ledger' },
+  { id: 'comms',         label: 'Comms' },
 ];
 
 export function InvestorCapitalModule({ dealId }: InvestorCapitalModuleProps) {
@@ -871,7 +1165,7 @@ export function InvestorCapitalModule({ dealId }: InvestorCapitalModuleProps) {
 
   const {
     summary, summaryErr, investments, allInvestors, calls, dists,
-    waterfall, defaultTiers, entries, totalEntries,
+    waterfall, defaultTiers, entries, totalEntries, comms,
     loading, errors,
     reload, loaders,
     mutations,
@@ -955,6 +1249,7 @@ export function InvestorCapitalModule({ dealId }: InvestorCapitalModuleProps) {
             onLoadCallItems={loaders.loadCallItems}
             onCreateCall={mutations.createCall}
             onSendCall={mutations.sendCall}
+            onRecordPayment={mutations.recordCallPayment}
           />
         )}
         {activeTab === 'distributions' && (
@@ -976,6 +1271,7 @@ export function InvestorCapitalModule({ dealId }: InvestorCapitalModuleProps) {
             loading={loading.waterfall}
             error={errors.waterfall ?? null}
             onUpdate={mutations.updateWaterfall}
+            onCalculate={mutations.calculateWaterfall}
           />
         )}
         {activeTab === 'ledger' && (
@@ -985,6 +1281,17 @@ export function InvestorCapitalModule({ dealId }: InvestorCapitalModuleProps) {
             loading={loading.entries}
             error={errors.entries ?? null}
             onFilter={reload.entries}
+          />
+        )}
+        {activeTab === 'comms' && (
+          <CommsTab
+            comms={comms}
+            loading={loading.comms}
+            error={errors.comms ?? null}
+            allInvestors={allInvestors}
+            onLoad={reload.comms}
+            onCreate={mutations.createCommunication}
+            onSend={mutations.sendCommunication}
           />
         )}
       </div>
