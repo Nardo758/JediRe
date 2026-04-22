@@ -8,12 +8,12 @@ import { AIModelSettings } from './settings/AIModelSettings';
 import { NotificationSettings } from './settings/NotificationSettings';
 import { SubscriptionSettings } from './settings/SubscriptionSettings';
 import { DataLibrarySettings } from './settings/DataLibrarySettings';
-import AgentSettingsPage from './settings/AgentSettingsPage';
+import SkillsSettingsPage from './settings/SkillsSettingsPage';
 import { TemplatesSettings } from './settings/TemplatesSettings';
 import { apiClient } from '../services/api.client';
 import { BT } from '@/components/deal/bloomberg-ui';
 
-type SettingsTab = 'profile' | 'subscription' | 'modules' | 'integrations' | 'notifications' | 'markets' | 'property-types' | 'intelligence' | 'ai-model' | 'data-library' | 'agents' | 'templates';
+type SettingsTab = 'profile' | 'subscription' | 'modules' | 'integrations' | 'notifications' | 'markets' | 'property-types' | 'intelligence' | 'ai-model' | 'data-library' | 'skills' | 'templates';
 
 const TIER_LABELS: Record<string, { label: string; textColor: string; bgColor: string }> = {
   scout: { label: 'Scout', textColor: BT.text.secondary, bgColor: BT.bg.panelAlt },
@@ -25,7 +25,7 @@ const TIER_LABELS: Record<string, { label: string; textColor: string; bgColor: s
   enterprise: { label: 'Enterprise', textColor: BT.text.purple, bgColor: BT.bg.active },
 };
 
-const VALID_TABS: SettingsTab[] = ['profile', 'subscription', 'modules', 'integrations', 'notifications', 'markets', 'property-types', 'intelligence', 'ai-model', 'data-library', 'agents', 'templates'];
+const VALID_TABS: SettingsTab[] = ['profile', 'subscription', 'modules', 'integrations', 'notifications', 'markets', 'property-types', 'intelligence', 'ai-model', 'data-library', 'skills', 'templates'];
 
 function getInitialTab(): SettingsTab {
   const params = new URLSearchParams(window.location.search);
@@ -189,11 +189,11 @@ export function SettingsPage() {
             AI Model
           </button>
           <button
-            onClick={() => setActiveTab('agents')}
+            onClick={() => setActiveTab('skills')}
             className="w-full text-left px-4 py-3"
-            style={tabButtonStyle(activeTab === 'agents')}
+            style={tabButtonStyle(activeTab === 'skills')}
           >
-            Agent AI Settings
+            AI Skills
           </button>
           <button
             onClick={() => setActiveTab('integrations')}
@@ -351,8 +351,8 @@ export function SettingsPage() {
             <DataLibrarySettings />
           )}
 
-          {activeTab === 'agents' && (
-            <AgentSettingsPage />
+          {activeTab === 'skills' && (
+            <SkillsSettingsPage />
           )}
 
           {activeTab === 'templates' && (

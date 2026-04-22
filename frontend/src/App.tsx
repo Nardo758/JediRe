@@ -200,7 +200,8 @@ function AppContent() {
         <Route path="/settings/email" element={<Navigate to="/terminal/settings" replace />} />
         <Route path="/settings/marketplace" element={<Navigate to="/terminal/settings" replace />} />
         <Route path="/settings/strategies" element={<Navigate to="/terminal/settings" replace />} />
-        <Route path="/settings/agents" element={<Navigate to="/terminal/settings?tab=agents" replace />} />
+        <Route path="/settings/agents" element={<Navigate to="/terminal/settings?tab=skills" replace />} />
+        <Route path="/settings/skills" element={<Navigate to="/terminal/settings?tab=skills" replace />} />
         <Route path="/strategies" element={<Navigate to="/terminal/strategies" replace />} />
         <Route path="/strategies/:id" element={<Navigate to="/terminal/strategies" replace />} />
         <Route path="/opportunities" element={<Navigate to="/terminal/strategies" replace />} />
