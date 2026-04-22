@@ -574,7 +574,7 @@ export default function AssetOwnedPage() {
         
         {documentsSubTab === 'upload' && <UploadPackageTab dealId={dealId!} />}
         {documentsSubTab === 'archive' && <DocumentsSection dealId={dealId!} />}
-        {documentsSubTab === 'activity' && <EventTimelineSection dealId={dealId!} />}
+        {documentsSubTab === 'activity' && <ActivityTab dealId={dealId!} />}
         {documentsSubTab === 'team' && <TeamSection dealId={dealId!} />}
       </div>
     );
@@ -954,13 +954,196 @@ const LeasingTab: React.FC<{ dealId: string }> = ({ dealId }) => (
   </Panel>
 );
 
-const TrafficTab: React.FC<{ dealId: string }> = ({ dealId }) => (
-  <Panel title="Traffic & Conversion">
-    <div style={{ padding: 20, color: T.text.muted, textAlign: 'center', fontFamily: T.font.mono, fontSize: 11 }}>
-      Traffic and conversion metrics coming soon.
+interface TrafficData {
+  week: string;
+  weekEnd: string;
+  forecast_traffic: number | null;
+  actual_traffic: number | null;
+  forecast_leases: number | null;
+  actual_leases: number | null;
+  forecast_conversion: number | null;
+  actual_conversion: number | null;
+  traffic_variance: number | null;
+  traffic_variance_type: string;
+  lease_variance: number | null;
+  occupancy: number | null;
+}
+
+const TrafficTab: React.FC<{ dealId: string }> = ({ dealId }) => {
+  const [data, setData] = useState<TrafficData[]>([]);
+  const [summary, setSummary] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    apiClient.get(`/api/v1/deals/${dealId}/traffic/forecast-vs-actual?weeks=12`)
+      .then(res => {
+        setData(res.data?.data || []);
+        setSummary(res.data?.summary || null);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [dealId]);
+
+  if (loading) return <div style={{ padding: 20, color: T.text.muted }}>Loading...</div>;
+
+  if (data.length === 0) {
+    return (
+      <Panel title="Traffic Forecast vs Actual">
+        <div style={{ padding: 40, textAlign: 'center' }}>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>📈</div>
+          <div style={{ fontSize: 12, color: T.text.primary, fontFamily: T.font.mono, marginBottom: 8 }}>
+            No traffic data available
+          </div>
+          <div style={{ fontSize: 10, color: T.text.muted, fontFamily: T.font.mono }}>
+            Traffic predictions and actuals will appear here once data is available
+          </div>
+        </div>
+      </Panel>
+    );
+  }
+
+  return (
+    <div>
+      {/* Summary Cards */}
+      {summary && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
+          <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 4, padding: 12 }}>
+            <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>FORECAST ACCURACY</div>
+            <div style={{ fontSize: 20, fontWeight: 700, color: T.text.green, fontFamily: T.font.mono }}>
+              {summary.forecastAccuracy !== null ? `${summary.forecastAccuracy.toFixed(0)}%` : '—'}
+            </div>
+          </div>
+          <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 4, padding: 12 }}>
+            <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>AVG TRAFFIC VAR</div>
+            <div style={{
+              fontSize: 20, fontWeight: 700, fontFamily: T.font.mono,
+              color: summary.avgTrafficVariance >= 0 ? T.text.green : T.text.red,
+            }}>
+              {summary.avgTrafficVariance !== null ? `${summary.avgTrafficVariance >= 0 ? '+' : ''}${summary.avgTrafficVariance.toFixed(1)}%` : '—'}
+            </div>
+          </div>
+          <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 4, padding: 12 }}>
+            <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>WEEKS W/ FORECAST</div>
+            <div style={{ fontSize: 20, fontWeight: 700, color: T.text.cyan, fontFamily: T.font.mono }}>
+              {summary.weeksWithForecast || 0}
+            </div>
+          </div>
+          <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 4, padding: 12 }}>
+            <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>WEEKS W/ ACTUALS</div>
+            <div style={{ fontSize: 20, fontWeight: 700, color: T.text.amber, fontFamily: T.font.mono }}>
+              {summary.weeksWithActuals || 0}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Forecast vs Actual Chart */}
+      <Panel title="Weekly Traffic: Forecast vs Actual" style={{ marginBottom: 16 }}>
+        <div style={{ height: 200, display: 'flex', alignItems: 'flex-end', gap: 8, padding: '0 8px' }}>
+          {data.slice(0, 12).reverse().map((row, i) => {
+            const maxVal = Math.max(
+              ...data.map(d => Math.max(d.forecast_traffic || 0, d.actual_traffic || 0))
+            ) || 100;
+            const forecastH = row.forecast_traffic ? (row.forecast_traffic / maxVal) * 160 : 0;
+            const actualH = row.actual_traffic ? (row.actual_traffic / maxVal) * 160 : 0;
+            const weekLabel = row.week?.slice(5) || '';
+            
+            return (
+              <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                <div style={{ display: 'flex', gap: 2, alignItems: 'flex-end', height: 160 }}>
+                  <div
+                    style={{
+                      width: 12,
+                      height: forecastH,
+                      background: T.text.cyan + '66',
+                      borderRadius: '2px 2px 0 0',
+                    }}
+                    title={`Forecast: ${row.forecast_traffic || 0}`}
+                  />
+                  <div
+                    style={{
+                      width: 12,
+                      height: actualH,
+                      background: row.traffic_variance_type === 'favorable' ? T.text.green : 
+                                  row.traffic_variance_type === 'unfavorable' ? T.text.red : T.text.muted,
+                      borderRadius: '2px 2px 0 0',
+                    }}
+                    title={`Actual: ${row.actual_traffic || 0}`}
+                  />
+                </div>
+                <span style={{ fontSize: 8, color: T.text.muted, fontFamily: T.font.mono }}>{weekLabel}</span>
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ display: 'flex', gap: 16, justifyContent: 'center', marginTop: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div style={{ width: 12, height: 12, background: T.text.cyan + '66', borderRadius: 2 }} />
+            <span style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>Forecast</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div style={{ width: 12, height: 12, background: T.text.green, borderRadius: 2 }} />
+            <span style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>Actual (above)</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div style={{ width: 12, height: 12, background: T.text.red, borderRadius: 2 }} />
+            <span style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>Actual (below)</span>
+          </div>
+        </div>
+      </Panel>
+
+      {/* Data Table */}
+      <Panel title="Weekly Detail">
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: T.font.mono }}>
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${T.border.medium}` }}>
+                <th style={{ padding: '6px 8px', textAlign: 'left', color: T.text.muted }}>Week</th>
+                <th style={{ padding: '6px 8px', textAlign: 'right', color: T.text.muted }}>Forecast</th>
+                <th style={{ padding: '6px 8px', textAlign: 'right', color: T.text.muted }}>Actual</th>
+                <th style={{ padding: '6px 8px', textAlign: 'right', color: T.text.muted }}>Variance</th>
+                <th style={{ padding: '6px 8px', textAlign: 'right', color: T.text.muted }}>Conv %</th>
+                <th style={{ padding: '6px 8px', textAlign: 'right', color: T.text.muted }}>Leases</th>
+                <th style={{ padding: '6px 8px', textAlign: 'right', color: T.text.muted }}>Occ %</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((row, i) => (
+                <tr key={i} style={{ borderBottom: `1px solid ${T.border.subtle}` }}>
+                  <td style={{ padding: '6px 8px', color: T.text.primary }}>{row.week}</td>
+                  <td style={{ padding: '6px 8px', textAlign: 'right', color: T.text.cyan }}>
+                    {row.forecast_traffic ?? '—'}
+                  </td>
+                  <td style={{ padding: '6px 8px', textAlign: 'right', color: T.text.primary }}>
+                    {row.actual_traffic ?? '—'}
+                  </td>
+                  <td style={{
+                    padding: '6px 8px',
+                    textAlign: 'right',
+                    color: row.traffic_variance_type === 'favorable' ? T.text.green :
+                           row.traffic_variance_type === 'unfavorable' ? T.text.red : T.text.muted,
+                    fontWeight: 600,
+                  }}>
+                    {row.traffic_variance !== null ? `${row.traffic_variance >= 0 ? '+' : ''}${row.traffic_variance.toFixed(1)}%` : '—'}
+                  </td>
+                  <td style={{ padding: '6px 8px', textAlign: 'right', color: T.text.secondary }}>
+                    {row.actual_conversion !== null ? `${row.actual_conversion.toFixed(1)}%` : '—'}
+                  </td>
+                  <td style={{ padding: '6px 8px', textAlign: 'right', color: T.text.amber }}>
+                    {row.actual_leases ?? '—'}
+                  </td>
+                  <td style={{ padding: '6px 8px', textAlign: 'right', color: T.text.green }}>
+                    {row.occupancy !== null ? `${(row.occupancy * 100).toFixed(1)}%` : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
     </div>
-  </Panel>
-);
+  );
+};
 
 const CompSetTab: React.FC<{ dealId: string }> = ({ dealId }) => (
   <Panel title="Competitive Set">
@@ -989,6 +1172,364 @@ const RefiAnalysisTab: React.FC<{ dealId: string }> = ({ dealId }) => (
     </div>
   </Panel>
 );
+
+// ─── Activity Tab (Emails + Tasks + Events) ─────────────────────────────────────
+
+interface Email {
+  id: string;
+  subject: string;
+  from_address: string;
+  snippet: string;
+  received_at: string;
+  is_read: boolean;
+  is_starred: boolean;
+}
+
+interface Task {
+  id: string;
+  title: string;
+  description: string;
+  status: string;
+  priority: string;
+  due_date: string | null;
+  assigned_to_name: string | null;
+}
+
+interface ActivityItem {
+  id: string;
+  type: 'email' | 'task' | 'event';
+  title: string;
+  description: string;
+  timestamp: string;
+  actor: string;
+}
+
+const ActivityTab: React.FC<{ dealId: string }> = ({ dealId }) => {
+  const [activeSubTab, setActiveSubTab] = useState<'unified' | 'emails' | 'tasks'>('unified');
+  const [emails, setEmails] = useState<Email[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [unified, setUnified] = useState<ActivityItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showNewTask, setShowNewTask] = useState(false);
+  const [newTask, setNewTask] = useState({ title: '', priority: 'medium', due_date: '' });
+
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([
+      apiClient.get(`/api/v1/deals/${dealId}/activity/emails?limit=20`).catch(() => ({ data: { emails: [] } })),
+      apiClient.get(`/api/v1/deals/${dealId}/activity/tasks`).catch(() => ({ data: { tasks: [] } })),
+      apiClient.get(`/api/v1/deals/${dealId}/activity/unified?limit=30`).catch(() => ({ data: { activity: [] } })),
+    ]).then(([emailsRes, tasksRes, unifiedRes]) => {
+      setEmails(emailsRes.data?.emails || []);
+      setTasks(tasksRes.data?.tasks || []);
+      setUnified(unifiedRes.data?.activity || []);
+    }).finally(() => setLoading(false));
+  }, [dealId]);
+
+  const createTask = async () => {
+    if (!newTask.title) return;
+    try {
+      await apiClient.post(`/api/v1/deals/${dealId}/activity/tasks`, newTask);
+      const res = await apiClient.get(`/api/v1/deals/${dealId}/activity/tasks`);
+      setTasks(res.data?.tasks || []);
+      setNewTask({ title: '', priority: 'medium', due_date: '' });
+      setShowNewTask(false);
+    } catch (err) {
+      console.error('Failed to create task:', err);
+    }
+  };
+
+  const updateTaskStatus = async (taskId: string, status: string) => {
+    try {
+      await apiClient.patch(`/api/v1/deals/${dealId}/activity/tasks/${taskId}`, { status });
+      setTasks(tasks.map(t => t.id === taskId ? { ...t, status } : t));
+    } catch (err) {
+      console.error('Failed to update task:', err);
+    }
+  };
+
+  if (loading) return <div style={{ padding: 20, color: T.text.muted }}>Loading...</div>;
+
+  return (
+    <div>
+      {/* Sub-tabs */}
+      <SubTabs
+        tabs={[
+          { id: 'unified', label: 'All Activity' },
+          { id: 'emails', label: `Emails (${emails.length})` },
+          { id: 'tasks', label: `Tasks (${tasks.filter(t => t.status !== 'done').length})` },
+        ]}
+        active={activeSubTab}
+        onChange={(id) => setActiveSubTab(id as any)}
+      />
+
+      {/* Unified Activity */}
+      {activeSubTab === 'unified' && (
+        <Panel title="Recent Activity">
+          {unified.length === 0 ? (
+            <div style={{ padding: 20, color: T.text.muted, textAlign: 'center', fontSize: 11 }}>
+              No activity yet
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {unified.map((item, i) => (
+                <div key={i} style={{
+                  display: 'flex',
+                  gap: 10,
+                  padding: '8px 10px',
+                  background: T.bg.panelAlt,
+                  borderRadius: 4,
+                  borderLeft: `3px solid ${
+                    item.type === 'email' ? T.text.cyan :
+                    item.type === 'task' ? T.text.amber :
+                    T.text.purple
+                  }`,
+                }}>
+                  <span style={{ fontSize: 14 }}>
+                    {item.type === 'email' ? '✉️' : item.type === 'task' ? '✅' : '📅'}
+                  </span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: T.text.primary, fontFamily: T.font.mono }}>
+                      {item.title}
+                    </div>
+                    {item.description && (
+                      <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono, marginTop: 2 }}>
+                        {item.description.slice(0, 100)}{item.description.length > 100 ? '...' : ''}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 8, color: T.text.muted, fontFamily: T.font.mono, whiteSpace: 'nowrap' }}>
+                    {new Date(item.timestamp).toLocaleDateString()}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Panel>
+      )}
+
+      {/* Emails */}
+      {activeSubTab === 'emails' && (
+        <Panel title="Deal Emails">
+          {emails.length === 0 ? (
+            <div style={{ padding: 20, color: T.text.muted, textAlign: 'center', fontSize: 11 }}>
+              No emails linked to this deal yet. Link emails from your inbox.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {emails.map((email) => (
+                <div key={email.id} style={{
+                  display: 'flex',
+                  gap: 10,
+                  padding: '10px 12px',
+                  background: email.is_read ? 'transparent' : T.bg.panelAlt,
+                  borderRadius: 4,
+                  border: `1px solid ${T.border.subtle}`,
+                }}>
+                  <span style={{ fontSize: 14 }}>{email.is_starred ? '⭐' : '✉️'}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      fontSize: 10,
+                      fontWeight: email.is_read ? 400 : 700,
+                      color: T.text.primary,
+                      fontFamily: T.font.mono,
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}>
+                      {email.subject || '(no subject)'}
+                    </div>
+                    <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>
+                      {email.from_address}
+                    </div>
+                    <div style={{ fontSize: 9, color: T.text.secondary, fontFamily: T.font.mono, marginTop: 2 }}>
+                      {email.snippet?.slice(0, 100)}...
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 8, color: T.text.muted, fontFamily: T.font.mono, whiteSpace: 'nowrap' }}>
+                    {new Date(email.received_at).toLocaleDateString()}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Panel>
+      )}
+
+      {/* Tasks */}
+      {activeSubTab === 'tasks' && (
+        <div>
+          <Panel title="Deal Tasks">
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+              <button
+                onClick={() => setShowNewTask(true)}
+                style={{
+                  background: T.text.cyan + '22',
+                  border: `1px solid ${T.text.cyan}`,
+                  color: T.text.cyan,
+                  padding: '6px 12px',
+                  borderRadius: 4,
+                  fontSize: 10,
+                  fontFamily: T.font.mono,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                + New Task
+              </button>
+            </div>
+
+            {/* New Task Form */}
+            {showNewTask && (
+              <div style={{
+                marginBottom: 16,
+                padding: 12,
+                background: T.bg.panelAlt,
+                border: `1px solid ${T.border.subtle}`,
+                borderRadius: 4,
+              }}>
+                <input
+                  value={newTask.title}
+                  onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
+                  placeholder="Task title..."
+                  style={{
+                    width: '100%',
+                    padding: '8px 10px',
+                    marginBottom: 8,
+                    background: T.bg.input,
+                    border: `1px solid ${T.border.subtle}`,
+                    borderRadius: 4,
+                    color: T.text.primary,
+                    fontSize: 11,
+                    fontFamily: T.font.mono,
+                  }}
+                />
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <select
+                    value={newTask.priority}
+                    onChange={(e) => setNewTask({ ...newTask, priority: e.target.value })}
+                    style={{
+                      padding: '6px 8px',
+                      background: T.bg.input,
+                      border: `1px solid ${T.border.subtle}`,
+                      borderRadius: 4,
+                      color: T.text.primary,
+                      fontSize: 10,
+                      fontFamily: T.font.mono,
+                    }}
+                  >
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="urgent">Urgent</option>
+                  </select>
+                  <input
+                    type="date"
+                    value={newTask.due_date}
+                    onChange={(e) => setNewTask({ ...newTask, due_date: e.target.value })}
+                    style={{
+                      padding: '6px 8px',
+                      background: T.bg.input,
+                      border: `1px solid ${T.border.subtle}`,
+                      borderRadius: 4,
+                      color: T.text.primary,
+                      fontSize: 10,
+                      fontFamily: T.font.mono,
+                    }}
+                  />
+                  <button onClick={createTask} style={{
+                    background: T.text.green + '22',
+                    border: `1px solid ${T.text.green}`,
+                    color: T.text.green,
+                    padding: '6px 12px',
+                    borderRadius: 4,
+                    fontSize: 10,
+                    fontFamily: T.font.mono,
+                    cursor: 'pointer',
+                  }}>Save</button>
+                  <button onClick={() => setShowNewTask(false)} style={{
+                    background: 'transparent',
+                    border: `1px solid ${T.border.subtle}`,
+                    color: T.text.muted,
+                    padding: '6px 12px',
+                    borderRadius: 4,
+                    fontSize: 10,
+                    fontFamily: T.font.mono,
+                    cursor: 'pointer',
+                  }}>Cancel</button>
+                </div>
+              </div>
+            )}
+
+            {/* Task List */}
+            {tasks.length === 0 ? (
+              <div style={{ padding: 20, color: T.text.muted, textAlign: 'center', fontSize: 11 }}>
+                No tasks for this deal. Create one to track action items.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {tasks.map((task) => (
+                  <div key={task.id} style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    padding: '10px 12px',
+                    background: task.status === 'done' ? 'transparent' : T.bg.panelAlt,
+                    borderRadius: 4,
+                    border: `1px solid ${T.border.subtle}`,
+                    opacity: task.status === 'done' ? 0.5 : 1,
+                  }}>
+                    <input
+                      type="checkbox"
+                      checked={task.status === 'done'}
+                      onChange={() => updateTaskStatus(task.id, task.status === 'done' ? 'todo' : 'done')}
+                      style={{ cursor: 'pointer' }}
+                    />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{
+                        fontSize: 10,
+                        fontWeight: 600,
+                        color: T.text.primary,
+                        fontFamily: T.font.mono,
+                        textDecoration: task.status === 'done' ? 'line-through' : 'none',
+                      }}>
+                        {task.title}
+                      </div>
+                      {task.description && (
+                        <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>
+                          {task.description.slice(0, 80)}...
+                        </div>
+                      )}
+                    </div>
+                    <span style={{
+                      fontSize: 8,
+                      padding: '2px 6px',
+                      borderRadius: 3,
+                      fontFamily: T.font.mono,
+                      background: task.priority === 'urgent' ? T.text.red + '22' :
+                                  task.priority === 'high' ? T.text.amber + '22' :
+                                  T.text.muted + '22',
+                      color: task.priority === 'urgent' ? T.text.red :
+                             task.priority === 'high' ? T.text.amber :
+                             T.text.muted,
+                    }}>
+                      {task.priority.toUpperCase()}
+                    </span>
+                    {task.due_date && (
+                      <div style={{ fontSize: 8, color: T.text.muted, fontFamily: T.font.mono }}>
+                        {new Date(task.due_date).toLocaleDateString()}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </Panel>
+        </div>
+      )}
+    </div>
+  );
+};
 
 interface UploadResult {
   filename: string;

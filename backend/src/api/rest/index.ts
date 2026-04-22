@@ -95,6 +95,8 @@ import { createCapsuleRoutes } from './capsule.routes';
 import inlineDealsRoutes from './inline-deals.routes';
 import dealTemplatesRoutes from './deal-templates.routes';
 import reportingPackageRoutes from './reporting-package.routes';
+import dealActivityRoutes from './deal-activity.routes';
+import dealTrafficRoutes from './deal-traffic.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 import { createUnitMixRoutes } from './unitMix.routes';
 import dealCompSetsRoutes from './deal-comp-sets.routes';
@@ -447,6 +449,12 @@ export function setupRESTRoutes(app: Application): void {
 
   // Reporting Package routes (monthly package upload, variance data)
   app.use(`${API_PREFIX}/reporting-package`, reportingPackageRoutes);
+
+  // Deal Activity routes (emails, tasks, unified activity)
+  app.use(`${API_PREFIX}/deals`, dealActivityRoutes);
+
+  // Deal Traffic routes (forecast vs actuals)
+  app.use(`${API_PREFIX}/deals`, dealTrafficRoutes);
 
   // 404 handler for API routes
   app.use(`${API_PREFIX}/*`, notFoundHandler);
