@@ -974,7 +974,7 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
                   return (
                     <tr
                       key={c.id}
-                      onClick={() => navigate(`/deals/${c.id}`)}
+                      onClick={() => navigate(`/assets-owned/${c.id}/property`)}
                       style={{
                         borderBottom: `1px solid ${T.border.subtle}`,
                         cursor: 'pointer',

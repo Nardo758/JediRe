@@ -638,7 +638,7 @@ export default function AssetsMapView({ assets, onAssetClick, userId = 'current-
           onClose={() => setSelectedAsset(null)}
           onViewDetails={() => {
             onAssetClick?.(selectedAsset.id);
-            navigate(`/deals/${selectedAsset.id}`);
+            navigate(`/assets-owned/${selectedAsset.id}/property`);
           }}
         />
       )}

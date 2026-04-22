@@ -1,5 +1,6 @@
-import React, { Suspense, lazy, useEffect, useCallback } from 'react';
-import { Routes, Route, Navigate, useParams } from 'react-router-dom';
+import React, { Suspense, lazy, useEffect, useCallback, useState } from 'react';
+import { Routes, Route, Navigate, useParams, useNavigate } from 'react-router-dom';
+import { apiClient } from './services/api.client';
 import { MainLayout } from './components/layout/MainLayout';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ErrorFallback } from './components/fallbacks/ErrorFallback';
@@ -73,12 +74,36 @@ const RedirectDealViewToTab: React.FC = () => {
 
 function DealIdRedirect() {
   const { id } = useParams<{ id: string }>();
-  return <Navigate to={`/deals/${id}/detail`} replace />;
+  const navigate = useNavigate();
+  const [checked, setChecked] = useState(false);
+
+  useEffect(() => {
+    if (!id) return;
+    apiClient.get(`/api/v1/portfolio/${id}/summary`)
+      .then(() => navigate(`/assets-owned/${id}/property`, { replace: true }))
+      .catch(() => navigate(`/deals/${id}/detail`, { replace: true }))
+      .finally(() => setChecked(true));
+  }, [id, navigate]);
+
+  if (checked) return null;
+  return <div style={{ background: '#0A0E17', minHeight: '100vh' }} />;
 }
 
 function DealIdRedirectByDealId() {
   const { dealId } = useParams<{ dealId: string }>();
-  return <Navigate to={`/deals/${dealId}/detail`} replace />;
+  const navigate = useNavigate();
+  const [checked, setChecked] = useState(false);
+
+  useEffect(() => {
+    if (!dealId) return;
+    apiClient.get(`/api/v1/portfolio/${dealId}/summary`)
+      .then(() => navigate(`/assets-owned/${dealId}/property`, { replace: true }))
+      .catch(() => navigate(`/deals/${dealId}/detail`, { replace: true }))
+      .finally(() => setChecked(true));
+  }, [dealId, navigate]);
+
+  if (checked) return null;
+  return <div style={{ background: '#0A0E17', minHeight: '100vh' }} />;
 }
 
 function useResponsiveZoom() {
