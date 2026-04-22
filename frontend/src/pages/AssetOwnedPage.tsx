@@ -721,13 +721,154 @@ const PLSummaryTab: React.FC<{ financials: MonthlyFinancial[] }> = ({ financials
   </Panel>
 );
 
-const VarianceTab: React.FC<{ dealId: string }> = ({ dealId }) => (
-  <Panel title="Budget vs Actual Variance">
-    <div style={{ padding: 20, color: T.text.muted, textAlign: 'center', fontFamily: T.font.mono, fontSize: 11 }}>
-      Variance report coming soon. Upload a BPI Variance Report to auto-populate.
+interface VarianceItem {
+  line_item: string;
+  category: string;
+  actual: number | null;
+  budget: number | null;
+  variance: number | null;
+  variance_pct: number | null;
+  variance_type: 'favorable' | 'unfavorable' | 'neutral';
+}
+
+const VarianceTab: React.FC<{ dealId: string }> = ({ dealId }) => {
+  const [data, setData] = useState<Record<string, VarianceItem[]>>({});
+  const [loading, setLoading] = useState(true);
+  const [selectedMonth, setSelectedMonth] = useState<string>('');
+
+  useEffect(() => {
+    apiClient.get(`/api/v1/reporting-package/variance?dealId=${dealId}`)
+      .then(res => {
+        const variance = res.data?.variance || {};
+        setData(variance);
+        const months = Object.keys(variance).sort().reverse();
+        if (months.length > 0) setSelectedMonth(months[0]);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [dealId]);
+
+  if (loading) return <div style={{ padding: 20, color: T.text.muted }}>Loading...</div>;
+
+  const months = Object.keys(data).sort().reverse();
+  const items = selectedMonth ? data[selectedMonth] || [] : [];
+
+  // Group by category
+  const byCategory: Record<string, VarianceItem[]> = {};
+  items.forEach(item => {
+    if (!byCategory[item.category]) byCategory[item.category] = [];
+    byCategory[item.category].push(item);
+  });
+
+  const categoryLabels: Record<string, string> = {
+    revenue: 'Revenue',
+    other_income: 'Other Income',
+    payroll: 'Payroll & Benefits',
+    repairs_maintenance: 'Repairs & Maintenance',
+    contract_services: 'Contract Services',
+    utilities: 'Utilities',
+    marketing: 'Marketing',
+    admin_general: 'Admin & General',
+    management_fee: 'Management Fee',
+    property_tax: 'Property Tax',
+    insurance: 'Insurance',
+    other: 'Other',
+  };
+
+  if (months.length === 0) {
+    return (
+      <Panel title="Budget vs Actual Variance">
+        <div style={{ padding: 40, textAlign: 'center' }}>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>📊</div>
+          <div style={{ fontSize: 12, color: T.text.primary, fontFamily: T.font.mono, marginBottom: 8 }}>
+            No variance data available
+          </div>
+          <div style={{ fontSize: 10, color: T.text.muted, fontFamily: T.font.mono }}>
+            Upload a BPI Variance Report in the Documents tab to see budget vs actual analysis
+          </div>
+        </div>
+      </Panel>
+    );
+  }
+
+  return (
+    <div>
+      {/* Month Selector */}
+      <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
+        <span style={{ fontSize: 10, color: T.text.muted, fontFamily: T.font.mono }}>Report Period:</span>
+        <select
+          value={selectedMonth}
+          onChange={(e) => setSelectedMonth(e.target.value)}
+          style={{
+            background: T.bg.input,
+            color: T.text.primary,
+            border: `1px solid ${T.border.subtle}`,
+            borderRadius: 4,
+            padding: '4px 8px',
+            fontSize: 10,
+            fontFamily: T.font.mono,
+          }}
+        >
+          {months.map(m => (
+            <option key={m} value={m}>{m}</option>
+          ))}
+        </select>
+        <span style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>
+          {items.length} line items
+        </span>
+      </div>
+
+      {/* Variance Table by Category */}
+      {Object.entries(byCategory).map(([category, catItems]) => (
+        <Panel key={category} title={categoryLabels[category] || category} style={{ marginBottom: 12 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: T.font.mono }}>
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${T.border.medium}` }}>
+                <th style={{ padding: '6px 8px', textAlign: 'left', color: T.text.muted, width: '40%' }}>Line Item</th>
+                <th style={{ padding: '6px 8px', textAlign: 'right', color: T.text.muted }}>Actual</th>
+                <th style={{ padding: '6px 8px', textAlign: 'right', color: T.text.muted }}>Budget</th>
+                <th style={{ padding: '6px 8px', textAlign: 'right', color: T.text.muted }}>Variance</th>
+                <th style={{ padding: '6px 8px', textAlign: 'right', color: T.text.muted }}>Var %</th>
+              </tr>
+            </thead>
+            <tbody>
+              {catItems.map((item, i) => (
+                <tr key={i} style={{ borderBottom: `1px solid ${T.border.subtle}` }}>
+                  <td style={{ padding: '6px 8px', color: T.text.primary }}>
+                    {item.line_item}
+                  </td>
+                  <td style={{ padding: '6px 8px', textAlign: 'right', color: T.text.secondary }}>
+                    {fmt(item.actual, 'currency')}
+                  </td>
+                  <td style={{ padding: '6px 8px', textAlign: 'right', color: T.text.muted }}>
+                    {fmt(item.budget, 'currency')}
+                  </td>
+                  <td style={{
+                    padding: '6px 8px',
+                    textAlign: 'right',
+                    color: item.variance_type === 'favorable' ? T.text.green : 
+                           item.variance_type === 'unfavorable' ? T.text.red : T.text.muted,
+                    fontWeight: item.variance_type !== 'neutral' ? 600 : 400,
+                  }}>
+                    {item.variance !== null ? fmt(item.variance, 'currency') : '—'}
+                  </td>
+                  <td style={{
+                    padding: '6px 8px',
+                    textAlign: 'right',
+                    color: item.variance_type === 'favorable' ? T.text.green : 
+                           item.variance_type === 'unfavorable' ? T.text.red : T.text.muted,
+                  }}>
+                    {item.variance_pct !== null ? `${item.variance_pct.toFixed(1)}%` : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Panel>
+      ))}
     </div>
-  </Panel>
-);
+  );
+};
 
 const CashFlowTab: React.FC<{ financials: MonthlyFinancial[] }> = ({ financials }) => (
   <Panel title="Cash Flow Statement">
@@ -849,61 +990,191 @@ const RefiAnalysisTab: React.FC<{ dealId: string }> = ({ dealId }) => (
   </Panel>
 );
 
+interface UploadResult {
+  filename: string;
+  documentType: string;
+  success: boolean;
+  error?: string;
+  warnings: string[];
+  rowsInserted?: number;
+}
+
 const UploadPackageTab: React.FC<{ dealId: string }> = ({ dealId }) => {
   const [dragging, setDragging] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [results, setResults] = useState<UploadResult[]>([]);
+  const [summary, setSummary] = useState<{ total: number; successful: number; failed: number; extractedMonth?: string } | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const uploadFiles = async (files: File[]) => {
+    if (files.length === 0) return;
+    
+    setUploading(true);
+    setResults([]);
+    setSummary(null);
+    
+    try {
+      const formData = new FormData();
+      files.forEach(file => formData.append('files', file));
+      formData.append('dealId', dealId);
+      
+      const response = await apiClient.post('/api/v1/reporting-package/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      
+      if (response.data.success) {
+        setResults(response.data.results || []);
+        setSummary(response.data.summary);
+      }
+    } catch (err: any) {
+      console.error('Upload error:', err);
+      setResults([{ filename: 'Upload failed', documentType: 'ERROR', success: false, error: err.message, warnings: [] }]);
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragging(false);
     const files = Array.from(e.dataTransfer.files);
-    console.log('Dropped files:', files);
-    // TODO: Upload files to backend
+    uploadFiles(files);
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      uploadFiles(Array.from(e.target.files));
+    }
   };
 
   return (
     <Panel title="Upload Monthly Reporting Package">
+      {/* Upload Zone */}
       <div
         onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
         onDrop={handleDrop}
+        onClick={() => fileInputRef.current?.click()}
         style={{
-          border: `2px dashed ${dragging ? T.text.cyan : T.border.medium}`,
+          border: `2px dashed ${dragging ? T.text.cyan : uploading ? T.text.amber : T.border.medium}`,
           borderRadius: 8,
           padding: 40,
           textAlign: 'center',
-          background: dragging ? T.text.cyan + '11' : 'transparent',
+          background: dragging ? T.text.cyan + '11' : uploading ? T.text.amber + '11' : 'transparent',
           transition: 'all 0.2s',
+          cursor: uploading ? 'wait' : 'pointer',
         }}
       >
-        <div style={{ fontSize: 32, marginBottom: 12 }}>📁</div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          accept=".xlsx,.xls,.pdf,.zip"
+          onChange={handleFileSelect}
+          style={{ display: 'none' }}
+        />
+        <div style={{ fontSize: 32, marginBottom: 12 }}>{uploading ? '⏳' : '📁'}</div>
         <div style={{ fontSize: 12, color: T.text.primary, fontFamily: T.font.mono, marginBottom: 8 }}>
-          Drag & drop your monthly reporting package
+          {uploading ? 'Processing files...' : 'Drag & drop your monthly reporting package'}
         </div>
         <div style={{ fontSize: 10, color: T.text.muted, fontFamily: T.font.mono, marginBottom: 16 }}>
-          Supports: Excel (.xlsx), PDF, or ZIP archive
+          {uploading ? 'AI is extracting data' : 'Supports: Excel (.xlsx), PDF, or ZIP archive'}
         </div>
-        <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>
-          AI will extract: P&L, Variance, Rent Roll, Balance Sheet, Cash Flow
-        </div>
+        {!uploading && (
+          <button style={{
+            background: T.text.cyan + '22',
+            border: `1px solid ${T.text.cyan}`,
+            color: T.text.cyan,
+            padding: '8px 16px',
+            borderRadius: 4,
+            fontFamily: T.font.mono,
+            fontSize: 10,
+            fontWeight: 700,
+            cursor: 'pointer',
+          }}>
+            SELECT FILES
+          </button>
+        )}
       </div>
 
+      {/* Upload Results */}
+      {summary && (
+        <div style={{
+          marginTop: 16,
+          padding: 12,
+          background: summary.failed === 0 ? T.text.green + '22' : T.text.amber + '22',
+          border: `1px solid ${summary.failed === 0 ? T.text.green : T.text.amber}`,
+          borderRadius: 4,
+        }}>
+          <div style={{ fontSize: 11, fontWeight: 700, fontFamily: T.font.mono, color: T.text.primary, marginBottom: 4 }}>
+            Upload Complete: {summary.successful}/{summary.total} files processed
+          </div>
+          {summary.extractedMonth && (
+            <div style={{ fontSize: 10, fontFamily: T.font.mono, color: T.text.muted }}>
+              Extracted data for: {summary.extractedMonth}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* File Results */}
+      {results.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontSize: 10, color: T.text.muted, fontFamily: T.font.mono, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Processing Results
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {results.map((r, i) => (
+              <div key={i} style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '8px 10px',
+                background: T.bg.panelAlt,
+                border: `1px solid ${r.success ? T.text.green + '44' : T.text.red + '44'}`,
+                borderRadius: 4,
+              }}>
+                <span style={{ fontSize: 14 }}>{r.success ? '✅' : '❌'}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 10, fontFamily: T.font.mono, color: T.text.primary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {r.filename}
+                  </div>
+                  <div style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.muted }}>
+                    {r.documentType}{r.rowsInserted ? ` • ${r.rowsInserted} rows` : ''}
+                  </div>
+                </div>
+                {r.error && (
+                  <div style={{ fontSize: 9, fontFamily: T.font.mono, color: T.text.red, maxWidth: 200 }}>
+                    {r.error}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Expected Reports */}
       <div style={{ marginTop: 20 }}>
         <div style={{ fontSize: 10, color: T.text.muted, fontFamily: T.font.mono, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-          Expected Reports
+          Recognized Report Types
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
           {[
-            'BPI Financial Package',
-            'BPI Variance Report',
-            'Balance Sheet',
-            'Cash Flow',
-            'Rent Roll',
-            'General Ledger',
-            'Trial Balance',
-            'Bank Reconciliation',
-            'Aged Receivables',
+            { name: 'BPI Financial Package', icon: '📊' },
+            { name: 'BPI Variance Report', icon: '📉' },
+            { name: 'Balance Sheet', icon: '💰' },
+            { name: 'Cash Flow', icon: '💵' },
+            { name: 'Rent Roll', icon: '🏠' },
+            { name: 'General Ledger', icon: '📓' },
+            { name: 'Trial Balance', icon: '⚖️' },
+            { name: 'Bank Reconciliation', icon: '🏦' },
+            { name: 'Aged Receivables', icon: '📅' },
           ].map(report => (
-            <div key={report} style={{
+            <div key={report.name} style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
               padding: '8px 10px',
               background: T.bg.panelAlt,
               border: `1px solid ${T.border.subtle}`,
@@ -912,7 +1183,8 @@ const UploadPackageTab: React.FC<{ dealId: string }> = ({ dealId }) => {
               color: T.text.secondary,
               fontFamily: T.font.mono,
             }}>
-              {report}
+              <span>{report.icon}</span>
+              <span>{report.name}</span>
             </div>
           ))}
         </div>

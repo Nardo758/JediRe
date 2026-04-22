@@ -94,6 +94,7 @@ import m08StrategiesRoutes from './strategies.routes';
 import { createCapsuleRoutes } from './capsule.routes';
 import inlineDealsRoutes from './inline-deals.routes';
 import dealTemplatesRoutes from './deal-templates.routes';
+import reportingPackageRoutes from './reporting-package.routes';
 import { notFoundHandler } from '../../middleware/errorHandler';
 import { createUnitMixRoutes } from './unitMix.routes';
 import dealCompSetsRoutes from './deal-comp-sets.routes';
@@ -443,6 +444,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Investor Capital routes (LP/GP investors, capital calls, distributions, waterfall)
   app.use(`${API_PREFIX}/capital`, investorCapitalRoutes);
+
+  // Reporting Package routes (monthly package upload, variance data)
+  app.use(`${API_PREFIX}/reporting-package`, reportingPackageRoutes);
 
   // 404 handler for API routes
   app.use(`${API_PREFIX}/*`, notFoundHandler);
