@@ -26,6 +26,21 @@ interface NewsItem {
 
 const API = '/api/v1/news-connections';
 
+const POPULAR_RSS_PRESETS: Array<{ label: string; url: string }> = [
+  { label: 'Bizjournals — National CRE', url: 'https://feeds.bizjournals.com/industry_5' },
+  { label: 'Bizjournals — National', url: 'https://feeds.bizjournals.com/bizj_national' },
+  { label: 'Bisnow — National', url: 'https://www.bisnow.com/feed' },
+  { label: 'GlobeSt — Top Stories', url: 'https://www.globest.com/feed/' },
+  { label: 'The Real Deal', url: 'https://therealdeal.com/feed/' },
+  { label: 'CoStar News', url: 'https://www.costar.com/news/rss' },
+  { label: 'Commercial Observer', url: 'https://commercialobserver.com/feed/' },
+  { label: 'Multi-Housing News', url: 'https://www.multihousingnews.com/feed/' },
+  { label: 'HousingWire', url: 'https://www.housingwire.com/feed/' },
+  { label: 'Reuters — Real Estate', url: 'https://www.reutersagency.com/feed/?best-topics=real-estate' },
+  { label: 'WSJ — Real Estate', url: 'https://feeds.a.dj.com/rss/RSSRealEstate.xml' },
+  { label: 'NYT — Real Estate', url: 'https://rss.nytimes.com/services/xml/rss/nyt/RealEstate.xml' },
+];
+
 const ENTERPRISE_PROVIDERS: Array<{ id: string; label: string; blurb: string }> = [
   { id: 'bloomberg', label: 'Bloomberg', blurb: 'Bloomberg Terminal API access — requires customer-supplied license.' },
   { id: 'reuters', label: 'Reuters', blurb: 'Reuters Connect feeds via your enterprise account.' },
@@ -328,6 +343,45 @@ export function NewsConnectionsPage() {
               Paste a personalized RSS URL (e.g. your FT myFT topic feed). The URL is
               encrypted at rest and never returned to the client. We poll hourly.
             </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <div
+                style={{
+                  color: BT.text.muted,
+                  fontSize: 10,
+                  marginBottom: 6,
+                  letterSpacing: 0.6,
+                }}
+              >
+                POPULAR CRE FEEDS — CLICK TO PREFILL
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {POPULAR_RSS_PRESETS.map((p) => (
+                  <button
+                    key={p.url}
+                    type="button"
+                    onClick={() => {
+                      setRssLabel(p.label);
+                      setRssUrl(p.url);
+                    }}
+                    style={{
+                      background: 'transparent',
+                      border: `1px solid ${BT.border.default}`,
+                      color: BT.text.secondary,
+                      padding: '4px 10px',
+                      fontSize: 11,
+                      fontFamily: 'inherit',
+                      cursor: 'pointer',
+                      letterSpacing: 0.4,
+                    }}
+                    title={p.url}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div style={{ display: 'grid', gap: 8 }}>
               <div>
                 <label
