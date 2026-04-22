@@ -364,6 +364,13 @@ app.use('/api/v1/correlations', correlationRouter);
 import leadLagRoutes from './api/rest/lead-lag.routes';
 app.use('/api/v1/lead-lag', leadLagRoutes);
 
+// News Subscriptions (per-user inbound email + RSS + enterprise OAuth stub).
+// Mounted BEFORE the global '/api/v1' requireAuth middleware below so the
+// /inbound-email webhook can be POSTed publicly (token-gated by unique address).
+// Auth is enforced per-route inside the router for everything else.
+import newsConnectionsRoutes from './api/rest/news-connections.routes';
+app.use('/api/v1/news-connections', newsConnectionsRoutes);
+
 // Building Envelope - requires auth
 import buildingEnvelopeRoutes from './api/rest/building-envelope.routes';
 app.use('/api/v1', requireAuth, buildingEnvelopeRoutes);
