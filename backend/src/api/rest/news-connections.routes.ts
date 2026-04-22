@@ -28,8 +28,80 @@ import {
   encryptFeedSecret,
   pollOneRssConnection,
 } from '../../services/news-connections/rss-feeds';
+import dns from 'dns/promises';
+import net from 'net';
 
 const router = Router();
+
+/**
+ * SSRF guard for user-supplied feed URLs.
+ *
+ * Rejects:
+ *   - non-http(s) protocols
+ *   - hostnames whose A/AAAA records resolve to private/loopback/link-local
+ *     ranges (or the cloud-metadata IP 169.254.169.254)
+ *   - hostnames that *literally* are 'localhost' or a private literal IP
+ *
+ * Returns null on success or an error message string.
+ */
+async function ssrfGuardFeedUrl(rawUrl: string): Promise<string | null> {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    return 'url is not a valid URL';
+  }
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    return 'url must use http(s)';
+  }
+  const host = parsed.hostname.toLowerCase();
+  if (host === 'localhost' || host.endsWith('.localhost') || host === '0.0.0.0') {
+    return 'feed host is not reachable from this server';
+  }
+
+  const isPrivate = (ip: string): boolean => {
+    if (!net.isIP(ip)) return true; // refuse anything we can't classify
+    if (net.isIP(ip) === 4) {
+      const o = ip.split('.').map(Number);
+      if (o[0] === 10) return true;
+      if (o[0] === 127) return true;
+      if (o[0] === 0) return true;
+      if (o[0] === 169 && o[1] === 254) return true; // link-local + AWS metadata
+      if (o[0] === 172 && o[1] >= 16 && o[1] <= 31) return true;
+      if (o[0] === 192 && o[1] === 168) return true;
+      if (o[0] >= 224) return true; // multicast / reserved
+      return false;
+    }
+    // IPv6
+    const lower = ip.toLowerCase();
+    if (lower === '::' || lower === '::1') return true;
+    if (lower.startsWith('fc') || lower.startsWith('fd')) return true; // ULA
+    if (lower.startsWith('fe80')) return true; // link-local
+    if (lower.startsWith('::ffff:')) return isPrivate(lower.slice(7)); // IPv4-mapped
+    return false;
+  };
+
+  // If the hostname is an IP literal, classify directly.
+  if (net.isIP(host)) {
+    if (isPrivate(host)) {
+      return 'feed host resolves to a private network';
+    }
+    return null;
+  }
+
+  try {
+    const records = await dns.lookup(host, { all: true });
+    if (!records.length) return 'feed host could not be resolved';
+    for (const r of records) {
+      if (isPrivate(r.address)) {
+        return 'feed host resolves to a private network';
+      }
+    }
+  } catch {
+    return 'feed host could not be resolved';
+  }
+  return null;
+}
 
 const INBOUND_EMAIL_DOMAIN =
   process.env.INBOUND_EMAIL_DOMAIN || 'inbox.jedire.app';
@@ -114,22 +186,16 @@ router.post('/rss', requireAuth, async (req: AuthenticatedRequest, res: Response
   if (!url || !label) {
     return res.status(400).json({ error: 'url and label are required' });
   }
-  let parsed: URL;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return res.status(400).json({ error: 'url is not a valid URL' });
-  }
-  if (!['http:', 'https:'].includes(parsed.protocol)) {
-    return res.status(400).json({ error: 'url must use http(s)' });
-  }
+  const ssrfErr = await ssrfGuardFeedUrl(url);
+  if (ssrfErr) return res.status(400).json({ error: ssrfErr });
+  const parsed = new URL(url); // safe: ssrfGuardFeedUrl already validated
 
   const encrypted = encryptFeedSecret(url);
   const result = await query(
     `INSERT INTO user_news_connections
        (user_id, type, label, encrypted_credentials, status, metadata)
      VALUES ($1, 'rss', $2, $3, 'active', $4::jsonb)
-     RETURNING id, type, label, address, status, metadata,
+     RETURNING id, user_id, type, label, address, encrypted_credentials, status, metadata,
                last_synced_at, last_error, created_at`,
     [userId, label, encrypted, JSON.stringify({ host: parsed.host })]
   );

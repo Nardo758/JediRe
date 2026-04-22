@@ -992,6 +992,14 @@ async function startServer() {
     console.error('Failed to start email sync scheduler:', error);
   }
 
+  // Task #329 Phase 2 — hourly poller for per-user authenticated RSS feeds.
+  try {
+    const { startRssPoller } = await import('./services/news-connections/rss-feeds');
+    startRssPoller();
+  } catch (error) {
+    console.error('Failed to start news-connections RSS poller:', error);
+  }
+
   // M35 Impact Measurement — nightly job (runs once a day at ~3:00 AM)
   try {
     const { runImpactMeasurementJob } = await import('./services/m35-impact.service');

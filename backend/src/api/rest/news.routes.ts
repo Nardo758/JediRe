@@ -463,9 +463,10 @@ router.get('/network', authMiddleware.requireAuth, async (req: Request, res: Res
  * GET /api/v1/news/feed
  * Aggregated RSS news feed for Bottom Panel NEWS tab
  */
-router.get('/feed', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/feed', authMiddleware.requireAuth, async (req: any, res: Response, next: NextFunction) => {
   try {
     const { limit = 50, sources, refresh = 'false' } = req.query;
+    const userId: string | undefined = req.user?.userId;
 
     const requestedSources = sources 
       ? (sources as string).split(',').map(s => s.trim())
@@ -533,6 +534,46 @@ router.get('/feed', authMiddleware.requireAuth, async (req: Request, res: Respon
 
       return { ...article, impact, jedi_delta };
     });
+
+    // Task #329 — interleave the caller's premium subscription items
+    // (forwarded newsletters + authenticated RSS) with the public RSS feed so
+    // they show up in the dashboard ticker. Marked is_premium=true so the UI
+    // can badge them as "FROM YOUR <publisher> SUBSCRIPTION".
+    if (userId) {
+      try {
+        const userItems = await query(
+          `SELECT id, source, publisher, url, title, summary, published_at, fetched_at
+             FROM user_news_items
+            WHERE user_id = $1
+            ORDER BY COALESCE(published_at, fetched_at) DESC
+            LIMIT 25`,
+          [userId]
+        );
+        const premium = userItems.rows.map((it: any) => ({
+          id: `user-${it.id}`,
+          headline: it.title,
+          summary: it.summary || '',
+          link: it.url,
+          published_at:
+            (it.published_at && new Date(it.published_at).toISOString()) ||
+            new Date(it.fetched_at).toISOString(),
+          source: it.publisher || 'Your Subscription',
+          sourceId: it.source,
+          sourceColor: '#FFCC00',
+          impact: null as string | null,
+          jedi_delta: null as number | null,
+          is_premium: true,
+        }));
+        articles = [...premium, ...articles]
+          .sort(
+            (a: any, b: any) =>
+              new Date(b.published_at).getTime() - new Date(a.published_at).getTime()
+          )
+          .slice(0, parseInt(limit as string));
+      } catch (e) {
+        logger.error('Failed to merge user news items into feed:', e);
+      }
+    }
 
     res.json({
       success: true,
