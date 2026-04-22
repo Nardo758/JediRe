@@ -36,29 +36,32 @@ const config: NewsProviderConfig = {
 // RSS FEEDS
 // ============================================================================
 
+// All Bisnow RSS URLs migrated to /rss/{market} pattern (verified 2026-04-22).
+// The old /national/feed and /{market}/feed paths return 404.
+// /rss/national returns 30 items spanning ~70 days; regional feeds ~30 items each.
 const FEEDS: Record<string, string> = {
-  'national': 'https://www.bisnow.com/national/feed',
-  'real-estate': 'https://www.bisnow.com/national/feed',
-  'multifamily': 'https://www.bisnow.com/national/feed', // Filter by query
-  'business': 'https://www.bisnow.com/national/feed',
-  // Regional feeds
-  'new-york': 'https://www.bisnow.com/new-york/feed',
-  'los-angeles': 'https://www.bisnow.com/los-angeles/feed',
-  'chicago': 'https://www.bisnow.com/chicago/feed',
-  'dallas': 'https://www.bisnow.com/dallas-ft-worth/feed',
-  'phoenix': 'https://www.bisnow.com/phoenix/feed',
-  'atlanta': 'https://www.bisnow.com/atlanta/feed',
-  'miami': 'https://www.bisnow.com/south-florida/feed',
-  'boston': 'https://www.bisnow.com/boston/feed',
-  'dc': 'https://www.bisnow.com/washington-dc/feed',
-  'san-francisco': 'https://www.bisnow.com/san-francisco/feed',
-  'denver': 'https://www.bisnow.com/denver/feed',
-  'seattle': 'https://www.bisnow.com/seattle/feed',
-  'houston': 'https://www.bisnow.com/houston/feed',
-  'tampa': 'https://www.bisnow.com/tampa-bay/feed',
-  'austin': 'https://www.bisnow.com/austin-san-antonio/feed',
-  'charlotte': 'https://www.bisnow.com/charlotte/feed',
-  'nashville': 'https://www.bisnow.com/nashville/feed',
+  'national':    'https://www.bisnow.com/rss/national',
+  'real-estate': 'https://www.bisnow.com/rss/national',
+  'multifamily': 'https://www.bisnow.com/rss/national',
+  'business':    'https://www.bisnow.com/rss/national',
+  // Regional feeds (30 items each, ~1-2 weeks back)
+  'new-york':      'https://www.bisnow.com/rss/new-york',
+  'los-angeles':   'https://www.bisnow.com/rss/los-angeles',
+  'chicago':       'https://www.bisnow.com/rss/chicago',
+  'dallas':        'https://www.bisnow.com/rss/dallas-ft-worth',
+  'phoenix':       'https://www.bisnow.com/rss/phoenix',
+  'atlanta':       'https://www.bisnow.com/rss/atlanta',
+  'miami':         'https://www.bisnow.com/rss/south-florida',
+  'boston':        'https://www.bisnow.com/rss/boston',
+  'dc':            'https://www.bisnow.com/rss/washington-dc',
+  'san-francisco': 'https://www.bisnow.com/rss/san-francisco',
+  'denver':        'https://www.bisnow.com/rss/denver',
+  'seattle':       'https://www.bisnow.com/rss/seattle',
+  'houston':       'https://www.bisnow.com/rss/houston',
+  'tampa':         'https://www.bisnow.com/rss/tampa-bay',
+  'austin':        'https://www.bisnow.com/rss/austin-san-antonio',
+  'charlotte':     'https://www.bisnow.com/rss/charlotte',
+  'nashville':     'https://www.bisnow.com/rss/nashville',
 };
 
 // ============================================================================

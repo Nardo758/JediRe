@@ -22,25 +22,32 @@ import { parseStringPromise } from 'xml2js';
 // PROVIDER CONFIG
 // ============================================================================
 
+// Reuters shut down their public RSS syndication (reutersagency.com feeds 404,
+// reuters.com requires login).  Replaced with two high-quality free feeds
+// that fill the same role — broad market news + real-estate analysis.
+// Provider ID kept as 'reuters' so no import changes are needed.
 const config: NewsProviderConfig = {
   id: 'reuters',
-  name: 'Reuters',
-  description: 'Global news agency - breaking business and financial news',
+  name: 'Markets & RE Analysis',
+  description: 'Yahoo Finance top stories + Seeking Alpha real-estate coverage',
   hasFullContent: false,
   maxRequestsPerDay: -1,
-  supportedCategories: ['business', 'finance', 'technology'],
-  baseUrl: 'https://www.reuters.com',
+  supportedCategories: ['business', 'finance', 'real-estate', 'technology'],
+  baseUrl: 'https://finance.yahoo.com',
 };
 
 // ============================================================================
-// RSS FEEDS
+// RSS FEEDS  (all verified working 2026-04-22)
 // ============================================================================
 
 const FEEDS: Record<string, string> = {
-  'top': 'https://www.reutersagency.com/feed/?best-topics=business-finance&post_type=best',
-  'business': 'https://www.reutersagency.com/feed/?best-topics=business-finance&post_type=best',
-  'finance': 'https://www.reutersagency.com/feed/?best-topics=business-finance&post_type=best',
-  'technology': 'https://www.reutersagency.com/feed/?best-topics=tech&post_type=best',
+  // Yahoo Finance: 45 items — broadest market coverage, updated continuously
+  'top':      'https://finance.yahoo.com/rss/topstories',
+  'business': 'https://finance.yahoo.com/rss/topstories',
+  'finance':  'https://finance.yahoo.com/rss/topstories',
+  'technology':'https://finance.yahoo.com/rss/topstories',
+  // Seeking Alpha real-estate tag: 20 items, 1-day window — REIT + CRE analysis
+  'real-estate': 'https://seekingalpha.com/tag/real-estate.xml',
 };
 
 // ============================================================================
@@ -121,17 +128,20 @@ class ReutersProvider implements NewsProvider {
       const xml = await response.text();
       const parsed = await parseStringPromise(xml, { explicitArray: false });
 
+      // Read channel title so Yahoo Finance / Seeking Alpha show their real names
+      const channelTitle: string = parsed.rss?.channel?.title || 'Markets & RE Analysis';
+
       const items = parsed.rss?.channel?.item || [];
       const itemsArray = Array.isArray(items) ? items : [items];
 
-      return itemsArray.map((item: any) => this.mapRssItem(item));
+      return itemsArray.map((item: any) => this.mapRssItem(item, channelTitle));
     } catch (error) {
-      logger.error('Reuters RSS fetch failed', { url, error });
+      logger.error('Markets RSS fetch failed', { url, error });
       return [];
     }
   }
 
-  private mapRssItem(item: any): NewsArticle {
+  private mapRssItem(item: any, sourceName: string = 'Markets & RE Analysis'): NewsArticle {
     // Extract image from enclosure or media:content
     let imageUrl: string | undefined;
     if (item.enclosure?.['$']?.url) {
@@ -151,7 +161,7 @@ class ReutersProvider implements NewsProvider {
       publishedAt: new Date(item.pubDate),
       source: {
         id: 'reuters',
-        name: 'Reuters',
+        name: sourceName,
       },
       author: item['dc:creator'],
       category: item.category,

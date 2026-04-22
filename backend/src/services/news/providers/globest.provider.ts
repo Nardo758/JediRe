@@ -22,30 +22,40 @@ import { parseStringPromise } from 'xml2js';
 // PROVIDER CONFIG
 // ============================================================================
 
+// GlobeSt.com shut down their RSS feeds (all /feed/ paths now 404).
+// Replaced with three CRE-specialist sources that collectively cover the same
+// sectors: Commercial Observer (deals/leasing), Trepp (CMBS/finance),
+// PropModo (CRE technology & operations).  Provider ID kept as 'globest'
+// so no import changes are needed in news.service.ts.
 const config: NewsProviderConfig = {
   id: 'globest',
-  name: 'GlobeSt',
-  description: 'Commercial real estate news - multifamily, office, retail, industrial',
+  name: 'CRE Intelligence',
+  description: 'Commercial real estate news — Commercial Observer, Trepp, PropModo',
   hasFullContent: false,
   maxRequestsPerDay: -1,
-  supportedCategories: ['real-estate', 'business'],
-  baseUrl: 'https://www.globest.com',
+  supportedCategories: ['real-estate', 'business', 'finance'],
+  baseUrl: 'https://commercialobserver.com',
 };
 
 // ============================================================================
-// RSS FEEDS
+// RSS FEEDS  (all verified working 2026-04-22)
 // ============================================================================
 
 const FEEDS: Record<string, string> = {
-  'all': 'https://www.globest.com/feed/',
-  'real-estate': 'https://www.globest.com/feed/',
-  'multifamily': 'https://www.globest.com/sector/multifamily/feed/',
-  'office': 'https://www.globest.com/sector/office/feed/',
-  'retail': 'https://www.globest.com/sector/retail/feed/',
-  'industrial': 'https://www.globest.com/sector/industrial/feed/',
-  'hospitality': 'https://www.globest.com/sector/hospitality/feed/',
-  'capital-markets': 'https://www.globest.com/topics/capital-markets/feed/',
-  'investment': 'https://www.globest.com/topics/investment/feed/',
+  // Commercial Observer: 17 items, 1-day window — deals, leasing, sales
+  'all':            'https://commercialobserver.com/feed/',
+  'real-estate':    'https://commercialobserver.com/feed/',
+  'office':         'https://commercialobserver.com/feed/',
+  'retail':         'https://commercialobserver.com/feed/',
+  'hospitality':    'https://commercialobserver.com/feed/',
+  // Trepp: 10 items, 9-day window — CMBS, debt, distress analysis
+  'multifamily':    'https://www.trepp.com/trepptalk/rss.xml',
+  'industrial':     'https://www.trepp.com/trepptalk/rss.xml',
+  'capital-markets':'https://www.trepp.com/trepptalk/rss.xml',
+  'investment':     'https://www.trepp.com/trepptalk/rss.xml',
+  // PropModo: 10 items, 2-day window — CRE technology and operations
+  'technology':     'https://www.propmodo.com/feed/',
+  'business':       'https://www.propmodo.com/feed/',
 };
 
 // ============================================================================
@@ -154,17 +164,21 @@ class GlobeStProvider implements NewsProvider {
       const xml = await response.text();
       const parsed = await parseStringPromise(xml, { explicitArray: false });
 
+      // Use the RSS channel title as the source name so articles from
+      // Commercial Observer, Trepp, PropModo etc. show their real names.
+      const channelTitle: string = parsed.rss?.channel?.title || 'CRE Intelligence';
+
       const items = parsed.rss?.channel?.item || [];
       const itemsArray = Array.isArray(items) ? items : [items];
 
-      return itemsArray.map((item: any) => this.mapRssItem(item));
+      return itemsArray.map((item: any) => this.mapRssItem(item, channelTitle));
     } catch (error) {
-      logger.error('GlobeSt RSS fetch failed', { url, error });
+      logger.error('CRE Intelligence RSS fetch failed', { url, error });
       return [];
     }
   }
 
-  private mapRssItem(item: any): NewsArticle {
+  private mapRssItem(item: any, sourceName: string = 'CRE Intelligence'): NewsArticle {
     let imageUrl: string | undefined;
     if (item['media:content']?.['$']?.url) {
       imageUrl = item['media:content']['$'].url;
@@ -202,7 +216,7 @@ class GlobeStProvider implements NewsProvider {
       publishedAt: new Date(item.pubDate),
       source: {
         id: 'globest',
-        name: 'GlobeSt',
+        name: sourceName,
       },
       author: item['dc:creator'],
       category,
