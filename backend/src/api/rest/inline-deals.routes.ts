@@ -293,6 +293,23 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
         // Non-fatal — platform still functional without agent run
         console.error('[Inngest] Failed to emit deal.created:', inngestErr instanceof Error ? inngestErr.message : inngestErr);
       }
+
+      // Trigger autonomous agent system
+      try {
+        const { onDealCreated } = await import('../../services/agents/platform-hooks');
+        await onDealCreated({
+          dealId: row.id,
+          userId: req.user!.userId,
+          name: row.name,
+          propertyType: row.deal_category || 'multifamily',
+          city: '', // Will be populated from property
+          state: '',
+          units: row.target_units,
+          askingPrice: parseFloat(row.budget) || undefined,
+        });
+      } catch (agentErr) {
+        console.error('[Agents] Failed to trigger onDealCreated:', agentErr instanceof Error ? agentErr.message : agentErr);
+      }
     });
 
     res.status(201).json({
@@ -328,7 +345,7 @@ router.patch('/:id', requireAuth, validate(updateDealSchema), async (req: Authen
     const updates = req.body;
 
     const dealCheck = await client.query(
-      'SELECT id, budget, target_units FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
+      'SELECT id, budget, target_units, status FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
       [dealId, req.user!.userId]
     );
 
@@ -338,6 +355,7 @@ router.patch('/:id', requireAuth, validate(updateDealSchema), async (req: Authen
 
     const previousDeal = dealCheck.rows[0];
     const priceChanged = updates.budget !== undefined && updates.budget !== previousDeal.budget;
+    const statusChanged = updates.status !== undefined && updates.status !== previousDeal.status;
 
     const allowedFields: Record<string, string> = {
       name: 'name', projectType: 'project_type', project_type: 'project_type',
@@ -364,6 +382,23 @@ router.patch('/:id', requireAuth, validate(updateDealSchema), async (req: Authen
       `UPDATE deals SET ${setClauses.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
       values
     );
+
+    // Trigger agent system on status change
+    if (statusChanged) {
+      setImmediate(async () => {
+        try {
+          const { onDealStatusChanged } = await import('../../services/agents/platform-hooks');
+          await onDealStatusChanged({
+            dealId,
+            userId: req.user!.userId,
+            previousStatus: previousDeal.status,
+            newStatus: updates.status,
+          });
+        } catch (agentErr) {
+          console.error('[Agents] Failed to trigger onDealStatusChanged:', agentErr instanceof Error ? agentErr.message : agentErr);
+        }
+      });
+    }
 
     // M26 AUTO-TRIGGER: Recalculate tax projection when purchase price changes
     if (priceChanged) {

@@ -135,6 +135,30 @@ router.post(
         }
       }
 
+      // Trigger agent hooks for each uploaded file
+      const { onFileUploaded, onFinancialsUploaded } = await import('../../services/agents/platform-hooks');
+      for (const file of uploadedFiles) {
+        await onFileUploaded({
+          dealId,
+          userId,
+          fileId: file.id,
+          filename: file.original_filename || file.originalFilename,
+          category: file.category || category,
+          mimeType: file.mime_type || file.mimeType || 'application/octet-stream',
+        });
+
+        // If it's a financial document, also trigger financials event
+        const finCategories = ['t12', 'rent_roll', 'financials', 'operating_statement'];
+        if (finCategories.includes((file.category || category || '').toLowerCase())) {
+          await onFinancialsUploaded({
+            dealId,
+            userId,
+            type: (file.category || category || '').toLowerCase().includes('rent') ? 'rent_roll' : 't12',
+            source: 'file_upload',
+          });
+        }
+      }
+
       res.json({
         success: true,
         message: `Successfully uploaded ${uploadedFiles.length} file(s)`,

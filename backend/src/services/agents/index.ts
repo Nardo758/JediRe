@@ -8,3 +8,4 @@ export * from './agent-personas';
 export * from './agent-orchestrator';
 export * from './event-dispatcher';
 export * from './scheduled-jobs';
+export * from './platform-hooks';

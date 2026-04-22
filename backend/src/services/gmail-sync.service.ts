@@ -485,6 +485,31 @@ export class GmailSyncService {
             }).catch(err => {
               logger.warn('gmail-sync: failed to send gmail.message_received event', { emailId, err });
             });
+
+            // Trigger autonomous agent system for email processing
+            import('../../services/agents/platform-hooks').then(({ onEmailReceived }) => {
+              const hasAttachments = (fullMessage.data.payload?.parts ?? []).some(
+                p => p.filename && p.filename.length > 0
+              );
+              // Detect if this looks like a broker OM email
+              const subjectLower = (headers.subject || '').toLowerCase();
+              const isLikelyOM = subjectLower.includes('offering') || 
+                                 subjectLower.includes('memorandum') ||
+                                 subjectLower.includes(' om ') ||
+                                 subjectLower.includes('investment opportunity') ||
+                                 (hasAttachments && subjectLower.includes('deal'));
+
+              onEmailReceived({
+                userId: account.user_id,
+                emailId,
+                subject: headers.subject,
+                from: headers.from.email,
+                hasAttachments,
+                detectedType: isLikelyOM ? 'broker_om' : 'general',
+              }).catch(err => {
+                logger.warn('gmail-sync: failed to trigger agent onEmailReceived', { emailId, err });
+              });
+            }).catch(() => {});
           }
 
           // ========================================
