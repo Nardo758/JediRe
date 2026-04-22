@@ -1,691 +1,618 @@
 /**
  * F8AdminView - Platform Administration
  * 
- * Admin-only functions, distinct from F9 user settings.
- * Organized into:
- * - PLATFORM: System health, jobs, agents, users
- * - INTELLIGENCE: Deal oversight, enrichment, data coverage
- * - LIFECYCLE: Dispositions, reforecasts, debt, learning
- * - ORGANIZATION: Team management, integrations, compliance
+ * Clean admin panel for system monitoring and org-level configuration.
+ * User-facing settings are in Settings page, not here.
  * 
- * REMOVED (moved to F9 Settings):
- * - AI Config → F9 ai-model
- * - Notifications → F9 notifications  
- * - Templates → F9 templates ✓
- * - Billing → F9 subscription
- * - User Integrations → F9 integrations
+ * Sections:
+ * - PLATFORM: System Health, Background Jobs, AI Agents, Platform Users
+ * - INTELLIGENCE: Deal Oversight, Data Coverage
+ * - ORGANIZATION: Org Integrations (DocuSign, Plaid, Notarize)
  */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { apiClient } from '../../services/api.client';
 
-// Existing section imports
-import { SystemHealthSection } from '../admin/sections/SystemHealthSection';
-import { BackgroundJobsSection } from '../admin/sections/BackgroundJobsSection';
-import { AgentsPlatformSection } from '../admin/sections/AgentsPlatformSection';
-import { UserManagementSection } from '../admin/sections/UserManagementSection';
-import { DealOversightSection } from '../admin/sections/DealOversightSection';
-import { EnrichmentStatusSection } from '../admin/sections/EnrichmentStatusSection';
-import { DataCoverageSection } from '../admin/sections/DataCoverageSection';
-import DataRoomSection from '../admin/sections/DataRoomSection';
-import DataManagementSection from '../admin/sections/DataManagementSection';
-import VerificationSection from '../admin/sections/VerificationSection';
-import TeamSection from '../admin/sections/TeamSection';
-
-// Theme type
+// Bloomberg Terminal theme
 interface ThemeType {
-  bg: { terminal: string; panel: string; panelAlt: string; header: string; hover: string; active: string; input: string; topBar: string };
-  text: { primary: string; secondary: string; muted: string; amber: string; amberBright: string; green: string; red: string; cyan: string; orange: string; purple: string; white: string };
+  bg: { terminal: string; panel: string; panelAlt: string; header: string; hover: string; active: string; input: string };
+  text: { primary: string; secondary: string; muted: string; amber: string; green: string; red: string; cyan: string; orange: string; purple: string };
   border: { subtle: string; medium: string; bright: string };
   font: { mono: string; display: string; label: string };
 }
-
-interface NavItem {
-  key: string;
-  label: string;
-  icon: string;
-  description: string;
-  group: 'platform' | 'intel' | 'lifecycle' | 'org';
-  badge?: string;
-}
-
-const NAV_ITEMS: NavItem[] = [
-  // Platform Group (System Operations)
-  { key: 'health', label: 'SYSTEM HEALTH', icon: '💚', description: 'Uptime, errors, metrics', group: 'platform' },
-  { key: 'jobs', label: 'BACKGROUND JOBS', icon: '⚙️', description: 'Queues, workers', group: 'platform' },
-  { key: 'agents', label: 'AI AGENTS', icon: '🤖', description: 'Runs, performance', group: 'platform' },
-  { key: 'users', label: 'PLATFORM USERS', icon: '👤', description: 'All users, activity', group: 'platform' },
-  
-  // Intelligence Group (Data Quality)
-  { key: 'deals', label: 'DEAL OVERSIGHT', icon: '📊', description: 'All deals, scores', group: 'intel' },
-  { key: 'enrichment', label: 'ENRICHMENT', icon: '✨', description: 'Data pipelines', group: 'intel' },
-  { key: 'coverage', label: 'DATA COVERAGE', icon: '🗺️', description: 'Geographic map', group: 'intel' },
-  
-  // Lifecycle Group
-  { key: 'lifecycle', label: 'LIFECYCLE MONITOR', icon: '🔄', description: 'Dispositions, debt', group: 'lifecycle', badge: 'NEW' },
-  { key: 'learning', label: 'LEARNING SYSTEM', icon: '🧠', description: 'Calibration', group: 'lifecycle', badge: 'NEW' },
-  { key: 'compsets', label: 'COMP SETS', icon: '🏘️', description: 'Pricing alerts', group: 'lifecycle' },
-  { key: 'marketdata', label: 'MARKET DATA', icon: '📡', description: 'Data connections', group: 'lifecycle' },
-  
-  // Organization Group (NEW - Multi-tenant, integrations)
-  { key: 'team', label: 'TEAM MANAGEMENT', icon: '👥', description: 'Members, roles', group: 'org' },
-  { key: 'orgintegrations', label: 'ORG INTEGRATIONS', icon: '🔌', description: 'DocuSign, Plaid, etc', group: 'org', badge: 'NEW' },
-  { key: 'dataroom', label: 'DATA ROOM', icon: '📁', description: 'Secure sharing', group: 'org' },
-  { key: 'verification', label: 'KYC / COMPLIANCE', icon: '✅', description: 'Identity checks', group: 'org' },
-  { key: 'dataops', label: 'DATA OPERATIONS', icon: '📦', description: 'Import/export', group: 'org' },
-];
-
-const GROUP_LABELS: Record<string, string> = {
-  platform: '⚡ PLATFORM',
-  intel: '🔍 INTELLIGENCE',
-  lifecycle: '🔄 LIFECYCLE',
-  org: '🏢 ORGANIZATION',
-};
 
 interface F8AdminViewProps {
   T: ThemeType;
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// LIFECYCLE SECTIONS
+// NAV CONFIGURATION
 // ═══════════════════════════════════════════════════════════════════
 
-function LifecycleMonitorSection({ T }: { T: ThemeType }) {
-  const [stats, setStats] = useState<any>(null);
-  const [maturities, setMaturities] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+interface NavItem {
+  key: string;
+  label: string;
+  icon: string;
+  description: string;
+  group: 'platform' | 'intel' | 'org';
+}
 
-  useEffect(() => {
-    Promise.all([
-      apiClient.get('/api/v1/lifecycle/dispositions/stats').catch(() => ({ data: {} })),
-      apiClient.get('/api/v1/lifecycle/debt/maturities?months=12').catch(() => ({ data: { maturities: [] } })),
-    ]).then(([statsRes, matRes]) => {
-      setStats(statsRes.data);
-      setMaturities(matRes.data?.maturities ?? []);
-    }).finally(() => setLoading(false));
+const NAV_ITEMS: NavItem[] = [
+  // Platform Group
+  { key: 'health', label: 'SYSTEM HEALTH', icon: '💚', description: 'Uptime, metrics, status', group: 'platform' },
+  { key: 'jobs', label: 'BACKGROUND JOBS', icon: '⚙️', description: 'Queues, workers, tasks', group: 'platform' },
+  { key: 'agents', label: 'AI AGENTS', icon: '🤖', description: 'Runs, performance, cost', group: 'platform' },
+  { key: 'users', label: 'PLATFORM USERS', icon: '👤', description: 'All users, activity', group: 'platform' },
+  
+  // Intelligence Group
+  { key: 'deals', label: 'DEAL OVERSIGHT', icon: '📊', description: 'All deals, status', group: 'intel' },
+  { key: 'coverage', label: 'DATA COVERAGE', icon: '🗺️', description: 'Geographic coverage', group: 'intel' },
+  
+  // Organization Group
+  { key: 'integrations', label: 'ORG INTEGRATIONS', icon: '🔌', description: 'DocuSign, Plaid, etc', group: 'org' },
+];
+
+const GROUP_LABELS: Record<string, string> = {
+  platform: '⚡ PLATFORM',
+  intel: '🔍 INTELLIGENCE',
+  org: '🏢 ORGANIZATION',
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// SHARED STYLES
+// ═══════════════════════════════════════════════════════════════════
+
+const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono', 'SF Mono', Monaco, monospace" };
+
+// ═══════════════════════════════════════════════════════════════════
+// SYSTEM HEALTH SECTION
+// ═══════════════════════════════════════════════════════════════════
+
+function SystemHealthSection({ T }: { T: ThemeType }) {
+  const [stats, setStats] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [lastRefresh, setLastRefresh] = useState(new Date());
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await apiClient.get('/api/v1/admin/system/stats');
+      setStats(res.data.totals);
+      setLastRefresh(new Date());
+    } catch (e) {
+      console.error('Failed to load system stats:', e);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const StatCard = ({ label, value, color, icon }: { label: string; value: number | string; color: string; icon: string }) => (
-    <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, padding: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-        <span style={{ fontSize: 18 }}>{icon}</span>
-        <span style={{ fontSize: 9, color: T.text.muted, letterSpacing: 1 }}>{label}</span>
-      </div>
-      <div style={{ fontSize: 24, fontWeight: 800, color, fontFamily: T.font.mono }}>{value}</div>
-    </div>
-  );
+  useEffect(() => { load(); }, [load]);
 
-  if (loading) return <div style={{ padding: 20, color: T.text.muted }}>Loading...</div>;
+  const metrics = stats ? [
+    { label: 'USERS', value: Number(stats.user_count || 0).toLocaleString(), icon: '👤' },
+    { label: 'DEALS', value: Number(stats.deal_count || 0).toLocaleString(), icon: '📊' },
+    { label: 'PROPERTIES', value: Number(stats.property_count || 0).toLocaleString(), icon: '🏢' },
+    { label: 'SCENARIOS', value: Number(stats.scenario_count || 0).toLocaleString(), icon: '📈' },
+    { label: 'BENCHMARKS', value: Number(stats.benchmark_count || 0).toLocaleString(), icon: '📐' },
+    { label: 'ZONING', value: Number(stats.zoning_district_count || 0).toLocaleString(), icon: '🗺️' },
+  ] : [];
 
   return (
     <div style={{ padding: 20 }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: T.text.primary, marginBottom: 16, fontFamily: T.font.mono }}>
-        LIFECYCLE MONITORING
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: T.text.primary, letterSpacing: 1, ...mono }}>
+          💚 SYSTEM HEALTH
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ fontSize: 9, color: T.text.muted, ...mono }}>
+            {lastRefresh.toLocaleTimeString()}
+          </span>
+          <button
+            onClick={load}
+            disabled={loading}
+            style={{
+              padding: '4px 10px', fontSize: 9, fontWeight: 600, ...mono,
+              background: 'transparent', border: `1px solid ${T.border.subtle}`,
+              color: T.text.secondary, cursor: 'pointer',
+            }}
+          >
+            {loading ? '...' : 'REFRESH'}
+          </button>
+        </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
-        <StatCard label="TOTAL DISPOSITIONS" value={stats?.totalDispositions ?? 0} color={T.text.green} icon="🏷️" />
-        <StatCard label="AVG IRR VARIANCE" value={stats?.avgIrrVarianceBps ? `${stats.avgIrrVarianceBps > 0 ? '+' : ''}${Math.round(stats.avgIrrVarianceBps)}bps` : '—'} color={T.text.amber} icon="📈" />
-        <StatCard label="DEBT MATURING <12MO" value={maturities.length} color={maturities.length > 0 ? T.text.red : T.text.muted} icon="⏰" />
-        <StatCard label="OUTPERFORMED %" value={stats?.outperformedPct ? `${Math.round(stats.outperformedPct)}%` : '—'} color={T.text.cyan} icon="🎯" />
+      {/* Status Banner */}
+      <div style={{
+        padding: 12,
+        background: T.bg.panel,
+        border: `1px solid ${T.text.green}`,
+        borderLeft: `3px solid ${T.text.green}`,
+        marginBottom: 20,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 14 }}>✓</span>
+          <span style={{ fontSize: 11, fontWeight: 600, color: T.text.green, ...mono }}>ALL SYSTEMS OPERATIONAL</span>
+        </div>
+        <div style={{ fontSize: 10, color: T.text.secondary, marginTop: 4, marginLeft: 22 }}>
+          API, database, and background services running normally
+        </div>
       </div>
 
-      {maturities.length > 0 && (
-        <div style={{ marginBottom: 24 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: T.text.amber, marginBottom: 8, letterSpacing: 1 }}>
-            ⚠️ UPCOMING LOAN MATURITIES
+      {/* Metric Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+        {loading ? (
+          Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, padding: 16, height: 80 }} />
+          ))
+        ) : (
+          metrics.map(m => (
+            <div key={m.label} style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, padding: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                <span style={{ fontSize: 12 }}>{m.icon}</span>
+                <span style={{ fontSize: 9, color: T.text.muted, letterSpacing: 0.5, ...mono }}>{m.label}</span>
+              </div>
+              <div style={{ fontSize: 24, fontWeight: 800, color: T.text.primary, ...mono }}>{m.value}</div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// BACKGROUND JOBS SECTION
+// ═══════════════════════════════════════════════════════════════════
+
+function BackgroundJobsSection({ T }: { T: ThemeType }) {
+  const [jobs, setJobs] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    apiClient.get('/api/v1/admin/jobs')
+      .then(res => setJobs(res.data.jobs || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const statusStyle = (s: string) => {
+    const colors: Record<string, string> = {
+      pending: T.text.amber,
+      running: T.text.cyan,
+      completed: T.text.green,
+      failed: T.text.red,
+    };
+    return colors[s] || T.text.secondary;
+  };
+
+  const formatDate = (d: string | null) =>
+    d ? new Date(d).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+
+  return (
+    <div style={{ padding: 20 }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: T.text.primary, letterSpacing: 1, marginBottom: 16, ...mono }}>
+        ⚙️ BACKGROUND JOBS
+      </div>
+
+      <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}` }}>
+        {loading ? (
+          <div style={{ padding: 40, textAlign: 'center', color: T.text.muted }}>Loading...</div>
+        ) : jobs.length === 0 ? (
+          <div style={{ padding: 40, textAlign: 'center' }}>
+            <div style={{ fontSize: 24, marginBottom: 8 }}>📭</div>
+            <div style={{ fontSize: 11, color: T.text.muted }}>No background jobs recorded</div>
           </div>
+        ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: T.bg.header }}>
-                {['DEAL', 'LENDER', 'BALANCE', 'MATURITY', 'DAYS', 'STATUS'].map(h => (
-                  <th key={h} style={{ padding: '8px 10px', fontSize: 9, color: T.text.muted, textAlign: 'left', fontFamily: T.font.mono }}>{h}</th>
+                {['JOB TYPE', 'STATUS', 'STARTED', 'COMPLETED'].map(h => (
+                  <th key={h} style={{ padding: '10px 14px', fontSize: 9, color: T.text.muted, textAlign: 'left', letterSpacing: 0.5, ...mono }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {maturities.slice(0, 8).map((m: any, i: number) => (
-                <tr key={i} style={{ borderBottom: `1px solid ${T.border.subtle}`, background: i % 2 === 0 ? T.bg.panel : T.bg.panelAlt }}>
-                  <td style={{ padding: '8px 10px', fontSize: 10, color: T.text.primary, fontWeight: 600 }}>{m.dealName}</td>
-                  <td style={{ padding: '8px 10px', fontSize: 10, color: T.text.secondary }}>{m.lenderName || '—'}</td>
-                  <td style={{ padding: '8px 10px', fontSize: 10, fontFamily: T.font.mono }}>${(m.currentBalance / 1e6).toFixed(1)}M</td>
-                  <td style={{ padding: '8px 10px', fontSize: 10, color: T.text.secondary }}>{new Date(m.maturityDate).toLocaleDateString()}</td>
-                  <td style={{ padding: '8px 10px', fontSize: 10, fontWeight: 700, color: m.daysToMaturity < 90 ? T.text.red : m.daysToMaturity < 180 ? T.text.orange : T.text.muted }}>{m.daysToMaturity}d</td>
-                  <td style={{ padding: '8px 10px' }}>
-                    <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 6px', background: m.urgency === 'critical' ? T.text.red + '22' : T.text.muted + '22', color: m.urgency === 'critical' ? T.text.red : T.text.muted }}>{m.urgency?.toUpperCase() || 'OK'}</span>
+              {jobs.slice(0, 20).map((j, i) => (
+                <tr key={j.id || i} style={{ borderTop: `1px solid ${T.border.subtle}` }}>
+                  <td style={{ padding: '10px 14px' }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: T.text.primary }}>{j.job_type?.replace(/_/g, ' ')}</div>
+                    {j.error_message && <div style={{ fontSize: 9, color: T.text.red, marginTop: 2 }}>{j.error_message}</div>}
+                  </td>
+                  <td style={{ padding: '10px 14px' }}>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: statusStyle(j.status), ...mono }}>{j.status?.toUpperCase()}</span>
+                  </td>
+                  <td style={{ padding: '10px 14px', fontSize: 10, color: T.text.muted, ...mono }}>{formatDate(j.started_at)}</td>
+                  <td style={{ padding: '10px 14px', fontSize: 10, color: T.text.muted, ...mono }}>{formatDate(j.completed_at)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// AI AGENTS SECTION
+// ═══════════════════════════════════════════════════════════════════
+
+function AIAgentsSection({ T }: { T: ThemeType }) {
+  const [stats, setStats] = useState<any[]>([]);
+  const [runs, setRuns] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [statsRes, runsRes] = await Promise.all([
+        apiClient.get('/api/v1/admin/agents/stats'),
+        apiClient.get(`/api/v1/admin/agents/recent-runs?limit=30${selectedAgent ? `&agent_id=${selectedAgent}` : ''}`),
+      ]);
+      setStats(statsRes.data.agents || []);
+      setRuns(runsRes.data.runs || []);
+    } catch (e) {
+      console.error('Failed to load agent data:', e);
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedAgent]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const agentIds = ['research', 'zoning', 'supply', 'cashflow', 'commentary'];
+  
+  const fmtMs = (ms: any) => {
+    if (!ms) return '—';
+    const n = typeof ms === 'string' ? parseFloat(ms) : ms;
+    return n < 1000 ? `${Math.round(n)}ms` : `${(n / 1000).toFixed(1)}s`;
+  };
+
+  const fmtCost = (usd: any) => {
+    if (!usd) return '—';
+    const n = parseFloat(usd);
+    return n < 0.01 ? `$${n.toFixed(4)}` : `$${n.toFixed(2)}`;
+  };
+
+  const statusColor = (s: string) => {
+    const colors: Record<string, string> = {
+      succeeded: T.text.green,
+      failed: T.text.red,
+      running: T.text.cyan,
+      pending: T.text.secondary,
+    };
+    return colors[s] || T.text.secondary;
+  };
+
+  return (
+    <div style={{ padding: 20 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: T.text.primary, letterSpacing: 1, ...mono }}>
+          🤖 AI AGENTS
+        </div>
+        <button
+          onClick={load}
+          disabled={loading}
+          style={{
+            padding: '4px 10px', fontSize: 9, fontWeight: 600, ...mono,
+            background: T.bg.active, border: 'none', color: T.text.primary, cursor: 'pointer',
+          }}
+        >
+          {loading ? '...' : 'REFRESH'}
+        </button>
+      </div>
+
+      {/* Agent Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20 }}>
+        {agentIds.map(agentId => {
+          const s = stats.find(r => r.agent_id === agentId);
+          const isSelected = selectedAgent === agentId;
+          const successRate = s ? parseFloat(s.success_rate_pct || '0') : null;
+          
+          return (
+            <div
+              key={agentId}
+              onClick={() => setSelectedAgent(isSelected ? null : agentId)}
+              style={{
+                background: T.bg.panel,
+                border: `1px solid ${isSelected ? T.text.amber : T.border.subtle}`,
+                padding: 14,
+                cursor: 'pointer',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: T.text.amber, letterSpacing: 1, ...mono }}>
+                  {agentId.toUpperCase()}
+                </span>
+                {successRate !== null && (
+                  <span style={{ 
+                    fontSize: 9, 
+                    color: successRate >= 85 ? T.text.green : successRate >= 70 ? T.text.amber : T.text.red,
+                    ...mono 
+                  }}>
+                    {successRate.toFixed(0)}% OK
+                  </span>
+                )}
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: 10 }}>
+                <div>
+                  <div style={{ color: T.text.muted, fontSize: 9 }}>30d Runs</div>
+                  <div style={{ fontWeight: 600, color: T.text.primary, ...mono }}>{s?.runs_last_30d || '0'}</div>
+                </div>
+                <div>
+                  <div style={{ color: T.text.muted, fontSize: 9 }}>Today</div>
+                  <div style={{ fontWeight: 600, color: T.text.primary, ...mono }}>{s?.runs_last_1d || '0'}</div>
+                </div>
+                <div>
+                  <div style={{ color: T.text.muted, fontSize: 9 }}>p50 / p99</div>
+                  <div style={{ color: T.text.secondary, ...mono }}>{fmtMs(s?.p50_duration_ms)} / {fmtMs(s?.p99_duration_ms)}</div>
+                </div>
+                <div>
+                  <div style={{ color: T.text.muted, fontSize: 9 }}>Cost (30d)</div>
+                  <div style={{ color: T.text.secondary, ...mono }}>{fmtCost(s?.cost_usd_30d)}</div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Recent Runs Table */}
+      <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}` }}>
+        <div style={{ padding: '10px 14px', borderBottom: `1px solid ${T.border.subtle}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 10, fontWeight: 600, color: T.text.primary, ...mono }}>
+            RECENT RUNS {selectedAgent ? `— ${selectedAgent.toUpperCase()}` : ''}
+          </span>
+          {selectedAgent && (
+            <button
+              onClick={() => setSelectedAgent(null)}
+              style={{ fontSize: 9, color: T.text.secondary, background: T.bg.active, border: 'none', padding: '2px 8px', cursor: 'pointer' }}
+            >
+              CLEAR
+            </button>
+          )}
+        </div>
+
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ background: T.bg.header }}>
+              {['AGENT', 'DEAL', 'STATUS', 'DURATION', 'COST', 'STARTED'].map(h => (
+                <th key={h} style={{ padding: '8px 14px', fontSize: 9, color: T.text.muted, textAlign: 'left', ...mono }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {runs.length === 0 ? (
+              <tr>
+                <td colSpan={6} style={{ padding: 30, textAlign: 'center', color: T.text.muted, fontSize: 11 }}>
+                  {loading ? 'Loading...' : 'No runs found'}
+                </td>
+              </tr>
+            ) : runs.map((run, i) => (
+              <tr key={run.id || i} style={{ borderTop: `1px solid ${T.border.subtle}` }}>
+                <td style={{ padding: '8px 14px', fontSize: 10, fontWeight: 600, color: T.text.amber, ...mono }}>{run.agent_id}</td>
+                <td style={{ padding: '8px 14px', fontSize: 10, color: T.text.secondary, maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {run.deal_name || run.deal_id?.slice(0, 8) || '—'}
+                </td>
+                <td style={{ padding: '8px 14px' }}>
+                  <span style={{ fontSize: 9, fontWeight: 700, color: statusColor(run.status), ...mono }}>{run.status?.toUpperCase()}</span>
+                </td>
+                <td style={{ padding: '8px 14px', fontSize: 10, color: T.text.secondary, ...mono }}>{fmtMs(run.duration_ms)}</td>
+                <td style={{ padding: '8px 14px', fontSize: 10, color: T.text.secondary, ...mono }}>{fmtCost(run.cost_usd)}</td>
+                <td style={{ padding: '8px 14px', fontSize: 9, color: T.text.muted, ...mono }}>
+                  {run.started_at ? new Date(run.started_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PLATFORM USERS SECTION
+// ═══════════════════════════════════════════════════════════════════
+
+function PlatformUsersSection({ T }: { T: ThemeType }) {
+  const [users, setUsers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    apiClient.get('/api/v1/admin/users')
+      .then(res => setUsers(res.data.users || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const formatDate = (d: string | null) =>
+    d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+
+  return (
+    <div style={{ padding: 20 }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: T.text.primary, letterSpacing: 1, marginBottom: 16, ...mono }}>
+        👤 PLATFORM USERS
+        <span style={{ fontSize: 10, fontWeight: 400, color: T.text.muted, marginLeft: 8 }}>({users.length})</span>
+      </div>
+
+      <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}` }}>
+        {loading ? (
+          <div style={{ padding: 40, textAlign: 'center', color: T.text.muted }}>Loading...</div>
+        ) : (
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: T.bg.header }}>
+                {['USER', 'ROLE', 'JOINED', 'LAST SIGN IN'].map(h => (
+                  <th key={h} style={{ padding: '10px 14px', fontSize: 9, color: T.text.muted, textAlign: 'left', letterSpacing: 0.5, ...mono }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {users.map((u, i) => (
+                <tr key={u.id || i} style={{ borderTop: `1px solid ${T.border.subtle}` }}>
+                  <td style={{ padding: '10px 14px' }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: T.text.primary }}>{u.full_name || '—'}</div>
+                    <div style={{ fontSize: 9, color: T.text.muted }}>{u.email}</div>
+                  </td>
+                  <td style={{ padding: '10px 14px' }}>
+                    <span style={{ 
+                      fontSize: 9, fontWeight: 700, padding: '2px 6px', 
+                      background: T.bg.panelAlt, 
+                      color: u.role === 'admin' ? T.text.purple : T.text.secondary,
+                      ...mono 
+                    }}>
+                      {u.role?.toUpperCase()}
+                    </span>
+                  </td>
+                  <td style={{ padding: '10px 14px', fontSize: 10, color: T.text.muted, ...mono }}>{formatDate(u.created_at)}</td>
+                  <td style={{ padding: '10px 14px', fontSize: 10, color: T.text.muted, ...mono }}>{formatDate(u.last_sign_in_at)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// DEAL OVERSIGHT SECTION
+// ═══════════════════════════════════════════════════════════════════
+
+function DealOversightSection({ T }: { T: ThemeType }) {
+  const [deals, setDeals] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    apiClient.get('/api/v1/admin/deals')
+      .then(res => setDeals(res.data.deals || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const statusColor = (s: string) => {
+    const colors: Record<string, string> = {
+      active: T.text.green,
+      closed: T.text.cyan,
+      dead: T.text.red,
+    };
+    return colors[s] || T.text.secondary;
+  };
+
+  return (
+    <div style={{ padding: 20 }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: T.text.primary, letterSpacing: 1, marginBottom: 16, ...mono }}>
+        📊 DEAL OVERSIGHT
+        <span style={{ fontSize: 10, fontWeight: 400, color: T.text.muted, marginLeft: 8 }}>({deals.length})</span>
+      </div>
+
+      <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}` }}>
+        {loading ? (
+          <div style={{ padding: 40, textAlign: 'center', color: T.text.muted }}>Loading...</div>
+        ) : deals.length === 0 ? (
+          <div style={{ padding: 40, textAlign: 'center' }}>
+            <div style={{ fontSize: 24, marginBottom: 8 }}>📭</div>
+            <div style={{ fontSize: 11, color: T.text.muted }}>No deals found</div>
+          </div>
+        ) : (
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: T.bg.header }}>
+                {['DEAL', 'TYPE', 'STATUS', 'CREATED'].map(h => (
+                  <th key={h} style={{ padding: '10px 14px', fontSize: 9, color: T.text.muted, textAlign: 'left', letterSpacing: 0.5, ...mono }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {deals.slice(0, 30).map((d, i) => (
+                <tr key={d.id || i} style={{ borderTop: `1px solid ${T.border.subtle}` }}>
+                  <td style={{ padding: '10px 14px', fontSize: 11, fontWeight: 600, color: T.text.primary }}>{d.name}</td>
+                  <td style={{ padding: '10px 14px', fontSize: 10, color: T.text.secondary }}>{d.deal_type?.replace(/_/g, ' ')}</td>
+                  <td style={{ padding: '10px 14px' }}>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: statusColor(d.status), ...mono }}>{d.status?.toUpperCase()}</span>
+                  </td>
+                  <td style={{ padding: '10px 14px', fontSize: 10, color: T.text.muted, ...mono }}>
+                    {new Date(d.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
 
-function LearningSystemSection({ T }: { T: ThemeType }) {
-  const [adjustments, setAdjustments] = useState<any[]>([]);
+// ═══════════════════════════════════════════════════════════════════
+// DATA COVERAGE SECTION
+// ═══════════════════════════════════════════════════════════════════
+
+function DataCoverageSection({ T }: { T: ThemeType }) {
+  const [counties, setCounties] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    apiClient.get('/api/v1/learning/adjustments?limit=20')
-      .then(res => setAdjustments(res.data?.adjustments ?? []))
+    apiClient.get('/api/v1/admin/data-coverage')
+      .then(res => setCounties(res.data.counties || []))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <div style={{ padding: 20, color: T.text.muted }}>Loading...</div>;
-
-  return (
-    <div style={{ padding: 20 }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: T.text.primary, marginBottom: 8, fontFamily: T.font.mono }}>
-        🧠 LEARNING SYSTEM
-      </div>
-      <div style={{ fontSize: 10, color: T.text.secondary, marginBottom: 20 }}>
-        Calibration adjustments derived from operations actuals and disposition outcomes.
-      </div>
-
-      {adjustments.length === 0 ? (
-        <div style={{ background: T.bg.panel, padding: 24, textAlign: 'center' }}>
-          <div style={{ fontSize: 20, marginBottom: 8 }}>📚</div>
-          <div style={{ fontSize: 11, color: T.text.secondary }}>No adjustments yet</div>
-          <div style={{ fontSize: 9, color: T.text.muted, marginTop: 4 }}>Feed actuals or record dispositions to generate learnings</div>
-        </div>
-      ) : (
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ background: T.bg.header }}>
-              {['ASSUMPTION', 'STATE', 'MSA', 'CLASS', 'BIAS', 'ADJUSTMENT', 'CONF', 'N'].map(h => (
-                <th key={h} style={{ padding: '8px 10px', fontSize: 9, color: T.text.muted, textAlign: 'left', fontFamily: T.font.mono }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {adjustments.map((adj: any, i: number) => (
-              <tr key={i} style={{ borderBottom: `1px solid ${T.border.subtle}` }}>
-                <td style={{ padding: '8px 10px', fontSize: 10, color: T.text.primary, fontWeight: 600 }}>{adj.assumptionName?.replace(/_/g, ' ')}</td>
-                <td style={{ padding: '8px 10px', fontSize: 10, color: T.text.secondary }}>{adj.state || '—'}</td>
-                <td style={{ padding: '8px 10px', fontSize: 10, color: T.text.secondary }}>{adj.msa || '—'}</td>
-                <td style={{ padding: '8px 10px', fontSize: 10, color: T.text.amber }}>{adj.assetClass || '—'}</td>
-                <td style={{ padding: '8px 10px', fontSize: 10, fontFamily: T.font.mono, color: adj.avgBias > 0 ? T.text.green : T.text.red }}>{adj.avgBias > 0 ? '+' : ''}{(adj.avgBias * 100).toFixed(1)}%</td>
-                <td style={{ padding: '8px 10px', fontSize: 10, fontFamily: T.font.mono, color: T.text.cyan }}>{adj.recommendedAdjustment > 0 ? '+' : ''}{(adj.recommendedAdjustment * 100).toFixed(2)}%</td>
-                <td style={{ padding: '8px 10px', fontSize: 10, color: adj.confidenceScore > 0.7 ? T.text.green : T.text.muted }}>{(adj.confidenceScore * 100).toFixed(0)}%</td>
-                <td style={{ padding: '8px 10px', fontSize: 10, color: T.text.muted }}>{adj.sampleSize}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
-  );
-}
-
-interface CompProp {
-  id: string;
-  property_name: string;
-  address: string | null;
-  submarket: string | null;
-  distance_mi: number | null;
-  avg_rent_sf: number | null;
-  occupancy_pct: number | null;
-  last_scraped: string | null;
-}
-
-interface PropertySearchResult {
-  id: string;
-  property_name: string;
-  address: string;
-  city: string | null;
-  state: string | null;
-  submarket: string | null;
-  units: number | null;
-}
-
-function CompetitiveSetsSection({ T }: { T: ThemeType }) {
-  const [comps, setComps] = useState<CompProp[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-
-  // Add comp form state (city/state populated from search result, not shown as fields)
-  const [form, setForm] = useState({ property_name: '', address: '', city: '', state: '', submarket: '', distance_mi: '', avg_rent_sf: '', occupancy_pct: '' });
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<PropertySearchResult[]>([]);
-  const [searchLoading, setSearchLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const load = useCallback(() => {
-    setLoading(true);
-    apiClient.get('/api/v1/admin/comp-sets')
-      .then(r => setComps(r.data.comps ?? []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => { load(); }, [load]);
-
-  const handleSearch = (q: string) => {
-    setSearchQuery(q);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (q.length < 2) { setSearchResults([]); return; }
-    debounceRef.current = setTimeout(() => {
-      setSearchLoading(true);
-      apiClient.get(`/api/v1/admin/comp-sets/property-search?q=${encodeURIComponent(q)}`)
-        .then(r => setSearchResults(r.data.results ?? []))
-        .catch(() => setSearchResults([]))
-        .finally(() => setSearchLoading(false));
-    }, 350);
-  };
-
-  const selectProperty = (p: PropertySearchResult) => {
-    setForm(f => ({
-      ...f,
-      property_name: f.property_name || p.property_name,
-      address: p.address,
-      city: p.city ?? '',
-      state: p.state ?? '',
-      submarket: f.submarket || p.submarket || '',
-    }));
-    setSearchQuery('');
-    setSearchResults([]);
-  };
-
-  const handleAdd = async () => {
-    if (!form.property_name.trim()) { setError('Property name is required'); return; }
-    setSaving(true);
-    setError(null);
-    try {
-      await apiClient.post('/api/v1/admin/comp-sets', {
-        property_name: form.property_name,
-        address: form.address || null,
-        city: form.city || null,
-        state: form.state || null,
-        submarket: form.submarket || null,
-        distance_mi: form.distance_mi ? parseFloat(form.distance_mi) : null,
-        avg_rent_sf: form.avg_rent_sf ? parseFloat(form.avg_rent_sf) : null,
-        occupancy_pct: form.occupancy_pct ? parseFloat(form.occupancy_pct) : null,
-      });
-      setShowModal(false);
-      setForm({ property_name: '', address: '', city: '', state: '', submarket: '', distance_mi: '', avg_rent_sf: '', occupancy_pct: '' });
-      load();
-    } catch (e: any) {
-      setError(e?.response?.data?.error || 'Failed to add comp');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleRemove = async (id: string) => {
-    try {
-      await apiClient.delete(`/api/v1/admin/comp-sets/${id}`);
-      setComps(c => c.filter(x => x.id !== id));
-    } catch {}
-  };
-
-  const inputStyle: React.CSSProperties = {
-    width: '100%', fontSize: 10, padding: '5px 8px',
-    background: T.bg.panelAlt, border: `1px solid ${T.border.medium}`,
-    color: T.text.primary, outline: 'none', fontFamily: T.font.mono, boxSizing: 'border-box',
+  const statusColor = (s: string) => {
+    const colors: Record<string, string> = {
+      active: T.text.green,
+      pending: T.text.amber,
+      error: T.text.red,
+    };
+    return colors[s] || T.text.secondary;
   };
 
   return (
     <div style={{ padding: 20 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: T.text.primary, fontFamily: T.font.mono }}>
-          🏘️ COMPETITIVE SET MONITORING
-        </div>
-        <button
-          onClick={() => setShowModal(true)}
-          style={{ fontSize: 10, fontWeight: 700, padding: '5px 14px', background: T.text.amber, color: T.bg.terminal, border: 'none', cursor: 'pointer' }}
-        >
-          + ADD COMP
-        </button>
-      </div>
-      <div style={{ fontSize: 10, color: T.text.secondary, marginBottom: 16 }}>
-        Org-wide comp properties tracked for pricing benchmarks and variance alerts.
+      <div style={{ fontSize: 12, fontWeight: 700, color: T.text.primary, letterSpacing: 1, marginBottom: 16, ...mono }}>
+        🗺️ DATA COVERAGE
       </div>
 
-      {loading ? (
-        <div style={{ padding: 20, color: T.text.muted, fontSize: 10 }}>Loading...</div>
-      ) : comps.length === 0 ? (
-        <div style={{ background: T.bg.panel, padding: 32, textAlign: 'center' }}>
-          <div style={{ fontSize: 20, marginBottom: 8 }}>🏘️</div>
-          <div style={{ fontSize: 11, color: T.text.secondary }}>No comp properties configured</div>
-          <div style={{ fontSize: 9, color: T.text.muted, marginTop: 4 }}>Click "+ ADD COMP" to add your first comp property</div>
-        </div>
-      ) : (
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ background: T.bg.header }}>
-              {['PROPERTY', 'SUBMARKET', 'DIST (MI)', 'AVG RENT/SF', 'OCC %', 'LAST SCRAPED', ''].map(h => (
-                <th key={h} style={{ padding: '8px 10px', fontSize: 9, color: T.text.muted, textAlign: 'left', fontFamily: T.font.mono, whiteSpace: 'nowrap' }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {comps.map((c, i) => (
-              <tr key={c.id} style={{ borderBottom: `1px solid ${T.border.subtle}`, background: i % 2 === 0 ? T.bg.panel : T.bg.panelAlt }}>
-                <td style={{ padding: '8px 10px' }}>
-                  <div style={{ fontSize: 10, fontWeight: 600, color: T.text.primary }}>{c.property_name}</div>
-                  {c.address && <div style={{ fontSize: 9, color: T.text.muted }}>{c.address}</div>}
-                </td>
-                <td style={{ padding: '8px 10px', fontSize: 10, color: T.text.secondary }}>{c.submarket || '—'}</td>
-                <td style={{ padding: '8px 10px', fontSize: 10, fontFamily: T.font.mono, color: T.text.secondary }}>{c.distance_mi != null ? Number(c.distance_mi).toFixed(1) : '—'}</td>
-                <td style={{ padding: '8px 10px', fontSize: 10, fontFamily: T.font.mono }}>{c.avg_rent_sf != null ? `$${Number(c.avg_rent_sf).toFixed(2)}` : '—'}</td>
-                <td style={{ padding: '8px 10px', fontSize: 10, fontFamily: T.font.mono, color: c.occupancy_pct != null && Number(c.occupancy_pct) < 88 ? T.text.red : T.text.green }}>{c.occupancy_pct != null ? `${Number(c.occupancy_pct).toFixed(1)}%` : '—'}</td>
-                <td style={{ padding: '8px 10px', fontSize: 9, color: T.text.muted }}>{c.last_scraped ? new Date(c.last_scraped).toLocaleDateString() : '—'}</td>
-                <td style={{ padding: '8px 10px' }}>
-                  <button
-                    onClick={() => handleRemove(c.id)}
-                    style={{ fontSize: 9, color: T.text.red, background: 'transparent', border: `1px solid ${T.text.red}44`, padding: '3px 8px', cursor: 'pointer' }}
-                  >
-                    REMOVE
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-
-      {/* Add Comp Modal */}
-      {showModal && (
-        <div style={{ position: 'fixed', inset: 0, background: '#00000088', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ background: T.bg.panel, border: `1px solid ${T.border.bright}`, width: 480, padding: 24, position: 'relative' }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: T.text.primary, marginBottom: 16, fontFamily: T.font.mono }}>+ ADD COMP PROPERTY</div>
-
-            {/* Property search */}
-            <div style={{ marginBottom: 14, position: 'relative' }}>
-              <div style={{ fontSize: 9, color: T.text.secondary, marginBottom: 4, fontFamily: T.font.mono }}>SEARCH PROPERTY RECORDS</div>
-              <input
-                type="text"
-                placeholder="Type address or owner name..."
-                value={searchQuery}
-                onChange={e => handleSearch(e.target.value)}
-                style={inputStyle}
-              />
-              {searchLoading && <div style={{ fontSize: 9, color: T.text.muted, marginTop: 2 }}>Searching...</div>}
-              {searchResults.length > 0 && (
-                <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: T.bg.panelAlt, border: `1px solid ${T.border.medium}`, zIndex: 10, maxHeight: 160, overflowY: 'auto' }}>
-                  {searchResults.map(p => (
-                    <div
-                      key={p.id}
-                      onClick={() => selectProperty(p)}
-                      style={{ padding: '6px 10px', fontSize: 10, color: T.text.primary, cursor: 'pointer', borderBottom: `1px solid ${T.border.subtle}` }}
-                      onMouseEnter={e => (e.currentTarget.style.background = T.bg.hover)}
-                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                    >
-                      <div style={{ fontWeight: 600 }}>{p.property_name}</div>
-                      <div style={{ fontSize: 9, color: T.text.muted }}>{[p.address, p.city, p.state].filter(Boolean).join(', ')} · {p.submarket ?? ''} · {p.units ?? '?'} units</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
-              {([
-                { key: 'property_name', label: 'PROPERTY NAME *', placeholder: 'The Lofts at Midtown' },
-                { key: 'address', label: 'ADDRESS', placeholder: '123 Main St, Atlanta, GA' },
-                { key: 'submarket', label: 'SUBMARKET', placeholder: 'Midtown' },
-                { key: 'distance_mi', label: 'DISTANCE (MI)', placeholder: '0.8' },
-                { key: 'avg_rent_sf', label: 'AVG RENT / SF', placeholder: '1.95' },
-                { key: 'occupancy_pct', label: 'OCCUPANCY %', placeholder: '93.5' },
-              ] as { key: keyof typeof form; label: string; placeholder: string }[]).map(f => (
-                <div key={f.key}>
-                  <div style={{ fontSize: 9, color: T.text.secondary, marginBottom: 2, fontFamily: T.font.mono }}>{f.label}</div>
-                  <input
-                    type="text"
-                    placeholder={f.placeholder}
-                    value={form[f.key]}
-                    onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))}
-                    style={inputStyle}
-                  />
-                </div>
-              ))}
-            </div>
-
-            {error && (
-              <div style={{ fontSize: 9, color: T.text.red, marginBottom: 10, padding: '4px 8px', background: T.text.red + '11', border: `1px solid ${T.text.red}44` }}>{error}</div>
-            )}
-
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                onClick={handleAdd}
-                disabled={saving}
-                style={{ fontSize: 10, fontWeight: 700, padding: '6px 16px', background: T.text.amber, color: T.bg.terminal, border: 'none', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}
-              >
-                {saving ? 'SAVING...' : 'ADD COMP'}
-              </button>
-              <button
-                onClick={() => { setShowModal(false); setError(null); setSearchQuery(''); setSearchResults([]); setForm({ property_name: '', address: '', city: '', state: '', submarket: '', distance_mi: '', avg_rent_sf: '', occupancy_pct: '' }); }}
-                style={{ fontSize: 10, padding: '6px 14px', background: 'transparent', color: T.text.muted, border: `1px solid ${T.border.medium}`, cursor: 'pointer' }}
-              >
-                CANCEL
-              </button>
-            </div>
+      <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}` }}>
+        {loading ? (
+          <div style={{ padding: 40, textAlign: 'center', color: T.text.muted }}>Loading...</div>
+        ) : counties.length === 0 ? (
+          <div style={{ padding: 40, textAlign: 'center' }}>
+            <div style={{ fontSize: 24, marginBottom: 8 }}>🗺️</div>
+            <div style={{ fontSize: 11, color: T.text.secondary }}>No county coverage configured</div>
+            <div style={{ fontSize: 10, color: T.text.muted, marginTop: 4 }}>Add counties to track data coverage</div>
           </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-interface PricingAlertRule {
-  id: string;
-  submarket: string;
-  metric: 'avg_rent' | 'occupancy';
-  threshold_pct: number;
-  direction: 'above' | 'below';
-  notification_pref: 'email' | 'sms' | 'both' | 'none';
-  is_enabled: boolean;
-  created_at: string;
-}
-
-const EMPTY_ALERT_FORM = { submarket: '', metric: 'avg_rent' as const, threshold_pct: '', direction: 'below' as const, notification_pref: 'email' as const };
-
-function MarketDataSection({ T }: { T: ThemeType }) {
-  const [alerts, setAlerts] = useState<PricingAlertRule[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState(EMPTY_ALERT_FORM);
-  const [saving, setSaving] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
-
-  const loadAlerts = useCallback(() => {
-    setLoading(true);
-    apiClient.get('/api/v1/admin/pricing-alerts')
-      .then(r => setAlerts(r.data.alerts ?? []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => { loadAlerts(); }, [loadAlerts]);
-
-  const handleAdd = async () => {
-    if (!form.submarket.trim()) { setFormError('Submarket is required'); return; }
-    if (!form.threshold_pct || isNaN(parseFloat(form.threshold_pct))) { setFormError('Threshold must be a number'); return; }
-    setSaving(true);
-    setFormError(null);
-    try {
-      await apiClient.post('/api/v1/admin/pricing-alerts', {
-        submarket: form.submarket,
-        metric: form.metric,
-        threshold_pct: parseFloat(form.threshold_pct),
-        direction: form.direction,
-        notification_pref: form.notification_pref,
-      });
-      setShowForm(false);
-      setForm(EMPTY_ALERT_FORM);
-      loadAlerts();
-    } catch (e: any) {
-      setFormError(e?.response?.data?.error || 'Failed to save alert');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleToggle = async (alert: PricingAlertRule) => {
-    try {
-      await apiClient.put(`/api/v1/admin/pricing-alerts/${alert.id}`, { is_enabled: !alert.is_enabled });
-      setAlerts(prev => prev.map(a => a.id === alert.id ? { ...a, is_enabled: !a.is_enabled } : a));
-    } catch {}
-  };
-
-  const handleDelete = async (id: string) => {
-    try {
-      await apiClient.delete(`/api/v1/admin/pricing-alerts/${id}`);
-      setAlerts(prev => prev.filter(a => a.id !== id));
-    } catch {}
-  };
-
-  const inputStyle: React.CSSProperties = {
-    width: '100%', fontSize: 10, padding: '5px 8px',
-    background: T.bg.panelAlt, border: `1px solid ${T.border.medium}`,
-    color: T.text.primary, outline: 'none', fontFamily: T.font.mono, boxSizing: 'border-box',
-  };
-
-  const metricLabel = (m: string) => m === 'avg_rent' ? 'Avg Rent/SF' : 'Occupancy %';
-  const dirLabel = (d: string, pct: number) => `${d === 'below' ? 'drops' : 'rises'} >${pct}%`;
-  const notifLabel = (n: string) => ({ email: '📧 Email', sms: '📱 SMS', both: '📧+📱 Both', none: '🔕 None' }[n] ?? n);
-
-  return (
-    <div style={{ padding: 20 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: T.text.primary, fontFamily: T.font.mono }}>
-          📡 PRICING ALERT RULES
-        </div>
-        <button
-          onClick={() => setShowForm(s => !s)}
-          style={{ fontSize: 10, fontWeight: 700, padding: '5px 14px', background: showForm ? T.bg.panelAlt : T.text.amber, color: showForm ? T.text.muted : T.bg.terminal, border: showForm ? `1px solid ${T.border.medium}` : 'none', cursor: 'pointer' }}
-        >
-          {showForm ? 'CANCEL' : '+ NEW ALERT'}
-        </button>
+        ) : (
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: T.bg.header }}>
+                {['COUNTY', 'STATUS', 'PROPERTIES', 'LAST SCRAPED'].map(h => (
+                  <th key={h} style={{ padding: '10px 14px', fontSize: 9, color: T.text.muted, textAlign: 'left', letterSpacing: 0.5, ...mono }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {counties.map((c, i) => (
+                <tr key={i} style={{ borderTop: `1px solid ${T.border.subtle}` }}>
+                  <td style={{ padding: '10px 14px', fontSize: 11, fontWeight: 600, color: T.text.primary }}>{c.county}, {c.state}</td>
+                  <td style={{ padding: '10px 14px' }}>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: statusColor(c.status), ...mono }}>{c.status?.toUpperCase()}</span>
+                  </td>
+                  <td style={{ padding: '10px 14px', fontSize: 10, color: T.text.secondary, ...mono }}>{c.property_count?.toLocaleString()}</td>
+                  <td style={{ padding: '10px 14px', fontSize: 10, color: T.text.muted, ...mono }}>
+                    {c.last_scraped ? new Date(c.last_scraped).toLocaleDateString() : 'Never'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
-      <div style={{ fontSize: 10, color: T.text.secondary, marginBottom: 16 }}>
-        Get notified when submarket metrics breach configured thresholds.
-      </div>
-
-      {/* Add alert form */}
-      {showForm && (
-        <div style={{ background: T.bg.panel, border: `1px solid ${T.border.bright}`, padding: 18, marginBottom: 20 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: T.text.amber, marginBottom: 14, fontFamily: T.font.mono }}>NEW PRICING ALERT</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 14 }}>
-            <div>
-              <div style={{ fontSize: 9, color: T.text.secondary, marginBottom: 3, fontFamily: T.font.mono }}>SUBMARKET *</div>
-              <input type="text" placeholder="e.g. Midtown" value={form.submarket} onChange={e => setForm(f => ({ ...f, submarket: e.target.value }))} style={inputStyle} />
-            </div>
-            <div>
-              <div style={{ fontSize: 9, color: T.text.secondary, marginBottom: 3, fontFamily: T.font.mono }}>METRIC</div>
-              <select value={form.metric} onChange={e => setForm(f => ({ ...f, metric: e.target.value as 'avg_rent' | 'occupancy' }))} style={inputStyle}>
-                <option value="avg_rent">Avg Rent / SF</option>
-                <option value="occupancy">Occupancy %</option>
-              </select>
-            </div>
-            <div>
-              <div style={{ fontSize: 9, color: T.text.secondary, marginBottom: 3, fontFamily: T.font.mono }}>THRESHOLD %</div>
-              <input type="number" placeholder="3.0" min="0" step="0.5" value={form.threshold_pct} onChange={e => setForm(f => ({ ...f, threshold_pct: e.target.value }))} style={inputStyle} />
-            </div>
-            <div>
-              <div style={{ fontSize: 9, color: T.text.secondary, marginBottom: 3, fontFamily: T.font.mono }}>DIRECTION</div>
-              <select value={form.direction} onChange={e => setForm(f => ({ ...f, direction: e.target.value as 'above' | 'below' }))} style={inputStyle}>
-                <option value="below">Drops below</option>
-                <option value="above">Rises above</option>
-              </select>
-            </div>
-            <div>
-              <div style={{ fontSize: 9, color: T.text.secondary, marginBottom: 3, fontFamily: T.font.mono }}>NOTIFICATION</div>
-              <select value={form.notification_pref} onChange={e => setForm(f => ({ ...f, notification_pref: e.target.value as 'email' | 'sms' | 'both' | 'none' }))} style={inputStyle}>
-                <option value="email">Email</option>
-                <option value="sms">SMS</option>
-                <option value="both">Email + SMS</option>
-                <option value="none">None (log only)</option>
-              </select>
-            </div>
-          </div>
-          {formError && (
-            <div style={{ fontSize: 9, color: T.text.red, marginBottom: 10, padding: '4px 8px', background: T.text.red + '11', border: `1px solid ${T.text.red}44` }}>{formError}</div>
-          )}
-          <button
-            onClick={handleAdd}
-            disabled={saving}
-            style={{ fontSize: 10, fontWeight: 700, padding: '6px 18px', background: T.text.amber, color: T.bg.terminal, border: 'none', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}
-          >
-            {saving ? 'SAVING...' : 'CREATE ALERT'}
-          </button>
-        </div>
-      )}
-
-      {loading ? (
-        <div style={{ padding: 20, color: T.text.muted, fontSize: 10 }}>Loading...</div>
-      ) : alerts.length === 0 ? (
-        <div style={{ background: T.bg.panel, padding: 32, textAlign: 'center' }}>
-          <div style={{ fontSize: 20, marginBottom: 8 }}>🔔</div>
-          <div style={{ fontSize: 11, color: T.text.secondary }}>No pricing alerts configured</div>
-          <div style={{ fontSize: 9, color: T.text.muted, marginTop: 4 }}>Click "+ NEW ALERT" to create your first rule</div>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {alerts.map(a => (
-            <div
-              key={a.id}
-              style={{
-                background: T.bg.panel,
-                border: `1px solid ${a.is_enabled ? T.text.amber + '44' : T.border.subtle}`,
-                padding: '12px 16px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 16,
-                opacity: a.is_enabled ? 1 : 0.55,
-              }}
-            >
-              {/* Toggle */}
-              <button
-                onClick={() => handleToggle(a)}
-                title={a.is_enabled ? 'Disable alert' : 'Enable alert'}
-                style={{
-                  width: 32, height: 18, borderRadius: 9,
-                  background: a.is_enabled ? T.text.amber : T.border.medium,
-                  border: 'none', cursor: 'pointer', position: 'relative', flexShrink: 0, transition: 'background 0.2s',
-                }}
-              >
-                <span style={{
-                  position: 'absolute', top: 2, width: 14, height: 14, borderRadius: '50%',
-                  background: '#fff', transition: 'left 0.2s',
-                  left: a.is_enabled ? 16 : 2,
-                }} />
-              </button>
-
-              {/* Description */}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: T.text.primary }}>
-                  Notify when <span style={{ color: T.text.amber }}>{metricLabel(a.metric)}</span> in{' '}
-                  <span style={{ color: T.text.cyan }}>{a.submarket}</span>{' '}
-                  {dirLabel(a.direction, a.threshold_pct)}
-                </div>
-                <div style={{ fontSize: 9, color: T.text.muted, marginTop: 2, fontFamily: T.font.mono }}>
-                  {notifLabel(a.notification_pref)} · Created {new Date(a.created_at).toLocaleDateString()}
-                </div>
-              </div>
-
-              {/* Badges */}
-              <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 7px', background: (a.direction === 'below' ? T.text.red : T.text.green) + '22', color: a.direction === 'below' ? T.text.red : T.text.green, flexShrink: 0 }}>
-                {a.direction.toUpperCase()} {a.threshold_pct}%
-              </span>
-
-              {/* Delete */}
-              <button
-                onClick={() => handleDelete(a.id)}
-                style={{ fontSize: 9, color: T.text.red, background: 'transparent', border: `1px solid ${T.text.red}44`, padding: '3px 8px', cursor: 'pointer', flexShrink: 0 }}
-              >
-                DELETE
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -694,126 +621,132 @@ function MarketDataSection({ T }: { T: ThemeType }) {
 // ORG INTEGRATIONS SECTION
 // ═══════════════════════════════════════════════════════════════════
 
-type IntegrationKey = 'docusign' | 'notarize' | 'plaid' | 'stripe' | 'gmail' | 'outlook';
+type IntegrationKey = 'docusign' | 'notarize' | 'plaid';
 
 interface IntegrationDef {
   key: IntegrationKey;
   name: string;
   icon: string;
   description: string;
-  category: string;
-  credentialFields?: { key: string; label: string; placeholder: string; secret?: boolean }[];
-  apiPath?: string;
+  apiPath: string;
+  fields: { key: string; label: string; placeholder: string; secret?: boolean }[];
 }
 
-const INTEGRATION_DEFS: IntegrationDef[] = [
+const INTEGRATIONS: IntegrationDef[] = [
   {
-    key: 'docusign', name: 'DocuSign', icon: '✍️', description: 'Document signing for PSAs, LOIs, loan docs', category: 'Signing',
+    key: 'docusign', name: 'DocuSign', icon: '✍️', description: 'Document signing for PSAs, LOIs, loan docs',
     apiPath: '/api/v1/organization/integrations/docusign/credentials',
-    credentialFields: [
+    fields: [
       { key: 'accountId', label: 'Account ID', placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx' },
       { key: 'integrationKey', label: 'Integration Key', placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx' },
-      { key: 'secretKey', label: 'Secret Key', placeholder: 'Your DocuSign secret key', secret: true },
+      { key: 'secretKey', label: 'Secret Key', placeholder: 'Your DocuSign secret', secret: true },
       { key: 'baseUrl', label: 'Base URL', placeholder: 'https://demo.docusign.net/restapi' },
     ],
   },
   {
-    key: 'notarize', name: 'Notarize', icon: '📜', description: 'Remote online notarization', category: 'Signing',
+    key: 'notarize', name: 'Notarize', icon: '📜', description: 'Remote online notarization',
     apiPath: '/api/v1/organization/integrations/notarize/credentials',
-    credentialFields: [
+    fields: [
       { key: 'apiKey', label: 'API Key', placeholder: 'Your Notarize API key', secret: true },
       { key: 'environment', label: 'Environment', placeholder: 'sandbox or production' },
     ],
   },
   {
-    key: 'plaid', name: 'Plaid', icon: '🏦', description: 'Identity & bank account verification (KYC/KYB)', category: 'KYC',
+    key: 'plaid', name: 'Plaid', icon: '🏦', description: 'Identity & bank verification (KYC)',
     apiPath: '/api/v1/organization/integrations/plaid/credentials',
-    credentialFields: [
+    fields: [
       { key: 'clientId', label: 'Client ID', placeholder: 'Your Plaid client_id' },
       { key: 'secret', label: 'Secret', placeholder: 'Your Plaid secret', secret: true },
       { key: 'environment', label: 'Environment', placeholder: 'sandbox, development, or production' },
     ],
   },
-  { key: 'stripe', name: 'Stripe', icon: '💳', description: 'Payment processing & billing', category: 'Billing' },
-  { key: 'gmail', name: 'Gmail', icon: '📧', description: 'Email sync for deal context tracking', category: 'Email' },
-  { key: 'outlook', name: 'Outlook', icon: '📬', description: 'Email sync for deal context tracking', category: 'Email' },
 ];
 
 function OrgIntegrationsSection({ T }: { T: ThemeType }) {
-  const [statuses, setStatuses] = useState<Record<string, string>>({ stripe: 'connected', gmail: 'available', outlook: 'available' });
+  const [statuses, setStatuses] = useState<Record<string, string>>({});
   const [openForm, setOpenForm] = useState<IntegrationKey | null>(null);
   const [formValues, setFormValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<{ key: IntegrationKey; type: 'success' | 'error'; text: string } | null>(null);
-
-  const statusColor = (s: string) => s === 'connected' ? T.text.green : s === 'available' ? T.text.cyan : T.text.muted;
-  const statusLabel = (s: string) => s === 'connected' ? '● CONNECTED' : s === 'available' ? '○ AVAILABLE' : '○ NOT CONFIGURED';
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const handleConnect = async (def: IntegrationDef) => {
-    if (!def.apiPath || !def.credentialFields) return;
     setSaving(true);
     setMessage(null);
     try {
       const body: Record<string, string> = {};
-      def.credentialFields.forEach(f => { body[f.key] = formValues[f.key] || ''; });
+      def.fields.forEach(f => { body[f.key] = formValues[f.key] || ''; });
       await apiClient.post(def.apiPath, body);
       setStatuses(prev => ({ ...prev, [def.key]: 'connected' }));
       setOpenForm(null);
       setFormValues({});
-      setMessage({ key: def.key, type: 'success', text: `${def.name} connected successfully` });
+      setMessage({ type: 'success', text: `${def.name} connected successfully` });
       setTimeout(() => setMessage(null), 4000);
     } catch (err: any) {
-      setMessage({ key: def.key, type: 'error', text: err?.response?.data?.error || `Failed to connect ${def.name}` });
+      setMessage({ type: 'error', text: err?.response?.data?.error || `Failed to connect ${def.name}` });
     } finally {
       setSaving(false);
     }
   };
 
   const inputStyle: React.CSSProperties = {
-    width: '100%', fontSize: 10, padding: '5px 8px',
+    width: '100%', fontSize: 10, padding: '6px 10px',
     background: T.bg.panelAlt, border: `1px solid ${T.border.medium}`,
-    color: T.text.primary, outline: 'none', fontFamily: T.font.mono,
+    color: T.text.primary, outline: 'none', ...mono,
   };
 
   return (
     <div style={{ padding: 20 }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: T.text.primary, marginBottom: 6, fontFamily: T.font.mono }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: T.text.primary, letterSpacing: 1, marginBottom: 8, ...mono }}>
         🔌 ORGANIZATION INTEGRATIONS
       </div>
       <div style={{ fontSize: 10, color: T.text.secondary, marginBottom: 20 }}>
-        Connect third-party services at the organization level. Credentials are encrypted at rest.
+        Connect third-party services at the organization level. Credentials are AES-256 encrypted.
       </div>
 
+      {message && (
+        <div style={{
+          padding: '8px 12px', marginBottom: 16, fontSize: 10,
+          background: message.type === 'success' ? T.text.green + '11' : T.text.red + '11',
+          border: `1px solid ${message.type === 'success' ? T.text.green : T.text.red}`,
+          color: message.type === 'success' ? T.text.green : T.text.red,
+        }}>
+          {message.text}
+        </div>
+      )}
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
-        {INTEGRATION_DEFS.map((def) => {
+        {INTEGRATIONS.map(def => {
           const status = statuses[def.key] || 'not_configured';
           const isOpen = openForm === def.key;
-          const msg = message?.key === def.key ? message : null;
+
           return (
-            <div key={def.key} style={{ background: T.bg.panel, border: `1px solid ${isOpen ? T.text.amber + '88' : T.border.subtle}`, padding: 16 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div key={def.key} style={{ 
+              background: T.bg.panel, 
+              border: `1px solid ${isOpen ? T.text.amber : T.border.subtle}`, 
+              padding: 16 
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <span style={{ fontSize: 20 }}>{def.icon}</span>
                   <div>
                     <div style={{ fontSize: 11, fontWeight: 700, color: T.text.primary }}>{def.name}</div>
-                    <div style={{ fontSize: 9, color: T.text.muted }}>{def.category}</div>
+                    <div style={{ fontSize: 9, color: T.text.muted }}>{def.description}</div>
                   </div>
                 </div>
-                <span style={{ fontSize: 9, color: statusColor(status) }}>{statusLabel(status)}</span>
+                <span style={{ 
+                  fontSize: 9, 
+                  color: status === 'connected' ? T.text.green : T.text.muted,
+                  ...mono 
+                }}>
+                  {status === 'connected' ? '● CONNECTED' : '○ NOT CONFIGURED'}
+                </span>
               </div>
-              <div style={{ fontSize: 10, color: T.text.secondary, marginBottom: 12 }}>{def.description}</div>
 
-              {msg && (
-                <div style={{ fontSize: 9, padding: '4px 8px', marginBottom: 8, color: msg.type === 'success' ? T.text.green : T.text.red, background: (msg.type === 'success' ? T.text.green : T.text.red) + '11', border: `1px solid ${(msg.type === 'success' ? T.text.green : T.text.red)}44` }}>
-                  {msg.text}
-                </div>
-              )}
-
-              {isOpen && def.credentialFields && (
-                <div style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {def.credentialFields.map(f => (
-                    <div key={f.key}>
-                      <div style={{ fontSize: 9, color: T.text.secondary, marginBottom: 2, fontFamily: T.font.mono }}>{f.label}</div>
+              {isOpen && (
+                <div style={{ marginTop: 14, marginBottom: 14 }}>
+                  {def.fields.map(f => (
+                    <div key={f.key} style={{ marginBottom: 10 }}>
+                      <div style={{ fontSize: 9, color: T.text.secondary, marginBottom: 3, ...mono }}>{f.label}</div>
                       <input
                         type={f.secret ? 'password' : 'text'}
                         placeholder={f.placeholder}
@@ -823,17 +756,26 @@ function OrgIntegrationsSection({ T }: { T: ThemeType }) {
                       />
                     </div>
                   ))}
-                  <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
                     <button
                       onClick={() => handleConnect(def)}
                       disabled={saving}
-                      style={{ fontSize: 9, fontWeight: 700, padding: '5px 12px', background: T.text.amber, color: T.bg.terminal, border: 'none', cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}
+                      style={{
+                        padding: '6px 14px', fontSize: 9, fontWeight: 700,
+                        background: T.text.amber, color: T.bg.terminal, border: 'none',
+                        cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1,
+                        ...mono,
+                      }}
                     >
-                      {saving ? 'SAVING...' : 'SAVE CREDENTIALS'}
+                      {saving ? 'SAVING...' : 'SAVE'}
                     </button>
                     <button
                       onClick={() => { setOpenForm(null); setFormValues({}); }}
-                      style={{ fontSize: 9, padding: '5px 10px', background: 'transparent', color: T.text.muted, border: `1px solid ${T.border.medium}`, cursor: 'pointer' }}
+                      style={{
+                        padding: '6px 14px', fontSize: 9,
+                        background: 'transparent', color: T.text.muted, border: `1px solid ${T.border.medium}`,
+                        cursor: 'pointer', ...mono,
+                      }}
                     >
                       CANCEL
                     </button>
@@ -843,19 +785,21 @@ function OrgIntegrationsSection({ T }: { T: ThemeType }) {
 
               {!isOpen && (
                 <button
-                  onClick={() => { if (def.credentialFields) { setOpenForm(def.key); setFormValues({}); } }}
-                  style={{ width: '100%', fontSize: 10, fontWeight: 600, color: status === 'connected' ? T.text.muted : T.text.amber, background: 'transparent', border: `1px solid ${status === 'connected' ? T.text.muted : T.text.amber}44`, padding: '6px 12px', cursor: def.credentialFields ? 'pointer' : 'default' }}
+                  onClick={() => { setOpenForm(def.key); setFormValues({}); }}
+                  style={{
+                    width: '100%', marginTop: 10, padding: '8px 12px', fontSize: 10, fontWeight: 600,
+                    background: 'transparent',
+                    color: status === 'connected' ? T.text.muted : T.text.amber,
+                    border: `1px solid ${status === 'connected' ? T.text.muted : T.text.amber}44`,
+                    cursor: 'pointer', ...mono,
+                  }}
                 >
-                  {status === 'connected' ? 'RECONFIGURE' : def.credentialFields ? 'CONNECT' : 'MANAGED VIA STRIPE'}
+                  {status === 'connected' ? 'RECONFIGURE' : 'CONNECT'}
                 </button>
               )}
             </div>
           );
         })}
-      </div>
-
-      <div style={{ marginTop: 16, padding: '8px 12px', background: T.bg.panelAlt, border: `1px solid ${T.border.subtle}`, fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>
-        Credentials are AES-256 encrypted before storage. API keys are never exposed in logs.
       </div>
     </div>
   );
@@ -872,12 +816,16 @@ export default function F8AdminView({ T }: F8AdminViewProps) {
   const renderNavGroup = (groupId: string) => {
     const items = NAV_ITEMS.filter(item => item.group === groupId);
     const label = GROUP_LABELS[groupId];
+    
     return (
-      <div key={groupId} style={{ marginBottom: 10 }}>
-        <div style={{ fontSize: 8, color: T.text.muted, fontFamily: T.font.mono, padding: collapsed ? '6px 4px' : '6px 10px', letterSpacing: '0.5px' }}>
+      <div key={groupId} style={{ marginBottom: 12 }}>
+        <div style={{ 
+          fontSize: 8, color: T.text.muted, padding: collapsed ? '6px 4px' : '6px 10px', 
+          letterSpacing: 0.8, ...mono 
+        }}>
           {collapsed ? label.split(' ')[0] : label}
         </div>
-        {items.map((item) => {
+        {items.map(item => {
           const isActive = activeSection === item.key;
           return (
             <button
@@ -886,29 +834,29 @@ export default function F8AdminView({ T }: F8AdminViewProps) {
               title={collapsed ? item.label : undefined}
               style={{
                 width: '100%',
-                padding: collapsed ? '6px 4px' : '6px 8px',
-                marginBottom: 1,
+                padding: collapsed ? '8px 4px' : '8px 10px',
+                marginBottom: 2,
                 background: isActive ? T.bg.active : 'transparent',
                 border: 'none',
                 borderLeft: isActive ? `2px solid ${T.text.amber}` : '2px solid transparent',
                 cursor: 'pointer',
                 textAlign: 'left',
+                display: 'flex',
+                alignItems: 'center',
+                gap: collapsed ? 0 : 8,
               }}
-              onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = T.bg.hover; }}
-              onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: collapsed ? 0 : 6 }}>
-                <span style={{ fontSize: 11 }}>{item.icon}</span>
-                {!collapsed && (
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <span style={{ fontSize: 9, fontWeight: 600, color: isActive ? T.text.amber : T.text.primary, fontFamily: T.font.mono }}>{item.label}</span>
-                      {item.badge && <span style={{ fontSize: 7, fontWeight: 700, padding: '1px 3px', background: T.text.green + '22', color: T.text.green }}>{item.badge}</span>}
-                    </div>
-                    <div style={{ fontSize: 8, color: T.text.muted, fontFamily: T.font.mono, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.description}</div>
+              <span style={{ fontSize: 12, flexShrink: 0 }}>{item.icon}</span>
+              {!collapsed && (
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 9, fontWeight: 600, color: isActive ? T.text.amber : T.text.primary, ...mono }}>
+                    {item.label}
                   </div>
-                )}
-              </div>
+                  <div style={{ fontSize: 8, color: T.text.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {item.description}
+                  </div>
+                </div>
+              )}
             </button>
           );
         })}
@@ -918,54 +866,57 @@ export default function F8AdminView({ T }: F8AdminViewProps) {
 
   const renderContent = () => {
     switch (activeSection) {
-      case 'health': return <SystemHealthSection />;
-      case 'jobs': return <BackgroundJobsSection />;
-      case 'agents': return <AgentsPlatformSection />;
-      case 'users': return <UserManagementSection />;
-      case 'deals': return <DealOversightSection />;
-      case 'enrichment': return <EnrichmentStatusSection />;
-      case 'coverage': return <DataCoverageSection />;
-      case 'lifecycle': return <LifecycleMonitorSection T={T} />;
-      case 'learning': return <LearningSystemSection T={T} />;
-      case 'compsets': return <CompetitiveSetsSection T={T} />;
-      case 'marketdata': return <MarketDataSection T={T} />;
-      case 'team': return <TeamSection />;
-      case 'orgintegrations': return <OrgIntegrationsSection T={T} />;
-      case 'dataroom': return <DataRoomSection />;
-      case 'verification': return <VerificationSection />;
-      case 'dataops': return <DataManagementSection />;
-      default: return <SystemHealthSection />;
+      case 'health': return <SystemHealthSection T={T} />;
+      case 'jobs': return <BackgroundJobsSection T={T} />;
+      case 'agents': return <AIAgentsSection T={T} />;
+      case 'users': return <PlatformUsersSection T={T} />;
+      case 'deals': return <DealOversightSection T={T} />;
+      case 'coverage': return <DataCoverageSection T={T} />;
+      case 'integrations': return <OrgIntegrationsSection T={T} />;
+      default: return <SystemHealthSection T={T} />;
     }
   };
 
   return (
     <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+      {/* Sidebar */}
       <aside style={{
-        width: collapsed ? 44 : 170,
+        width: collapsed ? 44 : 180,
         background: T.bg.panel,
         borderRight: `1px solid ${T.border.subtle}`,
         display: 'flex',
         flexDirection: 'column',
-        overflowY: 'auto',
-        overflowX: 'hidden',
         flexShrink: 0,
         transition: 'width 0.15s',
       }}>
-        <button onClick={() => setCollapsed(!collapsed)} style={{ padding: '6px', background: 'transparent', border: 'none', borderBottom: `1px solid ${T.border.subtle}`, cursor: 'pointer', display: 'flex', justifyContent: collapsed ? 'center' : 'flex-end' }}>
+        <button
+          onClick={() => setCollapsed(!collapsed)}
+          style={{
+            padding: 8, background: 'transparent', border: 'none',
+            borderBottom: `1px solid ${T.border.subtle}`,
+            cursor: 'pointer', display: 'flex', justifyContent: collapsed ? 'center' : 'flex-end',
+          }}
+        >
           <span style={{ fontSize: 11, color: T.text.muted }}>{collapsed ? '→' : '←'}</span>
         </button>
-        <nav style={{ flex: 1, padding: collapsed ? '6px 2px' : '6px' }}>
+        
+        <nav style={{ flex: 1, padding: collapsed ? '8px 2px' : '8px 6px', overflowY: 'auto' }}>
           {renderNavGroup('platform')}
           {renderNavGroup('intel')}
-          {renderNavGroup('lifecycle')}
           {renderNavGroup('org')}
         </nav>
+
         {!collapsed && (
-          <div style={{ padding: '8px 10px', borderTop: `1px solid ${T.border.subtle}`, fontSize: 8, color: T.text.muted, fontFamily: T.font.mono }}>
-            F8 ADMIN v2.1
+          <div style={{ 
+            padding: '8px 10px', borderTop: `1px solid ${T.border.subtle}`, 
+            fontSize: 8, color: T.text.muted, ...mono 
+          }}>
+            F8 ADMIN v3.0
           </div>
         )}
       </aside>
+
+      {/* Main Content */}
       <main style={{ flex: 1, overflow: 'auto', background: T.bg.terminal }}>
         {renderContent()}
       </main>

@@ -1,5 +1,16 @@
+/**
+ * Settings Page - User Preferences & Configuration
+ * 
+ * All user-facing settings in one place with Bloomberg terminal styling.
+ * 
+ * Sections:
+ * - ACCOUNT: Profile, Subscription
+ * - PREFERENCES: Markets, Property Types, Intelligence, AI Model
+ * - DATA: Data Library, News Subscriptions
+ * - PLATFORM: Integrations, Notifications, Templates
+ */
+
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import { EmailSettings } from './settings/EmailSettings';
 import MarketsPreferencesPage from './settings/MarketsPreferencesPage';
 import PropertyTypesSettings from './settings/PropertyTypesSettings';
@@ -14,37 +25,72 @@ import { NewsConnectionsPage } from './settings/NewsConnectionsPage';
 import { apiClient } from '../services/api.client';
 import { BT } from '@/components/deal/bloomberg-ui';
 
-type SettingsTab = 'profile' | 'subscription' | 'modules' | 'integrations' | 'notifications' | 'markets' | 'property-types' | 'intelligence' | 'ai-model' | 'data-library' | 'skills' | 'templates' | 'news-connections';
+// ═══════════════════════════════════════════════════════════════════
+// TYPES & CONFIG
+// ═══════════════════════════════════════════════════════════════════
 
-const TIER_LABELS: Record<string, { label: string; textColor: string; bgColor: string }> = {
-  scout: { label: 'Scout', textColor: BT.text.secondary, bgColor: BT.bg.panelAlt },
-  operator: { label: 'Operator', textColor: BT.text.cyan, bgColor: BT.bg.active },
-  principal: { label: 'Principal', textColor: BT.text.cyan, bgColor: BT.bg.active },
-  institutional: { label: 'Institutional', textColor: BT.text.purple, bgColor: BT.bg.active },
-  basic: { label: 'Basic', textColor: BT.text.secondary, bgColor: BT.bg.panelAlt },
-  pro: { label: 'Pro', textColor: BT.text.cyan, bgColor: BT.bg.active },
-  enterprise: { label: 'Enterprise', textColor: BT.text.purple, bgColor: BT.bg.active },
-};
+type SettingsTab = 
+  | 'profile' | 'subscription' 
+  | 'markets' | 'property-types' | 'intelligence' | 'ai-model' | 'skills'
+  | 'data-library' | 'news-connections'
+  | 'integrations' | 'notifications' | 'templates';
 
-const VALID_TABS: SettingsTab[] = ['profile', 'subscription', 'modules', 'integrations', 'notifications', 'markets', 'property-types', 'intelligence', 'ai-model', 'data-library', 'skills', 'templates', 'news-connections'];
-
-function getInitialTab(): SettingsTab {
-  const params = new URLSearchParams(window.location.search);
-  const tab = params.get('tab');
-  if (tab && VALID_TABS.includes(tab as SettingsTab)) {
-    return tab as SettingsTab;
-  }
-  return 'profile';
+interface NavItem {
+  key: SettingsTab;
+  label: string;
+  icon: string;
+  description: string;
+  group: 'account' | 'preferences' | 'data' | 'platform';
 }
 
-export function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<SettingsTab>(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('connected') === 'true' || params.get('error') === 'auth_failed') {
-      return 'integrations';
-    }
-    return getInitialTab();
-  });
+const NAV_ITEMS: NavItem[] = [
+  // Account
+  { key: 'profile', label: 'PROFILE', icon: '👤', description: 'Name, email, phone', group: 'account' },
+  { key: 'subscription', label: 'SUBSCRIPTION', icon: '💳', description: 'Plan, billing, credits', group: 'account' },
+  
+  // Preferences
+  { key: 'markets', label: 'MARKETS', icon: '🗺️', description: 'Target markets', group: 'preferences' },
+  { key: 'property-types', label: 'PROPERTY TYPES', icon: '🏢', description: 'Asset classes', group: 'preferences' },
+  { key: 'intelligence', label: 'INTELLIGENCE', icon: '🔍', description: 'Data sources', group: 'preferences' },
+  { key: 'ai-model', label: 'AI MODEL', icon: '🧠', description: 'Model preferences', group: 'preferences' },
+  { key: 'skills', label: 'AI SKILLS', icon: '⚡', description: 'Skill settings', group: 'preferences' },
+  
+  // Data
+  { key: 'data-library', label: 'DATA LIBRARY', icon: '📚', description: 'Cloud storage, uploads', group: 'data' },
+  { key: 'news-connections', label: 'NEWS', icon: '📰', description: 'Newsletter sources', group: 'data' },
+  
+  // Platform
+  { key: 'integrations', label: 'INTEGRATIONS', icon: '🔗', description: 'Gmail, email sync', group: 'platform' },
+  { key: 'notifications', label: 'NOTIFICATIONS', icon: '🔔', description: 'Alerts, channels', group: 'platform' },
+  { key: 'templates', label: 'TEMPLATES', icon: '📋', description: 'Pro forma, reports', group: 'platform' },
+];
+
+const GROUP_LABELS: Record<string, string> = {
+  account: '👤 ACCOUNT',
+  preferences: '⚙️ PREFERENCES',
+  data: '📊 DATA',
+  platform: '🔌 PLATFORM',
+};
+
+const TIER_LABELS: Record<string, { label: string; color: string }> = {
+  scout: { label: 'Scout', color: BT.text.secondary },
+  operator: { label: 'Operator', color: BT.text.cyan },
+  principal: { label: 'Principal', color: BT.text.cyan },
+  institutional: { label: 'Institutional', color: BT.text.purple },
+  basic: { label: 'Basic', color: BT.text.secondary },
+  pro: { label: 'Pro', color: BT.text.cyan },
+  enterprise: { label: 'Enterprise', color: BT.text.purple },
+};
+
+const VALID_TABS: SettingsTab[] = NAV_ITEMS.map(n => n.key);
+
+const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono', 'SF Mono', Monaco, monospace" };
+
+// ═══════════════════════════════════════════════════════════════════
+// PROFILE SECTION (Built-in)
+// ═══════════════════════════════════════════════════════════════════
+
+function ProfileSection() {
   const [profileData, setProfileData] = useState({
     firstName: '',
     lastName: '',
@@ -52,18 +98,16 @@ export function SettingsPage() {
     phone: '',
     tier: 'scout',
   });
-  const [profileLoading, setProfileLoading] = useState(true);
-  const [profileSaving, setProfileSaving] = useState(false);
-  const [profileMessage, setProfileMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
-    if (activeTab === 'profile') {
-      loadProfile();
-    }
-  }, [activeTab]);
+    loadProfile();
+  }, []);
 
   const loadProfile = async () => {
-    setProfileLoading(true);
+    setLoading(true);
     try {
       const response = await apiClient.get('/api/v1/auth/me');
       const data = response.data;
@@ -76,6 +120,7 @@ export function SettingsPage() {
       });
     } catch (error) {
       console.error('Error loading profile:', error);
+      // Fallback to localStorage
       const storedUser = localStorage.getItem('jedi_user');
       if (storedUser) {
         try {
@@ -87,289 +132,355 @@ export function SettingsPage() {
             phone: '',
             tier: user.tier || 'scout',
           });
-        } catch { }
+        } catch {}
       }
     } finally {
-      setProfileLoading(false);
+      setLoading(false);
     }
   };
 
   const saveProfile = async () => {
-    setProfileSaving(true);
-    setProfileMessage(null);
+    setSaving(true);
+    setMessage(null);
     try {
       await apiClient.put('/api/v1/auth/profile', {
         firstName: profileData.firstName,
         lastName: profileData.lastName,
         phone: profileData.phone,
       });
+      
+      // Update localStorage
       const storedUser = localStorage.getItem('jedi_user');
       if (storedUser) {
         try {
           const user = JSON.parse(storedUser);
           user.name = `${profileData.firstName} ${profileData.lastName}`.trim();
           localStorage.setItem('jedi_user', JSON.stringify(user));
-        } catch { }
+        } catch {}
       }
-      setProfileMessage({ type: 'success', text: 'Profile saved successfully' });
-      setTimeout(() => setProfileMessage(null), 3000);
+      
+      setMessage({ type: 'success', text: 'Profile saved successfully' });
+      setTimeout(() => setMessage(null), 3000);
     } catch (error) {
       console.error('Error saving profile:', error);
-      setProfileMessage({ type: 'error', text: 'Failed to save profile' });
+      setMessage({ type: 'error', text: 'Failed to save profile' });
     } finally {
-      setProfileSaving(false);
+      setSaving(false);
     }
   };
 
   const tierInfo = TIER_LABELS[profileData.tier] || TIER_LABELS.scout;
 
-  const tabButtonStyle = (isActive: boolean): React.CSSProperties => ({
-    background: isActive ? BT.bg.active : 'transparent',
-    color: isActive ? BT.text.cyan : BT.text.secondary,
-    borderRadius: 0,
-    fontWeight: isActive ? 600 : 400,
-  });
+  const inputStyle: React.CSSProperties = {
+    width: '100%',
+    padding: '10px 12px',
+    fontSize: 12,
+    background: BT.bg.input,
+    border: `1px solid ${BT.border.medium}`,
+    color: BT.text.primary,
+    outline: 'none',
+    ...mono,
+  };
+
+  if (loading) {
+    return (
+      <div style={{ padding: 40, textAlign: 'center', color: BT.text.muted }}>
+        Loading profile...
+      </div>
+    );
+  }
 
   return (
-    <div className="p-6" style={{ background: BT.bg.terminal, minHeight: '100vh' }}>
-      <div className="mb-6">
-        <h1 className="text-sm font-bold mb-2" style={{ color: BT.text.primary, fontSize: 13, letterSpacing: 1, fontFamily: "'JetBrains Mono', monospace" }}>SETTINGS</h1>
-        <p style={{ color: BT.text.secondary }}>Manage your account and preferences</p>
+    <div style={{ padding: 24 }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: BT.text.primary, letterSpacing: 1, marginBottom: 24, ...mono }}>
+        👤 PROFILE SETTINGS
       </div>
 
-      <div className="grid grid-cols-3 gap-6">
-        <div className="space-y-2">
-          <button
-            onClick={() => setActiveTab('profile')}
-            className="w-full text-left px-4 py-3 font-medium"
-            style={tabButtonStyle(activeTab === 'profile')}
-          >
-            Profile
-          </button>
-          <button
-            onClick={() => setActiveTab('subscription')}
-            className="w-full text-left px-4 py-3"
-            style={tabButtonStyle(activeTab === 'subscription')}
-          >
-            Subscription
-          </button>
-          {/* AI Modules, Module Libraries, Strategy Builder removed — routes deprecated */}
-          <button
-            onClick={() => setActiveTab('markets')}
-            className="w-full text-left px-4 py-3"
-            style={tabButtonStyle(activeTab === 'markets')}
-          >
-            Markets & Coverage
-          </button>
-          <button
-            onClick={() => setActiveTab('property-types')}
-            className="w-full text-left px-4 py-3"
-            style={tabButtonStyle(activeTab === 'property-types')}
-          >
-            Property Types & Strategies
-          </button>
-          <button
-            onClick={() => setActiveTab('intelligence')}
-            className="w-full text-left px-4 py-3"
-            style={tabButtonStyle(activeTab === 'intelligence')}
-          >
-            Intelligence & Data
-          </button>
-          <button
-            onClick={() => setActiveTab('data-library')}
-            className="w-full text-left px-4 py-3"
-            style={tabButtonStyle(activeTab === 'data-library')}
-          >
-            Data Library
-          </button>
-          <button
-            onClick={() => setActiveTab('ai-model')}
-            className="w-full text-left px-4 py-3"
-            style={tabButtonStyle(activeTab === 'ai-model')}
-          >
-            AI Model
-          </button>
-          <button
-            onClick={() => setActiveTab('skills')}
-            className="w-full text-left px-4 py-3"
-            style={tabButtonStyle(activeTab === 'skills')}
-          >
-            AI Skills
-          </button>
-          <button
-            onClick={() => setActiveTab('integrations')}
-            className="w-full text-left px-4 py-3"
-            style={tabButtonStyle(activeTab === 'integrations')}
-          >
-            Integrations
-          </button>
-          <button
-            onClick={() => setActiveTab('news-connections')}
-            className="w-full text-left px-4 py-3"
-            style={tabButtonStyle(activeTab === 'news-connections')}
-          >
-            News Subscriptions
-          </button>
-          <button
-            onClick={() => setActiveTab('notifications')}
-            className="w-full text-left px-4 py-3"
-            style={tabButtonStyle(activeTab === 'notifications')}
-          >
-            Notifications
-          </button>
-          <button
-            onClick={() => setActiveTab('templates')}
-            className="w-full text-left px-4 py-3"
-            style={tabButtonStyle(activeTab === 'templates')}
-          >
-            Templates
-          </button>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+        <div>
+          <label style={{ display: 'block', fontSize: 10, color: BT.text.secondary, marginBottom: 6, ...mono }}>
+            FIRST NAME
+          </label>
+          <input
+            type="text"
+            value={profileData.firstName}
+            onChange={(e) => setProfileData({ ...profileData, firstName: e.target.value })}
+            style={inputStyle}
+          />
         </div>
-
-        <div className="col-span-2">
-          {activeTab === 'profile' && (
-            <div className="p-6" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
-              <h2 className="text-sm font-semibold mb-6" style={{ color: BT.text.primary, fontSize: 11, letterSpacing: 0.8, fontFamily: "'JetBrains Mono', monospace" }}>PROFILE SETTINGS</h2>
-
-              {profileLoading ? (
-                <div className="flex items-center justify-center py-12">
-                  <div className="h-8 w-8" style={{ border: `2px solid ${BT.text.cyan}`, borderTop: '2px solid transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium mb-2" style={{ color: BT.text.secondary }}>First Name</label>
-                      <input
-                        type="text"
-                        value={profileData.firstName}
-                        onChange={(e) => setProfileData({ ...profileData, firstName: e.target.value })}
-                        className="w-full px-4 py-2"
-                        style={{ background: BT.bg.input, border: `1px solid ${BT.border.medium}`, borderRadius: 0, color: BT.text.primary, outline: 'none' }}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-2" style={{ color: BT.text.secondary }}>Last Name</label>
-                      <input
-                        type="text"
-                        value={profileData.lastName}
-                        onChange={(e) => setProfileData({ ...profileData, lastName: e.target.value })}
-                        className="w-full px-4 py-2"
-                        style={{ background: BT.bg.input, border: `1px solid ${BT.border.medium}`, borderRadius: 0, color: BT.text.primary, outline: 'none' }}
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium mb-2" style={{ color: BT.text.secondary }}>Email</label>
-                    <input
-                      type="email"
-                      value={profileData.email}
-                      disabled
-                      className="w-full px-4 py-2 cursor-not-allowed"
-                      style={{ background: BT.bg.panelAlt, border: `1px solid ${BT.border.subtle}`, borderRadius: 0, color: BT.text.muted }}
-                    />
-                    <p className="text-xs mt-1" style={{ color: BT.text.muted }}>Contact support to change your email address</p>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium mb-2" style={{ color: BT.text.secondary }}>Phone</label>
-                    <input
-                      type="tel"
-                      value={profileData.phone}
-                      onChange={(e) => setProfileData({ ...profileData, phone: e.target.value })}
-                      placeholder="+1 (555) 123-4567"
-                      className="w-full px-4 py-2"
-                      style={{ background: BT.bg.input, border: `1px solid ${BT.border.medium}`, borderRadius: 0, color: BT.text.primary, outline: 'none' }}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium mb-2" style={{ color: BT.text.secondary }}>Subscription Tier</label>
-                    <div className="flex items-center gap-3">
-                      <span className="px-4 py-2 font-semibold" style={{ background: tierInfo.bgColor, color: tierInfo.textColor, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
-                        {tierInfo.label}
-                      </span>
-                      <a href="/pricing" className="text-sm" style={{ color: BT.text.cyan }}>
-                        Change Plan
-                      </a>
-                    </div>
-                  </div>
-
-                  {profileMessage && (
-                    <div className="px-4 py-3 text-sm" style={{
-                      borderRadius: 0,
-                      background: BT.bg.panelAlt,
-                      color: profileMessage.type === 'success' ? BT.text.green : BT.text.red,
-                      border: `1px solid ${profileMessage.type === 'success' ? BT.text.green : BT.text.red}`,
-                    }}>
-                      {profileMessage.text}
-                    </div>
-                  )}
-
-                  <div className="pt-4">
-                    <button
-                      onClick={saveProfile}
-                      disabled={profileSaving}
-                      className="px-6 py-2 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                      style={{ background: BT.text.cyan, color: BT.bg.terminal, borderRadius: 0 }}
-                    >
-                      {profileSaving ? (
-                        <>
-                          <div className="h-4 w-4" style={{ border: `2px solid ${BT.bg.terminal}`, borderTop: '2px solid transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
-                          Saving...
-                        </>
-                      ) : (
-                        'Save Changes'
-                      )}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {activeTab === 'integrations' && <EmailSettings />}
-
-          {activeTab === 'news-connections' && <NewsConnectionsPage />}
-
-          {activeTab === 'subscription' && <SubscriptionSettings />}
-
-          {activeTab === 'notifications' && <NotificationSettings />}
-
-          {activeTab === 'markets' && (
-            <div style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
-              <MarketsPreferencesPage />
-            </div>
-          )}
-
-          {activeTab === 'property-types' && (
-            <div className="h-[calc(100vh-200px)]" style={{ background: BT.bg.panel, borderRadius: 0, border: `1px solid ${BT.border.subtle}` }}>
-              <PropertyTypesSettings />
-            </div>
-          )}
-
-          {activeTab === 'intelligence' && (
-            <IntelligenceSettings />
-          )}
-
-          {activeTab === 'ai-model' && (
-            <AIModelSettings />
-          )}
-
-          {activeTab === 'data-library' && (
-            <DataLibrarySettings />
-          )}
-
-          {activeTab === 'skills' && (
-            <SkillsSettingsPage />
-          )}
-
-          {activeTab === 'templates' && (
-            <TemplatesSettings />
-          )}
+        <div>
+          <label style={{ display: 'block', fontSize: 10, color: BT.text.secondary, marginBottom: 6, ...mono }}>
+            LAST NAME
+          </label>
+          <input
+            type="text"
+            value={profileData.lastName}
+            onChange={(e) => setProfileData({ ...profileData, lastName: e.target.value })}
+            style={inputStyle}
+          />
         </div>
       </div>
+
+      <div style={{ marginBottom: 20 }}>
+        <label style={{ display: 'block', fontSize: 10, color: BT.text.secondary, marginBottom: 6, ...mono }}>
+          EMAIL
+        </label>
+        <input
+          type="email"
+          value={profileData.email}
+          disabled
+          style={{ ...inputStyle, background: BT.bg.panelAlt, color: BT.text.muted, cursor: 'not-allowed' }}
+        />
+        <div style={{ fontSize: 9, color: BT.text.muted, marginTop: 4 }}>
+          Contact support to change your email address
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 20 }}>
+        <label style={{ display: 'block', fontSize: 10, color: BT.text.secondary, marginBottom: 6, ...mono }}>
+          PHONE
+        </label>
+        <input
+          type="tel"
+          value={profileData.phone}
+          onChange={(e) => setProfileData({ ...profileData, phone: e.target.value })}
+          placeholder="+1 (555) 123-4567"
+          style={inputStyle}
+        />
+      </div>
+
+      <div style={{ marginBottom: 24 }}>
+        <label style={{ display: 'block', fontSize: 10, color: BT.text.secondary, marginBottom: 6, ...mono }}>
+          SUBSCRIPTION TIER
+        </label>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{
+            padding: '8px 16px',
+            fontSize: 11,
+            fontWeight: 700,
+            background: BT.bg.panelAlt,
+            border: `1px solid ${BT.border.subtle}`,
+            color: tierInfo.color,
+            ...mono,
+          }}>
+            {tierInfo.label}
+          </span>
+          <a href="/pricing" style={{ fontSize: 11, color: BT.text.cyan, textDecoration: 'none' }}>
+            Change Plan →
+          </a>
+        </div>
+      </div>
+
+      {message && (
+        <div style={{
+          padding: '10px 14px',
+          marginBottom: 20,
+          fontSize: 11,
+          background: message.type === 'success' ? BT.text.green + '11' : BT.text.red + '11',
+          border: `1px solid ${message.type === 'success' ? BT.text.green : BT.text.red}`,
+          color: message.type === 'success' ? BT.text.green : BT.text.red,
+        }}>
+          {message.text}
+        </div>
+      )}
+
+      <button
+        onClick={saveProfile}
+        disabled={saving}
+        style={{
+          padding: '10px 24px',
+          fontSize: 11,
+          fontWeight: 700,
+          background: BT.text.cyan,
+          border: 'none',
+          color: BT.bg.terminal,
+          cursor: saving ? 'not-allowed' : 'pointer',
+          opacity: saving ? 0.6 : 1,
+          ...mono,
+        }}
+      >
+        {saving ? 'SAVING...' : 'SAVE CHANGES'}
+      </button>
     </div>
   );
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// MAIN COMPONENT
+// ═══════════════════════════════════════════════════════════════════
+
+function getInitialTab(): SettingsTab {
+  const params = new URLSearchParams(window.location.search);
+  const tab = params.get('tab');
+  if (tab && VALID_TABS.includes(tab as SettingsTab)) {
+    return tab as SettingsTab;
+  }
+  // Handle OAuth callback
+  if (params.get('connected') === 'true' || params.get('error') === 'auth_failed') {
+    return 'integrations';
+  }
+  return 'profile';
+}
+
+export function SettingsPage() {
+  const [activeTab, setActiveTab] = useState<SettingsTab>(getInitialTab);
+
+  const renderNavGroup = (groupId: string) => {
+    const items = NAV_ITEMS.filter(item => item.group === groupId);
+    const label = GROUP_LABELS[groupId];
+
+    return (
+      <div key={groupId} style={{ marginBottom: 16 }}>
+        <div style={{ 
+          fontSize: 9, 
+          color: BT.text.muted, 
+          padding: '8px 12px', 
+          letterSpacing: 0.8, 
+          ...mono 
+        }}>
+          {label}
+        </div>
+        {items.map(item => {
+          const isActive = activeTab === item.key;
+          return (
+            <button
+              key={item.key}
+              onClick={() => setActiveTab(item.key)}
+              style={{
+                width: '100%',
+                padding: '10px 12px',
+                marginBottom: 2,
+                background: isActive ? BT.bg.active : 'transparent',
+                border: 'none',
+                borderLeft: isActive ? `2px solid ${BT.text.cyan}` : '2px solid transparent',
+                cursor: 'pointer',
+                textAlign: 'left',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+              }}
+            >
+              <span style={{ fontSize: 14 }}>{item.icon}</span>
+              <div>
+                <div style={{ 
+                  fontSize: 10, 
+                  fontWeight: 600, 
+                  color: isActive ? BT.text.cyan : BT.text.primary,
+                  ...mono 
+                }}>
+                  {item.label}
+                </div>
+                <div style={{ fontSize: 9, color: BT.text.muted }}>
+                  {item.description}
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const renderContent = () => {
+    switch (activeTab) {
+      case 'profile':
+        return <ProfileSection />;
+      case 'subscription':
+        return <SubscriptionSettings />;
+      case 'markets':
+        return (
+          <div style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, height: '100%' }}>
+            <MarketsPreferencesPage />
+          </div>
+        );
+      case 'property-types':
+        return (
+          <div style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, height: '100%' }}>
+            <PropertyTypesSettings />
+          </div>
+        );
+      case 'intelligence':
+        return <IntelligenceSettings />;
+      case 'ai-model':
+        return <AIModelSettings />;
+      case 'skills':
+        return <SkillsSettingsPage />;
+      case 'data-library':
+        return <DataLibrarySettings />;
+      case 'news-connections':
+        return <NewsConnectionsPage />;
+      case 'integrations':
+        return <EmailSettings />;
+      case 'notifications':
+        return <NotificationSettings />;
+      case 'templates':
+        return <TemplatesSettings />;
+      default:
+        return <ProfileSection />;
+    }
+  };
+
+  return (
+    <div style={{ 
+      display: 'flex', 
+      height: '100vh', 
+      background: BT.bg.terminal,
+    }}>
+      {/* Sidebar */}
+      <aside style={{
+        width: 220,
+        background: BT.bg.panel,
+        borderRight: `1px solid ${BT.border.subtle}`,
+        display: 'flex',
+        flexDirection: 'column',
+        flexShrink: 0,
+      }}>
+        {/* Header */}
+        <div style={{ 
+          padding: '16px 12px', 
+          borderBottom: `1px solid ${BT.border.subtle}`,
+        }}>
+          <h1 style={{ 
+            fontSize: 12, 
+            fontWeight: 700, 
+            color: BT.text.primary, 
+            letterSpacing: 1,
+            margin: 0,
+            ...mono 
+          }}>
+            SETTINGS
+          </h1>
+          <p style={{ fontSize: 10, color: BT.text.secondary, margin: '4px 0 0 0' }}>
+            Manage your account
+          </p>
+        </div>
+
+        {/* Navigation */}
+        <nav style={{ flex: 1, padding: '8px 6px', overflowY: 'auto' }}>
+          {renderNavGroup('account')}
+          {renderNavGroup('preferences')}
+          {renderNavGroup('data')}
+          {renderNavGroup('platform')}
+        </nav>
+      </aside>
+
+      {/* Main Content */}
+      <main style={{ 
+        flex: 1, 
+        overflow: 'auto',
+        background: BT.bg.terminal,
+      }}>
+        <div style={{ 
+          background: BT.bg.panel, 
+          border: `1px solid ${BT.border.subtle}`,
+          margin: 20,
+          minHeight: 'calc(100% - 40px)',
+        }}>
+          {renderContent()}
+        </div>
+      </main>
+    </div>
+  );
+}
+
+export default SettingsPage;
