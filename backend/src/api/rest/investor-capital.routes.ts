@@ -7,6 +7,7 @@ import { Router, Response } from 'express';
 import { query } from '../../database/connection';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { logger } from '../../utils/logger';
+import { capitalStructureService } from '../../services/capital-structure.service';
 
 const router = Router();
 
@@ -653,6 +654,101 @@ router.get('/deals/:dealId/ledger', requireAuth, async (req: AuthenticatedReques
 // DEAL CAPITAL SUMMARY
 // ═══════════════════════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════════════════════
+// WATERFALL CALCULATION (uses capital-structure.service)
+// ═══════════════════════════════════════════════════════════════════════════
+
+router.post('/deals/:dealId/waterfall/calculate', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    if (!(await ownsDeal(req.params.dealId, req.user!.userId)))
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+
+    const { exit_proceeds, hold_years = 5 } = req.body;
+    if (!exit_proceeds) return res.status(400).json({ success: false, error: 'exit_proceeds required' });
+
+    // Get waterfall config
+    const wfRes = await query('SELECT * FROM deal_waterfalls WHERE deal_id=$1', [req.params.dealId]);
+    const tiersRes = wfRes.rows.length 
+      ? await query('SELECT * FROM waterfall_tiers WHERE waterfall_id=$1 ORDER BY tier_order', [wfRes.rows[0].id])
+      : { rows: [] };
+
+    // Get investments to calculate LP/GP capital
+    const invRes = await query(
+      `SELECT class, COALESCE(SUM(funded_amount),0) AS total FROM deal_investments WHERE deal_id=$1 GROUP BY class`,
+      [req.params.dealId]
+    );
+    const lpCapital = invRes.rows
+      .filter((r: any) => r.class !== 'gp' && r.class !== 'promote')
+      .reduce((sum: number, r: any) => sum + Number(r.total), 0);
+    const gpCapital = invRes.rows
+      .filter((r: any) => r.class === 'gp' || r.class === 'promote')
+      .reduce((sum: number, r: any) => sum + Number(r.total), 0);
+
+    // Get operating distributions for pref calculation
+    const distRes = await query(
+      `SELECT COALESCE(SUM(total_amount),0) AS total FROM distributions WHERE deal_id=$1 AND distribution_type='operating' AND status='completed'`,
+      [req.params.dealId]
+    );
+    const totalOperatingDist = Number(distRes.rows[0]?.total) || 0;
+    const avgAnnualCashFlow = totalOperatingDist / hold_years;
+    const annualCashFlows = Array(hold_years).fill(avgAnnualCashFlow);
+
+    // Build waterfall config for capital structure service
+    const wfConfig = wfRes.rows[0] || { pref_rate: 0.08, catchup_pct: 1.0, clawback: false };
+    const tiers = tiersRes.rows.length ? tiersRes.rows : [
+      { tier_order: 1, irr_hurdle_high: 0.12, lp_pct: 80, gp_pct: 20 },
+      { tier_order: 2, irr_hurdle_low: 0.12, irr_hurdle_high: 0.18, lp_pct: 70, gp_pct: 30 },
+      { tier_order: 3, irr_hurdle_low: 0.18, lp_pct: 60, gp_pct: 40 },
+    ];
+
+    const totalEquity = lpCapital + gpCapital;
+    const config = {
+      lpCapital,
+      gpCapital,
+      totalEquity,
+      lpPercentage: totalEquity > 0 ? (lpCapital / totalEquity) * 100 : 80,
+      gpPercentage: totalEquity > 0 ? (gpCapital / totalEquity) * 100 : 20,
+      preferredReturn: Number(wfConfig.pref_rate) * 100 || 8,
+      tiers: tiers.map((t: any) => ({
+        id: `tier-${t.tier_order}`,
+        name: t.tier_name || `Tier ${t.tier_order}`,
+        hurdleRate: t.irr_hurdle_high ? Number(t.irr_hurdle_high) * 100 : 0,
+        gpSplit: Number(t.gp_pct) / 100,
+        lpSplit: Number(t.lp_pct) / 100,
+      })),
+      catchUpProvision: Number(wfConfig.catchup_pct) > 0,
+      catchUpPercentage: Number(wfConfig.catchup_pct) * 100 || 100,
+      clawbackProvision: wfConfig.clawback || false,
+    };
+
+    // Calculate waterfall
+    const result = capitalStructureService.calculateWaterfall(config, exit_proceeds, hold_years, annualCashFlows);
+
+    res.json({
+      success: true,
+      waterfall: {
+        config: {
+          lpCapital,
+          gpCapital,
+          totalEquity,
+          prefRate: wfConfig.pref_rate,
+          tiers: tiers.map((t: any) => ({ order: t.tier_order, lpPct: t.lp_pct, gpPct: t.gp_pct })),
+        },
+        result,
+        exitProceeds: exit_proceeds,
+        holdYears: hold_years,
+      },
+    });
+  } catch (err) {
+    logger.error('POST waterfall/calculate', err);
+    res.status(500).json({ success: false, error: 'Failed to calculate waterfall' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DEAL CAPITAL SUMMARY
+// ═══════════════════════════════════════════════════════════════════════════
+
 router.get('/deals/:dealId/summary', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     if (!(await ownsDeal(req.params.dealId, req.user!.userId)))
@@ -687,6 +783,86 @@ router.get('/deals/:dealId/summary', requireAuth, async (req: AuthenticatedReque
   } catch (err) {
     logger.error('GET capital summary', err);
     res.status(500).json({ success: false, error: 'Failed to fetch summary' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// INVESTOR COMMUNICATIONS
+// ═══════════════════════════════════════════════════════════════════════════
+
+router.get('/deals/:dealId/communications', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    if (!(await ownsDeal(req.params.dealId, req.user!.userId)))
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    const { comm_type, status, limit: lim = 50, offset: off = 0 } = req.query;
+    const conditions = ['deal_id=$1'];
+    const params: unknown[] = [req.params.dealId];
+    if (comm_type) { params.push(comm_type); conditions.push(`comm_type=$${params.length}`); }
+    if (status)    { params.push(status);    conditions.push(`status=$${params.length}`); }
+    params.push(Number(lim) || 50);
+    params.push(Number(off) || 0);
+    const r = await query(
+      `SELECT ic.*, i.name AS investor_name
+         FROM investor_communications ic
+         LEFT JOIN investors i ON i.id=ic.investor_id
+        WHERE ${conditions.join(' AND ')}
+        ORDER BY ic.created_at DESC
+        LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params,
+    );
+    res.json({ success: true, communications: r.rows });
+  } catch (err) {
+    logger.error('GET communications', err);
+    res.status(500).json({ success: false, error: 'Failed to fetch communications' });
+  }
+});
+
+router.post('/deals/:dealId/communications', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    if (!(await ownsDeal(req.params.dealId, req.user!.userId)))
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    const { investor_id, comm_type, subject, body, delivery_method = 'email', attachments } = req.body;
+    if (!comm_type || !subject) return res.status(400).json({ success: false, error: 'comm_type and subject required' });
+    const r = await query(
+      `INSERT INTO investor_communications (deal_id,investor_id,comm_type,subject,body,delivery_method,attachments,created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [req.params.dealId, investor_id ?? null, comm_type, subject, body ?? null, delivery_method, attachments ? JSON.stringify(attachments) : null, req.user!.userId],
+    );
+    res.status(201).json({ success: true, communication: r.rows[0] });
+  } catch (err) {
+    logger.error('POST communications', err);
+    res.status(500).json({ success: false, error: 'Failed to create communication' });
+  }
+});
+
+router.post('/deals/:dealId/communications/:commId/send', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    if (!(await ownsDeal(req.params.dealId, req.user!.userId)))
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    const r = await query(
+      `UPDATE investor_communications SET status='sent',sent_at=NOW() WHERE id=$1 AND deal_id=$2 AND status='draft' RETURNING *`,
+      [req.params.commId, req.params.dealId],
+    );
+    if (!r.rows.length) return res.status(400).json({ success: false, error: 'Not in draft status or not found' });
+    // TODO: Queue actual email delivery here
+    res.json({ success: true, communication: r.rows[0] });
+  } catch (err) {
+    logger.error('POST communications/send', err);
+    res.status(500).json({ success: false, error: 'Failed to send' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MATERIALIZED VIEW REFRESH (admin/cron)
+// ═══════════════════════════════════════════════════════════════════════════
+
+router.post('/admin/refresh-summaries', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    await query('SELECT refresh_capital_summaries()');
+    res.json({ success: true, message: 'Materialized views refreshed' });
+  } catch (err) {
+    logger.error('POST refresh-summaries', err);
+    res.status(500).json({ success: false, error: 'Failed to refresh views' });
   }
 });
 
