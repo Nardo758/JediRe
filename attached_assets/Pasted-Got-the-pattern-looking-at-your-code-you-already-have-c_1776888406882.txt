@@ -1,0 +1,33 @@
+Got the pattern — looking at your code, you already have:
+
+creditService that meters every operation in flat user-visible "credits" with monthly inclusions + overage pricing per tier (Scout $0.25, Operator $0.15, Principal $0.10, Institutional 0)
+Stripe webhooks + stripe-replit-sync for actually charging the overage
+A clean separation between "what the upstream costs us" vs "what we charge the user"
+So you want news API integrations to plug into that same meter — JediRe pays Guardian/NYT/NewsAPI nothing or pennies per call, the user spends N credits per fetch, the difference is your margin.
+
+Here's how I'd structure it to match the existing pattern:
+
+1. New news-providers service layer — one adapter per provider (guardian.ts, nyt.ts, newsapi.ts, etc.) that all implement a common NewsProvider interface (searchHeadlines(query, opts), getArticle(id), etc.). Same shape as services/integrations/plaid.service.ts etc.
+
+2. Credit cost map — extend creditService with operation costs:
+
+news.search → 1 credit per call
+news.full_article → 3 credits (Guardian gives full body)
+news.bulk_brief → 5 credits (multi-source morning brief)
+These get charged via the existing chargeCredits(userId, op) flow you already have, so overage billing is automatic.
+
+3. Provider keys held server-side — your GUARDIAN_API_KEY, NYT_API_KEY go in environment secrets. User never sees them, never pays the upstream directly. Pure markup model.
+
+4. New /api/v1/news/providers routes — POST /search, GET /article/:providerId/:articleId, all gated by requireAuth + the credit charge.
+
+5. Surface in the existing News tab — alongside RSS feeds and forwarded newsletters, add a "Premium APIs" section that just works without any user setup (because you provide the keys and meter the calls).
+
+6. Optional: per-provider usage tracking — log every upstream call with cost + revenue so you can see margin per provider in admin.
+
+Effort: ~4–6 hours for an MVP with 2–3 providers wired up (Guardian, NYT, and one paid provider like NewsAPI). Each additional provider after that is ~30 min.
+
+To proceed, I just need from you:
+
+Which providers to start with? My pick: Guardian (free, full content, no risk), NYT (free, headlines, well-known brand), and either NewsAPI ($449/mo for commercial) or hold the paid one for now.
+Roughly what credit cost feels right per news operation? I suggested 1/3/5 above — happy to adjust.
+Want me to file this as a proper task so we plan it cleanly, or just kick it off in build mode now?
