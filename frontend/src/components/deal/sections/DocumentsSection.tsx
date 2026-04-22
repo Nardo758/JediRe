@@ -89,7 +89,9 @@ export function DocumentsSection({ dealId }: DocumentsSectionProps) {
     Array.from(selectedFiles).forEach(f => fd.append('files', f));
     fd.append('category', selectedCategory !== 'All' ? selectedCategory : 'Other');
     try {
-      await api.post(`/deals/${dealId}/files`, fd);
+      await api.post(`/deals/${dealId}/files`, fd, {
+        headers: { 'Content-Type': undefined as any },
+      });
       await loadFiles();
     } catch (err: any) {
       setUploadError(err?.response?.data?.message || 'Upload failed');
