@@ -51,6 +51,13 @@ export interface DealFile {
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
+  // Auto-extraction (Task #320)
+  extraction_status?: 'queued' | 'running' | 'done' | 'failed' | 'skipped';
+  extraction_skill?: string | null;
+  extraction_result?: Record<string, any> | null;
+  extraction_error?: string | null;
+  extraction_started_at?: string | null;
+  extraction_completed_at?: string | null;
 }
 
 export interface StorageAnalytics {
@@ -116,6 +123,37 @@ export const DocumentsFilesSection: React.FC<DocumentsFilesSectionProps> = ({ de
   useEffect(() => {
     loadData();
   }, [deal.id, selectedCategory, selectedStatus, searchQuery, currentFolder]);
+
+  // Poll for live extraction progress while any file is queued/running (Task #320)
+  useEffect(() => {
+    const inFlight = files.filter(
+      (f) => f.extraction_status === 'queued' || f.extraction_status === 'running'
+    );
+    if (inFlight.length === 0) return;
+
+    const timer = setInterval(async () => {
+      try {
+        const updates = await Promise.all(
+          inFlight.map((f) =>
+            axios
+              .get(`/api/v1/deals/${deal.id}/files/${f.id}/extraction`)
+              .then((r) => r.data?.extraction)
+              .catch(() => null)
+          )
+        );
+        setFiles((prev) =>
+          prev.map((f) => {
+            const u = updates.find((x) => x && x.id === f.id);
+            return u ? { ...f, ...u } : f;
+          })
+        );
+      } catch {
+        /* ignore polling errors */
+      }
+    }, 3000);
+
+    return () => clearInterval(timer);
+  }, [files, deal.id]);
 
   const loadData = async () => {
     try {

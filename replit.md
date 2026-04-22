@@ -10,6 +10,9 @@ Preferred communication style: Simple, everyday language.
 
 ## System Architecture
 
+### Recent Changes
+- **Auto-extract on upload (2026-04-22, Task #320):** Documents uploaded via `POST /api/v1/deals/:dealId/files` now trigger background extraction automatically. Migration `20260422_deal_files_extraction_status.sql` adds `extraction_status` (queued/running/done/failed/skipped), `extraction_skill`, `extraction_result`, `extraction_error`, `extraction_started_at`, `extraction_completed_at` columns to `deal_files`. New service `backend/src/services/document-extraction/auto-extract-on-upload.ts` maps file category → skill (`extract_document` for financial/inspections/etc., `review_contract` for legal, `analyze_appraisal` for appraisals, `parse_environmental_report` for environmental), invokes `skillRegistry.execute`, and persists status/result. Image and zip uploads are auto-skipped. New polling endpoint `GET /api/v1/deals/:dealId/files/:fileId/extraction`. Frontend `DocumentsFilesSection` polls in-flight files every 3s; ListView gains an "Extraction" column and GridView a status badge (queued/extracting/extracted/failed/skipped) with tooltips for skill or error.
+
 ### Core Platform
 
 JEDI RE employs a lightweight, map-agnostic architecture using Node.js/TypeScript with Express, GraphQL, and WebSockets for the backend, and React with Mapbox for the frontend. PostgreSQL is used for data storage, leveraging both raw SQL and Drizzle ORM. Python is integrated via a TypeScript-to-Python bridge for geospatial processing (GeoPandas, PostGIS) and zoning code processing.

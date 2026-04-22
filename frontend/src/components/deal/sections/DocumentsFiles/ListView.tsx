@@ -7,6 +7,32 @@ import React, { useState } from 'react';
 import { DealFile } from '../DocumentsFilesSection';
 import { formatFileSize, getFileIcon, formatDate } from './utils';
 
+const ExtractionBadge: React.FC<{ file: DealFile }> = ({ file }) => {
+  if (!file.extraction_status) return <span style={{ color: '#9ca3af' }}>—</span>;
+  const status = file.extraction_status;
+  const labels: Record<string, string> = {
+    queued: 'Queued',
+    running: 'Extracting…',
+    done: 'Extracted',
+    failed: 'Failed',
+    skipped: 'Skipped',
+  };
+  const tooltip =
+    status === 'failed'
+      ? file.extraction_error || 'Extraction failed'
+      : status === 'done' && file.extraction_skill
+      ? `via ${file.extraction_skill}`
+      : status === 'running' && file.extraction_skill
+      ? `running ${file.extraction_skill}`
+      : labels[status];
+  return (
+    <span className={`ext-badge ext-${status}`} title={tooltip}>
+      {status === 'running' && <span className="ext-spinner" />}
+      {labels[status]}
+    </span>
+  );
+};
+
 interface ListViewProps {
   files: DealFile[];
   onDelete: (fileId: string) => void;
@@ -117,6 +143,7 @@ export const ListView: React.FC<ListViewProps> = ({
               Modified {sortBy === 'date' && (sortDirection === 'asc' ? '▲' : '▼')}
             </th>
             <th className="version-col">Version</th>
+            <th className="extract-col">Extraction</th>
             <th className="actions-col">Actions</th>
           </tr>
         </thead>
@@ -146,6 +173,9 @@ export const ListView: React.FC<ListViewProps> = ({
               <td className="date-col">{formatDate(file.created_at)}</td>
               <td className="version-col">
                 {file.version > 1 ? `v${file.version}` : '—'}
+              </td>
+              <td className="extract-col">
+                <ExtractionBadge file={file} />
               </td>
               <td className="actions-col">
                 <button onClick={() => onDownload(file)} className="action-btn" title="Download">
@@ -330,6 +360,59 @@ export const ListView: React.FC<ListViewProps> = ({
 
         .action-btn.delete:hover {
           background: #fee2e2;
+        }
+
+        .extract-col {
+          width: 130px;
+        }
+
+        .ext-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 3px 9px;
+          border-radius: 10px;
+          font-size: 11px;
+          font-weight: 600;
+          text-transform: capitalize;
+          border: 1px solid transparent;
+        }
+        .ext-queued {
+          background: #f3f4f6;
+          color: #4b5563;
+          border-color: #e5e7eb;
+        }
+        .ext-running {
+          background: #eff6ff;
+          color: #1d4ed8;
+          border-color: #bfdbfe;
+        }
+        .ext-done {
+          background: #d1fae5;
+          color: #065f46;
+          border-color: #a7f3d0;
+        }
+        .ext-failed {
+          background: #fee2e2;
+          color: #991b1b;
+          border-color: #fecaca;
+        }
+        .ext-skipped {
+          background: #f5f5f4;
+          color: #78716c;
+          border-color: #e7e5e4;
+        }
+        .ext-spinner {
+          width: 8px;
+          height: 8px;
+          border: 2px solid #1d4ed8;
+          border-top-color: transparent;
+          border-radius: 50%;
+          animation: ext-spin 0.8s linear infinite;
+          display: inline-block;
+        }
+        @keyframes ext-spin {
+          to { transform: rotate(360deg); }
         }
       `}</style>
     </div>

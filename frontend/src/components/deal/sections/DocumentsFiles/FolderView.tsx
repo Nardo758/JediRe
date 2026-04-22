@@ -327,6 +327,45 @@ export const FolderView: React.FC<FolderViewProps> = ({
                       {formatFileSize(file.file_size)} · {formatDate(file.created_at)}
                     </div>
                   </div>
+                  {file.extraction_status && (() => {
+                    const palette: Record<string, { fg: string; bg: string }> = {
+                      queued:   { fg: '#8B95A5', bg: '#1E2538' },
+                      running:  { fg: '#00BCD4', bg: '#0F2A33' },
+                      done:     { fg: GREEN,     bg: '#0F2A1A' },
+                      failed:   { fg: '#FF4757', bg: '#2A1419' },
+                      skipped:  { fg: TEXT_MUTED, bg: '#1E2538' },
+                    };
+                    const labels: Record<string, string> = {
+                      queued: 'QUEUED',
+                      running: 'EXTRACTING',
+                      done: 'EXTRACTED',
+                      failed: 'FAILED',
+                      skipped: 'SKIPPED',
+                    };
+                    const c = palette[file.extraction_status];
+                    return (
+                      <span
+                        title={
+                          file.extraction_status === 'failed'
+                            ? file.extraction_error || 'Extraction failed'
+                            : file.extraction_skill || file.extraction_status
+                        }
+                        style={{
+                          color: c.fg,
+                          background: c.bg,
+                          border: `1px solid ${BORDER_MED}`,
+                          padding: '3px 8px',
+                          fontSize: 9,
+                          fontFamily: MONO,
+                          letterSpacing: '0.08em',
+                          fontWeight: 700,
+                          flexShrink: 0,
+                        }}
+                      >
+                        {labels[file.extraction_status]}
+                      </span>
+                    );
+                  })()}
                   <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                     <button
                       onClick={() => onDownload(file)}

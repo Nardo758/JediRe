@@ -6,6 +6,8 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { authMiddleware } from '../../middleware/auth';
 import { documentsFilesService } from '../../services/documentsFiles.service';
+import { triggerExtractionInBackground } from '../../services/document-extraction/auto-extract-on-upload';
+import { query as dbQuery } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import multer from 'multer';
 import path from 'path';
@@ -120,6 +122,19 @@ router.post(
         )
       );
 
+      // Fire-and-forget auto-extraction for each freshly uploaded file (Task #320).
+      for (const f of uploadedFiles) {
+        if (f && f.id) {
+          triggerExtractionInBackground({
+            fileId: f.id,
+            dealId,
+            userId: userId as string,
+            category: f.category,
+            mimeType: f.mime_type,
+          });
+        }
+      }
+
       res.json({
         success: true,
         message: `Successfully uploaded ${uploadedFiles.length} file(s)`,
@@ -127,6 +142,53 @@ router.post(
       });
     } catch (error) {
       logger.error('Error uploading files:', error);
+      next(error);
+    }
+  }
+);
+
+/**
+ * GET /api/v1/deals/:dealId/files/:fileId/extraction
+ * Lightweight endpoint for polling auto-extraction status.
+ */
+router.get(
+  '/deals/:dealId/files/:fileId/extraction',
+  authMiddleware.requireAuth,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { dealId, fileId } = req.params;
+      const authUser = req.user as
+        | { userId?: string; id?: string }
+        | undefined;
+      const userId = authUser?.userId ?? authUser?.id ?? null;
+
+      if (!userId) {
+        return res.status(401).json({ success: false, message: 'Unauthorized' });
+      }
+
+      // Authz: caller must own (or have access to) the deal
+      const dealCheck = await dbQuery(
+        'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
+        [dealId, userId]
+      );
+      if (dealCheck.rows.length === 0) {
+        return res.status(404).json({ success: false, message: 'Deal not found' });
+      }
+
+      const result = await dbQuery(
+        `SELECT id, deal_id, extraction_status, extraction_skill,
+                extraction_result, extraction_error,
+                extraction_started_at, extraction_completed_at
+           FROM deal_files
+          WHERE id = $1 AND deal_id = $2 AND deleted_at IS NULL`,
+        [fileId, dealId]
+      );
+      if (result.rows.length === 0) {
+        return res.status(404).json({ success: false, message: 'File not found' });
+      }
+      res.json({ success: true, extraction: result.rows[0] });
+    } catch (error) {
+      logger.error('Error getting extraction status:', error);
       next(error);
     }
   }
@@ -361,12 +423,28 @@ router.post(
 
       const { versionNotes } = req.body;
 
-      const newVersion = await documentsFilesService.uploadNewVersion(
+      type UploadedDealFile = {
+        id: string;
+        deal_id: string;
+        category?: string | null;
+        mime_type?: string | null;
+      };
+      const newVersion = (await documentsFilesService.uploadNewVersion(
         fileId,
         file,
         userId,
         versionNotes
-      );
+      )) as UploadedDealFile | undefined;
+
+      if (newVersion?.id) {
+        triggerExtractionInBackground({
+          fileId: newVersion.id,
+          dealId: newVersion.deal_id,
+          userId: userId as string,
+          category: newVersion.category,
+          mimeType: newVersion.mime_type,
+        });
+      }
 
       res.json({
         success: true,

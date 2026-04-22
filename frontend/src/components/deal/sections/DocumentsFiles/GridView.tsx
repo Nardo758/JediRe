@@ -66,6 +66,26 @@ export const GridView: React.FC<GridViewProps> = ({
               <span className="required-badge">Required</span>
             )}
 
+            {file.extraction_status && (
+              <span
+                className={`ext-badge ext-${file.extraction_status}`}
+                title={
+                  file.extraction_status === 'failed'
+                    ? file.extraction_error || 'Extraction failed'
+                    : file.extraction_skill || file.extraction_status
+                }
+              >
+                {file.extraction_status === 'running' && <span className="ext-spinner" />}
+                {{
+                  queued: 'Queued',
+                  running: 'Extracting…',
+                  done: 'Extracted',
+                  failed: 'Failed',
+                  skipped: 'Skipped',
+                }[file.extraction_status]}
+              </span>
+            )}
+
             {file.tags && file.tags.length > 0 && (
               <div className="file-tags">
                 {file.tags.slice(0, 3).map((tag, idx) => (
@@ -293,6 +313,29 @@ export const GridView: React.FC<GridViewProps> = ({
         .action-btn.delete:hover {
           background: #fee2e2;
         }
+
+        .ext-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          margin-top: 6px;
+          padding: 3px 9px;
+          border-radius: 10px;
+          font-size: 11px;
+          font-weight: 600;
+          border: 1px solid transparent;
+        }
+        .ext-queued { background: #f3f4f6; color: #4b5563; border-color: #e5e7eb; }
+        .ext-running { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+        .ext-done { background: #d1fae5; color: #065f46; border-color: #a7f3d0; }
+        .ext-failed { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
+        .ext-skipped { background: #f5f5f4; color: #78716c; border-color: #e7e5e4; }
+        .ext-spinner {
+          width: 8px; height: 8px;
+          border: 2px solid #1d4ed8; border-top-color: transparent;
+          border-radius: 50%; animation: ext-spin 0.8s linear infinite;
+        }
+        @keyframes ext-spin { to { transform: rotate(360deg); } }
       `}</style>
     </div>
   );
