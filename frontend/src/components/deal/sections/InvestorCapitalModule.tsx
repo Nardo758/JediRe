@@ -327,8 +327,14 @@ function CapitalCallsTab({ calls, summary, loading, error, onLoadCallItems, onCr
     try {
       await onRecordPayment(callId, itemId, amt);
       setPayForm(prev => ({ ...prev, [itemId]: { amount: '', open: false } }));
-      // Evict cached items so sub-table re-fetches fresh data on next expand
-      setItems(prev => { const next = { ...prev }; delete next[callId]; return next; });
+      // Immediately re-fetch items for the expanded call so the row updates in place
+      setLoadingItems(prev => ({ ...prev, [callId]: true }));
+      try {
+        const refreshed = await onLoadCallItems(callId);
+        setItems(prev => ({ ...prev, [callId]: refreshed }));
+      } finally {
+        setLoadingItems(prev => ({ ...prev, [callId]: false }));
+      }
     } catch { setPayErr('Failed to record payment. Please try again.'); }
     setPayingItem(prev => ({ ...prev, [itemId]: false }));
   };

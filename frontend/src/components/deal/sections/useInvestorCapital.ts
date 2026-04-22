@@ -268,7 +268,7 @@ export function useInvestorCapital(dealId: string) {
     setLoad('comms', true);
     setErr('comms', null);
     try {
-      const r = await apiClient.get(`/api/v1/capital/deals/${dealId}/communications`);
+      const r = await apiClient.get(`/api/v1/capital/deals/${dealId}/communications?limit=1000`);
       setComms(r.data?.communications ?? []);
     } catch { setErr('comms', 'Failed to load communications.'); }
     setLoad('comms', false);
