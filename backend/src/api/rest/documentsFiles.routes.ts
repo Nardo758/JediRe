@@ -74,15 +74,25 @@ const upload = multer({
  */
 router.post(
   '/deals/:dealId/files',
+  (req, _res, next) => {
+    console.log('[upload] entered route. content-type:', req.headers['content-type'], 'auth:', !!req.headers.authorization);
+    next();
+  },
   authMiddleware.requireAuth,
+  (req, _res, next) => {
+    console.log('[upload] passed auth. user:', (req as any).user?.id);
+    next();
+  },
   upload.array('files', 10),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { dealId } = req.params;
       const userId = req.user?.id;
       const files = req.files as Express.Multer.File[];
+      console.log('[upload] handler running. files:', files?.length, 'body keys:', Object.keys(req.body || {}));
 
       if (!files || files.length === 0) {
+        console.log('[upload] no files attached');
         return res.status(400).json({
           success: false,
           message: 'No files provided',
