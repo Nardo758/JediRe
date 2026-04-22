@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import { BT } from '../../theme/bloombergTokens';
 
 interface Connection {
@@ -159,19 +159,19 @@ export function NewsConnectionsPage() {
     navigator.clipboard?.writeText(text).catch(() => {});
   }
 
-  const panel: React.CSSProperties = {
+  const panel: CSSProperties = {
     background: BT.bg.panel,
     border: `1px solid ${BT.border.subtle}`,
     borderRadius: 0,
     padding: 24,
   };
-  const subpanel: React.CSSProperties = {
+  const subpanel: CSSProperties = {
     background: BT.bg.panelAlt,
     border: `1px solid ${BT.border.subtle}`,
     borderRadius: 0,
     padding: 16,
   };
-  const inputStyle: React.CSSProperties = {
+  const inputStyle: CSSProperties = {
     width: '100%',
     padding: '8px 12px',
     background: BT.bg.input,
@@ -182,7 +182,7 @@ export function NewsConnectionsPage() {
     fontFamily: "'JetBrains Mono', monospace",
     fontSize: 12,
   };
-  const buttonStyle: React.CSSProperties = {
+  const buttonStyle: CSSProperties = {
     padding: '8px 16px',
     background: BT.text.cyan,
     color: '#000',
@@ -194,7 +194,7 @@ export function NewsConnectionsPage() {
     letterSpacing: 0.6,
     fontWeight: 600,
   };
-  const ghostButton: React.CSSProperties = {
+  const ghostButton: CSSProperties = {
     padding: '6px 12px',
     background: 'transparent',
     color: BT.text.secondary,
@@ -204,12 +204,12 @@ export function NewsConnectionsPage() {
     fontSize: 11,
     fontFamily: "'JetBrains Mono', monospace",
   };
-  const dangerButton: React.CSSProperties = {
+  const dangerButton: CSSProperties = {
     ...ghostButton,
     color: BT.text.red,
     borderColor: BT.text.red,
   };
-  const tabBtn = (active: boolean): React.CSSProperties => ({
+  const tabBtn = (active: boolean): CSSProperties => ({
     padding: '8px 16px',
     background: active ? BT.bg.panel : 'transparent',
     color: active ? BT.text.primary : BT.text.muted,
@@ -517,9 +517,9 @@ interface ListProps {
   onCopy?: (text: string) => void;
   onSync?: (id: string) => void;
   onDelete: (id: string) => void;
-  subpanel: React.CSSProperties;
-  ghostButton: React.CSSProperties;
-  dangerButton: React.CSSProperties;
+  subpanel: CSSProperties;
+  ghostButton: CSSProperties;
+  dangerButton: CSSProperties;
 }
 
 function ConnectionList(props: ListProps) {
