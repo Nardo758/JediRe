@@ -434,8 +434,10 @@ export const MainLayout: React.FC = () => {
 
   const { activeScope } = useTradeAreaStore();
 
-  const isInsideDeal = location.pathname.startsWith('/deals/');
-  const dealIdMatch = isInsideDeal ? location.pathname.match(/\/deals\/([^/]+)/) : null;
+  const isInsideDeal = location.pathname.startsWith('/deals/') || /^\/assets-owned\/[^/]+\/property/.test(location.pathname);
+  const dealIdMatch = location.pathname.startsWith('/deals/')
+    ? location.pathname.match(/\/deals\/([^/]+)/)
+    : location.pathname.match(/\/assets-owned\/([^/]+)\/property/);
   const dealId = dealIdMatch?.[1];
 
   const contextLabel = isInsideDeal

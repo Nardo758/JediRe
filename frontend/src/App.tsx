@@ -143,8 +143,6 @@ function AppContent() {
         <Route path="/admin/events" element={<AdminEventsPage />} />
         <Route path="/portfolio/events" element={<PortfolioEventFeedPage />} />
         <Route path="/leasing-forecast/:propertyId" element={<LeasingForecastPage />} />
-        <Route path="/assets-owned/:dealId/property" element={<AssetOwnedPage />} />
-        <Route path="/assets-owned/:dealId/property-legacy" element={<PortfolioPropertyPage />} />
         <Route path="/property-card" element={<Suspense fallback={<PageLoadingFallback />}><PropertyCardPage /></Suspense>} />
         <Route path="/property-card/:id" element={<Suspense fallback={<PageLoadingFallback />}><PropertyCardPage /></Suspense>} />
         <Route path="/terminal/property/:id" element={<Suspense fallback={<PageLoadingFallback />}><PropertyCardPage /></Suspense>} />
@@ -233,6 +231,12 @@ function AppContent() {
         } />
         <Route path="/admin/m35-connectors" element={<M35ConnectorAdminPage />} />
         <Route path="/admin/*" element={<AdminToolsPage />} />
+
+        {/* ═══ Asset property pages — inside MainLayout for header/nav chrome ═══ */}
+        <Route element={<MainLayout />}>
+          <Route path="/assets-owned/:dealId/property" element={<AssetOwnedPage />} />
+          <Route path="/assets-owned/:dealId/property-legacy" element={<PortfolioPropertyPage />} />
+        </Route>
 
         {/* ═══ Dev/demo pages — keep in MainLayout ═══ */}
         <Route element={<MainLayout />}>
