@@ -27,12 +27,43 @@ interface SkillDefinition {
   id: string;
   name: string;
   description: string;
-  category: 'data' | 'analysis' | 'document' | 'action' | 'report';
+  category: 'data' | 'analysis' | 'document' | 'action' | 'report' | 'advisor';
   icon: string;
   color: string;
   enabled: boolean;
   requiresConfirmation?: boolean;
 }
+
+const ADVISOR_COLOR = '#FF6FB5';
+
+const ADVISOR_DEFS: { id: string; name: string; description: string }[] = [
+  { id: 'consult_cfo',                name: 'CFO',                  description: 'Financial strategy, capital structure, risk-adjusted returns, value creation' },
+  { id: 'consult_accountant',         name: 'Accountant',           description: 'GAAP treatment, audit-readiness, expense classification, reconciliations' },
+  { id: 'consult_marketing_expert',   name: 'Marketing Expert',     description: 'Positioning, lease-up strategy, branding, competitive differentiation' },
+  { id: 'consult_developer',          name: 'Developer',            description: 'Construction feasibility, value-add scope, hard/soft cost framing' },
+  { id: 'consult_legal_advisor',      name: 'Legal Advisor',        description: 'Contract review, indemnification, structural risk, regulatory exposure' },
+  { id: 'consult_lender',             name: 'Lender',               description: 'Debt sizing, DSCR/LTV, credit-committee perspective on the deal' },
+  { id: 'consult_acquisitions',       name: 'Acquisitions',         description: 'Go/no-go on new deals, pricing strategy, LOI tactics' },
+  { id: 'consult_asset_manager',      name: 'Asset Manager',        description: 'NOI optimization, expense control, value-creation initiatives' },
+  { id: 'consult_property_manager',   name: 'Property Manager',     description: 'Day-to-day operations, retention, maintenance, staffing' },
+  { id: 'consult_leasing_director',   name: 'Leasing Director',     description: 'Vacancy reduction, renewals, concession strategy, market rent' },
+  { id: 'consult_facilities_manager', name: 'Facilities Manager',   description: 'CapEx planning, reserves, building systems, vendor management' },
+  { id: 'consult_investment_analyst', name: 'Investment Analyst',   description: 'Hold/sell timing, refinance windows, IRR optimization' },
+  { id: 'consult_esg_sustainability', name: 'ESG / Sustainability', description: 'Energy efficiency, certifications, ESG-linked financing' },
+  { id: 'consult_compliance_officer', name: 'Compliance Officer',   description: 'Insurance, permits, ADA, fair housing, regulatory compliance' },
+  { id: 'consult_tax_strategist',     name: 'Tax Strategist',       description: 'Cost segregation, 1031 exchange, depreciation, K-1 optimization' },
+  { id: 'consult_researcher',         name: 'Researcher',           description: 'Demographics, employment trends, supply pipeline, competitive intelligence' },
+];
+
+const ADVISOR_SKILLS: SkillDefinition[] = ADVISOR_DEFS.map(a => ({
+  id: a.id,
+  name: a.name,
+  description: a.description,
+  category: 'advisor',
+  icon: 'Brain',
+  color: ADVISOR_COLOR,
+  enabled: true,
+}));
 
 const DEFAULT_SKILLS: SkillDefinition[] = [
   // ═══════════════════════════════════════════════════════════════════════════
@@ -218,6 +249,7 @@ const DEFAULT_SKILLS: SkillDefinition[] = [
     color: '#E8F4FD',
     enabled: true,
   },
+  ...ADVISOR_SKILLS,
 ];
 
 // AI Models for the skill engine
@@ -424,6 +456,7 @@ export const SkillsSettingsPage: React.FC = () => {
   const actionSkills = skills.filter(s => s.category === 'action');
   const analysisSkills = skills.filter(s => s.category === 'analysis');
   const reportSkills = skills.filter(s => s.category === 'report');
+  const advisorSkills = skills.filter(s => s.category === 'advisor');
 
   const enabledCount = skills.filter(s => s.enabled).length;
 
@@ -482,7 +515,7 @@ export const SkillsSettingsPage: React.FC = () => {
               AI Skills Settings
             </h1>
             <p style={{ color: T.text.muted, fontSize: 13, margin: '4px 0 0' }}>
-              18 skills — configure the AI assistant's capabilities
+              {skills.length} skills (18 capabilities + 16 advisors) — configure the AI assistant
             </p>
           </div>
         </div>
@@ -727,6 +760,32 @@ export const SkillsSettingsPage: React.FC = () => {
         </h2>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {reportSkills.map(skill => (
+            <SkillCard
+              key={skill.id}
+              skill={skill}
+              onToggle={() => handleToggleSkill(skill.id)}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Advisor Personas */}
+      <div style={{ marginBottom: 32 }}>
+        <h2 style={{
+          color: ADVISOR_COLOR,
+          fontSize: 14,
+          fontWeight: 700,
+          marginBottom: 8,
+          textTransform: 'uppercase',
+          letterSpacing: 1,
+        }}>
+          🧠 Advisor Personas ({advisorSkills.length})
+        </h2>
+        <p style={{ color: T.text.muted, fontSize: 11, margin: '0 0 16px', lineHeight: 1.5 }}>
+          Each advisor is an expert role-played by the AI with its own system prompt and access to read-only deal data. Toggle off the personas you don't need to keep the orchestrator focused.
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {advisorSkills.map(skill => (
             <SkillCard
               key={skill.id}
               skill={skill}

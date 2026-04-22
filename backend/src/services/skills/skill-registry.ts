@@ -15,7 +15,7 @@ export interface SkillDefinition {
   id: string;
   name: string;
   description: string;
-  category: 'data' | 'analysis' | 'document' | 'action' | 'report';
+  category: 'data' | 'analysis' | 'document' | 'action' | 'report' | 'advisor';
   parameters: z.ZodObject<any>;
   execute: (params: any, context: SkillContext) => Promise<SkillResult>;
 }

@@ -30,10 +30,31 @@ interface SkillDefinition {
   name: string;
   shortName: string;
   description: string;
-  category: 'data' | 'analysis' | 'document' | 'action' | 'report';
+  category: 'data' | 'analysis' | 'document' | 'action' | 'report' | 'advisor';
   icon: string;
   color: string;
 }
+
+const ADVISOR_COLOR = '#FF6FB5';
+
+const ADVISORS: { id: string; name: string; shortName: string; icon: string; description: string }[] = [
+  { id: 'consult_cfo',                  name: 'Consult CFO',                shortName: 'CFO',        icon: '📊', description: 'Financial strategy, capital structure, risk-adjusted returns' },
+  { id: 'consult_accountant',           name: 'Consult Accountant',         shortName: 'CPA',        icon: '💰', description: 'GAAP treatment, audit-readiness, expense classification' },
+  { id: 'consult_marketing_expert',     name: 'Consult Marketing',          shortName: 'MARKET-EX',  icon: '📈', description: 'Positioning, lease-up strategy, branding' },
+  { id: 'consult_developer',            name: 'Consult Developer',          shortName: 'DEV',        icon: '🏗️', description: 'Construction feasibility, value-add scope, cost framing' },
+  { id: 'consult_legal_advisor',        name: 'Consult Legal',              shortName: 'LEGAL',      icon: '⚖️', description: 'Contract risk, indemnification, regulatory exposure' },
+  { id: 'consult_lender',               name: 'Consult Lender',             shortName: 'LENDER',     icon: '🏦', description: 'Debt sizing, DSCR/LTV, credit-committee view' },
+  { id: 'consult_acquisitions',         name: 'Consult Acquisitions',       shortName: 'ACQ',        icon: '🎯', description: 'Go/no-go on new deals, pricing, LOI strategy' },
+  { id: 'consult_asset_manager',        name: 'Consult Asset Manager',      shortName: 'ASSET-MGR',  icon: '📉', description: 'NOI optimization, expense control, value-creation levers' },
+  { id: 'consult_property_manager',     name: 'Consult Property Mgr',       shortName: 'PROP-MGR',   icon: '🏠', description: 'Operations, retention, maintenance, staffing' },
+  { id: 'consult_leasing_director',     name: 'Consult Leasing',            shortName: 'LEASING',    icon: '📋', description: 'Vacancy, renewals, concessions, market rents' },
+  { id: 'consult_facilities_manager',   name: 'Consult Facilities',         shortName: 'FACIL',      icon: '🔧', description: 'CapEx planning, reserves, building systems' },
+  { id: 'consult_investment_analyst',   name: 'Consult Inv Analyst',        shortName: 'INV-AN',     icon: '📊', description: 'Hold/sell timing, refi windows, IRR optimization' },
+  { id: 'consult_esg_sustainability',   name: 'Consult ESG',                shortName: 'ESG',        icon: '🌱', description: 'Energy, certifications, ESG-linked financing' },
+  { id: 'consult_compliance_officer',   name: 'Consult Compliance',         shortName: 'COMP-OFF',   icon: '📜', description: 'Insurance, permits, ADA, fair housing' },
+  { id: 'consult_tax_strategist',       name: 'Consult Tax Strategist',     shortName: 'TAX-STRAT',  icon: '💼', description: 'Cost seg, 1031, depreciation, K-1 optimization' },
+  { id: 'consult_researcher',           name: 'Consult Researcher',         shortName: 'RESEARCH',   icon: '🔬', description: 'Demographics, employment, supply pipeline, intel' },
+];
 
 const SKILLS: SkillDefinition[] = [
   // ═══════════════════════════════════════════════════════════════════════════
@@ -217,6 +238,19 @@ const SKILLS: SkillDefinition[] = [
     icon: 'Megaphone',
     color: '#E8F4FD',
   },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ADVISOR PERSONAS (16) — consult expert roles via sub-call
+  // ═══════════════════════════════════════════════════════════════════════════
+  ...ADVISORS.map(a => ({
+    id: a.id,
+    name: a.name,
+    shortName: a.shortName,
+    description: a.description,
+    category: 'advisor' as const,
+    icon: 'Brain',
+    color: ADVISOR_COLOR,
+  })),
 ];
 
 // Icon mapping
@@ -388,8 +422,8 @@ export const SkillsBar: React.FC = () => {
 
   // Core skills: Data + Action (shown by default)
   const coreSkills = SKILLS.filter(s => s.category === 'data' || s.category === 'action');
-  // More skills: Document + Analysis + Report
-  const moreSkills = SKILLS.filter(s => s.category === 'analysis' || s.category === 'document' || s.category === 'report');
+  // More skills: Document + Analysis + Report + Advisor
+  const moreSkills = SKILLS.filter(s => s.category === 'analysis' || s.category === 'document' || s.category === 'report' || s.category === 'advisor');
 
   const scroll = (dir: 'left' | 'right') => {
     if (scrollRef.current) {

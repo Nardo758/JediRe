@@ -16,6 +16,7 @@ import { z } from 'zod';
 import { skillRegistry, SkillDefinition, SkillContext, SkillResult } from '../skill-registry';
 import { query } from '../../../database/connection';
 import { logger } from '../../../utils/logger';
+import { registerAdvisorPersonas } from './personas';
 
 // ============================================================================
 // DATA SKILLS (5)
@@ -876,7 +877,10 @@ export function registerAllSkills(): void {
   skillRegistry.register(generateReport);
   skillRegistry.register(generateMarketingMaterials);
 
-  logger.info(`Registered ${skillRegistry.getAll().length} skills`);
+  // Advisor personas (16)
+  registerAdvisorPersonas();
+
+  logger.info(`Registered ${skillRegistry.getAll().length} skills (18 capability + 16 advisor)`);
 }
 
 // Auto-register on import
