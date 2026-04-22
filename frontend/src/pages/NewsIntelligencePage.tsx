@@ -58,17 +58,60 @@ export function NewsIntelligencePage() {
     }
   }, [selectedCategory, dateRange]);
 
+  // Map a unified-feed article (newsletter or provider API) into the NewsEvent
+  // shape the F6 page renders. Newsletter items get is_premium badging via
+  // source_name; API items use their provider name as source_name.
+  const mapFeedArticleToEvent = (a: Record<string, unknown>): NewsEvent => {
+    const sourceName = String((a.source as string) || (a.publisher as string) || 'News');
+    const isPremium = a.is_premium === true;
+    return {
+      id: String(a.id ?? `feed-${Math.random()}`),
+      event_category: String((a.category as string) || 'all'),
+      event_type: isPremium ? 'newsletter' : 'api_article',
+      event_status: 'extracted',
+      source_type: isPremium ? 'newsletter' : 'api',
+      source_name: isPremium ? `${sourceName} (your subscription)` : sourceName,
+      source_url: String((a.link as string) || (a.url as string) || ''),
+      source_credibility_score: 1,
+      extracted_data: { headline: a.headline ?? a.title, summary: a.summary ?? '' },
+      location_raw: String((a.market as string) || ''),
+      extraction_confidence: 1,
+      corroboration_count: 0,
+      published_at: String((a.published_at as string) || new Date().toISOString()),
+    } as NewsEvent;
+  };
+
+  const loadUnifiedFeed = async (): Promise<NewsEvent[]> => {
+    try {
+      const res = await apiClient.get('/api/v1/news/feed', {
+        params: {
+          category: selectedCategory !== 'all' ? selectedCategory : undefined,
+          limit: 50,
+        },
+      });
+      const articles = res.data?.data?.articles || [];
+      return articles.map(mapFeedArticleToEvent);
+    } catch (e) {
+      console.error('Unified feed load failed:', e);
+      return [];
+    }
+  };
+
   const loadData = async () => {
     setLoading(true);
     try {
-      const [eventsRes, alertsRes, dashRes, networkRes] = await Promise.all([
+      const [eventsRes, alertsRes, dashRes, networkRes, feedEvents] = await Promise.all([
         newsService.getEvents({ category: selectedCategory !== 'all' ? selectedCategory : undefined }),
         newsService.getAlerts(),
         newsService.getDashboard(),
         newsService.getNetworkIntelligence(),
+        loadUnifiedFeed(),
       ]);
 
-      if (eventsRes.success) setEvents(eventsRes.data);
+      const baseEvents = eventsRes.success ? eventsRes.data : [];
+      // Newsletter + provider API articles first, then legacy curated events.
+      setEvents([...feedEvents, ...baseEvents]);
+
       if (alertsRes.success) {
         setAlerts(alertsRes.data);
         setUnreadAlertCount(alertsRes.unread_count);
@@ -84,10 +127,14 @@ export function NewsIntelligencePage() {
 
   const loadEvents = async () => {
     try {
-      const res = await newsService.getEvents({
-        category: selectedCategory !== 'all' ? selectedCategory : undefined,
-      });
-      if (res.success) setEvents(res.data);
+      const [res, feedEvents] = await Promise.all([
+        newsService.getEvents({
+          category: selectedCategory !== 'all' ? selectedCategory : undefined,
+        }),
+        loadUnifiedFeed(),
+      ]);
+      const baseEvents = res.success ? res.data : [];
+      setEvents([...feedEvents, ...baseEvents]);
     } catch (error) {
       console.error('Error loading events:', error);
     }
