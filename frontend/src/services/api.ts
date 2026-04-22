@@ -3,9 +3,6 @@ import { Property, SearchResult, ZoningInsight, User, Lead, Commission, Commissi
 
 const api = axios.create({
   baseURL: '/api/v1',
-  headers: {
-    'Content-Type': 'application/json',
-  },
 });
 
 // Add auth token to requests

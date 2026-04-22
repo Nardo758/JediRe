@@ -74,10 +74,6 @@ const upload = multer({
  */
 router.post(
   '/deals/:dealId/files',
-  (req, _res, next) => {
-    console.log('[upload] CT:', req.headers['content-type']);
-    next();
-  },
   authMiddleware.requireAuth,
   upload.array('files', 10),
   async (req: Request, res: Response, next: NextFunction) => {
@@ -85,7 +81,6 @@ router.post(
       const { dealId } = req.params;
       const userId = req.user?.id;
       const files = req.files as Express.Multer.File[];
-      console.log('[upload] files:', files?.length, 'body:', req.body);
 
       if (!files || files.length === 0) {
         return res.status(400).json({
