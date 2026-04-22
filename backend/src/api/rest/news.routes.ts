@@ -14,6 +14,7 @@ import { newsService } from '../../services/news/news.service';
 import { newsletterParserService } from '../../services/news/newsletter-parser.service';
 import { NEWS_CREDIT_COSTS } from '../../services/news/news-provider.interface';
 import { logger } from '../../utils/logger';
+import { query } from '../../database/connection';
 
 const router = Router();
 
@@ -644,10 +645,28 @@ router.get('/feed', async (req: Request, res: Response) => {
       maxArticles: Number(limit),
     });
 
-    // Task #329 — interleave the caller's premium subscription items
-    // (forwarded newsletters + authenticated RSS) with the public RSS feed so
-    // they show up in the dashboard ticker. Marked is_premium=true so the UI
-    // can badge them as "FROM YOUR <publisher> SUBSCRIPTION".
+    interface FeedArticle {
+      id: string;
+      headline: string;
+      summary: string;
+      link: string;
+      published_at: string;
+      source: string;
+      sourceId: string;
+      sourceColor: string;
+      impact: string | null;
+      jedi_delta: number | null;
+      is_premium?: boolean;
+    }
+
+    // Start from the unified-feed result (newsletter parses + provider APIs).
+    let articles: FeedArticle[] = (result.articles as unknown as FeedArticle[]) || [];
+    let userItemCount = 0;
+
+    // Task #329 — also pull the caller's premium subscription items
+    // (forwarded newsletters + authenticated RSS) from `user_news_items`,
+    // tag them as is_premium so the UI can badge them as
+    // "FROM YOUR <publisher> SUBSCRIPTION", then interleave by date.
     if (userId) {
       try {
         const userItems = await query(
@@ -668,19 +687,6 @@ router.get('/feed', async (req: Request, res: Response) => {
           published_at: string | Date | null;
           fetched_at: string | Date;
         }
-        interface FeedArticle {
-          id: string;
-          headline: string;
-          summary: string;
-          link: string;
-          published_at: string;
-          source: string;
-          sourceId: string;
-          sourceColor: string;
-          impact: string | null;
-          jedi_delta: number | null;
-          is_premium?: boolean;
-        }
         const premium: FeedArticle[] = (userItems.rows as UserItemRow[]).map((it) => ({
           id: `user-${it.id}`,
           headline: it.title,
@@ -696,12 +702,13 @@ router.get('/feed', async (req: Request, res: Response) => {
           jedi_delta: null,
           is_premium: true,
         }));
-        articles = [...premium, ...(articles as FeedArticle[])]
+        userItemCount = premium.length;
+        articles = [...premium, ...articles]
           .sort(
-            (a: FeedArticle, b: FeedArticle) =>
+            (a, b) =>
               new Date(b.published_at).getTime() - new Date(a.published_at).getTime()
           )
-          .slice(0, parseInt(limit as string));
+          .slice(0, Number(limit));
       } catch (e) {
         logger.error('Failed to merge user news items into feed:', e);
       }
@@ -710,10 +717,10 @@ router.get('/feed', async (req: Request, res: Response) => {
     res.json({
       success: true,
       data: {
-        articles: result.articles,
-        count: result.articles.length,
+        articles,
+        count: articles.length,
         sources: {
-          newsletters: result.newsletterCount,
+          newsletters: result.newsletterCount + userItemCount,
           api: result.apiCount,
         },
       },
