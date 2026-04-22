@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { newsService, NewsEvent, NewsAlert, MarketDashboard, ContactCredibility } from '../services/news.service';
 import { DateRangeFilter, DateRangeOption, getDateRangeFromOption } from '../components/ui/DateRangeFilter';
 import { BT } from '../components/deal/bloomberg-ui';
+import { apiClient } from '../services/api.client';
 
 type ViewType = 'feed' | 'dashboard' | 'network' | 'alerts';
 
@@ -27,6 +28,11 @@ export function NewsIntelligencePage() {
   const [dashboard, setDashboard] = useState<MarketDashboard | null>(null);
   const [contacts, setContacts] = useState<ContactCredibility[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Article modal state
+  const [selectedArticle, setSelectedArticle] = useState<NewsEvent | null>(null);
+  const [articleContent, setArticleContent] = useState<string | null>(null);
+  const [loadingArticle, setLoadingArticle] = useState(false);
 
   const categories = [
     { id: 'all', label: 'ALL' },
@@ -104,6 +110,234 @@ export function NewsIntelligencePage() {
     return { label: 'LOW', color: BT.text.cyan, bg: 'rgba(0,188,212,0.12)' };
   };
 
+  // Handle article click - open in modal
+  const handleArticleClick = async (event: NewsEvent) => {
+    setSelectedArticle(event);
+    setArticleContent(null);
+    setLoadingArticle(true);
+
+    // Try to fetch full article content if we have a URL and it's from Guardian
+    if (event.source_url && event.source_name?.toLowerCase().includes('guardian')) {
+      try {
+        // Extract Guardian article ID from URL
+        const urlParts = event.source_url.replace('https://www.theguardian.com/', '').split('?')[0];
+        const res = await apiClient.get(`/api/v1/news/article/guardian/${urlParts}`);
+        if (res.data?.success && res.data?.data?.content) {
+          setArticleContent(res.data.data.content);
+        }
+      } catch (error) {
+        console.log('Could not fetch full article');
+      }
+    }
+    
+    setLoadingArticle(false);
+  };
+
+  // Close article modal
+  const closeArticleModal = () => {
+    setSelectedArticle(null);
+    setArticleContent(null);
+  };
+
+  // Article Modal Component
+  const ArticleModal = () => {
+    if (!selectedArticle) return null;
+
+    return (
+      <div
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.85)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 9999,
+          padding: 20,
+        }}
+        onClick={closeArticleModal}
+      >
+        <div
+          style={{
+            background: BT.bg.panel,
+            border: `1px solid ${BT.border.subtle}`,
+            maxWidth: 800,
+            maxHeight: '90vh',
+            width: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Modal Header */}
+          <div style={{
+            padding: '16px 20px',
+            borderBottom: `1px solid ${BT.border.subtle}`,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+            background: BT.bg.header,
+          }}>
+            <div style={{ flex: 1, paddingRight: 16 }}>
+              <div style={{ fontSize: 10, color: BT.text.cyan, fontWeight: 600, marginBottom: 6, letterSpacing: '0.08em', ...mono }}>
+                {selectedArticle.source_name?.toUpperCase() || 'NEWS'}
+                {selectedArticle.source_type === 'email_private' && (
+                  <span style={{ marginLeft: 8, color: BT.text.amber }}>• FROM YOUR SUBSCRIPTIONS</span>
+                )}
+              </div>
+              <h2 style={{ fontSize: 18, fontWeight: 700, color: BT.text.primary, margin: 0, lineHeight: 1.3 }}>
+                {selectedArticle.event_type}
+              </h2>
+              <div style={{ fontSize: 11, color: BT.text.muted, marginTop: 8, ...mono }}>
+                {new Date(selectedArticle.published_at).toLocaleDateString('en-US', {
+                  weekday: 'long',
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric',
+                })}
+              </div>
+            </div>
+            <button
+              onClick={closeArticleModal}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: BT.text.muted,
+                fontSize: 24,
+                cursor: 'pointer',
+                padding: '0 8px',
+                lineHeight: 1,
+              }}
+            >
+              ×
+            </button>
+          </div>
+
+          {/* Modal Content */}
+          <div style={{ flex: 1, overflow: 'auto', padding: 20 }}>
+            {loadingArticle ? (
+              <div style={{ textAlign: 'center', padding: 40, color: BT.text.secondary, ...mono }}>
+                Loading article...
+              </div>
+            ) : articleContent ? (
+              // Full article content (from Guardian)
+              <div
+                style={{ color: BT.text.primary, fontSize: 14, lineHeight: 1.7 }}
+                dangerouslySetInnerHTML={{ __html: articleContent }}
+              />
+            ) : (
+              // Preview mode
+              <div>
+                <p style={{ color: BT.text.secondary, fontSize: 14, lineHeight: 1.7, marginBottom: 24 }}>
+                  {selectedArticle.location_raw || 'Full article content is available on the source website.'}
+                </p>
+                
+                {selectedArticle.extracted_data && Object.keys(selectedArticle.extracted_data).length > 0 && (
+                  <div style={{ marginBottom: 24 }}>
+                    <div style={{ fontSize: 10, color: BT.text.muted, fontWeight: 600, marginBottom: 8, letterSpacing: '0.08em', ...mono }}>
+                      EXTRACTED DATA
+                    </div>
+                    <pre style={{
+                      background: BT.bg.terminal,
+                      padding: 12,
+                      fontSize: 11,
+                      color: BT.text.cyan,
+                      overflow: 'auto',
+                      ...mono,
+                    }}>
+                      {JSON.stringify(selectedArticle.extracted_data, null, 2)}
+                    </pre>
+                  </div>
+                )}
+
+                <div style={{
+                  padding: 16,
+                  background: BT.bg.panelAlt,
+                  border: `1px solid ${BT.border.subtle}`,
+                  borderLeft: `3px solid ${BT.text.cyan}`,
+                }}>
+                  <div style={{ fontSize: 11, color: BT.text.muted, marginBottom: 8 }}>
+                    This article requires a subscription to read in full.
+                  </div>
+                  <div style={{ fontSize: 11, color: BT.text.secondary }}>
+                    If you have a subscription, forward the newsletter email to have full content extracted automatically.
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Modal Footer */}
+          <div style={{
+            padding: '12px 20px',
+            borderTop: `1px solid ${BT.border.subtle}`,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            background: BT.bg.header,
+          }}>
+            <div style={{ display: 'flex', gap: 12 }}>
+              {selectedArticle.event_category && (
+                <span style={{
+                  padding: '4px 10px',
+                  background: BT.bg.panelAlt,
+                  color: BT.text.secondary,
+                  fontSize: 10,
+                  fontWeight: 600,
+                  letterSpacing: '0.06em',
+                  ...mono,
+                }}>
+                  {selectedArticle.event_category.toUpperCase()}
+                </span>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={closeArticleModal}
+                style={{
+                  padding: '8px 16px',
+                  background: 'transparent',
+                  border: `1px solid ${BT.border.subtle}`,
+                  color: BT.text.secondary,
+                  fontSize: 11,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  ...mono,
+                }}
+              >
+                CLOSE
+              </button>
+              {selectedArticle.source_url && (
+                <a
+                  href={selectedArticle.source_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    padding: '8px 16px',
+                    background: BT.text.cyan,
+                    border: 'none',
+                    color: BT.bg.terminal,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    textDecoration: 'none',
+                    ...mono,
+                  }}
+                >
+                  OPEN SOURCE →
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderEventFeed = () => {
     const filteredEvents = filterEventsByDate(events);
     return (
@@ -159,11 +393,21 @@ export function NewsIntelligencePage() {
               return (
                 <div
                   key={event.id}
+                  onClick={() => handleArticleClick(event)}
                   style={{
                     padding: 14,
                     background: BT.bg.panel,
                     border: `1px solid ${BT.border.subtle}`,
                     cursor: 'pointer',
+                    transition: 'all 0.15s',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = BT.bg.panelAlt;
+                    e.currentTarget.style.borderColor = BT.text.cyan;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = BT.bg.panel;
+                    e.currentTarget.style.borderColor = BT.border.subtle;
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
@@ -368,6 +612,9 @@ export function NewsIntelligencePage() {
       <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
         {renderViewContent()}
       </div>
+      
+      {/* Article Modal */}
+      <ArticleModal />
     </div>
   );
 }
