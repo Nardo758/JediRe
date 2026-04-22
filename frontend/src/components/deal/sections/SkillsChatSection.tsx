@@ -59,13 +59,19 @@ const ADVISOR_COLOR = '#FF6FB5';
 function buildAdvisorList(skills: Skill[]): Advisor[] {
   return skills
     .filter(s => s.category === 'advisor' && s.id.startsWith('consult_'))
-    .map(s => ({
-      id: s.id,
-      name: s.name,
-      mention: s.name.replace(/[^A-Za-z0-9]/g, ''),
-      icon: '🧠',
-      color: ADVISOR_COLOR,
-    }));
+    .map(s => {
+      // Backend registers advisor skills as name="Consult <Persona>" (e.g.
+      // "Consult CFO", "Consult Legal Advisor"). Strip the prefix so the
+      // mention slug matches the persona name (@CFO, @LegalAdvisor).
+      const personaName = s.name.replace(/^Consult\s+/i, '').trim() || s.name;
+      return {
+        id: s.id,
+        name: personaName,
+        mention: personaName.replace(/[^A-Za-z0-9]/g, ''),
+        icon: '🧠',
+        color: ADVISOR_COLOR,
+      };
+    });
 }
 
 /**
