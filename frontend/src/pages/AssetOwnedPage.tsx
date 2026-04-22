@@ -870,21 +870,210 @@ const VarianceTab: React.FC<{ dealId: string }> = ({ dealId }) => {
   );
 };
 
-const CashFlowTab: React.FC<{ financials: MonthlyFinancial[] }> = ({ financials }) => (
-  <Panel title="Cash Flow Statement">
-    <div style={{ padding: 20, color: T.text.muted, textAlign: 'center', fontFamily: T.font.mono, fontSize: 11 }}>
-      Cash flow statement coming soon.
-    </div>
-  </Panel>
-);
+const CashFlowTab: React.FC<{ financials: MonthlyFinancial[] }> = ({ financials }) => {
+  if (financials.length === 0) {
+    return (
+      <Panel title="Cash Flow Statement">
+        <div style={{ padding: 40, textAlign: 'center' }}>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>💵</div>
+          <div style={{ fontSize: 12, color: T.text.primary, fontFamily: T.font.mono, marginBottom: 8 }}>
+            No cash flow data available
+          </div>
+          <div style={{ fontSize: 10, color: T.text.muted, fontFamily: T.font.mono }}>
+            Upload a monthly reporting package or enter actuals to see cash flow
+          </div>
+        </div>
+      </Panel>
+    );
+  }
 
-const BalanceSheetTab: React.FC<{ dealId: string }> = ({ dealId }) => (
-  <Panel title="Balance Sheet">
-    <div style={{ padding: 20, color: T.text.muted, textAlign: 'center', fontFamily: T.font.mono, fontSize: 11 }}>
-      Balance sheet coming soon. Upload a BPI Balance Sheet to auto-populate.
+  // Calculate totals
+  const totals = financials.reduce((acc, f) => ({
+    noi: acc.noi + (Number(f.noi) || 0),
+    debtService: acc.debtService + (Number(f.debt_service) || 0),
+    capex: acc.capex + (Number(f.capex) || 0),
+    cashFlow: acc.cashFlow + (Number(f.cash_flow_before_tax) || 0),
+  }), { noi: 0, debtService: 0, capex: 0, cashFlow: 0 });
+
+  return (
+    <Panel title="Cash Flow Statement">
+      {/* Summary Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
+        <div style={{ background: T.bg.panelAlt, border: `1px solid ${T.border.subtle}`, borderRadius: 4, padding: 12 }}>
+          <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>TOTAL NOI</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: T.text.blue, fontFamily: T.font.mono }}>{fmt(totals.noi, 'currency')}</div>
+        </div>
+        <div style={{ background: T.bg.panelAlt, border: `1px solid ${T.border.subtle}`, borderRadius: 4, padding: 12 }}>
+          <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>TOTAL DEBT SERVICE</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: T.text.orange, fontFamily: T.font.mono }}>{fmt(totals.debtService, 'currency')}</div>
+        </div>
+        <div style={{ background: T.bg.panelAlt, border: `1px solid ${T.border.subtle}`, borderRadius: 4, padding: 12 }}>
+          <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>TOTAL CAPEX</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: T.text.purple, fontFamily: T.font.mono }}>{fmt(totals.capex, 'currency')}</div>
+        </div>
+        <div style={{ background: T.bg.panelAlt, border: `1px solid ${T.border.subtle}`, borderRadius: 4, padding: 12 }}>
+          <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>NET CASH FLOW</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: totals.cashFlow >= 0 ? T.text.green : T.text.red, fontFamily: T.font.mono }}>
+            {fmt(totals.cashFlow, 'currency')}
+          </div>
+        </div>
+      </div>
+
+      {/* Cash Flow Table */}
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: T.font.mono }}>
+          <thead>
+            <tr style={{ borderBottom: `1px solid ${T.border.medium}` }}>
+              <th style={{ padding: '8px', textAlign: 'left', color: T.text.muted }}>Month</th>
+              <th style={{ padding: '8px', textAlign: 'right', color: T.text.muted }}>NOI</th>
+              <th style={{ padding: '8px', textAlign: 'right', color: T.text.muted }}>Debt Service</th>
+              <th style={{ padding: '8px', textAlign: 'right', color: T.text.muted }}>CapEx</th>
+              <th style={{ padding: '8px', textAlign: 'right', color: T.text.muted }}>Net Cash Flow</th>
+              <th style={{ padding: '8px', textAlign: 'right', color: T.text.muted }}>DSCR</th>
+            </tr>
+          </thead>
+          <tbody>
+            {financials.slice(0, 12).map((f, i) => {
+              const dscr = f.debt_service ? Number(f.noi) / Math.abs(Number(f.debt_service)) : null;
+              return (
+                <tr key={i} style={{ borderBottom: `1px solid ${T.border.subtle}` }}>
+                  <td style={{ padding: '8px', color: T.text.primary }}>{f.report_month}</td>
+                  <td style={{ padding: '8px', textAlign: 'right', color: T.text.blue }}>{fmt(Number(f.noi), 'currency')}</td>
+                  <td style={{ padding: '8px', textAlign: 'right', color: T.text.orange }}>{fmt(Number(f.debt_service), 'currency')}</td>
+                  <td style={{ padding: '8px', textAlign: 'right', color: T.text.purple }}>{fmt(Number(f.capex), 'currency')}</td>
+                  <td style={{
+                    padding: '8px',
+                    textAlign: 'right',
+                    fontWeight: 600,
+                    color: Number(f.cash_flow_before_tax) >= 0 ? T.text.green : T.text.red,
+                  }}>
+                    {fmt(Number(f.cash_flow_before_tax), 'currency')}
+                  </td>
+                  <td style={{
+                    padding: '8px',
+                    textAlign: 'right',
+                    color: dscr && dscr < 1.25 ? T.text.red : T.text.amber,
+                  }}>
+                    {dscr ? `${dscr.toFixed(2)}x` : '—'}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot>
+            <tr style={{ borderTop: `2px solid ${T.border.medium}`, background: T.bg.panelAlt }}>
+              <td style={{ padding: '8px', color: T.text.primary, fontWeight: 700 }}>TOTAL</td>
+              <td style={{ padding: '8px', textAlign: 'right', color: T.text.blue, fontWeight: 700 }}>{fmt(totals.noi, 'currency')}</td>
+              <td style={{ padding: '8px', textAlign: 'right', color: T.text.orange, fontWeight: 700 }}>{fmt(totals.debtService, 'currency')}</td>
+              <td style={{ padding: '8px', textAlign: 'right', color: T.text.purple, fontWeight: 700 }}>{fmt(totals.capex, 'currency')}</td>
+              <td style={{ padding: '8px', textAlign: 'right', fontWeight: 700, color: totals.cashFlow >= 0 ? T.text.green : T.text.red }}>
+                {fmt(totals.cashFlow, 'currency')}
+              </td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </Panel>
+  );
+};
+
+const BalanceSheetTab: React.FC<{ dealId: string }> = ({ dealId }) => {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    apiClient.get(`/api/v1/operations/${dealId}/balance-sheet`)
+      .then(res => setData(res.data?.balanceSheet || null))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [dealId]);
+
+  if (loading) return <div style={{ padding: 20, color: T.text.muted }}>Loading...</div>;
+
+  if (!data) {
+    return (
+      <Panel title="Balance Sheet">
+        <div style={{ padding: 40, textAlign: 'center' }}>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>💰</div>
+          <div style={{ fontSize: 12, color: T.text.primary, fontFamily: T.font.mono, marginBottom: 8 }}>
+            No balance sheet data available
+          </div>
+          <div style={{ fontSize: 10, color: T.text.muted, fontFamily: T.font.mono }}>
+            Upload a BPI Balance Sheet to auto-populate
+          </div>
+        </div>
+      </Panel>
+    );
+  }
+
+  const Section: React.FC<{ title: string; items: { label: string; value: number }[]; total: number; color: string }> = ({ title, items, total, color }) => (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color, fontFamily: T.font.mono, marginBottom: 8, textTransform: 'uppercase' }}>
+        {title}
+      </div>
+      {items.map((item, i) => (
+        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: `1px solid ${T.border.subtle}` }}>
+          <span style={{ fontSize: 10, color: T.text.secondary, fontFamily: T.font.mono }}>{item.label}</span>
+          <span style={{ fontSize: 10, color: T.text.primary, fontFamily: T.font.mono }}>{fmt(item.value, 'currency')}</span>
+        </div>
+      ))}
+      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderTop: `2px solid ${T.border.medium}`, marginTop: 4 }}>
+        <span style={{ fontSize: 10, fontWeight: 700, color, fontFamily: T.font.mono }}>TOTAL {title.toUpperCase()}</span>
+        <span style={{ fontSize: 10, fontWeight: 700, color, fontFamily: T.font.mono }}>{fmt(total, 'currency')}</span>
+      </div>
     </div>
-  </Panel>
-);
+  );
+
+  return (
+    <Panel title={`Balance Sheet — ${data.report_month || 'Current'}`}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+        {/* Assets */}
+        <div>
+          <Section
+            title="Assets"
+            items={[
+              { label: 'Cash & Cash Equivalents', value: data.cash || 0 },
+              { label: 'Accounts Receivable', value: data.accounts_receivable || 0 },
+              { label: 'Prepaid Expenses', value: data.prepaid_expenses || 0 },
+              { label: 'Other Current Assets', value: data.other_current_assets || 0 },
+              { label: 'Fixed Assets', value: data.fixed_assets || 0 },
+            ]}
+            total={data.total_assets || 0}
+            color={T.text.cyan}
+          />
+        </div>
+
+        {/* Liabilities & Equity */}
+        <div>
+          <Section
+            title="Liabilities"
+            items={[
+              { label: 'Accounts Payable', value: data.accounts_payable || 0 },
+              { label: 'Accrued Expenses', value: data.accrued_expenses || 0 },
+              { label: 'Security Deposits', value: data.security_deposits || 0 },
+              { label: 'Prepaid Rent', value: data.prepaid_rent || 0 },
+              { label: 'Other Liabilities', value: data.other_liabilities || 0 },
+            ]}
+            total={data.total_liabilities || 0}
+            color={T.text.orange}
+          />
+
+          <Section
+            title="Equity"
+            items={[
+              { label: 'Contributed Capital', value: data.contributed_capital || 0 },
+              { label: 'Retained Earnings', value: data.retained_earnings || 0 },
+              { label: 'Current Year Earnings', value: data.current_year_earnings || 0 },
+            ]}
+            total={data.total_equity || 0}
+            color={T.text.green}
+          />
+        </div>
+      </div>
+    </Panel>
+  );
+};
 
 const RentRollTab: React.FC<{ dealId: string }> = ({ dealId }) => {
   const [units, setUnits] = useState<any[]>([]);
@@ -946,13 +1135,185 @@ const RentRollTab: React.FC<{ dealId: string }> = ({ dealId }) => {
   );
 };
 
-const LeasingTab: React.FC<{ dealId: string }> = ({ dealId }) => (
-  <Panel title="Leasing Activity">
-    <div style={{ padding: 20, color: T.text.muted, textAlign: 'center', fontFamily: T.font.mono, fontSize: 11 }}>
-      Leasing activity (new leases, renewals, expirations) coming soon.
+interface LeaseTransaction {
+  id: string;
+  unit_number: string;
+  transaction_type: 'new_lease' | 'renewal' | 'move_out' | 'transfer';
+  effective_date: string;
+  lease_end_date: string | null;
+  rent: number;
+  prior_rent: number | null;
+  concessions: number | null;
+  resident_name: string | null;
+}
+
+interface LeaseExpiration {
+  month: string;
+  count: number;
+  total_rent: number;
+}
+
+const LeasingTab: React.FC<{ dealId: string }> = ({ dealId }) => {
+  const [transactions, setTransactions] = useState<LeaseTransaction[]>([]);
+  const [expirations, setExpirations] = useState<LeaseExpiration[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<'all' | 'new_lease' | 'renewal' | 'move_out'>('all');
+
+  useEffect(() => {
+    Promise.all([
+      apiClient.get(`/api/v1/operations/${dealId}/lease-transactions?limit=50`).catch(() => ({ data: { transactions: [] } })),
+      apiClient.get(`/api/v1/operations/${dealId}/lease-expirations?months=12`).catch(() => ({ data: { expirations: [] } })),
+    ]).then(([txRes, expRes]) => {
+      setTransactions(txRes.data?.transactions || []);
+      setExpirations(expRes.data?.expirations || []);
+    }).finally(() => setLoading(false));
+  }, [dealId]);
+
+  if (loading) return <div style={{ padding: 20, color: T.text.muted }}>Loading...</div>;
+
+  const filtered = filter === 'all' ? transactions : transactions.filter(t => t.transaction_type === filter);
+
+  // Summary stats
+  const newLeases = transactions.filter(t => t.transaction_type === 'new_lease').length;
+  const renewals = transactions.filter(t => t.transaction_type === 'renewal').length;
+  const moveOuts = transactions.filter(t => t.transaction_type === 'move_out').length;
+  const avgRentIncrease = transactions.filter(t => t.prior_rent && t.rent).reduce((sum, t) => {
+    return sum + ((t.rent - (t.prior_rent || 0)) / (t.prior_rent || 1));
+  }, 0) / (renewals || 1) * 100;
+
+  return (
+    <div>
+      {/* Summary Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
+        <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 4, padding: 12 }}>
+          <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>NEW LEASES</div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: T.text.green, fontFamily: T.font.mono }}>{newLeases}</div>
+        </div>
+        <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 4, padding: 12 }}>
+          <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>RENEWALS</div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: T.text.cyan, fontFamily: T.font.mono }}>{renewals}</div>
+        </div>
+        <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 4, padding: 12 }}>
+          <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>MOVE OUTS</div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: T.text.red, fontFamily: T.font.mono }}>{moveOuts}</div>
+        </div>
+        <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 4, padding: 12 }}>
+          <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>AVG RENT INCREASE</div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: T.text.amber, fontFamily: T.font.mono }}>{avgRentIncrease.toFixed(1)}%</div>
+        </div>
+      </div>
+
+      {/* Lease Expiration Heatmap */}
+      {expirations.length > 0 && (
+        <Panel title="Upcoming Lease Expirations" style={{ marginBottom: 16 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {expirations.map((exp, i) => (
+              <div key={i} style={{
+                flex: '1 0 calc(25% - 8px)',
+                minWidth: 80,
+                padding: '10px 12px',
+                background: exp.count > 10 ? T.text.red + '22' : exp.count > 5 ? T.text.amber + '22' : T.bg.panelAlt,
+                border: `1px solid ${exp.count > 10 ? T.text.red + '44' : exp.count > 5 ? T.text.amber + '44' : T.border.subtle}`,
+                borderRadius: 4,
+                textAlign: 'center',
+              }}>
+                <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>{exp.month}</div>
+                <div style={{
+                  fontSize: 16,
+                  fontWeight: 700,
+                  color: exp.count > 10 ? T.text.red : exp.count > 5 ? T.text.amber : T.text.primary,
+                  fontFamily: T.font.mono,
+                }}>{exp.count}</div>
+                <div style={{ fontSize: 8, color: T.text.muted, fontFamily: T.font.mono }}>{fmt(exp.total_rent, 'currency')}</div>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      )}
+
+      {/* Transaction Table */}
+      <Panel title="Recent Transactions">
+        {/* Filter */}
+        <div style={{ marginBottom: 12, display: 'flex', gap: 8 }}>
+          {(['all', 'new_lease', 'renewal', 'move_out'] as const).map(f => (
+            <button
+              key={f}
+              onClick={() => setFilter(f)}
+              style={{
+                padding: '4px 10px',
+                background: filter === f ? T.text.cyan + '22' : 'transparent',
+                border: `1px solid ${filter === f ? T.text.cyan : T.border.subtle}`,
+                borderRadius: 4,
+                color: filter === f ? T.text.cyan : T.text.muted,
+                fontSize: 9,
+                fontFamily: T.font.mono,
+                cursor: 'pointer',
+              }}
+            >
+              {f === 'all' ? 'ALL' : f.replace('_', ' ').toUpperCase()}
+            </button>
+          ))}
+        </div>
+
+        {filtered.length === 0 ? (
+          <div style={{ padding: 20, color: T.text.muted, textAlign: 'center', fontSize: 11 }}>
+            No transactions found
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: T.font.mono }}>
+              <thead>
+                <tr style={{ borderBottom: `1px solid ${T.border.medium}` }}>
+                  <th style={{ padding: '6px 8px', textAlign: 'left', color: T.text.muted }}>Unit</th>
+                  <th style={{ padding: '6px 8px', textAlign: 'left', color: T.text.muted }}>Type</th>
+                  <th style={{ padding: '6px 8px', textAlign: 'left', color: T.text.muted }}>Effective</th>
+                  <th style={{ padding: '6px 8px', textAlign: 'right', color: T.text.muted }}>Rent</th>
+                  <th style={{ padding: '6px 8px', textAlign: 'right', color: T.text.muted }}>Change</th>
+                  <th style={{ padding: '6px 8px', textAlign: 'left', color: T.text.muted }}>Lease End</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((tx, i) => {
+                  const change = tx.prior_rent ? ((tx.rent - tx.prior_rent) / tx.prior_rent) * 100 : null;
+                  return (
+                    <tr key={i} style={{ borderBottom: `1px solid ${T.border.subtle}` }}>
+                      <td style={{ padding: '6px 8px', color: T.text.primary }}>{tx.unit_number}</td>
+                      <td style={{ padding: '6px 8px' }}>
+                        <span style={{
+                          padding: '2px 6px',
+                          borderRadius: 3,
+                          fontSize: 8,
+                          background: tx.transaction_type === 'new_lease' ? T.text.green + '22' :
+                                      tx.transaction_type === 'renewal' ? T.text.cyan + '22' :
+                                      T.text.red + '22',
+                          color: tx.transaction_type === 'new_lease' ? T.text.green :
+                                 tx.transaction_type === 'renewal' ? T.text.cyan :
+                                 T.text.red,
+                        }}>
+                          {tx.transaction_type.replace('_', ' ').toUpperCase()}
+                        </span>
+                      </td>
+                      <td style={{ padding: '6px 8px', color: T.text.secondary }}>{tx.effective_date}</td>
+                      <td style={{ padding: '6px 8px', textAlign: 'right', color: T.text.primary }}>{fmt(tx.rent, 'currency')}</td>
+                      <td style={{
+                        padding: '6px 8px',
+                        textAlign: 'right',
+                        color: change && change > 0 ? T.text.green : change && change < 0 ? T.text.red : T.text.muted,
+                      }}>
+                        {change !== null ? `${change >= 0 ? '+' : ''}${change.toFixed(1)}%` : '—'}
+                      </td>
+                      <td style={{ padding: '6px 8px', color: T.text.muted }}>{tx.lease_end_date || '—'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Panel>
     </div>
-  </Panel>
-);
+  );
+};
 
 interface TrafficData {
   week: string;
@@ -1145,33 +1506,499 @@ const TrafficTab: React.FC<{ dealId: string }> = ({ dealId }) => {
   );
 };
 
-const CompSetTab: React.FC<{ dealId: string }> = ({ dealId }) => (
-  <Panel title="Competitive Set">
-    <div style={{ padding: 20, color: T.text.muted, textAlign: 'center', fontFamily: T.font.mono, fontSize: 11 }}>
-      Comp set management coming soon.
-    </div>
-  </Panel>
-);
+interface CompProperty {
+  id: string;
+  name: string;
+  address: string;
+  distance_mi: number;
+  units: number;
+  year_built: number;
+  avg_rent: number;
+  occupancy: number;
+  class: string;
+  tier: 'primary' | 'secondary';
+}
 
-const UnitMixTab: React.FC<{ dealId: string }> = ({ dealId }) => (
-  <Panel title="Unit Mix">
-    <div style={{ padding: 20, color: T.text.muted, textAlign: 'center', fontFamily: T.font.mono, fontSize: 11 }}>
-      Unit mix breakdown coming soon.
+const CompSetTab: React.FC<{ dealId: string }> = ({ dealId }) => {
+  const [comps, setComps] = useState<CompProperty[]>([]);
+  const [subject, setSubject] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      apiClient.get(`/api/v1/deals/${dealId}/comp-set`).catch(() => ({ data: { comps: [] } })),
+      apiClient.get(`/api/v1/portfolio/assets/${dealId}/summary`).catch(() => ({ data: null })),
+    ]).then(([compsRes, subjectRes]) => {
+      setComps(compsRes.data?.comps || []);
+      setSubject(subjectRes.data?.deal || null);
+    }).finally(() => setLoading(false));
+  }, [dealId]);
+
+  if (loading) return <div style={{ padding: 20, color: T.text.muted }}>Loading...</div>;
+
+  const primaryComps = comps.filter(c => c.tier === 'primary');
+  const secondaryComps = comps.filter(c => c.tier === 'secondary');
+
+  // Calculate averages
+  const avgRent = comps.length > 0 ? comps.reduce((sum, c) => sum + c.avg_rent, 0) / comps.length : 0;
+  const avgOcc = comps.length > 0 ? comps.reduce((sum, c) => sum + c.occupancy, 0) / comps.length : 0;
+  const avgUnits = comps.length > 0 ? comps.reduce((sum, c) => sum + c.units, 0) / comps.length : 0;
+
+  return (
+    <div>
+      {/* Market Position Summary */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
+        <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 4, padding: 12 }}>
+          <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>COMP SET SIZE</div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: T.text.cyan, fontFamily: T.font.mono }}>{comps.length}</div>
+          <div style={{ fontSize: 8, color: T.text.muted, fontFamily: T.font.mono }}>{primaryComps.length} primary</div>
+        </div>
+        <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 4, padding: 12 }}>
+          <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>AVG COMP RENT</div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: T.text.green, fontFamily: T.font.mono }}>{fmt(avgRent, 'currency')}</div>
+        </div>
+        <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 4, padding: 12 }}>
+          <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>AVG COMP OCC</div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: T.text.amber, fontFamily: T.font.mono }}>{avgOcc.toFixed(1)}%</div>
+        </div>
+        <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 4, padding: 12 }}>
+          <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>AVG UNITS</div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: T.text.purple, fontFamily: T.font.mono }}>{Math.round(avgUnits)}</div>
+        </div>
+      </div>
+
+      {/* Comp Table */}
+      <Panel title="Competitive Properties">
+        {comps.length === 0 ? (
+          <div style={{ padding: 40, textAlign: 'center' }}>
+            <div style={{ fontSize: 32, marginBottom: 12 }}>🏢</div>
+            <div style={{ fontSize: 12, color: T.text.primary, fontFamily: T.font.mono, marginBottom: 8 }}>
+              No competitive set defined
+            </div>
+            <div style={{ fontSize: 10, color: T.text.muted, fontFamily: T.font.mono }}>
+              Add competitors to track market position
+            </div>
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: T.font.mono }}>
+              <thead>
+                <tr style={{ borderBottom: `1px solid ${T.border.medium}` }}>
+                  <th style={{ padding: '6px 8px', textAlign: 'left', color: T.text.muted }}>Property</th>
+                  <th style={{ padding: '6px 8px', textAlign: 'left', color: T.text.muted }}>Tier</th>
+                  <th style={{ padding: '6px 8px', textAlign: 'right', color: T.text.muted }}>Distance</th>
+                  <th style={{ padding: '6px 8px', textAlign: 'right', color: T.text.muted }}>Units</th>
+                  <th style={{ padding: '6px 8px', textAlign: 'right', color: T.text.muted }}>Avg Rent</th>
+                  <th style={{ padding: '6px 8px', textAlign: 'right', color: T.text.muted }}>Occ %</th>
+                  <th style={{ padding: '6px 8px', textAlign: 'left', color: T.text.muted }}>Class</th>
+                  <th style={{ padding: '6px 8px', textAlign: 'right', color: T.text.muted }}>Built</th>
+                </tr>
+              </thead>
+              <tbody>
+                {comps.map((comp, i) => (
+                  <tr key={i} style={{ borderBottom: `1px solid ${T.border.subtle}` }}>
+                    <td style={{ padding: '6px 8px' }}>
+                      <div style={{ color: T.text.primary, fontWeight: 500 }}>{comp.name}</div>
+                      <div style={{ fontSize: 8, color: T.text.muted }}>{comp.address}</div>
+                    </td>
+                    <td style={{ padding: '6px 8px' }}>
+                      <span style={{
+                        padding: '2px 6px',
+                        borderRadius: 3,
+                        fontSize: 8,
+                        background: comp.tier === 'primary' ? T.text.cyan + '22' : T.text.muted + '22',
+                        color: comp.tier === 'primary' ? T.text.cyan : T.text.muted,
+                      }}>
+                        {comp.tier.toUpperCase()}
+                      </span>
+                    </td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right', color: T.text.secondary }}>{comp.distance_mi.toFixed(1)} mi</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right', color: T.text.primary }}>{comp.units}</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right', color: T.text.green }}>{fmt(comp.avg_rent, 'currency')}</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right', color: T.text.amber }}>{comp.occupancy.toFixed(1)}%</td>
+                    <td style={{ padding: '6px 8px', color: T.text.purple }}>{comp.class}</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right', color: T.text.muted }}>{comp.year_built}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Panel>
     </div>
-  </Panel>
-);
+  );
+};
+
+interface UnitType {
+  unit_type: string;
+  bed_count: number;
+  bath_count: number;
+  sqft: number;
+  count: number;
+  occupied: number;
+  avg_rent: number;
+  market_rent: number;
+  total_rent: number;
+}
+
+const UnitMixTab: React.FC<{ dealId: string }> = ({ dealId }) => {
+  const [unitTypes, setUnitTypes] = useState<UnitType[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    apiClient.get(`/api/v1/operations/${dealId}/unit-mix`)
+      .then(res => setUnitTypes(res.data?.unitTypes || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [dealId]);
+
+  if (loading) return <div style={{ padding: 20, color: T.text.muted }}>Loading...</div>;
+
+  if (unitTypes.length === 0) {
+    return (
+      <Panel title="Unit Mix">
+        <div style={{ padding: 40, textAlign: 'center' }}>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>🏠</div>
+          <div style={{ fontSize: 12, color: T.text.primary, fontFamily: T.font.mono, marginBottom: 8 }}>
+            No unit mix data available
+          </div>
+          <div style={{ fontSize: 10, color: T.text.muted, fontFamily: T.font.mono }}>
+            Upload a rent roll to populate unit mix
+          </div>
+        </div>
+      </Panel>
+    );
+  }
+
+  // Calculate totals
+  const totalUnits = unitTypes.reduce((sum, ut) => sum + ut.count, 0);
+  const totalOccupied = unitTypes.reduce((sum, ut) => sum + ut.occupied, 0);
+  const totalRent = unitTypes.reduce((sum, ut) => sum + ut.total_rent, 0);
+  const avgRent = totalUnits > 0 ? totalRent / totalOccupied : 0;
+  const overallOcc = totalUnits > 0 ? (totalOccupied / totalUnits) * 100 : 0;
+
+  // Colors for different bed counts
+  const bedColors: Record<number, string> = {
+    0: T.text.purple,
+    1: T.text.cyan,
+    2: T.text.green,
+    3: T.text.amber,
+    4: T.text.orange,
+  };
+
+  return (
+    <div>
+      {/* Summary Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
+        <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 4, padding: 12 }}>
+          <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>TOTAL UNITS</div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: T.text.cyan, fontFamily: T.font.mono }}>{totalUnits}</div>
+        </div>
+        <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 4, padding: 12 }}>
+          <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>OCCUPANCY</div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: T.text.green, fontFamily: T.font.mono }}>{overallOcc.toFixed(1)}%</div>
+        </div>
+        <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 4, padding: 12 }}>
+          <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>AVG RENT</div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: T.text.amber, fontFamily: T.font.mono }}>{fmt(avgRent, 'currency')}</div>
+        </div>
+        <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 4, padding: 12 }}>
+          <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>UNIT TYPES</div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: T.text.purple, fontFamily: T.font.mono }}>{unitTypes.length}</div>
+        </div>
+      </div>
+
+      {/* Unit Mix Breakdown */}
+      <Panel title="Unit Mix by Bedroom">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 16 }}>
+          {unitTypes.map((ut, i) => {
+            const occ = ut.count > 0 ? (ut.occupied / ut.count) * 100 : 0;
+            const color = bedColors[ut.bed_count] || T.text.muted;
+            return (
+              <div key={i} style={{
+                background: T.bg.panelAlt,
+                border: `1px solid ${T.border.subtle}`,
+                borderLeft: `4px solid ${color}`,
+                borderRadius: 4,
+                padding: 12,
+              }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: T.text.primary, fontFamily: T.font.mono, marginBottom: 8 }}>
+                  {ut.unit_type}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+                  <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>Units</div>
+                  <div style={{ fontSize: 9, color: T.text.primary, fontFamily: T.font.mono, textAlign: 'right' }}>{ut.count}</div>
+                  <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>Occ</div>
+                  <div style={{ fontSize: 9, color: occ >= 95 ? T.text.green : occ >= 90 ? T.text.amber : T.text.red, fontFamily: T.font.mono, textAlign: 'right' }}>
+                    {occ.toFixed(0)}%
+                  </div>
+                  <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>Avg Rent</div>
+                  <div style={{ fontSize: 9, color: T.text.primary, fontFamily: T.font.mono, textAlign: 'right' }}>{fmt(ut.avg_rent, 'currency')}</div>
+                  <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>Sqft</div>
+                  <div style={{ fontSize: 9, color: T.text.secondary, fontFamily: T.font.mono, textAlign: 'right' }}>{ut.sqft.toLocaleString()}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Detail Table */}
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: T.font.mono }}>
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${T.border.medium}` }}>
+                <th style={{ padding: '6px 8px', textAlign: 'left', color: T.text.muted }}>Unit Type</th>
+                <th style={{ padding: '6px 8px', textAlign: 'center', color: T.text.muted }}>Bed/Bath</th>
+                <th style={{ padding: '6px 8px', textAlign: 'right', color: T.text.muted }}>Sqft</th>
+                <th style={{ padding: '6px 8px', textAlign: 'right', color: T.text.muted }}>Units</th>
+                <th style={{ padding: '6px 8px', textAlign: 'right', color: T.text.muted }}>Occupied</th>
+                <th style={{ padding: '6px 8px', textAlign: 'right', color: T.text.muted }}>Occ %</th>
+                <th style={{ padding: '6px 8px', textAlign: 'right', color: T.text.muted }}>Avg Rent</th>
+                <th style={{ padding: '6px 8px', textAlign: 'right', color: T.text.muted }}>Market</th>
+                <th style={{ padding: '6px 8px', textAlign: 'right', color: T.text.muted }}>$/Sqft</th>
+              </tr>
+            </thead>
+            <tbody>
+              {unitTypes.map((ut, i) => {
+                const occ = ut.count > 0 ? (ut.occupied / ut.count) * 100 : 0;
+                const perSqft = ut.sqft > 0 ? ut.avg_rent / ut.sqft : 0;
+                return (
+                  <tr key={i} style={{ borderBottom: `1px solid ${T.border.subtle}` }}>
+                    <td style={{ padding: '6px 8px', color: T.text.primary, fontWeight: 500 }}>{ut.unit_type}</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'center', color: T.text.secondary }}>{ut.bed_count}b/{ut.bath_count}ba</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right', color: T.text.secondary }}>{ut.sqft.toLocaleString()}</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right', color: T.text.primary }}>{ut.count}</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right', color: T.text.green }}>{ut.occupied}</td>
+                    <td style={{
+                      padding: '6px 8px',
+                      textAlign: 'right',
+                      color: occ >= 95 ? T.text.green : occ >= 90 ? T.text.amber : T.text.red,
+                    }}>
+                      {occ.toFixed(1)}%
+                    </td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right', color: T.text.primary }}>{fmt(ut.avg_rent, 'currency')}</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right', color: T.text.muted }}>{fmt(ut.market_rent, 'currency')}</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right', color: T.text.amber }}>${perSqft.toFixed(2)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr style={{ borderTop: `2px solid ${T.border.medium}`, background: T.bg.panelAlt }}>
+                <td colSpan={3} style={{ padding: '6px 8px', color: T.text.primary, fontWeight: 700 }}>TOTAL</td>
+                <td style={{ padding: '6px 8px', textAlign: 'right', color: T.text.primary, fontWeight: 700 }}>{totalUnits}</td>
+                <td style={{ padding: '6px 8px', textAlign: 'right', color: T.text.green, fontWeight: 700 }}>{totalOccupied}</td>
+                <td style={{ padding: '6px 8px', textAlign: 'right', color: T.text.amber, fontWeight: 700 }}>{overallOcc.toFixed(1)}%</td>
+                <td style={{ padding: '6px 8px', textAlign: 'right', color: T.text.primary, fontWeight: 700 }}>{fmt(avgRent, 'currency')}</td>
+                <td colSpan={2}></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </Panel>
+    </div>
+  );
+};
 
 const ExitPlanningTab: React.FC<{ dealId: string }> = ({ dealId }) => (
   <LifecycleSection dealId={dealId} initialTab="disposition" />
 );
 
-const RefiAnalysisTab: React.FC<{ dealId: string }> = ({ dealId }) => (
-  <Panel title="Refinance Analysis">
-    <div style={{ padding: 20, color: T.text.muted, textAlign: 'center', fontFamily: T.font.mono, fontSize: 11 }}>
-      Refi analysis (rate scenarios, prepayment penalty) coming soon.
+const RefiAnalysisTab: React.FC<{ dealId: string }> = ({ dealId }) => {
+  const [scenarios, setScenarios] = useState<any[]>([]);
+  const [currentDebt, setCurrentDebt] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [newRate, setNewRate] = useState<number>(6.5);
+  const [newLtv, setNewLtv] = useState<number>(65);
+
+  useEffect(() => {
+    Promise.all([
+      apiClient.get(`/api/v1/lifecycle/deals/${dealId}/debt/positions`).catch(() => ({ data: { positions: [] } })),
+      apiClient.get(`/api/v1/lifecycle/deals/${dealId}/debt/refi-scenarios`).catch(() => ({ data: { scenarios: [] } })),
+    ]).then(([debtRes, scenarioRes]) => {
+      const positions = debtRes.data?.positions || [];
+      setCurrentDebt(positions[0] || null);
+      setScenarios(scenarioRes.data?.scenarios || []);
+    }).finally(() => setLoading(false));
+  }, [dealId]);
+
+  if (loading) return <div style={{ padding: 20, color: T.text.muted }}>Loading...</div>;
+
+  const runScenario = async () => {
+    try {
+      const res = await apiClient.post(`/api/v1/lifecycle/deals/${dealId}/debt/refi-test`, {
+        new_rate: newRate / 100,
+        new_ltv: newLtv / 100,
+        term_years: 10,
+      });
+      if (res.data?.result) {
+        setScenarios([res.data.result, ...scenarios.slice(0, 4)]);
+      }
+    } catch (err) {
+      console.error('Refi scenario failed:', err);
+    }
+  };
+
+  return (
+    <div>
+      {/* Current Debt Summary */}
+      {currentDebt && (
+        <Panel title="Current Debt" style={{ marginBottom: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>BALANCE</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: T.text.primary, fontFamily: T.font.mono }}>
+                {fmt(currentDebt.current_balance, 'currency')}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>RATE</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: T.text.cyan, fontFamily: T.font.mono }}>
+                {(currentDebt.interest_rate * 100).toFixed(2)}%
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>MONTHLY P&I</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: T.text.orange, fontFamily: T.font.mono }}>
+                {fmt(currentDebt.monthly_payment, 'currency')}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>MATURITY</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: T.text.amber, fontFamily: T.font.mono }}>
+                {currentDebt.maturity_date?.slice(0, 10) || '—'}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>LTV</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: T.text.purple, fontFamily: T.font.mono }}>
+                {currentDebt.ltv ? `${(currentDebt.ltv * 100).toFixed(0)}%` : '—'}
+              </div>
+            </div>
+          </div>
+        </Panel>
+      )}
+
+      {/* Scenario Builder */}
+      <Panel title="Refinance Scenario" style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div>
+            <label style={{ display: 'block', fontSize: 9, color: T.text.muted, fontFamily: T.font.mono, marginBottom: 4 }}>NEW RATE (%)</label>
+            <input
+              type="number"
+              step="0.125"
+              value={newRate}
+              onChange={(e) => setNewRate(parseFloat(e.target.value))}
+              style={{
+                width: 100,
+                padding: '8px 10px',
+                background: T.bg.input,
+                border: `1px solid ${T.border.subtle}`,
+                borderRadius: 4,
+                color: T.text.primary,
+                fontSize: 12,
+                fontFamily: T.font.mono,
+              }}
+            />
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 9, color: T.text.muted, fontFamily: T.font.mono, marginBottom: 4 }}>NEW LTV (%)</label>
+            <input
+              type="number"
+              step="5"
+              value={newLtv}
+              onChange={(e) => setNewLtv(parseFloat(e.target.value))}
+              style={{
+                width: 100,
+                padding: '8px 10px',
+                background: T.bg.input,
+                border: `1px solid ${T.border.subtle}`,
+                borderRadius: 4,
+                color: T.text.primary,
+                fontSize: 12,
+                fontFamily: T.font.mono,
+              }}
+            />
+          </div>
+          <button
+            onClick={runScenario}
+            style={{
+              padding: '10px 20px',
+              background: T.text.cyan + '22',
+              border: `1px solid ${T.text.cyan}`,
+              borderRadius: 4,
+              color: T.text.cyan,
+              fontSize: 11,
+              fontFamily: T.font.mono,
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            RUN SCENARIO
+          </button>
+        </div>
+      </Panel>
+
+      {/* Scenario Results */}
+      <Panel title="Scenario Analysis">
+        {scenarios.length === 0 ? (
+          <div style={{ padding: 20, color: T.text.muted, textAlign: 'center', fontSize: 11 }}>
+            Run a refinance scenario to see the analysis
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10, fontFamily: T.font.mono }}>
+              <thead>
+                <tr style={{ borderBottom: `1px solid ${T.border.medium}` }}>
+                  <th style={{ padding: '6px 8px', textAlign: 'left', color: T.text.muted }}>Scenario</th>
+                  <th style={{ padding: '6px 8px', textAlign: 'right', color: T.text.muted }}>New Rate</th>
+                  <th style={{ padding: '6px 8px', textAlign: 'right', color: T.text.muted }}>New LTV</th>
+                  <th style={{ padding: '6px 8px', textAlign: 'right', color: T.text.muted }}>New Loan</th>
+                  <th style={{ padding: '6px 8px', textAlign: 'right', color: T.text.muted }}>New P&I</th>
+                  <th style={{ padding: '6px 8px', textAlign: 'right', color: T.text.muted }}>Monthly Δ</th>
+                  <th style={{ padding: '6px 8px', textAlign: 'right', color: T.text.muted }}>Cash Out</th>
+                  <th style={{ padding: '6px 8px', textAlign: 'right', color: T.text.muted }}>DSCR</th>
+                </tr>
+              </thead>
+              <tbody>
+                {scenarios.map((s, i) => {
+                  const monthlySavings = currentDebt ? currentDebt.monthly_payment - s.new_monthly_payment : 0;
+                  return (
+                    <tr key={i} style={{ borderBottom: `1px solid ${T.border.subtle}` }}>
+                      <td style={{ padding: '6px 8px', color: T.text.primary }}>Scenario {i + 1}</td>
+                      <td style={{ padding: '6px 8px', textAlign: 'right', color: T.text.cyan }}>{(s.new_rate * 100).toFixed(2)}%</td>
+                      <td style={{ padding: '6px 8px', textAlign: 'right', color: T.text.purple }}>{(s.new_ltv * 100).toFixed(0)}%</td>
+                      <td style={{ padding: '6px 8px', textAlign: 'right', color: T.text.primary }}>{fmt(s.new_loan_amount, 'currency')}</td>
+                      <td style={{ padding: '6px 8px', textAlign: 'right', color: T.text.orange }}>{fmt(s.new_monthly_payment, 'currency')}</td>
+                      <td style={{
+                        padding: '6px 8px',
+                        textAlign: 'right',
+                        color: monthlySavings >= 0 ? T.text.green : T.text.red,
+                        fontWeight: 600,
+                      }}>
+                        {monthlySavings >= 0 ? '+' : ''}{fmt(monthlySavings, 'currency')}
+                      </td>
+                      <td style={{ padding: '6px 8px', textAlign: 'right', color: s.cash_out_proceeds > 0 ? T.text.green : T.text.muted }}>
+                        {fmt(s.cash_out_proceeds || 0, 'currency')}
+                      </td>
+                      <td style={{
+                        padding: '6px 8px',
+                        textAlign: 'right',
+                        color: s.new_dscr >= 1.25 ? T.text.green : s.new_dscr >= 1.0 ? T.text.amber : T.text.red,
+                      }}>
+                        {s.new_dscr?.toFixed(2)}x
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Panel>
     </div>
-  </Panel>
-);
+  );
+};
 
 // ─── Activity Tab (Emails + Tasks + Events) ─────────────────────────────────────
 
