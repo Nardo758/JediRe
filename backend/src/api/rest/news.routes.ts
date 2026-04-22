@@ -760,7 +760,17 @@ router.get('/feed', async (req: Request, res: Response) => {
           is_premium: true,
         }));
         userItemCount = premium.length;
+        // Deduplicate by URL (or id as fallback) after merging premiums
+        // — the RSS fan-out in getUnifiedFeed may return the same article
+        // that the user also forwarded via email.
+        const seen = new Set<string>();
         articles = [...premium, ...articles]
+          .filter((a) => {
+            const key = a.link || a.id;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          })
           .sort(
             (a, b) =>
               new Date(b.published_at).getTime() - new Date(a.published_at).getTime()

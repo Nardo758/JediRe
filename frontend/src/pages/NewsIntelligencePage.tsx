@@ -132,14 +132,8 @@ export function NewsIntelligencePage() {
 
   const loadEvents = async () => {
     try {
-      const [res, feedEvents] = await Promise.all([
-        newsService.getEvents({
-          category: selectedCategory !== 'all' ? selectedCategory : undefined,
-        }),
-        loadUnifiedFeed(),
-      ]);
-      const baseEvents = res.success ? res.data : [];
-      setEvents([...feedEvents, ...baseEvents]);
+      const feedEvents = await loadUnifiedFeed();
+      setEvents(feedEvents);
     } catch (error) {
       console.error('Error loading events:', error);
     }
