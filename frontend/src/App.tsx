@@ -5,7 +5,6 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { ErrorFallback } from './components/fallbacks/ErrorFallback';
 import { PageLoadingFallback } from './components/fallbacks/PageLoadingFallback';
 import { CreateDealPage } from './pages/CreateDealPage';
-import { NewsPage } from './pages/NewsPage';
 import { SystemArchitecturePage } from './pages/SystemArchitecturePage';
 
 const Design3DPage = lazy(() => import('./pages/Design3DPage').then(m => ({ default: m.Design3DPage })));
@@ -131,7 +130,7 @@ function AppContent() {
         <Route path="/market-intelligence/watchlist" element={<WatchlistPage />} />
 
         {/* ═══ Standalone pages — unique content, no layout chrome ═══ */}
-        <Route path="/news" element={<NewsPage />} />
+        <Route path="/news" element={<Navigate to="/terminal/news" replace />} />
         <Route path="/deals" element={<Navigate to="/terminal/pipeline" replace />} />
         <Route path="/properties" element={<Navigate to="/terminal/portfolio" replace />} />
         <Route path="/properties/:id" element={<PropertyDetailsPage />} />

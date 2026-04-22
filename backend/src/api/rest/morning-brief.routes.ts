@@ -171,13 +171,27 @@ async function fetchUserPremiumMarketInsights(
   userId: string
 ): Promise<MorningBriefData['marketInsights']> {
   try {
+    // Pull from BOTH:
+    //   1. user_news_items   — forwarded newsletters + authenticated RSS (Task #329)
+    //   2. user_newsletter_articles — LLM-parsed articles from subscription emails
+    // Highest-relevance newsletter articles surface first, then chronological mix.
     const result = await query(
-      `SELECT title, summary, publisher, url
-         FROM user_news_items
-        WHERE user_id = $1
-          AND COALESCE(published_at, fetched_at) > NOW() - INTERVAL '24 hours'
-        ORDER BY COALESCE(published_at, fetched_at) DESC
-        LIMIT 8`,
+      `SELECT title, summary, publisher, url, ts FROM (
+         SELECT title, summary, publisher, url,
+                COALESCE(published_at, fetched_at) AS ts
+           FROM user_news_items
+          WHERE user_id = $1
+            AND COALESCE(published_at, fetched_at) > NOW() - INTERVAL '24 hours'
+         UNION ALL
+         SELECT title, summary, source AS publisher, url,
+                extracted_at AS ts
+           FROM user_newsletter_articles
+          WHERE user_id = $1
+            AND extracted_at > NOW() - INTERVAL '24 hours'
+            AND relevance_to_re IN ('high', 'medium')
+       ) merged
+       ORDER BY ts DESC
+       LIMIT 8`,
       [userId]
     );
     interface PremiumRow {
