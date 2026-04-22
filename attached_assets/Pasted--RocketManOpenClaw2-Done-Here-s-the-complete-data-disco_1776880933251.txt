@@ -1,0 +1,118 @@
+> RocketManOpenClaw2:
+Done! Here's the complete data discovery system:
+
+───
+
+Automated Data Discovery
+
+What Runs Automatically
+
+| Schedule        | Job              | What It Does                                   |
+| --------------- | ---------------- | ---------------------------------------------- |
+| Hourly (:15)    | Market Discovery | Fetches SOFR, Fed Funds, Treasury, REIT prices |
+| Daily 6 AM      | News Scan        | Searches 15 real estate topics                 |
+| Daily 7 AM      | Deal News        | Scans news for each active deal's market       |
+| Daily 8 AM      | Economic Data    | Employment data for deal MSAs                  |
+| Weekly Sun 5 AM | Market Scan      | Deep dive on 15 major markets                  |
+
+How Agents Use It
+
+User: "What's happening in the Tampa apartment market?"
+
+User asks → Research agent activated
+                ↓
+Research agent calls: research_market(market: "Tampa")
+                ↓
+Discovery engine:
+  1. Searches news for "Tampa multifamily"
+  2. Searches web for market reports
+  3. Caches results
+                ↓
+Returns: news articles + report links
+                ↓
+Research agent synthesizes response
+
+New Skills (6 total → now 24 skills)
+
+| Skill              | What It Does                    |
+| ------------------ | ------------------------------- |
+| web_search         | Google/DuckDuckGo search        |
+| search_news        | NewsAPI/Google News             |
+| get_interest_rates | FRED: SOFR, Fed Funds, Treasury |
+| get_reit_prices    | Yahoo Finance: AVB, EQR, MAA    |
+| get_deal_news      | News for deal's specific market |
+| research_market    | Comprehensive market research   |
+
+Data Sources
+
+| Category    | Sources                           |
+| ----------- | --------------------------------- |
+| Economic    | BLS, FRED, Census                 |
+| News        | NewsAPI, Google News RSS          |
+| Real Estate | Zillow (RapidAPI), Apartment List |
+| Market      | Treasury, Yahoo Finance           |
+| Regulatory  | SEC EDGAR                         |
+| Web         | Serper (Google), DuckDuckGo       |
+
+Environment Variables (Optional)
+
+NEWSAPI_KEY=xxx        # Better news results
+FRED_API_KEY=xxx       # Economic data
+SERPER_API_KEY=xxx     # Better web search
+RAPIDAPI_KEY=xxx       # Zillow access
+
+Without keys: Falls back to free sources (Google News RSS, DuckDuckGo, Treasury API)
+
+───
+
+Migrations to Run
+
+20260422_agent_system_tables.sql
+20260422_morning_briefs_table.sql
+20260422_discovery_tables.sql
+
+The agents now actively search the internet, not just your database!
+
+> Leon:
+what command do i run in replit
+
+> RocketManOpenClaw2:
+In Replit's Shell tab, run:
+
+cd backend && npx ts-node -e "
+const { Pool } = require('pg');
+const fs = require('fs');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+async function run() {
+  const migrations = [
+    'src/database/migrations/20260422_agent_system_tables.sql',
+    'src/database/migrations/20260422_morning_briefs_table.sql',
+    'src/database/migrations/20260422_discovery_tables.sql'
+  ];
+  
+  for (const file of migrations) {
+    console.log('Running:', file);
+    const sql = fs.readFileSync(file, 'utf8');
+    await pool.query(sql);
+    console.log('✓ Done');
+  }
+  
+  await pool.end();
+  console.log('All migrations complete!');
+}
+
+run().catch(e => { console.error(e); process.exit(1); });
+"
+
+Or if you prefer to run them one at a time:
+
+# Pull latest code first
+git pull origin master
+
+# Then run each migration
+psql $DATABASE_URL -f src/database/migrations/20260422_agent_system_tables.sql
+psql $DATABASE_URL -f src/database/migrations/20260422_morning_briefs_table.sql
+psql $DATABASE_URL -f src/database/migrations/20260422_discovery_tables.sql
+
+If psql isn't available, use the Replit Database tool or the ts-node command above.
