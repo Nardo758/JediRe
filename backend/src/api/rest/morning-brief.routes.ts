@@ -161,6 +161,41 @@ router.post('/refresh', requireAuth, async (req: AuthenticatedRequest, res: Resp
 // BRIEF GENERATION
 // ============================================================================
 
+/**
+ * Task #329 — pull the caller's premium-subscription items (forwarded
+ * newsletters + authenticated RSS) from `user_news_items` so the morning
+ * brief surfaces "what your WSJ/Bloomberg/FT subs reported overnight"
+ * alongside agent insights.
+ */
+async function fetchUserPremiumMarketInsights(
+  userId: string
+): Promise<MorningBriefData['marketInsights']> {
+  try {
+    const result = await query(
+      `SELECT title, summary, publisher, url
+         FROM user_news_items
+        WHERE user_id = $1
+          AND COALESCE(published_at, fetched_at) > NOW() - INTERVAL '24 hours'
+        ORDER BY COALESCE(published_at, fetched_at) DESC
+        LIMIT 8`,
+      [userId]
+    );
+    interface PremiumRow {
+      title: string;
+      summary: string | null;
+      publisher: string | null;
+      url: string;
+    }
+    return (result.rows as PremiumRow[]).map((r) => ({
+      headline: `[${r.publisher || 'Your Subscription'}] ${r.title}`,
+      summary: r.summary || r.url,
+    }));
+  } catch (err) {
+    logger.error('[morning-brief] failed to fetch premium news items', err);
+    return [];
+  }
+}
+
 async function generateMorningBrief(userId: string): Promise<MorningBriefData> {
   const now = new Date();
   const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
@@ -283,7 +318,7 @@ async function generateMorningBrief(userId: string): Promise<MorningBriefData> {
     
     urgent: urgentItems,
     
-    marketInsights: [], // Would come from news/market data feeds
+    marketInsights: await fetchUserPremiumMarketInsights(userId),
     
     tasksSummary: {
       dueToday,

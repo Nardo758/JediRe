@@ -153,7 +153,7 @@ export async function pollOneRssConnection(
         canonical,
         (item.title || '').slice(0, 500),
         (item.contentSnippet || item.summary || '').slice(0, 2000) || null,
-        item.creator || (item as any).author || null,
+        item.creator || (item as { author?: string }).author || null,
         item.isoDate ? new Date(item.isoDate) : null,
       ]
     );

@@ -70,8 +70,8 @@ export function NewsConnectionsPage() {
       ]);
       setConnections(c.connections);
       setItems(i.items);
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
@@ -87,8 +87,8 @@ export function NewsConnectionsPage() {
     try {
       await api('/email', { method: 'POST', body: JSON.stringify({ label: emailLabel }) });
       await refresh();
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -109,8 +109,8 @@ export function NewsConnectionsPage() {
       setRssUrl('');
       setRssLabel('');
       await refresh();
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -122,8 +122,8 @@ export function NewsConnectionsPage() {
     try {
       await api(`/${id}/sync`, { method: 'POST' });
       await refresh();
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -135,8 +135,8 @@ export function NewsConnectionsPage() {
     try {
       await api(`/${id}`, { method: 'DELETE' });
       await refresh();
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -148,8 +148,8 @@ export function NewsConnectionsPage() {
     try {
       await api('/oauth-request', { method: 'POST', body: JSON.stringify({ provider }) });
       await refresh();
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }

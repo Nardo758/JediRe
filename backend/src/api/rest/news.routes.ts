@@ -707,19 +707,83 @@ router.get('/discoveries', authMiddleware.requireAuth, async (req: Request, res:
     `;
     const result = await query(sql, params);
 
+    interface DiscoveryRow {
+      id: string;
+      headline: string;
+      source: string;
+      url: string;
+      published_at: string | Date | null;
+      summary: string | null;
+      category: string | null;
+      relevant_msas: string[] | null;
+    }
+    const publicDiscoveries = (result.rows as DiscoveryRow[]).map((r) => ({
+      id: r.id,
+      headline: r.headline,
+      source: r.source,
+      url: r.url,
+      publishedAt: r.published_at,
+      summary: r.summary,
+      category: r.category,
+      relevantMsas: r.relevant_msas,
+      isPremium: false as const,
+    }));
+
+    // Task #329 — also surface the caller's premium newsletter/RSS items
+    // for this deal. Until auto-tagging (#334) lands, we naive-match by
+    // looking for the deal's name/address in the title or summary.
+    interface PremiumDealItemRow {
+      id: string;
+      title: string;
+      summary: string | null;
+      url: string;
+      publisher: string | null;
+      published_at: string | Date | null;
+    }
+    let premiumItems: ReturnType<typeof publicDiscoveries.map> = [];
+    try {
+      const dealRes = await query(
+        `SELECT name, address FROM deals WHERE id = $1`,
+        [deal_id]
+      );
+      const dealName: string = dealRes.rows[0]?.name || '';
+      const dealAddr: string = dealRes.rows[0]?.address || '';
+      const needles = [dealName, dealAddr].filter((s) => s && s.length >= 4);
+      if (needles.length > 0) {
+        const orClauses = needles
+          .map((_, idx) => `(uni.title ILIKE $${idx + 2} OR uni.summary ILIKE $${idx + 2})`)
+          .join(' OR ');
+        const premiumSql = `
+          SELECT uni.id, uni.title, uni.summary, uni.url,
+                 uni.publisher, uni.published_at
+            FROM user_news_items uni
+           WHERE uni.user_id = $1
+             AND (${orClauses})
+           ORDER BY COALESCE(uni.published_at, uni.fetched_at) DESC
+           LIMIT 25`;
+        const premiumParams: unknown[] = [userId, ...needles.map((n) => `%${n}%`)];
+        const pr = await query(premiumSql, premiumParams);
+        premiumItems = (pr.rows as PremiumDealItemRow[]).map((r) => ({
+          id: `user-${r.id}`,
+          headline: r.title,
+          source: r.publisher || 'Your Subscription',
+          url: r.url,
+          publishedAt: r.published_at,
+          summary: r.summary,
+          category: null,
+          relevantMsas: null,
+          isPremium: true as const,
+        }));
+      }
+    } catch (err) {
+      logger.error('[news/discoveries] failed to merge premium items', err);
+    }
+
+    const merged = [...premiumItems, ...publicDiscoveries];
     res.json({
       success: true,
-      data: result.rows.map((r: any) => ({
-        id: r.id,
-        headline: r.headline,
-        source: r.source,
-        url: r.url,
-        publishedAt: r.published_at,
-        summary: r.summary,
-        category: r.category,
-        relevantMsas: r.relevant_msas,
-      })),
-      count: result.rows.length,
+      data: merged,
+      count: merged.length,
     });
   } catch (error) {
     logger.error('Error fetching news discoveries:', error);
