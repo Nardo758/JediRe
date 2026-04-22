@@ -470,29 +470,40 @@ class NewsService {
       }
     }
 
-    // 2. Get API articles (costs credits) - only if user wants them
+    // 2. Get articles from every healthy provider in parallel.
+    //
+    // Free RSS providers (MarketWatch, Bloomberg, Reuters, WSJ, CNBC, FT,
+    // Bisnow, GlobeSt) don't require API keys and are surfaced via
+    // getHeadlines(), which costs no credits. Paid API providers (Guardian,
+    // NYT, NewsAPI) only run if their keys are configured (their healthCheck
+    // gates them out otherwise) and are also pulled via getHeadlines() to
+    // keep this endpoint free for the user.
     let apiCount = 0;
     if (includeApiSources) {
       const remaining = maxArticles - allArticles.length;
       if (remaining > 0) {
         try {
-          const searchQuery = market 
-            ? `${market} real estate`
-            : category === 'real-estate'
-              ? 'commercial real estate multifamily'
-              : category || 'business news';
+          const providers = await this.getHealthyProviders();
+          const perProvider = Math.max(5, Math.ceil(remaining / Math.max(providers.length, 1)));
 
-          const result = await this.search(
-            { query: searchQuery, pageSize: Math.min(remaining, 10), sortBy: 'publishedAt' },
-            { userId }
+          const results = await Promise.allSettled(
+            providers.map((p) =>
+              p.getHeadlines({
+                category: category === 'real-estate' ? 'business' : category,
+                pageSize: perProvider,
+              })
+            )
           );
-          
-          allArticles.push(...result.articles);
-          apiCount = result.articles.length;
-          creditsUsed = NEWS_CREDIT_COSTS['news.search'];
+
+          for (const r of results) {
+            if (r.status === 'fulfilled' && r.value?.articles?.length) {
+              allArticles.push(...r.value.articles);
+              apiCount += r.value.articles.length;
+            }
+          }
         } catch (error) {
-          // Don't fail if API search fails
-          logger.warn('API search failed in unified feed', { error });
+          // Don't fail the whole feed if provider fan-out fails.
+          logger.warn('Provider headlines fan-out failed in unified feed', { error });
         }
       }
     }

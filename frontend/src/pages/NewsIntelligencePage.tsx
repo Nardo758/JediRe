@@ -64,16 +64,19 @@ export function NewsIntelligencePage() {
   const mapFeedArticleToEvent = (a: Record<string, unknown>): NewsEvent => {
     const sourceName = String((a.source as string) || (a.publisher as string) || 'News');
     const isPremium = a.is_premium === true;
+    const headline = String(a.headline ?? a.title ?? '');
     return {
       id: String(a.id ?? `feed-${Math.random()}`),
       event_category: String((a.category as string) || 'all'),
-      event_type: isPremium ? 'newsletter' : 'api_article',
+      // F6 list renders `event_type` as the row's primary text — put the
+      // actual headline here, not the literal source-type string.
+      event_type: headline,
       event_status: 'extracted',
       source_type: isPremium ? 'newsletter' : 'api',
       source_name: isPremium ? `${sourceName} (your subscription)` : sourceName,
       source_url: String((a.link as string) || (a.url as string) || ''),
       source_credibility_score: 1,
-      extracted_data: { headline: a.headline ?? a.title, summary: a.summary ?? '' },
+      extracted_data: { headline, summary: String(a.summary ?? '') },
       location_raw: String((a.market as string) || ''),
       extraction_confidence: 1,
       corroboration_count: 0,
@@ -100,17 +103,19 @@ export function NewsIntelligencePage() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [eventsRes, alertsRes, dashRes, networkRes, feedEvents] = await Promise.all([
-        newsService.getEvents({ category: selectedCategory !== 'all' ? selectedCategory : undefined }),
+      // F6 reads everything from /news/feed only — that endpoint already
+      // unifies newsletter parses, free RSS providers, paid API providers, and
+      // the user's premium subscription items. The legacy /news/events endpoint
+      // is now a thin wrapper around the same data and would only produce
+      // duplicate React keys.
+      const [alertsRes, dashRes, networkRes, feedEvents] = await Promise.all([
         newsService.getAlerts(),
         newsService.getDashboard(),
         newsService.getNetworkIntelligence(),
         loadUnifiedFeed(),
       ]);
 
-      const baseEvents = eventsRes.success ? eventsRes.data : [];
-      // Newsletter + provider API articles first, then legacy curated events.
-      setEvents([...feedEvents, ...baseEvents]);
+      setEvents(feedEvents);
 
       if (alertsRes.success) {
         setAlerts(alertsRes.data);
