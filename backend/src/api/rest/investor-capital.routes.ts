@@ -8,6 +8,10 @@ import { query } from '../../database/connection';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { logger } from '../../utils/logger';
 import { capitalStructureService } from '../../services/capital-structure.service';
+import { gmailSyncService } from '../../services/gmail-sync.service';
+import { MicrosoftGraphService, MicrosoftAuthService } from '../../services/microsoft-graph.service';
+
+const msAuthService = new MicrosoftAuthService();
 
 const router = Router();
 
@@ -839,13 +843,91 @@ router.post('/deals/:dealId/communications/:commId/send', requireAuth, async (re
   try {
     if (!(await ownsDeal(req.params.dealId, req.user!.userId)))
       return res.status(404).json({ success: false, error: 'Deal not found' });
-    const r = await query(
-      `UPDATE investor_communications SET status='sent',sent_at=NOW() WHERE id=$1 AND deal_id=$2 AND status='draft' RETURNING *`,
+
+    // Fetch the draft communication (do not mark sent yet)
+    const draft = await query(
+      `SELECT ic.*, i.email AS investor_email
+       FROM investor_communications ic
+       LEFT JOIN investors i ON i.id = ic.investor_id
+       WHERE ic.id = $1 AND ic.deal_id = $2 AND ic.status = 'draft'`,
       [req.params.commId, req.params.dealId],
     );
-    if (!r.rows.length) return res.status(400).json({ success: false, error: 'Not in draft status or not found' });
-    // TODO: Queue actual email delivery here
-    res.json({ success: true, communication: r.rows[0] });
+    if (!draft.rows.length) return res.status(400).json({ success: false, error: 'Not in draft status or not found' });
+
+    const comm = draft.rows[0];
+    const userId = req.user!.userId;
+
+    // Validate investor email before attempting delivery
+    if (!comm.investor_id) {
+      logger.warn('investor_communications/send: communication has no investor_id', { commId: comm.id });
+      return res.status(422).json({ success: false, error: 'No investor linked to this notice' });
+    }
+    if (!comm.investor_email) {
+      logger.warn('investor_communications/send: investor has no email on file', {
+        commId: comm.id,
+        investorId: comm.investor_id,
+      });
+      return res.status(422).json({ success: false, error: 'Investor has no email address on file' });
+    }
+
+    const investorEmail = comm.investor_email as string;
+
+    // Try Gmail first, then fall back to Microsoft Graph (synchronous — must succeed before marking sent)
+    const gmailAccount = await query(
+      `SELECT id FROM user_email_accounts WHERE user_id = $1 AND provider = 'google' AND sync_enabled = true ORDER BY created_at LIMIT 1`,
+      [userId],
+    );
+
+    if (gmailAccount.rows.length) {
+      await gmailSyncService.sendEmail(gmailAccount.rows[0].id, {
+        to: [investorEmail],
+        subject: comm.subject,
+        body: comm.body ?? '',
+        bodyType: 'text',
+      });
+      logger.info('investor_communications/send: email dispatched via Gmail', { commId: comm.id, to: investorEmail });
+    } else {
+      // Fall back to Microsoft Graph with token refresh
+      const msAccount = await query(
+        'SELECT access_token, refresh_token, token_expires_at FROM microsoft_accounts WHERE user_id = $1 AND is_active = true LIMIT 1',
+        [userId],
+      );
+
+      if (!msAccount.rows.length) {
+        logger.warn('investor_communications/send: no connected email account found; email not sent', { commId: comm.id, userId });
+        return res.status(422).json({ success: false, error: 'No connected email account (Gmail or Microsoft) found' });
+      }
+
+      let accessToken = msAccount.rows[0].access_token as string;
+      const expiresAt = new Date(msAccount.rows[0].token_expires_at).getTime();
+
+      // Refresh token if expired or expiring within 5 minutes
+      if (expiresAt - Date.now() < 5 * 60 * 1000) {
+        const tokens = await msAuthService.refreshAccessToken(msAccount.rows[0].refresh_token);
+        await query(
+          'UPDATE microsoft_accounts SET access_token = $1, refresh_token = $2, token_expires_at = $3 WHERE user_id = $4',
+          [tokens.accessToken, tokens.refreshToken, new Date(tokens.expiresAt), userId],
+        );
+        accessToken = tokens.accessToken;
+      }
+
+      const graphService = new MicrosoftGraphService(accessToken);
+      await graphService.sendEmail({
+        to: [investorEmail],
+        subject: comm.subject,
+        body: comm.body ?? '',
+        bodyType: 'text',
+      });
+      logger.info('investor_communications/send: email dispatched via Microsoft Graph', { commId: comm.id, to: investorEmail });
+    }
+
+    // Mark as sent only after confirmed delivery — include deal_id + status guard for atomic correctness
+    const updated = await query(
+      `UPDATE investor_communications SET status='sent', sent_at=NOW() WHERE id=$1 AND deal_id=$2 AND status='draft' RETURNING *`,
+      [comm.id, req.params.dealId],
+    );
+
+    res.json({ success: true, communication: updated.rows[0] });
   } catch (err) {
     logger.error('POST communications/send', err);
     res.status(500).json({ success: false, error: 'Failed to send' });
