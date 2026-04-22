@@ -115,6 +115,7 @@ import driverAnalysisRoutes from './driver-analysis.routes';
 import agentRunsRoutes, { dealAgentRunsRouter } from './agent-runs.routes';
 import cashflowUnderwritingRoutes, { dealUnderwritingRouter } from './cashflow-underwriting.routes';
 import investorCapitalRoutes from './investor-capital.routes';
+import skillChatRoutes from './skill-chat.routes';
 
 const API_PREFIX = '/api/v1';
 
@@ -168,6 +169,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Deal agent-run listing: GET /deals/:dealId/agent-runs
   app.use(`${API_PREFIX}/deals`, dealAgentRunsRouter);
+
+  // Skill Chat routes: POST /deals/:dealId/skills/chat, GET /deals/:dealId/skills/list
+  app.use(`${API_PREFIX}/deals`, skillChatRoutes);
 
   // CashFlow Evidence System routes: /agents/cashflow/underwrite, /agents/runs/:runId/underwriting
   app.use(`${API_PREFIX}/agents`, cashflowUnderwritingRoutes);
