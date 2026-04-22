@@ -1,585 +1,387 @@
 /**
- * News Intelligence API Routes
- * Event feed, market dashboard, alerts, and network intelligence
+ * News API Routes
+ * 
+ * Premium news APIs exposed through credit-metered endpoints.
+ * JediRe holds the API keys, users pay credits, margin is profit.
+ * 
+ * @version 1.0.0
+ * @date 2026-04-22
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
-import { authMiddleware } from '../../middleware/auth';
-import { query } from '../../database/connection';
-import Parser from 'rss-parser';
-
-const logger = { error: (...args: any[]) => console.error(...args) };
-
-// RSS Feed Configuration
-// Bloomberg has no public RSS (proprietary Terminal API only)
-const RSS_SOURCES = [
-  { id: 'housingwire',  label: 'Housing Wire',      url: 'https://www.housingwire.com/feed/',                                                    color: '#2E86C1' },
-  { id: 'cnbc_re',      label: 'CNBC Real Estate',  url: 'https://www.cnbc.com/id/10000664/device/rss/rss.html',                                  color: '#CC0000' },
-  { id: 'cnbc_fin',     label: 'CNBC Finance',       url: 'https://www.cnbc.com/id/10001147/device/rss/rss.html',                                  color: '#CC0000' },
-  { id: 'mw_re',        label: 'MarketWatch RE',     url: 'https://feeds.marketwatch.com/marketwatch/realtimeheadlines/',                         color: '#004B87' },
-  { id: 'calculated',   label: 'Calculated Risk',    url: 'https://www.calculatedriskblog.com/feeds/posts/default',                                color: '#27AE60' },
-];
-
-const rssParser = new Parser({
-  timeout: 5000,
-  headers: { 'User-Agent': 'JediRe/1.0 News Aggregator' },
-});
-
-// RSS Cache (5 minute TTL)
-const rssCache: Map<string, { data: any[]; timestamp: number }> = new Map();
-const RSS_CACHE_TTL = 5 * 60 * 1000;
+import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
+import { newsService } from '../../services/news/news.service';
+import { NEWS_CREDIT_COSTS } from '../../services/news/news-provider.interface';
+import { logger } from '../../utils/logger';
 
 const router = Router();
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const isValidUUID = (s: string) => UUID_RE.test(s);
+// All routes require auth
+router.use(requireAuth);
+
+// ============================================================================
+// PROVIDER INFO
+// ============================================================================
 
 /**
- * GET /api/v1/news/events
- * Get news events with filtering
+ * GET /api/v1/news/providers
+ * List available news providers and their status
  */
-router.get('/events', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/providers', async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?.userId;
-    const {
-      category,
-      source_type,
-      severity,
-      limit = 50,
-      offset = 0,
-      include_private = 'true',
-    } = req.query;
-
-    let whereConditions: string[] = [];
-    const params: any[] = [];
-    let paramIndex = 1;
-
-    // Filter by category
-    if (category && category !== 'all') {
-      whereConditions.push(`ne.event_category = $${paramIndex}`);
-      params.push(category);
-      paramIndex++;
-    }
-
-    // Filter by source type
-    if (source_type) {
-      whereConditions.push(`ne.source_type = $${paramIndex}`);
-      params.push(source_type);
-      paramIndex++;
-    }
-
-    // Filter by severity
-    if (severity) {
-      whereConditions.push(`ne.impact_severity = $${paramIndex}`);
-      params.push(severity);
-      paramIndex++;
-    }
-
-    // Include private events only for the current user
-    if (include_private === 'true') {
-      whereConditions.push(`(ne.source_type = 'public' OR ne.source_user_id = $${paramIndex})`);
-      params.push(userId);
-      paramIndex++;
-    } else {
-      whereConditions.push(`ne.source_type = 'public'`);
-    }
-
-    params.push(parseInt(limit as string));
-    params.push(parseInt(offset as string));
-
-    const whereClause = whereConditions.length > 0 
-      ? `WHERE ${whereConditions.join(' AND ')}`
-      : '';
-
-    const sql = `
-      SELECT 
-        ne.*,
-        COUNT(DISTINCT negi.deal_id) as affected_deals_count,
-        COUNT(DISTINCT negi.property_id) as affected_properties_count
-      FROM news_events ne
-      LEFT JOIN news_event_geo_impacts negi ON negi.event_id = ne.id
-      ${whereClause}
-      GROUP BY ne.id
-      ORDER BY ne.published_at DESC
-      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
-    `;
-
-    const result = await query(sql, params);
-
-    // Get total count
-    const countSql = `
-      SELECT COUNT(*) as total
-      FROM news_events ne
-      ${whereClause}
-    `;
-    const countResult = await query(countSql, params.slice(0, -2));
-
-    res.json({
-      success: true,
-      data: result.rows,
-      pagination: {
-        total: parseInt(countResult.rows[0].total),
-        limit: parseInt(limit as string),
-        offset: parseInt(offset as string),
-      },
-    });
-  } catch (error) {
-    logger.error('Error fetching news events:', error);
-    next(error);
-  }
-});
-
-/**
- * GET /api/v1/news/events/:id
- * Get single event with full details
- */
-router.get('/events/:id', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { id } = req.params;
-    if (!isValidUUID(id)) {
-      return res.status(404).json({ success: false, message: 'Event not found' });
-    }
-    const userId = (req as any).user?.userId;
-
-    const result = await query(
-      `SELECT ne.*,
-        array_agg(DISTINCT jsonb_build_object(
-          'deal_id', negi.deal_id,
-          'property_id', negi.property_id,
-          'impact_type', negi.impact_type,
-          'distance_miles', negi.distance_miles,
-          'impact_score', negi.impact_score
-        )) FILTER (WHERE negi.id IS NOT NULL) as geographic_impacts
-      FROM news_events ne
-      LEFT JOIN news_event_geo_impacts negi ON negi.event_id = ne.id
-      WHERE ne.id = $1
-        AND (ne.source_type = 'public' OR ne.source_user_id = $2)
-      GROUP BY ne.id`,
-      [id, userId]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'Event not found',
-      });
-    }
-
-    res.json({
-      success: true,
-      data: result.rows[0],
-    });
-  } catch (error) {
-    logger.error('Error fetching news event:', error);
-    next(error);
-  }
-});
-
-/**
- * GET /api/v1/news/dashboard
- * Get market dashboard metrics
- */
-router.get('/dashboard', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const userId = (req as any).user?.userId;
-    const { trade_area_id, submarket_id } = req.query;
-
-    // Get demand momentum (employment events)
-    const demandResult = await query(
-      `SELECT 
-        SUM(CASE 
-          WHEN event_type LIKE '%inbound%' OR event_type LIKE '%hiring%' 
-          THEN (extracted_data->>'employee_count')::INTEGER 
-          ELSE 0 
-        END) as inbound_jobs,
-        SUM(CASE 
-          WHEN event_type LIKE '%outbound%' 
-          THEN (extracted_data->>'employee_count')::INTEGER 
-          ELSE 0 
-        END) as outbound_jobs,
-        SUM(CASE 
-          WHEN event_type LIKE '%layoff%' 
-          THEN (extracted_data->>'employee_count')::INTEGER 
-          ELSE 0 
-        END) as layoff_jobs
-      FROM news_events ne
-      WHERE ne.event_category = 'employment'
-        AND ne.published_at > NOW() - INTERVAL '12 months'
-        AND (ne.source_type = 'public' OR ne.source_user_id = $1)`,
-      [userId]
-    );
-
-    const demand = demandResult.rows[0];
-    const netJobs = (demand.inbound_jobs || 0) - (demand.outbound_jobs || 0) - (demand.layoff_jobs || 0);
-    const estimatedHousingDemand = Math.round(netJobs * 0.65 * 0.67); // occupancy_factor * household_factor
-
-    // Get supply pressure (development events)
-    const supplyResult = await query(
-      `SELECT 
-        SUM((extracted_data->>'unit_count')::INTEGER) as pipeline_units,
-        COUNT(*) as project_count
-      FROM news_events ne
-      WHERE ne.event_category = 'development'
-        AND ne.event_type LIKE '%permit%'
-        AND ne.published_at > NOW() - INTERVAL '6 months'
-        AND (ne.source_type = 'public' OR ne.source_user_id = $1)`,
-      [userId]
-    );
-
-    const supply = supplyResult.rows[0];
-
-    // Get transaction activity
-    const transactionsResult = await query(
-      `SELECT 
-        COUNT(*) as transaction_count,
-        AVG((extracted_data->>'cap_rate')::DECIMAL) as avg_cap_rate,
-        AVG((extracted_data->>'price_per_unit')::INTEGER) as avg_price_per_unit
-      FROM news_events ne
-      WHERE ne.event_category = 'transactions'
-        AND ne.published_at > NOW() - INTERVAL '6 months'
-        AND (ne.source_type = 'public' OR ne.source_user_id = $1)`,
-      [userId]
-    );
-
-    const transactions = transactionsResult.rows[0];
+    const providers = newsService.getProviders();
+    const health = await newsService.getProviderHealth();
 
     res.json({
       success: true,
       data: {
-        demand_momentum: {
-          inbound_jobs: demand.inbound_jobs || 0,
-          outbound_jobs: demand.outbound_jobs || 0,
-          layoff_jobs: demand.layoff_jobs || 0,
-          net_jobs: netJobs,
-          estimated_housing_demand: estimatedHousingDemand,
-          momentum_pct: netJobs > 0 ? 3.2 : -1.5, // Simplified calculation
-        },
-        supply_pressure: {
-          pipeline_units: supply.pipeline_units || 0,
-          project_count: supply.project_count || 0,
-          pressure_pct: 8.5, // TODO: Calculate based on existing inventory
-        },
-        transaction_activity: {
-          count: parseInt(transactions.transaction_count) || 0,
-          avg_cap_rate: parseFloat(transactions.avg_cap_rate) || null,
-          avg_price_per_unit: parseInt(transactions.avg_price_per_unit) || null,
-        },
-      },
-    });
-  } catch (error) {
-    logger.error('Error fetching market dashboard:', error);
-    next(error);
-  }
-});
-
-/**
- * GET /api/v1/news/alerts
- * Get user's news alerts
- */
-router.get('/alerts', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const userId = (req as any).user?.userId;
-    const { unread_only = 'false', severity, limit = 50, offset = 0 } = req.query;
-
-    let whereConditions = ['na.user_id = $1'];
-    const params: any[] = [userId];
-    let paramIndex = 2;
-
-    if (unread_only === 'true') {
-      whereConditions.push('na.is_read = FALSE');
-    }
-
-    if (severity) {
-      whereConditions.push(`na.severity = $${paramIndex}`);
-      params.push(severity);
-      paramIndex++;
-    }
-
-    params.push(parseInt(limit as string));
-    params.push(parseInt(offset as string));
-
-    const sql = `
-      SELECT 
-        na.*,
-        ne.event_category,
-        ne.event_type,
-        ne.location_raw,
-        d.name as deal_name,
-        p.address_line1 as property_name
-      FROM news_alerts na
-      JOIN news_events ne ON ne.id = na.event_id
-      LEFT JOIN deals d ON d.id = na.linked_deal_id
-      LEFT JOIN properties p ON p.id = na.linked_property_id
-      WHERE ${whereConditions.join(' AND ')}
-        AND (na.is_dismissed = FALSE OR na.is_dismissed IS NULL)
-        AND (na.snoozed_until IS NULL OR na.snoozed_until < NOW())
-      ORDER BY na.created_at DESC
-      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
-    `;
-
-    const result = await query(sql, params);
-
-    // Get unread count
-    const countResult = await query(
-      'SELECT COUNT(*) as unread FROM news_alerts WHERE user_id = $1 AND is_read = FALSE',
-      [userId]
-    );
-
-    res.json({
-      success: true,
-      data: result.rows,
-      unread_count: parseInt(countResult.rows[0].unread),
-    });
-  } catch (error) {
-    logger.error('Error fetching news alerts:', error);
-    next(error);
-  }
-});
-
-/**
- * PATCH /api/v1/news/alerts/:id
- * Mark alert as read/dismissed/snoozed
- */
-router.patch('/alerts/:id', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { id } = req.params;
-    if (!isValidUUID(id)) {
-      return res.status(404).json({ success: false, message: 'Alert not found' });
-    }
-    const userId = (req as any).user?.userId;
-    const { is_read, is_dismissed, snooze_hours } = req.body;
-
-    const updates: string[] = [];
-    const params: any[] = [];
-    let paramIndex = 1;
-
-    if (typeof is_read === 'boolean') {
-      updates.push(`is_read = $${paramIndex}`);
-      params.push(is_read);
-      paramIndex++;
-      if (is_read) {
-        updates.push(`read_at = NOW()`);
-      }
-    }
-
-    if (typeof is_dismissed === 'boolean') {
-      updates.push(`is_dismissed = $${paramIndex}`);
-      params.push(is_dismissed);
-      paramIndex++;
-      if (is_dismissed) {
-        updates.push(`dismissed_at = NOW()`);
-      }
-    }
-
-    if (snooze_hours) {
-      updates.push(`snoozed_until = NOW() + INTERVAL '${parseInt(snooze_hours)} hours'`);
-    }
-
-    if (updates.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'No valid updates provided',
-      });
-    }
-
-    params.push(id);
-    params.push(userId);
-
-    const sql = `
-      UPDATE news_alerts
-      SET ${updates.join(', ')}
-      WHERE id = $${paramIndex} AND user_id = $${paramIndex + 1}
-      RETURNING *
-    `;
-
-    const result = await query(sql, params);
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: 'Alert not found',
-      });
-    }
-
-    res.json({
-      success: true,
-      data: result.rows[0],
-    });
-  } catch (error) {
-    logger.error('Error updating alert:', error);
-    next(error);
-  }
-});
-
-/**
- * GET /api/v1/news/network
- * Get network intelligence (contact credibility)
- */
-router.get('/network', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const userId = (req as any).user?.userId;
-
-    const result = await query(
-      `SELECT 
-        contact_name,
-        contact_company,
-        contact_role,
-        total_signals,
-        corroborated_signals,
-        credibility_score,
-        specialties,
-        last_signal_at
-      FROM news_contact_credibility
-      WHERE user_id = $1
-        AND total_signals >= 3
-      ORDER BY credibility_score DESC, total_signals DESC
-      LIMIT 20`,
-      [userId]
-    );
-
-    // Calculate average early signal days
-    const earlySignalResult = await query(
-      `SELECT AVG(early_signal_days) as avg_early_days
-      FROM news_events ne
-      WHERE ne.source_user_id = $1
-        AND ne.early_signal_days IS NOT NULL`,
-      [userId]
-    );
-
-    res.json({
-      success: true,
-      data: {
-        contacts: result.rows,
-        avg_early_signal_days: parseFloat(earlySignalResult.rows[0].avg_early_days) || 0,
-      },
-    });
-  } catch (error) {
-    logger.error('Error fetching network intelligence:', error);
-    next(error);
-  }
-});
-
-/**
- * GET /api/v1/news/feed
- * Aggregated RSS news feed for Bottom Panel NEWS tab
- */
-router.get('/feed', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { limit = 50, sources, refresh = 'false' } = req.query;
-
-    const requestedSources = sources 
-      ? (sources as string).split(',').map(s => s.trim())
-      : RSS_SOURCES.map(s => s.id);
-
-    const targetSources = RSS_SOURCES.filter(s => requestedSources.includes(s.id));
-    const forceRefresh = refresh === 'true';
-    const now = Date.now();
-
-    const feedPromises = targetSources.map(async (source) => {
-      const cached = rssCache.get(source.id);
-      if (!forceRefresh && cached && (now - cached.timestamp) < RSS_CACHE_TTL) {
-        return cached.data.map(item => ({ ...item, source: source.label, sourceId: source.id }));
-      }
-
-      try {
-        const feed = await rssParser.parseURL(source.url);
-        const items = (feed.items || []).slice(0, 20).map(item => ({
-          id: `${source.id}-${Buffer.from(item.link || item.guid || '').toString('base64').slice(0, 12)}`,
-          headline: item.title || 'Untitled',
-          summary: item.contentSnippet || item.content?.slice(0, 200) || '',
-          link: item.link || '',
-          published_at: item.pubDate || item.isoDate || new Date().toISOString(),
-          source: source.label,
-          sourceId: source.id,
-          sourceColor: source.color,
-        }));
-
-        rssCache.set(source.id, { data: items, timestamp: now });
-        return items;
-      } catch (err) {
-        logger.error(`Failed to fetch RSS from ${source.id}:`, err);
-        return cached?.data?.map(item => ({ ...item, source: source.label, sourceId: source.id })) || [];
-      }
-    });
-
-    const allFeeds = await Promise.all(feedPromises);
-    
-    let articles = allFeeds
-      .flat()
-      .sort((a, b) => new Date(b.published_at).getTime() - new Date(a.published_at).getTime())
-      .slice(0, parseInt(limit as string));
-
-    // Simple impact scoring
-    const impactKeywords = {
-      positive: ['growth', 'expansion', 'hiring', 'development', 'investment', 'acquisition', 'record', 'surge'],
-      negative: ['decline', 'layoff', 'closure', 'bankruptcy', 'default', 'foreclosure', 'recession'],
-    };
-
-    articles = articles.map(article => {
-      const text = `${article.headline} ${article.summary}`.toLowerCase();
-      const positiveHits = impactKeywords.positive.filter(kw => text.includes(kw)).length;
-      const negativeHits = impactKeywords.negative.filter(kw => text.includes(kw)).length;
-      
-      let impact: string | null = null;
-      let jedi_delta: number | null = null;
-      
-      if (positiveHits > negativeHits) {
-        impact = 'POSITIVE';
-        jedi_delta = Math.min(positiveHits * 0.5, 2.0);
-      } else if (negativeHits > positiveHits) {
-        impact = 'NEGATIVE';
-        jedi_delta = -Math.min(negativeHits * 0.5, 2.0);
-      }
-
-      return { ...article, impact, jedi_delta };
-    });
-
-    res.json({
-      success: true,
-      data: { articles, sources: targetSources.map(s => ({ id: s.id, label: s.label, color: s.color })) },
-      count: articles.length,
-    });
-  } catch (error) {
-    logger.error('Error fetching news feed:', error);
-    next(error);
-  }
-});
-
-/**
- * GET /api/v1/news/rss
- * RSS proxy for MEDIA tab (CORS bypass)
- */
-router.get('/rss', async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { url } = req.query;
-    
-    if (!url || typeof url !== 'string') {
-      return res.status(400).json({ success: false, message: 'url parameter required' });
-    }
-
-    const allowedDomains = ['globest.com', 'bisnow.com', 'therealdeal.com', 'housingwire.com', 'multihousingnews.com'];
-    const urlObj = new URL(url);
-    if (!allowedDomains.some(d => urlObj.hostname.includes(d))) {
-      return res.status(403).json({ success: false, message: 'RSS source not allowed' });
-    }
-
-    const feed = await rssParser.parseURL(url);
-    
-    res.json({
-      success: true,
-      data: {
-        title: feed.title,
-        items: (feed.items || []).slice(0, 30).map(item => ({
-          title: item.title,
-          link: item.link,
-          pubDate: item.pubDate || item.isoDate,
-          source: feed.title,
+        providers: providers.map(p => ({
+          ...p,
+          available: health[p.id] ?? false,
         })),
+        creditCosts: NEWS_CREDIT_COSTS,
       },
     });
-  } catch (error) {
-    logger.error('Error fetching RSS:', error);
-    next(error);
+  } catch (error: any) {
+    logger.error('Error getting news providers:', error);
+    res.status(500).json({ success: false, error: 'Failed to get providers' });
+  }
+});
+
+// ============================================================================
+// SEARCH
+// ============================================================================
+
+/**
+ * POST /api/v1/news/search
+ * Search for news articles
+ * 
+ * Cost: 1 credit per provider searched
+ */
+router.post('/search', async (req: Request, res: Response) => {
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const userId = authReq.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
+
+    const {
+      query,
+      category,
+      fromDate,
+      toDate,
+      pageSize = 10,
+      page = 1,
+      sortBy = 'relevance',
+      providers,
+    } = req.body;
+
+    const result = await newsService.search(
+      {
+        query,
+        category,
+        fromDate: fromDate ? new Date(fromDate) : undefined,
+        toDate: toDate ? new Date(toDate) : undefined,
+        pageSize,
+        page,
+        sortBy,
+      },
+      { userId, providers }
+    );
+
+    res.json({
+      success: true,
+      data: result,
+      creditsUsed: NEWS_CREDIT_COSTS['news.search'],
+    });
+  } catch (error: any) {
+    logger.error('News search error:', error);
+    if (error.message.includes('Insufficient credits')) {
+      return res.status(402).json({ success: false, error: error.message });
+    }
+    res.status(500).json({ success: false, error: 'Search failed' });
+  }
+});
+
+/**
+ * POST /api/v1/news/search/multi
+ * Search multiple providers simultaneously
+ * 
+ * Cost: 1 credit per provider
+ */
+router.post('/search/multi', async (req: Request, res: Response) => {
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const userId = authReq.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
+
+    const {
+      query,
+      category,
+      fromDate,
+      toDate,
+      pageSize = 10,
+      sortBy = 'relevance',
+      providers,
+    } = req.body;
+
+    const { results, totalCredits } = await newsService.searchMulti(
+      {
+        query,
+        category,
+        fromDate: fromDate ? new Date(fromDate) : undefined,
+        toDate: toDate ? new Date(toDate) : undefined,
+        pageSize,
+        sortBy,
+      },
+      { userId, providers }
+    );
+
+    res.json({
+      success: true,
+      data: {
+        results,
+        providersSearched: results.length,
+      },
+      creditsUsed: totalCredits,
+    });
+  } catch (error: any) {
+    logger.error('Multi-search error:', error);
+    if (error.message.includes('Insufficient credits')) {
+      return res.status(402).json({ success: false, error: error.message });
+    }
+    res.status(500).json({ success: false, error: 'Search failed' });
+  }
+});
+
+// ============================================================================
+// HEADLINES
+// ============================================================================
+
+/**
+ * GET /api/v1/news/headlines/:provider
+ * Get top headlines from a specific provider
+ * 
+ * Cost: 1 credit
+ */
+router.get('/headlines/:provider', async (req: Request, res: Response) => {
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const userId = authReq.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
+
+    const { provider } = req.params;
+    const { category, pageSize = 10 } = req.query;
+
+    const result = await newsService.getHeadlines(
+      provider,
+      {
+        category: category as string,
+        pageSize: Number(pageSize),
+      },
+      { userId }
+    );
+
+    res.json({
+      success: true,
+      data: result,
+      creditsUsed: NEWS_CREDIT_COSTS['news.search'],
+    });
+  } catch (error: any) {
+    logger.error('Headlines error:', error);
+    if (error.message.includes('Insufficient credits')) {
+      return res.status(402).json({ success: false, error: error.message });
+    }
+    if (error.message.includes('Unknown provider')) {
+      return res.status(400).json({ success: false, error: error.message });
+    }
+    res.status(500).json({ success: false, error: 'Failed to get headlines' });
+  }
+});
+
+// ============================================================================
+// ARTICLES
+// ============================================================================
+
+/**
+ * GET /api/v1/news/article/:provider/:articleId
+ * Get full article content
+ * 
+ * Cost: 2-3 credits depending on provider
+ */
+router.get('/article/:provider/:articleId(*)', async (req: Request, res: Response) => {
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const userId = authReq.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
+
+    const { provider, articleId } = req.params;
+
+    const article = await newsService.getFullArticle(
+      provider,
+      articleId,
+      { userId }
+    );
+
+    if (!article) {
+      return res.status(404).json({ success: false, error: 'Article not found' });
+    }
+
+    res.json({
+      success: true,
+      data: article,
+      creditsUsed: article.content ? NEWS_CREDIT_COSTS['news.article_full'] : NEWS_CREDIT_COSTS['news.article'],
+    });
+  } catch (error: any) {
+    logger.error('Article fetch error:', error);
+    if (error.message.includes('Insufficient credits')) {
+      return res.status(402).json({ success: false, error: error.message });
+    }
+    res.status(500).json({ success: false, error: 'Failed to get article' });
+  }
+});
+
+// ============================================================================
+// BULK OPERATIONS
+// ============================================================================
+
+/**
+ * POST /api/v1/news/morning-brief
+ * Generate a personalized morning news brief
+ * 
+ * Cost: 5 credits
+ */
+router.post('/morning-brief', async (req: Request, res: Response) => {
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const userId = authReq.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
+
+    const {
+      topics,
+      includeMarketNews = true,
+      includeRealEstateNews = true,
+      maxArticles = 20,
+    } = req.body;
+
+    const result = await newsService.generateMorningBrief({
+      userId,
+      topics,
+      includeMarketNews,
+      includeRealEstateNews,
+      maxArticles,
+    });
+
+    res.json({
+      success: true,
+      data: {
+        articles: result.articles,
+        count: result.articles.length,
+      },
+      creditsUsed: result.creditsUsed,
+    });
+  } catch (error: any) {
+    logger.error('Morning brief error:', error);
+    if (error.message.includes('Insufficient credits')) {
+      return res.status(402).json({ success: false, error: error.message });
+    }
+    res.status(500).json({ success: false, error: 'Failed to generate brief' });
+  }
+});
+
+/**
+ * POST /api/v1/news/market-scan
+ * Scan for real estate market news
+ * 
+ * Cost: 5 credits
+ */
+router.post('/market-scan', async (req: Request, res: Response) => {
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const userId = authReq.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
+
+    const { markets = [] } = req.body;
+
+    const result = await newsService.marketNewsScan(userId, markets);
+
+    res.json({
+      success: true,
+      data: {
+        articles: result.articles,
+        count: result.articles.length,
+        marketsSearched: markets,
+      },
+      creditsUsed: result.creditsUsed,
+    });
+  } catch (error: any) {
+    logger.error('Market scan error:', error);
+    if (error.message.includes('Insufficient credits')) {
+      return res.status(402).json({ success: false, error: error.message });
+    }
+    res.status(500).json({ success: false, error: 'Failed to scan market news' });
+  }
+});
+
+// ============================================================================
+// REAL ESTATE SPECIFIC
+// ============================================================================
+
+/**
+ * GET /api/v1/news/real-estate
+ * Shortcut for real estate headlines
+ * 
+ * Cost: 1 credit
+ */
+router.get('/real-estate', async (req: Request, res: Response) => {
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const userId = authReq.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
+
+    const { pageSize = 15 } = req.query;
+
+    // Use NYT's real estate desk if available, else search
+    const result = await newsService.search(
+      {
+        query: 'real estate investment OR multifamily OR commercial property',
+        pageSize: Number(pageSize),
+        sortBy: 'publishedAt',
+      },
+      { userId }
+    );
+
+    res.json({
+      success: true,
+      data: result,
+      creditsUsed: NEWS_CREDIT_COSTS['news.search'],
+    });
+  } catch (error: any) {
+    logger.error('RE news error:', error);
+    if (error.message.includes('Insufficient credits')) {
+      return res.status(402).json({ success: false, error: error.message });
+    }
+    res.status(500).json({ success: false, error: 'Failed to get RE news' });
   }
 });
 
