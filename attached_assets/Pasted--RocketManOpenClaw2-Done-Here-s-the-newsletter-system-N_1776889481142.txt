@@ -1,0 +1,116 @@
+> RocketManOpenClaw2:
+Done! Here's the newsletter system:
+
+───
+
+Newsletter Parser Built
+
+How It Works
+
+User has WSJ subscription
+         ↓
+WSJ sends morning brief email
+         ↓
+Gmail sync stores email
+         ↓
+LLM parses newsletter (any format)
+         ↓
+Extracts 15 articles with:
+  - Title, URL, summary
+  - RE relevance: high/medium/low
+  - Markets mentioned: Phoenix, Dallas
+         ↓
+User accesses via /my-articles (FREE)
+
+Why LLM Instead of Rules
+
+| Approach    | Pros                | Cons                                 |
+| ----------- | ------------------- | ------------------------------------ |
+| Regex/Rules | Fast, no API cost   | Breaks constantly, need 1 per source |
+| LLM         | Works on ANY format | ~$0.01 per newsletter                |
+
+One prompt handles WSJ, Bloomberg, Bisnow, CoStar, and any new source automatically.
+
+New Endpoints (FREE - user's own subscriptions)
+
+GET /api/v1/news/my-articles          → All extracted articles
+GET /api/v1/news/my-articles/re       → Only RE-relevant
+GET /api/v1/news/my-articles/market/Phoenix  → Market-specific
+GET /api/v1/news/my-sources           → Which newsletters you get
+
+Auto-Detected Newsletter Senders
+
+WSJ, Bloomberg, Bisnow, GlobeSt, CoStar, The Real Deal, NYT, FT, Reuters, CNBC, MarketWatch, Barron's, Fortune, Morning Brew, Axios, and more.
+
+───
+
+Pull in Replit: git pull origin master
+
+Migration: 20260422_newsletter_parser_tables.sql
+
+> RocketManOpenClaw2:
+Right — the newsletter articles should flow into the same news system. Let me wire them together:
+
+> RocketManOpenClaw2:
+Let me add methods to the news service that include newsletter articles:
+
+> RocketManOpenClaw2:
+Now add API routes for the unified feed:
+
+> RocketManOpenClaw2:
+Now commit:
+
+> RocketManOpenClaw2:
+Done! Here's how it works now:
+
+───
+
+Unified News System
+
+┌──────────────────────────────────────────────────────────────┐
+│                    GET /api/v1/news/feed                     │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  User's Newsletters          API Sources                     │
+│  ─────────────────          ───────────                      │
+│  WSJ (subscription)    +    Guardian                         │
+│  Bloomberg             +    MarketWatch                      │
+│  Bisnow                +    CNBC                             │
+│  ────────────────────       ────────────                     │
+│  Cost: FREE                 Cost: 1 credit                   │
+│                                                              │
+│                    ↓ Combine ↓                               │
+│                                                              │
+│  {                                                           │
+│    "articles": [...],                                        │
+│    "sources": {                                              │
+│      "newsletters": 12,   ← FREE                             │
+│      "api": 5             ← 1 credit                         │
+│    },                                                        │
+│    "creditsUsed": 1                                          │
+│  }                                                           │
+└──────────────────────────────────────────────────────────────┘
+
+Key Endpoints
+
+| Endpoint             | What It Does                     | Cost        |
+| -------------------- | -------------------------------- | ----------- |
+| GET /feed            | Unified feed (newsletters + API) | 0-1 credit  |
+| POST /enhanced-brief | Smart morning brief              | 0-5 credits |
+| GET /my-articles     | Just user's newsletters          | FREE        |
+| POST /morning-brief  | Just API sources                 | 5 credits   |
+
+Cost Optimization
+
+User with good subscriptions (WSJ, Bloomberg, Bisnow):
+
+• Enhanced brief pulls 15 articles from newsletters
+• API not needed → $0
+
+User with no subscriptions:
+
+• Falls back to API brief → 5 credits
+
+───
+
+Pull in Replit: git pull origin master

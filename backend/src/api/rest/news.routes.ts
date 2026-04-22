@@ -397,9 +397,10 @@ router.get('/real-estate', async (req: Request, res: Response) => {
  * Newsletter articles: FREE
  * API articles: 1 credit (if included)
  */
-router.get('/feed', authMiddleware.requireAuth, async (req: Request & { user?: { userId?: string } }, res: Response, next: NextFunction) => {
+router.get('/feed', async (req: Request, res: Response) => {
   try {
-    const userId: string | undefined = req.user?.userId;
+    const authReq = req as AuthenticatedRequest;
+    const userId = authReq.user?.userId;
 
     if (!userId) {
       return res.status(401).json({ success: false, error: 'Unauthorized' });
@@ -726,7 +727,7 @@ router.get('/my-sources', async (req: Request, res: Response) => {
  * Trade-press items discovered by the cre-rss source (and friends).
  * Filterable by deal_id (returns items tagged with that deal) or source.
  */
-router.get('/discoveries', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+router.get('/discoveries', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = (req as any).user?.userId;
     if (!userId) {
