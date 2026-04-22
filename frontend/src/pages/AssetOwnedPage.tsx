@@ -1033,27 +1033,11 @@ const RevenueMgmtTab: React.FC<{ dealId: string; deal?: Record<string, unknown> 
 };
 
 // ─── Documents Hub (Files + Enter Actuals) ────────────────────
+// Documents tab now just shows documents - Enter Actuals moved to Operations > ENTER ACTUALS sub-tab
 const DocumentsHub: React.FC<{ dealId: string; deal: Record<string, unknown> }> = ({ dealId, deal }) => {
-  const [docSubTab, setDocSubTab] = useState<'files' | 'enter-actuals'>('files');
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ display: 'flex', gap: 6, padding: '10px 16px', borderBottom: `1px solid ${T.border.subtle}`, flexShrink: 0 }}>
-        {([{ id: 'files' as const, label: 'FILES' }, { id: 'enter-actuals' as const, label: 'ENTER ACTUALS' }]).map(s => (
-          <button key={s.id} onClick={() => setDocSubTab(s.id)} style={{ padding: '4px 12px', fontSize: 10, fontWeight: 700, background: docSubTab === s.id ? T.bg.active : 'transparent', color: docSubTab === s.id ? T.text.cyan : T.text.muted, border: `1px solid ${docSubTab === s.id ? T.text.cyan : T.border.subtle}`, borderRadius: 3, cursor: 'pointer', fontFamily: T.font.mono }}>
-            {s.label}
-          </button>
-        ))}
-      </div>
-      {docSubTab === 'files' && (
-        <div style={{ overflowY: 'auto', padding: 16, maxHeight: 'calc(100vh - 320px)' }}>
-          <DocumentsSection deal={deal as unknown as Deal} />
-        </div>
-      )}
-      {docSubTab === 'enter-actuals' && (
-        <div style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 320px)' }}>
-          <MonthlyActualsSection dealId={dealId} deal={deal} />
-        </div>
-      )}
+    <div style={{ overflowY: 'auto', padding: 16, maxHeight: 'calc(100vh - 280px)' }}>
+      <DocumentsSection deal={deal as unknown as Deal} />
     </div>
   );
 };
