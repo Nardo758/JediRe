@@ -391,6 +391,8 @@ app.use('/api/v1/deals', requireAuth, competitionRouter);
 app.use('/api/v1/deals', requireAuth, proformaRouter);
 app.use('/api/v1/deals', dealAssumptionsRoutes);
 app.use('/api/v1/deals', financialDocumentsRoutes);
+import documentsFilesRoutes from './api/rest/documentsFiles.routes';
+app.use('/api/v1', documentsFilesRoutes);
 app.use('/api/v1/map-configs', requireAuth, mapConfigsRouter);
 app.use('/api/v1/modules', requireAuth, modulesRouter);
 app.use('/api/v1/financial-models', requireAuth, financialModelsRouter);
