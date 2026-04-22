@@ -33,11 +33,32 @@ import {
 import { guardianProvider } from './providers/guardian.provider';
 import { nytProvider } from './providers/nyt.provider';
 import { newsapiProvider } from './providers/newsapi.provider';
+import { marketwatchProvider } from './providers/marketwatch.provider';
+import { bloombergProvider } from './providers/bloomberg.provider';
+import { reutersProvider } from './providers/reuters.provider';
+import { wsjProvider } from './providers/wsj.provider';
+import { cnbcProvider } from './providers/cnbc.provider';
+import { ftProvider } from './providers/ft.provider';
+import { bisnowProvider } from './providers/bisnow.provider';
+import { globestProvider } from './providers/globest.provider';
 
 // Register all providers on load
+// API-based (require keys)
 registerProvider(guardianProvider);
 registerProvider(nytProvider);
 registerProvider(newsapiProvider);
+
+// RSS-based (free, no keys)
+registerProvider(marketwatchProvider);
+registerProvider(bloombergProvider);
+registerProvider(reutersProvider);
+registerProvider(wsjProvider);
+registerProvider(cnbcProvider);
+registerProvider(ftProvider);
+
+// CRE-specific (free RSS)
+registerProvider(bisnowProvider);
+registerProvider(globestProvider);
 
 // ============================================================================
 // TYPES
