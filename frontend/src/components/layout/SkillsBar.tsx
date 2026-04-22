@@ -2,29 +2,27 @@
  * Skills Bar - Compact skills selector for AI capabilities
  * 
  * Features:
+ * - 18 skills matching original agent coverage
  * - Scrollable row of skill icons by category
  * - Core skills always visible
- * - Analysis/Document skills in expandable section
- * - Click to see skill info or trigger it
- * 
- * Renamed from AgentBar - Skills are tools the AI uses, not separate agents
+ * - Click to see skill info
  * 
  * @version 4.0.0
  * @date 2026-04-22
  */
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { 
   ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Settings,
   Database, Search, FileText, Edit3, MessageSquare, BarChart3, FileOutput,
-  Brain, Sparkles, Zap, Activity, Layers
+  Brain, Sparkles, Layers, DollarSign, Shield, Scale, FileSearch,
+  TreeDeciduous, ClipboardCheck, TrendingUp, RefreshCw, LineChart, Megaphone
 } from 'lucide-react';
 import { T } from '../../styles/terminal-tokens';
-import api from '../../lib/api';
 
 // ============================================================================
-// SKILL DEFINITIONS
+// SKILL DEFINITIONS - 18 SKILLS
 // ============================================================================
 
 interface SkillDefinition {
@@ -38,12 +36,14 @@ interface SkillDefinition {
 }
 
 const SKILLS: SkillDefinition[] = [
-  // Data Skills
+  // ═══════════════════════════════════════════════════════════════════════════
+  // DATA SKILLS (5)
+  // ═══════════════════════════════════════════════════════════════════════════
   { 
     id: 'query_deal_data', 
     name: 'Query Deal Data', 
     shortName: 'DATA',
-    description: 'Fetch financials, rent roll, assumptions, comps',
+    description: 'Fetch financials, rent roll, assumptions, comps, occupancy, debt, and investor data',
     category: 'data',
     icon: 'Database',
     color: '#00B4D8',
@@ -52,29 +52,87 @@ const SKILLS: SkillDefinition[] = [
     id: 'search_market_data', 
     name: 'Search Market', 
     shortName: 'MARKET',
-    description: 'MSA metrics, supply pipeline, employment',
+    description: 'MSA metrics, rent comps, supply pipeline, employment data',
     category: 'data',
     icon: 'Search',
     color: '#00B4D8',
   },
-  
-  // Document Skills
+  { 
+    id: 'query_debt_market', 
+    name: 'Debt Market', 
+    shortName: 'DEBT',
+    description: 'CMBS spreads, agency rates, bank lending terms, life company options',
+    category: 'data',
+    icon: 'DollarSign',
+    color: '#00B4D8',
+  },
+  { 
+    id: 'query_tax_implications', 
+    name: 'Tax Analysis', 
+    shortName: 'TAX',
+    description: 'Depreciation, 1031 exchange, cost segregation, tax projections',
+    category: 'data',
+    icon: 'DollarSign',
+    color: '#00B4D8',
+  },
+  { 
+    id: 'query_compliance_status', 
+    name: 'Compliance Check', 
+    shortName: 'COMPLY',
+    description: 'Insurance, permits, inspections, regulatory requirements',
+    category: 'data',
+    icon: 'Shield',
+    color: '#00B4D8',
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // DOCUMENT SKILLS (4)
+  // ═══════════════════════════════════════════════════════════════════════════
   { 
     id: 'extract_document', 
     name: 'Extract Document', 
     shortName: 'EXTRACT',
-    description: 'Parse T-12, rent roll, OM from files',
+    description: 'Parse T-12, rent roll, OM from uploaded files',
     category: 'document',
     icon: 'FileText',
     color: '#F6A623',
   },
-  
-  // Action Skills
+  { 
+    id: 'review_contract', 
+    name: 'Review Contract', 
+    shortName: 'CONTRACT',
+    description: 'Analyze contracts for key terms, risks, and compliance',
+    category: 'document',
+    icon: 'Scale',
+    color: '#F6A623',
+  },
+  { 
+    id: 'analyze_appraisal', 
+    name: 'Analyze Appraisal', 
+    shortName: 'APPRAISAL',
+    description: 'Extract comparable sales, income approach, cost approach values',
+    category: 'document',
+    icon: 'FileSearch',
+    color: '#F6A623',
+  },
+  { 
+    id: 'parse_environmental_report', 
+    name: 'Environmental Report', 
+    shortName: 'ENVIRON',
+    description: 'Parse Phase I/II environmental site assessments',
+    category: 'document',
+    icon: 'TreeDeciduous',
+    color: '#F6A623',
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ACTION SKILLS (4)
+  // ═══════════════════════════════════════════════════════════════════════════
   { 
     id: 'update_assumption', 
     name: 'Update Assumption', 
     shortName: 'UPDATE',
-    description: 'Change underwriting inputs with confirmation',
+    description: 'Change cap rate, exit year, rent growth, expense ratios',
     category: 'action',
     icon: 'Edit3',
     color: '#00D26A',
@@ -83,31 +141,80 @@ const SKILLS: SkillDefinition[] = [
     id: 'add_note', 
     name: 'Add Note', 
     shortName: 'NOTE',
-    description: 'Add analyst notes to deal timeline',
+    description: 'Add analyst notes, risk flags, and action items',
     category: 'action',
     icon: 'MessageSquare',
     color: '#00D26A',
   },
-  
-  // Analysis Skills
   { 
-    id: 'run_analysis', 
-    name: 'Run Analysis', 
-    shortName: 'ANALYZE',
-    description: 'IRR sensitivity, refi scenarios, hold optimization',
+    id: 'create_task', 
+    name: 'Create Task', 
+    shortName: 'TASK',
+    description: 'Create tasks and action items for the deal team',
+    category: 'action',
+    icon: 'ClipboardCheck',
+    color: '#00D26A',
+  },
+  { 
+    id: 'update_deal_status', 
+    name: 'Update Status', 
+    shortName: 'STATUS',
+    description: 'Move deal through pipeline stages',
+    category: 'action',
+    icon: 'TrendingUp',
+    color: '#00D26A',
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ANALYSIS SKILLS (3)
+  // ═══════════════════════════════════════════════════════════════════════════
+  { 
+    id: 'run_return_analysis', 
+    name: 'Return Analysis', 
+    shortName: 'RETURNS',
+    description: 'Calculate IRR, equity multiple, cash-on-cash, sensitivity',
+    category: 'analysis',
+    icon: 'LineChart',
+    color: '#B794F4',
+  },
+  { 
+    id: 'run_refi_analysis', 
+    name: 'Refinance Analysis', 
+    shortName: 'REFI',
+    description: 'Analyze cash-out proceeds, new loan terms, impact on returns',
+    category: 'analysis',
+    icon: 'RefreshCw',
+    color: '#B794F4',
+  },
+  { 
+    id: 'run_hold_sell_analysis', 
+    name: 'Hold/Sell Analysis', 
+    shortName: 'HOLD/SELL',
+    description: 'Evaluate hold vs sell based on market conditions',
     category: 'analysis',
     icon: 'BarChart3',
     color: '#B794F4',
   },
-  
-  // Report Skills
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // REPORT SKILLS (2)
+  // ═══════════════════════════════════════════════════════════════════════════
   { 
     id: 'generate_report', 
     name: 'Generate Report', 
     shortName: 'REPORT',
-    description: 'Investment memos, NOI waterfalls, summaries',
+    description: 'Investment memos, NOI waterfalls, DD checklists',
     category: 'report',
     icon: 'FileOutput',
+    color: '#E8F4FD',
+  },
+  { 
+    id: 'generate_marketing_materials', 
+    name: 'Marketing Materials', 
+    shortName: 'MARKETING',
+    description: 'Property flyers, investor updates, disposition teasers',
+    category: 'report',
+    icon: 'Megaphone',
     color: '#E8F4FD',
   },
 ];
@@ -115,7 +222,8 @@ const SKILLS: SkillDefinition[] = [
 // Icon mapping
 const ICON_MAP: Record<string, React.FC<{ size?: number; color?: string }>> = {
   Database, Search, FileText, Edit3, MessageSquare, BarChart3, FileOutput,
-  Brain, Sparkles, Zap, Activity, Layers,
+  Brain, Sparkles, Layers, DollarSign, Shield, Scale, FileSearch,
+  TreeDeciduous, ClipboardCheck, TrendingUp, RefreshCw, LineChart, Megaphone
 };
 
 function getIconComponent(iconName: string) {
@@ -171,10 +279,9 @@ const SkillChip: React.FC<SkillChipProps> = ({ skill, isActive, onClick, compact
 interface SkillInfoPanelProps {
   skill: SkillDefinition;
   onClose: () => void;
-  dealId?: string;
 }
 
-const SkillInfoPanel: React.FC<SkillInfoPanelProps> = ({ skill, onClose, dealId }) => {
+const SkillInfoPanel: React.FC<SkillInfoPanelProps> = ({ skill, onClose }) => {
   const IconComponent = getIconComponent(skill.icon);
 
   return (
@@ -190,7 +297,6 @@ const SkillInfoPanel: React.FC<SkillInfoPanelProps> = ({ skill, onClose, dealId 
       fontFamily: T.font.mono,
       zIndex: 1000,
     }}>
-      {/* Header */}
       <div style={{
         padding: '14px 16px',
         borderBottom: `1px solid ${T.border.subtle}`,
@@ -241,7 +347,6 @@ const SkillInfoPanel: React.FC<SkillInfoPanelProps> = ({ skill, onClose, dealId 
         </button>
       </div>
 
-      {/* Content */}
       <div style={{ padding: 16 }}>
         <p style={{ color: T.text.secondary, fontSize: 12, margin: 0, lineHeight: 1.5 }}>
           {skill.description}
@@ -257,7 +362,6 @@ const SkillInfoPanel: React.FC<SkillInfoPanelProps> = ({ skill, onClose, dealId 
         }}>
           <div style={{ color: T.text.cyan, marginBottom: 6 }}>USAGE</div>
           This skill is automatically invoked by the AI assistant when relevant to your request.
-          Ask questions in the chat and the AI will use this skill when needed.
         </div>
       </div>
     </div>
@@ -282,7 +386,9 @@ export const SkillsBar: React.FC = () => {
   const navigate = useNavigate();
   const dealId = useDealContext();
 
+  // Core skills: Data + Action (shown by default)
   const coreSkills = SKILLS.filter(s => s.category === 'data' || s.category === 'action');
+  // More skills: Document + Analysis + Report
   const moreSkills = SKILLS.filter(s => s.category === 'analysis' || s.category === 'document' || s.category === 'report');
 
   const scroll = (dir: 'left' | 'right') => {
@@ -324,7 +430,7 @@ export const SkillsBar: React.FC = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <Sparkles size={12} color={T.text.cyan} />
             <span style={{ color: T.text.cyan, fontSize: 9, fontWeight: 700, letterSpacing: 1 }}>SKILLS</span>
-            <span style={{ fontSize: 9, padding: '1px 5px', background: `${T.text.cyan}20`, color: T.text.cyan, borderRadius: 3 }}>
+            <span style={{ fontSize: 9, padding: '1px 5px', background: `${T.text.green}20`, color: T.text.green, borderRadius: 3 }}>
               {SKILLS.length}
             </span>
           </div>
@@ -333,8 +439,17 @@ export const SkillsBar: React.FC = () => {
             <>
               <div style={{ width: 1, height: 14, background: T.border.subtle }} />
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                {coreSkills.map(skill => (
+              {/* Scrollable core skills */}
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: 4, 
+                overflowX: 'auto',
+                maxWidth: 'calc(100vw - 400px)',
+                scrollbarWidth: 'none',
+                msOverflowStyle: 'none',
+              }}>
+                {coreSkills.slice(0, 6).map(skill => (
                   <SkillChip
                     key={skill.id}
                     skill={skill}
@@ -357,10 +472,11 @@ export const SkillsBar: React.FC = () => {
                   borderRadius: 4,
                   color: showMore ? T.text.purple : T.text.muted,
                   cursor: 'pointer', fontSize: 9, fontWeight: 600,
+                  whiteSpace: 'nowrap',
                 }}
               >
                 <Layers size={10} />
-                +{moreSkills.length} MORE
+                +{SKILLS.length - 6} MORE
                 {showMore ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
               </button>
             </>
@@ -398,7 +514,8 @@ export const SkillsBar: React.FC = () => {
               flex: 1, display: 'flex', gap: 4,
               overflowX: 'auto', scrollbarWidth: 'none', msOverflowStyle: 'none',
             }}>
-              {moreSkills.map(skill => (
+              {/* Show remaining core skills + all more skills */}
+              {[...coreSkills.slice(6), ...moreSkills].map(skill => (
                 <SkillChip 
                   key={skill.id} 
                   skill={skill} 
@@ -422,7 +539,6 @@ export const SkillsBar: React.FC = () => {
         <SkillInfoPanel
           skill={selectedSkillDef}
           onClose={() => setSelectedSkill(null)}
-          dealId={dealId}
         />
       )}
 

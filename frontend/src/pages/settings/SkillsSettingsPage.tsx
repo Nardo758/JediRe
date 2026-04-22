@@ -2,9 +2,9 @@
  * Skills AI Settings Page
  * 
  * Configure the AI model and enable/disable individual skills.
- * Skills are tools the AI assistant uses to help analysts.
+ * 18 Skills to match original agent coverage.
  * 
- * @version 1.0.0
+ * @version 2.0.0
  * @date 2026-04-22
  */
 
@@ -13,13 +13,14 @@ import { useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, Save, RotateCcw, Brain, Sparkles, Zap, Clock,
   Database, Search, FileText, Edit3, MessageSquare, BarChart3, FileOutput,
-  ToggleLeft, ToggleRight, Info
+  ToggleLeft, ToggleRight, Info, DollarSign, Shield, Scale, FileSearch,
+  TreeDeciduous, ClipboardCheck, TrendingUp, RefreshCw, LineChart, Megaphone
 } from 'lucide-react';
 import { T } from '../../styles/terminal-tokens';
 import api from '../../lib/api';
 
 // ============================================================================
-// SKILL DEFINITIONS
+// SKILL DEFINITIONS - 18 SKILLS
 // ============================================================================
 
 interface SkillDefinition {
@@ -34,6 +35,9 @@ interface SkillDefinition {
 }
 
 const DEFAULT_SKILLS: SkillDefinition[] = [
+  // ═══════════════════════════════════════════════════════════════════════════
+  // DATA SKILLS (5)
+  // ═══════════════════════════════════════════════════════════════════════════
   { 
     id: 'query_deal_data', 
     name: 'Query Deal Data', 
@@ -53,6 +57,37 @@ const DEFAULT_SKILLS: SkillDefinition[] = [
     enabled: true,
   },
   { 
+    id: 'query_debt_market', 
+    name: 'Query Debt Market', 
+    description: 'Get CMBS spreads, agency rates, bank lending terms, life company debt options',
+    category: 'data',
+    icon: 'DollarSign',
+    color: '#00B4D8',
+    enabled: true,
+  },
+  { 
+    id: 'query_tax_implications', 
+    name: 'Tax Implications', 
+    description: 'Analyze depreciation, 1031 exchange eligibility, cost segregation, tax projections',
+    category: 'data',
+    icon: 'DollarSign',
+    color: '#00B4D8',
+    enabled: true,
+  },
+  { 
+    id: 'query_compliance_status', 
+    name: 'Compliance Status', 
+    description: 'Check insurance coverage, permits, inspections, and regulatory requirements',
+    category: 'data',
+    icon: 'Shield',
+    color: '#00B4D8',
+    enabled: true,
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // DOCUMENT SKILLS (4)
+  // ═══════════════════════════════════════════════════════════════════════════
+  { 
     id: 'extract_document', 
     name: 'Extract Document', 
     description: 'Parse uploaded files to extract T-12 income, rent roll, OM details, and appraisal data',
@@ -61,6 +96,37 @@ const DEFAULT_SKILLS: SkillDefinition[] = [
     color: '#F6A623',
     enabled: true,
   },
+  { 
+    id: 'review_contract', 
+    name: 'Review Contract', 
+    description: 'Analyze contracts for key terms, risks, compliance issues, and obligations',
+    category: 'document',
+    icon: 'Scale',
+    color: '#F6A623',
+    enabled: true,
+  },
+  { 
+    id: 'analyze_appraisal', 
+    name: 'Analyze Appraisal', 
+    description: 'Extract comparable sales, income approach, and cost approach values from appraisals',
+    category: 'document',
+    icon: 'FileSearch',
+    color: '#F6A623',
+    enabled: true,
+  },
+  { 
+    id: 'parse_environmental_report', 
+    name: 'Environmental Report', 
+    description: 'Parse Phase I/II environmental site assessments and flag concerns',
+    category: 'document',
+    icon: 'TreeDeciduous',
+    color: '#F6A623',
+    enabled: true,
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ACTION SKILLS (4)
+  // ═══════════════════════════════════════════════════════════════════════════
   { 
     id: 'update_assumption', 
     name: 'Update Assumption', 
@@ -81,20 +147,74 @@ const DEFAULT_SKILLS: SkillDefinition[] = [
     enabled: true,
   },
   { 
-    id: 'run_analysis', 
-    name: 'Run Analysis', 
-    description: 'Execute IRR sensitivity, refi scenarios, hold period optimization, and comparable analysis',
+    id: 'create_task', 
+    name: 'Create Task', 
+    description: 'Create tasks and action items for the deal team with due dates and assignees',
+    category: 'action',
+    icon: 'ClipboardCheck',
+    color: '#00D26A',
+    enabled: true,
+  },
+  { 
+    id: 'update_deal_status', 
+    name: 'Update Deal Status', 
+    description: 'Move deals through pipeline stages (screening, underwriting, LOI, DD, closing)',
+    category: 'action',
+    icon: 'TrendingUp',
+    color: '#00D26A',
+    enabled: true,
+    requiresConfirmation: true,
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ANALYSIS SKILLS (3)
+  // ═══════════════════════════════════════════════════════════════════════════
+  { 
+    id: 'run_return_analysis', 
+    name: 'Return Analysis', 
+    description: 'Calculate IRR, equity multiple, cash-on-cash returns, and sensitivity analysis',
+    category: 'analysis',
+    icon: 'LineChart',
+    color: '#B794F4',
+    enabled: true,
+  },
+  { 
+    id: 'run_refi_analysis', 
+    name: 'Refinance Analysis', 
+    description: 'Analyze cash-out proceeds, new loan terms, and impact on returns',
+    category: 'analysis',
+    icon: 'RefreshCw',
+    color: '#B794F4',
+    enabled: true,
+  },
+  { 
+    id: 'run_hold_sell_analysis', 
+    name: 'Hold/Sell Analysis', 
+    description: 'Evaluate hold vs sell based on current market conditions and projections',
     category: 'analysis',
     icon: 'BarChart3',
     color: '#B794F4',
     enabled: true,
   },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // REPORT SKILLS (2)
+  // ═══════════════════════════════════════════════════════════════════════════
   { 
     id: 'generate_report', 
     name: 'Generate Report', 
-    description: 'Create investment memos, quarterly updates, NOI waterfalls, and custom summaries',
+    description: 'Create investment memos, quarterly updates, NOI waterfalls, and DD checklists',
     category: 'report',
     icon: 'FileOutput',
+    color: '#E8F4FD',
+    enabled: true,
+  },
+  { 
+    id: 'generate_marketing_materials', 
+    name: 'Marketing Materials', 
+    description: 'Create property flyers, investor updates, disposition teasers, lease brochures',
+    category: 'report',
+    icon: 'Megaphone',
     color: '#E8F4FD',
     enabled: true,
   },
@@ -113,6 +233,8 @@ type AIModel = keyof typeof AI_MODELS;
 // Icon mapping
 const ICON_MAP: Record<string, React.FC<{ size?: number; color?: string }>> = {
   Database, Search, FileText, Edit3, MessageSquare, BarChart3, FileOutput, Brain,
+  DollarSign, Shield, Scale, FileSearch, TreeDeciduous, ClipboardCheck, TrendingUp,
+  RefreshCw, LineChart, Megaphone,
 };
 
 function getIconComponent(iconName: string) {
@@ -169,6 +291,7 @@ const SkillCard: React.FC<SkillCardProps> = ({ skill, onToggle }) => {
               display: 'flex',
               alignItems: 'center',
               gap: 8,
+              flexWrap: 'wrap',
             }}>
               {skill.name}
               <span style={{
@@ -192,7 +315,7 @@ const SkillCard: React.FC<SkillCardProps> = ({ skill, onToggle }) => {
                   alignItems: 'center',
                   gap: 3,
                 }}>
-                  <Info size={8} /> Requires Confirmation
+                  <Info size={8} /> Confirm
                 </span>
               )}
             </div>
@@ -297,8 +420,10 @@ export const SkillsSettingsPage: React.FC = () => {
   };
 
   const dataSkills = skills.filter(s => s.category === 'data');
+  const documentSkills = skills.filter(s => s.category === 'document');
   const actionSkills = skills.filter(s => s.category === 'action');
-  const analysisSkills = skills.filter(s => s.category === 'analysis' || s.category === 'document' || s.category === 'report');
+  const analysisSkills = skills.filter(s => s.category === 'analysis');
+  const reportSkills = skills.filter(s => s.category === 'report');
 
   const enabledCount = skills.filter(s => s.enabled).length;
 
@@ -357,7 +482,7 @@ export const SkillsSettingsPage: React.FC = () => {
               AI Skills Settings
             </h1>
             <p style={{ color: T.text.muted, fontSize: 13, margin: '4px 0 0' }}>
-              Configure the AI assistant's capabilities
+              18 skills — configure the AI assistant's capabilities
             </p>
           </div>
         </div>
@@ -506,10 +631,33 @@ export const SkillsSettingsPage: React.FC = () => {
           textTransform: 'uppercase',
           letterSpacing: 1,
         }}>
-          Data Skills
+          📊 Data Skills ({dataSkills.length})
         </h2>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {dataSkills.map(skill => (
+            <SkillCard
+              key={skill.id}
+              skill={skill}
+              onToggle={() => handleToggleSkill(skill.id)}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Document Skills */}
+      <div style={{ marginBottom: 32 }}>
+        <h2 style={{ 
+          color: '#F6A623', 
+          fontSize: 14, 
+          fontWeight: 700,
+          marginBottom: 16,
+          textTransform: 'uppercase',
+          letterSpacing: 1,
+        }}>
+          📄 Document Skills ({documentSkills.length})
+        </h2>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {documentSkills.map(skill => (
             <SkillCard
               key={skill.id}
               skill={skill}
@@ -529,7 +677,7 @@ export const SkillsSettingsPage: React.FC = () => {
           textTransform: 'uppercase',
           letterSpacing: 1,
         }}>
-          Action Skills
+          ⚡ Action Skills ({actionSkills.length})
         </h2>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {actionSkills.map(skill => (
@@ -542,7 +690,7 @@ export const SkillsSettingsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Analysis & Report Skills */}
+      {/* Analysis Skills */}
       <div style={{ marginBottom: 32 }}>
         <h2 style={{ 
           color: '#B794F4', 
@@ -552,10 +700,33 @@ export const SkillsSettingsPage: React.FC = () => {
           textTransform: 'uppercase',
           letterSpacing: 1,
         }}>
-          Analysis & Report Skills
+          📈 Analysis Skills ({analysisSkills.length})
         </h2>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {analysisSkills.map(skill => (
+            <SkillCard
+              key={skill.id}
+              skill={skill}
+              onToggle={() => handleToggleSkill(skill.id)}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Report Skills */}
+      <div style={{ marginBottom: 32 }}>
+        <h2 style={{ 
+          color: '#E8F4FD', 
+          fontSize: 14, 
+          fontWeight: 700,
+          marginBottom: 16,
+          textTransform: 'uppercase',
+          letterSpacing: 1,
+        }}>
+          📋 Report Skills ({reportSkills.length})
+        </h2>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {reportSkills.map(skill => (
             <SkillCard
               key={skill.id}
               skill={skill}
