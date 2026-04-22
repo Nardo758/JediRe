@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useParams } from "react-router-dom";
 import { apiClient } from "../../services/api.client";
 
 const T = {
@@ -704,6 +705,7 @@ function DealBibleTab() {
 }
 
 export function M22PostCloseIntelligence() {
+  const { dealId: urlDealId } = useParams<{ dealId?: string }>();
   const [tab, setTab]               = useState("performance");
   const [deals, setDeals]           = useState<Deal[]>([]);
   const [selectedDealId, setSelectedDealId] = useState<string>("");
@@ -719,11 +721,15 @@ export function M22PostCloseIntelligence() {
       .then(r => {
         const list: Deal[] = r.data.deals ?? [];
         setDeals(list);
-        if (list.length > 0) setSelectedDealId(list[0].id);
+        if (urlDealId && list.some(d => d.id === urlDealId)) {
+          setSelectedDealId(urlDealId);
+        } else if (list.length > 0) {
+          setSelectedDealId(list[0].id);
+        }
       })
       .catch(() => setDealError("Failed to load deals"))
       .finally(() => setLoadingDeals(false));
-  }, []);
+  }, [urlDealId]);
 
   useEffect(() => {
     if (!selectedDealId) return;
