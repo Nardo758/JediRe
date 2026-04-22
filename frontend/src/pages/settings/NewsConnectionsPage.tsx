@@ -76,6 +76,7 @@ export function NewsConnectionsPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [emailLabel, setEmailLabel] = useState('Forwarded newsletters');
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [rssUrl, setRssUrl] = useState('');
   const [rssLabel, setRssLabel] = useState('');
 
@@ -174,8 +175,16 @@ export function NewsConnectionsPage() {
     }
   }
 
-  function copy(text: string) {
-    navigator.clipboard?.writeText(text).catch(() => {});
+  async function copy(text: string, key: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedKey(key);
+      window.setTimeout(() => {
+        setCopiedKey((curr) => (curr === key ? null : curr));
+      }, 1500);
+    } catch {
+      setError('Could not copy to clipboard — please copy manually');
+    }
   }
 
   const panel: CSSProperties = {
@@ -332,6 +341,7 @@ export function NewsConnectionsPage() {
             connections={emailConns}
             loading={loading}
             onCopy={copy}
+            copiedKey={copiedKey}
             onDelete={removeConnection}
             subpanel={subpanel}
             ghostButton={ghostButton}
@@ -572,7 +582,8 @@ interface ListProps {
   empty: string;
   connections: Connection[];
   loading: boolean;
-  onCopy?: (text: string) => void;
+  onCopy?: (text: string, key: string) => void;
+  copiedKey?: string | null;
   onSync?: (id: string) => void;
   onDelete: (id: string) => void;
   subpanel: CSSProperties;
@@ -581,7 +592,7 @@ interface ListProps {
 }
 
 function ConnectionList(props: ListProps) {
-  const { title, empty, connections, loading, onCopy, onSync, onDelete, subpanel, ghostButton, dangerButton } = props;
+  const { title, empty, connections, loading, onCopy, onSync, onDelete, subpanel, ghostButton, dangerButton, copiedKey } = props;
   return (
     <div style={subpanel}>
       <div
@@ -666,8 +677,15 @@ function ConnectionList(props: ListProps) {
                 </div>
                 <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                   {onCopy && c.address && (
-                    <button onClick={() => onCopy(c.address!)} style={ghostButton}>
-                      COPY
+                    <button
+                      onClick={() => onCopy(c.address!, c.id)}
+                      style={
+                        copiedKey === c.id
+                          ? { ...ghostButton, color: '#7FE07F', borderColor: '#7FE07F' }
+                          : ghostButton
+                      }
+                    >
+                      {copiedKey === c.id ? 'COPIED!' : 'COPY'}
                     </button>
                   )}
                   {onSync && (
