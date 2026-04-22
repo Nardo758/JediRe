@@ -889,8 +889,10 @@ export function registerAllSkills(): void {
 // Import and register discovery skills
 import { registerDiscoverySkills } from './discovery-skills';
 import { registerStructuringSkills } from './structuring-skills';
+import { registerCollaborationSkills } from './collaboration-skills';
 
 // Auto-register on import
 registerAllSkills();
 registerDiscoverySkills();
 registerStructuringSkills();
+registerCollaborationSkills();
