@@ -94,6 +94,10 @@ author = "agent"
 task = "workflow.run"
 args = "JediRe"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Inngest Dev Server"
+
 [[workflows.workflow]]
 name = "JediRe"
 author = "agent"
@@ -106,6 +110,17 @@ waitForPort = 5000
 [workflows.workflow.metadata]
 outputType = "webview"
 isCanvasWorkflow = true
+
+[[workflows.workflow]]
+name = "Inngest Dev Server"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npx --yes inngest-cli@latest dev -u http://localhost:4000/api/inngest --no-discovery -p 8099"
 
 [userenv]
 

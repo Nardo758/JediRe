@@ -26,8 +26,7 @@ import { logger } from '../../utils/logger';
  * - REIT prices
  */
 export const hourlyMarketDiscovery = inngest.createFunction(
-  { id: 'discovery-hourly-market', name: 'Hourly Market Discovery' },
-  { cron: '15 * * * *' }, // 15 minutes past every hour
+  { id: 'discovery-hourly-market', name: 'Hourly Market Discovery' , triggers: [{ cron: '15 * * * *' }] }, // 15 minutes past every hour
   async ({ step }) => {
     logger.info('Starting hourly market discovery');
 
@@ -81,8 +80,7 @@ export const hourlyMarketDiscovery = inngest.createFunction(
  * Scans news for real estate relevant topics
  */
 export const dailyNewsDiscovery = inngest.createFunction(
-  { id: 'discovery-daily-news', name: 'Daily News Discovery' },
-  { cron: '0 6 * * *' }, // 6 AM daily
+  { id: 'discovery-daily-news', name: 'Daily News Discovery' , triggers: [{ cron: '0 6 * * *' }] }, // 6 AM daily
   async ({ step }) => {
     logger.info('Starting daily news discovery');
 
@@ -133,8 +131,7 @@ export const dailyNewsDiscovery = inngest.createFunction(
  * Scans news for each active deal's market
  */
 export const dailyDealNewsDiscovery = inngest.createFunction(
-  { id: 'discovery-daily-deal-news', name: 'Daily Deal News Discovery' },
-  { cron: '0 7 * * *' }, // 7 AM daily (after general news)
+  { id: 'discovery-daily-deal-news', name: 'Daily Deal News Discovery' , triggers: [{ cron: '0 7 * * *' }] }, // 7 AM daily (after general news)
   async ({ step }) => {
     logger.info('Starting daily deal news discovery');
 
@@ -172,8 +169,7 @@ export const dailyDealNewsDiscovery = inngest.createFunction(
  * Daily economic data refresh
  */
 export const dailyEconomicDiscovery = inngest.createFunction(
-  { id: 'discovery-daily-economic', name: 'Daily Economic Discovery' },
-  { cron: '0 8 * * *' }, // 8 AM daily
+  { id: 'discovery-daily-economic', name: 'Daily Economic Discovery' , triggers: [{ cron: '0 8 * * *' }] }, // 8 AM daily
   async ({ step }) => {
     logger.info('Starting daily economic discovery');
 
@@ -216,8 +212,7 @@ export const dailyEconomicDiscovery = inngest.createFunction(
  * Weekly comprehensive market scan
  */
 export const weeklyMarketScan = inngest.createFunction(
-  { id: 'discovery-weekly-market', name: 'Weekly Market Scan' },
-  { cron: '0 5 * * 0' }, // 5 AM every Sunday
+  { id: 'discovery-weekly-market', name: 'Weekly Market Scan' , triggers: [{ cron: '0 5 * * 0' }] }, // 5 AM every Sunday
   async ({ step }) => {
     logger.info('Starting weekly market scan');
 
@@ -265,8 +260,7 @@ export const weeklyMarketScan = inngest.createFunction(
  * Called by Research agent when user asks about market
  */
 export const onDemandNewsDiscovery = inngest.createFunction(
-  { id: 'discovery-on-demand-news', name: 'On-Demand News Discovery' },
-  { event: 'discovery/news.requested' },
+  { id: 'discovery-on-demand-news', name: 'On-Demand News Discovery' , triggers: [{ event: 'discovery/news.requested' }] },
   async ({ event, step }) => {
     const { query: searchQuery, dealId, userId } = event.data;
 
@@ -290,8 +284,7 @@ export const onDemandNewsDiscovery = inngest.createFunction(
  * Called by agents when they need to look something up
  */
 export const onDemandWebSearch = inngest.createFunction(
-  { id: 'discovery-on-demand-web', name: 'On-Demand Web Search' },
-  { event: 'discovery/web.search.requested' },
+  { id: 'discovery-on-demand-web', name: 'On-Demand Web Search' , triggers: [{ event: 'discovery/web.search.requested' }] },
   async ({ event, step }) => {
     const { query: searchQuery, type = 'web' } = event.data;
 

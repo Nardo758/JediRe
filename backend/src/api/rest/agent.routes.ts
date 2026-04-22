@@ -8,6 +8,8 @@ import { query } from '../../database/connection';
 import { requireAuthOrApiKey, AuthenticatedRequest } from '../../middleware/auth';
 import { AppError } from '../../middleware/errorHandler';
 import { AgentJobQueue } from '../../agents/runtime/job-queue';
+import { agentOrchestrator } from '../../services/agents/agent-orchestrator';
+import { logger } from '../../utils/logger';
 
 const router = Router();
 const jobQueue = new AgentJobQueue();
@@ -98,5 +100,102 @@ router.get('/tasks', requireAuthOrApiKey, async (req: AuthenticatedRequest, res:
     next(error);
   }
 });
+
+// ============================================================================
+// DEBUG: MANUAL TRIGGER FOR SCHEDULED FUNCTIONS (Task #327)
+// ============================================================================
+
+/**
+ * POST /api/v1/agents/_debug/trigger?fn=<name>
+ * Admin-only. Manually invoke a scheduled job's underlying work, bypassing
+ * Inngest's cron, so wiring can be verified without waiting hours/days.
+ *
+ * Supported `fn` values:
+ *   - dailyMorningBriefing
+ *   - dailyComplianceCheck
+ *   - weeklyPortfolioReview
+ *   - hourlyMarketDiscovery
+ *   - dailyNewsDiscovery
+ *   - dailyEconomicDiscovery (rates only; full job also refreshes employment per MSA)
+ */
+router.post(
+  '/_debug/trigger',
+  requireAuthOrApiKey,
+  async (req: AuthenticatedRequest, res: Response, next) => {
+    try {
+      if (req.user?.role !== 'admin') {
+        throw new AppError(403, 'Admin role required for debug triggers');
+      }
+
+      const fn = String((req.query.fn as string) || req.body?.fn || '');
+      const userId = req.user.userId;
+
+      const { discoveryEngine } = await import(
+        '../../services/discovery/discovery-engine'
+      );
+
+      switch (fn) {
+        case 'dailyMorningBriefing': {
+          const result = await agentOrchestrator.dispatchEvent({
+            event: 'schedule_daily',
+            userId,
+            data: { triggeredManually: true },
+          });
+          return res.json({ success: true, fn, result });
+        }
+        case 'dailyComplianceCheck': {
+          const result = await agentOrchestrator.dispatchEvent({
+            event: 'task_due',
+            userId,
+            data: { triggeredManually: true, task: 'compliance_check' },
+          });
+          return res.json({ success: true, fn, result });
+        }
+        case 'weeklyPortfolioReview': {
+          const result = await agentOrchestrator.dispatchEvent({
+            event: 'schedule_weekly',
+            userId,
+            data: { triggeredManually: true },
+          });
+          return res.json({ success: true, fn, result });
+        }
+        case 'hourlyMarketDiscovery': {
+          const rates = await discoveryEngine.discoverInterestRates();
+          const reits = await discoveryEngine.discoverREITPrices();
+          return res.json({ success: true, fn, rates, reits });
+        }
+        case 'dailyNewsDiscovery': {
+          const news = await discoveryEngine.discoverNews([
+            'commercial real estate',
+            'multifamily investment',
+            'apartment market',
+          ]);
+          return res.json({
+            success: true,
+            fn,
+            count: Array.isArray(news) ? news.length : 0,
+          });
+        }
+        case 'dailyEconomicDiscovery': {
+          const rates = await discoveryEngine.discoverInterestRates();
+          return res.json({
+            success: true,
+            fn,
+            note: 'Debug trigger refreshes interest rates only; the full cron job also iterates per-MSA employment data.',
+            rates,
+          });
+        }
+        default:
+          throw new AppError(
+            400,
+            `Unknown fn '${fn}'. Supported: dailyMorningBriefing, dailyComplianceCheck, weeklyPortfolioReview, hourlyMarketDiscovery, dailyNewsDiscovery, dailyEconomicDiscovery`
+          );
+      }
+    } catch (error: any) {
+      logger.error(`[debug/trigger] failed:`, error);
+      next(error);
+    }
+  }
+);
 
 export default router;

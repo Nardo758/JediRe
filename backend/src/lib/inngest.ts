@@ -26,6 +26,10 @@ export const inngest = new Inngest({
   id: 'jedire-platform',
   name: 'JediRE Platform',
   eventKey: process.env.INNGEST_EVENT_KEY,
+  isDev: !process.env.INNGEST_EVENT_KEY,
+  baseUrl: !process.env.INNGEST_EVENT_KEY
+    ? (process.env.INNGEST_BASE_URL || 'http://localhost:8099')
+    : undefined,
 });
 
 // ── Event type definitions ─────────────────────────────────────────

@@ -325,6 +325,8 @@ import {
 import { commentaryOnResearchCompleted } from './agents/commentary.inngest';
 import { archiveAggregationFunction } from './inngest/functions/archive-aggregation.function';
 import { emailIntakeFunction } from './inngest/functions/email-intake.function';
+import { scheduledAgentFunctions } from './services/agents/scheduled-jobs';
+import { scheduledDiscoveryFunctions } from './services/discovery/scheduled-discovery';
 app.use(
   '/api/inngest',
   serve({
@@ -338,6 +340,12 @@ app.use(
       commentaryOnResearchCompleted,
       archiveAggregationFunction,
       emailIntakeFunction,
+      // Autonomous agents (Task #327): morning briefings, compliance,
+      // portfolio reviews, market intelligence, threshold monitoring.
+      ...scheduledAgentFunctions,
+      // Discovery jobs (Task #327): hourly rates/REITs, daily news,
+      // weekly market scan, on-demand triggers.
+      ...scheduledDiscoveryFunctions,
     ],
   })
 );

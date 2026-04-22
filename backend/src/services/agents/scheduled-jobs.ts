@@ -27,8 +27,7 @@ import { logger } from '../../utils/logger';
  * Daily morning briefing - runs at 7 AM for each user
  */
 export const dailyMorningBriefing = inngest.createFunction(
-  { id: 'agent-daily-morning-briefing', name: 'Daily Morning Agent Briefing' },
-  { cron: '0 7 * * *' }, // 7 AM daily
+  { id: 'agent-daily-morning-briefing', name: 'Daily Morning Agent Briefing' , triggers: [{ cron: '0 7 * * *' }] }, // 7 AM daily
   async ({ step }) => {
     logger.info('Starting daily morning briefing');
 
@@ -88,8 +87,7 @@ export const dailyMorningBriefing = inngest.createFunction(
  * Daily compliance check - runs at 8 AM
  */
 export const dailyComplianceCheck = inngest.createFunction(
-  { id: 'agent-daily-compliance-check', name: 'Daily Compliance Check' },
-  { cron: '0 8 * * *' }, // 8 AM daily
+  { id: 'agent-daily-compliance-check', name: 'Daily Compliance Check' , triggers: [{ cron: '0 8 * * *' }] }, // 8 AM daily
   async ({ step }) => {
     logger.info('Starting daily compliance check');
 
@@ -173,8 +171,7 @@ export const dailyComplianceCheck = inngest.createFunction(
  * Weekly portfolio review - runs Monday at 9 AM
  */
 export const weeklyPortfolioReview = inngest.createFunction(
-  { id: 'agent-weekly-portfolio-review', name: 'Weekly Portfolio Review' },
-  { cron: '0 9 * * 1' }, // 9 AM every Monday
+  { id: 'agent-weekly-portfolio-review', name: 'Weekly Portfolio Review' , triggers: [{ cron: '0 9 * * 1' }] }, // 9 AM every Monday
   async ({ step }) => {
     logger.info('Starting weekly portfolio review');
 
@@ -231,8 +228,7 @@ export const weeklyPortfolioReview = inngest.createFunction(
  * Weekly market intelligence - runs Monday at 6 AM
  */
 export const weeklyMarketIntelligence = inngest.createFunction(
-  { id: 'agent-weekly-market-intelligence', name: 'Weekly Market Intelligence' },
-  { cron: '0 6 * * 1' }, // 6 AM every Monday
+  { id: 'agent-weekly-market-intelligence', name: 'Weekly Market Intelligence' , triggers: [{ cron: '0 6 * * 1' }] }, // 6 AM every Monday
   async ({ step }) => {
     logger.info('Starting weekly market intelligence');
 
@@ -277,8 +273,7 @@ export const weeklyMarketIntelligence = inngest.createFunction(
  * Hourly threshold check - monitors KPIs and triggers alerts
  */
 export const hourlyThresholdMonitor = inngest.createFunction(
-  { id: 'agent-hourly-threshold-monitor', name: 'Hourly Threshold Monitor' },
-  { cron: '0 * * * *' }, // Every hour
+  { id: 'agent-hourly-threshold-monitor', name: 'Hourly Threshold Monitor' , triggers: [{ cron: '0 * * * *' }] }, // Every hour
   async ({ step }) => {
     logger.info('Starting hourly threshold monitor');
 
