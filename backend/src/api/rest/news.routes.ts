@@ -29,6 +29,8 @@ router.use(requireAuth);
 /**
  * GET /api/v1/news/events
  * Get news events for the event feed
+ * 
+ * Pulls directly from RSS feeds (free, no credits) for fast loading
  */
 router.get('/events', async (req: Request, res: Response) => {
   try {
@@ -39,33 +41,88 @@ router.get('/events', async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, error: 'Unauthorized' });
     }
 
-    const { category, source_type, severity, limit = 50, offset = 0 } = req.query;
+    const { category, limit = 30 } = req.query;
 
-    // Get articles from unified feed (newsletters + API)
-    const feedResult = await newsService.getUnifiedFeed(userId, {
-      category: category as string,
-      maxArticles: Number(limit),
-    });
+    // Import RSS providers directly for fast loading (no health checks, no credits)
+    const { bisnowProvider } = await import('../../services/news/providers/bisnow.provider');
+    const { globestProvider } = await import('../../services/news/providers/globest.provider');
+    const { cnbcProvider } = await import('../../services/news/providers/cnbc.provider');
+    const { marketwatchProvider } = await import('../../services/news/providers/marketwatch.provider');
+
+    const allArticles: any[] = [];
+
+    // Fetch from multiple RSS providers in parallel
+    const fetchPromises = [
+      bisnowProvider.getHeadlines({ pageSize: 10 }).catch(() => ({ articles: [] })),
+      globestProvider.getHeadlines({ pageSize: 10 }).catch(() => ({ articles: [] })),
+      cnbcProvider.getHeadlines({ category: 'real-estate', pageSize: 8 }).catch(() => ({ articles: [] })),
+      marketwatchProvider.getHeadlines({ category: 'real-estate', pageSize: 8 }).catch(() => ({ articles: [] })),
+    ];
+
+    const results = await Promise.all(fetchPromises);
+    
+    for (const result of results) {
+      if (result.articles && result.articles.length > 0) {
+        allArticles.push(...result.articles);
+      }
+    }
+
+    // Also try to get user's newsletter articles (if any)
+    try {
+      const newsletterArticles = await newsletterParserService.getUserArticles(userId, {
+        limit: 10,
+      });
+      for (const article of newsletterArticles) {
+        allArticles.push({
+          id: article.url || `newsletter_${Date.now()}`,
+          provider: 'newsletter',
+          title: article.title,
+          description: article.summary,
+          url: article.url || '',
+          publishedAt: new Date(),
+          source: { name: article.source || 'Newsletter' },
+          category: article.category,
+        });
+      }
+    } catch (e) {
+      // Newsletter table might not exist yet
+    }
+
+    // Sort by date and dedupe
+    const seen = new Set<string>();
+    const deduped = allArticles
+      .filter(a => {
+        const key = a.url || a.title;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .sort((a, b) => {
+        const dateA = a.publishedAt ? new Date(a.publishedAt).getTime() : 0;
+        const dateB = b.publishedAt ? new Date(b.publishedAt).getTime() : 0;
+        return dateB - dateA;
+      })
+      .slice(0, Number(limit));
 
     // Transform to NewsEvent format expected by frontend
-    const events = feedResult.articles.map((article, idx) => ({
+    const events = deduped.map((article, idx) => ({
       id: article.id || `event_${idx}`,
-      event_category: article.category || 'general',
+      event_category: article.category || 'real-estate',
       event_type: article.title,
       event_status: 'published',
       source_type: article.provider === 'newsletter' ? 'email_private' : 'public',
       source_name: article.source?.name || article.provider,
       source_url: article.url,
-      source_credibility_score: 0.8,
+      source_credibility_score: 0.85,
       extracted_data: {},
-      location_raw: '',
+      location_raw: article.description || '',
       city: '',
       state: '',
       impact_analysis: null,
       impact_severity: 'moderate',
       extraction_confidence: 0.9,
       corroboration_count: 0,
-      published_at: article.publishedAt?.toISOString() || new Date().toISOString(),
+      published_at: article.publishedAt?.toISOString?.() || article.publishedAt || new Date().toISOString(),
     }));
 
     res.json({
@@ -74,7 +131,7 @@ router.get('/events', async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     logger.error('News events error:', error);
-    res.status(500).json({ success: false, error: 'Failed to get events' });
+    res.status(500).json({ success: false, error: 'Failed to get events', data: [] });
   }
 });
 
