@@ -9,8 +9,11 @@ CREATE TABLE IF NOT EXISTS morning_briefs (
   generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Note: index is on the raw TIMESTAMPTZ (not DATE(generated_at)) because
+-- DATE() applied to TIMESTAMPTZ is not IMMUTABLE (depends on session TZ),
+-- which Postgres rejects in index expressions.
 CREATE INDEX IF NOT EXISTS idx_morning_briefs_user_date 
-  ON morning_briefs(user_id, DATE(generated_at) DESC);
+  ON morning_briefs(user_id, generated_at DESC);
 
 -- Keep only last 7 days of briefs per user
 CREATE OR REPLACE FUNCTION cleanup_old_morning_briefs()
