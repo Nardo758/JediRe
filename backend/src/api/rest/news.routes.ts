@@ -387,6 +387,115 @@ router.get('/real-estate', async (req: Request, res: Response) => {
 });
 
 // ============================================================================
+// UNIFIED FEED (API + Newsletters)
+// ============================================================================
+
+/**
+ * GET /api/v1/news/feed
+ * Unified news feed: user's newsletters + API sources
+ * 
+ * Newsletter articles: FREE
+ * API articles: 1 credit (if included)
+ */
+router.get('/feed', async (req: Request, res: Response) => {
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const userId = authReq.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
+
+    const {
+      category,
+      market,
+      includeNewsletters = 'true',
+      includeApi = 'true',
+      limit = 30,
+    } = req.query;
+
+    const result = await newsService.getUnifiedFeed(userId, {
+      category: category as string,
+      market: market as string,
+      includeNewsletters: includeNewsletters === 'true',
+      includeApiSources: includeApi === 'true',
+      maxArticles: Number(limit),
+    });
+
+    res.json({
+      success: true,
+      data: {
+        articles: result.articles,
+        count: result.articles.length,
+        sources: {
+          newsletters: result.newsletterCount,
+          api: result.apiCount,
+        },
+      },
+      creditsUsed: result.creditsUsed,
+    });
+  } catch (error: any) {
+    logger.error('Unified feed error:', error);
+    if (error.message.includes('Insufficient credits')) {
+      return res.status(402).json({ success: false, error: error.message });
+    }
+    res.status(500).json({ success: false, error: 'Failed to get feed' });
+  }
+});
+
+/**
+ * POST /api/v1/news/enhanced-brief
+ * Morning brief that prioritizes user's newsletters, supplements with API
+ * 
+ * Cost: 0-5 credits depending on how much API content needed
+ */
+router.post('/enhanced-brief', async (req: Request, res: Response) => {
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const userId = authReq.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
+
+    const {
+      topics,
+      includeMarketNews = true,
+      includeRealEstateNews = true,
+      maxArticles = 25,
+    } = req.body;
+
+    const result = await newsService.getEnhancedMorningBrief({
+      userId,
+      topics,
+      includeMarketNews,
+      includeRealEstateNews,
+      maxArticles,
+    });
+
+    res.json({
+      success: true,
+      data: {
+        articles: result.articles,
+        count: result.articles.length,
+        sources: {
+          fromNewsletters: result.fromNewsletters,
+          fromApi: result.fromApi,
+        },
+        keyTakeaways: result.keyTakeaways,
+      },
+      creditsUsed: result.creditsUsed,
+    });
+  } catch (error: any) {
+    logger.error('Enhanced brief error:', error);
+    if (error.message.includes('Insufficient credits')) {
+      return res.status(402).json({ success: false, error: error.message });
+    }
+    res.status(500).json({ success: false, error: 'Failed to generate brief' });
+  }
+});
+
+// ============================================================================
 // USER NEWSLETTER ARTICLES (from subscriptions)
 // ============================================================================
 

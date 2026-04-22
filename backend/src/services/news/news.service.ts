@@ -16,6 +16,7 @@
 import { logger } from '../../utils/logger';
 import { query } from '../../database/connection';
 import { creditService } from '../ai/creditService';
+import { newsletterParserService, ExtractedArticle } from './newsletter-parser.service';
 import {
   NewsProvider,
   NewsArticle,
@@ -408,6 +409,217 @@ class NewsService {
     }
 
     return health;
+  }
+
+  // ============================================================================
+  // UNIFIED NEWS FEED (API + User Newsletters)
+  // ============================================================================
+
+  /**
+   * Get unified news feed combining API sources + user's newsletter articles
+   * Newsletter articles are FREE, API articles cost credits
+   */
+  async getUnifiedFeed(
+    userId: string,
+    options?: {
+      category?: string;
+      market?: string;
+      includeNewsletters?: boolean;
+      includeApiSources?: boolean;
+      maxArticles?: number;
+    }
+  ): Promise<{
+    articles: NewsArticle[];
+    newsletterCount: number;
+    apiCount: number;
+    creditsUsed: number;
+  }> {
+    const {
+      category,
+      market,
+      includeNewsletters = true,
+      includeApiSources = true,
+      maxArticles = 30,
+    } = options || {};
+
+    const allArticles: NewsArticle[] = [];
+    let newsletterCount = 0;
+    let creditsUsed = 0;
+
+    // 1. Get user's newsletter articles (FREE)
+    if (includeNewsletters) {
+      try {
+        let newsletterArticles: ExtractedArticle[];
+        
+        if (market) {
+          newsletterArticles = await newsletterParserService.getMarketArticles(userId, market, 15);
+        } else {
+          newsletterArticles = await newsletterParserService.getUserArticles(userId, {
+            relevance: category === 'real-estate' ? 'high' : undefined,
+            category,
+            limit: 15,
+          });
+        }
+
+        // Convert to NewsArticle format
+        const converted = newsletterArticles.map(a => this.convertNewsletterToArticle(a));
+        allArticles.push(...converted);
+        newsletterCount = converted.length;
+      } catch (error) {
+        logger.warn('Failed to get newsletter articles', { error });
+      }
+    }
+
+    // 2. Get API articles (costs credits) - only if user wants them
+    let apiCount = 0;
+    if (includeApiSources) {
+      const remaining = maxArticles - allArticles.length;
+      if (remaining > 0) {
+        try {
+          const searchQuery = market 
+            ? `${market} real estate`
+            : category === 'real-estate'
+              ? 'commercial real estate multifamily'
+              : category || 'business news';
+
+          const result = await this.search(
+            { query: searchQuery, pageSize: Math.min(remaining, 10), sortBy: 'publishedAt' },
+            { userId }
+          );
+          
+          allArticles.push(...result.articles);
+          apiCount = result.articles.length;
+          creditsUsed = NEWS_CREDIT_COSTS['news.search'];
+        } catch (error) {
+          // Don't fail if API search fails
+          logger.warn('API search failed in unified feed', { error });
+        }
+      }
+    }
+
+    // 3. Sort all by date and dedupe
+    const seen = new Set<string>();
+    const deduped = allArticles
+      .filter(a => {
+        const key = a.url || a.title;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .sort((a, b) => b.publishedAt.getTime() - a.publishedAt.getTime())
+      .slice(0, maxArticles);
+
+    return {
+      articles: deduped,
+      newsletterCount,
+      apiCount,
+      creditsUsed,
+    };
+  }
+
+  /**
+   * Get morning brief that includes user's newsletter articles
+   * Prioritizes user's subscriptions, supplements with API
+   */
+  async getEnhancedMorningBrief(options: MorningBriefOptions): Promise<{
+    articles: NewsArticle[];
+    fromNewsletters: number;
+    fromApi: number;
+    creditsUsed: number;
+    keyTakeaways?: string[];
+  }> {
+    const { userId, topics, maxArticles = 25 } = options;
+
+    // 1. Get user's RE-relevant newsletter articles (FREE)
+    let newsletterArticles: ExtractedArticle[] = [];
+    let keyTakeaways: string[] = [];
+    
+    try {
+      // Get high-relevance RE articles
+      newsletterArticles = await newsletterParserService.getUserArticles(userId, {
+        relevance: 'high',
+        limit: 15,
+      });
+
+      // Get key takeaways from recent parses
+      const recentParses = await query(
+        `SELECT key_takeaways FROM user_newsletter_parses
+         WHERE user_id = $1 AND parsed_at > NOW() - INTERVAL '24 hours'
+         ORDER BY parsed_at DESC LIMIT 5`,
+        [userId]
+      );
+      keyTakeaways = recentParses.rows
+        .flatMap(r => r.key_takeaways || [])
+        .slice(0, 5);
+    } catch (error) {
+      logger.warn('Failed to get newsletter articles for brief', { error });
+    }
+
+    // Convert to NewsArticle format
+    const fromNewsletters = newsletterArticles.map(a => this.convertNewsletterToArticle(a));
+
+    // 2. Supplement with API articles if needed
+    let fromApi: NewsArticle[] = [];
+    let creditsUsed = 0;
+    const remaining = maxArticles - fromNewsletters.length;
+
+    if (remaining > 5) {
+      try {
+        // Only call API if we need more articles
+        const apiResult = await this.generateMorningBrief({
+          ...options,
+          maxArticles: remaining,
+        });
+        fromApi = apiResult.articles;
+        creditsUsed = apiResult.creditsUsed;
+      } catch (error) {
+        logger.warn('API morning brief failed', { error });
+      }
+    }
+
+    // 3. Combine and dedupe
+    const combined = [...fromNewsletters, ...fromApi];
+    const seen = new Set<string>();
+    const deduped = combined
+      .filter(a => {
+        const key = a.url || a.title;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .sort((a, b) => b.publishedAt.getTime() - a.publishedAt.getTime())
+      .slice(0, maxArticles);
+
+    return {
+      articles: deduped,
+      fromNewsletters: fromNewsletters.length,
+      fromApi: fromApi.length,
+      creditsUsed,
+      keyTakeaways: keyTakeaways.length > 0 ? keyTakeaways : undefined,
+    };
+  }
+
+  /**
+   * Convert newsletter article to standard NewsArticle format
+   */
+  private convertNewsletterToArticle(article: ExtractedArticle): NewsArticle {
+    return {
+      id: article.url || `newsletter_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+      provider: 'newsletter',
+      title: article.title,
+      description: article.summary,
+      content: undefined,
+      url: article.url || '',
+      imageUrl: undefined,
+      publishedAt: article.publishedAt || new Date(),
+      source: {
+        id: article.source?.toLowerCase().replace(/\s+/g, '_'),
+        name: article.source || 'Newsletter',
+      },
+      author: article.author,
+      category: article.category,
+      tags: article.keyTopics || [],
+    };
   }
 
   // ============================================================================
