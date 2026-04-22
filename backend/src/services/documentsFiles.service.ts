@@ -4,12 +4,11 @@
  * Context-aware for Pipeline (pre-purchase) vs Portfolio (post-purchase) deals
  */
 
-import { supabase } from '../config/supabase';
+import { query } from '../database/connection';
 import { logger } from '../utils/logger';
 import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
-import mime from 'mime-types';
 
 // ============================================================================
 // TYPES
@@ -92,73 +91,43 @@ export interface StorageAnalytics {
 // ============================================================================
 
 const UPLOAD_BASE_PATH = process.env.UPLOAD_PATH || './uploads';
-const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50 MB
-const MAX_TOTAL_STORAGE_PER_DEAL = 5 * 1024 * 1024 * 1024; // 5 GB
 
-// Pipeline categories
-const PIPELINE_CATEGORIES = [
-  'acquisition',
-  'financial-analysis',
-  'due-diligence',
-  'property-info',
-  'correspondence',
-  'financing',
-  'legal-preliminary',
+// Category mappings for auto-detection
+const CATEGORY_PATTERNS: { pattern: RegExp; category: string }[] = [
+  { pattern: /t12|trailing|income.statement|p&l|profit.loss/i, category: 'financial' },
+  { pattern: /rent.roll|unit.mix|lease/i, category: 'financial' },
+  { pattern: /bpi|financial.package|balance.sheet|cash.flow|general.ledger/i, category: 'financial' },
+  { pattern: /appraisal|valuation/i, category: 'appraisals' },
+  { pattern: /pca|property.condition|inspection|due.diligence/i, category: 'inspections' },
+  { pattern: /phase|environmental|esa/i, category: 'environmental' },
+  { pattern: /insurance|policy|certificate/i, category: 'insurance' },
+  { pattern: /psa|purchase|contract|agreement|legal/i, category: 'legal' },
+  { pattern: /permit|zoning|entitlement/i, category: 'permits' },
+  { pattern: /om|offering.memorandum|marketing/i, category: 'marketing' },
 ];
-
-// Portfolio categories
-const PORTFOLIO_CATEGORIES = [
-  'legal',
-  'financial',
-  'leasing',
-  'operations',
-  'property-media',
-  'marketing',
-  'compliance',
-  'maintenance',
-  'tenant-files',
-];
-
-// Shared categories
-const SHARED_CATEGORIES = ['contracts', 'reports', 'presentations', 'photos', 'other'];
 
 // ============================================================================
-// MAIN SERVICE CLASS
+// SERVICE CLASS
 // ============================================================================
 
 class DocumentsFilesService {
   /**
-   * Upload a file for a deal with smart categorization
+   * Upload a file for a deal
    */
   async uploadFile(options: FileUploadOptions): Promise<DealFile> {
     const { dealId, file, userId, folderPath = '/', tags = [] } = options;
 
     try {
-      // Validate file size
-      if (file.size > MAX_FILE_SIZE) {
-        throw new Error(`File too large. Maximum size: ${MAX_FILE_SIZE / 1024 / 1024} MB`);
-      }
-
-      // Check deal storage limit
-      const analytics = await this.getStorageAnalytics(dealId);
-      if (analytics && analytics.total_size_bytes + file.size > MAX_TOTAL_STORAGE_PER_DEAL) {
-        throw new Error('Deal storage limit exceeded');
-      }
-
       // Generate unique filename
       const fileExtension = path.extname(file.originalname);
       const uniqueFilename = `${crypto.randomBytes(16).toString('hex')}${fileExtension}`;
 
       // Determine category (auto or manual)
       let category = options.category;
-      let autoConfidence = null;
+      let autoConfidence: number | null = null;
 
       if (!category) {
-        const suggested = await this.suggestCategory(
-          file.originalname,
-          file.mimetype,
-          dealId
-        );
+        const suggested = this.suggestCategory(file.originalname);
         category = suggested.category;
         autoConfidence = suggested.confidence;
       }
@@ -174,7 +143,7 @@ class DocumentsFilesService {
       // Check for duplicate filename and handle versioning
       const existingFile = await this.findFileByOriginalName(dealId, file.originalname);
       let version = 1;
-      let parentFileId = null;
+      let parentFileId: string | null = null;
 
       if (existingFile) {
         // Create new version
@@ -182,46 +151,37 @@ class DocumentsFilesService {
         parentFileId = existingFile.parent_file_id || existingFile.id;
 
         // Mark old version as not latest
-        await supabase
-          .from('deal_files')
-          .update({ is_latest_version: false })
-          .eq('id', existingFile.id);
+        await query(
+          'UPDATE deal_files SET is_latest_version = false WHERE id = $1',
+          [existingFile.id]
+        );
       }
 
       // Insert file record
-      const { data, error } = await supabase
-        .from('deal_files')
-        .insert({
-          deal_id: dealId,
-          filename: uniqueFilename,
-          original_filename: file.originalname,
-          file_path: filePath,
-          file_size: file.size,
-          mime_type: file.mimetype,
-          file_extension: fileExtension,
-          category: category || 'other',
-          folder_path: folderPath,
-          tags,
-          version,
-          parent_file_id: parentFileId,
-          is_latest_version: true,
-          status: options.status || 'draft',
-          is_required: options.isRequired || false,
-          expiration_date: options.expirationDate || null,
-          description: options.description || null,
-          auto_category_confidence: autoConfidence,
-          uploaded_by: userId,
-          shared_with: [],
-          is_public: false,
-        })
-        .select()
-        .single();
+      const result = await query(
+        `INSERT INTO deal_files (
+          deal_id, filename, original_filename, file_path, file_size,
+          mime_type, file_extension, category, folder_path, tags,
+          version, parent_file_id, is_latest_version, status,
+          is_required, expiration_date, description, auto_category_confidence,
+          uploaded_by, shared_with, is_public
+        ) VALUES (
+          $1, $2, $3, $4, $5,
+          $6, $7, $8, $9, $10,
+          $11, $12, $13, $14,
+          $15, $16, $17, $18,
+          $19, $20, $21
+        ) RETURNING *`,
+        [
+          dealId, uniqueFilename, file.originalname, filePath, file.size,
+          file.mimetype, fileExtension, category || 'other', folderPath, tags,
+          version, parentFileId, true, options.status || 'draft',
+          options.isRequired || false, options.expirationDate || null, options.description || null, autoConfidence,
+          userId, [], false
+        ]
+      );
 
-      if (error) {
-        // Clean up uploaded file on error
-        await fs.unlink(filePath).catch(() => {});
-        throw error;
-      }
+      const data = result.rows[0];
 
       // Log access
       await this.logAccess(data.id, userId, 'uploaded');
@@ -245,55 +205,52 @@ class DocumentsFilesService {
    */
   async getFiles(dealId: string, filters: FileFilters = {}): Promise<DealFile[]> {
     try {
-      let query = supabase
-        .from('deal_files')
-        .select('*')
-        .eq('deal_id', dealId)
-        .is('deleted_at', null);
+      let sql = `
+        SELECT * FROM deal_files 
+        WHERE deal_id = $1 AND deleted_at IS NULL
+      `;
+      const params: any[] = [dealId];
+      let paramIndex = 2;
 
-      // Apply filters
       if (filters.category) {
-        query = query.eq('category', filters.category);
+        sql += ` AND category = $${paramIndex++}`;
+        params.push(filters.category);
       }
 
       if (filters.status) {
-        query = query.eq('status', filters.status);
+        sql += ` AND status = $${paramIndex++}`;
+        params.push(filters.status);
       }
 
       if (filters.folderPath) {
-        query = query.eq('folder_path', filters.folderPath);
+        sql += ` AND folder_path = $${paramIndex++}`;
+        params.push(filters.folderPath);
       }
 
       if (filters.onlyLatestVersions !== false) {
-        query = query.eq('is_latest_version', true);
+        sql += ` AND is_latest_version = true`;
       }
 
-      if (filters.tags && filters.tags.length > 0) {
-        query = query.contains('tags', filters.tags);
+      if (filters.search) {
+        sql += ` AND (original_filename ILIKE $${paramIndex++} OR description ILIKE $${paramIndex++})`;
+        const searchPattern = `%${filters.search}%`;
+        params.push(searchPattern, searchPattern);
       }
 
       if (filters.dateFrom) {
-        query = query.gte('created_at', filters.dateFrom.toISOString());
+        sql += ` AND created_at >= $${paramIndex++}`;
+        params.push(filters.dateFrom);
       }
 
       if (filters.dateTo) {
-        query = query.lte('created_at', filters.dateTo.toISOString());
+        sql += ` AND created_at <= $${paramIndex++}`;
+        params.push(filters.dateTo);
       }
 
-      // Full-text search
-      if (filters.search) {
-        query = query.or(
-          `original_filename.ilike.%${filters.search}%,description.ilike.%${filters.search}%,extracted_text.ilike.%${filters.search}%`
-        );
-      }
+      sql += ' ORDER BY created_at DESC';
 
-      query = query.order('created_at', { ascending: false });
-
-      const { data, error } = await query;
-
-      if (error) throw error;
-
-      return data || [];
+      const result = await query(sql, params);
+      return result.rows;
     } catch (error) {
       logger.error('Error getting files:', error);
       throw error;
@@ -303,18 +260,13 @@ class DocumentsFilesService {
   /**
    * Get a single file by ID
    */
-  async getFileById(fileId: string): Promise<DealFile | null> {
+  async getFile(fileId: string): Promise<DealFile | null> {
     try {
-      const { data, error } = await supabase
-        .from('deal_files')
-        .select('*')
-        .eq('id', fileId)
-        .is('deleted_at', null)
-        .single();
-
-      if (error) throw error;
-
-      return data;
+      const result = await query(
+        'SELECT * FROM deal_files WHERE id = $1 AND deleted_at IS NULL',
+        [fileId]
+      );
+      return result.rows[0] || null;
     } catch (error) {
       logger.error('Error getting file:', error);
       throw error;
@@ -322,30 +274,20 @@ class DocumentsFilesService {
   }
 
   /**
-   * Update file metadata
+   * Find file by original name (for versioning)
    */
-  async updateFile(
-    fileId: string,
-    updates: Partial<Pick<DealFile, 'category' | 'folder_path' | 'tags' | 'description' | 'status' | 'is_required' | 'expiration_date' | 'version_notes'>>
-  ): Promise<DealFile> {
+  async findFileByOriginalName(dealId: string, originalFilename: string): Promise<DealFile | null> {
     try {
-      const { data, error } = await supabase
-        .from('deal_files')
-        .update({
-          ...updates,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', fileId)
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      logger.info(`File updated: ${fileId}`, { updates });
-
-      return data;
+      const result = await query(
+        `SELECT * FROM deal_files 
+         WHERE deal_id = $1 AND original_filename = $2 
+         AND is_latest_version = true AND deleted_at IS NULL
+         LIMIT 1`,
+        [dealId, originalFilename]
+      );
+      return result.rows[0] || null;
     } catch (error) {
-      logger.error('Error updating file:', error);
+      logger.error('Error finding file by name:', error);
       throw error;
     }
   }
@@ -353,22 +295,14 @@ class DocumentsFilesService {
   /**
    * Delete a file (soft delete)
    */
-  async deleteFile(fileId: string, userId: string): Promise<boolean> {
+  async deleteFile(fileId: string, userId: string): Promise<void> {
     try {
-      // Soft delete
-      const { error } = await supabase
-        .from('deal_files')
-        .update({ deleted_at: new Date().toISOString() })
-        .eq('id', fileId);
-
-      if (error) throw error;
-
-      // Log access
+      await query(
+        'UPDATE deal_files SET deleted_at = NOW() WHERE id = $1',
+        [fileId]
+      );
       await this.logAccess(fileId, userId, 'deleted');
-
       logger.info(`File deleted: ${fileId}`);
-
-      return true;
     } catch (error) {
       logger.error('Error deleting file:', error);
       throw error;
@@ -376,293 +310,159 @@ class DocumentsFilesService {
   }
 
   /**
-   * Upload a new version of an existing file
+   * Update file metadata
    */
-  async uploadNewVersion(
-    existingFileId: string,
-    file: Express.Multer.File,
-    userId: string,
-    versionNotes?: string
-  ): Promise<DealFile> {
+  async updateFile(fileId: string, updates: Partial<DealFile>): Promise<DealFile> {
     try {
-      const existingFile = await this.getFileById(existingFileId);
-      if (!existingFile) {
-        throw new Error('Original file not found');
+      const allowedFields = ['category', 'description', 'tags', 'status', 'is_required', 'expiration_date', 'folder_path'];
+      const setClauses: string[] = [];
+      const params: any[] = [];
+      let paramIndex = 1;
+
+      for (const field of allowedFields) {
+        if (updates[field as keyof DealFile] !== undefined) {
+          setClauses.push(`${field} = $${paramIndex++}`);
+          params.push(updates[field as keyof DealFile]);
+        }
       }
 
-      return await this.uploadFile({
-        dealId: existingFile.deal_id,
-        file,
-        userId,
-        category: existingFile.category,
-        folderPath: existingFile.folder_path,
-        tags: existingFile.tags,
-        description: existingFile.description || undefined,
-        isRequired: existingFile.is_required,
-        expirationDate: existingFile.expiration_date || undefined,
-        status: existingFile.status,
-      });
+      if (setClauses.length === 0) {
+        const existing = await this.getFile(fileId);
+        if (!existing) throw new Error('File not found');
+        return existing;
+      }
+
+      params.push(fileId);
+      const result = await query(
+        `UPDATE deal_files SET ${setClauses.join(', ')}, updated_at = NOW() 
+         WHERE id = $${paramIndex} RETURNING *`,
+        params
+      );
+
+      return result.rows[0];
     } catch (error) {
-      logger.error('Error uploading new version:', error);
+      logger.error('Error updating file:', error);
       throw error;
     }
   }
 
   /**
-   * Get version history for a file
+   * Get file versions
    */
-  async getVersionHistory(fileId: string): Promise<DealFile[]> {
+  async getFileVersions(fileId: string): Promise<DealFile[]> {
     try {
-      const file = await this.getFileById(fileId);
-      if (!file) throw new Error('File not found');
+      // First get the file to find its parent chain
+      const file = await this.getFile(fileId);
+      if (!file) return [];
 
-      // Find the root parent
-      const rootParentId = file.parent_file_id || file.id;
+      const rootId = file.parent_file_id || file.id;
 
-      // Get all versions
-      const { data, error } = await supabase
-        .from('deal_files')
-        .select('*')
-        .or(`id.eq.${rootParentId},parent_file_id.eq.${rootParentId}`)
-        .is('deleted_at', null)
-        .order('version', { ascending: false });
+      const result = await query(
+        `SELECT * FROM deal_files 
+         WHERE (id = $1 OR parent_file_id = $1) AND deleted_at IS NULL
+         ORDER BY version DESC`,
+        [rootId]
+      );
 
-      if (error) throw error;
-
-      return data || [];
+      return result.rows;
     } catch (error) {
-      logger.error('Error getting version history:', error);
+      logger.error('Error getting file versions:', error);
       throw error;
     }
   }
 
   /**
-   * Search files with full-text search
+   * Log file access for audit trail
    */
-  async searchFiles(dealId: string, query: string): Promise<DealFile[]> {
-    return this.getFiles(dealId, { search: query });
+  async logAccess(
+    fileId: string,
+    userId: string,
+    action: 'viewed' | 'downloaded' | 'uploaded' | 'deleted' | 'shared' | 'version_created',
+    metadata: Record<string, any> = {}
+  ): Promise<void> {
+    try {
+      await query(
+        `INSERT INTO deal_file_access_log (file_id, user_id, action, metadata)
+         VALUES ($1, $2, $3, $4)`,
+        [fileId, userId, action, JSON.stringify(metadata)]
+      );
+    } catch (error) {
+      // Don't throw on logging errors
+      logger.warn('Failed to log file access:', error);
+    }
+  }
+
+  /**
+   * Auto-suggest category based on filename
+   */
+  suggestCategory(filename: string): { category: string; confidence: number } {
+    for (const { pattern, category } of CATEGORY_PATTERNS) {
+      if (pattern.test(filename)) {
+        return { category, confidence: 0.85 };
+      }
+    }
+    return { category: 'other', confidence: 0.5 };
   }
 
   /**
    * Get storage analytics for a deal
    */
-  async getStorageAnalytics(dealId: string): Promise<StorageAnalytics | null> {
+  async getStorageAnalytics(dealId: string): Promise<StorageAnalytics> {
     try {
-      const { data, error } = await supabase
-        .from('deal_storage_analytics')
-        .select('*')
-        .eq('deal_id', dealId)
-        .single();
+      const result = await query(
+        `SELECT 
+          COUNT(*) as total_files,
+          COALESCE(SUM(file_size), 0) as total_size,
+          COUNT(*) FILTER (WHERE version > 1) as files_with_versions,
+          COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '7 days') as files_7d,
+          COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '30 days') as files_30d,
+          COUNT(*) FILTER (WHERE is_required = true) as required_count,
+          COUNT(*) FILTER (WHERE expiration_date < NOW()) as expired_count
+        FROM deal_files
+        WHERE deal_id = $1 AND deleted_at IS NULL AND is_latest_version = true`,
+        [dealId]
+      );
 
-      if (error && error.code !== 'PGRST116') throw error; // Ignore not found error
+      const stats = result.rows[0];
 
-      return data;
+      // Get category breakdown
+      const categoryResult = await query(
+        `SELECT category, COUNT(*) as count, COALESCE(SUM(file_size), 0) as size
+         FROM deal_files 
+         WHERE deal_id = $1 AND deleted_at IS NULL AND is_latest_version = true
+         GROUP BY category`,
+        [dealId]
+      );
+
+      const filesByCategory: Record<string, number> = {};
+      const sizeByCategory: Record<string, number> = {};
+      for (const row of categoryResult.rows) {
+        filesByCategory[row.category] = parseInt(row.count);
+        sizeByCategory[row.category] = parseInt(row.size);
+      }
+
+      return {
+        deal_id: dealId,
+        total_files: parseInt(stats.total_files),
+        total_size_bytes: parseInt(stats.total_size),
+        files_by_category: filesByCategory,
+        size_by_category: sizeByCategory,
+        total_versions: 0, // Would need separate query
+        files_with_versions: parseInt(stats.files_with_versions),
+        files_uploaded_last_7d: parseInt(stats.files_7d),
+        files_uploaded_last_30d: parseInt(stats.files_30d),
+        most_active_uploader_id: '', // Would need separate query
+        required_files_count: parseInt(stats.required_count),
+        missing_required_files: [],
+        expired_files_count: parseInt(stats.expired_count),
+        computed_at: new Date(),
+      };
     } catch (error) {
       logger.error('Error getting storage analytics:', error);
       throw error;
     }
   }
-
-  /**
-   * Smart category suggestion based on filename and deal context
-   */
-  async suggestCategory(
-    filename: string,
-    mimeType: string,
-    dealId: string
-  ): Promise<{ category: string; confidence: number }> {
-    try {
-      // Get deal to determine pipeline vs portfolio
-      const { data: deal } = await supabase
-        .from('deals')
-        .select('category, stage')
-        .eq('id', dealId)
-        .single();
-
-      const dealCategory = deal?.category || 'pipeline';
-
-      // Get matching categorization rules
-      const { data: rules } = await supabase
-        .from('file_categorization_rules')
-        .select('*')
-        .eq('is_active', true)
-        .order('priority', { ascending: false });
-
-      if (!rules || rules.length === 0) {
-        return { category: 'other', confidence: 0.5 };
-      }
-
-      // Test each rule
-      for (const rule of rules) {
-        // Check if rule applies to this deal category
-        if (rule.deal_category && !rule.deal_category.includes(dealCategory)) {
-          continue;
-        }
-
-        // Test filename pattern
-        const filenameRegex = new RegExp(rule.filename_pattern);
-        const filenameMatch = filenameRegex.test(filename);
-
-        // Test MIME type if specified
-        let mimeMatch = true;
-        if (rule.mime_type_pattern) {
-          const mimeRegex = new RegExp(rule.mime_type_pattern);
-          mimeMatch = mimeRegex.test(mimeType);
-        }
-
-        if (filenameMatch && mimeMatch) {
-          return {
-            category: rule.suggested_category,
-            confidence: rule.confidence_threshold || 0.75,
-          };
-        }
-      }
-
-      return { category: 'other', confidence: 0.5 };
-    } catch (error) {
-      logger.error('Error suggesting category:', error);
-      return { category: 'other', confidence: 0.5 };
-    }
-  }
-
-  /**
-   * Get context-aware suggestions for missing files
-   */
-  async getMissingFileSuggestions(dealId: string): Promise<string[]> {
-    try {
-      const { data: deal } = await supabase
-        .from('deals')
-        .select('category, stage')
-        .eq('id', dealId)
-        .single();
-
-      if (!deal) return [];
-
-      const suggestions: string[] = [];
-
-      // Pipeline-specific suggestions based on stage
-      if (deal.category === 'pipeline') {
-        if (deal.stage === 'UNDERWRITING') {
-          suggestions.push(
-            'Appraisal Report',
-            'Rent Roll (T-12)',
-            'Operating Statements',
-            'Property Inspection Report',
-            'Environmental Phase I'
-          );
-        } else if (deal.stage === 'LOI_SUBMITTED' || deal.stage === 'UNDER_CONTRACT') {
-          suggestions.push(
-            'Purchase & Sale Agreement',
-            'Title Commitment',
-            'Property Survey',
-            'Loan Term Sheet'
-          );
-        }
-      }
-
-      // Portfolio-specific suggestions
-      if (deal.category === 'portfolio') {
-        suggestions.push(
-          'Current Month P&L',
-          'Active Lease Agreements',
-          'Insurance Certificates',
-          'Recent Inspection Reports'
-        );
-      }
-
-      return suggestions;
-    } catch (error) {
-      logger.error('Error getting missing file suggestions:', error);
-      return [];
-    }
-  }
-
-  /**
-   * Get file path for download
-   */
-  getFilePath(dealId: string, filename: string): string {
-    return path.join(UPLOAD_BASE_PATH, 'deals', dealId, filename);
-  }
-
-  /**
-   * Generate download URL
-   */
-  generateDownloadUrl(dealId: string, fileId: string): string {
-    return `/api/v1/deals/${dealId}/files/${fileId}/download`;
-  }
-
-  /**
-   * Find file by original filename (for versioning)
-   */
-  private async findFileByOriginalName(
-    dealId: string,
-    originalFilename: string
-  ): Promise<DealFile | null> {
-    try {
-      const { data, error } = await supabase
-        .from('deal_files')
-        .select('*')
-        .eq('deal_id', dealId)
-        .eq('original_filename', originalFilename)
-        .eq('is_latest_version', true)
-        .is('deleted_at', null)
-        .single();
-
-      if (error && error.code !== 'PGRST116') throw error;
-
-      return data;
-    } catch (error) {
-      return null;
-    }
-  }
-
-  /**
-   * Log file access
-   */
-  private async logAccess(
-    fileId: string,
-    userId: string,
-    action: 'viewed' | 'downloaded' | 'shared' | 'deleted' | 'uploaded' | 'edited'
-  ): Promise<void> {
-    try {
-      await supabase.from('deal_file_access_log').insert({
-        file_id: fileId,
-        user_id: userId,
-        action,
-      });
-    } catch (error) {
-      logger.error('Error logging file access:', error);
-      // Don't throw - logging should not break main functionality
-    }
-  }
-
-  /**
-   * Get available categories for a deal (context-aware)
-   */
-  async getAvailableCategories(dealId: string): Promise<string[]> {
-    try {
-      const { data: deal } = await supabase
-        .from('deals')
-        .select('category')
-        .eq('id', dealId)
-        .single();
-
-      if (!deal) return SHARED_CATEGORIES;
-
-      if (deal.category === 'pipeline') {
-        return [...PIPELINE_CATEGORIES, ...SHARED_CATEGORIES];
-      } else {
-        return [...PORTFOLIO_CATEGORIES, ...SHARED_CATEGORIES];
-      }
-    } catch (error) {
-      logger.error('Error getting available categories:', error);
-      return SHARED_CATEGORIES;
-    }
-  }
 }
 
-// ============================================================================
-// EXPORT
-// ============================================================================
-
 export const documentsFilesService = new DocumentsFilesService();
+export default documentsFilesService;
