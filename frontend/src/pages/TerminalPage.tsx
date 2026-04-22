@@ -748,21 +748,43 @@ export default function TerminalPage() {
   },[]);
 
   useEffect(() => {
-    apiClient.get("/api/v1/news/events", { params:{ limit:15 } })
-      .then(res => {
-        const raw: ApiNewsEvent[] = Array.isArray(res.data) ? res.data : (res.data?.data || res.data?.events || []);
-        if(raw.length > 0) {
-          setLiveNews(raw.slice(0,12).map((n: ApiNewsEvent, i: number) => ({
-            id: n.id || String(i),
-            time: n.publishedAt ? new Date(n.publishedAt).toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",hour12:false}) : "—",
-            hl: n.headline || n.title || n.description || "Market update",
-            impact: n.impact || n.marketImpact || (n.sentiment === "positive" ? "+DEMAND" : n.sentiment === "negative" ? "RISK DN" : "INFO"),
-            pts: n.scoreImpact ? (n.scoreImpact > 0 ? `+${n.scoreImpact.toFixed(1)}` : n.scoreImpact.toFixed(1)) : "0.0",
-            affects: n.affectedDeals || n.deals || [],
-          })));
-        }
-      })
-      .catch(()=>{});
+    // Pull both legacy curated events and the new unified feed (newsletter
+    // subscriptions + provider APIs). Premium/subscription items are tagged
+    // so the bottom-panel ticker badges them as YOUR FEED.
+    Promise.all([
+      apiClient.get("/api/v1/news/events", { params:{ limit:15 } }).catch(() => null),
+      apiClient.get("/api/v1/news/feed",   { params:{ limit:25 } }).catch(() => null),
+    ]).then(([eventsRes, feedRes]) => {
+      const events: ApiNewsEvent[] = eventsRes
+        ? (Array.isArray(eventsRes.data) ? eventsRes.data : (eventsRes.data?.data || eventsRes.data?.events || []))
+        : [];
+      const feedArticles: Array<Record<string, unknown>> = feedRes?.data?.data?.articles || [];
+
+      const fromEvents = events.map((n: ApiNewsEvent, i: number) => ({
+        id: n.id || `ev-${i}`,
+        time: n.publishedAt ? new Date(n.publishedAt).toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",hour12:false}) : "—",
+        hl: n.headline || n.title || n.description || "Market update",
+        impact: n.impact || n.marketImpact || (n.sentiment === "positive" ? "+DEMAND" : n.sentiment === "negative" ? "RISK DN" : "INFO"),
+        pts: n.scoreImpact ? (n.scoreImpact > 0 ? `+${n.scoreImpact.toFixed(1)}` : n.scoreImpact.toFixed(1)) : "0.0",
+        affects: n.affectedDeals || n.deals || [],
+      }));
+
+      const fromFeed = feedArticles.map((a, i) => {
+        const ts = (a.published_at as string) || new Date().toISOString();
+        const isPremium = a.is_premium === true;
+        return {
+          id: String(a.id ?? `feed-${i}`),
+          time: new Date(ts).toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",hour12:false}),
+          hl: String(a.headline ?? a.title ?? "News update"),
+          impact: isPremium ? "YOUR FEED" : String(a.source ?? "API"),
+          pts: typeof a.jedi_delta === "number" ? (a.jedi_delta > 0 ? `+${a.jedi_delta.toFixed(1)}` : a.jedi_delta.toFixed(1)) : "0.0",
+          affects: [],
+        };
+      });
+
+      const combined = [...fromFeed, ...fromEvents].slice(0, 24);
+      if (combined.length > 0) setLiveNews(combined);
+    }).catch(()=>{});
   },[]);
 
   useEffect(() => {
