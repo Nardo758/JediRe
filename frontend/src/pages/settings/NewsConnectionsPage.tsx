@@ -519,7 +519,7 @@ export function NewsConnectionsPage() {
           letterSpacing: 0.4,
         }}
       >
-        Ingested articles appear in <span style={{ color: BT.text.cyan }}>TERMINAL · F5 NEWS</span>, not here.
+        Ingested articles appear in <span style={{ color: BT.text.cyan }}>TERMINAL · F6 NEWS</span>, not here.
         This page is for managing connections only.
       </div>
     </div>
