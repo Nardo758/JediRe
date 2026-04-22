@@ -880,8 +880,15 @@ export function registerAllSkills(): void {
   // Advisor personas (16)
   registerAdvisorPersonas();
 
-  logger.info(`Registered ${skillRegistry.getAll().length} skills (18 capability + 16 advisor)`);
+  // Discovery skills (6) - registered separately via registerDiscoverySkills()
+  // See discovery-skills.ts
+
+  logger.info(`Registered ${skillRegistry.getAll().length} skills (18 capability + 16 advisor + discovery)`);
 }
+
+// Import and register discovery skills
+import { registerDiscoverySkills } from './discovery-skills';
 
 // Auto-register on import
 registerAllSkills();
+registerDiscoverySkills();
