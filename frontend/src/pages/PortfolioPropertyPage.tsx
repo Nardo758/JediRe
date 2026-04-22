@@ -776,7 +776,7 @@ const DocumentsHub: React.FC<{ dealId: string; deal: Record<string, unknown> }> 
       </div>
       {docSubTab === 'files' && (
         <div style={{ overflowY: 'auto', padding: 16, maxHeight: 'calc(100vh - 320px)' }}>
-          <DocumentsSection deal={deal as unknown as Deal} />
+          <DocumentsSection dealId={dealId} />
         </div>
       )}
       {docSubTab === 'enter-actuals' && (

@@ -241,7 +241,7 @@ export const DealView: React.FC = () => {
       case 'documents':
         return (
           <div className="p-6">
-            <DocumentsSection deal={deal} />
+            <DocumentsSection dealId={selectedDeal.id} />
           </div>
         );
       case 'notes':

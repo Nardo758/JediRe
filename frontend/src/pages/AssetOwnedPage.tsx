@@ -1034,10 +1034,10 @@ const RevenueMgmtTab: React.FC<{ dealId: string; deal?: Record<string, unknown> 
 
 // ─── Documents Hub (Files + Enter Actuals) ────────────────────
 // Documents tab now just shows documents - Enter Actuals moved to Operations > ENTER ACTUALS sub-tab
-const DocumentsHub: React.FC<{ dealId: string; deal: Record<string, unknown> }> = ({ dealId, deal }) => {
+const DocumentsHub: React.FC<{ dealId: string; deal: Record<string, unknown> }> = ({ dealId }) => {
   return (
     <div style={{ overflowY: 'auto', padding: 16, maxHeight: 'calc(100vh - 280px)' }}>
-      <DocumentsSection deal={deal as unknown as Deal} />
+      <DocumentsSection dealId={dealId} />
     </div>
   );
 };

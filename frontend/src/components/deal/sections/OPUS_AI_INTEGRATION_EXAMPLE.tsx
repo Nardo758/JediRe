@@ -83,7 +83,7 @@ const DealPageContent: React.FC<DealPageContentProps> = ({ deal, activeTab }) =>
         return <TeamSection deal={deal} />;
       
       case 'documents':
-        return <DocumentsSection deal={deal} />;
+        return <DocumentsSection dealId={deal.id} />;
       
       case 'timeline':
         return <TimelineSection deal={deal} />;

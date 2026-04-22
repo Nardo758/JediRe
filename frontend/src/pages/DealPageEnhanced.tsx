@@ -357,7 +357,7 @@ export const DealPageEnhanced: React.FC = () => {
               icon="📄"
               title="Documents"
             >
-              <DocumentsSection deal={deal} />
+              <DocumentsSection dealId={dealId!} />
             </DealSection>
           </div>
 

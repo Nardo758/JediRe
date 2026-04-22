@@ -29,7 +29,7 @@ export const BasicDocumentsExample: React.FC = () => {
       title="Documents"
       defaultExpanded={false}
     >
-      <DocumentsSection deal={deal} />
+      <DocumentsSection dealId={deal.id} />
     </DealSection>
   );
 };
@@ -63,7 +63,7 @@ export const AcquisitionModeExample: React.FC = () => {
         title="Documents"
         defaultExpanded={true} // Start expanded for active deals
       >
-        <DocumentsSection deal={pipelineDeal} />
+        <DocumentsSection dealId={pipelineDeal.id} />
       </DealSection>
       
       {/* More sections... */}
@@ -101,7 +101,7 @@ export const PerformanceModeExample: React.FC = () => {
         title="Property Documents"
         defaultExpanded={false}
       >
-        <DocumentsSection deal={ownedDeal} />
+        <DocumentsSection dealId={ownedDeal.id} />
       </DealSection>
       
       {/* More sections... */}
@@ -163,7 +163,7 @@ export const FullDealPageExample: React.FC<{ dealId: string }> = ({ dealId }) =>
         title="Documents"
         defaultExpanded={false}
       >
-        <DocumentsSection deal={deal} />
+        <DocumentsSection dealId={deal.id} />
       </DealSection>
 
       {/* Due Diligence Section */}
@@ -220,7 +220,7 @@ export const CustomStyledExample: React.FC = () => {
 
         {/* Documents Section with Custom Styling */}
         <div className="bg-gradient-to-br from-white to-gray-50 rounded-xl shadow-xl p-8">
-          <DocumentsSection deal={deal} />
+          <DocumentsSection dealId={deal.id} />
         </div>
 
         {/* Additional Context Below */}
@@ -282,7 +282,7 @@ export const ConditionalFeaturesExample: React.FC = () => {
         title={isPipeline ? "Due Diligence Documents" : "Property Documents"}
         defaultExpanded={true}
       >
-        <DocumentsSection deal={deal} />
+        <DocumentsSection dealId={deal.id} />
       </DealSection>
 
     </div>
@@ -344,7 +344,7 @@ export const WithLoadingStateExample: React.FC<{ dealId: string }> = ({ dealId }
       title="Documents"
       defaultExpanded={true}
     >
-      <DocumentsSection deal={deal} />
+      <DocumentsSection dealId={deal.id} />
     </DealSection>
   );
 };
