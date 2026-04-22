@@ -729,6 +729,28 @@ export class GmailSyncService {
       }
     }
 
+    // Parse newsletters (WSJ, Bloomberg, Bisnow, etc.) - uses LLM
+    // Fire-and-forget to avoid slowing down sync
+    import('./news/newsletter-parser.service').then(({ newsletterParserService }) => {
+      newsletterParserService.parseNewsletter(
+        body,
+        subject,
+        from,
+        userId,
+        emailId
+      ).then(result => {
+        if (result.articles.length > 0) {
+          logger.info('Newsletter parsed successfully', {
+            emailId,
+            source: result.newsletterSource,
+            articleCount: result.articles.length,
+          });
+        }
+      }).catch(err => {
+        logger.debug('Newsletter parsing skipped or failed', { emailId, err: err.message });
+      });
+    }).catch(() => {});
+
     // Update email with classification metadata
     await query(
       `UPDATE emails 

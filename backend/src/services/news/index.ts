@@ -10,6 +10,7 @@
 
 export * from './news-provider.interface';
 export * from './news.service';
+export * from './newsletter-parser.service';
 
 // Re-export providers for direct access if needed
 // API-based

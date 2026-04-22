@@ -11,6 +11,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { newsService } from '../../services/news/news.service';
+import { newsletterParserService } from '../../services/news/newsletter-parser.service';
 import { NEWS_CREDIT_COSTS } from '../../services/news/news-provider.interface';
 import { logger } from '../../utils/logger';
 
@@ -382,6 +383,170 @@ router.get('/real-estate', async (req: Request, res: Response) => {
       return res.status(402).json({ success: false, error: error.message });
     }
     res.status(500).json({ success: false, error: 'Failed to get RE news' });
+  }
+});
+
+// ============================================================================
+// USER NEWSLETTER ARTICLES (from subscriptions)
+// ============================================================================
+
+/**
+ * GET /api/v1/news/my-articles
+ * Get articles extracted from user's newsletter subscriptions
+ * 
+ * Cost: FREE (already paid for via subscription)
+ */
+router.get('/my-articles', async (req: Request, res: Response) => {
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const userId = authReq.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
+
+    const { source, relevance, category, limit = 50, offset = 0 } = req.query;
+
+    const articles = await newsletterParserService.getUserArticles(userId, {
+      source: source as string,
+      relevance: relevance as 'high' | 'medium' | 'low',
+      category: category as string,
+      limit: Number(limit),
+      offset: Number(offset),
+    });
+
+    res.json({
+      success: true,
+      data: {
+        articles,
+        count: articles.length,
+      },
+      creditsUsed: 0, // Free - from user's own subscriptions
+    });
+  } catch (error: any) {
+    logger.error('My articles error:', error);
+    res.status(500).json({ success: false, error: 'Failed to get articles' });
+  }
+});
+
+/**
+ * GET /api/v1/news/my-articles/re
+ * Get RE-relevant articles from user's newsletters
+ * 
+ * Cost: FREE
+ */
+router.get('/my-articles/re', async (req: Request, res: Response) => {
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const userId = authReq.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
+
+    const { limit = 30 } = req.query;
+
+    // Get high and medium relevance articles
+    const highRelevance = await newsletterParserService.getUserArticles(userId, {
+      relevance: 'high',
+      limit: Number(limit),
+    });
+
+    const mediumRelevance = await newsletterParserService.getUserArticles(userId, {
+      relevance: 'medium',
+      limit: Math.max(0, Number(limit) - highRelevance.length),
+    });
+
+    const articles = [...highRelevance, ...mediumRelevance];
+
+    res.json({
+      success: true,
+      data: {
+        articles,
+        count: articles.length,
+        highRelevanceCount: highRelevance.length,
+      },
+      creditsUsed: 0,
+    });
+  } catch (error: any) {
+    logger.error('RE articles error:', error);
+    res.status(500).json({ success: false, error: 'Failed to get RE articles' });
+  }
+});
+
+/**
+ * GET /api/v1/news/my-articles/market/:market
+ * Get articles mentioning a specific market
+ * 
+ * Cost: FREE
+ */
+router.get('/my-articles/market/:market', async (req: Request, res: Response) => {
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const userId = authReq.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
+
+    const { market } = req.params;
+    const { limit = 20 } = req.query;
+
+    const articles = await newsletterParserService.getMarketArticles(
+      userId,
+      market,
+      Number(limit)
+    );
+
+    res.json({
+      success: true,
+      data: {
+        articles,
+        count: articles.length,
+        market,
+      },
+      creditsUsed: 0,
+    });
+  } catch (error: any) {
+    logger.error('Market articles error:', error);
+    res.status(500).json({ success: false, error: 'Failed to get market articles' });
+  }
+});
+
+/**
+ * GET /api/v1/news/my-sources
+ * Get list of newsletter sources user receives
+ * 
+ * Cost: FREE
+ */
+router.get('/my-sources', async (req: Request, res: Response) => {
+  try {
+    const authReq = req as AuthenticatedRequest;
+    const userId = authReq.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
+
+    const { query: dbQuery } = await import('../../database/connection');
+    const result = await dbQuery(
+      `SELECT source, first_seen, last_seen, total_parsed, is_active
+       FROM user_newsletter_sources
+       WHERE user_id = $1
+       ORDER BY last_seen DESC`,
+      [userId]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        sources: result.rows,
+        count: result.rows.length,
+      },
+    });
+  } catch (error: any) {
+    logger.error('My sources error:', error);
+    res.status(500).json({ success: false, error: 'Failed to get sources' });
   }
 });
 
