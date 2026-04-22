@@ -48,9 +48,13 @@ const ENTERPRISE_PROVIDERS: Array<{ id: string; label: string; blurb: string }> 
 ];
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = localStorage.getItem('auth_token') || '';
   const res = await fetch(`${API}${path}`, {
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     ...init,
   });
   if (!res.ok) {
