@@ -1,692 +1,490 @@
 /**
- * Investor & Capital Tracking Routes
- * Mount at: /api/v1/capital
+ * Investor Capital Routes
+ * 
+ * API endpoints for investor tracking, capital calls, distributions, and waterfall.
  */
 
-import { Router, Response } from 'express';
-import { query } from '../../database/connection';
+import { Router, Request, Response, NextFunction } from 'express';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
+import { investorCapitalService } from '../../services/investor-capital.service';
 import { logger } from '../../utils/logger';
 
 const router = Router();
 
-// ─── helpers ──────────────────────────────────────────────────────────────────
+// All routes require auth
+router.use(requireAuth);
 
-async function ownsDeal(dealId: string, userId: string): Promise<boolean> {
-  const r = await query(
-    'SELECT id FROM deals WHERE id=$1 AND user_id=$2 AND archived_at IS NULL',
-    [dealId, userId],
-  );
-  return r.rows.length > 0;
-}
-
-function fmtInvestor(r: Record<string, unknown>) {
-  return {
-    id: r.id,
-    name: r.name,
-    type: r.type,
-    entityType: r.entity_type,
-    email: r.email,
-    phone: r.phone,
-    address: r.address,
-    kycStatus: r.kyc_status,
-    kycCompletedAt: r.kyc_completed_at,
-    accredited: r.accredited,
-    federalWithholdingPct: r.federal_withholding_pct,
-    stateWithholdingPct: r.state_withholding_pct,
-    foreignWithholdingPct: r.foreign_withholding_pct,
-    bankName: r.bank_name,
-    taxIdLast4: r.tax_id_last4,
-    notes: r.notes,
-    metadata: r.metadata,
-    archivedAt: r.archived_at,
-    createdAt: r.created_at,
-    updatedAt: r.updated_at,
-  };
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
+// ============================================================================
 // INVESTORS
-// ═══════════════════════════════════════════════════════════════════════════
+// ============================================================================
 
-router.get('/investors', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+/**
+ * POST /investors
+ * Create new investor
+ */
+router.post('/investors', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    const { type, kyc_status, search } = req.query;
-    const conditions: string[] = ['user_id=$1', 'archived_at IS NULL'];
-    const params: unknown[] = [req.user!.userId];
-
-    if (type)       { params.push(type);            conditions.push(`type=$${params.length}`); }
-    if (kyc_status) { params.push(kyc_status);       conditions.push(`kyc_status=$${params.length}`); }
-    if (search)     { params.push(`%${search}%`);   conditions.push(`(name ILIKE $${params.length} OR email ILIKE $${params.length})`); }
-
-    const result = await query(
-      `SELECT * FROM investors WHERE ${conditions.join(' AND ')} ORDER BY name`,
-      params,
-    );
-    res.json({ success: true, investors: result.rows.map(fmtInvestor) });
-  } catch (err) {
-    logger.error('GET /investors', err);
-    res.status(500).json({ success: false, error: 'Failed to fetch investors' });
-  }
-});
-
-router.post('/investors', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const {
-      name, type = 'lp', entity_type = 'individual', email, phone, address,
-      kyc_status = 'pending', accredited = false,
-      federal_withholding_pct = 0, state_withholding_pct = 0, foreign_withholding_pct = 0,
-      bank_name, bank_routing, bank_account, tax_id_last4, notes, metadata,
-    } = req.body;
-    if (!name) return res.status(400).json({ success: false, error: 'name is required' });
-
-    const r = await query(
-      `INSERT INTO investors
-         (user_id,name,type,entity_type,email,phone,address,kyc_status,accredited,
-          federal_withholding_pct,state_withholding_pct,foreign_withholding_pct,
-          bank_name,bank_routing,bank_account,tax_id_last4,notes,metadata)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
-       RETURNING *`,
-      [
-        req.user!.userId, name, type, entity_type,
-        email ?? null, phone ?? null, address ? JSON.stringify(address) : null,
-        kyc_status, accredited,
-        federal_withholding_pct, state_withholding_pct, foreign_withholding_pct,
-        bank_name ?? null, bank_routing ?? null, bank_account ?? null,
-        tax_id_last4 ?? null, notes ?? null, metadata ? JSON.stringify(metadata) : null,
-      ],
-    );
-    res.status(201).json({ success: true, investor: fmtInvestor(r.rows[0]) });
-  } catch (err) {
-    logger.error('POST /investors', err);
-    res.status(500).json({ success: false, error: 'Failed to create investor' });
-  }
-});
-
-router.get('/investors/:investorId', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const r = await query(
-      'SELECT * FROM investors WHERE id=$1 AND user_id=$2',
-      [req.params.investorId, req.user!.userId],
-    );
-    if (!r.rows.length) return res.status(404).json({ success: false, error: 'Not found' });
-    res.json({ success: true, investor: fmtInvestor(r.rows[0]) });
-  } catch (err) {
-    logger.error('GET /investors/:id', err);
-    res.status(500).json({ success: false, error: 'Failed to fetch investor' });
-  }
-});
-
-router.patch('/investors/:investorId', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    const allowed = [
-      'name','type','entity_type','email','phone','address','kyc_status','kyc_completed_at',
-      'accredited','federal_withholding_pct','state_withholding_pct','foreign_withholding_pct',
-      'bank_name','bank_routing','bank_account','tax_id_last4','notes','metadata',
-    ];
-    const sets: string[] = [];
-    const params: unknown[] = [req.params.investorId, req.user!.userId];
-    for (const key of allowed) {
-      if (key in req.body) { params.push(req.body[key]); sets.push(`${key}=$${params.length}`); }
+    const { orgId, ...data } = req.body;
+    if (!orgId) {
+      return res.status(400).json({ error: 'orgId required' });
     }
-    if (!sets.length) return res.status(400).json({ success: false, error: 'No fields to update' });
-    sets.push('updated_at=NOW()');
-    const r = await query(
-      `UPDATE investors SET ${sets.join(',')} WHERE id=$1 AND user_id=$2 RETURNING *`,
-      params,
-    );
-    if (!r.rows.length) return res.status(404).json({ success: false, error: 'Not found' });
-    res.json({ success: true, investor: fmtInvestor(r.rows[0]) });
+    const investor = await investorCapitalService.createInvestor(orgId, data);
+    res.status(201).json({ investor });
   } catch (err) {
-    logger.error('PATCH /investors/:id', err);
-    res.status(500).json({ success: false, error: 'Failed to update investor' });
+    next(err);
   }
 });
 
-router.delete('/investors/:investorId', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+/**
+ * GET /investors
+ * List investors for org
+ */
+router.get('/investors', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    await query(
-      'UPDATE investors SET archived_at=NOW() WHERE id=$1 AND user_id=$2',
-      [req.params.investorId, req.user!.userId],
+    const { orgId, investorClass, kycStatus, search } = req.query;
+    if (!orgId) {
+      return res.status(400).json({ error: 'orgId required' });
+    }
+    const investors = await investorCapitalService.listInvestors(
+      orgId as string,
+      { investorClass: investorClass as string, kycStatus: kycStatus as string, search: search as string }
     );
+    res.json({ investors });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /investors/:investorId
+ * Get investor details
+ */
+router.get('/investors/:investorId', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const investor = await investorCapitalService.getInvestor(req.params.investorId);
+    if (!investor) {
+      return res.status(404).json({ error: 'Investor not found' });
+    }
+    res.json({ investor });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * PATCH /investors/:investorId
+ * Update investor
+ */
+router.patch('/investors/:investorId', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const investor = await investorCapitalService.updateInvestor(req.params.investorId, req.body);
+    res.json({ investor });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /investors/:investorId/kyc
+ * Update KYC status
+ */
+router.post('/investors/:investorId/kyc', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const { status } = req.body;
+    if (!['pending', 'verified', 'expired', 'rejected'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+    await investorCapitalService.updateKycStatus(req.params.investorId, status);
     res.json({ success: true });
   } catch (err) {
-    logger.error('DELETE /investors/:id', err);
-    res.status(500).json({ success: false, error: 'Failed to archive investor' });
+    next(err);
   }
 });
 
-// ═══════════════════════════════════════════════════════════════════════════
+/**
+ * GET /investors/:investorId/summary
+ * Get investor capital summary across all deals
+ */
+router.get('/investors/:investorId/summary', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const summary = await investorCapitalService.getInvestorCapitalSummary(req.params.investorId);
+    res.json(summary);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /investors/:investorId/deals
+ * Get all deals for an investor
+ */
+router.get('/investors/:investorId/deals', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const investments = await investorCapitalService.listInvestorDeals(req.params.investorId);
+    res.json({ investments });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ============================================================================
 // DEAL INVESTMENTS
-// ═══════════════════════════════════════════════════════════════════════════
+// ============================================================================
 
-router.get('/deals/:dealId/investments', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+/**
+ * POST /deals/:dealId/investments
+ * Add investor to deal
+ */
+router.post('/deals/:dealId/investments', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    if (!(await ownsDeal(req.params.dealId, req.user!.userId)))
-      return res.status(404).json({ success: false, error: 'Deal not found' });
-    const r = await query(
-      `SELECT di.*, i.name AS investor_name, i.type AS investor_type,
-              i.email AS investor_email, i.kyc_status,
-              (di.commitment_amount - COALESCE(di.funded_amount,0)) AS unfunded_amount
-         FROM deal_investments di
-         JOIN investors i ON i.id=di.investor_id
-        WHERE di.deal_id=$1
-        ORDER BY di.created_at`,
-      [req.params.dealId],
-    );
-    res.json({ success: true, investments: r.rows });
-  } catch (err) {
-    logger.error('GET investments', err);
-    res.status(500).json({ success: false, error: 'Failed to fetch investments' });
-  }
-});
-
-router.post('/deals/:dealId/investments', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    if (!(await ownsDeal(req.params.dealId, req.user!.userId)))
-      return res.status(404).json({ success: false, error: 'Deal not found' });
-    const { investor_id, commitment_amount, ownership_pct, class: cls = 'class_a', notes } = req.body;
-    if (!investor_id || !commitment_amount)
-      return res.status(400).json({ success: false, error: 'investor_id and commitment_amount required' });
-    const r = await query(
-      `INSERT INTO deal_investments (deal_id,investor_id,commitment_amount,ownership_pct,class,notes)
-       VALUES ($1,$2,$3,$4,$5,$6)
-       ON CONFLICT (deal_id,investor_id,class)
-       DO UPDATE SET commitment_amount=EXCLUDED.commitment_amount,
-                     ownership_pct=EXCLUDED.ownership_pct, updated_at=NOW()
-       RETURNING *`,
-      [req.params.dealId, investor_id, commitment_amount, ownership_pct ?? null, cls, notes ?? null],
-    );
-    res.status(201).json({ success: true, investment: r.rows[0] });
-  } catch (err) {
-    logger.error('POST investments', err);
-    res.status(500).json({ success: false, error: 'Failed to add investment' });
-  }
-});
-
-router.patch('/deals/:dealId/investments/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    if (!(await ownsDeal(req.params.dealId, req.user!.userId)))
-      return res.status(404).json({ success: false, error: 'Deal not found' });
-    const allowed = ['commitment_amount','ownership_pct','status','funded_amount','notes'];
-    const sets: string[] = [];
-    const params: unknown[] = [req.params.id, req.params.dealId];
-    for (const key of allowed) {
-      if (key in req.body) { params.push(req.body[key]); sets.push(`${key}=$${params.length}`); }
+    const { investorId, commitmentAmount, ownershipPct, ...rest } = req.body;
+    if (!investorId || !commitmentAmount || ownershipPct === undefined) {
+      return res.status(400).json({ error: 'investorId, commitmentAmount, ownershipPct required' });
     }
-    if (!sets.length) return res.status(400).json({ success: false, error: 'No fields' });
-    sets.push('updated_at=NOW()');
-    const r = await query(
-      `UPDATE deal_investments SET ${sets.join(',')} WHERE id=$1 AND deal_id=$2 RETURNING *`,
-      params,
+    const investment = await investorCapitalService.addInvestment(
+      req.params.dealId,
+      investorId,
+      { commitmentAmount, ownershipPct, ...rest }
     );
-    if (!r.rows.length) return res.status(404).json({ success: false, error: 'Not found' });
-    res.json({ success: true, investment: r.rows[0] });
+    res.status(201).json({ investment });
   } catch (err) {
-    logger.error('PATCH investments/:id', err);
-    res.status(500).json({ success: false, error: 'Failed to update investment' });
+    next(err);
   }
 });
 
-router.delete('/deals/:dealId/investments/:id', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+/**
+ * GET /deals/:dealId/investments
+ * List all investments for deal
+ */
+router.get('/deals/:dealId/investments', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    if (!(await ownsDeal(req.params.dealId, req.user!.userId)))
-      return res.status(404).json({ success: false, error: 'Deal not found' });
-    await query('DELETE FROM deal_investments WHERE id=$1 AND deal_id=$2', [req.params.id, req.params.dealId]);
+    const investments = await investorCapitalService.listDealInvestments(req.params.dealId);
+    res.json({ investments });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /deals/:dealId/investments/:investmentId
+ * Get investment details
+ */
+router.get('/deals/:dealId/investments/:investmentId', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const investment = await investorCapitalService.getInvestment(req.params.investmentId);
+    if (!investment) {
+      return res.status(404).json({ error: 'Investment not found' });
+    }
+    res.json({ investment });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * PATCH /deals/:dealId/investments/:investmentId
+ * Update investment
+ */
+router.patch('/deals/:dealId/investments/:investmentId', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const investment = await investorCapitalService.updateInvestment(req.params.investmentId, req.body);
+    res.json({ investment });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /deals/:dealId/investments/:investmentId/ledger
+ * Get capital account ledger for investment
+ */
+router.get('/deals/:dealId/investments/:investmentId/ledger', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const entries = await investorCapitalService.getCapitalAccountLedger(req.params.investmentId);
+    res.json({ entries });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ============================================================================
+// CAPITAL CALLS
+// ============================================================================
+
+/**
+ * POST /deals/:dealId/capital-calls
+ * Create capital call
+ */
+router.post('/deals/:dealId/capital-calls', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const { dueDate, totalAmount, purpose, memo, allocationMethod, customAllocations } = req.body;
+    if (!dueDate || !totalAmount || !purpose) {
+      return res.status(400).json({ error: 'dueDate, totalAmount, purpose required' });
+    }
+    const call = await investorCapitalService.createCapitalCall(
+      req.params.dealId,
+      { dueDate: new Date(dueDate), totalAmount, purpose, memo, allocationMethod, customAllocations },
+      req.user!.id
+    );
+    res.status(201).json({ capitalCall: call });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /deals/:dealId/capital-calls
+ * List capital calls for deal
+ */
+router.get('/deals/:dealId/capital-calls', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const calls = await investorCapitalService.listCapitalCalls(req.params.dealId);
+    res.json({ capitalCalls: calls });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /deals/:dealId/capital-calls/:callId
+ * Get capital call with items
+ */
+router.get('/deals/:dealId/capital-calls/:callId', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const call = await investorCapitalService.getCapitalCall(req.params.callId);
+    if (!call) {
+      return res.status(404).json({ error: 'Capital call not found' });
+    }
+    res.json({ capitalCall: call });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /deals/:dealId/capital-calls/:callId/send
+ * Send capital call notice to investors
+ */
+router.post('/deals/:dealId/capital-calls/:callId/send', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    await investorCapitalService.sendCapitalCall(req.params.callId);
     res.json({ success: true });
   } catch (err) {
-    logger.error('DELETE investments/:id', err);
-    res.status(500).json({ success: false, error: 'Failed to remove investment' });
+    next(err);
   }
 });
 
-// ═══════════════════════════════════════════════════════════════════════════
-// CAPITAL CALLS
-// ═══════════════════════════════════════════════════════════════════════════
-
-router.get('/deals/:dealId/capital-calls', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+/**
+ * POST /deals/:dealId/capital-calls/:callId/items/:itemId/payment
+ * Record payment for capital call item
+ */
+router.post('/deals/:dealId/capital-calls/:callId/items/:itemId/payment', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    if (!(await ownsDeal(req.params.dealId, req.user!.userId)))
-      return res.status(404).json({ success: false, error: 'Deal not found' });
-    const r = await query(
-      `SELECT cc.*,
-              COALESCE(SUM(cci.paid_amount),0)::numeric AS collected_amount,
-              COUNT(cci.id) AS investor_count
-         FROM capital_calls cc
-         LEFT JOIN capital_call_items cci ON cci.capital_call_id=cc.id
-        WHERE cc.deal_id=$1
-        GROUP BY cc.id
-        ORDER BY cc.call_number DESC`,
-      [req.params.dealId],
-    );
-    res.json({ success: true, capitalCalls: r.rows });
-  } catch (err) {
-    logger.error('GET capital-calls', err);
-    res.status(500).json({ success: false, error: 'Failed to fetch capital calls' });
-  }
-});
-
-router.post('/deals/:dealId/capital-calls', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    if (!(await ownsDeal(req.params.dealId, req.user!.userId)))
-      return res.status(404).json({ success: false, error: 'Deal not found' });
-    const { call_date, due_date, total_amount, purpose, allocation_method = 'pro_rata', notes } = req.body;
-    if (!call_date || !due_date || !total_amount)
-      return res.status(400).json({ success: false, error: 'call_date, due_date, total_amount required' });
-
-    const nextNum = await query(
-      'SELECT COALESCE(MAX(call_number),0)+1 AS n FROM capital_calls WHERE deal_id=$1',
-      [req.params.dealId],
-    );
-    const r = await query(
-      `INSERT INTO capital_calls
-         (deal_id,call_number,call_date,due_date,total_amount,purpose,allocation_method,notes,created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-      [req.params.dealId, nextNum.rows[0].n, call_date, due_date, total_amount, purpose ?? null, allocation_method, notes ?? null, req.user!.userId],
-    );
-    const call = r.rows[0];
-
-    if (allocation_method === 'pro_rata') {
-      const investors = await query(
-        'SELECT investor_id,commitment_amount FROM deal_investments WHERE deal_id=$1 AND status IN (\'committed\',\'funded\')',
-        [req.params.dealId],
-      );
-      const totalCommit = investors.rows.reduce((s: number, x: Record<string,unknown>) => s + Number(x.commitment_amount), 0);
-      if (totalCommit > 0) {
-        for (const inv of investors.rows) {
-          const pct = Number(inv.commitment_amount) / totalCommit;
-          await query(
-            'INSERT INTO capital_call_items (capital_call_id,investor_id,allocated_amount) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING',
-            [call.id, inv.investor_id, Math.round(Number(total_amount) * pct * 100) / 100],
-          );
-        }
-      }
+    const { amountPaid, paymentMethod, paymentReference } = req.body;
+    if (!amountPaid || !paymentMethod) {
+      return res.status(400).json({ error: 'amountPaid, paymentMethod required' });
     }
-    res.status(201).json({ success: true, capitalCall: call });
+    const item = await investorCapitalService.recordCapitalCallPayment(
+      req.params.itemId,
+      { amountPaid, paymentMethod, paymentReference }
+    );
+    res.json({ item });
   } catch (err) {
-    logger.error('POST capital-calls', err);
-    res.status(500).json({ success: false, error: 'Failed to create capital call' });
+    next(err);
   }
 });
 
-router.get('/deals/:dealId/capital-calls/:callId', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    if (!(await ownsDeal(req.params.dealId, req.user!.userId)))
-      return res.status(404).json({ success: false, error: 'Deal not found' });
-    const [callRes, items] = await Promise.all([
-      query('SELECT * FROM capital_calls WHERE id=$1 AND deal_id=$2', [req.params.callId, req.params.dealId]),
-      query(
-        `SELECT cci.*, i.name AS investor_name, i.email AS investor_email,
-                (cci.allocated_amount - cci.paid_amount) AS outstanding,
-                CASE WHEN cci.paid_at IS NULL
-                     THEN GREATEST(0, (CURRENT_DATE - cc.due_date)::int)
-                     ELSE 0 END AS days_overdue
-           FROM capital_call_items cci
-           JOIN investors i ON i.id=cci.investor_id
-           JOIN capital_calls cc ON cc.id=cci.capital_call_id
-          WHERE cci.capital_call_id=$1 ORDER BY i.name`,
-        [req.params.callId],
-      ),
-    ]);
-    if (!callRes.rows.length) return res.status(404).json({ success: false, error: 'Not found' });
-    res.json({ success: true, capitalCall: { ...callRes.rows[0], items: items.rows } });
-  } catch (err) {
-    logger.error('GET capital-calls/:id', err);
-    res.status(500).json({ success: false, error: 'Failed to fetch capital call' });
-  }
-});
-
-router.post('/deals/:dealId/capital-calls/:callId/send', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    if (!(await ownsDeal(req.params.dealId, req.user!.userId)))
-      return res.status(404).json({ success: false, error: 'Deal not found' });
-    const r = await query(
-      'UPDATE capital_calls SET status=\'sent\',sent_at=NOW(),updated_at=NOW() WHERE id=$1 AND deal_id=$2 AND status=\'draft\' RETURNING *',
-      [req.params.callId, req.params.dealId],
-    );
-    if (!r.rows.length) return res.status(400).json({ success: false, error: 'Call not in draft status' });
-    res.json({ success: true, capitalCall: r.rows[0] });
-  } catch (err) {
-    logger.error('POST capital-calls/send', err);
-    res.status(500).json({ success: false, error: 'Failed to send capital call' });
-  }
-});
-
-router.patch('/deals/:dealId/capital-calls/:callId/items/:itemId/pay', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    if (!(await ownsDeal(req.params.dealId, req.user!.userId)))
-      return res.status(404).json({ success: false, error: 'Deal not found' });
-    const { paid_amount, paid_at } = req.body;
-    if (!paid_amount) return res.status(400).json({ success: false, error: 'paid_amount required' });
-
-    const r = await query(
-      `UPDATE capital_call_items
-          SET paid_amount=$1, paid_at=COALESCE($2::timestamptz,NOW()),
-              status=CASE WHEN $1>=allocated_amount THEN 'paid' ELSE 'partial' END,
-              updated_at=NOW()
-        WHERE id=$3 RETURNING *`,
-      [paid_amount, paid_at ?? null, req.params.itemId],
-    );
-    if (!r.rows.length) return res.status(404).json({ success: false, error: 'Item not found' });
-
-    const summary = await query(
-      'SELECT COUNT(*) AS total, SUM(CASE WHEN status=\'paid\' THEN 1 ELSE 0 END) AS paid_count FROM capital_call_items WHERE capital_call_id=$1',
-      [req.params.callId],
-    );
-    const { total, paid_count } = summary.rows[0];
-    const callStatus = Number(paid_count) === Number(total) ? 'fully_paid' : 'partially_paid';
-    await query('UPDATE capital_calls SET status=$1,updated_at=NOW() WHERE id=$2', [callStatus, req.params.callId]);
-
-    const item = r.rows[0];
-    await query(
-      'INSERT INTO capital_account_entries (deal_id,investor_id,entry_type,amount,reference_id,reference_type,entry_date,description) VALUES ($1,$2,\'contribution\',$3,$4,\'capital_call\',CURRENT_DATE,$5)',
-      [req.params.dealId, item.investor_id, paid_amount, req.params.callId, `Capital Call #${req.params.callId.slice(-6)}`],
-    );
-    res.json({ success: true, item: r.rows[0] });
-  } catch (err) {
-    logger.error('PATCH items/pay', err);
-    res.status(500).json({ success: false, error: 'Failed to record payment' });
-  }
-});
-
-// ═══════════════════════════════════════════════════════════════════════════
+// ============================================================================
 // DISTRIBUTIONS
-// ═══════════════════════════════════════════════════════════════════════════
+// ============================================================================
 
-router.get('/deals/:dealId/distributions', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+/**
+ * POST /deals/:dealId/distributions
+ * Create distribution
+ */
+router.post('/deals/:dealId/distributions', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    if (!(await ownsDeal(req.params.dealId, req.user!.userId)))
-      return res.status(404).json({ success: false, error: 'Deal not found' });
-    const r = await query(
-      `SELECT d.*, COALESCE(SUM(di.gross_amount),0)::numeric AS allocated_amount,
-              COUNT(di.id) AS investor_count
-         FROM distributions d
-         LEFT JOIN distribution_items di ON di.distribution_id=d.id
-        WHERE d.deal_id=$1
-        GROUP BY d.id ORDER BY d.distribution_number DESC`,
-      [req.params.dealId],
-    );
-    res.json({ success: true, distributions: r.rows });
-  } catch (err) {
-    logger.error('GET distributions', err);
-    res.status(500).json({ success: false, error: 'Failed to fetch distributions' });
-  }
-});
-
-router.post('/deals/:dealId/distributions', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    if (!(await ownsDeal(req.params.dealId, req.user!.userId)))
-      return res.status(404).json({ success: false, error: 'Deal not found' });
-    const { distribution_date, total_amount, distribution_type = 'operating', allocation_method = 'pro_rata', tax_year, notes } = req.body;
-    if (!distribution_date || !total_amount)
-      return res.status(400).json({ success: false, error: 'distribution_date and total_amount required' });
-
-    const nextNum = await query(
-      'SELECT COALESCE(MAX(distribution_number),0)+1 AS n FROM distributions WHERE deal_id=$1',
-      [req.params.dealId],
-    );
-    const r = await query(
-      `INSERT INTO distributions (deal_id,distribution_number,distribution_date,total_amount,distribution_type,allocation_method,tax_year,notes,created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-      [req.params.dealId, nextNum.rows[0].n, distribution_date, total_amount, distribution_type, allocation_method, tax_year ?? new Date().getFullYear(), notes ?? null, req.user!.userId],
-    );
-
-    if (allocation_method === 'pro_rata') {
-      const investors = await query(
-        'SELECT investor_id,commitment_amount FROM deal_investments WHERE deal_id=$1 AND status IN (\'committed\',\'funded\')',
-        [req.params.dealId],
-      );
-      const totalCommit = investors.rows.reduce((s: number, x: Record<string,unknown>) => s + Number(x.commitment_amount), 0);
-      if (totalCommit > 0) {
-        for (const inv of investors.rows) {
-          const gross = Math.round(Number(total_amount) * (Number(inv.commitment_amount) / totalCommit) * 100) / 100;
-          await query(
-            'INSERT INTO distribution_items (distribution_id,investor_id,gross_amount,profit_share) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING',
-            [r.rows[0].id, inv.investor_id, gross, gross],
-          );
-        }
-      }
+    const { distDate, recordDate, distType, source, grossAmount, memo, periodStart, periodEnd, useWaterfall } = req.body;
+    if (!distDate || !recordDate || !distType || !source || !grossAmount) {
+      return res.status(400).json({ error: 'distDate, recordDate, distType, source, grossAmount required' });
     }
-    res.status(201).json({ success: true, distribution: r.rows[0] });
-  } catch (err) {
-    logger.error('POST distributions', err);
-    res.status(500).json({ success: false, error: 'Failed to create distribution' });
-  }
-});
-
-router.get('/deals/:dealId/distributions/:distId', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    if (!(await ownsDeal(req.params.dealId, req.user!.userId)))
-      return res.status(404).json({ success: false, error: 'Deal not found' });
-    const [dist, items] = await Promise.all([
-      query('SELECT * FROM distributions WHERE id=$1 AND deal_id=$2', [req.params.distId, req.params.dealId]),
-      query(
-        `SELECT di.*, i.name AS investor_name, i.email AS investor_email
-           FROM distribution_items di JOIN investors i ON i.id=di.investor_id
-          WHERE di.distribution_id=$1 ORDER BY i.name`,
-        [req.params.distId],
-      ),
-    ]);
-    if (!dist.rows.length) return res.status(404).json({ success: false, error: 'Not found' });
-    res.json({ success: true, distribution: { ...dist.rows[0], items: items.rows } });
-  } catch (err) {
-    logger.error('GET distributions/:id', err);
-    res.status(500).json({ success: false, error: 'Failed to fetch distribution' });
-  }
-});
-
-router.post('/deals/:dealId/distributions/:distId/approve', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    if (!(await ownsDeal(req.params.dealId, req.user!.userId)))
-      return res.status(404).json({ success: false, error: 'Deal not found' });
-    const r = await query(
-      'UPDATE distributions SET status=\'approved\',approved_by=$1,approved_at=NOW(),updated_at=NOW() WHERE id=$2 AND deal_id=$3 AND status=\'draft\' RETURNING *',
-      [req.user!.userId, req.params.distId, req.params.dealId],
+    const distribution = await investorCapitalService.createDistribution(
+      req.params.dealId,
+      { 
+        distDate: new Date(distDate), 
+        recordDate: new Date(recordDate), 
+        distType, 
+        source, 
+        grossAmount, 
+        memo,
+        periodStart: periodStart ? new Date(periodStart) : undefined,
+        periodEnd: periodEnd ? new Date(periodEnd) : undefined,
+        useWaterfall,
+      },
+      req.user!.id
     );
-    if (!r.rows.length) return res.status(400).json({ success: false, error: 'Not in draft status' });
-    res.json({ success: true, distribution: r.rows[0] });
+    res.status(201).json({ distribution });
   } catch (err) {
-    logger.error('POST distributions/approve', err);
-    res.status(500).json({ success: false, error: 'Failed to approve' });
+    next(err);
   }
 });
 
-router.post('/deals/:dealId/distributions/:distId/process', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+/**
+ * GET /deals/:dealId/distributions
+ * List distributions for deal
+ */
+router.get('/deals/:dealId/distributions', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    if (!(await ownsDeal(req.params.dealId, req.user!.userId)))
-      return res.status(404).json({ success: false, error: 'Deal not found' });
-    const dist = await query(
-      'SELECT * FROM distributions WHERE id=$1 AND deal_id=$2 AND status=\'approved\'',
-      [req.params.distId, req.params.dealId],
-    );
-    if (!dist.rows.length) return res.status(400).json({ success: false, error: 'Distribution not approved' });
+    const distributions = await investorCapitalService.listDistributions(req.params.dealId);
+    res.json({ distributions });
+  } catch (err) {
+    next(err);
+  }
+});
 
-    const items = await query('SELECT * FROM distribution_items WHERE distribution_id=$1', [req.params.distId]);
-    for (const item of items.rows) {
-      const net = item.net_amount ?? item.gross_amount;
-      await query(
-        'INSERT INTO capital_account_entries (deal_id,investor_id,entry_type,amount,reference_id,reference_type,entry_date,description) VALUES ($1,$2,\'distribution\',$3,$4,\'distribution\',CURRENT_DATE,$5)',
-        [req.params.dealId, item.investor_id, net, dist.rows[0].id, `Distribution #${dist.rows[0].distribution_number}`],
-      );
+/**
+ * GET /deals/:dealId/distributions/:distId
+ * Get distribution with items
+ */
+router.get('/deals/:dealId/distributions/:distId', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const distribution = await investorCapitalService.getDistribution(req.params.distId);
+    if (!distribution) {
+      return res.status(404).json({ error: 'Distribution not found' });
     }
-    await query(
-      'UPDATE distributions SET status=\'completed\',processed_at=NOW(),updated_at=NOW() WHERE id=$1',
-      [req.params.distId],
-    );
-    res.json({ success: true, processed: items.rows.length });
+    res.json({ distribution });
   } catch (err) {
-    logger.error('POST distributions/process', err);
-    res.status(500).json({ success: false, error: 'Failed to process distribution' });
+    next(err);
   }
 });
 
-// ═══════════════════════════════════════════════════════════════════════════
+/**
+ * POST /deals/:dealId/distributions/:distId/approve
+ * Approve distribution
+ */
+router.post('/deals/:dealId/distributions/:distId/approve', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    await investorCapitalService.approveDistribution(req.params.distId, req.user!.id);
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /deals/:dealId/distributions/:distId/process
+ * Process distribution payments
+ */
+router.post('/deals/:dealId/distributions/:distId/process', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    await investorCapitalService.processDistribution(req.params.distId);
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ============================================================================
 // WATERFALL
-// ═══════════════════════════════════════════════════════════════════════════
+// ============================================================================
 
-router.get('/deals/:dealId/waterfall', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+/**
+ * GET /deals/:dealId/waterfall
+ * Get deal waterfall configuration
+ */
+router.get('/deals/:dealId/waterfall', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    if (!(await ownsDeal(req.params.dealId, req.user!.userId)))
-      return res.status(404).json({ success: false, error: 'Deal not found' });
-    const wf = await query('SELECT * FROM deal_waterfalls WHERE deal_id=$1', [req.params.dealId]);
-    if (!wf.rows.length) {
-      return res.json({
-        success: true, waterfall: null,
-        defaultTiers: [
-          { tier_order: 1, irr_hurdle_low: null,  irr_hurdle_high: 0.12, lp_pct: 80, gp_pct: 20 },
-          { tier_order: 2, irr_hurdle_low: 0.12,  irr_hurdle_high: 0.18, lp_pct: 70, gp_pct: 30 },
-          { tier_order: 3, irr_hurdle_low: 0.18,  irr_hurdle_high: null, lp_pct: 60, gp_pct: 40 },
-        ],
-      });
-    }
-    const tiers = await query('SELECT * FROM waterfall_tiers WHERE waterfall_id=$1 ORDER BY tier_order', [wf.rows[0].id]);
-    res.json({ success: true, waterfall: { ...wf.rows[0], tiers: tiers.rows } });
+    const waterfall = await investorCapitalService.getOrCreateWaterfall(req.params.dealId);
+    res.json({ waterfall });
   } catch (err) {
-    logger.error('GET waterfall', err);
-    res.status(500).json({ success: false, error: 'Failed to fetch waterfall' });
+    next(err);
   }
 });
 
-router.put('/deals/:dealId/waterfall', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+/**
+ * PATCH /deals/:dealId/waterfall
+ * Update waterfall configuration
+ */
+router.patch('/deals/:dealId/waterfall', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    if (!(await ownsDeal(req.params.dealId, req.user!.userId)))
-      return res.status(404).json({ success: false, error: 'Deal not found' });
-    const { pref_rate = 0.08, catchup_pct = 1.0, clawback = false, clawback_lookback_months = 24, lp_gp_split_base = 80, notes, tiers } = req.body;
-    const wf = await query(
-      `INSERT INTO deal_waterfalls (deal_id,pref_rate,catchup_pct,clawback,clawback_lookback_months,lp_gp_split_base,notes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)
-       ON CONFLICT (deal_id) DO UPDATE SET pref_rate=$2,catchup_pct=$3,clawback=$4,
-                     clawback_lookback_months=$5,lp_gp_split_base=$6,notes=$7,updated_at=NOW()
-       RETURNING *`,
-      [req.params.dealId, pref_rate, catchup_pct, clawback, clawback_lookback_months, lp_gp_split_base, notes ?? null],
+    const waterfall = await investorCapitalService.updateWaterfall(req.params.dealId, req.body);
+    res.json({ waterfall });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * PUT /deals/:dealId/waterfall/tiers
+ * Replace waterfall tiers
+ */
+router.put('/deals/:dealId/waterfall/tiers', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const waterfall = await investorCapitalService.getOrCreateWaterfall(req.params.dealId);
+    const { tiers } = req.body;
+    if (!Array.isArray(tiers)) {
+      return res.status(400).json({ error: 'tiers array required' });
+    }
+    await investorCapitalService.updateWaterfallTiers(waterfall.id, tiers);
+    const updated = await investorCapitalService.getOrCreateWaterfall(req.params.dealId);
+    res.json({ waterfall: updated });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /deals/:dealId/waterfall/calculate
+ * Calculate waterfall distribution for given proceeds
+ */
+router.post('/deals/:dealId/waterfall/calculate', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const { exitProceeds, holdYears } = req.body;
+    if (!exitProceeds) {
+      return res.status(400).json({ error: 'exitProceeds required' });
+    }
+    const result = await investorCapitalService.calculateWaterfallDistribution(
+      req.params.dealId,
+      exitProceeds,
+      holdYears
     );
-    // Only replace tiers when explicitly provided; omitting `tiers` preserves existing rows
-    if (Array.isArray(tiers)) {
-      await query('DELETE FROM waterfall_tiers WHERE waterfall_id=$1', [wf.rows[0].id]);
-      for (const t of tiers) {
-        await query(
-          'INSERT INTO waterfall_tiers (waterfall_id,tier_order,irr_hurdle_low,irr_hurdle_high,lp_pct,gp_pct,notes) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-          [wf.rows[0].id, t.tier_order, t.irr_hurdle_low ?? null, t.irr_hurdle_high ?? null, t.lp_pct, t.gp_pct, t.notes ?? null],
-        );
-      }
-    }
-    const savedTiers = await query('SELECT * FROM waterfall_tiers WHERE waterfall_id=$1 ORDER BY tier_order', [wf.rows[0].id]);
-    res.json({ success: true, waterfall: { ...wf.rows[0], tiers: savedTiers.rows } });
+    res.json({ waterfall: result });
   } catch (err) {
-    logger.error('PUT waterfall', err);
-    res.status(500).json({ success: false, error: 'Failed to save waterfall' });
+    next(err);
   }
 });
 
-// ═══════════════════════════════════════════════════════════════════════════
-// CAPITAL ACCOUNT LEDGER
-// ═══════════════════════════════════════════════════════════════════════════
-
-router.get('/deals/:dealId/ledger', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
-  try {
-    if (!(await ownsDeal(req.params.dealId, req.user!.userId)))
-      return res.status(404).json({ success: false, error: 'Deal not found' });
-    const { investor_id, date_from, date_to, limit: lim, offset: off } = req.query;
-
-    // Build outer (pagination + filter) params separate from deal-only param
-    const outerFilters: string[] = [];
-    const outerParams: unknown[] = [req.params.dealId]; // $1 = dealId used in both CTEs
-    if (investor_id) { outerParams.push(investor_id); outerFilters.push(`c.investor_id=$${outerParams.length}`); }
-    if (date_from)   { outerParams.push(String(date_from)); outerFilters.push(`c.entry_date>=$${outerParams.length}::date`); }
-    if (date_to)     { outerParams.push(String(date_to));   outerFilters.push(`c.entry_date<=$${outerParams.length}::date`); }
-    const outerWhere = outerFilters.length ? `WHERE ${outerFilters.join(' AND ')}` : '';
-
-    // Capture filter-only params for the COUNT query before adding limit/offset
-    const filterParams = [...outerParams];
-    const parsedLim = Number(lim);
-    const parsedOff = Number(off);
-    const limitVal  = lim  ? (isFinite(parsedLim) ? Math.max(1, Math.min(500, parsedLim)) : 50) : 50;
-    const offsetVal = off  ? (isFinite(parsedOff) ? Math.max(0, parsedOff)                : 0)  : 0;
-    outerParams.push(limitVal);  const limitIdx  = outerParams.length;
-    outerParams.push(offsetVal); const offsetIdx = outerParams.length;
-
-    // CTE computes running_balance over the FULL deal history (no date filter inside),
-    // so filtered views always carry forward the correct historical opening balance.
-    const [r, countResult] = await Promise.all([
-      query(
-        `WITH full_history AS (
-           SELECT e.*,
-             i.name AS investor_name,
-             COALESCE(
-               e.running_balance,
-               SUM(
-                 CASE WHEN e.entry_type IN ('contribution','interest','appreciation')
-                      THEN e.amount
-                      ELSE -e.amount
-                 END
-               ) OVER (PARTITION BY e.investor_id ORDER BY e.entry_date ASC, e.created_at ASC
-                       ROWS UNBOUNDED PRECEDING)
-             ) AS running_balance
-           FROM capital_account_entries e
-           JOIN investors i ON i.id = e.investor_id
-           WHERE e.deal_id=$1
-         ),
-         filtered AS (
-           SELECT c.* FROM full_history c
-           ${outerWhere}
-         )
-         SELECT * FROM filtered
-         ORDER BY entry_date DESC, created_at DESC
-         LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
-        outerParams,
-      ),
-      query(
-        `SELECT COUNT(*) AS total
-           FROM capital_account_entries c
-          WHERE c.deal_id=$1 ${outerFilters.length ? `AND ${outerFilters.join(' AND ')}` : ''}`,
-        filterParams,
-      ),
-    ]);
-    res.json({ success: true, entries: r.rows, total: Number(countResult.rows[0]?.total ?? 0) });
-  } catch (err) {
-    logger.error('GET ledger', err);
-    res.status(500).json({ success: false, error: 'Failed to fetch ledger' });
-  }
-});
-
-// ═══════════════════════════════════════════════════════════════════════════
+// ============================================================================
 // DEAL CAPITAL SUMMARY
-// ═══════════════════════════════════════════════════════════════════════════
+// ============================================================================
 
-router.get('/deals/:dealId/summary', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+/**
+ * GET /deals/:dealId/capital-summary
+ * Get deal capital summary
+ */
+router.get('/deals/:dealId/capital-summary', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    if (!(await ownsDeal(req.params.dealId, req.user!.userId)))
-      return res.status(404).json({ success: false, error: 'Deal not found' });
-    const [investments, calls, dists] = await Promise.all([
-      query(
-        `SELECT COUNT(*) AS investor_count,
-                COALESCE(SUM(commitment_amount),0) AS total_committed,
-                COALESCE(SUM(COALESCE(funded_amount,0)),0) AS total_funded
-           FROM deal_investments WHERE deal_id=$1 AND status IN ('committed','funded')`,
-        [req.params.dealId],
-      ),
-      query(
-        `SELECT COUNT(*) AS total_calls,
-                COUNT(*) FILTER (WHERE status NOT IN ('fully_paid','defaulted')) AS pending_calls,
-                COALESCE(SUM(total_amount),0) AS total_called,
-                COALESCE(SUM(total_amount) FILTER (WHERE status='fully_paid'),0) AS total_collected
-           FROM capital_calls WHERE deal_id=$1`,
-        [req.params.dealId],
-      ),
-      query(
-        `SELECT COUNT(*) AS total_distributions,
-                COALESCE(SUM(total_amount) FILTER (WHERE status='completed'),0) AS total_distributed
-           FROM distributions WHERE deal_id=$1`,
-        [req.params.dealId],
-      ),
-    ]);
-    res.json({
-      success: true,
-      summary: { ...investments.rows[0], ...calls.rows[0], ...dists.rows[0] },
-    });
+    const summary = await investorCapitalService.getDealCapitalSummary(req.params.dealId);
+    res.json(summary);
   } catch (err) {
-    logger.error('GET capital summary', err);
-    res.status(500).json({ success: false, error: 'Failed to fetch summary' });
+    next(err);
+  }
+});
+
+// ============================================================================
+// ADMIN
+// ============================================================================
+
+/**
+ * POST /admin/mark-overdue
+ * Mark overdue capital calls (cron job)
+ */
+router.post('/admin/mark-overdue', async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const count = await investorCapitalService.markOverdueCapitalCalls();
+    res.json({ marked: count });
+  } catch (err) {
+    next(err);
   }
 });
 
