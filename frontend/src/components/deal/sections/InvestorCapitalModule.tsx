@@ -389,7 +389,8 @@ function CapitalCallsTab({ calls, summary, loading, error, onLoadCallItems, onCr
               const total = n(c.total_amount);
               const collected = n(c.collected_amount);
               const pct = total > 0 ? Math.min(100, (collected / total) * 100) : 0;
-              const isOverdue = c.due_date ? new Date(c.due_date) < new Date() : false;
+              const todayStr = new Date().toISOString().slice(0, 10);
+              const isOverdue = c.due_date ? c.due_date.slice(0, 10) < todayStr : false;
               const barColor = c.status === 'fully_paid'
                 ? BT.text.green
                 : pct > 0
