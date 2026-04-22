@@ -93,6 +93,7 @@ import ingestionRoutes from './ingestion.routes';
 import strategiesRoutes from './strategy-definitions.routes';
 import m08StrategiesRoutes from './strategies.routes';
 import { createCapsuleRoutes } from './capsule.routes';
+import { createDataLibraryAssetsRoutes } from './data-library-assets.routes';
 import inlineDealsRoutes from './inline-deals.routes';
 import dealTemplatesRoutes from './deal-templates.routes';
 import reportingPackageRoutes from './reporting-package.routes';
@@ -110,6 +111,7 @@ import benchmarkTimelineRoutes from './benchmark-timeline.routes';
 import tickerRoutes from './ticker.routes';
 import economicContextRoutes from './economic-context.routes';
 import agentSettingsRoutes from './agent-settings.routes';
+import settingsAiRoutes from './settings-ai.routes';
 import columnPreferencesRoutes from './column-preferences.routes';
 import timeSeriesRoutes from './time-series.routes';
 import driverAnalysisRoutes from './driver-analysis.routes';
@@ -190,6 +192,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Agent Settings routes (model selection, workforce config)
   app.use(`${API_PREFIX}/settings/agents`, agentSettingsRoutes);
+
+  // AI Model Preferences routes (user's LLM preference)
+  app.use(`${API_PREFIX}/settings/ai-preferences`, settingsAiRoutes);
 
   app.use(`${API_PREFIX}/column-preferences`, columnPreferencesRoutes);
 
@@ -281,6 +286,10 @@ export function setupRESTRoutes(app: Application): void {
 
   // Module Libraries routes (Historical data for Opus learning)
   app.use(`${API_PREFIX}/module-libraries`, moduleLibrariesRoutes);
+
+  // Data Library Assets routes (Settings > Data Library)
+  const { getPool: getDLPool } = require('../../database/connection');
+  app.use(`${API_PREFIX}/data-library-assets`, createDataLibraryAssetsRoutes(getDLPool()));
 
   // Financial Models routes (Module-enhanced feature)
   app.use(`${API_PREFIX}/financial-models`, financialModelsRoutes);
