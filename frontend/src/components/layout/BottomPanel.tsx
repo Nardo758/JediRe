@@ -1,14 +1,12 @@
 /**
- * Bottom Panel - Agents, Alerts, News, Email, Tasks
- * 
- * Features:
- * - Tabbed interface with badges
- * - Clickable agents open chat panel
- * - Real-time message feed
- * - Agent status indicators
- * 
- * @version 2.0.0
- * @date 2026-03-28
+ * Bottom Panel - Alerts, News, Email, Tasks, Media
+ *
+ * Tabbed interface with badges. Tabs are defined in BOTTOM_TABS.
+ * (The legacy "Agents" tab and chat drawer were removed in Task #321
+ * — skill chat now lives in SkillsBar / SkillsChatSection.)
+ *
+ * @version 2.1.0
+ * @date 2026-04-22
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
