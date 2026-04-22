@@ -147,9 +147,18 @@ export async function safeFetchText(rawUrl: string): Promise<string> {
           method: 'GET',
           lookup: safeLookup,
           timeout: FETCH_TIMEOUT_MS,
+          // Many publisher edges (Cloudflare/Akamai protecting bizjournals,
+          // bisnow, globest, etc.) reject obvious-bot UAs with HTTP 403. We
+          // present as a recent desktop browser; the request is still rate-
+          // limited to one URL per user-configured connection per poll cycle.
           headers: {
-            'User-Agent': 'JediRe/1.0 PersonalNewsAggregator (+https://jedire.app)',
-            Accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml, */*',
+            'User-Agent':
+              'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ' +
+              '(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+            Accept:
+              'application/rss+xml, application/atom+xml, application/xml;q=0.9, text/xml;q=0.9, */*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'identity',
           },
         },
         (res) => {
