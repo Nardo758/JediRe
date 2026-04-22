@@ -783,11 +783,12 @@ const SUB_PANELS: { id: SubPanel; label: string }[] = [
 interface LifecycleSectionProps {
   dealId: string;
   deal?: Record<string, unknown>;
+  initialTab?: SubPanel;
   [k: string]: unknown;
 }
 
-export function LifecycleSection({ dealId }: LifecycleSectionProps) {
-  const [active, setActive] = useState<SubPanel>('reforecast');
+export function LifecycleSection({ dealId, initialTab }: LifecycleSectionProps) {
+  const [active, setActive] = useState<SubPanel>(initialTab || 'reforecast');
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BT.bg.terminal, animation: 'bt-fade 0.15s' }}>
