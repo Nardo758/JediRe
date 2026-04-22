@@ -13,7 +13,7 @@ import F8AdminView from "./terminal/F8AdminView";
 import { M08StrategyBuilderPage } from "./settings/M08StrategyBuilderPage";
 import { StrategyBuilderPage } from "./StrategyBuilderPage";
 import { BottomPanel } from "../components/layout/BottomPanel";
-import { AgentBar } from "../components/layout/AgentBar";
+import { SkillsBar } from "../components/layout/SkillsBar";
 import TerminalMapView from "../components/map/TerminalMapView";
 import { AssumptionsPanel } from "../components/deal/AssumptionsPanel";
 import { M35EventCard, type M35EventCardData } from "../components/m35/M35EventCard";
@@ -179,7 +179,7 @@ const WIDGET_CATALOG = [
   {id:"macro",      label:"Macro Indicators",       desc:"GDP, CPI, unemployment, housing starts",               category:"MARKET", color:"#FF4757"},
   {id:"debt",       label:"Debt Market Monitor",    desc:"CMBS spreads, agency rates, life company debt",        category:"MARKET", color:"#A78BFA"},
   {id:"strategy",   label:"Strategy Snapshot",      desc:"BTS / RENTAL / FLIP / STR performance breakdown",     category:"OPS",    color:"#A78BFA"},
-  {id:"agents",     label:"Agent Activity",         desc:"Live status of all AI agents running",                 category:"OPS",    color:"#00D26A"},
+  {id:"skills",     label:"AI Skills Activity",     desc:"Live status of AI skill executions",                   category:"OPS",    color:"#00D26A"},
   {id:"tasks",      label:"Task List",              desc:"Team task queue with deal assignments",                 category:"OPS",    color:"#FFD166"},
   {id:"events",     label:"M35 Event Feed",         desc:"Active market events — employment, supply, policy & regulatory catalysts", category:"INTEL",  color:"#0891B2"},
   {id:"tv",         label:"TV / Media",             desc:"Live business news channel selector",                  category:"MEDIA",  color:"#FF8C42"},
@@ -1631,7 +1631,7 @@ export default function TerminalPage() {
       case "mydeals":     return <WidgetMyDeals/>;
       case "kpi":         return <WidgetKPISummary/>;
       case "alerts":      return <WidgetAlertFeed/>;
-      case "agents":      return <WidgetAgents/>;
+      case "skills":      return <WidgetAgents/>;
       case "vitals":      return <ViewMarkets/>;
       case "leaderboard": return <WidgetLeaderboard/>;
       case "funnel":      return <WidgetFunnel/>;
@@ -2510,7 +2510,7 @@ export default function TerminalPage() {
         <span style={{fontSize:10,color:T.text.muted,whiteSpace:"nowrap"}}>{e.time}</span>
       </div>
     ));
-    if(bottomTab==="agents") return (
+    if(bottomTab==="skills") return (
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:1,background:T.border.subtle}}>
         {liveAgents.map((a,i)=>(
           <div key={i} style={{background:T.bg.panel,padding:"5px 8px",borderLeft:a.st==="ON"?`2px solid ${T.text.green}`:`2px solid ${T.text.muted}`}}>
@@ -2755,8 +2755,8 @@ export default function TerminalPage() {
       {/* ═══ BOTTOM PANEL — collapsible ═══ */}
       <BottomPanel />
 
-      {/* ═══ AGENT BAR — compact emoji row ═══ */}
-      <AgentBar />
+      {/* ═══ SKILLS BAR — compact row ═══ */}
+      <SkillsBar />
 
       {/* ═══ DASHBOARD FLOATING WINDOWS (global overlay — floated widgets only) ═══ */}
       {floatWidgets.filter(id=>!winStates[id]?.minimized).map(id=>{

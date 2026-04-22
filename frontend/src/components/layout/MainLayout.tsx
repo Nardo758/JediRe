@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { CommandPanel } from './CommandPanel';
 import { BottomPanel } from './BottomPanel';
-import { AgentBar } from './AgentBar';
+import { SkillsBar } from './SkillsBar';
 import { WarMapsComposer } from '../map/WarMapsComposer';
 import { ChatOverlay } from '../chat/ChatOverlay';
 import QuickSetupModal from '../onboarding/QuickSetupModal';
@@ -619,7 +619,7 @@ export const MainLayout: React.FC = () => {
         <Outlet context={{ layers, setLayers }} />
       </main>
 
-      <AgentBar />
+      <SkillsBar />
       <BottomPanel />
 
       {isWarMapsOpen && (

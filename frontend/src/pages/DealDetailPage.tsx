@@ -49,7 +49,7 @@ import type { DealType, ModuleId } from '../shared/config/deal-type-visibility';
 
 import { BT, BT_CSS, PanelHeader, SectionPanel } from '../components/deal/bloomberg-ui';
 import { BottomPanel } from '../components/layout/BottomPanel';
-import { AgentBar } from '../components/layout/AgentBar';
+import { SkillsBar } from '../components/layout/SkillsBar';
 import { BloombergOverviewSection } from '../components/deal/sections/BloombergOverviewSection';
 import { DealStatusSection } from '../components/deal/sections/DealStatusSection';
 import { PresenceIndicator } from '../components/deal/PresenceIndicator';
@@ -1136,9 +1136,9 @@ const DealDetailPage: React.FC = () => {
           </main>
         </div>
 
-        {/* ── Bottom Panel + Agent Bar (shared with Terminal Dashboard) ── */}
+        {/* ── Bottom Panel + Skills Bar (shared with Terminal Dashboard) ── */}
         <BottomPanel />
-        <AgentBar />
+        <SkillsBar />
       </div>
 
       {/* ── Close Deal Modal ── */}
