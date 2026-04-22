@@ -13,7 +13,6 @@ import { TickerBar } from '../terminal/TickerBar';
 import { Badge } from '../terminal/Badge';
 import { useTradeAreaStore } from '../../stores/tradeAreaStore';
 import { useTheme } from '../../contexts/ThemeContext';
-import { orchestrator } from '../../services/orchestrator';
 
 const DEFAULT_MAP_ID = 'default';
 

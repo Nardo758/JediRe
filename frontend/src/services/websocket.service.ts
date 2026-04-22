@@ -1,5 +1,4 @@
 import { io, Socket } from 'socket.io-client';
-import { useAgentStore } from '../stores/agentStore';
 
 const WS_URL = import.meta.env.VITE_WS_URL || window.location.origin;
 
@@ -46,23 +45,6 @@ class WebSocketService {
         console.error('Max reconnection attempts reached');
         this.socket?.disconnect();
       }
-    });
-
-    // Agent events
-    this.socket.on('agent:start', (data: { agentId: string; message?: string }) => {
-      useAgentStore.getState().startAgent(data.agentId, data.message);
-    });
-
-    this.socket.on('agent:progress', (data: { agentId: string; progress: number; message?: string }) => {
-      useAgentStore.getState().updateProgress(data.agentId, data.progress, data.message);
-    });
-
-    this.socket.on('agent:complete', (data: { agentId: string; message?: string }) => {
-      useAgentStore.getState().completeAgent(data.agentId, data.message);
-    });
-
-    this.socket.on('agent:error', (data: { agentId: string; message: string }) => {
-      useAgentStore.getState().errorAgent(data.agentId, data.message);
     });
 
     // Deal events

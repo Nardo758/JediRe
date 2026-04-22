@@ -583,7 +583,5 @@ export const SkillsBar: React.FC = () => {
   );
 };
 
-// Keep AgentBar as alias for backward compatibility
-export const AgentBar = SkillsBar;
 
 export default SkillsBar;
