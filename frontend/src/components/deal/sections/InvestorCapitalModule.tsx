@@ -383,9 +383,19 @@ function CapitalCallsTab({ calls, summary, loading, error, onLoadCallItems, onCr
         <div style={S.empty}>No capital calls yet. Create the first call above.</div>
       ) : (
         <table style={S.table}>
-          <thead><RowHdr headers={['#','Call Date','Due Date','Total','Collected','Investors','Purpose','Status','']} /></thead>
+          <thead><RowHdr headers={['#','Call Date','Due Date','Total','Collected / Progress','Investors','Purpose','Status','']} /></thead>
           <tbody>
-            {calls.map(c => (
+            {calls.map(c => {
+              const total = n(c.total_amount);
+              const collected = n(c.collected_amount);
+              const pct = total > 0 ? Math.min(100, (collected / total) * 100) : 0;
+              const isOverdue = c.due_date ? new Date(c.due_date) < new Date() : false;
+              const barColor = c.status === 'fully_paid'
+                ? BT.text.green
+                : pct > 0
+                  ? BT.text.amber
+                  : isOverdue ? BT.text.red : BT.text.muted;
+              return (
               <React.Fragment key={c.id}>
                 <tr
                   onClick={() => toggleExpand(c.id)}
@@ -395,7 +405,15 @@ function CapitalCallsTab({ calls, summary, loading, error, onLoadCallItems, onCr
                   <td style={S.td}>{c.call_date?.slice(0, 10)}</td>
                   <td style={S.td}>{c.due_date?.slice(0, 10)}</td>
                   <td style={{ ...S.td, textAlign: 'right' as const }}>{fmtAmt(c.total_amount)}</td>
-                  <td style={{ ...S.td, textAlign: 'right' as const, color: BT.text.green }}>{fmtAmt(c.collected_amount)}</td>
+                  <td style={{ ...S.td, minWidth: 110 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6, marginBottom: 3 }}>
+                      <span style={{ color: BT.text.green, fontSize: 10, fontFamily: mono }}>{fmtAmt(c.collected_amount)}</span>
+                      <span style={{ color: barColor, fontSize: 8, fontFamily: mono, fontWeight: 700 }}>{pct.toFixed(0)}%</span>
+                    </div>
+                    <div style={{ height: 3, background: `${BT.border.subtle}`, borderRadius: 2, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${pct}%`, background: barColor, borderRadius: 2, transition: 'width 0.3s ease' }} />
+                    </div>
+                  </td>
                   <td style={{ ...S.td, textAlign: 'center' as const }}>{String(c.investor_count)}</td>
                   <td style={{ ...S.td, color: BT.text.muted }}>{c.purpose ?? '—'}</td>
                   <td style={S.td}><span style={S.badge(statusColor(c.status))}>{c.status.replace(/_/g,' ').toUpperCase()}</span></td>
@@ -477,7 +495,7 @@ function CapitalCallsTab({ calls, summary, loading, error, onLoadCallItems, onCr
                   </tr>
                 )}
               </React.Fragment>
-            ))}
+            ); })}
           </tbody>
         </table>
       )}
