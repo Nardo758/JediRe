@@ -876,8 +876,15 @@ export function registerAllSkills(): void {
   skillRegistry.register(generateReport);
   skillRegistry.register(generateMarketingMaterials);
 
+  // Discovery skills (6) - registered separately
+  // See discovery-skills.ts
+
   logger.info(`Registered ${skillRegistry.getAll().length} skills`);
 }
 
+// Import and register discovery skills
+import { registerDiscoverySkills } from './discovery-skills';
+
 // Auto-register on import
 registerAllSkills();
+registerDiscoverySkills();
