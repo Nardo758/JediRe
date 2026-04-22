@@ -43,7 +43,6 @@ export function NewsIntelligencePage() {
     { id: 'amenities', label: 'AMENITIES' },
   ];
 
-  const prevCategory = useRef(selectedCategory);
   const prevDateRange = useRef(dateRange);
 
   useEffect(() => {
@@ -51,12 +50,14 @@ export function NewsIntelligencePage() {
   }, []);
 
   useEffect(() => {
-    if (prevCategory.current !== selectedCategory || prevDateRange.current !== dateRange) {
-      prevCategory.current = selectedCategory;
+    // Date-range changes require a fresh fetch (new `from`/`to` window).
+    // Category changes are handled client-side by filterEventsByCategory —
+    // no re-fetch needed; just let the render pick it up.
+    if (prevDateRange.current !== dateRange) {
       prevDateRange.current = dateRange;
       loadEvents();
     }
-  }, [selectedCategory, dateRange]);
+  }, [dateRange]);
 
   // Map a unified-feed article (newsletter or provider API) into the NewsEvent
   // shape the F6 page renders. Newsletter items get is_premium badging via
@@ -145,6 +146,26 @@ export function NewsIntelligencePage() {
     return events.filter((event) => {
       const eventDate = new Date(event.published_at);
       return eventDate >= start && eventDate <= end;
+    });
+  };
+
+  // Keywords that signal each category — checked against headline + description.
+  // Matching is case-insensitive; "all" bypasses filtering entirely.
+  const CATEGORY_KEYWORDS: Record<string, RegExp> = {
+    employment:   /\b(hire[sd]?|hiring|appoint(ed|ment)?|promot(ed|ion)|join(s|ed)?|named|fired|layoff|resign(ed|ation)?|depart(ed|ure)?|CEO|CFO|CIO|COO|president|director|executive|officer|partner|principal|head of)\b/i,
+    development:  /\b(construct(ion|ed|s)?|develop(ed|ment|er)?|groundbreaking|breaks?\s+ground|permit|zoning|project|tower|renovation|redevelop(ment)?|mixed[- ]use|build(ing|ings)?|convert(ed|ing|sion)?|breaks?\s+ground|debut|open(s|ed|ing)?)\b/i,
+    transactions: /\b(sell(s|ing)?|sold|sale|buy(s|ing)?|bought|acqui(re[sd]?|sition)|purchase[sd]?|deal|portfolio|invest(ment|or|ing)?|REIT|refinanc(e[sd]?|ing)|loan|lend(s|er|ing)?|capital|fund(s|ing)?|financ(e[sd]?|ing)|clos(e[sd]?|ing)|joint\s+venture|disposition|bid|acquisition)\b/i,
+    government:   /\b(legislat(ion|e[sd]?)|bill|senate|congress(ional)?|governor|mayor|city\s+(council|hall)|tax(es|ation)?|regulat(ion|ory|ed|or)?|policy|federal|ordinance|law|government|state|insurance|reform|ballot|commission|zoning|vote[sd]?)\b/i,
+    amenities:    /\b(retail|restaurant|hotel|hospit(ality|al)|amenity|amenities|fitness|gym|spa|lifestyle|coworking|co[- ]working|grocery|shop(ping)?|entertainment|lounge|dining|wellness|leisure|resort)\b/i,
+  };
+
+  const filterEventsByCategory = (events: NewsEvent[]): NewsEvent[] => {
+    if (selectedCategory === 'all') return events;
+    const pattern = CATEGORY_KEYWORDS[selectedCategory];
+    if (!pattern) return events;
+    return events.filter((event) => {
+      const text = `${event.event_type || ''} ${event.event_category || ''} ${event.location_raw || ''}`;
+      return pattern.test(text);
     });
   };
 
@@ -385,7 +406,7 @@ export function NewsIntelligencePage() {
   };
 
   const renderEventFeed = () => {
-    const filteredEvents = filterEventsByDate(events);
+    const filteredEvents = filterEventsByCategory(filterEventsByDate(events));
     return (
       <div style={{ maxWidth: 900, display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ padding: 12, background: BT.bg.panel, border: `1px solid ${BT.border.subtle}` }}>
@@ -404,25 +425,52 @@ export function NewsIntelligencePage() {
         </div>
 
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {categories.map((cat) => (
-            <button
-              key={cat.id}
-              onClick={() => setSelectedCategory(cat.id)}
-              style={{
-                padding: '6px 14px',
-                background: selectedCategory === cat.id ? BT.text.cyan : BT.bg.panel,
-                color: selectedCategory === cat.id ? BT.bg.terminal : BT.text.secondary,
-                border: selectedCategory === cat.id ? 'none' : `1px solid ${BT.border.subtle}`,
-                fontSize: 10,
-                fontWeight: 600,
-                letterSpacing: '0.06em',
-                cursor: 'pointer',
-                ...mono,
-              }}
-            >
-              {cat.label}
-            </button>
-          ))}
+          {categories.map((cat) => {
+            const dateFiltered = filterEventsByDate(events);
+            const count = cat.id === 'all'
+              ? dateFiltered.length
+              : (() => {
+                  const p = CATEGORY_KEYWORDS[cat.id];
+                  return p
+                    ? dateFiltered.filter((e) =>
+                        p.test(`${e.event_type || ''} ${e.event_category || ''} ${e.location_raw || ''}`)
+                      ).length
+                    : dateFiltered.length;
+                })();
+            const isActive = selectedCategory === cat.id;
+            return (
+              <button
+                key={cat.id}
+                onClick={() => setSelectedCategory(cat.id)}
+                style={{
+                  padding: '6px 14px',
+                  background: isActive ? BT.text.cyan : BT.bg.panel,
+                  color: isActive ? BT.bg.terminal : BT.text.secondary,
+                  border: isActive ? 'none' : `1px solid ${BT.border.subtle}`,
+                  fontSize: 10,
+                  fontWeight: 600,
+                  letterSpacing: '0.06em',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  ...mono,
+                }}
+              >
+                {cat.label}
+                <span style={{
+                  fontSize: 9,
+                  fontWeight: 700,
+                  padding: '1px 5px',
+                  borderRadius: 2,
+                  background: isActive ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.07)',
+                  color: isActive ? BT.bg.terminal : BT.text.muted,
+                  minWidth: 20,
+                  textAlign: 'center',
+                }}>{count}</span>
+              </button>
+            );
+          })}
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

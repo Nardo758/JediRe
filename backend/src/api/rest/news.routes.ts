@@ -714,10 +714,13 @@ router.get('/feed', async (req: Request, res: Response) => {
       impact: string | null;
       jedi_delta: number | null;
       is_premium?: boolean;
+      category?: string;
     }
 
     // Start from the unified-feed result (newsletter parses + provider APIs).
-    let articles: FeedArticle[] = (result.articles as unknown as FeedArticle[]) || [];
+    // Carry the provider-reported category through so the frontend can filter.
+    const rawArticles = (result.articles as unknown as (FeedArticle & { category?: string })[]) || [];
+    let articles: FeedArticle[] = rawArticles.map((a) => ({ ...a, category: a.category || undefined }));
     let userItemCount = 0;
 
     // Task #329 — also pull the caller's premium subscription items
