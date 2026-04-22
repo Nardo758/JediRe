@@ -4,9 +4,6 @@ import { useAuthStore } from '../stores/authStore';
 export const apiClient = axios.create({
   baseURL: '/api/v1',
   timeout: 30000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
 });
 
 // Request interceptor - add auth token
