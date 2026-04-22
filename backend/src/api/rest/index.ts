@@ -117,6 +117,7 @@ import cashflowUnderwritingRoutes, { dealUnderwritingRouter } from './cashflow-u
 import investorCapitalRoutes from './investor-capital.routes';
 import skillChatRoutes from './skill-chat.routes';
 import agentsRoutes from './agents.routes';
+import morningBriefRoutes from './morning-brief.routes';
 
 const API_PREFIX = '/api/v1';
 
@@ -170,6 +171,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Autonomous Agent System: /agents/chat, /agents/:agentId/chat, /agents/notifications, etc.
   app.use(`${API_PREFIX}/agents`, agentsRoutes);
+
+  // Morning Brief: /morning-brief
+  app.use(`${API_PREFIX}/morning-brief`, morningBriefRoutes);
 
   // Deal agent-run listing: GET /deals/:dealId/agent-runs
   app.use(`${API_PREFIX}/deals`, dealAgentRunsRouter);

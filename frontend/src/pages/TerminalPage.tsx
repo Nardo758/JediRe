@@ -17,6 +17,7 @@ import { SkillsBar } from "../components/layout/SkillsBar";
 import TerminalMapView from "../components/map/TerminalMapView";
 import { AssumptionsPanel } from "../components/deal/AssumptionsPanel";
 import { M35EventCard, type M35EventCardData } from "../components/m35/M35EventCard";
+import { MorningBriefWidget } from "../components/dashboard/MorningBriefWidget";
 
 // ═══════════════════════════════════════════════════════════════
 // JEDI RE — BLOOMBERG TERMINAL  v3 (graduated from prototype)
@@ -1462,23 +1463,8 @@ export default function TerminalPage() {
     );
   };
 
-  const WidgetAIBrief = () => (
-    <div style={{flex:1,overflow:"auto",padding:14}}>
-      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:10}}><span style={{fontSize:10,fontWeight:700,color:T.text.green}}>● AI ONLINE</span><span style={{fontSize:10,color:T.text.muted}}>Generated {new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}</span></div>
-      <div style={{fontSize:10,fontWeight:700,color:T.text.primary,marginBottom:8,lineHeight:1.4}}>Good morning. Today's top priorities:</div>
-      {[
-        {n:"① Review Active DD",t:"Check outstanding due diligence items. Prioritize inspections and expiry dates.",c:T.text.red},
-        {n:"② Pipeline Monitoring",t:"Review deals with score changes. BTS strategies showing 22pt advantage over rental in current rate environment.",c:T.text.orange},
-        {n:"③ Market Context",t:"Fed Funds held at 5.33%. Tampa MSA absorption 95.2% — strongest quarter in 3 years.",c:T.text.cyan},
-        {n:"Market context",t:"Construction debt (SOFR+275) tightening. Window for BTS deals remains favorable.",c:T.text.green},
-      ].map((item,i)=>(
-        <div key={i} style={{padding:"8px 10px",marginBottom:8,background:T.bg.panel,border:`1px solid ${T.border.subtle}`,borderLeft:`3px solid ${item.c}`}}>
-          <div style={{fontSize:10,fontWeight:700,color:item.c,marginBottom:3}}>{item.n}</div>
-          <div style={{fontSize:10,color:T.text.secondary,lineHeight:1.5}}>{item.t}</div>
-        </div>
-      ))}
-    </div>
-  );
+  // AI Daily Brief now uses the real MorningBriefWidget component
+  const WidgetAIBrief = () => <MorningBriefWidget />;
 
   const WidgetTaskList = () => {
     const pc:Record<string,string>={critical:T.text.red,high:T.text.orange,med:T.text.amber,low:T.text.muted};
