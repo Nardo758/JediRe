@@ -998,4 +998,363 @@ router.post('/:dealId/monthly-actuals', requireAuth, async (req: AuthenticatedRe
   }
 });
 
+// ─── Balance Sheet ────────────────────────────────────────────────────
+
+/**
+ * GET /api/v1/operations/:dealId/balance-sheet
+ * Retrieve latest balance sheet snapshot
+ */
+router.get('/:dealId/balance-sheet', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+
+    // Verify deal ownership
+    const ownerCheck = await query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
+      [dealId, req.user!.userId]
+    );
+    if (ownerCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
+
+    // Try to get from balance_sheets table if it exists, otherwise build from actuals
+    const result = await query(
+      `SELECT * FROM balance_sheets WHERE deal_id = $1 ORDER BY report_month DESC LIMIT 1`,
+      [dealId]
+    ).catch(() => ({ rows: [] }));
+
+    if (result.rows.length > 0) {
+      return res.json({ success: true, balanceSheet: result.rows[0] });
+    }
+
+    // Build approximation from deal_monthly_actuals if no dedicated balance sheet
+    const actualsRes = await query(
+      `SELECT report_month, noi, debt_service, capex, cash_flow_before_tax
+       FROM deal_monthly_actuals
+       WHERE deal_id = $1 AND is_budget = false AND is_proforma = false
+       ORDER BY report_month DESC
+       LIMIT 12`,
+      [dealId]
+    );
+
+    if (actualsRes.rows.length === 0) {
+      return res.json({ success: true, balanceSheet: null });
+    }
+
+    // Estimate balance sheet from cash flow data (simplified)
+    const cumCashFlow = actualsRes.rows.reduce((sum: number, r: any) => sum + (Number(r.cash_flow_before_tax) || 0), 0);
+    const latestMonth = actualsRes.rows[0];
+
+    res.json({
+      success: true,
+      balanceSheet: {
+        report_month: latestMonth.report_month,
+        cash: Math.max(0, cumCashFlow),
+        accounts_receivable: null,
+        prepaid_expenses: null,
+        other_current_assets: null,
+        fixed_assets: null,
+        total_assets: cumCashFlow > 0 ? cumCashFlow : null,
+        accounts_payable: null,
+        accrued_expenses: null,
+        security_deposits: null,
+        prepaid_rent: null,
+        other_liabilities: null,
+        total_liabilities: null,
+        contributed_capital: null,
+        retained_earnings: cumCashFlow,
+        current_year_earnings: Number(latestMonth.cash_flow_before_tax) || 0,
+        total_equity: cumCashFlow,
+        source: 'estimated_from_actuals',
+      },
+    });
+  } catch (err) {
+    logger.error('Balance sheet GET error:', err);
+    res.status(500).json({ success: false, error: 'Failed to get balance sheet' });
+  }
+});
+
+/**
+ * POST /api/v1/operations/:dealId/balance-sheet
+ * Import balance sheet data
+ */
+router.post('/:dealId/balance-sheet', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const { report_month, ...data } = req.body;
+
+    if (!report_month) {
+      return res.status(400).json({ success: false, error: 'report_month required' });
+    }
+
+    // Upsert balance sheet
+    await query(
+      `INSERT INTO balance_sheets (
+        deal_id, report_month,
+        cash, accounts_receivable, prepaid_expenses, other_current_assets, fixed_assets, total_assets,
+        accounts_payable, accrued_expenses, security_deposits, prepaid_rent, other_liabilities, total_liabilities,
+        contributed_capital, retained_earnings, current_year_earnings, total_equity,
+        source
+      ) VALUES (
+        $1, $2,
+        $3, $4, $5, $6, $7, $8,
+        $9, $10, $11, $12, $13, $14,
+        $15, $16, $17, $18,
+        $19
+      )
+      ON CONFLICT (deal_id, report_month) DO UPDATE SET
+        cash = EXCLUDED.cash,
+        accounts_receivable = EXCLUDED.accounts_receivable,
+        total_assets = EXCLUDED.total_assets,
+        total_liabilities = EXCLUDED.total_liabilities,
+        total_equity = EXCLUDED.total_equity,
+        updated_at = NOW()`,
+      [
+        dealId, report_month,
+        data.cash, data.accounts_receivable, data.prepaid_expenses, data.other_current_assets, data.fixed_assets, data.total_assets,
+        data.accounts_payable, data.accrued_expenses, data.security_deposits, data.prepaid_rent, data.other_liabilities, data.total_liabilities,
+        data.contributed_capital, data.retained_earnings, data.current_year_earnings, data.total_equity,
+        data.source || 'manual',
+      ]
+    );
+
+    res.json({ success: true, message: 'Balance sheet saved' });
+  } catch (err) {
+    logger.error('Balance sheet POST error:', err);
+    res.status(500).json({ success: false, error: 'Failed to save balance sheet' });
+  }
+});
+
+// ─── Lease Transactions ───────────────────────────────────────────────
+
+/**
+ * GET /api/v1/operations/:dealId/lease-transactions
+ * Retrieve lease transaction history (new leases, renewals, move-outs)
+ */
+router.get('/:dealId/lease-transactions', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const { limit = '50', type } = req.query;
+
+    // Verify ownership
+    const ownerCheck = await query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
+      [dealId, req.user!.userId]
+    );
+    if (ownerCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
+
+    // Try dedicated table first
+    const txResult = await query(
+      `SELECT * FROM lease_transactions 
+       WHERE deal_id = $1 ${type ? `AND transaction_type = $3` : ''}
+       ORDER BY effective_date DESC
+       LIMIT $2`,
+      type ? [dealId, parseInt(limit as string, 10), type] : [dealId, parseInt(limit as string, 10)]
+    ).catch(() => ({ rows: [] }));
+
+    if (txResult.rows.length > 0) {
+      return res.json({ success: true, transactions: txResult.rows });
+    }
+
+    // Derive transactions from rent_roll_units snapshots
+    // Look for units where status or rent changed between snapshots
+    const derivedRes = await query(
+      `WITH snapshots AS (
+        SELECT 
+          unit_number,
+          status,
+          current_rent,
+          lease_start,
+          lease_end,
+          move_in_date,
+          move_out_date,
+          as_of_date,
+          resident_name,
+          LAG(status) OVER (PARTITION BY unit_number ORDER BY as_of_date) as prev_status,
+          LAG(current_rent) OVER (PARTITION BY unit_number ORDER BY as_of_date) as prev_rent
+        FROM rent_roll_units
+        WHERE deal_id = $1
+      )
+      SELECT 
+        unit_number,
+        CASE 
+          WHEN prev_status IS NULL OR (prev_status = 'vacant' AND status = 'occupied') THEN 'new_lease'
+          WHEN status = 'occupied' AND prev_rent IS NOT NULL AND current_rent != prev_rent THEN 'renewal'
+          WHEN prev_status = 'occupied' AND status = 'vacant' THEN 'move_out'
+          ELSE 'transfer'
+        END as transaction_type,
+        COALESCE(move_in_date, lease_start, as_of_date) as effective_date,
+        lease_end as lease_end_date,
+        current_rent as rent,
+        prev_rent as prior_rent,
+        NULL::numeric as concessions,
+        resident_name
+      FROM snapshots
+      WHERE (
+        (prev_status = 'vacant' AND status = 'occupied') OR
+        (status = 'occupied' AND prev_rent IS NOT NULL AND current_rent != prev_rent) OR
+        (prev_status = 'occupied' AND status = 'vacant')
+      )
+      ORDER BY effective_date DESC
+      LIMIT $2`,
+      [dealId, parseInt(limit as string, 10)]
+    ).catch(() => ({ rows: [] }));
+
+    res.json({ success: true, transactions: derivedRes.rows });
+  } catch (err) {
+    logger.error('Lease transactions GET error:', err);
+    res.status(500).json({ success: false, error: 'Failed to get lease transactions' });
+  }
+});
+
+/**
+ * POST /api/v1/operations/:dealId/lease-transactions
+ * Record a lease transaction
+ */
+router.post('/:dealId/lease-transactions', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const { unit_number, transaction_type, effective_date, lease_end_date, rent, prior_rent, concessions, resident_name } = req.body;
+
+    if (!unit_number || !transaction_type || !effective_date) {
+      return res.status(400).json({ success: false, error: 'unit_number, transaction_type, and effective_date required' });
+    }
+
+    const result = await query(
+      `INSERT INTO lease_transactions (
+        deal_id, unit_number, transaction_type, effective_date, lease_end_date,
+        rent, prior_rent, concessions, resident_name
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      RETURNING *`,
+      [dealId, unit_number, transaction_type, effective_date, lease_end_date, rent, prior_rent, concessions, resident_name]
+    );
+
+    res.json({ success: true, transaction: result.rows[0] });
+  } catch (err) {
+    logger.error('Lease transaction POST error:', err);
+    res.status(500).json({ success: false, error: 'Failed to record lease transaction' });
+  }
+});
+
+// ─── Unit Mix ─────────────────────────────────────────────────────────
+
+/**
+ * GET /api/v1/operations/:dealId/unit-mix
+ * Get unit mix breakdown by bedroom type
+ */
+router.get('/:dealId/unit-mix', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+
+    // Verify ownership
+    const ownerCheck = await query(
+      'SELECT id FROM deals WHERE id = $1 AND user_id = $2 AND archived_at IS NULL',
+      [dealId, req.user!.userId]
+    );
+    if (ownerCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Deal not found' });
+    }
+
+    // Try dedicated unit_mix table first
+    const mixResult = await query(
+      `SELECT * FROM unit_mix WHERE deal_id = $1 ORDER BY bed_count, bath_count`,
+      [dealId]
+    ).catch(() => ({ rows: [] }));
+
+    if (mixResult.rows.length > 0) {
+      return res.json({ success: true, unitTypes: mixResult.rows });
+    }
+
+    // Derive from rent roll if no dedicated unit mix
+    const derivedRes = await query(
+      `WITH latest_snapshot AS (
+        SELECT DISTINCT ON (unit_number) *
+        FROM rent_roll_units
+        WHERE deal_id = $1
+        ORDER BY unit_number, as_of_date DESC
+      )
+      SELECT 
+        COALESCE(unit_type, 'Unknown') as unit_type,
+        -- Extract bed count from unit_type (e.g., '1BR', '2 Bed', 'Studio')
+        CASE 
+          WHEN unit_type ILIKE '%studio%' OR unit_type ILIKE '%0br%' OR unit_type ILIKE '%0 bed%' THEN 0
+          WHEN unit_type ~ '[1-4]' THEN (regexp_match(unit_type, '([1-4])'))[1]::int
+          ELSE 1
+        END as bed_count,
+        CASE 
+          WHEN unit_type ~ '[1-3](\s*\.\s*5)?\s*(ba|bath)' THEN (regexp_match(unit_type, '([1-3])'))[1]::int
+          ELSE 1
+        END as bath_count,
+        COALESCE(AVG(sqft), 0)::int as sqft,
+        COUNT(*)::int as count,
+        COUNT(*) FILTER (WHERE status = 'occupied')::int as occupied,
+        COALESCE(AVG(current_rent) FILTER (WHERE status = 'occupied'), 0)::numeric(10,2) as avg_rent,
+        COALESCE(AVG(market_rent), AVG(current_rent), 0)::numeric(10,2) as market_rent,
+        COALESCE(SUM(current_rent) FILTER (WHERE status = 'occupied'), 0)::numeric(10,2) as total_rent
+      FROM latest_snapshot
+      GROUP BY unit_type
+      ORDER BY bed_count, bath_count`,
+      [dealId]
+    ).catch(() => ({ rows: [] }));
+
+    res.json({ success: true, unitTypes: derivedRes.rows });
+  } catch (err) {
+    logger.error('Unit mix GET error:', err);
+    res.status(500).json({ success: false, error: 'Failed to get unit mix' });
+  }
+});
+
+/**
+ * POST /api/v1/operations/:dealId/unit-mix
+ * Import unit mix data
+ */
+router.post('/:dealId/unit-mix', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const { unitTypes } = req.body;
+
+    if (!Array.isArray(unitTypes)) {
+      return res.status(400).json({ success: false, error: 'unitTypes array required' });
+    }
+
+    const client = await getClient();
+    let imported = 0;
+
+    try {
+      await client.query('BEGIN');
+
+      // Clear existing unit mix for this deal
+      await client.query('DELETE FROM unit_mix WHERE deal_id = $1', [dealId]);
+
+      for (const ut of unitTypes) {
+        await client.query(
+          `INSERT INTO unit_mix (
+            deal_id, unit_type, bed_count, bath_count, sqft, count, occupied,
+            avg_rent, market_rent, total_rent
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+          [
+            dealId, ut.unit_type, ut.bed_count, ut.bath_count, ut.sqft, ut.count, ut.occupied,
+            ut.avg_rent, ut.market_rent, ut.total_rent,
+          ]
+        );
+        imported++;
+      }
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    res.json({ success: true, imported });
+  } catch (err) {
+    logger.error('Unit mix POST error:', err);
+    res.status(500).json({ success: false, error: 'Failed to import unit mix' });
+  }
+});
+
 export default router;

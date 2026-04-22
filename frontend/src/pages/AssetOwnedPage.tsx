@@ -1523,16 +1523,77 @@ const CompSetTab: React.FC<{ dealId: string }> = ({ dealId }) => {
   const [comps, setComps] = useState<CompProperty[]>([]);
   const [subject, setSubject] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [discovering, setDiscovering] = useState(false);
+  const [newComp, setNewComp] = useState({
+    name: '',
+    address: '',
+    units: '',
+    year_built: '',
+    avg_rent: '',
+    occupancy: '',
+    class: 'B',
+    tier: 'secondary' as 'primary' | 'secondary',
+    distance_mi: '',
+  });
 
-  useEffect(() => {
+  const loadComps = () => {
     Promise.all([
-      apiClient.get(`/api/v1/deals/${dealId}/comp-set`).catch(() => ({ data: { comps: [] } })),
+      apiClient.get(`/api/v1/lifecycle/${dealId}/comp-set`).catch(() => ({ data: { comps: [] } })),
       apiClient.get(`/api/v1/portfolio/assets/${dealId}/summary`).catch(() => ({ data: null })),
     ]).then(([compsRes, subjectRes]) => {
       setComps(compsRes.data?.comps || []);
       setSubject(subjectRes.data?.deal || null);
     }).finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    loadComps();
   }, [dealId]);
+
+  const addComp = async () => {
+    if (!newComp.name || !newComp.address) return;
+    try {
+      await apiClient.post(`/api/v1/lifecycle/${dealId}/comp-set`, {
+        name: newComp.name,
+        address: newComp.address,
+        units: parseInt(newComp.units, 10) || 0,
+        year_built: parseInt(newComp.year_built, 10) || new Date().getFullYear(),
+        avg_rent: parseFloat(newComp.avg_rent) || 0,
+        occupancy: parseFloat(newComp.occupancy) || 95,
+        class: newComp.class,
+        tier: newComp.tier,
+        distance_mi: parseFloat(newComp.distance_mi) || 1,
+      });
+      setNewComp({ name: '', address: '', units: '', year_built: '', avg_rent: '', occupancy: '', class: 'B', tier: 'secondary', distance_mi: '' });
+      setShowAddForm(false);
+      loadComps();
+    } catch (err) {
+      console.error('Failed to add comp:', err);
+    }
+  };
+
+  const removeComp = async (compId: string) => {
+    if (!window.confirm('Remove this property from comp set?')) return;
+    try {
+      await apiClient.delete(`/api/v1/lifecycle/comp-set/${compId}`);
+      loadComps();
+    } catch (err) {
+      console.error('Failed to remove comp:', err);
+    }
+  };
+
+  const autoDiscover = async () => {
+    setDiscovering(true);
+    try {
+      await apiClient.post(`/api/v1/lifecycle/${dealId}/comp-set/auto-discover`);
+      loadComps();
+    } catch (err) {
+      console.error('Auto-discover failed:', err);
+    } finally {
+      setDiscovering(false);
+    }
+  };
 
   if (loading) return <div style={{ padding: 20, color: T.text.muted }}>Loading...</div>;
 
@@ -1540,9 +1601,9 @@ const CompSetTab: React.FC<{ dealId: string }> = ({ dealId }) => {
   const secondaryComps = comps.filter(c => c.tier === 'secondary');
 
   // Calculate averages
-  const avgRent = comps.length > 0 ? comps.reduce((sum, c) => sum + c.avg_rent, 0) / comps.length : 0;
-  const avgOcc = comps.length > 0 ? comps.reduce((sum, c) => sum + c.occupancy, 0) / comps.length : 0;
-  const avgUnits = comps.length > 0 ? comps.reduce((sum, c) => sum + c.units, 0) / comps.length : 0;
+  const avgRent = comps.length > 0 ? comps.reduce((sum, c) => sum + (c.avg_rent || 0), 0) / comps.length : 0;
+  const avgOcc = comps.length > 0 ? comps.reduce((sum, c) => sum + (c.occupancy || 0), 0) / comps.length : 0;
+  const avgUnits = comps.length > 0 ? comps.reduce((sum, c) => sum + (c.units || 0), 0) / comps.length : 0;
 
   return (
     <div>
@@ -1569,6 +1630,268 @@ const CompSetTab: React.FC<{ dealId: string }> = ({ dealId }) => {
 
       {/* Comp Table */}
       <Panel title="Competitive Properties">
+        {/* Actions */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+          <button
+            onClick={() => setShowAddForm(true)}
+            style={{
+              padding: '6px 14px',
+              background: T.text.cyan + '22',
+              border: `1px solid ${T.text.cyan}`,
+              borderRadius: 4,
+              color: T.text.cyan,
+              fontSize: 10,
+              fontFamily: T.font.mono,
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            + Add Property
+          </button>
+          <button
+            onClick={autoDiscover}
+            disabled={discovering}
+            style={{
+              padding: '6px 14px',
+              background: T.text.purple + '22',
+              border: `1px solid ${T.text.purple}`,
+              borderRadius: 4,
+              color: T.text.purple,
+              fontSize: 10,
+              fontFamily: T.font.mono,
+              fontWeight: 700,
+              cursor: discovering ? 'wait' : 'pointer',
+              opacity: discovering ? 0.6 : 1,
+            }}
+          >
+            {discovering ? 'Discovering...' : '🔍 Auto-Discover'}
+          </button>
+        </div>
+
+        {/* Add Form */}
+        {showAddForm && (
+          <div style={{
+            marginBottom: 16,
+            padding: 16,
+            background: T.bg.panelAlt,
+            border: `1px solid ${T.border.subtle}`,
+            borderRadius: 4,
+          }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: T.text.primary, fontFamily: T.font.mono, marginBottom: 12 }}>
+              ADD COMPETITIVE PROPERTY
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 9, color: T.text.muted, fontFamily: T.font.mono, marginBottom: 4 }}>PROPERTY NAME *</label>
+                <input
+                  value={newComp.name}
+                  onChange={(e) => setNewComp({ ...newComp, name: e.target.value })}
+                  placeholder="The Reserve at..."
+                  style={{
+                    width: '100%',
+                    padding: '8px 10px',
+                    background: T.bg.input,
+                    border: `1px solid ${T.border.subtle}`,
+                    borderRadius: 4,
+                    color: T.text.primary,
+                    fontSize: 11,
+                    fontFamily: T.font.mono,
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 9, color: T.text.muted, fontFamily: T.font.mono, marginBottom: 4 }}>ADDRESS *</label>
+                <input
+                  value={newComp.address}
+                  onChange={(e) => setNewComp({ ...newComp, address: e.target.value })}
+                  placeholder="123 Main St, City, ST"
+                  style={{
+                    width: '100%',
+                    padding: '8px 10px',
+                    background: T.bg.input,
+                    border: `1px solid ${T.border.subtle}`,
+                    borderRadius: 4,
+                    color: T.text.primary,
+                    fontSize: 11,
+                    fontFamily: T.font.mono,
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 9, color: T.text.muted, fontFamily: T.font.mono, marginBottom: 4 }}>UNITS</label>
+                <input
+                  type="number"
+                  value={newComp.units}
+                  onChange={(e) => setNewComp({ ...newComp, units: e.target.value })}
+                  placeholder="200"
+                  style={{
+                    width: '100%',
+                    padding: '8px 10px',
+                    background: T.bg.input,
+                    border: `1px solid ${T.border.subtle}`,
+                    borderRadius: 4,
+                    color: T.text.primary,
+                    fontSize: 11,
+                    fontFamily: T.font.mono,
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 9, color: T.text.muted, fontFamily: T.font.mono, marginBottom: 4 }}>YEAR BUILT</label>
+                <input
+                  type="number"
+                  value={newComp.year_built}
+                  onChange={(e) => setNewComp({ ...newComp, year_built: e.target.value })}
+                  placeholder="2015"
+                  style={{
+                    width: '100%',
+                    padding: '8px 10px',
+                    background: T.bg.input,
+                    border: `1px solid ${T.border.subtle}`,
+                    borderRadius: 4,
+                    color: T.text.primary,
+                    fontSize: 11,
+                    fontFamily: T.font.mono,
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 9, color: T.text.muted, fontFamily: T.font.mono, marginBottom: 4 }}>AVG RENT ($)</label>
+                <input
+                  type="number"
+                  value={newComp.avg_rent}
+                  onChange={(e) => setNewComp({ ...newComp, avg_rent: e.target.value })}
+                  placeholder="1450"
+                  style={{
+                    width: '100%',
+                    padding: '8px 10px',
+                    background: T.bg.input,
+                    border: `1px solid ${T.border.subtle}`,
+                    borderRadius: 4,
+                    color: T.text.primary,
+                    fontSize: 11,
+                    fontFamily: T.font.mono,
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 9, color: T.text.muted, fontFamily: T.font.mono, marginBottom: 4 }}>OCCUPANCY (%)</label>
+                <input
+                  type="number"
+                  value={newComp.occupancy}
+                  onChange={(e) => setNewComp({ ...newComp, occupancy: e.target.value })}
+                  placeholder="95"
+                  style={{
+                    width: '100%',
+                    padding: '8px 10px',
+                    background: T.bg.input,
+                    border: `1px solid ${T.border.subtle}`,
+                    borderRadius: 4,
+                    color: T.text.primary,
+                    fontSize: 11,
+                    fontFamily: T.font.mono,
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 9, color: T.text.muted, fontFamily: T.font.mono, marginBottom: 4 }}>DISTANCE (mi)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={newComp.distance_mi}
+                  onChange={(e) => setNewComp({ ...newComp, distance_mi: e.target.value })}
+                  placeholder="0.5"
+                  style={{
+                    width: '100%',
+                    padding: '8px 10px',
+                    background: T.bg.input,
+                    border: `1px solid ${T.border.subtle}`,
+                    borderRadius: 4,
+                    color: T.text.primary,
+                    fontSize: 11,
+                    fontFamily: T.font.mono,
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 9, color: T.text.muted, fontFamily: T.font.mono, marginBottom: 4 }}>CLASS</label>
+                <select
+                  value={newComp.class}
+                  onChange={(e) => setNewComp({ ...newComp, class: e.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '8px 10px',
+                    background: T.bg.input,
+                    border: `1px solid ${T.border.subtle}`,
+                    borderRadius: 4,
+                    color: T.text.primary,
+                    fontSize: 11,
+                    fontFamily: T.font.mono,
+                  }}
+                >
+                  <option value="A">Class A</option>
+                  <option value="B">Class B</option>
+                  <option value="B+">Class B+</option>
+                  <option value="C">Class C</option>
+                </select>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 9, color: T.text.muted, fontFamily: T.font.mono, marginBottom: 4 }}>TIER</label>
+                <select
+                  value={newComp.tier}
+                  onChange={(e) => setNewComp({ ...newComp, tier: e.target.value as 'primary' | 'secondary' })}
+                  style={{
+                    width: '100%',
+                    padding: '8px 10px',
+                    background: T.bg.input,
+                    border: `1px solid ${T.border.subtle}`,
+                    borderRadius: 4,
+                    color: T.text.primary,
+                    fontSize: 11,
+                    fontFamily: T.font.mono,
+                  }}
+                >
+                  <option value="primary">Primary</option>
+                  <option value="secondary">Secondary</option>
+                </select>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+              <button
+                onClick={addComp}
+                style={{
+                  padding: '8px 16px',
+                  background: T.text.green + '22',
+                  border: `1px solid ${T.text.green}`,
+                  borderRadius: 4,
+                  color: T.text.green,
+                  fontSize: 10,
+                  fontFamily: T.font.mono,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                Add to Comp Set
+              </button>
+              <button
+                onClick={() => setShowAddForm(false)}
+                style={{
+                  padding: '8px 16px',
+                  background: 'transparent',
+                  border: `1px solid ${T.border.subtle}`,
+                  borderRadius: 4,
+                  color: T.text.muted,
+                  fontSize: 10,
+                  fontFamily: T.font.mono,
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
         {comps.length === 0 ? (
           <div style={{ padding: 40, textAlign: 'center' }}>
             <div style={{ fontSize: 32, marginBottom: 12 }}>🏢</div>
@@ -1576,7 +1899,7 @@ const CompSetTab: React.FC<{ dealId: string }> = ({ dealId }) => {
               No competitive set defined
             </div>
             <div style={{ fontSize: 10, color: T.text.muted, fontFamily: T.font.mono }}>
-              Add competitors to track market position
+              Add competitors manually or use auto-discover
             </div>
           </div>
         ) : (
@@ -1592,6 +1915,7 @@ const CompSetTab: React.FC<{ dealId: string }> = ({ dealId }) => {
                   <th style={{ padding: '6px 8px', textAlign: 'right', color: T.text.muted }}>Occ %</th>
                   <th style={{ padding: '6px 8px', textAlign: 'left', color: T.text.muted }}>Class</th>
                   <th style={{ padding: '6px 8px', textAlign: 'right', color: T.text.muted }}>Built</th>
+                  <th style={{ padding: '6px 8px', width: 40 }}></th>
                 </tr>
               </thead>
               <tbody>
@@ -1609,15 +1933,31 @@ const CompSetTab: React.FC<{ dealId: string }> = ({ dealId }) => {
                         background: comp.tier === 'primary' ? T.text.cyan + '22' : T.text.muted + '22',
                         color: comp.tier === 'primary' ? T.text.cyan : T.text.muted,
                       }}>
-                        {comp.tier.toUpperCase()}
+                        {(comp.tier || 'secondary').toUpperCase()}
                       </span>
                     </td>
-                    <td style={{ padding: '6px 8px', textAlign: 'right', color: T.text.secondary }}>{comp.distance_mi.toFixed(1)} mi</td>
-                    <td style={{ padding: '6px 8px', textAlign: 'right', color: T.text.primary }}>{comp.units}</td>
-                    <td style={{ padding: '6px 8px', textAlign: 'right', color: T.text.green }}>{fmt(comp.avg_rent, 'currency')}</td>
-                    <td style={{ padding: '6px 8px', textAlign: 'right', color: T.text.amber }}>{comp.occupancy.toFixed(1)}%</td>
-                    <td style={{ padding: '6px 8px', color: T.text.purple }}>{comp.class}</td>
-                    <td style={{ padding: '6px 8px', textAlign: 'right', color: T.text.muted }}>{comp.year_built}</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right', color: T.text.secondary }}>{(comp.distance_mi || 0).toFixed(1)} mi</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right', color: T.text.primary }}>{comp.units || '—'}</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right', color: T.text.green }}>{comp.avg_rent ? fmt(comp.avg_rent, 'currency') : '—'}</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right', color: T.text.amber }}>{comp.occupancy ? `${comp.occupancy.toFixed(1)}%` : '—'}</td>
+                    <td style={{ padding: '6px 8px', color: T.text.purple }}>{comp.class || '—'}</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right', color: T.text.muted }}>{comp.year_built || '—'}</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'center' }}>
+                      <button
+                        onClick={() => removeComp(comp.id)}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: T.text.red,
+                          fontSize: 12,
+                          cursor: 'pointer',
+                          opacity: 0.6,
+                        }}
+                        title="Remove from comp set"
+                      >
+                        ×
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
