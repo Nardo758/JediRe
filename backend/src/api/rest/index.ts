@@ -219,6 +219,7 @@ export function setupRESTRoutes(app: Application): void {
 
   // News Intelligence routes
   app.use(`${API_PREFIX}/news`, newsRoutes);
+  app.use(`${API_PREFIX}/news-connections`, newsConnectionsRoutes);
 
   // Trade Areas routes (Geographic Definition System)
   app.use(`${API_PREFIX}/trade-areas`, tradeAreasRoutes);
