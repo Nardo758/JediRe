@@ -337,9 +337,20 @@ const PerformanceTab: React.FC<{ dealId: string; financials: MonthlyFinancial[] 
   });
 
   const totNOI = filtered.reduce((s, f) => s + (toNum(f.noi) || 0), 0);
-  const totRev = filtered.reduce((s, f) => s + (toNum(f.net_rental_income) || 0), 0);
-  const totOpex = filtered.reduce((s, f) => s + (toNum(f.total_opex) || 0), 0);
+  const totRev = filtered.reduce((s, f) => s + (toNum(f.net_rental_income) || toNum(f.effective_gross_income) || 0), 0);
+  const totOpex = filtered.reduce((s, f) => s + (toNum(f.total_opex) || toNum(f.total_operating_expenses) || 0), 0);
   const avgOcc = filtered.length ? filtered.reduce((s, f) => s + (toNum(f.occupancy_rate) || 0), 0) / filtered.length * 100 : null;
+
+  // Loss-to-Lease calculation
+  const latestMonth = filtered.length > 0 ? filtered[filtered.length - 1] : null;
+  const avgEffRent = latestMonth ? toNum(latestMonth.avg_effective_rent) : 0;
+  const avgMktRent = latestMonth ? toNum(latestMonth.avg_market_rent) : 0;
+  const ltlPct = avgMktRent > 0 ? ((avgMktRent - avgEffRent) / avgMktRent) * 100 : null;
+
+  // DSCR calculation
+  const latestNOI = latestMonth ? toNum(latestMonth.noi) : 0;
+  const latestDebtSvc = latestMonth ? Math.abs(toNum(latestMonth.debt_service)) : 0;
+  const dscr = latestDebtSvc > 0 ? latestNOI / latestDebtSvc : null;
 
   return (
     <div style={{ padding: 16, overflowY: 'auto', maxHeight: 'calc(100vh - 280px)', display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -352,12 +363,14 @@ const PerformanceTab: React.FC<{ dealId: string; financials: MonthlyFinancial[] 
         <span style={{ fontSize: 10, color: T.text.muted, fontFamily: T.font.mono, marginLeft: 8 }}>{filtered.length} month{filtered.length !== 1 ? 's' : ''} of data</span>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 10 }}>
         {[
           { label: 'TOTAL NOI', value: fmt$(totNOI), color: T.text.blue },
           { label: 'TOTAL REVENUE', value: fmt$(totRev), color: T.text.primary },
           { label: 'TOTAL OPEX', value: fmt$(totOpex), color: T.text.red },
           { label: 'AVG OCCUPANCY', value: avgOcc != null ? `${avgOcc.toFixed(1)}%` : '—', color: T.text.green },
+          { label: 'LOSS-TO-LEASE', value: ltlPct != null ? `${ltlPct.toFixed(1)}%` : '—', color: ltlPct && ltlPct > 3 ? T.text.red : T.text.amber },
+          { label: 'DSCR', value: dscr != null ? `${dscr.toFixed(2)}x` : '—', color: dscr && dscr < 1.25 ? T.text.red : T.text.green },
         ].map((k, i) => (
           <div key={i} style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 4, padding: 12 }}>
             <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono, marginBottom: 4 }}>{k.label}</div>
@@ -430,9 +443,100 @@ const PerformanceTab: React.FC<{ dealId: string; financials: MonthlyFinancial[] 
   );
 };
 
+// ─── Balance Sheet Sub-Tab ───────────────────────────────────
+const BalanceSheetSubTab: React.FC<{ 
+  dealId: string; 
+  fmt$: (v: any) => string; 
+  toN: (v: any) => number;
+  emptyState: (icon: string, msg: string, sub?: string) => JSX.Element;
+}> = ({ dealId, fmt$, toN, emptyState }) => {
+  const [bsData, setBsData] = useState<any>(null);
+  const [bsLoading, setBsLoading] = useState(true);
+
+  useEffect(() => {
+    apiClient.get(`/api/v1/operations/${dealId}/balance-sheet`)
+      .then(r => setBsData(r.data?.balanceSheet || null))
+      .catch(() => setBsData(null))
+      .finally(() => setBsLoading(false));
+  }, [dealId]);
+
+  if (bsLoading) return <Spinner />;
+
+  if (!bsData) {
+    return emptyState('💰', 'NO BALANCE SHEET DATA', 'Upload a BPI Balance Sheet or enter data manually');
+  }
+
+  const Section: React.FC<{ title: string; items: { label: string; value: number }[]; total: number; color: string }> = ({ title, items, total, color }) => (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color, fontFamily: T.font.mono, marginBottom: 8, textTransform: 'uppercase' }}>
+        {title}
+      </div>
+      {items.map((item, i) => (
+        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: `1px solid ${T.border.subtle}` }}>
+          <span style={{ fontSize: 10, color: T.text.secondary, fontFamily: T.font.mono }}>{item.label}</span>
+          <span style={{ fontSize: 10, color: T.text.primary, fontFamily: T.font.mono }}>{fmt$(item.value)}</span>
+        </div>
+      ))}
+      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderTop: `2px solid ${T.border.medium}`, marginTop: 4 }}>
+        <span style={{ fontSize: 10, fontWeight: 700, color, fontFamily: T.font.mono }}>TOTAL {title.toUpperCase()}</span>
+        <span style={{ fontSize: 10, fontWeight: 700, color, fontFamily: T.font.mono }}>{fmt$(total)}</span>
+      </div>
+    </div>
+  );
+
+  return (
+    <Panel title={`BALANCE SHEET — ${bsData.report_month || 'Current'}`}>
+      <div style={{ padding: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+        {/* Assets */}
+        <div>
+          <Section
+            title="Assets"
+            items={[
+              { label: 'Cash & Cash Equivalents', value: toN(bsData.cash) },
+              { label: 'Accounts Receivable', value: toN(bsData.accounts_receivable) },
+              { label: 'Prepaid Expenses', value: toN(bsData.prepaid_expenses) },
+              { label: 'Other Current Assets', value: toN(bsData.other_current_assets) },
+              { label: 'Fixed Assets', value: toN(bsData.fixed_assets) },
+            ]}
+            total={toN(bsData.total_assets)}
+            color={T.text.cyan}
+          />
+        </div>
+
+        {/* Liabilities & Equity */}
+        <div>
+          <Section
+            title="Liabilities"
+            items={[
+              { label: 'Accounts Payable', value: toN(bsData.accounts_payable) },
+              { label: 'Accrued Expenses', value: toN(bsData.accrued_expenses) },
+              { label: 'Security Deposits', value: toN(bsData.security_deposits) },
+              { label: 'Prepaid Rent', value: toN(bsData.prepaid_rent) },
+              { label: 'Other Liabilities', value: toN(bsData.other_liabilities) },
+            ]}
+            total={toN(bsData.total_liabilities)}
+            color={T.text.orange}
+          />
+
+          <Section
+            title="Equity"
+            items={[
+              { label: 'Contributed Capital', value: toN(bsData.contributed_capital) },
+              { label: 'Retained Earnings', value: toN(bsData.retained_earnings) },
+              { label: 'Current Year Earnings', value: toN(bsData.current_year_earnings) },
+            ]}
+            total={toN(bsData.total_equity)}
+            color={T.text.green}
+          />
+        </div>
+      </div>
+    </Panel>
+  );
+};
+
 // ─── Revenue Management Tab ───────────────────────────────────
 const RevenueMgmtTab: React.FC<{ dealId: string; deal?: Record<string, unknown> }> = ({ dealId, deal: _deal }) => {
-  const [subTab, setSubTab] = useState<'rent-roll' | 'other-income' | 'expenses' | 'variance' | 'recommendations' | 'lease-expirations'>('rent-roll');
+  const [subTab, setSubTab] = useState<'revenue-waterfall' | 'rent-roll' | 'other-income' | 'expenses' | 'variance' | 'recommendations' | 'lease-expirations' | 'balance-sheet'>('revenue-waterfall');
   const [rentRoll, setRentRoll] = useState<{ units: any[]; snapshots: string[] } | null>(null);
   const [otherIncome, setOtherIncome] = useState<any[]>([]);
   const [actuals, setActuals] = useState<any[]>([]);
@@ -467,25 +571,28 @@ const RevenueMgmtTab: React.FC<{ dealId: string; deal?: Record<string, unknown> 
   const toN = (v: any) => v == null ? 0 : Number(v) || 0;
 
   const EXPENSE_LINES: { key: string; label: string; color: string }[] = [
-    { key: 'payroll',            label: 'Payroll',       color: '#63B3ED' },
-    { key: 'repairs_maintenance',label: 'R&M',           color: '#68D391' },
-    { key: 'utilities',          label: 'Utilities',     color: '#F6AD55' },
-    { key: 'real_estate_taxes',  label: 'RE Taxes',      color: '#FC8181' },
-    { key: 'management_fee',     label: 'Mgmt Fee',      color: '#B794F4' },
-    { key: 'insurance',          label: 'Insurance',     color: '#4FD1C5' },
-    { key: 'marketing',          label: 'Marketing',     color: '#F687B3' },
-    { key: 'admin_general',      label: 'Admin/G&A',     color: '#FBD38D' },
-    { key: 'turnover_costs',     label: 'Turnover',      color: '#9F7AEA' },
-    { key: 'capex',              label: 'CapEx',         color: '#76E4F7' },
+    { key: 'payroll',            label: 'Payroll',        color: '#63B3ED' },
+    { key: 'repairs_maintenance',label: 'R&M',            color: '#68D391' },
+    { key: 'contract_services',  label: 'Contract Svcs',  color: '#E9D8FD' },
+    { key: 'utilities',          label: 'Utilities',      color: '#F6AD55' },
+    { key: 'real_estate_taxes',  label: 'RE Taxes',       color: '#FC8181' },
+    { key: 'management_fee',     label: 'Mgmt Fee',       color: '#B794F4' },
+    { key: 'insurance',          label: 'Insurance',      color: '#4FD1C5' },
+    { key: 'marketing',          label: 'Marketing',      color: '#F687B3' },
+    { key: 'admin_general',      label: 'Admin/G&A',      color: '#FBD38D' },
+    { key: 'turnover_costs',     label: 'Turnover',       color: '#9F7AEA' },
+    { key: 'capex',              label: 'CapEx',          color: '#76E4F7' },
   ];
 
   const subTabs = [
+    { id: 'revenue-waterfall',  label: 'REVENUE' },
     { id: 'rent-roll',          label: 'RENT ROLL' },
     { id: 'other-income',       label: 'OTHER INCOME' },
     { id: 'expenses',           label: 'EXPENSES' },
-    { id: 'variance',           label: 'VARIANCE' },
+    { id: 'variance',           label: 'BUDGET VS ACTUAL' },
     { id: 'recommendations',    label: 'AI RECOMMENDATIONS' },
     { id: 'lease-expirations',  label: 'LEASE EXPIRATIONS' },
+    { id: 'balance-sheet',      label: 'BALANCE SHEET' },
   ] as const;
 
   const emptyState = (icon: string, msg: string, sub?: string) => (
@@ -507,6 +614,164 @@ const RevenueMgmtTab: React.FC<{ dealId: string; deal?: Record<string, unknown> 
       </div>
 
       {loading && <Spinner />}
+
+      {/* ── REVENUE WATERFALL ── */}
+      {!loading && subTab === 'revenue-waterfall' && (() => {
+        if (!actualsLoaded || actuals.length === 0) {
+          // Load actuals if not loaded
+          if (!actualsLoaded) {
+            apiClient.get(`/api/v1/operations/${dealId}/monthly-actuals?limit=24`)
+              .then(r => { setActuals(r.data?.data ?? []); setActualsLoaded(true); })
+              .catch(() => { setActuals([]); setActualsLoaded(true); });
+            return <Spinner />;
+          }
+          return emptyState('💰', 'NO REVENUE DATA', 'Import monthly actuals to see revenue waterfall');
+        }
+
+        const sorted = [...actuals].sort((a, b) => a.report_month.localeCompare(b.report_month));
+        const latest = sorted[sorted.length - 1];
+        const trailing12 = sorted.slice(-12);
+
+        // Revenue waterfall values
+        const gpr = toN(latest?.gross_potential_rent);
+        const ltl = toN(latest?.loss_to_lease);
+        const vacancy = toN(latest?.vacancy_loss);
+        const concessions = toN(latest?.concessions);
+        const badDebt = toN(latest?.bad_debt);
+        const otherInc = toN(latest?.other_income);
+        const egi = toN(latest?.effective_gross_income);
+        const noi = toN(latest?.noi);
+        const totalUnits = toN(latest?.total_units) || 1;
+        const occupiedUnits = toN(latest?.occupied_units);
+        const avgEffRent = toN(latest?.avg_effective_rent);
+        const avgMktRent = toN(latest?.avg_market_rent);
+
+        // Calculate derived values if not stored
+        const calcLtl = avgMktRent && avgEffRent && occupiedUnits 
+          ? (avgMktRent - avgEffRent) * occupiedUnits 
+          : ltl;
+        const ltlPct = gpr > 0 ? (calcLtl / gpr) * 100 : 0;
+
+        // Rent roll summary from data
+        const ltlTotal = rentRoll?.units?.reduce((sum, u) => {
+          const diff = Number(u.market_rent || 0) - Number(u.current_rent || 0);
+          return sum + (diff > 0 ? diff : 0);
+        }, 0) || calcLtl;
+
+        // Trailing trends
+        const gprTrend = trailing12.map(r => toN(r.gross_potential_rent));
+        const egiTrend = trailing12.map(r => toN(r.effective_gross_income));
+        const noiTrend = trailing12.map(r => toN(r.noi));
+
+        return (
+          <>
+            {/* Key Revenue KPIs */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 10, marginBottom: 12 }}>
+              {[
+                { l: 'GROSS POTENTIAL RENT', v: fmt$(gpr), c: T.text.green },
+                { l: 'LOSS-TO-LEASE', v: ltlPct > 0 ? `${ltlPct.toFixed(1)}%` : '—', sub: fmt$(calcLtl), c: T.text.red },
+                { l: 'EFFECTIVE GROSS INCOME', v: fmt$(egi), c: T.text.cyan },
+                { l: 'NET OPERATING INCOME', v: fmt$(noi), c: T.text.blue },
+                { l: 'PERIOD', v: latest?.report_month?.slice(0, 7) ?? '—', c: T.text.muted },
+              ].map(k => (
+                <div key={k.l} style={{ background: T.bg.panelAlt, border: `1px solid ${T.border.subtle}`, borderRadius: 4, padding: '10px 14px' }}>
+                  <div style={{ fontSize: 8, color: T.text.muted, fontFamily: T.font.mono, marginBottom: 4 }}>{k.l}</div>
+                  <div style={{ fontSize: 15, fontWeight: 800, fontFamily: T.font.mono, color: k.c }}>{k.v}</div>
+                  {k.sub && <div style={{ fontSize: 9, color: T.text.muted, fontFamily: T.font.mono }}>{k.sub}</div>}
+                </div>
+              ))}
+            </div>
+
+            {/* Revenue Waterfall */}
+            <Panel title="REVENUE WATERFALL — LATEST MONTH">
+              <div style={{ padding: '16px 20px' }}>
+                {[
+                  { l: 'Gross Potential Rent', v: gpr, c: T.text.green, op: '' },
+                  { l: 'Loss-to-Lease', v: calcLtl, c: T.text.red, op: '−' },
+                  { l: 'Vacancy Loss', v: vacancy, c: T.text.red, op: '−' },
+                  { l: 'Concessions', v: concessions, c: T.text.amber, op: '−' },
+                  { l: 'Bad Debt', v: badDebt, c: T.text.red, op: '−' },
+                  { l: 'Other Income', v: otherInc, c: T.text.green, op: '+' },
+                  { l: 'EFFECTIVE GROSS INCOME', v: egi, c: T.text.cyan, op: '=', bold: true },
+                ].map((row, i) => (
+                  <div key={i} style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center', 
+                    padding: '8px 0',
+                    borderBottom: row.bold ? 'none' : `1px solid ${T.border.subtle}`,
+                    marginTop: row.bold ? 8 : 0,
+                    background: row.bold ? T.bg.active : 'transparent',
+                    margin: row.bold ? '8px -20px 0' : 0,
+                    padding: row.bold ? '12px 20px' : '8px 0',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {row.op && <span style={{ width: 16, textAlign: 'center', color: T.text.muted, fontFamily: T.font.mono, fontSize: 12 }}>{row.op}</span>}
+                      <span style={{ fontSize: row.bold ? 11 : 10, fontFamily: T.font.mono, color: row.bold ? T.text.primary : T.text.secondary, fontWeight: row.bold ? 700 : 400 }}>{row.l}</span>
+                    </div>
+                    <span style={{ fontSize: row.bold ? 14 : 11, fontFamily: T.font.mono, fontWeight: row.bold ? 800 : 600, color: row.c }}>
+                      {row.v > 0 || row.bold ? fmt$(row.v) : '—'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </Panel>
+
+            {/* Trend Charts */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+              <Panel title="GPR TREND">
+                <div style={{ padding: 12, height: 80 }}>
+                  <MiniLineChart data={gprTrend} color={T.text.green} height={60} />
+                </div>
+              </Panel>
+              <Panel title="EGI TREND">
+                <div style={{ padding: 12, height: 80 }}>
+                  <MiniLineChart data={egiTrend} color={T.text.cyan} height={60} />
+                </div>
+              </Panel>
+              <Panel title="NOI TREND">
+                <div style={{ padding: 12, height: 80 }}>
+                  <MiniLineChart data={noiTrend} color={T.text.blue} height={60} />
+                </div>
+              </Panel>
+            </div>
+
+            {/* Monthly Revenue Table */}
+            <Panel title="MONTHLY REVENUE DETAIL">
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 9, fontFamily: T.font.mono, minWidth: 800 }}>
+                  <thead>
+                    <tr style={{ background: T.bg.panelAlt }}>
+                      <th style={{ textAlign: 'left', padding: '6px 10px', color: T.text.muted, fontWeight: 600 }}>MONTH</th>
+                      <th style={{ textAlign: 'right', padding: '6px 10px', color: T.text.green, fontWeight: 600 }}>GPR</th>
+                      <th style={{ textAlign: 'right', padding: '6px 10px', color: T.text.red, fontWeight: 600 }}>LTL</th>
+                      <th style={{ textAlign: 'right', padding: '6px 10px', color: T.text.red, fontWeight: 600 }}>VACANCY</th>
+                      <th style={{ textAlign: 'right', padding: '6px 10px', color: T.text.amber, fontWeight: 600 }}>CONC</th>
+                      <th style={{ textAlign: 'right', padding: '6px 10px', color: T.text.green, fontWeight: 600 }}>OTHER</th>
+                      <th style={{ textAlign: 'right', padding: '6px 10px', color: T.text.cyan, fontWeight: 600 }}>EGI</th>
+                      <th style={{ textAlign: 'right', padding: '6px 10px', color: T.text.muted, fontWeight: 600 }}>OCC %</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...sorted].reverse().slice(0, 12).map((row, i) => (
+                      <tr key={i} style={{ borderBottom: `1px solid ${T.border.subtle}` }}>
+                        <td style={{ padding: '5px 10px', color: T.text.primary, fontWeight: 600 }}>{row.report_month?.slice(0, 7)}</td>
+                        <td style={{ padding: '5px 10px', textAlign: 'right', color: T.text.green }}>{fmt$(row.gross_potential_rent)}</td>
+                        <td style={{ padding: '5px 10px', textAlign: 'right', color: T.text.red }}>{toN(row.loss_to_lease) > 0 ? fmt$(row.loss_to_lease) : '—'}</td>
+                        <td style={{ padding: '5px 10px', textAlign: 'right', color: T.text.red }}>{toN(row.vacancy_loss) > 0 ? fmt$(row.vacancy_loss) : '—'}</td>
+                        <td style={{ padding: '5px 10px', textAlign: 'right', color: T.text.amber }}>{toN(row.concessions) > 0 ? fmt$(row.concessions) : '—'}</td>
+                        <td style={{ padding: '5px 10px', textAlign: 'right', color: T.text.green }}>{toN(row.other_income) > 0 ? fmt$(row.other_income) : '—'}</td>
+                        <td style={{ padding: '5px 10px', textAlign: 'right', color: T.text.cyan, fontWeight: 600 }}>{fmt$(row.effective_gross_income)}</td>
+                        <td style={{ padding: '5px 10px', textAlign: 'right', color: T.text.secondary }}>{row.occupancy_rate ? `${(Number(row.occupancy_rate) * 100).toFixed(1)}%` : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Panel>
+          </>
+        );
+      })()}
 
       {!loading && subTab === 'rent-roll' && (
         !rentRoll || rentRoll.units.length === 0 ? emptyState('📋', 'NO RENT ROLL IMPORTED', 'Use the Actuals tab to import rent roll snapshots') : (
@@ -756,6 +1021,11 @@ const RevenueMgmtTab: React.FC<{ dealId: string; deal?: Record<string, unknown> 
         <div style={{ flex: 1, minHeight: 0 }}>
           <OperationsIntelligenceSection dealId={dealId} initialPanel="leases" compact />
         </div>
+      )}
+
+      {/* ── BALANCE SHEET ── */}
+      {!loading && subTab === 'balance-sheet' && (
+        <BalanceSheetSubTab dealId={dealId} fmt$={fmt$} toN={toN} emptyState={emptyState} />
       )}
 
     </div>
