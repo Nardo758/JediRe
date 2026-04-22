@@ -192,6 +192,31 @@ export const DATA_SOURCES: DataSource[] = [
   },
 
   {
+    id: 'cre_rss',
+    name: 'CRE Trade-Press RSS',
+    category: 'news',
+    description: 'Free public RSS/JSON feeds from CRE publishers (GlobeSt, Bisnow, Connect CRE, REJournals, MFE, MHN, BiggerPockets, SEC EDGAR REIT 8-K, Reddit). Aggregated by services/discovery/sources/cre-rss.',
+    baseUrl: 'aggregate://cre-rss',
+    authType: 'none',
+    rateLimit: { requests: 600, perSeconds: 3600 },
+    endpoints: [
+      {
+        id: 'all',
+        name: 'All CRE Trade-Press Feeds',
+        path: '',
+        method: 'GET',
+        description: 'Fetch and dedupe items from all configured CRE feeds. Filter by keywords/MSAs.',
+        parameters: z.object({
+          keywords: z.array(z.string()).optional(),
+          msaTokens: z.array(z.string()).optional(),
+          maxAgeDays: z.number().optional().default(14),
+        }),
+        refreshInterval: 1800, // 30 min
+      },
+    ],
+  },
+
+  {
     id: 'googlenews',
     name: 'Google News RSS',
     category: 'news',

@@ -583,4 +583,84 @@ router.get('/rss', async (req: Request, res: Response, next: NextFunction) => {
   }
 });
 
+/**
+ * GET /api/v1/news/discoveries
+ * Trade-press items discovered by the cre-rss source (and friends).
+ * Filterable by deal_id (returns items tagged with that deal) or source.
+ */
+router.get('/discoveries', authMiddleware.requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = (req as any).user?.userId;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
+    const { deal_id, source, limit = 50 } = req.query;
+
+    if (!deal_id) {
+      return res.status(400).json({
+        success: false,
+        message: 'deal_id is required',
+      });
+    }
+    if (!isValidUUID(String(deal_id))) {
+      return res.status(400).json({ success: false, message: 'Invalid deal_id' });
+    }
+
+    // Authorization: caller must own the deal directly or share an org with it.
+    const accessRes = await query(
+      `SELECT d.id
+       FROM deals d
+       LEFT JOIN org_members om
+         ON om.org_id = d.org_id AND om.user_id = $2
+       WHERE d.id = $1
+         AND (d.user_id = $2 OR om.user_id IS NOT NULL)`,
+      [deal_id, userId]
+    );
+    if (accessRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Deal not found' });
+    }
+
+    const where: string[] = [`relevant_deals @> $1::jsonb`];
+    const params: any[] = [JSON.stringify([deal_id])];
+    let i = 2;
+
+    if (source) {
+      where.push(`source ILIKE $${i}`);
+      params.push(`%${source}%`);
+      i++;
+    }
+
+    params.push(Math.min(parseInt(limit as string, 10) || 50, 200));
+
+    const sql = `
+      SELECT id, headline, source, url, published_at, summary, category,
+             relevant_msas
+      FROM news_discoveries
+      WHERE ${where.join(' AND ')}
+      ORDER BY published_at DESC
+      LIMIT $${i}
+    `;
+    const result = await query(sql, params);
+
+    res.json({
+      success: true,
+      data: result.rows.map((r: any) => ({
+        id: r.id,
+        headline: r.headline,
+        source: r.source,
+        url: r.url,
+        publishedAt: r.published_at,
+        summary: r.summary,
+        category: r.category,
+        relevantMsas: r.relevant_msas,
+      })),
+      count: result.rows.length,
+    });
+  } catch (error) {
+    logger.error('Error fetching news discoveries:', error);
+    next(error);
+  }
+});
+
 export default router;

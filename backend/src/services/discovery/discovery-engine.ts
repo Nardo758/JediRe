@@ -17,6 +17,7 @@ import { DATA_SOURCES, DataSource, DataEndpoint, getDataSource } from './data-so
 import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { eventDispatcher } from '../agents/event-dispatcher';
+import { fetchCreTradePressFeeds, canonicalizeUrl, CreFeedItem } from './sources/cre-rss';
 
 // ============================================================================
 // TYPES
@@ -166,8 +167,46 @@ class DiscoveryEngine {
   /**
    * Discover relevant news for a topic/MSA
    */
-  async discoverNews(topics: string[]): Promise<NewsDiscovery[]> {
+  async discoverNews(topics: string[], opts?: { msaTokens?: string[] }): Promise<NewsDiscovery[]> {
     const discoveries: NewsDiscovery[] = [];
+    const seenUrls = new Set<string>();
+
+    const pushUnique = (item: NewsDiscovery) => {
+      const key = canonicalizeUrl(item.url) || item.id;
+      if (seenUrls.has(key)) return;
+      seenUrls.add(key);
+      discoveries.push(item);
+    };
+
+    // CRE trade press (free, no API keys) — run first so we have a strong baseline
+    try {
+      const keywords = topics
+        .flatMap((t) => t.split(/\s+/))
+        .map((w) => w.toLowerCase())
+        .filter((w) => w.length >= 3);
+
+      const creItems: CreFeedItem[] = await fetchCreTradePressFeeds({
+        keywords: keywords.length > 0 ? keywords : undefined,
+        msaTokens: opts?.msaTokens,
+        perFeedLimit: 25,
+        maxAgeDays: 14,
+      });
+
+      for (const item of creItems.slice(0, 100)) {
+        pushUnique({
+          id: item.id,
+          headline: item.headline,
+          source: item.source,
+          url: item.url,
+          publishedAt: item.publishedAt,
+          summary: item.summary,
+          category: item.category,
+          relevantMsas: item.marketHint ? [item.marketHint] : undefined,
+        });
+      }
+    } catch (err) {
+      logger.warn('cre-rss discovery failed:', err);
+    }
 
     // Try NewsAPI first
     if (process.env.NEWSAPI_KEY) {
@@ -181,7 +220,7 @@ class DiscoveryEngine {
 
           if (result?.data?.articles) {
             for (const article of result.data.articles.slice(0, 5)) {
-              discoveries.push({
+              pushUnique({
                 id: `newsapi_${Buffer.from(article.url).toString('base64').slice(0, 20)}`,
                 headline: article.title,
                 source: article.source?.name || 'Unknown',
@@ -207,7 +246,7 @@ class DiscoveryEngine {
         
         const items = parsed?.rss?.channel?.[0]?.item || [];
         for (const item of items.slice(0, 5)) {
-          discoveries.push({
+          pushUnique({
             id: `gnews_${Buffer.from(item.link?.[0] || '').toString('base64').slice(0, 20)}`,
             headline: item.title?.[0] || '',
             source: item.source?.[0]?._ || 'Google News',
@@ -252,14 +291,22 @@ class DiscoveryEngine {
       deal.msa_name ? `${deal.msa_name} real estate` : null,
     ].filter(Boolean) as string[];
 
-    const news = await this.discoverNews(topics);
+    const msaTokens = [deal.city, deal.msa_name].filter(Boolean) as string[];
+    const news = await this.discoverNews(topics, { msaTokens });
 
-    // Tag news with deal relevance
-    return news.map(n => ({
+    // Tag news with deal relevance and persist tags
+    const tagged = news.map(n => ({
       ...n,
       relevantDeals: [dealId],
-      relevantMsas: deal.msa_name ? [deal.msa_name] : undefined,
+      relevantMsas: deal.msa_name ? [deal.msa_name] : n.relevantMsas,
     }));
+
+    // Persist deal/MSA tags only — alert dispatch already happened in discoverNews()
+    for (const item of tagged) {
+      await this.upsertNewsDiscoveryTags(item);
+    }
+
+    return tagged;
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -418,7 +465,21 @@ class DiscoveryEngine {
       await query(
         `INSERT INTO news_discoveries (id, headline, source, url, published_at, summary, category, relevant_msas, relevant_deals)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-         ON CONFLICT (id) DO NOTHING`,
+         ON CONFLICT (id) DO UPDATE SET
+           relevant_msas = (
+             SELECT COALESCE(jsonb_agg(DISTINCT v), '[]'::jsonb)
+             FROM jsonb_array_elements(
+               COALESCE(news_discoveries.relevant_msas, '[]'::jsonb) ||
+               COALESCE(EXCLUDED.relevant_msas, '[]'::jsonb)
+             ) AS v
+           ),
+           relevant_deals = (
+             SELECT COALESCE(jsonb_agg(DISTINCT v), '[]'::jsonb)
+             FROM jsonb_array_elements(
+               COALESCE(news_discoveries.relevant_deals, '[]'::jsonb) ||
+               COALESCE(EXCLUDED.relevant_deals, '[]'::jsonb)
+             ) AS v
+           )`,
         [
           news.id,
           news.headline,
@@ -442,6 +503,48 @@ class DiscoveryEngine {
 
     } catch (error) {
       // Ignore duplicates
+    }
+  }
+
+  /**
+   * Append deal/MSA tags to an already-stored news_discoveries row without
+   * re-dispatching alerts. Used by discoverDealNews() to attach deal context
+   * after discoverNews() has already inserted + dispatched.
+   */
+  private async upsertNewsDiscoveryTags(news: NewsDiscovery): Promise<void> {
+    try {
+      await query(
+        `INSERT INTO news_discoveries (id, headline, source, url, published_at, summary, category, relevant_msas, relevant_deals)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         ON CONFLICT (id) DO UPDATE SET
+           relevant_msas = (
+             SELECT COALESCE(jsonb_agg(DISTINCT v), '[]'::jsonb)
+             FROM jsonb_array_elements(
+               COALESCE(news_discoveries.relevant_msas, '[]'::jsonb) ||
+               COALESCE(EXCLUDED.relevant_msas, '[]'::jsonb)
+             ) AS v
+           ),
+           relevant_deals = (
+             SELECT COALESCE(jsonb_agg(DISTINCT v), '[]'::jsonb)
+             FROM jsonb_array_elements(
+               COALESCE(news_discoveries.relevant_deals, '[]'::jsonb) ||
+               COALESCE(EXCLUDED.relevant_deals, '[]'::jsonb)
+             ) AS v
+           )`,
+        [
+          news.id,
+          news.headline,
+          news.source,
+          news.url,
+          news.publishedAt,
+          news.summary,
+          news.category,
+          news.relevantMsas ? JSON.stringify(news.relevantMsas) : null,
+          news.relevantDeals ? JSON.stringify(news.relevantDeals) : null,
+        ]
+      );
+    } catch {
+      /* ignore */
     }
   }
 
