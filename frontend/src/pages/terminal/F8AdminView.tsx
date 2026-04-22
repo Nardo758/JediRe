@@ -215,14 +215,14 @@ function BackgroundJobsSection({ T }: { T: ThemeType }) {
               {jobs.slice(0, 20).map((j, i) => (
                 <tr key={j.id || i} style={{ borderTop: `1px solid ${T.border.subtle}` }}>
                   <td style={{ padding: '10px 14px' }}>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: T.text.primary }}>{j.job_type?.replace(/_/g, ' ')}</div>
-                    {j.error_message && <div style={{ fontSize: 9, color: T.text.red, marginTop: 2 }}>{j.error_message}</div>}
+                    <div style={{ fontSize: 11, fontWeight: 600, color: T.text.primary }}>{(j.type || j.job_type)?.replace(/_/g, ' ')}</div>
+                    {(j.errorCount > 0 || j.error_message) && <div style={{ fontSize: 9, color: T.text.red, marginTop: 2 }}>{j.error_message || `${j.errorCount} errors`}</div>}
                   </td>
                   <td style={{ padding: '10px 14px' }}>
                     <span style={{ fontSize: 9, fontWeight: 700, color: statusStyle(j.status), ...mono }}>{j.status?.toUpperCase()}</span>
                   </td>
-                  <td style={{ padding: '10px 14px', fontSize: 10, color: T.text.muted, ...mono }}>{formatDate(j.started_at)}</td>
-                  <td style={{ padding: '10px 14px', fontSize: 10, color: T.text.muted, ...mono }}>{formatDate(j.completed_at)}</td>
+                  <td style={{ padding: '10px 14px', fontSize: 10, color: T.text.muted, ...mono }}>{formatDate(j.startedAt || j.started_at)}</td>
+                  <td style={{ padding: '10px 14px', fontSize: 10, color: T.text.muted, ...mono }}>{formatDate(j.completedAt || j.completed_at)}</td>
                 </tr>
               ))}
             </tbody>
@@ -451,26 +451,29 @@ function PlatformUsersSection({ T }: { T: ThemeType }) {
               </tr>
             </thead>
             <tbody>
-              {users.map((u, i) => (
-                <tr key={u.id || i} style={{ borderTop: `1px solid ${T.border.subtle}` }}>
-                  <td style={{ padding: '10px 14px' }}>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: T.text.primary }}>{u.full_name || '—'}</div>
-                    <div style={{ fontSize: 9, color: T.text.muted }}>{u.email}</div>
-                  </td>
-                  <td style={{ padding: '10px 14px' }}>
-                    <span style={{ 
-                      fontSize: 9, fontWeight: 700, padding: '2px 6px', 
-                      background: T.bg.panelAlt, 
-                      color: u.role === 'admin' ? T.text.purple : T.text.secondary,
-                      ...mono 
-                    }}>
-                      {u.role?.toUpperCase()}
-                    </span>
-                  </td>
-                  <td style={{ padding: '10px 14px', fontSize: 10, color: T.text.muted, ...mono }}>{formatDate(u.created_at)}</td>
-                  <td style={{ padding: '10px 14px', fontSize: 10, color: T.text.muted, ...mono }}>{formatDate(u.last_sign_in_at)}</td>
-                </tr>
-              ))}
+              {users.map((u, i) => {
+                const fullName = [u.first_name, u.last_name].filter(Boolean).join(' ') || u.full_name;
+                return (
+                  <tr key={u.id || i} style={{ borderTop: `1px solid ${T.border.subtle}` }}>
+                    <td style={{ padding: '10px 14px' }}>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: T.text.primary }}>{fullName || '—'}</div>
+                      <div style={{ fontSize: 9, color: T.text.muted }}>{u.email}</div>
+                    </td>
+                    <td style={{ padding: '10px 14px' }}>
+                      <span style={{ 
+                        fontSize: 9, fontWeight: 700, padding: '2px 6px', 
+                        background: T.bg.panelAlt, 
+                        color: u.role === 'admin' ? T.text.purple : T.text.secondary,
+                        ...mono 
+                      }}>
+                        {u.role?.toUpperCase()}
+                      </span>
+                    </td>
+                    <td style={{ padding: '10px 14px', fontSize: 10, color: T.text.muted, ...mono }}>{formatDate(u.created_at)}</td>
+                    <td style={{ padding: '10px 14px', fontSize: 10, color: T.text.muted, ...mono }}>{formatDate(u.last_login_at || u.last_sign_in_at)}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
@@ -531,7 +534,7 @@ function DealOversightSection({ T }: { T: ThemeType }) {
               {deals.slice(0, 30).map((d, i) => (
                 <tr key={d.id || i} style={{ borderTop: `1px solid ${T.border.subtle}` }}>
                   <td style={{ padding: '10px 14px', fontSize: 11, fontWeight: 600, color: T.text.primary }}>{d.name}</td>
-                  <td style={{ padding: '10px 14px', fontSize: 10, color: T.text.secondary }}>{d.deal_type?.replace(/_/g, ' ')}</td>
+                  <td style={{ padding: '10px 14px', fontSize: 10, color: T.text.secondary }}>{(d.project_type || d.deal_type)?.replace(/_/g, ' ')}</td>
                   <td style={{ padding: '10px 14px' }}>
                     <span style={{ fontSize: 9, fontWeight: 700, color: statusColor(d.status), ...mono }}>{d.status?.toUpperCase()}</span>
                   </td>
@@ -673,9 +676,20 @@ function OrgIntegrationsSection({ T }: { T: ThemeType }) {
     setSaving(true);
     setMessage(null);
     try {
-      const body: Record<string, string> = {};
-      def.fields.forEach(f => { body[f.key] = formValues[f.key] || ''; });
-      await apiClient.post(def.apiPath, body);
+      // Build credentials object and extract environment
+      const credentials: Record<string, string> = {};
+      let environment = 'production';
+      def.fields.forEach(f => {
+        const val = formValues[f.key] || '';
+        if (f.key === 'environment') {
+          environment = val || 'production';
+        } else {
+          credentials[f.key] = val;
+        }
+      });
+      
+      // Backend expects { credentials: {...}, environment: '...' }
+      await apiClient.post(def.apiPath, { credentials, environment });
       setStatuses(prev => ({ ...prev, [def.key]: 'connected' }));
       setOpenForm(null);
       setFormValues({});
