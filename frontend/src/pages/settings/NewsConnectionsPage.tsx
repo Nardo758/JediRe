@@ -13,16 +13,6 @@ interface Connection {
   created_at: string;
 }
 
-interface NewsItem {
-  id: string;
-  connection_id: string;
-  publisher: string | null;
-  url: string;
-  title: string;
-  summary: string | null;
-  published_at: string | null;
-  fetched_at: string;
-}
 
 const API = '/api/v1/news-connections';
 
@@ -71,7 +61,6 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 export function NewsConnectionsPage() {
   const [tab, setTab] = useState<'email' | 'rss' | 'enterprise'>('email');
   const [connections, setConnections] = useState<Connection[]>([]);
-  const [items, setItems] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -84,12 +73,8 @@ export function NewsConnectionsPage() {
     setLoading(true);
     setError(null);
     try {
-      const [c, i] = await Promise.all([
-        api<{ connections: Connection[] }>(''),
-        api<{ items: NewsItem[] }>('/items?limit=25'),
-      ]);
+      const c = await api<{ connections: Connection[] }>('');
       setConnections(c.connections);
-      setItems(i.items);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -522,56 +507,20 @@ export function NewsConnectionsPage() {
         </div>
       )}
 
-      <div style={{ marginTop: 32 }}>
-        <h3
-          style={{
-            color: BT.text.primary,
-            fontSize: 11,
-            letterSpacing: 0.8,
-            fontFamily: "'JetBrains Mono', monospace",
-            marginBottom: 12,
-          }}
-        >
-          RECENT INGESTED ITEMS
-        </h3>
-        <div style={subpanel}>
-          {items.length === 0 ? (
-            <div style={{ color: BT.text.muted, fontSize: 12 }}>
-              Nothing yet. Forward a newsletter or add an RSS feed to start ingesting.
-            </div>
-          ) : (
-            <div style={{ display: 'grid', gap: 10 }}>
-              {items.map((it) => (
-                <div
-                  key={it.id}
-                  style={{
-                    paddingBottom: 10,
-                    borderBottom: `1px solid ${BT.border.subtle}`,
-                  }}
-                >
-                  <a
-                    href={it.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{
-                      color: BT.text.cyan,
-                      fontSize: 12,
-                      textDecoration: 'none',
-                      display: 'block',
-                      marginBottom: 2,
-                    }}
-                  >
-                    {it.title}
-                  </a>
-                  <div style={{ color: BT.text.muted, fontSize: 10 }}>
-                    {it.publisher || 'Unknown'} ·{' '}
-                    {new Date(it.published_at || it.fetched_at).toLocaleString()}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+      <div
+        style={{
+          marginTop: 32,
+          padding: 14,
+          border: `1px solid ${BT.border.subtle}`,
+          background: BT.bg.subtle,
+          color: BT.text.muted,
+          fontSize: 11,
+          fontFamily: "'JetBrains Mono', monospace",
+          letterSpacing: 0.4,
+        }}
+      >
+        Ingested articles appear in <span style={{ color: BT.text.cyan }}>TERMINAL · F5 NEWS</span>, not here.
+        This page is for managing connections only.
       </div>
     </div>
   );
