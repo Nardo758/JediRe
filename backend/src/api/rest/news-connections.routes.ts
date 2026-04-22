@@ -28,91 +28,34 @@ import {
   encryptFeedSecret,
   pollOneRssConnection,
 } from '../../services/news-connections/rss-feeds';
-import dns from 'dns/promises';
-import net from 'net';
+import { ssrfGuardFeedUrl } from '../../services/news-connections/ssrf-guard';
 
 const router = Router();
-
-/**
- * SSRF guard for user-supplied feed URLs.
- *
- * Rejects:
- *   - non-http(s) protocols
- *   - hostnames whose A/AAAA records resolve to private/loopback/link-local
- *     ranges (or the cloud-metadata IP 169.254.169.254)
- *   - hostnames that *literally* are 'localhost' or a private literal IP
- *
- * Returns null on success or an error message string.
- */
-async function ssrfGuardFeedUrl(rawUrl: string): Promise<string | null> {
-  let parsed: URL;
-  try {
-    parsed = new URL(rawUrl);
-  } catch {
-    return 'url is not a valid URL';
-  }
-  if (!['http:', 'https:'].includes(parsed.protocol)) {
-    return 'url must use http(s)';
-  }
-  const host = parsed.hostname.toLowerCase();
-  if (host === 'localhost' || host.endsWith('.localhost') || host === '0.0.0.0') {
-    return 'feed host is not reachable from this server';
-  }
-
-  const isPrivate = (ip: string): boolean => {
-    if (!net.isIP(ip)) return true; // refuse anything we can't classify
-    if (net.isIP(ip) === 4) {
-      const o = ip.split('.').map(Number);
-      if (o[0] === 10) return true;
-      if (o[0] === 127) return true;
-      if (o[0] === 0) return true;
-      if (o[0] === 169 && o[1] === 254) return true; // link-local + AWS metadata
-      if (o[0] === 172 && o[1] >= 16 && o[1] <= 31) return true;
-      if (o[0] === 192 && o[1] === 168) return true;
-      if (o[0] >= 224) return true; // multicast / reserved
-      return false;
-    }
-    // IPv6
-    const lower = ip.toLowerCase();
-    if (lower === '::' || lower === '::1') return true;
-    if (lower.startsWith('fc') || lower.startsWith('fd')) return true; // ULA
-    if (lower.startsWith('fe80')) return true; // link-local
-    if (lower.startsWith('::ffff:')) return isPrivate(lower.slice(7)); // IPv4-mapped
-    return false;
-  };
-
-  // If the hostname is an IP literal, classify directly.
-  if (net.isIP(host)) {
-    if (isPrivate(host)) {
-      return 'feed host resolves to a private network';
-    }
-    return null;
-  }
-
-  try {
-    const records = await dns.lookup(host, { all: true });
-    if (!records.length) return 'feed host could not be resolved';
-    for (const r of records) {
-      if (isPrivate(r.address)) {
-        return 'feed host resolves to a private network';
-      }
-    }
-  } catch {
-    return 'feed host could not be resolved';
-  }
-  return null;
-}
 
 const INBOUND_EMAIL_DOMAIN =
   process.env.INBOUND_EMAIL_DOMAIN || 'inbox.jedire.app';
 
 const ENTERPRISE_PROVIDERS = new Set(['bloomberg', 'reuters', 'refinitiv']);
 
+interface ConnectionRow {
+  id: string;
+  user_id?: string;
+  type: 'email' | 'rss' | 'oauth';
+  label: string;
+  address: string | null;
+  encrypted_credentials?: string | null;
+  metadata: Record<string, unknown> | null;
+  status: string;
+  last_synced_at: string | Date | null;
+  last_error: string | null;
+  created_at: string | Date;
+}
+
 /**
  * Strip sensitive columns from a connection row before returning to the API.
  * encrypted_credentials never leaves the server.
  */
-function sanitize(row: any) {
+function sanitize(row: ConnectionRow) {
   return {
     id: row.id,
     type: row.type,
@@ -163,9 +106,10 @@ router.post('/email', requireAuth, async (req: AuthenticatedRequest, res: Respon
         [userId, label, address]
       );
       return res.status(201).json({ connection: sanitize(result.rows[0]) });
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Unique-violation on the address index → loop and try a new token.
-      if (err?.code !== '23505') {
+      const code = (err as { code?: string } | null)?.code;
+      if (code !== '23505') {
         logger.error('[news-connections] failed to provision email connection', err);
         return res.status(500).json({ error: 'Could not provision inbound address' });
       }
@@ -274,8 +218,9 @@ router.post(
     try {
       const out = await pollOneRssConnection(conn);
       return res.json({ success: true, ...out });
-    } catch (err: any) {
-      return res.status(500).json({ error: err?.message || 'Sync failed' });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Sync failed';
+      return res.status(500).json({ error: msg });
     }
   }
 );
@@ -290,7 +235,7 @@ router.patch('/:id', requireAuth, async (req: AuthenticatedRequest, res: Respons
   const allowedStatuses = new Set(['active', 'paused']);
 
   const sets: string[] = [];
-  const params: any[] = [];
+  const params: unknown[] = [];
   let i = 1;
   if (typeof req.body?.label === 'string') {
     sets.push(`label = $${i++}`);
@@ -342,7 +287,7 @@ router.get('/items', requireAuth, async (req: AuthenticatedRequest, res: Respons
                     author, published_at, fetched_at
                FROM user_news_items
               WHERE user_id = $1`;
-  const params: any[] = [userId];
+  const params: unknown[] = [userId];
   if (connectionId) {
     sql += ` AND connection_id = $${params.length + 1}`;
     params.push(connectionId);
@@ -374,8 +319,17 @@ router.post('/inbound-email', async (req: Request, res: Response) => {
     if (got !== expected) return res.status(401).json({ error: 'Bad webhook secret' });
   }
 
-  const body: any = req.body || {};
-  // Normalize across vendors:
+  // Normalize across vendors. Each shape is a partial union of these fields.
+  interface InboundWebhookBody {
+    From?: string; To?: string | string[]; Subject?: string;
+    HtmlBody?: string; TextBody?: string; Date?: string;
+    from?: string; to?: string | string[]; subject?: string;
+    html?: string; text?: string;
+    sender?: string; recipient?: string;
+    'body-html'?: string; 'body-plain'?: string;
+    timestamp?: string; date?: string;
+  }
+  const body: InboundWebhookBody = req.body || {};
   //   Postmark: { From, To, Subject, HtmlBody, TextBody, Date }
   //   Mailgun:  { sender, recipient, subject, 'body-html', 'body-plain', timestamp }
   //   SendGrid: { from, to, subject, html, text }

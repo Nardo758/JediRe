@@ -463,7 +463,7 @@ router.get('/network', authMiddleware.requireAuth, async (req: Request, res: Res
  * GET /api/v1/news/feed
  * Aggregated RSS news feed for Bottom Panel NEWS tab
  */
-router.get('/feed', authMiddleware.requireAuth, async (req: any, res: Response, next: NextFunction) => {
+router.get('/feed', authMiddleware.requireAuth, async (req: Request & { user?: { userId?: string } }, res: Response, next: NextFunction) => {
   try {
     const { limit = 50, sources, refresh = 'false' } = req.query;
     const userId: string | undefined = req.user?.userId;
@@ -549,7 +549,30 @@ router.get('/feed', authMiddleware.requireAuth, async (req: any, res: Response, 
             LIMIT 25`,
           [userId]
         );
-        const premium = userItems.rows.map((it: any) => ({
+        interface UserItemRow {
+          id: string;
+          source: string;
+          publisher: string | null;
+          url: string;
+          title: string;
+          summary: string | null;
+          published_at: string | Date | null;
+          fetched_at: string | Date;
+        }
+        interface FeedArticle {
+          id: string;
+          headline: string;
+          summary: string;
+          link: string;
+          published_at: string;
+          source: string;
+          sourceId: string;
+          sourceColor: string;
+          impact: string | null;
+          jedi_delta: number | null;
+          is_premium?: boolean;
+        }
+        const premium: FeedArticle[] = (userItems.rows as UserItemRow[]).map((it) => ({
           id: `user-${it.id}`,
           headline: it.title,
           summary: it.summary || '',
@@ -560,13 +583,13 @@ router.get('/feed', authMiddleware.requireAuth, async (req: any, res: Response, 
           source: it.publisher || 'Your Subscription',
           sourceId: it.source,
           sourceColor: '#FFCC00',
-          impact: null as string | null,
-          jedi_delta: null as number | null,
+          impact: null,
+          jedi_delta: null,
           is_premium: true,
         }));
-        articles = [...premium, ...articles]
+        articles = [...premium, ...(articles as FeedArticle[])]
           .sort(
-            (a: any, b: any) =>
+            (a: FeedArticle, b: FeedArticle) =>
               new Date(b.published_at).getTime() - new Date(a.published_at).getTime()
           )
           .slice(0, parseInt(limit as string));

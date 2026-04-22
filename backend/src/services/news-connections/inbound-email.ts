@@ -163,7 +163,7 @@ export function detectPublisher(payload: InboundEmailPayload): {
 export async function findConnectionByAddress(address: string): Promise<{
   id: string;
   user_id: string;
-  metadata: any;
+  metadata: Record<string, unknown> | null;
 } | null> {
   const result = await query(
     `SELECT id, user_id, metadata
@@ -180,7 +180,7 @@ export async function findConnectionByAddress(address: string): Promise<{
  * Tracks detected publishers in the connection's metadata.
  */
 export async function persistInboundItems(
-  connection: { id: string; user_id: string; metadata: any },
+  connection: { id: string; user_id: string; metadata: Record<string, unknown> | null },
   payload: InboundEmailPayload,
   items: ExtractedNewsItem[]
 ): Promise<number> {
@@ -216,8 +216,11 @@ export async function persistInboundItems(
 
   // Track detected publishers + last-seen timestamp in metadata so the settings
   // UI can show "We're seeing newsletters from: WSJ, FT".
-  const meta = connection.metadata || {};
-  const detected = new Set<string>(meta.detectedPublishers || []);
+  const meta = (connection.metadata || {}) as Record<string, unknown>;
+  const prior = Array.isArray(meta.detectedPublishers)
+    ? (meta.detectedPublishers as string[])
+    : [];
+  const detected = new Set<string>(prior);
   detected.add(publisher.label);
   await query(
     `UPDATE user_news_connections

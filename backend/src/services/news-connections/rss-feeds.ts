@@ -14,11 +14,12 @@ import { query } from '../../database/connection';
 import { encrypt, decrypt } from '../../utils/encryption';
 import { logger } from '../../utils/logger';
 import { canonicalizeUrl, dedupeKey } from './inbound-email';
+import { safeFetchText } from './ssrf-guard';
 
-const rssParser = new Parser({
-  timeout: 10_000,
-  headers: { 'User-Agent': 'JediRe/1.0 PersonalNewsAggregator (+https://jedire.app)' },
-});
+// We do NOT use rssParser.parseURL() — it would fetch directly with no SSRF
+// guard. Instead we fetch via safeFetchText (DNS-rebinding-safe + redirect-
+// safe) and hand the body to parseString().
+const rssParser = new Parser({});
 
 const POLL_INTERVAL_MS = 60 * 60 * 1000; // hourly
 
@@ -55,7 +56,7 @@ interface RssConnectionRow {
   user_id: string;
   label: string;
   encrypted_credentials: string | null;
-  metadata: any;
+  metadata: Record<string, unknown> | null;
 }
 
 async function listActiveRssConnections(): Promise<RssConnectionRow[]> {
@@ -72,8 +73,11 @@ async function recordSuccess(
   inserted: number,
   publisher: string
 ): Promise<void> {
-  const meta = conn.metadata || {};
-  const detected = new Set<string>(meta.detectedPublishers || []);
+  const meta = (conn.metadata || {}) as Record<string, unknown>;
+  const prior = Array.isArray(meta.detectedPublishers)
+    ? (meta.detectedPublishers as string[])
+    : [];
+  const detected = new Set<string>(prior);
   if (publisher) detected.add(publisher);
   await query(
     `UPDATE user_news_connections
@@ -118,9 +122,10 @@ export async function pollOneRssConnection(
   const fp = fingerprintUrl(url);
   let feed;
   try {
-    feed = await rssParser.parseURL(url);
-  } catch (err: any) {
-    const msg = err?.message || String(err);
+    const body = await safeFetchText(url);
+    feed = await rssParser.parseString(body);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
     logger.error(`[news-connections] rss fetch failed for ${conn.id} (${fp}): ${msg}`);
     await recordError(conn, msg);
     return { inserted: 0, publisher: '' };
