@@ -406,6 +406,208 @@ export const HARRIS_COUNTY_TX: CountyAPIConfig = {
 };
 
 /**
+ * Fulton County, GA (Atlanta)
+ */
+export const FULTON_COUNTY_GA: CountyAPIConfig = {
+  county: 'Fulton',
+  state: 'GA',
+  fipsCode: '13121',
+  pattern: 'arcgis_featureserver',
+  
+  baseUrl: 'https://gis.fultoncountyga.gov/arcgis/rest/services',
+  parcelsEndpoint: 'https://gis.fultoncountyga.gov/arcgis/rest/services/Parcels/ParcelData/MapServer',
+  
+  parcelsLayerId: 0,
+  
+  searchField: 'LOCATION',
+  searchType: 'address',
+  
+  fieldMappings: {
+    parcelId: 'PARCEL_ID',
+    parcelNumber: 'PARCEL_ID',
+    
+    fullAddress: 'LOCATION',
+    city: 'CITY',
+    zip: 'ZIP',
+    
+    yearBuilt: 'YEAR_BUILT',
+    livingArea: 'TOTAL_SQFT',
+    landSqFt: 'LAND_SQFT',
+    acres: 'ACRES',
+    
+    zoning: 'ZONING',
+    landUseCode: 'LAND_USE_CODE',
+    landUseDescription: 'LAND_USE_DESC',
+    
+    ownerName: 'OWNER_NAME',
+    ownerAddress: 'OWNER_ADDR',
+    ownerCity: 'OWNER_CITY',
+    ownerState: 'OWNER_STATE',
+    ownerZip: 'OWNER_ZIP',
+    
+    justValue: 'TOTAL_VALUE',
+    landValue: 'LAND_VALUE',
+    buildingValue: 'IMPR_VALUE',
+    
+    saleDate: 'LAST_SALE_DATE',
+    saleAmount: 'LAST_SALE_PRICE',
+  }
+};
+
+/**
+ * DeKalb County, GA
+ */
+export const DEKALB_COUNTY_GA: CountyAPIConfig = {
+  county: 'DeKalb',
+  state: 'GA',
+  fipsCode: '13089',
+  pattern: 'arcgis_featureserver',
+  
+  baseUrl: 'https://dcgis.dekalbcountyga.gov/hosted/rest/services',
+  parcelsEndpoint: 'https://dcgis.dekalbcountyga.gov/hosted/rest/services/Parcels/MapServer',
+  
+  parcelsLayerId: 0,
+  
+  searchField: 'SITEADDR',
+  searchType: 'address',
+  
+  fieldMappings: {
+    parcelId: 'PARCELID',
+    parcelNumber: 'LOWPARCELID',
+    
+    fullAddress: 'SITEADDR',
+    city: 'CVTTXDSCRP',
+    zip: 'ZIPCODE',
+    
+    yearBuilt: 'YRBLT',
+    livingArea: 'SFLA',
+    landSqFt: 'LNDSQFT',
+    acres: 'ACREAGE',
+    
+    zoning: 'ZONING',
+    landUseCode: 'LANDUSCD',
+    landUseDescription: 'LANDUSE',
+    
+    ownerName: 'CNVYNAME',
+    ownerAddress: 'MAILADDR',
+    ownerCity: 'MAILCITY',
+    ownerState: 'MAILSTATE',
+    ownerZip: 'MAILZIP',
+    
+    justValue: 'TOTVALUE',
+    landValue: 'LNDVALUE',
+    buildingValue: 'IMPVALUE',
+    
+    saleDate: 'SALEDT',
+    saleAmount: 'SALEPRC',
+  }
+};
+
+/**
+ * Gwinnett County, GA
+ */
+export const GWINNETT_COUNTY_GA: CountyAPIConfig = {
+  county: 'Gwinnett',
+  state: 'GA',
+  fipsCode: '13135',
+  pattern: 'arcgis_featureserver',
+  
+  baseUrl: 'https://gis3.gwinnettcounty.com/mapvis/rest/services/GISDataBrowser',
+  parcelsEndpoint: 'https://gis3.gwinnettcounty.com/mapvis/rest/services/GISDataBrowser/GC_Parcel/MapServer',
+  
+  parcelsLayerId: 6,
+  
+  searchField: 'SITUS',
+  searchType: 'address',
+  
+  fieldMappings: {
+    parcelId: 'PARCEL_ID',
+    parcelNumber: 'PARCEL_ID',
+    
+    fullAddress: 'SITUS',
+    city: 'CITY',
+    zip: 'ZIP',
+    
+    yearBuilt: 'YEAR_BUILT',
+    livingArea: 'SQFT',
+    landSqFt: 'LAND_SQFT',
+    acres: 'ACREAGE',
+    
+    zoning: 'ZONING',
+    landUseCode: 'LAND_USE',
+    landUseDescription: 'LAND_USE_DESC',
+    
+    ownerName: 'OWNER',
+    ownerAddress: 'MAIL_ADDR',
+    ownerCity: 'MAIL_CITY',
+    ownerState: 'MAIL_STATE',
+    ownerZip: 'MAIL_ZIP',
+    
+    justValue: 'TOTAL_VALUE',
+    landValue: 'LAND_VALUE',
+    buildingValue: 'IMPR_VALUE',
+    
+    saleDate: 'SALE_DATE',
+    saleAmount: 'SALE_PRICE',
+    
+    subdivisionName: 'SUBDIVISION',
+  }
+};
+
+/**
+ * Cobb County, GA
+ */
+export const COBB_COUNTY_GA: CountyAPIConfig = {
+  county: 'Cobb',
+  state: 'GA',
+  fipsCode: '13067',
+  pattern: 'arcgis_featureserver',
+  
+  baseUrl: 'https://services.arcgis.com/HYLRafMc4Ux6DA8c/ArcGIS/rest/services',
+  parcelsEndpoint: 'https://services.arcgis.com/HYLRafMc4Ux6DA8c/ArcGIS/rest/services/CobbParcelsCopy041425/FeatureServer',
+  
+  parcelsLayerId: 1,
+  
+  searchField: 'ST_NUMBER',
+  searchType: 'address',
+  
+  fieldMappings: {
+    parcelId: 'PARCEL_ID',
+    parcelNumber: 'PARCEL_ID',
+    
+    fullAddress: 'SITUS_ADDR',
+    streetNumber: 'ST_NUMBER',
+    streetName: 'ST_NAME',
+    city: 'CITY',
+    zip: 'ZIP_CODE',
+    
+    yearBuilt: 'YEAR_BUILT',
+    livingArea: 'TOT_SQFT',
+    landSqFt: 'LAND_SQFT',
+    acres: 'ACRES',
+    
+    zoning: 'ZONING',
+    landUseCode: 'LAND_USE',
+    landUseDescription: 'LAND_DESC',
+    
+    ownerName: 'OWNER_NAME',
+    ownerAddress: 'OWNER_ADDR',
+    ownerCity: 'OWNER_CITY',
+    ownerState: 'OWNER_ST',
+    ownerZip: 'OWNER_ZIP',
+    
+    justValue: 'TOTAL_VAL',
+    landValue: 'LAND_VAL',
+    buildingValue: 'IMPR_VAL',
+    
+    saleDate: 'SALE_DATE',
+    saleAmount: 'SALE_PRICE',
+    
+    subdivisionName: 'SUBDIVISION',
+  }
+};
+
+/**
  * Dallas County, TX
  */
 export const DALLAS_COUNTY_TX: CountyAPIConfig = {
@@ -455,12 +657,20 @@ export const DALLAS_COUNTY_TX: CountyAPIConfig = {
  * All configured counties
  */
 export const COUNTY_CONFIGS: CountyAPIConfig[] = [
+  // Florida
   PASCO_COUNTY_FL,
   HILLSBOROUGH_COUNTY_FL,
   ORANGE_COUNTY_FL,
   OSCEOLA_COUNTY_FL,
   PINELLAS_COUNTY_FL,
+  // Georgia (Atlanta Metro)
+  FULTON_COUNTY_GA,
+  DEKALB_COUNTY_GA,
+  GWINNETT_COUNTY_GA,
+  COBB_COUNTY_GA,
+  // Arizona
   MARICOPA_COUNTY_AZ,
+  // Texas
   HARRIS_COUNTY_TX,
   DALLAS_COUNTY_TX,
 ];
