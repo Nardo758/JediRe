@@ -454,6 +454,39 @@ export const BulkUploadPanel: React.FC<BulkUploadPanelProps> = ({ onUploadComple
                   ⚠️ {uploadJob.assetsNeedingDetails!.length} asset{uploadJob.assetsNeedingDetails!.length > 1 ? 's' : ''} need{uploadJob.assetsNeedingDetails!.length === 1 ? 's' : ''} details for comp matching
                 </div>
               )}
+              {uploadJob.enrichment && (
+                <div
+                  style={{
+                    marginTop: 8, padding: '6px 10px', textAlign: 'left', fontSize: 10,
+                    background:
+                      uploadJob.enrichment.status === 'complete' && uploadJob.enrichment.enriched > 0 ? `${C.green}14` :
+                      uploadJob.enrichment.status === 'running' ? `${C.amber}14` :
+                      `${C.muted}14`,
+                    border: `1px solid ${
+                      uploadJob.enrichment.status === 'complete' && uploadJob.enrichment.enriched > 0 ? `${C.green}44` :
+                      uploadJob.enrichment.status === 'running' ? `${C.amber}44` :
+                      `${C.muted}44`
+                    }`,
+                    color:
+                      uploadJob.enrichment.status === 'complete' && uploadJob.enrichment.enriched > 0 ? C.green :
+                      uploadJob.enrichment.status === 'running' ? C.amber : C.muted,
+                  }}
+                >
+                  {uploadJob.enrichment.status === 'running' && '⏳ Auto-enriching from county records…'}
+                  {uploadJob.enrichment.status === 'pending' && '⏳ Auto-enrichment queued…'}
+                  {uploadJob.enrichment.status === 'skipped' && (uploadJob.enrichment.summary || 'No enrichment available for these uploads.')}
+                  {uploadJob.enrichment.status === 'complete' && (
+                    uploadJob.enrichment.enriched > 0
+                      ? (uploadJob.enrichment.summary || `Enriched ${uploadJob.enrichment.enriched} field(s) from county records.`)
+                      : (uploadJob.enrichment.summary || 'No enrichment data was available for these properties.')
+                  )}
+                  {uploadJob.enrichment.status === 'complete' && uploadJob.enrichment.conflicts > 0 && (
+                    <div style={{ marginTop: 2, color: C.amber }}>
+                      ⚠️ {uploadJob.enrichment.conflicts} field conflict{uploadJob.enrichment.conflicts > 1 ? 's' : ''} require{uploadJob.enrichment.conflicts === 1 ? 's' : ''} review — open the asset to resolve.
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
           

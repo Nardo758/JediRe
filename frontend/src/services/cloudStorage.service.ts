@@ -61,6 +61,16 @@ export interface CloudSyncJob {
   createdAt: string;
 }
 
+export interface BulkUploadEnrichmentSummary {
+  // Status of the auto-enrichment phase that runs after bulk upload completes.
+  status: 'pending' | 'running' | 'complete' | 'skipped';
+  triggered: number;
+  enriched: number;
+  failed: number;
+  conflicts: number;
+  summary?: string;
+}
+
 export interface BulkUploadJob {
   id: string;
   status: 'uploading' | 'extracting' | 'parsing' | 'complete' | 'error';
@@ -72,6 +82,7 @@ export interface BulkUploadJob {
   errors: string[];
   createdAt: string;
   completedAt?: string;
+  enrichment?: BulkUploadEnrichmentSummary;
 }
 
 class CloudStorageService {
