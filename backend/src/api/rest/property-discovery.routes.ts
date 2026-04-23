@@ -462,10 +462,13 @@ router.post('/enrich/:assetId', async (req: Request, res: Response) => {
     if (own.rows[0].created_by !== userId) {
       return res.status(403).json({ error: 'Not authorized to enrich this asset' });
     }
+    // Preview-only by default: persist a proposal log but DO NOT mutate the
+    // asset. The client must explicitly accept/reject via /enrichment-log/:id/resolve.
     const result = await autoEnrichmentService.enrichAssetById(assetId, {
       autoEnrichOnUpload: true,
       minDqScoreForAutoEnrich: force ? 100 : 50,
       requireConfirmation: true,
+      previewOnly: true,
     });
     if (!result) {
       return res.status(404).json({ error: 'Asset not found or not eligible for enrichment' });

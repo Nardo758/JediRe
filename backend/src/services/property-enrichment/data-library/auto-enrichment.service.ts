@@ -158,7 +158,7 @@ export class DataLibraryAutoEnrichmentService {
    */
   async enrichAssetById(
     assetId: string,
-    config: Partial<EnrichmentConfig> = {}
+    config: Partial<EnrichmentConfig> & { previewOnly?: boolean } = {}
   ): Promise<EnrichmentResult | null> {
     const asset = await this.loadAsset(assetId);
     if (!asset) return null;
@@ -170,8 +170,10 @@ export class DataLibraryAutoEnrichmentService {
     const logId = await this.logEnrichment(asset, result, cfg);
     result.logId = logId;
 
-    // Auto-apply only if no conflicts (or overwrite mode is on and confirmation not required)
+    // Auto-apply only if no conflicts (or overwrite mode is on and confirmation not required).
+    // previewOnly forces a no-write proposal — caller must apply via /resolve.
     const shouldAutoApply =
+      !config.previewOnly &&
       result.success &&
       (result.conflicts.length === 0 || (cfg.overwriteExisting && !cfg.requireConfirmation));
 
