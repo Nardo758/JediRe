@@ -502,6 +502,9 @@ app.use('/api/v1/property-discovery', propertyDiscoveryRouter);
 
 import apartmentLocatorRouter from './api/rest/apartment-locator.routes';
 app.use('/api/v1/apartment-locator', apartmentLocatorRouter);
+// Alias under property-discovery for spec compliance
+// (e.g. /api/v1/property-discovery/apartment-locator/sync-table)
+app.use('/api/v1/property-discovery/apartment-locator', apartmentLocatorRouter);
 
 // Learning feedback system routes
 import learningRouter from './api/rest/learning.routes';

@@ -320,8 +320,9 @@ async function processUploadJob(job: UploadJob): Promise<void> {
       skipExisting: false,
       rootLabel,
       existingAssetId: job.assetId || undefined,
+      createdBy: job.userId || undefined,
     });
-    
+
     job.dealsCreated = result.parsedFolders;
     job.errors = result.errors;
 
@@ -421,8 +422,9 @@ async function processZipUpload(job: UploadJob, zipPath: string): Promise<void> 
       skipExisting: false,
       rootLabel,
       existingAssetId: job.assetId || undefined,
+      createdBy: job.userId || undefined,
     });
-    
+
     job.dealsCreated = result.parsedFolders;
     job.processedFiles = job.totalFiles;
     job.errors = result.errors;

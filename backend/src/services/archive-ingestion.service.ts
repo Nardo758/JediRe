@@ -622,7 +622,7 @@ async function parseArchiveDeal(folder: ArchiveDealFolder): Promise<ParsedArchiv
 
 // ─── Database Upsert ──────────────────────────────────────────────────────────
 
-async function upsertArchiveDeal(pool: Pool, deal: ParsedArchiveDeal, existingAssetId?: string): Promise<string> {
+async function upsertArchiveDeal(pool: Pool, deal: ParsedArchiveDeal, existingAssetId?: string, createdBy?: string): Promise<string> {
   const propertyType = deal.stories ? getPropertyType(deal.stories, deal.units) : 'garden';
 
   const mergedExtraction = {
@@ -688,7 +688,7 @@ async function upsertArchiveDeal(pool: Pool, deal: ParsedArchiveDeal, existingAs
       cap_rate,
       noi, noi_per_unit, expense_ratio,
       avg_rent, occupancy_rate,
-      extraction_data, data_quality_score, created_at, updated_at
+      extraction_data, data_quality_score, created_by, created_at, updated_at
     ) VALUES (
       $1, $2, $3, $4, $5,
       'archive',
@@ -697,7 +697,7 @@ async function upsertArchiveDeal(pool: Pool, deal: ParsedArchiveDeal, existingAs
       $10,
       $11, $12, $13,
       $14, $15,
-      $16, $17, NOW(), NOW()
+      $16, $17, $18, NOW(), NOW()
     )
     RETURNING id`,
     [
@@ -718,6 +718,7 @@ async function upsertArchiveDeal(pool: Pool, deal: ParsedArchiveDeal, existingAs
       deal.occupancyPct,
       JSON.stringify(mergedExtraction),
       dqScore,
+      createdBy ?? null,
     ]
   );
 
@@ -740,7 +741,7 @@ function computeDQ(fields: Record<string, unknown>): number {
 
 export async function ingestArchiveDeals(
   archivePath: string,
-  options: { limit?: number; skipExisting?: boolean; rootLabel?: string; existingAssetId?: string } = {}
+  options: { limit?: number; skipExisting?: boolean; rootLabel?: string; existingAssetId?: string; createdBy?: string } = {}
 ): Promise<ArchiveScanResult> {
   const pool = getPool();
   const result: ArchiveScanResult = {
@@ -779,7 +780,7 @@ export async function ingestArchiveDeals(
     
     try {
       const parsed = await parseArchiveDeal(folder);
-      const assetId = await upsertArchiveDeal(pool, parsed, options.existingAssetId);
+      const assetId = await upsertArchiveDeal(pool, parsed, options.existingAssetId, options.createdBy);
       if (assetId) {
         if (!result.assetIds) result.assetIds = [];
         result.assetIds.push(assetId);
