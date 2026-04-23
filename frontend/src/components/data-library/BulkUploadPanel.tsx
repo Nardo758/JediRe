@@ -317,7 +317,7 @@ export const BulkUploadPanel: React.FC<BulkUploadPanelProps> = ({ onUploadComple
             </div>
           )}
           
-          {uploadJob.errors.length > 0 && (
+          {(uploadJob.errors?.length ?? 0) > 0 && (
             <div className="mt-3 text-xs text-red-400">
               {uploadJob.errors.slice(0, 3).map((err, i) => (
                 <div key={i}>• {err}</div>

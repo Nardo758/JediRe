@@ -145,7 +145,7 @@ class CloudStorageService {
       },
     });
     
-    return { id: response.data.jobId, ...response.data };
+    return { errors: [], id: response.data.jobId, ...response.data };
   }
   
   async uploadZip(file: File, onProgress?: (progress: number) => void): Promise<BulkUploadJob> {
@@ -161,12 +161,13 @@ class CloudStorageService {
       },
     });
     
-    return { id: response.data.jobId, ...response.data };
+    return { errors: [], id: response.data.jobId, ...response.data };
   }
   
   async getUploadJob(jobId: string): Promise<BulkUploadJob> {
     const response = await apiClient.get(`/api/v1/bulk-upload/status/${jobId}`);
-    return response.data.job;
+    const job = response.data.job;
+    return { ...job, errors: job.errors ?? [] };
   }
   
   async listUploadJobs(): Promise<BulkUploadJob[]> {
