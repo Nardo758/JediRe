@@ -601,4 +601,10 @@ export interface AICallContext {
   agentId: AgentId;
   surface: Surface;
   platform?: ChatPlatform;
+  /**
+   * Optional override for per-surface model routing.
+   * Defaults to ('agent', agentId) when omitted. Pipelines and skills
+   * pass their own surface here so users can pin a model per-surface.
+   */
+  routingSurface?: { type: 'agent' | 'skill' | 'pipeline'; id: string };
 }

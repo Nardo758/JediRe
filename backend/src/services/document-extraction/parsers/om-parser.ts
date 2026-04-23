@@ -8,7 +8,21 @@
 import Anthropic from '@anthropic-ai/sdk';
 import * as pdfParse from 'pdf-parse';
 import { logger } from '../../../utils/logger';
+import { jediAI } from '../../ai/aiService';
+import { query } from '../../../database/connection';
 import type { ExtractionResult } from '../types';
+import type { AICallContext } from '../../../types/dealContext';
+
+/**
+ * Caller-supplied context that lets the OM parser flow through JediAIService
+ * (which then honors the user's per-surface model preference for the
+ * `pipeline:om_parsing` surface). When omitted, falls back to a direct
+ * Anthropic Sonnet call — used by older callers / tests that don't have a user.
+ */
+export interface OMParseContext {
+  userId: string;
+  dealId?: string;
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -344,34 +358,76 @@ async function extractPdfText(buffer: Buffer): Promise<{ text: string; pages: nu
 
 // ─── AI Extraction ────────────────────────────────────────────────────────────
 
-async function extractWithAI(text: string, filename: string): Promise<OMExtraction> {
-  const anthropic = new Anthropic();
-  
-  // Truncate text if too long (Claude context limit)
+async function extractWithAI(
+  text: string,
+  filename: string,
+  ctx?: OMParseContext
+): Promise<OMExtraction> {
+  // Truncate text if too long (Claude context limit; DeepSeek is similar)
   const maxChars = 180000; // ~45k tokens
-  const truncatedText = text.length > maxChars 
+  const truncatedText = text.length > maxChars
     ? text.slice(0, maxChars) + '\n\n[TRUNCATED - Document continues...]'
     : text;
-  
-  const response = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
-    max_tokens: 8000,
-    messages: [
-      {
-        role: 'user',
-        content: `${OM_EXTRACTION_PROMPT}\n\n---\n\nDocument: ${filename}\n\n${truncatedText}`,
-      },
-    ],
-  });
-  
-  // Extract JSON from response
-  const content = response.content[0];
-  if (content.type !== 'text') {
-    throw new Error('Unexpected response type from AI');
+  const userMessage = `${OM_EXTRACTION_PROMPT}\n\n---\n\nDocument: ${filename}\n\n${truncatedText}`;
+
+  let responseText: string;
+
+  if (ctx?.userId) {
+    // Route through JediAIService so per-user / per-surface model preferences
+    // (pipeline:om_parsing) take effect — and so usage hits the credit ledger
+    // and Stripe meter just like agent calls.
+    let stripeCustomerId = '';
+    try {
+      const r = await query(
+        `SELECT stripe_customer_id FROM user_credit_balances WHERE user_id = $1`,
+        [ctx.userId]
+      );
+      stripeCustomerId = r.rows[0]?.stripe_customer_id ?? '';
+    } catch (err) {
+      logger.warn('[OM Parser] failed to look up stripe_customer_id', { err });
+    }
+
+    const callContext: AICallContext = {
+      userId: ctx.userId,
+      stripeCustomerId,
+      dealId: ctx.dealId,
+      operationType: 'om_parsing',
+      // agentId is required by AICallContext but ignored when routingSurface is set
+      agentId: 'research',
+      surface: 'autonomous',
+      routingSurface: { type: 'pipeline', id: 'om_parsing' },
+    };
+
+    const message = await jediAI.generate(
+      callContext,
+      'You are a real estate document extraction engine. Always respond with valid JSON only.',
+      [{ role: 'user', content: userMessage }],
+      { maxTokens: 8000, temperature: 0 }
+    );
+
+    const block = message.content[0];
+    if (!block || block.type !== 'text') {
+      throw new Error('Unexpected response type from AI');
+    }
+    responseText = block.text;
+  } else {
+    // Legacy path: no user context (e.g. CLI / tests). Direct Anthropic call,
+    // bypasses metering. Kept so existing callers don't break.
+    const anthropic = new Anthropic();
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 8000,
+      messages: [{ role: 'user', content: userMessage }],
+    });
+    const content = response.content[0];
+    if (content.type !== 'text') {
+      throw new Error('Unexpected response type from AI');
+    }
+    responseText = content.text;
   }
-  
+
   // Parse JSON (handle markdown code blocks)
-  let jsonStr = content.text;
+  let jsonStr = responseText;
   const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (jsonMatch) {
     jsonStr = jsonMatch[1];
@@ -544,8 +600,9 @@ function normalizeExtraction(raw: any, textLength: number): OMExtraction {
 // ─── Main Parser Function ─────────────────────────────────────────────────────
 
 export async function parseOM(
-  buffer: Buffer, 
-  filename: string
+  buffer: Buffer,
+  filename: string,
+  ctx?: OMParseContext
 ): Promise<ExtractionResult & { data: OMExtraction | null }> {
   const warnings: string[] = [];
   
@@ -569,7 +626,7 @@ export async function parseOM(
     }
     
     // Extract with AI
-    const extraction = await extractWithAI(text, filename);
+    const extraction = await extractWithAI(text, filename, ctx);
     extraction.metadata.pdfPageCount = pages;
     
     // Validate critical fields
@@ -635,7 +692,8 @@ export async function parseOM(
 
 export async function parseOMAsync(
   buffer: Buffer,
-  filename: string
+  filename: string,
+  ctx?: OMParseContext
 ): Promise<ExtractionResult & { data: OMExtraction | null }> {
-  return parseOM(buffer, filename);
+  return parseOM(buffer, filename, ctx);
 }

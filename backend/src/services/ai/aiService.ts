@@ -14,6 +14,7 @@ import type {
   AgentId,
   SubscriptionTier,
 } from '../../types/dealContext';
+import { modelPreferenceService, getModelFamily } from './modelPreferenceService';
 
 // ── Model Routing per Tier ─────────────────────────────────────
 
@@ -115,35 +116,134 @@ export class JediAIService {
       tools?: Anthropic.Tool[];
     }
   ): Promise<Anthropic.Message> {
-    // 1. Resolve model from user tier + agent, with user preference override
+    // 1. Resolve model from user tier + agent + per-surface override
     const tier = await this.getUserTier(context.userId);
-    const model = await this.resolveModel(context.userId, tier, context.agentId);
+    const model = await this.resolveModel(
+      context.userId,
+      tier,
+      context.agentId,
+      context.routingSurface
+    );
 
     // 2. Check + deduct credits
     const creditCost = this.getCreditCost(context.operationType, model);
     await this.checkAndDeductCredits(context.userId, creditCost);
 
-    // 3. Call Anthropic API
+    // 3. Dispatch to provider
     const startTime = Date.now();
+    const family = getModelFamily(model);
+    // Track the model that actually served the request — may differ from
+    // `model` (the resolved preference) if we had to fall back due to a
+    // capability mismatch (e.g. DeepSeek + tools).
+    let effectiveModel = model;
 
-    const response = await this.anthropic.messages.create({
-      model,
-      max_tokens: options?.maxTokens ?? 4096,
-      system: systemPrompt,
-      messages,
-      tools: options?.tools,
-      temperature: options?.temperature ?? 0,
-    });
+    let response: Anthropic.Message;
+    if (family === 'deepseek') {
+      // DeepSeek path: tools not supported here; if caller passed tools we fall
+      // back to Sonnet to preserve correctness rather than silently dropping them.
+      if (options?.tools && options.tools.length > 0) {
+        effectiveModel = 'claude-sonnet-4-20250514';
+        logger.warn('DeepSeek dispatch requested with tools; falling back to Sonnet', {
+          userId: context.userId, surface: context.routingSurface, requestedModel: model, effectiveModel,
+        });
+        response = await this.anthropic.messages.create({
+          model: effectiveModel,
+          max_tokens: options?.maxTokens ?? 4096,
+          system: systemPrompt,
+          messages,
+          tools: options.tools,
+          temperature: options?.temperature ?? 0,
+        });
+      } else {
+        response = await this.callDeepSeek(model, systemPrompt, messages, options);
+      }
+    } else {
+      response = await this.anthropic.messages.create({
+        model,
+        max_tokens: options?.maxTokens ?? 4096,
+        system: systemPrompt,
+        messages,
+        tools: options?.tools,
+        temperature: options?.temperature ?? 0,
+      });
+    }
 
     const latencyMs = Date.now() - startTime;
 
-    // 4. Report usage to Stripe meter
-    await this.reportStripeUsage(context, model, response.usage);
+    // 4. Report usage to Stripe meter (uses effective model for accurate attribution)
+    await this.reportStripeUsage(context, effectiveModel, response.usage);
 
-    // 5. Log to internal analytics
-    await this.logUsage(context, model, response.usage, creditCost, latencyMs);
+    // 5. Log to internal analytics (records the model that actually ran)
+    await this.logUsage(context, effectiveModel, response.usage, creditCost, latencyMs);
 
     return response;
+  }
+
+  /**
+   * Call DeepSeek's OpenAI-compatible API and shape the response into an
+   * Anthropic.Message-shaped object so callers don't need to branch.
+   * Supports text-in/text-out only (no tool calls).
+   */
+  private async callDeepSeek(
+    model: string,
+    systemPrompt: string,
+    messages: Anthropic.MessageParam[],
+    options?: { maxTokens?: number; temperature?: number }
+  ): Promise<Anthropic.Message> {
+    const apiKey = process.env.DEEPSEEK_API_KEY;
+    if (!apiKey) throw new Error('DEEPSEEK_API_KEY not configured');
+
+    const oaMessages: Array<{ role: string; content: string }> = [
+      { role: 'system', content: systemPrompt },
+    ];
+    for (const m of messages) {
+      const text = typeof m.content === 'string'
+        ? m.content
+        : m.content
+            .filter((b: any) => b.type === 'text')
+            .map((b: any) => b.text)
+            .join('\n');
+      oaMessages.push({ role: m.role, content: text });
+    }
+
+    const res = await fetch('https://api.deepseek.com/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: oaMessages,
+        max_tokens: options?.maxTokens ?? 4096,
+        temperature: options?.temperature ?? 0,
+      }),
+    });
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`DeepSeek API error ${res.status}: ${body.slice(0, 500)}`);
+    }
+
+    const data = await res.json() as any;
+    const text: string = data.choices?.[0]?.message?.content ?? '';
+    const usage = data.usage ?? {};
+
+    return {
+      id: data.id ?? 'deepseek-' + Date.now(),
+      type: 'message',
+      role: 'assistant',
+      model,
+      content: [{ type: 'text', text }],
+      stop_reason: data.choices?.[0]?.finish_reason === 'length' ? 'max_tokens' : 'end_turn',
+      stop_sequence: null,
+      usage: {
+        input_tokens: usage.prompt_tokens ?? 0,
+        output_tokens: usage.completion_tokens ?? 0,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: usage.prompt_cache_hit_tokens ?? 0,
+      },
+    } as unknown as Anthropic.Message;
   }
 
   /**
@@ -206,6 +306,47 @@ export class JediAIService {
   }
 
   /**
+   * Direct round-trip against a specific model, bypassing preference
+   * resolution and credit deduction. Used by the settings UI's
+   * "Test with this model" button so the user can validate a choice
+   * without persisting it.
+   */
+  async testModel(
+    model: string,
+    prompt: string
+  ): Promise<{ text: string; usage: { input_tokens: number; output_tokens: number }; latencyMs: number }> {
+    const start = Date.now();
+    const family = getModelFamily(model);
+    if (family === 'deepseek') {
+      const msg = await this.callDeepSeek(
+        model,
+        'You are a model self-check. Reply with one short sentence.',
+        [{ role: 'user', content: prompt }],
+        { maxTokens: 60, temperature: 0 }
+      );
+      const text = msg.content[0]?.type === 'text' ? msg.content[0].text : '';
+      return {
+        text,
+        usage: { input_tokens: msg.usage.input_tokens, output_tokens: msg.usage.output_tokens },
+        latencyMs: Date.now() - start,
+      };
+    }
+    const msg = await this.anthropic.messages.create({
+      model,
+      max_tokens: 60,
+      system: 'You are a model self-check. Reply with one short sentence.',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0,
+    });
+    const text = msg.content[0]?.type === 'text' ? msg.content[0].text : '';
+    return {
+      text,
+      usage: { input_tokens: msg.usage.input_tokens, output_tokens: msg.usage.output_tokens },
+      latencyMs: Date.now() - start,
+    };
+  }
+
+  /**
    * Get the model that would be used for a given context.
    */
   async getModelForContext(
@@ -243,29 +384,18 @@ export class JediAIService {
   private async resolveModel(
     userId: string,
     tier: SubscriptionTier,
-    agentId: AgentId
+    agentId: AgentId,
+    routingSurface?: { type: 'agent' | 'skill' | 'pipeline'; id: string }
   ): Promise<string> {
-    try {
-      const result = await query(
-        `SELECT llm_preference FROM user_credit_balances WHERE user_id = $1`,
-        [userId]
-      );
-
-      if (result.rows.length > 0) {
-        const pref = result.rows[0].llm_preference;
-        if (pref && pref !== 'auto') {
-          if (pref === 'powerful' && !['principal', 'institutional'].includes(tier)) {
-            logger.warn('User preference "powerful" not allowed for tier, falling back to tier default', { userId, tier });
-          } else if (JediAIService.PREFERENCE_MODEL_MAP[pref]) {
-            return JediAIService.PREFERENCE_MODEL_MAP[pref];
-          }
-        }
-      }
-    } catch (error) {
-      logger.warn('Failed to resolve LLM preference, using tier default', { userId, error });
-    }
-
-    return MODEL_ROUTING[tier][agentId];
+    const surface = routingSurface ?? { type: 'agent' as const, id: agentId };
+    const defaultModel = MODEL_ROUTING[tier][agentId];
+    return modelPreferenceService.resolveModel({
+      userId,
+      surfaceType: surface.type,
+      surfaceId: surface.id,
+      defaultModel,
+      tier,
+    });
   }
 
   private async checkAndDeductCredits(

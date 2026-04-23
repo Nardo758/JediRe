@@ -1,7 +1,37 @@
 import React, { useState, useEffect } from 'react';
-import { Zap, Scale, Sparkles, Bot, Check, Lock, ArrowRight } from 'lucide-react';
+import { Zap, Scale, Sparkles, Bot, Check, Lock, ArrowRight, AlertTriangle, PlayCircle } from 'lucide-react';
 import { apiClient } from '../../services/api.client';
 import { BT } from '@/components/deal/bloomberg-ui';
+
+interface SurfaceModel {
+  id: string;
+  label: string;
+  family: 'claude' | 'deepseek';
+  description: string;
+  locked: boolean;
+  lockedReason: string | null;
+}
+
+interface SurfaceRow {
+  type: 'agent' | 'skill' | 'pipeline';
+  id: string;
+  label: string;
+  description: string;
+  currentModel: string | null;
+  warning: string | null;
+}
+
+interface SurfacesPayload {
+  tier: string;
+  models: SurfaceModel[];
+  surfaces: SurfaceRow[];
+}
+
+const SURFACE_GROUP_LABEL: Record<SurfaceRow['type'], string> = {
+  agent: 'Agents',
+  skill: 'Skills',
+  pipeline: 'Pipelines',
+};
 
 interface AIOption {
   value: string;
@@ -84,10 +114,71 @@ export function AIModelSettings() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [showUpgradeFor, setShowUpgradeFor] = useState<string | null>(null);
+  const [surfacesData, setSurfacesData] = useState<SurfacesPayload | null>(null);
+  const [surfaceSaving, setSurfaceSaving] = useState<string | null>(null);
+  const [testingModel, setTestingModel] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<{ model: string; reply: string; latencyMs: number; ok: boolean } | null>(null);
 
   useEffect(() => {
     loadPreferences();
+    loadSurfaces();
   }, []);
+
+  const loadSurfaces = async () => {
+    try {
+      const r = await apiClient.get('/api/v1/settings/ai-preferences/surfaces');
+      setSurfacesData(r.data?.data || r.data);
+    } catch (err) {
+      console.error('Error loading surface preferences:', err);
+    }
+  };
+
+  const setSurfaceModel = async (s: SurfaceRow, model: string | null) => {
+    const key = `${s.type}:${s.id}`;
+    setSurfaceSaving(key);
+    try {
+      const r = await apiClient.put('/api/v1/settings/ai-preferences/surfaces', {
+        surfaceType: s.type,
+        surfaceId: s.id,
+        model,
+      });
+      const warning: string | null = r.data?.data?.warning ?? null;
+      setSurfacesData(prev => prev ? {
+        ...prev,
+        surfaces: prev.surfaces.map(row =>
+          row.type === s.type && row.id === s.id
+            ? { ...row, currentModel: model, warning }
+            : row
+        ),
+      } : prev);
+    } catch (err: any) {
+      const errMsg = err.response?.data?.error || 'Failed to save surface preference';
+      setMessage({ type: 'error', text: errMsg });
+      setTimeout(() => setMessage(null), 4000);
+    } finally {
+      setSurfaceSaving(null);
+    }
+  };
+
+  const testModel = async (modelId: string) => {
+    setTestingModel(modelId);
+    setTestResult(null);
+    try {
+      const r = await apiClient.post('/api/v1/settings/ai-preferences/surfaces/test', { model: modelId });
+      const d = r.data?.data;
+      setTestResult({ model: modelId, reply: d.reply, latencyMs: d.latencyMs, ok: true });
+    } catch (err: any) {
+      setTestResult({
+        model: modelId,
+        reply: err.response?.data?.error || 'Test failed',
+        latencyMs: 0,
+        ok: false,
+      });
+    } finally {
+      setTestingModel(null);
+      setTimeout(() => setTestResult(null), 6000);
+    }
+  };
 
   const loadPreferences = async () => {
     setLoading(true);
@@ -258,6 +349,114 @@ export function AIModelSettings() {
         </div>
         );
       })()}
+
+      {surfacesData && (
+        <div className="p-6" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
+          <h2 className="text-xl font-semibold mb-2" style={{ color: BT.text.primary }}>Per-Surface Model Routing</h2>
+          <p className="text-sm mb-4" style={{ color: BT.text.secondary }}>
+            Override the global preference for individual agents, skills, and pipelines.
+            Anything left as <em>(use global)</em> follows the setting above.
+            Tip: pin DeepSeek to non-financial surfaces to cut spend; keep Sonnet/Opus for underwriting.
+          </p>
+
+          {testResult && (
+            <div className="mb-4 px-4 py-3 text-sm" style={{
+              background: BT.bg.panelAlt,
+              color: testResult.ok ? BT.text.green : BT.text.red,
+              border: `1px solid ${testResult.ok ? BT.text.green : BT.text.red}`,
+              borderRadius: 0,
+            }}>
+              <div className="font-medium mb-1">
+                {testResult.ok ? `${testResult.model} responded in ${testResult.latencyMs}ms` : `Test failed for ${testResult.model}`}
+              </div>
+              <div style={{ color: BT.text.secondary }}>{testResult.reply}</div>
+            </div>
+          )}
+
+          {(['agent', 'skill', 'pipeline'] as const).map(group => {
+            const rows = surfacesData.surfaces.filter(s => s.type === group);
+            if (rows.length === 0) return null;
+            return (
+              <div key={group} className="mb-6">
+                <div className="text-xs font-semibold mb-2 uppercase tracking-wider" style={{ color: BT.text.muted }}>
+                  {SURFACE_GROUP_LABEL[group]}
+                </div>
+                <table className="w-full text-sm" style={{ borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
+                      <th className="text-left py-2 pr-3 font-medium" style={{ color: BT.text.muted, width: '38%' }}>Surface</th>
+                      <th className="text-left py-2 pr-3 font-medium" style={{ color: BT.text.muted }}>Model</th>
+                      <th className="text-left py-2 font-medium" style={{ color: BT.text.muted, width: '120px' }}>Test</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map(row => {
+                      const key = `${row.type}:${row.id}`;
+                      const isSaving = surfaceSaving === key;
+                      return (
+                        <tr key={key} style={{ borderBottom: `1px solid ${BT.border.subtle}`, verticalAlign: 'top' }}>
+                          <td className="py-3 pr-3">
+                            <div style={{ color: BT.text.primary }}>{row.label}</div>
+                            <div className="text-xs mt-0.5" style={{ color: BT.text.muted }}>{row.description}</div>
+                          </td>
+                          <td className="py-3 pr-3">
+                            <select
+                              value={row.currentModel ?? ''}
+                              disabled={isSaving}
+                              onChange={(e) => setSurfaceModel(row, e.target.value || null)}
+                              className="w-full px-2 py-1.5 text-sm"
+                              style={{
+                                background: BT.bg.input,
+                                color: BT.text.primary,
+                                border: `1px solid ${BT.border.subtle}`,
+                                borderRadius: 0,
+                              }}
+                            >
+                              <option value="">(use global)</option>
+                              {surfacesData.models.map(m => (
+                                <option key={m.id} value={m.id} disabled={m.locked}>
+                                  {m.label}{m.locked ? ' (locked)' : ''}
+                                </option>
+                              ))}
+                            </select>
+                            {row.warning && (
+                              <div className="flex items-start gap-1.5 mt-2 text-xs" style={{ color: BT.text.amber }}>
+                                <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                                <span>{row.warning}</span>
+                              </div>
+                            )}
+                          </td>
+                          <td className="py-3">
+                            {row.currentModel ? (
+                              <button
+                                onClick={() => testModel(row.currentModel!)}
+                                disabled={testingModel === row.currentModel}
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium"
+                                style={{
+                                  background: BT.bg.input,
+                                  color: BT.text.cyan,
+                                  border: `1px solid ${BT.border.subtle}`,
+                                  borderRadius: 0,
+                                  cursor: testingModel === row.currentModel ? 'wait' : 'pointer',
+                                }}
+                              >
+                                <PlayCircle className="w-3.5 h-3.5" />
+                                {testingModel === row.currentModel ? 'Testing...' : 'Test'}
+                              </button>
+                            ) : (
+                              <span className="text-xs" style={{ color: BT.text.muted }}>—</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       <div className="p-6" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
         <h3 className="font-semibold mb-3" style={{ color: BT.text.primary }}>How Model Selection Works</h3>

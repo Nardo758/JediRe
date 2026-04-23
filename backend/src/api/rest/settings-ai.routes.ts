@@ -1,6 +1,14 @@
 import { Router, Request, Response } from 'express';
 import { requireAuth } from '../../middleware/auth';
 import { query } from '../../database/connection';
+import {
+  modelPreferenceService,
+  SURFACES,
+  KNOWN_MODELS,
+  getModelFamily,
+  type SurfaceType,
+} from '../../services/ai/modelPreferenceService';
+import { jediAI } from '../../services/ai/aiService';
 
 const router = Router();
 
@@ -94,6 +102,157 @@ router.put('/', requireAuth, async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error saving AI preferences:', error);
     res.status(500).json({ success: false, error: 'Failed to save AI preferences' });
+  }
+});
+
+// ── Per-surface routing endpoints ─────────────────────────────────────────────
+
+/**
+ * GET /surfaces — list all configurable surfaces, available models for the
+ * caller's tier, and any per-surface overrides the user has saved.
+ */
+router.get('/surfaces', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.userId;
+
+    const tierRow = await query(
+      `SELECT subscription_tier FROM user_credit_balances WHERE user_id = $1`,
+      [userId]
+    );
+    const tier = tierRow.rows[0]?.subscription_tier ?? 'scout';
+
+    const overrides = await modelPreferenceService.getAllForUser(userId);
+    const overrideMap = new Map(
+      overrides.map(o => [`${o.surface_type}:${o.surface_id}`, o.model])
+    );
+
+    const models = KNOWN_MODELS.map(m => ({
+      id: m.id,
+      label: m.label,
+      family: m.family,
+      description: m.description,
+      locked: !!m.requiredTiers && !m.requiredTiers.includes(tier),
+      lockedReason: m.requiredTiers && !m.requiredTiers.includes(tier)
+        ? 'Requires Principal or higher tier'
+        : null,
+    }));
+
+    const surfaces = SURFACES.map(s => {
+      const override = overrideMap.get(`${s.type}:${s.id}`) ?? null;
+      return {
+        type: s.type,
+        id: s.id,
+        label: s.label,
+        description: s.description,
+        currentModel: override,
+        warning: override && s.modelWarning ? s.modelWarning(override) : null,
+      };
+    });
+
+    res.json({ success: true, data: { tier, models, surfaces } });
+  } catch (error: any) {
+    console.error('Error fetching surface model preferences:', error);
+    res.status(500).json({ success: false, error: 'Failed to fetch surface preferences' });
+  }
+});
+
+/**
+ * PUT /surfaces — set or clear a per-surface model.
+ * Body: { surfaceType, surfaceId, model | null }
+ * Returns: { warning } if the chosen combination has a soft warning.
+ */
+router.put('/surfaces', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.userId;
+    const { surfaceType, surfaceId, model } = req.body as {
+      surfaceType: SurfaceType;
+      surfaceId: string;
+      model: string | null;
+    };
+
+    if (!surfaceType || !surfaceId) {
+      return res.status(400).json({ success: false, error: 'surfaceType and surfaceId required' });
+    }
+
+    const surface = SURFACES.find(s => s.type === surfaceType && s.id === surfaceId);
+    if (!surface) {
+      return res.status(400).json({ success: false, error: `Unknown surface ${surfaceType}:${surfaceId}` });
+    }
+
+    if (model !== null) {
+      const modelDef = KNOWN_MODELS.find(m => m.id === model);
+      if (!modelDef) {
+        return res.status(400).json({ success: false, error: `Unknown model ${model}` });
+      }
+      // Tier gate
+      const tierRow = await query(
+        `SELECT subscription_tier FROM user_credit_balances WHERE user_id = $1`,
+        [userId]
+      );
+      const tier = tierRow.rows[0]?.subscription_tier ?? 'scout';
+      if (modelDef.requiredTiers && !modelDef.requiredTiers.includes(tier)) {
+        return res.status(403).json({
+          success: false,
+          error: `${modelDef.label} requires Principal or higher tier`,
+        });
+      }
+    }
+
+    await modelPreferenceService.setPreference(userId, surfaceType, surfaceId, model);
+
+    const warning = model && surface.modelWarning ? surface.modelWarning(model) : null;
+    res.json({ success: true, data: { surfaceType, surfaceId, model, warning } });
+  } catch (error: any) {
+    console.error('Error saving surface model preference:', error);
+    res.status(500).json({ success: false, error: 'Failed to save surface preference' });
+  }
+});
+
+/**
+ * POST /surfaces/test — small "are you alive" round-trip against a candidate
+ * model so the user can sanity-check a choice before pinning it.
+ * Body: { model }
+ */
+router.post('/surfaces/test', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.userId;
+    const { model } = req.body as { model: string };
+    if (!model) return res.status(400).json({ success: false, error: 'model required' });
+
+    const modelDef = KNOWN_MODELS.find(m => m.id === model);
+    if (!modelDef) return res.status(400).json({ success: false, error: `Unknown model ${model}` });
+
+    // Tier gate: don't let lower-tier users burn platform $$ test-driving Opus.
+    const tierRow = await query(
+      `SELECT subscription_tier FROM user_credit_balances WHERE user_id = $1`,
+      [userId]
+    );
+    const tier = tierRow.rows[0]?.subscription_tier ?? 'scout';
+    if (modelDef.requiredTiers && !modelDef.requiredTiers.includes(tier)) {
+      return res.status(403).json({
+        success: false,
+        error: `${modelDef.label} requires Principal or higher tier`,
+      });
+    }
+
+    const result = await jediAI.testModel(
+      model,
+      `Say "Hello from ${modelDef.label}" and nothing else.`
+    );
+
+    res.json({
+      success: true,
+      data: {
+        model,
+        family: getModelFamily(model),
+        latencyMs: result.latencyMs,
+        reply: result.text,
+        usage: result.usage,
+      },
+    });
+  } catch (error: any) {
+    console.error('Model test failed:', error);
+    res.status(500).json({ success: false, error: error?.message || 'Model test failed' });
   }
 });
 

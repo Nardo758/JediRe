@@ -379,7 +379,10 @@ function findFilesRecursive(dirPath: string, maxDepth = 3, currentDepth = 0): Ar
 
 // ─── Document Parsing ─────────────────────────────────────────────────────────
 
-async function parseArchiveDeal(folder: ArchiveDealFolder): Promise<ParsedArchiveDeal> {
+async function parseArchiveDeal(
+  folder: ArchiveDealFolder,
+  parseOptions: { createdBy?: string } = {}
+): Promise<ParsedArchiveDeal> {
   const warnings: string[] = [];
   const extractionData: Record<string, unknown> = {};
   
@@ -517,7 +520,11 @@ async function parseArchiveDeal(folder: ArchiveDealFolder): Promise<ParsedArchiv
     const omFile = omFiles[0];
     try {
       const buffer = fs.readFileSync(omFile.path);
-      const result = await parseOMAsync(buffer, omFile.name);
+      const result = await parseOMAsync(
+        buffer,
+        omFile.name,
+        parseOptions.createdBy ? { userId: parseOptions.createdBy } : undefined
+      );
       
       if (result.success && result.data) {
         omData = result.data;
@@ -779,7 +786,7 @@ export async function ingestArchiveDeals(
     }
     
     try {
-      const parsed = await parseArchiveDeal(folder);
+      const parsed = await parseArchiveDeal(folder, { createdBy: options.createdBy });
       const assetId = await upsertArchiveDeal(pool, parsed, options.existingAssetId, options.createdBy);
       if (assetId) {
         if (!result.assetIds) result.assetIds = [];
