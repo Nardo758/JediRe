@@ -318,6 +318,110 @@ AI-driven travel booking platform for itinerary generation and booking orchestra
 
 -   **Task #327 — Inngest Cron Activation (2026-04-22):** Wired the autonomous agent and discovery cron jobs into the Inngest `serve()` handler at `POST/PUT/GET /api/inngest`. Spread `scheduledAgentFunctions` (5 functions: daily morning briefing, daily compliance, weekly portfolio review, weekly market intelligence, hourly threshold monitor) and `scheduledDiscoveryFunctions` (7 functions: hourly market discovery, daily news, daily deal news, daily economic, weekly market scan, on-demand news, on-demand web search) into `backend/src/index.replit.ts`. Migrated all 12 cron/event function definitions in `backend/src/services/agents/scheduled-jobs.ts` and `backend/src/services/discovery/scheduled-discovery.ts` from the Inngest v2 three-arg signature `createFunction(opts, trigger, handler)` to the v4 signature `createFunction({...opts, triggers: [trigger]}, handler)`. Added admin-only `POST /api/v1/agents/_debug/trigger?fn=<name>` endpoint in `backend/src/api/rest/agent.routes.ts` (the singular router actually mounted at `/api/v1/agents`) for manual on-demand firing. The endpoint uses `requireAuthOrApiKey` and additionally enforces `req.user.role === 'admin'` (returns 403 otherwise). Supported `fn` values: `dailyMorningBriefing`, `dailyComplianceCheck`, `weeklyPortfolioReview`, `hourlyMarketDiscovery`, `dailyNewsDiscovery`, `dailyEconomicDiscovery`. `dailyComplianceCheck` dispatches the real `task_due` trigger event; `dailyEconomicDiscovery` refreshes interest rates only (the full cron also iterates per-MSA employment). Added new `Inngest Dev Server` workflow running `npx inngest-cli@latest dev -u http://localhost:4000/api/inngest -p 8099` so durable cron execution works locally. Updated `backend/src/lib/inngest.ts` to set `isDev: true` and `baseUrl: http://localhost:8099` whenever `INNGEST_EVENT_KEY` is unset, eliminating "cloud mode" misconfiguration warnings in dev. **Production env vars required at deploy time:** `INNGEST_EVENT_KEY` (events written by the SDK) and `INNGEST_SIGNING_KEY` (verifies dev-server-signed POSTs). When both are set, the SDK switches off dev mode automatically and registers with Inngest Cloud instead of the local dev server.
 
+## Atlanta MSA Data Enrichment — API Exploration Log (2026-04-23)
+
+Focus: enrich 1,998 Fulton County properties (100+ units) with sale history, unit mix, 3-mile census demographics, construction pipeline (building permits + CO dates), and recorded mortgage/loan records.
+
+### Confirmed Working APIs
+
+#### 1. Fulton County Assessor — Tax_Parcels_2025 (ArcGIS FeatureServer) ✅
+- **URL:** `https://services1.arcgis.com/AQDHTHDrZzfsFsB5/ArcGIS/rest/services/Tax_Parcels_2025/FeatureServer/0`
+- **Filter:** `LivUnits > 5` (multifamily); `LivUnits > 100` for 100+ unit properties
+- **34 fields confirmed:** `ParcelID`, `Address`, `Owner`, `OwnerAddr1/2`, `TotAssess`, `LandAssess`, `ImprAssess`, `TotAppr`, `LandAppr`, `ImprAppr`, `LUCode`, `ClassCode`, `LivUnits` (unit count!), `LandAcres`, `NbrHood`, `TaxDist`, `Subdiv*`, `ExCode`
+- **Missing from this layer:** year_built, building sqft, sale date/price, grantor/grantee — only one layer (no sub-layers/tables)
+- **Script:** `backend/src/scripts/import-county-properties.ts`
+
+#### 2. Atlanta Building Permits — Building_Permit_latest (ArcGIS FeatureServer) ✅ NEW
+- **URL:** `https://services5.arcgis.com/5RxyIIJ9boPdptdo/arcgis/rest/services/Building_Permit_latest/FeatureServer/0`
+- **Discovered via:** ArcGIS Online item `cecbda6378be4c289910f7dc145e8cdd` (Atlanta Building Permit Tracker ExB app config)
+- **Total records:** 36,115 permits
+- **22 fields:** `RecordID` (Accela permit#), `Name`, `OrigOpened` (date), `Opend`, `TypeCombo`, `Use_`, `Subtype`, `Group_`, `Address`, `Status_1`, `StatusDate`, `R_StatDate`, `JOB_VALUE`, `PARCEL` (links to Tax_Parcels_2025 ParcelID!), `QUADRANT`, `ACA_Link` (Accela deeplink), `StreetView`, `statusP`, `DisplayX/Y`, `ObjectId`
+- **Key permit types for multifamily:**
+  - `TypeCombo = 'Multi Family New'` + `Status_1 = 'CO Issued'` → **CO date = year built proxy** (StatusDate field)
+  - `TypeCombo = 'Multi Family New'` + `Status_1 = 'Issued'` → **active construction pipeline**
+  - `TypeCombo = 'Multi Family Alteration'` + `Status_1 = 'CO Issued'` → renovation completions
+- **1,620 total CO Issued permits** across all types; data covers ~2023–2024 ("latest" dataset)
+- **Coverage caveat:** Recent permits only — buildings built before ~2023 won't have a CO record here
+- **Parcel linkage:** `PARCEL` field matches `ParcelID` in Tax_Parcels_2025 (e.g., `17 02520017012`)
+- **Accela agency code confirmed:** `ATLANTA_GA` (not `ATLANTAGA`) — visible in ACA_Link URLs
+
+#### 3. Census ACS 5-Year — Multiple Table Series ✅
+- **Base URL:** `https://api.census.gov/data/2022/acs/acs5`
+- **Geography:** `for=tract:*&in=state:13+county:121` → 327 Fulton County tracts
+- **Confirmed table series:**
+  - `B25024` — Units in structure (001=total, 007=10-19 units, 008=20-49, 009=50+)
+  - `B25041` — Bedrooms per unit (001-006: no bedroom through 5+)
+  - `B25036` — Year structure built (10 vintage buckets: pre-1950 through 2014+); 309/327 tracts have 100+ units built 2014+
+  - `B08303` — Travel time to work (transit proxy)
+  - `B25070` — Gross rent as % of income (affordability)
+- **Year Built proxy:** B25036 gives tract-level vintage distribution — can assign neighborhood vintage year to each property
+
+#### 4. APD Crime Online (ArcGIS FeatureServer) ✅
+- **URL:** `https://services3.arcgis.com/Et5Qfajgiyosiw4d/ArcGIS/rest/services/Crime_Online/FeatureServer/15`
+- **Layer:** 15 — CrimeOnline
+- **23 fields:** `IncidentNumber`, `ReportDate`, `OccurredFromDate`, `OccurredToDate`, `Day_of_the_week`, `Part` (I/II), `Crime_Against` (Person/Property/Society), `NibrsUcrCode`, `NIBRS_Offense`, `StreetAddress`, `LocationType`, `Longitude`, `Latitude`, `FireArmInvolved`, `IsBiasMotivationInvolved`, `event_watch`, `Zone`, `ChargeId_First`
+- **Use:** Safety scoring by lat/lon proximity to parcels; can aggregate crime counts within 0.5/1/3 mile rings
+
+#### 5. MARTA GTFS Feed ✅
+- **URL:** `https://www.itsmarta.com/google_transit_feed/google_transit.zip` (20MB ZIP)
+- **Files:** trips.txt, agency.txt, calendar.txt, calendar_dates.txt, routes.txt, shapes.txt, stop_times.txt, **stops.txt**
+- **Stops:** 7,052 total stops — fields: `stop_id`, `stop_code`, `stop_name`, `stop_desc`, `stop_lat`, `stop_lon`, `zone_id`, `stop_url`, `location_type`, `parent_station`, `stop_timezone`, `wheelchair_boarding`
+- **Sample:** `907933, HAMILTON E HOLMES STATION, lat=33.754553, lon=-84.469302`
+- **Use:** Transit access scoring — count MARTA stops within 0.25/0.5 mile of each parcel; rail vs bus distinction via `location_type`
+- **Extraction:** Use Python `zipfile` module (not `unzip` CLI — fails silently); download to `/tmp/marta2.zip`
+
+### Blocked / Inaccessible from Replit Server IPs
+
+| Source | Reason | Notes |
+|---|---|---|
+| qPublic / schneidercorp.com | Cloudflare Managed Challenge (bot protect) | Blocks even CF Browser Rendering headless |
+| fultonassessor.org | Hosted on sgpreview.com (SchneiderCorp) — same Cloudflare block | |
+| iasworld.fultoncountyga.gov | DNS does not resolve | Domain may not exist / internal only |
+| permits.atlantaga.gov | AWS CloudFront 403 — IP blocked | CF Browser Rendering also blocked |
+| aca3.accela.com / aca-prod.accela.com | Cloudflare "Attention Required" WAF | Accela developer API needs `x-accela-appid` key |
+| DeKalb GIS (dcgis.dekalbcountyga.gov) | Returns HTML error, no JSON | |
+| Atlanta open data (data.atlantaga.gov) | Socrata API returns empty | Replit IP likely rate-limited/blocked |
+| GSCCCA (gsccca.org) | Web-form only, returns 75 bytes | No public API; mortgage/deed records inaccessible |
+| HUD FMR API | Returns `{"error":"Unauthenticated"}` | Needs HUD-specific token (not BLS key) |
+| Atlanta GIS ArcGIS Server | Behind auth, no public REST catalog | ExB apps use internal ArcGIS Enterprise |
+
+### Cloudflare Browser Rendering (CLOUDFLARE_BR_TOKEN + CLOUDFLARE_ACCOUNT_ID) — Status
+- **Available:** Both secrets set and API responds
+- **Endpoint format:** `POST https://api.cloudflare.com/client/v4/accounts/{CLOUDFLARE_ACCOUNT_ID}/browser-rendering/content`
+- **Snapshot endpoint:** returns `{ result: { screenshot: base64, content: html } }`
+- **Max timeout:** 60,000ms (`gotoOptions.timeout`)
+- **What it CAN bypass:** Standard server-IP blocks (CloudFront, nginx IP filtering)
+- **What it CANNOT bypass:** Cloudflare's own WAF/Managed Challenge (qPublic, Accela, fultonassessor.org all use Cloudflare WAF against automated access)
+- **Key win:** Used snapshot endpoint to crack open the Atlanta Building Permit Tracker ExB app config and extract the live `Building_Permit_latest` FeatureServer URL
+
+### Data Gaps — Still Unsolved
+
+| Data Point | Status | Best Available Proxy |
+|---|---|---|
+| Year built (individual property) | ❌ No free API | CO date from `Building_Permit_latest` (2023+ only); Census B25036 vintage for older stock |
+| Building sqft | ❌ Not in Tax_Parcels_2025 | Shape__Area × stories estimate |
+| Sale history (grantor/grantee/date/price) | ❌ GSCCCA web-only | `property_sales` table has 292 records (partially seeded) |
+| Recorded mortgage / loan amount | ❌ GSCCCA web-only | No free API available |
+| Historical CO dates (pre-2023) | ❌ | Accela historical data requires App ID registration |
+| Atlanta zoning polygons | ❌ | `OfficialCityDesignAreas` FeatureServer found in same AGOL account — needs probe |
+| DeKalb / Cobb / Gwinnett assessor year built | ❌ GIS servers blocked | |
+
+### Other FeatureServer URLs Found in Atlanta Planning AGOL Account (5RxyIIJ9boPdptdo)
+- `Building_Permit_latest/FeatureServer/0` — ✅ confirmed working (36,115 permits)
+- `test_building_permit/FeatureServer/0` — test/staging version
+- `OfficialCityDesignAreas/FeatureServer/0` — Atlanta design district overlays
+- `Atlanta_Main_Street_Districts/FeatureServer/0` — Main Street Districts
+
+### Next Steps Queued
+1. Ingest `Building_Permit_latest` → `building_permits` table (CO dates + pipeline)
+2. Load MARTA GTFS stops → `transit_stops` table (lat/lon + type)
+3. Pull Census B25036 vintage + B25024 unit structure + B25041 bedrooms → `property_demographics`
+4. Pull APD crime by parcel proximity → safety score per property
+5. Probe `OfficialCityDesignAreas` for zoning overlay data
+6. Consider Accela developer App ID registration for historical CO dates (free tier available)
+
+---
+
 ## Known Bug Fixes (2026-02-28)
 
 -   **Token Key Inconsistency (FIXED):** Many frontend components used `localStorage.getItem('token')` while the auth system stores tokens under `auth_token`. This caused widespread 401 Unauthorized errors across dashboard findings, market intelligence, JEDI score, alerts, credibility, notifications, and other components. All 14 affected files corrected to use `auth_token`.
