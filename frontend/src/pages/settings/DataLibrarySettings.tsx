@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { BT } from '@/components/deal/bloomberg-ui';
 import { apiClient } from '../../services/api.client';
 import { CloudStoragePanel, BulkUploadPanel } from '../../components/data-library';
+import AssetDetailModal from '../../components/data-library/AssetDetailModal';
 import { Upload, Cloud, Database, ChevronDown, ChevronRight } from 'lucide-react';
 
 interface Asset {
@@ -74,6 +75,7 @@ export function DataLibrarySettings() {
   // Upload panels state
   const [activePanel, setActivePanel] = useState<'none' | 'upload' | 'cloud'>('none');
   const [showUploadSection, setShowUploadSection] = useState(true);
+  const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
 
   const fetchAssets = useCallback(async () => {
     setLoading(true);
@@ -353,7 +355,12 @@ export function DataLibrarySettings() {
                 const src = SOURCE_LABELS[a.source_type] || { label: (a.source_type || '').toUpperCase(), color: BT.text.muted };
                 const classColor = CLASS_COLORS[a.asset_class] || BT.text.muted;
                 return (
-                  <tr key={a.id} style={{ background: i % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt, borderBottom: `1px solid ${BT.border.subtle}` }}>
+                  <tr
+                    key={a.id}
+                    onClick={() => setEditingAsset(a)}
+                    title="Click to edit details or attach files"
+                    style={{ background: i % 2 === 0 ? BT.bg.panel : BT.bg.panelAlt, borderBottom: `1px solid ${BT.border.subtle}`, cursor: 'pointer' }}
+                  >
                     <td style={{ padding: '6px', maxWidth: 160 }}>
                       <div style={{ color: BT.text.primary, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {a.property_name || '—'}
@@ -425,6 +432,16 @@ export function DataLibrarySettings() {
             Showing {assets.length} of {total} assets
           </span>
         </div>
+      )}
+
+      {editingAsset && (
+        <AssetDetailModal
+          assetId={editingAsset.id}
+          customLabel={editingAsset.property_name || ''}
+          editMode
+          onClose={() => setEditingAsset(null)}
+          onSave={() => { fetchAssets(); fetchStats(); }}
+        />
       )}
     </div>
   );

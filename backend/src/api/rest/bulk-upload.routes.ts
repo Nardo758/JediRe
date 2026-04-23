@@ -88,6 +88,7 @@ router.post('/files', requireAuth, upload.array('files', 100), async (req: Authe
   const files = req.files as Express.Multer.File[];
   const dealId = req.body?.dealId as string | undefined;
   const customLabel = req.body?.customLabel as string | undefined;
+  const assetId = req.body?.assetId as string | undefined;
   
   if (!files || files.length === 0) {
     return res.status(400).json({ success: false, error: 'No files uploaded' });
@@ -107,6 +108,7 @@ router.post('/files', requireAuth, upload.array('files', 100), async (req: Authe
     uploadPath,
     dealId,
     customLabel,
+    assetId,
     assetsNeedingDetails: [],
     createdAt: new Date(),
   };
@@ -138,6 +140,7 @@ router.post('/zip', requireAuth, upload.single('file'), async (req: Authenticate
   const file = req.file;
   const dealId = req.body?.dealId as string | undefined;
   const customLabel = req.body?.customLabel as string | undefined;
+  const assetId = req.body?.assetId as string | undefined;
   
   if (!file) {
     return res.status(400).json({ success: false, error: 'No file uploaded' });
@@ -163,6 +166,7 @@ router.post('/zip', requireAuth, upload.single('file'), async (req: Authenticate
     uploadPath: extractPath,
     dealId,
     customLabel,
+    assetId,
     assetsNeedingDetails: [],
     createdAt: new Date(),
   };
@@ -236,13 +240,41 @@ async function processUploadJob(job: UploadJob): Promise<void> {
   try {
     job.status = 'parsing';
     
+    // If targeting an existing asset, look up its name to use as the rootLabel
+    let rootLabel = job.customLabel || undefined;
+    if (job.assetId && !rootLabel) {
+      const r = await dbQuery('SELECT property_name FROM data_library_assets WHERE id = $1', [job.assetId]);
+      rootLabel = r.rows[0]?.property_name || undefined;
+    }
+
     const result = await ingestArchiveDeals(job.uploadPath, {
       skipExisting: false,
-      rootLabel: job.customLabel || undefined,
+      rootLabel,
+      existingAssetId: job.assetId || undefined,
     });
     
     job.dealsCreated = result.parsedFolders;
     job.errors = result.errors;
+
+    // If we attached files to an existing asset, surface it for the modal and stop here.
+    if (job.assetId) {
+      job.assetsNeedingDetails = [job.assetId];
+      if (result.parsedFolders === 0) {
+        job.status = 'error';
+        if (job.errors.length === 0) {
+          job.errors.push('No extractable data found in uploaded files (T12, rent roll, OM, or CSV expected).');
+        }
+      } else {
+        job.status = 'complete';
+      }
+      job.completedAt = new Date();
+      logger.info(`Upload job ${job.id} ${job.status} for asset ${job.assetId} (parsed=${result.parsedFolders})`);
+      setTimeout(() => {
+        fs.rmSync(job.uploadPath, { recursive: true, force: true });
+        uploadJobs.delete(job.id);
+      }, 60 * 60 * 1000);
+      return;
+    }
 
     // Link to pipeline deal or create labeled asset
     if (job.dealId) {
@@ -304,15 +336,43 @@ async function processZipUpload(job: UploadJob, zipPath: string): Promise<void> 
     
     job.status = 'parsing';
     
+    // If targeting an existing asset, look up its name to use as the rootLabel
+    let rootLabel = job.customLabel || undefined;
+    if (job.assetId && !rootLabel) {
+      const r = await dbQuery('SELECT property_name FROM data_library_assets WHERE id = $1', [job.assetId]);
+      rootLabel = r.rows[0]?.property_name || undefined;
+    }
+
     // Run archive ingestion
     const result = await ingestArchiveDeals(job.uploadPath, {
       skipExisting: false,
-      rootLabel: job.customLabel || undefined,
+      rootLabel,
+      existingAssetId: job.assetId || undefined,
     });
     
     job.dealsCreated = result.parsedFolders;
     job.processedFiles = job.totalFiles;
     job.errors = result.errors;
+
+    // If we attached files to an existing asset, surface it for the modal and stop here.
+    if (job.assetId) {
+      job.assetsNeedingDetails = [job.assetId];
+      if (result.parsedFolders === 0) {
+        job.status = 'error';
+        if (job.errors.length === 0) {
+          job.errors.push('No extractable data found in uploaded ZIP (T12, rent roll, OM, or CSV expected).');
+        }
+      } else {
+        job.status = 'complete';
+      }
+      job.completedAt = new Date();
+      logger.info(`ZIP upload job ${job.id} ${job.status} for asset ${job.assetId} (parsed=${result.parsedFolders})`);
+      setTimeout(() => {
+        fs.rmSync(job.uploadPath, { recursive: true, force: true });
+        uploadJobs.delete(job.id);
+      }, 60 * 60 * 1000);
+      return;
+    }
 
     // Link to pipeline deal or create labeled asset
     if (job.dealId) {

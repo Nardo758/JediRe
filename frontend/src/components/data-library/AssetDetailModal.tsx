@@ -5,9 +5,10 @@
  * This enables proper categorization for the underwriting agent to use as comps.
  */
 
-import React, { useState } from 'react';
-import { X, Building2, MapPin, DollarSign, Percent, Calendar, Layers, CheckCircle } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Building2, MapPin, DollarSign, Percent, Calendar, Layers, CheckCircle, Upload, FileText, Loader2 } from 'lucide-react';
 import { apiClient } from '../../services/api.client';
+import { cloudStorageService } from '../../services/cloudStorage.service';
 
 const MONO = "'JetBrains Mono', 'Fira Code', monospace";
 const C = {
@@ -30,6 +31,8 @@ interface AssetDetailModalProps {
   customLabel: string;
   onClose: () => void;
   onSave: () => void;
+  /** When true, fetch existing asset data and prefill the form. */
+  editMode?: boolean;
 }
 
 interface AssetDetails {
@@ -88,6 +91,7 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
   customLabel,
   onClose,
   onSave,
+  editMode = false,
 }) => {
   const [details, setDetails] = useState<AssetDetails>({
     propertyName: customLabel,
@@ -109,6 +113,128 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [loadingExisting, setLoadingExisting] = useState(editMode);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadStatus, setUploadStatus] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Prefill from existing asset when in edit mode
+  useEffect(() => {
+    if (!editMode) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiClient.get(`/api/v1/data-library-assets/${assetId}`);
+        if (cancelled) return;
+        const a = res.data;
+        const occ = a.occupancy_rate != null ? Number(a.occupancy_rate) : null;
+        // occupancy_rate may be stored as 0-1 fraction or 0-100 percent — normalize to %
+        const occPct = occ == null ? '' : occ <= 1 ? (occ * 100).toFixed(1) : occ.toFixed(1);
+        const cap = a.cap_rate != null ? Number(a.cap_rate) : null;
+        const capPct = cap == null ? '' : cap <= 1 ? (cap * 100).toFixed(2) : cap.toFixed(2);
+        setDetails({
+          propertyName: a.property_name || customLabel || '',
+          address: a.address || '',
+          city: a.city || '',
+          state: a.state || '',
+          propertyType: a.property_type || '',
+          assetClass: a.asset_class || '',
+          dealType: a.deal_type || '',
+          units: a.unit_count != null ? String(a.unit_count) : '',
+          yearBuilt: a.year_built != null ? String(a.year_built) : '',
+          stories: a.stories != null ? String(a.stories) : '',
+          avgRent: a.avg_rent != null ? String(Number(a.avg_rent)) : '',
+          occupancyPct: occPct,
+          capRate: capPct,
+          askingPrice: a.sale_price != null ? String(Number(a.sale_price)) : '',
+          noi: a.noi != null ? String(Number(a.noi)) : '',
+        });
+      } catch (err) {
+        console.error('Failed to load asset:', err);
+      } finally {
+        if (!cancelled) setLoadingExisting(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [assetId, customLabel, editMode]);
+
+  const handleFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    setUploadProgress(0);
+    setUploadStatus('Uploading...');
+    setError(null);
+    try {
+      const fileArray = Array.from(files);
+      // If exactly one ZIP was dropped, send it to the zip endpoint so it gets unpacked.
+      const isSingleZip = fileArray.length === 1 && fileArray[0].name.toLowerCase().endsWith('.zip');
+      const job = isSingleZip
+        ? await cloudStorageService.uploadZip(
+            fileArray[0],
+            (p) => setUploadProgress(p),
+            undefined,
+            undefined,
+            assetId,
+          )
+        : await cloudStorageService.uploadFiles(
+            fileArray,
+            (p) => setUploadProgress(p),
+            undefined,
+            undefined,
+            assetId,
+          );
+      setUploadStatus('Parsing...');
+      // Poll job status
+      const start = Date.now();
+      while (Date.now() - start < 120_000) {
+        await new Promise(r => setTimeout(r, 1500));
+        const s = await cloudStorageService.getUploadJob(job.id);
+        if (s.status === 'complete') {
+          setUploadStatus(`Files attached. Reloading...`);
+          // Re-fetch asset and refresh form
+          try {
+            const res = await apiClient.get(`/api/v1/data-library-assets/${assetId}`);
+            const a = res.data;
+            const occ = a.occupancy_rate != null ? Number(a.occupancy_rate) : null;
+            const occPct = occ == null ? '' : occ <= 1 ? (occ * 100).toFixed(1) : occ.toFixed(1);
+            const cap = a.cap_rate != null ? Number(a.cap_rate) : null;
+            const capPct = cap == null ? '' : cap <= 1 ? (cap * 100).toFixed(2) : cap.toFixed(2);
+            setDetails(d => ({
+              ...d,
+              city: a.city || d.city,
+              state: a.state || d.state,
+              propertyType: a.property_type || d.propertyType,
+              units: a.unit_count != null ? String(a.unit_count) : d.units,
+              yearBuilt: a.year_built != null ? String(a.year_built) : d.yearBuilt,
+              stories: a.stories != null ? String(a.stories) : d.stories,
+              avgRent: a.avg_rent != null ? String(Number(a.avg_rent)) : d.avgRent,
+              occupancyPct: occPct || d.occupancyPct,
+              capRate: capPct || d.capRate,
+              noi: a.noi != null ? String(Number(a.noi)) : d.noi,
+            }));
+            onSave(); // notify parent so list refreshes
+          } catch { /* ignore */ }
+          setTimeout(() => { setUploadStatus(null); setUploading(false); }, 1200);
+          return;
+        }
+        if (s.status === 'error') {
+          setError(s.errors?.[0] || 'Upload failed');
+          setUploading(false);
+          setUploadStatus(null);
+          return;
+        }
+      }
+      setError('Upload timed out — check the data library shortly');
+      setUploading(false);
+      setUploadStatus(null);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Upload failed';
+      setError(msg);
+      setUploading(false);
+      setUploadStatus(null);
+    }
+  };
 
   const updateField = (field: keyof AssetDetails, value: string) => {
     setDetails(prev => ({ ...prev, [field]: value }));
@@ -264,10 +390,10 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
         }}>
           <div>
             <div style={{ fontSize: 12, fontWeight: 700, color: C.cyan, letterSpacing: 0.5, fontFamily: MONO }}>
-              ADD ASSET DETAILS
+              {editMode ? `EDIT: ${details.propertyName || customLabel}` : 'ADD ASSET DETAILS'}
             </div>
             <div style={{ fontSize: 10, color: C.muted, marginTop: 2 }}>
-              Fill in property details for better comp matching
+              {editMode ? 'Update fields or attach more files' : 'Fill in property details for better comp matching'}
             </div>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer' }}>
@@ -478,6 +604,59 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
               />
             </div>
           </div>
+
+          {/* Files / Documents */}
+          {editMode && (
+            <>
+              <div style={{ fontSize: 10, fontWeight: 600, color: C.amber, marginBottom: 10, marginTop: 24, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <FileText size={12} />
+                ATTACH DOCUMENTS
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept=".pdf,.xlsx,.xls,.csv,.zip"
+                style={{ display: 'none' }}
+                onChange={e => handleFiles(e.target.files)}
+              />
+              <div
+                onClick={() => !uploading && fileInputRef.current?.click()}
+                onDragOver={e => { e.preventDefault(); }}
+                onDrop={e => { e.preventDefault(); if (!uploading) handleFiles(e.dataTransfer.files); }}
+                style={{
+                  border: `1px dashed ${uploading ? C.cyan : C.borderHover}`,
+                  background: C.input,
+                  padding: 18,
+                  textAlign: 'center',
+                  cursor: uploading ? 'wait' : 'pointer',
+                  fontFamily: MONO,
+                  fontSize: 11,
+                  color: C.secondary,
+                }}
+              >
+                {uploading ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                    <Loader2 size={16} style={{ color: C.cyan, animation: 'spin 1s linear infinite' }} />
+                    <div>{uploadStatus || 'Working...'}</div>
+                    {uploadProgress > 0 && uploadProgress < 100 && (
+                      <div style={{ width: 200, height: 4, background: C.bg, borderRadius: 2 }}>
+                        <div style={{ width: `${uploadProgress}%`, height: '100%', background: C.cyan, borderRadius: 2 }} />
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+                    <Upload size={18} style={{ color: C.cyan }} />
+                    <div>Drop T12, rent roll, OM, or ZIP here — or click to browse</div>
+                    <div style={{ fontSize: 9, color: C.muted }}>
+                      PDF · XLSX · CSV · ZIP — extracted fields will fill in any blanks above
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
 
         {/* Footer */}

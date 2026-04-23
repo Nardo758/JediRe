@@ -620,7 +620,7 @@ async function parseArchiveDeal(folder: ArchiveDealFolder): Promise<ParsedArchiv
 
 // ─── Database Upsert ──────────────────────────────────────────────────────────
 
-async function upsertArchiveDeal(pool: Pool, deal: ParsedArchiveDeal): Promise<string> {
+async function upsertArchiveDeal(pool: Pool, deal: ParsedArchiveDeal, existingAssetId?: string): Promise<string> {
   const propertyType = deal.stories ? getPropertyType(deal.stories, deal.units) : 'garden';
 
   const mergedExtraction = {
@@ -639,6 +639,43 @@ async function upsertArchiveDeal(pool: Pool, deal: ParsedArchiveDeal): Promise<s
     city: deal.city,
     year_built: deal.yearBuilt,
   });
+
+  // If updating an existing asset, only fill in blanks (COALESCE) and merge extraction_data.
+  if (existingAssetId) {
+    const upd = await pool.query(
+      `UPDATE data_library_assets SET
+         city           = COALESCE(city,           $2),
+         state          = COALESCE(state,          $3),
+         unit_count     = COALESCE(unit_count,     $4),
+         year_built     = COALESCE(year_built,     $5),
+         property_type  = COALESCE(property_type,  $6),
+         stories        = COALESCE(stories,        $7),
+         msa_name       = COALESCE(msa_name,       $8),
+         asset_class    = COALESCE(asset_class,    $9),
+         cap_rate       = COALESCE(cap_rate,       $10),
+         noi            = COALESCE(noi,            $11),
+         noi_per_unit   = COALESCE(noi_per_unit,   $12),
+         expense_ratio  = COALESCE(expense_ratio,  $13),
+         avg_rent       = COALESCE(avg_rent,       $14),
+         occupancy_rate = COALESCE(occupancy_rate, $15),
+         extraction_data = COALESCE(extraction_data, '{}'::jsonb) || $16::jsonb,
+         data_quality_score = GREATEST(COALESCE(data_quality_score, 0), $17),
+         source_type    = CASE WHEN source_type = 'manual' THEN 'archive' ELSE source_type END,
+         updated_at     = NOW()
+       WHERE id = $1
+       RETURNING id`,
+      [
+        existingAssetId,
+        deal.city, deal.state, deal.units, deal.yearBuilt,
+        propertyType, deal.stories, deal.msa, deal.assetClass,
+        deal.goingInCapRate, deal.trailingNoi, deal.noiPerUnit, deal.opexRatio,
+        deal.avgRent, deal.occupancyPct,
+        JSON.stringify(mergedExtraction),
+        dqScore,
+      ]
+    );
+    return upd.rows[0]?.id;
+  }
 
   const result = await pool.query(
     `INSERT INTO data_library_assets (
@@ -701,7 +738,7 @@ function computeDQ(fields: Record<string, unknown>): number {
 
 export async function ingestArchiveDeals(
   archivePath: string,
-  options: { limit?: number; skipExisting?: boolean; rootLabel?: string } = {}
+  options: { limit?: number; skipExisting?: boolean; rootLabel?: string; existingAssetId?: string } = {}
 ): Promise<ArchiveScanResult> {
   const pool = getPool();
   const result: ArchiveScanResult = {
@@ -740,7 +777,7 @@ export async function ingestArchiveDeals(
     
     try {
       const parsed = await parseArchiveDeal(folder);
-      await upsertArchiveDeal(pool, parsed);
+      await upsertArchiveDeal(pool, parsed, options.existingAssetId);
       result.parsedFolders++;
       
       if (parsed.parseWarnings.length > 0) {
