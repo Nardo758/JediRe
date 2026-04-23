@@ -132,4 +132,67 @@ router.get('/me', requireAuth, async (req: AuthenticatedRequest, res) => {
   }
 });
 
+router.put('/profile', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const userId = req.user?.userId;
+    const { firstName, lastName, phone } = req.body;
+
+    const updates: string[] = [];
+    const values: any[] = [userId];
+    let p = 1;
+
+    if (firstName !== undefined) {
+      updates.push(`first_name = $${++p}`);
+      values.push(firstName);
+    }
+    if (lastName !== undefined) {
+      updates.push(`last_name = $${++p}`);
+      values.push(lastName);
+    }
+    if (firstName !== undefined || lastName !== undefined) {
+      const fn = firstName ?? '';
+      const ln = lastName ?? '';
+      updates.push(`full_name = $${++p}`);
+      values.push(`${fn} ${ln}`.trim());
+    }
+    if (phone !== undefined) {
+      updates.push(`phone = $${++p}`);
+      values.push(phone);
+    }
+
+    if (updates.length === 0) {
+      res.status(400).json({ error: 'No fields to update' });
+      return;
+    }
+
+    const result = await pool.query(
+      `UPDATE users SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $1
+       RETURNING id, email, full_name, first_name, last_name, phone, role, subscription_tier`,
+      values
+    );
+
+    if (result.rows.length === 0) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
+    const u = result.rows[0];
+    res.json({
+      success: true,
+      user: {
+        id: u.id,
+        email: u.email,
+        name: u.full_name || `${u.first_name || ''} ${u.last_name || ''}`.trim() || 'User',
+        firstName: u.first_name || '',
+        lastName: u.last_name || '',
+        phone: u.phone || '',
+        role: u.role || 'user',
+      },
+    });
+  } catch (error) {
+    console.error('Error updating profile:', error);
+    res.status(500).json({ error: 'Failed to update profile' });
+  }
+});
+
 export default router;
