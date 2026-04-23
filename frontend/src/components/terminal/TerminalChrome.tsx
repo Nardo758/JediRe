@@ -344,11 +344,6 @@ export function TerminalChrome({
               </button>
             ))}
           </div>
-          <div style={{display:"flex",alignItems:"center",padding:"0 12px",borderLeft:`1px solid ${T.border.medium}`,flexShrink:0,height:"100%"}}>
-            <span style={{fontFamily:T.font.mono,fontSize:10,color:T.text.muted,fontStyle:"italic",letterSpacing:0.4,whiteSpace:"nowrap"}}>
-              Press 0-7 to navigate&nbsp;•&nbsp;Type ticker to search
-            </span>
-          </div>
           <div style={{display:"flex",alignItems:"center",gap:4,padding:"0 8px",borderLeft:`1px solid ${T.border.medium}`,flexShrink:0}}>
             <button onClick={()=>navigate("/deals/create")} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"3px 9px",cursor:"pointer",height:22,letterSpacing:0.3,flexShrink:0}}>+ DEAL</button>
             {rightActions || (

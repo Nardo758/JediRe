@@ -1598,6 +1598,9 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
             {tab.label}
           </button>
         ))}
+        <span style={{ marginLeft: "auto", fontSize: 10, color: C.muted, fontStyle: "italic", paddingRight: 12, whiteSpace: "nowrap" }}>
+          Press 0-7 to navigate • Type ticker to search
+        </span>
         <button
           onClick={() => setShowLegend(!showLegend)}
           style={{
@@ -1607,7 +1610,7 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
             color: showLegend ? C.cyan : C.muted,
             borderTop: "none", borderLeft: "none", borderRight: "none",
             borderBottom: showLegend ? `2px solid ${C.cyan}` : "2px solid transparent",
-            letterSpacing: 0.5, outline: "none", marginLeft: "auto",
+            letterSpacing: 0.5, outline: "none",
           }}
           title="Toggle metrics legend"
         >
