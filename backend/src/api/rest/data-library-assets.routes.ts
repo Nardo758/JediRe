@@ -120,6 +120,58 @@ export function createDataLibraryAssetsRoutes(pool: Pool): Router {
     }
   });
 
+  router.patch('/:id', async (req: Request, res: Response) => {
+    try {
+      const updateableFields = [
+        'property_name', 'address', 'city', 'state', 'zip_code', 'county',
+        'msa_name', 'submarket_name', 'latitude', 'longitude',
+        'property_type', 'property_subtype', 'year_built', 'year_renovated',
+        'unit_count', 'net_rentable_sqft', 'avg_unit_sqft', 'lot_size_acres',
+        'stories', 'density_units_per_acre', 'construction_type', 'parking_type', 'parking_ratio',
+        'asset_class', 'finish_level', 'amenities', 'amenity_score', 'deal_type',
+        'vintage_band', 'unit_count_band',
+        'management_company', 'owner_operator', 'ownership_type',
+        'avg_rent', 'avg_rent_psf', 'rent_as_of_date',
+        'occupancy_rate', 'occupancy_pct', 'occupancy_as_of_date',
+        'noi', 'noi_per_unit', 'expense_ratio', 'noi_as_of_date',
+        'sale_price', 'sale_date', 'price_per_unit', 'price_per_sqft', 'cap_rate', 'buyer', 'seller',
+        'notes', 'tags', 'data_quality_score',
+      ];
+
+      const updates: string[] = [];
+      const params: any[] = [];
+      let idx = 1;
+
+      for (const field of updateableFields) {
+        if (req.body[field] !== undefined) {
+          updates.push(`${field} = $${idx++}`);
+          params.push(req.body[field]);
+        }
+      }
+
+      if (updates.length === 0) {
+        return res.status(400).json({ error: 'No fields to update' });
+      }
+
+      updates.push(`updated_at = NOW()`);
+      params.push(req.params.id);
+
+      const result = await pool.query(
+        `UPDATE data_library_assets SET ${updates.join(', ')} WHERE id = $${idx} RETURNING *`,
+        params
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'Asset not found' });
+      }
+
+      res.json(result.rows[0]);
+    } catch (err: any) {
+      console.error('Data library asset update error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   router.delete('/:id', async (req: Request, res: Response) => {
     try {
       await pool.query('DELETE FROM data_library_assets WHERE id = $1', [req.params.id]);

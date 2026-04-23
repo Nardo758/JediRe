@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { cloudStorageService, type BulkUploadJob } from '../../services/cloudStorage.service';
 import { apiClient } from '../../services/api.client';
+import { AssetDetailModal } from './AssetDetailModal';
 
 interface BulkUploadPanelProps {
   onUploadComplete?: () => void;
@@ -52,6 +53,11 @@ export const BulkUploadPanel: React.FC<BulkUploadPanelProps> = ({ onUploadComple
   const [linkMode, setLinkMode] = useState<'none' | 'pipeline' | 'custom'>('none');
   const [customLabel, setCustomLabel] = useState('');
   
+  // Asset detail modal (for custom-label uploads)
+  const [showAssetModal, setShowAssetModal] = useState(false);
+  const [newAssetId, setNewAssetId] = useState<string | null>(null);
+  const [savedCustomLabel, setSavedCustomLabel] = useState('');
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
   const zipInputRef = useRef<HTMLInputElement>(null);
 
@@ -77,6 +83,13 @@ export const BulkUploadPanel: React.FC<BulkUploadPanelProps> = ({ onUploadComple
         
         if (updated.status === 'complete') {
           onUploadComplete?.();
+          
+          // If this was a custom-label upload, show the detail modal
+          // so user can fill in property details for better comp matching
+          if (savedCustomLabel && updated.assetId) {
+            setNewAssetId(updated.assetId);
+            setShowAssetModal(true);
+          }
         }
       } catch (err) {
         console.error('Failed to poll upload status:', err);
@@ -84,7 +97,7 @@ export const BulkUploadPanel: React.FC<BulkUploadPanelProps> = ({ onUploadComple
     }, 2000);
     
     return () => clearInterval(interval);
-  }, [uploadJob, onUploadComplete]);
+  }, [uploadJob, onUploadComplete, savedCustomLabel]);
   
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -141,6 +154,14 @@ export const BulkUploadPanel: React.FC<BulkUploadPanelProps> = ({ onUploadComple
     }
     setError(null);
     setUploadProgress(0);
+    
+    // Save custom label for asset detail modal
+    if (linkMode === 'custom' && customLabel) {
+      setSavedCustomLabel(customLabel);
+    } else {
+      setSavedCustomLabel('');
+    }
+    
     try {
       const job = await cloudStorageService.uploadFiles(
         files, setUploadProgress,
@@ -157,6 +178,14 @@ export const BulkUploadPanel: React.FC<BulkUploadPanelProps> = ({ onUploadComple
   const uploadZip = async (file: File) => {
     setError(null);
     setUploadProgress(0);
+    
+    // Save custom label for asset detail modal
+    if (linkMode === 'custom' && customLabel) {
+      setSavedCustomLabel(customLabel);
+    } else {
+      setSavedCustomLabel('');
+    }
+    
     try {
       const job = await cloudStorageService.uploadZip(
         file, setUploadProgress,
@@ -460,6 +489,22 @@ export const BulkUploadPanel: React.FC<BulkUploadPanelProps> = ({ onUploadComple
           <div>• <strong style={{ color: C.secondary }}>Large uploads:</strong> For 50+ deals, use ZIP or connect cloud storage</div>
         </div>
       </div>
+      
+      {/* Asset Detail Modal - shows after custom-label uploads */}
+      {showAssetModal && newAssetId && (
+        <AssetDetailModal
+          assetId={newAssetId}
+          customLabel={savedCustomLabel}
+          onClose={() => {
+            setShowAssetModal(false);
+            setNewAssetId(null);
+            setSavedCustomLabel('');
+          }}
+          onSave={() => {
+            onUploadComplete?.();
+          }}
+        />
+      )}
     </div>
   );
 };

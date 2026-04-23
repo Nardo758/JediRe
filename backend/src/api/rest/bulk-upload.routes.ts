@@ -71,6 +71,7 @@ interface UploadJob {
   uploadPath: string;
   dealId?: string;
   customLabel?: string;
+  assetId?: string; // ID of created asset (for custom-label uploads)
   createdAt: Date;
   completedAt?: Date;
 }
@@ -189,17 +190,21 @@ async function linkDealToLibrary(dealId: string): Promise<void> {
   }
 }
 
-async function createLabeledAsset(label: string, userId: string): Promise<void> {
+async function createLabeledAsset(label: string, userId: string): Promise<string | null> {
   try {
-    await dbQuery(
+    const result = await dbQuery(
       `INSERT INTO data_library_assets (property_name, source_type, created_by, data_quality_score)
        VALUES ($1, 'manual', $2, 10)
-       ON CONFLICT DO NOTHING`,
+       ON CONFLICT DO NOTHING
+       RETURNING id`,
       [label, userId]
     );
-    logger.info(`Created labeled data library asset: "${label}"`);
+    const assetId = result.rows[0]?.id || null;
+    logger.info(`Created labeled data library asset: "${label}" (id=${assetId})`);
+    return assetId;
   } catch (err) {
     logger.warn(`Could not create labeled asset "${label}":`, err);
+    return null;
   }
 }
 
@@ -217,7 +222,8 @@ async function processUploadJob(job: UploadJob): Promise<void> {
       await linkDealToLibrary(job.dealId);
       if (result.parsedFolders === 0) job.dealsCreated = 1;
     } else if (job.customLabel) {
-      await createLabeledAsset(job.customLabel, job.userId);
+      const assetId = await createLabeledAsset(job.customLabel, job.userId);
+      if (assetId) job.assetId = assetId;
       if (result.parsedFolders === 0) job.dealsCreated = 1;
     }
 
@@ -267,7 +273,8 @@ async function processZipUpload(job: UploadJob, zipPath: string): Promise<void> 
       await linkDealToLibrary(job.dealId);
       if (result.parsedFolders === 0) job.dealsCreated = 1;
     } else if (job.customLabel) {
-      await createLabeledAsset(job.customLabel, job.userId);
+      const assetId = await createLabeledAsset(job.customLabel, job.userId);
+      if (assetId) job.assetId = assetId;
       if (result.parsedFolders === 0) job.dealsCreated = 1;
     }
 
@@ -312,6 +319,7 @@ router.get('/status/:jobId', requireAuth, async (req: AuthenticatedRequest, res:
       totalFiles: job.totalFiles,
       processedFiles: job.processedFiles,
       dealsCreated: job.dealsCreated,
+      assetId: job.assetId || null, // For custom-label uploads
       errors: job.errors,
       createdAt: job.createdAt,
       completedAt: job.completedAt,

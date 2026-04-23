@@ -67,6 +67,7 @@ export interface BulkUploadJob {
   totalFiles: number;
   processedFiles: number;
   dealsCreated: number;
+  assetId?: string | null; // For custom-label uploads, so we can show detail modal
   errors: string[];
   createdAt: string;
   completedAt?: string;
