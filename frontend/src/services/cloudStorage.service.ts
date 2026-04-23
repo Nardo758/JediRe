@@ -132,10 +132,11 @@ class CloudStorageService {
   
   // ─── Bulk Upload ──────────────────────────────────────────────────────────
   
-  async uploadFiles(files: File[], onProgress?: (progress: number) => void, dealId?: string): Promise<BulkUploadJob> {
+  async uploadFiles(files: File[], onProgress?: (progress: number) => void, dealId?: string, customLabel?: string): Promise<BulkUploadJob> {
     const formData = new FormData();
     files.forEach(file => formData.append('files', file));
     if (dealId) formData.append('dealId', dealId);
+    if (customLabel) formData.append('customLabel', customLabel);
     
     const response = await apiClient.post('/api/v1/bulk-upload/files', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
@@ -149,10 +150,11 @@ class CloudStorageService {
     return { errors: [], id: response.data.jobId, ...response.data };
   }
   
-  async uploadZip(file: File, onProgress?: (progress: number) => void, dealId?: string): Promise<BulkUploadJob> {
+  async uploadZip(file: File, onProgress?: (progress: number) => void, dealId?: string, customLabel?: string): Promise<BulkUploadJob> {
     const formData = new FormData();
     formData.append('file', file);
     if (dealId) formData.append('dealId', dealId);
+    if (customLabel) formData.append('customLabel', customLabel);
     
     const response = await apiClient.post('/api/v1/bulk-upload/zip', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },

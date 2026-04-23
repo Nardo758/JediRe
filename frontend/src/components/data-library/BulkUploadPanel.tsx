@@ -49,6 +49,8 @@ export const BulkUploadPanel: React.FC<BulkUploadPanelProps> = ({ onUploadComple
   const [deals, setDeals] = useState<Deal[]>([]);
   const [selectedDealId, setSelectedDealId] = useState<string>('');
   const [dealsLoading, setDealsLoading] = useState(true);
+  const [linkMode, setLinkMode] = useState<'none' | 'pipeline' | 'custom'>('none');
+  const [customLabel, setCustomLabel] = useState('');
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const zipInputRef = useRef<HTMLInputElement>(null);
@@ -140,7 +142,11 @@ export const BulkUploadPanel: React.FC<BulkUploadPanelProps> = ({ onUploadComple
     setError(null);
     setUploadProgress(0);
     try {
-      const job = await cloudStorageService.uploadFiles(files, setUploadProgress, selectedDealId || undefined);
+      const job = await cloudStorageService.uploadFiles(
+        files, setUploadProgress,
+        linkMode === 'pipeline' ? selectedDealId || undefined : undefined,
+        linkMode === 'custom' ? customLabel || undefined : undefined,
+      );
       setUploadJob(job);
       setFiles([]);
     } catch (err) {
@@ -152,7 +158,11 @@ export const BulkUploadPanel: React.FC<BulkUploadPanelProps> = ({ onUploadComple
     setError(null);
     setUploadProgress(0);
     try {
-      const job = await cloudStorageService.uploadZip(file, setUploadProgress, selectedDealId || undefined);
+      const job = await cloudStorageService.uploadZip(
+        file, setUploadProgress,
+        linkMode === 'pipeline' ? selectedDealId || undefined : undefined,
+        linkMode === 'custom' ? customLabel || undefined : undefined,
+      );
       setUploadJob(job);
       setFiles([]);
     } catch (err) {
@@ -178,58 +188,91 @@ export const BulkUploadPanel: React.FC<BulkUploadPanelProps> = ({ onUploadComple
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, fontFamily: MONO }}>
 
-      {/* Deal Selector */}
+      {/* Deal Linking */}
       <div style={{ padding: '12px 14px', background: C.panel, border: `1px solid ${C.border}` }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
           <Link size={14} style={{ color: C.cyan }} />
-          <span style={{ fontSize: 11, fontWeight: 700, color: C.cyan, letterSpacing: 0.5 }}>
-            LINK TO DEAL
-          </span>
-          <span style={{ fontSize: 10, color: C.muted }}>— associate these files with a deal in your pipeline</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: C.cyan, letterSpacing: 0.5 }}>LINK TO DEAL</span>
+          <span style={{ fontSize: 10, color: C.muted }}>— tag these files to a deal for the data library</span>
         </div>
 
-        {dealsLoading ? (
-          <div style={{ fontSize: 10, color: C.muted }}>Loading deals...</div>
-        ) : (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {/* Mode toggle */}
+        <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
+          {([
+            { mode: 'none', label: 'No Link' },
+            { mode: 'pipeline', label: 'Pipeline Deal' },
+            { mode: 'custom', label: 'Custom Label' },
+          ] as const).map(({ mode, label }) => (
+            <button
+              key={mode}
+              onClick={() => setLinkMode(mode)}
+              style={{
+                padding: '5px 12px', fontFamily: MONO, fontSize: 10, fontWeight: 600,
+                cursor: 'pointer', letterSpacing: 0.3, border: 'none',
+                background: linkMode === mode ? C.cyan : C.input,
+                color: linkMode === mode ? '#000' : C.muted,
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Pipeline deal dropdown */}
+        {linkMode === 'pipeline' && (
+          dealsLoading ? (
+            <div style={{ fontSize: 10, color: C.muted }}>Loading deals...</div>
+          ) : (
             <select
               value={selectedDealId}
               onChange={e => setSelectedDealId(e.target.value)}
               style={{
-                flex: 1,
-                padding: '7px 10px',
-                background: C.input,
+                width: '100%', padding: '7px 10px', background: C.input,
                 border: `1px solid ${selectedDealId ? C.cyan : C.border}`,
                 color: selectedDealId ? C.primary : C.muted,
-                fontFamily: MONO,
-                fontSize: 11,
-                outline: 'none',
-                cursor: 'pointer',
+                fontFamily: MONO, fontSize: 11, outline: 'none', cursor: 'pointer',
               }}
             >
-              <option value="">— No deal link (standalone comp) —</option>
+              <option value="">— Select a pipeline deal —</option>
               {deals.map(d => (
                 <option key={d.id} value={d.id}>
-                  {d.name}{d.address ? ` · ${d.address.split(',').slice(1, 2).join('').trim()}` : ''}
+                  {d.name}{d.address ? ` · ${d.address.split(',').slice(0, 2).join(',').trim()}` : ''}
                 </option>
               ))}
             </select>
-            {selectedDeal && (
-              <button
-                onClick={() => setSelectedDealId('')}
-                style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', padding: 4 }}
-                title="Clear selection"
-              >
-                <X size={14} />
-              </button>
-            )}
+          )
+        )}
+
+        {/* Custom label input */}
+        {linkMode === 'custom' && (
+          <div>
+            <input
+              value={customLabel}
+              onChange={e => setCustomLabel(e.target.value)}
+              placeholder="e.g. 123 Main St Tampa — T12 & Rent Roll"
+              style={{
+                width: '100%', padding: '7px 10px', background: C.input,
+                border: `1px solid ${customLabel ? C.amber : C.border}`,
+                color: C.primary, fontFamily: MONO, fontSize: 11,
+                outline: 'none', boxSizing: 'border-box',
+              }}
+            />
+            <div style={{ marginTop: 5, fontSize: 9, color: C.muted }}>
+              This creates a named entry in your data library — useful for deals you haven't added to the platform yet.
+            </div>
           </div>
         )}
 
-        {selectedDeal && (
-          <div style={{ marginTop: 8, padding: '6px 8px', background: `${C.cyan}11`, border: `1px solid ${C.cyan}33`, fontSize: 10, color: C.cyan }}>
-            Files will be tagged to: <strong>{selectedDeal.name}</strong>
+        {/* Confirmation badge */}
+        {linkMode === 'pipeline' && selectedDeal && (
+          <div style={{ marginTop: 8, padding: '5px 8px', background: `${C.cyan}11`, border: `1px solid ${C.cyan}33`, fontSize: 10, color: C.cyan }}>
+            → <strong>{selectedDeal.name}</strong>
             {selectedDeal.address && <span style={{ color: C.muted }}> · {selectedDeal.address.split(',').slice(0, 2).join(',')}</span>}
+          </div>
+        )}
+        {linkMode === 'custom' && customLabel && (
+          <div style={{ marginTop: 8, padding: '5px 8px', background: `${C.amber}11`, border: `1px solid ${C.amber}33`, fontSize: 10, color: C.amber }}>
+            → <strong>{customLabel}</strong>
           </div>
         )}
       </div>

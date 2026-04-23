@@ -70,6 +70,7 @@ interface UploadJob {
   errors: string[];
   uploadPath: string;
   dealId?: string;
+  customLabel?: string;
   createdAt: Date;
   completedAt?: Date;
 }
@@ -84,6 +85,7 @@ router.post('/files', requireAuth, upload.array('files', 100), async (req: Authe
   const jobId = uuidv4();
   const files = req.files as Express.Multer.File[];
   const dealId = req.body?.dealId as string | undefined;
+  const customLabel = req.body?.customLabel as string | undefined;
   
   if (!files || files.length === 0) {
     return res.status(400).json({ success: false, error: 'No files uploaded' });
@@ -102,6 +104,7 @@ router.post('/files', requireAuth, upload.array('files', 100), async (req: Authe
     errors: [],
     uploadPath,
     dealId,
+    customLabel,
     createdAt: new Date(),
   };
   
@@ -131,6 +134,7 @@ router.post('/zip', requireAuth, upload.single('file'), async (req: Authenticate
   const jobId = uuidv4();
   const file = req.file;
   const dealId = req.body?.dealId as string | undefined;
+  const customLabel = req.body?.customLabel as string | undefined;
   
   if (!file) {
     return res.status(400).json({ success: false, error: 'No file uploaded' });
@@ -155,6 +159,7 @@ router.post('/zip', requireAuth, upload.single('file'), async (req: Authenticate
     errors: [],
     uploadPath: extractPath,
     dealId,
+    customLabel,
     createdAt: new Date(),
   };
   
@@ -184,6 +189,20 @@ async function linkDealToLibrary(dealId: string): Promise<void> {
   }
 }
 
+async function createLabeledAsset(label: string, userId: string): Promise<void> {
+  try {
+    await dbQuery(
+      `INSERT INTO data_library_assets (property_name, source_type, created_by, data_quality_score)
+       VALUES ($1, 'manual', $2, 10)
+       ON CONFLICT DO NOTHING`,
+      [label, userId]
+    );
+    logger.info(`Created labeled data library asset: "${label}"`);
+  } catch (err) {
+    logger.warn(`Could not create labeled asset "${label}":`, err);
+  }
+}
+
 async function processUploadJob(job: UploadJob): Promise<void> {
   try {
     job.status = 'parsing';
@@ -193,9 +212,12 @@ async function processUploadJob(job: UploadJob): Promise<void> {
     job.dealsCreated = result.parsedFolders;
     job.errors = result.errors;
 
-    // If a deal was selected, link it to the data library regardless of archive parsing
+    // Link to pipeline deal or create labeled asset
     if (job.dealId) {
       await linkDealToLibrary(job.dealId);
+      if (result.parsedFolders === 0) job.dealsCreated = 1;
+    } else if (job.customLabel) {
+      await createLabeledAsset(job.customLabel, job.userId);
       if (result.parsedFolders === 0) job.dealsCreated = 1;
     }
 
@@ -240,9 +262,12 @@ async function processZipUpload(job: UploadJob, zipPath: string): Promise<void> 
     job.processedFiles = job.totalFiles;
     job.errors = result.errors;
 
-    // If a deal was selected, link it to the data library regardless of archive parsing
+    // Link to pipeline deal or create labeled asset
     if (job.dealId) {
       await linkDealToLibrary(job.dealId);
+      if (result.parsedFolders === 0) job.dealsCreated = 1;
+    } else if (job.customLabel) {
+      await createLabeledAsset(job.customLabel, job.userId);
       if (result.parsedFolders === 0) job.dealsCreated = 1;
     }
 
