@@ -14,6 +14,7 @@ export const modules: ModuleMap = {
   "./components/mockups/f9-assumptions/AssumptionsGrid.tsx": () => import("../components/mockups/f9-assumptions/AssumptionsGrid.tsx"),
   "./components/mockups/f9-proforma/ProFormaTab.tsx": () => import("../components/mockups/f9-proforma/ProFormaTab.tsx"),
   "./components/mockups/m08-strategies-tab/StrategiesTab.tsx": () => import("../components/mockups/m08-strategies-tab/StrategiesTab.tsx"),
+  "./components/mockups/m11-debt-advisor-tab/DebtAdvisorTab.tsx": () => import("../components/mockups/m11-debt-advisor-tab/DebtAdvisorTab.tsx"),
   "./components/mockups/m35-charts/AttributionWaterfall.tsx": () => import("../components/mockups/m35-charts/AttributionWaterfall.tsx"),
   "./components/mockups/m35-charts/CascadeMap.tsx": () => import("../components/mockups/m35-charts/CascadeMap.tsx"),
   "./components/mockups/m35-charts/EventDensityStrip.tsx": () => import("../components/mockups/m35-charts/EventDensityStrip.tsx"),
@@ -30,6 +31,5 @@ export const modules: ModuleMap = {
   "./components/mockups/m35-pages/PlaybookLibrary.tsx": () => import("../components/mockups/m35-pages/PlaybookLibrary.tsx"),
   "./components/mockups/m35-pages/PortfolioDashboard.tsx": () => import("../components/mockups/m35-pages/PortfolioDashboard.tsx"),
   "./components/mockups/market-performance/Combined.tsx": () => import("../components/mockups/market-performance/Combined.tsx"),
-  "./components/mockups/msa-overview/Overview.tsx": () => import("../components/mockups/msa-overview/Overview.tsx"),
-  "./components/mockups/m11-debt-advisor-tab/DebtAdvisorTab.tsx": () => import("../components/mockups/m11-debt-advisor-tab/DebtAdvisorTab.tsx")
+  "./components/mockups/msa-overview/Overview.tsx": () => import("../components/mockups/msa-overview/Overview.tsx")
 };

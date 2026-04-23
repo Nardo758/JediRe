@@ -22,37 +22,48 @@ type ModelRouting = Record<SubscriptionTier, Record<AgentId, string>>;
 
 const MODEL_ROUTING: ModelRouting = {
   scout: {
-    research: 'claude-haiku-4-5-20251001',
+    research: 'deepseek-chat',
     zoning: 'claude-sonnet-4-20250514',
-    supply: 'claude-sonnet-4-20250514',
+    supply: 'deepseek-chat',
     cashflow: 'claude-sonnet-4-20250514',
     coordinator: 'claude-haiku-4-5-20251001',
     commentary: 'claude-haiku-4-5-20251001',
   },
   operator: {
-    research: 'claude-haiku-4-5-20251001',
+    research: 'deepseek-chat',
     zoning: 'claude-sonnet-4-20250514',
-    supply: 'claude-sonnet-4-20250514',
+    supply: 'deepseek-chat',
     cashflow: 'claude-sonnet-4-20250514',
     coordinator: 'claude-sonnet-4-20250514',
     commentary: 'claude-haiku-4-5-20251001',
   },
   principal: {
-    research: 'claude-haiku-4-5-20251001',
+    research: 'deepseek-chat',
     zoning: 'claude-sonnet-4-20250514',
-    supply: 'claude-sonnet-4-20250514',
+    supply: 'deepseek-chat',
     cashflow: 'claude-opus-4-20250514',
     coordinator: 'claude-sonnet-4-20250514',
     commentary: 'claude-sonnet-4-20250514',
   },
   institutional: {
-    research: 'claude-sonnet-4-20250514',
+    research: 'deepseek-chat',
     zoning: 'claude-sonnet-4-20250514',
-    supply: 'claude-sonnet-4-20250514',
+    supply: 'deepseek-chat',
     cashflow: 'claude-opus-4-20250514',
     coordinator: 'claude-opus-4-20250514',
     commentary: 'claude-sonnet-4-20250514',
   },
+};
+
+// Per-surface default models for non-agent surfaces (pipelines + skills).
+// When a call site supplies routingSurface={type:'pipeline'|'skill', id}, this
+// map wins over MODEL_ROUTING[tier][agentId]. Users can still override these
+// in settings (per-surface preference takes priority).
+const SURFACE_DEFAULTS: Record<string, string> = {
+  'pipeline:om_parsing': 'deepseek-chat',
+  'pipeline:email_intake_classification': 'deepseek-chat',
+  'pipeline:document_classification': 'deepseek-chat',
+  'skill:document_extraction': 'deepseek-chat',
 };
 
 // ── Credit Costs per Operation ─────────────────────────────────
@@ -388,7 +399,11 @@ export class JediAIService {
     routingSurface?: { type: 'agent' | 'skill' | 'pipeline'; id: string }
   ): Promise<string> {
     const surface = routingSurface ?? { type: 'agent' as const, id: agentId };
-    const defaultModel = MODEL_ROUTING[tier][agentId];
+    const surfaceKey = `${surface.type}:${surface.id}`;
+    const defaultModel =
+      surface.type !== 'agent' && SURFACE_DEFAULTS[surfaceKey]
+        ? SURFACE_DEFAULTS[surfaceKey]
+        : MODEL_ROUTING[tier][agentId];
     return modelPreferenceService.resolveModel({
       userId,
       surfaceType: surface.type,
