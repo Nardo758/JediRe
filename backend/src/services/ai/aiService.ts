@@ -266,7 +266,26 @@ export class JediAIService {
     messages: Anthropic.MessageParam[]
   ): AsyncGenerator<string> {
     const tier = await this.getUserTier(context.userId);
-    const model = await this.resolveModel(context.userId, tier, context.agentId);
+    let model = await this.resolveModel(context.userId, tier, context.agentId);
+
+    // The streaming path only supports Anthropic. If the resolved model is
+    // a DeepSeek model (now the default for research/supply), fall back to a
+    // tier-appropriate Claude model so the stream still works. Non-streaming
+    // generate() handles DeepSeek natively.
+    if (getModelFamily(model) === 'deepseek') {
+      const fallback = MODEL_ROUTING[tier]?.[context.agentId];
+      const claudeFallback =
+        fallback && getModelFamily(fallback) === 'claude'
+          ? fallback
+          : 'claude-sonnet-4-20250514';
+      logger.info('JediAIService.stream: DeepSeek not supported in stream path, falling back to Claude', {
+        requested: model,
+        fallback: claudeFallback,
+        agentId: context.agentId,
+      });
+      model = claudeFallback;
+    }
+
     const creditCost = this.getCreditCost(context.operationType, model);
     await this.checkAndDeductCredits(context.userId, creditCost);
 

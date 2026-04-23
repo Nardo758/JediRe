@@ -1,13 +1,23 @@
 /**
  * MSA Economic Data Ingestion Script
- * Pulls BLS QCEW employment/wage data for each MSA in the platform
- * using the cbsa_code already stored in the `msas` table.
  *
- * Run nightly (after M28 rate ingest) via cron: 30 8 * * *
+ * Pulls per-MSA monthly economic indicators from BLS:
+ *   - CES (SMU): nonfarm payroll employment by supersector
+ *   - LAUS (LAUMT): unemployment rate, civilian labor force
  *
- * Series format: ENU + cbsa_code(5) + ownership(1) + naics(6) + datatype(2)
- *   ownership 5 = private sector
- *   datatype 01 = employment, 04 = avg weekly wages, 05 = establishments
+ * QCEW (ENU) was tried previously but the BLS public timeseries API does not
+ * expose MSA-level QCEW series — every probe returned "Series does not exist".
+ * Wages / establishment counts therefore stay NULL until we wire the QCEW
+ * flat-file pipeline (separate task).
+ *
+ * Run nightly via cron: 30 8 * * * (after the M28 rate ingest).
+ *
+ * SMU series format (20 chars):
+ *   SM + adj(U|S) + state(2) + area(5) + supersector(2) + industry(6) + datatype(2)
+ *
+ * LAUMT series format (20 chars):
+ *   LAUMT + state(2) + area(5) + 0000000 + measure(1)
+ *     measure: 3=unemployment rate, 4=unemployment, 5=employment, 6=labor force
  */
 import dotenv from 'dotenv';
 dotenv.config();
@@ -18,47 +28,99 @@ import { logger } from '../utils/logger';
 
 const pool = getPool();
 
-// 3-digit NAICS codes — broad enough for MSA-level QCEW coverage without suppression
-const MSA_NAICS_TARGETS: Array<{ naics: string; label: string }> = [
-  { naics: '531',  label: 'Real Estate' },
-  { naics: '493',  label: 'Warehousing & Storage' },
-  { naics: '721',  label: 'Hotels & Accommodations' },
-  { naics: '623',  label: 'Nursing & Residential Care' },
-  { naics: '611',  label: 'Educational Services' },
-  { naics: '236',  label: 'Construction of Buildings' },
-  { naics: '621',  label: 'Ambulatory Health Care' },
-  { naics: '522',  label: 'Credit & Lending' },
+// CES supersectors that matter for CRE demand-side analysis.
+// "code" goes into naics_code (varchar(6)) — we reuse that column for the
+// CES supersector code so the existing UNIQUE (msa_id, snapshot_date, naics_code)
+// constraint keeps one row per supersector per snapshot.
+const MSA_CES_TARGETS: Array<{ supersector: string; label: string }> = [
+  { supersector: '00', label: 'Total Nonfarm' },
+  { supersector: '20', label: 'Construction' },
+  { supersector: '30', label: 'Manufacturing' },
+  { supersector: '40', label: 'Trade, Transportation & Utilities' },
+  { supersector: '50', label: 'Information' },
+  { supersector: '55', label: 'Financial Activities' },
+  { supersector: '60', label: 'Professional & Business Services' },
+  { supersector: '65', label: 'Education & Health Services' },
+  { supersector: '70', label: 'Leisure & Hospitality' },
+  { supersector: '90', label: 'Government' },
 ];
 
-function buildMsaQCEWSeries(cbsaCode: string, naics3: string, measure: '1' | '4' | '5'): string {
-  // Zero-pad CBSA code to 5 digits
-  const area = cbsaCode.padStart(5, '0');
-  // Pad NAICS to 6 digits
-  const paddedNaics = naics3.padEnd(6, '0').substring(0, 6);
-  const dataType = measure === '1' ? '01' : measure === '4' ? '04' : '05';
-  // Ownership 5 = private
-  return `ENU${area}5${paddedNaics}${dataType}`;
+// CBSA → 2-digit state FIPS for the principal state in the MSA.
+// Falls back to scanning the MSA name if not present here.
+const CBSA_TO_STATE_FIPS: Record<string, string> = {
+  '12060': '13', // Atlanta-Sandy Springs-Roswell, GA
+  '33100': '12', // Miami-Fort Lauderdale-WPB, FL
+  '36740': '12', // Orlando-Kissimmee-Sanford, FL
+  '45300': '12', // Tampa-St Petersburg-Clearwater, FL
+  '34980': '47', // Nashville-Davidson, TN
+  '16980': '17', // Chicago-Naperville-Elgin, IL
+  '19100': '48', // Dallas-Fort Worth-Arlington, TX
+  '26420': '48', // Houston-The Woodlands-Sugar Land, TX
+  '12420': '48', // Austin-Round Rock-Georgetown, TX
+  '38060': '04', // Phoenix-Mesa-Chandler, AZ
+  '39580': '37', // Raleigh-Cary, NC
+  '16740': '37', // Charlotte-Concord-Gastonia, NC
+  '47900': '11', // Washington-Arlington-Alexandria, DC
+  '35620': '36', // New York-Newark-Jersey City, NY
+  '31080': '06', // Los Angeles-Long Beach-Anaheim, CA
+};
+
+const STATE_NAME_TO_FIPS: Record<string, string> = {
+  AL: '01', AK: '02', AZ: '04', AR: '05', CA: '06', CO: '08', CT: '09',
+  DE: '10', DC: '11', FL: '12', GA: '13', HI: '15', ID: '16', IL: '17',
+  IN: '18', IA: '19', KS: '20', KY: '21', LA: '22', ME: '23', MD: '24',
+  MA: '25', MI: '26', MN: '27', MS: '28', MO: '29', MT: '30', NE: '31',
+  NV: '32', NH: '33', NJ: '34', NM: '35', NY: '36', NC: '37', ND: '38',
+  OH: '39', OK: '40', OR: '41', PA: '42', RI: '44', SC: '45', SD: '46',
+  TN: '47', TX: '48', UT: '49', VT: '50', VA: '51', WA: '53', WV: '54',
+  WI: '55', WY: '56',
+};
+
+function resolveStateFips(cbsaCode: string, msaName: string): string | null {
+  if (CBSA_TO_STATE_FIPS[cbsaCode]) return CBSA_TO_STATE_FIPS[cbsaCode];
+  // Last 2-letter state code in the MSA name (e.g., "Atlanta-..., GA")
+  const m = msaName.match(/,\s*([A-Z]{2})(?:-[A-Z]{2})?$/);
+  if (m && STATE_NAME_TO_FIPS[m[1]]) return STATE_NAME_TO_FIPS[m[1]];
+  return null;
 }
 
-function getLatestAnnual(data: BLSDataPoint[]): BLSDataPoint | null {
-  const annuals = data
-    .filter(d => d.period === 'A01')
-    .sort((a, b) => parseInt(b.year) - parseInt(a.year));
-  return annuals[0] || null;
+function buildCESSeries(stateFips: string, cbsaCode: string, supersector: string): string {
+  // U = not seasonally adjusted, datatype 01 = all employees (thousands)
+  return `SMU${stateFips}${cbsaCode.padStart(5, '0')}${supersector}00000001`;
 }
 
-function computeYoYChange(data: BLSDataPoint[]): number | null {
-  const annuals = data
-    .filter(d => d.period === 'A01')
-    .sort((a, b) => parseInt(b.year) - parseInt(a.year));
-  if (annuals.length < 2) return null;
-  const curr = parseFloat(annuals[0].value);
-  const prev = parseFloat(annuals[1].value);
+function buildLAUMTUnemploymentRateSeries(stateFips: string, cbsaCode: string): string {
+  return `LAUMT${stateFips}${cbsaCode.padStart(5, '0')}00000003`;
+}
+
+function getLatestMonthly(data: BLSDataPoint[]): BLSDataPoint | null {
+  // Restrict to real calendar months M01..M12 — BLS also publishes M13
+  // (annual average) which would skew YoY comparisons.
+  const monthly = data
+    .filter(d => /^M(0[1-9]|1[0-2])$/.test(d.period) && d.value !== '-' && d.value !== '')
+    .sort((a, b) => {
+      const ay = parseInt(a.year), by = parseInt(b.year);
+      if (by !== ay) return by - ay;
+      return parseInt(b.period.slice(1)) - parseInt(a.period.slice(1));
+    });
+  return monthly[0] || null;
+}
+
+/** YoY change between latest monthly point and same month one year prior. */
+function computeMonthlyYoY(data: BLSDataPoint[]): number | null {
+  const latest = getLatestMonthly(data);
+  if (!latest) return null;
+  const yearAgo = data.find(
+    d => d.period === latest.period && parseInt(d.year) === parseInt(latest.year) - 1
+  );
+  if (!yearAgo) return null;
+  const curr = parseFloat(latest.value);
+  const prev = parseFloat(yearAgo.value);
   if (isNaN(curr) || isNaN(prev) || prev === 0) return null;
   return parseFloat(((curr - prev) / prev * 100).toFixed(2));
 }
 
-async function ingestMsaData() {
+export async function ingestMsaData() {
   const snapshotDate = new Date().toISOString().split('T')[0];
 
   console.log(`\n═══════════════════════════════════════════════════`);
@@ -67,7 +129,6 @@ async function ingestMsaData() {
 
   const blsClient = new BLSApiClient();
 
-  // Fetch all MSAs with CBSA codes
   const msaResult = await pool.query(
     `SELECT id, name, cbsa_code FROM msas WHERE cbsa_code IS NOT NULL ORDER BY id`
   );
@@ -84,103 +145,111 @@ async function ingestMsaData() {
   let errors = 0;
 
   for (const msa of msaResult.rows) {
-    console.log(`\n  → ${msa.name} (CBSA: ${msa.cbsa_code})`);
-
-    // Check if today's data already exists for this MSA
-    const existing = await pool.query(
-      `SELECT COUNT(*) FROM msa_economic_snapshot
-       WHERE msa_id = $1 AND snapshot_date = $2`,
-      [msa.id, snapshotDate]
-    );
-    const existingCount = parseInt(existing.rows[0].count);
-
-    if (existingCount >= MSA_NAICS_TARGETS.length) {
-      console.log(`     ⏭️  Data already exists. Skipping.`);
+    const stateFips = resolveStateFips(msa.cbsa_code, msa.name);
+    if (!stateFips) {
+      console.log(`\n  → ${msa.name}: ⚠️  could not resolve state FIPS, skipping`);
       skipped++;
       continue;
     }
 
-    for (const target of MSA_NAICS_TARGETS) {
+    console.log(`\n  → ${msa.name} (CBSA: ${msa.cbsa_code}, State FIPS: ${stateFips})`);
+
+    // Fetch unemployment rate once for this MSA (applies to all supersector rows)
+    let unemploymentRate: number | null = null;
+    try {
+      const urSeries = buildLAUMTUnemploymentRateSeries(stateFips, msa.cbsa_code);
+      const [urData] = await blsClient.getMultipleSeries(
+        [urSeries],
+        new Date().getFullYear() - 1,
+        new Date().getFullYear()
+      );
+      const latestUr = getLatestMonthly(urData?.data ?? []);
+      unemploymentRate = latestUr ? parseFloat(latestUr.value) : null;
+      if (unemploymentRate != null) {
+        console.log(`     · Unemployment rate: ${unemploymentRate}%`);
+      }
+    } catch (err: any) {
+      logger.warn(`[MSAIngest] Failed unemployment fetch ${msa.name}`, { error: err.message });
+    }
+
+    // Batch all CES supersector employment series in one BLS call
+    const seriesIds = MSA_CES_TARGETS.map(t => buildCESSeries(stateFips, msa.cbsa_code, t.supersector));
+
+    let cesSeries: BLSSeriesData[] = [];
+    try {
+      cesSeries = await blsClient.getMultipleSeries(
+        seriesIds,
+        new Date().getFullYear() - 2,
+        new Date().getFullYear()
+      );
+    } catch (err: any) {
+      errors++;
+      logger.warn(`[MSAIngest] CES batch fetch failed ${msa.name}`, { error: err.message });
+      continue;
+    }
+
+    for (const target of MSA_CES_TARGETS) {
+      const seriesId = buildCESSeries(stateFips, msa.cbsa_code, target.supersector);
+      const data = cesSeries.find(s => s.seriesID === seriesId)?.data ?? [];
+      const latest = getLatestMonthly(data);
+
+      if (!latest || latest.value === '-' || latest.value === '0') {
+        continue;
+      }
+
+      const yoyChange = computeMonthlyYoY(data);
+      // CES values are in thousands of jobs — convert to absolute employment.
+      const employmentLevel = parseFloat(latest.value) * 1000;
+      const citationTag = `BLS CES ${latest.year}-${latest.period}`;
+
       try {
-        // Build series IDs for employment + wages
-        const empSeriesId = buildMsaQCEWSeries(msa.cbsa_code, target.naics, '1');
-        const wageSeriesId = buildMsaQCEWSeries(msa.cbsa_code, target.naics, '4');
-        const estSeriesId = buildMsaQCEWSeries(msa.cbsa_code, target.naics, '5');
-
-        const seriesArray: BLSSeriesData[] = await blsClient.getMultipleSeries(
-          [empSeriesId, wageSeriesId, estSeriesId],
-          new Date().getFullYear() - 3,
-          new Date().getFullYear()
-        );
-
-        const find = (id: string): BLSDataPoint[] =>
-          seriesArray.find(s => s.seriesID === id)?.data ?? [];
-
-        const empData = find(empSeriesId);
-        const wageData = find(wageSeriesId);
-        const estData = find(estSeriesId);
-
-        const latestEmp = getLatestAnnual(empData);
-        const latestWage = getLatestAnnual(wageData);
-        const latestEst = getLatestAnnual(estData);
-        const yoyChange = computeYoYChange(empData);
-
-        // Only store if we got at least employment data
-        if (!latestEmp || latestEmp.value === '-' || latestEmp.value === '0') {
-          continue;
-        }
-
-        const citationYear = latestEmp.year;
-        const citationTag = `BLS QCEW ${citationYear}`;
-
         await pool.query(
           `INSERT INTO msa_economic_snapshot (
             msa_id, snapshot_date, naics_code, naics_label,
             total_employment, yoy_change_pct, avg_weekly_wage,
-            establishment_count, bls_citation_tag
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            establishment_count, local_unemployment_rate, bls_citation_tag
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
           ON CONFLICT (msa_id, snapshot_date, naics_code) DO UPDATE SET
-            total_employment   = EXCLUDED.total_employment,
-            yoy_change_pct     = EXCLUDED.yoy_change_pct,
-            avg_weekly_wage    = EXCLUDED.avg_weekly_wage,
-            establishment_count = EXCLUDED.establishment_count,
-            bls_citation_tag   = EXCLUDED.bls_citation_tag`,
+            total_employment        = EXCLUDED.total_employment,
+            yoy_change_pct          = EXCLUDED.yoy_change_pct,
+            local_unemployment_rate = EXCLUDED.local_unemployment_rate,
+            bls_citation_tag        = EXCLUDED.bls_citation_tag`,
           [
             msa.id,
             snapshotDate,
-            target.naics,
+            target.supersector,
             target.label,
-            latestEmp ? parseFloat(latestEmp.value) : null,
+            employmentLevel,
             yoyChange,
-            latestWage ? parseFloat(latestWage.value) : null,
-            latestEst ? parseInt(latestEst.value) : null,
+            null,
+            null,
+            unemploymentRate,
             citationTag,
           ]
         );
 
         inserted++;
-        console.log(`     ✓ ${target.label}: ${latestEmp.value} workers (${yoyChange !== null ? (yoyChange >= 0 ? '+' : '') + yoyChange + '% YoY' : 'no YoY'})`);
-
+        console.log(
+          `     ✓ ${target.label}: ${Math.round(employmentLevel).toLocaleString()} jobs ` +
+          `(${yoyChange != null ? (yoyChange >= 0 ? '+' : '') + yoyChange + '% YoY' : 'no YoY'})`
+        );
       } catch (err: any) {
         errors++;
-        logger.warn(`[MSAIngest] Failed ${msa.name} / ${target.label}`, { error: err.message });
+        logger.warn(`[MSAIngest] Insert failed ${msa.name} / ${target.label}`, { error: err.message });
       }
     }
   }
 
   console.log(`\n✅ MSA Economic Data Ingestion complete`);
-  console.log(`   Inserted/updated: ${inserted}  |  Skipped: ${skipped} MSA(s)  |  Errors: ${errors}`);
-  console.log('');
+  console.log(`   Inserted/updated: ${inserted}  |  Skipped: ${skipped} MSA(s)  |  Errors: ${errors}\n`);
 }
 
-// Run if called directly (not imported as module)
+// Only run as a CLI script — not when imported by the M28 scheduler.
 if (require.main === module) {
   ingestMsaData()
-    .then(() => process.exit(0))
     .catch(err => {
-      console.error('Fatal:', err.message);
+      console.error('Fatal error:', err);
       process.exit(1);
-    });
+    })
+    .finally(() => pool.end());
 }
-
-export { ingestMsaData };

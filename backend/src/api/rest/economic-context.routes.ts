@@ -18,17 +18,24 @@ import { logger } from '../../utils/logger';
 
 const router = Router();
 
-// Map business-type strings to 3-digit NAICS codes we store
+// Map business-type strings to BLS CES supersector codes stored in
+// msa_economic_snapshot.naics_code. (Legacy 3-digit NAICS codes were
+// retired when the ingest moved from QCEW to CES — the QCEW timeseries
+// API doesn't expose MSA-level series.)
+//   00=Total Nonfarm  20=Construction  30=Manufacturing
+//   40=Trade/Transport/Util  50=Information  55=Financial Activities
+//   60=Prof & Business Svcs  65=Education & Health  70=Leisure & Hospitality
+//   90=Government
 const BUSINESS_TYPE_NAICS: Record<string, string[]> = {
-  APARTMENT:        ['531'],
-  SELF_STORAGE:     ['531'],
-  OFFICE:           ['531'],
-  RETAIL:           ['531'],
-  INDUSTRIAL:       ['493'],
-  HOTEL:            ['721'],
-  HEALTHCARE:       ['621', '623'],
-  SENIOR_HOUSING:   ['623'],
-  STUDENT_HOUSING:  ['611'],
+  APARTMENT:        ['00', '60', '65'], // total + the supersectors that drive housing demand
+  SELF_STORAGE:     ['00', '60'],
+  OFFICE:           ['55', '60'],       // financial + professional services
+  RETAIL:           ['40', '70'],       // trade + leisure/hospitality
+  INDUSTRIAL:       ['30', '40'],       // manufacturing + trade/transport
+  HOTEL:            ['70'],             // leisure & hospitality
+  HEALTHCARE:       ['65'],             // education & health services
+  SENIOR_HOUSING:   ['65'],
+  STUDENT_HOUSING:  ['65'],
 };
 
 interface MacroSnapshot {
