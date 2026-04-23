@@ -28,6 +28,11 @@ const COST_PER_MTK: Record<string, { input: number; output: number }> = {
   'claude-sonnet-4-20250514':  { input:  3.00, output: 15.00 },
   'claude-sonnet-4-5':         { input:  3.00, output: 15.00 },
   'claude-haiku-4-5-20251001': { input:  0.80, output:  4.00 },
+  // DeepSeek (OpenAI-compatible). Routed via DeepSeekMeteringAdapter for
+  // actual calls, but kept here so estimateCost() returns sane numbers if a
+  // DeepSeek model name flows through generic cost-rollup paths.
+  'deepseek-chat':             { input:  0.27, output:  1.10 },
+  'deepseek-reasoner':         { input:  0.55, output:  2.19 },
 };
 
 /**

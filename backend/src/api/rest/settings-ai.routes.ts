@@ -6,12 +6,13 @@ const router = Router();
 
 const PREFERENCE_OPTIONS = [
   { value: 'auto', label: 'Auto', description: 'Tier-based default model selection', model: null },
+  { value: 'cheap', label: 'Cheap', description: 'DeepSeek Chat — ultra-low cost, ideal for plumbing/codegen', model: 'deepseek-chat' },
   { value: 'fast', label: 'Fast', description: 'Claude Haiku — quick responses, lower credit cost', model: 'claude-haiku-4-5-20251001' },
   { value: 'balanced', label: 'Balanced', description: 'Claude Sonnet — best balance of speed and quality', model: 'claude-sonnet-4-20250514' },
   { value: 'powerful', label: 'Powerful', description: 'Claude Opus — highest quality, 2x credit cost', model: 'claude-opus-4-20250514', requiredTier: ['principal', 'institutional'] },
 ];
 
-const VALID_PREFERENCES = ['auto', 'fast', 'balanced', 'powerful'];
+const VALID_PREFERENCES = ['auto', 'cheap', 'fast', 'balanced', 'powerful'];
 
 router.get('/', requireAuth, async (req: Request, res: Response) => {
   try {

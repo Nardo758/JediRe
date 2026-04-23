@@ -57,6 +57,16 @@ function getLLMProvider(): LLMProvider | null {
     };
   }
 
+  // Check for DeepSeek (cheap OpenAI-compatible endpoint, ideal for plumbing work)
+  if (process.env.DEEPSEEK_API_KEY) {
+    return {
+      name: 'deepseek',
+      apiKey: process.env.DEEPSEEK_API_KEY,
+      endpoint: `${(process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').replace(/\/$/, '')}/chat/completions`,
+      model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
+    };
+  }
+
   // Check for OpenRouter (multi-model gateway)
   if (process.env.OPENROUTER_API_KEY) {
     return {
@@ -238,6 +248,9 @@ const MODEL_MAP: Record<string, { provider: string; model: string }> = {
   'gpt-4': { provider: 'openai', model: 'gpt-4o' },
   'gpt-4-turbo': { provider: 'openai', model: 'gpt-4-turbo' },
   'gpt-3.5-turbo': { provider: 'openai', model: 'gpt-4o-mini' },
+  // DeepSeek (cheap; ideal for plumbing/codegen workloads)
+  'deepseek-chat':     { provider: 'deepseek', model: 'deepseek-chat' },
+  'deepseek-reasoner': { provider: 'deepseek', model: 'deepseek-reasoner' },
   // Other models (via OpenRouter)
   'gemini-pro': { provider: 'openrouter', model: 'google/gemini-2.0-flash-exp:free' },
   'llama-3-70b': { provider: 'openrouter', model: 'meta-llama/llama-3.3-70b-instruct' },
@@ -278,6 +291,10 @@ export async function generateCompletion(request: LLMRequest): Promise<LLMRespon
     case 'anthropic':
       return await callAnthropic(provider, request);
     case 'openai':
+      return await callOpenAI(provider, request);
+    case 'deepseek':
+      // DeepSeek uses an OpenAI-compatible chat-completions schema, so the
+      // OpenAI caller works as-is (Bearer auth, same response shape).
       return await callOpenAI(provider, request);
     case 'openrouter':
       return await callOpenRouter(provider, request);
