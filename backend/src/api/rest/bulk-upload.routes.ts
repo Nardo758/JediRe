@@ -71,7 +71,8 @@ interface UploadJob {
   uploadPath: string;
   dealId?: string;
   customLabel?: string;
-  assetId?: string; // ID of created asset (for custom-label uploads)
+  assetId?: string; // ID of created/updated asset (for detail modal)
+  assetsNeedingDetails: string[]; // Asset IDs with low DQ scores
   createdAt: Date;
   completedAt?: Date;
 }
@@ -106,6 +107,7 @@ router.post('/files', requireAuth, upload.array('files', 100), async (req: Authe
     uploadPath,
     dealId,
     customLabel,
+    assetsNeedingDetails: [],
     createdAt: new Date(),
   };
   
@@ -161,6 +163,7 @@ router.post('/zip', requireAuth, upload.single('file'), async (req: Authenticate
     uploadPath: extractPath,
     dealId,
     customLabel,
+    assetsNeedingDetails: [],
     createdAt: new Date(),
   };
   
@@ -208,6 +211,29 @@ async function createLabeledAsset(label: string, userId: string): Promise<string
   }
 }
 
+/**
+ * Find assets from a recent upload that have low data quality scores
+ * and would benefit from manual data entry
+ */
+async function findLowDQAssets(uploadPath: string): Promise<string[]> {
+  try {
+    // Find assets that were just created from this upload path with DQ < 50
+    const result = await dbQuery(
+      `SELECT id FROM data_library_assets 
+       WHERE archive_folder_path LIKE $1 
+         AND data_quality_score < 50
+         AND created_at > NOW() - INTERVAL '10 minutes'
+       ORDER BY created_at DESC
+       LIMIT 5`,
+      [`${uploadPath}%`]
+    );
+    return result.rows.map(r => r.id);
+  } catch (err) {
+    logger.warn('Could not find low DQ assets:', err);
+    return [];
+  }
+}
+
 async function processUploadJob(job: UploadJob): Promise<void> {
   try {
     job.status = 'parsing';
@@ -223,8 +249,20 @@ async function processUploadJob(job: UploadJob): Promise<void> {
       if (result.parsedFolders === 0) job.dealsCreated = 1;
     } else if (job.customLabel) {
       const assetId = await createLabeledAsset(job.customLabel, job.userId);
-      if (assetId) job.assetId = assetId;
+      if (assetId) {
+        job.assetId = assetId;
+        job.assetsNeedingDetails = [assetId]; // Manual entry always needs details
+      }
       if (result.parsedFolders === 0) job.dealsCreated = 1;
+    }
+
+    // Check for assets with low data quality that need manual input
+    if (result.parsedFolders > 0) {
+      const lowDQAssets = await findLowDQAssets(job.uploadPath);
+      job.assetsNeedingDetails = [...(job.assetsNeedingDetails || []), ...lowDQAssets];
+      if (lowDQAssets.length > 0 && !job.assetId) {
+        job.assetId = lowDQAssets[0]; // First one for the modal
+      }
     }
 
     job.status = 'complete';
@@ -274,14 +312,26 @@ async function processZipUpload(job: UploadJob, zipPath: string): Promise<void> 
       if (result.parsedFolders === 0) job.dealsCreated = 1;
     } else if (job.customLabel) {
       const assetId = await createLabeledAsset(job.customLabel, job.userId);
-      if (assetId) job.assetId = assetId;
+      if (assetId) {
+        job.assetId = assetId;
+        job.assetsNeedingDetails = [assetId];
+      }
       if (result.parsedFolders === 0) job.dealsCreated = 1;
+    }
+
+    // Check for assets with low data quality that need manual input
+    if (result.parsedFolders > 0) {
+      const lowDQAssets = await findLowDQAssets(job.uploadPath);
+      job.assetsNeedingDetails = [...(job.assetsNeedingDetails || []), ...lowDQAssets];
+      if (lowDQAssets.length > 0 && !job.assetId) {
+        job.assetId = lowDQAssets[0];
+      }
     }
 
     job.status = 'complete';
     job.completedAt = new Date();
     
-    logger.info(`ZIP upload job ${job.id} complete: ${job.dealsCreated} assets added from ${job.totalFiles} files`);
+    logger.info(`ZIP upload job ${job.id} complete: ${job.dealsCreated} assets, ${job.assetsNeedingDetails?.length || 0} need details`);
     
     // Cleanup after 1 hour
     setTimeout(() => {
@@ -319,7 +369,8 @@ router.get('/status/:jobId', requireAuth, async (req: AuthenticatedRequest, res:
       totalFiles: job.totalFiles,
       processedFiles: job.processedFiles,
       dealsCreated: job.dealsCreated,
-      assetId: job.assetId || null, // For custom-label uploads
+      assetId: job.assetId || null, // First asset needing details
+      assetsNeedingDetails: job.assetsNeedingDetails || [], // All assets with low DQ
       errors: job.errors,
       createdAt: job.createdAt,
       completedAt: job.completedAt,

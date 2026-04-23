@@ -67,7 +67,8 @@ export interface BulkUploadJob {
   totalFiles: number;
   processedFiles: number;
   dealsCreated: number;
-  assetId?: string | null; // For custom-label uploads, so we can show detail modal
+  assetId?: string | null; // First asset needing details
+  assetsNeedingDetails?: string[]; // All assets with low DQ scores
   errors: string[];
   createdAt: string;
   completedAt?: string;

@@ -84,10 +84,12 @@ export const BulkUploadPanel: React.FC<BulkUploadPanelProps> = ({ onUploadComple
         if (updated.status === 'complete') {
           onUploadComplete?.();
           
-          // If this was a custom-label upload, show the detail modal
-          // so user can fill in property details for better comp matching
-          if (savedCustomLabel && updated.assetId) {
+          // If there are assets that need details (low DQ score or manual entry),
+          // show the detail modal so user can fill in property info for comp matching
+          const needsDetails = updated.assetsNeedingDetails?.length > 0 || updated.assetId;
+          if (needsDetails && updated.assetId) {
             setNewAssetId(updated.assetId);
+            setSavedCustomLabel(savedCustomLabel || 'Uploaded Asset');
             setShowAssetModal(true);
           }
         }
@@ -447,6 +449,11 @@ export const BulkUploadPanel: React.FC<BulkUploadPanelProps> = ({ onUploadComple
             <div style={{ textAlign: 'center', padding: '12px 0' }}>
               <div style={{ fontSize: 28, fontWeight: 700, color: C.green }}>{uploadJob.dealsCreated}</div>
               <div style={{ fontSize: 10, color: C.muted }}>assets added to library</div>
+              {(uploadJob.assetsNeedingDetails?.length ?? 0) > 0 && (
+                <div style={{ marginTop: 8, padding: '6px 10px', background: `${C.amber}18`, border: `1px solid ${C.amber}44`, fontSize: 10, color: C.amber }}>
+                  ⚠️ {uploadJob.assetsNeedingDetails!.length} asset{uploadJob.assetsNeedingDetails!.length > 1 ? 's' : ''} need{uploadJob.assetsNeedingDetails!.length === 1 ? 's' : ''} details for comp matching
+                </div>
+              )}
             </div>
           )}
           
