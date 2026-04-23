@@ -56,14 +56,18 @@ export function PropertyDiscoverySection() {
       const statsRes = await apiClient.get('/api/v1/property-discovery/stats');
       setStats(statsRes.data);
 
+      const seen = new Set<string>();
       const counties: CountyOption[] = [];
+      // Always include configured counties first (so per-county actions are
+      // available even when no discoveries exist yet).
+      for (const c of (statsRes.data.configuredCountyList || []) as CountyOption[]) {
+        const key = `${c.county}, ${c.state}`;
+        if (!seen.has(key)) { seen.add(key); counties.push(c); }
+      }
+      // Then add any other counties that show up in stats.byCounty but aren't configured.
       for (const k of Object.keys(statsRes.data.byCounty || {})) {
         const m = k.match(/^(.+),\s*(.+)$/);
-        if (m) counties.push({ county: m[1], state: m[2] });
-      }
-      // Always include configured counties even if no data yet
-      if (counties.length === 0 && statsRes.data.coverageByState) {
-        // best-effort: leave empty list — operator will use Discover All
+        if (m && !seen.has(k)) { seen.add(k); counties.push({ county: m[1], state: m[2] }); }
       }
       setCounties(counties);
 

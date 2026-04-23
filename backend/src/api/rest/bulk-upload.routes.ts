@@ -366,13 +366,17 @@ async function processUploadJob(job: UploadJob): Promise<void> {
     }
 
     // Auto-enrichment is scoped to assets created during this upload only.
-    // (Removed legacy global findLowDQAssets() lookup — could mutate other
-    // users' recently-created assets.)
+    const ingestedIds: string[] = Array.isArray(result.assetIds) ? result.assetIds : [];
+    if (ingestedIds.length > 0) {
+      const merged = new Set([...(job.assetsNeedingDetails || []), ...ingestedIds]);
+      job.assetsNeedingDetails = Array.from(merged);
+      if (!job.assetId) job.assetId = ingestedIds[0];
+    }
 
     job.status = 'complete';
     job.completedAt = new Date();
-    
-    logger.info(`Upload job ${job.id} complete: ${job.dealsCreated} assets added`);
+
+    logger.info(`Upload job ${job.id} complete: ${job.dealsCreated} assets added (${(job.assetsNeedingDetails || []).length} candidate(s) for auto-enrich)`);
 
     autoEnrichAssets(job.assetsNeedingDetails || [], job).catch(() => {});
 
@@ -462,8 +466,12 @@ async function processZipUpload(job: UploadJob, zipPath: string): Promise<void> 
     }
 
     // Auto-enrichment is scoped to assets created during this upload only.
-    // (Removed legacy global findLowDQAssets() lookup — could mutate other
-    // users' recently-created assets.)
+    const ingestedIds: string[] = Array.isArray(result.assetIds) ? result.assetIds : [];
+    if (ingestedIds.length > 0) {
+      const merged = new Set([...(job.assetsNeedingDetails || []), ...ingestedIds]);
+      job.assetsNeedingDetails = Array.from(merged);
+      if (!job.assetId) job.assetId = ingestedIds[0];
+    }
 
     job.status = 'complete';
     job.completedAt = new Date();

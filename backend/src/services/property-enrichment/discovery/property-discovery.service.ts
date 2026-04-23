@@ -482,10 +482,16 @@ export class PropertyDiscoveryService {
           ORDER BY COUNT(*) DESC
           LIMIT 50`
       );
-      const byStatusRes = await dbQuery<{ match_status: string; count: string }>(
-        `SELECT COALESCE(match_status, 'unmatched') AS match_status, COUNT(*)::text AS count
-           FROM discovered_properties
-          GROUP BY match_status`
+      // Aggregate from property_matches.status (auto_matched / review_required / confirmed / rejected),
+      // then add an "unmatched" bucket for discovered_properties without any match row.
+      const byMatchesRes = await dbQuery<{ status: string; count: string }>(
+        `SELECT status, COUNT(*)::text AS count
+           FROM property_matches
+          GROUP BY status`
+      );
+      const unmatchedRes = await dbQuery<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM discovered_properties dp
+          WHERE NOT EXISTS (SELECT 1 FROM property_matches pm WHERE pm.discovered_property_id = dp.id)`
       );
       const recentRes = await dbQuery<{ count: string }>(
         `SELECT COUNT(*)::text AS count FROM discovered_properties
@@ -494,8 +500,16 @@ export class PropertyDiscoveryService {
 
       const byCounty: Record<string, number> = {};
       for (const r of byCountyRes.rows) byCounty[`${r.county}, ${r.state}`] = parseInt(r.count, 10);
-      const byMatchStatus: Record<string, number> = {};
-      for (const r of byStatusRes.rows) byMatchStatus[r.match_status] = parseInt(r.count, 10);
+
+      const byMatchStatus: Record<string, number> = {
+        auto_matched: 0,
+        review_required: 0,
+        confirmed: 0,
+        rejected: 0,
+        unmatched: 0,
+      };
+      for (const r of byMatchesRes.rows) byMatchStatus[r.status] = parseInt(r.count, 10);
+      byMatchStatus.unmatched = parseInt(unmatchedRes.rows[0]?.count || '0', 10);
 
       return {
         totalDiscovered: parseInt(totalRes.rows[0]?.count || '0', 10),

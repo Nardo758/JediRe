@@ -39,6 +39,8 @@ export interface ArchiveScanResult {
   skippedFolders: number;
   errors: string[];
   warnings: string[];
+  /** IDs of data_library_assets created or updated during this run */
+  assetIds?: string[];
 }
 
 export interface ParsedArchiveDeal {
@@ -777,7 +779,11 @@ export async function ingestArchiveDeals(
     
     try {
       const parsed = await parseArchiveDeal(folder);
-      await upsertArchiveDeal(pool, parsed, options.existingAssetId);
+      const assetId = await upsertArchiveDeal(pool, parsed, options.existingAssetId);
+      if (assetId) {
+        if (!result.assetIds) result.assetIds = [];
+        result.assetIds.push(assetId);
+      }
       result.parsedFolders++;
       
       if (parsed.parseWarnings.length > 0) {

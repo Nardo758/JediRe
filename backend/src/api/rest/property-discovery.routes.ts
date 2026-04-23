@@ -144,18 +144,17 @@ router.get('/discovered', async (req: Request, res: Response) => {
 router.get('/stats', async (req: Request, res: Response) => {
   try {
     const stats = await discoveryService.getStats();
-    
+
     res.json({
       ...stats,
       configuredCounties: COUNTY_CONFIGS.length,
-      coverageByState: Object.fromEntries(
-        Object.entries(
-          COUNTY_CONFIGS.reduce((acc, c) => {
-            acc[c.state] = (acc[c.state] || 0) + 1;
-            return acc;
-          }, {} as Record<string, number>)
-        )
-      )
+      coverageByState: COUNTY_CONFIGS.reduce((acc, c) => {
+        acc[c.state] = (acc[c.state] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>),
+      // List of configured (county, state) pairs so the admin UI can render
+      // per-county action rows even before any discoveries exist.
+      configuredCountyList: COUNTY_CONFIGS.map(c => ({ county: c.county, state: c.state })),
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to get stats' });
@@ -448,6 +447,18 @@ router.post('/enrich/:assetId', async (req: Request, res: Response) => {
   try {
     const { assetId } = req.params;
     const { force } = req.body || {};
+    const userId = (req as { user?: { userId?: string; id?: string } }).user?.userId
+      ?? (req as { user?: { userId?: string; id?: string } }).user?.id;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+    const { query: dbQuery0 } = await import('../../database/connection');
+    const own = await dbQuery0<{ created_by: string | null }>(
+      'SELECT created_by FROM data_library_assets WHERE id = $1',
+      [assetId]
+    );
+    if (!own.rows[0]) return res.status(404).json({ error: 'Asset not found' });
+    if (own.rows[0].created_by !== userId) {
+      return res.status(403).json({ error: 'Not authorized to enrich this asset' });
+    }
     const result = await autoEnrichmentService.enrichAssetById(assetId, {
       autoEnrichOnUpload: true,
       minDqScoreForAutoEnrich: force ? 100 : 50,
@@ -487,7 +498,23 @@ router.post('/enrichment-log/:logId/resolve', async (req: Request, res: Response
   try {
     const { logId } = req.params;
     const { accept, resolutions } = req.body || {};
+    const userId = (req as { user?: { userId?: string; id?: string } }).user?.userId
+      ?? (req as { user?: { userId?: string; id?: string } }).user?.id;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
     const { query: dbQuery } = await import('../../database/connection');
+
+    // Ownership: log must reference an asset created by this user
+    const own = await dbQuery<{ created_by: string | null }>(
+      `SELECT a.created_by
+         FROM data_library_enrichment_log l
+         JOIN data_library_assets a ON a.id = l.asset_id
+        WHERE l.id = $1`,
+      [logId]
+    );
+    if (!own.rows[0]) return res.status(404).json({ error: 'Enrichment log not found' });
+    if (own.rows[0].created_by !== userId) {
+      return res.status(403).json({ error: 'Not authorized to resolve this enrichment log' });
+    }
 
     if (resolutions && typeof resolutions === 'object') {
       const map: Record<string, 'keep' | 'overwrite'> = {};

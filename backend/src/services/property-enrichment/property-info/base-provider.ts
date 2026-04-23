@@ -13,24 +13,73 @@ export abstract class BasePropertyInfoProvider implements PropertyInfoProvider {
   private _dailyResetAt: number = 0;
   private _dailyCount: number = 0;
 
+  // DB-overridden rate limits (loaded lazily from property_data_providers).
+  private _dbLimits: { requestsPerMinute?: number; requestsPerDay?: number } | null = null;
+  private _dbLimitsLoadedAt: number = 0;
+  private static readonly DB_LIMITS_TTL_MS = 5 * 60 * 1000; // refresh every 5 min
+
+  /**
+   * Load this provider's rate limits from the property_data_providers table.
+   * Falls back silently to the static config values if the row is missing or
+   * the DB lookup fails. Cached for DB_LIMITS_TTL_MS so we don't hammer PG.
+   */
+  private async loadDbLimits(): Promise<void> {
+    const now = Date.now();
+    if (this._dbLimits && (now - this._dbLimitsLoadedAt) < BasePropertyInfoProvider.DB_LIMITS_TTL_MS) {
+      return;
+    }
+    try {
+      const { query } = await import('../../../database/connection');
+      const r = await query<{ requests_per_minute: number | null; requests_per_day: number | null }>(
+        `SELECT requests_per_minute, requests_per_day
+           FROM property_data_providers
+          WHERE provider_name = $1 AND is_active = true
+          LIMIT 1`,
+        [this.config.name]
+      );
+      const row = r.rows[0];
+      this._dbLimits = {
+        requestsPerMinute: row?.requests_per_minute ?? this.config.requestsPerMinute,
+        requestsPerDay: row?.requests_per_day ?? this.config.requestsPerDay,
+      };
+      this._dbLimitsLoadedAt = now;
+    } catch {
+      this._dbLimits = {
+        requestsPerMinute: this.config.requestsPerMinute,
+        requestsPerDay: this.config.requestsPerDay,
+      };
+      this._dbLimitsLoadedAt = now;
+    }
+  }
+
+  /**
+   * Effective rate limits: DB row overrides static config when available.
+   */
+  protected effectiveLimits(): { requestsPerMinute?: number; requestsPerDay?: number } {
+    return {
+      requestsPerMinute: this._dbLimits?.requestsPerMinute ?? this.config.requestsPerMinute,
+      requestsPerDay: this._dbLimits?.requestsPerDay ?? this.config.requestsPerDay,
+    };
+  }
+
   /**
    * Enforce the provider's rate limits (requestsPerMinute and requestsPerDay).
    * Awaits until a request slot opens up. Throws if the daily cap is exhausted.
    */
   protected async enforceRateLimit(): Promise<void> {
-    const cfg = this.config;
+    await this.loadDbLimits();
+    const limits = this.effectiveLimits();
     const now = Date.now();
 
     // Daily cap (rolling 24h window)
-    if (cfg.requestsPerDay && cfg.requestsPerDay > 0) {
+    if (limits.requestsPerDay && limits.requestsPerDay > 0) {
       if (now > this._dailyResetAt) {
         this._dailyResetAt = now + 24 * 60 * 60 * 1000;
         this._dailyCount = 0;
       }
-      if (this._dailyCount >= cfg.requestsPerDay) {
-        // Queue rather than drop: wait until the daily window resets
+      if (this._dailyCount >= limits.requestsPerDay) {
         const waitMs = Math.max(1000, this._dailyResetAt - now);
-        console.warn(`[${cfg.name}] Daily rate limit (${cfg.requestsPerDay}) reached — queuing for ${Math.ceil(waitMs / 60000)} min`);
+        console.warn(`[${this.config.name}] Daily rate limit (${limits.requestsPerDay}) reached — queuing for ${Math.ceil(waitMs / 60000)} min`);
         await new Promise(r => setTimeout(r, waitMs));
         this._dailyResetAt = Date.now() + 24 * 60 * 60 * 1000;
         this._dailyCount = 0;
@@ -38,10 +87,10 @@ export abstract class BasePropertyInfoProvider implements PropertyInfoProvider {
     }
 
     // Per-minute cap
-    if (cfg.requestsPerMinute && cfg.requestsPerMinute > 0) {
+    if (limits.requestsPerMinute && limits.requestsPerMinute > 0) {
       const windowStart = now - 60_000;
       this._requestLog = this._requestLog.filter(t => t > windowStart);
-      if (this._requestLog.length >= cfg.requestsPerMinute) {
+      if (this._requestLog.length >= limits.requestsPerMinute) {
         const oldest = this._requestLog[0];
         const waitMs = Math.max(0, oldest + 60_000 - now) + 50;
         await new Promise(r => setTimeout(r, waitMs));
@@ -50,7 +99,7 @@ export abstract class BasePropertyInfoProvider implements PropertyInfoProvider {
       this._requestLog.push(Date.now());
     }
 
-    if (cfg.requestsPerDay && cfg.requestsPerDay > 0) this._dailyCount++;
+    if (limits.requestsPerDay && limits.requestsPerDay > 0) this._dailyCount++;
   }
 
   /**
