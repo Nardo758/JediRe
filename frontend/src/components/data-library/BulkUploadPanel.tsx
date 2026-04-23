@@ -1,19 +1,42 @@
 /**
  * Bulk Upload Panel
  * 
- * Drag & drop upload for files and ZIP archives
+ * Drag & drop upload for files and ZIP archives, with deal linking
  */
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { 
   Upload, FileText, Archive, X, CheckCircle, 
-  AlertCircle, Loader2, FolderOpen
+  AlertCircle, Loader2, FolderOpen, Link
 } from 'lucide-react';
 import { cloudStorageService, type BulkUploadJob } from '../../services/cloudStorage.service';
+import { apiClient } from '../../services/api.client';
 
 interface BulkUploadPanelProps {
   onUploadComplete?: () => void;
 }
+
+interface Deal {
+  id: string;
+  name: string;
+  address?: string;
+}
+
+const MONO = "'JetBrains Mono', 'Fira Code', monospace";
+const C = {
+  bg: '#0F1117',
+  panel: '#161B27',
+  input: '#1A2236',
+  border: '#1E2D45',
+  borderHover: '#2A3F5F',
+  amber: '#F5A623',
+  cyan: '#00BCD4',
+  green: '#00D26A',
+  red: '#FF4757',
+  muted: '#475569',
+  secondary: '#94A3B8',
+  primary: '#E2E8F0',
+};
 
 export const BulkUploadPanel: React.FC<BulkUploadPanelProps> = ({ onUploadComplete }) => {
   const [isDragging, setIsDragging] = useState(false);
@@ -21,9 +44,25 @@ export const BulkUploadPanel: React.FC<BulkUploadPanelProps> = ({ onUploadComple
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadJob, setUploadJob] = useState<BulkUploadJob | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Deal linking
+  const [deals, setDeals] = useState<Deal[]>([]);
+  const [selectedDealId, setSelectedDealId] = useState<string>('');
+  const [dealsLoading, setDealsLoading] = useState(true);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const zipInputRef = useRef<HTMLInputElement>(null);
+
+  // Load deals for the selector
+  useEffect(() => {
+    apiClient.get('/api/v1/deals?limit=100')
+      .then(res => {
+        const list = res.data?.deals || res.data?.data || [];
+        setDeals(list);
+      })
+      .catch(() => setDeals([]))
+      .finally(() => setDealsLoading(false));
+  }, []);
   
   // Poll upload job status
   useEffect(() => {
@@ -58,9 +97,7 @@ export const BulkUploadPanel: React.FC<BulkUploadPanelProps> = ({ onUploadComple
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    
-    const droppedFiles = Array.from(e.dataTransfer.files);
-    addFiles(droppedFiles);
+    addFiles(Array.from(e.dataTransfer.files));
   }, []);
   
   const addFiles = (newFiles: File[]) => {
@@ -68,11 +105,9 @@ export const BulkUploadPanel: React.FC<BulkUploadPanelProps> = ({ onUploadComple
       const ext = file.name.toLowerCase().split('.').pop();
       return ['pdf', 'xlsx', 'xls', 'csv', 'zip'].includes(ext || '');
     });
-    
     if (validFiles.length < newFiles.length) {
       setError(`${newFiles.length - validFiles.length} files skipped (unsupported type)`);
     }
-    
     setFiles(prev => [...prev, ...validFiles]);
   };
   
@@ -81,9 +116,7 @@ export const BulkUploadPanel: React.FC<BulkUploadPanelProps> = ({ onUploadComple
   };
   
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      addFiles(Array.from(e.target.files));
-    }
+    if (e.target.files) addFiles(Array.from(e.target.files));
   };
   
   const handleZipSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -99,19 +132,15 @@ export const BulkUploadPanel: React.FC<BulkUploadPanelProps> = ({ onUploadComple
   
   const uploadFiles = async () => {
     if (files.length === 0) return;
-    
-    // Check if any file is a ZIP
     const zipFile = files.find(f => f.name.toLowerCase().endsWith('.zip'));
     if (zipFile && files.length === 1) {
       uploadZip(zipFile);
       return;
     }
-    
     setError(null);
     setUploadProgress(0);
-    
     try {
-      const job = await cloudStorageService.uploadFiles(files, setUploadProgress);
+      const job = await cloudStorageService.uploadFiles(files, setUploadProgress, selectedDealId || undefined);
       setUploadJob(job);
       setFiles([]);
     } catch (err) {
@@ -122,16 +151,15 @@ export const BulkUploadPanel: React.FC<BulkUploadPanelProps> = ({ onUploadComple
   const uploadZip = async (file: File) => {
     setError(null);
     setUploadProgress(0);
-    
     try {
-      const job = await cloudStorageService.uploadZip(file, setUploadProgress);
+      const job = await cloudStorageService.uploadZip(file, setUploadProgress, selectedDealId || undefined);
       setUploadJob(job);
       setFiles([]);
     } catch (err) {
       setError('ZIP upload failed. Please try again.');
     }
   };
-  
+
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -140,36 +168,77 @@ export const BulkUploadPanel: React.FC<BulkUploadPanelProps> = ({ onUploadComple
   
   const getFileIcon = (filename: string) => {
     const ext = filename.toLowerCase().split('.').pop();
-    if (ext === 'zip') return <Archive size={16} className="text-purple-400" />;
-    if (ext === 'pdf') return <FileText size={16} className="text-red-400" />;
-    return <FileText size={16} className="text-green-400" />;
+    if (ext === 'zip') return <Archive size={16} style={{ color: '#A78BFA' }} />;
+    if (ext === 'pdf') return <FileText size={16} style={{ color: '#F87171' }} />;
+    return <FileText size={16} style={{ color: '#4ADE80' }} />;
   };
-  
-  const getStatusColor = (status: BulkUploadJob['status']) => {
-    switch (status) {
-      case 'complete': return 'text-green-400';
-      case 'error': return 'text-red-400';
-      default: return 'text-yellow-400';
-    }
-  };
-  
-  const getStatusText = (status: BulkUploadJob['status']) => {
-    switch (status) {
-      case 'uploading': return 'Uploading files...';
-      case 'extracting': return 'Extracting archive...';
-      case 'parsing': return 'Parsing documents...';
-      case 'complete': return 'Complete!';
-      case 'error': return 'Error';
-    }
-  };
-  
+
+  const selectedDeal = deals.find(d => d.id === selectedDealId);
+
   return (
-    <div className="space-y-6">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, fontFamily: MONO }}>
+
+      {/* Deal Selector */}
+      <div style={{ padding: '12px 14px', background: C.panel, border: `1px solid ${C.border}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+          <Link size={14} style={{ color: C.cyan }} />
+          <span style={{ fontSize: 11, fontWeight: 700, color: C.cyan, letterSpacing: 0.5 }}>
+            LINK TO DEAL
+          </span>
+          <span style={{ fontSize: 10, color: C.muted }}>— associate these files with a deal in your pipeline</span>
+        </div>
+
+        {dealsLoading ? (
+          <div style={{ fontSize: 10, color: C.muted }}>Loading deals...</div>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <select
+              value={selectedDealId}
+              onChange={e => setSelectedDealId(e.target.value)}
+              style={{
+                flex: 1,
+                padding: '7px 10px',
+                background: C.input,
+                border: `1px solid ${selectedDealId ? C.cyan : C.border}`,
+                color: selectedDealId ? C.primary : C.muted,
+                fontFamily: MONO,
+                fontSize: 11,
+                outline: 'none',
+                cursor: 'pointer',
+              }}
+            >
+              <option value="">— No deal link (standalone comp) —</option>
+              {deals.map(d => (
+                <option key={d.id} value={d.id}>
+                  {d.name}{d.address ? ` · ${d.address.split(',').slice(1, 2).join('').trim()}` : ''}
+                </option>
+              ))}
+            </select>
+            {selectedDeal && (
+              <button
+                onClick={() => setSelectedDealId('')}
+                style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', padding: 4 }}
+                title="Clear selection"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+        )}
+
+        {selectedDeal && (
+          <div style={{ marginTop: 8, padding: '6px 8px', background: `${C.cyan}11`, border: `1px solid ${C.cyan}33`, fontSize: 10, color: C.cyan }}>
+            Files will be tagged to: <strong>{selectedDeal.name}</strong>
+            {selectedDeal.address && <span style={{ color: C.muted }}> · {selectedDeal.address.split(',').slice(0, 2).join(',')}</span>}
+          </div>
+        )}
+      </div>
+
       {error && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded px-4 py-3 flex items-center gap-2">
-          <AlertCircle size={16} className="text-red-400" />
-          <span className="text-sm text-red-300">{error}</span>
-          <button onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-300">×</button>
+        <div style={{ background: `${C.red}18`, border: `1px solid ${C.red}44`, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: '#FCA5A5' }}>
+          <AlertCircle size={14} />
+          <span>{error}</span>
+          <button onClick={() => setError(null)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: C.red, cursor: 'pointer' }}>×</button>
         </div>
       )}
       
@@ -178,96 +247,90 @@ export const BulkUploadPanel: React.FC<BulkUploadPanelProps> = ({ onUploadComple
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-          isDragging 
-            ? 'border-blue-500 bg-blue-500/10' 
-            : 'border-gray-700 hover:border-gray-600'
-        }`}
+        style={{
+          border: `2px dashed ${isDragging ? C.cyan : C.border}`,
+          background: isDragging ? `${C.cyan}08` : C.panel,
+          padding: '32px 24px',
+          textAlign: 'center',
+          transition: 'all 0.15s',
+          cursor: 'default',
+        }}
       >
-        <Upload size={40} className="mx-auto mb-4 text-gray-500" />
-        <p className="text-lg font-medium mb-2">
+        <Upload size={36} style={{ color: C.muted, marginBottom: 12 }} />
+        <div style={{ fontSize: 13, fontWeight: 600, color: C.primary, marginBottom: 6 }}>
           Drag & drop files here
-        </p>
-        <p className="text-sm text-gray-400 mb-4">
-          Supported: PDF, XLSX, XLS, CSV, ZIP
-        </p>
-        <div className="flex items-center justify-center gap-3">
+        </div>
+        <div style={{ fontSize: 10, color: C.muted, marginBottom: 16 }}>
+          PDF · XLSX · XLS · CSV · ZIP
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="px-4 py-2 bg-blue-500 text-white rounded font-medium hover:bg-blue-600 transition-colors"
+            style={{
+              padding: '7px 18px', background: C.cyan, color: '#000',
+              border: 'none', fontFamily: MONO, fontSize: 11, fontWeight: 700,
+              cursor: 'pointer', letterSpacing: 0.3,
+            }}
           >
-            Select Files
+            SELECT FILES
           </button>
-          <span className="text-gray-500">or</span>
+          <span style={{ color: C.muted, fontSize: 10 }}>or</span>
           <button
             onClick={() => zipInputRef.current?.click()}
-            className="px-4 py-2 bg-purple-500 text-white rounded font-medium hover:bg-purple-600 transition-colors flex items-center gap-2"
+            style={{
+              padding: '7px 18px', background: 'transparent', color: '#A78BFA',
+              border: '1px solid #A78BFA55', fontFamily: MONO, fontSize: 11, fontWeight: 700,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
+            }}
           >
-            <Archive size={16} />
-            Upload ZIP
+            <Archive size={13} />
+            UPLOAD ZIP
           </button>
         </div>
         
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          accept=".pdf,.xlsx,.xls,.csv"
-          onChange={handleFileSelect}
-          className="hidden"
-        />
-        <input
-          ref={zipInputRef}
-          type="file"
-          accept=".zip"
-          onChange={handleZipSelect}
-          className="hidden"
-        />
+        <input ref={fileInputRef} type="file" multiple accept=".pdf,.xlsx,.xls,.csv" onChange={handleFileSelect} style={{ display: 'none' }} />
+        <input ref={zipInputRef} type="file" accept=".zip" onChange={handleZipSelect} style={{ display: 'none' }} />
       </div>
       
       {/* File List */}
       {files.length > 0 && (
-        <div className="border border-gray-700 rounded-lg overflow-hidden">
-          <div className="bg-gray-800/50 px-4 py-3 flex items-center justify-between">
-            <span className="text-sm font-medium">{files.length} files selected</span>
-            <button
-              onClick={() => setFiles([])}
-              className="text-xs text-gray-400 hover:text-white"
-            >
+        <div style={{ border: `1px solid ${C.border}` }}>
+          <div style={{ background: C.panel, padding: '8px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: `1px solid ${C.border}` }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: C.primary }}>{files.length} file{files.length !== 1 ? 's' : ''} selected</span>
+            <button onClick={() => setFiles([])} style={{ fontSize: 10, color: C.muted, background: 'none', border: 'none', cursor: 'pointer' }}>
               Clear all
             </button>
           </div>
           
-          <div className="max-h-48 overflow-y-auto">
+          <div style={{ maxHeight: 180, overflowY: 'auto' }}>
             {files.map((file, index) => (
-              <div
-                key={index}
-                className="flex items-center justify-between px-4 py-2 border-t border-gray-800 hover:bg-white/5"
-              >
-                <div className="flex items-center gap-3">
+              <div key={index} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 14px', borderTop: index > 0 ? `1px solid ${C.border}` : undefined }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   {getFileIcon(file.name)}
                   <div>
-                    <div className="text-sm truncate max-w-xs">{file.name}</div>
-                    <div className="text-xs text-gray-500">{formatFileSize(file.size)}</div>
+                    <div style={{ fontSize: 11, color: C.primary, maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</div>
+                    <div style={{ fontSize: 9, color: C.muted }}>{formatFileSize(file.size)}</div>
                   </div>
                 </div>
-                <button
-                  onClick={() => removeFile(index)}
-                  className="p-1 text-gray-500 hover:text-red-400 transition-colors"
-                >
-                  <X size={14} />
+                <button onClick={() => removeFile(index)} style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', padding: 4 }}>
+                  <X size={13} />
                 </button>
               </div>
             ))}
           </div>
           
-          <div className="bg-gray-800/50 px-4 py-3">
+          <div style={{ padding: '10px 14px', borderTop: `1px solid ${C.border}`, background: C.panel }}>
             <button
               onClick={uploadFiles}
-              className="w-full px-4 py-2 bg-green-500 text-white rounded font-medium hover:bg-green-600 transition-colors flex items-center justify-center gap-2"
+              style={{
+                width: '100%', padding: '8px', background: C.green, color: '#000',
+                border: 'none', fontFamily: MONO, fontSize: 11, fontWeight: 700,
+                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              }}
             >
-              <Upload size={16} />
-              Upload {files.length} {files.length === 1 ? 'file' : 'files'}
+              <Upload size={13} />
+              UPLOAD {files.length} {files.length === 1 ? 'FILE' : 'FILES'}
+              {selectedDeal && <span style={{ fontWeight: 400 }}>→ {selectedDeal.name}</span>}
             </button>
           </div>
         </div>
@@ -275,50 +338,48 @@ export const BulkUploadPanel: React.FC<BulkUploadPanelProps> = ({ onUploadComple
       
       {/* Upload Progress */}
       {uploadProgress > 0 && uploadProgress < 100 && !uploadJob && (
-        <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium">Uploading...</span>
-            <span className="text-sm text-gray-400">{uploadProgress}%</span>
+        <div style={{ background: C.panel, border: `1px solid ${C.border}`, padding: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, fontSize: 11 }}>
+            <span style={{ color: C.primary }}>Uploading...</span>
+            <span style={{ color: C.muted }}>{uploadProgress}%</span>
           </div>
-          <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-blue-500 transition-all duration-300"
-              style={{ width: `${uploadProgress}%` }}
-            />
+          <div style={{ height: 4, background: C.input }}>
+            <div style={{ height: '100%', width: `${uploadProgress}%`, background: C.cyan, transition: 'width 0.3s' }} />
           </div>
         </div>
       )}
       
       {/* Processing Status */}
       {uploadJob && (
-        <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
+        <div style={{ background: C.panel, border: `1px solid ${C.border}`, padding: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               {uploadJob.status === 'complete' ? (
-                <CheckCircle size={16} className="text-green-400" />
+                <CheckCircle size={16} style={{ color: C.green }} />
               ) : uploadJob.status === 'error' ? (
-                <AlertCircle size={16} className="text-red-400" />
+                <AlertCircle size={16} style={{ color: C.red }} />
               ) : (
-                <Loader2 size={16} className="animate-spin" />
+                <Loader2 size={16} style={{ color: C.cyan, animation: 'spin 1s linear infinite' }} />
               )}
-              <span className="text-sm font-medium">Processing</span>
+              <span style={{ fontSize: 11, fontWeight: 600, color: C.primary }}>Processing</span>
             </div>
-            <span className={`text-sm ${getStatusColor(uploadJob.status)}`}>
-              {getStatusText(uploadJob.status)}
+            <span style={{ fontSize: 11, color: uploadJob.status === 'complete' ? C.green : uploadJob.status === 'error' ? C.red : C.amber }}>
+              {uploadJob.status === 'uploading' ? 'Uploading files...' :
+               uploadJob.status === 'extracting' ? 'Extracting archive...' :
+               uploadJob.status === 'parsing' ? 'Parsing documents...' :
+               uploadJob.status === 'complete' ? 'Complete!' : 'Error'}
             </span>
           </div>
           
           {uploadJob.status === 'complete' && (
-            <div className="text-center py-4">
-              <div className="text-3xl font-bold text-green-400 mb-1">
-                {uploadJob.dealsCreated}
-              </div>
-              <div className="text-sm text-gray-400">deals created</div>
+            <div style={{ textAlign: 'center', padding: '12px 0' }}>
+              <div style={{ fontSize: 28, fontWeight: 700, color: C.green }}>{uploadJob.dealsCreated}</div>
+              <div style={{ fontSize: 10, color: C.muted }}>assets added to library</div>
             </div>
           )}
           
           {(uploadJob.errors?.length ?? 0) > 0 && (
-            <div className="mt-3 text-xs text-red-400">
+            <div style={{ marginTop: 10, fontSize: 10, color: '#FCA5A5' }}>
               {uploadJob.errors.slice(0, 3).map((err, i) => (
                 <div key={i}>• {err}</div>
               ))}
@@ -331,7 +392,11 @@ export const BulkUploadPanel: React.FC<BulkUploadPanelProps> = ({ onUploadComple
           {uploadJob.status === 'complete' && (
             <button
               onClick={() => setUploadJob(null)}
-              className="mt-4 w-full px-4 py-2 bg-blue-500/20 text-blue-400 rounded hover:bg-blue-500/30 transition-colors"
+              style={{
+                marginTop: 12, width: '100%', padding: '7px',
+                background: `${C.cyan}18`, color: C.cyan, border: `1px solid ${C.cyan}44`,
+                fontFamily: MONO, fontSize: 11, cursor: 'pointer',
+              }}
             >
               Upload more files
             </button>
@@ -340,17 +405,17 @@ export const BulkUploadPanel: React.FC<BulkUploadPanelProps> = ({ onUploadComple
       )}
       
       {/* Help Text */}
-      <div className="bg-gray-800/30 rounded-lg p-4">
-        <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
-          <FolderOpen size={16} className="text-yellow-500" />
+      <div style={{ padding: '12px 14px', background: C.panel, border: `1px solid ${C.border}` }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: C.amber, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <FolderOpen size={13} />
           Tips for bulk upload
-        </h4>
-        <ul className="text-xs text-gray-400 space-y-1">
-          <li>• <strong>ZIP archives:</strong> Organize by deal folder (e.g., Deal Name/T12.xlsx, Rent Roll.xlsx, OM.pdf)</li>
-          <li>• <strong>File naming:</strong> Include document type in filename (T12, RR, Rent Roll, OM, Tax Bill)</li>
-          <li>• <strong>Supported formats:</strong> Excel (XLSX/XLS), PDF, CSV</li>
-          <li>• <strong>Large uploads:</strong> For 50+ deals, use ZIP or connect cloud storage</li>
-        </ul>
+        </div>
+        <div style={{ fontSize: 10, color: C.muted, lineHeight: 1.7 }}>
+          <div>• <strong style={{ color: C.secondary }}>Link to Deal:</strong> Select a deal above to tag all uploaded files to that deal — they'll appear in the data library linked to it</div>
+          <div>• <strong style={{ color: C.secondary }}>ZIP archives:</strong> Organize by deal folder (e.g., Deal Name/T12.xlsx, Rent Roll.xlsx, OM.pdf) for auto-parsing</div>
+          <div>• <strong style={{ color: C.secondary }}>File naming:</strong> Include document type in filename (T12, RR, Rent Roll, OM, Tax Bill)</div>
+          <div>• <strong style={{ color: C.secondary }}>Large uploads:</strong> For 50+ deals, use ZIP or connect cloud storage</div>
+        </div>
       </div>
     </div>
   );

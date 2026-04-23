@@ -14,6 +14,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { ingestArchiveDeals } from '../../services/archive-ingestion.service';
 import { logger } from '../../utils/logger';
 import AdmZip from 'adm-zip';
+import { query as dbQuery } from '../../database/connection';
 
 const router = Router();
 
@@ -68,6 +69,7 @@ interface UploadJob {
   dealsCreated: number;
   errors: string[];
   uploadPath: string;
+  dealId?: string;
   createdAt: Date;
   completedAt?: Date;
 }
@@ -81,6 +83,7 @@ const uploadJobs = new Map<string, UploadJob>();
 router.post('/files', requireAuth, upload.array('files', 100), async (req: AuthenticatedRequest, res: Response) => {
   const jobId = uuidv4();
   const files = req.files as Express.Multer.File[];
+  const dealId = req.body?.dealId as string | undefined;
   
   if (!files || files.length === 0) {
     return res.status(400).json({ success: false, error: 'No files uploaded' });
@@ -98,6 +101,7 @@ router.post('/files', requireAuth, upload.array('files', 100), async (req: Authe
     dealsCreated: 0,
     errors: [],
     uploadPath,
+    dealId,
     createdAt: new Date(),
   };
   
@@ -126,6 +130,7 @@ router.post('/files', requireAuth, upload.array('files', 100), async (req: Authe
 router.post('/zip', requireAuth, upload.single('file'), async (req: AuthenticatedRequest, res: Response) => {
   const jobId = uuidv4();
   const file = req.file;
+  const dealId = req.body?.dealId as string | undefined;
   
   if (!file) {
     return res.status(400).json({ success: false, error: 'No file uploaded' });
@@ -149,6 +154,7 @@ router.post('/zip', requireAuth, upload.single('file'), async (req: Authenticate
     dealsCreated: 0,
     errors: [],
     uploadPath: extractPath,
+    dealId,
     createdAt: new Date(),
   };
   
@@ -169,20 +175,34 @@ router.post('/zip', requireAuth, upload.single('file'), async (req: Authenticate
   });
 });
 
+async function linkDealToLibrary(dealId: string): Promise<void> {
+  try {
+    await dbQuery('SELECT populate_data_library_from_deal($1)', [dealId]);
+    logger.info(`Populated data library from deal ${dealId}`);
+  } catch (err) {
+    logger.warn(`Could not populate data library from deal ${dealId}:`, err);
+  }
+}
+
 async function processUploadJob(job: UploadJob): Promise<void> {
   try {
     job.status = 'parsing';
     
-    // Group files by deal (assumes files are named with deal prefix or in flat structure)
-    // For now, treat each file as belonging to a single "deal"
     const result = await ingestArchiveDeals(job.uploadPath, { skipExisting: false });
     
     job.dealsCreated = result.parsedFolders;
     job.errors = result.errors;
+
+    // If a deal was selected, link it to the data library regardless of archive parsing
+    if (job.dealId) {
+      await linkDealToLibrary(job.dealId);
+      if (result.parsedFolders === 0) job.dealsCreated = 1;
+    }
+
     job.status = 'complete';
     job.completedAt = new Date();
     
-    logger.info(`Upload job ${job.id} complete: ${result.parsedFolders} deals created`);
+    logger.info(`Upload job ${job.id} complete: ${job.dealsCreated} assets added`);
     
     // Cleanup after 1 hour
     setTimeout(() => {
@@ -219,10 +239,17 @@ async function processZipUpload(job: UploadJob, zipPath: string): Promise<void> 
     job.dealsCreated = result.parsedFolders;
     job.processedFiles = job.totalFiles;
     job.errors = result.errors;
+
+    // If a deal was selected, link it to the data library regardless of archive parsing
+    if (job.dealId) {
+      await linkDealToLibrary(job.dealId);
+      if (result.parsedFolders === 0) job.dealsCreated = 1;
+    }
+
     job.status = 'complete';
     job.completedAt = new Date();
     
-    logger.info(`ZIP upload job ${job.id} complete: ${result.parsedFolders} deals created from ${job.totalFiles} files`);
+    logger.info(`ZIP upload job ${job.id} complete: ${job.dealsCreated} assets added from ${job.totalFiles} files`);
     
     // Cleanup after 1 hour
     setTimeout(() => {
