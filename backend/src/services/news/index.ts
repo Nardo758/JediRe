@@ -29,6 +29,7 @@ export { ftProvider } from './providers/ft.provider';
 // CRE-specific
 export { bisnowProvider } from './providers/bisnow.provider';
 export { globestProvider } from './providers/globest.provider';
+export { housingwireProvider } from './providers/housingwire.provider';
 
 // Default export
 import { newsService } from './news.service';

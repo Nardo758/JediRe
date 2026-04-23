@@ -46,8 +46,9 @@ router.get('/events', async (req: Request, res: Response) => {
     // Import RSS providers directly for fast loading (no health checks, no credits)
     const { bisnowProvider } = await import('../../services/news/providers/bisnow.provider');
     const { globestProvider } = await import('../../services/news/providers/globest.provider');
-    const { cnbcProvider } = await import('../../services/news/providers/cnbc.provider');
-    const { marketwatchProvider } = await import('../../services/news/providers/marketwatch.provider');
+    const { housingwireProvider } = await import('../../services/news/providers/housingwire.provider');
+    // CNBC & MarketWatch RSS are blocked from server-side fetch — replaced with
+    // HousingWire (confirmed working) + bisnow/globest already cover CRE news.
 
     const allArticles: any[] = [];
 
@@ -55,8 +56,7 @@ router.get('/events', async (req: Request, res: Response) => {
     const fetchPromises = [
       bisnowProvider.getHeadlines({ pageSize: 10 }).catch(() => ({ articles: [] })),
       globestProvider.getHeadlines({ pageSize: 10 }).catch(() => ({ articles: [] })),
-      cnbcProvider.getHeadlines({ category: 'real-estate', pageSize: 8 }).catch(() => ({ articles: [] })),
-      marketwatchProvider.getHeadlines({ category: 'real-estate', pageSize: 8 }).catch(() => ({ articles: [] })),
+      housingwireProvider.getHeadlines({ category: 'real-estate', pageSize: 10 }).catch(() => ({ articles: [] })),
     ];
 
     const results = await Promise.all(fetchPromises);

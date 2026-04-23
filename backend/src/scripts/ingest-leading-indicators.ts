@@ -9,8 +9,40 @@ dotenv.config();
 
 import { getPool } from '../database/connection';
 import axios from 'axios';
+import { fredApiClient } from '../utils/fred-api.client';
 
 const pool = getPool();
+
+// ── FRED helpers ──────────────────────────────────────────────────────────────
+
+async function fredLatestAndYoY(
+  seriesId: string,
+  startYear = new Date().getFullYear() - 2
+): Promise<{ latest: number | null; yoyPct: number | null; date: string | null }> {
+  const startDate = `${startYear}-01-01`;
+  const observations = await fredApiClient.getSeries(seriesId, startDate);
+  if (!observations || observations.length === 0) return { latest: null, yoyPct: null, date: null };
+
+  const valid = observations.filter(o => o.value !== '.' && o.value !== '');
+  if (valid.length === 0) return { latest: null, yoyPct: null, date: null };
+
+  const latest = valid[valid.length - 1];
+  const latestVal = parseFloat(latest.value);
+  const latestDate = latest.date as string;
+
+  // Find same month one year ago
+  const yearAgoDate = latestDate.replace(/^(\d{4})/, (y) => String(parseInt(y) - 1));
+  const yearAgo = valid.find(o => (o.date as string) === yearAgoDate);
+  let yoyPct: number | null = null;
+  if (yearAgo) {
+    const prevVal = parseFloat(yearAgo.value);
+    if (!isNaN(prevVal) && prevVal !== 0) {
+      yoyPct = parseFloat(((latestVal - prevVal) / prevVal * 100).toFixed(1));
+    }
+  }
+
+  return { latest: latestVal, yoyPct, date: latestDate };
+}
 
 interface LeadingIndicatorInput {
   category: 'supply' | 'demand' | 'macro' | 'sentiment';
@@ -24,71 +56,132 @@ interface LeadingIndicatorInput {
 }
 
 /**
- * Fetch building permits from Census Bureau
- * API: https://api.census.gov/data/timeseries/eits/bps
+ * Fetch building permits via FRED API (Atlanta MSA + national aggregates).
+ *
+ * Note: The Census BPS timeseries API endpoint returns 404 for the
+ * query parameters documented publicly. FRED carries the same BPS data
+ * and is already wired in the codebase.
+ *
+ * FRED series used:
+ *   ATLA013BPPRIV  — All private structures, Atlanta MSA (not SA)
+ *   ATLA013BP1FHSA — 1-unit structures, Atlanta MSA (SA)
+ *   PERMIT         — National housing permits (proxy for multifamily trend)
  */
 async function fetchBuildingPermits(): Promise<LeadingIndicatorInput[]> {
-  const apiKey = process.env.CENSUS_API_KEY || '';
-  
+  const results: LeadingIndicatorInput[] = [];
+
   try {
-    // Census API endpoint for Building Permits Survey (BPS)
-    const url = `https://api.census.gov/data/timeseries/eits/bps`;
-    
-    // For now, return mock data - actual Census API requires specific parameters
-    // TODO: Implement actual Census API integration with proper parameters
-    
-    return [
-      {
+    // Atlanta MSA — total private structures permitted
+    const atlanta = await fredLatestAndYoY('ATLA013BPPRIV');
+    if (atlanta.latest !== null) {
+      const yoy = atlanta.yoyPct;
+      const trend = yoy === null ? 'stable' : yoy > 5 ? 'rising' : yoy < -5 ? 'falling' : 'stable';
+      // Rising permits = more supply coming = negative for rent growth in 12-18mo
+      const signal: 'positive' | 'negative' | 'neutral' = yoy === null ? 'neutral' : yoy < -5 ? 'positive' : yoy > 5 ? 'negative' : 'neutral';
+      results.push({
         category: 'supply',
-        indicator_name: 'Multifamily Building Permits (5+ units)',
-        value: '-18.2%',
-        signal: 'positive', // Declining supply = positive for rent growth
-        trend: 'falling',
+        indicator_name: 'Atlanta MSA — New Housing Permits (all types)',
+        value: yoy !== null ? `${yoy >= 0 ? '+' : ''}${yoy}% YoY (${Math.round(atlanta.latest).toLocaleString()} structures)` : `${Math.round(atlanta.latest).toLocaleString()} structures`,
+        signal,
+        trend,
         lag_to_re: '12-18mo',
-        source: 'Census Bureau',
-        source_url: 'https://www.census.gov/construction/bps/',
-      },
-      {
+        source: 'FRED / Census BPS',
+        source_url: 'https://fred.stlouisfed.org/series/ATLA013BPPRIV',
+      });
+    }
+
+    // Atlanta MSA — 1-unit (single-family) as separate signal
+    const sf = await fredLatestAndYoY('ATLA013BP1FHSA');
+    if (sf.latest !== null) {
+      const yoy = sf.yoyPct;
+      const trend = yoy === null ? 'stable' : yoy > 5 ? 'rising' : yoy < -5 ? 'falling' : 'stable';
+      results.push({
         category: 'supply',
-        indicator_name: 'Single-Family Building Permits',
-        value: '-12.5%',
-        signal: 'positive',
-        trend: 'falling',
+        indicator_name: 'Atlanta MSA — Single-Family Permits',
+        value: yoy !== null ? `${yoy >= 0 ? '+' : ''}${yoy}% YoY (${Math.round(sf.latest).toLocaleString()} units)` : `${Math.round(sf.latest).toLocaleString()} units`,
+        signal: 'neutral',
+        trend,
         lag_to_re: '12-18mo',
-        source: 'Census Bureau',
-        source_url: 'https://www.census.gov/construction/bps/',
-      },
-    ];
+        source: 'FRED / Census BPS',
+        source_url: 'https://fred.stlouisfed.org/series/ATLA013BP1FHSA',
+      });
+    }
   } catch (error: any) {
-    console.error('Failed to fetch building permits:', error.message);
-    return [];
+    console.error('Failed to fetch Atlanta building permits from FRED:', error.message);
   }
+
+  // Fallback to national permits if Atlanta series unavailable
+  if (results.length === 0) {
+    try {
+      const national = await fredLatestAndYoY('PERMIT');
+      if (national.latest !== null) {
+        const yoy = national.yoyPct;
+        const trend = yoy === null ? 'stable' : yoy > 5 ? 'rising' : yoy < -5 ? 'falling' : 'stable';
+        results.push({
+          category: 'supply',
+          indicator_name: 'National Housing Permits (all types)',
+          value: yoy !== null ? `${yoy >= 0 ? '+' : ''}${yoy}% YoY` : `${Math.round(national.latest).toLocaleString()} units`,
+          signal: 'neutral',
+          trend,
+          lag_to_re: '12-18mo',
+          source: 'FRED / Census BPS',
+          source_url: 'https://fred.stlouisfed.org/series/PERMIT',
+        });
+      }
+    } catch (err: any) {
+      console.error('Failed to fetch national permits:', err.message);
+    }
+  }
+
+  return results;
 }
 
 /**
- * Fetch housing starts
- * Source: Census Bureau / HUD
+ * Fetch housing starts from FRED.
+ * HOUST5F — 5+ unit starts, seasonally adjusted annual rate
+ * HOUST   — total starts, SA annual rate
  */
 async function fetchHousingStarts(): Promise<LeadingIndicatorInput[]> {
+  const results: LeadingIndicatorInput[] = [];
+
   try {
-    // TODO: Implement actual HUD/Census API integration
-    
-    return [
-      {
+    const mf = await fredLatestAndYoY('HOUST5F');
+    if (mf.latest !== null) {
+      const yoy = mf.yoyPct;
+      const trend = yoy === null ? 'stable' : yoy > 5 ? 'rising' : yoy < -5 ? 'falling' : 'stable';
+      const signal: 'positive' | 'negative' | 'neutral' = yoy === null ? 'neutral' : yoy < -5 ? 'positive' : yoy > 5 ? 'negative' : 'neutral';
+      results.push({
         category: 'supply',
-        indicator_name: 'Multifamily Housing Starts (5+ units)',
-        value: '-24.3%',
-        signal: 'positive',
-        trend: 'falling',
+        indicator_name: 'Multifamily Housing Starts (5+ units, SAAR)',
+        value: yoy !== null ? `${yoy >= 0 ? '+' : ''}${yoy}% YoY (${Math.round(mf.latest).toLocaleString()}K SAAR)` : `${Math.round(mf.latest).toLocaleString()}K SAAR`,
+        signal,
+        trend,
         lag_to_re: '9-15mo',
-        source: 'Census Bureau / HUD',
-        source_url: 'https://www.census.gov/construction/nrc/',
-      },
-    ];
+        source: 'FRED / Census Bureau',
+        source_url: 'https://fred.stlouisfed.org/series/HOUST5F',
+      });
+    }
+
+    const total = await fredLatestAndYoY('HOUST');
+    if (total.latest !== null) {
+      const yoy = total.yoyPct;
+      const trend = yoy === null ? 'stable' : yoy > 5 ? 'rising' : yoy < -5 ? 'falling' : 'stable';
+      results.push({
+        category: 'supply',
+        indicator_name: 'Total Housing Starts (SAAR)',
+        value: yoy !== null ? `${yoy >= 0 ? '+' : ''}${yoy}% YoY (${Math.round(total.latest).toLocaleString()}K SAAR)` : `${Math.round(total.latest).toLocaleString()}K SAAR`,
+        signal: 'neutral',
+        trend,
+        lag_to_re: '9-15mo',
+        source: 'FRED / Census Bureau',
+        source_url: 'https://fred.stlouisfed.org/series/HOUST',
+      });
+    }
   } catch (error: any) {
-    console.error('Failed to fetch housing starts:', error.message);
-    return [];
+    console.error('Failed to fetch housing starts from FRED:', error.message);
   }
+
+  return results;
 }
 
 /**
