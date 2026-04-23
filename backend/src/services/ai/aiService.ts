@@ -234,6 +234,7 @@ export class JediAIService {
   // ── Private Methods ────────────────────────────────────────────
 
   private static readonly PREFERENCE_MODEL_MAP: Record<string, string> = {
+    cheap: 'deepseek-chat',
     fast: 'claude-haiku-4-5-20251001',
     balanced: 'claude-sonnet-4-20250514',
     powerful: 'claude-opus-4-20250514',

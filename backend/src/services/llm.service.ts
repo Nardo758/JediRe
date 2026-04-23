@@ -313,6 +313,9 @@ function getProviderWithKey(preferredProvider: string): string | null {
   if (preferredProvider === 'openai' && process.env.OPENAI_API_KEY) {
     return 'openai';
   }
+  if (preferredProvider === 'deepseek' && process.env.DEEPSEEK_API_KEY) {
+    return 'deepseek';
+  }
   // Fall back to OpenRouter for models we don't have direct API access to
   if (process.env.OPENROUTER_API_KEY) {
     return 'openrouter';
