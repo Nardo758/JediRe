@@ -249,8 +249,9 @@ router.post('/matches/:id/confirm', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { notes } = req.body;
-    const userId = (req as any).user?.id;
-    
+    const userId = (req as { user?: { userId?: string } }).user?.userId;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
     await matcherService.confirmMatch(id, userId, notes);
     
     res.json({ success: true, message: 'Match confirmed' });
@@ -268,12 +269,13 @@ router.post('/matches/:id/reject', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { reason } = req.body;
-    const userId = (req as any).user?.id;
-    
+    const userId = (req as { user?: { userId?: string } }).user?.userId;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
     if (!reason) {
       return res.status(400).json({ error: 'Rejection reason is required' });
     }
-    
+
     await matcherService.rejectMatch(id, userId, reason);
     
     res.json({ success: true, message: 'Match rejected' });
@@ -368,9 +370,10 @@ router.post('/batch-enrich', async (req: Request, res: Response) => {
  */
 router.get('/enrichment-opportunities', async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?.id;
+    const userId = (req as { user?: { userId?: string } }).user?.userId;
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
     const { minScore = '50' } = req.query as Record<string, string>;
-    
+
     const assets = await autoEnrichmentService.getAssetsNeedingEnrichment(
       userId,
       parseInt(minScore)
