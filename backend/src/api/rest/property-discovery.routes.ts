@@ -208,16 +208,36 @@ router.post('/match', async (req: Request, res: Response) => {
  */
 router.get('/matches/review', async (req: Request, res: Response) => {
   try {
-    const { county, state, limit = '50' } = req.query as Record<string, string>;
-    
-    // TODO: Query match_review_queue view
-    
-    res.json({
-      matches: [],
-      total: 0
-    });
+    const { county, state } = req.query as Record<string, string>;
+    const limit = Math.min(parseInt((req.query.limit as string) || '50', 10), 200);
+    const { query: dbQuery } = await import('../../database/connection');
+
+    const where: string[] = [];
+    const params: unknown[] = [];
+    if (county) { params.push(county); where.push(`discovered_address IS NOT NULL AND EXISTS (SELECT 1 FROM discovered_properties dp2 WHERE dp2.id = discovered_property_id AND dp2.county = $${params.length})`); }
+    if (state)  { params.push(state); where.push(`EXISTS (SELECT 1 FROM discovered_properties dp3 WHERE dp3.id = discovered_property_id AND dp3.state = $${params.length})`); }
+    params.push(limit);
+
+    const sql = `
+      SELECT id,
+             discovered_property_id,
+             apartment_locator_id,
+             confidence       AS confidence_score,
+             status,
+             discovered_address,
+             discovered_city,
+             al_name          AS al_property_name,
+             al_address
+        FROM match_review_queue
+       ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+       LIMIT $${params.length}
+    `;
+    const r = await dbQuery(sql, params);
+    res.json({ matches: r.rows, total: r.rows.length });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to get review queue' });
+    const msg = error instanceof Error ? error.message : 'Failed to get review queue';
+    console.error('[API] /matches/review failed', error);
+    res.status(500).json({ error: msg });
   }
 });
 
@@ -458,20 +478,33 @@ router.post('/enrich/:assetId', async (req: Request, res: Response) => {
 /**
  * POST /api/v1/property-discovery/enrichment-log/:logId/resolve
  *
- * Accept or reject a single conflict from a prior enrichment log entry.
- * Body: { accept: boolean }
+ * Resolve conflicts on a prior enrichment log entry. Two modes:
+ *   - { accept: true }                  → apply all conflicting fields
+ *   - { accept: false }                 → reject all conflicts
+ *   - { resolutions: { field: 'keep' | 'overwrite' } } → per-field decisions
  */
 router.post('/enrichment-log/:logId/resolve', async (req: Request, res: Response) => {
   try {
     const { logId } = req.params;
-    const { accept } = req.body || {};
-    if (typeof accept !== 'boolean') {
-      return res.status(400).json({ error: 'accept (boolean) is required' });
+    const { accept, resolutions } = req.body || {};
+    const { query: dbQuery } = await import('../../database/connection');
+
+    if (resolutions && typeof resolutions === 'object') {
+      const map: Record<string, 'keep' | 'overwrite'> = {};
+      for (const [k, v] of Object.entries(resolutions)) {
+        if (v === 'keep' || v === 'overwrite') map[k] = v;
+      }
+      await autoEnrichmentService.applyEnrichmentFromLog(logId, map);
+      return res.json({ success: true });
     }
+
+    if (typeof accept !== 'boolean') {
+      return res.status(400).json({ error: 'accept (boolean) or resolutions (map) is required' });
+    }
+
     if (accept) {
       await autoEnrichmentService.applyEnrichmentFromLog(logId);
     } else {
-      const { query: dbQuery } = await import('../../database/connection');
       await dbQuery(
         `UPDATE data_library_enrichment_log
             SET status = 'rejected', applied_at = NOW()
@@ -483,6 +516,97 @@ router.post('/enrichment-log/:logId/resolve', async (req: Request, res: Response
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Resolve failed';
     console.error('[API] enrichment-log/:logId/resolve failed', error);
+    res.status(500).json({ error: msg });
+  }
+});
+
+/**
+ * GET /api/v1/property-discovery/jobs
+ *
+ * Recent discovery jobs.
+ */
+router.get('/jobs', async (req: Request, res: Response) => {
+  try {
+    const limit = Math.min(parseInt((req.query.limit as string) || '10', 10), 100);
+    const { query: dbQuery } = await import('../../database/connection');
+    const r = await dbQuery(
+      `SELECT id, county, state, status,
+              properties_found  AS properties_discovered,
+              properties_new,
+              properties_updated,
+              started_at, completed_at,
+              CASE
+                WHEN errors IS NULL OR errors = '[]'::jsonb THEN NULL
+                ELSE (errors->>0)
+              END AS error_message
+         FROM discovery_jobs
+        ORDER BY started_at DESC NULLS LAST, id DESC
+        LIMIT $1`,
+      [limit]
+    );
+    res.json({ jobs: r.rows });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'Failed to load jobs';
+    console.error('[API] /jobs failed', error);
+    res.status(500).json({ error: msg });
+  }
+});
+
+/**
+ * POST /api/v1/property-discovery/match-all
+ *
+ * Match all configured counties; returns aggregate counts.
+ */
+router.post('/match-all', async (_req: Request, res: Response) => {
+  try {
+    let totalDiscovered = 0;
+    let totalMatched = 0;
+    let totalReview = 0;
+    const byCounty: Array<{ county: string; state: string; matched: number; reviewRequired: number }> = [];
+    for (const cfg of COUNTY_CONFIGS) {
+      try {
+        const r = await matcherService.matchCounty(cfg.county, cfg.state);
+        totalDiscovered += r.total;
+        totalMatched += r.matched;
+        totalReview += r.reviewRequired;
+        byCounty.push({ county: cfg.county, state: cfg.state, matched: r.matched, reviewRequired: r.reviewRequired });
+      } catch (e) {
+        console.warn(`[match-all] ${cfg.county}, ${cfg.state} failed:`, (e as Error).message);
+      }
+    }
+    res.json({
+      success: true,
+      totalDiscovered,
+      totalMatched,
+      totalReview,
+      byCounty,
+    });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'Match-all failed';
+    res.status(500).json({ error: msg });
+  }
+});
+
+/**
+ * GET /api/v1/property-discovery/data-library-assets/:id
+ *
+ * Convenience: fetch latest asset row (used by AssetDetailModal to refresh
+ * after Auto-Enrich apply without re-mounting).
+ */
+router.get('/data-library-assets/:id/refresh', async (req: Request, res: Response) => {
+  try {
+    const { query: dbQuery } = await import('../../database/connection');
+    const r = await dbQuery(
+      `SELECT id, data_quality_score, property_name, address, city, state, zip_code,
+              county, property_type, asset_class, year_built, unit_count,
+              net_rentable_sqft, occupancy_rate
+         FROM data_library_assets WHERE id = $1`,
+      [req.params.id]
+    );
+    if (!r.rows[0]) return res.status(404).json({ error: 'Not found' });
+    res.json(r.rows[0]);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'Failed to refresh asset';
     res.status(500).json({ error: msg });
   }
 });

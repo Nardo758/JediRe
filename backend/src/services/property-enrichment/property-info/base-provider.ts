@@ -28,7 +28,12 @@ export abstract class BasePropertyInfoProvider implements PropertyInfoProvider {
         this._dailyCount = 0;
       }
       if (this._dailyCount >= cfg.requestsPerDay) {
-        throw new Error(`[${cfg.name}] Daily rate limit (${cfg.requestsPerDay}) exceeded`);
+        // Queue rather than drop: wait until the daily window resets
+        const waitMs = Math.max(1000, this._dailyResetAt - now);
+        console.warn(`[${cfg.name}] Daily rate limit (${cfg.requestsPerDay}) reached — queuing for ${Math.ceil(waitMs / 60000)} min`);
+        await new Promise(r => setTimeout(r, waitMs));
+        this._dailyResetAt = Date.now() + 24 * 60 * 60 * 1000;
+        this._dailyCount = 0;
       }
     }
 

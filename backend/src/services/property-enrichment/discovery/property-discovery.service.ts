@@ -471,13 +471,47 @@ export class PropertyDiscoveryService {
     byMatchStatus: Record<string, number>;
     recentDiscoveries: number;
   }> {
-    // TODO: Query database for stats
-    return {
-      totalDiscovered: 0,
-      byCounty: {},
-      byMatchStatus: { unmatched: 0, matched: 0, manual_review: 0 },
-      recentDiscoveries: 0
-    };
+    try {
+      const totalRes = await dbQuery<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM discovered_properties`
+      );
+      const byCountyRes = await dbQuery<{ county: string; state: string; count: string }>(
+        `SELECT county, state, COUNT(*)::text AS count
+           FROM discovered_properties
+          GROUP BY county, state
+          ORDER BY COUNT(*) DESC
+          LIMIT 50`
+      );
+      const byStatusRes = await dbQuery<{ match_status: string; count: string }>(
+        `SELECT COALESCE(match_status, 'unmatched') AS match_status, COUNT(*)::text AS count
+           FROM discovered_properties
+          GROUP BY match_status`
+      );
+      const recentRes = await dbQuery<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM discovered_properties
+          WHERE discovered_at > NOW() - INTERVAL '7 days'`
+      );
+
+      const byCounty: Record<string, number> = {};
+      for (const r of byCountyRes.rows) byCounty[`${r.county}, ${r.state}`] = parseInt(r.count, 10);
+      const byMatchStatus: Record<string, number> = {};
+      for (const r of byStatusRes.rows) byMatchStatus[r.match_status] = parseInt(r.count, 10);
+
+      return {
+        totalDiscovered: parseInt(totalRes.rows[0]?.count || '0', 10),
+        byCounty,
+        byMatchStatus,
+        recentDiscoveries: parseInt(recentRes.rows[0]?.count || '0', 10),
+      };
+    } catch (e) {
+      console.error('[PropertyDiscovery] getStats failed:', e);
+      return {
+        totalDiscovered: 0,
+        byCounty: {},
+        byMatchStatus: {},
+        recentDiscoveries: 0,
+      };
+    }
   }
 }
 

@@ -294,6 +294,29 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
     }
   };
 
+  const refreshAssetAfterApply = async () => {
+    if (!assetId) return;
+    try {
+      const res = await apiClient.get(`/api/v1/data-library-assets/${assetId}`);
+      const a = res.data;
+      // Refresh visible form fields (only fields present on AssetDetails)
+      setDetails(prev => ({
+        ...prev,
+        propertyName: a.property_name ?? prev.propertyName,
+        address: a.address ?? prev.address,
+        city: a.city ?? prev.city,
+        state: a.state ?? prev.state,
+        propertyType: a.property_type ?? prev.propertyType,
+        assetClass: a.asset_class ?? prev.assetClass,
+        yearBuilt: a.year_built != null ? String(a.year_built) : prev.yearBuilt,
+        units: a.unit_count != null ? String(a.unit_count) : prev.units,
+        occupancyPct: a.occupancy_rate != null ? String(a.occupancy_rate) : prev.occupancyPct,
+      }));
+    } catch {
+      /* non-fatal */
+    }
+  };
+
   const handleResolveAll = async (accept: boolean) => {
     if (!enrichResult?.logId) return;
     setResolving(true);
@@ -308,9 +331,31 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
           ? [...prev.fieldsEnriched, ...prev.conflicts.map(c => c.field)]
           : prev.fieldsEnriched,
       } : prev);
+      if (accept) await refreshAssetAfterApply();
     } catch (err) {
       const e = err as { response?: { data?: { error?: string } }; message?: string };
       setEnrichError(e.response?.data?.error || e.message || 'Failed to resolve conflicts');
+    } finally {
+      setResolving(false);
+    }
+  };
+
+  const handleResolveOne = async (field: string, accept: boolean) => {
+    if (!enrichResult?.logId) return;
+    setResolving(true);
+    try {
+      await apiClient.post(`/api/v1/property-discovery/enrichment-log/${enrichResult.logId}/resolve`, {
+        resolutions: { [field]: accept ? 'overwrite' : 'keep' },
+      });
+      setEnrichResult(prev => prev ? {
+        ...prev,
+        conflicts: prev.conflicts.filter(c => c.field !== field),
+        fieldsEnriched: accept ? [...prev.fieldsEnriched, field] : prev.fieldsEnriched,
+      } : prev);
+      if (accept) await refreshAssetAfterApply();
+    } catch (err) {
+      const e = err as { response?: { data?: { error?: string } }; message?: string };
+      setEnrichError(e.response?.data?.error || e.message || 'Failed to resolve conflict');
     } finally {
       setResolving(false);
     }
@@ -486,20 +531,32 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
               <div style={{ fontSize: 10, color: C.muted, fontFamily: MONO, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                 Auto-Enrich (Municipal APIs + Apartment Locator)
               </div>
-              <button
-                onClick={handleAutoEnrich}
-                disabled={enriching}
-                style={{
-                  padding: '6px 14px', fontSize: 11, fontWeight: 700,
-                  background: enriching ? C.input : C.cyan,
-                  color: enriching ? C.muted : '#001018',
-                  border: 'none', cursor: enriching ? 'wait' : 'pointer',
-                  fontFamily: MONO, letterSpacing: 0.5,
-                }}
-              >
-                {enriching ? 'ENRICHING…' : 'AUTO-ENRICH'}
-              </button>
+              {(() => {
+                const canEnrich = !!(details.address && details.city && details.state);
+                const disabled = enriching || !canEnrich;
+                return (
+                  <button
+                    onClick={handleAutoEnrich}
+                    disabled={disabled}
+                    title={canEnrich ? '' : 'Address, City, and State are required to auto-enrich'}
+                    style={{
+                      padding: '6px 14px', fontSize: 11, fontWeight: 700,
+                      background: disabled ? C.input : C.cyan,
+                      color: disabled ? C.muted : '#001018',
+                      border: 'none', cursor: enriching ? 'wait' : (canEnrich ? 'pointer' : 'not-allowed'),
+                      fontFamily: MONO, letterSpacing: 0.5,
+                    }}
+                  >
+                    {enriching ? 'ENRICHING…' : 'AUTO-ENRICH'}
+                  </button>
+                );
+              })()}
             </div>
+            {!(details.address && details.city && details.state) && (
+              <div style={{ fontSize: 10, color: C.muted, fontFamily: MONO }}>
+                Requires Address + City + State to enrich.
+              </div>
+            )}
             {enrichError && (
               <div style={{ fontSize: 10, color: '#FCA5A5', fontFamily: MONO }}>{enrichError}</div>
             )}
@@ -522,8 +579,34 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
                       padding: '8px 10px', borderBottom: idx < enrichResult.conflicts.length - 1 ? `1px solid ${C.border}` : 'none',
                       display: 'flex', flexDirection: 'column', gap: 4,
                     }}>
-                      <div style={{ fontSize: 10, color: C.cyan, fontFamily: MONO, fontWeight: 700 }}>
-                        {c.field} <span style={{ color: C.muted, fontWeight: 400 }}>· {c.source}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div style={{ fontSize: 10, color: C.cyan, fontFamily: MONO, fontWeight: 700 }}>
+                          {c.field} <span style={{ color: C.muted, fontWeight: 400 }}>· {c.source}</span>
+                        </div>
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          <button
+                            onClick={() => handleResolveOne(c.field, true)}
+                            disabled={resolving || !enrichResult.logId}
+                            style={{
+                              padding: '2px 8px', fontSize: 9, fontWeight: 700,
+                              background: '#10B981', color: '#001018', border: 'none',
+                              cursor: resolving ? 'wait' : 'pointer', fontFamily: MONO,
+                            }}
+                          >
+                            ACCEPT
+                          </button>
+                          <button
+                            onClick={() => handleResolveOne(c.field, false)}
+                            disabled={resolving || !enrichResult.logId}
+                            style={{
+                              padding: '2px 8px', fontSize: 9, fontWeight: 700,
+                              background: 'transparent', color: '#FCA5A5',
+                              border: '1px solid #7F1D1D', cursor: resolving ? 'wait' : 'pointer', fontFamily: MONO,
+                            }}
+                          >
+                            KEEP
+                          </button>
+                        </div>
                       </div>
                       <div style={{ fontSize: 10, color: C.secondary, display: 'flex', gap: 12 }}>
                         <div>Existing: <span style={{ color: C.primary, fontFamily: MONO }}>{String(c.existingValue ?? '—')}</span></div>
