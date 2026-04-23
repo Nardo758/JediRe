@@ -102,7 +102,16 @@ export async function syncApartmentLocatorTable(opts: AlSyncOptions = {}): Promi
         r.year_built || null,
         r.avg_rent || null,
         r.market_rent || null,
-        r.current_occupancy != null ? Number(r.current_occupancy) * 100 : null,
+        r.current_occupancy != null
+          ? (() => {
+              const v = Number(r.current_occupancy);
+              if (!Number.isFinite(v)) return null;
+              // properties.current_occupancy is already stored as a percentage
+              // (0–100). Some legacy rows may use 0–1 fractions; auto-normalize.
+              const pct = v <= 1 ? v * 100 : v;
+              return Math.max(0, Math.min(100, pct));
+            })()
+          : null,
       ]
     );
     if (result.rows[0]?.inserted) inserted++;
