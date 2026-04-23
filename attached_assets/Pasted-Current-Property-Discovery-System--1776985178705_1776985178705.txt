@@ -1,0 +1,41 @@
+Current Property Discovery System
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         PROPERTY DISCOVERY FLOW                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  1. DISCOVERY (Municipal APIs)                                              │
+│     └─▶️ Query county GIS for multifamily 100+ units                        │
+│         Returns: parcel_id, address, owner, year_built, units, value       │
+│                                                                             │
+│  2. MATCHING (Apartment Locator AI)                                         │
+│     └─▶️ Match discovered property to rent data by address/name             │
+│         Returns: property_name, unit_mix, asking_rents, occupancy          │
+│                                                                             │
+│  3. ??? GAP: PROPERTY IDENTITY ENRICHMENT                                   │
+│     └─▶️ Find: website, phone, management company, amenities, photos        │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+───
+
+What's Missing: Property Identity Resolution
+
+Right now we have:
+
+• ✅ Municipal data (parcel, owner, year built, units, value)
+• ✅ Rent data matching (Apartment Locator AI integration)
+• ❌ Property identity (name, website, phone, management co, photos)
+
+We need a Property Identity Resolver that takes a discovered property and enriches it with:
+
+| Field              | Source                                          |
+| ------------------ | ----------------------------------------------- |
+| Property Name      | Google Places, Apartments.com, property website |
+| Website            | Google search, Apartments.com listing           |
+| Phone Number       | Google Places, website scrape                   |
+| Management Company | Apartments.com, website scrape                  |
+| Amenities          | Apartments.com, website scrape                  |
+| Photos             | Google Places, property website                 |
+| Reviews/Rating     | Google Places                                   |
+| Social Media       | Website scrape                                  |
