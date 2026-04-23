@@ -76,7 +76,7 @@ const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
   const [loading, setLoading]   = useState(true);
   const [total, setTotal]       = useState(0);
   const [page, setPage]         = useState(1);
-  const [filters, setFilters]   = useState({ submarket:'', minYear:'', maxYear:'', search:'', minUnits:'', maxUnits:'', minPrice:'', maxPrice:'' });
+  const [filters, setFilters]   = useState({ submarket:'', minYear:'', maxYear:'', search:'', minUnits:'', maxUnits:'', minPrice:'', maxPrice:'', county:'' });
   const [fetchAttempted, setFetchAttempted] = useState(false);
   const [exportLoading, setExportLoading]   = useState(false);
   const [copySuccess, setCopySuccess]       = useState(false);
@@ -100,6 +100,7 @@ const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
         if (filters.maxUnits)  params.set('maxUnits',       filters.maxUnits);
         if (filters.minPrice)  params.set('minPricePerUnit',filters.minPrice);
         if (filters.maxPrice)  params.set('maxPricePerUnit',filters.maxPrice);
+        if (filters.county)    params.set('county',          filters.county);
         const res  = await fetch(`/api/v1/markets/properties?${params}`);
         const data = await res.json();
         setLiveProperties(data.properties || []); setTotal(data.total || 0); setFetchAttempted(true);
@@ -207,8 +208,9 @@ const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
             <span style={{ fontSize: 10, fontWeight: 700, color: T.amber, letterSpacing: 2, ...mono }}>PROPERTY DATABASE</span>
             <span style={{ fontSize: 9, color: T.secondary, ...mono }}>
               {isAtlanta && liveProperties.length > 0
-                ? <><span style={{ color: T.green }}>●</span> LIVE · {total.toLocaleString()} PROPERTIES</>
-                : isAtlanta ? '27% LIVE DATA' : 'NO LIVE DATA'}
+                ? <><span style={{ color: T.green }}>●</span> LIVE · {total.toLocaleString()} PROPERTIES · {filters.county || 'ALL COUNTIES'}</>
+                : isAtlanta && loading ? <><span style={{ color: T.amber }}>●</span> LOADING…</>
+                : isAtlanta ? <><span style={{ color: T.amber }}>●</span> FULTON · DEKALB · COBB · GWINNETT</> : 'NO LIVE DATA'}
             </span>
             {loading && <span style={{ fontSize: 9, color: T.cyan, ...mono }}>LOADING…</span>}
           </div>
@@ -216,6 +218,16 @@ const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
         </div>
 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, padding: '10px 14px', alignItems: 'flex-end' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 100 }}>
+            <span style={{ fontSize: 9, fontWeight: 700, color: T.muted, letterSpacing: 2, ...mono }}>COUNTY</span>
+            <select value={filters.county} onChange={e => updateFilter(f => ({ ...f, county: e.target.value }))} style={inputStyle}>
+              <option value="">ALL COUNTIES</option>
+              <option value="Fulton">Fulton</option>
+              <option value="DeKalb">DeKalb</option>
+              <option value="Cobb">Cobb</option>
+              <option value="Gwinnett">Gwinnett</option>
+            </select>
+          </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 130 }}>
             <span style={{ fontSize: 9, fontWeight: 700, color: T.muted, letterSpacing: 2, ...mono }}>SUBMARKET</span>
             <select value={filters.submarket} onChange={e => updateFilter(f => ({ ...f, submarket: e.target.value }))} style={inputStyle}>
@@ -263,6 +275,7 @@ const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
               <tr>
                 {[
                   { key: 'property',  label: 'PROPERTY'  },
+                  { key: 'county',    label: 'COUNTY'    },
                   { key: 'submarket', label: 'SUBMARKET' },
                   { key: 'units',     label: 'UNITS'     },
                   { key: 'year',      label: 'YEAR'      },
@@ -302,6 +315,7 @@ const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
                   <td style={{ padding: '6px 10px' }}>
                     <span style={{ fontSize: 11, fontWeight: 600, color: T.cyan, ...mono, textDecoration: 'underline', textDecorationStyle: 'dotted' }}>{row.property}</span>
                   </td>
+                  <td style={{ padding: '6px 10px', fontSize: 9, color: T.amber, ...mono, whiteSpace: 'nowrap' }}>{(row as any).county || '—'}</td>
                   <td style={{ padding: '6px 10px', fontSize: 10, color: T.secondary, ...mono }}>{row.submarket}</td>
                   <td style={{ padding: '6px 10px', fontSize: 11, color: T.text, ...mono }}>{row.units.toLocaleString()}</td>
                   <td style={{ padding: '6px 10px', fontSize: 11, color: T.secondary, ...mono }}>{row.year || '—'}</td>
@@ -316,7 +330,7 @@ const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
                 </tr>
               )) : (
                 <tr>
-                  <td colSpan={8} style={{ padding: '32px 16px', textAlign: 'center', fontSize: 10, color: T.muted, ...mono }}>
+                  <td colSpan={9} style={{ padding: '32px 16px', textAlign: 'center', fontSize: 10, color: T.muted, ...mono }}>
                     NO PROPERTY DATA AVAILABLE FOR THIS MARKET · SELECT ATLANTA FOR SAMPLE DATA
                   </td>
                 </tr>
@@ -328,7 +342,7 @@ const PropertyDataTab: React.FC<PropertyDataTabProps> = ({ marketId }) => {
         {/* Footer: pagination + export */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 14px', borderTop: `1px solid ${T.border}`, background: T.dimBg, flexWrap: 'wrap', gap: 8 }}>
           <span style={{ fontSize: 9, color: T.secondary, ...mono }}>
-            SHOWING {sortedRows.length} OF {total > 0 ? total.toLocaleString() : '1,028'} PROPERTIES
+            SHOWING {sortedRows.length} OF {total > 0 ? total.toLocaleString() : sortedRows.length} PROPERTIES
             {liveProperties.length > 0 && <span style={{ color: T.green, marginLeft: 6 }}>· LIVE</span>}
           </span>
 

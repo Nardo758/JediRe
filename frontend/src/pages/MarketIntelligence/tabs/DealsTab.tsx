@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 interface DealsTabProps {
@@ -45,6 +45,27 @@ const DealsTab: React.FC<DealsTabProps> = ({ marketId, summary, onUpdate }) => {
   const [expandedPipeline, setExpandedPipeline] = useState(false);
   const [activeQuadrants, setActiveQuadrants] = useState<Set<Quadrant>>(new Set());
   const [showPcsBreakdown, setShowPcsBreakdown] = useState(false);
+  const [liveComps, setLiveComps] = useState<any[]>([]);
+  const [compsTotal, setCompsTotal] = useState(0);
+  const [compsLoading, setCompsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchComps = async () => {
+      setCompsLoading(true);
+      try {
+        const params = new URLSearchParams({ marketId, limit: '25', sortBy: 'sale_date', sortDir: 'desc' });
+        const res = await fetch(`/api/v1/markets/sale-comps?${params}`);
+        const data = await res.json();
+        setLiveComps(data.comps || []);
+        setCompsTotal(data.total || 0);
+      } catch {
+        // leave empty on error
+      } finally {
+        setCompsLoading(false);
+      }
+    };
+    fetchComps();
+  }, [marketId]);
 
   const toggleQuadrant = (q: Quadrant) => {
     setActiveQuadrants((prev) => {
@@ -520,45 +541,75 @@ const DealsTab: React.FC<DealsTabProps> = ({ marketId, summary, onUpdate }) => {
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100">
-          <h3 className="text-base font-semibold text-gray-900">Market Deal Activity</h3>
-          <p className="text-sm text-gray-500 mt-0.5">Recent transactions and AI assessments</p>
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <h3 className="text-base font-semibold text-gray-900">Market Transaction Comps</h3>
+            <p className="text-sm text-gray-500 mt-0.5">
+              {compsLoading ? 'Loading…' : liveComps.length > 0
+                ? <><span className="text-green-600 font-bold">●</span> LIVE · {compsTotal.toLocaleString()} recorded transactions</>
+                : 'No recorded transactions for this market'}
+            </p>
+          </div>
+          {liveComps.length > 0 && (
+            <span className="text-xs font-medium text-blue-600 bg-blue-50 px-2 py-1 rounded">
+              SOURCE: PUBLIC RECORDS + ANNOUNCEMENTS
+            </span>
+          )}
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50">
                 <th className="px-4 py-3 text-left font-semibold text-gray-500 text-xs">Property</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-500 text-xs">Owner</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-500 text-xs">Type</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-500 text-xs">PCS Rank</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-500 text-xs">T-04 Quadrant</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-500 text-xs">Target Score</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-500 text-xs">City / County</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-500 text-xs">Sale Date</th>
                 <th className="px-4 py-3 text-left font-semibold text-gray-500 text-xs">Units</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-500 text-xs">Price</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-500 text-xs">Class</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-500 text-xs">Sale Price</th>
                 <th className="px-4 py-3 text-left font-semibold text-gray-500 text-xs">$/Unit</th>
-                <th className="px-4 py-3 text-left font-semibold text-gray-500 text-xs">AI Assessment</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-500 text-xs">Cap Rate</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-500 text-xs">Buyer</th>
+                <th className="px-4 py-3 text-left font-semibold text-gray-500 text-xs">Seller</th>
               </tr>
             </thead>
             <tbody>
-              {dealActivityRows.map((row, idx) => (
-                <tr key={idx} className="border-t border-gray-100 hover:bg-gray-50 transition-colors">
-                  <td className="px-4 py-3 font-medium text-gray-900">{row.property}</td>
-                  <td className="px-4 py-3 text-xs text-gray-600">{row.owner}</td>
+              {liveComps.length > 0 ? liveComps.map((comp, idx) => (
+                <tr key={comp.id || idx} className="border-t border-gray-100 hover:bg-gray-50 transition-colors">
                   <td className="px-4 py-3">
-                    <span className={`px-2 py-0.5 rounded text-xs font-bold ${row.type === 'Listed' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}`}>
-                      {row.type}
-                    </span>
+                    <div className="font-medium text-gray-900">{comp.property_name || comp.address}</div>
+                    {comp.property_name && <div className="text-xs text-gray-500 truncate max-w-[200px]">{comp.address}</div>}
                   </td>
-                  <td className="px-4 py-3">{renderPcsRank(row.pcsRank, row.pcsMovement, row.pcsMovementDelta)}</td>
-                  <td className="px-4 py-3">{renderQuadrantBadge(row.quadrant)}</td>
-                  <td className="px-4 py-3">{renderTargetScore(row.targetScore)}</td>
-                  <td className="px-4 py-3 text-gray-600">{row.units}</td>
-                  <td className="px-4 py-3 text-gray-600">{row.price}</td>
-                  <td className="px-4 py-3 font-medium text-gray-900">{row.perUnit}</td>
-                  <td className="px-4 py-3 text-xs text-gray-600 max-w-xs">{row.assessment}</td>
+                  <td className="px-4 py-3 text-xs text-gray-600">
+                    {comp.city}{comp.county ? ` · ${comp.county}` : ''}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-gray-600 whitespace-nowrap">
+                    {comp.sale_date ? new Date(comp.sale_date).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : '—'}
+                  </td>
+                  <td className="px-4 py-3 text-gray-700 font-medium">{comp.units?.toLocaleString() ?? '—'}</td>
+                  <td className="px-4 py-3">
+                    {comp.asset_class
+                      ? <span className="px-2 py-0.5 rounded text-xs font-bold bg-blue-100 text-blue-800">{comp.asset_class}</span>
+                      : <span className="text-gray-400 text-xs">—</span>}
+                  </td>
+                  <td className="px-4 py-3 font-semibold text-gray-900">
+                    {comp.sale_price ? `$${(Number(comp.sale_price) / 1_000_000).toFixed(1)}M` : '—'}
+                  </td>
+                  <td className="px-4 py-3 font-medium text-emerald-700">
+                    {comp.price_per_unit ? `$${Math.round(Number(comp.price_per_unit)).toLocaleString()}` : '—'}
+                  </td>
+                  <td className="px-4 py-3 text-gray-600">
+                    {comp.cap_rate ? `${(Number(comp.cap_rate) * 100).toFixed(1)}%` : '—'}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-gray-600">{comp.buyer || '—'}</td>
+                  <td className="px-4 py-3 text-xs text-gray-600">{comp.seller || '—'}</td>
                 </tr>
-              ))}
+              )) : (
+                <tr>
+                  <td colSpan={10} className="px-4 py-8 text-center text-sm text-gray-400">
+                    {compsLoading ? 'Loading transaction comps…' : 'No recorded transactions found for this market.'}
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

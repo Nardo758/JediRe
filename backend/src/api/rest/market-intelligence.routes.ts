@@ -550,10 +550,22 @@ export function createMarketIntelligenceRoutes(pool: Pool) {
       const params: any[] = [];
       let paramIndex = 1;
 
+      // Atlanta MSA covers all 4 ingested counties
+      const ATLANTA_COUNTIES = ['Fulton', 'DeKalb', 'Cobb', 'Gwinnett'];
+      const countyParam = req.query.county as string;
+
       if (marketId === 'atlanta') {
-        whereClause = `WHERE pr.county = 'Fulton' AND pr.state = 'GA' AND pr.units > 0`;
+        if (countyParam && ATLANTA_COUNTIES.includes(countyParam)) {
+          whereClause = `WHERE pr.county = $${paramIndex} AND pr.state = 'GA' AND (pr.units > 0 OR pr.units IS NULL)`;
+          params.push(countyParam);
+          paramIndex++;
+        } else {
+          whereClause = `WHERE pr.county = ANY($${paramIndex}::text[]) AND pr.state = 'GA' AND (pr.units > 0 OR pr.units IS NULL)`;
+          params.push(ATLANTA_COUNTIES);
+          paramIndex++;
+        }
       } else {
-        whereClause = `WHERE pr.units > 0`;
+        whereClause = `WHERE (pr.units > 0 OR pr.units IS NULL)`;
       }
 
       if (search) {
@@ -654,6 +666,78 @@ export function createMarketIntelligenceRoutes(pool: Pool) {
     } catch (error) {
       console.error('Error fetching properties:', error);
       res.status(500).json({ error: 'Failed to fetch properties' });
+    }
+  });
+
+  // GET /api/v1/markets/sale-comps - Market-level recorded transaction comps
+  router.get('/sale-comps', async (req, res) => {
+    try {
+      const marketId = (req.query.marketId as string) || 'atlanta';
+      const limit    = Math.min(200, Math.max(1, parseInt(req.query.limit as string) || 50));
+      const page     = Math.max(1, parseInt(req.query.page as string) || 1);
+      const offset   = (page - 1) * limit;
+      const county   = req.query.county as string;
+      const minUnits = req.query.minUnits ? parseInt(req.query.minUnits as string) : undefined;
+      const maxUnits = req.query.maxUnits ? parseInt(req.query.maxUnits as string) : undefined;
+      const search   = req.query.search as string;
+      const sortBy   = (req.query.sortBy as string) || 'sale_date';
+      const sortDir  = (req.query.sortDir as string) === 'asc' ? 'ASC' : 'DESC';
+
+      const MSA_MAP: Record<string, string> = { atlanta: 'Atlanta, GA', charlotte: 'Charlotte, NC' };
+      const msaFilter = MSA_MAP[marketId];
+
+      const conditions: string[] = [];
+      const params: any[] = [];
+      let pi = 1;
+
+      if (msaFilter) {
+        conditions.push(`msa = $${pi++}`);
+        params.push(msaFilter);
+      }
+      if (county) {
+        conditions.push(`county = $${pi++}`);
+        params.push(county);
+      }
+      if (minUnits) {
+        conditions.push(`units >= $${pi++}`);
+        params.push(minUnits);
+      }
+      if (maxUnits) {
+        conditions.push(`units <= $${pi++}`);
+        params.push(maxUnits);
+      }
+      if (search) {
+        conditions.push(`(property_name ILIKE $${pi} OR address ILIKE $${pi} OR buyer ILIKE $${pi} OR seller ILIKE $${pi})`);
+        params.push(`%${search}%`);
+        pi++;
+      }
+
+      const allowedSort: Record<string, string> = {
+        sale_date: 'sale_date', sale_price: 'sale_price',
+        units: 'units', price_per_unit: 'price_per_unit', cap_rate: 'cap_rate',
+      };
+      const sortCol = allowedSort[sortBy] || 'sale_date';
+      const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+      const countResult = await pool.query(`SELECT COUNT(*) FROM market_sale_comps ${whereClause}`, params);
+      const total = parseInt(countResult.rows[0].count);
+
+      const dataParams = [...params, limit, offset];
+      const result = await pool.query(
+        `SELECT id, property_name, address, city, state, county, msa, submarket,
+                units, year_built, asset_class, sale_date, sale_price, price_per_unit,
+                price_per_sqft, cap_rate, buyer, buyer_type, seller, broker, source
+         FROM market_sale_comps
+         ${whereClause}
+         ORDER BY ${sortCol} ${sortDir} NULLS LAST
+         LIMIT $${pi} OFFSET $${pi + 1}`,
+        dataParams
+      );
+
+      res.json({ comps: result.rows, total, page, limit, totalPages: Math.ceil(total / limit) });
+    } catch (error) {
+      console.error('Error fetching sale comps:', error);
+      res.status(500).json({ error: 'Failed to fetch sale comps' });
     }
   });
 
