@@ -165,6 +165,7 @@ export function SkillsChatSection({ dealId }: SkillsChatSectionProps) {
   const [showSkills, setShowSkills] = useState(false);
   const [mentionState, setMentionState] = useState<{ start: number; partial: string } | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
+  const [creditsExhausted, setCreditsExhausted] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -185,13 +186,24 @@ export function SkillsChatSection({ dealId }: SkillsChatSectionProps) {
       .catch(() => {});
   }, [dealId]);
 
+  // Check AI credit status via billing subscription endpoint
+  useEffect(() => {
+    api.get('/billing/subscription')
+      .then(res => {
+        const d = res.data?.data;
+        const remaining = d?.creditsRemaining ?? null;
+        if (remaining !== null && remaining <= 0) setCreditsExhausted(true);
+      })
+      .catch(() => {});
+  }, []);
+
   // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   const sendMessage = async () => {
-    if (!input.trim() || loading) return;
+    if (!input.trim() || loading || creditsExhausted) return;
 
     const raw = input.trim();
     const mention = parseLeadingMention(raw, advisors);
@@ -626,53 +638,72 @@ export function SkillsChatSection({ dealId }: SkillsChatSectionProps) {
           </div>
         )}
 
-        <div style={{
-          display: 'flex',
-          gap: 10,
-          alignItems: 'flex-end',
-          position: 'relative',
-        }}>
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={handleInputChange}
-            onKeyDown={handleKeyDown}
-            placeholder="Ask about this deal... (type @ to consult an advisor)"
-            rows={1}
-            style={{
-              flex: 1,
-              padding: '10px 12px',
-              background: T.bg.input,
-              border: `1px solid ${T.border.subtle}`,
-              borderRadius: 6,
-              color: T.text.primary,
-              fontSize: 12,
-              fontFamily: T.font.mono,
-              resize: 'none',
-              outline: 'none',
-              minHeight: 40,
-              maxHeight: 120,
-            }}
-          />
-          <button
-            onClick={sendMessage}
-            disabled={!input.trim() || loading}
-            style={{
-              padding: '10px 20px',
-              background: input.trim() && !loading ? T.text.cyan : T.bg.input,
-              border: `1px solid ${input.trim() && !loading ? T.text.cyan : T.border.subtle}`,
-              borderRadius: 6,
-              color: input.trim() && !loading ? '#000' : T.text.muted,
-              fontSize: 11,
-              fontFamily: T.font.mono,
-              fontWeight: 700,
-              cursor: input.trim() && !loading ? 'pointer' : 'not-allowed',
-              opacity: input.trim() && !loading ? 1 : 0.5,
-            }}
-          >
-            SEND
-          </button>
-        </div>
+        {creditsExhausted ? (
+          <div style={{
+            padding: '16px 20px',
+            background: 'rgba(255,71,87,0.08)',
+            border: '1px solid #FF475744',
+            borderRadius: 6,
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          }}>
+            <span style={{ fontSize: 11, color: '#FF4757', fontFamily: T.font.mono, fontWeight: 700 }}>
+              ⚠ AI CREDITS EXHAUSTED — Chat is locked
+            </span>
+            <a href="/pricing" style={{
+              fontSize: 11, fontWeight: 700, color: '#FF4757', fontFamily: T.font.mono,
+              border: '1px solid #FF4757', padding: '4px 14px', textDecoration: 'none',
+              borderRadius: 3,
+            }}>UPGRADE →</a>
+          </div>
+        ) : (
+          <div style={{
+            display: 'flex',
+            gap: 10,
+            alignItems: 'flex-end',
+            position: 'relative',
+          }}>
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
+              placeholder="Ask about this deal... (type @ to consult an advisor)"
+              rows={1}
+              style={{
+                flex: 1,
+                padding: '10px 12px',
+                background: T.bg.input,
+                border: `1px solid ${T.border.subtle}`,
+                borderRadius: 6,
+                color: T.text.primary,
+                fontSize: 12,
+                fontFamily: T.font.mono,
+                resize: 'none',
+                outline: 'none',
+                minHeight: 40,
+                maxHeight: 120,
+              }}
+            />
+            <button
+              onClick={sendMessage}
+              disabled={!input.trim() || loading}
+              style={{
+                padding: '10px 20px',
+                background: input.trim() && !loading ? T.text.cyan : T.bg.input,
+                border: `1px solid ${input.trim() && !loading ? T.text.cyan : T.border.subtle}`,
+                borderRadius: 6,
+                color: input.trim() && !loading ? '#000' : T.text.muted,
+                fontSize: 11,
+                fontFamily: T.font.mono,
+                fontWeight: 700,
+                cursor: input.trim() && !loading ? 'pointer' : 'not-allowed',
+                opacity: input.trim() && !loading ? 1 : 0.5,
+              }}
+            >
+              SEND
+            </button>
+          </div>
+        )}
         <div style={{
           marginTop: 8,
           fontSize: 9,

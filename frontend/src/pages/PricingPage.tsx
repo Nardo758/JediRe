@@ -1,540 +1,355 @@
-import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { Check, X, ChevronDown, ChevronUp, Building2, Menu, Plus, Loader2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../services/api.client';
+import { Check, Zap, BarChart3, Globe, Lock } from 'lucide-react';
 
-interface PricingTier {
-  name: string;
-  monthlyPrice: number | null;
-  annualPrice: number | null;
-  description: string;
+const T = {
+  bg: { terminal: '#0A0E17', panel: '#0F1319', panelAlt: '#131821', header: '#1A1F2E', hover: '#1E2538', topBar: '#050810' },
+  text: { primary: '#E8ECF1', secondary: '#A0ABBE', muted: '#6B7A8D', amber: '#F5A623', amberBright: '#FFD166', green: '#00D26A', red: '#FF4757', cyan: '#00BCD4', purple: '#A78BFA' },
+  border: { subtle: '#1E2538', medium: '#2A3348', bright: '#3B4A6B' },
+  font: { mono: "'JetBrains Mono','Fira Code','SF Mono',monospace" },
+};
+
+interface Tier {
+  id: 'scout' | 'operator' | 'principal' | 'institutional';
+  label: string;
+  price: number | null;
+  credits: number | null;
+  color: string;
+  highlight: boolean;
+  icon: React.ReactNode;
+  tagline: string;
   features: string[];
-  highlighted?: boolean;
-  cta: string;
-  ctaAction: 'trial' | 'contact';
-  backendTier?: string;
+  limits: { deals: string; automation: string; surfaces: string };
 }
 
-interface Module {
-  name: string;
-  price: number;
-  description: string;
-}
-
-interface FAQ {
-  question: string;
-  answer: string;
-}
-
-const pricingTiers: PricingTier[] = [
+const TIERS: Tier[] = [
   {
-    name: 'Starter',
-    monthlyPrice: 97,
-    annualPrice: 78,
-    description: 'For beginners',
+    id: 'scout',
+    label: 'SCOUT',
+    price: 97,
+    credits: 100,
+    color: T.text.secondary,
+    highlight: false,
+    icon: <Zap size={18} />,
+    tagline: 'For solo analysts exploring deals',
     features: [
-      'Core Service',
-      'Supply Agent',
-      'Demand Agent',
-      'News Agent',
-      'Events Agent',
-      'Price Analysis',
-      '1 market',
-      'Unlimited properties',
+      '100 AI credits / month',
+      'Up to 5 active deals',
+      'AI chat interface',
+      'Deal scoring & pipeline',
+      'Market intelligence',
+      'Basic underwriting tools',
     ],
-    cta: 'Try Free',
-    ctaAction: 'trial',
-    backendTier: 'scout',
+    limits: { deals: '5 deals', automation: 'Level 1', surfaces: 'Chat only' },
   },
   {
-    name: 'Flipper Bundle',
-    monthlyPrice: 197,
-    annualPrice: 158,
-    description: 'For active flippers',
-    highlighted: true,
+    id: 'operator',
+    label: 'OPERATOR',
+    price: 197,
+    credits: 500,
+    color: T.text.cyan,
+    highlight: true,
+    icon: <BarChart3 size={18} />,
+    tagline: 'For active deal teams running pipeline',
     features: [
-      'Everything in Starter',
-      'SF Strategy Module',
-      'Cash Flow Module',
-      'Pro Network Access',
-      '3 markets',
+      '500 AI credits / month',
+      'Up to 25 active deals',
+      'AI chat + web surface',
+      'Full underwriting suite',
+      'News intelligence',
+      'Document analysis',
+      'Email integration',
+      'Strategy builder',
     ],
-    cta: 'Try Free',
-    ctaAction: 'trial',
-    backendTier: 'operator',
+    limits: { deals: '25 deals', automation: 'Level 2', surfaces: 'Chat + Web' },
   },
   {
-    name: 'Investor Bundle',
-    monthlyPrice: 267,
-    annualPrice: 214,
-    description: 'For buy-and-hold',
+    id: 'principal',
+    label: 'PRINCIPAL',
+    price: 397,
+    credits: 2000,
+    color: T.text.amber,
+    highlight: false,
+    icon: <Globe size={18} />,
+    tagline: 'For investment principals & fund managers',
     features: [
-      'Everything in Starter',
-      'SF Strategy Module',
-      'Cash Flow Module',
-      'Debt Optimization',
-      'Pro Network Access',
-      '5 markets',
+      '2,000 AI credits / month',
+      'Unlimited active deals',
+      'Chat + Web + API surfaces',
+      'Full automation suite',
+      'Portfolio analytics',
+      'Advanced comps engine',
+      'Multi-market coverage',
+      'Priority AI processing',
+      'Custom report templates',
     ],
-    cta: 'Try Free',
-    ctaAction: 'trial',
-    backendTier: 'principal',
+    limits: { deals: 'Unlimited', automation: 'Level 3', surfaces: 'Chat + Web + API' },
   },
   {
-    name: 'Enterprise',
-    monthlyPrice: null,
-    annualPrice: null,
-    description: 'For funds & teams',
+    id: 'institutional',
+    label: 'INSTITUTIONAL',
+    price: null,
+    credits: null,
+    color: T.text.purple,
+    highlight: false,
+    icon: <Lock size={18} />,
+    tagline: 'Custom pricing for large platforms',
     features: [
-      'Everything in Investor',
-      'Unlimited seats',
-      'White label',
-      'API access',
-      'Custom training',
-      'Dedicated support',
-      'SLA guarantee',
+      'Negotiated credit volume',
+      'Unlimited active deals',
+      'Full platform access',
+      'Level 4 automation',
+      'Dedicated infrastructure',
+      'SLA guarantees',
+      'White-label options',
+      'Custom integrations',
+      'Account management',
     ],
-    cta: 'Contact Sales',
-    ctaAction: 'contact',
+    limits: { deals: 'Unlimited', automation: 'Level 4', surfaces: 'All surfaces' },
   },
 ];
 
-const modules: Module[] = [
-  { name: 'SF Strategy', price: 47, description: '4-way arbitrage analysis across all strategies' },
-  { name: 'Development', price: 67, description: 'Land development entitlement risk analysis' },
-  { name: 'Debt Optimize', price: 37, description: 'Interest rate cycle timing optimization' },
-  { name: 'Cash Flow', price: 57, description: 'Rent gap + value-add ROI optimization' },
-  { name: 'Financial Model', price: 77, description: '10-year proforma Monte Carlo simulations' },
-  { name: 'Event & Timing', price: 27, description: 'Fed meetings + economic calendar impact analysis' },
+const FEATURE_TABLE: { label: string; values: Record<string, string | boolean> }[] = [
+  { label: 'Monthly AI Credits', values: { scout: '100', operator: '500', principal: '2,000', institutional: 'Custom' } },
+  { label: 'Active Deals', values: { scout: '5', operator: '25', principal: 'Unlimited', institutional: 'Unlimited' } },
+  { label: 'AI Chat', values: { scout: true, operator: true, principal: true, institutional: true } },
+  { label: 'Web Surface', values: { scout: false, operator: true, principal: true, institutional: true } },
+  { label: 'API Access', values: { scout: false, operator: false, principal: true, institutional: true } },
+  { label: 'Automation Level', values: { scout: 'Level 1', operator: 'Level 2', principal: 'Level 3', institutional: 'Level 4' } },
+  { label: 'Document Analysis', values: { scout: false, operator: true, principal: true, institutional: true } },
+  { label: 'Portfolio Analytics', values: { scout: false, operator: false, principal: true, institutional: true } },
+  { label: 'Strategy Builder', values: { scout: false, operator: true, principal: true, institutional: true } },
+  { label: 'Priority Processing', values: { scout: false, operator: false, principal: true, institutional: true } },
+  { label: 'SLA Guarantee', values: { scout: false, operator: false, principal: false, institutional: true } },
 ];
 
-const comparisonFeatures = [
-  { name: 'Core AI Agents', starter: true, flipper: true, investor: true, enterprise: true },
-  { name: 'Bubble Map Interface', starter: true, flipper: true, investor: true, enterprise: true },
-  { name: 'Properties per month', starter: '∞', flipper: '∞', investor: '∞', enterprise: '∞' },
-  { name: 'Markets', starter: '1', flipper: '3', investor: '5', enterprise: '∞' },
-  { name: 'SF Strategy Arbitrage', starter: false, flipper: true, investor: true, enterprise: true },
-  { name: 'Cash Flow Optimization', starter: false, flipper: true, investor: true, enterprise: true },
-  { name: 'Debt Optimization', starter: false, flipper: false, investor: true, enterprise: true },
-  { name: 'Professional Network', starter: false, flipper: true, investor: true, enterprise: true },
-  { name: 'Financial Modeling', starter: false, flipper: false, investor: false, enterprise: true },
-  { name: 'API Access', starter: false, flipper: false, investor: false, enterprise: true },
-  { name: 'Team Seats', starter: '1', flipper: '1', investor: '3', enterprise: '∞' },
-  { name: 'Priority Support', starter: false, flipper: false, investor: true, enterprise: true },
-  { name: 'White Label', starter: false, flipper: false, investor: false, enterprise: true },
-  { name: 'SLA Guarantee', starter: false, flipper: false, investor: false, enterprise: true },
-];
-
-const faqs: FAQ[] = [
-  {
-    question: 'What happens after my 30-day free trial?',
-    answer: 'After your trial ends, you can choose to continue with any plan. If you don\'t upgrade, your account will be paused but your data will be saved for 90 days.',
-  },
-  {
-    question: 'Can I change plans or add modules later?',
-    answer: 'Yes! You can upgrade, downgrade, or add individual modules at any time. Changes take effect immediately and billing is prorated.',
-  },
-  {
-    question: 'What markets are available?',
-    answer: 'We currently cover 50+ major US markets including Atlanta, Phoenix, Austin, Dallas, Denver, Tampa, and more. New markets are added monthly.',
-  },
-  {
-    question: 'Do I need a credit card for the free trial?',
-    answer: 'No credit card required! Start your 30-day trial with just an email address. You\'ll only be asked for payment when you\'re ready to continue.',
-  },
-  {
-    question: 'What\'s included in the Professional Network?',
-    answer: 'Access to vetted contractors, inspectors, lenders, and other real estate professionals in your markets. Get quotes, reviews, and direct connections.',
-  },
-  {
-    question: 'Can I get a refund if I\'m not satisfied?',
-    answer: 'We offer a 30-day money-back guarantee on all paid plans. If you\'re not completely satisfied, contact support for a full refund.',
-  },
-];
-
-export default function PricingPage() {
+export function PricingPage() {
   const navigate = useNavigate();
-  const [isAnnual, setIsAnnual] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
   const [loadingTier, setLoadingTier] = useState<string | null>(null);
-  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleTierSelect = async (tier: PricingTier) => {
-    if (tier.ctaAction === 'contact') {
-      window.location.href = 'mailto:sales@jedire.com?subject=Enterprise%20Plan%20Inquiry';
+  const handleUpgrade = async (tierId: 'scout' | 'operator' | 'principal' | 'institutional') => {
+    if (tierId === 'institutional') {
+      window.location.href = 'mailto:sales@jedire.com?subject=Institutional Plan Inquiry';
       return;
     }
 
-    const token = localStorage.getItem('auth_token');
-    if (!token) {
-      navigate('/auth');
-      return;
-    }
-
-    if (!tier.backendTier) return;
-
-    setLoadingTier(tier.backendTier);
-    setCheckoutError(null);
+    setLoadingTier(tierId);
+    setError(null);
 
     try {
-      const response = await apiClient.post('/api/v1/billing/create-checkout-session', {
-        tier: tier.backendTier,
-        billingCycle: isAnnual ? 'annual' : 'monthly',
+      const res = await apiClient.post('/api/v1/billing/create-checkout-session', {
+        tier: tierId,
+        billingCycle: 'monthly',
       });
 
-      if (response.data.success && response.data.sessionUrl) {
-        window.location.href = response.data.sessionUrl;
+      if (res.data.sessionUrl) {
+        window.location.href = res.data.sessionUrl;
       } else {
-        setCheckoutError('Failed to create checkout session. Please try again.');
+        setError('Failed to create checkout session. Please try again.');
       }
     } catch (err: any) {
-      const message = err.response?.data?.error || 'Something went wrong. Please try again.';
-      setCheckoutError(message);
+      const msg = err.response?.data?.error || 'Failed to initiate checkout. Please try again.';
+      setError(msg);
     } finally {
       setLoadingTier(null);
     }
   };
 
-  const formatPrice = (monthly: number | null, annual: number | null) => {
-    if (monthly === null) return 'Custom';
-    return `$${isAnnual ? annual : monthly}`;
-  };
-
-  const renderFeatureValue = (value: boolean | string) => {
-    if (typeof value === 'string') {
-      return <span className="font-medium">{value}</span>;
-    }
-    return value ? (
-      <Check className="w-5 h-5 text-green-500 mx-auto" />
-    ) : (
-      <X className="w-5 h-5 text-gray-300 mx-auto" />
-    );
-  };
-
   return (
-    <div className="min-h-screen bg-white">
-      <header className="fixed top-0 left-0 right-0 bg-white/95 backdrop-blur-sm border-b border-gray-100 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <Link to="/" className="flex items-center gap-2">
-              <Building2 className="w-8 h-8 text-blue-600" />
-              <span className="text-xl font-bold text-gray-900">JediRe</span>
-            </Link>
+    <div style={{ minHeight: '100vh', background: T.bg.terminal, fontFamily: T.font.mono, color: T.text.primary }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&display=swap');
+        * { box-sizing: border-box; }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.6} }
+      `}</style>
 
-            <nav className="hidden md:flex items-center gap-8">
-              <Link to="/#features" className="text-gray-600 hover:text-gray-900 text-sm font-medium">Features</Link>
-              <Link to="/pricing" className="text-blue-600 text-sm font-medium">Pricing</Link>
-              <a href="#" className="text-gray-600 hover:text-gray-900 text-sm font-medium">About</a>
-              <a href="#" className="text-gray-600 hover:text-gray-900 text-sm font-medium">Blog</a>
-            </nav>
+      {/* Top bar */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px', height: 48, background: T.bg.topBar, borderBottom: `1px solid ${T.border.subtle}`, position: 'sticky', top: 0, zIndex: 50 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <span style={{ fontSize: 16, fontWeight: 800, color: T.text.amber, letterSpacing: 2 }}>JediRE</span>
+          <span style={{ fontSize: 11, color: T.text.muted }}>|</span>
+          <span style={{ fontSize: 11, color: T.text.secondary, letterSpacing: 1 }}>PRICING</span>
+        </div>
+        <button
+          onClick={() => navigate(-1)}
+          style={{ fontSize: 11, color: T.text.secondary, background: 'transparent', border: `1px solid ${T.border.medium}`, padding: '4px 14px', cursor: 'pointer', fontFamily: T.font.mono, letterSpacing: 0.5 }}
+        >
+          ← BACK
+        </button>
+      </div>
 
-            <div className="hidden md:flex items-center gap-4">
-              <button
-                onClick={() => navigate('/auth')}
-                className="text-gray-600 hover:text-gray-900 text-sm font-medium"
-              >
-                Login
-              </button>
-              <button
-                onClick={() => navigate('/auth')}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium"
-              >
-                Sign Up
-              </button>
-            </div>
-
-            <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden p-2"
-            >
-              <Menu className="w-6 h-6 text-gray-600" />
-            </button>
-          </div>
+      <div style={{ maxWidth: 1280, margin: '0 auto', padding: '48px 24px' }}>
+        {/* Header */}
+        <div style={{ textAlign: 'center', marginBottom: 48 }}>
+          <div style={{ fontSize: 10, color: T.text.cyan, letterSpacing: 3, marginBottom: 12, fontWeight: 700 }}>SUBSCRIPTION PLANS</div>
+          <h1 style={{ fontSize: 28, fontWeight: 800, color: T.text.primary, margin: '0 0 12px', letterSpacing: 1 }}>
+            CHOOSE YOUR TIER
+          </h1>
+          <p style={{ fontSize: 12, color: T.text.secondary, margin: 0 }}>
+            All plans billed monthly · Upgrade or downgrade at any time
+          </p>
         </div>
 
-        {mobileMenuOpen && (
-          <div className="md:hidden bg-white border-t border-gray-100 py-4">
-            <div className="px-4 space-y-3">
-              <Link to="/#features" className="block text-gray-600 hover:text-gray-900 font-medium">Features</Link>
-              <Link to="/pricing" className="block text-blue-600 font-medium">Pricing</Link>
-              <a href="#" className="block text-gray-600 hover:text-gray-900 font-medium">About</a>
-              <a href="#" className="block text-gray-600 hover:text-gray-900 font-medium">Blog</a>
-              <hr className="border-gray-200" />
-              <button onClick={() => navigate('/auth')} className="block w-full text-left text-gray-600 font-medium">Login</button>
-              <button onClick={() => navigate('/auth')} className="block w-full px-4 py-2 bg-blue-600 text-white rounded-lg font-medium text-center">Sign Up</button>
-            </div>
+        {/* Error banner */}
+        {error && (
+          <div style={{ marginBottom: 24, padding: '10px 16px', background: T.text.red + '11', border: `1px solid ${T.text.red}`, color: T.text.red, fontSize: 11 }}>
+            {error}
           </div>
         )}
-      </header>
 
-      <section className="pt-28 pb-12 bg-gradient-to-br from-blue-50 via-white to-purple-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 mb-4">
-            Simple, Transparent Pricing
-          </h1>
-          <p className="text-xl text-gray-600 mb-8">
-            Pay only for the modules you need
-          </p>
-
-          <div className="inline-flex items-center gap-4 bg-gray-100 rounded-full p-1">
-            <button
-              onClick={() => setIsAnnual(false)}
-              className={`px-6 py-2 rounded-full text-sm font-medium transition-all ${
-                !isAnnual ? 'bg-white shadow text-gray-900' : 'text-gray-600'
-              }`}
+        {/* Tier cards */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 48 }}>
+          {TIERS.map((tier) => (
+            <div
+              key={tier.id}
+              style={{
+                background: tier.highlight ? T.bg.panelAlt : T.bg.panel,
+                border: `1px solid ${tier.highlight ? tier.color + '66' : T.border.subtle}`,
+                position: 'relative',
+                display: 'flex',
+                flexDirection: 'column',
+              }}
             >
-              Monthly
-            </button>
-            <button
-              onClick={() => setIsAnnual(true)}
-              className={`px-6 py-2 rounded-full text-sm font-medium transition-all ${
-                isAnnual ? 'bg-white shadow text-gray-900' : 'text-gray-600'
-              }`}
-            >
-              Annual - Save 20%
-            </button>
-          </div>
-        </div>
-      </section>
+              {tier.highlight && (
+                <div style={{ position: 'absolute', top: -1, left: '50%', transform: 'translateX(-50%)', background: tier.color, color: T.bg.terminal, fontSize: 9, fontWeight: 700, padding: '2px 14px', letterSpacing: 1, whiteSpace: 'nowrap' }}>
+                  MOST POPULAR
+                </div>
+              )}
 
-      <section className="py-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {pricingTiers.map((tier, i) => (
-              <div
-                key={i}
-                className={`rounded-2xl p-6 ${
-                  tier.highlighted
-                    ? 'bg-gradient-to-br from-blue-600 to-purple-600 text-white ring-4 ring-blue-200'
-                    : 'bg-white border border-gray-200'
-                }`}
-              >
-                <div className="mb-4">
-                  <h3 className={`text-lg font-bold ${tier.highlighted ? 'text-white' : 'text-gray-900'}`}>
-                    {tier.name}
-                  </h3>
-                  <p className={`text-sm ${tier.highlighted ? 'text-blue-100' : 'text-gray-500'}`}>
-                    {tier.description}
-                  </p>
+              <div style={{ padding: '28px 20px 20px' }}>
+                {/* Tier header */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, color: tier.color }}>
+                  {tier.icon}
+                  <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: 1 }}>{tier.label}</span>
                 </div>
 
-                <div className="mb-6">
-                  <span className={`text-4xl font-bold ${tier.highlighted ? 'text-white' : 'text-gray-900'}`}>
-                    {formatPrice(tier.monthlyPrice, tier.annualPrice)}
-                  </span>
-                  {tier.monthlyPrice !== null && (
-                    <span className={`text-sm ${tier.highlighted ? 'text-blue-100' : 'text-gray-500'}`}>
-                      /month
-                    </span>
+                <p style={{ fontSize: 11, color: T.text.muted, margin: '0 0 20px', lineHeight: 1.5 }}>{tier.tagline}</p>
+
+                {/* Price */}
+                <div style={{ marginBottom: 20 }}>
+                  {tier.price !== null ? (
+                    <>
+                      <span style={{ fontSize: 32, fontWeight: 800, color: T.text.primary }}>${tier.price}</span>
+                      <span style={{ fontSize: 11, color: T.text.muted }}>/mo</span>
+                    </>
+                  ) : (
+                    <span style={{ fontSize: 24, fontWeight: 700, color: tier.color }}>CUSTOM</span>
                   )}
-                  {isAnnual && tier.monthlyPrice !== null && (
-                    <div className={`text-sm mt-1 ${tier.highlighted ? 'text-blue-100' : 'text-gray-500'}`}>
-                      <span className="line-through">${tier.monthlyPrice}</span>
-                      <span className="ml-2 text-green-400 font-medium">Save 20%</span>
+                  {tier.credits !== null && (
+                    <div style={{ fontSize: 10, color: tier.color, marginTop: 4, fontWeight: 600 }}>
+                      {tier.credits.toLocaleString()} AI credits/month
                     </div>
                   )}
                 </div>
 
-                <ul className="space-y-3 mb-6">
-                  {tier.features.map((feature, j) => (
-                    <li key={j} className="flex items-start gap-2">
-                      <Check className={`w-5 h-5 mt-0.5 flex-shrink-0 ${
-                        tier.highlighted ? 'text-blue-200' : 'text-green-500'
-                      }`} />
-                      <span className={`text-sm ${tier.highlighted ? 'text-white' : 'text-gray-600'}`}>
-                        {feature}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-
+                {/* CTA */}
                 <button
-                  onClick={() => handleTierSelect(tier)}
-                  disabled={loadingTier === tier.backendTier}
-                  className={`w-full py-3 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 ${
-                    tier.highlighted
-                      ? 'bg-white text-blue-600 hover:bg-gray-100'
-                      : 'bg-blue-600 text-white hover:bg-blue-700'
-                  } ${loadingTier === tier.backendTier ? 'opacity-70 cursor-not-allowed' : ''}`}
+                  onClick={() => handleUpgrade(tier.id)}
+                  disabled={loadingTier !== null}
+                  style={{
+                    width: '100%',
+                    padding: '10px 0',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    letterSpacing: 1,
+                    background: tier.highlight ? tier.color : 'transparent',
+                    color: tier.highlight ? T.bg.terminal : tier.color,
+                    border: `1px solid ${tier.color}`,
+                    cursor: loadingTier !== null ? 'not-allowed' : 'pointer',
+                    opacity: loadingTier !== null && loadingTier !== tier.id ? 0.5 : 1,
+                    fontFamily: T.font.mono,
+                    marginBottom: 20,
+                    animation: loadingTier === tier.id ? 'pulse 1s infinite' : 'none',
+                  }}
                 >
-                  {loadingTier === tier.backendTier && <Loader2 className="w-4 h-4 animate-spin" />}
-                  {tier.cta}
+                  {loadingTier === tier.id
+                    ? 'REDIRECTING...'
+                    : tier.id === 'institutional'
+                    ? 'CONTACT SALES'
+                    : 'GET STARTED →'}
                 </button>
-              </div>
-            ))}
-          </div>
 
-          {checkoutError && (
-            <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg text-center">
-              <p className="text-red-700 text-sm">{checkoutError}</p>
-            </div>
-          )}
-
-          <p className="text-center text-gray-500 mt-8">
-            All plans include 30-day free trial
-          </p>
-        </div>
-      </section>
-
-      <section className="py-16 bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">
-              Or Build Your Own Custom Plan
-            </h2>
-            <p className="text-gray-600">
-              All modules require Jedi Core base service - $97/mo
-            </p>
-          </div>
-
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {modules.map((module, i) => (
-              <div key={i} className="bg-white rounded-xl p-6 border border-gray-200 hover:shadow-lg transition-shadow">
-                <div className="flex items-start justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900">{module.name}</h3>
-                  <span className="text-xl font-bold text-blue-600">${module.price}<span className="text-sm text-gray-500 font-normal">/mo</span></span>
+                {/* Feature list */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {tier.features.map((f, i) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                      <Check size={12} style={{ color: tier.color, flexShrink: 0, marginTop: 1 }} />
+                      <span style={{ fontSize: 11, color: T.text.secondary, lineHeight: 1.4 }}>{f}</span>
+                    </div>
+                  ))}
                 </div>
-                <p className="text-gray-600 text-sm mb-4">{module.description}</p>
-                <button className="w-full py-2 border border-blue-600 text-blue-600 rounded-lg font-medium hover:bg-blue-50 transition-colors flex items-center justify-center gap-2">
-                  <Plus className="w-4 h-4" /> Add Module
-                </button>
               </div>
-            ))}
-          </div>
 
-          <div className="text-center mt-8">
-            <button className="text-blue-600 hover:text-blue-700 font-medium">
-              View All 12 Modules →
-            </button>
-          </div>
+              {/* Limits footer */}
+              <div style={{ marginTop: 'auto', padding: '12px 20px', borderTop: `1px solid ${T.border.subtle}`, background: T.bg.header }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  {Object.entries(tier.limits).map(([k, v]) => (
+                    <div key={k} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: 9, color: T.text.muted, textTransform: 'uppercase', letterSpacing: 0.5 }}>{k}</span>
+                      <span style={{ fontSize: 9, fontWeight: 600, color: tier.color }}>{v}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
-      </section>
 
-      <section className="py-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-bold text-gray-900 mb-8 text-center">
-            Feature Comparison
-          </h2>
-
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px]">
+        {/* Feature comparison table */}
+        <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, marginBottom: 32 }}>
+          <div style={{ padding: '16px 20px', borderBottom: `1px solid ${T.border.subtle}` }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: T.text.primary, letterSpacing: 1 }}>FEATURE COMPARISON</span>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
-                <tr className="border-b border-gray-200">
-                  <th className="text-left py-4 px-4 font-medium text-gray-600">Feature</th>
-                  <th className="text-center py-4 px-4 font-medium text-gray-600">Starter</th>
-                  <th className="text-center py-4 px-4 font-medium text-blue-600 bg-blue-50 rounded-t-lg">Flipper</th>
-                  <th className="text-center py-4 px-4 font-medium text-gray-600">Investor</th>
-                  <th className="text-center py-4 px-4 font-medium text-gray-600">Enterprise</th>
+                <tr style={{ borderBottom: `1px solid ${T.border.subtle}` }}>
+                  <th style={{ padding: '10px 20px', textAlign: 'left', fontSize: 10, color: T.text.muted, fontWeight: 600, letterSpacing: 0.5 }}>FEATURE</th>
+                  {TIERS.map(t => (
+                    <th key={t.id} style={{ padding: '10px 16px', textAlign: 'center', fontSize: 10, fontWeight: 700, color: t.color, letterSpacing: 1 }}>
+                      {t.label}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {comparisonFeatures.map((feature, i) => (
-                  <tr key={i} className="border-b border-gray-100">
-                    <td className="py-4 px-4 text-gray-900">{feature.name}</td>
-                    <td className="py-4 px-4 text-center">{renderFeatureValue(feature.starter)}</td>
-                    <td className="py-4 px-4 text-center bg-blue-50">{renderFeatureValue(feature.flipper)}</td>
-                    <td className="py-4 px-4 text-center">{renderFeatureValue(feature.investor)}</td>
-                    <td className="py-4 px-4 text-center">{renderFeatureValue(feature.enterprise)}</td>
+                {FEATURE_TABLE.map((row, i) => (
+                  <tr key={i} style={{ borderBottom: `1px solid ${T.border.subtle}`, background: i % 2 === 0 ? 'transparent' : T.bg.panelAlt }}>
+                    <td style={{ padding: '9px 20px', fontSize: 11, color: T.text.secondary }}>{row.label}</td>
+                    {TIERS.map(t => {
+                      const val = row.values[t.id];
+                      return (
+                        <td key={t.id} style={{ padding: '9px 16px', textAlign: 'center' }}>
+                          {typeof val === 'boolean' ? (
+                            val
+                              ? <span style={{ color: T.text.green, fontSize: 14, fontWeight: 700 }}>✓</span>
+                              : <span style={{ color: T.text.muted, fontSize: 12 }}>—</span>
+                          ) : (
+                            <span style={{ fontSize: 11, color: T.text.primary }}>{val}</span>
+                          )}
+                        </td>
+                      );
+                    })}
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         </div>
-      </section>
 
-      <section className="py-16 bg-gray-50">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl font-bold text-gray-900 mb-8 text-center">
-            Frequently Asked Questions
-          </h2>
-
-          <div className="space-y-4">
-            {faqs.map((faq, i) => (
-              <div key={i} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                <button
-                  onClick={() => setExpandedFaq(expandedFaq === i ? null : i)}
-                  className="w-full px-6 py-4 flex items-center justify-between text-left"
-                >
-                  <span className="font-medium text-gray-900">{faq.question}</span>
-                  {expandedFaq === i ? (
-                    <ChevronUp className="w-5 h-5 text-gray-400 flex-shrink-0" />
-                  ) : (
-                    <ChevronDown className="w-5 h-5 text-gray-400 flex-shrink-0" />
-                  )}
-                </button>
-                {expandedFaq === i && (
-                  <div className="px-6 pb-4 text-gray-600">
-                    {faq.answer}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="py-20 bg-gradient-to-br from-blue-600 to-purple-600 text-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-3xl sm:text-4xl font-bold mb-4">Ready to Start Finding Better Deals?</h2>
-          <p className="text-xl text-white/80 mb-8 max-w-2xl mx-auto">
-            Join 5,000+ investors using AI to uncover hidden opportunities.
+        {/* Footer note */}
+        <div style={{ textAlign: 'center' }}>
+          <p style={{ fontSize: 10, color: T.text.muted, margin: 0, lineHeight: 2 }}>
+            All plans renew monthly · Cancel anytime from Subscription Settings<br />
+            Credits reset each billing period · Unused credits do not roll over<br />
+            <a href="mailto:sales@jedire.com" style={{ color: T.text.cyan, textDecoration: 'none' }}>Contact sales for institutional pricing →</a>
           </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <button
-              onClick={() => navigate('/auth')}
-              className="px-8 py-4 bg-white text-blue-600 hover:bg-gray-100 rounded-xl font-semibold text-lg"
-            >
-              Start Free 30-Day Trial
-            </button>
-            <button className="px-8 py-4 bg-white/10 hover:bg-white/20 border border-white/30 rounded-xl font-semibold text-lg">
-              Schedule a Demo
-            </button>
-          </div>
         </div>
-      </section>
-
-      <footer className="py-12 bg-gray-900 text-gray-400">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-8 mb-8">
-            <div>
-              <div className="flex items-center gap-2 mb-4">
-                <Building2 className="w-6 h-6 text-blue-500" />
-                <span className="text-lg font-bold text-white">JediRe</span>
-              </div>
-              <p className="text-sm">AI-Powered Real Estate Intelligence</p>
-            </div>
-            <div>
-              <h4 className="font-semibold text-white mb-4">Product</h4>
-              <ul className="space-y-2 text-sm">
-                <li><a href="#" className="hover:text-white">Features</a></li>
-                <li><Link to="/pricing" className="hover:text-white">Pricing</Link></li>
-                <li><a href="#" className="hover:text-white">API</a></li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-semibold text-white mb-4">Company</h4>
-              <ul className="space-y-2 text-sm">
-                <li><a href="#" className="hover:text-white">About</a></li>
-                <li><a href="#" className="hover:text-white">Blog</a></li>
-                <li><a href="#" className="hover:text-white">Careers</a></li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-semibold text-white mb-4">Legal</h4>
-              <ul className="space-y-2 text-sm">
-                <li><a href="#" className="hover:text-white">Privacy</a></li>
-                <li><a href="#" className="hover:text-white">Terms</a></li>
-                <li><a href="#" className="hover:text-white">Security</a></li>
-              </ul>
-            </div>
-          </div>
-          <div className="border-t border-gray-800 pt-8 text-sm text-center">
-            © 2026 JediRe. All rights reserved.
-          </div>
-        </div>
-      </footer>
+      </div>
     </div>
   );
 }
+
+export default PricingPage;

@@ -627,7 +627,20 @@ export default function TerminalPage() {
   // Flash animations for pipeline rows
   const [flashes, setFlashes] = useState<Record<string,boolean>>({});
 
+  // Credit balance monitoring
+  const [creditStatus, setCreditStatus] = useState<{remaining: number; total: number; tier: string} | null>(null);
+
   // ─── Effects ──────────────────────────────────────────────
+
+  // ── Credit balance — load once on mount ───────────────────
+  useEffect(() => {
+    apiClient.get('/api/v1/billing/subscription').then(res => {
+      const d = res.data?.data;
+      if (d) {
+        setCreditStatus({ remaining: d.creditsRemaining ?? 0, total: d.creditsIncludedMonthly ?? 100, tier: d.tier || 'scout' });
+      }
+    }).catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── FRED macro ticker — poll every 60 seconds ──────────────
   useEffect(() => {
@@ -2676,6 +2689,26 @@ export default function TerminalPage() {
           <span style={{fontSize:10,fontWeight:600,color:T.text.cyan,flexShrink:0}}>ACTIVE: {activeCount}</span>
           <span style={{fontSize:10,color:T.text.muted,flexShrink:0}}>|</span>
           <span onClick={()=>{setBottomTab("alerts");if(!bottomOpen)setBottomOpen(true);}} style={{fontSize:10,fontWeight:700,color:hAlerts>0?T.text.red:T.text.green,cursor:"pointer",flexShrink:0,animation:hAlerts>0?"pulse 2s infinite":"none"}}>ALERTS: {hAlerts}</span>
+          {creditStatus && (() => {
+            const pct = creditStatus.total > 0 ? creditStatus.remaining / creditStatus.total : 1;
+            const exhausted = creditStatus.remaining <= 0;
+            const low = !exhausted && pct < 0.2;
+            if (!exhausted && !low) return null;
+            return (
+              <>
+                <span style={{fontSize:10,color:T.text.muted,flexShrink:0}}>|</span>
+                <a href="/pricing" style={{
+                  fontSize:10,fontWeight:700,flexShrink:0,textDecoration:'none',
+                  color: exhausted ? T.text.red : T.text.amber,
+                  animation: exhausted ? 'pulse 2s infinite' : 'none',
+                }}>
+                  {exhausted
+                    ? `⚠ CREDITS EXHAUSTED`
+                    : `⚡ CREDITS LOW: ${creditStatus.remaining}`}
+                </a>
+              </>
+            );
+          })()}
           <span style={{fontSize:10,color:T.text.muted,flexShrink:0}}>|</span>
           <span style={{fontSize:10,color:T.text.muted,flexShrink:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{new Date().toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})}</span>
         </div>
@@ -2721,6 +2754,14 @@ export default function TerminalPage() {
       </div>
 
 
+      {/* ═══ CREDIT EXHAUSTED BANNER ═══ */}
+      {creditStatus && creditStatus.remaining <= 0 && (
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 12px",height:26,background:T.text.red+"22",borderBottom:`1px solid ${T.text.red}44`,flexShrink:0}}>
+          <span style={{fontSize:10,color:T.text.red,fontWeight:700}}>⚠ AI CREDITS EXHAUSTED — AI features are paused until you upgrade your plan</span>
+          <a href="/pricing" style={{fontSize:10,fontWeight:700,color:T.text.red,border:`1px solid ${T.text.red}`,padding:"1px 10px",textDecoration:"none",flexShrink:0}}>UPGRADE →</a>
+        </div>
+      )}
+
       {/* ═══ COMBINED TICKER — 20px ═══ */}
       <TickerBar height={20} speed={45} label="LIVE" labelColor={T.text.amber}
         items={[
@@ -2764,7 +2805,7 @@ export default function TerminalPage() {
       <BottomPanel />
 
       {/* ═══ SKILLS BAR — compact row ═══ */}
-      <SkillsBar />
+      <SkillsBar creditsExhausted={creditStatus !== null && creditStatus.remaining <= 0} />
 
       {/* ═══ DASHBOARD FLOATING WINDOWS (global overlay — floated widgets only) ═══ */}
       {floatWidgets.filter(id=>!winStates[id]?.minimized).map(id=>{

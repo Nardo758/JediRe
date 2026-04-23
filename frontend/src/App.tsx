@@ -6,6 +6,7 @@ import { ErrorFallback } from './components/fallbacks/ErrorFallback';
 import { PageLoadingFallback } from './components/fallbacks/PageLoadingFallback';
 import { CreateDealPage } from './pages/CreateDealPage';
 import { SystemArchitecturePage } from './pages/SystemArchitecturePage';
+import { PricingPage } from './pages/PricingPage';
 
 const Design3DPage = lazy(() => import('./pages/Design3DPage').then(m => ({ default: m.Design3DPage })));
 import AuthPage from './pages/AuthPage';
@@ -112,6 +113,9 @@ function AppContent() {
         <Route path="/showcase/deal/:dealId" element={<DealShowcasePage />} />
         <Route path="/showcase/modules" element={<ModuleShowcasePage />} />
         <Route path="/showcase/modules/:moduleId" element={<ModuleShowcasePage />} />
+
+        {/* Pricing page */}
+        <Route path="/pricing" element={<PricingPage />} />
 
         {/* Root — redirect to terminal */}
         <Route path="/" element={<Navigate to="/terminal/dashboard" replace />} />

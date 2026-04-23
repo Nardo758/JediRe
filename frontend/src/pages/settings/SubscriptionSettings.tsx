@@ -45,7 +45,7 @@ interface UsageData {
 const TIER_CONFIG: Record<string, { label: string; color: string; monthlyPrice: number | null }> = {
   scout: { label: 'Scout', color: BT.text.secondary, monthlyPrice: 97 },
   operator: { label: 'Operator', color: BT.text.cyan, monthlyPrice: 197 },
-  principal: { label: 'Principal', color: BT.text.amber, monthlyPrice: 267 },
+  principal: { label: 'Principal', color: BT.text.amber, monthlyPrice: 397 },
   institutional: { label: 'Institutional', color: BT.text.purple, monthlyPrice: null },
 };
 
@@ -64,9 +64,19 @@ export function SubscriptionSettings() {
   const [loading, setLoading] = useState(true);
   const [portalLoading, setPortalLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [checkoutBanner, setCheckoutBanner] = useState<'success' | 'canceled' | null>(null);
 
   useEffect(() => {
     loadData();
+
+    const params = new URLSearchParams(window.location.search);
+    const checkout = params.get('checkout');
+    if (checkout === 'success' || checkout === 'canceled') {
+      setCheckoutBanner(checkout);
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete('checkout');
+      window.history.replaceState({}, '', newUrl.toString());
+    }
   }, []);
 
   const loadData = async () => {
@@ -128,6 +138,20 @@ export function SubscriptionSettings() {
 
   const tier = subscription?.tier || 'scout';
   const tierConfig = TIER_CONFIG[tier] || TIER_CONFIG.scout;
+
+  const bannerStyle = (type: 'success' | 'canceled'): React.CSSProperties => ({
+    padding: '12px 16px',
+    marginBottom: 16,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    fontSize: 12,
+    background: type === 'success' ? BT.text.green + '11' : BT.text.amber + '11',
+    border: `1px solid ${type === 'success' ? BT.text.green : BT.text.amber}`,
+    color: type === 'success' ? BT.text.green : BT.text.amber,
+    fontFamily: BT.font.mono,
+  });
   const statusKey = subscription?.status || 'none';
   const statusConfig = STATUS_CONFIG[statusKey] || STATUS_CONFIG.none;
 
@@ -146,6 +170,18 @@ export function SubscriptionSettings() {
 
   return (
     <div className="space-y-6" style={{ fontFamily: BT.font.label }}>
+      {checkoutBanner === 'success' && (
+        <div style={bannerStyle('success')}>
+          <span>✓ &nbsp;Subscription activated — your new plan is now live. Credits have been provisioned.</span>
+          <button onClick={() => setCheckoutBanner(null)} style={{ background: 'transparent', border: 'none', color: BT.text.green, cursor: 'pointer', fontSize: 16, padding: 0, lineHeight: 1 }}>✕</button>
+        </div>
+      )}
+      {checkoutBanner === 'canceled' && (
+        <div style={bannerStyle('canceled')}>
+          <span>Checkout canceled — your plan was not changed. You can try again at any time.</span>
+          <button onClick={() => setCheckoutBanner(null)} style={{ background: 'transparent', border: 'none', color: BT.text.amber, cursor: 'pointer', fontSize: 16, padding: 0, lineHeight: 1 }}>✕</button>
+        </div>
+      )}
       <div className="p-6" style={{ background: BT.bg.panel, border: `1px solid ${BT.border.subtle}`, borderRadius: 0 }}>
         <div className="flex items-start justify-between mb-6">
           <div>

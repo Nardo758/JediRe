@@ -86,8 +86,8 @@ router.post('/create-checkout-session', async (req: Request, res: Response) => {
     const sessionParams: any = {
       mode: 'subscription',
       line_items: [{ price: priceId, quantity: 1 }],
-      success_url: `${baseUrl}/settings?tab=subscription&checkout=success`,
-      cancel_url: `${baseUrl}/settings?tab=subscription&checkout=canceled`,
+      success_url: `${baseUrl}/terminal/settings?tab=subscription&checkout=success`,
+      cancel_url: `${baseUrl}/terminal/settings?tab=subscription&checkout=canceled`,
       client_reference_id: userId,
       metadata: { userId, tier, billingCycle },
     };
@@ -139,7 +139,7 @@ router.post('/create-portal-session', async (req: Request, res: Response) => {
     const stripe = await getUncachableStripeClient();
 
     const domain = process.env.REPLIT_DOMAINS?.split(',')[0] || process.env.REPLIT_DEV_DOMAIN || 'localhost:5000';
-    const returnUrl = `https://${domain}/settings?tab=subscription`;
+    const returnUrl = `https://${domain}/terminal/settings?tab=subscription`;
 
     const session = await stripe.billingPortal.sessions.create({
       customer: stripeCustomerId,

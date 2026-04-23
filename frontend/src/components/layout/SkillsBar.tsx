@@ -412,7 +412,11 @@ function useDealContext() {
   return match ? match[1] : undefined;
 }
 
-export const SkillsBar: React.FC = () => {
+interface SkillsBarProps {
+  creditsExhausted?: boolean;
+}
+
+export const SkillsBar: React.FC<SkillsBarProps> = ({ creditsExhausted = false }) => {
   const [selectedSkill, setSelectedSkill] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(true);
   const [showMore, setShowMore] = useState(false);
@@ -440,7 +444,19 @@ export const SkillsBar: React.FC = () => {
         borderTop: `1px solid ${T.border.medium}`,
         fontFamily: T.font.mono,
         flexShrink: 0,
+        position: 'relative',
       }}>
+        {creditsExhausted && (
+          <div style={{
+            position: 'absolute', inset: 0, zIndex: 10,
+            background: 'rgba(10,14,23,0.88)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
+            borderTop: `1px solid #FF475744`,
+          }}>
+            <span style={{ fontSize: 10, color: '#FF4757', fontWeight: 700 }}>⚠ AI CREDITS EXHAUSTED — Skills are locked</span>
+            <a href="/pricing" style={{ fontSize: 10, fontWeight: 700, color: '#FF4757', border: '1px solid #FF4757', padding: '2px 10px', textDecoration: 'none' }}>UPGRADE →</a>
+          </div>
+        )}
         <div style={{
           padding: '6px 12px',
           display: 'flex',
