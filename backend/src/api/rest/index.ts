@@ -121,6 +121,8 @@ import investorCapitalRoutes from './investor-capital.routes';
 import skillChatRoutes from './skill-chat.routes';
 import agentsRoutes from './agents.routes';
 import morningBriefRoutes from './morning-brief.routes';
+import propertyEnrichmentRoutes from './property-enrichment.routes';
+import propertyDiscoveryRoutes from './property-discovery.routes';
 
 const API_PREFIX = '/api/v1';
 
@@ -472,6 +474,12 @@ export function setupRESTRoutes(app: Application): void {
 
   // Reporting Package routes (monthly package upload, variance data)
   app.use(`${API_PREFIX}/reporting-package`, reportingPackageRoutes);
+
+  // Property Enrichment routes (county GIS + rent data)
+  app.use(`${API_PREFIX}/property-enrichment`, propertyEnrichmentRoutes);
+
+  // Property Discovery routes (auto-discovery, matching, data library enrichment)
+  app.use(`${API_PREFIX}/property-discovery`, propertyDiscoveryRoutes);
 
   // Deal Activity routes (emails, tasks, unified activity)
   app.use(`${API_PREFIX}/deals`, dealActivityRoutes);

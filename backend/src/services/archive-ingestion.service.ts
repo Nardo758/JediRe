@@ -29,7 +29,7 @@ export interface ArchiveDealFolder {
 export interface ArchiveFile {
   name: string;
   path: string;
-  type: 'T12' | 'RENT_ROLL' | 'TAX_BILL' | 'OM' | 'OTHER' | 'UNKNOWN';
+  type: 'T12' | 'RENT_ROLL' | 'TAX_BILL' | 'OM' | 'COSTAR' | 'OTHER' | 'UNKNOWN';
   extension: string;
 }
 
@@ -106,10 +106,15 @@ const OM_PATTERNS = [
   /cushman.*om/i, /newmark.*om/i, /berkadia.*om/i, /walker.*dunlop/i,
 ];
 
+const COSTAR_PATTERNS = [
+  /costar/i, /property.*summary/i, /market.*analytics/i,
+];
+
 function classifyFile(filename: string): ArchiveFile['type'] {
   const lower = filename.toLowerCase();
   
   // Check patterns in order of specificity
+  if (COSTAR_PATTERNS.some(p => p.test(lower))) return 'COSTAR';
   if (T12_PATTERNS.some(p => p.test(lower))) return 'T12';
   if (RR_PATTERNS.some(p => p.test(lower))) return 'RENT_ROLL';
   if (TAX_PATTERNS.some(p => p.test(lower))) return 'TAX_BILL';
@@ -435,11 +440,47 @@ async function parseArchiveDeal(folder: ArchiveDealFolder): Promise<ParsedArchiv
     }
   }
   
+  // Find and parse CoStar Property Summary
+  const costarFiles = folder.files.filter(f => f.type === 'COSTAR' && f.extension === 'pdf');
+  let costarData: any = null;
+  if (costarFiles.length > 0) {
+    const costarFile = costarFiles[0];
+    try {
+      const buffer = fs.readFileSync(costarFile.path);
+      const { parseCoStarPDF } = await import('./document-extraction/parsers/costar-parser');
+      const result = await parseCoStarPDF(buffer, costarFile.name);
+      
+      if (result.success && result.data) {
+        costarData = result.data;
+        extractionData.costar = costarData;
+        
+        // Extract data from CoStar (can override other sources as it's typically most accurate)
+        if (costarData.units) units = costarData.units;
+        if (costarData.askingRentPerUnit) avgRent = costarData.askingRentPerUnit;
+        if (costarData.vacancyPct !== null) occupancyPct = 100 - costarData.vacancyPct;
+        
+        if (result.warnings?.length) {
+          warnings.push(...result.warnings.map((w: string) => `[COSTAR] ${w}`));
+        }
+      } else {
+        warnings.push(`[COSTAR] Parse failed: ${result.error || 'unknown'}`);
+      }
+    } catch (err) {
+      warnings.push(`[COSTAR] Error reading ${costarFile.name}: ${err}`);
+    }
+  }
+  
   // Find and parse OM (AI-assisted)
   let omData: OMExtraction | null = null;
   let brokerClaims: Record<string, unknown> = {};
   let yearBuilt: number | null = null;
   let city: string | null = null;
+  
+  // Use CoStar data for year/city if available
+  if (costarData) {
+    if (costarData.yearBuilt) yearBuilt = costarData.yearBuilt;
+    if (costarData.city) city = costarData.city;
+  }
   
   const omFiles = folder.files.filter(f => f.type === 'OM' && f.extension === 'pdf');
   if (omFiles.length > 0) {
