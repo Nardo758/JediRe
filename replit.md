@@ -331,7 +331,34 @@ Focus: enrich 1,998 Fulton County properties (100+ units) with sale history, uni
 - **Missing from this layer:** year_built, building sqft, sale date/price, grantor/grantee — only one layer (no sub-layers/tables)
 - **Script:** `backend/src/scripts/import-county-properties.ts`
 
-#### 2. Atlanta Building Permits — Building_Permit_latest (ArcGIS FeatureServer) ✅ NEW
+#### 2. Fulton County AGOL — Structures FeatureServer ✅ MASSIVE FIND
+- **URL:** `https://services1.arcgis.com/AQDHTHDrZzfsFsB5/arcgis/rest/services/Structures/FeatureServer/0`
+- **Total records:** 383,483 building footprints; 312,049 have `YearBuilt` populated; **6,720 with 100+ LiveUnits**
+- **25 fields:** `FeatureID` (format: LST0004081), `FeatType`, `StructForm`, `Stories` (integer), `YearBuilt` (string — e.g. "1971"), `LiveUnits` (integer), `BaseElev`, `RoofElev`, `AreaSqFt`, `Comments`, `LUC` (Land Use Code), `LUCDesc` (e.g. "Apt Garden Class C **"), `LUCShtDesc`, `LUESRICode`, `LUESRIDesc`, `GEO_OID`, `STRUCT_ID`
+- **LUC codes for multifamily:** `2C1` (Apt Garden Class C), `2B1`, `2A1`, etc.; filter `LUC LIKE '2%' AND LiveUnits > 0` → 9,534 multifamily structures
+- **Key limitation:** `FeatureID` in Structures = "LST0004081" — does NOT directly match Tax_Parcels `ParcelID`. **Must spatial join** by geometry intersection (building footprint intersects parcel polygon) to link YearBuilt → ParcelID
+- **Sample data:** LST0035938 | YearBuilt=1970 | Stories=1 | Units=120 | LUC=2C1
+- **Solves:** year_built gap for all pre-2023 stock (older than Building_Permit_latest coverage)
+
+#### 3. Fulton County AGOL — Tyler_TaxParcels FeatureServer ✅ CONFIRMED
+- **URL:** `https://services1.arcgis.com/AQDHTHDrZzfsFsB5/arcgis/rest/services/Tyler_TaxParcels/FeatureServer/0`
+- **Total records:** 364,797 | TaxYear: 2023
+- **34 fields** including `TotAssess`, `LandAssess`, `ImprAssess`, `TotAppr` (total appraised value), `LandAppr` (land appraisal), `ImprAppr` (building improvement appraised value), `LivUnits`, `LUCode`, `ClassCode`, `NbrHood`, `Owner`, `Address`, full subdivision fields
+- **ParcelID format:** "22 482512690060" (matches Tax_Parcels_2025 format — same districtXXXXXX scheme)
+- **Sample:** MF COTTON HOUSE | ParcelID=22 482512690060 | TotAppr=$24.4M | ImprAppr=$24.2M | LivUnits=119
+- **Join:** ParcelID → Tax_Parcels_2025.ParcelID (direct match)
+
+#### 4. Fulton County AGOL — Tyler_YearlySales FeatureServer ✅ MAJOR FIND
+- **URL:** `https://services1.arcgis.com/AQDHTHDrZzfsFsB5/arcgis/rest/services/Tyler_YearlySales/FeatureServer`
+- **Layers:** 6 years of data (Layer 2=2018, 3=2019, 4=2020, 5=2021, 6=2022) + Layer 7=Parcels reference
+- **Record counts:** 2018: 22,951 | 2019: 26,347 | 2020: 32,010 | 2021: 43,627 | 2022: 12,875 | **Total: 137,810 sale records**
+- **Fields (per layer):** `ParID` (parcel ID — matches Tax_Parcels_2025 ParcelID format!), `TaxYear`, `Price` (integer sale price), `Cur` (Y/N = current year flag)
+- **ParID format:** "07 140001181899" → matches Fulton Tax_Parcels_2025 district prefixes (07/09/14/17/22 etc.)
+- **High-value examples:** 2018: ParID=22 524008310370 @ $26.3M; 2018: ParID=07 170001524780 @ $21.8M; 2020: ParID=09F250301270530 @ $14.3M
+- **Join:** `ParID` → Tax_Parcels_2025.`ParcelID` (direct string match)
+- **Limitation:** Data covers 2018–2022 only. No 2023/2024 layers found. No grantor/grantee fields.
+
+#### 5. Atlanta Building Permits — Building_Permit_latest (ArcGIS FeatureServer) ✅
 - **URL:** `https://services5.arcgis.com/5RxyIIJ9boPdptdo/arcgis/rest/services/Building_Permit_latest/FeatureServer/0`
 - **Discovered via:** ArcGIS Online item `cecbda6378be4c289910f7dc145e8cdd` (Atlanta Building Permit Tracker ExB app config)
 - **Total records:** 36,115 permits
@@ -345,7 +372,7 @@ Focus: enrich 1,998 Fulton County properties (100+ units) with sale history, uni
 - **Parcel linkage:** `PARCEL` field matches `ParcelID` in Tax_Parcels_2025 (e.g., `17 02520017012`)
 - **Accela agency code confirmed:** `ATLANTA_GA` (not `ATLANTAGA`) — visible in ACA_Link URLs
 
-#### 3. Census ACS 5-Year — Multiple Table Series ✅
+#### 6. Census ACS 5-Year — Multiple Table Series ✅
 - **Base URL:** `https://api.census.gov/data/2022/acs/acs5`
 - **Geography:** `for=tract:*&in=state:13+county:121` → 327 Fulton County tracts
 - **Confirmed table series:**
@@ -356,19 +383,49 @@ Focus: enrich 1,998 Fulton County properties (100+ units) with sale history, uni
   - `B25070` — Gross rent as % of income (affordability)
 - **Year Built proxy:** B25036 gives tract-level vintage distribution — can assign neighborhood vintage year to each property
 
-#### 4. APD Crime Online (ArcGIS FeatureServer) ✅
+#### 7. APD Crime Online (ArcGIS FeatureServer) ✅
 - **URL:** `https://services3.arcgis.com/Et5Qfajgiyosiw4d/ArcGIS/rest/services/Crime_Online/FeatureServer/15`
 - **Layer:** 15 — CrimeOnline
 - **23 fields:** `IncidentNumber`, `ReportDate`, `OccurredFromDate`, `OccurredToDate`, `Day_of_the_week`, `Part` (I/II), `Crime_Against` (Person/Property/Society), `NibrsUcrCode`, `NIBRS_Offense`, `StreetAddress`, `LocationType`, `Longitude`, `Latitude`, `FireArmInvolved`, `IsBiasMotivationInvolved`, `event_watch`, `Zone`, `ChargeId_First`
 - **Use:** Safety scoring by lat/lon proximity to parcels; can aggregate crime counts within 0.5/1/3 mile rings
 
-#### 5. MARTA GTFS Feed ✅
+#### 8. MARTA GTFS Feed ✅
 - **URL:** `https://www.itsmarta.com/google_transit_feed/google_transit.zip` (20MB ZIP)
 - **Files:** trips.txt, agency.txt, calendar.txt, calendar_dates.txt, routes.txt, shapes.txt, stop_times.txt, **stops.txt**
 - **Stops:** 7,052 total stops — fields: `stop_id`, `stop_code`, `stop_name`, `stop_desc`, `stop_lat`, `stop_lon`, `zone_id`, `stop_url`, `location_type`, `parent_station`, `stop_timezone`, `wheelchair_boarding`
 - **Sample:** `907933, HAMILTON E HOLMES STATION, lat=33.754553, lon=-84.469302`
 - **Use:** Transit access scoring — count MARTA stops within 0.25/0.5 mile of each parcel; rail vs bus distinction via `location_type`
 - **Extraction:** Use Python `zipfile` module (not `unzip` CLI — fails silently); download to `/tmp/marta2.zip`
+
+#### 9. Fulton County AGOL — CE_AddressPoints ✅ VALUABLE
+- **URL (via gismaps.fultoncountyga.gov):** `https://gismaps.fultoncountyga.gov/arcgispub/rest/services/PublicSafety/CE_AddressPoints/MapServer/0`
+- **Total records:** 13,577 apartment address points (with `PtClass LIKE '%Apartment%'`)
+- **Key fields:** `ParcelID` (links to Tax_Parcels_2025), `CommonName` (building/complex name!), `Label` (full address), `City`, `Zip`, `PtType`, `PtClass`, `UnitLow`, `UnitHigh`
+- **Building name examples:** "Lexington Apartment Homes" → ParcelID=14 019000051087; "Oakley Shoals Apartments" → 09F230100840659; "Diplomat Townhouse Apartments" → 14 0224 LL0556
+- **Use:** Match apartment names to ParcelIDs — enriches property records with official marketing names
+
+#### 10. Fulton County AGOL — Zoning FeatureServer ✅
+- **URL:** `https://services1.arcgis.com/AQDHTHDrZzfsFsB5/arcgis/rest/services/Zoning/FeatureServer/0`
+- **Fields:** `CaseID`, `ZClass` (zoning class code), `ZClassDesc` (full description), `EffDate` (effective date)
+- **Use:** Spatial join to assign zoning class to parcels; verify multifamily-permissive zoning
+
+#### 11. Fulton County Geocoder — Composite Address Locator ✅
+- **URL:** `https://gismaps.fultoncountyga.gov/arcgispub/rest/services/GeocodeService/Composite_Address_Locator/GeocodeServer/findAddressCandidates`
+- **Result:** Score=100 for "100 Peachtree St" with state plane coordinates (X=2229132, Y=1366657)
+- **Use:** Match raw street addresses → Fulton parcel coordinates for spatial joins
+
+#### 12. FCDemographics — Commission District Level ✅ (too coarse for property scoring)
+- **URL:** `https://gismaps.fultoncountyga.gov/arcgispub/rest/services/Demographic/FCDemographics/MapServer/0`
+- **42 records** at Commission District level (Year=2020)
+- **Rich fields:** TotPop, MedHHIncom, Renter%, HousingUnits, Vacant%, Owner%, race breakdown (White/Black/Asian/Hispanic/MultiRace), age cohorts (A_0_4 through A_Ab_85), education (NoDiploma/HighGED/SomeCollege/Associates/Bachelors/GradProf), income brackets (I_10_14999 through I_200_More), MedianAge
+- **Limitation:** Only 7 districts — too coarse for 3-mile property-level demographics (use Census ACS tracts instead)
+
+#### 13. DeKalb County Tax Parcels — dcgis.dekalbcountyga.gov ✅
+- **URL:** `https://dcgis.dekalbcountyga.gov/mapping/rest/services/TaxParcels/MapServer/0`
+- **Total records:** 244,945 parcels, TaxYear=2023
+- **51 fields** including `PARCELID`, `BUILDING`, `UNIT`, `CLASSCD`, `CLASSDSCRP`, `SITEADDRESS`, `OWNERNME1`, `OWNERNME2`, `CNTASSDVAL` (current assessed value), `TOTAPR1` (total appraised value), `LANDUSE`, `ZONING`, `OVLDISTRICT`, `ACREAGE`, `HISTDESC`, `CONDITION`
+- **Note:** No `YearBuilt` in parcel layer (building-level table is not exposed in this service)
+- **Access:** JSON responses returned but record body occasionally empty — retry works
 
 ### Blocked / Inaccessible from Replit Server IPs
 
@@ -379,11 +436,13 @@ Focus: enrich 1,998 Fulton County properties (100+ units) with sale history, uni
 | iasworld.fultoncountyga.gov | DNS does not resolve | Domain may not exist / internal only |
 | permits.atlantaga.gov | AWS CloudFront 403 — IP blocked | CF Browser Rendering also blocked |
 | aca3.accela.com / aca-prod.accela.com | Cloudflare "Attention Required" WAF | Accela developer API needs `x-accela-appid` key |
-| DeKalb GIS (dcgis.dekalbcountyga.gov) | Returns HTML error, no JSON | |
 | Atlanta open data (data.atlantaga.gov) | Socrata API returns empty | Replit IP likely rate-limited/blocked |
 | GSCCCA (gsccca.org) | Web-form only, returns 75 bytes | No public API; mortgage/deed records inaccessible |
 | HUD FMR API | Returns `{"error":"Unauthenticated"}` | Needs HUD-specific token (not BLS key) |
 | Atlanta GIS ArcGIS Server | Behind auth, no public REST catalog | ExB apps use internal ArcGIS Enterprise |
+| HMDA bulk download | S3 returns 403, CFPB API serves HTML | No machine-readable endpoint accessible |
+| HUD LIHTC | Page moved, link broken | No current accessible endpoint |
+| Tyler Tool (TSC_PB_TASKLIST_EVW) | M_SALEPRICE NULL for all sampled records | Table is parcel boundary task log, not sale history |
 
 ### Cloudflare Browser Rendering (CLOUDFLARE_BR_TOKEN + CLOUDFLARE_ACCOUNT_ID) — Status
 - **Available:** Both secrets set and API responds
@@ -394,17 +453,33 @@ Focus: enrich 1,998 Fulton County properties (100+ units) with sale history, uni
 - **What it CANNOT bypass:** Cloudflare's own WAF/Managed Challenge (qPublic, Accela, fultonassessor.org all use Cloudflare WAF against automated access)
 - **Key win:** Used snapshot endpoint to crack open the Atlanta Building Permit Tracker ExB app config and extract the live `Building_Permit_latest` FeatureServer URL
 
-### Data Gaps — Still Unsolved
+### Data Gaps — Remaining Unsolved
 
-| Data Point | Status | Best Available Proxy |
+| Data Point | Status | Best Available Proxy / Plan |
 |---|---|---|
-| Year built (individual property) | ❌ No free API | CO date from `Building_Permit_latest` (2023+ only); Census B25036 vintage for older stock |
-| Building sqft | ❌ Not in Tax_Parcels_2025 | Shape__Area × stories estimate |
-| Sale history (grantor/grantee/date/price) | ❌ GSCCCA web-only | `property_sales` table has 292 records (partially seeded) |
+| Year built (individual property) | ✅ SOLVED — Structures FeatureServer | `Structures` layer has YearBuilt for 312K/383K buildings; link via spatial join (building footprint ∩ parcel polygon) |
+| Building sqft | ⚠️ Partial — AreaSqFt in Structures (many nulls) | Use AreaSqFt where populated; fall back to Shape__Area × Stories estimate |
+| Sale history (date + price) | ✅ SOLVED — Tyler_YearlySales 2018-2022 | 137,810 Fulton County sale records; join ParID → Tax_Parcels_2025.ParcelID |
+| Grantor / Grantee names | ❌ Not in Tyler_YearlySales | Only Price + TaxYear available; no buyer/seller in public layer |
 | Recorded mortgage / loan amount | ❌ GSCCCA web-only | No free API available |
 | Historical CO dates (pre-2023) | ❌ | Accela historical data requires App ID registration |
-| Atlanta zoning polygons | ❌ | `OfficialCityDesignAreas` FeatureServer found in same AGOL account — needs probe |
-| DeKalb / Cobb / Gwinnett assessor year built | ❌ GIS servers blocked | |
+| Appraised value (enriched) | ✅ — Tyler_TaxParcels | TotAppr, ImprAppr, LandAppr for all 364,797 Fulton parcels (TaxYear 2023) |
+| Zoning classification | ✅ — Zoning FeatureServer | Spatial join ZClass/ZClassDesc to parcels |
+| Property building name | ✅ — CE_AddressPoints | 17 unique apartment ParcelIDs with CommonName (partial) |
+| DeKalb year built | ❌ | dcgis parcel layer has no YearBuilt; building table not exposed |
+| Cobb / Gwinnett year built | ❌ | GIS servers blocked or no field available |
+| Tyler_YearlySales 2023/2024 | ❌ | Only layers 2-7 exist; no 2023/2024 data found |
+
+### Critical Linkage Architecture (for ingestion pipeline)
+
+```
+Fulton Tax_Parcels_2025 (ParcelID)
+  ├─→ Tyler_TaxParcels (ParcelID) — assessed + appraised values
+  ├─→ Tyler_YearlySales 2018-2022 (ParID) — sale prices per year
+  ├─→ Building_Permit_latest (PARCEL) — CO dates for 2023+ builds
+  ├─→ CE_AddressPoints (ParcelID) — building common names
+  └─→ [SPATIAL JOIN] → Structures (FeatureID=LSTxxxxxx) — YearBuilt, Stories
+```
 
 ### Other FeatureServer URLs Found in Atlanta Planning AGOL Account (5RxyIIJ9boPdptdo)
 - `Building_Permit_latest/FeatureServer/0` — ✅ confirmed working (36,115 permits)
@@ -413,12 +488,14 @@ Focus: enrich 1,998 Fulton County properties (100+ units) with sale history, uni
 - `Atlanta_Main_Street_Districts/FeatureServer/0` — Main Street Districts
 
 ### Next Steps Queued
-1. Ingest `Building_Permit_latest` → `building_permits` table (CO dates + pipeline)
-2. Load MARTA GTFS stops → `transit_stops` table (lat/lon + type)
-3. Pull Census B25036 vintage + B25024 unit structure + B25041 bedrooms → `property_demographics`
-4. Pull APD crime by parcel proximity → safety score per property
-5. Probe `OfficialCityDesignAreas` for zoning overlay data
-6. Consider Accela developer App ID registration for historical CO dates (free tier available)
+1. **Build ingestion pipeline** for Tyler_YearlySales 2018-2022 → `market_sale_comps` table (by ParID match)
+2. **Build Structures spatial join** script → pull YearBuilt/Stories from building footprints by parcel intersection
+3. **Enrich Tyler_TaxParcels** values (TotAppr/ImprAppr) → `property_records` table
+4. Ingest `Building_Permit_latest` → `building_permits` table (CO dates + pipeline)
+5. Load MARTA GTFS stops → `transit_stops` table (lat/lon + type)
+6. Pull Census B25036 vintage + B25024 unit structure + B25041 bedrooms → `property_demographics`
+7. Pull APD crime by parcel proximity → safety score per property
+8. Probe `OfficialCityDesignAreas` for zoning overlay data
 
 ---
 
