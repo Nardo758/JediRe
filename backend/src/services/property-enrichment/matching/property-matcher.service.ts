@@ -6,6 +6,7 @@
  */
 
 import { DiscoveredProperty } from '../discovery/property-discovery.service';
+import { query as dbQuery } from '../../../database/connection';
 
 export interface ApartmentLocatorProperty {
   id: string;
@@ -135,8 +136,6 @@ export class PropertyMatcherService {
       const match = await this.matchProperty(prop, alProperties);
       
       if (match && match.confidence >= minConfidence) {
-        results.push(match);
-        
         if (match.confidence >= autoMatchThreshold) {
           match.status = 'auto_matched';
           matched++;
@@ -144,6 +143,8 @@ export class PropertyMatcherService {
           match.status = 'review_required';
           reviewRequired++;
         }
+        await this.persistMatch(match);
+        results.push(match);
       }
     }
     
@@ -433,11 +434,47 @@ export class PropertyMatcherService {
     county: string,
     state: string
   ): Promise<DiscoveredProperty[]> {
-    // TODO: Query discovered_properties table
-    // WHERE county = $1 AND state = $2 AND match_status = 'unmatched'
-    return [];
+    const r = await dbQuery(
+      `SELECT id, parcel_id, address, city, state, county, zip,
+              property_name, number_of_units, number_of_buildings, year_built,
+              living_area_sqft, acres, property_type,
+              owner_name, owner_city, owner_state,
+              just_value, building_value, match_status, apartment_locator_id, apartment_locator_name,
+              match_confidence, discovered_at, provider, last_updated
+         FROM discovered_properties
+        WHERE county = $1 AND state = $2 AND match_status = 'unmatched'`,
+      [county, state]
+    );
+    return r.rows.map((row): DiscoveredProperty => ({
+      id: row.id,
+      parcelId: row.parcel_id,
+      address: row.address,
+      city: row.city,
+      state: row.state,
+      county: row.county,
+      zip: row.zip || undefined,
+      propertyName: row.property_name || undefined,
+      numberOfUnits: row.number_of_units || undefined,
+      numberOfBuildings: row.number_of_buildings || undefined,
+      yearBuilt: row.year_built || undefined,
+      livingAreaSqFt: row.living_area_sqft || undefined,
+      acres: row.acres ? Number(row.acres) : undefined,
+      propertyType: row.property_type || 'multifamily',
+      ownerName: row.owner_name || undefined,
+      ownerCity: row.owner_city || undefined,
+      ownerState: row.owner_state || undefined,
+      justValue: row.just_value ? Number(row.just_value) : undefined,
+      buildingValue: row.building_value ? Number(row.building_value) : undefined,
+      matchStatus: row.match_status,
+      apartmentLocatorId: row.apartment_locator_id || undefined,
+      apartmentLocatorName: row.apartment_locator_name || undefined,
+      matchConfidence: row.match_confidence || undefined,
+      discoveredAt: row.discovered_at,
+      provider: row.provider,
+      lastUpdated: row.last_updated,
+    }));
   }
-  
+
   /**
    * Get Apartment Locator properties from database
    */
@@ -445,11 +482,91 @@ export class PropertyMatcherService {
     county: string,
     state: string
   ): Promise<ApartmentLocatorProperty[]> {
-    // TODO: Query apartment_locator_properties table
-    // WHERE state = $1 AND (county = $2 OR city IN (SELECT city FROM discovered_properties WHERE county = $2))
-    return [];
+    const r = await dbQuery(
+      `SELECT al.id, al.property_name, al.address, al.city, al.state, al.zip,
+              al.latitude, al.longitude, al.total_units, al.year_built,
+              al.avg_asking_rent, al.unit_mix, al.occupancy_pct, al.management_company,
+              al.last_updated, al.source
+         FROM apartment_locator_properties al
+        WHERE UPPER(al.state) = UPPER($1)
+          AND (
+            UPPER(al.city) IN (SELECT UPPER(city) FROM discovered_properties WHERE county = $2 AND state = $1)
+            OR EXISTS (SELECT 1 FROM discovered_properties dp
+                        WHERE dp.county = $2 AND dp.state = $1
+                          AND UPPER(dp.city) = UPPER(al.city))
+          )`,
+      [state, county]
+    );
+    return r.rows.map((row): ApartmentLocatorProperty => ({
+      id: row.id,
+      propertyName: row.property_name,
+      address: row.address,
+      city: row.city,
+      state: row.state,
+      zip: row.zip || undefined,
+      latitude: row.latitude ? Number(row.latitude) : undefined,
+      longitude: row.longitude ? Number(row.longitude) : undefined,
+      totalUnits: row.total_units || undefined,
+      yearBuilt: row.year_built || undefined,
+      avgRent: row.avg_asking_rent ? Number(row.avg_asking_rent) : undefined,
+      unitMix: row.unit_mix || undefined,
+      occupancy: row.occupancy_pct ? Number(row.occupancy_pct) : undefined,
+      managementCompany: row.management_company || undefined,
+      lastUpdated: row.last_updated,
+      source: row.source,
+    }));
   }
-  
+
+  /**
+   * Persist a match result
+   */
+  async persistMatch(match: MatchResult): Promise<string | null> {
+    try {
+      const r = await dbQuery(
+        `INSERT INTO property_matches (
+           discovered_property_id, apartment_locator_id,
+           confidence, match_method, match_reasons,
+           address_match, coordinate_match, owner_name_match, property_name_match,
+           unit_count_match, year_built_match,
+           unit_count_delta, year_built_delta, distance_meters, status
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+         ON CONFLICT (discovered_property_id, apartment_locator_id) DO UPDATE SET
+           confidence = EXCLUDED.confidence,
+           match_method = EXCLUDED.match_method,
+           match_reasons = EXCLUDED.match_reasons,
+           status = EXCLUDED.status,
+           updated_at = NOW()
+         RETURNING id`,
+        [
+          match.discoveredPropertyId, match.apartmentLocatorId,
+          match.confidence, match.matchMethod, match.matchReasons,
+          match.addressMatch, match.coordinateMatch, match.ownerNameMatch, match.propertyNameMatch,
+          match.unitCountMatch, match.yearBuiltMatch,
+          match.unitCountDelta || null, match.yearBuiltDelta || null, match.distanceMeters || null,
+          match.status,
+        ]
+      );
+
+      // If auto-matched, update the discovered property
+      if (match.status === 'auto_matched') {
+        await dbQuery(
+          `UPDATE discovered_properties SET
+             match_status = 'matched',
+             apartment_locator_id = $2,
+             match_confidence = $3,
+             matched_at = NOW()
+           WHERE id = $1`,
+          [match.discoveredPropertyId, match.apartmentLocatorId, match.confidence]
+        );
+      }
+
+      return r.rows[0]?.id || null;
+    } catch (e) {
+      console.error('[Matcher] persistMatch error:', e);
+      return null;
+    }
+  }
+
   /**
    * Confirm a match
    */
@@ -458,11 +575,27 @@ export class PropertyMatcherService {
     userId: string,
     notes?: string
   ): Promise<void> {
-    // TODO: Update match in database
-    // UPDATE property_matches SET status = 'confirmed', confirmed_by = $2, confirmed_at = NOW()
-    // Also update discovered_properties.match_status = 'matched'
+    const r = await dbQuery(
+      `UPDATE property_matches
+          SET status = 'confirmed', reviewed_by = $2, reviewed_at = NOW(), review_notes = $3, updated_at = NOW()
+        WHERE id = $1
+        RETURNING discovered_property_id, apartment_locator_id, confidence`,
+      [matchResultId, userId, notes || null]
+    );
+    if (r.rows[0]) {
+      await dbQuery(
+        `UPDATE discovered_properties
+            SET match_status = 'matched',
+                apartment_locator_id = $2,
+                match_confidence = $3,
+                matched_at = NOW(),
+                matched_by = $4
+          WHERE id = $1`,
+        [r.rows[0].discovered_property_id, r.rows[0].apartment_locator_id, r.rows[0].confidence, userId]
+      );
+    }
   }
-  
+
   /**
    * Reject a match
    */
@@ -471,8 +604,13 @@ export class PropertyMatcherService {
     userId: string,
     reason: string
   ): Promise<void> {
-    // TODO: Update match in database
-    // UPDATE property_matches SET status = 'rejected', rejected_by = $2, rejection_reason = $3
+    await dbQuery(
+      `UPDATE property_matches
+          SET status = 'rejected', reviewed_by = $2, reviewed_at = NOW(),
+              rejection_reason = $3, updated_at = NOW()
+        WHERE id = $1`,
+      [matchResultId, userId, reason]
+    );
   }
 }
 

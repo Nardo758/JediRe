@@ -7,13 +7,19 @@
  * - Auto-enriching Data Library assets with missing information
  */
 
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
+import { requireAuth } from '../../middleware/auth';
 import { getPropertyDiscoveryService } from '../../services/property-enrichment/discovery/property-discovery.service';
 import { getPropertyMatcherService } from '../../services/property-enrichment/matching/property-matcher.service';
 import { getDataLibraryAutoEnrichmentService } from '../../services/property-enrichment/data-library/auto-enrichment.service';
 import { COUNTY_CONFIGS } from '../../services/property-enrichment/property-info/county-configs';
 
 const router = Router();
+
+// All property-discovery endpoints require authentication
+router.use((req: Request, res: Response, next: NextFunction) => {
+  return requireAuth(req as Parameters<typeof requireAuth>[0], res, next);
+});
 const discoveryService = getPropertyDiscoveryService();
 const matcherService = getPropertyMatcherService();
 const autoEnrichmentService = getDataLibraryAutoEnrichmentService();
@@ -409,6 +415,75 @@ router.get('/apartment-locator/properties', async (req: Request, res: Response) 
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to get properties' });
+  }
+});
+
+/**
+ * POST /api/v1/property-discovery/enrich/:assetId
+ *
+ * Convenience endpoint that loads asset, enriches it, and returns
+ * fields enriched + conflicts (with logIds for resolution).
+ */
+router.post('/enrich/:assetId', async (req: Request, res: Response) => {
+  try {
+    const { assetId } = req.params;
+    const { force } = req.body || {};
+    const result = await autoEnrichmentService.enrichAssetById(assetId, {
+      autoEnrichOnUpload: true,
+      minDqScoreForAutoEnrich: force ? 100 : 50,
+      requireConfirmation: true,
+    });
+    if (!result) {
+      return res.status(404).json({ error: 'Asset not found or not eligible for enrichment' });
+    }
+    res.json({
+      success: result.success,
+      assetId: result.assetId,
+      fieldsEnriched: result.fieldsEnriched,
+      fieldsStillMissing: result.fieldsStillMissing,
+      conflicts: result.conflicts,
+      previousScore: result.previousScore,
+      newScore: result.newScore,
+      municipalProvider: result.municipalProvider,
+      apartmentLocatorUsed: result.apartmentLocatorUsed,
+      logId: result.logId,
+    });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'Enrichment failed';
+    console.error('[API] enrich/:assetId failed', error);
+    res.status(500).json({ error: msg });
+  }
+});
+
+/**
+ * POST /api/v1/property-discovery/enrichment-log/:logId/resolve
+ *
+ * Accept or reject a single conflict from a prior enrichment log entry.
+ * Body: { accept: boolean }
+ */
+router.post('/enrichment-log/:logId/resolve', async (req: Request, res: Response) => {
+  try {
+    const { logId } = req.params;
+    const { accept } = req.body || {};
+    if (typeof accept !== 'boolean') {
+      return res.status(400).json({ error: 'accept (boolean) is required' });
+    }
+    if (accept) {
+      await autoEnrichmentService.applyEnrichmentFromLog(logId);
+    } else {
+      const { query: dbQuery } = await import('../../database/connection');
+      await dbQuery(
+        `UPDATE data_library_enrichment_log
+            SET status = 'rejected', applied_at = NOW()
+          WHERE id = $1`,
+        [logId]
+      );
+    }
+    res.json({ success: true });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'Resolve failed';
+    console.error('[API] enrichment-log/:logId/resolve failed', error);
+    res.status(500).json({ error: msg });
   }
 });
 

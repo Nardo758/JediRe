@@ -1132,6 +1132,88 @@ async function startServer() {
   }, { timezone: 'UTC' });
   console.log('[M35 Backtest] Monthly job scheduled (cron: 0 1 1 * * UTC)');
 
+  // Property Discovery: daily discovery + AL sync + matching
+  const discoveryCron = process.env.DISCOVERY_CRON || '0 4 * * *';
+  if (cron.validate(discoveryCron)) {
+    cron.schedule(discoveryCron, async () => {
+      try {
+        console.log('[Property Discovery] Daily run starting…');
+        const { getPropertyDiscoveryService } = await import('./services/property-enrichment/discovery/property-discovery.service');
+        const { getPropertyMatcherService } = await import('./services/property-enrichment/matching/property-matcher.service');
+        const { COUNTY_CONFIGS } = await import('./services/property-enrichment/property-info/county-configs');
+
+        const discoverySvc = getPropertyDiscoveryService();
+        let totalDiscovered = 0;
+        for (const cfg of COUNTY_CONFIGS) {
+          try {
+            const r = await discoverySvc.discoverInCounty(cfg.county, cfg.state, { minUnits: 50 });
+            totalDiscovered += r.propertiesFound || 0;
+          } catch (e) {
+            console.warn(`[Property Discovery] ${cfg.county}, ${cfg.state} failed:`, (e as Error).message);
+          }
+        }
+        console.log(`[Property Discovery] Discovered ${totalDiscovered} properties`);
+
+        // AL sync from legacy properties → apartment_locator_properties
+        try {
+          const { query: dbQuery } = await import('./database/connection');
+          const sourceRows = await dbQuery(
+            `SELECT id, name, address_line1, city, state_code, zip, lat, lng, units, year_built,
+                    avg_rent, market_rent, current_occupancy
+               FROM properties
+              WHERE address_line1 IS NOT NULL AND city IS NOT NULL AND state_code IS NOT NULL
+                AND COALESCE(units, 0) >= 50`
+          );
+          for (const r of sourceRows.rows) {
+            await dbQuery(
+              `INSERT INTO apartment_locator_properties (
+                  external_id, property_name, address, city, state, zip,
+                  latitude, longitude, total_units, year_built,
+                  avg_asking_rent, avg_effective_rent, occupancy_pct,
+                  source, data_as_of
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'apartment_locator', CURRENT_DATE)
+                ON CONFLICT (external_id, source) DO UPDATE SET
+                  avg_asking_rent = EXCLUDED.avg_asking_rent,
+                  avg_effective_rent = EXCLUDED.avg_effective_rent,
+                  occupancy_pct = EXCLUDED.occupancy_pct,
+                  total_units = EXCLUDED.total_units,
+                  last_updated = NOW()`,
+              [
+                `legacy:${r.id}`,
+                r.name || `${r.address_line1}, ${r.city}, ${r.state_code}`,
+                r.address_line1, r.city, r.state_code, r.zip || null,
+                r.lat || null, r.lng || null, r.units || null, r.year_built || null,
+                r.avg_rent || null, r.market_rent || null,
+                r.current_occupancy != null ? Number(r.current_occupancy) * 100 : null,
+              ]
+            );
+          }
+          console.log(`[Property Discovery] AL synced ${sourceRows.rows.length} rows`);
+        } catch (e) {
+          console.warn('[Property Discovery] AL sync failed:', (e as Error).message);
+        }
+
+        // Match per county
+        const matcherSvc = getPropertyMatcherService();
+        let totalMatched = 0;
+        for (const cfg of COUNTY_CONFIGS) {
+          try {
+            const r = await matcherSvc.matchCounty(cfg.county, cfg.state);
+            totalMatched += r.matched || 0;
+          } catch (e) {
+            console.warn(`[Property Discovery] match ${cfg.county}, ${cfg.state} failed:`, (e as Error).message);
+          }
+        }
+        console.log(`[Property Discovery] Matched ${totalMatched} properties. Daily run complete.`);
+      } catch (err) {
+        console.error('[Property Discovery] Daily job failed (non-fatal):', err);
+      }
+    }, { timezone: 'UTC' });
+    console.log(`[Property Discovery] Daily job scheduled (cron: ${discoveryCron} UTC)`);
+  } else {
+    console.warn(`[Property Discovery] Invalid DISCOVERY_CRON expression "${discoveryCron}", skipping schedule`);
+  }
+
   // M35 Phase 4: drain forecast_regen_queue every minute (claims with SKIP LOCKED)
   setInterval(async () => {
     try {

@@ -9,6 +9,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getPropertyInfoRegistry } from '../property-info/provider-registry';
 import { PropertyInfo, CountyAPIConfig } from '../types';
 import { COUNTY_CONFIGS } from '../property-info/county-configs';
+import { query as dbQuery } from '../../../database/connection';
 
 export interface DiscoveredProperty {
   id: string;
@@ -94,8 +95,9 @@ export class PropertyDiscoveryService {
       errors: [],
       startedAt: new Date()
     };
-    
+
     console.log(`[Discovery] Starting discovery in ${county}, ${state} (min ${minUnits} units)`);
+    await this.logDiscoveryJob(job);
     
     try {
       // Get county config
@@ -136,12 +138,14 @@ export class PropertyDiscoveryService {
       
       job.status = 'complete';
       job.completedAt = new Date();
-      
+
     } catch (error) {
       job.status = 'failed';
       job.errors.push(String(error));
+      job.completedAt = new Date();
     }
-    
+
+    await this.logDiscoveryJob(job);
     return job;
   }
   
@@ -335,25 +339,93 @@ export class PropertyDiscoveryService {
     county: string,
     state: string
   ): Promise<{ id: string } | null> {
-    // TODO: Query database
-    // SELECT id FROM discovered_properties WHERE parcel_id = $1 AND county = $2 AND state = $3
-    return null;
+    if (!parcelId) return null;
+    const r = await dbQuery(
+      `SELECT id FROM discovered_properties WHERE parcel_id = $1 AND county = $2 AND state = $3 LIMIT 1`,
+      [parcelId, county, state]
+    );
+    return r.rows[0] ? { id: r.rows[0].id as string } : null;
   }
-  
+
   /**
    * Save newly discovered property
    */
-  private async saveDiscoveredProperty(property: DiscoveredProperty): Promise<void> {
-    // TODO: Insert into database
-    console.log(`[Discovery] New property: ${property.address} (${property.numberOfUnits || '?'} units)`);
+  private async saveDiscoveredProperty(p: DiscoveredProperty): Promise<void> {
+    await dbQuery(
+      `INSERT INTO discovered_properties (
+         parcel_id, address, city, state, county, zip,
+         property_name, number_of_units, number_of_buildings, year_built,
+         living_area_sqft, acres, property_type,
+         owner_name, owner_city, owner_state,
+         just_value, building_value, match_status, provider
+       ) VALUES (
+         $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'unmatched',$19
+       )
+       ON CONFLICT (parcel_id, county, state) DO NOTHING`,
+      [
+        p.parcelId, p.address, p.city, p.state, p.county, p.zip || null,
+        p.propertyName || null, p.numberOfUnits || null, p.numberOfBuildings || null, p.yearBuilt || null,
+        p.livingAreaSqFt || null, p.acres || null, p.propertyType || 'multifamily',
+        p.ownerName || null, p.ownerCity || null, p.ownerState || null,
+        p.justValue || null, p.buildingValue || null, p.provider,
+      ]
+    );
   }
-  
+
   /**
    * Update existing discovered property
    */
-  private async updateDiscoveredProperty(id: string, property: DiscoveredProperty): Promise<void> {
-    // TODO: Update in database
-    console.log(`[Discovery] Updated property: ${property.address}`);
+  private async updateDiscoveredProperty(id: string, p: DiscoveredProperty): Promise<void> {
+    await dbQuery(
+      `UPDATE discovered_properties SET
+         address = COALESCE($2, address),
+         property_name = COALESCE($3, property_name),
+         number_of_units = COALESCE($4, number_of_units),
+         number_of_buildings = COALESCE($5, number_of_buildings),
+         year_built = COALESCE($6, year_built),
+         living_area_sqft = COALESCE($7, living_area_sqft),
+         acres = COALESCE($8, acres),
+         owner_name = COALESCE($9, owner_name),
+         just_value = COALESCE($10, just_value),
+         building_value = COALESCE($11, building_value),
+         last_updated = NOW()
+       WHERE id = $1`,
+      [
+        id, p.address || null, p.propertyName || null, p.numberOfUnits || null,
+        p.numberOfBuildings || null, p.yearBuilt || null, p.livingAreaSqFt || null,
+        p.acres || null, p.ownerName || null, p.justValue || null, p.buildingValue || null,
+      ]
+    );
+  }
+
+  /**
+   * Persist a discovery job lifecycle to the discovery_jobs table
+   */
+  private async logDiscoveryJob(job: DiscoveryJob, triggerType: string = 'manual'): Promise<void> {
+    try {
+      await dbQuery(
+        `INSERT INTO discovery_jobs (
+           id, county, state, scope_type, status,
+           properties_found, properties_new, properties_updated,
+           errors, started_at, completed_at, trigger_type
+         ) VALUES ($1,$2,$3,'county',$4,$5,$6,$7,$8,$9,$10,$11)
+         ON CONFLICT (id) DO UPDATE SET
+           status = EXCLUDED.status,
+           properties_found = EXCLUDED.properties_found,
+           properties_new = EXCLUDED.properties_new,
+           properties_updated = EXCLUDED.properties_updated,
+           errors = EXCLUDED.errors,
+           completed_at = EXCLUDED.completed_at`,
+        [
+          job.id, job.county, job.state, job.status,
+          job.propertiesFound, job.propertiesNew, job.propertiesUpdated,
+          JSON.stringify(job.errors), job.startedAt || null, job.completedAt || null,
+          triggerType,
+        ]
+      );
+    } catch (e) {
+      console.error('[Discovery] logDiscoveryJob error:', e);
+    }
   }
   
   /**

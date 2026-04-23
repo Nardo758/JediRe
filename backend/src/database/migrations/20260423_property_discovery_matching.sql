@@ -332,11 +332,11 @@ SELECT
   dla.state,
   dla.data_quality_score,
   ARRAY_REMOVE(ARRAY[
-    CASE WHEN dla.units IS NULL THEN 'units' END,
+    CASE WHEN dla.unit_count IS NULL THEN 'units' END,
     CASE WHEN dla.year_built IS NULL THEN 'yearBuilt' END,
-    CASE WHEN dla.living_area_sqft IS NULL THEN 'livingAreaSqFt' END,
+    CASE WHEN dla.net_rentable_sqft IS NULL THEN 'livingAreaSqFt' END,
     CASE WHEN dla.avg_rent IS NULL THEN 'avgRent' END,
-    CASE WHEN dla.occupancy_pct IS NULL THEN 'occupancyPct' END
+    CASE WHEN dla.occupancy_rate IS NULL THEN 'occupancyPct' END
   ], NULL) AS missing_fields,
   COALESCE(dla.data_quality_score, 0) < 50 AS needs_enrichment
 FROM data_library_assets dla

@@ -119,6 +119,18 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Auto-Enrich state
+  const [enriching, setEnriching] = useState(false);
+  const [enrichResult, setEnrichResult] = useState<{
+    fieldsEnriched: string[];
+    conflicts: Array<{ field: string; existingValue: unknown; enrichedValue: unknown; source: string }>;
+    previousScore: number;
+    newScore: number;
+    logId?: string;
+  } | null>(null);
+  const [enrichError, setEnrichError] = useState<string | null>(null);
+  const [resolving, setResolving] = useState(false);
+
   // Prefill from existing asset when in edit mode
   useEffect(() => {
     if (!editMode) return;
@@ -255,6 +267,53 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
     if (details.askingPrice) score += 10;
     if (details.dealType) score += 10;
     return Math.min(score, 100);
+  };
+
+  const handleAutoEnrich = async () => {
+    if (!assetId) return;
+    setEnriching(true);
+    setEnrichError(null);
+    setEnrichResult(null);
+    try {
+      const res = await apiClient.post(`/api/v1/property-discovery/enrich/${assetId}`, {
+        force: true,
+      });
+      const r = res.data;
+      setEnrichResult({
+        fieldsEnriched: r.fieldsEnriched || [],
+        conflicts: r.conflicts || [],
+        previousScore: r.previousScore ?? 0,
+        newScore: r.newScore ?? 0,
+        logId: r.logId,
+      });
+    } catch (err) {
+      const e = err as { response?: { data?: { error?: string } }; message?: string };
+      setEnrichError(e.response?.data?.error || e.message || 'Enrichment failed');
+    } finally {
+      setEnriching(false);
+    }
+  };
+
+  const handleResolveAll = async (accept: boolean) => {
+    if (!enrichResult?.logId) return;
+    setResolving(true);
+    try {
+      await apiClient.post(`/api/v1/property-discovery/enrichment-log/${enrichResult.logId}/resolve`, {
+        accept,
+      });
+      setEnrichResult(prev => prev ? {
+        ...prev,
+        conflicts: [],
+        fieldsEnriched: accept
+          ? [...prev.fieldsEnriched, ...prev.conflicts.map(c => c.field)]
+          : prev.fieldsEnriched,
+      } : prev);
+    } catch (err) {
+      const e = err as { response?: { data?: { error?: string } }; message?: string };
+      setEnrichError(e.response?.data?.error || e.message || 'Failed to resolve conflicts');
+    } finally {
+      setResolving(false);
+    }
   };
 
   const handleSave = async () => {
@@ -416,6 +475,94 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
             <span style={{ fontSize: 12, fontWeight: 700, color: dqColor, fontFamily: MONO }}>{dqScore}</span>
           </div>
         </div>
+
+        {/* Auto-Enrich Bar (edit mode only) */}
+        {editMode && assetId && (
+          <div style={{
+            padding: '10px 18px', background: C.bg, borderBottom: `1px solid ${C.border}`,
+            display: 'flex', flexDirection: 'column', gap: 8,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontSize: 10, color: C.muted, fontFamily: MONO, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                Auto-Enrich (Municipal APIs + Apartment Locator)
+              </div>
+              <button
+                onClick={handleAutoEnrich}
+                disabled={enriching}
+                style={{
+                  padding: '6px 14px', fontSize: 11, fontWeight: 700,
+                  background: enriching ? C.input : C.cyan,
+                  color: enriching ? C.muted : '#001018',
+                  border: 'none', cursor: enriching ? 'wait' : 'pointer',
+                  fontFamily: MONO, letterSpacing: 0.5,
+                }}
+              >
+                {enriching ? 'ENRICHING…' : 'AUTO-ENRICH'}
+              </button>
+            </div>
+            {enrichError && (
+              <div style={{ fontSize: 10, color: '#FCA5A5', fontFamily: MONO }}>{enrichError}</div>
+            )}
+            {enrichResult && (
+              <div style={{ fontSize: 10, color: C.secondary, fontFamily: MONO }}>
+                Enriched <strong style={{ color: C.cyan }}>{enrichResult.fieldsEnriched.length}</strong> field(s);
+                DQ <strong style={{ color: C.cyan }}>{enrichResult.previousScore}</strong> → <strong style={{ color: dqColor }}>{enrichResult.newScore}</strong>
+                {enrichResult.conflicts.length > 0 && (
+                  <> · <span style={{ color: '#FCD34D' }}>{enrichResult.conflicts.length} conflict(s) need review</span></>
+                )}
+              </div>
+            )}
+            {enrichResult && enrichResult.conflicts.length > 0 && (
+              <div style={{
+                marginTop: 4, border: `1px solid ${C.border}`, background: C.panel,
+              }}>
+                <div style={{ maxHeight: 200, overflow: 'auto' }}>
+                  {enrichResult.conflicts.map((c, idx) => (
+                    <div key={`${c.field}-${idx}`} style={{
+                      padding: '8px 10px', borderBottom: idx < enrichResult.conflicts.length - 1 ? `1px solid ${C.border}` : 'none',
+                      display: 'flex', flexDirection: 'column', gap: 4,
+                    }}>
+                      <div style={{ fontSize: 10, color: C.cyan, fontFamily: MONO, fontWeight: 700 }}>
+                        {c.field} <span style={{ color: C.muted, fontWeight: 400 }}>· {c.source}</span>
+                      </div>
+                      <div style={{ fontSize: 10, color: C.secondary, display: 'flex', gap: 12 }}>
+                        <div>Existing: <span style={{ color: C.primary, fontFamily: MONO }}>{String(c.existingValue ?? '—')}</span></div>
+                        <div>Proposed: <span style={{ color: '#FCD34D', fontFamily: MONO }}>{String(c.enrichedValue ?? '—')}</span></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{
+                  display: 'flex', gap: 6, padding: '8px 10px',
+                  borderTop: `1px solid ${C.border}`, background: C.bg,
+                }}>
+                  <button
+                    onClick={() => handleResolveAll(true)}
+                    disabled={resolving || !enrichResult.logId}
+                    style={{
+                      padding: '4px 12px', fontSize: 10, fontWeight: 700,
+                      background: '#10B981', color: '#001018', border: 'none',
+                      cursor: resolving ? 'wait' : 'pointer', fontFamily: MONO,
+                    }}
+                  >
+                    {resolving ? '…' : 'ACCEPT ALL'}
+                  </button>
+                  <button
+                    onClick={() => handleResolveAll(false)}
+                    disabled={resolving || !enrichResult.logId}
+                    style={{
+                      padding: '4px 12px', fontSize: 10, fontWeight: 700,
+                      background: 'transparent', color: '#FCA5A5',
+                      border: '1px solid #7F1D1D', cursor: resolving ? 'wait' : 'pointer', fontFamily: MONO,
+                    }}
+                  >
+                    REJECT ALL
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Form */}
         <div style={{ flex: 1, overflow: 'auto', padding: 18 }}>

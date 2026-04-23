@@ -13,8 +13,9 @@ import { DataCoverageSection } from './sections/DataCoverageSection';
 import { BackgroundJobsSection } from './sections/BackgroundJobsSection';
 import { EnrichmentStatusSection } from './sections/EnrichmentStatusSection';
 import { AgentsPlatformSection } from './sections/AgentsPlatformSection';
+import { PropertyDiscoverySection } from './sections/PropertyDiscoverySection';
 
-type TabKey = 'health' | 'users' | 'deals' | 'coverage' | 'jobs' | 'enrichment' | 'agents';
+type TabKey = 'health' | 'users' | 'deals' | 'coverage' | 'jobs' | 'enrichment' | 'discovery' | 'agents';
 
 const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
   { key: 'health', label: 'System Health', icon: <Activity className="w-4 h-4" /> },
@@ -23,6 +24,7 @@ const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
   { key: 'coverage', label: 'Data Coverage', icon: <Map className="w-4 h-4" /> },
   { key: 'jobs', label: 'Jobs', icon: <Cog className="w-4 h-4" /> },
   { key: 'enrichment', label: 'Enrichment', icon: <Database className="w-4 h-4" /> },
+  { key: 'discovery', label: 'Property Discovery', icon: <Map className="w-4 h-4" /> },
   { key: 'agents', label: 'Agents', icon: <Bot className="w-4 h-4" /> },
 ];
 
@@ -53,6 +55,7 @@ export function AdminDashboard() {
       case 'coverage': return <DataCoverageSection />;
       case 'jobs': return <BackgroundJobsSection />;
       case 'enrichment': return <EnrichmentStatusSection />;
+      case 'discovery': return <PropertyDiscoverySection />;
       case 'agents': return <AgentsPlatformSection />;
     }
   };

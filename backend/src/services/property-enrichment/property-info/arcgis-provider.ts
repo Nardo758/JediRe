@@ -254,6 +254,7 @@ export class ArcGISFeatureServerProvider extends BasePropertyInfoProvider {
     isSingleResult: boolean = true
   ): Promise<Record<string, unknown> | null> {
     try {
+      await this.enforceRateLimit();
       const response = await fetch(url);
       
       if (!response.ok) {

@@ -15,6 +15,7 @@ import { ingestArchiveDeals } from '../../services/archive-ingestion.service';
 import { logger } from '../../utils/logger';
 import AdmZip from 'adm-zip';
 import { query as dbQuery } from '../../database/connection';
+import { getDataLibraryAutoEnrichmentService } from '../../services/property-enrichment/data-library/auto-enrichment.service';
 
 const router = Router();
 
@@ -219,6 +220,38 @@ async function createLabeledAsset(label: string, userId: string): Promise<string
  * Find assets from a recent upload that have low data quality scores
  * and would benefit from manual data entry
  */
+/**
+ * Auto-enrich newly-uploaded assets with low data-quality scores using
+ * municipal APIs and Apartment Locator data. Fires asynchronously and
+ * never throws — failures are logged but never break the upload.
+ */
+async function autoEnrichAssets(assetIds: string[]): Promise<void> {
+  if (!assetIds || assetIds.length === 0) return;
+  const svc = getDataLibraryAutoEnrichmentService();
+  for (const assetId of assetIds) {
+    try {
+      const r = await dbQuery<{ data_quality_score: number | null }>(
+        'SELECT data_quality_score FROM data_library_assets WHERE id = $1',
+        [assetId]
+      );
+      const score = r.rows[0]?.data_quality_score ?? 0;
+      if (score >= 50) continue;
+      logger.info(`[auto-enrich] Triggering for asset ${assetId} (DQ=${score})`);
+      const result = await svc.enrichAssetById(assetId, {
+        autoEnrichOnUpload: true,
+        minDqScoreForAutoEnrich: 50,
+      });
+      if (result) {
+        logger.info(
+          `[auto-enrich] Asset ${assetId}: enriched=${result.fieldsEnriched.length}, conflicts=${result.conflicts.length}, score ${result.previousScore}->${result.newScore}`
+        );
+      }
+    } catch (err) {
+      logger.warn(`[auto-enrich] Asset ${assetId} failed: ${err}`);
+    }
+  }
+}
+
 async function findLowDQAssets(): Promise<string[]> {
   try {
     const result = await dbQuery(
@@ -269,6 +302,9 @@ async function processUploadJob(job: UploadJob): Promise<void> {
       }
       job.completedAt = new Date();
       logger.info(`Upload job ${job.id} ${job.status} for asset ${job.assetId} (parsed=${result.parsedFolders})`);
+      if (job.status === 'complete') {
+        autoEnrichAssets([job.assetId]).catch(() => {});
+      }
       setTimeout(() => {
         fs.rmSync(job.uploadPath, { recursive: true, force: true });
         uploadJobs.delete(job.id);
@@ -306,7 +342,9 @@ async function processUploadJob(job: UploadJob): Promise<void> {
     job.completedAt = new Date();
     
     logger.info(`Upload job ${job.id} complete: ${job.dealsCreated} assets added`);
-    
+
+    autoEnrichAssets(job.assetsNeedingDetails || []).catch(() => {});
+
     // Cleanup after 1 hour
     setTimeout(() => {
       fs.rmSync(job.uploadPath, { recursive: true, force: true });
@@ -367,6 +405,9 @@ async function processZipUpload(job: UploadJob, zipPath: string): Promise<void> 
       }
       job.completedAt = new Date();
       logger.info(`ZIP upload job ${job.id} ${job.status} for asset ${job.assetId} (parsed=${result.parsedFolders})`);
+      if (job.status === 'complete') {
+        autoEnrichAssets([job.assetId]).catch(() => {});
+      }
       setTimeout(() => {
         fs.rmSync(job.uploadPath, { recursive: true, force: true });
         uploadJobs.delete(job.id);
@@ -402,7 +443,9 @@ async function processZipUpload(job: UploadJob, zipPath: string): Promise<void> 
     job.completedAt = new Date();
     
     logger.info(`ZIP upload job ${job.id} complete: ${job.dealsCreated} assets, ${job.assetsNeedingDetails?.length || 0} need details`);
-    
+
+    autoEnrichAssets(job.assetsNeedingDetails || []).catch(() => {});
+
     // Cleanup after 1 hour
     setTimeout(() => {
       fs.rmSync(job.uploadPath, { recursive: true, force: true });

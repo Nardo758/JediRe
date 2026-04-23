@@ -7,7 +7,47 @@ import { PropertyInfo, PropertyInfoProvider, ProviderConfig } from '../types';
 
 export abstract class BasePropertyInfoProvider implements PropertyInfoProvider {
   abstract readonly config: ProviderConfig;
-  
+
+  // Per-provider rate-limit state (in-memory; persists for process lifetime)
+  private _requestLog: number[] = [];
+  private _dailyResetAt: number = 0;
+  private _dailyCount: number = 0;
+
+  /**
+   * Enforce the provider's rate limits (requestsPerMinute and requestsPerDay).
+   * Awaits until a request slot opens up. Throws if the daily cap is exhausted.
+   */
+  protected async enforceRateLimit(): Promise<void> {
+    const cfg = this.config;
+    const now = Date.now();
+
+    // Daily cap (rolling 24h window)
+    if (cfg.requestsPerDay && cfg.requestsPerDay > 0) {
+      if (now > this._dailyResetAt) {
+        this._dailyResetAt = now + 24 * 60 * 60 * 1000;
+        this._dailyCount = 0;
+      }
+      if (this._dailyCount >= cfg.requestsPerDay) {
+        throw new Error(`[${cfg.name}] Daily rate limit (${cfg.requestsPerDay}) exceeded`);
+      }
+    }
+
+    // Per-minute cap
+    if (cfg.requestsPerMinute && cfg.requestsPerMinute > 0) {
+      const windowStart = now - 60_000;
+      this._requestLog = this._requestLog.filter(t => t > windowStart);
+      if (this._requestLog.length >= cfg.requestsPerMinute) {
+        const oldest = this._requestLog[0];
+        const waitMs = Math.max(0, oldest + 60_000 - now) + 50;
+        await new Promise(r => setTimeout(r, waitMs));
+        this._requestLog = this._requestLog.filter(t => t > Date.now() - 60_000);
+      }
+      this._requestLog.push(Date.now());
+    }
+
+    if (cfg.requestsPerDay && cfg.requestsPerDay > 0) this._dailyCount++;
+  }
+
   /**
    * Check if this provider can handle the given location
    */
