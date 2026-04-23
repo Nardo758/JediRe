@@ -14,7 +14,8 @@ import {
   ArrowLeft, Save, RotateCcw, Brain, Sparkles, Zap, Clock,
   Database, Search, FileText, Edit3, MessageSquare, BarChart3, FileOutput,
   ToggleLeft, ToggleRight, Info, DollarSign, Shield, Scale, FileSearch,
-  TreeDeciduous, ClipboardCheck, TrendingUp, RefreshCw, LineChart, Megaphone
+  TreeDeciduous, ClipboardCheck, TrendingUp, RefreshCw, LineChart, Megaphone,
+  ChevronDown, ChevronRight,
 } from 'lucide-react';
 import { T } from '../../styles/terminal-tokens';
 import api from '../../lib/api';
@@ -274,7 +275,7 @@ function getIconComponent(iconName: string) {
 }
 
 // ============================================================================
-// Skill Card Component
+// Skill Card Component (compact grid card)
 // ============================================================================
 
 interface SkillCardProps {
@@ -288,97 +289,162 @@ const SkillCard: React.FC<SkillCardProps> = ({ skill, onToggle }) => {
   return (
     <div style={{
       background: T.bg.panelAlt,
-      borderRadius: 12,
+      borderRadius: 8,
       border: `1px solid ${skill.enabled ? skill.color + '44' : T.border.subtle}`,
-      padding: 16,
-      opacity: skill.enabled ? 1 : 0.6,
+      padding: '10px 12px',
+      opacity: skill.enabled ? 1 : 0.55,
       transition: 'all 0.2s',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 6,
     }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-        <div style={{
-          width: 40,
-          height: 40,
-          borderRadius: 10,
-          background: `${skill.color}20`,
-          border: `2px solid ${skill.enabled ? skill.color : T.border.subtle}`,
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+          <div style={{
+            width: 28,
+            height: 28,
+            borderRadius: 6,
+            background: `${skill.color}20`,
+            border: `1.5px solid ${skill.enabled ? skill.color : T.border.subtle}`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}>
+            <IconComponent size={14} color={skill.enabled ? skill.color : T.text.muted} />
+          </div>
+          <span style={{
+            color: T.text.primary,
+            fontWeight: 600,
+            fontSize: 11,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}>
+            {skill.name}
+          </span>
+        </div>
+        <button
+          onClick={onToggle}
+          style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, flexShrink: 0 }}
+        >
+          {skill.enabled ? (
+            <ToggleRight size={22} color={skill.color} />
+          ) : (
+            <ToggleLeft size={22} color={T.text.muted} />
+          )}
+        </button>
+      </div>
+
+      <p style={{
+        color: T.text.muted,
+        fontSize: 10,
+        margin: 0,
+        lineHeight: 1.4,
+        display: '-webkit-box',
+        WebkitLineClamp: 2,
+        WebkitBoxOrient: 'vertical' as const,
+        overflow: 'hidden',
+      }}>
+        {skill.description}
+      </p>
+
+      {skill.requiresConfirmation && (
+        <span style={{
+          fontSize: 9,
+          padding: '1px 5px',
+          borderRadius: 3,
+          background: `${T.text.amber}20`,
+          color: T.text.amber,
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 3,
+          alignSelf: 'flex-start',
+        }}>
+          <Info size={8} /> Requires Confirm
+        </span>
+      )}
+    </div>
+  );
+};
+
+// ============================================================================
+// Collapsible Skill Section
+// ============================================================================
+
+interface SkillSectionProps {
+  label: string;
+  emoji: string;
+  color: string;
+  skills: SkillDefinition[];
+  onToggle: (id: string) => void;
+  collapsed: boolean;
+  onCollapse: () => void;
+}
+
+const SkillSection: React.FC<SkillSectionProps> = ({ label, emoji, color, skills, onToggle, collapsed, onCollapse }) => {
+  const enabledCount = skills.filter(s => s.enabled).length;
+
+  return (
+    <div style={{ marginBottom: 24 }}>
+      <button
+        onClick={onCollapse}
+        style={{
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'center',
-          flexShrink: 0,
+          gap: 8,
+          background: 'transparent',
+          border: 'none',
+          cursor: 'pointer',
+          padding: '6px 0',
+          marginBottom: collapsed ? 0 : 12,
+          width: '100%',
+          textAlign: 'left',
+        }}
+      >
+        <span style={{ fontSize: 13 }}>{emoji}</span>
+        <span style={{
+          color,
+          fontSize: 12,
+          fontWeight: 700,
+          textTransform: 'uppercase' as const,
+          letterSpacing: 1,
+          fontFamily: T.font.mono,
         }}>
-          <IconComponent size={20} color={skill.enabled ? skill.color : T.text.muted} />
+          {label} ({skills.length})
+        </span>
+        <span style={{
+          fontSize: 9,
+          padding: '1px 6px',
+          borderRadius: 3,
+          background: enabledCount === skills.length ? `${color}20` : `${T.text.amber}20`,
+          color: enabledCount === skills.length ? color : T.text.amber,
+          marginLeft: 4,
+        }}>
+          {enabledCount}/{skills.length} on
+        </span>
+        <span style={{ flex: 1 }} />
+        {collapsed
+          ? <ChevronRight size={14} color={T.text.muted} />
+          : <ChevronDown size={14} color={T.text.muted} />
+        }
+      </button>
+
+      {!collapsed && (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+          gap: 8,
+        }}>
+          {skills.map(skill => (
+            <SkillCard
+              key={skill.id}
+              skill={skill}
+              onToggle={() => onToggle(skill.id)}
+            />
+          ))}
         </div>
-        
-        <div style={{ flex: 1 }}>
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'space-between',
-            marginBottom: 4,
-          }}>
-            <div style={{ 
-              color: T.text.primary, 
-              fontWeight: 600, 
-              fontSize: 14,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              flexWrap: 'wrap',
-            }}>
-              {skill.name}
-              <span style={{
-                fontSize: 9,
-                padding: '2px 6px',
-                borderRadius: 4,
-                background: `${skill.color}20`,
-                color: skill.color,
-                textTransform: 'uppercase',
-              }}>
-                {skill.category}
-              </span>
-              {skill.requiresConfirmation && (
-                <span style={{
-                  fontSize: 9,
-                  padding: '2px 6px',
-                  borderRadius: 4,
-                  background: `${T.text.amber}20`,
-                  color: T.text.amber,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 3,
-                }}>
-                  <Info size={8} /> Confirm
-                </span>
-              )}
-            </div>
-            
-            <button
-              onClick={onToggle}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                cursor: 'pointer',
-                padding: 0,
-              }}
-            >
-              {skill.enabled ? (
-                <ToggleRight size={28} color={skill.color} />
-              ) : (
-                <ToggleLeft size={28} color={T.text.muted} />
-              )}
-            </button>
-          </div>
-          
-          <p style={{ 
-            color: T.text.secondary, 
-            fontSize: 11, 
-            margin: 0,
-            lineHeight: 1.4,
-          }}>
-            {skill.description}
-          </p>
-        </div>
-      </div>
+      )}
     </div>
   );
 };
@@ -394,6 +460,10 @@ export const SkillsSettingsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+
+  const toggleSection = (key: string) =>
+    setCollapsedSections(prev => ({ ...prev, [key]: !prev[key] }));
 
   useEffect(() => {
     loadSettings();
@@ -654,146 +724,65 @@ export const SkillsSettingsPage: React.FC = () => {
         </span>
       </div>
 
-      {/* Data Skills */}
-      <div style={{ marginBottom: 32 }}>
-        <h2 style={{ 
-          color: '#00B4D8', 
-          fontSize: 14, 
-          fontWeight: 700,
-          marginBottom: 16,
-          textTransform: 'uppercase',
-          letterSpacing: 1,
-        }}>
-          📊 Data Skills ({dataSkills.length})
-        </h2>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {dataSkills.map(skill => (
-            <SkillCard
-              key={skill.id}
-              skill={skill}
-              onToggle={() => handleToggleSkill(skill.id)}
-            />
-          ))}
-        </div>
-      </div>
+      <SkillSection
+        label="Data Skills"
+        emoji="📊"
+        color="#00B4D8"
+        skills={dataSkills}
+        onToggle={handleToggleSkill}
+        collapsed={!!collapsedSections['data']}
+        onCollapse={() => toggleSection('data')}
+      />
 
-      {/* Document Skills */}
-      <div style={{ marginBottom: 32 }}>
-        <h2 style={{ 
-          color: '#F6A623', 
-          fontSize: 14, 
-          fontWeight: 700,
-          marginBottom: 16,
-          textTransform: 'uppercase',
-          letterSpacing: 1,
-        }}>
-          📄 Document Skills ({documentSkills.length})
-        </h2>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {documentSkills.map(skill => (
-            <SkillCard
-              key={skill.id}
-              skill={skill}
-              onToggle={() => handleToggleSkill(skill.id)}
-            />
-          ))}
-        </div>
-      </div>
+      <SkillSection
+        label="Document Skills"
+        emoji="📄"
+        color="#F6A623"
+        skills={documentSkills}
+        onToggle={handleToggleSkill}
+        collapsed={!!collapsedSections['document']}
+        onCollapse={() => toggleSection('document')}
+      />
 
-      {/* Action Skills */}
-      <div style={{ marginBottom: 32 }}>
-        <h2 style={{ 
-          color: '#00D26A', 
-          fontSize: 14, 
-          fontWeight: 700,
-          marginBottom: 16,
-          textTransform: 'uppercase',
-          letterSpacing: 1,
-        }}>
-          ⚡ Action Skills ({actionSkills.length})
-        </h2>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {actionSkills.map(skill => (
-            <SkillCard
-              key={skill.id}
-              skill={skill}
-              onToggle={() => handleToggleSkill(skill.id)}
-            />
-          ))}
-        </div>
-      </div>
+      <SkillSection
+        label="Action Skills"
+        emoji="⚡"
+        color="#00D26A"
+        skills={actionSkills}
+        onToggle={handleToggleSkill}
+        collapsed={!!collapsedSections['action']}
+        onCollapse={() => toggleSection('action')}
+      />
 
-      {/* Analysis Skills */}
-      <div style={{ marginBottom: 32 }}>
-        <h2 style={{ 
-          color: '#B794F4', 
-          fontSize: 14, 
-          fontWeight: 700,
-          marginBottom: 16,
-          textTransform: 'uppercase',
-          letterSpacing: 1,
-        }}>
-          📈 Analysis Skills ({analysisSkills.length})
-        </h2>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {analysisSkills.map(skill => (
-            <SkillCard
-              key={skill.id}
-              skill={skill}
-              onToggle={() => handleToggleSkill(skill.id)}
-            />
-          ))}
-        </div>
-      </div>
+      <SkillSection
+        label="Analysis Skills"
+        emoji="📈"
+        color="#B794F4"
+        skills={analysisSkills}
+        onToggle={handleToggleSkill}
+        collapsed={!!collapsedSections['analysis']}
+        onCollapse={() => toggleSection('analysis')}
+      />
 
-      {/* Report Skills */}
-      <div style={{ marginBottom: 32 }}>
-        <h2 style={{ 
-          color: '#E8F4FD', 
-          fontSize: 14, 
-          fontWeight: 700,
-          marginBottom: 16,
-          textTransform: 'uppercase',
-          letterSpacing: 1,
-        }}>
-          📋 Report Skills ({reportSkills.length})
-        </h2>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {reportSkills.map(skill => (
-            <SkillCard
-              key={skill.id}
-              skill={skill}
-              onToggle={() => handleToggleSkill(skill.id)}
-            />
-          ))}
-        </div>
-      </div>
+      <SkillSection
+        label="Report Skills"
+        emoji="📋"
+        color="#E8F4FD"
+        skills={reportSkills}
+        onToggle={handleToggleSkill}
+        collapsed={!!collapsedSections['report']}
+        onCollapse={() => toggleSection('report')}
+      />
 
-      {/* Advisor Personas */}
-      <div style={{ marginBottom: 32 }}>
-        <h2 style={{
-          color: ADVISOR_COLOR,
-          fontSize: 14,
-          fontWeight: 700,
-          marginBottom: 8,
-          textTransform: 'uppercase',
-          letterSpacing: 1,
-        }}>
-          🧠 Advisor Personas ({advisorSkills.length})
-        </h2>
-        <p style={{ color: T.text.muted, fontSize: 11, margin: '0 0 16px', lineHeight: 1.5 }}>
-          Each advisor is an expert role-played by the AI with its own system prompt and access to read-only deal data. Toggle off the personas you don't need to keep the orchestrator focused.
-        </p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {advisorSkills.map(skill => (
-            <SkillCard
-              key={skill.id}
-              skill={skill}
-              onToggle={() => handleToggleSkill(skill.id)}
-            />
-          ))}
-        </div>
-      </div>
+      <SkillSection
+        label="Advisor Personas"
+        emoji="🧠"
+        color={ADVISOR_COLOR}
+        skills={advisorSkills}
+        onToggle={handleToggleSkill}
+        collapsed={!!collapsedSections['advisor']}
+        onCollapse={() => toggleSection('advisor')}
+      />
     </div>
   );
 };
