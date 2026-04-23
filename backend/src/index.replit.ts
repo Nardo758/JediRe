@@ -1161,40 +1161,11 @@ async function startServer() {
         console.log(`[Property Discovery] Discovered ${totalDiscovered} properties`);
 
         // AL sync from legacy properties → apartment_locator_properties
+        // Uses the same routine as POST /api/v1/apartment-locator/sync-table
         try {
-          const { query: dbQuery } = await import('./database/connection');
-          const sourceRows = await dbQuery(
-            `SELECT id, name, address_line1, city, state_code, zip, lat, lng, units, year_built,
-                    avg_rent, market_rent, current_occupancy
-               FROM properties
-              WHERE address_line1 IS NOT NULL AND city IS NOT NULL AND state_code IS NOT NULL
-                AND COALESCE(units, 0) >= 50`
-          );
-          for (const r of sourceRows.rows) {
-            await dbQuery(
-              `INSERT INTO apartment_locator_properties (
-                  external_id, property_name, address, city, state, zip,
-                  latitude, longitude, total_units, year_built,
-                  avg_asking_rent, avg_effective_rent, occupancy_pct,
-                  source, data_as_of
-                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'apartment_locator', CURRENT_DATE)
-                ON CONFLICT (external_id, source) DO UPDATE SET
-                  avg_asking_rent = EXCLUDED.avg_asking_rent,
-                  avg_effective_rent = EXCLUDED.avg_effective_rent,
-                  occupancy_pct = EXCLUDED.occupancy_pct,
-                  total_units = EXCLUDED.total_units,
-                  last_updated = NOW()`,
-              [
-                `legacy:${r.id}`,
-                r.name || `${r.address_line1}, ${r.city}, ${r.state_code}`,
-                r.address_line1, r.city, r.state_code, r.zip || null,
-                r.lat || null, r.lng || null, r.units || null, r.year_built || null,
-                r.avg_rent || null, r.market_rent || null,
-                r.current_occupancy != null ? Number(r.current_occupancy) * 100 : null,
-              ]
-            );
-          }
-          console.log(`[Property Discovery] AL synced ${sourceRows.rows.length} rows`);
+          const { syncApartmentLocatorTable } = await import('./services/property-enrichment/apartment-locator/sync-table.service');
+          const stats = await syncApartmentLocatorTable({ minUnits: 50 });
+          console.log(`[Property Discovery] AL synced inserted=${stats.inserted}, updated=${stats.updated}, source=${stats.source}`);
         } catch (e) {
           console.warn('[Property Discovery] AL sync failed:', (e as Error).message);
         }

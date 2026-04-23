@@ -365,14 +365,9 @@ async function processUploadJob(job: UploadJob): Promise<void> {
       }
     }
 
-    // Check for assets with low data quality that need manual input
-    if (result.parsedFolders > 0) {
-      const lowDQAssets = await findLowDQAssets();
-      job.assetsNeedingDetails = [...(job.assetsNeedingDetails || []), ...lowDQAssets];
-      if (lowDQAssets.length > 0 && !job.assetId) {
-        job.assetId = lowDQAssets[0]; // First one for the modal
-      }
-    }
+    // Auto-enrichment is scoped to assets created during this upload only.
+    // (Removed legacy global findLowDQAssets() lookup — could mutate other
+    // users' recently-created assets.)
 
     job.status = 'complete';
     job.completedAt = new Date();
@@ -466,14 +461,9 @@ async function processZipUpload(job: UploadJob, zipPath: string): Promise<void> 
       }
     }
 
-    // Check for assets with low data quality that need manual input
-    if (result.parsedFolders > 0) {
-      const lowDQAssets = await findLowDQAssets();
-      job.assetsNeedingDetails = [...(job.assetsNeedingDetails || []), ...lowDQAssets];
-      if (lowDQAssets.length > 0 && !job.assetId) {
-        job.assetId = lowDQAssets[0];
-      }
-    }
+    // Auto-enrichment is scoped to assets created during this upload only.
+    // (Removed legacy global findLowDQAssets() lookup — could mutate other
+    // users' recently-created assets.)
 
     job.status = 'complete';
     job.completedAt = new Date();
