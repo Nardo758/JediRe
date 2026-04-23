@@ -286,7 +286,7 @@ function inferDealType(
 
 // ─── Folder Scanner ───────────────────────────────────────────────────────────
 
-export function scanArchiveFolder(archivePath: string): ArchiveDealFolder[] {
+export function scanArchiveFolder(archivePath: string, rootLabel?: string): ArchiveDealFolder[] {
   const folders: ArchiveDealFolder[] = [];
   
   if (!fs.existsSync(archivePath)) {
@@ -295,7 +295,8 @@ export function scanArchiveFolder(archivePath: string): ArchiveDealFolder[] {
   }
   
   const entries = fs.readdirSync(archivePath, { withFileTypes: true });
-  
+
+  // Collect subdirectory-based deal folders (standard ZIP structure)
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     
@@ -310,8 +311,35 @@ export function scanArchiveFolder(archivePath: string): ArchiveDealFolder[] {
       files,
     });
   }
+
+  // If no subdirectories found, treat root-level files as a single deal folder.
+  // This handles flat uploads where files are dropped individually (not zipped into folders).
+  if (folders.length === 0) {
+    const rootFiles = entries
+      .filter(e => e.isFile())
+      .map(e => {
+        const ext = getExtension(e.name);
+        if (!['xlsx', 'xls', 'pdf', 'csv'].includes(ext)) return null;
+        return {
+          name: e.name,
+          path: path.join(archivePath, e.name),
+          type: classifyFile(e.name),
+          extension: ext,
+        } as ArchiveFile;
+      })
+      .filter((f): f is ArchiveFile => f !== null);
+
+    if (rootFiles.length > 0) {
+      folders.push({
+        name: rootLabel || path.basename(archivePath),
+        path: archivePath,
+        files: rootFiles,
+      });
+      logger.info(`No subfolders found — treating ${rootFiles.length} root-level file(s) as a single deal`);
+    }
+  }
   
-  logger.info(`Scanned ${folders.length} deal folders in archive`);
+  logger.info(`Scanned ${folders.length} deal folder(s) in archive`);
   return folders;
 }
 
@@ -593,64 +621,45 @@ async function parseArchiveDeal(folder: ArchiveDealFolder): Promise<ParsedArchiv
 // ─── Database Upsert ──────────────────────────────────────────────────────────
 
 async function upsertArchiveDeal(pool: Pool, deal: ParsedArchiveDeal): Promise<string> {
-  const vintageBand = getVintageBand(deal.yearBuilt);
-  const unitCountBand = getUnitCountBand(deal.units);
   const propertyType = deal.stories ? getPropertyType(deal.stories, deal.units) : 'garden';
-  
+
+  const mergedExtraction = {
+    ...deal.extractionData,
+    brokerClaims: deal.brokerClaims,
+    sourceFiles: deal.sourceFiles.map(f => ({ name: f.name, type: f.type })),
+    parseWarnings: deal.parseWarnings,
+  };
+
+  const dqScore = computeDQ({
+    unit_count: deal.units,
+    avg_rent: deal.avgRent,
+    occupancy_rate: deal.occupancyPct,
+    cap_rate: deal.goingInCapRate,
+    noi: deal.trailingNoi,
+    city: deal.city,
+    year_built: deal.yearBuilt,
+  });
+
   const result = await pool.query(
     `INSERT INTO data_library_assets (
       property_name, city, state, unit_count, year_built,
-      source_type, archive_folder_path,
-      property_type, vintage_band, unit_count_band,
-      stories, msa, asset_class, deal_type,
-      going_in_cap_rate, stabilized_cap_rate, exit_cap_rate,
-      trailing_noi, trailing_revenue, trailing_opex, opex_ratio, noi_per_unit, opex_per_unit,
-      avg_rent, occupancy_pct, loss_to_lease_pct,
-      broker_claims, extraction_data, source_files, parse_warnings,
-      parse_status, parsed_at, data_quality_score, created_at, updated_at
+      source_type,
+      property_type,
+      stories, msa_name, asset_class,
+      cap_rate,
+      noi, noi_per_unit, expense_ratio,
+      avg_rent, occupancy_rate,
+      extraction_data, data_quality_score, created_at, updated_at
     ) VALUES (
       $1, $2, $3, $4, $5,
-      'archive', $6,
+      'archive',
+      $6,
       $7, $8, $9,
-      $10, $11, $12, $13,
-      $14, $15, $16,
-      $17, $18, $19, $20, $21, $22,
-      $23, $24, $25,
-      $26, $27, $28, $29,
-      'complete', NOW(), 60, NOW(), NOW()
+      $10,
+      $11, $12, $13,
+      $14, $15,
+      $16, $17, NOW(), NOW()
     )
-    ON CONFLICT (archive_folder_path) WHERE archive_folder_path IS NOT NULL
-    DO UPDATE SET
-      property_name = EXCLUDED.property_name,
-      city = COALESCE(EXCLUDED.city, data_library_assets.city),
-      state = COALESCE(EXCLUDED.state, data_library_assets.state),
-      unit_count = COALESCE(EXCLUDED.unit_count, data_library_assets.unit_count),
-      property_type = EXCLUDED.property_type,
-      vintage_band = EXCLUDED.vintage_band,
-      unit_count_band = EXCLUDED.unit_count_band,
-      stories = COALESCE(EXCLUDED.stories, data_library_assets.stories),
-      msa = COALESCE(EXCLUDED.msa, data_library_assets.msa),
-      asset_class = COALESCE(EXCLUDED.asset_class, data_library_assets.asset_class),
-      deal_type = COALESCE(EXCLUDED.deal_type, data_library_assets.deal_type),
-      going_in_cap_rate = COALESCE(EXCLUDED.going_in_cap_rate, data_library_assets.going_in_cap_rate),
-      stabilized_cap_rate = COALESCE(EXCLUDED.stabilized_cap_rate, data_library_assets.stabilized_cap_rate),
-      exit_cap_rate = COALESCE(EXCLUDED.exit_cap_rate, data_library_assets.exit_cap_rate),
-      trailing_noi = EXCLUDED.trailing_noi,
-      trailing_revenue = EXCLUDED.trailing_revenue,
-      trailing_opex = EXCLUDED.trailing_opex,
-      opex_ratio = EXCLUDED.opex_ratio,
-      noi_per_unit = EXCLUDED.noi_per_unit,
-      opex_per_unit = EXCLUDED.opex_per_unit,
-      avg_rent = EXCLUDED.avg_rent,
-      occupancy_pct = EXCLUDED.occupancy_pct,
-      loss_to_lease_pct = EXCLUDED.loss_to_lease_pct,
-      broker_claims = EXCLUDED.broker_claims,
-      extraction_data = EXCLUDED.extraction_data,
-      source_files = EXCLUDED.source_files,
-      parse_warnings = EXCLUDED.parse_warnings,
-      parse_status = 'complete',
-      parsed_at = NOW(),
-      updated_at = NOW()
     RETURNING id`,
     [
       deal.propertyName,
@@ -658,41 +667,41 @@ async function upsertArchiveDeal(pool: Pool, deal: ParsedArchiveDeal): Promise<s
       deal.state,
       deal.units,
       deal.yearBuilt,
-      deal.folderPath,
       propertyType,
-      vintageBand,
-      unitCountBand,
       deal.stories,
       deal.msa,
       deal.assetClass,
-      deal.dealType,
       deal.goingInCapRate,
-      deal.stabilizedCapRate,
-      deal.exitCapRate,
       deal.trailingNoi,
-      deal.trailingRevenue,
-      deal.trailingOpex,
-      deal.opexRatio,
       deal.noiPerUnit,
-      deal.opexPerUnit,
+      deal.opexRatio,
       deal.avgRent,
       deal.occupancyPct,
-      deal.lossToLeasePct,
-      JSON.stringify(deal.brokerClaims),
-      JSON.stringify(deal.extractionData),
-      JSON.stringify(deal.sourceFiles.map(f => ({ name: f.name, type: f.type, path: f.path }))),
-      deal.parseWarnings,
+      JSON.stringify(mergedExtraction),
+      dqScore,
     ]
   );
-  
+
   return result.rows[0]?.id;
+}
+
+function computeDQ(fields: Record<string, unknown>): number {
+  const weights: Record<string, number> = {
+    unit_count: 15, avg_rent: 20, occupancy_rate: 20,
+    cap_rate: 15, noi: 15, city: 10, year_built: 5,
+  };
+  let score = 0;
+  for (const [key, weight] of Object.entries(weights)) {
+    if (fields[key] !== null && fields[key] !== undefined) score += weight;
+  }
+  return score;
 }
 
 // ─── Main Ingestion Function ──────────────────────────────────────────────────
 
 export async function ingestArchiveDeals(
   archivePath: string,
-  options: { limit?: number; skipExisting?: boolean } = {}
+  options: { limit?: number; skipExisting?: boolean; rootLabel?: string } = {}
 ): Promise<ArchiveScanResult> {
   const pool = getPool();
   const result: ArchiveScanResult = {
@@ -705,8 +714,8 @@ export async function ingestArchiveDeals(
   
   logger.info(`Starting archive ingestion from: ${archivePath}`);
   
-  // Scan for deal folders
-  const folders = scanArchiveFolder(archivePath);
+  // Scan for deal folders (pass rootLabel so flat uploads get named correctly)
+  const folders = scanArchiveFolder(archivePath, options.rootLabel);
   result.totalFolders = folders.length;
   
   if (options.limit) {

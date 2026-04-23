@@ -215,17 +215,15 @@ async function createLabeledAsset(label: string, userId: string): Promise<string
  * Find assets from a recent upload that have low data quality scores
  * and would benefit from manual data entry
  */
-async function findLowDQAssets(uploadPath: string): Promise<string[]> {
+async function findLowDQAssets(): Promise<string[]> {
   try {
-    // Find assets that were just created from this upload path with DQ < 50
     const result = await dbQuery(
       `SELECT id FROM data_library_assets 
-       WHERE archive_folder_path LIKE $1 
+       WHERE source_type = 'archive'
          AND data_quality_score < 50
-         AND created_at > NOW() - INTERVAL '10 minutes'
+         AND created_at > NOW() - INTERVAL '5 minutes'
        ORDER BY created_at DESC
-       LIMIT 5`,
-      [`${uploadPath}%`]
+       LIMIT 5`
     );
     return result.rows.map(r => r.id);
   } catch (err) {
@@ -238,7 +236,10 @@ async function processUploadJob(job: UploadJob): Promise<void> {
   try {
     job.status = 'parsing';
     
-    const result = await ingestArchiveDeals(job.uploadPath, { skipExisting: false });
+    const result = await ingestArchiveDeals(job.uploadPath, {
+      skipExisting: false,
+      rootLabel: job.customLabel || undefined,
+    });
     
     job.dealsCreated = result.parsedFolders;
     job.errors = result.errors;
@@ -248,17 +249,21 @@ async function processUploadJob(job: UploadJob): Promise<void> {
       await linkDealToLibrary(job.dealId);
       if (result.parsedFolders === 0) job.dealsCreated = 1;
     } else if (job.customLabel) {
-      const assetId = await createLabeledAsset(job.customLabel, job.userId);
-      if (assetId) {
-        job.assetId = assetId;
-        job.assetsNeedingDetails = [assetId]; // Manual entry always needs details
+      // Ingestion already created the asset using rootLabel if files were parseable.
+      // Only fall back to placeholder if ingestion found nothing.
+      if (result.parsedFolders === 0) {
+        const assetId = await createLabeledAsset(job.customLabel, job.userId);
+        if (assetId) {
+          job.assetId = assetId;
+          job.assetsNeedingDetails = [assetId];
+        }
+        job.dealsCreated = 1;
       }
-      if (result.parsedFolders === 0) job.dealsCreated = 1;
     }
 
     // Check for assets with low data quality that need manual input
     if (result.parsedFolders > 0) {
-      const lowDQAssets = await findLowDQAssets(job.uploadPath);
+      const lowDQAssets = await findLowDQAssets();
       job.assetsNeedingDetails = [...(job.assetsNeedingDetails || []), ...lowDQAssets];
       if (lowDQAssets.length > 0 && !job.assetId) {
         job.assetId = lowDQAssets[0]; // First one for the modal
@@ -300,7 +305,10 @@ async function processZipUpload(job: UploadJob, zipPath: string): Promise<void> 
     job.status = 'parsing';
     
     // Run archive ingestion
-    const result = await ingestArchiveDeals(job.uploadPath, { skipExisting: false });
+    const result = await ingestArchiveDeals(job.uploadPath, {
+      skipExisting: false,
+      rootLabel: job.customLabel || undefined,
+    });
     
     job.dealsCreated = result.parsedFolders;
     job.processedFiles = job.totalFiles;
@@ -311,17 +319,19 @@ async function processZipUpload(job: UploadJob, zipPath: string): Promise<void> 
       await linkDealToLibrary(job.dealId);
       if (result.parsedFolders === 0) job.dealsCreated = 1;
     } else if (job.customLabel) {
-      const assetId = await createLabeledAsset(job.customLabel, job.userId);
-      if (assetId) {
-        job.assetId = assetId;
-        job.assetsNeedingDetails = [assetId];
+      if (result.parsedFolders === 0) {
+        const assetId = await createLabeledAsset(job.customLabel, job.userId);
+        if (assetId) {
+          job.assetId = assetId;
+          job.assetsNeedingDetails = [assetId];
+        }
+        job.dealsCreated = 1;
       }
-      if (result.parsedFolders === 0) job.dealsCreated = 1;
     }
 
     // Check for assets with low data quality that need manual input
     if (result.parsedFolders > 0) {
-      const lowDQAssets = await findLowDQAssets(job.uploadPath);
+      const lowDQAssets = await findLowDQAssets();
       job.assetsNeedingDetails = [...(job.assetsNeedingDetails || []), ...lowDQAssets];
       if (lowDQAssets.length > 0 && !job.assetId) {
         job.assetId = lowDQAssets[0];
