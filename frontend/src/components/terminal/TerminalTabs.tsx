@@ -96,14 +96,6 @@ export const TerminalTabs = <T extends string = TabKey>({
         })}
       </div>
 
-      {/* Search hint */}
-      <div style={{
-        fontSize: 10,
-        color: BT.text.dim,
-        fontStyle: 'italic',
-      }}>
-        Press 0-7 to navigate • {searchPlaceholder}
-      </div>
     </div>
   );
 };
