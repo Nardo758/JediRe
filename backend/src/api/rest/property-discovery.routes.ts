@@ -245,7 +245,7 @@ router.get('/matches/review', async (req: Request, res: Response) => {
  * 
  * Confirm a match.
  */
-router.post('/matches/:id/confirm', async (req: Request, res: Response) => {
+router.post(['/matches/:id/confirm', '/match/:id/confirm'], async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { notes } = req.body;
@@ -265,7 +265,7 @@ router.post('/matches/:id/confirm', async (req: Request, res: Response) => {
  * 
  * Reject a match.
  */
-router.post('/matches/:id/reject', async (req: Request, res: Response) => {
+router.post(['/matches/:id/reject', '/match/:id/reject'], async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { reason } = req.body;

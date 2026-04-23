@@ -283,6 +283,16 @@ CREATE TRIGGER tr_al_props_updated
   BEFORE UPDATE ON apartment_locator_properties
   FOR EACH ROW EXECUTE FUNCTION update_property_timestamp();
 
+-- Defensive: ensure update_enrichment_timestamp() exists regardless of which
+-- migration runs first (this file or 20260423_property_enrichment.sql).
+CREATE OR REPLACE FUNCTION update_enrichment_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
 CREATE TRIGGER tr_matches_updated
   BEFORE UPDATE ON property_matches
   FOR EACH ROW EXECUTE FUNCTION update_enrichment_timestamp();
