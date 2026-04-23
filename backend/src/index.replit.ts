@@ -497,6 +497,12 @@ app.use('/api/v1/cloud-storage', cloudStorageRouter);
 import bulkUploadRouter from './api/rest/bulk-upload.routes';
 app.use('/api/v1/bulk-upload', bulkUploadRouter);
 
+import propertyDiscoveryRouter from './api/rest/property-discovery.routes';
+app.use('/api/v1/property-discovery', propertyDiscoveryRouter);
+
+import apartmentLocatorRouter from './api/rest/apartment-locator.routes';
+app.use('/api/v1/apartment-locator', apartmentLocatorRouter);
+
 // Learning feedback system routes
 import learningRouter from './api/rest/learning.routes';
 app.use('/api/v1/learning', learningRouter);

@@ -23,7 +23,12 @@ const router = Router();
 router.post('/sync-table', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { city, state, minUnits = 1 } = req.body || {};
-    const where: string[] = ['p.address_line1 IS NOT NULL', 'p.city IS NOT NULL', 'p.state_code IS NOT NULL'];
+    const where: string[] = [
+      'p.apartment_locator_id IS NOT NULL',
+      'p.address_line1 IS NOT NULL',
+      'p.city IS NOT NULL',
+      'p.state_code IS NOT NULL',
+    ];
     const params: unknown[] = [minUnits];
     where.push(`COALESCE(p.units, 0) >= $1`);
     if (city) {
@@ -36,7 +41,7 @@ router.post('/sync-table', requireAuth, async (req: AuthenticatedRequest, res: R
     }
 
     const sourceRows = await dbQuery(
-      `SELECT p.id, p.name, p.address_line1, p.city, p.state_code, p.zip,
+      `SELECT p.id, p.apartment_locator_id, p.name, p.address_line1, p.city, p.state_code, p.zip,
               p.lat, p.lng, p.units, p.year_built,
               p.avg_rent, p.market_rent, p.current_occupancy
          FROM properties p
@@ -47,7 +52,7 @@ router.post('/sync-table', requireAuth, async (req: AuthenticatedRequest, res: R
     let inserted = 0;
     let updated = 0;
     for (const r of sourceRows.rows) {
-      const externalId = `legacy:${r.id}`;
+      const externalId = String(r.apartment_locator_id);
       const result = await dbQuery(
         `INSERT INTO apartment_locator_properties (
             external_id, property_name, address, city, state, zip,
