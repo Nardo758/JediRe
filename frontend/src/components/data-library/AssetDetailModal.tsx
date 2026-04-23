@@ -119,7 +119,13 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Auto-Enrich state
+  // Auto-Enrich state. The flow is:
+  //   1) Click "Auto-Enrich" → POST /enrich/:assetId (preview only, no DB write)
+  //   2) Stage per-field decisions in `decisions` state (no API calls yet)
+  //   3) Click "Apply" → POST /enrichment-log/:logId/resolve once,
+  //      either with {accept:true} (apply all proposed) or with the
+  //      {resolutions:{field:'keep'|'overwrite'}} map for per-field control.
+  //      "Discard" sends {accept:false} and persists nothing.
   const [enriching, setEnriching] = useState(false);
   const [enrichResult, setEnrichResult] = useState<{
     fieldsEnriched: string[];
@@ -130,6 +136,8 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
   } | null>(null);
   const [enrichError, setEnrichError] = useState<string | null>(null);
   const [resolving, setResolving] = useState(false);
+  // Per-field staged decisions (only set when user explicitly chooses).
+  const [decisions, setDecisions] = useState<Record<string, 'overwrite' | 'keep'>>({});
 
   // Prefill from existing asset when in edit mode
   useEffect(() => {
@@ -286,6 +294,10 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
         newScore: r.newScore ?? 0,
         logId: r.logId,
       });
+      // Default per-field decisions for any conflicts: 'overwrite' (accept).
+      const init: Record<string, 'overwrite' | 'keep'> = {};
+      for (const c of (r.conflicts || [])) init[c.field] = 'overwrite';
+      setDecisions(init);
     } catch (err) {
       const e = err as { response?: { data?: { error?: string } }; message?: string };
       setEnrichError(e.response?.data?.error || e.message || 'Enrichment failed');
@@ -317,45 +329,67 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
     }
   };
 
-  const handleResolveAll = async (accept: boolean) => {
+  // Stage a single per-field decision (no API call).
+  const stageDecision = (field: string, decision: 'overwrite' | 'keep') => {
+    setDecisions(prev => ({ ...prev, [field]: decision }));
+  };
+
+  // Stage all conflicts at once (no API call).
+  const stageAll = (decision: 'overwrite' | 'keep') => {
+    if (!enrichResult) return;
+    const next: Record<string, 'overwrite' | 'keep'> = {};
+    for (const c of enrichResult.conflicts) next[c.field] = decision;
+    setDecisions(next);
+  };
+
+  // Apply enrichment with the staged decisions. Single network call. If there
+  // are no conflicts at all (e.g. only missing-field fills), this still works:
+  // we send {accept: true} which applies every proposed field.
+  const handleApply = async () => {
     if (!enrichResult?.logId) return;
     setResolving(true);
     try {
-      await apiClient.post(`/api/v1/property-discovery/enrichment-log/${enrichResult.logId}/resolve`, {
-        accept,
-      });
+      const hasConflicts = enrichResult.conflicts.length > 0;
+      if (hasConflicts) {
+        await apiClient.post(`/api/v1/property-discovery/enrichment-log/${enrichResult.logId}/resolve`, {
+          resolutions: decisions,
+        });
+      } else {
+        await apiClient.post(`/api/v1/property-discovery/enrichment-log/${enrichResult.logId}/resolve`, {
+          accept: true,
+        });
+      }
+      const acceptedConflictFields = enrichResult.conflicts
+        .filter(c => decisions[c.field] === 'overwrite')
+        .map(c => c.field);
       setEnrichResult(prev => prev ? {
         ...prev,
         conflicts: [],
-        fieldsEnriched: accept
-          ? [...prev.fieldsEnriched, ...prev.conflicts.map(c => c.field)]
-          : prev.fieldsEnriched,
+        fieldsEnriched: [...prev.fieldsEnriched, ...acceptedConflictFields],
       } : prev);
-      if (accept) await refreshAssetAfterApply();
+      setDecisions({});
+      await refreshAssetAfterApply();
     } catch (err) {
       const e = err as { response?: { data?: { error?: string } }; message?: string };
-      setEnrichError(e.response?.data?.error || e.message || 'Failed to resolve conflicts');
+      setEnrichError(e.response?.data?.error || e.message || 'Failed to apply enrichment');
     } finally {
       setResolving(false);
     }
   };
 
-  const handleResolveOne = async (field: string, accept: boolean) => {
+  // Discard the proposal entirely. Server marks the log rejected; no asset writes.
+  const handleDiscard = async () => {
     if (!enrichResult?.logId) return;
     setResolving(true);
     try {
       await apiClient.post(`/api/v1/property-discovery/enrichment-log/${enrichResult.logId}/resolve`, {
-        resolutions: { [field]: accept ? 'overwrite' : 'keep' },
+        accept: false,
       });
-      setEnrichResult(prev => prev ? {
-        ...prev,
-        conflicts: prev.conflicts.filter(c => c.field !== field),
-        fieldsEnriched: accept ? [...prev.fieldsEnriched, field] : prev.fieldsEnriched,
-      } : prev);
-      if (accept) await refreshAssetAfterApply();
+      setEnrichResult(null);
+      setDecisions({});
     } catch (err) {
       const e = err as { response?: { data?: { error?: string } }; message?: string };
-      setEnrichError(e.response?.data?.error || e.message || 'Failed to resolve conflict');
+      setEnrichError(e.response?.data?.error || e.message || 'Failed to discard enrichment');
     } finally {
       setResolving(false);
     }
@@ -569,77 +603,117 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
                 )}
               </div>
             )}
-            {enrichResult && enrichResult.conflicts.length > 0 && (
+            {enrichResult && enrichResult.logId && (
               <div style={{
                 marginTop: 4, border: `1px solid ${C.border}`, background: C.panel,
               }}>
-                <div style={{ maxHeight: 200, overflow: 'auto' }}>
-                  {enrichResult.conflicts.map((c, idx) => (
-                    <div key={`${c.field}-${idx}`} style={{
-                      padding: '8px 10px', borderBottom: idx < enrichResult.conflicts.length - 1 ? `1px solid ${C.border}` : 'none',
-                      display: 'flex', flexDirection: 'column', gap: 4,
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <div style={{ fontSize: 10, color: C.cyan, fontFamily: MONO, fontWeight: 700 }}>
-                          {c.field} <span style={{ color: C.muted, fontWeight: 400 }}>· {c.source}</span>
+                {enrichResult.conflicts.length > 0 && (
+                  <div style={{ maxHeight: 200, overflow: 'auto' }}>
+                    {enrichResult.conflicts.map((c, idx) => {
+                      const decision = decisions[c.field] || 'overwrite';
+                      const accepted = decision === 'overwrite';
+                      return (
+                        <div key={`${c.field}-${idx}`} style={{
+                          padding: '8px 10px', borderBottom: idx < enrichResult.conflicts.length - 1 ? `1px solid ${C.border}` : 'none',
+                          display: 'flex', flexDirection: 'column', gap: 4,
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <div style={{ fontSize: 10, color: C.cyan, fontFamily: MONO, fontWeight: 700 }}>
+                              {c.field} <span style={{ color: C.muted, fontWeight: 400 }}>· {c.source}</span>
+                            </div>
+                            <div style={{ display: 'flex', gap: 4 }}>
+                              <button
+                                onClick={() => stageDecision(c.field, 'overwrite')}
+                                disabled={resolving}
+                                style={{
+                                  padding: '2px 8px', fontSize: 9, fontWeight: 700,
+                                  background: accepted ? '#10B981' : 'transparent',
+                                  color: accepted ? '#001018' : '#10B981',
+                                  border: accepted ? 'none' : '1px solid #10B981',
+                                  cursor: resolving ? 'wait' : 'pointer', fontFamily: MONO,
+                                }}
+                              >
+                                ACCEPT
+                              </button>
+                              <button
+                                onClick={() => stageDecision(c.field, 'keep')}
+                                disabled={resolving}
+                                style={{
+                                  padding: '2px 8px', fontSize: 9, fontWeight: 700,
+                                  background: !accepted ? '#7F1D1D' : 'transparent',
+                                  color: !accepted ? '#FFF' : '#FCA5A5',
+                                  border: !accepted ? 'none' : '1px solid #7F1D1D',
+                                  cursor: resolving ? 'wait' : 'pointer', fontFamily: MONO,
+                                }}
+                              >
+                                KEEP
+                              </button>
+                            </div>
+                          </div>
+                          <div style={{ fontSize: 10, color: C.secondary, display: 'flex', gap: 12 }}>
+                            <div>Existing: <span style={{ color: C.primary, fontFamily: MONO }}>{String(c.existingValue ?? '—')}</span></div>
+                            <div>Proposed: <span style={{ color: '#FCD34D', fontFamily: MONO }}>{String(c.enrichedValue ?? '—')}</span></div>
+                          </div>
                         </div>
-                        <div style={{ display: 'flex', gap: 4 }}>
-                          <button
-                            onClick={() => handleResolveOne(c.field, true)}
-                            disabled={resolving || !enrichResult.logId}
-                            style={{
-                              padding: '2px 8px', fontSize: 9, fontWeight: 700,
-                              background: '#10B981', color: '#001018', border: 'none',
-                              cursor: resolving ? 'wait' : 'pointer', fontFamily: MONO,
-                            }}
-                          >
-                            ACCEPT
-                          </button>
-                          <button
-                            onClick={() => handleResolveOne(c.field, false)}
-                            disabled={resolving || !enrichResult.logId}
-                            style={{
-                              padding: '2px 8px', fontSize: 9, fontWeight: 700,
-                              background: 'transparent', color: '#FCA5A5',
-                              border: '1px solid #7F1D1D', cursor: resolving ? 'wait' : 'pointer', fontFamily: MONO,
-                            }}
-                          >
-                            KEEP
-                          </button>
-                        </div>
-                      </div>
-                      <div style={{ fontSize: 10, color: C.secondary, display: 'flex', gap: 12 }}>
-                        <div>Existing: <span style={{ color: C.primary, fontFamily: MONO }}>{String(c.existingValue ?? '—')}</span></div>
-                        <div>Proposed: <span style={{ color: '#FCD34D', fontFamily: MONO }}>{String(c.enrichedValue ?? '—')}</span></div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                      );
+                    })}
+                  </div>
+                )}
                 <div style={{
-                  display: 'flex', gap: 6, padding: '8px 10px',
-                  borderTop: `1px solid ${C.border}`, background: C.bg,
+                  display: 'flex', gap: 6, padding: '8px 10px', alignItems: 'center', flexWrap: 'wrap',
+                  borderTop: enrichResult.conflicts.length > 0 ? `1px solid ${C.border}` : 'none',
+                  background: C.bg,
                 }}>
+                  {enrichResult.conflicts.length > 0 && (
+                    <>
+                      <button
+                        onClick={() => stageAll('overwrite')}
+                        disabled={resolving}
+                        style={{
+                          padding: '2px 8px', fontSize: 9, fontWeight: 700,
+                          background: 'transparent', color: '#10B981',
+                          border: '1px solid #10B981',
+                          cursor: resolving ? 'wait' : 'pointer', fontFamily: MONO,
+                        }}
+                      >
+                        ACCEPT ALL
+                      </button>
+                      <button
+                        onClick={() => stageAll('keep')}
+                        disabled={resolving}
+                        style={{
+                          padding: '2px 8px', fontSize: 9, fontWeight: 700,
+                          background: 'transparent', color: '#FCA5A5',
+                          border: '1px solid #7F1D1D',
+                          cursor: resolving ? 'wait' : 'pointer', fontFamily: MONO,
+                        }}
+                      >
+                        KEEP ALL
+                      </button>
+                      <div style={{ flex: 1 }} />
+                    </>
+                  )}
                   <button
-                    onClick={() => handleResolveAll(true)}
-                    disabled={resolving || !enrichResult.logId}
+                    onClick={handleApply}
+                    disabled={resolving}
                     style={{
-                      padding: '4px 12px', fontSize: 10, fontWeight: 700,
+                      padding: '4px 14px', fontSize: 10, fontWeight: 700,
                       background: '#10B981', color: '#001018', border: 'none',
                       cursor: resolving ? 'wait' : 'pointer', fontFamily: MONO,
                     }}
                   >
-                    {resolving ? '…' : 'ACCEPT ALL'}
+                    {resolving ? '…' : 'APPLY ENRICHMENT'}
                   </button>
                   <button
-                    onClick={() => handleResolveAll(false)}
-                    disabled={resolving || !enrichResult.logId}
+                    onClick={handleDiscard}
+                    disabled={resolving}
                     style={{
                       padding: '4px 12px', fontSize: 10, fontWeight: 700,
                       background: 'transparent', color: '#FCA5A5',
                       border: '1px solid #7F1D1D', cursor: resolving ? 'wait' : 'pointer', fontFamily: MONO,
                     }}
                   >
-                    REJECT ALL
+                    DISCARD
                   </button>
                 </div>
               </div>

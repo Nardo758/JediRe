@@ -1151,6 +1151,18 @@ async function startServer() {
         const { getPropertyMatcherService } = await import('./services/property-enrichment/matching/property-matcher.service');
         const { COUNTY_CONFIGS } = await import('./services/property-enrichment/property-info/county-configs');
 
+        // 1) AL sync from legacy properties → apartment_locator_properties
+        //    (must run BEFORE matching so newly-onboarded AL rows are
+        //    available to the matcher in the same daily cycle).
+        try {
+          const { syncApartmentLocatorTable } = await import('./services/property-enrichment/apartment-locator/sync-table.service');
+          const stats = await syncApartmentLocatorTable({ minUnits: 50 });
+          console.log(`[Property Discovery] AL synced inserted=${stats.inserted}, updated=${stats.updated}, source=${stats.source}`);
+        } catch (e) {
+          console.warn('[Property Discovery] AL sync failed:', (e as Error).message);
+        }
+
+        // 2) Discover-all: sweep every configured county.
         const discoverySvc = getPropertyDiscoveryService();
         let totalDiscovered = 0;
         for (const cfg of COUNTY_CONFIGS) {
@@ -1163,17 +1175,7 @@ async function startServer() {
         }
         console.log(`[Property Discovery] Discovered ${totalDiscovered} properties`);
 
-        // AL sync from legacy properties → apartment_locator_properties
-        // Uses the same routine as POST /api/v1/apartment-locator/sync-table
-        try {
-          const { syncApartmentLocatorTable } = await import('./services/property-enrichment/apartment-locator/sync-table.service');
-          const stats = await syncApartmentLocatorTable({ minUnits: 50 });
-          console.log(`[Property Discovery] AL synced inserted=${stats.inserted}, updated=${stats.updated}, source=${stats.source}`);
-        } catch (e) {
-          console.warn('[Property Discovery] AL sync failed:', (e as Error).message);
-        }
-
-        // Match per county
+        // 3) Match per county
         const matcherSvc = getPropertyMatcherService();
         let totalMatched = 0;
         for (const cfg of COUNTY_CONFIGS) {
