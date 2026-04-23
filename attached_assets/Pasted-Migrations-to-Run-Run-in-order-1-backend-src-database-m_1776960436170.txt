@@ -1,0 +1,53 @@
+Migrations to Run
+
+-- Run in order:
+
+1. backend/src/database/migrations/20260423_property_enrichment.sql
+2. backend/src/database/migrations/20260423_property_discovery_matching.sql
+───
+
+Command for Replit Agent
+
+Pull latest from GitHub, then run these two migrations in order:
+
+1. backend/src/database/migrations/20260423_property_enrichment.sql
+2. backend/src/database/migrations/20260423_property_discovery_matching.sql
+
+After migrations, integrate the Property Intelligence system with existing plumbing:
+
+1. DATA LIBRARY INTEGRATION:
+   - In data-library-assets.routes.ts POST/upload endpoint, after document extraction completes and DQ score < 50, trigger auto-enrichment:
+     import { getDataLibraryAutoEnrichmentService } from '../services/property-enrichment';
+     const enrichmentService = getDataLibraryAutoEnrichmentService();
+     const result = await enrichmentService.enrichAsset(asset);
+   - Store enrichment results and show conflicts to user if any
+
+2. APARTMENT LOCATOR AI CONNECTION:
+   - Check existing apartment-locator.routes.ts and apartment-locator.service.ts
+   - Add sync endpoint to populate apartment_locator_properties table from existing rent data
+   - Wire ApartmentLocatorProperty type to match existing rent data schema
+
+3. ASSET DETAIL MODAL:
+   - In AssetDetailModal.tsx, add "Auto-Enrich" button that calls POST /api/v1/property-discovery/enrich-asset
+   - Show enrichment preview with conflicts before applying
+   - Update DQ score display after enrichment
+
+4. ADMIN DASHBOARD:
+   - Add Property Discovery section to F8 Admin showing:
+     - Discovery stats (properties found, by county, match status)
+     - Match review queue for manual confirmation
+     - Trigger discovery buttons per county
+
+5. GAP ANALYSIS - Check for:
+   - Any existing property data services that duplicate this functionality
+   - Missing database indexes on data_library_assets for enrichment queries
+   - Rate limiting on municipal API calls
+   - Error handling in existing upload flow for enrichment failures
+   - Cron/scheduled job setup for periodic discovery runs
+
+6. SEARCH FOR CONFLICTS:
+   - Check if apartment-locator already has a properties table - merge or migrate
+   - Check if data-library-assets already has enrichment fields - align schemas
+   - Verify property_info_cache doesn't conflict with existing property data tables
+
+Report any integration issues, missing dependencies, or schema conflicts found.
