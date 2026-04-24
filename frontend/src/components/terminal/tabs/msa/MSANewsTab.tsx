@@ -163,10 +163,10 @@ export const MSANewsTab: React.FC<MSANewsTabProps> = ({ msaId, msa }) => {
     const highImpact = newsItems.filter(n => n.impact === 'negative' || n.impact === 'positive');
     return highImpact.slice(0, 4).map((n, i) => ({
       id: `derived-${i}`,
-      title: n.title,
+      title: n.headline,
       signal: n.category === 'development' ? 'S-02' : n.category === 'transaction' ? 'C-04' : n.category === 'employment' ? 'D-09' : 'M-02',
       severity: n.impact === 'negative' ? 'high' as const : 'medium' as const,
-      timestamp: n.date || 'recent',
+      timestamp: n.timestamp || 'recent',
     }));
   }, [newsItems]);
 
@@ -182,8 +182,8 @@ export const MSANewsTab: React.FC<MSANewsTabProps> = ({ msaId, msa }) => {
       positive: pos,
       neutral: neu,
       negative: neg,
-      topSignal: topPositive?.title || (total === 0 ? 'No signal data' : null),
-      topRisk: topNegative?.title || (total === 0 ? 'No risk data' : null),
+      topSignal: topPositive?.headline || (total === 0 ? 'No signal data' : null),
+      topRisk: topNegative?.headline || (total === 0 ? 'No risk data' : null),
     };
   }, [newsItems]);
 

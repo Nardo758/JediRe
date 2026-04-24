@@ -135,11 +135,18 @@ export const MSAEconomicsTab: React.FC<MSAEconomicsTabProps> = ({ msaId, msa }) 
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <h2 style={{ ...terminalStyles.sectionTitle }}>
-            {msaName} — Economic Indicators
-          </h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+            <h2 style={{ ...terminalStyles.sectionTitle }}>
+              {msaName} — Economic Indicators
+            </h2>
+            <span style={{
+              fontSize: 9, fontWeight: 700, letterSpacing: 1,
+              color: BT.text.amber, background: 'rgba(251,191,36,0.1)',
+              padding: '2px 7px', borderRadius: 0,
+            }}>REFERENCE · STATIC ESTIMATES</span>
+          </div>
           <span style={{ color: BT.text.muted, fontSize: 12 }}>
-            Employment, demographics, sector composition
+            Employment, demographics, sector composition · Sections below marked REFERENCE use static regional benchmarks, not live-ingested data
           </span>
         </div>
       </div>
@@ -252,14 +259,16 @@ export const MSAEconomicsTab: React.FC<MSAEconomicsTabProps> = ({ msaId, msa }) 
           <div style={{ fontSize: 10, color: BT.text.green }}>+{msa.incomeGrowth}% YoY</div>
         </div>
         <div style={{ ...terminalStyles.card, textAlign: 'center' }}>
-          <div style={{ ...terminalStyles.metricLabel, marginBottom: 8 }}>UNEMPLOYMENT</div>
-          <div style={{ ...terminalStyles.metricValue }}>3.8%</div>
-          <div style={{ fontSize: 10, color: BT.text.green }}>-0.3% vs LY</div>
+          <div style={{ ...terminalStyles.metricLabel, marginBottom: 8 }}>UNEMPLOYMENT (NATL)</div>
+          <div style={{ ...terminalStyles.metricValue }}>
+            {macro?.unrate != null ? `${macro.unrate.toFixed(1)}%` : '—'}
+          </div>
+          <div style={{ fontSize: 10, color: BT.text.muted }}>FRED · National Rate</div>
         </div>
       </div>
 
       <TerminalChart
-        title="Employment & Population Growth (000s)"
+        title="Employment & Population Growth — Reference Estimates (000s)"
         data={employmentData}
         series={[
           { key: 'employment', name: 'Employment', color: BT.text.cyan, data: [] },
@@ -270,7 +279,7 @@ export const MSAEconomicsTab: React.FC<MSAEconomicsTabProps> = ({ msaId, msa }) 
       />
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-        <TerminalSection title="Sector Composition">
+        <TerminalSection title="Sector Composition — Reference Benchmarks">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {sectorComposition.map((s) => (
               <div key={s.sector} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -294,7 +303,7 @@ export const MSAEconomicsTab: React.FC<MSAEconomicsTabProps> = ({ msaId, msa }) 
           </div>
         </TerminalSection>
 
-        <TerminalSection title="Income Distribution & Renter Propensity" icon={<DollarSign size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />}>
+        <TerminalSection title="Income Distribution & Renter Propensity — Reference Benchmarks" icon={<DollarSign size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />}>
           <DataTable>
             <thead>
               <tr>
@@ -323,7 +332,7 @@ export const MSAEconomicsTab: React.FC<MSAEconomicsTabProps> = ({ msaId, msa }) 
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 16 }}>
-        <TerminalSection title="Top Employers" icon={<Briefcase size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />}>
+        <TerminalSection title="Top Employers — Reference Benchmarks" icon={<Briefcase size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />}>
           <DataTable>
             <thead>
               <tr>
@@ -350,7 +359,7 @@ export const MSAEconomicsTab: React.FC<MSAEconomicsTabProps> = ({ msaId, msa }) 
           </DataTable>
         </TerminalSection>
 
-        <TerminalSection title="Net Migration (Top Origins)" icon={<MapPin size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />}>
+        <TerminalSection title="Net Migration — Reference Benchmarks" icon={<MapPin size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />}>
           <DataTable>
             <thead>
               <tr>
