@@ -332,7 +332,7 @@ class SnapshotCaptureService {
         ), 0)::int AS planned_24mo
       FROM market_events
       WHERE event_type IN ('supply_delivery', 'supply_announced', 'supply_groundbreaking')
-        AND (geography_id = $1 OR geography_type = 'msa')
+        AND (geography_id = $1 OR (geography_type = 'msa' AND geography_id = 'atlanta'))
         AND effective_date >= CURRENT_DATE
     `, [geo.id]);
 

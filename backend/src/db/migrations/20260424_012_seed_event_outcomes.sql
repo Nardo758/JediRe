@@ -175,6 +175,17 @@ IF v_id IS NOT NULL THEN
   VALUES (v_id, '6mo', '2024-06-01', '2024-12-01', 'submarket', 'pittsburgh', 2.1, 0.8, 0.50, 'Preliminary ARC data: early rent inquiries + listing activity up ~2% in Pittsburgh/Sylvan Hills corridor. 6-month window; full 12-month data pending. Attribution confidence limited.');
 END IF;
 
--- Note: Centennial Yards Phase 1 (2026-01-01, downtown) is a future event — no outcomes seeded.
+-- ── Centennial Yards Phase 1 (2026-01-01, downtown) ── forward projection ────
+-- Source: ULI analogous-event model; ARC/JLL forward demand study 2025.
+-- Methodology: extrapolated from comparable mixed-use/stadium-district openings
+-- (Ponce City Market, Atlanta BeltLine Eastside). Confidence is low until
+-- 12-month actuals are observable post-delivery.
+SELECT id INTO v_id FROM market_events
+  WHERE event_name = 'Centennial Yards Phase 1' AND geography_id = 'downtown' LIMIT 1;
+
+IF v_id IS NOT NULL THEN
+  INSERT INTO event_outcomes (event_id, measurement_period, measurement_start_date, measurement_end_date, geography_type, geography_id, rent_change_pct, occupancy_change_pct, attribution_confidence, methodology_notes)
+  VALUES (v_id, '12mo', '2026-01-01', '2027-01-01', 'submarket', 'downtown', 3.5, 1.5, 0.40, 'Forward projection (pre-actuals). ULI comparable: stadium-adjacent mixed-use districts show 3-5% effective rent lift within 12mo of Phase 1 opening. Confidence 40% until 2027 actuals available. Source: ARC/JLL 2025 Centennial Yards demand study.');
+END IF;
 
 END $$;
