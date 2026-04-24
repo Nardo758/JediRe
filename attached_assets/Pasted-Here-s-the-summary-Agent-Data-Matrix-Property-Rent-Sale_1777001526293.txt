@@ -1,0 +1,64 @@
+Here's the summary:
+
+───
+
+🧠 Agent → Data Matrix
+
+              Property  Rent  Sales  Traffic  Macro  News  Archive  PROXIMITY
+Strategy        ●        ●      ●       ●       ●      ●      ●         ●
+CFO             ●        ●      ◐       ○       ●      ○      ●         ○
+Acquisitions    ●        ●      ●       ●       ●      ●      ●         ●
+Research        ●        ●      ●       ●       ●      ●      ●         ●
+Revenue Mgmt    ○        ●      ○       ●       ○      ○      ●         ●
+
+───
+
+🗺️ PROXIMITY DATA: The Missing Layer
+
+| Factor                | Impact             | Data Source                  |
+| --------------------- | ------------------ | ---------------------------- |
+| Grocery (Whole Foods) | +$50-150/unit      | OpenStreetMap, Google Places |
+| Transit (MARTA)       | +5-15% value       | MARTA GTFS                   |
+| Employers             | Demand driver      | LinkedIn, SEC, news          |
+| Schools               | Lower turnover     | GA DOE ratings               |
+| Development           | Supply competition | Building permits (we have!)  |
+| Crime                 | -10-20% rent       | Atlanta PD open data         |
+
+───
+
+🔗 Missing Correlations
+
+| ID     | What                             | Why                     |
+| ------ | -------------------------------- | ----------------------- |
+| COR-21 | Permits → Rent (18mo lag)        | Predict supply pressure |
+| COR-22 | Jobs → Absorption (6mo lag)      | Demand driver           |
+| COR-23 | Transit proximity → Rent premium | Spatial value           |
+| COR-25 | Grocery opening → Rent growth    | Amenity catalyst        |
+| COR-26 | Employer HQ → Absorption         | Demand shock            |
+
+───
+
+📊 Backtest Infrastructure Needed
+
+-- 1. market_events: Historical anchors
+INSERT INTO market_events VALUES
+('Microsoft Midtown Campus', '2021-08-01', 'positive'),
+('BeltLine Westside Trail', '2017-09-01', 'positive'),
+('COVID Lockdown', '2020-03-15', 'negative');
+
+-- 2. market_snapshots: Point-in-time state
+-- 3. event_outcomes: What actually happened
+-- 4. property_proximity: Spatial context
+
+───
+
+4-Week Roadmap
+
+| Week | Deliverable                                                                              |
+| ---- | ---------------------------------------------------------------------------------------- |
+| 1    | Proximity data + property_proximity table                                                |
+| 2    | Event database + seed Atlanta 2015-present                                               |
+| 3    | Snapshot capture + backtest engine                                                       |
+| 4    | Agent tool wiring (fetch_proximity_context, fetch_market_events, fetch_backtest_context) |
+
+This completes the neural network — every input can be correlated, every output can be backtested, and every agent has spatial awareness. 🚀

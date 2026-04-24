@@ -11,6 +11,7 @@ import { TerminalChart, ChartSeries, ChartDataPoint } from '../../TerminalChart'
 import { SIGNAL_GROUPS, BT_SIGNAL_COLORS, SUPPLY_WAVE_STYLES, SupplyWavePhase } from '../../signalGroups';
 import { useCommentaryStore } from '../../../../stores/commentaryStore';
 import { SignalCommentary, SupplyNarrative } from '../../commentary';
+import apiClient from '../../../../api/client';
 
 interface MSATrendsTabProps {
   msaId: string;
@@ -114,15 +115,65 @@ const SUPPLY_WAVE_PHASES: { market: string; phase: SupplyWavePhase; detail: stri
   { market: 'Tampa', phase: 'TROUGH', detail: 'supply bottomed', buildout: '4.2yr', window: '★ BUYING WINDOW NOW' },
 ];
 
+interface PriceTrend {
+  county: string;
+  state: string;
+  sale_year: number;
+  sale_count: number;
+  median_price: number;
+  avg_price: number;
+  median_price_per_unit: number | null;
+  avg_price_per_unit: number | null;
+  yoy_change_pct: number | null;
+}
+
 export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
   const [timeRange, setTimeRange] = useState<typeof TIME_RANGES[number]>('1Y');
   const [supplyView, setSupplyView] = useState<'2yr' | '10yr'>('10yr');
+  const [priceTrends, setPriceTrends] = useState<PriceTrend[]>([]);
+  const [trendsLoading, setTrendsLoading] = useState(true);
   const msaName = msa?.name || msaId || 'Atlanta';
   const { fetchCommentary, getCommentary, isLoading, getError } = useCommentaryStore();
   const commentary = getCommentary('msa', msaId);
   const loading = isLoading('msa', msaId);
   const error = getError('msa', msaId);
   useEffect(() => { fetchCommentary('msa', msaId, msaName); }, [msaId, msaName]);
+
+  useEffect(() => {
+    setTrendsLoading(true);
+    apiClient.get('/api/v1/georgia/analytics/price-trends?state=GA')
+      .then(res => {
+        const trends: PriceTrend[] = res.data?.trends || [];
+        const aggregated = new Map<number, { sale_count: number; total_ppu: number; count: number; yoy: number | null }>();
+        for (const t of trends) {
+          const existing = aggregated.get(t.sale_year);
+          const ppu = t.median_price_per_unit ?? t.avg_price_per_unit ?? 0;
+          if (existing) {
+            existing.sale_count += t.sale_count;
+            existing.total_ppu += ppu;
+            existing.count += 1;
+            if (t.yoy_change_pct != null) existing.yoy = (existing.yoy ?? 0) + t.yoy_change_pct;
+          } else {
+            aggregated.set(t.sale_year, { sale_count: t.sale_count, total_ppu: ppu, count: 1, yoy: t.yoy_change_pct });
+          }
+        }
+        const merged: PriceTrend[] = Array.from(aggregated.entries()).map(([year, v]) => ({
+          county: 'all',
+          state: 'GA',
+          sale_year: year,
+          sale_count: v.sale_count,
+          median_price: 0,
+          avg_price: 0,
+          median_price_per_unit: v.count > 0 ? v.total_ppu / v.count : null,
+          avg_price_per_unit: v.count > 0 ? v.total_ppu / v.count : null,
+          yoy_change_pct: v.yoy != null && v.count > 0 ? v.yoy / v.count : null,
+        }));
+        merged.sort((a, b) => b.sale_year - a.sale_year);
+        setPriceTrends(merged);
+      })
+      .catch(() => setPriceTrends([]))
+      .finally(() => setTrendsLoading(false));
+  }, []);
 
   // Calculate max for supply wave chart
   const maxSupply = Math.max(...SUPPLY_WAVE_DATA.map(d => d.confirmed + d.capacity));
@@ -297,6 +348,14 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
             }}>
               DC-08
             </span>
+            <span style={{
+              fontSize: 9, fontWeight: 700, letterSpacing: 1,
+              color: BT.text.muted,
+              background: BT.bg.elevated,
+              padding: '2px 7px', borderRadius: 0,
+            }}>
+              FORECAST MODEL
+            </span>
           </div>
           <div style={{ display: 'flex', gap: 4 }}>
             {(['2yr', '10yr'] as const).map(view => (
@@ -416,9 +475,19 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
       <div style={{ display: 'flex', gap: 20 }}>
         {/* Rent by Vintage */}
         <div style={{ flex: 1, ...terminalStyles.card, padding: 20 }}>
-          <h3 style={{ ...terminalStyles.sectionTitle, fontSize: 14, marginBottom: 16 }}>
-            Rent by Vintage Class
-          </h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <h3 style={{ ...terminalStyles.sectionTitle, fontSize: 14 }}>
+              Rent by Vintage Class
+            </h3>
+            <span style={{
+              fontSize: 9, fontWeight: 700, letterSpacing: 1,
+              color: BT.text.muted,
+              background: BT.bg.elevated,
+              padding: '2px 7px', borderRadius: 0,
+            }}>
+              MARKET BENCHMARK
+            </span>
+          </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             {RENT_VINTAGE_DATA.slice(-6).map((d, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -493,31 +562,83 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
       <div style={{ display: 'flex', gap: 20 }}>
         {/* Transaction Data */}
         <div style={{ flex: 1, ...terminalStyles.card, padding: 20 }}>
-          <h3 style={{ ...terminalStyles.sectionTitle, fontSize: 14, marginBottom: 16 }}>
-            Transaction Activity
-          </h3>
-          <DataTable>
-            <thead>
-              <tr style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
-                <th style={{ ...terminalStyles.tableHeader, textAlign: 'left', fontSize: 10 }}>Date</th>
-                <th style={{ ...terminalStyles.tableHeader, textAlign: 'right', fontSize: 10 }}>$/Unit</th>
-                <th style={{ ...terminalStyles.tableHeader, textAlign: 'right', fontSize: 10 }}>Units</th>
-                <th style={{ ...terminalStyles.tableHeader, textAlign: 'right', fontSize: 10 }}>Cap</th>
-              </tr>
-            </thead>
-            <tbody>
-              {TRANSACTION_DATA.slice(-5).map((t, i) => (
-                <tr key={i} style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
-                  <td style={{ ...terminalStyles.tableCell, fontSize: 11 }}>{t.date}</td>
-                  <td style={{ ...terminalStyles.tableCell, textAlign: 'right', fontSize: 11, fontWeight: 600 }}>
-                    ${(t.pricePerUnit / 1000).toFixed(0)}K
-                  </td>
-                  <td style={{ ...terminalStyles.tableCell, textAlign: 'right', fontSize: 11 }}>{t.units}</td>
-                  <td style={{ ...terminalStyles.tableCell, textAlign: 'right', fontSize: 11 }}>{t.capRate}%</td>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <h3 style={{ ...terminalStyles.sectionTitle, fontSize: 14 }}>
+              Transaction Activity
+            </h3>
+            {!trendsLoading && priceTrends.length > 0 && (
+              <span style={{
+                fontSize: 9, fontWeight: 700, letterSpacing: 1,
+                color: BT.text.green,
+                background: 'rgba(34,197,94,0.12)',
+                padding: '2px 7px', borderRadius: 0,
+              }}>
+                LIVE · GA COUNTY DATA
+              </span>
+            )}
+          </div>
+          {trendsLoading ? (
+            <div style={{ fontSize: 11, color: BT.text.muted, textAlign: 'center', padding: 20 }}>
+              Loading transaction data...
+            </div>
+          ) : priceTrends.length > 0 ? (
+            <DataTable>
+              <thead>
+                <tr style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
+                  <th style={{ ...terminalStyles.tableHeader, textAlign: 'left', fontSize: 10 }}>Year</th>
+                  <th style={{ ...terminalStyles.tableHeader, textAlign: 'right', fontSize: 10 }}>$/Unit</th>
+                  <th style={{ ...terminalStyles.tableHeader, textAlign: 'right', fontSize: 10 }}>Txns</th>
+                  <th style={{ ...terminalStyles.tableHeader, textAlign: 'right', fontSize: 10 }}>YoY</th>
                 </tr>
-              ))}
-            </tbody>
-          </DataTable>
+              </thead>
+              <tbody>
+                {priceTrends.slice(0, 5).map((t, i) => {
+                  const ppu = t.median_price_per_unit ?? t.avg_price_per_unit;
+                  const yoy = t.yoy_change_pct;
+                  return (
+                    <tr key={i} style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
+                      <td style={{ ...terminalStyles.tableCell, fontSize: 11 }}>FY {t.sale_year}</td>
+                      <td style={{ ...terminalStyles.tableCell, textAlign: 'right', fontSize: 11, fontWeight: 600 }}>
+                        {ppu ? `$${(ppu / 1000).toFixed(0)}K` : '—'}
+                      </td>
+                      <td style={{ ...terminalStyles.tableCell, textAlign: 'right', fontSize: 11 }}>
+                        {t.sale_count.toLocaleString()}
+                      </td>
+                      <td style={{
+                        ...terminalStyles.tableCell, textAlign: 'right', fontSize: 11,
+                        color: yoy == null ? BT.text.muted : yoy >= 0 ? BT.text.green : BT.accent.red,
+                      }}>
+                        {yoy == null ? '—' : `${yoy >= 0 ? '+' : ''}${yoy.toFixed(1)}%`}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </DataTable>
+          ) : (
+            <DataTable>
+              <thead>
+                <tr style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
+                  <th style={{ ...terminalStyles.tableHeader, textAlign: 'left', fontSize: 10 }}>Date</th>
+                  <th style={{ ...terminalStyles.tableHeader, textAlign: 'right', fontSize: 10 }}>$/Unit</th>
+                  <th style={{ ...terminalStyles.tableHeader, textAlign: 'right', fontSize: 10 }}>Units</th>
+                  <th style={{ ...terminalStyles.tableHeader, textAlign: 'right', fontSize: 10 }}>Cap</th>
+                </tr>
+              </thead>
+              <tbody>
+                {TRANSACTION_DATA.slice(-5).map((t, i) => (
+                  <tr key={i} style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
+                    <td style={{ ...terminalStyles.tableCell, fontSize: 11 }}>{t.date}</td>
+                    <td style={{ ...terminalStyles.tableCell, textAlign: 'right', fontSize: 11, fontWeight: 600 }}>
+                      ${(t.pricePerUnit / 1000).toFixed(0)}K
+                    </td>
+                    <td style={{ ...terminalStyles.tableCell, textAlign: 'right', fontSize: 11 }}>{t.units}</td>
+                    <td style={{ ...terminalStyles.tableCell, textAlign: 'right', fontSize: 11 }}>{t.capRate}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </DataTable>
+          )}
         </div>
 
         {/* Concession Tracking */}

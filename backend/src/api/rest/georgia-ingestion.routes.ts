@@ -415,7 +415,7 @@ router.get('/comps/stats', async (req: Request, res: Response) => {
  * Returns YoY median price change for ATL metro submarket analysis.
  * Query: ?county=Cobb&state=GA
  */
-router.get('/analytics/price-trends', async (req: Request, res: Response) => {
+router.get('/analytics/price-trends', requireAuth, async (req: Request, res: Response) => {
   try {
     const county = req.query.county as string | undefined;
     const state = (req.query.state as string) || 'GA';
