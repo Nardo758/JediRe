@@ -161,6 +161,10 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
       .then((res: any) => {
         const d = res?.data?.data || res?.data;
         setRentSourceType(d?.source_type || null);
+        // Parse comp count from source_ref (format: 'apt_locator:N comps')
+        const ref: string = d?.source_ref || '';
+        const match = ref.match(/apt_locator:(\d+)/);
+        if (match) setRentCalibrationCount(parseInt(match[1], 10));
       })
       .catch(() => {});
   }, [resolvedDealId]);
