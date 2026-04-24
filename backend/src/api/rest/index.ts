@@ -125,6 +125,7 @@ import propertyEnrichmentRoutes from './property-enrichment.routes';
 import propertyDiscoveryRoutes from './property-discovery.routes';
 import georgiaIngestionRoutes from './georgia-ingestion.routes';
 import proximityRoutes, { setPool as setProximityPool } from './proximity.routes';
+import dataMatrixRoutes from './data-matrix.routes';
 
 const API_PREFIX = '/api/v1';
 
@@ -489,6 +490,9 @@ export function setupRESTRoutes(app: Application): void {
   // Proximity, Events & Backtest routes
   // Note: setProximityPool(pool) must be called after pool initialization
   app.use(`${API_PREFIX}/proximity`, proximityRoutes);
+
+  // Data Matrix routes (neural network layer)
+  app.use(`${API_PREFIX}/data-matrix`, dataMatrixRoutes);
 
   // Deal Activity routes (emails, tasks, unified activity)
   app.use(`${API_PREFIX}/deals`, dealActivityRoutes);
