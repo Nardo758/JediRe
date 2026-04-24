@@ -123,6 +123,7 @@ import agentsRoutes from './agents.routes';
 import morningBriefRoutes from './morning-brief.routes';
 import propertyEnrichmentRoutes from './property-enrichment.routes';
 import propertyDiscoveryRoutes from './property-discovery.routes';
+import georgiaIngestionRoutes from './georgia-ingestion.routes';
 
 const API_PREFIX = '/api/v1';
 
@@ -480,6 +481,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Property Discovery routes (auto-discovery, matching, data library enrichment)
   app.use(`${API_PREFIX}/property-discovery`, propertyDiscoveryRoutes);
+
+  // Georgia Metro data ingestion routes
+  app.use(`${API_PREFIX}/georgia`, georgiaIngestionRoutes);
 
   // Deal Activity routes (emails, tasks, unified activity)
   app.use(`${API_PREFIX}/deals`, dealActivityRoutes);
