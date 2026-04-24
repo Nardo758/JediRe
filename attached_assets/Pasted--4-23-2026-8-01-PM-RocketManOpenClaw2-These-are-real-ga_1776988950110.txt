@@ -1,0 +1,112 @@
+[4/23/2026 8:01 PM] RocketManOpenClaw2: These are real gaps. Let me break down each one with solutions:
+
+───
+
+1. Grantor/Grantee Names (Sale Records)
+
+Problem: Tyler_YearlySales only has price + year, no buyer/seller names
+
+Solutions:
+
+| Option             | Method                                               | Difficulty      |
+| ------------------ | ---------------------------------------------------- | --------------- |
+| County Clerk Deeds | Scrape county deed search portals                    | Medium          |
+| GSCCCA             | Georgia Superior Court Clerks' Cooperative Authority | Hard (web-only) |
+| DataTree/CoreLogic | Paid API with full deed data                         | $$$             |
+| First American     | Paid title data API                                  | $$$             |
+
+Free workaround: Most Georgia counties have deed search portals:
+
+• Fulton: qpublic.net/ga/fulton
+• DeKalb: qpublic.net/ga/dekalb
+• Gwinnett: gwinnettassessor.manatron.com
+• Cobb: qpublic.net/ga/cobb
+
+I can build a scraper for qPublic — it has grantor/grantee on the property detail pages.
+
+───
+
+2. Recorded Mortgage Amounts
+
+Problem: GSCCCA (deed records) is web-only, no API
+
+Solutions:
+
+| Option         | Method                       | Cost                  |
+| -------------- | ---------------------------- | --------------------- |
+| GSCCCA Scraper | Cloudflare Browser Rendering | Free (you have token) |
+| ATTOM Data     | Mortgage/deed API            | ~$0.05/record         |
+| CoreLogic      | Full mortgage data           | $$$                   |
+
+Free workaround: GSCCCA at gsccca.org/search — I can build a scraper using your Cloudflare Browser token. It requires:
+
+1. Search by address or book/page
+2. Parse the deed/mortgage document index
+3. Extract lien amounts from security deeds
+
+───
+
+3. Year Built for DeKalb/Cobb/Gwinnett
+
+Problem: Building detail tables not exposed in their public ArcGIS layers
+
+Solutions:
+
+| County   | Where Year Built Lives    | Solution                             |
+| -------- | ------------------------- | ------------------------------------ |
+| DeKalb   | qPublic property cards    | Scrape qpublic.net/ga/dekalb         |
+| Cobb     | Tax Assessor detail pages | Scrape cobbassessor.org              |
+| Gwinnett | Property Search portal    | Scrape gwinnettassessor.manatron.com |
+
+All three counties expose year built on their assessor websites — just not via API. I can build scrapers for each.
+
+───
+
+4. 2023/2024 Sale Data
+
+Problem: Tyler_YearlySales layers stop at 2022
+
+Solutions:
+
+| Option              | Method                                  | Coverage               |
+| ------------------- | --------------------------------------- | ---------------------- |
+| qPublic Sales       | Scrape recent sales from assessor sites | Current                |
+| Zillow Sold Data    | Scrape sold listings                    | 6-12 months            |
+| Redfin Sold         | Scrape sold listings                    | Current                |
+| County Deed Records | Scrape GSCCCA                           | Current (1-2 week lag) |
+
+Best approach: Scrape qPublic — each county shows recent sales on property pages with date, price, and book/page reference.
+
+───
+
+Recommended Build Plan
+
+┌─────────────────────────────────────────────────────────────────┐
+│              GEORGIA PROPERTY DATA GAP FILLERS                  │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  1. qPublic Scraper (covers all 4 gaps for Fulton/DeKalb/Cobb) │
+│     └─▶ Year built, recent sales, grantor/grantee              │
+│                                                                 │
+[4/23/2026 8:01 PM] RocketManOpenClaw2: │  2. Gwinnett Assessor Scraper                                  │
+│     └─▶ Year built, recent sales                               │
+│                                                                 │
+│  3. GSCCCA Deed Scraper                                        │
+[4/23/2026 8:01 PM] RocketManOpenClaw2: │     └─▶ Mortgage amounts, full deed records                    │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+
+Priority order:
+
+1. qPublic scraper — Solves 3 of 4 gaps for 3 counties
+2. Gwinnett assessor scraper — Fills Gwinnett gaps
+3. GSCCCA scraper — Adds mortgage data (nice-to-have)
+
+───
+
+Want me to build the qPublic scraper first? It'll use your Cloudflare Browser token and cover:
+
+• ✅ Year built
+• ✅ Recent sales (2023-2024)
+• ✅ Grantor/grantee names
+• ✅ Sale price + date
