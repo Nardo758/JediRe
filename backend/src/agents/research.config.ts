@@ -30,6 +30,9 @@ import { webSearchTool } from './tools/web_search';
 import { fetchWebpageTool } from './tools/fetch_webpage';
 import { writeCompSetTool } from './tools/write_comp_set';
 import { writeMarketCompsTool } from './tools/write_market_comps';
+import { fetchProximityContextTool } from './tools/fetch_proximity_context';
+import { fetchMarketEventsTool } from './tools/fetch_market_events';
+import { fetchBacktestContextTool } from './tools/fetch_backtest_context';
 
 // ── Citation schema (shared with commentary.config) ────────────────────────
 
@@ -73,6 +76,10 @@ export const RESEARCH_AGENT_CONFIG: AgentConfig = {
     // Lifecycle tools for market research
     writeCompSetTool,
     writeMarketCompsTool,
+    // Spatial intelligence — proximity, events & historical validation
+    fetchProximityContextTool,
+    fetchMarketEventsTool,
+    fetchBacktestContextTool,
   ],
   outputSchema: ResearchOutputSchema,
   budgetCaps: DEFAULT_BUDGET_CAPS.research,

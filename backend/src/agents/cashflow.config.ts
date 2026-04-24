@@ -45,6 +45,9 @@ import { fetchDebtAssumptionsTool } from './tools/fetch_debt_assumptions';
 import { runRefiTestTool } from './tools/run_refi_test';
 import { fetchCompSetTool } from './tools/fetch_comp_set';
 import { fetchDispositionLearningsTool } from './tools/fetch_disposition_learnings';
+import { fetchProximityContextTool } from './tools/fetch_proximity_context';
+import { fetchMarketEventsTool } from './tools/fetch_market_events';
+import { fetchBacktestContextTool } from './tools/fetch_backtest_context';
 
 // ── Evidence-system output schema (v4) ───────────────────────────
 //
@@ -240,6 +243,10 @@ export const CASHFLOW_AGENT_CONFIG: AgentConfig = {
     runRefiTestTool,
     fetchCompSetTool,
     fetchDispositionLearningsTool,
+    // Spatial intelligence — proximity grades + market events (CFO tier)
+    fetchProximityContextTool,
+    fetchMarketEventsTool,
+    fetchBacktestContextTool,
     // Analysis & output
     detectCollisionTool,
     computeProformaTool,
