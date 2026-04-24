@@ -43,8 +43,9 @@ export const captureMonthlySnapshotsFunction = inngest.createFunction(
               data_completeness_score: r.data_completeness_score,
             })),
           };
-        } catch (err: any) {
-          logger.error('[Inngest] captureMonthlySnapshots fatal error', { error: err.message });
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          logger.error('[Inngest] captureMonthlySnapshots fatal error', { error: msg });
           throw err;
         }
       }

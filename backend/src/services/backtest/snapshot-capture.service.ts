@@ -5,14 +5,18 @@
  * its key submarkets. Called by the Inngest cron function on the 1st of
  * each month at 02:00 UTC.
  *
- * Data sources per snapshot (in order of precedence):
- *   1. apartment_locator_properties  — rent, occupancy, total units
- *      (MSA: city='Atlanta'; submarket: lat/lon proximity within ~3 mi of centroid)
- *   2. property_proximity            — avg walk/transit score per submarket
- *      (costar_market_metrics is not present in this environment)
- *   3. market_sale_comps (georgia_county) — cap rate, price/unit
- *   4. apartment_supply_pipeline     — units delivering
- *   5. market_events                 — forward supply planned within 24 months
+ * Data sources per snapshot (in priority order):
+ *   1. costar_market_metrics  — primary: submarket rent, occupancy, cap rate,
+ *      vacancy, absorption (populated when CoStar feed is active)
+ *   2. apartment_locator_properties — fallback when costar has no row for the
+ *      geography; proximity-filtered by submarket centroid (≤3 mi)
+ *   3. property_proximity     — avg walk/transit score; proximity-filtered by
+ *      submarket centroid (≤3 mi), companion aggregate required by spec
+ *   4. market_sale_comps      — cap rate & price/unit; proximity-filtered for
+ *      submarkets, city-scoped for MSA
+ *   5. apartment_supply_pipeline — delivering units; proximity-filtered for
+ *      submarkets, city-scoped for MSA
+ *   6. market_events          — forward supply planned within 24 months
  */
 
 import { Pool, QueryResult, QueryResultRow } from 'pg';
@@ -36,6 +40,7 @@ export interface SnapshotCaptureResult {
   units_under_construction: number | null;
   planned_units_24mo: number | null;
   data_completeness_score: number;
+  costar_sourced: boolean;
 }
 
 export interface CaptureMonthlyResult {
@@ -50,7 +55,7 @@ interface Geography {
   type: string;
   id: string;
   name: string;
-  /** Approximate centroid for submarket proximity queries (WGS-84) */
+  /** Centroid for submarket proximity queries (WGS-84) */
   lat?: number;
   lng?: number;
 }
@@ -58,25 +63,60 @@ interface Geography {
 /** Approximate centroids for each Atlanta submarket (WGS-84) */
 const ATLANTA_GEOGRAPHIES: Geography[] = [
   { type: 'msa',       id: 'atlanta',        name: 'Atlanta-Sandy Springs-Roswell, GA' },
-  { type: 'submarket', id: 'midtown',         name: 'Midtown Atlanta',          lat: 33.7848, lng: -84.3832 },
-  { type: 'submarket', id: 'buckhead',        name: 'Buckhead',                 lat: 33.8390, lng: -84.3800 },
-  { type: 'submarket', id: 'west_end',        name: 'West End',                 lat: 33.7338, lng: -84.4136 },
-  { type: 'submarket', id: 'old_fourth_ward', name: 'Old Fourth Ward',          lat: 33.7576, lng: -84.3648 },
-  { type: 'submarket', id: 'downtown',        name: 'Downtown Atlanta',         lat: 33.7490, lng: -84.3880 },
-  { type: 'submarket', id: 'reynoldstown',    name: 'Reynoldstown',             lat: 33.7502, lng: -84.3508 },
-  { type: 'submarket', id: 'vinings',         name: 'Vinings',                  lat: 33.8593, lng: -84.4588 },
-  { type: 'submarket', id: 'pittsburgh',      name: 'Pittsburgh / Sylvan Hills', lat: 33.7218, lng: -84.4010 },
-  { type: 'submarket', id: 'north_fulton',    name: 'North Fulton',             lat: 34.0200, lng: -84.3600 },
+  { type: 'submarket', id: 'midtown',         name: 'Midtown Atlanta',           lat: 33.7848, lng: -84.3832 },
+  { type: 'submarket', id: 'buckhead',        name: 'Buckhead',                  lat: 33.8390, lng: -84.3800 },
+  { type: 'submarket', id: 'west_end',        name: 'West End',                  lat: 33.7338, lng: -84.4136 },
+  { type: 'submarket', id: 'old_fourth_ward', name: 'Old Fourth Ward',           lat: 33.7576, lng: -84.3648 },
+  { type: 'submarket', id: 'downtown',        name: 'Downtown Atlanta',          lat: 33.7490, lng: -84.3880 },
+  { type: 'submarket', id: 'reynoldstown',    name: 'Reynoldstown',              lat: 33.7502, lng: -84.3508 },
+  { type: 'submarket', id: 'vinings',         name: 'Vinings',                   lat: 33.8593, lng: -84.4588 },
+  { type: 'submarket', id: 'pittsburgh',      name: 'Pittsburgh / Sylvan Hills',  lat: 33.7218, lng: -84.4010 },
+  { type: 'submarket', id: 'north_fulton',    name: 'North Fulton',              lat: 34.0200, lng: -84.3600 },
 ];
 
-/** Proximity radius (miles) for submarket apartment queries */
+/** Proximity radius (statute miles) for submarket queries */
 const SUBMARKET_RADIUS_MILES = 3.0;
+
+interface CostarRow extends QueryResultRow {
+  avg_asking_rent: string | null;
+  avg_effective_rent: string | null;
+  avg_occupancy_pct: string | null;
+  avg_cap_rate: string | null;
+  avg_price_per_unit: string | null;
+  units_under_construction: string | null;
+}
+
+interface AlpRow extends QueryResultRow {
+  total_properties: string | null;
+  total_units: string | null;
+  avg_asking_rent: string | null;
+  avg_effective_rent: string | null;
+  avg_occupancy_pct: string | null;
+}
+
+interface ProximityRow extends QueryResultRow {
+  avg_walk_score: string | null;
+  avg_transit_score: string | null;
+}
+
+interface MscRow extends QueryResultRow {
+  avg_cap_rate: string | null;
+  avg_price_per_unit: string | null;
+}
+
+interface AspRow extends QueryResultRow {
+  units_delivering: string | null;
+}
+
+interface EvtRow extends QueryResultRow {
+  planned_24mo: string | null;
+}
 
 class SnapshotCaptureService {
   /**
    * Capture monthly snapshots for all Atlanta geographies.
-   * Idempotent: uses ON CONFLICT DO UPDATE so re-running on the same month
-   * refreshes figures without duplicating rows.
+   * Idempotent: ON CONFLICT DO UPDATE so re-running on the same month refreshes
+   * figures without duplicating rows.
    */
   async captureMonthlySnapshots(
     overrideDate?: Date
@@ -129,33 +169,53 @@ class SnapshotCaptureService {
   ): Promise<SnapshotCaptureResult> {
     const isMsa = geo.type === 'msa';
 
-    // ── 1. Rent & occupancy from apartment_locator_properties ──────────────
-    // MSA:       all properties with city ILIKE 'Atlanta%', state = 'GA'
-    // Submarket: properties within SUBMARKET_RADIUS_MILES of the centroid
-    let alpResult: QueryResult<QueryResultRow>;
+    // ── 1. Primary: costar_market_metrics ──────────────────────────────────
+    // Preferred source for submarket rent, occupancy, cap rate, vacancy.
+    // Falls back to apartment_locator_properties when costar has no row.
+    const costarResult = await pool.query<CostarRow>(`
+      SELECT
+        avg_asking_rent,
+        avg_effective_rent,
+        avg_occupancy_pct,
+        avg_cap_rate,
+        avg_price_per_unit,
+        units_under_construction
+      FROM costar_market_metrics
+      WHERE geography_id = $1
+        AND as_of_date >= CURRENT_DATE - INTERVAL '45 days'
+      ORDER BY as_of_date DESC
+      LIMIT 1
+    `, [geo.id]);
 
+    const costarRow = costarResult.rows[0] ?? null;
+    const costarSourced = costarRow !== null;
+
+    // ── 2. Fallback: apartment_locator_properties (proximity-scoped) ────────
+    // MSA:       all Atlanta GA properties
+    // Submarket: properties within SUBMARKET_RADIUS_MILES of centroid
+    let alpResult: QueryResult<AlpRow>;
     if (isMsa) {
-      alpResult = await pool.query(`
+      alpResult = await pool.query<AlpRow>(`
         SELECT
-          COUNT(*)::int                                                        AS total_properties,
-          COALESCE(SUM(total_units), 0)::int                                  AS total_units,
-          AVG(avg_asking_rent)    FILTER (WHERE avg_asking_rent > 0)           AS avg_asking_rent,
-          AVG(avg_effective_rent) FILTER (WHERE avg_effective_rent > 0)        AS avg_effective_rent,
+          COUNT(*)::int                                                           AS total_properties,
+          COALESCE(SUM(total_units), 0)::int                                     AS total_units,
+          AVG(avg_asking_rent)    FILTER (WHERE avg_asking_rent > 0)              AS avg_asking_rent,
+          AVG(avg_effective_rent) FILTER (WHERE avg_effective_rent > 0)           AS avg_effective_rent,
           AVG(occupancy_pct)      FILTER (WHERE occupancy_pct BETWEEN 0.5 AND 1.0) AS avg_occupancy_pct
         FROM apartment_locator_properties
         WHERE state = 'GA'
           AND city ILIKE 'Atlanta%'
       `);
     } else {
-      alpResult = await pool.query(`
+      alpResult = await pool.query<AlpRow>(`
         SELECT
-          COUNT(*)::int                                                        AS total_properties,
-          COALESCE(SUM(total_units), 0)::int                                  AS total_units,
-          AVG(avg_asking_rent)    FILTER (WHERE avg_asking_rent > 0)           AS avg_asking_rent,
-          AVG(avg_effective_rent) FILTER (WHERE avg_effective_rent > 0)        AS avg_effective_rent,
+          COUNT(*)::int                                                           AS total_properties,
+          COALESCE(SUM(total_units), 0)::int                                     AS total_units,
+          AVG(avg_asking_rent)    FILTER (WHERE avg_asking_rent > 0)              AS avg_asking_rent,
+          AVG(avg_effective_rent) FILTER (WHERE avg_effective_rent > 0)           AS avg_effective_rent,
           AVG(occupancy_pct)      FILTER (WHERE occupancy_pct BETWEEN 0.5 AND 1.0) AS avg_occupancy_pct
         FROM apartment_locator_properties
-        WHERE latitude IS NOT NULL
+        WHERE latitude  IS NOT NULL
           AND longitude IS NOT NULL
           AND (
             point(longitude::float, latitude::float)
@@ -164,55 +224,107 @@ class SnapshotCaptureService {
       `, [geo.lat, geo.lng, SUBMARKET_RADIUS_MILES]);
     }
 
-    const alpRow = alpResult.rows[0];
+    const alpRow = alpResult.rows[0] ?? null;
 
-    // ── 2. Walk/transit scores from property_proximity ──────────────────────
-    // property_proximity is property-scoped; aggregate within the same radius.
-    // costar_market_metrics is not present in this environment.
-    let ppRow: QueryResultRow | undefined;
+    // Merge: costar takes precedence for rent/occupancy; alp fills property counts
+    const avgAskingRent     = this.f(costarRow?.avg_asking_rent)     ?? this.f(alpRow?.avg_asking_rent);
+    const avgEffectiveRent  = this.f(costarRow?.avg_effective_rent)  ?? this.f(alpRow?.avg_effective_rent);
+    const avgOccupancyPct   = this.f(costarRow?.avg_occupancy_pct)   ?? this.f(alpRow?.avg_occupancy_pct);
 
-    if (!isMsa && geo.lat && geo.lng) {
-      const ppResult = await pool.query(`
+    // ── 3. property_proximity: walk/transit scores (companion aggregate) ─────
+    // Proximity-filtered per submarket; skipped for MSA (city-wide walk score is noisy)
+    let ppRow: ProximityRow | null = null;
+    if (!isMsa && geo.lat != null && geo.lng != null) {
+      const ppResult = await pool.query<ProximityRow>(`
         SELECT
-          AVG(walk_score)    FILTER (WHERE walk_score BETWEEN 0 AND 100) AS avg_walk_score,
+          AVG(walk_score)    FILTER (WHERE walk_score    BETWEEN 0 AND 100) AS avg_walk_score,
           AVG(transit_score) FILTER (WHERE transit_score BETWEEN 0 AND 100) AS avg_transit_score
         FROM property_proximity
-        WHERE latitude IS NOT NULL
+        WHERE latitude  IS NOT NULL
           AND longitude IS NOT NULL
           AND (
             point(longitude::float, latitude::float)
             <@> point($2::float, $1::float)
           ) <= $3
       `, [geo.lat, geo.lng, SUBMARKET_RADIUS_MILES]);
-      ppRow = ppResult.rows[0];
+      ppRow = ppResult.rows[0] ?? null;
     }
 
-    // ── 3. Cap rate & price/unit from market_sale_comps ────────────────────
-    const mscResult = await pool.query(`
-      SELECT
-        AVG(cap_rate)       FILTER (WHERE cap_rate BETWEEN 0.03 AND 0.12) AS avg_cap_rate,
-        AVG(price_per_unit) FILTER (WHERE price_per_unit > 0)             AS avg_price_per_unit
-      FROM market_sale_comps
-      WHERE state = 'GA'
-        AND source = 'georgia_county'
-        AND sale_date >= CURRENT_DATE - INTERVAL '12 months'
-    `);
+    // ── 4. market_sale_comps: cap rate & price/unit (geography-scoped) ───────
+    // Submarket: proximity filter around centroid; MSA: city/state scope
+    let mscRow: MscRow | null = null;
+    if (!isMsa && geo.lat != null && geo.lng != null) {
+      const mscResult = await pool.query<MscRow>(`
+        SELECT
+          AVG(cap_rate)       FILTER (WHERE cap_rate BETWEEN 0.03 AND 0.12) AS avg_cap_rate,
+          AVG(price_per_unit) FILTER (WHERE price_per_unit > 0)             AS avg_price_per_unit
+        FROM market_sale_comps
+        WHERE state      = 'GA'
+          AND source     = 'georgia_county'
+          AND sale_date >= CURRENT_DATE - INTERVAL '24 months'
+          AND latitude  IS NOT NULL
+          AND longitude IS NOT NULL
+          AND (
+            point(longitude::float, latitude::float)
+            <@> point($2::float, $1::float)
+          ) <= $3
+      `, [geo.lat, geo.lng, SUBMARKET_RADIUS_MILES]);
+      mscRow = mscResult.rows[0] ?? null;
+    } else if (isMsa) {
+      const mscResult = await pool.query<MscRow>(`
+        SELECT
+          AVG(cap_rate)       FILTER (WHERE cap_rate BETWEEN 0.03 AND 0.12) AS avg_cap_rate,
+          AVG(price_per_unit) FILTER (WHERE price_per_unit > 0)             AS avg_price_per_unit
+        FROM market_sale_comps
+        WHERE state      = 'GA'
+          AND source     = 'georgia_county'
+          AND city      ILIKE 'Atlanta%'
+          AND sale_date >= CURRENT_DATE - INTERVAL '24 months'
+      `);
+      mscRow = mscResult.rows[0] ?? null;
+    }
 
-    const mscRow = mscResult.rows[0];
+    // Costar cap rate / price per unit take precedence if available
+    const avgCapRate       = this.f(costarRow?.avg_cap_rate)       ?? this.f(mscRow?.avg_cap_rate);
+    const avgPricePerUnit  = this.f(costarRow?.avg_price_per_unit) ?? this.f(mscRow?.avg_price_per_unit);
 
-    // ── 4. Supply pipeline from apartment_supply_pipeline ──────────────────
-    const aspResult = await pool.query(`
-      SELECT
-        COALESCE(SUM(units_delivering), 0)::int AS units_delivering
-      FROM apartment_supply_pipeline
-      WHERE state = 'GA'
-        AND city ILIKE 'Atlanta%'
-    `);
+    // ── 5. apartment_supply_pipeline: delivering units (geography-scoped) ────
+    // Submarket: proximity filter; MSA: city/state scope
+    let aspRow: AspRow | null = null;
+    if (!isMsa && geo.lat != null && geo.lng != null) {
+      // supply_pipeline lacks coordinates — join against city + proximity of known
+      // apartment_locator_properties to approximate submarket scope
+      const aspResult = await pool.query<AspRow>(`
+        SELECT
+          COALESCE(SUM(asp.units_delivering), 0)::int AS units_delivering
+        FROM apartment_supply_pipeline asp
+        JOIN apartment_locator_properties alp
+          ON LOWER(alp.address) = LOWER(asp.address)
+        WHERE alp.latitude  IS NOT NULL
+          AND alp.longitude IS NOT NULL
+          AND (
+            point(alp.longitude::float, alp.latitude::float)
+            <@> point($2::float, $1::float)
+          ) <= $3
+      `, [geo.lat, geo.lng, SUBMARKET_RADIUS_MILES]);
+      aspRow = aspResult.rows[0] ?? null;
+    } else if (isMsa) {
+      const aspResult = await pool.query<AspRow>(`
+        SELECT
+          COALESCE(SUM(units_delivering), 0)::int AS units_delivering
+        FROM apartment_supply_pipeline
+        WHERE state = 'GA'
+          AND city ILIKE 'Atlanta%'
+      `);
+      aspRow = aspResult.rows[0] ?? null;
+    }
 
-    const aspRow = aspResult.rows[0];
+    const unitsDelivering = costarRow?.units_under_construction != null
+      ? this.i(costarRow.units_under_construction)
+      : this.i(aspRow?.units_delivering);
 
-    // ── 5. Forward supply from market_events ───────────────────────────────
-    const evtResult = await pool.query(`
+    // ── 6. market_events: forward supply (any geography match within 24mo) ───
+    const evtResult = await pool.query<EvtRow>(`
       SELECT
         COALESCE(SUM(
           CASE WHEN effective_date <= CURRENT_DATE + INTERVAL '24 months'
@@ -224,22 +336,18 @@ class SnapshotCaptureService {
         AND effective_date >= CURRENT_DATE
     `, [geo.id]);
 
-    const evtRow = evtResult.rows[0];
+    const plannedUnits24mo = this.i(evtResult.rows[0]?.planned_24mo);
 
-    // ── Compute data completeness score ─────────────────────────────────────
-    const completenessFields: (string | null)[] = [
-      alpRow?.avg_asking_rent,
-      alpRow?.avg_effective_rent,
-      alpRow?.avg_occupancy_pct,
-      mscRow?.avg_cap_rate,
-      mscRow?.avg_price_per_unit,
-      aspRow?.units_delivering !== undefined && aspRow.units_delivering > 0
-        ? String(aspRow.units_delivering)
-        : null,
+    // ── Data completeness score ─────────────────────────────────────────────
+    const completenessFields: (number | null)[] = [
+      avgAskingRent,
+      avgEffectiveRent,
+      avgOccupancyPct,
+      avgCapRate,
+      avgPricePerUnit,
+      unitsDelivering,
     ];
-    const populated = completenessFields.filter(
-      f => f != null && parseFloat(String(f)) !== 0
-    ).length;
+    const populated = completenessFields.filter(v => v != null && v !== 0).length;
     const completeness = Math.round((populated / completenessFields.length) * 100) / 100;
 
     // ── Upsert into market_snapshots ────────────────────────────────────────
@@ -282,56 +390,54 @@ class SnapshotCaptureService {
       geo.id,
       geo.name,
       snapshotDate,
-      alpRow?.total_properties != null ? parseInt(String(alpRow.total_properties)) : null,
-      alpRow?.total_units != null ? parseInt(String(alpRow.total_units)) : null,
-      alpRow?.avg_asking_rent != null ? parseFloat(String(alpRow.avg_asking_rent)) : null,
-      alpRow?.avg_effective_rent != null ? parseFloat(String(alpRow.avg_effective_rent)) : null,
-      alpRow?.avg_occupancy_pct != null ? parseFloat(String(alpRow.avg_occupancy_pct)) : null,
-      ppRow?.avg_walk_score != null ? parseFloat(String(ppRow.avg_walk_score)) : null,
-      ppRow?.avg_transit_score != null ? parseFloat(String(ppRow.avg_transit_score)) : null,
-      mscRow?.avg_cap_rate != null ? parseFloat(String(mscRow.avg_cap_rate)) : null,
-      mscRow?.avg_price_per_unit != null ? parseFloat(String(mscRow.avg_price_per_unit)) : null,
-      aspRow?.units_delivering != null ? parseInt(String(aspRow.units_delivering)) : null,
-      evtRow?.planned_24mo != null ? parseInt(String(evtRow.planned_24mo)) : null,
+      this.i(alpRow?.total_properties),
+      this.i(alpRow?.total_units),
+      avgAskingRent,
+      avgEffectiveRent,
+      avgOccupancyPct,
+      this.f(ppRow?.avg_walk_score),
+      this.f(ppRow?.avg_transit_score),
+      avgCapRate,
+      avgPricePerUnit,
+      unitsDelivering,
+      plannedUnits24mo,
       completeness,
-      ['apartment_locator_properties', 'property_proximity', 'market_sale_comps',
-       'apartment_supply_pipeline', 'market_events'],
+      ['costar_market_metrics', 'apartment_locator_properties', 'property_proximity',
+       'market_sale_comps', 'apartment_supply_pipeline', 'market_events'],
     ]);
 
     logger.info('[SnapshotCapture] Captured snapshot', {
       geography: geo.id,
       date: isoDate,
+      costar_sourced: costarSourced,
       completeness,
-      avg_asking_rent: alpRow?.avg_asking_rent != null
-        ? parseFloat(String(alpRow.avg_asking_rent)) : null,
+      avg_asking_rent: avgAskingRent,
     });
 
     return {
-      geography_type:        geo.type,
-      geography_id:          geo.id,
-      geography_name:        geo.name,
-      snapshot_date:         isoDate,
-      total_properties:      alpRow?.total_properties != null ? parseInt(String(alpRow.total_properties)) : null,
-      total_units:           alpRow?.total_units != null ? parseInt(String(alpRow.total_units)) : null,
-      avg_asking_rent:       alpRow?.avg_asking_rent != null ? parseFloat(String(alpRow.avg_asking_rent)) : null,
-      avg_effective_rent:    alpRow?.avg_effective_rent != null ? parseFloat(String(alpRow.avg_effective_rent)) : null,
-      avg_occupancy_pct:     alpRow?.avg_occupancy_pct != null ? parseFloat(String(alpRow.avg_occupancy_pct)) : null,
-      avg_walk_score:        ppRow?.avg_walk_score != null ? parseFloat(String(ppRow.avg_walk_score)) : null,
-      avg_transit_score:     ppRow?.avg_transit_score != null ? parseFloat(String(ppRow.avg_transit_score)) : null,
-      avg_cap_rate:          mscRow?.avg_cap_rate != null ? parseFloat(String(mscRow.avg_cap_rate)) : null,
-      avg_price_per_unit:    mscRow?.avg_price_per_unit != null ? parseFloat(String(mscRow.avg_price_per_unit)) : null,
-      units_under_construction: aspRow?.units_delivering != null ? parseInt(String(aspRow.units_delivering)) : null,
-      planned_units_24mo:    evtRow?.planned_24mo != null ? parseInt(String(evtRow.planned_24mo)) : null,
-      data_completeness_score: completeness,
+      geography_type:           geo.type,
+      geography_id:             geo.id,
+      geography_name:           geo.name,
+      snapshot_date:            isoDate,
+      total_properties:         this.i(alpRow?.total_properties),
+      total_units:              this.i(alpRow?.total_units),
+      avg_asking_rent:          avgAskingRent,
+      avg_effective_rent:       avgEffectiveRent,
+      avg_occupancy_pct:        avgOccupancyPct,
+      avg_walk_score:           this.f(ppRow?.avg_walk_score),
+      avg_transit_score:        this.f(ppRow?.avg_transit_score),
+      avg_cap_rate:             avgCapRate,
+      avg_price_per_unit:       avgPricePerUnit,
+      units_under_construction: unitsDelivering,
+      planned_units_24mo:       plannedUnits24mo,
+      data_completeness_score:  completeness,
+      costar_sourced:           costarSourced,
     };
   }
 
-  /**
-   * Retrieve the latest snapshot per geography for Atlanta.
-   * Returns exactly one row per (geography_type, geography_id) pair —
-   * the most recent snapshot within the requested window.
-   * Used by GET /georgia/snapshots.
-   */
+  /** Retrieve the latest snapshot per geography (DISTINCT ON).
+   *  Returns exactly one row per (geography_type, geography_id) pair —
+   *  the most recent snapshot within the requested window. */
   async getLatestSnapshots(options: {
     geography_type?: string;
     geography_id?: string;
@@ -355,12 +461,10 @@ class SnapshotCaptureService {
     }
 
     const result = await pool.query<{
-      id: string;
       geography_type: string;
       geography_id: string;
       geography_name: string;
       snapshot_date: string;
-      snapshot_type: string;
       total_properties: string | null;
       total_units: string | null;
       avg_asking_rent: string | null;
@@ -373,15 +477,12 @@ class SnapshotCaptureService {
       units_under_construction: string | null;
       planned_units_24mo: string | null;
       data_completeness_score: string | null;
-      data_sources: string[] | null;
     }>(`
       SELECT DISTINCT ON (geography_type, geography_id)
-        id,
         geography_type,
         geography_id,
         geography_name,
         snapshot_date::text,
-        snapshot_type,
         total_properties,
         total_units,
         avg_asking_rent,
@@ -393,31 +494,45 @@ class SnapshotCaptureService {
         avg_price_per_unit,
         units_under_construction,
         planned_units_24mo,
-        data_completeness_score,
-        data_sources
+        data_completeness_score
       FROM market_snapshots
       WHERE ${filters.join(' AND ')}
       ORDER BY geography_type, geography_id, snapshot_date DESC
     `, params);
 
     return result.rows.map(r => ({
-      geography_type:          r.geography_type,
-      geography_id:            r.geography_id,
-      geography_name:          r.geography_name,
-      snapshot_date:           r.snapshot_date,
-      total_properties:        r.total_properties != null ? parseInt(r.total_properties) : null,
-      total_units:             r.total_units != null ? parseInt(r.total_units) : null,
-      avg_asking_rent:         r.avg_asking_rent != null ? parseFloat(r.avg_asking_rent) : null,
-      avg_effective_rent:      r.avg_effective_rent != null ? parseFloat(r.avg_effective_rent) : null,
-      avg_occupancy_pct:       r.avg_occupancy_pct != null ? parseFloat(r.avg_occupancy_pct) : null,
-      avg_walk_score:          r.avg_walk_score != null ? parseFloat(r.avg_walk_score) : null,
-      avg_transit_score:       r.avg_transit_score != null ? parseFloat(r.avg_transit_score) : null,
-      avg_cap_rate:            r.avg_cap_rate != null ? parseFloat(r.avg_cap_rate) : null,
-      avg_price_per_unit:      r.avg_price_per_unit != null ? parseFloat(r.avg_price_per_unit) : null,
-      units_under_construction: r.units_under_construction != null ? parseInt(r.units_under_construction) : null,
-      planned_units_24mo:      r.planned_units_24mo != null ? parseInt(r.planned_units_24mo) : null,
-      data_completeness_score: r.data_completeness_score != null ? parseFloat(r.data_completeness_score) : 0,
+      geography_type:           r.geography_type,
+      geography_id:             r.geography_id,
+      geography_name:           r.geography_name,
+      snapshot_date:            r.snapshot_date,
+      total_properties:         this.i(r.total_properties),
+      total_units:              this.i(r.total_units),
+      avg_asking_rent:          this.f(r.avg_asking_rent),
+      avg_effective_rent:       this.f(r.avg_effective_rent),
+      avg_occupancy_pct:        this.f(r.avg_occupancy_pct),
+      avg_walk_score:           this.f(r.avg_walk_score),
+      avg_transit_score:        this.f(r.avg_transit_score),
+      avg_cap_rate:             this.f(r.avg_cap_rate),
+      avg_price_per_unit:       this.f(r.avg_price_per_unit),
+      units_under_construction: this.i(r.units_under_construction),
+      planned_units_24mo:       this.i(r.planned_units_24mo),
+      data_completeness_score:  r.data_completeness_score != null ? parseFloat(r.data_completeness_score) : 0,
+      costar_sourced:           false,
     }));
+  }
+
+  /** Parse nullable string → float or null */
+  private f(v: string | null | undefined): number | null {
+    if (v == null) return null;
+    const n = parseFloat(String(v));
+    return isNaN(n) ? null : n;
+  }
+
+  /** Parse nullable string → integer or null */
+  private i(v: string | null | undefined): number | null {
+    if (v == null) return null;
+    const n = parseInt(String(v), 10);
+    return isNaN(n) ? null : n;
   }
 }
 
