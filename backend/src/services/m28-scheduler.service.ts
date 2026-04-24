@@ -3,9 +3,13 @@ import { ingestRateData } from '../scripts/ingest-rate-data';
 import { ingestLeadingIndicators } from '../scripts/ingest-leading-indicators';
 import { ingestMsaData } from '../scripts/ingest-msa-economic-data';
 import { classifyAllMarkets } from '../scripts/classify-market-cycles';
+import { ingestAtlantaNews } from '../scripts/ingest-atlanta-news';
 import { MarketMetricsAggregator } from './market-metrics-aggregator.service';
 import { CorrelationEngineService } from './correlationEngine.service';
 import { TrafficCalibrationJob } from '../jobs/trafficCalibrationJob';
+import { getGeorgiaIngestionOrchestrator } from './property-enrichment/georgia';
+import { georgiaSaleCompsService } from './saleComps/georgia-sale-comps.service';
+import { apartmentLocatorSyncService } from './apartment-locator-sync.service';
 import { pool } from '../database';
 
 let initialized = false;
@@ -95,6 +99,55 @@ export function startM28Scheduler() {
     }
   }, { timezone: 'America/New_York' });
 
+  // Atlanta CRE news — daily at 6:00 AM ET (before morning briefing at 7 AM)
+  cron.schedule('0 6 * * *', async () => {
+    console.log('[M28 Scheduler] Running Atlanta CRE news ingestion...');
+    try {
+      const result = await ingestAtlantaNews();
+      console.log(`[M28 Scheduler] Atlanta news complete: ${result.inserted} articles inserted`);
+    } catch (err: any) {
+      console.error('[M28 Scheduler] Atlanta news ingestion failed:', err.message);
+    }
+  }, { timezone: 'America/New_York' });
+
+  // Apartment locator sync — daily at 3:30 AM ET
+  cron.schedule('30 3 * * *', async () => {
+    console.log('[M28 Scheduler] Running apartment locator sync (Atlanta)...');
+    try {
+      const result = await apartmentLocatorSyncService.syncAtlanta();
+      console.log(`[M28 Scheduler] Apt locator sync complete: ${JSON.stringify(result.stats)}`);
+    } catch (err: any) {
+      console.error('[M28 Scheduler] Apt locator sync failed:', err.message);
+    }
+  }, { timezone: 'America/New_York' });
+
+  // Georgia county ingestion — weekly Saturday at 1:00 AM ET
+  // Runs all four counties (Cobb, Gwinnett, DeKalb, Fulton) sequentially
+  // then auto-promotes qualified sales into market_sale_comps
+  cron.schedule('0 1 * * 6', async () => {
+    console.log('[M28 Scheduler] Running weekly Georgia county ingestion...');
+    const georgiaOrchestrator = getGeorgiaIngestionOrchestrator();
+    try {
+      const result = await georgiaOrchestrator.ingestAll({ batchSize: 500 });
+      console.log(
+        `[M28 Scheduler] Georgia ingestion complete: ${result.summary.totalInserted} records, ` +
+        `counties: ${result.summary.successfulCounties.join(', ')}`
+      );
+    } catch (err: any) {
+      console.error('[M28 Scheduler] Georgia ingestion failed:', err.message);
+    }
+
+    try {
+      const promoteResult = await georgiaSaleCompsService.promoteGeorgiaSales({
+        state: 'GA', minSalePrice: 200_000, minUnits: 4,
+      });
+      const total = promoteResult.reduce((s, r) => s + r.promoted, 0);
+      console.log(`[M28 Scheduler] Georgia comps promoted: ${total} records`);
+    } catch (err: any) {
+      console.error('[M28 Scheduler] Georgia comps promote failed:', err.message);
+    }
+  }, { timezone: 'America/New_York' });
+
   console.log('[M28 Scheduler] Scheduled:');
   console.log('  - Rate + macro ingestion: daily at 8:00 AM ET');
   console.log('  - MSA economic data (BLS): daily at 8:30 AM ET');
@@ -103,4 +156,7 @@ export function startM28Scheduler() {
   console.log('  - Market metrics refresh: every 6 hours');
   console.log('  - Correlation sweep: weekly Sundays at 3:00 AM ET');
   console.log('  - M07 traffic calibration: nightly at 2:00 AM ET');
+  console.log('  - Atlanta CRE news: daily at 6:00 AM ET');
+  console.log('  - Apartment locator sync: daily at 3:30 AM ET');
+  console.log('  - Georgia county ingestion: weekly Saturdays at 1:00 AM ET');
 }

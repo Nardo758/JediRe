@@ -14,6 +14,8 @@ import {
 } from '../../services/property-enrichment/georgia';
 import { getRecentJobs, getLastJob } from '../../services/property-enrichment/georgia/job-tracker';
 import { georgiaSaleCompsService } from '../../services/saleComps/georgia-sale-comps.service';
+import { apartmentLocatorSyncService } from '../../services/apartment-locator-sync.service';
+import { ingestAtlantaNews } from '../../scripts/ingest-atlanta-news';
 
 const router = Router();
 const orchestrator = getGeorgiaIngestionOrchestrator();
@@ -447,6 +449,98 @@ router.get('/analytics/nearby-comps', async (req: Request, res: Response) => {
   } catch (error) {
     res.status(500).json({ error: 'Failed to get nearby comps' });
   }
+});
+
+// ============================================================================
+// FULL ATLANTA PIPELINE — single trigger for all data flows
+// ============================================================================
+
+/**
+ * POST /api/v1/georgia/run-pipeline
+ * Runs the full Atlanta intelligence pipeline in sequence:
+ *   1. County ingestion (property_info_cache + georgia_property_sales)
+ *   2. Sales → comp pool promotion (market_sale_comps)
+ *   3. Apartment locator sync (apartment_locator_properties + supply pipeline)
+ *   4. Atlanta CRE news batch (news_article_cache)
+ *
+ * Body params:
+ *   counties?: string[]   — default: all four
+ *   maxRecords?: number   — per-county cap (useful for test runs)
+ *   skipNews?: boolean    — skip news ingestion step
+ */
+router.post('/run-pipeline', async (req: Request, res: Response) => {
+  const startedAt = Date.now();
+  const {
+    counties,
+    maxRecords,
+    batchSize = 500,
+    skipNews = false,
+  } = req.body ?? {};
+
+  const log: Record<string, any> = {};
+
+  try {
+    // Step 1 — County property + sales ingestion
+    console.log('[Pipeline] Step 1: Georgia county ingestion...');
+    const ingestResult = await orchestrator.ingestAll(
+      { batchSize, maxRecords },
+      { counties }
+    );
+    log.countyIngest = {
+      inserted: ingestResult.summary.totalInserted,
+      errors: ingestResult.summary.totalErrors,
+      counties: ingestResult.summary.successfulCounties,
+      failed: ingestResult.summary.failedCounties,
+    };
+  } catch (err: any) {
+    log.countyIngest = { error: err.message };
+    console.error('[Pipeline] Step 1 failed:', err.message);
+  }
+
+  try {
+    // Step 2 — Promote qualified sales → market_sale_comps
+    console.log('[Pipeline] Step 2: Promoting Georgia sales to comp pool...');
+    const promoteResult = await georgiaSaleCompsService.promoteGeorgiaSales({
+      state: 'GA',
+      minSalePrice: 200_000,
+      minUnits: 4,
+    });
+    log.compsPromote = { counties: promoteResult };
+  } catch (err: any) {
+    log.compsPromote = { error: err.message };
+    console.error('[Pipeline] Step 2 failed:', err.message);
+  }
+
+  try {
+    // Step 3 — Apartment locator sync → competitive sets + supply pipeline
+    console.log('[Pipeline] Step 3: Syncing Atlanta apartment locator...');
+    const aptResult = await apartmentLocatorSyncService.syncAtlanta();
+    log.aptLocatorSync = aptResult;
+  } catch (err: any) {
+    log.aptLocatorSync = { error: err.message };
+    console.error('[Pipeline] Step 3 failed:', err.message);
+  }
+
+  if (!skipNews) {
+    try {
+      // Step 4 — Atlanta CRE news batch
+      console.log('[Pipeline] Step 4: Ingesting Atlanta CRE news...');
+      const newsResult = await ingestAtlantaNews();
+      log.newsIngest = newsResult;
+    } catch (err: any) {
+      log.newsIngest = { error: err.message };
+      console.error('[Pipeline] Step 4 failed:', err.message);
+    }
+  }
+
+  const durationMs = Date.now() - startedAt;
+  console.log(`[Pipeline] Completed in ${(durationMs / 1000).toFixed(1)}s`);
+
+  res.json({
+    success: true,
+    durationMs,
+    pipeline: log,
+  });
 });
 
 /**
