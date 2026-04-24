@@ -127,19 +127,40 @@ interface PriceTrend {
   yoy_change_pct: number | null;
 }
 
+interface PriceTrendsResponse {
+  success: boolean;
+  trends: PriceTrend[];
+}
+
+interface RentSnapshot {
+  snapshot_date: string;
+  city: string;
+  state: string;
+  avg_rent: number | null;
+  studio_rent: number | null;
+  one_br_rent: number | null;
+  two_br_rent: number | null;
+  three_br_rent: number | null;
+  avg_occupancy: number | null;
+  concession_rate: number | null;
+  rent_growth_90d: number | null;
+  rent_growth_180d: number | null;
+}
+
+interface RentTrendsResponse {
+  success: boolean;
+  city: string;
+  state: string;
+  count: number;
+  snapshots: RentSnapshot[];
+}
+
 export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
   const [timeRange, setTimeRange] = useState<typeof TIME_RANGES[number]>('1Y');
   const [supplyView, setSupplyView] = useState<'2yr' | '10yr'>('10yr');
   const [priceTrends, setPriceTrends] = useState<PriceTrend[]>([]);
   const [trendsLoading, setTrendsLoading] = useState(true);
-  const [rentSnapshots, setRentSnapshots] = useState<Array<{
-    snapshot_date: string;
-    studio_rent: number | null;
-    one_br_rent: number | null;
-    two_br_rent: number | null;
-    three_br_rent: number | null;
-    avg_rent: number | null;
-  }>>([]);
+  const [rentSnapshots, setRentSnapshots] = useState<RentSnapshot[]>([]);
   const [rentLoading, setRentLoading] = useState(true);
   const msaName = msa?.name || msaId || 'Atlanta';
   const { fetchCommentary, getCommentary, isLoading, getError } = useCommentaryStore();
@@ -150,9 +171,9 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
 
   useEffect(() => {
     setTrendsLoading(true);
-    apiClient.get('/georgia/analytics/price-trends?state=GA')
-      .then(res => {
-        const trends: PriceTrend[] = (res as any)?.trends || [];
+    apiClient.get<PriceTrendsResponse>('/georgia/analytics/price-trends?state=GA')
+      .then((res: PriceTrendsResponse) => {
+        const trends: PriceTrend[] = res?.trends || [];
         // Aggregate across counties using transaction-count weighted averages
         const aggregated = new Map<number, {
           sale_count: number;
@@ -204,8 +225,8 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
 
   useEffect(() => {
     setRentLoading(true);
-    apiClient.get('/georgia/analytics/rent-trends?city=Atlanta&state=GA&limit=8')
-      .then(res => setRentSnapshots((res as any)?.snapshots || []))
+    apiClient.get<RentTrendsResponse>('/georgia/analytics/rent-trends?city=Atlanta&state=GA&limit=8')
+      .then((res: RentTrendsResponse) => setRentSnapshots(res?.snapshots || []))
       .catch(() => setRentSnapshots([]))
       .finally(() => setRentLoading(false));
   }, []);
