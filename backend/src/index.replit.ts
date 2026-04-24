@@ -325,6 +325,7 @@ import {
 import { commentaryOnResearchCompleted } from './agents/commentary.inngest';
 import { archiveAggregationFunction } from './inngest/functions/archive-aggregation.function';
 import { emailIntakeFunction } from './inngest/functions/email-intake.function';
+import { captureMonthlySnapshotsFunction } from './inngest/functions/capture-monthly-snapshots';
 import { scheduledAgentFunctions } from './services/agents/scheduled-jobs';
 import { scheduledDiscoveryFunctions } from './services/discovery/scheduled-discovery';
 app.use(
@@ -340,6 +341,7 @@ app.use(
       commentaryOnResearchCompleted,
       archiveAggregationFunction,
       emailIntakeFunction,
+      captureMonthlySnapshotsFunction,
       // Autonomous agents (Task #327): morning briefings, compliance,
       // portfolio reviews, market intelligence, threshold monitoring.
       ...scheduledAgentFunctions,

@@ -1268,5 +1268,39 @@ router.get('/owners', requireAuth, async (req: Request, res: Response) => {
   }
 });
 
+// ============================================================================
+// MARKET SNAPSHOT ROUTES (Task #361)
+// ============================================================================
+
+/**
+ * GET /api/v1/georgia/snapshots
+ * Return the most recent market_snapshots rows for Atlanta geographies.
+ * Query: ?geography_type=submarket&geography_id=midtown&months=12
+ */
+router.get('/snapshots', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const { snapshotCaptureService } = await import('../../services/backtest/snapshot-capture.service');
+    const geography_type = req.query.geography_type as string | undefined;
+    const geography_id   = req.query.geography_id   as string | undefined;
+    const months = Math.min(parseInt(req.query.months as string) || 12, 36);
+
+    const snapshots = await snapshotCaptureService.getLatestSnapshots({
+      geography_type,
+      geography_id,
+      months,
+    });
+
+    res.json({
+      success: true,
+      count: snapshots.length,
+      months_back: months,
+      snapshots,
+    });
+  } catch (error) {
+    console.error('[API] /georgia/snapshots error:', error);
+    res.status(500).json({ error: 'Failed to fetch market snapshots' });
+  }
+});
+
 export default router;
 
