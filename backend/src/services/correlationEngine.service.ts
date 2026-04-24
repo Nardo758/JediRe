@@ -155,6 +155,20 @@ export class CorrelationEngineService {
     correlations.push(this.computeCOR19());
     correlations.push(this.computeCOR20());
 
+    const [cor21, cor22, cor23, cor24, cor25, cor26, cor27, cor28, cor29, cor30] = await Promise.all([
+      this.computeCOR21(city),
+      this.computeCOR22(city),
+      this.computeCOR23(city),
+      this.computeCOR24(city),
+      this.computeCOR25(city),
+      this.computeCOR26(city),
+      this.computeCOR27(city),
+      this.computeCOR28(city),
+      this.computeCOR29(city),
+      this.computeCOR30(city),
+    ]);
+    correlations.push(cor21, cor22, cor23, cor24, cor25, cor26, cor27, cor28, cor29, cor30);
+
     const computed = correlations.filter(c => c.confidence !== 'insufficient');
     const skipped = correlations.filter(c => c.confidence === 'insufficient');
 
@@ -1570,6 +1584,581 @@ export class CorrelationEngineService {
       dataSources: [],
       missingData: ['SpyFu domain data', 'FDOT AADT', 'Transaction deed records'],
     };
+  }
+
+  private async computeCOR21(city: string): Promise<CorrelationResult> {
+    const base: CorrelationResult = {
+      id: 'COR-21',
+      name: 'Permit Volume → Rent Growth (18mo lag)',
+      tier: 3,
+      category: 'Supply & Demand Signals',
+      xValue: null,
+      yValue: null,
+      correlation: null,
+      signal: null,
+      confidence: 'insufficient',
+      leadTime: '18 months',
+      actionable: null,
+      dataSources: ['Apartment Supply Pipeline'],
+      missingData: [],
+    };
+    try {
+      const lagRes = await this.pool.query(
+        `SELECT COUNT(*) AS permit_count FROM apartment_supply_pipeline
+         WHERE city ILIKE $1
+           AND available_date <= (NOW() - INTERVAL '18 months')`,
+        [city]
+      );
+      const totalRes = await this.pool.query(
+        `SELECT COUNT(*) AS total FROM apartment_supply_pipeline WHERE city ILIKE $1`,
+        [city]
+      );
+      const permitCount = parseInt(lagRes.rows[0]?.permit_count ?? '0', 10);
+      const total = parseInt(totalRes.rows[0]?.total ?? '0', 10);
+      if (total === 0) {
+        base.missingData.push('apartment_supply_pipeline rows for city');
+        return base;
+      }
+      const lagShare = permitCount / total;
+      base.xValue = permitCount;
+      if (lagShare < 0.3) {
+        base.signal = 'bullish';
+        base.confidence = 'medium';
+        base.actionable = `Low historical permit pressure (${permitCount} permits >18mo ago) — rent growth headroom likely.`;
+      } else if (lagShare > 0.6) {
+        base.signal = 'bearish';
+        base.confidence = 'medium';
+        base.actionable = `High prior permit volume (${permitCount} permits >18mo ago) — supply wave arriving now, rent pressure expected.`;
+      } else {
+        base.signal = 'neutral';
+        base.confidence = 'medium';
+        base.actionable = `Moderate prior permit volume (${permitCount} permits); balanced supply pipeline.`;
+      }
+      return base;
+    } catch {
+      base.missingData.push('apartment_supply_pipeline query failed');
+      return base;
+    }
+  }
+
+  private async computeCOR22(city: string): Promise<CorrelationResult> {
+    const base: CorrelationResult = {
+      id: 'COR-22',
+      name: 'Job Growth → Absorption (6mo lag)',
+      tier: 2,
+      category: 'Macro & Employment Signals',
+      xValue: null,
+      yValue: null,
+      correlation: null,
+      signal: null,
+      confidence: 'insufficient',
+      leadTime: '6 months',
+      actionable: null,
+      dataSources: ['Market Snapshots', 'Market Events'],
+      missingData: [],
+    };
+    try {
+      const snapRes = await this.pool.query(
+        `SELECT job_growth_yoy, net_absorption_units, snapshot_date
+         FROM market_snapshots
+         WHERE LOWER(geography_name) LIKE LOWER($1)
+         ORDER BY snapshot_date DESC
+         LIMIT 4`,
+        [`%${city}%`]
+      );
+      if (snapRes.rows.length < 2) {
+        base.missingData.push('market_snapshots with job_growth_yoy and net_absorption_units');
+        return base;
+      }
+      const latest = snapRes.rows[0];
+      const jobGrowth: number = parseFloat(latest.job_growth_yoy ?? '0');
+      const absorption: number = parseInt(latest.net_absorption_units ?? '0', 10);
+      base.xValue = parseFloat((jobGrowth * 100).toFixed(2));
+      base.yValue = absorption;
+      base.correlation = this.estimateCorrelation(jobGrowth, absorption / 1000);
+      if (jobGrowth > 0.02 && absorption > 0) {
+        base.signal = 'bullish';
+        base.confidence = 'medium';
+        base.actionable = `Job growth ${(jobGrowth * 100).toFixed(1)}% YoY driving +${absorption} net absorbed units.`;
+      } else if (jobGrowth < 0 || absorption < 0) {
+        base.signal = 'bearish';
+        base.confidence = 'medium';
+        base.actionable = `Job growth ${(jobGrowth * 100).toFixed(1)}% YoY with ${absorption} net absorption — demand contracting.`;
+      } else {
+        base.signal = 'neutral';
+        base.confidence = 'low';
+        base.actionable = `Job growth ${(jobGrowth * 100).toFixed(1)}% YoY, absorption flat.`;
+      }
+      return base;
+    } catch {
+      base.missingData.push('market_snapshots query failed');
+      return base;
+    }
+  }
+
+  private async computeCOR23(city: string): Promise<CorrelationResult> {
+    const base: CorrelationResult = {
+      id: 'COR-23',
+      name: 'Transit Proximity → Rent Premium',
+      tier: 3,
+      category: 'Spatial Value Signals',
+      xValue: null,
+      yValue: null,
+      correlation: null,
+      signal: null,
+      confidence: 'insufficient',
+      leadTime: 'Concurrent',
+      actionable: null,
+      dataSources: ['Property Proximity'],
+      missingData: [],
+    };
+    try {
+      const res = await this.pool.query(
+        `SELECT AVG(transit_score) AS avg_transit,
+                AVG(estimated_transit_premium_pct) AS avg_premium
+         FROM property_proximity
+         WHERE city ILIKE $1`,
+        [city]
+      );
+      const avgTransit: number | null = parseFloat(res.rows[0]?.avg_transit ?? 'NaN');
+      const avgPremium: number | null = parseFloat(res.rows[0]?.avg_premium ?? 'NaN');
+      if (!res.rows.length || isNaN(avgTransit) || isNaN(avgPremium)) {
+        base.missingData.push('property_proximity rows (transit_score, estimated_transit_premium_pct)');
+        return base;
+      }
+      base.xValue = parseFloat(avgTransit.toFixed(1));
+      base.yValue = parseFloat((avgPremium * 100).toFixed(2));
+      base.correlation = this.estimateCorrelation(avgTransit / 100, avgPremium);
+      if (avgPremium > 0.05) {
+        base.signal = 'bullish';
+        base.confidence = 'medium';
+        base.actionable = `Transit-adjacent properties command avg +${(avgPremium * 100).toFixed(1)}% rent premium (transit score ${avgTransit.toFixed(0)}).`;
+      } else if (avgPremium < 0) {
+        base.signal = 'bearish';
+        base.confidence = 'low';
+        base.actionable = `No transit rent premium detected — location may lack transit advantage.`;
+      } else {
+        base.signal = 'neutral';
+        base.confidence = 'low';
+        base.actionable = `Minimal transit premium (${(avgPremium * 100).toFixed(1)}%) — transit score ${avgTransit.toFixed(0)}.`;
+      }
+      return base;
+    } catch {
+      base.missingData.push('property_proximity query failed');
+      return base;
+    }
+  }
+
+  private async computeCOR24(city: string): Promise<CorrelationResult> {
+    const base: CorrelationResult = {
+      id: 'COR-24',
+      name: 'Crime Rate → Occupancy',
+      tier: 3,
+      category: 'Spatial Value Signals',
+      xValue: null,
+      yValue: null,
+      correlation: null,
+      signal: null,
+      confidence: 'insufficient',
+      leadTime: 'Concurrent',
+      actionable: null,
+      dataSources: ['Property Proximity', 'Market Snapshots'],
+      missingData: [],
+    };
+    try {
+      const crimeRes = await this.pool.query(
+        `SELECT AVG(crime_index) AS avg_crime FROM property_proximity WHERE city ILIKE $1`,
+        [city]
+      );
+      const avgCrime: number = parseFloat(crimeRes.rows[0]?.avg_crime ?? 'NaN');
+      if (isNaN(avgCrime)) {
+        base.missingData.push('property_proximity rows (crime_index)');
+        return base;
+      }
+      const snapRes = await this.pool.query(
+        `SELECT avg_occupancy_pct FROM market_snapshots
+         WHERE LOWER(geography_name) LIKE LOWER($1)
+         ORDER BY snapshot_date DESC LIMIT 1`,
+        [`%${city}%`]
+      );
+      const occupancy: number | null = snapRes.rows[0]?.avg_occupancy_pct
+        ? parseFloat(snapRes.rows[0].avg_occupancy_pct)
+        : null;
+      base.xValue = parseFloat(avgCrime.toFixed(1));
+      base.yValue = occupancy !== null ? parseFloat((occupancy * 100).toFixed(1)) : null;
+      if (avgCrime > 120) {
+        base.signal = 'bearish';
+        base.confidence = 'medium';
+        base.actionable = `Avg crime index ${avgCrime.toFixed(0)} (>120 threshold) — occupancy headwind, underwrite higher vacancy.`;
+      } else if (avgCrime < 80) {
+        base.signal = 'bullish';
+        base.confidence = 'medium';
+        base.actionable = `Low crime index ${avgCrime.toFixed(0)} — safety premium supports occupancy and rent.`;
+      } else {
+        base.signal = 'neutral';
+        base.confidence = 'low';
+        base.actionable = `Crime index ${avgCrime.toFixed(0)} — near city average, no material occupancy impact.`;
+      }
+      return base;
+    } catch {
+      base.missingData.push('property_proximity or market_snapshots query failed');
+      return base;
+    }
+  }
+
+  private async computeCOR25(city: string): Promise<CorrelationResult> {
+    const base: CorrelationResult = {
+      id: 'COR-25',
+      name: 'New Grocery Opening → Rent Growth',
+      tier: 3,
+      category: 'Amenity Catalyst Signals',
+      xValue: null,
+      yValue: null,
+      correlation: null,
+      signal: null,
+      confidence: 'insufficient',
+      leadTime: '6-18 months',
+      actionable: null,
+      dataSources: ['Points of Interest', 'Market Events'],
+      missingData: [],
+    };
+    try {
+      const poiRes = await this.pool.query(
+        `SELECT COUNT(*) AS new_groceries FROM points_of_interest
+         WHERE city ILIKE $1
+           AND poi_type ILIKE '%grocery%'
+           AND opened_date >= NOW() - INTERVAL '24 months'`,
+        [city]
+      );
+      const evRes = await this.pool.query(
+        `SELECT COUNT(*) AS grocery_events FROM market_events
+         WHERE geography_name ILIKE $1
+           AND event_type = 'grocery_opening'
+           AND announced_date >= NOW() - INTERVAL '24 months'`,
+        [city]
+      );
+      const newGroceries = parseInt(poiRes.rows[0]?.new_groceries ?? '0', 10);
+      const groceryEvents = parseInt(evRes.rows[0]?.grocery_events ?? '0', 10);
+      const total = newGroceries + groceryEvents;
+      if (total === 0) {
+        base.missingData.push('No grocery openings in points_of_interest or market_events in last 24mo');
+        return base;
+      }
+      base.xValue = total;
+      if (total >= 3) {
+        base.signal = 'bullish';
+        base.confidence = 'medium';
+        base.actionable = `${total} new grocery openings in last 24mo — amenity catalyst for rent growth in adjacent submarkets.`;
+      } else if (total === 1 || total === 2) {
+        base.signal = 'neutral';
+        base.confidence = 'low';
+        base.actionable = `${total} new grocery opening(s) detected — modest amenity catalyst.`;
+      } else {
+        base.signal = 'neutral';
+        base.confidence = 'low';
+        base.actionable = `No new grocery openings in 24mo window.`;
+      }
+      return base;
+    } catch {
+      base.missingData.push('points_of_interest or market_events query failed');
+      return base;
+    }
+  }
+
+  private async computeCOR26(city: string): Promise<CorrelationResult> {
+    const base: CorrelationResult = {
+      id: 'COR-26',
+      name: 'Employer HQ Move → Submarket Absorption',
+      tier: 2,
+      category: 'Macro & Employment Signals',
+      xValue: null,
+      yValue: null,
+      correlation: null,
+      signal: null,
+      confidence: 'insufficient',
+      leadTime: '6-24 months',
+      actionable: null,
+      dataSources: ['Market Events'],
+      missingData: [],
+    };
+    try {
+      const res = await this.pool.query(
+        `SELECT event_name, jobs_affected, expected_impact_direction,
+                expected_impact_magnitude, announced_date
+         FROM market_events
+         WHERE geography_name ILIKE $1
+           AND event_type = 'employer_move'
+           AND announced_date >= NOW() - INTERVAL '36 months'
+         ORDER BY jobs_affected DESC NULLS LAST`,
+        [city]
+      );
+      if (res.rows.length === 0) {
+        base.missingData.push('No employer_move events in market_events for city in last 36mo');
+        return base;
+      }
+      const totalJobs = res.rows.reduce((s: number, r: any) => s + (parseInt(r.jobs_affected ?? '0', 10)), 0);
+      const bullishCount = res.rows.filter((r: any) => r.expected_impact_direction === 'positive').length;
+      base.xValue = res.rows.length;
+      base.yValue = totalJobs;
+      if (bullishCount > 0 && totalJobs > 500) {
+        base.signal = 'bullish';
+        base.confidence = 'medium';
+        base.actionable = `${res.rows.length} employer move(s) in last 36mo, ${totalJobs.toLocaleString()} jobs relocated — demand shock, expect accelerated absorption.`;
+      } else if (res.rows.length > 0 && totalJobs > 0) {
+        base.signal = 'neutral';
+        base.confidence = 'low';
+        base.actionable = `${res.rows.length} employer move event(s) detected, ${totalJobs.toLocaleString()} jobs — monitor for demand shift.`;
+      } else {
+        base.signal = 'neutral';
+        base.confidence = 'low';
+        base.actionable = `Employer moves present but limited job impact data available.`;
+      }
+      return base;
+    } catch {
+      base.missingData.push('market_events employer_move query failed');
+      return base;
+    }
+  }
+
+  private async computeCOR27(city: string): Promise<CorrelationResult> {
+    const base: CorrelationResult = {
+      id: 'COR-27',
+      name: 'Interest Rate → Cap Rate (3mo lag)',
+      tier: 2,
+      category: 'Macro & Employment Signals',
+      xValue: null,
+      yValue: null,
+      correlation: null,
+      signal: null,
+      confidence: 'insufficient',
+      leadTime: '3 months',
+      actionable: null,
+      dataSources: ['Market Snapshots'],
+      missingData: [],
+    };
+    try {
+      const res = await this.pool.query(
+        `SELECT avg_cap_rate, snapshot_date
+         FROM market_snapshots
+         WHERE LOWER(geography_name) LIKE LOWER($1)
+           AND avg_cap_rate IS NOT NULL
+         ORDER BY snapshot_date DESC
+         LIMIT 1`,
+        [`%${city}%`]
+      );
+      if (res.rows.length === 0) {
+        base.missingData.push('market_snapshots with avg_cap_rate', 'Fed funds rate / macro_indicators table');
+        return base;
+      }
+      const capRate: number = parseFloat(res.rows[0].avg_cap_rate);
+      base.yValue = parseFloat((capRate * 100).toFixed(2));
+      base.missingData.push('Fed funds rate feed (macro_indicators table empty)');
+      if (capRate > 0.065) {
+        base.signal = 'bullish';
+        base.confidence = 'low';
+        base.actionable = `Cap rate ${(capRate * 100).toFixed(2)}% — compressed spread vs current rates, entry opportunity if rates decline.`;
+      } else if (capRate < 0.045) {
+        base.signal = 'bearish';
+        base.confidence = 'low';
+        base.actionable = `Cap rate ${(capRate * 100).toFixed(2)}% — thin spread vs prevailing rates, acquisition risk elevated.`;
+      } else {
+        base.signal = 'neutral';
+        base.confidence = 'low';
+        base.actionable = `Cap rate ${(capRate * 100).toFixed(2)}% — within normal range.`;
+      }
+      return base;
+    } catch {
+      base.missingData.push('market_snapshots query failed', 'macro_indicators data unavailable');
+      return base;
+    }
+  }
+
+  private async computeCOR28(city: string): Promise<CorrelationResult> {
+    const base: CorrelationResult = {
+      id: 'COR-28',
+      name: 'Historical Sale Price/SF → Current Asking',
+      tier: 2,
+      category: 'Valuation Signals',
+      xValue: null,
+      yValue: null,
+      correlation: null,
+      signal: null,
+      confidence: 'insufficient',
+      leadTime: 'Concurrent',
+      actionable: null,
+      dataSources: ['Market Sale Comps'],
+      missingData: [],
+    };
+    try {
+      const res = await this.pool.query(
+        `SELECT AVG(price_per_sqft) AS trailing_avg_psf,
+                PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY price_per_sqft) AS median_psf,
+                COUNT(*) AS comp_count
+         FROM market_sale_comps
+         WHERE city ILIKE $1
+           AND sale_date >= NOW() - INTERVAL '24 months'
+           AND price_per_sqft IS NOT NULL`,
+        [city]
+      );
+      const recentRes = await this.pool.query(
+        `SELECT AVG(price_per_sqft) AS recent_avg_psf
+         FROM market_sale_comps
+         WHERE city ILIKE $1
+           AND sale_date >= NOW() - INTERVAL '6 months'
+           AND price_per_sqft IS NOT NULL`,
+        [city]
+      );
+      const compCount = parseInt(res.rows[0]?.comp_count ?? '0', 10);
+      if (compCount < 3) {
+        base.missingData.push('Insufficient market_sale_comps for city (need 3+ with price_per_sqft)');
+        return base;
+      }
+      const trailingAvg: number = parseFloat(res.rows[0].trailing_avg_psf);
+      const recentAvg: number | null = recentRes.rows[0]?.recent_avg_psf
+        ? parseFloat(recentRes.rows[0].recent_avg_psf)
+        : null;
+      base.xValue = parseFloat(trailingAvg.toFixed(0));
+      base.yValue = recentAvg !== null ? parseFloat(recentAvg.toFixed(0)) : null;
+      if (recentAvg !== null) {
+        const spread = (recentAvg - trailingAvg) / trailingAvg;
+        base.correlation = this.estimateCorrelation(trailingAvg / 500, recentAvg / 500);
+        if (spread > 0.10) {
+          base.signal = 'bearish';
+          base.confidence = 'medium';
+          base.actionable = `Recent asking $${recentAvg.toFixed(0)}/SF is ${(spread * 100).toFixed(1)}% above 24-mo avg $${trailingAvg.toFixed(0)}/SF — market may be over-clearing, monitor cap rate compression.`;
+        } else if (spread < -0.10) {
+          base.signal = 'bullish';
+          base.confidence = 'medium';
+          base.actionable = `Recent asking $${recentAvg.toFixed(0)}/SF is ${Math.abs(spread * 100).toFixed(1)}% below 24-mo avg $${trailingAvg.toFixed(0)}/SF — below clearing price, strong entry.`;
+        } else {
+          base.signal = 'neutral';
+          base.confidence = 'medium';
+          base.actionable = `Current asking ($${recentAvg.toFixed(0)}/SF) tracking within ±10% of 24-mo avg ($${trailingAvg.toFixed(0)}/SF) — fairly priced.`;
+        }
+      } else {
+        base.signal = 'neutral';
+        base.confidence = 'low';
+        base.actionable = `24-mo avg price/SF: $${trailingAvg.toFixed(0)} (${compCount} comps) — no recent 6mo comparables to assess vs asking.`;
+        base.missingData.push('Recent (6mo) sale comps for comparison');
+      }
+      return base;
+    } catch {
+      base.missingData.push('market_sale_comps query failed');
+      return base;
+    }
+  }
+
+  private async computeCOR29(city: string): Promise<CorrelationResult> {
+    const base: CorrelationResult = {
+      id: 'COR-29',
+      name: 'Concession Rate → Future Vacancy',
+      tier: 2,
+      category: 'Supply & Demand Signals',
+      xValue: null,
+      yValue: null,
+      correlation: null,
+      signal: null,
+      confidence: 'insufficient',
+      leadTime: '6 months',
+      actionable: null,
+      dataSources: ['Market Snapshots'],
+      missingData: [],
+    };
+    try {
+      const res = await this.pool.query(
+        `SELECT properties_offering_concessions_pct AS concession_rate,
+                vacancy_rate,
+                snapshot_date
+         FROM market_snapshots
+         WHERE LOWER(geography_name) LIKE LOWER($1)
+           AND properties_offering_concessions_pct IS NOT NULL
+         ORDER BY snapshot_date DESC
+         LIMIT 2`,
+        [`%${city}%`]
+      );
+      if (res.rows.length === 0) {
+        base.missingData.push('market_snapshots with properties_offering_concessions_pct');
+        return base;
+      }
+      const latest = res.rows[0];
+      const concessionRate: number = parseFloat(latest.concession_rate);
+      const vacancyRate: number | null = latest.vacancy_rate ? parseFloat(latest.vacancy_rate) : null;
+      base.xValue = parseFloat((concessionRate * 100).toFixed(1));
+      base.yValue = vacancyRate !== null ? parseFloat((vacancyRate * 100).toFixed(1)) : null;
+      base.correlation = vacancyRate !== null ? this.estimateCorrelation(concessionRate, vacancyRate) : null;
+      if (concessionRate > 0.30) {
+        base.signal = 'bearish';
+        base.confidence = 'medium';
+        base.actionable = `${(concessionRate * 100).toFixed(0)}% of properties offering concessions — leading indicator of rising vacancy in 6mo.`;
+      } else if (concessionRate < 0.10) {
+        base.signal = 'bullish';
+        base.confidence = 'medium';
+        base.actionable = `Low concession rate (${(concessionRate * 100).toFixed(0)}%) — tight market, vacancy likely to remain low.`;
+      } else {
+        base.signal = 'neutral';
+        base.confidence = 'low';
+        base.actionable = `Concession rate ${(concessionRate * 100).toFixed(0)}% — within normal range, no outsized vacancy risk.`;
+      }
+      return base;
+    } catch {
+      base.missingData.push('market_snapshots concession_rate query failed');
+      return base;
+    }
+  }
+
+  private async computeCOR30(city: string): Promise<CorrelationResult> {
+    const base: CorrelationResult = {
+      id: 'COR-30',
+      name: 'Renovation Permits → Rent Growth',
+      tier: 3,
+      category: 'Supply & Demand Signals',
+      xValue: null,
+      yValue: null,
+      correlation: null,
+      signal: null,
+      confidence: 'insufficient',
+      leadTime: '12-24 months',
+      actionable: null,
+      dataSources: ['Apartment Supply Pipeline', 'Market Snapshots'],
+      missingData: [],
+    };
+    try {
+      const totalRes = await this.pool.query(
+        `SELECT COUNT(*) AS total FROM apartment_supply_pipeline WHERE city ILIKE $1`,
+        [city]
+      );
+      const total = parseInt(totalRes.rows[0]?.total ?? '0', 10);
+      if (total === 0) {
+        base.missingData.push('apartment_supply_pipeline rows for city');
+        base.missingData.push('Permit type classification (renovation vs new-construction) not in current schema');
+        return base;
+      }
+      const recentRes = await this.pool.query(
+        `SELECT COUNT(*) AS recent FROM apartment_supply_pipeline
+         WHERE city ILIKE $1 AND available_date >= NOW() - INTERVAL '24 months'`,
+        [city]
+      );
+      const recentCount = parseInt(recentRes.rows[0]?.recent ?? '0', 10);
+      base.xValue = recentCount;
+      base.missingData.push('Renovation vs new-construction permit type not differentiated in apartment_supply_pipeline');
+      if (recentCount >= 5) {
+        base.signal = 'bullish';
+        base.confidence = 'low';
+        base.actionable = `${recentCount} supply entries in last 24mo — value-add activity elevated; expect rent growth as renovated units lease up. (Renovation-specific permits pending data enrichment.)`;
+      } else if (recentCount > 0) {
+        base.signal = 'neutral';
+        base.confidence = 'low';
+        base.actionable = `${recentCount} supply entry(ies) in last 24mo — modest renovation signal.`;
+      } else {
+        base.signal = 'neutral';
+        base.confidence = 'low';
+        base.actionable = `No recent supply pipeline activity — renovation permits may be under-reported.`;
+      }
+      return base;
+    } catch {
+      base.missingData.push('apartment_supply_pipeline query failed');
+      return base;
+    }
   }
 
   private estimateCorrelation(x: number, y: number): number {

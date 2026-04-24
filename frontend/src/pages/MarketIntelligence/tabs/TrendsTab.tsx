@@ -884,9 +884,9 @@ const TrendsTab: React.FC<TrendsTabProps> = ({ marketId }) => {
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 9, color: T.muted, ...mono }}>COR-01..COR-20 — 20 cross-module metrics</span>
+            <span style={{ fontSize: 9, color: T.muted, ...mono }}>COR-01..COR-30 — 30 cross-module metrics</span>
             {correlationReport && <span style={{ fontSize: 9, color: T.cyan, ...mono }}>{correlationReport.metricsComputed}/{correlationReport.correlations.length} computed</span>}
-            <span style={badge(T.secondary)}>20 METRICS</span>
+            <span style={badge(T.secondary)}>30 METRICS</span>
           </div>
         </div>
         <div style={{ padding: '10px 14px' }}>
