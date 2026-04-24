@@ -3,7 +3,7 @@
  * 
  * Permit-Derived Replacement Cost with LayeredValue provenance tracking.
  * 
- * DATA SOURCES (all free/one-time cost):
+ * DATA SOURCES (100% free — no RSMeans or paid feeds):
  * 
  * 1. PERMIT DATA (already ingested via Georgia counties)
  *    - estimated_value from building permits
@@ -15,15 +15,15 @@
  *    - Index today's cost vs permit filing date
  *    - Source: BLS API (free)
  * 
- * 3. RSMeans CITY COST INDEX (CCI)
- *    - One-time purchase (~$400 for annual book)
- *    - Hardcoded location adjustment factors
- *    - Updated annually
+ * 3. BLS REGIONAL PRICE PARITIES (RPP) + PERMIT-DERIVED
+ *    - Location cost adjustment (free alternative to RSMeans)
+ *    - Tier 1: Our own permit data cross-market comparison
+ *    - Tier 2: BLS Regional Price Parities (state level, free)
  * 
  * LAYERED VALUE PATTERN:
  * - Layer 1 (platform): Permit-derived baseline
  * - Layer 2 (enrichment): PPI escalation applied
- * - Layer 3 (adjustment): CCI location factor
+ * - Layer 3 (adjustment): Regional factor (permit-derived or BLS RPP)
  * - Layer 4 (override): User's construction team estimate
  * 
  * Same pattern as tax_math.service.ts
@@ -37,7 +37,7 @@ import { Pool } from 'pg';
 
 export interface LayeredValue<T> {
   value: T;
-  source: 'permit_derived' | 'ppi_escalated' | 'cci_adjusted' | 'market_basket' | 'override' | 'default';
+  source: 'permit_derived' | 'ppi_escalated' | 'regional_adjusted' | 'market_basket' | 'override' | 'default';
   confidence: 'high' | 'medium' | 'low';
   asOf: Date;
   provenance: Array<{
@@ -100,10 +100,12 @@ export interface ReplacementCostResult {
       ppiBaseline: number;
       ppiCurrent: number;
     };
-    cciAdjustment: {
+    regionalAdjustment: {
       location: string;
-      cciFactor: number;
+      factor: number;
       nationalBaseline: number;
+      source: string;
+      methodology: string;
     };
   };
   
@@ -122,95 +124,65 @@ export interface ReplacementCostResult {
 }
 
 // ============================================================================
-// RSMeans CITY COST INDEX (2026 Edition - Hardcoded)
-// Source: RSMeans Building Construction Cost Data 2026
+// BLS REGIONAL PRICE PARITIES (RPP) - FREE
+// Source: BLS Regional Price Parities by State
+// https://www.bea.gov/data/prices-inflation/regional-price-parities-state-and-metro-area
 // National Average = 100
-// One-time cost: ~$400 for annual book
 // ============================================================================
 
-const RSMEANS_CCI_2026: Record<string, number> = {
-  // Major Metros
-  'New York, NY': 143.2,
-  'San Francisco, CA': 139.8,
-  'Los Angeles, CA': 123.4,
-  'Boston, MA': 128.7,
-  'Seattle, WA': 124.1,
-  'Chicago, IL': 116.3,
-  'Washington, DC': 118.9,
-  'Miami, FL': 108.4,
-  'Denver, CO': 106.2,
-  'Austin, TX': 103.8,
-  'Atlanta, GA': 99.6,
-  'Dallas, TX': 97.4,
-  'Houston, TX': 96.8,
-  'Phoenix, AZ': 95.2,
-  'Las Vegas, NV': 101.3,
-  'Nashville, TN': 98.7,
-  'Charlotte, NC': 96.9,
-  'Tampa, FL': 99.1,
-  'Orlando, FL': 97.8,
-  'Raleigh, NC': 98.2,
-  'Minneapolis, MN': 105.4,
-  'Portland, OR': 114.2,
-  'San Diego, CA': 118.6,
-  'San Antonio, TX': 94.6,
-  'Indianapolis, IN': 97.1,
-  'Columbus, OH': 98.4,
-  'Jacksonville, FL': 96.5,
-  'Fort Worth, TX': 96.2,
-  'Memphis, TN': 93.8,
-  'Baltimore, MD': 102.3,
-  'Louisville, KY': 95.7,
-  'Milwaukee, WI': 103.1,
-  'Albuquerque, NM': 94.2,
-  'Tucson, AZ': 93.1,
-  'Kansas City, MO': 99.4,
-  'Sacramento, CA': 115.8,
-  'Oklahoma City, OK': 91.6,
-  'Richmond, VA': 97.5,
-  'New Orleans, LA': 96.3,
-  'Salt Lake City, UT': 98.9,
-  
-  // Georgia Metros (for our county data)
-  'Marietta, GA': 99.2,
-  'Decatur, GA': 99.8,
-  'Sandy Springs, GA': 100.1,
-  'Alpharetta, GA': 100.4,
-  'Roswell, GA': 99.9,
-  'Duluth, GA': 98.7,
-  'Lawrenceville, GA': 97.8,
-  'Savannah, GA': 94.6,
-  'Augusta, GA': 92.3,
-  'Macon, GA': 91.8,
-  
-  // Florida Markets
-  'Fort Lauderdale, FL': 107.2,
-  'West Palm Beach, FL': 106.8,
-  'Naples, FL': 105.4,
-  'Sarasota, FL': 100.6,
-  'Fort Myers, FL': 99.3,
-  
-  // State-level fallbacks
-  'GA': 97.5,
-  'FL': 100.2,
-  'TX': 96.5,
-  'CA': 120.5,
-  'NY': 135.2,
-  'NC': 97.2,
-  'TN': 96.8,
-  'AZ': 94.5,
-  'CO': 105.8,
-  'WA': 118.5,
-  'OR': 112.8,
-  'NV': 100.5,
-  'SC': 94.8,
-  'VA': 99.2,
-  'MD': 103.5,
-  'PA': 105.2,
-  'OH': 98.6,
-  'MI': 101.3,
-  'IL': 108.5,
-  'MA': 125.4,
+const BLS_RPP_GOODS: Record<string, number> = {
+  // States (BLS publishes annually, free)
+  'AL': 91.8,
+  'AK': 106.1,
+  'AZ': 97.2,
+  'AR': 90.5,
+  'CA': 109.4,
+  'CO': 102.1,
+  'CT': 105.3,
+  'DE': 100.8,
+  'FL': 100.9,
+  'GA': 96.8,
+  'HI': 119.2,
+  'ID': 96.9,
+  'IL': 99.8,
+  'IN': 94.7,
+  'IA': 93.2,
+  'KS': 93.8,
+  'KY': 92.1,
+  'LA': 93.9,
+  'ME': 99.7,
+  'MD': 104.2,
+  'MA': 107.5,
+  'MI': 96.4,
+  'MN': 99.1,
+  'MS': 89.6,
+  'MO': 92.8,
+  'MT': 96.3,
+  'NE': 93.5,
+  'NV': 100.2,
+  'NH': 104.1,
+  'NJ': 108.3,
+  'NM': 95.4,
+  'NY': 112.8,
+  'NC': 95.2,
+  'ND': 95.1,
+  'OH': 94.2,
+  'OK': 91.7,
+  'OR': 101.8,
+  'PA': 99.1,
+  'RI': 102.9,
+  'SC': 94.1,
+  'SD': 94.8,
+  'TN': 93.5,
+  'TX': 96.2,
+  'UT': 98.4,
+  'VT': 102.1,
+  'VA': 100.4,
+  'WA': 105.8,
+  'WV': 91.2,
+  'WI': 96.2,
+  'WY': 96.7,
+  'DC': 108.9,
   
   // National baseline
   'national': 100.0
@@ -221,11 +193,10 @@ const RSMEANS_CCI_2026: Record<string, number> = {
 // ============================================================================
 
 const PPI_SERIES = {
-  // Producer Price Index for Construction Materials
-  constructionMaterials: 'WPUIP2311001',  // Materials for construction
-  newResidential: 'PCU236211236211',       // New residential construction
-  multifamily: 'PCU23622123622101',        // New multifamily
-  laborCosts: 'CIU2010000000000I'          // Employment Cost Index - Construction
+  constructionMaterials: 'WPUIP2311001',
+  newResidential: 'PCU236211236211',
+  multifamily: 'PCU23622123622101',
+  laborCosts: 'CIU2010000000000I'
 };
 
 // ============================================================================
@@ -280,26 +251,25 @@ export class ReplacementCostServiceV2 {
     });
     
     // ========================================================================
-    // LAYER 3: CCI Location Adjustment
+    // LAYER 3: Regional Location Adjustment (Permit-Derived or BLS RPP)
     // ========================================================================
-    const cciAdjustment = this.getCCIAdjustment(input.city, input.state);
+    const regionalAdjustment = await this.getRegionalAdjustment(input, permitBaseline);
     
-    const cciAdjustedCostPerSF = currentCostPerSF * (cciAdjustment.cciFactor / 100);
+    const adjustedCostPerSF = currentCostPerSF * (regionalAdjustment.factor / 100);
     
-    // Only apply CCI if permits aren't from same market (avoid double-counting location)
-    const permitMarket = `${input.city}, ${input.state}`;
-    const applyingCCI = permitBaseline.filters.county !== input.county;
+    // Only apply if target market differs from permit source market
+    const applyingRegional = permitBaseline.filters.county !== input.county;
     
-    if (applyingCCI) {
-      currentCostPerSF = cciAdjustedCostPerSF;
-      currentSource = 'cci_adjusted';
+    if (applyingRegional && Math.abs(regionalAdjustment.factor - 100) > 2) {
+      currentCostPerSF = adjustedCostPerSF;
+      currentSource = 'regional_adjusted';
       
       provenance.push({
-        layer: 'cci_adjustment',
-        source: 'RSMeans CCI 2026',
+        layer: 'regional_adjustment',
+        source: regionalAdjustment.source,
         value: currentCostPerSF,
         appliedAt: new Date(),
-        notes: `${input.city}, ${input.state}: CCI ${cciAdjustment.cciFactor} (national = 100)`
+        notes: `${input.city}, ${input.state}: Factor ${regionalAdjustment.factor} (national = 100) - ${regionalAdjustment.methodology}`
       });
     }
     
@@ -309,7 +279,7 @@ export class ReplacementCostServiceV2 {
     if (input.userOverride?.costPerSF) {
       currentCostPerSF = input.userOverride.costPerSF;
       currentSource = 'override';
-      confidence = 'high'; // User-provided is authoritative
+      confidence = 'high';
       
       provenance.push({
         layer: 'user_override',
@@ -326,7 +296,6 @@ export class ReplacementCostServiceV2 {
     const totalCost = currentCostPerSF * input.totalSF;
     const costPerUnit = totalCost / input.units;
     
-    // Build result
     const result: ReplacementCostResult = {
       costPerSF: {
         value: Math.round(currentCostPerSF * 100) / 100,
@@ -352,9 +321,15 @@ export class ReplacementCostServiceV2 {
       components: {
         permitBaseline,
         ppiEscalation,
-        cciAdjustment
+        regionalAdjustment: {
+          location: `${input.city}, ${input.state}`,
+          factor: regionalAdjustment.factor,
+          nationalBaseline: 100,
+          source: regionalAdjustment.source,
+          methodology: regionalAdjustment.methodology
+        }
       },
-      methodology: 'Permit-derived baseline + BLS PPI escalation + RSMeans CCI adjustment',
+      methodology: 'Permit-derived baseline + BLS PPI escalation + Regional adjustment (permit-derived or BLS RPP)',
       confidenceLevel: confidence,
       dataFreshness: permitBaseline.dateRange.to
     };
@@ -368,9 +343,6 @@ export class ReplacementCostServiceV2 {
   private async getPermitDerivedCostPerSF(
     input: ReplacementCostInput
   ): Promise<ReplacementCostResult['components']['permitBaseline']> {
-    // Query permits from our Georgia county data
-    // building_permits table has: permit_value, square_footage, permit_date
-    
     let query = `
       WITH permit_costs AS (
         SELECT 
@@ -379,8 +351,8 @@ export class ReplacementCostServiceV2 {
           county,
           property_type
         FROM building_permits
-        WHERE permit_value > 100000  -- Filter out small permits
-          AND square_footage > 1000  -- Minimum size
+        WHERE permit_value > 100000
+          AND square_footage > 1000
           AND permit_type IN ('new_construction', 'new_building', 'new')
           AND property_type IN ('multifamily', 'apartment', 'residential_multi')
           AND permit_date > NOW() - INTERVAL '24 months'
@@ -389,7 +361,6 @@ export class ReplacementCostServiceV2 {
     const params: any[] = [];
     let paramIndex = 1;
     
-    // Add county filter if specified
     if (input.county) {
       query += ` AND county ILIKE $${paramIndex}`;
       params.push(`%${input.county}%`);
@@ -406,12 +377,9 @@ export class ReplacementCostServiceV2 {
         PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY cost_per_sf) as median_cost,
         COUNT(*) as sample_size,
         MIN(permit_date) as min_date,
-        MAX(permit_date) as max_date,
-        AVG(cost_per_sf) as avg_cost,
-        PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY cost_per_sf) as p25_cost,
-        PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY cost_per_sf) as p75_cost
+        MAX(permit_date) as max_date
       FROM permit_costs
-      WHERE cost_per_sf BETWEEN 50 AND 500  -- Reasonable range filter
+      WHERE cost_per_sf BETWEEN 50 AND 500
     `;
     
     try {
@@ -428,8 +396,7 @@ export class ReplacementCostServiceV2 {
           },
           filters: {
             county: input.county,
-            assetClass: input.assetClass,
-            vintageRange: undefined
+            assetClass: input.assetClass
           }
         };
       }
@@ -437,7 +404,6 @@ export class ReplacementCostServiceV2 {
       console.warn('[ReplacementCostV2] Permit query failed:', error);
     }
     
-    // Fallback to default values if no permit data
     return this.getDefaultPermitBaseline(input);
   }
   
@@ -449,24 +415,22 @@ export class ReplacementCostServiceV2 {
   ): Promise<ReplacementCostResult['components']['ppiEscalation']> {
     const currentDate = new Date();
     
-    // Try to get from cache first
     const cached = await this.pool.query(`
-      SELECT ppi_value, as_of_date
+      SELECT data->>'ppi_value' as ppi_value, data->>'as_of_date' as as_of_date
       FROM inflation_cache
       WHERE indicator = 'PPI_CONSTRUCTION'
         AND fetched_at > NOW() - INTERVAL '7 days'
-      ORDER BY as_of_date DESC
-      LIMIT 2
+      ORDER BY fetched_at DESC
+      LIMIT 1
     `).catch(() => ({ rows: [] }));
     
     let ppiBaseline = 100;
     let ppiCurrent = 100;
     let escalationFactor = 1.0;
     
-    if (cached.rows.length >= 2) {
-      // Use cached values
+    if (cached.rows[0]?.ppi_value) {
       ppiCurrent = parseFloat(cached.rows[0].ppi_value);
-      ppiBaseline = parseFloat(cached.rows[1].ppi_value);
+      ppiBaseline = 100;
       escalationFactor = ppiCurrent / ppiBaseline;
     } else {
       // Estimate based on typical construction inflation
@@ -474,8 +438,7 @@ export class ReplacementCostServiceV2 {
         (currentDate.getTime() - baselineDate.getTime()) / (1000 * 60 * 60 * 24 * 30)
       );
       
-      // Assume ~4% annual construction inflation
-      const annualRate = 0.04;
+      const annualRate = 0.04; // ~4% annual construction inflation
       escalationFactor = Math.pow(1 + annualRate, monthsElapsed / 12);
       
       ppiBaseline = 100;
@@ -492,34 +455,103 @@ export class ReplacementCostServiceV2 {
   }
   
   /**
-   * Get CCI location adjustment factor
+   * Get regional location adjustment factor
+   * TIER 1: Permit-derived cross-market factor (our own data)
+   * TIER 2: BLS Regional Price Parities (free, state-level)
    */
-  private getCCIAdjustment(
-    city: string,
-    state: string
-  ): ReplacementCostResult['components']['cciAdjustment'] {
-    // Try city, state format first
-    const cityKey = `${city}, ${state}`;
-    let cciFactor = RSMEANS_CCI_2026[cityKey];
-    let location = cityKey;
+  private async getRegionalAdjustment(
+    input: ReplacementCostInput,
+    permitBaseline: ReplacementCostResult['components']['permitBaseline']
+  ): Promise<{
+    factor: number;
+    source: string;
+    methodology: string;
+  }> {
+    // TIER 1: Try permit-derived cross-market factor
+    const permitDerivedFactor = await this.getPermitDerivedRegionalFactor(
+      input.city,
+      input.state,
+      input.county
+    );
     
-    // Fall back to state
-    if (!cciFactor) {
-      cciFactor = RSMEANS_CCI_2026[state];
-      location = state;
+    if (permitDerivedFactor.sampleSize >= 10) {
+      return {
+        factor: permitDerivedFactor.factor,
+        source: `JediRe permit data (${permitDerivedFactor.sampleSize} permits)`,
+        methodology: 'permit_derived'
+      };
     }
     
-    // Fall back to national
-    if (!cciFactor) {
-      cciFactor = RSMEANS_CCI_2026.national;
-      location = 'national';
-    }
+    // TIER 2: Fall back to BLS Regional Price Parities
+    const blsRPP = BLS_RPP_GOODS[input.state] || 100;
     
     return {
-      location,
-      cciFactor,
-      nationalBaseline: 100
+      factor: blsRPP,
+      source: 'BLS Regional Price Parities',
+      methodology: 'bls_rpp'
     };
+  }
+  
+  /**
+   * Calculate permit-derived regional factor by comparing markets
+   */
+  private async getPermitDerivedRegionalFactor(
+    city: string,
+    state: string,
+    county?: string
+  ): Promise<{ factor: number; sampleSize: number }> {
+    try {
+      // Get median cost for target market
+      const targetResult = await this.pool.query(`
+        WITH permit_costs AS (
+          SELECT permit_value / NULLIF(square_footage, 0) as cost_per_sf
+          FROM building_permits
+          WHERE permit_value > 100000
+            AND square_footage > 1000
+            AND permit_type IN ('new_construction', 'new_building', 'new')
+            AND property_type IN ('multifamily', 'apartment', 'residential_multi')
+            AND permit_date > NOW() - INTERVAL '24 months'
+            AND (county ILIKE $1 OR city ILIKE $2)
+            AND state = $3
+        )
+        SELECT 
+          PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY cost_per_sf) as median_cost,
+          COUNT(*) as sample_size
+        FROM permit_costs
+        WHERE cost_per_sf BETWEEN 50 AND 500
+      `, [county ? `%${county}%` : '%', `%${city}%`, state]);
+      
+      // Get national median
+      const nationalResult = await this.pool.query(`
+        WITH permit_costs AS (
+          SELECT permit_value / NULLIF(square_footage, 0) as cost_per_sf
+          FROM building_permits
+          WHERE permit_value > 100000
+            AND square_footage > 1000
+            AND permit_type IN ('new_construction', 'new_building', 'new')
+            AND property_type IN ('multifamily', 'apartment', 'residential_multi')
+            AND permit_date > NOW() - INTERVAL '24 months'
+        )
+        SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY cost_per_sf) as median_cost
+        FROM permit_costs
+        WHERE cost_per_sf BETWEEN 50 AND 500
+      `);
+      
+      if (targetResult.rows[0]?.median_cost && nationalResult.rows[0]?.median_cost) {
+        const targetMedian = parseFloat(targetResult.rows[0].median_cost);
+        const nationalMedian = parseFloat(nationalResult.rows[0].median_cost);
+        const factor = (targetMedian / nationalMedian) * 100;
+        
+        return {
+          factor: Math.round(factor * 10) / 10,
+          sampleSize: parseInt(targetResult.rows[0].sample_size) || 0
+        };
+      }
+    } catch (error) {
+      console.warn('[ReplacementCostV2] Permit regional factor query failed:', error);
+    }
+    
+    return { factor: 100, sampleSize: 0 };
   }
   
   /**
@@ -528,7 +560,6 @@ export class ReplacementCostServiceV2 {
   private getDefaultPermitBaseline(
     input: ReplacementCostInput
   ): ReplacementCostResult['components']['permitBaseline'] {
-    // Default costs by asset class
     const defaultCosts: Record<string, number> = {
       'A': 225,
       'B': 185,
@@ -537,7 +568,6 @@ export class ReplacementCostServiceV2 {
     
     const baseCost = defaultCosts[input.assetClass || 'B'] || 185;
     
-    // Adjust for stories (taller = more expensive)
     let heightMultiplier = 1.0;
     if (input.stories) {
       if (input.stories > 4) heightMultiplier = 1.15;
@@ -602,19 +632,30 @@ export class ReplacementCostServiceV2 {
   }
   
   /**
-   * Get CCI for a location (public method for other services)
+   * Get regional factor for a location (public method)
    */
-  getCCIForLocation(city: string, state: string): number {
-    return this.getCCIAdjustment(city, state).cciFactor;
+  async getRegionalFactorForLocation(city: string, state: string, county?: string): Promise<{
+    factor: number;
+    source: string;
+    methodology: string;
+  }> {
+    return this.getRegionalAdjustment(
+      { units: 0, totalSF: 0, city, state, county },
+      { medianCostPerSF: 0, sampleSize: 0, dateRange: { from: new Date(), to: new Date() }, filters: {} }
+    );
   }
   
   /**
-   * Store PPI values from BLS fetch (called by inflation engine)
+   * Get BLS RPP for a state (sync, for quick lookups)
    */
-  async storePPIValue(
-    ppiValue: number,
-    asOfDate: Date
-  ): Promise<void> {
+  getBLSRPPForState(state: string): number {
+    return BLS_RPP_GOODS[state] || 100;
+  }
+  
+  /**
+   * Store PPI values from BLS fetch
+   */
+  async storePPIValue(ppiValue: number, asOfDate: Date): Promise<void> {
     await this.pool.query(`
       INSERT INTO inflation_cache (indicator, geography, data, fetched_at)
       VALUES ('PPI_CONSTRUCTION', 'national', $1, NOW())

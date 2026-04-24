@@ -925,9 +925,10 @@ router.post('/replacement-cost/v2/batch', async (req: Request, res: Response) =>
  * 
  * Get RSMeans CCI factor for a location.
  */
-router.get('/replacement-cost/v2/cci/:city/:state', async (req: Request, res: Response) => {
+router.get('/replacement-cost/v2/regional/:city/:state', async (req: Request, res: Response) => {
   try {
     const { city, state } = req.params;
+    const { county } = req.query as { county?: string };
     
     const pool = req.app.get('pool');
     if (!pool) {
@@ -935,22 +936,24 @@ router.get('/replacement-cost/v2/cci/:city/:state', async (req: Request, res: Re
     }
     
     const service = getReplacementCostServiceV2(pool);
-    const cciFactor = service.getCCIForLocation(city, state);
+    const { factor, source, methodology } = await service.getRegionalFactorForLocation(city, state, county);
     
     res.json({
       location: `${city}, ${state}`,
-      cciFactor,
+      county,
+      factor,
       nationalBaseline: 100,
-      interpretation: cciFactor > 100 
-        ? `Construction costs ${(cciFactor - 100).toFixed(1)}% above national average`
-        : cciFactor < 100
-        ? `Construction costs ${(100 - cciFactor).toFixed(1)}% below national average`
+      interpretation: factor > 100 
+        ? `Construction costs ${(factor - 100).toFixed(1)}% above national average`
+        : factor < 100
+        ? `Construction costs ${(100 - factor).toFixed(1)}% below national average`
         : 'At national average',
-      source: 'RSMeans CCI 2026'
+      source,
+      methodology
     });
   } catch (error) {
-    console.error('[ReplacementCostV2] CCI lookup error:', error);
-    res.status(500).json({ error: 'Failed to get CCI factor' });
+    console.error('[ReplacementCostV2] Regional factor lookup error:', error);
+    res.status(500).json({ error: 'Failed to get regional factor' });
   }
 });
 
