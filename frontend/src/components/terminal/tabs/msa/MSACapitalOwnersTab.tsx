@@ -26,6 +26,28 @@ type SubView = 'owners' | 'markets';
 type SignalType = 'BUY' | 'SELL' | 'SELL?' | 'HOLD';
 type OwnerType = 'REIT' | 'Private Equity' | 'Family Office' | 'Syndicator' | 'Developer' | 'Institution';
 
+interface LiveDeal {
+  property: string;
+  units: number;
+  price: number;
+  ppu: number | null;
+  cap: number | null;
+  buyer: string;
+  date: string;
+  assetClass: string;
+}
+interface LiveCapitalData {
+  success: boolean;
+  state: string;
+  dataNote: string;
+  stats: { dealCount: number; totalVolume: number; avgPpu: number; avgCapRate: number };
+  recentDeals: LiveDeal[];
+  buyerSummary: Array<{
+    buyer: string; dealCount: number; totalVolume: number;
+    avgPpu: number | null; avgCap: number | null;
+  }>;
+}
+
 interface Owner {
   id: string;
   name: string;
@@ -90,7 +112,7 @@ export const MSACapitalOwnersTab: React.FC<Props> = ({ msaId, msa, onSelectPrope
   const [expandedOwner, setExpandedOwner] = useState<string | null>(null);
   const [ownerTypeFilter, setOwnerTypeFilter] = useState('All');
   const [signalFilter, setSignalFilter] = useState('All');
-  const [liveCapitalData, setLiveCapitalData] = useState<any>(null);
+  const [liveCapitalData, setLiveCapitalData] = useState<LiveCapitalData | null>(null);
   const { fetchCommentary, getCommentary, isLoading, getError } = useCommentaryStore();
   const commentary = getCommentary('msa', msaId);
   const loading = isLoading('msa', msaId);
@@ -98,7 +120,7 @@ export const MSACapitalOwnersTab: React.FC<Props> = ({ msaId, msa, onSelectPrope
   useEffect(() => { fetchCommentary('msa', msaId, msaName); }, [msaId, msaName]);
 
   useEffect(() => {
-    apiClient.get<any>('/georgia/owners?state=GA')
+    apiClient.get<LiveCapitalData>('/georgia/owners?state=GA')
       .then(res => { if (res.data.success) setLiveCapitalData(res.data); })
       .catch(() => {});
   }, []);
@@ -158,7 +180,7 @@ export const MSACapitalOwnersTab: React.FC<Props> = ({ msaId, msa, onSelectPrope
 
   const displayDeals = useMemo(() => {
     if (liveCapitalData?.recentDeals?.length > 0) {
-      return liveCapitalData.recentDeals.map((d: any) => ({
+      return liveCapitalData.recentDeals.map((d: LiveDeal) => ({
         property: d.property,
         units: d.units,
         price: d.price > 0 ? parseFloat((d.price / 1_000_000).toFixed(1)) : null,

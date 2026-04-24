@@ -80,6 +80,18 @@ const METRIC_SECTIONS: { label: string; groupId: SignalGroupId; rows: string[]; 
 
 const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono','Fira Code',monospace" };
 
+interface LiveSubmarket {
+  name: string;
+  units: string;
+  rent: string;
+  vac: string;
+}
+interface LiveSubmarketsResponse {
+  success: boolean;
+  count: number;
+  submarkets: LiveSubmarket[];
+}
+
 export const MSACompareTab: React.FC<MSACompareTabProps> = ({ msaId, msa }) => {
   const [markets, setMarkets] = useState(MARKETS);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
@@ -89,15 +101,14 @@ export const MSACompareTab: React.FC<MSACompareTabProps> = ({ msaId, msa }) => {
 
   // ── Live Atlanta overrides from DB ────────────────────────────────────────
   useEffect(() => {
-    apiClient.get<{ success: boolean; submarkets: any[] }>('/georgia/submarkets')
+    apiClient.get<LiveSubmarketsResponse>('/georgia/submarkets')
       .then(res => {
         if (res.data.success && res.data.submarkets.length > 0) {
           const subs = res.data.submarkets;
-          const parseUnits = (u: string) => typeof u === 'string' && u.endsWith('K') ? parseFloat(u) * 1000 : (parseFloat(u) || 0);
-          const totalUnits = subs.reduce((s: number, r: any) => s + parseUnits(r.units), 0);
-          // weighted-average rent and occupancy
+          const parseUnits = (u: string) => u.endsWith('K') ? parseFloat(u) * 1000 : (parseFloat(u) || 0);
+          const totalUnits = subs.reduce((s: number, r: LiveSubmarket) => s + parseUnits(r.units), 0);
           let wRent = 0, wOcc = 0;
-          subs.forEach((r: any) => {
+          subs.forEach((r: LiveSubmarket) => {
             const u = parseUnits(r.units);
             const w = totalUnits > 0 ? u / totalUnits : 1 / subs.length;
             const rentStr = (r.rent || '').replace(/[^0-9.]/g, '');
