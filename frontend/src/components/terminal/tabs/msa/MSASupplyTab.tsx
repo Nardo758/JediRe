@@ -61,22 +61,7 @@ export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa }) => {
       .catch(() => {});
   }, []);
 
-  const deliveryData: ChartDataPoint[] = useMemo(() => {
-    return [
-      { date: 'Q1 25', delivered: 4200, absorbed: 4500 },
-      { date: 'Q2 25', delivered: 5100, absorbed: 4800 },
-      { date: 'Q3 25', delivered: 6200, absorbed: 5500 },
-      { date: 'Q4 25', delivered: 5800, absorbed: 6100 },
-      { date: 'Q1 26', delivered: 4500, absorbed: 4200 },
-      { date: 'Q2 26', delivered: 3800, absorbed: 4100 },
-    ];
-  }, []);
-
-  const leaseUpTracker = useMemo(() => [
-    { project: 'The Hamilton', submarket: 'Midtown', units: 310, monthsOpen: 8, occupancy: 82, velocity: 22, targetDate: 'Aug 2026' },
-    { project: 'Broadstone Perimeter', submarket: 'Perimeter', units: 260, monthsOpen: 5, occupancy: 64, velocity: 28, targetDate: 'Nov 2026' },
-    { project: 'Elan Sandy Springs', submarket: 'Sandy Springs', units: 200, monthsOpen: 3, occupancy: 42, velocity: 18, targetDate: 'Feb 2027' },
-  ], []);
+  const deliveryData: ChartDataPoint[] = useMemo(() => [], []);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -141,16 +126,23 @@ export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa }) => {
         </div>
       </div>
 
-      <TerminalChart
-        title="Delivery vs Absorption (Units)"
-        data={deliveryData}
-        series={[
-          { key: 'delivered', name: 'Delivered', color: BT.text.amber, data: [] },
-          { key: 'absorbed', name: 'Absorbed', color: BT.text.green, data: [] },
-        ]}
-        height={200}
-        valueFormatter={(v) => v.toLocaleString()}
-      />
+      {deliveryData.length > 0 ? (
+        <TerminalChart
+          title="Delivery vs Absorption (Units)"
+          data={deliveryData}
+          series={[
+            { key: 'delivered', name: 'Delivered', color: BT.text.amber, data: [] },
+            { key: 'absorbed', name: 'Absorbed', color: BT.text.green, data: [] },
+          ]}
+          height={200}
+          valueFormatter={(v) => v.toLocaleString()}
+        />
+      ) : (
+        <div style={{ ...terminalStyles.card, padding: 20, textAlign: 'center' }}>
+          <div style={{ fontSize: 12, color: BT.text.muted, marginBottom: 6 }}>Delivery vs Absorption</div>
+          <div style={{ fontSize: 11, color: BT.text.muted }}>Quarterly delivery data not yet available for this market.</div>
+        </div>
+      )}
 
       <TerminalSection title="Under Construction Tracker" icon={<Hammer size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />}>
         <DataTable>
@@ -194,38 +186,10 @@ export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa }) => {
       </TerminalSection>
 
       <TerminalSection title="Active Lease-Up Tracker" icon={<CheckCircle2 size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />}>
-        <DataTable>
-          <thead>
-            <tr>
-              <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Project</th>
-              <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Submarket</th>
-              <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Units</th>
-              <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Months Open</th>
-              <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Occupancy</th>
-              <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Velocity/mo</th>
-              <th style={{ ...terminalStyles.tableHeader, textAlign: 'center' }}>Stabilize By</th>
-            </tr>
-          </thead>
-          <tbody>
-            {leaseUpTracker.map((proj) => (
-              <tr key={proj.project} style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
-                <td style={{ ...terminalStyles.tableCell, fontWeight: 500 }}>{proj.project}</td>
-                <td style={{ ...terminalStyles.tableCell, color: BT.text.muted }}>{proj.submarket}</td>
-                <td style={{ ...terminalStyles.tableCell, textAlign: 'right' }}>{proj.units}</td>
-                <td style={{ ...terminalStyles.tableCell, textAlign: 'right' }}>{proj.monthsOpen}</td>
-                <td style={{ ...terminalStyles.tableCell, textAlign: 'right' }}>
-                  <span style={{ color: proj.occupancy >= 90 ? BT.text.green : proj.occupancy >= 70 ? BT.text.amber : BT.text.primary, fontWeight: 600 }}>
-                    {proj.occupancy}%
-                  </span>
-                </td>
-                <td style={{ ...terminalStyles.tableCell, textAlign: 'right', fontFamily: "'JetBrains Mono'", color: BT.text.cyan }}>
-                  {proj.velocity}
-                </td>
-                <td style={{ ...terminalStyles.tableCell, textAlign: 'center', color: BT.text.muted }}>{proj.targetDate}</td>
-              </tr>
-            ))}
-          </tbody>
-        </DataTable>
+        <div style={{ padding: '24px 0', textAlign: 'center' }}>
+          <div style={{ fontSize: 12, color: BT.text.muted, marginBottom: 6 }}>No lease-up data available</div>
+          <div style={{ fontSize: 11, color: BT.text.muted }}>Lease-up velocity tracking requires occupancy feed integration.</div>
+        </div>
       </TerminalSection>
 
       <TerminalSection title="Pipeline by Submarket" icon={<Building2 size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />}>

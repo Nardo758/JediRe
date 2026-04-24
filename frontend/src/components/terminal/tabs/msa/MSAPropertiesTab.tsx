@@ -69,18 +69,6 @@ const HEATMAP_MODES = [
 ];
 
 // Mock property data
-const MOCK_PROPERTIES: PropertyRow[] = [
-  { id: '1', property: 'Pines at Midtown', submarket: 'Midtown', units: 180, year: 1992, class: 'B', rent: '$1,480', occ: '94.2%', jedi: 92, address: '1240 Peachtree St NE', stories: 3, acres: 4.2, owner: 'Greystone Capital', purchaseDate: 'Mar 2019', purchasePrice: '$28.5M', pricePerUnit: '$158K', holdPeriod: '6.9yr', sellerMotivation: 78, taxAssessed: '$22.1M', stepUpRisk: '$6.4M', zoning: 'C-2', zoningCapacity: '80 u/acre', askingRent: '$1,480', marketRent: '$1,700', lossToLease: '$220/unit', lossToLeasePct: '14.8%', concessions: '$180' },
-  { id: '2', property: 'Summit Ridge', submarket: 'Decatur', units: 200, year: 1987, class: 'B-', rent: '$1,280', occ: '95.8%', jedi: 89, address: '450 Clairemont Ave', stories: 2, acres: 5.1, owner: 'Cortland Partners', purchaseDate: 'Jun 2020', purchasePrice: '$22.0M', pricePerUnit: '$110K', holdPeriod: '5.7yr', sellerMotivation: 62, taxAssessed: '$18.5M', stepUpRisk: '$3.5M', zoning: 'R-5', zoningCapacity: '60 u/acre', askingRent: '$1,280', marketRent: '$1,450', lossToLease: '$170/unit', lossToLeasePct: '11.7%', concessions: '$120' },
-  { id: '3', property: 'Alexan Buckhead', submarket: 'Buckhead', units: 420, year: 2019, class: 'A', rent: '$2,680', occ: '92.1%', jedi: 83, address: '3300 Peachtree Rd NE', stories: 5, acres: 3.8, owner: 'Trammell Crow', purchaseDate: 'Jan 2021', purchasePrice: '$105.0M', pricePerUnit: '$250K', holdPeriod: '5.1yr', sellerMotivation: 45, taxAssessed: '$92.0M', stepUpRisk: '$13.0M', zoning: 'SPI-9', zoningCapacity: '120 u/acre', askingRent: '$2,680', marketRent: '$2,750', lossToLease: '$70/unit', lossToLeasePct: '2.5%', concessions: '$250' },
-  { id: '4', property: 'Brookhaven Terrace', submarket: 'Brookhaven', units: 240, year: 1998, class: 'B+', rent: '$1,680', occ: '93.4%', jedi: 86, address: '1850 Dresden Dr', stories: 3, acres: 4.8, owner: 'Bridge Investment', purchaseDate: 'Aug 2019', purchasePrice: '$38.4M', pricePerUnit: '$160K', holdPeriod: '6.5yr', sellerMotivation: 58, taxAssessed: '$32.0M', stepUpRisk: '$6.4M', zoning: 'R-CD', zoningCapacity: '55 u/acre', askingRent: '$1,680', marketRent: '$1,820', lossToLease: '$140/unit', lossToLeasePct: '8.3%', concessions: '$100' },
-  { id: '5', property: 'Sandy Springs Crossing', submarket: 'Sandy Springs', units: 312, year: 2001, class: 'B+', rent: '$1,720', occ: '94.8%', jedi: 81, address: '6200 Roswell Rd', stories: 4, acres: 6.2, owner: 'Starwood Capital', purchaseDate: 'Dec 2018', purchasePrice: '$52.0M', pricePerUnit: '$167K', holdPeriod: '7.2yr', sellerMotivation: 52, taxAssessed: '$46.0M', stepUpRisk: '$6.0M', zoning: 'C-1', zoningCapacity: '65 u/acre', askingRent: '$1,720', marketRent: '$1,850', lossToLease: '$130/unit', lossToLeasePct: '7.6%', concessions: '$90' },
-  { id: '6', property: 'East Atlanta Gardens', submarket: 'East Atlanta', units: 128, year: 1988, class: 'B-', rent: '$1,180', occ: '96.1%', jedi: 79, address: '1420 Flat Shoals Ave', stories: 2, acres: 3.2, owner: 'Local GP', purchaseDate: 'Apr 2017', purchasePrice: '$12.8M', pricePerUnit: '$100K', holdPeriod: '8.9yr', sellerMotivation: 84, taxAssessed: '$10.2M', stepUpRisk: '$2.6M', zoning: 'MR-3', zoningCapacity: '45 u/acre', askingRent: '$1,180', marketRent: '$1,420', lossToLease: '$240/unit', lossToLeasePct: '20.3%', concessions: '$60' },
-  { id: '7', property: 'Peachtree Walk', submarket: 'Midtown', units: 310, year: 2015, class: 'B+', rent: '$1,920', occ: '93.6%', jedi: 85, address: '1010 Peachtree St', stories: 4, acres: 3.4, owner: 'Cortland Partners', purchaseDate: 'Sep 2020', purchasePrice: '$58.9M', pricePerUnit: '$190K', holdPeriod: '5.4yr', sellerMotivation: 48, taxAssessed: '$52.0M', stepUpRisk: '$6.9M', zoning: 'SPI-17', zoningCapacity: '100 u/acre', askingRent: '$1,920', marketRent: '$2,050', lossToLease: '$130/unit', lossToLeasePct: '6.8%', concessions: '$150' },
-  { id: '8', property: 'Cascade Heights', submarket: 'Cascade', units: 144, year: 1995, class: 'C+', rent: '$1,050', occ: '97.2%', jedi: 76, address: '2400 Cascade Rd', stories: 2, acres: 4.0, owner: 'Peachtree Residential', purchaseDate: 'Jul 2018', purchasePrice: '$11.5M', pricePerUnit: '$80K', holdPeriod: '7.6yr', sellerMotivation: 72, taxAssessed: '$9.2M', stepUpRisk: '$2.3M', zoning: 'R-4', zoningCapacity: '40 u/acre', askingRent: '$1,050', marketRent: '$1,280', lossToLease: '$230/unit', lossToLeasePct: '21.9%', concessions: '$50' },
-  { id: '9', property: 'Westside Lofts', submarket: 'Westside', units: 96, year: 2008, class: 'B', rent: '$1,580', occ: '91.8%', jedi: 74, address: '890 Marietta St', stories: 3, acres: 1.8, owner: 'Local Syndicator', purchaseDate: 'Nov 2019', purchasePrice: '$14.4M', pricePerUnit: '$150K', holdPeriod: '6.2yr', sellerMotivation: 65, taxAssessed: '$12.5M', stepUpRisk: '$1.9M', zoning: 'I-MIX', zoningCapacity: '75 u/acre', askingRent: '$1,580', marketRent: '$1,680', lossToLease: '$100/unit', lossToLeasePct: '6.3%', concessions: '$120' },
-  { id: '10', property: 'The Vue at Midtown', submarket: 'Midtown', units: 196, year: 2018, class: 'A', rent: '$2,420', occ: '93.2%', jedi: 94, address: '715 Peachtree St', stories: 6, acres: 2.1, owner: 'Hines', purchaseDate: 'Feb 2022', purchasePrice: '$58.8M', pricePerUnit: '$300K', holdPeriod: '4.0yr', sellerMotivation: 28, taxAssessed: '$54.0M', stepUpRisk: '$4.8M', zoning: 'SPI-16', zoningCapacity: '150 u/acre', askingRent: '$2,420', marketRent: '$2,480', lossToLease: '$60/unit', lossToLeasePct: '2.5%', concessions: '$200' },
-];
 
 // Table columns
 const COLUMNS = [
@@ -158,7 +146,7 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
       .catch(() => {});
   }, []);
 
-  const allProperties = liveProperties.length > 0 ? liveProperties : MOCK_PROPERTIES;
+  const allProperties = liveProperties;
 
   // Get unique values for filters
   const submarkets = ['All', ...Array.from(new Set(allProperties.map(p => p.submarket)))];
@@ -516,6 +504,16 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
               </tr>
             </thead>
             <tbody>
+              {allProperties.length === 0 && (
+                <tr><td colSpan={13} style={{ ...terminalStyles.tableCell, textAlign: 'center', color: BT.text.muted, padding: '32px 0' }}>
+                  No properties loaded — run the Atlanta Apartment Locator sync to populate the property database.
+                </td></tr>
+              )}
+              {filteredProperties.length === 0 && allProperties.length > 0 && (
+                <tr><td colSpan={13} style={{ ...terminalStyles.tableCell, textAlign: 'center', color: BT.text.muted, padding: '20px 0' }}>
+                  No properties match the current filters.
+                </td></tr>
+              )}
               {filteredProperties.map((prop) => {
                 const isSelected = selectedRows.has(prop.id);
                 const heatBg = getHeatmapColor(prop);

@@ -159,24 +159,31 @@ export const MSANewsTab: React.FC<MSANewsTabProps> = ({ msaId, msa }) => {
       .catch(() => {});
   }, []);
 
-  const marketAlerts: MarketAlert[] = useMemo(() => [
-    { id: 'a1', title: 'Supply wave cresting — 12-month delivery peak in Q2 2026', signal: 'S-02', severity: 'high', timestamp: '4h ago' },
-    { id: 'a2', title: 'Rent acceleration turning positive in 6 of 8 submarkets', signal: 'M-02', severity: 'medium', timestamp: '1d ago' },
-    { id: 'a3', title: 'Tech sector hiring momentum above 5-year average', signal: 'D-09', severity: 'low', timestamp: '3d ago' },
-    { id: 'a4', title: 'Cap rate compression: Class B spread tightening to 175 bps', signal: 'C-04', severity: 'medium', timestamp: '5d ago' },
-  ], []);
+  const marketAlerts: MarketAlert[] = useMemo(() => {
+    const highImpact = newsItems.filter(n => n.impact === 'negative' || n.impact === 'positive');
+    return highImpact.slice(0, 4).map((n, i) => ({
+      id: `derived-${i}`,
+      title: n.title,
+      signal: n.category === 'development' ? 'S-02' : n.category === 'transaction' ? 'C-04' : n.category === 'employment' ? 'D-09' : 'M-02',
+      severity: n.impact === 'negative' ? 'high' as const : 'medium' as const,
+      timestamp: n.date || 'recent',
+    }));
+  }, [newsItems]);
 
   const sentimentSummary = useMemo(() => {
     const pos = newsItems.filter(n => n.impact === 'positive').length;
     const neg = newsItems.filter(n => n.impact === 'negative').length;
     const neu = newsItems.filter(n => n.impact === 'neutral').length;
+    const total = pos + neg + neu;
+    const topPositive = newsItems.find(n => n.impact === 'positive');
+    const topNegative = newsItems.find(n => n.impact === 'negative');
     return {
-      overall: pos > neg + neu ? 'Bullish' : neg > pos ? 'Bearish' : 'Neutral',
-      positive: pos || 6,
-      neutral: neu || 1,
-      negative: neg || 1,
-      topSignal: 'Employment momentum accelerating',
-      topRisk: 'Near-term supply delivery concentration',
+      overall: total === 0 ? 'Insufficient data' : pos > neg ? 'Bullish' : neg > pos ? 'Bearish' : 'Neutral',
+      positive: pos,
+      neutral: neu,
+      negative: neg,
+      topSignal: topPositive?.title || (total === 0 ? 'No signal data' : null),
+      topRisk: topNegative?.title || (total === 0 ? 'No risk data' : null),
     };
   }, [newsItems]);
 
@@ -252,6 +259,11 @@ export const MSANewsTab: React.FC<MSANewsTabProps> = ({ msaId, msa }) => {
 
       <TerminalSection title="Active Alerts" icon={<AlertTriangle size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {marketAlerts.length === 0 && (
+            <div style={{ padding: '16px 0', textAlign: 'center', fontSize: 11, color: BT.text.muted }}>
+              No active alerts — alerts are derived from high-impact news items.
+            </div>
+          )}
           {marketAlerts.map((alert) => (
             <div key={alert.id} style={{
               display: 'flex', alignItems: 'center', gap: 12,

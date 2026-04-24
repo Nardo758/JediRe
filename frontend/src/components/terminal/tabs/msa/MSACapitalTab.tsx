@@ -69,13 +69,7 @@ export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
         capRate: r.avgCapRate || null,
       }));
     }
-    return [
-      { date: 'Q1 24', volume: 850, capRate: 5.4 },
-      { date: 'Q2 24', volume: 1100, capRate: 5.3 },
-      { date: 'Q3 24', volume: 980, capRate: 5.2 },
-      { date: 'Q4 24', volume: 1270, capRate: 5.2 },
-      { date: 'Q1 25', volume: 920, capRate: 5.3 },
-    ];
+    return [];
   }, [capitalData]);
 
   const recentDeals = useMemo(() => {
@@ -90,12 +84,7 @@ export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
         date: d.date,
       }));
     }
-    return [
-      { property: 'Camden Paces Portfolio', units: 1240, price: 285, ppu: 230, cap: 4.8, buyer: 'Blackstone', date: 'Mar 25' },
-      { property: 'Greystar Midtown Collection', units: 890, price: 198, ppu: 222, cap: 5.0, buyer: 'Invesco', date: 'Feb 25' },
-      { property: 'The Metropolitan at Phipps', units: 320, price: 85, ppu: 266, cap: 4.8, buyer: 'Blackstone', date: 'Feb 25' },
-      { property: 'Alexan Buckhead', units: 290, price: 62, ppu: 214, cap: 5.5, buyer: 'Greystar', date: 'Nov 24' },
-    ];
+    return [];
   }, [capitalData]);
 
   const capRateByClass = useMemo(() => {
@@ -108,13 +97,7 @@ export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
         spread: null,
       }));
     }
-    return [
-      { class: 'A', current: 4.6, prior: 4.8, change: -20, spread: 125 },
-      { class: 'B+', current: 5.1, prior: 5.4, change: -30, spread: 175 },
-      { class: 'B', current: 5.5, prior: 5.8, change: -30, spread: 215 },
-      { class: 'B-', current: 5.9, prior: 6.2, change: -30, spread: 255 },
-      { class: 'C', current: 6.4, prior: 6.6, change: -20, spread: 305 },
-    ];
+    return [];
   }, [capitalData]);
 
   const debtMarketData = useMemo(() => [
@@ -136,14 +119,7 @@ export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
         trend: 'flat',
       }));
     }
-    return [
-      { type: 'Private Equity', pctVolume: 34, dealCount: 43, avgSize: '$62M', trend: 'up' },
-      { type: 'REIT', pctVolume: 22, dealCount: 28, avgSize: '$85M', trend: 'up' },
-      { type: 'Institution', pctVolume: 18, dealCount: 12, avgSize: '$142M', trend: 'flat' },
-      { type: 'Family Office', pctVolume: 14, dealCount: 26, avgSize: '$38M', trend: 'down' },
-      { type: 'Syndicator', pctVolume: 8, dealCount: 14, avgSize: '$22M', trend: 'down' },
-      { type: 'Developer', pctVolume: 4, dealCount: 4, avgSize: '$48M', trend: 'flat' },
-    ];
+    return [];
   }, [capitalData]);
 
   return (
@@ -176,46 +152,53 @@ export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
           <div style={{ ...terminalStyles.metricValue, color: BT.text.green }}>
             {capitalData?.headline?.totalVolume
               ? `$${(capitalData.headline.totalVolume / 1_000_000_000).toFixed(1)}B`
-              : `$${(msa.transactionVolume / 1000000000).toFixed(1)}B`}
+              : '—'}
           </div>
-          <div style={{ fontSize: 10, color: BT.text.green }}>+12% vs LY</div>
+          <div style={{ fontSize: 10, color: BT.text.muted }}>From county sales data</div>
         </div>
         <div style={{ ...terminalStyles.card, textAlign: 'center' }}>
           <div style={{ ...terminalStyles.metricLabel, marginBottom: 8 }}>DEAL COUNT</div>
           <div style={{ ...terminalStyles.metricValue }}>
-            {capitalData?.headline?.dealCount ?? 127}
+            {capitalData?.headline?.dealCount ?? '—'}
           </div>
-          <div style={{ fontSize: 10, color: BT.text.green }}>+8% vs LY</div>
+          <div style={{ fontSize: 10, color: BT.text.muted }}>Transactions recorded</div>
         </div>
         <div style={{ ...terminalStyles.card, textAlign: 'center' }}>
           <div style={{ ...terminalStyles.metricLabel, color: BT.text.cyan, marginBottom: 8 }}>
             AVG CAP RATE
           </div>
           <div style={{ ...terminalStyles.metricValue, color: BT.text.cyan }}>
-            {capitalData?.headline?.avgCapRate ? `${capitalData.headline.avgCapRate}%` : `${msa.avgCapRate}%`}
+            {capitalData?.headline?.avgCapRate ? `${capitalData.headline.avgCapRate}%` : '—'}
           </div>
-          <div style={{ fontSize: 10, color: BT.text.muted }}>-20 bps vs LY</div>
+          <div style={{ fontSize: 10, color: BT.text.muted }}>From sale comps</div>
         </div>
         <div style={{ ...terminalStyles.card, textAlign: 'center' }}>
           <div style={{ ...terminalStyles.metricLabel, marginBottom: 8 }}>AVG $/UNIT</div>
           <div style={{ ...terminalStyles.metricValue }}>
             {capitalData?.headline?.avgPricePerUnit
               ? `$${Math.round(capitalData.headline.avgPricePerUnit / 1000)}K`
-              : '$228K'}
+              : '—'}
           </div>
-          <div style={{ fontSize: 10, color: BT.text.green }}>+5% vs LY</div>
+          <div style={{ fontSize: 10, color: BT.text.muted }}>From sale comps</div>
         </div>
       </div>
 
-      <TerminalChart
-        title="Transaction Volume ($M) & Cap Rate Trend"
-        data={volumeData}
-        series={[
-          { key: 'volume', name: 'Volume ($M)', color: BT.text.green, data: [] },
-        ]}
-        height={180}
-        valueFormatter={(v) => `$${v}M`}
-      />
+      {volumeData.length > 0 ? (
+        <TerminalChart
+          title="Transaction Volume ($M) & Cap Rate Trend"
+          data={volumeData}
+          series={[
+            { key: 'volume', name: 'Volume ($M)', color: BT.text.green, data: [] },
+          ]}
+          height={180}
+          valueFormatter={(v) => `$${v}M`}
+        />
+      ) : (
+        <div style={{ ...terminalStyles.card, padding: 20, textAlign: 'center' }}>
+          <div style={{ fontSize: 12, color: BT.text.muted, marginBottom: 6 }}>Transaction Volume & Cap Rate Trend</div>
+          <div style={{ fontSize: 11, color: BT.text.muted }}>No historical transaction data — populate via Georgia county sales ingestion.</div>
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <TerminalSection title="Cap Rate by Class">
@@ -230,6 +213,11 @@ export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
               </tr>
             </thead>
             <tbody>
+              {capRateByClass.length === 0 && (
+                <tr><td colSpan={5} style={{ ...terminalStyles.tableCell, textAlign: 'center', color: BT.text.muted, padding: '16px 0' }}>
+                  No cap rate data — requires transaction volume from county sales data.
+                </td></tr>
+              )}
               {capRateByClass.map((row) => (
                 <tr key={row.class} style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
                   <td style={{ ...terminalStyles.tableCell, fontWeight: 600 }}>{row.class}</td>
@@ -263,6 +251,11 @@ export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
               </tr>
             </thead>
             <tbody>
+              {buyerActivity.length === 0 && (
+                <tr><td colSpan={5} style={{ ...terminalStyles.tableCell, textAlign: 'center', color: BT.text.muted, padding: '16px 0' }}>
+                  No buyer composition data — requires transaction records from county data.
+                </td></tr>
+              )}
               {buyerActivity.map((row) => (
                 <tr key={row.type} style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
                   <td style={{ ...terminalStyles.tableCell, fontWeight: 500 }}>{row.type}</td>
@@ -291,7 +284,7 @@ export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
         </TerminalSection>
       </div>
 
-      <TerminalSection title="Debt Market Conditions" icon={<DollarSign size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />}>
+      <TerminalSection title="Debt Market Conditions — Indicative National Benchmarks" icon={<DollarSign size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />}>
         <DataTable>
           <thead>
             <tr>
@@ -344,6 +337,11 @@ export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
             </tr>
           </thead>
           <tbody>
+            {recentDeals.length === 0 && (
+              <tr><td colSpan={7} style={{ ...terminalStyles.tableCell, textAlign: 'center', color: BT.text.muted, padding: '20px 0' }}>
+                No transaction data available — populate via Georgia county sales ingestion.
+              </td></tr>
+            )}
             {recentDeals.map((deal, i) => (
               <tr key={i} style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
                 <td style={{ ...terminalStyles.tableCell, fontWeight: 500 }}>{deal.property}</td>
