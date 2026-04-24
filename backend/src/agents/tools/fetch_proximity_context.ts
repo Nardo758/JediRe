@@ -185,6 +185,6 @@ grocery stores, major employers, schools, parks, and safety metrics.
 Returns grades (excellent/good/fair/poor) and estimated rent premiums.
 Use this when analyzing a property's location value or competitive positioning.`,
   inputSchema: fetchProximityContextSchema,
-  outputSchema: z.any(),
+  outputSchema: z.unknown(),
   execute: async (input, _ctx) => fetchProximityContext(input, getPool())
 };

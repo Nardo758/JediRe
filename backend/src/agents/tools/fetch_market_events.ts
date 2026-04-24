@@ -217,6 +217,6 @@ export const fetchMarketEventsTool = {
 Returns sentiment analysis, supply pipeline, risk factors, and opportunities.
 Use when evaluating market timing or competitive dynamics.`,
   inputSchema: fetchMarketEventsSchema,
-  outputSchema: z.any(),
+  outputSchema: z.unknown(),
   execute: async (input, _ctx) => fetchMarketEvents(input, getPool())
 };

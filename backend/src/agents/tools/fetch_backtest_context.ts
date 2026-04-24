@@ -256,6 +256,6 @@ export const fetchBacktestContextTool = {
 - Get comparable deal case studies
 Use when validating projections or setting realistic expectations for a deal.`,
   inputSchema: fetchBacktestContextSchema,
-  outputSchema: z.any(),
+  outputSchema: z.unknown(),
   execute: async (input, _ctx) => fetchBacktestContext(input, getPool())
 };

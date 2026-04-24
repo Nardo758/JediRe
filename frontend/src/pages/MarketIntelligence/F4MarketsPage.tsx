@@ -36,6 +36,27 @@ interface MSACard {
 type ViewMode = 'grid' | 'table';
 type SortKey = 'rank' | 'name' | 'avgRent' | 'rentGrowth' | 'healthScore' | 'population';
 
+interface PipelineStepLog {
+  inserted?: number;
+  errors?: number;
+  counties?: string[];
+  failed?: string[];
+  error?: string;
+  [key: string]: unknown;
+}
+
+interface PipelineRunResult {
+  success: boolean;
+  durationMs: number;
+  pipeline: {
+    countyIngest?: PipelineStepLog;
+    compsPromote?: { counties?: PipelineStepLog[]; error?: string };
+    aptLocatorSync?: PipelineStepLog;
+    aptLocatorGeocode?: { geocoded?: number; skipped?: number; failed?: number; error?: string };
+    newsIngest?: PipelineStepLog;
+  };
+}
+
 interface F4MarketsPageProps {
   onSelectMarket?: (marketId: string, marketName: string) => void;
   embedded?: boolean;
@@ -44,7 +65,7 @@ interface F4MarketsPageProps {
 export const F4MarketsPage: React.FC<F4MarketsPageProps> = ({ onSelectMarket, embedded }) => {
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const isOwner = user?.role === 'owner';
+  const isOwner = user?.role === 'owner' || user?.role === 'admin';
 
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [searchQuery, setSearchQuery] = useState('');
@@ -64,7 +85,7 @@ export const F4MarketsPage: React.FC<F4MarketsPageProps> = ({ onSelectMarket, em
 
   // Pipeline refresh state
   const [pipelineRunning, setPipelineRunning] = useState(false);
-  const [pipelineResult, setPipelineResult] = useState<any | null>(null);
+  const [pipelineResult, setPipelineResult] = useState<PipelineRunResult | null>(null);
   const [pipelineError, setPipelineError] = useState<string | null>(null);
   const [showPipelinePanel, setShowPipelinePanel] = useState(false);
 
@@ -75,10 +96,12 @@ export const F4MarketsPage: React.FC<F4MarketsPageProps> = ({ onSelectMarket, em
     setPipelineError(null);
     setShowPipelinePanel(true);
     try {
-      const res: any = await apiClient.post('/georgia/run-pipeline', { skipNews: false });
+      const res = await apiClient.post('/georgia/run-pipeline', { skipNews: false }) as PipelineRunResult;
       setPipelineResult(res);
-    } catch (err: any) {
-      const msg = err?.response?.data?.message || err?.message || 'Pipeline failed';
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message
+        || (err as { message?: string })?.message
+        || 'Pipeline failed';
       setPipelineError(msg);
     } finally {
       setPipelineRunning(false);
