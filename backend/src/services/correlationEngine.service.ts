@@ -1968,74 +1968,77 @@ export class CorrelationEngineService {
       }
       base.xValue = total;
 
-      // Step 2 (Y): rent for the specific submarkets affected by grocery openings.
-      // Extract submarket slugs from market_events rows and join to submarkets.avg_rent.
+      // Step 2 (Y): rent GROWTH in the submarket(s) affected by grocery openings.
+      // Use market_snapshots.rent_growth_yoy scoped to the affected submarket geography_id(s).
+      // This is the post-opening rent trend, not a static rent level.
       const subIds = evRes.rows
         .filter(r => r.geography_type === 'submarket')
         .map(r => r.geography_id);
 
-      let affectedSubmarketRent: number | null = null;
-      let affectedSubCount = 0;
+      let rentGrowthYoy: number | null = null;
+      let snapMatchCount = 0;
 
       if (subIds.length > 0) {
-        interface AffRentRow { avg_rent: string; matched_count: string }
-        const affRentRes = await this.pool.query<AffRentRow>(
-          `SELECT ROUND(AVG(s.avg_rent)::numeric, 0) AS avg_rent, COUNT(*) AS matched_count
-           FROM submarkets s
-           JOIN msas m ON s.msa_id = m.id
-           WHERE m.name ILIKE $1
+        interface SnapGrowthRow { avg_growth: string; matched: string }
+        const snapGrowthRes = await this.pool.query<SnapGrowthRow>(
+          `SELECT ROUND(AVG(ms.rent_growth_yoy)::numeric, 4) AS avg_growth,
+                  COUNT(*) AS matched
+           FROM market_snapshots ms
+           WHERE ms.rent_growth_yoy IS NOT NULL
+             AND ms.snapshot_date >= NOW() - INTERVAL '12 months'
              AND EXISTS (
-               SELECT 1 FROM UNNEST($2::text[]) AS slug
-               WHERE LOWER(s.name) ILIKE LOWER('%' || slug || '%')
-             )
-             AND s.avg_rent IS NOT NULL`,
-          [`%${city}%`, subIds]
+               SELECT 1 FROM UNNEST($1::text[]) AS slug
+               WHERE LOWER(ms.geography_id) ILIKE LOWER('%' || slug || '%')
+                  OR LOWER(ms.geography_name) ILIKE LOWER('%' || slug || '%')
+             )`,
+          [subIds]
         );
-        affectedSubCount = parseInt(affRentRes.rows[0]?.matched_count ?? '0', 10);
-        if (affectedSubCount > 0) {
-          affectedSubmarketRent = parseFloat(affRentRes.rows[0].avg_rent);
-        }
+        snapMatchCount = parseInt(snapGrowthRes.rows[0]?.matched ?? '0', 10);
+        if (snapMatchCount > 0) rentGrowthYoy = parseFloat(snapGrowthRes.rows[0].avg_growth);
       }
 
-      // If no submarket-level match: fall back to MSA-wide avg_rent but document it
-      if (affectedSubmarketRent === null) {
-        interface MsaRentRow { avg_rent: string; sub_count: string }
-        const msaRentRes = await this.pool.query<MsaRentRow>(
-          `SELECT ROUND(AVG(s.avg_rent)::numeric, 0) AS avg_rent, COUNT(*) AS sub_count
-           FROM submarkets s JOIN msas m ON s.msa_id = m.id
-           WHERE m.name ILIKE $1 AND s.avg_rent IS NOT NULL`,
+      // Fall back to MSA-level rent_growth_yoy from market_snapshots only if no submarket match
+      if (rentGrowthYoy === null) {
+        interface MsaGrowthRow { avg_growth: string; cnt: string }
+        const msaGrowthRes = await this.pool.query<MsaGrowthRow>(
+          `SELECT ROUND(AVG(rent_growth_yoy)::numeric, 4) AS avg_growth, COUNT(*) AS cnt
+           FROM market_snapshots
+           WHERE rent_growth_yoy IS NOT NULL
+             AND snapshot_date >= NOW() - INTERVAL '12 months'
+             AND LOWER(geography_name) ILIKE LOWER($1)`,
           [`%${city}%`]
         );
-        const msaSubCount = parseInt(msaRentRes.rows[0]?.sub_count ?? '0', 10);
-        if (msaSubCount > 0) {
-          affectedSubmarketRent = parseFloat(msaRentRes.rows[0].avg_rent);
-          base.missingData.push('No submarket slug matched grocery events — using MSA-wide avg_rent; zip/submarket linkage requires market_events.geography_id to match submarkets.name');
+        const msaCnt = parseInt(msaGrowthRes.rows[0]?.cnt ?? '0', 10);
+        if (msaCnt > 0) {
+          rentGrowthYoy = parseFloat(msaGrowthRes.rows[0].avg_growth);
+          base.missingData.push('No market_snapshots matched affected submarket slugs — using MSA-level rent_growth_yoy; submarket slug linkage requires market_events.geography_id to match market_snapshots.geography_id');
         } else {
-          base.missingData.push('Submarket avg_rent unavailable for affected zip/submarket; costar_market_metrics.effective_rent not yet populated');
+          base.missingData.push('market_snapshots.rent_growth_yoy unavailable for affected submarket(s) and MSA — costar_market_metrics not yet populated');
         }
       }
 
-      base.yValue = affectedSubmarketRent !== null ? Math.round(affectedSubmarketRent) : null;
-
-      const positiveCount = evRes.rows.filter(r => r.positive).length;
-      const rentStr = affectedSubmarketRent ? `$${Math.round(affectedSubmarketRent).toLocaleString('en-US')}` : 'N/A';
-
-      if (affectedSubmarketRent !== null) {
-        base.correlation = this.estimateCorrelation(total, affectedSubmarketRent / 1000);
+      if (rentGrowthYoy === null) {
+        base.missingData.push('yValue (rent growth) insufficient — cannot compute grocery opening → rent growth correlation');
+        return base;
       }
 
-      if (total >= 3 && positiveCount >= total * 0.7) {
+      base.yValue = parseFloat((rentGrowthYoy * 100).toFixed(2));
+      const positiveCount = evRes.rows.filter(r => r.positive).length;
+      base.correlation = this.estimateCorrelation(total, rentGrowthYoy * 10);
+      const growthStr = `${(rentGrowthYoy * 100).toFixed(1)}%`;
+
+      if (total >= 3 && positiveCount >= total * 0.7 && rentGrowthYoy > 0.02) {
         base.signal = 'bullish';
-        base.confidence = affectedSubCount > 0 ? 'medium' : 'low';
-        base.actionable = `${total} grocery opening(s) in last 24mo (${positiveCount} positive impact) — amenity catalyst; affected submarket avg rent ${rentStr}, expected 6-18mo lift.`;
+        base.confidence = snapMatchCount > 0 ? 'medium' : 'low';
+        base.actionable = `${total} grocery opening(s) in last 24mo (${positiveCount} positive impact) — amenity catalyst; affected submarket YoY rent growth ${growthStr}, expected continued 6-18mo lift.`;
       } else if (total >= 2) {
         base.signal = 'neutral';
         base.confidence = 'low';
-        base.actionable = `${total} grocery opening(s) (${positiveCount} positive) — modest amenity signal; submarket avg rent ${rentStr}.`;
+        base.actionable = `${total} grocery opening(s) (${positiveCount} positive) — modest amenity signal; submarket YoY rent growth ${growthStr}.`;
       } else {
         base.signal = 'neutral';
         base.confidence = 'low';
-        base.actionable = `${total} grocery opening detected — isolated event; submarket avg rent ${rentStr}.`;
+        base.actionable = `${total} grocery opening detected — isolated event; submarket YoY rent growth ${growthStr}.`;
       }
       return base;
     } catch {
@@ -2204,27 +2207,34 @@ export class CorrelationEngineService {
       missingData: [],
     };
     try {
-      // Step 1 (X): interest rate from macro_indicators
+      // Per spec: xValue = interest rate (3mo lagged) from macro_indicators
+      //           yValue = current avg_cap_rate from costar_market_metrics
+      // macro_indicators table is not yet populated — xValue cannot be computed.
+      // Without the interest rate X axis, the lead-lag correlation cannot be established.
+      // Document both missing sources and return insufficient.
       interface MacroRow { indicator_value: string; indicator_date: string }
-      let macroRate: number | null = null;
+      let macroRate3mo: number | null = null;
       try {
         const macroRes = await this.pool.query<MacroRow>(
           `SELECT indicator_value, indicator_date
            FROM macro_indicators
-           WHERE indicator_name ILIKE '%fed%fund%' OR indicator_name ILIKE '%10yr%treasury%' OR indicator_name ILIKE '%interest%rate%'
+           WHERE (indicator_name ILIKE '%fed%fund%'
+               OR indicator_name ILIKE '%10yr%treasury%'
+               OR indicator_name ILIKE '%interest%rate%')
+             AND indicator_date <= NOW() - INTERVAL '3 months'
            ORDER BY indicator_date DESC
            LIMIT 1`
         );
-        if (macroRes.rows.length > 0) macroRate = parseFloat(macroRes.rows[0].indicator_value);
-      } catch {
-        base.missingData.push('macro_indicators table not yet populated — Fed funds rate feed pending');
+        if (macroRes.rows.length > 0) macroRate3mo = parseFloat(macroRes.rows[0].indicator_value);
+      } catch { /* macro_indicators does not exist */ }
+
+      if (macroRate3mo === null) {
+        base.missingData.push('macro_indicators: table not yet populated — 3-month lagged interest rate (xValue) cannot be computed; confidence insufficient');
       }
 
-      // Step 2 (Y): cap rate from costar_market_metrics.avg_cap_rate (primary per spec)
-      // A 3-month lag means: xValue = interest rate 3mo ago → yValue = current avg_cap_rate
+      // yValue: costar_market_metrics.avg_cap_rate (primary per spec); fall back to market_snapshots
       interface CostarCapRow { avg_cap_rate: string; period_date: string }
-      let costarCurrentCap: number | null = null;
-      let costarLagCap: number | null = null;
+      let currentCap: number | null = null;
       try {
         const costarRes = await this.pool.query<CostarCapRow>(
           `SELECT avg_cap_rate, period_date
@@ -2232,78 +2242,55 @@ export class CorrelationEngineService {
            WHERE LOWER(market_name) LIKE LOWER($1)
              AND avg_cap_rate IS NOT NULL
            ORDER BY period_date DESC
-           LIMIT 10`,
+           LIMIT 1`,
           [`%${city}%`]
         );
-        if (costarRes.rows.length > 0) {
-          costarCurrentCap = parseFloat(costarRes.rows[0].avg_cap_rate);
-          // Find row closest to 3 months before most recent
-          const currentDate = new Date(costarRes.rows[0].period_date);
-          const target3mo = new Date(currentDate);
-          target3mo.setMonth(target3mo.getMonth() - 3);
-          let bestDist = Infinity;
-          for (const row of costarRes.rows.slice(1)) {
-            const d = new Date(row.period_date);
-            const dist = Math.abs(d.getTime() - target3mo.getTime());
-            if (dist < bestDist) { bestDist = dist; costarLagCap = parseFloat(row.avg_cap_rate); }
-          }
-        }
-      } catch { /* costar_market_metrics table not present */ }
+        if (costarRes.rows.length > 0) currentCap = parseFloat(costarRes.rows[0].avg_cap_rate);
+      } catch { /* costar_market_metrics does not exist */ }
 
-      if (costarCurrentCap === null) {
-        base.missingData.push('costar_market_metrics.avg_cap_rate not populated — required yValue source for interest rate → cap rate lag; confidence insufficient');
-        if (macroRate === null) base.missingData.push('macro_indicators: interest rate feed not populated');
+      if (currentCap === null) {
+        base.missingData.push('costar_market_metrics.avg_cap_rate not populated — trying market_snapshots.avg_cap_rate');
+        interface SnapCapRow { avg_cap_rate: string }
+        const snapRes = await this.pool.query<SnapCapRow>(
+          `SELECT avg_cap_rate FROM market_snapshots
+           WHERE avg_cap_rate IS NOT NULL
+             AND LOWER(geography_name) LIKE LOWER($1)
+           ORDER BY snapshot_date DESC LIMIT 1`,
+          [`%${city}%`]
+        );
+        if (snapRes.rows.length > 0) currentCap = parseFloat(snapRes.rows[0].avg_cap_rate);
+        else base.missingData.push('market_snapshots.avg_cap_rate also unavailable for this city');
+      }
+
+      // Without the lagged interest rate (X), the correlation cannot be established per spec.
+      if (macroRate3mo === null) {
+        // Record yValue for informational purposes if available, but return insufficient
+        if (currentCap !== null) base.yValue = parseFloat((currentCap * 100).toFixed(2));
         return base;
       }
 
-      // We have costar cap rate — build the signal
-      base.yValue = parseFloat((costarCurrentCap * 100).toFixed(2));
-      if (macroRate !== null) {
-        base.xValue = macroRate;
-      } else {
-        // Use costar lag cap as X proxy when macro rate unavailable
-        base.missingData.push('macro_indicators (interest rate) not populated — using costar cap rate 3mo lag as xValue proxy');
-        if (costarLagCap !== null) base.xValue = parseFloat((costarLagCap * 100).toFixed(2));
-      }
-
-      if (costarLagCap !== null) {
-        const capDelta = costarCurrentCap - costarLagCap;
-        base.correlation = this.estimateCorrelation(costarLagCap, costarCurrentCap);
-        if (capDelta > 0.002) {
+      // Both X and Y available — compute signal
+      base.xValue = macroRate3mo;
+      if (currentCap !== null) {
+        base.yValue = parseFloat((currentCap * 100).toFixed(2));
+        base.correlation = this.estimateCorrelation(macroRate3mo / 10, currentCap);
+        if (macroRate3mo > 5.0 && currentCap > 0.055) {
           base.signal = 'bearish';
           base.confidence = 'medium';
-          base.actionable = `Cap rates expanding ${(capDelta * 100).toFixed(0)}bps (${(costarLagCap * 100).toFixed(2)}% → ${(costarCurrentCap * 100).toFixed(2)}%) over 3-month lag — interest rate pressure compressing values.`;
-        } else if (capDelta < -0.002) {
+          base.actionable = `Interest rate ${macroRate3mo.toFixed(2)}% (3mo lag) → cap rate ${(currentCap * 100).toFixed(2)}% — elevated rate environment confirmed in expanded cap rates, bearish for values.`;
+        } else if (macroRate3mo < 3.5 && currentCap < 0.05) {
           base.signal = 'bullish';
           base.confidence = 'medium';
-          base.actionable = `Cap rates compressing ${Math.abs(capDelta * 100).toFixed(0)}bps (${(costarLagCap * 100).toFixed(2)}% → ${(costarCurrentCap * 100).toFixed(2)}%) over 3-month lag — rate expectations easing, values firming.`;
+          base.actionable = `Interest rate ${macroRate3mo.toFixed(2)}% (3mo lag) → cap rate ${(currentCap * 100).toFixed(2)}% — accommodative rates supporting cap rate compression, bullish for values.`;
         } else {
           base.signal = 'neutral';
           base.confidence = 'low';
-          base.actionable = `Cap rates stable at ${(costarCurrentCap * 100).toFixed(2)}% over 3mo — no material interest rate pressure on values detected.`;
+          base.actionable = `Interest rate ${macroRate3mo.toFixed(2)}% (3mo lag) → cap rate ${(currentCap * 100).toFixed(2)}% — no clear directional rate/cap correlation.`;
         }
-      } else if (macroRate !== null) {
-        if (macroRate > 5.0) {
-          base.signal = 'bearish';
-          base.confidence = 'low';
-          base.actionable = `Fed funds rate ${macroRate.toFixed(2)}% with cap rate at ${(costarCurrentCap * 100).toFixed(2)}% — elevated rate environment expected to push cap rates higher (bearish for values).`;
-        } else if (macroRate < 3.5) {
-          base.signal = 'bullish';
-          base.confidence = 'low';
-          base.actionable = `Fed funds rate ${macroRate.toFixed(2)}% with cap rate at ${(costarCurrentCap * 100).toFixed(2)}% — accommodative rate environment supports cap rate compression.`;
-        } else {
-          base.signal = 'neutral';
-          base.confidence = 'low';
-          base.actionable = `Fed funds rate ${macroRate.toFixed(2)}% with cap rate ${(costarCurrentCap * 100).toFixed(2)}% — moderate rate environment; cap rate direction uncertain.`;
-        }
-      } else {
-        base.signal = 'neutral';
-        base.confidence = 'low';
-        base.actionable = `Current cap rate ${(costarCurrentCap * 100).toFixed(2)}% — insufficient historical lag data for trend signal.`;
       }
       return base;
     } catch {
-      base.missingData.push('costar_market_metrics / macro_indicators cap rate query failed');
+      base.missingData.push('macro_indicators / costar_market_metrics cap rate query failed');
       return base;
     }
   }
@@ -2521,87 +2508,93 @@ export class CorrelationEngineService {
       missingData: [],
     };
     try {
-      // Attempt 1: filter apartment_supply_pipeline by renovation-keyword project names
-      // Schema lacks explicit permit_type column — approximate using project_name heuristics
-      interface PipelineRenovRow { renov_count: string; renov_units: string; all_count: string }
-      const pipelineRes = await this.pool.query<PipelineRenovRow>(
-        `SELECT
-           COUNT(*) FILTER (
-             WHERE project_name ILIKE '%renovat%'
-                OR project_name ILIKE '%rehab%'
-                OR project_name ILIKE '%reposit%'
-                OR project_name ILIKE '%redevelop%'
-                OR project_name ILIKE '%convers%'
-           ) AS renov_count,
-           COALESCE(SUM(units_delivering) FILTER (
-             WHERE project_name ILIKE '%renovat%'
-                OR project_name ILIKE '%rehab%'
-                OR project_name ILIKE '%reposit%'
-                OR project_name ILIKE '%redevelop%'
-                OR project_name ILIKE '%convers%'
-           ), 0) AS renov_units,
-           COUNT(*) AS all_count
-         FROM apartment_supply_pipeline
-         WHERE city ILIKE $1`,
-        [city]
-      );
-      // Attempt 2: use market_sale_comps to detect renovation-proxy transactions
-      // Below-market purchases (>15% under avg psf) are often renovation plays
-      interface SaleProxyRow { below_mkt_count: string; avg_psf: string }
-      const saleProxyRes = await this.pool.query<SaleProxyRow>(
-        `SELECT
-           COUNT(*) FILTER (WHERE price_per_sqft < (SELECT AVG(price_per_sqft) * 0.85 FROM market_sale_comps WHERE price_per_sqft IS NOT NULL AND state = 'GA') AND state = 'GA') AS below_mkt_count,
-           ROUND(AVG(price_per_sqft)::numeric, 0) AS avg_psf
-         FROM market_sale_comps
-         WHERE state = 'GA' AND price_per_sqft IS NOT NULL`
-      );
-      // Attempt 3: current avg submarket rent as yValue proxy for post-renovation rent level
-      interface AvgRentRow { avg_rent: string; sub_count: string }
-      const rentRes = await this.pool.query<AvgRentRow>(
-        `SELECT ROUND(AVG(avg_rent)::numeric, 0) AS avg_rent, COUNT(*) AS sub_count
-         FROM submarkets s JOIN msas m ON s.msa_id = m.id
-         WHERE m.name ILIKE $1`,
+      // Per spec: xValue = renovation permit count (permit_type = 'renovation') from apartment_supply_pipeline
+      //           yValue = subsequent rent_growth_yoy in the same submarket (12-24mo lag)
+      // apartment_supply_pipeline schema does not have a permit_type column (only name, city, state,
+      // total_units, property_class, available_date, units_delivering). Keyword heuristics on project
+      // names are not an acceptable substitute — they produce false positives and cannot be validated.
+      // Market_sale_comps below-market price proxy is not a permit signal.
+      // Without proper permit_type classification, xValue cannot be computed.
+      interface PipelineSchemaRow { has_permit_type: boolean }
+      let hasPipelinePermitType = false;
+      try {
+        const schemaRes = await this.pool.query<PipelineSchemaRow>(
+          `SELECT EXISTS (
+             SELECT 1 FROM information_schema.columns
+             WHERE table_name = 'apartment_supply_pipeline'
+               AND column_name = 'permit_type'
+           ) AS has_permit_type`
+        );
+        hasPipelinePermitType = schemaRes.rows[0]?.has_permit_type ?? false;
+      } catch { /* schema check failed */ }
+
+      if (!hasPipelinePermitType) {
+        base.missingData.push('apartment_supply_pipeline schema lacks permit_type column — renovation permits cannot be isolated from new-construction pipeline without this field; xValue insufficient');
+        base.missingData.push('costar_market_metrics or dedicated permit feed required to compute renovation permit count (xValue)');
+      }
+
+      // yValue: market_snapshots.rent_growth_yoy scoped to city (12-24mo lagged rent growth)
+      interface RentGrowthRow { rent_growth_yoy: string; snapshot_date: string; cnt: string }
+      const rentGrowthRes = await this.pool.query<RentGrowthRow>(
+        `SELECT ROUND(AVG(rent_growth_yoy)::numeric, 4) AS rent_growth_yoy,
+                MAX(snapshot_date) AS snapshot_date,
+                COUNT(*) AS cnt
+         FROM market_snapshots
+         WHERE rent_growth_yoy IS NOT NULL
+           AND LOWER(geography_name) ILIKE LOWER($1)
+           AND snapshot_date >= NOW() - INTERVAL '24 months'`,
         [`%${city}%`]
       );
+      const rentGrowthCnt = parseInt(rentGrowthRes.rows[0]?.cnt ?? '0', 10);
+      const rentGrowthYoy = rentGrowthCnt > 0 ? parseFloat(rentGrowthRes.rows[0].rent_growth_yoy) : null;
 
-      const renovCount = parseInt(pipelineRes.rows[0]?.renov_count ?? '0', 10);
-      const renovUnits = parseInt(pipelineRes.rows[0]?.renov_units ?? '0', 10);
-      const allCount = parseInt(pipelineRes.rows[0]?.all_count ?? '0', 10);
-      const belowMktCount = parseInt(saleProxyRes.rows[0]?.below_mkt_count ?? '0', 10);
-      const avgRent = parseFloat(rentRes.rows[0]?.avg_rent ?? '0');
-      const subCount = parseInt(rentRes.rows[0]?.sub_count ?? '0', 10);
-
-      // X = renovation-proxy signal count (explicit keyword + below-market purchases)
-      const totalRenovSignal = renovCount + belowMktCount;
-      if (totalRenovSignal > 0) base.xValue = totalRenovSignal;
-      if (subCount > 0 && avgRent > 0) base.yValue = avgRent;
-
-      if (allCount > 0 && renovCount === 0) {
-        base.missingData.push(`apartment_supply_pipeline has ${allCount} rows for ${city} but none match renovation keywords (rehab/reposit/redevelop/convers) — schema lacks explicit permit_type`);
+      if (rentGrowthYoy !== null) {
+        base.yValue = parseFloat((rentGrowthYoy * 100).toFixed(2));
+      } else {
+        base.missingData.push('market_snapshots.rent_growth_yoy unavailable for this city — costar_market_metrics not yet populated');
       }
-      base.missingData.push('Submarket-level pre/post-renovation rent time series required for precise lag correlation (costar_market_metrics not available)');
 
-      if (totalRenovSignal === 0) {
-        base.missingData.push('No renovation-proxy signals found in pipeline or market_sale_comps — cannot compute lead-lag');
+      // Cannot compute correlation without renovation permit xValue
+      if (!hasPipelinePermitType) return base;
+
+      // When permit_type column exists, query renovation permits
+      interface RenovRow { renov_count: string; renov_units: string }
+      const renovRes = await this.pool.query<RenovRow>(
+        `SELECT COUNT(*) AS renov_count, COALESCE(SUM(units_delivering), 0) AS renov_units
+         FROM apartment_supply_pipeline
+         WHERE city ILIKE $1
+           AND permit_type ILIKE '%renovat%'
+           AND available_date >= NOW() - INTERVAL '36 months'`,
+        [city]
+      );
+      const renovCount = parseInt(renovRes.rows[0]?.renov_count ?? '0', 10);
+      const renovUnits = parseInt(renovRes.rows[0]?.renov_units ?? '0', 10);
+
+      if (renovCount === 0) {
+        base.missingData.push('No renovation permits in apartment_supply_pipeline for this city in last 36mo');
         return base;
       }
 
-      // Directional signal: more renovation activity → higher submarket rent (12-24mo lag)
-      if (subCount > 0) {
-        base.correlation = this.estimateCorrelation(totalRenovSignal, avgRent / 1000);
-      }
-      if (renovUnits > 500 || belowMktCount >= 5) {
-        base.signal = 'bullish';
-        base.confidence = 'low';
-        base.actionable = `${renovUnits > 0 ? renovUnits + ' renovation-keyword pipeline units' : ''}${belowMktCount > 0 ? (renovUnits > 0 ? ' + ' : '') + belowMktCount + ' below-market acquisitions (renovation proxy)' : ''} detected — quality improvement signal expected to lift submarket rents 12-24mo (avg currently $${avgRent > 0 ? avgRent.toLocaleString('en-US') : 'N/A'}).`;
-      } else {
-        base.signal = 'neutral';
-        base.confidence = 'low';
-        base.actionable = `${totalRenovSignal} renovation-proxy signal(s) detected — insufficient volume for directional rent growth forecast; monitor pipeline for rehab activity.`;
+      base.xValue = renovCount;
+      if (rentGrowthYoy !== null) {
+        base.correlation = this.estimateCorrelation(renovUnits / 500, rentGrowthYoy * 10);
+        if (renovUnits > 500 && rentGrowthYoy > 0.02) {
+          base.signal = 'bullish';
+          base.confidence = 'medium';
+          base.actionable = `${renovUnits.toLocaleString()} renovation units in pipeline — quality improvement signal correlated with ${(rentGrowthYoy * 100).toFixed(1)}% YoY rent growth; 12-24mo catalyst expected.`;
+        } else if (renovCount >= 3) {
+          base.signal = 'neutral';
+          base.confidence = 'low';
+          base.actionable = `${renovCount} renovation permit(s), ${renovUnits.toLocaleString()} units — moderate activity; rent growth ${rentGrowthYoy !== null ? (rentGrowthYoy * 100).toFixed(1) + '%' : 'N/A'} YoY.`;
+        } else {
+          base.signal = 'neutral';
+          base.confidence = 'low';
+          base.actionable = `${renovCount} renovation permit(s) detected — insufficient volume for directional forecast.`;
+        }
       }
       return base;
     } catch {
-      base.missingData.push('apartment_supply_pipeline / market_sale_comps renovation query failed');
+      base.missingData.push('apartment_supply_pipeline renovation permit query failed');
       return base;
     }
   }
