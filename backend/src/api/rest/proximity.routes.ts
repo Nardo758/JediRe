@@ -4,11 +4,15 @@
 
 import { Router, Request, Response } from 'express';
 import { Pool } from 'pg';
+import { requireAuth } from '../../middleware/auth';
 import { getProximityService } from '../../services/proximity/proximity.service';
 import { getMarketEventsService } from '../../services/proximity/events.service';
 import { getBacktestService } from '../../services/proximity/backtest.service';
 
 const router = Router();
+
+// Protect all proximity routes
+router.use(requireAuth);
 
 // Get pool from app (will be set in index.ts)
 let pool: Pool;

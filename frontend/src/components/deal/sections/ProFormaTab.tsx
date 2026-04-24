@@ -928,7 +928,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
                           </div>
                         );
                       })()}
-                      <UnitMixSection unitMix={unitMix} setUnitMix={setUnitMix} platformData={platformData} />
+                      <UnitMixSection unitMix={unitMix} setUnitMix={setUnitMix} platformData={platformData} rentSourceType={rentSourceType} />
                     </>
                   )}
                   {section.id === 'acquisition' && modelType === 'existing' && (
@@ -1082,7 +1082,7 @@ const DealInfoSection: React.FC<any> = ({ dealName, setDealName, totalUnits, set
   </div>
 );
 
-const UnitMixSection: React.FC<{ unitMix: UnitMixRow[]; setUnitMix: (v: UnitMixRow[]) => void; platformData: any }> = ({ unitMix, setUnitMix, platformData }) => {
+const UnitMixSection: React.FC<{ unitMix: UnitMixRow[]; setUnitMix: (v: UnitMixRow[]) => void; platformData: any; rentSourceType?: string | null }> = ({ unitMix, setUnitMix, platformData, rentSourceType }) => {
   const updateRow = (index: number, field: keyof UnitMixRow, value: any) => {
     const updated = [...unitMix];
     (updated[index] as any)[field] = value;
