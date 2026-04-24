@@ -118,11 +118,11 @@ class GeorgiaSaleCompsService {
         WHERE gps.county       = $1
           AND gps.state        = $2
           AND gps.sale_price  >= $3
-          AND pic.number_of_units >= $5
-          AND gps.qualified    = true
+          AND (pic.number_of_units IS NULL OR pic.number_of_units >= $5)
+          AND (gps.qualified = true OR gps.qualified IS NULL)
           AND pic.latitude    IS NOT NULL
           AND pic.longitude   IS NOT NULL
-        ON CONFLICT (source, source_id)
+        ON CONFLICT (source, source_id) WHERE source_id IS NOT NULL
         DO UPDATE SET
           sale_price      = EXCLUDED.sale_price,
           price_per_unit  = EXCLUDED.price_per_unit,

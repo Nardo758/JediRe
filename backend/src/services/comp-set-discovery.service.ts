@@ -561,6 +561,59 @@ export async function autoDiscoverComps(dealId: string, options: DiscoveryOption
       candidates = fallbackResult.rows;
     }
 
+    // Gap 3 source: also pull from apartment_locator_properties when property_records
+    // is sparse (< 5 candidates). Uses radius proximity when lat/lng available,
+    // otherwise falls back to city/state text match.
+    if (candidates.length < 5 && deal.lat && deal.lng) {
+      const dealCity = (deal.address || '').match(/,\s*([^,]+),\s*\w/)?.[1]?.trim() || '';
+      const dealState = (deal.address || '').match(/,\s*(\w{2})\s+\d{5}/)?.[1]?.toUpperCase() || '';
+
+      const alpResult = await pool.query(`
+        SELECT
+          alp.address,
+          alp.city,
+          alp.total_units        AS units,
+          alp.year_built,
+          NULL::int              AS stories,
+          NULL::text             AS class_code,
+          NULL::int              AS building_sqft,
+          CASE
+            WHEN alp.latitude IS NOT NULL AND alp.longitude IS NOT NULL THEN
+              ROUND((
+                point(alp.longitude::float, alp.latitude::float)
+                <@> point($2::float, $1::float)
+              )::numeric, 3)
+            ELSE NULL
+          END                    AS distance_miles
+        FROM apartment_locator_properties alp
+        WHERE alp.total_units >= 10
+          AND alp.address != $3
+          AND (
+            -- prefer radius match when coords available
+            (alp.latitude IS NOT NULL AND alp.longitude IS NOT NULL
+             AND (point(alp.longitude::float, alp.latitude::float) <@> point($2::float, $1::float)) <= $4)
+            OR
+            -- city/state text fallback when no coords
+            (alp.latitude IS NULL AND alp.city ILIKE $5 AND alp.state = $6)
+          )
+        ORDER BY distance_miles ASC NULLS LAST
+        LIMIT 50
+      `, [deal.lat, deal.lng, deal.address || '', radiusMiles, dealCity || '%', dealState || '%']);
+
+      const existingAddresses = new Set(candidates.map((c: any) => c.address.toLowerCase()));
+      for (const row of alpResult.rows) {
+        if (!existingAddresses.has(row.address.toLowerCase())) {
+          existingAddresses.add(row.address.toLowerCase());
+          candidates.push(row);
+        }
+      }
+      if (alpResult.rows.length > 0) {
+        logger.info('autoDiscoverComps: supplemented from apartment_locator_properties', {
+          dealId, added: alpResult.rows.length, total: candidates.length,
+        });
+      }
+    }
+
     const dealContext = {
       units: dealUnits,
       year_built: dealYearBuilt,

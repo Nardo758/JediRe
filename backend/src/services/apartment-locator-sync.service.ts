@@ -341,7 +341,55 @@ export class ApartmentLocatorSyncService {
         }
       }
       logger.info('Supply pipeline synced', { supplyInserted, city, state });
-      
+
+      // Gap 3: Populate apartment_locator_properties from supply props so
+      // discoverFromAptLocator() has a rich rental comp pool to query.
+      // Subquery pulls lat/lng from the properties table where an address match exists.
+      let alpInserted = 0;
+      const dataAsOf = new Date().toISOString().slice(0, 10);
+      for (const prop of supplyProps) {
+        try {
+          const totalUnits = safeInt(prop.total_units);
+          const avgRent = safeFloat(prop.rent);
+          const avail = safeInt(prop.units_available);
+          if (!prop.id || !prop.address) continue;
+          await pool.query(`
+            INSERT INTO apartment_locator_properties (
+              external_id, property_name, address, city, state, zip,
+              latitude, longitude,
+              total_units, avg_asking_rent, available_units, concessions,
+              source, data_as_of
+            )
+            SELECT
+              $1, $2, $3, $4, $5, $6,
+              (SELECT lat FROM properties
+               WHERE LOWER(address_line1) = LOWER($3) AND lat IS NOT NULL LIMIT 1),
+              (SELECT lng FROM properties
+               WHERE LOWER(address_line1) = LOWER($3) AND lng IS NOT NULL LIMIT 1),
+              $7, $8, $9, $10,
+              'apartment_locator_ai', $11::date
+            ON CONFLICT (external_id, source) DO UPDATE SET
+              property_name   = EXCLUDED.property_name,
+              avg_asking_rent = EXCLUDED.avg_asking_rent,
+              available_units = EXCLUDED.available_units,
+              total_units     = COALESCE(EXCLUDED.total_units, apartment_locator_properties.total_units),
+              latitude        = COALESCE(EXCLUDED.latitude, apartment_locator_properties.latitude),
+              longitude       = COALESCE(EXCLUDED.longitude, apartment_locator_properties.longitude),
+              last_updated    = NOW()
+          `, [
+            prop.id, prop.name || prop.address,
+            prop.address, prop.city, prop.state, prop.zip_code || null,
+            totalUnits, avgRent, avail,
+            prop.concessions || null,
+            dataAsOf,
+          ]);
+          alpInserted++;
+        } catch (err: any) {
+          logger.warn('Failed to insert apartment_locator_properties entry', { prop: prop.address, err: err.message });
+        }
+      }
+      logger.info('apartment_locator_properties synced', { alpInserted, city, state });
+
       return {
         success: true,
         stats: {
@@ -351,6 +399,7 @@ export class ApartmentLocatorSyncService {
           properties_updated: updated,
           total_properties: supplyProps.length,
           supply_pipeline_inserted: supplyInserted,
+          apt_locator_properties_synced: alpInserted,
           forecast: marketData.forecast,
         }
       };

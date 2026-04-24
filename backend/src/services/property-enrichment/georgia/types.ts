@@ -19,6 +19,9 @@ export interface CobbParcel {
   ASV_TOTAL: number;
   CLASS: string;
   HAS_MULTIUNIT: string; // 'Y' or 'N'
+  // Populated by ArcGIS returnCentroid=true, outSR=4326
+  centroid_x?: number; // longitude (WGS84)
+  centroid_y?: number; // latitude  (WGS84)
 }
 
 export interface CobbYearBuilt {
@@ -195,6 +198,10 @@ export interface EnrichedProperty {
   // Sales history
   sales?: PropertySale[];
   
+  // Geocoordinates (WGS84)
+  latitude?: number;
+  longitude?: number;
+
   // Metadata
   provider: string;
   fetchedAt: Date;

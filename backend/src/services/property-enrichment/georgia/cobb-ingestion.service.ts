@@ -138,6 +138,8 @@ export class CobbIngestionService {
       outFields: ['PIN', 'PARID', 'SITUS_ADDR', 'OWNER_NAM1', 'OWNER_NAM2',
                   'FMV_LAND', 'FMV_BLDG', 'FMV_TOTAL', 'ASV_TOTAL', 
                   'CLASS', 'HAS_MULTIUNIT'],
+      returnCentroid: true,
+      outSR: 4326,
       batchSize: cfg.batchSize,
       maxRecords: cfg.maxRecords,
       onProgress: (processed, total) => {
@@ -234,9 +236,15 @@ export class CobbIngestionService {
     parcelIds: string[],
     config: IngestionConfig
   ): Promise<Map<string, CobbYearBuilt>> {
-    // For efficiency, query all and filter
+    // For small batches (≤500 IDs), filter at the ArcGIS query level — much faster.
+    // For full-county runs, fall back to fetching all records and filtering in-memory.
+    const USE_IN_CLAUSE_THRESHOLD = 500;
+    const where = parcelIds.length <= USE_IN_CLAUSE_THRESHOLD
+      ? `PIN IN (${parcelIds.map(id => `'${id}'`).join(',')})`
+      : '1=1';
+
     const allYearBuilt = await this.client.queryAll<CobbYearBuilt>(LAYER_IDS.YEAR_BUILT, {
-      where: '1=1',
+      where,
       outFields: ['PIN', 'TAXYR', 'CARD', 'YRBLT', 'SQFT'],
       batchSize: config.batchSize,
       onProgress: (processed, total) => {
@@ -269,8 +277,12 @@ export class CobbIngestionService {
     parcelIds: string[],
     config: IngestionConfig
   ): Promise<Map<string, CobbParcelSale[]>> {
-    // Query all valid sales
-    const where = `PRICE > 0 AND PRICE < ${MAX_VALID_SALE_PRICE}`;
+    // For small batches filter at query level; for full runs scan all valid sales
+    const USE_IN_CLAUSE_THRESHOLD = 500;
+    const pinFilter = parcelIds.length <= USE_IN_CLAUSE_THRESHOLD
+      ? ` AND PIN IN (${parcelIds.map(id => `'${id}'`).join(',')})`
+      : '';
+    const where = `PRICE > 0 AND PRICE < ${MAX_VALID_SALE_PRICE}${pinFilter}`;
     
     const allSales = await this.client.queryAll<CobbParcelSale>(LAYER_IDS.PARCEL_SALES, {
       where,
@@ -333,6 +345,10 @@ export class CobbIngestionService {
       propertyClass: parcel.CLASS,
       isMultifamily: parcel.HAS_MULTIUNIT === 'Y',
       
+      // Centroid from ArcGIS returnCentroid=true (outSR=4326 → WGS84)
+      latitude:  parcel.centroid_y ?? undefined,
+      longitude: parcel.centroid_x ?? undefined,
+      
       sales: sales?.map(s => this.mapSale(parcel.PARID, s)),
       
       provider: 'cobb_ga',
@@ -344,6 +360,10 @@ export class CobbIngestionService {
    * Map raw sale to PropertySale
    */
   private mapSale(parcelId: string, sale: CobbParcelSale): PropertySale {
+    // SALEVAL 'Q' = arms-length qualified, 'U' = unqualified, blank = unknown
+    const qualified = sale.SALEVAL === 'Q' ? true
+      : sale.SALEVAL === 'U' ? false
+      : null;  // null = unknown, treated as "not disqualified" in promotions
     return {
       parcelId,
       county: 'Cobb',
@@ -351,7 +371,7 @@ export class CobbIngestionService {
       saleDate: sale.SALEDT ? new Date(sale.SALEDT) : new Date(0),
       salePrice: sale.PRICE || 0,
       saleType: sale.SALETYPE,
-      qualified: sale.SALEVAL === 'Q'
+      qualified: qualified ?? undefined,
     };
   }
   
@@ -366,8 +386,9 @@ export class CobbIngestionService {
         land_value, building_value, just_value, assessed_value,
         land_use_code, property_type,
         owner_name, owner_name_2,
+        latitude, longitude,
         provider, fetched_at, raw_data
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
       ON CONFLICT (parcel_id, county, state) DO UPDATE SET
         year_built        = COALESCE(EXCLUDED.year_built, property_info_cache.year_built),
         living_area_sqft  = COALESCE(EXCLUDED.living_area_sqft, property_info_cache.living_area_sqft),
@@ -379,6 +400,8 @@ export class CobbIngestionService {
         property_type     = COALESCE(EXCLUDED.property_type, property_info_cache.property_type),
         owner_name        = COALESCE(EXCLUDED.owner_name, property_info_cache.owner_name),
         owner_name_2      = COALESCE(EXCLUDED.owner_name_2, property_info_cache.owner_name_2),
+        latitude          = COALESCE(EXCLUDED.latitude, property_info_cache.latitude),
+        longitude         = COALESCE(EXCLUDED.longitude, property_info_cache.longitude),
         provider          = EXCLUDED.provider,
         fetched_at        = EXCLUDED.fetched_at,
         updated_at        = NOW()`,
@@ -398,6 +421,8 @@ export class CobbIngestionService {
         property.isMultifamily ? 'multifamily' : 'other',
         property.ownerName || null,
         property.ownerName2 || null,
+        property.latitude  ?? null,
+        property.longitude ?? null,
         property.provider,
         property.fetchedAt,
         JSON.stringify({ isMultifamily: property.isMultifamily })
@@ -430,7 +455,7 @@ export class CobbIngestionService {
             saleDate.getFullYear(),
             sale.PRICE,
             sale.SALETYPE || null,
-            sale.SALEVAL === 'Q',
+            sale.SALEVAL === 'Q' ? true : sale.SALEVAL === 'U' ? false : null,
             sale.INSTRTYP || null,
             'cobb_ga',
             JSON.stringify({ NBHD: sale.NBHD, APRTOT: sale.APRTOT, ASR: sale.ASR })

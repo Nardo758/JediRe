@@ -7,6 +7,8 @@ export interface ArcGISQueryOptions {
   where?: string;
   outFields?: string[] | '*';
   returnGeometry?: boolean;
+  returnCentroid?: boolean;
+  outSR?: number;
   resultOffset?: number;
   resultRecordCount?: number;
   orderByFields?: string;
@@ -87,14 +89,18 @@ export class ArcGISClient {
     layerId: number,
     options: ArcGISQueryOptions = {}
   ): Promise<ArcGISQueryResult<T>> {
+    // returnCentroid: if server doesn't support it, we fetch geometry and compute it
+    const needGeometry = options.returnGeometry || options.returnCentroid;
     const params = new URLSearchParams({
       where: options.where || '1=1',
       outFields: Array.isArray(options.outFields) 
         ? options.outFields.join(',') 
         : options.outFields || '*',
-      returnGeometry: String(options.returnGeometry ?? false),
+      returnGeometry: String(needGeometry ?? false),
       f: options.f || 'json'
     });
+    if (options.returnCentroid) params.set('returnCentroid', 'true');
+    if (options.outSR) params.set('outSR', String(options.outSR));
     
     if (options.resultOffset !== undefined) {
       params.set('resultOffset', String(options.resultOffset));
@@ -143,8 +149,22 @@ export class ArcGISClient {
       if (result.features && result.features.length > 0) {
         for (const feature of result.features) {
           if (maxRecords && all.length >= maxRecords) break;
-          if (options.returnGeometry && feature.geometry !== undefined) {
-            all.push({ ...feature.attributes, geometry: feature.geometry } as T);
+          const geom = feature.geometry as any;
+
+          // Try native centroid first; fall back to averaging ring vertices
+          const nativeCentroid = (feature as any).centroid;
+          if (options.returnCentroid) {
+            let cx: number | undefined, cy: number | undefined;
+            if (nativeCentroid?.x != null && nativeCentroid?.y != null) {
+              cx = nativeCentroid.x; cy = nativeCentroid.y;
+            } else if (geom?.rings?.length > 0) {
+              const ring: number[][] = geom.rings[0];
+              cx = ring.reduce((s, p) => s + p[0], 0) / ring.length;
+              cy = ring.reduce((s, p) => s + p[1], 0) / ring.length;
+            }
+            all.push({ ...feature.attributes, centroid_x: cx ?? null, centroid_y: cy ?? null } as T);
+          } else if (options.returnGeometry && geom !== undefined) {
+            all.push({ ...feature.attributes, geometry: geom } as T);
           } else {
             all.push(feature.attributes);
           }
