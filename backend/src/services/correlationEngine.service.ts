@@ -1603,33 +1603,54 @@ export class CorrelationEngineService {
       missingData: [],
     };
     try {
-      interface SupplyRow { total_units_delivering: string }
-      const res = await this.pool.query<SupplyRow>(
-        `SELECT SUM(units_delivering) AS total_units_delivering
+      // Attempt 18-month lagged permit volume: units with available_date <= 18 months ago
+      interface LagRow { lag_units: string; lag_count: string }
+      const lagRes = await this.pool.query<LagRow>(
+        `SELECT COALESCE(SUM(units_delivering), 0) AS lag_units,
+                COUNT(*) AS lag_count
+         FROM apartment_supply_pipeline
+         WHERE city ILIKE $1
+           AND available_date IS NOT NULL
+           AND available_date <= NOW() - INTERVAL '18 months'`,
+        [city]
+      );
+      interface TotalRow { total_units: string; null_date_count: string }
+      const totalRes = await this.pool.query<TotalRow>(
+        `SELECT COALESCE(SUM(units_delivering), 0) AS total_units,
+                COUNT(*) FILTER (WHERE available_date IS NULL) AS null_date_count
          FROM apartment_supply_pipeline
          WHERE city ILIKE $1`,
         [city]
       );
-      const totalUnits = parseInt(res.rows[0]?.total_units_delivering ?? '0', 10);
+      const lagUnits = parseInt(lagRes.rows[0]?.lag_units ?? '0', 10);
+      const lagCount = parseInt(lagRes.rows[0]?.lag_count ?? '0', 10);
+      const totalUnits = parseInt(totalRes.rows[0]?.total_units ?? '0', 10);
+      const nullDateCount = parseInt(totalRes.rows[0]?.null_date_count ?? '0', 10);
+
       if (totalUnits === 0) {
-        base.missingData.push('apartment_supply_pipeline rows for city (units_delivering)');
-        base.missingData.push('Historical rent growth data (costar_market_metrics not available)');
+        base.missingData.push('apartment_supply_pipeline: no rows for city');
         return base;
       }
-      base.xValue = totalUnits;
-      base.missingData.push('Historical effective_rent from costar_market_metrics (table not yet populated)');
-      if (totalUnits < 500) {
-        base.signal = 'bullish';
-        base.confidence = 'low';
-        base.actionable = `Low pipeline volume (${totalUnits.toLocaleString()} units) — limited supply pressure suggests rent growth headroom over 18-month horizon.`;
-      } else if (totalUnits > 2000) {
+      // If all available_dates are NULL we fall back to total pipeline as supply pressure proxy
+      const hasDateData = lagCount > 0 || nullDateCount < (lagCount + nullDateCount);
+      const supplyVolume = lagCount > 0 ? lagUnits : totalUnits;
+      base.xValue = supplyVolume;
+      base.missingData.push('Rent growth time series (costar_market_metrics table not yet populated) — using supply volume threshold heuristic');
+      if (!hasDateData) {
+        base.missingData.push(`available_date is NULL for all ${nullDateCount} pipeline rows — using total volume as proxy`);
+      }
+      if (supplyVolume > 2000) {
         base.signal = 'bearish';
         base.confidence = 'low';
-        base.actionable = `High pipeline volume (${totalUnits.toLocaleString()} units) — supply wave expected to compress rent growth over next 18 months.`;
+        base.actionable = `${supplyVolume.toLocaleString()} units in ${hasDateData ? 'lagged (>18mo) ' : ''}pipeline — elevated supply pressure expected to compress rent growth.`;
+      } else if (supplyVolume < 500) {
+        base.signal = 'bullish';
+        base.confidence = 'low';
+        base.actionable = `${supplyVolume.toLocaleString()} units in ${hasDateData ? 'lagged (>18mo) ' : ''}pipeline — low supply pressure, rent growth headroom likely.`;
       } else {
         base.signal = 'neutral';
         base.confidence = 'low';
-        base.actionable = `Moderate pipeline (${totalUnits.toLocaleString()} units delivering) — balanced supply; monitor absorption for rent direction.`;
+        base.actionable = `${supplyVolume.toLocaleString()} units in ${hasDateData ? 'lagged (>18mo) ' : ''}pipeline — moderate supply, monitor absorption for rent direction.`;
       }
       return base;
     } catch {
@@ -1655,6 +1676,8 @@ export class CorrelationEngineService {
       missingData: [],
     };
     try {
+      // 6-month lag: fetch snapshots ordered by date; pair oldest (lagged job growth) with newest (current absorption)
+      // Requires at least 2 snapshots ≥6 months apart to compute; returns insufficient when data is sparse
       interface SnapRow { job_growth_yoy: string; net_absorption_units: string; snapshot_date: string }
       const snapRes = await this.pool.query<SnapRow>(
         `SELECT job_growth_yoy, net_absorption_units, snapshot_date
@@ -1666,29 +1689,36 @@ export class CorrelationEngineService {
         [`%${city}%`]
       );
       if (snapRes.rows.length < 2) {
-        base.missingData.push('market_snapshots with job_growth_yoy and net_absorption_units (need 2+ rows for 6mo lag)');
+        base.missingData.push('market_snapshots with job_growth_yoy and net_absorption_units (need 2+ rows for 6mo lead-lag)');
         return base;
       }
-      // 6-month lag: use oldest row's job_growth as X-driver, newest row's absorption as Y-outcome
+      // Lag X = job_growth_yoy from oldest snapshot; Lag Y = net_absorption from most recent
       const lagRow = snapRes.rows[0];
       const currentRow = snapRes.rows[snapRes.rows.length - 1];
+      const lagDate = new Date(lagRow.snapshot_date);
+      const currentDate = new Date(currentRow.snapshot_date);
+      const monthsApart = (currentDate.getFullYear() - lagDate.getFullYear()) * 12
+        + (currentDate.getMonth() - lagDate.getMonth());
       const jobGrowth = parseFloat(lagRow.job_growth_yoy);
       const currentAbsorption = parseInt(currentRow.net_absorption_units, 10);
       base.xValue = parseFloat((jobGrowth * 100).toFixed(2));
       base.yValue = currentAbsorption;
       base.correlation = this.estimateCorrelation(jobGrowth, currentAbsorption / 1000);
+      if (monthsApart < 3) {
+        base.missingData.push('Snapshot series too short for meaningful 6-month lag — need snapshots ≥6mo apart');
+      }
       if (jobGrowth > 0.02 && currentAbsorption > 0) {
         base.signal = 'bullish';
         base.confidence = 'medium';
-        base.actionable = `Job growth ${(jobGrowth * 100).toFixed(1)}% YoY (lagged) driving +${currentAbsorption.toLocaleString()} net absorbed units — demand confirmation.`;
+        base.actionable = `Job growth ${(jobGrowth * 100).toFixed(1)}% YoY (lagged ${monthsApart}mo) → +${currentAbsorption.toLocaleString()} net units absorbed — demand confirmation.`;
       } else if (jobGrowth < 0 || currentAbsorption < 0) {
         base.signal = 'bearish';
         base.confidence = 'medium';
-        base.actionable = `Job contraction ${(jobGrowth * 100).toFixed(1)}% YoY followed by ${currentAbsorption.toLocaleString()} net absorption — demand weakening.`;
+        base.actionable = `Job contraction ${(jobGrowth * 100).toFixed(1)}% YoY → ${currentAbsorption.toLocaleString()} net absorption — demand weakening.`;
       } else {
         base.signal = 'neutral';
         base.confidence = 'low';
-        base.actionable = `Job growth ${(jobGrowth * 100).toFixed(1)}% YoY — absorption flat; monitor next quarter.`;
+        base.actionable = `Job growth ${(jobGrowth * 100).toFixed(1)}% YoY (lagged ${monthsApart}mo) — absorption flat; monitor next quarter.`;
       }
       return base;
     } catch {
@@ -1837,8 +1867,10 @@ export class CorrelationEngineService {
       missingData: [],
     };
     try {
-      // market_events geography_name is submarket (Midtown, Buckhead); geography_id = 'atlanta' for MSA events
-      // Filter: MSA-level (geography_id ILIKE city) OR submarket events tagged to the city's MSA geography
+      // market_events uses geography_type='submarket' with geography_id = submarket slug.
+      // Scoping: include events where geography_id matches the MSA (e.g. 'atlanta') OR
+      // the event's submarket belongs to the city's MSA via the submarkets table.
+      // This prevents cross-city contamination when multiple MSAs have submarket events.
       interface CountRow { cnt: string }
       const poiRes = await this.pool.query<CountRow>(
         `SELECT COUNT(*) AS cnt FROM points_of_interest
@@ -1848,26 +1880,38 @@ export class CorrelationEngineService {
            AND opened_date >= NOW() - INTERVAL '24 months'`,
         [`%${city}%`]
       );
-      // For market_events: include MSA-scoped events (geography_id ILIKE city)
-      // and submarket-scoped events (geography_type = 'submarket') since all current
-      // submarket events in this dataset belong to the Atlanta MSA
       const evRes = await this.pool.query<CountRow>(
-        `SELECT COUNT(*) AS cnt FROM market_events
-         WHERE event_type = 'grocery_opening'
-           AND announced_date >= NOW() - INTERVAL '24 months'
-           AND (geography_id ILIKE $1 OR geography_type = 'submarket')`,
+        `SELECT COUNT(*) AS cnt FROM market_events me
+         WHERE me.event_type = 'grocery_opening'
+           AND me.announced_date >= NOW() - INTERVAL '24 months'
+           AND (
+             (me.geography_type = 'msa' AND me.geography_id ILIKE $1)
+             OR (me.geography_type = 'submarket' AND EXISTS (
+               SELECT 1 FROM submarkets s
+               JOIN msas m ON s.msa_id = m.id
+               WHERE LOWER(s.name) ILIKE LOWER('%' || me.geography_id || '%')
+                 AND m.name ILIKE $1
+             ))
+           )`,
         [`%${city}%`]
       );
-      interface ImpactRow { positive: string; negative: string; total_jobs: string }
+      interface ImpactRow { positive: string; negative: string }
       const impactRes = await this.pool.query<ImpactRow>(
         `SELECT
-           COUNT(*) FILTER (WHERE expected_impact_direction = 'positive') AS positive,
-           COUNT(*) FILTER (WHERE expected_impact_direction = 'negative') AS negative,
-           COALESCE(SUM(jobs_affected), 0) AS total_jobs
-         FROM market_events
-         WHERE event_type = 'grocery_opening'
-           AND announced_date >= NOW() - INTERVAL '24 months'
-           AND (geography_id ILIKE $1 OR geography_type = 'submarket')`,
+           COUNT(*) FILTER (WHERE me.expected_impact_direction = 'positive') AS positive,
+           COUNT(*) FILTER (WHERE me.expected_impact_direction = 'negative') AS negative
+         FROM market_events me
+         WHERE me.event_type = 'grocery_opening'
+           AND me.announced_date >= NOW() - INTERVAL '24 months'
+           AND (
+             (me.geography_type = 'msa' AND me.geography_id ILIKE $1)
+             OR (me.geography_type = 'submarket' AND EXISTS (
+               SELECT 1 FROM submarkets s
+               JOIN msas m ON s.msa_id = m.id
+               WHERE LOWER(s.name) ILIKE LOWER('%' || me.geography_id || '%')
+                 AND m.name ILIKE $1
+             ))
+           )`,
         [`%${city}%`]
       );
       const poiCount = parseInt(poiRes.rows[0]?.cnt ?? '0', 10);
@@ -1925,15 +1969,22 @@ export class CorrelationEngineService {
         expected_impact_direction: string | null;
         announced_date: string;
       }
-      // Filter by MSA geography_id match OR submarket geography_type (all current submarket
-      // events in this dataset belong to the queried MSA)
+      // Scope to the queried city's MSA via submarkets table to prevent cross-city contamination
       const res = await this.pool.query<MoveRow>(
-        `SELECT event_name, jobs_affected, expected_impact_direction, announced_date
-         FROM market_events
-         WHERE event_type = 'employer_move'
-           AND announced_date >= NOW() - INTERVAL '36 months'
-           AND (geography_id ILIKE $1 OR geography_type = 'submarket')
-         ORDER BY COALESCE(jobs_affected::int, 0) DESC`,
+        `SELECT me.event_name, me.jobs_affected, me.expected_impact_direction, me.announced_date
+         FROM market_events me
+         WHERE me.event_type = 'employer_move'
+           AND me.announced_date >= NOW() - INTERVAL '36 months'
+           AND (
+             (me.geography_type = 'msa' AND me.geography_id ILIKE $1)
+             OR (me.geography_type = 'submarket' AND EXISTS (
+               SELECT 1 FROM submarkets s
+               JOIN msas m ON s.msa_id = m.id
+               WHERE LOWER(s.name) ILIKE LOWER('%' || me.geography_id || '%')
+                 AND m.name ILIKE $1
+             ))
+           )
+         ORDER BY COALESCE(me.jobs_affected::int, 0) DESC`,
         [`%${city}%`]
       );
       if (res.rows.length === 0) {
