@@ -144,17 +144,35 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
     apiClient.get('/api/v1/georgia/analytics/price-trends?state=GA')
       .then(res => {
         const trends: PriceTrend[] = res.data?.trends || [];
-        const aggregated = new Map<number, { sale_count: number; total_ppu: number; count: number; yoy: number | null }>();
+        // Aggregate across counties using transaction-count weighted averages
+        const aggregated = new Map<number, {
+          sale_count: number;
+          weighted_ppu_sum: number;
+          weighted_ppu_txns: number;
+          weighted_yoy_sum: number;
+          weighted_yoy_txns: number;
+        }>();
         for (const t of trends) {
+          const ppu = t.median_price_per_unit ?? t.avg_price_per_unit;
           const existing = aggregated.get(t.sale_year);
-          const ppu = t.median_price_per_unit ?? t.avg_price_per_unit ?? 0;
           if (existing) {
             existing.sale_count += t.sale_count;
-            existing.total_ppu += ppu;
-            existing.count += 1;
-            if (t.yoy_change_pct != null) existing.yoy = (existing.yoy ?? 0) + t.yoy_change_pct;
+            if (ppu != null) {
+              existing.weighted_ppu_sum += ppu * t.sale_count;
+              existing.weighted_ppu_txns += t.sale_count;
+            }
+            if (t.yoy_change_pct != null) {
+              existing.weighted_yoy_sum += t.yoy_change_pct * t.sale_count;
+              existing.weighted_yoy_txns += t.sale_count;
+            }
           } else {
-            aggregated.set(t.sale_year, { sale_count: t.sale_count, total_ppu: ppu, count: 1, yoy: t.yoy_change_pct });
+            aggregated.set(t.sale_year, {
+              sale_count: t.sale_count,
+              weighted_ppu_sum: ppu != null ? ppu * t.sale_count : 0,
+              weighted_ppu_txns: ppu != null ? t.sale_count : 0,
+              weighted_yoy_sum: t.yoy_change_pct != null ? t.yoy_change_pct * t.sale_count : 0,
+              weighted_yoy_txns: t.yoy_change_pct != null ? t.sale_count : 0,
+            });
           }
         }
         const merged: PriceTrend[] = Array.from(aggregated.entries()).map(([year, v]) => ({
@@ -164,9 +182,9 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
           sale_count: v.sale_count,
           median_price: 0,
           avg_price: 0,
-          median_price_per_unit: v.count > 0 ? v.total_ppu / v.count : null,
-          avg_price_per_unit: v.count > 0 ? v.total_ppu / v.count : null,
-          yoy_change_pct: v.yoy != null && v.count > 0 ? v.yoy / v.count : null,
+          median_price_per_unit: v.weighted_ppu_txns > 0 ? v.weighted_ppu_sum / v.weighted_ppu_txns : null,
+          avg_price_per_unit: v.weighted_ppu_txns > 0 ? v.weighted_ppu_sum / v.weighted_ppu_txns : null,
+          yoy_change_pct: v.weighted_yoy_txns > 0 ? v.weighted_yoy_sum / v.weighted_yoy_txns : null,
         }));
         merged.sort((a, b) => b.sale_year - a.sale_year);
         setPriceTrends(merged);
@@ -616,28 +634,18 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
               </tbody>
             </DataTable>
           ) : (
-            <DataTable>
-              <thead>
-                <tr style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
-                  <th style={{ ...terminalStyles.tableHeader, textAlign: 'left', fontSize: 10 }}>Date</th>
-                  <th style={{ ...terminalStyles.tableHeader, textAlign: 'right', fontSize: 10 }}>$/Unit</th>
-                  <th style={{ ...terminalStyles.tableHeader, textAlign: 'right', fontSize: 10 }}>Units</th>
-                  <th style={{ ...terminalStyles.tableHeader, textAlign: 'right', fontSize: 10 }}>Cap</th>
-                </tr>
-              </thead>
-              <tbody>
-                {TRANSACTION_DATA.slice(-5).map((t, i) => (
-                  <tr key={i} style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
-                    <td style={{ ...terminalStyles.tableCell, fontSize: 11 }}>{t.date}</td>
-                    <td style={{ ...terminalStyles.tableCell, textAlign: 'right', fontSize: 11, fontWeight: 600 }}>
-                      ${(t.pricePerUnit / 1000).toFixed(0)}K
-                    </td>
-                    <td style={{ ...terminalStyles.tableCell, textAlign: 'right', fontSize: 11 }}>{t.units}</td>
-                    <td style={{ ...terminalStyles.tableCell, textAlign: 'right', fontSize: 11 }}>{t.capRate}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </DataTable>
+            <div style={{
+              padding: 24,
+              textAlign: 'center',
+              borderLeft: `2px solid ${BT.border.subtle}`,
+            }}>
+              <div style={{ fontSize: 12, color: BT.text.muted, marginBottom: 6 }}>
+                No transaction data available
+              </div>
+              <div style={{ fontSize: 10, color: BT.text.muted }}>
+                Run the Georgia county pipeline to populate sale comp data.
+              </div>
+            </div>
           )}
         </div>
 
