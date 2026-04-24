@@ -10,21 +10,27 @@
  *    - Calculate median $/SF by (MSA, submarket, class, vintage)
  *    - Source: DeKalb, Fulton, Cobb, Gwinnett county GIS
  * 
- * 2. BLS PPI ESCALATION
+ * 2. DATA LIBRARY (user-uploaded cost data)
+ *    - Construction bids, GC estimates, actual project costs
+ *    - Uploaded via Data Library as cost_data assets
+ *    - Higher confidence than permits (real market pricing)
+ * 
+ * 3. BLS PPI ESCALATION
  *    - Producer Price Index for construction materials
  *    - Index today's cost vs permit filing date
  *    - Source: BLS API (free)
  * 
- * 3. BLS REGIONAL PRICE PARITIES (RPP) + PERMIT-DERIVED
+ * 4. BLS REGIONAL PRICE PARITIES (RPP) + PERMIT-DERIVED
  *    - Location cost adjustment (free alternative to RSMeans)
  *    - Tier 1: Our own permit data cross-market comparison
  *    - Tier 2: BLS Regional Price Parities (state level, free)
  * 
  * LAYERED VALUE PATTERN:
  * - Layer 1 (platform): Permit-derived baseline
+ * - Layer 1.5 (data_library): User-uploaded cost data (if available, overrides permits)
  * - Layer 2 (enrichment): PPI escalation applied
  * - Layer 3 (adjustment): Regional factor (permit-derived or BLS RPP)
- * - Layer 4 (override): User's construction team estimate
+ * - Layer 4 (override): User's construction team estimate for THIS deal
  * 
  * Same pattern as tax_math.service.ts
  */
@@ -37,7 +43,7 @@ import { Pool } from 'pg';
 
 export interface LayeredValue<T> {
   value: T;
-  source: 'permit_derived' | 'ppi_escalated' | 'regional_adjusted' | 'market_basket' | 'override' | 'default';
+  source: 'permit_derived' | 'data_library' | 'ppi_escalated' | 'regional_adjusted' | 'market_basket' | 'override' | 'default';
   confidence: 'high' | 'medium' | 'low';
   asOf: Date;
   provenance: Array<{
@@ -66,13 +72,16 @@ export interface ReplacementCostInput {
   assetClass?: 'A' | 'B' | 'C';
   constructionType?: 'wood_frame' | 'masonry' | 'steel_frame' | 'concrete';
   
-  // Optional user override
+  // Optional user override for THIS specific deal
   userOverride?: {
     costPerSF?: number;
     totalCost?: number;
     source?: string;
     notes?: string;
   };
+  
+  // User ID for Data Library lookups
+  userId?: string;
 }
 
 export interface ReplacementCostResult {
@@ -232,6 +241,26 @@ export class ReplacementCostServiceV2 {
       appliedAt: new Date(),
       notes: `Median $/SF from permits filed ${permitBaseline.dateRange.from.toLocaleDateString()} - ${permitBaseline.dateRange.to.toLocaleDateString()}`
     });
+    
+    // ========================================================================
+    // LAYER 1.5: Data Library Cost Data (User-Uploaded)
+    // Higher confidence than permits - real bids/actuals from users
+    // ========================================================================
+    const dataLibraryCost = await this.getDataLibraryCostPerSF(input);
+    
+    if (dataLibraryCost.found) {
+      currentCostPerSF = dataLibraryCost.costPerSF;
+      currentSource = 'data_library';
+      confidence = dataLibraryCost.sampleSize >= 5 ? 'high' : 'medium';
+      
+      provenance.push({
+        layer: 'data_library',
+        source: `${dataLibraryCost.sampleSize} user-uploaded cost records`,
+        value: currentCostPerSF,
+        appliedAt: new Date(),
+        notes: `Types: ${dataLibraryCost.types.join(', ')} | Age: ${dataLibraryCost.avgAgeMonths.toFixed(0)} months avg`
+      });
+    }
     
     // ========================================================================
     // LAYER 2: PPI Escalation (adjust for inflation since permit date)
@@ -552,6 +581,85 @@ export class ReplacementCostServiceV2 {
     }
     
     return { factor: 100, sampleSize: 0 };
+  }
+  
+  /**
+   * Get cost data from Data Library (user-uploaded bids, actuals, GC estimates)
+   */
+  private async getDataLibraryCostPerSF(
+    input: ReplacementCostInput
+  ): Promise<{
+    found: boolean;
+    costPerSF: number;
+    sampleSize: number;
+    types: string[];
+    avgAgeMonths: number;
+  }> {
+    try {
+      // Query Data Library for cost_data assets matching this market
+      const result = await this.pool.query(`
+        SELECT 
+          cd.cost_per_sf,
+          cd.cost_type,
+          cd.as_of_date,
+          cd.square_footage,
+          cd.total_cost,
+          cd.asset_class,
+          cd.construction_type
+        FROM data_library_cost_data cd
+        JOIN data_library_assets dla ON cd.asset_id = dla.id
+        WHERE cd.state = $1
+          AND (cd.city ILIKE $2 OR cd.county ILIKE $3 OR $2 IS NULL)
+          AND cd.as_of_date > NOW() - INTERVAL '36 months'
+          AND cd.cost_per_sf > 50 AND cd.cost_per_sf < 500
+          AND (cd.asset_class = $4 OR $4 IS NULL)
+        ORDER BY cd.as_of_date DESC
+        LIMIT 50
+      `, [
+        input.state,
+        input.city ? `%${input.city}%` : null,
+        input.county ? `%${input.county}%` : null,
+        input.assetClass
+      ]);
+      
+      if (result.rows.length >= 3) {
+        // Calculate weighted median (more recent = higher weight)
+        const costs = result.rows.map(r => ({
+          costPerSF: parseFloat(r.cost_per_sf),
+          type: r.cost_type,
+          ageMonths: (Date.now() - new Date(r.as_of_date).getTime()) / (1000 * 60 * 60 * 24 * 30)
+        }));
+        
+        // Sort by cost and take median
+        costs.sort((a, b) => a.costPerSF - b.costPerSF);
+        const medianIdx = Math.floor(costs.length / 2);
+        const medianCost = costs[medianIdx].costPerSF;
+        
+        // Get unique types
+        const types = [...new Set(result.rows.map(r => r.cost_type))];
+        
+        // Average age
+        const avgAgeMonths = costs.reduce((sum, c) => sum + c.ageMonths, 0) / costs.length;
+        
+        return {
+          found: true,
+          costPerSF: Math.round(medianCost * 100) / 100,
+          sampleSize: result.rows.length,
+          types,
+          avgAgeMonths
+        };
+      }
+    } catch (error) {
+      console.warn('[ReplacementCostV2] Data Library query failed:', error);
+    }
+    
+    return {
+      found: false,
+      costPerSF: 0,
+      sampleSize: 0,
+      types: [],
+      avgAgeMonths: 0
+    };
   }
   
   /**
