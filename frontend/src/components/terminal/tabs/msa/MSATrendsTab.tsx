@@ -132,6 +132,15 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
   const [supplyView, setSupplyView] = useState<'2yr' | '10yr'>('10yr');
   const [priceTrends, setPriceTrends] = useState<PriceTrend[]>([]);
   const [trendsLoading, setTrendsLoading] = useState(true);
+  const [rentSnapshots, setRentSnapshots] = useState<Array<{
+    snapshot_date: string;
+    studio_rent: number | null;
+    one_br_rent: number | null;
+    two_br_rent: number | null;
+    three_br_rent: number | null;
+    avg_rent: number | null;
+  }>>([]);
+  const [rentLoading, setRentLoading] = useState(true);
   const msaName = msa?.name || msaId || 'Atlanta';
   const { fetchCommentary, getCommentary, isLoading, getError } = useCommentaryStore();
   const commentary = getCommentary('msa', msaId);
@@ -193,6 +202,14 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
       .finally(() => setTrendsLoading(false));
   }, []);
 
+  useEffect(() => {
+    setRentLoading(true);
+    apiClient.get('/api/v1/georgia/analytics/rent-trends?city=Atlanta&state=GA&limit=8')
+      .then(res => setRentSnapshots(res.data?.snapshots || []))
+      .catch(() => setRentSnapshots([]))
+      .finally(() => setRentLoading(false));
+  }, []);
+
   // Calculate max for supply wave chart
   const maxSupply = Math.max(...SUPPLY_WAVE_DATA.map(d => d.confirmed + d.capacity));
 
@@ -250,10 +267,17 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
       <div style={{ display: 'flex', gap: 20 }}>
         {/* Correlation Analysis */}
         <div style={{ flex: 1, ...terminalStyles.card, padding: 20 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-            <h3 style={{ ...terminalStyles.sectionTitle, fontSize: 14 }}>
-              Rent-Traffic Correlation
-            </h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <h3 style={{ ...terminalStyles.sectionTitle, fontSize: 14 }}>
+                Rent-Traffic Correlation
+              </h3>
+              <span style={{
+                fontSize: 9, fontWeight: 700, letterSpacing: 1,
+                color: BT.text.muted, background: BT.bg.elevated,
+                padding: '2px 7px', borderRadius: 0,
+              }}>BENCHMARK MODEL</span>
+            </div>
             <span style={{
               fontSize: 11,
               fontWeight: 700,
@@ -491,56 +515,100 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
 
       {/* Row 4: Rent by Vintage + JEDI History */}
       <div style={{ display: 'flex', gap: 20 }}>
-        {/* Rent by Vintage */}
+        {/* Market Rents by Bedroom Type */}
         <div style={{ flex: 1, ...terminalStyles.card, padding: 20 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <h3 style={{ ...terminalStyles.sectionTitle, fontSize: 14 }}>
-              Rent by Vintage Class
+              Market Rents by Bedroom
             </h3>
-            <span style={{
-              fontSize: 9, fontWeight: 700, letterSpacing: 1,
-              color: BT.text.muted,
-              background: BT.bg.elevated,
-              padding: '2px 7px', borderRadius: 0,
-            }}>
-              MARKET BENCHMARK
-            </span>
+            {!rentLoading && rentSnapshots.length > 0 && (
+              <span style={{
+                fontSize: 9, fontWeight: 700, letterSpacing: 1,
+                color: BT.text.green,
+                background: 'rgba(34,197,94,0.12)',
+                padding: '2px 7px', borderRadius: 0,
+              }}>
+                LIVE · APT LOCATOR
+              </span>
+            )}
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {RENT_VINTAGE_DATA.slice(-6).map((d, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ width: 48, fontSize: 10, color: BT.text.muted }}>{d.quarter}</span>
-                <div style={{ flex: 1, display: 'flex', gap: 2, alignItems: 'flex-end', height: 20 }}>
-                  <div style={{ flex: 1, height: `${(d.aPlus / 3000) * 100}%`, background: '#22c55e', borderRadius: 0 }} title={`A+: $${d.aPlus}`} />
-                  <div style={{ flex: 1, height: `${(d.a / 3000) * 100}%`, background: '#3b82f6', borderRadius: 0 }} title={`A: $${d.a}`} />
-                  <div style={{ flex: 1, height: `${(d.bPlus / 3000) * 100}%`, background: '#f59e0b', borderRadius: 0 }} title={`B+: $${d.bPlus}`} />
-                  <div style={{ flex: 1, height: `${(d.b / 3000) * 100}%`, background: '#f97316', borderRadius: 0 }} title={`B: $${d.b}`} />
-                  <div style={{ flex: 1, height: `${(d.c / 3000) * 100}%`, background: '#ef4444', borderRadius: 0 }} title={`C: $${d.c}`} />
-                </div>
+          {rentLoading ? (
+            <div style={{ fontSize: 11, color: BT.text.muted, textAlign: 'center', padding: 20 }}>
+              Loading rent data...
+            </div>
+          ) : rentSnapshots.length > 0 ? (
+            <>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {rentSnapshots.slice(0, 6).map((s, i) => {
+                  const maxR = Math.max(
+                    s.studio_rent || 0, s.one_br_rent || 0,
+                    s.two_br_rent || 0, s.three_br_rent || 0, 1
+                  );
+                  const label = s.snapshot_date
+                    ? new Date(s.snapshot_date).toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
+                    : '—';
+                  return (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ width: 48, fontSize: 10, color: BT.text.muted }}>{label}</span>
+                      <div style={{ flex: 1, display: 'flex', gap: 2, alignItems: 'flex-end', height: 20 }}>
+                        {s.studio_rent && (
+                          <div style={{ flex: 1, height: `${(s.studio_rent / maxR) * 100}%`, background: '#22c55e', borderRadius: 0 }} title={`Studio: $${s.studio_rent}`} />
+                        )}
+                        {s.one_br_rent && (
+                          <div style={{ flex: 1, height: `${(s.one_br_rent / maxR) * 100}%`, background: '#3b82f6', borderRadius: 0 }} title={`1BR: $${s.one_br_rent}`} />
+                        )}
+                        {s.two_br_rent && (
+                          <div style={{ flex: 1, height: `${(s.two_br_rent / maxR) * 100}%`, background: '#f59e0b', borderRadius: 0 }} title={`2BR: $${s.two_br_rent}`} />
+                        )}
+                        {s.three_br_rent && (
+                          <div style={{ flex: 1, height: `${(s.three_br_rent / maxR) * 100}%`, background: '#f97316', borderRadius: 0 }} title={`3BR: $${s.three_br_rent}`} />
+                        )}
+                      </div>
+                      <span style={{ fontSize: 10, color: BT.text.secondary, width: 44, textAlign: 'right' }}>
+                        {s.avg_rent ? `$${Math.round(s.avg_rent / 100) * 100}` : '—'}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
-            ))}
-          </div>
-          <div style={{ display: 'flex', gap: 12, marginTop: 12, flexWrap: 'wrap' }}>
-            {[
-              { label: 'A+', color: '#22c55e' },
-              { label: 'A', color: '#3b82f6' },
-              { label: 'B+', color: '#f59e0b' },
-              { label: 'B', color: '#f97316' },
-              { label: 'C', color: '#ef4444' },
-            ].map(item => (
-              <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                <span style={{ width: 10, height: 10, background: item.color, borderRadius: 0 }} />
-                <span style={{ fontSize: 10, color: BT.text.muted }}>{item.label}</span>
+              <div style={{ display: 'flex', gap: 12, marginTop: 12, flexWrap: 'wrap' }}>
+                {[
+                  { label: 'Studio', color: '#22c55e' },
+                  { label: '1BR', color: '#3b82f6' },
+                  { label: '2BR', color: '#f59e0b' },
+                  { label: '3BR', color: '#f97316' },
+                ].map(item => (
+                  <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ width: 10, height: 10, background: item.color, borderRadius: 0 }} />
+                    <span style={{ fontSize: 10, color: BT.text.muted }}>{item.label}</span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </>
+          ) : (
+            <div style={{ padding: 24, textAlign: 'center', borderLeft: `2px solid ${BT.border.subtle}` }}>
+              <div style={{ fontSize: 12, color: BT.text.muted, marginBottom: 6 }}>
+                No rent snapshot data available
+              </div>
+              <div style={{ fontSize: 10, color: BT.text.muted }}>
+                Run the Atlanta sync to populate market rent snapshots.
+              </div>
+            </div>
+          )}
         </div>
 
         {/* JEDI Score History */}
         <div style={{ flex: 1, ...terminalStyles.card, padding: 20 }}>
-          <h3 style={{ ...terminalStyles.sectionTitle, fontSize: 14, marginBottom: 16 }}>
-            JEDI Score History
-          </h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <h3 style={{ ...terminalStyles.sectionTitle, fontSize: 14 }}>
+              JEDI Score History
+            </h3>
+            <span style={{
+              fontSize: 9, fontWeight: 700, letterSpacing: 1,
+              color: BT.text.muted, background: BT.bg.elevated,
+              padding: '2px 7px', borderRadius: 0,
+            }}>BENCHMARK MODEL</span>
+          </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {JEDI_SCORE_HISTORY.slice(-6).map((d, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -651,9 +719,16 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
 
         {/* Concession Tracking */}
         <div style={{ flex: 1, ...terminalStyles.card, padding: 20 }}>
-          <h3 style={{ ...terminalStyles.sectionTitle, fontSize: 14, marginBottom: 16 }}>
-            Concession vs Occupancy
-          </h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <h3 style={{ ...terminalStyles.sectionTitle, fontSize: 14 }}>
+              Concession vs Occupancy
+            </h3>
+            <span style={{
+              fontSize: 9, fontWeight: 700, letterSpacing: 1,
+              color: BT.text.muted, background: BT.bg.elevated,
+              padding: '2px 7px', borderRadius: 0,
+            }}>BENCHMARK MODEL</span>
+          </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {CONCESSION_DATA.slice(-6).map((d, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

@@ -427,6 +427,63 @@ router.get('/analytics/price-trends', requireAuth, async (req: Request, res: Res
 });
 
 /**
+ * GET /api/v1/georgia/analytics/rent-trends
+ * Market rent time-series by bedroom type for Atlanta metro.
+ * Source: apartment_market_snapshots (synced from Apartment Locator AI).
+ * Returns snapshots sorted newest-first with studio/1br/2br/3br rents.
+ * Query: ?city=Atlanta&state=GA&limit=12
+ */
+router.get('/analytics/rent-trends', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const city = (req.query.city as string) || 'Atlanta';
+    const state = (req.query.state as string) || 'GA';
+    const limit = Math.min(parseInt(req.query.limit as string) || 12, 36);
+    const pool = getPool();
+    const result = await pool.query(`
+      SELECT
+        snapshot_date::text           AS snapshot_date,
+        city,
+        state,
+        avg_rent,
+        studio_rent,
+        one_br_rent,
+        two_br_rent,
+        three_br_rent,
+        avg_occupancy,
+        concession_rate,
+        rent_growth_90d,
+        rent_growth_180d
+      FROM apartment_market_snapshots
+      WHERE city ILIKE $1
+        AND state = $2
+        AND (studio_rent IS NOT NULL OR one_br_rent IS NOT NULL OR avg_rent IS NOT NULL)
+      ORDER BY snapshot_date DESC
+      LIMIT $3
+    `, [city, state, limit]);
+
+    const snapshots = result.rows.map((r: any) => ({
+      snapshot_date: r.snapshot_date,
+      city: r.city,
+      state: r.state,
+      avg_rent: r.avg_rent ? parseFloat(r.avg_rent) : null,
+      studio_rent: r.studio_rent ? parseFloat(r.studio_rent) : null,
+      one_br_rent: r.one_br_rent ? parseFloat(r.one_br_rent) : null,
+      two_br_rent: r.two_br_rent ? parseFloat(r.two_br_rent) : null,
+      three_br_rent: r.three_br_rent ? parseFloat(r.three_br_rent) : null,
+      avg_occupancy: r.avg_occupancy ? parseFloat(r.avg_occupancy) : null,
+      concession_rate: r.concession_rate ? parseFloat(r.concession_rate) : null,
+      rent_growth_90d: r.rent_growth_90d ? parseFloat(r.rent_growth_90d) : null,
+      rent_growth_180d: r.rent_growth_180d ? parseFloat(r.rent_growth_180d) : null,
+    }));
+
+    res.json({ success: true, city, state, count: snapshots.length, snapshots });
+  } catch (error) {
+    console.error('[API] /georgia/analytics/rent-trends error:', error);
+    res.status(500).json({ error: 'Failed to get rent trends' });
+  }
+});
+
+/**
  * GET /api/v1/georgia/analytics/nearby-comps
  * Ad-hoc proximity comp lookup for a lat/lon point.
  * Query: ?lat=33.749&lon=-84.388&radiusMiles=3&minUnits=20
