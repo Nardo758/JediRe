@@ -314,6 +314,56 @@ router.get('/fulton/structures/sql', async (_req: Request, res: Response) => {
   }
 });
 
+/**
+ * POST /api/v1/georgia/fulton/ingest/parcels-geometry
+ * Load Fulton parcel polygon geometry into fulton_parcels staging table.
+ * Required before running the spatial join.
+ */
+router.post('/fulton/ingest/parcels-geometry', async (req: Request, res: Response) => {
+  try {
+    const service = getFultonIngestionService();
+    const result = await service.ingestParcelGeometry(req.body);
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error('[API] Fulton parcel geometry error:', error);
+    res.status(500).json({ error: 'Parcel geometry ingest failed', message: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+/**
+ * POST /api/v1/georgia/fulton/ingest/structures
+ * Load Fulton building footprint geometry into fulton_structures staging table.
+ * Required before running the spatial join.
+ * Accepts: { maxRecords?: number, batchSize?: number }
+ */
+router.post('/fulton/ingest/structures', async (req: Request, res: Response) => {
+  try {
+    const service = getFultonIngestionService();
+    const result = await service.ingestStructures(req.body);
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error('[API] Fulton structures error:', error);
+    res.status(500).json({ error: 'Structures ingest failed', message: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+/**
+ * POST /api/v1/georgia/fulton/structures/spatial-join
+ * Run PostGIS ST_Intersects join: updates property_info_cache year_built / stories
+ * for all Fulton parcels where year_built IS NULL, matched by building footprint.
+ * Requires both fulton_parcels and fulton_structures to be populated first.
+ */
+router.post('/fulton/structures/spatial-join', async (_req: Request, res: Response) => {
+  try {
+    const service = getFultonIngestionService();
+    const result = await service.runSpatialJoin();
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error('[API] Fulton spatial join error:', error);
+    res.status(500).json({ error: 'Spatial join failed', message: error instanceof Error ? error.message : String(error) });
+  }
+});
+
 // ============================================================================
 // JOB HISTORY ROUTES
 // ============================================================================

@@ -422,6 +422,149 @@ export class FultonIngestionService {
   }
   
   /**
+   * Ingest parcel geometry into fulton_parcels staging table.
+   * Call after ingestAll to enable spatial join with structures.
+   */
+  async ingestParcelGeometry(config: Partial<IngestionConfig> = {}): Promise<{ ingested: number; errors: number }> {
+    const cfg = { ...DEFAULT_INGESTION_CONFIG, ...config };
+    console.log('[Fulton] Fetching parcel geometry...');
+
+    const parcels = await this.parcelsClient.queryAll<FultonParcel>(LAYER_IDS.PARCELS, {
+      where: '1=1',
+      outFields: ['ParcelID'],
+      returnGeometry: true,
+      batchSize: cfg.batchSize,
+      maxRecords: cfg.maxRecords,
+      onProgress: (n, t) => {
+        if (n % 10000 === 0) console.log(`[Fulton Parcels Geom] ${n}/${t}`);
+      }
+    });
+
+    console.log(`[Fulton] Saving geometry for ${parcels.length} parcels...`);
+    let ingested = 0;
+    let errors = 0;
+
+    for (const parcel of parcels) {
+      const geomObj = (parcel as any).geometry as FultonStructure['geometry'];
+      if (!geomObj?.rings?.length) continue;
+      const wkt = this.ringsToWKT(geomObj.rings);
+      if (!wkt) continue;
+      try {
+        await dbQuery(
+          `INSERT INTO fulton_parcels (parcel_id, county, state, geometry)
+           VALUES ($1, 'Fulton', 'GA', ST_SetSRID(ST_GeomFromText($2), 4326))
+           ON CONFLICT (parcel_id, county, state) DO UPDATE SET
+             geometry = EXCLUDED.geometry`,
+          [parcel.ParcelID, wkt]
+        );
+        ingested++;
+      } catch (err) {
+        errors++;
+        if (errors <= 5) console.warn(`[Fulton] parcel geom error (${parcel.ParcelID}): ${err}`);
+      }
+    }
+
+    console.log(`[Fulton] Parcel geometry: ${ingested} saved, ${errors} errors`);
+    return { ingested, errors };
+  }
+
+  /**
+   * Ingest structure footprints into fulton_structures staging table.
+   * TRUNCATES the table before inserting so re-runs are idempotent.
+   */
+  async ingestStructures(config: Partial<IngestionConfig> = {}): Promise<{ ingested: number; errors: number }> {
+    const cfg = { ...DEFAULT_INGESTION_CONFIG, ...config };
+    console.log('[Fulton] Fetching structure footprints...');
+
+    const structures = await this.structuresClient.queryAll<FultonStructure>(LAYER_IDS.STRUCTURES, {
+      where: '1=1',
+      outFields: ['FeatureID', 'YearBuilt', 'Stories', 'LiveUnits', 'AreaSqFt'],
+      returnGeometry: true,
+      batchSize: cfg.batchSize,
+      maxRecords: cfg.maxRecords,
+      onProgress: (n, t) => {
+        if (n % 25000 === 0) console.log(`[Fulton Structures] ${n}/${t}`);
+      }
+    });
+
+    console.log(`[Fulton] Truncating fulton_structures and inserting ${structures.length} records...`);
+    if (!cfg.maxRecords) {
+      await dbQuery('TRUNCATE TABLE fulton_structures', []);
+    }
+
+    let ingested = 0;
+    let errors = 0;
+
+    for (const s of structures) {
+      const geomObj = s.geometry;
+      if (!geomObj?.rings?.length) continue;
+      const wkt = this.ringsToWKT(geomObj.rings);
+      if (!wkt) continue;
+      try {
+        await dbQuery(
+          `INSERT INTO fulton_structures (feature_id, year_built, stories, live_units, area_sqft, geometry)
+           VALUES ($1,$2,$3,$4,$5, ST_SetSRID(ST_GeomFromText($6), 4326))`,
+          [s.FeatureID, s.YearBuilt || null, s.Stories || null, s.LiveUnits || null, s.AreaSqFt || null, wkt]
+        );
+        ingested++;
+      } catch (err) {
+        errors++;
+        if (errors <= 5) console.warn(`[Fulton] structure error (${s.FeatureID}): ${err}`);
+      }
+    }
+
+    console.log(`[Fulton] Structures: ${ingested} saved, ${errors} errors`);
+    return { ingested, errors };
+  }
+
+  /**
+   * Run the PostGIS spatial join to update property_info_cache.year_built / stories
+   * from structures matched to parcels by ST_Intersects.
+   *
+   * Requires both fulton_parcels and fulton_structures to be populated first.
+   * Only updates rows where year_built IS NULL (non-destructive).
+   */
+  async runSpatialJoin(): Promise<{ updated: number }> {
+    console.log('[Fulton] Running structures spatial join...');
+    const result = await dbQuery(
+      `UPDATE property_info_cache pic
+       SET
+         year_built       = s.year_built,
+         stories          = s.stories,
+         number_of_units  = COALESCE(pic.number_of_units, s.live_units),
+         living_area_sqft = COALESCE(pic.living_area_sqft, s.area_sqft),
+         updated_at       = NOW()
+       FROM fulton_structures s
+       JOIN fulton_parcels p ON ST_Intersects(s.geometry, p.geometry)
+       WHERE pic.parcel_id = p.parcel_id
+         AND pic.county    = 'Fulton'
+         AND pic.state     = 'GA'
+         AND pic.year_built IS NULL
+         AND s.year_built IS NOT NULL`,
+      []
+    );
+    const updated = result.rowCount ?? 0;
+    console.log(`[Fulton] Spatial join complete: ${updated} properties updated`);
+    return { updated };
+  }
+
+  /**
+   * Convert ArcGIS polygon rings to WKT POLYGON string for PostGIS.
+   * First ring = outer boundary, subsequent rings = holes.
+   */
+  private ringsToWKT(rings: number[][][]): string | null {
+    if (!rings?.length) return null;
+    try {
+      const ringStrs = rings.map(ring =>
+        '(' + ring.map(([x, y]) => `${x} ${y}`).join(',') + ')'
+      );
+      return `POLYGON(${ringStrs.join(',')})`;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Generate SQL for spatial join of structures to parcels
    * This should be run in PostGIS after loading structures
    */
@@ -432,16 +575,18 @@ export class FultonIngestionService {
 
 UPDATE property_info_cache pic
 SET 
-  year_built = s.year_built,
-  stories = s.stories,
-  number_of_units = COALESCE(pic.number_of_units, s.live_units),
-  living_area_sqft = s.area_sqft
+  year_built       = s.year_built,
+  stories          = s.stories,
+  number_of_units  = COALESCE(pic.number_of_units, s.live_units),
+  living_area_sqft = COALESCE(pic.living_area_sqft, s.area_sqft),
+  updated_at       = NOW()
 FROM fulton_structures s
 JOIN fulton_parcels p ON ST_Intersects(s.geometry, p.geometry)
 WHERE pic.parcel_id = p.parcel_id
-  AND pic.county = 'Fulton'
-  AND pic.state = 'GA'
-  AND pic.year_built IS NULL;
+  AND pic.county    = 'Fulton'
+  AND pic.state     = 'GA'
+  AND pic.year_built IS NULL
+  AND s.year_built IS NOT NULL;
     `.trim();
   }
 }

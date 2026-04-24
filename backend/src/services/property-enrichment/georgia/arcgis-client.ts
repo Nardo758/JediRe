@@ -143,7 +143,11 @@ export class ArcGISClient {
       if (result.features && result.features.length > 0) {
         for (const feature of result.features) {
           if (maxRecords && all.length >= maxRecords) break;
-          all.push(feature.attributes);
+          if (options.returnGeometry && feature.geometry !== undefined) {
+            all.push({ ...feature.attributes, geometry: feature.geometry } as T);
+          } else {
+            all.push(feature.attributes);
+          }
         }
         
         offset += result.features.length;
