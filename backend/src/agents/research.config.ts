@@ -30,6 +30,7 @@ import { webSearchTool } from './tools/web_search';
 import { fetchWebpageTool } from './tools/fetch_webpage';
 import { writeCompSetTool } from './tools/write_comp_set';
 import { writeMarketCompsTool } from './tools/write_market_comps';
+import { fetchDataMatrixTool } from './tools/fetch_data_matrix';
 import { fetchProximityContextTool } from './tools/fetch_proximity_context';
 import { fetchMarketEventsTool } from './tools/fetch_market_events';
 import { fetchBacktestContextTool } from './tools/fetch_backtest_context';
@@ -62,7 +63,7 @@ export type ResearchOutput = z.infer<typeof ResearchOutputSchema>;
 
 export const RESEARCH_AGENT_CONFIG: AgentConfig = {
   agentId: 'research',
-  agentVersion: '3.0.0',
+  agentVersion: '3.1.0',
   promptVersion: 'research-v3',
   tools: [
     fetchParcelTool,
@@ -76,7 +77,9 @@ export const RESEARCH_AGENT_CONFIG: AgentConfig = {
     // Lifecycle tools for market research
     writeCompSetTool,
     writeMarketCompsTool,
-    // Spatial intelligence — proximity, events & historical validation
+    // Primary context assembler — all 9 data layers in one call
+    fetchDataMatrixTool,
+    // Individual spatial tools — kept for single-layer edge cases
     fetchProximityContextTool,
     fetchMarketEventsTool,
     fetchBacktestContextTool,

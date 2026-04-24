@@ -17,7 +17,8 @@
  */
 
 import { z } from 'zod';
-import { Pool } from 'pg';
+import type { Pool } from 'pg';
+import { getPool } from '../../database/connection';
 import { getDataMatrixService, DataLibraryDeal, DataMatrixContext } from '../../services/neural-network';
 
 export const fetchDataMatrixSchema = z.object({
@@ -289,6 +290,7 @@ This is the main tool for getting complete deal information including:
 
 Returns both raw context and a summary with key metrics, signals, insights, risks, and opportunities.
 Use this as the primary data gathering tool before any deal analysis.`,
-  parameters: fetchDataMatrixSchema,
-  execute: fetchDataMatrix
+  inputSchema: fetchDataMatrixSchema,
+  outputSchema: z.unknown(),
+  execute: async (input: FetchDataMatrixParams, _ctx: unknown) => fetchDataMatrix(input, getPool()),
 };

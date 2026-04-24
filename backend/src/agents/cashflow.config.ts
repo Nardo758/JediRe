@@ -45,6 +45,7 @@ import { fetchDebtAssumptionsTool } from './tools/fetch_debt_assumptions';
 import { runRefiTestTool } from './tools/run_refi_test';
 import { fetchCompSetTool } from './tools/fetch_comp_set';
 import { fetchDispositionLearningsTool } from './tools/fetch_disposition_learnings';
+import { fetchDataMatrixTool } from './tools/fetch_data_matrix';
 import { fetchProximityContextTool } from './tools/fetch_proximity_context';
 import { fetchMarketEventsTool } from './tools/fetch_market_events';
 import { fetchBacktestContextTool } from './tools/fetch_backtest_context';
@@ -216,7 +217,7 @@ export async function buildCompositePrompt(dealRow: Record<string, unknown>): Pr
 
 export const CASHFLOW_AGENT_CONFIG: AgentConfig = {
   agentId: 'cashflow',
-  agentVersion: '3.1.0',
+  agentVersion: '3.2.0',
   promptVersion: 'cashflow-v5-archive',
   tools: [
     // Tier 1: Deal documents
@@ -243,7 +244,9 @@ export const CASHFLOW_AGENT_CONFIG: AgentConfig = {
     runRefiTestTool,
     fetchCompSetTool,
     fetchDispositionLearningsTool,
-    // Spatial intelligence — proximity grades + market events (CFO tier)
+    // Primary context assembler — all 9 data layers in one call
+    fetchDataMatrixTool,
+    // Individual spatial tools — kept for single-layer edge cases
     fetchProximityContextTool,
     fetchMarketEventsTool,
     fetchBacktestContextTool,

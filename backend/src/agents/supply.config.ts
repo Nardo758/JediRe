@@ -17,6 +17,7 @@ import { fetchPermitsTool } from './tools/fetch_permits';
 import { fetchCostarPipelineTool } from './tools/fetch_costar_pipeline';
 import { fetchSubmarketDeliveriesTool } from './tools/fetch_submarket_deliveries';
 import { writeSupplyAnalysisTool } from './tools/write_supply_analysis';
+import { fetchDataMatrixTool } from './tools/fetch_data_matrix';
 
 // ── Output schema ─────────────────────────────────────────────────
 
@@ -42,13 +43,15 @@ export type SupplyAgentOutput = z.infer<typeof SupplyOutputSchema>;
 
 export const SUPPLY_AGENT_CONFIG: AgentConfig = {
   agentId: 'supply',
-  agentVersion: '2.0.0',
+  agentVersion: '2.1.0',
   promptVersion: 'supply-v3',
   tools: [
     fetchPermitsTool,
     fetchCostarPipelineTool,
     fetchSubmarketDeliveriesTool,
     writeSupplyAnalysisTool,
+    // Full context assembler — market events, employer moves, and spatial context
+    fetchDataMatrixTool,
   ],
   outputSchema: SupplyOutputSchema,
   budgetCaps: DEFAULT_BUDGET_CAPS.supply,

@@ -25,6 +25,7 @@ import { fetchMunicodeTool } from './tools/fetch_municode';
 import { computeEnvelopeTool } from './tools/compute_envelope';
 import { writeZoningAnalysisTool } from './tools/write_zoning_analysis';
 import { webSearchTool } from './tools/web_search';
+import { fetchDataMatrixTool } from './tools/fetch_data_matrix';
 
 // ── Output schema ─────────────────────────────────────────────────
 
@@ -48,7 +49,7 @@ export type ZoningAgentOutput = z.infer<typeof ZoningOutputSchema>;
 
 export const ZONING_AGENT_CONFIG: AgentConfig = {
   agentId: 'zoning',
-  agentVersion: '3.0.0',
+  agentVersion: '3.1.0',
   promptVersion: 'zoning-v3',
   tools: [
     fetchParcelTool,
@@ -57,6 +58,8 @@ export const ZONING_AGENT_CONFIG: AgentConfig = {
     computeEnvelopeTool,
     writeZoningAnalysisTool,
     webSearchTool,
+    // Full context assembler — proximity, events, and all 9 data layers
+    fetchDataMatrixTool,
   ],
   outputSchema: ZoningOutputSchema,
   budgetCaps: DEFAULT_BUDGET_CAPS.zoning,

@@ -6,6 +6,7 @@
 
 import { Router, Request, Response } from 'express';
 import { getDataMatrixService, DataLibraryDeal } from '../../services/neural-network';
+import { requireAuth } from '../../middleware/auth';
 
 const router = Router();
 
@@ -15,7 +16,7 @@ const router = Router();
  * Build full data matrix context for a Data Library deal.
  * This is the main entry point for agents to get comprehensive deal context.
  */
-router.post('/context', async (req: Request, res: Response) => {
+router.post('/context', requireAuth, async (req: Request, res: Response) => {
   try {
     const { deal, options } = req.body as {
       deal: DataLibraryDeal;
@@ -60,7 +61,7 @@ router.post('/context', async (req: Request, res: Response) => {
  * 
  * Build context from a Data Library asset ID.
  */
-router.post('/context/from-asset', async (req: Request, res: Response) => {
+router.post('/context/from-asset', requireAuth, async (req: Request, res: Response) => {
   try {
     const { assetId, options } = req.body as {
       assetId: string;
@@ -132,7 +133,7 @@ router.post('/context/from-asset', async (req: Request, res: Response) => {
  * 
  * Build context from a deals table record.
  */
-router.post('/context/from-deal', async (req: Request, res: Response) => {
+router.post('/context/from-deal', requireAuth, async (req: Request, res: Response) => {
   try {
     const { dealId, options } = req.body as {
       dealId: string;
