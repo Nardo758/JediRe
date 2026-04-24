@@ -8,6 +8,7 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { getEnrichmentOrchestrator } from '../../services/property-enrichment';
 import { hasCountyCoverage, COUNTY_CONFIGS } from '../../services/property-enrichment/property-info/county-configs';
+import { getFullEnrichmentService, DataLibraryAsset } from '../../services/property-enrichment/data-library';
 
 const router = Router();
 const orchestrator = getEnrichmentOrchestrator();
@@ -259,6 +260,105 @@ router.get('/county-check', async (req: Request, res: Response) => {
     });
   } catch (error) {
     res.status(500).json({ error: 'County check failed' });
+  }
+});
+
+/**
+ * POST /api/v1/property-enrichment/full-enrich
+ * 
+ * Full enrichment connecting all data matrix layers:
+ * - Property Info (Municipal APIs)
+ * - Rent Data (Apartment Locator)
+ * - Proximity Context (Transit, Grocery, Schools, Crime)
+ * - Market Events (Employer moves, Supply pipeline)
+ * - Historical Backtest (Similar deals performance)
+ * - Sales Comps (Recent transactions)
+ */
+router.post('/full-enrich', async (req: Request, res: Response) => {
+  try {
+    const { asset, config } = req.body as {
+      asset: DataLibraryAsset;
+      config?: {
+        enrichPropertyInfo?: boolean;
+        enrichRentData?: boolean;
+        enrichProximity?: boolean;
+        enrichEvents?: boolean;
+        enrichBacktest?: boolean;
+        enrichSalesComps?: boolean;
+        searchRadiusMiles?: number;
+        lookAheadMonths?: number;
+      };
+    };
+    
+    if (!asset || !asset.address || !asset.city || !asset.state) {
+      return res.status(400).json({ 
+        error: 'Asset with address, city, and state is required' 
+      });
+    }
+    
+    // Get pool from app
+    const pool = req.app.get('pool');
+    if (!pool) {
+      return res.status(500).json({ error: 'Database pool not configured' });
+    }
+    
+    const service = getFullEnrichmentService(pool);
+    const result = await service.enrichAsset(asset, config);
+    
+    res.json({
+      success: result.success,
+      readinessForUnderwriting: result.readinessForUnderwriting,
+      overallDataQualityScore: result.overallDataQualityScore,
+      
+      // Core enrichment
+      fieldsEnriched: result.fieldsEnriched,
+      fieldsStillMissing: result.fieldsStillMissing,
+      missingCriticalData: result.missingCriticalData,
+      
+      // Proximity
+      proximity: result.proximity ? {
+        transitGrade: result.proximity.transitGrade,
+        groceryGrade: result.proximity.groceryGrade,
+        schoolGrade: result.proximity.schoolGrade,
+        safetyGrade: result.proximity.safetyGrade,
+        estimatedPremiumPct: result.proximity.estimatedPremiumPct,
+        highlights: result.proximity.highlights,
+        concerns: result.proximity.concerns
+      } : null,
+      
+      // Events
+      events: result.events ? {
+        netSentiment: result.events.netSentiment,
+        supplyPipelineUnits: result.events.supplyPipelineUnits,
+        keyEvents: result.events.keyEvents,
+        riskFactors: result.events.riskFactors,
+        opportunities: result.events.opportunities
+      } : null,
+      
+      // Backtest
+      backtest: result.backtest ? {
+        sampleSize: result.backtest.sampleSize,
+        avgActualIrr: result.backtest.avgActualIrr,
+        outperformanceRate: result.backtest.outperformanceRate,
+        confidenceLevel: result.backtest.confidenceLevel,
+        insights: result.backtest.insights
+      } : null,
+      
+      // Sales comps
+      salesComps: result.salesComps,
+      
+      // Conflicts
+      conflicts: result.conflicts,
+      
+      // Raw enriched data (for updates)
+      enrichedData: result.enrichedData
+    });
+  } catch (error) {
+    console.error('[API] Full enrichment error:', error);
+    res.status(500).json({ 
+      error: 'Full enrichment failed',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
   }
 });
 

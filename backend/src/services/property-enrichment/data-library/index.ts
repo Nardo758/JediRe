@@ -10,3 +10,10 @@ export {
   EnrichmentResult,
   EnrichmentConfig
 } from './auto-enrichment.service';
+
+export {
+  FullEnrichmentService,
+  getFullEnrichmentService,
+  FullEnrichmentResult,
+  FullEnrichmentConfig
+} from './full-enrichment.service';
