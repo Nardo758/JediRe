@@ -708,6 +708,8 @@ export async function discoverFromAptLocator(
       d.id,
       d.name,
       d.address,
+      d.city,
+      d.state_code,
       d.target_units,
       d.deal_data,
       ST_Y(ST_Centroid(d.boundary)) AS lat,
@@ -769,11 +771,25 @@ export async function discoverFromAptLocator(
     LIMIT $4
   `, [deal.lat, deal.lng, radiusMiles, maxComps * 3]);
 
-  // City-level fallback: if radius returns nothing (e.g., apt_locator lat/lon not yet geocoded),
-  // fall back to any properties in the same city with avg_asking_rent > 0.
+  // City-level fallback: if radius returns nothing, fall back to properties in the
+  // same city as the deal (matched by city + state_code). If city is unknown, widen
+  // to state-level. This keeps comps market-relevant rather than pulling state-wide.
   let rows = compRows.rows;
   if (rows.length === 0) {
-    logger.info('[discoverFromAptLocator] Radius empty — trying city-level fallback', { dealId, radiusMiles });
+    const dealCity = (deal.city || '').trim();
+    const dealStateCode = (deal.state_code || '').trim();
+    logger.info('[discoverFromAptLocator] Radius empty — trying city-level fallback', { dealId, radiusMiles, dealCity, dealStateCode });
+
+    const fallbackParams: any[] = [maxComps * 3];
+    let whereClause = 'alp.avg_asking_rent > 0';
+    if (dealCity && dealStateCode) {
+      whereClause += ` AND LOWER(alp.city) = LOWER($2) AND LOWER(alp.state) = LOWER($3)`;
+      fallbackParams.push(dealCity, dealStateCode);
+    } else if (dealStateCode) {
+      whereClause += ` AND LOWER(alp.state) = LOWER($2)`;
+      fallbackParams.push(dealStateCode);
+    }
+
     const cityFallback = await pool.query(`
       SELECT
         alp.id,
@@ -797,17 +813,16 @@ export async function discoverFromAptLocator(
         alp.data_as_of,
         5.0 AS distance_miles
       FROM apartment_locator_properties alp
-      WHERE alp.avg_asking_rent > 0
-        AND alp.state = 'GA'
-      ORDER BY alp.avg_asking_rent DESC
+      WHERE ${whereClause}
+      ORDER BY alp.avg_asking_rent ASC
       LIMIT $1
-    `, [maxComps * 3]);
+    `, fallbackParams);
     rows = cityFallback.rows;
     if (rows.length === 0) {
       logger.info('[discoverFromAptLocator] No apt locator properties found at all', { dealId });
       return { inserted_competitive_sets: 0, inserted_deal_comp_sets: 0, median_rent: null, rent_updated: false, comp_count: 0 };
     }
-    logger.info('[discoverFromAptLocator] City-level fallback found properties', { dealId, count: rows.length });
+    logger.info('[discoverFromAptLocator] City-level fallback found properties', { dealId, count: rows.length, dealCity, dealStateCode });
   }
 
   // 2. Score comps

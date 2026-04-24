@@ -458,8 +458,8 @@ const DealCompAnalysisTab: React.FC<DealCompAnalysisTabProps> = ({ dealId: propD
   const fetchMarketRent = useCallback(async () => {
     if (!dealId) return;
     try {
-      const res: any = await apiClient.get(`/api/v1/deals/${dealId}/assumptions`);
-      const data = res?.data || res;
+      const res: any = await apiClient.get(`/deals/${dealId}/assumptions`);
+      const data = res?.data?.data || res?.data;
       setMarketRent({
         value: data?.avg_rent_per_unit ? parseFloat(data.avg_rent_per_unit) : null,
         sourceType: data?.source_type || null,
@@ -476,15 +476,16 @@ const DealCompAnalysisTab: React.FC<DealCompAnalysisTabProps> = ({ dealId: propD
     setRentalDiscovery({ loading: true, result: null, error: null });
     try {
       const res: any = await apiClient.post(
-        `/api/v1/deals/${dealId}/comp-set/discover-rental`,
+        `/deals/${dealId}/comp-set/discover-rental`,
         { radiusMiles: 3, maxComps: 20 },
       );
+      const d = res?.data?.data || res?.data;
       setRentalDiscovery({
         loading: false,
         result: {
-          median_rent: res?.median_rent ?? null,
-          comp_count: res?.comp_count ?? 0,
-          rent_updated: res?.rent_updated ?? false,
+          median_rent: d?.median_rent ?? null,
+          comp_count: d?.comp_count ?? 0,
+          rent_updated: d?.rent_updated ?? false,
         },
         error: null,
       });

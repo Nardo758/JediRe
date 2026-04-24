@@ -159,7 +159,7 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
       fetchData();
       apiClient.get(`/api/v1/deals/${resolvedDealId}/assumptions`)
         .then((res: any) => {
-          const d = res?.data || res;
+          const d = res?.data?.data || res?.data;
           setRentSourceType(d?.source_type || null);
         })
         .catch(() => {});
