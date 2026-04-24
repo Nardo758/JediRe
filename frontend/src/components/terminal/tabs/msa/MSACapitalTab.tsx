@@ -231,13 +231,13 @@ export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
                     {row.current.toFixed(1)}%
                   </td>
                   <td style={{ ...terminalStyles.tableCell, textAlign: 'right', color: BT.text.muted }}>
-                    {row.prior.toFixed(1)}%
+                    {row.prior != null ? `${row.prior.toFixed(1)}%` : '—'}
                   </td>
                   <td style={{ ...terminalStyles.tableCell, textAlign: 'right', color: BT.text.green }}>
-                    {row.change}
+                    {row.change != null ? row.change : '—'}
                   </td>
                   <td style={{ ...terminalStyles.tableCell, textAlign: 'right', color: BT.text.amber }}>
-                    +{row.spread}
+                    {row.spread != null ? `+${row.spread}` : '—'}
                   </td>
                 </tr>
               ))}

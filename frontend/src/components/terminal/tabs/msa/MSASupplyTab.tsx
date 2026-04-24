@@ -12,7 +12,7 @@ import { useCommentaryStore } from '../../../../stores/commentaryStore';
 import { apiClient } from '../../../../api/client';
 import { SupplyNarrative, SignalCommentary } from '../../commentary';
 
-interface SupplySubmarketRow { submarket: string; units: number; projects: number; }
+interface SupplySubmarketRow { name: string; units: number; pctOfTotal: number; status: 'HIGH' | 'MOD' | 'LOW'; projectCount?: number; }
 interface SupplyProjectRow { project: string; submarket: string; units: number; class: string; delivery: string; pctComplete: number | null; developer: string | null; }
 interface SupplyApiProject { project: string; submarket?: string; units?: number; class?: string; delivery?: string; }
 interface SupplyApiResponse { success: boolean; totalUnits: number; projectCount: number; bySubmarket: SupplySubmarketRow[]; projects: SupplyApiProject[]; }
