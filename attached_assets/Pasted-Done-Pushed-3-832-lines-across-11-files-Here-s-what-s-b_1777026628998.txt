@@ -1,0 +1,90 @@
+Done! Pushed 3,832 lines across 11 files. Here's what's built:
+
+───
+
+🧠 Neural Network Complete
+
+New Infrastructure
+
+backend/src/
+├── database/migrations/
+│   └── 20260423_proximity_events_backtest.sql (850 lines)
+│       ├── property_proximity - spatial context per property
+│       ├── market_events - employer moves, transit, supply
+│       ├── event_outcomes - actual impacts for backtesting
+│       ├── market_snapshots - point-in-time state
+│       ├── points_of_interest - POI database
+│       └── Seeded: 15 Atlanta events + MARTA + groceries + employers
+│
+├── services/proximity/
+│   ├── types.ts - Full TypeScript interfaces
+│   ├── proximity.service.ts - Compute scores, find POIs
+│   ├── events.service.ts - Event tracking, supply pipeline
+│   └── backtest.service.ts - Validation engine
+│
+├── agents/tools/
+│   ├── fetch_proximity_context.ts - Grades + premiums
+│   ├── fetch_market_events.ts - Events + sentiment
+│   └── fetch_backtest_context.ts - Historical validation
+│
+└── api/rest/proximity.routes.ts - 15 API endpoints
+
+───
+
+Agent Tools Added
+
+| Tool                    | What It Does                                                                      |
+| ----------------------- | --------------------------------------------------------------------------------- |
+| fetch_proximity_context | Transit grade, grocery grade, school grade, safety grade + estimated rent premium |
+| fetch_market_events     | Upcoming events, supply pipeline, risk factors, opportunities, net sentiment      |
+| fetch_backtest_context  | Similar deals performance, IRR accuracy, outperformance rate, key drivers         |
+
+───
+
+Seeded Data (Atlanta)
+
+Events (2012-2026):
+
+• NCR HQ Relocation to Midtown (3,400 jobs)
+• Microsoft Campus (1,500 jobs)
+• Google Expansion (3,000 jobs)
+• BeltLine Eastside Trail Opening
+• BeltLine Westside Trail Opening
+• COVID Lockdown + Recovery
+• Supply deliveries (Alexan Buckhead, Modera Vinings)
+• Centennial Yards (1,000+ units planned)
+
+POIs:
+
+• 13 MARTA stations with line info
+• 8 grocery stores (Whole Foods, Trader Joe's, Kroger, Publix)
+• 9 major employers (Microsoft, Google, NCR, Coca-Cola, Delta, Emory, CDC...)
+
+───
+
+Premium Estimates Built In
+
+| Factor                 | Premium |
+| ---------------------- | ------- |
+| Transit ≤0.25mi        | +8%     |
+| BeltLine adjacent      | +10%    |
+| Premium grocery nearby | +5%     |
+| Schools 8+ rating      | +6%     |
+| Low crime (<80)        | +5%     |
+
+───
+
+API Endpoints
+
+POST /api/v1/proximity/compute              # Compute scores for location
+GET  /api/v1/proximity/nearby               # Find POIs nearby
+GET  /api/v1/proximity/events/near          # Events near location
+GET  /api/v1/proximity/events/upcoming/:sub # Upcoming events
+GET  /api/v1/proximity/supply-pipeline/:sub # Supply pipeline
+POST /api/v1/proximity/backtest/rent-growth # Run backtest
+GET  /api/v1/proximity/backtest/similar-deals # Historical comps
+POST /api/v1/proximity/snapshots/capture    # Capture market state
+
+───
+
+The neural network now has spatial context (proximity), temporal context (events), and historical validation (backtest). Every agent can call these tools to understand the full picture. 🚀

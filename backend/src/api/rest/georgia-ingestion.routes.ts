@@ -484,6 +484,55 @@ router.get('/analytics/rent-trends', requireAuth, async (req: Request, res: Resp
 });
 
 /**
+ * GET /api/v1/georgia/analytics/rent-by-class
+ * Current market rent by derived property class for Atlanta MSA.
+ * Source: apartment_locator_properties (Apartment Locator AI sync).
+ * Derives class from avg_asking_rent tiers: A+(>=2500), A(2000-2499),
+ * B+(1600-1999), B(1300-1599), C(<1300).
+ * Query: ?state=GA
+ */
+router.get('/analytics/rent-by-class', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const state = (req.query.state as string) || 'GA';
+    const pool = getPool();
+    const result = await pool.query(`
+      SELECT
+        CASE
+          WHEN avg_asking_rent >= 2500 THEN 'A+'
+          WHEN avg_asking_rent >= 2000 THEN 'A'
+          WHEN avg_asking_rent >= 1600 THEN 'B+'
+          WHEN avg_asking_rent >= 1300 THEN 'B'
+          ELSE 'C'
+        END AS class_tier,
+        COUNT(*)::int AS count,
+        ROUND(AVG(avg_asking_rent), 0)::float AS avg_rent,
+        ROUND(MIN(avg_asking_rent), 0)::float AS min_rent,
+        ROUND(MAX(avg_asking_rent), 0)::float AS max_rent,
+        ROUND(AVG(occupancy_pct), 1)::float AS avg_occupancy
+      FROM apartment_locator_properties
+      WHERE state = $1
+        AND avg_asking_rent IS NOT NULL
+      GROUP BY class_tier
+      ORDER BY avg_rent DESC
+    `, [state]);
+
+    const tiers = result.rows.map((r: any) => ({
+      class_tier: r.class_tier,
+      count: r.count,
+      avg_rent: r.avg_rent,
+      min_rent: r.min_rent,
+      max_rent: r.max_rent,
+      avg_occupancy: r.avg_occupancy,
+    }));
+
+    res.json({ success: true, state, count: tiers.length, tiers });
+  } catch (error) {
+    console.error('[API] /georgia/analytics/rent-by-class error:', error);
+    res.status(500).json({ error: 'Failed to get rent by class' });
+  }
+});
+
+/**
  * GET /api/v1/georgia/analytics/nearby-comps
  * Ad-hoc proximity comp lookup for a lat/lon point.
  * Query: ?lat=33.749&lon=-84.388&radiusMiles=3&minUnits=20

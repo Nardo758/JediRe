@@ -33,49 +33,6 @@ const CORRELATION_QUARTERS = [
 ];
 
 
-const RENT_VINTAGE_DATA = [
-  { quarter: 'Q1 24', aPlus: 2420, a: 2150, bPlus: 1650, b: 1390, c: 1060 },
-  { quarter: 'Q2 24', aPlus: 2510, a: 2240, bPlus: 1740, b: 1480, c: 1130 },
-  { quarter: 'Q3 24', aPlus: 2540, a: 2280, bPlus: 1800, b: 1540, c: 1170 },
-  { quarter: 'Q4 24', aPlus: 2490, a: 2230, bPlus: 1760, b: 1500, c: 1140 },
-  { quarter: 'Q1 25', aPlus: 2520, a: 2260, bPlus: 1820, b: 1560, c: 1190 },
-  { quarter: 'Q2 25', aPlus: 2620, a: 2360, bPlus: 1960, b: 1700, c: 1310 },
-  { quarter: 'Q3 25', aPlus: 2660, a: 2400, bPlus: 2040, b: 1780, c: 1380 },
-  { quarter: 'Q4 25', aPlus: 2600, a: 2340, bPlus: 1990, b: 1730, c: 1340 },
-];
-
-const DEMAND_SIGNAL_DATA = [
-  { quarter: 'Q1 24', trafficGrowth: 1.4, searchInterest: 52, t02Avg: 58, t03Avg: 48 },
-  { quarter: 'Q2 24', trafficGrowth: 4.1, searchInterest: 68, t02Avg: 67, t03Avg: 64 },
-  { quarter: 'Q3 24', trafficGrowth: 5.2, searchInterest: 74, t02Avg: 72, t03Avg: 72 },
-  { quarter: 'Q4 24', trafficGrowth: 3.6, searchInterest: 62, t02Avg: 66, t03Avg: 60 },
-  { quarter: 'Q1 25', trafficGrowth: 3.8, searchInterest: 66, t02Avg: 68, t03Avg: 62 },
-  { quarter: 'Q2 25', trafficGrowth: 7.4, searchInterest: 91, t02Avg: 82, t03Avg: 88 },
-  { quarter: 'Q3 25', trafficGrowth: 8.1, searchInterest: 96, t02Avg: 86, t03Avg: 93 },
-  { quarter: 'Q4 25', trafficGrowth: 5.8, searchInterest: 78, t02Avg: 76, t03Avg: 74 },
-];
-
-const TRANSACTION_DATA = [
-  { date: 'Mar 24', pricePerUnit: 138000, units: 140, capRate: 5.3 },
-  { date: 'Jun 24', pricePerUnit: 152000, units: 260, capRate: 5.0 },
-  { date: 'Sep 24', pricePerUnit: 144000, units: 180, capRate: 5.2 },
-  { date: 'Dec 24', pricePerUnit: 158000, units: 320, capRate: 4.8 },
-  { date: 'Mar 25', pricePerUnit: 141000, units: 150, capRate: 5.4 },
-  { date: 'Jun 25', pricePerUnit: 162000, units: 290, capRate: 4.7 },
-  { date: 'Sep 25', pricePerUnit: 148000, units: 200, capRate: 5.1 },
-  { date: 'Dec 25', pricePerUnit: 156000, units: 240, capRate: 5.0 },
-];
-
-const CONCESSION_DATA = [
-  { quarter: 'Q1 24', concessionPct: 6.8, occupancy: 90.8 },
-  { quarter: 'Q2 24', concessionPct: 5.2, occupancy: 92.4 },
-  { quarter: 'Q3 24', concessionPct: 4.6, occupancy: 93.1 },
-  { quarter: 'Q4 24', concessionPct: 5.8, occupancy: 91.6 },
-  { quarter: 'Q1 25', concessionPct: 5.4, occupancy: 91.2 },
-  { quarter: 'Q2 25', concessionPct: 3.6, occupancy: 93.4 },
-  { quarter: 'Q3 25', concessionPct: 3.0, occupancy: 94.0 },
-  { quarter: 'Q4 25', concessionPct: 4.2, occupancy: 92.8 },
-];
 
 const JEDI_SCORE_HISTORY = [
   { quarter: 'Q1 24', composite: 56, demand: 48, supply: 62, momentum: 52 },
@@ -159,6 +116,22 @@ interface SupplyPipelineResponse {
   bySubmarket: SupplyPipelineSubmarket[];
 }
 
+interface RentByClassTier {
+  class_tier: string;
+  count: number;
+  avg_rent: number;
+  min_rent: number;
+  max_rent: number;
+  avg_occupancy: number | null;
+}
+
+interface RentByClassResponse {
+  success: boolean;
+  state: string;
+  count: number;
+  tiers: RentByClassTier[];
+}
+
 export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
   const [timeRange, setTimeRange] = useState<typeof TIME_RANGES[number]>('1Y');
   const [priceTrends, setPriceTrends] = useState<PriceTrend[]>([]);
@@ -167,6 +140,8 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
   const [rentLoading, setRentLoading] = useState(true);
   const [supplyPipeline, setSupplyPipeline] = useState<SupplyPipelineSubmarket[]>([]);
   const [supplyPipelineTotal, setSupplyPipelineTotal] = useState<number | null>(null);
+  const [rentByClass, setRentByClass] = useState<RentByClassTier[]>([]);
+  const [rentByClassLoading, setRentByClassLoading] = useState(true);
   const msaName = msa?.name || msaId || 'Atlanta';
   const { fetchCommentary, getCommentary, isLoading, getError } = useCommentaryStore();
   const commentary = getCommentary('msa', msaId);
@@ -245,6 +220,14 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
         }
       })
       .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    setRentByClassLoading(true);
+    apiClient.get<RentByClassResponse>('/georgia/analytics/rent-by-class?state=GA')
+      .then((res: RentByClassResponse) => setRentByClass(res?.tiers || []))
+      .catch(() => setRentByClass([]))
+      .finally(() => setRentByClassLoading(false));
   }, []);
 
   // Calculate max for supply wave chart (real pipeline or fallback label)
@@ -740,53 +723,107 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
           )}
         </div>
 
-        {/* Concession Tracking */}
+        {/* Rent by Class */}
         <div style={{ flex: 1, ...terminalStyles.card, padding: 20 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <h3 style={{ ...terminalStyles.sectionTitle, fontSize: 14 }}>
-              Concession vs Occupancy
+              Rent by Class
             </h3>
-            <span style={{
-              fontSize: 9, fontWeight: 700, letterSpacing: 1,
-              color: BT.text.muted, background: BT.bg.elevated,
-              padding: '2px 7px', borderRadius: 0,
-            }}>BENCHMARK MODEL</span>
+            {!rentByClassLoading && rentByClass.length > 0 ? (
+              <span style={{
+                fontSize: 9, fontWeight: 700, letterSpacing: 1,
+                color: BT.text.green, background: 'rgba(34,197,94,0.12)',
+                padding: '2px 7px', borderRadius: 0,
+              }}>LIVE · APT LOCATOR</span>
+            ) : (
+              <span style={{
+                fontSize: 9, fontWeight: 700, letterSpacing: 1,
+                color: BT.text.muted, background: BT.bg.elevated,
+                padding: '2px 7px', borderRadius: 0,
+              }}>APT LOCATOR</span>
+            )}
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {CONCESSION_DATA.slice(-6).map((d, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ width: 48, fontSize: 10, color: BT.text.muted }}>{d.quarter}</span>
-                <div style={{ flex: 1, display: 'flex', gap: 4, alignItems: 'center' }}>
-                  <div style={{
-                    width: `${d.concessionPct * 10}%`,
-                    height: 12,
-                    background: BT.accent.red,
-                    borderRadius: 0,
-                  }} />
-                  <span style={{ fontSize: 10, color: BT.accent.red }}>{d.concessionPct}%</span>
-                </div>
-                <div style={{ flex: 1, display: 'flex', gap: 4, alignItems: 'center' }}>
-                  <div style={{
-                    width: `${(d.occupancy - 85) * 6}%`,
-                    height: 12,
-                    background: BT.text.green,
-                    borderRadius: 0,
-                  }} />
-                  <span style={{ fontSize: 10, color: BT.text.green }}>{d.occupancy}%</span>
+          {rentByClassLoading ? (
+            <div style={{ fontSize: 11, color: BT.text.muted, textAlign: 'center', padding: 20 }}>
+              Loading rent by class...
+            </div>
+          ) : rentByClass.length > 0 ? (
+            <>
+              {(() => {
+                const maxRent = Math.max(...rentByClass.map(t => t.avg_rent), 1);
+                const classColors: Record<string, string> = {
+                  'A+': BT.text.cyan,
+                  'A': BT.text.green,
+                  'B+': '#3b82f6',
+                  'B': '#f59e0b',
+                  'C': '#f97316',
+                };
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {rentByClass.map((tier, i) => {
+                      const color = classColors[tier.class_tier] || BT.text.secondary;
+                      const barWidth = (tier.avg_rent / maxRent) * 100;
+                      return (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{
+                            width: 24, fontSize: 11, fontWeight: 700,
+                            color, textAlign: 'right', flexShrink: 0,
+                          }}>{tier.class_tier}</span>
+                          <div style={{
+                            flex: 1, height: 14, background: BT.bg.elevated,
+                            position: 'relative', borderRadius: 0,
+                          }}>
+                            <div style={{
+                              position: 'absolute', left: 0, top: 0, bottom: 0,
+                              width: `${barWidth}%`,
+                              background: color,
+                              opacity: 0.85,
+                              borderRadius: 0,
+                            }} />
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                            <span style={{ fontSize: 11, fontWeight: 600, color: BT.text.primary, width: 52, textAlign: 'right' }}>
+                              ${tier.avg_rent.toLocaleString()}
+                            </span>
+                            <span style={{
+                              fontSize: 9, color: BT.text.muted,
+                              background: BT.bg.elevated,
+                              padding: '1px 5px', borderRadius: 0,
+                            }}>{tier.count}p</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+              <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${BT.border.subtle}` }}>
+                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                  {[
+                    { label: 'A+ ≥ $2,500', color: BT.text.cyan },
+                    { label: 'A $2,000–2,499', color: BT.text.green },
+                    { label: 'B+ $1,600–1,999', color: '#3b82f6' },
+                    { label: 'B $1,300–1,599', color: '#f59e0b' },
+                    { label: 'C < $1,300', color: '#f97316' },
+                  ].map(item => (
+                    <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                      <span style={{ width: 8, height: 8, background: item.color, borderRadius: 0, display: 'inline-block' }} />
+                      <span style={{ fontSize: 9, color: BT.text.muted }}>{item.label}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
-            ))}
-          </div>
-          <div style={{ display: 'flex', gap: 16, marginTop: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ width: 10, height: 10, background: BT.accent.red, borderRadius: 0 }} />
-              <span style={{ fontSize: 10, color: BT.text.muted }}>Concession %</span>
+            </>
+          ) : (
+            <div style={{ padding: 24, textAlign: 'center', borderLeft: `2px solid ${BT.border.subtle}` }}>
+              <div style={{ fontSize: 12, color: BT.text.muted, marginBottom: 6 }}>
+                No class breakdown available
+              </div>
+              <div style={{ fontSize: 10, color: BT.text.muted }}>
+                Run the Atlanta apartment sync to populate property data.
+              </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ width: 10, height: 10, background: BT.text.green, borderRadius: 0 }} />
-              <span style={{ fontSize: 10, color: BT.text.muted }}>Occupancy %</span>
-            </div>
-          </div>
+          )}
         </div>
       </div>
 
