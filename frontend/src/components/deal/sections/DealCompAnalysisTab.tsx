@@ -479,19 +479,21 @@ const DealCompAnalysisTab: React.FC<DealCompAnalysisTabProps> = ({ dealId: propD
         `/deals/${dealId}/comp-set/discover-rental`,
         { radiusMiles: 3, maxComps: 20 },
       );
-      const d = res?.data?.data || res?.data;
+      // api/client.ts interceptor returns response.data directly (the HTTP body)
+      // discover-rental response is flat: { success, dealId, median_rent, comp_count, rent_updated }
+      const compCount = res?.comp_count ?? 0;
       setRentalDiscovery({
         loading: false,
         result: {
-          median_rent: d?.median_rent ?? null,
-          comp_count: d?.comp_count ?? 0,
-          rent_updated: d?.rent_updated ?? false,
+          median_rent: res?.median_rent ?? null,
+          comp_count: compCount,
+          rent_updated: res?.rent_updated ?? false,
         },
         error: null,
       });
       await fetchMarketRent();
       await fetchTieredComps();
-      window.dispatchEvent(new CustomEvent('assumptions:rent-updated', { detail: { dealId } }));
+      window.dispatchEvent(new CustomEvent('assumptions:rent-updated', { detail: { dealId, compCount } }));
     } catch (err: any) {
       setRentalDiscovery({
         loading: false,

@@ -153,6 +153,7 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
     },
   });
   const [rentSourceType, setRentSourceType] = useState<string | null>(null);
+  const [rentCalibrationCount, setRentCalibrationCount] = useState<number | null>(null);
 
   const fetchRentAssumptions = useCallback(() => {
     if (!resolvedDealId) return;
@@ -176,7 +177,10 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
   useEffect(() => {
     const handler = (e: Event) => {
       const ev = e as CustomEvent;
-      if (!ev.detail?.dealId || ev.detail.dealId === resolvedDealId) fetchRentAssumptions();
+      if (!ev.detail?.dealId || ev.detail.dealId === resolvedDealId) {
+        fetchRentAssumptions();
+        if (ev.detail?.compCount != null) setRentCalibrationCount(ev.detail.compCount);
+      }
     };
     window.addEventListener('assumptions:rent-updated', handler);
     return () => window.removeEventListener('assumptions:rent-updated', handler);
@@ -733,6 +737,11 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
                     </span>
                   )}
                 </div>
+                {rentSourceType === 'apt_locator' && data.avg_rent_per_unit && rentCalibrationCount != null && (
+                  <p style={{ fontSize: 11, color: '#22c55e', margin: '0 0 4px', opacity: 0.85 }}>
+                    Market-calibrated from {rentCalibrationCount} rental comp{rentCalibrationCount !== 1 ? 's' : ''}
+                  </p>
+                )}
                 <input type="number" step="50" value={data.avg_rent_per_unit ?? ''}
                   onChange={(e) => updateNumField('avg_rent_per_unit', e.target.value)}
                   placeholder="e.g. 1850" className={inputClass} />
