@@ -1837,7 +1837,8 @@ export class CorrelationEngineService {
       missingData: [],
     };
     try {
-      // market_events geography_name is submarket (Midtown, Buckhead) not city — match broadly
+      // market_events geography_name is submarket (Midtown, Buckhead); geography_id = 'atlanta' for MSA events
+      // Filter: MSA-level (geography_id ILIKE city) OR submarket events tagged to the city's MSA geography
       interface CountRow { cnt: string }
       const poiRes = await this.pool.query<CountRow>(
         `SELECT COUNT(*) AS cnt FROM points_of_interest
@@ -1847,11 +1848,15 @@ export class CorrelationEngineService {
            AND opened_date >= NOW() - INTERVAL '24 months'`,
         [`%${city}%`]
       );
+      // For market_events: include MSA-scoped events (geography_id ILIKE city)
+      // and submarket-scoped events (geography_type = 'submarket') since all current
+      // submarket events in this dataset belong to the Atlanta MSA
       const evRes = await this.pool.query<CountRow>(
         `SELECT COUNT(*) AS cnt FROM market_events
          WHERE event_type = 'grocery_opening'
-           AND announced_date >= NOW() - INTERVAL '24 months'`,
-        []
+           AND announced_date >= NOW() - INTERVAL '24 months'
+           AND (geography_id ILIKE $1 OR geography_type = 'submarket')`,
+        [`%${city}%`]
       );
       interface ImpactRow { positive: string; negative: string; total_jobs: string }
       const impactRes = await this.pool.query<ImpactRow>(
@@ -1861,8 +1866,9 @@ export class CorrelationEngineService {
            COALESCE(SUM(jobs_affected), 0) AS total_jobs
          FROM market_events
          WHERE event_type = 'grocery_opening'
-           AND announced_date >= NOW() - INTERVAL '24 months'`,
-        []
+           AND announced_date >= NOW() - INTERVAL '24 months'
+           AND (geography_id ILIKE $1 OR geography_type = 'submarket')`,
+        [`%${city}%`]
       );
       const poiCount = parseInt(poiRes.rows[0]?.cnt ?? '0', 10);
       const evCount = parseInt(evRes.rows[0]?.cnt ?? '0', 10);
@@ -1919,13 +1925,16 @@ export class CorrelationEngineService {
         expected_impact_direction: string | null;
         announced_date: string;
       }
+      // Filter by MSA geography_id match OR submarket geography_type (all current submarket
+      // events in this dataset belong to the queried MSA)
       const res = await this.pool.query<MoveRow>(
         `SELECT event_name, jobs_affected, expected_impact_direction, announced_date
          FROM market_events
          WHERE event_type = 'employer_move'
            AND announced_date >= NOW() - INTERVAL '36 months'
-         ORDER BY COALESCE(jobs_affected, 0) DESC`,
-        []
+           AND (geography_id ILIKE $1 OR geography_type = 'submarket')
+         ORDER BY COALESCE(jobs_affected::int, 0) DESC`,
+        [`%${city}%`]
       );
       if (res.rows.length === 0) {
         base.missingData.push('No employer_move events in market_events in last 36 months');

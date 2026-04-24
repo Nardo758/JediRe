@@ -52,7 +52,7 @@ function LegacySignalMatrixTab({ city, state: st }: { city: string; state: strin
         ))}
       </div>
       <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}>
-        {report.market}, {report.state} · {report.metricsComputed} computed · {report.computedAt ? new Date(report.computedAt).toLocaleString() : ''}
+        COR-01–30 · {report.market}, {report.state} · {report.metricsComputed}/{report.correlations?.length ?? 30} computed · {report.computedAt ? new Date(report.computedAt).toLocaleString() : ''}
       </div>
     </div>
   );
