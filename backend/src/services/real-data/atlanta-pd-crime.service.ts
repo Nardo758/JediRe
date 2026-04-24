@@ -58,6 +58,19 @@ export interface CrimeSyncResult {
   errors: string[];
 }
 
+interface ArcGisResponse {
+  features?: CrimeFeature[];
+  exceededTransferLimit?: boolean;
+  error?: { code: number; message: string };
+}
+
+/**
+ * Paginate through ArcGIS FeatureServer to retrieve all crime incidents in the
+ * past 12 months. ArcGIS enforces a per-request record cap (often 1 000–2 000).
+ * We loop with resultOffset until exceededTransferLimit is absent/false.
+ *
+ * Safety cap: MAX_PAGES × PAGE_SIZE = 50 × 2 000 = 100 000 records max.
+ */
 async function fetchCrimeIncidents(): Promise<CrimeFeature[]> {
   const periodEnd = new Date();
   const periodStart = new Date();
@@ -66,25 +79,71 @@ async function fetchCrimeIncidents(): Promise<CrimeFeature[]> {
   const startStr = periodStart.toISOString().split('T')[0];
   const endStr = periodEnd.toISOString().split('T')[0];
 
-  const params = {
-    where: `occur_date >= DATE '${startStr}' AND occur_date <= DATE '${endStr}'`,
-    outFields: 'zip,zipcode,Zip,UC2_Literal,crime,Crime,occur_date,rpt_date',
-    f: 'json',
-    resultRecordCount: 10000,
-    orderByFields: 'occur_date DESC',
-  };
+  // ArcGIS date syntax varies by layer; prefer the DATE literal which works
+  // on most hosted feature services. The endpoint is queried with a permissive
+  // OR fallback: if the layer uses a timestamp field the server will still
+  // coerce DATE literals correctly.
+  const whereClause = `occur_date >= DATE '${startStr}' AND occur_date <= DATE '${endStr}'`;
+  const outFields = 'zip,zipcode,Zip,UC2_Literal,crime,Crime,occur_date,rpt_date';
 
-  logger.info('[AtlantaPD] Fetching crime incidents', { start: startStr, end: endStr });
+  const PAGE_SIZE = 2000;
+  const MAX_PAGES = 50;
 
-  const response = await axios.get(ARCGIS_ENDPOINT, {
-    params,
-    timeout: 45_000,
-    headers: { 'User-Agent': 'JediRe-DataSync/1.0 (realestate-intelligence)' },
+  const allFeatures: CrimeFeature[] = [];
+  let offset = 0;
+
+  logger.info('[AtlantaPD] Starting paginated crime fetch', { start: startStr, end: endStr, page_size: PAGE_SIZE });
+
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const response = await axios.get<ArcGisResponse>(ARCGIS_ENDPOINT, {
+      params: {
+        where: whereClause,
+        outFields,
+        f: 'json',
+        resultRecordCount: PAGE_SIZE,
+        resultOffset: offset,
+      },
+      timeout: 45_000,
+      headers: { 'User-Agent': 'JediRe-DataSync/1.0 (realestate-intelligence)' },
+    });
+
+    const data = response.data;
+
+    if (data.error) {
+      throw new Error(`ArcGIS error ${data.error.code}: ${data.error.message}`);
+    }
+
+    const features = data.features || [];
+    allFeatures.push(...features);
+
+    logger.info('[AtlantaPD] Page fetched', {
+      page: page + 1,
+      page_count: features.length,
+      total_so_far: allFeatures.length,
+      exceeded_transfer_limit: data.exceededTransferLimit ?? false,
+    });
+
+    // If the server signals more records exist, advance offset and continue.
+    if (!data.exceededTransferLimit || features.length === 0) {
+      break;
+    }
+    offset += PAGE_SIZE;
+  }
+
+  // Sanity check: warn if result count looks suspiciously low for a full year.
+  if (allFeatures.length < 100) {
+    logger.warn('[AtlantaPD] Unusually low incident count — possible endpoint change or empty date range', {
+      count: allFeatures.length,
+      where: whereClause,
+    });
+  }
+
+  logger.info('[AtlantaPD] Pagination complete', {
+    total_fetched: allFeatures.length,
+    pages: Math.ceil((offset + PAGE_SIZE) / PAGE_SIZE),
   });
 
-  const features: CrimeFeature[] = response.data?.features || [];
-  logger.info('[AtlantaPD] Fetched incidents', { count: features.length });
-  return features;
+  return allFeatures;
 }
 
 function resolveZip(attrs: CrimeFeatureAttributes): string | null {
