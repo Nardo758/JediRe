@@ -1,0 +1,36 @@
+/workspace$ git pull origin master
+remote: Enumerating objects: 45, done.
+remote: Counting objects: 100% (45/45), done.
+remote: Compressing objects: 100% (19/19), done.
+remote: Total 33 (delta 16), reused 31 (delta 14), pack-reused 0 (from 0)
+Unpacking objects: 100% (33/33), 50.30 KiB | 2.39 MiB/s, done.
+From https://github.com/Nardo758/JediRe
+ * branch              master     -> FETCH_HEAD
+   be242969..7653f034  master     -> origin/master
+Merge made by the 'ort' strategy.
+ ...GENT_DATA_FLOWS_AND_BACKTEST_GAPS.md | 616 +++++++++++
+ .../docs/NEURAL_NETWORK_GAP_ANALYSIS.md | 392 +++++++
+ .../tools/fetch_backtest_context.ts     | 259 +++++
+ .../agents/tools/fetch_market_events.ts | 220 ++++
+ .../tools/fetch_proximity_context.ts    | 188 ++++
+ backend/src/api/rest/index.ts           |   5 +
+ .../src/api/rest/proximity.routes.ts    | 385 +++++++
+ ...260423_proximity_events_backtest.sql | 779 ++++++++++++++
+ .../proximity/backtest.service.ts       | 724 +++++++++++++
+ .../proximity/events.service.ts         | 375 +++++++
+ backend/src/services/proximity/index.ts |  14 +
+ .../proximity/proximity.service.ts      | 564 ++++++++++
+ backend/src/services/proximity/types.ts | 319 ++++++
+ 13 files changed, 4840 insertions(+)
+ create mode 100644 backend/docs/AGENT_DATA_FLOWS_AND_BACKTEST_GAPS.md
+ create mode 100644 backend/docs/NEURAL_NETWORK_GAP_ANALYSIS.md
+ create mode 100644 backend/src/agents/tools/fetch_backtest_context.ts
+ create mode 100644 backend/src/agents/tools/fetch_market_events.ts
+ create mode 100644 backend/src/agents/tools/fetch_proximity_context.ts
+ create mode 100644 backend/src/api/rest/proximity.routes.ts
+ create mode 100644 backend/src/database/migrations/20260423_proximity_events_backtest.sql
+ create mode 100644 backend/src/services/proximity/backtest.service.ts
+ create mode 100644 backend/src/services/proximity/events.service.ts
+ create mode 100644 backend/src/services/proximity/index.ts
+ create mode 100644 backend/src/services/proximity/proximity.service.ts
+ create mode 100644 backend/src/services/proximity/types.ts

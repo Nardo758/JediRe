@@ -1,0 +1,78 @@
+ Here's the correct architecture:
+
+───
+
+✅ Correct Flow
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                      DATA LIBRARY                                   │
+│     (User Uploads, Extracted Docs, Curated Deals, Archives)        │
+│                                                                     │
+│     This is the SOURCE OF TRUTH - what users put in                │
+└────────────────────────────────┬────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                      DATA MATRIX                                    │
+│                                                                     │
+│  Pulls FROM Data Library + enriches with external sources:         │
+│                                                                     │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ │
+│  │ Property │ │   Rent   │ │  Sales   │ │Proximity │ │  Events  │ │
+│  │   Info   │ │   Data   │ │  Comps   │ │ Context  │ │ Pipeline │ │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐              │
+│  │ Backtest │ │Benchmarks│ │   Macro  │ │  Market  │              │
+│  │ History  │ │ Archive  │ │   Econ   │ │  Trends  │              │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘              │
+└────────────────────────────────┬────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                          AGENTS                                     │
+│                                                                     │
+│  Strategy | CFO | Acquisitions | Research | Revenue | Asset Mgmt   │
+│                                                                     │
+│  Use fetch_data_matrix tool to get complete context                │
+└─────────────────────────────────────────────────────────────────────┘
+
+───
+
+New Agent Tool
+
+// Agents call this to get everything
+const context = await fetchDataMatrix({
+  assetId: "uuid-from-data-library",  // or dealId or inline deal
+  layers: ['propertyInfo', 'rentData', 'proximity', 'events', 'backtest']
+});
+
+// Returns:
+{
+  context: { /* full 10-layer context */ },
+  summary: {
+    dealName: "Example Midtown",
+    location: "Atlanta, GA",
+    dataQuality: "high",
+    completenessScore: 85,
+    keyMetrics: { units: 200, avgRent: 1450, occupancy: 94 },
+    signals: {
+      proximity: "Strong location premium potential",
+      market: "Bullish market outlook",
+      validation: "High confidence from historical data"
+    },
+    insights: ["Midtown MARTA 0.2mi", "Similar deals outperformed by 8%"],
+    riskFactors: ["1,200 units in pipeline"],
+    opportunities: ["Google: +3,000 jobs", "Location premium: +18% rent"]
+  }
+}
+
+───
+
+API Endpoints
+
+| Method | Endpoint                               | Description                      |
+| ------ | -------------------------------------- | -------------------------------- |
+| POST   | /api/v1/data-matrix/context            | Build context from inline deal   |
+| POST   | /api/v1/data-matrix/context/from-asset | Build from Data Library asset ID |
+| POST   | /api/v1/data-matrix/context/from-deal  | Build from deals table ID        |
+| GET    | /api/v1/data-matrix/layers             | List available layers            |
