@@ -3,6 +3,7 @@ import { Pool } from 'pg';
 import {
   DealCapsule,
 } from '../../models/deal-capsule-updated';
+import { getReplacementCostServiceV2 } from '../../services/inflation';
 
 export function createCapsuleRoutes(pool: Pool): Router {
   const router = Router();
@@ -619,6 +620,373 @@ export function createCapsuleRoutes(pool: Pool): Router {
     } catch (error) {
       console.error('Error fetching activity:', error);
       res.status(500).json({ error: 'Failed to fetch activity' });
+    }
+  });
+
+  // ============================================================================
+  // REPLACEMENT COST
+  // ============================================================================
+
+  /**
+   * GET /api/capsules/:id/replacement-cost
+   * Get replacement cost analysis for a deal capsule
+   */
+  router.get('/:id/replacement-cost', async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { user_id } = req.query;
+
+      if (!user_id) {
+        return res.status(400).json({ error: 'Missing required parameter: user_id' });
+      }
+
+      // Get capsule with deal data
+      const capsuleResult = await pool.query(
+        `SELECT id, deal_data, platform_intel, property_address 
+         FROM deal_capsules 
+         WHERE id = $1 AND user_id = $2`,
+        [id, user_id]
+      );
+
+      if (capsuleResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Capsule not found' });
+      }
+
+      const capsule = capsuleResult.rows[0];
+      const dealData = capsule.deal_data || {};
+
+      // Extract property info from deal_data
+      const units = dealData.units || dealData.unit_count || 0;
+      const totalSF = dealData.sf || dealData.total_sf || dealData.square_footage || (units * 900);
+      const city = dealData.city || '';
+      const state = dealData.state || '';
+      const county = dealData.county || '';
+      const assetClass = dealData.asset_class || 'B';
+      const yearBuilt = dealData.year_built || dealData.vintage || null;
+      const stories = dealData.stories || null;
+      const askingPrice = dealData.asking_price || dealData.purchase_price || null;
+
+      if (!units || !city || !state) {
+        return res.status(400).json({ 
+          error: 'Insufficient deal data for replacement cost estimate',
+          required: ['units', 'city', 'state'],
+          found: { units, city, state }
+        });
+      }
+
+      // Get replacement cost estimate
+      const replacementService = getReplacementCostServiceV2(pool);
+      const estimate = await replacementService.estimateReplacementCost({
+        units,
+        totalSF,
+        city,
+        state,
+        county,
+        assetClass,
+        yearBuilt,
+        stories,
+        userId: user_id as string
+      });
+
+      // Build comparison if we have asking price
+      let comparison = null;
+      if (askingPrice) {
+        const ratio = askingPrice / estimate.totalCost.value;
+        const discount = (1 - ratio) * 100;
+        
+        comparison = {
+          askingPrice,
+          replacementCost: estimate.totalCost.value,
+          ratio: Math.round(ratio * 100) / 100,
+          discountToReplacement: Math.round(discount * 10) / 10,
+          signal: discount > 15 ? 'strong_buy' : 
+                  discount > 5 ? 'buy' : 
+                  discount > -5 ? 'fair_value' : 
+                  discount > -15 ? 'premium' : 'significant_premium',
+          interpretation: discount > 15 
+            ? `Buying at ${discount.toFixed(0)}% below replacement cost - strong value signal`
+            : discount > 5
+            ? `Buying at ${discount.toFixed(0)}% below replacement cost`
+            : discount > -5
+            ? 'Near replacement cost - fair market value'
+            : `Paying ${Math.abs(discount).toFixed(0)}% premium to replacement cost`
+        };
+      }
+
+      // Store in platform_intel for future reference
+      await pool.query(
+        `UPDATE deal_capsules 
+         SET platform_intel = platform_intel || $1::jsonb,
+             updated_at = NOW()
+         WHERE id = $2`,
+        [
+          JSON.stringify({
+            replacement_cost: {
+              estimate: estimate.totalCost.value,
+              costPerUnit: estimate.costPerUnit.value,
+              costPerSF: estimate.costPerSF.value,
+              confidence: estimate.confidenceLevel,
+              source: estimate.costPerSF.source,
+              comparison,
+              computedAt: new Date().toISOString()
+            }
+          }),
+          id
+        ]
+      );
+
+      // Log activity
+      await pool.query(
+        `INSERT INTO capsule_activity (capsule_id, user_id, activity_type, activity_data)
+         VALUES ($1, $2, 'replacement_cost_computed', $3)`,
+        [
+          id,
+          user_id,
+          {
+            totalCost: estimate.totalCost.value,
+            costPerUnit: estimate.costPerUnit.value,
+            confidence: estimate.confidenceLevel,
+            comparison: comparison?.signal
+          }
+        ]
+      );
+
+      res.json({
+        success: true,
+        capsuleId: id,
+        propertyAddress: capsule.property_address,
+        
+        // Summary
+        summary: {
+          totalReplacementCost: estimate.totalCost.value,
+          costPerUnit: estimate.costPerUnit.value,
+          costPerSF: estimate.costPerSF.value,
+          confidence: estimate.confidenceLevel,
+          methodology: estimate.methodology
+        },
+        
+        // Full LayeredValue with provenance
+        estimate,
+        
+        // Comparison to asking price
+        comparison,
+        
+        // Input used
+        input: {
+          units,
+          totalSF,
+          city,
+          state,
+          county,
+          assetClass,
+          yearBuilt,
+          stories
+        }
+      });
+    } catch (error) {
+      console.error('Error computing replacement cost:', error);
+      res.status(500).json({ error: 'Failed to compute replacement cost' });
+    }
+  });
+
+  /**
+   * POST /api/capsules/:id/replacement-cost/override
+   * Override replacement cost with user's own estimate
+   */
+  router.post('/:id/replacement-cost/override', async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { user_id, costPerSF, totalCost, source, notes } = req.body;
+
+      if (!user_id) {
+        return res.status(400).json({ error: 'Missing required field: user_id' });
+      }
+
+      if (!costPerSF && !totalCost) {
+        return res.status(400).json({ error: 'Provide either costPerSF or totalCost' });
+      }
+
+      // Verify capsule exists
+      const capsuleResult = await pool.query(
+        `SELECT id, deal_data FROM deal_capsules WHERE id = $1 AND user_id = $2`,
+        [id, user_id]
+      );
+
+      if (capsuleResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Capsule not found' });
+      }
+
+      const dealData = capsuleResult.rows[0].deal_data || {};
+      const units = dealData.units || dealData.unit_count || 1;
+      const totalSF = dealData.sf || dealData.total_sf || (units * 900);
+
+      // Calculate both values
+      const finalCostPerSF = costPerSF || (totalCost / totalSF);
+      const finalTotalCost = totalCost || (costPerSF * totalSF);
+      const finalCostPerUnit = finalTotalCost / units;
+
+      // Store override in platform_intel
+      await pool.query(
+        `UPDATE deal_capsules 
+         SET platform_intel = platform_intel || $1::jsonb,
+             updated_at = NOW()
+         WHERE id = $2`,
+        [
+          JSON.stringify({
+            replacement_cost: {
+              estimate: finalTotalCost,
+              costPerUnit: finalCostPerUnit,
+              costPerSF: finalCostPerSF,
+              confidence: 'high',
+              source: 'override',
+              override: {
+                source: source || 'User estimate',
+                notes,
+                setAt: new Date().toISOString(),
+                setBy: user_id
+              },
+              computedAt: new Date().toISOString()
+            }
+          }),
+          id
+        ]
+      );
+
+      // Log activity
+      await pool.query(
+        `INSERT INTO capsule_activity (capsule_id, user_id, activity_type, activity_data)
+         VALUES ($1, $2, 'replacement_cost_override', $3)`,
+        [
+          id,
+          user_id,
+          { totalCost: finalTotalCost, costPerSF: finalCostPerSF, source: source || 'User estimate' }
+        ]
+      );
+
+      res.json({
+        success: true,
+        message: 'Replacement cost override saved',
+        override: {
+          totalCost: Math.round(finalTotalCost),
+          costPerUnit: Math.round(finalCostPerUnit),
+          costPerSF: Math.round(finalCostPerSF * 100) / 100,
+          source: source || 'User estimate',
+          notes
+        }
+      });
+    } catch (error) {
+      console.error('Error saving replacement cost override:', error);
+      res.status(500).json({ error: 'Failed to save override' });
+    }
+  });
+
+  /**
+   * POST /api/capsules/:id/insurance-check
+   * Validate insurance coverage against replacement cost
+   */
+  router.post('/:id/insurance-check', async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { user_id, currentCoverage } = req.body;
+
+      if (!user_id || !currentCoverage) {
+        return res.status(400).json({ error: 'Missing required fields: user_id, currentCoverage' });
+      }
+
+      // Get capsule with replacement cost
+      const capsuleResult = await pool.query(
+        `SELECT id, deal_data, platform_intel 
+         FROM deal_capsules 
+         WHERE id = $1 AND user_id = $2`,
+        [id, user_id]
+      );
+
+      if (capsuleResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Capsule not found' });
+      }
+
+      const capsule = capsuleResult.rows[0];
+      const platformIntel = capsule.platform_intel || {};
+      
+      let replacementCost = platformIntel.replacement_cost?.estimate;
+
+      // If no replacement cost, compute it
+      if (!replacementCost) {
+        const dealData = capsule.deal_data || {};
+        const units = dealData.units || dealData.unit_count || 0;
+        const totalSF = dealData.sf || dealData.total_sf || (units * 900);
+        const city = dealData.city || '';
+        const state = dealData.state || '';
+        const county = dealData.county || '';
+        const assetClass = dealData.asset_class || 'B';
+
+        if (!units || !city || !state) {
+          return res.status(400).json({ 
+            error: 'Compute replacement cost first via GET /replacement-cost'
+          });
+        }
+
+        const service = getReplacementCostServiceV2(pool);
+        const estimate = await service.estimateReplacementCost({
+          units, totalSF, city, state, county, assetClass
+        });
+        replacementCost = estimate.totalCost.value;
+      }
+
+      // Calculate adequacy
+      const gap = replacementCost - currentCoverage;
+      const gapPct = (gap / replacementCost) * 100;
+
+      let adequacy: 'adequate' | 'underinsured' | 'overinsured';
+      let recommendation: string;
+
+      if (gapPct > 10) {
+        adequacy = 'underinsured';
+        recommendation = `⚠️ UNDERINSURED by $${(gap / 1000).toFixed(0)}K (${gapPct.toFixed(0)}%). Increase coverage to at least $${(replacementCost / 1000000).toFixed(2)}M.`;
+      } else if (gapPct < -15) {
+        adequacy = 'overinsured';
+        recommendation = `Potentially overinsured by $${(Math.abs(gap) / 1000).toFixed(0)}K. May reduce premiums by adjusting coverage.`;
+      } else {
+        adequacy = 'adequate';
+        recommendation = `Coverage is adequate. Current $${(currentCoverage / 1000000).toFixed(2)}M vs replacement $${(replacementCost / 1000000).toFixed(2)}M.`;
+      }
+
+      // Store in platform_intel
+      await pool.query(
+        `UPDATE deal_capsules 
+         SET platform_intel = platform_intel || $1::jsonb,
+             updated_at = NOW()
+         WHERE id = $2`,
+        [
+          JSON.stringify({
+            insurance_check: {
+              currentCoverage,
+              replacementCost,
+              gap,
+              gapPct: Math.round(gapPct * 10) / 10,
+              adequacy,
+              recommendation,
+              checkedAt: new Date().toISOString()
+            }
+          }),
+          id
+        ]
+      );
+
+      res.json({
+        success: true,
+        insuranceCheck: {
+          currentCoverage,
+          recommendedCoverage: Math.round(replacementCost),
+          gap: Math.round(gap),
+          gapPct: Math.round(gapPct * 10) / 10,
+          adequacy,
+          recommendation
+        }
+      });
+    } catch (error) {
+      console.error('Error checking insurance:', error);
+      res.status(500).json({ error: 'Failed to check insurance coverage' });
     }
   });
 
