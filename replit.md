@@ -487,6 +487,145 @@ Fulton Tax_Parcels_2025 (ParcelID)
 - `OfficialCityDesignAreas/FeatureServer/0` — Atlanta design district overlays
 - `Atlanta_Main_Street_Districts/FeatureServer/0` — Main Street Districts
 
+### Session 5 Discoveries (2026-04-24) — Cobb GIS Server, Gwinnett Property_and_Tax FeatureServer
+
+#### 14. Cobb County — gis.cobbcounty.gov (22-folder GIS server) ✅ JACKPOT
+
+**Server:** `https://gis.cobbcounty.gov/gisserver/rest/services`
+- 22 folders: `tax`, `accela`, `cobbpublic`, `comdev`, `openData`, `core`, `parks`, `pubsafety`, `Fire`, etc.
+
+**Key service: `tax/taxassessorsdaily` MapServer** (updated daily by Tax Assessor)
+- 4 geometric layers + 6 standalone tables
+- **Layer 0: CobbParcels** — 278,920 total parcels; **12,559 HAS_MULTIUNIT='Y'**
+  - Fields: `PIN` (11-digit parcel group ID), `PARID` (individual unit/building ID), `SITUS_ADDR`, `OWNER_NAM1/2`, `OWNER_ADDR/CITY/STAT/ZIP`, `FMV_LAND`, `FMV_BLDG`, `FMV_TOTAL`, `ASV_LAND`, `ASV_BLDG`, `ASV_TOTAL`, `CLASS`, `TAXDIST`, `HAS_MULTIUNIT`, `NBHOOD_NUM`, `ACRES`
+  - Sample: PIN=17087909000 | PARID=17087900390 | SUNSHINE CP FLATS LLC | 925 BATTERY AVE SE | FMV_Total=$68.5M
+- **Table 5: YearBuilt** — **264,696 records**
+  - Fields: `PIN` (= PARID from CobbParcels!), `TAXYR`, `CARD` (building card for multi-building parcels), `YRBLT`, `SQFT`
+  - Sample: PIN=17087900390 | YRBLT=2017 | SQFT=134,415 (and 4 more CARD rows for same parcel)
+- **Table 9: ParcelSales** — **927,722 records** (full historical back to 2002)
+  - Fields: `PIN` (= PARID from CobbParcels), `SALEDT` (date), `PRICE`, `SALETYPE` (1=arm's length, 2=related party, etc.), `SALEVAL`, `STEB`, `ASMT` (assessed at sale), `INSTRTYP` (instrument type), `APRTOT` (appraised at sale), `ASR` (assessment/sale ratio), `USER4/5/6`, `NBHD`
+  - High-value confirmed: PIN=17098400050 | 2022-07-13 | $143.5M; PIN=16080000010 | 2022-05-05 | $140.9M; PIN=16057300020 | 2021-02-02 | $130.4M
+  - Note: $6B record (2002) is a known data-entry error — filter by SALETYPE and sanity-check >$500M
+
+**Key service: `comdev/Accela_PermitsDashboard` FeatureServer** — 13 layers
+- **Layer 3: MultiUnit Permits** — 71 records (current), fields: `PermitNo`, `PermitType`, `PermitSubType`, `DateIssued`, `ParcelNo` (PIN format, links to CobbParcels), `STATUS`, `VALUE`, `FMV_LAND`, `FMV_BLDG`, `CLASS`
+- **Layer 4: Residential Permits** — broader coverage
+- Also: `comdev/Accela_Permits_PrevYr` FeatureServer — prev year permits with `G6_COMPL_DD` (completion date!), `DateIssued`, `PermitSubType`, `SQFT`, `VALUE`
+
+**Other tax services:**
+- `tax/tax_assessors_map_mercator_rel` — 35 layers + 6 tables (same YearBuilt/ParcelSales tables + historical parcel layers 2010-2023!)
+
+**CRITICAL COBB LINKAGE ARCHITECTURE — Verified End-to-End:**
+```
+AGOL CobbParcelsCopy.PIN (e.g. "16054309050")
+  → taxassessorsdaily.CobbParcels [WHERE CobbParcels.PIN = AGOL.PIN]
+    → CobbParcels.PARID (e.g. "16054301270") — individual unit/building ID
+      → YearBuilt.PIN = CobbParcels.PARID → YRBLT + SQFT (CONFIRMED: PIN=16054301270 → YRBLT=1986, SQFT=4,208)
+      → ParcelSales.PIN = CobbParcels.PARID → SALEDT + PRICE history
+```
+- The `PIN` in YearBuilt/ParcelSales tables is actually the PARID (individual parcel), not the group PIN
+- For apartment complexes: master PIN ends in "09000"; individual records use the PARID prefix (e.g., "17087900390")
+- Multiple YearBuilt rows per PARID (CARD=1,2,3...) for multi-building parcels — aggregate by SUM(SQFT) or take most recent TAXYR
+
+#### 15. Gwinnett County — Property_and_Tax FeatureServer ✅ MAJOR FIND
+
+**URL:** `https://services3.arcgis.com/RfpmnkSAQleRbndX/arcgis/rest/services/Property_and_Tax/FeatureServer`
+- **5 layers + 4 tables**
+  - Layer 0: Parcels | Layer 1: Zoning | Layer 2: Subdivisions | Layer 5: County-owned Property | Layer 6: LandLots
+  - **Table 3: Tax Master Table** | **Table 4: Tax Owner Address Table** | **Table 8: Property Improvements Table** | **Table 10: Land Value Table**
+
+**Table 3: Tax Master Table — Assessment + Owner + Sale References**
+- Key fields: `PIN` (format "6197 112", no "R" prefix), `LRSN` (local record sequence number — primary join key!), `RPIN`, `LOCADDR`, `LOCCITY`, `LOCZIP`, `OWNER1`, `OWNER2`, `MAILADDR/CITY/STAT/ZIP`, `DWLGVAL1` (dwelling value), `LANDVAL1`, `TOTVAL1` (total assessed value), `TAXTOT1` (total tax), `PROPCLAS` (property class code), `PCDESC` (property class description), `ZONING`, `ZONEDESC`, `LEGAL1`, `DISTNUM`, `DOC1REF/DOC2REF/DOC3REF` (deed book+page refs), **`GRANTOR1/GRANTOR2/GRANTOR3`** (seller names!), `PUBLIC_NEINUM`
+- Multifamily property class filter: `PCDESC LIKE '%Apart%'` → "Apartments (3sty/under)", "Apartments high rise"
+- **Confirmed multifamily:** PIN=6197 112 | PRCP-ATLANTA CANOPY LLC | 1635 PIRKLE RD | TotVal=$98,023,000; PIN=6199 016 | MP WILLOW TRAIL LLC | 1500 WILLOW TRAIL PKW | TotVal=$26,951,800
+
+**Table 8: Property Improvements Table — Year Built + Building Details**
+- Key fields: `PIN` (format "R5026 227", has "R" prefix — different from Tax Master PIN!), `LRSN` (join key to all tables), `IMPRTYPE`, `USECODE`, `USEDESC`, `BLDGTYPE`, **`YRBUILT`**, **`STORIES`**, **`FINSIZE`** (finished sqft), `FOUNDAT`, `CONSTFR`, `EXTCOVC1/2`, `CONDCODE`, `CONDDESC`, `ROOFTYPE`, `NUMRMS`, `NUMBDRMS`, `NUM2BATHS`-`NUM5BATHS`, `HEATFUEL`, `CENTRLAC`, `BSMTAREA`, `LASTUPDD`, `LRSN`
+- **Multifamily use code: `USECODE='APART'`** → confirmed apartment records:
+  - R5026 227 | LRSN=336025 | YrBlt=2022 | Stories=4 | FinSqFt=235,017 + 64,336 (two buildings!)
+  - R1001 032 | LRSN=232734 | YrBlt=2021 | Stories=4 | FinSqFt=116,332
+  - R5083 009 | LRSN=433730 | YrBlt=2021 | Stories=3 | FinSqFt=107,010
+- Other multifamily use codes: `MULTRESA` (Elderly Assist. Multi. Res.), likely also `CONDO`, `TOWNHOME`
+
+**Table 10: Land Value Table — Sale History + Additional Grantor Data**
+- Key fields: `PIN`, `LRSN`, **`SALE1D/SALE2D/SALE3D`** (up to 3 sale dates!), **`SALE1AMT/SALE2AMT/SALE3AMT`** (sale amounts!), **`GRANTOR1/GRANTOR2/GRANTOR3`** (seller names at each sale), `DOC1REF/DOC2REF/DOC3REF`, `DOC1TYPE/2/3` (deed type), `DOC1NUM/2/3`, **`NUMDWLG`** (number of dwellings — unit count proxy!), `SQFT` (land sqft), `ACRES`, `PERMIT1/2/3` + `PERMIT1D/2/3D` + `PERMIT1T/2/3T` (permit data!), `MAPBOOK`, `PUBLIC_CENSUSTR`, `CONTRACT`
+
+**Layer 0: Parcels — Geometry + LRSN**
+- Fields: `PIN`, `TAXPIN`, **`LRSN`** (join to all tables), `ADDRESS`, `PARCELTYPE`, `EXEMPTION_TYPE`, `DEEDEDACREAGE`, geometry
+
+**GWINNETT JOIN ARCHITECTURE:**
+```
+Gwinnett Parcels.LRSN  ← primary join key across ALL tables
+  → Tax Master Table.LRSN → OWNER1, TOTVAL1, PROPCLAS/PCDESC, GRANTOR1/2/3, DOC1REF, ZONING
+  → Property Improvements.LRSN → YRBUILT, STORIES, FINSIZE, USECODE, CONDCODE
+  → Land Value.LRSN → SALE1D, SALE1AMT, SALE2D, SALE2AMT, GRANTOR1/2/3, NUMDWLG, PERMIT data
+```
+- Tax Master PIN format: "6197 112" (no "R" prefix)
+- Property Improvements PIN format: "R5026 227" (has "R" prefix)
+- Join ALL tables via LRSN, not PIN (PIN format differs between tables)
+
+#### 16. DeKalb iasWorldParcels — Confirmed Dead End ❌
+
+- **URL:** `https://dcgis.dekalbcountyga.gov/mapping/rest/services/iasWorldParcels/MapServer/0`
+- **Status:** Field schema shows 90 fields including `RESYRBLT`, `FLOORCOUNT`, `BLDGAREA`, `CNTASSDVAL`, `TOTAPR1` — BUT all field values return NULL for every record including with `WHERE 1=1`
+- **Reason:** Layer exists as a secured/view layer; underlying CAMA data not exposed via public REST endpoint
+- **Alternative for DeKalb year built:** `Building_Permit_Applications/FeatureServer/0` — 86,814 records with `cooIssuedDateTime` (CO date), `squareFootage`, `WorkTypeDescription` — match to parcels by address
+
+### Updated Data Gaps Table (as of Session 5)
+
+| Data Point | County | Status | Source |
+|---|---|---|---|
+| Year built | Fulton | ✅ SOLVED | Structures FeatureServer — 312K/383K buildings with YearBuilt |
+| Year built | Cobb | ✅ SOLVED | taxassessorsdaily Table 5 (YearBuilt) — 264,696 records; join via PARID |
+| Year built | Gwinnett | ✅ SOLVED | Property_and_Tax Table 8 (Property Improvements) — YRBUILT field; USECODE='APART' |
+| Year built | DeKalb | ⚠️ PROXY | Building Permit Applications cooIssuedDateTime — address match to parcels |
+| Sale history | Fulton | ✅ SOLVED | Tyler_YearlySales 2018-2022 — 137,810 records |
+| Sale history | Cobb | ✅ SOLVED | taxassessorsdaily Table 9 (ParcelSales) — 927,722 records back to 2002! |
+| Sale history | Gwinnett | ✅ SOLVED | Property_and_Tax Table 10 (Land Value) — SALE1D/SALE1AMT/SALE2D/SALE2AMT (3 sales per parcel) |
+| Sale history | DeKalb | ❌ | No public sale history API found |
+| Building sqft | Fulton | ⚠️ Partial | Structures FeatureServer AreaSqFt (many nulls); fallback Shape__Area × Stories |
+| Building sqft | Cobb | ✅ SOLVED | YearBuilt Table SQFT field |
+| Building sqft | Gwinnett | ✅ SOLVED | Property Improvements FINSIZE field |
+| Stories / floors | Fulton | ✅ SOLVED | Structures FeatureServer Stories field |
+| Stories / floors | Cobb | ❌ | Not in YearBuilt table; not in CobbParcels |
+| Stories / floors | Gwinnett | ✅ SOLVED | Property Improvements STORIES field |
+| Grantor / Grantee | Fulton | ❌ | Not in Tyler_YearlySales |
+| Grantor / Grantee | Cobb | ❌ | Not in ParcelSales (USER4/5/6 fields are not grantor) |
+| Grantor / Grantee | Gwinnett | ✅ SOLVED | Tax Master GRANTOR1/2/3 + Land Value GRANTOR1/2/3 |
+| Assessed value | All counties | ✅ | Fulton Tyler_TaxParcels; Cobb CobbParcels FMV/ASV; Gwinnett Tax Master TOTVAL1 |
+| Unit count proxy | Gwinnett | ✅ SOLVED | Land Value NUMDWLG field |
+| Permit/CO data | Cobb | ✅ SOLVED | Accela_PermitsDashboard MultiUnit Permits (71 records, current) + Accela_Permits_PrevYr |
+| Recorded mortgage | All | ❌ | GSCCCA web-only; no public API |
+
+### Updated Critical Linkage Architecture
+
+```
+FULTON:
+  Tax_Parcels_2025 (ParcelID)
+    ├─→ Tyler_TaxParcels (ParcelID) — appraised + assessed values
+    ├─→ Tyler_YearlySales 2018-2022 (ParID) — sale prices
+    ├─→ Building_Permit_latest (PARCEL) — CO dates for 2023+ builds
+    ├─→ CE_AddressPoints (ParcelID) — building common names
+    └─→ [SPATIAL JOIN] → Structures (FeatureID) — YearBuilt, Stories
+
+COBB:
+  AGOL CobbParcelsCopy (PIN, e.g. "16054309050")
+    → taxassessorsdaily CobbParcels (PIN = same) → PARID (e.g. "16054301270")
+      ├─→ YearBuilt Table (PIN = PARID) — YRBLT + SQFT
+      └─→ ParcelSales Table (PIN = PARID) — SALEDT + PRICE + APRTOT
+
+GWINNETT:
+  Parcels Layer (LRSN = primary key)
+    ├─→ Tax Master Table (LRSN) — OWNER1, TOTVAL1, PCDESC, ZONING, GRANTOR1/2/3, DOC1REF
+    ├─→ Property Improvements Table (LRSN) — YRBUILT, STORIES, FINSIZE, USECODE
+    └─→ Land Value Table (LRSN) — SALE1D, SALE1AMT, SALE2D, SALE2AMT, GRANTOR, NUMDWLG
+    Note: Tax Master PIN = "6197 112" (no "R"); Improvements PIN = "R5026 227" (with "R") — join on LRSN not PIN
+
+DEKALB:
+  TaxParcels MapServer (PARCELID) — 244,945 parcels
+    └─→ Building_Permit_Applications FeatureServer — cooIssuedDateTime (CO date proxy) — address match only
+```
+
 ### Next Steps Queued
 1. **Build ingestion pipeline** for Tyler_YearlySales 2018-2022 → `market_sale_comps` table (by ParID match)
 2. **Build Structures spatial join** script → pull YearBuilt/Stories from building footprints by parcel intersection
@@ -495,7 +634,9 @@ Fulton Tax_Parcels_2025 (ParcelID)
 5. Load MARTA GTFS stops → `transit_stops` table (lat/lon + type)
 6. Pull Census B25036 vintage + B25024 unit structure + B25041 bedrooms → `property_demographics`
 7. Pull APD crime by parcel proximity → safety score per property
-8. Probe `OfficialCityDesignAreas` for zoning overlay data
+8. **Cobb ingestion:** Pull `taxassessorsdaily` YearBuilt + ParcelSales via PARID join to existing Cobb parcels
+9. **Gwinnett ingestion:** Pull `Property_and_Tax` FeatureServer — Property Improvements + Tax Master + Land Value via LRSN join
+10. **DeKalb year built:** Match `Building_Permit_Applications` cooIssuedDateTime to parcels by address
 
 ---
 
