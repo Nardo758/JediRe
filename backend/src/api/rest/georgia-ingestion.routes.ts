@@ -1282,7 +1282,7 @@ router.get('/snapshots', requireAuth, async (req: Request, res: Response) => {
     const { snapshotCaptureService } = await import('../../services/backtest/snapshot-capture.service');
     const geography_type = req.query.geography_type as string | undefined;
     const geography_id   = req.query.geography_id   as string | undefined;
-    const months = Math.min(parseInt(req.query.months as string) || 12, 36);
+    const months = Math.max(1, Math.min(parseInt(req.query.months as string) || 12, 36));
 
     const snapshots = await snapshotCaptureService.getLatestSnapshots({
       geography_type,

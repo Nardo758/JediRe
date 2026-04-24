@@ -16,7 +16,7 @@ import { logger } from '../../utils/logger';
 
 export const captureMonthlySnapshotsFunction = inngest.createFunction(
   {
-    id: 'capture-monthly-market-snapshots',
+    id: 'capture-monthly-snapshots',
     name: 'Atlanta: monthly market snapshot capture',
     triggers: [{ cron: '0 2 1 * *' }],
   },
