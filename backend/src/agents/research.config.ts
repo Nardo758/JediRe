@@ -64,7 +64,7 @@ export type ResearchOutput = z.infer<typeof ResearchOutputSchema>;
 export const RESEARCH_AGENT_CONFIG: AgentConfig = {
   agentId: 'research',
   agentVersion: '3.1.0',
-  promptVersion: 'research-v3',
+  promptVersion: 'research-v3.1',
   tools: [
     fetchParcelTool,
     fetchCostarMetricsTool,

@@ -50,7 +50,7 @@ export type ZoningAgentOutput = z.infer<typeof ZoningOutputSchema>;
 export const ZONING_AGENT_CONFIG: AgentConfig = {
   agentId: 'zoning',
   agentVersion: '3.1.0',
-  promptVersion: 'zoning-v3',
+  promptVersion: 'zoning-v3.1',
   tools: [
     fetchParcelTool,
     fetchZoningCodeTool,

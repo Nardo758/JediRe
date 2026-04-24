@@ -218,7 +218,7 @@ export async function buildCompositePrompt(dealRow: Record<string, unknown>): Pr
 export const CASHFLOW_AGENT_CONFIG: AgentConfig = {
   agentId: 'cashflow',
   agentVersion: '3.2.0',
-  promptVersion: 'cashflow-v5-archive',
+  promptVersion: 'cashflow-v5.1-archive',
   tools: [
     // Tier 1: Deal documents
     fetchT12Tool,
