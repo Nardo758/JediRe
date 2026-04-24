@@ -1302,5 +1302,89 @@ router.get('/snapshots', requireAuth, async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * POST /api/v1/georgia/extract-events
+ * Manual trigger: run market event extraction over recent news articles.
+ * Fetches the last N days of articles from news_article_cache, passes each
+ * through extractMarketEvents(), inserts any new events into market_events.
+ * Owner/admin only — avoids unintentional LLM cost accumulation.
+ *
+ * Body: { lookbackDays?: number }   (default 7, max 30)
+ * Response: { inserted, skipped, events: MarketEvent[] }
+ */
+router.post('/extract-events', requireAuth, requireRole('owner', 'admin'), async (req: Request, res: Response) => {
+  try {
+    const { extractMarketEvents, insertExtractedEvents } = await import('../../services/market-event-extraction.service');
+    const pool = getPool();
+
+    const lookbackDays = Math.max(1, Math.min(parseInt(req.body?.lookbackDays) || 7, 30));
+
+    const articlesResult = await pool.query<{
+      title: string;
+      description: string | null;
+      content: string | null;
+      url: string;
+      published_at: string | null;
+    }>(`
+      SELECT title, description, content, url, published_at
+      FROM news_article_cache
+      WHERE cached_at >= NOW() - ($1 || ' days')::interval
+        AND title IS NOT NULL
+      ORDER BY cached_at DESC
+    `, [lookbackDays]);
+
+    const articles = articlesResult.rows;
+
+    let totalInserted = 0;
+    let totalSkipped = 0;
+    const allEvents: Array<{ id?: string; event_name: string; event_type: string; effective_date: string }> = [];
+
+    for (const article of articles) {
+      try {
+        const candidates = await extractMarketEvents({
+          title: article.title,
+          description: article.description,
+          content: article.content,
+          url: article.url,
+          publishedAt: article.published_at ? new Date(article.published_at) : null,
+        });
+
+        if (candidates.length > 0) {
+          const insertResult = await insertExtractedEvents(
+            candidates,
+            article.url,
+            article.published_at ? new Date(article.published_at) : null
+          );
+          totalInserted += insertResult.inserted;
+          totalSkipped += insertResult.skipped;
+          for (const evt of insertResult.events) {
+            allEvents.push({
+              id: evt.id,
+              event_name: evt.event_name,
+              event_type: evt.event_type,
+              effective_date: evt.effective_date,
+            });
+          }
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn(`[extract-events] Extraction failed for "${article.title}": ${msg}`);
+      }
+    }
+
+    res.json({
+      success: true,
+      articles_processed: articles.length,
+      lookback_days: lookbackDays,
+      inserted: totalInserted,
+      skipped: totalSkipped,
+      events: allEvents,
+    });
+  } catch (error) {
+    console.error('[API] /georgia/extract-events error:', error);
+    res.status(500).json({ error: 'Event extraction failed', message: error instanceof Error ? error.message : String(error) });
+  }
+});
+
 export default router;
 
