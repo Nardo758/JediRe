@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 import { getPool } from '../../database/connection';
-import { autoDiscoverComps, discoverTieredComps } from '../../services/comp-set-discovery.service';
+import { autoDiscoverComps, discoverTieredComps, discoverFromAptLocator } from '../../services/comp-set-discovery.service';
 import { logger } from '../../utils/logger';
 
 const router = Router();
@@ -58,6 +58,30 @@ router.post('/:dealId/comp-set/discover', requireAuth, async (req: Authenticated
   } catch (error: any) {
     logger.error('Comp discovery failed', { error: error.message });
     res.status(500).json({ success: false, error: 'Comp discovery failed' });
+  }
+});
+
+/**
+ * POST /deals/:dealId/comp-set/discover-rental
+ * Gap 3: Apt Locator Matches → Competitive Set
+ * Discovers apartment_locator_properties within radius and promotes them into:
+ *   - competitive_sets (M27 cash flow agent rent benchmarking)
+ *   - deal_comp_sets   (deal workspace UI)
+ *   - deal_assumptions.avg_rent_per_unit (market rent calibration)
+ * Body: { radiusMiles?: number, maxComps?: number }
+ */
+router.post('/:dealId/comp-set/discover-rental', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { dealId } = req.params;
+    const { radiusMiles, maxComps } = req.body || {};
+    const result = await discoverFromAptLocator(dealId, {
+      radiusMiles: radiusMiles ? Number(radiusMiles) : 3,
+      maxComps: maxComps ? Number(maxComps) : 20,
+    });
+    res.json({ success: true, dealId, ...result });
+  } catch (error: any) {
+    logger.error('Rental comp discovery failed', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 

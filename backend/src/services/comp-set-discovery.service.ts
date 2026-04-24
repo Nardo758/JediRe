@@ -626,3 +626,258 @@ export async function autoDiscoverComps(dealId: string, options: DiscoveryOption
     throw error;
   }
 }
+
+// ============================================================================
+// Gap 3: Apt Locator Matches → Competitive Set (M27 rental comp pool)
+// Promotes apartment_locator_properties within radius into:
+//   competitive_sets (M27 cash flow agent)
+//   deal_comp_sets   (deal workspace UI)
+//   deal_assumptions.avg_rent_per_unit (calibrates rent projection)
+// ============================================================================
+
+export interface AptLocatorDiscoveryResult {
+  inserted_competitive_sets: number;
+  inserted_deal_comp_sets: number;
+  median_rent: number | null;
+  rent_updated: boolean;
+  comp_count: number;
+}
+
+export async function discoverFromAptLocator(
+  dealId: string,
+  options: { radiusMiles?: number; maxComps?: number } = {}
+): Promise<AptLocatorDiscoveryResult> {
+  const { radiusMiles = 3, maxComps = 20 } = options;
+  const pool = getPool();
+
+  const dealResult = await pool.query(`
+    SELECT
+      d.id,
+      d.name,
+      d.address,
+      d.target_units,
+      d.deal_data,
+      ST_Y(ST_Centroid(d.boundary)) AS lat,
+      ST_X(ST_Centroid(d.boundary)) AS lng
+    FROM deals d
+    WHERE d.id = $1
+  `, [dealId]);
+
+  if (dealResult.rows.length === 0) {
+    throw new Error(`Deal not found: ${dealId}`);
+  }
+
+  const deal = dealResult.rows[0];
+  if (!deal.lat || !deal.lng) {
+    throw new Error(`Deal ${dealId} has no boundary/coordinates for rental comp discovery`);
+  }
+
+  const dealData = deal.deal_data || {};
+  const dealUnits = deal.target_units || null;
+  const dealYearBuilt: number | null = dealData.year_built || null;
+  const dealStories: number | null = dealData.stories || null;
+  const dealClassCode: string | null = dealData.class_code || null;
+
+  // 1. Fetch Apt Locator properties within radius using earth distance operator
+  const compRows = await pool.query(`
+    SELECT
+      alp.id,
+      alp.property_name,
+      alp.address,
+      alp.city,
+      alp.state,
+      alp.zip,
+      alp.latitude,
+      alp.longitude,
+      alp.total_units,
+      alp.year_built,
+      alp.avg_asking_rent,
+      alp.avg_effective_rent,
+      alp.occupancy_pct,
+      alp.concessions,
+      alp.concession_pct,
+      alp.unit_mix,
+      alp.management_company,
+      alp.source,
+      alp.data_as_of,
+      ROUND((
+        point(alp.longitude::float, alp.latitude::float)
+        <@> point($2::float, $1::float)
+      )::numeric, 3) AS distance_miles
+    FROM apartment_locator_properties alp
+    WHERE alp.latitude IS NOT NULL
+      AND alp.longitude IS NOT NULL
+      AND alp.avg_asking_rent > 0
+      AND (
+        point(alp.longitude::float, alp.latitude::float)
+        <@> point($2::float, $1::float)
+      ) <= $3
+    ORDER BY distance_miles ASC
+    LIMIT $4
+  `, [deal.lat, deal.lng, radiusMiles, maxComps * 3]);
+
+  if (compRows.rows.length === 0) {
+    logger.info('[discoverFromAptLocator] No apt locator properties found in radius', { dealId, radiusMiles });
+    return { inserted_competitive_sets: 0, inserted_deal_comp_sets: 0, median_rent: null, rent_updated: false, comp_count: 0 };
+  }
+
+  // 2. Score comps
+  const scored = compRows.rows.map((row: any) => {
+    const candidate: CompCandidate = {
+      address: row.address,
+      city: row.city,
+      units: row.total_units || 0,
+      year_built: row.year_built,
+      stories: null,
+      class_code: null,
+      building_sqft: null,
+      distance_miles: parseFloat(row.distance_miles),
+    };
+    const { score, factors } = computeMatchScore(
+      candidate,
+      { units: dealUnits, year_built: dealYearBuilt, stories: dealStories, class_code: dealClassCode },
+      radiusMiles
+    );
+    return { ...row, match_score: score, match_factors: factors, distance_miles: parseFloat(row.distance_miles) };
+  });
+
+  scored.sort((a: any, b: any) => b.match_score - a.match_score);
+  const topComps = scored.slice(0, maxComps);
+
+  // 3. Insert into competitive_sets (M27 agent)
+  let insertedCS = 0;
+  for (const comp of topComps) {
+    try {
+      const assetClass = comp.year_built >= 2010 ? 'A' : comp.year_built >= 1995 ? 'B' : 'C';
+      await pool.query(`
+        INSERT INTO competitive_sets (
+          deal_id, created_at_stage,
+          comp_property_id, comp_name, comp_address, comp_city, comp_state, comp_zip,
+          comp_units, comp_year_built, comp_asset_class,
+          comp_distance_miles, relevance_score, relevance_factors,
+          source, source_id, is_active
+        ) VALUES (
+          $1, 'discovery',
+          $2, $3, $4, $5, $6, $7,
+          $8, $9, $10,
+          $11, $12, $13,
+          'apartment_locator', $14, true
+        )
+        ON CONFLICT DO NOTHING
+      `, [
+        dealId,
+        comp.id,
+        comp.property_name || comp.address,
+        comp.address, comp.city, comp.state, comp.zip,
+        comp.total_units, comp.year_built, assetClass,
+        comp.distance_miles, comp.match_score, JSON.stringify(comp.match_factors),
+        comp.id,
+      ]);
+
+      // Insert latest pricing snapshot for this comp
+      if (comp.avg_asking_rent) {
+        await pool.query(`
+          INSERT INTO comp_pricing_snapshots (
+            deal_id, comp_set_id,
+            snapshot_date, avg_asking_rent, avg_effective_rent,
+            estimated_occupancy, concessions_offered
+          )
+          SELECT $1, cs.id, $3, $4, $5, $6, $7
+          FROM competitive_sets cs
+          WHERE cs.deal_id = $1 AND cs.source_id = $2
+          LIMIT 1
+          ON CONFLICT DO NOTHING
+        `, [
+          dealId, comp.id,
+          comp.data_as_of || new Date().toISOString().slice(0, 10),
+          comp.avg_asking_rent,
+          comp.avg_effective_rent || comp.avg_asking_rent,
+          comp.occupancy_pct ? parseFloat(comp.occupancy_pct) / 100 : null,
+          comp.concessions || null,
+        ]);
+      }
+
+      insertedCS++;
+    } catch (err: any) {
+      logger.warn('[discoverFromAptLocator] competitive_sets insert failed', { address: comp.address, err: err.message });
+    }
+  }
+
+  // 4. Insert into deal_comp_sets (UI workspace)
+  let insertedDCS = 0;
+  for (const comp of topComps) {
+    try {
+      await pool.query(`
+        INSERT INTO deal_comp_sets (
+          deal_id, comp_property_address, comp_name, source, status,
+          distance_miles, match_score, match_factors,
+          year_built, units,
+          avg_rent, occupancy,
+          lat, lng
+        ) VALUES ($1, $2, $3, 'apartment_locator', 'active', $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        ON CONFLICT (deal_id, comp_property_address) DO UPDATE SET
+          status       = 'active',
+          match_score  = EXCLUDED.match_score,
+          avg_rent     = EXCLUDED.avg_rent,
+          occupancy    = EXCLUDED.occupancy,
+          updated_at   = NOW()
+      `, [
+        dealId,
+        comp.address,
+        comp.property_name || comp.address,
+        comp.distance_miles,
+        comp.match_score,
+        JSON.stringify(comp.match_factors),
+        comp.year_built,
+        comp.total_units,
+        comp.avg_asking_rent ? parseFloat(comp.avg_asking_rent) : null,
+        comp.occupancy_pct ? parseFloat(comp.occupancy_pct) / 100 : null,
+        comp.latitude ? parseFloat(comp.latitude) : null,
+        comp.longitude ? parseFloat(comp.longitude) : null,
+      ]);
+      insertedDCS++;
+    } catch (err: any) {
+      logger.warn('[discoverFromAptLocator] deal_comp_sets insert failed', { address: comp.address, err: err.message });
+    }
+  }
+
+  // 5. Gap 4: Market Rent → Projections
+  //    Compute median asking rent from discovered comps → update deal_assumptions
+  const rents = topComps
+    .map((c: any) => c.avg_asking_rent ? parseFloat(c.avg_asking_rent) : null)
+    .filter((r: number | null): r is number => r !== null && r > 0)
+    .sort((a: number, b: number) => a - b);
+
+  let medianRent: number | null = null;
+  let rentUpdated = false;
+
+  if (rents.length > 0) {
+    const mid = Math.floor(rents.length / 2);
+    medianRent = rents.length % 2 === 0
+      ? (rents[mid - 1] + rents[mid]) / 2
+      : rents[mid];
+
+    // Upsert deal_assumptions.avg_rent_per_unit with market-calibrated rent
+    await pool.query(`
+      INSERT INTO deal_assumptions (deal_id, avg_rent_per_unit)
+      VALUES ($1, $2)
+      ON CONFLICT (deal_id) DO UPDATE SET
+        avg_rent_per_unit = CASE
+          WHEN deal_assumptions.avg_rent_per_unit IS NULL THEN EXCLUDED.avg_rent_per_unit
+          ELSE deal_assumptions.avg_rent_per_unit   -- never override user-set values
+        END
+    `, [dealId, Math.round(medianRent)]);
+
+    rentUpdated = true;
+    logger.info('[discoverFromAptLocator] calibrated market rent', { dealId, medianRent, compCount: rents.length });
+  }
+
+  logger.info('[discoverFromAptLocator] complete', { dealId, insertedCS, insertedDCS, medianRent });
+  return {
+    inserted_competitive_sets: insertedCS,
+    inserted_deal_comp_sets: insertedDCS,
+    median_rent: medianRent,
+    rent_updated: rentUpdated,
+    comp_count: topComps.length,
+  };
+}

@@ -308,6 +308,39 @@ export class ApartmentLocatorSyncService {
       }
       
       logger.info('Atlanta sync complete', { inserted, updated, total: supplyProps.length });
+
+      // Gap 5: Permits → Supply Signal
+      // Write supply properties to apartment_supply_pipeline so agents can
+      // see future competition (units delivering 30/60/90 days out)
+      let supplyInserted = 0;
+      const syncedAt = new Date().toISOString();
+      for (const prop of supplyProps) {
+        try {
+          const totalUnits = safeInt(prop.total_units);
+          if (!totalUnits || totalUnits < 4) continue;
+          await pool.query(`
+            INSERT INTO apartment_supply_pipeline (
+              name, address, city, state,
+              total_units, units_delivering,
+              available_date, synced_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::timestamptz)
+            ON CONFLICT DO NOTHING
+          `, [
+            prop.name || null,
+            prop.address,
+            prop.city,
+            prop.state,
+            totalUnits,
+            safeInt(prop.units_available),
+            null,
+            syncedAt,
+          ]);
+          supplyInserted++;
+        } catch (err: any) {
+          logger.warn('Failed to insert supply pipeline entry', { prop: prop.address, err: err.message });
+        }
+      }
+      logger.info('Supply pipeline synced', { supplyInserted, city, state });
       
       return {
         success: true,
@@ -316,7 +349,9 @@ export class ApartmentLocatorSyncService {
           rent_comps_count: rentComps.length,
           properties_inserted: inserted,
           properties_updated: updated,
-          total_properties: supplyProps.length
+          total_properties: supplyProps.length,
+          supply_pipeline_inserted: supplyInserted,
+          forecast: marketData.forecast,
         }
       };
       

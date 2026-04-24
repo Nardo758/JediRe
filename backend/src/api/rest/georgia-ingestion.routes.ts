@@ -13,6 +13,7 @@ import {
   IngestionConfig
 } from '../../services/property-enrichment/georgia';
 import { getRecentJobs, getLastJob } from '../../services/property-enrichment/georgia/job-tracker';
+import { georgiaSaleCompsService } from '../../services/saleComps/georgia-sale-comps.service';
 
 const router = Router();
 const orchestrator = getGeorgiaIngestionOrchestrator();
@@ -365,8 +366,88 @@ router.post('/fulton/structures/spatial-join', async (_req: Request, res: Respon
 });
 
 // ============================================================================
-// JOB HISTORY ROUTES
+// ANALYTICS ROUTES (P0 Gap 2 + P1 Gap 6)
 // ============================================================================
+
+/**
+ * POST /api/v1/georgia/comps/promote
+ * ETL: Promote georgia_property_sales + property_info_cache → market_sale_comps
+ * Enables CompSetService.generateCompSet() to find ATL metro comps for deals.
+ * Body: { county?: string, state?: string, minSalePrice?: number, minUnits?: number }
+ */
+router.post('/comps/promote', async (req: Request, res: Response) => {
+  try {
+    const { county, state = 'GA', minSalePrice, minUnits } = req.body || {};
+    const results = await georgiaSaleCompsService.promoteGeorgiaSales({
+      county, state,
+      minSalePrice: minSalePrice ? Number(minSalePrice) : undefined,
+      minUnits: minUnits ? Number(minUnits) : undefined,
+    });
+    const total = results.reduce((s, r) => s + r.promoted, 0);
+    res.json({ success: true, total_promoted: total, by_county: results });
+  } catch (error) {
+    console.error('[API] comps/promote error:', error);
+    res.status(500).json({ error: 'Failed to promote Georgia sales', message: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+/**
+ * GET /api/v1/georgia/comps/stats
+ * Coverage stats per county — comp count, date range, price/unit metrics.
+ */
+router.get('/comps/stats', async (req: Request, res: Response) => {
+  try {
+    const state = (req.query.state as string) || 'GA';
+    const stats = await georgiaSaleCompsService.getSaleCompStats(state);
+    res.json({ success: true, state, stats });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to get comp stats' });
+  }
+});
+
+/**
+ * GET /api/v1/georgia/analytics/price-trends
+ * Gap 6: Price trend time-series by county and year.
+ * Returns YoY median price change for ATL metro submarket analysis.
+ * Query: ?county=Cobb&state=GA
+ */
+router.get('/analytics/price-trends', async (req: Request, res: Response) => {
+  try {
+    const county = req.query.county as string | undefined;
+    const state = (req.query.state as string) || 'GA';
+    const trends = await georgiaSaleCompsService.getPriceTrends({ county, state });
+    res.json({ success: true, county: county || 'all', state, trends });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to get price trends' });
+  }
+});
+
+/**
+ * GET /api/v1/georgia/analytics/nearby-comps
+ * Ad-hoc proximity comp lookup for a lat/lon point.
+ * Query: ?lat=33.749&lon=-84.388&radiusMiles=3&minUnits=20
+ */
+router.get('/analytics/nearby-comps', async (req: Request, res: Response) => {
+  try {
+    const lat = parseFloat(req.query.lat as string);
+    const lon = parseFloat(req.query.lon as string);
+    if (isNaN(lat) || isNaN(lon)) {
+      return res.status(400).json({ error: 'lat and lon query params required' });
+    }
+    const comps = await georgiaSaleCompsService.getNearbyComps({
+      latitude: lat,
+      longitude: lon,
+      radiusMiles: req.query.radiusMiles ? parseFloat(req.query.radiusMiles as string) : 3,
+      minUnits: req.query.minUnits ? parseInt(req.query.minUnits as string) : 20,
+      maxUnits: req.query.maxUnits ? parseInt(req.query.maxUnits as string) : 1000,
+      monthsBack: req.query.monthsBack ? parseInt(req.query.monthsBack as string) : 36,
+      limit: req.query.limit ? parseInt(req.query.limit as string) : 25,
+    });
+    res.json({ success: true, count: comps.length, comps });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to get nearby comps' });
+  }
+});
 
 /**
  * GET /api/v1/georgia/jobs

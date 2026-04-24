@@ -50,6 +50,7 @@ export interface CompTransaction {
   buyer_type: string;
   holding_period_months: number | null;
   distance_miles: number;
+  source?: string;
 }
 
 export class CompSetService {
@@ -92,58 +93,71 @@ export class CompSetService {
     const cutoffDate = new Date();
     cutoffDate.setMonth(cutoffDate.getMonth() - date_range_months);
 
-    // 3. Build query filters
+    // 3. Build query filters against market_sale_comps
+    //    market_sale_comps uses: sale_date, asset_class, sale_price, price_per_unit,
+    //    price_per_sqft, cap_rate, buyer, buyer_type, qualified, latitude, longitude
     const filters = [
       `t.property_type = 'multifamily'`,
-      `t.recording_date >= $3`,
+      `t.sale_date >= $3`,
       `t.units >= $4`,
       `t.units <= $5`,
-      `t.derived_sale_price > 0`
+      `t.sale_price > 0`
     ];
 
     if (arms_length_only) {
-      filters.push(`t.is_arms_length = true`);
+      filters.push(`(t.qualified IS NULL OR t.qualified = true)`);
     }
 
+    // exclude_distress: no distress flag in market_sale_comps — low price per unit is a proxy
     if (exclude_distress) {
-      filters.push(`t.is_distress = false`);
+      filters.push(`(t.price_per_unit IS NULL OR t.price_per_unit > 20000)`);
     }
 
     if (property_classes.length > 0) {
-      filters.push(`t.property_class = ANY($6)`);
+      filters.push(`(t.asset_class = ANY($6) OR t.asset_class IS NULL)`);
     }
 
     if (vintage_range) {
-      filters.push(`t.year_built::integer >= $7 AND t.year_built::integer <= $8`);
+      filters.push(`t.year_built >= $7 AND t.year_built <= $8`);
     }
 
-    // 4. Spatial query for comps within radius
+    // 4. Spatial query for comps within radius using market_sale_comps
     const compsResult = await pool.query(`
-      SELECT 
-        t.*,
-        ST_Distance(
-          ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
-          ST_SetSRID(ST_MakePoint(t.longitude, t.latitude), 4326)::geography
-        ) / 1609.34 as distance_miles
-      FROM recorded_transactions t
+      SELECT
+        t.id,
+        t.sale_date                       AS recording_date,
+        t.address                         AS property_address,
+        t.units,
+        t.sqft                            AS building_sf,
+        t.year_built,
+        COALESCE(t.asset_class, 'B')      AS property_class,
+        t.sale_price                      AS derived_sale_price,
+        COALESCE(t.price_per_unit, 0)     AS price_per_unit,
+        COALESCE(t.price_per_sqft, 0)     AS price_per_sf,
+        t.cap_rate                        AS implied_cap_rate,
+        t.buyer                           AS grantee_name,
+        t.buyer_type,
+        NULL::integer                     AS holding_period_months,
+        t.source,
+        ROUND((
+          point(t.longitude::float, t.latitude::float)
+          <@> point($2::float, $1::float)
+        )::numeric, 3)                    AS distance_miles
+      FROM market_sale_comps t
       WHERE ${filters.join(' AND ')}
-        AND t.latitude IS NOT NULL
+        AND t.latitude  IS NOT NULL
         AND t.longitude IS NOT NULL
-        AND ST_DWithin(
-          ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
-          ST_SetSRID(ST_MakePoint(t.longitude, t.latitude), 4326)::geography,
-          ${radius_miles * 1609.34}
-        )
-      ORDER BY 
-        ST_Distance(
-          ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
-          ST_SetSRID(ST_MakePoint(t.longitude, t.latitude), 4326)::geography
-        ),
-        t.recording_date DESC
+        AND (
+          point(t.longitude::float, t.latitude::float)
+          <@> point($2::float, $1::float)
+        ) <= ${ radius_miles }
+      ORDER BY
+        (point(t.longitude::float, t.latitude::float) <@> point($2::float, $1::float)) ASC,
+        t.sale_date DESC
       LIMIT 30
     `, [
-      deal.longitude,
       deal.latitude,
+      deal.longitude,
       cutoffDate,
       min_units,
       max_units,
@@ -151,7 +165,7 @@ export class CompSetService {
       ...(vintage_range || [])
     ]);
 
-    const comps: CompTransaction[] = compsResult.rows.map(row => ({
+    const comps: CompTransaction[] = compsResult.rows.map((row: any) => ({
       id: row.id,
       recording_date: row.recording_date,
       property_address: row.property_address,
@@ -163,10 +177,11 @@ export class CompSetService {
       price_per_unit: parseFloat(row.price_per_unit),
       price_per_sf: parseFloat(row.price_per_sf),
       implied_cap_rate: row.implied_cap_rate ? parseFloat(row.implied_cap_rate) : null,
-      grantee_name: row.grantee_name,
-      buyer_type: row.buyer_type,
-      holding_period_months: row.holding_period_months,
-      distance_miles: parseFloat(row.distance_miles)
+      grantee_name: row.grantee_name ?? '',
+      buyer_type: row.buyer_type ?? '',
+      holding_period_months: null,
+      distance_miles: parseFloat(row.distance_miles),
+      source: row.source,
     }));
 
     // 5. Calculate aggregated metrics
@@ -210,16 +225,17 @@ export class CompSetService {
       ? Math.round((pricesPerUnit.filter(p => p <= subjectPricePerUnit).length / pricesPerUnit.length) * 100)
       : null;
 
-    // 7. Store comp set
+    // 7. Store comp set (using actual sale_comp_sets schema + migrated columns)
     const compSetResult = await pool.query(`
       INSERT INTO sale_comp_sets (
-        deal_id, name, comp_type, selection_criteria,
+        deal_id, name, status, comp_type, selection_criteria,
         comp_count, median_price_per_unit, avg_price_per_unit,
         min_price_per_unit, max_price_per_unit, std_dev_price_per_unit,
         median_price_per_sf, median_implied_cap_rate, avg_implied_cap_rate,
-        subject_price_per_unit, subject_vs_median_pct, subject_percentile
+        subject_price_per_unit, subject_vs_median_pct, subject_percentile,
+        median_cap_rate, metadata
       ) VALUES (
-        $1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
+        $1::uuid, $2, 'active', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18
       )
       RETURNING id
     `, [
@@ -238,18 +254,23 @@ export class CompSetService {
       avgCapRate,
       subjectPricePerUnit,
       subjectVsMedianPct,
-      subjectPercentile
+      subjectPercentile,
+      medianCapRate,
+      JSON.stringify({ sources: [...new Set(comps.map(c => c.source))] })
     ]);
 
     const compSetId = compSetResult.rows[0].id;
 
-    // 8. Insert comp set members
+    // 8. Insert comp set members — Georgia comps use market_comp_id (not transaction_id FK)
     for (let i = 0; i < comps.length; i++) {
+      const comp = comps[i];
+      const isMarketComp = comp.source === 'georgia_county' || comp.source?.startsWith('georgia');
       await pool.query(`
         INSERT INTO sale_comp_set_members (
-          comp_set_id, transaction_id, sort_order
+          comp_set_id, ${isMarketComp ? 'market_comp_id' : 'transaction_id'}, sort_order
         ) VALUES ($1::uuid, $2::uuid, $3)
-      `, [compSetId, comps[i].id, i + 1]);
+        ON CONFLICT DO NOTHING
+      `, [compSetId, comp.id, i + 1]);
     }
 
     return {
@@ -285,17 +306,34 @@ export class CompSetService {
 
     const compSet = compSetResult.rows[0];
 
-    // Get comp members
+    // Get comp members — supports both market_sale_comps (Georgia) and recorded_transactions
     const compsResult = await pool.query(`
-      SELECT t.*, scm.sort_order,
-        0 as distance_miles
+      SELECT
+        COALESCE(mc.id, rt.id)                           AS id,
+        COALESCE(mc.sale_date, rt.recording_date)        AS recording_date,
+        COALESCE(mc.address, rt.property_address)        AS property_address,
+        COALESCE(mc.units, rt.units)                     AS units,
+        COALESCE(mc.sqft, rt.building_sf)                AS building_sf,
+        COALESCE(mc.year_built, rt.year_built)           AS year_built,
+        COALESCE(mc.asset_class, rt.property_class, 'B') AS property_class,
+        COALESCE(mc.sale_price, rt.derived_sale_price)   AS derived_sale_price,
+        COALESCE(mc.price_per_unit, rt.price_per_unit, 0) AS price_per_unit,
+        COALESCE(mc.price_per_sqft, rt.price_per_sf, 0)  AS price_per_sf,
+        COALESCE(mc.cap_rate, rt.implied_cap_rate)       AS implied_cap_rate,
+        COALESCE(mc.buyer, rt.buyer_name)                AS grantee_name,
+        COALESCE(mc.buyer_type, rt.buyer_type)           AS buyer_type,
+        mc.source,
+        scm.sort_order,
+        0                                                AS distance_miles
       FROM sale_comp_set_members scm
-      JOIN recorded_transactions t ON t.id = scm.transaction_id
+      LEFT JOIN market_sale_comps    mc ON mc.id = scm.market_comp_id
+      LEFT JOIN recorded_transactions rt ON rt.id = scm.transaction_id
       WHERE scm.comp_set_id = $1::uuid
+        AND (mc.id IS NOT NULL OR rt.id IS NOT NULL)
       ORDER BY scm.sort_order
     `, [compSet.id]);
 
-    const comps: CompTransaction[] = compsResult.rows.map(row => ({
+    const comps: CompTransaction[] = compsResult.rows.map((row: any) => ({
       id: row.id,
       recording_date: row.recording_date,
       property_address: row.property_address,
@@ -307,10 +345,11 @@ export class CompSetService {
       price_per_unit: parseFloat(row.price_per_unit),
       price_per_sf: parseFloat(row.price_per_sf),
       implied_cap_rate: row.implied_cap_rate ? parseFloat(row.implied_cap_rate) : null,
-      grantee_name: row.grantee_name,
-      buyer_type: row.buyer_type,
-      holding_period_months: row.holding_period_months,
-      distance_miles: parseFloat(row.distance_miles)
+      grantee_name: row.grantee_name ?? '',
+      buyer_type: row.buyer_type ?? '',
+      holding_period_months: null,
+      distance_miles: parseFloat(row.distance_miles),
+      source: row.source,
     }));
 
     return {
@@ -348,7 +387,8 @@ export class CompSetService {
 
       const deleteResult = await client.query(`
         DELETE FROM sale_comp_set_members
-        WHERE comp_set_id = $1::uuid AND transaction_id = $2::uuid
+        WHERE comp_set_id = $1::uuid
+          AND (transaction_id = $2::uuid OR market_comp_id = $2::uuid)
       `, [compSetId, compId]);
 
       if (deleteResult.rowCount === 0) {
@@ -356,14 +396,31 @@ export class CompSetService {
       }
 
       const remainingComps = await client.query(`
-        SELECT t.*, scm.sort_order, 0 as distance_miles
+        SELECT
+          COALESCE(mc.id, rt.id)                            AS id,
+          COALESCE(mc.sale_date, rt.recording_date)         AS recording_date,
+          COALESCE(mc.address, rt.property_address)         AS property_address,
+          COALESCE(mc.units, rt.units)                      AS units,
+          COALESCE(mc.sqft, rt.building_sf)                 AS building_sf,
+          COALESCE(mc.year_built, rt.year_built)            AS year_built,
+          COALESCE(mc.asset_class, rt.property_class, 'B')  AS property_class,
+          COALESCE(mc.sale_price, rt.derived_sale_price)    AS derived_sale_price,
+          COALESCE(mc.price_per_unit, rt.price_per_unit, 0) AS price_per_unit,
+          COALESCE(mc.price_per_sqft, rt.price_per_sf, 0)   AS price_per_sf,
+          COALESCE(mc.cap_rate, rt.implied_cap_rate)        AS implied_cap_rate,
+          COALESCE(mc.buyer, rt.buyer_name)                 AS grantee_name,
+          COALESCE(mc.buyer_type, rt.buyer_type)            AS buyer_type,
+          scm.sort_order,
+          0                                                 AS distance_miles
         FROM sale_comp_set_members scm
-        JOIN recorded_transactions t ON t.id = scm.transaction_id
+        LEFT JOIN market_sale_comps    mc ON mc.id = scm.market_comp_id
+        LEFT JOIN recorded_transactions rt ON rt.id = scm.transaction_id
         WHERE scm.comp_set_id = $1::uuid
+          AND (mc.id IS NOT NULL OR rt.id IS NOT NULL)
         ORDER BY scm.sort_order
       `, [compSetId]);
 
-      const comps: CompTransaction[] = remainingComps.rows.map(row => ({
+      const comps: CompTransaction[] = remainingComps.rows.map((row: any) => ({
         id: row.id,
         recording_date: row.recording_date,
         property_address: row.property_address,
@@ -375,10 +432,10 @@ export class CompSetService {
         price_per_unit: parseFloat(row.price_per_unit),
         price_per_sf: parseFloat(row.price_per_sf),
         implied_cap_rate: row.implied_cap_rate ? parseFloat(row.implied_cap_rate) : null,
-        grantee_name: row.grantee_name,
-        buyer_type: row.buyer_type,
-        holding_period_months: row.holding_period_months,
-        distance_miles: parseFloat(row.distance_miles)
+        grantee_name: row.grantee_name ?? '',
+        buyer_type: row.buyer_type ?? '',
+        holding_period_months: null,
+        distance_miles: parseFloat(row.distance_miles),
       }));
 
       const pricesPerUnit = comps.map(c => c.price_per_unit).sort((a, b) => a - b);
