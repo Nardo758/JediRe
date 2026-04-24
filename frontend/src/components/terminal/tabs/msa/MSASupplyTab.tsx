@@ -9,6 +9,7 @@ import { TerminalChart, ChartDataPoint } from '../../TerminalChart';
 import { TerminalSection, DataTable } from '../../TerminalLayouts';
 import { MSAData } from '../../MSATerminal';
 import { useCommentaryStore } from '../../../../stores/commentaryStore';
+import { apiClient } from '../../../../api/client';
 import { SupplyNarrative, SignalCommentary } from '../../commentary';
 
 interface MSASupplyTabProps {
@@ -34,9 +35,8 @@ export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa }) => {
 
   useEffect(() => {
     setPipelineLoading(true);
-    fetch('/api/v1/georgia/supply/pipeline?state=GA&limit=100')
-      .then(r => r.json())
-      .then(data => {
+    apiClient.get('/georgia/supply/pipeline?state=GA&limit=100')
+      .then((data: any) => {
         if (data.success) {
           if (Array.isArray(data.bySubmarket) && data.bySubmarket.length > 0) {
             setPipelineBySubmarket(data.bySubmarket);

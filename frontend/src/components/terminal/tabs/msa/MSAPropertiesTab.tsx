@@ -9,6 +9,7 @@ import { BT, terminalStyles, fmt } from '../../theme';
 import { DataTable } from '../../TerminalLayouts';
 import { scoreColor, BT_SIGNAL_COLORS } from '../../signalGroups';
 import { useCommentaryStore } from '../../../../stores/commentaryStore';
+import { apiClient } from '../../../../api/client';
 import { SignalCommentary } from '../../commentary';
 
 interface MSAPropertiesTabProps {
@@ -110,9 +111,8 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
 
   useEffect(() => {
     setPropertiesLoading(true);
-    fetch('/api/v1/georgia/properties?state=GA&limit=100&minUnits=4')
-      .then(r => r.json())
-      .then(data => {
+    apiClient.get('/georgia/properties?state=GA&limit=100&minUnits=4')
+      .then((data: any) => {
         if (data.success && Array.isArray(data.properties) && data.properties.length > 0) {
           const mapped: PropertyRow[] = data.properties.map((p: any, i: number) => ({
             id: p.id || String(i + 1),

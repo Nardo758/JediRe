@@ -17,6 +17,7 @@ import { georgiaSaleCompsService } from '../../services/saleComps/georgia-sale-c
 import { apartmentLocatorSyncService } from '../../services/apartment-locator-sync.service';
 import { ingestAtlantaNews } from '../../scripts/ingest-atlanta-news';
 import { getPool } from '../../database/connection';
+import { requireAuth } from '../../middleware/auth';
 
 const router = Router();
 const orchestrator = getGeorgiaIngestionOrchestrator();
@@ -588,7 +589,7 @@ router.get('/:county/jobs', async (req: Request, res: Response) => {
  * Returns 25 most-recent cached articles mapped to the NewsItem shape.
  * Query: ?limit=25
  */
-router.get('/news', async (req: Request, res: Response) => {
+router.get('/news', requireAuth, async (req: Request, res: Response) => {
   try {
     const pool = getPool();
     const limit = Math.min(parseInt(req.query.limit as string) || 25, 100);
@@ -647,7 +648,7 @@ router.get('/news', async (req: Request, res: Response) => {
  * Returns submarket summary (grouped by city) + project list.
  * Query: ?state=GA&limit=100
  */
-router.get('/supply/pipeline', async (req: Request, res: Response) => {
+router.get('/supply/pipeline', requireAuth, async (req: Request, res: Response) => {
   try {
     const pool = getPool();
     const state = (req.query.state as string) || 'GA';
@@ -723,7 +724,7 @@ router.get('/supply/pipeline', async (req: Request, res: Response) => {
  * Returns 100 properties with available fields; missing fields get sensible defaults.
  * Query: ?state=GA&limit=100&minUnits=4
  */
-router.get('/properties', async (req: Request, res: Response) => {
+router.get('/properties', requireAuth, async (req: Request, res: Response) => {
   try {
     const pool = getPool();
     const state = (req.query.state as string) || 'GA';
@@ -788,7 +789,7 @@ router.get('/properties', async (req: Request, res: Response) => {
  * Returns recentDeals, capRateByClass, buyerActivity, volumeByYear.
  * Query: ?state=GA&months=36
  */
-router.get('/capital/summary', async (req: Request, res: Response) => {
+router.get('/capital/summary', requireAuth, async (req: Request, res: Response) => {
   try {
     const pool = getPool();
     const state = (req.query.state as string) || 'GA';

@@ -8,6 +8,7 @@ import { BT, terminalStyles } from '../../theme';
 import { TerminalSection } from '../../TerminalLayouts';
 import { MSAData } from '../../MSATerminal';
 import { useCommentaryStore } from '../../../../stores/commentaryStore';
+import { apiClient } from '../../../../api/client';
 import { SignalCommentary } from '../../commentary';
 
 interface MSANewsTabProps {
@@ -151,9 +152,8 @@ export const MSANewsTab: React.FC<MSANewsTabProps> = ({ msaId, msa }) => {
 
   useEffect(() => {
     setNewsLoading(true);
-    fetch('/api/v1/georgia/news?limit=25')
-      .then(r => r.json())
-      .then(data => {
+    apiClient.get('/georgia/news?limit=25')
+      .then((data: any) => {
         if (data.success && Array.isArray(data.items) && data.items.length > 0) {
           setNewsItems(data.items);
         }

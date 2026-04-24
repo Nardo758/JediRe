@@ -9,6 +9,7 @@ import { TerminalChart, ChartDataPoint } from '../../TerminalChart';
 import { TerminalSection, DataTable } from '../../TerminalLayouts';
 import { MSAData } from '../../MSATerminal';
 import { useCommentaryStore } from '../../../../stores/commentaryStore';
+import { apiClient } from '../../../../api/client';
 import { SignalCommentary } from '../../commentary';
 
 interface MSACapitalTabProps {
@@ -32,9 +33,8 @@ export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
 
   useEffect(() => {
     setCapitalLoading(true);
-    fetch('/api/v1/georgia/capital/summary?state=GA&months=36')
-      .then(r => r.json())
-      .then(data => { if (data.success) setCapitalData(data); })
+    apiClient.get('/georgia/capital/summary?state=GA&months=36')
+      .then((data: any) => { if (data.success) setCapitalData(data); })
       .catch(() => {})
       .finally(() => setCapitalLoading(false));
   }, []);
