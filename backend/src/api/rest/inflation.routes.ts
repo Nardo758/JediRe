@@ -6,7 +6,7 @@
 
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { getInflationEngineService } from '../../services/inflation';
+import { getInflationEngineService, getMarketBasketService, ALL_BASKET_ITEMS } from '../../services/inflation';
 
 const router = Router();
 
@@ -458,6 +458,275 @@ router.post('/snapshot', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[Inflation] Snapshot error:', error);
     res.status(500).json({ error: 'Failed to create snapshot' });
+  }
+});
+
+// ============================================================================
+// MARKET BASKET ROUTES
+// ============================================================================
+
+/**
+ * GET /api/v1/inflation/basket/index
+ * 
+ * Get market basket index for a geography.
+ */
+router.get('/basket/index', async (req: Request, res: Response) => {
+  try {
+    const { market, state } = req.query as { market?: string; state?: string };
+    
+    if (!market || !state) {
+      return res.status(400).json({ error: 'Market and state are required' });
+    }
+    
+    const pool = req.app.get('pool');
+    if (!pool) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+    
+    const service = getMarketBasketService(pool);
+    const index = await service.getMarketBasketIndex(market, state);
+    
+    res.json(index);
+  } catch (error) {
+    console.error('[MarketBasket] Index error:', error);
+    res.status(500).json({ error: 'Failed to get market basket index' });
+  }
+});
+
+/**
+ * GET /api/v1/inflation/basket/affordability
+ * 
+ * Get affordability impact analysis.
+ */
+router.get('/basket/affordability', async (req: Request, res: Response) => {
+  try {
+    const { market, state, avgRent } = req.query as { 
+      market?: string; 
+      state?: string;
+      avgRent?: string;
+    };
+    
+    if (!market || !state || !avgRent) {
+      return res.status(400).json({ error: 'Market, state, and avgRent are required' });
+    }
+    
+    const pool = req.app.get('pool');
+    if (!pool) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+    
+    const service = getMarketBasketService(pool);
+    const impact = await service.getAffordabilityImpact(market, state, parseFloat(avgRent));
+    
+    res.json(impact);
+  } catch (error) {
+    console.error('[MarketBasket] Affordability error:', error);
+    res.status(500).json({ error: 'Failed to get affordability impact' });
+  }
+});
+
+/**
+ * GET /api/v1/inflation/basket/turn-cost
+ * 
+ * Get turn cost estimate for a unit.
+ */
+router.get('/basket/turn-cost', async (req: Request, res: Response) => {
+  try {
+    const { market, state, sqft, condition = 'standard' } = req.query as {
+      market?: string;
+      state?: string;
+      sqft?: string;
+      condition?: 'light' | 'standard' | 'heavy';
+    };
+    
+    if (!market || !state || !sqft) {
+      return res.status(400).json({ error: 'Market, state, and sqft are required' });
+    }
+    
+    const pool = req.app.get('pool');
+    if (!pool) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+    
+    const service = getMarketBasketService(pool);
+    const estimate = await service.getTurnCostEstimate(
+      market, 
+      state, 
+      parseInt(sqft),
+      condition
+    );
+    
+    res.json({
+      market,
+      state,
+      sqft: parseInt(sqft),
+      condition,
+      ...estimate
+    });
+  } catch (error) {
+    console.error('[MarketBasket] Turn cost error:', error);
+    res.status(500).json({ error: 'Failed to get turn cost estimate' });
+  }
+});
+
+/**
+ * GET /api/v1/inflation/basket/items
+ * 
+ * Get all tracked basket items.
+ */
+router.get('/basket/items', async (_req: Request, res: Response) => {
+  res.json({
+    categories: [
+      { id: 'resident_affordability', name: 'Resident Affordability', count: ALL_BASKET_ITEMS.filter(i => i.category === 'resident_affordability').length },
+      { id: 'property_operations', name: 'Property Operations', count: ALL_BASKET_ITEMS.filter(i => i.category === 'property_operations').length },
+      { id: 'labor_costs', name: 'Labor Costs', count: ALL_BASKET_ITEMS.filter(i => i.category === 'labor_costs').length },
+      { id: 'construction_materials', name: 'Construction Materials', count: ALL_BASKET_ITEMS.filter(i => i.category === 'construction_materials').length }
+    ],
+    items: ALL_BASKET_ITEMS
+  });
+});
+
+/**
+ * GET /api/v1/inflation/basket/items/:category
+ * 
+ * Get items in a category.
+ */
+router.get('/basket/items/:category', async (req: Request, res: Response) => {
+  const { category } = req.params;
+  
+  const items = ALL_BASKET_ITEMS.filter(i => i.category === category);
+  
+  if (items.length === 0) {
+    return res.status(404).json({ error: 'Category not found' });
+  }
+  
+  res.json({ category, items });
+});
+
+/**
+ * GET /api/v1/inflation/basket/price/:itemId
+ * 
+ * Get price history for an item.
+ */
+router.get('/basket/price/:itemId', async (req: Request, res: Response) => {
+  try {
+    const { itemId } = req.params;
+    const { market, state, months = '24' } = req.query as {
+      market?: string;
+      state?: string;
+      months?: string;
+    };
+    
+    if (!market || !state) {
+      return res.status(400).json({ error: 'Market and state are required' });
+    }
+    
+    const pool = req.app.get('pool');
+    if (!pool) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+    
+    const service = getMarketBasketService(pool);
+    const history = await service.getPriceHistory(itemId, market, state, parseInt(months));
+    
+    const item = ALL_BASKET_ITEMS.find(i => i.id === itemId);
+    
+    res.json({
+      item,
+      market,
+      state,
+      history
+    });
+  } catch (error) {
+    console.error('[MarketBasket] Price history error:', error);
+    res.status(500).json({ error: 'Failed to get price history' });
+  }
+});
+
+/**
+ * POST /api/v1/inflation/basket/price
+ * 
+ * Record a price observation.
+ */
+router.post('/basket/price', async (req: Request, res: Response) => {
+  try {
+    const { itemId, market, state, price, source } = req.body as {
+      itemId: string;
+      market: string;
+      state: string;
+      price: number;
+      source: string;
+    };
+    
+    if (!itemId || !market || !state || !price) {
+      return res.status(400).json({ error: 'itemId, market, state, and price are required' });
+    }
+    
+    const pool = req.app.get('pool');
+    if (!pool) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+    
+    const service = getMarketBasketService(pool);
+    await service.recordPrice({ itemId, market, state, price, source: source || 'manual' });
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('[MarketBasket] Record price error:', error);
+    res.status(500).json({ error: 'Failed to record price' });
+  }
+});
+
+/**
+ * POST /api/v1/inflation/basket/prices
+ * 
+ * Record multiple price observations.
+ */
+router.post('/basket/prices', async (req: Request, res: Response) => {
+  try {
+    const { prices } = req.body as {
+      prices: Array<{
+        itemId: string;
+        market: string;
+        state: string;
+        price: number;
+        source?: string;
+      }>;
+    };
+    
+    if (!prices || !Array.isArray(prices)) {
+      return res.status(400).json({ error: 'prices array is required' });
+    }
+    
+    const pool = req.app.get('pool');
+    if (!pool) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+    
+    const service = getMarketBasketService(pool);
+    
+    let recorded = 0;
+    let failed = 0;
+    
+    for (const p of prices) {
+      try {
+        await service.recordPrice({
+          itemId: p.itemId,
+          market: p.market,
+          state: p.state,
+          price: p.price,
+          source: p.source || 'manual'
+        });
+        recorded++;
+      } catch {
+        failed++;
+      }
+    }
+    
+    res.json({ success: true, recorded, failed });
+  } catch (error) {
+    console.error('[MarketBasket] Bulk record error:', error);
+    res.status(500).json({ error: 'Failed to record prices' });
   }
 });
 

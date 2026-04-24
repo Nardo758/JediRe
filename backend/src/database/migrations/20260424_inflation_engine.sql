@@ -372,3 +372,146 @@ COMMENT ON TABLE inflation_alerts IS 'Alerts when inflation metrics hit critical
 
 COMMENT ON COLUMN inflation_snapshots.composite_score IS '0-200 scale, 100 = neutral (2% target), >100 = inflationary';
 COMMENT ON COLUMN inflation_snapshots.regime IS 'Inflation regime: deflationary (<60), low (<85), moderate (<115), elevated (<140), high (>=140)';
+
+-- ============================================================================
+-- PART 9: MARKET BASKET PRICES
+-- Tracks actual prices of specific items in each market
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS market_basket_prices (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  
+  -- Item identification
+  item_id VARCHAR(100) NOT NULL,
+  category VARCHAR(50) NOT NULL, -- resident_affordability, property_operations, labor_costs, construction_materials
+  item_name VARCHAR(255),
+  
+  -- Geography
+  market VARCHAR(100) NOT NULL, -- MSA name
+  state VARCHAR(2) NOT NULL,
+  
+  -- Price
+  price NUMERIC(12,2) NOT NULL,
+  unit VARCHAR(50), -- gallon, each, sqft, hour, month
+  
+  -- Source
+  source VARCHAR(50), -- home_depot, lowes, bls, manual, scraped
+  source_url TEXT,
+  
+  -- Timestamp
+  observed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_basket_prices_item ON market_basket_prices(item_id);
+CREATE INDEX idx_basket_prices_market ON market_basket_prices(market, state);
+CREATE INDEX idx_basket_prices_category ON market_basket_prices(category);
+CREATE INDEX idx_basket_prices_observed ON market_basket_prices(observed_at);
+CREATE INDEX idx_basket_prices_item_market ON market_basket_prices(item_id, market, state, observed_at);
+
+-- ============================================================================
+-- PART 10: MARKET BASKET SNAPSHOTS
+-- Monthly market basket index snapshots
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS market_basket_snapshots (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  
+  -- Snapshot date
+  snapshot_date DATE NOT NULL,
+  
+  -- Geography
+  market VARCHAR(100) NOT NULL,
+  state VARCHAR(2) NOT NULL,
+  
+  -- Indices (100 = national baseline)
+  resident_affordability_index NUMERIC(6,2),
+  property_operations_index NUMERIC(6,2),
+  labor_cost_index NUMERIC(6,2),
+  construction_index NUMERIC(6,2),
+  composite_index NUMERIC(6,2),
+  
+  -- YoY changes
+  resident_affordability_yoy NUMERIC(5,2),
+  property_operations_yoy NUMERIC(5,2),
+  labor_cost_yoy NUMERIC(5,2),
+  construction_yoy NUMERIC(5,2),
+  composite_yoy NUMERIC(5,2),
+  
+  -- Trend
+  trend VARCHAR(20), -- accelerating, stable, decelerating
+  
+  -- Notable items (JSONB)
+  hottest_items JSONB,
+  coolest_items JSONB,
+  
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  
+  CONSTRAINT uq_basket_snapshot_date_market UNIQUE (snapshot_date, market, state)
+);
+
+CREATE INDEX idx_basket_snapshots_market ON market_basket_snapshots(market, state);
+CREATE INDEX idx_basket_snapshots_date ON market_basket_snapshots(snapshot_date);
+
+-- ============================================================================
+-- PART 11: SEED MARKET BASKET DATA FOR ATLANTA
+-- ============================================================================
+
+-- Resident affordability items
+INSERT INTO market_basket_prices (item_id, category, item_name, market, state, price, unit, source) VALUES
+('gas_regular', 'resident_affordability', 'Regular Gasoline', 'Atlanta', 'GA', 3.29, 'gallon', 'seed'),
+('electricity_kwh', 'resident_affordability', 'Electricity', 'Atlanta', 'GA', 0.12, 'kWh', 'seed'),
+('natural_gas_therm', 'resident_affordability', 'Natural Gas', 'Atlanta', 'GA', 1.35, 'therm', 'seed'),
+('water_1000gal', 'resident_affordability', 'Water', 'Atlanta', 'GA', 7.50, '1000gal', 'seed'),
+('groceries_basket', 'resident_affordability', 'Grocery Basket', 'Atlanta', 'GA', 145.00, 'basket', 'seed'),
+('auto_insurance_6mo', 'resident_affordability', 'Auto Insurance', 'Atlanta', 'GA', 850.00, '6mo_premium', 'seed'),
+('childcare_monthly', 'resident_affordability', 'Childcare', 'Atlanta', 'GA', 1200.00, 'month', 'seed'),
+('health_urgent_care', 'resident_affordability', 'Urgent Care Visit', 'Atlanta', 'GA', 185.00, 'visit', 'seed'),
+('cell_phone_plan', 'resident_affordability', 'Cell Phone Plan', 'Atlanta', 'GA', 75.00, 'month', 'seed')
+ON CONFLICT DO NOTHING;
+
+-- Property operations items
+INSERT INTO market_basket_prices (item_id, category, item_name, market, state, price, unit, source) VALUES
+('hvac_unit_3ton', 'property_operations', 'HVAC Unit (3-ton)', 'Atlanta', 'GA', 6500.00, 'each', 'seed'),
+('refrigerator_standard', 'property_operations', 'Refrigerator', 'Atlanta', 'GA', 750.00, 'each', 'seed'),
+('washer_standard', 'property_operations', 'Washer', 'Atlanta', 'GA', 650.00, 'each', 'seed'),
+('stove_electric', 'property_operations', 'Electric Range', 'Atlanta', 'GA', 550.00, 'each', 'seed'),
+('carpet_sqft', 'property_operations', 'Carpet', 'Atlanta', 'GA', 3.25, 'sqft', 'seed'),
+('lvp_sqft', 'property_operations', 'Luxury Vinyl Plank', 'Atlanta', 'GA', 5.50, 'sqft', 'seed'),
+('paint_5gal', 'property_operations', 'Interior Paint', 'Atlanta', 'GA', 145.00, '5gal', 'seed'),
+('water_heater_50gal', 'property_operations', 'Water Heater (50 gal)', 'Atlanta', 'GA', 850.00, 'each', 'seed'),
+('pest_control_monthly', 'property_operations', 'Pest Control', 'Atlanta', 'GA', 8.50, 'unit/month', 'seed'),
+('dumpster_service', 'property_operations', 'Dumpster Service', 'Atlanta', 'GA', 22.00, 'unit/month', 'seed'),
+('landscaping_monthly', 'property_operations', 'Landscaping', 'Atlanta', 'GA', 15.00, 'unit/month', 'seed'),
+('pool_chemicals_month', 'property_operations', 'Pool Chemicals', 'Atlanta', 'GA', 350.00, 'pool/month', 'seed')
+ON CONFLICT DO NOTHING;
+
+-- Labor costs
+INSERT INTO market_basket_prices (item_id, category, item_name, market, state, price, unit, source) VALUES
+('maintenance_tech_hr', 'labor_costs', 'Maintenance Tech', 'Atlanta', 'GA', 24.00, 'hour', 'seed'),
+('leasing_agent_annual', 'labor_costs', 'Leasing Agent', 'Atlanta', 'GA', 42000.00, 'year', 'seed'),
+('property_manager_annual', 'labor_costs', 'Property Manager', 'Atlanta', 'GA', 65000.00, 'year', 'seed'),
+('hvac_contractor_hr', 'labor_costs', 'HVAC Contractor', 'Atlanta', 'GA', 95.00, 'hour', 'seed'),
+('plumber_hr', 'labor_costs', 'Plumber', 'Atlanta', 'GA', 85.00, 'hour', 'seed'),
+('electrician_hr', 'labor_costs', 'Electrician', 'Atlanta', 'GA', 80.00, 'hour', 'seed'),
+('painter_hr', 'labor_costs', 'Painter', 'Atlanta', 'GA', 45.00, 'hour', 'seed'),
+('general_labor_hr', 'labor_costs', 'General Labor', 'Atlanta', 'GA', 18.00, 'hour', 'seed')
+ON CONFLICT DO NOTHING;
+
+-- Construction materials
+INSERT INTO market_basket_prices (item_id, category, item_name, market, state, price, unit, source) VALUES
+('lumber_2x4_8ft', 'construction_materials', 'Lumber 2x4x8', 'Atlanta', 'GA', 5.98, 'each', 'seed'),
+('plywood_4x8_half', 'construction_materials', 'Plywood 1/2"', 'Atlanta', 'GA', 42.00, 'sheet', 'seed'),
+('concrete_yard', 'construction_materials', 'Ready-Mix Concrete', 'Atlanta', 'GA', 165.00, 'yard', 'seed'),
+('rebar_20ft', 'construction_materials', 'Rebar #4', 'Atlanta', 'GA', 18.50, 'each', 'seed'),
+('drywall_4x8_half', 'construction_materials', 'Drywall', 'Atlanta', 'GA', 14.50, 'sheet', 'seed'),
+('window_standard', 'construction_materials', 'Window (Standard)', 'Atlanta', 'GA', 285.00, 'each', 'seed'),
+('exterior_door', 'construction_materials', 'Exterior Door', 'Atlanta', 'GA', 450.00, 'each', 'seed'),
+('roofing_square', 'construction_materials', 'Roofing Shingles', 'Atlanta', 'GA', 125.00, 'square', 'seed'),
+('copper_wire_12g_250', 'construction_materials', 'Electrical Wire', 'Atlanta', 'GA', 145.00, 'roll', 'seed'),
+('pvc_pipe_10ft', 'construction_materials', 'PVC Pipe', 'Atlanta', 'GA', 12.50, 'each', 'seed')
+ON CONFLICT DO NOTHING;
+
+COMMENT ON TABLE market_basket_prices IS 'Tracks actual prices of specific items in each market for MF-specific inflation tracking';
+COMMENT ON TABLE market_basket_snapshots IS 'Monthly market basket index snapshots for historical analysis';
