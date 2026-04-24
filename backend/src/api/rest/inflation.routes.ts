@@ -6,7 +6,7 @@
 
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { getInflationEngineService, getMarketBasketService, ALL_BASKET_ITEMS } from '../../services/inflation';
+import { getInflationEngineService, getMarketBasketService, getReplacementCostService, ALL_BASKET_ITEMS, PropertyInput } from '../../services/inflation';
 
 const router = Router();
 
@@ -674,6 +674,184 @@ router.post('/basket/price', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[MarketBasket] Record price error:', error);
     res.status(500).json({ error: 'Failed to record price' });
+  }
+});
+
+// ============================================================================
+// REPLACEMENT COST ROUTES
+// ============================================================================
+
+/**
+ * POST /api/v1/inflation/replacement-cost
+ * 
+ * Estimate replacement cost for a property.
+ */
+router.post('/replacement-cost', async (req: Request, res: Response) => {
+  try {
+    const { property, options } = req.body as {
+      property: PropertyInput;
+      options?: {
+        includeLand?: boolean;
+        includeDepreciation?: boolean;
+        purchasePrice?: number;
+        currentInsuredValue?: number;
+      };
+    };
+    
+    if (!property || !property.units || !property.totalSF) {
+      return res.status(400).json({ error: 'Property with units and totalSF is required' });
+    }
+    
+    const pool = req.app.get('pool');
+    if (!pool) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+    
+    const service = getReplacementCostService(pool);
+    const estimate = await service.estimateReplacementCost(property, options);
+    
+    res.json(estimate);
+  } catch (error) {
+    console.error('[ReplacementCost] Estimate error:', error);
+    res.status(500).json({ error: 'Failed to estimate replacement cost' });
+  }
+});
+
+/**
+ * POST /api/v1/inflation/replacement-cost/quick
+ * 
+ * Quick replacement cost estimate.
+ */
+router.post('/replacement-cost/quick', async (req: Request, res: Response) => {
+  try {
+    const { units, avgUnitSF, city, state, assetClass = 'B' } = req.body as {
+      units: number;
+      avgUnitSF: number;
+      city: string;
+      state: string;
+      assetClass?: 'A' | 'B' | 'C';
+    };
+    
+    if (!units || !avgUnitSF || !city || !state) {
+      return res.status(400).json({ error: 'units, avgUnitSF, city, and state are required' });
+    }
+    
+    const pool = req.app.get('pool');
+    if (!pool) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+    
+    const service = getReplacementCostService(pool);
+    const estimate = await service.quickEstimate(units, avgUnitSF, city, state, assetClass);
+    
+    res.json(estimate);
+  } catch (error) {
+    console.error('[ReplacementCost] Quick estimate error:', error);
+    res.status(500).json({ error: 'Failed to estimate replacement cost' });
+  }
+});
+
+/**
+ * POST /api/v1/inflation/replacement-cost/compare
+ * 
+ * Compare purchase price to replacement cost.
+ */
+router.post('/replacement-cost/compare', async (req: Request, res: Response) => {
+  try {
+    const { property, purchasePrice, capRate } = req.body as {
+      property: PropertyInput;
+      purchasePrice: number;
+      capRate: number;
+    };
+    
+    if (!property || !purchasePrice || !capRate) {
+      return res.status(400).json({ error: 'property, purchasePrice, and capRate are required' });
+    }
+    
+    const pool = req.app.get('pool');
+    if (!pool) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+    
+    const service = getReplacementCostService(pool);
+    const analysis = await service.analyzeReplacementVsPurchase(property, purchasePrice, capRate);
+    
+    res.json(analysis);
+  } catch (error) {
+    console.error('[ReplacementCost] Compare error:', error);
+    res.status(500).json({ error: 'Failed to compare to replacement cost' });
+  }
+});
+
+/**
+ * POST /api/v1/inflation/replacement-cost/insurance
+ * 
+ * Validate insurance coverage against replacement cost.
+ */
+router.post('/replacement-cost/insurance', async (req: Request, res: Response) => {
+  try {
+    const { property, currentCoverage } = req.body as {
+      property: PropertyInput;
+      currentCoverage: number;
+    };
+    
+    if (!property || !currentCoverage) {
+      return res.status(400).json({ error: 'property and currentCoverage are required' });
+    }
+    
+    const pool = req.app.get('pool');
+    if (!pool) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+    
+    const service = getReplacementCostService(pool);
+    const validation = await service.validateInsuranceCoverage(property, currentCoverage);
+    
+    res.json(validation);
+  } catch (error) {
+    console.error('[ReplacementCost] Insurance validation error:', error);
+    res.status(500).json({ error: 'Failed to validate insurance coverage' });
+  }
+});
+
+/**
+ * POST /api/v1/inflation/replacement-cost/renovation
+ * 
+ * Estimate renovation/value-add costs.
+ */
+router.post('/replacement-cost/renovation', async (req: Request, res: Response) => {
+  try {
+    const { property, scope } = req.body as {
+      property: PropertyInput;
+      scope: {
+        unitInteriors?: 'light' | 'standard' | 'full';
+        unitsToRenovate?: number;
+        commonAreas?: boolean;
+        amenityUpgrades?: string[];
+        exterior?: boolean;
+        roofing?: boolean;
+        hvac?: boolean;
+        plumbing?: boolean;
+        electrical?: boolean;
+      };
+    };
+    
+    if (!property || !scope) {
+      return res.status(400).json({ error: 'property and scope are required' });
+    }
+    
+    const pool = req.app.get('pool');
+    if (!pool) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+    
+    const service = getReplacementCostService(pool);
+    const estimate = await service.estimateRenovationCost(property, scope);
+    
+    res.json(estimate);
+  } catch (error) {
+    console.error('[ReplacementCost] Renovation estimate error:', error);
+    res.status(500).json({ error: 'Failed to estimate renovation cost' });
   }
 });
 

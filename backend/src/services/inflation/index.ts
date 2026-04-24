@@ -30,3 +30,10 @@ export {
   LABOR_COST_ITEMS,
   CONSTRUCTION_ITEMS
 } from './market-basket.service';
+
+export {
+  ReplacementCostService,
+  getReplacementCostService,
+  ReplacementCostEstimate,
+  PropertyInput
+} from './replacement-cost.service';
