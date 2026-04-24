@@ -124,6 +124,7 @@ import morningBriefRoutes from './morning-brief.routes';
 import propertyEnrichmentRoutes from './property-enrichment.routes';
 import propertyDiscoveryRoutes from './property-discovery.routes';
 import georgiaIngestionRoutes from './georgia-ingestion.routes';
+import proximityRoutes, { setPool as setProximityPool } from './proximity.routes';
 
 const API_PREFIX = '/api/v1';
 
@@ -484,6 +485,10 @@ export function setupRESTRoutes(app: Application): void {
 
   // Georgia Metro data ingestion routes
   app.use(`${API_PREFIX}/georgia`, georgiaIngestionRoutes);
+
+  // Proximity, Events & Backtest routes
+  // Note: setProximityPool(pool) must be called after pool initialization
+  app.use(`${API_PREFIX}/proximity`, proximityRoutes);
 
   // Deal Activity routes (emails, tasks, unified activity)
   app.use(`${API_PREFIX}/deals`, dealActivityRoutes);
