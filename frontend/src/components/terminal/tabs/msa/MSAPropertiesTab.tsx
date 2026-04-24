@@ -106,7 +106,6 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
   const [vintageFilter, setVintageFilter] = useState('All');
   const [sizeFilter, setSizeFilter] = useState('All');
   const [liveProperties, setLiveProperties] = useState<PropertyRow[]>([]);
-  const [propertiesLoading, setPropertiesLoading] = useState(true);
   const msaName = msa?.name || msaId || 'Atlanta';
   const { fetchCommentary, getCommentary, isLoading, getError } = useCommentaryStore();
   const commentary = getCommentary('msa', msaId);
@@ -121,7 +120,6 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
   const [copySuccess, setCopySuccess] = useState(false);
 
   useEffect(() => {
-    setPropertiesLoading(true);
     apiClient.get('/georgia/properties?state=GA&limit=100&minUnits=4')
       .then((data: { success: boolean; properties: GeorgiaPropertyApiItem[] }) => {
         if (data.success && Array.isArray(data.properties) && data.properties.length > 0) {
@@ -157,8 +155,7 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
           setLiveProperties(mapped);
         }
       })
-      .catch(() => {})
-      .finally(() => setPropertiesLoading(false));
+      .catch(() => {});
   }, []);
 
   const allProperties = liveProperties.length > 0 ? liveProperties : MOCK_PROPERTIES;

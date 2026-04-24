@@ -142,7 +142,6 @@ export const MSANewsTab: React.FC<MSANewsTabProps> = ({ msaId, msa }) => {
   const [expandedNews, setExpandedNews] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [newsItems, setNewsItems] = useState<NewsItem[]>([]);
-  const [newsLoading, setNewsLoading] = useState(true);
   const msaName = msa?.name || msaId || 'Atlanta';
   const { fetchCommentary, getCommentary, isLoading, getError } = useCommentaryStore();
   const commentary = getCommentary('msa', msaId);
@@ -151,15 +150,13 @@ export const MSANewsTab: React.FC<MSANewsTabProps> = ({ msaId, msa }) => {
   useEffect(() => { fetchCommentary('msa', msaId, msaName); }, [msaId, msaName]);
 
   useEffect(() => {
-    setNewsLoading(true);
     apiClient.get('/georgia/news?limit=25')
       .then((data: { success: boolean; count: number; items: NewsItem[] }) => {
         if (data.success && Array.isArray(data.items) && data.items.length > 0) {
           setNewsItems(data.items);
         }
       })
-      .catch(() => {})
-      .finally(() => setNewsLoading(false));
+      .catch(() => {});
   }, []);
 
   const marketAlerts: MarketAlert[] = useMemo(() => [

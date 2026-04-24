@@ -13,7 +13,7 @@ import { apiClient } from '../../../../api/client';
 import { SupplyNarrative, SignalCommentary } from '../../commentary';
 
 interface SupplySubmarketRow { name: string; units: number; pctOfTotal: number; status: 'HIGH' | 'MOD' | 'LOW'; projectCount?: number; }
-interface SupplyProjectRow { project: string; submarket: string; units: number; class: string; delivery: string; pctComplete: number | null; developer: string | null; }
+interface SupplyProjectRow { project: string; submarket: string; units: number; class: string; delivery: string; pctComplete: number; developer: string | null; }
 interface SupplyApiProject { project: string; submarket?: string; units?: number; class?: string; delivery?: string; }
 interface SupplyApiResponse { success: boolean; totalUnits: number; projectCount: number; bySubmarket: SupplySubmarketRow[]; projects: SupplyApiProject[]; }
 
@@ -31,7 +31,6 @@ export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa }) => {
 
   const [pipelineBySubmarket, setPipelineBySubmarket] = useState<SupplySubmarketRow[]>([]);
   const [constructionTracker, setConstructionTracker] = useState<SupplyProjectRow[]>([]);
-  const [pipelineLoading, setPipelineLoading] = useState(true);
   const [totalPipelineUnits, setTotalPipelineUnits] = useState<number | null>(null);
 
   useEffect(() => {
@@ -39,7 +38,6 @@ export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa }) => {
   }, [msaId, msaName]);
 
   useEffect(() => {
-    setPipelineLoading(true);
     apiClient.get('/georgia/supply/pipeline?state=GA&limit=100')
       .then((data: SupplyApiResponse) => {
         if (data.success) {
@@ -53,15 +51,14 @@ export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa }) => {
               units: p.units || 0,
               class: p.class || 'B',
               delivery: p.delivery || 'TBD',
-              pctComplete: null,
+              pctComplete: 0,
               developer: null,
             })));
           }
           if (data.totalUnits) setTotalPipelineUnits(data.totalUnits);
         }
       })
-      .catch(() => {})
-      .finally(() => setPipelineLoading(false));
+      .catch(() => {});
   }, []);
 
   const deliveryData: ChartDataPoint[] = useMemo(() => {

@@ -50,18 +50,15 @@ export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
   const error = getError('msa', msaId);
 
   const [capitalData, setCapitalData] = useState<CapitalApiResponse | null>(null);
-  const [capitalLoading, setCapitalLoading] = useState(true);
 
   useEffect(() => {
     fetchCommentary('msa', msaId, msaName);
   }, [msaId, msaName]);
 
   useEffect(() => {
-    setCapitalLoading(true);
     apiClient.get('/georgia/capital/summary?state=GA&months=36')
-      .then((data: any) => { if (data.success) setCapitalData(data); })
-      .catch(() => {})
-      .finally(() => setCapitalLoading(false));
+      .then((data: CapitalApiResponse) => { if (data.success) setCapitalData(data); })
+      .catch(() => {});
   }, []);
 
   const volumeData: ChartDataPoint[] = useMemo(() => {
