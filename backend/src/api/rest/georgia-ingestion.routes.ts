@@ -18,6 +18,7 @@ import { apartmentLocatorSyncService } from '../../services/apartment-locator-sy
 import { ingestAtlantaNews } from '../../scripts/ingest-atlanta-news';
 import { getPool } from '../../database/connection';
 import { requireAuth } from '../../middleware/auth';
+import { geocodingService } from '../../services/geocoding.service';
 
 const router = Router();
 const orchestrator = getGeorgiaIngestionOrchestrator();
@@ -641,6 +642,16 @@ router.post('/run-pipeline', async (req: Request, res: Response) => {
     }
   }
 
+  try {
+    // Step 3.5 — Geocode apartment_locator_properties with missing coordinates
+    console.log('[Pipeline] Step 3.5: Geocoding apt_locator properties...');
+    const geocodeResult = await geocodeAptLocatorProperties({ limit: 150 });
+    log.aptLocatorGeocode = geocodeResult;
+  } catch (err: any) {
+    log.aptLocatorGeocode = { error: err.message };
+    console.error('[Pipeline] Step 3.5 failed:', err.message);
+  }
+
   const durationMs = Date.now() - startedAt;
   console.log(`[Pipeline] Completed in ${(durationMs / 1000).toFixed(1)}s`);
 
@@ -649,6 +660,70 @@ router.post('/run-pipeline', async (req: Request, res: Response) => {
     durationMs,
     pipeline: log,
   });
+});
+
+/**
+ * Batch-geocode apartment_locator_properties rows that have null lat/lon.
+ * Uses Mapbox (VITE_MAPBOX_TOKEN) or Nominatim as fallback.
+ * Returns { geocoded, skipped, failed } counts.
+ */
+async function geocodeAptLocatorProperties(options: { limit?: number } = {}): Promise<{ geocoded: number; skipped: number; failed: number }> {
+  const pool = getPool();
+  const limit = options.limit ?? 200;
+
+  const rows = await pool.query(`
+    SELECT id, address, city, state, zip
+    FROM apartment_locator_properties
+    WHERE latitude IS NULL OR longitude IS NULL
+    ORDER BY id
+    LIMIT $1
+  `, [limit]);
+
+  let geocoded = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  for (const row of rows.rows) {
+    const fullAddress = [row.address, row.city, row.state, row.zip]
+      .filter(Boolean).join(', ');
+    try {
+      const result = await geocodingService.geocode(fullAddress);
+      if (result && result.lat && result.lng) {
+        await pool.query(
+          `UPDATE apartment_locator_properties SET latitude = $1, longitude = $2 WHERE id = $3`,
+          [result.lat, result.lng, row.id]
+        );
+        geocoded++;
+      } else {
+        skipped++;
+      }
+    } catch (err: any) {
+      failed++;
+      console.warn('[geocodeAptLocator] Failed:', fullAddress, err.message);
+    }
+    // Mapbox: 100ms delay; Nominatim: 1100ms (handled internally by geocodingService.batchGeocode)
+  }
+
+  console.log(`[geocodeAptLocator] geocoded=${geocoded} skipped=${skipped} failed=${failed}`);
+  return { geocoded, skipped, failed };
+}
+
+/**
+ * POST /api/v1/georgia/geocode-apt-locator
+ * Gap 3/T002: Back-fill latitude/longitude for apartment_locator_properties
+ * rows that were inserted without coordinates (properties join miss).
+ * Idempotent — only touches rows where lat/lng IS NULL.
+ * Body: { limit?: number }  (default 200)
+ */
+router.post('/geocode-apt-locator', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const limit = Math.min(parseInt(req.body?.limit) || 200, 500);
+    const result = await geocodeAptLocatorProperties({ limit });
+    res.json({ success: true, ...result });
+  } catch (error: any) {
+    console.error('[API] geocode-apt-locator error:', error);
+    res.status(500).json({ error: 'Failed to geocode apt locator properties', message: error.message });
+  }
 });
 
 /**

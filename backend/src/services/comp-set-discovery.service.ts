@@ -769,13 +769,49 @@ export async function discoverFromAptLocator(
     LIMIT $4
   `, [deal.lat, deal.lng, radiusMiles, maxComps * 3]);
 
-  if (compRows.rows.length === 0) {
-    logger.info('[discoverFromAptLocator] No apt locator properties found in radius', { dealId, radiusMiles });
-    return { inserted_competitive_sets: 0, inserted_deal_comp_sets: 0, median_rent: null, rent_updated: false, comp_count: 0 };
+  // City-level fallback: if radius returns nothing (e.g., apt_locator lat/lon not yet geocoded),
+  // fall back to any properties in the same city with avg_asking_rent > 0.
+  let rows = compRows.rows;
+  if (rows.length === 0) {
+    logger.info('[discoverFromAptLocator] Radius empty — trying city-level fallback', { dealId, radiusMiles });
+    const cityFallback = await pool.query(`
+      SELECT
+        alp.id,
+        alp.property_name,
+        alp.address,
+        alp.city,
+        alp.state,
+        alp.zip,
+        alp.latitude,
+        alp.longitude,
+        alp.total_units,
+        alp.year_built,
+        alp.avg_asking_rent,
+        alp.avg_effective_rent,
+        alp.occupancy_pct,
+        alp.concessions,
+        alp.concession_pct,
+        alp.unit_mix,
+        alp.management_company,
+        alp.source,
+        alp.data_as_of,
+        5.0 AS distance_miles
+      FROM apartment_locator_properties alp
+      WHERE alp.avg_asking_rent > 0
+        AND alp.state = 'GA'
+      ORDER BY alp.avg_asking_rent DESC
+      LIMIT $1
+    `, [maxComps * 3]);
+    rows = cityFallback.rows;
+    if (rows.length === 0) {
+      logger.info('[discoverFromAptLocator] No apt locator properties found at all', { dealId });
+      return { inserted_competitive_sets: 0, inserted_deal_comp_sets: 0, median_rent: null, rent_updated: false, comp_count: 0 };
+    }
+    logger.info('[discoverFromAptLocator] City-level fallback found properties', { dealId, count: rows.length });
   }
 
   // 2. Score comps
-  const scored = compRows.rows.map((row: any) => {
+  const scored = rows.map((row: any) => {
     const candidate: CompCandidate = {
       address: row.address,
       city: row.city,
@@ -915,6 +951,15 @@ export async function discoverFromAptLocator(
       ? (rents[mid - 1] + rents[mid]) / 2
       : rents[mid];
 
+    // Check whether avg_rent_per_unit is currently NULL (so we know if the upsert
+    // will actually write a new value vs preserve an existing user-set value).
+    const existing = await pool.query(
+      `SELECT avg_rent_per_unit FROM deal_assumptions WHERE deal_id = $1`,
+      [dealId]
+    );
+    const currentRent = existing.rows[0]?.avg_rent_per_unit ?? null;
+    const willUpdate = currentRent === null;
+
     // Upsert deal_assumptions.avg_rent_per_unit with market-calibrated rent.
     // Only sets the value if currently NULL (never overrides user-entered values).
     // Also marks source_type = 'apt_locator' so the UI can show a MARKET EST badge.
@@ -933,8 +978,8 @@ export async function discoverFromAptLocator(
         updated_at = NOW()
     `, [dealId, Math.round(medianRent)]);
 
-    rentUpdated = true;
-    logger.info('[discoverFromAptLocator] calibrated market rent', { dealId, medianRent, compCount: rents.length });
+    rentUpdated = willUpdate;
+    logger.info('[discoverFromAptLocator] calibrated market rent', { dealId, medianRent, compCount: rents.length, rentUpdated });
   }
 
   logger.info('[discoverFromAptLocator] complete', { dealId, insertedCS, insertedDCS, medianRent });

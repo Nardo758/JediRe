@@ -87,6 +87,13 @@ class DatabaseConnection {
     } catch (error) {
       logger.warn('Could not enable PostGIS extension:', error);
     }
+    try {
+      await this.query('CREATE EXTENSION IF NOT EXISTS cube;');
+      await this.query('CREATE EXTENSION IF NOT EXISTS earthdistance;');
+      logger.info('cube + earthdistance extensions enabled (point <@> point)');
+    } catch (error) {
+      logger.warn('Could not enable cube/earthdistance extensions:', error);
+    }
   }
 
   /**

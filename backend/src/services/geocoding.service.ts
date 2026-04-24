@@ -38,7 +38,7 @@ class GeocodingService {
   private retryDelay = 1000; // ms
   
   constructor() {
-    this.mapboxToken = process.env.MAPBOX_TOKEN || '';
+    this.mapboxToken = process.env.MAPBOX_TOKEN || process.env.VITE_MAPBOX_TOKEN || '';
     this.useMapbox = !!this.mapboxToken;
     
     if (!this.useMapbox) {

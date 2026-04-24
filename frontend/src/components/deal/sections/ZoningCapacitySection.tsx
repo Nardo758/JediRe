@@ -152,10 +152,17 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
       threeBR: { percent: 15, count: 0 },
     },
   });
+  const [rentSourceType, setRentSourceType] = useState<string | null>(null);
 
   useEffect(() => {
     if (resolvedDealId) {
       fetchData();
+      apiClient.get(`/api/v1/deals/${resolvedDealId}/assumptions`)
+        .then((res: any) => {
+          const d = res?.data || res;
+          setRentSourceType(d?.source_type || null);
+        })
+        .catch(() => {});
     } else {
       setLoading(false);
     }
@@ -696,7 +703,22 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
             <h3 className="text-lg font-semibold mb-4">Revenue Projection</h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className={labelClass}>Average Rent per Unit ($/month)</label>
+                <div className="flex items-center gap-2 mb-1">
+                  <label className={labelClass} style={{ margin: 0 }}>Average Rent per Unit ($/month)</label>
+                  {rentSourceType === 'apt_locator' && data.avg_rent_per_unit && (
+                    <span style={{
+                      fontSize: 9, fontWeight: 700, letterSpacing: 1,
+                      color: '#22c55e',
+                      background: 'rgba(34,197,94,0.12)',
+                      border: '1px solid rgba(34,197,94,0.3)',
+                      padding: '1px 6px',
+                      borderRadius: 2,
+                      whiteSpace: 'nowrap',
+                    }}>
+                      MARKET EST
+                    </span>
+                  )}
+                </div>
                 <input type="number" step="50" value={data.avg_rent_per_unit ?? ''}
                   onChange={(e) => updateNumField('avg_rent_per_unit', e.target.value)}
                   placeholder="e.g. 1850" className={inputClass} />
