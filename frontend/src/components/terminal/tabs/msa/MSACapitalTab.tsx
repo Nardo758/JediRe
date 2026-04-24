@@ -150,9 +150,18 @@ export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <h2 style={{ ...terminalStyles.sectionTitle }}>
-            {msaName} — Capital Markets
-          </h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+            <h2 style={{ ...terminalStyles.sectionTitle }}>
+              {msaName} — Capital Markets
+            </h2>
+            {capitalData?.success && (
+              <span style={{
+                fontSize: 9, fontWeight: 700, letterSpacing: 1,
+                color: BT.text.green, background: 'rgba(34,197,94,0.12)',
+                padding: '2px 7px', borderRadius: 0,
+              }}>LIVE · GA COUNTY DATA</span>
+            )}
+          </div>
           <span style={{ color: BT.text.muted, fontSize: 12 }}>
             Transaction volume, cap rates, debt markets
           </span>

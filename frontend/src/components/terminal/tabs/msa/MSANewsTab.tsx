@@ -208,9 +208,18 @@ export const MSANewsTab: React.FC<MSANewsTabProps> = ({ msaId, msa }) => {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <h2 style={{ ...terminalStyles.sectionTitle }}>
-            {msaName} — Market Intelligence
-          </h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+            <h2 style={{ ...terminalStyles.sectionTitle }}>
+              {msaName} — Market Intelligence
+            </h2>
+            {newsItems.length > 0 && (
+              <span style={{
+                fontSize: 9, fontWeight: 700, letterSpacing: 1,
+                color: BT.text.green, background: 'rgba(34,197,94,0.12)',
+                padding: '2px 7px', borderRadius: 0,
+              }}>LIVE · NEWS ALERTS DB</span>
+            )}
+          </div>
           <span style={{ color: BT.text.muted, fontSize: 12 }}>
             News, alerts, sentiment analysis
           </span>

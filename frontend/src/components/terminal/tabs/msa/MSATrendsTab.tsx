@@ -32,17 +32,6 @@ const CORRELATION_QUARTERS = [
   { quarter: 'Q4 25', rentGrowth: 5.4, trafficTrend: 4.5, wageGrowth: 2.7 },
 ];
 
-const SUPPLY_WAVE_DATA = [
-  { year: '2026', confirmed: 8200, capacity: 1200 },
-  { year: '2027', confirmed: 6400, capacity: 1400 },
-  { year: '2028', confirmed: 3800, capacity: 1600 },
-  { year: '2029', confirmed: 1200, capacity: 1800 },
-  { year: '2030', confirmed: 400, capacity: 1600 },
-  { year: '2031', confirmed: 0, capacity: 1200 },
-  { year: '2032', confirmed: 0, capacity: 800 },
-  { year: '2033', confirmed: 0, capacity: 600 },
-  { year: '2034', confirmed: 0, capacity: 400 },
-];
 
 const RENT_VINTAGE_DATA = [
   { quarter: 'Q1 24', aPlus: 2420, a: 2150, bPlus: 1650, b: 1390, c: 1060 },
@@ -155,13 +144,29 @@ interface RentTrendsResponse {
   snapshots: RentSnapshot[];
 }
 
+interface SupplyPipelineSubmarket {
+  name: string;
+  units: number;
+  pctOfTotal: number;
+  status: 'HIGH' | 'MOD' | 'LOW';
+  projectCount?: number;
+}
+
+interface SupplyPipelineResponse {
+  success: boolean;
+  totalUnits: number;
+  projectCount: number;
+  bySubmarket: SupplyPipelineSubmarket[];
+}
+
 export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
   const [timeRange, setTimeRange] = useState<typeof TIME_RANGES[number]>('1Y');
-  const [supplyView, setSupplyView] = useState<'2yr' | '10yr'>('10yr');
   const [priceTrends, setPriceTrends] = useState<PriceTrend[]>([]);
   const [trendsLoading, setTrendsLoading] = useState(true);
   const [rentSnapshots, setRentSnapshots] = useState<RentSnapshot[]>([]);
   const [rentLoading, setRentLoading] = useState(true);
+  const [supplyPipeline, setSupplyPipeline] = useState<SupplyPipelineSubmarket[]>([]);
+  const [supplyPipelineTotal, setSupplyPipelineTotal] = useState<number | null>(null);
   const msaName = msa?.name || msaId || 'Atlanta';
   const { fetchCommentary, getCommentary, isLoading, getError } = useCommentaryStore();
   const commentary = getCommentary('msa', msaId);
@@ -231,8 +236,21 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
       .finally(() => setRentLoading(false));
   }, []);
 
-  // Calculate max for supply wave chart
-  const maxSupply = Math.max(...SUPPLY_WAVE_DATA.map(d => d.confirmed + d.capacity));
+  useEffect(() => {
+    apiClient.get<SupplyPipelineResponse>('/georgia/supply/pipeline?state=GA&limit=8')
+      .then((res: SupplyPipelineResponse) => {
+        if (res?.success && Array.isArray(res.bySubmarket) && res.bySubmarket.length > 0) {
+          setSupplyPipeline(res.bySubmarket);
+          setSupplyPipelineTotal(res.totalUnits || null);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Calculate max for supply wave chart (real pipeline or fallback label)
+  const maxSupply = supplyPipeline.length > 0
+    ? Math.max(...supplyPipeline.map(d => d.units))
+    : 0;
 
   // Calculate correlation
   const rentValues = CORRELATION_QUARTERS.map(q => q.rentGrowth);
@@ -394,12 +412,12 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
         </div>
       </div>
 
-      {/* Row 2: Supply Wave */}
+      {/* Row 2: Supply Pipeline (real data from apartment_supply_pipeline) */}
       <div style={{ ...terminalStyles.card, padding: 20 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <h3 style={{ ...terminalStyles.sectionTitle, fontSize: 14 }}>
-              Supply Wave Forecast
+              Supply Pipeline by Submarket
             </h3>
             <span style={{
               fontSize: 10,
@@ -411,81 +429,65 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
             }}>
               DC-08
             </span>
-            <span style={{
-              fontSize: 9, fontWeight: 700, letterSpacing: 1,
-              color: BT.text.muted,
-              background: BT.bg.elevated,
-              padding: '2px 7px', borderRadius: 0,
-            }}>
-              FORECAST MODEL
+            {supplyPipeline.length > 0 ? (
+              <span style={{
+                fontSize: 9, fontWeight: 700, letterSpacing: 1,
+                color: BT.text.green, background: 'rgba(34,197,94,0.12)',
+                padding: '2px 7px', borderRadius: 0,
+              }}>LIVE · APT LOCATOR</span>
+            ) : (
+              <span style={{
+                fontSize: 9, fontWeight: 700, letterSpacing: 1,
+                color: BT.text.muted, background: BT.bg.elevated,
+                padding: '2px 7px', borderRadius: 0,
+              }}>LOADING</span>
+            )}
+          </div>
+          {supplyPipelineTotal != null && (
+            <span style={{ fontSize: 11, color: BT.text.secondary }}>
+              {supplyPipelineTotal.toLocaleString()} total units
             </span>
-          </div>
-          <div style={{ display: 'flex', gap: 4 }}>
-            {(['2yr', '10yr'] as const).map(view => (
-              <button
-                key={view}
-                onClick={() => setSupplyView(view)}
-                style={{
-                  padding: '4px 12px',
-                  background: supplyView === view ? BT.accent.blue : BT.bg.elevated,
-                  color: supplyView === view ? '#fff' : BT.text.secondary,
-                  border: 'none',
-                  borderRadius: 0,
-                  fontSize: 11,
-                  cursor: 'pointer',
-                }}
-              >
-                {view}
-              </button>
-            ))}
-          </div>
+          )}
         </div>
 
-        {/* Stacked bar chart */}
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 160, marginBottom: 16 }}>
-          {SUPPLY_WAVE_DATA.slice(0, supplyView === '2yr' ? 3 : 9).map((d, i) => (
-            <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <div style={{ 
-                width: '100%', 
-                display: 'flex', 
-                flexDirection: 'column', 
-                alignItems: 'center',
-                height: 140,
-                justifyContent: 'flex-end',
-              }}>
-                {d.capacity > 0 && (
+        {supplyPipeline.length > 0 ? (
+          <>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 160, marginBottom: 16 }}>
+              {supplyPipeline.slice(0, 8).map((d, i) => (
+                <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <div style={{ fontSize: 9, color: BT.text.muted, marginBottom: 4 }}>
+                    {d.units.toLocaleString()}
+                  </div>
                   <div style={{
                     width: '80%',
-                    height: `${(d.capacity / maxSupply) * 100}%`,
-                    background: 'rgba(139,92,246,0.4)',
+                    height: maxSupply > 0 ? `${Math.round((d.units / maxSupply) * 120)}px` : '4px',
+                    background: d.status === 'HIGH' ? BT.accent.red
+                      : d.status === 'MOD' ? BT.accent.amber
+                      : BT.accent.blue,
                     borderRadius: 0,
-                    borderBottom: d.confirmed > 0 ? 'none' : undefined,
+                    minHeight: 4,
                   }} />
-                )}
-                {d.confirmed > 0 && (
-                  <div style={{
-                    width: '80%',
-                    height: `${(d.confirmed / maxSupply) * 100}%`,
-                    background: BT.accent.blue,
-                    borderRadius: 0,
-                  }} />
-                )}
-              </div>
-              <span style={{ fontSize: 10, color: BT.text.muted, marginTop: 4 }}>{d.year}</span>
+                  <span style={{ fontSize: 9, color: BT.text.muted, marginTop: 4, textAlign: 'center', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {d.name}
+                  </span>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-
-        <div style={{ display: 'flex', gap: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ width: 12, height: 12, background: BT.accent.blue, borderRadius: 0 }} />
-            <span style={{ fontSize: 10, color: BT.text.muted }}>Confirmed</span>
+            <div style={{ display: 'flex', gap: 16 }}>
+              {[{ color: BT.accent.red, label: 'HIGH (>5,000 units)' }, { color: BT.accent.amber, label: 'MOD (2,000–5,000)' }, { color: BT.accent.blue, label: 'LOW (<2,000)' }].map(({ color, label }) => (
+                <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ width: 12, height: 12, background: color, borderRadius: 0 }} />
+                  <span style={{ fontSize: 10, color: BT.text.muted }}>{label}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 120, gap: 8 }}>
+            <div style={{ fontSize: 12, color: BT.text.muted, fontWeight: 600 }}>No supply pipeline data</div>
+            <div style={{ fontSize: 10, color: BT.text.muted }}>Run the Atlanta sync to populate apartment supply data.</div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ width: 12, height: 12, background: 'rgba(139,92,246,0.4)', borderRadius: 0 }} />
-            <span style={{ fontSize: 10, color: BT.text.muted }}>Capacity (probability-weighted)</span>
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Row 3: Supply Wave Phases */}

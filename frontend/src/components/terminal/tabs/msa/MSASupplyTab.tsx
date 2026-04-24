@@ -82,9 +82,18 @@ export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa }) => {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <h2 style={{ ...terminalStyles.sectionTitle }}>
-            {msaName} — Supply Pipeline
-          </h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+            <h2 style={{ ...terminalStyles.sectionTitle }}>
+              {msaName} — Supply Pipeline
+            </h2>
+            {totalPipelineUnits != null && (
+              <span style={{
+                fontSize: 9, fontWeight: 700, letterSpacing: 1,
+                color: BT.text.green, background: 'rgba(34,197,94,0.12)',
+                padding: '2px 7px', borderRadius: 0,
+              }}>LIVE · APT LOCATOR</span>
+            )}
+          </div>
           <span style={{ color: BT.text.muted, fontSize: 12 }}>
             Construction, deliveries, lease-up tracking
           </span>

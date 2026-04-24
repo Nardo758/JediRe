@@ -289,11 +289,20 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <h2 style={{ ...terminalStyles.sectionTitle }}>
-            {msaName} — Property Database
-          </h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+            <h2 style={{ ...terminalStyles.sectionTitle }}>
+              {msaName} — Property Database
+            </h2>
+            {liveProperties.length > 0 && (
+              <span style={{
+                fontSize: 9, fontWeight: 700, letterSpacing: 1,
+                color: BT.text.green, background: 'rgba(34,197,94,0.12)',
+                padding: '2px 7px', borderRadius: 0,
+              }}>LIVE · APT LOCATOR</span>
+            )}
+          </div>
           <span style={{ color: BT.text.muted, fontSize: 12 }}>
-            {filteredProperties.length} of {allProperties.length} properties{liveProperties.length > 0 ? ' · Live data' : ''} · Click row to expand
+            {filteredProperties.length} of {allProperties.length} properties · Click row to expand
           </span>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
