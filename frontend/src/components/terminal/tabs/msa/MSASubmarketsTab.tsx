@@ -3,6 +3,7 @@ import { BT } from '../../theme';
 import { useCommentaryStore } from '../../../../stores/commentaryStore';
 import { MarketNarrative, InvestmentThesis, PeerContext } from '../../commentary';
 import { EventTimelineChart } from '../../../m35/EventTimelineChart';
+import { apiClient } from '../../../../api/client';
 
 interface MSASubmarketsTabProps {
   msaId: string;
@@ -126,7 +127,24 @@ const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono','Fira Code','S
 export const MSASubmarketsTab: React.FC<MSASubmarketsTabProps> = ({ msaId, msa, onSelectSubmarket }) => {
   const [selectedSub, setSelectedSub] = useState<string>('midtown');
   const [chartMetric, setChartMetric] = useState<string>('rent_growth_yoy');
+  const [liveSubmarkets, setLiveSubmarkets] = useState<SubmarketRow[]>([]);
+  const [submarketsLoading, setSubmarketsLoading] = useState(true);
   const msaName = msa?.name || msaId || 'Atlanta';
+
+  useEffect(() => {
+    setSubmarketsLoading(true);
+    apiClient.get<{ success: boolean; submarkets: SubmarketRow[] }>('/georgia/submarkets')
+      .then(res => {
+        if (res.data.success && res.data.submarkets.length > 0) {
+          setLiveSubmarkets(res.data.submarkets);
+          setSelectedSub(res.data.submarkets[0].id);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setSubmarketsLoading(false));
+  }, []);
+
+  const displaySubmarkets = liveSubmarkets.length > 0 ? liveSubmarkets : MOCK_SUBMARKETS;
 
   const SUBMARKET_METRICS = [
     { key: 'rent_growth_yoy', label: 'Rent Growth', baseline: 3.8 },
@@ -144,7 +162,7 @@ export const MSASubmarketsTab: React.FC<MSASubmarketsTabProps> = ({ msaId, msa, 
     fetchCommentary('msa', msaId, msaName);
   }, [msaId, msaName]);
 
-  const selectedData = MOCK_SUBMARKETS.find(s => s.id === selectedSub);
+  const selectedData = displaySubmarkets.find(s => s.id === selectedSub);
   const history = SUBMARKET_HISTORY[selectedSub];
   const alerts = SUBMARKET_ALERTS[selectedSub] || [];
   const demos = SUBMARKET_DEMOS[selectedSub];
@@ -234,7 +252,7 @@ export const MSASubmarketsTab: React.FC<MSASubmarketsTabProps> = ({ msaId, msa, 
               <span style={{ fontSize: 11, fontWeight: 700, color: BT.text.amber, textTransform: 'uppercase', letterSpacing: '0.05em', ...mono }}>
                 Submarket Index
               </span>
-              <span style={{ fontSize: 10, color: BT.text.muted, ...mono }}>{MOCK_SUBMARKETS.length} submarkets across tracked markets</span>
+              <span style={{ fontSize: 10, color: BT.text.muted, ...mono }}>{submarketsLoading ? '…' : `${displaySubmarkets.length} live submarkets · ${liveSubmarkets.length > 0 ? 'DB' : 'demo'}`}</span>
             </div>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
@@ -254,7 +272,7 @@ export const MSASubmarketsTab: React.FC<MSASubmarketsTabProps> = ({ msaId, msa, 
                 </tr>
               </thead>
               <tbody>
-                {MOCK_SUBMARKETS.map((sub, i) => {
+                {displaySubmarkets.map((sub, i) => {
                   const isSelected = sub.id === selectedSub;
                   const cycleColor = sub.cycle === 'EXPANSION'
                     ? { text: BT.text.green, bg: `${BT.text.green}18` }
@@ -269,7 +287,7 @@ export const MSASubmarketsTab: React.FC<MSASubmarketsTabProps> = ({ msaId, msa, 
                       key={sub.id}
                       onClick={() => setSelectedSub(sub.id)}
                       style={{
-                        borderBottom: i < MOCK_SUBMARKETS.length - 1 ? `1px solid ${BT.border.subtle}44` : 'none',
+                        borderBottom: i < displaySubmarkets.length - 1 ? `1px solid ${BT.border.subtle}44` : 'none',
                         background: isSelected ? `${BT.text.amber}08` : 'transparent',
                         cursor: 'pointer',
                         transition: 'background 0.15s ease',

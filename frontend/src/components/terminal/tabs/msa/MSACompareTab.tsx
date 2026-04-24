@@ -13,6 +13,7 @@ import { useCommentaryStore } from '../../../../stores/commentaryStore';
 import { PeerContext, SignalCommentary } from '../../commentary';
 import { useColumnPreferences } from '../../../../hooks/useColumnPreferences';
 import { ColumnPicker } from '../../ColumnPicker';
+import { apiClient } from '../../../../api/client';
 
 interface MSACompareTabProps {
   msaId: string;
@@ -83,7 +84,47 @@ export const MSACompareTab: React.FC<MSACompareTabProps> = ({ msaId, msa }) => {
   const [markets, setMarkets] = useState(MARKETS);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [liveAtlanta, setLiveAtlanta] = useState<{ avgRent: number; avgOcc: number } | null>(null);
   const msaName = msa?.name || msaId || 'Atlanta';
+
+  // ── Live Atlanta overrides from DB ────────────────────────────────────────
+  useEffect(() => {
+    apiClient.get<{ success: boolean; submarkets: any[] }>('/georgia/submarkets')
+      .then(res => {
+        if (res.data.success && res.data.submarkets.length > 0) {
+          const subs = res.data.submarkets;
+          const parseUnits = (u: string) => typeof u === 'string' && u.endsWith('K') ? parseFloat(u) * 1000 : (parseFloat(u) || 0);
+          const totalUnits = subs.reduce((s: number, r: any) => s + parseUnits(r.units), 0);
+          // weighted-average rent and occupancy
+          let wRent = 0, wOcc = 0;
+          subs.forEach((r: any) => {
+            const u = parseUnits(r.units);
+            const w = totalUnits > 0 ? u / totalUnits : 1 / subs.length;
+            const rentStr = (r.rent || '').replace(/[^0-9.]/g, '');
+            const occStr  = (r.vac || '').replace(/[^0-9.]/g, '');
+            wRent += (parseFloat(rentStr) || 0) * w;
+            wOcc  += (100 - (parseFloat(occStr) || 0)) * w;
+          });
+          setLiveAtlanta({ avgRent: Math.round(wRent), avgOcc: parseFloat(wOcc.toFixed(1)) });
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Returns live-overridden cell data for Atlanta M-01 / M-06; falls back to MOCK_DATA
+  const getMetricData = (metric: string, marketId: string): { value: string; raw: number } | undefined => {
+    if (liveAtlanta && marketId === 'atlanta') {
+      if (metric === 'M-01 Avg Rent') {
+        const r = liveAtlanta.avgRent;
+        return { value: `$${r.toLocaleString('en-US')}`, raw: r };
+      }
+      if (metric === 'M-06 Occupancy') {
+        const o = liveAtlanta.avgOcc;
+        return { value: `${o.toFixed(1)}%`, raw: o };
+      }
+    }
+    return MOCK_DATA[metric]?.[marketId];
+  };
 
   // ── Column / metric preferences ──────────────────────────────────────────
   const { columns: activeMetrics, toggleColumn, reorderColumns, resetToDefaults, isDefault } = useColumnPreferences('msa_compare');
@@ -131,7 +172,7 @@ export const MSACompareTab: React.FC<MSACompareTabProps> = ({ msaId, msa }) => {
 
   // Best/worst per metric across selected markets
   const getBestWorst = (metric: string, higherBetter: boolean) => {
-    const values = selectedMarkets.map(m => ({ id: m.id, raw: MOCK_DATA[metric]?.[m.id]?.raw || 0 }));
+    const values = selectedMarkets.map(m => ({ id: m.id, raw: getMetricData(metric, m.id)?.raw || 0 }));
     const sorted = [...values].sort((a, b) => higherBetter ? b.raw - a.raw : a.raw - b.raw);
     return { best: sorted[0]?.id, worst: sorted[sorted.length - 1]?.id };
   };
@@ -274,7 +315,7 @@ export const MSACompareTab: React.FC<MSACompareTabProps> = ({ msaId, msa }) => {
                               </span>
                             </td>
                             {selectedMarkets.map(m => {
-                              const data = MOCK_DATA[metric]?.[m.id];
+                              const data = getMetricData(metric, m.id);
                               const isBest = m.id === best;
                               const isWorst = m.id === worst && selectedMarkets.length > 1;
                               return (

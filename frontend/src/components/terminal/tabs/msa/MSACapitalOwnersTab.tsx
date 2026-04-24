@@ -14,6 +14,7 @@ import { scoreColor } from '../../signalGroups';
 import { useCommentaryStore } from '../../../../stores/commentaryStore';
 import { SignalCommentary } from '../../commentary';
 import { MSAData } from '../../MSATerminal';
+import { apiClient } from '../../../../api/client';
 
 interface Props {
   msaId: string;
@@ -89,11 +90,18 @@ export const MSACapitalOwnersTab: React.FC<Props> = ({ msaId, msa, onSelectPrope
   const [expandedOwner, setExpandedOwner] = useState<string | null>(null);
   const [ownerTypeFilter, setOwnerTypeFilter] = useState('All');
   const [signalFilter, setSignalFilter] = useState('All');
+  const [liveCapitalData, setLiveCapitalData] = useState<any>(null);
   const { fetchCommentary, getCommentary, isLoading, getError } = useCommentaryStore();
   const commentary = getCommentary('msa', msaId);
   const loading = isLoading('msa', msaId);
   const error = getError('msa', msaId);
   useEffect(() => { fetchCommentary('msa', msaId, msaName); }, [msaId, msaName]);
+
+  useEffect(() => {
+    apiClient.get<any>('/georgia/owners?state=GA')
+      .then(res => { if (res.data.success) setLiveCapitalData(res.data); })
+      .catch(() => {});
+  }, []);
 
   const ownerTypes = ['All', ...Array.from(new Set(MOCK_OWNERS.map(o => o.type)))];
   const signals: string[] = ['All', 'BUY', 'SELL', 'SELL?', 'HOLD'];
@@ -148,12 +156,26 @@ export const MSACapitalOwnersTab: React.FC<Props> = ({ msaId, msa, onSelectPrope
     { type: 'Developer',      pctVolume:  4, dealCount:  4, avgSize: '$48M', trend: 'flat' },
   ];
 
-  const recentDeals = [
-    { property: 'Camden Paces Portfolio',       units: 1240, price: 285, ppu: 230, cap: 4.8, buyer: 'Blackstone', date: 'Mar 25' },
-    { property: 'Greystar Midtown Collection',  units:  890, price: 198, ppu: 222, cap: 5.0, buyer: 'Invesco',    date: 'Feb 25' },
-    { property: 'The Metropolitan at Phipps',   units:  320, price:  85, ppu: 266, cap: 4.8, buyer: 'Blackstone', date: 'Feb 25' },
-    { property: 'Alexan Buckhead',              units:  290, price:  62, ppu: 214, cap: 5.5, buyer: 'Greystar',   date: 'Nov 24' },
-  ];
+  const displayDeals = useMemo(() => {
+    if (liveCapitalData?.recentDeals?.length > 0) {
+      return liveCapitalData.recentDeals.map((d: any) => ({
+        property: d.property,
+        units: d.units,
+        price: d.price > 0 ? parseFloat((d.price / 1_000_000).toFixed(1)) : null,
+        ppu: d.ppu ? parseFloat((d.ppu / 1000).toFixed(1)) : null,
+        cap: d.cap ? parseFloat(d.cap.toFixed(2)) : null,
+        buyer: d.buyer || 'Unknown',
+        date: d.date || '—',
+        isLive: true,
+      }));
+    }
+    return [
+      { property: 'Camden Paces Portfolio',      units: 1240, price: 285,  ppu: 230, cap: 4.8, buyer: 'Blackstone', date: 'Mar 25', isLive: false },
+      { property: 'Greystar Midtown Collection', units:  890, price: 198,  ppu: 222, cap: 5.0, buyer: 'Invesco',    date: 'Feb 25', isLive: false },
+      { property: 'The Metropolitan at Phipps',  units:  320, price:  85,  ppu: 266, cap: 4.8, buyer: 'Blackstone', date: 'Feb 25', isLive: false },
+      { property: 'Alexan Buckhead',             units:  290, price:  62,  ppu: 214, cap: 5.5, buyer: 'Greystar',   date: 'Nov 24', isLive: false },
+    ];
+  }, [liveCapitalData]);
 
   const SubToggle = () => (
     <div style={{ display: 'flex', gap: 2 }}>
@@ -516,7 +538,10 @@ export const MSACapitalOwnersTab: React.FC<Props> = ({ msaId, msa, onSelectPrope
             </DataTable>
           </TerminalSection>
 
-          <TerminalSection title="Notable Recent Transactions" icon={<Building2 size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />}>
+          <TerminalSection
+            title={`Recent Transactions · ${liveCapitalData ? `${displayDeals.length} from county records` : 'editorial demo'}`}
+            icon={<Building2 size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />}
+          >
             <DataTable>
               <thead>
                 <tr>
@@ -525,19 +550,27 @@ export const MSACapitalOwnersTab: React.FC<Props> = ({ msaId, msa, onSelectPrope
                   <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Price</th>
                   <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>$/Unit</th>
                   <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Cap</th>
-                  <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Buyer</th>
+                  <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Buyer / Grantee</th>
                   <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Date</th>
                 </tr>
               </thead>
               <tbody>
-                {recentDeals.map((deal, i) => (
+                {displayDeals.map((deal, i) => (
                   <tr key={i} style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
-                    <td style={{ ...terminalStyles.tableCell, fontWeight: 500 }}>{deal.property}</td>
-                    <td style={{ ...terminalStyles.tableCell, textAlign: 'right' }}>{deal.units.toLocaleString()}</td>
-                    <td style={{ ...terminalStyles.tableCell, textAlign: 'right', color: BT.text.green, fontWeight: 600 }}>${deal.price}M</td>
-                    <td style={{ ...terminalStyles.tableCell, textAlign: 'right' }}>${deal.ppu}K</td>
-                    <td style={{ ...terminalStyles.tableCell, textAlign: 'right', color: BT.text.cyan }}>{deal.cap}%</td>
-                    <td style={{ ...terminalStyles.tableCell, color: BT.text.secondary }}>{deal.buyer}</td>
+                    <td style={{ ...terminalStyles.tableCell, fontWeight: 500, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{deal.property}</td>
+                    <td style={{ ...terminalStyles.tableCell, textAlign: 'right' }}>{deal.units > 0 ? deal.units.toLocaleString() : '—'}</td>
+                    <td style={{ ...terminalStyles.tableCell, textAlign: 'right', color: BT.text.green, fontWeight: 600 }}>
+                      {deal.price != null ? `$${deal.price}M` : '—'}
+                    </td>
+                    <td style={{ ...terminalStyles.tableCell, textAlign: 'right' }}>
+                      {deal.ppu != null ? `$${deal.ppu}K` : '—'}
+                    </td>
+                    <td style={{ ...terminalStyles.tableCell, textAlign: 'right', color: BT.text.cyan }}>
+                      {deal.cap != null ? `${deal.cap}%` : '—'}
+                    </td>
+                    <td style={{ ...terminalStyles.tableCell, color: deal.buyer === 'Unknown' ? BT.text.muted : BT.text.secondary, fontStyle: deal.buyer === 'Unknown' ? 'italic' : 'normal' }}>
+                      {deal.buyer}
+                    </td>
                     <td style={{ ...terminalStyles.tableCell, textAlign: 'right', color: BT.text.muted }}>{deal.date}</td>
                   </tr>
                 ))}
