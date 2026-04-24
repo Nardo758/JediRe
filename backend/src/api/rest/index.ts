@@ -489,7 +489,8 @@ export function setupRESTRoutes(app: Application): void {
   app.use(`${API_PREFIX}/georgia`, georgiaIngestionRoutes);
 
   // Proximity, Events & Backtest routes
-  // Note: setProximityPool(pool) must be called after pool initialization
+  const { getPool: getProxPool } = require('../../database/connection');
+  setProximityPool(getProxPool());
   app.use(`${API_PREFIX}/proximity`, proximityRoutes);
 
   // Data Matrix routes (neural network layer)

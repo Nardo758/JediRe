@@ -154,19 +154,33 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
   });
   const [rentSourceType, setRentSourceType] = useState<string | null>(null);
 
+  const fetchRentAssumptions = useCallback(() => {
+    if (!resolvedDealId) return;
+    apiClient.get(`/api/v1/deals/${resolvedDealId}/assumptions`)
+      .then((res: any) => {
+        const d = res?.data?.data || res?.data;
+        setRentSourceType(d?.source_type || null);
+      })
+      .catch(() => {});
+  }, [resolvedDealId]);
+
   useEffect(() => {
     if (resolvedDealId) {
       fetchData();
-      apiClient.get(`/api/v1/deals/${resolvedDealId}/assumptions`)
-        .then((res: any) => {
-          const d = res?.data?.data || res?.data;
-          setRentSourceType(d?.source_type || null);
-        })
-        .catch(() => {});
+      fetchRentAssumptions();
     } else {
       setLoading(false);
     }
   }, [resolvedDealId]);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const ev = e as CustomEvent;
+      if (!ev.detail?.dealId || ev.detail.dealId === resolvedDealId) fetchRentAssumptions();
+    };
+    window.addEventListener('assumptions:rent-updated', handler);
+    return () => window.removeEventListener('assumptions:rent-updated', handler);
+  }, [resolvedDealId, fetchRentAssumptions]);
 
   const recalculateLocally = useCallback((currentData: ZoningCapacityData) => {
     const totalUnits = currentData.max_units_with_incentives || currentData.max_units_by_right || 0;

@@ -137,6 +137,7 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
   const lastAppliedTimestamp = useRef(0);
   const lastAppliedDesign3DTimestamp = useRef(0);
   const [designSource, setDesignSource] = useState<string | null>(null);
+  const [rentSourceType, setRentSourceType] = useState<string | null>(null);
   const [modelType, setModelType] = useState<'existing' | 'development'>(defaultModelType);
   const [holdPeriod, setHoldPeriod] = useState(5);
   const [loading, setLoading] = useState(true);
@@ -204,6 +205,27 @@ export const ProFormaTab: React.FC<ProFormaTabProps> = ({ deal, dealId }) => {
       setTotalUnitsManual(dealUnits);
     }
   }, [deal]);
+
+  const fetchRentSourceType = useCallback(async () => {
+    if (!id) return;
+    try {
+      const res: any = await apiClient.get(`/api/v1/deals/${id}/assumptions`);
+      const d = res?.data?.data || res?.data;
+      setRentSourceType(d?.source_type || null);
+    } catch {
+      // non-blocking
+    }
+  }, [id]);
+
+  useEffect(() => {
+    fetchRentSourceType();
+    const handler = (e: Event) => {
+      const ev = e as CustomEvent;
+      if (!ev.detail?.dealId || ev.detail.dealId === id) fetchRentSourceType();
+    };
+    window.addEventListener('assumptions:rent-updated', handler);
+    return () => window.removeEventListener('assumptions:rent-updated', handler);
+  }, [id, fetchRentSourceType]);
 
   useEffect(() => {
     if (debtTerms && debtTerms.source && debtTerms.lastUpdated > lastAppliedTimestamp.current) {
@@ -1098,7 +1120,17 @@ const UnitMixSection: React.FC<{ unitMix: UnitMixRow[]; setUnitMix: (v: UnitMixR
               <th className="text-right py-2 px-2 font-medium">Units</th>
               <th className="text-right py-2 px-2 font-medium">Occ</th>
               <th className="text-right py-2 px-2 font-medium">Vac</th>
-              <th className="text-right py-2 px-2 font-medium">Market Rent</th>
+              <th className="text-right py-2 px-2 font-medium">
+                <span>Market Rent</span>
+                {rentSourceType === 'apt_locator' && (
+                  <span style={{
+                    marginLeft: 4, fontSize: 8, fontWeight: 700, letterSpacing: 1,
+                    color: '#22c55e', background: 'rgba(34,197,94,0.12)',
+                    border: '1px solid rgba(34,197,94,0.3)',
+                    padding: '1px 5px', borderRadius: 2, verticalAlign: 'middle',
+                  }}>MARKET EST</span>
+                )}
+              </th>
               <th className="text-right py-2 px-2 font-medium">Rent/SF</th>
               <th className="text-right py-2 px-2 font-medium">In-Place</th>
               <th className="py-2 px-1"></th>

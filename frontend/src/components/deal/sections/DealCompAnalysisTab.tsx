@@ -491,6 +491,7 @@ const DealCompAnalysisTab: React.FC<DealCompAnalysisTabProps> = ({ dealId: propD
       });
       await fetchMarketRent();
       await fetchTieredComps();
+      window.dispatchEvent(new CustomEvent('assumptions:rent-updated', { detail: { dealId } }));
     } catch (err: any) {
       setRentalDiscovery({
         loading: false,
