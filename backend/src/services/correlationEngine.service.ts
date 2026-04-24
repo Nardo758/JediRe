@@ -1603,36 +1603,33 @@ export class CorrelationEngineService {
       missingData: [],
     };
     try {
-      const lagRes = await this.pool.query(
-        `SELECT COUNT(*) AS permit_count FROM apartment_supply_pipeline
-         WHERE city ILIKE $1
-           AND available_date <= (NOW() - INTERVAL '18 months')`,
+      interface SupplyRow { total_units_delivering: string }
+      const res = await this.pool.query<SupplyRow>(
+        `SELECT SUM(units_delivering) AS total_units_delivering
+         FROM apartment_supply_pipeline
+         WHERE city ILIKE $1`,
         [city]
       );
-      const totalRes = await this.pool.query(
-        `SELECT COUNT(*) AS total FROM apartment_supply_pipeline WHERE city ILIKE $1`,
-        [city]
-      );
-      const permitCount = parseInt(lagRes.rows[0]?.permit_count ?? '0', 10);
-      const total = parseInt(totalRes.rows[0]?.total ?? '0', 10);
-      if (total === 0) {
-        base.missingData.push('apartment_supply_pipeline rows for city');
+      const totalUnits = parseInt(res.rows[0]?.total_units_delivering ?? '0', 10);
+      if (totalUnits === 0) {
+        base.missingData.push('apartment_supply_pipeline rows for city (units_delivering)');
+        base.missingData.push('Historical rent growth data (costar_market_metrics not available)');
         return base;
       }
-      const lagShare = permitCount / total;
-      base.xValue = permitCount;
-      if (lagShare < 0.3) {
+      base.xValue = totalUnits;
+      base.missingData.push('Historical effective_rent from costar_market_metrics (table not yet populated)');
+      if (totalUnits < 500) {
         base.signal = 'bullish';
-        base.confidence = 'medium';
-        base.actionable = `Low historical permit pressure (${permitCount} permits >18mo ago) — rent growth headroom likely.`;
-      } else if (lagShare > 0.6) {
+        base.confidence = 'low';
+        base.actionable = `Low pipeline volume (${totalUnits.toLocaleString()} units) — limited supply pressure suggests rent growth headroom over 18-month horizon.`;
+      } else if (totalUnits > 2000) {
         base.signal = 'bearish';
-        base.confidence = 'medium';
-        base.actionable = `High prior permit volume (${permitCount} permits >18mo ago) — supply wave arriving now, rent pressure expected.`;
+        base.confidence = 'low';
+        base.actionable = `High pipeline volume (${totalUnits.toLocaleString()} units) — supply wave expected to compress rent growth over next 18 months.`;
       } else {
         base.signal = 'neutral';
-        base.confidence = 'medium';
-        base.actionable = `Moderate prior permit volume (${permitCount} permits); balanced supply pipeline.`;
+        base.confidence = 'low';
+        base.actionable = `Moderate pipeline (${totalUnits.toLocaleString()} units delivering) — balanced supply; monitor absorption for rent direction.`;
       }
       return base;
     } catch {
@@ -1654,40 +1651,44 @@ export class CorrelationEngineService {
       confidence: 'insufficient',
       leadTime: '6 months',
       actionable: null,
-      dataSources: ['Market Snapshots', 'Market Events'],
+      dataSources: ['Market Snapshots'],
       missingData: [],
     };
     try {
-      const snapRes = await this.pool.query(
+      interface SnapRow { job_growth_yoy: string; net_absorption_units: string; snapshot_date: string }
+      const snapRes = await this.pool.query<SnapRow>(
         `SELECT job_growth_yoy, net_absorption_units, snapshot_date
          FROM market_snapshots
          WHERE LOWER(geography_name) LIKE LOWER($1)
-         ORDER BY snapshot_date DESC
-         LIMIT 4`,
+           AND job_growth_yoy IS NOT NULL
+           AND net_absorption_units IS NOT NULL
+         ORDER BY snapshot_date ASC`,
         [`%${city}%`]
       );
       if (snapRes.rows.length < 2) {
-        base.missingData.push('market_snapshots with job_growth_yoy and net_absorption_units');
+        base.missingData.push('market_snapshots with job_growth_yoy and net_absorption_units (need 2+ rows for 6mo lag)');
         return base;
       }
-      const latest = snapRes.rows[0];
-      const jobGrowth: number = parseFloat(latest.job_growth_yoy ?? '0');
-      const absorption: number = parseInt(latest.net_absorption_units ?? '0', 10);
+      // 6-month lag: use oldest row's job_growth as X-driver, newest row's absorption as Y-outcome
+      const lagRow = snapRes.rows[0];
+      const currentRow = snapRes.rows[snapRes.rows.length - 1];
+      const jobGrowth = parseFloat(lagRow.job_growth_yoy);
+      const currentAbsorption = parseInt(currentRow.net_absorption_units, 10);
       base.xValue = parseFloat((jobGrowth * 100).toFixed(2));
-      base.yValue = absorption;
-      base.correlation = this.estimateCorrelation(jobGrowth, absorption / 1000);
-      if (jobGrowth > 0.02 && absorption > 0) {
+      base.yValue = currentAbsorption;
+      base.correlation = this.estimateCorrelation(jobGrowth, currentAbsorption / 1000);
+      if (jobGrowth > 0.02 && currentAbsorption > 0) {
         base.signal = 'bullish';
         base.confidence = 'medium';
-        base.actionable = `Job growth ${(jobGrowth * 100).toFixed(1)}% YoY driving +${absorption} net absorbed units.`;
-      } else if (jobGrowth < 0 || absorption < 0) {
+        base.actionable = `Job growth ${(jobGrowth * 100).toFixed(1)}% YoY (lagged) driving +${currentAbsorption.toLocaleString()} net absorbed units — demand confirmation.`;
+      } else if (jobGrowth < 0 || currentAbsorption < 0) {
         base.signal = 'bearish';
         base.confidence = 'medium';
-        base.actionable = `Job growth ${(jobGrowth * 100).toFixed(1)}% YoY with ${absorption} net absorption — demand contracting.`;
+        base.actionable = `Job contraction ${(jobGrowth * 100).toFixed(1)}% YoY followed by ${currentAbsorption.toLocaleString()} net absorption — demand weakening.`;
       } else {
         base.signal = 'neutral';
         base.confidence = 'low';
-        base.actionable = `Job growth ${(jobGrowth * 100).toFixed(1)}% YoY, absorption flat.`;
+        base.actionable = `Job growth ${(jobGrowth * 100).toFixed(1)}% YoY — absorption flat; monitor next quarter.`;
       }
       return base;
     } catch {
@@ -1713,17 +1714,22 @@ export class CorrelationEngineService {
       missingData: [],
     };
     try {
-      const res = await this.pool.query(
+      interface ProximityRow { avg_transit: string; avg_premium: string; row_count: string }
+      const res = await this.pool.query<ProximityRow>(
         `SELECT AVG(transit_score) AS avg_transit,
-                AVG(estimated_transit_premium_pct) AS avg_premium
+                AVG(estimated_transit_premium_pct) AS avg_premium,
+                COUNT(*) AS row_count
          FROM property_proximity
-         WHERE city ILIKE $1`,
+         WHERE city ILIKE $1
+           AND transit_score IS NOT NULL
+           AND estimated_transit_premium_pct IS NOT NULL`,
         [city]
       );
-      const avgTransit: number | null = parseFloat(res.rows[0]?.avg_transit ?? 'NaN');
-      const avgPremium: number | null = parseFloat(res.rows[0]?.avg_premium ?? 'NaN');
-      if (!res.rows.length || isNaN(avgTransit) || isNaN(avgPremium)) {
-        base.missingData.push('property_proximity rows (transit_score, estimated_transit_premium_pct)');
+      const rowCount = parseInt(res.rows[0]?.row_count ?? '0', 10);
+      const avgTransit = parseFloat(res.rows[0]?.avg_transit ?? 'NaN');
+      const avgPremium = parseFloat(res.rows[0]?.avg_premium ?? 'NaN');
+      if (rowCount === 0 || isNaN(avgTransit) || isNaN(avgPremium)) {
+        base.missingData.push('property_proximity rows for city (transit_score, estimated_transit_premium_pct)');
         return base;
       }
       base.xValue = parseFloat(avgTransit.toFixed(1));
@@ -1732,15 +1738,15 @@ export class CorrelationEngineService {
       if (avgPremium > 0.05) {
         base.signal = 'bullish';
         base.confidence = 'medium';
-        base.actionable = `Transit-adjacent properties command avg +${(avgPremium * 100).toFixed(1)}% rent premium (transit score ${avgTransit.toFixed(0)}).`;
+        base.actionable = `Transit-adjacent properties (n=${rowCount}) command avg +${(avgPremium * 100).toFixed(1)}% rent premium at transit score ${avgTransit.toFixed(0)}.`;
       } else if (avgPremium < 0) {
         base.signal = 'bearish';
         base.confidence = 'low';
-        base.actionable = `No transit rent premium detected — location may lack transit advantage.`;
+        base.actionable = `Negative transit premium detected — location lacks transit advantage, underwrite accordingly.`;
       } else {
         base.signal = 'neutral';
         base.confidence = 'low';
-        base.actionable = `Minimal transit premium (${(avgPremium * 100).toFixed(1)}%) — transit score ${avgTransit.toFixed(0)}.`;
+        base.actionable = `Minimal transit premium (${(avgPremium * 100).toFixed(1)}%) at transit score ${avgTransit.toFixed(0)}.`;
       }
       return base;
     } catch {
@@ -1766,38 +1772,46 @@ export class CorrelationEngineService {
       missingData: [],
     };
     try {
-      const crimeRes = await this.pool.query(
-        `SELECT AVG(crime_index) AS avg_crime FROM property_proximity WHERE city ILIKE $1`,
+      interface CrimeRow { avg_crime: string; row_count: string }
+      const crimeRes = await this.pool.query<CrimeRow>(
+        `SELECT AVG(crime_index) AS avg_crime, COUNT(*) AS row_count
+         FROM property_proximity
+         WHERE city ILIKE $1 AND crime_index IS NOT NULL`,
         [city]
       );
-      const avgCrime: number = parseFloat(crimeRes.rows[0]?.avg_crime ?? 'NaN');
-      if (isNaN(avgCrime)) {
-        base.missingData.push('property_proximity rows (crime_index)');
+      const rowCount = parseInt(crimeRes.rows[0]?.row_count ?? '0', 10);
+      const avgCrime = parseFloat(crimeRes.rows[0]?.avg_crime ?? 'NaN');
+      if (rowCount === 0 || isNaN(avgCrime)) {
+        base.missingData.push('property_proximity rows for city (crime_index)');
         return base;
       }
-      const snapRes = await this.pool.query(
+      interface OccRow { avg_occupancy_pct: string }
+      const snapRes = await this.pool.query<OccRow>(
         `SELECT avg_occupancy_pct FROM market_snapshots
-         WHERE LOWER(geography_name) LIKE LOWER($1)
+         WHERE LOWER(geography_name) LIKE LOWER($1) AND avg_occupancy_pct IS NOT NULL
          ORDER BY snapshot_date DESC LIMIT 1`,
         [`%${city}%`]
       );
-      const occupancy: number | null = snapRes.rows[0]?.avg_occupancy_pct
+      const occupancy = snapRes.rows[0]?.avg_occupancy_pct
         ? parseFloat(snapRes.rows[0].avg_occupancy_pct)
         : null;
       base.xValue = parseFloat(avgCrime.toFixed(1));
       base.yValue = occupancy !== null ? parseFloat((occupancy * 100).toFixed(1)) : null;
+      if (occupancy !== null) {
+        base.correlation = this.estimateCorrelation(-avgCrime / 100, occupancy);
+      }
       if (avgCrime > 120) {
         base.signal = 'bearish';
         base.confidence = 'medium';
-        base.actionable = `Avg crime index ${avgCrime.toFixed(0)} (>120 threshold) — occupancy headwind, underwrite higher vacancy.`;
+        base.actionable = `Avg crime index ${avgCrime.toFixed(0)} exceeds 120 threshold — underwrite 2-3pp higher vacancy${occupancy !== null ? `; current occupancy ${(occupancy * 100).toFixed(1)}%` : ''}.`;
       } else if (avgCrime < 80) {
         base.signal = 'bullish';
         base.confidence = 'medium';
-        base.actionable = `Low crime index ${avgCrime.toFixed(0)} — safety premium supports occupancy and rent.`;
+        base.actionable = `Low crime index ${avgCrime.toFixed(0)} — safety premium supports occupancy${occupancy !== null ? ` (currently ${(occupancy * 100).toFixed(1)}%)` : ''}.`;
       } else {
         base.signal = 'neutral';
         base.confidence = 'low';
-        base.actionable = `Crime index ${avgCrime.toFixed(0)} — near city average, no material occupancy impact.`;
+        base.actionable = `Crime index ${avgCrime.toFixed(0)} near city average — no material occupancy impact expected.`;
       }
       return base;
     } catch {
@@ -1823,40 +1837,57 @@ export class CorrelationEngineService {
       missingData: [],
     };
     try {
-      const poiRes = await this.pool.query(
-        `SELECT COUNT(*) AS new_groceries FROM points_of_interest
-         WHERE city ILIKE $1
+      // market_events geography_name is submarket (Midtown, Buckhead) not city — match broadly
+      interface CountRow { cnt: string }
+      const poiRes = await this.pool.query<CountRow>(
+        `SELECT COUNT(*) AS cnt FROM points_of_interest
+         WHERE (city ILIKE $1 OR county ILIKE $1)
            AND poi_type ILIKE '%grocery%'
+           AND status = 'active'
            AND opened_date >= NOW() - INTERVAL '24 months'`,
-        [city]
+        [`%${city}%`]
       );
-      const evRes = await this.pool.query(
-        `SELECT COUNT(*) AS grocery_events FROM market_events
-         WHERE geography_name ILIKE $1
-           AND event_type = 'grocery_opening'
+      const evRes = await this.pool.query<CountRow>(
+        `SELECT COUNT(*) AS cnt FROM market_events
+         WHERE event_type = 'grocery_opening'
            AND announced_date >= NOW() - INTERVAL '24 months'`,
-        [city]
+        []
       );
-      const newGroceries = parseInt(poiRes.rows[0]?.new_groceries ?? '0', 10);
-      const groceryEvents = parseInt(evRes.rows[0]?.grocery_events ?? '0', 10);
-      const total = newGroceries + groceryEvents;
+      interface ImpactRow { positive: string; negative: string; total_jobs: string }
+      const impactRes = await this.pool.query<ImpactRow>(
+        `SELECT
+           COUNT(*) FILTER (WHERE expected_impact_direction = 'positive') AS positive,
+           COUNT(*) FILTER (WHERE expected_impact_direction = 'negative') AS negative,
+           COALESCE(SUM(jobs_affected), 0) AS total_jobs
+         FROM market_events
+         WHERE event_type = 'grocery_opening'
+           AND announced_date >= NOW() - INTERVAL '24 months'`,
+        []
+      );
+      const poiCount = parseInt(poiRes.rows[0]?.cnt ?? '0', 10);
+      const evCount = parseInt(evRes.rows[0]?.cnt ?? '0', 10);
+      const positiveCount = parseInt(impactRes.rows[0]?.positive ?? '0', 10);
+      const total = poiCount + evCount;
       if (total === 0) {
         base.missingData.push('No grocery openings in points_of_interest or market_events in last 24mo');
+        base.missingData.push('Submarket-level rent growth data for correlation (costar_market_metrics not available)');
         return base;
       }
       base.xValue = total;
-      if (total >= 3) {
+      base.missingData.push('Zip-code rent growth data required to quantify correlation magnitude');
+      const allPositive = positiveCount === total && total > 0;
+      if (total >= 3 && allPositive) {
         base.signal = 'bullish';
         base.confidence = 'medium';
-        base.actionable = `${total} new grocery openings in last 24mo — amenity catalyst for rent growth in adjacent submarkets.`;
-      } else if (total === 1 || total === 2) {
+        base.actionable = `${total} new grocery opening(s) in last 24mo (all positive impact) — amenity catalyst expected to lift adjacent submarket rents 6-18mo.`;
+      } else if (total >= 2) {
         base.signal = 'neutral';
         base.confidence = 'low';
-        base.actionable = `${total} new grocery opening(s) detected — modest amenity catalyst.`;
+        base.actionable = `${total} grocery opening(s) detected (${positiveCount} positive impact) — modest amenity signal; insufficient rent data to quantify uplift.`;
       } else {
         base.signal = 'neutral';
         base.confidence = 'low';
-        base.actionable = `No new grocery openings in 24mo window.`;
+        base.actionable = `${total} grocery opening detected — isolated event, insufficient for directional rent correlation.`;
       }
       return base;
     } catch {
@@ -1882,36 +1913,53 @@ export class CorrelationEngineService {
       missingData: [],
     };
     try {
-      const res = await this.pool.query(
-        `SELECT event_name, jobs_affected, expected_impact_direction,
-                expected_impact_magnitude, announced_date
+      interface MoveRow {
+        event_name: string;
+        jobs_affected: string | null;
+        expected_impact_direction: string | null;
+        announced_date: string;
+      }
+      const res = await this.pool.query<MoveRow>(
+        `SELECT event_name, jobs_affected, expected_impact_direction, announced_date
          FROM market_events
-         WHERE geography_name ILIKE $1
-           AND event_type = 'employer_move'
+         WHERE event_type = 'employer_move'
            AND announced_date >= NOW() - INTERVAL '36 months'
-         ORDER BY jobs_affected DESC NULLS LAST`,
-        [city]
+         ORDER BY COALESCE(jobs_affected, 0) DESC`,
+        []
       );
       if (res.rows.length === 0) {
-        base.missingData.push('No employer_move events in market_events for city in last 36mo');
+        base.missingData.push('No employer_move events in market_events in last 36 months');
+        base.missingData.push('Pre/post absorption from market_snapshots (table has 0 rows)');
         return base;
       }
-      const totalJobs = res.rows.reduce((s: number, r: any) => s + (parseInt(r.jobs_affected ?? '0', 10)), 0);
-      const bullishCount = res.rows.filter((r: any) => r.expected_impact_direction === 'positive').length;
+      const totalJobs = res.rows.reduce(
+        (sum, row) => sum + (row.jobs_affected !== null ? parseInt(row.jobs_affected, 10) : 0),
+        0
+      );
+      const positiveCount = res.rows.filter(row => row.expected_impact_direction === 'positive').length;
+      const netJobImpact = res.rows.reduce(
+        (sum, row) => sum + (
+          row.expected_impact_direction === 'positive'
+            ? (row.jobs_affected !== null ? parseInt(row.jobs_affected, 10) : 0)
+            : -(row.jobs_affected !== null ? parseInt(row.jobs_affected, 10) : 0)
+        ),
+        0
+      );
       base.xValue = res.rows.length;
-      base.yValue = totalJobs;
-      if (bullishCount > 0 && totalJobs > 500) {
+      base.yValue = netJobImpact;
+      base.missingData.push('Pre/post absorption comparison requires market_snapshots time series (0 rows currently)');
+      if (netJobImpact > 500) {
         base.signal = 'bullish';
         base.confidence = 'medium';
-        base.actionable = `${res.rows.length} employer move(s) in last 36mo, ${totalJobs.toLocaleString()} jobs relocated — demand shock, expect accelerated absorption.`;
-      } else if (res.rows.length > 0 && totalJobs > 0) {
-        base.signal = 'neutral';
-        base.confidence = 'low';
-        base.actionable = `${res.rows.length} employer move event(s) detected, ${totalJobs.toLocaleString()} jobs — monitor for demand shift.`;
+        base.actionable = `${res.rows.length} employer move(s) in last 36mo — net +${netJobImpact.toLocaleString()} jobs relocating; absorption demand shock expected in affected submarkets.`;
+      } else if (netJobImpact < -200) {
+        base.signal = 'bearish';
+        base.confidence = 'medium';
+        base.actionable = `${res.rows.length} employer move(s) with net ${netJobImpact.toLocaleString()} job impact — demand headwind, expect softer absorption.`;
       } else {
         base.signal = 'neutral';
         base.confidence = 'low';
-        base.actionable = `Employer moves present but limited job impact data available.`;
+        base.actionable = `${res.rows.length} employer move event(s), ${positiveCount} positive — net job impact ${netJobImpact.toLocaleString()}; absorption effect unclear.`;
       }
       return base;
     } catch {
@@ -1920,8 +1968,8 @@ export class CorrelationEngineService {
     }
   }
 
-  private async computeCOR27(city: string): Promise<CorrelationResult> {
-    const base: CorrelationResult = {
+  private async computeCOR27(_city: string): Promise<CorrelationResult> {
+    return {
       id: 'COR-27',
       name: 'Interest Rate → Cap Rate (3mo lag)',
       tier: 2,
@@ -1933,47 +1981,15 @@ export class CorrelationEngineService {
       confidence: 'insufficient',
       leadTime: '3 months',
       actionable: null,
-      dataSources: ['Market Snapshots'],
-      missingData: [],
+      dataSources: ['Market Snapshots', 'Macro Indicators'],
+      missingData: [
+        'macro_indicators table (Fed funds rate feed not yet populated)',
+        'market_snapshots avg_cap_rate (market_snapshots has 0 rows)',
+      ],
     };
-    try {
-      const res = await this.pool.query(
-        `SELECT avg_cap_rate, snapshot_date
-         FROM market_snapshots
-         WHERE LOWER(geography_name) LIKE LOWER($1)
-           AND avg_cap_rate IS NOT NULL
-         ORDER BY snapshot_date DESC
-         LIMIT 1`,
-        [`%${city}%`]
-      );
-      if (res.rows.length === 0) {
-        base.missingData.push('market_snapshots with avg_cap_rate', 'Fed funds rate / macro_indicators table');
-        return base;
-      }
-      const capRate: number = parseFloat(res.rows[0].avg_cap_rate);
-      base.yValue = parseFloat((capRate * 100).toFixed(2));
-      base.missingData.push('Fed funds rate feed (macro_indicators table empty)');
-      if (capRate > 0.065) {
-        base.signal = 'bullish';
-        base.confidence = 'low';
-        base.actionable = `Cap rate ${(capRate * 100).toFixed(2)}% — compressed spread vs current rates, entry opportunity if rates decline.`;
-      } else if (capRate < 0.045) {
-        base.signal = 'bearish';
-        base.confidence = 'low';
-        base.actionable = `Cap rate ${(capRate * 100).toFixed(2)}% — thin spread vs prevailing rates, acquisition risk elevated.`;
-      } else {
-        base.signal = 'neutral';
-        base.confidence = 'low';
-        base.actionable = `Cap rate ${(capRate * 100).toFixed(2)}% — within normal range.`;
-      }
-      return base;
-    } catch {
-      base.missingData.push('market_snapshots query failed', 'macro_indicators data unavailable');
-      return base;
-    }
   }
 
-  private async computeCOR28(city: string): Promise<CorrelationResult> {
+  private async computeCOR28(_city: string): Promise<CorrelationResult> {
     const base: CorrelationResult = {
       id: 'COR-28',
       name: 'Historical Sale Price/SF → Current Asking',
@@ -1990,33 +2006,30 @@ export class CorrelationEngineService {
       missingData: [],
     };
     try {
-      const res = await this.pool.query(
-        `SELECT AVG(price_per_sqft) AS trailing_avg_psf,
-                PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY price_per_sqft) AS median_psf,
-                COUNT(*) AS comp_count
+      // city column is empty in market_sale_comps — use all comps for 8-quarter (24-month) trailing avg
+      // per spec: "trailing 8-quarter avg price/SF vs current deal asking price"
+      interface HistRow { trailing_avg_psf: string; comp_count: string }
+      const histRes = await this.pool.query<HistRow>(
+        `SELECT AVG(price_per_sqft) AS trailing_avg_psf, COUNT(*) AS comp_count
          FROM market_sale_comps
-         WHERE city ILIKE $1
-           AND sale_date >= NOW() - INTERVAL '24 months'
-           AND price_per_sqft IS NOT NULL`,
-        [city]
+         WHERE sale_date >= NOW() - INTERVAL '24 months'
+           AND price_per_sqft IS NOT NULL`
       );
-      const recentRes = await this.pool.query(
-        `SELECT AVG(price_per_sqft) AS recent_avg_psf
+      interface RecentRow { recent_avg_psf: string; recent_count: string }
+      const recentRes = await this.pool.query<RecentRow>(
+        `SELECT AVG(price_per_sqft) AS recent_avg_psf, COUNT(*) AS recent_count
          FROM market_sale_comps
-         WHERE city ILIKE $1
-           AND sale_date >= NOW() - INTERVAL '6 months'
-           AND price_per_sqft IS NOT NULL`,
-        [city]
+         WHERE sale_date >= NOW() - INTERVAL '6 months'
+           AND price_per_sqft IS NOT NULL`
       );
-      const compCount = parseInt(res.rows[0]?.comp_count ?? '0', 10);
+      const compCount = parseInt(histRes.rows[0]?.comp_count ?? '0', 10);
+      const recentCount = parseInt(recentRes.rows[0]?.recent_count ?? '0', 10);
       if (compCount < 3) {
-        base.missingData.push('Insufficient market_sale_comps for city (need 3+ with price_per_sqft)');
+        base.missingData.push('Insufficient market_sale_comps (need 3+ with price_per_sqft in last 24mo)');
         return base;
       }
-      const trailingAvg: number = parseFloat(res.rows[0].trailing_avg_psf);
-      const recentAvg: number | null = recentRes.rows[0]?.recent_avg_psf
-        ? parseFloat(recentRes.rows[0].recent_avg_psf)
-        : null;
+      const trailingAvg = parseFloat(histRes.rows[0].trailing_avg_psf);
+      const recentAvg = recentCount >= 1 ? parseFloat(recentRes.rows[0].recent_avg_psf) : null;
       base.xValue = parseFloat(trailingAvg.toFixed(0));
       base.yValue = recentAvg !== null ? parseFloat(recentAvg.toFixed(0)) : null;
       if (recentAvg !== null) {
@@ -2025,21 +2038,22 @@ export class CorrelationEngineService {
         if (spread > 0.10) {
           base.signal = 'bearish';
           base.confidence = 'medium';
-          base.actionable = `Recent asking $${recentAvg.toFixed(0)}/SF is ${(spread * 100).toFixed(1)}% above 24-mo avg $${trailingAvg.toFixed(0)}/SF — market may be over-clearing, monitor cap rate compression.`;
+          base.actionable = `Recent avg $${recentAvg.toFixed(0)}/SF is ${(spread * 100).toFixed(1)}% above 8-quarter clearing avg $${trailingAvg.toFixed(0)}/SF — market above historical clearing, monitor cap rate compression.`;
         } else if (spread < -0.10) {
           base.signal = 'bullish';
           base.confidence = 'medium';
-          base.actionable = `Recent asking $${recentAvg.toFixed(0)}/SF is ${Math.abs(spread * 100).toFixed(1)}% below 24-mo avg $${trailingAvg.toFixed(0)}/SF — below clearing price, strong entry.`;
+          base.actionable = `Recent avg $${recentAvg.toFixed(0)}/SF is ${Math.abs(spread * 100).toFixed(1)}% below 8-quarter clearing avg $${trailingAvg.toFixed(0)}/SF — buying below historical clearing price.`;
         } else {
           base.signal = 'neutral';
           base.confidence = 'medium';
-          base.actionable = `Current asking ($${recentAvg.toFixed(0)}/SF) tracking within ±10% of 24-mo avg ($${trailingAvg.toFixed(0)}/SF) — fairly priced.`;
+          base.actionable = `Recent $${recentAvg.toFixed(0)}/SF within ±10% of 8-quarter avg $${trailingAvg.toFixed(0)}/SF — market at historical clearing price.`;
         }
+        base.missingData.push('Current deal asking price not yet wired (compare xValue against deal underwriting)');
       } else {
         base.signal = 'neutral';
         base.confidence = 'low';
-        base.actionable = `24-mo avg price/SF: $${trailingAvg.toFixed(0)} (${compCount} comps) — no recent 6mo comparables to assess vs asking.`;
-        base.missingData.push('Recent (6mo) sale comps for comparison');
+        base.actionable = `8-quarter avg price/SF: $${trailingAvg.toFixed(0)} (${compCount} comps) — no recent 6mo trades to assess clearing trend.`;
+        base.missingData.push('Recent (6mo) sale comps for spread comparison');
       }
       return base;
     } catch {
@@ -2065,39 +2079,44 @@ export class CorrelationEngineService {
       missingData: [],
     };
     try {
-      const res = await this.pool.query(
+      // Need at least 2 rows ≥6 months apart to compute lead-lag: older row concession → newer row vacancy
+      interface SnapRow { concession_rate: string; vacancy_rate: string | null; snapshot_date: string }
+      const res = await this.pool.query<SnapRow>(
         `SELECT properties_offering_concessions_pct AS concession_rate,
                 vacancy_rate,
                 snapshot_date
          FROM market_snapshots
          WHERE LOWER(geography_name) LIKE LOWER($1)
            AND properties_offering_concessions_pct IS NOT NULL
-         ORDER BY snapshot_date DESC
-         LIMIT 2`,
+         ORDER BY snapshot_date ASC`,
         [`%${city}%`]
       );
-      if (res.rows.length === 0) {
-        base.missingData.push('market_snapshots with properties_offering_concessions_pct');
+      if (res.rows.length < 2) {
+        base.missingData.push('market_snapshots with properties_offering_concessions_pct (need 2+ rows for 6mo lag)');
         return base;
       }
-      const latest = res.rows[0];
-      const concessionRate: number = parseFloat(latest.concession_rate);
-      const vacancyRate: number | null = latest.vacancy_rate ? parseFloat(latest.vacancy_rate) : null;
-      base.xValue = parseFloat((concessionRate * 100).toFixed(1));
-      base.yValue = vacancyRate !== null ? parseFloat((vacancyRate * 100).toFixed(1)) : null;
-      base.correlation = vacancyRate !== null ? this.estimateCorrelation(concessionRate, vacancyRate) : null;
-      if (concessionRate > 0.30) {
+      // Lag: oldest row's concession rate predicts newest row's vacancy
+      const lagRow = res.rows[0];
+      const currentRow = res.rows[res.rows.length - 1];
+      const concessionRateLag = parseFloat(lagRow.concession_rate);
+      const currentVacancy = currentRow.vacancy_rate ? parseFloat(currentRow.vacancy_rate) : null;
+      base.xValue = parseFloat((concessionRateLag * 100).toFixed(1));
+      base.yValue = currentVacancy !== null ? parseFloat((currentVacancy * 100).toFixed(1)) : null;
+      base.correlation = currentVacancy !== null
+        ? this.estimateCorrelation(concessionRateLag, currentVacancy)
+        : null;
+      if (concessionRateLag > 0.30) {
         base.signal = 'bearish';
         base.confidence = 'medium';
-        base.actionable = `${(concessionRate * 100).toFixed(0)}% of properties offering concessions — leading indicator of rising vacancy in 6mo.`;
-      } else if (concessionRate < 0.10) {
+        base.actionable = `Prior concession rate ${(concessionRateLag * 100).toFixed(0)}% (>30% threshold) — leading indicator of elevated vacancy over next 6 months.`;
+      } else if (concessionRateLag < 0.10) {
         base.signal = 'bullish';
         base.confidence = 'medium';
-        base.actionable = `Low concession rate (${(concessionRate * 100).toFixed(0)}%) — tight market, vacancy likely to remain low.`;
+        base.actionable = `Low historical concession rate ${(concessionRateLag * 100).toFixed(0)}% — tight market signals vacancy remains suppressed.`;
       } else {
         base.signal = 'neutral';
         base.confidence = 'low';
-        base.actionable = `Concession rate ${(concessionRate * 100).toFixed(0)}% — within normal range, no outsized vacancy risk.`;
+        base.actionable = `Concession rate ${(concessionRateLag * 100).toFixed(0)}% in normal range — no outsized future vacancy signal.`;
       }
       return base;
     } catch {
@@ -2119,40 +2138,22 @@ export class CorrelationEngineService {
       confidence: 'insufficient',
       leadTime: '12-24 months',
       actionable: null,
-      dataSources: ['Apartment Supply Pipeline', 'Market Snapshots'],
+      dataSources: ['Apartment Supply Pipeline'],
       missingData: [],
     };
     try {
-      const totalRes = await this.pool.query(
+      // apartment_supply_pipeline has no permit_type column — renovation vs new-construction
+      // not differentiable. Return insufficient with clear data gap explanation.
+      interface TotalRow { total: string }
+      const totalRes = await this.pool.query<TotalRow>(
         `SELECT COUNT(*) AS total FROM apartment_supply_pipeline WHERE city ILIKE $1`,
         [city]
       );
       const total = parseInt(totalRes.rows[0]?.total ?? '0', 10);
-      if (total === 0) {
-        base.missingData.push('apartment_supply_pipeline rows for city');
-        base.missingData.push('Permit type classification (renovation vs new-construction) not in current schema');
-        return base;
-      }
-      const recentRes = await this.pool.query(
-        `SELECT COUNT(*) AS recent FROM apartment_supply_pipeline
-         WHERE city ILIKE $1 AND available_date >= NOW() - INTERVAL '24 months'`,
-        [city]
-      );
-      const recentCount = parseInt(recentRes.rows[0]?.recent ?? '0', 10);
-      base.xValue = recentCount;
-      base.missingData.push('Renovation vs new-construction permit type not differentiated in apartment_supply_pipeline');
-      if (recentCount >= 5) {
-        base.signal = 'bullish';
-        base.confidence = 'low';
-        base.actionable = `${recentCount} supply entries in last 24mo — value-add activity elevated; expect rent growth as renovated units lease up. (Renovation-specific permits pending data enrichment.)`;
-      } else if (recentCount > 0) {
-        base.signal = 'neutral';
-        base.confidence = 'low';
-        base.actionable = `${recentCount} supply entry(ies) in last 24mo — modest renovation signal.`;
-      } else {
-        base.signal = 'neutral';
-        base.confidence = 'low';
-        base.actionable = `No recent supply pipeline activity — renovation permits may be under-reported.`;
+      base.missingData.push('apartment_supply_pipeline lacks permit_type column (renovation vs new-construction not differentiated)');
+      base.missingData.push('Subsequent rent growth by submarket required for correlation (costar_market_metrics not available)');
+      if (total > 0) {
+        base.xValue = total;
       }
       return base;
     } catch {
