@@ -640,6 +640,30 @@ DEKALB:
 
 ---
 
+## Georgia MSA Multifamily Ingestion Pipeline (2026-04-24)
+
+**Architecture:** Four county ingestion services (Cobb, Gwinnett, DeKalb, Fulton) pull live ArcGIS Feature Layer data for multifamily parcels and persist to PostgreSQL. All routes are authenticated and registered at `/api/v1/georgia/...`.
+
+**DB Tables Created (migration `20260424_georgia_ingestion.sql`):**
+- `georgia_property_sales` — sale history per parcel, UNIQUE on `(parcel_id, county, state, sale_date, sale_price)`. Separate from the existing `property_sales` table (which has a FK to `property_records` and incompatible schema — not touched).
+- `georgia_ingestion_jobs` — job tracking per run (county, status, counts, errors, timestamps).
+- Seeded 4 providers in `property_data_providers`: `cobb_ga`, `gwinnett_ga`, `dekalb_ga`, `fulton_ga`.
+
+**DB Write Pattern (all 4 county services):**
+- `saveProperty()` → upserts into `property_info_cache` ON CONFLICT `(parcel_id, county, state)` DO UPDATE (COALESCE to preserve existing non-null values).
+- `saveSales()` → inserts into `georgia_property_sales` ON CONFLICT `(parcel_id, county, state, sale_date, sale_price)` DO NOTHING.
+- DB import: `import { query as dbQuery } from '../../../database/connection'`
+
+**County-specific notes:**
+- **Cobb:** `saveSales(CobbParcelSale[])` — raw ArcGIS fields `SALEDT` (unix ms), `PRICE`, `SALETYPE`, `SALEVAL` (`'Q'`=qualified), `INSTRTYP`. Converts via `new Date(sale.SALEDT)`.
+- **Gwinnett:** sales via Land Value table `SALE1D`/`SALE1AMT` and `SALE2D`/`SALE2AMT` fields per parcel record.
+- **DeKalb:** no sales data available from ArcGIS — `saveProperty()` only.
+- **Fulton:** `Tyler_YearlySales` table 2018-2022 per parcel.
+
+**11 API endpoints** all mounted in `georgia-ingestion.routes.ts`, registered in `index.replit.ts` after apartment-locator block. See `backend/docs/GEORGIA_INGESTION_HANDOFF.md` for full endpoint reference.
+
+---
+
 ## Known Bug Fixes (2026-02-28)
 
 -   **Token Key Inconsistency (FIXED):** Many frontend components used `localStorage.getItem('token')` while the auth system stores tokens under `auth_token`. This caused widespread 401 Unauthorized errors across dashboard findings, market intelligence, JEDI score, alerts, credibility, notifications, and other components. All 14 affected files corrected to use `auth_token`.

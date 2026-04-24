@@ -11,6 +11,7 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import { ArcGISClient } from './arcgis-client';
+import { query as dbQuery } from '../../../database/connection';
 import {
   CobbParcel,
   CobbYearBuilt,
@@ -348,18 +349,87 @@ export class CobbIngestionService {
    * Save enriched property to database
    */
   private async saveProperty(property: EnrichedProperty): Promise<void> {
-    // TODO: Implement database insert/update
-    // INSERT INTO property_info_cache (...) VALUES (...)
-    // ON CONFLICT (parcel_id, county, state) DO UPDATE SET ...
+    await dbQuery(
+      `INSERT INTO property_info_cache (
+        parcel_id, address, city, state, county,
+        year_built, living_area_sqft,
+        land_value, building_value, just_value, assessed_value,
+        land_use_code, property_type,
+        owner_name, owner_name_2,
+        provider, fetched_at, raw_data
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+      ON CONFLICT (parcel_id, county, state) DO UPDATE SET
+        year_built        = COALESCE(EXCLUDED.year_built, property_info_cache.year_built),
+        living_area_sqft  = COALESCE(EXCLUDED.living_area_sqft, property_info_cache.living_area_sqft),
+        land_value        = COALESCE(EXCLUDED.land_value, property_info_cache.land_value),
+        building_value    = COALESCE(EXCLUDED.building_value, property_info_cache.building_value),
+        just_value        = COALESCE(EXCLUDED.just_value, property_info_cache.just_value),
+        assessed_value    = COALESCE(EXCLUDED.assessed_value, property_info_cache.assessed_value),
+        land_use_code     = COALESCE(EXCLUDED.land_use_code, property_info_cache.land_use_code),
+        property_type     = COALESCE(EXCLUDED.property_type, property_info_cache.property_type),
+        owner_name        = COALESCE(EXCLUDED.owner_name, property_info_cache.owner_name),
+        owner_name_2      = COALESCE(EXCLUDED.owner_name_2, property_info_cache.owner_name_2),
+        provider          = EXCLUDED.provider,
+        fetched_at        = EXCLUDED.fetched_at,
+        updated_at        = NOW()`,
+      [
+        property.parcelId,
+        property.address || '',
+        property.city || '',
+        property.state,
+        property.county,
+        property.yearBuilt || null,
+        property.sqft || null,
+        property.landValue || null,
+        property.buildingValue || null,
+        property.totalValue || null,
+        property.assessedValue || null,
+        property.propertyClass || null,
+        property.isMultifamily ? 'multifamily' : 'other',
+        property.ownerName || null,
+        property.ownerName2 || null,
+        property.provider,
+        property.fetchedAt,
+        JSON.stringify({ isMultifamily: property.isMultifamily })
+      ]
+    );
   }
-  
+
   /**
    * Save sales to database
    */
   private async saveSales(parcelId: string, sales: CobbParcelSale[]): Promise<void> {
-    // TODO: Implement database insert
-    // INSERT INTO property_sales (...) VALUES (...)
-    // ON CONFLICT DO NOTHING
+    for (const sale of sales) {
+      if (!sale.PRICE || sale.PRICE <= 0) continue;
+      const saleDate = sale.SALEDT ? new Date(sale.SALEDT) : null;
+      if (!saleDate || isNaN(saleDate.getTime())) continue;
+      try {
+        await dbQuery(
+          `INSERT INTO georgia_property_sales (
+            parcel_id, county, state,
+            sale_date, sale_year, sale_price,
+            sale_type, qualified, instrument_type,
+            provider, raw_data
+          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+          ON CONFLICT (parcel_id, county, state, sale_date, sale_price) DO NOTHING`,
+          [
+            parcelId,
+            'Cobb',
+            'GA',
+            saleDate.toISOString().split('T')[0],
+            saleDate.getFullYear(),
+            sale.PRICE,
+            sale.SALETYPE || null,
+            sale.SALEVAL === 'Q',
+            sale.INSTRTYP || null,
+            'cobb_ga',
+            JSON.stringify({ NBHD: sale.NBHD, APRTOT: sale.APRTOT, ASR: sale.ASR })
+          ]
+        );
+      } catch (err) {
+        console.warn(`[Cobb] saveSales skip (${parcelId}): ${err}`);
+      }
+    }
   }
   
   /**

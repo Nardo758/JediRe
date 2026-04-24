@@ -13,6 +13,7 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import { ArcGISClient } from './arcgis-client';
+import { query as dbQuery } from '../../../database/connection';
 import {
   FultonParcel,
   FultonYearlySale,
@@ -331,14 +332,70 @@ export class FultonIngestionService {
    * Save enriched property to database
    */
   private async saveProperty(property: EnrichedProperty): Promise<void> {
-    // TODO: Implement database insert/update
+    await dbQuery(
+      `INSERT INTO property_info_cache (
+        parcel_id, address, city, state, county,
+        number_of_units, just_value,
+        land_use_code, property_type,
+        owner_name,
+        provider, fetched_at, raw_data
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+      ON CONFLICT (parcel_id, county, state) DO UPDATE SET
+        number_of_units  = COALESCE(EXCLUDED.number_of_units, property_info_cache.number_of_units),
+        just_value       = COALESCE(EXCLUDED.just_value, property_info_cache.just_value),
+        land_use_code    = COALESCE(EXCLUDED.land_use_code, property_info_cache.land_use_code),
+        property_type    = COALESCE(EXCLUDED.property_type, property_info_cache.property_type),
+        owner_name       = COALESCE(EXCLUDED.owner_name, property_info_cache.owner_name),
+        provider         = EXCLUDED.provider,
+        fetched_at       = EXCLUDED.fetched_at,
+        updated_at       = NOW()`,
+      [
+        property.parcelId,
+        property.address || '',
+        property.city || '',
+        property.state,
+        property.county,
+        property.units || null,
+        property.totalValue || null,
+        property.propertyClass || null,
+        property.isMultifamily ? 'multifamily' : 'other',
+        property.ownerName || null,
+        property.provider,
+        property.fetchedAt,
+        JSON.stringify({ isMultifamily: property.isMultifamily, luCode: property.propertyClass })
+      ]
+    );
   }
-  
+
   /**
    * Save sales to database
    */
   private async saveSales(parcelId: string, sales: PropertySale[]): Promise<void> {
-    // TODO: Implement database insert
+    for (const sale of sales) {
+      if (!sale.salePrice || sale.salePrice <= 0) continue;
+      if (!sale.saleDate || isNaN(sale.saleDate.getTime())) continue;
+      try {
+        await dbQuery(
+          `INSERT INTO georgia_property_sales (
+            parcel_id, county, state,
+            sale_date, sale_year, sale_price,
+            provider
+          ) VALUES ($1,$2,$3,$4,$5,$6,$7)
+          ON CONFLICT (parcel_id, county, state, sale_date, sale_price) DO NOTHING`,
+          [
+            parcelId,
+            sale.county,
+            sale.state,
+            sale.saleDate.toISOString().split('T')[0],
+            sale.saleDate.getFullYear(),
+            sale.salePrice,
+            'fulton_ga'
+          ]
+        );
+      } catch (err) {
+        console.warn(`[Fulton] saveSales skip (${parcelId}): ${err}`);
+      }
+    }
   }
   
   /**

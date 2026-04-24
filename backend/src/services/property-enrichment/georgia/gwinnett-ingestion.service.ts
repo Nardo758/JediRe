@@ -14,6 +14,7 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import { ArcGISClient } from './arcgis-client';
+import { query as dbQuery } from '../../../database/connection';
 import {
   GwinnettParcel,
   GwinnettTaxMaster,
@@ -343,14 +344,82 @@ export class GwinnettIngestionService {
    * Save enriched property to database
    */
   private async saveProperty(property: EnrichedProperty): Promise<void> {
-    // TODO: Implement database insert/update
+    await dbQuery(
+      `INSERT INTO property_info_cache (
+        parcel_id, address, city, state, county,
+        year_built, number_of_units, stories, living_area_sqft,
+        just_value,
+        land_use_code, property_type, zoning,
+        owner_name, owner_name_2,
+        provider, fetched_at, raw_data
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+      ON CONFLICT (parcel_id, county, state) DO UPDATE SET
+        year_built       = COALESCE(EXCLUDED.year_built, property_info_cache.year_built),
+        number_of_units  = COALESCE(EXCLUDED.number_of_units, property_info_cache.number_of_units),
+        stories          = COALESCE(EXCLUDED.stories, property_info_cache.stories),
+        living_area_sqft = COALESCE(EXCLUDED.living_area_sqft, property_info_cache.living_area_sqft),
+        just_value       = COALESCE(EXCLUDED.just_value, property_info_cache.just_value),
+        land_use_code    = COALESCE(EXCLUDED.land_use_code, property_info_cache.land_use_code),
+        property_type    = COALESCE(EXCLUDED.property_type, property_info_cache.property_type),
+        zoning           = COALESCE(EXCLUDED.zoning, property_info_cache.zoning),
+        owner_name       = COALESCE(EXCLUDED.owner_name, property_info_cache.owner_name),
+        owner_name_2     = COALESCE(EXCLUDED.owner_name_2, property_info_cache.owner_name_2),
+        provider         = EXCLUDED.provider,
+        fetched_at       = EXCLUDED.fetched_at,
+        updated_at       = NOW()`,
+      [
+        property.parcelId,
+        property.address || '',
+        property.city || '',
+        property.state,
+        property.county,
+        property.yearBuilt || null,
+        property.units || null,
+        property.stories || null,
+        property.sqft || null,
+        property.totalValue || null,
+        property.propertyClass || null,
+        property.isMultifamily ? 'multifamily' : 'other',
+        property.zoning || null,
+        property.ownerName || null,
+        property.ownerName2 || null,
+        property.provider,
+        property.fetchedAt,
+        JSON.stringify({ isMultifamily: property.isMultifamily })
+      ]
+    );
   }
-  
+
   /**
    * Save sales to database
    */
   private async saveSales(lrsn: string, sales: PropertySale[]): Promise<void> {
-    // TODO: Implement database insert
+    for (const sale of sales) {
+      if (!sale.salePrice || sale.salePrice <= 0) continue;
+      if (!sale.saleDate || isNaN(sale.saleDate.getTime())) continue;
+      try {
+        await dbQuery(
+          `INSERT INTO georgia_property_sales (
+            parcel_id, county, state,
+            sale_date, sale_year, sale_price,
+            grantor_name, provider
+          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+          ON CONFLICT (parcel_id, county, state, sale_date, sale_price) DO NOTHING`,
+          [
+            lrsn,
+            sale.county,
+            sale.state,
+            sale.saleDate.toISOString().split('T')[0],
+            sale.saleDate.getFullYear(),
+            sale.salePrice,
+            sale.grantorName || null,
+            'gwinnett_ga'
+          ]
+        );
+      } catch (err) {
+        console.warn(`[Gwinnett] saveSales skip (${lrsn}): ${err}`);
+      }
+    }
   }
   
   /**

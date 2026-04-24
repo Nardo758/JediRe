@@ -11,6 +11,7 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import { ArcGISClient } from './arcgis-client';
+import { query as dbQuery } from '../../../database/connection';
 import {
   DeKalbParcel,
   DeKalbPermit,
@@ -307,7 +308,46 @@ export class DeKalbIngestionService {
    * Save enriched property to database
    */
   private async saveProperty(property: EnrichedProperty): Promise<void> {
-    // TODO: Implement database insert/update
+    await dbQuery(
+      `INSERT INTO property_info_cache (
+        parcel_id, address, city, state, county,
+        year_built, living_area_sqft,
+        assessed_value, just_value,
+        land_use_code, property_type, zoning,
+        owner_name,
+        provider, fetched_at, raw_data
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+      ON CONFLICT (parcel_id, county, state) DO UPDATE SET
+        year_built       = COALESCE(EXCLUDED.year_built, property_info_cache.year_built),
+        living_area_sqft = COALESCE(EXCLUDED.living_area_sqft, property_info_cache.living_area_sqft),
+        assessed_value   = COALESCE(EXCLUDED.assessed_value, property_info_cache.assessed_value),
+        just_value       = COALESCE(EXCLUDED.just_value, property_info_cache.just_value),
+        land_use_code    = COALESCE(EXCLUDED.land_use_code, property_info_cache.land_use_code),
+        property_type    = COALESCE(EXCLUDED.property_type, property_info_cache.property_type),
+        zoning           = COALESCE(EXCLUDED.zoning, property_info_cache.zoning),
+        owner_name       = COALESCE(EXCLUDED.owner_name, property_info_cache.owner_name),
+        provider         = EXCLUDED.provider,
+        fetched_at       = EXCLUDED.fetched_at,
+        updated_at       = NOW()`,
+      [
+        property.parcelId,
+        property.address || '',
+        property.city || '',
+        property.state,
+        property.county,
+        property.yearBuilt || null,
+        property.sqft || null,
+        property.assessedValue || null,
+        property.totalValue || null,
+        property.propertyClass || null,
+        property.isMultifamily ? 'multifamily' : 'other',
+        property.zoning || null,
+        property.ownerName || null,
+        property.provider,
+        property.fetchedAt,
+        JSON.stringify({ isMultifamily: property.isMultifamily })
+      ]
+    );
   }
   
   /**

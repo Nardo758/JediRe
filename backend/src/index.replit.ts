@@ -506,6 +506,9 @@ app.use('/api/v1/apartment-locator', apartmentLocatorRouter);
 // (e.g. /api/v1/property-discovery/apartment-locator/sync-table)
 app.use('/api/v1/property-discovery/apartment-locator', apartmentLocatorRouter);
 
+import georgiaIngestionRouter from './api/rest/georgia-ingestion.routes';
+app.use('/api/v1/georgia', georgiaIngestionRouter);
+
 // Learning feedback system routes
 import learningRouter from './api/rest/learning.routes';
 app.use('/api/v1/learning', learningRouter);
