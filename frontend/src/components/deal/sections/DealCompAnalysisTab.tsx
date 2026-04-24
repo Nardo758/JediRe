@@ -9,8 +9,11 @@ import {
   RotateCcw,
   MapPin,
   AlertCircle,
+  Zap,
+  TrendingUp,
 } from 'lucide-react';
 import { BT } from '@/components/deal/bloomberg-ui';
+import { apiClient } from '../../../api/client';
 
 const BT2 = BT;
 
@@ -361,6 +364,15 @@ const DealCompAnalysisTab: React.FC<DealCompAnalysisTabProps> = ({ dealId: propD
   const [expandedTiers, setExpandedTiers] = useState<Record<TierKey, boolean>>({
     trade_area: true, submarket: true, msa: false,
   });
+  const [rentalDiscovery, setRentalDiscovery] = useState<{
+    loading: boolean;
+    result: { median_rent: number | null; comp_count: number; rent_updated: boolean } | null;
+    error: string | null;
+  }>({ loading: false, result: null, error: null });
+  const [marketRent, setMarketRent] = useState<{
+    value: number | null;
+    sourceType: string | null;
+  }>({ value: null, sourceType: null });
 
   const fetchTieredComps = useCallback(async () => {
     if (!dealId) return;
@@ -443,6 +455,50 @@ const DealCompAnalysisTab: React.FC<DealCompAnalysisTabProps> = ({ dealId: propD
     }
   };
 
+  const fetchMarketRent = useCallback(async () => {
+    if (!dealId) return;
+    try {
+      const res: any = await apiClient.get(`/api/v1/deals/${dealId}/assumptions`);
+      const data = res?.data || res;
+      setMarketRent({
+        value: data?.avg_rent_per_unit ? parseFloat(data.avg_rent_per_unit) : null,
+        sourceType: data?.source_type || null,
+      });
+    } catch {
+      // non-blocking
+    }
+  }, [dealId]);
+
+  useEffect(() => { fetchMarketRent(); }, [fetchMarketRent]);
+
+  const handleDiscoverRental = async () => {
+    if (!dealId) return;
+    setRentalDiscovery({ loading: true, result: null, error: null });
+    try {
+      const res: any = await apiClient.post(
+        `/api/v1/deals/${dealId}/comp-set/discover-rental`,
+        { radiusMiles: 3, maxComps: 20 },
+      );
+      setRentalDiscovery({
+        loading: false,
+        result: {
+          median_rent: res?.median_rent ?? null,
+          comp_count: res?.comp_count ?? 0,
+          rent_updated: res?.rent_updated ?? false,
+        },
+        error: null,
+      });
+      await fetchMarketRent();
+      await fetchTieredComps();
+    } catch (err: any) {
+      setRentalDiscovery({
+        loading: false,
+        result: null,
+        error: err?.message || 'Rental discovery failed',
+      });
+    }
+  };
+
   if (loading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 0' }}>
@@ -479,6 +535,48 @@ const DealCompAnalysisTab: React.FC<DealCompAnalysisTabProps> = ({ dealId: propD
         </div>
       )}
 
+      {/* Rental discovery result banner */}
+      {rentalDiscovery.result && (
+        <div style={{
+          padding: '6px 10px', marginBottom: 6,
+          background: rentalDiscovery.result.rent_updated ? 'rgba(0,210,106,0.08)' : 'rgba(0,188,212,0.08)',
+          border: `1px solid ${rentalDiscovery.result.rent_updated ? '#00D26A40' : '#00BCD440'}`,
+          borderRadius: 4, display: 'flex', alignItems: 'center', gap: 8,
+        }}>
+          <TrendingUp style={{ width: 12, height: 12, color: rentalDiscovery.result.rent_updated ? '#00D26A' : '#00BCD4', flexShrink: 0 }} />
+          <div style={{ flex: 1 }}>
+            {rentalDiscovery.result.rent_updated && rentalDiscovery.result.median_rent != null ? (
+              <span style={{ fontSize: 10, color: BT2.text.primary, fontFamily: mono }}>
+                Market rent calibrated:{' '}
+                <strong style={{ color: '#00D26A' }}>${rentalDiscovery.result.median_rent.toLocaleString()}/mo</strong>
+                {' '}from <strong>{rentalDiscovery.result.comp_count}</strong> apt locator comps — saved to assumptions
+              </span>
+            ) : rentalDiscovery.result.median_rent != null ? (
+              <span style={{ fontSize: 10, color: BT2.text.secondary, fontFamily: mono }}>
+                Market estimate:{' '}
+                <strong style={{ color: '#00BCD4' }}>${rentalDiscovery.result.median_rent.toLocaleString()}/mo</strong>
+                {' '}from <strong>{rentalDiscovery.result.comp_count}</strong> comps
+                {' '}· <span style={{ color: BT2.text.muted }}>existing assumption preserved (user-set)</span>
+              </span>
+            ) : (
+              <span style={{ fontSize: 10, color: BT2.text.muted }}>
+                No rental comps found within 3 mi — check property coordinates
+              </span>
+            )}
+          </div>
+          <button
+            onClick={() => setRentalDiscovery({ loading: false, result: null, error: null })}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: BT2.text.muted, fontSize: 10, padding: 0 }}
+          >×</button>
+        </div>
+      )}
+      {rentalDiscovery.error && (
+        <div style={{ padding: '4px 10px', marginBottom: 6, background: '#FF47570A', border: `1px solid #FF475730`, borderRadius: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <AlertCircle style={{ width: 10, height: 10, color: '#FF4757' }} />
+          <span style={{ fontSize: 9, color: '#FF4757' }}>Rental discovery failed: {rentalDiscovery.error}</span>
+        </div>
+      )}
+
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '5px 10px', background: BT2.bg.panel,
@@ -509,6 +607,25 @@ const DealCompAnalysisTab: React.FC<DealCompAnalysisTabProps> = ({ dealId: propD
               <span style={{ color: BT2.text.primary, fontFamily: mono, fontSize: 10, fontWeight: 700 }}>{summary.avgDistance}mi</span>
             </div>
           )}
+          {marketRent.value != null && (
+            <>
+              <div style={{ width: 1, height: 14, background: BT2.border.subtle }} />
+              <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
+                <span style={{ color: BT2.text.muted, fontFamily: mono, fontSize: 7 }}>MKT RENT</span>
+                <span style={{ color: '#00D26A', fontFamily: mono, fontSize: 10, fontWeight: 700 }}>
+                  ${Math.round(marketRent.value).toLocaleString()}
+                </span>
+                {marketRent.sourceType === 'apt_locator' && (
+                  <span style={{
+                    fontSize: 7, fontWeight: 700, fontFamily: mono, letterSpacing: 0.5,
+                    color: '#00BCD4', background: '#00BCD410',
+                    border: '1px solid #00BCD440', borderRadius: 2,
+                    padding: '1px 4px',
+                  }}>MARKET EST</span>
+                )}
+              </div>
+            </>
+          )}
         </div>
         <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
           {(['list', 'split', 'map'] as ViewMode[]).map(m => (
@@ -520,6 +637,22 @@ const DealCompAnalysisTab: React.FC<DealCompAnalysisTabProps> = ({ dealId: propD
             }}>{m === 'list' ? '☰ LIST' : m === 'split' ? '◧ SPLIT' : '◻ MAP'}</button>
           ))}
           <div style={{ width: 1, height: 14, background: BT2.border.subtle, margin: '0 2px' }} />
+          <button
+            onClick={handleDiscoverRental}
+            disabled={rentalDiscovery.loading}
+            title="Discover nearby apartments from Apt Locator and calibrate market rent"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 3,
+              padding: '2px 7px', fontSize: 7, fontWeight: 700, fontFamily: mono,
+              border: `1px solid ${rentalDiscovery.loading ? BT2.border.medium : '#00BCD440'}`,
+              borderRadius: 3,
+              color: rentalDiscovery.loading ? BT2.text.muted : '#00BCD4',
+              background: rentalDiscovery.loading ? 'transparent' : '#00BCD408',
+              cursor: rentalDiscovery.loading ? 'wait' : 'pointer',
+              opacity: rentalDiscovery.loading ? 0.6 : 1 }}
+          >
+            <Zap style={{ width: 9, height: 9, animation: rentalDiscovery.loading ? 'spin 1s linear infinite' : 'none' }} />
+            {rentalDiscovery.loading ? 'CALIBRATING...' : 'RENTAL COMPS'}
+          </button>
           <button
             onClick={handleResetToDefaults}
             disabled={resetting}

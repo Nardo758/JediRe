@@ -915,15 +915,22 @@ export async function discoverFromAptLocator(
       ? (rents[mid - 1] + rents[mid]) / 2
       : rents[mid];
 
-    // Upsert deal_assumptions.avg_rent_per_unit with market-calibrated rent
+    // Upsert deal_assumptions.avg_rent_per_unit with market-calibrated rent.
+    // Only sets the value if currently NULL (never overrides user-entered values).
+    // Also marks source_type = 'apt_locator' so the UI can show a MARKET EST badge.
     await pool.query(`
-      INSERT INTO deal_assumptions (deal_id, avg_rent_per_unit)
-      VALUES ($1, $2)
+      INSERT INTO deal_assumptions (deal_id, avg_rent_per_unit, source_type)
+      VALUES ($1, $2, 'apt_locator')
       ON CONFLICT (deal_id) DO UPDATE SET
         avg_rent_per_unit = CASE
           WHEN deal_assumptions.avg_rent_per_unit IS NULL THEN EXCLUDED.avg_rent_per_unit
-          ELSE deal_assumptions.avg_rent_per_unit   -- never override user-set values
-        END
+          ELSE deal_assumptions.avg_rent_per_unit
+        END,
+        source_type = CASE
+          WHEN deal_assumptions.avg_rent_per_unit IS NULL THEN 'apt_locator'
+          ELSE deal_assumptions.source_type
+        END,
+        updated_at = NOW()
     `, [dealId, Math.round(medianRent)]);
 
     rentUpdated = true;
