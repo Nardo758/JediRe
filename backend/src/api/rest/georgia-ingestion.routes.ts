@@ -1378,6 +1378,7 @@ router.post('/extract-events', requireAuth, requireRole('owner', 'admin'), async
       lookback_days: lookbackDays,
       inserted: totalInserted,
       skipped: totalSkipped,
+      eventIds: allEvents.map(e => e.id).filter(Boolean),
       events: allEvents,
     });
   } catch (error) {

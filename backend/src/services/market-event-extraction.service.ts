@@ -1,23 +1,32 @@
 /**
  * Market Event Extraction Service
  *
- * Passes Atlanta CRE news article content to DeepSeek (pipeline/batch job;
- * cost absorbed by platform per triggered_by='event' convention) and extracts
- * structured market_events candidates. Validates with Zod before inserting.
+ * Passes Atlanta CRE news article content to Claude (Anthropic) for structured
+ * market_events extraction. Falls back to DeepSeek when AUTH_TOKEN /
+ * ANTHROPIC_API_KEY is absent (e.g. in CI). Batch/pipeline job — cost is
+ * absorbed by the platform per triggered_by='event' convention (no user credits).
  *
  * Deduplication: ON CONFLICT (event_name, effective_date, geography_id) DO NOTHING
  * — backed by idx_market_events_dedup unique index created in migration 014.
  */
 
+import Anthropic from '@anthropic-ai/sdk';
 import axios from 'axios';
 import { z } from 'zod';
 import { query as dbQuery } from '../database/connection';
 import { logger } from '../utils/logger';
 
+const ANTHROPIC_API_KEY =
+  process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY ??
+  process.env.ANTHROPIC_API_KEY;
+
 const DEEPSEEK_BASE_URL =
   process.env.DEEPSEEK_BASE_URL ?? 'https://api.deepseek.com';
 
 const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY;
+
+/** Claude model for pipeline/batch extraction (haiku = fast + cost-efficient) */
+const CLAUDE_MODEL = 'claude-haiku-4-5-20251001';
 
 // ── Valid market_events CHECK constraint values ──────────────────────────────
 
@@ -151,17 +160,72 @@ Rules:
 - Respond ONLY with valid JSON, no markdown, no prose`;
 }
 
+// ── LLM call helpers ─────────────────────────────────────────────────────────
+
+/** Call Claude (primary). Returns raw JSON string or throws. */
+async function callClaude(prompt: string): Promise<string> {
+  const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
+  const response = await client.messages.create({
+    model: CLAUDE_MODEL,
+    max_tokens: 1500,
+    messages: [
+      {
+        role: 'user',
+        content: prompt,
+      },
+    ],
+  });
+  const block = response.content[0];
+  if (block.type !== 'text') throw new Error('Unexpected Claude response type');
+  return block.text;
+}
+
+/** Call DeepSeek (fallback). Returns raw JSON string or throws. */
+async function callDeepSeek(prompt: string): Promise<string> {
+  const resp = await axios.post(
+    `${DEEPSEEK_BASE_URL.replace(/\/$/, '')}/chat/completions`,
+    {
+      model: 'deepseek-chat',
+      temperature: 0.1,
+      max_tokens: 1500,
+      response_format: { type: 'json_object' },
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a structured data extraction assistant. Always respond with valid JSON.',
+        },
+        {
+          role: 'user',
+          content: prompt,
+        },
+      ],
+    },
+    {
+      headers: {
+        'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      timeout: 30_000,
+    }
+  );
+  return resp.data?.choices?.[0]?.message?.content ?? '{}';
+}
+
 // ── Core extraction function ──────────────────────────────────────────────────
 
 /**
- * Call DeepSeek and extract structured market events from one news article.
- * Returns validated candidates; DB insertion happens in insertExtractedEvents().
+ * Call Claude (primary) or DeepSeek (fallback) to extract structured market
+ * events from one news article. Validates with Zod before returning candidates.
+ * DB insertion is handled by insertExtractedEvents().
  */
 export async function extractMarketEvents(
   article: ArticleInput
 ): Promise<ExtractedEvent[]> {
-  if (!DEEPSEEK_API_KEY) {
-    logger.warn('[EventExtraction] DEEPSEEK_API_KEY not set — skipping extraction');
+  const hasAnthropic = Boolean(ANTHROPIC_API_KEY);
+  const hasDeepSeek  = Boolean(DEEPSEEK_API_KEY);
+
+  if (!hasAnthropic && !hasDeepSeek) {
+    logger.warn('[EventExtraction] No LLM API key configured — skipping extraction');
     return [];
   }
 
@@ -172,46 +236,35 @@ export async function extractMarketEvents(
     return [];
   }
 
+  const prompt = buildPrompt(article);
   let rawResponse: string;
 
   try {
-    const resp = await axios.post(
-      `${DEEPSEEK_BASE_URL.replace(/\/$/, '')}/chat/completions`,
-      {
-        model: 'deepseek-chat',
-        temperature: 0.1,
-        max_tokens: 1500,
-        response_format: { type: 'json_object' },
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a structured data extraction assistant. Always respond with valid JSON.',
-          },
-          {
-            role: 'user',
-            content: buildPrompt(article),
-          },
-        ],
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${DEEPSEEK_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        timeout: 30_000,
-      }
-    );
-
-    rawResponse = resp.data?.choices?.[0]?.message?.content ?? '{}';
+    if (hasAnthropic) {
+      rawResponse = await callClaude(prompt);
+    } else {
+      rawResponse = await callDeepSeek(prompt);
+    }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    logger.error('[EventExtraction] DeepSeek API error', { error: msg, title: article.title });
+    logger.error('[EventExtraction] LLM API error', {
+      provider: hasAnthropic ? 'claude' : 'deepseek',
+      error: msg,
+      title: article.title,
+    });
     return [];
   }
 
+  // Strip markdown code fences if LLM wrapped the JSON (DeepSeek sometimes does this
+  // even when response_format: json_object is set)
+  const cleaned = rawResponse
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```\s*$/, '')
+    .trim();
+
   let parsed: unknown;
   try {
-    parsed = JSON.parse(rawResponse);
+    parsed = JSON.parse(cleaned);
   } catch {
     logger.warn('[EventExtraction] LLM returned non-JSON', {
       title: article.title,
