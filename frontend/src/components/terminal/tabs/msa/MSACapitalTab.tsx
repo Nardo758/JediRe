@@ -343,10 +343,10 @@ export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
                   ${deal.price}M
                 </td>
                 <td style={{ ...terminalStyles.tableCell, textAlign: 'right', fontFamily: "'JetBrains Mono'" }}>
-                  ${deal.ppu}K
+                  {deal.ppu != null ? `$${deal.ppu}K` : '—'}
                 </td>
                 <td style={{ ...terminalStyles.tableCell, textAlign: 'right', color: BT.text.cyan }}>
-                  {deal.cap}%
+                  {deal.cap != null ? `${deal.cap}%` : '—'}
                 </td>
                 <td style={{ ...terminalStyles.tableCell, color: BT.text.secondary }}>{deal.buyer}</td>
                 <td style={{ ...terminalStyles.tableCell, textAlign: 'right', color: BT.text.muted }}>{deal.date}</td>

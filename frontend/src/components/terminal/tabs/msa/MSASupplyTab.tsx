@@ -157,6 +157,9 @@ export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa }) => {
             </tr>
           </thead>
           <tbody>
+            {constructionTracker.length === 0 && (
+              <tr><td colSpan={7} style={{ ...terminalStyles.tableCell, textAlign: 'center', color: BT.text.muted }}>No pipeline projects found</td></tr>
+            )}
             {constructionTracker.map((proj) => (
               <tr key={proj.project} style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
                 <td style={{ ...terminalStyles.tableCell, fontWeight: 500 }}>{proj.project}</td>
@@ -228,6 +231,9 @@ export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa }) => {
             </tr>
           </thead>
           <tbody>
+            {pipelineBySubmarket.length === 0 && (
+              <tr><td colSpan={5} style={{ ...terminalStyles.tableCell, textAlign: 'center', color: BT.text.muted }}>No submarket data available</td></tr>
+            )}
             {pipelineBySubmarket.map((sub) => (
               <tr key={sub.name} style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
                 <td style={{ ...terminalStyles.tableCell, fontWeight: 500 }}>{sub.name}</td>

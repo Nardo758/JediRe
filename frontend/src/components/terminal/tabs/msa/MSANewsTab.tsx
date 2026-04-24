@@ -296,6 +296,11 @@ export const MSANewsTab: React.FC<MSANewsTabProps> = ({ msaId, msa }) => {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {filteredNews.length === 0 && (
+            <div style={{ padding: '20px 12px', textAlign: 'center', color: BT.text.muted, fontSize: 11 }}>
+              No market news available for this MSA
+            </div>
+          )}
           {filteredNews.map((item) => (
             <div
               key={item.id}
