@@ -1798,43 +1798,96 @@ export class CorrelationEngineService {
       missingData: [],
     };
     try {
-      interface ProximityRow { avg_transit: string; avg_premium: string; row_count: string }
-      const res = await this.pool.query<ProximityRow>(
-        `SELECT AVG(transit_score) AS avg_transit,
-                AVG(estimated_transit_premium_pct) AS avg_premium,
-                COUNT(*) AS row_count
-         FROM property_proximity
-         WHERE city ILIKE $1
-           AND transit_score IS NOT NULL
-           AND estimated_transit_premium_pct IS NOT NULL`,
+      // X = avg transit_score; Y = rent premium of high-transit vs low-transit submarkets
+      // Source: market_snapshots (avg_transit_score + avg_effective_rent by submarket)
+      interface SnapTransitRow {
+        avg_transit_score: string;
+        avg_effective_rent: string;
+        cnt: string;
+      }
+      const snapRes = await this.pool.query<SnapTransitRow>(
+        `SELECT ROUND(AVG(avg_transit_score)::numeric, 1) AS avg_transit_score,
+                ROUND(AVG(avg_effective_rent)::numeric, 0) AS avg_effective_rent,
+                COUNT(*) AS cnt
+         FROM market_snapshots
+         WHERE LOWER(geography_name) LIKE LOWER($1)
+           AND avg_transit_score IS NOT NULL
+           AND avg_effective_rent IS NOT NULL
+           AND snapshot_date >= NOW() - INTERVAL '12 months'`,
+        [`%${city}%`]
+      );
+      const snapCount = parseInt(snapRes.rows[0]?.cnt ?? '0', 10);
+
+      // Fallback: property_proximity transit_score + market_snapshots city-level rent baseline
+      interface PpRow { avg_transit: string; cnt: string }
+      const ppRes = await this.pool.query<PpRow>(
+        `SELECT ROUND(AVG(transit_score)::numeric, 1) AS avg_transit, COUNT(*) AS cnt
+         FROM property_proximity WHERE city ILIKE $1 AND transit_score IS NOT NULL`,
         [city]
       );
-      const rowCount = parseInt(res.rows[0]?.row_count ?? '0', 10);
-      const avgTransit = parseFloat(res.rows[0]?.avg_transit ?? 'NaN');
-      const avgPremium = parseFloat(res.rows[0]?.avg_premium ?? 'NaN');
-      if (rowCount === 0 || isNaN(avgTransit) || isNaN(avgPremium)) {
-        base.missingData.push('property_proximity rows for city (transit_score, estimated_transit_premium_pct)');
+      const ppCount = parseInt(ppRes.rows[0]?.cnt ?? '0', 10);
+
+      if (snapCount === 0 && ppCount === 0) {
+        base.missingData.push('market_snapshots: avg_transit_score + avg_effective_rent not populated for city');
+        base.missingData.push('property_proximity: transit_score rows absent for city');
         return base;
       }
+
+      let avgTransit: number;
+      let premiumPct: number | null = null;
+
+      if (snapCount >= 2) {
+        // Compute premium: high-transit (score ≥50) vs low-transit (<50) submarket rents
+        interface PremiumRow { high_rent: string; low_rent: string; high_cnt: string; low_cnt: string }
+        const premRes = await this.pool.query<PremiumRow>(
+          `SELECT
+             AVG(avg_effective_rent) FILTER (WHERE avg_transit_score >= 50) AS high_rent,
+             AVG(avg_effective_rent) FILTER (WHERE avg_transit_score < 50)  AS low_rent,
+             COUNT(*) FILTER (WHERE avg_transit_score >= 50) AS high_cnt,
+             COUNT(*) FILTER (WHERE avg_transit_score < 50)  AS low_cnt
+           FROM market_snapshots
+           WHERE LOWER(geography_name) LIKE LOWER($1)
+             AND avg_transit_score IS NOT NULL
+             AND avg_effective_rent IS NOT NULL
+             AND snapshot_date >= NOW() - INTERVAL '12 months'`,
+          [`%${city}%`]
+        );
+        const highRent = parseFloat(premRes.rows[0]?.high_rent ?? 'NaN');
+        const lowRent  = parseFloat(premRes.rows[0]?.low_rent  ?? 'NaN');
+        if (!isNaN(highRent) && !isNaN(lowRent) && lowRent > 0) {
+          premiumPct = parseFloat(((highRent - lowRent) / lowRent).toFixed(4));
+        }
+        avgTransit = parseFloat(snapRes.rows[0].avg_transit_score);
+      } else {
+        avgTransit = ppCount > 0 ? parseFloat(ppRes.rows[0].avg_transit) : 0;
+        base.missingData.push('Insufficient submarket rows in market_snapshots to compute high/low transit rent split — premium estimate unavailable');
+      }
+
       base.xValue = parseFloat(avgTransit.toFixed(1));
-      base.yValue = parseFloat((avgPremium * 100).toFixed(2));
-      base.correlation = this.estimateCorrelation(avgTransit / 100, avgPremium);
-      if (avgPremium > 0.05) {
-        base.signal = 'bullish';
-        base.confidence = 'medium';
-        base.actionable = `Transit-adjacent properties (n=${rowCount}) command avg +${(avgPremium * 100).toFixed(1)}% rent premium at transit score ${avgTransit.toFixed(0)}.`;
-      } else if (avgPremium < 0) {
-        base.signal = 'bearish';
-        base.confidence = 'low';
-        base.actionable = `Negative transit premium detected — location lacks transit advantage, underwrite accordingly.`;
+      if (premiumPct !== null) {
+        base.yValue = parseFloat((premiumPct * 100).toFixed(2));
+        base.correlation = this.estimateCorrelation(avgTransit / 100, premiumPct);
+        if (premiumPct > 0.05) {
+          base.signal = 'bullish';
+          base.confidence = 'medium';
+          base.actionable = `High-transit submarkets command +${(premiumPct * 100).toFixed(1)}% rent premium vs low-transit at avg transit score ${avgTransit.toFixed(0)}.`;
+        } else if (premiumPct < 0) {
+          base.signal = 'bearish';
+          base.confidence = 'low';
+          base.actionable = `High-transit submarkets show negative rent premium (${(premiumPct * 100).toFixed(1)}%) — transit advantage not reflected in rents.`;
+        } else {
+          base.signal = 'neutral';
+          base.confidence = 'low';
+          base.actionable = `Minimal transit rent premium (${(premiumPct * 100).toFixed(1)}%) at avg score ${avgTransit.toFixed(0)}.`;
+        }
       } else {
         base.signal = 'neutral';
         base.confidence = 'low';
-        base.actionable = `Minimal transit premium (${(avgPremium * 100).toFixed(1)}%) at transit score ${avgTransit.toFixed(0)}.`;
+        base.actionable = `Avg transit score ${avgTransit.toFixed(0)} — insufficient submarket data to compute rent premium split.`;
       }
       return base;
     } catch {
-      base.missingData.push('property_proximity query failed');
+      base.missingData.push('market_snapshots / property_proximity transit query failed');
       return base;
     }
   }
@@ -2312,19 +2365,40 @@ export class CorrelationEngineService {
       missingData: [],
     };
     try {
-      // 8-quarter (24-month) trailing avg price/SF from market_sale_comps
-      // city column is empty in market_sale_comps — scope to state='GA' when city is Atlanta-area
-      interface HistRow { trailing_avg_psf: string; comp_count: string }
-      const histRes = await this.pool.query<HistRow>(
-        `SELECT AVG(price_per_sqft) AS trailing_avg_psf, COUNT(*) AS comp_count
-         FROM market_sale_comps
-         WHERE sale_date >= NOW() - INTERVAL '24 months'
-           AND price_per_sqft IS NOT NULL
-           AND state = 'GA'`
+      // Resolve state for city using msas table to avoid hardcoded state assumptions
+      interface StateRow { state: string }
+      let marketState: string | null = null;
+      const stateRes = await this.pool.query<StateRow>(
+        `SELECT UPPER(state) AS state FROM msas WHERE name ILIKE $1 AND state IS NOT NULL LIMIT 1`,
+        [`%${city}%`]
       );
+      if (stateRes.rows.length > 0) marketState = stateRes.rows[0].state;
+
+      // 8-quarter trailing avg price/SF from market_sale_comps — scoped by city then state
+      interface HistRow { trailing_avg_psf: string; comp_count: string }
+      let histRes;
+      if (marketState) {
+        histRes = await this.pool.query<HistRow>(
+          `SELECT AVG(price_per_sqft) AS trailing_avg_psf, COUNT(*) AS comp_count
+           FROM market_sale_comps
+           WHERE sale_date >= NOW() - INTERVAL '24 months'
+             AND price_per_sqft IS NOT NULL
+             AND (city ILIKE $1 OR state = $2)`,
+          [`%${city}%`, marketState]
+        );
+      } else {
+        histRes = await this.pool.query<HistRow>(
+          `SELECT AVG(price_per_sqft) AS trailing_avg_psf, COUNT(*) AS comp_count
+           FROM market_sale_comps
+           WHERE sale_date >= NOW() - INTERVAL '24 months'
+             AND price_per_sqft IS NOT NULL
+             AND city ILIKE $1`,
+          [`%${city}%`]
+        );
+      }
       const compCount = parseInt(histRes.rows[0]?.comp_count ?? '0', 10);
       if (compCount < 3) {
-        base.missingData.push('Insufficient market_sale_comps (need 3+ with price_per_sqft in last 24mo)');
+        base.missingData.push(`Insufficient market_sale_comps for ${city}${marketState ? '/' + marketState : ''} (need 3+ with price_per_sqft in last 24mo)`);
         return base;
       }
       const trailingAvg = parseFloat(histRes.rows[0].trailing_avg_psf);
@@ -2359,13 +2433,23 @@ export class CorrelationEngineService {
         // No deal asking price available — fall back to recent market clearing (6mo avg)
         base.missingData.push(`No deal with asking_price + gross_sf found for ${city} — compare uses 6mo market clearing instead of underwriting asking price`);
         interface RecentRow { recent_avg_psf: string; recent_count: string }
-        const recentRes = await this.pool.query<RecentRow>(
-          `SELECT AVG(price_per_sqft) AS recent_avg_psf, COUNT(*) AS recent_count
-           FROM market_sale_comps
-           WHERE sale_date >= NOW() - INTERVAL '6 months'
-             AND price_per_sqft IS NOT NULL
-             AND state = 'GA'`
-        );
+        const recentRes = marketState
+          ? await this.pool.query<RecentRow>(
+              `SELECT AVG(price_per_sqft) AS recent_avg_psf, COUNT(*) AS recent_count
+               FROM market_sale_comps
+               WHERE sale_date >= NOW() - INTERVAL '6 months'
+                 AND price_per_sqft IS NOT NULL
+                 AND (city ILIKE $1 OR state = $2)`,
+              [`%${city}%`, marketState]
+            )
+          : await this.pool.query<RecentRow>(
+              `SELECT AVG(price_per_sqft) AS recent_avg_psf, COUNT(*) AS recent_count
+               FROM market_sale_comps
+               WHERE sale_date >= NOW() - INTERVAL '6 months'
+                 AND price_per_sqft IS NOT NULL
+                 AND city ILIKE $1`,
+              [`%${city}%`]
+            );
         const recentCount = parseInt(recentRes.rows[0]?.recent_count ?? '0', 10);
         if (recentCount >= 1) {
           compareValue = parseFloat(recentRes.rows[0].recent_avg_psf);
