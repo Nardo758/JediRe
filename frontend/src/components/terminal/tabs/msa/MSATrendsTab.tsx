@@ -78,27 +78,20 @@ interface PriceTrendsResponse {
   trends: PriceTrend[];
 }
 
-interface RentSnapshot {
-  snapshot_date: string;
-  city: string;
-  state: string;
+interface RentByClassEntry {
+  asset_class: 'A' | 'B' | 'C';
+  property_count: number;
   avg_rent: number | null;
-  studio_rent: number | null;
-  one_br_rent: number | null;
-  two_br_rent: number | null;
-  three_br_rent: number | null;
-  avg_occupancy: number | null;
-  concession_rate: number | null;
-  rent_growth_90d: number | null;
-  rent_growth_180d: number | null;
+  min_rent: number | null;
+  max_rent: number | null;
 }
 
-interface RentTrendsResponse {
+interface RentByClassResponse {
   success: boolean;
   city: string;
   state: string;
   count: number;
-  snapshots: RentSnapshot[];
+  classes: RentByClassEntry[];
 }
 
 interface SupplyPipelineSubmarket {
@@ -136,8 +129,8 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
   const [timeRange, setTimeRange] = useState<typeof TIME_RANGES[number]>('1Y');
   const [priceTrends, setPriceTrends] = useState<PriceTrend[]>([]);
   const [trendsLoading, setTrendsLoading] = useState(true);
-  const [rentSnapshots, setRentSnapshots] = useState<RentSnapshot[]>([]);
-  const [rentLoading, setRentLoading] = useState(true);
+  const [rentByClass, setRentByClass] = useState<RentByClassEntry[]>([]);
+  const [rentByClassLoading, setRentByClassLoading] = useState(true);
   const [supplyPipeline, setSupplyPipeline] = useState<SupplyPipelineSubmarket[]>([]);
   const [supplyPipelineTotal, setSupplyPipelineTotal] = useState<number | null>(null);
   const [rentByClass, setRentByClass] = useState<RentByClassTier[]>([]);
@@ -204,11 +197,11 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
   }, []);
 
   useEffect(() => {
-    setRentLoading(true);
-    apiClient.get<RentTrendsResponse>('/georgia/analytics/rent-trends?city=Atlanta&state=GA&limit=8')
-      .then((res: RentTrendsResponse) => setRentSnapshots(res?.snapshots || []))
-      .catch(() => setRentSnapshots([]))
-      .finally(() => setRentLoading(false));
+    setRentByClassLoading(true);
+    apiClient.get<RentByClassResponse>('/georgia/analytics/rent-by-class?city=Atlanta&state=GA')
+      .then((res: RentByClassResponse) => setRentByClass(res?.classes || []))
+      .catch(() => setRentByClass([]))
+      .finally(() => setRentByClassLoading(false));
   }, []);
 
   useEffect(() => {
@@ -521,85 +514,122 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
 
       {/* Row 4: Rent by Vintage + JEDI History */}
       <div style={{ display: 'flex', gap: 20 }}>
-        {/* Market Rents by Bedroom Type */}
+        {/* Rent by Vintage Class */}
         <div style={{ flex: 1, ...terminalStyles.card, padding: 20 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <h3 style={{ ...terminalStyles.sectionTitle, fontSize: 14 }}>
-              Market Rents by Bedroom
+              Rent by Vintage Class
             </h3>
-            {!rentLoading && rentSnapshots.length > 0 && (
+            {rentByClassLoading ? (
               <span style={{
                 fontSize: 9, fontWeight: 700, letterSpacing: 1,
-                color: BT.text.green,
-                background: 'rgba(34,197,94,0.12)',
+                color: BT.text.muted, background: BT.bg.elevated,
                 padding: '2px 7px', borderRadius: 0,
-              }}>
-                LIVE · APT LOCATOR
-              </span>
+              }}>LOADING</span>
+            ) : rentByClass.length > 0 ? (
+              <span style={{
+                fontSize: 9, fontWeight: 700, letterSpacing: 1,
+                color: BT.text.green, background: 'rgba(34,197,94,0.12)',
+                padding: '2px 7px', borderRadius: 0,
+              }}>LIVE · APT LOCATOR</span>
+            ) : (
+              <span style={{
+                fontSize: 9, fontWeight: 700, letterSpacing: 1,
+                color: BT.text.muted, background: BT.bg.elevated,
+                padding: '2px 7px', borderRadius: 0,
+              }}>MARKET BENCHMARK</span>
             )}
           </div>
-          {rentLoading ? (
+          {rentByClassLoading ? (
             <div style={{ fontSize: 11, color: BT.text.muted, textAlign: 'center', padding: 20 }}>
               Loading rent data...
             </div>
-          ) : rentSnapshots.length > 0 ? (
-            <>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {rentSnapshots.slice(0, 6).map((s, i) => {
-                  const maxR = Math.max(
-                    s.studio_rent || 0, s.one_br_rent || 0,
-                    s.two_br_rent || 0, s.three_br_rent || 0, 1
-                  );
-                  const label = s.snapshot_date
-                    ? new Date(s.snapshot_date).toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
-                    : '—';
-                  return (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ width: 48, fontSize: 10, color: BT.text.muted }}>{label}</span>
-                      <div style={{ flex: 1, display: 'flex', gap: 2, alignItems: 'flex-end', height: 20 }}>
-                        {s.studio_rent && (
-                          <div style={{ flex: 1, height: `${(s.studio_rent / maxR) * 100}%`, background: '#22c55e', borderRadius: 0 }} title={`Studio: $${s.studio_rent}`} />
-                        )}
-                        {s.one_br_rent && (
-                          <div style={{ flex: 1, height: `${(s.one_br_rent / maxR) * 100}%`, background: '#3b82f6', borderRadius: 0 }} title={`1BR: $${s.one_br_rent}`} />
-                        )}
-                        {s.two_br_rent && (
-                          <div style={{ flex: 1, height: `${(s.two_br_rent / maxR) * 100}%`, background: '#f59e0b', borderRadius: 0 }} title={`2BR: $${s.two_br_rent}`} />
-                        )}
-                        {s.three_br_rent && (
-                          <div style={{ flex: 1, height: `${(s.three_br_rent / maxR) * 100}%`, background: '#f97316', borderRadius: 0 }} title={`3BR: $${s.three_br_rent}`} />
-                        )}
+          ) : rentByClass.length > 0 ? (
+            (() => {
+              const CLASS_COLORS: Record<string, string> = { A: '#22c55e', B: '#3b82f6', C: '#f59e0b' };
+              const CLASS_LABELS: Record<string, string> = {
+                A: 'Class A (2010+)',
+                B: 'Class B (1995–2009)',
+                C: 'Class C (pre-1995)',
+              };
+              const maxRent = Math.max(...rentByClass.map(c => c.avg_rent || 0), 1);
+              return (
+                <>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                    {rentByClass.map((c, i) => (
+                      <div key={i}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                          <span style={{ fontSize: 11, fontWeight: 600, color: CLASS_COLORS[c.asset_class] || BT.text.secondary }}>
+                            {CLASS_LABELS[c.asset_class] || `Class ${c.asset_class}`}
+                          </span>
+                          <span style={{ fontSize: 11, color: BT.text.primary, fontWeight: 700 }}>
+                            {c.avg_rent != null ? `$${c.avg_rent.toLocaleString()}` : '—'}
+                          </span>
+                        </div>
+                        <div style={{ height: 14, background: BT.bg.elevated, borderRadius: 0, position: 'relative' }}>
+                          <div style={{
+                            position: 'absolute', left: 0, top: 0,
+                            width: `${((c.avg_rent || 0) / maxRent) * 100}%`,
+                            height: '100%',
+                            background: CLASS_COLORS[c.asset_class] || BT.accent.blue,
+                            borderRadius: 0,
+                          }} />
+                        </div>
+                        <div style={{ fontSize: 9, color: BT.text.muted, marginTop: 3 }}>
+                          {c.property_count} {c.property_count === 1 ? 'property' : 'properties'}
+                          {c.min_rent != null && c.max_rent != null && (
+                            <span> · range ${c.min_rent.toLocaleString()}–${c.max_rent.toLocaleString()}</span>
+                          )}
+                        </div>
                       </div>
-                      <span style={{ fontSize: 10, color: BT.text.secondary, width: 44, textAlign: 'right' }}>
-                        {s.avg_rent ? `$${Math.round(s.avg_rent / 100) * 100}` : '—'}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-              <div style={{ display: 'flex', gap: 12, marginTop: 12, flexWrap: 'wrap' }}>
-                {[
-                  { label: 'Studio', color: '#22c55e' },
-                  { label: '1BR', color: '#3b82f6' },
-                  { label: '2BR', color: '#f59e0b' },
-                  { label: '3BR', color: '#f97316' },
-                ].map(item => (
-                  <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <span style={{ width: 10, height: 10, background: item.color, borderRadius: 0 }} />
-                    <span style={{ fontSize: 10, color: BT.text.muted }}>{item.label}</span>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </>
+                  <div style={{ fontSize: 9, color: BT.text.muted, marginTop: 14, borderTop: `1px solid ${BT.border.subtle}`, paddingTop: 8 }}>
+                    Source: Apartment Locator AI · Atlanta metro
+                  </div>
+                </>
+              );
+            })()
           ) : (
-            <div style={{ padding: 24, textAlign: 'center', borderLeft: `2px solid ${BT.border.subtle}` }}>
-              <div style={{ fontSize: 12, color: BT.text.muted, marginBottom: 6 }}>
-                No rent snapshot data available
-              </div>
-              <div style={{ fontSize: 10, color: BT.text.muted }}>
-                Run the Atlanta sync to populate market rent snapshots.
-              </div>
-            </div>
+            (() => {
+              const last = RENT_VINTAGE_DATA[RENT_VINTAGE_DATA.length - 1];
+              const CLASS_COLORS = ['#22c55e', '#3b82f6', '#f97316', '#f59e0b', '#a78bfa'];
+              const entries = [
+                { label: 'Class A+ (2015+)', value: last.aPlus, color: CLASS_COLORS[0] },
+                { label: 'Class A (2010–2014)', value: last.a, color: CLASS_COLORS[1] },
+                { label: 'Class B+ (2000–2009)', value: last.bPlus, color: CLASS_COLORS[2] },
+                { label: 'Class B (1990–1999)', value: last.b, color: CLASS_COLORS[3] },
+                { label: 'Class C (pre-1990)', value: last.c, color: CLASS_COLORS[4] },
+              ];
+              const maxRent = Math.max(...entries.map(e => e.value), 1);
+              return (
+                <>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {entries.map((e, i) => (
+                      <div key={i}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                          <span style={{ fontSize: 11, color: e.color, fontWeight: 600 }}>{e.label}</span>
+                          <span style={{ fontSize: 11, color: BT.text.secondary }}>${e.value.toLocaleString()}</span>
+                        </div>
+                        <div style={{ height: 10, background: BT.bg.elevated, borderRadius: 0, position: 'relative' }}>
+                          <div style={{
+                            position: 'absolute', left: 0, top: 0,
+                            width: `${(e.value / maxRent) * 100}%`,
+                            height: '100%',
+                            background: e.color,
+                            opacity: 0.7,
+                            borderRadius: 0,
+                          }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: 9, color: BT.text.muted, marginTop: 14, borderTop: `1px solid ${BT.border.subtle}`, paddingTop: 8 }}>
+                    Static benchmark — {last.quarter} · Connect Apt Locator sync for live data
+                  </div>
+                </>
+              );
+            })()
           )}
         </div>
 

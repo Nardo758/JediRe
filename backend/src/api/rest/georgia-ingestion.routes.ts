@@ -486,47 +486,44 @@ router.get('/analytics/rent-trends', requireAuth, async (req: Request, res: Resp
 
 /**
  * GET /api/v1/georgia/analytics/rent-by-class
- * Current market rent by derived property class for Atlanta MSA.
- * Source: apartment_locator_properties (Apartment Locator AI sync).
- * Derives class from avg_asking_rent tiers: A+(>=2500), A(2000-2499),
- * B+(1600-1999), B(1300-1599), C(<1300).
- * Query: ?state=GA
+ * Average asking rent by asset class (A/B/C derived from year_built) from apartment_locator_properties.
+ * Class A = year_built >= 2010, Class B = year_built >= 1995, Class C = older.
+ * Query: ?city=Atlanta&state=GA
  */
 router.get('/analytics/rent-by-class', requireAuth, async (req: Request, res: Response) => {
   try {
+    const city = (req.query.city as string) || 'Atlanta';
     const state = (req.query.state as string) || 'GA';
     const pool = getPool();
     const result = await pool.query(`
       SELECT
         CASE
-          WHEN avg_asking_rent >= 2500 THEN 'A+'
-          WHEN avg_asking_rent >= 2000 THEN 'A'
-          WHEN avg_asking_rent >= 1600 THEN 'B+'
-          WHEN avg_asking_rent >= 1300 THEN 'B'
+          WHEN year_built >= 2010 THEN 'A'
+          WHEN year_built >= 1995 THEN 'B'
           ELSE 'C'
-        END AS class_tier,
-        COUNT(*)::int AS count,
-        ROUND(AVG(avg_asking_rent), 0)::float AS avg_rent,
-        ROUND(MIN(avg_asking_rent), 0)::float AS min_rent,
-        ROUND(MAX(avg_asking_rent), 0)::float AS max_rent,
-        ROUND(AVG(occupancy_pct), 1)::float AS avg_occupancy
+        END AS asset_class,
+        COUNT(*)::int                                   AS property_count,
+        ROUND(AVG(avg_asking_rent)::numeric, 0)::int    AS avg_rent,
+        ROUND(MIN(avg_asking_rent)::numeric, 0)::int    AS min_rent,
+        ROUND(MAX(avg_asking_rent)::numeric, 0)::int    AS max_rent
       FROM apartment_locator_properties
-      WHERE state = $1
+      WHERE city ILIKE $1
+        AND state = $2
         AND avg_asking_rent IS NOT NULL
-      GROUP BY class_tier
-      ORDER BY avg_rent DESC
-    `, [state]);
+        AND avg_asking_rent > 0
+      GROUP BY asset_class
+      ORDER BY asset_class
+    `, [city, state]);
 
-    const tiers = result.rows.map((r: any) => ({
-      class_tier: r.class_tier,
-      count: r.count,
-      avg_rent: r.avg_rent,
-      min_rent: r.min_rent,
-      max_rent: r.max_rent,
-      avg_occupancy: r.avg_occupancy,
+    const classes = result.rows.map((r: any) => ({
+      asset_class: r.asset_class,
+      property_count: r.property_count,
+      avg_rent: r.avg_rent != null ? Number(r.avg_rent) : null,
+      min_rent: r.min_rent != null ? Number(r.min_rent) : null,
+      max_rent: r.max_rent != null ? Number(r.max_rent) : null,
     }));
 
-    res.json({ success: true, state, count: tiers.length, tiers });
+    res.json({ success: true, city, state, count: classes.length, classes });
   } catch (error) {
     console.error('[API] /georgia/analytics/rent-by-class error:', error);
     res.status(500).json({ error: 'Failed to get rent by class' });
