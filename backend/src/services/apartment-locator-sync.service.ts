@@ -324,7 +324,12 @@ export class ApartmentLocatorSyncService {
               total_units, units_delivering,
               available_date, synced_at
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::timestamptz)
-            ON CONFLICT DO NOTHING
+            ON CONFLICT (address, city, state) WHERE address IS NOT NULL
+            DO UPDATE SET
+              name            = EXCLUDED.name,
+              total_units     = EXCLUDED.total_units,
+              units_delivering= EXCLUDED.units_delivering,
+              synced_at       = EXCLUDED.synced_at
           `, [
             prop.name || null,
             prop.address,

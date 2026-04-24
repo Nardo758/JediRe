@@ -11,7 +11,7 @@ import { TerminalChart, ChartSeries, ChartDataPoint } from '../../TerminalChart'
 import { SIGNAL_GROUPS, BT_SIGNAL_COLORS, SUPPLY_WAVE_STYLES, SupplyWavePhase } from '../../signalGroups';
 import { useCommentaryStore } from '../../../../stores/commentaryStore';
 import { SignalCommentary, SupplyNarrative } from '../../commentary';
-import apiClient from '../../../../api/client';
+import { apiClient } from '../../../../api/client';
 
 interface MSATrendsTabProps {
   msaId: string;
@@ -150,9 +150,9 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
 
   useEffect(() => {
     setTrendsLoading(true);
-    apiClient.get('/api/v1/georgia/analytics/price-trends?state=GA')
+    apiClient.get('/georgia/analytics/price-trends?state=GA')
       .then(res => {
-        const trends: PriceTrend[] = res.data?.trends || [];
+        const trends: PriceTrend[] = (res as any)?.trends || [];
         // Aggregate across counties using transaction-count weighted averages
         const aggregated = new Map<number, {
           sale_count: number;
@@ -204,8 +204,8 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
 
   useEffect(() => {
     setRentLoading(true);
-    apiClient.get('/api/v1/georgia/analytics/rent-trends?city=Atlanta&state=GA&limit=8')
-      .then(res => setRentSnapshots(res.data?.snapshots || []))
+    apiClient.get('/georgia/analytics/rent-trends?city=Atlanta&state=GA&limit=8')
+      .then(res => setRentSnapshots((res as any)?.snapshots || []))
       .catch(() => setRentSnapshots([]))
       .finally(() => setRentLoading(false));
   }, []);

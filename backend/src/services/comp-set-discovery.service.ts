@@ -816,7 +816,12 @@ export async function discoverFromAptLocator(
           $11, $12, $13,
           'apartment_locator', $14, true
         )
-        ON CONFLICT DO NOTHING
+        ON CONFLICT (deal_id, source, source_id) WHERE source_id IS NOT NULL
+        DO UPDATE SET
+          relevance_score  = EXCLUDED.relevance_score,
+          relevance_factors= EXCLUDED.relevance_factors,
+          comp_distance_miles = EXCLUDED.comp_distance_miles,
+          is_active        = true
       `, [
         dealId,
         comp.id,
