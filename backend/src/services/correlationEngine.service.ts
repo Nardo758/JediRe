@@ -1676,25 +1676,48 @@ export class CorrelationEngineService {
       missingData: [],
     };
     try {
-      // 6-month lag: fetch snapshots ordered by date; pair oldest (lagged job growth) with newest (current absorption)
-      // Requires at least 2 snapshots ≥6 months apart to compute; returns insufficient when data is sparse
+      // 6-month lag: pair oldest row's job_growth_yoy (X) with newest row's net_absorption_units (Y)
+      // Try costar_market_metrics first (per spec); fall back to market_snapshots
       interface SnapRow { job_growth_yoy: string; net_absorption_units: string; snapshot_date: string }
-      const snapRes = await this.pool.query<SnapRow>(
-        `SELECT job_growth_yoy, net_absorption_units, snapshot_date
-         FROM market_snapshots
-         WHERE LOWER(geography_name) LIKE LOWER($1)
-           AND job_growth_yoy IS NOT NULL
-           AND net_absorption_units IS NOT NULL
-         ORDER BY snapshot_date ASC`,
-        [`%${city}%`]
-      );
-      if (snapRes.rows.length < 2) {
-        base.missingData.push('market_snapshots with job_growth_yoy and net_absorption_units (need 2+ rows for 6mo lead-lag)');
+      let snapRows: SnapRow[] = [];
+      let sourceTable = 'costar_market_metrics';
+      try {
+        const costarRes = await this.pool.query<SnapRow>(
+          `SELECT job_growth_yoy, net_absorption_units, period_date AS snapshot_date
+           FROM costar_market_metrics
+           WHERE LOWER(market_name) LIKE LOWER($1)
+             AND job_growth_yoy IS NOT NULL
+             AND net_absorption_units IS NOT NULL
+           ORDER BY period_date ASC`,
+          [`%${city}%`]
+        );
+        snapRows = costarRes.rows;
+      } catch {
+        // costar_market_metrics not yet present; fall back to market_snapshots
+      }
+      if (snapRows.length < 2) {
+        if (sourceTable === 'costar_market_metrics') {
+          base.missingData.push('costar_market_metrics (job_growth_yoy / net_absorption_units) not yet populated — falling back to market_snapshots');
+          sourceTable = 'market_snapshots';
+        }
+        const snapRes = await this.pool.query<SnapRow>(
+          `SELECT job_growth_yoy, net_absorption_units, snapshot_date
+           FROM market_snapshots
+           WHERE LOWER(geography_name) LIKE LOWER($1)
+             AND job_growth_yoy IS NOT NULL
+             AND net_absorption_units IS NOT NULL
+           ORDER BY snapshot_date ASC`,
+          [`%${city}%`]
+        );
+        snapRows = snapRes.rows;
+      }
+      if (snapRows.length < 2) {
+        base.missingData.push(`${sourceTable}: insufficient rows with job_growth_yoy and net_absorption_units for ${city} (need 2+ rows ≥6mo apart)`);
         return base;
       }
       // Lag X = job_growth_yoy from oldest snapshot; Lag Y = net_absorption from most recent
-      const lagRow = snapRes.rows[0];
-      const currentRow = snapRes.rows[snapRes.rows.length - 1];
+      const lagRow = snapRows[0];
+      const currentRow = snapRows[snapRows.length - 1];
       const lagDate = new Date(lagRow.snapshot_date);
       const currentDate = new Date(currentRow.snapshot_date);
       const monthsApart = (currentDate.getFullYear() - lagDate.getFullYear()) * 12
@@ -2022,13 +2045,9 @@ export class CorrelationEngineService {
       );
       if (res.rows.length === 0) {
         base.missingData.push('No employer_move events in market_events in last 36 months');
-        base.missingData.push('Pre/post absorption from market_snapshots (table has 0 rows)');
+        base.missingData.push('Pre/post absorption windows require employer_move events to anchor');
         return base;
       }
-      const totalJobs = res.rows.reduce(
-        (sum, row) => sum + (row.jobs_affected !== null ? parseInt(row.jobs_affected, 10) : 0),
-        0
-      );
       const positiveCount = res.rows.filter(row => row.expected_impact_direction === 'positive').length;
       const netJobImpact = res.rows.reduce(
         (sum, row) => sum + (
@@ -2039,20 +2058,85 @@ export class CorrelationEngineService {
         0
       );
       base.xValue = res.rows.length;
-      base.yValue = netJobImpact;
-      base.missingData.push('Pre/post absorption comparison requires market_snapshots time series (0 rows currently)');
-      if (netJobImpact > 500) {
+
+      // Attempt pre/post absorption comparison anchored to earliest announced_date
+      // Try costar_market_metrics first, fall back to market_snapshots
+      interface AbsRow { avg_absorption: string; row_count: string }
+      const oldestEventDate = res.rows[res.rows.length - 1]?.announced_date;
+      let preAbsorption: number | null = null;
+      let postAbsorption: number | null = null;
+      if (oldestEventDate) {
+        let absRows: AbsRow[] = [];
+        try {
+          const [preCm, postCm] = await Promise.all([
+            this.pool.query<AbsRow>(
+              `SELECT ROUND(AVG(net_absorption_units)::numeric, 0) AS avg_absorption, COUNT(*) AS row_count
+               FROM costar_market_metrics
+               WHERE LOWER(market_name) LIKE LOWER($1) AND period_date < $2`,
+              [`%${city}%`, oldestEventDate]
+            ),
+            this.pool.query<AbsRow>(
+              `SELECT ROUND(AVG(net_absorption_units)::numeric, 0) AS avg_absorption, COUNT(*) AS row_count
+               FROM costar_market_metrics
+               WHERE LOWER(market_name) LIKE LOWER($1) AND period_date >= $2`,
+              [`%${city}%`, oldestEventDate]
+            ),
+          ]);
+          if (parseInt(preCm.rows[0]?.row_count ?? '0', 10) > 0 || parseInt(postCm.rows[0]?.row_count ?? '0', 10) > 0) {
+            absRows = [preCm.rows[0], postCm.rows[0]];
+            preAbsorption = parseFloat(preCm.rows[0]?.avg_absorption ?? 'NaN');
+            postAbsorption = parseFloat(postCm.rows[0]?.avg_absorption ?? 'NaN');
+          }
+        } catch { /* costar_market_metrics not present */ }
+
+        if (absRows.length === 0) {
+          // Fall back to market_snapshots
+          const [preSn, postSn] = await Promise.all([
+            this.pool.query<AbsRow>(
+              `SELECT ROUND(AVG(net_absorption_units)::numeric, 0) AS avg_absorption, COUNT(*) AS row_count
+               FROM market_snapshots
+               WHERE LOWER(geography_name) LIKE LOWER($1) AND snapshot_date < $2
+                 AND net_absorption_units IS NOT NULL`,
+              [`%${city}%`, oldestEventDate]
+            ),
+            this.pool.query<AbsRow>(
+              `SELECT ROUND(AVG(net_absorption_units)::numeric, 0) AS avg_absorption, COUNT(*) AS row_count
+               FROM market_snapshots
+               WHERE LOWER(geography_name) LIKE LOWER($1) AND snapshot_date >= $2
+                 AND net_absorption_units IS NOT NULL`,
+              [`%${city}%`, oldestEventDate]
+            ),
+          ]);
+          if (parseInt(preSn.rows[0]?.row_count ?? '0', 10) > 0 || parseInt(postSn.rows[0]?.row_count ?? '0', 10) > 0) {
+            preAbsorption = parseFloat(preSn.rows[0]?.avg_absorption ?? 'NaN');
+            postAbsorption = parseFloat(postSn.rows[0]?.avg_absorption ?? 'NaN');
+          } else {
+            base.missingData.push('Pre/post absorption: costar_market_metrics not available; market_snapshots has no net_absorption_units rows for city');
+          }
+        }
+      }
+
+      // Build yValue and signal
+      const hasAbsorption = preAbsorption !== null && !isNaN(preAbsorption) && postAbsorption !== null && !isNaN(postAbsorption);
+      if (hasAbsorption) {
+        base.yValue = Math.round(postAbsorption! - preAbsorption!);
+        base.correlation = this.estimateCorrelation(netJobImpact / 1000, base.yValue / 1000);
+      } else {
+        base.yValue = netJobImpact;
+      }
+
+      if (netJobImpact > 500 && (!hasAbsorption || (postAbsorption! - preAbsorption!) > 0)) {
         base.signal = 'bullish';
-        base.confidence = 'medium';
-        base.actionable = `${res.rows.length} employer move(s) in last 36mo — net +${netJobImpact.toLocaleString()} jobs relocating; absorption demand shock expected in affected submarkets.`;
-      } else if (netJobImpact < -200) {
+        base.confidence = hasAbsorption ? 'medium' : 'low';
+        base.actionable = `${res.rows.length} employer move(s) in last 36mo — net +${netJobImpact.toLocaleString()} jobs${hasAbsorption ? `; absorption delta: ${Math.round(postAbsorption! - preAbsorption!).toLocaleString()} units pre→post move` : ''}.`;
+      } else if (netJobImpact < -200 && (!hasAbsorption || (postAbsorption! - preAbsorption!) < 0)) {
         base.signal = 'bearish';
-        base.confidence = 'medium';
-        base.actionable = `${res.rows.length} employer move(s) with net ${netJobImpact.toLocaleString()} job impact — demand headwind, expect softer absorption.`;
+        base.confidence = hasAbsorption ? 'medium' : 'low';
+        base.actionable = `${res.rows.length} employer move(s) with net ${netJobImpact.toLocaleString()} job loss${hasAbsorption ? `; absorption worsened ${Math.round(postAbsorption! - preAbsorption!).toLocaleString()} units` : ''}.`;
       } else {
         base.signal = 'neutral';
         base.confidence = 'low';
-        base.actionable = `${res.rows.length} employer move event(s), ${positiveCount} positive — net job impact ${netJobImpact.toLocaleString()}; absorption effect unclear.`;
+        base.actionable = `${res.rows.length} employer move event(s), ${positiveCount} positive — net job impact ${netJobImpact.toLocaleString()}; absorption effect unclear${hasAbsorption ? ` (absorption delta: ${Math.round(postAbsorption! - preAbsorption!).toLocaleString()})` : ''}.`;
       }
       return base;
     } catch {
@@ -2061,7 +2145,7 @@ export class CorrelationEngineService {
     }
   }
 
-  private async computeCOR27(_city: string): Promise<CorrelationResult> {
+  private async computeCOR27(city: string): Promise<CorrelationResult> {
     const base: CorrelationResult = {
       id: 'COR-27',
       name: 'Interest Rate → Cap Rate (3mo lag)',
@@ -2119,14 +2203,16 @@ export class CorrelationEngineService {
       const lagCap = lagCount > 0 ? parseFloat(lagCapRes.rows[0].avg_cap) : null;
       const currentCap = currentCount > 0 ? parseFloat(currentCapRes.rows[0].avg_cap) : null;
 
-      // Also try market_snapshots for avg_cap_rate
+      // Also try market_snapshots avg_cap_rate scoped to city
       interface SnapCapRow { avg_cap_rate: string; snapshot_date: string }
       const snapRes = await this.pool.query<SnapCapRow>(
         `SELECT avg_cap_rate, snapshot_date
          FROM market_snapshots
          WHERE avg_cap_rate IS NOT NULL
+           AND LOWER(geography_name) LIKE LOWER($1)
          ORDER BY snapshot_date DESC
-         LIMIT 2`
+         LIMIT 2`,
+        [`%${city}%`]
       );
 
       if (macroRate === null && lagCap === null && snapRes.rows.length === 0) {
@@ -2192,7 +2278,7 @@ export class CorrelationEngineService {
     }
   }
 
-  private async computeCOR28(_city: string): Promise<CorrelationResult> {
+  private async computeCOR28(city: string): Promise<CorrelationResult> {
     const base: CorrelationResult = {
       id: 'COR-28',
       name: 'Historical Sale Price/SF → Current Asking',
@@ -2205,62 +2291,98 @@ export class CorrelationEngineService {
       confidence: 'insufficient',
       leadTime: 'Concurrent',
       actionable: null,
-      dataSources: ['Market Sale Comps'],
+      dataSources: ['Market Sale Comps', 'Deals'],
       missingData: [],
     };
     try {
-      // city column is empty in market_sale_comps — use all comps for 8-quarter (24-month) trailing avg
-      // per spec: "trailing 8-quarter avg price/SF vs current deal asking price"
+      // 8-quarter (24-month) trailing avg price/SF from market_sale_comps
+      // city column is empty in market_sale_comps — scope to state='GA' when city is Atlanta-area
       interface HistRow { trailing_avg_psf: string; comp_count: string }
       const histRes = await this.pool.query<HistRow>(
         `SELECT AVG(price_per_sqft) AS trailing_avg_psf, COUNT(*) AS comp_count
          FROM market_sale_comps
          WHERE sale_date >= NOW() - INTERVAL '24 months'
-           AND price_per_sqft IS NOT NULL`
-      );
-      interface RecentRow { recent_avg_psf: string; recent_count: string }
-      const recentRes = await this.pool.query<RecentRow>(
-        `SELECT AVG(price_per_sqft) AS recent_avg_psf, COUNT(*) AS recent_count
-         FROM market_sale_comps
-         WHERE sale_date >= NOW() - INTERVAL '6 months'
-           AND price_per_sqft IS NOT NULL`
+           AND price_per_sqft IS NOT NULL
+           AND state = 'GA'`
       );
       const compCount = parseInt(histRes.rows[0]?.comp_count ?? '0', 10);
-      const recentCount = parseInt(recentRes.rows[0]?.recent_count ?? '0', 10);
       if (compCount < 3) {
         base.missingData.push('Insufficient market_sale_comps (need 3+ with price_per_sqft in last 24mo)');
         return base;
       }
       const trailingAvg = parseFloat(histRes.rows[0].trailing_avg_psf);
-      const recentAvg = recentCount >= 1 ? parseFloat(recentRes.rows[0].recent_avg_psf) : null;
       base.xValue = parseFloat(trailingAvg.toFixed(0));
-      base.yValue = recentAvg !== null ? parseFloat(recentAvg.toFixed(0)) : null;
-      if (recentAvg !== null) {
-        const spread = (recentAvg - trailingAvg) / trailingAvg;
-        base.correlation = this.estimateCorrelation(trailingAvg / 500, recentAvg / 500);
+
+      // Attempt to fetch current deal asking price/SF from deals + deal_assumptions.
+      // Uses budget (total acquisition budget from deals) / gross_sf (from deal_assumptions)
+      // as the closest available proxy for underwriting asking price/SF.
+      interface DealAskRow { asking_psf: string; deal_name: string }
+      const dealAskRes = await this.pool.query<DealAskRow>(
+        `SELECT ROUND((d.budget / NULLIF(da.gross_sf, 0))::numeric, 0) AS asking_psf,
+                d.name AS deal_name
+         FROM deals d
+         JOIN deal_assumptions da ON da.deal_id = d.id
+         WHERE LOWER(d.city) = LOWER($1)
+           AND d.budget IS NOT NULL
+           AND d.budget > 0
+           AND da.gross_sf IS NOT NULL
+           AND da.gross_sf > 0
+         ORDER BY d.updated_at DESC NULLS LAST
+         LIMIT 1`,
+        [city]
+      );
+
+      let compareValue: number | null = null;
+      let compareLabel = '';
+
+      if (dealAskRes.rows.length > 0) {
+        compareValue = parseFloat(dealAskRes.rows[0].asking_psf);
+        compareLabel = `deal asking "${dealAskRes.rows[0].deal_name}"`;
+      } else {
+        // No deal asking price available — fall back to recent market clearing (6mo avg)
+        base.missingData.push(`No deal with asking_price + gross_sf found for ${city} — compare uses 6mo market clearing instead of underwriting asking price`);
+        interface RecentRow { recent_avg_psf: string; recent_count: string }
+        const recentRes = await this.pool.query<RecentRow>(
+          `SELECT AVG(price_per_sqft) AS recent_avg_psf, COUNT(*) AS recent_count
+           FROM market_sale_comps
+           WHERE sale_date >= NOW() - INTERVAL '6 months'
+             AND price_per_sqft IS NOT NULL
+             AND state = 'GA'`
+        );
+        const recentCount = parseInt(recentRes.rows[0]?.recent_count ?? '0', 10);
+        if (recentCount >= 1) {
+          compareValue = parseFloat(recentRes.rows[0].recent_avg_psf);
+          compareLabel = '6mo market clearing avg';
+        }
+      }
+
+      base.yValue = compareValue !== null ? parseFloat(compareValue.toFixed(0)) : null;
+
+      if (compareValue !== null) {
+        const spread = (compareValue - trailingAvg) / trailingAvg;
+        base.correlation = this.estimateCorrelation(trailingAvg / 500, compareValue / 500);
         if (spread > 0.10) {
           base.signal = 'bearish';
-          base.confidence = 'medium';
-          base.actionable = `Recent avg $${recentAvg.toFixed(0)}/SF is ${(spread * 100).toFixed(1)}% above 8-quarter clearing avg $${trailingAvg.toFixed(0)}/SF — market above historical clearing, monitor cap rate compression.`;
+          base.confidence = dealAskRes.rows.length > 0 ? 'high' : 'medium';
+          base.actionable = `${compareLabel} $${compareValue.toFixed(0)}/SF is ${(spread * 100).toFixed(1)}% above 8-quarter clearing avg $${trailingAvg.toFixed(0)}/SF — pricing above historical clearing; cap rate compression risk.`;
         } else if (spread < -0.10) {
           base.signal = 'bullish';
-          base.confidence = 'medium';
-          base.actionable = `Recent avg $${recentAvg.toFixed(0)}/SF is ${Math.abs(spread * 100).toFixed(1)}% below 8-quarter clearing avg $${trailingAvg.toFixed(0)}/SF — buying below historical clearing price.`;
+          base.confidence = dealAskRes.rows.length > 0 ? 'high' : 'medium';
+          base.actionable = `${compareLabel} $${compareValue.toFixed(0)}/SF is ${Math.abs(spread * 100).toFixed(1)}% below 8-quarter clearing avg $${trailingAvg.toFixed(0)}/SF — acquiring below historical clearing price.`;
         } else {
           base.signal = 'neutral';
-          base.confidence = 'medium';
-          base.actionable = `Recent $${recentAvg.toFixed(0)}/SF within ±10% of 8-quarter avg $${trailingAvg.toFixed(0)}/SF — market at historical clearing price.`;
+          base.confidence = dealAskRes.rows.length > 0 ? 'high' : 'medium';
+          base.actionable = `${compareLabel} $${compareValue.toFixed(0)}/SF within ±10% of 8-quarter avg $${trailingAvg.toFixed(0)}/SF — market at historical clearing price.`;
         }
-        base.missingData.push('Current deal asking price not yet wired (compare xValue against deal underwriting)');
       } else {
         base.signal = 'neutral';
         base.confidence = 'low';
-        base.actionable = `8-quarter avg price/SF: $${trailingAvg.toFixed(0)} (${compCount} comps) — no recent 6mo trades to assess clearing trend.`;
-        base.missingData.push('Recent (6mo) sale comps for spread comparison');
+        base.actionable = `8-quarter avg price/SF: $${trailingAvg.toFixed(0)} (${compCount} comps); no deal asking price or recent trades to compare.`;
+        base.missingData.push('No 6mo recent comps available for market clearing comparison');
       }
       return base;
     } catch {
-      base.missingData.push('market_sale_comps query failed');
+      base.missingData.push('market_sale_comps or deals query failed');
       return base;
     }
   }

@@ -1233,16 +1233,16 @@ router.get('/owners', requireAuth, async (req: Request, res: Response) => {
       `, [state]),
     ]);
 
-    const stats = statsResult.rows[0] || {};
+    const statsRow = statsResult.rows[0];
     res.json({
       success: true,
       state,
       dataNote: 'Owner signals derived from county transaction records. Buyer entity names reflect recorded grantee names.',
       stats: {
-        dealCount: parseInt(stats.deal_count ?? '0', 10),
-        totalVolume: parseFloat(stats.total_vol ?? '0'),
-        avgPpu: parseFloat(stats.avg_ppu ?? '0'),
-        avgCapRate: parseFloat(stats.avg_cap ?? '0'),
+        dealCount: parseInt(statsRow?.deal_count ?? '0', 10),
+        totalVolume: parseFloat(statsRow?.total_vol ?? '0'),
+        avgPpu: parseFloat(statsRow?.avg_ppu ?? '0'),
+        avgCapRate: parseFloat(statsRow?.avg_cap ?? '0'),
       },
       recentDeals: dealsResult.rows.map((r) => ({
         property: r.address,

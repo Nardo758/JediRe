@@ -16,6 +16,17 @@ interface CompCandidate {
   class_code: string | null;
   building_sqft: number | null;
   distance_miles: number | null;
+  // Optional apt_locator enrichment fields — present when _from_apt_locator is true
+  _from_apt_locator?: boolean;
+  alp_id?: string;
+  property_name?: string;
+  state?: string;
+  zip?: string;
+  avg_asking_rent?: string | null;
+  avg_effective_rent?: string | null;
+  occupancy_pct?: string | null;
+  alp_lat?: number | null;
+  alp_lng?: number | null;
 }
 
 function computeMatchScore(
@@ -561,19 +572,29 @@ export async function autoDiscoverComps(dealId: string, options: DiscoveryOption
       candidates = fallbackResult.rows;
     }
 
-    // Gap 3 source: also pull from apartment_locator_properties when property_records
-    // is sparse (< 5 candidates). Uses radius proximity when lat/lng available,
-    // otherwise falls back to city/state text match.
-    if (candidates.length < 5 && deal.lat && deal.lng) {
+    // Gap 3: Always supplement from apartment_locator_properties regardless of property_records count.
+    // apt_locator rows are tagged with _from_apt_locator so we can later write them to competitive_sets.
+    // Uses radius proximity when lat/lng available, falls back to city/state text match.
+    let aptLocatorRows: any[] = [];
+    if (deal.lat && deal.lng) {
       const dealCity = (deal.address || '').match(/,\s*([^,]+),\s*\w/)?.[1]?.trim() || '';
-      const dealState = (deal.address || '').match(/,\s*(\w{2})\s+\d{5}/)?.[1]?.toUpperCase() || '';
+      const dealState = (deal.address || '').match(/,\s*(\w{2})\s+\d{5}/)?.[1]?.toUpperCase() || 'GA';
 
       const alpResult = await pool.query(`
         SELECT
+          alp.id::text           AS alp_id,
+          alp.property_name,
           alp.address,
           alp.city,
+          alp.state,
+          alp.zip,
           alp.total_units        AS units,
           alp.year_built,
+          alp.avg_asking_rent,
+          alp.avg_effective_rent,
+          alp.occupancy_pct,
+          alp.latitude::float    AS alp_lat,
+          alp.longitude::float   AS alp_lng,
           NULL::int              AS stories,
           NULL::text             AS class_code,
           NULL::int              AS building_sqft,
@@ -589,22 +610,22 @@ export async function autoDiscoverComps(dealId: string, options: DiscoveryOption
         WHERE alp.total_units >= 10
           AND alp.address != $3
           AND (
-            -- prefer radius match when coords available
             (alp.latitude IS NOT NULL AND alp.longitude IS NOT NULL
              AND (point(alp.longitude::float, alp.latitude::float) <@> point($2::float, $1::float)) <= $4)
             OR
-            -- city/state text fallback when no coords
             (alp.latitude IS NULL AND alp.city ILIKE $5 AND alp.state = $6)
           )
         ORDER BY distance_miles ASC NULLS LAST
         LIMIT 50
-      `, [deal.lat, deal.lng, deal.address || '', radiusMiles, dealCity || '%', dealState || '%']);
+      `, [deal.lat, deal.lng, deal.address || '', radiusMiles, dealCity || '%', dealState]);
 
       const existingAddresses = new Set(candidates.map((c: any) => c.address.toLowerCase()));
       for (const row of alpResult.rows) {
+        const rowWithTag = { ...row, _from_apt_locator: true };
+        aptLocatorRows.push(rowWithTag);
         if (!existingAddresses.has(row.address.toLowerCase())) {
           existingAddresses.add(row.address.toLowerCase());
-          candidates.push(row);
+          candidates.push(rowWithTag);
         }
       }
       if (alpResult.rows.length > 0) {
@@ -637,25 +658,37 @@ export async function autoDiscoverComps(dealId: string, options: DiscoveryOption
     logger.info('Reset active comp set for deal', { dealId });
 
     let inserted = 0;
+    let insertedCS = 0;
     for (const comp of topComps) {
+      const isAptLocator = comp._from_apt_locator === true;
+      const compLat = isAptLocator ? comp.alp_lat ?? null : null;
+      const compLng = isAptLocator ? comp.alp_lng ?? null : null;
+      const compAvgRent = isAptLocator && comp.avg_asking_rent ? parseFloat(comp.avg_asking_rent) : null;
+      const compOccupancy = isAptLocator && comp.occupancy_pct ? parseFloat(comp.occupancy_pct) / 100 : null;
+
+      // 1. Write to deal_comp_sets (UI workspace)
       try {
         await pool.query(`
           INSERT INTO deal_comp_sets (
             deal_id, comp_property_address, comp_name, source, status,
             distance_miles, match_score, match_factors,
             year_built, stories, units, class_code,
+            avg_rent, occupancy,
             lat, lng
-          ) VALUES ($1, $2, $3, 'auto', 'active', $4, $5, $6, $7, $8, $9, $10, $11, $12)
+          ) VALUES ($1, $2, $3, $4, 'active', $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
           ON CONFLICT (deal_id, comp_property_address) DO UPDATE SET
             status = 'active',
             match_score = EXCLUDED.match_score,
             match_factors = EXCLUDED.match_factors,
             distance_miles = EXCLUDED.distance_miles,
+            avg_rent = COALESCE(EXCLUDED.avg_rent, deal_comp_sets.avg_rent),
+            occupancy = COALESCE(EXCLUDED.occupancy, deal_comp_sets.occupancy),
             updated_at = NOW()
         `, [
           dealId,
           comp.address,
-          comp.city ? `${comp.address}, ${comp.city}` : comp.address,
+          comp.property_name || (comp.city ? `${comp.address}, ${comp.city}` : comp.address),
+          isAptLocator ? 'apartment_locator' : 'auto',
           comp.distance_miles,
           comp.match_score,
           JSON.stringify(comp.match_factors),
@@ -663,16 +696,93 @@ export async function autoDiscoverComps(dealId: string, options: DiscoveryOption
           comp.stories,
           comp.units,
           comp.class_code,
-          null,
-          null,
+          compAvgRent,
+          compOccupancy,
+          compLat,
+          compLng,
         ]);
         inserted++;
       } catch (err: any) {
-        logger.warn('Failed to insert comp', { address: comp.address, error: err.message });
+        logger.warn('Failed to insert comp into deal_comp_sets', { address: comp.address, error: err.message });
+      }
+
+      // 2. Gap 3: Write apt_locator comps to competitive_sets (M27 rental comp agent)
+      if (isAptLocator && comp.alp_id) {
+        try {
+          const assetClass = comp.year_built >= 2010 ? 'A' : comp.year_built >= 1995 ? 'B' : 'C';
+          await pool.query(`
+            INSERT INTO competitive_sets (
+              deal_id, created_at_stage,
+              comp_property_id, comp_name, comp_address, comp_city, comp_state, comp_zip,
+              comp_units, comp_year_built, comp_asset_class,
+              comp_distance_miles, relevance_score, relevance_factors,
+              source, source_id, is_active
+            ) VALUES (
+              $1, 'discovery',
+              $2, $3, $4, $5, $6, $7,
+              $8, $9, $10,
+              $11, $12, $13,
+              'apartment_locator', $14, true
+            )
+            ON CONFLICT (deal_id, source, source_id) WHERE source_id IS NOT NULL
+            DO UPDATE SET
+              relevance_score     = EXCLUDED.relevance_score,
+              relevance_factors   = EXCLUDED.relevance_factors,
+              comp_distance_miles = EXCLUDED.comp_distance_miles,
+              is_active           = true
+          `, [
+            dealId,
+            comp.alp_id,
+            comp.property_name || comp.address,
+            comp.address, comp.city, comp.state || null, comp.zip || null,
+            comp.units, comp.year_built, assetClass,
+            comp.distance_miles, comp.match_score, JSON.stringify(comp.match_factors),
+            comp.alp_id,
+          ]);
+          insertedCS++;
+        } catch (err: any) {
+          logger.warn('Failed to insert apt_locator comp into competitive_sets', { address: comp.address, error: err.message });
+        }
       }
     }
 
-    logger.info('Comp discovery complete', { dealId, candidates: candidates.length, inserted });
+    // 3. Gap 4: Compute median asking rent from apt_locator comps in top set;
+    //    upsert into deal_assumptions.avg_rent_per_unit (only when not already set by user).
+    const rents = topComps
+      .filter((c: any) => c._from_apt_locator && c.avg_asking_rent)
+      .map((c: any) => parseFloat(c.avg_asking_rent))
+      .filter((r: number) => r > 0)
+      .sort((a: number, b: number) => a - b);
+
+    if (rents.length > 0) {
+      const mid = Math.floor(rents.length / 2);
+      const medianRent = rents.length % 2 === 0
+        ? (rents[mid - 1] + rents[mid]) / 2
+        : rents[mid];
+      const compCountRef = `apt_locator:${rents.length} comps`;
+      try {
+        await pool.query(`
+          INSERT INTO deal_assumptions (deal_id, avg_rent_per_unit, source_type, source_ref)
+          VALUES ($1, $2, 'apt_locator', $3)
+          ON CONFLICT (deal_id) DO UPDATE SET
+            avg_rent_per_unit = CASE
+              WHEN deal_assumptions.avg_rent_per_unit IS NULL THEN EXCLUDED.avg_rent_per_unit
+              ELSE deal_assumptions.avg_rent_per_unit
+            END,
+            source_type = CASE
+              WHEN deal_assumptions.avg_rent_per_unit IS NULL THEN 'apt_locator'
+              ELSE deal_assumptions.source_type
+            END,
+            source_ref = EXCLUDED.source_ref,
+            updated_at = NOW()
+        `, [dealId, Math.round(medianRent), compCountRef]);
+        logger.info('autoDiscoverComps: calibrated market rent', { dealId, medianRent, compCount: rents.length });
+      } catch (err: any) {
+        logger.warn('autoDiscoverComps: rent upsert failed (non-fatal)', { dealId, error: err.message });
+      }
+    }
+
+    logger.info('Comp discovery complete', { dealId, candidates: candidates.length, inserted, insertedCS });
     return inserted;
   } catch (error: any) {
     logger.error('Comp discovery failed', { dealId, error: error.message });
