@@ -326,6 +326,9 @@ import { commentaryOnResearchCompleted } from './agents/commentary.inngest';
 import { archiveAggregationFunction } from './inngest/functions/archive-aggregation.function';
 import { emailIntakeFunction } from './inngest/functions/email-intake.function';
 import { captureMonthlySnapshotsFunction } from './inngest/functions/capture-monthly-snapshots';
+import { syncMartaGtfsFunction } from './inngest/functions/sync-marta-gtfs';
+import { syncOsmPoisFunction } from './inngest/functions/sync-osm-pois';
+import { syncAtlantaPdCrimeFunction } from './inngest/functions/sync-atlanta-pd-crime';
 import { scheduledAgentFunctions } from './services/agents/scheduled-jobs';
 import { scheduledDiscoveryFunctions } from './services/discovery/scheduled-discovery';
 app.use(
@@ -342,6 +345,10 @@ app.use(
       archiveAggregationFunction,
       emailIntakeFunction,
       captureMonthlySnapshotsFunction,
+      // Real-data sources (Task #363): MARTA GTFS, OSM Overpass, Atlanta PD crime
+      syncMartaGtfsFunction,
+      syncOsmPoisFunction,
+      syncAtlantaPdCrimeFunction,
       // Autonomous agents (Task #327): morning briefings, compliance,
       // portfolio reviews, market intelligence, threshold monitoring.
       ...scheduledAgentFunctions,

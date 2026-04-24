@@ -19,6 +19,9 @@ import { ingestAtlantaNews } from '../../scripts/ingest-atlanta-news';
 import { getPool } from '../../database/connection';
 import { requireAuth, requireRole } from '../../middleware/auth';
 import { geocodingService } from '../../services/geocoding.service';
+import { syncMartaGtfs } from '../../services/real-data/marta-gtfs.service';
+import { syncOsmPois } from '../../services/real-data/osm-overpass.service';
+import { syncAtlantaPdCrime } from '../../services/real-data/atlanta-pd-crime.service';
 
 const router = Router();
 const orchestrator = getGeorgiaIngestionOrchestrator();
@@ -1384,6 +1387,116 @@ router.post('/extract-events', requireAuth, requireRole('owner', 'admin'), async
   } catch (error) {
     console.error('[API] /georgia/extract-events error:', error);
     res.status(500).json({ error: 'Event extraction failed', message: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+// ============================================================================
+// REAL DATA SYNC ROUTES (Task #363)
+// ============================================================================
+
+/**
+ * POST /api/v1/georgia/sync-real-data
+ * Manually trigger one or more real-data sync jobs synchronously.
+ * Body: { sources: Array<'marta' | 'osm' | 'crime'> }
+ * Returns row counts from each completed sync.
+ */
+router.post('/sync-real-data', requireAuth, requireRole('owner', 'admin'), async (req: Request, res: Response) => {
+  try {
+    const { sources } = req.body as { sources?: string[] };
+    const requested: string[] = Array.isArray(sources) && sources.length > 0
+      ? sources
+      : ['marta', 'osm', 'crime'];
+
+    const results: Record<string, unknown> = {};
+
+    if (requested.includes('marta')) {
+      console.log('[API] sync-real-data: starting MARTA GTFS sync');
+      try {
+        const r = await syncMartaGtfs();
+        results.marta = { fetched: r.fetched, upserted: r.upserted, skipped: r.skipped, errors: r.errors.length };
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error('[API] MARTA sync error:', msg);
+        results.marta = { error: msg };
+      }
+    }
+
+    if (requested.includes('osm')) {
+      console.log('[API] sync-real-data: starting OSM Overpass sync');
+      try {
+        const r = await syncOsmPois();
+        results.osm = {
+          groceries: r.groceries,
+          parks: r.parks,
+          hospitals: r.hospitals,
+          errors: r.errors.length,
+        };
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error('[API] OSM sync error:', msg);
+        results.osm = { error: msg };
+      }
+    }
+
+    if (requested.includes('crime')) {
+      console.log('[API] sync-real-data: starting Atlanta PD crime sync');
+      try {
+        const r = await syncAtlantaPdCrime();
+        results.crime = {
+          total_incidents: r.total_incidents,
+          zip_codes_processed: r.zip_codes_processed,
+          rows_upserted: r.rows_upserted,
+          period_start: r.period_start,
+          period_end: r.period_end,
+          errors: r.errors.length,
+        };
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error('[API] Crime sync error:', msg);
+        results.crime = { error: msg };
+      }
+    }
+
+    res.json({ success: true, sources_requested: requested, results });
+  } catch (error) {
+    console.error('[API] /georgia/sync-real-data error:', error);
+    res.status(500).json({ error: 'Sync failed', message: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+/**
+ * GET /api/v1/georgia/proximity/poi-counts
+ * Returns a breakdown of points_of_interest by poi_type so operators
+ * can verify the live data state.
+ */
+router.get('/proximity/poi-counts', requireAuth, async (_req: Request, res: Response) => {
+  try {
+    const pool = getPool();
+    const result = await pool.query(`
+      SELECT
+        poi_type,
+        COUNT(*)::int AS count,
+        COUNT(*) FILTER (WHERE status = 'active')::int AS active_count,
+        COUNT(*) FILTER (WHERE source = 'marta_gtfs')::int AS marta_count,
+        COUNT(*) FILTER (WHERE source = 'osm_overpass')::int AS osm_count,
+        MAX(last_verified) AS last_verified
+      FROM points_of_interest
+      GROUP BY poi_type
+      ORDER BY poi_type
+    `);
+
+    const totalResult = await pool.query(`
+      SELECT COUNT(*)::int AS total FROM points_of_interest
+    `);
+
+    res.json({
+      success: true,
+      total: totalResult.rows[0].total,
+      by_type: result.rows,
+    });
+  } catch (error) {
+    console.error('[API] /georgia/proximity/poi-counts error:', error);
+    res.status(500).json({ error: 'Failed to get POI counts', message: error instanceof Error ? error.message : String(error) });
   }
 });
 
