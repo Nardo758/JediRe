@@ -126,6 +126,7 @@ import propertyDiscoveryRoutes from './property-discovery.routes';
 import georgiaIngestionRoutes from './georgia-ingestion.routes';
 import proximityRoutes, { setPool as setProximityPool } from './proximity.routes';
 import dataMatrixRoutes from './data-matrix.routes';
+import inflationRoutes from './inflation.routes';
 
 const API_PREFIX = '/api/v1';
 
@@ -493,6 +494,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Data Matrix routes (neural network layer)
   app.use(`${API_PREFIX}/data-matrix`, dataMatrixRoutes);
+
+  // Inflation Engine routes
+  app.use(`${API_PREFIX}/inflation`, inflationRoutes);
 
   // Deal Activity routes (emails, tasks, unified activity)
   app.use(`${API_PREFIX}/deals`, dealActivityRoutes);
