@@ -6,7 +6,15 @@
 
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { getInflationEngineService, getMarketBasketService, getReplacementCostService, ALL_BASKET_ITEMS, PropertyInput } from '../../services/inflation';
+import { 
+  getInflationEngineService, 
+  getMarketBasketService, 
+  getReplacementCostService, 
+  getReplacementCostServiceV2,
+  ALL_BASKET_ITEMS, 
+  PropertyInput,
+  ReplacementCostInput
+} from '../../services/inflation';
 
 const router = Router();
 
@@ -811,6 +819,138 @@ router.post('/replacement-cost/insurance', async (req: Request, res: Response) =
   } catch (error) {
     console.error('[ReplacementCost] Insurance validation error:', error);
     res.status(500).json({ error: 'Failed to validate insurance coverage' });
+  }
+});
+
+// ============================================================================
+// REPLACEMENT COST V2 ROUTES (Permit-Derived)
+// ============================================================================
+
+/**
+ * POST /api/v1/inflation/replacement-cost/v2
+ * 
+ * Permit-derived replacement cost with LayeredValue provenance.
+ * Uses: Permit data + BLS PPI escalation + RSMeans CCI adjustment
+ */
+router.post('/replacement-cost/v2', async (req: Request, res: Response) => {
+  try {
+    const input = req.body as ReplacementCostInput;
+    
+    if (!input || !input.units || !input.totalSF || !input.city || !input.state) {
+      return res.status(400).json({ 
+        error: 'units, totalSF, city, and state are required' 
+      });
+    }
+    
+    const pool = req.app.get('pool');
+    if (!pool) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+    
+    const service = getReplacementCostServiceV2(pool);
+    const result = await service.estimateReplacementCost(input);
+    
+    res.json(result);
+  } catch (error) {
+    console.error('[ReplacementCostV2] Estimate error:', error);
+    res.status(500).json({ error: 'Failed to estimate replacement cost' });
+  }
+});
+
+/**
+ * POST /api/v1/inflation/replacement-cost/v2/compare
+ * 
+ * Compare acquisition price to permit-derived replacement cost.
+ */
+router.post('/replacement-cost/v2/compare', async (req: Request, res: Response) => {
+  try {
+    const { property, purchasePrice, insuranceCoverage } = req.body as {
+      property: ReplacementCostInput;
+      purchasePrice: number;
+      insuranceCoverage?: number;
+    };
+    
+    if (!property || !purchasePrice) {
+      return res.status(400).json({ error: 'property and purchasePrice are required' });
+    }
+    
+    const pool = req.app.get('pool');
+    if (!pool) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+    
+    const service = getReplacementCostServiceV2(pool);
+    const result = await service.compareToAcquisition(property, purchasePrice, insuranceCoverage);
+    
+    res.json(result);
+  } catch (error) {
+    console.error('[ReplacementCostV2] Compare error:', error);
+    res.status(500).json({ error: 'Failed to compare to replacement cost' });
+  }
+});
+
+/**
+ * POST /api/v1/inflation/replacement-cost/v2/batch
+ * 
+ * Batch estimate for portfolio.
+ */
+router.post('/replacement-cost/v2/batch', async (req: Request, res: Response) => {
+  try {
+    const { properties } = req.body as { properties: ReplacementCostInput[] };
+    
+    if (!properties || !Array.isArray(properties)) {
+      return res.status(400).json({ error: 'properties array is required' });
+    }
+    
+    const pool = req.app.get('pool');
+    if (!pool) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+    
+    const service = getReplacementCostServiceV2(pool);
+    const results = await service.batchEstimate(properties);
+    
+    res.json({
+      count: results.length,
+      results
+    });
+  } catch (error) {
+    console.error('[ReplacementCostV2] Batch error:', error);
+    res.status(500).json({ error: 'Failed to batch estimate' });
+  }
+});
+
+/**
+ * GET /api/v1/inflation/replacement-cost/v2/cci/:city/:state
+ * 
+ * Get RSMeans CCI factor for a location.
+ */
+router.get('/replacement-cost/v2/cci/:city/:state', async (req: Request, res: Response) => {
+  try {
+    const { city, state } = req.params;
+    
+    const pool = req.app.get('pool');
+    if (!pool) {
+      return res.status(500).json({ error: 'Database not configured' });
+    }
+    
+    const service = getReplacementCostServiceV2(pool);
+    const cciFactor = service.getCCIForLocation(city, state);
+    
+    res.json({
+      location: `${city}, ${state}`,
+      cciFactor,
+      nationalBaseline: 100,
+      interpretation: cciFactor > 100 
+        ? `Construction costs ${(cciFactor - 100).toFixed(1)}% above national average`
+        : cciFactor < 100
+        ? `Construction costs ${(100 - cciFactor).toFixed(1)}% below national average`
+        : 'At national average',
+      source: 'RSMeans CCI 2026'
+    });
+  } catch (error) {
+    console.error('[ReplacementCostV2] CCI lookup error:', error);
+    res.status(500).json({ error: 'Failed to get CCI factor' });
   }
 });
 

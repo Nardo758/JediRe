@@ -37,3 +37,12 @@ export {
   ReplacementCostEstimate,
   PropertyInput
 } from './replacement-cost.service';
+
+// V2: Permit-derived with LayeredValue provenance
+export {
+  ReplacementCostServiceV2,
+  getReplacementCostServiceV2,
+  ReplacementCostInput,
+  ReplacementCostResult,
+  LayeredValue
+} from './replacement-cost-v2.service';
