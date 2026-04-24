@@ -109,22 +109,6 @@ interface SupplyPipelineResponse {
   bySubmarket: SupplyPipelineSubmarket[];
 }
 
-interface RentByClassTier {
-  class_tier: string;
-  count: number;
-  avg_rent: number;
-  min_rent: number;
-  max_rent: number;
-  avg_occupancy: number | null;
-}
-
-interface RentByClassResponse {
-  success: boolean;
-  state: string;
-  count: number;
-  tiers: RentByClassTier[];
-}
-
 export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
   const [timeRange, setTimeRange] = useState<typeof TIME_RANGES[number]>('1Y');
   const [priceTrends, setPriceTrends] = useState<PriceTrend[]>([]);
@@ -133,8 +117,6 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
   const [rentByClassLoading, setRentByClassLoading] = useState(true);
   const [supplyPipeline, setSupplyPipeline] = useState<SupplyPipelineSubmarket[]>([]);
   const [supplyPipelineTotal, setSupplyPipelineTotal] = useState<number | null>(null);
-  const [rentByClass, setRentByClass] = useState<RentByClassTier[]>([]);
-  const [rentByClassLoading, setRentByClassLoading] = useState(true);
   const msaName = msa?.name || msaId || 'Atlanta';
   const { fetchCommentary, getCommentary, isLoading, getError } = useCommentaryStore();
   const commentary = getCommentary('msa', msaId);
@@ -215,13 +197,6 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
       .catch(() => {});
   }, []);
 
-  useEffect(() => {
-    setRentByClassLoading(true);
-    apiClient.get<RentByClassResponse>('/georgia/analytics/rent-by-class?state=GA')
-      .then((res: RentByClassResponse) => setRentByClass(res?.tiers || []))
-      .catch(() => setRentByClass([]))
-      .finally(() => setRentByClassLoading(false));
-  }, []);
 
   // Calculate max for supply wave chart (real pipeline or fallback label)
   const maxSupply = supplyPipeline.length > 0
@@ -780,25 +755,24 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
           ) : rentByClass.length > 0 ? (
             <>
               {(() => {
-                const maxRent = Math.max(...rentByClass.map(t => t.avg_rent), 1);
+                const maxRent = Math.max(...rentByClass.map(t => t.avg_rent ?? 0), 1);
                 const classColors: Record<string, string> = {
-                  'A+': BT.text.cyan,
                   'A': BT.text.green,
-                  'B+': '#3b82f6',
                   'B': '#f59e0b',
                   'C': '#f97316',
                 };
                 return (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {rentByClass.map((tier, i) => {
-                      const color = classColors[tier.class_tier] || BT.text.secondary;
-                      const barWidth = (tier.avg_rent / maxRent) * 100;
+                      const color = classColors[tier.asset_class] || BT.text.secondary;
+                      const rent = tier.avg_rent ?? 0;
+                      const barWidth = (rent / maxRent) * 100;
                       return (
                         <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <span style={{
                             width: 24, fontSize: 11, fontWeight: 700,
                             color, textAlign: 'right', flexShrink: 0,
-                          }}>{tier.class_tier}</span>
+                          }}>Class {tier.asset_class}</span>
                           <div style={{
                             flex: 1, height: 14, background: BT.bg.elevated,
                             position: 'relative', borderRadius: 0,
@@ -813,13 +787,13 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
                             <span style={{ fontSize: 11, fontWeight: 600, color: BT.text.primary, width: 52, textAlign: 'right' }}>
-                              ${tier.avg_rent.toLocaleString()}
+                              ${rent.toLocaleString()}
                             </span>
                             <span style={{
                               fontSize: 9, color: BT.text.muted,
                               background: BT.bg.elevated,
                               padding: '1px 5px', borderRadius: 0,
-                            }}>{tier.count}p</span>
+                            }}>{tier.property_count}p</span>
                           </div>
                         </div>
                       );

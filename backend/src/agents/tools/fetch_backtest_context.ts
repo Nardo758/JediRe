@@ -9,7 +9,8 @@
  */
 
 import { z } from 'zod';
-import { Pool } from 'pg';
+import type { Pool } from 'pg';
+import { getPool } from '../../database/connection';
 import { getBacktestService } from '../../services/proximity';
 
 export const fetchBacktestContextSchema = z.object({
@@ -254,6 +255,7 @@ export const fetchBacktestContextTool = {
 - Identify key drivers of over/under-performance
 - Get comparable deal case studies
 Use when validating projections or setting realistic expectations for a deal.`,
-  parameters: fetchBacktestContextSchema,
-  execute: fetchBacktestContext
+  inputSchema: fetchBacktestContextSchema,
+  outputSchema: z.any(),
+  execute: async (input, _ctx) => fetchBacktestContext(input, getPool())
 };

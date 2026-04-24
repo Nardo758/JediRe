@@ -17,7 +17,7 @@ import { georgiaSaleCompsService } from '../../services/saleComps/georgia-sale-c
 import { apartmentLocatorSyncService } from '../../services/apartment-locator-sync.service';
 import { ingestAtlantaNews } from '../../scripts/ingest-atlanta-news';
 import { getPool } from '../../database/connection';
-import { requireAuth } from '../../middleware/auth';
+import { requireAuth, requireRole } from '../../middleware/auth';
 import { geocodingService } from '../../services/geocoding.service';
 
 const router = Router();
@@ -574,7 +574,7 @@ router.get('/analytics/nearby-comps', async (req: Request, res: Response) => {
  *   maxRecords?: number   — per-county cap (useful for test runs)
  *   skipNews?: boolean    — skip news ingestion step
  */
-router.post('/run-pipeline', async (req: Request, res: Response) => {
+router.post('/run-pipeline', requireAuth, requireRole('owner', 'admin'), async (req: Request, res: Response) => {
   const startedAt = Date.now();
   const {
     counties,

@@ -265,6 +265,7 @@ export interface MarketSnapshot {
   
   // Supply
   unitsUnderConstruction?: number;
+  plannedUnits24mo?: number;
   unitsPermittedTrailing12mo?: number;
   unitsDeliveredTrailing12mo?: number;
   

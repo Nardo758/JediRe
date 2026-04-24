@@ -9,7 +9,8 @@
  */
 
 import { z } from 'zod';
-import { Pool } from 'pg';
+import type { Pool } from 'pg';
+import { getPool } from '../../database/connection';
 import { getMarketEventsService, MarketEvent } from '../../services/proximity';
 
 export const fetchMarketEventsSchema = z.object({
@@ -215,6 +216,7 @@ export const fetchMarketEventsTool = {
 - Infrastructure changes
 Returns sentiment analysis, supply pipeline, risk factors, and opportunities.
 Use when evaluating market timing or competitive dynamics.`,
-  parameters: fetchMarketEventsSchema,
-  execute: fetchMarketEvents
+  inputSchema: fetchMarketEventsSchema,
+  outputSchema: z.any(),
+  execute: async (input, _ctx) => fetchMarketEvents(input, getPool())
 };

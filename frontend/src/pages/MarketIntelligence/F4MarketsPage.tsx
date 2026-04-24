@@ -3,13 +3,16 @@
  * Shows all MSAs in a grid/table view with drill-down to MSATerminal
  */
 
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   MapPin, Search, 
-  Award, Users, Grid, List, Filter, ChevronDown
+  Award, Users, Grid, List, Filter, ChevronDown,
+  RefreshCw, CheckCircle, XCircle, Loader2, AlertCircle, X
 } from 'lucide-react';
 import { BT } from '../../components/terminal/theme';
+import { useAuthStore } from '../../stores/authStore';
+import { apiClient } from '../../api/client';
 
 interface MSACard {
   id: string;
@@ -40,6 +43,9 @@ interface F4MarketsPageProps {
 
 export const F4MarketsPage: React.FC<F4MarketsPageProps> = ({ onSelectMarket, embedded }) => {
   const navigate = useNavigate();
+  const { user } = useAuthStore();
+  const isOwner = user?.role === 'owner';
+
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<SortKey>('rank');
@@ -55,6 +61,29 @@ export const F4MarketsPage: React.FC<F4MarketsPageProps> = ({ onSelectMarket, em
   const [tableScrolled, setTableScrolled] = useState(false);
   const [canScrollMore, setCanScrollMore] = useState(false);
   const tableContainerRef = useRef<HTMLDivElement>(null);
+
+  // Pipeline refresh state
+  const [pipelineRunning, setPipelineRunning] = useState(false);
+  const [pipelineResult, setPipelineResult] = useState<any | null>(null);
+  const [pipelineError, setPipelineError] = useState<string | null>(null);
+  const [showPipelinePanel, setShowPipelinePanel] = useState(false);
+
+  const handleRunPipeline = useCallback(async () => {
+    if (pipelineRunning) return;
+    setPipelineRunning(true);
+    setPipelineResult(null);
+    setPipelineError(null);
+    setShowPipelinePanel(true);
+    try {
+      const res: any = await apiClient.post('/georgia/run-pipeline', { skipNews: false });
+      setPipelineResult(res);
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || 'Pipeline failed';
+      setPipelineError(msg);
+    } finally {
+      setPipelineRunning(false);
+    }
+  }, [pipelineRunning]);
 
   // Tracked markets (would come from user preferences in production)
   const trackedMarketIds = ['atlanta-ga', 'raleigh-nc', 'tampa-fl', 'charlotte-nc', 'nashville-tn', 'miami-fl'];
@@ -170,7 +199,138 @@ export const F4MarketsPage: React.FC<F4MarketsPageProps> = ({ onSelectMarket, em
           0%, 100% { opacity: 1; transform: translateX(0); }
           50% { opacity: 0.5; transform: translateX(4px); }
         }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
       `}</style>
+
+      {/* Pipeline progress panel — fixed bottom right */}
+      {showPipelinePanel && (
+        <div style={{
+          position: 'fixed',
+          bottom: 24,
+          right: 24,
+          width: 380,
+          background: '#0D1117',
+          border: `1px solid ${pipelineError ? '#FF475755' : pipelineRunning ? '#F5A62355' : '#00D26A55'}`,
+          borderRadius: 10,
+          boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+          zIndex: 9999,
+          animation: 'slideUp 0.25s ease',
+          fontFamily: "'JetBrains Mono', monospace",
+          overflow: 'hidden',
+        }}>
+          {/* Panel header */}
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '10px 14px',
+            background: pipelineError ? '#FF475715' : pipelineRunning ? '#F5A62315' : '#00D26A15',
+            borderBottom: `1px solid ${BT.border.subtle}`,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {pipelineRunning
+                ? <Loader2 size={13} color={BT.text.amber} style={{ animation: 'spin 1s linear infinite' }} />
+                : pipelineError
+                  ? <XCircle size={13} color={BT.text.red} />
+                  : <CheckCircle size={13} color={BT.text.green} />
+              }
+              <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: 0.8, color: pipelineError ? BT.text.red : pipelineRunning ? BT.text.amber : BT.text.green }}>
+                {pipelineRunning ? 'PIPELINE RUNNING' : pipelineError ? 'PIPELINE FAILED' : 'PIPELINE COMPLETE'}
+              </span>
+            </div>
+            {!pipelineRunning && (
+              <button onClick={() => setShowPipelinePanel(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: BT.text.muted, padding: 2 }}>
+                <X size={13} />
+              </button>
+            )}
+          </div>
+
+          {/* Steps */}
+          <div style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {pipelineRunning && !pipelineResult && (
+              <div style={{ fontSize: 11, color: BT.text.muted, paddingBottom: 4 }}>
+                Ingesting Atlanta county data — this may take 2–5 minutes…
+              </div>
+            )}
+
+            {pipelineError && (
+              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                <AlertCircle size={12} color={BT.text.red} style={{ marginTop: 2, flexShrink: 0 }} />
+                <span style={{ fontSize: 11, color: BT.text.red }}>{pipelineError}</span>
+              </div>
+            )}
+
+            {pipelineResult && (() => {
+              const p = pipelineResult.pipeline ?? {};
+              const durationSec = pipelineResult.durationMs ? (pipelineResult.durationMs / 1000).toFixed(1) : null;
+              const steps = [
+                {
+                  label: 'County Ingestion',
+                  key: 'countyIngest',
+                  ok: !p.countyIngest?.error,
+                  detail: p.countyIngest?.error
+                    ? p.countyIngest.error
+                    : `${p.countyIngest?.inserted ?? '?'} inserted · ${p.countyIngest?.counties?.length ?? 0} counties`,
+                },
+                {
+                  label: 'Comp Pool Promotion',
+                  key: 'compsPromote',
+                  ok: !p.compsPromote?.error,
+                  detail: p.compsPromote?.error
+                    ? p.compsPromote.error
+                    : `${Array.isArray(p.compsPromote?.counties) ? p.compsPromote.counties.length : '?'} counties promoted`,
+                },
+                {
+                  label: 'Apt Locator Sync',
+                  key: 'aptLocatorSync',
+                  ok: !p.aptLocatorSync?.error,
+                  detail: p.aptLocatorSync?.error
+                    ? p.aptLocatorSync.error
+                    : `${p.aptLocatorSync?.synced ?? p.aptLocatorSync?.inserted ?? '?'} records synced`,
+                },
+                {
+                  label: 'Geocode Apt Locator',
+                  key: 'aptLocatorGeocode',
+                  ok: !p.aptLocatorGeocode?.error,
+                  detail: p.aptLocatorGeocode?.error
+                    ? p.aptLocatorGeocode.error
+                    : `${p.aptLocatorGeocode?.geocoded ?? '?'} geocoded · ${p.aptLocatorGeocode?.skipped ?? 0} skipped`,
+                },
+                {
+                  label: 'News Ingestion',
+                  key: 'newsIngest',
+                  ok: !p.newsIngest?.error,
+                  detail: p.newsIngest?.error
+                    ? p.newsIngest.error
+                    : p.newsIngest
+                      ? `${p.newsIngest?.inserted ?? p.newsIngest?.count ?? '?'} articles`
+                      : 'Skipped',
+                },
+              ];
+              return (
+                <>
+                  {steps.map(s => (
+                    <div key={s.key} style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                      {s.ok
+                        ? <CheckCircle size={12} color={BT.text.green} style={{ marginTop: 2, flexShrink: 0 }} />
+                        : <XCircle size={12} color={BT.text.red} style={{ marginTop: 2, flexShrink: 0 }} />
+                      }
+                      <div>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: BT.text.primary, letterSpacing: 0.5 }}>{s.label}</div>
+                        <div style={{ fontSize: 10, color: s.ok ? BT.text.secondary : BT.text.red, marginTop: 1 }}>{s.detail}</div>
+                      </div>
+                    </div>
+                  ))}
+                  {durationSec && (
+                    <div style={{ borderTop: `1px solid ${BT.border.subtle}`, marginTop: 4, paddingTop: 8, fontSize: 10, color: BT.text.muted }}>
+                      Completed in {durationSec}s
+                    </div>
+                  )}
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      )}
 
       {/* Header */}
       <div style={{
@@ -192,6 +352,37 @@ export const F4MarketsPage: React.FC<F4MarketsPageProps> = ({ onSelectMarket, em
           </div>
           
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {/* Refresh Atlanta Data button — owner only */}
+            {isOwner && (
+              <button
+                onClick={handleRunPipeline}
+                disabled={pipelineRunning}
+                title="Re-ingest all Atlanta county property, sales, apt locator, and news data"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 7,
+                  padding: '8px 14px',
+                  background: pipelineRunning ? BT.bg.input : '#00D26A18',
+                  border: `1px solid ${pipelineRunning ? BT.border.subtle : '#00D26A55'}`,
+                  borderRadius: 6,
+                  color: pipelineRunning ? BT.text.muted : BT.text.green,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: pipelineRunning ? 'not-allowed' : 'pointer',
+                  fontFamily: "'JetBrains Mono', monospace",
+                  letterSpacing: 0.3,
+                  whiteSpace: 'nowrap',
+                  transition: 'all 0.2s',
+                }}
+              >
+                {pipelineRunning
+                  ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} />
+                  : <RefreshCw size={13} />
+                }
+                {pipelineRunning ? 'RUNNING…' : '↻ REFRESH DATA'}
+              </button>
+            )}
             {/* Market Dropdown */}
             <div style={{ position: 'relative' }} ref={dropdownRef}>
               <button
