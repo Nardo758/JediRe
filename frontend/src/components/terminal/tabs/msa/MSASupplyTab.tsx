@@ -12,6 +12,11 @@ import { useCommentaryStore } from '../../../../stores/commentaryStore';
 import { apiClient } from '../../../../api/client';
 import { SupplyNarrative, SignalCommentary } from '../../commentary';
 
+interface SupplySubmarketRow { submarket: string; units: number; projects: number; }
+interface SupplyProjectRow { project: string; submarket: string; units: number; class: string; delivery: string; pctComplete: number | null; developer: string | null; }
+interface SupplyApiProject { project: string; submarket?: string; units?: number; class?: string; delivery?: string; }
+interface SupplyApiResponse { success: boolean; totalUnits: number; projectCount: number; bySubmarket: SupplySubmarketRow[]; projects: SupplyApiProject[]; }
+
 interface MSASupplyTabProps {
   msaId: string;
   msa: MSAData;
@@ -24,8 +29,8 @@ export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa }) => {
   const loading = isLoading('msa', msaId);
   const error = getError('msa', msaId);
 
-  const [pipelineBySubmarket, setPipelineBySubmarket] = useState<any[]>([]);
-  const [constructionTracker, setConstructionTracker] = useState<any[]>([]);
+  const [pipelineBySubmarket, setPipelineBySubmarket] = useState<SupplySubmarketRow[]>([]);
+  const [constructionTracker, setConstructionTracker] = useState<SupplyProjectRow[]>([]);
   const [pipelineLoading, setPipelineLoading] = useState(true);
   const [totalPipelineUnits, setTotalPipelineUnits] = useState<number | null>(null);
 
@@ -36,18 +41,18 @@ export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa }) => {
   useEffect(() => {
     setPipelineLoading(true);
     apiClient.get('/georgia/supply/pipeline?state=GA&limit=100')
-      .then((data: any) => {
+      .then((data: SupplyApiResponse) => {
         if (data.success) {
           if (Array.isArray(data.bySubmarket) && data.bySubmarket.length > 0) {
             setPipelineBySubmarket(data.bySubmarket);
           }
           if (Array.isArray(data.projects) && data.projects.length > 0) {
-            setConstructionTracker(data.projects.slice(0, 20).map((p: any) => ({
+            setConstructionTracker(data.projects.slice(0, 20).map((p: SupplyApiProject) => ({
               project: p.project,
-              submarket: p.submarket,
-              units: p.units,
+              submarket: p.submarket || 'Atlanta',
+              units: p.units || 0,
               class: p.class || 'B',
-              delivery: p.delivery,
+              delivery: p.delivery || 'TBD',
               pctComplete: null,
               developer: null,
             })));

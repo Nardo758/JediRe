@@ -153,7 +153,7 @@ export const MSANewsTab: React.FC<MSANewsTabProps> = ({ msaId, msa }) => {
   useEffect(() => {
     setNewsLoading(true);
     apiClient.get('/georgia/news?limit=25')
-      .then((data: any) => {
+      .then((data: { success: boolean; count: number; items: NewsItem[] }) => {
         if (data.success && Array.isArray(data.items) && data.items.length > 0) {
           setNewsItems(data.items);
         }

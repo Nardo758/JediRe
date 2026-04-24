@@ -12,6 +12,17 @@ import { useCommentaryStore } from '../../../../stores/commentaryStore';
 import { apiClient } from '../../../../api/client';
 import { SignalCommentary } from '../../commentary';
 
+interface GeorgiaPropertyApiItem {
+  id?: string;
+  property: string;
+  address?: string;
+  submarket?: string;
+  units?: number;
+  rent?: string;
+  occ?: string;
+  concessions?: string;
+}
+
 interface MSAPropertiesTabProps {
   msaId: string;
   msa: any;
@@ -112,9 +123,9 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
   useEffect(() => {
     setPropertiesLoading(true);
     apiClient.get('/georgia/properties?state=GA&limit=100&minUnits=4')
-      .then((data: any) => {
+      .then((data: { success: boolean; properties: GeorgiaPropertyApiItem[] }) => {
         if (data.success && Array.isArray(data.properties) && data.properties.length > 0) {
-          const mapped: PropertyRow[] = data.properties.map((p: any, i: number) => ({
+          const mapped: PropertyRow[] = data.properties.map((p: GeorgiaPropertyApiItem, i: number) => ({
             id: p.id || String(i + 1),
             property: p.property,
             submarket: p.submarket || 'Atlanta',

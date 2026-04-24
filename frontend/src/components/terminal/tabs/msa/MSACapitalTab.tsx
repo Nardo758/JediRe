@@ -12,6 +12,31 @@ import { useCommentaryStore } from '../../../../stores/commentaryStore';
 import { apiClient } from '../../../../api/client';
 import { SignalCommentary } from '../../commentary';
 
+interface CapitalApiDeal {
+  property: string;
+  units: number;
+  price: number;
+  ppu: number | null;
+  cap: number | null;
+  buyer: string;
+  date: string;
+  assetClass?: string;
+}
+
+interface CapitalApiCapRate { class: string; current: number | null; dealCount: number; }
+interface CapitalApiVolumeYear { year: string; dealCount: number; totalVolume: number; avgPpu: number | null; avgCapRate: number | null; }
+interface CapitalApiBuyerActivity { type: string; dealCount: number; pctVolume: number; avgSize: string; }
+interface CapitalApiHeadline { dealCount: number; totalVolume: number; avgCapRate: number | null; avgPricePerUnit: number | null; }
+
+interface CapitalApiResponse {
+  success: boolean;
+  headline: CapitalApiHeadline;
+  recentDeals: CapitalApiDeal[];
+  capRateByClass: CapitalApiCapRate[];
+  buyerActivity: CapitalApiBuyerActivity[];
+  volumeByYear: CapitalApiVolumeYear[];
+}
+
 interface MSACapitalTabProps {
   msaId: string;
   msa: MSAData;
@@ -24,7 +49,7 @@ export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
   const loading = isLoading('msa', msaId);
   const error = getError('msa', msaId);
 
-  const [capitalData, setCapitalData] = useState<any>(null);
+  const [capitalData, setCapitalData] = useState<CapitalApiResponse | null>(null);
   const [capitalLoading, setCapitalLoading] = useState(true);
 
   useEffect(() => {
@@ -41,7 +66,7 @@ export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
 
   const volumeData: ChartDataPoint[] = useMemo(() => {
     if (capitalData?.volumeByYear?.length > 0) {
-      return capitalData.volumeByYear.map((r: any) => ({
+      return capitalData.volumeByYear.map((r: CapitalApiVolumeYear) => ({
         date: r.year,
         volume: r.totalVolume ? Math.round(r.totalVolume / 1_000_000) : 0,
         capRate: r.avgCapRate || null,
@@ -58,7 +83,7 @@ export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
 
   const recentDeals = useMemo(() => {
     if (capitalData?.recentDeals?.length > 0) {
-      return capitalData.recentDeals.map((d: any) => ({
+      return capitalData.recentDeals.map((d: CapitalApiDeal) => ({
         property: d.property,
         units: d.units,
         price: d.price ? Math.round(d.price / 1_000_000) : 0,
@@ -78,7 +103,7 @@ export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
 
   const capRateByClass = useMemo(() => {
     if (capitalData?.capRateByClass?.length > 0) {
-      return capitalData.capRateByClass.map((r: any) => ({
+      return capitalData.capRateByClass.map((r: CapitalApiCapRate) => ({
         class: r.class,
         current: r.current,
         prior: null,
@@ -106,7 +131,7 @@ export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
 
   const buyerActivity = useMemo(() => {
     if (capitalData?.buyerActivity?.length > 0) {
-      return capitalData.buyerActivity.map((b: any) => ({
+      return capitalData.buyerActivity.map((b: CapitalApiBuyerActivity) => ({
         type: b.type,
         pctVolume: b.pctVolume,
         dealCount: b.dealCount,
