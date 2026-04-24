@@ -93,6 +93,8 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
   const [classFilter, setClassFilter] = useState('All');
   const [vintageFilter, setVintageFilter] = useState('All');
   const [sizeFilter, setSizeFilter] = useState('All');
+  const [liveProperties, setLiveProperties] = useState<PropertyRow[]>([]);
+  const [propertiesLoading, setPropertiesLoading] = useState(true);
   const msaName = msa?.name || msaId || 'Atlanta';
   const { fetchCommentary, getCommentary, isLoading, getError } = useCommentaryStore();
   const commentary = getCommentary('msa', msaId);
@@ -100,21 +102,65 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
   const error = getError('msa', msaId);
   useEffect(() => { fetchCommentary('msa', msaId, msaName); }, [msaId, msaName]);
   const [heatmapMode, setHeatmapMode] = useState('none');
-  const [sortKey, setSortKey] = useState<string>('jedi');
+  const [sortKey, setSortKey] = useState<string>('units');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
   const [exportLoading, setExportLoading] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
 
+  useEffect(() => {
+    setPropertiesLoading(true);
+    fetch('/api/v1/georgia/properties?state=GA&limit=100&minUnits=4')
+      .then(r => r.json())
+      .then(data => {
+        if (data.success && Array.isArray(data.properties) && data.properties.length > 0) {
+          const mapped: PropertyRow[] = data.properties.map((p: any, i: number) => ({
+            id: p.id || String(i + 1),
+            property: p.property,
+            submarket: p.submarket || 'Atlanta',
+            units: p.units || 0,
+            year: 0,
+            class: '—',
+            rent: p.rent || '—',
+            occ: p.occ || '—',
+            jedi: 0,
+            address: p.address || '',
+            stories: 0,
+            acres: 0,
+            owner: '—',
+            purchaseDate: '—',
+            purchasePrice: '—',
+            pricePerUnit: '—',
+            holdPeriod: '—',
+            sellerMotivation: 0,
+            taxAssessed: '—',
+            stepUpRisk: '—',
+            zoning: '—',
+            zoningCapacity: '—',
+            askingRent: p.rent || '—',
+            marketRent: '—',
+            lossToLease: '—',
+            lossToLeasePct: '0%',
+            concessions: p.concessions || '—',
+          }));
+          setLiveProperties(mapped);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setPropertiesLoading(false));
+  }, []);
+
+  const allProperties = liveProperties.length > 0 ? liveProperties : MOCK_PROPERTIES;
+
   // Get unique values for filters
-  const submarkets = ['All', ...Array.from(new Set(MOCK_PROPERTIES.map(p => p.submarket)))];
+  const submarkets = ['All', ...Array.from(new Set(allProperties.map(p => p.submarket)))];
   const classes = ['All', 'A', 'B+', 'B', 'B-', 'C+', 'C'];
   const vintages = ['All', 'Pre-1980', '1980s', '1990s', '2000s', '2010s', '2020s'];
   const sizes = ['All', '< 150', '150-250', '250-350', '350+'];
 
   // Filter and sort
   const filteredProperties = useMemo(() => {
-    let result = MOCK_PROPERTIES.filter(p => {
+    let result = allProperties.filter(p => {
       if (searchQuery && !p.property.toLowerCase().includes(searchQuery.toLowerCase()) && 
           !p.address.toLowerCase().includes(searchQuery.toLowerCase())) return false;
       if (submarketFilter !== 'All' && p.submarket !== submarketFilter) return false;
@@ -147,7 +193,7 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
     });
 
     return result;
-  }, [searchQuery, submarketFilter, classFilter, vintageFilter, sizeFilter, sortKey, sortDir]);
+  }, [searchQuery, submarketFilter, classFilter, vintageFilter, sizeFilter, sortKey, sortDir, allProperties]);
 
   // Heatmap color calculation
   const getHeatmapColor = (property: PropertyRow) => {
@@ -239,7 +285,7 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
             {msaName} — Property Database
           </h2>
           <span style={{ color: BT.text.muted, fontSize: 12 }}>
-            {filteredProperties.length} of {MOCK_PROPERTIES.length} properties · Click row to expand
+            {filteredProperties.length} of {allProperties.length} properties{liveProperties.length > 0 ? ' · Live data' : ''} · Click row to expand
           </span>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>

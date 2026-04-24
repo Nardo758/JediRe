@@ -2,7 +2,7 @@
  * MSASupplyTab - Metro-wide supply pipeline, construction tracker, lease-up
  */
 
-import React, { useMemo, useEffect } from 'react';
+import React, { useMemo, useEffect, useState } from 'react';
 import { Building2, Hammer, Clock, CheckCircle2 } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
 import { TerminalChart, ChartDataPoint } from '../../TerminalChart';
@@ -23,9 +23,41 @@ export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa }) => {
   const loading = isLoading('msa', msaId);
   const error = getError('msa', msaId);
 
+  const [pipelineBySubmarket, setPipelineBySubmarket] = useState<any[]>([]);
+  const [constructionTracker, setConstructionTracker] = useState<any[]>([]);
+  const [pipelineLoading, setPipelineLoading] = useState(true);
+  const [totalPipelineUnits, setTotalPipelineUnits] = useState<number | null>(null);
+
   useEffect(() => {
     fetchCommentary('msa', msaId, msaName);
   }, [msaId, msaName]);
+
+  useEffect(() => {
+    setPipelineLoading(true);
+    fetch('/api/v1/georgia/supply/pipeline?state=GA&limit=100')
+      .then(r => r.json())
+      .then(data => {
+        if (data.success) {
+          if (Array.isArray(data.bySubmarket) && data.bySubmarket.length > 0) {
+            setPipelineBySubmarket(data.bySubmarket);
+          }
+          if (Array.isArray(data.projects) && data.projects.length > 0) {
+            setConstructionTracker(data.projects.slice(0, 20).map((p: any) => ({
+              project: p.project,
+              submarket: p.submarket,
+              units: p.units,
+              class: p.class || 'B',
+              delivery: p.delivery,
+              pctComplete: null,
+              developer: null,
+            })));
+          }
+          if (data.totalUnits) setTotalPipelineUnits(data.totalUnits);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setPipelineLoading(false));
+  }, []);
 
   const deliveryData: ChartDataPoint[] = useMemo(() => {
     return [
@@ -37,23 +69,6 @@ export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa }) => {
       { date: 'Q2 26', delivered: 3800, absorbed: 4100 },
     ];
   }, []);
-
-  const pipelineBySubmarket = useMemo(() => [
-    { name: 'Downtown', units: 3800, pctOfTotal: 13.3, status: 'HIGH' },
-    { name: 'Midtown', units: 3200, pctOfTotal: 11.2, status: 'HIGH' },
-    { name: 'Buckhead', units: 2840, pctOfTotal: 10.0, status: 'MOD' },
-    { name: 'Perimeter', units: 2400, pctOfTotal: 8.4, status: 'MOD' },
-    { name: 'West Midtown', units: 2100, pctOfTotal: 7.4, status: 'MOD' },
-    { name: 'Other', units: 14160, pctOfTotal: 49.7, status: 'LOW' },
-  ], []);
-
-  const constructionTracker = useMemo(() => [
-    { project: 'Novel Midtown', submarket: 'Midtown', units: 340, class: 'A', delivery: 'Q2 2026', pctComplete: 78, developer: 'Crescent Communities' },
-    { project: 'AMLI Buckhead', submarket: 'Buckhead', units: 280, class: 'A', delivery: 'Q3 2026', pctComplete: 62, developer: 'AMLI Residential' },
-    { project: 'Alexan West End', submarket: 'West End', units: 220, class: 'A-', delivery: 'Q4 2026', pctComplete: 45, developer: 'Trammell Crow' },
-    { project: 'Modera Decatur', submarket: 'Decatur', units: 190, class: 'B+', delivery: 'Q1 2027', pctComplete: 28, developer: 'Mill Creek' },
-    { project: 'Station R', submarket: 'Reynoldstown', units: 160, class: 'A-', delivery: 'Q2 2027', pctComplete: 15, developer: 'Portman Holdings' },
-  ], []);
 
   const leaseUpTracker = useMemo(() => [
     { project: 'The Hamilton', submarket: 'Midtown', units: 310, monthsOpen: 8, occupancy: 82, velocity: 22, targetDate: 'Aug 2026' },
@@ -80,10 +95,10 @@ export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa }) => {
             TOTAL PIPELINE
           </div>
           <div style={{ ...terminalStyles.metricValue, color: BT.text.amber }}>
-            {(msa.pipelineUnits / 1000).toFixed(1)}K
+            {((totalPipelineUnits ?? msa.pipelineUnits) / 1000).toFixed(1)}K
           </div>
           <div style={{ fontSize: 10, color: BT.text.muted }}>
-            {((msa.pipelineUnits / msa.totalUnits) * 100).toFixed(1)}% of stock
+            {(((totalPipelineUnits ?? msa.pipelineUnits) / msa.totalUnits) * 100).toFixed(1)}% of stock
           </div>
         </div>
         <div style={{ ...terminalStyles.card, textAlign: 'center' }}>

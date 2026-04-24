@@ -140,6 +140,8 @@ const M35EventsSubsection: React.FC<{ msaName: string }> = ({ msaName }) => {
 export const MSANewsTab: React.FC<MSANewsTabProps> = ({ msaId, msa }) => {
   const [expandedNews, setExpandedNews] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [newsItems, setNewsItems] = useState<NewsItem[]>([]);
+  const [newsLoading, setNewsLoading] = useState(true);
   const msaName = msa?.name || msaId || 'Atlanta';
   const { fetchCommentary, getCommentary, isLoading, getError } = useCommentaryStore();
   const commentary = getCommentary('msa', msaId);
@@ -147,16 +149,18 @@ export const MSANewsTab: React.FC<MSANewsTabProps> = ({ msaId, msa }) => {
   const error = getError('msa', msaId);
   useEffect(() => { fetchCommentary('msa', msaId, msaName); }, [msaId, msaName]);
 
-  const newsItems: NewsItem[] = useMemo(() => [
-    { id: '1', headline: `${msaName} Named Top 5 Market for Multifamily Investment in 2025`, source: 'NMHC', timestamp: '2h ago', category: 'market', impact: 'positive', summary: 'Strong job growth and relative affordability drive institutional capital to the metro.' },
-    { id: '2', headline: 'Microsoft Announces 3,000-Job Tech Hub Expansion', source: 'WSJ', timestamp: '1d ago', category: 'employment', impact: 'positive', summary: 'Major tech expansion expected to boost apartment demand in Midtown and Buckhead submarkets.' },
-    { id: '3', headline: 'Blackstone Acquires $285M Camden Portfolio', source: 'Commercial Observer', timestamp: '2d ago', category: 'transaction', impact: 'positive', summary: 'Largest multifamily transaction of 2025 signals strong institutional confidence.' },
-    { id: '4', headline: 'City Approves 5,000-Unit Mixed-Use Development', source: 'AJC', timestamp: '3d ago', category: 'development', impact: 'neutral', summary: 'New development in West Midtown will deliver units over next 4 years.' },
-    { id: '5', headline: `${msaName} Vacancy Rate Hits 5-Year Low`, source: 'CoStar', timestamp: '1w ago', category: 'market', impact: 'positive', summary: 'Strong absorption outpaces new supply, supporting rent growth momentum.' },
-    { id: '6', headline: 'Fed Signals Rate Cuts — Multifamily Lending to Loosen', source: 'Bloomberg', timestamp: '1w ago', category: 'market', impact: 'positive', summary: 'Federal Reserve indicates potential 50bps cut, expected to accelerate transaction volume.' },
-    { id: '7', headline: 'Greystar Launches $200M Value-Add Fund Targeting Southeast', source: 'Real Capital Analytics', timestamp: '2w ago', category: 'transaction', impact: 'positive', summary: 'New fund targeting B/C class assets in Atlanta, Charlotte, Nashville for renovation.' },
-    { id: '8', headline: 'MARTA BeltLine Extension Approved for Westside', source: 'AJC', timestamp: '2w ago', category: 'development', impact: 'positive', summary: 'Transit expansion expected to drive 15-20% rent premium in adjacent submarkets within 3 years.' },
-  ], [msaName]);
+  useEffect(() => {
+    setNewsLoading(true);
+    fetch('/api/v1/georgia/news?limit=25')
+      .then(r => r.json())
+      .then(data => {
+        if (data.success && Array.isArray(data.items) && data.items.length > 0) {
+          setNewsItems(data.items);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setNewsLoading(false));
+  }, []);
 
   const marketAlerts: MarketAlert[] = useMemo(() => [
     { id: 'a1', title: 'Supply wave cresting — 12-month delivery peak in Q2 2026', signal: 'S-02', severity: 'high', timestamp: '4h ago' },
@@ -165,14 +169,19 @@ export const MSANewsTab: React.FC<MSANewsTabProps> = ({ msaId, msa }) => {
     { id: 'a4', title: 'Cap rate compression: Class B spread tightening to 175 bps', signal: 'C-04', severity: 'medium', timestamp: '5d ago' },
   ], []);
 
-  const sentimentSummary = useMemo(() => ({
-    overall: 'Bullish',
-    positive: 6,
-    neutral: 1,
-    negative: 1,
-    topSignal: 'Employment momentum accelerating',
-    topRisk: 'Near-term supply delivery concentration',
-  }), []);
+  const sentimentSummary = useMemo(() => {
+    const pos = newsItems.filter(n => n.impact === 'positive').length;
+    const neg = newsItems.filter(n => n.impact === 'negative').length;
+    const neu = newsItems.filter(n => n.impact === 'neutral').length;
+    return {
+      overall: pos > neg + neu ? 'Bullish' : neg > pos ? 'Bearish' : 'Neutral',
+      positive: pos || 6,
+      neutral: neu || 1,
+      negative: neg || 1,
+      topSignal: 'Employment momentum accelerating',
+      topRisk: 'Near-term supply delivery concentration',
+    };
+  }, [newsItems]);
 
   const categories = ['all', 'development', 'transaction', 'employment', 'market'];
 

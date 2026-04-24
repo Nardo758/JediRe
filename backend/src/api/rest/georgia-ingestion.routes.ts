@@ -16,6 +16,7 @@ import { getRecentJobs, getLastJob } from '../../services/property-enrichment/ge
 import { georgiaSaleCompsService } from '../../services/saleComps/georgia-sale-comps.service';
 import { apartmentLocatorSyncService } from '../../services/apartment-locator-sync.service';
 import { ingestAtlantaNews } from '../../scripts/ingest-atlanta-news';
+import { getPool } from '../../database/connection';
 
 const router = Router();
 const orchestrator = getGeorgiaIngestionOrchestrator();
@@ -577,4 +578,345 @@ router.get('/:county/jobs', async (req: Request, res: Response) => {
   }
 });
 
+// ============================================================================
+// F4 MARKETS ATLANTA — MSA TAB DATA ENDPOINTS
+// ============================================================================
+
+/**
+ * GET /api/v1/georgia/news
+ * Gap 7: News tab — latest Atlanta CRE articles from news_article_cache.
+ * Returns 25 most-recent cached articles mapped to the NewsItem shape.
+ * Query: ?limit=25
+ */
+router.get('/news', async (req: Request, res: Response) => {
+  try {
+    const pool = getPool();
+    const limit = Math.min(parseInt(req.query.limit as string) || 25, 100);
+    const result = await pool.query(`
+      SELECT
+        id,
+        title                                                         AS headline,
+        COALESCE(source_name, provider)                               AS source,
+        published_at,
+        category,
+        description                                                   AS summary,
+        url,
+        tags
+      FROM news_article_cache
+      WHERE expires_at > NOW()
+      ORDER BY published_at DESC NULLS LAST
+      LIMIT $1
+    `, [limit]);
+
+    const items = result.rows.map((r: any) => {
+      const tags: string[] = Array.isArray(r.tags) ? r.tags : [];
+      const cat = (r.category || '').toLowerCase();
+      const mapped =
+        cat.includes('transaction') || tags.includes('transaction') ? 'transaction' :
+        cat.includes('employment') || tags.includes('employment') ? 'employment' :
+        cat.includes('development') || tags.includes('development') ? 'development' : 'market';
+
+      const titleLower = (r.headline || '').toLowerCase();
+      const impact: string =
+        titleLower.includes('decline') || titleLower.includes('foreclose') || titleLower.includes('default') ? 'negative' :
+        titleLower.includes('open') || titleLower.includes('expand') || titleLower.includes('grow') || titleLower.includes('invest') ? 'positive' :
+        'neutral';
+
+      return {
+        id: r.id,
+        headline: r.headline,
+        source: r.source,
+        timestamp: r.published_at ? new Date(r.published_at).toISOString() : null,
+        category: mapped,
+        impact,
+        summary: r.summary || null,
+        url: r.url,
+      };
+    });
+
+    res.json({ success: true, count: items.length, items });
+  } catch (error) {
+    console.error('[API] /georgia/news error:', error);
+    res.status(500).json({ error: 'Failed to fetch Atlanta news' });
+  }
+});
+
+/**
+ * GET /api/v1/georgia/supply/pipeline
+ * Gap 4/5: Supply tab — apartment pipeline data from apartment_supply_pipeline.
+ * Returns submarket summary (grouped by city) + project list.
+ * Query: ?state=GA&limit=100
+ */
+router.get('/supply/pipeline', async (req: Request, res: Response) => {
+  try {
+    const pool = getPool();
+    const state = (req.query.state as string) || 'GA';
+    const limit = Math.min(parseInt(req.query.limit as string) || 100, 500);
+
+    const [summaryResult, projectsResult, totalResult] = await Promise.all([
+      pool.query(`
+        SELECT
+          COALESCE(city, 'Other')                       AS name,
+          SUM(total_units)::int                         AS units,
+          COUNT(*)::int                                 AS project_count
+        FROM apartment_supply_pipeline
+        WHERE state = $1
+        GROUP BY city
+        ORDER BY SUM(total_units) DESC
+        LIMIT 10
+      `, [state]),
+
+      pool.query(`
+        SELECT
+          id, name, address, city AS submarket,
+          total_units AS units,
+          property_class AS class,
+          units_delivering,
+          available_date AS delivery,
+          synced_at
+        FROM apartment_supply_pipeline
+        WHERE state = $1
+        ORDER BY total_units DESC NULLS LAST
+        LIMIT $2
+      `, [state, limit]),
+
+      pool.query(`SELECT SUM(total_units)::int AS total FROM apartment_supply_pipeline WHERE state = $1`, [state]),
+    ]);
+
+    const totalUnits = totalResult.rows[0]?.total || 0;
+
+    const bySubmarket = summaryResult.rows.map((r: any) => ({
+      name: r.name,
+      units: r.units || 0,
+      pctOfTotal: totalUnits > 0 ? parseFloat(((r.units / totalUnits) * 100).toFixed(1)) : 0,
+      status: r.units > 5000 ? 'HIGH' : r.units > 2000 ? 'MOD' : 'LOW',
+      projectCount: r.project_count,
+    }));
+
+    const projects = projectsResult.rows.map((r: any) => ({
+      id: r.id,
+      project: r.name || r.address || 'Unknown',
+      submarket: r.submarket || 'Atlanta',
+      units: r.units || 0,
+      class: r.class || 'B',
+      delivery: r.delivery ? new Date(r.delivery).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : 'TBD',
+      unitsDelivering: r.units_delivering || 0,
+    }));
+
+    res.json({
+      success: true,
+      state,
+      totalUnits,
+      bySubmarket,
+      projects,
+      projectCount: projects.length,
+    });
+  } catch (error) {
+    console.error('[API] /georgia/supply/pipeline error:', error);
+    res.status(500).json({ error: 'Failed to fetch supply pipeline' });
+  }
+});
+
+/**
+ * GET /api/v1/georgia/properties
+ * Gap 3/7: Properties tab — apartment properties from apartment_locator_properties.
+ * Returns 100 properties with available fields; missing fields get sensible defaults.
+ * Query: ?state=GA&limit=100&minUnits=4
+ */
+router.get('/properties', async (req: Request, res: Response) => {
+  try {
+    const pool = getPool();
+    const state = (req.query.state as string) || 'GA';
+    const limit = Math.min(parseInt(req.query.limit as string) || 100, 500);
+    const minUnits = parseInt(req.query.minUnits as string) || 4;
+
+    const result = await pool.query(`
+      SELECT
+        id::text,
+        property_name,
+        address,
+        city,
+        state,
+        zip,
+        total_units,
+        avg_asking_rent,
+        available_units,
+        latitude,
+        longitude,
+        concessions,
+        source,
+        data_as_of
+      FROM apartment_locator_properties
+      WHERE state = $1
+        AND total_units >= $2
+      ORDER BY total_units DESC NULLS LAST, avg_asking_rent DESC NULLS LAST
+      LIMIT $3
+    `, [state, minUnits, limit]);
+
+    const properties = result.rows.map((r: any) => {
+      const totalUnits = r.total_units || 1;
+      const availUnits = r.available_units || 0;
+      const occupancy = Math.max(0, Math.min(100, ((totalUnits - availUnits) / totalUnits) * 100));
+
+      return {
+        id: r.id,
+        property: r.property_name || r.address || 'Unknown',
+        address: r.address || '',
+        submarket: r.city || 'Atlanta',
+        units: r.total_units || 0,
+        rent: r.avg_asking_rent ? `$${Number(r.avg_asking_rent).toLocaleString()}` : '—',
+        rentRaw: r.avg_asking_rent ? parseFloat(r.avg_asking_rent) : null,
+        occ: `${occupancy.toFixed(1)}%`,
+        occRaw: occupancy,
+        latitude: r.latitude ? parseFloat(r.latitude) : null,
+        longitude: r.longitude ? parseFloat(r.longitude) : null,
+        concessions: r.concessions || null,
+        dataAsOf: r.data_as_of,
+      };
+    });
+
+    res.json({ success: true, count: properties.length, state, properties });
+  } catch (error) {
+    console.error('[API] /georgia/properties error:', error);
+    res.status(500).json({ error: 'Failed to fetch Georgia properties' });
+  }
+});
+
+/**
+ * GET /api/v1/georgia/capital/summary
+ * Gap 8: Capital tab — transaction summary from market_sale_comps.
+ * Returns recentDeals, capRateByClass, buyerActivity, volumeByYear.
+ * Query: ?state=GA&months=36
+ */
+router.get('/capital/summary', async (req: Request, res: Response) => {
+  try {
+    const pool = getPool();
+    const state = (req.query.state as string) || 'GA';
+    const months = Math.min(parseInt(req.query.months as string) || 36, 120);
+
+    const [dealsResult, capRateResult, buyerResult, volumeResult, headlineResult] = await Promise.all([
+      pool.query(`
+        SELECT
+          address AS property,
+          units,
+          sale_price AS price,
+          price_per_unit AS ppu,
+          cap_rate AS cap,
+          COALESCE(buyer, 'Unknown') AS buyer,
+          TO_CHAR(sale_date, 'Mon YY') AS date,
+          asset_class,
+          sale_date
+        FROM market_sale_comps
+        WHERE state = $1
+          AND sale_date >= NOW() - ($2 || ' months')::interval
+          AND sale_price > 0
+        ORDER BY sale_date DESC
+        LIMIT 20
+      `, [state, months]),
+
+      pool.query(`
+        SELECT
+          COALESCE(asset_class, 'B') AS class,
+          ROUND(AVG(cap_rate)::numeric, 2) AS current_cap,
+          COUNT(*) AS deal_count
+        FROM market_sale_comps
+        WHERE state = $1
+          AND cap_rate IS NOT NULL
+          AND cap_rate BETWEEN 2 AND 12
+        GROUP BY asset_class
+        ORDER BY asset_class
+      `, [state]),
+
+      pool.query(`
+        SELECT
+          COALESCE(buyer_type, 'Unknown') AS type,
+          COUNT(*) AS deal_count,
+          SUM(sale_price) AS total_volume,
+          AVG(sale_price) AS avg_size
+        FROM market_sale_comps
+        WHERE state = $1
+          AND sale_date >= NOW() - ($2 || ' months')::interval
+        GROUP BY buyer_type
+        ORDER BY SUM(sale_price) DESC
+        LIMIT 8
+      `, [state, months]),
+
+      pool.query(`
+        SELECT
+          EXTRACT(YEAR FROM sale_date)::text AS year,
+          COUNT(*) AS deal_count,
+          SUM(sale_price) AS total_volume,
+          ROUND(AVG(price_per_unit)::numeric, 0) AS avg_ppu,
+          ROUND(AVG(cap_rate)::numeric, 2) AS avg_cap_rate
+        FROM market_sale_comps
+        WHERE state = $1
+          AND sale_price > 0
+        GROUP BY EXTRACT(YEAR FROM sale_date)
+        ORDER BY EXTRACT(YEAR FROM sale_date) DESC
+        LIMIT 10
+      `, [state]),
+
+      pool.query(`
+        SELECT
+          COUNT(*) AS deal_count,
+          SUM(sale_price) AS total_volume,
+          ROUND(AVG(cap_rate)::numeric, 2) AS avg_cap_rate,
+          ROUND(AVG(price_per_unit)::numeric, 0) AS avg_ppu
+        FROM market_sale_comps
+        WHERE state = $1
+          AND sale_date >= NOW() - ($2 || ' months')::interval
+          AND sale_price > 0
+      `, [state, months]),
+    ]);
+
+    const headline = headlineResult.rows[0] || {};
+    const totalVolumeAll = buyerResult.rows.reduce((s: number, r: any) => s + parseFloat(r.total_volume || 0), 0);
+
+    const buyerActivity = buyerResult.rows.map((r: any) => ({
+      type: r.type,
+      dealCount: parseInt(r.deal_count),
+      pctVolume: totalVolumeAll > 0 ? Math.round((parseFloat(r.total_volume) / totalVolumeAll) * 100) : 0,
+      avgSize: r.avg_size ? `$${(parseFloat(r.avg_size) / 1_000_000).toFixed(1)}M` : '—',
+    }));
+
+    res.json({
+      success: true,
+      state,
+      headline: {
+        dealCount: parseInt(headline.deal_count) || 0,
+        totalVolume: parseFloat(headline.total_volume) || 0,
+        avgCapRate: parseFloat(headline.avg_cap_rate) || null,
+        avgPricePerUnit: parseFloat(headline.avg_ppu) || null,
+      },
+      recentDeals: dealsResult.rows.map((r: any) => ({
+        property: r.property,
+        units: parseInt(r.units) || 0,
+        price: parseFloat(r.price) || 0,
+        ppu: r.ppu ? parseFloat(r.ppu) : null,
+        cap: r.cap ? parseFloat(r.cap) : null,
+        buyer: r.buyer,
+        date: r.date,
+        assetClass: r.asset_class,
+      })),
+      capRateByClass: capRateResult.rows.map((r: any) => ({
+        class: r.class,
+        current: parseFloat(r.current_cap) || null,
+        dealCount: parseInt(r.deal_count),
+      })),
+      buyerActivity,
+      volumeByYear: volumeResult.rows.map((r: any) => ({
+        year: r.year,
+        dealCount: parseInt(r.deal_count),
+        totalVolume: parseFloat(r.total_volume) || 0,
+        avgPpu: parseFloat(r.avg_ppu) || null,
+        avgCapRate: parseFloat(r.avg_cap_rate) || null,
+      })),
+    });
+  } catch (error) {
+    console.error('[API] /georgia/capital/summary error:', error);
+    res.status(500).json({ error: 'Failed to fetch capital summary' });
+  }
+});
+
 export default router;
+

@@ -2,7 +2,7 @@
  * MSACapitalTab - Transaction volume, cap rate trends, debt markets
  */
 
-import React, { useMemo, useEffect } from 'react';
+import React, { useMemo, useEffect, useState } from 'react';
 import { DollarSign, Building2 } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
 import { TerminalChart, ChartDataPoint } from '../../TerminalChart';
@@ -23,32 +23,77 @@ export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
   const loading = isLoading('msa', msaId);
   const error = getError('msa', msaId);
 
+  const [capitalData, setCapitalData] = useState<any>(null);
+  const [capitalLoading, setCapitalLoading] = useState(true);
+
   useEffect(() => {
     fetchCommentary('msa', msaId, msaName);
   }, [msaId, msaName]);
 
-  const volumeData: ChartDataPoint[] = useMemo(() => [
-    { date: 'Q1 24', volume: 850, capRate: 5.4 },
-    { date: 'Q2 24', volume: 1100, capRate: 5.3 },
-    { date: 'Q3 24', volume: 980, capRate: 5.2 },
-    { date: 'Q4 24', volume: 1270, capRate: 5.2 },
-    { date: 'Q1 25', volume: 920, capRate: 5.3 },
-  ], []);
+  useEffect(() => {
+    setCapitalLoading(true);
+    fetch('/api/v1/georgia/capital/summary?state=GA&months=36')
+      .then(r => r.json())
+      .then(data => { if (data.success) setCapitalData(data); })
+      .catch(() => {})
+      .finally(() => setCapitalLoading(false));
+  }, []);
 
-  const recentDeals = useMemo(() => [
-    { property: 'Camden Paces Portfolio', units: 1240, price: 285, ppu: 230, cap: 4.8, buyer: 'Blackstone', date: 'Mar 25' },
-    { property: 'Greystar Midtown Collection', units: 890, price: 198, ppu: 222, cap: 5.0, buyer: 'Invesco', date: 'Feb 25' },
-    { property: 'The Metropolitan at Phipps', units: 320, price: 85, ppu: 266, cap: 4.8, buyer: 'Blackstone', date: 'Feb 25' },
-    { property: 'Alexan Buckhead', units: 290, price: 62, ppu: 214, cap: 5.5, buyer: 'Greystar', date: 'Nov 24' },
-  ], []);
+  const volumeData: ChartDataPoint[] = useMemo(() => {
+    if (capitalData?.volumeByYear?.length > 0) {
+      return capitalData.volumeByYear.map((r: any) => ({
+        date: r.year,
+        volume: r.totalVolume ? Math.round(r.totalVolume / 1_000_000) : 0,
+        capRate: r.avgCapRate || null,
+      }));
+    }
+    return [
+      { date: 'Q1 24', volume: 850, capRate: 5.4 },
+      { date: 'Q2 24', volume: 1100, capRate: 5.3 },
+      { date: 'Q3 24', volume: 980, capRate: 5.2 },
+      { date: 'Q4 24', volume: 1270, capRate: 5.2 },
+      { date: 'Q1 25', volume: 920, capRate: 5.3 },
+    ];
+  }, [capitalData]);
 
-  const capRateByClass = useMemo(() => [
-    { class: 'A', current: 4.6, prior: 4.8, change: -20, spread: 125 },
-    { class: 'B+', current: 5.1, prior: 5.4, change: -30, spread: 175 },
-    { class: 'B', current: 5.5, prior: 5.8, change: -30, spread: 215 },
-    { class: 'B-', current: 5.9, prior: 6.2, change: -30, spread: 255 },
-    { class: 'C', current: 6.4, prior: 6.6, change: -20, spread: 305 },
-  ], []);
+  const recentDeals = useMemo(() => {
+    if (capitalData?.recentDeals?.length > 0) {
+      return capitalData.recentDeals.map((d: any) => ({
+        property: d.property,
+        units: d.units,
+        price: d.price ? Math.round(d.price / 1_000_000) : 0,
+        ppu: d.ppu ? Math.round(d.ppu / 1000) : null,
+        cap: d.cap,
+        buyer: d.buyer,
+        date: d.date,
+      }));
+    }
+    return [
+      { property: 'Camden Paces Portfolio', units: 1240, price: 285, ppu: 230, cap: 4.8, buyer: 'Blackstone', date: 'Mar 25' },
+      { property: 'Greystar Midtown Collection', units: 890, price: 198, ppu: 222, cap: 5.0, buyer: 'Invesco', date: 'Feb 25' },
+      { property: 'The Metropolitan at Phipps', units: 320, price: 85, ppu: 266, cap: 4.8, buyer: 'Blackstone', date: 'Feb 25' },
+      { property: 'Alexan Buckhead', units: 290, price: 62, ppu: 214, cap: 5.5, buyer: 'Greystar', date: 'Nov 24' },
+    ];
+  }, [capitalData]);
+
+  const capRateByClass = useMemo(() => {
+    if (capitalData?.capRateByClass?.length > 0) {
+      return capitalData.capRateByClass.map((r: any) => ({
+        class: r.class,
+        current: r.current,
+        prior: null,
+        change: null,
+        spread: null,
+      }));
+    }
+    return [
+      { class: 'A', current: 4.6, prior: 4.8, change: -20, spread: 125 },
+      { class: 'B+', current: 5.1, prior: 5.4, change: -30, spread: 175 },
+      { class: 'B', current: 5.5, prior: 5.8, change: -30, spread: 215 },
+      { class: 'B-', current: 5.9, prior: 6.2, change: -30, spread: 255 },
+      { class: 'C', current: 6.4, prior: 6.6, change: -20, spread: 305 },
+    ];
+  }, [capitalData]);
 
   const debtMarketData = useMemo(() => [
     { lender: 'Agency (Freddie)', rate: '5.85%', ltv: '75%', term: '10yr', spread: '+165', status: 'Active' },
@@ -59,14 +104,25 @@ export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
     { lender: 'Bridge', rate: '7.25%', ltv: '80%', term: '3yr', spread: '+300', status: 'Active' },
   ], []);
 
-  const buyerActivity = useMemo(() => [
-    { type: 'Private Equity', pctVolume: 34, dealCount: 43, avgSize: '$62M', trend: 'up' },
-    { type: 'REIT', pctVolume: 22, dealCount: 28, avgSize: '$85M', trend: 'up' },
-    { type: 'Institution', pctVolume: 18, dealCount: 12, avgSize: '$142M', trend: 'flat' },
-    { type: 'Family Office', pctVolume: 14, dealCount: 26, avgSize: '$38M', trend: 'down' },
-    { type: 'Syndicator', pctVolume: 8, dealCount: 14, avgSize: '$22M', trend: 'down' },
-    { type: 'Developer', pctVolume: 4, dealCount: 4, avgSize: '$48M', trend: 'flat' },
-  ], []);
+  const buyerActivity = useMemo(() => {
+    if (capitalData?.buyerActivity?.length > 0) {
+      return capitalData.buyerActivity.map((b: any) => ({
+        type: b.type,
+        pctVolume: b.pctVolume,
+        dealCount: b.dealCount,
+        avgSize: b.avgSize,
+        trend: 'flat',
+      }));
+    }
+    return [
+      { type: 'Private Equity', pctVolume: 34, dealCount: 43, avgSize: '$62M', trend: 'up' },
+      { type: 'REIT', pctVolume: 22, dealCount: 28, avgSize: '$85M', trend: 'up' },
+      { type: 'Institution', pctVolume: 18, dealCount: 12, avgSize: '$142M', trend: 'flat' },
+      { type: 'Family Office', pctVolume: 14, dealCount: 26, avgSize: '$38M', trend: 'down' },
+      { type: 'Syndicator', pctVolume: 8, dealCount: 14, avgSize: '$22M', trend: 'down' },
+      { type: 'Developer', pctVolume: 4, dealCount: 4, avgSize: '$48M', trend: 'flat' },
+    ];
+  }, [capitalData]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -87,13 +143,17 @@ export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
             YTD VOLUME
           </div>
           <div style={{ ...terminalStyles.metricValue, color: BT.text.green }}>
-            ${(msa.transactionVolume / 1000000000).toFixed(1)}B
+            {capitalData?.headline?.totalVolume
+              ? `$${(capitalData.headline.totalVolume / 1_000_000_000).toFixed(1)}B`
+              : `$${(msa.transactionVolume / 1000000000).toFixed(1)}B`}
           </div>
           <div style={{ fontSize: 10, color: BT.text.green }}>+12% vs LY</div>
         </div>
         <div style={{ ...terminalStyles.card, textAlign: 'center' }}>
           <div style={{ ...terminalStyles.metricLabel, marginBottom: 8 }}>DEAL COUNT</div>
-          <div style={{ ...terminalStyles.metricValue }}>127</div>
+          <div style={{ ...terminalStyles.metricValue }}>
+            {capitalData?.headline?.dealCount ?? 127}
+          </div>
           <div style={{ fontSize: 10, color: BT.text.green }}>+8% vs LY</div>
         </div>
         <div style={{ ...terminalStyles.card, textAlign: 'center' }}>
@@ -101,13 +161,17 @@ export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
             AVG CAP RATE
           </div>
           <div style={{ ...terminalStyles.metricValue, color: BT.text.cyan }}>
-            {msa.avgCapRate}%
+            {capitalData?.headline?.avgCapRate ? `${capitalData.headline.avgCapRate}%` : `${msa.avgCapRate}%`}
           </div>
           <div style={{ fontSize: 10, color: BT.text.muted }}>-20 bps vs LY</div>
         </div>
         <div style={{ ...terminalStyles.card, textAlign: 'center' }}>
           <div style={{ ...terminalStyles.metricLabel, marginBottom: 8 }}>AVG $/UNIT</div>
-          <div style={{ ...terminalStyles.metricValue }}>$228K</div>
+          <div style={{ ...terminalStyles.metricValue }}>
+            {capitalData?.headline?.avgPricePerUnit
+              ? `$${Math.round(capitalData.headline.avgPricePerUnit / 1000)}K`
+              : '$228K'}
+          </div>
           <div style={{ fontSize: 10, color: BT.text.green }}>+5% vs LY</div>
         </div>
       </div>

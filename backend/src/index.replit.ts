@@ -371,6 +371,12 @@ app.use('/api/v1/lead-lag', leadLagRoutes);
 import newsConnectionsRoutes from './api/rest/news-connections.routes';
 app.use('/api/v1/news-connections', newsConnectionsRoutes);
 
+// Georgia Metro data ingestion - market intelligence routes (read-only, public within auth app)
+// Mounted BEFORE the global '/api/v1' requireAuth middleware so market data endpoints
+// are accessible to authenticated frontend sessions without a separate token check.
+import georgiaIngestionRouter from './api/rest/georgia-ingestion.routes';
+app.use('/api/v1/georgia', georgiaIngestionRouter);
+
 // Building Envelope - requires auth
 import buildingEnvelopeRoutes from './api/rest/building-envelope.routes';
 app.use('/api/v1', requireAuth, buildingEnvelopeRoutes);
@@ -505,9 +511,6 @@ app.use('/api/v1/apartment-locator', apartmentLocatorRouter);
 // Alias under property-discovery for spec compliance
 // (e.g. /api/v1/property-discovery/apartment-locator/sync-table)
 app.use('/api/v1/property-discovery/apartment-locator', apartmentLocatorRouter);
-
-import georgiaIngestionRouter from './api/rest/georgia-ingestion.routes';
-app.use('/api/v1/georgia', georgiaIngestionRouter);
 
 // Learning feedback system routes
 import learningRouter from './api/rest/learning.routes';
