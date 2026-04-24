@@ -14,6 +14,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { ArcGISClient } from './arcgis-client';
 import { query as dbQuery } from '../../../database/connection';
+import { createJobRecord, completeJobRecord } from './job-tracker';
 import {
   FultonParcel,
   FultonYearlySale,
@@ -76,6 +77,8 @@ export class FultonIngestionService {
       startedAt: new Date()
     };
     
+    await createJobRecord(job);
+    
     try {
       console.log('[Fulton] Starting full ingestion...');
       
@@ -115,6 +118,7 @@ export class FultonIngestionService {
       
       job.status = 'complete';
       job.completedAt = new Date();
+      await completeJobRecord(job);
       
       // Note: Structures spatial join should be done in PostGIS separately
       console.log('[Fulton] Note: Run spatial join for structures separately using PostGIS');
@@ -123,6 +127,7 @@ export class FultonIngestionService {
       job.status = 'failed';
       job.errors.push(String(error));
       job.completedAt = new Date();
+      await completeJobRecord(job);
     }
     
     return job;
@@ -171,6 +176,8 @@ export class FultonIngestionService {
       startedAt: new Date()
     };
     
+    await createJobRecord(job);
+    
     try {
       const sales = await this.salesClient.queryAll<FultonYearlySale>(LAYER_IDS.SALES, {
         where: 'Price > 0',
@@ -209,10 +216,13 @@ export class FultonIngestionService {
       
       job.status = 'complete';
       job.completedAt = new Date();
+      await completeJobRecord(job);
       
     } catch (error) {
       job.status = 'failed';
       job.errors.push(String(error));
+      job.completedAt = new Date();
+      await completeJobRecord(job);
     }
     
     return job;

@@ -12,6 +12,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { ArcGISClient } from './arcgis-client';
 import { query as dbQuery } from '../../../database/connection';
+import { createJobRecord, completeJobRecord } from './job-tracker';
 import {
   CobbParcel,
   CobbYearBuilt,
@@ -63,6 +64,8 @@ export class CobbIngestionService {
       startedAt: new Date()
     };
     
+    await createJobRecord(job);
+    
     try {
       console.log('[Cobb] Starting full ingestion...');
       
@@ -107,11 +110,13 @@ export class CobbIngestionService {
       
       job.status = 'complete';
       job.completedAt = new Date();
+      await completeJobRecord(job);
       
     } catch (error) {
       job.status = 'failed';
       job.errors.push(String(error));
       job.completedAt = new Date();
+      await completeJobRecord(job);
     }
     
     return job;
@@ -167,6 +172,8 @@ export class CobbIngestionService {
       startedAt: new Date()
     };
     
+    await createJobRecord(job);
+    
     try {
       // Filter out bad data: PRICE < $500M and PRICE > 0
       const where = `PRICE > 0 AND PRICE < ${MAX_VALID_SALE_PRICE}`;
@@ -208,10 +215,13 @@ export class CobbIngestionService {
       
       job.status = 'complete';
       job.completedAt = new Date();
+      await completeJobRecord(job);
       
     } catch (error) {
       job.status = 'failed';
       job.errors.push(String(error));
+      job.completedAt = new Date();
+      await completeJobRecord(job);
     }
     
     return job;

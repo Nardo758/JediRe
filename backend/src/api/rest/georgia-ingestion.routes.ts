@@ -12,6 +12,7 @@ import {
   getFultonIngestionService,
   IngestionConfig
 } from '../../services/property-enrichment/georgia';
+import { getRecentJobs, getLastJob } from '../../services/property-enrichment/georgia/job-tracker';
 
 const router = Router();
 const orchestrator = getGeorgiaIngestionOrchestrator();
@@ -310,6 +311,44 @@ router.get('/fulton/structures/sql', async (_req: Request, res: Response) => {
     res.json({ sql });
   } catch (error) {
     res.status(500).json({ error: 'Failed to get SQL' });
+  }
+});
+
+// ============================================================================
+// JOB HISTORY ROUTES
+// ============================================================================
+
+/**
+ * GET /api/v1/georgia/jobs
+ * Recent jobs across all counties
+ */
+router.get('/jobs', async (req: Request, res: Response) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
+    const counties = ['Cobb', 'Gwinnett', 'DeKalb', 'Fulton'];
+    const allJobs = await Promise.all(counties.map(c => getRecentJobs(c, limit)));
+    const flat = allJobs.flat().sort((a: any, b: any) =>
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    ).slice(0, limit);
+    res.json({ count: flat.length, jobs: flat });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to get job history' });
+  }
+});
+
+/**
+ * GET /api/v1/georgia/:county/jobs
+ * Recent jobs for a specific county
+ */
+router.get('/:county/jobs', async (req: Request, res: Response) => {
+  try {
+    const { county } = req.params;
+    const limit = Math.min(parseInt(req.query.limit as string) || 10, 50);
+    const jobs = await getRecentJobs(county, limit);
+    const last = await getLastJob(county);
+    res.json({ county, lastJob: last, recentJobs: jobs });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to get county job history' });
   }
 });
 

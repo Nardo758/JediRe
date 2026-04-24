@@ -12,6 +12,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { ArcGISClient } from './arcgis-client';
 import { query as dbQuery } from '../../../database/connection';
+import { createJobRecord, completeJobRecord } from './job-tracker';
 import {
   DeKalbParcel,
   DeKalbPermit,
@@ -60,6 +61,8 @@ export class DeKalbIngestionService {
       startedAt: new Date()
     };
     
+    await createJobRecord(job);
+    
     try {
       console.log('[DeKalb] Starting full ingestion...');
       
@@ -99,11 +102,13 @@ export class DeKalbIngestionService {
       
       job.status = 'complete';
       job.completedAt = new Date();
+      await completeJobRecord(job);
       
     } catch (error) {
       job.status = 'failed';
       job.errors.push(String(error));
       job.completedAt = new Date();
+      await completeJobRecord(job);
     }
     
     return job;
