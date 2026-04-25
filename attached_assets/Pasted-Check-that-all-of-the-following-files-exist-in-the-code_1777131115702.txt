@@ -1,0 +1,57 @@
+Check that all of the following files exist in the codebase. For each file, confirm it exists and print the first 3 lines. Report any missing files.
+
+BACKEND SERVICES:
+- backend/src/services/neural-network/knowledge-graph.service.ts
+- backend/src/services/neural-network/context-awareness.service.ts
+- backend/src/services/neural-network/graph-ingestion-listener.ts
+- backend/src/services/neural-network/scheduled-refresh.ts
+- backend/src/services/neural-network/embeddings.service.ts
+- backend/src/services/neural-network/data-matrix.service.ts
+- backend/src/services/neural-network/index.ts
+- backend/src/services/ai/planner-executor.service.ts
+
+BACKEND ROUTES:
+- backend/src/api/rest/knowledge-graph.routes.ts
+- backend/src/api/rest/context-awareness.routes.ts
+- backend/src/api/rest/planner.routes.ts
+- backend/src/api/rest/scheduled-refresh.routes.ts
+
+MIGRATIONS:
+- backend/src/database/migrations/20260425_knowledge_graph.sql
+- backend/src/database/migrations/20260425_development_projects.sql
+- backend/src/database/migrations/20260424_data_library_cost_data.sql
+- backend/src/database/migrations/20260424_inflation_engine.sql
+
+FRONTEND HOOKS:
+- frontend/src/hooks/useContextAwareness.ts
+
+FRONTEND COMPONENTS:
+- frontend/src/components/intelligence/ContextIndicator.tsx
+- frontend/src/components/intelligence/SupplyExpansionPanel.tsx
+- frontend/src/components/intelligence/SmartMetricCell.tsx
+- frontend/src/components/intelligence/index.ts
+- frontend/src/components/terminal/cells/SupplyCell.tsx
+
+DOCS:
+- backend/docs/NEURAL_NETWORK_DATA_MAP.md
+- backend/docs/NEURAL_NETWORK_ENDPOINTS.md
+
+Then verify these files contain our graph wiring (search for "getKnowledgeGraph" or "graph-ingestion"):
+- backend/src/agents/supply.inngest.ts
+- backend/src/agents/research.inngest.ts
+- backend/src/agents/zoning.inngest.ts
+- backend/src/agents/commentary.inngest.ts
+- backend/src/agents/cashflow.inngest.ts
+- backend/src/api/rest/inline-deals.routes.ts
+- backend/src/api/rest/capsule.routes.ts
+- backend/src/services/gmail-sync.service.ts
+- backend/src/services/market-event-extraction.service.ts
+
+If ANY files are missing, run: git pull origin master
+
+Then run these migrations if they haven't been run:
+psql $DATABASE_URL -f backend/src/database/migrations/20260425_knowledge_graph.sql
+psql $DATABASE_URL -f backend/src/database/migrations/20260425_development_projects.sql
+
+Also add this Replit Secret if not already set:
+DEEPSEEK_API_KEY = sk-9d94baf6ad6a41e8b3b36fbc1acaea87
