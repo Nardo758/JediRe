@@ -119,8 +119,6 @@ export const SupplyTimelineSection: React.FC<SupplyTimelineSectionProps> = ({
 
     const params = new URLSearchParams();
     if (msaId) params.set('msaId', msaId);
-    if (state) params.set('state', state);
-    if (scope === 'submarket' && submarketName) params.set('submarketName', submarketName);
     if (scope === 'submarket' && submarketId) params.set('submarketId', submarketId);
     params.set('quarters', String(quarters));
 
@@ -302,7 +300,6 @@ export const SupplyTimelineSection: React.FC<SupplyTimelineSectionProps> = ({
               <th style={{ ...terminalStyles.tableHeader, textAlign: 'center' }}>Class</th>
               <th style={{ ...terminalStyles.tableHeader, textAlign: 'center' }}>Status</th>
               <th style={{ ...terminalStyles.tableHeader, textAlign: 'center' }}>Delivery</th>
-              <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Developer</th>
             </tr>
           </thead>
           <tbody>
@@ -362,9 +359,6 @@ export const SupplyTimelineSection: React.FC<SupplyTimelineSectionProps> = ({
                   </td>
                   <td style={{ ...terminalStyles.tableCell, textAlign: 'center', color: BT.text.amber }}>
                     {proj.deliveryQuarter || 'TBD'}
-                  </td>
-                  <td style={{ ...terminalStyles.tableCell, color: BT.text.muted, fontSize: 10 }}>
-                    {proj.developer || '—'}
                   </td>
                 </tr>
               );

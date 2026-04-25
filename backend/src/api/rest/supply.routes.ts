@@ -269,102 +269,269 @@ router.get('/timeline/:tradeAreaId', async (req, res) => {
 /**
  * GET /api/v1/supply/pipeline-timeline
  *
- * Returns forward-looking apartment unit deliveries for an MSA or Submarket
- * over the next N quarters, plus the project list aligned to that same window.
+ * Forward-looking apartment unit deliveries for an MSA or Submarket over the
+ * next N quarters, plus a project list aligned to that same chart window.
  *
- * Query params:
- *   msaId           e.g. 'atlanta-ga' — used to resolve city + state for scoping
- *   state           optional override; 2-letter
- *   submarketName   optional — refines projects by name/address keyword
- *   submarketId     optional — echoed in `resolved` for client correlation
- *   quarters        chart window length (1-16, default 8)
+ * Resolution model (deterministic, DB-backed):
+ *   - msaId        — required. Resolved against the canonical `msas` table by
+ *                    numeric id, cbsa_code, or slug-of-name match. Returns 404
+ *                    when no match.
+ *   - submarketId  — optional. Resolved against `trade_areas` (UUID) or
+ *                    `submarkets` (integer) or slug-of-name match. When set
+ *                    but unresolvable, returns 404.
+ *   - quarters     — chart window length (1-16, default 8).
  *
- * Response shape:
- *   resolved: scope/labels/state/cities used for the query
- *   totals:   project count + units rolled up across full forward pipeline
- *   byQuarter[N]: aligned to chart window (next N quarters from today)
- *   projects[]:   forward projects whose delivery quarter falls IN the window
- *   unscheduledProjects[]: forward projects with no scheduled delivery date,
- *                          or scheduled delivery beyond the window
- *
- * Source: `apartment_supply_pipeline` (the populated forward-pipeline source).
- * `propertyId` is best-effort joined from `properties` on (address, state) so
- * linked rows can drill through to the Property Terminal.
+ * The canonical supply tables (`supply_events`, `supply_delivery_timeline`)
+ * carry `trade_area_id` linkage, but they are unpopulated in this environment.
+ * `apartment_supply_pipeline` is the only populated forward feed and has no
+ * `submarket_id` / `trade_area_id` column, so address-level scoping uses an
+ * ILIKE on the canonical submarket name (sourced from the resolved DB record,
+ * not user-supplied input). State scoping uses canonical `msas.state_codes`.
+ * Best-effort `propertyId` linkage is a LEFT JOIN to `properties` on
+ * (LOWER(address_line1), state_code).
  */
-const MSA_CITY_MAP: Record<string, { state: string; cities: string[] }> = {
-  'atlanta-ga': { state: 'GA', cities: ['Atlanta'] },
-  'tampa-fl':   { state: 'FL', cities: ['Tampa'] },
-  'orlando-fl': { state: 'FL', cities: ['Orlando'] },
-  'miami-fl':   { state: 'FL', cities: ['Miami'] },
-  'dallas-tx':  { state: 'TX', cities: ['Dallas'] },
-  'houston-tx': { state: 'TX', cities: ['Houston'] },
-  'austin-tx':  { state: 'TX', cities: ['Austin'] },
+type MsaResolution = {
+  id: number;
+  name: string;
+  primaryCity: string;
+  stateCodes: string[];
 };
 
-const resolveMsaScope = (msaId: string, explicitState: string): { state: string; cities: string[]; msaName: string | null } => {
-  const lookup = MSA_CITY_MAP[msaId.toLowerCase()];
-  if (lookup) {
+type SubmarketResolution = {
+  source: 'trade_area' | 'submarket';
+  id: string | number;
+  name: string;
+  municipality: string | null;
+  state: string | null;
+};
+
+const slugify = (s: string): string =>
+  s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+// Extract the leading city token from an MSA name like
+// "Atlanta-Sandy Springs-Roswell, GA" -> "Atlanta".
+const extractPrimaryCity = (msaName: string): string => {
+  const head = msaName.split(',')[0] || msaName;
+  return (head.split('-')[0] || head).trim();
+};
+
+const resolveMsa = async (
+  client: { query: (sql: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }> },
+  msaId: string,
+): Promise<MsaResolution | null> => {
+  if (!msaId) return null;
+
+  // Try numeric primary key.
+  if (/^\d+$/.test(msaId)) {
+    const r = await client.query(
+      `SELECT id, name, state_codes FROM msas WHERE id = $1 LIMIT 1`,
+      [parseInt(msaId, 10)],
+    );
+    if (r.rows.length > 0) {
+      const row = r.rows[0];
+      const name = String(row.name);
+      return {
+        id: Number(row.id),
+        name,
+        primaryCity: extractPrimaryCity(name),
+        stateCodes: (row.state_codes as string[]) || [],
+      };
+    }
+  }
+
+  // Try cbsa_code.
+  const cbsa = await client.query(
+    `SELECT id, name, state_codes FROM msas WHERE cbsa_code = $1 LIMIT 1`,
+    [msaId],
+  );
+  if (cbsa.rows.length > 0) {
+    const row = cbsa.rows[0];
+    const name = String(row.name);
     return {
-      state: lookup.state,
-      cities: lookup.cities,
-      msaName: lookup.cities[0],
+      id: Number(row.id),
+      name,
+      primaryCity: extractPrimaryCity(name),
+      stateCodes: (row.state_codes as string[]) || [],
     };
   }
-  // No mapping — derive state from explicit param or the trailing 2-letter token in msaId.
-  const tail = msaId.split('-').pop() || '';
-  const state = (
-    explicitState && /^[A-Za-z]{2}$/.test(explicitState) ? explicitState
-    : /^[A-Za-z]{2}$/.test(tail) ? tail
-    : 'GA'
-  ).toUpperCase();
-  // If msaId looks like "<city>-<state>", peel off the city token(s).
-  const parts = msaId.split('-');
-  const cityTokens = /^[A-Za-z]{2}$/.test(parts[parts.length - 1] || '')
-    ? parts.slice(0, -1)
-    : parts;
-  const city = cityTokens
-    .filter(Boolean)
-    .map(s => s.charAt(0).toUpperCase() + s.slice(1))
-    .join(' ');
-  return {
-    state,
-    cities: city ? [city] : [],
-    msaName: city || null,
-  };
+
+  // Try slug-of-name: "atlanta-ga" matches slugify("Atlanta-Sandy Springs-Roswell, GA")
+  // by checking that the msaId is a prefix of the slug AND the trailing token
+  // matches a state code. Also check exact slug equality.
+  const all = await client.query(
+    `SELECT id, name, state_codes FROM msas`,
+    [],
+  );
+  const wanted = msaId.toLowerCase();
+  const tail = wanted.split('-').pop() || '';
+  for (const row of all.rows) {
+    const name = String(row.name);
+    const slug = slugify(name);
+    const stateCodes = ((row.state_codes as string[]) || []).map(s => s.toLowerCase());
+    if (
+      slug === wanted ||
+      (slug.startsWith(wanted.replace(/-[a-z]{2}$/, '')) && stateCodes.includes(tail))
+    ) {
+      return {
+        id: Number(row.id),
+        name,
+        primaryCity: extractPrimaryCity(name),
+        stateCodes: ((row.state_codes as string[]) || []),
+      };
+    }
+  }
+
+  return null;
+};
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const resolveSubmarket = async (
+  client: { query: (sql: string, params?: unknown[]) => Promise<{ rows: Record<string, unknown>[] }> },
+  submarketId: string,
+  msaId: number | null,
+): Promise<SubmarketResolution | null> => {
+  if (!submarketId) return null;
+
+  // UUID -> trade_areas
+  if (UUID_RE.test(submarketId)) {
+    const r = await client.query(
+      `SELECT id::text AS id, name, municipality, state FROM trade_areas WHERE id = $1::uuid LIMIT 1`,
+      [submarketId],
+    );
+    if (r.rows.length > 0) {
+      const row = r.rows[0];
+      return {
+        source: 'trade_area',
+        id: String(row.id),
+        name: String(row.name),
+        municipality: row.municipality ? String(row.municipality) : null,
+        state: row.state ? String(row.state) : null,
+      };
+    }
+  }
+
+  // Integer -> submarkets
+  if (/^\d+$/.test(submarketId)) {
+    const r = await client.query(
+      `SELECT s.id, s.name, m.name AS msa_name
+         FROM submarkets s
+         LEFT JOIN msas m ON m.id = s.msa_id
+        WHERE s.id = $1 LIMIT 1`,
+      [parseInt(submarketId, 10)],
+    );
+    if (r.rows.length > 0) {
+      const row = r.rows[0];
+      const msaName = row.msa_name ? String(row.msa_name) : null;
+      return {
+        source: 'submarket',
+        id: Number(row.id),
+        name: String(row.name),
+        municipality: msaName ? extractPrimaryCity(msaName) : null,
+        state: null,
+      };
+    }
+  }
+
+  // Slug match — try trade_areas first (more specific), then submarkets.
+  const wanted = submarketId.toLowerCase();
+  const ta = await client.query(`SELECT id::text AS id, name, municipality, state FROM trade_areas`, []);
+  for (const row of ta.rows) {
+    if (slugify(String(row.name)) === wanted) {
+      return {
+        source: 'trade_area',
+        id: String(row.id),
+        name: String(row.name),
+        municipality: row.municipality ? String(row.municipality) : null,
+        state: row.state ? String(row.state) : null,
+      };
+    }
+  }
+
+  const subSql = msaId !== null
+    ? `SELECT id, name FROM submarkets WHERE msa_id = $1`
+    : `SELECT id, name FROM submarkets`;
+  const subParams: unknown[] = msaId !== null ? [msaId] : [];
+  const sm = await client.query(subSql, subParams);
+  for (const row of sm.rows) {
+    if (slugify(String(row.name)) === wanted) {
+      return {
+        source: 'submarket',
+        id: Number(row.id),
+        name: String(row.name),
+        municipality: null,
+        state: null,
+      };
+    }
+  }
+
+  return null;
 };
 
 export const supplyPipelineTimelineHandler = async (req: import('express').Request, res: import('express').Response) => {
   try {
     const msaId = (req.query.msaId as string) || '';
-    const explicitState = (req.query.state as string) || '';
-    const submarketName = (req.query.submarketName as string) || '';
     const submarketId = (req.query.submarketId as string) || '';
     const quarters = Math.min(Math.max(parseInt(req.query.quarters as string) || 8, 1), 16);
 
-    const { state, cities, msaName } = resolveMsaScope(msaId, explicitState);
+    if (!msaId) {
+      res.status(400).json({ success: false, error: 'msaId is required' });
+      return;
+    }
 
     const { getClient } = require('../../database/connection');
     const client = await getClient();
 
     try {
-      const params: (string | number)[] = [state];
-      let where = `asp.state = $1`;
+      // Deterministic, DB-backed resolution. 404 if either is unresolvable.
+      const msa = await resolveMsa(client, msaId);
+      if (!msa) {
+        res.status(404).json({
+          success: false,
+          error: `MSA not found for id "${msaId}"`,
+        });
+        return;
+      }
 
-      // MSA scoping: restrict to the MSA's primary city/cities (not just state).
-      if (cities.length > 0) {
-        const placeholders = cities.map(c => {
-          params.push(c);
+      let submarket: SubmarketResolution | null = null;
+      if (submarketId) {
+        submarket = await resolveSubmarket(client, submarketId, msa.id);
+        if (!submarket) {
+          res.status(404).json({
+            success: false,
+            error: `Submarket not found for id "${submarketId}"`,
+          });
+          return;
+        }
+      }
+
+      // Build scoping clause from RESOLVED canonical records (not query strings).
+      const params: (string | number)[] = [];
+      const wheres: string[] = [];
+
+      // State scope: canonical msas.state_codes.
+      if (msa.stateCodes.length > 0) {
+        const placeholders = msa.stateCodes.map(s => {
+          params.push(s);
           return `$${params.length}`;
         });
-        where += ` AND asp.city IN (${placeholders.join(', ')})`;
+        wheres.push(`asp.state IN (${placeholders.join(', ')})`);
       }
 
-      // Submarket scoping: keyword ILIKE on name/address (first token of compound names).
-      if (submarketName) {
-        const keyword = submarketName.split('/')[0].trim();
+      // City scope: canonical primary city of the MSA.
+      params.push(msa.primaryCity);
+      wheres.push(`asp.city = $${params.length}`);
+
+      // Submarket scope: ILIKE on canonical submarket name token.
+      // (apartment_supply_pipeline carries no submarket_id column.)
+      if (submarket) {
+        const canonicalName = submarket.name;
+        const keyword = canonicalName.split('/')[0].trim();
         params.push(`%${keyword}%`);
-        where += ` AND (asp.name ILIKE $${params.length} OR asp.address ILIKE $${params.length})`;
+        wheres.push(`(asp.name ILIKE $${params.length} OR asp.address ILIKE $${params.length})`);
       }
+
+      const where = wheres.join(' AND ');
 
       // Best-effort propertyId linkage by (address, state). LEFT JOIN so unlinked
       // rows still appear (they fall back to the read-only detail panel).
@@ -504,10 +671,10 @@ export const supplyPipelineTimelineHandler = async (req: import('express').Reque
         };
       });
 
-      const scope = submarketName ? 'submarket' : 'msa';
-      const label = submarketName
-        ? `${submarketName}${msaName ? ` — ${msaName} MSA` : ''}`
-        : msaName ? `${msaName} MSA` : `${state} state pipeline`;
+      const scope: 'msa' | 'submarket' = submarket ? 'submarket' : 'msa';
+      const label = submarket
+        ? `${submarket.name} — ${msa.name}`
+        : `${msa.name} MSA`;
 
       res.json({
         success: true,
@@ -515,11 +682,15 @@ export const supplyPipelineTimelineHandler = async (req: import('express').Reque
           scope,
           label,
           msaId: msaId || null,
-          msaName,
-          state,
-          cities,
-          submarketName: submarketName || null,
+          msaCanonicalId: msa.id,
+          msaName: msa.name,
+          state: msa.stateCodes[0] || null,
+          stateCodes: msa.stateCodes,
+          cities: [msa.primaryCity],
           submarketId: submarketId || null,
+          submarketCanonicalId: submarket ? String(submarket.id) : null,
+          submarketName: submarket ? submarket.name : null,
+          submarketSource: submarket ? submarket.source : null,
           windowQuarters,
         },
         totals: {
