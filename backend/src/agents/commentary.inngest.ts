@@ -263,6 +263,26 @@ export const commentaryOnResearchCompleted = inngest.createFunction(
       } satisfies JediEvents);
     }
 
+    // ── Step 8: Update Knowledge Graph ──────────────────────────────
+    await step.run('update-knowledge-graph', async () => {
+      try {
+        const { getKnowledgeGraph } = await import('../services/neural-network/knowledge-graph.service');
+        const { getPool } = await import('../database/connection');
+        const kg = getKnowledgeGraph(getPool());
+        const dealNode = await kg.findNodeByExternalId('Deal', dealId);
+        if (dealNode) {
+          await kg.updateNodeProperties(dealNode.id, {
+            jediScore: runResult.jedi_score,
+            commentaryConfidence: runResult.confidence_score,
+            lastCommentaryAnalysis: new Date(),
+          });
+        }
+      } catch (err) {
+        // Non-fatal
+      }
+      return { graphUpdated: true };
+    });
+
     return {
       runId: runResult.runId,
       confidence_score: runResult.confidence_score,

@@ -216,6 +216,31 @@ export const zoningOnDealCreated = inngest.createFunction(
       } satisfies JediEvents);
     }
 
+    // ── Step 7: Update Knowledge Graph ──────────────────────────────
+    await step.run('update-knowledge-graph', async () => {
+      try {
+        const { getGraphIngestionListener } = await import('../services/neural-network/graph-ingestion-listener');
+        const { getPool } = await import('../database/connection');
+        const graphListener = getGraphIngestionListener(getPool());
+
+        // Update deal node with zoning data
+        const { getKnowledgeGraph } = await import('../services/neural-network/knowledge-graph.service');
+        const kg = getKnowledgeGraph(getPool());
+        const dealNode = await kg.findNodeByExternalId('Deal', dealId);
+        if (dealNode) {
+          await kg.updateNodeProperties(dealNode.id, {
+            zoningCode: runResult.zoning_code,
+            entitlementRisk: runResult.entitlement_risk,
+            zoningConfidence: runResult.confidence_score,
+            lastZoningAnalysis: new Date(),
+          });
+        }
+      } catch (err) {
+        // Non-fatal
+      }
+      return { graphUpdated: true };
+    });
+
     return {
       runId: runResult.runId,
       confidence_score: runResult.confidence_score,

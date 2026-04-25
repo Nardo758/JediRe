@@ -361,13 +361,53 @@ export async function insertExtractedEvents(
 
       if (result.rows.length > 0) {
         inserted++;
-        persisted.push({ ...evt, geography_id: geoId, id: result.rows[0].id });
+        const persistedEvt = { ...evt, geography_id: geoId, id: result.rows[0].id };
+        persisted.push(persistedEvt);
         logger.info('[EventExtraction] Inserted market event', {
           event_name: evt.event_name,
           event_type: evt.event_type,
           geography_id: geoId,
           effective_date: evt.effective_date,
         });
+
+        // Ingest into Knowledge Graph (fire-and-forget)
+        try {
+          const { getKnowledgeGraph } = require('./neural-network/knowledge-graph.service');
+          const { getPool } = require('../database/connection');
+          const kg = getKnowledgeGraph(getPool());
+          const nodeId = await kg.upsertNode({
+            type: 'Event',
+            externalId: result.rows[0].id,
+            name: evt.event_name,
+            properties: {
+              eventType: evt.event_type,
+              description: evt.event_description,
+              entityName: evt.entity_name,
+              entityType: evt.entity_type,
+              jobsAffected: evt.jobs_affected,
+              unitsAffected: evt.units_affected,
+              investmentAmount: evt.investment_amount,
+              effectiveDate: evt.effective_date,
+              impactDirection: evt.expected_impact_direction,
+              impactMagnitude: evt.expected_impact_magnitude,
+              status: evt.status,
+              confidence: evt.confidence_score,
+              sourceUrl: sourceUrl,
+            }
+          });
+          // Link to market
+          const marketNode = await kg.findNodeByExternalId('Market', geoId);
+          if (marketNode) {
+            await kg.createEdge({
+              sourceNodeId: nodeId,
+              targetNodeId: marketNode.id,
+              edgeType: 'AFFECTS',
+              properties: { impactType: evt.event_type, direction: evt.expected_impact_direction }
+            });
+          }
+        } catch (graphErr) {
+          // Non-fatal
+        }
       } else {
         skipped++;
       }

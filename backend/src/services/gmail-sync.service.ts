@@ -729,6 +729,55 @@ export class GmailSyncService {
       }
     }
 
+    // Ingest classification into Knowledge Graph
+    // Fire-and-forget — non-blocking
+    setImmediate(async () => {
+      try {
+        const { getGraphIngestionListener } = await import('./neural-network/graph-ingestion-listener');
+        const { getPool } = await import('../database/connection');
+        const graphListener = getGraphIngestionListener(getPool());
+
+        if (classification.containsProperty) {
+          // Create a lightweight Event node for the email-detected property
+          const { getKnowledgeGraph } = await import('./neural-network/knowledge-graph.service');
+          const kg = getKnowledgeGraph(getPool());
+          await kg.upsertNode({
+            type: 'Event',
+            externalId: `email-property-${emailId}`,
+            name: `Deal Lead: ${subject}`,
+            properties: {
+              eventType: 'email_deal_lead',
+              emailId,
+              subject,
+              from,
+              classification: classification.classification,
+              confidence: classification.confidence,
+              receivedAt: receivedAt.toISOString(),
+            }
+          });
+        }
+
+        if (classification.containsNews) {
+          const { getKnowledgeGraph } = await import('./neural-network/knowledge-graph.service');
+          const kg = getKnowledgeGraph(getPool());
+          await kg.upsertNode({
+            type: 'Event',
+            externalId: `email-news-${emailId}`,
+            name: `News: ${subject}`,
+            properties: {
+              eventType: 'email_news',
+              emailId,
+              subject,
+              from,
+              receivedAt: receivedAt.toISOString(),
+            }
+          });
+        }
+      } catch (graphErr) {
+        logger.debug('Graph ingestion from email failed', { emailId, err: (graphErr as Error).message });
+      }
+    });
+
     // Parse newsletters (WSJ, Bloomberg, Bisnow, etc.) - uses LLM
     // Fire-and-forget to avoid slowing down sync
     import('./news/newsletter-parser.service').then(({ newsletterParserService }) => {
