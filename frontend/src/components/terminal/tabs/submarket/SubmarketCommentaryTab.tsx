@@ -10,6 +10,9 @@ import {
   SupplyNarrative,
   StrategyScoreBadge,
   MarketSentimentTrend,
+  BrokerNarrativesFeed,
+  ReplacementCostPanel,
+  RefreshIntelligenceButton,
 } from '../../commentary';
 
 interface SubmarketCommentaryTabProps {
@@ -192,9 +195,16 @@ export const SubmarketCommentaryTab: React.FC<SubmarketCommentaryTabProps> = ({
         borderLeft: `2px solid ${BT.text.amber}66`,
         paddingLeft: 16,
       }}>
+        <RefreshIntelligenceButton
+          entityType="submarket"
+          entityId={submarketId}
+          onQueued={() => fetchCommentary('submarket', submarketId, subName, true)}
+        />
         {commentary ? (
           <>
             <MarketNarrative narrative={commentary.marketNarrative} compact />
+            <BrokerNarrativesFeed entityType="submarket" entityId={submarketId} />
+            <ReplacementCostPanel entityType="submarket" entityId={submarketId} />
             <InvestmentThesis
               recommendation={commentary.investmentThesis.recommendation}
               points={commentary.investmentThesis.points}

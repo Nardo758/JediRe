@@ -25,7 +25,7 @@ import {
 } from '../api/rest/_market-resolution';
 
 export type AgentSentimentLabel = 'bullish' | 'neutral' | 'bearish';
-export type SentimentSource = 'agent_run' | 'cron_snapshot' | 'backfill';
+export type SentimentSource = 'agent_run' | 'cron_snapshot' | 'backfill' | 'broker_om';
 
 export interface SentimentSnapshotInput {
   entityType: 'msa' | 'submarket';

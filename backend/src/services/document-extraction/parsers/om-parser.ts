@@ -7,11 +7,15 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import * as pdfParse from 'pdf-parse';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { logger } from '../../../utils/logger';
 import { jediAI } from '../../ai/aiService';
 import { query } from '../../../database/connection';
 import type { ExtractionResult } from '../types';
 import type { AICallContext } from '../../../types/dealContext';
+import { ocrPdf, OCR_MIN_TEXT_THRESHOLD } from '../ocr.service';
 
 /**
  * Caller-supplied context that lets the OM parser flow through JediAIService
@@ -599,32 +603,78 @@ function normalizeExtraction(raw: any, textLength: number): OMExtraction {
 
 // ─── Main Parser Function ─────────────────────────────────────────────────────
 
+/**
+ * Result envelope for parseOM. Adds an explicit `meta.usedOcr` flag so
+ * downstream pipeline code can distinguish OCR-fallback failures from
+ * regular text-layer parse failures without parsing warning strings.
+ */
+export type OMParseResult = ExtractionResult & {
+  data: OMExtraction | null;
+  meta: { usedOcr: boolean; ocrError?: string };
+};
+
 export async function parseOM(
   buffer: Buffer,
   filename: string,
   ctx?: OMParseContext
-): Promise<ExtractionResult & { data: OMExtraction | null }> {
+): Promise<OMParseResult> {
   const warnings: string[] = [];
-  
+  let usedOcr = false;
+  let ocrError: string | undefined;
+
   try {
-    // Extract text from PDF
-    const { text, pages } = await extractPdfText(buffer);
-    
+    // Extract text from the PDF's embedded text layer first.
+    let { text, pages } = await extractPdfText(buffer);
+
+    // Scanned/image-only OMs return ~empty text from pdf-parse. When the text
+    // layer is below threshold, fall back to OCR (pdftoppm + tesseract.js).
+    if (!text || text.trim().length < OCR_MIN_TEXT_THRESHOLD) {
+      const tmpPath = path.join(os.tmpdir(), `om-${Date.now()}-${Math.random().toString(36).slice(2)}.pdf`);
+      try {
+        fs.writeFileSync(tmpPath, buffer);
+        logger.info(`[OM Parser] text layer empty (${text?.trim().length ?? 0} chars) — running OCR fallback`, { filename });
+        usedOcr = true;
+        try {
+          const ocr = await ocrPdf(tmpPath);
+          text = ocr.text;
+          if (!pages || pages === 0) pages = ocr.pageCount;
+          warnings.push(`OCR fallback used (${ocr.pageCount} pages, ${ocr.durationMs}ms)`);
+        } catch (ocrErr) {
+          ocrError = ocrErr instanceof Error ? ocrErr.message : String(ocrErr);
+          logger.warn('[OM Parser] OCR fallback failed', { filename, error: ocrError });
+          return {
+            documentType: 'OM',
+            success: false,
+            error: `OCR fallback failed: ${ocrError}`,
+            data: null,
+            summary: {},
+            warnings,
+            meta: { usedOcr: true, ocrError },
+          };
+        }
+      } finally {
+        try { fs.unlinkSync(tmpPath); } catch { /* tmp cleanup is best-effort */ }
+      }
+    }
+
     if (!text || text.length < 500) {
       return {
         documentType: 'OM',
         success: false,
-        error: 'PDF appears to be empty or image-only (OCR not supported)',
+        error: usedOcr
+          ? 'OCR returned insufficient text — document may be unreadable'
+          : 'PDF appears to be empty or unparseable',
         data: null,
         summary: {},
         warnings,
+        meta: { usedOcr, ocrError },
       };
     }
-    
+
     if (text.length < 2000) {
       warnings.push('Document is unusually short — may be incomplete');
     }
-    
+
     // Extract with AI
     const extraction = await extractWithAI(text, filename, ctx);
     extraction.metadata.pdfPageCount = pages;
@@ -674,6 +724,7 @@ export async function parseOM(
       data: extraction,
       summary,
       warnings,
+      meta: { usedOcr, ocrError },
     };
   } catch (err) {
     logger.error('[OM Parser] Error:', err);
@@ -684,6 +735,7 @@ export async function parseOM(
       data: null,
       summary: {},
       warnings,
+      meta: { usedOcr, ocrError },
     };
   }
 }

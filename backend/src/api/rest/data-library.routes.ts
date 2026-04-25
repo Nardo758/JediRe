@@ -120,5 +120,26 @@ export function createDataLibraryRoutes(pool: Pool): Router {
     }
   });
 
+  // Re-run the upload-time parse pipeline for a file. Used by the Retry
+  // button on the Data Library page when an OM upload fails OCR or the
+  // model returns malformed JSON.
+  router.post('/:id/retry', async (req: Request, res: Response) => {
+    try {
+      const id = parseInt(req.params.id);
+      const file = await service.getFile(id);
+      if (!file) return res.status(404).json({ error: 'Not found' });
+
+      // Fire-and-forget; the dataLibrary service handles state transitions.
+      service.parseFileAsync(id, file.file_path, file.mime_type).catch((err: unknown) => {
+        console.error('Data library retry parse error:', err);
+      });
+
+      res.status(202).json({ id, status: 'retry_queued' });
+    } catch (err: any) {
+      console.error('Data library retry error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   return router;
 }

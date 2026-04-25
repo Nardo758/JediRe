@@ -6,3 +6,6 @@ export { PeerContext } from './PeerContext';
 export { SupplyNarrative } from './SupplyNarrative';
 export { StrategyScoreBadge } from './StrategyScoreBadge';
 export { MarketSentimentTrend } from './MarketSentimentTrend';
+export { BrokerNarrativesFeed } from './BrokerNarrativesFeed';
+export { ReplacementCostPanel } from './ReplacementCostPanel';
+export { RefreshIntelligenceButton } from './RefreshIntelligenceButton';

@@ -74,6 +74,9 @@ import { createPropertyScoringRouter } from './api/rest/property-scoring.routes'
 import { createOpusRoutes } from './api/rest/opus.routes';
 import { createDataLibraryRoutes } from './api/rest/data-library.routes';
 import { createDataLibraryAssetsRoutes } from './api/rest/data-library-assets.routes';
+import { createReplacementCostRoutes } from './api/rest/replacement-cost.routes';
+import { createBrokerNarrativesRoutes } from './api/rest/broker-narratives.routes';
+import { createIntelligenceRefreshRoutes } from './api/rest/intelligence-refresh.routes';
 import propertyBoundaryRouter from './api/rest/property-boundary.routes';
 import siteIntelligenceRouter from './api/rest/site-intelligence.routes';
 import zoningCapacityRouter from './api/rest/zoning-capacity.routes';
@@ -451,6 +454,9 @@ app.use('/api/v1/property-scoring', requireAuth, createPropertyScoringRouter(poo
 app.use('/api/v1/opus', requireAuth, createOpusRoutes(pool));
 app.use('/api/v1/data-library', requireAuth, createDataLibraryRoutes(pool));
 app.use('/api/v1/data-library-assets', requireAuth, createDataLibraryAssetsRoutes(pool));
+app.use('/api/v1/replacement-cost', createReplacementCostRoutes(pool));
+app.use('/api/v1/broker-narratives', createBrokerNarrativesRoutes(pool));
+app.use('/api/v1/intelligence', createIntelligenceRefreshRoutes());
 app.use('/api/v1', requireAuth, propertyBoundaryRouter);
 app.use('/api/v1', requireAuth, siteIntelligenceRouter);
 app.use('/api/v1', requireAuth, zoningCapacityRouter);

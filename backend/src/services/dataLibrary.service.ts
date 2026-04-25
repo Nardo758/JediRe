@@ -1,6 +1,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { Pool } from 'pg';
+import { parseOM } from './document-extraction/parsers/om-parser';
+import { tagOmWithMarket } from './document-extraction/om-geo';
+import { distributeOmExtraction } from './document-extraction/om-distribution.service';
+import { scoreBrokerSentiment } from './document-extraction/broker-sentiment.service';
 
 export interface DataLibraryFile {
   id: number;
@@ -112,38 +116,209 @@ export class DataLibraryService {
     return file;
   }
 
-  private async parseFileAsync(fileId: number, filePath: string, mimeType: string): Promise<void> {
+  private async setStage(fileId: number, stage: string): Promise<void> {
     await this.pool.query(
-      `UPDATE data_library_files SET parsing_status = 'parsing' WHERE id = $1`,
-      [fileId]
+      `UPDATE data_library_files
+          SET parsing_stage = $2,
+              parsing_status = CASE
+                WHEN $2 IN ('routed','complete') THEN 'complete'
+                WHEN $2 = 'error' THEN 'error'
+                ELSE 'parsing'
+              END
+        WHERE id = $1`,
+      [fileId, stage],
     );
+  }
+
+  /**
+   * Background processor for an uploaded file. Public so the routes layer can
+   * invoke it on the Retry endpoint.
+   */
+  async parseFileAsync(fileId: number, filePath: string, mimeType: string): Promise<void> {
+    await this.setStage(fileId, 'pending');
 
     try {
-      let parsedData: any = {};
-
       if (mimeType === 'text/csv' || mimeType === 'application/csv') {
-        parsedData = await this.parseCSV(filePath);
-      } else if (mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
-                 mimeType === 'application/vnd.ms-excel') {
-        parsedData = { type: 'excel', status: 'requires_xlsx_parser', fileName: path.basename(filePath) };
-      } else if (mimeType === 'application/pdf') {
-        parsedData = { type: 'pdf', status: 'requires_pdf_parser', fileName: path.basename(filePath) };
-      } else {
-        parsedData = { type: 'unknown', mimeType };
+        await this.setStage(fileId, 'parsing');
+        const parsedData = await this.parseCSV(filePath);
+        await this.pool.query(
+          `UPDATE data_library_files
+              SET parsing_status='complete', parsing_stage='complete', parsed_data=$1, parsing_errors=NULL
+            WHERE id=$2`,
+          [JSON.stringify(parsedData), fileId],
+        );
+        this.extractAndStoreCalibration(fileId, parsedData).catch(() => {});
+        return;
       }
 
-      await this.pool.query(
-        `UPDATE data_library_files SET parsing_status = 'complete', parsed_data = $1 WHERE id = $2`,
-        [JSON.stringify(parsedData), fileId]
-      );
+      if (mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+          mimeType === 'application/vnd.ms-excel') {
+        const parsedData = { type: 'excel', status: 'requires_xlsx_parser', fileName: path.basename(filePath) };
+        await this.pool.query(
+          `UPDATE data_library_files
+              SET parsing_status='complete', parsing_stage='complete', parsed_data=$1, parsing_errors=NULL
+            WHERE id=$2`,
+          [JSON.stringify(parsedData), fileId],
+        );
+        return;
+      }
 
-      this.extractAndStoreCalibration(fileId, parsedData).catch(() => {});
-    } catch (err: any) {
+      if (mimeType === 'application/pdf') {
+        await this.runOmPipeline(fileId, filePath);
+        return;
+      }
+
+      const parsedData = { type: 'unknown', mimeType };
       await this.pool.query(
-        `UPDATE data_library_files SET parsing_status = 'error', parsing_errors = $1 WHERE id = $2`,
-        [err.message, fileId]
+        `UPDATE data_library_files
+            SET parsing_status='complete', parsing_stage='complete', parsed_data=$1
+          WHERE id=$2`,
+        [JSON.stringify(parsedData), fileId],
+      );
+    } catch (err: any) {
+      // Preserve any specific terminal stage already written by runOmPipeline
+      // (parse_failed / ocr_failed / distribute_failed / sentiment_failed) so
+      // the operator sees WHERE the pipeline broke, not just a generic 'error'.
+      const cur = await this.pool.query<{ parsing_stage: string | null }>(
+        `SELECT parsing_stage FROM data_library_files WHERE id=$1`,
+        [fileId],
+      );
+      const existing = cur.rows[0]?.parsing_stage ?? null;
+      const PRESERVED = new Set([
+        'parse_failed', 'ocr_failed', 'distribute_failed', 'sentiment_failed',
+      ]);
+      if (existing && PRESERVED.has(existing)) {
+        // Stage + parsing_errors are already set by the inner handler.
+        return;
+      }
+      await this.pool.query(
+        `UPDATE data_library_files
+            SET parsing_status='error', parsing_stage='error', parsing_errors=$1
+          WHERE id=$2`,
+        [err?.message ?? 'unknown error', fileId],
       );
     }
+  }
+
+  /**
+   * Broker OM ingestion → market intelligence pipeline (Task #383):
+   *   1. parseOM (with OCR fallback for scanned PDFs)
+   *   2. geocode address → MSA / submarket canonical keys
+   *   3. distribute extracted comps + replacement cost + narratives
+   *   4. score broker sentiment → market_sentiment_history
+   * Each stage updates `parsing_stage` so the operator sees live progress.
+   */
+  private async runOmPipeline(fileId: number, filePath: string): Promise<void> {
+    const file = await this.getFile(fileId);
+    if (!file) throw new Error(`Data library file ${fileId} not found`);
+
+    await this.setStage(fileId, 'parsing');
+    const buffer = fs.readFileSync(filePath);
+    const result = await parseOM(
+      buffer,
+      file.file_name,
+      file.user_id ? { userId: file.user_id } : undefined,
+    );
+
+    if (!result.success || !result.data) {
+      // Distinguish OCR-stage failures from text-layer parse failures using the
+      // explicit `meta.usedOcr` flag the parser sets — never infer from warnings.
+      const usedOcr = result.meta?.usedOcr === true;
+      await this.pool.query(
+        `UPDATE data_library_files
+            SET parsing_status='error', parsing_stage=$2, parsing_errors=$1
+          WHERE id=$3`,
+        [result.error ?? 'OM parse failed', usedOcr ? 'ocr_failed' : 'parse_failed', fileId],
+      );
+      return;
+    }
+
+    await this.setStage(fileId, 'geocoding');
+    const geo = await tagOmWithMarket(this.pool, {
+      address: result.data.property.address,
+      city: result.data.property.city,
+      state: result.data.property.state,
+      zip: result.data.property.zip,
+    });
+
+    await this.pool.query(
+      `UPDATE data_library_files
+          SET om_extraction = $1::jsonb,
+              msa_key = $2,
+              submarket_key = $3,
+              parsed_data = $4::jsonb,
+              parsing_errors = NULL
+        WHERE id = $5`,
+      [
+        JSON.stringify(result.data),
+        geo.msaKey,
+        geo.submarketKey,
+        JSON.stringify({ type: 'pdf', kind: 'om', summary: result.summary, warnings: result.warnings }),
+        fileId,
+      ],
+    );
+
+    await this.setStage(fileId, 'distributing');
+    let counts;
+    try {
+      counts = await distributeOmExtraction({
+        pool: this.pool,
+        fileId,
+        extraction: result.data,
+        geo,
+      });
+    } catch (err) {
+      // Per Task #383 "no silent fallbacks": any insert failure during
+      // distribution must mark the file with a terminal failure stage so the
+      // operator sees that comps/cost/narratives are NOT all in.
+      const msg = err instanceof Error ? err.message : String(err);
+      await this.pool.query(
+        `UPDATE data_library_files
+            SET parsing_status='error', parsing_stage='distribute_failed',
+                parsing_errors=$1
+          WHERE id=$2`,
+        [msg, fileId],
+      );
+      throw err;
+    }
+
+    // Sentiment scoring is part of the contract. If the LLM call fails we
+    // mark the file as 'sentiment_failed' (a terminal stage that surfaces the
+    // partial state) — Retry will re-run the whole pipeline.
+    try {
+      await scoreBrokerSentiment({
+        thesis: result.data.investmentThesis,
+        highlights: result.data.investmentHighlights,
+        msaKey: geo.msaKey,
+        submarketKey: geo.submarketKey,
+        userId: file.user_id ?? null,
+        fileId,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      await this.pool.query(
+        `UPDATE data_library_files
+            SET parsing_status='error', parsing_stage='sentiment_failed',
+                parsing_errors=$1
+          WHERE id=$2`,
+        [`sentiment: ${msg}`, fileId],
+      );
+      throw err;
+    }
+
+    await this.pool.query(
+      `UPDATE data_library_files
+          SET parsing_status='complete', parsing_stage='routed',
+              parsing_errors = NULL
+        WHERE id=$1`,
+      [fileId],
+    );
+
+    console.log(
+      `[OM pipeline] file ${fileId} routed — rent_comps=${counts.rentComps} sale_comps=${counts.saleComps} ` +
+      `replacement=${counts.replacementCostRows} narratives=${counts.narratives} ` +
+      `msa=${geo.msaKey ?? 'unmapped'} submarket=${geo.submarketKey ?? 'unmapped'}`,
+    );
   }
 
   private async extractAndStoreCalibration(fileId: number, parsedData: any): Promise<void> {

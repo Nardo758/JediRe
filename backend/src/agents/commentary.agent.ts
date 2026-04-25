@@ -15,6 +15,8 @@ import { buildEconomicContextBlock } from '../services/economic-context.service'
 import { commentaryRuntime } from './commentary.config';
 import type { CommentaryAgentOutput } from './commentary.config';
 import { recordSentimentSnapshot, labelToScore } from '../services/sentiment-history.service';
+import { fetchBrokerNarratives } from '../api/rest/broker-narratives.routes';
+import { getPool } from '../database/connection';
 
 export interface CommentaryInput {
   entityType: 'msa' | 'submarket' | 'property';
@@ -180,6 +182,37 @@ export class CommentaryAgent {
       logger.warn('[Commentary] Economic context fetch failed, omitting from prompt', { error: err.message });
     }
 
+    // Pull the latest broker narratives tagged to this market (Task #383).
+    // Brokers' on-the-ground language about supply, rent trajectory, and tenant
+    // demand is a strong qualitative signal the model otherwise lacks.
+    let brokerNarrativeBlock = '';
+    if ((entityType === 'msa' || entityType === 'submarket') && entityId) {
+      try {
+        const narrPool = getPool();
+        if (narrPool) {
+          const out = await fetchBrokerNarratives(narrPool, entityType, entityId, 5);
+          if (out.rows.length > 0) {
+            const lines = out.rows.map(r => {
+              const tag = r.sentimentLabel ? `[${r.sentimentLabel}]` : '[unscored]';
+              const src = r.broker ? ` — ${r.broker}` : '';
+              const prop = r.propertyName ? ` (${r.propertyName})` : '';
+              return `- ${tag}${src}${prop}: ${r.text}`;
+            }).join('\n');
+            brokerNarrativeBlock = `\nBroker Narratives (recent OMs):\n${lines}\n` +
+              `Citation tag: [Broker OM]. Use to confirm or contrast quantitative signals; do NOT reproduce broker hype as fact.`;
+            logger.info('[Commentary] injected broker narratives into context', {
+              entityType, entityId, count: out.rows.length,
+            });
+          }
+        }
+      } catch (err) {
+        logger.warn('[Commentary] broker narratives fetch failed', {
+          entityType, entityId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
     const contextBlock = [
       `Entity: ${name} (${levelLabel})`,
       `Signal scores (0-100): Demand=${signals.demandScore}, Supply=${signals.supplyScore}, Momentum=${signals.momentumScore}, Position=${signals.positionScore}, Risk=${signals.riskScore}`,
@@ -188,6 +221,7 @@ export class CommentaryAgent {
       `Arbitrage Flag: ${arb.arbitrageFlag ? `Yes, ${arb.arbitrageDelta.toFixed(0)}pt spread` : 'No'}`,
       `Strategy Rankings: ${arb.strategies.map(s => `${s.label}: ${s.score.toFixed(0)}`).join(', ')}`,
       econContextText ? `\n${econContextText}` : '',
+      brokerNarrativeBlock,
     ].filter(Boolean).join('\n');
 
     const sentiment: 'bullish' | 'neutral' | 'bearish' =

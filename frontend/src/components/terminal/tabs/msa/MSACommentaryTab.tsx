@@ -10,6 +10,9 @@ import {
   SupplyNarrative,
   StrategyScoreBadge,
   MarketSentimentTrend,
+  BrokerNarrativesFeed,
+  ReplacementCostPanel,
+  RefreshIntelligenceButton,
 } from '../../commentary';
 
 interface MSACommentaryTabProps {
@@ -332,9 +335,16 @@ export const MSACommentaryTab: React.FC<MSACommentaryTabProps> = ({ msaId, msa }
         borderLeft: `2px solid ${BT.text.amber}66`,
         paddingLeft: 16,
       }}>
+        <RefreshIntelligenceButton
+          entityType="msa"
+          entityId={msaId}
+          onQueued={() => fetchCommentary('msa', msaId, msaName, true)}
+        />
         {commentary ? (
           <>
             <MarketNarrative narrative={commentary.marketNarrative} compact />
+            <BrokerNarrativesFeed entityType="msa" entityId={msaId} />
+            <ReplacementCostPanel entityType="msa" entityId={msaId} />
             <InvestmentThesis
               recommendation={commentary.investmentThesis.recommendation}
               points={commentary.investmentThesis.points}

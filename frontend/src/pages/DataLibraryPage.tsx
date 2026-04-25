@@ -22,6 +22,47 @@ const statusColors: Record<string, string> = {
   failed: '#e06c75',
 };
 
+// Maps the granular OM-pipeline stages persisted in `parsing_stage` to a
+// human-readable label + color for the row's status badge.
+const stageColors: Record<string, string> = {
+  pending: '#8892b0',
+  parsing: '#f59e0b',
+  ocr: '#a78bfa',
+  geocoding: '#60a5fa',
+  distributing: '#60a5fa',
+  routed: '#4ade80',
+  complete: '#4ade80',
+  parse_failed: '#e06c75',
+  ocr_failed: '#e06c75',
+  distribute_failed: '#e06c75',
+  sentiment_failed: '#e06c75',
+  error: '#e06c75',
+};
+const stageLabels: Record<string, string> = {
+  pending: 'Pending',
+  parsing: 'Parsing',
+  ocr: 'OCR',
+  geocoding: 'Geocoding',
+  distributing: 'Routing',
+  routed: 'Routed',
+  complete: 'Complete',
+  parse_failed: 'Parse failed',
+  ocr_failed: 'OCR failed',
+  distribute_failed: 'Routing failed',
+  sentiment_failed: 'Sentiment failed',
+  error: 'Error',
+};
+
+const RETRYABLE_STAGES = new Set([
+  'error', 'parse_failed', 'ocr_failed', 'distribute_failed', 'sentiment_failed',
+]);
+
+const isRetryableStage = (stage: string | null | undefined, status: string): boolean => {
+  if (status === 'error' || status === 'failed') return true;
+  if (!stage) return false;
+  return RETRYABLE_STAGES.has(stage);
+};
+
 export const DataLibraryPage: React.FC = () => {
   const [files, setFiles] = useState<DataLibraryFile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -327,9 +368,37 @@ export const DataLibraryPage: React.FC = () => {
                   </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <span style={{ color: statusColors[file.parsing_status] || '#8892b0', fontSize: 11, textTransform: 'capitalize' }}>
-                    {file.parsing_status}
-                  </span>
+                  {file.parsing_stage ? (
+                    <span
+                      title={file.parsing_errors || ''}
+                      style={{ color: stageColors[file.parsing_stage] || '#8892b0', fontSize: 11 }}
+                    >
+                      {stageLabels[file.parsing_stage] || file.parsing_stage}
+                    </span>
+                  ) : (
+                    <span style={{ color: statusColors[file.parsing_status] || '#8892b0', fontSize: 11, textTransform: 'capitalize' }}>
+                      {file.parsing_status}
+                    </span>
+                  )}
+                  {isRetryableStage(file.parsing_stage, file.parsing_status) && (
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        try {
+                          await dataLibraryService.retryParse(file.id);
+                          await loadFiles();
+                        } catch (err) {
+                          setError(err instanceof Error ? err.message : 'Retry failed');
+                        }
+                      }}
+                      style={{
+                        background: 'none', border: '1px solid #f59e0b', color: '#f59e0b',
+                        cursor: 'pointer', fontSize: 10, padding: '2px 8px', borderRadius: 3,
+                      }}
+                    >
+                      Retry
+                    </button>
+                  )}
                   <span style={{ color: '#8892b0', fontSize: 11, background: '#0d1117', padding: '2px 8px', borderRadius: 4 }}>
                     {file.source_type}
                   </span>

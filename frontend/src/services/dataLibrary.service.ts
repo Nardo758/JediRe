@@ -18,7 +18,11 @@ export interface DataLibraryFile {
   tags: string[];
   parsed_data: any;
   parsing_status: string;
+  parsing_stage?: string | null;
   parsing_errors: string | null;
+  msa_key?: string | null;
+  submarket_key?: string | null;
+  om_extraction?: unknown;
   uploaded_at: string;
 }
 
@@ -78,6 +82,11 @@ export const dataLibraryService = {
 
   async deleteFile(id: number): Promise<void> {
     await apiClient.delete(`${BASE}/${id}`);
+  },
+
+  async retryParse(id: number): Promise<{ id: number; status: string }> {
+    const { data } = await apiClient.post(`${BASE}/${id}/retry`);
+    return data;
   },
 
   async findComparables(params: {
