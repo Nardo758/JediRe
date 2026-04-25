@@ -5,9 +5,21 @@ import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
 const router = Router();
 const pool = getPool();
 
-router.get('/supply/:market', async (req, res) => {
+// These sub-paths under /supply are owned by dedicated routers (supplyExtraRouter,
+// supplyRoutes) and must not be swallowed by this catch-all.
+const RESERVED_SUPPLY_PATHS = new Set([
+  'pipeline-timeline',
+  'pipeline',
+  'market-dynamics',
+  'signals',
+]);
+
+router.get('/supply/:market', async (req, res, next) => {
   try {
     const { market } = req.params;
+    if (RESERVED_SUPPLY_PATHS.has(market)) {
+      return next();
+    }
     const limit = parseInt(req.query.limit as string) || 10;
     const result = await pool.query(
       `SELECT * FROM supply_metrics WHERE market = $1 ORDER BY timestamp DESC LIMIT $2`,

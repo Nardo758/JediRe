@@ -268,19 +268,29 @@ router.get('/timeline/:tradeAreaId', async (req, res) => {
 
 /**
  * GET /api/v1/supply/pipeline-timeline
+ *
+ * Lives in this router so callers can use the conventional `/supply/*` path.
+ * Mounted in `index.replit.ts` at `/api/v1/supply` via the dedicated
+ * `supplyExtraRouter` so it does not collide with `supplyRoutes` (which is
+ * mounted at `/api/v1`).
+ *
  * Forward-looking unit deliveries for an MSA or Submarket.
  *
  * Query params:
- *   msaId           — e.g. 'atlanta-ga' (required for state inference if `state` omitted)
- *   state           — 2-letter (default 'GA')
+ *   msaId           — e.g. 'atlanta-ga'
+ *   state           — 2-letter; if omitted we try to read from msaId tail, else 'GA'
  *   submarketName   — optional. When provided, projects are filtered by name/address keyword match
  *   submarketId     — optional. Echoed back in `resolved` for client correlation
  *   quarters        — chart window length, default 8
  *
- * Source: `apartment_supply_pipeline` (the populated table). Status/probability are derived
- * from `available_date` because the source feed does not carry explicit status.
+ * Data source rationale: the canonical `supply_pipeline` / `supply_delivery_timeline` /
+ * `supply_pipeline_projects` tables are currently empty in this environment. The only
+ * populated source for forward apartment deliveries is `apartment_supply_pipeline`
+ * (apartment-locator daily sync). Status/probability are derived from `available_date`
+ * because the source feed does not carry explicit construction phase. When the canonical
+ * trade-area-keyed feed is populated, this handler can be re-pointed to it.
  */
-router.get('/pipeline-timeline', async (req, res) => {
+export const supplyPipelineTimelineHandler = async (req: import('express').Request, res: import('express').Response) => {
   try {
     const msaId = (req.query.msaId as string) || '';
     // Only accept an explicit state, or a 2-letter trailing token in msaId.
@@ -476,11 +486,21 @@ router.get('/pipeline-timeline', async (req, res) => {
     } finally {
       client.release();
     }
-  } catch (error: any) {
-    logger.error('Error getting supply pipeline timeline', { error: error.message });
-    res.status(500).json({ success: false, error: error.message });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('Error getting supply pipeline timeline', { error: msg });
+    res.status(500).json({ success: false, error: msg });
   }
-});
+};
+
+/**
+ * Dedicated router for endpoints that must live under `/api/v1/supply/*`.
+ * Mount this router at `/api/v1/supply` in `index.replit.ts`. Keep it
+ * separate from the default `router` (which is mounted at `/api/v1` for
+ * legacy reasons), so paths don't collide and conventions stay clean.
+ */
+export const supplyExtraRouter = Router();
+supplyExtraRouter.get('/pipeline-timeline', supplyPipelineTimelineHandler);
 
 /**
  * GET /api/v1/supply/market-dynamics/:tradeAreaId

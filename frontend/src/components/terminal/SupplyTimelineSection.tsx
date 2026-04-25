@@ -13,7 +13,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Building2, Calendar, Hammer } from 'lucide-react';
+import { Building2, Calendar, Hammer, X } from 'lucide-react';
 import { BT, terminalStyles } from './theme';
 import { TerminalSection, DataTable } from './TerminalLayouts';
 import { apiClient } from '../../api/client';
@@ -104,6 +104,8 @@ export const SupplyTimelineSection: React.FC<SupplyTimelineSectionProps> = ({
   const [data, setData] = useState<SupplyTimelineResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  // Read-only project detail panel — opened when a row without a propertyId is clicked.
+  const [selectedReadOnly, setSelectedReadOnly] = useState<SupplyTimelineProject | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -118,7 +120,7 @@ export const SupplyTimelineSection: React.FC<SupplyTimelineSectionProps> = ({
     params.set('quarters', String(quarters));
 
     apiClient
-      .get(`/pipeline-timeline?${params.toString()}`)
+      .get(`/supply/pipeline-timeline?${params.toString()}`)
       .then((res: SupplyTimelineResponse) => {
         if (cancelled) return;
         if (!res?.success) {
@@ -148,7 +150,11 @@ export const SupplyTimelineSection: React.FC<SupplyTimelineSectionProps> = ({
 
   const handleProjectClick = (proj: SupplyTimelineProject) => {
     if (proj.propertyId && onPropertySelect) {
+      // Linked asset → open the full Property Terminal.
       onPropertySelect(proj.propertyId, proj.name);
+    } else {
+      // Unlinked → open the read-only fallback panel inside this section.
+      setSelectedReadOnly(proj);
     }
   };
 
@@ -363,14 +369,101 @@ export const SupplyTimelineSection: React.FC<SupplyTimelineSectionProps> = ({
         {data.projects.some(p => !p.propertyId) && (
           <div style={{ padding: '8px 12px', fontSize: 10, color: BT.text.muted, borderTop: `1px solid ${BT.border.subtle}` }}>
             <Hammer size={10} style={{ marginRight: 4, verticalAlign: 'middle' }} />
-            Pipeline projects without a linked asset are read-only. Asset linkage is added once an
-            OM or property record is matched.
+            Pipeline projects without a linked asset open a read-only detail panel. Linked assets
+            open the full Property Terminal.
           </div>
         )}
       </TerminalSection>
+
+      {selectedReadOnly && (
+        <ReadOnlyProjectPanel
+          project={selectedReadOnly}
+          onClose={() => setSelectedReadOnly(null)}
+        />
+      )}
     </div>
   );
 };
+
+const ReadOnlyProjectPanel: React.FC<{
+  project: SupplyTimelineProject;
+  onClose: () => void;
+}> = ({ project, onClose }) => (
+  <TerminalSection
+    title={`${project.name} — Read-Only Detail`}
+    icon={<Building2 size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />}
+  >
+    <div style={{ padding: 16, position: 'relative' }}>
+      <button
+        onClick={onClose}
+        title="Close detail panel"
+        style={{
+          position: 'absolute',
+          top: 8,
+          right: 8,
+          background: 'transparent',
+          border: `1px solid ${BT.border.subtle}`,
+          color: BT.text.muted,
+          cursor: 'pointer',
+          padding: 4,
+          display: 'flex',
+        }}
+      >
+        <X size={12} />
+      </button>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 12 }}>
+        <DetailCell label="UNITS" value={project.units > 0 ? project.units.toLocaleString() : '—'} color={BT.text.amber} />
+        <DetailCell label="WEIGHTED" value={project.weightedUnits > 0 ? Math.round(project.weightedUnits).toLocaleString() : '—'} color={BT.text.cyan} />
+        <DetailCell label="STATUS" value={STATUS_LABELS[project.status]} color={statusColor(project.status)} />
+        <DetailCell label="DELIVERY" value={project.deliveryQuarter || 'TBD'} color={BT.text.amber} />
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
+        <DetailRow label="Address" value={project.address || '—'} />
+        <DetailRow label="Submarket" value={project.submarket || '—'} />
+        <DetailRow label="Property class" value={project.propertyClass || '—'} />
+        <DetailRow label="Developer" value={project.developer || '—'} />
+        <DetailRow label="Units delivering" value={project.unitsDelivering > 0 ? project.unitsDelivering.toLocaleString() : '—'} />
+        <DetailRow label="Delivery date" value={project.deliveryDate || '—'} />
+      </div>
+
+      <div style={{
+        marginTop: 12,
+        padding: '8px 10px',
+        borderTop: `1px solid ${BT.border.subtle}`,
+        fontSize: 10,
+        color: BT.text.muted,
+      }}>
+        Read-only view. This pipeline project has no linked property asset yet, so the full
+        Property Terminal is not available. Linkage is added automatically when an OM or
+        property record matches.
+      </div>
+    </div>
+  </TerminalSection>
+);
+
+const DetailCell: React.FC<{ label: string; value: string; color: string }> = ({ label, value, color }) => (
+  <div style={{ ...terminalStyles.card, textAlign: 'center', padding: 10 }}>
+    <div style={{ fontSize: 9, color: BT.text.muted, fontWeight: 600, letterSpacing: 0.5, marginBottom: 4 }}>
+      {label}
+    </div>
+    <div style={{ fontSize: 14, fontWeight: 700, color, fontFamily: "'JetBrains Mono', monospace" }}>
+      {value}
+    </div>
+  </div>
+);
+
+const DetailRow: React.FC<{ label: string; value: string }> = ({ label, value }) => (
+  <div>
+    <div style={{ fontSize: 9, color: BT.text.muted, fontWeight: 600, letterSpacing: 0.5, marginBottom: 2 }}>
+      {label.toUpperCase()}
+    </div>
+    <div style={{ fontSize: 12, color: BT.text.primary }}>
+      {value}
+    </div>
+  </div>
+);
 
 const Stat: React.FC<{ label: string; value: string; color: string }> = ({ label, value, color }) => (
   <div style={{ textAlign: 'center' }}>
