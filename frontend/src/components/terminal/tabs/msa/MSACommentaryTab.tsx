@@ -147,6 +147,11 @@ const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono','Fira Code','S
 
 export const MSACommentaryTab: React.FC<MSACommentaryTabProps> = ({ msaId, msa }) => {
   const [activeSignal, setActiveSignal] = useState<SignalTab>('demand');
+  // Bumped by RefreshIntelligenceButton (queue + completion) so the OM-derived
+  // panels — broker narratives + replacement cost — re-fetch in lockstep with
+  // the commentary text. Without this, those panels would only refresh on
+  // remount, surfacing stale data after a refresh.
+  const [panelRefreshNonce, setPanelRefreshNonce] = useState<number>(0);
   const chart = CHART_DATA[activeSignal];
   const rows = TABLE_DATA[activeSignal];
   const tabColor = SIGNAL_TABS.find(t => t.key === activeSignal)?.color || BT.text.cyan;
@@ -338,14 +343,20 @@ export const MSACommentaryTab: React.FC<MSACommentaryTabProps> = ({ msaId, msa }
         <RefreshIntelligenceButton
           entityType="msa"
           entityId={msaId}
-          onQueued={() => fetchCommentary('msa', msaId, msaName, true)}
-          onCompleted={() => fetchCommentary('msa', msaId, msaName, true)}
+          onQueued={() => {
+            setPanelRefreshNonce(n => n + 1);
+            fetchCommentary('msa', msaId, msaName, true);
+          }}
+          onCompleted={() => {
+            setPanelRefreshNonce(n => n + 1);
+            fetchCommentary('msa', msaId, msaName, true);
+          }}
         />
         {commentary ? (
           <>
             <MarketNarrative narrative={commentary.marketNarrative} compact />
-            <BrokerNarrativesFeed entityType="msa" entityId={msaId} />
-            <ReplacementCostPanel entityType="msa" entityId={msaId} />
+            <BrokerNarrativesFeed entityType="msa" entityId={msaId} refreshNonce={panelRefreshNonce} />
+            <ReplacementCostPanel entityType="msa" entityId={msaId} refreshNonce={panelRefreshNonce} />
             <InvestmentThesis
               recommendation={commentary.investmentThesis.recommendation}
               points={commentary.investmentThesis.points}

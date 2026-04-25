@@ -101,8 +101,12 @@ export function createBrokerNarrativesRoutes(pool: Pool): Router {
       if (entityType !== 'msa' && entityType !== 'submarket') {
         return res.status(400).json({ error: 'entityType must be "msa" or "submarket"' });
       }
+      // Defensive limit parsing: ?limit=foo would have produced NaN under
+      // parseInt and slipped through Math.min/max into a downstream LIMIT NaN
+      // SQL error. Reject anything non-finite and fall back to the default.
       const limitRaw = req.query.limit as string | undefined;
-      const limit = limitRaw ? Math.min(50, Math.max(1, parseInt(limitRaw, 10))) : 20;
+      const parsed = limitRaw == null ? NaN : parseInt(limitRaw, 10);
+      const limit = Number.isFinite(parsed) ? Math.min(50, Math.max(1, parsed)) : 20;
 
       const out = await fetchBrokerNarratives(pool, entityType, req.params.entityId, limit);
 

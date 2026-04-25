@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { BT } from '../../theme';
 import type { SubmarketData } from '../../SubmarketTerminal';
 import { useCommentaryStore } from '../../../../stores/commentaryStore';
@@ -60,6 +60,11 @@ export const SubmarketCommentaryTab: React.FC<SubmarketCommentaryTabProps> = ({
 }) => {
   const subName = submarket?.name || submarketId.charAt(0).toUpperCase() + submarketId.slice(1);
   const msaName = submarket?.msaName || 'Atlanta, GA';
+
+  // Bumped by RefreshIntelligenceButton (queue + completion) so the OM-derived
+  // panels — broker narratives + replacement cost — re-fetch in lockstep with
+  // the commentary text. Without this they would only refresh on remount.
+  const [panelRefreshNonce, setPanelRefreshNonce] = useState<number>(0);
 
   const { fetchCommentary, getCommentary, isLoading, getError } = useCommentaryStore();
   const commentary = getCommentary('submarket', submarketId);
@@ -198,14 +203,20 @@ export const SubmarketCommentaryTab: React.FC<SubmarketCommentaryTabProps> = ({
         <RefreshIntelligenceButton
           entityType="submarket"
           entityId={submarketId}
-          onQueued={() => fetchCommentary('submarket', submarketId, subName, true)}
-          onCompleted={() => fetchCommentary('submarket', submarketId, subName, true)}
+          onQueued={() => {
+            setPanelRefreshNonce(n => n + 1);
+            fetchCommentary('submarket', submarketId, subName, true);
+          }}
+          onCompleted={() => {
+            setPanelRefreshNonce(n => n + 1);
+            fetchCommentary('submarket', submarketId, subName, true);
+          }}
         />
         {commentary ? (
           <>
             <MarketNarrative narrative={commentary.marketNarrative} compact />
-            <BrokerNarrativesFeed entityType="submarket" entityId={submarketId} />
-            <ReplacementCostPanel entityType="submarket" entityId={submarketId} />
+            <BrokerNarrativesFeed entityType="submarket" entityId={submarketId} refreshNonce={panelRefreshNonce} />
+            <ReplacementCostPanel entityType="submarket" entityId={submarketId} refreshNonce={panelRefreshNonce} />
             <InvestmentThesis
               recommendation={commentary.investmentThesis.recommendation}
               points={commentary.investmentThesis.points}
