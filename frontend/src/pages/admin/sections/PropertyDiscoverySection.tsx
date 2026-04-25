@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
+
+  // Neural network context awareness
+  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'property_card' });
 import { Search, RefreshCw, Play, AlertCircle, CheckCircle, Check, X } from 'lucide-react';
 import { apiClient } from '../../../services/api.client';
+import { ContextIndicator } from '../../../components/intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../../../hooks/useContextAwareness';
 
 interface DiscoveryStats {
   totalDiscovered: number;
@@ -175,6 +180,7 @@ export function PropertyDiscoverySection() {
 
   return (
     <div className="p-6 space-y-6">
+      {ctxAnalysis && <ContextIndicator analysis={ctxAnalysis} loading={ctxLoading} compact />}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-bold text-cyan-400 flex items-center gap-2">

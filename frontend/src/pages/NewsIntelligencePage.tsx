@@ -1,8 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
+
+  // Neural network context awareness
+  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'market_dashboard' });
 import { newsService, NewsEvent, NewsAlert, MarketDashboard, ContactCredibility } from '../services/news.service';
 import { DateRangeFilter, DateRangeOption, getDateRangeFromOption } from '../components/ui/DateRangeFilter';
 import { BT } from '../components/deal/bloomberg-ui';
 import { apiClient } from '../services/api.client';
+import { ContextIndicator } from '../components/intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../hooks/useContextAwareness';
 
 type ViewType = 'feed' | 'dashboard' | 'network' | 'alerts';
 
@@ -657,6 +662,7 @@ export function NewsIntelligencePage() {
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: BT.bg.terminal }}>
+      {ctxAnalysis && <ContextIndicator analysis={ctxAnalysis} loading={ctxLoading} compact />}
       <div style={{
         display: 'flex',
         alignItems: 'center',

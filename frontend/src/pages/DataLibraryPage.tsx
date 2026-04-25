@@ -1,6 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+
+  // Neural network context awareness
+  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'market_dashboard' });
 import { dataLibraryService, type DataLibraryFile, type DataLibrarySearchParams } from '@/services/dataLibrary.service';
 import { pstUploadService, type PstJobStatus, type PstEntity } from '@/services/pstUpload.service';
+import { ContextIndicator } from '../components/intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../hooks/useContextAwareness';
 
 const fmtSize = (bytes: number) => {
   if (bytes < 1024) return `${bytes} B`;
@@ -184,6 +189,7 @@ export const DataLibraryPage: React.FC = () => {
 
   return (
     <div style={containerStyle}>
+      {ctxAnalysis && <ContextIndicator analysis={ctxAnalysis} loading={ctxLoading} compact />}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <div>
           <h2 style={{ margin: 0, color: '#ccd6f6', fontSize: 22 }}>Data Library</h2>

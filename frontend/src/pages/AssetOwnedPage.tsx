@@ -1,4 +1,7 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+
+  // Neural network context awareness
+  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'deal_overview' });
 import { useParams, useNavigate } from 'react-router-dom';
 import { apiClient } from '../services/api.client';
 import { Deal } from '../types/deal';
@@ -12,6 +15,8 @@ import { EventTimelineSection } from '../components/deal/sections/EventTimelineS
 import { DocumentsSection } from '../components/deal/sections/DocumentsSection';
 import { TeamSection } from '../components/deal/sections/TeamSection';
 import { ConvergenceChart, RSSBreakdownCards, Q_LABELS, RSS_21Y, OPTIMAL_FWD, NOW_IDX as CONV_NOW_IDX } from '../components/deal/sections/ConvergenceChart';
+import { ContextIndicator } from '../components/intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../hooks/useContextAwareness';
 
 // ─── Bloomberg Terminal Theme ─────────────────────────────────
 const T = {
@@ -139,6 +144,7 @@ const MiniLineChart = ({ data, color = T.text.blue, height = 80 }: { data: numbe
 // ─── Shared panel component ───────────────────────────────────
 const Panel: React.FC<{ title?: string; titleColor?: string; children: React.ReactNode; style?: React.CSSProperties }> = ({ title, titleColor, children, style }) => (
   <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 4, overflow: 'hidden', ...style }}>
+      {ctxAnalysis && <ContextIndicator analysis={ctxAnalysis} loading={ctxLoading} compact />}
     {title && (
       <div style={{ padding: '6px 12px', background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}`, fontSize: 10, fontWeight: 700, color: titleColor || T.text.amber, fontFamily: T.font.mono, letterSpacing: '0.05em' }}>
         {title}

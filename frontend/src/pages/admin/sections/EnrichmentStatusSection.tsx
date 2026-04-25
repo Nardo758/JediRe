@@ -1,7 +1,12 @@
 import React, { useState, useEffect } from 'react';
+
+  // Neural network context awareness
+  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'property_card' });
 import { Database, RefreshCw, AlertCircle, Play, CheckCircle, XCircle } from 'lucide-react';
 import { apiClient } from '../../../services/api.client';
 import { BT } from '@/components/deal/bloomberg-ui';
+import { ContextIndicator } from '../../../components/intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../../../hooks/useContextAwareness';
 
 interface EnrichmentCoverage {
   total_properties: number;
@@ -87,6 +92,7 @@ export function EnrichmentStatusSection() {
 
   return (
     <div className="p-6 space-y-6" style={{ fontFamily: BT.font.label }}>
+      {ctxAnalysis && <ContextIndicator analysis={ctxAnalysis} loading={ctxLoading} compact />}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Database className="w-5 h-5" style={{ color: BT.text.cyan }} />

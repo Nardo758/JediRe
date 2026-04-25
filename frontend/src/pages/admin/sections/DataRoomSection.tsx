@@ -4,6 +4,8 @@
  */
 
 import React from 'react';
+import { ContextIndicator } from '../../../components/intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../../../hooks/useContextAwareness';
 
 const BT = {
   bg: { panel: '#0F1319', header: '#1A1F2E' },
@@ -15,6 +17,7 @@ const MONO = "'JetBrains Mono', monospace";
 export default function DataRoomSection() {
   return (
     <div style={{ padding: 24 }}>
+      {ctxAnalysis && <ContextIndicator analysis={ctxAnalysis} loading={ctxLoading} compact />}
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: 18, fontWeight: 600, color: BT.text.amber, fontFamily: MONO, marginBottom: 8 }}>
           DATA ROOM
