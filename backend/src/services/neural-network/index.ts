@@ -45,3 +45,13 @@ export {
   ImpactAnalysis,
   CommunityCluster
 } from './knowledge-graph.service';
+
+// Context Awareness - thinks like a real estate analyst
+export {
+  ContextAwarenessService,
+  getContextAwarenessService,
+  UserFocus,
+  UIContext,
+  DataGap,
+  ContextAnalysis
+} from './context-awareness.service';
