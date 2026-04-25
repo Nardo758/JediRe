@@ -34,6 +34,7 @@ import { fetchDataMatrixTool } from './tools/fetch_data_matrix';
 import { fetchProximityContextTool } from './tools/fetch_proximity_context';
 import { fetchMarketEventsTool } from './tools/fetch_market_events';
 import { fetchBacktestContextTool } from './tools/fetch_backtest_context';
+import { fetchDataLibraryCompsTool } from './tools/fetch_data_library_comps';
 
 // ── Citation schema (shared with commentary.config) ────────────────────────
 
@@ -83,6 +84,7 @@ export const RESEARCH_AGENT_CONFIG: AgentConfig = {
     fetchProximityContextTool,
     fetchMarketEventsTool,
     fetchBacktestContextTool,
+    fetchDataLibraryCompsTool,
   ],
   outputSchema: ResearchOutputSchema,
   budgetCaps: DEFAULT_BUDGET_CAPS.research,
