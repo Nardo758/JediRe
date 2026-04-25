@@ -127,6 +127,9 @@ import georgiaIngestionRoutes from './georgia-ingestion.routes';
 import proximityRoutes, { setPool as setProximityPool } from './proximity.routes';
 import dataMatrixRoutes from './data-matrix.routes';
 import inflationRoutes from './inflation.routes';
+import createKnowledgeGraphRoutes from './knowledge-graph.routes';
+import createContextAwarenessRoutes from './context-awareness.routes';
+import columnCatalogRoutes from './column-catalog.routes';
 
 const API_PREFIX = '/api/v1';
 
@@ -498,6 +501,17 @@ export function setupRESTRoutes(app: Application): void {
 
   // Inflation Engine routes
   app.use(`${API_PREFIX}/inflation`, inflationRoutes);
+
+  // Knowledge Graph routes (neural network graph layer)
+  const { getPool: getKGPool } = require('../../database/connection');
+  app.use(`${API_PREFIX}/knowledge-graph`, createKnowledgeGraphRoutes(getKGPool()));
+
+  // Context Awareness routes (analyst brain - thinks like a real estate person)
+  const { getPool: getCAPool } = require('../../database/connection');
+  app.use(`${API_PREFIX}/context`, createContextAwarenessRoutes(getCAPool()));
+
+  // Column Catalog routes (F4 Markets data grid)
+  app.use(`${API_PREFIX}/columns`, columnCatalogRoutes);
 
   // Deal Activity routes (emails, tasks, unified activity)
   app.use(`${API_PREFIX}/deals`, dealActivityRoutes);
