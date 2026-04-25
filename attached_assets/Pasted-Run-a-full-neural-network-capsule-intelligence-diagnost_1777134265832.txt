@@ -1,0 +1,86 @@
+Run a full neural network + capsule intelligence diagnostic for Atlanta MSA. Test everything end-to-end. Print PASS, FAIL, or PARTIAL for each test with details.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SETUP
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+First, get an auth token:
+TOKEN=$(curl -s -X POST http://localhost:3000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@jedire.com","password":"password"}' | jq -r '.token')
+echo "Token: $TOKEN"
+
+If login fails, try:
+TOKEN=$(curl -s -X POST http://localhost:3000/api/v1/auth/dev-login \
+  -H "Content-Type: application/json" \
+  -d '{"userId":"dev"}' | jq -r '.token')
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DATABASE CHECKS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+psql $DATABASE_URL -c "SELECT COUNT(*) as nodes, node_type FROM knowledge_graph_nodes GROUP BY node_type ORDER BY nodes DESC;"
+
+psql $DATABASE_URL -c "SELECT id, name, properties->>'lastSupplyAnalysis' as last_supply FROM knowledge_graph_nodes WHERE node_type = 'Market' ORDER BY id;"
+
+psql $DATABASE_URL -c "SELECT COUNT(*) as projects, SUM(units) as total_units FROM development_projects WHERE market_id = 'atlanta';"
+
+psql $DATABASE_URL -c "SELECT name, submarket, units, construction_status, developer FROM development_projects WHERE market_id = 'atlanta' ORDER BY units DESC LIMIT 5;"
+
+psql $DATABASE_URL -c "SELECT COUNT(*) as edges, type FROM knowledge_graph_edges GROUP BY type ORDER BY edges DESC;"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TEST 1 - Knowledge Graph: Atlanta nodes exist
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+curl -s "http://localhost:3000/api/v1/knowledge-graph/nodes?type=Market" \
+  -H "Authorization: Bearer $TOKEN" | jq '{
+    total: (.nodes | length),
+    atlanta: (.nodes[] | select(.id == "atlanta") | {id, name, properties})
+  }'
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TEST 2 - Knowledge Graph: Atlanta graph traversal
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+curl -s -X POST "http://localhost:3000/api/v1/knowledge-graph/traverse" \
+  -H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" \
+  -d '{"startNodeId":"atlanta","maxDepth":2}' | jq '{
+    nodeCount: (.nodes | length),
+    edgeCount: (.edges | length),
+    nodeTypes: ([.nodes[].type] | unique)
+  }'
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TEST 3 - Supply Pipeline: Atlanta projects
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+curl -s "http://localhost:3000/api/v1/context/supply-pipeline/atlanta" \
+  -H "Authorization: Bearer $TOKEN" | jq '{
+    totalUnits: .totalUnits,
+    projectCount: (.projects | length),
+    submarkets: (.bySubmarket | keys),
+    topProject: (.projects | sort_by(-.units) | first | {name, units, developer, constructionStatus})
+  }'
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TEST 4 - Context Awareness: Atlanta supply analysis
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+curl -s -X POST "http://localhost:3000/api/v1/context/analyze" \
+  -H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" \
+  -d '{"context":"supply_pipeline","marketId":"atlanta"}' | jq '{
+    questions: (.immediateQuestions | length),
+    gaps: (.gaps | length),
+    criticalGaps: ([.gaps[] | select(.relevance == "critical")] | length),
+    suggestions: (.suggestions | length),
+    agentTasks: (.agentTasks | length),
+    firstGap: (.gaps[0].userQuestion)
+  }'
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TEST 5 - Scheduled Refresh: Staleness stats
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+curl -s "http://localhost:3000/api/v1/scheduled-refresh/stats" \
+  -H "Authorization: Bearer $TOKEN" | jq '.stats'
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TEST 6 - Data Matrix: 9 layers available
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+curl -s "http://localhost:3000
