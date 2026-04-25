@@ -3,9 +3,9 @@
  * (Task #383).
  *
  * Writes:
- *   - market_rent_comps         ← OMExtraction.marketComps.rentComps
- *   - market_sale_comps         ← OMExtraction.marketComps.saleComps
- *   - data_library_cost_data    ← OMExtraction.replacementCost
+ *   - market_rent_comps           ← OMExtraction.marketComps.rentComps
+ *   - market_sale_comps           ← OMExtraction.marketComps.saleComps
+ *   - om_replacement_cost_data    ← OMExtraction.replacementCost
  *   - broker_narratives         ← OMExtraction.investmentThesis + investmentHighlights
  *
  * Every row carries `source = 'broker_om'` and `source_id = <file_id>` so the
@@ -79,7 +79,8 @@ async function distributeRentComps(
 
   let inserted = 0;
   const snapshot = SNAPSHOT_DATE();
-  for (const c of rents) {
+  for (let i = 0; i < rents.length; i++) {
+    const c = rents[i];
     if (!c?.name) continue;
     try {
       await pool.query(
@@ -107,7 +108,10 @@ async function distributeRentComps(
           c.avgRent ?? null,
           c.occupancy ?? null,
           'broker_om',
-          String(fileId),
+          // Per-row source_id keeps us safe under any future unique
+          // constraint on (source, source_id) — multiple comps from the
+          // same OM file would otherwise collide. Pattern: <fileId>:r<index>.
+          `${fileId}:r${i}`,
           c.pageNumber ?? null,
         ],
       );
@@ -134,7 +138,8 @@ async function distributeSaleComps(
   if (!city || !state) return { inserted: 0, errors };
 
   let inserted = 0;
-  for (const c of sales) {
+  for (let i = 0; i < sales.length; i++) {
+    const c = sales[i];
     if (!c?.name || c.salePrice == null) continue;
     const saleDate = c.saleDate && /^\d{4}-\d{2}-\d{2}$/.test(c.saleDate)
       ? c.saleDate
@@ -168,7 +173,11 @@ async function distributeSaleComps(
           c.capRate ?? null,
           extraction.metadata.broker ?? null,
           'broker_om',
-          String(fileId),
+          // Required: idx_market_sale_comps_source_id is UNIQUE on
+          // (source, source_id). All comps in one OM share the same fileId,
+          // so we MUST disambiguate per-row or every comp after the first
+          // would collide and abort distribution. Pattern: <fileId>:s<index>.
+          `${fileId}:s${i}`,
           c.pageNumber ?? null,
         ],
       );
@@ -201,7 +210,7 @@ async function distributeReplacementCost(
 
   try {
     await pool.query(
-      `INSERT INTO data_library_cost_data
+      `INSERT INTO om_replacement_cost_data
          (source_file_id, msa_key, submarket_key,
           property_name, property_type, units, year_built, net_rentable_sf,
           land_value, hard_cost_psf, hard_cost_total,
@@ -300,17 +309,23 @@ async function distributeNarratives(
  * re-parse so duplicates don't accumulate when an upload is retried.
  */
 export async function clearOmDistribution(pool: Pool, fileId: number): Promise<void> {
+  // Per-row source_id is now `${fileId}:r<i>` / `${fileId}:s<i>` so we must
+  // delete by prefix. We also delete the legacy bare-fileId rows for backward
+  // compatibility with anything inserted before the per-row keying landed.
   const fileIdStr = String(fileId);
+  const prefix = `${fileId}:%`;
   await pool.query(
-    `DELETE FROM market_rent_comps WHERE source = 'broker_om' AND source_id = $1`,
-    [fileIdStr],
+    `DELETE FROM market_rent_comps
+      WHERE source = 'broker_om' AND (source_id = $1 OR source_id LIKE $2)`,
+    [fileIdStr, prefix],
   );
   await pool.query(
-    `DELETE FROM market_sale_comps WHERE source = 'broker_om' AND source_id = $1`,
-    [fileIdStr],
+    `DELETE FROM market_sale_comps
+      WHERE source = 'broker_om' AND (source_id = $1 OR source_id LIKE $2)`,
+    [fileIdStr, prefix],
   );
   await pool.query(
-    `DELETE FROM data_library_cost_data WHERE source_file_id = $1`,
+    `DELETE FROM om_replacement_cost_data WHERE source_file_id = $1`,
     [fileId],
   );
   await pool.query(

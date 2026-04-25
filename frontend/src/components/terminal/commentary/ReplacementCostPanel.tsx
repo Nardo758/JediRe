@@ -6,14 +6,21 @@ const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono','Fira Code','S
 interface ProvenanceRow {
   id: string;
   sourceFileId: number | null;
+  sourcePage: number | null;
   propertyName: string | null;
   units: number | null;
   yearBuilt: number | null;
   replacementCostPerUnit: number | null;
   totalReplacementCost: number | null;
   hardCostPsf: number | null;
+  landValue: number | null;
+  softCostTotal: number | null;
+  netRentableSF: number | null;
   capturedAt: string;
 }
+
+interface PsfBucket { median: number | null; sampleSize: number }
+interface PsfBlock { land: PsfBucket; hard: PsfBucket; soft: PsfBucket; total: PsfBucket }
 
 interface CostResponse {
   entityType: 'msa' | 'submarket';
@@ -22,6 +29,7 @@ interface CostResponse {
   entityName: string | null;
   sampleSize: number;
   perUnit: { median: number | null; p25: number | null; p75: number | null; min: number | null; max: number | null };
+  psf: PsfBlock;
   totalReplacementCostMedian: number | null;
   hardCostPsfMedian: number | null;
   provenance: ProvenanceRow[];
@@ -92,8 +100,24 @@ export const ReplacementCostPanel: React.FC<ReplacementCostPanelProps> = ({
                 <Row label="P25 / unit"      value={fmtMoney(data.perUnit.p25)} />
                 <Row label="P75 / unit"      value={fmtMoney(data.perUnit.p75)} />
                 <Row label="Total RC median" value={fmtMoney(data.totalReplacementCostMedian)} />
-                <Row label="Hard cost PSF"   value={data.hardCostPsfMedian == null ? '—' : `$${data.hardCostPsfMedian.toFixed(0)}`} />
                 <Row label="Sample size"     value={`n=${data.sampleSize}`} accent={BT.text.muted} />
+              </div>
+
+              {/* Full PSF breakdown — each row is a separate median computed
+                  from the per-row net_rentable_sf, with its own sample size
+                  (some OMs disclose hard cost but not land/soft, etc.). */}
+              <div style={{
+                marginTop: 10, paddingTop: 8,
+                borderTop: `1px dashed ${BT.text.muted}33`,
+                display: 'flex', flexDirection: 'column', gap: 4,
+              }}>
+                <div style={{ fontSize: 9, color: BT.text.muted, ...mono, marginBottom: 2, textTransform: 'uppercase' }}>
+                  Cost / PSF
+                </div>
+                <PsfRow label="Land"  bucket={data.psf.land} />
+                <PsfRow label="Hard"  bucket={data.psf.hard} />
+                <PsfRow label="Soft"  bucket={data.psf.soft} />
+                <PsfRow label="Total" bucket={data.psf.total} accent={BT.text.cyan} />
               </div>
 
               {data.provenance.length > 0 && (
@@ -125,5 +149,19 @@ const Row: React.FC<{ label: string; value: string; accent?: string }> = ({ labe
     <span style={{ color: accent ?? BT.text.primary, fontWeight: 600 }}>{value}</span>
   </div>
 );
+
+const PsfRow: React.FC<{ label: string; bucket: PsfBucket; accent?: string }> = ({ label, bucket, accent }) => {
+  const value = bucket.median == null ? '—' : `$${bucket.median.toFixed(0)}`;
+  const tag = bucket.sampleSize > 0 ? `n=${bucket.sampleSize}` : 'n=0';
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: 10, ...mono }}>
+      <span style={{ color: BT.text.muted }}>{label}</span>
+      <span>
+        <span style={{ color: accent ?? BT.text.primary, fontWeight: 600 }}>{value}</span>
+        <span style={{ color: BT.text.muted, marginLeft: 6, fontSize: 9 }}>{tag}</span>
+      </span>
+    </div>
+  );
+};
 
 export default ReplacementCostPanel;

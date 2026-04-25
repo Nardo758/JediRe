@@ -65,6 +65,68 @@ const isRetryableStage = (stage: string | null | undefined, status: string): boo
   return RETRYABLE_STAGES.has(stage);
 };
 
+// ─── Extracted Summary ────────────────────────────────────────────────────────
+//
+// Once an OM has been routed, the file row shows a one-line summary of WHAT
+// the parser actually pulled out — comp counts, narrative count, replacement-
+// cost present? — so an operator can confirm the upload was useful without
+// drilling into the file. Driven entirely by the persisted `om_extraction`
+// JSONB; we never derive these counts from anything else.
+
+interface OmExtractionLite {
+  marketComps?: {
+    rentComps?: unknown[];
+    saleComps?: unknown[];
+  };
+  replacementCost?: {
+    totalReplacementCost?: number | null;
+    replacementCostPerUnit?: number | null;
+    hardCostPSF?: number | null;
+    hardCostTotal?: number | null;
+    landValue?: number | null;
+  };
+  investmentThesis?: string | null;
+  investmentHighlights?: unknown[];
+}
+
+const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v);
+
+const summarizeOmExtraction = (raw: unknown): React.ReactNode => {
+  if (!isPlainObject(raw)) return null;
+  const ex = raw as OmExtractionLite;
+
+  const rentN = Array.isArray(ex.marketComps?.rentComps) ? ex.marketComps!.rentComps!.length : 0;
+  const saleN = Array.isArray(ex.marketComps?.saleComps) ? ex.marketComps!.saleComps!.length : 0;
+  const narrativeN =
+    (ex.investmentThesis && ex.investmentThesis.trim().length > 0 ? 1 : 0) +
+    (Array.isArray(ex.investmentHighlights) ? ex.investmentHighlights.length : 0);
+  const rc = ex.replacementCost ?? {};
+  const hasRc =
+    (rc.totalReplacementCost ?? null) != null ||
+    (rc.replacementCostPerUnit ?? null) != null ||
+    (rc.hardCostPSF ?? null) != null ||
+    (rc.hardCostTotal ?? null) != null ||
+    (rc.landValue ?? null) != null;
+
+  // If the extraction object exists but contains nothing meaningful, render
+  // nothing rather than a confusing "Extracted: 0 / 0 / —" line.
+  if (rentN === 0 && saleN === 0 && narrativeN === 0 && !hasRc) return null;
+
+  const parts: string[] = [
+    `${rentN} rent comp${rentN === 1 ? '' : 's'}`,
+    `${saleN} sale comp${saleN === 1 ? '' : 's'}`,
+    `${narrativeN} narrative${narrativeN === 1 ? '' : 's'}`,
+    `replacement cost ${hasRc ? '✓' : '—'}`,
+  ];
+
+  return (
+    <div style={{ color: '#4ade80', fontSize: 10, marginTop: 4, fontFamily: "'JetBrains Mono','Fira Code',monospace" }}>
+      Extracted: {parts.join(' · ')}
+    </div>
+  );
+};
+
 export const DataLibraryPage: React.FC = () => {
   const [files, setFiles] = useState<DataLibraryFile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -367,6 +429,7 @@ export const DataLibraryPage: React.FC = () => {
                       {file.property_type && <><span>&#183;</span><span>{file.property_type}</span></>}
                       {file.unit_count && <><span>&#183;</span><span>{file.unit_count} units</span></>}
                     </div>
+                    {summarizeOmExtraction(file.om_extraction)}
                   </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>

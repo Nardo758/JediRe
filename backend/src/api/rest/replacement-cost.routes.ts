@@ -3,7 +3,7 @@
  *
  * `GET /api/v1/replacement-cost/:entityType/:entityId`
  *
- * Aggregates `data_library_cost_data` rows scoped to the resolved canonical
+ * Aggregates `om_replacement_cost_data` rows scoped to the resolved canonical
  * MSA / submarket key and returns:
  *   - sample size (n)
  *   - per-unit median + p25/p75
@@ -73,7 +73,7 @@ export function createReplacementCostRoutes(pool: Pool): Router {
             CASE WHEN net_rentable_sf > 0 AND land_value             IS NOT NULL THEN land_value             / net_rentable_sf END AS land_psf,
             CASE WHEN net_rentable_sf > 0 AND soft_cost_total        IS NOT NULL THEN soft_cost_total        / net_rentable_sf END AS soft_psf,
             CASE WHEN net_rentable_sf > 0 AND total_replacement_cost IS NOT NULL THEN total_replacement_cost / net_rentable_sf END AS total_psf
-          FROM data_library_cost_data
+          FROM om_replacement_cost_data
           WHERE ${keyCol} = $1
         )
         SELECT
@@ -104,7 +104,7 @@ export function createReplacementCostRoutes(pool: Pool): Router {
                 soft_cost_pct, soft_cost_total,
                 replacement_cost_per_unit, total_replacement_cost,
                 cost_source, source, captured_at
-           FROM data_library_cost_data
+           FROM om_replacement_cost_data
           WHERE ${keyCol} = $1
           ORDER BY captured_at DESC
           LIMIT 10`,
