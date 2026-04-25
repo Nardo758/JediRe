@@ -4,11 +4,6 @@
  */
 
 import React, { useState, useMemo } from 'react';
-
-  // Neural network context awareness
-  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
-    { context: 'cap_rates', dealId }
-  );
 import { Check, AlertTriangle, DollarSign, Percent, Building } from 'lucide-react';
 import { BT, fmt, terminalStyles } from '../theme';
 import { ContextIndicator } from '../../intelligence/ContextIndicator';
@@ -30,6 +25,11 @@ interface LoanOption {
 }
 
 export const CapitalTab: React.FC<CapitalTabProps> = ({ dealId, deal }) => {
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+  { context: 'cap_rates', dealId }
+  );
+
   const [activeView, setActiveView] = useState<'debt' | 'waterfall' | 'sources'>('debt');
 
   // Extract loan options

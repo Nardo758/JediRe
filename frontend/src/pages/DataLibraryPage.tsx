@@ -1,7 +1,4 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-
-  // Neural network context awareness
-  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'market_dashboard' });
 import { dataLibraryService, type DataLibraryFile, type DataLibrarySearchParams } from '@/services/dataLibrary.service';
 import { pstUploadService, type PstJobStatus, type PstEntity } from '@/services/pstUpload.service';
 import { ContextIndicator } from '../components/intelligence/ContextIndicator';
@@ -712,6 +709,9 @@ const FilterSelect: React.FC<{ value: string; onChange: (v: string) => void; opt
 );
 
 const FileIcon: React.FC<{ type: string }> = ({ type }) => {
+  // Neural network context awareness
+  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'market_dashboard' });
+
   const isPst = type === 'application/vnd.ms-outlook' || type === 'pst';
   const colors: Record<string, string> = {
     'text/csv': '#4ade80',

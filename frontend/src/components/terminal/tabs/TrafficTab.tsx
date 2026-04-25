@@ -4,11 +4,6 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-
-  // Neural network context awareness
-  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
-    { context: 'traffic_analysis', dealId }
-  );
 import { Users, Eye, TrendingUp, Calendar, Target, Activity } from 'lucide-react';
 import { BT, fmt, terminalStyles } from '../theme';
 import { TerminalChart, ChartDataPoint, ChartSeries } from '../TerminalChart';
@@ -44,6 +39,11 @@ interface ForecastWeek {
 }
 
 export const TrafficTab: React.FC<TrafficTabProps> = ({ dealId, deal }) => {
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+  { context: 'traffic_analysis', dealId }
+  );
+
   const [prediction, setPrediction] = useState<LeasingPrediction | null>(null);
   const [forecast, setForecast] = useState<ForecastWeek[]>([]);
   const [digitalScore, setDigitalScore] = useState<number | null>(null);

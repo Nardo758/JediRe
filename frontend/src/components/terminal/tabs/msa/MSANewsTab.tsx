@@ -3,11 +3,6 @@
  */
 
 import React, { useMemo, useState, useEffect } from 'react';
-
-  // Neural network context awareness
-  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
-    { context: 'market_dashboard', marketId: msaId }
-  );
 import { Newspaper, TrendingUp, Building2, Briefcase, AlertTriangle, Activity, ChevronDown, ChevronRight, ArrowRight } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
 import { TerminalSection } from '../../TerminalLayouts';
@@ -49,6 +44,11 @@ const M35_EVENTS_PREVIEW = [
 ];
 
 const M35EventsSubsection: React.FC<{ msaName: string }> = ({ msaName }) => {
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+  { context: 'market_dashboard', marketId: msaId }
+  );
+
   const [expanded, setExpanded] = useState(false);
   return (
     <div style={{ marginTop: 16 }}>

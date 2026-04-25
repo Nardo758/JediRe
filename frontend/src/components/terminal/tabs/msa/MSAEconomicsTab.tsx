@@ -3,11 +3,6 @@
  */
 
 import React, { useMemo, useEffect, useState } from 'react';
-
-  // Neural network context awareness
-  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
-    { context: 'market_dashboard', marketId: msaId }
-  );
 import { Users, Briefcase, DollarSign, MapPin, Database } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
 import { TerminalChart, ChartDataPoint } from '../../TerminalChart';
@@ -49,6 +44,11 @@ interface MSAEconomicsTabProps {
 const NAICS_ORDER = ['531', '236', '522', '623', '611', '621', '493', '721'];
 
 export const MSAEconomicsTab: React.FC<MSAEconomicsTabProps> = ({ msaId, msa }) => {
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+  { context: 'market_dashboard', marketId: msaId }
+  );
+
   const msaName = msa?.name || msaId || 'Atlanta';
   const { fetchCommentary, getCommentary, isLoading, getError } = useCommentaryStore();
   const commentary = getCommentary('msa', msaId);

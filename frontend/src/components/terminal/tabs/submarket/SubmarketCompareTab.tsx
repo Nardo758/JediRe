@@ -3,11 +3,6 @@
  */
 
 import React, { useMemo, useState, useEffect } from 'react';
-
-  // Neural network context awareness
-  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
-    { context: 'submarket_deep_dive', submarketId: submarketId }
-  );
 import { BarChart3, TrendingUp, TrendingDown, ArrowUpDown } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
 import { SubmarketData } from '../../SubmarketTerminal';
@@ -35,6 +30,11 @@ interface PeerSubmarket {
 }
 
 export const SubmarketCompareTab: React.FC<SubmarketCompareTabProps> = ({ submarketId, submarket }) => {
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+  { context: 'submarket_deep_dive', submarketId: submarketId }
+  );
+
   const { fetchCommentary, getCommentary, isLoading, getError } = useCommentaryStore();
   const commentary = getCommentary('submarket', submarketId);
   const loading = isLoading('submarket', submarketId);

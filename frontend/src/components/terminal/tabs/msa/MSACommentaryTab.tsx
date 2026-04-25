@@ -1,15 +1,8 @@
 import React, { useState, useEffect } from 'react';
-
-  // Neural network context awareness
-  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
-    { context: 'market_dashboard', marketId: msaId }
-  );
 import { BT } from '../../theme';
 import type { MSAData } from '../../MSATerminal';
 import { useCommentaryStore } from '../../../../stores/commentaryStore';
 import {
-import { ContextIndicator } from '../../../intelligence/ContextIndicator';
-import { useAutoContextAnalysis } from '../../../../hooks/useContextAwareness';
   MarketNarrative,
   InvestmentThesis,
   RiskOpportunity,
@@ -21,6 +14,8 @@ import { useAutoContextAnalysis } from '../../../../hooks/useContextAwareness';
   ReplacementCostPanel,
   RefreshIntelligenceButton,
 } from '../../commentary';
+import { ContextIndicator } from '../../../intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../../../../hooks/useContextAwareness';
 
 interface MSACommentaryTabProps {
   msaId: string;
@@ -153,6 +148,11 @@ const TABLE_DATA: Record<SignalTab, MetricRow[]> = {
 const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono','Fira Code','SF Mono',monospace" };
 
 export const MSACommentaryTab: React.FC<MSACommentaryTabProps> = ({ msaId, msa }) => {
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+  { context: 'market_dashboard', marketId: msaId }
+  );
+
   const [activeSignal, setActiveSignal] = useState<SignalTab>('demand');
   // Bumped by RefreshIntelligenceButton (queue + completion) so the OM-derived
   // panels — broker narratives + replacement cost — re-fetch in lockstep with

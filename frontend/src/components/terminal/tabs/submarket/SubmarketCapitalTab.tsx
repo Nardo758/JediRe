@@ -3,11 +3,6 @@
  */
 
 import React, { useMemo, useEffect } from 'react';
-
-  // Neural network context awareness
-  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
-    { context: 'cap_rates', submarketId: submarketId }
-  );
 import { DollarSign, TrendingUp, Building2, Calendar } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
 import { SubmarketData } from '../../SubmarketTerminal';
@@ -34,6 +29,11 @@ interface Transaction {
 }
 
 export const SubmarketCapitalTab: React.FC<SubmarketCapitalTabProps> = ({ submarketId, submarket }) => {
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+  { context: 'cap_rates', submarketId: submarketId }
+  );
+
   const { fetchCommentary, getCommentary, isLoading, getError } = useCommentaryStore();
   const commentary = getCommentary('submarket', submarketId);
   const loading = isLoading('submarket', submarketId);

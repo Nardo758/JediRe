@@ -6,11 +6,6 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
-
-  // Neural network context awareness
-  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
-    { context: 'market_dashboard', marketId: msaId }
-  );
 import { BT, terminalStyles, fmt } from '../../theme';
 import { DataTable } from '../../TerminalLayouts';
 import { SIGNAL_GROUPS, BT_SIGNAL_COLORS, SignalGroupId } from '../../signalGroups';
@@ -100,6 +95,11 @@ interface LiveSubmarketsResponse {
 }
 
 export const MSACompareTab: React.FC<MSACompareTabProps> = ({ msaId, msa }) => {
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+  { context: 'market_dashboard', marketId: msaId }
+  );
+
   const [markets, setMarkets] = useState(MARKETS);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [pickerOpen, setPickerOpen] = useState(false);

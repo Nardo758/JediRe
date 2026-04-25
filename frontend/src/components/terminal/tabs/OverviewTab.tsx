@@ -5,16 +5,9 @@
  */
 
 import React, { useMemo } from 'react';
-
-  // Neural network context awareness
-  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
-    { context: 'deal_overview', dealId }
-  );
 import { BT, fmt, terminalStyles } from '../theme';
 import { TerminalChart, ChartSeries, ChartDataPoint } from '../TerminalChart';
 import {
-import { ContextIndicator } from '../../intelligence/ContextIndicator';
-import { useAutoContextAnalysis } from '../../../hooks/useContextAwareness';
   SIGNAL_GROUPS,
   BT_SIGNAL_COLORS,
   QUADRANT_STYLES,
@@ -27,6 +20,8 @@ import { useAutoContextAnalysis } from '../../../hooks/useContextAwareness';
   calculatePCS,
   scoreColor,
 } from '../signalGroups';
+import { ContextIndicator } from '../../intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../../../hooks/useContextAwareness';
 
 interface OverviewTabProps {
   dealId: string;
@@ -54,6 +49,11 @@ const PCS_COMPONENTS = [
 ];
 
 export const OverviewTab: React.FC<OverviewTabProps> = ({ dealId, deal }) => {
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+  { context: 'deal_overview', dealId }
+  );
+
   // Extract deal data with defaults
   const propertyName = deal?.name || deal?.property?.name || 'Property';
   const units = deal?.units || deal?.property?.units || 180;

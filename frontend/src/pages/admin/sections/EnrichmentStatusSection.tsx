@@ -1,7 +1,4 @@
 import React, { useState, useEffect } from 'react';
-
-  // Neural network context awareness
-  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'property_card' });
 import { Database, RefreshCw, AlertCircle, Play, CheckCircle, XCircle } from 'lucide-react';
 import { apiClient } from '../../../services/api.client';
 import { BT } from '@/components/deal/bloomberg-ui';
@@ -40,6 +37,9 @@ interface EnrichmentProperty {
 }
 
 export function EnrichmentStatusSection() {
+  // Neural network context awareness
+  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'property_card' });
+
   const [coverage, setCoverage] = useState<EnrichmentCoverage | null>(null);
   const [jobs, setJobs] = useState<EnrichmentJob[]>([]);
   const [properties, setProperties] = useState<EnrichmentProperty[]>([]);

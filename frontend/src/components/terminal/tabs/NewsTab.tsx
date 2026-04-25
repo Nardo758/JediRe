@@ -4,11 +4,6 @@
  */
 
 import React, { useState, useMemo } from 'react';
-
-  // Neural network context awareness
-  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
-    { context: 'market_dashboard', dealId }
-  );
 import { 
   Newspaper, TrendingUp, TrendingDown, Clock, AlertTriangle,
   Building2, DollarSign, Percent, Activity, Globe, Bell
@@ -52,6 +47,11 @@ interface EconomicIndicator {
 }
 
 export const NewsTab: React.FC<NewsTabProps> = ({ dealId, deal }) => {
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+  { context: 'market_dashboard', dealId }
+  );
+
   const [activeFilter, setActiveFilter] = useState<string>('all');
   const [expandedNews, setExpandedNews] = useState<string | null>(null);
 

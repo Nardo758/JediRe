@@ -5,11 +5,6 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
-
-  // Neural network context awareness
-  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
-    { context: 'cap_rates', marketId: msaId }
-  );
 import { DollarSign, Building2 } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
 import { DataTable } from '../../TerminalLayouts';
@@ -114,6 +109,11 @@ const MOCK_PORTFOLIO: Record<string, OwnerProperty[]> = {
 };
 
 export const MSACapitalOwnersTab: React.FC<Props> = ({ msaId, msa, onSelectProperty }) => {
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+  { context: 'cap_rates', marketId: msaId }
+  );
+
   const msaName = msa?.name || msaId || 'Atlanta';
   const [subView, setSubView] = useState<SubView>('owners');
   const [expandedOwner, setExpandedOwner] = useState<string | null>(null);

@@ -1,7 +1,4 @@
 import React, { useState, useEffect } from 'react';
-
-  // Neural network context awareness
-  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'comp_analysis' });
 import { Building2, RefreshCw, AlertCircle } from 'lucide-react';
 import { apiClient } from '../../../services/api.client';
 import { BT } from '@/components/deal/bloomberg-ui';
@@ -41,6 +38,9 @@ export function DealOversightSection() {
     new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 
   const statusColor = (s: string) => {
+  // Neural network context awareness
+  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'comp_analysis' });
+
     switch (s) {
       case 'active': return BT.text.green;
       case 'closed': return BT.text.cyan;

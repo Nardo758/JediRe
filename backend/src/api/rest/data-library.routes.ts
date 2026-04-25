@@ -61,7 +61,10 @@ export function createDataLibraryRoutes(pool: Pool): Router {
 
   router.get('/:id', async (req: Request, res: Response) => {
     try {
-      const file = await service.getFile(parseInt(req.params.id));
+      // Owner-scoped — closes IDOR on file-id GET (T383 architect review).
+      const userId = (req as any).user?.userId;
+      if (!userId) return res.status(401).json({ error: 'Unauthenticated' });
+      const file = await service.getFile(parseInt(req.params.id), userId);
       if (!file) return res.status(404).json({ error: 'Not found' });
       res.json(file);
     } catch (err: any) {
@@ -101,7 +104,9 @@ export function createDataLibraryRoutes(pool: Pool): Router {
 
   router.patch('/:id', async (req: Request, res: Response) => {
     try {
-      const file = await service.updateFile(parseInt(req.params.id), req.body);
+      const userId = (req as any).user?.userId;
+      if (!userId) return res.status(401).json({ error: 'Unauthenticated' });
+      const file = await service.updateFile(parseInt(req.params.id), req.body, userId);
       if (!file) return res.status(404).json({ error: 'Not found' });
       res.json(file);
     } catch (err: any) {
@@ -112,7 +117,10 @@ export function createDataLibraryRoutes(pool: Pool): Router {
 
   router.delete('/:id', async (req: Request, res: Response) => {
     try {
-      await service.deleteFile(parseInt(req.params.id));
+      const userId = (req as any).user?.userId;
+      if (!userId) return res.status(401).json({ error: 'Unauthenticated' });
+      const ok = await service.deleteFile(parseInt(req.params.id), userId);
+      if (!ok) return res.status(404).json({ error: 'Not found' });
       res.status(204).send();
     } catch (err: any) {
       console.error('Data library delete error:', err);
@@ -123,14 +131,35 @@ export function createDataLibraryRoutes(pool: Pool): Router {
   // Re-run the upload-time parse pipeline for a file. Used by the Retry
   // button on the Data Library page when an OM upload fails OCR or the
   // model returns malformed JSON.
+  //
+  // Concurrency: claimForRetry atomically transitions parsing_status to
+  // 'parsing' only when it isn't already 'parsing'. Concurrent retry
+  // requests therefore see exactly one winner (HTTP 202) and one loser
+  // (HTTP 409) — eliminates the duplicate-pipeline race the architect
+  // flagged in T383 review. Owner-scoped to close the IDOR gap.
   router.post('/:id/retry', async (req: Request, res: Response) => {
     try {
+      const userId = (req as any).user?.userId;
+      if (!userId) return res.status(401).json({ error: 'Unauthenticated' });
+
       const id = parseInt(req.params.id);
-      const file = await service.getFile(id);
-      if (!file) return res.status(404).json({ error: 'Not found' });
+
+      // Pre-flight: distinguish "not found / not yours" (404) from "already
+      // running" (409). We do an owner-scoped fetch first, then attempt the
+      // atomic claim — keeps the error semantics clean for the UI.
+      const existing = await service.getFile(id, userId);
+      if (!existing) return res.status(404).json({ error: 'Not found' });
+
+      const claimed = await service.claimForRetry(id, userId);
+      if (!claimed) {
+        return res.status(409).json({
+          id, status: 'already_parsing',
+          error: 'Parse pipeline is already running for this file',
+        });
+      }
 
       // Fire-and-forget; the dataLibrary service handles state transitions.
-      service.parseFileAsync(id, file.file_path, file.mime_type).catch((err: unknown) => {
+      service.parseFileAsync(id, claimed.file_path, claimed.mime_type).catch((err: unknown) => {
         console.error('Data library retry parse error:', err);
       });
 

@@ -6,11 +6,6 @@
  * or did the market uptick attract this event?"
  */
 import React, { useState, useEffect, useMemo } from 'react';
-
-  // Neural network context awareness
-  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
-    { context: 'supply_pipeline', marketId: msaId }
-  );
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, Activity, ChevronDown, RefreshCw, AlertCircle, ArrowUpRight } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
@@ -211,6 +206,11 @@ const mono: React.CSSProperties = {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export const MSAEventsTab: React.FC<MSAEventsTabProps> = ({ msaId, msa }) => {
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+  { context: 'supply_pipeline', marketId: msaId }
+  );
+
   const msaName = msa?.name || msaId || 'MSA';
   const navigate = useNavigate();
 

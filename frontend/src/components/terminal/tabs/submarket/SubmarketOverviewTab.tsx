@@ -18,13 +18,13 @@ interface SubmarketOverviewTabProps {
 }
 
 export const SubmarketOverviewTab: React.FC<SubmarketOverviewTabProps> = ({ submarketId, submarket }) => {
-  const { fetchCommentary, getCommentary, isLoading, getError } = useCommentaryStore();
-  const commentary = getCommentary('submarket', submarketId);
-
   // Neural network context awareness
   const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
-    { context: 'submarket_deep_dive', submarketId }
+  { context: 'submarket_deep_dive', submarketId }
   );
+
+  const { fetchCommentary, getCommentary, isLoading, getError } = useCommentaryStore();
+  const commentary = getCommentary('submarket', submarketId);
   const loading = isLoading('submarket', submarketId);
   const error = getError('submarket', submarketId);
 

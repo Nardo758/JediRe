@@ -5,11 +5,6 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
-
-  // Neural network context awareness
-  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
-    { context: 'rent_trends', marketId: msaId }
-  );
 import { BT, terminalStyles, fmt } from '../../theme';
 import { CardSection, DataTable } from '../../TerminalLayouts';
 import { TerminalChart, ChartSeries, ChartDataPoint } from '../../TerminalChart';
@@ -117,6 +112,11 @@ interface SupplyPipelineResponse {
 }
 
 export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+  { context: 'rent_trends', marketId: msaId }
+  );
+
   const [timeRange, setTimeRange] = useState<typeof TIME_RANGES[number]>('1Y');
   const [priceTrends, setPriceTrends] = useState<PriceTrend[]>([]);
   const [trendsLoading, setTrendsLoading] = useState(true);

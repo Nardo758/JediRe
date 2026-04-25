@@ -487,12 +487,56 @@ export class DataLibraryService {
     return result.rows;
   }
 
-  async getFile(id: number): Promise<DataLibraryFile | null> {
+  /**
+   * Fetch a file by id. When `userId` is supplied, the row is returned ONLY
+   * if it is owned by that user — used by REST routes to enforce row-level
+   * authorization (closes the IDOR gap flagged in T383 architect review).
+   * Internal callers (parseFileAsync, runOmPipeline) omit `userId` because
+   * they already operate inside an authenticated/owner context.
+   */
+  async getFile(id: number, userId?: string): Promise<DataLibraryFile | null> {
+    if (userId !== undefined) {
+      const result = await this.pool.query(
+        `SELECT * FROM data_library_files WHERE id = $1 AND user_id = $2`,
+        [id, userId],
+      );
+      return result.rows[0] || null;
+    }
     const result = await this.pool.query(`SELECT * FROM data_library_files WHERE id = $1`, [id]);
     return result.rows[0] || null;
   }
 
-  async updateFile(id: number, updates: Partial<DataLibraryFile>): Promise<DataLibraryFile | null> {
+  /**
+   * Atomically claim a file for re-parse. Returns the file row only when
+   * the claim succeeded (file existed, was owned by `userId` if provided,
+   * and was not already in flight). Returns null otherwise — the caller
+   * maps that to 409 Conflict / 404 Not Found.
+   *
+   * Race-safe because the UPDATE...WHERE...RETURNING is a single statement;
+   * concurrent retry calls cannot both observe `parsing_status != 'parsing'`
+   * and both transition it to 'parsing'.
+   */
+  async claimForRetry(id: number, userId?: string): Promise<DataLibraryFile | null> {
+    const ownerClause = userId !== undefined ? 'AND user_id = $2' : '';
+    const params: (number | string)[] = userId !== undefined ? [id, userId] : [id];
+    const result = await this.pool.query<DataLibraryFile>(
+      `UPDATE data_library_files
+          SET parsing_status = 'parsing',
+              parsing_stage  = 'pending',
+              parsing_errors = NULL
+        WHERE id = $1 ${ownerClause}
+          AND parsing_status <> 'parsing'
+        RETURNING *`,
+      params,
+    );
+    return result.rows[0] || null;
+  }
+
+  async updateFile(
+    id: number,
+    updates: Partial<DataLibraryFile>,
+    userId?: string,
+  ): Promise<DataLibraryFile | null> {
     const fields: string[] = [];
     const values: any[] = [];
     let idx = 1;
@@ -509,22 +553,40 @@ export class DataLibraryService {
       }
     }
 
-    if (fields.length === 0) return this.getFile(id);
+    if (fields.length === 0) return this.getFile(id, userId);
 
     values.push(id);
+    let where = `WHERE id = $${idx}`;
+    if (userId !== undefined) {
+      idx++;
+      values.push(userId);
+      where += ` AND user_id = $${idx}`;
+    }
     const result = await this.pool.query(
-      `UPDATE data_library_files SET ${fields.join(', ')} WHERE id = $${idx} RETURNING *`,
-      values
+      `UPDATE data_library_files SET ${fields.join(', ')} ${where} RETURNING *`,
+      values,
     );
     return result.rows[0] || null;
   }
 
-  async deleteFile(id: number): Promise<void> {
-    const file = await this.getFile(id);
-    if (file && fs.existsSync(file.file_path)) {
-      fs.unlinkSync(file.file_path);
+  /**
+   * Delete a file. When `userId` is supplied, the delete is scoped to rows
+   * owned by that user — returns false if the file doesn't exist or is
+   * owned by someone else. Closes the IDOR gap on DELETE /:id.
+   */
+  async deleteFile(id: number, userId?: string): Promise<boolean> {
+    const file = await this.getFile(id, userId);
+    if (!file) return false;
+    if (fs.existsSync(file.file_path)) {
+      try { fs.unlinkSync(file.file_path); } catch { /* best-effort */ }
     }
-    await this.pool.query(`DELETE FROM data_library_files WHERE id = $1`, [id]);
+    const ownerClause = userId !== undefined ? 'AND user_id = $2' : '';
+    const params: (number | string)[] = userId !== undefined ? [id, userId] : [id];
+    const result = await this.pool.query(
+      `DELETE FROM data_library_files WHERE id = $1 ${ownerClause}`,
+      params,
+    );
+    return (result.rowCount ?? 0) > 0;
   }
 
   async findComparables(params: { city?: string; propertyType?: string; unitCount?: number; propertyHeight?: string }): Promise<DataLibraryFile[]> {

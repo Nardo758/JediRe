@@ -5,11 +5,6 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
-
-  // Neural network context awareness
-  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
-    { context: 'comp_analysis', dealId }
-  );
 import { BT } from '../theme';
 import { scoreColor, QUADRANT_STYLES, Quadrant } from '../signalGroups';
 import { useOpportunityStore } from '../../../stores/opportunityStore';
@@ -108,6 +103,11 @@ interface Props {
 }
 
 export const F4DealsView: React.FC<Props> = ({ onSelectDeal }) => {
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+  { context: 'comp_analysis', dealId }
+  );
+
   const [marketFilter, setMarketFilter] = useState('All');
   const [stageFilter, setStageFilter] = useState<Stage | 'All'>('All');
   const [classFilter, setClassFilter] = useState('All');

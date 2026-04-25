@@ -1,9 +1,4 @@
 import React, { useState, useMemo } from "react";
-
-  // Neural network context awareness
-  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
-    { context: 'market_dashboard' }
-  );
 import { BT } from "../theme";
 import { ContextIndicator } from '../../intelligence/ContextIndicator';
 import { useAutoContextAnalysis } from '../../../hooks/useContextAwareness';
@@ -91,6 +86,11 @@ const FALLBACK_INSIGHTS: DemandInsight[] = [
 ];
 
 function Sparkline({ data, color, width = 80, height = 28 }: { data: number[]; color: string; width?: number; height?: number }) {
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+  { context: 'market_dashboard' }
+  );
+
   const max = Math.max(...data);
   const min = Math.min(...data);
   const range = max - min || 1;

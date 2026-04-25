@@ -1,7 +1,4 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-
-  // Neural network context awareness
-  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'property_card' });
 import { useParams, useNavigate } from 'react-router-dom';
 import { apiClient } from '../services/api.client';
 import type { Deal } from '../types/agent';
@@ -165,6 +162,9 @@ type CompFormKey = 'comp_name' | 'address' | 'units' | 'year_built' | 'avg_rent'
 type CompForm = Record<CompFormKey, string>;
 
 const CompSetTab: React.FC<{ dealId: string }> = ({ dealId }) => {
+  // Neural network context awareness
+  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'property_card' });
+
   const [comps, setComps] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);

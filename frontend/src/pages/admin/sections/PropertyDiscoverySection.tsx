@@ -1,7 +1,4 @@
 import React, { useState, useEffect } from 'react';
-
-  // Neural network context awareness
-  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'property_card' });
 import { Search, RefreshCw, Play, AlertCircle, CheckCircle, Check, X } from 'lucide-react';
 import { apiClient } from '../../../services/api.client';
 import { ContextIndicator } from '../../../components/intelligence/ContextIndicator';
@@ -45,6 +42,9 @@ interface PendingMatch {
 }
 
 export function PropertyDiscoverySection() {
+  // Neural network context awareness
+  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'property_card' });
+
   const [stats, setStats] = useState<DiscoveryStats | null>(null);
   const [recentJobs, setRecentJobs] = useState<DiscoveryJob[]>([]);
   const [pendingMatches, setPendingMatches] = useState<PendingMatch[]>([]);

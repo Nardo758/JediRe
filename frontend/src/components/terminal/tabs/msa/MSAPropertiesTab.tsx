@@ -5,11 +5,6 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
-
-  // Neural network context awareness
-  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
-    { context: 'property_card', marketId: msaId }
-  );
 import { BT, terminalStyles, fmt } from '../../theme';
 import { DataTable } from '../../TerminalLayouts';
 import { scoreColor, BT_SIGNAL_COLORS } from '../../signalGroups';
@@ -95,6 +90,11 @@ const COLUMNS = [
 ];
 
 export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, onSelectProperty }) => {
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+  { context: 'property_card', marketId: msaId }
+  );
+
   const [searchQuery, setSearchQuery] = useState('');
   const [submarketFilter, setSubmarketFilter] = useState('All');
   const [classFilter, setClassFilter] = useState('All');
@@ -611,10 +611,6 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
 
       {/* Footer Stats */}
       <div style={{
-      {/* Context Awareness */}
-      {contextAnalysis && (
-        <ContextIndicator analysis={contextAnalysis} loading={contextLoading} compact />
-      )}
         display: 'flex',
         gap: 24,
         padding: '12px 16px',

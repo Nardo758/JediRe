@@ -4,11 +4,6 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
-
-  // Neural network context awareness
-  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
-    { context: 'deal_overview', dealId }
-  );
 import { 
   Target, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2,
   XCircle, Clock, DollarSign, Percent, Building2, ArrowRight,
@@ -68,6 +63,11 @@ interface ActionItem {
 }
 
 export const StrategyTab: React.FC<StrategyTabProps> = ({ dealId, deal }) => {
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+  { context: 'deal_overview', dealId }
+  );
+
   const [selectedStrategy, setSelectedStrategy] = useState<string>('value-add');
   const [expandedSection, setExpandedSection] = useState<string | null>('recommendation');
   const [dealEvents, setDealEvents] = useState<M35EventCardData[]>([]);

@@ -1,9 +1,4 @@
 import React, { useState, useMemo, useEffect } from 'react';
-
-  // Neural network context awareness
-  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
-    { context: 'comp_analysis', marketId: msaId }
-  );
 import { BT, terminalStyles, fmt } from '../../theme';
 import { CardSection, DataTable } from '../../TerminalLayouts';
 import {
@@ -89,6 +84,11 @@ const KANBAN_COLUMNS = [
 const ALL_QUADRANTS: Quadrant[] = ['Hidden Gem', 'Validated Winner', 'Hype Risk', 'Dead Weight'];
 
 export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDeal }) => {
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+  { context: 'comp_analysis', marketId: msaId }
+  );
+
   const [activeQuadrants, setActiveQuadrants] = useState<Set<Quadrant>>(new Set());
   const [expandedPipeline, setExpandedPipeline] = useState(false);
   const msaName = msa?.name || msaId || 'Atlanta';

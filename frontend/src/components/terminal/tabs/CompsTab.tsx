@@ -4,11 +4,6 @@
  */
 
 import React, { useState, useMemo } from 'react';
-
-  // Neural network context awareness
-  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
-    { context: 'comp_analysis', dealId }
-  );
 import { Building2, MapPin, TrendingUp, TrendingDown, Clock, Hammer } from 'lucide-react';
 import { BT, fmt, terminalStyles } from '../theme';
 import { TerminalChart, ChartDataPoint, ChartSeries } from '../TerminalChart';
@@ -49,6 +44,11 @@ interface FutureSupply {
 }
 
 export const CompsTab: React.FC<CompsTabProps> = ({ dealId, deal }) => {
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+  { context: 'comp_analysis', dealId }
+  );
+
   const [activeView, setActiveView] = useState<'comps' | 'supply' | 'chart'>('comps');
   const [sortBy, setSortBy] = useState<string>('distance');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');

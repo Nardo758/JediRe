@@ -16,7 +16,7 @@
  * file before re-distributing (handled in dataLibrary.service.parseFileAsync).
  */
 
-import { Pool } from 'pg';
+import { Pool, PoolClient } from 'pg';
 import { logger } from '../../utils/logger';
 import type { OMExtraction } from './parsers/om-parser';
 import type { OmGeoTags } from './om-geo';
@@ -49,6 +49,12 @@ interface DistributeArgs {
   dealId?: string | null;
 }
 
+// Internal — same shape as DistributeArgs but the writers run on a single
+// transactional client so partial inserts can be rolled back atomically.
+interface DistributeTxnArgs extends Omit<DistributeArgs, 'pool'> {
+  client: PoolClient;
+}
+
 const SNAPSHOT_DATE = (): string => new Date().toISOString().slice(0, 10);
 
 const ASSET_CLASS_FROM_TYPE = (t: string | null): string | null => {
@@ -61,9 +67,9 @@ const ASSET_CLASS_FROM_TYPE = (t: string | null): string | null => {
 };
 
 async function distributeRentComps(
-  pool: Pool, args: DistributeArgs,
+  args: DistributeTxnArgs,
 ): Promise<CategoryResult> {
-  const { extraction, geo, fileId } = args;
+  const { client, extraction, geo, fileId } = args;
   const errors: string[] = [];
   const rents = extraction.marketComps.rentComps ?? [];
   if (rents.length === 0) return { inserted: 0, errors };
@@ -82,8 +88,13 @@ async function distributeRentComps(
   for (let i = 0; i < rents.length; i++) {
     const c = rents[i];
     if (!c?.name) continue;
+    // Per-row SAVEPOINT so a single bad insert doesn't poison the txn for
+    // the remaining rows. We still want to surface every failure, but we
+    // never want a single malformed comp to abort the whole distribution
+    // before the writers below get a chance to log their own failures.
+    await client.query('SAVEPOINT row_sp');
     try {
-      await pool.query(
+      await client.query(
         `INSERT INTO market_rent_comps
            (property_name, address, city, state, zip, msa, submarket,
             units, year_built, asset_class, snapshot_date,
@@ -115,8 +126,10 @@ async function distributeRentComps(
           c.pageNumber ?? null,
         ],
       );
+      await client.query('RELEASE SAVEPOINT row_sp');
       inserted++;
     } catch (err) {
+      await client.query('ROLLBACK TO SAVEPOINT row_sp');
       const msg = `rent comp "${c.name}": ${err instanceof Error ? err.message : String(err)}`;
       logger.warn('[om-distribute] rent comp insert failed', { fileId, error: msg });
       errors.push(msg);
@@ -126,9 +139,9 @@ async function distributeRentComps(
 }
 
 async function distributeSaleComps(
-  pool: Pool, args: DistributeArgs,
+  args: DistributeTxnArgs,
 ): Promise<CategoryResult> {
-  const { extraction, geo, fileId } = args;
+  const { client, extraction, geo, fileId } = args;
   const errors: string[] = [];
   const sales = extraction.marketComps.saleComps ?? [];
   if (sales.length === 0) return { inserted: 0, errors };
@@ -144,8 +157,9 @@ async function distributeSaleComps(
     const saleDate = c.saleDate && /^\d{4}-\d{2}-\d{2}$/.test(c.saleDate)
       ? c.saleDate
       : SNAPSHOT_DATE();
+    await client.query('SAVEPOINT row_sp');
     try {
-      await pool.query(
+      await client.query(
         `INSERT INTO market_sale_comps
            (property_name, address, city, state, zip, msa, submarket,
             property_type, units, year_built, asset_class,
@@ -181,8 +195,10 @@ async function distributeSaleComps(
           c.pageNumber ?? null,
         ],
       );
+      await client.query('RELEASE SAVEPOINT row_sp');
       inserted++;
     } catch (err) {
+      await client.query('ROLLBACK TO SAVEPOINT row_sp');
       const msg = `sale comp "${c.name}": ${err instanceof Error ? err.message : String(err)}`;
       logger.warn('[om-distribute] sale comp insert failed', { fileId, error: msg });
       errors.push(msg);
@@ -192,9 +208,9 @@ async function distributeSaleComps(
 }
 
 async function distributeReplacementCost(
-  pool: Pool, args: DistributeArgs,
+  args: DistributeTxnArgs,
 ): Promise<CategoryResult> {
-  const { extraction, geo, fileId } = args;
+  const { client, extraction, geo, fileId } = args;
   const errors: string[] = [];
   const rc = extraction.replacementCost;
 
@@ -208,8 +224,9 @@ async function distributeReplacementCost(
     rc.landValue != null;
   if (!hasAnyValue) return { inserted: 0, errors };
 
+  await client.query('SAVEPOINT row_sp');
   try {
-    await pool.query(
+    await client.query(
       `INSERT INTO om_replacement_cost_data
          (source_file_id, msa_key, submarket_key,
           property_name, property_type, units, year_built, net_rentable_sf,
@@ -245,8 +262,10 @@ async function distributeReplacementCost(
         rc.pageNumber ?? null,
       ],
     );
+    await client.query('RELEASE SAVEPOINT row_sp');
     return { inserted: 1, errors };
   } catch (err) {
+    await client.query('ROLLBACK TO SAVEPOINT row_sp');
     const msg = `replacement cost: ${err instanceof Error ? err.message : String(err)}`;
     logger.warn('[om-distribute] replacement cost insert failed', { fileId, error: msg });
     errors.push(msg);
@@ -255,9 +274,9 @@ async function distributeReplacementCost(
 }
 
 async function distributeNarratives(
-  pool: Pool, args: DistributeArgs,
+  args: DistributeTxnArgs,
 ): Promise<CategoryResult> {
-  const { extraction, geo, fileId, dealId } = args;
+  const { client, extraction, geo, fileId, dealId } = args;
   const errors: string[] = [];
   const rows: Array<{ kind: 'thesis' | 'highlight'; text: string }> = [];
 
@@ -273,8 +292,9 @@ async function distributeNarratives(
 
   let inserted = 0;
   for (const r of rows) {
+    await client.query('SAVEPOINT row_sp');
     try {
-      await pool.query(
+      await client.query(
         `INSERT INTO broker_narratives
            (source_file_id, msa_key, submarket_key, deal_id,
             kind, text, broker, property_name, source_page)
@@ -294,8 +314,10 @@ async function distributeNarratives(
           null,
         ],
       );
+      await client.query('RELEASE SAVEPOINT row_sp');
       inserted++;
     } catch (err) {
+      await client.query('ROLLBACK TO SAVEPOINT row_sp');
       const msg = `narrative (${r.kind}): ${err instanceof Error ? err.message : String(err)}`;
       logger.warn('[om-distribute] narrative insert failed', { fileId, error: msg });
       errors.push(msg);
@@ -307,73 +329,125 @@ async function distributeNarratives(
 /**
  * Wipe all distributed rows tied to a Data Library file. Called before a
  * re-parse so duplicates don't accumulate when an upload is retried.
+ *
+ * Runs on the caller's client (transactional) so the clear + subsequent
+ * inserts are committed atomically — a half-cleared file row is impossible.
  */
-export async function clearOmDistribution(pool: Pool, fileId: number): Promise<void> {
-  // Per-row source_id is now `${fileId}:r<i>` / `${fileId}:s<i>` so we must
-  // delete by prefix. We also delete the legacy bare-fileId rows for backward
-  // compatibility with anything inserted before the per-row keying landed.
+async function clearOmDistributionTxn(client: PoolClient, fileId: number): Promise<void> {
   const fileIdStr = String(fileId);
   const prefix = `${fileId}:%`;
-  await pool.query(
+  await client.query(
     `DELETE FROM market_rent_comps
       WHERE source = 'broker_om' AND (source_id = $1 OR source_id LIKE $2)`,
     [fileIdStr, prefix],
   );
-  await pool.query(
+  await client.query(
     `DELETE FROM market_sale_comps
       WHERE source = 'broker_om' AND (source_id = $1 OR source_id LIKE $2)`,
     [fileIdStr, prefix],
   );
-  await pool.query(
+  await client.query(
     `DELETE FROM om_replacement_cost_data WHERE source_file_id = $1`,
     [fileId],
   );
-  await pool.query(
+  await client.query(
     `DELETE FROM broker_narratives WHERE source_file_id = $1`,
     [fileId],
   );
 }
 
 /**
- * Fan an OM extraction out to all platform-wide tables.
- * Throws OmDistributionError if any individual row insert failed — the caller
- * (parseFileAsync) maps this to a non-complete `parsing_stage` so the operator
- * sees the partial-failure rather than a misleading "complete" status.
+ * Public wrapper kept for backward compatibility with any external callers
+ * that wipe rows outside the pipeline (e.g. admin tooling). Acquires its
+ * own client and commits.
+ */
+export async function clearOmDistribution(pool: Pool, fileId: number): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await clearOmDistributionTxn(client, fileId);
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Fan an OM extraction out to all platform-wide tables. Runs the clear +
+ * all four category writers inside a single transaction so any failure
+ * leaves the market tables in their pre-distribution state — eliminates
+ * the "distribute_failed but partial comps survived" race the architect
+ * flagged in T383 review.
+ *
+ * Per-row SAVEPOINTs let us collect every insert failure for diagnostics
+ * without aborting subsequent rows. If errors.length > 0 the whole
+ * transaction ROLLBACKs and OmDistributionError is thrown — counts in
+ * the error reflect would-have-been inserts (now rolled back).
  */
 export async function distributeOmExtraction(
   args: DistributeArgs,
 ): Promise<OmDistributionCounts> {
   const { pool } = args;
-  await clearOmDistribution(pool, args.fileId);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await clearOmDistributionTxn(client, args.fileId);
 
-  const [rent, sale, rc, narr] = await Promise.all([
-    distributeRentComps(pool, args),
-    distributeSaleComps(pool, args),
-    distributeReplacementCost(pool, args),
-    distributeNarratives(pool, args),
-  ]);
+    const txnArgs: DistributeTxnArgs = {
+      client,
+      fileId: args.fileId,
+      extraction: args.extraction,
+      geo: args.geo,
+      dealId: args.dealId,
+    };
 
-  const counts: OmDistributionCounts = {
-    rentComps: rent.inserted,
-    saleComps: sale.inserted,
-    replacementCostRows: rc.inserted,
-    narratives: narr.inserted,
-  };
-  const failures = [...rent.errors, ...sale.errors, ...rc.errors, ...narr.errors];
+    // Sequential (not parallel) — savepoint state is per-connection so we
+    // cannot fan out concurrently on a single client without risking
+    // savepoint name collisions.
+    const rent = await distributeRentComps(txnArgs);
+    const sale = await distributeSaleComps(txnArgs);
+    const rc = await distributeReplacementCost(txnArgs);
+    const narr = await distributeNarratives(txnArgs);
 
-  logger.info('[om-distribute] completed', {
-    fileId: args.fileId, ...counts, failureCount: failures.length,
-    msaKey: args.geo.msaKey, submarketKey: args.geo.submarketKey,
-  });
+    const counts: OmDistributionCounts = {
+      rentComps: rent.inserted,
+      saleComps: sale.inserted,
+      replacementCostRows: rc.inserted,
+      narratives: narr.inserted,
+    };
+    const failures = [...rent.errors, ...sale.errors, ...rc.errors, ...narr.errors];
 
-  if (failures.length > 0) {
-    throw new OmDistributionError(
-      `Distribution had ${failures.length} insert failure(s): ${failures.slice(0, 3).join('; ')}` +
-      (failures.length > 3 ? ` (+${failures.length - 3} more)` : ''),
-      counts,
-      failures,
-    );
+    if (failures.length > 0) {
+      await client.query('ROLLBACK');
+      logger.warn('[om-distribute] rolled back — partial failures', {
+        fileId: args.fileId, failureCount: failures.length,
+      });
+      throw new OmDistributionError(
+        `Distribution had ${failures.length} insert failure(s): ${failures.slice(0, 3).join('; ')}` +
+        (failures.length > 3 ? ` (+${failures.length - 3} more)` : ''),
+        // counts are now zeros from the rollback's perspective, but we
+        // surface the would-have-been counts so the operator sees what
+        // the OM yielded before the abort.
+        counts,
+        failures,
+      );
+    }
+
+    await client.query('COMMIT');
+    logger.info('[om-distribute] completed', {
+      fileId: args.fileId, ...counts, failureCount: 0,
+      msaKey: args.geo.msaKey, submarketKey: args.geo.submarketKey,
+    });
+    return counts;
+  } catch (err) {
+    // Best-effort rollback; if we already rolled back above, this is a no-op
+    // that pg silently tolerates.
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw err;
+  } finally {
+    client.release();
   }
-
-  return counts;
 }

@@ -1,7 +1,4 @@
 import React, { useState, useEffect, useCallback } from 'react';
-
-  // Neural network context awareness
-  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'market_dashboard' });
 import { Bot, RefreshCw, Clock } from 'lucide-react';
 import { apiClient } from '../../../services/api.client';
 import { BT } from '@/components/deal/bloomberg-ui';
@@ -66,6 +63,9 @@ function fmtTime(iso: string | null): string {
 }
 
 function StatusBadge({ status }: { status: string }) {
+  // Neural network context awareness
+  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'market_dashboard' });
+
   const color = STATUS_COLORS[status] ?? BT.text.secondary;
   const label = status === 'succeeded' ? 'OK' : status.replace('_', ' ').toUpperCase();
   return (

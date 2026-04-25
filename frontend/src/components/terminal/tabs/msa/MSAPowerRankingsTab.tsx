@@ -5,11 +5,6 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
-
-  // Neural network context awareness
-  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
-    { context: 'market_dashboard', marketId: msaId }
-  );
 import { BT, terminalStyles, fmt } from '../../theme';
 import { DataTable } from '../../TerminalLayouts';
 import { PCSComponents, calculatePCS, scoreColor } from '../../signalGroups';
@@ -86,6 +81,11 @@ function matchesSize(units: number, filter: string): boolean {
 }
 
 export const MSAPowerRankingsTab: React.FC<MSAPowerRankingsTabProps> = ({ msaId, msa, onSelectProperty }) => {
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+  { context: 'market_dashboard', marketId: msaId }
+  );
+
   const [classFilter, setClassFilter] = useState('All');
   const [vintageFilter, setVintageFilter] = useState('All');
   const [sizeFilter, setSizeFilter] = useState('All');
@@ -331,10 +331,6 @@ export const MSAPowerRankingsTab: React.FC<MSAPowerRankingsTabProps> = ({ msaId,
                       return (
                         <td key={c.key} style={{ ...terminalStyles.tableCell, padding: '8px 4px' }}>
                           <div style={{
-      {/* Context Awareness */}
-      {contextAnalysis && (
-        <ContextIndicator analysis={contextAnalysis} loading={contextLoading} compact />
-      )}
                             width: '100%',
                             height: 16,
                             background: BT.bg.elevated,

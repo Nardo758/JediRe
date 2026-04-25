@@ -3,11 +3,6 @@
  */
 
 import React, { useMemo, useState, useEffect } from 'react';
-
-  // Neural network context awareness
-  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
-    { context: 'submarket_deep_dive', submarketId: submarketId }
-  );
 import { Newspaper, TrendingUp, TrendingDown, Building2, Briefcase, Clock } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
 import { SubmarketData } from '../../SubmarketTerminal';
@@ -32,6 +27,11 @@ interface NewsItem {
 }
 
 export const SubmarketNewsTab: React.FC<SubmarketNewsTabProps> = ({ submarketId, submarket }) => {
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+  { context: 'submarket_deep_dive', submarketId: submarketId }
+  );
+
   const { fetchCommentary, getCommentary, isLoading, getError } = useCommentaryStore();
   const commentary = getCommentary('submarket', submarketId);
   const loading = isLoading('submarket', submarketId);

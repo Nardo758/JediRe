@@ -4,11 +4,6 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
-
-  // Neural network context awareness
-  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
-    { context: 'proforma_review', dealId }
-  );
 import { ChevronDown, ChevronRight, TrendingUp, DollarSign, Building2, Percent } from 'lucide-react';
 import { BT, fmt, terminalStyles } from '../theme';
 import { TerminalChart, ChartDataPoint, ChartSeries } from '../TerminalChart';
@@ -22,6 +17,11 @@ interface FinancialsTabProps {
 }
 
 export const FinancialsTab: React.FC<FinancialsTabProps> = ({ dealId, deal }) => {
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+  { context: 'proforma_review', dealId }
+  );
+
   const [holdFilter, setHoldFilter] = useState(7);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [activeView, setActiveView] = useState<'projections' | 'assumptions'>('projections');

@@ -1,7 +1,4 @@
 import React, { useState, useRef, useEffect } from 'react';
-
-  // Neural network context awareness
-  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'market_dashboard' });
 import { newsService, NewsEvent, NewsAlert, MarketDashboard, ContactCredibility } from '../services/news.service';
 import { DateRangeFilter, DateRangeOption, getDateRangeFromOption } from '../components/ui/DateRangeFilter';
 import { BT } from '../components/deal/bloomberg-ui';
@@ -68,6 +65,9 @@ export function NewsIntelligencePage() {
   // shape the F6 page renders. Newsletter items get is_premium badging via
   // source_name; API items use their provider name as source_name.
   const mapFeedArticleToEvent = (a: Record<string, unknown>): NewsEvent => {
+  // Neural network context awareness
+  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'market_dashboard' });
+
     const sourceName = String((a.source as string) || (a.publisher as string) || 'News');
     const isPremium = a.is_premium === true;
     const headline = String(a.headline ?? a.title ?? '');

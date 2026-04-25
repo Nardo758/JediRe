@@ -181,6 +181,11 @@ const ProFormaScreen = (props: ScreenProps) => (
   />
 );
 const PortfolioAssetBridge: React.FC<{ dealId: string; featureName: string }> = ({ dealId, featureName }) => {
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+  dealId ? { context: 'deal_overview', dealId } : null
+  );
+
   const nav = useNavigate();
   return (
     <div className="flex flex-col items-center justify-center h-full p-12 text-center">
@@ -476,11 +481,6 @@ const DealDetailPage: React.FC = () => {
   const tabParam = searchParams.get('tab');
   const [activeTab, setActiveTab] = useState<string>(tabParam || 'overview');
   const [deal, setDeal] = useState<any>(null);
-
-  // Neural network context awareness
-  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
-    dealId ? { context: 'deal_overview', dealId } : null
-  );
   const [loading, setLoading] = useState(true);
   const [geographicContext, setGeographicContext] = useState<any>(null);
   const [showTradeAreaPanel, setShowTradeAreaPanel] = useState(false);

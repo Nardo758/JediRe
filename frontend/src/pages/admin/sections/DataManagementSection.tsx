@@ -4,9 +4,6 @@
  */
 
 import React, { useState } from 'react';
-
-  // Neural network context awareness
-  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'market_dashboard' });
 import { ContextIndicator } from '../../../components/intelligence/ContextIndicator';
 import { useAutoContextAnalysis } from '../../../hooks/useContextAwareness';
 
@@ -33,6 +30,9 @@ const MOCK_IMPORTS: ImportJob[] = [
 ];
 
 export default function DataManagementSection() {
+  // Neural network context awareness
+  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'market_dashboard' });
+
   const [activeTab, setActiveTab] = useState<'import' | 'export' | 'bulk' | 'retention'>('import');
   const [imports, setImports] = useState<ImportJob[]>(MOCK_IMPORTS);
 

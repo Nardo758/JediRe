@@ -78,6 +78,11 @@ const MSA_METRICS = {
 
 
 export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) => {
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+  { context: 'market_dashboard', marketId: msaId }
+  );
+
   const msaName = msa?.name || msaId || 'Atlanta';
   const msaState = msa?.state || 'GA';
   const jediScore = msa?.healthScore || MSA_METRICS.jedi;
@@ -85,12 +90,6 @@ export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) =>
   const units = msa?.totalUnits?.toLocaleString() || "250,412";
 
   const M = MSA_METRICS;
-
-  // Neural network context awareness
-  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
-    { context: 'market_dashboard', marketId: msaId }
-  );
-
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 1, background: BT.border.subtle }}>
       {/* Context Awareness */}

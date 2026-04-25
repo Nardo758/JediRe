@@ -7,11 +7,6 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-
-  // Neural network context awareness
-  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
-    { context: 'supply_pipeline', submarketId: submarketId }
-  );
 import { useNavigate } from 'react-router-dom';
 import { ArrowUpRight, Activity } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
@@ -82,6 +77,11 @@ interface SubmarketEventsTabProps {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export const SubmarketEventsTab: React.FC<SubmarketEventsTabProps> = ({ submarketId, submarket }) => {
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+  { context: 'supply_pipeline', submarketId: submarketId }
+  );
+
   const navigate = useNavigate();
   const [events, setEvents] = useState<LiveEvent[]>([]);
   const [selected, setSelected] = useState<LiveEvent | null>(null);

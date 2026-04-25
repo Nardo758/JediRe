@@ -5,11 +5,6 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
-
-  // Neural network context awareness
-  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
-    { context: 'market_dashboard', marketId: msaId }
-  );
 import { BT, terminalStyles, fmt } from '../../theme';
 import { DataTable } from '../../TerminalLayouts';
 import { scoreColor } from '../../signalGroups';
@@ -172,6 +167,11 @@ const MOCK_PORTFOLIO: Record<string, OwnerProperty[]> = {
 };
 
 export const MSAOwnersTab: React.FC<MSAOwnersTabProps> = ({ msaId, msa, onSelectProperty }) => {
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+  { context: 'market_dashboard', marketId: msaId }
+  );
+
   const [expandedOwner, setExpandedOwner] = useState<string | null>(null);
   const [ownerTypeFilter, setOwnerTypeFilter] = useState<string>('All');
   const [signalFilter, setSignalFilter] = useState<string>('All');

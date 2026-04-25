@@ -489,9 +489,6 @@ export default function TerminalPage() {
   const [cmd, setCmd] = useState("");
   const [sortBy, setSortBy] = useState("score");
   const [sortDir, setSortDir] = useState<"desc"|"asc">("desc");
-
-  // Neural network context awareness for dashboard
-  const { analysis: dashContext, loading: dashContextLoading, analyze: analyzeDashContext } = useContextAnalysis();
   const [fStage, setFStage] = useState("ALL");
   const [fStrat, setFStrat] = useState("ALL");
   const [bottomTab, setBottomTab] = useState("alerts");
@@ -1901,6 +1898,9 @@ export default function TerminalPage() {
 
   // Mini sparkline component for rankings
   const MiniSparkline = ({data, target}: {data: number[], target: number}) => {
+  // Neural network context awareness
+  const { analysis: dashContext, loading: dashContextLoading, analyze: analyzeDashContext } = useContextAnalysis();
+
     if (!data || data.length < 2) return <span style={{color:T.text.muted,fontSize:10}}>—</span>;
     const max = Math.max(...data, target) + 2;
     const min = Math.min(...data, target) - 2;

@@ -4,9 +4,6 @@
  */
 
 import React, { useState } from 'react';
-
-  // Neural network context awareness
-  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'deal_overview' });
 import { ContextIndicator } from '../../../components/intelligence/ContextIndicator';
 import { useAutoContextAnalysis } from '../../../hooks/useContextAwareness';
 
@@ -57,6 +54,9 @@ const MOCK_TEMPLATES: Template[] = [
 ];
 
 export default function TemplatesSection() {
+  // Neural network context awareness
+  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'deal_overview' });
+
   const [templates, setTemplates] = useState<Template[]>(MOCK_TEMPLATES);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');

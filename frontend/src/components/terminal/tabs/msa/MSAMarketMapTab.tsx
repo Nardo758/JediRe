@@ -5,11 +5,6 @@
  */
 
 import React, { useState, useMemo, useRef, useCallback } from 'react';
-
-  // Neural network context awareness
-  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
-    { context: 'market_dashboard', marketId: msaId }
-  );
 import Map, { Marker, NavigationControl } from 'react-map-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { BT, terminalStyles, fmt } from '../../theme';
@@ -180,6 +175,11 @@ function motivationColor(score: number): string {
 }
 
 export const MSAMarketMapTab: React.FC<MSAMarketMapTabProps> = ({ msaId, msa, onSelectProperty }) => {
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+  { context: 'market_dashboard', marketId: msaId }
+  );
+
   const msaName = msa?.name || msaId || 'Atlanta';
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -536,10 +536,6 @@ export const MSAMarketMapTab: React.FC<MSAMarketMapTabProps> = ({ msaId, msa, on
 
               return (
                 <div
-      {/* Context Awareness */}
-      {contextAnalysis && (
-        <ContextIndicator analysis={contextAnalysis} loading={contextLoading} compact />
-      )}
                   key={p.id}
                   data-prop-id={p.id}
                   onClick={() => handleSelectProperty(p)}

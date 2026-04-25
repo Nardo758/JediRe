@@ -146,12 +146,6 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
   const [selectedPeriod, setSelectedPeriod] = useState<string | null>(null);
   const [periodContributors, setPeriodContributors] = useState<PeriodContributor[]>([]);
   const [contributorsLoading, setContributorsLoading] = useState(false);
-
-  // Neural network context awareness for portfolio
-  const { analysis: portfolioContext, loading: contextLoading } = useAutoContextAnalysis(
-    { context: 'deal_overview' }  // portfolio-level analysis
-  );
-
   // Comp Sets state
   const [comps, setComps] = useState<Record<string, PortfolioComp[]>>({});
   const [compsLoading, setCompsLoading] = useState<Set<string>>(new Set());
@@ -294,6 +288,11 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
   // ─── Comp Set Functions ───────────────────────────────────────
 
   const loadCompSet = (assetId: string) => {
+  // Neural network context awareness
+  const { analysis: portfolioContext, loading: contextLoading } = useAutoContextAnalysis(
+  { context: 'deal_overview' }  // portfolio-level analysis
+  );
+
     setCompsLoading(prev => new Set(prev).add(assetId));
     apiClient.get(`/api/v1/deals/${assetId}/comp-set`)
       .then(res => setComps(prev => ({ ...prev, [assetId]: res.data?.comps || [] })))

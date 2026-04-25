@@ -1,7 +1,4 @@
 import React, { useState, useEffect } from 'react';
-
-  // Neural network context awareness
-  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'market_dashboard' });
 import { Map, RefreshCw, AlertCircle, ExternalLink } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { apiClient } from '../../../services/api.client';
@@ -42,6 +39,9 @@ export function DataCoverageSection() {
     d ? new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'Never';
 
   const statusColor = (s: string) => {
+  // Neural network context awareness
+  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'market_dashboard' });
+
     switch (s) {
       case 'active': return BT.text.green;
       case 'pending': return BT.text.amber;

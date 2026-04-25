@@ -1,9 +1,4 @@
 import React, { useState, useEffect } from 'react';
-
-  // Neural network context awareness
-  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
-    { context: 'submarket_deep_dive', marketId: msaId }
-  );
 import { BT } from '../../theme';
 import { useCommentaryStore } from '../../../../stores/commentaryStore';
 import { MarketNarrative, InvestmentThesis, PeerContext } from '../../commentary';
@@ -132,6 +127,11 @@ const severityColors = {
 const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono','Fira Code','SF Mono',monospace" };
 
 export const MSASubmarketsTab: React.FC<MSASubmarketsTabProps> = ({ msaId, msa, onSelectSubmarket }) => {
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+  { context: 'submarket_deep_dive', marketId: msaId }
+  );
+
   const [selectedSub, setSelectedSub] = useState<string>('midtown');
   const [chartMetric, setChartMetric] = useState<string>('rent_growth_yoy');
   const [liveSubmarkets, setLiveSubmarkets] = useState<SubmarketRow[]>([]);

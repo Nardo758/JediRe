@@ -1,7 +1,4 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-
-  // Neural network context awareness
-  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'deal_overview' });
 import { useParams, useNavigate } from 'react-router-dom';
 import { apiClient } from '../services/api.client';
 import { Deal } from '../types/deal';
@@ -165,6 +162,9 @@ const Spinner = () => (
 type CompForm = Record<CompFormKey, string>;
 
 const CompSetTab: React.FC<{ dealId: string }> = ({ dealId }) => {
+  // Neural network context awareness
+  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'deal_overview' });
+
   const [comps, setComps] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);

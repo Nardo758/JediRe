@@ -5,11 +5,6 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
-
-  // Neural network context awareness
-  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
-    { context: 'traffic_analysis', submarketId: submarketId }
-  );
 import { BT, terminalStyles, fmt } from '../../theme';
 import { BT_SIGNAL_COLORS, scoreColor } from '../../signalGroups';
 import { useCommentaryStore } from '../../../../stores/commentaryStore';
@@ -95,6 +90,11 @@ const TOP_PROPERTIES = [
 ];
 
 export const SubmarketTrafficTab: React.FC<SubmarketTrafficTabProps> = ({ submarketId, submarket }) => {
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+  { context: 'traffic_analysis', submarketId: submarketId }
+  );
+
   const submarketName = submarket?.name || submarketId || 'Midtown';
   const { fetchCommentary, getCommentary, isLoading, getError } = useCommentaryStore();
   const commentary = getCommentary('submarket', submarketId);
