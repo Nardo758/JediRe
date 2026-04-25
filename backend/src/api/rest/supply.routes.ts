@@ -269,64 +269,115 @@ router.get('/timeline/:tradeAreaId', async (req, res) => {
 /**
  * GET /api/v1/supply/pipeline-timeline
  *
- * Lives in this router so callers can use the conventional `/supply/*` path.
- * Mounted in `index.replit.ts` at `/api/v1/supply` via the dedicated
- * `supplyExtraRouter` so it does not collide with `supplyRoutes` (which is
- * mounted at `/api/v1`).
- *
- * Forward-looking unit deliveries for an MSA or Submarket.
+ * Returns forward-looking apartment unit deliveries for an MSA or Submarket
+ * over the next N quarters, plus the project list aligned to that same window.
  *
  * Query params:
- *   msaId           — e.g. 'atlanta-ga'
- *   state           — 2-letter; if omitted we try to read from msaId tail, else 'GA'
- *   submarketName   — optional. When provided, projects are filtered by name/address keyword match
- *   submarketId     — optional. Echoed back in `resolved` for client correlation
- *   quarters        — chart window length, default 8
+ *   msaId           e.g. 'atlanta-ga' — used to resolve city + state for scoping
+ *   state           optional override; 2-letter
+ *   submarketName   optional — refines projects by name/address keyword
+ *   submarketId     optional — echoed in `resolved` for client correlation
+ *   quarters        chart window length (1-16, default 8)
  *
- * Data source rationale: the canonical `supply_pipeline` / `supply_delivery_timeline` /
- * `supply_pipeline_projects` tables are currently empty in this environment. The only
- * populated source for forward apartment deliveries is `apartment_supply_pipeline`
- * (apartment-locator daily sync). Status/probability are derived from `available_date`
- * because the source feed does not carry explicit construction phase. When the canonical
- * trade-area-keyed feed is populated, this handler can be re-pointed to it.
+ * Response shape:
+ *   resolved: scope/labels/state/cities used for the query
+ *   totals:   project count + units rolled up across full forward pipeline
+ *   byQuarter[N]: aligned to chart window (next N quarters from today)
+ *   projects[]:   forward projects whose delivery quarter falls IN the window
+ *   unscheduledProjects[]: forward projects with no scheduled delivery date,
+ *                          or scheduled delivery beyond the window
+ *
+ * Source: `apartment_supply_pipeline` (the populated forward-pipeline source).
+ * `propertyId` is best-effort joined from `properties` on (address, state) so
+ * linked rows can drill through to the Property Terminal.
  */
+const MSA_CITY_MAP: Record<string, { state: string; cities: string[] }> = {
+  'atlanta-ga': { state: 'GA', cities: ['Atlanta'] },
+  'tampa-fl':   { state: 'FL', cities: ['Tampa'] },
+  'orlando-fl': { state: 'FL', cities: ['Orlando'] },
+  'miami-fl':   { state: 'FL', cities: ['Miami'] },
+  'dallas-tx':  { state: 'TX', cities: ['Dallas'] },
+  'houston-tx': { state: 'TX', cities: ['Houston'] },
+  'austin-tx':  { state: 'TX', cities: ['Austin'] },
+};
+
+const resolveMsaScope = (msaId: string, explicitState: string): { state: string; cities: string[]; msaName: string | null } => {
+  const lookup = MSA_CITY_MAP[msaId.toLowerCase()];
+  if (lookup) {
+    return {
+      state: lookup.state,
+      cities: lookup.cities,
+      msaName: lookup.cities[0],
+    };
+  }
+  // No mapping — derive state from explicit param or the trailing 2-letter token in msaId.
+  const tail = msaId.split('-').pop() || '';
+  const state = (
+    explicitState && /^[A-Za-z]{2}$/.test(explicitState) ? explicitState
+    : /^[A-Za-z]{2}$/.test(tail) ? tail
+    : 'GA'
+  ).toUpperCase();
+  // If msaId looks like "<city>-<state>", peel off the city token(s).
+  const parts = msaId.split('-');
+  const cityTokens = /^[A-Za-z]{2}$/.test(parts[parts.length - 1] || '')
+    ? parts.slice(0, -1)
+    : parts;
+  const city = cityTokens
+    .filter(Boolean)
+    .map(s => s.charAt(0).toUpperCase() + s.slice(1))
+    .join(' ');
+  return {
+    state,
+    cities: city ? [city] : [],
+    msaName: city || null,
+  };
+};
+
 export const supplyPipelineTimelineHandler = async (req: import('express').Request, res: import('express').Response) => {
   try {
     const msaId = (req.query.msaId as string) || '';
-    // Only accept an explicit state, or a 2-letter trailing token in msaId.
-    // Avoids "atlanta" -> state "ATLANTA" bug when msaId is a single slug.
     const explicitState = (req.query.state as string) || '';
-    const tail = msaId.split('-').pop() || '';
-    const state = (
-      explicitState && /^[A-Za-z]{2}$/.test(explicitState) ? explicitState
-      : /^[A-Za-z]{2}$/.test(tail) ? tail
-      : 'GA'
-    ).toUpperCase();
     const submarketName = (req.query.submarketName as string) || '';
     const submarketId = (req.query.submarketId as string) || '';
     const quarters = Math.min(Math.max(parseInt(req.query.quarters as string) || 8, 1), 16);
+
+    const { state, cities, msaName } = resolveMsaScope(msaId, explicitState);
 
     const { getClient } = require('../../database/connection');
     const client = await getClient();
 
     try {
       const params: (string | number)[] = [state];
-      let where = `state = $1`;
+      let where = `asp.state = $1`;
 
-      // Submarket filter: case-insensitive keyword match against name OR address.
-      // Splits "Inman Park/Old Fourth Ward" → first token to widen matches.
+      // MSA scoping: restrict to the MSA's primary city/cities (not just state).
+      if (cities.length > 0) {
+        const placeholders = cities.map(c => {
+          params.push(c);
+          return `$${params.length}`;
+        });
+        where += ` AND asp.city IN (${placeholders.join(', ')})`;
+      }
+
+      // Submarket scoping: keyword ILIKE on name/address (first token of compound names).
       if (submarketName) {
         const keyword = submarketName.split('/')[0].trim();
         params.push(`%${keyword}%`);
-        where += ` AND (name ILIKE $${params.length} OR address ILIKE $${params.length})`;
+        where += ` AND (asp.name ILIKE $${params.length} OR asp.address ILIKE $${params.length})`;
       }
 
+      // Best-effort propertyId linkage by (address, state). LEFT JOIN so unlinked
+      // rows still appear (they fall back to the read-only detail panel).
       const rowsResult = await client.query(
-        `SELECT id, name, address, city, state, total_units, property_class,
-                available_date, units_delivering
-           FROM apartment_supply_pipeline
+        `SELECT asp.id, asp.name, asp.address, asp.city, asp.state, asp.total_units,
+                asp.property_class, asp.available_date, asp.units_delivering,
+                p.id::text AS property_id
+           FROM apartment_supply_pipeline asp
+           LEFT JOIN properties p
+             ON LOWER(p.address_line1) = LOWER(asp.address)
+            AND p.state_code = asp.state
           WHERE ${where}
-          ORDER BY available_date NULLS LAST, total_units DESC NULLS LAST`,
+          ORDER BY asp.available_date NULLS LAST, asp.total_units DESC NULLS LAST`,
         params
       );
 
@@ -376,6 +427,7 @@ export const supplyPipelineTimelineHandler = async (req: import('express').Reque
       };
 
       const projects: Project[] = [];
+      const unscheduledProjects: Project[] = [];
       const quarterAgg = new Map<string, { totalUnits: number; weightedUnits: number; projectCount: number }>();
       windowQuarters.forEach(q => quarterAgg.set(q, { totalUnits: 0, weightedUnits: 0, projectCount: 0 }));
 
@@ -390,14 +442,13 @@ export const supplyPipelineTimelineHandler = async (req: import('express').Reque
         const unitsDelivering = Number(r.units_delivering || 0);
         const availableDate: Date | null = r.available_date ? new Date(r.available_date) : null;
 
-        // Derive status from available_date.
         let status: Project['status'];
         if (!availableDate) {
           status = 'planned';
         } else {
           const monthsOut = (availableDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
           if (monthsOut < -3) {
-            // Already delivered — exclude from forward pipeline view entirely.
+            // Already delivered — exclude from the forward pipeline view.
             continue;
           }
           if (monthsOut <= 0) status = 'lease_up';
@@ -410,12 +461,12 @@ export const supplyPipelineTimelineHandler = async (req: import('express').Reque
         const weighted = units * probability;
         const deliveryQuarter = availableDate ? dateToQuarter(availableDate) : null;
 
-        projects.push({
+        const proj: Project = {
           id: String(r.id),
           name: r.name || r.address || 'Unknown project',
           address: r.address || null,
           submarket: r.city || null,
-          developer: null, // not present in source feed
+          developer: null,
           units,
           unitsDelivering,
           weightedUnits: parseFloat(weighted.toFixed(1)),
@@ -423,18 +474,23 @@ export const supplyPipelineTimelineHandler = async (req: import('express').Reque
           deliveryDate: availableDate ? availableDate.toISOString().slice(0, 10) : null,
           deliveryQuarter,
           propertyClass: r.property_class || null,
-          propertyId: null, // no linkage in source feed yet
-        });
+          propertyId: r.property_id || null,
+        };
 
         totalUnits += units;
         weightedUnits += weighted;
         statusUnits[status] += units;
 
         if (deliveryQuarter && inWindow.has(deliveryQuarter)) {
+          // In-window: appears in chart AND in the chart-aligned project list.
+          projects.push(proj);
           const bucket = quarterAgg.get(deliveryQuarter)!;
           bucket.totalUnits += units;
           bucket.weightedUnits += weighted;
           bucket.projectCount += 1;
+        } else {
+          // No delivery date OR scheduled outside the chart window.
+          unscheduledProjects.push(proj);
         }
       }
 
@@ -448,13 +504,6 @@ export const supplyPipelineTimelineHandler = async (req: import('express').Reque
         };
       });
 
-      const msaName = msaId
-        ? msaId
-            .replace(/-[a-z]{2}$/, '')
-            .split('-')
-            .map(s => s.charAt(0).toUpperCase() + s.slice(1))
-            .join(' ')
-        : null;
       const scope = submarketName ? 'submarket' : 'msa';
       const label = submarketName
         ? `${submarketName}${msaName ? ` — ${msaName} MSA` : ''}`
@@ -468,11 +517,15 @@ export const supplyPipelineTimelineHandler = async (req: import('express').Reque
           msaId: msaId || null,
           msaName,
           state,
+          cities,
           submarketName: submarketName || null,
           submarketId: submarketId || null,
+          windowQuarters,
         },
         totals: {
-          projectCount: projects.length,
+          projectCount: projects.length + unscheduledProjects.length,
+          inWindowProjectCount: projects.length,
+          unscheduledProjectCount: unscheduledProjects.length,
           totalUnits,
           weightedUnits: parseFloat(weightedUnits.toFixed(1)),
           leaseUpUnits: statusUnits.lease_up,
@@ -482,6 +535,7 @@ export const supplyPipelineTimelineHandler = async (req: import('express').Reque
         },
         byQuarter,
         projects,
+        unscheduledProjects,
       });
     } finally {
       client.release();

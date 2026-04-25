@@ -49,11 +49,15 @@ export interface SupplyTimelineResponse {
     msaId: string | null;
     msaName: string | null;
     state: string;
+    cities?: string[];
     submarketName: string | null;
     submarketId: string | null;
+    windowQuarters?: string[];
   };
   totals: {
     projectCount: number;
+    inWindowProjectCount?: number;
+    unscheduledProjectCount?: number;
     totalUnits: number;
     weightedUnits: number;
     leaseUpUnits: number;
@@ -63,6 +67,7 @@ export interface SupplyTimelineResponse {
   };
   byQuarter: SupplyTimelineQuarter[];
   projects: SupplyTimelineProject[];
+  unscheduledProjects?: SupplyTimelineProject[];
 }
 
 interface SupplyTimelineSectionProps {
@@ -366,6 +371,11 @@ export const SupplyTimelineSection: React.FC<SupplyTimelineSectionProps> = ({
             })}
           </tbody>
         </DataTable>
+        {data.projects.length === 0 && (
+          <div style={{ padding: 16, textAlign: 'center', fontSize: 11, color: BT.text.muted }}>
+            No projects scheduled to deliver in the next {data.byQuarter.length} quarters.
+          </div>
+        )}
         {data.projects.some(p => !p.propertyId) && (
           <div style={{ padding: '8px 12px', fontSize: 10, color: BT.text.muted, borderTop: `1px solid ${BT.border.subtle}` }}>
             <Hammer size={10} style={{ marginRight: 4, verticalAlign: 'middle' }} />
@@ -374,6 +384,83 @@ export const SupplyTimelineSection: React.FC<SupplyTimelineSectionProps> = ({
           </div>
         )}
       </TerminalSection>
+
+      {data.unscheduledProjects && data.unscheduledProjects.length > 0 && (
+        <TerminalSection
+          title={`Unscheduled / Beyond Window (${data.unscheduledProjects.length})`}
+          icon={<Hammer size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />}
+        >
+          <DataTable>
+            <thead>
+              <tr>
+                <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Project</th>
+                <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Submarket</th>
+                <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Units</th>
+                <th style={{ ...terminalStyles.tableHeader, textAlign: 'center' }}>Class</th>
+                <th style={{ ...terminalStyles.tableHeader, textAlign: 'center' }}>Status</th>
+                <th style={{ ...terminalStyles.tableHeader, textAlign: 'center' }}>Delivery</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.unscheduledProjects.map(proj => {
+                const clickable = !!proj.propertyId && !!onPropertySelect;
+                return (
+                  <tr
+                    key={proj.id}
+                    onClick={() => handleProjectClick(proj)}
+                    title={
+                      clickable
+                        ? `Open Property Terminal for ${proj.name}`
+                        : 'No linked asset — opens read-only detail'
+                    }
+                    style={{
+                      borderBottom: `1px solid ${BT.border.subtle}`,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <td style={{ ...terminalStyles.tableCell, fontWeight: 500 }}>
+                      {proj.name}
+                      {proj.address && (
+                        <div style={{ fontSize: 9, color: BT.text.muted, marginTop: 2 }}>
+                          {proj.address}
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ ...terminalStyles.tableCell, color: BT.text.muted }}>
+                      {proj.submarket || '—'}
+                    </td>
+                    <td style={{ ...terminalStyles.tableCell, textAlign: 'right', fontFamily: "'JetBrains Mono', monospace" }}>
+                      {proj.units > 0 ? proj.units.toLocaleString() : '—'}
+                    </td>
+                    <td style={{ ...terminalStyles.tableCell, textAlign: 'center' }}>
+                      <span style={{ padding: '2px 6px', background: BT.bg.elevated, fontSize: 10, fontWeight: 600 }}>
+                        {proj.propertyClass || '—'}
+                      </span>
+                    </td>
+                    <td style={{ ...terminalStyles.tableCell, textAlign: 'center' }}>
+                      <span style={{
+                        padding: '2px 8px',
+                        background: `${statusColor(proj.status)}22`,
+                        color: statusColor(proj.status),
+                        fontSize: 10,
+                        fontWeight: 600,
+                      }}>
+                        {STATUS_LABELS[proj.status]}
+                      </span>
+                    </td>
+                    <td style={{ ...terminalStyles.tableCell, textAlign: 'center', color: BT.text.muted }}>
+                      {proj.deliveryQuarter || 'TBD'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </DataTable>
+          <div style={{ padding: '8px 12px', fontSize: 10, color: BT.text.muted, borderTop: `1px solid ${BT.border.subtle}` }}>
+            Projects without a scheduled delivery date, or scheduled to deliver beyond the chart window.
+          </div>
+        </TerminalSection>
+      )}
 
       {selectedReadOnly && (
         <ReadOnlyProjectPanel
