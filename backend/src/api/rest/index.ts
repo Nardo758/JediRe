@@ -130,6 +130,7 @@ import inflationRoutes from './inflation.routes';
 import createKnowledgeGraphRoutes from './knowledge-graph.routes';
 import createContextAwarenessRoutes from './context-awareness.routes';
 import columnCatalogRoutes from './column-catalog.routes';
+import plannerRoutes from './planner.routes';
 
 const API_PREFIX = '/api/v1';
 
@@ -512,6 +513,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Column Catalog routes (F4 Markets data grid)
   app.use(`${API_PREFIX}/columns`, columnCatalogRoutes);
+
+  // Planner-Executor routes (Claude plans, DeepSeek executes - 10x cheaper)
+  app.use(`${API_PREFIX}/planner`, plannerRoutes);
 
   // Deal Activity routes (emails, tasks, unified activity)
   app.use(`${API_PREFIX}/deals`, dealActivityRoutes);
