@@ -328,6 +328,32 @@ IMPORTANT:
         source: result.newsletterSource,
         articleCount: result.articles.length,
       });
+
+      // Ingest articles into Knowledge Graph
+      try {
+        const { getKnowledgeGraph } = await import('../neural-network/knowledge-graph.service');
+        const { getPool } = await import('../../database/connection');
+        const kg = getKnowledgeGraph(getPool());
+        for (const article of result.articles) {
+          await kg.upsertNode({
+            type: 'Document',
+            externalId: `newsletter-${article.url || article.title}`,
+            name: article.title,
+            properties: {
+              documentType: 'newsletter_article',
+              source: article.source || result.newsletterSource,
+              url: article.url,
+              summary: article.summary,
+              category: article.category,
+              relevanceToRE: article.relevanceToRE,
+              keyTopics: article.keyTopics,
+              author: article.author,
+            }
+          });
+        }
+      } catch (graphErr) {
+        // Non-fatal
+      }
     } catch (error) {
       logger.error('Failed to store newsletter articles', { error });
     }

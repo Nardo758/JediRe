@@ -393,6 +393,27 @@ export const cashflowOnResearchCompleted = inngest.createFunction(
       } satisfies JediEvents);
     }
 
+    // ── Step 8: Update Knowledge Graph ──────────────────────────────
+    await step.run('update-knowledge-graph', async () => {
+      try {
+        const { getKnowledgeGraph } = await import('../services/neural-network/knowledge-graph.service');
+        const { getPool } = await import('../database/connection');
+        const kg = getKnowledgeGraph(getPool());
+        const dealNode = await kg.findNodeByExternalId('Deal', dealId);
+        if (dealNode) {
+          await kg.updateNodeProperties(dealNode.id, {
+            investmentRating: runResult.investment_rating,
+            cashflowConfidence: runResult.confidence_score,
+            fieldsWritten: runResult.fields_written,
+            lastCashflowAnalysis: new Date(),
+          });
+        }
+      } catch (err) {
+        // Non-fatal
+      }
+      return { graphUpdated: true };
+    });
+
     return {
       runId: runResult.runId,
       confidence_score: runResult.confidence_score,

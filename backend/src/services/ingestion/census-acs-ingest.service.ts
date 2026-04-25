@@ -184,5 +184,23 @@ export async function ingestCensusACS(apiKey: string): Promise<IngestionResult> 
     errors: result.errors.length,
   });
 
+  // Update Knowledge Graph
+  try {
+    const { getKnowledgeGraph } = await import('../neural-network/knowledge-graph.service');
+    const { getPool } = await import('../../database/connection');
+    const kg = getKnowledgeGraph(getPool());
+    await kg.upsertNode({
+      type: 'Metric',
+      externalId: 'census-acs-data',
+      name: 'Census ACS Demographics',
+      properties: {
+        lastIngestion: new Date(),
+        variablesProcessed: result.variablesProcessed,
+        rowsInserted: result.rowsInserted,
+        source: 'Census ACS',
+      }
+    });
+  } catch (graphErr) { /* Non-fatal */ }
+
   return result;
 }
