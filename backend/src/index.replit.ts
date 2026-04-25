@@ -77,6 +77,10 @@ import { createDataLibraryAssetsRoutes } from './api/rest/data-library-assets.ro
 import { createReplacementCostRoutes } from './api/rest/replacement-cost.routes';
 import { createBrokerNarrativesRoutes } from './api/rest/broker-narratives.routes';
 import { createIntelligenceRefreshRoutes } from './api/rest/intelligence-refresh.routes';
+import { createKnowledgeGraphRoutes } from './api/rest/knowledge-graph.routes';
+import { createContextAwarenessRoutes } from './api/rest/context-awareness.routes';
+import scheduledRefreshRoutes from './api/rest/scheduled-refresh.routes';
+import dataMatrixRoutes from './api/rest/data-matrix.routes';
 import propertyBoundaryRouter from './api/rest/property-boundary.routes';
 import siteIntelligenceRouter from './api/rest/site-intelligence.routes';
 import zoningCapacityRouter from './api/rest/zoning-capacity.routes';
@@ -457,6 +461,10 @@ app.use('/api/v1/data-library-assets', requireAuth, createDataLibraryAssetsRoute
 app.use('/api/v1/replacement-cost', createReplacementCostRoutes(pool));
 app.use('/api/v1/broker-narratives', createBrokerNarrativesRoutes(pool));
 app.use('/api/v1/intelligence', createIntelligenceRefreshRoutes());
+app.use('/api/v1/knowledge-graph', createKnowledgeGraphRoutes(pool));
+app.use('/api/v1/context', createContextAwarenessRoutes(pool));
+app.use('/api/v1/scheduled-refresh', scheduledRefreshRoutes);
+app.use('/api/v1/data-matrix', dataMatrixRoutes);
 app.use('/api/v1', requireAuth, propertyBoundaryRouter);
 app.use('/api/v1', requireAuth, siteIntelligenceRouter);
 app.use('/api/v1', requireAuth, zoningCapacityRouter);

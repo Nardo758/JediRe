@@ -10,7 +10,7 @@
  */
 
 import { getPool } from '../../database/connection';
-import { dataLibraryService } from '../dataLibrary.service';
+import { dataLibraryService } from '../../services/dataLibrary.service';
 import { logger } from '../../utils/logger';
 
 interface FetchDataLibraryCompsInput {
