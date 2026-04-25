@@ -25,9 +25,23 @@
  * AGENTS (Strategy, CFO, Acquisitions, Research, etc.)
  */
 
+// Data Matrix - pulls from all data sources
 export {
   DataMatrixService,
   getDataMatrixService,
   DataLibraryDeal,
   DataMatrixContext
 } from './data-matrix.service';
+
+// Knowledge Graph - relationship tracking & impact analysis
+export {
+  KnowledgeGraphService,
+  getKnowledgeGraphService,
+  GraphNode,
+  GraphEdge,
+  NodeType,
+  EdgeType,
+  GraphQuery,
+  ImpactAnalysis,
+  CommunityCluster
+} from './knowledge-graph.service';
