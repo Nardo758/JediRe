@@ -169,5 +169,25 @@ export async function scoreBrokerSentiment(args: ScoreArgs): Promise<BrokerSenti
     targets: recordedFor.length, rationale,
   });
 
+  // Ingest sentiment into Knowledge Graph
+  try {
+    const { getKnowledgeGraph } = await import('../neural-network/knowledge-graph.service');
+    const { getPool } = await import('../../database/connection');
+    const kg = getKnowledgeGraph(getPool());
+    await kg.upsertNode({
+      type: 'Event',
+      externalId: `broker-sentiment-${args.fileId}`,
+      name: `Broker Sentiment: ${label} (${score})`,
+      properties: {
+        eventType: 'broker_sentiment',
+        fileId: args.fileId,
+        sentimentLabel: label,
+        sentimentScore: score,
+        rationale,
+        targets: recordedFor,
+      }
+    });
+  } catch (graphErr) { /* Non-fatal */ }
+
   return { label, score, rationale, recordedFor };
 }
