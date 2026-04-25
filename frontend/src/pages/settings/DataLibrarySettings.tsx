@@ -389,9 +389,22 @@ export function DataLibrarySettings() {
                     <td style={{ padding: '6px', color: BT.text.green, textAlign: 'right' }}>
                       {a.avg_rent ? `$${Number(a.avg_rent).toLocaleString()}` : '—'}
                     </td>
-                    <td style={{ padding: '6px', textAlign: 'right', color: a.occupancy_rate && Number(a.occupancy_rate) >= 93 ? BT.text.green : a.occupancy_rate ? BT.text.orange : BT.text.muted }}>
-                      {a.occupancy_rate ? `${Number(a.occupancy_rate).toFixed(1)}%` : '—'}
-                    </td>
+                    {(() => {
+                      // occupancy_rate stored as 0-1 fraction (canonical) — display as 0-100 %.
+                      // Defensive: if a row was historically saved as 0-100 (>1), keep the value as-is.
+                      const occRaw = a.occupancy_rate != null ? Number(a.occupancy_rate) : null;
+                      const occPct = occRaw == null ? null : occRaw <= 1 ? occRaw * 100 : occRaw;
+                      const color = occPct != null && occPct >= 93
+                        ? BT.text.green
+                        : occPct != null
+                          ? BT.text.orange
+                          : BT.text.muted;
+                      return (
+                        <td style={{ padding: '6px', textAlign: 'right', color }}>
+                          {occPct != null ? `${occPct.toFixed(1)}%` : '—'}
+                        </td>
+                      );
+                    })()}
                     <td style={{ padding: '6px', color: BT.text.amber, textAlign: 'right' }}>
                       {a.cap_rate ? `${(Number(a.cap_rate) * 100).toFixed(2)}%` : '—'}
                     </td>

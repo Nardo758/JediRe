@@ -96,6 +96,7 @@ export function createDataLibraryAssetsRoutes(pool: Pool): Router {
         'management_company', 'owner_operator', 'ownership_type',
         'avg_rent', 'avg_rent_psf', 'rent_by_unit_type', 'rent_as_of_date',
         'occupancy_rate', 'occupancy_as_of_date', 'noi', 'noi_per_unit', 'expense_ratio', 'noi_as_of_date',
+        'asking_price',
         'sale_price', 'sale_date', 'price_per_unit', 'price_per_sqft', 'cap_rate', 'buyer', 'seller',
         'notes', 'tags',
       ];
@@ -132,8 +133,9 @@ export function createDataLibraryAssetsRoutes(pool: Pool): Router {
         'vintage_band', 'unit_count_band',
         'management_company', 'owner_operator', 'ownership_type',
         'avg_rent', 'avg_rent_psf', 'rent_as_of_date',
-        'occupancy_rate', 'occupancy_pct', 'occupancy_as_of_date',
+        'occupancy_rate', 'occupancy_as_of_date',
         'noi', 'noi_per_unit', 'expense_ratio', 'noi_as_of_date',
+        'asking_price',
         'sale_price', 'sale_date', 'price_per_unit', 'price_per_sqft', 'cap_rate', 'buyer', 'seller',
         'notes', 'tags', 'data_quality_score',
       ];

@@ -50,8 +50,42 @@ interface AssetDetails {
   occupancyPct: string;
   capRate: string;
   askingPrice: string;
+  soldPrice: string;
+  soldDate: string;
   noi: string;
 }
+
+// Strip everything except digits, decimal point, and minus sign so paste of
+// "$233,621.00" → "233621.00" and the underlying state stays a plain number string.
+const sanitizeMoney = (raw: string): string => {
+  if (!raw) return '';
+  const cleaned = raw.replace(/[^0-9.\-]/g, '');
+  // Disallow more than one decimal point
+  const firstDot = cleaned.indexOf('.');
+  if (firstDot === -1) return cleaned;
+  return cleaned.slice(0, firstDot + 1) + cleaned.slice(firstDot + 1).replace(/\./g, '');
+};
+
+const formatMoneyDisplay = (raw: string): string => {
+  if (!raw) return '';
+  const n = parseFloat(raw);
+  if (!Number.isFinite(n)) return raw;
+  // Preserve trailing decimals if user typed them (e.g. "233621.5")
+  const dotIdx = raw.indexOf('.');
+  const decimals = dotIdx === -1 ? 0 : Math.min(2, raw.length - dotIdx - 1);
+  return n.toLocaleString('en-US', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+};
+
+const sanitizePercent = (raw: string): string => {
+  if (!raw) return '';
+  const cleaned = raw.replace(/[^0-9.\-]/g, '');
+  const firstDot = cleaned.indexOf('.');
+  if (firstDot === -1) return cleaned;
+  return cleaned.slice(0, firstDot + 1) + cleaned.slice(firstDot + 1).replace(/\./g, '');
+};
 
 const US_STATES = [
   'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
@@ -108,6 +142,8 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
     occupancyPct: '',
     capRate: '',
     askingPrice: '',
+    soldPrice: '',
+    soldDate: '',
     noi: '',
   });
   const [saving, setSaving] = useState(false);
@@ -148,8 +184,9 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
         const res = await apiClient.get(`/api/v1/data-library-assets/${assetId}`);
         if (cancelled) return;
         const a = res.data;
+        // Canonical scale: occupancy_rate and cap_rate stored as 0-1 fractions,
+        // displayed as 0-100 percent. Round-trip: typed 91 → saved 0.91 → loaded 91.
         const occ = a.occupancy_rate != null ? Number(a.occupancy_rate) : null;
-        // occupancy_rate may be stored as 0-1 fraction or 0-100 percent — normalize to %
         const occPct = occ == null ? '' : occ <= 1 ? (occ * 100).toFixed(1) : occ.toFixed(1);
         const cap = a.cap_rate != null ? Number(a.cap_rate) : null;
         const capPct = cap == null ? '' : cap <= 1 ? (cap * 100).toFixed(2) : cap.toFixed(2);
@@ -167,7 +204,9 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
           avgRent: a.avg_rent != null ? String(Number(a.avg_rent)) : '',
           occupancyPct: occPct,
           capRate: capPct,
-          askingPrice: a.sale_price != null ? String(Number(a.sale_price)) : '',
+          askingPrice: a.asking_price != null ? String(Number(a.asking_price)) : '',
+          soldPrice: a.sale_price != null ? String(Number(a.sale_price)) : '',
+          soldDate: a.sale_date ? String(a.sale_date).slice(0, 10) : '',
           noi: a.noi != null ? String(Number(a.noi)) : '',
         });
       } catch (err) {
@@ -272,7 +311,8 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
     if (details.avgRent) score += 10;
     if (details.occupancyPct) score += 10;
     if (details.capRate || details.noi) score += 10;
-    if (details.askingPrice) score += 10;
+    // Either Asking Price OR Sold Price counts — never both, so DQ stays ≤ 100.
+    if (details.askingPrice || details.soldPrice) score += 10;
     if (details.dealType) score += 10;
     return Math.min(score, 100);
   };
@@ -311,7 +351,11 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
     try {
       const res = await apiClient.get(`/api/v1/data-library-assets/${assetId}`);
       const a = res.data;
-      // Refresh visible form fields (only fields present on AssetDetails)
+      // Same canonical scale conversion as the editMode prefill: occupancy_rate
+      // and cap_rate live in the DB as 0-1 fractions but the UI uses 0-100 %.
+      // Without this, a save→enrich→save sequence would divide by 100 twice.
+      const occ = a.occupancy_rate != null ? Number(a.occupancy_rate) : null;
+      const occPct = occ == null ? null : occ <= 1 ? (occ * 100).toFixed(1) : occ.toFixed(1);
       setDetails(prev => ({
         ...prev,
         propertyName: a.property_name ?? prev.propertyName,
@@ -322,7 +366,7 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
         assetClass: a.asset_class ?? prev.assetClass,
         yearBuilt: a.year_built != null ? String(a.year_built) : prev.yearBuilt,
         units: a.unit_count != null ? String(a.unit_count) : prev.units,
-        occupancyPct: a.occupancy_rate != null ? String(a.occupancy_rate) : prev.occupancyPct,
+        occupancyPct: occPct ?? prev.occupancyPct,
       }));
     } catch {
       /* non-fatal */
@@ -396,10 +440,18 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
   };
 
   const handleSave = async () => {
+    if (!assetId) {
+      setError('Asset ID missing — finish the upload first, then re-open this modal.');
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
-      // Build the update payload
+      // Canonical scales:
+      //   occupancy_rate, cap_rate → 0-1 fraction in DB (UI shows 0-100 %)
+      //   asking_price             → numeric dollars, separate column
+      //   sale_price               → ACTUAL sold price (only set when soldPrice provided)
+      //   sale_date                → ISO date string for sold date
       const payload: Record<string, unknown> = {
         property_name: details.propertyName || customLabel,
         address: details.address || null,
@@ -412,10 +464,12 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
         year_built: details.yearBuilt ? parseInt(details.yearBuilt) : null,
         stories: details.stories ? parseInt(details.stories) : null,
         avg_rent: details.avgRent ? parseFloat(details.avgRent) : null,
-        occupancy_pct: details.occupancyPct ? parseFloat(details.occupancyPct) / 100 : null,
+        occupancy_rate: details.occupancyPct ? parseFloat(details.occupancyPct) / 100 : null,
         cap_rate: details.capRate ? parseFloat(details.capRate) / 100 : null,
-        sale_price: details.askingPrice ? parseFloat(details.askingPrice.replace(/,/g, '')) : null,
-        noi: details.noi ? parseFloat(details.noi.replace(/,/g, '')) : null,
+        asking_price: details.askingPrice ? parseFloat(details.askingPrice) : null,
+        sale_price: details.soldPrice ? parseFloat(details.soldPrice) : null,
+        sale_date: details.soldDate || null,
+        noi: details.noi ? parseFloat(details.noi) : null,
         data_quality_score: calculateDQScore(),
       };
 
@@ -850,64 +904,153 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
             FINANCIAL METRICS
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
-            <div>
-              <label style={labelStyle}>Avg Rent ($/unit/mo)</label>
-              <input
-                type="number"
-                value={details.avgRent}
-                onChange={e => updateField('avgRent', e.target.value)}
-                placeholder="1,450"
-                style={inputStyle}
-              />
-            </div>
-            <div>
-              <label style={labelStyle}>
-                <Percent size={10} style={{ display: 'inline', marginRight: 4 }} />
-                Occupancy %
-              </label>
-              <input
-                type="number"
-                value={details.occupancyPct}
-                onChange={e => updateField('occupancyPct', e.target.value)}
-                placeholder="94"
-                max={100}
-                style={inputStyle}
-              />
-            </div>
-          </div>
+          {/* Money / Percent affordances:
+              - $ prefix shown via absolute-positioned glyph; underlying state is plain digits.
+              - On blur, the visible value is reformatted with thousands separators.
+              - Paste of "$233,621.00" → state "233621.00" via sanitizeMoney.
+              - % suffix on Cap Rate + Occupancy; values clamped 0-100. */}
+          {(() => {
+            const moneyInputStyle: React.CSSProperties = { ...inputStyle, paddingLeft: 22 };
+            const percentInputStyle: React.CSSProperties = { ...inputStyle, paddingRight: 22 };
+            const wrapStyle: React.CSSProperties = { position: 'relative' };
+            const dollarGlyph: React.CSSProperties = {
+              position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)',
+              fontFamily: MONO, fontSize: 11, color: C.muted, pointerEvents: 'none',
+            };
+            const percentGlyph: React.CSSProperties = {
+              position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
+              fontFamily: MONO, fontSize: 11, color: C.muted, pointerEvents: 'none',
+            };
+            const moneyDisplay = (val: string) => formatMoneyDisplay(val);
+            const onMoneyChange = (field: keyof AssetDetails) => (e: React.ChangeEvent<HTMLInputElement>) => {
+              updateField(field, sanitizeMoney(e.target.value));
+            };
+            const onMoneyBlur = (field: keyof AssetDetails) => () => {
+              // Re-store the canonical numeric form (drop trailing dot etc.)
+              const raw = sanitizeMoney(details[field] as string);
+              updateField(field, raw);
+            };
+            const onPercentChange = (field: keyof AssetDetails) => (e: React.ChangeEvent<HTMLInputElement>) => {
+              const cleaned = sanitizePercent(e.target.value);
+              const n = parseFloat(cleaned);
+              if (Number.isFinite(n) && n > 100) {
+                updateField(field, '100');
+              } else {
+                updateField(field, cleaned);
+              }
+            };
+            return (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+                  <div>
+                    <label style={labelStyle}>Avg Rent ($/unit/mo)</label>
+                    <div style={wrapStyle}>
+                      <span style={dollarGlyph}>$</span>
+                      <input
+                        inputMode="decimal"
+                        value={moneyDisplay(details.avgRent)}
+                        onChange={onMoneyChange('avgRent')}
+                        onBlur={onMoneyBlur('avgRent')}
+                        placeholder="1,450"
+                        style={moneyInputStyle}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label style={labelStyle}>
+                      <Percent size={10} style={{ display: 'inline', marginRight: 4 }} />
+                      Occupancy
+                    </label>
+                    <div style={wrapStyle}>
+                      <input
+                        inputMode="decimal"
+                        value={details.occupancyPct}
+                        onChange={onPercentChange('occupancyPct')}
+                        placeholder="94"
+                        style={percentInputStyle}
+                      />
+                      <span style={percentGlyph}>%</span>
+                    </div>
+                  </div>
+                </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 16 }}>
-            <div>
-              <label style={labelStyle}>Cap Rate %</label>
-              <input
-                type="number"
-                value={details.capRate}
-                onChange={e => updateField('capRate', e.target.value)}
-                placeholder="5.25"
-                step="0.01"
-                style={inputStyle}
-              />
-            </div>
-            <div>
-              <label style={labelStyle}>Asking Price ($)</label>
-              <input
-                value={details.askingPrice}
-                onChange={e => updateField('askingPrice', e.target.value)}
-                placeholder="25,000,000"
-                style={inputStyle}
-              />
-            </div>
-            <div>
-              <label style={labelStyle}>NOI ($)</label>
-              <input
-                value={details.noi}
-                onChange={e => updateField('noi', e.target.value)}
-                placeholder="1,312,500"
-                style={inputStyle}
-              />
-            </div>
-          </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 16 }}>
+                  <div>
+                    <label style={labelStyle}>Cap Rate</label>
+                    <div style={wrapStyle}>
+                      <input
+                        inputMode="decimal"
+                        value={details.capRate}
+                        onChange={onPercentChange('capRate')}
+                        placeholder="5.25"
+                        style={percentInputStyle}
+                      />
+                      <span style={percentGlyph}>%</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Asking Price</label>
+                    <div style={wrapStyle}>
+                      <span style={dollarGlyph}>$</span>
+                      <input
+                        inputMode="decimal"
+                        value={moneyDisplay(details.askingPrice)}
+                        onChange={onMoneyChange('askingPrice')}
+                        onBlur={onMoneyBlur('askingPrice')}
+                        placeholder="25,000,000"
+                        style={moneyInputStyle}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label style={labelStyle}>NOI</label>
+                    <div style={wrapStyle}>
+                      <span style={dollarGlyph}>$</span>
+                      <input
+                        inputMode="decimal"
+                        value={moneyDisplay(details.noi)}
+                        onChange={onMoneyChange('noi')}
+                        onBlur={onMoneyBlur('noi')}
+                        placeholder="1,312,500"
+                        style={moneyInputStyle}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Sold Price + Sold Date — distinct from Asking Price.
+                    Sold Price → sale_price; Sold Date → sale_date. */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+                  <div>
+                    <label style={labelStyle}>Sold Price</label>
+                    <div style={wrapStyle}>
+                      <span style={dollarGlyph}>$</span>
+                      <input
+                        inputMode="decimal"
+                        value={moneyDisplay(details.soldPrice)}
+                        onChange={onMoneyChange('soldPrice')}
+                        onBlur={onMoneyBlur('soldPrice')}
+                        placeholder="24,500,000"
+                        style={moneyInputStyle}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label style={labelStyle}>
+                      <Calendar size={10} style={{ display: 'inline', marginRight: 4 }} />
+                      Sold Date
+                    </label>
+                    <input
+                      type="date"
+                      value={details.soldDate}
+                      onChange={e => updateField('soldDate', e.target.value)}
+                      style={inputStyle}
+                    />
+                  </div>
+                </div>
+              </>
+            );
+          })()}
 
           {/* Files / Documents */}
           {editMode && (
