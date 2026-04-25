@@ -55,12 +55,12 @@ interface AssetDetails {
   noi: string;
 }
 
-// Strip everything except digits, decimal point, and minus sign so paste of
-// "$233,621.00" → "233621.00" and the underlying state stays a plain number string.
+// Strip everything except digits and a single decimal point so paste of
+// "$233,621.00" → "233621.00" and the underlying state stays a plain number
+// string. Negative signs are stripped — none of these fields support negatives.
 const sanitizeMoney = (raw: string): string => {
   if (!raw) return '';
-  const cleaned = raw.replace(/[^0-9.\-]/g, '');
-  // Disallow more than one decimal point
+  const cleaned = raw.replace(/[^0-9.]/g, '');
   const firstDot = cleaned.indexOf('.');
   if (firstDot === -1) return cleaned;
   return cleaned.slice(0, firstDot + 1) + cleaned.slice(firstDot + 1).replace(/\./g, '');
@@ -79,12 +79,33 @@ const formatMoneyDisplay = (raw: string): string => {
   });
 };
 
+// Percent stays as plain digits (no negatives) and is clamped to [0, 100].
+// Returns the cleaned + clamped value. Used in both onChange and onBlur.
 const sanitizePercent = (raw: string): string => {
   if (!raw) return '';
-  const cleaned = raw.replace(/[^0-9.\-]/g, '');
+  const cleaned = raw.replace(/[^0-9.]/g, '');
   const firstDot = cleaned.indexOf('.');
-  if (firstDot === -1) return cleaned;
-  return cleaned.slice(0, firstDot + 1) + cleaned.slice(firstDot + 1).replace(/\./g, '');
+  const oneDot = firstDot === -1
+    ? cleaned
+    : cleaned.slice(0, firstDot + 1) + cleaned.slice(firstDot + 1).replace(/\./g, '');
+  const n = parseFloat(oneDot);
+  if (!Number.isFinite(n)) return oneDot;
+  if (n > 100) return '100';
+  if (n < 0) return '0';
+  return oneDot;
+};
+
+// Render a stored 0-1 fraction as the cleanest possible percent string —
+// integers stay integers ("0.91" → "91"), decimals are kept verbatim
+// ("0.915" → "91.5") so reopen always shows what the user typed.
+const fractionToPercentString = (val: unknown): string => {
+  if (val == null) return '';
+  const n = typeof val === 'number' ? val : Number(val);
+  if (!Number.isFinite(n)) return '';
+  // Defensive: if the stored value is already in percent form (>1), keep as-is.
+  const percent = n <= 1 ? n * 100 : n;
+  // Strip trailing zeros so 91.00 → "91" but 91.5 stays "91.5".
+  return percent.toString().replace(/\.?0+$/, '') || '0';
 };
 
 const US_STATES = [
@@ -174,6 +195,11 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
   const [resolving, setResolving] = useState(false);
   // Per-field staged decisions (only set when user explicitly chooses).
   const [decisions, setDecisions] = useState<Record<string, 'overwrite' | 'keep'>>({});
+  // Track which money field is currently focused so we can show raw digits
+  // while typing and only apply thousands-separator formatting on blur. This
+  // avoids caret-jump glitches that happen when a controlled <input>'s value
+  // shifts character count between keystrokes.
+  const [focusedMoneyField, setFocusedMoneyField] = useState<keyof AssetDetails | null>(null);
 
   // Prefill from existing asset when in edit mode
   useEffect(() => {
@@ -185,11 +211,10 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
         if (cancelled) return;
         const a = res.data;
         // Canonical scale: occupancy_rate and cap_rate stored as 0-1 fractions,
-        // displayed as 0-100 percent. Round-trip: typed 91 → saved 0.91 → loaded 91.
-        const occ = a.occupancy_rate != null ? Number(a.occupancy_rate) : null;
-        const occPct = occ == null ? '' : occ <= 1 ? (occ * 100).toFixed(1) : occ.toFixed(1);
-        const cap = a.cap_rate != null ? Number(a.cap_rate) : null;
-        const capPct = cap == null ? '' : cap <= 1 ? (cap * 100).toFixed(2) : cap.toFixed(2);
+        // displayed as 0-100 percent. Round-trip: typed 91 → saved 0.91 →
+        // loaded "91" (no forced decimals — user-entered precision is preserved).
+        const occPct = fractionToPercentString(a.occupancy_rate);
+        const capPct = fractionToPercentString(a.cap_rate);
         setDetails({
           propertyName: a.property_name || customLabel || '',
           address: a.address || '',
@@ -354,8 +379,7 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
       // Same canonical scale conversion as the editMode prefill: occupancy_rate
       // and cap_rate live in the DB as 0-1 fractions but the UI uses 0-100 %.
       // Without this, a save→enrich→save sequence would divide by 100 twice.
-      const occ = a.occupancy_rate != null ? Number(a.occupancy_rate) : null;
-      const occPct = occ == null ? null : occ <= 1 ? (occ * 100).toFixed(1) : occ.toFixed(1);
+      const occPct = fractionToPercentString(a.occupancy_rate);
       setDetails(prev => ({
         ...prev,
         propertyName: a.property_name ?? prev.propertyName,
@@ -366,7 +390,7 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
         assetClass: a.asset_class ?? prev.assetClass,
         yearBuilt: a.year_built != null ? String(a.year_built) : prev.yearBuilt,
         units: a.unit_count != null ? String(a.unit_count) : prev.units,
-        occupancyPct: occPct ?? prev.occupancyPct,
+        occupancyPct: occPct || prev.occupancyPct,
       }));
     } catch {
       /* non-fatal */
@@ -906,9 +930,10 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
 
           {/* Money / Percent affordances:
               - $ prefix shown via absolute-positioned glyph; underlying state is plain digits.
-              - On blur, the visible value is reformatted with thousands separators.
+              - Money: raw digits while focused; thousands separators only after blur
+                (prevents caret-jump UX issue on every keystroke).
               - Paste of "$233,621.00" → state "233621.00" via sanitizeMoney.
-              - % suffix on Cap Rate + Occupancy; values clamped 0-100. */}
+              - % suffix on Cap Rate + Occupancy; values fully clamped to [0, 100]. */}
           {(() => {
             const moneyInputStyle: React.CSSProperties = { ...inputStyle, paddingLeft: 22 };
             const percentInputStyle: React.CSSProperties = { ...inputStyle, paddingRight: 22 };
@@ -921,23 +946,28 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
               position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
               fontFamily: MONO, fontSize: 11, color: C.muted, pointerEvents: 'none',
             };
-            const moneyDisplay = (val: string) => formatMoneyDisplay(val);
+            // While the field is focused, render the raw digits so the caret
+            // stays put. Once focus leaves, swap in the comma-formatted value.
+            const moneyDisplay = (field: keyof AssetDetails, val: string) =>
+              focusedMoneyField === field ? val : formatMoneyDisplay(val);
             const onMoneyChange = (field: keyof AssetDetails) => (e: React.ChangeEvent<HTMLInputElement>) => {
               updateField(field, sanitizeMoney(e.target.value));
             };
+            const onMoneyFocus = (field: keyof AssetDetails) => () => setFocusedMoneyField(field);
             const onMoneyBlur = (field: keyof AssetDetails) => () => {
-              // Re-store the canonical numeric form (drop trailing dot etc.)
-              const raw = sanitizeMoney(details[field] as string);
-              updateField(field, raw);
+              setFocusedMoneyField(null);
+              // Drop any trailing dot the user may have left.
+              const raw = sanitizeMoney(details[field] as string).replace(/\.$/, '');
+              if (raw !== details[field]) updateField(field, raw);
             };
+            // sanitizePercent already clamps to [0, 100] and strips negatives,
+            // so the same call works for both onChange and onBlur.
             const onPercentChange = (field: keyof AssetDetails) => (e: React.ChangeEvent<HTMLInputElement>) => {
-              const cleaned = sanitizePercent(e.target.value);
-              const n = parseFloat(cleaned);
-              if (Number.isFinite(n) && n > 100) {
-                updateField(field, '100');
-              } else {
-                updateField(field, cleaned);
-              }
+              updateField(field, sanitizePercent(e.target.value));
+            };
+            const onPercentBlur = (field: keyof AssetDetails) => () => {
+              const v = sanitizePercent(details[field] as string).replace(/\.$/, '');
+              if (v !== details[field]) updateField(field, v);
             };
             return (
               <>
@@ -948,8 +978,9 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
                       <span style={dollarGlyph}>$</span>
                       <input
                         inputMode="decimal"
-                        value={moneyDisplay(details.avgRent)}
+                        value={moneyDisplay('avgRent', details.avgRent)}
                         onChange={onMoneyChange('avgRent')}
+                        onFocus={onMoneyFocus('avgRent')}
                         onBlur={onMoneyBlur('avgRent')}
                         placeholder="1,450"
                         style={moneyInputStyle}
@@ -966,6 +997,7 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
                         inputMode="decimal"
                         value={details.occupancyPct}
                         onChange={onPercentChange('occupancyPct')}
+                        onBlur={onPercentBlur('occupancyPct')}
                         placeholder="94"
                         style={percentInputStyle}
                       />
@@ -982,6 +1014,7 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
                         inputMode="decimal"
                         value={details.capRate}
                         onChange={onPercentChange('capRate')}
+                        onBlur={onPercentBlur('capRate')}
                         placeholder="5.25"
                         style={percentInputStyle}
                       />
@@ -994,8 +1027,9 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
                       <span style={dollarGlyph}>$</span>
                       <input
                         inputMode="decimal"
-                        value={moneyDisplay(details.askingPrice)}
+                        value={moneyDisplay('askingPrice', details.askingPrice)}
                         onChange={onMoneyChange('askingPrice')}
+                        onFocus={onMoneyFocus('askingPrice')}
                         onBlur={onMoneyBlur('askingPrice')}
                         placeholder="25,000,000"
                         style={moneyInputStyle}
@@ -1008,8 +1042,9 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
                       <span style={dollarGlyph}>$</span>
                       <input
                         inputMode="decimal"
-                        value={moneyDisplay(details.noi)}
+                        value={moneyDisplay('noi', details.noi)}
                         onChange={onMoneyChange('noi')}
+                        onFocus={onMoneyFocus('noi')}
                         onBlur={onMoneyBlur('noi')}
                         placeholder="1,312,500"
                         style={moneyInputStyle}
@@ -1027,8 +1062,9 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
                       <span style={dollarGlyph}>$</span>
                       <input
                         inputMode="decimal"
-                        value={moneyDisplay(details.soldPrice)}
+                        value={moneyDisplay('soldPrice', details.soldPrice)}
                         onChange={onMoneyChange('soldPrice')}
+                        onFocus={onMoneyFocus('soldPrice')}
                         onBlur={onMoneyBlur('soldPrice')}
                         placeholder="24,500,000"
                         style={moneyInputStyle}
