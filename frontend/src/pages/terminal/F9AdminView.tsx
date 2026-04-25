@@ -16,6 +16,8 @@ import BillingSection from '../admin/sections/BillingSection';
 import NotificationsSection from '../admin/sections/NotificationsSection';
 import TemplatesSection from '../admin/sections/TemplatesSection';
 import DataManagementSection from '../admin/sections/DataManagementSection';
+import { ContextIndicator } from '../../components/intelligence/ContextIndicator';
+import { useContextAnalysis } from '../../hooks/useContextAwareness';
 
 // Bloomberg Terminal tokens (passed from parent or use shared)
 interface ThemeType {
@@ -57,6 +59,12 @@ interface F9AdminViewProps {
 
 export default function F9AdminView({ T }: F9AdminViewProps) {
   const [activeSection, setActiveSection] = useState('intel');
+
+  // Neural network context for settings
+  const { analysis: settingsContext, loading: settingsContextLoading, analyze: analyzeSettings } = useContextAnalysis();
+  React.useEffect(() => {
+    analyzeSettings({ context: 'market_dashboard' });
+  }, []);
 
   const renderNavGroup = (groupId: string, groupLabel: string) => {
     const items = NAV_ITEMS.filter(item => item.group === groupId);
@@ -183,6 +191,12 @@ export default function F9AdminView({ T }: F9AdminViewProps) {
         overflow: 'auto', 
         background: T.bg.terminal,
       }}>
+        {/* Context for AI, Templates, Data Room, Data Management */}
+        {settingsContext && ['ai', 'templates', 'dataroom', 'datamanagement'].includes(activeSection) && (
+          <div style={{ padding: '8px 16px', borderBottom: `1px solid ${T.border.subtle}` }}>
+            <ContextIndicator analysis={settingsContext} loading={settingsContextLoading} compact />
+          </div>
+        )}
         {renderContent()}
       </main>
     </div>
