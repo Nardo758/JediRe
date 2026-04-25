@@ -1,7 +1,60 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { TerminalChrome } from "../components/terminal/TerminalChrome";
 import { useTheme } from "../contexts/ThemeContext";
+import { apiClient } from "../services/api.client";
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function classFromCode(code?: string | null): string {
+  if (!code) return "B";
+  const c = code.toUpperCase();
+  if (["C5", "C6", "A"].includes(c)) return "A";
+  if (["C4", "B"].includes(c)) return "B";
+  if (["C3", "C"].includes(c)) return "C";
+  return c;
+}
+
+function mapRealProperty(real: any, navName?: string) {
+  if (!real) return null;
+  const className = real.building_class || classFromCode(real.class_code);
+  const units = real.units || null;
+  const lastSale = Array.isArray(real.sales) && real.sales.length > 0 ? real.sales[0] : null;
+  // Identity fields (id/name/address/city/state/zip/county/submarket/owner/lat/lng) intentionally
+  // use null (not "—" or "Unnamed Property") so the merge logic can leave them empty rather
+  // than overlaying mock defaults. Nav state is consulted only when DB-derived name is empty.
+  return {
+    id: real.id || real.parcel_id || null,
+    parcelId: real.parcel_id || null,
+    name: real.subdivision || real.address || navName || null,
+    address: real.address || null,
+    city: real.city || null,
+    state: real.state || null,
+    zip: real.zip_code || null,
+    county: real.county || null,
+    submarket: real.submarket_name || null,
+    units,
+    yearBuilt: real.year_built || null,
+    stories: real.stories || null,
+    buildingSF: real.building_sqft || null,
+    lotSizeAc: real.land_acres || null,
+    lotSizeSF: real.parcel_area_sqft || null,
+    avgUnitSF: units && real.building_sqft ? Math.round(real.building_sqft / units) : null,
+    class: className,
+    type: real.property_type || "Multifamily",
+    owner: real.owner_name || null,
+    justValue2025: real.appraised_value || null,
+    assessedValue2025: real.assessed_value || null,
+    estimatedRent: real.estimated_rent || null,
+    pricePerUnit: real.price_per_unit || null,
+    lat: real.lat || null,
+    lng: real.lng || null,
+    lastSalePrice: lastSale?.sale_price || null,
+    acquisitionDate: lastSale?.sale_date || null,
+    holdPeriod: real.hold_period || null,
+    sellerMotivationScore: real.seller_motivation_score || null,
+  };
+}
 
 const T = {
   bg: { terminal:"#0A0E17",panel:"#0F1319",panelAlt:"#131821",header:"#1A1F2E",hover:"#1E2538",active:"#252D40",input:"#0D1117",topBar:"#050810",photo:"#080B12",chart:"#0B0F18" },
@@ -794,13 +847,83 @@ const PatternBadge = ({ pattern }) => {
 // ═════════════════════════════════════════════════════════════
 export default function PropertyDetailsPage() {
   const { id } = useParams<{ id: string }>();
+  const location = useLocation();
   const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
   const toggleTheme = useCallback(() => { const n = theme === "dark" ? "light" : "dark"; setTheme(n); localStorage.setItem("jedi-theme", n); }, [theme]);
   const [activeTab, setActiveTab] = useState("OVERVIEW");
   const [showCreateDeal, setShowCreateDeal] = useState(false);
   const [chartWidth, setChartWidth] = useState(460);
-  const p = PROPERTY;
+  const [realData, setRealData] = useState<any>(null);
+  const [loadingReal, setLoadingReal] = useState(false);
+  const [realError, setRealError] = useState<string | null>(null);
+
+  const navState = (location.state || {}) as {
+    propertyName?: string;
+    msaName?: string;
+    submarketName?: string;
+  };
+
+  useEffect(() => {
+    if (!id || !UUID_RE.test(id)) {
+      setRealData(null);
+      setRealError(null);
+      setLoadingReal(false);
+      return;
+    }
+    let cancelled = false;
+    setLoadingReal(true);
+    setRealError(null);
+    apiClient
+      .get(`/api/v1/markets/properties/${id}`)
+      .then((res: any) => {
+        if (cancelled) return;
+        setRealData(res?.data ?? res);
+      })
+      .catch((err: any) => {
+        if (cancelled) return;
+        const msg = err?.response?.data?.error || err?.message || "Property not found";
+        setRealError(msg);
+        setRealData(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingReal(false);
+      });
+    return () => { cancelled = true; };
+  }, [id]);
+
+  const mappedReal = useMemo(
+    () => mapRealProperty(realData, navState.propertyName),
+    [realData, navState.propertyName]
+  );
+  const isReal = !!mappedReal;
+
+  // Merge: real data overrides mock baseline, but only for fields where real is non-null.
+  // PROPERTY mock provides photos/unitMix/walkScore/perf metrics that the rich UI needs.
+  // Identity/location fields NEVER fall back to mock — empty real fields stay empty so we
+  // don't claim a Tampa address for a Georgia parcel.
+  // For UUID routes (whether fetched successfully OR fetch failed), identity is always blanked
+  // so a 404 never silently displays the Westshore Commons mock.
+  const IDENTITY_FIELDS = [
+    "id", "parcelId", "name", "address", "city", "state", "zip", "county",
+    "submarket", "market", "lat", "lng", "owner",
+  ] as const;
+  const isUuidRoute = !!(id && UUID_RE.test(id));
+  const p = useMemo(() => {
+    if (!isUuidRoute) return PROPERTY;
+    const merged: any = { ...PROPERTY };
+    for (const f of IDENTITY_FIELDS) merged[f] = "";
+    if (mappedReal) {
+      for (const [k, v] of Object.entries(mappedReal)) {
+        if (v !== null && v !== undefined && v !== "") merged[k] = v;
+      }
+    }
+    if (navState.propertyName && !merged.name) merged.name = navState.propertyName;
+    if (navState.submarketName && !merged.submarket) merged.submarket = navState.submarketName;
+    if (navState.msaName) merged.market = navState.msaName;
+    return merged;
+  }, [isUuidRoute, mappedReal, navState.propertyName, navState.submarketName, navState.msaName]);
+
   const td = TRAFFIC_DATA;
   const perf = PERFORMANCE_HISTORY;
 
@@ -2218,13 +2341,24 @@ export default function PropertyDetailsPage() {
         <div style={{ width: 1, height: 16, background: T.border.medium }} />
         <div style={{ flex: 1 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ fontSize: 13, fontWeight: 800, color: T.text.white, fontFamily: T.font.display, letterSpacing: "0.02em" }}>{p.name}</span>
+            <span style={{ fontSize: 13, fontWeight: 800, color: T.text.white, fontFamily: T.font.display, letterSpacing: "0.02em" }}>
+              {loadingReal ? "Loading…" : p.name}
+            </span>
             <Badge color={T.text.cyan}>{p.type}</Badge>
             <Badge color={T.text.purple}>{p.class}</Badge>
             {!p.inPipeline && <Badge color={T.text.muted}>NOT IN PIPELINE</Badge>}
+            {isReal ? (
+              <Badge color={T.text.green}>LIVE</Badge>
+            ) : id && UUID_RE.test(id) && realError ? (
+              <Badge color={T.text.red}>NOT FOUND</Badge>
+            ) : (
+              <Badge color={T.text.amber}>DEMO DATA</Badge>
+            )}
           </div>
           <div style={{ fontSize: 9, color: T.text.secondary, fontFamily: T.font.label, marginTop: 1 }}>
-            {p.address} · {p.city}, {p.state} {p.zip} · {p.county} County · {p.submarket} submarket
+            {realError
+              ? `Could not load property ${id}: ${realError}`
+              : `${p.address || "—"} · ${p.city || "—"}, ${p.state || "—"} ${p.zip || ""} · ${p.county || "—"} County${p.submarket ? ` · ${p.submarket} submarket` : ""}`}
           </div>
         </div>
         <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
@@ -2290,9 +2424,9 @@ export default function PropertyDetailsPage() {
         <div style={{ display: "flex", gap: 8, fontSize: 7, fontFamily: T.font.mono, color: T.text.muted }}>
           <span>PROPERTY DETAILS</span>
           <span>·</span>
-          <span>{p.county} County, FL</span>
+          <span>{p.county ? `${p.county} County` : "—"}{p.state ? `, ${p.state}` : ""}</span>
           <span>·</span>
-          <span>Folio: 123456-7890</span>
+          <span>Parcel: {p.parcelId || p.id || "—"}</span>
         </div>
         <div style={{ display: "flex", gap: 8, fontSize: 7, fontFamily: T.font.mono }}>
           <span style={{ color: T.text.muted }}>F1–F7 Navigate</span>
