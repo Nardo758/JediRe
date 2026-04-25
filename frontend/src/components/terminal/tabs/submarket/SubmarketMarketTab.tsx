@@ -9,6 +9,8 @@ import { SubmarketData } from '../../SubmarketTerminal';
 import { useCommentaryStore } from '../../../../stores/commentaryStore';
 import { SupplyNarrative, SignalCommentary } from '../../commentary';
 import { SupplyTimelineSection } from '../../SupplyTimelineSection';
+import { ContextIndicator } from '../../../intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../../../../hooks/useContextAwareness';
 
 interface SubmarketMarketTabProps {
   submarketId: string;
@@ -22,12 +24,24 @@ export const SubmarketMarketTab: React.FC<SubmarketMarketTabProps> = ({ submarke
   const loading = isLoading('submarket', submarketId);
   const error = getError('submarket', submarketId);
 
+  // Neural-network context analysis for the rent/supply view. Hook lives in
+  // the component body (not at module scope) so it has access to submarketId.
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+    { context: 'rent_trends', submarketId },
+  );
+
   useEffect(() => {
     fetchCommentary('submarket', submarketId, submarket.name);
   }, [submarketId, submarket.name]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* Context Awareness — neural-network-backed analyst hints, rendered
+          ahead of the timeline so the user sees the "why look here" before
+          the raw pipeline data. */}
+      {contextAnalysis && (
+        <ContextIndicator analysis={contextAnalysis} loading={contextLoading} compact />
+      )}
       {/* Pipeline & Deliveries — chart + project list driven by /api/v1/supply/pipeline-timeline */}
       <SupplyTimelineSection
         scope="submarket"

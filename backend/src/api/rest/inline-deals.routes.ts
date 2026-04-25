@@ -294,6 +294,32 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
         console.error('[Inngest] Failed to emit deal.created:', inngestErr instanceof Error ? inngestErr.message : inngestErr);
       }
 
+      // Ingest deal into Knowledge Graph
+      try {
+        const { getGraphIngestionListener } = await import('../../services/neural-network/graph-ingestion-listener');
+        const { getPool } = await import('../../database/connection');
+        const graphListener = getGraphIngestionListener(getPool());
+        await graphListener.handleEvent({
+          type: 'deal.created',
+          entityId: row.id,
+          entityType: 'Deal',
+          data: {
+            name: row.name,
+            stage: 'underwriting',
+            status: row.status,
+            askingPrice: parseFloat(row.budget) || undefined,
+            units: row.target_units,
+            propertyType: row.deal_category || 'multifamily',
+            createdAt: new Date(),
+          },
+          timestamp: new Date(),
+          userId: req.user!.userId,
+        });
+        console.log('[Graph] Deal node created:', row.id);
+      } catch (graphErr) {
+        console.error('[Graph] Failed to ingest deal:', graphErr instanceof Error ? graphErr.message : graphErr);
+      }
+
       // Trigger autonomous agent system
       try {
         const { onDealCreated } = await import('../../services/agents/platform-hooks');

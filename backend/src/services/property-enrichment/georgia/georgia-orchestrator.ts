@@ -118,6 +118,27 @@ export class GeorgiaIngestionOrchestrator {
     console.log(`[Georgia] Ingestion complete in ${duration.toFixed(1)}s`);
     console.log(`[Georgia] Summary: ${result.summary.totalInserted} records inserted, ${result.summary.totalErrors} errors`);
     
+    // Update Knowledge Graph market nodes with fresh data timestamp
+    setImmediate(async () => {
+      try {
+        const { getKnowledgeGraph } = await import('../neural-network/knowledge-graph.service' as any) as any;
+        const { getPool } = await import('../../../database/connection');
+        const kg = getKnowledgeGraph(getPool());
+        // Touch the Atlanta market node
+        const atlantaNode = await kg.findNodeByExternalId('Market', 'atlanta');
+        if (atlantaNode) {
+          await kg.updateNodeProperties(atlantaNode.id, {
+            lastGeorgiaIngestion: new Date(),
+            georgiaRecordsIngested: result.summary.totalInserted,
+            georgiaCounties: result.summary.successfulCounties,
+          });
+        }
+        console.log(`[Graph] Atlanta market node updated after Georgia ingestion`);
+      } catch (graphErr) {
+        // Non-fatal
+      }
+    });
+
     return result;
   }
   

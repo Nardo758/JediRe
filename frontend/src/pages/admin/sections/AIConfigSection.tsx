@@ -5,6 +5,8 @@
  */
 
 import React from 'react';
+import { ContextIndicator } from '../../../components/intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../../../hooks/useContextAwareness';
 
 const BT = {
   bg: { terminal: '#0A0E17', panel: '#0F1319', header: '#1A1F2E' },
@@ -19,6 +21,7 @@ const MONO = "'JetBrains Mono', monospace";
 export default function AIConfigSection() {
   return (
     <div style={{ padding: 24 }}>
+      {ctxAnalysis && <ContextIndicator analysis={ctxAnalysis} loading={ctxLoading} compact />}
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
         <h1 style={{

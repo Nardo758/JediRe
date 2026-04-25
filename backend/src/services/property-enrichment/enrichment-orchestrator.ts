@@ -106,6 +106,41 @@ export class PropertyEnrichmentOrchestrator {
     console.log(`[Enrichment] Property Info: ${job.propertyInfoStatus} (${job.propertyInfoProvider || 'none'})`);
     console.log(`[Enrichment] Rent Data: ${job.rentDataStatus} (${job.rentDataProvider || 'none'})`);
     
+    // Ingest enriched property into Knowledge Graph (fire-and-forget)
+    setImmediate(async () => {
+      try {
+        const { getKnowledgeGraph } = await import('./neural-network/knowledge-graph.service' as any) as any;
+        const { getPool } = await import('../../database/connection');
+        const kg = getKnowledgeGraph(getPool());
+        const pi = job.propertyInfo as any;
+        await kg.upsertNode({
+          type: 'Property',
+          externalId: `enriched-${jobId}`,
+          name: options.propertyName || address,
+          properties: {
+            address,
+            city,
+            state,
+            zip: options.zip,
+            county: job.county || options.county,
+            latitude: job.coordinates?.lat,
+            longitude: job.coordinates?.lng,
+            units: pi?.units,
+            yearBuilt: pi?.yearBuilt,
+            propertyType: pi?.propertyType,
+            assessedValue: pi?.assessedValue,
+            ownerName: pi?.ownerName,
+            parcelId: pi?.parcelId,
+            enrichedAt: new Date().toISOString(),
+            enrichmentProvider: job.propertyInfoProvider,
+          }
+        });
+        console.log(`[Graph] Enriched property ingested: ${address}`);
+      } catch (graphErr) {
+        // Non-fatal - enrichment still returned
+      }
+    });
+
     return job;
   }
   

@@ -25,9 +25,57 @@
  * AGENTS (Strategy, CFO, Acquisitions, Research, etc.)
  */
 
+// Data Matrix - pulls from all data sources
 export {
   DataMatrixService,
   getDataMatrixService,
   DataLibraryDeal,
   DataMatrixContext
 } from './data-matrix.service';
+
+// Knowledge Graph - relationship tracking & impact analysis
+export {
+  KnowledgeGraphService,
+  getKnowledgeGraphService,
+  GraphNode,
+  GraphEdge,
+  NodeType,
+  EdgeType,
+  GraphQuery,
+  ImpactAnalysis,
+  CommunityCluster
+} from './knowledge-graph.service';
+
+// Context Awareness - thinks like a real estate analyst
+export {
+  ContextAwarenessService,
+  getContextAwarenessService,
+  UserFocus,
+  UIContext,
+  DataGap,
+  ContextAnalysis
+} from './context-awareness.service';
+
+// Graph Ingestion Listener - auto-ingest entities to graph
+export {
+  GraphIngestionListener,
+  getGraphIngestionListener,
+  EntityEvent,
+  EntityEventType
+} from './graph-ingestion-listener';
+
+// Scheduled Refresh - staleness checking & refresh queuing
+export {
+  ScheduledRefreshService,
+  getScheduledRefreshService,
+  RefreshTask,
+  RefreshStats
+} from './scheduled-refresh';
+
+// Embeddings - vector embeddings for semantic search
+export {
+  EmbeddingsService,
+  getEmbeddingsService,
+  EmbeddingResult,
+  SimilarityResult
+} from './embeddings.service';

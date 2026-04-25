@@ -5,6 +5,11 @@
 
 import React, { useState } from 'react';
 
+  // Neural network context awareness
+  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'market_dashboard' });
+import { ContextIndicator } from '../../../components/intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../../../hooks/useContextAwareness';
+
 const BT = {
   bg: { terminal: '#0A0E17', panel: '#0F1319', header: '#1A1F2E', hover: '#1E2538' },
   text: { primary: '#E8ECF1', secondary: '#8B95A5', muted: '#4A5568', amber: '#F5A623', green: '#00D26A', red: '#FF4757', cyan: '#00BCD4' },
@@ -40,6 +45,7 @@ export default function DataManagementSection() {
 
   return (
     <div style={{ padding: 24 }}>
+      {ctxAnalysis && <ContextIndicator analysis={ctxAnalysis} loading={ctxLoading} compact />}
       {/* Header */}
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: 18, fontWeight: 600, color: BT.text.amber, fontFamily: MONO, marginBottom: 8 }}>

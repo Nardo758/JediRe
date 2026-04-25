@@ -5,10 +5,17 @@
  */
 
 import React, { useState, useMemo, useRef, useCallback } from 'react';
+
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+    { context: 'market_dashboard', marketId: msaId }
+  );
 import Map, { Marker, NavigationControl } from 'react-map-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { BT, terminalStyles, fmt } from '../../theme';
 import { scoreColor } from '../../signalGroups';
+import { ContextIndicator } from '../../../intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../../../../hooks/useContextAwareness';
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined;
 const MAP_STYLE = 'mapbox://styles/mapbox/dark-v11';
@@ -529,6 +536,10 @@ export const MSAMarketMapTab: React.FC<MSAMarketMapTabProps> = ({ msaId, msa, on
 
               return (
                 <div
+      {/* Context Awareness */}
+      {contextAnalysis && (
+        <ContextIndicator analysis={contextAnalysis} loading={contextLoading} compact />
+      )}
                   key={p.id}
                   data-prop-id={p.id}
                   onClick={() => handleSelectProperty(p)}

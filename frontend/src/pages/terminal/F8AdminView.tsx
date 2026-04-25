@@ -12,6 +12,8 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { apiClient } from '../../services/api.client';
+import { ContextIndicator } from '../../components/intelligence/ContextIndicator';
+import { useContextAnalysis } from '../../hooks/useContextAwareness';
 
 // Bloomberg Terminal theme
 interface ThemeType {
@@ -827,6 +829,12 @@ export default function F8AdminView({ T }: F8AdminViewProps) {
   const [activeSection, setActiveSection] = useState('health');
   const [collapsed, setCollapsed] = useState(false);
 
+  // Neural network context for admin views
+  const { analysis: adminContext, loading: adminContextLoading, analyze: analyzeAdmin } = useContextAnalysis();
+  React.useEffect(() => {
+    analyzeAdmin({ context: 'market_dashboard' });
+  }, []);
+
   const renderNavGroup = (groupId: string) => {
     const items = NAV_ITEMS.filter(item => item.group === groupId);
     const label = GROUP_LABELS[groupId];
@@ -932,6 +940,12 @@ export default function F8AdminView({ T }: F8AdminViewProps) {
 
       {/* Main Content */}
       <main style={{ flex: 1, overflow: 'auto', background: T.bg.terminal }}>
+        {/* Context Awareness for admin */}
+        {adminContext && (activeSection === 'agents' || activeSection === 'coverage' || activeSection === 'deals' || activeSection === 'health') && (
+          <div style={{ padding: '8px 16px', borderBottom: `1px solid ${T.border.subtle}` }}>
+            <ContextIndicator analysis={adminContext} loading={adminContextLoading} compact />
+          </div>
+        )}
         {renderContent()}
       </main>
     </div>

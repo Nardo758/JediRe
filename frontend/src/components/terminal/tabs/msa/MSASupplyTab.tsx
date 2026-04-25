@@ -31,6 +31,19 @@ export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa, onProper
 
   const [pipelineBySubmarket, setPipelineBySubmarket] = useState<SupplySubmarketRow[]>([]);
   const [totalPipelineUnits, setTotalPipelineUnits] = useState<number | null>(null);
+  const [showExpansion, setShowExpansion] = useState(false);
+
+  // Neural network hooks
+  const { analysis, loading: contextLoading, analyze: analyzeContext } = useContextAnalysis();
+  const { data: supplyData, loading: supplyLoading, expand: expandSupply } = useSupplyExpansion(msaId);
+
+  // Auto-analyze context when tab loads
+  useEffect(() => {
+    analyzeContext({
+      context: 'supply_pipeline',
+      marketId: msaId,
+    });
+  }, [msaId]);
 
   useEffect(() => {
     fetchCommentary('msa', msaId, msaName);
@@ -71,8 +84,29 @@ export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa, onProper
         </div>
       </div>
 
+      {/* Context Awareness Indicator */}
+      <ContextIndicator
+        analysis={analysis}
+        loading={contextLoading}
+        onTriggerResearch={async (gaps) => {
+          try {
+            await apiClient.post('/context/trigger-research', { gaps, priority: 'immediate' });
+          } catch (e) {}
+        }}
+        onRefresh={() => analyzeContext({ context: 'supply_pipeline', marketId: msaId })}
+      />
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
-        <div style={{ ...terminalStyles.card, textAlign: 'center' }}>
+        <div
+          style={{ ...terminalStyles.card, textAlign: 'center', cursor: 'pointer', transition: 'border-color 0.2s' }}
+          onClick={async () => {
+            await expandSupply();
+            setShowExpansion(true);
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.borderColor = BT.text.amber)}
+          onMouseLeave={(e) => (e.currentTarget.style.borderColor = '')}
+          title="Click for full supply pipeline details"
+        >
           <div style={{ ...terminalStyles.metricLabel, color: BT.text.amber, marginBottom: 8 }}>
             TOTAL PIPELINE
           </div>
@@ -82,6 +116,7 @@ export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa, onProper
           <div style={{ fontSize: 10, color: BT.text.muted }}>
             {(((totalPipelineUnits ?? msa.pipelineUnits) / msa.totalUnits) * 100).toFixed(1)}% of stock
           </div>
+          <div style={{ fontSize: 8, color: BT.text.cyan, marginTop: 4 }}>CLICK TO EXPAND ▶</div>
         </div>
         <div style={{ ...terminalStyles.card, textAlign: 'center' }}>
           <div style={{ ...terminalStyles.metricLabel, color: BT.text.green, marginBottom: 8 }}>
@@ -199,6 +234,20 @@ export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa, onProper
             </div>
           )}
         </div>
+      )}
+
+      {/* Supply Expansion Panel (full detail modal) */}
+      {showExpansion && supplyData && (
+        <SupplyExpansionPanel
+          data={supplyData}
+          marketName={msaName}
+          onClose={() => setShowExpansion(false)}
+          onTriggerResearch={async (gaps) => {
+            try {
+              await apiClient.post('/context/trigger-research', { gaps, priority: 'immediate' });
+            } catch (e) {}
+          }}
+        />
       )}
     </div>
   );

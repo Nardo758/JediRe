@@ -1,5 +1,12 @@
 import React, { useState, useMemo } from "react";
+
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+    { context: 'market_dashboard' }
+  );
 import { BT } from "../theme";
+import { ContextIndicator } from '../../intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../../../hooks/useContextAwareness';
 
 const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono','Fira Code','SF Mono',monospace" };
 
@@ -116,6 +123,10 @@ function UnitCard({ unit }: { unit: UnitDemandData }) {
 
   return (
     <div style={{ background: BT.bg.panelAlt, padding: "8px 10px" }}>
+      {/* Context Awareness */}
+      {contextAnalysis && (
+        <ContextIndicator analysis={contextAnalysis} loading={contextLoading} compact />
+      )}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
         <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
           <div style={{ width: 5, height: 5, background: unit.color, borderRadius: 1 }} />

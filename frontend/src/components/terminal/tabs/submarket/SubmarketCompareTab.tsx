@@ -3,11 +3,18 @@
  */
 
 import React, { useMemo, useState, useEffect } from 'react';
+
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+    { context: 'submarket_deep_dive', submarketId: submarketId }
+  );
 import { BarChart3, TrendingUp, TrendingDown, ArrowUpDown } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
 import { SubmarketData } from '../../SubmarketTerminal';
 import { useCommentaryStore } from '../../../../stores/commentaryStore';
 import { PeerContext, SignalCommentary } from '../../commentary';
+import { ContextIndicator } from '../../../intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../../../../hooks/useContextAwareness';
 
 interface SubmarketCompareTabProps {
   submarketId: string;
@@ -78,6 +85,10 @@ export const SubmarketCompareTab: React.FC<SubmarketCompareTabProps> = ({ submar
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* Context Awareness */}
+      {contextAnalysis && (
+        <ContextIndicator analysis={contextAnalysis} loading={contextLoading} compact />
+      )}
       {/* Current Submarket Position */}
       <div style={{
         background: `linear-gradient(135deg, ${BT.text.amber}15 0%, ${BT.bg.card} 100%)`,

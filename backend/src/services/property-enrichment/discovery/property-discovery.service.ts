@@ -370,6 +370,34 @@ export class PropertyDiscoveryService {
         p.justValue || null, p.buildingValue || null, p.provider,
       ]
     );
+
+    // Ingest into Knowledge Graph (fire-and-forget)
+    setImmediate(async () => {
+      try {
+        const { getKnowledgeGraph } = await import('../../neural-network/knowledge-graph.service');
+        const { getPool } = await import('../../../database/connection');
+        const kg = getKnowledgeGraph(getPool());
+        await kg.upsertNode({
+          type: 'Property',
+          externalId: `discovered-${p.parcelId}-${p.county}-${p.state}`,
+          name: p.propertyName || p.address,
+          properties: {
+            address: p.address,
+            city: p.city,
+            state: p.state,
+            county: p.county,
+            units: p.numberOfUnits,
+            yearBuilt: p.yearBuilt,
+            propertyType: p.propertyType || 'multifamily',
+            ownerName: p.ownerName,
+            parcelId: p.parcelId,
+            discoveredVia: p.provider,
+          }
+        });
+      } catch (graphErr) {
+        // Non-fatal
+      }
+    });
   }
 
   /**

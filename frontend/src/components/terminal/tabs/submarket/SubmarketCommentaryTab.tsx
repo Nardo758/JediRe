@@ -14,6 +14,8 @@ import {
   ReplacementCostPanel,
   RefreshIntelligenceButton,
 } from '../../commentary';
+import { ContextIndicator } from '../../../intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../../../../hooks/useContextAwareness';
 
 interface SubmarketCommentaryTabProps {
   submarketId: string;
@@ -66,6 +68,12 @@ export const SubmarketCommentaryTab: React.FC<SubmarketCommentaryTabProps> = ({
   // the commentary text. Without this they would only refresh on remount.
   const [panelRefreshNonce, setPanelRefreshNonce] = useState<number>(0);
 
+  // Neural-network context analysis. Hook lives inside the component body
+  // (not at module scope) so it has access to submarketId on every render.
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+    { context: 'submarket_deep_dive', submarketId },
+  );
+
   const { fetchCommentary, getCommentary, isLoading, getError } = useCommentaryStore();
   const commentary = getCommentary('submarket', submarketId);
   const loading = isLoading('submarket', submarketId);
@@ -93,6 +101,10 @@ export const SubmarketCommentaryTab: React.FC<SubmarketCommentaryTabProps> = ({
 
   return (
     <div style={{ display: 'flex', gap: 16 }}>
+      {/* Context Awareness */}
+      {contextAnalysis && (
+        <ContextIndicator analysis={contextAnalysis} loading={contextLoading} compact />
+      )}
       <div style={{ flex: 1, minWidth: 0 }}>
         <MarketSentimentTrend
           entityType="submarket"

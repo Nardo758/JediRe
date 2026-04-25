@@ -396,6 +396,40 @@ export function createCapsuleRoutes(pool: Pool): Router {
         [id, user_id, { file_name, document_type }]
       );
 
+      // Ingest document into Knowledge Graph
+      try {
+        const { getGraphIngestionListener } = await import('../../services/neural-network/graph-ingestion-listener');
+        const graphListener = getGraphIngestionListener(pool);
+        // Create Document node and link to Deal
+        const kg = (await import('../../services/neural-network/knowledge-graph.service')).getKnowledgeGraph(pool);
+        const docNodeId = await kg.upsertNode({
+          type: 'Document',
+          externalId: result.rows[0].id,
+          name: file_name,
+          properties: {
+            documentType: document_type,
+            mimeType: mime_type,
+            fileSize: file_size_bytes,
+            capsuleId: id,
+            uploadedBy: user_id,
+            extractedData: extracted_data ? Object.keys(extracted_data) : [],
+          }
+        });
+        // Link document to deal
+        const dealNode = await kg.findNodeByExternalId('Deal', id);
+        if (dealNode) {
+          await kg.createEdge({
+            sourceNodeId: docNodeId,
+            targetNodeId: dealNode.id,
+            edgeType: 'EXTRACTED_FROM',
+            properties: { documentType: document_type }
+          });
+        }
+        console.log('[Graph] Document node created:', result.rows[0].id);
+      } catch (graphErr) {
+        console.error('[Graph] Failed to ingest document:', graphErr);
+      }
+
       res.json({
         success: true,
         document: result.rows[0],

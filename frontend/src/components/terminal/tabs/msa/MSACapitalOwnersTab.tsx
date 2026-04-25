@@ -5,6 +5,11 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
+
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+    { context: 'cap_rates', marketId: msaId }
+  );
 import { DollarSign, Building2 } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
 import { DataTable } from '../../TerminalLayouts';
@@ -15,6 +20,8 @@ import { useCommentaryStore } from '../../../../stores/commentaryStore';
 import { SignalCommentary } from '../../commentary';
 import { MSAData } from '../../MSATerminal';
 import { apiClient } from '../../../../api/client';
+import { ContextIndicator } from '../../../intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../../../../hooks/useContextAwareness';
 
 interface Props {
   msaId: string;
@@ -343,6 +350,10 @@ export const MSACapitalOwnersTab: React.FC<Props> = ({ msaId, msa, onSelectPrope
                       >
                         <td style={{ ...terminalStyles.tableCell }}>
                           <div style={{ fontWeight: 600 }}>{owner.name}</div>
+      {/* Context Awareness */}
+      {contextAnalysis && (
+        <ContextIndicator analysis={contextAnalysis} loading={contextLoading} compact />
+      )}
                           <div style={{ fontSize: 10, color: BT.text.muted }}>{owner.markets.join(', ')}</div>
                         </td>
                         <td style={{ ...terminalStyles.tableCell, textAlign: 'center' }}>

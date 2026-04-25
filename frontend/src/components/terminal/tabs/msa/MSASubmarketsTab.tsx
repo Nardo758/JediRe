@@ -1,9 +1,16 @@
 import React, { useState, useEffect } from 'react';
+
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+    { context: 'submarket_deep_dive', marketId: msaId }
+  );
 import { BT } from '../../theme';
 import { useCommentaryStore } from '../../../../stores/commentaryStore';
 import { MarketNarrative, InvestmentThesis, PeerContext } from '../../commentary';
 import { EventTimelineChart } from '../../../m35/EventTimelineChart';
 import { apiClient } from '../../../../api/client';
+import { ContextIndicator } from '../../../intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../../../../hooks/useContextAwareness';
 
 interface MSASubmarketsTabProps {
   msaId: string;
@@ -582,6 +589,10 @@ function MiniChart({ label, data, labels, color, unit }: { label: string; data: 
 
   return (
     <div style={{ flex: 1, padding: '8px 4px 4px' }}>
+      {/* Context Awareness */}
+      {contextAnalysis && (
+        <ContextIndicator analysis={contextAnalysis} loading={contextLoading} compact />
+      )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 8px', marginBottom: 4 }}>
         <span style={{ fontSize: 10, color: BT.text.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', fontFamily: "'JetBrains Mono',monospace" }}>{label}</span>
         <span style={{ fontSize: 12, fontWeight: 700, color, fontFamily: "'JetBrains Mono',monospace" }}>

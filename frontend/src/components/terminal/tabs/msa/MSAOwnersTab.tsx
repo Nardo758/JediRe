@@ -5,11 +5,18 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
+
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+    { context: 'market_dashboard', marketId: msaId }
+  );
 import { BT, terminalStyles, fmt } from '../../theme';
 import { DataTable } from '../../TerminalLayouts';
 import { scoreColor } from '../../signalGroups';
 import { useCommentaryStore } from '../../../../stores/commentaryStore';
 import { RiskOpportunity, SignalCommentary } from '../../commentary';
+import { ContextIndicator } from '../../../intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../../../../hooks/useContextAwareness';
 
 interface MSAOwnersTabProps {
   msaId: string;
@@ -366,6 +373,10 @@ export const MSAOwnersTab: React.FC<MSAOwnersTabProps> = ({ msaId, msa, onSelect
                   >
                     <td style={{ ...terminalStyles.tableCell }}>
                       <div style={{ fontWeight: 600 }}>{owner.name}</div>
+      {/* Context Awareness */}
+      {contextAnalysis && (
+        <ContextIndicator analysis={contextAnalysis} loading={contextLoading} compact />
+      )}
                       <div style={{ fontSize: 10, color: BT.text.muted }}>
                         {owner.markets.join(', ')}
                       </div>

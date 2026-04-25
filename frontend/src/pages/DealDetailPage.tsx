@@ -94,6 +94,9 @@ import MonthlyActualsSection from '../components/deal/sections/MonthlyActualsSec
 import { OperationsIntelligenceSection } from '../components/deal/sections/OperationsIntelligenceSection';
 import { LifecycleSection } from '../components/deal/sections/LifecycleSection';
 import type { HeroBannerEvent, EventSensitivity } from '../components/m35/EventHeroBanner';
+import { ContextIndicator } from '../components/intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../hooks/useContextAwareness';
+import api from '../services/api';
 
 interface DealTab extends Tab {
   moduleId?: ModuleId;
@@ -473,6 +476,11 @@ const DealDetailPage: React.FC = () => {
   const tabParam = searchParams.get('tab');
   const [activeTab, setActiveTab] = useState<string>(tabParam || 'overview');
   const [deal, setDeal] = useState<any>(null);
+
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+    dealId ? { context: 'deal_overview', dealId } : null
+  );
   const [loading, setLoading] = useState(true);
   const [geographicContext, setGeographicContext] = useState<any>(null);
   const [showTradeAreaPanel, setShowTradeAreaPanel] = useState(false);
@@ -1101,6 +1109,21 @@ const DealDetailPage: React.FC = () => {
         <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minWidth: 0, minHeight: 0 }}>
           <main style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
             <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', background: BG, padding: '0 8px' }}>
+              {/* Context Awareness — shows data gaps and suggestions */}
+              {contextAnalysis && (
+                <div style={{ margin: '8px 0' }}>
+                  <ContextIndicator
+                    analysis={contextAnalysis}
+                    loading={contextLoading}
+                    compact
+                    onTriggerResearch={async (gaps) => {
+                      try {
+                        await api.post('/context/trigger-research', { gaps, priority: 'background' });
+                      } catch (e) {}
+                    }}
+                  />
+                </div>
+              )}
               <ActiveComponent deal={deal} dealId={dealId} dealType={dealType} embedded={true} onUpdate={() => dealId && loadDeal(dealId)} onBack={() => setActiveTab('overview')} geographicContext={geographicContext} />
             </div>
 

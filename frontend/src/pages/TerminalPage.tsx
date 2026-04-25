@@ -18,6 +18,8 @@ import TerminalMapView from "../components/map/TerminalMapView";
 import { AssumptionsPanel } from "../components/deal/AssumptionsPanel";
 import { M35EventCard, type M35EventCardData } from "../components/m35/M35EventCard";
 import { MorningBriefWidget } from "../components/dashboard/MorningBriefWidget";
+import { ContextIndicator } from '../components/intelligence/ContextIndicator';
+import { useContextAnalysis } from '../hooks/useContextAwareness';
 
 // ═══════════════════════════════════════════════════════════════
 // JEDI RE — BLOOMBERG TERMINAL  v3 (graduated from prototype)
@@ -487,6 +489,9 @@ export default function TerminalPage() {
   const [cmd, setCmd] = useState("");
   const [sortBy, setSortBy] = useState("score");
   const [sortDir, setSortDir] = useState<"desc"|"asc">("desc");
+
+  // Neural network context awareness for dashboard
+  const { analysis: dashContext, loading: dashContextLoading, analyze: analyzeDashContext } = useContextAnalysis();
   const [fStage, setFStage] = useState("ALL");
   const [fStrat, setFStrat] = useState("ALL");
   const [bottomTab, setBottomTab] = useState("alerts");
@@ -1676,8 +1681,20 @@ export default function TerminalPage() {
   // ─── VIEW: F1 DASHBOARD (Grid + Float Window System) ──────
   const ViewDashboard = () => {
     const gridWidgets = dashWindows.filter(id => !floatWidgets.includes(id));
+    // Auto-analyze dashboard context on first render
+    React.useEffect(() => {
+      if (!dashContext && !dashContextLoading) {
+        analyzeDashContext({ context: 'market_dashboard' });
+      }
+    }, []);
     return (
       <div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0,position:"relative"}}>
+        {/* Context Awareness — shows portfolio-level data gaps */}
+        {dashContext && (
+          <div style={{padding:'4px 12px',flexShrink:0}}>
+            <ContextIndicator analysis={dashContext} loading={dashContextLoading} compact />
+          </div>
+        )}
         {/* Widget catalog overlay */}
         {dashMenuOpen&&(
           <div style={{position:"absolute",inset:0,background:theme==="dark"?"rgba(5,8,16,0.97)":"rgba(240,244,248,0.97)",zIndex:200,display:"flex",flexDirection:"column",animation:"fadeIn 0.35s ease"}}>
@@ -2296,6 +2313,10 @@ export default function TerminalPage() {
 
   // ─── VIEW: F5 EMAIL ────────────────────────────────────────
   const ViewEmail = () => {
+    // Context awareness for email view
+    React.useEffect(() => {
+      if (!dashContext) analyzeDashContext({ context: 'deal_overview' });
+    }, []);
     const TAG_COLORS:Record<string,string>={LOI:T.text.cyan,URGENT:T.text.red,DD:T.text.amber,DEBT:T.text.purple,ZONING:T.text.orange,LP:T.text.secondary,SCORE:T.text.green};
     const folders=[{id:"inbox",label:"INBOX",count:STATIC_EMAILS.filter(e=>e.unread).length},{id:"sent",label:"SENT",count:0},{id:"starred",label:"STARRED",count:1},{id:"all",label:"ALL MAIL",count:STATIC_EMAILS.length}];
     const filtered=STATIC_EMAILS.filter(e=>{
@@ -2305,7 +2326,14 @@ export default function TerminalPage() {
     });
     const activeEmail=STATIC_EMAILS.find(e=>e.id===selEmail)||null;
     return (
-      <div style={{flex:1,display:"flex",minHeight:0,animation:"fadeIn 0.15s"}}>
+      <div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0,animation:"fadeIn 0.15s"}}>
+        {/* Context indicator for email */}
+        {dashContext && (
+          <div style={{padding:'4px 12px',flexShrink:0,borderBottom:`1px solid ${T.border.subtle}`}}>
+            <ContextIndicator analysis={dashContext} loading={dashContextLoading} compact />
+          </div>
+        )}
+        <div style={{flex:1,display:"flex",minHeight:0}}>
         <div style={{width:180,borderRight:`1px solid ${T.border.medium}`,display:"flex",flexDirection:"column",flexShrink:0,background:T.bg.panelAlt}}>
           <div style={{padding:"8px 10px",borderBottom:`1px solid ${T.border.subtle}`}}>
             <button onClick={()=>setFkey("F5")} style={{width:"100%",fontFamily:T.font.mono,fontSize:10,fontWeight:700,background:T.text.amber,color:T.bg.terminal,border:"none",padding:"6px 0",cursor:"pointer",letterSpacing:0.5}}>OPEN EMAIL →</button>
@@ -2378,13 +2406,22 @@ export default function TerminalPage() {
           )}
         </div>
       </div>
+      </div>
     );
   };
 
   // ─── VIEW: F6 NEWS (NewsIntelligencePage) ─────────────────
   const ViewNews = () => (
-    <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
-      <NewsIntelligencePage />
+    <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",animation:"fadeIn 0.15s"}}>
+      {/* Context indicator for news */}
+      {dashContext && (
+        <div style={{padding:'4px 12px',flexShrink:0,borderBottom:`1px solid ${T.border.subtle}`}}>
+          <ContextIndicator analysis={dashContext} loading={dashContextLoading} compact />
+        </div>
+      )}
+      <div style={{flex:1,overflow:"auto"}}>
+        <NewsIntelligencePage />
+      </div>
     </div>
   );
 

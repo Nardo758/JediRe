@@ -301,6 +301,24 @@ async function processCloudSync(jobId: string, connection: CloudStorageConnectio
     );
     
     logger.info(`Cloud sync job ${jobId} completed: ${successCount} files, ${ingestionResult.parsedFolders} parsed`);
+
+    // Ingest sync results into Knowledge Graph
+    try {
+      const { getKnowledgeGraph } = await import('../neural-network/knowledge-graph.service');
+      const kg = getKnowledgeGraph(pool);
+      await kg.upsertNode({
+        type: 'Document',
+        externalId: `cloud-sync-${jobId}`,
+        name: `Cloud Sync: ${successCount} files`,
+        properties: {
+          documentType: 'cloud_sync_batch',
+          jobId,
+          filesProcessed: successCount,
+          foldersParsed: ingestionResult.parsedFolders,
+          syncedAt: new Date(),
+        }
+      });
+    } catch (graphErr) { /* Non-fatal */ }
     
   } catch (err) {
     logger.error(`Cloud sync job ${jobId} error:`, err);

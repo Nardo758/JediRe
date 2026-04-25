@@ -7,6 +7,11 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
+
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+    { context: 'supply_pipeline', submarketId: submarketId }
+  );
 import { useNavigate } from 'react-router-dom';
 import { ArrowUpRight, Activity } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
@@ -14,6 +19,8 @@ import { EventDensityStrip } from '../../../m35/EventDensityStrip';
 import { ForecastTracker } from '../../../m35/ForecastTracker';
 import { M35EventCard, type M35EventCardData } from '../../../m35/M35EventCard';
 import type { SubmarketData } from '../../SubmarketTerminal';
+import { ContextIndicator } from '../../../intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../../../../hooks/useContextAwareness';
 
 const mono: React.CSSProperties = {
   fontFamily: "'JetBrains Mono','Fira Code',monospace",
@@ -101,6 +108,10 @@ export const SubmarketEventsTab: React.FC<SubmarketEventsTabProps> = ({ submarke
 
   return (
     <div style={{ color: BT.text.primary, ...mono }}>
+      {/* Context Awareness */}
+      {contextAnalysis && (
+        <ContextIndicator analysis={contextAnalysis} loading={contextLoading} compact />
+      )}
 
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: `1px solid ${BT.border.subtle}`, paddingBottom: 14, marginBottom: 18 }}>

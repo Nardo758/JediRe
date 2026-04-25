@@ -1,7 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
+
+  // Neural network context awareness
+  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'market_dashboard' });
 import { Bot, RefreshCw, Clock } from 'lucide-react';
 import { apiClient } from '../../../services/api.client';
 import { BT } from '@/components/deal/bloomberg-ui';
+import { ContextIndicator } from '../../../components/intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../../../hooks/useContextAwareness';
 
 interface AgentStat {
   agent_id: string;
@@ -106,6 +111,7 @@ export function AgentsPlatformSection() {
 
   return (
     <div className="space-y-6" style={{ fontFamily: BT.font.label }}>
+      {ctxAnalysis && <ContextIndicator analysis={ctxAnalysis} loading={ctxLoading} compact />}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Bot className="w-5 h-5" style={{ color: BT.text.cyan }} />

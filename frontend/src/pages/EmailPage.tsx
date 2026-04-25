@@ -1,6 +1,11 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+
+  // Neural network context awareness
+  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'deal_overview' });
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { inboxService, Email, EmailDetail, InboxStats, InboxFilters, ConnectedAccount, EmailIntel } from '../services/inbox.service';
+import { ContextIndicator } from '../components/intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../hooks/useContextAwareness';
 
 interface DealDetails {
   id: string;
@@ -196,6 +201,7 @@ function DealStageIndicator({ stage, name }: { stage: string; name: string }) {
   const c = stageColors[stage] || T.text.tertiary;
   return (
     <div style={{
+      {ctxAnalysis && <ContextIndicator analysis={ctxAnalysis} loading={ctxLoading} compact />}
       display: "flex", alignItems: "center", gap: 6, padding: "3px 10px",
       background: `${c}12`, border: `1px solid ${c}30`, borderRadius: 4,
     }}>

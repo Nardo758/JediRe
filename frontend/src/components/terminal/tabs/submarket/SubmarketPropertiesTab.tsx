@@ -10,6 +10,8 @@ import { SubmarketData } from '../../SubmarketTerminal';
 import { useCommentaryStore } from '../../../../stores/commentaryStore';
 import { SignalCommentary } from '../../commentary';
 import api from '../../../../services/api';
+import { ContextIndicator } from '../../../intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../../../../hooks/useContextAwareness';
 
 interface PropertyApiRow {
   name: string;
@@ -78,6 +80,12 @@ export const SubmarketPropertiesTab: React.FC<SubmarketPropertiesTabProps> = ({
   const loading = isLoading('submarket', submarketId);
   const error = getError('submarket', submarketId);
   useEffect(() => { fetchCommentary('submarket', submarketId, submarket.name); }, [submarketId, submarket.name]);
+
+  // Neural-network context analysis. Hook lives inside the component body
+  // (not at module scope) so it sees submarketId on every render.
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+    { context: 'property_card', submarketId },
+  );
 
   // Live property data from /api/v1/market-metrics/properties
   const [apiRows, setApiRows] = useState<PropertyApiRow[]>([]);
@@ -191,6 +199,10 @@ export const SubmarketPropertiesTab: React.FC<SubmarketPropertiesTabProps> = ({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* Context Awareness */}
+      {contextAnalysis && (
+        <ContextIndicator analysis={contextAnalysis} loading={contextLoading} compact />
+      )}
       {/* Search & Filters */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <div style={{

@@ -3,6 +3,11 @@
  */
 
 import React, { useMemo, useEffect, useState } from 'react';
+
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+    { context: 'cap_rates', marketId: msaId }
+  );
 import { DollarSign, Building2 } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
 import { TerminalChart, ChartDataPoint } from '../../TerminalChart';
@@ -11,6 +16,8 @@ import { MSAData } from '../../MSATerminal';
 import { useCommentaryStore } from '../../../../stores/commentaryStore';
 import { apiClient } from '../../../../api/client';
 import { SignalCommentary } from '../../commentary';
+import { ContextIndicator } from '../../../intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../../../../hooks/useContextAwareness';
 
 interface CapitalApiDeal {
   property: string;
@@ -124,6 +131,10 @@ export const MSACapitalTab: React.FC<MSACapitalTabProps> = ({ msaId, msa }) => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* Context Awareness */}
+      {contextAnalysis && (
+        <ContextIndicator analysis={contextAnalysis} loading={contextLoading} compact />
+      )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>

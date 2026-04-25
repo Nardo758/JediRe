@@ -4,6 +4,11 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
+
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+    { context: 'deal_overview', dealId }
+  );
 import { 
   Target, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2,
   XCircle, Clock, DollarSign, Percent, Building2, ArrowRight,
@@ -11,6 +16,8 @@ import {
 } from 'lucide-react';
 import { BT, fmt, terminalStyles } from '../theme';
 import { M35EventCard, M35EventCardData } from '../../m35/M35EventCard';
+import { ContextIndicator } from '../../intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../../../hooks/useContextAwareness';
 
 interface StrategyTabProps {
   dealId: string;
@@ -240,6 +247,10 @@ export const StrategyTab: React.FC<StrategyTabProps> = ({ dealId, deal }) => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* Context Awareness */}
+      {contextAnalysis && (
+        <ContextIndicator analysis={contextAnalysis} loading={contextLoading} compact />
+      )}
       {/* AI Recommendation Banner */}
       <div style={{
         ...terminalStyles.panel,

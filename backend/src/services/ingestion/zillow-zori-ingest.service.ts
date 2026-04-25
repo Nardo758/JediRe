@@ -151,6 +151,24 @@ export async function ingestZillowZORI(filePath: string): Promise<IngestionResul
       errors: result.errors.length,
     });
 
+    // Update Knowledge Graph
+    try {
+      const { getKnowledgeGraph } = await import('../neural-network/knowledge-graph.service');
+      const { getPool } = await import('../../database/connection');
+      const kg = getKnowledgeGraph(getPool());
+      await kg.upsertNode({
+        type: 'Metric',
+        externalId: 'zillow-zori',
+        name: 'Zillow Observed Rent Index',
+        properties: {
+          lastIngestion: new Date(),
+          zipsProcessed: result.zipsProcessed,
+          rowsInserted: result.rowsInserted,
+          source: 'Zillow ZORI',
+        }
+      });
+    } catch (graphErr) { /* Non-fatal */ }
+
     return result;
   } catch (error) {
     logger.error('ZORI ingestion failed:', error);

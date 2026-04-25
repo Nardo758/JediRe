@@ -1,7 +1,12 @@
 import React, { useState, useEffect } from 'react';
+
+  // Neural network context awareness
+  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'comp_analysis' });
 import { Building2, RefreshCw, AlertCircle } from 'lucide-react';
 import { apiClient } from '../../../services/api.client';
 import { BT } from '@/components/deal/bloomberg-ui';
+import { ContextIndicator } from '../../../components/intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../../../hooks/useContextAwareness';
 
 interface DealRow {
   id: string;
@@ -46,6 +51,7 @@ export function DealOversightSection() {
 
   return (
     <div className="p-6 space-y-4" style={{ fontFamily: BT.font.label }}>
+      {ctxAnalysis && <ContextIndicator analysis={ctxAnalysis} loading={ctxLoading} compact />}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Building2 className="w-5 h-5" style={{ color: BT.text.cyan }} />

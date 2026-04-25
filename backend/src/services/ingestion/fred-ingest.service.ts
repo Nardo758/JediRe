@@ -78,6 +78,26 @@ export async function ingestFRED(apiKey: string): Promise<IngestionResult> {
     errors: result.errors.length,
   });
 
+  // Update Knowledge Graph with macro data freshness
+  try {
+    const { getKnowledgeGraph } = await import('../neural-network/knowledge-graph.service');
+    const { getPool } = await import('../../database/connection');
+    const kg = getKnowledgeGraph(getPool());
+    await kg.upsertNode({
+      type: 'Metric',
+      externalId: 'fred-macro-data',
+      name: 'FRED Macro Indicators',
+      properties: {
+        lastIngestion: new Date(),
+        seriesProcessed: result.seriesProcessed,
+        rowsInserted: result.rowsInserted,
+        source: 'FRED',
+      }
+    });
+  } catch (graphErr) {
+    // Non-fatal
+  }
+
   return result;
 }
 
