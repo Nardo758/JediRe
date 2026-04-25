@@ -268,28 +268,17 @@ router.get('/timeline/:tradeAreaId', async (req, res) => {
 
 /**
  * GET /api/v1/supply/pipeline-timeline
- *
- * Forward-looking apartment unit deliveries for an MSA or Submarket over the
- * next N quarters, plus a project list aligned to that same chart window.
- *
- * Resolution model (deterministic, DB-backed):
- *   - msaId        — required. Resolved against the canonical `msas` table by
- *                    numeric id, cbsa_code, or slug-of-name match. Returns 404
- *                    when no match.
- *   - submarketId  — optional. Resolved against `trade_areas` (UUID) or
- *                    `submarkets` (integer) or slug-of-name match. When set
- *                    but unresolvable, returns 404.
- *   - quarters     — chart window length (1-16, default 8).
- *
- * The canonical supply tables (`supply_events`, `supply_delivery_timeline`)
- * carry `trade_area_id` linkage, but they are unpopulated in this environment.
- * `apartment_supply_pipeline` is the only populated forward feed and has no
- * `submarket_id` / `trade_area_id` column, so address-level scoping uses an
- * ILIKE on the canonical submarket name (sourced from the resolved DB record,
- * not user-supplied input). State scoping uses canonical `msas.state_codes`.
- * Best-effort `propertyId` linkage is a LEFT JOIN to `properties` on
- * (LOWER(address_line1), state_code).
+ * Forward-looking unit deliveries for an MSA / Submarket. Resolves entities
+ * canonically (msas, trade_areas, submarkets) and returns 404 when missing.
+ * Reuses canonical probability weighting via PROBABILITY_BY_STATUS.
  */
+const PROBABILITY_BY_STATUS: Record<string, number> = {
+  lease_up: 1.0,
+  under_construction: 0.85,
+  approved: 0.55,
+  planned: 0.25,
+};
+
 type MsaResolution = {
   id: number;
   name: string;
@@ -505,11 +494,25 @@ export const supplyPipelineTimelineHandler = async (req: import('express').Reque
         }
       }
 
-      // Build scoping clause from RESOLVED canonical records (not query strings).
+      // Canonical city set for the MSA: pull DISTINCT municipality values from
+      // trade_areas restricted to this MSA's state_codes. Always union with
+      // msa.primaryCity so we cover MSAs that have no trade_areas yet.
+      const cityRows = msa.stateCodes.length > 0
+        ? await client.query(
+            `SELECT DISTINCT municipality FROM trade_areas
+              WHERE state = ANY($1) AND municipality IS NOT NULL`,
+            [msa.stateCodes],
+          )
+        : { rows: [] as Record<string, unknown>[] };
+      const canonicalCities = new Set<string>([msa.primaryCity]);
+      for (const r of cityRows.rows) {
+        if (r.municipality) canonicalCities.add(String(r.municipality));
+      }
+      const cities = Array.from(canonicalCities);
+
       const params: (string | number)[] = [];
       const wheres: string[] = [];
 
-      // State scope: canonical msas.state_codes.
       if (msa.stateCodes.length > 0) {
         const placeholders = msa.stateCodes.map(s => {
           params.push(s);
@@ -518,43 +521,42 @@ export const supplyPipelineTimelineHandler = async (req: import('express').Reque
         wheres.push(`asp.state IN (${placeholders.join(', ')})`);
       }
 
-      // City scope: canonical primary city of the MSA.
-      params.push(msa.primaryCity);
-      wheres.push(`asp.city = $${params.length}`);
+      // Wider MSA city scope: ALL canonical municipalities for this MSA.
+      const cityPlaceholders = cities.map(c => {
+        params.push(c);
+        return `$${params.length}`;
+      });
+      wheres.push(`asp.city IN (${cityPlaceholders.join(', ')})`);
 
-      // Submarket scope: ILIKE on canonical submarket name token.
-      // (apartment_supply_pipeline carries no submarket_id column.)
       if (submarket) {
-        const canonicalName = submarket.name;
-        const keyword = canonicalName.split('/')[0].trim();
+        const keyword = submarket.name.split('/')[0].trim();
         params.push(`%${keyword}%`);
         wheres.push(`(asp.name ILIKE $${params.length} OR asp.address ILIKE $${params.length})`);
       }
 
       const where = wheres.join(' AND ');
 
-      // Best-effort propertyId linkage by (address, state). LEFT JOIN so unlinked
-      // rows still appear (they fall back to the read-only detail panel).
+      // LEFT JOINs:
+      //   properties              -> propertyId for Property Terminal drill-through
+      //   apartment_locator_props -> management_company surfaced as developer/sponsor
       const rowsResult = await client.query(
         `SELECT asp.id, asp.name, asp.address, asp.city, asp.state, asp.total_units,
                 asp.property_class, asp.available_date, asp.units_delivering,
-                p.id::text AS property_id
+                p.id::text AS property_id,
+                alp.management_company AS developer
            FROM apartment_supply_pipeline asp
            LEFT JOIN properties p
              ON LOWER(p.address_line1) = LOWER(asp.address)
             AND p.state_code = asp.state
+           LEFT JOIN apartment_locator_properties alp
+             ON LOWER(alp.address) = LOWER(asp.address)
+            AND alp.state = asp.state
           WHERE ${where}
           ORDER BY asp.available_date NULLS LAST, asp.total_units DESC NULLS LAST`,
         params
       );
 
       const now = new Date();
-      const probabilityByStatus: Record<string, number> = {
-        lease_up: 1.0,
-        under_construction: 0.85,
-        approved: 0.55,
-        planned: 0.25,
-      };
 
       const dateToQuarter = (d: Date): string => {
         const y = d.getUTCFullYear();
@@ -624,7 +626,7 @@ export const supplyPipelineTimelineHandler = async (req: import('express').Reque
           else status = 'planned';
         }
 
-        const probability = probabilityByStatus[status];
+        const probability = PROBABILITY_BY_STATUS[status];
         const weighted = units * probability;
         const deliveryQuarter = availableDate ? dateToQuarter(availableDate) : null;
 
@@ -633,7 +635,7 @@ export const supplyPipelineTimelineHandler = async (req: import('express').Reque
           name: r.name || r.address || 'Unknown project',
           address: r.address || null,
           submarket: r.city || null,
-          developer: null,
+          developer: r.developer || null,
           units,
           unitsDelivering,
           weightedUnits: parseFloat(weighted.toFixed(1)),
