@@ -6,12 +6,19 @@
  * or did the market uptick attract this event?"
  */
 import React, { useState, useEffect, useMemo } from 'react';
+
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+    { context: 'supply_pipeline', marketId: msaId }
+  );
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, Activity, ChevronDown, RefreshCw, AlertCircle, ArrowUpRight } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
 import { MSAData } from '../../MSATerminal';
 import { EventForecastPanel } from './EventForecastPanel';
 import { EventDensityStrip } from '../../../m35/EventDensityStrip';
+import { ContextIndicator } from '../../../intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../../../../hooks/useContextAwareness';
 
 interface MSAEventsTabProps {
   msaId: string;
@@ -1149,6 +1156,10 @@ export const MSAEventsTab: React.FC<MSAEventsTabProps> = ({ msaId, msa }) => {
 
           {/* Y-axis labels */}
           <div style={{ position: 'absolute', left: 4, top: 0, bottom: 0, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', paddingBlock: 4, fontSize: 9, color: BT.text.dim }}>
+      {/* Context Awareness */}
+      {contextAnalysis && (
+        <ContextIndicator analysis={contextAnalysis} loading={contextLoading} compact />
+      )}
             <span>+6%</span><span>+4%</span><span>+2%</span><span>0%</span><span>-2%</span>
           </div>
         </div>

@@ -3,12 +3,19 @@
  */
 
 import React, { useMemo, useEffect } from 'react';
+
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+    { context: 'rent_trends', submarketId: submarketId }
+  );
 import { Building2, TrendingUp, TrendingDown, Hammer, Clock, CheckCircle2 } from 'lucide-react';
 import { BT, fmt, terminalStyles } from '../../theme';
 import { TerminalChart, ChartDataPoint, ChartSeries } from '../../TerminalChart';
 import { SubmarketData } from '../../SubmarketTerminal';
 import { useCommentaryStore } from '../../../../stores/commentaryStore';
 import { SupplyNarrative, SignalCommentary } from '../../commentary';
+import { ContextIndicator } from '../../../intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../../../../hooks/useContextAwareness';
 
 interface SubmarketMarketTabProps {
   submarketId: string;
@@ -79,6 +86,10 @@ export const SubmarketMarketTab: React.FC<SubmarketMarketTabProps> = ({ submarke
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* Context Awareness */}
+      {contextAnalysis && (
+        <ContextIndicator analysis={contextAnalysis} loading={contextLoading} compact />
+      )}
       {/* Supply Summary */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
         <div style={{ ...terminalStyles.card, textAlign: 'center' }}>

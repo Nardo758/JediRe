@@ -1,8 +1,15 @@
 import React, { useEffect } from 'react';
+
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+    { context: 'submarket_deep_dive', submarketId: submarketId }
+  );
 import { BT } from '../../theme';
 import type { SubmarketData } from '../../SubmarketTerminal';
 import { useCommentaryStore } from '../../../../stores/commentaryStore';
 import {
+import { ContextIndicator } from '../../../intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../../../../hooks/useContextAwareness';
   MarketNarrative,
   InvestmentThesis,
   RiskOpportunity,
@@ -84,6 +91,10 @@ export const SubmarketCommentaryTab: React.FC<SubmarketCommentaryTabProps> = ({
 
   return (
     <div style={{ display: 'flex', gap: 16 }}>
+      {/* Context Awareness */}
+      {contextAnalysis && (
+        <ContextIndicator analysis={contextAnalysis} loading={contextLoading} compact />
+      )}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{
           background: BT.bg.panel,

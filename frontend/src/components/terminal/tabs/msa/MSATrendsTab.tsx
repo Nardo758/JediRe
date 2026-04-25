@@ -5,6 +5,11 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
+
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+    { context: 'rent_trends', marketId: msaId }
+  );
 import { BT, terminalStyles, fmt } from '../../theme';
 import { CardSection, DataTable } from '../../TerminalLayouts';
 import { TerminalChart, ChartSeries, ChartDataPoint } from '../../TerminalChart';
@@ -12,6 +17,8 @@ import { SIGNAL_GROUPS, BT_SIGNAL_COLORS, SUPPLY_WAVE_STYLES, SupplyWavePhase } 
 import { useCommentaryStore } from '../../../../stores/commentaryStore';
 import { SignalCommentary, SupplyNarrative } from '../../commentary';
 import { apiClient } from '../../../../api/client';
+import { ContextIndicator } from '../../../intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../../../../hooks/useContextAwareness';
 
 interface MSATrendsTabProps {
   msaId: string;
@@ -769,6 +776,10 @@ export const MSATrendsTab: React.FC<MSATrendsTabProps> = ({ msaId, msa }) => {
                       const barWidth = (rent / maxRent) * 100;
                       return (
                         <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      {/* Context Awareness */}
+      {contextAnalysis && (
+        <ContextIndicator analysis={contextAnalysis} loading={contextLoading} compact />
+      )}
                           <span style={{
                             width: 24, fontSize: 11, fontWeight: 700,
                             color, textAlign: 'right', flexShrink: 0,

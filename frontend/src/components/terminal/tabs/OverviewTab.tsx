@@ -5,9 +5,16 @@
  */
 
 import React, { useMemo } from 'react';
+
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+    { context: 'deal_overview', dealId }
+  );
 import { BT, fmt, terminalStyles } from '../theme';
 import { TerminalChart, ChartSeries, ChartDataPoint } from '../TerminalChart';
 import {
+import { ContextIndicator } from '../../intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../../../hooks/useContextAwareness';
   SIGNAL_GROUPS,
   BT_SIGNAL_COLORS,
   QUADRANT_STYLES,
@@ -139,6 +146,10 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({ dealId, deal }) => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* Context Awareness */}
+      {contextAnalysis && (
+        <ContextIndicator analysis={contextAnalysis} loading={contextLoading} compact />
+      )}
       {/* Header: Property Info + Classifications */}
       <div style={{ display: 'flex', gap: 20 }}>
         {/* Property Card */}

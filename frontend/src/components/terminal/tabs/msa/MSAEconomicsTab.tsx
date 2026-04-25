@@ -3,6 +3,11 @@
  */
 
 import React, { useMemo, useEffect, useState } from 'react';
+
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+    { context: 'market_dashboard', marketId: msaId }
+  );
 import { Users, Briefcase, DollarSign, MapPin, Database } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
 import { TerminalChart, ChartDataPoint } from '../../TerminalChart';
@@ -11,6 +16,8 @@ import { MSAData } from '../../MSATerminal';
 import { useCommentaryStore } from '../../../../stores/commentaryStore';
 import { SignalCommentary } from '../../commentary';
 import { apiClient } from '../../../../services/api.client';
+import { ContextIndicator } from '../../../intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../../../../hooks/useContextAwareness';
 
 interface LaborRow {
   naics_code: string;
@@ -228,6 +235,10 @@ export const MSAEconomicsTab: React.FC<MSAEconomicsTabProps> = ({ msaId, msa }) 
       )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+      {/* Context Awareness */}
+      {contextAnalysis && (
+        <ContextIndicator analysis={contextAnalysis} loading={contextLoading} compact />
+      )}
         <div style={{ ...terminalStyles.card, textAlign: 'center' }}>
           <div style={{ ...terminalStyles.metricLabel, color: BT.text.cyan, marginBottom: 8 }}>
             <Users size={12} style={{ marginRight: 4, verticalAlign: 'middle' }} />

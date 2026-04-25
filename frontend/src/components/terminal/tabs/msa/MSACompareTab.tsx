@@ -6,6 +6,11 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
+
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+    { context: 'market_dashboard', marketId: msaId }
+  );
 import { BT, terminalStyles, fmt } from '../../theme';
 import { DataTable } from '../../TerminalLayouts';
 import { SIGNAL_GROUPS, BT_SIGNAL_COLORS, SignalGroupId } from '../../signalGroups';
@@ -14,6 +19,8 @@ import { PeerContext, SignalCommentary } from '../../commentary';
 import { useColumnPreferences } from '../../../../hooks/useColumnPreferences';
 import { ColumnPicker } from '../../ColumnPicker';
 import { apiClient } from '../../../../api/client';
+import { ContextIndicator } from '../../../intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../../../../hooks/useContextAwareness';
 
 interface MSACompareTabProps {
   msaId: string;
@@ -410,6 +417,10 @@ export const MSACompareTab: React.FC<MSACompareTabProps> = ({ msaId, msa }) => {
             const visibleCount = section.rows.filter(r => activeSet.has(r)).length;
             return (
               <div key={section.label} style={{ display: 'flex', alignItems: 'center', gap: 6, opacity: visibleCount === 0 ? 0.35 : 1 }}>
+      {/* Context Awareness */}
+      {contextAnalysis && (
+        <ContextIndicator analysis={contextAnalysis} loading={contextLoading} compact />
+      )}
                 <span style={{ width: 10, height: 10, background: btColor.primary, borderRadius: 0, display: 'inline-block' }} />
                 <span style={{ color: BT.text.muted }}>{section.label}</span>
                 <span style={{ color: BT.text.dim, fontSize: 9 }}>({visibleCount}/{section.rows.length})</span>

@@ -1,8 +1,15 @@
 import React, { useState, useEffect } from 'react';
+
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+    { context: 'market_dashboard', marketId: msaId }
+  );
 import { BT } from '../../theme';
 import type { MSAData } from '../../MSATerminal';
 import { useCommentaryStore } from '../../../../stores/commentaryStore';
 import {
+import { ContextIndicator } from '../../../intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../../../../hooks/useContextAwareness';
   MarketNarrative,
   InvestmentThesis,
   RiskOpportunity,
@@ -160,6 +167,10 @@ export const MSACommentaryTab: React.FC<MSACommentaryTabProps> = ({ msaId, msa }
 
   return (
     <div style={{ display: 'flex', gap: 16 }}>
+      {/* Context Awareness */}
+      {contextAnalysis && (
+        <ContextIndicator analysis={contextAnalysis} loading={contextLoading} compact />
+      )}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{
           background: BT.bg.panel,

@@ -1,4 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
+
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+    { context: 'comp_analysis', marketId: msaId }
+  );
 import { BT, terminalStyles, fmt } from '../../theme';
 import { CardSection, DataTable } from '../../TerminalLayouts';
 import {
@@ -9,6 +14,8 @@ import {
 import { useCommentaryStore } from '../../../../stores/commentaryStore';
 import { useOpportunityStore, OpportunityScore, OpportunitySignal } from '../../../../stores/opportunityStore';
 import { SignalCommentary, InvestmentThesis } from '../../commentary';
+import { ContextIndicator } from '../../../intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../../../../hooks/useContextAwareness';
 
 interface MSADealsTabProps {
   msaId: string;
@@ -550,6 +557,10 @@ export const MSADealsTab: React.FC<MSADealsTabProps> = ({ msaId, msa, onSelectDe
                     </td>
                     <td style={{ ...terminalStyles.tableCell }}>
                       <div style={{ fontWeight: 600 }}>{opp.submarketName}</div>
+      {/* Context Awareness */}
+      {contextAnalysis && (
+        <ContextIndicator analysis={contextAnalysis} loading={contextLoading} compact />
+      )}
                       <div style={{ fontSize: 10, color: BT.text.muted }}>
                         {opp.city} · Q{opp.quartile}
                       </div>

@@ -4,8 +4,15 @@
  */
 
 import React, { useMemo, useState } from 'react';
+
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+    { context: 'market_dashboard', dealId }
+  );
 import { Users, TrendingUp, Building2, MapPin, Percent, DollarSign } from 'lucide-react';
 import { BT, fmt, terminalStyles } from '../theme';
+import { ContextIndicator } from '../../intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../../../hooks/useContextAwareness';
 
 interface MarketTabProps {
   dealId: string;
@@ -92,6 +99,10 @@ export const MarketTab: React.FC<MarketTabProps> = ({ dealId, deal }) => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* Context Awareness */}
+      {contextAnalysis && (
+        <ContextIndicator analysis={contextAnalysis} loading={contextLoading} compact />
+      )}
       {/* View Toggle */}
       <div style={{ display: 'flex', gap: 8 }}>
         {[

@@ -4,10 +4,17 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
+
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+    { context: 'proforma_review', dealId }
+  );
 import { ChevronDown, ChevronRight, TrendingUp, DollarSign, Building2, Percent } from 'lucide-react';
 import { BT, fmt, terminalStyles } from '../theme';
 import { TerminalChart, ChartDataPoint, ChartSeries } from '../TerminalChart';
 import { M35EventCard, M35EventCardData } from '../../m35/M35EventCard';
+import { ContextIndicator } from '../../intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../../../hooks/useContextAwareness';
 
 interface FinancialsTabProps {
   dealId: string;
@@ -113,6 +120,10 @@ export const FinancialsTab: React.FC<FinancialsTabProps> = ({ dealId, deal }) =>
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* Context Awareness */}
+      {contextAnalysis && (
+        <ContextIndicator analysis={contextAnalysis} loading={contextLoading} compact />
+      )}
       {/* View Toggle */}
       <div style={{ display: 'flex', gap: 8 }}>
         <button

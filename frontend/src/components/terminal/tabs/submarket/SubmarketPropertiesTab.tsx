@@ -4,11 +4,18 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
+
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+    { context: 'property_card', submarketId: submarketId }
+  );
 import { Building2, Search, ArrowUpDown, ArrowRight, TrendingUp, TrendingDown } from 'lucide-react';
 import { BT, fmt, terminalStyles } from '../../theme';
 import { SubmarketData } from '../../SubmarketTerminal';
 import { useCommentaryStore } from '../../../../stores/commentaryStore';
 import { SignalCommentary } from '../../commentary';
+import { ContextIndicator } from '../../../intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../../../../hooks/useContextAwareness';
 
 interface SubmarketPropertiesTabProps {
   submarketId: string;
@@ -124,6 +131,10 @@ export const SubmarketPropertiesTab: React.FC<SubmarketPropertiesTabProps> = ({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* Context Awareness */}
+      {contextAnalysis && (
+        <ContextIndicator analysis={contextAnalysis} loading={contextLoading} compact />
+      )}
       {/* Search & Filters */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <div style={{

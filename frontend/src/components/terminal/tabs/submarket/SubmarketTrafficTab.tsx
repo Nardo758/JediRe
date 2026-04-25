@@ -5,10 +5,17 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
+
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+    { context: 'traffic_analysis', submarketId: submarketId }
+  );
 import { BT, terminalStyles, fmt } from '../../theme';
 import { BT_SIGNAL_COLORS, scoreColor } from '../../signalGroups';
 import { useCommentaryStore } from '../../../../stores/commentaryStore';
 import { SignalCommentary } from '../../commentary';
+import { ContextIndicator } from '../../../intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../../../../hooks/useContextAwareness';
 
 interface SubmarketTrafficTabProps {
   submarketId: string;
@@ -164,6 +171,10 @@ export const SubmarketTrafficTab: React.FC<SubmarketTrafficTabProps> = ({ submar
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* Context Awareness */}
+      {contextAnalysis && (
+        <ContextIndicator analysis={contextAnalysis} loading={contextLoading} compact />
+      )}
       {/* Decision Banner */}
       <div style={{
         padding: 16,

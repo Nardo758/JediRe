@@ -4,9 +4,16 @@
  */
 
 import React, { useState, useMemo } from 'react';
+
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+    { context: 'comp_analysis', dealId }
+  );
 import { Building2, MapPin, TrendingUp, TrendingDown, Clock, Hammer } from 'lucide-react';
 import { BT, fmt, terminalStyles } from '../theme';
 import { TerminalChart, ChartDataPoint, ChartSeries } from '../TerminalChart';
+import { ContextIndicator } from '../../intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../../../hooks/useContextAwareness';
 
 interface CompsTabProps {
   dealId: string;
@@ -129,6 +136,10 @@ export const CompsTab: React.FC<CompsTabProps> = ({ dealId, deal }) => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* Context Awareness */}
+      {contextAnalysis && (
+        <ContextIndicator analysis={contextAnalysis} loading={contextLoading} compact />
+      )}
       {/* Summary Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
         <div style={terminalStyles.card}>

@@ -5,9 +5,16 @@
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
+
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+    { context: 'comp_analysis', dealId }
+  );
 import { BT } from '../theme';
 import { scoreColor, QUADRANT_STYLES, Quadrant } from '../signalGroups';
 import { useOpportunityStore } from '../../../stores/opportunityStore';
+import { ContextIndicator } from '../../intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../../../hooks/useContextAwareness';
 
 const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono','Fira Code',monospace" };
 
@@ -160,6 +167,10 @@ export const F4DealsView: React.FC<Props> = ({ onSelectDeal }) => {
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: C.bg, color: C.primary }}>
+      {/* Context Awareness */}
+      {contextAnalysis && (
+        <ContextIndicator analysis={contextAnalysis} loading={contextLoading} compact />
+      )}
 
       {/* ── KPI Strip ── */}
       <div style={{ display: 'flex', gap: 1, background: C.borderS, flexShrink: 0 }}>

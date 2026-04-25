@@ -3,6 +3,11 @@
  */
 
 import React, { useMemo, useState, useEffect } from 'react';
+
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+    { context: 'market_dashboard', marketId: msaId }
+  );
 import { Newspaper, TrendingUp, Building2, Briefcase, AlertTriangle, Activity, ChevronDown, ChevronRight, ArrowRight } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
 import { TerminalSection } from '../../TerminalLayouts';
@@ -10,6 +15,8 @@ import { MSAData } from '../../MSATerminal';
 import { useCommentaryStore } from '../../../../stores/commentaryStore';
 import { apiClient } from '../../../../api/client';
 import { SignalCommentary } from '../../commentary';
+import { ContextIndicator } from '../../../intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../../../../hooks/useContextAwareness';
 
 interface MSANewsTabProps {
   msaId: string;
@@ -213,6 +220,10 @@ export const MSANewsTab: React.FC<MSANewsTabProps> = ({ msaId, msa }) => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* Context Awareness */}
+      {contextAnalysis && (
+        <ContextIndicator analysis={contextAnalysis} loading={contextLoading} compact />
+      )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>

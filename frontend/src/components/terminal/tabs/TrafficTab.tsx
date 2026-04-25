@@ -4,10 +4,17 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
+
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+    { context: 'traffic_analysis', dealId }
+  );
 import { Users, Eye, TrendingUp, Calendar, Target, Activity } from 'lucide-react';
 import { BT, fmt, terminalStyles } from '../theme';
 import { TerminalChart, ChartDataPoint, ChartSeries } from '../TerminalChart';
 import { apiClient } from '@/services/api.client';
+import { ContextIndicator } from '../../intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../../../hooks/useContextAwareness';
 
 interface TrafficTabProps {
   dealId: string;
@@ -139,6 +146,10 @@ export const TrafficTab: React.FC<TrafficTabProps> = ({ dealId, deal }) => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* Context Awareness */}
+      {contextAnalysis && (
+        <ContextIndicator analysis={contextAnalysis} loading={contextLoading} compact />
+      )}
       {/* This Week Section */}
       <div>
         <div style={terminalStyles.sectionLabel}>THIS WEEK'S PREDICTION</div>
