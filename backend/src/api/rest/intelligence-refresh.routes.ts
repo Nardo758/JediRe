@@ -3,10 +3,10 @@
  *
  * `POST /api/v1/intelligence/refresh/:entityType/:entityId`
  *
- * Enqueues a `commentary_generation` task for the entity through the existing
- * AgentJobQueue (same pipeline used by the Commentary tabs). When the entity
- * resolves to an MSA we additionally enqueue a `research_analysis` task so
- * the broader market intelligence cycle gets refreshed.
+ * Enqueues both `commentary_generation` and `research_analysis` tasks for the
+ * entity (MSA or Submarket) through the existing AgentJobQueue (same pipeline
+ * used by the Commentary tabs). The two tasks run independently so callers
+ * can poll their lifecycles separately.
  *
  * Returns the queued task IDs so the caller can poll status. Auth-gated.
  */
@@ -48,19 +48,19 @@ export function createIntelligenceRefreshRoutes(): Router {
       });
       tasks.push({ id: commentary.id, taskType: commentary.taskType });
 
-      if (entityType === 'msa') {
-        const research = await jobQueue.submitTask({
-          taskType: 'research_analysis',
-          inputData: {
-            entityType,
-            entityId,
-            scope: 'market_intelligence_refresh',
-          },
-          userId,
-          priority: 5,
-        });
-        tasks.push({ id: research.id, taskType: research.taskType });
-      }
+      // Research analysis runs for both MSA and Submarket so a refresh from
+      // either Commentary tab kicks the full intelligence cycle.
+      const research = await jobQueue.submitTask({
+        taskType: 'research_analysis',
+        inputData: {
+          entityType,
+          entityId,
+          scope: 'market_intelligence_refresh',
+        },
+        userId,
+        priority: 5,
+      });
+      tasks.push({ id: research.id, taskType: research.taskType });
 
       res.status(202).json({
         entityType,

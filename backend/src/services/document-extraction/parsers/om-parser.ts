@@ -26,6 +26,12 @@ import { ocrPdf, OCR_MIN_TEXT_THRESHOLD } from '../ocr.service';
 export interface OMParseContext {
   userId: string;
   dealId?: string;
+  /**
+   * Optional progress callback so the dataLibrary pipeline can flip the file's
+   * `parsing_stage` to 'ocr' the moment the OCR fallback engages — without
+   * having to peek at the PDF text layer ahead of time.
+   */
+  onStageChange?: (stage: 'ocr' | 'analyzing') => Promise<void>;
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -59,6 +65,7 @@ export interface OMReplacementCost {
   totalReplacementCost: number | null;
   replacementCostPerUnit: number | null;
   source: 'broker_estimate' | 'marshall_swift' | 'inferred' | null;
+  pageNumber: number | null;
 }
 
 export interface OMBrokerProforma {
@@ -112,6 +119,7 @@ export interface OMRentComp {
   avgRent: number | null;
   occupancy: number | null;
   distance: string | null;
+  pageNumber: number | null;
 }
 
 export interface OMSaleComp {
@@ -121,6 +129,7 @@ export interface OMSaleComp {
   pricePerUnit: number | null;
   capRate: number | null;
   saleDate: string | null;
+  pageNumber: number | null;
 }
 
 export interface OMMarketComps {
@@ -235,7 +244,8 @@ Return ONLY valid JSON matching this schema:
     "softCostTotal": "number or null",
     "totalReplacementCost": "number or null",
     "replacementCostPerUnit": "number or null",
-    "source": "broker_estimate|marshall_swift|inferred or null"
+    "source": "broker_estimate|marshall_swift|inferred or null",
+    "pageNumber": "1-indexed PDF page where the replacement-cost figures appear, or null"
   },
   "brokerProforma": {
     "stabilizedVacancy": "decimal (0.05 = 5%)",
@@ -286,7 +296,8 @@ Return ONLY valid JSON matching this schema:
         "yearBuilt": "number or null",
         "avgRent": "number or null",
         "occupancy": "decimal or null",
-        "distance": "string or null"
+        "distance": "string or null",
+        "pageNumber": "1-indexed PDF page where this rent comp appears, or null"
       }
     ],
     "saleComps": [
@@ -296,7 +307,8 @@ Return ONLY valid JSON matching this schema:
         "salePrice": "number or null",
         "pricePerUnit": "number or null",
         "capRate": "decimal or null",
-        "saleDate": "string or null"
+        "saleDate": "string or null",
+        "pageNumber": "1-indexed PDF page where this sale comp appears, or null"
       }
     ],
     "submarketAvgRent": "number or null",
@@ -505,6 +517,9 @@ function normalizeExtraction(raw: any, textLength: number): OMExtraction {
       totalReplacementCost: raw.replacementCost?.totalReplacementCost ?? null,
       replacementCostPerUnit: raw.replacementCost?.replacementCostPerUnit ?? null,
       source: raw.replacementCost?.source ?? null,
+      pageNumber: typeof raw.replacementCost?.pageNumber === 'number'
+        ? raw.replacementCost.pageNumber
+        : null,
     },
     brokerProforma: {
       stabilizedVacancy: raw.brokerProforma?.stabilizedVacancy ?? null,
@@ -548,8 +563,28 @@ function normalizeExtraction(raw: any, textLength: number): OMExtraction {
       existingDebt: raw.debtAssumptions?.existingDebt ?? null,
     },
     marketComps: {
-      rentComps: (raw.marketComps?.rentComps ?? []).slice(0, 10),
-      saleComps: (raw.marketComps?.saleComps ?? []).slice(0, 10),
+      rentComps: ((raw.marketComps?.rentComps ?? []) as Array<Record<string, unknown>>)
+        .slice(0, 10)
+        .map((c): OMRentComp => ({
+          name: typeof c.name === 'string' ? c.name : '',
+          units: typeof c.units === 'number' ? c.units : null,
+          yearBuilt: typeof c.yearBuilt === 'number' ? c.yearBuilt : null,
+          avgRent: typeof c.avgRent === 'number' ? c.avgRent : null,
+          occupancy: typeof c.occupancy === 'number' ? c.occupancy : null,
+          distance: typeof c.distance === 'string' ? c.distance : null,
+          pageNumber: typeof c.pageNumber === 'number' ? c.pageNumber : null,
+        })),
+      saleComps: ((raw.marketComps?.saleComps ?? []) as Array<Record<string, unknown>>)
+        .slice(0, 10)
+        .map((c): OMSaleComp => ({
+          name: typeof c.name === 'string' ? c.name : '',
+          units: typeof c.units === 'number' ? c.units : null,
+          salePrice: typeof c.salePrice === 'number' ? c.salePrice : null,
+          pricePerUnit: typeof c.pricePerUnit === 'number' ? c.pricePerUnit : null,
+          capRate: typeof c.capRate === 'number' ? c.capRate : null,
+          saleDate: typeof c.saleDate === 'string' ? c.saleDate : null,
+          pageNumber: typeof c.pageNumber === 'number' ? c.pageNumber : null,
+        })),
       submarketAvgRent: raw.marketComps?.submarketAvgRent ?? null,
       submarketOccupancy: raw.marketComps?.submarketOccupancy ?? null,
       submarketRentGrowth: raw.marketComps?.submarketRentGrowth ?? null,
@@ -634,6 +669,12 @@ export async function parseOM(
         fs.writeFileSync(tmpPath, buffer);
         logger.info(`[OM Parser] text layer empty (${text?.trim().length ?? 0} chars) — running OCR fallback`, { filename });
         usedOcr = true;
+        // Notify the pipeline so the operator sees parsing_stage='ocr' while
+        // tesseract is running (multi-second on long scanned PDFs).
+        if (ctx?.onStageChange) {
+          try { await ctx.onStageChange('ocr'); }
+          catch (cbErr) { logger.warn('[OM Parser] onStageChange(ocr) callback failed', { cbErr }); }
+        }
         try {
           const ocr = await ocrPdf(tmpPath);
           text = ocr.text;
@@ -673,6 +714,14 @@ export async function parseOM(
 
     if (text.length < 2000) {
       warnings.push('Document is unusually short — may be incomplete');
+    }
+
+    // Stage transition: text in hand, AI extraction next.
+    // Lets the Data Library UI show "Analyzing" while the LLM call runs
+    // (typically the longest synchronous step after OCR).
+    if (ctx?.onStageChange) {
+      try { await ctx.onStageChange('analyzing'); }
+      catch (cbErr) { logger.warn('[OM Parser] onStageChange(analyzing) callback failed', { cbErr }); }
     }
 
     // Extract with AI

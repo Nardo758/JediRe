@@ -339,6 +339,7 @@ export const MSACommentaryTab: React.FC<MSACommentaryTabProps> = ({ msaId, msa }
           entityType="msa"
           entityId={msaId}
           onQueued={() => fetchCommentary('msa', msaId, msaName, true)}
+          onCompleted={() => fetchCommentary('msa', msaId, msaName, true)}
         />
         {commentary ? (
           <>

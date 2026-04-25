@@ -199,6 +199,7 @@ export const SubmarketCommentaryTab: React.FC<SubmarketCommentaryTabProps> = ({
           entityType="submarket"
           entityId={submarketId}
           onQueued={() => fetchCommentary('submarket', submarketId, subName, true)}
+          onCompleted={() => fetchCommentary('submarket', submarketId, subName, true)}
         />
         {commentary ? (
           <>

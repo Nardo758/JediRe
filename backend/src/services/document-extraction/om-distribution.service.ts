@@ -87,11 +87,11 @@ async function distributeRentComps(
            (property_name, address, city, state, zip, msa, submarket,
             units, year_built, asset_class, snapshot_date,
             avg_asking_rent, occupancy_pct,
-            source, source_id)
+            source, source_id, source_page)
          VALUES ($1, $2, $3, $4, $5, $6, $7,
                  $8, $9, $10, $11,
                  $12, $13,
-                 $14, $15)`,
+                 $14, $15, $16)`,
         [
           c.name,
           c.name,                       // address column is NOT NULL — no street ⇒ reuse name
@@ -108,6 +108,7 @@ async function distributeRentComps(
           c.occupancy ?? null,
           'broker_om',
           String(fileId),
+          c.pageNumber ?? null,
         ],
       );
       inserted++;
@@ -144,11 +145,11 @@ async function distributeSaleComps(
            (property_name, address, city, state, zip, msa, submarket,
             property_type, units, year_built, asset_class,
             sale_date, sale_price, price_per_unit, cap_rate,
-            broker, source, source_id)
+            broker, source, source_id, source_page)
          VALUES ($1, $2, $3, $4, $5, $6, $7,
                  $8, $9, $10, $11,
                  $12, $13, $14, $15,
-                 $16, $17, $18)`,
+                 $16, $17, $18, $19)`,
         [
           c.name,
           c.name,
@@ -168,6 +169,7 @@ async function distributeSaleComps(
           extraction.metadata.broker ?? null,
           'broker_om',
           String(fileId),
+          c.pageNumber ?? null,
         ],
       );
       inserted++;
@@ -201,17 +203,17 @@ async function distributeReplacementCost(
     await pool.query(
       `INSERT INTO data_library_cost_data
          (source_file_id, msa_key, submarket_key,
-          property_name, property_type, units, year_built,
+          property_name, property_type, units, year_built, net_rentable_sf,
           land_value, hard_cost_psf, hard_cost_total,
           soft_cost_pct, soft_cost_total,
           total_replacement_cost, replacement_cost_per_unit,
-          cost_source, source, source_id)
+          cost_source, source, source_id, source_page)
        VALUES ($1, $2, $3,
-               $4, $5, $6, $7,
-               $8, $9, $10,
-               $11, $12,
-               $13, $14,
-               $15, $16, $17)`,
+               $4, $5, $6, $7, $8,
+               $9, $10, $11,
+               $12, $13,
+               $14, $15,
+               $16, $17, $18, $19)`,
       [
         fileId,
         geo.msaKey,
@@ -220,6 +222,7 @@ async function distributeReplacementCost(
         extraction.property.propertyType,
         extraction.property.units,
         extraction.property.yearBuilt,
+        extraction.property.netRentableSF,
         rc.landValue,
         rc.hardCostPSF,
         rc.hardCostTotal,
@@ -230,6 +233,7 @@ async function distributeReplacementCost(
         rc.source,
         'broker_om',
         String(fileId),
+        rc.pageNumber ?? null,
       ],
     );
     return { inserted: 1, errors };
@@ -264,8 +268,8 @@ async function distributeNarratives(
       await pool.query(
         `INSERT INTO broker_narratives
            (source_file_id, msa_key, submarket_key, deal_id,
-            kind, text, broker, property_name)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+            kind, text, broker, property_name, source_page)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
         [
           fileId,
           geo.msaKey,
@@ -275,6 +279,10 @@ async function distributeNarratives(
           r.text,
           extraction.metadata.broker,
           extraction.property.name,
+          // Narrative-level page numbers are not extracted by the AI prompt
+          // today; column exists so future versions can populate without
+          // another migration.
+          null,
         ],
       );
       inserted++;

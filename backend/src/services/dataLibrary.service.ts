@@ -214,10 +214,19 @@ export class DataLibraryService {
 
     await this.setStage(fileId, 'parsing');
     const buffer = fs.readFileSync(filePath);
+    // Stage callback so the operator sees `parsing_stage='ocr'` the moment the
+    // OCR fallback engages — required by the Data Library status spec
+    // (Pending / OCR / Parsing / Routed / Error).
+    const onStageChange = async (stage: 'ocr' | 'analyzing'): Promise<void> => {
+      await this.setStage(fileId, stage);
+    };
     const result = await parseOM(
       buffer,
       file.file_name,
-      file.user_id ? { userId: file.user_id } : undefined,
+      file.user_id
+        ? { userId: file.user_id, onStageChange }
+        // Even without a userId we still want stage transitions for the UI.
+        : { userId: '', onStageChange },
     );
 
     if (!result.success || !result.data) {
