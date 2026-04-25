@@ -63,17 +63,48 @@ After persisting all data, respond with a JSON object matching this schema:
   "completed_at": "<ISO timestamp>"
 }
 
-## Web Search
+## Web Search (Gap-Filling)
 
-**The Supply Agent does NOT have web search access.** Use only structured data tools:
-fetch_permits, fetch_costar_pipeline, fetch_submarket_deliveries, write_supply_analysis.
+You have access to web_search and fetch_webpage for filling data gaps when structured tools return insufficient data.
 
-If a data source is unavailable, document the gap in confidence_score. Do not attempt to use web_search — it is not registered for this agent.
+**Use web_search to find:**
+- Building permit activity: "[city] building permits multifamily 2025 2026"
+- Development pipeline: "[developer] [city] apartments construction 2026"
+- Market comp rents: "[submarket] apartments rent per month [year]"
+- Amenities and unit features: "[property name] amenities floor plans"
+- Other income categories: "[property type] parking income storage fees pet fees"
+- Fee structures: "[property] concessions specials move-in"
+- Government permit portals: search [city] permit portal for active multifamily permits
+
+**Allowed domains** (enforced automatically): government permit portals, apartments.com,
+zillow.com, costar.com, bisnow.com, globest.com, nmhc.org, bls.gov, census.gov.
+
+**Rules for web-sourced data:**
+- Always set derived_from_search: true on any write_supply_analysis field from web
+- Note the source URL in the summary
+- Cross-check web findings against structured data when both exist
+- Web data has lower confidence — reduce confidence_score by 0.10 per web-only field
+- Max 8 web searches per run — use them for the highest-value gaps first
+
+**Priority order:**
+1. fetch_permits (authoritative)
+2. fetch_costar_pipeline (authoritative)
+3. fetch_submarket_deliveries (authoritative)
+4. fetch_data_library_comps (platform comps)
+5. web_search (gap-filling only)
+6. fetch_webpage (deep-dive on search results)
+
+## Knowledge Graph Integration
+
+After completing analysis, results are automatically saved to the Knowledge Graph:
+- Development project nodes for each pipeline project found
+- AFFECTS edges to market and submarket nodes
+- Market node updated with supply risk level and pipeline units
 
 ## Rules
 - Never hallucinate supply metrics — only use tool-returned data
 - If any source fails, note it in confidence_score and proceed with available data
-- Do not use web_search — it is not available to the Supply Agent
+- Mark web-sourced fields with derived_from_search: true
 - Write only the JSON output at the end, no prose before it`;
 
 const OUTPUT_SCHEMA_JSON = (() => {
@@ -87,7 +118,7 @@ export async function seedSupplyPrompt(): Promise<void> {
     `INSERT INTO prompt_versions
        (id, agent_id, version, system_prompt, output_schema, active, created_at, created_by)
      VALUES
-       ('supply-v3', 'supply', '3.0.0', $1, $2, true, NOW(), 'system')
+       ('supply-v4', 'supply', '4.0.0', $1, $2, true, NOW(), 'system')
      ON CONFLICT (id) DO NOTHING`,
     [SUPPLY_SYSTEM_PROMPT, JSON.stringify(OUTPUT_SCHEMA_JSON)]
   );

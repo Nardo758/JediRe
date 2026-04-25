@@ -291,9 +291,59 @@ export const researchOnDealCreated = inngest.createFunction(
           }
         }
 
+        // Ingest web-sourced comp data from research
+        if (runResult.web_comps?.length > 0) {
+          const { getKnowledgeGraph } = await import('../services/neural-network/knowledge-graph.service');
+          const kg = getKnowledgeGraph(pool);
+          for (const comp of runResult.web_comps) {
+            await kg.upsertNode({
+              type: 'Property',
+              externalId: `research-web-comp-${comp.name?.replace(/\s+/g, '-').toLowerCase()}-${dealId}`,
+              name: comp.name || 'Research Comp',
+              properties: {
+                source: 'research_web_search',
+                derivedFromSearch: true,
+                address: comp.address,
+                city: comp.city,
+                units: comp.units,
+                rent: comp.rent,
+                amenities: comp.amenities,
+                fees: comp.fees,
+                otherIncome: comp.other_income,
+                sourceUrl: comp.source_url,
+                discoveredAt: new Date(),
+              }
+            } as any);
+          }
+        }
+
+        // Refresh capsule intelligence after research completes
+        if (dealId && runResult.confidence_score > 0.5) {
+          try {
+            const { getCapsuleIntelligence } = await import('../services/capsule-intelligence.service');
+            const capsule = await pool.query(
+              `SELECT property_address, deal_data FROM deal_capsules WHERE id = $1`,
+              [dealId]
+            );
+            if (capsule.rows[0]) {
+              const dd = capsule.rows[0].deal_data || {};
+              await getCapsuleIntelligence().seedCapsule({
+                capsuleId: dealId,
+                propertyAddress: capsule.rows[0].property_address,
+                city: dd.city,
+                state: dd.state,
+                propertyType: dd.property_type || 'multifamily',
+                units: dd.units,
+              });
+              logger.info('research.inngest: refreshed capsule intelligence after research');
+            }
+          } catch (_) { /* non-fatal */ }
+        }
+
         logger.info('research.inngest: updated knowledge graph', {
           marketId: runResult.market_id,
           propertiesIngested: runResult.properties_found?.length || 0,
+          webCompsIngested: runResult.web_comps?.length || 0,
         });
       } catch (err) {
         logger.warn('research.inngest: failed to update knowledge graph', { err });
