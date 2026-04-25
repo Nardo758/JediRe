@@ -132,6 +132,10 @@ import createContextAwarenessRoutes from './context-awareness.routes';
 import columnCatalogRoutes from './column-catalog.routes';
 import plannerRoutes from './planner.routes';
 import scheduledRefreshRoutes from './scheduled-refresh.routes';
+import brokerNarrativesRoutes from './broker-narratives.routes';
+import intelligenceRefreshRoutes from './intelligence-refresh.routes';
+import replacementCostRoutes from './replacement-cost.routes';
+import sentimentRoutes from './sentiment.routes';
 
 const API_PREFIX = '/api/v1';
 
@@ -520,6 +524,12 @@ export function setupRESTRoutes(app: Application): void {
 
   // Scheduled Refresh routes (cron job for knowledge graph staleness)
   app.use(`${API_PREFIX}/scheduled-refresh`, scheduledRefreshRoutes);
+
+  // Replit OM Intelligence routes
+  app.use(`${API_PREFIX}/broker-narratives`, brokerNarrativesRoutes);
+  app.use(`${API_PREFIX}/intelligence-refresh`, intelligenceRefreshRoutes);
+  app.use(`${API_PREFIX}/replacement-cost`, replacementCostRoutes);
+  app.use(`${API_PREFIX}/sentiment`, sentimentRoutes);
 
   // Deal Activity routes (emails, tasks, unified activity)
   app.use(`${API_PREFIX}/deals`, dealActivityRoutes);

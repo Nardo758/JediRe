@@ -320,6 +320,28 @@ export async function recordSentimentSnapshot(
         input.source,
       ],
     );
+    // Update Knowledge Graph
+    try {
+      const { getKnowledgeGraph } = await import('./neural-network/knowledge-graph.service');
+      const { getPool } = await import('../database/connection');
+      const kg = getKnowledgeGraph(getPool());
+      await kg.upsertNode({
+        type: 'Metric',
+        externalId: `sentiment-${input.entityType}-${canonicalId}`,
+        name: `Sentiment: ${input.entityType} ${canonicalId}`,
+        properties: {
+          metricType: 'market_sentiment',
+          entityType: input.entityType,
+          entityId: canonicalId,
+          agentScore: input.agentScore,
+          newsAvg: news.avg,
+          newsCount: news.count,
+          source: input.source,
+          lastSnapshot: new Date(),
+        }
+      });
+    } catch (graphErr) { /* Non-fatal */ }
+
     return { ok: true, canonicalId };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

@@ -177,7 +177,10 @@ export class KnowledgeGraphService {
   /**
    * Create or update a node in the graph
    */
-  async upsertNode(node: Omit<GraphNode, 'createdAt' | 'updatedAt' | 'staleness'>): Promise<GraphNode> {
+  async upsertNode(node: Omit<GraphNode, 'createdAt' | 'updatedAt' | 'staleness'> & { externalId?: string }): Promise<string> {
+    // Use externalId as the node ID if provided, otherwise use node.id or generate one
+    const nodeId = (node as any).externalId || node.id || `${node.type}-${Date.now()}`;
+    
     const result = await this.pool.query(`
       INSERT INTO knowledge_graph_nodes (id, type, name, properties, embedding)
       VALUES ($1, $2, $3, $4, $5)
@@ -187,21 +190,53 @@ export class KnowledgeGraphService {
         properties = knowledge_graph_nodes.properties || EXCLUDED.properties,
         embedding = COALESCE(EXCLUDED.embedding, knowledge_graph_nodes.embedding),
         updated_at = NOW()
-      RETURNING *, 
-        CASE 
-          WHEN updated_at > NOW() - INTERVAL '24 hours' THEN 'fresh'
-          WHEN updated_at > NOW() - INTERVAL '7 days' THEN 'stale'
-          ELSE 'expired'
-        END as staleness
+      RETURNING id
     `, [
-      node.id,
+      nodeId,
       node.type,
       node.name,
-      JSON.stringify(node.properties),
+      JSON.stringify(node.properties || {}),
       node.embedding ? JSON.stringify(node.embedding) : null
     ]);
     
-    return this.rowToNode(result.rows[0]);
+    return result.rows[0].id;
+  }
+
+  /**
+   * Find a node by type and external ID
+   */
+  async findNodeByExternalId(type: string, externalId: string): Promise<{ id: string; type: string; name: string; properties: any } | null> {
+    const result = await this.pool.query(`
+      SELECT id, type, name, properties
+      FROM knowledge_graph_nodes
+      WHERE id = $1 AND type = $2
+      LIMIT 1
+    `, [externalId, type]);
+    
+    if (result.rows.length === 0) {
+      // Also try without type constraint (ID might be globally unique)
+      const fallback = await this.pool.query(`
+        SELECT id, type, name, properties
+        FROM knowledge_graph_nodes
+        WHERE id = $1
+        LIMIT 1
+      `, [externalId]);
+      return fallback.rows[0] || null;
+    }
+    
+    return result.rows[0];
+  }
+
+  /**
+   * Update properties on an existing node (merge)
+   */
+  async updateNodeProperties(nodeId: string, properties: Record<string, any>): Promise<void> {
+    await this.pool.query(`
+      UPDATE knowledge_graph_nodes
+      SET properties = properties || $2::jsonb,
+          updated_at = NOW()
+      WHERE id = $1
+    `, [nodeId, JSON.stringify(properties)]);
   }
   
   /**
@@ -249,7 +284,16 @@ export class KnowledgeGraphService {
   /**
    * Create an edge between nodes
    */
-  async createEdge(edge: Omit<GraphEdge, 'id' | 'createdAt'>): Promise<GraphEdge> {
+  async createEdge(edge: any): Promise<any> {
+    // Accept both naming conventions:
+    // { sourceId, targetId, type } (original)
+    // { sourceNodeId, targetNodeId, edgeType } (from wiring code)
+    const edgeType = edge.edgeType || edge.type;
+    const sourceId = edge.sourceNodeId || edge.sourceId;
+    const targetId = edge.targetNodeId || edge.targetId;
+    const sourceType = edge.sourceType || '';
+    const targetType = edge.targetType || '';
+    
     const result = await this.pool.query(`
       INSERT INTO knowledge_graph_edges 
         (type, source_id, source_type, target_id, target_type, weight, confidence, properties, reason)
@@ -262,18 +306,18 @@ export class KnowledgeGraphService {
         created_at = NOW()
       RETURNING *
     `, [
-      edge.type,
-      edge.sourceId,
-      edge.sourceType,
-      edge.targetId,
-      edge.targetType,
-      edge.weight,
-      edge.confidence,
-      JSON.stringify(edge.properties),
-      edge.reason
+      edgeType,
+      sourceId,
+      sourceType,
+      targetId,
+      targetType,
+      edge.weight || 1.0,
+      edge.confidence || 0.8,
+      JSON.stringify(edge.properties || {}),
+      edge.reason || null
     ]);
     
-    return this.rowToEdge(result.rows[0]);
+    return result.rows[0];
   }
   
   /**
@@ -920,3 +964,6 @@ export function getKnowledgeGraphService(pool: Pool): KnowledgeGraphService {
   }
   return knowledgeGraphInstance;
 }
+
+// Alias used by graph wiring code
+export const getKnowledgeGraph = getKnowledgeGraphService;

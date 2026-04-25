@@ -441,6 +441,30 @@ export async function distributeOmExtraction(
       fileId: args.fileId, ...counts, failureCount: 0,
       msaKey: args.geo.msaKey, submarketKey: args.geo.submarketKey,
     });
+
+    // Ingest OM data into Knowledge Graph
+    try {
+      const { getKnowledgeGraph } = await import('../neural-network/knowledge-graph.service');
+      const { getPool } = await import('../../database/connection');
+      const kg = getKnowledgeGraph(getPool());
+      await kg.upsertNode({
+        type: 'Document',
+        externalId: `om-${args.fileId}`,
+        name: `OM: ${args.geo.msaKey || 'unknown'}`,
+        properties: {
+          documentType: 'offering_memorandum',
+          fileId: args.fileId,
+          msaKey: args.geo.msaKey,
+          submarketKey: args.geo.submarketKey,
+          rentCompsInserted: counts.rentComps,
+          saleCompsInserted: counts.saleComps,
+          replacementCost: counts.replacementCost,
+          brokerNarratives: counts.brokerNarratives,
+          processedAt: new Date(),
+        }
+      });
+    } catch (graphErr) { /* Non-fatal */ }
+
     return counts;
   } catch (err) {
     // Best-effort rollback; if we already rolled back above, this is a no-op
