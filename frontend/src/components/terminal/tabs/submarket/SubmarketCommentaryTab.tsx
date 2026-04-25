@@ -9,6 +9,7 @@ import {
   PeerContext,
   SupplyNarrative,
   StrategyScoreBadge,
+  MarketSentimentTrend,
 } from '../../commentary';
 
 interface SubmarketCommentaryTabProps {
@@ -85,6 +86,11 @@ export const SubmarketCommentaryTab: React.FC<SubmarketCommentaryTabProps> = ({
   return (
     <div style={{ display: 'flex', gap: 16 }}>
       <div style={{ flex: 1, minWidth: 0 }}>
+        <MarketSentimentTrend
+          entityType="submarket"
+          entityId={submarketId}
+          entityName={subName}
+        />
         <div style={{
           background: BT.bg.panel,
           border: `1px solid ${BT.border.subtle}`,

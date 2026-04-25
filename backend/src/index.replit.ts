@@ -329,6 +329,7 @@ import { captureMonthlySnapshotsFunction } from './inngest/functions/capture-mon
 import { syncMartaGtfsFunction } from './inngest/functions/sync-marta-gtfs';
 import { syncOsmPoisFunction } from './inngest/functions/sync-osm-pois';
 import { syncAtlantaPdCrimeFunction } from './inngest/functions/sync-atlanta-pd-crime';
+import { snapshotSentimentDaily } from './inngest/functions/snapshot-sentiment.function';
 import { scheduledAgentFunctions } from './services/agents/scheduled-jobs';
 import { scheduledDiscoveryFunctions } from './services/discovery/scheduled-discovery';
 app.use(
@@ -349,6 +350,8 @@ app.use(
       syncMartaGtfsFunction,
       syncOsmPoisFunction,
       syncAtlantaPdCrimeFunction,
+      // Daily sentiment-history snapshot (Task #382)
+      snapshotSentimentDaily,
       // Autonomous agents (Task #327): morning briefings, compliance,
       // portfolio reviews, market intelligence, threshold monitoring.
       ...scheduledAgentFunctions,
@@ -426,6 +429,8 @@ app.use('/api/v1/market-research', requireAuth, marketResearchRoutes);
 app.use('/api/v1/market', requireAuth, marketRouter);
 app.use('/api/v1', requireAuth, supplyRoutes);
 app.use('/api/v1/supply', requireAuth, supplyExtraRouter);
+import { sentimentRouter } from './api/rest/sentiment.routes';
+app.use('/api/v1/sentiment', requireAuth, sentimentRouter);
 app.use('/api/v1', requireAuth, demandRoutes);
 app.use('/api/v1/traffic', requireAuth, trafficPredictionRoutes);
 app.use('/api/v1', requireAuth, propertyProxyRoutes);

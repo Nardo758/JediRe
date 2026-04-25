@@ -5,3 +5,4 @@ export { RiskOpportunity } from './RiskOpportunity';
 export { PeerContext } from './PeerContext';
 export { SupplyNarrative } from './SupplyNarrative';
 export { StrategyScoreBadge } from './StrategyScoreBadge';
+export { MarketSentimentTrend } from './MarketSentimentTrend';

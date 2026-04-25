@@ -14,6 +14,7 @@ import type { AICallContext } from '../types/dealContext';
 import { buildEconomicContextBlock } from '../services/economic-context.service';
 import { commentaryRuntime } from './commentary.config';
 import type { CommentaryAgentOutput } from './commentary.config';
+import { recordSentimentSnapshot, labelToScore } from '../services/sentiment-history.service';
 
 export interface CommentaryInput {
   entityType: 'msa' | 'submarket' | 'property';
@@ -696,6 +697,15 @@ IMPORTANT CITATION RULES:
       );
     } catch (err) {
       logger.warn('Commentary Agent: failed to cache result in market_commentary', { error: err });
+    }
+
+    if (result.entityType === 'msa' || result.entityType === 'submarket') {
+      await recordSentimentSnapshot({
+        entityType: result.entityType,
+        entityId: result.entityId,
+        agentScore: labelToScore(result.marketNarrative.sentiment),
+        source: 'agent_run',
+      });
     }
   }
 }

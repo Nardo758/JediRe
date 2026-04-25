@@ -9,6 +9,7 @@ import {
   PeerContext,
   SupplyNarrative,
   StrategyScoreBadge,
+  MarketSentimentTrend,
 } from '../../commentary';
 
 interface MSACommentaryTabProps {
@@ -161,6 +162,11 @@ export const MSACommentaryTab: React.FC<MSACommentaryTabProps> = ({ msaId, msa }
   return (
     <div style={{ display: 'flex', gap: 16 }}>
       <div style={{ flex: 1, minWidth: 0 }}>
+        <MarketSentimentTrend
+          entityType="msa"
+          entityId={msaId}
+          entityName={msaName}
+        />
         <div style={{
           background: BT.bg.panel,
           border: `1px solid ${BT.border.subtle}`,
