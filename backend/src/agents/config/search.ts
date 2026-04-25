@@ -100,9 +100,61 @@ export const AGENT_SEARCH_CONFIG: Record<AgentId, SearchConfig | null> = {
     cacheHours: 168,
   },
 
-  supply: null,
+  supply: {
+    maxSearchesPerRun: 8,
+    allowlistDomains: [
+      // Government permit & property APIs
+      '*.gov',
+      '*.state.ga.us',
+      '*.state.fl.us',
+      '*.state.tx.us',
+      '*.state.nc.us',
+      '*.state.tn.us',
+      '*.state.az.us',
+      '*.state.co.us',
+      // County GIS / assessor portals
+      'gis.cobbcounty.gov',
+      'gis.fultoncountyga.gov',
+      'gis.dekalbcountyga.gov',
+      'www.fultoncountytaxes.org',
+      // Building permits
+      'permits.atlantaga.gov',
+      'iswdata.cobbcountyga.gov',
+      // Google Maps / Places for amenities, comps, rates
+      'maps.google.com',
+      'maps.googleapis.com',
+      // Apartment listing sites for comp rents, amenities
+      'apartments.com',
+      'apartmentlist.com',
+      'rent.com',
+      'zillow.com',
+      'costar.com',
+      // CRE supply/pipeline sources
+      'globest.com',
+      'bisnow.com',
+      'multifamilyexecutive.com',
+      'therealdeal.com',
+      'connectcre.com',
+      // CoStar / Yardi market reports
+      'yardi.com',
+      'yardimatrix.com',
+      'rcanalytics.com',
+      // NMHC / trade sources
+      'nmhc.org',
+      'naahq.org',
+      // Economic / employment
+      'bls.gov',
+      'census.gov',
+      'fred.stlouisfed.org',
+    ],
+    blocklistDomains: [
+      'reddit.com', 'twitter.com', 'x.com', 'facebook.com',
+      'instagram.com', 'tiktok.com', 'youtube.com',
+    ],
+    cacheHours: 12,  // Supply data moves fast — refresh twice daily
+  },
 
-  cashflow: null,
+  cashflow: null,  // CashFlow uses Data Library + KG, not web search
 };
 
 /**

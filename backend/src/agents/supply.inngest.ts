@@ -259,9 +259,51 @@ export const supplyOnDealCreated = inngest.createFunction(
           }
         }
 
+        // Ingest web-sourced comp data (from web_search results)
+        if (runResult.web_sourced_comps?.length > 0) {
+          const { getKnowledgeGraph } = await import('../services/neural-network/knowledge-graph.service');
+          const kg = getKnowledgeGraph(pool);
+          for (const comp of runResult.web_sourced_comps) {
+            await kg.upsertNode({
+              type: 'Property',
+              externalId: `web-comp-${comp.name?.replace(/\s+/g, '-').toLowerCase()}-${dealId}`,
+              name: comp.name || 'Web Comp',
+              properties: {
+                source: 'web_search',
+                derivedFromSearch: true,
+                address: comp.address,
+                city: comp.city,
+                units: comp.units,
+                rent: comp.rent,
+                amenities: comp.amenities,
+                otherIncome: comp.other_income,
+                fees: comp.fees,
+                sourceUrl: comp.source_url,
+                discoveredAt: new Date(),
+              }
+            } as any);
+          }
+        }
+
+        // If supply found gaps, trigger context awareness to surface them
+        if (runResult.gaps?.length > 0 && dealId) {
+          try {
+            const { getPool: gp } = await import('../database/connection');
+            await gp().query(`
+              UPDATE deal_capsules
+              SET platform_intel = platform_intel || $2::jsonb
+              WHERE id = $1
+            `, [dealId, JSON.stringify({
+              supplyGaps: runResult.gaps,
+              supplyGapsUpdatedAt: new Date(),
+            })]);
+          } catch (_) { /* non-fatal */ }
+        }
+
         logger.info('supply.inngest: updated knowledge graph', {
           marketId: runResult.market_id,
           projectsIngested: runResult.development_projects?.length || 0,
+          webCompsIngested: runResult.web_sourced_comps?.length || 0,
         });
       } catch (err) {
         logger.warn('supply.inngest: failed to update knowledge graph', { err });

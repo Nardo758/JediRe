@@ -336,6 +336,24 @@ router.post('/', requireAuth, validate(createDealSchema), async (req: Authentica
       } catch (agentErr) {
         console.error('[Agents] Failed to trigger onDealCreated:', agentErr instanceof Error ? agentErr.message : agentErr);
       }
+
+      // Seed capsule with intelligence from Data Library + Knowledge Graph
+      try {
+        const { getCapsuleIntelligence } = await import('../../services/capsule-intelligence.service');
+        const capsuleIntel = getCapsuleIntelligence();
+        await capsuleIntel.seedCapsule({
+          capsuleId: row.id,
+          propertyAddress: row.address || '',
+          city: row.city || '',
+          state: row.state || '',
+          propertyType: row.deal_category || 'multifamily',
+          units: row.target_units,
+          userId: req.user?.userId,
+        });
+        console.log('[CapsuleIntelligence] Seeded capsule:', row.id);
+      } catch (intelErr) {
+        console.error('[CapsuleIntelligence] Failed to seed capsule:', intelErr instanceof Error ? intelErr.message : intelErr);
+      }
     });
 
     res.status(201).json({

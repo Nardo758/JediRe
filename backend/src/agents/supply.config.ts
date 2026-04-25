@@ -18,6 +18,9 @@ import { fetchCostarPipelineTool } from './tools/fetch_costar_pipeline';
 import { fetchSubmarketDeliveriesTool } from './tools/fetch_submarket_deliveries';
 import { writeSupplyAnalysisTool } from './tools/write_supply_analysis';
 import { fetchDataMatrixTool } from './tools/fetch_data_matrix';
+import { webSearchTool } from './tools/web_search';
+import { fetchWebpageTool } from './tools/fetch_webpage';
+import { fetchDataLibraryCompsTool } from './tools/fetch_data_library_comps';
 
 // ── Output schema ─────────────────────────────────────────────────
 
@@ -52,6 +55,9 @@ export const SUPPLY_AGENT_CONFIG: AgentConfig = {
     writeSupplyAnalysisTool,
     // Full context assembler — market events, employer moves, and spatial context
     fetchDataMatrixTool,
+    fetchDataLibraryCompsTool,  // Data Library comps for rent/expense benchmarks
+    webSearchTool,              // Gov APIs, permit portals, listing sites for gap-filling
+    fetchWebpageTool,           // Pull full content from search result URLs
   ],
   outputSchema: SupplyOutputSchema,
   budgetCaps: DEFAULT_BUDGET_CAPS.supply,

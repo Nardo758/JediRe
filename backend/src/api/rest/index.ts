@@ -136,6 +136,7 @@ import brokerNarrativesRoutes from './broker-narratives.routes';
 import intelligenceRefreshRoutes from './intelligence-refresh.routes';
 import replacementCostRoutes from './replacement-cost.routes';
 import sentimentRoutes from './sentiment.routes';
+import capsuleIntelligenceRoutes from './capsule-intelligence.routes';
 
 const API_PREFIX = '/api/v1';
 
@@ -530,6 +531,9 @@ export function setupRESTRoutes(app: Application): void {
   app.use(`${API_PREFIX}/intelligence-refresh`, intelligenceRefreshRoutes);
   app.use(`${API_PREFIX}/replacement-cost`, replacementCostRoutes);
   app.use(`${API_PREFIX}/sentiment`, sentimentRoutes);
+
+  // Capsule Intelligence routes (smart assumption seeding from Data Library + KG)
+  app.use(`${API_PREFIX}/capsules`, capsuleIntelligenceRoutes);
 
   // Deal Activity routes (emails, tasks, unified activity)
   app.use(`${API_PREFIX}/deals`, dealActivityRoutes);

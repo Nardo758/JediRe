@@ -49,6 +49,7 @@ import { fetchDataMatrixTool } from './tools/fetch_data_matrix';
 import { fetchProximityContextTool } from './tools/fetch_proximity_context';
 import { fetchMarketEventsTool } from './tools/fetch_market_events';
 import { fetchBacktestContextTool } from './tools/fetch_backtest_context';
+import { fetchDataLibraryCompsTool } from './tools/fetch_data_library_comps';
 
 // ── Evidence-system output schema (v4) ───────────────────────────
 //
@@ -250,6 +251,7 @@ export const CASHFLOW_AGENT_CONFIG: AgentConfig = {
     fetchProximityContextTool,
     fetchMarketEventsTool,
     fetchBacktestContextTool,
+    fetchDataLibraryCompsTool,  // Data Library comps for market rent, expenses, cap rates
     // Analysis & output
     detectCollisionTool,
     computeProformaTool,
