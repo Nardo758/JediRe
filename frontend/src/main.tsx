@@ -6,18 +6,20 @@ import './index.css';
 
 async function bootstrap() {
   if (!localStorage.getItem('auth_token')) {
-    try {
-      const resp = await fetch('/api/v1/auth/dev-login');
-      if (resp.ok) {
-        const data = await resp.json();
-        if (data.success && data.token) {
-          localStorage.setItem('auth_token', data.token);
-          localStorage.setItem('jedi_user', JSON.stringify(data.user));
+    if (import.meta.env.DEV) {
+      try {
+        const resp = await fetch('/api/v1/auth/dev-login');
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data.success && data.token) {
+            localStorage.setItem('auth_token', data.token);
+            localStorage.setItem('jedi_user', JSON.stringify(data.user));
+          }
         }
-      }
-    } catch {}
+      } catch {}
+    }
 
-    // In production dev-login is blocked — redirect to login page instead of showing blank terminal
+    // In production (or if dev-login failed) redirect to login page instead of showing blank terminal
     if (!localStorage.getItem('auth_token') && !window.location.pathname.startsWith('/login')) {
       window.location.replace('/login');
       return;

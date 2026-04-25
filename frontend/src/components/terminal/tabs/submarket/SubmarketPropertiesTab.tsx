@@ -9,6 +9,35 @@ import { BT, fmt, terminalStyles } from '../../theme';
 import { SubmarketData } from '../../SubmarketTerminal';
 import { useCommentaryStore } from '../../../../stores/commentaryStore';
 import { SignalCommentary } from '../../commentary';
+import api from '../../../../services/api';
+
+interface PropertyApiRow {
+  name: string;
+  submarket: string;
+  msa: string;
+  jedi: number;
+  units: number;
+  rent: string;
+  occ: string;
+  capRate: string;
+  vintage: number;
+  owner: string;
+}
+
+const parsePct = (s: string): number => {
+  const n = parseFloat((s || '').replace(/[^0-9.\-]/g, ''));
+  return Number.isFinite(n) ? n : 0;
+};
+const parseCurrency = (s: string): number => {
+  const n = parseFloat((s || '').replace(/[^0-9.\-]/g, ''));
+  return Number.isFinite(n) ? n : 0;
+};
+const classFromVintage = (year: number): 'A' | 'B' | 'C' => {
+  if (!year || year < 1800) return 'B';
+  if (year >= 2015) return 'A';
+  if (year >= 2000) return 'B';
+  return 'C';
+};
 
 interface SubmarketPropertiesTabProps {
   submarketId: string;
@@ -50,21 +79,55 @@ export const SubmarketPropertiesTab: React.FC<SubmarketPropertiesTabProps> = ({
   const error = getError('submarket', submarketId);
   useEffect(() => { fetchCommentary('submarket', submarketId, submarket.name); }, [submarketId, submarket.name]);
 
-  // Mock property data
-  const properties: Property[] = useMemo(() => [
-    { id: '1', name: 'The Metropolitan at Phipps', address: '3630 Peachtree Rd NE', units: 320, yearBuilt: 2019, class: 'A', avgRent: 2150, rentGrowth: 5.2, occupancy: 96.1, capRate: 4.8, owner: 'Greystar', inPortfolio: true },
-    { id: '2', name: 'Hanover Buckhead Village', address: '3035 Peachtree Rd NE', units: 370, yearBuilt: 2020, class: 'A', avgRent: 2280, rentGrowth: 4.8, occupancy: 94.2, capRate: 5.2, owner: 'Hanover Co.' },
-    { id: '3', name: 'Alexan Buckhead', address: '2850 Piedmont Rd NE', units: 290, yearBuilt: 2018, class: 'A', avgRent: 1950, rentGrowth: 3.9, occupancy: 95.0, capRate: 5.5, owner: 'Trammell Crow', lastSale: 62000000, saleDate: '2022-11' },
-    { id: '4', name: 'The Residence Buckhead', address: '3195 Mathieson Dr NE', units: 245, yearBuilt: 2015, class: 'B', avgRent: 1780, rentGrowth: 4.1, occupancy: 93.2, capRate: 5.8, owner: 'AvalonBay' },
-    { id: '5', name: 'Park at Buckhead', address: '3060 Pharr Ct North', units: 280, yearBuilt: 2016, class: 'B', avgRent: 1820, rentGrowth: 3.5, occupancy: 94.5, capRate: 5.6 },
-    { id: '6', name: 'Gables Brookhaven', address: '686 Brookhaven Ave', units: 350, yearBuilt: 2017, class: 'B', avgRent: 1720, rentGrowth: 4.3, occupancy: 96.2, capRate: 5.4, owner: 'Gables Residential' },
-    { id: '7', name: 'The Darcy', address: '3045 Peachtree Rd', units: 265, yearBuilt: 2021, class: 'A', avgRent: 2380, rentGrowth: 6.1, occupancy: 92.8, capRate: 4.6, owner: 'Lincoln Property' },
-    { id: '8', name: 'Buckhead Village Lofts', address: '3107 Peachtree Rd', units: 180, yearBuilt: 2008, class: 'B', avgRent: 1580, rentGrowth: 2.8, occupancy: 94.8, capRate: 6.2 },
-    { id: '9', name: 'Windsor Parkview', address: '3155 Mt Vernon Rd', units: 420, yearBuilt: 2014, class: 'B', avgRent: 1650, rentGrowth: 3.2, occupancy: 95.1, capRate: 5.9, owner: 'Windsor Communities' },
-    { id: '10', name: 'Peachtree Hills Place', address: '2285 Peachtree Rd', units: 195, yearBuilt: 2005, class: 'C', avgRent: 1320, rentGrowth: 2.1, occupancy: 93.5, capRate: 6.8 },
-    { id: '11', name: 'The Residence at Lenox', address: '3400 Lenox Rd NE', units: 310, yearBuilt: 2022, class: 'A', avgRent: 2450, rentGrowth: 5.8, occupancy: 91.5, capRate: 4.5, owner: 'Mill Creek' },
-    { id: '12', name: 'Camden Buckhead', address: '3101 New Peachtree Rd', units: 385, yearBuilt: 2016, class: 'A', avgRent: 2020, rentGrowth: 4.0, occupancy: 95.8, capRate: 5.1, owner: 'Camden Property Trust' },
-  ], []);
+  // Live property data from /api/v1/market-metrics/properties
+  const [apiRows, setApiRows] = useState<PropertyApiRow[]>([]);
+  const [propsLoading, setPropsLoading] = useState(true);
+  const [propsError, setPropsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setPropsLoading(true);
+    setPropsError(null);
+    const msaParam = submarket.msaId ? `?msaId=${encodeURIComponent(submarket.msaId)}` : '';
+    api
+      .get(`/market-metrics/properties${msaParam}`)
+      .then((res) => {
+        if (cancelled) return;
+        if (res.data?.success && Array.isArray(res.data.properties)) {
+          setApiRows(res.data.properties as PropertyApiRow[]);
+        } else {
+          setApiRows([]);
+        }
+      })
+      .catch((err: any) => {
+        if (cancelled) return;
+        setPropsError(err?.message || 'Failed to load properties');
+        setApiRows([]);
+      })
+      .finally(() => {
+        if (!cancelled) setPropsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [submarket.msaId]);
+
+  const properties: Property[] = useMemo(() => {
+    return apiRows.map((r, i) => ({
+      id: String(i + 1),
+      name: r.name || `Property ${i + 1}`,
+      address: r.submarket && r.submarket !== 'General' ? `${r.submarket} · ${r.msa}` : r.msa,
+      units: r.units || 0,
+      yearBuilt: r.vintage || 0,
+      class: classFromVintage(r.vintage),
+      avgRent: parseCurrency(r.rent),
+      rentGrowth: 0,
+      occupancy: parsePct(r.occ),
+      capRate: parsePct(r.capRate) || undefined,
+      owner: r.owner || undefined,
+      inPortfolio: false,
+    }));
+  }, [apiRows]);
 
   // Filter and sort
   const filteredProperties = useMemo(() => {
@@ -118,8 +181,12 @@ export const SubmarketPropertiesTab: React.FC<SubmarketPropertiesTabProps> = ({
   const stats = useMemo(() => ({
     total: filteredProperties.length,
     totalUnits: filteredProperties.reduce((sum, p) => sum + p.units, 0),
-    avgRent: filteredProperties.reduce((sum, p) => sum + p.avgRent, 0) / filteredProperties.length,
-    avgOccupancy: filteredProperties.reduce((sum, p) => sum + p.occupancy, 0) / filteredProperties.length,
+    avgRent: filteredProperties.length
+      ? filteredProperties.reduce((sum, p) => sum + p.avgRent, 0) / filteredProperties.length
+      : 0,
+    avgOccupancy: filteredProperties.length
+      ? filteredProperties.reduce((sum, p) => sum + p.occupancy, 0) / filteredProperties.length
+      : 0,
   }), [filteredProperties]);
 
   return (
@@ -357,13 +424,19 @@ export const SubmarketPropertiesTab: React.FC<SubmarketPropertiesTabProps> = ({
       </div>
 
       {/* Pagination hint */}
-      <div style={{ 
-        textAlign: 'center', 
-        fontSize: 11, 
+      <div style={{
+        textAlign: 'center',
+        fontSize: 11,
         color: BT.text.dim,
         padding: 8,
       }}>
-        Showing {filteredProperties.length} of {properties.length} properties • Click a row to view details
+        {propsLoading
+          ? 'Loading properties from database…'
+          : propsError
+            ? `Error: ${propsError}`
+            : properties.length === 0
+              ? 'No properties returned for this MSA'
+              : `Showing ${filteredProperties.length} of ${properties.length} properties (MSA-level) · Click a row to view details`}
       </div>
 
       {loading && (
