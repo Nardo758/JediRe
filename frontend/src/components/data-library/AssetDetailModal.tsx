@@ -96,16 +96,21 @@ const sanitizePercent = (raw: string): string => {
 };
 
 // Render a stored 0-1 fraction as the cleanest possible percent string —
-// integers stay integers ("0.91" → "91"), decimals are kept verbatim
-// ("0.915" → "91.5") so reopen always shows what the user typed.
+// integers stay integers ("0.91" → "91", "0.20" → "20", "1.00" → "100"),
+// decimals are kept verbatim ("0.915" → "91.5") so reopen always shows
+// exactly what the user typed.
 const fractionToPercentString = (val: unknown): string => {
   if (val == null) return '';
   const n = typeof val === 'number' ? val : Number(val);
   if (!Number.isFinite(n)) return '';
   // Defensive: if the stored value is already in percent form (>1), keep as-is.
   const percent = n <= 1 ? n * 100 : n;
-  // Strip trailing zeros so 91.00 → "91" but 91.5 stays "91.5".
-  return percent.toString().replace(/\.?0+$/, '') || '0';
+  // Use 4 fractional digits as max precision (covers 0.0001 of a percent),
+  // then trim trailing zeros only AFTER the decimal point so "20" stays "20"
+  // and "100" stays "100" but "91.50" becomes "91.5" and "91.00" becomes "91".
+  const s = percent.toFixed(4);
+  if (!s.includes('.')) return s;
+  return s.replace(/0+$/, '').replace(/\.$/, '');
 };
 
 const US_STATES = [
