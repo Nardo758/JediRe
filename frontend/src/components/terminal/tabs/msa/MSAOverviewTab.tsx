@@ -1,5 +1,7 @@
 import React from 'react';
 import { BT } from '../../theme';
+import { ContextIndicator } from '../../../intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../../../../hooks/useContextAwareness';
 
 interface MSAOverviewTabProps {
   msaId: string;
@@ -84,8 +86,19 @@ export const MSAOverviewTab: React.FC<MSAOverviewTabProps> = ({ msaId, msa }) =>
 
   const M = MSA_METRICS;
 
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+    { context: 'market_dashboard', marketId: msaId }
+  );
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 1, background: BT.border.subtle }}>
+      {/* Context Awareness */}
+      {contextAnalysis && (
+        <div style={{ padding: '8px 16px', background: BT.bg.panel }}>
+          <ContextIndicator analysis={contextAnalysis} loading={contextLoading} compact />
+        </div>
+      )}
       {/* MARKET PRIMER */}
       <div style={{ background: BT.bg.panel, padding: "12px 16px" }}>
         <div style={{ fontSize: 9, letterSpacing: 2, color: BT.text.amber, marginBottom: 6, ...mono }}>MARKET PRIMER · {msaName.toUpperCase()}, {msaState} MSA</div>

@@ -19,6 +19,8 @@ import {
   Upload, X, Loader2,
 } from 'lucide-react';
 import { apiClient } from '../../services/api.client';
+import { ContextIndicator } from '../../components/intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../../hooks/useContextAwareness';
 
 // ─── Theme System ─────────────────────────────────────────────
 interface Theme {
@@ -144,6 +146,11 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
   const [selectedPeriod, setSelectedPeriod] = useState<string | null>(null);
   const [periodContributors, setPeriodContributors] = useState<PeriodContributor[]>([]);
   const [contributorsLoading, setContributorsLoading] = useState(false);
+
+  // Neural network context awareness for portfolio
+  const { analysis: portfolioContext, loading: contextLoading } = useAutoContextAnalysis(
+    { context: 'deal_overview' }  // portfolio-level analysis
+  );
 
   // Comp Sets state
   const [comps, setComps] = useState<Record<string, PortfolioComp[]>>({});
@@ -347,6 +354,11 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
   // ─── Tab Content Renderers ──────────────────────────────────
   
   const renderOverview = () => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* Context Awareness */}
+      {portfolioContext && (
+        <ContextIndicator analysis={portfolioContext} loading={contextLoading} compact />
+      )}
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
       {/* Portfolio KPIs */}
       <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, padding: 16 }}>
@@ -465,6 +477,7 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
           </div>
         )}
       </div>
+    </div>
     </div>
   );
   

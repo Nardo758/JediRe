@@ -9,6 +9,8 @@ import { TerminalChart, ChartDataPoint, ChartSeries } from '../../TerminalChart'
 import { SubmarketData } from '../../SubmarketTerminal';
 import { useCommentaryStore } from '../../../../stores/commentaryStore';
 import { MarketNarrative, StrategyScoreBadge, InvestmentThesis } from '../../commentary';
+import { ContextIndicator } from '../../../intelligence/ContextIndicator';
+import { useAutoContextAnalysis } from '../../../../hooks/useContextAwareness';
 
 interface SubmarketOverviewTabProps {
   submarketId: string;
@@ -18,6 +20,11 @@ interface SubmarketOverviewTabProps {
 export const SubmarketOverviewTab: React.FC<SubmarketOverviewTabProps> = ({ submarketId, submarket }) => {
   const { fetchCommentary, getCommentary, isLoading, getError } = useCommentaryStore();
   const commentary = getCommentary('submarket', submarketId);
+
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+    { context: 'submarket_deep_dive', submarketId }
+  );
   const loading = isLoading('submarket', submarketId);
   const error = getError('submarket', submarketId);
 
@@ -59,6 +66,10 @@ export const SubmarketOverviewTab: React.FC<SubmarketOverviewTabProps> = ({ subm
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {/* Context Awareness */}
+      {contextAnalysis && (
+        <ContextIndicator analysis={contextAnalysis} loading={contextLoading} compact />
+      )}
       {/* Key Metrics Row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
         {/* Health Score */}
