@@ -131,6 +131,7 @@ import createKnowledgeGraphRoutes from './knowledge-graph.routes';
 import createContextAwarenessRoutes from './context-awareness.routes';
 import columnCatalogRoutes from './column-catalog.routes';
 import plannerRoutes from './planner.routes';
+import scheduledRefreshRoutes from './scheduled-refresh.routes';
 
 const API_PREFIX = '/api/v1';
 
@@ -516,6 +517,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Planner-Executor routes (Claude plans, DeepSeek executes - 10x cheaper)
   app.use(`${API_PREFIX}/planner`, plannerRoutes);
+
+  // Scheduled Refresh routes (cron job for knowledge graph staleness)
+  app.use(`${API_PREFIX}/scheduled-refresh`, scheduledRefreshRoutes);
 
   // Deal Activity routes (emails, tasks, unified activity)
   app.use(`${API_PREFIX}/deals`, dealActivityRoutes);

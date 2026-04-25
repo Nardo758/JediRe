@@ -17,6 +17,9 @@ import { ColumnConfigPopover, ColumnConfig, DEFAULT_COLUMN_CONFIG } from "../../
 import api from "../../services/api";
 import { DemandTab } from "../../components/terminal/tabs/DemandTab";
 import { F4DealsView } from "../../components/terminal/tabs/F4DealsView";
+import { SupplyCell } from "../../components/terminal/cells/SupplyCell";
+import { ContextIndicator } from "../../components/intelligence/ContextIndicator";
+import { useAutoContextAnalysis } from "../../hooks/useContextAwareness";
 
 /**
  * F4 Markets View - Refactored
@@ -722,7 +725,7 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
       rentD: <DeltaCell value={m.rentD} />,
       vac: <ThresholdVal value={m.vac} thresholds={[5, 8]} invert />,
       absorb: <span style={{ color: C.primary }}>{m.absorb}</span>,
-      pipeline: <ThresholdVal value={m.pipeline} thresholds={[8, 14]} invert />,
+      pipeline: <SupplyCell value={m.pipeline} valueNum={m.pipelineNum} marketId={m.id} />,
       costs: <span style={{ color: C.secondary }}>{m.costs}</span>,
       dApt: <span style={{ color: C.secondary }}>{m.dApt}</span>,
       popD: <DeltaCell value={m.popD} />,

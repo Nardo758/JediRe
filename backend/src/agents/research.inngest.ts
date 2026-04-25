@@ -249,6 +249,58 @@ export const researchOnDealCreated = inngest.createFunction(
       } satisfies JediEvents);
     }
 
+    // ── Step 6: Update Knowledge Graph ──────────────────────────────
+    await step.run('update-knowledge-graph', async () => {
+      try {
+        const { getGraphIngestionListener } = await import('../services/neural-network/graph-ingestion-listener');
+        const { getPool } = await import('../database/connection');
+        const pool = getPool();
+        const graphListener = getGraphIngestionListener(pool);
+
+        // Update market node with fresh research data
+        if (runResult.market_id) {
+          await graphListener.handleEvent({
+            type: 'market.updated',
+            entityId: runResult.market_id,
+            entityType: 'Market',
+            data: {
+              lastResearchAnalysis: new Date(),
+              researchConfidence: runResult.confidence_score,
+            },
+            timestamp: new Date(),
+          });
+        }
+
+        // Ingest any properties discovered
+        if (runResult.properties_found?.length > 0) {
+          for (const prop of runResult.properties_found) {
+            await graphListener.handleEvent({
+              type: 'property.created',
+              entityId: prop.id || `research-${dealId}-${Date.now()}`,
+              entityType: 'Property',
+              data: {
+                name: prop.name,
+                address: prop.address,
+                city: prop.city,
+                state: prop.state,
+                units: prop.units,
+                marketId: runResult.market_id,
+              },
+              timestamp: new Date(),
+            });
+          }
+        }
+
+        logger.info('research.inngest: updated knowledge graph', {
+          marketId: runResult.market_id,
+          propertiesIngested: runResult.properties_found?.length || 0,
+        });
+      } catch (err) {
+        logger.warn('research.inngest: failed to update knowledge graph', { err });
+      }
+      return { graphUpdated: true };
+    });
+
     return {
       runId: runResult.runId,
       confidence_score: runResult.confidence_score,

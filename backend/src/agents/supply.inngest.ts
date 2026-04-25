@@ -215,6 +215,60 @@ export const supplyOnDealCreated = inngest.createFunction(
       } satisfies JediEvents);
     }
 
+    // ── Step 7: Update Knowledge Graph ──────────────────────────────
+    await step.run('update-knowledge-graph', async () => {
+      try {
+        const { getGraphIngestionListener } = await import('../services/neural-network/graph-ingestion-listener');
+        const { getPool } = await import('../database/connection');
+        const pool = getPool();
+        const graphListener = getGraphIngestionListener(pool);
+
+        // Update market node staleness
+        if (runResult.market_id) {
+          await graphListener.handleEvent({
+            type: 'market.updated',
+            entityId: runResult.market_id,
+            entityType: 'Market',
+            data: {
+              supplyRiskLevel: runResult.supply_risk_level,
+              pipelineUnits: runResult.pipeline_units,
+              lastSupplyAnalysis: new Date(),
+            },
+            timestamp: new Date(),
+          });
+        }
+
+        // Ingest any development projects found
+        if (runResult.development_projects?.length > 0) {
+          for (const project of runResult.development_projects) {
+            await graphListener.handleEvent({
+              type: 'development_project.added',
+              entityId: project.id || `supply-${dealId}-${Date.now()}`,
+              entityType: 'Event',
+              data: {
+                name: project.name,
+                units: project.units,
+                developer: project.developer,
+                expectedDelivery: project.expected_delivery,
+                constructionStatus: project.status,
+                marketId: runResult.market_id,
+                submarketId: project.submarket_id,
+              },
+              timestamp: new Date(),
+            });
+          }
+        }
+
+        logger.info('supply.inngest: updated knowledge graph', {
+          marketId: runResult.market_id,
+          projectsIngested: runResult.development_projects?.length || 0,
+        });
+      } catch (err) {
+        logger.warn('supply.inngest: failed to update knowledge graph', { err });
+      }
+      return { graphUpdated: true };
+    });
+
     return {
       runId: runResult.runId,
       confidence_score: runResult.confidence_score,
