@@ -84,19 +84,19 @@ CREATE TABLE IF NOT EXISTS development_projects (
 );
 
 -- Indexes
-CREATE INDEX idx_dev_projects_market ON development_projects(market_id);
-CREATE INDEX idx_dev_projects_submarket ON development_projects(submarket);
-CREATE INDEX idx_dev_projects_status ON development_projects(construction_status);
-CREATE INDEX idx_dev_projects_delivery ON development_projects(expected_delivery);
-CREATE INDEX idx_dev_projects_units ON development_projects(units);
-CREATE INDEX idx_dev_projects_developer ON development_projects(developer);
+CREATE INDEX IF NOT EXISTS idx_dev_projects_market ON development_projects(market_id);
+CREATE INDEX IF NOT EXISTS idx_dev_projects_submarket ON development_projects(submarket);
+CREATE INDEX IF NOT EXISTS idx_dev_projects_status ON development_projects(construction_status);
+CREATE INDEX IF NOT EXISTS idx_dev_projects_delivery ON development_projects(expected_delivery);
+CREATE INDEX IF NOT EXISTS idx_dev_projects_units ON development_projects(units);
+CREATE INDEX IF NOT EXISTS idx_dev_projects_developer ON development_projects(developer);
 
 -- Spatial index if location known
-CREATE INDEX idx_dev_projects_location ON development_projects(latitude, longitude)
+CREATE INDEX IF NOT EXISTS idx_dev_projects_location ON development_projects(latitude, longitude)
   WHERE latitude IS NOT NULL AND longitude IS NOT NULL;
 
 -- Composite for supply queries
-CREATE INDEX idx_dev_projects_supply_query ON development_projects(
+CREATE INDEX IF NOT EXISTS idx_dev_projects_supply_query ON development_projects(
   market_id, construction_status, expected_delivery
 );
 
@@ -134,7 +134,7 @@ CREATE TABLE IF NOT EXISTS developers (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE UNIQUE INDEX idx_developers_name ON developers(LOWER(name));
+CREATE UNIQUE INDEX IF NOT EXISTS idx_developers_name ON developers(LOWER(name));
 
 -- ============================================================================
 -- SUPPLY PIPELINE AGGREGATES (for fast queries)
@@ -178,8 +178,8 @@ CREATE TABLE IF NOT EXISTS supply_pipeline_aggregates (
   CONSTRAINT uq_supply_agg UNIQUE (market_id, submarket, as_of_date)
 );
 
-CREATE INDEX idx_supply_agg_market ON supply_pipeline_aggregates(market_id);
-CREATE INDEX idx_supply_agg_date ON supply_pipeline_aggregates(as_of_date);
+CREATE INDEX IF NOT EXISTS idx_supply_agg_market ON supply_pipeline_aggregates(market_id);
+CREATE INDEX IF NOT EXISTS idx_supply_agg_date ON supply_pipeline_aggregates(as_of_date);
 
 -- ============================================================================
 -- FUNCTION: Refresh supply aggregates for a market
@@ -190,6 +190,7 @@ RETURNS INTEGER AS $$
 DECLARE
   v_count INTEGER := 0;
   v_today DATE := CURRENT_DATE;
+  v_row_count INTEGER;
 BEGIN
   -- Delete existing aggregates for this market/date
   DELETE FROM supply_pipeline_aggregates 
@@ -247,7 +248,8 @@ BEGIN
     AND submarket IS NOT NULL
   GROUP BY submarket;
   
-  GET DIAGNOSTICS v_count = v_count + ROW_COUNT;
+  GET DIAGNOSTICS v_row_count = ROW_COUNT;
+  v_count := v_count + v_row_count;
   
   RETURN v_count;
 END;
