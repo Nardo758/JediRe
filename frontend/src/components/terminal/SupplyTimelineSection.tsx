@@ -295,6 +295,7 @@ export const SupplyTimelineSection: React.FC<SupplyTimelineSectionProps> = ({
             <tr>
               <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Project</th>
               <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Submarket</th>
+              <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Developer</th>
               <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Units</th>
               <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Weighted</th>
               <th style={{ ...terminalStyles.tableHeader, textAlign: 'center' }}>Class</th>
@@ -329,6 +330,9 @@ export const SupplyTimelineSection: React.FC<SupplyTimelineSectionProps> = ({
                   </td>
                   <td style={{ ...terminalStyles.tableCell, color: BT.text.muted }}>
                     {proj.submarket || '—'}
+                  </td>
+                  <td style={{ ...terminalStyles.tableCell, color: BT.text.muted }}>
+                    {proj.developer || '—'}
                   </td>
                   <td style={{ ...terminalStyles.tableCell, textAlign: 'right', fontFamily: "'JetBrains Mono', monospace" }}>
                     {proj.units > 0 ? proj.units.toLocaleString() : '—'}
@@ -389,6 +393,7 @@ export const SupplyTimelineSection: React.FC<SupplyTimelineSectionProps> = ({
               <tr>
                 <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Project</th>
                 <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Submarket</th>
+                <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Developer</th>
                 <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Units</th>
                 <th style={{ ...terminalStyles.tableHeader, textAlign: 'center' }}>Class</th>
                 <th style={{ ...terminalStyles.tableHeader, textAlign: 'center' }}>Status</th>
@@ -422,6 +427,9 @@ export const SupplyTimelineSection: React.FC<SupplyTimelineSectionProps> = ({
                     </td>
                     <td style={{ ...terminalStyles.tableCell, color: BT.text.muted }}>
                       {proj.submarket || '—'}
+                    </td>
+                    <td style={{ ...terminalStyles.tableCell, color: BT.text.muted }}>
+                      {proj.developer || '—'}
                     </td>
                     <td style={{ ...terminalStyles.tableCell, textAlign: 'right', fontFamily: "'JetBrains Mono', monospace" }}>
                       {proj.units > 0 ? proj.units.toLocaleString() : '—'}

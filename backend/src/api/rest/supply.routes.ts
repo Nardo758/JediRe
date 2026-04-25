@@ -494,20 +494,25 @@ export const supplyPipelineTimelineHandler = async (req: import('express').Reque
         }
       }
 
-      // Canonical city set for the MSA: pull DISTINCT municipality values from
-      // trade_areas restricted to this MSA's state_codes. Always union with
-      // msa.primaryCity so we cover MSAs that have no trade_areas yet.
-      const cityRows = msa.stateCodes.length > 0
-        ? await client.query(
-            `SELECT DISTINCT municipality FROM trade_areas
-              WHERE state = ANY($1) AND municipality IS NOT NULL`,
-            [msa.stateCodes],
-          )
-        : { rows: [] as Record<string, unknown>[] };
-      const canonicalCities = new Set<string>([msa.primaryCity]);
+      // True MSA-bounded municipality set via PostGIS: take DISTINCT
+      // municipalities of trade_areas whose boundary spatially intersects
+      // the canonical msas.geometry polygon. This isolates the MSA in
+      // multi-MSA states (FL, TX, NC, etc.). Fallback to msa.primaryCity
+      // when trade_areas have no spatial coverage for this MSA yet.
+      const cityRows = await client.query(
+        `SELECT DISTINCT ta.municipality
+           FROM trade_areas ta
+           JOIN msas m ON m.id = $1
+          WHERE ta.boundary IS NOT NULL
+            AND ta.municipality IS NOT NULL
+            AND ST_Intersects(ta.boundary, m.geometry)`,
+        [msa.id],
+      );
+      const canonicalCities = new Set<string>();
       for (const r of cityRows.rows) {
         if (r.municipality) canonicalCities.add(String(r.municipality));
       }
+      if (canonicalCities.size === 0) canonicalCities.add(msa.primaryCity);
       const cities = Array.from(canonicalCities);
 
       const params: (string | number)[] = [];
