@@ -279,17 +279,14 @@ const PROBABILITY_BY_STATUS: Record<string, number> = {
   planned: 0.25,
 };
 
-// Canonical entity resolvers + helpers live in `_market-resolution.ts` so this
-// file and `sentiment.routes.ts` (and any future market-scoped REST routes)
-// stay in lock-step on what "atlanta-ga" or "midtown" actually means.
+// Canonical entity resolvers live in `_market-resolution.ts` so this file
+// and `sentiment.routes.ts` (and any future market-scoped REST routes) stay
+// in lock-step on what "atlanta-ga" or "midtown" actually means.
 import {
   resolveMsa,
   resolveSubmarket,
-  type MsaResolution,
   type SubmarketResolution,
 } from './_market-resolution';
-type _SuppressUnused = MsaResolution | SubmarketResolution;
-void (null as unknown as _SuppressUnused);
 
 export const supplyPipelineTimelineHandler = async (req: import('express').Request, res: import('express').Response) => {
   try {

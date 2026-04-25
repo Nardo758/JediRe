@@ -60,6 +60,16 @@ export interface SentimentTopNews {
   sourceUrl: string | null;
 }
 
+export interface SentimentAnomaly {
+  snapshotAt: string;
+  blendedFrom: number | null;
+  blendedTo: number | null;
+  magnitude: number;
+  zScore: number | null;
+  direction: 'up' | 'down';
+  topDriverNewsIds: string[];
+}
+
 export interface SentimentTrendResult {
   entityType: 'msa' | 'submarket';
   entityId: string;
@@ -83,6 +93,8 @@ export interface SentimentTrendResult {
     blendedDelta: number | null;
   };
   topDriverNews: SentimentTopNews[];
+  newsLookup: Record<string, SentimentTopNews>;
+  anomalies: SentimentAnomaly[];
 }
 
 export const labelToScore = (label: AgentSentimentLabel): -1 | 0 | 1 =>
@@ -433,8 +445,63 @@ export async function getSentimentTrend(
     };
   };
 
+  // ----- Anomaly detection -----
+  // Compute the blended series, then point-to-point deltas, then z-score the
+  // deltas. A point is flagged as anomalous when |delta| >= 0.25 OR
+  // |z| >= 1.5. The combined rule keeps small markets (low variance ⇒ huge z
+  // for small moves) AND large markets (high variance ⇒ small z for big
+  // absolute moves) both honest.
+  const blendedSeries: Array<{ value: number | null; point: SentimentTrendPoint }> = points.map(p => ({
+    value: blendScore(p.agentScore, p.newsAvg30d, p.macroConsumerSentiment),
+    point: p,
+  }));
+  const deltas: Array<{ from: number; to: number; delta: number; idx: number }> = [];
+  for (let i = 1; i < blendedSeries.length; i++) {
+    const prev = blendedSeries[i - 1].value;
+    const curr = blendedSeries[i].value;
+    if (prev !== null && curr !== null) {
+      deltas.push({ from: prev, to: curr, delta: curr - prev, idx: i });
+    }
+  }
+  const meanDelta = deltas.length > 0 ? deltas.reduce((s, d) => s + d.delta, 0) / deltas.length : 0;
+  const variance = deltas.length > 1
+    ? deltas.reduce((s, d) => s + (d.delta - meanDelta) ** 2, 0) / (deltas.length - 1)
+    : 0;
+  const stdDev = Math.sqrt(variance);
+
+  const anomalies: SentimentAnomaly[] = deltas
+    .map(d => {
+      const z = stdDev > 1e-6 ? (d.delta - meanDelta) / stdDev : null;
+      return { d, z };
+    })
+    .filter(({ d, z }) => Math.abs(d.delta) >= 0.25 || (z !== null && Math.abs(z) >= 1.5))
+    .map(({ d, z }) => {
+      const point = blendedSeries[d.idx].point;
+      return {
+        snapshotAt: point.snapshotAt,
+        blendedFrom: Number(d.from.toFixed(3)),
+        blendedTo: Number(d.to.toFixed(3)),
+        magnitude: Number(d.delta.toFixed(3)),
+        zScore: z === null ? null : Number(z.toFixed(2)),
+        direction: d.delta >= 0 ? 'up' as const : 'down' as const,
+        topDriverNewsIds: point.topDriverNewsIds,
+      };
+    });
+
+  // ----- News lookup map -----
+  // Collect every news id referenced anywhere in the window (per-point top
+  // drivers) so the frontend tooltip can resolve news for the HOVERED point
+  // — not just the latest one.
+  const allNewsIds = new Set<string>();
+  for (const p of points) {
+    for (const id of p.topDriverNewsIds) allNewsIds.add(id);
+  }
+  const newsList = allNewsIds.size > 0 ? await fetchTopDriverNews(Array.from(allNewsIds)) : [];
+  const newsLookup: Record<string, SentimentTopNews> = {};
+  for (const n of newsList) newsLookup[n.id] = n;
+
   const topDriverIds = last?.topDriverNewsIds ?? [];
-  const topDriverNews = topDriverIds.length > 0 ? await fetchTopDriverNews(topDriverIds) : [];
+  const topDriverNews = topDriverIds.map(id => newsLookup[id]).filter((n): n is SentimentTopNews => !!n);
 
   return {
     entityType,
@@ -451,6 +518,8 @@ export async function getSentimentTrend(
     vs30d: buildDelta(point30d),
     vs12mo: buildDelta(point12mo),
     topDriverNews,
+    newsLookup,
+    anomalies,
     canonicalEntityId: canonicalId,
     resolvedEntityName: resolved.resolvedName,
   };

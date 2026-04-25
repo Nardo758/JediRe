@@ -9,7 +9,9 @@ import {
   CartesianGrid,
   Tooltip,
   ReferenceLine,
+  ReferenceDot,
   Legend,
+  Brush,
 } from 'recharts';
 import { BT } from '../theme';
 import { apiClient } from '../../../services/api.client';
@@ -32,6 +34,16 @@ interface SentimentTopNews {
   publishedAt: string | null;
   sentimentScore: number | null;
   sentimentLabel: string | null;
+}
+
+interface SentimentAnomaly {
+  snapshotAt: string;
+  blendedFrom: number | null;
+  blendedTo: number | null;
+  magnitude: number;
+  zScore: number | null;
+  direction: 'up' | 'down';
+  topDriverNewsIds: string[];
 }
 
 interface SentimentTrendResponse {
@@ -60,6 +72,8 @@ interface SentimentTrendResponse {
       blendedDelta: number | null;
     };
     topDriverNews: SentimentTopNews[];
+    newsLookup: Record<string, SentimentTopNews>;
+    anomalies: SentimentAnomaly[];
   };
 }
 
@@ -72,16 +86,17 @@ interface MarketSentimentTrendProps {
 
 const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono','Fira Code','SF Mono',monospace" };
 
-const formatScore = (n: number | null, digits = 2): string =>
-  n === null ? '—' : (n >= 0 ? '+' : '') + n.toFixed(digits);
+const formatScore = (n: number | null | undefined, digits = 2): string => {
+  if (n === null || n === undefined || Number.isNaN(n)) return '—';
+  return (n >= 0 ? '+' : '') + n.toFixed(digits);
+};
 
-const formatMacro = (n: number | null): string =>
-  n === null ? '—' : n.toFixed(1);
+const formatMacro = (n: number | null): string => (n === null ? '—' : n.toFixed(1));
 
-const colorForBlended = (n: number | null): string => {
-  if (n === null) return BT.text.muted;
-  if (n >= 0.2) return BT.text.green;
-  if (n <= -0.2) return BT.text.red;
+const colorForScore = (n: number | null | undefined, neutralBand = 0.2): string => {
+  if (n === null || n === undefined) return BT.text.muted;
+  if (n >= neutralBand) return BT.text.green;
+  if (n <= -neutralBand) return BT.text.red;
   return BT.text.amber;
 };
 
@@ -90,6 +105,20 @@ const labelForBlended = (n: number | null): string => {
   if (n >= 0.2) return 'BULLISH';
   if (n <= -0.2) return 'BEARISH';
   return 'NEUTRAL';
+};
+
+const blend = (
+  agent: number | null,
+  newsAvg: number | null,
+  macroNorm: number | null,
+): number | null => {
+  const parts: { v: number; w: number }[] = [];
+  if (agent !== null) parts.push({ v: agent, w: 0.5 });
+  if (newsAvg !== null) parts.push({ v: newsAvg, w: 0.3 });
+  if (macroNorm !== null) parts.push({ v: macroNorm, w: 0.2 });
+  if (parts.length === 0) return null;
+  const wTot = parts.reduce((s, p) => s + p.w, 0);
+  return parts.reduce((s, p) => s + p.v * p.w, 0) / wTot;
 };
 
 export const MarketSentimentTrend: React.FC<MarketSentimentTrendProps> = ({
@@ -137,17 +166,33 @@ export const MarketSentimentTrend: React.FC<MarketSentimentTrendProps> = ({
       const macroNorm = p.macroConsumerSentiment === null
         ? null
         : Math.max(-1, Math.min(1, (p.macroConsumerSentiment - 50) / 50));
+      const blended = blend(p.agentScore, p.newsAvg30d, macroNorm);
       return {
         ts: new Date(p.snapshotAt).getTime(),
+        snapshotAt: p.snapshotAt,
         dateLabel: new Date(p.snapshotAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
         agent: p.agentScore,
         news: p.newsAvg30d,
         macro: macroNorm,
         macroRaw: p.macroConsumerSentiment,
+        blended: blended === null ? null : Number(blended.toFixed(3)),
         newsCount: p.newsCount30d,
+        topDriverNewsIds: p.topDriverNewsIds,
       };
     });
   }, [data]);
+
+  // Key on the ISO timestamp (unique) rather than the friendly "MMM D" label,
+  // which can collide across years in 18/24mo windows.
+  const anomalyByIso = useMemo(() => {
+    const map = new Map<string, SentimentAnomaly>();
+    if (!data) return map;
+    for (const a of data.trend.anomalies) map.set(a.snapshotAt, a);
+    return map;
+  }, [data]);
+
+  const formatDateTick = (iso: string): string =>
+    new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
   if (loading) {
     return (
@@ -169,7 +214,6 @@ export const MarketSentimentTrend: React.FC<MarketSentimentTrendProps> = ({
 
   const t = data.trend;
   const hasAnyPoints = chartRows.length > 0;
-  const blendedColor = colorForBlended(t.current.blended);
 
   return (
     <Wrapper>
@@ -180,54 +224,24 @@ export const MarketSentimentTrend: React.FC<MarketSentimentTrendProps> = ({
           label="Blended"
           value={formatScore(t.current.blended)}
           sub={labelForBlended(t.current.blended)}
-          color={blendedColor}
+          color={colorForScore(t.current.blended)}
         />
         <Kpi
-          label="Agent"
-          value={formatScore(t.current.agentScore, 0)}
-          sub={
-            t.vs30d.agentScoreDelta === null
-              ? 'no 30d ref'
-              : `${formatScore(t.vs30d.agentScoreDelta, 0)} vs 30d`
-          }
-          color={
-            t.current.agentScore === null
-              ? BT.text.muted
-              : t.current.agentScore > 0
-                ? BT.text.green
-                : t.current.agentScore < 0
-                  ? BT.text.red
-                  : BT.text.amber
-          }
+          label="vs 30d"
+          value={formatScore(t.vs30d.blendedDelta)}
+          sub={t.vs30d.blendedDelta === null ? 'no 30d ref' : 'blended Δ'}
+          color={colorForScore(t.vs30d.blendedDelta, 0.05)}
         />
         <Kpi
-          label="News 30d"
-          value={t.newsAvailable ? formatScore(t.current.newsAvg30d) : '—'}
-          sub={
-            !t.newsAvailable
-              ? 'no news data'
-              : t.vs30d.newsAvg30dDelta === null
-                ? 'no 30d ref'
-                : `${formatScore(t.vs30d.newsAvg30dDelta)} vs 30d`
-          }
-          color={
-            !t.newsAvailable || t.current.newsAvg30d === null
-              ? BT.text.muted
-              : t.current.newsAvg30d > 0
-                ? BT.text.green
-                : t.current.newsAvg30d < 0
-                  ? BT.text.red
-                  : BT.text.amber
-          }
+          label="vs 12mo"
+          value={formatScore(t.vs12mo.blendedDelta)}
+          sub={t.vs12mo.blendedDelta === null ? 'no 12mo ref' : 'blended Δ'}
+          color={colorForScore(t.vs12mo.blendedDelta, 0.1)}
         />
         <Kpi
           label="Macro UMCSI"
           value={formatMacro(t.current.macroConsumerSentiment)}
-          sub={
-            t.vs12mo.blendedDelta === null
-              ? 'no 12mo ref'
-              : `blend ${formatScore(t.vs12mo.blendedDelta)} vs 12mo`
-          }
+          sub={t.newsAvailable ? `news ${formatScore(t.current.newsAvg30d)}` : 'no news data'}
           color={BT.text.cyan}
         />
       </div>
@@ -241,11 +255,12 @@ export const MarketSentimentTrend: React.FC<MarketSentimentTrendProps> = ({
 
       {hasAnyPoints && (
         <div style={{ padding: '4px 4px 8px 4px' }}>
-          <ResponsiveContainer width="100%" height={180}>
+          <ResponsiveContainer width="100%" height={220}>
             <ComposedChart data={chartRows} margin={{ top: 8, right: 16, bottom: 4, left: 0 }}>
               <CartesianGrid stroke={BT.border.subtle} strokeDasharray="2 4" vertical={false} />
               <XAxis
-                dataKey="dateLabel"
+                dataKey="snapshotAt"
+                tickFormatter={formatDateTick}
                 tick={{ fill: BT.text.muted, fontSize: 9, fontFamily: 'monospace' }}
                 stroke={BT.border.subtle}
                 interval="preserveStartEnd"
@@ -259,7 +274,13 @@ export const MarketSentimentTrend: React.FC<MarketSentimentTrendProps> = ({
               />
               <ReferenceLine y={0} stroke={BT.border.subtle} strokeDasharray="3 3" />
               <Tooltip
-                content={<SentimentTooltip topNews={t.topDriverNews} />}
+                content={
+                  <SentimentTooltip
+                    newsLookup={t.newsLookup}
+                    anomalyByIso={anomalyByIso}
+                    formatDateTick={formatDateTick}
+                  />
+                }
                 cursor={{ stroke: BT.text.amber, strokeOpacity: 0.4 }}
               />
               <Legend
@@ -300,6 +321,40 @@ export const MarketSentimentTrend: React.FC<MarketSentimentTrendProps> = ({
                 isAnimationActive={false}
                 connectNulls
               />
+              <Line
+                type="monotone"
+                dataKey="blended"
+                name="Blended"
+                stroke={BT.text.primary}
+                strokeWidth={1.25}
+                strokeDasharray="3 3"
+                dot={false}
+                isAnimationActive={false}
+                connectNulls
+              />
+              {t.anomalies.map((a, i) => {
+                const fill = a.direction === 'up' ? BT.text.green : BT.text.red;
+                return (
+                  <ReferenceDot
+                    key={`anomaly-${i}`}
+                    x={a.snapshotAt}
+                    y={a.blendedTo ?? 0}
+                    r={5}
+                    fill={fill}
+                    stroke={BT.bg.panel}
+                    strokeWidth={1.5}
+                    ifOverflow="visible"
+                  />
+                );
+              })}
+              <Brush
+                dataKey="snapshotAt"
+                height={18}
+                travellerWidth={6}
+                stroke={BT.border.muted}
+                fill={BT.bg.elevated}
+                tickFormatter={() => ''}
+              />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
@@ -308,11 +363,11 @@ export const MarketSentimentTrend: React.FC<MarketSentimentTrendProps> = ({
       {!t.newsAvailable && hasAnyPoints && (
         <Hint>
           News-sentiment series unavailable for this entity (no scored news in the window). Macro +
-          agent series shown.
+          agent + blended series shown.
         </Hint>
       )}
 
-      {t.topDriverNews.length > 0 && (
+      {t.anomalies.length > 0 && (
         <div style={{ padding: '6px 12px 8px', borderTop: `1px solid ${BT.border.subtle}` }}>
           <div style={{
             fontSize: 9,
@@ -322,34 +377,23 @@ export const MarketSentimentTrend: React.FC<MarketSentimentTrendProps> = ({
             marginBottom: 4,
             ...mono,
           }}>
-            Top Driving News (last snapshot)
+            Detected moves ({t.anomalies.length})
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {t.topDriverNews.slice(0, 3).map(n => {
-              const scoreColor = n.sentimentScore === null
-                ? BT.text.muted
-                : n.sentimentScore > 0.1
-                  ? BT.text.green
-                  : n.sentimentScore < -0.1
-                    ? BT.text.red
-                    : BT.text.amber;
-              const inner = (
-                <span style={{ display: 'flex', gap: 6, alignItems: 'baseline', fontSize: 10, ...mono }}>
-                  <span style={{ color: scoreColor, width: 32, flexShrink: 0 }}>
-                    {n.sentimentScore === null ? '—' : formatScore(n.sentimentScore)}
+            {t.anomalies.slice(-3).reverse().map((a, i) => {
+              const dateLbl = new Date(a.snapshotAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+              const color = a.direction === 'up' ? BT.text.green : BT.text.red;
+              const news = a.topDriverNewsIds.slice(0, 2).map(id => t.newsLookup[id]).filter(Boolean);
+              return (
+                <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'baseline', fontSize: 10, ...mono }}>
+                  <span style={{ color: BT.text.muted, width: 48, flexShrink: 0 }}>{dateLbl}</span>
+                  <span style={{ color, width: 56, flexShrink: 0 }}>
+                    {formatScore(a.magnitude)} {a.zScore !== null ? `(${a.zScore.toFixed(1)}σ)` : ''}
                   </span>
                   <span style={{ color: BT.text.primary, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {n.title}
+                    {news.length > 0 ? news.map(n => n.title).join(' · ') : 'no driver news linked'}
                   </span>
-                  <span style={{ color: BT.text.muted, fontSize: 9 }}>{n.source ?? ''}</span>
-                </span>
-              );
-              return n.sourceUrl ? (
-                <a key={n.id} href={n.sourceUrl} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
-                  {inner}
-                </a>
-              ) : (
-                <div key={n.id}>{inner}</div>
+                </div>
               );
             })}
           </div>
@@ -441,13 +485,38 @@ const Kpi: React.FC<{ label: string; value: string; sub: string; color: string }
 interface RechartsTooltipProps {
   active?: boolean;
   label?: string;
-  payload?: Array<{ name?: string; value?: number | null; color?: string; payload?: { newsCount?: number | null; macroRaw?: number | null } }>;
-  topNews: SentimentTopNews[];
+  payload?: Array<{
+    name?: string;
+    value?: number | null;
+    color?: string;
+    payload?: {
+      snapshotAt?: string;
+      newsCount?: number | null;
+      macroRaw?: number | null;
+      topDriverNewsIds?: string[];
+      blended?: number | null;
+    };
+  }>;
+  newsLookup: Record<string, SentimentTopNews>;
+  anomalyByIso: Map<string, SentimentAnomaly>;
+  formatDateTick: (iso: string) => string;
 }
 
-const SentimentTooltip: React.FC<RechartsTooltipProps> = ({ active, label, payload, topNews }) => {
+const SentimentTooltip: React.FC<RechartsTooltipProps> = ({
+  active,
+  label,
+  payload,
+  newsLookup,
+  anomalyByIso,
+  formatDateTick,
+}) => {
   if (!active || !payload || payload.length === 0) return null;
   const ctx = payload[0]?.payload;
+  const iso = ctx?.snapshotAt ?? label;
+  const driverIds = ctx?.topDriverNewsIds ?? [];
+  const driverNews = driverIds.slice(0, 2).map(id => newsLookup[id]).filter((n): n is SentimentTopNews => !!n);
+  const anomaly = iso ? anomalyByIso.get(iso) : undefined;
+  const displayLabel = iso ? formatDateTick(iso) : (label ?? '');
 
   return (
     <div style={{
@@ -455,10 +524,21 @@ const SentimentTooltip: React.FC<RechartsTooltipProps> = ({ active, label, paylo
       border: `1px solid ${BT.border.muted}`,
       padding: '6px 8px',
       fontSize: 10,
-      maxWidth: 260,
+      maxWidth: 280,
       ...mono,
     }}>
-      <div style={{ color: BT.text.amber, fontWeight: 700, marginBottom: 4 }}>{label}</div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+        <span style={{ color: BT.text.amber, fontWeight: 700 }}>{displayLabel}</span>
+        {anomaly && (
+          <span style={{
+            color: anomaly.direction === 'up' ? BT.text.green : BT.text.red,
+            fontSize: 9,
+            fontWeight: 700,
+          }}>
+            ANOMALY {formatScore(anomaly.magnitude)}{anomaly.zScore !== null ? ` (${anomaly.zScore.toFixed(1)}σ)` : ''}
+          </span>
+        )}
+      </div>
       {payload.map((p, i) => (
         <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, color: BT.text.secondary }}>
           <span style={{ color: p.color ?? BT.text.muted }}>{p.name}</span>
@@ -479,14 +559,33 @@ const SentimentTooltip: React.FC<RechartsTooltipProps> = ({ active, label, paylo
           <span>{ctx.newsCount}</span>
         </div>
       )}
-      {topNews.length > 0 && (
+      {driverNews.length > 0 && (
         <div style={{ marginTop: 6, paddingTop: 4, borderTop: `1px solid ${BT.border.subtle}` }}>
           <div style={{ color: BT.text.muted, fontSize: 9, textTransform: 'uppercase', marginBottom: 2 }}>
-            Top driver
+            Top news driving this point
           </div>
-          <div style={{ color: BT.text.primary, fontSize: 9, lineHeight: 1.3 }}>
-            {topNews[0].title}
-          </div>
+          {driverNews.map(n => {
+            const c = n.sentimentScore === null
+              ? BT.text.muted
+              : n.sentimentScore > 0.1
+                ? BT.text.green
+                : n.sentimentScore < -0.1
+                  ? BT.text.red
+                  : BT.text.amber;
+            return (
+              <div key={n.id} style={{ display: 'flex', gap: 4, fontSize: 9, lineHeight: 1.3, marginBottom: 2 }}>
+                <span style={{ color: c, width: 30, flexShrink: 0 }}>
+                  {n.sentimentScore === null ? '—' : formatScore(n.sentimentScore)}
+                </span>
+                <span style={{ color: BT.text.primary, flex: 1 }}>{n.title}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {driverNews.length === 0 && driverIds.length > 0 && (
+        <div style={{ marginTop: 4, color: BT.text.muted, fontSize: 9 }}>
+          {driverIds.length} driver news ids (titles unavailable)
         </div>
       )}
     </div>
