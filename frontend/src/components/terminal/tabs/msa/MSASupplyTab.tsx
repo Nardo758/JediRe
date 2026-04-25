@@ -2,27 +2,27 @@
  * MSASupplyTab - Metro-wide supply pipeline, construction tracker, lease-up
  */
 
-import React, { useMemo, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Building2, Hammer, Clock, CheckCircle2 } from 'lucide-react';
 import { BT, terminalStyles } from '../../theme';
-import { TerminalChart, ChartDataPoint } from '../../TerminalChart';
 import { TerminalSection, DataTable } from '../../TerminalLayouts';
 import { MSAData } from '../../MSATerminal';
 import { useCommentaryStore } from '../../../../stores/commentaryStore';
 import { apiClient } from '../../../../api/client';
 import { SupplyNarrative, SignalCommentary } from '../../commentary';
+import { SupplyTimelineSection } from '../../SupplyTimelineSection';
 
 interface SupplySubmarketRow { name: string; units: number; pctOfTotal: number; status: 'HIGH' | 'MOD' | 'LOW'; projectCount?: number; }
-interface SupplyProjectRow { project: string; submarket: string; units: number; class: string; delivery: string; pctComplete: number; developer: string | null; }
 interface SupplyApiProject { project: string; submarket?: string; units?: number; class?: string; delivery?: string; }
 interface SupplyApiResponse { success: boolean; totalUnits: number; projectCount: number; bySubmarket: SupplySubmarketRow[]; projects: SupplyApiProject[]; }
 
 interface MSASupplyTabProps {
   msaId: string;
   msa: MSAData;
+  onPropertySelect?: (propertyId: string, propertyName?: string) => void;
 }
 
-export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa }) => {
+export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa, onPropertySelect }) => {
   const msaName = msa?.name || msaId || 'Atlanta';
   const { fetchCommentary, getCommentary, isLoading, getError } = useCommentaryStore();
   const commentary = getCommentary('msa', msaId);
@@ -30,7 +30,6 @@ export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa }) => {
   const error = getError('msa', msaId);
 
   const [pipelineBySubmarket, setPipelineBySubmarket] = useState<SupplySubmarketRow[]>([]);
-  const [constructionTracker, setConstructionTracker] = useState<SupplyProjectRow[]>([]);
   const [totalPipelineUnits, setTotalPipelineUnits] = useState<number | null>(null);
 
   useEffect(() => {
@@ -44,24 +43,11 @@ export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa }) => {
           if (Array.isArray(data.bySubmarket) && data.bySubmarket.length > 0) {
             setPipelineBySubmarket(data.bySubmarket);
           }
-          if (Array.isArray(data.projects) && data.projects.length > 0) {
-            setConstructionTracker(data.projects.slice(0, 20).map((p: SupplyApiProject) => ({
-              project: p.project,
-              submarket: p.submarket || 'Atlanta',
-              units: p.units || 0,
-              class: p.class || 'B',
-              delivery: p.delivery || 'TBD',
-              pctComplete: 0,
-              developer: null,
-            })));
-          }
           if (data.totalUnits) setTotalPipelineUnits(data.totalUnits);
         }
       })
       .catch(() => {});
   }, []);
-
-  const deliveryData: ChartDataPoint[] = useMemo(() => [], []);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -126,64 +112,13 @@ export const MSASupplyTab: React.FC<MSASupplyTabProps> = ({ msaId, msa }) => {
         </div>
       </div>
 
-      {deliveryData.length > 0 ? (
-        <TerminalChart
-          title="Delivery vs Absorption (Units)"
-          data={deliveryData}
-          series={[
-            { key: 'delivered', name: 'Delivered', color: BT.text.amber, data: [] },
-            { key: 'absorbed', name: 'Absorbed', color: BT.text.green, data: [] },
-          ]}
-          height={200}
-          valueFormatter={(v) => v.toLocaleString()}
-        />
-      ) : (
-        <div style={{ ...terminalStyles.card, padding: 20, textAlign: 'center' }}>
-          <div style={{ fontSize: 12, color: BT.text.muted, marginBottom: 6 }}>Delivery vs Absorption</div>
-          <div style={{ fontSize: 11, color: BT.text.muted }}>Quarterly delivery data not yet available for this market.</div>
-        </div>
-      )}
-
-      <TerminalSection title="Under Construction Tracker" icon={<Hammer size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />}>
-        <DataTable>
-          <thead>
-            <tr>
-              <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Project</th>
-              <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Submarket</th>
-              <th style={{ ...terminalStyles.tableHeader, textAlign: 'right' }}>Units</th>
-              <th style={{ ...terminalStyles.tableHeader, textAlign: 'center' }}>Class</th>
-              <th style={{ ...terminalStyles.tableHeader, textAlign: 'center' }}>Delivery</th>
-              <th style={{ ...terminalStyles.tableHeader, textAlign: 'left' }}>Developer</th>
-              <th style={{ ...terminalStyles.tableHeader, textAlign: 'left', width: 120 }}>Progress</th>
-            </tr>
-          </thead>
-          <tbody>
-            {constructionTracker.length === 0 && (
-              <tr><td colSpan={7} style={{ ...terminalStyles.tableCell, textAlign: 'center', color: BT.text.muted }}>No pipeline projects found</td></tr>
-            )}
-            {constructionTracker.map((proj) => (
-              <tr key={proj.project} style={{ borderBottom: `1px solid ${BT.border.subtle}` }}>
-                <td style={{ ...terminalStyles.tableCell, fontWeight: 500 }}>{proj.project}</td>
-                <td style={{ ...terminalStyles.tableCell, color: BT.text.muted }}>{proj.submarket}</td>
-                <td style={{ ...terminalStyles.tableCell, textAlign: 'right' }}>{proj.units}</td>
-                <td style={{ ...terminalStyles.tableCell, textAlign: 'center' }}>
-                  <span style={{ padding: '2px 6px', background: BT.bg.elevated, fontSize: 10, fontWeight: 600 }}>{proj.class}</span>
-                </td>
-                <td style={{ ...terminalStyles.tableCell, textAlign: 'center', color: BT.text.amber }}>{proj.delivery}</td>
-                <td style={{ ...terminalStyles.tableCell, color: BT.text.muted, fontSize: 10 }}>{proj.developer}</td>
-                <td style={{ ...terminalStyles.tableCell }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <div style={{ flex: 1, height: 6, background: BT.bg.elevated, overflow: 'hidden' }}>
-                      <div style={{ height: '100%', width: `${proj.pctComplete}%`, background: BT.text.cyan }} />
-                    </div>
-                    <span style={{ fontSize: 10, color: BT.text.primary, fontFamily: "'JetBrains Mono'" }}>{proj.pctComplete}%</span>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </DataTable>
-      </TerminalSection>
+      <SupplyTimelineSection
+        scope="msa"
+        msaId={msaId}
+        msaName={msaName}
+        state={msa.state}
+        onPropertySelect={onPropertySelect}
+      />
 
       <TerminalSection title="Active Lease-Up Tracker" icon={<CheckCircle2 size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />}>
         <div style={{ padding: '24px 0', textAlign: 'center' }}>

@@ -267,6 +267,222 @@ router.get('/timeline/:tradeAreaId', async (req, res) => {
 });
 
 /**
+ * GET /api/v1/supply/pipeline-timeline
+ * Forward-looking unit deliveries for an MSA or Submarket.
+ *
+ * Query params:
+ *   msaId           — e.g. 'atlanta-ga' (required for state inference if `state` omitted)
+ *   state           — 2-letter (default 'GA')
+ *   submarketName   — optional. When provided, projects are filtered by name/address keyword match
+ *   submarketId     — optional. Echoed back in `resolved` for client correlation
+ *   quarters        — chart window length, default 8
+ *
+ * Source: `apartment_supply_pipeline` (the populated table). Status/probability are derived
+ * from `available_date` because the source feed does not carry explicit status.
+ */
+router.get('/pipeline-timeline', async (req, res) => {
+  try {
+    const msaId = (req.query.msaId as string) || '';
+    // Only accept an explicit state, or a 2-letter trailing token in msaId.
+    // Avoids "atlanta" -> state "ATLANTA" bug when msaId is a single slug.
+    const explicitState = (req.query.state as string) || '';
+    const tail = msaId.split('-').pop() || '';
+    const state = (
+      explicitState && /^[A-Za-z]{2}$/.test(explicitState) ? explicitState
+      : /^[A-Za-z]{2}$/.test(tail) ? tail
+      : 'GA'
+    ).toUpperCase();
+    const submarketName = (req.query.submarketName as string) || '';
+    const submarketId = (req.query.submarketId as string) || '';
+    const quarters = Math.min(Math.max(parseInt(req.query.quarters as string) || 8, 1), 16);
+
+    const { getClient } = require('../../database/connection');
+    const client = await getClient();
+
+    try {
+      const params: (string | number)[] = [state];
+      let where = `state = $1`;
+
+      // Submarket filter: case-insensitive keyword match against name OR address.
+      // Splits "Inman Park/Old Fourth Ward" → first token to widen matches.
+      if (submarketName) {
+        const keyword = submarketName.split('/')[0].trim();
+        params.push(`%${keyword}%`);
+        where += ` AND (name ILIKE $${params.length} OR address ILIKE $${params.length})`;
+      }
+
+      const rowsResult = await client.query(
+        `SELECT id, name, address, city, state, total_units, property_class,
+                available_date, units_delivering
+           FROM apartment_supply_pipeline
+          WHERE ${where}
+          ORDER BY available_date NULLS LAST, total_units DESC NULLS LAST`,
+        params
+      );
+
+      const now = new Date();
+      const probabilityByStatus: Record<string, number> = {
+        lease_up: 1.0,
+        under_construction: 0.85,
+        approved: 0.55,
+        planned: 0.25,
+      };
+
+      const dateToQuarter = (d: Date): string => {
+        const y = d.getUTCFullYear();
+        const q = Math.floor(d.getUTCMonth() / 3) + 1;
+        return `${y}-Q${q}`;
+      };
+
+      const advanceQuarter = (q: string, n: number): string => {
+        const [yStr, qStr] = q.split('-Q');
+        let qi = parseInt(qStr) - 1 + n;
+        let y = parseInt(yStr) + Math.floor(qi / 4);
+        qi = ((qi % 4) + 4) % 4;
+        return `${y}-Q${qi + 1}`;
+      };
+
+      const startQuarter = dateToQuarter(now);
+      const windowQuarters: string[] = [];
+      for (let i = 0; i < quarters; i++) {
+        windowQuarters.push(advanceQuarter(startQuarter, i));
+      }
+      const inWindow = new Set(windowQuarters);
+
+      type Project = {
+        id: string;
+        name: string;
+        address: string | null;
+        submarket: string | null;
+        developer: string | null;
+        units: number;
+        unitsDelivering: number;
+        weightedUnits: number;
+        status: 'lease_up' | 'under_construction' | 'approved' | 'planned';
+        deliveryDate: string | null;
+        deliveryQuarter: string | null;
+        propertyClass: string | null;
+        propertyId: string | null;
+      };
+
+      const projects: Project[] = [];
+      const quarterAgg = new Map<string, { totalUnits: number; weightedUnits: number; projectCount: number }>();
+      windowQuarters.forEach(q => quarterAgg.set(q, { totalUnits: 0, weightedUnits: 0, projectCount: 0 }));
+
+      let totalUnits = 0;
+      let weightedUnits = 0;
+      const statusUnits: Record<string, number> = {
+        lease_up: 0, under_construction: 0, approved: 0, planned: 0,
+      };
+
+      for (const r of rowsResult.rows) {
+        const units = Number(r.total_units || 0);
+        const unitsDelivering = Number(r.units_delivering || 0);
+        const availableDate: Date | null = r.available_date ? new Date(r.available_date) : null;
+
+        // Derive status from available_date.
+        let status: Project['status'];
+        if (!availableDate) {
+          status = 'planned';
+        } else {
+          const monthsOut = (availableDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24 * 30.44);
+          if (monthsOut < -3) {
+            // Already delivered — exclude from forward pipeline view entirely.
+            continue;
+          }
+          if (monthsOut <= 0) status = 'lease_up';
+          else if (monthsOut <= 12) status = 'under_construction';
+          else if (monthsOut <= 24) status = 'approved';
+          else status = 'planned';
+        }
+
+        const probability = probabilityByStatus[status];
+        const weighted = units * probability;
+        const deliveryQuarter = availableDate ? dateToQuarter(availableDate) : null;
+
+        projects.push({
+          id: String(r.id),
+          name: r.name || r.address || 'Unknown project',
+          address: r.address || null,
+          submarket: r.city || null,
+          developer: null, // not present in source feed
+          units,
+          unitsDelivering,
+          weightedUnits: parseFloat(weighted.toFixed(1)),
+          status,
+          deliveryDate: availableDate ? availableDate.toISOString().slice(0, 10) : null,
+          deliveryQuarter,
+          propertyClass: r.property_class || null,
+          propertyId: null, // no linkage in source feed yet
+        });
+
+        totalUnits += units;
+        weightedUnits += weighted;
+        statusUnits[status] += units;
+
+        if (deliveryQuarter && inWindow.has(deliveryQuarter)) {
+          const bucket = quarterAgg.get(deliveryQuarter)!;
+          bucket.totalUnits += units;
+          bucket.weightedUnits += weighted;
+          bucket.projectCount += 1;
+        }
+      }
+
+      const byQuarter = windowQuarters.map(q => {
+        const b = quarterAgg.get(q)!;
+        return {
+          quarter: q,
+          totalUnits: b.totalUnits,
+          weightedUnits: parseFloat(b.weightedUnits.toFixed(1)),
+          projectCount: b.projectCount,
+        };
+      });
+
+      const msaName = msaId
+        ? msaId
+            .replace(/-[a-z]{2}$/, '')
+            .split('-')
+            .map(s => s.charAt(0).toUpperCase() + s.slice(1))
+            .join(' ')
+        : null;
+      const scope = submarketName ? 'submarket' : 'msa';
+      const label = submarketName
+        ? `${submarketName}${msaName ? ` — ${msaName} MSA` : ''}`
+        : msaName ? `${msaName} MSA` : `${state} state pipeline`;
+
+      res.json({
+        success: true,
+        resolved: {
+          scope,
+          label,
+          msaId: msaId || null,
+          msaName,
+          state,
+          submarketName: submarketName || null,
+          submarketId: submarketId || null,
+        },
+        totals: {
+          projectCount: projects.length,
+          totalUnits,
+          weightedUnits: parseFloat(weightedUnits.toFixed(1)),
+          leaseUpUnits: statusUnits.lease_up,
+          underConstructionUnits: statusUnits.under_construction,
+          approvedUnits: statusUnits.approved,
+          plannedUnits: statusUnits.planned,
+        },
+        byQuarter,
+        projects,
+      });
+    } finally {
+      client.release();
+    }
+  } catch (error: any) {
+    logger.error('Error getting supply pipeline timeline', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * GET /api/v1/supply/market-dynamics/:tradeAreaId
  * Get combined demand-supply analysis for trade area
  */

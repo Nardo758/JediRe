@@ -185,7 +185,7 @@ export const MSATerminal: React.FC<MSATerminalProps> = ({
       case 'capital':
         return <MSACapitalOwnersTab msaId={msaId} msa={msa} onSelectProperty={onPropertySelect} />;
       case 'supply':
-        return <MSASupplyTab msaId={msaId} msa={msa} />;
+        return <MSASupplyTab msaId={msaId} msa={msa} onPropertySelect={onPropertySelect} />;
       case 'economics':
         return <MSAEconomicsTab msaId={msaId} msa={msa} />;
       case 'trends':
