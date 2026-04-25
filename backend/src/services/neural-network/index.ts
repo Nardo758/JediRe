@@ -55,3 +55,27 @@ export {
   DataGap,
   ContextAnalysis
 } from './context-awareness.service';
+
+// Graph Ingestion Listener - auto-ingest entities to graph
+export {
+  GraphIngestionListener,
+  getGraphIngestionListener,
+  EntityEvent,
+  EntityEventType
+} from './graph-ingestion-listener';
+
+// Scheduled Refresh - staleness checking & refresh queuing
+export {
+  ScheduledRefreshService,
+  getScheduledRefreshService,
+  RefreshTask,
+  RefreshStats
+} from './scheduled-refresh';
+
+// Embeddings - vector embeddings for semantic search
+export {
+  EmbeddingsService,
+  getEmbeddingsService,
+  EmbeddingResult,
+  SimilarityResult
+} from './embeddings.service';
