@@ -71,6 +71,9 @@ export interface SubmarketData {
 interface SubmarketTerminalProps {
   submarketId: string;
   submarket?: SubmarketData;
+  submarketName?: string;
+  msaId?: string;
+  msaName?: string;
   onPropertySelect?: (propertyId: string, propertyName?: string) => void;
   onMsaNavigate?: () => void;
   embedded?: boolean; // Hide header/footer when embedded in F4MarketsView
@@ -79,6 +82,9 @@ interface SubmarketTerminalProps {
 export const SubmarketTerminal: React.FC<SubmarketTerminalProps> = ({
   submarketId,
   submarket: submarketProp,
+  submarketName,
+  msaId,
+  msaName,
   onPropertySelect,
   embedded = false,
   onMsaNavigate,
@@ -102,12 +108,21 @@ export const SubmarketTerminal: React.FC<SubmarketTerminalProps> = ({
     const loadSubmarket = async () => {
       try {
         setLoading(true);
-        // Mock data for now - would come from API
+        // Placeholder data — real per-submarket metrics still being wired in.
+        // Use the names passed from the parent so the header matches the row the user clicked.
+        const fallbackName =
+          submarketName ||
+          submarketId
+            .split(/[-_\s]+/)
+            .filter(Boolean)
+            .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+            .join(' ') ||
+          'Submarket';
         const mockSubmarket: SubmarketData = {
           id: submarketId,
-          name: 'Buckhead',
-          msaId: 'atlanta',
-          msaName: 'Atlanta Metro',
+          name: fallbackName,
+          msaId: msaId || 'atlanta',
+          msaName: msaName || 'Atlanta Metro',
           propertyCount: 127,
           totalUnits: 38450,
           avgRent: 1895,

@@ -559,8 +559,23 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
 
   const handleSubmarketSelect = (submarketId: string) => {
     setDrillSubmarketId(submarketId);
-    const sub = SUBMARKET_INDEX.find(s => s.name.toLowerCase().replace(/\s+/g, "-") === submarketId);
-    setDrillSubmarketName(sub?.name || submarketId);
+    const slugify = (s: string) => s.toLowerCase().replace(/\s+/g, "-");
+    const haystack: Array<{ id?: string; name: string }> = [
+      ...(SUBMARKET_RESOLVED as Array<{ id?: string; name: string }>),
+      ...SUBMARKET_INDEX,
+    ];
+    const sub =
+      haystack.find(s => s.id === submarketId) ||
+      haystack.find(s => slugify(s.name) === submarketId) ||
+      haystack.find(s => s.name.toLowerCase() === submarketId.toLowerCase());
+    const prettyName =
+      sub?.name ||
+      submarketId
+        .split(/[-_\s]+/)
+        .filter(Boolean)
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(" ");
+    setDrillSubmarketName(prettyName);
     setLevel("submarket-terminal");
   };
 
@@ -615,7 +630,15 @@ export default function F4MarketsView({ onTopMovers }: { onTopMovers?: (movers: 
           <span style={{ ...mono, fontSize: 10, color: C.primary, fontWeight: 600 }}>{drillSubmarketName.toUpperCase()}</span>
         </div>
         <div style={{ flex: 1, overflow: "hidden" }}>
-          <SubmarketTerminal submarketId={drillSubmarketId} onPropertySelect={handlePropertySelect} onMsaNavigate={() => setLevel("msa-terminal")} embedded />
+          <SubmarketTerminal
+            submarketId={drillSubmarketId}
+            submarketName={drillSubmarketName}
+            msaId={drillMsaId}
+            msaName={drillMsaName}
+            onPropertySelect={handlePropertySelect}
+            onMsaNavigate={() => setLevel("msa-terminal")}
+            embedded
+          />
         </div>
       </div>
     );

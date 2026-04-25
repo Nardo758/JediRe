@@ -285,7 +285,13 @@ export const MSASubmarketsTab: React.FC<MSASubmarketsTabProps> = ({ msaId, msa, 
                   return (
                     <tr
                       key={sub.id}
-                      onClick={() => setSelectedSub(sub.id)}
+                      onClick={() => {
+                        setSelectedSub(sub.id);
+                        if (onSelectSubmarket) {
+                          onSelectSubmarket(sub.id);
+                        }
+                      }}
+                      title={onSelectSubmarket ? `Open ${sub.name} terminal` : undefined}
                       style={{
                         borderBottom: i < displaySubmarkets.length - 1 ? `1px solid ${BT.border.subtle}44` : 'none',
                         background: isSelected ? `${BT.text.amber}08` : 'transparent',
