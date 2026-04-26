@@ -213,8 +213,15 @@ export default function NeuralNetworkHubWidget({ T }: Props) {
         ) : (
           <>
             {running.slice(0, 5).map(r => <RunLine key={r.id} r={r} />)}
-            {/* Tail of recently-completed inline so the user sees the
-                in-flight → completed handoff without scrolling */}
+            {recent.length > 0 && (
+              <div style={{
+                fontFamily: T.font.mono, fontSize: 8, fontWeight: 700,
+                color: T.text.muted, letterSpacing: 1,
+                padding: '4px 8px 2px', textTransform: 'uppercase',
+              }}>
+                ◦ Recently Completed
+              </div>
+            )}
             {recent.slice(0, 3).map(r => <RunLine key={r.id} r={r} faded />)}
           </>
         )}

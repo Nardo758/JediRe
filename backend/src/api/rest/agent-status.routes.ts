@@ -15,6 +15,23 @@
  * Backed by the `agent_events` and `agent_workflow_runs` tables created in
  * 20260426_neural_hub_agent_workflow_runs.sql.
  *
+ * `agent_workflow_runs.status` value space
+ * ----------------------------------------
+ * The schema column is VARCHAR(16) with no CHECK constraint.  The orchestrator
+ * uses four labels:
+ *   pending    – pre-created by the dispatcher; not yet picked up
+ *   running    – orchestrator dispatched the agent and is awaiting its result
+ *   completed  – terminal success
+ *   failed     – terminal genuine failure (the agent ran and threw)
+ *   skipped    – terminal non-failure: the agent was filtered out at dispatch
+ *                time (canWorkAutonomously / trigger conditions); we mark
+ *                these as `skipped` rather than `failed` so downstream
+ *                analytics do not conflate operational skips with real
+ *                failures.  The `recent` query below intentionally filters
+ *                on `('completed','failed')` so skipped rows are silently
+ *                excluded from the recent-activity feed (correct UX —
+ *                they are noise, not work that happened).
+ *
  * Authorization model
  * -------------------
  * Mirrors the established pattern in `backend/src/api/rest/agent-runs.routes.ts`:
