@@ -1,0 +1,54 @@
+[4/25/2026 1:01 PM] Leon D: Does the neural network need memory or is the database it's memory
+[4/25/2026 1:01 PM] RocketManOpenClaw2: Great architecture question. The short answer: the database IS the memory — but there are 4 different types of memory and they live in different places:
+
+Memory Architecture
+
+┌─────────────────────────────────────────────────────────────┐
+│                    NEURAL NETWORK MEMORY                     │
+│                                                              │
+│  1. STRUCTURAL MEMORY (Long-term, permanent)                 │
+│     → knowledge_graph_nodes + edges                         │
+│     What: Entities, relationships, market facts              │
+│     "Atlanta has 2,400 units under construction"             │
+│     "Greystar owns 3 properties in Midtown"                  │
+│                                                              │
+│  2. EPISODIC MEMORY (What happened, when)                    │
+│     → agent_runs, audit_log, deal_capsules                   │
+│     What: Past agent decisions, deal history                 │
+│     "Supply agent ran on 4/25, found moderate risk"          │
+│     "CashFlow assumed 5.2% cap rate, actual was 5.4%"        │
+│                                                              │
+│  3. WORKING MEMORY (Current context, temporary)              │
+│     → platform_intel JSONB in deal_capsules                  │
+│     What: Active deal assumptions, seeded intelligence        │
+│     "This deal: market rent $1,850, confidence 0.82"         │
+│                                                              │
+│  4. SEMANTIC MEMORY (Meaning + similarity)                   │
+│     → kg_embeddings_cache (vector embeddings)               │
+│     What: "Find deals similar to this one"                   │
+│     → NOT YET POPULATED (embeddings.service.ts exists        │
+│       but OpenAI key not set)                                │
+└─────────────────────────────────────────────────────────────┘
+
+What's Working vs What's Missing
+
+| Memory Type | Table                            | Status          | Gap                              |
+| ----------- | -------------------------------- | --------------- | -------------------------------- |
+| Structural  | knowledge_graph_nodes/edges      | ✅ Built         | Needs data flowing in            |
+| Episodic    | agent_runs, audit_log            | ✅ Built         | Already working                  |
+| Working     | deal_capsules.platform_intel     | ✅ Built         | Capsule intelligence seeding new |
+| Semantic    | kg_embeddings_cache              | ⚠️ Table exists | No embeddings generated yet      |
+| Learning    | archive_deals, learning_feedback | ✅ Built         | Backtest loop wired              |
+
+The One Real Gap: Semantic Memory
+
+Right now knowledge-graph/search does text matching only. To do "find me deals similar to this one" or "what markets behaved like Atlanta in 2019?" you need embeddings.
+
+Two options:
+
+1. OpenAI ada-002 — $0.0001 per 1K tokens, best quality (need OPENAI_API_KEY in Replit)
+2. Local model via Ollama — free, slightly lower quality, needs setup
+
+Everything else — the network already remembers through the database. Every agent run, every deal, every market event, every web search result gets persisted. The KG is the brain, the DB is the long-term memory.
+
+Want me to wire up embedding generation so semantic search works? It's the last major missing piece.
