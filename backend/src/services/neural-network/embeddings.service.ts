@@ -416,15 +416,67 @@ export class EmbeddingsService {
   }
 
   /**
-   * Lightweight startup check. Logs status; safe to call from boot.
+   * Lightweight startup check. Logs status, and (when possible) runs a
+   * small sample semantic query to confirm the end-to-end path works.
+   * Safe to call from boot — never throws.
    */
-  async healthCheck(): Promise<void> {
+  async healthCheck(opts: { sampleQuery?: string } = {}): Promise<void> {
     const has = this.hasKey();
     const counts = await this.countEmbedded().catch(() => ({ total: -1, embedded: -1 }));
     console.log(
       `[Embeddings] OPENAI_API_KEY=${has ? 'set' : 'MISSING'} model=${MODEL} dims=${DIMENSIONS} ` +
       `nodes=${counts.total} embedded=${counts.embedded}`
     );
+
+    if (!has || counts.embedded <= 0) {
+      console.log('[Embeddings] sample query SKIPPED (no key or no embedded nodes)');
+      return;
+    }
+
+    const probe = opts.sampleQuery ?? 'multifamily rent growth';
+    try {
+      const t0 = Date.now();
+      const hits = await this.similaritySearch(probe, 3);
+      const ms = Date.now() - t0;
+      if (hits.length > 0) {
+        const top = hits[0];
+        console.log(
+          `[Embeddings] sample query OK ("${probe}") → ${hits.length} hits in ${ms}ms; ` +
+          `top: ${top.type}/${top.name} sim=${top.similarity.toFixed(4)}`
+        );
+      } else {
+        console.warn(`[Embeddings] sample query returned 0 hits for "${probe}"`);
+      }
+    } catch (err: any) {
+      console.warn(`[Embeddings] sample query failed: ${err?.message || err}`);
+    }
+  }
+
+  /**
+   * Best-effort startup backfill so the system reaches a usable state
+   * without requiring a manual admin call. Never throws.
+   */
+  async startupBackfillIfNeeded(opts: { max?: number } = {}): Promise<void> {
+    if (!this.hasKey()) {
+      console.log('[Embeddings] startup backfill SKIPPED (no OPENAI_API_KEY)');
+      return;
+    }
+    try {
+      const counts = await this.countEmbedded();
+      const missing = counts.total - counts.embedded;
+      if (missing <= 0) {
+        console.log('[Embeddings] startup backfill: nothing to do (all nodes embedded)');
+        return;
+      }
+      console.log(`[Embeddings] startup backfill: ${missing} node(s) missing — embedding now…`);
+      const stats = await this.embedAllMissing({ max: opts.max ?? 500 });
+      console.log(
+        `[Embeddings] startup backfill complete: scanned=${stats.scanned} ` +
+        `embedded=${stats.embedded} cached=${stats.cached} errors=${stats.errors}`
+      );
+    } catch (err: any) {
+      console.warn(`[Embeddings] startup backfill failed: ${err?.message || err}`);
+    }
   }
 }
 

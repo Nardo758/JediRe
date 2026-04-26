@@ -462,6 +462,12 @@ app.use('/api/v1/replacement-cost', createReplacementCostRoutes(pool));
 app.use('/api/v1/broker-narratives', createBrokerNarrativesRoutes(pool));
 app.use('/api/v1/intelligence', createIntelligenceRefreshRoutes());
 app.use('/api/v1/knowledge-graph', createKnowledgeGraphRoutes(pool));
+// Knowledge Graph public path aliases — see kg-aliases.routes.ts.
+// Mounted at /api (not /api/v1) to satisfy the contracted public paths:
+//   GET  /api/kg/semantic-search
+//   POST /api/admin/kg/embeddings/backfill
+const { createKgAliasRoutes } = require('./api/rest/kg-aliases.routes');
+app.use('/api', createKgAliasRoutes(pool));
 app.use('/api/v1/context', createContextAwarenessRoutes(pool));
 app.use('/api/v1/scheduled-refresh', scheduledRefreshRoutes);
 app.use('/api/v1/data-matrix', dataMatrixRoutes);
@@ -1026,14 +1032,19 @@ async function startServer() {
   console.log(`API base: http://localhost:${PORT}/api/v1`);
   console.log('='.repeat(60));
 
-  // Embeddings layer health check (semantic memory)
-  try {
-    const { getPool } = await import('./database/connection');
-    const { getEmbeddingsService } = await import('./services/neural-network/embeddings.service');
-    await getEmbeddingsService(getPool()).healthCheck();
-  } catch (err) {
-    console.warn('[Embeddings] healthCheck skipped:', (err as any)?.message || err);
-  }
+  // Embeddings layer (semantic memory): startup backfill + health probe.
+  // Runs detached so it never delays the server from accepting traffic.
+  (async () => {
+    try {
+      const { getPool } = await import('./database/connection');
+      const { getEmbeddingsService } = await import('./services/neural-network/embeddings.service');
+      const svc = getEmbeddingsService(getPool());
+      await svc.startupBackfillIfNeeded();
+      await svc.healthCheck();
+    } catch (err) {
+      console.warn('[Embeddings] startup hook skipped:', (err as any)?.message || err);
+    }
+  })();
   
   try {
     startM28Scheduler();
