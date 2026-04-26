@@ -183,6 +183,12 @@ export function setupRESTRoutes(app: Application): void {
   // Market data routes
   app.use(`${API_PREFIX}/market`, marketRoutes);
 
+  // Neural Network Control Hub: GET /agents/status — running, recent runs, recent events
+  // MUST be mounted BEFORE the broader /agents routers below — otherwise the
+  // `GET /:agentId` route inside agentsRoutes captures /status as agentId='status'.
+  const { getPool: getAgentStatusPool } = require('../../database/connection');
+  app.use(`${API_PREFIX}/agents/status`, createAgentStatusRoutes(getAgentStatusPool()));
+
   // Agent routes (orchestration)
   app.use(`${API_PREFIX}/agents`, agentRoutes);
 
@@ -191,10 +197,6 @@ export function setupRESTRoutes(app: Application): void {
 
   // Autonomous Agent System: /agents/chat, /agents/:agentId/chat, /agents/notifications, etc.
   app.use(`${API_PREFIX}/agents`, agentsRoutes);
-
-  // Neural Network Control Hub: GET /agents/status — running, recent runs, recent events
-  const { getPool: getAgentStatusPool } = require('../../database/connection');
-  app.use(`${API_PREFIX}/agents/status`, createAgentStatusRoutes(getAgentStatusPool()));
 
   // Morning Brief: /morning-brief
   app.use(`${API_PREFIX}/morning-brief`, morningBriefRoutes);
@@ -519,8 +521,12 @@ export function setupRESTRoutes(app: Application): void {
   app.use(`${API_PREFIX}/knowledge-graph`, createKnowledgeGraphRoutes(getKGPool()));
 
   // Context Awareness routes (analyst brain - thinks like a real estate person)
+  // Wrapped in requireAuth so the LLM-backed POST /context/query endpoint
+  // (Neural Network Hub "Ask the Network") can never be reached anonymously
+  // regardless of which entrypoint mounts these routes.
   const { getPool: getCAPool } = require('../../database/connection');
-  app.use(`${API_PREFIX}/context`, createContextAwarenessRoutes(getCAPool()));
+  const { authMiddleware: caAuthMw } = require('../../middleware/auth');
+  app.use(`${API_PREFIX}/context`, caAuthMw.requireAuth, createContextAwarenessRoutes(getCAPool()));
 
   // Column Catalog routes (F4 Markets data grid)
   app.use(`${API_PREFIX}/columns`, columnCatalogRoutes);
