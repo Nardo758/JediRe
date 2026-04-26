@@ -78,13 +78,36 @@ export function createKgAliasRoutes(pool: Pool): Router {
         return res.status(503).json({ success: false, error: 'OPENAI_API_KEY not configured' });
       }
 
-      const body = (req.body || {}) as { batchSize?: number; max?: number };
-      const stats = await embeddings.embedAllMissing({
-        batchSize: body.batchSize,
-        max: body.max,
-      });
+      const body = (req.body || {}) as {
+        batchSize?: number;
+        max?: number;
+        mode?: 'missing' | 'stale' | 'all';
+      };
 
-      res.json({ success: true, stats });
+      const mode = body.mode ?? ((req.query.mode as string | undefined) as any) ?? 'missing';
+
+      let payload: any;
+      if (mode === 'stale') {
+        const stats = await embeddings.reembedStale({
+          batchSize: body.batchSize,
+          max: body.max,
+        });
+        payload = { mode, stats };
+      } else if (mode === 'all') {
+        const result = await embeddings.refreshAll({
+          batchSize: body.batchSize,
+          max: body.max,
+        });
+        payload = { mode, ...result };
+      } else {
+        const stats = await embeddings.embedAllMissing({
+          batchSize: body.batchSize,
+          max: body.max,
+        });
+        payload = { mode: 'missing', stats };
+      }
+
+      res.json({ success: true, ...payload });
     } catch (error: any) {
       console.error('[KG-Alias] Backfill error:', error);
       res.status(500).json({ success: false, error: error?.message || 'Backfill failed' });

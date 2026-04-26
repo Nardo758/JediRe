@@ -508,13 +508,35 @@ export function createKnowledgeGraphRoutes(pool: Pool): Router {
         });
       }
 
-      const body = (req.body || {}) as { batchSize?: number; max?: number };
-      const stats = await embeddings.embedAllMissing({
-        batchSize: body.batchSize,
-        max: body.max,
-      });
+      const body = (req.body || {}) as {
+        batchSize?: number;
+        max?: number;
+        mode?: 'missing' | 'stale' | 'all';
+      };
+      const mode = body.mode ?? ((req.query.mode as string | undefined) as any) ?? 'missing';
 
-      res.json({ success: true, stats });
+      let payload: any;
+      if (mode === 'stale') {
+        const stats = await embeddings.reembedStale({
+          batchSize: body.batchSize,
+          max: body.max,
+        });
+        payload = { mode, stats };
+      } else if (mode === 'all') {
+        const result = await embeddings.refreshAll({
+          batchSize: body.batchSize,
+          max: body.max,
+        });
+        payload = { mode, ...result };
+      } else {
+        const stats = await embeddings.embedAllMissing({
+          batchSize: body.batchSize,
+          max: body.max,
+        });
+        payload = { mode: 'missing', stats };
+      }
+
+      res.json({ success: true, ...payload });
     } catch (error: any) {
       console.error('[KnowledgeGraph] Backfill error:', error);
       res.status(500).json({

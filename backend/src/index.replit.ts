@@ -1032,7 +1032,9 @@ async function startServer() {
   console.log(`API base: http://localhost:${PORT}/api/v1`);
   console.log('='.repeat(60));
 
-  // Embeddings layer (semantic memory): startup backfill + health probe.
+  // Embeddings layer (semantic memory): startup backfill + health probe,
+  // followed by a periodic staleness sweep that re-embeds nodes whose
+  // content has drifted (compared to the SHA256 hash in the cache).
   // Runs detached so it never delays the server from accepting traffic.
   (async () => {
     try {
@@ -1041,6 +1043,48 @@ async function startServer() {
       const svc = getEmbeddingsService(getPool());
       await svc.startupBackfillIfNeeded();
       await svc.healthCheck();
+
+      // Periodic staleness sweep. Default: hourly. Override with
+      // KG_REEMBED_INTERVAL_MS=0 to disable, or any positive ms value.
+      const intervalMs = (() => {
+        const raw = process.env.KG_REEMBED_INTERVAL_MS;
+        if (!raw) return 60 * 60 * 1000;
+        const n = parseInt(raw, 10);
+        return Number.isFinite(n) && n >= 0 ? n : 60 * 60 * 1000;
+      })();
+
+      if (intervalMs === 0) {
+        console.log('[Embeddings] periodic staleness sweep DISABLED (KG_REEMBED_INTERVAL_MS=0)');
+        return;
+      }
+
+      const runSweep = async () => {
+        if (!svc.hasKey()) return;
+        try {
+          const t0 = Date.now();
+          const stats = await svc.reembedStale();
+          const ms = Date.now() - t0;
+          if (stats.refreshed > 0 || stats.missing > 0 || stats.errors > 0) {
+            console.log(
+              `[Embeddings] staleness sweep done in ${ms}ms: ` +
+              `scanned=${stats.scanned} refreshed=${stats.refreshed} ` +
+              `missing=${stats.missing} skipped=${stats.skipped} errors=${stats.errors}`
+            );
+          } else {
+            console.log(
+              `[Embeddings] staleness sweep done in ${ms}ms: ` +
+              `nothing to refresh (scanned=${stats.scanned})`
+            );
+          }
+        } catch (err: any) {
+          console.warn('[Embeddings] staleness sweep failed:', err?.message || err);
+        }
+      };
+
+      console.log(`[Embeddings] staleness sweep scheduled every ${Math.round(intervalMs / 1000)}s`);
+      const handle = setInterval(runSweep, intervalMs);
+      // Keep the timer from preventing graceful shutdown
+      if (typeof handle.unref === 'function') handle.unref();
     } catch (err) {
       console.warn('[Embeddings] startup hook skipped:', (err as any)?.message || err);
     }

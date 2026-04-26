@@ -49,6 +49,15 @@ export interface BackfillStats {
   hasKey: boolean;
 }
 
+export interface RefreshStaleStats {
+  scanned: number;     // total nodes inspected
+  refreshed: number;   // nodes whose embedding was regenerated
+  skipped: number;     // nodes whose cached hash already matched current content
+  missing: number;     // nodes that had no embedding at all (handled like fresh embeds)
+  errors: number;
+  hasKey: boolean;
+}
+
 interface NodeRow {
   id: string;
   type: string;
@@ -365,6 +374,119 @@ export class EmbeddingsService {
     }
 
     return stats;
+  }
+
+  /**
+   * Re-embed any node whose current content hash no longer matches the
+   * hash stored in the embedding cache (or that has no cache row at all).
+   *
+   * This is the "staleness sweep" the periodic scheduler calls. It's
+   * idempotent: rows whose hash already matches are skipped at SQL cost
+   * only — no OpenAI calls happen for them.
+   */
+  async reembedStale(opts: { batchSize?: number; max?: number } = {}): Promise<RefreshStaleStats> {
+    const stats: RefreshStaleStats = {
+      scanned: 0,
+      refreshed: 0,
+      skipped: 0,
+      missing: 0,
+      errors: 0,
+      hasKey: this.hasKey(),
+    };
+
+    const batchSize = Math.min(Math.max(opts.batchSize ?? BATCH_SIZE_API, 1), BATCH_SIZE_API);
+    const max = opts.max ?? 5000;
+
+    let offset = 0;
+    while (offset < max) {
+      const remaining = max - offset;
+      const fetchLimit = Math.min(batchSize, remaining);
+
+      // Pull nodes alongside their cached hash (if any). We deliberately
+      // include nodes with no cache row — those count as "missing" and
+      // get embedded too, which keeps this method a complete sweep.
+      const rowsRes = await this.pool.query<NodeRow & { cache_hash: string | null }>(
+        `SELECT n.id, n.type, n.name, n.properties,
+                c.content_hash AS cache_hash
+           FROM knowledge_graph_nodes n
+      LEFT JOIN knowledge_graph_embedding_cache c ON c.node_id = n.id
+          ORDER BY n.id
+          OFFSET $1 LIMIT $2`,
+        [offset, fetchLimit]
+      );
+      if (rowsRes.rows.length === 0) break;
+
+      stats.scanned += rowsRes.rows.length;
+
+      const toRegen: { row: NodeRow; text: string; hash: string; isMissing: boolean }[] = [];
+      for (const row of rowsRes.rows) {
+        const text = this.nodeToText(row);
+        const hash = this.contentHash(text);
+        if (row.cache_hash && row.cache_hash === hash) {
+          stats.skipped += 1;
+        } else {
+          toRegen.push({ row, text, hash, isMissing: !row.cache_hash });
+        }
+      }
+
+      if (toRegen.length > 0) {
+        if (!this.openaiKey) {
+          stats.errors += toRegen.length;
+          break;
+        }
+
+        const vectors = await this.batchGenerate(toRegen.map(x => x.text));
+        for (let i = 0; i < toRegen.length; i++) {
+          const v = vectors[i];
+          const { row, hash, isMissing } = toRegen[i];
+          if (!v) {
+            stats.errors += 1;
+            continue;
+          }
+          const literal = this.toVectorLiteral(v);
+          try {
+            await this.pool.query(
+              `UPDATE knowledge_graph_nodes SET embedding = $2::vector WHERE id = $1`,
+              [row.id, literal]
+            );
+            await this.pool.query(
+              `INSERT INTO knowledge_graph_embedding_cache (node_id, content_hash, embedding, model_id, computed_at)
+               VALUES ($1, $2, $3::vector, $4, NOW())
+               ON CONFLICT (node_id) DO UPDATE SET
+                 content_hash = EXCLUDED.content_hash,
+                 embedding    = EXCLUDED.embedding,
+                 model_id     = EXCLUDED.model_id,
+                 computed_at  = NOW()`,
+              [row.id, hash, literal, MODEL]
+            );
+            if (isMissing) stats.missing += 1;
+            else stats.refreshed += 1;
+          } catch (err) {
+            console.error(`[Embeddings] reembed write failed for ${row.id}:`, err);
+            stats.errors += 1;
+          }
+        }
+      }
+
+      offset += rowsRes.rows.length;
+      if (rowsRes.rows.length < fetchLimit) break;
+    }
+
+    return stats;
+  }
+
+  /**
+   * Convenience wrapper that runs both passes — embed missing first,
+   * then refresh anything whose content has drifted. Useful for the
+   * combined admin "all" mode.
+   */
+  async refreshAll(opts: { batchSize?: number; max?: number } = {}): Promise<{
+    missing: BackfillStats;
+    stale: RefreshStaleStats;
+  }> {
+    const missing = await this.embedAllMissing(opts);
+    const stale = await this.reembedStale(opts);
+    return { missing, stale };
   }
 
   /**
