@@ -1679,7 +1679,7 @@ export default function TerminalPage() {
       case "kpi":         return widgetKPISummaryEl;
       case "alerts":      return widgetAlertFeedEl;
       case "skills":      return widgetAgentsEl;
-      case "vitals":      return <ViewMarkets/>;
+      case "vitals":      return <F4MarketsView onTopMovers={handleTopMovers} />;
       case "leaderboard": return widgetLeaderboardEl;
       case "funnel":      return widgetFunnelEl;
       case "strategy":    return widgetStrategySnapshotEl;
@@ -2344,11 +2344,9 @@ export default function TerminalPage() {
     setMarketMoversTicker(items);
   }, [T.text.green, T.text.red, T.text.amber]);
 
-  const ViewMarkets = () => {
-    return (
-      <F4MarketsView onTopMovers={handleTopMovers} />
-    );
-  };
+  // ViewMarkets wrapper removed — F4MarketsView is rendered directly in
+  // renderWidget("vitals") and renderContent F4 case so it has stable
+  // module-level identity (no remount on every TerminalPage re-render).
 
   // ─── VIEW: F5 EMAIL ────────────────────────────────────────
   const ViewEmail = () => {
@@ -2559,7 +2557,7 @@ export default function TerminalPage() {
       case "F1": return ViewDashboard();
       case "F2": return dealGridEl;
       case "F3": return <F3PortfolioView theme={T} />;
-      case "F4": return ViewMarkets();
+      case "F4": return <F4MarketsView onTopMovers={handleTopMovers} />;
       case "F5": return ViewEmail();
       case "F6": return ViewNews();
       case "F7": return ViewStrategies();
