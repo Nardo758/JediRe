@@ -9,6 +9,7 @@ import { parseConcessionBurnoff } from './parsers/concession-burnoff-parser';
 import { parseLTO } from './parsers/lto-parser';
 import { parseTaxBill, parseTaxBillAsync } from './parsers/tax-bill-parser';
 import { parseOtherIncome } from './parsers/other-income-parser';
+import { parseOM } from './parsers/om-parser';
 import { routeExtractionResult } from './data-router';
 import { DocumentType, ExtractionResult, PipelineResult } from './types';
 import { getPool } from '../../database/connection';
@@ -25,6 +26,23 @@ function getParser(docType: DocumentType): ((buffer: Buffer, filename: string) =
     case 'OTHER_INCOME': return parseOtherIncome;
     default: return null;
   }
+}
+
+/**
+ * Bridge for the OM parser.
+ *
+ * parseOM is async (LLM call + optional OCR) and its OMParseResult already
+ * extends ExtractionResult with `data: OMExtraction | null`. The pipeline's
+ * downstream consumer (`routeOM` in data-router.ts) casts result.data back
+ * to OMExtraction, so we deliberately pass the rich shape through instead
+ * of flattening into a hand-picked subset — flattening would break routeOM.
+ */
+async function parseOMForPipeline(buffer: Buffer, filename: string): Promise<ExtractionResult> {
+  const result = await parseOM(buffer, filename, {
+    userId: 'pipeline',
+    onStageChange: async () => { /* no-op for in-pipeline runs */ },
+  });
+  return result as ExtractionResult;
 }
 
 export async function processDocument(
@@ -62,6 +80,9 @@ export async function processDocument(
 
     if (classification.documentType === 'TAX_BILL' && /\.pdf$/i.test(filename)) {
       extractionResult = await parseTaxBillAsync(buffer, filename);
+    } else if (classification.documentType === 'OM') {
+      // OM parser is async (LLM + optional OCR). Bridge handles the call.
+      extractionResult = await parseOMForPipeline(buffer, filename);
     } else {
       const parser = getParser(classification.documentType);
       if (!parser) {

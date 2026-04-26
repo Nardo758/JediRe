@@ -61,7 +61,12 @@ export type NodeType =
   | 'Route'  // Transit route
   | 'Employer'
   | 'Permit'
-  | 'Sale';
+  | 'Sale'
+  // OM-derived intelligence — fanned out by GraphIngestionListener.ingestOM
+  | 'BrokerNarrative'
+  | 'RentComp'
+  | 'SaleComp'
+  | 'ExpenseBenchmark';
 
 export interface GraphNode {
   id: string;
@@ -934,6 +939,10 @@ export class KnowledgeGraphService {
       Owner: 0.7,
       Employer: 0.7,
       Sale: 0.65,
+      SaleComp: 0.6,
+      RentComp: 0.55,
+      ExpenseBenchmark: 0.5,
+      BrokerNarrative: 0.45,
       Permit: 0.6,
       POI: 0.5,
       Route: 0.5,

@@ -20,7 +20,8 @@ export type EntityEventType =
   | 'permit.issued' 
   | 'development_project.added'
   | 'market.updated'
-  | 'submarket.updated';
+  | 'submarket.updated'
+  | 'om.processed';
 
 export interface EntityEvent {
   type: EntityEventType;
@@ -68,6 +69,9 @@ export class GraphIngestionListener {
           break;
         case 'submarket.updated':
           nodeId = await this.touchSubmarket(event);
+          break;
+        case 'om.processed':
+          nodeId = await this.ingestOM(event);
           break;
       }
 
@@ -339,6 +343,245 @@ export class GraphIngestionListener {
     }
 
     return nodeId;
+  }
+
+  /**
+   * Fan an Offering Memorandum's intelligence out into the knowledge graph.
+   *
+   * Creates one Document node, then up to four families of typed child nodes
+   * (BrokerNarrative, RentComp, SaleComp, ExpenseBenchmark) each connected
+   * back to the Document via HAS edges. Where market/submarket nodes exist,
+   * it also wires geographic edges (ABOUT / IN_MARKET / IN_SUBMARKET) so the
+   * neural network can pivot from market context to OM-derived signals.
+   *
+   * Every step is best-effort within a try/catch on the caller side: a
+   * missing market node, an unexpected null property, or a partial OM
+   * extraction must not block the SQL writes that already succeeded.
+   */
+  private async ingestOM(event: EntityEvent): Promise<string> {
+    const { data } = event;
+
+    // 1. Document node (the OM file itself)
+    const docNodeId = await this.kg.upsertNode({
+      type: 'Document',
+      externalId: `om-${data.fileId}`,
+      name: `OM: ${data.propertyName || data.msaKey || 'unknown'}`,
+      properties: {
+        documentType: 'offering_memorandum',
+        fileId: data.fileId,
+        propertyName: data.propertyName,
+        address: data.address,
+        units: data.units,
+        yearBuilt: data.yearBuilt,
+        msaKey: data.msaKey,
+        submarketKey: data.submarketKey,
+        broker: data.broker,
+        processedAt: new Date(),
+      },
+    });
+
+    // 2. BrokerNarrative nodes (1 per narrative)
+    if (Array.isArray(data.brokerNarratives) && data.brokerNarratives.length > 0) {
+      for (let i = 0; i < data.brokerNarratives.length; i++) {
+        const narrative = data.brokerNarratives[i];
+        const narrativeKey = narrative?.id ?? narrative?.kind ?? `n${i}`;
+        const narrativeNodeId = await this.kg.upsertNode({
+          type: 'BrokerNarrative',
+          externalId: `bn-${data.fileId}-${narrativeKey}`,
+          name: `Narrative: ${data.propertyName || data.msaKey || 'OM'}`,
+          properties: {
+            source: narrative?.source || 'om',
+            sentimentScore: narrative?.sentimentScore,
+            narrative: narrative?.text,
+            keyPoints: narrative?.keyPoints,
+            marketOutlook: narrative?.marketOutlook,
+            extractedAt: new Date(),
+          },
+        });
+
+        await this.kg.createEdge({
+          sourceNodeId: docNodeId,
+          targetNodeId: narrativeNodeId,
+          edgeType: 'HAS',
+          properties: {},
+        });
+
+        if (data.msaKey) {
+          try {
+            const marketNode = await this.kg.findNodeByExternalId('Market', data.msaKey);
+            if (marketNode) {
+              await this.kg.createEdge({
+                sourceNodeId: narrativeNodeId,
+                targetNodeId: marketNode.id,
+                edgeType: 'ABOUT',
+                properties: { topic: 'market_outlook', relevance: 0.9 },
+              });
+            }
+          } catch { /* market may not be in KG yet */ }
+        }
+
+        if (data.submarketKey) {
+          try {
+            const subNode = await this.kg.findNodeByExternalId('Submarket', data.submarketKey);
+            if (subNode) {
+              await this.kg.createEdge({
+                sourceNodeId: narrativeNodeId,
+                targetNodeId: subNode.id,
+                edgeType: 'ABOUT',
+                properties: { topic: 'submarket_outlook', relevance: 0.9 },
+              });
+            }
+          } catch { /* submarket may not be in KG yet */ }
+        }
+      }
+    }
+
+    // 3. RentComp nodes (1 per rent comp on the OM)
+    if (Array.isArray(data.rentComps) && data.rentComps.length > 0) {
+      for (let i = 0; i < data.rentComps.length; i++) {
+        const comp = data.rentComps[i];
+        const compKey = comp?.unitType ?? comp?.id ?? `r${i}`;
+        const compNodeId = await this.kg.upsertNode({
+          type: 'RentComp',
+          externalId: `rc-om-${data.fileId}-${compKey}`,
+          name: `Rent ${comp?.unitType || 'comp'}: $${comp?.rent ?? '?'}`,
+          properties: {
+            rent: comp?.rent,
+            rentPerSf: comp?.rentPerSf,
+            unitType: comp?.unitType,
+            units: comp?.units,
+            sqft: comp?.sqft,
+            occupancy: comp?.occupancy,
+            yearBuilt: comp?.yearBuilt,
+            submarket: comp?.submarket,
+            sourceOmFileId: data.fileId,
+            extractedAt: new Date(),
+          },
+        });
+
+        await this.kg.createEdge({
+          sourceNodeId: docNodeId,
+          targetNodeId: compNodeId,
+          edgeType: 'HAS',
+          properties: {},
+        });
+
+        if (data.msaKey) {
+          try {
+            const marketNode = await this.kg.findNodeByExternalId('Market', data.msaKey);
+            if (marketNode) {
+              await this.kg.createEdge({
+                sourceNodeId: compNodeId,
+                targetNodeId: marketNode.id,
+                edgeType: 'IN_MARKET',
+                properties: {},
+              });
+            }
+          } catch { /* market may not be in KG yet */ }
+        }
+
+        if (data.submarketKey) {
+          try {
+            const subNode = await this.kg.findNodeByExternalId('Submarket', data.submarketKey);
+            if (subNode) {
+              await this.kg.createEdge({
+                sourceNodeId: compNodeId,
+                targetNodeId: subNode.id,
+                edgeType: 'IN_SUBMARKET',
+                properties: {},
+              });
+            }
+          } catch { /* submarket may not be in KG yet */ }
+        }
+      }
+    }
+
+    // 4. SaleComp node — the OM itself is also a listing (1 per OM)
+    if (data.askingPrice != null || data.capRate != null) {
+      const saleNodeId = await this.kg.upsertNode({
+        type: 'SaleComp',
+        externalId: `sc-om-${data.fileId}`,
+        name: `Listing: ${data.propertyName || 'OM property'}`,
+        properties: {
+          price: data.askingPrice,
+          pricePerUnit: data.askingPrice && data.units ? data.askingPrice / data.units : null,
+          capRate: data.capRate,
+          noi: data.noi,
+          units: data.units,
+          yearBuilt: data.yearBuilt,
+          source: 'om',
+          sourceOmFileId: data.fileId,
+          listingDate: data.listingDate,
+          broker: data.broker,
+          extractedAt: new Date(),
+        },
+      });
+
+      await this.kg.createEdge({
+        sourceNodeId: docNodeId,
+        targetNodeId: saleNodeId,
+        edgeType: 'HAS',
+        properties: {},
+      });
+
+      if (data.msaKey) {
+        try {
+          const marketNode = await this.kg.findNodeByExternalId('Market', data.msaKey);
+          if (marketNode) {
+            await this.kg.createEdge({
+              sourceNodeId: saleNodeId,
+              targetNodeId: marketNode.id,
+              edgeType: 'IN_MARKET',
+              properties: {},
+            });
+          }
+        } catch { /* market may not be in KG yet */ }
+      }
+    }
+
+    // 5. ExpenseBenchmark node — 1 per OM, only if expense signals are present
+    if (data.expenseRatio != null || data.expenseData) {
+      const expNodeId = await this.kg.upsertNode({
+        type: 'ExpenseBenchmark',
+        externalId: `eb-om-${data.fileId}`,
+        name: `Expenses: ${data.propertyName || 'OM property'}`,
+        properties: {
+          expenseRatio: data.expenseRatio,
+          managementFee: data.expenseData?.managementFeePct,
+          taxPerUnit: data.expenseData?.taxPerUnit,
+          insurancePerUnit: data.expenseData?.insurancePerUnit,
+          rMaintPerUnit: data.expenseData?.repairsPerUnit,
+          reservePerUnit: data.expenseData?.reservePerUnit,
+          totalExpenses: data.expenseData?.totalExpenses,
+          submarket: data.submarketKey,
+          sourceOmFileId: data.fileId,
+          extractedAt: new Date(),
+        },
+      });
+
+      await this.kg.createEdge({
+        sourceNodeId: docNodeId,
+        targetNodeId: expNodeId,
+        edgeType: 'HAS',
+        properties: {},
+      });
+
+      if (data.msaKey) {
+        try {
+          const marketNode = await this.kg.findNodeByExternalId('Market', data.msaKey);
+          if (marketNode) {
+            await this.kg.createEdge({
+              sourceNodeId: expNodeId,
+              targetNodeId: marketNode.id,
+              edgeType: 'IN_MARKET',
+              properties: {},
+            });
+          }
+        } catch { /* market may not be in KG yet */ }
+      }
+    }
+
+    return docNodeId;
   }
 
   private async touchMarket(event: EntityEvent): Promise<string> {

@@ -9,6 +9,7 @@ const FILENAME_PATTERNS: Array<{ pattern: RegExp; type: DocumentType }> = [
   { pattern: /trade[\s_-]*out|t30[\s_-]*lto|lto[\s_-]*report|lease[\s_-]*trade/i, type: 'T30_LTO' },
   { pattern: /tax[\s_-]*bill|tax[\s_-]*statement|property[\s_-]*tax/i, type: 'TAX_BILL' },
   { pattern: /other[\s_-]*income[\s_-]*sched/i, type: 'OTHER_INCOME' },
+  { pattern: /offering[\s_-]*memorandum|investment[\s_-]*summary|property[\s_-]*offering/i, type: 'OM' },
   { pattern: /rent[\s_+\-]*roll|rr[\s_-]*w[\s_-]*lc|rrwlc/i, type: 'RENT_ROLL' },
   { pattern: /t[\s_-]*12|trailing[\s_-]*12|income[\s_-]*statement|ysi[\s_-]*is/i, type: 'T12' },
 ];
@@ -124,6 +125,36 @@ export async function classifyDocument(buffer: Buffer, filename: string): Promis
         hints: [`PDF parsed text contains ${taxMatches} tax indicators`],
       };
     }
+
+    // OM detection — broker offering memoranda have distinctive signal mix.
+    // Score by signal categories so a single false positive (e.g. a broker
+    // logo on a non-OM doc) doesn't trip the classifier.
+    const omSignals: string[] = [];
+    if (textContent.includes('offering memorandum')) omSignals.push('offering memorandum');
+    if (textContent.includes('confidentiality') && textContent.includes('memorandum')) omSignals.push('confidentiality memorandum');
+    if (textContent.includes('broker') && textContent.includes('investment summary')) omSignals.push('broker investment summary');
+    const brokerNames = ['cushman & wakefield', 'colliers', 'cbre', 'jll', 'marcus & millichap'];
+    const brokerHit = brokerNames.find(b => textContent.includes(b));
+    if (brokerHit) omSignals.push(`broker: ${brokerHit}`);
+    if (textContent.includes('cap rate') && textContent.includes('noi') && textContent.includes('rent roll')) {
+      omSignals.push('cap rate + noi + rent roll triple');
+    }
+    if (textContent.includes('pro forma') && textContent.includes('operating statement')) {
+      omSignals.push('pro forma + operating statement');
+    }
+    if (textContent.includes('exclusively offered by') || textContent.includes('exclusive listing')) {
+      omSignals.push('exclusive listing language');
+    }
+    if (omSignals.length >= 1) {
+      // 1 signal = 0.6, 2 = 0.7, 3 = 0.8, 4+ = 0.85
+      const confidence = Math.min(0.85, 0.55 + omSignals.length * 0.075);
+      return {
+        documentType: 'OM',
+        confidence,
+        hints: [`PDF parsed text contains ${omSignals.length} OM signal(s): ${omSignals.join('; ')}`],
+      };
+    }
+
     return {
       documentType: 'UNKNOWN',
       confidence: 0,

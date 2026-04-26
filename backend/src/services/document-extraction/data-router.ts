@@ -2,6 +2,9 @@ import { Pool } from 'pg';
 import { getPool } from '../../database/connection';
 import { ExtractionResult, DocumentType, T12Data, RentRollData, AgedReceivablesData, BoxScoreData, ConcessionBurnoffData, LTOData, TaxBillData, OtherIncomeData } from './types';
 import type { OMExtraction } from './parsers/om-parser';
+import { buildOmKgEventData } from './om-distribution.service';
+import { getGraphIngestionListener } from '../neural-network/graph-ingestion-listener';
+import type { OmGeoTags } from './om-geo';
 import { computeAndPersistTrafficSnapshot } from '../traffic-analytics.service';
 import { seedProFormaYear1 } from '../proforma-seeder.service';
 import { runCrossValidation } from '../multi-doc-cross-validation.service';
@@ -120,6 +123,41 @@ export async function routeExtractionResult(
     libraryUpdated = true;
   } catch (err) {
     alerts.push(`Data Library update failed: ${err instanceof Error ? err.message : 'unknown'}`);
+  }
+
+  // Fan OM intelligence into the Knowledge Graph as typed nodes/edges.
+  // Best-effort: KG failures must not bubble up and break the deal flow.
+  // Geo is empty here because routeOM doesn't perform geocoding — the
+  // listener degrades gracefully (skips IN_MARKET / IN_SUBMARKET edges
+  // when keys are absent).
+  if (result.documentType === 'OM' && result.data) {
+    try {
+      const omData = result.data as unknown as OMExtraction;
+      // Stable identifier per OM document: prefer documentId, fall back to
+      // filename so re-running the same file upserts (not duplicates) the
+      // same Document node. The om-distribution path uses the integer
+      // file_id; here we only have document/filename — both are accepted
+      // by buildOmKgEventData (number | string).
+      const stableId = ctx.documentId ?? ctx.filename;
+      const emptyGeo: OmGeoTags = {
+        msaKey: null,
+        submarketKey: null,
+        msaName: null,
+        submarketName: null,
+        lat: null,
+        lng: null,
+      };
+      const listener = getGraphIngestionListener(pool);
+      await listener.handleEvent({
+        type: 'om.processed',
+        entityId: String(stableId),
+        entityType: 'Document',
+        timestamp: new Date(),
+        data: buildOmKgEventData(stableId, omData, emptyGeo),
+      });
+    } catch (kgErr) {
+      alerts.push(`OM Knowledge Graph fan-out failed: ${kgErr instanceof Error ? kgErr.message : 'unknown'}`);
+    }
   }
 
   if (result.documentType === 'RENT_ROLL' || result.documentType === 'BOX_SCORE' || result.documentType === 'T30_LTO') {

@@ -49,6 +49,104 @@ interface DistributeArgs {
   dealId?: string | null;
 }
 
+/**
+ * Map an OMExtraction (+ geo + optional distribute counts) into the flat
+ * payload shape consumed by GraphIngestionListener.ingestOM.
+ *
+ * Exported so the same shape is built from both call sites
+ * (om-distribution post-COMMIT, and data-router after routeOM) without
+ * drift between the two.
+ *
+ * Best-effort: every field is permissive about nulls — the listener
+ * itself decides which child nodes to create based on which fields
+ * are populated.
+ */
+export function buildOmKgEventData(
+  fileId: number | string,
+  extraction: OMExtraction,
+  geo: OmGeoTags,
+  counts?: OmDistributionCounts,
+): Record<string, any> {
+  const property = extraction.property || ({} as any);
+  const proforma = extraction.brokerProforma || ({} as any);
+  const meta = extraction.metadata || ({} as any);
+  const comps = extraction.marketComps || ({} as any);
+
+  const narratives: any[] = [];
+  if (extraction.investmentThesis) {
+    narratives.push({
+      id: 'thesis',
+      kind: 'investment_thesis',
+      source: 'om',
+      text: extraction.investmentThesis,
+      keyPoints: extraction.investmentHighlights || [],
+      sentimentScore: null,
+      marketOutlook: null,
+    });
+  }
+  if (Array.isArray(extraction.investmentHighlights) && extraction.investmentHighlights.length > 0 && !extraction.investmentThesis) {
+    narratives.push({
+      id: 'highlights',
+      kind: 'investment_highlights',
+      source: 'om',
+      text: extraction.investmentHighlights.join('\n'),
+      keyPoints: extraction.investmentHighlights,
+      sentimentScore: null,
+      marketOutlook: null,
+    });
+  }
+
+  const rentComps = (comps.rentComps || []).map((c: any, i: number) => ({
+    id: `r${i}`,
+    unitType: c?.name,
+    rent: c?.avgRent,
+    rentPerSf: null,
+    units: c?.units,
+    sqft: null,
+    occupancy: c?.occupancy,
+    yearBuilt: c?.yearBuilt,
+    submarket: comps.submarketName || geo.submarketKey,
+  }));
+
+  const noi = proforma.stabilizedNOI ?? proforma.yearOneNOI ?? null;
+  const capRate = proforma.goingInCapRate ?? meta.guidanceCapRate ?? null;
+  const askingPrice = meta.askingPrice ?? null;
+
+  // Expense data — partial signals from broker proforma. expenseRatio
+  // is derived only when we have both NOI and asking price (rough proxy).
+  const expenseData = (proforma.managementFeePct != null || proforma.replacementReservesPerUnit != null) ? {
+    managementFeePct: proforma.managementFeePct,
+    reservePerUnit: proforma.replacementReservesPerUnit,
+    repairsPerUnit: null,
+    taxPerUnit: null,
+    insurancePerUnit: null,
+    totalExpenses: null,
+  } : null;
+
+  return {
+    fileId,
+    propertyName: property.name ?? null,
+    address: property.address ?? null,
+    city: property.city ?? null,
+    state: property.state ?? null,
+    zip: property.zip ?? null,
+    units: property.units ?? null,
+    yearBuilt: property.yearBuilt ?? null,
+    msaKey: geo.msaKey ?? null,
+    submarketKey: geo.submarketKey ?? null,
+    broker: meta.broker ?? null,
+    askingPrice,
+    capRate,
+    noi,
+    expenseRatio: null,
+    expenseData,
+    listingDate: meta.listingDate ?? null,
+    brokerNarratives: narratives,
+    rentComps,
+    distributionCounts: counts ?? null,
+  };
+}
+
 // Internal — same shape as DistributeArgs but the writers run on a single
 // transactional client so partial inserts can be rolled back atomically.
 interface DistributeTxnArgs extends Omit<DistributeArgs, 'pool'> {
@@ -442,28 +540,27 @@ export async function distributeOmExtraction(
       msaKey: args.geo.msaKey, submarketKey: args.geo.submarketKey,
     });
 
-    // Ingest OM data into Knowledge Graph
+    // Fan OM intelligence into the Knowledge Graph as typed nodes/edges
+    // (Document → BrokerNarrative / RentComp / SaleComp / ExpenseBenchmark).
+    // Best-effort: a graph failure must not roll back the SQL writes that
+    // already committed above.
     try {
-      const { getKnowledgeGraph } = await import('../neural-network/knowledge-graph.service');
-      const { getPool } = await import('../../database/connection');
-      const kg = getKnowledgeGraph(getPool());
-      await kg.upsertNode({
-        type: 'Document',
-        externalId: `om-${args.fileId}`,
-        name: `OM: ${args.geo.msaKey || 'unknown'}`,
-        properties: {
-          documentType: 'offering_memorandum',
-          fileId: args.fileId,
-          msaKey: args.geo.msaKey,
-          submarketKey: args.geo.submarketKey,
-          rentCompsInserted: counts.rentComps,
-          saleCompsInserted: counts.saleComps,
-          replacementCost: counts.replacementCost,
-          brokerNarratives: counts.brokerNarratives,
-          processedAt: new Date(),
-        }
+      const { getGraphIngestionListener } = await import('../neural-network/graph-ingestion-listener');
+      const { getPool: _getPool } = await import('../../database/connection');
+      const listener = getGraphIngestionListener(_getPool());
+      await listener.handleEvent({
+        type: 'om.processed',
+        entityId: String(args.fileId),
+        entityType: 'Document',
+        timestamp: new Date(),
+        data: buildOmKgEventData(args.fileId, args.extraction, args.geo, counts),
       });
-    } catch (graphErr) { /* Non-fatal */ }
+    } catch (graphErr) {
+      logger.warn('[om-distribute] KG fan-out failed', {
+        fileId: args.fileId,
+        error: graphErr instanceof Error ? graphErr.message : String(graphErr),
+      });
+    }
 
     return counts;
   } catch (err) {
