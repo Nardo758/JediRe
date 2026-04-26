@@ -393,6 +393,16 @@ export function createContextAwarenessRoutes(pool: Pool): Router {
    *
    * Response:
    *   { success, text, sources: [{id,type,name,score}], matched, ts }
+   *
+   * Billing / quota note:
+   *   This route deliberately has NO per-route billing or quota middleware,
+   *   matching the existing `/api/v1/context/analyze` route in this same
+   *   router (no other endpoint in this file is metered either). Access
+   *   gating is provided by the parent-level `requireAuth` middleware
+   *   applied where this router is mounted (see backend/src/index.replit.ts
+   *   and backend/src/api/rest/index.ts). If a billing tier is introduced
+   *   later, it should be applied uniformly across `/analyze` and `/query`
+   *   so the cost surface stays consistent.
    */
   router.post('/query', async (req: Request, res: Response) => {
     try {
