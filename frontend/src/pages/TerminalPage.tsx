@@ -1896,11 +1896,11 @@ export default function TerminalPage() {
     finally { setPortfolioExporting(false); }
   };
 
-  // Mini sparkline component for rankings
-  const MiniSparkline = ({data, target}: {data: number[], target: number}) => {
   // Neural network context awareness
   const { analysis: dashContext, loading: dashContextLoading, analyze: analyzeDashContext } = useContextAnalysis();
 
+  // Mini sparkline component for rankings
+  const MiniSparkline = ({data, target}: {data: number[], target: number}) => {
     if (!data || data.length < 2) return <span style={{color:T.text.muted,fontSize:10}}>—</span>;
     const max = Math.max(...data, target) + 2;
     const min = Math.min(...data, target) - 2;
