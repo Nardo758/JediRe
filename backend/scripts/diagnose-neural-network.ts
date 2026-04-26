@@ -9,7 +9,7 @@ const DIAGNOSTIC_CAPSULE_ID = '00000000-0000-0000-0000-0000d1a90ca5';
 
 let pipelineFailed = false;
 
-async function run() {
+async function runTests() {
   console.log('\n══════════════════════════════════════');
   console.log('JEDI RE — NEURAL NETWORK DIAGNOSTIC');
   console.log('══════════════════════════════════════\n');
@@ -84,11 +84,14 @@ async function run() {
   );
 
   // Sanity-check the row we will mutate is in fact the diagnostic row.
+  // Guardrail does NOT abort the run — it only skips TESTs 6/7 so the rest
+  // of the diagnostic (KG queries, Data Library survey, summary) still prints.
   const verify = await pool.query(
     `SELECT id, user_id, property_address, deal_data->>'diagnostic' AS diag_flag
      FROM deal_capsules WHERE id = $1::uuid`,
     [DIAGNOSTIC_CAPSULE_ID]
   );
+  let capsuleId: string | null = null;
   if (
     !verify.rows[0] ||
     verify.rows[0].user_id !== DIAGNOSTIC_USER_ID ||
@@ -96,16 +99,18 @@ async function run() {
   ) {
     pipelineFailed = true;
     console.log(
-      `  ❌ Diagnostic capsule guardrail failed — refusing to mutate. Row: ${JSON.stringify(verify.rows[0] ?? null)}`
+      `  ⚠️  Diagnostic capsule guardrail failed — TESTs 6/7 will be skipped to avoid mutating a non-diagnostic row. Row: ${JSON.stringify(verify.rows[0] ?? null)}`
     );
-    return;
+  } else {
+    capsuleId = verify.rows[0].id;
+    console.log(`  Using diagnostic capsule: ${capsuleId} (${verify.rows[0].property_address})`);
   }
-  const capsuleId: string = verify.rows[0].id;
-  console.log(`  Using diagnostic capsule: ${capsuleId} (${verify.rows[0].property_address})`);
 
   // ── 6. Seed capsule intelligence ────────────────────────────
   console.log('\nTEST 6: Capsule Intelligence — Seeding from Data Library + KG');
-  try {
+  if (!capsuleId) {
+    console.log('  ⏭  Skipped — guardrail in TEST 5 prevented capsule selection.');
+  } else try {
     const intel = await getCapsuleIntelligence().seedCapsule({
       capsuleId,
       propertyAddress: '100 Peachtree St NE',
@@ -142,25 +147,30 @@ async function run() {
 
   // ── 7. Verify capsule platform_intel populated ───────────────
   console.log('\nTEST 7: Verify platform_intel saved to DB');
-  const saved = await pool.query(
-    `
-    SELECT 
-      platform_intel->'intelligence'->>'dataQualityScore' AS quality,
-      platform_intel->'intelligence'->>'compsFound' AS comps,
-      platform_intel->'intelligence'->'gaps' AS gaps,
-      platform_intel->'intelligence'->'assumptions' AS assumptions
-    FROM deal_capsules WHERE id = $1
-    `,
-    [capsuleId]
-  );
-  if (saved.rows[0]?.quality !== null && saved.rows[0]?.quality !== undefined) {
-    const row = saved.rows[0];
-    console.log(`  ✅ platform_intel populated — quality: ${row.quality}, comps: ${row.comps}`);
-    const assumptionKeys = row.assumptions ? Object.keys(row.assumptions) : [];
-    console.log(`  Assumption keys saved: ${assumptionKeys.join(', ') || '(none)'}`);
-    console.log(`  Gaps persisted: ${JSON.stringify(row.gaps)}`);
+  if (!capsuleId) {
+    console.log('  ⏭  Skipped — guardrail in TEST 5 prevented capsule selection.');
   } else {
-    console.log(`  ❌ platform_intel NOT populated`);
+    const saved = await pool.query(
+      `
+      SELECT 
+        platform_intel->'intelligence'->>'dataQualityScore' AS quality,
+        platform_intel->'intelligence'->>'compsFound' AS comps,
+        platform_intel->'intelligence'->'gaps' AS gaps,
+        platform_intel->'intelligence'->'assumptions' AS assumptions
+      FROM deal_capsules WHERE id = $1
+      `,
+      [capsuleId]
+    );
+    if (saved.rows[0]?.quality !== null && saved.rows[0]?.quality !== undefined) {
+      const row = saved.rows[0];
+      console.log(`  ✅ platform_intel populated — quality: ${row.quality}, comps: ${row.comps}`);
+      const assumptionKeys = row.assumptions ? Object.keys(row.assumptions) : [];
+      console.log(`  Assumption keys saved: ${assumptionKeys.join(', ') || '(none)'}`);
+      console.log(`  Gaps persisted: ${JSON.stringify(row.gaps)}`);
+    } else {
+      pipelineFailed = true;
+      console.log(`  ❌ platform_intel NOT populated`);
+    }
   }
 
   // ── 8. Check Deal node in KG ────────────────────────────────
@@ -231,20 +241,28 @@ async function run() {
   console.log(`  Seeded capsules:   ${capsuleCount.rows[0].n}`);
   console.log(`  Pipeline projects: ${projectTotal.rows[0].count}`);
 
-  await pool.end();
   if (pipelineFailed) {
-    console.log('\nDiagnostic complete — PIPELINE FAILURE detected (see TEST 5/6).\n');
+    console.log('\nDiagnostic complete — PIPELINE FAILURE detected (see TESTs 5/6/7).\n');
   } else {
     console.log('\nDiagnostic complete.\n');
   }
 }
 
-run()
-  .then(() => process.exit(pipelineFailed ? 2 : 0))
-  .catch(async err => {
-    console.error('Diagnostic crashed:', err);
+async function main() {
+  try {
+    await runTests();
+  } finally {
     try {
       await pool.end();
-    } catch {}
+    } catch {
+      // ignore pool teardown errors
+    }
+  }
+}
+
+main()
+  .then(() => process.exit(pipelineFailed ? 2 : 0))
+  .catch(err => {
+    console.error('Diagnostic crashed:', err);
     process.exit(1);
   });
