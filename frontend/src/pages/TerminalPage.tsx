@@ -485,7 +485,7 @@ interface EventFeedItem {
   maxDivergencePct?: number | null;
 }
 
-function TerminalTVWidget({ T }: { T: any }) {
+function TerminalTVWidget({ T }: { T: ThemeType }) {
   const [chan, setChan] = useState("CNBC");
   const channels = ["CNBC","Bloomberg","Fox Business","Yahoo Finance"];
   return (
@@ -503,7 +503,7 @@ function TerminalTVWidget({ T }: { T: any }) {
   );
 }
 
-function TerminalEventFeedWidget({ T, navigate }: { T: any; navigate: (path: string) => void }) {
+function TerminalEventFeedWidget({ T, navigate }: { T: ThemeType; navigate: (path: string) => void }) {
   const EFD_CAT_COLORS: Record<string, string> = {
     employment:'#00D26A', infrastructure:T.text.cyan, supply:T.text.amber,
     policy:'#A78BFA', regulatory:'#A78BFA', demographic:'#EC4899', macro:T.text.muted,
