@@ -518,18 +518,7 @@ export function ZoningCapacitySection({ deal, dealId: propDealId }: ZoningCapaci
         <div className="lg:col-span-2 space-y-6">
 
           <div className="rounded-xl border p-5 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">Zoning Code</h3>
-              {dataSource && (
-                <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                  dataSource === 'verified'
-                    ? 'bg-neutral-800 text-green-400'
-                    : 'bg-neutral-800 text-purple-300'
-                }`}>
-                  {dataSource === 'verified' ? '✓ Database Verified' : '⚡ AI-Retrieved'}
-                </span>
-              )}
-            </div>
+            <h3 className="text-lg font-semibold mb-4">Zoning Code</h3>
             <div className="flex gap-2 mb-3">
               <input type="text" value={zoningCode} onChange={(e) => setZoningCode(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && lookupZoningCode()}
