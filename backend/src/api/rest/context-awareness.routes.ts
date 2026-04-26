@@ -379,6 +379,54 @@ export function createContextAwarenessRoutes(pool: Pool): Router {
     }
   });
 
+  // ============================================================================
+  // ASK THE NETWORK — natural-language Q&A over the knowledge graph
+  // ============================================================================
+
+  /**
+   * POST /api/v1/context/query
+   *
+   * Free-form question answering powered by the knowledge graph + LLM.
+   *
+   * Request:
+   *   { question: string, dealId?, marketId?, submarketId?, limit? }
+   *
+   * Response:
+   *   { success, text, sources: [{id,type,name,score}], matched, ts }
+   */
+  router.post('/query', async (req: Request, res: Response) => {
+    try {
+      const { question, dealId, marketId, submarketId, limit } = req.body || {};
+
+      if (!question || typeof question !== 'string' || !question.trim()) {
+        return res.status(400).json({
+          success: false,
+          error: 'question (non-empty string) is required',
+        });
+      }
+
+      const result = await contextService.answer(question, {
+        dealId,
+        marketId,
+        submarketId,
+        limit: typeof limit === 'number' ? limit : undefined,
+      });
+
+      res.json({
+        success: true,
+        ...result,
+        ts: new Date().toISOString(),
+      });
+    } catch (error: any) {
+      console.error('[ContextAwareness] Error answering question:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to answer question',
+        message: error?.message,
+      });
+    }
+  });
+
   return router;
 }
 

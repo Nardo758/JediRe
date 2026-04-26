@@ -129,6 +129,7 @@ import dataMatrixRoutes from './data-matrix.routes';
 import inflationRoutes from './inflation.routes';
 import createKnowledgeGraphRoutes from './knowledge-graph.routes';
 import createContextAwarenessRoutes from './context-awareness.routes';
+import createAgentStatusRoutes from './agent-status.routes';
 import columnCatalogRoutes from './column-catalog.routes';
 import plannerRoutes from './planner.routes';
 import scheduledRefreshRoutes from './scheduled-refresh.routes';
@@ -190,6 +191,10 @@ export function setupRESTRoutes(app: Application): void {
 
   // Autonomous Agent System: /agents/chat, /agents/:agentId/chat, /agents/notifications, etc.
   app.use(`${API_PREFIX}/agents`, agentsRoutes);
+
+  // Neural Network Control Hub: GET /agents/status — running, recent runs, recent events
+  const { getPool: getAgentStatusPool } = require('../../database/connection');
+  app.use(`${API_PREFIX}/agents/status`, createAgentStatusRoutes(getAgentStatusPool()));
 
   // Morning Brief: /morning-brief
   app.use(`${API_PREFIX}/morning-brief`, morningBriefRoutes);

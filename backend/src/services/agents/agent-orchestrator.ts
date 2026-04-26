@@ -67,6 +67,8 @@ export interface EventPayload {
   dealId?: string;
   userId?: string;
   data: Record<string, any>;
+  /** Set by event-dispatcher after logging — links agent_workflow_runs rows. */
+  eventId?: string;
 }
 
 // ============================================================================
@@ -118,7 +120,7 @@ class AgentOrchestrator {
    * Dispatch an event to trigger relevant agents
    */
   async dispatchEvent(payload: EventPayload): Promise<AgentResponse[]> {
-    const { event, dealId, userId, data } = payload;
+    const { event, dealId, userId, data, eventId } = payload;
     
     logger.info(`Dispatching event: ${event}`, { dealId, data });
 
@@ -153,6 +155,10 @@ class AgentOrchestrator {
         continue;
       }
 
+      // Find the pending workflow_run row pre-created by the dispatcher (if any)
+      const runId = await this.findRunId(eventId, agent.id);
+      await this.markRun(runId, 'running');
+
       try {
         const prompt = this.buildEventPrompt(agent, trigger, data);
         const allowedSkills = this.getAgentSkills(agent);
@@ -170,12 +176,85 @@ class AgentOrchestrator {
           await this.queueNotifications(response.notifications, context);
         }
 
+        await this.markRun(runId, 'completed', {
+          agentName: response.agentName,
+          message: response.message,
+          skillsUsed: response.skillsUsed,
+          notificationCount: response.notifications?.length || 0,
+        });
+
       } catch (error: any) {
         logger.error(`Agent ${agent.id} failed on event ${event}:`, error);
+        await this.markRun(runId, 'failed', null, error?.message || String(error));
       }
     }
 
     return responses;
+  }
+
+  /**
+   * Find the pending workflow_run row that the dispatcher pre-created for
+   * (eventId, agentId).  Returns undefined if no eventId was threaded
+   * through (e.g. dispatchEvent called directly from a test) or no row was
+   * found.  Tracking is best-effort: failure here must not break dispatch.
+   */
+  private async findRunId(
+    eventId: string | undefined,
+    agentId: string
+  ): Promise<string | undefined> {
+    if (!eventId) return undefined;
+    try {
+      const r = await query(
+        `SELECT id FROM agent_workflow_runs
+          WHERE event_id = $1 AND agent_id = $2 AND status = 'pending'
+          ORDER BY created_at DESC LIMIT 1`,
+        [eventId, agentId]
+      );
+      return r.rows[0]?.id;
+    } catch (e: any) {
+      logger.warn(`findRunId failed: ${e?.message || e}`);
+      return undefined;
+    }
+  }
+
+  /**
+   * Update the lifecycle of an agent_workflow_runs row.  No-op if runId is
+   * undefined or the UPDATE itself errors — the Hub view degrades
+   * gracefully and dispatch must not be blocked by bookkeeping.
+   */
+  private async markRun(
+    runId: string | undefined,
+    status: 'running' | 'completed' | 'failed',
+    result?: any,
+    errorMsg?: string
+  ): Promise<void> {
+    if (!runId) return;
+    try {
+      if (status === 'running') {
+        await query(
+          `UPDATE agent_workflow_runs
+             SET status = 'running', started_at = NOW()
+           WHERE id = $1`,
+          [runId]
+        );
+      } else if (status === 'completed') {
+        await query(
+          `UPDATE agent_workflow_runs
+             SET status = 'completed', completed_at = NOW(), result = $2
+           WHERE id = $1`,
+          [runId, result == null ? null : JSON.stringify(result)]
+        );
+      } else {
+        await query(
+          `UPDATE agent_workflow_runs
+             SET status = 'failed', completed_at = NOW(), error = $2
+           WHERE id = $1`,
+          [runId, errorMsg || 'unknown error']
+        );
+      }
+    } catch (e: any) {
+      logger.warn(`markRun(${status}) failed: ${e?.message || e}`);
+    }
   }
 
   /**

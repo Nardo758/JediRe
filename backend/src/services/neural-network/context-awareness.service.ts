@@ -45,6 +45,7 @@
 
 import { Pool } from 'pg';
 import { getKnowledgeGraphService, NodeType, EdgeType, GraphNode } from './knowledge-graph.service';
+import { generateCompletion, isLLMAvailable } from '../llm.service';
 
 // ============================================================================
 // CONTEXT TYPES - What the user is looking at
@@ -895,6 +896,115 @@ export class ContextAwarenessService {
     return `Q${q} ${date.getFullYear()}`;
   }
   
+  // ==========================================================================
+  // ASK-THE-NETWORK — natural-language Q&A over the knowledge graph
+  // ==========================================================================
+
+  /**
+   * Free-form question answering powered by the knowledge graph and an LLM.
+   *
+   * Flow:
+   *   1. Hybrid search (BM25 + embeddings) over knowledge_graph_nodes,
+   *      optionally constrained to a deal/market scope.
+   *   2. Build a compact context block from the top results.
+   *   3. Ask the configured LLM to synthesize an answer grounded in that
+   *      context, citing source node names.
+   *   4. Return { text, sources } with the nodes the model was given.
+   *
+   * Falls back gracefully when no LLM key or no matching nodes are present
+   * — the caller (Hub UI) is told plainly so the operator can act.
+   */
+  async answer(
+    question: string,
+    opts: { dealId?: string; marketId?: string; submarketId?: string; limit?: number } = {}
+  ): Promise<{
+    text: string;
+    sources: Array<{ id: string; type: NodeType; name: string; score: number }>;
+    matched: number;
+  }> {
+    const trimmed = (question || '').trim();
+    if (!trimmed) {
+      return { text: 'Please provide a question.', sources: [], matched: 0 };
+    }
+
+    const limit = Math.max(1, Math.min(20, opts.limit ?? 8));
+
+    // 1. Pull relevant nodes from the graph
+    let matches: Array<{ node: GraphNode; score: number; matchType: string }> = [];
+    try {
+      matches = await this.graphService.hybridSearch(trimmed, undefined, undefined, limit);
+    } catch (e: any) {
+      console.warn('[ContextAwareness] hybridSearch failed in answer():', e?.message || e);
+    }
+
+    const sources = matches.map(m => ({
+      id: m.node.id,
+      type: m.node.type,
+      name: m.node.name,
+      score: m.score,
+    }));
+
+    // 2. If no LLM, return a useful structured fallback
+    if (!isLLMAvailable()) {
+      const lines = matches.length
+        ? matches.map(m => `- [${m.node.type}] ${m.node.name}`).join('\n')
+        : '- (no matching entities)';
+      return {
+        text:
+          `LLM is not configured.\nFound ${matches.length} relevant node(s):\n${lines}`,
+        sources,
+        matched: matches.length,
+      };
+    }
+
+    // 3. Build a small grounded context block
+    const contextBlock = matches.length
+      ? matches
+          .map((m, i) => {
+            const propsPreview = JSON.stringify(m.node.properties || {}).slice(0, 400);
+            return `[${i + 1}] (${m.node.type}) ${m.node.name}\n    props: ${propsPreview}`;
+          })
+          .join('\n')
+      : '(no entities matched in the knowledge graph)';
+
+    const scopeBits: string[] = [];
+    if (opts.dealId)      scopeBits.push(`dealId=${opts.dealId}`);
+    if (opts.marketId)    scopeBits.push(`marketId=${opts.marketId}`);
+    if (opts.submarketId) scopeBits.push(`submarketId=${opts.submarketId}`);
+    const scope = scopeBits.length ? `Scope: ${scopeBits.join(', ')}` : 'Scope: none';
+
+    const prompt = `You are JediRe's neural network analyst. Answer the user's question
+using ONLY the knowledge graph context below. If the context is insufficient,
+say so plainly — do not fabricate.  Cite sources by their bracket number, e.g. [1].
+
+${scope}
+
+Knowledge graph context:
+${contextBlock}
+
+User question:
+${trimmed}
+
+Answer (concise, real-estate-analyst tone, max ~6 sentences):`;
+
+    // 4. Call the LLM
+    try {
+      const llm = await generateCompletion({
+        prompt,
+        maxTokens: 500,
+        temperature: 0.2,
+      });
+      return { text: llm.text.trim(), sources, matched: matches.length };
+    } catch (e: any) {
+      console.error('[ContextAwareness] LLM call failed in answer():', e?.message || e);
+      return {
+        text: `LLM call failed: ${e?.message || 'unknown error'}.`,
+        sources,
+        matched: matches.length,
+      };
+    }
+  }
+
   private identifyProjectGaps(row: any): string[] {
     const gaps: string[] = [];
     

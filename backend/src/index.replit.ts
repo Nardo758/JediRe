@@ -309,6 +309,12 @@ app.use('/api/v1/grid', optionalAuth, gridRouter);
 app.use('/api/v1/rankings', optionalAuth, rankingsRouter);
 app.use('/api/v1/portfolio', portfolioRouter);
 
+// Neural Network Hub: GET /api/v1/agents/status — must be mounted BEFORE the
+// broader /api/v1/agents routers below so the existing GET /status in
+// agent-chat.routes.ts (which returns hard-coded fake data) doesn't shadow it.
+import { createAgentStatusRoutes } from './api/rest/agent-status.routes';
+app.use('/api/v1/agents/status', createAgentStatusRoutes(pool));
+
 import agentRouter from './api/rest/agent.routes';
 app.use('/api/v1/agents', agentRouter);
 
@@ -468,7 +474,11 @@ app.use('/api/v1/knowledge-graph', createKnowledgeGraphRoutes(pool));
 //   POST /api/admin/kg/embeddings/backfill
 const { createKgAliasRoutes } = require('./api/rest/kg-aliases.routes');
 app.use('/api', createKgAliasRoutes(pool));
-app.use('/api/v1/context', createContextAwarenessRoutes(pool));
+// Context Awareness — analyst brain (analyze, supply-pipeline, gaps, what-if,
+// query). Wrapped in requireAuth so the LLM-backed /query endpoint can never
+// be reached unauthenticated even if the broader '/api/v1' requireAuth chain
+// above is reordered in the future.
+app.use('/api/v1/context', requireAuth, createContextAwarenessRoutes(pool));
 app.use('/api/v1/scheduled-refresh', scheduledRefreshRoutes);
 app.use('/api/v1/data-matrix', dataMatrixRoutes);
 app.use('/api/v1', requireAuth, propertyBoundaryRouter);

@@ -18,9 +18,19 @@
  */
 
 import { agentOrchestrator, EventPayload } from './agent-orchestrator';
-import { TriggerEvent } from './agent-personas';
+import { TriggerEvent, getAgentsByTrigger } from './agent-personas';
 import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
+
+/**
+ * Returns the agent IDs that should be dispatched for a given event.
+ * Single source of truth: defers to agent-personas trigger registry so the
+ * dispatcher's bookkeeping rows always match the agents the orchestrator
+ * actually runs.
+ */
+export function getTriggeredAgents(event: TriggerEvent): string[] {
+  return getAgentsByTrigger(event).map(a => a.id);
+}
 
 // ============================================================================
 // EVENT DISPATCHER CLASS
@@ -62,11 +72,17 @@ class EventDispatcher {
       const payload = this.eventQueue.shift()!;
       
       try {
-        // Log the event
-        await this.logEvent(payload);
+        // Log the event AND pre-create one pending workflow_run row per
+        // agent that getTriggeredAgents() expects to fire.  The orchestrator
+        // will look those rows up by (event_id, agent_id) and flip them to
+        // running / completed / failed.
+        const eventId = await this.logEventAndCreateRuns(payload);
 
-        // Dispatch to agents
-        const responses = await agentOrchestrator.dispatchEvent(payload);
+        // Dispatch to agents (eventId enables Hub status tracking)
+        const responses = await agentOrchestrator.dispatchEvent({
+          ...payload,
+          eventId,
+        });
 
         // Log responses
         for (const response of responses) {
@@ -85,18 +101,40 @@ class EventDispatcher {
   }
 
   /**
-   * Log event to database
+   * Log event to database AND pre-create one pending workflow_run row per
+   * agent that's expected to fire.  Returns the new event id (or undefined
+   * if logging fails — bookkeeping is non-critical).
    */
-  private async logEvent(payload: EventPayload): Promise<void> {
+  private async logEventAndCreateRuns(payload: EventPayload): Promise<string | undefined> {
     try {
-      await query(
+      const evRes = await query(
         `INSERT INTO agent_events (event_type, deal_id, user_id, payload, created_at)
-         VALUES ($1, $2, $3, $4, NOW())`,
+         VALUES ($1, $2, $3, $4, NOW())
+         RETURNING id`,
         [payload.event, payload.dealId, payload.userId, JSON.stringify(payload.data)]
       );
-    } catch {
+      const eventId: string | undefined = evRes.rows[0]?.id;
+      if (!eventId) return undefined;
+
+      const agentIds = getTriggeredAgents(payload.event);
+      for (const agentId of agentIds) {
+        try {
+          await query(
+            `INSERT INTO agent_workflow_runs
+              (agent_id, event_id, deal_id, user_id, trigger_event, status, created_at)
+             VALUES ($1, $2, $3, $4, $5, 'pending', NOW())`,
+            [agentId, eventId, payload.dealId, payload.userId, payload.event]
+          );
+        } catch (e: any) {
+          logger.warn(`Failed to create workflow_run for ${agentId}: ${e?.message || e}`);
+        }
+      }
+
+      return eventId;
+    } catch (e: any) {
       // Non-critical, just log
-      logger.warn('Failed to log event to database');
+      logger.warn(`Failed to log event to database: ${e?.message || e}`);
+      return undefined;
     }
   }
 
