@@ -101,6 +101,11 @@ async function main() {
       (om_extraction->'replacementCost'->>'replacementCostPerUnit')::numeric AS replacement_cost_pu,
       jsonb_array_length(COALESCE(om_extraction->'marketComps'->'rentComps', '[]'::jsonb)) AS rent_comps,
       jsonb_array_length(COALESCE(om_extraction->'marketComps'->'saleComps', '[]'::jsonb)) AS sale_comps,
+      (SELECT AVG((c->>'avgRent')::numeric)::numeric(10,2)
+         FROM jsonb_array_elements(COALESCE(om_extraction->'marketComps'->'rentComps','[]'::jsonb)) c
+         WHERE (c->>'avgRent') IS NOT NULL)                  AS avg_rent_from_comps,
+      (om_extraction->'brokerProforma'->>'managementFeePct')::numeric AS mgmt_fee_pct_frac,
+      (om_extraction->'brokerProforma'->>'stabilizedNOI')::numeric AS stabilized_noi,
       om_extraction->'metadata'->>'broker' AS broker,
       (om_extraction->'metadata'->>'confidenceScore')::numeric AS confidence
     FROM data_library_files WHERE id = $1
@@ -153,12 +158,16 @@ async function main() {
         (source_type, property_name, address, city, state, zip_code,
          property_type, year_built, unit_count,
          avg_rent, occupancy_rate, expense_ratio, cap_rate,
-         price_per_unit, asking_price, extraction_data, created_by)
+         price_per_unit, asking_price, extraction_data, created_by,
+         file_id, data_type,
+         vacancy_rate, gross_potential_rent, management_fee_pct, asking_price_per_unit)
       VALUES
         ('broker_om', $1, $2, $3, $4, $5,
          $6, $7, $8,
          $9, $10, $11, $12,
-         $13, $14, $15::jsonb, $16::uuid)
+         $13, $14, $15::jsonb, $16::uuid,
+         $17, 'om',
+         $18, $19, $20, $21)
       `,
       [
         e.property_name,
@@ -169,15 +178,23 @@ async function main() {
         e.property_type,
         e.year_built,
         e.units,
-        // headline financials — pulled from broker proforma where present
-        null, // avg_rent (would need rent roll parse; not exposed at top level)
-        e.stabilized_vacancy != null ? Math.max(0, 1 - Number(e.stabilized_vacancy) / 100) : null,
-        null, // expense_ratio (LLM doesn't surface as top-level)
-        e.going_in_cap ?? e.guidance_cap_rate ?? null,
-        e.price_per_unit,
-        e.asking_price,
+        // ── modern columns (canonical 0-1 scale per project convention) ─────
+        e.avg_rent_from_comps,                                                  // $9  avg_rent (legacy column kept; same value as gross_potential_rent below)
+        e.stabilized_vacancy != null ? Math.max(0, 1 - Number(e.stabilized_vacancy)) : null, // $10 occupancy_rate (0-1)
+        null,                                                                   // $11 expense_ratio  (LLM didn't surface)
+        e.going_in_cap ?? e.guidance_cap_rate ?? null,                          // $12 cap_rate       (LLM didn't surface)
+        e.price_per_unit,                                                       // $13 price_per_unit
+        e.asking_price,                                                         // $14 asking_price
         JSON.stringify({ source_file_id: fileId, broker: e.broker, confidence: e.confidence }),
         DIAGNOSTIC_USER_ID,
+        // ── legacy mirror columns (capsule-intelligence reads these) ────────
+        fileId,                                                                 // $17 file_id  (FK)
+        // $18 vacancy_rate is in PERCENT units in capsule intel (it formats avgVacancy with no *100)
+        e.stabilized_vacancy != null ? Number(e.stabilized_vacancy) * 100 : null,
+        e.avg_rent_from_comps,                                                  // $19 gross_potential_rent (avg of 8 rent comps from OM)
+        // $20 management_fee_pct in PERCENT
+        e.mgmt_fee_pct_frac != null ? Number(e.mgmt_fee_pct_frac) * 100 : null,
+        e.price_per_unit,                                                       // $21 asking_price_per_unit (mirror of price_per_unit)
       ],
     );
     console.log(`  ✅ Inserted asset row from extraction\n`);

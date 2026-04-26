@@ -29,22 +29,10 @@ CREATE INDEX IF NOT EXISTS idx_om_replacement_cost_file ON om_replacement_cost_d
 CREATE INDEX IF NOT EXISTS idx_broker_narratives_file ON broker_narratives(file_id);
 
 -- ── 2. Add financial columns to data_library_assets (capsule-intel reads these) ─
+-- IMPORTANT: rename legacy columns FIRST, before ADD COLUMN IF NOT EXISTS.
+-- Otherwise the new columns will already exist when the rename block runs,
+-- and existing data in the legacy columns will be stranded.
 
-ALTER TABLE data_library_assets
-  ADD COLUMN IF NOT EXISTS cap_rate NUMERIC(5,2),
-  ADD COLUMN IF NOT EXISTS gross_potential_rent NUMERIC(10,2),
-  ADD COLUMN IF NOT EXISTS vacancy_rate NUMERIC(5,2),
-  ADD COLUMN IF NOT EXISTS operating_expense_ratio NUMERIC(5,2),
-  ADD COLUMN IF NOT EXISTS noi NUMERIC(14,2),
-  ADD COLUMN IF NOT EXISTS asking_price_per_unit NUMERIC(12,2),
-  ADD COLUMN IF NOT EXISTS management_fee_pct NUMERIC(5,2),
-  ADD COLUMN IF NOT EXISTS property_tax_per_unit NUMERIC(10,2),
-  ADD COLUMN IF NOT EXISTS insurance_per_unit NUMERIC(10,2),
-  ADD COLUMN IF NOT EXISTS repairs_maintenance_per_unit NUMERIC(10,2),
-  ADD COLUMN IF NOT EXISTS data_type VARCHAR(50);
-
--- Map existing columns to the names capsule-intel expects
--- (some tables use different names — create a view for compatibility)
 DO $$
 BEGIN
   -- going_in_cap_rate → cap_rate
@@ -77,28 +65,78 @@ BEGIN
     SELECT 1 FROM information_schema.columns
     WHERE table_name = 'data_library_assets' AND column_name = 'noi'
   ) THEN
-    ALTER TABLE data_library_assets ADD COLUMN noi NUMERIC(14,2);
-    UPDATE data_library_assets SET noi = trailing_noi WHERE trailing_noi IS NOT NULL;
+    ALTER TABLE data_library_assets RENAME COLUMN trailing_noi TO noi;
+  END IF;
+END $$;
+
+-- Now add any new columns that are still missing.
+ALTER TABLE data_library_assets
+  ADD COLUMN IF NOT EXISTS cap_rate NUMERIC(5,2),
+  ADD COLUMN IF NOT EXISTS gross_potential_rent NUMERIC(10,2),
+  ADD COLUMN IF NOT EXISTS vacancy_rate NUMERIC(5,2),
+  ADD COLUMN IF NOT EXISTS operating_expense_ratio NUMERIC(5,2),
+  ADD COLUMN IF NOT EXISTS noi NUMERIC(14,2),
+  ADD COLUMN IF NOT EXISTS asking_price_per_unit NUMERIC(12,2),
+  ADD COLUMN IF NOT EXISTS management_fee_pct NUMERIC(5,2),
+  ADD COLUMN IF NOT EXISTS property_tax_per_unit NUMERIC(10,2),
+  ADD COLUMN IF NOT EXISTS insurance_per_unit NUMERIC(10,2),
+  ADD COLUMN IF NOT EXISTS repairs_maintenance_per_unit NUMERIC(10,2),
+  ADD COLUMN IF NOT EXISTS data_type VARCHAR(50);
+
+-- Backfill from any legacy columns that still exist alongside the new ones
+-- (covers environments where both columns somehow ended up present).
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'data_library_assets' AND column_name = 'going_in_cap_rate'
+  ) THEN
+    EXECUTE 'UPDATE data_library_assets SET cap_rate = going_in_cap_rate WHERE cap_rate IS NULL AND going_in_cap_rate IS NOT NULL';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'data_library_assets' AND column_name = 'opex_ratio'
+  ) THEN
+    EXECUTE 'UPDATE data_library_assets SET operating_expense_ratio = opex_ratio WHERE operating_expense_ratio IS NULL AND opex_ratio IS NOT NULL';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'data_library_assets' AND column_name = 'trailing_noi'
+  ) THEN
+    EXECUTE 'UPDATE data_library_assets SET noi = trailing_noi WHERE noi IS NULL AND trailing_noi IS NOT NULL';
   END IF;
 END $$;
 
 -- ── 3. Backfill data_library_assets from om_intelligence tables if possible ──
+-- Guarded: om_intelligence_snapshots may not exist in every environment.
 
--- Pull cap rates from om_intelligence_snapshots into data_library_assets
-UPDATE data_library_assets a
-SET cap_rate = o.cap_rate
-FROM om_intelligence_snapshots o
-WHERE o.file_id = a.file_id
-  AND a.cap_rate IS NULL
-  AND o.cap_rate IS NOT NULL;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_name = 'om_intelligence_snapshots'
+  ) THEN
+    EXECUTE $sql$
+      UPDATE data_library_assets a
+      SET cap_rate = o.cap_rate
+      FROM om_intelligence_snapshots o
+      WHERE o.file_id = a.file_id
+        AND a.cap_rate IS NULL
+        AND o.cap_rate IS NOT NULL
+    $sql$;
 
--- Pull asking price per unit
-UPDATE data_library_assets a
-SET asking_price_per_unit = o.price_per_unit
-FROM om_intelligence_snapshots o
-WHERE o.file_id = a.file_id
-  AND a.asking_price_per_unit IS NULL
-  AND o.price_per_unit IS NOT NULL;
+    EXECUTE $sql$
+      UPDATE data_library_assets a
+      SET asking_price_per_unit = o.price_per_unit
+      FROM om_intelligence_snapshots o
+      WHERE o.file_id = a.file_id
+        AND a.asking_price_per_unit IS NULL
+        AND o.price_per_unit IS NOT NULL
+    $sql$;
+  END IF;
+END $$;
 
 -- ── 4. Index for capsule intelligence queries ──────────────────────────────────
 

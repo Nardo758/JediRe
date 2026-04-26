@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { Pool } from 'pg';
+import { getPool } from '../database/connection';
 import { parseOM } from './document-extraction/parsers/om-parser';
 import { tagOmWithMarket } from './document-extraction/om-geo';
 import { distributeOmExtraction } from './document-extraction/om-distribution.service';
@@ -621,3 +622,12 @@ export class DataLibraryService {
     return result.rows.slice(0, 10);
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Singleton instance — capsule-intelligence and other consumers import this.
+// Without this export, `dataLibraryService.findComparables(...)` was throwing
+// `Cannot read properties of undefined (reading 'findComparables')`, which the
+// catch block in pullDataLibraryComps swallowed silently — making the entire
+// Data Library comp pull return 0 every time.
+// ─────────────────────────────────────────────────────────────────────────────
+export const dataLibraryService = new DataLibraryService(getPool());

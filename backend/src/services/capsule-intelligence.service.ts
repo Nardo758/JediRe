@@ -342,14 +342,20 @@ export class CapsuleIntelligenceService {
         return { compsFound: 0, rentCompsUsed: 0, vacancyCompsUsed: 0, expenseCompsUsed: 0, capRateCompsUsed: 0 };
       }
 
+      // NOTE: 20260426_om_pipeline_schema_fixes.sql renamed
+      //   going_in_cap_rate → cap_rate, opex_ratio → operating_expense_ratio
+      // and trailing_revenue / stabilized_cap_rate were never on this table.
+      // Querying those names now throws "column does not exist" which the
+      // catch block swallows silently — the entire comp pull returned 0 every
+      // time. Use only the modern column names.
       const assetsResult = await pool.query(`
-        SELECT 
+        SELECT
           a.file_id,
           COALESCE(a.asking_price_per_unit, a.price_per_unit) as asking_price_per_unit,
-          COALESCE(a.cap_rate, a.going_in_cap_rate, a.stabilized_cap_rate) as cap_rate,
-          COALESCE(a.gross_potential_rent, a.trailing_revenue) as gross_potential_rent,
+          a.cap_rate                                          as cap_rate,
+          a.gross_potential_rent                              as gross_potential_rent,
           a.vacancy_rate,
-          COALESCE(a.operating_expense_ratio, a.opex_ratio) as operating_expense_ratio,
+          a.operating_expense_ratio                           as operating_expense_ratio,
           a.management_fee_pct,
           a.property_tax_per_unit,
           a.insurance_per_unit,
@@ -359,8 +365,10 @@ export class CapsuleIntelligenceService {
         WHERE a.file_id = ANY($1)
           AND (
             a.asking_price_per_unit IS NOT NULL OR a.price_per_unit IS NOT NULL OR
-            a.cap_rate IS NOT NULL OR a.going_in_cap_rate IS NOT NULL OR
-            a.gross_potential_rent IS NOT NULL OR a.trailing_revenue IS NOT NULL
+            a.cap_rate IS NOT NULL OR
+            a.gross_potential_rent IS NOT NULL OR
+            a.vacancy_rate IS NOT NULL OR
+            a.operating_expense_ratio IS NOT NULL
           )
       `, [fileIds]);
 
@@ -370,11 +378,19 @@ export class CapsuleIntelligenceService {
         return { compsFound: comparables.length, rentCompsUsed: 0, vacancyCompsUsed: 0, expenseCompsUsed: 0, capRateCompsUsed: 0 };
       }
 
-      // Calculate averages with variance
-      const rents = assets.map(a => a.gross_potential_rent).filter(v => v && v > 0);
-      const vacancies = assets.map(a => a.vacancy_rate).filter(v => v !== null && v !== undefined);
-      const expenses = assets.map(a => a.operating_expense_ratio).filter(v => v && v > 0);
-      const capRates = assets.map(a => a.cap_rate).filter(v => v && v > 0);
+      // Calculate averages with variance.
+      // pg returns `numeric` columns as STRINGS — must coerce to Number, else
+      // sum becomes string concatenation ("1967.381967.38"/2 = NaN) and every
+      // avg* gets discarded by the `if (dlData?.avgRent)` checks downstream.
+      const toNum = (v: unknown): number | null => {
+        if (v === null || v === undefined || v === '') return null;
+        const n = Number(v);
+        return Number.isFinite(n) ? n : null;
+      };
+      const rents     = assets.map(a => toNum(a.gross_potential_rent))   .filter((v): v is number => v !== null && v > 0);
+      const vacancies = assets.map(a => toNum(a.vacancy_rate))           .filter((v): v is number => v !== null);
+      const expenses  = assets.map(a => toNum(a.operating_expense_ratio)).filter((v): v is number => v !== null && v > 0);
+      const capRates  = assets.map(a => toNum(a.cap_rate))               .filter((v): v is number => v !== null && v > 0);
 
       return {
         compsFound: comparables.length,
@@ -404,8 +420,13 @@ export class CapsuleIntelligenceService {
         capRateVariance: capRates.length > 1 ? this.variance(capRates) : undefined,
         capRateRange: capRates.length > 0 ? { min: Math.min(...capRates), max: Math.max(...capRates) } : undefined,
       };
-    } catch (err) {
-      logger.warn('[CapsuleIntelligence] Data Library pull failed', { err });
+    } catch (err: any) {
+      logger.warn('[CapsuleIntelligence] Data Library pull failed', {
+        message: err?.message,
+        code: err?.code,
+        detail: err?.detail,
+        stack: err?.stack?.split('\n').slice(0, 5).join('\n'),
+      });
       return { compsFound: 0, rentCompsUsed: 0, vacancyCompsUsed: 0, expenseCompsUsed: 0, capRateCompsUsed: 0 };
     }
   }
@@ -546,7 +567,14 @@ export class CapsuleIntelligenceService {
   }
 
   private avgField(rows: any[], field: string): number | undefined {
-    const vals = rows.map(r => r[field]).filter(v => v !== null && v !== undefined && v > 0);
+    const vals = rows
+      .map(r => {
+        const v = r[field];
+        if (v === null || v === undefined) return null;
+        const n = typeof v === 'number' ? v : Number(v);
+        return Number.isFinite(n) ? n : null;
+      })
+      .filter((v): v is number => v !== null && v > 0);
     return vals.length > 0 ? Math.round(this.avg(vals) * 100) / 100 : undefined;
   }
 

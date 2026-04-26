@@ -14,7 +14,11 @@ function requirePdfParse(): (buf: Buffer) => Promise<{ text: string; numpages: n
   if (lib && typeof lib.PDFParse === 'function') {
     return (buf: Buffer) => {
       const inst = new lib.PDFParse({ data: buf });
-      return inst.getText ? inst.getText().then((text: string) => ({ text, numpages: 0 })) : Promise.resolve({ text: '', numpages: 0 });
+      if (!inst.getText) return Promise.resolve({ text: '', numpages: 0 });
+      return inst.getText().then((r: any) => ({
+        text: typeof r === 'string' ? r : (r?.text ?? ''),
+        numpages: r?.total ?? r?.pages?.length ?? 0,
+      }));
     };
   }
   throw new Error('pdf-parse: cannot find a callable export');
