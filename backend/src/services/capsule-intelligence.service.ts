@@ -344,20 +344,24 @@ export class CapsuleIntelligenceService {
 
       const assetsResult = await pool.query(`
         SELECT 
-          file_id,
-          asking_price_per_unit,
-          cap_rate,
-          gross_potential_rent,
-          vacancy_rate,
-          operating_expense_ratio,
-          management_fee_pct,
-          property_tax_per_unit,
-          insurance_per_unit,
-          repairs_maintenance_per_unit,
-          data_type
-        FROM data_library_assets
-        WHERE file_id = ANY($1)
-          AND (asking_price_per_unit IS NOT NULL OR cap_rate IS NOT NULL OR gross_potential_rent IS NOT NULL)
+          a.file_id,
+          COALESCE(a.asking_price_per_unit, a.price_per_unit) as asking_price_per_unit,
+          COALESCE(a.cap_rate, a.going_in_cap_rate, a.stabilized_cap_rate) as cap_rate,
+          COALESCE(a.gross_potential_rent, a.trailing_revenue) as gross_potential_rent,
+          a.vacancy_rate,
+          COALESCE(a.operating_expense_ratio, a.opex_ratio) as operating_expense_ratio,
+          a.management_fee_pct,
+          a.property_tax_per_unit,
+          a.insurance_per_unit,
+          a.repairs_maintenance_per_unit,
+          a.data_type
+        FROM data_library_assets a
+        WHERE a.file_id = ANY($1)
+          AND (
+            a.asking_price_per_unit IS NOT NULL OR a.price_per_unit IS NOT NULL OR
+            a.cap_rate IS NOT NULL OR a.going_in_cap_rate IS NOT NULL OR
+            a.gross_potential_rent IS NOT NULL OR a.trailing_revenue IS NOT NULL
+          )
       `, [fileIds]);
 
       const assets = assetsResult.rows;

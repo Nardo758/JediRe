@@ -6,7 +6,19 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import * as pdfParse from 'pdf-parse';
+// pdf-parse v2.x exports a class; v1.x exports a function — handle both
+function requirePdfParse(): (buf: Buffer) => Promise<{ text: string; numpages: number }> {
+  const lib = require('pdf-parse');
+  if (typeof lib === 'function') return lib;
+  if (lib && typeof lib.default === 'function') return lib.default;
+  if (lib && typeof lib.PDFParse === 'function') {
+    return (buf: Buffer) => {
+      const inst = new lib.PDFParse({ data: buf });
+      return inst.getText ? inst.getText().then((text: string) => ({ text, numpages: 0 })) : Promise.resolve({ text: '', numpages: 0 });
+    };
+  }
+  throw new Error('pdf-parse: cannot find a callable export');
+}
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -361,7 +373,8 @@ Return ONLY valid JSON matching this schema:
 
 async function extractPdfText(buffer: Buffer): Promise<{ text: string; pages: number }> {
   try {
-    const data = await pdfParse(buffer);
+    const parseFn = requirePdfParse();
+    const data = await parseFn(buffer);
     return {
       text: data.text,
       pages: data.numpages,
