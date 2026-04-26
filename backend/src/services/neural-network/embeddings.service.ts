@@ -58,6 +58,17 @@ export interface RefreshStaleStats {
   hasKey: boolean;
 }
 
+export type BackfillMode = 'missing' | 'stale' | 'all';
+
+export type BackfillResponse =
+  | { success: true; mode: 'missing'; stats: BackfillStats }
+  | { success: true; mode: 'stale'; stats: RefreshStaleStats }
+  | { success: true; mode: 'all'; missing: BackfillStats; stale: RefreshStaleStats };
+
+export function parseBackfillMode(raw: unknown): BackfillMode {
+  return raw === 'stale' || raw === 'all' ? raw : 'missing';
+}
+
 interface NodeRow {
   id: string;
   type: string;
@@ -395,12 +406,19 @@ export class EmbeddingsService {
     };
 
     const batchSize = Math.min(Math.max(opts.batchSize ?? BATCH_SIZE_API, 1), BATCH_SIZE_API);
-    const max = opts.max ?? 5000;
+    // When `max` is omitted we sweep the entire table — that's the only way
+    // to honor "re-embed nodes whenever their content changes" for graphs
+    // larger than any arbitrary cap. A cap is still respected when callers
+    // explicitly pass one (admin one-off calls, the scheduler's safety env).
+    const hasMax = typeof opts.max === 'number' && opts.max > 0;
+    const max = hasMax ? (opts.max as number) : Number.POSITIVE_INFINITY;
 
     let offset = 0;
     while (offset < max) {
       const remaining = max - offset;
-      const fetchLimit = Math.min(batchSize, remaining);
+      const fetchLimit = Number.isFinite(remaining)
+        ? Math.min(batchSize, remaining)
+        : batchSize;
 
       // Pull nodes alongside their cached hash (if any). We deliberately
       // include nodes with no cache row — those count as "missing" and

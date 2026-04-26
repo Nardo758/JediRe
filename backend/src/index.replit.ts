@@ -1058,24 +1058,29 @@ async function startServer() {
         return;
       }
 
+      // Optional safety cap on the periodic sweep. Default = no cap (full
+      // table). Set KG_REEMBED_MAX_PER_RUN to bound a single sweep when
+      // the graph grows large enough that a full pass per hour is too much.
+      const maxPerRun = (() => {
+        const raw = process.env.KG_REEMBED_MAX_PER_RUN;
+        if (!raw) return undefined;
+        const n = parseInt(raw, 10);
+        return Number.isFinite(n) && n > 0 ? n : undefined;
+      })();
+
       const runSweep = async () => {
         if (!svc.hasKey()) return;
         try {
           const t0 = Date.now();
-          const stats = await svc.reembedStale();
+          const stats = await svc.reembedStale(
+            maxPerRun ? { max: maxPerRun } : {}
+          );
           const ms = Date.now() - t0;
-          if (stats.refreshed > 0 || stats.missing > 0 || stats.errors > 0) {
-            console.log(
-              `[Embeddings] staleness sweep done in ${ms}ms: ` +
-              `scanned=${stats.scanned} refreshed=${stats.refreshed} ` +
-              `missing=${stats.missing} skipped=${stats.skipped} errors=${stats.errors}`
-            );
-          } else {
-            console.log(
-              `[Embeddings] staleness sweep done in ${ms}ms: ` +
-              `nothing to refresh (scanned=${stats.scanned})`
-            );
-          }
+          console.log(
+            `[Embeddings] staleness sweep done in ${ms}ms: ` +
+            `scanned=${stats.scanned} refreshed=${stats.refreshed} ` +
+            `missing=${stats.missing} skipped=${stats.skipped} errors=${stats.errors}`
+          );
         } catch (err: any) {
           console.warn('[Embeddings] staleness sweep failed:', err?.message || err);
         }

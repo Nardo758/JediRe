@@ -12,7 +12,11 @@
 import { Router, Request, Response } from 'express';
 import { Pool } from 'pg';
 import { getKnowledgeGraphService, NodeType, EdgeType } from '../../services/neural-network';
-import { getEmbeddingsService } from '../../services/neural-network/embeddings.service';
+import {
+  getEmbeddingsService,
+  parseBackfillMode,
+  type BackfillResponse,
+} from '../../services/neural-network/embeddings.service';
 
 export function createKnowledgeGraphRoutes(pool: Pool): Router {
   const router = Router();
@@ -508,35 +512,25 @@ export function createKnowledgeGraphRoutes(pool: Pool): Router {
         });
       }
 
-      const body = (req.body || {}) as {
+      const body = (req.body ?? {}) as {
         batchSize?: number;
         max?: number;
-        mode?: 'missing' | 'stale' | 'all';
+        mode?: unknown;
       };
-      const mode = body.mode ?? ((req.query.mode as string | undefined) as any) ?? 'missing';
+      const mode = parseBackfillMode(body.mode ?? req.query.mode);
+      const opts = { batchSize: body.batchSize, max: body.max };
 
-      let payload: any;
+      let payload: BackfillResponse;
       if (mode === 'stale') {
-        const stats = await embeddings.reembedStale({
-          batchSize: body.batchSize,
-          max: body.max,
-        });
-        payload = { mode, stats };
+        payload = { success: true, mode, stats: await embeddings.reembedStale(opts) };
       } else if (mode === 'all') {
-        const result = await embeddings.refreshAll({
-          batchSize: body.batchSize,
-          max: body.max,
-        });
-        payload = { mode, ...result };
+        const result = await embeddings.refreshAll(opts);
+        payload = { success: true, mode, missing: result.missing, stale: result.stale };
       } else {
-        const stats = await embeddings.embedAllMissing({
-          batchSize: body.batchSize,
-          max: body.max,
-        });
-        payload = { mode: 'missing', stats };
+        payload = { success: true, mode, stats: await embeddings.embedAllMissing(opts) };
       }
 
-      res.json({ success: true, ...payload });
+      res.json(payload);
     } catch (error: any) {
       console.error('[KnowledgeGraph] Backfill error:', error);
       res.status(500).json({
