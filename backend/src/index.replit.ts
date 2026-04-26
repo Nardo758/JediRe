@@ -1068,8 +1068,17 @@ async function startServer() {
         return Number.isFinite(n) && n > 0 ? n : undefined;
       })();
 
+      // In-flight guard: if a previous sweep is still running when the
+      // interval fires (large graph + slow OpenAI), skip this tick rather
+      // than launching a duplicate sweep that doubles cost.
+      let sweepInFlight = false;
       const runSweep = async () => {
         if (!svc.hasKey()) return;
+        if (sweepInFlight) {
+          console.log('[Embeddings] staleness sweep skipped — previous run still in flight');
+          return;
+        }
+        sweepInFlight = true;
         try {
           const t0 = Date.now();
           const stats = await svc.reembedStale(
@@ -1083,6 +1092,8 @@ async function startServer() {
           );
         } catch (err: any) {
           console.warn('[Embeddings] staleness sweep failed:', err?.message || err);
+        } finally {
+          sweepInFlight = false;
         }
       };
 
