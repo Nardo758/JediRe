@@ -1025,6 +1025,15 @@ async function startServer() {
   console.log(`Health check: http://localhost:${PORT}/health`);
   console.log(`API base: http://localhost:${PORT}/api/v1`);
   console.log('='.repeat(60));
+
+  // Embeddings layer health check (semantic memory)
+  try {
+    const { getPool } = await import('./database/connection');
+    const { getEmbeddingsService } = await import('./services/neural-network/embeddings.service');
+    await getEmbeddingsService(getPool()).healthCheck();
+  } catch (err) {
+    console.warn('[Embeddings] healthCheck skipped:', (err as any)?.message || err);
+  }
   
   try {
     startM28Scheduler();

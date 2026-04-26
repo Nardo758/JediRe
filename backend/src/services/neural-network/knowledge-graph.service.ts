@@ -204,7 +204,19 @@ export class KnowledgeGraphService {
       node.embedding ? JSON.stringify(node.embedding) : null
     ]);
     
-    return result.rows[0].id;
+    const insertedId = result.rows[0].id;
+
+    // Auto-embed in background. Never blocks the SQL write.
+    // Lazy-required to avoid a circular import at module load.
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { getEmbeddingsService } = require('./embeddings.service');
+      getEmbeddingsService(this.pool).embedNodeInBackground(insertedId);
+    } catch (err) {
+      // Embedding hook must never affect KG writes
+    }
+
+    return insertedId;
   }
 
   /**
