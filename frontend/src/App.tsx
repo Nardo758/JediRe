@@ -17,6 +17,7 @@ import { ArchitectureProvider, useArchitecture } from './contexts/ArchitectureCo
 import { ArchitectureOverlay } from './components/ArchitectureOverlay';
 import { MapLayersProvider } from './contexts/MapLayersContext';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { ContextInsightsProvider } from './contexts/ContextInsightsContext';
 import { PropertyCoveragePage } from './pages/admin/PropertyCoveragePage';
 import { DataTrackerPage } from './pages/admin/DataTrackerPage';
 import { CommandCenterPage } from './pages/admin/CommandCenterPage';
@@ -270,7 +271,9 @@ function App() {
       <ThemeProvider>
         <ArchitectureProvider>
           <MapLayersProvider>
-            <AppContent />
+            <ContextInsightsProvider>
+              <AppContent />
+            </ContextInsightsProvider>
           </MapLayersProvider>
         </ArchitectureProvider>
       </ThemeProvider>

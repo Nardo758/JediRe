@@ -36,6 +36,18 @@ export function getTriggeredAgents(event: TriggerEvent): string[] {
 // EVENT DISPATCHER CLASS
 // ============================================================================
 
+const EVENT_AGENT_MAP: Record<string, string[]> = {
+  'document_uploaded': ['acquisitions', 'research', 'orchestrator'],
+  'email_received': ['acquisitions', 'research'],
+  'deal_created': ['strategy', 'acquisitions', 'lender', 'orchestrator'],
+  'deal_status_changed': ['orchestrator'],
+  'financials_updated': ['cfo', 'asset_manager'],
+  'market_data_changed': ['research', 'strategy', 'lender'],
+  'news_alert': ['research', 'strategy'],
+  'threshold_breach': ['cfo', 'asset_manager', 'orchestrator'],
+  'task_due': ['orchestrator'],
+};
+
 class EventDispatcher {
   private eventQueue: EventPayload[] = [];
   private processing = false;

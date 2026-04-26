@@ -19,8 +19,8 @@ import TerminalMapView from "../components/map/TerminalMapView";
 import { AssumptionsPanel } from "../components/deal/AssumptionsPanel";
 import { M35EventCard, type M35EventCardData } from "../components/m35/M35EventCard";
 import { MorningBriefWidget } from "../components/dashboard/MorningBriefWidget";
-import { ContextIndicator } from '../components/intelligence/ContextIndicator';
 import { useContextAnalysis } from '../hooks/useContextAwareness';
+import { usePublishContextInsight } from '../contexts/ContextInsightsContext';
 
 // ═══════════════════════════════════════════════════════════════
 // JEDI RE — BLOOMBERG TERMINAL  v3 (graduated from prototype)
@@ -1502,8 +1502,12 @@ export default function TerminalPage() {
     );
   };
 
-  // AI Daily Brief now uses the real MorningBriefWidget component
-  const WidgetAIBrief = () => <MorningBriefWidget />;
+  // (WidgetAIBrief / WidgetNeuralHub wrappers removed — they were arrow
+  // functions defined inside the TerminalPage body, which gave React a brand-
+  // new component-type identity on every render, forcing the entire underlying
+  // widget subtree to unmount/remount and wiping its local state (notably the
+  // Neural Hub's "Ask the Network" textarea). The renderWidget switch now
+  // references the imported components directly so React reconciles in place.
 
   const WidgetTaskList = () => {
     const pc:Record<string,string>={critical:T.text.red,high:T.text.orange,med:T.text.amber,low:T.text.muted};
@@ -1648,14 +1652,13 @@ export default function TerminalPage() {
     );
   };
 
-  // ─── NEURAL NETWORK CONTROL HUB ─────────────────────────────
-  // Live status of the agent layer (running runs, recent runs, recent
-  // platform events) plus a free-form "Ask the network" input that hits
-  // the knowledge-graph + LLM backed /context/query endpoint.
-  const WidgetNeuralHub = () => <NeuralNetworkHubWidget T={T}/>;
-
-
   // ─── WIDGET ROUTER ─────────────────────────────────────────
+  // NOTE: Imported components (NeuralNetworkHubWidget, MorningBriefWidget) are
+  // referenced directly here rather than through in-render arrow wrappers —
+  // wrapping them inside TerminalPage's body would create a fresh component-
+  // type reference on every render and cause React to unmount the widget on
+  // every parent re-render (which previously made the Neural Hub's "Ask the
+  // Network" textarea impossible to type into).
   const renderWidget = (id:string) => {
     switch(id) {
       case "pipeline":    return <DealGrid/>;
@@ -1677,10 +1680,10 @@ export default function TerminalPage() {
       case "debt":        return <WidgetDebt/>;
       case "calendar":    return <WidgetCalendar/>;
       case "competitor":  return <WidgetCompetitor/>;
-      case "aibrief":     return <WidgetAIBrief/>;
+      case "aibrief":     return <MorningBriefWidget/>;
       case "tasks":       return <WidgetTaskList/>;
       case "events":      return <WidgetEventFeed/>;
-      case "neuralhub":   return <WidgetNeuralHub/>;
+      case "neuralhub":   return <NeuralNetworkHubWidget T={T}/>;
       default: return null;
     }
   };
@@ -1688,20 +1691,9 @@ export default function TerminalPage() {
   // ─── VIEW: F1 DASHBOARD (Grid + Float Window System) ──────
   const ViewDashboard = () => {
     const gridWidgets = dashWindows.filter(id => !floatWidgets.includes(id));
-    // Auto-analyze dashboard context on first render
-    React.useEffect(() => {
-      if (!dashContext && !dashContextLoading) {
-        analyzeDashContext({ context: 'market_dashboard' });
-      }
-    }, []);
+    // Context analysis effect lifted to TerminalPage top-level (see useEffect after useContextAnalysis)
     return (
       <div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0,position:"relative"}}>
-        {/* Context Awareness — shows portfolio-level data gaps */}
-        {dashContext && (
-          <div style={{padding:'4px 12px',flexShrink:0}}>
-            <ContextIndicator analysis={dashContext} loading={dashContextLoading} compact />
-          </div>
-        )}
         {/* Widget catalog overlay */}
         {dashMenuOpen&&(
           <div style={{position:"absolute",inset:0,background:theme==="dark"?"rgba(5,8,16,0.97)":"rgba(240,244,248,0.97)",zIndex:200,display:"flex",flexDirection:"column",animation:"fadeIn 0.35s ease"}}>
@@ -1908,6 +1900,31 @@ export default function TerminalPage() {
 
   // Neural network context awareness
   const { analysis: dashContext, loading: dashContextLoading, analyze: analyzeDashContext } = useContextAnalysis();
+
+  // Auto-analyze dashboard context when F1 view is active (lifted from ViewDashboard to satisfy Rules of Hooks).
+  // Re-analyzes when switching to F1 if the cached analysis is for a different context.
+  useEffect(() => {
+    if (fkey === "F1" && !dashContextLoading && dashContext?.focus.context !== 'market_dashboard') {
+      analyzeDashContext({ context: 'market_dashboard' });
+    }
+  }, [fkey, dashContext, dashContextLoading, analyzeDashContext]);
+
+  // Auto-analyze email context when F5 view is active (lifted from ViewEmail to satisfy Rules of Hooks).
+  // Re-analyzes when switching to F5 if the cached analysis is for a different context.
+  useEffect(() => {
+    if (fkey === "F5" && !dashContextLoading && dashContext?.focus.context !== 'deal_overview') {
+      analyzeDashContext({ context: 'deal_overview' });
+    }
+  }, [fkey, dashContext, dashContextLoading, analyzeDashContext]);
+
+  // Publish the latest terminal context analysis to the Neural Network Hub
+  // widget instead of rendering an inline pill on each F-key view. The hub
+  // widget aggregates insights from every page that publishes here.
+  const dashContextLabel =
+    dashContext?.focus.context === 'deal_overview' ? 'Email (Deal Overview)' :
+    dashContext?.focus.context === 'market_dashboard' ? 'Dashboard (Market)' :
+    'Terminal';
+  usePublishContextInsight('terminal', dashContextLabel, dashContext);
 
   // Mini sparkline component for rankings
   const MiniSparkline = ({data, target}: {data: number[], target: number}) => {
@@ -2323,10 +2340,7 @@ export default function TerminalPage() {
 
   // ─── VIEW: F5 EMAIL ────────────────────────────────────────
   const ViewEmail = () => {
-    // Context awareness for email view
-    React.useEffect(() => {
-      if (!dashContext) analyzeDashContext({ context: 'deal_overview' });
-    }, []);
+    // Context analysis effect lifted to TerminalPage top-level (see useEffect after useContextAnalysis)
     const TAG_COLORS:Record<string,string>={LOI:T.text.cyan,URGENT:T.text.red,DD:T.text.amber,DEBT:T.text.purple,ZONING:T.text.orange,LP:T.text.secondary,SCORE:T.text.green};
     const folders=[{id:"inbox",label:"INBOX",count:STATIC_EMAILS.filter(e=>e.unread).length},{id:"sent",label:"SENT",count:0},{id:"starred",label:"STARRED",count:1},{id:"all",label:"ALL MAIL",count:STATIC_EMAILS.length}];
     const filtered=STATIC_EMAILS.filter(e=>{
@@ -2337,12 +2351,7 @@ export default function TerminalPage() {
     const activeEmail=STATIC_EMAILS.find(e=>e.id===selEmail)||null;
     return (
       <div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0,animation:"fadeIn 0.15s"}}>
-        {/* Context indicator for email */}
-        {dashContext && (
-          <div style={{padding:'4px 12px',flexShrink:0,borderBottom:`1px solid ${T.border.subtle}`}}>
-            <ContextIndicator analysis={dashContext} loading={dashContextLoading} compact />
-          </div>
-        )}
+        {/* Context analysis is now surfaced inside the Neural Network Hub widget. */}
         <div style={{flex:1,display:"flex",minHeight:0}}>
         <div style={{width:180,borderRight:`1px solid ${T.border.medium}`,display:"flex",flexDirection:"column",flexShrink:0,background:T.bg.panelAlt}}>
           <div style={{padding:"8px 10px",borderBottom:`1px solid ${T.border.subtle}`}}>
@@ -2423,12 +2432,7 @@ export default function TerminalPage() {
   // ─── VIEW: F6 NEWS (NewsIntelligencePage) ─────────────────
   const ViewNews = () => (
     <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",animation:"fadeIn 0.15s"}}>
-      {/* Context indicator for news */}
-      {dashContext && (
-        <div style={{padding:'4px 12px',flexShrink:0,borderBottom:`1px solid ${T.border.subtle}`}}>
-          <ContextIndicator analysis={dashContext} loading={dashContextLoading} compact />
-        </div>
-      )}
+      {/* Context analysis is now surfaced inside the Neural Network Hub widget. */}
       <div style={{flex:1,overflow:"auto"}}>
         <NewsIntelligencePage />
       </div>

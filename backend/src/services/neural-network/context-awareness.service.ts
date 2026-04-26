@@ -1048,6 +1048,7 @@ Answer (concise, real-estate-analyst tone, max ~6 sentences):`;
     
     return gaps;
   }
+
 }
 
 // Singleton

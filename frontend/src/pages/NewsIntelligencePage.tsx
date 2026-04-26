@@ -3,8 +3,8 @@ import { newsService, NewsEvent, NewsAlert, MarketDashboard, ContactCredibility 
 import { DateRangeFilter, DateRangeOption, getDateRangeFromOption } from '../components/ui/DateRangeFilter';
 import { BT } from '../components/deal/bloomberg-ui';
 import { apiClient } from '../services/api.client';
-import { ContextIndicator } from '../components/intelligence/ContextIndicator';
 import { useAutoContextAnalysis } from '../hooks/useContextAwareness';
+import { usePublishContextInsight } from '../contexts/ContextInsightsContext';
 
 type ViewType = 'feed' | 'dashboard' | 'network' | 'alerts';
 
@@ -47,6 +47,13 @@ export function NewsIntelligencePage() {
 
   const prevDateRange = useRef(dateRange);
 
+  // Neural network context awareness
+  const { analysis: ctxAnalysis } = useAutoContextAnalysis({ context: 'market_dashboard' });
+
+  // Surface this page's context analysis inside the Neural Network Hub widget
+  // (instead of rendering an inline pill at the top of the news page).
+  usePublishContextInsight('news', 'News Intelligence', ctxAnalysis);
+
   useEffect(() => {
     loadData();
   }, []);
@@ -65,9 +72,6 @@ export function NewsIntelligencePage() {
   // shape the F6 page renders. Newsletter items get is_premium badging via
   // source_name; API items use their provider name as source_name.
   const mapFeedArticleToEvent = (a: Record<string, unknown>): NewsEvent => {
-  // Neural network context awareness
-  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'market_dashboard' });
-
     const sourceName = String((a.source as string) || (a.publisher as string) || 'News');
     const isPremium = a.is_premium === true;
     const headline = String(a.headline ?? a.title ?? '');
@@ -662,7 +666,7 @@ export function NewsIntelligencePage() {
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: BT.bg.terminal }}>
-      {ctxAnalysis && <ContextIndicator analysis={ctxAnalysis} loading={ctxLoading} compact />}
+      {/* Context analysis is now surfaced inside the Neural Network Hub widget. */}
       <div style={{
         display: 'flex',
         alignItems: 'center',

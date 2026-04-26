@@ -4,8 +4,8 @@ import { useCommentaryStore } from '../../../../stores/commentaryStore';
 import { MarketNarrative, InvestmentThesis, PeerContext } from '../../commentary';
 import { EventTimelineChart } from '../../../m35/EventTimelineChart';
 import { apiClient } from '../../../../api/client';
-import { ContextIndicator } from '../../../intelligence/ContextIndicator';
 import { useAutoContextAnalysis } from '../../../../hooks/useContextAwareness';
+import { usePublishContextInsight } from '../../../../contexts/ContextInsightsContext';
 
 interface MSASubmarketsTabProps {
   msaId: string;
@@ -127,10 +127,12 @@ const severityColors = {
 const mono: React.CSSProperties = { fontFamily: "'JetBrains Mono','Fira Code','SF Mono',monospace" };
 
 export const MSASubmarketsTab: React.FC<MSASubmarketsTabProps> = ({ msaId, msa, onSelectSubmarket }) => {
-  // Neural network context awareness
-  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
-  { context: 'submarket_deep_dive', marketId: msaId }
+  // Neural network context awareness — published into the Neural Network Hub
+  // widget instead of rendering an inline indicator on this tab.
+  const { analysis: contextAnalysis } = useAutoContextAnalysis(
+    { context: 'submarket_deep_dive', marketId: msaId }
   );
+  usePublishContextInsight('msa_submarkets', 'MSA Submarkets', contextAnalysis);
 
   const [selectedSub, setSelectedSub] = useState<string>('midtown');
   const [chartMetric, setChartMetric] = useState<string>('rent_growth_yoy');
@@ -589,10 +591,6 @@ function MiniChart({ label, data, labels, color, unit }: { label: string; data: 
 
   return (
     <div style={{ flex: 1, padding: '8px 4px 4px' }}>
-      {/* Context Awareness */}
-      {contextAnalysis && (
-        <ContextIndicator analysis={contextAnalysis} loading={contextLoading} compact />
-      )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 8px', marginBottom: 4 }}>
         <span style={{ fontSize: 10, color: BT.text.muted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', fontFamily: "'JetBrains Mono',monospace" }}>{label}</span>
         <span style={{ fontSize: 12, fontWeight: 700, color, fontFamily: "'JetBrains Mono',monospace" }}>

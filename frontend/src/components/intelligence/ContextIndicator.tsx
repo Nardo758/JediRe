@@ -76,6 +76,13 @@ export const ContextIndicator: React.FC<ContextIndicatorProps> = ({
   };
 
   if (compact) {
+    // In compact mode, only show the badge when there's something actionable
+    // for the user (unanswered questions or data gaps). A "Data Complete"
+    // badge with no detail and no click target is pure noise on dense terminal
+    // screens, so suppress it.
+    if (status === 'good') {
+      return null;
+    }
     return (
       <div 
         className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border cursor-pointer ${statusColors[status]}`}
@@ -83,13 +90,10 @@ export const ContextIndicator: React.FC<ContextIndicatorProps> = ({
       >
         {statusIcons[status]}
         <span className="text-sm font-medium">
-          {status === 'good' ? 'Data Complete' :
-           status === 'warning' ? `${summary.unansweredQuestions} Questions` :
+          {status === 'warning' ? `${summary.unansweredQuestions} Questions` :
            `${criticalGaps.length} Gaps`}
         </span>
-        {status !== 'good' && (
-          expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
-        )}
+        {expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
       </div>
     );
   }

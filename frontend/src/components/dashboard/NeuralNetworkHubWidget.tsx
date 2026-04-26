@@ -13,6 +13,7 @@
  */
 
 import React from 'react';
+import { useContextInsights } from '../../contexts/ContextInsightsContext';
 
 // ---- types -----------------------------------------------------------------
 
@@ -57,6 +58,9 @@ export default function NeuralNetworkHubWidget({ T }: Props) {
   const [recent, setRecent] = React.useState<RunRow[]>([]);
   const [events, setEvents] = React.useState<EventRow[]>([]);
   const [statusErr, setStatusErr] = React.useState<string | null>(null);
+
+  // Context insights published by pages (replaces inline ContextIndicator pills).
+  const { insights } = useContextInsights();
 
   const [question, setQuestion] = React.useState('');
   const [asking, setAsking] = React.useState(false);
@@ -200,6 +204,102 @@ export default function NeuralNetworkHubWidget({ T }: Props) {
 
       {/* Stacked sections (single scrollable column) */}
       <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+
+        {/* ── CONTEXT INSIGHTS ── */}
+        {(() => {
+          const totalOpen = insights.reduce(
+            (n, i) => n + (i.analysis.summary.criticalGaps + i.analysis.summary.unansweredQuestions),
+            0,
+          );
+          return (
+            <>
+              <SectionHeader label="Context Insights" count={totalOpen} />
+              {insights.length === 0 ? (
+                <div style={{
+                  padding: 16, textAlign: 'center', fontSize: 10,
+                  color: T.text.muted, fontFamily: T.font.mono,
+                }}>
+                  Open a terminal view to analyze context.
+                </div>
+              ) : (
+                insights.map(ins => {
+                  const a = ins.analysis;
+                  const critCount = a.summary.criticalGaps;
+                  const qCount = a.summary.unansweredQuestions;
+                  const status: 'good' | 'warning' | 'critical' =
+                    critCount > 0 ? 'critical' :
+                    qCount > 2   ? 'warning'  : 'good';
+                  const statusColor =
+                    status === 'critical' ? T.text.red :
+                    status === 'warning'  ? T.text.amber :
+                                            T.text.green;
+                  const statusLabel =
+                    status === 'critical' ? `${critCount} GAPS` :
+                    status === 'warning'  ? `${qCount} QUESTIONS` :
+                                            'COMPLETE';
+                  const topGap = a.gaps.find(g => g.relevance === 'critical') || a.gaps[0];
+                  const topQuestion = a.immediateQuestions.find(q => !q.available);
+                  const topSuggestion = a.suggestions[0];
+                  return (
+                    <div key={ins.source} style={{
+                      padding: '6px 8px',
+                      borderBottom: `1px solid ${T.border.subtle}`,
+                      fontFamily: T.font.mono, fontSize: 10,
+                    }}>
+                      <div style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        gap: 6, marginBottom: status === 'good' ? 0 : 4,
+                      }}>
+                        <span style={{
+                          color: T.text.cyan, fontWeight: 600,
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          flex: 1, minWidth: 0,
+                        }}>
+                          {ins.label}
+                        </span>
+                        <span style={{
+                          color: statusColor, fontWeight: 700,
+                          letterSpacing: 0.5, fontSize: 9, whiteSpace: 'nowrap',
+                        }}>
+                          {statusLabel}
+                        </span>
+                      </div>
+                      {topGap && status === 'critical' && (
+                        <div style={{
+                          color: T.text.secondary, fontSize: 9,
+                          paddingLeft: 8, marginTop: 2,
+                          overflow: 'hidden', textOverflow: 'ellipsis',
+                          display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+                        }} title={topGap.userQuestion || topGap.suggestedAction}>
+                          • {topGap.userQuestion || topGap.suggestedAction}
+                        </div>
+                      )}
+                      {topQuestion && status !== 'good' && (
+                        <div style={{
+                          color: T.text.muted, fontSize: 9,
+                          paddingLeft: 8, marginTop: 2,
+                          overflow: 'hidden', textOverflow: 'ellipsis',
+                          display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+                        }} title={topQuestion.question}>
+                          ? {topQuestion.question}
+                        </div>
+                      )}
+                      {topSuggestion && status !== 'good' && (
+                        <div style={{
+                          color: T.text.purple, fontSize: 9,
+                          paddingLeft: 8, marginTop: 2,
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        }} title={topSuggestion.description}>
+                          → {topSuggestion.title}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </>
+          );
+        })()}
 
         {/* ── AGENT STATUS ── */}
         <SectionHeader label="Agent Status" count={running.length} />
