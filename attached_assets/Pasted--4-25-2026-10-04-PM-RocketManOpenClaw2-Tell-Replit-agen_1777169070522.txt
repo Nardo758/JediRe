@@ -1,0 +1,175 @@
+[4/25/2026 10:04 PM] RocketManOpenClaw2: Tell Replit agent: Option A — build the in-process script.
+
+Build and run a Node.js diagnostic script that bypasses HTTP auth and tests the capsule intelligence pipeline end-to-end in-process.
+
+Create the file backend/scripts/diagnose-neural-network.ts and run it:
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+FILE: backend/scripts/diagnose-neural-network.ts
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+import 'dotenv/config';
+import { Pool } from 'pg';
+import { getCapsuleIntelligence } from '../src/services/capsule-intelligence.service';
+import { getKnowledgeGraph } from '../src/services/neural-network/knowledge-graph.service';
+
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+async function run() {
+  console.log('\n══════════════════════════════════════');
+  console.log('JEDI RE — NEURAL NETWORK DIAGNOSTIC');
+  console.log('══════════════════════════════════════\n');
+
+  // ── 1. KG Market nodes ──────────────────────────────────────
+  console.log('TEST 1: Knowledge Graph — Market nodes');
+  const markets = await pool.query(`SELECT id, name, properties FROM knowledge_graph_nodes WHERE node_type = 'Market' ORDER BY id`);
+  console.log(`  Markets: ${markets.rows.length}`);
+  markets.rows.forEach(r => console.log(`    ✅ ${r.id} — ${r.name}`));
+
+  // ── 2. KG Submarket nodes ───────────────────────────────────
+  console.log('\nTEST 2: Knowledge Graph — Atlanta submarkets');
+  const subs = await pool.query(`SELECT id, name FROM knowledge_graph_nodes WHERE node_type = 'Submarket' AND properties->>'marketId' = 'atlanta' OR id LIKE '%midtown%' OR id LIKE '%buckhead%' LIMIT 15`);
+  console.log(`  Submarkets: ${subs.rows.length}`);
+  subs.rows.forEach(r => console.log(`    ✅ ${r.name}`));
+
+  // ── 3. Development projects ─────────────────────────────────
+  console.log('\nTEST 3: Development Projects — Atlanta pipeline');
+  const projects = await pool.query(`SELECT name, submarket, units, construction_status FROM development_projects WHERE market_id = 'atlanta' ORDER BY units DESC LIMIT 5`);
+  const projectTotal = await pool.query(`SELECT COUNT(*) as count, SUM(units) as total FROM development_projects WHERE market_id = 'atlanta'`);
+  console.log(`  Projects: ${projectTotal.rows[0].count}, Total units: ${projectTotal.rows[0].total}`);
+  projects.rows.forEach(r => console.log(`    • ${r.name}: ${r.units} units (${r.construction_status})`));
+
+  // ── 4. KG edges ─────────────────────────────────────────────
+  console.log('\nTEST 4: Knowledge Graph — Edge types');
+  const edges = await pool.query(`SELECT type, COUNT(*) as count FROM knowledge_graph_edges GROUP BY type ORDER BY count DESC`);
+  edges.rows.forEach(r => console.log(`    ${r.type}: ${r.count}`));
+
+  // ── 5. Create test capsule ──────────────────────────────────
+  console.log('\nTEST 5: Create Atlanta test capsule');
+  const capsuleResult = await pool.query(`
+    INSERT INTO deal_capsules (user_id, property_address, deal_data, platform_intel, status)
+    VALUES (
+      'diagnostic-user',
+      '100 Peachtree St NE, Atlanta, GA',
+      '{"city":"Atlanta","state":"GA","property_type":"multifamily","units":200}'::jsonb,
+      '{}'::jsonb,
+      'active'
+    ) ON CONFLICT DO NOTHING RETURNING id
+  `);
+
+  let capsuleId: string;
+  if (capsuleResult.rows[0]) {
+    capsuleId = capsuleResult.rows[0].id;
+    console.log(`  Created capsule: ${capsuleId}`);
+  } else {
+    const existing = await pool.query(`SELECT id FROM deal_capsules WHERE user_id = 'diagnostic-user' LIMIT 1`);
+    capsuleId = existing.rows[0]?.id;
+    console.log(`  Using existing capsule: ${capsuleId}`);
+  }
+
+  // ── 6. Seed capsule intelligence ────────────────────────────
+  console.log('\nTEST 6: Capsule Intelligence — Seeding from Data Library + KG');
+  try {
+[4/25/2026 10:04 PM] RocketManOpenClaw2:     const intel = await getCapsuleIntelligence().seedCapsule({
+      capsuleId,
+      propertyAddress: '100 Peachtree St NE',
+      city: 'Atlanta',
+      state: 'GA',
+      propertyType: 'multifamily',
+      units: 200,
+    });
+[4/25/2026 10:04 PM] RocketManOpenClaw2: console.log(`  ✅ Data quality score: ${intel.dataQualityScore}/100`);
+    console.log(`  ✅ Comps found: ${intel.dataLibraryCompsFound}`);
+    console.log(`  ✅ KG linked: ${intel.knowledgeGraphLinked}`);
+    console.log(`  Assumptions seeded:`);
+    if (intel.marketRent) console.log(`    • Market rent: $${intel.marketRent.value} (${(intel.marketRent.confidence * 100).toFixed(0)}% confidence) — ${intel.marketRent.source}`);
+    if (intel.vacancyRate) console.log(`    • Vacancy: ${intel.vacancyRate.value}% — ${intel.vacancyRate.source}`);
+    if (intel.expenseRatio) console.log(`    • Expense ratio: ${intel.expenseRatio.value}% — ${intel.expenseRatio.source}`);
+    if (intel.goingInCapRate) console.log(`    • Cap rate: ${intel.goingInCapRate.value}% — ${intel.goingInCapRate.source}`);
+    if (intel.supplyRisk) console.log(`    • Supply risk: ${intel.supplyRisk.value} (${intel.supplyRisk.notes})`);
+    if (intel.pipelineUnits) console.log(`    • Pipeline units: ${intel.pipelineUnits.value}`);
+    console.log(`  Gaps: ${intel.gaps.join(', ') || 'none'}`);
+    console.log(`  Recommendations:`);
+    intel.recommendations.forEach(r => console.log(`    → ${r}`));
+  } catch (err) {
+    console.log(`  ❌ FAILED: ${err}`);
+  }
+
+  // ── 7. Verify capsule platform_intel populated ───────────────
+  console.log('\nTEST 7: Verify platform_intel saved to DB');
+  const saved = await pool.query(`
+    SELECT 
+      platform_intel->'intelligence'->>'dataQualityScore' as quality,
+      platform_intel->'intelligence'->>'compsFound' as comps,
+      platform_intel->'intelligence'->'gaps' as gaps,
+      jsonb_object_keys(platform_intel->'intelligence'->'assumptions') as assumption_keys
+    FROM deal_capsules WHERE id = $1
+  `, [capsuleId]);
+  if (saved.rows[0]?.quality) {
+    console.log(`  ✅ platform_intel populated — quality: ${saved.rows[0].quality}, comps: ${saved.rows[0].comps}`);
+    const assumptionKeys = saved.rows.map(r => r.assumption_keys).filter(Boolean);
+    console.log(`  Assumptions saved: ${assumptionKeys.join(', ')}`);
+  } else {
+    console.log(`  ❌ platform_intel NOT populated`);
+  }
+
+  // ── 8. Check Deal node in KG ────────────────────────────────
+  console.log('\nTEST 8: Knowledge Graph — Deal node created');
+  const dealNode = await pool.query(`SELECT id, type, name FROM knowledge_graph_nodes WHERE node_type = 'Deal' OR id = $1 LIMIT 5`, [capsuleId]);
+  if (dealNode.rows.length > 0) {
+    console.log(`  ✅ Deal nodes: ${dealNode.rows.length}`);
+    dealNode.rows.forEach(r => console.log(`    • ${r.id} — ${r.name}`));
+  } else {
+    console.log(`  ⚠️  No Deal nodes in graph (inline-deals route not called — expected for direct DB insert)`);
+  }
+
+  // ── 9. KG node summary ──────────────────────────────────────
+  console.log('\nTEST 9: Knowledge Graph — All node types');
+  const allNodes = await pool.query(`SELECT node_type, COUNT(*) as count FROM knowledge_graph_nodes GROUP BY node_type ORDER BY count DESC`);
+  allNodes.rows.forEach(r => console.log(`    ${r.node_type}: ${r.count}`));
+
+  // ── 10. Data Library comps available ────────────────────────
+  console.log('\nTEST 10: Data Library — Atlanta comps available');
+  try {
+    const dlResult = await pool.query(`
+      SELECT f.file_name, f.city, f.unit_count, f.property_type, f.source_type,
+             a.cap_rate, a.gross_potential_rent, a.operating_expense_ratio
+      FROM data_library_files f
+      LEFT JOIN data_library_assets a ON a.file_id = f.id
+      WHERE f.city ILIKE '%atlanta%' OR f.city ILIKE '%GA%'
+      LIMIT 5
+    `);
+    console.log(`  Files: ${dlResult.rows.length}`);
+    dlResult.rows.forEach(r => console.log(`    • ${r.file_name} (${r.city}, ${r.unit_count} units)`));
+    if (dlResult.rows.length === 0) {
+      console.log(`  ℹ️  No Atlanta files yet — upload T12s/OMs to Data Library to improve seeding`);
+    }
+  } catch (err) {
+    console.log(`  ❌ ${err}`);
+  }
+[4/25/2026 10:04 PM] RocketManOpenClaw2:   // ── SUMMARY ──────────────────────────────────────────────────
+[4/25/2026 10:04 PM] RocketManOpenClaw2: console.log('\n══════════════════════════════════════');
+  console.log('SUMMARY');
+  console.log('══════════════════════════════════════');
+  const nodeCount = await pool.query(`SELECT COUNT(*) as n FROM knowledge_graph_nodes`);
+  const edgeCount = await pool.query(`SELECT COUNT(*) as n FROM knowledge_graph_edges`);
+  const capsuleCount = await pool.query(`SELECT COUNT(*) as n FROM deal_capsules WHERE platform_intel != '{}'::jsonb`);
+  console.log(`  KG Nodes:         ${nodeCount.rows[0].n}`);
+  console.log(`  KG Edges:         ${edgeCount.rows[0].n}`);
+  console.log(`  Seeded capsules:  ${capsuleCount.rows[0].n}`);
+  console.log(`  Pipeline projects: ${projectTotal.rows[0].count}`);
+
+  await pool.end();
+  console.log('\nDiagnostic complete.\n');
+}
+
+run().catch(console.error);
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+RUN IT:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+cd backend
+npx ts-node --transpile-only scripts/diagnose-neural-network.ts 2>&1
+
+Paste the full output back.
