@@ -562,7 +562,35 @@ export class KnowledgeGraphService {
     limit = 20
   ): Promise<Array<{ node: GraphNode; score: number; matchType: 'text' | 'semantic' | 'hybrid' }>> {
     const results: Array<{ node: GraphNode; textScore: number; vectorScore: number }> = [];
-    
+
+    // Auto-derive a query embedding from `searchText` when the caller
+    // didn't pass one. This is what turns hybridSearch into a true
+    // semantic+keyword blend for ordinary callers (e.g. POST /search):
+    // they no longer need to pre-compute embeddings client-side.
+    //
+    // Falls back gracefully when the embeddings layer is unavailable:
+    //   - no API key configured → keyword-only ranking
+    //   - generateEmbedding throws (network, quota, …) → log + keyword-only
+    if ((!embedding || embedding.length === 0) && searchText && searchText.trim().length > 0) {
+      try {
+        // Lazy require to avoid a circular import at module load time.
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { getEmbeddingsService } = require('./embeddings.service');
+        const embSvc = getEmbeddingsService(this.pool);
+        if (embSvc.hasKey()) {
+          const auto = await embSvc.generateEmbedding(searchText);
+          if (Array.isArray(auto) && auto.length > 0) {
+            embedding = auto;
+          }
+        }
+      } catch (err: any) {
+        console.warn(
+          `[KnowledgeGraph] hybridSearch auto-embed failed, ` +
+          `falling back to keyword-only: ${err?.message || err}`
+        );
+      }
+    }
+
     // BM25 text search
     const textResults = await this.pool.query(`
       SELECT *,
