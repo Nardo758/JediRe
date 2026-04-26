@@ -200,7 +200,9 @@ async function runTests() {
     const dlFiles = await pool.query(`
       SELECT id, file_name, city, unit_count, property_type, source_type, parsing_status
       FROM data_library_files
-      WHERE city ILIKE '%atlanta%' OR city ILIKE '%GA%'
+      WHERE city ILIKE '%atlanta%'
+         OR msa_key ILIKE '%atlanta%'
+         OR submarket_key ILIKE '%atlanta%'
       LIMIT 5
     `);
     console.log(`  Files: ${dlFiles.rows.length}`);
