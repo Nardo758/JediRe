@@ -527,9 +527,10 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
       setTimeout(() => {
         onSave();
         onClose();
-      }, 1500);
+      }, 800);
     } catch (err: any) {
       setError(err?.response?.data?.error || 'Failed to save details');
+      setSuccess(false);
     } finally {
       setSaving(false);
     }
@@ -563,28 +564,6 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
 
   const dqScore = calculateDQScore();
   const dqColor = dqScore >= 70 ? C.green : dqScore >= 40 ? C.amber : C.red;
-
-  if (success) {
-    return (
-      <div style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999,
-      }}>
-        <div style={{
-          background: C.panel, border: `1px solid ${C.green}`, padding: 40,
-          textAlign: 'center', maxWidth: 400,
-        }}>
-          <CheckCircle size={48} style={{ color: C.green, marginBottom: 16 }} />
-          <div style={{ fontSize: 14, fontWeight: 700, color: C.primary, marginBottom: 8 }}>
-            Asset Details Saved!
-          </div>
-          <div style={{ fontSize: 11, color: C.muted }}>
-            Data Quality Score: <span style={{ color: dqColor, fontWeight: 700 }}>{dqScore}</span>/100
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div
@@ -1169,16 +1148,22 @@ export const AssetDetailModal: React.FC<AssetDetailModalProps> = ({
             </button>
             <button
               onClick={handleSave}
-              disabled={saving}
+              disabled={saving || success}
               style={{
                 padding: '8px 20px', background: C.green,
                 border: 'none', color: '#000',
                 fontFamily: MONO, fontSize: 11, fontWeight: 700,
-                cursor: saving ? 'not-allowed' : 'pointer',
+                cursor: saving || success ? 'not-allowed' : 'pointer',
                 opacity: saving ? 0.6 : 1,
+                display: 'inline-flex', alignItems: 'center', gap: 6,
               }}
             >
-              {saving ? 'SAVING...' : 'SAVE DETAILS'}
+              {success ? (
+                <>
+                  <CheckCircle size={12} />
+                  SAVED
+                </>
+              ) : saving ? 'SAVING...' : 'SAVE DETAILS'}
             </button>
           </div>
         </div>
