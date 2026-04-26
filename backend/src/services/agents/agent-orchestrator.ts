@@ -193,13 +193,22 @@ class AgentOrchestrator {
     // never picked up (agent was filtered out by trigger conditions or by the
     // canWorkAutonomously guard).  Without this sweep those rows would sit
     // forever as 'pending' and pollute the Neural Network Hub's LIVE counter.
+    //
+    // Use a distinct terminal status `skipped` (rather than `failed`) so that
+    // downstream analytics — failure-rate dashboards, alerting, etc. — do not
+    // conflate operationally-skipped agents with genuine failures.  The
+    // `agent_workflow_runs.status` column is `VARCHAR(16)` with no CHECK
+    // constraint so any short label is accepted; the agents/status route's
+    // `recent` query filters on `status IN ('completed','failed')` so skipped
+    // rows are silently excluded from the recent-activity feed (which is the
+    // desired UX — they are noise, not work that happened).
     if (eventId) {
       try {
         await query(
           `UPDATE agent_workflow_runs
-              SET status       = 'failed',
+              SET status       = 'skipped',
                   completed_at = NOW(),
-                  error        = COALESCE(error, 'skipped: agent not eligible for this event')
+                  error        = COALESCE(error, 'agent not eligible for this event')
             WHERE event_id = $1 AND status = 'pending'`,
           [eventId]
         );
