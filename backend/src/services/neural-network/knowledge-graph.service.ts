@@ -212,8 +212,11 @@ export class KnowledgeGraphService {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { getEmbeddingsService } = require('./embeddings.service');
       getEmbeddingsService(this.pool).embedNodeInBackground(insertedId);
-    } catch (err) {
-      // Embedding hook must never affect KG writes
+    } catch (err: any) {
+      // Embedding hook must never affect KG writes — log and swallow.
+      console.warn(
+        `[KnowledgeGraph] embed hook unavailable for node ${insertedId}: ${err?.message || err}`
+      );
     }
 
     return insertedId;
