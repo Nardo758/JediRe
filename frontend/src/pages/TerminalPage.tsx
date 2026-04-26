@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { TickerBar } from "../components/terminal/TickerBar";
 import { useNavigate, useLocation, useParams, useSearchParams } from "react-router-dom";
 import { apiClient, api } from "../services/api.client";
@@ -459,6 +459,143 @@ const MSA_CITY_MAP: Record<string,string> = {
   'charlotte-nc':'Charlotte','jacksonville-fl':'Jacksonville',
   'orlando-fl':'Orlando','miami-fl':'Miami',
 };
+
+// ─── TOP-LEVEL DASHBOARD WIDGET COMPONENTS ───────────────────
+// These two widgets are declared at module scope (not inside TerminalPage)
+// because they own internal state (useState/useEffect). Defining them inside
+// the parent component would give React a brand-new component-type identity
+// on every render, forcing a full unmount/remount and wiping their internal
+// state (channel selection, fetched events, filter, etc.). All other
+// dashboard widgets are stateless and are returned from `renderWidget` as
+// memoized JSX elements with stable primitive root types ('div'/'svg'),
+// which React reconciles in place — no wrapper component is involved.
+
+interface EventFeedItem {
+  id: string;
+  name: string;
+  category: string;
+  scope: string;
+  status: string;
+  magnitudeScore: number;
+  confidence: number;
+  announcedDate: string | null;
+  msaId?: string;
+  msaName?: string;
+  forecastStatus?: 'ahead' | 'behind' | 'on_pace' | 'no_data' | null;
+  maxDivergencePct?: number | null;
+}
+
+function TerminalTVWidget({ T }: { T: any }) {
+  const [chan, setChan] = useState("CNBC");
+  const channels = ["CNBC","Bloomberg","Fox Business","Yahoo Finance"];
+  return (
+    <div style={{flex:1,display:"flex",flexDirection:"column"}}>
+      <div style={{display:"flex",gap:0,background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
+        {channels.map(c=><button key={c} onClick={()=>setChan(c)} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:600,padding:"4px 10px",cursor:"pointer",background:chan===c?T.text.orange:"transparent",color:chan===c?T.bg.terminal:T.text.secondary,border:"none"}}>{c}</button>)}
+      </div>
+      <div style={{flex:1,background:"#000",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:8,position:"relative"}}>
+        <div style={{position:"absolute",top:8,left:10,display:"flex",alignItems:"center",gap:4}}><span style={{width:6,height:6,borderRadius:"50%",background:T.text.red,display:"inline-block",animation:"pulse 1.5s infinite"}}/><span style={{fontFamily:T.font.mono,fontSize:10,fontWeight:700,color:T.text.red,letterSpacing:1}}>LIVE</span></div>
+        <div style={{fontSize:24,color:"rgba(255,255,255,0.08)",fontWeight:800,letterSpacing:4}}>{chan.toUpperCase()}</div>
+        <div style={{fontSize:10,color:"rgba(255,255,255,0.3)"}}>Stream requires authenticated account</div>
+        <button style={{fontFamily:T.font.mono,fontSize:10,fontWeight:700,background:T.text.orange,color:"#000",border:"none",padding:"5px 14px",cursor:"pointer",marginTop:4}}>CONNECT ACCOUNT</button>
+      </div>
+    </div>
+  );
+}
+
+function TerminalEventFeedWidget({ T, navigate }: { T: any; navigate: (path: string) => void }) {
+  const EFD_CAT_COLORS: Record<string, string> = {
+    employment:'#00D26A', infrastructure:T.text.cyan, supply:T.text.amber,
+    policy:'#A78BFA', regulatory:'#A78BFA', demographic:'#EC4899', macro:T.text.muted,
+  };
+  const [events, setEvents] = useState<EventFeedItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [catFilter, setCatFilter] = useState<string>('');
+
+  useEffect(() => {
+    fetch('/api/v1/m35/events/feed?limit=20')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d && (d.items || d.events || []).length > 0) {
+          setEvents((d.items || d.events || []) as EventFeedItem[]);
+        } else {
+          return fetch('/api/v1/m35/events?status=announced,in_progress&limit=20')
+            .then(r2 => r2.ok ? r2.json() : null)
+            .then(d2 => { if (d2) setEvents((d2.items || d2.events || []) as EventFeedItem[]); });
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const source = loading ? [] : events;
+  const display = catFilter ? source.filter(e => e.category === catFilter) : source;
+  const cats = [...new Set(source.map(e => e.category))];
+
+  return (
+    <div style={{flex:1,overflow:"auto",display:"flex",flexDirection:"column"}}>
+      {/* Header */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 10px",borderBottom:`1px solid ${T.border.subtle}`,background:T.bg.header,flexShrink:0}}>
+        <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>
+          <button
+            onClick={() => setCatFilter('')}
+            style={{fontFamily:T.font.mono,fontSize:8,padding:"1px 6px",cursor:"pointer",background:!catFilter?T.text.cyan:"transparent",color:!catFilter?T.bg.primary:T.text.muted,border:`1px solid ${!catFilter?T.text.cyan:T.border.subtle}`}}
+          >
+            ALL
+          </button>
+          {cats.map(c=>(
+            <button
+              key={c}
+              onClick={() => setCatFilter(c)}
+              style={{fontFamily:T.font.mono,fontSize:8,padding:"1px 6px",cursor:"pointer",background:catFilter===c?(EFD_CAT_COLORS[c]??T.text.cyan):"transparent",color:catFilter===c?T.bg.primary:T.text.muted,border:`1px solid ${catFilter===c?(EFD_CAT_COLORS[c]??T.text.cyan):T.border.subtle}`}}
+            >
+              {c.toUpperCase().substring(0,6)}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={() => navigate('/portfolio/events')}
+          style={{fontFamily:T.font.mono,fontSize:8,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}33`,padding:"2px 7px",cursor:"pointer",flexShrink:0}}
+        >
+          FULL FEED ↗
+        </button>
+      </div>
+
+      <div style={{flex:1,overflow:"auto"}}>
+        {display.map((ev, i) => {
+          const cardData: M35EventCardData = {
+            id: ev.id,
+            name: ev.name,
+            category: ev.category,
+            status: ev.status,
+            scope: ev.scope,
+            magnitudeScore: ev.magnitudeScore,
+            confidence: ev.confidence,
+            announcedDate: ev.announcedDate,
+            msa: ev.msaName,
+            forecastStatus: (ev.forecastStatus as M35EventCardData['forecastStatus']) ?? 'no_data',
+            divergingForecast: ev.maxDivergencePct != null && ev.maxDivergencePct > 0.10,
+          };
+          return (
+            <div key={ev.id ?? i} style={{borderBottom:`1px solid ${T.border.subtle}`}}>
+              <M35EventCard
+                event={cardData}
+                compact
+                onClick={() => navigate(`/events/${ev.id}`)}
+              />
+            </div>
+          );
+        })}
+
+        {!loading && display.length === 0 && (
+          <div style={{padding:24,textAlign:"center",fontSize:10,color:T.text.muted,fontFamily:T.font.mono}}>
+            {catFilter ? `No ${catFilter} events.` : 'No events loaded. Check M35 connector.'}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 // ─── MAIN TERMINAL PAGE ───────────────────────────────────────
 export default function TerminalPage() {
@@ -1031,7 +1168,7 @@ export default function TerminalPage() {
   const gc = "30px 1.5fr 0.8fr 44px 40px 60px 52px 48px 56px 48px 46px 42px 42px";
 
   // ─── DEAL GRID (F2) ────────────────────────────────────────
-  const DealGrid = () => (
+  const dealGridEl = useMemo(() => (
     <div style={{display:"flex",flexDirection:"column",flex:1,minHeight:0}}>
       {/* F2-specific filter bar */}
       <div style={{display:"flex",alignItems:"center",gap:6,padding:"0 10px",height:28,background:T.bg.panel,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
@@ -1100,7 +1237,7 @@ export default function TerminalPage() {
         ):null;})()}
       </div>
     </div>
-  );
+  ), [T, fStage, fStrat, mapOpen, sorted, gc, sortBy, sortDir, dealsLoading, selDealId, flashes, navigate]);
 
   // ─── MAP SIDEBAR ───────────────────────────────────────────
   // Tab-aware map: F2 shows pipeline deals, F3 shows owned assets
@@ -1202,7 +1339,11 @@ export default function TerminalPage() {
   );
 
   // ─── WIDGET COMPONENTS ─────────────────────────────────────
-  const WidgetKeyFindings = () => (
+  // Each widget below is wrapped in useMemo so the renderWidget switch
+  // returns a stable React element (root type 'div') rather than a fresh
+  // wrapper-component identity every render. This stops React from
+  // unmounting/remounting the widget subtree on every parent re-render.
+  const widgetKeyFindingsEl = useMemo(() => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
       {STATIC_NEWS.map((n,i)=>(
         <div key={i} style={{display:"flex",gap:10,padding:"10px 12px",borderBottom:`1px solid ${T.border.subtle}`,borderLeft:`3px solid ${T.text.amber}`}}>
@@ -1215,9 +1356,9 @@ export default function TerminalPage() {
         </div>
       ))}
     </div>
-  );
+  ), [T]);
 
-  const WidgetMyDeals = () => (
+  const widgetMyDealsEl = useMemo(() => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
       {liveDeals.slice(0,5).map((d,i)=>(
         <div key={i} onDoubleClick={()=>navigate(`/deals/${d.id}/detail`)} style={{padding:"10px 12px",borderBottom:`1px solid ${T.border.subtle}`,cursor:"pointer",background:i%2===0?T.bg.panel:T.bg.panelAlt}}>
@@ -1233,9 +1374,9 @@ export default function TerminalPage() {
       ))}
       {liveDeals.length===0&&!dealsLoading&&<div style={{padding:20,textAlign:"center",fontSize:10,color:T.text.muted}}>No deals yet</div>}
     </div>
-  );
+  ), [T, liveDeals, navigate, dealsLoading]);
 
-  const WidgetKPISummary = () => (
+  const widgetKPISummaryEl = useMemo(() => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s",padding:16}}>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
         {[
@@ -1260,18 +1401,18 @@ export default function TerminalPage() {
         ))}
       </div>
     </div>
-  );
+  ), [T, totalPV, liveDeals, activeCount, stages]);
 
-  const WidgetAlertFeed = () => (
+  const widgetAlertFeedEl = useMemo(() => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
       {liveAlerts.map((a,i)=>{
         const bc=({critical:T.text.red,high:T.text.orange,med:T.text.amber,low:T.text.muted} as Record<string,string>)[a.sev];
         return <div key={i} style={{display:"flex",gap:6,padding:"8px 12px",borderBottom:`1px solid ${T.border.subtle}`,borderLeft:`3px solid ${bc}`}}><div style={{flex:1}}><div style={{display:"flex",gap:4,marginBottom:2}}><Bd c={bc}>{a.sev}</Bd><Bd c={T.text.cyan}>{a.type}</Bd>{a.deal&&<span style={{fontSize:10,color:T.text.amber,fontWeight:600}}>{a.deal}</span>}</div><div style={{fontSize:10,color:T.text.primary,lineHeight:1.3}}>{a.msg}</div></div><span style={{fontSize:10,color:T.text.muted}}>{a.time}</span></div>;
       })}
     </div>
-  );
+  ), [T, liveAlerts]);
 
-  const WidgetAgents = () => (
+  const widgetAgentsEl = useMemo(() => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:1,background:T.border.subtle}}>
         {liveAgents.map((a,i)=>(
@@ -1283,9 +1424,9 @@ export default function TerminalPage() {
         ))}
       </div>
     </div>
-  );
+  ), [T, liveAgents]);
 
-  const WidgetLeaderboard = () => (
+  const widgetLeaderboardEl = useMemo(() => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s"}}>
       {[...liveDeals].filter(d=>d.score>0).sort((a,b)=>b.score-a.score).slice(0,10).map((d,i)=>(
         <div key={d.id} onDoubleClick={()=>navigate(`/deals/${d.id}/detail`)} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderBottom:`1px solid ${T.border.subtle}`,background:i%2===0?T.bg.panel:T.bg.panelAlt,cursor:"pointer"}}>
@@ -1302,9 +1443,9 @@ export default function TerminalPage() {
       ))}
       {liveDeals.filter(d=>d.score>0).length===0&&<div style={{padding:20,textAlign:"center",fontSize:10,color:T.text.muted}}>No scored deals yet</div>}
     </div>
-  );
+  ), [T, liveDeals, navigate]);
 
-  const WidgetFunnel = () => {
+  const widgetFunnelEl = useMemo(() => {
     const stageOrder=["LEAD","PROSPECT","LOI","DD"];
     const stageColors:Record<string,string>={LEAD:T.text.muted,PROSPECT:T.text.secondary,LOI:T.text.amber,DD:T.text.green};
     const maxCount=Math.max(...Object.values(stages),1);
@@ -1326,9 +1467,9 @@ export default function TerminalPage() {
         </div>
       </div>
     );
-  };
+  }, [T, stages, liveDeals]);
 
-  const WidgetStrategySnapshot = () => (
+  const widgetStrategySnapshotEl = useMemo(() => (
     <div style={{flex:1,overflow:"auto",animation:"fadeIn 0.15s",padding:16}}>
       {[
         {s:"BUILD-TO-SELL",abbr:"BTS",c:T.text.green},
@@ -1346,9 +1487,9 @@ export default function TerminalPage() {
         );
       })}
     </div>
-  );
+  ), [T, liveDeals]);
 
-  const WidgetRates = () => {
+  const widgetRatesEl = useMemo(() => {
     const rates=[{l:"Fed Funds",v:"5.33%",d:"-0bps",t:[5.0,5.1,5.25,5.33,5.33,5.33],c:T.text.red},{l:"SOFR",v:"5.31%",d:"-2bps",t:[5.05,5.1,5.22,5.29,5.30,5.31],c:T.text.orange},{l:"Prime Rate",v:"8.50%",d:"0bps",t:[7.5,7.8,8.0,8.25,8.50,8.50],c:T.text.amber},{l:"10Y Treasury",v:"4.41%",d:"+6bps",t:[3.8,4.0,4.2,4.31,4.35,4.41],c:T.text.cyan}];
     return (
       <div style={{flex:1,overflow:"auto",padding:12}}>
@@ -1363,9 +1504,9 @@ export default function TerminalPage() {
         <div style={{padding:"6px 10px",fontSize:10,color:T.text.muted}}>Source: Federal Reserve · Updated daily</div>
       </div>
     );
-  };
+  }, [T]);
 
-  const WidgetYieldCurve = () => {
+  const widgetYieldCurveEl = useMemo(() => {
     const pts=[{m:"1M",v:5.27},{m:"3M",v:5.30},{m:"6M",v:5.28},{m:"1Y",v:5.05},{m:"2Y",v:4.72},{m:"5Y",v:4.50},{m:"10Y",v:4.41},{m:"20Y",v:4.62},{m:"30Y",v:4.58}];
     const mn=Math.min(...pts.map(p=>p.v))-0.2,mx=Math.max(...pts.map(p=>p.v))+0.2,rng=mx-mn;
     const W=280,H=80;
@@ -1382,27 +1523,12 @@ export default function TerminalPage() {
         <div style={{marginTop:8,fontSize:10,color:T.text.muted}}>Inverted 2Y/10Y spread: <span style={{color:T.text.orange,fontWeight:700}}>-31bps</span></div>
       </div>
     );
-  };
+  }, [T]);
 
-  const WidgetTV = () => {
-    const [chan,setChan] = useState("CNBC");
-    const channels=["CNBC","Bloomberg","Fox Business","Yahoo Finance"];
-    return (
-      <div style={{flex:1,display:"flex",flexDirection:"column"}}>
-        <div style={{display:"flex",gap:0,background:T.bg.header,borderBottom:`1px solid ${T.border.subtle}`,flexShrink:0}}>
-          {channels.map(c=><button key={c} onClick={()=>setChan(c)} style={{fontFamily:T.font.mono,fontSize:10,fontWeight:600,padding:"4px 10px",cursor:"pointer",background:chan===c?T.text.orange:"transparent",color:chan===c?T.bg.terminal:T.text.secondary,border:"none"}}>{c}</button>)}
-        </div>
-        <div style={{flex:1,background:"#000",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:8,position:"relative"}}>
-          <div style={{position:"absolute",top:8,left:10,display:"flex",alignItems:"center",gap:4}}><span style={{width:6,height:6,borderRadius:"50%",background:T.text.red,display:"inline-block",animation:"pulse 1.5s infinite"}}/><span style={{fontFamily:T.font.mono,fontSize:10,fontWeight:700,color:T.text.red,letterSpacing:1}}>LIVE</span></div>
-          <div style={{fontSize:24,color:"rgba(255,255,255,0.08)",fontWeight:800,letterSpacing:4}}>{chan.toUpperCase()}</div>
-          <div style={{fontSize:10,color:"rgba(255,255,255,0.3)"}}>Stream requires authenticated account</div>
-          <button style={{fontFamily:T.font.mono,fontSize:10,fontWeight:700,background:T.text.orange,color:"#000",border:"none",padding:"5px 14px",cursor:"pointer",marginTop:4}}>CONNECT ACCOUNT</button>
-        </div>
-      </div>
-    );
-  };
+  // (WidgetTV moved to top-level TerminalTVWidget — it owns useState and
+  // would lose its channel selection on every parent re-render if defined here.)
 
-  const WidgetCapRates = () => {
+  const widgetCapRatesEl = useMemo(() => {
     const data=[{cls:"Multifamily",markets:[{m:"Tampa",v:"5.1%"},{m:"Miami",v:"4.8%"},{m:"Orlando",v:"5.4%"},{m:"Jacksonville",v:"5.6%"}]},{cls:"Industrial",markets:[{m:"Tampa",v:"5.5%"},{m:"Miami",v:"4.9%"},{m:"Orlando",v:"5.9%"},{m:"Jacksonville",v:"6.1%"}]},{cls:"Retail",markets:[{m:"Tampa",v:"6.2%"},{m:"Miami",v:"5.7%"},{m:"Orlando",v:"6.4%"},{m:"Jacksonville",v:"7.0%"}]},{cls:"Office",markets:[{m:"Tampa",v:"7.8%"},{m:"Miami",v:"7.2%"},{m:"Orlando",v:"8.1%"},{m:"Jacksonville",v:"8.6%"}]}];
     return (
       <div style={{flex:1,overflow:"auto"}}>
@@ -1417,9 +1543,9 @@ export default function TerminalPage() {
         ))}
       </div>
     );
-  };
+  }, [T]);
 
-  const WidgetREITs = () => {
+  const widgetREITsEl = useMemo(() => {
     const reits=[{t:"EQR",n:"Equity Residential",p:"$65.42",d:"+1.2%",ytd:"-4.1%",c:T.text.cyan},{t:"MAA",n:"Mid-America Apt",p:"$128.77",d:"+0.8%",ytd:"+2.3%",c:T.text.green},{t:"VNQ",n:"Vanguard RE ETF",p:"$84.31",d:"+0.5%",ytd:"-1.8%",c:T.text.amber},{t:"PLD",n:"Prologis (Ind)",p:"$112.55",d:"+2.1%",ytd:"+6.4%",c:T.text.green},{t:"BXP",n:"BXP (Office)",p:"$62.18",d:"-0.3%",ytd:"-8.2%",c:T.text.red},{t:"SPG",n:"Simon Property (Ret)",p:"$148.90",d:"+1.4%",ytd:"+3.7%",c:T.text.green}];
     return (
       <div style={{flex:1,overflow:"auto"}}>
@@ -1434,9 +1560,9 @@ export default function TerminalPage() {
         ))}
       </div>
     );
-  };
+  }, [T]);
 
-  const WidgetMacro = () => {
+  const widgetMacroEl = useMemo(() => {
     const rows=[{l:"GDP Growth (Q4 25)",v:"2.3%",note:"Above consensus 1.9%",arr:"↑",c:T.text.green},{l:"CPI (Feb 26)",v:"3.1%",note:"Core 3.4% — still elevated",arr:"↓",c:T.text.orange},{l:"Unemployment",v:"3.9%",note:"Slight uptick from 3.7%",arr:"↑",c:T.text.amber},{l:"Housing Starts",v:"1.42M",note:"Down 4.2% MoM from Jan",arr:"↓",c:T.text.red},{l:"30Y Mortgage",v:"7.11%",note:"Down from 7.35% peak",arr:"↓",c:T.text.orange},{l:"Consumer Conf.",v:"97.4",note:"Declined 3pts from prior month",arr:"↓",c:T.text.orange}];
     return (
       <div style={{flex:1,overflow:"auto"}}>
@@ -1450,9 +1576,9 @@ export default function TerminalPage() {
         ))}
       </div>
     );
-  };
+  }, [T]);
 
-  const WidgetDebt = () => {
+  const widgetDebtEl = useMemo(() => {
     const rows=[{l:"CMBS AAA (10Y)",v:"175 bps",d:"-18bps WoW",c:T.text.green},{l:"CMBS AA",v:"215 bps",d:"-12bps WoW",c:T.text.green},{l:"Agency MF (Fannie)",v:"SOFR + 155",d:"+5bps WoW",c:T.text.red},{l:"Life Company MF",v:"SOFR + 185",d:"0bps",c:T.text.muted},{l:"Bridge / Value-Add",v:"SOFR + 350",d:"+25bps WoW",c:T.text.red},{l:"Construction (BTS)",v:"SOFR + 275",d:"-10bps WoW",c:T.text.green}];
     return (
       <div style={{flex:1,overflow:"auto"}}>
@@ -1466,9 +1592,9 @@ export default function TerminalPage() {
         <div style={{padding:"6px 12px",fontSize:10,color:T.text.muted}}>Spreads to SOFR 5.31% · Updated Mar 15</div>
       </div>
     );
-  };
+  }, [T]);
 
-  const WidgetCalendar = () => {
+  const widgetCalendarEl = useMemo(() => {
     const events=[{deal:"Active Deal",type:"DD EXPIRES",days:9,sev:"critical"},{deal:"Active Deal",type:"EARNEST WIRE",days:3,sev:"critical"},{deal:"Pipeline",type:"BEST & FINAL",days:4,sev:"high"},{deal:"Pipeline",type:"DD START",days:7,sev:"med"},{deal:"Pipeline",type:"CITY MTG",days:14,sev:"low"}];
     const sColors:Record<string,string>={critical:T.text.red,high:T.text.orange,med:T.text.amber,low:T.text.muted};
     return (
@@ -1481,9 +1607,9 @@ export default function TerminalPage() {
         ))}
       </div>
     );
-  };
+  }, [T]);
 
-  const WidgetCompetitor = () => {
+  const widgetCompetitorEl = useMemo(() => {
     const items=[{who:"Greystar",action:"Broke ground 380u luxury tower, Downtown Tampa",impact:"SUPPLY +",time:"2d",threat:"HIGH"},{who:"Equity Residential",action:"Acquired 224u Westshore for $44.8M ($200K/door)",impact:"COMP ↑",time:"5d",threat:"MED"},{who:"MAA",action:"Filed permits for 156u Riverview mid-rise",impact:"SUPPLY +",time:"1w",threat:"LOW"},{who:"Blackstone RE",action:"Raised $4.2B multifamily fund — FL allocation $420M",impact:"CAPITAL",time:"1w",threat:"HIGH"}];
     const tc:Record<string,string>={HIGH:T.text.red,MED:T.text.orange,LOW:T.text.muted};
     return (
@@ -1500,7 +1626,7 @@ export default function TerminalPage() {
         ))}
       </div>
     );
-  };
+  }, [T]);
 
   // (WidgetAIBrief / WidgetNeuralHub wrappers removed — they were arrow
   // functions defined inside the TerminalPage body, which gave React a brand-
@@ -1509,7 +1635,7 @@ export default function TerminalPage() {
   // Neural Hub's "Ask the Network" textarea). The renderWidget switch now
   // references the imported components directly so React reconciles in place.
 
-  const WidgetTaskList = () => {
+  const widgetTaskListEl = useMemo(() => {
     const pc:Record<string,string>={critical:T.text.red,high:T.text.orange,med:T.text.amber,low:T.text.muted};
     const sc:Record<string,string>={"TODO":T.text.muted,"IN PROGRESS":T.text.cyan,"DONE":T.text.green};
     return (
@@ -1528,161 +1654,47 @@ export default function TerminalPage() {
         ))}
       </div>
     );
-  };
+  }, [T, liveTasks]);
 
-  // ─── WIDGET: M35 EVENT FEED ────────────────────────────────
-
-  interface EventFeedItem {
-    id: string;
-    name: string;
-    category: string;
-    scope: string;
-    status: string;
-    magnitudeScore: number;
-    confidence: number;
-    announcedDate: string | null;
-    msaId?: string;
-    msaName?: string;
-    forecastStatus?: 'ahead' | 'behind' | 'on_pace' | 'no_data' | null;
-    maxDivergencePct?: number | null;
-  }
-
-  const EFD_CAT_COLORS: Record<string, string> = {
-    employment:'#00D26A', infrastructure:T.text.cyan, supply:T.text.amber,
-    policy:'#A78BFA', regulatory:'#A78BFA', demographic:'#EC4899', macro:T.text.muted,
-  };
-
-  function daysSince(dateStr: string | null): string {
-    if (!dateStr) return '—';
-    const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000);
-    if (diff === 0) return 'Today';
-    if (diff === 1) return '1d ago';
-    if (diff < 30) return `${diff}d ago`;
-    if (diff < 365) return `${Math.floor(diff / 30)}mo ago`;
-    return `${Math.floor(diff / 365)}y ago`;
-  }
-
-  const WidgetEventFeed = () => {
-    const [events, setEvents] = React.useState<EventFeedItem[]>([]);
-    const [loading, setLoading] = React.useState(true);
-    const [catFilter, setCatFilter] = React.useState<string>('');
-
-    React.useEffect(() => {
-      fetch('/api/v1/m35/events/feed?limit=20')
-        .then(r => r.ok ? r.json() : null)
-        .then(d => {
-          if (d && (d.items || d.events || []).length > 0) {
-            setEvents((d.items || d.events || []) as EventFeedItem[]);
-          } else {
-            return fetch('/api/v1/m35/events?status=announced,in_progress&limit=20')
-              .then(r2 => r2.ok ? r2.json() : null)
-              .then(d2 => { if (d2) setEvents((d2.items || d2.events || []) as EventFeedItem[]); });
-          }
-        })
-        .catch(() => {})
-        .finally(() => setLoading(false));
-    }, []);
-
-    const source = loading ? [] : events;
-    const display = catFilter ? source.filter(e => e.category === catFilter) : source;
-    const cats = [...new Set(source.map(e => e.category))];
-
-    return (
-      <div style={{flex:1,overflow:"auto",display:"flex",flexDirection:"column"}}>
-        {/* Header */}
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 10px",borderBottom:`1px solid ${T.border.subtle}`,background:T.bg.header,flexShrink:0}}>
-          <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>
-            <button
-              onClick={() => setCatFilter('')}
-              style={{fontFamily:T.font.mono,fontSize:8,padding:"1px 6px",cursor:"pointer",background:!catFilter?T.text.cyan:"transparent",color:!catFilter?T.bg.primary:T.text.muted,border:`1px solid ${!catFilter?T.text.cyan:T.border.subtle}`}}
-            >
-              ALL
-            </button>
-            {cats.map(c=>(
-              <button
-                key={c}
-                onClick={() => setCatFilter(c)}
-                style={{fontFamily:T.font.mono,fontSize:8,padding:"1px 6px",cursor:"pointer",background:catFilter===c?(EFD_CAT_COLORS[c]??T.text.cyan):"transparent",color:catFilter===c?T.bg.primary:T.text.muted,border:`1px solid ${catFilter===c?(EFD_CAT_COLORS[c]??T.text.cyan):T.border.subtle}`}}
-              >
-                {c.toUpperCase().substring(0,6)}
-              </button>
-            ))}
-          </div>
-          <button
-            onClick={() => navigate('/portfolio/events')}
-            style={{fontFamily:T.font.mono,fontSize:8,color:T.text.cyan,background:"transparent",border:`1px solid ${T.text.cyan}33`,padding:"2px 7px",cursor:"pointer",flexShrink:0}}
-          >
-            FULL FEED ↗
-          </button>
-        </div>
-
-        <div style={{flex:1,overflow:"auto"}}>
-          {display.map((ev, i) => {
-            const cardData: M35EventCardData = {
-              id: ev.id,
-              name: ev.name,
-              category: ev.category,
-              status: ev.status,
-              scope: ev.scope,
-              magnitudeScore: ev.magnitudeScore,
-              confidence: ev.confidence,
-              announcedDate: ev.announcedDate,
-              msa: ev.msaName,
-              forecastStatus: (ev.forecastStatus as M35EventCardData['forecastStatus']) ?? 'no_data',
-              divergingForecast: ev.maxDivergencePct != null && ev.maxDivergencePct > 0.10,
-            };
-            return (
-              <div key={ev.id ?? i} style={{borderBottom:`1px solid ${T.border.subtle}`}}>
-                <M35EventCard
-                  event={cardData}
-                  compact
-                  onClick={() => navigate(`/events/${ev.id}`)}
-                />
-              </div>
-            );
-          })}
-
-          {!loading && display.length === 0 && (
-            <div style={{padding:24,textAlign:"center",fontSize:10,color:T.text.muted,fontFamily:T.font.mono}}>
-              {catFilter ? `No ${catFilter} events.` : 'No events loaded. Check M35 connector.'}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
+  // (WidgetEventFeed and its EventFeedItem interface / EFD_CAT_COLORS /
+  // daysSince helpers were moved to the top-level TerminalEventFeedWidget
+  // component above this file's default export. They own useState/useEffect
+  // and would lose their fetched events + filter selection on every parent
+  // re-render if defined inside TerminalPage's body.)
 
   // ─── WIDGET ROUTER ─────────────────────────────────────────
-  // NOTE: Imported components (NeuralNetworkHubWidget, MorningBriefWidget) are
-  // referenced directly here rather than through in-render arrow wrappers —
-  // wrapping them inside TerminalPage's body would create a fresh component-
-  // type reference on every render and cause React to unmount the widget on
-  // every parent re-render (which previously made the Neural Hub's "Ask the
-  // Network" textarea impossible to type into).
+  // Stateless widgets are returned as memoized JSX elements (computed by
+  // useMemo above) — React sees stable element identities with primitive
+  // root types and reconciles in place rather than unmounting/remounting.
+  // Stateful widgets (TerminalTVWidget, TerminalEventFeedWidget) and
+  // imported components (NeuralNetworkHubWidget, MorningBriefWidget) are
+  // referenced as top-level component types so they share the same stable
+  // identity across every parent re-render. This is what allows the Neural
+  // Hub's "Ask the Network" textarea to keep focus while the user types.
   const renderWidget = (id:string) => {
     switch(id) {
-      case "pipeline":    return <DealGrid/>;
-      case "findings":    return <WidgetKeyFindings/>;
-      case "mydeals":     return <WidgetMyDeals/>;
-      case "kpi":         return <WidgetKPISummary/>;
-      case "alerts":      return <WidgetAlertFeed/>;
-      case "skills":      return <WidgetAgents/>;
+      case "pipeline":    return dealGridEl;
+      case "findings":    return widgetKeyFindingsEl;
+      case "mydeals":     return widgetMyDealsEl;
+      case "kpi":         return widgetKPISummaryEl;
+      case "alerts":      return widgetAlertFeedEl;
+      case "skills":      return widgetAgentsEl;
       case "vitals":      return <ViewMarkets/>;
-      case "leaderboard": return <WidgetLeaderboard/>;
-      case "funnel":      return <WidgetFunnel/>;
-      case "strategy":    return <WidgetStrategySnapshot/>;
-      case "rates":       return <WidgetRates/>;
-      case "yieldcurve":  return <WidgetYieldCurve/>;
-      case "tv":          return <WidgetTV/>;
-      case "caprates":    return <WidgetCapRates/>;
-      case "reits":       return <WidgetREITs/>;
-      case "macro":       return <WidgetMacro/>;
-      case "debt":        return <WidgetDebt/>;
-      case "calendar":    return <WidgetCalendar/>;
-      case "competitor":  return <WidgetCompetitor/>;
+      case "leaderboard": return widgetLeaderboardEl;
+      case "funnel":      return widgetFunnelEl;
+      case "strategy":    return widgetStrategySnapshotEl;
+      case "rates":       return widgetRatesEl;
+      case "yieldcurve":  return widgetYieldCurveEl;
+      case "tv":          return <TerminalTVWidget T={T}/>;
+      case "caprates":    return widgetCapRatesEl;
+      case "reits":       return widgetREITsEl;
+      case "macro":       return widgetMacroEl;
+      case "debt":        return widgetDebtEl;
+      case "calendar":    return widgetCalendarEl;
+      case "competitor":  return widgetCompetitorEl;
       case "aibrief":     return <MorningBriefWidget/>;
-      case "tasks":       return <WidgetTaskList/>;
-      case "events":      return <WidgetEventFeed/>;
+      case "tasks":       return widgetTaskListEl;
+      case "events":      return <TerminalEventFeedWidget T={T} navigate={navigate}/>;
       case "neuralhub":   return <NeuralNetworkHubWidget T={T}/>;
       default: return null;
     }
@@ -2545,7 +2557,7 @@ export default function TerminalPage() {
   const renderContent = () => {
     switch(fkey) {
       case "F1": return ViewDashboard();
-      case "F2": return DealGrid();
+      case "F2": return dealGridEl;
       case "F3": return <F3PortfolioView theme={T} />;
       case "F4": return ViewMarkets();
       case "F5": return ViewEmail();
