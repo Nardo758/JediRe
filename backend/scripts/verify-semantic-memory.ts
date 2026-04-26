@@ -51,7 +51,15 @@ async function main() {
             @@ plainto_tsquery('english', $1)`,
     [meaningQuery]
   );
-  console.log(`   BM25-only baseline: ${bm25.rows[0].n} matches`);
+  const bm25Count = bm25.rows[0].n;
+  console.log(`   BM25-only baseline: ${bm25Count} matches`);
+  if (bm25Count !== 0) {
+    throw new Error(
+      `Verification precondition failed: pure keyword search returned ${bm25Count} matches ` +
+      `for "${meaningQuery}", so this query no longer proves the semantic-only path is wired. ` +
+      `Pick a query whose words appear in zero seeded node names/descriptions.`
+    );
+  }
 
   // 2) Hybrid (auto-embed kicks in because no embedding arg passed)
   const hybrid = await graph.hybridSearch(meaningQuery, undefined, ['Market'], 5);
