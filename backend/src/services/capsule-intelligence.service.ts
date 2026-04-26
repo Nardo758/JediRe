@@ -256,6 +256,43 @@ export class CapsuleIntelligenceService {
       recommendations.push('Low data quality — consider running Research Agent for market intelligence');
     }
 
+    // --- CREATE DEAL NODE IN KNOWLEDGE GRAPH ---
+    try {
+      const { getKnowledgeGraph } = await import('./neural-network/knowledge-graph.service');
+      const pool = getPool();
+      const kg = getKnowledgeGraph(pool);
+      await kg.upsertNode({
+        type: 'Deal',
+        externalId: params.capsuleId,
+        name: params.propertyAddress || `Deal ${params.capsuleId}`,
+        properties: {
+          city: params.city,
+          state: params.state,
+          propertyType: params.propertyType,
+          units: params.units,
+          dataQualityScore: result.dataQualityScore,
+          supplyRisk: result.supplyRisk?.value,
+          pipelineUnits: result.pipelineUnits?.value,
+          intelligenceSeededAt: new Date(),
+        }
+      } as any);
+
+      // Link Deal → Market
+      if (params.city) {
+        const marketId = this.cityToMarketId(params.city);
+        if (marketId) {
+          await kg.createEdge({
+            sourceNodeId: params.capsuleId,
+            targetNodeId: `market:${marketId}`,
+            edgeType: 'IN_MARKET',
+            properties: { linkedAt: new Date() }
+          });
+        }
+      }
+    } catch (kgErr) {
+      logger.warn('[CapsuleIntelligence] Failed to create KG Deal node', { err: kgErr });
+    }
+
     // --- SAVE TO CAPSULE platform_intel ---
     await this.saveToCapsule(params.capsuleId, result);
 
