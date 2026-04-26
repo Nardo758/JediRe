@@ -929,12 +929,41 @@ export class ContextAwarenessService {
 
     const limit = Math.max(1, Math.min(20, opts.limit ?? 8));
 
-    // 1. Pull relevant nodes from the graph
+    // 1. Pull relevant nodes from the graph (over-fetch so we can post-filter
+    //    by caller-supplied scope without losing the requested `limit`).
+    const hasScope = !!(opts.dealId || opts.marketId || opts.submarketId);
+    const fetchLimit = hasScope ? Math.max(limit * 4, 32) : limit;
+
     let matches: Array<{ node: GraphNode; score: number; matchType: string }> = [];
     try {
-      matches = await this.graphService.hybridSearch(trimmed, undefined, undefined, limit);
+      matches = await this.graphService.hybridSearch(trimmed, undefined, undefined, fetchLimit);
     } catch (e: any) {
       console.warn('[ContextAwareness] hybridSearch failed in answer():', e?.message || e);
+    }
+
+    // Apply scope filter when caller pinned a deal / market / submarket.
+    // We accept either a direct id match on the node itself OR an id match
+    // surfaced inside node.properties (the graph stores these as link refs).
+    if (hasScope && matches.length) {
+      const matchScope = (n: GraphNode): boolean => {
+        const p: any = n.properties || {};
+        if (opts.dealId &&
+            n.id !== opts.dealId &&
+            p.dealId !== opts.dealId &&
+            p.deal_id !== opts.dealId) return false;
+        if (opts.marketId &&
+            n.id !== opts.marketId &&
+            p.marketId !== opts.marketId &&
+            p.market_id !== opts.marketId) return false;
+        if (opts.submarketId &&
+            n.id !== opts.submarketId &&
+            p.submarketId !== opts.submarketId &&
+            p.submarket_id !== opts.submarketId) return false;
+        return true;
+      };
+      matches = matches.filter(m => matchScope(m.node)).slice(0, limit);
+    } else if (matches.length > limit) {
+      matches = matches.slice(0, limit);
     }
 
     const sources = matches.map(m => ({

@@ -1710,7 +1710,8 @@ export default function TerminalPage() {
 
     React.useEffect(() => {
       loadStatus();
-      const t = setInterval(loadStatus, 5000);
+      // Per task spec: poll every 15s (out of scope: real-time WS/SSE).
+      const t = setInterval(loadStatus, 15000);
       return () => clearInterval(t);
     }, [loadStatus]);
 

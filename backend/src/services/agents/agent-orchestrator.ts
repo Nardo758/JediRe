@@ -189,6 +189,25 @@ class AgentOrchestrator {
       }
     }
 
+    // Sweep any pending workflow_run rows for this event that the loop above
+    // never picked up (agent was filtered out by trigger conditions or by the
+    // canWorkAutonomously guard).  Without this sweep those rows would sit
+    // forever as 'pending' and pollute the Neural Network Hub's LIVE counter.
+    if (eventId) {
+      try {
+        await query(
+          `UPDATE agent_workflow_runs
+              SET status       = 'failed',
+                  completed_at = NOW(),
+                  error        = COALESCE(error, 'skipped: agent not eligible for this event')
+            WHERE event_id = $1 AND status = 'pending'`,
+          [eventId]
+        );
+      } catch (e: any) {
+        logger.warn(`pending-run sweep failed: ${e?.message || e}`);
+      }
+    }
+
     return responses;
   }
 

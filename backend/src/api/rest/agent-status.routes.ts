@@ -6,9 +6,10 @@
  *   GET /api/v1/agents/status
  *
  * Returns three live windows the user wants to see:
- *   running   – workflow runs currently executing (status='running')
- *   recent    – the last 25 completed / failed runs
- *   events    – the last 25 platform events that hit the dispatcher
+ *   running   – workflow runs in flight (status in pending|running, top 20)
+ *   recent    – completed/failed runs in the last 24 hours, with
+ *               a computed duration_seconds for each row
+ *   events    – the last 10 platform events that hit the dispatcher
  *
  * Backed by the `agent_events` and `agent_workflow_runs` tables created in
  * 20260426_neural_hub_agent_workflow_runs.sql.  All three queries are
@@ -27,25 +28,30 @@ export function createAgentStatusRoutes(pool: Pool): Router {
     try {
       const [running, recent, events] = await Promise.all([
         pool.query(
-          `SELECT id, agent_id, trigger_event, deal_id, user_id, started_at, created_at
+          `SELECT id, agent_id, trigger_event, deal_id, user_id, status,
+                  started_at, created_at
              FROM agent_workflow_runs
-            WHERE status = 'running'
+            WHERE status IN ('pending', 'running')
             ORDER BY COALESCE(started_at, created_at) DESC
-            LIMIT 25`
+            LIMIT 20`
         ),
         pool.query(
           `SELECT id, agent_id, trigger_event, deal_id, user_id, status,
-                  started_at, completed_at, created_at, error
+                  started_at, completed_at, created_at, error,
+                  EXTRACT(EPOCH FROM (
+                    COALESCE(completed_at, NOW()) - COALESCE(started_at, created_at)
+                  ))::int AS duration_seconds
              FROM agent_workflow_runs
             WHERE status IN ('completed', 'failed')
+              AND COALESCE(completed_at, created_at) >= NOW() - INTERVAL '24 hours'
             ORDER BY COALESCE(completed_at, created_at) DESC
-            LIMIT 25`
+            LIMIT 50`
         ),
         pool.query(
           `SELECT id, event_type, deal_id, user_id, created_at
              FROM agent_events
             ORDER BY created_at DESC
-            LIMIT 25`
+            LIMIT 10`
         ),
       ]);
 
