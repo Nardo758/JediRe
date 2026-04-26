@@ -18,6 +18,7 @@ import TerminalMapView from "../components/map/TerminalMapView";
 import { AssumptionsPanel } from "../components/deal/AssumptionsPanel";
 import { M35EventCard, type M35EventCardData } from "../components/m35/M35EventCard";
 import { MorningBriefWidget } from "../components/dashboard/MorningBriefWidget";
+import NeuralNetworkHub from "../components/dashboard/NeuralNetworkHub";
 import { ContextIndicator } from '../components/intelligence/ContextIndicator';
 import { useContextAnalysis } from '../hooks/useContextAwareness';
 
@@ -185,6 +186,7 @@ const WIDGET_CATALOG = [
   {id:"skills",     label:"AI Skills Activity",     desc:"Live status of AI skill executions",                   category:"OPS",    color:"#00D26A"},
   {id:"tasks",      label:"Task List",              desc:"Team task queue with deal assignments",                 category:"OPS",    color:"#FFD166"},
   {id:"events",     label:"M35 Event Feed",         desc:"Active market events — employment, supply, policy & regulatory catalysts", category:"INTEL",  color:"#0891B2"},
+  {id:"neural-hub", label:"Neural Network Hub",     desc:"Real-time agent status, insight feed, and Q&A with the Knowledge Graph",  category:"OPS",    color:"#3b82f6"},
   {id:"tv",         label:"TV / Media",             desc:"Live business news channel selector",                  category:"MEDIA",  color:"#FF8C42"},
 ];
 
@@ -1503,6 +1505,8 @@ export default function TerminalPage() {
   // AI Daily Brief now uses the real MorningBriefWidget component
   const WidgetAIBrief = () => <MorningBriefWidget />;
 
+  const WidgetNeuralHub = () => <NeuralNetworkHub />;
+
   const WidgetTaskList = () => {
     const pc:Record<string,string>={critical:T.text.red,high:T.text.orange,med:T.text.amber,low:T.text.muted};
     const sc:Record<string,string>={"TODO":T.text.muted,"IN PROGRESS":T.text.cyan,"DONE":T.text.green};
@@ -1671,6 +1675,7 @@ export default function TerminalPage() {
       case "aibrief":     return <WidgetAIBrief/>;
       case "tasks":       return <WidgetTaskList/>;
       case "events":      return <WidgetEventFeed/>;
+      case "neural-hub":  return <WidgetNeuralHub/>;
       default: return null;
     }
   };

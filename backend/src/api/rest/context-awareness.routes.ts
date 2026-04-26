@@ -379,6 +379,30 @@ export function createContextAwarenessRoutes(pool: Pool): Router {
     }
   });
 
+  /**
+   * POST /api/v1/context/query
+   * Natural language Q&A against the Knowledge Graph
+   * Used by the Neural Network Hub widget
+   */
+  router.post('/query', async (req: Request, res: Response) => {
+    try {
+      const { question, context: focusContext } = req.body;
+      if (!question || typeof question !== 'string') {
+        return res.status(400).json({ success: false, error: 'question is required' });
+      }
+
+      const focus: Partial<UserFocus> = focusContext
+        ? { context: focusContext as UIContext }
+        : {};
+
+      const result = await contextService.answer(question, focus);
+      res.json({ success: true, text: result.text, sources: result.sources });
+    } catch (error) {
+      console.error('[ContextAwareness] Query error:', error);
+      res.status(500).json({ success: false, error: 'Query failed' });
+    }
+  });
+
   return router;
 }
 

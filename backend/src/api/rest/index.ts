@@ -6,6 +6,7 @@
 import { Application } from 'express';
 import authRoutes from './auth.routes';
 import agentAuthRoutes from './agent-auth.routes';
+import agentStatusRoutes from './agent-status.routes';
 import propertyRoutes from './property.routes';
 import createUnifiedPropertiesRoutes from './unified-properties.routes';
 import zoningRoutes from './zoning.routes';
@@ -190,6 +191,9 @@ export function setupRESTRoutes(app: Application): void {
 
   // Autonomous Agent System: /agents/chat, /agents/:agentId/chat, /agents/notifications, etc.
   app.use(`${API_PREFIX}/agents`, agentsRoutes);
+
+  // Agent status for Neural Network Hub
+  app.use(`${API_PREFIX}/agents/status`, agentStatusRoutes);
 
   // Morning Brief: /morning-brief
   app.use(`${API_PREFIX}/morning-brief`, morningBriefRoutes);

@@ -26,6 +26,18 @@ import { logger } from '../../utils/logger';
 // EVENT DISPATCHER CLASS
 // ============================================================================
 
+const EVENT_AGENT_MAP: Record<string, string[]> = {
+  'document_uploaded': ['acquisitions', 'research', 'orchestrator'],
+  'email_received': ['acquisitions', 'research'],
+  'deal_created': ['strategy', 'acquisitions', 'lender', 'orchestrator'],
+  'deal_status_changed': ['orchestrator'],
+  'financials_updated': ['cfo', 'asset_manager'],
+  'market_data_changed': ['research', 'strategy', 'lender'],
+  'news_alert': ['research', 'strategy'],
+  'threshold_breach': ['cfo', 'asset_manager', 'orchestrator'],
+  'task_due': ['orchestrator'],
+};
+
 class EventDispatcher {
   private eventQueue: EventPayload[] = [];
   private processing = false;
@@ -88,14 +100,33 @@ class EventDispatcher {
    * Log event to database
    */
   private async logEvent(payload: EventPayload): Promise<void> {
+    let eventId: string | undefined;
     try {
-      await query(
+      const result = await query(
         `INSERT INTO agent_events (event_type, deal_id, user_id, payload, created_at)
-         VALUES ($1, $2, $3, $4, NOW())`,
+         VALUES ($1, $2, $3, $4, NOW())
+         RETURNING id`,
         [payload.event, payload.dealId, payload.userId, JSON.stringify(payload.data)]
       );
+      eventId = result.rows[0]?.id;
+
+      // Create agent_workflow_runs for triggered agents
+      if (eventId) {
+        const agentIds = EVENT_AGENT_MAP[payload.event] || ['orchestrator'];
+        for (const agentId of agentIds) {
+          try {
+            await query(
+              `INSERT INTO agent_workflow_runs
+                 (agent_id, event_id, deal_id, user_id, trigger_event, status, created_at)
+               VALUES ($1, $2, $3, $4, $5, 'pending', NOW())`,
+              [agentId, eventId, payload.dealId, payload.userId, payload.event]
+            );
+          } catch (innerErr) {
+            logger.warn('Failed to insert workflow run', { agentId, err: innerErr });
+          }
+        }
+      }
     } catch {
-      // Non-critical, just log
       logger.warn('Failed to log event to database');
     }
   }

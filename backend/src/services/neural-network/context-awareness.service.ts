@@ -909,6 +909,96 @@ export class ContextAwarenessService {
     
     return gaps;
   }
+
+  /**
+   * Answer a natural language question by querying the Knowledge Graph
+   * Used by the Neural Network Hub Q&A widget
+   */
+  async answer(question: string, focus?: Partial<UserFocus>): Promise<{ text: string; sources: string[] }> {
+    const questionLower = question.toLowerCase();
+    const sources: string[] = [];
+    const answerParts: string[] = [];
+
+    try {
+      // Detect entity mentions (markets, submarkets)
+      const cleanQuery = questionLower.replace(/[^a-z0-9 ]/g, '');
+      const [markets, submarkets] = await Promise.all([
+        this.pool.query(
+          `SELECT id, external_id, name, properties FROM knowledge_graph_nodes
+           WHERE node_type = 'Market' AND (LOWER(name) LIKE $1 OR LOWER(external_id) LIKE $1) LIMIT 3`,
+          [`%${cleanQuery}%`]
+        ),
+        this.pool.query(
+          `SELECT id, external_id, name, properties FROM knowledge_graph_nodes
+           WHERE node_type = 'Submarket' AND (LOWER(name) LIKE $1 OR LOWER(external_id) LIKE $1) LIMIT 3`,
+          [`%${cleanQuery}%`]
+        ),
+      ]);
+
+      const allEntities = [...markets.rows, ...submarkets.rows];
+
+      if (allEntities.length > 0) {
+        for (const entity of allEntities.slice(0, 2)) {
+          const edges = await this.pool.query(
+            `SELECT n.node_type, n.name, n.properties
+             FROM knowledge_graph_edges e
+             JOIN knowledge_graph_nodes n ON n.id = CASE WHEN e.source_node_id = $1 THEN e.target_node_id ELSE e.source_node_id END
+             WHERE e.source_node_id = $1 OR e.target_node_id = $1 LIMIT 20`,
+            [entity.id]
+          );
+
+          sources.push(entity.name || entity.external_id);
+
+          for (const row of edges.rows) {
+            const data = row.properties || {};
+            if (row.node_type === 'RentComp' && data.rent)
+              answerParts.push(`${entity.name} rent comp: $${Number(data.rent).toLocaleString()} (${data.units || '?'} units)`);
+            else if (row.node_type === 'SaleComp' && data.cap_rate)
+              answerParts.push(`${entity.name} cap rate: ${Number(data.cap_rate).toFixed(1)}%`);
+            else if (row.node_type === 'BrokerNarrative')
+              answerParts.push(`${entity.name} broker: ${(data.narrative || '').slice(0, 200)}`);
+            else if (row.node_type === 'ExpenseBenchmark' && data.expense_ratio)
+              answerParts.push(`${entity.name} expense ratio: ${Number(data.expense_ratio).toFixed(1)}%`);
+            else if (row.node_type === 'SupplyProject')
+              answerParts.push(`${entity.name} supply: ${data.units || '?'} units pipeline`);
+          }
+        }
+      }
+
+      // Broad graph queries for specific topics
+      if (/supply|development/i.test(question)) {
+        const count = await this.pool.query(`SELECT COUNT(*) as c, COALESCE(SUM(CAST(properties->>'units' AS INTEGER)), 0) as u FROM knowledge_graph_nodes WHERE node_type = 'SupplyProject'`);
+        const c = Number(count.rows[0]?.c || 0);
+        const u = Number(count.rows[0]?.u || 0);
+        if (c > 0) answerParts.push(`Tracked supply: ${c} projects, ${u.toLocaleString()} units`);
+      }
+
+      if (/cap rates?/i.test(question)) {
+        const caps = await this.pool.query(`SELECT CAST(properties->>'cap_rate' AS NUMERIC) as cap FROM knowledge_graph_nodes WHERE node_type = 'SaleComp' AND properties->>'cap_rate' IS NOT NULL ORDER BY created_at DESC LIMIT 10`);
+        const vals = caps.rows.map(r => Number(r.cap)).filter((v: number) => v > 0);
+        if (vals.length > 0) {
+          const avg = vals.reduce((a: number, b: number) => a + b, 0) / vals.length;
+          answerParts.push(`Cap rate range: ${Math.min(...vals).toFixed(1)}% - ${Math.max(...vals).toFixed(1)}% (avg ${avg.toFixed(1)}%)`);
+        }
+      }
+
+      if (focus && Object.keys(focus).length > 0) {
+        const analysis = await this.analyzeContext(focus as UserFocus);
+        if (analysis.gaps?.length)
+          answerParts.push(`Data gaps: ${analysis.gaps.map(g => g.field).join(', ')}`);
+      }
+    } catch (err) {
+      answerParts.push(`Query error: ${err}`);
+    }
+
+    if (answerParts.length === 0)
+      answerParts.push('Not enough data in the Knowledge Graph yet. Upload OMs or deal docs to seed it.');
+
+    return {
+      text: answerParts.join('. '),
+      sources: [...new Set(sources)],
+    };
+  }
 }
 
 // Singleton

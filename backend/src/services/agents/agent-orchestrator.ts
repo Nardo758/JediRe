@@ -217,6 +217,27 @@ class AgentOrchestrator {
   /**
    * Run a conversation with a specific agent
    */
+  /**
+   * Update an agent workflow run in the database
+   */
+  async markRun(runId: string, status: 'running' | 'completed' | 'failed', result?: any, error?: string): Promise<void> {
+    try {
+      if (status === 'running') {
+        await query(
+          `UPDATE agent_workflow_runs SET status='running', started_at=NOW() WHERE id=$1`,
+          [runId]
+        );
+      } else {
+        await query(
+          `UPDATE agent_workflow_runs SET status=$1, completed_at=NOW(), result=$2, error=$3 WHERE id=$4`,
+          [status, result ? JSON.stringify(result) : null, error || null, runId]
+        );
+      }
+    } catch (err) {
+      logger.warn('Failed to update workflow run', { runId, status, err });
+    }
+  }
+
   private async runAgentConversation(
     agent: AgentPersona,
     message: string,
