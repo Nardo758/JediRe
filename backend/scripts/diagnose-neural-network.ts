@@ -156,7 +156,8 @@ async function runTests() {
         platform_intel->'intelligence'->>'dataQualityScore' AS quality,
         platform_intel->'intelligence'->>'compsFound' AS comps,
         platform_intel->'intelligence'->'gaps' AS gaps,
-        platform_intel->'intelligence'->'assumptions' AS assumptions
+        platform_intel->'intelligence'->'assumptions' AS assumptions,
+        platform_intel->'intelligence'->'recommendations' AS recommendations
       FROM deal_capsules WHERE id = $1
       `,
       [capsuleId]
@@ -167,6 +168,15 @@ async function runTests() {
       const assumptionKeys = row.assumptions ? Object.keys(row.assumptions) : [];
       console.log(`  Assumption keys saved: ${assumptionKeys.join(', ') || '(none)'}`);
       console.log(`  Gaps persisted: ${JSON.stringify(row.gaps)}`);
+      const recs = row.recommendations;
+      const recsOk = Array.isArray(recs) && recs.length > 0;
+      if (recsOk) {
+        console.log(`  ✅ Recommendations persisted (${recs.length}):`);
+        recs.forEach((r: string) => console.log(`    → ${r}`));
+      } else {
+        pipelineFailed = true;
+        console.log(`  ❌ Recommendations NOT persisted (got: ${JSON.stringify(recs)})`);
+      }
     } else {
       pipelineFailed = true;
       console.log(`  ❌ platform_intel NOT populated`);
