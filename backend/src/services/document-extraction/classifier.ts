@@ -108,7 +108,8 @@ export async function classifyDocument(buffer: Buffer, filename: string): Promis
     }
     let textContent = '';
     try {
-      const pdfParse: (buf: Buffer) => Promise<{ text: string }> = require('pdf-parse');
+      const lib = require('pdf-parse');
+      const pdfParse: (buf: Buffer) => Promise<{ text: string }> = typeof lib === 'function' ? lib : (lib.default || ((buf: Buffer) => { const inst = new lib.PDFParse({ data: buf }); return inst.getText ? inst.getText().then((t: string) => ({ text: t })) : Promise.resolve({ text: '' }); }));
       const pdfResult = await pdfParse(buffer);
       textContent = (pdfResult.text || '').toLowerCase();
     } catch {
