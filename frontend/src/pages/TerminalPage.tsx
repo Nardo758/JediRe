@@ -1686,12 +1686,6 @@ export default function TerminalPage() {
     }, []);
     return (
       <div style={{flex:1,display:"flex",flexDirection:"column",minHeight:0,position:"relative"}}>
-        {/* Context Awareness — shows portfolio-level data gaps */}
-        {dashContext && (
-          <div style={{padding:'4px 12px',flexShrink:0}}>
-            <ContextIndicator analysis={dashContext} loading={dashContextLoading} compact />
-          </div>
-        )}
         {/* Widget catalog overlay */}
         {dashMenuOpen&&(
           <div style={{position:"absolute",inset:0,background:theme==="dark"?"rgba(5,8,16,0.97)":"rgba(240,244,248,0.97)",zIndex:200,display:"flex",flexDirection:"column",animation:"fadeIn 0.35s ease"}}>
