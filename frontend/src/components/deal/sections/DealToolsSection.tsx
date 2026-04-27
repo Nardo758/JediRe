@@ -680,7 +680,11 @@ function FilesTab({ dealId }: { dealId: string }) {
     setUploading(true);
     try {
       const formData = new FormData();
-      formData.append('file', file);
+      // Backend route /deals/:dealId/files uses multer.array('files', 10),
+      // so the field name MUST be 'files' (plural) — sending 'file' (singular)
+      // is rejected by multer with MulterError: Unexpected field and the
+      // upload is silently dropped.
+      formData.append('files', file);
       await apiClient.post(`/api/v1/deals/${dealId}/files`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
