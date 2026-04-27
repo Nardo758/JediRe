@@ -63,6 +63,9 @@ export async function dispatchAction(input: {
     switch (actionId) {
       case 'approve':
         return await handleApprove(resourceId, channel, senderId);
+      case 'acknowledge':
+      case 'ack':
+        return await handleAcknowledge(resourceId, channel, senderId);
       case 'dismiss':
         return await handleDismiss(resourceId, channel, senderId);
       case 'rerun':
@@ -140,6 +143,43 @@ async function handleApprove(
   } finally {
     client.release();
   }
+}
+
+async function handleAcknowledge(
+  resourceId: string | undefined,
+  channel: ChannelName,
+  senderId: string,
+): Promise<ActionDispatchResult> {
+  // Acknowledge ≠ approve. It records that an operator saw the alert (used
+  // by threshold-breach notifications) WITHOUT mutating the deal's status.
+  // This is the safe default for "I see this and I'm on it" interactions.
+  if (!resourceId) {
+    return { ok: true, message: 'Acknowledged.', editOriginal: true };
+  }
+  try {
+    await pool.query(
+      `INSERT INTO deal_activity (deal_id, user_id, action_type, description, metadata)
+       SELECT $1, $2, 'openclaw_acknowledged', $3, $4
+        WHERE EXISTS (SELECT 1 FROM deals WHERE id = $1)`,
+      [
+        resourceId,
+        OPENCLAW_SYSTEM_USER_ID,
+        `Acknowledged via OpenClaw (${channel})`,
+        JSON.stringify({ channel, senderId }),
+      ],
+    );
+  } catch (err: unknown) {
+    logger.warn('OpenClaw acknowledge: activity log insert failed', {
+      resourceId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+  logger.info('OpenClaw acknowledge action recorded', { resourceId, channel, senderId });
+  return {
+    ok: true,
+    message: `Acknowledged ${resourceId}.`,
+    editOriginal: true,
+  };
 }
 
 async function handleDismiss(

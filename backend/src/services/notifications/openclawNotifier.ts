@@ -246,7 +246,10 @@ class OpenClawNotifier {
       body: lines.join('\n'),
       deepLink: this.dealDeepLink(input.dealId),
       actions: [
-        { label: 'Acknowledge', actionId: 'approve', resourceId: input.dealId },
+        // NB: 'acknowledge' is intentionally NOT 'approve' — acknowledging a
+        // threshold breach must NOT mutate the deal's status. See
+        // openclaw-actions.handleAcknowledge for the semantics.
+        { label: 'Acknowledge', actionId: 'acknowledge', resourceId: input.dealId },
         { label: 'Dismiss', actionId: 'dismiss', resourceId: input.dealId },
       ],
       meta: { dealId: input.dealId, metric: input.metric, severity: sev },
