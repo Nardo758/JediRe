@@ -13,6 +13,7 @@
 import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { skillRegistry } from '../skills/skill-registry';
+import { eventDispatcher } from '../agents/event-dispatcher';
 // Side-effect import: ensures all skills (extract_document, review_contract,
 // analyze_appraisal, parse_environmental_report, ...) are registered with
 // the skillRegistry before we try to execute them. Without this, the registry
@@ -181,6 +182,24 @@ export async function runExtractionForFile(opts: TriggerOptions): Promise<void> 
         [fileId, JSON.stringify(resultData ?? {})]
       );
       logger.info('auto-extract: done', { fileId, skillId });
+
+      // After extraction succeeds, notify agents to underwrite
+      const dealFile = await query(
+        `SELECT deal_id, category FROM deal_files WHERE id = $1`,
+        [fileId]
+      );
+      const df = dealFile.rows[0];
+      if (df?.deal_id) {
+        const cat = (df.category || '').toLowerCase();
+        if (cat.includes('offering') || cat.includes('om')) {
+          eventDispatcher.onDocumentUploaded(df.deal_id, 'system', {
+            fileId,
+            filename: opts.filename || '',
+            category: 'offering_memorandum',
+            mimeType: 'application/pdf',
+          }).catch(e => logger.warn('auto-extract: failed to trigger underwriting', { fileId, e }));
+        }
+      }
     } else {
       await query(
         `UPDATE deal_files

@@ -24,7 +24,7 @@ const T = {
   font: { mono: '"JetBrains Mono", "Consolas", monospace' },
 };
 
-const CATEGORIES = ['All', 'Financial', 'Legal', 'Inspections', 'Appraisals', 'Environmental', 'Insurance', 'Permits', 'Other'];
+const CATEGORIES = ['All', 'Offering Memorandum', 'Financial', 'Legal', 'Inspections', 'Appraisals', 'Environmental', 'Insurance', 'Permits', 'T12', 'Rent Roll', 'Other'];
 
 function fmtSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;

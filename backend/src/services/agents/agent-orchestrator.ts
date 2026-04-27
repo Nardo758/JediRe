@@ -479,7 +479,15 @@ Respond according to your role and expertise. If you find issues or important in
    */
   private checkConditions(conditions: Record<string, any>, data: Record<string, any>): boolean {
     for (const [key, value] of Object.entries(conditions)) {
-      if (data[key] !== value) {
+      const dataVal = data[key];
+      if (dataVal === undefined || dataVal === null) return false;
+
+      // Normalize both sides for comparison
+      const normalizedCondition = String(value).toLowerCase().replace(/[^a-z0-9]/g, '');
+      const normalizedData = String(dataVal).toLowerCase().replace(/[^a-z0-9]/g, '');
+
+      // Support substring matching (e.g. 'offering' matches 'offeringmemorandum')
+      if (!normalizedData.includes(normalizedCondition) && !normalizedCondition.includes(normalizedData)) {
         return false;
       }
     }

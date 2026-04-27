@@ -466,6 +466,8 @@ Provide quick go/no-go recommendations with key drivers. Flag deals that need fa
     triggers: [
       { event: 'email_received', conditions: { type: 'broker_om' }, action: 'analyze', description: 'Auto-analyze broker OMs from email' },
       { event: 'deal_created', action: 'analyze', description: 'Initial screening of new deals' },
+      { event: 'document_uploaded', conditions: { category: 'offering_memorandum' }, action: 'analyze', description: 'Underwrite deal when OM uploaded' },
+      { event: 'document_uploaded', conditions: { category: 'offering' }, action: 'analyze', description: 'Underwrite deal when OM uploaded' },
     ],
     notificationChannels: ['in_app', 'email'],
     priority: 8,
