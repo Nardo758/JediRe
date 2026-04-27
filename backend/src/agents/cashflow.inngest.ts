@@ -24,6 +24,7 @@
 
 import {
   inngest,
+  type DealCreatedEvent,
   type ResearchCompletedEvent,
   type CashflowWalkthroughRequestedEvent,
   type JediEvents,
@@ -53,6 +54,121 @@ import type { RunContext } from './runtime/types';
 function isTierAllowedForEventDriven(tier: string): boolean {
   return getAllowedTriggerModes(tier).includes('event-driven');
 }
+
+/**
+ * cashflowOnDealCreated
+ *
+ * Light-weight gate evaluation that fires the moment a deal is created.
+ * Does NOT run the full CashFlow Agent (that responsibility stays with
+ * cashflowOnResearchCompleted). Its job is to record *why* CashFlow
+ * isn't running yet so the user can see it in the deal activity feed
+ * instead of silently waiting for `research.completed`.
+ *
+ * Outcomes recorded:
+ *   - blocked_tier            tier doesn't include event-driven trigger
+ *   - deferred_no_documents   no T12 / rent-roll uploaded yet
+ *   - ready                   gate would pass; full run will happen on
+ *                             `research.completed`
+ */
+export const cashflowOnDealCreated = inngest.createFunction(
+  {
+    id: 'cashflow-on-deal-created',
+    name: 'CashFlow Agent: evaluate gate on deal.created',
+    triggers: [{ event: 'deal.created' }],
+    retries: 1,
+    concurrency: { limit: 1, key: 'event.data.dealId' },
+  },
+  async ({ event, step }) => {
+    const { dealId } = (event as unknown as DealCreatedEvent).data;
+    const eventId = (event as unknown as { id?: string }).id ?? '';
+
+    return await step.run('evaluate-cashflow-gate', async () => {
+      // Tier lookup
+      const tierRes = await query(
+        `SELECT u.tier, d.user_id
+           FROM deals d
+           JOIN users u ON u.id = d.user_id
+          WHERE d.id = $1`,
+        [dealId]
+      );
+      const tier = (tierRes.rows[0]?.tier as string | undefined) ?? '';
+      const userId = (tierRes.rows[0]?.user_id as string | undefined) ?? null;
+      const tierAllowed = isTierAllowedForEventDriven(tier);
+
+      // Same gate the research.completed handler uses, so the user
+      // sees the exact reason it will defer when research finishes.
+      // Excludes budget/proforma rows so only true uploaded actuals count.
+      const t12Res = await query(
+        `SELECT 1
+           FROM deal_monthly_actuals dma
+           JOIN deal_properties dp ON dp.property_id = dma.property_id
+          WHERE dp.deal_id = $1
+            AND COALESCE(dma.is_budget,   FALSE) = FALSE
+            AND COALESCE(dma.is_proforma, FALSE) = FALSE
+          LIMIT 1`,
+        [dealId]
+      );
+      const hasT12Data = (t12Res.rowCount ?? 0) > 0;
+
+      const rrRes = await query(
+        `SELECT 1 FROM rent_roll_snapshots WHERE deal_id = $1 LIMIT 1`,
+        [dealId]
+      );
+      const hasRentRoll = (rrRes.rowCount ?? 0) > 0;
+
+      const status: 'blocked_tier' | 'deferred_no_documents' | 'ready' =
+        !tierAllowed
+          ? 'blocked_tier'
+          : (hasT12Data || hasRentRoll)
+            ? 'ready'
+            : 'deferred_no_documents';
+
+      const description =
+        status === 'ready'
+          ? 'CashFlow Agent ready — will run automatically once Research Agent completes.'
+          : status === 'blocked_tier'
+            ? `CashFlow Agent skipped — tier "${tier || 'unknown'}" does not include event-driven runs.`
+            : 'CashFlow Agent deferred — waiting for T12 statements or a rent roll to be uploaded.';
+
+      logger.info('cashflow.inngest: deal.created gate evaluation', {
+        dealId, tier, tierAllowed, hasT12Data, hasRentRoll, status,
+      });
+
+      // Record on the deal activity feed so it shows up in the UI.
+      // user_id is nullable. Idempotent on event.id: if Inngest replays this
+      // step (or the same deal.created event is delivered twice) we won't
+      // produce duplicate activity rows. Real DB errors are NOT swallowed —
+      // they bubble up so Inngest retries (retries: 1 above).
+      const metadata = {
+        agent: 'cashflow' as const,
+        status,
+        tier,
+        tierAllowed,
+        hasT12Data,
+        hasRentRoll,
+        source: 'deal.created' as const,
+        event_id: eventId,
+      };
+
+      await query(
+        `INSERT INTO deal_activity
+           (deal_id, user_id, action_type, entity_type, description, metadata)
+         SELECT $1, $2, 'agent.gate', 'agent', $3, $4::jsonb
+         WHERE NOT EXISTS (
+           SELECT 1 FROM deal_activity
+            WHERE deal_id = $1
+              AND action_type = 'agent.gate'
+              AND metadata->>'agent'    = 'cashflow'
+              AND metadata->>'event_id' = $5
+              AND $5 <> ''
+         )`,
+        [dealId, userId, description, JSON.stringify(metadata), eventId]
+      );
+
+      return { status, tier, hasT12Data, hasRentRoll };
+    });
+  }
+);
 
 export const cashflowOnResearchCompleted = inngest.createFunction(
   {
@@ -114,12 +230,20 @@ export const cashflowOnResearchCompleted = inngest.createFunction(
       );
       const row = res.rows[0] ?? {};
 
-      // Check T12 availability: deal_financials rows with at least one month of data
+      // Check T12 availability: deal_monthly_actuals rows linked to this deal
+      // via deal_properties (actuals are keyed by property_id, not deal_id).
+      // Excludes budget/proforma rows so only true uploaded actuals count.
       const t12Res = await query(
-        `SELECT COUNT(*) AS cnt FROM deal_financials WHERE deal_id = $1 LIMIT 1`,
+        `SELECT 1
+           FROM deal_monthly_actuals dma
+           JOIN deal_properties dp ON dp.property_id = dma.property_id
+          WHERE dp.deal_id = $1
+            AND COALESCE(dma.is_budget,   FALSE) = FALSE
+            AND COALESCE(dma.is_proforma, FALSE) = FALSE
+          LIMIT 1`,
         [dealId]
       );
-      const hasT12Data = parseInt(t12Res.rows[0]?.cnt ?? '0', 10) > 0;
+      const hasT12Data = (t12Res.rowCount ?? 0) > 0;
 
       // Check rent-roll availability via rent_roll_snapshots
       const rrRes = await query(

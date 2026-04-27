@@ -63,19 +63,32 @@ export const fetchT12Tool: ToolDefinition<
     }
 
     try {
-      // Aggregate from deal_financials (monthly actuals uploaded via P&L)
+      // Aggregate from deal_monthly_actuals (monthly actuals uploaded via P&L).
+      // The table is keyed by property_id, so join through deal_properties to
+      // resolve from a deal id. Operating-statement schema column mapping:
+      //   gross_revenue    ← effective_gross_income (or net_rental_income + other_income)
+      //   total_expenses   ← total_opex
+      //   noi              ← noi
+      //   avg_occupancy    ← occupancy_rate (already 0..1)
+      //   revenue_per_unit ← effective_gross_income / NULLIF(total_units, 0)
+      //   period_end       ← report_month
+      // Excludes budget/proforma rows so the result reflects actuals only.
       const result = await query(
         `SELECT
-           COUNT(*)::int                         AS months_available,
-           SUM(gross_revenue)                    AS gross_revenue,
-           SUM(total_expenses)                   AS total_expenses,
-           SUM(noi)                              AS noi,
-           AVG(occupancy_pct)                    AS avg_occupancy,
-           AVG(revenue_per_unit)                 AS revenue_per_unit
-         FROM deal_financials
-         WHERE deal_id = $1
-           AND period_end >= NOW() - (($2::int) * INTERVAL '1 month')
-         LIMIT 1`,
+           COUNT(*)::int                                       AS months_available,
+           SUM(COALESCE(dma.effective_gross_income,
+                        dma.net_rental_income + COALESCE(dma.other_income, 0))) AS gross_revenue,
+           SUM(dma.total_opex)                                 AS total_expenses,
+           SUM(dma.noi)                                        AS noi,
+           AVG(dma.occupancy_rate)                             AS avg_occupancy,
+           AVG(dma.effective_gross_income
+               / NULLIF(dma.total_units, 0))                   AS revenue_per_unit
+         FROM deal_monthly_actuals dma
+         JOIN deal_properties dp ON dp.property_id = dma.property_id
+         WHERE dp.deal_id = $1
+           AND dma.report_month >= (NOW() - (($2::int) * INTERVAL '1 month'))::date
+           AND COALESCE(dma.is_budget,   FALSE) = FALSE
+           AND COALESCE(dma.is_proforma, FALSE) = FALSE`,
         [dealId, input.months ?? 12]
       );
 

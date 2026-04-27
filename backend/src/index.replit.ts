@@ -332,6 +332,7 @@ import { researchOnDealCreated } from './agents/research.inngest';
 import { zoningOnDealCreated } from './agents/zoning.inngest';
 import { supplyOnDealCreated } from './agents/supply.inngest';
 import {
+  cashflowOnDealCreated,
   cashflowOnResearchCompleted,
   cashflowOnWalkthroughRequested,
 } from './agents/cashflow.inngest';
@@ -353,6 +354,7 @@ app.use(
       researchOnDealCreated,
       zoningOnDealCreated,
       supplyOnDealCreated,
+      cashflowOnDealCreated,
       cashflowOnResearchCompleted,
       cashflowOnWalkthroughRequested,
       commentaryOnResearchCompleted,
