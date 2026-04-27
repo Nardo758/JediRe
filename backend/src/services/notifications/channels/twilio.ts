@@ -138,13 +138,34 @@ class TwilioChannel implements NotificationChannel {
 export const twilioChannel = new TwilioChannel();
 
 /**
+ * Action verbs the Twilio inbound parser understands. MUST stay in sync with
+ * the action IDs emitted by openclawNotifier.* helpers — every action ID we
+ * render in a "Reply: <verb> <id>" hint has to be parseable here, otherwise
+ * the message would be routed to the chat orchestrator (a confusing failure
+ * mode for the operator).
+ *
+ * If you add a new actionId to a notifier helper, add its verb here AND wire
+ * it into openclaw-actions.dispatchAction. Aliases are allowed (e.g.
+ * "ack" → "acknowledge") and normalised to the canonical actionId below.
+ */
+const VERB_ALIASES: Record<string, string> = {
+  approve: 'approve',
+  dismiss: 'dismiss',
+  rerun: 'rerun',
+  acknowledge: 'acknowledge',
+  ack: 'acknowledge',
+};
+
+/**
  * Parse an inbound Twilio message body for an action command.
  *
  * Recognised patterns (case-insensitive, leading/trailing whitespace OK):
- *   "approve <id>"  -> { actionId: 'approve', resourceId: '<id>' }
- *   "dismiss"       -> { actionId: 'dismiss' }
- *   "dismiss <id>"  -> { actionId: 'dismiss', resourceId: '<id>' }
- *   "rerun <id>"    -> { actionId: 'rerun',  resourceId: '<id>' }
+ *   "approve <id>"     -> { actionId: 'approve', resourceId: '<id>' }
+ *   "acknowledge <id>" -> { actionId: 'acknowledge', resourceId: '<id>' }
+ *   "ack <id>"         -> { actionId: 'acknowledge', resourceId: '<id>' }
+ *   "dismiss"          -> { actionId: 'dismiss' }
+ *   "dismiss <id>"     -> { actionId: 'dismiss', resourceId: '<id>' }
+ *   "rerun <id>"       -> { actionId: 'rerun',  resourceId: '<id>' }
  *
  * Returns null if the body doesn't match any known action verb.
  */
@@ -156,8 +177,8 @@ export function parseTwilioActionCommand(
   if (!trimmed) return null;
   const tokens = trimmed.split(/\s+/);
   const verb = tokens[0].toLowerCase();
-  const KNOWN = new Set(['approve', 'dismiss', 'rerun']);
-  if (!KNOWN.has(verb)) return null;
+  const canonical = VERB_ALIASES[verb];
+  if (!canonical) return null;
   const rest = tokens.slice(1).join(' ').trim();
-  return rest ? { actionId: verb, resourceId: rest } : { actionId: verb };
+  return rest ? { actionId: canonical, resourceId: rest } : { actionId: canonical };
 }
