@@ -82,6 +82,8 @@ export function createAgentStatusRoutes(pool: Pool): Router {
         `;
       }
 
+      const dbParams = isAdmin ? [] : [userId];
+
       const [running, recent, events] = await Promise.all([
         pool.query(
           `SELECT r.id, r.agent_id, r.trigger_event, r.deal_id, r.user_id, r.status,
@@ -92,7 +94,7 @@ export function createAgentStatusRoutes(pool: Pool): Router {
               AND ${VISIBILITY_WHERE}
             ORDER BY COALESCE(r.started_at, r.created_at) DESC
             LIMIT 20`,
-          [userId]
+          dbParams
         ),
         pool.query(
           `SELECT r.id, r.agent_id, r.trigger_event, r.deal_id, r.user_id, r.status,
@@ -107,7 +109,7 @@ export function createAgentStatusRoutes(pool: Pool): Router {
               AND ${VISIBILITY_WHERE}
             ORDER BY COALESCE(r.completed_at, r.created_at) DESC
             LIMIT 50`,
-          [userId]
+          dbParams
         ),
         pool.query(
           `SELECT r.id, r.event_type, r.deal_id, r.user_id, r.created_at
@@ -116,7 +118,7 @@ export function createAgentStatusRoutes(pool: Pool): Router {
             WHERE ${VISIBILITY_WHERE}
             ORDER BY r.created_at DESC
             LIMIT 10`,
-          [userId]
+          dbParams
         ),
       ]);
 
