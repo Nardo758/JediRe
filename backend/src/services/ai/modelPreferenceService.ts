@@ -142,7 +142,7 @@ export const SURFACES: SurfaceDefinition[] = [
   { type: 'skill', id: 'document_extraction',  label: 'Document Extraction',   description: 'Pulling structured data out of uploaded documents',                                    defaultModel: M_DEEPSEEK },
 
   // Pipelines (non-agent LLM call sites)
-  { type: 'pipeline', id: 'om_parsing',                  label: 'OM Parser',                description: 'Extracts deal data from offering memorandums',                            defaultModel: M_SONNET },
+  { type: 'pipeline', id: 'om_parsing',                  label: 'OM Parser',                description: 'Extracts deal data from offering memorandums',                            defaultModel: M_DEEPSEEK },
   { type: 'pipeline', id: 'email_intake_classification', label: 'Email Intake Classifier',  description: 'Decides whether an inbound email is a deal',                              defaultModel: M_DEEPSEEK },
   { type: 'pipeline', id: 'document_classification',     label: 'Document Classifier',      description: 'Identifies T12 / rent roll / tax bill before parsing',                    defaultModel: M_DEEPSEEK },
 ];
