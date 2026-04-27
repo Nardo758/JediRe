@@ -62,7 +62,7 @@ export const SUPPLY_AGENT_CONFIG: AgentConfig = {
   outputSchema: SupplyOutputSchema,
   budgetCaps: DEFAULT_BUDGET_CAPS.supply,
   modelName: 'claude-haiku-4-5-20251001',
-  capabilities: ['read:all', 'write:deal_context'],
+  capabilities: ['read:all', 'write:deal_context', 'web:search'],
 };
 
 // ── Singleton runtime ─────────────────────────────────────────────

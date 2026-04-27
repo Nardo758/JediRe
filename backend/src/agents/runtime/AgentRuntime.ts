@@ -124,13 +124,46 @@ function createMeteringFn(config: AgentConfig): CreateMessageFn {
   if (provider === 'deepseek') {
     const ds = new DeepSeekMeteringAdapter();
     return async (params) => {
-      // Convert Anthropic-style messages to DeepSeek format
+      // Convert Anthropic-style messages to DeepSeek/OpenAI format
       const msgs = params.messages as Array<{ role: string; content: string | unknown[] }>;
-      const dsMessages: Array<{ role: string; content: string }> = [];
+      const dsMessages: Array<{ role: string; content: string; tool_calls?: Array<{ id: string; type: string; function: { name: string; arguments: string } }>; tool_call_id?: string }> = [];
       if (params.system) {
         dsMessages.push({ role: 'system', content: params.system });
       }
       for (const m of msgs) {
+        // Convert Anthropic tool_use blocks back to DeepSeek tool_calls
+        if (m.role === 'assistant' && Array.isArray(m.content)) {
+          const tool_uses = (m.content as Array<Record<string, unknown>>).filter((b: any) => b.type === 'tool_use');
+          const textParts = (m.content as Array<Record<string, unknown>>).filter((b: any) => b.type === 'text');
+          const textContent = textParts.map((b: any) => b.text ?? '').join(' ').trim();
+          if (tool_uses.length > 0) {
+            const dsToolCalls = tool_uses.map((tu: any) => ({
+              id: tu.id as string,
+              type: 'function',
+              function: { name: tu.name as string, arguments: JSON.stringify(tu.input ?? {}) },
+            }));
+            dsMessages.push({
+              role: 'assistant',
+              content: textContent || null,
+              tool_calls: dsToolCalls,
+            } as any);
+            continue;
+          }
+        }
+        // Convert Anthropic tool_result blocks to DeepSeek tool role messages
+        if (m.role === 'user' && Array.isArray(m.content)) {
+          const toolResults = (m.content as Array<Record<string, unknown>>).filter((b: any) => b.type === 'tool_result');
+          if (toolResults.length > 0) {
+            for (const tr of toolResults) {
+              dsMessages.push({
+                role: 'tool',
+                tool_call_id: tr.tool_use_id as string,
+                content: typeof tr.content === 'string' ? tr.content : JSON.stringify(tr.content),
+              });
+            }
+            continue;
+          }
+        }
         dsMessages.push({
           role: m.role,
           content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
