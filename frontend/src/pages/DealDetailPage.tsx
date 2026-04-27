@@ -471,6 +471,11 @@ const DealDetailPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { fetchDealContext } = useDealStore();
+  // Neural network context awareness (top-level hook — used by the
+  // ContextIndicator rendered above ActiveComponent further down)
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+    dealId ? { context: 'deal_overview', dealId } : null
+  );
   const config = useDealTypeConfig();
   const dealType = useDealType();
   const developmentEnvelope = useDealStore((s) => s.developmentEnvelope);
