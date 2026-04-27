@@ -1,19 +1,16 @@
 /**
- * Commentary Agent — AgentRuntime configuration (Phase 4)
+ * Commentary Agent — AgentRuntime configuration (Phase 5)
  *
- * The Commentary agent generates market narrative, investment thesis, and
- * strategy scores. Output is written to the market_commentary table.
- * 24-hour cache is enforced via the cache_key column.
+ * Autonomous market narrative agent. Generates commentary by first fetching
+ * deal context via fetch_data_matrix (the same brain every other agent uses),
+ * then producing structured output. No longer receives pre-built context —
+ * the model calls the tool itself, consistent with Research/Supply/Cashflow.
  *
- * Tools registered:
- *   web_search, fetch_webpage
- *   (Commentary remains primarily a generation agent receiving pre-structured
- *    data via the system prompt. Web search is used as a fallback only — e.g.
- *    to verify a recent employer announcement or confirm a news item.)
- *
- * NOTE: Commentary uses a single-turn LLM completion for its main output.
- * Web search tools fire only when the agent determines structured context is
- * insufficient, per the "structured first" search policy.
+ * Tools:
+ *   fetch_data_matrix   — primary data source (deal context, market signals)
+ *   web_search          — fallback for current events verification
+ *   fetch_webpage       — verify claims from web results
+ *   fetch_*_summary     — lifecycle tools for operational commentary
  */
 
 import { z } from 'zod';
@@ -25,6 +22,7 @@ import type { AgentConfig } from './runtime/types';
 
 import { webSearchTool } from './tools/web_search';
 import { fetchWebpageTool } from './tools/fetch_webpage';
+import { fetchDataMatrixTool } from './tools/fetch_data_matrix';
 import { CitationSchema } from './research.config';
 import { fetchReforecastSummaryTool } from './tools/fetch_reforecast_summary';
 import { fetchVarianceSummaryTool } from './tools/fetch_variance_summary';
@@ -69,8 +67,9 @@ export type CommentaryAgentOutput = z.infer<typeof CommentaryOutputSchema>;
 export const COMMENTARY_AGENT_CONFIG: AgentConfig = {
   agentId: 'commentary',
   agentVersion: '3.0.0',
-  promptVersion: 'commentary-v4',
+  promptVersion: 'commentary-v5',
   tools: [
+    fetchDataMatrixTool,
     webSearchTool,
     fetchWebpageTool,
     // Lifecycle tools for operational commentary
@@ -80,8 +79,8 @@ export const COMMENTARY_AGENT_CONFIG: AgentConfig = {
   ],
   outputSchema: CommentaryOutputSchema,
   budgetCaps: DEFAULT_BUDGET_CAPS.commentary,
-  modelName: 'claude-haiku-4-5-20251001',
-  capabilities: ['read:all', 'web:search'],
+  modelName: 'deepseek-chat',
+  capabilities: ['read:all', 'web:search', 'data:matrix'],
 };
 
 // ── Singleton runtime ─────────────────────────────────────────────
