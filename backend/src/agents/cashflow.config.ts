@@ -16,7 +16,7 @@
 
 import { z } from 'zod';
 import { AgentRuntime } from './runtime/AgentRuntime';
-import { MeteringAdapter } from './runtime/MeteringAdapter';
+import { DeepSeekMeteringAdapter } from './runtime/DeepSeekMeteringAdapter';
 import { BudgetEnforcer } from './runtime/BudgetEnforcer';
 import { DEFAULT_BUDGET_CAPS } from './config/budget';
 import { query } from '../database/connection';
@@ -261,7 +261,7 @@ export const CASHFLOW_AGENT_CONFIG: AgentConfig = {
   ],
   outputSchema: CashflowOutputSchema,
   budgetCaps: DEFAULT_BUDGET_CAPS.cashflow,
-  modelName: 'claude-haiku-4-5-20251001',
+  modelName: 'deepseek-chat',
   capabilities: ['read:all', 'write:deal_context'],
 };
 
@@ -269,6 +269,6 @@ export const CASHFLOW_AGENT_CONFIG: AgentConfig = {
 
 export const cashflowRuntime = new AgentRuntime(
   CASHFLOW_AGENT_CONFIG,
-  new MeteringAdapter(),
+  new DeepSeekMeteringAdapter(),
   new BudgetEnforcer()
 );
