@@ -59,20 +59,28 @@ export function createAgentStatusRoutes(pool: Pool): Router {
         return res.status(401).json({ success: false, error: 'Unauthenticated' });
       }
 
-      // Shared visibility predicate: row owned by user, or by a deal the
-      // user can access (direct ownership or org membership).
-      const VISIBILITY_JOINS = `
-        LEFT JOIN deals d
-          ON d.id = r.deal_id AND d.archived_at IS NULL
-        LEFT JOIN org_members om
-          ON om.org_id = d.org_id AND om.user_id = $1
-      `;
-      const VISIBILITY_WHERE = `
-        (
-          r.user_id = $1
-          OR (r.deal_id IS NOT NULL AND (d.user_id = $1 OR om.user_id IS NOT NULL))
-        )
-      `;
+      const userRole = (req.user as any)?.role || 'user';
+      const isAdmin = userRole === 'admin';
+
+      // Admin/system roles (like rockeman-bot) see everything.
+      // Regular users are scoped to their own runs + deals they own/belong to.
+      let VISIBILITY_JOINS = '';
+      let VISIBILITY_WHERE = 'TRUE';
+
+      if (!isAdmin) {
+        VISIBILITY_JOINS = `
+          LEFT JOIN deals d
+            ON d.id = r.deal_id AND d.archived_at IS NULL
+          LEFT JOIN org_members om
+            ON om.org_id = d.org_id AND om.user_id = $1
+        `;
+        VISIBILITY_WHERE = `
+          (
+            r.user_id = $1
+            OR (r.deal_id IS NOT NULL AND (d.user_id = $1 OR om.user_id IS NOT NULL))
+          )
+        `;
+      }
 
       const [running, recent, events] = await Promise.all([
         pool.query(
