@@ -285,14 +285,14 @@ export default function F3PortfolioView({ theme: T }: F3PortfolioViewProps) {
     }
   }, [actualsAssetId, actualsPeriod, actualsMode, actualsForm, actualsFile]);
 
+  // ─── Neural network context awareness (top-level hook) ───────
+  const { analysis: portfolioContext, loading: contextLoading } = useAutoContextAnalysis(
+    { context: 'deal_overview' }  // portfolio-level analysis
+  );
+
   // ─── Comp Set Functions ───────────────────────────────────────
 
   const loadCompSet = (assetId: string) => {
-  // Neural network context awareness
-  const { analysis: portfolioContext, loading: contextLoading } = useAutoContextAnalysis(
-  { context: 'deal_overview' }  // portfolio-level analysis
-  );
-
     setCompsLoading(prev => new Set(prev).add(assetId));
     apiClient.get(`/api/v1/deals/${assetId}/comp-set`)
       .then(res => setComps(prev => ({ ...prev, [assetId]: res.data?.comps || [] })))
