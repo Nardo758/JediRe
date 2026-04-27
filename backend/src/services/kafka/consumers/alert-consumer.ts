@@ -18,6 +18,7 @@ import {
 import { query } from '../../../database/connection';
 import { kafkaProducer } from '../kafka-producer.service';
 import { v4 as uuidv4 } from 'uuid';
+import { openclawNotifier } from '../../notifications/openclawNotifier';
 
 const logger = {
   info: (...args: any[]) => console.log('[Alert Consumer]', ...args),
@@ -270,6 +271,28 @@ async function publishAlert(alert: UserAlertMessage): Promise<void> {
       userId: alert.userId,
       severity: alert.severity,
     });
+
+    // Real-time threshold breaches (JEDI score drops, risk score spikes,
+    // etc.) also fan out to OpenClaw so on-call operators get pinged on
+    // their phone immediately instead of having to check the UI.
+    if (openclawNotifier.isEnabled() && alert.dealId) {
+      openclawNotifier.notifyThresholdBreach({
+        dealId: alert.dealId,
+        metric: alert.title,
+        description: alert.message,
+        severity:
+          alert.severity === 'critical'
+            ? 'critical'
+            : alert.severity === 'info'
+              ? 'info'
+              : 'warn',
+      }).catch((notifyErr: unknown) => {
+        logger.warn('alert-consumer: openclaw notify failed', {
+          alertId: alert.alertId,
+          error: notifyErr instanceof Error ? notifyErr.message : String(notifyErr),
+        });
+      });
+    }
   } catch (error) {
     logger.error('Failed to publish alert:', error);
     throw error;

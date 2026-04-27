@@ -18,6 +18,7 @@ import { agentOrchestrator } from './agent-orchestrator';
 import { getAgentsByTrigger, AGENT_PERSONAS } from './agent-personas';
 import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
+import { openclawNotifier } from '../notifications/openclawNotifier';
 
 // ============================================================================
 // DAILY SCHEDULED JOBS
@@ -127,6 +128,16 @@ export const dailyComplianceCheck = inngest.createFunction(
                 items: insuranceCheck.rows,
               },
             });
+            // Out-of-band alert via OpenClaw — operators want to know about
+            // expiring insurance even when not logged into the JediRe UI.
+            if (openclawNotifier.isEnabled()) {
+              openclawNotifier.notifyThresholdBreach({
+                dealId: deal.id,
+                metric: 'insurance',
+                description: `${insuranceCheck.rows.length} policy/policies expiring in <60 days`,
+                severity: 'warn',
+              });
+            }
             alertsGenerated++;
           }
 
@@ -151,6 +162,14 @@ export const dailyComplianceCheck = inngest.createFunction(
                 items: permitCheck.rows,
               },
             });
+            if (openclawNotifier.isEnabled()) {
+              openclawNotifier.notifyThresholdBreach({
+                dealId: deal.id,
+                metric: 'permits',
+                description: `${permitCheck.rows.length} permit(s) expiring in <90 days`,
+                severity: 'warn',
+              });
+            }
             alertsGenerated++;
           }
         } catch (error) {
@@ -305,6 +324,14 @@ export const hourlyThresholdMonitor = inngest.createFunction(
             direction: 'below',
           },
         });
+        if (openclawNotifier.isEnabled()) {
+          openclawNotifier.notifyThresholdBreach({
+            dealId: alert.id,
+            metric: 'occupancy',
+            description: `Occupancy ${(alert.occupancy_rate * 100).toFixed(1)}% below 90% floor`,
+            severity: 'critical',
+          });
+        }
       });
     }
 

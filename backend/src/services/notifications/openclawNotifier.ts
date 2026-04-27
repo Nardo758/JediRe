@@ -87,9 +87,10 @@ class OpenClawNotifier {
           logger.warn('OpenClaw send returned not-ok', { channel: ch.name, error: r.error, kind: n.kind });
         }
         results.push(r);
-      } catch (err: any) {
-        logger.error('OpenClaw send threw', { channel: ch.name, kind: n.kind, error: err?.message });
-        results.push({ ok: false, error: err?.message ?? 'unknown' });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.error('OpenClaw send threw', { channel: ch.name, kind: n.kind, error: msg });
+        results.push({ ok: false, error: msg });
       }
     }
     return results;
@@ -129,7 +130,7 @@ class OpenClawNotifier {
     });
   }
 
-  notifyAnalysisComplete(dealId: string, analysis: any): Promise<SendResult[]> {
+  notifyAnalysisComplete(dealId: string, analysis: AnalysisLike): Promise<SendResult[]> {
     const summary = this.summariseAnalysis(analysis);
     return this.notify({
       kind: 'analysis_complete',
@@ -147,13 +148,121 @@ class OpenClawNotifier {
     });
   }
 
+  /**
+   * Document upload + automatic extraction finished. Tells the deal team
+   * "we now know what's in this PDF" and offers a Re-run-extraction action
+   * for the cases where OCR got something wrong.
+   */
+  notifyDocumentExtracted(input: {
+    dealId: string;
+    fileId: string;
+    filename?: string;
+    category?: string;
+    extractedSummary?: string;
+  }): Promise<SendResult[]> {
+    const lines = [
+      input.filename ? `*${input.filename}*` : `*Document ${input.fileId}*`,
+      input.category ? `Category: ${input.category}` : null,
+      input.extractedSummary ? input.extractedSummary : 'Extraction complete.',
+    ].filter(Boolean) as string[];
+
+    return this.notify({
+      kind: 'document_uploaded',
+      title: 'Document extracted',
+      body: lines.join('\n'),
+      deepLink: this.dealDeepLink(input.dealId),
+      actions: [
+        // Re-run will trigger a fresh deal analysis (which is what consumers
+        // of fresh extractions usually want next); dismiss clears the alert.
+        { label: 'Re-run analysis', actionId: 'rerun', resourceId: input.dealId },
+        { label: 'Dismiss', actionId: 'dismiss', resourceId: input.dealId },
+      ],
+      meta: { dealId: input.dealId, fileId: input.fileId },
+    }).catch((err) => {
+      logger.error('notifyDocumentExtracted failed', { error: err?.message });
+      return [];
+    });
+  }
+
+  /**
+   * An agent (Commentary, Research, Zoning, CashFlow, Supply, etc.) finished
+   * a background run for a deal. Notifies the team so they can review.
+   */
+  notifyAgentRunCompleted(input: {
+    dealId?: string;
+    agentName: string;
+    triggerEvent?: string;
+    summary?: string;
+    skillsUsed?: string[];
+  }): Promise<SendResult[]> {
+    const lines = [
+      `*${input.agentName}* finished${input.triggerEvent ? ` (${input.triggerEvent})` : ''}`,
+      input.summary ? this.truncate(input.summary, 400) : null,
+      input.skillsUsed && input.skillsUsed.length > 0
+        ? `Skills: ${input.skillsUsed.slice(0, 5).join(', ')}`
+        : null,
+    ].filter(Boolean) as string[];
+
+    return this.notify({
+      kind: 'agent_run_complete',
+      title: 'Agent run complete',
+      body: lines.join('\n'),
+      deepLink: input.dealId ? this.dealDeepLink(input.dealId) : undefined,
+      actions: input.dealId
+        ? [
+            { label: 'Re-run analysis', actionId: 'rerun', resourceId: input.dealId },
+            { label: 'Dismiss', actionId: 'dismiss', resourceId: input.dealId },
+          ]
+        : undefined,
+      meta: { dealId: input.dealId, agentName: input.agentName },
+    }).catch((err) => {
+      logger.error('notifyAgentRunCompleted failed', { error: err?.message });
+      return [];
+    });
+  }
+
+  /**
+   * A monitored metric crossed its configured threshold for a deal (e.g.
+   * occupancy fell below floor, JEDI score dropped, insurance is expiring).
+   * These are higher-urgency than agent runs so we offer Approve (acknowledge)
+   * + Dismiss buttons.
+   */
+  notifyThresholdBreach(input: {
+    dealId: string;
+    metric: string;
+    description?: string;
+    severity?: 'info' | 'warn' | 'critical';
+    [key: string]: unknown;
+  }): Promise<SendResult[]> {
+    const sev = input.severity ?? 'warn';
+    const lines = [
+      `*${input.metric}* breach (${sev})`,
+      input.description ? input.description : null,
+    ].filter(Boolean) as string[];
+
+    return this.notify({
+      kind: 'threshold_breach',
+      title: `Threshold breach: ${input.metric}`,
+      body: lines.join('\n'),
+      deepLink: this.dealDeepLink(input.dealId),
+      actions: [
+        { label: 'Acknowledge', actionId: 'approve', resourceId: input.dealId },
+        { label: 'Dismiss', actionId: 'dismiss', resourceId: input.dealId },
+      ],
+      meta: { dealId: input.dealId, metric: input.metric, severity: sev },
+    }).catch((err) => {
+      logger.error('notifyThresholdBreach failed', { error: err?.message });
+      return [];
+    });
+  }
+
   notifyError(err: Error, ctx: {
     url?: string;
     method?: string;
     userId?: string;
     ip?: string;
     statusCode?: number;
-    [key: string]: any;
+    [key: string]: unknown;
   }): Promise<SendResult[]> {
     const lines = [
       `\`${err.name || 'Error'}\`: ${err.message}`,
@@ -187,7 +296,7 @@ class OpenClawNotifier {
     return `${base.replace(/\/$/, '')}/deals/${dealId}`;
   }
 
-  private summariseAnalysis(analysis: any): string {
+  private summariseAnalysis(analysis: AnalysisLike): string {
     if (!analysis || typeof analysis !== 'object') return '(no summary available)';
     const score = analysis.jediScore ?? analysis.score;
     const verdict = analysis.verdict ?? analysis.recommendation;
@@ -196,7 +305,25 @@ class OpenClawNotifier {
     if (verdict) parts.push(`Verdict: ${verdict}`);
     return parts.length > 0 ? parts.join(' • ') : 'Analysis ready — open in JediRe for details.';
   }
+
+  private truncate(s: string, n: number): string {
+    return s.length <= n ? s : s.slice(0, n - 1) + '…';
+  }
 }
+
+/**
+ * Loose shape for analysis payloads — accepts both the canonical
+ * DealAnalysisResult and ad-hoc objects from older callsites.
+ */
+type AnalysisLike =
+  | (Record<string, unknown> & {
+      jediScore?: number | string;
+      score?: number | string;
+      verdict?: string;
+      recommendation?: string;
+    })
+  | null
+  | undefined;
 
 export const openclawNotifier = new OpenClawNotifier();
 export type { Notification, NotificationAction, SendResult } from './types';

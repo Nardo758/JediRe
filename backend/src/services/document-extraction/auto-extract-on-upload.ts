@@ -14,6 +14,7 @@ import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { skillRegistry } from '../skills/skill-registry';
 import { eventDispatcher } from '../agents/event-dispatcher';
+import { openclawNotifier } from '../notifications/openclawNotifier';
 // Side-effect import: ensures all skills (extract_document, review_contract,
 // analyze_appraisal, parse_environmental_report, ...) are registered with
 // the skillRegistry before we try to execute them. Without this, the registry
@@ -62,6 +63,8 @@ export interface TriggerOptions {
   userId: string;
   category?: string | null;
   mimeType?: string | null;
+  /** Original upload filename — used for display in OpenClaw alerts. */
+  filename?: string | null;
 }
 
 /**
@@ -191,6 +194,7 @@ export async function runExtractionForFile(opts: TriggerOptions): Promise<void> 
       const df = dealFile.rows[0];
       if (df?.deal_id) {
         const cat = (df.category || '').toLowerCase();
+<<<<<<< HEAD
         // Trigger agents on any uploaded document — not just OM
         // The agent system triages based on category internally
         eventDispatcher.onDocumentUploaded(df.deal_id, 'system', {
@@ -199,6 +203,33 @@ export async function runExtractionForFile(opts: TriggerOptions): Promise<void> 
           category: cat || 'unknown',
           mimeType: opts.mimeType || 'application/octet-stream',
         }).catch(e => logger.warn('auto-extract: failed to trigger underwriting', { fileId, e }));
+=======
+        if (cat.includes('offering') || cat.includes('om')) {
+          eventDispatcher.onDocumentUploaded(df.deal_id, 'system', {
+            fileId,
+            filename: opts.filename || '',
+            category: 'offering_memorandum',
+            mimeType: 'application/pdf',
+          }).catch(e => logger.warn('auto-extract: failed to trigger underwriting', { fileId, e }));
+        }
+
+        // Fan a multi-channel notification out to OpenClaw (Telegram + SMS)
+        // so the deal team learns "we now know what's in this file" without
+        // having to refresh the UI. Fire-and-forget — never blocks extraction.
+        if (openclawNotifier.isEnabled()) {
+          openclawNotifier.notifyDocumentExtracted({
+            dealId: df.deal_id,
+            fileId,
+            filename: opts.filename ?? undefined,
+            category: df.category,
+          }).catch((e: unknown) => {
+            logger.warn('auto-extract: openclaw notify failed', {
+              fileId,
+              error: e instanceof Error ? e.message : String(e),
+            });
+          });
+        }
+>>>>>>> ca137e2a (Task #431: Replace ClawdBot stub with OpenClaw multi-channel notifier)
       }
     } else {
       await query(

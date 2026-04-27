@@ -22,6 +22,7 @@ import {
 import { skillRegistry } from '../skills/skill-registry';
 import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
+import { openclawNotifier } from '../notifications/openclawNotifier';
 
 // ============================================================================
 // TYPES
@@ -182,6 +183,25 @@ class AgentOrchestrator {
           skillsUsed: response.skillsUsed,
           notificationCount: response.notifications?.length || 0,
         });
+
+        // Fan an OpenClaw notification out to operators (Telegram + SMS) so
+        // background agent work is visible outside the app. Fire-and-forget;
+        // a flaky bot never breaks the orchestrator loop.
+        if (openclawNotifier.isEnabled()) {
+          openclawNotifier.notifyAgentRunCompleted({
+            dealId,
+            agentName: response.agentName,
+            triggerEvent: event,
+            summary: response.message,
+            skillsUsed: response.skillsUsed,
+          }).catch((notifyErr: unknown) => {
+            logger.warn('Agent run notify failed', {
+              dealId,
+              agentId: agent.id,
+              error: notifyErr instanceof Error ? notifyErr.message : String(notifyErr),
+            });
+          });
+        }
 
       } catch (error: any) {
         logger.error(`Agent ${agent.id} failed on event ${event}:`, error);
