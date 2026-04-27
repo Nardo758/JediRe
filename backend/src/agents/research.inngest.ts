@@ -251,6 +251,36 @@ export const researchOnDealCreated = inngest.createFunction(
 
     // ── Step 6: Update Knowledge Graph ──────────────────────────────
     await step.run('update-knowledge-graph', async () => {
+      // The Inngest step return type only declares the four core fields the
+      // function needs downstream (runId, confidence_score, fields_written,
+      // summary). Any KG-enrichment fields the agent may emit on top of those
+      // (market_id / properties_found / web_comps) are optional and read
+      // defensively here. This typed view documents that contract without
+      // weakening the upstream return type.
+      type ResearchKgEnrichment = {
+        market_id?: string | null;
+        properties_found?: Array<{
+          id?: string;
+          name?: string;
+          address?: string;
+          city?: string;
+          state?: string;
+          units?: number;
+        }>;
+        web_comps?: Array<{
+          name?: string;
+          address?: string;
+          city?: string;
+          units?: number;
+          rent?: number;
+          amenities?: unknown;
+          fees?: unknown;
+          other_income?: unknown;
+          source_url?: string;
+        }>;
+      };
+      const kgRunResult = runResult as unknown as typeof runResult & ResearchKgEnrichment;
+
       try {
         const { getGraphIngestionListener } = await import('../services/neural-network/graph-ingestion-listener');
         const { getPool } = await import('../database/connection');
@@ -258,22 +288,22 @@ export const researchOnDealCreated = inngest.createFunction(
         const graphListener = getGraphIngestionListener(pool);
 
         // Update market node with fresh research data
-        if (runResult.market_id) {
+        if (kgRunResult.market_id) {
           await graphListener.handleEvent({
             type: 'market.updated',
-            entityId: runResult.market_id,
+            entityId: kgRunResult.market_id,
             entityType: 'Market',
             data: {
               lastResearchAnalysis: new Date(),
-              researchConfidence: runResult.confidence_score,
+              researchConfidence: kgRunResult.confidence_score,
             },
             timestamp: new Date(),
           });
         }
 
         // Ingest any properties discovered
-        if (runResult.properties_found?.length > 0) {
-          for (const prop of runResult.properties_found) {
+        if (kgRunResult.properties_found && kgRunResult.properties_found.length > 0) {
+          for (const prop of kgRunResult.properties_found) {
             await graphListener.handleEvent({
               type: 'property.created',
               entityId: prop.id || `research-${dealId}-${Date.now()}`,
@@ -284,7 +314,7 @@ export const researchOnDealCreated = inngest.createFunction(
                 city: prop.city,
                 state: prop.state,
                 units: prop.units,
-                marketId: runResult.market_id,
+                marketId: kgRunResult.market_id,
               },
               timestamp: new Date(),
             });
@@ -292,10 +322,10 @@ export const researchOnDealCreated = inngest.createFunction(
         }
 
         // Ingest web-sourced comp data from research
-        if (runResult.web_comps?.length > 0) {
+        if (kgRunResult.web_comps && kgRunResult.web_comps.length > 0) {
           const { getKnowledgeGraph } = await import('../services/neural-network/knowledge-graph.service');
           const kg = getKnowledgeGraph(pool);
-          for (const comp of runResult.web_comps) {
+          for (const comp of kgRunResult.web_comps) {
             await kg.upsertNode({
               type: 'Property',
               externalId: `research-web-comp-${comp.name?.replace(/\s+/g, '-').toLowerCase()}-${dealId}`,
@@ -341,9 +371,9 @@ export const researchOnDealCreated = inngest.createFunction(
         }
 
         logger.info('research.inngest: updated knowledge graph', {
-          marketId: runResult.market_id,
-          propertiesIngested: runResult.properties_found?.length || 0,
-          webCompsIngested: runResult.web_comps?.length || 0,
+          marketId: kgRunResult.market_id,
+          propertiesIngested: kgRunResult.properties_found?.length || 0,
+          webCompsIngested: kgRunResult.web_comps?.length || 0,
         });
       } catch (err) {
         logger.warn('research.inngest: failed to update knowledge graph', { err });

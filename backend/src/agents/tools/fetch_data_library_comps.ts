@@ -9,83 +9,73 @@
  * from similar properties in the user's Data Library.
  */
 
+import { z } from 'zod';
 import { getPool } from '../../database/connection';
 import { dataLibraryService } from '../../services/dataLibrary.service';
 import { logger } from '../../utils/logger';
+import type { ToolDefinition } from '../runtime/types';
 
-interface FetchDataLibraryCompsInput {
-  city: string;
-  propertyType?: string;
-  units?: number;
-  radiusMiles?: number;
-  limit?: number;
-}
+const InputSchema = z.object({
+  city: z.string().describe('City to search for comps (e.g., "Atlanta")'),
+  propertyType: z.string().optional().describe('Property type filter (e.g., "multifamily", "garden", "mid-rise")'),
+  units: z.number().optional().describe('Target unit count — returns properties within 30% of this size'),
+  radiusMiles: z.number().optional().describe('Search radius in miles (currently unused — reserved for future spatial filter)'),
+  limit: z.number().optional().describe('Max number of comps to return (default: 10)'),
+});
 
-interface DataLibraryComp {
-  fileId: number | string;
-  fileName: string;
-  city: string;
-  propertyType: string;
-  unitCount?: number;
-  yearBuilt?: number;
-  sourceType: string;
-  // Financial metrics
-  askingPricePerUnit?: number;
-  capRate?: number;
-  grossPotentialRent?: number;
-  vacancyRate?: number;
-  operatingExpenseRatio?: number;
-  noi?: number;
-  managementFeePct?: number;
-  propertyTaxPerUnit?: number;
-  insurancePerUnit?: number;
-  repairsPerUnit?: number;
-  // Metadata
-  dataFreshness: 'fresh' | 'stale' | 'unknown';
-  confidence: number;
-}
+const DataLibraryCompSchema = z.object({
+  fileId: z.union([z.number(), z.string()]),
+  fileName: z.string(),
+  city: z.string(),
+  propertyType: z.string(),
+  unitCount: z.number().optional(),
+  yearBuilt: z.number().optional(),
+  sourceType: z.string(),
+  askingPricePerUnit: z.number().optional(),
+  capRate: z.number().optional(),
+  grossPotentialRent: z.number().optional(),
+  vacancyRate: z.number().optional(),
+  operatingExpenseRatio: z.number().optional(),
+  noi: z.number().optional(),
+  managementFeePct: z.number().optional(),
+  propertyTaxPerUnit: z.number().optional(),
+  insurancePerUnit: z.number().optional(),
+  repairsPerUnit: z.number().optional(),
+  dataFreshness: z.enum(['fresh', 'stale', 'unknown']),
+  confidence: z.number(),
+});
 
-export const fetchDataLibraryCompsTool = {
+const OutputSchema = z.object({
+  comps: z.array(DataLibraryCompSchema),
+  summary: z.object({
+    count: z.number(),
+    avgRent: z.number().optional(),
+    avgVacancy: z.number().optional(),
+    avgExpenseRatio: z.number().optional(),
+    avgCapRate: z.number().optional(),
+    avgPricePerUnit: z.number().optional(),
+    rentRange: z.object({ min: z.number(), max: z.number() }).optional(),
+    capRateRange: z.object({ min: z.number(), max: z.number() }).optional(),
+  }),
+  dataQuality: z.enum(['high', 'medium', 'low']),
+  gaps: z.array(z.string()),
+});
+
+type FetchDataLibraryCompsInput = z.infer<typeof InputSchema>;
+type FetchDataLibraryCompsOutput = z.infer<typeof OutputSchema>;
+type DataLibraryComp = z.infer<typeof DataLibraryCompSchema>;
+
+export const fetchDataLibraryCompsTool: ToolDefinition<
+  FetchDataLibraryCompsInput,
+  FetchDataLibraryCompsOutput
+> = {
   name: 'fetch_data_library_comps',
-  description: 'Fetch comparable financial data from the Data Library — T12s, rent rolls, OMs, and sales comps for similar properties in the target market.',
-  parameters: {
-    type: 'object',
-    properties: {
-      city: {
-        type: 'string',
-        description: 'City to search for comps (e.g., "Atlanta")',
-      },
-      propertyType: {
-        type: 'string',
-        description: 'Property type filter (e.g., "multifamily", "garden", "mid-rise")',
-      },
-      units: {
-        type: 'number',
-        description: 'Target unit count — returns properties within 30% of this size',
-      },
-      limit: {
-        type: 'number',
-        description: 'Max number of comps to return (default: 10)',
-      },
-    },
-    required: ['city'],
-  },
+  description:
+    'Fetch comparable financial data from the Data Library — T12s, rent rolls, OMs, and sales comps for similar properties in the target market.',
+  inputSchema: InputSchema,
+  outputSchema: OutputSchema,
 
-  async execute(input: FetchDataLibraryCompsInput): Promise<{
-    comps: DataLibraryComp[];
-    summary: {
-      count: number;
-      avgRent?: number;
-      avgVacancy?: number;
-      avgExpenseRatio?: number;
-      avgCapRate?: number;
-      avgPricePerUnit?: number;
-      rentRange?: { min: number; max: number };
-      capRateRange?: { min: number; max: number };
-    };
-    dataQuality: 'high' | 'medium' | 'low';
-    gaps: string[];
-  }> {
+  execute: async (input) => {
     const pool = getPool();
     const limit = input.limit || 10;
     const gaps: string[] = [];
@@ -170,11 +160,11 @@ export const fetchDataLibraryCompsTool = {
       });
 
       // Build summary stats
-      const rents = comps.map(c => c.grossPotentialRent).filter(v => v && v > 0) as number[];
-      const vacancies = comps.map(c => c.vacancyRate).filter(v => v !== undefined) as number[];
-      const expenses = comps.map(c => c.operatingExpenseRatio).filter(v => v && v > 0) as number[];
-      const capRates = comps.map(c => c.capRate).filter(v => v && v > 0) as number[];
-      const prices = comps.map(c => c.askingPricePerUnit).filter(v => v && v > 0) as number[];
+      const rents = comps.map(c => c.grossPotentialRent).filter((v): v is number => v !== undefined && v > 0);
+      const vacancies = comps.map(c => c.vacancyRate).filter((v): v is number => v !== undefined);
+      const expenses = comps.map(c => c.operatingExpenseRatio).filter((v): v is number => v !== undefined && v > 0);
+      const capRates = comps.map(c => c.capRate).filter((v): v is number => v !== undefined && v > 0);
+      const prices = comps.map(c => c.askingPricePerUnit).filter((v): v is number => v !== undefined && v > 0);
 
       const avg = (arr: number[]) => arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length * 100) / 100 : undefined;
 
