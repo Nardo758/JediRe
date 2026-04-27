@@ -86,11 +86,6 @@ const FALLBACK_INSIGHTS: DemandInsight[] = [
 ];
 
 function Sparkline({ data, color, width = 80, height = 28 }: { data: number[]; color: string; width?: number; height?: number }) {
-  // Neural network context awareness
-  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
-  { context: 'market_dashboard' }
-  );
-
   const max = Math.max(...data);
   const min = Math.min(...data);
   const range = max - min || 1;
@@ -123,10 +118,6 @@ function UnitCard({ unit }: { unit: UnitDemandData }) {
 
   return (
     <div style={{ background: BT.bg.panelAlt, padding: "8px 10px" }}>
-      {/* Context Awareness */}
-      {contextAnalysis && (
-        <ContextIndicator analysis={contextAnalysis} loading={contextLoading} compact />
-      )}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
         <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
           <div style={{ width: 5, height: 5, background: unit.color, borderRadius: 1 }} />
@@ -248,6 +239,11 @@ interface DemandTabProps {
 }
 
 export function DemandTab({ msaName, msaCode }: DemandTabProps) {
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+    { context: 'market_dashboard' }
+  );
+
   const [units, setUnits] = useState<UnitDemandData[]>(FALLBACK_UNITS);
   const [gaps, setGaps] = useState<SupplyDemandGap[]>(FALLBACK_GAPS);
   const [insights, setInsights] = useState<DemandInsight[]>(FALLBACK_INSIGHTS);
@@ -264,6 +260,9 @@ export function DemandTab({ msaName, msaCode }: DemandTabProps) {
 
   return (
     <div style={{ flex: 1, overflow: "auto", padding: "12px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
+      {contextAnalysis && (
+        <ContextIndicator analysis={contextAnalysis} loading={contextLoading} compact />
+      )}
       <div style={{ background: BT.bg.panelAlt, border: `1px solid ${BT.border.medium}`, borderRadius: 4, overflow: "hidden" }}>
         <div style={{ padding: "7px 14px", borderBottom: `1px solid ${BT.border.medium}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>

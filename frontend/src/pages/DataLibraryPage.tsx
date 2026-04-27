@@ -130,6 +130,9 @@ const summarizeOmExtraction = (raw: unknown): React.ReactNode => {
 };
 
 export const DataLibraryPage: React.FC = () => {
+  // Neural network context awareness
+  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'market_dashboard' });
+
   const [files, setFiles] = useState<DataLibraryFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -709,9 +712,6 @@ const FilterSelect: React.FC<{ value: string; onChange: (v: string) => void; opt
 );
 
 const FileIcon: React.FC<{ type: string }> = ({ type }) => {
-  // Neural network context awareness
-  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'market_dashboard' });
-
   const isPst = type === 'application/vnd.ms-outlook' || type === 'pst';
   const colors: Record<string, string> = {
     'text/csv': '#4ade80',

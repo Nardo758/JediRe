@@ -18,8 +18,6 @@ import api from "../../services/api";
 import { DemandTab } from "../../components/terminal/tabs/DemandTab";
 import { F4DealsView } from "../../components/terminal/tabs/F4DealsView";
 import { SupplyCell } from "../../components/terminal/cells/SupplyCell";
-import { ContextIndicator } from "../../components/intelligence/ContextIndicator";
-import { useAutoContextAnalysis } from "../../hooks/useContextAwareness";
 
 /**
  * F4 Markets View - Refactored

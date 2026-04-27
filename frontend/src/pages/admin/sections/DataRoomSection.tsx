@@ -15,6 +15,9 @@ const BT = {
 const MONO = "'JetBrains Mono', monospace";
 
 export default function DataRoomSection() {
+  // Neural network context awareness
+  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'market_dashboard' });
+
   return (
     <div style={{ padding: 24 }}>
       {ctxAnalysis && <ContextIndicator analysis={ctxAnalysis} loading={ctxLoading} compact />}

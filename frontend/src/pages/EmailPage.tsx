@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { inboxService, Email, EmailDetail, InboxStats, InboxFilters, ConnectedAccount, EmailIntel } from '../services/inbox.service';
-import { ContextIndicator } from '../components/intelligence/ContextIndicator';
-import { useAutoContextAnalysis } from '../hooks/useContextAwareness';
 
 interface DealDetails {
   id: string;
@@ -336,9 +334,6 @@ export function EmailPage() {
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-  // Neural network context awareness
-  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'deal_overview' });
-
       if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         setCommandOpen(prev => !prev);

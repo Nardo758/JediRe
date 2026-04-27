@@ -44,11 +44,6 @@ const M35_EVENTS_PREVIEW = [
 ];
 
 const M35EventsSubsection: React.FC<{ msaName: string }> = ({ msaName }) => {
-  // Neural network context awareness
-  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
-  { context: 'market_dashboard', marketId: msaId }
-  );
-
   const [expanded, setExpanded] = useState(false);
   return (
     <div style={{ marginTop: 16 }}>
@@ -146,6 +141,11 @@ const M35EventsSubsection: React.FC<{ msaName: string }> = ({ msaName }) => {
 };
 
 export const MSANewsTab: React.FC<MSANewsTabProps> = ({ msaId, msa }) => {
+  // Neural network context awareness
+  const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
+    { context: 'market_dashboard', marketId: msaId }
+  );
+
   const [expandedNews, setExpandedNews] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [newsItems, setNewsItems] = useState<NewsItem[]>([]);

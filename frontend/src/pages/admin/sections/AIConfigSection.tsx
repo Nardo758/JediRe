@@ -19,6 +19,9 @@ const MONO = "'JetBrains Mono', monospace";
 // import AIModelSettings from '../../settings/AIModelSettings';
 
 export default function AIConfigSection() {
+  // Neural network context awareness
+  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'deal_overview' });
+
   return (
     <div style={{ padding: 24 }}>
       {ctxAnalysis && <ContextIndicator analysis={ctxAnalysis} loading={ctxLoading} compact />}

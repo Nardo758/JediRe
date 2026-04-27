@@ -139,7 +139,6 @@ const MiniLineChart = ({ data, color = T.text.blue, height = 80 }: { data: numbe
 // ─── Shared panel component ───────────────────────────────────
 const Panel: React.FC<{ title?: string; titleColor?: string; children: React.ReactNode; style?: React.CSSProperties }> = ({ title, titleColor, children, style }) => (
   <div style={{ background: T.bg.panel, border: `1px solid ${T.border.subtle}`, borderRadius: 4, overflow: 'hidden', ...style }}>
-      {ctxAnalysis && <ContextIndicator analysis={ctxAnalysis} loading={ctxLoading} compact />}
     {title && (
       <div style={{ padding: '6px 12px', background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}`, fontSize: 10, fontWeight: 700, color: titleColor || T.text.amber, fontFamily: T.font.mono, letterSpacing: '0.05em' }}>
         {title}
@@ -162,9 +161,6 @@ type CompFormKey = 'comp_name' | 'address' | 'units' | 'year_built' | 'avg_rent'
 type CompForm = Record<CompFormKey, string>;
 
 const CompSetTab: React.FC<{ dealId: string }> = ({ dealId }) => {
-  // Neural network context awareness
-  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'property_card' });
-
   const [comps, setComps] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
@@ -1844,6 +1840,9 @@ const ReportsTab: React.FC<ReportsTabProps> = ({ dealId, financials, deal }) => 
 
 // ─── Main Page ────────────────────────────────────────────────
 export default function PortfolioPropertyPage() {
+  // Neural network context awareness
+  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'property_card' });
+
   const { dealId } = useParams<{ dealId: string }>();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabType>('overview');
@@ -2262,6 +2261,7 @@ export default function PortfolioPropertyPage() {
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: T.bg.terminal }}>
+      {ctxAnalysis && <ContextIndicator analysis={ctxAnalysis} loading={ctxLoading} compact />}
       {/* Header */}
       <div style={{ background: T.bg.header, borderBottom: `1px solid ${T.border.subtle}`, padding: '10px 16px', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, fontSize: 10, fontFamily: T.font.mono }}>
