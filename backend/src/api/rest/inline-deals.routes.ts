@@ -31,6 +31,10 @@ const documentUpload = multer({
 
 router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
+    const userId = req.user!.userId;
+    const userRole = (req.user as any)?.role || 'user';
+    const isAdmin = userRole === 'admin';
+
     // Use pool directly instead of req.dbClient
     const client = pool;
     const result = await client.query(`
@@ -45,9 +49,9 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
           ELSE 0
         END) as acres
       FROM deals d
-      WHERE d.user_id = $1 AND d.archived_at IS NULL
+      WHERE ${isAdmin ? 'TRUE' : 'd.user_id = $1'} AND d.archived_at IS NULL
       ORDER BY d.created_at DESC
-    `, [req.user!.userId]);
+    `, isAdmin ? [] : [userId]);
 
     res.json({
       success: true,
@@ -84,6 +88,10 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
 
 router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
+    const userId = req.user!.userId;
+    const userRole = (req.user as any)?.role || 'user';
+    const isAdmin = userRole === 'admin';
+
     // Use pool directly instead of req.dbClient
     const client = pool;
     const result = await client.query(`
@@ -107,8 +115,8 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
       FROM deals d
       LEFT JOIN deal_properties dp_link ON dp_link.deal_id = d.id
       LEFT JOIN properties p_linked ON p_linked.id = dp_link.property_id
-      WHERE d.id = $1 AND d.user_id = $2 AND d.archived_at IS NULL
-    `, [req.params.id, req.user!.userId]);
+      WHERE d.id = $1 AND ${isAdmin ? 'TRUE' : 'd.user_id = $2'} AND d.archived_at IS NULL
+    `, isAdmin ? [req.params.id] : [req.params.id, userId]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, error: 'Deal not found' });
