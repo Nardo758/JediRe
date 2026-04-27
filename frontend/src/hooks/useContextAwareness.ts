@@ -295,7 +295,7 @@ export function useAutoContextAnalysis(focus: UserFocus | null, enabled = true) 
     if (enabled && focus && focus.context) {
       analyze(focus);
     }
-  }, [enabled, focus?.context, focus?.marketId, focus?.submarketId, focus?.focusedMetric]);
+  }, [enabled, focus?.context, focus?.dealId, focus?.marketId, focus?.submarketId, focus?.focusedMetric]);
 
   return { analysis, loading };
 }

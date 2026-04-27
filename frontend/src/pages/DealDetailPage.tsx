@@ -35,7 +35,7 @@ import {
   Building2, Target, Package, Calculator,
   ArrowLeft, ArrowRight, Activity, LayoutDashboard,
   Landmark, HardHat, Shield, Box, FileText, Briefcase, LayoutList,
-  CheckCircle, X, Loader2,
+  CheckCircle, X, Loader2, AlertTriangle, ChevronDown, HelpCircle,
 } from 'lucide-react';
 import { Tab } from '../components/deal/TabGroup';
 import { DealScreenWrapper } from '../components/deal/DealScreenWrapper';
@@ -87,7 +87,6 @@ import { useZoningModuleStore } from '../stores/zoningModuleStore';
 import type { DevelopmentPath } from '../types/zoning.types';
 import { EventHeroBanner } from '../components/m35/EventHeroBanner';
 import type { HeroBannerEvent, EventSensitivity } from '../components/m35/EventHeroBanner';
-import { ContextIndicator } from '../components/intelligence/ContextIndicator';
 import { useAutoContextAnalysis } from '../hooks/useContextAwareness';
 import api from '../services/api';
 
@@ -452,8 +451,8 @@ const DealDetailPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { fetchDealContext } = useDealStore();
-  // Neural network context awareness (top-level hook — used by the
-  // ContextIndicator rendered above ActiveComponent further down)
+  // Neural network context awareness — drives the GAPS / CLOSE DEAL
+  // header button rendered further down.
   const { analysis: contextAnalysis, loading: contextLoading } = useAutoContextAnalysis(
     dealId ? { context: 'deal_overview', dealId } : null
   );
@@ -478,6 +477,23 @@ const DealDetailPage: React.FC = () => {
   const [showCloseDealModal, setShowCloseDealModal] = useState(false);
   const [closingDeal, setClosingDeal] = useState(false);
   const [closeDealSuccess, setCloseDealSuccess] = useState(false);
+  const [gapsDropdownOpen, setGapsDropdownOpen] = useState(false);
+  const gapsDropdownRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!gapsDropdownOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (gapsDropdownRef.current && !gapsDropdownRef.current.contains(e.target as Node)) {
+        setGapsDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [gapsDropdownOpen]);
+  // Reset dropdown state when navigating between deals so a stale-open
+  // dropdown can't bleed into a freshly loaded deal.
+  useEffect(() => {
+    setGapsDropdownOpen(false);
+  }, [dealId]);
   const [closeForm, setCloseForm] = useState({
     closingDate: new Date().toISOString().slice(0, 10),
     salePrice: '',
@@ -865,40 +881,223 @@ const DealDetailPage: React.FC = () => {
                   </button>
                 </>
               )}
-              {deal && !isOwnedDeal(deal.status, deal.pipeline_stage) && (
-                <>
-                  <span style={{ color: BORDER, margin: '0 8px', fontSize: 10 }}>│</span>
-                  <button
-                    onClick={() => setShowCloseDealModal(true)}
-                    style={{
-                      background: 'transparent',
-                      border: '1px solid #10B98155',
-                      cursor: 'pointer',
-                      padding: '2px 8px',
-                      fontFamily: MONO,
-                      fontSize: 9,
-                      fontWeight: 800,
-                      color: '#10B981',
-                      letterSpacing: 0.8,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 4,
-                      flexShrink: 0,
-                      transition: 'border-color 0.15s, background 0.15s',
-                    }}
-                    onMouseEnter={e => {
-                      e.currentTarget.style.borderColor = '#10B981';
-                      e.currentTarget.style.background = '#10B98110';
-                    }}
-                    onMouseLeave={e => {
-                      e.currentTarget.style.borderColor = '#10B98155';
-                      e.currentTarget.style.background = 'transparent';
-                    }}
-                  >
-                    ✓ CLOSE DEAL
-                  </button>
-                </>
-              )}
+              {(() => {
+                const gaps = contextAnalysis?.gaps ?? [];
+                const unanswered = (contextAnalysis?.immediateQuestions ?? []).filter(q => !q.available);
+                const criticalGaps = gaps.filter(g => g.relevance === 'critical');
+                const totalGapCount = gaps.length + unanswered.length;
+                const hasGaps = totalGapCount > 0;
+                const isClosable = deal && !isOwnedDeal(deal.status, deal.pipeline_stage);
+
+                if (contextLoading && !contextAnalysis) {
+                  return null;
+                }
+
+                if (hasGaps) {
+                  const accent = criticalGaps.length > 0 ? '#EF4444' : '#F59E0B';
+                  return (
+                    <>
+                      <span style={{ color: BORDER, margin: '0 8px', fontSize: 10 }}>│</span>
+                      <div ref={gapsDropdownRef} style={{ position: 'relative', flexShrink: 0 }}>
+                        <button
+                          onClick={() => setGapsDropdownOpen(o => !o)}
+                          title="Click to see what's missing for underwriting"
+                          style={{
+                            background: 'transparent',
+                            border: `1px solid ${accent}55`,
+                            cursor: 'pointer',
+                            padding: '2px 8px',
+                            fontFamily: MONO,
+                            fontSize: 9,
+                            fontWeight: 800,
+                            color: accent,
+                            letterSpacing: 0.8,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 4,
+                            transition: 'border-color 0.15s, background 0.15s',
+                          }}
+                          onMouseEnter={e => {
+                            e.currentTarget.style.borderColor = accent;
+                            e.currentTarget.style.background = `${accent}10`;
+                          }}
+                          onMouseLeave={e => {
+                            e.currentTarget.style.borderColor = `${accent}55`;
+                            e.currentTarget.style.background = 'transparent';
+                          }}
+                        >
+                          <AlertTriangle size={10} />
+                          {totalGapCount} {totalGapCount === 1 ? 'GAP' : 'GAPS'}
+                          <ChevronDown size={10} style={{ transform: gapsDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+                        </button>
+                        {gapsDropdownOpen && (
+                          <div style={{
+                            position: 'absolute',
+                            top: 'calc(100% + 4px)',
+                            right: 0,
+                            zIndex: 1000,
+                            width: 360,
+                            maxHeight: 420,
+                            overflowY: 'auto',
+                            background: '#0F1319',
+                            border: `1px solid ${accent}55`,
+                            borderTop: `2px solid ${accent}`,
+                            boxShadow: '0 12px 32px rgba(0,0,0,0.6)',
+                            fontFamily: MONO,
+                          }}>
+                            <div style={{
+                              padding: '8px 12px',
+                              borderBottom: `1px solid ${BORDER}`,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                            }}>
+                              <span style={{ fontSize: 9, fontWeight: 800, color: accent, letterSpacing: 1 }}>
+                                {criticalGaps.length > 0
+                                  ? `${criticalGaps.length} CRITICAL · ${gaps.length - criticalGaps.length} OTHER · ${unanswered.length} UNANSWERED`
+                                  : `${gaps.length} GAPS · ${unanswered.length} UNANSWERED`}
+                              </span>
+                              <button
+                                onClick={() => setGapsDropdownOpen(false)}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6B7A8D', padding: 2 }}
+                                title="Close"
+                              >
+                                <X size={11} />
+                              </button>
+                            </div>
+                            {gaps.length > 0 && (
+                              <div style={{ padding: '6px 0' }}>
+                                <div style={{ padding: '4px 12px', fontSize: 8, color: '#6B7A8D', letterSpacing: 1, fontWeight: 700 }}>
+                                  DATA GAPS
+                                </div>
+                                {gaps.slice(0, 12).map(g => {
+                                  const tone = g.relevance === 'critical' ? '#EF4444' : g.relevance === 'important' ? '#F59E0B' : '#6B7A8D';
+                                  return (
+                                    <div key={g.id} style={{
+                                      padding: '6px 12px',
+                                      borderTop: `1px solid ${BORDER}40`,
+                                      display: 'flex',
+                                      alignItems: 'flex-start',
+                                      gap: 8,
+                                    }}>
+                                      <span style={{ width: 5, height: 5, borderRadius: '50%', background: tone, flexShrink: 0, marginTop: 5 }} />
+                                      <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{ fontSize: 10, color: '#E5E7EB', fontWeight: 600, lineHeight: 1.3 }}>
+                                          {g.userQuestion}
+                                        </div>
+                                        <div style={{ fontSize: 8, color: '#6B7A8D', marginTop: 2, letterSpacing: 0.5 }}>
+                                          {g.entity.toUpperCase()} · {g.relevance.toUpperCase().replace('_', ' ')}
+                                          {g.missingFields.length > 0 && ` · ${g.missingFields.slice(0, 3).join(', ')}`}
+                                        </div>
+                                        {g.suggestedAction && (
+                                          <div style={{ fontSize: 9, color: '#9CA3AF', marginTop: 3, fontStyle: 'italic', lineHeight: 1.3 }}>
+                                            → {g.suggestedAction}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                            {unanswered.length > 0 && (
+                              <div style={{ padding: '6px 0', borderTop: `1px solid ${BORDER}` }}>
+                                <div style={{ padding: '4px 12px', fontSize: 8, color: '#6B7A8D', letterSpacing: 1, fontWeight: 700 }}>
+                                  QUESTIONS WE CAN'T ANSWER
+                                </div>
+                                {unanswered.slice(0, 8).map((q, i) => (
+                                  <div key={i} style={{
+                                    padding: '6px 12px',
+                                    borderTop: `1px solid ${BORDER}40`,
+                                    display: 'flex',
+                                    alignItems: 'flex-start',
+                                    gap: 8,
+                                  }}>
+                                    <HelpCircle size={10} color="#6B7A8D" style={{ flexShrink: 0, marginTop: 2 }} />
+                                    <div style={{ fontSize: 10, color: '#E5E7EB', lineHeight: 1.3 }}>{q.question}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            <div style={{ padding: '8px 12px', borderTop: `1px solid ${BORDER}`, background: '#060A12' }}>
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    await api.post('/context/trigger-research', {
+                                      gaps: criticalGaps.length > 0 ? criticalGaps : gaps,
+                                      priority: 'background',
+                                    });
+                                    setGapsDropdownOpen(false);
+                                  } catch (e) {}
+                                }}
+                                style={{
+                                  width: '100%',
+                                  background: `${accent}15`,
+                                  border: `1px solid ${accent}55`,
+                                  color: accent,
+                                  fontFamily: MONO,
+                                  fontSize: 9,
+                                  fontWeight: 800,
+                                  letterSpacing: 1,
+                                  padding: '6px 10px',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  gap: 6,
+                                }}
+                              >
+                                <Bot size={11} />
+                                RESEARCH MISSING DATA
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  );
+                }
+
+                if (isClosable) {
+                  return (
+                    <>
+                      <span style={{ color: BORDER, margin: '0 8px', fontSize: 10 }}>│</span>
+                      <button
+                        onClick={() => setShowCloseDealModal(true)}
+                        title="No data gaps · ready to underwrite and close"
+                        style={{
+                          background: 'transparent',
+                          border: '1px solid #10B98155',
+                          cursor: 'pointer',
+                          padding: '2px 8px',
+                          fontFamily: MONO,
+                          fontSize: 9,
+                          fontWeight: 800,
+                          color: '#10B981',
+                          letterSpacing: 0.8,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          flexShrink: 0,
+                          transition: 'border-color 0.15s, background 0.15s',
+                        }}
+                        onMouseEnter={e => {
+                          e.currentTarget.style.borderColor = '#10B981';
+                          e.currentTarget.style.background = '#10B98110';
+                        }}
+                        onMouseLeave={e => {
+                          e.currentTarget.style.borderColor = '#10B98155';
+                          e.currentTarget.style.background = 'transparent';
+                        }}
+                      >
+                        ✓ CLOSE DEAL
+                      </button>
+                    </>
+                  );
+                }
+
+                return null;
+              })()}
               {deal.jedi_score != null && (
                 <span style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0, marginLeft: 10 }}>
                   <span style={{ color: AMBER, fontSize: 9, fontWeight: 700, letterSpacing: 0.3 }}>
@@ -1090,21 +1289,7 @@ const DealDetailPage: React.FC = () => {
         <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minWidth: 0, minHeight: 0 }}>
           <main style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
             <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', background: BG, padding: '0 8px' }}>
-              {/* Context Awareness — shows data gaps and suggestions */}
-              {contextAnalysis && (
-                <div style={{ margin: '8px 0' }}>
-                  <ContextIndicator
-                    analysis={contextAnalysis}
-                    loading={contextLoading}
-                    compact
-                    onTriggerResearch={async (gaps) => {
-                      try {
-                        await api.post('/context/trigger-research', { gaps, priority: 'background' });
-                      } catch (e) {}
-                    }}
-                  />
-                </div>
-              )}
+              {/* Data gap awareness now lives on the GAPS / CLOSE DEAL header button */}
               <ActiveComponent deal={deal} dealId={dealId} dealType={dealType} embedded={true} onUpdate={() => dealId && loadDeal(dealId)} onBack={() => setActiveTab('overview')} geographicContext={geographicContext} />
             </div>
 
