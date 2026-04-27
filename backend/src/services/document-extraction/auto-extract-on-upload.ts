@@ -194,7 +194,6 @@ export async function runExtractionForFile(opts: TriggerOptions): Promise<void> 
       const df = dealFile.rows[0];
       if (df?.deal_id) {
         const cat = (df.category || '').toLowerCase();
-<<<<<<< HEAD
         // Trigger agents on any uploaded document — not just OM
         // The agent system triages based on category internally
         eventDispatcher.onDocumentUploaded(df.deal_id, 'system', {
@@ -203,15 +202,6 @@ export async function runExtractionForFile(opts: TriggerOptions): Promise<void> 
           category: cat || 'unknown',
           mimeType: opts.mimeType || 'application/octet-stream',
         }).catch(e => logger.warn('auto-extract: failed to trigger underwriting', { fileId, e }));
-=======
-        if (cat.includes('offering') || cat.includes('om')) {
-          eventDispatcher.onDocumentUploaded(df.deal_id, 'system', {
-            fileId,
-            filename: opts.filename || '',
-            category: 'offering_memorandum',
-            mimeType: 'application/pdf',
-          }).catch(e => logger.warn('auto-extract: failed to trigger underwriting', { fileId, e }));
-        }
 
         // Fan a multi-channel notification out to OpenClaw (Telegram + SMS)
         // so the deal team learns "we now know what's in this file" without
@@ -229,7 +219,6 @@ export async function runExtractionForFile(opts: TriggerOptions): Promise<void> 
             });
           });
         }
->>>>>>> ca137e2a (Task #431: Replace ClawdBot stub with OpenClaw multi-channel notifier)
       }
     } else {
       await query(
