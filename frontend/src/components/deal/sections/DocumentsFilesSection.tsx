@@ -116,6 +116,13 @@ export const DocumentsFilesSection: React.FC<DocumentsFilesSectionProps> = ({ de
   // Upload state
   const [showUpload, setShowUpload] = useState(false);
 
+  // Re-process state — manual re-trigger of document extraction for the deal.
+  // Wired to POST /api/v1/deals/:dealId/reprocess-documents which re-runs the
+  // extraction pipeline against every file already uploaded for this deal.
+  // Useful when an extraction failed silently or after a parser fix lands.
+  const [reprocessing, setReprocessing] = useState(false);
+  const [reprocessMsg, setReprocessMsg] = useState<string | null>(null);
+
   // ============================================================================
   // DATA FETCHING
   // ============================================================================
@@ -258,6 +265,40 @@ export const DocumentsFilesSection: React.FC<DocumentsFilesSectionProps> = ({ de
     setCurrentFolder(path);
   };
 
+  const handleReprocess = async () => {
+    if (reprocessing) return;
+    if (files.length === 0) {
+      setReprocessMsg('No documents to re-process.');
+      return;
+    }
+    if (!confirm(
+      `Re-run extraction on all ${files.length} document${files.length === 1 ? '' : 's'} for this deal? ` +
+      `Existing parsed data will be overwritten.`,
+    )) return;
+
+    try {
+      setReprocessing(true);
+      setReprocessMsg(null);
+      const r = await axios.post(`/api/v1/deals/${deal.id}/reprocess-documents`);
+      const d = r.data?.data ?? r.data;
+      const ok = (d?.results ?? []).filter((x: any) => x?.success).length;
+      const total = d?.documentsProcessed ?? (d?.results?.length ?? 0);
+      const tags: string[] = [];
+      if (d?.capsuleUpdated) tags.push('Capsule updated');
+      if (d?.libraryUpdated) tags.push('Data Library updated');
+      setReprocessMsg(
+        `Re-processed ${ok}/${total} document${total === 1 ? '' : 's'}` +
+        (tags.length ? ` — ${tags.join(', ')}.` : '.'),
+      );
+      // Pull fresh extraction status into the file list.
+      await loadData();
+    } catch (err: any) {
+      setReprocessMsg(`Re-process failed: ${err?.response?.data?.error ?? err?.message ?? 'unknown error'}`);
+    } finally {
+      setReprocessing(false);
+    }
+  };
+
   // ============================================================================
   // RENDER
   // ============================================================================
@@ -275,7 +316,19 @@ export const DocumentsFilesSection: React.FC<DocumentsFilesSectionProps> = ({ de
           </p>
         </div>
 
-        <div className="header-actions">
+        <div className="header-actions" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button
+            className="btn-secondary"
+            onClick={handleReprocess}
+            disabled={reprocessing || files.length === 0}
+            title="Re-run extraction on every file already uploaded for this deal"
+            style={{
+              opacity: reprocessing || files.length === 0 ? 0.6 : 1,
+              cursor: reprocessing || files.length === 0 ? 'not-allowed' : 'pointer',
+            }}
+          >
+            {reprocessing ? '⟳ Re-processing…' : '⟳ Re-extract documents'}
+          </button>
           <button
             className="btn-primary"
             onClick={() => setShowUpload(!showUpload)}
@@ -284,6 +337,21 @@ export const DocumentsFilesSection: React.FC<DocumentsFilesSectionProps> = ({ de
           </button>
         </div>
       </div>
+
+      {reprocessMsg && (
+        <div
+          style={{
+            padding: '8px 12px',
+            margin: '8px 0',
+            borderRadius: 4,
+            background: reprocessMsg.startsWith('Re-process failed') ? '#fee' : '#eef7ff',
+            color: reprocessMsg.startsWith('Re-process failed') ? '#a40000' : '#0a4a7a',
+            fontSize: 13,
+          }}
+        >
+          {reprocessMsg}
+        </div>
+      )}
 
       {/* Storage Stats */}
       {analytics && (

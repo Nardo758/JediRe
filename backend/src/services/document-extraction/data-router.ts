@@ -14,6 +14,13 @@ interface RouteContext {
   filename: string;
   uploadedBy: string;
   documentId?: string;
+  // Optional file-on-disk metadata. Required to mirror the file into the
+  // cross-deal Data Library (data_library_files). When omitted, the router
+  // still updates per-deal tables and the data_library_assets summary, but
+  // the file itself won't show up on the Data Library page.
+  filePath?: string;
+  mimeType?: string;
+  fileSize?: number;
 }
 
 interface RouteResult {
@@ -123,6 +130,16 @@ export async function routeExtractionResult(
     libraryUpdated = true;
   } catch (err) {
     alerts.push(`Data Library update failed: ${err instanceof Error ? err.message : 'unknown'}`);
+  }
+
+  // Mirror the file itself into data_library_files so it shows up on the
+  // cross-deal Data Library page alongside files uploaded directly there.
+  // Best-effort: a failure here must NOT bubble up and break the deal flow,
+  // but we surface it via alerts so the operator notices.
+  try {
+    await mirrorFileIntoDataLibrary(pool, result, ctx);
+  } catch (err) {
+    alerts.push(`Data Library file mirror failed: ${err instanceof Error ? err.message : 'unknown'}`);
   }
 
   // Fan OM intelligence into the Knowledge Graph as typed nodes/edges.
@@ -792,6 +809,141 @@ async function upsertDataLibraryAsset(pool: Pool, dealId: string, result: Extrac
       );
     }
   }
+}
+
+/**
+ * Mirror a deal-uploaded file into the cross-deal data_library_files table so
+ * it appears on the Data Library page alongside files uploaded there directly.
+ *
+ * Idempotent: keyed on file_path. Re-running the extraction (via
+ * /reprocess-documents) updates the existing row rather than creating
+ * duplicates. The deal linkage is recorded in `tags` JSON so the Data Library
+ * UI can show provenance.
+ *
+ * For OM documents we populate the rich `om_extraction` JSONB column so the
+ * downstream OM pipeline (broker_narratives, market_rent_comps,
+ * market_sale_comps, sentiment) can pick it up. For other document types we
+ * stash the routed summary in `parsed_data` so the file is at least visible
+ * with its extraction status.
+ */
+async function mirrorFileIntoDataLibrary(
+  pool: Pool,
+  result: ExtractionResult,
+  ctx: RouteContext,
+): Promise<void> {
+  // No filesystem path available means we can't reproduce the file in the
+  // library — skip silently. Callers that want the mirror MUST pass filePath.
+  if (!ctx.filePath) return;
+
+  const isOm = result.documentType === 'OM';
+  const summary = result.summary ?? {};
+  const omData = isOm ? (result.data as unknown as Record<string, any> | null) : null;
+
+  // Pull a few presentation-friendly fields out of the extraction so the
+  // file row is searchable in the library UI without having to crack the
+  // JSONB blob open.
+  const city: string | null =
+    (omData?.propertyOverview?.city as string | undefined) ??
+    (typeof summary['city'] === 'string' ? summary['city'] : null);
+  const yearBuilt: string | null = (() => {
+    const y = omData?.propertyOverview?.yearBuilt ?? summary['yearBuilt'];
+    return y == null ? null : String(y);
+  })();
+  const unitCount: number | null = (() => {
+    const u = omData?.propertyOverview?.units ?? summary['units'] ?? summary['unitCount'];
+    const n = typeof u === 'number' ? u : Number(u);
+    return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+  })();
+
+  // data_library_files.source_type is constrained to one of:
+  // 'owned' | 'third_party' | 'broker' | 'market_report'.
+  // OMs come from brokers; the rest (T12, RR, tax bill, etc.) are operator-
+  // owned property data. Provenance back to the source deal is captured in
+  // tags so the Data Library UI can show "from deal X" badges.
+  const sourceType: 'broker' | 'owned' = isOm ? 'broker' : 'owned';
+  const tags = [
+    `deal:${ctx.dealId}`,
+    `document_type:${result.documentType}`,
+    'origin:deal_upload',
+  ];
+
+  // user_id is UUID; coerce empty string to NULL to keep the constraint happy
+  // (system/cron-driven re-runs may pass '').
+  const userId = ctx.uploadedBy && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ctx.uploadedBy)
+    ? ctx.uploadedBy
+    : null;
+
+  // NOTE (race): no UNIQUE index on data_library_files.file_path today, so two
+  // concurrent re-extractions for the same file_path can both miss the SELECT
+  // and end up inserting duplicate rows. Acceptable for the current single-
+  // user / sequential-per-deal flow (processDealDocuments loops one file at
+  // a time). When concurrent re-runs become possible, add a UNIQUE constraint
+  // and switch to INSERT ... ON CONFLICT (file_path) DO UPDATE.
+  // NOTE (enrichment): this mirror only writes the file row + om_extraction
+  // blob. It does NOT invoke dataLibraryService.runOmPipeline, so deal-
+  // uploaded OMs land in the library but their comps/narratives/sentiment
+  // are not redistributed into market_rent_comps / broker_narratives /
+  // market_sentiment_history. The deal-side data-router already populates
+  // platform_intel + extraction_om in deal_data, which is sufficient for the
+  // Deal Capsule. Cross-deal benchmarking from deal-uploaded OMs is a
+  // separate enhancement.
+  const existing = await pool.query<{ id: number }>(
+    `SELECT id FROM data_library_files WHERE file_path = $1 LIMIT 1`,
+    [ctx.filePath],
+  );
+
+  if (existing.rows.length > 0) {
+    await pool.query(
+      `UPDATE data_library_files SET
+         file_name = $2, file_size = COALESCE($3, file_size), mime_type = COALESCE($4, mime_type),
+         city = COALESCE($5, city), year_built = COALESCE($6, year_built),
+         unit_count = COALESCE($7, unit_count),
+         source_type = $8,
+         tags = $9::jsonb,
+         om_extraction = COALESCE($10::jsonb, om_extraction),
+         parsed_data = COALESCE(parsed_data, '{}'::jsonb) || $11::jsonb,
+         parsing_status = 'complete',
+         parsing_stage = 'routed',
+         parsing_errors = NULL
+       WHERE id = $1`,
+      [
+        existing.rows[0].id,
+        ctx.filename,
+        ctx.fileSize ?? null,
+        ctx.mimeType ?? null,
+        city, yearBuilt, unitCount,
+        sourceType,
+        JSON.stringify(tags),
+        isOm && omData ? JSON.stringify(omData) : null,
+        JSON.stringify({ [result.documentType]: { summary, warnings: result.warnings, routed_at: new Date().toISOString() } }),
+      ],
+    );
+    return;
+  }
+
+  await pool.query(
+    `INSERT INTO data_library_files
+       (user_id, file_name, file_path, file_size, mime_type,
+        city, year_built, unit_count, source_type, tags,
+        parsed_data, om_extraction,
+        parsing_status, parsing_stage, parsing_errors)
+     VALUES ($1, $2, $3, $4, $5,
+             $6, $7, $8, $9, $10::jsonb,
+             $11::jsonb, $12::jsonb,
+             'complete', 'routed', NULL)`,
+    [
+      userId,
+      ctx.filename,
+      ctx.filePath,
+      ctx.fileSize ?? null,
+      ctx.mimeType ?? null,
+      city, yearBuilt, unitCount,
+      sourceType,
+      JSON.stringify(tags),
+      JSON.stringify({ [result.documentType]: { summary, warnings: result.warnings, routed_at: new Date().toISOString() } }),
+      isOm && omData ? JSON.stringify(omData) : null,
+    ],
+  );
 }
 
 async function updateDealCapsule(pool: Pool, dealId: string, result: ExtractionResult, alerts: string[], ctx: RouteContext): Promise<void> {

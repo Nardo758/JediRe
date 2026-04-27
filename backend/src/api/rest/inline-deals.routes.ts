@@ -1151,7 +1151,7 @@ router.post('/upload-document', requireAuth, documentUpload.single('file') as an
     }
 
     if (verifiedDealId) {
-      processDocument(req.file.path, req.file.originalname, verifiedDealId, req.user!.userId, docId)
+      processDocument(req.file.path, req.file.originalname, verifiedDealId, req.user!.userId, docId, req.file.mimetype)
         .then(async (result) => {
           const seedTag = result.proformaSeeded ? ' +seed' : '';
           const xvalTag = result.crossValidationVariances ? ` +xval(${result.crossValidationVariances})` : '';

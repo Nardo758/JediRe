@@ -230,9 +230,14 @@ export class CommentaryAgent {
 
     // ── Primary path: AgentRuntime (commentary-v2 system prompt) ────
     try {
+      // Pass empty string when no end-user is attached (system/cron-driven
+      // commentary). aiService.checkAndDeductCredits treats empty userId as
+      // an internal call and skips metering. Sending "system" here was a
+      // latent bug — Postgres rejects non-UUID strings on user_id columns
+      // and the whole call would fail silently.
       const rtCtx = {
         dealId: undefined as string | undefined,
-        userId: userId ?? 'system',
+        userId: userId ?? '',
         triggeredBy: 'user' as const,
         triggerContext: { source: 'commentary_agent', entity_type: entityType, entity_name: name },
       };
@@ -262,8 +267,12 @@ export class CommentaryAgent {
     }
 
     // ── Fallback path: direct jediAI.generate() ─────────────────────
+    // Empty userId → aiService treats as internal call, skips metering.
+    // Sending "system" here historically crashed the AI ledger writes
+    // because user_id is a UUID column; that crash would surface as a
+    // generic narrative-failure with no clue why.
     const context: AICallContext = {
-      userId: userId || 'system',
+      userId: userId || '',
       stripeCustomerId: '',
       agentId: 'commentary',
       operationType: 'commentary_generation',

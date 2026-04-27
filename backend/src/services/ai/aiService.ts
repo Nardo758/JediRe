@@ -438,13 +438,25 @@ export class JediAIService {
     userId: string,
     cost: number
   ): Promise<void> {
-    // Fail fast on non-UUID userIds (e.g. 'pipeline', 'system', '') so callers
-    // get a clear error instead of an opaque Postgres "invalid input syntax
-    // for type uuid" 500 that surfaces as a silently-failed extraction.
+    // Internal/system calls (no end-user) pass empty/null userId. Skip
+    // metering for those — they're owned by the platform, not a billable
+    // user. This is the documented "legacy path" for parseOM / agent
+    // pipelines that run outside a user request.
+    if (!userId) {
+      logger.debug('checkAndDeductCredits: skipping metering for internal call (no userId)', {
+        cost,
+      });
+      return;
+    }
+
+    // Fail fast on non-UUID userIds (e.g. 'pipeline', 'system') — those are
+    // programmer mistakes, not legitimate internal calls. Callers get a
+    // clear error instead of an opaque Postgres "invalid input syntax for
+    // type uuid" 500 that surfaces as a silently-failed extraction.
     if (!UUID_RE.test(userId)) {
       throw new Error(
-        `JediAIService.checkAndDeductCredits: userId must be a UUID, got "${userId}". ` +
-        `Pass the real uploadedBy/owner userId from your route or job context.`
+        `JediAIService.checkAndDeductCredits: userId must be a UUID or empty string, got "${userId}". ` +
+        `Pass the real uploadedBy/owner userId from your route, or empty string for internal/system calls.`
       );
     }
 

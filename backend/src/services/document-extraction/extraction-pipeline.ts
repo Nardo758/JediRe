@@ -63,6 +63,7 @@ export async function processDocument(
   dealId: string,
   uploadedBy: string,
   documentId?: string,
+  mimeType?: string,
 ): Promise<{
   documentType: DocumentType;
   success: boolean;
@@ -117,6 +118,9 @@ export async function processDocument(
       filename,
       uploadedBy,
       documentId,
+      filePath,
+      mimeType,
+      fileSize: buffer.byteLength,
     });
 
     return {
@@ -179,7 +183,27 @@ export async function processDealDocuments(
       continue;
     }
 
-    const result = await processDocument(filePath, doc.original_filename, dealId, uploadedBy, doc.id);
+    // Infer mime type from extension since deal_document_files doesn't
+    // persist the original mimetype. This is only used by the data-library
+    // mirror for display — the actual extraction pipeline classifies the
+    // document from its bytes.
+    const ext = path.extname(doc.original_filename).toLowerCase();
+    const inferredMime: string | undefined =
+      ext === '.pdf'  ? 'application/pdf' :
+      ext === '.csv'  ? 'text/csv' :
+      ext === '.xls'  ? 'application/vnd.ms-excel' :
+      ext === '.xlsx' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' :
+      ext === '.txt'  ? 'text/plain' :
+      undefined;
+
+    const result = await processDocument(
+      filePath,
+      doc.original_filename,
+      dealId,
+      uploadedBy,
+      doc.id,
+      inferredMime,
+    );
 
     if (result.capsuleUpdated) anyCapsuleUpdated = true;
     if (result.libraryUpdated) anyLibraryUpdated = true;
