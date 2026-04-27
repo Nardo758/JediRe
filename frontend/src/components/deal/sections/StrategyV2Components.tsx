@@ -34,8 +34,9 @@ const MONO = BT.font.mono;
 
 export function confColor(c: number) { return c >= 0.85 ? BT.text.green : c >= 0.70 ? BT.text.amber : BT.text.red; }
 export function sevColor(s: 'critical' | 'warning' | 'info') { return s === 'critical' ? BT.text.red : s === 'warning' ? BT.text.amber : BT.text.cyan; }
-const fmtSafe = (value: unknown, digits: number) => {
-  const n = Number(value);
+const fmtSafe = (value: unknown, digits: number, multiplier = 1) => {
+  if (value === null || value === undefined || value === '') return '—';
+  const n = Number(value) * multiplier;
   return Number.isFinite(n) ? n.toFixed(digits) : '—';
 };
 export function gateColor(ss: SubStrategyScore): string {
@@ -974,7 +975,7 @@ export function EvidenceReportBlock({ ss, defaultExpanded }: { ss: SubStrategySc
                     { l: 'IRR', v: `${fmtSafe(ev.ultimateReturn.irr, 1)}%`, c: BT.text.green },
                     { l: 'EM', v: `${fmtSafe(ev.ultimateReturn.equityMultiple, 2)}x`, c: BT.text.amber },
                     { l: 'HOLD', v: `${fmtSafe(ev.ultimateReturn.holdMonths, 0)}mo`, c: BT.text.purple },
-                    { l: 'EXIT CAP', v: `${fmtSafe(Number(ev.ultimateReturn.exitCapRate) * 100, 2)}%`, c: BT.text.cyan },
+                    { l: 'EXIT CAP', v: `${fmtSafe(ev.ultimateReturn.exitCapRate, 2, 100)}%`, c: BT.text.cyan },
                   ].map(item => (
                     <div key={item.l}>
                       <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>{item.l}</div>
@@ -1255,7 +1256,7 @@ export function PlanDocument({ plan, dealId }: { plan: InvestmentPlan | null | u
         <DataRow label="BUYER TYPE" value={plan.exit?.buyerType || '—'} valueColor={BT.text.cyan} />
         <DataRow label="EXIT CAP" value={plan.exit?.capRate ? `${(plan.exit.capRate * 100).toFixed(2)}%` : '—'} valueColor={BT.text.amber} />
         {plan.exit?.expectedIRR && (
-          <DataRow label="IRR RANGE" value={`${fmtSafe(Number(plan.exit.expectedIRR[0]) * 100, 1)}–${fmtSafe(Number(plan.exit.expectedIRR[1]) * 100, 1)}%`} valueColor={BT.text.green} />
+          <DataRow label="IRR RANGE" value={`${fmtSafe(plan.exit.expectedIRR[0], 1, 100)}–${fmtSafe(plan.exit.expectedIRR[1], 1, 100)}%`} valueColor={BT.text.green} />
         )}
         {(plan.exit?.activeBuyers || []).map((b, i) => (
           <div key={i} style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary, padding: '1px 0' }}>◆ {b}</div>
