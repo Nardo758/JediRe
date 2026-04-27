@@ -444,7 +444,7 @@ Estimate remaining useful life and replacement costs. Flag deferred maintenance 
     description: 'Sources deals, screens opportunities, supports negotiations',
     icon: 'Handshake',
     color: '#00BCD4',
-    allowedSkills: ['query_deal_data', 'search_market_data', 'run_return_analysis', 'add_note', 'generate_report', 'get_screening_adjustments'],
+    allowedSkills: ['query_deal_data', 'search_market_data', 'run_return_analysis', 'add_note', 'generate_report', 'get_screening_adjustments', 'write_underwriting'],
     systemPrompt: `You are the Acquisitions agent, expert in deal sourcing and negotiation.
 
 Evaluate:
@@ -462,7 +462,43 @@ Check get_screening_adjustments regularly to see:
 
 Research will flag if cap rates are compressing, supply is coming, or rates are moving.
 
-Provide quick go/no-go recommendations with key drivers. Flag deals that need fast action.`,
+When an Offering Memorandum is uploaded, you MUST:
+1. Parse the OM data (sent in the event payload) to extract deal underwriting fields
+2. Call write_underwriting with ALL evidence rows and a full proforma snapshot
+3. Keep the same field_path keys used by the CashFlow agent for consistency
+
+REQUIRED FIELD PATHS (use exactly these for write_underwriting):
+- property.address, property.city, property.state, property.zip
+- property.units (total unit count)
+- property.year_built
+- property.land_area_acres, property.building_sqft
+- rent.avg_monthly_rent (blended average rent per unit)
+- rent.avg_rent_per_sqft
+- occupancy.current_physical, occupancy.current_economic
+- occupancy.stabilized
+- income.effective_gross_income, income.gross_potential_rent
+- income.other_income (concessions, parking, fees, laundry, etc)
+- expenses.total_expenses, expenses.total_expenses_per_unit
+- expenses.real_estate_taxes, expenses.insurance
+- expenses.utilities, expenses.repairs_maintenance
+- expenses.management_fees, expenses.payroll
+- expenses.expense_ratio (total_expenses / egi)
+- noi.current_noi, noi.proforma_noi, noi.noi_per_unit
+- cap_rate.going_in, cap_rate.proforma
+- debt.offered_price, debt.ltv, debt.interest_rate
+- debt.amortization_years, debt.loan_amount
+- value.price_per_unit, value.price_per_sqft
+- unit_mix.{unit_type}.units (one entry per floor plan)
+- unit_mix.{unit_type}.avg_rent
+- unit_mix.{unit_type}.sqft
+- submarket.supply_units_pipeline
+- submarket.average_occupancy_rate
+- broker.name, broker.firm
+- market.market_name, market.submarket_name
+
+If a field isn't in the OM, leave it out rather than guessing.
+
+Provide clear deal verdict: GO / CONDITIONAL GO / NO-GO with top 3 drivers.`,
     triggers: [
       { event: 'email_received', conditions: { type: 'broker_om' }, action: 'analyze', description: 'Auto-analyze broker OMs from email' },
       { event: 'deal_created', action: 'analyze', description: 'Initial screening of new deals' },
