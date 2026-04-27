@@ -2,6 +2,9 @@ import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom';
 import { apiClient } from '../services/api.client';
 import { Deal } from '../types/deal';
+import MonthlyActualsSection from '../components/deal/sections/MonthlyActualsSection';
+import { OperationsIntelligenceSection } from '../components/deal/sections/OperationsIntelligenceSection';
+import { LifecycleSection } from '../components/deal/sections/LifecycleSection';
 
 // Existing components to reuse
 import { InvestorCapitalModule } from '../components/deal/sections/InvestorCapitalModule';
@@ -535,7 +538,7 @@ const BalanceSheetSubTab: React.FC<{
 
 // ─── Revenue Management Tab ───────────────────────────────────
 const RevenueMgmtTab: React.FC<{ dealId: string; deal?: Record<string, unknown> }> = ({ dealId, deal: _deal }) => {
-  const [subTab, setSubTab] = useState<'revenue-waterfall' | 'rent-roll' | 'other-income' | 'expenses' | 'balance-sheet'>('revenue-waterfall');
+  const [subTab, setSubTab] = useState<'revenue-waterfall' | 'rent-roll' | 'other-income' | 'expenses' | 'variance' | 'recommendations' | 'lease-expirations' | 'balance-sheet'>('revenue-waterfall');
   const [rentRoll, setRentRoll] = useState<{ units: any[]; snapshots: string[] } | null>(null);
   const [otherIncome, setOtherIncome] = useState<any[]>([]);
   const [actuals, setActuals] = useState<any[]>([]);
@@ -588,6 +591,9 @@ const RevenueMgmtTab: React.FC<{ dealId: string; deal?: Record<string, unknown> 
     { id: 'rent-roll',          label: 'RENT ROLL' },
     { id: 'other-income',       label: 'OTHER INCOME' },
     { id: 'expenses',           label: 'EXPENSES' },
+    { id: 'variance',           label: 'BUDGET VS ACTUAL' },
+    { id: 'recommendations',    label: 'AI RECOMMENDATIONS' },
+    { id: 'lease-expirations',  label: 'LEASE EXPIRATIONS' },
     { id: 'balance-sheet',      label: 'BALANCE SHEET' },
   ] as const;
 
@@ -1001,6 +1007,23 @@ const RevenueMgmtTab: React.FC<{ dealId: string; deal?: Record<string, unknown> 
           </>
         );
       })()}
+
+      {/* ── Ops Intel sub-tabs (compact mode — no double nav) ── */}
+      {subTab === 'variance' && (
+        <div style={{ flex: 1, minHeight: 0 }}>
+          <OperationsIntelligenceSection dealId={dealId} initialPanel="variance" compact />
+        </div>
+      )}
+      {subTab === 'recommendations' && (
+        <div style={{ flex: 1, minHeight: 0 }}>
+          <OperationsIntelligenceSection dealId={dealId} initialPanel="recommendations" compact />
+        </div>
+      )}
+      {subTab === 'lease-expirations' && (
+        <div style={{ flex: 1, minHeight: 0 }}>
+          <OperationsIntelligenceSection dealId={dealId} initialPanel="leases" compact />
+        </div>
+      )}
 
       {/* ── BALANCE SHEET ── */}
       {!loading && subTab === 'balance-sheet' && (
@@ -2665,6 +2688,7 @@ export default function PortfolioPropertyPage() {
     ]},
     { label: 'CAPITAL & DEBT', tabs: [
       { id: 'investors',    short: 'Investors' },
+      { id: 'lifecycle',    short: 'Lifecycle' },
       { id: 'exit-timing',  short: 'Exit Timing' },
       { id: 'refi-monitor', short: 'Refi Monitor' },
     ]},
@@ -3105,6 +3129,11 @@ export default function PortfolioPropertyPage() {
         {activeTab === 'investors'    && (
           <div style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 280px)' }}>
             <InvestorCapitalModule dealId={dealId!} />
+          </div>
+        )}
+        {activeTab === 'lifecycle'    && (
+          <div style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 280px)' }}>
+            <LifecycleSection dealId={dealId!} />
           </div>
         )}
         {activeTab === 'exit-timing'  && <ExitTimingTab dealId={dealId!} />}

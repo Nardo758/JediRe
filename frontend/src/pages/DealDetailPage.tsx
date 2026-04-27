@@ -35,7 +35,7 @@ import {
   Building2, Target, Package, Calculator,
   ArrowLeft, ArrowRight, Activity, LayoutDashboard,
   Landmark, HardHat, Shield, Box, FileText, Briefcase, Zap, LayoutList,
-  CheckCircle, X, Loader2, Users, Database, RefreshCcw,
+  CheckCircle, X, Loader2, Users,
 } from 'lucide-react';
 import { Tab } from '../components/deal/TabGroup';
 import { DealScreenWrapper } from '../components/deal/DealScreenWrapper';
@@ -90,9 +90,6 @@ import { useZoningModuleStore } from '../stores/zoningModuleStore';
 import type { DevelopmentPath } from '../types/zoning.types';
 import { EventTimelineSection } from '../components/deal/sections/EventTimelineSection';
 import { EventHeroBanner } from '../components/m35/EventHeroBanner';
-import MonthlyActualsSection from '../components/deal/sections/MonthlyActualsSection';
-import { OperationsIntelligenceSection } from '../components/deal/sections/OperationsIntelligenceSection';
-import { LifecycleSection } from '../components/deal/sections/LifecycleSection';
 import type { HeroBannerEvent, EventSensitivity } from '../components/m35/EventHeroBanner';
 import { ContextIndicator } from '../components/intelligence/ContextIndicator';
 import { useAutoContextAnalysis } from '../hooks/useContextAwareness';
@@ -749,9 +746,6 @@ const DealDetailPage: React.FC = () => {
     { id: 'deal-tools', moduleId: 'M21', fkey: 'F11', code: 'M21', short: 'TOOLS',      label: 'Deal Tools',       icon: <Briefcase size={14} />,       component: DealToolsScreen },
     { id: 'unit-mix',   moduleId: 'M01', fkey: 'F13', code: 'M14', short: 'UNIT MIX',   label: 'Unit Mix',         icon: <LayoutList size={14} />,      component: UnitMixScreen },
     { id: 'team',           moduleId: 'M01', fkey: '',    code: 'M00', short: 'TEAM',       label: 'Deal Team',        icon: <Users size={14} />,           component: CollaborationSection },
-    { id: 'monthly-actuals', moduleId: 'M22', fkey: '',   code: 'M22', short: 'ACTUALS',    label: 'Monthly Actuals',  icon: <Database size={14} />,        component: (p: ScreenProps) => isOwnedDeal(p.deal?.status, p.deal?.pipeline_stage) ? <PortfolioAssetBridge dealId={p.dealId} featureName="Monthly Actuals" /> : <MonthlyActualsSection dealId={p.dealId} deal={p.deal} /> },
-    { id: 'operations',      moduleId: 'M20', fkey: '',   code: 'M20', short: 'OPS INTEL',  label: 'Operations Intel', icon: <Activity size={14} />,        component: (p: ScreenProps) => isOwnedDeal(p.deal?.status, p.deal?.pipeline_stage) ? <PortfolioAssetBridge dealId={p.dealId} featureName="Operations Intel" /> : <OperationsIntelligenceSection dealId={p.dealId} deal={p.deal as Record<string, unknown>} /> },
-    { id: 'lifecycle',       moduleId: 'M01', fkey: '',   code: 'M22', short: 'LIFECYCLE',  label: 'Lifecycle',        icon: <RefreshCcw size={14} />,      component: (p: ScreenProps) => isOwnedDeal(p.deal?.status, p.deal?.pipeline_stage) ? <PortfolioAssetBridge dealId={p.dealId} featureName="Lifecycle" /> : <LifecycleSection dealId={p.dealId} deal={p.deal as Record<string, unknown>} /> },
   ];
 
   const dealScreens = allDealScreens.filter((s) => config.isModuleVisible(s.moduleId));
