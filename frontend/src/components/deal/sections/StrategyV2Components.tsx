@@ -971,10 +971,10 @@ export function EvidenceReportBlock({ ss, defaultExpanded }: { ss: SubStrategySc
                 <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.green, letterSpacing: 0.5, marginBottom: 6 }}>EXPECTED RETURN</div>
                 <div style={{ display: 'flex', gap: 20 }}>
                   {[
-                    { l: 'IRR', v: `${ev.ultimateReturn.irr.toFixed(1)}%`, c: BT.text.green },
-                    { l: 'EM', v: `${ev.ultimateReturn.equityMultiple.toFixed(2)}x`, c: BT.text.amber },
-                    { l: 'HOLD', v: `${ev.ultimateReturn.holdMonths}mo`, c: BT.text.purple },
-                    { l: 'EXIT CAP', v: `${(ev.ultimateReturn.exitCapRate * 100).toFixed(2)}%`, c: BT.text.cyan },
+                    { l: 'IRR', v: `${fmtSafe(ev.ultimateReturn.irr, 1)}%`, c: BT.text.green },
+                    { l: 'EM', v: `${fmtSafe(ev.ultimateReturn.equityMultiple, 2)}x`, c: BT.text.amber },
+                    { l: 'HOLD', v: `${fmtSafe(ev.ultimateReturn.holdMonths, 0)}mo`, c: BT.text.purple },
+                    { l: 'EXIT CAP', v: `${fmtSafe(Number(ev.ultimateReturn.exitCapRate) * 100, 2)}%`, c: BT.text.cyan },
                   ].map(item => (
                     <div key={item.l}>
                       <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>{item.l}</div>
@@ -1255,7 +1255,7 @@ export function PlanDocument({ plan, dealId }: { plan: InvestmentPlan | null | u
         <DataRow label="BUYER TYPE" value={plan.exit?.buyerType || '—'} valueColor={BT.text.cyan} />
         <DataRow label="EXIT CAP" value={plan.exit?.capRate ? `${(plan.exit.capRate * 100).toFixed(2)}%` : '—'} valueColor={BT.text.amber} />
         {plan.exit?.expectedIRR && (
-          <DataRow label="IRR RANGE" value={`${(plan.exit.expectedIRR[0] * 100).toFixed(1)}–${(plan.exit.expectedIRR[1] * 100).toFixed(1)}%`} valueColor={BT.text.green} />
+          <DataRow label="IRR RANGE" value={`${fmtSafe(Number(plan.exit.expectedIRR[0]) * 100, 1)}–${fmtSafe(Number(plan.exit.expectedIRR[1]) * 100, 1)}%`} valueColor={BT.text.green} />
         )}
         {(plan.exit?.activeBuyers || []).map((b, i) => (
           <div key={i} style={{ fontFamily: MONO, fontSize: 8, color: BT.text.secondary, padding: '1px 0' }}>◆ {b}</div>
