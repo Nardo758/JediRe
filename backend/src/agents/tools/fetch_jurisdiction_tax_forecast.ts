@@ -50,7 +50,7 @@ const OutputSchema = z.object({
     delta_vs_t12_pct: z.number().nullable(),
   }),
   transfer_tax: z.object({
-    total: z.number(),
+    total: z.number().nullable(),
   }),
   flag_notes: z.array(z.string()),
 });

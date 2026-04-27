@@ -722,7 +722,20 @@ export class AgentRuntime {
       };
     }
 
-    const validated = tool.outputSchema.parse(output);
+    // Parse output — if Zod schema validation fails, return error to model so it retries
+    let validated: unknown;
+    try {
+      validated = tool.outputSchema.parse(output);
+    } catch (parseErr: any) {
+      const msg = parseErr instanceof Error ? parseErr.message : String(parseErr);
+      logger.warn('AgentRuntime: tool output validation failed', { tool: tool.name, err: msg });
+      return {
+        type: 'tool_result',
+        tool_use_id: toolUse.id,
+        content: JSON.stringify({ error: `Tool output validation failed: ${msg}` }),
+        is_error: true,
+      } as const;
+    }
     const duration = Date.now() - start;
 
     // Log tool result
