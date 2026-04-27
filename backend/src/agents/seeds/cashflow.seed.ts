@@ -33,37 +33,37 @@ const EVIDENCE_PROMPTS: Array<{
   systemPrompt: string;
 }> = [
   {
-    id: 'cashflow-v5-core',
+    id: 'cashflow-v6-core',
     promptType: 'core',
     version: '4.0.0',
     systemPrompt: CASHFLOW_SYSTEM_PROMPT,
   },
   {
-    id: 'cashflow-v5-variant-existing',
+    id: 'cashflow-v6-variant-existing',
     promptType: 'variant:existing',
     version: '4.0.0',
     systemPrompt: CASHFLOW_VARIANT_EXISTING,
   },
   {
-    id: 'cashflow-v5-variant-value-add',
+    id: 'cashflow-v6-variant-value-add',
     promptType: 'variant:value-add',
     version: '4.0.0',
     systemPrompt: CASHFLOW_VARIANT_VALUE_ADD,
   },
   {
-    id: 'cashflow-v5-variant-lease-up',
+    id: 'cashflow-v6-variant-lease-up',
     promptType: 'variant:lease-up',
     version: '4.0.0',
     systemPrompt: CASHFLOW_VARIANT_LEASE_UP,
   },
   {
-    id: 'cashflow-v5-variant-development',
+    id: 'cashflow-v6-variant-development',
     promptType: 'variant:development',
     version: '4.0.0',
     systemPrompt: CASHFLOW_VARIANT_DEVELOPMENT,
   },
   {
-    id: 'cashflow-v5-variant-redevelopment',
+    id: 'cashflow-v6-variant-redevelopment',
     promptType: 'variant:redevelopment',
     version: '4.0.0',
     systemPrompt: CASHFLOW_VARIANT_REDEVELOPMENT,
@@ -95,7 +95,7 @@ export async function seedCashflowPrompt(): Promise<void> {
     );
   }
 
-  logger.info('CashFlow Agent prompts seeded (v5 — JSON guard)', {
+  logger.info('CashFlow Agent prompts seeded (v6 — JSON skeleton)', {
     count: EVIDENCE_PROMPTS.length,
     ids: upcomingIds,
   });

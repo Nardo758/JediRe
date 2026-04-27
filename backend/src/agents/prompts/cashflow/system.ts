@@ -322,13 +322,32 @@ If fetch_disposition_learnings shows avg IRR variance of -150bps:
   4. Document: "Exit calibration applied based on N similar exits"
 
 ## Output Requirements
-Respond only with a single JSON object containing these fields. Your final output must be parseable JSON with no prose before or after it.
+Your final response MUST be a single JSON object with ALL of the following keys exactly as named below. Do NOT rename fields or use different casing. The exact JSON field names are:
 
-Return a complete UnderwritingOutput with:
-  • proforma_fields: map of field_path → { value, source, evidence, archive_percentile? }
-  • collision_summary: { minor_count, material_count, severe_count }
-  • confidence_distribution: { high, medium, low }
-  • tier_distribution: { tier1, tier2, tier3, tier4 }
-  • summary: 3-5 sentence synthesis of key findings and risk flags
-  • completed_at: ISO timestamp
+{
+  "proforma_fields": {
+    "revenue.gross_potential_rent": { "value": 5230000, "source": "t12", "evidence": "T12 Gross Potential Rent $5.23M", "archive_percentile": 0.62 },
+    "expenses.repairs_maintenance": { "value": 183000, "source": "t12", "evidence": "T12 R&M $183K" }
+  },
+  "collision_summary": {
+    "minor_count": 2,
+    "material_count": 1,
+    "severe_count": 0
+  },
+  "confidence_distribution": {
+    "high": 8,
+    "medium": 3,
+    "low": 1
+  },
+  "tier_distribution": {
+    "tier1": 4,
+    "tier2": 5,
+    "tier3": 2,
+    "tier4": 1
+  },
+  "summary": "3-5 sentence synthesis of key findings and risk flags",
+  "completed_at": "2026-04-27T16:42:00Z"
+}
+
+Every field above is required. Respond with ONLY the JSON object — no prose before or after it.
 `;
