@@ -46,22 +46,47 @@ The final JSON output uses supply_risk_level with four levels:
 
 ## Output format
 
-After persisting all data, respond with a JSON object matching this schema:
+Your final response MUST be a JSON object with ALL of the following keys. Do NOT omit any field — use null for nullable numeric fields when data is unavailable.
+
 {
   "city": "Atlanta",
   "state_code": "GA",
-  "under_construction_units": 4200,
-  "deliveries_12mo": 1800,
-  "absorption_rate": 0.92,
-  "months_of_supply": 8.5,
-  "pipeline_as_pct_of_stock": 4.2,
-  "demand_supply_ratio": 1.1,
-  "supply_risk_level": "moderate",
+  "under_construction_units": 4200,          // integer or null
+  "deliveries_12mo": 1800,                    // integer or null
+  "absorption_rate": 0.92,                     // number or null
+  "months_of_supply": 8.5,                      // number or null
+  "pipeline_as_pct_of_stock": 4.2,             // number or null
+  "demand_supply_ratio": 1.1,                   // number or null
+  "supply_risk_level": "moderate",             // "low" | "moderate" | "high" | "severe" or null
   "summary": "2-4 sentence supply risk summary",
-  "confidence_score": 0.0-1.0,
+  "confidence_score": 0.85,                     // 0.0-1.0
   "fields_written": ["pipeline_units", "delivery_risk", "yoy_pct", "summary"],
-  "completed_at": "<ISO timestamp>"
+  "completed_at": "2026-04-27T16:00:00Z"
 }
+
+IMPORTANT: Your final message must be ONLY a JSON object with all the keys above. NEVER output a JSON array.
+
+## Field Name Mapping (write_supply_analysis → final JSON)
+
+When you call write_supply_analysis, use these field names. Then translate to the final JSON names:
+
+| write_supply_analysis field | Final JSON field |
+|---|---|
+| pipeline_units | under_construction_units |
+| delivery_risk | supply_risk_level ("low"/"moderate"/"high"/"severe") |
+| yoy_pct | (store in pipeline_as_pct_of_stock) |
+| peak_delivery_year | (not in final schema — skip) |
+| summary | summary |
+| (implied by fetched data) | deliveries_12mo |
+| (implied by fetched data) | absorption_rate |
+| (implied by fetched data) | months_of_supply |
+| (implied by fetched data) | demand_supply_ratio |
+
+## Supply risk level (for final JSON "supply_risk_level"):
+- **low**: Pipeline < 3% of stock OR demand_supply_ratio > 1.2
+- **moderate**: Pipeline 3-6% of stock OR demand_supply_ratio 0.8-1.2
+- **high**: Pipeline 6-10% of stock OR demand_supply_ratio 0.5-0.8
+- **severe**: Pipeline > 10% of stock OR demand_supply_ratio < 0.5
 
 ## Web Search (Gap-Filling)
 
@@ -119,9 +144,17 @@ export async function seedSupplyPrompt(): Promise<void> {
        (id, agent_id, version, system_prompt, output_schema, active, created_at, created_by)
      VALUES
        ('supply-v4', 'supply', '4.0.0', $1, $2, true, NOW(), 'system')
-     ON CONFLICT (id) DO NOTHING`,
+     ON CONFLICT (id) DO UPDATE
+       SET system_prompt = $1, output_schema = $2, updated_at = NOW()
+       WHERE prompt_versions.id = 'supply-v4'`,
     [SUPPLY_SYSTEM_PROMPT, JSON.stringify(OUTPUT_SCHEMA_JSON)]
   );
 
-  logger.info('Supply Agent prompt seeded: supply-v3 (active)');
+  // Deactivate old prompts so runtime picks supply-v4
+  await query(
+    `UPDATE prompt_versions SET active = false
+     WHERE agent_id = 'supply' AND id != 'supply-v4' AND active = true`
+  );
+
+  logger.info('Supply Agent prompt seeded: supply-v4 (active)');
 }

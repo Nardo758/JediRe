@@ -47,7 +47,7 @@ export type SupplyAgentOutput = z.infer<typeof SupplyOutputSchema>;
 export const SUPPLY_AGENT_CONFIG: AgentConfig = {
   agentId: 'supply',
   agentVersion: '2.1.0',
-  promptVersion: 'supply-v3.1',
+  promptVersion: 'supply-v4',
   tools: [
     fetchPermitsTool,
     fetchCostarPipelineTool,
@@ -61,7 +61,7 @@ export const SUPPLY_AGENT_CONFIG: AgentConfig = {
   ],
   outputSchema: SupplyOutputSchema,
   budgetCaps: DEFAULT_BUDGET_CAPS.supply,
-  modelName: 'claude-haiku-4-5-20251001',
+  modelName: 'deepseek-chat',
   capabilities: ['read:all', 'write:deal_context', 'web:search'],
 };
 
