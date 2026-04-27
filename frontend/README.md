@@ -214,6 +214,26 @@ MIT
 
 Contributions welcome! Please follow the existing code style and patterns.
 
+### Lint must pass before merging
+
+Run `npm run lint` from the `frontend/` directory before opening a PR — it must
+exit cleanly with **zero errors**. Lint is part of `npm run deploy:check` and is
+the gate that catches misplaced React hooks before they ship. Warnings do not
+block the build today (we are working through a backlog), but please do not add
+new ones in the file you're editing.
+
+The two non-negotiable rules:
+
+- `react-hooks/rules-of-hooks` (**error**) — hooks must only be called at the
+  top level of a React function component or another custom hook. Calling a
+  hook inside a helper function, child component, event handler, or
+  conditional branch will fail lint and crash the page at runtime.
+- `react-hooks/exhaustive-deps` (**warning**) — flags missing or stale
+  dependencies in `useEffect` / `useMemo` / `useCallback` arrays. Warnings do
+  not block merges, but please review and fix or annotate with an
+  `// eslint-disable-next-line react-hooks/exhaustive-deps` comment that
+  explains why the stale closure is intentional.
+
 ## 📞 Support
 
 For issues or questions, open a GitHub issue.

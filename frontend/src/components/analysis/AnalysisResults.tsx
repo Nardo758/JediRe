@@ -38,7 +38,7 @@ export default function AnalysisResults() {
     const weeks = 52;
     const rents = [];
     for (let i = 0; i < weeks; i++) {
-      let noise = (Math.random() - 0.5) * 50; // +/- $25 noise
+      const noise = (Math.random() - 0.5) * 50; // +/- $25 noise
       let trendValue = 0;
       if (trend === 'rising') {
         trendValue = (i / weeks) * 200; // $200 increase over year

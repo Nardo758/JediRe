@@ -175,10 +175,11 @@ export default function DealPipeline({ apiBaseUrl = '/api/agent' }: DealPipeline
         case 'date':
           comparison = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
           break;
-        case 'priority':
+        case 'priority': {
           const priorityOrder = { high: 3, medium: 2, low: 1 };
           comparison = priorityOrder[a.priority] - priorityOrder[b.priority];
           break;
+        }
       }
 
       return filters.sortOrder === 'asc' ? comparison : -comparison;

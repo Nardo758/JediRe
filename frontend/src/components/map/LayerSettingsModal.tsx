@@ -31,7 +31,7 @@ export const LayerSettingsModal: React.FC<LayerSettingsModalProps> = ({
   // Render settings based on layer type
   const renderSettings = () => {
     switch (layer.layer_type) {
-      case 'pin':
+      case 'pin': {
         const pinStyle = style as PinStyle;
         return (
           <div className="space-y-4">
@@ -101,8 +101,9 @@ export const LayerSettingsModal: React.FC<LayerSettingsModalProps> = ({
             </div>
           </div>
         );
+      }
 
-      case 'bubble':
+      case 'bubble': {
         const bubbleStyle = style as BubbleStyle;
         return (
           <div className="space-y-4">
@@ -177,8 +178,9 @@ export const LayerSettingsModal: React.FC<LayerSettingsModalProps> = ({
             </div>
           </div>
         );
+      }
 
-      case 'heatmap':
+      case 'heatmap': {
         const heatmapStyle = style as HeatmapStyle;
         return (
           <div className="space-y-4">
@@ -272,8 +274,9 @@ export const LayerSettingsModal: React.FC<LayerSettingsModalProps> = ({
             </div>
           </div>
         );
+      }
 
-      case 'boundary':
+      case 'boundary': {
         const boundaryStyle = style as BoundaryStyle;
         return (
           <div className="space-y-4">
@@ -345,6 +348,7 @@ export const LayerSettingsModal: React.FC<LayerSettingsModalProps> = ({
             </div>
           </div>
         );
+      }
 
       default:
         return (

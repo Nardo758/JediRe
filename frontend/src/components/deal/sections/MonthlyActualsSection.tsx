@@ -67,7 +67,7 @@ function parseExcelMonth(val: unknown): string | null {
     match = lower.match(new RegExp(`(\\d{4})[\\s\\-/]*${m}[a-z]*`));
     if (match) return `${match[1]}-${String(i + 1).padStart(2, '0')}`;
   }
-  const mmyyyy = s.match(/^(\d{1,2})[/\-](\d{4})$/);
+  const mmyyyy = s.match(/^(\d{1,2})[/-](\d{4})$/);
   if (mmyyyy) return `${mmyyyy[2]}-${String(parseInt(mmyyyy[1], 10)).padStart(2, '0')}`;
   const dt = new Date(s);
   if (!isNaN(dt.getTime())) return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;

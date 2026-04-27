@@ -400,7 +400,7 @@ const BreakdownView: React.FC<{
   icon?: React.ReactNode;
   sorted?: boolean;
 }> = ({ data, labelKey, icon, sorted }) => {
-  let entries = Object.entries(data);
+  const entries = Object.entries(data);
   
   if (sorted) {
     entries.sort(([a], [b]) => a.localeCompare(b));

@@ -197,7 +197,7 @@ export const MSAMarketMapTab: React.FC<MSAMarketMapTabProps> = ({ msaId, msa, on
   });
 
   const filtered = useMemo(() => {
-    let result = MARKET_PROPERTIES.filter(p => {
+    const result = MARKET_PROPERTIES.filter(p => {
       if (searchQuery && !p.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
           !p.submarket.toLowerCase().includes(searchQuery.toLowerCase())) return false;
       if (classFilter !== 'All' && p.class !== classFilter) return false;

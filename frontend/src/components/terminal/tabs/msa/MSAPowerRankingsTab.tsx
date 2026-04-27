@@ -100,7 +100,7 @@ export const MSAPowerRankingsTab: React.FC<MSAPowerRankingsTabProps> = ({ msaId,
 
   // Filter and sort
   const filteredRankings = useMemo(() => {
-    let result = MOCK_RANKINGS.filter(p => {
+    const result = MOCK_RANKINGS.filter(p => {
       if (classFilter !== 'All' && p.class !== classFilter) return false;
       if (vintageFilter !== 'All' && getVintageDecade(p.yearBuilt) !== vintageFilter) return false;
       if (!matchesSize(p.units, sizeFilter)) return false;

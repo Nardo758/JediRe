@@ -2357,8 +2357,8 @@ function detectRiskSignals(data: MarketIntelData): Array<{ label: string; detail
   const wageVal = eco?.metrics?.wageGrowth?.value;
   const rentVal = demo?.submarket?.rentGrowth || eco?.metrics?.rentGrowth?.value;
   if (wageVal && rentVal) {
-    const wageNum = parseFloat(String(wageVal).replace(/[^0-9.\-]/g, ''));
-    const rentNum = parseFloat(String(rentVal).replace(/[^0-9.\-]/g, ''));
+    const wageNum = parseFloat(String(wageVal).replace(/[^0-9.-]/g, ''));
+    const rentNum = parseFloat(String(rentVal).replace(/[^0-9.-]/g, ''));
     if (!isNaN(wageNum) && !isNaN(rentNum) && rentNum > wageNum + 2) {
       signals.push({ label: 'RENT-WAGE GAP', detail: `Rent growth (${rentVal}) outpacing wages (${wageVal}) — sustainability concern`, severity: 'medium' });
     }

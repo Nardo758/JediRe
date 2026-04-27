@@ -1308,7 +1308,7 @@ export function PlanDocument({ plan, dealId }: { plan: InvestmentPlan | null | u
 
 function parseNumeric(s: string): number | null {
   if (!s) return null;
-  const cleaned = s.replace(/[^0-9.\-]/g, '');
+  const cleaned = s.replace(/[^0-9.-]/g, '');
   const n = parseFloat(cleaned);
   return isNaN(n) ? null : n;
 }

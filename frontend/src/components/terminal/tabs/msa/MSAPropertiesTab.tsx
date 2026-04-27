@@ -163,7 +163,7 @@ export const MSAPropertiesTab: React.FC<MSAPropertiesTabProps> = ({ msaId, msa, 
 
   // Filter and sort
   const filteredProperties = useMemo(() => {
-    let result = allProperties.filter(p => {
+    const result = allProperties.filter(p => {
       if (searchQuery && !p.property.toLowerCase().includes(searchQuery.toLowerCase()) && 
           !p.address.toLowerCase().includes(searchQuery.toLowerCase())) return false;
       if (submarketFilter !== 'All' && p.submarket !== submarketFilter) return false;

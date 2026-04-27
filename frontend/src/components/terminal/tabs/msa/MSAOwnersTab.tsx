@@ -186,7 +186,7 @@ export const MSAOwnersTab: React.FC<MSAOwnersTabProps> = ({ msaId, msa, onSelect
 
   // Filter and sort owners
   const filteredOwners = useMemo(() => {
-    let result = MOCK_OWNERS.filter(o => {
+    const result = MOCK_OWNERS.filter(o => {
       if (ownerTypeFilter !== 'All' && o.type !== ownerTypeFilter) return false;
       if (signalFilter !== 'All' && o.signal !== signalFilter) return false;
       return true;

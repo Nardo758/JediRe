@@ -136,7 +136,7 @@ export const DebtCycleChart: React.FC<DebtCycleChartProps> = ({
   const priorCycleFed = data.map(d => d.fedFunds + 0.5 + Math.sin(d.q * 0.2) * 0.3);
   const priorLine = linePath(priorCycleFed);
 
-  let phaseRects: Array<{ start: number; end: number; phase: string }> = [];
+  const phaseRects: Array<{ start: number; end: number; phase: string }> = [];
   let curPhase = data[0].phase;
   let curStart = 1;
   for (let i = 1; i < data.length; i++) {

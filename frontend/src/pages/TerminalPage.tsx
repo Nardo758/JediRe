@@ -781,7 +781,7 @@ export default function TerminalPage() {
         setCreditStatus({ remaining: d.creditsRemaining ?? 0, total: d.creditsIncludedMonthly ?? 100, tier: d.tier || 'scout' });
       }
     }).catch(() => {});
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── FRED macro ticker — poll every 60 seconds ──────────────
   useEffect(() => {
@@ -989,7 +989,7 @@ export default function TerminalPage() {
       }
       setPortfolioLoaded(true);
     }).finally(() => setPortfolioLoading(false));
-  }, [fkey, portfolioLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [fkey, portfolioLoaded]);
 
   useEffect(() => {
     apiClient.get("/api/v1/emails", { params:{ folder:"inbox", limit:15 } })

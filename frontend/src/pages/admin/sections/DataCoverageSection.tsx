@@ -20,6 +20,9 @@ export function DataCoverageSection() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Neural network context awareness
+  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'market_dashboard' });
+
   const load = async () => {
     setLoading(true);
     setError(null);
@@ -39,9 +42,6 @@ export function DataCoverageSection() {
     d ? new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'Never';
 
   const statusColor = (s: string) => {
-  // Neural network context awareness
-  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'market_dashboard' });
-
     switch (s) {
       case 'active': return BT.text.green;
       case 'pending': return BT.text.amber;

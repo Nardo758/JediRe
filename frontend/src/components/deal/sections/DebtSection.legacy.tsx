@@ -565,11 +565,7 @@ export const DebtSection: React.FC<DebtSectionProps> = ({
         <div className="flex items-center justify-center">
           <div className="text-center">
             <div className="text-sm text-gray-500 uppercase mb-2">Debt Service Coverage Ratio</div>
-            <div className={`text-6xl font-bold ${
-              1.42 >= 1.4 ? 'text-green-600' :
-              1.42 >= 1.25 ? 'text-yellow-600' :
-              'text-red-600'
-            }`}>
+            <div className="text-6xl font-bold text-green-600">
               1.42x
             </div>
             <div className="mt-4 px-4 py-2 bg-green-100 text-green-700 rounded-lg text-sm font-medium">

@@ -78,15 +78,15 @@ export function ModuleLibraryDetailPage() {
       loadFiles();
       loadLearningStatus();
 
-      function poll() {
+      const poll = () => {
         if (document.visibilityState === 'hidden') return;
         loadFiles();
         loadLearningStatus();
-      }
+      };
 
-      function handleVisibilityChange() {
+      const handleVisibilityChange = () => {
         if (document.visibilityState === 'visible') { loadFiles(); loadLearningStatus(); }
-      }
+      };
 
       const interval = setInterval(poll, 3000);
       document.addEventListener('visibilitychange', handleVisibilityChange);

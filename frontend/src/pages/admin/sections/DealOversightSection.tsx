@@ -19,6 +19,9 @@ export function DealOversightSection() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Neural network context awareness
+  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'comp_analysis' });
+
   const load = async () => {
     setLoading(true);
     setError(null);
@@ -38,9 +41,6 @@ export function DealOversightSection() {
     new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 
   const statusColor = (s: string) => {
-  // Neural network context awareness
-  const { analysis: ctxAnalysis, loading: ctxLoading } = useAutoContextAnalysis({ context: 'comp_analysis' });
-
     switch (s) {
       case 'active': return BT.text.green;
       case 'closed': return BT.text.cyan;

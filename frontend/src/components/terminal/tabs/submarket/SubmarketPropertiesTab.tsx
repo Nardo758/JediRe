@@ -27,11 +27,11 @@ interface PropertyApiRow {
 }
 
 const parsePct = (s: string): number => {
-  const n = parseFloat((s || '').replace(/[^0-9.\-]/g, ''));
+  const n = parseFloat((s || '').replace(/[^0-9.-]/g, ''));
   return Number.isFinite(n) ? n : 0;
 };
 const parseCurrency = (s: string): number => {
-  const n = parseFloat((s || '').replace(/[^0-9.\-]/g, ''));
+  const n = parseFloat((s || '').replace(/[^0-9.-]/g, ''));
   return Number.isFinite(n) ? n : 0;
 };
 const classFromVintage = (year: number): 'A' | 'B' | 'C' => {

@@ -49,14 +49,14 @@ export const EventLog: React.FC<EventLogProps> = ({ dealId, tradeAreaId, autoRef
     loadEvents();
     
     if (autoRefresh) {
-      function poll() {
+      const poll = () => {
         if (document.visibilityState === 'hidden') return;
         loadEvents();
-      }
+      };
 
-      function handleVisibilityChange() {
+      const handleVisibilityChange = () => {
         if (document.visibilityState === 'visible') loadEvents();
-      }
+      };
 
       const interval = setInterval(poll, 30000);
       document.addEventListener('visibilitychange', handleVisibilityChange);

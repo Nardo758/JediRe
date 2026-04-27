@@ -536,7 +536,7 @@ export function ProjectionsTab({
       const blob    = await resp.blob();
       const blobUrl = URL.createObjectURL(blob);
       const a       = document.createElement('a');
-      const safeName = financials.dealName.replace(/[^a-zA-Z0-9_\-]/g, '_').slice(0, 60);
+      const safeName = financials.dealName.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 60);
       a.href         = blobUrl;
       a.download     = `${safeName}_ProForma_${holdYears}yr.xlsx`;
       document.body.appendChild(a);

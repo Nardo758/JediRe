@@ -79,7 +79,7 @@ export const BuildingGeneratorPanel: React.FC<BuildingGeneratorPanelProps> = ({
     const halfSide = side / 2;
 
     switch (params.template) {
-      case 'podium-tower':
+      case 'podium-tower': {
         // Parking podium (full footprint)
         sections.push({
           id: `parking-podium-${Date.now()}`,
@@ -122,8 +122,9 @@ export const BuildingGeneratorPanel: React.FC<BuildingGeneratorPanelProps> = ({
           visible: true,
         });
         break;
+      }
 
-      case 'courtyard':
+      case 'courtyard': {
         // Single building with courtyard cutout
         const courtyardSize = side * 0.3;
         const courtyardHalf = courtyardSize / 2;
@@ -154,8 +155,9 @@ export const BuildingGeneratorPanel: React.FC<BuildingGeneratorPanelProps> = ({
           visible: true,
         });
         break;
+      }
 
-      case 'l-shape':
+      case 'l-shape': {
         // L-shaped building (two wings)
         const wingWidth = side * 0.4;
         const wingLength = side * 0.8;
@@ -200,8 +202,9 @@ export const BuildingGeneratorPanel: React.FC<BuildingGeneratorPanelProps> = ({
           visible: true,
         });
         break;
+      }
 
-      case 'linear':
+      case 'linear': {
         // Simple linear bar building
         const linearWidth = side * 0.5;
         const linearLength = side * 1.6;
@@ -225,6 +228,7 @@ export const BuildingGeneratorPanel: React.FC<BuildingGeneratorPanelProps> = ({
           visible: true,
         });
         break;
+      }
     }
 
     onGenerate(sections);
