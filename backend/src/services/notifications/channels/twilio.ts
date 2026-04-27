@@ -168,6 +168,7 @@ const VERB_ALIASES: Record<string, string> = {
   approve: 'approve',
   dismiss: 'dismiss',
   rerun: 'rerun',
+  rerun_agent: 'rerun_agent',
   acknowledge: 'acknowledge',
   ack: 'acknowledge',
 };

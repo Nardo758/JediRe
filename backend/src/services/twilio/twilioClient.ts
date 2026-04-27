@@ -21,6 +21,20 @@ export interface TwilioRestClient {
       mediaUrl?: string[];
     }): Promise<{ sid: string; status: string }>;
   };
+  /**
+   * Conversations REST surface — used by the chat reply path
+   * (messageRouter.sendTwilioReply) to post into an existing Twilio
+   * Conversation. We model only the call shape we use.
+   */
+  conversations: {
+    v1: {
+      conversations(sid: string): {
+        messages: {
+          create(opts: { body: string }): Promise<{ sid: string }>;
+        };
+      };
+    };
+  };
 }
 
 type TwilioFactory = (sid: string, token: string) => TwilioRestClient;

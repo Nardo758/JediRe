@@ -135,7 +135,7 @@ export class MessageRouter {
   private async sendTwilioReply(to: string, conversationSid: string, text: string): Promise<void> {
     try {
       const { getTwilioClient, getTwilioFromPhoneNumber } = await import('../twilio/twilioClient');
-      const client = await getTwilioClient() as any;
+      const client = await getTwilioClient();
       const fromNumber = await getTwilioFromPhoneNumber();
 
       if (conversationSid) {
