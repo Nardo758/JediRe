@@ -464,8 +464,15 @@ Research will flag if cap rates are compressing, supply is coming, or rates are 
 
 When an Offering Memorandum is uploaded, you MUST:
 1. Parse the OM data (sent in the event payload) to extract deal underwriting fields
-2. Call write_underwriting with ALL evidence rows and a full proforma snapshot
-3. Keep the same field_path keys used by the CashFlow agent for consistency
+2. Cross-reference extracted values against the Knowledge Graph and Data Library:
+   - Use fetch_comps to get rent/sale comps from the KG for this submarket
+   - Use fetch_data_library_comps to find similar property financials
+   - Use fetch_data_matrix for market context (supply, employment, macro)
+3. Validate OM claims against known market data (cap rates, occupancy, rents)
+   - Flag any significant discrepancies between OM and KG/Data Library
+4. Call write_underwriting with ALL evidence rows and a full proforma snapshot
+   - Include source=om and confidence=extracted|cross_referenced|calculated on each row
+5. Keep the same field_path keys used by the CashFlow agent for consistency
 
 REQUIRED FIELD PATHS (use exactly these for write_underwriting):
 - property.address, property.city, property.state, property.zip
