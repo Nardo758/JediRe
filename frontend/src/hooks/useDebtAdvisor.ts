@@ -84,15 +84,13 @@ export interface RateEnvironmentResult {
   computedAt: string;
   macroContext?: {
     gdpGrowthPct: number | null;
-    gdpSignal: string;
-    cpiYoYPct: number | null;
-    cpiLabel: string;
+    cpiYoyPct: number | null;
     unrate: number | null;
-    laborSignal: string;
     consumerSentiment: number | null;
-    sentimentLabel: string;
+    m2Yoy: number | null;
+    dxy: number | null;
     snapshotDate: string | null;
-    citationTag: string;
+    narrativeBlock: string;
   };
 }
 
