@@ -228,8 +228,9 @@ function createMeteringFn(config: AgentConfig): CreateMessageFn {
           let parsed: unknown;
           try {
             parsed = JSON.parse(tc.function.arguments);
-          } catch {
-            parsed = tc.function.arguments;
+          } catch (e: any) {
+            logger.warn(`[AgentRuntime] Bad DeepSeek tool_arguments for ${tc.function.name}: ${tc.function.arguments?.slice(0, 100)}`);
+            parsed = {};
           }
           content.push({
             type: 'tool_use',
@@ -678,7 +679,20 @@ export class AgentRuntime {
       );
     }
 
-    const input = tool.inputSchema.parse(toolUse.input);
+    // Parse input — if Zod schema validation fails, return error to model so it retries
+    let input: unknown;
+    try {
+      input = tool.inputSchema.parse(toolUse.input);
+    } catch (parseErr: any) {
+      const msg = parseErr instanceof Error ? parseErr.message : String(parseErr);
+      logger.warn('AgentRuntime: tool input validation failed', { tool: tool.name, err: msg });
+      return {
+        type: 'tool_result',
+        tool_use_id: toolUse.id,
+        content: JSON.stringify({ error: `Invalid input: ${msg}` }),
+        is_error: true,
+      } as const;
+    }
 
     // Log tool call
     await this.persistStep({
