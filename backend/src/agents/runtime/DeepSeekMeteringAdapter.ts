@@ -205,6 +205,17 @@ export class DeepSeekMeteringAdapter {
       // DeepSeek accepts response_format + tools simultaneously.
       if (apiParams.response_format?.type === 'json_object') {
         body.response_format = apiParams.response_format;
+        // DeepSeek requires the word 'json' somewhere in the prompt when
+        // response_format: json_object is set. Inject a reminder if missing.
+        const allText = (apiParams.messages ?? [])
+          .map(m => typeof m.content === 'string' ? m.content : '')
+          .join(' ');
+        if (!/\bjson\b/i.test(allText)) {
+          (body.messages as Array<Record<string, unknown>>).unshift({
+            role: 'system',
+            content: 'You must respond with valid JSON. Your final output must be a single JSON object with no prose before or after it.',
+          });
+        }
       }
 
       const resp = await axios.post(

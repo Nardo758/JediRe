@@ -322,6 +322,8 @@ If fetch_disposition_learnings shows avg IRR variance of -150bps:
   4. Document: "Exit calibration applied based on N similar exits"
 
 ## Output Requirements
+Respond only with a single JSON object containing these fields. Your final output must be parseable JSON with no prose before or after it.
+
 Return a complete UnderwritingOutput with:
   • proforma_fields: map of field_path → { value, source, evidence, archive_percentile? }
   • collision_summary: { minor_count, material_count, severe_count }
