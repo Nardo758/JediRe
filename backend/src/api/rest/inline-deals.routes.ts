@@ -9,6 +9,11 @@ import { validate, createDealSchema, updateDealSchema } from './validation';
 import { autoDiscoverComps } from '../../services/comp-set-discovery.service';
 import { processDocument, processDealDocuments } from '../../services/document-extraction/extraction-pipeline';
 import { computeAndPersistTrafficSnapshot } from '../../services/traffic-analytics.service';
+import { cashflowRuntime } from '../../agents/cashflow.config';
+import { researchRuntime } from '../../agents/research.config';
+import { supplyRuntime } from '../../agents/supply.config';
+import { commentaryRuntime } from '../../agents/commentary.config';
+import { logger } from '../../utils/logger';
 
 const router = Router();
 const pool = getPool();
@@ -1098,11 +1103,42 @@ router.post('/:dealId/analysis/trigger', requireAuth, async (req: AuthenticatedR
       });
     }
     
-    // For now, return success without actually running analysis
-    // TODO: Implement actual strategy analysis engine
+    // Fire the full underwriting pipeline asynchronously
+    // Research → Supply → CashFlow → Commentary
+    setImmediate(async () => {
+      try {
+        const deal = await client.query(`SELECT * FROM deals WHERE id = $1`, [dealId]);
+        if (deal.rows.length === 0) return;
+
+        const ctxBase = { dealId, userId: req.user!.userId, triggeredBy: 'user' as const };
+
+        logger.info(`[Pipeline] Starting underwrite for ${dealId}`);
+
+        // Step 1: Research agent — market context
+        const researchResult = await researchRuntime.run(dealId, ctxBase);
+        logger.info(`[Pipeline] Research complete for ${dealId}`);
+
+        // Step 2: Supply agent — supply pipeline
+        const supplyResult = await supplyRuntime.run(dealId, ctxBase);
+        logger.info(`[Pipeline] Supply complete for ${dealId}`);
+
+        // Step 3: CashFlow agent — pro forma + underwriting
+        const cashflowResult = await cashflowRuntime.run(dealId, ctxBase);
+        logger.info(`[Pipeline] CashFlow complete for ${dealId}`);
+
+        // Step 4: Commentary agent — narrative summary
+        const commentaryResult = await commentaryRuntime.run(dealId, ctxBase);
+        logger.info(`[Pipeline] Commentary complete for ${dealId}`);
+
+        logger.info(`[Pipeline] Underwrite complete for ${dealId}`);
+      } catch (err: any) {
+        logger.error(`[Pipeline] Underwrite failed for ${dealId}:`, err.message);
+      }
+    });
+
     res.json({
       success: true,
-      message: 'Analysis queued. Check /analysis/latest for results.',
+      message: 'Underwriting pipeline triggered. Agents: Research → Supply → CashFlow → Commentary.',
       dealId
     });
   } catch (error: any) {
