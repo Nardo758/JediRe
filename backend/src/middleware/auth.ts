@@ -28,6 +28,12 @@ export async function requireAuth(
   res: Response,
   next: NextFunction
 ): Promise<void> {
+  // Allow API key auth on any route that requires auth
+  const apiKey = req.headers['x-api-key'] as string;
+  if (apiKey) {
+    return requireApiKey(req, res, next);
+  }
+
   const token = extractTokenFromHeader(req.headers.authorization);
 
   if (!token) {
