@@ -24,7 +24,23 @@ export type AgentId =
 export type ModelName =
   | 'claude-opus-4-5'
   | 'claude-sonnet-4-5'
-  | 'claude-haiku-4-5-20251001';
+  | 'claude-haiku-4-5-20251001'
+  | 'deepseek-chat'
+  | 'deepseek-reasoner';
+
+/**
+ * The LLM provider that services a model name.
+ * Determined by model name prefix.
+ */
+export type LlmProvider = 'anthropic' | 'deepseek' | 'openai';
+
+export function detectProvider(modelName: string): LlmProvider {
+  if (modelName.startsWith('claude-')) return 'anthropic';
+  if (modelName.startsWith('deepseek')) return 'deepseek';
+  if (modelName.startsWith('gpt') || modelName.startsWith('o')) return 'openai';
+  // default: treat unknown model names as anthropic for back-compat
+  return 'anthropic';
+}
 
 // ── Budget enforcement ────────────────────────────────────────────────────────
 
@@ -89,6 +105,8 @@ export interface AgentConfig {
    *  Supports wildcard: 'read:all' grants any 'read:*' capability.
    */
   capabilities: string[];
+  /** Override the LLM provider for this agent (default: auto-detected from modelName) */
+  provider?: LlmProvider;
 }
 
 // ── Run tracking ──────────────────────────────────────────────────────────────

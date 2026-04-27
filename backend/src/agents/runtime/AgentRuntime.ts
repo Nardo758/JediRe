@@ -19,8 +19,10 @@ import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { BudgetEnforcer } from './BudgetEnforcer';
 import { MeteringAdapter, dealRunStartLimiter } from './MeteringAdapter';
+import { DeepSeekMeteringAdapter } from './DeepSeekMeteringAdapter';
 import {
   BudgetExceededError,
+  detectProvider,
   type AgentConfig,
   type RunContext,
   type LoopResult,
@@ -91,12 +93,107 @@ function hasCapability(agentCapabilities: string[], required: string): boolean {
 
 // ── AgentRuntime ──────────────────────────────────────────────────
 
+/** Response shape shared by both adapters. */
+interface AdapterResponse {
+  id: string;
+  model: string;
+  content: Array<{ type: string; text?: string; id?: string; name?: string; input?: unknown }>;
+  stop_reason: string | null;
+  usage: { input_tokens: number; output_tokens: number; cost_usd: number };
+}
+
+/**
+ * Unified createMessage interface: both MeteringAdapter (Anthropic) and
+ * DeepSeekMeteringAdapter implement this signature.
+ */
+type CreateMessageFn = (params: {
+  model: string;
+  system: string;
+  messages: unknown[];
+  tools?: unknown[];
+  max_tokens: number;
+  metadata: { actor_type: string; actor_id: string; agent_run_id: string; deal_id?: string; user_id?: string; triggered_by: string };
+}) => Promise<AdapterResponse>;
+
+/**
+ * Build the right createMessage function for the agent's configured model.
+ */
+function createMeteringFn(config: AgentConfig): CreateMessageFn {
+  const provider = config.provider ?? detectProvider(config.modelName);
+
+  if (provider === 'deepseek') {
+    const ds = new DeepSeekMeteringAdapter();
+    return async (params) => {
+      // Convert Anthropic-style messages to DeepSeek format
+      const msgs = params.messages as Array<{ role: string; content: string | unknown[] }>;
+      const dsMessages: Array<{ role: string; content: string }> = [];
+      if (params.system) {
+        dsMessages.push({ role: 'system', content: params.system });
+      }
+      for (const m of msgs) {
+        dsMessages.push({
+          role: m.role,
+          content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+        });
+      }
+      const resp = await ds.createMessage({
+        model: params.model,
+        messages: dsMessages,
+        max_tokens: params.max_tokens,
+        metadata: {
+          actor_type: params.metadata.actor_type as any,
+          actor_id: params.metadata.actor_id,
+          agent_run_id: params.metadata.agent_run_id,
+          deal_id: params.metadata.deal_id,
+          user_id: params.metadata.user_id,
+          triggered_by: params.metadata.triggered_by as any,
+        },
+      });
+      return {
+        id: resp.id,
+        model: resp.model,
+        content: [{ type: 'text', text: resp.text }],
+        stop_reason: resp.finish_reason,
+        usage: {
+          input_tokens: resp.usage.prompt_tokens,
+          output_tokens: resp.usage.completion_tokens,
+          cost_usd: resp.usage.cost_usd,
+        },
+      };
+    };
+  }
+
+  // Default: Anthropic MeteringAdapter
+  const adapter = new MeteringAdapter();
+  return async (params) => {
+    const resp = await adapter.createMessage({
+      model: params.model,
+      system: params.system,
+      messages: params.messages as Anthropic.MessageParam[],
+      tools: params.tools as Anthropic.Tool[],
+      max_tokens: params.max_tokens,
+      metadata: params.metadata as any,
+    });
+    return {
+      id: resp.id,
+      model: resp.model,
+      content: resp.content,
+      stop_reason: resp.stop_reason,
+      usage: resp.usage,
+    };
+  };
+}
+
 export class AgentRuntime {
+  private meteringFn: CreateMessageFn;
+
   constructor(
     private config: AgentConfig,
-    private metering: MeteringAdapter,
+    private metering: any,
     private budget: BudgetEnforcer
-  ) {}
+  ) {
+    this.meteringFn = createMeteringFn(config);
+  }
 
   /**
    * Start an agent run asynchronously.
@@ -388,7 +485,7 @@ export class AgentRuntime {
       await this.budget.checkRunCap(run.id, totalCost, this.config.budgetCaps);
 
       // Call Claude via metering adapter
-      const response = await this.metering.createMessage({
+      const response: AdapterResponse = await this.meteringFn({
         model: this.config.modelName,
         system: systemPrompt,
         messages,

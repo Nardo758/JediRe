@@ -63,6 +63,16 @@ function preflightEstimate(model: string): number {
 
 // ── Public types ──────────────────────────────────────────────────
 
+/** Adapter-compatible message params matching MeteringAdapter.MessageParams signature. */
+export interface AnthropicCompatibleParams {
+  model: string;
+  system: string;
+  messages: Array<{ role: string; content: string | unknown[] }>;
+  tools?: Array<{ name: string; description: string; input_schema: unknown }>;
+  max_tokens: number;
+  metadata: MeteringMetadata;
+}
+
 export interface DeepSeekMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
@@ -343,6 +353,56 @@ export class DeepSeekMeteringAdapter {
         err,
       });
     }
+  }
+  /**
+   * Anthropic-compatible createMessage — same signature as MeteringAdapter.createMessage.
+   * This lets AgentRuntime use DeepSeek without changing its code.
+   * Converts Anthropic-style messages to DeepSeek/OpenAI format and back.
+   */
+  async createAnthropicCompatibleMessage(
+    params: AnthropicCompatibleParams
+  ): Promise<{
+    id: string;
+    model: string;
+    content: Array<{ type: string; text?: string; id?: string; name?: string; input?: unknown }>;
+    stop_reason: string | null;
+    usage: { input_tokens: number; output_tokens: number; cost_usd: number };
+  }> {
+    // Convert Anthropic messages to DeepSeek format
+    const dsMessages: DeepSeekMessage[] = [];
+
+    if (params.system) {
+      dsMessages.push({ role: 'system', content: params.system });
+    }
+
+    for (const msg of params.messages) {
+      if (typeof msg.content === 'string') {
+        dsMessages.push({ role: msg.role as DeepSeekMessage['role'], content: msg.content });
+      } else if (Array.isArray(msg.content)) {
+        dsMessages.push({ role: msg.role as DeepSeekMessage['role'], content: JSON.stringify(msg.content) });
+      } else {
+        dsMessages.push({ role: msg.role as DeepSeekMessage['role'], content: String(msg.content ?? '') });
+      }
+    }
+
+    const resp = await this.createMessage({
+      model: params.model,
+      messages: dsMessages,
+      max_tokens: params.max_tokens,
+      metadata: params.metadata,
+    });
+
+    return {
+      id: resp.id,
+      model: resp.model,
+      content: [{ type: 'text', text: resp.text }],
+      stop_reason: resp.finish_reason,
+      usage: {
+        input_tokens: resp.usage.prompt_tokens,
+        output_tokens: resp.usage.completion_tokens,
+        cost_usd: resp.usage.cost_usd,
+      },
+    };
   }
 }
 

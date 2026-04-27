@@ -15,7 +15,7 @@
 
 import { z } from 'zod';
 import { AgentRuntime } from './runtime/AgentRuntime';
-import { MeteringAdapter } from './runtime/MeteringAdapter';
+import { DeepSeekMeteringAdapter } from './runtime/DeepSeekMeteringAdapter';
 import { BudgetEnforcer } from './runtime/BudgetEnforcer';
 import { DEFAULT_BUDGET_CAPS } from './config/budget';
 import type { AgentConfig } from './runtime/types';
@@ -88,7 +88,7 @@ export const RESEARCH_AGENT_CONFIG: AgentConfig = {
   ],
   outputSchema: ResearchOutputSchema,
   budgetCaps: DEFAULT_BUDGET_CAPS.research,
-  modelName: 'claude-haiku-4-5-20251001',
+  modelName: 'deepseek-chat',
   capabilities: ['read:all', 'write:deal_context', 'web:search'],
 };
 
@@ -96,6 +96,6 @@ export const RESEARCH_AGENT_CONFIG: AgentConfig = {
 
 export const researchRuntime = new AgentRuntime(
   RESEARCH_AGENT_CONFIG,
-  new MeteringAdapter(),
+  new DeepSeekMeteringAdapter(),
   new BudgetEnforcer()
 );
