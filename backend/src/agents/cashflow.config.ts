@@ -220,6 +220,7 @@ export const CASHFLOW_AGENT_CONFIG: AgentConfig = {
   agentId: 'cashflow',
   agentVersion: '3.2.0',
   promptVersion: 'cashflow-v6-core',
+  postProcess: cashflowPostProcess,
   tools: [
     // Tier 1: Deal documents
     fetchT12Tool,

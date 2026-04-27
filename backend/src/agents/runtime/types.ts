@@ -107,6 +107,15 @@ export interface AgentConfig {
   capabilities: string[];
   /** Override the LLM provider for this agent (default: auto-detected from modelName) */
   provider?: LlmProvider;
+  /**
+   * Optional post-processing hook: runs after the model's final response but before
+   * output schema validation. Receives the raw model output and the run context,
+   * should return a (possibly enriched) object that matches the outputSchema.
+   * Use for agents whose data is persisted via tool calls (e.g. Cashflow writes
+   * proforma_fields via write_underwriting) so the runtime can aggregate results
+   * from DB instead of requiring the model to echo back its own tool history.
+   */
+  postProcess?: (rawOutput: unknown, ctx: RunContext, runId: string) => Promise<Record<string, unknown>>;
 }
 
 // ── Run tracking ──────────────────────────────────────────────────────────────
