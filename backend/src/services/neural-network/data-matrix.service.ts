@@ -651,10 +651,10 @@ export class DataMatrixService {
       const result = await this.pool.query(`
         SELECT 
           COUNT(*) as count,
-          AVG(going_in_cap_rate) as avg_cap_rate,
-          AVG(expense_ratio) as avg_expense_ratio,
-          AVG(avg_rent_psf) as avg_rent_psf,
-          AVG(year_1_rent_growth) as avg_rent_growth
+          AVG(actual_exit_cap) as avg_actual_exit_cap,
+          AVG(projected_exit_cap) as avg_projected_exit_cap,
+          AVG(actual_irr) as avg_actual_irr,
+          AVG(EXTRACT(YEAR FROM disposition_date) - EXTRACT(YEAR FROM acquisition_date)) as avg_hold_years
         FROM archive_deals
         WHERE asset_class = $1 OR $1 IS NULL
       `, [deal.assetClass]);
@@ -663,11 +663,9 @@ export class DataMatrixService {
         const row = result.rows[0];
         context.benchmarks = {
           similarDealsCount: parseInt(row.count),
-          avgCapRate: row.avg_cap_rate ? parseFloat(row.avg_cap_rate) : 0,
-          avgExpenseRatio: row.avg_expense_ratio ? parseFloat(row.avg_expense_ratio) : 0,
-          avgRentPsf: row.avg_rent_psf ? parseFloat(row.avg_rent_psf) : 0,
-          avgRentGrowthYear1: row.avg_rent_growth ? parseFloat(row.avg_rent_growth) : 0,
-          avgHoldPeriod: 5,
+          avgCapRate: row.avg_projected_exit_cap ? parseFloat(row.avg_projected_exit_cap) : row.avg_actual_exit_cap ? parseFloat(row.avg_actual_exit_cap) : 0,
+          avgIrr: row.avg_actual_irr ? parseFloat(row.avg_actual_irr) : 0,
+          avgHoldPeriod: row.avg_hold_years ? parseInt(row.avg_hold_years) : 5,
           source: 'archive_deals'
         };
       }

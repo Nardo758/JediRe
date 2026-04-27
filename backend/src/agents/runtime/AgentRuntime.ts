@@ -177,11 +177,10 @@ function createMeteringFn(config: AgentConfig): CreateMessageFn {
         },
       };
 
+      // Always request JSON output — DeepSeek accepts tools + response_format together.
+      dsParams.response_format = { type: 'json_object' };
       if (dsTools && dsTools.length > 0) {
         dsParams.tools = dsTools;
-      } else {
-        // No tools: request structured JSON output
-        dsParams.response_format = { type: 'json_object' };
       }
 
       const resp = await ds.createMessage(dsParams);

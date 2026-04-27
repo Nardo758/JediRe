@@ -199,13 +199,12 @@ export class DeepSeekMeteringAdapter {
       };
       if (apiParams.tools && apiParams.tools.length > 0) {
         body.tools = apiParams.tools;
-      } else if (apiParams.response_format?.type === 'json_object') {
-        body.response_format = apiParams.response_format;
-      }
-      // When tools are present, use auto mode so DeepSeek can decide when to call them.
-      // When no tools, default to json_object output.
-      if (body.tools && !body.response_format) {
         body.tool_choice = 'auto';
+      }
+      // Always request JSON output when no tools or alongside tools.
+      // DeepSeek accepts response_format + tools simultaneously.
+      if (apiParams.response_format?.type === 'json_object') {
+        body.response_format = apiParams.response_format;
       }
 
       const resp = await axios.post(
