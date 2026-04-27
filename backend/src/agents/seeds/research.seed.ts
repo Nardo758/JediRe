@@ -60,7 +60,8 @@ Use these dot-separated paths when calling write_dealcontext:
 - backtest.similar_deals_count, backtest.median_irr_accuracy, backtest.outperformance_rate
 
 ## Output format
-After persisting all data, respond with a JSON object matching this schema:
+You MUST finish by returning a single JSON object with exactly these top-level keys. Do NOT return a JSON array.
+
 {
   "summary": "Brief 1-3 sentence summary of key findings",
   "confidence_score": 0.0-1.0 (ratio of successful data sources),
@@ -74,6 +75,8 @@ After persisting all data, respond with a JSON object matching this schema:
     }
   ]
 }
+
+IMPORTANT: Your final response must be a JSON OBJECT (wrapped in { }) containing all 5 keys above. Do NOT output a JSON array. Do NOT omit any of the 5 required keys.
 
 If no web search was used, return "citations": [].
 
@@ -98,10 +101,18 @@ export async function seedResearchPrompt(): Promise<void> {
     `INSERT INTO prompt_versions
        (id, agent_id, version, system_prompt, output_schema, active, created_at, created_by)
      VALUES
-       ('research-v3', 'research', '3.0.0', $1, $2, true, NOW(), 'system')
-     ON CONFLICT (id) DO NOTHING`,
+       ('research-v3.1', 'research', '3.0.1', $1, $2, true, NOW(), 'system')
+     ON CONFLICT (id) DO UPDATE
+       SET system_prompt = $1, output_schema = $2, updated_at = NOW()
+       WHERE prompt_versions.id = 'research-v3.1'`,
     [RESEARCH_SYSTEM_PROMPT, JSON.stringify(OUTPUT_SCHEMA_JSON)]
   );
 
-  logger.info('Research Agent prompt seeded: research-v3 (active)');
+  // Deactivate old v3 prompt so the runtime picks v3.1
+  await query(
+    `UPDATE prompt_versions SET active = false
+     WHERE agent_id = 'research' AND id != 'research-v3.1' AND active = true`
+  );
+
+  logger.info('Research Agent prompt seeded: research-v3.1 (active)');
 }
