@@ -37,7 +37,7 @@ export async function cashflowPostProcess(
     if (!output.proforma_fields || Object.keys(output.proforma_fields as Record<string, unknown>).length === 0) {
       const rows = await query(
         `SELECT payload
-         FROM agent_steps
+         FROM agent_run_steps
          WHERE agent_run_id = $1 AND step_type = 'tool_call' AND tool_name = 'write_underwriting'
          ORDER BY step_index ASC`,
         [runId]
@@ -73,7 +73,7 @@ export async function cashflowPostProcess(
     if (!output.collision_summary) {
       const collRows = await query(
         `SELECT payload
-         FROM agent_steps
+         FROM agent_run_steps
          WHERE agent_run_id = $1 AND step_type = 'tool_call' AND tool_name = 'detect_collision'
          ORDER BY step_index ASC`,
         [runId]
@@ -95,7 +95,7 @@ export async function cashflowPostProcess(
     if (!output.confidence_distribution) {
       const confRows = await query(
         `SELECT payload
-         FROM agent_steps
+         FROM agent_run_steps
          WHERE agent_run_id = $1 AND step_type = 'tool_call'
            AND tool_name = 'write_underwriting'
          ORDER BY step_index ASC`,
@@ -117,7 +117,7 @@ export async function cashflowPostProcess(
     if (!output.tier_distribution) {
       const tierRows = await query(
         `SELECT payload
-         FROM agent_steps
+         FROM agent_run_steps
          WHERE agent_run_id = $1 AND step_type = 'tool_call'
            AND tool_name = 'write_underwriting'
          ORDER BY step_index ASC`,
