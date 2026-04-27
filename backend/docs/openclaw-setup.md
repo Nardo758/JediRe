@@ -126,15 +126,18 @@ TWILIO_WEBHOOK_BASE_URL=https://api.jedire.com
 
 ## 6. v1 action vocabulary
 
-| Verb       | Telegram button text | Twilio reply pattern    | Effect (v1)                   |
-| ---------- | -------------------- | ----------------------- | ----------------------------- |
-| `approve`  | "Approve"            | `approve <resourceId>`  | Logs approval (TODO: wire to underwriting commit). |
-| `dismiss`  | "Dismiss"            | `dismiss [<resourceId>]`| Marks notification dismissed. |
-| `rerun`    | "Re-run analysis"    | `rerun <resourceId>`    | Logs a rerun request (TODO: wire to agent dispatcher). |
+| Verb           | Telegram button text | Twilio reply pattern         | Effect (v1)                   |
+| -------------- | -------------------- | ---------------------------- | ----------------------------- |
+| `approve`      | "Approve"            | `approve <dealId>`           | **Audit only.** Inserts a `deal_activity` row of type `openclaw_approved` with the operator's channel + sender id. Does NOT mutate `deals.status` or advance pipeline stage — lifecycle changes must still be committed in JediRe via the deals service. |
+| `dismiss`      | "Dismiss"            | `dismiss [<dealId>]`         | Audit only. Inserts a `deal_activity` row of type `openclaw_dismissed` (idempotent — re-dismiss is a no-op). |
+| `acknowledge`  | "Acknowledge"        | `acknowledge <dealId>` / `ack <dealId>` | Audit only. Used by threshold-breach alerts so operators can record they've seen the alert without approving the underlying deal. |
+| `rerun`        | "Re-run analysis"    | `rerun <dealId>`             | Re-fires the full deal analysis pipeline (`DealAnalysisService.analyzeDeal`) for the given deal, fire-and-forget. |
+| `rerun_agent`  | "Re-run agent"       | `rerun_agent <dealId>`       | Same handler as `rerun` today — re-runs the full deal analysis. The distinct verb is reserved so we can later route to a true single-agent rerun pathway without changing the outbound notification contract. |
 
-Adding a new action is two steps: add a handler to
-`openclaw-actions.ts:dispatchAction` and (optionally) include it in
-`notification.actions` when calling the notifier.
+Adding a new action is three steps:
+1. Add a handler in `openclaw-actions.ts:dispatchAction`.
+2. Add the verb (and any aliases) to `channels/twilio.ts:VERB_ALIASES` so the SMS reply hint is parseable.
+3. (Optionally) include it in `notification.actions` when calling the notifier.
 
 ## 7. About the legacy `/api/v1/clawdbot/*` REST routes
 

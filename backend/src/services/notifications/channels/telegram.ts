@@ -86,13 +86,33 @@ class TelegramChannel implements NotificationChannel {
 
     try {
       const axios = (await import('axios')).default;
-      const resp = await axios.post(`${TELEGRAM_API}/bot${token}/sendMessage`, {
-        chat_id: chatId,
-        text,
-        parse_mode: 'Markdown',
-        disable_web_page_preview: true,
-        reply_markup: reply_markup ? JSON.stringify(reply_markup) : undefined,
-      });
+      // Try Markdown first for nicer rendering, then fall back to plain text
+      // if the Telegram API rejects the payload (typically caused by stray
+      // unbalanced `*`/`_`/`[` in dynamic body content).
+      let resp;
+      try {
+        resp = await axios.post(`${TELEGRAM_API}/bot${token}/sendMessage`, {
+          chat_id: chatId,
+          text,
+          parse_mode: 'Markdown',
+          disable_web_page_preview: true,
+          reply_markup: reply_markup ? JSON.stringify(reply_markup) : undefined,
+        });
+      } catch (mdErr: unknown) {
+        if (errHttpStatus(mdErr) === 400) {
+          logger.warn('OpenClaw telegram markdown rejected — retrying as plain text', {
+            kind: n.kind,
+          });
+          resp = await axios.post(`${TELEGRAM_API}/bot${token}/sendMessage`, {
+            chat_id: chatId,
+            text: stripMarkdown(text),
+            disable_web_page_preview: true,
+            reply_markup: reply_markup ? JSON.stringify(reply_markup) : undefined,
+          });
+        } else {
+          throw mdErr;
+        }
+      }
       const data = resp?.data as { result?: { message_id?: number | string } } | undefined;
       const messageId = data?.result?.message_id;
       const ref: MessageRef = {
@@ -117,12 +137,24 @@ class TelegramChannel implements NotificationChannel {
     const token = process.env.TELEGRAM_BOT_TOKEN!;
     try {
       const axios = (await import('axios')).default;
-      await axios.post(`${TELEGRAM_API}/bot${token}/editMessageText`, {
-        chat_id: ref.recipient,
-        message_id: Number(ref.messageId),
-        text,
-        parse_mode: 'Markdown',
-      });
+      try {
+        await axios.post(`${TELEGRAM_API}/bot${token}/editMessageText`, {
+          chat_id: ref.recipient,
+          message_id: Number(ref.messageId),
+          text,
+          parse_mode: 'Markdown',
+        });
+      } catch (mdErr: unknown) {
+        if (errHttpStatus(mdErr) === 400) {
+          await axios.post(`${TELEGRAM_API}/bot${token}/editMessageText`, {
+            chat_id: ref.recipient,
+            message_id: Number(ref.messageId),
+            text: stripMarkdown(text),
+          });
+        } else {
+          throw mdErr;
+        }
+      }
       return { ok: true };
     } catch (err: unknown) {
       const m = errMessage(err);
@@ -130,6 +162,15 @@ class TelegramChannel implements NotificationChannel {
       return { ok: false, error: m };
     }
   }
+}
+
+/**
+ * Strip Markdown control characters so unbalanced `*`/`_`/`[`/etc in
+ * dynamic body content (deal names, error messages, etc) don't make
+ * Telegram reject the message with HTTP 400 "can't parse entities".
+ */
+function stripMarkdown(s: string): string {
+  return s.replace(/[*_`\[\]()~>#+=|{}!\\-]/g, '');
 }
 
 export const telegramChannel = new TelegramChannel();
