@@ -5,7 +5,7 @@
  * completes. This removes the need for the model to echo back its own tool
  * history in the final response — the runtime reads proforma_fields,
  * collision_summary, confidence_distribution, and tier_distribution from
- * the actual agent_steps that were persisted during the run.
+ * the actual agent_run_steps that were persisted during the run.
  */
 
 import { query } from '../database/connection';
@@ -35,7 +35,7 @@ export async function cashflowPostProcess(
   try {
     // ── Aggregate proforma_fields from write_underwriting tool calls ──────────
     if (!output.proforma_fields || Object.keys(output.proforma_fields as Record<string, unknown>).length === 0) {
-      const rows = await query(
+      const { rows } = await query(
         `SELECT payload
          FROM agent_run_steps
          WHERE agent_run_id = $1 AND step_type = 'tool_call' AND tool_name = 'write_underwriting'
@@ -65,13 +65,13 @@ export async function cashflowPostProcess(
       }
       if (Object.keys(proformaFields).length > 0) {
         output.proforma_fields = proformaFields;
-        logger.info(`[CashflowPostProcess] Aggregated ${Object.keys(proformaFields).length} proforma fields from agent_steps`);
+        logger.info(`[CashflowPostProcess] Aggregated ${Object.keys(proformaFields).length} proforma fields from agent_run_steps`);
       }
     }
 
     // ── Aggregate collision_summary from detect_collision tool calls ──────────
     if (!output.collision_summary) {
-      const collRows = await query(
+      const { rows: collRows } = await query(
         `SELECT payload
          FROM agent_run_steps
          WHERE agent_run_id = $1 AND step_type = 'tool_call' AND tool_name = 'detect_collision'
@@ -91,9 +91,8 @@ export async function cashflowPostProcess(
     }
 
     // ── Aggregate confidence_distribution from write_underwriting ────────────
-    // Each write_underwriting call includes a confidence_level. Count them.
     if (!output.confidence_distribution) {
-      const confRows = await query(
+      const { rows: confRows } = await query(
         `SELECT payload
          FROM agent_run_steps
          WHERE agent_run_id = $1 AND step_type = 'tool_call'
@@ -115,7 +114,7 @@ export async function cashflowPostProcess(
 
     // ── Aggregate tier_distribution from write_underwriting ──────────────────
     if (!output.tier_distribution) {
-      const tierRows = await query(
+      const { rows: tierRows } = await query(
         `SELECT payload
          FROM agent_run_steps
          WHERE agent_run_id = $1 AND step_type = 'tool_call'
@@ -141,7 +140,10 @@ export async function cashflowPostProcess(
     if (!output.completed_at) output.completed_at = new Date().toISOString();
 
   } catch (err) {
-    logger.error('[CashflowPostProcess] Error during aggregation, falling back to raw output', { err });
+    const errInfo = err instanceof Error
+      ? { message: err.message, stack: err.stack?.split('\n').slice(0, 3).join('; ') }
+      : { raw: String(err) };
+    logger.error('[CashflowPostProcess] Error during aggregation, falling back to raw output', { errInfo });
   }
 
   return output;
