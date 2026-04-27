@@ -18,6 +18,13 @@ import { skillRegistry } from '../skills/skill-registry';
 // the skillRegistry before we try to execute them. Without this, the registry
 // could be empty depending on which routes the server entrypoint mounted.
 import '../skills/skills';
+// Real extraction pipeline (classifier + parsers + data-router → deal_data /
+// deal_capsules). The 'extract_document' skill in the registry is a thin
+// stub used for agent tool-calling discovery; for actual upload-driven
+// extraction we delegate to processDocument so OM/T12/RentRoll PDFs really
+// get parsed and routed into deal_data.broker_claims, deal_monthly_actuals,
+// rent_roll_snapshots, etc.
+import { processDocument } from './extraction-pipeline';
 
 // Map deal_files.category -> extract skill id
 function pickSkillForCategory(category: string | null | undefined): string {
@@ -98,25 +105,72 @@ export async function runExtractionForFile(opts: TriggerOptions): Promise<void> 
   }
 
   try {
-    type SkillParams = {
-      fileId: string;
-      reportType?: 'phase1' | 'phase2';
-      extractionType?: 't12' | 'rent_roll' | 'om' | 'appraisal' | 'auto';
-    };
-    const params: SkillParams = { fileId };
-    // analyze_appraisal / review_contract don't need extra args; parse_environmental_report needs reportType
-    if (skillId === 'parse_environmental_report') {
-      params.reportType = 'phase1';
-    } else if (skillId === 'extract_document') {
-      params.extractionType = 'auto';
+    let resultData: Record<string, unknown> | null = null;
+    let resultSuccess = false;
+    let resultError: string | undefined;
+
+    if (skillId === 'extract_document') {
+      // Real extraction path: classify + parse + route into deal_data /
+      // deal_capsules. The corresponding skillRegistry entry is a stub
+      // that only echoes "queued", which is why upload-driven extraction
+      // never actually populated anything before this branch existed.
+      const fileRow = await query(
+        `SELECT file_path, original_filename, mime_type
+           FROM deal_files
+          WHERE id = $1`,
+        [fileId]
+      );
+      if (fileRow.rows.length === 0) {
+        resultSuccess = false;
+        resultError = 'File row vanished before extraction';
+      } else {
+        const { file_path, original_filename, mime_type } = fileRow.rows[0] as {
+          file_path: string;
+          original_filename: string;
+          mime_type: string | null;
+        };
+        const pipelineResult = await processDocument(
+          file_path,
+          original_filename,
+          dealId,
+          userId,
+          fileId,
+          mime_type ?? mimeType ?? undefined
+        );
+        resultSuccess = pipelineResult.success;
+        resultError = pipelineResult.error;
+        resultData = {
+          documentType: pipelineResult.documentType,
+          rowsInserted: pipelineResult.rowsInserted ?? 0,
+          capsuleUpdated: pipelineResult.capsuleUpdated ?? false,
+          libraryUpdated: pipelineResult.libraryUpdated ?? false,
+          proformaSeeded: pipelineResult.proformaSeeded ?? false,
+          crossValidationVariances: pipelineResult.crossValidationVariances ?? 0,
+          alerts: pipelineResult.alerts ?? [],
+        };
+      }
+    } else {
+      // Other categories (legal/appraisals/environmental) still go through
+      // the skill registry. Those skills are currently stubs but the contract
+      // is the same — when they get real implementations they'll just work.
+      type SkillParams = {
+        fileId: string;
+        reportType?: 'phase1' | 'phase2';
+      };
+      const params: SkillParams = { fileId };
+      if (skillId === 'parse_environmental_report') {
+        params.reportType = 'phase1';
+      }
+      const result = await skillRegistry.execute(skillId, params, {
+        dealId,
+        userId,
+      });
+      resultSuccess = result.success;
+      resultError = result.error;
+      resultData = (result.data ?? null) as Record<string, unknown> | null;
     }
 
-    const result = await skillRegistry.execute(skillId, params, {
-      dealId,
-      userId,
-    });
-
-    if (result.success) {
+    if (resultSuccess) {
       await query(
         `UPDATE deal_files
             SET extraction_status = 'done',
@@ -124,7 +178,7 @@ export async function runExtractionForFile(opts: TriggerOptions): Promise<void> 
                 extraction_completed_at = NOW(),
                 extraction_error = NULL
           WHERE id = $1`,
-        [fileId, JSON.stringify(result.data ?? {})]
+        [fileId, JSON.stringify(resultData ?? {})]
       );
       logger.info('auto-extract: done', { fileId, skillId });
     } else {
@@ -134,9 +188,9 @@ export async function runExtractionForFile(opts: TriggerOptions): Promise<void> 
                 extraction_error = $2,
                 extraction_completed_at = NOW()
           WHERE id = $1`,
-        [fileId, result.error || 'Unknown extraction error']
+        [fileId, resultError || 'Unknown extraction error']
       );
-      logger.warn('auto-extract: failed', { fileId, skillId, error: result.error });
+      logger.warn('auto-extract: failed', { fileId, skillId, error: resultError });
     }
   } catch (err) {
     logger.error('auto-extract: threw', { fileId, skillId, err });

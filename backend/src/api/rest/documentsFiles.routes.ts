@@ -219,6 +219,97 @@ router.get(
 );
 
 /**
+ * POST /api/v1/deals/:dealId/files/:fileId/reextract
+ * Re-trigger auto-extraction for a file. Useful when the original
+ * extraction was skipped (e.g. file pre-dated the extraction columns) or
+ * failed for a transient reason. Resets extraction_status to 'queued'
+ * and fires the same fire-and-forget pipeline used on initial upload.
+ */
+router.post(
+  '/deals/:dealId/files/:fileId/reextract',
+  authMiddleware.requireAuth,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { dealId, fileId } = req.params;
+      const authUser = req.user as
+        | { userId?: string; id?: string }
+        | undefined;
+      const userId = authUser?.userId ?? authUser?.id ?? null;
+
+      if (!userId) {
+        return res.status(401).json({ success: false, message: 'Unauthorized' });
+      }
+
+      // Authz: caller must own the deal
+      const dealCheck = await dbQuery(
+        'SELECT id FROM deals WHERE id = $1 AND user_id = $2',
+        [dealId, userId]
+      );
+      if (dealCheck.rows.length === 0) {
+        return res.status(404).json({ success: false, message: 'Deal not found' });
+      }
+
+      // Look up the file's category + mime so we can pick the right skill
+      const fileRes = await dbQuery(
+        `SELECT id, category, mime_type
+           FROM deal_files
+          WHERE id = $1 AND deal_id = $2 AND deleted_at IS NULL`,
+        [fileId, dealId]
+      );
+      if (fileRes.rows.length === 0) {
+        return res.status(404).json({ success: false, message: 'File not found' });
+      }
+      const file = fileRes.rows[0] as {
+        id: string;
+        category: string | null;
+        mime_type: string | null;
+      };
+
+      // Atomic single-flight guard: reset state ONLY if not already running.
+      // Concurrent reextract calls would otherwise spawn duplicate parser
+      // runs (LLM cost, repeated data-router side effects, racing terminal
+      // status writes). rowCount=0 means a run is already in flight.
+      const reset = await dbQuery(
+        `UPDATE deal_files
+            SET extraction_status = 'queued',
+                extraction_skill = NULL,
+                extraction_result = NULL,
+                extraction_error = NULL,
+                extraction_started_at = NULL,
+                extraction_completed_at = NULL
+          WHERE id = $1 AND extraction_status IS DISTINCT FROM 'running'`,
+        [fileId]
+      );
+
+      if (reset.rowCount === 0) {
+        return res.status(409).json({
+          success: false,
+          message: 'Extraction is already running for this file',
+          fileId: file.id,
+        });
+      }
+
+      triggerExtractionInBackground({
+        fileId: file.id,
+        dealId,
+        userId,
+        category: file.category,
+        mimeType: file.mime_type,
+      });
+
+      res.json({
+        success: true,
+        message: 'Extraction re-triggered',
+        fileId: file.id,
+      });
+    } catch (error) {
+      logger.error('Error re-triggering extraction:', error);
+      next(error);
+    }
+  }
+);
+
+/**
  * GET /api/v1/deals/:dealId/files
  * List files with optional filters
  */
