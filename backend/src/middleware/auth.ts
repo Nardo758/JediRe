@@ -158,6 +158,14 @@ export function requireApiKey(
     };
   }
 
+  if (process.env.ROCKEMAN_API_KEY) {
+    keyIdentities[process.env.ROCKEMAN_API_KEY] = {
+      userId: 'rockeman-bot',
+      email: 'rockeman@jedire.system',
+      role: 'admin',
+    };
+  }
+
   const identity = keyIdentities[apiKey];
   if (!identity) {
     res.status(403).json({
