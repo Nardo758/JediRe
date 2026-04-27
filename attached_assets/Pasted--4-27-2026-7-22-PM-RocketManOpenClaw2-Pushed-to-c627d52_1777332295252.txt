@@ -1,0 +1,26 @@
+[4/27/2026 7:22 PM] RocketManOpenClaw2: Pushed to c627d527e. Here's what changed and what's next:
+
+What's Done (this round)
+
+• Trigger endpoint improved — now creates a pipeline run record with UPDATEd status as agents complete. Each agent wrapped in its own try/catch so if Commentary crashes, you still get Research + Supply + Cashflow results.
+• New status endpoint — GET /deals/:dealId/analysis/status lets you poll for progress. Returns succeeded, partial, or failed.
+• Task list reorganized — clear picture of what's done vs what's blocking.
+
+What's Left Before "Fully Functioning"
+
+1. Test the trigger endpoint — hit it as signed-in user, check the status endpoint works
+2. Verify output lands in the capsule — check deal_underwriting_snapshots has data, check the capsule UI reflects it
+3. Fix Cashflow not writing proforma fields — the model isn't calling write_underwriting, so the post-processor returns empty fields
+
+The trigger endpoint already works for individual agent runs (Replit confirmed), but we should test it through the actual API call. Want to restart JediRe to pick up these changes and give it a shot?
+[4/27/2026 7:23 PM] RocketManOpenClaw2: Let me check what's in the Replit API for triggering. The Replit bot already confirmed the diagnostic scripts work — now we need the production endpoint. Let me see the deal info:
+[4/27/2026 7:23 PM] RocketManOpenClaw2: The deal exists in Replit's DB — 464 Bishop, 3f32276f-aacd-4da3-b306-317c5109b403. The agents already ran against it successfully via the diagnostic scripts.
+
+To test the production trigger, the flow is:
+
+1. Restart JediRe (picks up new trigger code + v5 seed)
+2. Hit POST /api/v1/deals/3f32276f-aacd-4da3-b306-317c5109b403/analysis/trigger as signed-in user
+3. Poll GET /api/v1/deals/3f32276f/analysis/status until complete
+4. Check the capsule UI for proforma fields + narrative
+
+Do you want to trigger the restart from Replit, or should I handle it? And once it's live, do you want me to fire the trigger so you can check the capsule UI?
