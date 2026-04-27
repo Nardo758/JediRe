@@ -1118,65 +1118,60 @@ router.post('/:dealId/analysis/trigger', requireAuth, async (req: AuthenticatedR
     setImmediate(async () => {
       const results: Record<string, unknown> = {};
       const errors: string[] = [];
-      
+
+      const ctxBase = { dealId, userId: req.user!.userId, triggeredBy: 'user' as const };
+
+      // Step 1: Research agent — market context
       try {
-        const ctxBase = { dealId, userId: req.user!.userId, triggeredBy: 'user' as const };
+        logger.info(`[Pipeline] Starting Research for ${dealId}`);
+        results.research = await researchRuntime.run(dealId, ctxBase);
+        logger.info(`[Pipeline] Research complete for ${dealId}`);
+      } catch (err: any) {
+        logger.error(`[Pipeline] Research failed for ${dealId}:`, err.message);
+        errors.push(`Research: ${err.message}`);
+      }
 
-        // Step 1: Research agent — market context
-        try {
-          logger.info(`[Pipeline] Starting Research for ${dealId}`);
-          results.research = await researchRuntime.run(dealId, ctxBase);
-          logger.info(`[Pipeline] Research complete for ${dealId}`);
-        } catch (err: any) {
-          logger.error(`[Pipeline] Research failed for ${dealId}:`, err.message);
-          errors.push(`Research: ${err.message}`);
-        }
+      // Step 2: Supply agent — supply pipeline
+      try {
+        logger.info(`[Pipeline] Starting Supply for ${dealId}`);
+        results.supply = await supplyRuntime.run(dealId, ctxBase);
+        logger.info(`[Pipeline] Supply complete for ${dealId}`);
+      } catch (err: any) {
+        logger.error(`[Pipeline] Supply failed for ${dealId}:`, err.message);
+        errors.push(`Supply: ${err.message}`);
+      }
 
-        // Step 2: Supply agent — supply pipeline
-        try {
-          logger.info(`[Pipeline] Starting Supply for ${dealId}`);
-          results.supply = await supplyRuntime.run(dealId, ctxBase);
-          logger.info(`[Pipeline] Supply complete for ${dealId}`);
-        } catch (err: any) {
-          logger.error(`[Pipeline] Supply failed for ${dealId}:`, err.message);
-          errors.push(`Supply: ${err.message}`);
-        }
+      // Step 3: CashFlow agent — pro forma + underwriting
+      try {
+        logger.info(`[Pipeline] Starting CashFlow for ${dealId}`);
+        results.cashflow = await cashflowRuntime.run(dealId, ctxBase);
+        logger.info(`[Pipeline] CashFlow complete for ${dealId}`);
+      } catch (err: any) {
+        logger.error(`[Pipeline] CashFlow failed for ${dealId}:`, err.message);
+        errors.push(`CashFlow: ${err.message}`);
+      }
 
-        // Step 3: CashFlow agent — pro forma + underwriting
-        try {
-          logger.info(`[Pipeline] Starting CashFlow for ${dealId}`);
-          results.cashflow = await cashflowRuntime.run(dealId, ctxBase);
-          logger.info(`[Pipeline] CashFlow complete for ${dealId}`);
-        } catch (err: any) {
-          logger.error(`[Pipeline] CashFlow failed for ${dealId}:`, err.message);
-          errors.push(`CashFlow: ${err.message}`);
-        }
+      // Step 4: Commentary agent — narrative summary
+      try {
+        logger.info(`[Pipeline] Starting Commentary for ${dealId}`);
+        results.commentary = await commentaryRuntime.run(dealId, ctxBase);
+        logger.info(`[Pipeline] Commentary complete for ${dealId}`);
+      } catch (err: any) {
+        logger.error(`[Pipeline] Commentary failed for ${dealId}:`, err.message);
+        errors.push(`Commentary: ${err.message}`);
+      }
 
-        // Step 4: Commentary agent — narrative summary
-        try {
-          logger.info(`[Pipeline] Starting Commentary for ${dealId}`);
-          results.commentary = await commentaryRuntime.run(dealId, ctxBase);
-          logger.info(`[Pipeline] Commentary complete for ${dealId}`);
-        } catch (err: any) {
-          logger.error(`[Pipeline] Commentary failed for ${dealId}:`, err.message);
-          errors.push(`Commentary: ${err.message}`);
-        }
-
-        // Mark pipeline run completed
+      // Mark pipeline run (use fresh pool connection — don't capture from outer scope)
+      try {
         const status = errors.length === 0 ? 'succeeded' : errors.length === 4 ? 'failed' : 'partial';
-        await client.query(
+        await pool.query(
           `UPDATE agent_runs SET status = $1, output = $2, completed_at = NOW() WHERE id = $3`,
           [status, JSON.stringify({ results, errors: errors.length > 0 ? errors : undefined }), pipelineRunId]
         );
-
         logger.info(`[Pipeline] Underwrite ${status} for ${dealId}` + 
           (errors.length > 0 ? ` (${errors.length} failures)` : ''));
-      } catch (err: any) {
-        logger.error(`[Pipeline] Fatal error for ${dealId}:`, err.message);
-        await client.query(
-          `UPDATE agent_runs SET status = 'failed', output = $1, completed_at = NOW() WHERE id = $2`,
-          [JSON.stringify({ error: err.message }), pipelineRunId]
-        );
+      } catch (dbErr: any) {
+        logger.error(`[Pipeline] DB update failed for ${dealId}:`, dbErr.message);
       }
     });
 

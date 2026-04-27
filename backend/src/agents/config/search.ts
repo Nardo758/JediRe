@@ -45,7 +45,7 @@ export const AGENT_SEARCH_CONFIG: Record<AgentId, SearchConfig | null> = {
   },
 
   commentary: {
-    maxSearchesPerRun: 5,
+    maxSearchesPerRun: 8,
     allowlistDomains: [
       // Multifamily / CRE trade press
       'costar.com',

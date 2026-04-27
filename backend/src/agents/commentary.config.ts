@@ -66,8 +66,8 @@ export type CommentaryAgentOutput = z.infer<typeof CommentaryOutputSchema>;
 
 export const COMMENTARY_AGENT_CONFIG: AgentConfig = {
   agentId: 'commentary',
-  agentVersion: '3.0.0',
-  promptVersion: 'commentary-v5',
+  agentVersion: '3.1.0',
+  promptVersion: 'commentary-v6',
   tools: [
     fetchDataMatrixTool,
     webSearchTool,
