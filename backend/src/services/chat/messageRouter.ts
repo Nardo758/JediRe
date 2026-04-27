@@ -19,6 +19,10 @@ import { logger } from '../../utils/logger';
 import { unifiedOrchestrator, OrchestratorRequest, OrchestratorResponse, ChatPlatform } from '../orchestrator';
 import { CreditService } from '../ai/creditService';
 import { SessionStore } from './sessionStore';
+import { dispatchAction } from '../notifications/openclaw-actions';
+import { sendTelegramText, telegramChannel } from '../notifications/channels/telegram';
+import { parseTwilioActionCommand } from '../notifications/channels/twilio';
+import { verifyTelegramSecret, verifyTwilioSignature } from '../notifications/webhook-verification';
 
 // ============================================================================
 // Message Router
@@ -63,7 +67,35 @@ export class MessageRouter {
       const { Author, Body, Media, ConversationSid } = req.body;
 
       const platform = this.detectTwilioPlatform(Author);
-      
+
+      // OpenClaw action command? Match before invoking the orchestrator so an
+      // "approve abc123" reply executes the action instead of being chatted at.
+      const cmd = parseTwilioActionCommand(Body || '');
+      if (cmd) {
+        // SECURITY: Action dispatch trusts the sender id (Author) for the
+        // allowlist check, so we MUST verify the request actually came from
+        // Twilio before proceeding. Free-text chat is not gated this way to
+        // preserve the existing local-dev experience.
+        const verified = await verifyTwilioSignature(req);
+        if (!verified) {
+          logger.warn('OpenClaw: rejected unverified Twilio action', {
+            sender: Author,
+            actionId: cmd.actionId,
+          });
+          res.sendStatus(403);
+          return;
+        }
+        const result = await dispatchAction({
+          channel: 'twilio',
+          senderId: Author,
+          actionId: cmd.actionId,
+          resourceId: cmd.resourceId,
+        });
+        await this.sendTwilioReply(Author, ConversationSid, result.message);
+        res.sendStatus(200);
+        return;
+      }
+
       // Find or create user
       const user = await this.sessionStore.findOrCreateUser(Author, platform as any);
       const session = await this.sessionStore.loadOrCreateSession(user.userId, platform as any, Author);
@@ -136,7 +168,7 @@ export class MessageRouter {
 
       // Handle callback queries (inline keyboard button presses)
       if (callback_query) {
-        await this.handleTelegramCallback(callback_query);
+        await this.handleTelegramCallback(callback_query, req);
         res.sendStatus(200);
         return;
       }
@@ -183,9 +215,46 @@ export class MessageRouter {
     }
   }
 
-  private async handleTelegramCallback(callbackQuery: any): Promise<void> {
+  private async handleTelegramCallback(callbackQuery: any, req: Request): Promise<void> {
     const { data, from, message: originalMsg } = callbackQuery;
     const platformUserId = String(from.id);
+    const chatId = String(originalMsg?.chat?.id ?? '');
+
+    // OpenClaw structured-action callbacks use "ocl:<actionId>[:<resourceId>]".
+    // Anything else is forwarded to the orchestrator as a free-text message.
+    if (typeof data === 'string' && data.startsWith('ocl:')) {
+      // SECURITY: Callback button taps trust the sender's chat id for the
+      // allowlist check, so we require the per-bot secret token (set when
+      // calling setWebhook) to confirm Telegram itself sent the request.
+      if (!verifyTelegramSecret(req)) {
+        logger.warn('OpenClaw: rejected unverified Telegram action', {
+          chatId,
+          data,
+        });
+        return;
+      }
+      const [, actionId, ...resourceParts] = data.split(':');
+      const resourceId = resourceParts.length > 0 ? resourceParts.join(':') : undefined;
+      const result = await dispatchAction({
+        channel: 'telegram',
+        senderId: chatId || platformUserId,
+        actionId: actionId ?? '',
+        resourceId,
+      });
+
+      if (result.editOriginal && originalMsg?.message_id) {
+        const edited = await telegramChannel.editMessage(
+          { channel: 'telegram', messageId: String(originalMsg.message_id), recipient: chatId },
+          `${originalMsg?.text ?? ''}\n\n_${result.message}_`,
+        );
+        if (!edited.ok) {
+          await sendTelegramText(chatId, result.message);
+        }
+      } else {
+        await sendTelegramText(chatId, result.message);
+      }
+      return;
+    }
 
     const user = await this.sessionStore.findOrCreateUser(platformUserId, 'telegram');
     const session = await this.sessionStore.loadOrCreateSession(user.userId, 'telegram', platformUserId);

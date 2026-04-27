@@ -9,7 +9,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
 import { Pool } from 'pg';
-import { clawdbotWebhook } from '../webhooks/clawdbot';
+import { openclawNotifier } from './notifications/openclawNotifier';
 
 const execPromise = promisify(exec);
 
@@ -88,10 +88,10 @@ export class DealAnalysisService {
 
       await this.saveAnalysis(analysisResult);
 
-      // Send completion notification to Clawdbot
-      if (clawdbotWebhook.isEnabled()) {
-        clawdbotWebhook.sendAnalysisComplete(input.dealId, analysisResult).catch((error) => {
-          console.error('Failed to send analysis completion webhook:', error);
+      // Send completion notification through OpenClaw (Telegram + Twilio).
+      if (openclawNotifier.isEnabled()) {
+        openclawNotifier.notifyAnalysisComplete(input.dealId, analysisResult).catch((error) => {
+          console.error('Failed to send analysis completion notification:', error);
         });
       }
 

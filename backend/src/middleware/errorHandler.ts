@@ -1,12 +1,12 @@
 /**
  * Global Error Handler
  * Catch and format errors consistently
- * Integrated with Clawdbot webhook notifications
+ * Integrated with OpenClaw multi-channel notifications (Telegram + Twilio)
  */
 
 import { Request, Response, NextFunction } from 'express';
 import { logger } from '../utils/logger';
-import { clawdbotWebhook } from '../webhooks/clawdbot';
+import { openclawNotifier } from '../services/notifications/openclawNotifier';
 
 export class AppError extends Error {
   constructor(
@@ -37,17 +37,17 @@ export function errorHandler(
   // Determine status code
   const statusCode = err instanceof AppError ? err.statusCode : 500;
 
-  // Send to Clawdbot if it's a server error
-  if (statusCode >= 500 && clawdbotWebhook.isEnabled()) {
-    clawdbotWebhook.sendErrorNotification(err, {
+  // Send to OpenClaw if it's a server error.
+  if (statusCode >= 500 && openclawNotifier.isEnabled()) {
+    openclawNotifier.notifyError(err, {
       url: req.url,
       method: req.method,
       userId: (req as any).user?.id,
       ip: req.ip,
       userAgent: req.get('user-agent'),
       statusCode,
-    }).catch((webhookError) => {
-      logger.error('Failed to send error webhook:', webhookError);
+    }).catch((notifyError) => {
+      logger.error('Failed to send error notification:', notifyError);
     });
   }
 
