@@ -26,12 +26,21 @@ function parseAllowlist(raw: string | undefined): Set<string> {
   );
 }
 
+interface TelegramInlineButton {
+  text: string;
+  callback_data: string;
+}
+
+interface TelegramInlineKeyboard {
+  inline_keyboard: TelegramInlineButton[][];
+}
+
 /**
  * Build a Telegram inline_keyboard payload from our NotificationAction list.
  * Each button gets `callback_data` of `ocl:<actionId>[:<resourceId>]` so the
  * inbound webhook handler can dispatch to the action handler.
  */
-function buildInlineKeyboard(n: Notification): { inline_keyboard: any[][] } | undefined {
+function buildInlineKeyboard(n: Notification): TelegramInlineKeyboard | undefined {
   if (!n.actions || n.actions.length === 0) return undefined;
   const buttons = n.actions.map((a) => ({
     text: a.label,
@@ -84,20 +93,21 @@ class TelegramChannel implements NotificationChannel {
         disable_web_page_preview: true,
         reply_markup: reply_markup ? JSON.stringify(reply_markup) : undefined,
       });
-      const messageId = resp?.data?.result?.message_id;
+      const data = resp?.data as { result?: { message_id?: number | string } } | undefined;
+      const messageId = data?.result?.message_id;
       const ref: MessageRef = {
         channel: 'telegram',
         messageId: String(messageId ?? ''),
         recipient: chatId,
       };
       return { ok: true, refs: [ref] };
-    } catch (err: any) {
+    } catch (err: unknown) {
       logger.warn('OpenClaw telegram send failed', {
         kind: n.kind,
-        error: err?.message,
-        status: err?.response?.status,
+        error: errMessage(err),
+        status: errHttpStatus(err),
       });
-      return { ok: false, error: err?.message ?? 'unknown' };
+      return { ok: false, error: errMessage(err) };
     }
   }
 
@@ -114,9 +124,10 @@ class TelegramChannel implements NotificationChannel {
         parse_mode: 'Markdown',
       });
       return { ok: true };
-    } catch (err: any) {
-      logger.warn('OpenClaw telegram edit failed', { error: err?.message });
-      return { ok: false, error: err?.message ?? 'unknown' };
+    } catch (err: unknown) {
+      const m = errMessage(err);
+      logger.warn('OpenClaw telegram edit failed', { error: m });
+      return { ok: false, error: m };
     }
   }
 }
@@ -138,7 +149,24 @@ export async function sendTelegramText(chatId: string | number, text: string): P
       text,
       parse_mode: 'Markdown',
     });
-  } catch (err: any) {
-    logger.warn('OpenClaw telegram text reply failed', { error: err?.message });
+  } catch (err: unknown) {
+    logger.warn('OpenClaw telegram text reply failed', { error: errMessage(err) });
   }
+}
+
+function errMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (typeof e === 'string') return e;
+  return 'unknown';
+}
+
+function errHttpStatus(e: unknown): number | undefined {
+  if (e && typeof e === 'object' && 'response' in e) {
+    const r = (e as { response?: unknown }).response;
+    if (r && typeof r === 'object' && 'status' in r) {
+      const s = (r as { status?: unknown }).status;
+      if (typeof s === 'number') return s;
+    }
+  }
+  return undefined;
 }

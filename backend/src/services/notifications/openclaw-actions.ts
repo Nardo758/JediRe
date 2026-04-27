@@ -103,46 +103,47 @@ async function handleApprove(
     return { ok: false, message: 'Approve requires a resource id (e.g. "approve abc123").' };
   }
 
-  // Update the deal's status to 'approved' and record an activity row. We use
-  // a single transaction so an existing approved deal still gets an audit
-  // trail entry and we never end up with a status update without a log line.
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    const updated = await client.query(
-      `UPDATE deals
-          SET status = 'approved', updated_at = NOW()
-        WHERE id = $1
-        RETURNING id, name`,
-      [resourceId],
-    );
-    if (updated.rowCount === 0) {
-      await client.query('ROLLBACK');
-      return { ok: false, message: `Deal ${resourceId} not found.` };
-    }
-    await client.query(
-      `INSERT INTO deal_activity (deal_id, user_id, action_type, description, metadata)
-       VALUES ($1, $2, 'openclaw_approved', $3, $4)`,
-      [
-        resourceId,
-        OPENCLAW_SYSTEM_USER_ID,
-        `Approved via OpenClaw (${channel})`,
-        JSON.stringify({ channel, senderId }),
-      ],
-    );
-    await client.query('COMMIT');
-    logger.info('OpenClaw approve action committed', { resourceId, channel, senderId });
-    return {
-      ok: true,
-      message: `Approved ${updated.rows[0].name || resourceId}.`,
-      editOriginal: true,
-    };
-  } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
-    throw err;
-  } finally {
-    client.release();
+  // Approve is currently an AUDIT-ONLY action: we record that an authorised
+  // operator approved this resource (deal, document, etc.) but we
+  // intentionally do NOT mutate any business state (no `deals.status`
+  // change, no pipeline stage advance). Reasoning:
+  //
+  //   1. The same `approve` actionId can be emitted from multiple
+  //      notification kinds (deal_created, document_uploaded, ...). Each
+  //      kind has different "what does approval actually mean?" semantics
+  //      and routing all of those from a single OpenClaw button is fragile.
+  //   2. Lifecycle mutations should go through the deals.service /
+  //      pipeline endpoints which carry user-id checks, validations and
+  //      event dispatching this handler can't reproduce safely.
+  //
+  // The audit row is enough for v1 — operators see in deal_activity that
+  // someone approved via OpenClaw and can follow up in-app to commit the
+  // actual lifecycle transition. Future work: dispatch a typed approval
+  // intent based on the originating notification kind / underwriting run.
+  const exists = await pool.query(`SELECT name FROM deals WHERE id = $1`, [resourceId]);
+  if (exists.rowCount === 0) {
+    return { ok: false, message: `Deal ${resourceId} not found.` };
   }
+  await pool.query(
+    `INSERT INTO deal_activity (deal_id, user_id, action_type, description, metadata)
+     VALUES ($1, $2, 'openclaw_approved', $3, $4)`,
+    [
+      resourceId,
+      OPENCLAW_SYSTEM_USER_ID,
+      `Approved via OpenClaw (${channel})`,
+      JSON.stringify({ channel, senderId }),
+    ],
+  );
+  logger.info('OpenClaw approve action recorded (audit-only, no status mutation)', {
+    resourceId,
+    channel,
+    senderId,
+  });
+  return {
+    ok: true,
+    message: `Approval recorded for ${exists.rows[0].name || resourceId}. Commit the lifecycle change in JediRe.`,
+    editOriginal: true,
+  };
 }
 
 async function handleAcknowledge(

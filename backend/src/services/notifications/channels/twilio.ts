@@ -11,6 +11,7 @@ import { logger } from '../../../utils/logger';
 import {
   getTwilioClient,
   getTwilioFromPhoneNumber,
+  type TwilioRestClient,
 } from '../../twilio/twilioClient';
 import type {
   MessageRef,
@@ -79,13 +80,13 @@ class TwilioChannel implements NotificationChannel {
       return { ok: false, error: 'no TWILIO_NOTIFY_TO_NUMBERS configured' };
     }
 
-    let client: any;
+    let client: TwilioRestClient;
     let from: string;
     try {
       client = await getTwilioClient();
       from = await getTwilioFromPhoneNumber();
-    } catch (err: any) {
-      return { ok: false, error: `twilio client unavailable: ${err?.message ?? 'unknown'}` };
+    } catch (err: unknown) {
+      return { ok: false, error: `twilio client unavailable: ${errMessage(err)}` };
     }
 
     const body = renderText(n);
@@ -106,13 +107,13 @@ class TwilioChannel implements NotificationChannel {
           recipient: to,
         });
         anyOk = true;
-      } catch (err: any) {
-        lastErr = err?.message ?? 'unknown';
+      } catch (err: unknown) {
+        lastErr = errMessage(err);
         logger.warn('OpenClaw twilio send failed', {
           kind: n.kind,
           to,
           error: lastErr,
-          code: err?.code,
+          code: errCode(err),
         });
       }
     }
@@ -124,15 +125,30 @@ class TwilioChannel implements NotificationChannel {
     // the recipient still sees the confirmation.
     if (!this.isEnabled()) return { ok: false, error: 'twilio channel disabled' };
     try {
-      const client = await getTwilioClient() as any;
+      const client = await getTwilioClient();
       const from = await getTwilioFromPhoneNumber();
       await client.messages.create({ body: text, to: ref.recipient, from });
       return { ok: true };
-    } catch (err: any) {
-      logger.warn('OpenClaw twilio follow-up failed', { error: err?.message });
-      return { ok: false, error: err?.message ?? 'unknown' };
+    } catch (err: unknown) {
+      const m = errMessage(err);
+      logger.warn('OpenClaw twilio follow-up failed', { error: m });
+      return { ok: false, error: m };
     }
   }
+}
+
+function errMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (typeof e === 'string') return e;
+  return 'unknown';
+}
+
+function errCode(e: unknown): string | number | undefined {
+  if (e && typeof e === 'object' && 'code' in e) {
+    const c = (e as { code?: unknown }).code;
+    if (typeof c === 'string' || typeof c === 'number') return c;
+  }
+  return undefined;
 }
 
 export const twilioChannel = new TwilioChannel();

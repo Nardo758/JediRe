@@ -56,14 +56,26 @@ export async function verifyTwilioSignature(req: Request): Promise<boolean> {
   }
 
   try {
-    const twilioMod: any = await import('twilio');
-    const Validator =
-      twilioMod?.webhook?.webhookValidator ??
-      twilioMod?.default?.webhook?.webhookValidator ??
-      null;
-    // SDK exposes validateRequest as a top-level helper too.
+    // The Twilio SDK shape varies between commonjs/ESM and major versions —
+    // we model the small subset we actually call rather than typing the whole
+    // module. validateRequest is the supported public API; RequestValidator
+    // is a fallback for older releases.
+    interface TwilioValidatorModule {
+      validateRequest?: (
+        token: string,
+        sig: string,
+        url: string,
+        params: Record<string, string>,
+      ) => boolean;
+      RequestValidator?: new (token: string) => {
+        validate: (url: string, params: Record<string, string>, sig: string) => boolean;
+      };
+      default?: TwilioValidatorModule;
+    }
+
+    const twilioMod: TwilioValidatorModule = await import('twilio');
     const validateRequest =
-      twilioMod?.validateRequest ?? twilioMod?.default?.validateRequest;
+      twilioMod.validateRequest ?? twilioMod.default?.validateRequest;
     if (typeof validateRequest === 'function') {
       const ok = validateRequest(authToken, signature, url, params);
       if (!ok) {
@@ -71,9 +83,8 @@ export async function verifyTwilioSignature(req: Request): Promise<boolean> {
       }
       return Boolean(ok);
     }
-    // Fallback to RequestValidator class if validateRequest isn't exported.
     const RequestValidator =
-      twilioMod?.RequestValidator ?? twilioMod?.default?.RequestValidator;
+      twilioMod.RequestValidator ?? twilioMod.default?.RequestValidator;
     if (typeof RequestValidator === 'function') {
       const validator = new RequestValidator(authToken);
       const ok = validator.validate(url, params, signature);
@@ -84,8 +95,9 @@ export async function verifyTwilioSignature(req: Request): Promise<boolean> {
     }
     logger.warn('OpenClaw: twilio SDK exposes no signature validator — denying');
     return false;
-  } catch (err: any) {
-    logger.warn('OpenClaw: Twilio signature verify threw', { error: err?.message });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'unknown';
+    logger.warn('OpenClaw: Twilio signature verify threw', { error: msg });
     return false;
   }
 }

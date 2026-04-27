@@ -210,7 +210,13 @@ class OpenClawNotifier {
       deepLink: input.dealId ? this.dealDeepLink(input.dealId) : undefined,
       actions: input.dealId
         ? [
-            { label: 'Re-run analysis', actionId: 'rerun', resourceId: input.dealId },
+            // Distinct actionId so the dispatcher can later route to a true
+            // per-agent rerun pathway. Today rerun_agent and rerun share a
+            // handler that re-runs the full deal analysis (the agent layer
+            // doesn't yet expose a single-agent rerun endpoint), but the
+            // semantic split lets us upgrade later without changing the
+            // outbound notification contract.
+            { label: 'Re-run agent', actionId: 'rerun_agent', resourceId: input.dealId },
             { label: 'Dismiss', actionId: 'dismiss', resourceId: input.dealId },
           ]
         : undefined,
