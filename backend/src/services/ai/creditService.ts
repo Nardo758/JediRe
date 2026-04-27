@@ -57,10 +57,18 @@ export class CreditService {
    * Get current credit balance for a user.
    */
   async getBalance(userId: string): Promise<CreditBalance | null> {
-    const result = await query(
-      `SELECT * FROM user_credit_balances WHERE user_id = $1`,
-      [userId]
-    );
+    let result: any;
+    try {
+      result = await query(
+        `SELECT * FROM user_credit_balances WHERE user_id = $1`,
+        [userId]
+      );
+    } catch (err: any) {
+      if (err?.message?.includes?.('invalid input syntax for type uuid')) {
+        return null;
+      }
+      throw err;
+    }
 
     if (result.rows.length === 0) return null;
 
@@ -274,11 +282,22 @@ export class CreditService {
     // Phase 1: read tier + current balance to determine hard-cap vs overage policy.
     // This SELECT is NOT used as the deduction guard — that happens atomically in
     // the conditional UPDATE below to prevent concurrent oversubscription.
-    const selectResult = await query(
-      `SELECT credits_remaining, monthly_credit_cap
-       FROM user_credit_balances WHERE user_id = $1`,
-      [userId]
-    );
+    let selectResult: any;
+    try {
+      selectResult = await query(
+        `SELECT credits_remaining, monthly_credit_cap
+         FROM user_credit_balances WHERE user_id = $1`,
+        [userId]
+      );
+    } catch (err: any) {
+      // Non-UUID user_id (e.g. bot string IDs) cause Postgres to throw
+      // "invalid input syntax for type uuid". Treat as no credit record.
+      if (err?.message?.includes?.('invalid input syntax for type uuid')) {
+        logger.warn('reserveCredits: non-UUID userId, allowing through', { userId });
+        return false;
+      }
+      throw err;
+    }
 
     if (selectResult.rows.length === 0) {
       // No credit record — allow through (new user or pre-billing setup).

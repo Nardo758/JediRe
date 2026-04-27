@@ -1108,28 +1108,28 @@ router.post('/:dealId/analysis/trigger', requireAuth, async (req: AuthenticatedR
     setImmediate(async () => {
       try {
         const ctxBase = { dealId, userId: req.user!.userId, triggeredBy: 'user' as const };
-        console.log(`[Pipeline] Starting underwrite for ${dealId} (user=${ctxBase.userId})`);
+
+        logger.info(`[Pipeline] Starting underwrite for ${dealId}`);
 
         // Step 1: Research agent — market context
         const researchResult = await researchRuntime.run(dealId, ctxBase);
-        console.log(`[Pipeline] Research complete for ${dealId} — score=${researchResult?.confidence_score}`);
+        logger.info(`[Pipeline] Research complete for ${dealId}`);
 
         // Step 2: Supply agent — supply pipeline
         const supplyResult = await supplyRuntime.run(dealId, ctxBase);
-        console.log(`[Pipeline] Supply complete for ${dealId}`);
+        logger.info(`[Pipeline] Supply complete for ${dealId}`);
 
         // Step 3: CashFlow agent — pro forma + underwriting
         const cashflowResult = await cashflowRuntime.run(dealId, ctxBase);
-        console.log(`[Pipeline] CashFlow complete for ${dealId}`);
+        logger.info(`[Pipeline] CashFlow complete for ${dealId}`);
 
         // Step 4: Commentary agent — narrative summary
         const commentaryResult = await commentaryRuntime.run(dealId, ctxBase);
-        console.log(`[Pipeline] Commentary complete for ${dealId}`);
+        logger.info(`[Pipeline] Commentary complete for ${dealId}`);
 
-        console.log(`[Pipeline] Underwrite complete for ${dealId}`);
+        logger.info(`[Pipeline] Underwrite complete for ${dealId}`);
       } catch (err: any) {
-        console.error(`[Pipeline] FAILED for ${dealId}:`, err.message);
-        console.error(err.stack?.slice(0, 1000));
+        logger.error(`[Pipeline] Underwrite failed for ${dealId}:`, err.message);
       }
     });
 
