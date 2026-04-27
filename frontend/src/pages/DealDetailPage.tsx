@@ -1215,7 +1215,17 @@ const DealDetailPage: React.FC = () => {
         }}>
           {/* Back arrow */}
           <button
-            onClick={() => navigate(-1)}
+            onClick={() => {
+              // navigate(-1) is a no-op when there's no prior history entry
+              // (direct link, fresh tab, embedded iframe on the canvas).
+              // Fall back to the pipeline list so the arrow always does
+              // something visible.
+              if (window.history.length > 1) {
+                navigate(-1);
+              } else {
+                navigate('/pipeline');
+              }
+            }}
             title="Go back"
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
