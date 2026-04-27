@@ -478,17 +478,38 @@ const DealDetailPage: React.FC = () => {
   const [closingDeal, setClosingDeal] = useState(false);
   const [closeDealSuccess, setCloseDealSuccess] = useState(false);
   const [gapsDropdownOpen, setGapsDropdownOpen] = useState(false);
+  const [gapsDropdownPos, setGapsDropdownPos] = useState<{ top: number; right: number } | null>(null);
+  const gapsButtonRef = useRef<HTMLButtonElement>(null);
   const gapsDropdownRef = useRef<HTMLDivElement>(null);
+  const recomputeGapsDropdownPos = useCallback(() => {
+    if (!gapsButtonRef.current) return;
+    const rect = gapsButtonRef.current.getBoundingClientRect();
+    setGapsDropdownPos({
+      top: rect.bottom + 4,
+      right: Math.max(8, window.innerWidth - rect.right),
+    });
+  }, []);
   useEffect(() => {
     if (!gapsDropdownOpen) return;
+    recomputeGapsDropdownPos();
     const onDocClick = (e: MouseEvent) => {
-      if (gapsDropdownRef.current && !gapsDropdownRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      const insideButton = gapsButtonRef.current?.contains(target);
+      const insideDropdown = gapsDropdownRef.current?.contains(target);
+      if (!insideButton && !insideDropdown) {
         setGapsDropdownOpen(false);
       }
     };
+    const onResize = () => recomputeGapsDropdownPos();
     document.addEventListener('mousedown', onDocClick);
-    return () => document.removeEventListener('mousedown', onDocClick);
-  }, [gapsDropdownOpen]);
+    window.addEventListener('resize', onResize);
+    window.addEventListener('scroll', onResize, true);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('scroll', onResize, true);
+    };
+  }, [gapsDropdownOpen, recomputeGapsDropdownPos]);
   // Reset dropdown state when navigating between deals so a stale-open
   // dropdown can't bleed into a freshly loaded deal.
   useEffect(() => {
@@ -898,8 +919,9 @@ const DealDetailPage: React.FC = () => {
                   return (
                     <>
                       <span style={{ color: BORDER, margin: '0 8px', fontSize: 10 }}>│</span>
-                      <div ref={gapsDropdownRef} style={{ position: 'relative', flexShrink: 0 }}>
+                      <div style={{ position: 'relative', flexShrink: 0 }}>
                         <button
+                          ref={gapsButtonRef}
                           onClick={() => setGapsDropdownOpen(o => !o)}
                           title="Click to see what's missing for underwriting"
                           style={{
@@ -930,12 +952,12 @@ const DealDetailPage: React.FC = () => {
                           {totalGapCount} {totalGapCount === 1 ? 'GAP' : 'GAPS'}
                           <ChevronDown size={10} style={{ transform: gapsDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
                         </button>
-                        {gapsDropdownOpen && (
-                          <div style={{
-                            position: 'absolute',
-                            top: 'calc(100% + 4px)',
-                            right: 0,
-                            zIndex: 1000,
+                        {gapsDropdownOpen && gapsDropdownPos && (
+                          <div ref={gapsDropdownRef} style={{
+                            position: 'fixed',
+                            top: gapsDropdownPos.top,
+                            right: gapsDropdownPos.right,
+                            zIndex: 9999,
                             width: 360,
                             maxHeight: 420,
                             overflowY: 'auto',
