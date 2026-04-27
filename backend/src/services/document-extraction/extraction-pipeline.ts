@@ -36,10 +36,22 @@ function getParser(docType: DocumentType): ((buffer: Buffer, filename: string) =
  * downstream consumer (`routeOM` in data-router.ts) casts result.data back
  * to OMExtraction, so we deliberately pass the rich shape through instead
  * of flattening into a hand-picked subset — flattening would break routeOM.
+ *
+ * uploadedBy and dealId are forwarded into the parser's AICallContext so
+ * credit-metering and per-deal AI bookkeeping can resolve the real user.
+ * Passing a non-UUID placeholder here causes JediAIService.checkAndDeductCredits
+ * to crash on `invalid input syntax for type uuid`, which fails the whole
+ * extraction silently and leaves the Deal Capsule un-populated.
  */
-async function parseOMForPipeline(buffer: Buffer, filename: string): Promise<ExtractionResult> {
+async function parseOMForPipeline(
+  buffer: Buffer,
+  filename: string,
+  uploadedBy: string,
+  dealId: string,
+): Promise<ExtractionResult> {
   const result = await parseOM(buffer, filename, {
-    userId: 'pipeline',
+    userId: uploadedBy,
+    dealId,
     onStageChange: async () => { /* no-op for in-pipeline runs */ },
   });
   return result as ExtractionResult;
@@ -82,7 +94,7 @@ export async function processDocument(
       extractionResult = await parseTaxBillAsync(buffer, filename);
     } else if (classification.documentType === 'OM') {
       // OM parser is async (LLM + optional OCR). Bridge handles the call.
-      extractionResult = await parseOMForPipeline(buffer, filename);
+      extractionResult = await parseOMForPipeline(buffer, filename, uploadedBy, dealId);
     } else {
       const parser = getParser(classification.documentType);
       if (!parser) {

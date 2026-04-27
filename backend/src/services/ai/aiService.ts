@@ -16,6 +16,8 @@ import type {
 } from '../../types/dealContext';
 import { modelPreferenceService, getModelFamily } from './modelPreferenceService';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 // ── Model Routing per Tier ─────────────────────────────────────
 
 type ModelRouting = Record<SubscriptionTier, Record<AgentId, string>>;
@@ -436,6 +438,16 @@ export class JediAIService {
     userId: string,
     cost: number
   ): Promise<void> {
+    // Fail fast on non-UUID userIds (e.g. 'pipeline', 'system', '') so callers
+    // get a clear error instead of an opaque Postgres "invalid input syntax
+    // for type uuid" 500 that surfaces as a silently-failed extraction.
+    if (!UUID_RE.test(userId)) {
+      throw new Error(
+        `JediAIService.checkAndDeductCredits: userId must be a UUID, got "${userId}". ` +
+        `Pass the real uploadedBy/owner userId from your route or job context.`
+      );
+    }
+
     const result = await query(
       `SELECT credits_remaining, subscription_tier, monthly_credit_cap
        FROM user_credit_balances
