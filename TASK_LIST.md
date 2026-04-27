@@ -8,7 +8,7 @@ The pipeline works when triggered by a **real signed-in user** (UUID passes cred
 - [x] Fix creditService UUID crash (`reserveCredits`)
 - [x] Find bug: non-UUID `rockeman-bot` userId crashes `user_credit_balances` query
 - [x] Swap CashFlow agent from Claude (MeteringAdapter) → DeepSeek (DeepSeekMeteringAdapter)
-- [ ] **Trigger analysis/trigger on 464 Bishop as signed-in user (m.dixon5030@gmail.com)** — proves Research → Supply → CashFlow → Commentary end-to-end
+- [x] **Trigger analysis/trigger on 464 Bishop as signed-in user** — all 4 agents green end-to-end
 - [x] Revert `isUuid` credit bypass — bot must route through orchestrator, not bypass billing
 
 ### Phase 2: Fix Bot-Driven Pipelines ❌
@@ -17,17 +17,27 @@ The pipeline works when triggered by a **real signed-in user** (UUID passes cred
 - [ ] Remove the debug `setImmediate` pipeline from `inline-deals.routes.ts`
 - [ ] Move pipeline logic to `agent-orchestrator.ts`
 
-### Phase 3: Verify Agent Output ✏️
-- [x] OM extraction (DeepSeek, not Claude)
-- [x] T12 + Rent Roll extracted (12 rows P&L, 260 unit rows)
-- [x] Market Rent Schedule loaded (.xlsx)
-- [ ] **Research agent** — produces market context + comps
-- [ ] **Supply agent** — supply pipeline analysis
-- [ ] **CashFlow agent** — pro forma with evidence
-- [ ] **Commentary agent** — narrative summary
-- [ ] Pro forma written to deal capsule
-- [ ] Deal capsule reflects agent output in UI
+### Phase 2.5: Verify Agent Output Lands in Capsule ✏️
+- [x] OM extraction ✅
+- [x] T12 + Rent Roll extracted ✅
+- [x] Market Rent Schedule loaded ✅
+- [x] **Research agent** — produces market context + comps ✅
+- [x] **Supply agent** — supply pipeline analysis ✅
+- [x] **CashFlow agent** — pro forma with evidence ✅ (post-processor aggregates from DB)
+- [x] **Commentary agent** — narrative summary ✅ (v5 autonomous fetch_data_matrix)
+- [ ] Pro forma fields written to deal_underwriting_snapshots and visible in capsule
+- [ ] Agent-run results visible in Deal Capsule UI
 - [ ] Knowledge Graph seeded with agent findings
+- [ ] 
+
+### Phase 2.6: Production Trigger Endpoint
+- [x] POST /deals/:dealId/analysis/trigger improved with pipeline tracking + per-agent error isolation
+- [x] GET /deals/:dealId/analysis/status endpoint for polling
+- [ ] Test trigger endpoint end-to-end via signed-in user
+- [ ] Remove debug `setImmediate` from `inline-deals.routes.ts`
+- [ ] Move pipeline logic to `agent-orchestrator.ts` event dispatch
+- [ ] Add `analysis_requested` to TriggerEvent type
+- [ ] Wire eventDispatcher.emit('analysis_requested')
 
 ### Phase 4: Agent → Orchestrator Integration 🔄
 - [ ] Wire event dispatcher to DeepSeek AgentRuntime agents

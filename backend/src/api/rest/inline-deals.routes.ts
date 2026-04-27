@@ -1083,7 +1083,9 @@ router.get('/:dealId/analysis/latest', requireAuth, async (req: AuthenticatedReq
 
 /**
  * POST /deals/:dealId/analysis/trigger
- * Trigger strategy analysis for a deal
+ * Trigger full underwriting pipeline for a deal.
+ * Returns immediately with a runId; agents run asynchronously.
+ * Check /api/agent-runs/:runId for status.
  */
 router.post('/:dealId/analysis/trigger', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
@@ -1103,46 +1105,127 @@ router.post('/:dealId/analysis/trigger', requireAuth, async (req: AuthenticatedR
       });
     }
     
+    // Create a pipeline run record for tracking
+    const pipelineRunId = randomUUID();
+    await client.query(
+      `INSERT INTO agent_runs (id, agent_id, agent_version, prompt_version, deal_id, user_id, triggered_by, status, input, started_at)
+       VALUES ($1, 'pipeline', '1.0.0', 'pipeline-v1', $2, $3, 'user', 'running', '{}', NOW())`,
+      [pipelineRunId, dealId, req.user!.userId]
+    );
+
     // Fire the full underwriting pipeline asynchronously
     // Research → Supply → CashFlow → Commentary
     setImmediate(async () => {
+      const results: Record<string, unknown> = {};
+      const errors: string[] = [];
+      
       try {
         const ctxBase = { dealId, userId: req.user!.userId, triggeredBy: 'user' as const };
 
-        logger.info(`[Pipeline] Starting underwrite for ${dealId}`);
-
         // Step 1: Research agent — market context
-        const researchResult = await researchRuntime.run(dealId, ctxBase);
-        logger.info(`[Pipeline] Research complete for ${dealId}`);
+        try {
+          logger.info(`[Pipeline] Starting Research for ${dealId}`);
+          results.research = await researchRuntime.run(dealId, ctxBase);
+          logger.info(`[Pipeline] Research complete for ${dealId}`);
+        } catch (err: any) {
+          logger.error(`[Pipeline] Research failed for ${dealId}:`, err.message);
+          errors.push(`Research: ${err.message}`);
+        }
 
         // Step 2: Supply agent — supply pipeline
-        const supplyResult = await supplyRuntime.run(dealId, ctxBase);
-        logger.info(`[Pipeline] Supply complete for ${dealId}`);
+        try {
+          logger.info(`[Pipeline] Starting Supply for ${dealId}`);
+          results.supply = await supplyRuntime.run(dealId, ctxBase);
+          logger.info(`[Pipeline] Supply complete for ${dealId}`);
+        } catch (err: any) {
+          logger.error(`[Pipeline] Supply failed for ${dealId}:`, err.message);
+          errors.push(`Supply: ${err.message}`);
+        }
 
         // Step 3: CashFlow agent — pro forma + underwriting
-        const cashflowResult = await cashflowRuntime.run(dealId, ctxBase);
-        logger.info(`[Pipeline] CashFlow complete for ${dealId}`);
+        try {
+          logger.info(`[Pipeline] Starting CashFlow for ${dealId}`);
+          results.cashflow = await cashflowRuntime.run(dealId, ctxBase);
+          logger.info(`[Pipeline] CashFlow complete for ${dealId}`);
+        } catch (err: any) {
+          logger.error(`[Pipeline] CashFlow failed for ${dealId}:`, err.message);
+          errors.push(`CashFlow: ${err.message}`);
+        }
 
         // Step 4: Commentary agent — narrative summary
-        const commentaryResult = await commentaryRuntime.run(dealId, ctxBase);
-        logger.info(`[Pipeline] Commentary complete for ${dealId}`);
+        try {
+          logger.info(`[Pipeline] Starting Commentary for ${dealId}`);
+          results.commentary = await commentaryRuntime.run(dealId, ctxBase);
+          logger.info(`[Pipeline] Commentary complete for ${dealId}`);
+        } catch (err: any) {
+          logger.error(`[Pipeline] Commentary failed for ${dealId}:`, err.message);
+          errors.push(`Commentary: ${err.message}`);
+        }
 
-        logger.info(`[Pipeline] Underwrite complete for ${dealId}`);
+        // Mark pipeline run completed
+        const status = errors.length === 0 ? 'succeeded' : errors.length === 4 ? 'failed' : 'partial';
+        await client.query(
+          `UPDATE agent_runs SET status = $1, output = $2, completed_at = NOW() WHERE id = $3`,
+          [status, JSON.stringify({ results, errors: errors.length > 0 ? errors : undefined }), pipelineRunId]
+        );
+
+        logger.info(`[Pipeline] Underwrite ${status} for ${dealId}` + 
+          (errors.length > 0 ? ` (${errors.length} failures)` : ''));
       } catch (err: any) {
-        logger.error(`[Pipeline] Underwrite failed for ${dealId}:`, err.message);
+        logger.error(`[Pipeline] Fatal error for ${dealId}:`, err.message);
+        await client.query(
+          `UPDATE agent_runs SET status = 'failed', output = $1, completed_at = NOW() WHERE id = $2`,
+          [JSON.stringify({ error: err.message }), pipelineRunId]
+        );
       }
     });
 
     res.json({
       success: true,
       message: 'Underwriting pipeline triggered. Agents: Research → Supply → CashFlow → Commentary.',
-      dealId
+      dealId,
+      pipelineRunId
     });
   } catch (error: any) {
     console.error('Error triggering analysis:', error);
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to trigger analysis'
+    });
+  }
+});
+
+/**
+ * GET /deals/:dealId/analysis/status
+ * Check the status of the most recent pipeline run for a deal.
+ */
+router.get('/:dealId/analysis/status', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { dealId } = req.params;
+    const client = pool;
+    
+    const result = await client.query(
+      `SELECT id, status, output, started_at, completed_at,
+              COALESCE(EXTRACT(EPOCH FROM (completed_at - started_at)), 0)::int AS duration_sec
+       FROM agent_runs
+       WHERE deal_id = $1 AND agent_id = 'pipeline'
+       ORDER BY started_at DESC LIMIT 1`,
+      [dealId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.json({ success: true, run: null });
+    }
+    
+    res.json({
+      success: true,
+      run: result.rows[0]
+    });
+  } catch (error: any) {
+    console.error('Error checking pipeline status:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to check pipeline status'
     });
   }
 });
