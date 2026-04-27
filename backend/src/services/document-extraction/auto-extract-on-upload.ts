@@ -191,14 +191,14 @@ export async function runExtractionForFile(opts: TriggerOptions): Promise<void> 
       const df = dealFile.rows[0];
       if (df?.deal_id) {
         const cat = (df.category || '').toLowerCase();
-        if (cat.includes('offering') || cat.includes('om')) {
-          eventDispatcher.onDocumentUploaded(df.deal_id, 'system', {
-            fileId,
-            filename: opts.filename || '',
-            category: 'offering_memorandum',
-            mimeType: 'application/pdf',
-          }).catch(e => logger.warn('auto-extract: failed to trigger underwriting', { fileId, e }));
-        }
+        // Trigger agents on any uploaded document — not just OM
+        // The agent system triages based on category internally
+        eventDispatcher.onDocumentUploaded(df.deal_id, 'system', {
+          fileId,
+          filename: opts.filename || '',
+          category: cat || 'unknown',
+          mimeType: opts.mimeType || 'application/octet-stream',
+        }).catch(e => logger.warn('auto-extract: failed to trigger underwriting', { fileId, e }));
       }
     } else {
       await query(

@@ -10,6 +10,7 @@
 
 import { eventDispatcher } from './event-dispatcher';
 import { logger } from '../../utils/logger';
+import { getPool } from '../../database/connection';
 
 // ============================================================================
 // FILE UPLOAD HOOKS
@@ -73,8 +74,41 @@ export async function onDealCreated(params: {
   state: string;
   units?: number;
   askingPrice?: number;
+  address?: string;
 }): Promise<void> {
   logger.info('Platform hook: deal created', { dealId: params.dealId, name: params.name });
+  
+  // Seed the Knowledge Graph with a Deal node — the neural network synapse.
+  // This creates a base node so future enrichment (OM, T12, comps) has a target.
+  try {
+    const pool = getPool();
+    const nodeId = `Deal__${params.dealId}`;
+    await pool.query(`
+      INSERT INTO knowledge_graph_nodes (id, type, name, properties)
+      VALUES ($1, 'Deal', $2, $3::jsonb)
+      ON CONFLICT (id) DO UPDATE SET
+        properties = knowledge_graph_nodes.properties || EXCLUDED.properties,
+        updated_at = NOW()
+    `, [
+      nodeId,
+      params.name,
+      JSON.stringify({
+        deal_id: params.dealId,
+        property_type: params.propertyType,
+        city: params.city,
+        state: params.state,
+        units: params.units || null,
+        asking_price: params.askingPrice || null,
+        address: params.address || null,
+        status: 'new',
+        created_at: new Date().toISOString(),
+      }),
+    ]);
+    logger.info('KG: seeded Deal node', { nodeId });
+  } catch (err: any) {
+    // KG seeding is non-blocking; deal creation must succeed regardless
+    logger.warn('KG: failed to seed Deal node on creation', { dealId: params.dealId, error: err?.message });
+  }
   
   await eventDispatcher.onDealCreated(params.dealId, params.userId, {
     name: params.name,
