@@ -14,6 +14,7 @@ import { query } from '../../database/connection';
 import { logger } from '../../utils/logger';
 import { skillRegistry } from '../skills/skill-registry';
 import { eventDispatcher } from '../agents/event-dispatcher';
+import { clawdbotWebhook } from '../../webhooks/clawdbot';
 // Side-effect import: ensures all skills (extract_document, review_contract,
 // analyze_appraisal, parse_environmental_report, ...) are registered with
 // the skillRegistry before we try to execute them. Without this, the registry
@@ -185,7 +186,7 @@ export async function runExtractionForFile(opts: TriggerOptions): Promise<void> 
 
       // After extraction succeeds, notify agents to underwrite
       const dealFile = await query(
-        `SELECT deal_id, category FROM deal_files WHERE id = $1`,
+        `SELECT deal_id, category, deal_files.name AS deal_name FROM deal_files WHERE id = $1`,
         [fileId]
       );
       const df = dealFile.rows[0];
@@ -199,6 +200,15 @@ export async function runExtractionForFile(opts: TriggerOptions): Promise<void> 
           category: cat || 'unknown',
           mimeType: opts.mimeType || 'application/octet-stream',
         }).catch(e => logger.warn('auto-extract: failed to trigger underwriting', { fileId, e }));
+
+        // Send Telegram notification (best-effort, non-blocking)
+        clawdbotWebhook.sendDocumentProcessed({
+          dealId: df.deal_id,
+          dealName: df.deal_name || opts.filename || 'Unknown',
+          filename: opts.filename || '',
+          category: df.category || 'unknown',
+          success: true,
+        }).catch((e: any) => logger.warn('auto-extract: telegram notification failed', { fileId, e }));
       }
     } else {
       await query(
@@ -209,6 +219,23 @@ export async function runExtractionForFile(opts: TriggerOptions): Promise<void> 
           WHERE id = $1`,
         [fileId, resultError || 'Unknown extraction error']
       );
+      // Send failure notification (best-effort)
+      const failFile = await query(
+        `SELECT deal_id, category, deal_files.name AS deal_name FROM deal_files WHERE id = $1`,
+        [fileId]
+      ).catch(() => ({ rows: [] }));
+      const fdf = failFile?.rows?.[0];
+      if (fdf?.deal_id) {
+        clawdbotWebhook.sendDocumentProcessed({
+          dealId: fdf.deal_id,
+          dealName: fdf.deal_name || opts.filename || 'Unknown',
+          filename: opts.filename || '',
+          category: fdf.category || 'unknown',
+          success: false,
+          error: resultError || 'extraction failed',
+        }).catch(() => {});
+      }
+
       logger.warn('auto-extract: failed', { fileId, skillId, error: resultError });
     }
   } catch (err) {
