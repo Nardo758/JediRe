@@ -86,7 +86,26 @@ export interface DeepSeekRequest {
   max_tokens?: number;
   temperature?: number;
   top_p?: number;
+  /** OpenAI-compatible tool definitions. */
+  tools?: Array<{
+    type: 'function';
+    function: {
+      name: string;
+      description: string;
+      parameters: Record<string, unknown>;
+    };
+  }>;
+  response_format?: { type: 'text' | 'json_object' };
   metadata: MeteringMetadata;
+}
+
+export interface DeepSeekToolCall {
+  id: string;
+  type: 'function';
+  function: {
+    name: string;
+    arguments: string;
+  };
 }
 
 export interface DeepSeekUsage {
@@ -103,6 +122,7 @@ export interface DeepSeekResponse {
   model: string;
   text: string;
   finish_reason: string | null;
+  tool_calls?: DeepSeekToolCall[];
   usage: DeepSeekUsage;
 }
 
@@ -149,7 +169,15 @@ export class DeepSeekMeteringAdapter {
       id: string;
       model: string;
       choices: Array<{
-        message: { content: string };
+        index: number;
+        message: {
+          content: string | null;
+          tool_calls?: Array<{
+            id: string;
+            type: 'function';
+            function: { name: string; arguments: string };
+          }>;
+        };
         finish_reason: string | null;
       }>;
       usage: {
@@ -162,16 +190,27 @@ export class DeepSeekMeteringAdapter {
     };
 
     try {
+      const body: Record<string, unknown> = {
+        model: apiParams.model,
+        messages: apiParams.messages,
+        max_tokens: apiParams.max_tokens ?? 4096,
+        temperature: apiParams.temperature ?? 0,
+        stream: false,
+      };
+      if (apiParams.tools && apiParams.tools.length > 0) {
+        body.tools = apiParams.tools;
+      } else if (apiParams.response_format?.type === 'json_object') {
+        body.response_format = apiParams.response_format;
+      }
+      // When tools are present, use auto mode so DeepSeek can decide when to call them.
+      // When no tools, default to json_object output.
+      if (body.tools && !body.response_format) {
+        body.tool_choice = 'auto';
+      }
+
       const resp = await axios.post(
         this.endpoint,
-        {
-          model: apiParams.model,
-          messages: apiParams.messages,
-          max_tokens: apiParams.max_tokens ?? 4096,
-          temperature: apiParams.temperature ?? 0,
-          top_p: apiParams.top_p,
-          stream: false,
-        },
+        body,
         {
           headers: {
             'Content-Type': 'application/json',
@@ -218,11 +257,28 @@ export class DeepSeekMeteringAdapter {
       apiParams.model
     );
 
+    const msg = raw.choices?.[0]?.message ?? {};
+    const dsToolCalls = msg.tool_calls;
+    const content = msg.content ?? '';
+    const text = content || '';
+    const finishReason = raw.choices?.[0]?.finish_reason ?? null;
+
+    // Extract tool_calls from response if present
+    const toolCalls: DeepSeekToolCall[] | undefined = dsToolCalls?.map(tc => ({
+      id: tc.id,
+      type: 'function' as const,
+      function: {
+        name: tc.function.name,
+        arguments: tc.function.arguments,
+      },
+    }));
+
     return {
       id: raw.id,
       model: raw.model,
-      text: raw.choices?.[0]?.message?.content ?? '',
-      finish_reason: raw.choices?.[0]?.finish_reason ?? null,
+      text,
+      finish_reason: finishReason,
+      tool_calls: toolCalls,
       usage: {
         prompt_tokens: raw.usage.prompt_tokens,
         completion_tokens: raw.usage.completion_tokens,

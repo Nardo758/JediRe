@@ -136,7 +136,34 @@ function createMeteringFn(config: AgentConfig): CreateMessageFn {
           content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
         });
       }
-      const resp = await ds.createMessage({
+
+      // Convert Anthropic tools to DeepSeek/OpenAI function-calling format
+      const dsTools = (params.tools as Array<{ name: string; description: string; input_schema: unknown }> | undefined)
+        ?.filter(t => t.name && t.input_schema)
+        .map(t => ({
+          type: 'function' as const,
+          function: {
+            name: t.name,
+            description: t.description ?? '',
+            parameters: t.input_schema as Record<string, unknown>,
+          },
+        }));
+
+      const dsParams: {
+        model: string;
+        messages: Array<{ role: string; content: string }>;
+        max_tokens: number;
+        tools?: Array<{ type: 'function'; function: { name: string; description: string; parameters: Record<string, unknown> } }>;
+        response_format?: { type: 'text' | 'json_object' };
+        metadata: {
+          actor_type: string;
+          actor_id: string;
+          agent_run_id: string;
+          deal_id?: string;
+          user_id?: string;
+          triggered_by: string;
+        };
+      } = {
         model: params.model,
         messages: dsMessages,
         max_tokens: params.max_tokens,
@@ -148,11 +175,43 @@ function createMeteringFn(config: AgentConfig): CreateMessageFn {
           user_id: params.metadata.user_id,
           triggered_by: params.metadata.triggered_by as any,
         },
-      });
+      };
+
+      if (dsTools && dsTools.length > 0) {
+        dsParams.tools = dsTools;
+      } else {
+        // No tools: request structured JSON output
+        dsParams.response_format = { type: 'json_object' };
+      }
+
+      const resp = await ds.createMessage(dsParams);
+
+      // Build Anthropic-style content array from DeepSeek response
+      const content: Array<{ type: string; text?: string; id?: string; name?: string; input?: unknown }> = [];
+      if (resp.text) {
+        content.push({ type: 'text', text: resp.text });
+      }
+      if (resp.tool_calls) {
+        for (const tc of resp.tool_calls) {
+          let parsed: unknown;
+          try {
+            parsed = JSON.parse(tc.function.arguments);
+          } catch {
+            parsed = tc.function.arguments;
+          }
+          content.push({
+            type: 'tool_use',
+            id: tc.id,
+            name: tc.function.name,
+            input: parsed,
+          });
+        }
+      }
+
       return {
         id: resp.id,
         model: resp.model,
-        content: [{ type: 'text', text: resp.text }],
+        content,
         stop_reason: resp.finish_reason,
         usage: {
           input_tokens: resp.usage.prompt_tokens,
