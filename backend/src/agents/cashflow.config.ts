@@ -21,6 +21,7 @@ import { BudgetEnforcer } from './runtime/BudgetEnforcer';
 import { DEFAULT_BUDGET_CAPS } from './config/budget';
 import { query } from '../database/connection';
 import type { AgentConfig } from './runtime/types';
+import { cashflowPostProcess } from './cashflow.postprocess';
 
 import { fetchT12Tool } from './tools/fetch_t12';
 import { fetchRentRollTool } from './tools/fetch_rent_roll';
