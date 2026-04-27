@@ -1107,32 +1107,29 @@ router.post('/:dealId/analysis/trigger', requireAuth, async (req: AuthenticatedR
     // Research → Supply → CashFlow → Commentary
     setImmediate(async () => {
       try {
-        const deal = await client.query(`SELECT * FROM deals WHERE id = $1`, [dealId]);
-        if (deal.rows.length === 0) return;
-
         const ctxBase = { dealId, userId: req.user!.userId, triggeredBy: 'user' as const };
-
-        logger.info(`[Pipeline] Starting underwrite for ${dealId}`);
+        console.log(`[Pipeline] Starting underwrite for ${dealId} (user=${ctxBase.userId})`);
 
         // Step 1: Research agent — market context
         const researchResult = await researchRuntime.run(dealId, ctxBase);
-        logger.info(`[Pipeline] Research complete for ${dealId}`);
+        console.log(`[Pipeline] Research complete for ${dealId} — score=${researchResult?.confidence_score}`);
 
         // Step 2: Supply agent — supply pipeline
         const supplyResult = await supplyRuntime.run(dealId, ctxBase);
-        logger.info(`[Pipeline] Supply complete for ${dealId}`);
+        console.log(`[Pipeline] Supply complete for ${dealId}`);
 
         // Step 3: CashFlow agent — pro forma + underwriting
         const cashflowResult = await cashflowRuntime.run(dealId, ctxBase);
-        logger.info(`[Pipeline] CashFlow complete for ${dealId}`);
+        console.log(`[Pipeline] CashFlow complete for ${dealId}`);
 
         // Step 4: Commentary agent — narrative summary
         const commentaryResult = await commentaryRuntime.run(dealId, ctxBase);
-        logger.info(`[Pipeline] Commentary complete for ${dealId}`);
+        console.log(`[Pipeline] Commentary complete for ${dealId}`);
 
-        logger.info(`[Pipeline] Underwrite complete for ${dealId}`);
+        console.log(`[Pipeline] Underwrite complete for ${dealId}`);
       } catch (err: any) {
-        logger.error(`[Pipeline] Underwrite failed for ${dealId}:`, err.message);
+        console.error(`[Pipeline] FAILED for ${dealId}:`, err.message);
+        console.error(err.stack?.slice(0, 1000));
       }
     });
 
