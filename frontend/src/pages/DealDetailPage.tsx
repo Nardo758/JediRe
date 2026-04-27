@@ -35,7 +35,7 @@ import {
   Building2, Target, Package, Calculator,
   ArrowLeft, ArrowRight, Activity, LayoutDashboard,
   Landmark, HardHat, Shield, Box, FileText, Briefcase, LayoutList,
-  CheckCircle, X, Loader2, Users,
+  CheckCircle, X, Loader2,
 } from 'lucide-react';
 import { Tab } from '../components/deal/TabGroup';
 import { DealScreenWrapper } from '../components/deal/DealScreenWrapper';
@@ -53,9 +53,6 @@ import { SkillsBar } from '../components/layout/SkillsBar';
 import { BloombergOverviewSection } from '../components/deal/sections/BloombergOverviewSection';
 import { DealStatusSection } from '../components/deal/sections/DealStatusSection';
 import { PresenceIndicator } from '../components/deal/PresenceIndicator';
-import { ActivityFeed } from '../components/deal/ActivityFeed';
-import { CommentThread } from '../components/deal/CommentThread';
-import { DealTeamPanel } from '../components/deal/DealTeamPanel';
 
 import { MarketIntelligencePage } from './development/MarketIntelligencePage';
 import SupplyPipelinePage from './development/SupplyPipelinePage';
@@ -138,18 +135,6 @@ interface ScreenProps {
 }
 
 // ─── Module-level screen wrappers (stable references — prevents remount blink) ──
-const CollaborationSection = (props: ScreenProps) => {
-  const dId = props?.dealId;
-  if (!dId) return <div className="p-4 text-sm" style={{ color: BT.text.secondary }}>No deal selected</div>;
-  return (
-    <div className="p-4 space-y-4">
-      <DealTeamPanel dealId={dId} />
-      <CommentThread dealId={dId} />
-      <ActivityFeed dealId={dId} />
-    </div>
-  );
-};
-
 const OverviewScreen = (props: ScreenProps) => {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
@@ -743,7 +728,6 @@ const DealDetailPage: React.FC = () => {
     { id: 'risk',        moduleId: 'M13', fkey: 'F10', code: 'M13', short: 'RISK',       label: 'Risk',             icon: <Shield size={14} />,          component: RiskScreen },
     { id: 'deal-tools', moduleId: 'M21', fkey: 'F11', code: 'M21', short: 'TOOLS',      label: 'Deal Tools',       icon: <Briefcase size={14} />,       component: DealToolsScreen },
     { id: 'unit-mix',   moduleId: 'M01', fkey: 'F13', code: 'M14', short: 'UNIT MIX',   label: 'Unit Mix',         icon: <LayoutList size={14} />,      component: UnitMixScreen },
-    { id: 'team',           moduleId: 'M01', fkey: '',    code: 'M00', short: 'TEAM',       label: 'Deal Team',        icon: <Users size={14} />,           component: CollaborationSection },
   ];
 
   const dealScreens = allDealScreens.filter((s) => config.isModuleVisible(s.moduleId));

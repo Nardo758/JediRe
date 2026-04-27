@@ -9,10 +9,13 @@ import { apiClient } from '../../../services/api.client';
 import {
   MessageSquare, Users, Calendar, FileText, FolderOpen, Files,
   Plus, Trash2, Pin, Edit2, Save, X, ChevronDown, ChevronUp,
-  Phone, Mail, Building2, User, Clock, Bot,
+  Phone, Mail, Building2, User, Clock, Bot, UserCheck,
 } from 'lucide-react';
 import { BT } from '../bloomberg-ui';
 import OpusAISection from './OpusAISection';
+import { DealTeamPanel } from '../DealTeamPanel';
+import { CommentThread } from '../CommentThread';
+import { ActivityFeed } from '../ActivityFeed';
 
 interface DealToolsSectionProps {
   deal?: any;
@@ -27,6 +30,7 @@ const TABS = [
   { id: 'decisions', name: 'Decisions', icon: FileText },
   { id: 'files', name: 'Files', icon: Files },
   { id: 'documents', name: 'Documents', icon: FolderOpen },
+  { id: 'team', name: 'Team', icon: UserCheck },
   { id: 'ai', name: 'AI Agent', icon: Bot },
 ];
 
@@ -116,6 +120,17 @@ export const DealToolsSection: React.FC<DealToolsSectionProps> = ({ deal, dealId
         {activeTab === 'decisions' && <DecisionsTab dealId={resolvedDealId} />}
         {activeTab === 'files' && <FilesTab dealId={resolvedDealId} />}
         {activeTab === 'documents' && <DocumentsTab dealId={resolvedDealId} />}
+        {activeTab === 'team' && (
+          resolvedDealId ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <DealTeamPanel dealId={resolvedDealId} />
+              <CommentThread dealId={resolvedDealId} />
+              <ActivityFeed dealId={resolvedDealId} />
+            </div>
+          ) : (
+            <div style={{ padding: 16, fontSize: 11, color: BT.text.secondary, fontFamily: BT.font.mono }}>No deal selected</div>
+          )
+        )}
         {activeTab === 'ai' && <OpusAISection dealId={resolvedDealId} deal={deal} />}
       </div>
     </div>
