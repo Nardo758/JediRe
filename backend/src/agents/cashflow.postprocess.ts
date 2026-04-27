@@ -63,10 +63,8 @@ export async function cashflowPostProcess(
           };
         }
       }
-      if (Object.keys(proformaFields).length > 0) {
-        output.proforma_fields = proformaFields;
-        logger.info(`[CashflowPostProcess] Aggregated ${Object.keys(proformaFields).length} proforma fields from agent_run_steps`);
-      }
+      output.proforma_fields = proformaFields;
+      logger.info(`[CashflowPostProcess] Aggregated ${Object.keys(proformaFields).length} proforma fields from agent_run_steps`);
     }
 
     // ── Aggregate collision_summary from detect_collision tool calls ──────────
