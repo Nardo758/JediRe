@@ -47,12 +47,12 @@
 
 import { Router, Response } from 'express';
 import { Pool } from 'pg';
-import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
+import { requireAuthOrApiKey, AuthenticatedRequest } from '../../middleware/auth';
 
 export function createAgentStatusRoutes(pool: Pool): Router {
   const router = Router();
 
-  router.get('/', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  router.get('/', requireAuthOrApiKey, async (req: AuthenticatedRequest, res: Response) => {
     try {
       const userId = req.user?.userId;
       if (!userId) {
