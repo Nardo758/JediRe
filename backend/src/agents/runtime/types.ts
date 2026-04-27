@@ -116,6 +116,17 @@ export interface AgentConfig {
    * from DB instead of requiring the model to echo back its own tool history.
    */
   postProcess?: (rawOutput: unknown, ctx: RunContext, runId: string) => Promise<Record<string, unknown>>;
+
+  /**
+   * Optional first-turn tool forcing — when set, the runtime passes
+   * tool_choice: { type: "function", function: { name: firstToolCall } }
+   * on the very first LLM request of the loop ONLY. This ensures deterministic
+   * first-step behavior (e.g. Commentary must call fetch_data_matrix before
+   * producing any output) without requiring fragile prompt engineering.
+   *
+   * After the first turn resolves, the loop reverts to auto tool selection.
+   */
+  firstToolCall?: string;
 }
 
 // ── Run tracking ──────────────────────────────────────────────────────────────

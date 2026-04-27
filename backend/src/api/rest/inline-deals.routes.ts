@@ -1164,9 +1164,22 @@ router.post('/:dealId/analysis/trigger', requireAuth, async (req: AuthenticatedR
       // Mark pipeline run (use fresh pool connection — don't capture from outer scope)
       try {
         const status = errors.length === 0 ? 'succeeded' : errors.length === 4 ? 'failed' : 'partial';
+        let outputPayload: Record<string, unknown> = { errors: errors.length > 0 ? errors : undefined };
+        // Strip circular/non-serializable refs from rich agent run objects
+        try {
+          outputPayload.results = JSON.parse(JSON.stringify(results));
+        } catch {
+          // Fall back to a summary if full results can't serialize
+          outputPayload = {
+            ...outputPayload,
+            results: Object.fromEntries(
+              Object.entries(results).map(([k, v]) => [k, typeof v === 'object' ? '[serialized]' : v])
+            ),
+          };
+        }
         await pool.query(
           `UPDATE agent_runs SET status = $1, output = $2, completed_at = NOW() WHERE id = $3`,
-          [status, JSON.stringify({ results, errors: errors.length > 0 ? errors : undefined }), pipelineRunId]
+          [status, JSON.stringify(outputPayload), pipelineRunId]
         );
         logger.info(`[Pipeline] Underwrite ${status} for ${dealId}` + 
           (errors.length > 0 ? ` (${errors.length} failures)` : ''));

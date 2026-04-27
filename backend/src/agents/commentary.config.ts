@@ -81,6 +81,8 @@ export const COMMENTARY_AGENT_CONFIG: AgentConfig = {
   budgetCaps: DEFAULT_BUDGET_CAPS.commentary,
   modelName: 'deepseek-chat',
   capabilities: ['read:all', 'web:search', 'data:matrix'],
+  /** Force fetch_data_matrix as the very first action — no output before context */
+  firstToolCall: 'fetch_data_matrix',
 };
 
 // ── Singleton runtime ─────────────────────────────────────────────

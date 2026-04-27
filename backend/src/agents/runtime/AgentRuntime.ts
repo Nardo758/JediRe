@@ -112,6 +112,7 @@ type CreateMessageFn = (params: {
   messages: unknown[];
   tools?: unknown[];
   max_tokens: number;
+  tool_choice?: { type: 'function'; function: { name: string } };
   metadata: { actor_type: string; actor_id: string; agent_run_id: string; deal_id?: string; user_id?: string; triggered_by: string };
 }) => Promise<AdapterResponse>;
 
@@ -187,6 +188,7 @@ function createMeteringFn(config: AgentConfig): CreateMessageFn {
         messages: Array<{ role: string; content: string }>;
         max_tokens: number;
         tools?: Array<{ type: 'function'; function: { name: string; description: string; parameters: Record<string, unknown> } }>;
+        tool_choice?: string | { type: string; function: { name: string } };
         response_format?: { type: 'text' | 'json_object' };
         metadata: {
           actor_type: string;
@@ -214,6 +216,12 @@ function createMeteringFn(config: AgentConfig): CreateMessageFn {
       dsParams.response_format = { type: 'json_object' };
       if (dsTools && dsTools.length > 0) {
         dsParams.tools = dsTools;
+      }
+      // First-turn tool forcing — override auto tool selection so the model
+      // deterministically calls the specified tool as its very first action.
+      // Only applied on turn 1; subsequent turns fall back to 'auto'.
+      if (params.tool_choice?.function?.name && dsTools?.length) {
+        dsParams.tool_choice = params.tool_choice;
       }
 
       const resp = await ds.createMessage(dsParams);
@@ -580,13 +588,20 @@ export class AgentRuntime {
       // Per-step budget check
       await this.budget.checkRunCap(run.id, totalCost, this.config.budgetCaps);
 
-      // Call Claude via metering adapter
+      // On turn 0: force firstToolCall if configured (deterministic first step)
+      const toolChoice: { type: 'function'; function: { name: string } } | undefined =
+        i === 0 && this.config.firstToolCall
+          ? { type: 'function' as const, function: { name: this.config.firstToolCall } }
+          : undefined;
+
+      // Call LLM via metering adapter
       const response: AdapterResponse = await this.meteringFn({
         model: this.config.modelName,
         system: systemPrompt,
         messages,
         tools: this.config.tools.map(toAnthropicToolSchema),
         max_tokens: 4096,
+        tool_choice: toolChoice,
         metadata: {
           actor_type: 'agent',
           actor_id: this.config.agentId,

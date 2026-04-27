@@ -95,6 +95,8 @@ export interface DeepSeekRequest {
       parameters: Record<string, unknown>;
     };
   }>;
+  /** Force a specific tool on the first turn. Pass full OpenAI tool_choice. */
+  tool_choice?: string | { type: string; function: { name: string } };
   response_format?: { type: 'text' | 'json_object' };
   metadata: MeteringMetadata;
 }
@@ -199,7 +201,9 @@ export class DeepSeekMeteringAdapter {
       };
       if (apiParams.tools && apiParams.tools.length > 0) {
         body.tools = apiParams.tools;
-        body.tool_choice = 'auto';
+        // Use caller-specified tool_choice if provided (first-turn forcing),
+        // otherwise default to 'auto' for natural tool selection.
+        body.tool_choice = apiParams.tool_choice ?? 'auto';
       }
       // Always request JSON output when no tools or alongside tools.
       // DeepSeek accepts response_format + tools simultaneously.

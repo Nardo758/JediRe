@@ -59,6 +59,7 @@ export interface MessageParams {
   tools?: Anthropic.Tool[];
   max_tokens: number;
   metadata: MeteringMetadata;
+  tool_choice?: { type: 'function'; function: { name: string } };
 }
 
 export interface MeteredMessage extends Anthropic.Message {
