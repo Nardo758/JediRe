@@ -23,8 +23,15 @@ import Anthropic from '@anthropic-ai/sdk';
 
 const router = Router();
 
+// Prefer the Replit-managed integration key (routes via the ModelFarm proxy
+// at AI_INTEGRATIONS_ANTHROPIC_BASE_URL) and fall back to a raw Anthropic key
+// for local/dev. Same precedence as the rest of the backend (aiService).
 const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
+  apiKey:
+    process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY ??
+    process.env.ANTHROPIC_API_KEY ??
+    process.env.CLAUDE_API_KEY,
+  baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
 });
 
 // ============================================================================
@@ -385,7 +392,7 @@ Write 3-4 sentences highlighting what's most important today. Start with the mos
 
   try {
     const response = await anthropic.messages.create({
-      model: 'claude-3-5-haiku-20241022',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 300,
       messages: [{ role: 'user', content: prompt }],
     });

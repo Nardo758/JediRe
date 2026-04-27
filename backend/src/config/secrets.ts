@@ -116,7 +116,7 @@ export const secrets = {
     // LLM Providers
     ai: {
       claudeApiKey: getEnv('CLAUDE_API_KEY'),
-      claudeModel: getEnv('CLAUDE_MODEL', 'claude-3-5-sonnet-20241022'),
+      claudeModel: getEnv('CLAUDE_MODEL', 'claude-sonnet-4-5'),
       openaiApiKey: getEnv('OPENAI_API_KEY'),
       openaiModel: getEnv('OPENAI_MODEL', 'gpt-4-turbo-preview'),
       huggingfaceToken: getEnv('HF_TOKEN'),

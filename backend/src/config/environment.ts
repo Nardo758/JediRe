@@ -119,7 +119,7 @@ class Environment {
       
       // LLM APIs
       claudeApiKey: process.env.CLAUDE_API_KEY,
-      claudeModel: process.env.CLAUDE_MODEL || 'claude-3-5-sonnet-20241022',
+      claudeModel: process.env.CLAUDE_MODEL || 'claude-sonnet-4-5',
       openaiApiKey: process.env.OPENAI_API_KEY,
       openaiModel: process.env.OPENAI_MODEL || 'gpt-4-turbo-preview',
 

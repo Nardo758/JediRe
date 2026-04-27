@@ -374,7 +374,7 @@ router.get('/deals/:dealId/scenarios/hbu', async (req: Request, res: Response) =
         );
 
         const msg = await withAiTimeout(anthropic.messages.create({
-          model: 'claude-sonnet-4-6',
+          model: 'claude-sonnet-4-5',
           max_tokens: 2000,
           messages: [{ role: 'user', content: prompt }],
         }), 3500) as any;
@@ -542,7 +542,7 @@ router.get('/deals/:dealId/regulatory-risk-analysis', async (req: Request, res: 
     });
 
     const msg = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-4-5',
       max_tokens: 4096,
       messages: [{ role: 'user', content: prompt }],
     });
@@ -899,7 +899,7 @@ Respond with ONLY valid JSON (no markdown, no code fences):
     });
 
     const msg = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-4-5',
       max_tokens: 4096,
       messages: [{ role: 'user', content: prompt }],
     });

@@ -22,7 +22,7 @@ export type AgentId =
   | 'commentary';
 
 export type ModelName =
-  | 'claude-opus-4-7'
+  | 'claude-opus-4-5'
   | 'claude-sonnet-4-5'
   | 'claude-haiku-4-5-20251001';
 

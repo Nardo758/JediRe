@@ -23,11 +23,10 @@ import type { MeteringMetadata } from './types';
 // ── Token cost table (USD per 1M tokens, approximate) ────────────
 
 const COST_PER_MTK: Record<string, { input: number; output: number }> = {
-  'claude-opus-4-20250514':    { input: 15.00, output: 75.00 },
-  'claude-opus-4-7':           { input: 15.00, output: 75.00 },
-  'claude-sonnet-4-20250514':  { input:  3.00, output: 15.00 },
+  'claude-opus-4-5':           { input: 15.00, output: 75.00 },
   'claude-sonnet-4-5':         { input:  3.00, output: 15.00 },
   'claude-haiku-4-5-20251001': { input:  0.80, output:  4.00 },
+  'claude-haiku-4-5':          { input:  0.80, output:  4.00 },
   // DeepSeek (OpenAI-compatible). Routed via DeepSeekMeteringAdapter for
   // actual calls, but kept here so estimateCost() returns sane numbers if a
   // DeepSeek model name flows through generic cost-rollup paths.
@@ -247,10 +246,14 @@ export class MeteringAdapter {
    *   When omitted, the production client is constructed from environment variables.
    */
   constructor(anthropicClient?: Anthropic) {
+    // Same baseURL handling as JediAIService — pass the ModelFarm proxy URL
+    // explicitly because the SDK only auto-reads ANTHROPIC_BASE_URL.
     this.anthropic = anthropicClient ?? new Anthropic({
       apiKey:
         process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY ||
-        process.env.ANTHROPIC_API_KEY,
+        process.env.ANTHROPIC_API_KEY ||
+        process.env.CLAUDE_API_KEY,
+      baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL || undefined,
     });
   }
 

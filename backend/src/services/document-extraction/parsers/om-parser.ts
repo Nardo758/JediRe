@@ -448,7 +448,7 @@ async function extractWithAI(
     // bypasses metering. Kept so existing callers don't break.
     const anthropic = new Anthropic();
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-5',
       max_tokens: 8000,
       messages: [{ role: 'user', content: userMessage }],
     });

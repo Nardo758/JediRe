@@ -308,7 +308,7 @@ IMPORTANT GUIDANCE:
 - If exit cap risk is high, recommend sale price floors or earnouts`;
 
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-5',
       max_tokens: 4096,
       messages: [{ role: 'user', content: prompt }],
     });

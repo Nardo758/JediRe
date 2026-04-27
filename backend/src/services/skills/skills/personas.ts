@@ -13,7 +13,7 @@ import { skillRegistry, SkillDefinition, SkillContext, SkillResult } from '../sk
 import { logger } from '../../../utils/logger';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-const PERSONA_MODEL = 'claude-sonnet-4-20250514';
+const PERSONA_MODEL = 'claude-sonnet-4-5';
 const MAX_PERSONA_TURNS = 5;
 
 export interface AdvisorPersona {

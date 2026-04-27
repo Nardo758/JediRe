@@ -223,7 +223,7 @@ export async function processChat(message: string, conversationId?: string): Pro
   let totalOutputTokens = 0;
 
   let response = await client.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-sonnet-4-5',
     max_tokens: 2048,
     system: SYSTEM_PROMPT,
     tools: TOOLS,
@@ -263,7 +263,7 @@ export async function processChat(message: string, conversationId?: string): Pro
     messages.push({ role: 'user', content: toolResults });
 
     response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-5',
       max_tokens: 2048,
       system: SYSTEM_PROMPT,
       tools: TOOLS,

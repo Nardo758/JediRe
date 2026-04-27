@@ -356,7 +356,7 @@ class AgentOrchestrator {
 
     // Initial API call
     let response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-5',
       max_tokens: 4096,
       system: systemPrompt,
       tools: allowedSkills,
@@ -409,7 +409,7 @@ class AgentOrchestrator {
       messages.push({ role: 'user', content: toolResults });
 
       response = await anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-5',
         max_tokens: 4096,
         system: systemPrompt,
         tools: allowedSkills,

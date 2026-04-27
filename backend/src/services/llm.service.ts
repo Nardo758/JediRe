@@ -43,7 +43,7 @@ function getLLMProvider(): LLMProvider | null {
       name: 'anthropic',
       apiKey: process.env.CLAUDE_API_KEY,
       endpoint: 'https://api.anthropic.com/v1/messages',
-      model: process.env.CLAUDE_MODEL || 'claude-3-5-sonnet-20241022',
+      model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-5',
     };
   }
 
@@ -241,9 +241,11 @@ async function callOpenRouter(
 // Model name to actual API model ID mapping
 const MODEL_MAP: Record<string, { provider: string; model: string }> = {
   // Claude models (via Anthropic or OpenRouter)
-  'claude-3-opus': { provider: 'anthropic', model: 'claude-3-opus-20240229' },
-  'claude-3-sonnet': { provider: 'anthropic', model: 'claude-3-5-sonnet-20241022' },
-  'claude-3-haiku': { provider: 'anthropic', model: 'claude-3-5-haiku-20241022' },
+  // Legacy aliases. Mapped to current bare versioned IDs because the
+  // ModelFarm proxy rejects date-suffixed Sonnet/Opus/3.5-Haiku IDs.
+  'claude-3-opus':   { provider: 'anthropic', model: 'claude-opus-4-5' },
+  'claude-3-sonnet': { provider: 'anthropic', model: 'claude-sonnet-4-5' },
+  'claude-3-haiku':  { provider: 'anthropic', model: 'claude-haiku-4-5-20251001' },
   // OpenAI models
   'gpt-4': { provider: 'openai', model: 'gpt-4o' },
   'gpt-4-turbo': { provider: 'openai', model: 'gpt-4-turbo' },

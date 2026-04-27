@@ -14,7 +14,7 @@ import type {
   AgentId,
   SubscriptionTier,
 } from '../../types/dealContext';
-import { modelPreferenceService, getModelFamily } from './modelPreferenceService';
+import { modelPreferenceService, getModelFamily, getSurfaceDefault } from './modelPreferenceService';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -25,47 +25,52 @@ type ModelRouting = Record<SubscriptionTier, Record<AgentId, string>>;
 const MODEL_ROUTING: ModelRouting = {
   scout: {
     research: 'deepseek-chat',
-    zoning: 'claude-sonnet-4-20250514',
+    zoning: 'claude-sonnet-4-5',
     supply: 'deepseek-chat',
-    cashflow: 'claude-sonnet-4-20250514',
+    cashflow: 'claude-sonnet-4-5',
     coordinator: 'claude-haiku-4-5-20251001',
     commentary: 'claude-haiku-4-5-20251001',
   },
   operator: {
     research: 'deepseek-chat',
-    zoning: 'claude-sonnet-4-20250514',
+    zoning: 'claude-sonnet-4-5',
     supply: 'deepseek-chat',
-    cashflow: 'claude-sonnet-4-20250514',
-    coordinator: 'claude-sonnet-4-20250514',
+    cashflow: 'claude-sonnet-4-5',
+    coordinator: 'claude-sonnet-4-5',
     commentary: 'claude-haiku-4-5-20251001',
   },
   principal: {
     research: 'deepseek-chat',
-    zoning: 'claude-sonnet-4-20250514',
+    zoning: 'claude-sonnet-4-5',
     supply: 'deepseek-chat',
-    cashflow: 'claude-opus-4-20250514',
-    coordinator: 'claude-sonnet-4-20250514',
-    commentary: 'claude-sonnet-4-20250514',
+    cashflow: 'claude-opus-4-5',
+    coordinator: 'claude-sonnet-4-5',
+    commentary: 'claude-sonnet-4-5',
   },
   institutional: {
     research: 'deepseek-chat',
-    zoning: 'claude-sonnet-4-20250514',
+    zoning: 'claude-sonnet-4-5',
     supply: 'deepseek-chat',
-    cashflow: 'claude-opus-4-20250514',
-    coordinator: 'claude-opus-4-20250514',
-    commentary: 'claude-sonnet-4-20250514',
+    cashflow: 'claude-opus-4-5',
+    coordinator: 'claude-opus-4-5',
+    commentary: 'claude-sonnet-4-5',
   },
 };
 
 // Per-surface default models for non-agent surfaces (pipelines + skills).
-// When a call site supplies routingSurface={type:'pipeline'|'skill', id}, this
-// map wins over MODEL_ROUTING[tier][agentId]. Users can still override these
-// in settings (per-surface preference takes priority).
+// Sourced from the SURFACES registry in modelPreferenceService so the
+// settings UI and the resolver agree. Adding new non-agent surfaces only
+// requires updating SURFACES; this map is kept narrow because aiService
+// only routes to non-agent surfaces when the caller passes routingSurface.
 const SURFACE_DEFAULTS: Record<string, string> = {
-  'pipeline:om_parsing': 'deepseek-chat',
-  'pipeline:email_intake_classification': 'deepseek-chat',
-  'pipeline:document_classification': 'deepseek-chat',
-  'skill:document_extraction': 'deepseek-chat',
+  'pipeline:om_parsing':                  getSurfaceDefault('pipeline', 'om_parsing'),
+  'pipeline:email_intake_classification': getSurfaceDefault('pipeline', 'email_intake_classification'),
+  'pipeline:document_classification':     getSurfaceDefault('pipeline', 'document_classification'),
+  'skill:document_extraction':            getSurfaceDefault('skill', 'document_extraction'),
+  'skill:cfo':                            getSurfaceDefault('skill', 'cfo'),
+  'skill:debt_advisor':                   getSurfaceDefault('skill', 'debt_advisor'),
+  'skill:tax_advisor':                    getSurfaceDefault('skill', 'tax_advisor'),
+  'skill:market_expert':                  getSurfaceDefault('skill', 'market_expert'),
 };
 
 // ── Credit Costs per Operation ─────────────────────────────────
@@ -110,8 +115,16 @@ export class JediAIService {
   private anthropic: Anthropic;
 
   constructor() {
+    // Route through the Replit-managed ModelFarm proxy when configured
+    // (AI_INTEGRATIONS_*). The Anthropic SDK only auto-reads ANTHROPIC_BASE_URL,
+    // so we must pass baseURL explicitly — otherwise every Claude call goes to
+    // api.anthropic.com directly with a proxy-issued key and fails auth.
     this.anthropic = new Anthropic({
-      apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY,
+      apiKey:
+        process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY ||
+        process.env.ANTHROPIC_API_KEY ||
+        process.env.CLAUDE_API_KEY,
+      baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL || undefined,
     });
   }
 
@@ -155,7 +168,7 @@ export class JediAIService {
       // DeepSeek path: tools not supported here; if caller passed tools we fall
       // back to Sonnet to preserve correctness rather than silently dropping them.
       if (options?.tools && options.tools.length > 0) {
-        effectiveModel = 'claude-sonnet-4-20250514';
+        effectiveModel = 'claude-sonnet-4-5';
         logger.warn('DeepSeek dispatch requested with tools; falling back to Sonnet', {
           userId: context.userId, surface: context.routingSurface, requestedModel: model, effectiveModel,
         });
@@ -268,7 +281,15 @@ export class JediAIService {
     messages: Anthropic.MessageParam[]
   ): AsyncGenerator<string> {
     const tier = await this.getUserTier(context.userId);
-    let model = await this.resolveModel(context.userId, tier, context.agentId);
+    // Pass routingSurface so per-surface preferences and SURFACE_DEFAULTS
+    // apply to streamed calls too — otherwise streaming silently bypasses
+    // any non-agent override the user set in /settings.
+    let model = await this.resolveModel(
+      context.userId,
+      tier,
+      context.agentId,
+      context.routingSurface
+    );
 
     // The streaming path only supports Anthropic. If the resolved model is
     // a DeepSeek model (now the default for research/supply), fall back to a
@@ -279,7 +300,7 @@ export class JediAIService {
       const claudeFallback =
         fallback && getModelFamily(fallback) === 'claude'
           ? fallback
-          : 'claude-sonnet-4-20250514';
+          : 'claude-sonnet-4-5';
       logger.info('JediAIService.stream: DeepSeek not supported in stream path, falling back to Claude', {
         requested: model,
         fallback: claudeFallback,
@@ -409,8 +430,8 @@ export class JediAIService {
   private static readonly PREFERENCE_MODEL_MAP: Record<string, string> = {
     cheap: 'deepseek-chat',
     fast: 'claude-haiku-4-5-20251001',
-    balanced: 'claude-sonnet-4-20250514',
-    powerful: 'claude-opus-4-20250514',
+    balanced: 'claude-sonnet-4-5',
+    powerful: 'claude-opus-4-5',
   };
 
   private async resolveModel(

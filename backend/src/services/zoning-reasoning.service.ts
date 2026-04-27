@@ -193,7 +193,7 @@ export class ZoningReasoningService {
 
     try {
       const message = await anthropic.messages.create({
-        model: 'claude-sonnet-4-6',
+        model: 'claude-sonnet-4-5',
         max_tokens: 4096,
         system: REASONING_SYSTEM_PROMPT,
         messages: [{ role: 'user', content: userMessage }],
@@ -239,7 +239,7 @@ export class ZoningReasoningService {
     const userMessage = `Extract the full zoning district profile for district code "${districtCode}" in ${municipality}, ${state}. Provide ALL dimensional standards, use permissions, parking rules, cross-references, incentive programs, and applicable overlay districts.`;
 
     const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-4-5',
       max_tokens: 8192,
       system: EXTRACTION_SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userMessage }],

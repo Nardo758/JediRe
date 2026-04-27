@@ -320,7 +320,7 @@ Respond with JSON only. No explanation.`;
     model: 'haiku' | 'sonnet' = 'haiku'
   ): Promise<{ output: any; tokens: { input: number; output: number } }> {
     const modelId = model === 'sonnet' 
-      ? 'claude-sonnet-4-20250514'
+      ? 'claude-sonnet-4-5'
       : 'claude-haiku-4-5-20251001';
 
     const response = await this.anthropic.messages.create({

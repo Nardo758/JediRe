@@ -151,7 +151,7 @@ Provide 3-5 specific, actionable optimization recommendations. Consider:
 Keep each recommendation to 2-3 sentences. Be specific with numbers.`;
 
         const response = await anthropic.messages.create({
-          model: 'claude-sonnet-4-6',
+          model: 'claude-sonnet-4-5',
           max_tokens: 1000,
           messages: [{ role: 'user', content: prompt }],
         });

@@ -1207,7 +1207,7 @@ Keep extraRow values under 70 characters. Do not add rows beyond these four.`;
     let message;
     try {
       message = await anthropic.messages.create({
-        model: 'claude-sonnet-4-6',
+        model: 'claude-sonnet-4-5',
         max_tokens: 4000,
         messages: [{ role: 'user', content: prompt }],
       }, { signal: abortController.signal as any });
@@ -1411,7 +1411,7 @@ For each parameter, rate your confidence:
 Format as JSON matching the structure below. Return ONLY the JSON, no markdown fences, no preamble.`;
 
       const response = await anthropic.messages.create({
-        model: 'claude-opus-4-6',
+        model: 'claude-opus-4-5',
         max_tokens: 4096,
         system: systemPrompt,
         messages: [

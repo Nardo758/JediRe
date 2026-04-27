@@ -339,7 +339,7 @@ ${comparableData}`;
 
     try {
       const stream = anthropic.messages.stream({
-        model: 'claude-sonnet-4-6',
+        model: 'claude-sonnet-4-5',
         max_tokens: 8192,
         system: systemPrompt,
         messages: chatMessages,

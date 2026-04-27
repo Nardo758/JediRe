@@ -134,7 +134,7 @@ export async function skillChat(request: ChatRequest): Promise<ChatResponse> {
 
     // Initial API call
     let response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-5',
       max_tokens: 4096,
       system: SYSTEM_PROMPT,
       tools,
@@ -183,7 +183,7 @@ export async function skillChat(request: ChatRequest): Promise<ChatResponse> {
       messages.push({ role: 'user', content: toolResults });
 
       response = await anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-5',
         max_tokens: 4096,
         system: SYSTEM_PROMPT,
         tools,

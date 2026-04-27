@@ -968,7 +968,7 @@ Write a comprehensive risk assessment narrative. Return valid JSON only.`;
     let fullResponse = '';
 
     const stream = anthropic.messages.stream({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-4-5',
       max_tokens: 4096,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],

@@ -289,7 +289,7 @@ export class ZoningAgentService {
 Provide the development standards, permitted uses, conditional uses, and setback requirements for this zoning district based on the municipal zoning code.`;
 
       const message = await anthropic.messages.create({
-        model: 'claude-sonnet-4-6',
+        model: 'claude-sonnet-4-5',
         max_tokens: 8192,
         messages: [
           { role: 'user', content: userPrompt }

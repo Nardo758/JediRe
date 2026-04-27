@@ -671,7 +671,14 @@ router.post('/:dealId/agent-report', requireAuth, async (req: AuthenticatedReque
     return;
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  // Prefer the Replit-managed integration key (routes via the ModelFarm proxy)
+  // and fall back to a raw Anthropic key for local/dev. Same precedence as
+  // the rest of the backend.
+  const apiKey =
+    process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY ??
+    process.env.ANTHROPIC_API_KEY ??
+    process.env.CLAUDE_API_KEY;
+  const baseURL = process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL;
   if (!apiKey) {
     res.status(500).json({ error: 'AI service not configured' });
     return;
@@ -692,7 +699,7 @@ router.post('/:dealId/agent-report', requireAuth, async (req: AuthenticatedReque
     const dealData = (dealRow.deal_data as Record<string, unknown>) ?? {};
     const dealSummary = `Property: ${dealRow.name ?? dealId} | Status: ${dealRow.status} | Category: ${dealRow.category} | Units: ${dealData.unit_count ?? dealData.units ?? 'unknown'}`;
 
-    const anthropic = new Anthropic({ apiKey });
+    const anthropic = new Anthropic({ apiKey, baseURL });
     const messages: Anthropic.MessageParam[] = [
       { role: 'user', content: `${dealSummary}\n\nRequest: ${prompt}` },
     ];

@@ -270,7 +270,7 @@ Generate 5-8 employers and 3-5 pipeline projects. Make industry composition add 
 
   try {
     const aiPromise = anthropic.messages.create({
-      model: 'claude-sonnet-4-6-20250514',
+      model: 'claude-sonnet-4-5',
       max_tokens: 4000,
       messages: [{ role: 'user', content: contextPrompt }],
     });
