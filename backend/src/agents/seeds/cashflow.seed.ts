@@ -71,12 +71,18 @@ const EVIDENCE_PROMPTS: Array<{
 ];
 
 export async function seedCashflowPrompt(): Promise<void> {
-  // ON CONFLICT DO NOTHING: existing prompt rows are never overwritten on restart.
-  // Preserves any operator rollback (active-flag flip) across process restarts.
-  // Initial inserts set active=true so agents are ready on first deploy.
   const upcomingIds = EVIDENCE_PROMPTS.map(p => p.id);
 
   for (const p of EVIDENCE_PROMPTS) {
+    // Deactivate any existing active row for this (agent_id, prompt_type) so the
+    // partial unique index idx_prompt_versions_active doesn't reject the new insert.
+    await query(
+      `UPDATE prompt_versions SET active = false
+       WHERE agent_id = 'cashflow' AND prompt_type = $1 AND active = true`,
+      [p.promptType]
+    );
+
+    // Insert new row — existing rows are preserved for operator rollback
     await query(
       `INSERT INTO prompt_versions
          (id, agent_id, version, prompt_type, system_prompt, output_schema, tools, active, created_at, created_by)
