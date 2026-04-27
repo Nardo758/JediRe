@@ -34,7 +34,7 @@ import {
   DollarSign, Bot, TrendingUp,
   Building2, Target, Package, Calculator,
   ArrowLeft, ArrowRight, Activity, LayoutDashboard,
-  Landmark, HardHat, Shield, Box, FileText, Briefcase, Zap, LayoutList,
+  Landmark, HardHat, Shield, Box, FileText, Briefcase, LayoutList,
   CheckCircle, X, Loader2, Users,
 } from 'lucide-react';
 import { Tab } from '../components/deal/TabGroup';
@@ -88,7 +88,6 @@ import { UnitMixTab } from '../components/deal/sections/UnitMixTab';
 import { ZoningModuleSection } from '../components/deal/sections/ZoningModuleSection';
 import { useZoningModuleStore } from '../stores/zoningModuleStore';
 import type { DevelopmentPath } from '../types/zoning.types';
-import { EventTimelineSection } from '../components/deal/sections/EventTimelineSection';
 import { EventHeroBanner } from '../components/m35/EventHeroBanner';
 import type { HeroBannerEvent, EventSensitivity } from '../components/m35/EventHeroBanner';
 import { ContextIndicator } from '../components/intelligence/ContextIndicator';
@@ -742,7 +741,6 @@ const DealDetailPage: React.FC = () => {
     { id: 'capital',     moduleId: 'M11', fkey: 'F8',  code: 'M11', short: 'DEBT/CAP',   label: 'Debt & Capital',   icon: <DollarSign size={14} />,      component: DebtCapitalScreen },
     { id: 'proforma',    moduleId: 'M08', fkey: 'F9',  code: 'M08', short: 'PRO FORMA',  label: 'Financial Engine', icon: <Calculator size={14} />,      component: ProFormaScreen },
     { id: 'risk',        moduleId: 'M13', fkey: 'F10', code: 'M13', short: 'RISK',       label: 'Risk',             icon: <Shield size={14} />,          component: RiskScreen },
-    { id: 'events',      moduleId: 'M35', fkey: 'F12', code: 'M35', short: 'EVENTS',     label: 'Event Timeline',   icon: <Zap size={14} />,             component: (props: any) => <EventTimelineSection {...props} /> },
     { id: 'deal-tools', moduleId: 'M21', fkey: 'F11', code: 'M21', short: 'TOOLS',      label: 'Deal Tools',       icon: <Briefcase size={14} />,       component: DealToolsScreen },
     { id: 'unit-mix',   moduleId: 'M01', fkey: 'F13', code: 'M14', short: 'UNIT MIX',   label: 'Unit Mix',         icon: <LayoutList size={14} />,      component: UnitMixScreen },
     { id: 'team',           moduleId: 'M01', fkey: '',    code: 'M00', short: 'TEAM',       label: 'Deal Team',        icon: <Users size={14} />,           component: CollaborationSection },

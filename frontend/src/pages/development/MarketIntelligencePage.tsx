@@ -22,6 +22,7 @@ import { useUnitMixIntelligence } from '../../hooks/useUnitMixIntelligence';
 import { useTradeAreaStore } from '../../stores/tradeAreaStore';
 import { useDealStore } from '../../stores/dealStore';
 import { TrendsAnalysisSection } from '../../components/deal/sections/TrendsAnalysisSection';
+import { EventTimelineSection } from '../../components/deal/sections/EventTimelineSection';
 import OpportunityEngineSection from '../../components/deal/sections/OpportunityEngineSection';
 import DealCompAnalysisTab from '../../components/deal/sections/DealCompAnalysisTab';
 
@@ -135,6 +136,7 @@ function getTabsForMode(mode: DealMode): Array<{ id: string; label: string }> {
         { id: 'comps', label: 'COMPS' },
         { id: 'trends', label: 'TRENDS' },
         { id: 'program', label: 'PROGRAM' },
+        { id: 'events', label: 'EVENTS' },
       ];
     case 'redevelopment':
       return [
@@ -144,6 +146,7 @@ function getTabsForMode(mode: DealMode): Array<{ id: string; label: string }> {
         { id: 'comps', label: 'COMPS' },
         { id: 'trends', label: 'TRENDS' },
         { id: 'repositioning', label: 'REPOSITIONING' },
+        { id: 'events', label: 'EVENTS' },
       ];
     case 'existing':
       return [
@@ -153,6 +156,7 @@ function getTabsForMode(mode: DealMode): Array<{ id: string; label: string }> {
         { id: 'comps', label: 'COMPS' },
         { id: 'trends', label: 'TRENDS' },
         { id: 'program', label: 'PROGRAM' },
+        { id: 'events', label: 'EVENTS' },
       ];
   }
 }
@@ -571,6 +575,12 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
     </div>
   );
 
+  const renderEventsTab = () => (
+    <div style={{ padding: 12, overflowY: 'auto', height: '100%' }}>
+      <EventTimelineSection dealId={dealId} deal={outerProps.deal} dealType={outerProps.dealType} />
+    </div>
+  );
+
   const renderTabContent = () => {
     switch (activeTabId) {
       case 'discovery': return renderDiscoveryTab();
@@ -581,6 +591,7 @@ export const MarketIntelligencePage: React.FC<MarketIntelPageProps> = (outerProp
       case 'program': return renderExistingProgramTab();
       case 'repositioning': return renderRepositioningTab();
       case 'trends': return renderTrendsTab();
+      case 'events': return renderEventsTab();
       default: return renderDiscoveryTab();
     }
   };
