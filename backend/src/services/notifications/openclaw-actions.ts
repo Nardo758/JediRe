@@ -6,11 +6,26 @@
  * verifies the sender is authorized for that channel, runs the action, and
  * returns a plain-text confirmation/error message to send back.
  *
- * v1 actions perform real work:
- *   - approve  : marks the deal as approved + writes a deal_activity row
- *   - dismiss  : writes a deal_activity row recording the dismissal
- *   - rerun    : re-triggers the JEDI Score analysis (fire-and-forget; the
- *                completion notifier will fan out when it finishes)
+ * v1 action semantics (see backend/docs/openclaw-setup.md §6 for the full
+ * operator-facing table):
+ *
+ *   - approve      : AUDIT-ONLY. Inserts an `openclaw_approved` deal_activity
+ *                    row. Does NOT mutate `deals.status` or advance the
+ *                    pipeline — lifecycle changes must still be committed
+ *                    in JediRe via the deals service.
+ *   - dismiss      : AUDIT-ONLY. Inserts an `openclaw_dismissed` row
+ *                    (idempotent — re-dismiss is a no-op).
+ *   - acknowledge  : AUDIT-ONLY. Used by threshold-breach alerts so an
+ *                    operator can record "I saw this" without approving the
+ *                    underlying deal. `ack` is accepted as an alias.
+ *   - rerun        : Re-triggers the full JEDI Score analysis pipeline
+ *                    (fire-and-forget; the completion notifier fans out
+ *                    when the run finishes).
+ *   - rerun_agent  : Currently routes to the same handler as `rerun` (the
+ *                    agent layer doesn't yet expose a single-agent rerun
+ *                    endpoint). The distinct verb is reserved so we can
+ *                    later route to a true per-agent rerun without changing
+ *                    the outbound notification contract.
  *
  * All side-effects are recorded against a synthetic SYSTEM_USER_ID with the
  * channel + sender id captured in metadata, because OpenClaw senders
