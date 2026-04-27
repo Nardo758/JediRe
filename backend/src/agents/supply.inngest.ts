@@ -217,6 +217,40 @@ export const supplyOnDealCreated = inngest.createFunction(
 
     // ── Step 7: Update Knowledge Graph ──────────────────────────────
     await step.run('update-knowledge-graph', async () => {
+      // The Inngest step return type only declares the five core fields the
+      // function needs downstream (runId, confidence_score, fields_written,
+      // summary, supply_risk_level). Any KG-enrichment fields the agent may
+      // emit on top of those (market_id / pipeline_units / development_projects
+      // / web_sourced_comps / gaps) are optional and read defensively here.
+      // This typed view documents that contract without weakening the upstream
+      // return type.
+      type SupplyKgEnrichment = {
+        market_id?: string | null;
+        pipeline_units?: number;
+        development_projects?: Array<{
+          id?: string;
+          name?: string;
+          units?: number;
+          developer?: string;
+          expected_delivery?: string;
+          status?: string;
+          submarket_id?: string;
+        }>;
+        web_sourced_comps?: Array<{
+          name?: string;
+          address?: string;
+          city?: string;
+          units?: number;
+          rent?: number;
+          amenities?: unknown;
+          fees?: unknown;
+          other_income?: unknown;
+          source_url?: string;
+        }>;
+        gaps?: string[];
+      };
+      const kgRunResult = runResult as unknown as typeof runResult & SupplyKgEnrichment;
+
       try {
         const { getGraphIngestionListener } = await import('../services/neural-network/graph-ingestion-listener');
         const { getPool } = await import('../database/connection');
@@ -224,14 +258,14 @@ export const supplyOnDealCreated = inngest.createFunction(
         const graphListener = getGraphIngestionListener(pool);
 
         // Update market node staleness
-        if (runResult.market_id) {
+        if (kgRunResult.market_id) {
           await graphListener.handleEvent({
             type: 'market.updated',
-            entityId: runResult.market_id,
+            entityId: kgRunResult.market_id,
             entityType: 'Market',
             data: {
-              supplyRiskLevel: runResult.supply_risk_level,
-              pipelineUnits: runResult.pipeline_units,
+              supplyRiskLevel: kgRunResult.supply_risk_level,
+              pipelineUnits: kgRunResult.pipeline_units,
               lastSupplyAnalysis: new Date(),
             },
             timestamp: new Date(),
@@ -239,8 +273,8 @@ export const supplyOnDealCreated = inngest.createFunction(
         }
 
         // Ingest any development projects found
-        if (runResult.development_projects?.length > 0) {
-          for (const project of runResult.development_projects) {
+        if (kgRunResult.development_projects && kgRunResult.development_projects.length > 0) {
+          for (const project of kgRunResult.development_projects) {
             await graphListener.handleEvent({
               type: 'development_project.added',
               entityId: project.id || `supply-${dealId}-${Date.now()}`,
@@ -251,7 +285,7 @@ export const supplyOnDealCreated = inngest.createFunction(
                 developer: project.developer,
                 expectedDelivery: project.expected_delivery,
                 constructionStatus: project.status,
-                marketId: runResult.market_id,
+                marketId: kgRunResult.market_id,
                 submarketId: project.submarket_id,
               },
               timestamp: new Date(),
@@ -260,10 +294,10 @@ export const supplyOnDealCreated = inngest.createFunction(
         }
 
         // Ingest web-sourced comp data (from web_search results)
-        if (runResult.web_sourced_comps?.length > 0) {
+        if (kgRunResult.web_sourced_comps && kgRunResult.web_sourced_comps.length > 0) {
           const { getKnowledgeGraph } = await import('../services/neural-network/knowledge-graph.service');
           const kg = getKnowledgeGraph(pool);
-          for (const comp of runResult.web_sourced_comps) {
+          for (const comp of kgRunResult.web_sourced_comps) {
             await kg.upsertNode({
               type: 'Property',
               externalId: `web-comp-${comp.name?.replace(/\s+/g, '-').toLowerCase()}-${dealId}`,
@@ -286,7 +320,7 @@ export const supplyOnDealCreated = inngest.createFunction(
         }
 
         // If supply found gaps, trigger context awareness to surface them
-        if (runResult.gaps?.length > 0 && dealId) {
+        if (kgRunResult.gaps && kgRunResult.gaps.length > 0 && dealId) {
           try {
             const { getPool: gp } = await import('../database/connection');
             await gp().query(`
@@ -294,16 +328,16 @@ export const supplyOnDealCreated = inngest.createFunction(
               SET platform_intel = platform_intel || $2::jsonb
               WHERE id = $1
             `, [dealId, JSON.stringify({
-              supplyGaps: runResult.gaps,
+              supplyGaps: kgRunResult.gaps,
               supplyGapsUpdatedAt: new Date(),
             })]);
           } catch (_) { /* non-fatal */ }
         }
 
         logger.info('supply.inngest: updated knowledge graph', {
-          marketId: runResult.market_id,
-          projectsIngested: runResult.development_projects?.length || 0,
-          webCompsIngested: runResult.web_sourced_comps?.length || 0,
+          marketId: kgRunResult.market_id,
+          projectsIngested: kgRunResult.development_projects?.length || 0,
+          webCompsIngested: kgRunResult.web_sourced_comps?.length || 0,
         });
       } catch (err) {
         logger.warn('supply.inngest: failed to update knowledge graph', { err });
