@@ -593,10 +593,18 @@ export class AgentRuntime {
         );
         let content: Record<string, unknown> = {};
         if (textBlock?.text) {
+          const raw = textBlock.text.trim();
+          logger.info(`[AgentRuntime] Final text for ${run.id}: ${raw.slice(0, 500)}`);
           try {
-            content = JSON.parse(textBlock.text);
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) {
+              logger.warn(`[AgentRuntime] Model returned JSON array instead of object for ${run.id}. Wrapping.`);
+              content = { fields_written: parsed, summary: '', confidence_score: 0, completed_at: new Date().toISOString() };
+            } else {
+              content = parsed;
+            }
           } catch {
-            content = { raw: textBlock.text };
+            content = { raw };
           }
         }
         return { content, totalTokensIn, totalTokensOut, totalCost };
