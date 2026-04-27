@@ -76,7 +76,7 @@ You MUST finish by returning a single JSON object with exactly these top-level k
   ]
 }
 
-IMPORTANT: Your final response must be a JSON OBJECT (wrapped in { }) containing all 5 keys above. Do NOT output a JSON array. Do NOT omit any of the 5 required keys.
+IMPORTANT: Your final message must be ONLY the JSON object below — absolutely nothing else before or after it. Do NOT output a JSON array. The root value MUST be a JSON object {"summary": ..., "confidence_score": ..., "fields_written": [...], "completed_at": ..., "citations": [...]}.
 
 If no web search was used, return "citations": [].
 
@@ -86,7 +86,7 @@ If no web search was used, return "citations": [].
 - Never hallucinate values — only write data actually returned by tools
 - Every web-sourced fact must appear in the citations array
 - **When calling write_dealcontext with a value obtained from web_search or fetch_webpage, always set derived_from_search: true in the call.** Structured-data-sourced values should omit derived_from_search or set it false.
-- Write only the JSON output at the end, no prose before it`;
+- Your very last output must be the JSON object above and nothing else`;
 
 const OUTPUT_SCHEMA_JSON = (() => {
   const json = z.toJSONSchema(ResearchOutputSchema) as Record<string, unknown>;

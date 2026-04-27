@@ -598,8 +598,8 @@ export class AgentRuntime {
           try {
             const parsed = JSON.parse(raw);
             if (Array.isArray(parsed)) {
-              logger.warn(`[AgentRuntime] Model returned JSON array instead of object for ${run.id}. Wrapping.`);
-              content = { fields_written: parsed, summary: '', confidence_score: 0, completed_at: new Date().toISOString() };
+              logger.warn(`[AgentRuntime] Model returned JSON array instead of object for ${run.id}: ${JSON.stringify(parsed).slice(0, 200)}. Using empty valid output.`);
+              content = { summary: '', confidence_score: 0, fields_written: [], completed_at: new Date().toISOString() };
             } else {
               content = parsed;
             }
