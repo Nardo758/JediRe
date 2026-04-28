@@ -1208,7 +1208,7 @@ router.post('/:dealId/analysis/trigger', requireAuthOrApiKey, async (req: Authen
 
     // Fire the full underwriting pipeline asynchronously
     // Research → Supply → CashFlow → Commentary
-    setImmediate(async () => {
+    (async () => {
       const results: Record<string, unknown> = {};
       const errors: string[] = [];
 
