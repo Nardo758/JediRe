@@ -34,7 +34,7 @@ import {
   DollarSign, Bot, TrendingUp,
   Building2, Target, Package, Calculator,
   ArrowLeft, ArrowRight, Activity, LayoutDashboard,
-  Landmark, HardHat, Shield, Box, FileText, Briefcase, LayoutList,
+  Landmark, HardHat, Shield, Box, FileText, Briefcase,
   CheckCircle, X, Loader2, AlertTriangle, ChevronDown, HelpCircle,
 } from 'lucide-react';
 import { Tab } from '../components/deal/TabGroup';
@@ -154,10 +154,26 @@ const StrategyScreen = (props: ScreenProps) => (
   <StrategyArbitragePage dealId={props.dealId} deal={props.deal as Record<string, unknown> | undefined} dealType={props.dealType} />
 );
 const ProFormaScreen = (props: ScreenProps) => (
-  <FinancialEnginePage
-    dealId={props.dealId}
-    deal={props.deal as Record<string, unknown> | undefined}
-    dealType={props.dealType}
+  <DealScreenWrapper
+    passProps={props}
+    tabs={[
+      {
+        id: 'proforma',
+        label: 'Pro Forma',
+        component: (p: ScreenProps) => (
+          <FinancialEnginePage
+            dealId={p.dealId}
+            deal={p.deal as Record<string, unknown> | undefined}
+            dealType={p.dealType}
+          />
+        ),
+      },
+      {
+        id: 'unit-mix',
+        label: 'Unit Mix',
+        component: (p: ScreenProps) => <UnitMixTab dealId={p.dealId} deal={p.deal} />,
+      },
+    ]}
   />
 );
 const PortfolioAssetBridge: React.FC<{ dealId: string; featureName: string }> = ({ dealId, featureName }) => {
@@ -212,9 +228,6 @@ const DebtCapitalScreen = (props: ScreenProps) => (
 );
 const RiskScreen = (props: ScreenProps) => (
   <RiskDDPage dealId={props.dealId} deal={props.deal as Record<string, unknown> | undefined} dealType={props.dealType} />
-);
-const UnitMixScreen = (props: ScreenProps) => (
-  <UnitMixTab dealId={props.dealId} deal={props.deal} />
 );
 const EXEC_TABS = [
   { id: 'timeline',           label: 'PROJECT TIMELINE',   title: 'PROJECT TIMELINE',   subtitle: 'M17 · MILESTONES + GANTT',        border: BT.text.cyan    },
@@ -719,8 +732,8 @@ const DealDetailPage: React.FC = () => {
       const fKeyMap: { [key: string]: string } = {
         F1: 'overview',   F2: 'zoning',    F3: 'market',     F4: 'supply',
         F5: 'strategy',   F6: 'traffic',   F7: 'design-3d',
-        F8: 'capital',    F9: 'unit-mix',  F10: 'risk',
-        F11: 'deal-tools', F12: 'events',  F13: 'proforma',
+        F8: 'capital',    F9: 'proforma',  F10: 'risk',
+        F11: 'deal-tools', F12: 'events',
       };
       if (fKeyMap[e.key]) {
         e.preventDefault();
@@ -761,10 +774,9 @@ const DealDetailPage: React.FC = () => {
     { id: 'traffic',     moduleId: 'M07', fkey: 'F6',  code: 'M07', short: 'TRAFFIC',    label: 'Traffic Intel',    icon: <Activity size={14} />,        component: TrafficScreen },
     { id: 'design-3d',   moduleId: 'M03', fkey: 'F7',  code: 'M03', short: '3D DESIGN',  label: '3D Design',        icon: <Box size={14} />,             component: Design3DScreen },
     { id: 'capital',     moduleId: 'M11', fkey: 'F8',  code: 'M11', short: 'DEBT/CAP',   label: 'Debt & Capital',   icon: <DollarSign size={14} />,      component: DebtCapitalScreen },
-    { id: 'unit-mix',    moduleId: 'M01', fkey: 'F9',  code: 'M14', short: 'UNIT MIX',   label: 'Unit Mix',         icon: <LayoutList size={14} />,      component: UnitMixScreen },
+    { id: 'proforma',    moduleId: 'M08', fkey: 'F9',  code: 'M08', short: 'PRO FORMA',  label: 'Financial Engine', icon: <Calculator size={14} />,      component: ProFormaScreen },
     { id: 'risk',        moduleId: 'M13', fkey: 'F10', code: 'M13', short: 'RISK',       label: 'Risk',             icon: <Shield size={14} />,          component: RiskScreen },
     { id: 'deal-tools',  moduleId: 'M21', fkey: 'F11', code: 'M21', short: 'TOOLS',      label: 'Deal Tools',       icon: <Briefcase size={14} />,       component: DealToolsScreen },
-    { id: 'proforma',    moduleId: 'M08', fkey: 'F13', code: 'M08', short: 'PRO FORMA',  label: 'Financial Engine', icon: <Calculator size={14} />,      component: ProFormaScreen },
   ];
 
   const dealScreens = allDealScreens.filter((s) => config.isModuleVisible(s.moduleId));
