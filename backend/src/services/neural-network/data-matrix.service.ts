@@ -360,6 +360,7 @@ export class DataMatrixService {
     // ── Inject extracted deal data (T12, rent roll, broker claims) ──
     if (deal.id && deal.id !== 'inline') {
       try {
+        console.log(`[DataMatrix] Fetching extractedData for deal.id=${deal.id}`);
         const extResult = await this.pool.query(
           `SELECT deal_data->'extraction_t12' AS t12,
                   deal_data->'extraction_rent_roll' AS rr,
@@ -368,10 +369,12 @@ export class DataMatrixService {
           [deal.id]
         );
         const extRow = extResult.rows[0];
+        console.log(`[DataMatrix] extRow: ${extRow ? 'found' : 'not found'}`);
         if (extRow) {
           const t12 = extRow.t12;
           const rr = extRow.rr;
           const bc = extRow.bc;
+          console.log(`[DataMatrix] t12=${!!t12}, rr=${!!rr}, bc=${!!bc}`);
 
           if (t12 || rr || bc) {
             context.extractedData = {

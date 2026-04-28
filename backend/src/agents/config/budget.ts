@@ -12,7 +12,7 @@ export const DEFAULT_BUDGET_CAPS: Record<string, BudgetCaps> = {
   research: {
     maxTokensPerRun: 500_000,
     maxCostUsdPerRun: 5.00,
-    maxStepsPerRun: 30,
+    maxStepsPerRun: 35,
     maxCostUsdPerDealPerDay: 20.00,
     maxCostUsdPerUserPerMonth: Infinity,
   },
