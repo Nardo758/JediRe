@@ -592,16 +592,29 @@ export async function seedProFormaYear1(
       }
     }
 
-    // Upsert
+    // Upsert — write year1 JSONB and sync key fields to legacy columns
     await pool.query(
-      `INSERT INTO deal_assumptions (deal_id, year1, source_type, source_date, created_at, updated_at)
-       VALUES ($1, $2::jsonb, 'platform_seeded', NOW(), NOW(), NOW())
+      `INSERT INTO deal_assumptions
+         (deal_id, year1, total_units, vacancy_pct, other_income_per_unit,
+          source_type, source_date, created_at, updated_at)
+       VALUES ($1, $2::jsonb, $3, $4,
+               CASE WHEN $5 IS NOT NULL THEN $5 ELSE 50 END,
+               'platform_seeded', NOW(), NOW(), NOW())
        ON CONFLICT (deal_id) DO UPDATE SET
          year1 = EXCLUDED.year1,
+         total_units = EXCLUDED.total_units,
+         vacancy_pct = EXCLUDED.vacancy_pct,
+         other_income_per_unit = EXCLUDED.other_income_per_unit,
          source_type = 'platform_seeded',
          source_date = NOW(),
          updated_at = NOW()`,
-      [dealId, JSON.stringify(seed)]
+      [
+        dealId,
+        JSON.stringify(seed),
+        seed._unit_count,
+        seed.vacancy_pct?.resolved != null ? Math.round(seed.vacancy_pct.resolved * 10000) / 100 : null,
+        seed.other_income_per_unit?.resolved
+      ]
     );
 
     const fieldsSeeded = Object.values(seed).filter(
