@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { requireAuthOrApiKey, AuthenticatedRequest } from '../../middleware/auth';
 import { requireAuth } from '../../middleware/auth';
 import { query } from '../../database/connection';
 import {
@@ -257,6 +258,20 @@ router.post('/surfaces/test', requireAuth, async (req: Request, res: Response) =
   } catch (error: any) {
     console.error('Model test failed:', error);
     res.status(500).json({ success: false, error: error?.message || 'Model test failed' });
+  }
+});
+
+// ── Reseed Agent Prompts ────────────────────────────────────────────────────
+// Triggers re-seeding of all agent prompts from their TypeScript source files.
+// Useful after prompt changes without restarting the whole server.
+router.post('/reseed-prompts', requireAuthOrApiKey, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { seedAllAgentPrompts } = await import('../../agents/seeds/index');
+    await seedAllAgentPrompts();
+    res.json({ success: true, message: 'All agent prompts re-seeded successfully' });
+  } catch (error: any) {
+    console.error('Reseed failed:', error);
+    res.status(500).json({ success: false, error: error?.message || 'Reseed failed' });
   }
 });
 
