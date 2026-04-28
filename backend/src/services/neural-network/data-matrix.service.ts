@@ -214,6 +214,45 @@ export interface DataMatrixContext {
     cyclePosition?: string;
   };
   
+  // Layer 11: Extracted Deal Data (from deals.deal_data)
+  extractedData?: {
+    // T-12 operating statement
+    t12?: {
+      monthsCaptured?: number;
+      gpr?: number;
+      egi?: number;
+      vacancyLoss?: string;
+      opexTotal?: number;
+      noi?: number;
+      expenseRatio?: number;
+      noiMargin?: number;
+      payroll?: number;
+      repairsMaintenance?: number;
+      marketing?: number;
+      managementFee?: number;
+      insurance?: number;
+      realEstateTax?: number;
+      periodStart?: string;
+      periodEnd?: string;
+    };
+    // Rent roll
+    rentRoll?: {
+      totalUnits?: number;
+      occupiedUnits?: number;
+      vacancyUnits?: number;
+      occupancyPct?: number;
+      avgMarketRent?: number;
+      avgEffectiveRent?: number;
+      gprMonthly?: number;
+      lossToLease?: number;
+      egiInPlaceAnnualized?: number;
+      floorPlanMix?: Array<{ beds: number; count: number; marketRent?: number; effectiveRent?: number }>;
+      expirationCurve?: { months0_3?: number; months3_6?: number; months6_12?: number; months12plus?: number; mtm?: number };
+    };
+    // Broker claims from OM
+    brokerClaims?: Record<string, unknown>;
+  };
+
   // Metadata
   completeness: {
     score: number; // 0-100
@@ -317,6 +356,63 @@ export class DataMatrixService {
     
     // Wait for all fetches
     await Promise.allSettled(promises);
+
+    // ── Inject extracted deal data (T12, rent roll, broker claims) ──
+    if (deal.id && deal.id !== 'inline') {
+      try {
+        const extResult = await this.pool.query(
+          `SELECT deal_data->'extraction_t12' AS t12,
+                  deal_data->'extraction_rent_roll' AS rr,
+                  deal_data->'broker_claims' AS bc
+           FROM deals WHERE id = $1 AND deal_data IS NOT NULL`,
+          [deal.id]
+        );
+        const extRow = extResult.rows[0];
+        if (extRow) {
+          const t12 = extRow.t12;
+          const rr = extRow.rr;
+          const bc = extRow.bc;
+
+          if (t12 || rr || bc) {
+            context.extractedData = {
+              t12: t12 ? {
+                monthsCaptured: t12.months_captured,
+                gpr: t12.gpr,
+                egi: t12.egi,
+                vacancyLoss: t12.vacancy_loss != null ? String(t12.vacancy_loss) : undefined,
+                opexTotal: t12.opex?.total,
+                noi: t12.noi,
+                expenseRatio: t12.expense_ratio,
+                noiMargin: t12.noi_margin,
+                payroll: t12.opex?.payroll,
+                repairsMaintenance: t12.opex?.r_and_m,
+                marketing: t12.opex?.marketing,
+                managementFee: t12.opex?.mgmt_fee,
+                insurance: t12.opex?.insurance,
+                realEstateTax: t12.opex?.real_estate_tax,
+                periodStart: t12.period_start,
+                periodEnd: t12.period_end,
+              } : undefined,
+              rentRoll: rr ? {
+                totalUnits: rr.total_units,
+                occupiedUnits: rr.occupied_units,
+                vacancyUnits: rr.vacant_units,
+                occupancyPct: rr.occupancy_by_unit_pct,
+                avgMarketRent: rr.avg_market_rent,
+                avgEffectiveRent: rr.avg_effective_rent,
+                gprMonthly: rr.gpr_monthly,
+                lossToLease: rr.loss_to_lease_monthly,
+                egiInPlaceAnnualized: rr.egi_in_place_annualized,
+              } : undefined,
+              brokerClaims: bc ?? undefined,
+            };
+          }
+        }
+      } catch (extErr) {
+        // Non-fatal — extracted data is supplementary
+        console.warn(`[DataMatrix] Failed to inject extracted data for ${deal.id}:`, extErr);
+      }
+    }
     
     // Calculate completeness
     context.completeness = this.calculateCompleteness(context);
@@ -725,15 +821,17 @@ export class DataMatrixService {
    */
   private calculateCompleteness(context: DataMatrixContext): DataMatrixContext['completeness'] {
     const layers = [
-      { name: 'propertyInfo', data: context.propertyInfo, weight: 15 },
-      { name: 'rentData', data: context.rentData, weight: 15 },
+      { name: 'propertyInfo', data: context.propertyInfo, weight: 10 },
+      { name: 'rentData', data: context.rentData, weight: 10 },
       { name: 'salesComps', data: context.salesComps, weight: 10 },
-      { name: 'proximity', data: context.proximity, weight: 15 },
+      { name: 'proximity', data: context.proximity, weight: 10 },
       { name: 'events', data: context.events, weight: 10 },
       { name: 'backtest', data: context.backtest, weight: 10 },
       { name: 'benchmarks', data: context.benchmarks, weight: 10 },
       { name: 'macro', data: context.macro, weight: 5 },
-      { name: 'marketTrends', data: context.marketTrends, weight: 10 }
+      { name: 'marketTrends', data: context.marketTrends, weight: 10 },
+      // Extracted deal data (T12 + rent roll) is the highest-value data
+      { name: 'extractedData', data: context.extractedData, weight: 15 }
     ];
     
     let score = 0;

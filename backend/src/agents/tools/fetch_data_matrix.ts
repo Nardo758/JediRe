@@ -96,7 +96,10 @@ export async function fetchDataMatrix(
   // Resolve deal from ID or use provided deal
   if (params.dealId) {
     const result = await pool.query(`
-      SELECT * FROM deals WHERE id = $1
+      SELECT id, property_name, address, city, state, county,
+             units, year_built, asking_price, deal_type, asset_class,
+             deal_data
+      FROM deals WHERE id = $1
     `, [params.dealId]);
     
     if (result.rows.length === 0) {
@@ -117,6 +120,25 @@ export async function fetchDataMatrix(
       dealType: row.deal_type,
       assetClass: row.asset_class
     };
+
+    // ── Extract deal_data for preamble enrichment ──
+    const dd = row.deal_data || {};
+    const extractionT12 = dd.extraction_t12;
+    const extractionRentRoll = dd.extraction_rent_roll;
+    const brokerClaims = dd.broker_claims;
+
+    // Override deal-level fields from extracted data when they exist
+    if (extractionRentRoll) {
+      if (extractionRentRoll.total_units && !deal.units) {
+        deal.units = extractionRentRoll.total_units;
+      }
+      if (extractionRentRoll.avg_market_rent) {
+        deal.avgRent = extractionRentRoll.avg_market_rent;
+      }
+      if (extractionRentRoll.occupancy_by_unit_pct) {
+        deal.occupancyPct = Math.round(extractionRentRoll.occupancy_by_unit_pct * 10000) / 100;
+      }
+    }
   } else if (params.assetId) {
     const result = await pool.query(`
       SELECT * FROM data_library_assets WHERE id = $1
