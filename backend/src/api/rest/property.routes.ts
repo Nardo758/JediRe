@@ -103,13 +103,28 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response,
   try {
     const { id } = req.params;
 
-    // Prefer the enriched view (includes zoning), but fall back to the base
-    // properties table so callers don't 404 on properties that simply don't
-    // have zoning data attached yet.
-    let result = await query(
-      'SELECT * FROM properties_with_zoning WHERE id = $1',
-      [id]
-    );
+    // Prefer the enriched view (includes zoning) when available, but fall back
+    // to the base properties table so callers don't 404 on properties that
+    // simply lack zoning data — and so we don't 500 in environments where the
+    // view hasn't been created yet.
+    let result: { rows: any[] } = { rows: [] };
+    try {
+      result = await query(
+        'SELECT * FROM properties_with_zoning WHERE id = $1',
+        [id]
+      );
+    } catch (viewErr: any) {
+      // Only swallow the "view does not exist" error (Postgres 42P01) —
+      // permissions errors, syntax errors, connection failures, etc. should
+      // still surface so we don't mask real problems behind a silent fallback.
+      if (viewErr?.code !== '42P01') {
+        throw viewErr;
+      }
+      logger.warn('properties_with_zoning view missing, falling back to base table', {
+        propertyId: id,
+        err: viewErr?.message,
+      });
+    }
 
     if (result.rows.length === 0) {
       result = await query('SELECT * FROM properties WHERE id = $1', [id]);

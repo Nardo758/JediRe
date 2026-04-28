@@ -242,6 +242,15 @@ import enrichmentAdminRouter from './api/rest/enrichment-admin.routes';
 app.use('/api/v1/admin', enrichmentAdminRouter);
 app.use('/api/v1/admin-api', adminApiKeyRouter);
 
+// Supply Signal routes under the /supply prefix (deal-scoped pipeline +
+// trade-area metrics). Provides GET /api/v1/supply/deals/:dealId/supply that
+// fetch_costar_metrics calls via PlatformClient. Mounted BEFORE the inline
+// dataRouter so its GET /supply/:market handler doesn't shadow our
+// single-segment routes (e.g. /api/v1/supply/events). Auth is enforced here
+// to match the access-control posture of the existing /api/v1 mount of the
+// same router on line ~459.
+app.use('/api/v1/supply', requireAuth, supplyRoutes);
+
 app.use('/api/v1', dataRouter);
 app.use('/api/v1/deals', dealsRouter);
 app.use('/api/v1/tasks', tasksRouter);
@@ -304,6 +313,13 @@ app.use('/api/v1/markets', optionalAuth, createEnhancedMarketIntelligenceRoutes(
 
 import createUnifiedPropertiesRoutes from './api/rest/unified-properties.routes';
 app.use('/api/v1/properties', createUnifiedPropertiesRoutes(pool));
+
+// Property CRUD routes (mounted AFTER unified so /unified isn't shadowed by
+// /:id). Provides the GET /properties/:id, POST /properties, PUT /:id, etc.
+// endpoints that agent tools (e.g. fetch_parcel, fetch_ownership) call via
+// PlatformClient.
+import propertyRoutes from './api/rest/property.routes';
+app.use('/api/v1/properties', propertyRoutes);
 
 app.use('/api/v1/grid', optionalAuth, gridRouter);
 app.use('/api/v1/rankings', optionalAuth, rankingsRouter);
