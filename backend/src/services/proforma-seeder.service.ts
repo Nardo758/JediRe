@@ -99,9 +99,14 @@ function resolve(
   }
 
   // Walk priority list
+  // Skip zero values for revenue/NOI fields (extraction edge case: lease-up
+  // rent roll has gpr_monthly: 0 even when T12 has real GPR)
+  const skipZeroFields = ['gpr', 'egi', 'noi', 'net_rental_income', 'other_income_total', 'other_income_per_unit', 'total_opex'];
+  const shouldSkipZero = skipZeroFields.includes(fieldName);
+  
   for (const src of options.priority) {
     const v = (lv as unknown as Record<string, number | null>)[src];
-    if (v != null) {
+    if (v != null && (!shouldSkipZero || v !== 0)) {
       lv.resolved = v;
       lv.resolution = src as LayeredValue<number>['resolution'];
       return lv;
