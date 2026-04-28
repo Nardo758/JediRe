@@ -469,9 +469,8 @@ export class FullEnrichmentService {
         AVG(ps.sale_price / NULLIF(pic.number_of_units, 0)) AS avg_price_per_unit,
         AVG(ps.sale_price / NULLIF(pic.living_area_sqft, 0)) AS avg_price_per_sf
       FROM property_sales ps
-      JOIN property_info_cache pic ON ps.parcel_id = pic.parcel_id 
-        AND ps.county = pic.county AND ps.state = pic.state
-      WHERE ps.county = $1 AND ps.state = $2
+      JOIN property_info_cache pic ON ps.parcel_id = pic.parcel_id AND ps.state = pic.state
+      WHERE pic.county = $1 AND ps.state = $2
         AND ps.sale_date > NOW() - INTERVAL '24 months'
         AND ps.sale_price > 1000000
     `, [county, state]);
@@ -486,9 +485,8 @@ export class FullEnrichmentService {
         AVG(CASE WHEN ps.sale_date BETWEEN NOW() - INTERVAL '24 months' AND NOW() - INTERVAL '12 months'
             THEN ps.sale_price / NULLIF(pic.number_of_units, 0) END) AS prior_ppu
       FROM property_sales ps
-      JOIN property_info_cache pic ON ps.parcel_id = pic.parcel_id 
-        AND ps.county = pic.county AND ps.state = pic.state
-      WHERE ps.county = $1 AND ps.state = $2
+      JOIN property_info_cache pic ON ps.parcel_id = pic.parcel_id AND ps.state = pic.state
+      WHERE pic.county = $1 AND ps.state = $2
         AND ps.sale_price > 1000000
     `, [county, state]);
     

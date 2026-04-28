@@ -86,7 +86,7 @@ export const fetchAssumptionsTool: ToolDefinition<
     try {
       const result = await query(
         `SELECT
-           d.purchase_price, d.property_type, d.units AS d_units,
+           d.acquisition_price AS purchase_price, d.property_type, d.units AS d_units,
            da.year1,
            da.ltv, da.interest_rate, da.loan_term_years, da.amortization_years,
            da.vacancy_pct, da.vacancy_rate,

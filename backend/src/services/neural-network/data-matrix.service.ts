@@ -549,8 +549,8 @@ export class DataMatrixService {
           ps.sale_date, ps.sale_price, pic.address, pic.number_of_units, pic.living_area_sqft
         FROM property_sales ps
         JOIN property_info_cache pic ON ps.parcel_id = pic.parcel_id 
-          AND ps.county = pic.county AND ps.state = pic.state
-        WHERE ps.county = $1 AND ps.state = $2
+          AND ps.state = pic.state
+        WHERE pic.county = $1 AND ps.state = $2
           AND ps.sale_date > NOW() - INTERVAL '24 months'
           AND ps.sale_price > 1000000
           AND pic.number_of_units > 10
