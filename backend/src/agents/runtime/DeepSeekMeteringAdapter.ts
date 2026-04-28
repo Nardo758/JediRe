@@ -205,9 +205,19 @@ export class DeepSeekMeteringAdapter {
         // otherwise default to 'auto' for natural tool selection.
         body.tool_choice = apiParams.tool_choice ?? 'auto';
       }
-      // Always request JSON output when no tools or alongside tools.
-      // DeepSeek accepts response_format + tools simultaneously.
-      if (apiParams.response_format?.type === 'json_object') {
+      // When tool_choice forces a specific function, OMIT response_format.
+      // DeepSeek (and OpenAI-compat APIs) often satisfy response_format=json_object
+      // by returning a direct JSON object and skipping tool execution entirely,
+      // defeating the purpose of forced tool_choice. Without response_format,
+      // the model honors the tool_choice and emits the required tool call.
+      const isForcedToolCall =
+        typeof apiParams.tool_choice === 'object' &&
+        apiParams.tool_choice !== null &&
+        (apiParams.tool_choice as { function?: { name?: string } }).function?.name;
+      // Always request JSON output when no tools or alongside auto tool selection.
+      // DeepSeek accepts response_format + tools simultaneously, but NOT alongside
+      // a function-forcing tool_choice (skip response_format in that case).
+      if (apiParams.response_format?.type === 'json_object' && !isForcedToolCall) {
         body.response_format = apiParams.response_format;
         // DeepSeek requires the word 'json' somewhere in the prompt when
         // response_format: json_object is set. Inject a reminder if missing.

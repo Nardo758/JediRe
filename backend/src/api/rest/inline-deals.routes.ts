@@ -1286,6 +1286,12 @@ router.post('/:dealId/analysis/trigger', requireAuthOrApiKey, async (req: Authen
       } catch (dbErr: any) {
         logger.error(`[Pipeline] DB update failed for ${dealId}: ${dbErr.message}`);
       }
+    })().catch((fatal: any) => {
+      logger.error(`[Pipeline] Fatal unhandled rejection for ${dealId}: ${fatal?.message ?? String(fatal)}`);
+      pool.query(
+        `UPDATE agent_runs SET status = 'failed', error = $1, completed_at = NOW() WHERE id = $2`,
+        [String(fatal?.message ?? fatal), pipelineRunId]
+      ).catch((e: any) => logger.error(`[Pipeline] Failed to mark pipeline failed after fatal: ${e.message}`));
     });
 
     res.json({

@@ -596,7 +596,7 @@ export const cashflowOnWalkthroughRequested = inngest.createFunction(
     // Step 2: Load deal entity identity needed by Commentary Agent
     const entityCtx = await step.run('load-entity-context', async () => {
       const res = await query(
-        `SELECT dp.property_id, dp.property_type,
+        `SELECT dp.property_id, p.property_type,
                 COALESCE(p.name, d.deal_name, d.id::text) AS entity_name,
                 COALESCE(p.id::text, dp.property_id::text, d.id::text) AS entity_id
          FROM deals d
