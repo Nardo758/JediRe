@@ -4,7 +4,7 @@ import { randomUUID } from 'crypto';
 import path from 'path';
 import fs from 'fs';
 import { getPool } from '../../database/connection';
-import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
+import { requireAuth, requireAuthOrApiKey, AuthenticatedRequest } from '../../middleware/auth';
 import { validate, createDealSchema, updateDealSchema } from './validation';
 import { autoDiscoverComps } from '../../services/comp-set-discovery.service';
 import { processDocument, processDealDocuments } from '../../services/document-extraction/extraction-pipeline';
@@ -1130,7 +1130,7 @@ router.get('/:dealId/zoning-analysis', requireAuth, async (req: AuthenticatedReq
  * GET /deals/:dealId/analysis/latest
  * Get latest strategy analysis for a deal
  */
-router.get('/:dealId/analysis/latest', requireAuth, async (req: AuthenticatedRequest, res) => {
+router.get('/:dealId/analysis/latest', requireAuthOrApiKey, async (req: AuthenticatedRequest, res) => {
   try {
     const { dealId } = req.params;
     const client = pool;
@@ -1180,7 +1180,7 @@ router.get('/:dealId/analysis/latest', requireAuth, async (req: AuthenticatedReq
  * Returns immediately with a runId; agents run asynchronously.
  * Check /api/agent-runs/:runId for status.
  */
-router.post('/:dealId/analysis/trigger', requireAuth, async (req: AuthenticatedRequest, res) => {
+router.post('/:dealId/analysis/trigger', requireAuthOrApiKey, async (req: AuthenticatedRequest, res) => {
   try {
     const { dealId } = req.params;
     const client = pool;
@@ -1307,7 +1307,7 @@ router.post('/:dealId/analysis/trigger', requireAuth, async (req: AuthenticatedR
  * GET /deals/:dealId/analysis/status
  * Check the status of the most recent pipeline run for a deal.
  */
-router.get('/:dealId/analysis/status', requireAuth, async (req: AuthenticatedRequest, res) => {
+router.get('/:dealId/analysis/status', requireAuthOrApiKey, async (req: AuthenticatedRequest, res) => {
   try {
     const { dealId } = req.params;
     const client = pool;
