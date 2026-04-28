@@ -609,6 +609,7 @@ export const cashflowOnWalkthroughRequested = inngest.createFunction(
       return {
         entity_id: (row?.entity_id as string | null) ?? dealId,
         entity_name: (row?.entity_name as string | null) ?? dealId,
+        property_type: (row?.property_type as string | null) ?? null,
       };
     });
 
@@ -632,6 +633,7 @@ export const cashflowOnWalkthroughRequested = inngest.createFunction(
           entity_type: 'property',
           entity_id: entityCtx.entity_id,
           entity_name: entityCtx.entity_name,
+          property_type: entityCtx.property_type,
           walkthrough_mode: true,
           focus: focus ?? 'proforma_evidence',
           proforma_snapshot: evidenceCtx.proforma,
