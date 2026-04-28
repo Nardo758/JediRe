@@ -1,18 +1,32 @@
 /**
  * Multifamily Leasing Traffic Prediction Tests
- * 
- * Validates prediction accuracy against Leon's baseline data:
- * - 290 units, ~90% occupancy
- * - Should predict ~11 traffic/week
- * - 99% tour conversion, 20.7% closing ratio
- * 
- * @version 1.0.0
- * @date 2025-02-18
+ *
+ * Pinned baselines (see BASELINE_DATA in
+ * backend/src/services/multifamilyTrafficService.ts):
+ *   - 290 units, 0.90 occupancy → baseline_weekly_traffic = 11
+ *   - tour_conversion_rate = 0.99 (still constant)
+ *   - closing ratio is now DYNAMIC, computed by
+ *     calculateClosingRatio(occupancy, month) — base 0.204, modulated by
+ *     occupancy bucket and a per-month seasonal close-rate table
+ *   - seasonality multiplier varies wildly by month (Sep=0.59, Dec=0.49,
+ *     Jun=1.50) and holiday weeks override it (see BASELINE_DATA.holiday_weeks)
+ *   - occupancy multiplier interpolates between anchors in
+ *     calculateOccupancyMultiplier (0.80→1.60 down to 1.00→0.70)
+ *
+ * To keep assertions deterministic across calendar dates, every test that
+ * inspects raw weekly_traffic / closing_ratio passes an explicit
+ * predictionDate of April 15, 2026 (mid-month, non-holiday, seasonality 1.09).
+ *
+ * @version 1.1.0
+ * @date 2026-04-28
  */
 
 import { MultifamilyTrafficService, PropertyLeasingInput } from '../services/multifamilyTrafficService';
 import { Pool } from 'pg';
 import type { Mock } from 'vitest';
+
+// Mid-April: non-holiday week, seasonality multiplier = 1.09, no overrides.
+const STABLE_DATE = new Date(2026, 3, 15);
 
 // Mock pool for testing
 const mockPool = {
@@ -35,9 +49,7 @@ describe('Multifamily Traffic Prediction - Baseline Validation', () => {
    * 
    * Property matching Leon's baseline should predict ~11 traffic/week
    */
-  // TODO: Stale baseline — service constants for closing_ratio drifted from 0.207. Re-tune
-  // expectations or update the service. Skipped during Task #439 backend test triage.
-  test.skip('Should predict ~11 weekly traffic for 290-unit baseline property', async () => {
+  test('Should predict baseline traffic for 290-unit property at stable date', async () => {
     // Mock no market data available (uses defaults)
     (mockPool.query as Mock).mockResolvedValue({ rows: [] });
 
@@ -49,24 +61,30 @@ describe('Multifamily Traffic Prediction - Baseline Validation', () => {
       market_rent: 1500
     };
 
-    const prediction = await service.predictWeeklyLeasingTraffic(baselineProperty);
+    // Pin the date so seasonality (April = 1.09) doesn't drift the result.
+    // base_traffic 11 × demand 1.0 × pricing 1.0 × seasonality 1.09 ×
+    // occupancy_multiplier(0.90)≈1.15 → 13.78 → rounds to 14.
+    const prediction = await service.predictWeeklyLeasingTraffic(baselineProperty, STABLE_DATE);
 
-    // Should be close to 11 (±2 for seasonality variation)
-    expect(prediction.weekly_traffic).toBeGreaterThanOrEqual(8);
-    expect(prediction.weekly_traffic).toBeLessThanOrEqual(14);
-    
-    // Tour conversion should be 99%
+    // Mid-April baseline lands at ~14 (±2 for any future fine-tuning).
+    expect(prediction.weekly_traffic).toBeGreaterThanOrEqual(12);
+    expect(prediction.weekly_traffic).toBeLessThanOrEqual(16);
+
+    // Tour conversion is still a constant 0.99.
     expect(prediction.tour_conversion).toBe(0.99);
-    
-    // Closing ratio should be 20.7%
-    expect(prediction.closing_ratio).toBe(0.207);
-    
-    // Tours should be ~99% of traffic
-    const expectedTours = Math.round(prediction.weekly_traffic * 0.99);
+
+    // Closing ratio is now dynamic (calculateClosingRatio: base 0.204 ×
+    // occupancy bucket × seasonal close-rate). For occ=0.90 in April:
+    // 0.204 × 1.20 × 1.30 ≈ 0.318. Allow a sane band.
+    expect(prediction.closing_ratio).toBeGreaterThanOrEqual(0.20);
+    expect(prediction.closing_ratio).toBeLessThanOrEqual(0.40);
+
+    // Tours follow tour_conversion exactly.
+    const expectedTours = Math.round(prediction.weekly_traffic * prediction.tour_conversion);
     expect(prediction.weekly_tours).toBe(expectedTours);
-    
-    // Leases should follow 20.7% closing ratio
-    const expectedLeases = Math.round(prediction.weekly_tours * 0.207 * 10) / 10;
+
+    // Leases follow the dynamic closing ratio, rounded to 1 decimal.
+    const expectedLeases = Math.round(prediction.weekly_tours * prediction.closing_ratio * 10) / 10;
     expect(prediction.expected_leases).toBeCloseTo(expectedLeases, 1);
   });
 
@@ -75,14 +93,15 @@ describe('Multifamily Traffic Prediction - Baseline Validation', () => {
    * 
    * Larger properties should get proportionally more traffic
    */
-  // TODO: Stale expectation — current service applies a non-linear scaling factor for unit
-  // count, so 4× units no longer produces ~2× traffic. Re-tune during the next pass on the
-  // multifamily traffic model. Skipped during Task #439 backend test triage.
-  test.skip('Should scale traffic proportionally with property size', async () => {
+  test('Should scale traffic proportionally with property size', async () => {
     (mockPool.query as Mock).mockResolvedValue({ rows: [] });
 
-    const smallProperty: PropertyLeasingInput = {
-      units: 145, // Half of baseline
+    // base_traffic = (units / 290) × 11, so traffic is linear in units modulo
+    // a final Math.round. Compare baseline (290) vs 2× baseline (580) — the
+    // original test used 145 vs 580 (4×) but asserted a 2× ratio, which never
+    // matched the linear model. The current service is in fact linear.
+    const baselineProperty: PropertyLeasingInput = {
+      units: 290,
       occupancy: 0.90,
       submarket_id: 'test-submarket',
       avg_rent: 1500,
@@ -90,18 +109,15 @@ describe('Multifamily Traffic Prediction - Baseline Validation', () => {
     };
 
     const largeProperty: PropertyLeasingInput = {
-      units: 580, // Double the baseline
-      occupancy: 0.90,
-      submarket_id: 'test-submarket',
-      avg_rent: 1500,
-      market_rent: 1500
+      ...baselineProperty,
+      units: 580 // 2× baseline
     };
 
-    const smallPrediction = await service.predictWeeklyLeasingTraffic(smallProperty);
-    const largePrediction = await service.predictWeeklyLeasingTraffic(largeProperty);
+    const baselinePrediction = await service.predictWeeklyLeasingTraffic(baselineProperty, STABLE_DATE);
+    const largePrediction = await service.predictWeeklyLeasingTraffic(largeProperty, STABLE_DATE);
 
-    // Large property should have roughly 2x the traffic of small property
-    const ratio = largePrediction.weekly_traffic / smallPrediction.weekly_traffic;
+    // 2× units should give ~2× traffic (rounding tolerance ±10%).
+    const ratio = largePrediction.weekly_traffic / baselinePrediction.weekly_traffic;
     expect(ratio).toBeGreaterThan(1.8);
     expect(ratio).toBeLessThan(2.2);
   });
@@ -178,10 +194,7 @@ describe('Multifamily Traffic Prediction - Baseline Validation', () => {
    * Low occupancy should trigger aggressive leasing (+30% traffic)
    * High occupancy should reduce traffic (-40%)
    */
-  // TODO: Stale expectation — high-occupancy multiplier no longer dips below 0.65 in the
-  // current service tuning. Re-tune during the next pass. Skipped during Task #439 backend
-  // test triage.
-  test.skip('Should adjust traffic based on occupancy urgency', async () => {
+  test('Should adjust traffic based on occupancy urgency', async () => {
     (mockPool.query as Mock).mockResolvedValue({ rows: [] });
 
     const normalOccupancy: PropertyLeasingInput = {
@@ -194,30 +207,37 @@ describe('Multifamily Traffic Prediction - Baseline Validation', () => {
 
     const lowOccupancy: PropertyLeasingInput = {
       ...normalOccupancy,
-      occupancy: 0.80 // Low occupancy - aggressive leasing
+      occupancy: 0.80 // Low occupancy - aggressive leasing (anchor mult 1.60)
     };
 
+    // Use 0.98 (anchor mult 0.78) rather than 0.96 (mult 0.88) so the
+    // "less urgency" effect is unambiguous without being knife-edge.
     const highOccupancy: PropertyLeasingInput = {
       ...normalOccupancy,
-      occupancy: 0.96 // Nearly full - less urgency
+      occupancy: 0.98
     };
 
-    const normalPrediction = await service.predictWeeklyLeasingTraffic(normalOccupancy);
-    const lowOccPrediction = await service.predictWeeklyLeasingTraffic(lowOccupancy);
-    const highOccPrediction = await service.predictWeeklyLeasingTraffic(highOccupancy);
+    const normalPrediction = await service.predictWeeklyLeasingTraffic(normalOccupancy, STABLE_DATE);
+    const lowOccPrediction = await service.predictWeeklyLeasingTraffic(lowOccupancy, STABLE_DATE);
+    const highOccPrediction = await service.predictWeeklyLeasingTraffic(highOccupancy, STABLE_DATE);
 
-    // Low occupancy should have more traffic
+    // Low occupancy should have more traffic.
     expect(lowOccPrediction.weekly_traffic).toBeGreaterThan(normalPrediction.weekly_traffic);
-    
-    // High occupancy should have less traffic
+
+    // High occupancy should have less traffic.
     expect(highOccPrediction.weekly_traffic).toBeLessThan(normalPrediction.weekly_traffic);
-    
-    // Verify multipliers roughly match spec
+
+    // Verify multipliers roughly match the calibrated anchors:
+    // low(0.80→1.60) / normal(0.90→~1.15) ≈ 1.39 → assert > 1.25
     const lowRatio = lowOccPrediction.weekly_traffic / normalPrediction.weekly_traffic;
     expect(lowRatio).toBeGreaterThan(1.25);
-    
+
+    // high(0.98→0.78) / normal(0.90→~1.15) ≈ 0.68 → assert in 0.50–0.75
+    // (loose enough to absorb minor anchor retuning, tight enough to catch
+    // a regression that drops the high-occupancy dampening entirely).
     const highRatio = highOccPrediction.weekly_traffic / normalPrediction.weekly_traffic;
-    expect(highRatio).toBeLessThan(0.65);
+    expect(highRatio).toBeGreaterThan(0.50);
+    expect(highRatio).toBeLessThan(0.75);
   });
 
   /**
@@ -348,15 +368,18 @@ describe('Multifamily Traffic Prediction - Rent Optimization', () => {
    * 
    * Should show tradeoff between rent and absorption speed
    */
-  // TODO: Stale expectation — months_to_stabilization can now tie across rent buckets
-  // (small properties hit the same rounded value), so strictly-less-than fails. Skipped
-  // during Task #439 backend test triage.
-  test.skip('Should generate rent optimization scenarios', async () => {
+  test('Should generate rent optimization scenarios', async () => {
     (mockPool.query as Mock).mockResolvedValue({ rows: [] });
 
+    // Use a property where the lease-up gap (units × (0.95 − occ)) is large
+    // enough that the per-bucket weeks-to-stabilize differ AFTER rounding to
+    // 0.1 months. With units=290, occ=0.85 the absorption-per-week was high
+    // enough that -10% and Market both rounded to 1.2 months. units=580 +
+    // occ=0.70 → 145 units to lease, giving cleanly distinct buckets:
+    // -10% ≈ 2.3mo, Market ≈ 2.8mo, +10% ≈ 3.2mo.
     const property: PropertyLeasingInput = {
-      units: 290,
-      occupancy: 0.85, // Low occupancy - need to lease up
+      units: 580,
+      occupancy: 0.70,
       submarket_id: 'test-submarket',
       avg_rent: 1500,
       market_rent: 1500
@@ -367,28 +390,30 @@ describe('Multifamily Traffic Prediction - Rent Optimization', () => {
       property
     );
 
-    // Should have 5 scenarios (-10%, -5%, market, +5%, +10%)
+    // Should have 5 scenarios (-10%, -5%, market, +5%, +10%).
     expect(optimization.scenarios).toHaveLength(5);
-    
-    // Below-market scenarios should have more traffic
+
     const belowMarket = optimization.scenarios.find(s => s.rent_vs_market === '-10%');
     const atMarket = optimization.scenarios.find(s => s.rent_vs_market === 'Market');
     const aboveMarket = optimization.scenarios.find(s => s.rent_vs_market === '+10%');
-    
+
     expect(belowMarket).toBeDefined();
     expect(atMarket).toBeDefined();
     expect(aboveMarket).toBeDefined();
-    
+
     if (belowMarket && atMarket && aboveMarket) {
-      // Traffic should decrease as rent increases
+      // Traffic should decrease as rent increases.
       expect(belowMarket.weekly_traffic).toBeGreaterThan(atMarket.weekly_traffic);
       expect(atMarket.weekly_traffic).toBeGreaterThan(aboveMarket.weekly_traffic);
-      
-      // Lower rent = faster lease-up
+
+      // Lower rent = faster lease-up. With the 0.1-month rounding still in
+      // play, demand monotonically-non-increasing across buckets, but with
+      // this property size the buckets separate cleanly.
       expect(belowMarket.months_to_stabilization).toBeLessThan(atMarket.months_to_stabilization);
+      expect(atMarket.months_to_stabilization).toBeLessThan(aboveMarket.months_to_stabilization);
     }
-    
-    // Should have a recommendation
+
+    // Should have a recommendation.
     expect(optimization.recommended_rent).toBeGreaterThan(0);
     expect(optimization.recommendation_reason).toBeTruthy();
   });
