@@ -596,7 +596,7 @@ export const cashflowOnWalkthroughRequested = inngest.createFunction(
     const entityCtx = await step.run('load-entity-context', async () => {
       const res = await query(
         `SELECT dp.property_id, p.property_type,
-                COALESCE(p.name, d.deal_name, d.id::text) AS entity_name,
+                COALESCE(p.name, d.name, d.id::text) AS entity_name,
                 COALESCE(p.id::text, dp.property_id::text, d.id::text) AS entity_id
          FROM deals d
          LEFT JOIN deal_properties dp ON dp.deal_id = d.id
