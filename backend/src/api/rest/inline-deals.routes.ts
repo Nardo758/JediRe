@@ -1274,6 +1274,19 @@ router.post('/:dealId/analysis/trigger', requireAuthOrApiKey, async (req: Authen
         logger.warn(`[Pipeline] Could not enrich deal data for ${dealId}: ${dataErr.message} — falling back to bare dealId`);
       }
 
+      // Step 0: Seed proforma year1 from extraction capsules
+      try {
+        const { seedProFormaYear1 } = await import('../../services/proforma-seeder.service');
+        const seedResult = await seedProFormaYear1(pool, dealId);
+        if (seedResult.seeded) {
+          logger.info(`[Pipeline] Proforma seeded: ${seedResult.fields_seeded} fields, NOI $${seedResult.resolved_noi}`);
+        } else {
+          logger.info(`[Pipeline] Proforma seed skipped: ${seedResult.warnings.join('; ')}`);
+        }
+      } catch (seedErr: any) {
+        logger.warn(`[Pipeline] Proforma seeding failed (non-fatal): ${seedErr.message}`);
+      }
+
       // Step 1: Research agent — market context
       try {
         logger.info(`[Pipeline] Starting Research for ${dealId}`);
