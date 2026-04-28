@@ -157,10 +157,12 @@ function buildSeed(
     ? platform.gpr_per_unit_per_month * totalUnits * months
     : null;
 
+  // Priority: T12 wins over rent roll for GPR (rent roll gpr_monthly is often 0
+  // for lease-up properties where T12 has real GPR)
   const gpr = resolve('gpr', gpr_platform, {
     t12: gpr_t12, rent_roll: gpr_rr,
     existingOverride: getOverride('gpr'),
-    priority: ['rent_roll', 't12'],
+    priority: ['t12', 'rent_roll'],
   });
 
   const t12gpr = num(t12Capsule, 'gpr') ?? 0;
@@ -169,7 +171,7 @@ function buildSeed(
   const lossToLeasePct = resolve('loss_to_lease_pct', null, {
     t12: ltl_t12, rent_roll: ltl_rr,
     existingOverride: getOverride('loss_to_lease_pct'),
-    priority: ['rent_roll', 't12'],
+    priority: ['t12', 'rent_roll'],
   });
 
   const vac_t12 = t12gpr > 0 ? Math.abs(num(t12Capsule, 'vacancy_loss') ?? 0) / t12gpr : null;
