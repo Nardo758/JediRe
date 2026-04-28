@@ -204,14 +204,16 @@ function generateSummary(deal: DataLibraryDeal, context: DataMatrixContext): Dat
   const riskFactors: string[] = [];
   const opportunities: string[] = [];
   
-  // Key metrics (prefer enriched data, fall back to deal data)
+  // Key metrics (prefer enriched data, fall back to deal data, fall back to extracted data)
+  const ext = context.extractedData;
   const keyMetrics = {
-    units: context.propertyInfo?.units || deal.units,
+    units: context.propertyInfo?.units || deal.units || ext?.rentRoll?.totalUnits,
     yearBuilt: context.propertyInfo?.yearBuilt || deal.yearBuilt,
     askingPrice: deal.askingPrice,
     capRate: deal.capRate,
-    avgRent: context.rentData?.avgAskingRent || deal.avgRent,
-    occupancy: context.rentData?.occupancyPct || deal.occupancyPct,
+    avgRent: context.rentData?.avgAskingRent || deal.avgRent || ext?.rentRoll?.avgMarketRent,
+    occupancy: context.rentData?.occupancyPct || deal.occupancyPct ||
+      (ext?.rentRoll?.occupancyPct != null ? Math.round(ext.rentRoll.occupancyPct * 10000) / 100 : undefined),
     pricePerUnit: deal.askingPrice && deal.units ? deal.askingPrice / deal.units : undefined
   };
   
@@ -259,6 +261,29 @@ function generateSummary(deal: DataLibraryDeal, context: DataMatrixContext): Dat
     insights.push(...context.backtest.insights);
   }
   
+  // Extracted Deal Data insights (T12, rent roll, broker claims)
+  if (ext?.t12) {
+    insights.push(`T12: ${ext.t12.monthsCaptured ?? '?'}mo captured, GPR $${(ext.t12.gpr ?? 0).toLocaleString()}`);
+    if (ext.t12.noi != null) {
+      insights.push(`T12 NOI: $${ext.t12.noi.toLocaleString()}`);
+      if (ext.t12.noiMargin != null) {
+        insights.push(`T12 NOI margin: ${(ext.t12.noiMargin * 100).toFixed(1)}%`);
+      }
+    }
+    if (ext.t12.opexTotal != null) {
+      insights.push(`T12 OpEx: $${ext.t12.opexTotal.toLocaleString()}`);
+    }
+  }
+  if (ext?.rentRoll) {
+    insights.push(`Rent Roll: ${ext.rentRoll.totalUnits ?? '?'} units, ${ext.rentRoll.occupiedUnits ?? '?'} occupied`);
+    if (ext.rentRoll.occupancyPct != null) {
+      insights.push(`Occupancy: ${(ext.rentRoll.occupancyPct * 100).toFixed(1)}%`);
+    }
+    if (ext.rentRoll.gprMonthly) {
+      insights.push(`Monthly GPR: $${ext.rentRoll.gprMonthly.toLocaleString()}`);
+    }
+  }
+
   // Sales comps insights
   if (context.salesComps) {
     if (context.salesComps.avgPricePerUnit && keyMetrics.pricePerUnit) {
