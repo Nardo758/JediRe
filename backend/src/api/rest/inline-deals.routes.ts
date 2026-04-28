@@ -1229,17 +1229,10 @@ router.post('/:dealId/analysis/trigger', requireAuthOrApiKey, async (req: Authen
         const platformIntel = dd.platform_intel || null;
 
         if (extractionT12 || extractionRentRoll || extractionOM || brokerClaims || geographicContext || platformIntel) {
-          enrichedDealInput = {
-            dealId,
-            extractedData: {
-              t12: extractionT12,
-              rentRoll: extractionRentRoll,
-              om: extractionOM,
-              brokerClaims,
-              geographicContext,
-              platformIntel,
-            },
-          };
+          // Keep user message lean — just dealId. The preamble (system prompt)
+          // tells the agent what extracted data exists, and fetch_data_matrix
+          // now returns it via context.extractedData.
+          enrichedDealInput = { dealId };
 
           // Build a human-readable preamble so agents don't have to parse JSON
           const lines: string[] = ['## EXTRACTED DEAL DATA'];

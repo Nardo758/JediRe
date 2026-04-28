@@ -24,9 +24,9 @@ export const DEFAULT_BUDGET_CAPS: Record<string, BudgetCaps> = {
     maxCostUsdPerUserPerMonth: Infinity,
   },
   supply: {
-    maxTokensPerRun: 200_000,
-    maxCostUsdPerRun: 2.50,
-    maxStepsPerRun: 20,
+    maxTokensPerRun: 250_000,
+    maxCostUsdPerRun: 3.00,
+    maxStepsPerRun: 25,
     maxCostUsdPerDealPerDay: 20.00,
     maxCostUsdPerUserPerMonth: Infinity,
   },
