@@ -103,10 +103,17 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res: Response,
   try {
     const { id } = req.params;
 
-    const result = await query(
+    // Prefer the enriched view (includes zoning), but fall back to the base
+    // properties table so callers don't 404 on properties that simply don't
+    // have zoning data attached yet.
+    let result = await query(
       'SELECT * FROM properties_with_zoning WHERE id = $1',
       [id]
     );
+
+    if (result.rows.length === 0) {
+      result = await query('SELECT * FROM properties WHERE id = $1', [id]);
+    }
 
     if (result.rows.length === 0) {
       throw new AppError(404, 'Property not found');

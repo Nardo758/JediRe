@@ -179,11 +179,26 @@ export function useDealAssumptions(dealId: string | null) {
       
       const response = await apiClient.get(`/api/v1/deals/${dealId}/assumptions`);
       const data = response.data?.data || response.data;
-      
+
+      // unit_mix is stored as JSONB — pg returns it pre-parsed (object/array),
+      // but legacy rows may still be a JSON string. Handle both shapes safely
+      // and normalize to an array (the empty-object DB default => []).
+      let unitMix: unknown = [];
+      const rawUnitMix = data?.unit_mix;
+      if (rawUnitMix != null) {
+        try {
+          const parsed =
+            typeof rawUnitMix === 'string' ? JSON.parse(rawUnitMix) : rawUnitMix;
+          unitMix = Array.isArray(parsed) ? parsed : [];
+        } catch {
+          unitMix = [];
+        }
+      }
+
       setAssumptions({
         ...DEFAULT_ASSUMPTIONS,
         ...data,
-        unitMix: data.unit_mix ? JSON.parse(data.unit_mix) : [],
+        unitMix,
       } as DealAssumptions);
     } catch (err: any) {
       console.error('Error fetching assumptions:', err);
