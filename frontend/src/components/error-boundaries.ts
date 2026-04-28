@@ -9,6 +9,7 @@ export { ErrorBoundary } from './ErrorBoundary';
 export { ThreeDErrorBoundary } from './3DErrorBoundary';
 export { APIErrorBoundary } from './APIErrorBoundary';
 export { FormErrorBoundary } from './FormErrorBoundary';
+export { BlockErrorBoundary } from './BlockErrorBoundary';
 
 // Fallback UI components
 export * from './fallbacks';

@@ -7,6 +7,7 @@
 
 import React, { useState, createContext, useContext } from 'react';
 import { BT, BT_CSS, Bd, SectionPanel, DataRow } from '../bloomberg-ui';
+import { BlockErrorBoundary } from '../../BlockErrorBoundary';
 import type {
   StrategyAnalysisV2,
   DetectionResult,
@@ -29,6 +30,62 @@ interface HoverCtx {
 const HoverContext = createContext<HoverCtx>({ hoveredEvidenceRef: null, setHoveredEvidenceRef: () => {} });
 
 const MONO = BT.font.mono;
+
+// ─── Per-block error boundary fallbacks ──────────────────────────────────────
+// Bloomberg-styled inline placeholder used by `BlockErrorBoundary` so that one
+// broken block (e.g. a sub-strategy with malformed data) cannot take down its
+// siblings or the rest of the Strategy section.
+function BlockErrorFallback({
+  message,
+  onRetry,
+  variant = 'block',
+}: {
+  message: string;
+  onRetry: () => void;
+  variant?: 'block' | 'inline';
+}) {
+  const isInline = variant === 'inline';
+  return (
+    <div
+      role="alert"
+      style={{
+        margin: isInline ? '0 0 8px' : '0 0 1px',
+        padding: isInline ? '6px 10px' : '8px 12px',
+        borderLeft: `2px solid ${BT.text.red}`,
+        background: `${BT.text.red}0d`,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 12,
+      }}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span style={{ fontFamily: MONO, fontSize: isInline ? 8 : 9, color: BT.text.red, letterSpacing: 0.5 }}>
+          BLOCK FAILED TO RENDER
+        </span>
+        <span style={{ fontFamily: MONO, fontSize: isInline ? 8 : 9, color: BT.text.secondary }}>
+          {message}
+        </span>
+      </div>
+      <button
+        type="button"
+        onClick={onRetry}
+        style={{
+          fontFamily: MONO,
+          fontSize: 9,
+          color: BT.text.amber,
+          background: `${BT.text.amber}18`,
+          border: `1px solid ${BT.text.amber}44`,
+          padding: '3px 10px',
+          cursor: 'pointer',
+          letterSpacing: 0.5,
+        }}
+      >
+        RETRY
+      </button>
+    </div>
+  );
+}
 
 // ─── Palette helpers ──────────────────────────────────────────────────────────
 
@@ -879,6 +936,18 @@ export function EvidenceReportBlock({ ss, defaultExpanded }: { ss: SubStrategySc
 
             {/* Block B — Metric Stack */}
             {ev?.metricStack && ev.metricStack.length > 0 && (
+              <BlockErrorBoundary
+                label={`EvidenceReportBlock:${ss.key}:metricStack`}
+                fallback={({ retry }) => (
+                  <div style={{ margin: '0 8px 8px' }}>
+                    <BlockErrorFallback
+                      variant="inline"
+                      message="Couldn't render the metric stack — the rest of this evidence block is unaffected."
+                      onRetry={retry}
+                    />
+                  </div>
+                )}
+              >
               <div style={{ margin: '0 8px 8px' }}>
                 <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, padding: '4px 0', letterSpacing: 0.5 }}>BLOCK B — METRIC STACK (click row to open detail drawer)</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px 90px 80px 1fr', background: BT.bg.header, padding: '3px 8px', borderBottom: `1px solid ${BT.border.subtle}` }}>
@@ -907,21 +976,47 @@ export function EvidenceReportBlock({ ss, defaultExpanded }: { ss: SubStrategySc
                   </div>
                 ))}
               </div>
+              </BlockErrorBoundary>
             )}
 
             {/* Block C — Comp Scatter */}
             {ev?.compEvidence && (
-              <div style={{ margin: '0 8px 8px' }}>
-                <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, padding: '4px 0', letterSpacing: 0.5 }}>BLOCK C — COMP EVIDENCE</div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <CompScatter points={ev.compEvidence.tradeArea || []} title="TRADE-AREA COMPS" />
-                  <CompScatter points={ev.compEvidence.likeKind || []} title="LIKE-KIND COMPS" />
+              <BlockErrorBoundary
+                label={`EvidenceReportBlock:${ss.key}:compEvidence`}
+                fallback={({ retry }) => (
+                  <div style={{ margin: '0 8px 8px' }}>
+                    <BlockErrorFallback
+                      variant="inline"
+                      message="Couldn't render the comp evidence — the rest of this evidence block is unaffected."
+                      onRetry={retry}
+                    />
+                  </div>
+                )}
+              >
+                <div style={{ margin: '0 8px 8px' }}>
+                  <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, padding: '4px 0', letterSpacing: 0.5 }}>BLOCK C — COMP EVIDENCE</div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <CompScatter points={ev.compEvidence.tradeArea || []} title="TRADE-AREA COMPS" />
+                    <CompScatter points={ev.compEvidence.likeKind || []} title="LIKE-KIND COMPS" />
+                  </div>
                 </div>
-              </div>
+              </BlockErrorBoundary>
             )}
 
             {/* Block D — Math Trail */}
             {ev?.mathTrail && ev.mathTrail.length > 0 && (
+              <BlockErrorBoundary
+                label={`EvidenceReportBlock:${ss.key}:mathTrail`}
+                fallback={({ retry }) => (
+                  <div style={{ margin: '0 8px 8px' }}>
+                    <BlockErrorFallback
+                      variant="inline"
+                      message="Couldn't render the math trail — the rest of this evidence block is unaffected."
+                      onRetry={retry}
+                    />
+                  </div>
+                )}
+              >
               <div style={{ margin: '0 8px 8px' }}>
                 <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted, padding: '4px 0', letterSpacing: 0.5 }}>BLOCK D — MATH TRAIL</div>
                 <div style={{ background: BT.bg.input, border: `1px solid ${BT.border.subtle}`, padding: '6px 10px' }}>
@@ -964,26 +1059,40 @@ export function EvidenceReportBlock({ ss, defaultExpanded }: { ss: SubStrategySc
                   ))}
                 </div>
               </div>
+              </BlockErrorBoundary>
             )}
 
             {/* Ultimate Return */}
             {ev?.ultimateReturn && (
-              <div style={{ margin: '0 8px 8px', background: `${BT.text.green}08`, border: `1px solid ${BT.text.green}22`, padding: '8px 12px' }}>
-                <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.green, letterSpacing: 0.5, marginBottom: 6 }}>EXPECTED RETURN</div>
-                <div style={{ display: 'flex', gap: 20 }}>
-                  {[
-                    { l: 'IRR', v: `${fmtSafe(ev.ultimateReturn.irr, 1)}%`, c: BT.text.green },
-                    { l: 'EM', v: `${fmtSafe(ev.ultimateReturn.equityMultiple, 2)}x`, c: BT.text.amber },
-                    { l: 'HOLD', v: `${fmtSafe(ev.ultimateReturn.holdMonths, 0)}mo`, c: BT.text.purple },
-                    { l: 'EXIT CAP', v: `${fmtSafe(ev.ultimateReturn.exitCapRate, 2, 100)}%`, c: BT.text.cyan },
-                  ].map(item => (
-                    <div key={item.l}>
-                      <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>{item.l}</div>
-                      <div style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: item.c }}>{item.v}</div>
-                    </div>
-                  ))}
+              <BlockErrorBoundary
+                label={`EvidenceReportBlock:${ss.key}:ultimateReturn`}
+                fallback={({ retry }) => (
+                  <div style={{ margin: '0 8px 8px' }}>
+                    <BlockErrorFallback
+                      variant="inline"
+                      message="Couldn't render the expected return — the rest of this evidence block is unaffected."
+                      onRetry={retry}
+                    />
+                  </div>
+                )}
+              >
+                <div style={{ margin: '0 8px 8px', background: `${BT.text.green}08`, border: `1px solid ${BT.text.green}22`, padding: '8px 12px' }}>
+                  <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.green, letterSpacing: 0.5, marginBottom: 6 }}>EXPECTED RETURN</div>
+                  <div style={{ display: 'flex', gap: 20 }}>
+                    {[
+                      { l: 'IRR', v: `${fmtSafe(ev.ultimateReturn.irr, 1)}%`, c: BT.text.green },
+                      { l: 'EM', v: `${fmtSafe(ev.ultimateReturn.equityMultiple, 2)}x`, c: BT.text.amber },
+                      { l: 'HOLD', v: `${fmtSafe(ev.ultimateReturn.holdMonths, 0)}mo`, c: BT.text.purple },
+                      { l: 'EXIT CAP', v: `${fmtSafe(ev.ultimateReturn.exitCapRate, 2, 100)}%`, c: BT.text.cyan },
+                    ].map(item => (
+                      <div key={item.l}>
+                        <div style={{ fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>{item.l}</div>
+                        <div style={{ fontFamily: MONO, fontSize: 14, fontWeight: 700, color: item.c }}>{item.v}</div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              </BlockErrorBoundary>
             )}
           </div>
         )}
@@ -1437,7 +1546,18 @@ export function V2FullAnalysis({
           <SubStrategyComparison subStrategies={analysis.subStrategies} arbitrage={analysis.arbitrage} />
           <SignalHeatmap subStrategies={analysis.subStrategies} signalScores={analysis.signalScores} />
           {(analysis.subStrategies ?? []).map(ss => (
-            <EvidenceReportBlock key={ss.key} ss={ss} defaultExpanded={ss.isDetectedPrimary} />
+            <BlockErrorBoundary
+              key={ss.key}
+              label={`EvidenceReportBlock:${ss.key}`}
+              fallback={({ retry }) => (
+                <BlockErrorFallback
+                  message={`Couldn't render evidence for ${(ss.name || ss.key).replace(/_/g, ' ').toUpperCase()} — other sub-strategies are unaffected.`}
+                  onRetry={retry}
+                />
+              )}
+            >
+              <EvidenceReportBlock ss={ss} defaultExpanded={ss.isDetectedPrimary} />
+            </BlockErrorBoundary>
           ))}
           <CorrelationTimingPanel
             goldenChain={analysis.goldenChain}
