@@ -93,6 +93,38 @@ const SKIP_ZERO_FIELDS = new Set<string>([
 ]);
 
 /**
+ * Re-resolve a LayeredValue in place after its `override` has been cleared.
+ * Walks `FIELD_PRIORITIES[fieldName]` (or the supplied fallback) honouring
+ * SKIP_ZERO_FIELDS, exactly the way `resolve()` does at seed time. Extracted
+ * so the seed-time and override-clear paths share one implementation and
+ * can be exercised by the same test matrix.
+ *
+ * Mutates `field.resolved` and `field.resolution`. Does not touch
+ * `updated_at` / `updated_by` — callers own those.
+ */
+export function reResolveClearedLayeredValue(
+  field: LayeredValue<number>,
+  fieldName: string,
+  fallbackPriority: Resolution[] = ['rent_roll', 't12', 'tax_bill', 'box_score', 'aged_ar', 'om']
+): void {
+  const priorityOrder = FIELD_PRIORITIES[fieldName] ?? fallbackPriority;
+  const shouldSkipZero = SKIP_ZERO_FIELDS.has(fieldName);
+  field.resolution = 'platform_fallback';
+  field.resolved = field.platform ?? null;
+  for (const src of priorityOrder) {
+    const srcVal = (field as unknown as Record<string, number | null>)[src];
+    if (srcVal != null && (!shouldSkipZero || srcVal !== 0)) {
+      field.resolved = srcVal;
+      field.resolution = src as LayeredValue<number>['resolution'];
+      break;
+    }
+  }
+}
+
+// Exposed for tests. Module-internal callers continue to use the names directly.
+export { FIELD_PRIORITIES, SKIP_ZERO_FIELDS, resolve as resolveForTest };
+
+/**
  * Resolve a layered value following priority rules. Honors existing user override.
  */
 function resolve(
@@ -766,18 +798,7 @@ export async function applyUserOverride(
     // Re-resolve using the same priority + skip-zero rules the initial seed uses,
     // so clearing an override on (e.g.) GPR falls back to T-12 instead of a
     // zero rent-roll value.
-    const priorityOrder = FIELD_PRIORITIES[fieldPath] ?? ['rent_roll', 't12', 'tax_bill', 'box_score', 'aged_ar', 'om'];
-    const shouldSkipZero = SKIP_ZERO_FIELDS.has(fieldPath);
-    field.resolution = 'platform_fallback';
-    field.resolved = field.platform ?? null;
-    for (const src of priorityOrder) {
-      const srcVal = (field as unknown as Record<string, number | null>)[src];
-      if (srcVal != null && (!shouldSkipZero || srcVal !== 0)) {
-        field.resolved = srcVal;
-        field.resolution = src as LayeredValue<number>['resolution'];
-        break;
-      }
-    }
+    reResolveClearedLayeredValue(field, fieldPath);
   }
 
   // Recompute derived fields (NOI, EGI, Total OpEx, NRI)
