@@ -1234,8 +1234,8 @@ router.post('/:dealId/analysis/trigger', requireAuthOrApiKey, async (req: Authen
           // now returns it via context.extractedData.
           enrichedDealInput = { dealId };
 
-          // Build a human-readable preamble so agents don't have to parse JSON
-          const lines: string[] = ['## EXTRACTED DEAL DATA'];
+          // Build a human-readable preamble so agents know what's available via fetch_data_matrix
+          const lines: string[] = ['## EXTRACTED DEAL DATA (via fetch_data_matrix → context.extractedData)'];
           if (extractionRentRoll) {
             const rr = extractionRentRoll;
             lines.push(`Units: ${rr.total_units ?? '?'} | Occupied: ${rr.occupied_units ?? '?'} (${rr.occupancy_by_unit_pct != null ? (rr.occupancy_by_unit_pct * 100).toFixed(1) : '?'}%)`);
