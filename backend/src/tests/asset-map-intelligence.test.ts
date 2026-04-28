@@ -170,13 +170,13 @@ describe('File Validation', () => {
       expect(result.valid).toBe(false);
     });
 
-    // TODO: validateFileType currently allows any allowed extension paired with any allowed
-    // MIME type — it does not cross-check that the extension matches the MIME type. The test
-    // was written for a stricter contract. Skipped during Task #439 backend test triage; the
-    // cross-check feature should be added to fileValidation.ts before re-enabling.
-    test.skip('Should reject mismatched extension and MIME type', () => {
+    test('Should reject mismatched extension and MIME type', () => {
       const result = validateFileType('photo.jpg', 'application/pdf');
       expect(result.valid).toBe(false);
+      // Error mentions both the extension and the MIME type so the user
+      // (or upstream client) can see why the upload was rejected.
+      expect(result.error).toMatch(/jpg/);
+      expect(result.error).toMatch(/pdf/);
     });
   });
 

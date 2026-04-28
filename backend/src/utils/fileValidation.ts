@@ -38,32 +38,46 @@ export const ALLOWED_FILE_TYPES = {
 };
 
 /**
- * Validate file type by extension and MIME type
+ * Validate file type by extension and MIME type.
+ *
+ * Both the extension and the MIME type must be in the allow-list AND must
+ * belong to the same category (e.g. an `images` extension paired with an
+ * `images` MIME type). This prevents extension/MIME spoofing such as
+ * `malware.jpg` declared as `application/pdf`.
  */
 export function validateFileType(filename: string, mimeType: string): FileValidationResult {
   const ext = path.extname(filename).toLowerCase();
+  const normalizedMime = mimeType.toLowerCase();
 
-  // Check if extension is allowed
-  const isExtensionAllowed = Object.values(ALLOWED_FILE_TYPES).some(category =>
+  // Find the category the extension belongs to (if any).
+  const extCategory = Object.entries(ALLOWED_FILE_TYPES).find(([, category]) =>
     category.extensions.includes(ext)
   );
 
-  if (!isExtensionAllowed) {
+  if (!extCategory) {
     return {
       valid: false,
       error: `File type ${ext} is not allowed. Allowed types: ${getAllowedExtensions().join(', ')}`,
     };
   }
 
-  // Check if MIME type matches
-  const isMimeTypeAllowed = Object.values(ALLOWED_FILE_TYPES).some(category =>
-    category.mimeTypes.includes(mimeType)
+  // Find the category the MIME type belongs to (if any).
+  const mimeCategory = Object.entries(ALLOWED_FILE_TYPES).find(([, category]) =>
+    category.mimeTypes.includes(normalizedMime)
   );
 
-  if (!isMimeTypeAllowed) {
+  if (!mimeCategory) {
     return {
       valid: false,
       error: `MIME type ${mimeType} is not allowed`,
+    };
+  }
+
+  // Extension and MIME type must belong to the same category.
+  if (extCategory[0] !== mimeCategory[0]) {
+    return {
+      valid: false,
+      error: `File extension ${ext} (${extCategory[0]}) does not match MIME type ${mimeType} (${mimeCategory[0]})`,
     };
   }
 
