@@ -24,6 +24,7 @@ import { webSearchTool } from './tools/web_search';
 import { fetchWebpageTool } from './tools/fetch_webpage';
 import { fetchDataMatrixTool } from './tools/fetch_data_matrix';
 import { CitationSchema } from './research.config';
+import { commentaryPostProcess } from './commentary.postprocess';
 import { fetchReforecastSummaryTool } from './tools/fetch_reforecast_summary';
 import { fetchVarianceSummaryTool } from './tools/fetch_variance_summary';
 import { fetchDispositionLearningsTool } from './tools/fetch_disposition_learnings';
@@ -83,6 +84,8 @@ export const COMMENTARY_AGENT_CONFIG: AgentConfig = {
   capabilities: ['read:all', 'web:search', 'data:matrix'],
   /** Force fetch_data_matrix as the very first action — no output before context */
   firstToolCall: 'fetch_data_matrix',
+  /** Post-process fills missing required fields from deal context + tool history */
+  postProcess: commentaryPostProcess,
 };
 
 // ── Singleton runtime ─────────────────────────────────────────────
