@@ -199,13 +199,40 @@ See `.env.example` for all configuration options.
 
 ## 🧪 Testing
 
+The backend uses [Vitest](https://vitest.dev/) (configured in `backend/vitest.config.ts`).
+Tests are discovered under `src/**/*.test.ts` and `src/**/__tests__/**/*.test.ts`.
+
 ```bash
-# Run tests
-npm test
+# From backend/
+npm test               # one-shot run, exits 0 in a clean dev env
+npm run test:watch     # watch mode
+npx vitest run path/to/file.test.ts   # run a single file
+```
 
-# Run tests with coverage
-npm run test:coverage
+`npm test` is expected to pass with 0 failures and ~27 skipped tests. Skipped tests
+fall into two buckets — see the `TODO` comment at the top of each skipped suite/test
+for the specific re-enable steps:
 
+- **Heavyweight integration suites** that need fixtures or a seeded test DB before they
+  can run locally:
+  - `src/services/document-extraction/tests/integration.alta-porter.test.ts` — needs
+    Alta Porter T12/rent-roll/tax-bill fixture files plus a `TEST_DATABASE_URL` with
+    the deal id seeded.
+  - `src/tests/neighboringProperty.test.ts` — needs `property_records` rows with the
+    legacy `parcel_geometry` column populated and PostGIS available.
+  - `src/api/rest/__tests__/competition.routes.test.ts` and `qwen.routes.test.ts` —
+    need the `supertest` dev dep installed and (for competition) a seeded test deal.
+- **Stale single-test assertions** kept in otherwise-passing files
+  (`asset-map-intelligence.test.ts`, `email-extraction.test.ts`,
+  `multifamily-traffic-prediction.test.ts`) where the implementation drifted from the
+  original expectation. The TODO above each `test.skip` calls out whether to re-tune
+  the test or fix the underlying service.
+
+When adding new tests, prefer pure-unit tests with mocked dependencies (see
+`src/services/__tests__/proforma-seeder.parity.test.ts` for a good template) over
+live-DB integration tests, so they run without external setup.
+
+```bash
 # Lint code
 npm run lint
 ```

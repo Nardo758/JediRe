@@ -13,7 +13,16 @@ import type { ExtractionResult } from '../types';
 const TEST_DEAL_ID = process.env.TEST_DEAL_ID || 'c85c5ff5-49d1-42e7-92a2-a82f790587de';
 const FIXTURES = path.join(__dirname, '../../../test/fixtures/alta-porter');
 
-describe('Alta Porter end-to-end pipeline', () => {
+// TODO: Heavyweight end-to-end integration test that requires:
+//   - Fixture files under `backend/src/test/fixtures/alta-porter/` (T12 xlsx, rent roll
+//     xlsx, tax bill PDF) which are not committed to the repo
+//   - A seeded Postgres database reachable via `TEST_DATABASE_URL` with the deal id
+//     `c85c5ff5-49d1-42e7-92a2-a82f790587de` (or `TEST_DEAL_ID`) already present
+//   - The full document-extraction → seeder → cross-validation pipeline wired against
+//     the test DB
+// Skipped during Task #439 backend test triage. Re-enable by checking in (or providing
+// a download script for) the Alta Porter fixtures and standing up a TEST_DATABASE_URL.
+describe.skip('Alta Porter end-to-end pipeline', () => {
   let pool: Pool;
 
   beforeAll(() => {
