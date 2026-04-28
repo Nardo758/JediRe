@@ -77,6 +77,15 @@ export interface RunContext {
    * a deal-type-specific composite prompt (core + variant) without DB contention.
    */
   systemPromptOverride?: string;
+
+  /**
+   * Data preamble — a human-readable summary of extracted deal data
+   * (T12, rent roll, OM, broker claims) that gets prepended to the
+   * agent's system prompt before the prompt_versions DB loaded prompt.
+   * This lets pipeline agents see actual deal-level data without
+   * modifying their stored prompts.
+   */
+  dataPreamble?: string;
 }
 
 // ── Tool definitions ──────────────────────────────────────────────────────────

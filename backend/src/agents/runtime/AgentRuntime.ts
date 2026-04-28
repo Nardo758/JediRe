@@ -391,6 +391,11 @@ export class AgentRuntime {
           `Analyze real estate data and respond with structured JSON.`;
       }
 
+      // Prepend data preamble (extracted deal data summary) if provided
+      if (ctxWithRun.dataPreamble) {
+        systemPrompt = ctxWithRun.dataPreamble + '\n\n---\n\n' + systemPrompt;
+      }
+
       const result = await this.loop({ run, systemPrompt, userMessage: JSON.stringify(input), ctx: ctxWithRun, accrued });
       const validated = this.config.outputSchema.parse(result.content);
 

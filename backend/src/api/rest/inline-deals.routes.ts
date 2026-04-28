@@ -1212,12 +1212,79 @@ router.post('/:dealId/analysis/trigger', requireAuthOrApiKey, async (req: Authen
       const results: Record<string, unknown> = {};
       const errors: string[] = [];
 
-      const ctxBase = { dealId, userId: req.user!.userId, triggeredBy: 'user' as const };
+      const ctxBase: import('../../agents/runtime/types').RunContext =
+        { dealId, userId: req.user!.userId, triggeredBy: 'user' as const };
+
+      // ── Build enriched deal input from extracted deal_data ──
+      let enrichedDealInput: Record<string, unknown> = { dealId };
+      let dataPreamble = '';
+      try {
+        const dealRow = await pool.query('SELECT deal_data FROM deals WHERE id = $1', [dealId]);
+        const dd = dealRow.rows[0]?.deal_data || {};
+        const extractionT12 = dd.extraction_t12 || null;
+        const extractionRentRoll = dd.extraction_rent_roll || null;
+        const extractionOM = dd.extraction_om || null;
+        const brokerClaims = dd.broker_claims || null;
+        const geographicContext = dd.geographic_context || null;
+        const platformIntel = dd.platform_intel || null;
+
+        if (extractionT12 || extractionRentRoll || extractionOM || brokerClaims || geographicContext || platformIntel) {
+          enrichedDealInput = {
+            dealId,
+            extractedData: {
+              t12: extractionT12,
+              rentRoll: extractionRentRoll,
+              om: extractionOM,
+              brokerClaims,
+              geographicContext,
+              platformIntel,
+            },
+          };
+
+          // Build a human-readable preamble so agents don't have to parse JSON
+          const lines: string[] = ['## EXTRACTED DEAL DATA'];
+          if (extractionRentRoll) {
+            const rr = extractionRentRoll;
+            lines.push(`Units: ${rr.total_units ?? '?'} | Occupied: ${rr.occupied_units ?? '?'} (${rr.occupancy_by_unit_pct != null ? (rr.occupancy_by_unit_pct * 100).toFixed(1) : '?'}%)`);
+            lines.push(`Avg Market Rent: ${rr.avg_market_rent != null ? '$' + rr.avg_market_rent.toLocaleString() + '/mo' : '?'}`);
+            lines.push(`Avg Effective Rent: ${rr.avg_effective_rent != null ? '$' + rr.avg_effective_rent.toLocaleString() + '/mo' : '?'}`);
+            lines.push(`GPR Monthly: ${rr.gpr_monthly != null ? '$' + rr.gpr_monthly.toLocaleString() : '?'}`);
+          }
+          if (extractionT12) {
+            const t12 = extractionT12;
+            lines.push(`T12: ${t12.months_captured ?? '?'}mo captured | GPR: ${t12.gpr != null ? '$' + t12.gpr.toLocaleString() : '?'} | EGI: ${t12.egi != null ? '$' + t12.egi.toLocaleString() : '?'}`);
+            if (t12.noi != null) lines.push(`T12 NOI: ${'$' + t12.noi.toLocaleString()}`);
+            if (t12.expense_ratio != null) lines.push(`Expense Ratio: ${(t12.expense_ratio * 100).toFixed(1)}%`);
+            if (t12.noi_margin != null) lines.push(`NOI Margin: ${(t12.noi_margin * 100).toFixed(1)}%`);
+            if (t12.opex?.total != null) lines.push(`Total OpEx: ${'$' + t12.opex.total.toLocaleString()}`);
+          }
+          if (brokerClaims?.proforma) {
+            const pf = brokerClaims.proforma;
+            if (pf.purchasePrice) lines.push(`Broker Asking: ${'$' + pf.purchasePrice.toLocaleString()}`);
+            if (pf.capRate) lines.push(`Broker Cap: ${(pf.capRate * 100).toFixed(1)}%`);
+            if (pf.pricePerUnit) lines.push(`Broker $/Unit: ${'$' + pf.pricePerUnit.toLocaleString()}`);
+            if (pf.currentNOI) lines.push(`Broker NOI: ${'$' + pf.currentNOI.toLocaleString()}`);
+          }
+          if (extractionOM?.source_ref) {
+            lines.push(`OM Source: ${extractionOM.source_ref}`);
+          }
+          dataPreamble = lines.join('\n');
+          ctxBase.dataPreamble = dataPreamble;
+
+          logger.info(`[Pipeline] Enriched input for ${dealId}` +
+            (extractionT12 ? ' [T12]' : '') +
+            (extractionRentRoll ? ' [RentRoll]' : '') +
+            (extractionOM ? ' [OM]' : '') +
+            (brokerClaims ? ' [BrokerClaims]' : ''));
+        }
+      } catch (dataErr: any) {
+        logger.warn(`[Pipeline] Could not enrich deal data for ${dealId}: ${dataErr.message} — falling back to bare dealId`);
+      }
 
       // Step 1: Research agent — market context
       try {
         logger.info(`[Pipeline] Starting Research for ${dealId}`);
-        results.research = await researchRuntime.run(dealId, ctxBase);
+        results.research = await researchRuntime.run(enrichedDealInput, ctxBase);
         logger.info(`[Pipeline] Research complete for ${dealId}`);
       } catch (err: any) {
         logger.error(`[Pipeline] Research failed for ${dealId}: ${err.message}`);
@@ -1227,7 +1294,7 @@ router.post('/:dealId/analysis/trigger', requireAuthOrApiKey, async (req: Authen
       // Step 2: Supply agent — supply pipeline
       try {
         logger.info(`[Pipeline] Starting Supply for ${dealId}`);
-        results.supply = await supplyRuntime.run(dealId, ctxBase);
+        results.supply = await supplyRuntime.run(enrichedDealInput, ctxBase);
         logger.info(`[Pipeline] Supply complete for ${dealId}`);
       } catch (err: any) {
         logger.error(`[Pipeline] Supply failed for ${dealId}: ${err.message}`);
@@ -1237,7 +1304,7 @@ router.post('/:dealId/analysis/trigger', requireAuthOrApiKey, async (req: Authen
       // Step 3: CashFlow agent — pro forma + underwriting
       try {
         logger.info(`[Pipeline] Starting CashFlow for ${dealId}`);
-        results.cashflow = await cashflowRuntime.run(dealId, ctxBase);
+        results.cashflow = await cashflowRuntime.run(enrichedDealInput, ctxBase);
         logger.info(`[Pipeline] CashFlow complete for ${dealId}`);
       } catch (err: any) {
         logger.error(`[Pipeline] CashFlow failed for ${dealId}: ${err.message}`);
@@ -1247,7 +1314,7 @@ router.post('/:dealId/analysis/trigger', requireAuthOrApiKey, async (req: Authen
       // Step 4: Commentary agent — narrative summary
       try {
         logger.info(`[Pipeline] Starting Commentary for ${dealId}`);
-        results.commentary = await commentaryRuntime.run(dealId, ctxBase);
+        results.commentary = await commentaryRuntime.run(enrichedDealInput, ctxBase);
         logger.info(`[Pipeline] Commentary complete for ${dealId}`);
       } catch (err: any) {
         logger.error(`[Pipeline] Commentary failed for ${dealId}: ${err.message}`);
