@@ -15,6 +15,99 @@ import { supplyRuntime } from '../../agents/supply.config';
 import { commentaryRuntime } from '../../agents/commentary.config';
 import { logger } from '../../utils/logger';
 
+// ── Pipeline-to-deal-data sync ────────────────────────────────────────
+
+/**
+ * Extract the JEDI score from pipeline results (prefer Commentary's computed score).
+ */
+function extractJediScore(results: Record<string, unknown>): number | null {
+  const commentary = results.commentary as Record<string, unknown> | undefined;
+  if (typeof commentary?.jedi_score === 'number') return commentary.jedi_score;
+  const cashflow = results.cashflow as Record<string, unknown> | undefined;
+  if (typeof cashflow?.jedi_score === 'number') return cashflow.jedi_score;
+  return null;
+}
+
+/**
+ * Extract the market / property name from pipeline results.
+ */
+function extractEntityName(results: Record<string, unknown>): string {
+  const commentary = results.commentary as Record<string, unknown> | undefined;
+  if (typeof commentary?.entity_name === 'string') return commentary.entity_name;
+  return 'Deal';
+}
+
+/**
+ * Sync pipeline agent results into deals.deal_data JSONB so the capsule UI,
+ * deal detail views, and any other consumer that reads deal_data can display
+ * agent-generated intelligence without extra queries.
+ *
+ * This runs after all 4 agents (Research → Supply → CashFlow → Commentary)
+ * complete or fail in the setImmediate pipeline closure.
+ */
+async function syncPipelineToDealData(
+  db: any,
+  dealId: string,
+  results: Record<string, unknown>,
+  errors: string[]
+): Promise<void> {
+  const commentary = results.commentary as Record<string, unknown> | undefined;
+  const cashflow = results.cashflow as Record<string, unknown> | undefined;
+  const research = results.research as Record<string, unknown> | undefined;
+  const supply = results.supply as Record<string, unknown> | undefined;
+
+  // Build pipeline summary block for deal_data
+  const pipelineResults: Record<string, unknown> = {
+    last_run_at: new Date().toISOString(),
+    status: errors.length === 0 ? 'complete' : errors.length === 4 ? 'failed' : 'partial',
+    errors: errors.length > 0 ? errors : undefined,
+    run_id: null, // will be populated by the caller if needed
+
+    // JEDI Score from Commentary
+    jedi_score: extractJediScore(results),
+    entity_name: extractEntityName(results),
+
+    // Narrative from Commentary
+    market_narrative: commentary?.market_narrative ?? null,
+    investment_thesis: commentary?.investment_thesis ?? null,
+    supply_narrative: commentary?.supply_narrative ?? null,
+    summary: commentary?.summary ?? null,
+    recommendation: commentary?.recommended_strategy ?? null,
+    arbitrage_flag: commentary?.arbitrage_flag ?? null,
+    arbitrage_delta: typeof commentary?.arbitrage_delta === 'number' ? commentary.arbitrage_delta : null,
+
+    // Proforma fields from Cashflow
+    proforma_fields: cashflow?.proforma_fields ?? null,
+    collision_summary: cashflow?.collision_summary ?? null,
+    confidence_distribution: cashflow?.confidence_distribution ?? null,
+    investment_rating: cashflow?.investment_rating ?? null,
+    cashflow_summary: cashflow?.summary ?? null,
+
+    // Per-agent timestamps (set when each agent completed)
+    research_completed: typeof research?.completed_at === 'string' ? research.completed_at : null,
+    supply_completed: typeof supply?.completed_at === 'string' ? supply.completed_at : null,
+    cashflow_completed: typeof cashflow?.completed_at === 'string' ? cashflow.completed_at : null,
+    commentary_completed: typeof commentary?.completed_at === 'string' ? commentary.completed_at : null,
+  };
+
+  // Merge into deals.deal_data (JSONB || operation)
+  // Use the 'agent_intelligence' top-level key to namespace agent output
+  // so it doesn't collide with other deal_data fields.
+  await db.query(
+    `UPDATE deals
+     SET deal_data = COALESCE(deal_data, '{}'::jsonb) || $1::jsonb,
+         updated_at = NOW()
+     WHERE id = $2`,
+    [
+      JSON.stringify({ agent_intelligence: pipelineResults }),
+      dealId,
+    ]
+  );
+
+  logger.info(`[PipelineSync] deal_data updated for ${dealId}` + 
+    (pipelineResults.jedi_score !== null ? ` (JEDI: ${pipelineResults.jedi_score})` : ''));
+}
+
 const router = Router();
 const pool = getPool();
 
@@ -1183,6 +1276,13 @@ router.post('/:dealId/analysis/trigger', requireAuth, async (req: AuthenticatedR
         );
         logger.info(`[Pipeline] Underwrite ${status} for ${dealId}` + 
           (errors.length > 0 ? ` (${errors.length} failures)` : ''));
+
+        // ── Sync pipeline results into deals.deal_data for capsule UI ──
+        try {
+          await syncPipelineToDealData(pool, dealId, results, errors);
+        } catch (syncErr: any) {
+          logger.error(`[Pipeline] Capsule sync failed for ${dealId}:`, syncErr.message);
+        }
       } catch (dbErr: any) {
         logger.error(`[Pipeline] DB update failed for ${dealId}:`, dbErr.message);
       }
