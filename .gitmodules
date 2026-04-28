@@ -1,0 +1,3 @@
+[submodule "vendor/ladder"]
+	path = vendor/ladder
+	url = https://github.com/everywall/ladder.git
