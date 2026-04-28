@@ -151,9 +151,14 @@ export async function commentaryPostProcess(
       output.completed_at = new Date().toISOString();
     }
 
-    // ── Step 7: Ensure citations is an array ────────────────────────────
+    // ── Step 7: Ensure citations is a clean array ───────────────────────
     if (!Array.isArray(output.citations)) {
       output.citations = [];
+    } else {
+      // Scrub malformed citation entries (missing required fields)
+      output.citations = output.citations.filter(c =>
+        c && typeof c.source_url === 'string' && c.source_url.length > 0
+      );
     }
 
   } catch (err) {
