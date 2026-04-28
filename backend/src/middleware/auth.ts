@@ -166,7 +166,7 @@ export function requireApiKey(
 
   if (process.env.ROCKEMAN_API_KEY) {
     keyIdentities[process.env.ROCKEMAN_API_KEY] = {
-      userId: 'rockeman-bot',
+      userId: 'c0c0a000-0000-4000-8000-000000000001',
       email: 'rockeman@jedire.system',
       role: 'admin',
     };
