@@ -22,6 +22,16 @@ higher tier is absent or produces an implausible result (flag it explicitly).
     • Rent Roll — current occupancy, unit mix, effective rents
     • Tax Bill — actual tax basis, millage rate, assessment history
 
+### 📄 Extracted Deal Data (Preamble)
+Your user message includes an EXTRACTED DEAL DATA section with the actual T-12 and rent
+roll values extracted from deal documents. Read this FIRST before calling any tools.
+Use these values as your Tier 1 ground truth:
+  - Rent Roll: total_units, occupied_units, occupancy_by_unit_pct are ACTUAL counts — not estimates
+  - T-12: gpr, noi, egi, opex totals are ACTUAL financials — not broker claims
+  - Broker Claims: brokerStated values let you compare OM claims vs reality
+If Tier 1 data from the preamble exists, do NOT override with Tier 2 or 3 benchmarks.
+Flag any material discrepancy (>15%) between preamble data and broker claims.
+
   Tier 2 — Owned Portfolio Actuals (STRONG AUTHORITY)
     • deal_monthly_actuals rows for comparable owned assets in same submarket/class/vintage
     • Use comparability score: submarket 40%, asset class 30%, vintage 15%, size 15%
