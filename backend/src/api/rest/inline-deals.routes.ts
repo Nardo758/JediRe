@@ -1220,7 +1220,7 @@ router.post('/:dealId/analysis/trigger', requireAuthOrApiKey, async (req: Authen
         results.research = await researchRuntime.run(dealId, ctxBase);
         logger.info(`[Pipeline] Research complete for ${dealId}`);
       } catch (err: any) {
-        logger.error(`[Pipeline] Research failed for ${dealId}:`, err.message);
+        logger.error(`[Pipeline] Research failed for ${dealId}: ${err.message}`);
         errors.push(`Research: ${err.message}`);
       }
 
@@ -1230,7 +1230,7 @@ router.post('/:dealId/analysis/trigger', requireAuthOrApiKey, async (req: Authen
         results.supply = await supplyRuntime.run(dealId, ctxBase);
         logger.info(`[Pipeline] Supply complete for ${dealId}`);
       } catch (err: any) {
-        logger.error(`[Pipeline] Supply failed for ${dealId}:`, err.message);
+        logger.error(`[Pipeline] Supply failed for ${dealId}: ${err.message}`);
         errors.push(`Supply: ${err.message}`);
       }
 
@@ -1240,7 +1240,7 @@ router.post('/:dealId/analysis/trigger', requireAuthOrApiKey, async (req: Authen
         results.cashflow = await cashflowRuntime.run(dealId, ctxBase);
         logger.info(`[Pipeline] CashFlow complete for ${dealId}`);
       } catch (err: any) {
-        logger.error(`[Pipeline] CashFlow failed for ${dealId}:`, err.message);
+        logger.error(`[Pipeline] CashFlow failed for ${dealId}: ${err.message}`);
         errors.push(`CashFlow: ${err.message}`);
       }
 
@@ -1250,7 +1250,7 @@ router.post('/:dealId/analysis/trigger', requireAuthOrApiKey, async (req: Authen
         results.commentary = await commentaryRuntime.run(dealId, ctxBase);
         logger.info(`[Pipeline] Commentary complete for ${dealId}`);
       } catch (err: any) {
-        logger.error(`[Pipeline] Commentary failed for ${dealId}:`, err.message);
+        logger.error(`[Pipeline] Commentary failed for ${dealId}: ${err.message}`);
         errors.push(`Commentary: ${err.message}`);
       }
 
@@ -1281,20 +1281,11 @@ router.post('/:dealId/analysis/trigger', requireAuthOrApiKey, async (req: Authen
         try {
           await syncPipelineToDealData(pool, dealId, results, errors);
         } catch (syncErr: any) {
-          logger.error(`[Pipeline] Capsule sync failed for ${dealId}:`, syncErr.message);
+          logger.error(`[Pipeline] Capsule sync failed for ${dealId}: ${syncErr.message}`);
         }
       } catch (dbErr: any) {
-        logger.error(`[Pipeline] DB update failed for ${dealId}:`, dbErr.message);
+        logger.error(`[Pipeline] DB update failed for ${dealId}: ${dbErr.message}`);
       }
-    })().catch((fatal: any) => {
-      // Last-resort guard — unhandled rejections from the async setImmediate
-      // closure silently swallow the rest of the function. Catch any that
-      // escaped the inner guards and mark the pipeline run as failed.
-      logger.error(`[Pipeline] Fatal unhandled rejection for ${dealId}:`, fatal?.message ?? String(fatal));
-      pool.query(
-        `UPDATE agent_runs SET status = 'failed', error = $1, completed_at = NOW() WHERE id = $2`,
-        [String(fatal?.message ?? fatal), pipelineRunId]
-      ).catch((e: any) => logger.error(`[Pipeline] Failed to mark pipeline failed after fatal:`, e.message));
     });
 
     res.json({
