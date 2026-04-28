@@ -104,9 +104,12 @@ function resolve(
   const skipZeroFields = ['gpr', 'egi', 'noi', 'net_rental_income', 'other_income_total', 'other_income_per_unit', 'total_opex'];
   const shouldSkipZero = skipZeroFields.includes(fieldName);
   
+  console.log('[resolve]', fieldName, 'priority:', options.priority, 't12:', lv.t12, 'rent_roll:', lv.rent_roll, 'shouldSkipZero:', shouldSkipZero);
   for (const src of options.priority) {
     const v = (lv as unknown as Record<string, number | null>)[src];
-    if (v != null && (!shouldSkipZero || v !== 0)) {
+    const condition = v != null && (!shouldSkipZero || v !== 0);
+    console.log('[resolve]', fieldName, 'check src:', src, 'v:', v, 'condition:', condition);
+    if (condition) {
       lv.resolved = v;
       lv.resolution = src as LayeredValue<number>['resolution'];
       return lv;
