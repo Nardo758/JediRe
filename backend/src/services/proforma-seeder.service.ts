@@ -57,6 +57,42 @@ interface DealRow {
 const now = () => new Date().toISOString();
 
 /**
+ * Field-name → priority map shared between the initial seed (`resolve()` inside
+ * `buildSeed`) and the override-clear fallback (`applyUserOverride`). Keep
+ * these in one place so the two code paths can never drift apart.
+ */
+const FIELD_PRIORITIES: Record<string, Resolution[]> = {
+  gpr: ['t12', 'rent_roll'],
+  loss_to_lease_pct: ['t12', 'rent_roll'],
+  vacancy_pct: ['rent_roll', 't12'],
+  concessions_pct: ['t12', 'rent_roll'],
+  bad_debt_pct: ['t12'],
+  non_revenue_units_pct: ['t12'],
+  other_income_total: ['t12', 'rent_roll'],
+  other_income_per_unit: ['t12', 'rent_roll'],
+  real_estate_tax: ['tax_bill', 't12'],
+  management_fee_pct: ['t12'],
+  insurance: ['t12'],
+};
+
+/**
+ * Revenue / NOI fields where a 0 value from any source is treated as "missing"
+ * rather than a real measurement. This handles the lease-up edge case where a
+ * rent roll legitimately reports `gpr_monthly = 0` even when the T-12 contains
+ * the real GPR — the priority walker should fall through to the next source
+ * instead of resolving to zero.
+ */
+const SKIP_ZERO_FIELDS = new Set<string>([
+  'gpr',
+  'egi',
+  'noi',
+  'net_rental_income',
+  'other_income_total',
+  'other_income_per_unit',
+  'total_opex',
+]);
+
+/**
  * Resolve a layered value following priority rules. Honors existing user override.
  */
 function resolve(
@@ -70,11 +106,18 @@ function resolve(
     aged_ar?: number | null;
     om?: number | null;
     existingOverride?: number | null;
-    priority: Resolution[];
+    /**
+     * Optional inline priority. If omitted, falls back to FIELD_PRIORITIES[fieldName]
+     * so the seed-time path and override-clear path stay in lockstep. Pass an
+     * explicit value only for fields that are not in FIELD_PRIORITIES (e.g.
+     * other_income_breakdown.* and per-line opex categories).
+     */
+    priority?: Resolution[];
     scenarios?: Record<string, number>;
     warning?: string;
   }
 ): LayeredValue<number> {
+  const priority = options.priority ?? FIELD_PRIORITIES[fieldName] ?? [];
   const lv: LayeredValue<number> = {
     platform,
     t12: options.t12 ?? null,
@@ -101,15 +144,11 @@ function resolve(
   // Walk priority list
   // Skip zero values for revenue/NOI fields (extraction edge case: lease-up
   // rent roll has gpr_monthly: 0 even when T12 has real GPR)
-  const skipZeroFields = ['gpr', 'egi', 'noi', 'net_rental_income', 'other_income_total', 'other_income_per_unit', 'total_opex'];
-  const shouldSkipZero = skipZeroFields.includes(fieldName);
-  
-  console.log('[resolve]', fieldName, 'priority:', options.priority, 't12:', lv.t12, 'rent_roll:', lv.rent_roll, 'shouldSkipZero:', shouldSkipZero);
-  for (const src of options.priority) {
+  const shouldSkipZero = SKIP_ZERO_FIELDS.has(fieldName);
+
+  for (const src of priority) {
     const v = (lv as unknown as Record<string, number | null>)[src];
-    const condition = v != null && (!shouldSkipZero || v !== 0);
-    console.log('[resolve]', fieldName, 'check src:', src, 'v:', v, 'condition:', condition);
-    if (condition) {
+    if (v != null && (!shouldSkipZero || v !== 0)) {
       lv.resolved = v;
       lv.resolution = src as LayeredValue<number>['resolution'];
       return lv;
@@ -160,12 +199,12 @@ function buildSeed(
     ? platform.gpr_per_unit_per_month * totalUnits * months
     : null;
 
-  // Priority: T12 wins over rent roll for GPR (rent roll gpr_monthly is often 0
-  // for lease-up properties where T12 has real GPR)
+  // Priority comes from FIELD_PRIORITIES so the seed and override-clear paths
+  // stay in lockstep. T12 wins over rent roll for GPR because rent rolls often
+  // report gpr_monthly=0 for lease-up properties even when T12 has real GPR.
   const gpr = resolve('gpr', gpr_platform, {
     t12: gpr_t12, rent_roll: gpr_rr,
     existingOverride: getOverride('gpr'),
-    priority: ['t12', 'rent_roll'],
   });
 
   const t12gpr = num(t12Capsule, 'gpr') ?? 0;
@@ -174,7 +213,6 @@ function buildSeed(
   const lossToLeasePct = resolve('loss_to_lease_pct', null, {
     t12: ltl_t12, rent_roll: ltl_rr,
     existingOverride: getOverride('loss_to_lease_pct'),
-    priority: ['t12', 'rent_roll'],
   });
 
   const vac_t12 = t12gpr > 0 ? Math.abs(num(t12Capsule, 'vacancy_loss') ?? 0) / t12gpr : null;
@@ -182,7 +220,6 @@ function buildSeed(
   const vacancyPct = resolve('vacancy_pct', platform.vacancy_pct, {
     t12: vac_t12, rent_roll: vac_rr,
     existingOverride: getOverride('vacancy_pct'),
-    priority: ['rent_roll', 't12'],
   });
 
   const concObj = obj(t12Capsule, 'concessions');
@@ -196,7 +233,6 @@ function buildSeed(
   const concessionsPct = resolve('concessions_pct', platform.concessions_pct, {
     t12: conc_t12, rent_roll: conc_rr,
     existingOverride: getOverride('concessions_pct'),
-    priority: ['t12', 'rent_roll'],
   });
 
   const t12egi = num(t12Capsule, 'egi') ?? 0;
@@ -206,7 +242,6 @@ function buildSeed(
   const badDebtPct = resolve('bad_debt_pct', platform.bad_debt_pct, {
     t12: bd_t12,
     existingOverride: getOverride('bad_debt_pct'),
-    priority: ['t12'],
   });
 
   const nru_t12 = t12gpr > 0
@@ -215,7 +250,6 @@ function buildSeed(
   const nonRevenueUnitsPct = resolve('non_revenue_units_pct', null, {
     t12: nru_t12,
     existingOverride: getOverride('non_revenue_units_pct'),
-    priority: ['t12'],
   });
 
   const t12OI = obj(t12Capsule, 'other_income');
@@ -229,7 +263,6 @@ function buildSeed(
   const otherIncomeTotal = resolve('other_income_total', null, {
     t12: other_t12, rent_roll: other_rr,
     existingOverride: getOverride('other_income_total'),
-    priority: ['t12', 'rent_roll'],
   });
 
   // Per-unit other income
@@ -237,7 +270,6 @@ function buildSeed(
     t12: other_t12 != null && totalUnits > 0 ? other_t12 / totalUnits : null,
     rent_roll: other_rr != null && totalUnits > 0 ? other_rr / totalUnits : null,
     existingOverride: getOverride('other_income_per_unit'),
-    priority: ['t12', 'rent_roll'],
   });
 
   const oi = rrOIMObj;
@@ -396,7 +428,6 @@ function buildSeed(
   const mgmtFeePct = resolve('management_fee_pct', platform.management_fee_pct_egi, {
     t12: mgmt_t12_pct,
     existingOverride: getOverride('management_fee_pct'),
-    priority: ['t12'],
   });
 
   const insurancePlatform = platformOpEx(platform.opex_per_unit_annual.insurance);
@@ -404,7 +435,6 @@ function buildSeed(
   const insurance = resolve('insurance', insurancePlatform, {
     t12: t12Ins,
     existingOverride: getOverride('insurance'),
-    priority: ['t12'],
     warning: (t12Ins == null && t12Capsule != null)
       ? 'No property insurance line in T12 — using platform baseline. Confirm with insurance binder.'
       : undefined,
@@ -425,7 +455,6 @@ function buildSeed(
       tax_bill: billCurrent,
       t12: num(t12Opex, 'real_estate_tax'),
       existingOverride: getOverride('real_estate_tax'),
-      priority: ['tax_bill', 't12'],
       scenarios,
       warning: appealStatus === 'pending'
         ? `Tax bill under appeal. Base case $${Math.round(billCurrent).toLocaleString()}; downside if lost: $${Math.round(billUnappealed).toLocaleString()}.`
@@ -603,7 +632,7 @@ export async function seedProFormaYear1(
          (deal_id, year1, total_units, vacancy_pct, other_income_per_unit,
           source_type, source_date, created_at, updated_at)
        VALUES ($1, $2::jsonb, $3, $4,
-               CASE WHEN $5 IS NOT NULL THEN $5 ELSE 50 END,
+               COALESCE($5::numeric, 50),
                'platform_seeded', NOW(), NOW(), NOW())
        ON CONFLICT (deal_id) DO UPDATE SET
          year1 = EXCLUDED.year1,
@@ -633,10 +662,13 @@ export async function seedProFormaYear1(
       resolved_noi: seed.noi?.resolved ?? null,
     };
   } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Unknown error';
+    const stack = err instanceof Error ? err.stack : undefined;
+    console.error('[seedProFormaYear1] error:', msg, stack);
     return {
       seeded: false,
       fields_seeded: 0,
-      warnings: [`Seeder error: ${err instanceof Error ? err.message : 'Unknown error'}`],
+      warnings: [`Seeder error: ${msg}`],
       resolved_noi: null,
     };
   }
@@ -731,25 +763,16 @@ export async function applyUserOverride(
     field.resolved = value;
     field.resolution = 'override';
   } else {
-    const fieldPriorities: Record<string, Resolution[]> = {
-      gpr: ['rent_roll', 't12'],
-      loss_to_lease_pct: ['rent_roll', 't12'],
-      vacancy_pct: ['rent_roll', 't12'],
-      concessions_pct: ['t12', 'rent_roll'],
-      bad_debt_pct: ['t12'],
-      non_revenue_units_pct: ['t12'],
-      other_income_total: ['t12', 'rent_roll'],
-      other_income_per_unit: ['t12', 'rent_roll'],
-      real_estate_tax: ['tax_bill', 't12'],
-      management_fee_pct: ['t12'],
-      insurance: ['t12'],
-    };
-    const priorityOrder = fieldPriorities[fieldPath] ?? ['rent_roll', 't12', 'tax_bill', 'box_score', 'aged_ar', 'om'];
+    // Re-resolve using the same priority + skip-zero rules the initial seed uses,
+    // so clearing an override on (e.g.) GPR falls back to T-12 instead of a
+    // zero rent-roll value.
+    const priorityOrder = FIELD_PRIORITIES[fieldPath] ?? ['rent_roll', 't12', 'tax_bill', 'box_score', 'aged_ar', 'om'];
+    const shouldSkipZero = SKIP_ZERO_FIELDS.has(fieldPath);
     field.resolution = 'platform_fallback';
     field.resolved = field.platform ?? null;
     for (const src of priorityOrder) {
       const srcVal = (field as unknown as Record<string, number | null>)[src];
-      if (srcVal != null) {
+      if (srcVal != null && (!shouldSkipZero || srcVal !== 0)) {
         field.resolved = srcVal;
         field.resolution = src as LayeredValue<number>['resolution'];
         break;
