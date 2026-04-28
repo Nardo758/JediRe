@@ -126,7 +126,7 @@ export async function fetchVarianceSummary(
   const varianceResult = await query(
     `SELECT 
       line_item,
-      line_item_category,
+      category,
       SUM(projected_value) as projected,
       SUM(actual_value) as actual,
       SUM(variance_amount) as variance,
@@ -135,7 +135,7 @@ export async function fetchVarianceSummary(
       MAX(period_start) as latest_period
     FROM variance_analysis
     WHERE deal_id = $1 AND ${dateCondition}
-    GROUP BY line_item, line_item_category
+    GROUP BY line_item, category
     ORDER BY ABS(SUM(variance_amount)) DESC`,
     [input.deal_id]
   );
@@ -165,7 +165,7 @@ export async function fetchVarianceSummary(
 
   for (const row of varianceResult.rows as Record<string, unknown>[]) {
     const lineItem = String(row.line_item);
-    const category = String(row.line_item_category ?? '');
+    const category = String(row.category ?? '');
     const projected = Number(row.projected ?? 0);
     const actual = Number(row.actual ?? 0);
     const variance = Number(row.variance ?? 0);

@@ -109,7 +109,7 @@ export class DealAnalysisService {
     const result = await this.db.query(`
       SELECT 
         p.id,
-        p.address,
+        p.address_line1 AS address,
         p.lat,
         p.lng,
         p.rent,

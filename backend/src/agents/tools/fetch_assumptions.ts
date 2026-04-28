@@ -86,7 +86,12 @@ export const fetchAssumptionsTool: ToolDefinition<
     try {
       const result = await query(
         `SELECT
-           d.acquisition_price AS purchase_price, d.property_type, d.units AS d_units,
+           COALESCE(
+             (d.deal_data->'broker_claims'->'metadata'->>'askingPrice')::numeric,
+             (d.deal_data->'extraction_om'->>'askingPrice')::numeric
+           ) AS purchase_price,
+           d.deal_category AS property_type,
+           d.unit_count AS d_units,
            da.year1,
            da.ltv, da.interest_rate, da.loan_term_years, da.amortization_years,
            da.vacancy_pct, da.vacancy_rate,

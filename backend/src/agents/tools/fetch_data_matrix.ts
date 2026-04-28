@@ -99,9 +99,9 @@ export async function fetchDataMatrix(
   // Resolve deal from ID or use provided deal
   if (params.dealId) {
     const result = await pool.query(`
-      SELECT id, property_name, address, city, state, county,
-             units, year_built, asking_price, deal_type, asset_class,
-             deal_data
+      SELECT id, name AS property_name, address, city, state,
+             unit_count AS units, deal_category AS deal_type,
+             latitude, longitude, deal_data
       FROM deals WHERE id = $1
     `, [params.dealId]);
     
@@ -110,22 +110,27 @@ export async function fetchDataMatrix(
     }
     
     const row = result.rows[0];
+    const dd = row.deal_data || {};
+    const broker = dd.broker_claims || {};
+    const property = broker.property || {};
+    const metadata = broker.metadata || {};
     deal = {
       id: row.id,
-      propertyName: row.property_name,
-      address: row.address,
-      city: row.city,
-      state: row.state,
-      county: row.county,
-      units: row.units,
-      yearBuilt: row.year_built,
-      askingPrice: row.asking_price ? parseFloat(row.asking_price) : undefined,
+      propertyName: row.property_name || property.name,
+      address: row.address || property.address,
+      city: row.city || property.city,
+      state: row.state || property.state,
+      county: property.county || dd.geographic_context?.county_name,
+      units: row.units || property.units,
+      yearBuilt: property.yearBuilt || property.year_built,
+      askingPrice: metadata.askingPrice != null ? Number(metadata.askingPrice) : undefined,
       dealType: row.deal_type,
-      assetClass: row.asset_class
+      assetClass: property.asset_class || property.assetClass,
+      latitude: row.latitude != null ? Number(row.latitude) : undefined,
+      longitude: row.longitude != null ? Number(row.longitude) : undefined,
     };
 
     // ── Extract deal_data for preamble enrichment ──
-    const dd = row.deal_data || {};
     const extractionT12 = dd.extraction_t12;
     const extractionRentRoll = dd.extraction_rent_roll;
     const brokerClaims = dd.broker_claims;

@@ -554,22 +554,21 @@ export class DataMatrixService {
       // Get recent transactions
       const result = await this.pool.query(`
         SELECT 
-          ps.sale_date, ps.sale_price, pic.address, pic.number_of_units, pic.living_area_sqft
+          ps.sale_year, ps.sale_price, pic.address, pic.number_of_units, pic.living_area_sqft
         FROM property_sales ps
-        JOIN property_info_cache pic ON ps.parcel_id = pic.parcel_id 
-          AND ps.state = pic.state
-        WHERE pic.county = $1 AND ps.state = $2
-          AND ps.sale_date > NOW() - INTERVAL '24 months'
+        JOIN property_info_cache pic ON ps.parcel_id = pic.parcel_id
+        WHERE pic.county = $1 AND pic.state = $2
+          AND ps.sale_year >= EXTRACT(YEAR FROM NOW())::int - 2
           AND ps.sale_price > 1000000
           AND pic.number_of_units > 10
-        ORDER BY ps.sale_date DESC
+        ORDER BY ps.sale_year DESC
         LIMIT 20
       `, [deal.county, deal.state]);
       
       if (result.rows.length > 0) {
         const comps = result.rows.map(row => ({
           address: row.address,
-          saleDate: new Date(row.sale_date),
+          saleDate: new Date(parseInt(row.sale_year, 10), 0, 1),
           salePrice: parseFloat(row.sale_price),
           pricePerUnit: row.number_of_units ? parseFloat(row.sale_price) / row.number_of_units : undefined,
           units: row.number_of_units

@@ -65,64 +65,70 @@ export const fetchMarketTrendsTool = {
 
       const trends: z.infer<typeof MetricTrendSchema>[] = [];
 
+      // Map requested metric names to columns/expressions in apartment_market_snapshots
+      const metricMap: Record<string, string> = {
+        rent_growth: 'rent_growth_180d',
+        vacancy_rate: '(100.0 - COALESCE(avg_occupancy, 0))',
+        occupancy: 'avg_occupancy',
+        cap_rate: 'NULL', // not tracked in snapshots
+        opex_growth: 'NULL',
+        noi_growth: 'NULL',
+      };
+
+      // Optional city filter when submarket/msa hints are city names
+      const cityHint = submarket || msa || null;
+
       for (const metricName of metrics ?? ['rent_growth', 'vacancy_rate']) {
-        // Build query with location fallback
-        const params: unknown[] = [state, metricName, periods];
-        let locationFilter: string;
-        
-        if (submarket) {
-          params.push(submarket);
-          locationFilter = `AND submarket = $${params.length}`;
-        } else if (msa) {
-          params.push(msa);
-          locationFilter = `AND msa = $${params.length} AND submarket IS NULL`;
-        } else {
-          locationFilter = 'AND msa IS NULL AND submarket IS NULL';
+        const colExpr = metricMap[metricName];
+        if (!colExpr || colExpr === 'NULL') continue;
+
+        const params: unknown[] = [state, periods];
+        let cityFilter = '';
+        if (cityHint) {
+          params.push(cityHint);
+          cityFilter = `AND city ILIKE $${params.length}`;
         }
 
-        let classFilter = '';
-        if (asset_class) {
-          params.push(asset_class);
-          classFilter = `AND (asset_class = $${params.length} OR asset_class IS NULL)`;
-        }
+        const sql = `SELECT 
+            TO_CHAR(snapshot_date, 'YYYY-MM') AS period,
+            ${colExpr}::float AS value,
+            NULL::float AS yoy_change,
+            NULL::float AS mom_change
+          FROM apartment_market_snapshots
+          WHERE state = $1
+            ${cityFilter}
+            AND ${colExpr} IS NOT NULL
+          ORDER BY snapshot_date DESC
+          LIMIT $2`;
 
-        const result = await query(
-          `SELECT period, value, yoy_change, mom_change
-           FROM market_trends
-           WHERE state = $1
-             AND metric_name = $2
-             ${locationFilter}
-             ${classFilter}
-           ORDER BY period DESC
-           LIMIT $3`,
-          params
-        );
+        const result = await query(sql, params);
 
-        if (result.rows.length === 0) {
-          // Try broader geography
-          const fallbackResult = await query(
-            `SELECT period, value, yoy_change
-             FROM market_trends
-             WHERE state = $1
-               AND metric_name = $2
-               AND msa IS NULL
-               AND submarket IS NULL
-             ORDER BY period DESC
-             LIMIT $3`,
-            [state, metricName, periods]
+        let rows = result.rows as { period: string; value: number; yoy_change: number | null }[];
+
+        if (rows.length === 0 && cityHint) {
+          // Fallback to state-wide
+          const fb = await query(
+            `SELECT 
+              TO_CHAR(snapshot_date, 'YYYY-MM') AS period,
+              ${colExpr}::float AS value,
+              NULL::float AS yoy_change,
+              NULL::float AS mom_change
+            FROM apartment_market_snapshots
+            WHERE state = $1
+              AND ${colExpr} IS NOT NULL
+            ORDER BY snapshot_date DESC
+            LIMIT $2`,
+            [state, periods]
           );
-
-          if (fallbackResult.rows.length === 0) continue;
-          
-          const rows = fallbackResult.rows as { period: string; value: number; yoy_change: number | null }[];
-          const trend = analyzeTrend(metricName, rows);
-          trends.push(trend);
-        } else {
-          const rows = result.rows as { period: string; value: number; yoy_change: number | null }[];
-          const trend = analyzeTrend(metricName, rows);
-          trends.push(trend);
+          rows = fb.rows as typeof rows;
         }
+
+        if (rows.length === 0) continue;
+        const trend = analyzeTrend(metricName, rows);
+        trends.push(trend);
       }
+      // asset_class is intentionally unused — apartment_market_snapshots does not segment by asset class
+      void asset_class;
 
       // Generate market outlook
       const marketOutlook = generateMarketOutlook(trends);
