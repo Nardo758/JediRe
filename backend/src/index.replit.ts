@@ -1033,6 +1033,20 @@ async function startServer() {
     return;
   }
 
+  // ── Seed system user for ROCKEMAN_API_KEY identity ───────────────────
+  // The API key identity in requireApiKey() uses a fixed UUID so that
+  // metering queries (user_credit_balances, ai_usage_log) don't violate
+  // foreign-key constraints. Ensure the row exists at startup.
+  try {
+    await pool.query(`
+      INSERT INTO users (id, email, role)
+      VALUES ('c0c0a000-0000-4000-8000-000000000001', 'rockeman@jedire.system', 'admin')
+      ON CONFLICT (id) DO NOTHING
+    `);
+  } catch (err: any) {
+    console.warn('[Startup] Could not seed rockeman user (may already exist):', err.message);
+  }
+
   httpServer.listen(Number(PORT), '0.0.0.0', async () => {
   console.log('='.repeat(60));
   console.log('🚀 JediRe Backend (Replit Edition)');
