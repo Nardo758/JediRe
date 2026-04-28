@@ -20,6 +20,7 @@ import { z } from 'zod';
 import type { Pool } from 'pg';
 import { getPool } from '../../database/connection';
 import { getDataMatrixService, DataLibraryDeal, DataMatrixContext } from '../../services/neural-network';
+import { logger } from '../../utils/logger';
 
 export const fetchDataMatrixSchema = z.object({
   // Deal identification - one of these is required
@@ -90,6 +91,8 @@ export async function fetchDataMatrix(
   pool: Pool
 ): Promise<DataMatrixResult> {
   const service = getDataMatrixService(pool);
+  
+  logger.info(`[fetch_data_matrix] Called with dealId=${params.dealId}, assetId=${params.assetId}, layers=${params.layers?.length ?? 'all'}`);
   
   let deal: DataLibraryDeal;
   
@@ -192,6 +195,24 @@ export async function fetchDataMatrix(
     ...layerOptions,
     searchRadiusMiles: params.searchRadiusMiles
   });
+  
+  // Log layer statuses for debugging
+  const layerStatuses: Record<string, string> = {
+    propertyInfo: context.propertyInfo ? 'ok' : 'empty',
+    rentData: context.rentData ? 'ok' : 'empty',
+    salesComps: context.salesComps ? 'ok' : 'empty',
+    proximity: context.proximity ? 'ok' : 'empty',
+    events: context.events ? 'ok' : 'empty',
+    backtest: context.backtest ? 'ok' : 'empty',
+    benchmarks: context.benchmarks ? 'ok' : 'empty',
+    macro: context.macro ? 'ok' : 'empty',
+    marketTrends: context.marketTrends ? 'ok' : 'empty',
+    extractedData_t12: context.extractedData?.t12 ? 'ok' : 'empty',
+    extractedData_rentRoll: context.extractedData?.rentRoll ? 'ok' : 'empty',
+    extractedData_brokerClaims: context.extractedData?.brokerClaims ? 'ok' : 'empty',
+  };
+  logger.info(`[fetch_data_matrix] Layer statuses: ${JSON.stringify(layerStatuses)}`);
+  logger.info(`[fetch_data_matrix] Completeness: score=${context.completeness.score}, quality=${context.completeness.dataQuality}, missing=[${context.completeness.missingLayers.join(',')}]`);
   
   // Generate summary for agents
   const summary = generateSummary(deal, context);

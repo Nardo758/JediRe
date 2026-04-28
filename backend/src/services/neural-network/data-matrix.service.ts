@@ -318,40 +318,46 @@ export class DataMatrixService {
     // Fetch all layers in parallel where possible
     const promises: Promise<void>[] = [];
     
+    const withErrorLog = (label: string, p: Promise<void>): Promise<void> =>
+      p.catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[DataMatrix] Layer FAILED [${label}]: ${msg}`);
+      });
+    
     if (opts.includePropertyInfo) {
-      promises.push(this.fetchPropertyInfo(deal, context));
+      promises.push(withErrorLog('propertyInfo', this.fetchPropertyInfo(deal, context)));
     }
     
     if (opts.includeRentData) {
-      promises.push(this.fetchRentData(deal, context));
+      promises.push(withErrorLog('rentData', this.fetchRentData(deal, context)));
     }
     
     if (opts.includeSalesComps) {
-      promises.push(this.fetchSalesComps(deal, context));
+      promises.push(withErrorLog('salesComps', this.fetchSalesComps(deal, context)));
     }
     
     if (opts.includeProximity && coordinates) {
-      promises.push(this.fetchProximity(coordinates.lat, coordinates.lng, deal.address, context));
+      promises.push(withErrorLog('proximity', this.fetchProximity(coordinates.lat, coordinates.lng, deal.address, context)));
     }
     
     if (opts.includeEvents && coordinates) {
-      promises.push(this.fetchEvents(coordinates.lat, coordinates.lng, opts.searchRadiusMiles, context));
+      promises.push(withErrorLog('events', this.fetchEvents(coordinates.lat, coordinates.lng, opts.searchRadiusMiles, context)));
     }
     
     if (opts.includeBacktest) {
-      promises.push(this.fetchBacktest(deal, context));
+      promises.push(withErrorLog('backtest', this.fetchBacktest(deal, context)));
     }
     
     if (opts.includeBenchmarks) {
-      promises.push(this.fetchBenchmarks(deal, context));
+      promises.push(withErrorLog('benchmarks', this.fetchBenchmarks(deal, context)));
     }
     
     if (opts.includeMacro) {
-      promises.push(this.fetchMacro(deal.city, deal.state, context));
+      promises.push(withErrorLog('macro', this.fetchMacro(deal.city, deal.state, context)));
     }
     
     if (opts.includeMarketTrends) {
-      promises.push(this.fetchMarketTrends(deal.city, deal.state, context));
+      promises.push(withErrorLog('marketTrends', this.fetchMarketTrends(deal.city, deal.state, context)));
     }
     
     // Wait for all fetches
@@ -375,6 +381,8 @@ export class DataMatrixService {
           const rr = extRow.rr;
           const bc = extRow.bc;
           console.log(`[DataMatrix] t12=${!!t12}, rr=${!!rr}, bc=${!!bc}`);
+
+          console.log(`[DataMatrix] Extracted data: t12_GPR=${t12?.gpr}, rr_units=${rr?.total_units}, rr_occ=${rr?.occupied_units}`);
 
           if (t12 || rr || bc) {
             context.extractedData = {
