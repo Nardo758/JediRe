@@ -81,6 +81,8 @@ export const fetchAssumptionsTool: ToolDefinition<
       return { ...EMPTY, deal_id: input.deal_id, source: 'no_deal_id' };
     }
 
+    logger.info(`[fetch_assumptions] Called for deal ${dealId}`);
+
     try {
       const result = await query(
         `SELECT
@@ -124,6 +126,8 @@ export const fetchAssumptionsTool: ToolDefinition<
       // management_fee_pct legacy is stored as percent (3.00 = 3%)
       const mgmtFeeLegacy = n(row.mgmt_fee);
       const mgmtFeePct = mgmtFeeY1 != null ? Math.round(mgmtFeeY1 * 100 * 100) / 100 : mgmtFeeLegacy;
+
+      logger.info(`[fetch_assumptions] Returning for deal ${dealId}: vacancy=${vacancyPct}, mgmtFee=${mgmtFeePct}, units=${n(row.da_units) || n(row.d_units) || y1Val(year1, '_unit_count')}`);
 
       return {
         deal_id: dealId,
