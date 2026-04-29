@@ -546,7 +546,7 @@ function zeroStructural() {
 function baseInputs(overrides: Partial<ProjectionInputs> = {}): ProjectionInputs {
   return {
     templateId: 'acquisition_stabilized',
-    revenueFormula: 'simple',
+    revenueFormula: 'in_place_compounding',
     horizonYears: 5,
     rentGrowthBase: {
       horizonYears: 5,
@@ -640,9 +640,9 @@ describe('T007 projectProforma orchestrator (Tier 1+2+3 wiring)', () => {
     expect(y1.revenue.value).toBeCloseTo(expected, 0);
   });
 
-  test('simple formula returns units × inPlaceRent × (1+g)^year for Y1', () => {
+  test('in-place-compounding formula returns units × inPlaceRent × (1+g)^year for Y1', () => {
     const out = projectProforma(baseInputs({
-      revenueFormula: 'simple',
+      revenueFormula: 'in_place_compounding',
       horizonYears: 1,
     }));
     const g = out[0].rentGrowth.value!;
@@ -674,7 +674,7 @@ describe('T007 projectProforma orchestrator (Tier 1+2+3 wiring)', () => {
   });
 
   test('marketRent_t trends year-over-year by tuned growth', () => {
-    const out = projectProforma(baseInputs({ revenueFormula: 'simple', horizonYears: 3 }));
+    const out = projectProforma(baseInputs({ revenueFormula: 'in_place_compounding', horizonYears: 3 }));
     expect(out[0].marketRentT).toBeCloseTo(1600, 6);
     expect(out[1].marketRentT).toBeCloseTo(1600 * (1 + out[1].rentGrowth.value!), 4);
     expect(out[2].marketRentT).toBeCloseTo(out[1].marketRentT * (1 + out[2].rentGrowth.value!), 4);
@@ -684,5 +684,31 @@ describe('T007 projectProforma orchestrator (Tier 1+2+3 wiring)', () => {
     const out = projectProforma(baseInputs({ horizonYears: 2 }));
     const mgmtY1 = out[0].opex.find(l => l.line === 'managementFee')!;
     expect(mgmtY1.growthTuned).toBeCloseTo(out[0].rentGrowth.value!, 6);
+  });
+
+  test('noiGrowthCheck is a finite ProvenancedValue when inputs are present', () => {
+    const out = projectProforma(baseInputs({ horizonYears: 3 }));
+    for (const y of out) {
+      expect(y.noiGrowthCheck).toBeDefined();
+      expect(typeof y.noiGrowthCheck.value).toBe('number');
+      expect(Number.isFinite(y.noiGrowthCheck.value!)).toBe(true);
+      expect(y.noiGrowthCheck.confidence).toBeGreaterThan(0);
+      expect(y.noiGrowthCheck.confidence).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test('orchestrator accepts every canonical RevenueFormulaId without throwing', () => {
+    const ids = [
+      'mark_to_market',
+      'in_place_compounding',
+      'renewal_aware',
+      'rent_ramp_value_add',
+      'gpr_minus_loss_to_lease',
+    ] as const;
+    for (const id of ids) {
+      const out = projectProforma(baseInputs({ revenueFormula: id, horizonYears: 1 }));
+      expect(out).toHaveLength(1);
+      expect(typeof out[0].revenue.value).toBe('number');
+    }
   });
 });

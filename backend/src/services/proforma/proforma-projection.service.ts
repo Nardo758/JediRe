@@ -132,9 +132,11 @@ export interface ProjectionYearResult {
   revenue: ProvenancedValue<number>;
   /**
    * Algebraic NOI growth identity (Tier 1) — derived from the year's
-   * resolved rent growth and the opex-share-weighted opex growth.
+   * resolved rent growth and the opex-share-weighted opex growth. Returned
+   * as a ProvenancedValue so the cross-check carries through provenance and
+   * `missing()` semantics when inputs are unavailable.
    */
-  noiGrowthCheck: number;
+  noiGrowthCheck: ProvenancedValue<number>;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -183,6 +185,8 @@ export function projectProforma(inputs: ProjectionInputs): ProjectionYearResult[
     const opexResults: OpexLineYearResult[] = [];
     let dollarWeightedOpexGrowth = 0;
     let totalOpexShare = 0;
+    let opexConfidenceMin = 1;
+    let opexHasAnySignal = false;
 
     for (const lineKey of OPEX_LINE_KEYS) {
       const baseInputs = inputs.opexBase[lineKey];
@@ -224,6 +228,14 @@ export function projectProforma(inputs: ProjectionInputs): ProjectionYearResult[
       dollarWeightedOpexGrowth += tunedOpexG * share;
       totalOpexShare += share;
 
+      // Track per-line confidence for the aggregate OPEX PV used in the
+      // NOI identity cross-check. Lines with no signal default to a neutral
+      // 0.5 confidence (already set in the synthetic row above).
+      if (lineRes.growth.value !== null) {
+        opexHasAnySignal = true;
+        opexConfidenceMin = Math.min(opexConfidenceMin, lineRes.growth.confidence);
+      }
+
       opexResults.push({
         line: lineKey,
         growthTuned: tunedOpexG,
@@ -232,7 +244,14 @@ export function projectProforma(inputs: ProjectionInputs): ProjectionYearResult[
       });
     }
 
-    const avgOpexGrowth = totalOpexShare > 0 ? dollarWeightedOpexGrowth / totalOpexShare * totalOpexShare : 0;
+    const avgOpexGrowth = totalOpexShare > 0 ? dollarWeightedOpexGrowth : 0;
+    const opexAggregatePV = provenanced(
+      avgOpexGrowth,
+      'platform',
+      opexHasAnySignal ? opexConfidenceMin : 0.5,
+      'derived',
+      `equal-weighted average of ${OPEX_LINE_KEYS.length} tuned per-line OPEX growths`,
+    );
 
     // ── 3. REVENUE (Tier 3 formula dispatcher)
     // Trend market rent year-over-year using the tuned rent growth so the
@@ -247,6 +266,16 @@ export function projectProforma(inputs: ProjectionInputs): ProjectionYearResult[
       marketGrowth: tunedRentGrowth,
     };
 
+    // Revenue formula dispatcher — keys MUST be canonical RevenueFormulaId
+    // values from the blueprint (mark_to_market / in_place_compounding /
+    // renewal_aware / rent_ramp_value_add / gpr_minus_loss_to_lease). The
+    // `in_place_compounding` formula is the legacy "year-1 in-place rent
+    // compounded by rent_growth" path implemented by `computeSimpleRevenue`.
+    // Formulas without a closed-form implementation here (rent_ramp_value_add
+    // requires a month-by-month renovation schedule; gpr_minus_loss_to_lease
+    // requires GPR + loss-to-lease %) fall back to in-place compounding so
+    // callers always get a numeric projection — see follow-up #460 for full
+    // formula coverage.
     let revenue: ProvenancedValue<number>;
     switch (inputs.revenueFormula) {
       case 'mark_to_market': {
@@ -267,15 +296,18 @@ export function projectProforma(inputs: ProjectionInputs): ProjectionYearResult[
         revenue = computeRenewalAwareRevenue(r);
         break;
       }
-      case 'simple':
+      case 'in_place_compounding':
+      case 'rent_ramp_value_add':
+      case 'gpr_minus_loss_to_lease':
       default:
         revenue = computeSimpleRevenue(common);
     }
 
-    // ── 4. NOI growth identity (Tier 1 cross-check)
+    // ── 4. NOI growth identity (Tier 1 cross-check) — must receive
+    //    ProvenancedValue<number> envelopes per the helper contract.
     const noiGrowthCheck = noiGrowthIdentity(
-      tunedRentGrowth,
-      avgOpexGrowth,
+      rentGrowthPV,
+      opexAggregatePV,
       inputs.noiMargin,
     );
 
