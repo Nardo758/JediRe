@@ -45,8 +45,16 @@ export interface ValidationResult {
  *   revenueFormula?: 'mark_to_market',
  *   sections: [ { id, title, fields: { fieldKey: ProvenancedValue } } ]
  * }
+ *
+ * If `options.expectedTemplate` is supplied, the validator additionally fails
+ * when `payload.template` does not match — preventing Opus from silently
+ * picking a different (still-known) template than the one resolved from the
+ * deal context (spec §1: template selection is bound to the active deal).
  */
-export function validateProformaPayload(payload: any): ValidationResult {
+export function validateProformaPayload(
+  payload: any,
+  options?: { expectedTemplate?: ProFormaTemplateId | null }
+): ValidationResult {
   const issues: ValidationIssue[] = [];
   const validSections: string[] = [];
   const invalidSections: string[] = [];
@@ -72,6 +80,17 @@ export function validateProformaPayload(payload: any): ValidationResult {
     return { ok: false, templateId: null, issues, validSections, invalidSections };
   }
   const template = PROFORMA_TEMPLATES[templateId];
+
+  // Active-template enforcement: payload must use the template the platform
+  // resolved for this deal, not a different template Opus picked on its own.
+  if (options?.expectedTemplate && options.expectedTemplate !== templateId) {
+    issues.push({
+      severity: 'error',
+      path: '$.template',
+      message: `Payload template "${templateId}" does not match active deal template "${options.expectedTemplate}"`,
+    });
+    return { ok: false, templateId, issues, validSections, invalidSections };
+  }
 
   // ── Horizon / periodicity ────────────────────────────────────────────────
   if (typeof payload.horizon !== 'number' || payload.horizon <= 0) {

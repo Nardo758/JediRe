@@ -278,6 +278,26 @@ export const OPEX_LINE_ITEMS = [
 
 export type OpexLineKey = typeof OPEX_LINE_ITEMS[number]['key'];
 
+/**
+ * Mapping from each blueprint OPEX line (camelCase) to one or more keys the
+ * financial-model engine / proforma-seeder emit (snake_case). This is the
+ * adapter the engine drift test exercises: every blueprint line MUST map to
+ * at least one engine key, and every engine key MUST be claimed by at least
+ * one blueprint line. If a renamed engine key breaks the mapping, the drift
+ * test fails immediately.
+ */
+export const BLUEPRINT_TO_ENGINE_OPEX_MAP: Record<OpexLineKey, readonly string[]> = {
+  propertyTax: ['real_estate_tax', 'personal_property_tax'],
+  insurance: ['insurance'],
+  utilities: ['utilities'],
+  repairsMaintenance: ['repairs_maintenance', 'turnover'],
+  managementFee: ['management_fee'],
+  payroll: ['payroll'],
+  marketingAdmin: ['marketing', 'g_and_a'],
+  replacementReserves: ['replacement_reserves'],
+  other: ['contract_services', 'hoa_dues'],
+};
+
 // ────────────────────────────────────────────────────────────────────────────
 // 6. Revenue formulas (spec §11)
 // ────────────────────────────────────────────────────────────────────────────

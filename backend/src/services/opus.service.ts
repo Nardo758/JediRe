@@ -11,6 +11,19 @@ import {
 } from './proforma/blueprint';
 import { validateProformaPayload } from './proforma/blueprint/payload-validator';
 
+/**
+ * Re-derive the template the platform expects for a deal context, mirroring
+ * the logic in `buildSystemPrompt`. Used by `streamChat` to pin Opus's payload
+ * template to the active deal — payloads with any other template are rejected.
+ */
+function resolveExpectedTemplateId(
+  ctx?: { dealType?: 'existing' | 'development' | 'redevelopment'; strategy?: string | null }
+): ProFormaTemplateId {
+  if (ctx?.strategy) return pickTemplateForStrategy(ctx.strategy);
+  if (ctx?.dealType) return defaultTemplateForDealType(ctx.dealType);
+  return 'acquisition_stabilized';
+}
+
 const anthropic = new Anthropic({
   apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
   baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
@@ -343,6 +356,50 @@ ${comparableData}`;
    */
   validateProformaPayload = validateProformaPayload;
 
+  /**
+   * Persist a payload Opus emitted that FAILED blueprint validation. We never
+   * insert it into `opus_proforma_versions` (that table holds accepted, valid
+   * versions only). Instead we write it to `opus_proforma_rejected_payloads`
+   * (auto-created on first use) so the deal team can audit what was attempted.
+   */
+  private async quarantineRejectedProforma(
+    dealId: string,
+    conversationId: number | null,
+    proformaData: any,
+    validation: ReturnType<typeof validateProformaPayload>,
+    expectedTemplate: ProFormaTemplateId | null
+  ): Promise<void> {
+    try {
+      await this.pool.query(`
+        CREATE TABLE IF NOT EXISTS opus_proforma_rejected_payloads (
+          id SERIAL PRIMARY KEY,
+          deal_id TEXT NOT NULL,
+          conversation_id INTEGER,
+          expected_template TEXT,
+          payload_template TEXT,
+          payload JSONB NOT NULL,
+          issues JSONB NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      await this.pool.query(
+        `INSERT INTO opus_proforma_rejected_payloads
+           (deal_id, conversation_id, expected_template, payload_template, payload, issues)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [
+          dealId,
+          conversationId,
+          expectedTemplate,
+          validation.templateId,
+          JSON.stringify(proformaData),
+          JSON.stringify(validation.issues),
+        ]
+      );
+    } catch (err) {
+      console.error('[Opus] Failed to quarantine rejected pro forma payload:', err);
+    }
+  }
+
   async streamChat(
     conversationId: number,
     userMessage: string,
@@ -400,34 +457,75 @@ ${comparableData}`;
     if (proformaMatch) {
       try {
         const proformaData = JSON.parse(proformaMatch[1]);
-        // Spec §11: validate the payload against the active template before
-        // persisting. Validator is non-throwing and returns warnings + errors.
-        const validation = validateProformaPayload(proformaData);
+
+        // Resolve the template the platform expects for THIS deal so we can
+        // pin Opus's payload to it (spec §1: template selection is bound to
+        // the active deal, not chosen freely by the model).
+        const expectedTemplate = resolveExpectedTemplateId(dealMeta);
+
+        // Spec §11: validate the payload against the active template. The
+        // validator REJECTS unknown sections / fields / formulas / templates
+        // and any mismatch with the expected active template.
+        const validation = validateProformaPayload(proformaData, {
+          expectedTemplate,
+        });
+
         if (!validation.ok) {
-          console.warn(
-            '[Opus] Pro forma payload failed blueprint validation; saving with warnings.',
-            { dealId, templateId: validation.templateId, issueCount: validation.issues.length }
+          // Hard gate: a payload that fails blueprint validation MUST NOT be
+          // persisted as an accepted pro forma version. Quarantine it via the
+          // dedicated rejected-payloads table so the model + the deal team
+          // can review what was attempted, then surface a clear error to the
+          // assistant transcript.
+          console.error(
+            '[Opus] Pro forma payload REJECTED by blueprint validator; quarantining instead of saving.',
+            {
+              dealId,
+              expectedTemplate,
+              templateId: validation.templateId,
+              issueCount: validation.issues.length,
+              errorCount: validation.issues.filter(i => i.severity === 'error').length,
+            }
+          );
+          await this.quarantineRejectedProforma(
+            dealId,
+            conversationId,
+            proformaData,
+            validation,
+            expectedTemplate
+          );
+          await this.saveMessage(
+            conversationId,
+            'system',
+            `[blueprint-validator] Pro forma payload rejected. ` +
+              `Expected template: ${expectedTemplate ?? 'none'}. ` +
+              `Errors: ${validation.issues
+                .filter(i => i.severity === 'error')
+                .slice(0, 5)
+                .map(i => `${i.path}: ${i.message}`)
+                .join(' | ')}`
+          );
+        } else {
+          const validationMeta = {
+            source: 'opus_generated',
+            timestamp: new Date().toISOString(),
+            validation: {
+              ok: validation.ok,
+              expectedTemplate,
+              templateId: validation.templateId,
+              validSections: validation.validSections,
+              invalidSections: validation.invalidSections,
+              issues: validation.issues,
+            },
+          };
+          await this.saveProformaVersion(
+            dealId,
+            conversationId,
+            proformaData.name || `Model v${Date.now()}`,
+            proformaData,
+            validationMeta,
+            []
           );
         }
-        const validationMeta = {
-          source: 'opus_generated',
-          timestamp: new Date().toISOString(),
-          validation: {
-            ok: validation.ok,
-            templateId: validation.templateId,
-            validSections: validation.validSections,
-            invalidSections: validation.invalidSections,
-            issues: validation.issues,
-          },
-        };
-        await this.saveProformaVersion(
-          dealId,
-          conversationId,
-          proformaData.name || `Model v${Date.now()}`,
-          proformaData,
-          validationMeta,
-          validation.issues.filter(i => i.severity === 'error').map(i => `${i.path}: ${i.message}`)
-        );
       } catch (e) {
         console.error('Failed to parse proforma from Opus response:', e);
       }

@@ -8,6 +8,31 @@ const ANTHROPIC_API_KEY = process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || proce
 const ANTHROPIC_BASE_URL = process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL || 'https://api.anthropic.com';
 const CLAUDE_MODEL = 'claude-sonnet-4-5';
 
+/**
+ * Authoritative list of OPEX line-item keys the financial-model engine and
+ * the proforma-seeder service emit on the `expenses` / `operatingExpenses`
+ * records. The Tier-0 blueprint (`backend/src/services/proforma/blueprint/`)
+ * declares its own 9-line OPEX stack and a mapping from each blueprint line
+ * to one or more of these engine keys; the drift test asserts the two stay
+ * in sync so a renamed engine key cannot silently bypass the blueprint.
+ */
+export const FINANCIAL_ENGINE_OPEX_KEYS = [
+  'real_estate_tax',
+  'personal_property_tax',
+  'insurance',
+  'utilities',
+  'repairs_maintenance',
+  'turnover',
+  'contract_services',
+  'payroll',
+  'marketing',
+  'g_and_a',
+  'hoa_dues',
+  'management_fee',
+  'replacement_reserves',
+] as const;
+export type FinancialEngineOpexKey = (typeof FINANCIAL_ENGINE_OPEX_KEYS)[number];
+
 export interface ProFormaAssumptions {
   dealInfo: {
     dealName: string;

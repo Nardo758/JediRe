@@ -18,7 +18,10 @@ import {
   M09_CYCLES,
   FKEY_MAP,
   PROFORMA_TEMPLATES,
+  OPEX_LINE_ITEMS,
+  BLUEPRINT_TO_ENGINE_OPEX_MAP,
 } from '../proforma-blueprint';
+import { FINANCIAL_ENGINE_OPEX_KEYS } from '../../../financial-model-engine.service';
 import {
   MODULE_REGISTRY,
   type ModuleId,
@@ -107,6 +110,40 @@ describe('Pro Forma Blueprint drift', () => {
     const onDisk = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
     // Compare via canonical JSON string round-trip so key order doesn't matter.
     expect(onDisk).toEqual(JSON.parse(JSON.stringify(PROFORMA_BLUEPRINT)));
+  });
+});
+
+describe('Blueprint ↔ Financial-Model Engine drift (OPEX schema)', () => {
+  test('every blueprint OPEX line maps to ≥1 engine key', () => {
+    const blueprintKeys = OPEX_LINE_ITEMS.map(l => l.key);
+    for (const k of blueprintKeys) {
+      const mapped = BLUEPRINT_TO_ENGINE_OPEX_MAP[k];
+      expect(Array.isArray(mapped)).toBe(true);
+      expect(mapped.length).toBeGreaterThan(0);
+    }
+  });
+
+  test('every mapped engine key exists in FINANCIAL_ENGINE_OPEX_KEYS', () => {
+    const engineKeySet = new Set<string>(FINANCIAL_ENGINE_OPEX_KEYS);
+    for (const [bpKey, engineKeys] of Object.entries(BLUEPRINT_TO_ENGINE_OPEX_MAP)) {
+      for (const ek of engineKeys) {
+        expect(engineKeySet.has(ek)).toBe(true);
+      }
+    }
+  });
+
+  test('every engine OPEX key is claimed by exactly one blueprint line', () => {
+    const claimedBy: Record<string, string[]> = {};
+    for (const [bpKey, engineKeys] of Object.entries(BLUEPRINT_TO_ENGINE_OPEX_MAP)) {
+      for (const ek of engineKeys) {
+        claimedBy[ek] = claimedBy[ek] ? [...claimedBy[ek], bpKey] : [bpKey];
+      }
+    }
+    const unclaimed = FINANCIAL_ENGINE_OPEX_KEYS.filter(k => !claimedBy[k]);
+    expect(unclaimed).toEqual([]);
+    for (const [ek, owners] of Object.entries(claimedBy)) {
+      expect(owners.length).toBe(1);
+    }
   });
 });
 
