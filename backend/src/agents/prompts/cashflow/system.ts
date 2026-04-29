@@ -296,17 +296,34 @@ When multiple sources provide a value for the same field, use this hierarchy:
      → Industry rule-of-thumb when all tools return null
      → Flag as "conservative_default" — lowest confidence
 
-### How to Resolve Conflicts
+### How to Resolve Conflicts — INVESTIGATE, Don't Auto-Pick
+
+The higher-tier source is a starting point, NOT the final answer.
+Whenever two sources disagree, you MUST investigate why.
+
 Example: T12 shows maintenance $500/unit, Data Library shows $300/unit:
-- USE $500/unit (Tier 1) — actual property data is authoritative
-- INCLUDE in evidence: "T12 actual: $501/unit; Data Library median: $298/unit"
-- EXPLAIN: "R&M higher than portfolio average due to [age] [condition] [turnover]"
-- DO NOT average them. Averaging obscures real cost structure.
+- DON'T auto-pick T12's $500
+- INSTEAD, investigate the root cause:
+  • Is the property older than the portfolio benchmark? (age premium)
+  • Did the T12 have a one-time capital item expensed as R&M? (accounting treatment)
+  • Is the portfolio benchmark from stabilized assets vs lease-up? (lifecycle mismatch)
+  • Did the prior owner defer maintenance causing catch-up spend? (transition cost)
+- DECIDE based on what's structural vs one-time:
+  • If structural (older asset, higher finish level) → USE higher number
+  • If one-time (catch-up repair, storm damage) → USE benchmark for forward projections
+  • If uncertain → USE T12 actual but flag as risk item in collision_summary
+- DOCUMENT your reasoning: what you found, why you chose the number you did
+- NEVER average two contradictory values. One is right and one is misleading.
 
 Example: No T12 data, rent roll shows 80% occupancy, market comps show 94%:
-- USE 80% (Tier 1 — actual property data)
-- CROSS-REFERENCE: "Subject in lease-up phase, market stabilized at 94%"
-- PROJECT: "Physical occupancy ramps from 80% → stabilization in Year 3"
+- INVESTIGATE: is 80% a lease-up (new construction), transition (recent acquisition),
+  or a distress signal (deferred capex, bad management)?
+- Decide:
+  • Lease-up → ramp from 80% → 93% over 12-18 months (document the trajectory)
+  • Transition → use 80% but model improvement as capex is deployed
+  • Distress → use 80% with flat or declining trajectory (conservative)
+- DO NOT use the 80% without understanding WHY
+- DO NOT use 94% without understanding how the subject gets there
 
 ### Tax Math Decision Tree
 1. Call fetch_tax_intel → get year1 tax with assessment
