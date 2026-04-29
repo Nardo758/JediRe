@@ -13,6 +13,7 @@ import {
 } from '../bloomberg-ui';
 import { AlertCounter, IdentityGateBanner } from '../AlertCounter';
 import { OverviewRouter } from '../OverviewRouter';
+import { TradePressWidget } from '../TradePressWidget';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -798,6 +799,11 @@ export const BloombergOverviewSection: React.FC<BloombergOverviewSectionProps> =
             })
           )}
         </SectionPanel>
+      </div>
+
+      {/* ── Row 7: Trade Press News (per-deal) ── */}
+      <div style={{ background: BTV.border.subtle, flexShrink: 0 }}>
+        <TradePressWidget dealId={String(deal?.id ?? '')} limit={6} />
       </div>
     </div>
   );

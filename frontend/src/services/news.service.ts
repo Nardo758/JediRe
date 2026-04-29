@@ -85,6 +85,22 @@ export interface NetworkIntelligence {
   avg_early_signal_days: number;
 }
 
+/**
+ * A single trade-press / premium news item tagged to a deal,
+ * as returned by `GET /api/v1/news/discoveries?deal_id=...`.
+ */
+export interface NewsDiscovery {
+  id: string;
+  headline: string;
+  source: string;
+  url: string;
+  publishedAt: string | null;
+  summary: string | null;
+  category: string | null;
+  relevantMsas: string[] | null;
+  isPremium: boolean;
+}
+
 export const newsService = {
   /**
    * Get news events with filtering
@@ -157,6 +173,24 @@ export const newsService = {
 
   async getNetworkIntelligence(): Promise<{ success: boolean; data: NetworkIntelligence }> {
     const response = await apiClient.get('/api/v1/news/network');
+    return response.data;
+  },
+
+  /**
+   * Get trade-press / premium news items tagged to a specific deal.
+   * Backed by `GET /api/v1/news/discoveries?deal_id=...`.
+   */
+  async getDiscoveries(filters: {
+    dealId: string;
+    source?: string;
+    limit?: number;
+  }): Promise<{ success: boolean; data: NewsDiscovery[]; count: number }> {
+    const params = new URLSearchParams();
+    params.append('deal_id', filters.dealId);
+    if (filters.source) params.append('source', filters.source);
+    if (filters.limit) params.append('limit', String(filters.limit));
+
+    const response = await apiClient.get(`/api/v1/news/discoveries?${params.toString()}`);
     return response.data;
   },
 };
