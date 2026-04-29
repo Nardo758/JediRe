@@ -971,12 +971,12 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
                   results: modelResults,
                   f9: f9Financials,
                   deal: propDeal as Record<string, any> | undefined,
-                  // The catalog's `projections[*].{year,noi,revenue,...}` shape
-                  // matches the per-year time-series object array on
-                  // F9DealFinancials.projections (one row per hold year with
-                  // noi/cfads/dscr/etc. as scalar keys), NOT the row-oriented
-                  // ProjectionRow[] on ModelResults.projections.
-                  projections: (f9Financials?.projections as any) ?? null,
+                  // F9DealFinancials.projections is the per-year time-series
+                  // object array (year/noi/cfads/dscr/...), matching the
+                  // catalog's `projections[*].{year,noi,revenue,...}` contract
+                  // — distinct from the row-oriented ProjectionRow[] on
+                  // ModelResults.projections used by the projections grid.
+                  projections: f9Financials?.projections ?? null,
                 }}
                 evidenceFieldMap={evidenceSummary?.field_metadata ?? undefined}
               />

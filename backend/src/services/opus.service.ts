@@ -975,7 +975,7 @@ ${comparableData}`;
     if (!validation.ok) {
       return { payload: null, validation, modelVersion: 'claude-sonnet-4-5', rawText, error: 'Validation failed' };
     }
-    return { payload: parsed as CustomTabPayload, validation, modelVersion: 'claude-sonnet-4-5' };
+    return { payload: parsed as CustomTabPayload, validation, modelVersion: 'claude-sonnet-4-5', rawText };
   }
 
   /** Re-exported for callers that want validation without persistence. */

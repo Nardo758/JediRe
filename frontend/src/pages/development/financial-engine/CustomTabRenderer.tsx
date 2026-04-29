@@ -154,18 +154,23 @@ function resolveColumnCells(ref: string, data: CustomTabRendererProps['data'], r
   return cells;
 }
 
+type ProvenancedShape = { value?: unknown; confidence?: unknown; source?: unknown; qualityFlag?: unknown };
+function isProvenanced(v: unknown): v is ProvenancedShape {
+  return typeof v === 'object' && v !== null;
+}
+
 function unwrapNumber(v: unknown): number | null {
   if (v == null) return null;
   if (typeof v === 'number' && isFinite(v)) return v;
-  if (typeof v === 'object' && v !== null && 'value' in (v as any)) {
-    const inner = (v as any).value;
+  if (isProvenanced(v) && 'value' in v) {
+    const inner = v.value;
     if (typeof inner === 'number' && isFinite(inner)) return inner;
   }
   return null;
 }
 
 function unwrapValue(v: unknown): unknown {
-  if (v != null && typeof v === 'object' && 'value' in (v as any)) return (v as any).value;
+  if (isProvenanced(v) && 'value' in v) return v.value;
   return v;
 }
 
@@ -196,14 +201,16 @@ const ProvenanceBadge: React.FC<{
   let confidence: number | undefined;
   let source: string | undefined;
   let qualityFlag: string | undefined;
-  if (value && typeof value === 'object' && 'confidence' in (value as any)) {
-    confidence = (value as any).confidence;
-    source = (value as any).source;
-    qualityFlag = (value as any).qualityFlag;
+  if (isProvenanced(value) && 'confidence' in value) {
+    if (typeof value.confidence === 'number') confidence = value.confidence;
+    if (typeof value.source === 'string') source = value.source;
+    if (typeof value.qualityFlag === 'string') qualityFlag = value.qualityFlag;
   } else if (meta) {
-    confidence = (meta as any).confidence;
-    source = (meta as any).source;
-    qualityFlag = (meta as any).quality_flag ?? (meta as any).qualityFlag;
+    const metaAny = meta as Partial<EvidenceFieldMeta> & { quality_flag?: string };
+    if (typeof metaAny.confidence === 'number') confidence = metaAny.confidence;
+    if (typeof metaAny.source === 'string') source = metaAny.source;
+    if (typeof metaAny.quality_flag === 'string') qualityFlag = metaAny.quality_flag;
+    else if (typeof (metaAny as any).qualityFlag === 'string') qualityFlag = (metaAny as any).qualityFlag;
   }
   if (confidence == null && source == null && qualityFlag == null) return null;
 
@@ -368,10 +375,15 @@ const TableBlockView: React.FC<{
                 const raw = columnCells[c][r];
                 const num = unwrapNumber(raw);
                 const display = num != null ? formatValue(num, col.format) : String(unwrapValue(raw) ?? '—');
+                // Resolve the per-cell field-ref so each badge looks up the
+                // right concrete entry in the evidence map (e.g.
+                // `f9.proforma.year1[3].broker` instead of the wildcard
+                // `f9.proforma.year1[*].broker`).
+                const cellRef = col.ref.includes('[*]') ? col.ref.replace('[*]', `[${r}]`) : col.ref;
                 return (
                   <td key={c} style={{ textAlign: 'right', padding: '3px 6px', color: BT.text.primary }}>
                     {display}
-                    <ProvenanceBadge fieldRef={col.ref} value={raw} evidenceFieldMap={evidenceFieldMap} />
+                    <ProvenanceBadge fieldRef={cellRef} value={raw} evidenceFieldMap={evidenceFieldMap} />
                   </td>
                 );
               })}
