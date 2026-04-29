@@ -191,24 +191,33 @@ function calculateExpenses(
   const { operating } = assumptions;
   const { effectiveGrossIncome } = revenue;
 
-  const management = effectiveGrossIncome * operating.managementFee;
+  // ─── Spec §7: 9-line OPEX stack ───
+  const managementFee = effectiveGrossIncome * operating.managementFee;
   const propertyTax = budget.totalDevelopmentCost * operating.propertyTaxRate;
   const insurance = design.totalUnits * operating.insurancePerUnit;
   const utilities = design.totalUnits * operating.utilitiesPerUnit;
   const repairsMaintenance = design.totalUnits * operating.repairsMaintenancePerUnit;
   const payroll = design.totalUnits * operating.payrollPerUnit;
-  const other = design.totalUnits * 100; // Miscellaneous
+  // New 9-line entries — sane defaults until per-line drivers are wired (Tier 1).
+  const marketingAdmin = design.totalUnits * 60;
+  const replacementReserves = design.totalUnits * 300;
+  const other = design.totalUnits * 100;
 
-  const total = management + propertyTax + insurance + utilities + repairsMaintenance + payroll + other;
+  const total =
+    managementFee + propertyTax + insurance + utilities + repairsMaintenance +
+    payroll + marketingAdmin + replacementReserves + other;
 
   return {
-    management,
     propertyTax,
     insurance,
     utilities,
     repairsMaintenance,
+    managementFee,
     payroll,
+    marketingAdmin,
+    replacementReserves,
     other,
+    management: managementFee,  // legacy alias
     total,
     perUnit: total / design.totalUnits,
     percentOfEGI: total / effectiveGrossIncome,
@@ -287,21 +296,28 @@ export function calculateOperatingProForma(
     yearRevenue.vacancy *= rentGrowthFactor;
     yearRevenue.effectiveGrossIncome *= rentGrowthFactor;
 
-    // Grow expenses
+    // Grow expenses — spec §7 9-line stack (Tier 0 keeps a single growth factor;
+    // per-line drivers (CPI / wage / %EGI / M26 tax growth) come in Tier 1).
     const yearExpenses = { ...stabilizedExpenses };
-    yearExpenses.management *= expenseGrowthFactor;
+    yearExpenses.managementFee *= expenseGrowthFactor;
     yearExpenses.insurance *= expenseGrowthFactor;
     yearExpenses.utilities *= expenseGrowthFactor;
     yearExpenses.repairsMaintenance *= expenseGrowthFactor;
     yearExpenses.payroll *= expenseGrowthFactor;
+    yearExpenses.marketingAdmin *= expenseGrowthFactor;
+    yearExpenses.replacementReserves *= expenseGrowthFactor;
     yearExpenses.other *= expenseGrowthFactor;
-    yearExpenses.total = 
-      yearExpenses.management + 
-      yearExpenses.propertyTax + // Property tax doesn't grow with expenses
-      yearExpenses.insurance + 
-      yearExpenses.utilities + 
-      yearExpenses.repairsMaintenance + 
-      yearExpenses.payroll + 
+    // Keep legacy alias in sync.
+    yearExpenses.management = yearExpenses.managementFee;
+    yearExpenses.total =
+      yearExpenses.managementFee +
+      yearExpenses.propertyTax + // Property tax doesn't grow with expenses (M26 drives separately)
+      yearExpenses.insurance +
+      yearExpenses.utilities +
+      yearExpenses.repairsMaintenance +
+      yearExpenses.payroll +
+      yearExpenses.marketingAdmin +
+      yearExpenses.replacementReserves +
       yearExpenses.other;
     yearExpenses.perUnit = yearExpenses.total / design.totalUnits;
     yearExpenses.percentOfEGI = yearExpenses.total / yearRevenue.effectiveGrossIncome;

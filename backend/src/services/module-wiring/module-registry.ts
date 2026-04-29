@@ -16,7 +16,9 @@ export type ModuleId =
   | 'M11' | 'M12' | 'M13' | 'M14' | 'M15'
   | 'M16' | 'M17' | 'M18' | 'M19' | 'M20'
   | 'M21' | 'M22' | 'M23' | 'M24' | 'M25'
-  | 'M26' | 'M27';
+  | 'M26' | 'M27' | 'M29';
+// NOTE: M28 is reserved for Cycle Intelligence (see backend/src/types/m28.types.ts)
+// M29 is the Unit Mix Intelligence peer module promoted out of F9 (spec §1, §15).
 
 export type ModuleStage =
   | 'S1: Overview'
@@ -42,6 +44,24 @@ export interface ModuleDependency {
   moduleId: ModuleId;
   dataKeys: string[];
   strength: 'required' | 'optional';
+  /**
+   * Per F9 spec §2: some inputs are required only for specific deal types
+   * (e.g. M07 Traffic is required for Construction deals only). When set,
+   * `strength` is interpreted relative to these deal types only.
+   */
+  requiredByDealType?: Array<'existing' | 'development' | 'redevelopment'>;
+}
+
+/**
+ * Bidirectional cycle declaration. Per spec §2, M09 ⇄ M11 and M09 ⇄ M14
+ * are formal two-pass loops; declaring them here lets the data-flow router
+ * skip naive cycle-breaking.
+ */
+export interface ModuleCycle {
+  partner: ModuleId;
+  description: string;
+  /** Ordered description of each pass in the cycle. */
+  passes: string[];
 }
 
 export interface ModuleDefinition {
@@ -55,6 +75,8 @@ export interface ModuleDefinition {
   outputs: ModuleOutput[];
   feedsInto: ModuleId[];
   receivesFrom: ModuleDependency[];
+  /** Bidirectional cycles this module participates in (spec §2). */
+  cycles?: ModuleCycle[];
   formulas: string[];
   buildStatus: BuildStatus;
   priority: Priority;
@@ -304,17 +326,49 @@ export const MODULE_REGISTRY: Record<ModuleId, ModuleDefinition> = {
     ],
     feedsInto: ['M10', 'M11', 'M12', 'M14', 'M01', 'M22'],
     receivesFrom: [
+      // ─── Spec §2: M09.receivesFrom symmetric with every module that feedsInto M09 ───
+      { moduleId: 'M01', dataKeys: ['units', 'property_type', 'address'], strength: 'required' },
       { moduleId: 'M02', dataKeys: ['zoning_code', 'far'], strength: 'optional' },
       { moduleId: 'M03', dataKeys: ['max_units_by_right', 'envelope_dimensions'], strength: 'optional' },
-      { moduleId: 'M04', dataKeys: ['vacancy_rate'], strength: 'optional' },
-      { moduleId: 'M05', dataKeys: ['avg_rent_psf', 'vacancy_rate', 'rent_growth_pct'], strength: 'required' },
-      { moduleId: 'M06', dataKeys: ['demand_units_total', 'demand_units_phased'], strength: 'optional' },
-      { moduleId: 'M08', dataKeys: ['recommended_strategy', 'strategy_scores'], strength: 'required' },
+      { moduleId: 'M04', dataKeys: ['absorption_rate', 'months_of_supply', 'supply_pressure_score'], strength: 'required' },
+      { moduleId: 'M05', dataKeys: ['avg_rent_psf', 'vacancy_rate', 'rent_growth_pct', 'submarket_rank'], strength: 'required' },
+      { moduleId: 'M06', dataKeys: ['demand_units_total', 'demand_units_phased', 'demand_score'], strength: 'optional' },
+      { moduleId: 'M07', dataKeys: ['absorption_rate', 'capture_rate', 'predicted_leases_week', 'vacancy_assumption', 'rent_growth_adjustment'], strength: 'required', requiredByDealType: ['development'] },
+      { moduleId: 'M08', dataKeys: ['recommended_strategy', 'strategy_scores', 'template', 'sections', 'horizon', 'periodicity'], strength: 'required' },
+      { moduleId: 'M10', dataKeys: ['probability_weighted_returns', 'monte_carlo_distribution'], strength: 'optional' },
+      { moduleId: 'M11', dataKeys: ['loan_terms', 'debt_service', 'effective_interest_rate', 'capital_stack'], strength: 'required' },
+      { moduleId: 'M14', dataKeys: ['composite_risk_score', 'cap_rate_adjustment_bps', 'reserve_overrides'], strength: 'optional' },
+      { moduleId: 'M15', dataKeys: ['rent_comp_data', 'competitive_positioning'], strength: 'optional' },
+      { moduleId: 'M18', dataKeys: ['ocr_extracted_data', 'document_index'], strength: 'optional' },
+      { moduleId: 'M26', dataKeys: ['projected_total_tax', 'effective_tax_rate', 'yearly_projections'], strength: 'optional' },
+      { moduleId: 'M27', dataKeys: ['median_implied_cap_rate', 'median_price_per_unit', 'comp_count'], strength: 'optional' },
+      { moduleId: 'M29', dataKeys: ['unit_mix_program', 'total_units', 'avg_unit_size_sf', 'rent_by_type'], strength: 'optional' },
+    ],
+    cycles: [
+      {
+        partner: 'M11',
+        description: 'Debt sizing two-pass loop (M09 emits stub NOI → M11 sizes debt → M09 finalises CoC/DSCR).',
+        passes: [
+          'M09 emits stub NOI with placeholder debt service',
+          'M11 sizes debt against stub NOI (LTV / DSCR / debt yield)',
+          'M11 returns final loan terms',
+          'M09 finalises debt service and recomputes cash-on-cash & DSCR',
+        ],
+      },
+      {
+        partner: 'M14',
+        description: 'Risk validation two-pass loop (M09 emits stabilized NOI → M14 stress-tests → M09 absorbs adjustments).',
+        passes: [
+          'M09 emits stabilized NOI and exit cap',
+          'M14 stress-tests assumptions; emits cap-rate adjustment basis points and reserve overrides',
+          'M09 absorbs adjustments; final returns reflect risk-adjusted view',
+        ],
+      },
     ],
     formulas: ['F16', 'F17', 'F18', 'F19', 'F20', 'F32', 'F33'],
     buildStatus: 'Partial',
     priority: 'P0',
-    uiLocation: 'Deal Capsule → Financial Tab',
+    uiLocation: 'Deal Capsule → Financial Tab (F9)',
     serviceFile: 'proforma-adjustment.service.ts',
   },
 
@@ -758,6 +812,37 @@ export const MODULE_REGISTRY: Record<ModuleId, ModuleDefinition> = {
     priority: 'P0',
     uiLocation: 'Deal Capsule → Comps Tab (position 7)',
     serviceFile: 'saleComps/compSet.service.ts',
+  },
+
+  // ────────────────────────────────────────────────────────────────────────
+  // M29 — Unit Mix Intelligence (peer module promoted out of F9 per spec §1)
+  // Note: M28 reserved for Cycle Intelligence (backend/src/types/m28.types.ts).
+  // ────────────────────────────────────────────────────────────────────────
+  M29: {
+    id: 'M29',
+    name: 'Unit Mix Intelligence',
+    stage: 'S3: Financial',
+    category: 'Financial',
+    purpose: 'Unit mix is its own peer module: program (count + sf + rent per type) is sourced from rent roll, M-PIE, or selected development path, then propagated to M09, M03, and 3D design.',
+    hasAgent: false,
+    outputs: [
+      { key: 'unit_mix_program', type: 'array', description: 'Resolved unit mix rows (id, label, count, avgSF, targetRent)' },
+      { key: 'total_units', type: 'number', unit: 'units', description: 'Sum of count across rows' },
+      { key: 'avg_unit_size_sf', type: 'number', unit: 'sf', description: 'Weighted average unit size' },
+      { key: 'rent_by_type', type: 'object', description: 'Map of unit type → target rent' },
+      { key: 'mix_source', type: 'string', description: 'rent_roll | development_path | manual | mpie' },
+    ],
+    feedsInto: ['M09', 'M03', 'M22'],
+    receivesFrom: [
+      { moduleId: 'M01', dataKeys: ['units', 'property_type'], strength: 'required' },
+      { moduleId: 'M03', dataKeys: ['envelope_dimensions', 'max_units_by_right'], strength: 'optional' },
+      { moduleId: 'M05', dataKeys: ['avg_rent_psf'], strength: 'optional' },
+      { moduleId: 'M18', dataKeys: ['ocr_extracted_data'], strength: 'optional' },
+    ],
+    formulas: [],
+    buildStatus: 'Partial',
+    priority: 'P0',
+    uiLocation: 'Deal Capsule → Unit Mix Tab',
   },
 };
 

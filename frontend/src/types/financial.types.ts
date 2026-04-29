@@ -134,19 +134,74 @@ export interface RevenueProjection {
   grossPotentialIncome: number;
   vacancy: number;
   effectiveGrossIncome: number;
+
+  // ─── Spec §5/§11 extensions (Tier 0) ───
+  /** Which revenue formula generated this projection. */
+  formula?: RevenueFormulaId;
+  /** Decomposed rent terminology that fed the formula. */
+  rentTerms?: RentTerminology;
+  /** Concessions deducted (already netted into effectiveGrossIncome). */
+  concessions?: number;
+  /** Loss-to-lease deducted (already netted into effectiveGrossIncome). */
+  lossToLease?: number;
 }
 
+/**
+ * Operating Expenses — 9-line stack
+ *
+ * Per F9 Pro Forma spec §7 the canonical OPEX taxonomy is exactly nine lines,
+ * each with its own growth driver (CPI, wage index, % of EGI, M26 tax growth).
+ * Legacy callers still set `management`, `payroll`, `other`; new code should
+ * prefer the explicit 9-line keys.
+ */
 export interface OperatingExpenses {
-  management: number;
+  // ─── Spec §7 canonical 9-line stack ───
   propertyTax: number;
   insurance: number;
   utilities: number;
   repairsMaintenance: number;
-  payroll: number;
-  other: number;
+  managementFee: number;       // % of EGI driver (preferred over `management`)
+  payroll: number;             // wage-index driver
+  marketingAdmin: number;      // CPI driver
+  replacementReserves: number; // CPI driver
+  other: number;               // CPI driver
+
+  // ─── Legacy alias (kept for backwards compat — equals managementFee) ───
+  management?: number;
+
+  // ─── Roll-ups ───
   total: number;
   perUnit: number;
   percentOfEGI: number;
+}
+
+/**
+ * Selectable revenue formula (spec §11). The default is `mark_to_market`:
+ * every unit re-rents at market on turnover, closing the loss-to-lease gap.
+ */
+export type RevenueFormulaId =
+  | 'mark_to_market'
+  | 'in_place_compounding'
+  | 'renewal_aware'
+  | 'rent_ramp_value_add'
+  | 'gpr_minus_loss_to_lease';
+
+export const DEFAULT_REVENUE_FORMULA: RevenueFormulaId = 'mark_to_market';
+
+/**
+ * Rent terminology (spec §5). Each field is optional so callers can populate
+ * progressively as data arrives. Used by the new `mark_to_market` formula.
+ */
+export interface RentTerminology {
+  grossPotentialRent?: number;   // GPR — sum of contracted rent at full occupancy
+  marketRent?: number;           // What a unit leases for today on a new lease
+  inPlaceRent?: number;          // Rent currently being paid
+  effectiveRent?: number;        // Market rent net of concessions
+  concessions?: number;          // Free months / gift cards amortised over lease term
+  lossToLease?: number;          // Market - in-place, % of GPR
+  newLeaseRent?: number;         // Brand-new lease rent
+  renewalRent?: number;          // Renewing tenant rent
+  turnoverRatePerYear?: number;  // Annual turnover ratio (drives mark_to_market)
 }
 
 export interface CashFlow {

@@ -1,6 +1,15 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { Pool } from 'pg';
 import { PropertyScoringService } from './propertyScoring.service';
+import {
+  buildOpusBlueprintSlice,
+  buildOpusBlueprintRules,
+  defaultTemplateForDealType,
+  pickTemplateForStrategy,
+  PROFORMA_BLUEPRINT,
+  type ProFormaTemplateId,
+} from './proforma/blueprint';
+import { validateProformaPayload } from './proforma/blueprint/payload-validator';
 
 const anthropic = new Anthropic({
   apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
@@ -244,7 +253,29 @@ export class OpusService {
     return '';
   }
 
-  buildSystemPrompt(dealContext: string, comparableData: string): string {
+  /**
+   * Build Opus system prompt.
+   *
+   * Per F9 Pro Forma Architecture spec (docs/architecture/f9-proforma-spec.md),
+   * we inject a compact slice of the canonical blueprint so Opus reasons over a
+   * pinned schema (templates, sections, rent terms, OPEX line items, revenue
+   * formulas, provenance rules) rather than inventing them.
+   *
+   * Optional context (deal type / strategy) lets us send only the active
+   * template's section list, keeping the slice small.
+   */
+  buildSystemPrompt(
+    dealContext: string,
+    comparableData: string,
+    opts?: { dealType?: 'existing' | 'development' | 'redevelopment'; strategy?: string | null }
+  ): string {
+    let templateId: ProFormaTemplateId = 'acquisition_stabilized';
+    if (opts?.strategy) templateId = pickTemplateForStrategy(opts.strategy);
+    else if (opts?.dealType) templateId = defaultTemplateForDealType(opts.dealType);
+
+    const blueprintSlice = buildOpusBlueprintSlice({ templateId, dealType: opts?.dealType });
+    const blueprintRules = buildOpusBlueprintRules();
+
     return `You are Opus, JEDI RE's AI-powered pro forma model builder. You are an expert real estate financial analyst specializing in multifamily investment analysis.
 
 ## Your Capabilities
@@ -262,46 +293,40 @@ export class OpusService {
 5. Flag risks and sensitivities proactively
 6. If comparable data from the Data Library is available, prioritize those actuals over market averages
 
-## Pro Forma JSON Format
-When generating a model, output it in this format:
+## Pro Forma Capsule Blueprint (v${PROFORMA_BLUEPRINT.version})
+The following blueprint is the SINGLE SOURCE OF TRUTH for the F9 Pro Forma. Your output JSON MUST conform to it. Never invent fields, modules, formulas, or template IDs that don't appear here.
+
+\`\`\`json
+${blueprintSlice}
+\`\`\`
+
+${blueprintRules}
+
+## Pro Forma JSON Format (template-aware)
+Emit the model inside a \`\`\`proforma fence using this shape (the \`sections[]\` and field keys MUST come from \`activeTemplate\` above):
+
 \`\`\`proforma
 {
-  "name": "Base Case",
-  "holdPeriod": 5,
-  "acquisition": {
-    "purchasePrice": 0,
-    "pricePerUnit": 0,
-    "closingCosts": 0,
-    "renovationBudget": 0,
-    "totalBasis": 0
-  },
-  "financing": {
-    "loanAmount": 0,
-    "ltv": 0.65,
-    "interestRate": 0.055,
-    "termYears": 5,
-    "amortizationYears": 30,
-    "annualDebtService": 0
-  },
-  "operations": {
-    "grossRent": 0,
-    "vacancy": 0.05,
-    "otherIncome": 0,
-    "effectiveGrossIncome": 0,
-    "operatingExpenses": 0,
-    "expenseRatio": 0,
-    "noi": 0
-  },
-  "returns": {
-    "cashOnCash": 0,
-    "irr": 0,
-    "equityMultiple": 0,
-    "dscr": 0,
-    "capRateEntry": 0,
-    "capRateExit": 0
-  },
-  "yearlyProjection": [
-    { "year": 1, "revenue": 0, "expenses": 0, "noi": 0, "debtService": 0, "cashFlow": 0 }
+  "template": "<one of activeTemplate.id>",
+  "horizon": <months from activeTemplate.horizonMonths>,
+  "periodicity": "<from activeTemplate.periodicity>",
+  "revenueFormula": "<one of revenueFormulas[].id; default mark_to_market>",
+  "sections": [
+    {
+      "id": "<from activeTemplate.sections[].id>",
+      "title": "<from activeTemplate.sections[].title>",
+      "fields": {
+        "<fieldKey>": {
+          "value": <number|string|null>,
+          "source": "user|platform|broker",
+          "origin": "om_extracted|t12_extracted|rent_roll|comp_set|market_agent|tax_intel|cap_structure|risk_engine|platform_default|opus_inferred|derived|placeholder",
+          "confidence": 0.0,
+          "qualityFlag": "green|yellow|red|unknown",
+          "asOf": "<ISO-8601>",
+          "rationale": "<short explanation>"
+        }
+      }
+    }
   ]
 }
 \`\`\`
@@ -310,6 +335,13 @@ ${dealContext}
 
 ${comparableData}`;
   }
+
+  /**
+   * Validate any pro forma payload (e.g. extracted from an Opus response) against
+   * the active template. Returns a structured result; non-throwing.
+   * Re-exported from the blueprint payload validator so callers don't reach in.
+   */
+  validateProformaPayload = validateProformaPayload;
 
   async streamChat(
     conversationId: number,
@@ -320,12 +352,13 @@ ${comparableData}`;
   ): Promise<void> {
     await this.saveMessage(conversationId, 'user', userMessage);
 
-    const [dealContext, comparableData] = await Promise.all([
+    const [dealContext, comparableData, dealMeta] = await Promise.all([
       this.gatherDealContext(dealId),
       this.gatherComparableData(dealId),
+      this.resolveDealTemplateContext(dealId),
     ]);
 
-    const systemPrompt = this.buildSystemPrompt(dealContext, comparableData);
+    const systemPrompt = this.buildSystemPrompt(dealContext, comparableData, dealMeta);
 
     const history = await this.getMessages(conversationId);
     const chatMessages = history
@@ -367,13 +400,33 @@ ${comparableData}`;
     if (proformaMatch) {
       try {
         const proformaData = JSON.parse(proformaMatch[1]);
+        // Spec §11: validate the payload against the active template before
+        // persisting. Validator is non-throwing and returns warnings + errors.
+        const validation = validateProformaPayload(proformaData);
+        if (!validation.ok) {
+          console.warn(
+            '[Opus] Pro forma payload failed blueprint validation; saving with warnings.',
+            { dealId, templateId: validation.templateId, issueCount: validation.issues.length }
+          );
+        }
+        const validationMeta = {
+          source: 'opus_generated',
+          timestamp: new Date().toISOString(),
+          validation: {
+            ok: validation.ok,
+            templateId: validation.templateId,
+            validSections: validation.validSections,
+            invalidSections: validation.invalidSections,
+            issues: validation.issues,
+          },
+        };
         await this.saveProformaVersion(
           dealId,
           conversationId,
           proformaData.name || `Model v${Date.now()}`,
           proformaData,
-          { source: 'opus_generated', timestamp: new Date().toISOString() },
-          []
+          validationMeta,
+          validation.issues.filter(i => i.severity === 'error').map(i => `${i.path}: ${i.message}`)
         );
       } catch (e) {
         console.error('Failed to parse proforma from Opus response:', e);
@@ -381,5 +434,34 @@ ${comparableData}`;
     }
 
     onDone(fullResponse);
+  }
+
+  /**
+   * Resolve deal-type + winning strategy so buildSystemPrompt can pick the
+   * right template. Best-effort: returns undefined keys if we can't determine
+   * them, in which case Opus falls back to the acquisition_stabilized default.
+   */
+  private async resolveDealTemplateContext(
+    dealId: string
+  ): Promise<{ dealType?: 'existing' | 'development' | 'redevelopment'; strategy?: string | null }> {
+    try {
+      const result = await this.pool.query(
+        `SELECT property_type, deal_type FROM deals WHERE id = $1 LIMIT 1`,
+        [dealId]
+      );
+      if (!result.rows[0]) return {};
+      const raw = (result.rows[0].deal_type || result.rows[0].property_type || '').toString().toLowerCase();
+      let dealType: 'existing' | 'development' | 'redevelopment' | undefined;
+      if (raw.includes('develop') || raw.includes('construction') || raw.includes('ground')) {
+        dealType = 'development';
+      } else if (raw.includes('redev') || raw.includes('value-add') || raw.includes('reposition')) {
+        dealType = 'redevelopment';
+      } else if (raw) {
+        dealType = 'existing';
+      }
+      return { dealType };
+    } catch {
+      return {};
+    }
   }
 }

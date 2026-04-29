@@ -25,7 +25,7 @@ export type StationId = 'S1' | 'S2' | 'S3' | 'S4' | 'S5' | 'S6';
 export type ModuleId =
   | 'M01' | 'M02' | 'M03' | 'M04' | 'M05' | 'M06' | 'M07' | 'M08'
   | 'M09' | 'M10' | 'M11' | 'M12' | 'M13' | 'M14' | 'M15'
-  | 'M17' | 'M18' | 'M20' | 'M21' | 'M22' | 'M35';
+  | 'M17' | 'M18' | 'M20' | 'M21' | 'M22' | 'M29' | 'M35';
 
 export type FKey =
   | 'F1' | 'F2' | 'F3' | 'F4' | 'F5' | 'F6' | 'F7' | 'F8'
@@ -196,7 +196,7 @@ export const MODULE_TABS: ModuleTabDefinition[] = [
   {
     moduleId: 'M07',
     name: 'Traffic Intelligence',
-    fKey: 'F10',
+    fKey: 'F6',
     station: 'S2',
     stationLabel: 'Intelligence Assembly',
     category: 'Intelligence',
@@ -239,7 +239,7 @@ export const MODULE_TABS: ModuleTabDefinition[] = [
   {
     moduleId: 'M09',
     name: 'ProForma Engine',
-    fKey: 'F6',
+    fKey: 'F9',
     station: 'S3',
     stationLabel: 'Underwriting & Modeling',
     category: 'Financial',
@@ -276,7 +276,7 @@ export const MODULE_TABS: ModuleTabDefinition[] = [
   {
     moduleId: 'M11',
     name: 'Capital Structure',
-    fKey: 'F7',
+    fKey: 'F8',
     station: 'S3',
     stationLabel: 'Underwriting & Modeling',
     category: 'Financial',
@@ -344,7 +344,7 @@ export const MODULE_TABS: ModuleTabDefinition[] = [
   {
     moduleId: 'M14',
     name: 'Risk Dashboard',
-    fKey: 'F8',
+    fKey: 'F10',
     station: 'S4',
     stationLabel: 'Due Diligence & Risk',
     category: 'Intelligence',
@@ -368,7 +368,7 @@ export const MODULE_TABS: ModuleTabDefinition[] = [
   {
     moduleId: 'M15',
     name: 'Competition Analysis',
-    fKey: 'F9',
+    fKey: null,
     station: 'S4',
     stationLabel: 'Due Diligence & Risk',
     category: 'Intelligence',
@@ -390,7 +390,7 @@ export const MODULE_TABS: ModuleTabDefinition[] = [
   {
     moduleId: 'M18',
     name: 'Documents & Files',
-    fKey: 'F11',
+    fKey: null,
     station: 'S5',
     stationLabel: 'Execution',
     category: 'Operations',
@@ -449,13 +449,27 @@ export const MODULE_TABS: ModuleTabDefinition[] = [
   {
     moduleId: 'M21',
     name: 'Deal Tools',
-    fKey: 'F12',
+    fKey: 'F11',
     station: 'S1',
     stationLabel: 'Intake & Triage',
     category: 'Core',
     showFor: { existing: 'full', development: 'full', redevelopment: 'full' },
     dealTypeNotes: 'Universal tools: Notes, Contacts, Key Dates, Decisions, Files, Documents, AI Agent. Available for all deal types.',
   },
+
+  // ─── M29: Unit Mix Intelligence (peer module per spec §1) ─────────────────
+  {
+    moduleId: 'M29',
+    name: 'Unit Mix Intelligence',
+    fKey: null,
+    station: 'S3',
+    stationLabel: 'Underwriting & Modeling',
+    category: 'Financial',
+    parentModule: 'M09',
+    showFor: { existing: 'full', development: 'full', redevelopment: 'full' },
+    dealTypeNotes: 'Unit Mix is now its own peer module (M29). Sources: rent roll for existing, selected development path for ground-up, M-PIE override for redevelopment. Propagates to M09, M03, 3D design.',
+  },
+
   {
     moduleId: 'M35',
     name: 'Event Impact Engine',
