@@ -47,6 +47,17 @@ import {
   getStrategyStrength,
   type ProductType,
 } from '../shared/config/product-type-adaptation';
+import {
+  classifyOverride as f9ClassifyOverride,
+  validateGordonGrowth as f9ValidateGordon,
+  noiGrowthIdentity as f9NoiGrowthIdentity,
+} from '../services/proforma/validators';
+import type {
+  ConfidenceBands,
+  ValidationFlag,
+  GordonValidationResult,
+  OverrideClassificationResult,
+} from '../services/proforma/types';
 
 // ---------------------------------------------------------------------------
 // Store actions interface
@@ -294,6 +305,39 @@ interface DealStoreActions {
   isDevelopment: () => boolean;
   /** Get the base unit mix (before user overrides) */
   getBaseUnitMix: () => UnitMixRow[];
+
+  // ─── F9 PRO FORMA TIER-1 PROTECTORS (spec §6-§9) ──────────
+  /** Per-field confidence bands keyed by field path (e.g. 'rentGrowthStabilized'). */
+  confidenceBands: Record<string, ConfidenceBands>;
+  /** Active validator flags surfaced in F9. */
+  validationFlags: ValidationFlag[];
+  /** Bulk-set bands at proforma generation time (typically from server). */
+  setConfidenceBands: (bands: Record<string, ConfidenceBands>) => void;
+  /** Replace the active validation flag list (e.g. after a recompute). */
+  setValidationFlags: (flags: ValidationFlag[]) => void;
+  /** Add or update a single flag (deduped by id). */
+  upsertValidationFlag: (flag: ValidationFlag) => void;
+  /** Drop a flag by id. */
+  removeValidationFlag: (id: string) => void;
+  /** Mark a flag as user-acknowledged with an optional justification note. */
+  dismissValidationFlag: (id: string, justification?: string) => void;
+  /** Run Gordon Growth validator and emit / clear the corresponding flag. */
+  runGordonValidation: (input: {
+    exitCap: number | null;
+    terminalGrowth: number | null;
+    requiredReturn: number | null;
+  }) => GordonValidationResult;
+  /** Classify a user override against the stored confidence band for that field. */
+  classifyFieldOverride: (
+    field: string,
+    value: number,
+  ) => OverrideClassificationResult | null;
+  /** Compute NOI growth identity: (rent − opex×(1−margin)) / margin. */
+  computeNoiGrowthIdentity: (
+    rentGrowth: number | null,
+    opexGrowth: number | null,
+    noiMargin: number,
+  ) => number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -1616,6 +1660,74 @@ export const useDealStore = create<DealStore>()(
       }
       return state.existingProperty?.unitMixProgram ?? [];
     },
+
+    // ─── F9 PRO FORMA TIER-1 PROTECTORS ─────────────────────
+    confidenceBands: {},
+    validationFlags: [],
+
+    setConfidenceBands: (bands) => set({ confidenceBands: bands }),
+
+    setValidationFlags: (flags) => set({ validationFlags: flags }),
+
+    upsertValidationFlag: (flag) => {
+      const list = get().validationFlags;
+      const idx = list.findIndex((f) => f.id === flag.id);
+      const next = idx >= 0 ? [...list] : [...list, flag];
+      if (idx >= 0) next[idx] = { ...next[idx], ...flag };
+      set({ validationFlags: next });
+    },
+
+    removeValidationFlag: (id) => {
+      set({ validationFlags: get().validationFlags.filter((f) => f.id !== id) });
+    },
+
+    dismissValidationFlag: (id, justification) => {
+      set({
+        validationFlags: get().validationFlags.map((f) =>
+          f.id === id
+            ? { ...f, dismissed: true, justification: justification ?? f.justification }
+            : f,
+        ),
+      });
+    },
+
+    runGordonValidation: (input) => {
+      const result = f9ValidateGordon(input);
+      const flagId = 'gordon:exit_cap';
+      const list = get().validationFlags;
+      // Drop any prior gordon flag — we re-emit fresh each call.
+      const filtered = list.filter((f) => f.id !== flagId);
+      if (result.flag) {
+        const flag: ValidationFlag = {
+          id: flagId,
+          source: 'gordon',
+          severity: result.severity ?? 'info',
+          field: 'exitCapRate',
+          message: result.message ?? '',
+          data: {
+            impliedCap: result.impliedCap,
+            divergenceBps: result.divergenceBps,
+            exitCap: input.exitCap,
+            terminalGrowth: input.terminalGrowth,
+            requiredReturn: input.requiredReturn,
+          },
+          raisedAt: new Date().toISOString(),
+        };
+        set({ validationFlags: [...filtered, flag] });
+      } else {
+        set({ validationFlags: filtered });
+      }
+      return result;
+    },
+
+    classifyFieldOverride: (field, value) => {
+      const bands = get().confidenceBands[field];
+      if (!bands) return null;
+      return f9ClassifyOverride(value, bands);
+    },
+
+    computeNoiGrowthIdentity: (rentGrowth, opexGrowth, noiMargin) =>
+      f9NoiGrowthIdentity(rentGrowth, opexGrowth, noiMargin),
   }))
 );
 

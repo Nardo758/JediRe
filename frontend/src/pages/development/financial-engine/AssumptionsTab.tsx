@@ -5,6 +5,10 @@ import {
 } from 'lucide-react';
 import type { FinancialEngineTabProps, F9NarrativeBlock } from './types';
 import { apiClient } from '../../../services/api.client';
+import { F9ProtectorsPanel } from './F9ProtectorsPanel';
+import { useDealStore } from '../../../stores/dealStore';
+import { computeConfidenceBands } from '../../../services/proforma/validators';
+import type { ConfidenceBands, ValidationFlag } from '../../../services/proforma/types';
 
 // ─── Backend contract ──────────────────────────────────────────────────────────
 interface OSRow {
@@ -821,10 +825,11 @@ function getDivergenceColor(
 // ─── Layered cell ──────────────────────────────────────────────────────────────
 interface LayerVals { broker: number|null; platform: number|null; user: number|null }
 
-function LayeredCell({ vals, format, onClick, isM07, readonly, divergence, formulaResult }: {
+function LayeredCell({ vals, format, onClick, isM07, readonly, divergence, formulaResult, classification }: {
   vals: LayerVals; format: (n: number) => string;
   onClick?: () => void; isM07?: boolean; readonly?: boolean;
   divergence: 'red'|'amber'|null; formulaResult?: number|null;
+  classification?: 'within' | 'soft_warning' | 'hard_warning' | null;
 }) {
   const { broker, platform, user } = vals;
   const bg = divergence === 'red' ? 'bg-red-900/20 border-r-red-500/40' : divergence === 'amber' ? 'bg-amber-900/10 border-r-amber-500/20' : '';
@@ -849,6 +854,19 @@ function LayeredCell({ vals, format, onClick, isM07, readonly, divergence, formu
       {/* User override badge (blue pill, top-right) */}
       {hasUser && !isM07 && !readonly && (
         <sup className="absolute top-[1px] right-[2px] text-[5px] font-bold text-blue-500/80">USR</sup>
+      )}
+      {/* Confidence-band override classification dot (bottom-right) */}
+      {hasUser && classification && classification !== 'within' && (
+        <span
+          title={
+            classification === 'hard_warning'
+              ? 'Override outside P10–P90 — justification required'
+              : 'Override outside P25–P75 (soft warning)'
+          }
+          className={`absolute bottom-[2px] right-[2px] inline-block w-1.5 h-1.5 rounded-full ${
+            classification === 'hard_warning' ? 'bg-red-500' : 'bg-amber-500'
+          }`}
+        />
       )}
       {readonly && <Lock className="absolute top-[2px] left-[2px] w-2 h-2 text-slate-700" />}
       {formulaResult != null && (
@@ -1403,6 +1421,12 @@ function KeystonePanel({
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssumptionsChange }: FinancialEngineTabProps) {
+  const setConfidenceBands = useDealStore(s => s.setConfidenceBands);
+  const classifyFieldOverride = useDealStore(s => s.classifyFieldOverride);
+  const upsertValidationFlag = useDealStore(s => s.upsertValidationFlag);
+  const removeValidationFlag = useDealStore(s => s.removeValidationFlag);
+  const validationFlags = useDealStore(s => s.validationFlags);
+
   const [financials, setFinancials]     = useState<DealFinancials|null>(null);
   const [loading, setLoading]           = useState(false);
   const [holdTab, setHoldTab]           = useState<'5 YR'|'7 YR'|'10 YR'|null>(null);
@@ -1449,6 +1473,7 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
   const holdYears = holdTab === '5 YR' ? 5 : holdTab === '7 YR' ? 7 : holdTab === '10 YR' ? 10 : dbHold;
   const years     = useMemo(() => Array.from({ length: holdYears }, (_, i) => i + 1), [holdYears]);
   const trafficOffline = !financials?.trafficProjection?.yearly?.length;
+
 
   const fetchFinancials = useCallback(async (hold?: number) => {
     if (!dealId) return;
@@ -1523,6 +1548,106 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
     ...opexRows,
     ...STATIC_ROWS.filter(r => r.section === 7 || r.section === 8),  // Capex + Disposition
   ], [revRows, opexRows]);
+
+  // ── F9 Tier-1: Seed confidence bands per editable cell from EVERY editable
+  //    row (revRows + STATIC_ROWS + opexRows), keyed `{field}:{year}`.  This
+  //    is the σ_model approximation we ship until M14 emits server-side bands
+  //    (spec §9 / §14):
+  //      sigma_model    = |forecast| × (1 - confidence/100) × 0.5
+  //      sigma_sparsity = |forecast| × 0.05  when M07 is offline
+  // ───────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!financials) return;
+    const next: Record<string, ConfidenceBands> = {};
+    const sparsityFactor = trafficOffline ? 0.05 : 0;
+    const editableRows = [
+      ...revRows,
+      ...STATIC_ROWS.filter(r => !r.readonly),
+      ...opexRows,
+    ];
+    for (const rd of editableRows) {
+      if (rd.readonly) continue;
+      const conf = (rd.getConfidence?.(financials) ?? 60) / 100;
+      const slack = Math.max(0, 1 - conf) * 0.5;
+      for (const yr of years) {
+        const forecast = rd.getPlatform(financials, yr) ?? rd.getBroker(financials, yr);
+        if (forecast == null) continue;
+        const absForecast = Math.abs(forecast);
+        const sigmaModel = absForecast * slack;
+        const sigmaSparsity = absForecast * sparsityFactor;
+        next[`${rd.key}:${yr}`] = computeConfidenceBands({
+          forecast,
+          sigmaModel,
+          sigmaSparsity,
+        });
+      }
+    }
+    setConfidenceBands(next);
+  }, [financials, years, trafficOffline, revRows, opexRows, setConfidenceBands]);
+
+  // ── F9 Tier-1: classify every active user override against the band and
+  //    upsert / clear `override:{field}:{year}:{valueHash}` flags.  The value
+  //    fingerprint in the id ensures that a previously-dismissed flag cannot
+  //    suppress a new warning when the override value changes — stale ids
+  //    drop out of the `seen` set and get removed.
+  // ───────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!financials) return;
+    const seen = new Set<string>();
+    // Build a quick lookup of label by key so flag messages stay readable
+    // for backend-derived rows too (revRows / opexRows).
+    const labelByKey: Record<string, string> = {};
+    for (const r of [...revRows, ...STATIC_ROWS, ...opexRows]) labelByKey[r.key] = r.label;
+
+    for (const [field, yearVals] of Object.entries(overrides)) {
+      for (const [yrStr, val] of Object.entries(yearVals)) {
+        if (val == null) continue;
+        const yr = parseInt(yrStr, 10);
+        if (isNaN(yr)) continue;
+        const bandKey = `${field}:${yr}`;
+        const result = classifyFieldOverride(bandKey, val);
+        if (!result || result.classification === 'within') continue;
+        // Pull the current bands directly from the store so the message can
+        // quote the active P10/P25/P75/P90 — the classifier itself only
+        // exposes `zDistance` per the OverrideClassificationResult contract.
+        const bands = useDealStore.getState().confidenceBands[bandKey];
+        if (!bands) continue;
+        const valueHash = Math.round(val * 1e6);
+        const flagId = `override:${bandKey}:${valueHash}`;
+        seen.add(flagId);
+        const sev = result.classification === 'hard_warning' ? 'high' : 'medium';
+        const label = labelByKey[field] ?? field;
+        const flag: ValidationFlag = {
+          id: flagId,
+          source: 'override',
+          severity: sev,
+          field,
+          message:
+            `${label} (Yr ${yr}) override ${(val * 100).toFixed(2)}% ` +
+            (result.classification === 'hard_warning'
+              ? `is outside the P10–P90 band (${(bands.p10 * 100).toFixed(2)}%–${(bands.p90 * 100).toFixed(2)}%). Justification required.`
+              : `is outside the P25–P75 band (${(bands.p25 * 100).toFixed(2)}%–${(bands.p75 * 100).toFixed(2)}%).`),
+          data: {
+            classification: result.classification,
+            zDistance: result.zDistance,
+            bands,
+            value: val,
+          },
+          raisedAt: new Date().toISOString(),
+        };
+        upsertValidationFlag(flag);
+      }
+    }
+    // Clear any override:* flags whose id no longer corresponds to an
+    // active override (either removed or value changed).
+    for (const f of useDealStore.getState().validationFlags) {
+      if (f.source === 'override' && !seen.has(f.id)) removeValidationFlag(f.id);
+    }
+    // We intentionally read validationFlags via getState() above instead of
+    // putting it in deps — that would re-trigger this effect every time we
+    // upsert/remove a flag and create a feedback loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [overrides, financials, revRows, opexRows, classifyFieldOverride, upsertValidationFlag, removeValidationFlag]);
 
   const getUser    = (key: string, yr: number) => overrides[key]?.[yr] ?? null;
   const getMode    = (key: string): RowMode => rowModes[key] ?? 'stepped';
@@ -1666,6 +1791,46 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
     { sec: 9, rows: STATIC_ROWS.filter(r => r.section === 9) },
   ];
 
+  // ── F9 Protector inputs — terminal-year rent growth, exit cap, OPEX growth ─
+  // Resolution order matches grid cells: user-override → platform → broker.
+  const protectorInputs = useMemo(() => {
+    if (!financials) {
+      return { exitCap: null, terminalRentGrowth: null, opexGrowth: null, noiMargin: 0.6 };
+    }
+    const findRow = (key: string) => STATIC_ROWS.find(r => r.key === key);
+    const resolve = (key: string, yr: number): number | null => {
+      const u = getUser(key, yr);
+      if (u != null) return u;
+      const row = findRow(key);
+      if (!row) return null;
+      return row.getPlatform(financials, yr) ?? row.getBroker(financials, yr);
+    };
+    const terminalYr = financials.assumptions.holdYears ?? holdYears;
+    // Gordon coupling lives at the terminal year — exit cap & terminal g pair.
+    const exitCap = resolve('exitCapRate', terminalYr);
+    const terminalRentGrowth = resolve('growthRentPct', terminalYr);
+    // NOI identity must use a single-period basis to stay algebraically
+    // honest.  Y2 is the first stabilized year for both rent and OPEX
+    // growth in our seed model — using terminal rent growth with Y2 OPEX
+    // would mix horizons and misstate the identity.
+    const stabilizedYr = 2;
+    const noiIdentityRentGrowth = resolve('growthRentPct', stabilizedYr);
+    const opexGrowth = resolve('growthOpexPct', stabilizedYr);
+    const y1 = financials.proforma.year1;
+    const noiCell = y1?.find(r => r.field === 'net_operating_income') ?? y1?.find(r => r.field === 'noi');
+    const egiCell = y1?.find(r => r.field === 'effective_gross_income') ?? y1?.find(r => r.field === 'egi');
+    const noi = noiCell?.platform ?? noiCell?.broker;
+    const egi = egiCell?.platform ?? egiCell?.broker;
+    const noiMargin = noi != null && egi != null && egi > 0 ? noi / egi : 0.6;
+    return {
+      exitCap,
+      terminalRentGrowth,
+      noiIdentityRentGrowth,
+      opexGrowth,
+      noiMargin,
+    };
+  }, [financials, overrides, holdYears]);
+
   return (
     <div className="flex flex-col w-full h-full bg-[#0a0a0a] text-slate-300 text-xs overflow-hidden" style={{ fontFamily: 'system-ui,sans-serif' }}>
       {/* Header */}
@@ -1759,6 +1924,17 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
         />
       )}
 
+      {/* F9 Tier-1 Protectors: Gordon coupling + NOI identity + override flags */}
+      {financials && (
+        <F9ProtectorsPanel
+          exitCap={protectorInputs.exitCap}
+          terminalRentGrowth={protectorInputs.terminalRentGrowth}
+          noiIdentityRentGrowth={protectorInputs.noiIdentityRentGrowth}
+          opexGrowth={protectorInputs.opexGrowth}
+          noiMargin={protectorInputs.noiMargin}
+        />
+      )}
+
       {/* Grid + findings */}
       <div className="flex flex-1 overflow-hidden">
         <div className="flex-1 overflow-auto">
@@ -1819,6 +1995,10 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
                             const divergence = getDivergenceColor(
                               formulaResult ?? user, platform, broker,
                             );
+                            const ovrVal = formulaResult ?? user;
+                            const classification = ovrVal != null
+                              ? classifyFieldOverride(`${rd.key}:${yr}`, ovrVal)?.classification ?? null
+                              : null;
                             return (
                               <LayeredCell key={yr}
                                 vals={{ broker, platform, user }}
@@ -1827,6 +2007,7 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
                                 isM07={!!rd.isM07}
                                 divergence={divergence}
                                 formulaResult={formulaResult}
+                                classification={classification}
                                 onClick={() => openDrawer(rd, yr)}
                               />
                             );
