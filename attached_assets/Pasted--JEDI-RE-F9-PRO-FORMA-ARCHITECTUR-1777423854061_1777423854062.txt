@@ -1,0 +1,524 @@
+================================================================
+JEDI RE — F9 PRO FORMA ARCHITECTURE NOTES
+================================================================
+Compiled: April 2026
+Subject:  M09 wiring · event impact pathway · F5 strategy reshape
+          · rent growth model · OPEX growth model
+          · unanswered questions · build sequencing
+================================================================
+
+
+----------------------------------------------------------------
+1. F-KEY MAP (current build)
+----------------------------------------------------------------
+
+  F1   Overview     M01
+  F2   Zoning       M02
+  F3   Market       M05  ★ required for M09
+  F4   Supply       M04
+  F5   Strategy     M08  ★ required + reshape driver
+  F6   Traffic      M07  ◊ Construction-required
+  F7   (unused / reserved)
+  F8   Debt/Cap     M11  ⇄ two-pass with F9
+  F9   Pro Forma    M09  (HUB)
+  F10  Risk         M14  ⇄ two-pass with F9
+  F11  Tools        utilities (chat, docs, settings)
+
+  Backend feeders without F-key tabs:
+    M03  Dev Capacity
+    M06  Demand        (lives under F3)
+    M15  Comp Set
+    M18  Documents
+    M19  News          (header banner)
+    M26  Tax
+    M27  Sale Comps
+    M35  Events        (header banner)
+
+
+----------------------------------------------------------------
+2. M09 PRO FORMA WIRING — REGISTRY CORRECTIONS
+----------------------------------------------------------------
+
+ASYMMETRY TO FIX
+The Module Registry sheet currently lists M09.receivesFrom as
+"M02,M03,M04,M05,M06,M08" — but the following modules' feedsInto
+arrays declare they push into M09:
+
+  M07  Traffic
+  M11  Debt/Cap
+  M14  Risk
+  M15  Comp Set
+  M18  Documents
+  M26  Tax
+  M27  Sale Comps
+
+ACTION: make M09.receivesFrom symmetric with what every other
+module declares in its feedsInto. Add the seven listed modules.
+
+BIDIRECTIONAL CYCLES TO FORMALIZE
+
+  M11 ⇄ M09 (two-pass)
+    1. M09 emits stub NOI with placeholder debt service
+    2. M11 sizes debt against stub NOI (LTV / DSCR / debt yield)
+    3. M11 returns loan terms (rate, term, IO period, amort)
+    4. M09 recomputes cash flow with actual debt service
+    5. Final NOI / IRR / EM produced
+  Already implemented in capital-structure-adapter.ts (476 lines).
+  Formalize as event resolution order in module-registry.ts.
+
+  M14 ⇄ M09 (two-pass)
+    1. M14 contributes risk score on first pass
+    2. M09 emits key_financials
+    3. M14 recalculates execution risk on those financials
+  Less critical than M11 cycle; same pattern.
+
+DEAL-TYPE CONDITIONAL INPUT
+  M07 Traffic is REQUIRED for Construction (LEASE_UP) deals.
+  Without absorption curve, M09 cannot produce credible Y1-Y3 CF.
+  For Stabilized assets, M07 supplies churn replacement
+  (useful but not blocking).
+  ACTION: add `requiredByDealType: ['Construction']` field to
+  module-registry entry for M07.
+
+PROPOSED BUT NOT WIRED
+  M35 Event Impact Engine → M09 via Correlation Engine pairings.
+  See Section 3.
+
+M18 → M09 FIELD MAPPING
+The broker layer of LayeredValue<T> is populated from M18 OM
+extraction. Minimum required fields:
+
+  broker_rent_psf
+  broker_vacancy_pct
+  broker_opex_psf
+  broker_rent_growth_pct
+  broker_exit_cap
+  broker_capex_schedule
+  broker_concession_assumption
+
+
+----------------------------------------------------------------
+3. EVENT IMPACT PATHWAY — NEWS/EVENTS → ASSUMPTIONS
+----------------------------------------------------------------
+
+DATA FLOW
+
+  M19 News + M35 Events
+       |
+       | (events stream)
+       v
+  Correlation Engine  (COR-01 ... COR-21+)
+       |
+       | (quantified % deltas, routed by target)
+       |
+       +---> F6 Traffic (M07) — adjusts lease velocity
+       +---> F3 Market  (M05) — adjusts rent growth %
+       +---> F10 Risk   (M14) — adjusts risk premium
+       |                            |
+       v                            v
+  F9 Pro Forma — assumption layer
+    GPR              <- absorption · occupancy
+    Rent growth %    <- market signal
+    Exit cap         <- risk premium spread
+
+KEY INSIGHT
+Events do NOT push values into M09 directly. They push into
+upstream modules, which already feed M09 through the LayeredValue
+contract. The platform layer on each assumption gets stamped with
+provenance:
+
+  {
+    value: 0.038,
+    source: "platform",
+    origin: "COR-04:rivian_hq_relocation",
+    confidence: 0.74,
+    asOf: "2026-04-28T00:00:00Z",
+    modelVersion: "rent_growth_v3.2"
+  }
+
+PERSISTENCE
+Store correlation outputs in `correlation_adjustments` JSONB
+column on the deal — not in-memory only. Required for:
+  - Audit trail
+  - Post-close performance attribution (M22)
+  - Defending platform values when broker numbers diverge
+
+EXAMPLE COR PAIRINGS
+
+  COR-01  supply pipeline pressure  ->  rent growth %
+  COR-04  employment events          ->  absorbed demand units
+  COR-07  news sentiment             ->  traffic intensity index
+  COR-12  transit infrastructure     ->  cap rate compression
+  ...     (17+ more)
+
+
+----------------------------------------------------------------
+4. F5 STRATEGY → F9 STRUCTURAL MUTATION
+----------------------------------------------------------------
+
+M08's contract to M09 must include the TEMPLATE, not just values:
+
+  M08_output = {
+    recommended: "BTS",
+    scores: {...},
+    template: ProFormaTemplate.BTS,
+    sections: ["acquisition", "construction",
+               "sources_uses", "sale_exit"],
+    horizon: "24mo",
+    periodicity: "monthly"
+  }
+
+F9 tab renderer reads `sections` and shows/hides accordingly.
+proforma-generator.service.ts (367 lines) has the seam — template
+list is hardcoded today; needs to be data-driven.
+
+EXAMPLE TEMPLATES
+
+  BTS — Build-to-Sell — 24mo hold
+    [✓] Acquisition cost stack
+    [✓] Construction period · sources & uses
+    [ ] Reno capex schedule
+    [ ] Lease-up absorption curve
+    [ ] Stabilized operating
+    [ ] Daily ADR · seasonal occupancy
+    [✓] Sale exit · proceeds waterfall
+    [ ] Multi-year operating CF
+
+  Rental Value-Add — 5-7yr hold
+    [✓] Acquisition
+    [ ] Construction
+    [✓] Reno capex schedule
+    [✓] Lease-up absorption curve
+    [✓] Stabilized operating
+    [ ] Daily ADR
+    [✓] Sale exit
+    [✓] Multi-year operating CF
+
+  STR — Short-Term Rental — 10yr hold
+    [✓] Acquisition
+    [ ] Construction
+    [ ] Reno capex
+    [ ] Lease-up curve
+    [✓] Stabilized operating (with seasonality)
+    [✓] Daily ADR · seasonal occupancy
+    [✓] Sale exit
+    [✓] Multi-year operating CF
+
+STORE WIRING
+dealStore.ts needs a `proformaTemplate` slice that subscribes to
+F5 changes. User overrides on hidden sections persist as user-layer
+LayeredValue and re-emerge if strategy switches back (extends the
+survive-path-switches behavior already built for individual fields).
+
+
+----------------------------------------------------------------
+5. RENT GROWTH FORECAST — LAYERED MODEL
+----------------------------------------------------------------
+
+CPI is the LONG-RUN ANCHOR, not the forecast itself.
+Using all-items CPI as the forecast is circular (CPI already
+includes shelter). CPI shelter sub-index is the right anchor;
+with a small asset-class spread (~30bps for multifamily over
+30+ years).
+
+FORMULA
+
+  g(t) = w_m(t) * momentum
+       + w_c(t) * cycle
+       + w_a(t) * anchor
+       + sum(event_deltas)
+       + position(t)
+
+Weights mean-revert toward anchor across forecast horizon:
+
+  w_m(t):   high Y1, fades by Y3
+  w_c(t):   peaks Y1-Y3
+  w_a(t):   small early, dominates Y5+
+  events:   episodic with per-pairing decay function
+  position: one-time on turnover events
+
+FIVE COMPONENTS
+
+  1. MOMENTUM
+     Source:  M15 comp set
+     Input:   12-month asking rent trend
+     Decay:   weight fades Y1 -> Y3
+
+  2. CYCLE POSITION
+     Source:  M04 supply, M06 demand
+     Input:   pressure index (-1 to +1)
+     Profile: weight peaks Y1-Y3
+
+  3. LONG-RUN ANCHOR
+     Source:  BLS CPI shelter (NOT all-items)
+     Input:   + asset-class spread
+                Multifamily   ~30bps
+                Retail/Office  more variable
+                Industrial     hotter spread historically
+     Profile: dominates Y5+ horizon
+
+  4. EVENT DELTAS
+     Source:  Correlation Engine (COR-XX firings)
+     Input:   episodic % adjustments tied to specific events
+     Decay:   per-pairing decay function
+
+  5. POSITION ADJUSTMENT
+     Source:  M15 mark-to-market
+     Input:   subject vs comp set spread
+     Profile: one-time gain on turnover (not trend growth)
+
+
+----------------------------------------------------------------
+6. OPEX GROWTH FORECAST — LAYERED MODEL (PARALLEL TO RENT)
+----------------------------------------------------------------
+
+CRITICAL: OPEX is NOT one number. It's a stack of line items,
+each with its own anchor and growth profile. Total OPEX growth
+is the dollar-weighted average of line growth rates.
+
+  total_opex_growth(t) = sum(line_share_i * line_growth_i(t))
+
+LINE ITEM REFERENCE (typical multifamily)
+
+  Line               | $ share  | Anchor                  | Special
+  -------------------|----------|-------------------------|----------------------
+  Property tax       | 15-20%   | County millage          | FL 10% cap, reassess
+  Insurance          | 15-25% * | Regional + reinsurance  | FL hurricane premium
+  Utilities          | 7-11%    | EIA + municipal rates   | Weather variance
+  R&M                | 8-12%    | BLS PPI construction    | Asset age effect
+  Mgmt fees          | 3-5%     | % of revenue            | Auto-couples to M09
+  Payroll            | 12-16%   | BLS ECI by metro        | Local wage growth
+  Marketing/leasing  | 2-4%     | Variable w/ vacancy     | Soft-market burn
+  Admin / G&A        | 4-6%     | All-items CPI           | —
+  Reserves           | 12-15%   | Per-unit + asset age    | Capex lifecycle
+
+  * Florida coastal MF; non-coastal markets typically 5-8%.
+
+LAYERED MODEL APPLIED PER LINE
+
+  opex_line_growth(t) = w_m(t) * momentum  (T12 actual)
+                      + w_c(t) * cycle     (line-specific)
+                      + w_a(t) * line_anchor
+                      + sum(event_deltas)  (line-specific COR firings)
+                      + structural_overrides
+
+FIVE COMPONENTS (parallel to rent)
+
+  1. MOMENTUM
+     Source: M22 deal_monthly_actuals OR M18 T12 parser
+     Input:  trailing 12mo actual line-item spend
+     Decay:  weight fades Y1 -> Y3
+     GAP:    requires `deal_monthly_actuals` migration
+
+  2. CYCLE POSITION
+     Source: line-specific cycle drivers
+       - Insurance:  storm cycle, reinsurance hardening (M14)
+       - Utilities:  energy commodity cycle
+       - Payroll:    labor tightness (BLS regional)
+       - R&M:        construction labor / materials (BLS PPI)
+     Profile: cycle peaks vary by line
+
+  3. LONG-RUN ANCHOR (per-line — see table above)
+     Source: line-specific external feeds
+       - Property tax:  county millage projections
+       - Insurance:     NAIC regional, FL OIR rate filings
+       - Utilities:     EIA Annual Energy Outlook
+       - R&M:           BLS PPI construction
+       - Payroll:       BLS ECI by metro
+       - Mgmt:          % of revenue (auto from M09)
+       - Marketing:     variable function of vacancy
+       - Admin/G&A:     BLS CPI all-items
+       - Reserves:      per-unit benchmark + age curve
+
+  4. EVENT DELTAS
+     Source: Correlation Engine (line-specific COR firings)
+     Examples:
+       - Hurricane event     -> insurance step jump
+       - County millage hike -> property tax delta
+       - Regional wage event -> payroll inflection
+       - Energy shock        -> utilities Y1 deviation
+     Decay: per-event decay tuned per line
+
+  5. STRUCTURAL OVERRIDES (replaces "position" from rent model)
+     Florida-specific mandates that override smooth growth:
+       - Property tax 10% non-homestead cap (annual ceiling)
+       - Reassessment on sale at purchase price (Y1 STEP)
+       - Doc stamps + intangible taxes (one-time, deal close)
+       - Insurance hurricane premium (regional surcharge)
+       - 4% homestead cap (rare in commercial MF)
+
+KEY DIFFERENCES FROM RENT GROWTH
+
+  - Y1 STEP-FUNCTION for property tax reassessment-on-sale.
+    Rent doesn't have this. Layered model must accommodate
+    step changes, not just smooth growth curves.
+
+  - Insurance cycle is much LUMPIER than rent. Single hurricane
+    season can move insurance +20% in one renewal. Confidence
+    band on insurance forecast should be visibly wider than rent.
+
+  - Mgmt fees AUTO-COUPLE to revenue (no independent forecast).
+    Pass through from M09 revenue line.
+
+  - Reserves are partly platform-dictated (per-unit benchmark by
+    asset age) — less subjective than other lines.
+
+NOI GROWTH IDENTITY
+
+  NOI_growth = (rent_growth - opex_growth * (1 - NOI_margin))
+                                          / NOI_margin
+
+  Example (FL multifamily, 60% NOI margin baseline):
+    rent growth +3.0%, opex growth +5.2%
+    NOI growth = (3.0% - 5.2% * 0.4) / 0.6 ≈ 1.5%
+
+  This is why a "+3% rent growth" assumption with no OPEX model
+  produces wildly optimistic NOI projections — Florida insurance
+  alone can erase rent growth in any single year.
+
+
+----------------------------------------------------------------
+7. UNANSWERED QUESTIONS — TO LOCK DOWN
+----------------------------------------------------------------
+
+  Q1.  Asking vs effective vs renewal rent decomposition.
+       Model produces all three. Concession decay assumption
+       bridges asking -> effective.
+
+  Q2.  Forecast horizon and shape.
+       Extends to strategy hold period?
+       Interaction with F5 -> F9 template selection?
+
+  Q3.  Cap rate / Gordon Growth coupling.
+       Cap_exit = (k - g)
+       Platform must refuse "high rent growth + cap compression"
+       combo. Connects to RSS / Gordon-adjusted risk premium roadmap.
+
+  Q4.  Mark-to-market vs trend separation.
+       Loss-to-lease is one-time gain on turnover, not trend.
+       Year_t_revenue =
+         (in_place * in_place_rent * (1 + escalator))
+         + (turnover * market_rent * (1 + g(t)))
+
+  Q5.  Confidence intervals.
+       Point forecast vs P25/P50/P75 distribution?
+       How do bands surface in F9 collision view?
+       Data-sparsity threshold for refusing to forecast?
+
+  Q6.  Submarket position adjustment.
+       Subject tracks submarket exactly, or with vintage/quality
+       discount that closes/widens over forecast horizon?
+
+  Q7.  Renewal rate sensitivity.
+       High renewal = less mark-to-market churn = lower realized
+       growth than market growth.
+         +4% market growth * 80% renewal ≈ +1.2% realized in-place
+         +4% market growth * 50% renewal ≈ +2.0% realized in-place
+
+  Q8.  Calibration cadence + versioning.
+       When does model retrain? Every forecast needs `modelVersion`
+       stamp for audit defense.
+
+  Q9.  Override audit trail.
+       Store divergence when user overrides platform forecast:
+       "user assumed X, platform v3.2 said Y on date Z."
+       Required for M22 post-close attribution.
+
+  Q10. Per-strategy growth profile.
+       BTS doesn't care about Y3+ growth; STR uses ADR not rent
+       (different metric, daily seasonality inside each year).
+
+  Q11. OPEX-specific:
+       `deal_monthly_actuals` migration is critical-path blocker
+       for OPEX momentum component (Y1 weight = 0 without it).
+
+
+----------------------------------------------------------------
+8. BUILD SEQUENCING — WHAT TO LOCK FIRST
+----------------------------------------------------------------
+
+TIER 0 (load-bearing — can't fix later without breaking history):
+  - Asking/effective/renewal rent decomposition  (Q1)
+  - OPEX line-item structure                     (Section 6 + Q11)
+  - Mark-to-market vs trend separation           (Q4)
+
+TIER 1 (protects against common over-promise patterns):
+  - Cap rate / Gordon Growth coupling            (Q3)
+  - Confidence band -> F9 collision view         (Q5)
+
+TIER 2 (data quality + audit):
+  - Calibration cadence + versioning             (Q8)
+  - Override audit trail                         (Q9)
+  - `deal_monthly_actuals` migration             (Q11)
+
+TIER 3 (refinement):
+  - Position adjustment                          (Q6)
+  - Renewal rate sensitivity                     (Q7)
+  - Per-strategy growth profile                  (Q10)
+
+
+----------------------------------------------------------------
+9. IMPLEMENTATION NOTES
+----------------------------------------------------------------
+
+LAYERED VALUE PATTERN
+  Every mutable assumption wraps in LayeredValue<T>:
+
+    interface LayeredValue<T> {
+      broker?:   { value: T, confidence: number, asOf: string };
+      platform?: { value: T, confidence: number, asOf: string,
+                   origin: string, modelVersion: string };
+      user?:     { value: T, asOf: string, note?: string };
+    }
+    // resolution: user > platform > broker
+
+DEALSTORE AS MESSAGE BUS
+  Modules subscribe to dealStore slices. No direct cross-module imports.
+  M08 emits template+sections -> dealStore proformaTemplate slice ->
+  F9 re-renders.
+
+CORRELATION ENGINE PERSISTENCE
+  Store outputs in `correlation_adjustments` JSONB column on deal.
+  Schema:
+
+    {
+      cor_id: "COR-04",
+      event_id: "rivian_hq_relocation_2026",
+      target_module: "M05",
+      target_field: "rent_growth_pct",
+      delta_value: 0.008,
+      confidence: 0.74,
+      decay_function: "exponential_24mo",
+      applied_at: "2026-04-28T..."
+    }
+
+MODEL VERSIONING
+  Every forecast carries:
+    - modelVersion       (e.g., "rent_growth_v3.2")
+    - asOf               (timestamp)
+    - input_snapshot_id  (re-derivation reproducible)
+
+  Rollover policy: tag each released model version, never mutate
+  in place. Allows comparing "user override divergence" across
+  model versions for retraining.
+
+DECAY FUNCTIONS
+  Each component (and each event delta) has an associated decay
+  function. Standard library:
+
+    - exponential(half_life_months)
+    - linear(start, zero_at)
+    - step_then_decay(step_size, hold_months, half_life)
+    - constant   (no decay — for structural overrides)
+
+REQUIRED-BY-DEAL-TYPE ENUM
+  Add to module-registry entries:
+
+    requiredByDealType?: ("Stabilized"|"Construction"|"Redevelopment")[]
+
+  M07 example:
+    requiredByDealType: ["Construction"]
+
+================================================================
+END OF NOTES
+================================================================
