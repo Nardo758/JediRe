@@ -197,4 +197,123 @@ export const opusProformaService = {
       return null;
     }
   },
+
+  // ──────────────────────────────────────────────────────────────────────
+  // Custom Tabs (Task #451) — Opus-generated F9 sub-tabs
+  // ──────────────────────────────────────────────────────────────────────
+
+  async listCustomTabs(dealId: string): Promise<CustomTabRow[]> {
+    const { data } = await apiClient.get(`${BASE}/deals/${dealId}/custom-tabs`);
+    return data?.tabs ?? [];
+  },
+
+  async createCustomTab(
+    dealId: string,
+    payload: CustomTabPayload,
+    extras: { generationPrompt?: string; conversationId?: number } = {},
+  ): Promise<{ ok: true; tab: CustomTabRow } | { ok: false; issues: any[]; unknownFields?: string[] }> {
+    try {
+      const { data } = await apiClient.post(`${BASE}/deals/${dealId}/custom-tabs`, {
+        payload,
+        ...extras,
+      });
+      return { ok: true, tab: data.tab };
+    } catch (err: any) {
+      if (err?.response?.status === 422) {
+        return { ok: false, issues: err.response.data?.issues ?? [], unknownFields: err.response.data?.unknownFields };
+      }
+      throw err;
+    }
+  },
+
+  async renameCustomTab(dealId: string, tabId: string, title: string): Promise<CustomTabRow | null> {
+    try {
+      const { data } = await apiClient.patch(`${BASE}/deals/${dealId}/custom-tabs/${tabId}`, { title });
+      return data.tab ?? null;
+    } catch {
+      return null;
+    }
+  },
+
+  async replaceCustomTab(
+    dealId: string,
+    tabId: string,
+    payload: CustomTabPayload,
+  ): Promise<{ ok: true; tab: CustomTabRow } | { ok: false; issues: any[] }> {
+    try {
+      const { data } = await apiClient.patch(`${BASE}/deals/${dealId}/custom-tabs/${tabId}`, { payload });
+      return { ok: true, tab: data.tab };
+    } catch (err: any) {
+      if (err?.response?.status === 422) {
+        return { ok: false, issues: err.response.data?.issues ?? [] };
+      }
+      throw err;
+    }
+  },
+
+  async refreshCustomTab(dealId: string, tabId: string, conversationId?: number): Promise<CustomTabRow | null> {
+    try {
+      const { data } = await apiClient.post(`${BASE}/deals/${dealId}/custom-tabs/${tabId}/refresh`, { conversationId });
+      return data.tab ?? null;
+    } catch {
+      return null;
+    }
+  },
+
+  async deleteCustomTab(dealId: string, tabId: string): Promise<boolean> {
+    try {
+      await apiClient.delete(`${BASE}/deals/${dealId}/custom-tabs/${tabId}`);
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  parseCustomTabsFromResponse(text: string): CustomTabPayload[] {
+    const out: CustomTabPayload[] = [];
+    const re = /```customtab\n([\s\S]*?)```/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      try { out.push(JSON.parse(m[1])); } catch {}
+    }
+    return out;
+  },
 };
+
+// ──────────────────────────────────────────────────────────────────────────
+// Custom-tab content schema — frontend mirror of the backend types
+// (kept narrow on purpose; the backend is the source of truth for
+// validation, this is just for the renderer.)
+// ──────────────────────────────────────────────────────────────────────────
+
+export type CustomTabFormat = 'currency' | 'percent' | 'multiple' | 'number' | 'ratio';
+
+export type CustomTabBlock =
+  | { type: 'markdown'; text: string }
+  | { type: 'kpi_tile'; label: string; ref: string; format?: CustomTabFormat; compareRef?: string; sublabel?: string }
+  | { type: 'table'; columns: Array<{ header: string; ref: string; format?: CustomTabFormat }>; rowSourceRef: string; limit?: number; caption?: string }
+  | { type: 'ratio_bar'; label: string; numeratorRef: string; denominatorRef: string; benchmark?: number; format?: 'percent' | 'ratio' }
+  | { type: 'line_chart'; seriesRef: string; xLabel?: string; yLabel?: string; format?: CustomTabFormat; compareSeriesRef?: string };
+
+export interface CustomTabPayload {
+  tabId: string;
+  title: string;
+  description?: string;
+  blocks: CustomTabBlock[];
+  generationPrompt?: string;
+  modelVersion?: string;
+}
+
+export interface CustomTabRow {
+  id: number;
+  deal_id: string;
+  user_id: string;
+  tab_id: string;
+  title: string;
+  description: string | null;
+  payload: CustomTabPayload;
+  generation_prompt: string | null;
+  model_version: string | null;
+  created_at: string;
+  updated_at: string;
+}

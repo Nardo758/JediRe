@@ -138,5 +138,127 @@ export function createOpusRoutes(pool: Pool): Router {
     }
   });
 
+  // ──────────────────────────────────────────────────────────────────────
+  // Custom Tabs (Task #451) — CRUD + refresh + manual generate
+  // ──────────────────────────────────────────────────────────────────────
+
+  /**
+   * Resolve a stable userId for the request. Mirrors the streamChat fallback
+   * so manual REST CRUD lands in the same row as Opus-emitted tabs.
+   *
+   * IMPORTANT: do NOT trust client-supplied identity headers (x-user-id) here
+   * — they would let any caller spoof a different user's tab namespace inside
+   * the same deal, since custom-tab rows are keyed by (deal_id,user_id,tab_id).
+   * We accept only authenticated identity from req.user, falling back to a
+   * deterministic per-deal bucket so unauthenticated dev/preview environments
+   * stay functional but every caller in that bucket sees the same tabs.
+   */
+  const resolveUserId = (req: Request, dealId: string): string => {
+    const u = (req as any).user?.userId;
+    if (u && typeof u === 'string') return u;
+    return `deal:${dealId}`;
+  };
+
+  router.get('/deals/:dealId/custom-tabs', async (req: Request, res: Response) => {
+    try {
+      const { dealId } = req.params;
+      const userId = resolveUserId(req, dealId);
+      const tabs = await opus.listCustomTabs(dealId, userId);
+      res.json({ tabs });
+    } catch (err: any) {
+      console.error('Opus list custom tabs error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/deals/:dealId/custom-tabs', async (req: Request, res: Response) => {
+    try {
+      const { dealId } = req.params;
+      const userId = resolveUserId(req, dealId);
+      const { payload, generationPrompt, conversationId } = req.body ?? {};
+      const result = await opus.createCustomTab({
+        dealId,
+        userId,
+        payload,
+        generationPrompt: generationPrompt ?? null,
+        conversationId: conversationId ?? null,
+      });
+      if (!result.saved) {
+        return res.status(422).json({
+          error: 'Custom tab payload failed validation',
+          issues: result.validation.issues,
+          unknownFields: result.validation.unknownFields,
+        });
+      }
+      res.status(201).json({ tab: result.row });
+    } catch (err: any) {
+      console.error('Opus create custom tab error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.patch('/deals/:dealId/custom-tabs/:tabId', async (req: Request, res: Response) => {
+    try {
+      const { dealId, tabId } = req.params;
+      const userId = resolveUserId(req, dealId);
+      const { title, payload } = req.body ?? {};
+      if (payload) {
+        const result = await opus.replaceCustomTab({ dealId, userId, tabId, payload });
+        if (!result.saved) {
+          return res.status(422).json({
+            error: 'Custom tab payload failed validation',
+            issues: result.validation.issues,
+            unknownFields: result.validation.unknownFields,
+          });
+        }
+        return res.json({ tab: result.row });
+      }
+      if (typeof title === 'string') {
+        const ok = await opus.renameCustomTab(dealId, userId, tabId, title);
+        if (!ok) return res.status(404).json({ error: 'tab not found or invalid title' });
+        const row = await opus.getCustomTab(dealId, userId, tabId);
+        return res.json({ tab: row });
+      }
+      res.status(400).json({ error: 'PATCH requires `title` or `payload` in body' });
+    } catch (err: any) {
+      console.error('Opus update custom tab error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/deals/:dealId/custom-tabs/:tabId/refresh', async (req: Request, res: Response) => {
+    try {
+      const { dealId, tabId } = req.params;
+      const userId = resolveUserId(req, dealId);
+      const { conversationId } = req.body ?? {};
+      const result = await opus.refreshCustomTab({ dealId, userId, tabId, conversationId: conversationId ?? null });
+      if (!result.refreshed) {
+        return res.status(result.row ? 422 : 404).json({
+          error: result.error ?? 'refresh failed',
+          issues: result.validation?.issues,
+          unknownFields: result.validation?.unknownFields,
+          tab: result.row,
+        });
+      }
+      res.json({ tab: result.row });
+    } catch (err: any) {
+      console.error('Opus refresh custom tab error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.delete('/deals/:dealId/custom-tabs/:tabId', async (req: Request, res: Response) => {
+    try {
+      const { dealId, tabId } = req.params;
+      const userId = resolveUserId(req, dealId);
+      const ok = await opus.deleteCustomTab(dealId, userId, tabId);
+      if (!ok) return res.status(404).json({ error: 'tab not found' });
+      res.status(204).send();
+    } catch (err: any) {
+      console.error('Opus delete custom tab error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   return router;
 }

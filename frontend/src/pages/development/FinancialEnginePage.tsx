@@ -18,17 +18,20 @@ import { SensitivityTab } from './financial-engine/SensitivityTab';
 import { DecisionTab } from './financial-engine/DecisionTab';
 import { CompareTab } from './financial-engine/CompareTab';
 import { CostSheetTab } from '../../components/deal/sections/CostSheetTab';
+import { CustomTabRenderer } from './financial-engine/CustomTabRenderer';
 import { exportToExcel } from './financial-engine/excel-export';
 import type { ModelAssumptions, ModelResults, ModelVersion, DealType, F9DealFinancials, EvidenceFieldMeta } from './financial-engine/types';
 import { fmt$, fmtPct, fmtX } from './financial-engine/types';
 import { apiClient } from '../../services/api.client';
+import { opusProformaService, type CustomTabRow } from '../../services/opusProforma.service';
 import { F9SummaryBar } from '../../components/f9/F9SummaryBar';
 import { EvidencePanel } from '../../components/underwriting/EvidencePanel';
 import { UnderwritingWalkthrough } from '../../components/f9/UnderwritingWalkthrough';
 
 const MONO = BT.font.mono;
 
-const TAB_LABELS = [
+// Built-in tabs always come first; custom tabs are appended after.
+const BUILTIN_TAB_LABELS = [
   '⊞ OVERVIEW',
   '≡ PRO FORMA',
   '⋮≡ PROJECTIONS',
@@ -44,6 +47,7 @@ const TAB_LABELS = [
   '₵ COST SHEET',
   '⊟ WALKTHROUGH',
 ];
+const BUILTIN_TAB_COUNT = BUILTIN_TAB_LABELS.length;
 
 interface FinancialEnginePageProps {
   dealId: string;
@@ -88,6 +92,33 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
     field_metadata?: Record<string, EvidenceFieldMeta>;
   } | null>(null);
   const [evidenceFilter, setEvidenceFilter] = useState<{ type: 'collision' | 'confidence' | 'tier'; value: string } | null>(null);
+  // Custom Tabs (Task #451) — Opus-generated F9 sub-tabs.
+  const [customTabs, setCustomTabs] = useState<CustomTabRow[]>([]);
+  const [customTabsLoading, setCustomTabsLoading] = useState(false);
+  const [customTabsError, setCustomTabsError] = useState<string | null>(null);
+  const [customTabMenu, setCustomTabMenu] = useState<{ tabId: string; mode: 'menu' | 'rename'; renameValue: string } | null>(null);
+
+  const loadCustomTabs = useCallback(async () => {
+    if (!resolvedDealId) return;
+    setCustomTabsLoading(true);
+    try {
+      const tabs = await opusProformaService.listCustomTabs(resolvedDealId);
+      setCustomTabs(tabs);
+      // Clamp activeTab if a server-side reload removed the tab we were on
+      // (e.g. another session deleted it) so we never show a blank pane.
+      setActiveTab(prev => {
+        const maxValid = BUILTIN_TAB_COUNT + tabs.length - 1;
+        return prev > maxValid ? Math.max(0, maxValid) : prev;
+      });
+      setCustomTabsError(null);
+    } catch (err: any) {
+      setCustomTabsError(err?.message ?? 'failed to load custom tabs');
+    } finally {
+      setCustomTabsLoading(false);
+    }
+  }, [resolvedDealId]);
+
+  useEffect(() => { void loadCustomTabs(); }, [loadCustomTabs]);
 
   const kpi = useMemo(() => modelResults?.summary ?? null, [modelResults]);
 
@@ -349,6 +380,8 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
       setOpusMessages(prev => [...prev, { role: 'opus', text: reply, ts: Date.now() }]);
 
       const actions = (res as any)?.data?.data?.actions || [];
+      let switchToCustomTabId: string | null = null;
+      let touchedCustomTabs = false;
       for (const action of actions) {
         if (action.type === 'update_assumptions' && action.payload) {
           setAssumptions(prev => prev ? { ...prev, ...action.payload } : null);
@@ -359,22 +392,119 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
         if (action.type === 'switch_tab' && typeof action.payload?.tab === 'number') {
           setActiveTab(action.payload.tab);
         }
+        if (action.type === 'create_custom_tab' && action.payload?.tabId) {
+          switchToCustomTabId = action.payload.tabId;
+          touchedCustomTabs = true;
+        }
+        if (action.type === 'refresh_custom_tab' && action.payload?.tabId) {
+          await opusProformaService.refreshCustomTab(resolvedDealId, action.payload.tabId);
+          switchToCustomTabId = action.payload.tabId;
+          touchedCustomTabs = true;
+        }
+        if (action.type === 'delete_custom_tab' && action.payload?.tabId) {
+          await opusProformaService.deleteCustomTab(resolvedDealId, action.payload.tabId);
+          touchedCustomTabs = true;
+        }
+      }
+
+      // Opus may also have emitted a ```customtab fence inline (parsed by the
+      // backend) — always refresh the tab list after a reply so that tabs
+      // created via the streaming fence become visible without another round-trip.
+      if (touchedCustomTabs || /create_custom_tab|customtab/i.test(reply)) {
+        const tabs = await opusProformaService.listCustomTabs(resolvedDealId);
+        setCustomTabs(tabs);
+        if (switchToCustomTabId) {
+          const idx = tabs.findIndex(t => t.tab_id === switchToCustomTabId);
+          if (idx >= 0) setActiveTab(BUILTIN_TAB_COUNT + idx);
+        } else if (tabs.length > customTabs.length) {
+          // A new tab was created via the inline fence — switch to it.
+          setActiveTab(BUILTIN_TAB_COUNT + 0);
+        }
       }
     } catch (err: any) {
       setOpusMessages(prev => [...prev, { role: 'opus', text: `Error: ${err?.message || 'Failed to reach Opus'}`, ts: Date.now() }]);
     } finally {
       setOpusSending(false);
     }
-  }, [opusInput, opusSending, resolvedDealId, resolvedDealType, modelResults, kpi, assumptions, handleBuildModel]);
+  }, [opusInput, opusSending, resolvedDealId, resolvedDealType, modelResults, kpi, assumptions, handleBuildModel, customTabs.length]);
 
-  const OPUS_QUICK_PROMPTS = [
-    'Build the model',
-    'What IRR do I need to hit 2.0x?',
-    'Run sensitivity on cap rate',
-    'Increase rent growth to 4%',
-    'Show debt structure',
-    'Compare to market comps',
-  ];
+  const OPUS_QUICK_PROMPTS = useMemo(() => {
+    const base = [
+      'Build the model',
+      'What IRR do I need to hit 2.0x?',
+      'Run sensitivity on cap rate',
+      'Increase rent growth to 4%',
+      'Show debt structure',
+      'Compare to market comps',
+    ];
+    // When the user has no custom tabs yet, surface the F9 capability via
+    // three example prompts so the feature is discoverable.
+    if (customTabs.length === 0) {
+      return [
+        ...base,
+        "Add a tab comparing my numbers to the broker's",
+        'Add a sensitivity tab varying just exit cap rate',
+        'What modules are feeding my Year 5 NOI?',
+      ];
+    }
+    return base;
+  }, [customTabs.length]);
+
+  // Build the displayed tab strip = built-in tabs + custom tabs (purple ✦).
+  const displayTabs = useMemo(
+    () => [
+      ...BUILTIN_TAB_LABELS,
+      ...customTabs.map(t => `✦ ${t.title.toUpperCase()}`),
+    ],
+    [customTabs],
+  );
+
+  const activeCustomTab: CustomTabRow | null = useMemo(
+    () => activeTab >= BUILTIN_TAB_COUNT
+      ? customTabs[activeTab - BUILTIN_TAB_COUNT] ?? null
+      : null,
+    [activeTab, customTabs],
+  );
+
+  const handleCustomTabRefresh = useCallback(async (tabId: string) => {
+    if (!resolvedDealId) return;
+    setCustomTabsLoading(true);
+    const updated = await opusProformaService.refreshCustomTab(resolvedDealId, tabId);
+    if (updated) {
+      setCustomTabs(prev => prev.map(t => t.tab_id === tabId ? updated : t));
+    } else {
+      setCustomTabsError('Refresh failed — payload may have validation issues.');
+    }
+    setCustomTabsLoading(false);
+    setCustomTabMenu(null);
+  }, [resolvedDealId]);
+
+  const handleCustomTabDelete = useCallback(async (tabId: string) => {
+    if (!resolvedDealId) return;
+    const ok = await opusProformaService.deleteCustomTab(resolvedDealId, tabId);
+    if (ok) {
+      setCustomTabs(prev => {
+        const next = prev.filter(t => t.tab_id !== tabId);
+        // If the active tab was the deleted one (or sat after it), step back
+        // to the closest still-valid tab to avoid a blank pane.
+        const removedIdx = prev.findIndex(t => t.tab_id === tabId);
+        if (removedIdx >= 0 && activeTab >= BUILTIN_TAB_COUNT + removedIdx) {
+          setActiveTab(Math.max(0, activeTab - 1));
+        }
+        return next;
+      });
+    }
+    setCustomTabMenu(null);
+  }, [resolvedDealId, activeTab]);
+
+  const handleCustomTabRename = useCallback(async (tabId: string, newTitle: string) => {
+    if (!resolvedDealId || !newTitle.trim()) return;
+    const updated = await opusProformaService.renameCustomTab(resolvedDealId, tabId, newTitle.trim());
+    if (updated) {
+      setCustomTabs(prev => prev.map(t => t.tab_id === tabId ? updated : t));
+    }
+    setCustomTabMenu(null);
+  }, [resolvedDealId]);
 
   const tabProps = useMemo(() => ({
     dealId: resolvedDealId,
@@ -542,12 +672,78 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
         />
       )}
 
-      <SubTabBar
-        tabs={TAB_LABELS}
-        active={activeTab}
-        setActive={setActiveTab}
-        color={BT.met.financial}
-      />
+      <div style={{ position: 'relative' }}>
+        <SubTabBar
+          tabs={displayTabs}
+          active={activeTab}
+          setActive={setActiveTab}
+          color={BT.met.financial}
+        />
+        {/* Per-tab overflow menu — only shown for the active custom tab */}
+        {activeCustomTab && (
+          <div style={{ position: 'absolute', right: 6, top: 0, height: '100%', display: 'flex', alignItems: 'center', gap: 4 }}>
+            <button
+              onClick={() => setCustomTabMenu(prev => prev?.tabId === activeCustomTab.tab_id
+                ? null
+                : { tabId: activeCustomTab.tab_id, mode: 'menu', renameValue: activeCustomTab.title })}
+              title="Custom tab actions"
+              style={{
+                background: customTabMenu ? '#8B5CF620' : 'transparent',
+                color: '#8B5CF6', border: `1px solid #8B5CF640`, borderRadius: 2,
+                fontFamily: MONO, fontSize: 11, fontWeight: 700, padding: '0 6px', cursor: 'pointer',
+              }}
+            >⋯</button>
+            {customTabMenu?.tabId === activeCustomTab.tab_id && (
+              <div style={{
+                position: 'absolute', right: 0, top: '100%', zIndex: 200,
+                background: BT.bg.panel, border: `1px solid #8B5CF6`, borderRadius: 2,
+                minWidth: 200, padding: 4, boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+              }}>
+                {customTabMenu.mode === 'menu' ? (
+                  <>
+                    <button
+                      onClick={() => setCustomTabMenu({ ...customTabMenu, mode: 'rename' })}
+                      style={{ display: 'block', width: '100%', textAlign: 'left', background: 'transparent', border: 'none', color: BT.text.primary, fontFamily: MONO, fontSize: 10, padding: '5px 8px', cursor: 'pointer' }}
+                    >Rename</button>
+                    <button
+                      onClick={() => handleCustomTabRefresh(activeCustomTab.tab_id)}
+                      disabled={!activeCustomTab.generation_prompt || customTabsLoading}
+                      title={activeCustomTab.generation_prompt ? 'Re-run the original Opus prompt' : 'No generation prompt stored — recreate the tab via Opus'}
+                      style={{ display: 'block', width: '100%', textAlign: 'left', background: 'transparent', border: 'none', color: activeCustomTab.generation_prompt ? BT.text.primary : BT.text.muted, fontFamily: MONO, fontSize: 10, padding: '5px 8px', cursor: activeCustomTab.generation_prompt ? 'pointer' : 'not-allowed' }}
+                    >Refresh from Opus</button>
+                    <button
+                      onClick={() => { if (window.confirm(`Delete custom tab "${activeCustomTab.title}"?`)) handleCustomTabDelete(activeCustomTab.tab_id); }}
+                      style={{ display: 'block', width: '100%', textAlign: 'left', background: 'transparent', border: 'none', color: '#FF6B6B', fontFamily: MONO, fontSize: 10, padding: '5px 8px', cursor: 'pointer' }}
+                    >Delete</button>
+                  </>
+                ) : (
+                  <div style={{ display: 'flex', gap: 4, padding: 4 }}>
+                    <input
+                      value={customTabMenu.renameValue}
+                      onChange={e => setCustomTabMenu({ ...customTabMenu, renameValue: e.target.value })}
+                      onKeyDown={e => { if (e.key === 'Enter') handleCustomTabRename(activeCustomTab.tab_id, customTabMenu.renameValue); }}
+                      autoFocus
+                      style={{ flex: 1, background: BT.bg.input, border: `1px solid ${BT.border.medium}`, color: BT.text.primary, fontFamily: MONO, fontSize: 10, padding: '3px 6px', borderRadius: 2 }}
+                    />
+                    <button onClick={() => handleCustomTabRename(activeCustomTab.tab_id, customTabMenu.renameValue)}
+                      style={{ background: '#8B5CF6', border: 'none', color: '#fff', fontFamily: MONO, fontSize: 9, padding: '0 8px', cursor: 'pointer', borderRadius: 2, fontWeight: 700 }}
+                    >OK</button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      {customTabsError && (
+        <div style={{
+          padding: '4px 10px', background: '#FF6B6B20', color: '#FF6B6B',
+          fontFamily: MONO, fontSize: 9, borderBottom: `1px solid #FF6B6B40`,
+        }}>
+          [custom-tabs] {customTabsError}
+          <button onClick={() => setCustomTabsError(null)} style={{ float: 'right', background: 'transparent', color: '#FF6B6B', border: 'none', cursor: 'pointer', fontSize: 10 }}>✕</button>
+        </div>
+      )}
 
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
 
@@ -714,6 +910,23 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
           {activeTab === 13 && (
             <BtTabWrapper>
               <UnderwritingWalkthrough dealId={resolvedDealId} />
+            </BtTabWrapper>
+          )}
+          {activeCustomTab && (
+            <BtTabWrapper>
+              <CustomTabRenderer
+                payload={activeCustomTab.payload}
+                modelVersion={activeCustomTab.model_version}
+                description={activeCustomTab.description}
+                data={{
+                  assumptions,
+                  results: modelResults,
+                  f9: f9Financials,
+                  deal: propDeal as Record<string, any> | undefined,
+                  projections: modelResults?.projections ?? null,
+                }}
+                evidenceFieldMap={evidenceSummary?.field_metadata ?? undefined}
+              />
             </BtTabWrapper>
           )}
         </div>

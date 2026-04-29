@@ -10,6 +10,18 @@ import {
   type ProFormaTemplateId,
 } from './proforma/blueprint';
 import { validateProformaPayload } from './proforma/blueprint/payload-validator';
+import {
+  buildCustomTabSchemaForPrompt,
+  CUSTOM_TAB_FIELD_CATALOG,
+  CUSTOM_TAB_MAX_BLOCKS,
+  CUSTOM_TAB_MAX_TITLE_LEN,
+  CustomTabPayload,
+} from './proforma/blueprint/custom-tab-schema';
+import {
+  CustomTabValidationResult,
+  formatValidationIssuesForChat,
+  validateCustomTabPayload,
+} from './proforma/blueprint/custom-tab-validator';
 
 /**
  * Re-derive the template the platform expects for a deal context, mirroring
@@ -344,6 +356,49 @@ Emit the model inside a \`\`\`proforma fence using this shape (the \`sections[]\
 }
 \`\`\`
 
+## Custom Tab Capability (Task #451)
+You can also create a new F9 sub-tab on demand when the user asks something like
+"add a tab comparing my Y5 NOI to broker projection" or "make a sensitivity tab
+that varies just exit cap rate". Emit it INSIDE a \`\`\`customtab fence using
+the strict declarative schema below — never free-form HTML, never a section
+that mutates assumptions.
+
+\`\`\`customtab
+${JSON.stringify(buildCustomTabSchemaForPrompt(), null, 2)}
+\`\`\`
+
+Custom tab JSON shape:
+\`\`\`customtab
+{
+  "tabId": "<lowercase-slug-unique-per-deal>",
+  "title": "<short label, ≤ ${CUSTOM_TAB_MAX_TITLE_LEN} chars>",
+  "description": "<optional one-liner>",
+  "blocks": [
+    { "type": "markdown", "text": "Free text. Inline values use {{ref}} placeholders." },
+    { "type": "kpi_tile", "label": "...", "ref": "results.summary.noi", "format": "currency" },
+    { "type": "table", "rowSourceRef": "f9.proforma.year1", "columns": [
+        { "header": "Year", "ref": "f9.proforma.year1[*].year" },
+        { "header": "NOI",  "ref": "f9.proforma.year1[*].noi", "format": "currency" }
+      ]
+    },
+    { "type": "ratio_bar", "label": "Loan-to-Value",
+      "numeratorRef": "assumptions.ltv", "denominatorRef": "assumptions.purchasePrice",
+      "format": "percent", "benchmark": 0.7 },
+    { "type": "line_chart", "seriesRef": "f9.proforma.year1",
+      "xLabel": "Year", "yLabel": "NOI", "format": "currency" }
+  ]
+}
+\`\`\`
+
+Custom tab rules (MUST follow):
+- Maximum ${CUSTOM_TAB_MAX_BLOCKS} blocks per tab.
+- Every \`ref\`, \`numeratorRef\`, \`denominatorRef\`, \`seriesRef\`, \`rowSourceRef\`,
+  and \`{{placeholder}}\` MUST resolve to a pattern in \`fieldCatalog\` above. The
+  server will reject and quarantine any payload that references unknown paths.
+- Custom tabs are READ-ONLY views — do not use them to change assumptions.
+  Assumption mutations still flow through the existing \`update_assumptions\`
+  action.
+
 ${dealContext}
 
 ${comparableData}`;
@@ -531,8 +586,413 @@ ${comparableData}`;
       }
     }
 
+    // ── Custom tab fence parsing (Task #451) ─────────────────────────────
+    // Detect ALL ```customtab fences in the streamed response, validate
+    // each, and persist the valid ones via createCustomTab. Rejections
+    // surface as a `[customtab-validator]` system message — same pattern
+    // as the proforma quarantine above.
+    const customTabFences = [...fullResponse.matchAll(/```customtab\n([\s\S]*?)```/g)];
+    if (customTabFences.length > 0) {
+      // Try to derive a stable userId for the tab. opus_conversations.user_id
+      // is optional; when absent we fall back to a deterministic per-deal
+      // identifier so the (deal, user, tab_id) uniqueness key still works.
+      const conversation = await this.getConversation(conversationId);
+      const userId = conversation?.user_id || `deal:${dealId}`;
+      const customTabResults: any[] = [];
+      for (const match of customTabFences) {
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(match[1]);
+        } catch (e: any) {
+          await this.saveMessage(conversationId, 'system',
+            `[customtab-validator] Failed to parse customtab JSON: ${e?.message ?? 'syntax error'}`);
+          continue;
+        }
+        const result = await this.createCustomTab({
+          dealId,
+          userId,
+          payload: parsed,
+          generationPrompt: userMessage,
+          modelVersion: 'claude-sonnet-4-5',
+          conversationId,
+        });
+        if (!result.saved) {
+          const summary = formatValidationIssuesForChat(result.validation);
+          await this.saveMessage(conversationId, 'system',
+            `[customtab-validator] Custom tab rejected.\n${summary}`);
+          customTabResults.push({ ok: false, issues: result.validation.issues });
+        } else {
+          customTabResults.push({
+            ok: true,
+            tabId: result.row?.tab_id,
+            title: result.row?.title,
+            id: result.row?.id,
+          });
+        }
+      }
+      // Stash results on the assistant message metadata so the frontend
+      // dispatcher can react (append the new tab, switch to it, etc.).
+      try {
+        // Postgres UPDATE doesn't support ORDER BY/LIMIT directly — must
+        // pin the row via subquery on the primary key.
+        await this.pool.query(
+          `UPDATE opus_messages
+              SET metadata = COALESCE(metadata, '{}'::jsonb) || $1::jsonb
+            WHERE id = (
+              SELECT id FROM opus_messages
+               WHERE conversation_id = $2 AND role = 'assistant'
+               ORDER BY id DESC
+               LIMIT 1
+            )`,
+          [JSON.stringify({ customTabs: customTabResults }), conversationId],
+        );
+      } catch (e) {
+        // metadata enrichment is best-effort — don't block the chat reply
+        console.warn('[Opus] failed to attach customTabs to message metadata:', (e as any)?.message);
+      }
+    }
+
     onDone(fullResponse);
   }
+
+  // ────────────────────────────────────────────────────────────────────────
+  // Custom Tabs (Task #451) — Opus-generated F9 tabs persisted per
+  // (deal_id, user_id, tab_id). Schema-validated against the blueprint
+  // custom-tab content schema before persistence. Read-only views; no
+  // assumption mutations are emitted via this surface.
+  //
+  // Persistence follows the opus_proforma_rejected_payloads pattern in this
+  // same file: runtime `CREATE TABLE IF NOT EXISTS` with `id SERIAL PRIMARY
+  // KEY` so the table joins the opus_*/deal_* family that intentionally
+  // lives outside the Drizzle-managed schema surface.
+  // ────────────────────────────────────────────────────────────────────────
+
+  private customTabsTableEnsured = false;
+
+  private async ensureCustomTabsTable(): Promise<void> {
+    if (this.customTabsTableEnsured) return;
+    await this.pool.query(`
+      CREATE TABLE IF NOT EXISTS deal_custom_tabs (
+        id SERIAL PRIMARY KEY,
+        deal_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        tab_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT,
+        payload JSONB NOT NULL,
+        generation_prompt TEXT,
+        model_version TEXT,
+        conversation_id INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (deal_id, user_id, tab_id)
+      )
+    `);
+    await this.pool.query(`
+      CREATE INDEX IF NOT EXISTS deal_custom_tabs_deal_user_idx
+        ON deal_custom_tabs (deal_id, user_id, updated_at DESC)
+    `);
+    this.customTabsTableEnsured = true;
+  }
+
+  /** List all custom tabs for a (deal, user). */
+  async listCustomTabs(dealId: string, userId: string): Promise<Array<{
+    id: number;
+    deal_id: string;
+    user_id: string;
+    tab_id: string;
+    title: string;
+    description: string | null;
+    payload: CustomTabPayload;
+    generation_prompt: string | null;
+    model_version: string | null;
+    created_at: Date;
+    updated_at: Date;
+  }>> {
+    await this.ensureCustomTabsTable();
+    const result = await this.pool.query(
+      `SELECT id, deal_id, user_id, tab_id, title, description, payload,
+              generation_prompt, model_version, created_at, updated_at
+         FROM deal_custom_tabs
+        WHERE deal_id = $1 AND user_id = $2
+        ORDER BY updated_at DESC`,
+      [dealId, userId],
+    );
+    return result.rows;
+  }
+
+  /** Fetch a single custom tab by (deal, user, tab_id). */
+  async getCustomTab(
+    dealId: string,
+    userId: string,
+    tabId: string,
+  ): Promise<{
+    id: number;
+    deal_id: string;
+    user_id: string;
+    tab_id: string;
+    title: string;
+    description: string | null;
+    payload: CustomTabPayload;
+    generation_prompt: string | null;
+    model_version: string | null;
+    created_at: Date;
+    updated_at: Date;
+  } | null> {
+    await this.ensureCustomTabsTable();
+    const result = await this.pool.query(
+      `SELECT id, deal_id, user_id, tab_id, title, description, payload,
+              generation_prompt, model_version, created_at, updated_at
+         FROM deal_custom_tabs
+        WHERE deal_id = $1 AND user_id = $2 AND tab_id = $3`,
+      [dealId, userId, tabId],
+    );
+    return result.rows[0] ?? null;
+  }
+
+  /**
+   * Validate + persist a custom tab payload. Upserts on (deal_id, user_id,
+   * tab_id). Throws a structured error on validation failure that the route
+   * layer can surface as 422 — never silently swallows.
+   */
+  async createCustomTab(args: {
+    dealId: string;
+    userId: string;
+    payload: unknown;
+    generationPrompt?: string | null;
+    modelVersion?: string | null;
+    conversationId?: number | null;
+  }): Promise<{
+    saved: boolean;
+    validation: CustomTabValidationResult;
+    row: Awaited<ReturnType<OpusService['getCustomTab']>>;
+  }> {
+    const validation = validateCustomTabPayload(args.payload);
+    if (!validation.ok) {
+      console.error('[Opus] Custom tab payload REJECTED by validator', {
+        dealId: args.dealId,
+        userId: args.userId,
+        errorCount: validation.issues.filter(i => i.severity === 'error').length,
+        unknownFields: validation.unknownFields,
+      });
+      return { saved: false, validation, row: null };
+    }
+    const payload = args.payload as CustomTabPayload;
+    await this.ensureCustomTabsTable();
+    await this.pool.query(
+      `INSERT INTO deal_custom_tabs
+         (deal_id, user_id, tab_id, title, description, payload,
+          generation_prompt, model_version, conversation_id, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP)
+       ON CONFLICT (deal_id, user_id, tab_id) DO UPDATE SET
+         title             = EXCLUDED.title,
+         description       = EXCLUDED.description,
+         payload           = EXCLUDED.payload,
+         generation_prompt = COALESCE(EXCLUDED.generation_prompt, deal_custom_tabs.generation_prompt),
+         model_version     = COALESCE(EXCLUDED.model_version, deal_custom_tabs.model_version),
+         conversation_id   = COALESCE(EXCLUDED.conversation_id, deal_custom_tabs.conversation_id),
+         updated_at        = CURRENT_TIMESTAMP`,
+      [
+        args.dealId,
+        args.userId,
+        payload.tabId,
+        payload.title,
+        payload.description ?? null,
+        JSON.stringify(payload),
+        args.generationPrompt ?? payload.generationPrompt ?? null,
+        args.modelVersion ?? payload.modelVersion ?? null,
+        args.conversationId ?? null,
+      ],
+    );
+    const row = await this.getCustomTab(args.dealId, args.userId, payload.tabId);
+    return { saved: true, validation, row };
+  }
+
+  /** Rename only — payload stays the same. */
+  async renameCustomTab(
+    dealId: string,
+    userId: string,
+    tabId: string,
+    newTitle: string,
+  ): Promise<boolean> {
+    if (!newTitle || newTitle.length > CUSTOM_TAB_MAX_TITLE_LEN) return false;
+    await this.ensureCustomTabsTable();
+    const existing = await this.getCustomTab(dealId, userId, tabId);
+    if (!existing) return false;
+    const nextPayload: CustomTabPayload = { ...existing.payload, title: newTitle };
+    await this.pool.query(
+      `UPDATE deal_custom_tabs
+         SET title = $4, payload = $5, updated_at = CURRENT_TIMESTAMP
+       WHERE deal_id = $1 AND user_id = $2 AND tab_id = $3`,
+      [dealId, userId, tabId, newTitle, JSON.stringify(nextPayload)],
+    );
+    return true;
+  }
+
+  /** Replace the payload (re-validated). Used by `refresh` once Opus regens. */
+  async replaceCustomTab(args: {
+    dealId: string;
+    userId: string;
+    tabId: string;
+    payload: unknown;
+    modelVersion?: string | null;
+    conversationId?: number | null;
+  }): Promise<{
+    saved: boolean;
+    validation: CustomTabValidationResult;
+    row: Awaited<ReturnType<OpusService['getCustomTab']>>;
+  }> {
+    const validation = validateCustomTabPayload(args.payload);
+    if (!validation.ok) {
+      console.error('[Opus] Custom tab REPLACE rejected by validator', {
+        dealId: args.dealId, userId: args.userId, tabId: args.tabId,
+      });
+      return { saved: false, validation, row: null };
+    }
+    const payload = args.payload as CustomTabPayload;
+    if (payload.tabId !== args.tabId) {
+      return {
+        saved: false,
+        validation: {
+          ...validation,
+          ok: false,
+          issues: [
+            ...validation.issues,
+            {
+              severity: 'error',
+              path: '$.tabId',
+              message: `payload.tabId "${payload.tabId}" does not match URL tabId "${args.tabId}"`,
+            },
+          ],
+        },
+        row: null,
+      };
+    }
+    return this.createCustomTab({
+      dealId: args.dealId,
+      userId: args.userId,
+      payload,
+      modelVersion: args.modelVersion,
+      conversationId: args.conversationId,
+    });
+  }
+
+  async deleteCustomTab(dealId: string, userId: string, tabId: string): Promise<boolean> {
+    await this.ensureCustomTabsTable();
+    const result = await this.pool.query(
+      `DELETE FROM deal_custom_tabs
+         WHERE deal_id = $1 AND user_id = $2 AND tab_id = $3`,
+      [dealId, userId, tabId],
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  /**
+   * Re-run the original generation prompt for an existing custom tab and
+   * upsert the resulting payload. Returns the new row and any validation
+   * issues encountered.
+   */
+  async refreshCustomTab(args: {
+    dealId: string;
+    userId: string;
+    tabId: string;
+    conversationId?: number | null;
+  }): Promise<{
+    refreshed: boolean;
+    validation: CustomTabValidationResult | null;
+    row: Awaited<ReturnType<OpusService['getCustomTab']>>;
+    error?: string;
+  }> {
+    const existing = await this.getCustomTab(args.dealId, args.userId, args.tabId);
+    if (!existing) return { refreshed: false, validation: null, row: null, error: 'tab not found' };
+    if (!existing.generation_prompt) {
+      return { refreshed: false, validation: null, row: existing, error: 'no generation prompt stored — recreate the tab via Opus' };
+    }
+    const conversationId =
+      args.conversationId ??
+      (typeof (existing as any).conversation_id === 'number' ? (existing as any).conversation_id : null);
+    const generated = await this.generateCustomTabPayloadFromPrompt({
+      dealId: args.dealId,
+      userId: args.userId,
+      prompt: existing.generation_prompt,
+      tabIdHint: args.tabId,
+    });
+    if (!generated.payload) {
+      return { refreshed: false, validation: generated.validation, row: existing, error: generated.error ?? 'generation failed' };
+    }
+    const result = await this.replaceCustomTab({
+      dealId: args.dealId,
+      userId: args.userId,
+      tabId: args.tabId,
+      payload: { ...generated.payload, tabId: args.tabId },
+      modelVersion: generated.modelVersion,
+      conversationId: conversationId,
+    });
+    return { refreshed: result.saved, validation: result.validation, row: result.row, error: result.saved ? undefined : 'validation failed on regenerated payload' };
+  }
+
+  /**
+   * Ask Opus for a custom-tab payload from a natural-language prompt.
+   * Used by both the refresh flow and the new "manual generate" route.
+   */
+  async generateCustomTabPayloadFromPrompt(args: {
+    dealId: string;
+    userId: string;
+    prompt: string;
+    tabIdHint?: string;
+  }): Promise<{
+    payload: CustomTabPayload | null;
+    validation: CustomTabValidationResult | null;
+    modelVersion: string;
+    rawText: string;
+    error?: string;
+  }> {
+    const [dealContext, comparableData, dealMeta] = await Promise.all([
+      this.gatherDealContext(args.dealId),
+      this.gatherComparableData(args.dealId),
+      this.resolveDealTemplateContext(args.dealId),
+    ]);
+    const systemPrompt = this.buildSystemPrompt(dealContext, comparableData, dealMeta);
+    const userPrompt = args.tabIdHint
+      ? `${args.prompt}\n\n(Reuse tabId="${args.tabIdHint}" so this regenerates the same tab.)`
+      : args.prompt;
+
+    let rawText = '';
+    try {
+      const stream = anthropic.messages.stream({
+        model: 'claude-sonnet-4-5',
+        max_tokens: 4096,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userPrompt }],
+      });
+      for await (const event of stream) {
+        if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+          rawText += event.delta.text;
+        }
+      }
+    } catch (err: any) {
+      return { payload: null, validation: null, modelVersion: 'claude-sonnet-4-5', rawText: '', error: err?.message ?? 'opus stream failed' };
+    }
+
+    const fenceMatch = rawText.match(/```customtab\n([\s\S]*?)```/);
+    if (!fenceMatch) {
+      return { payload: null, validation: null, modelVersion: 'claude-sonnet-4-5', rawText, error: 'Opus did not emit a ```customtab fence' };
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(fenceMatch[1]);
+    } catch (e: any) {
+      return { payload: null, validation: null, modelVersion: 'claude-sonnet-4-5', rawText, error: 'Failed to parse customtab JSON: ' + e?.message };
+    }
+    const validation = validateCustomTabPayload(parsed);
+    if (!validation.ok) {
+      return { payload: null, validation, modelVersion: 'claude-sonnet-4-5', rawText, error: 'Validation failed' };
+    }
+    return { payload: parsed as CustomTabPayload, validation, modelVersion: 'claude-sonnet-4-5' };
+  }
+
+  /** Re-exported for callers that want validation without persistence. */
+  validateCustomTabPayload = validateCustomTabPayload;
 
   /**
    * Resolve deal-type + winning strategy so buildSystemPrompt can pick the
