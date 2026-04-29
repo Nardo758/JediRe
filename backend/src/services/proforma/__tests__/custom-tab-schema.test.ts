@@ -65,9 +65,9 @@ describe('custom-tab-schema · extractInlineRefs', () => {
   });
 
   it('extracts multiple placeholders preserving order', () => {
-    expect(extractInlineRefs('NOI {{results.summary.noi}} vs {{f9.proforma.year1[3].noi}}')).toEqual([
+    expect(extractInlineRefs('NOI {{results.summary.noi}} vs {{f9.proforma.year1[3].broker}}')).toEqual([
       'results.summary.noi',
-      'f9.proforma.year1[3].noi',
+      'f9.proforma.year1[3].broker',
     ]);
   });
 
@@ -86,7 +86,7 @@ describe('custom-tab-schema · normaliseRefToPattern', () => {
   });
 
   it('normalises numeric indices to [*]', () => {
-    expect(normaliseRefToPattern('f9.proforma.year1[3].noi')).toBe('f9.proforma.year1[*].noi');
+    expect(normaliseRefToPattern('f9.proforma.year1[3].broker')).toBe('f9.proforma.year1[*].broker');
   });
 
   it('normalises multiple indices', () => {

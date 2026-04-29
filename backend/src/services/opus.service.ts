@@ -375,16 +375,19 @@ Custom tab JSON shape:
   "description": "<optional one-liner>",
   "blocks": [
     { "type": "markdown", "text": "Free text. Inline values use {{ref}} placeholders." },
-    { "type": "kpi_tile", "label": "...", "ref": "results.summary.noi", "format": "currency" },
-    { "type": "table", "rowSourceRef": "f9.proforma.year1", "columns": [
-        { "header": "Year", "ref": "f9.proforma.year1[*].year" },
-        { "header": "NOI",  "ref": "f9.proforma.year1[*].noi", "format": "currency" }
+    { "type": "kpi_tile", "label": "Y1 NOI", "ref": "results.summary.noi", "format": "currency" },
+    { "type": "table", "caption": "Broker vs Platform — P&L line items",
+      "rowSourceRef": "f9.proforma.year1", "columns": [
+        { "header": "Line",     "ref": "f9.proforma.year1[*].label" },
+        { "header": "Broker",   "ref": "f9.proforma.year1[*].broker",   "format": "currency" },
+        { "header": "Platform", "ref": "f9.proforma.year1[*].platform", "format": "currency" },
+        { "header": "Resolved", "ref": "f9.proforma.year1[*].resolved", "format": "currency" }
       ]
     },
     { "type": "ratio_bar", "label": "Loan-to-Value",
       "numeratorRef": "assumptions.ltv", "denominatorRef": "assumptions.purchasePrice",
       "format": "percent", "benchmark": 0.7 },
-    { "type": "line_chart", "seriesRef": "f9.proforma.year1",
+    { "type": "line_chart", "seriesRef": "projections",
       "xLabel": "Year", "yLabel": "NOI", "format": "currency" }
   ]
 }

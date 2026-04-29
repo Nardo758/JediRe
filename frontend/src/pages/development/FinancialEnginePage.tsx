@@ -393,7 +393,55 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
           setActiveTab(action.payload.tab);
         }
         if (action.type === 'create_custom_tab' && action.payload?.tabId) {
-          switchToCustomTabId = action.payload.tabId;
+          // Two delivery paths converge here:
+          //  (1) Opus emitted an inline ```customtab fence — the backend
+          //      streamChat parser already validated + persisted it, so we
+          //      just need to switch to the new tab on reload.
+          //  (2) The chat layer emitted a JSON `create_custom_tab` action
+          //      with a full `payload.payload` (or top-level `blocks`/`title`)
+          //      that has NOT been persisted yet. In that case we must POST
+          //      it through the REST endpoint so it lands in the DB and
+          //      gets server-side validation. Surface validator errors back
+          //      into the chat thread so the user sees what was rejected.
+          const p = action.payload;
+          const inlineBlocks = Array.isArray(p?.payload?.blocks) ? p.payload.blocks
+            : Array.isArray(p?.blocks) ? p.blocks
+            : null;
+          if (inlineBlocks) {
+            const createPayload = {
+              tabId: p.tabId,
+              title: p.payload?.title ?? p.title ?? p.tabId,
+              description: p.payload?.description ?? p.description,
+              blocks: inlineBlocks,
+            };
+            try {
+              const result = await opusProformaService.createCustomTab(
+                resolvedDealId,
+                createPayload,
+                { generationPrompt: p.sourcePrompt ?? p.generationPrompt ?? undefined },
+              );
+              if (!result.ok) {
+                // 422 from validator — show issues inline so the user understands what was rejected.
+                const summary = (result.issues ?? [])
+                  .map((i: any) => `${i.path ?? '$'}: ${i.message ?? 'invalid'}${
+                    i.suggestions?.length ? ' (did you mean `' + i.suggestions[0] + '`)' : ''
+                  }`)
+                  .join('\n');
+                setOpusMessages(prev => [...prev, {
+                  role: 'opus',
+                  text: `[customtab-validator] tab \`${p.tabId}\` rejected:\n${summary || 'unknown validation error'}`,
+                  ts: Date.now(),
+                }]);
+              }
+            } catch (err: any) {
+              setOpusMessages(prev => [...prev, {
+                role: 'opus',
+                text: `[customtab-validator] ${err?.message ?? 'failed to persist tab'}`,
+                ts: Date.now(),
+              }]);
+            }
+          }
+          switchToCustomTabId = p.tabId;
           touchedCustomTabs = true;
         }
         if (action.type === 'refresh_custom_tab' && action.payload?.tabId) {
@@ -923,7 +971,12 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
                   results: modelResults,
                   f9: f9Financials,
                   deal: propDeal as Record<string, any> | undefined,
-                  projections: modelResults?.projections ?? null,
+                  // The catalog's `projections[*].{year,noi,revenue,...}` shape
+                  // matches the per-year time-series object array on
+                  // F9DealFinancials.projections (one row per hold year with
+                  // noi/cfads/dscr/etc. as scalar keys), NOT the row-oriented
+                  // ProjectionRow[] on ModelResults.projections.
+                  projections: (f9Financials?.projections as any) ?? null,
                 }}
                 evidenceFieldMap={evidenceSummary?.field_metadata ?? undefined}
               />

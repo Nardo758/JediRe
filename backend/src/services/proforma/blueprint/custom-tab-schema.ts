@@ -214,45 +214,79 @@ export const CUSTOM_TAB_FIELD_CATALOG: readonly FieldCatalogEntry[] = [
     surface: 'results',
   },
 
-  // F9 deal financials surface (per-year + integrity checks)
+  // F9 deal financials surface — `proforma.year1` is a per-LINE-ITEM array
+  // (one row per P&L line: GPR, vacancy, real-estate-tax, NOI, ...). Each row
+  // exposes broker / platform / t12 / rentRoll / resolved values for that
+  // single line, NOT a per-year time series. Year-by-year time series lives
+  // under `projections[*]` (see further down).
   {
-    pattern: 'f9.proforma.year1[*].year',
-    description: 'Year index (1, 2, 3, ...) of an F9 projection row.',
-    resolves: 'number',
+    pattern: 'f9.proforma.year1[*].field',
+    description: 'Machine-readable identifier for the P&L line item (e.g. "noi", "gross_potential_rent", "real_estate_tax").',
+    resolves: 'string',
     surface: 'f9',
   },
   {
-    pattern: 'f9.proforma.year1[*].noi',
-    description: 'Year-N NOI from the F9 projection table.',
+    pattern: 'f9.proforma.year1[*].label',
+    description: 'Human-readable label for the P&L line item.',
+    resolves: 'string',
+    surface: 'f9',
+  },
+  {
+    pattern: 'f9.proforma.year1[*].broker',
+    description: 'Broker-projected value for this P&L line item (year-1 view).',
     resolves: 'provenanced_number',
     surface: 'f9',
   },
   {
-    pattern: 'f9.proforma.year1[*].revenue',
-    description: 'Year-N revenue from the F9 projection table.',
+    pattern: 'f9.proforma.year1[*].platform',
+    description: 'Platform-derived value for this P&L line item (year-1 view).',
     resolves: 'provenanced_number',
     surface: 'f9',
   },
   {
-    pattern: 'f9.proforma.year1[*].opex',
-    description: 'Year-N OPEX from the F9 projection table.',
+    pattern: 'f9.proforma.year1[*].t12',
+    description: 'T-12 actual value for this P&L line item.',
     resolves: 'provenanced_number',
     surface: 'f9',
   },
   {
-    pattern: 'f9.proforma.year1[*].cashFlow',
-    description: 'Year-N cash flow from the F9 projection table.',
+    pattern: 'f9.proforma.year1[*].rentRoll',
+    description: 'Current rent-roll value for this P&L line item (where applicable).',
     resolves: 'provenanced_number',
+    surface: 'f9',
+  },
+  {
+    pattern: 'f9.proforma.year1[*].resolved',
+    description: 'Resolved (final) value for this P&L line item after reconciling broker/platform/t12.',
+    resolves: 'provenanced_number',
+    surface: 'f9',
+  },
+  {
+    pattern: 'f9.proforma.year1[*].perUnit',
+    description: 'Resolved value normalised per unit.',
+    resolves: 'provenanced_number',
+    surface: 'f9',
+  },
+  {
+    pattern: 'f9.proforma.year1[*].benchmarkPosition',
+    description: 'Where this line lands vs submarket benchmark: above | within | below.',
+    resolves: 'string',
     surface: 'f9',
   },
   {
     pattern: 'f9.proforma.year1',
-    description: 'Full per-year projection array (used as a series source).',
+    description: 'Full P&L line-item array (used as a table rowSource for broker-vs-platform comparisons).',
     resolves: 'array',
     surface: 'f9',
   },
 
-  // Projections surface — generic multi-year series
+  // Projections surface — generic multi-year time-series array
+  {
+    pattern: 'projections',
+    description: 'Full multi-year projection array (used as a series source for line_chart and as a rowSource for tables).',
+    resolves: 'array',
+    surface: 'projections',
+  },
   {
     pattern: 'projections[*].year',
     description: 'Projection year index.',

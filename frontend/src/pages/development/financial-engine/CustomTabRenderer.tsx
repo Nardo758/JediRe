@@ -99,9 +99,14 @@ const BlockRenderer: React.FC<{
 // ──────────────────────────────────────────────────────────────────────────
 
 function resolveRef(ref: string, data: CustomTabRendererProps['data']): unknown {
+  // Strip any `[i]` from the head segment so refs like `projections[0]` still
+  // pick the right surface, and accept single-segment refs (e.g. bare
+  // `projections`) which resolve to the whole surface — needed by line_chart
+  // seriesRef where the catalog entry is the array itself.
   const parts = ref.split('.');
-  if (parts.length < 2) return undefined;
-  const surfaceKey = parts[0] as keyof CustomTabRendererProps['data'];
+  const headMatch = parts[0].match(/^([a-zA-Z0-9_]+)(\[(\d+)\])?$/);
+  if (!headMatch) return undefined;
+  const surfaceKey = headMatch[1] as keyof CustomTabRendererProps['data'];
   let cursor: any;
   switch (surfaceKey) {
     case 'assumptions': cursor = data.assumptions; break;
@@ -110,6 +115,9 @@ function resolveRef(ref: string, data: CustomTabRendererProps['data']): unknown 
     case 'deal':        cursor = data.deal; break;
     case 'projections': cursor = data.projections; break;
     default: return undefined;
+  }
+  if (headMatch[3] != null && Array.isArray(cursor)) {
+    cursor = cursor[Number(headMatch[3])];
   }
   for (let i = 1; i < parts.length; i++) {
     if (cursor == null) return undefined;

@@ -16,21 +16,22 @@ import {
 const validPayload = () => ({
   tabId: 'noi-vs-broker',
   title: 'NOI vs Broker Projection',
-  description: 'Compare year 5 NOI against the broker estimate.',
+  description: 'Compare resolved NOI against the broker estimate.',
   blocks: [
-    { type: 'markdown', text: 'Y5 NOI is {{f9.proforma.year1[4].noi}}.' },
+    { type: 'markdown', text: 'Resolved NOI is {{results.summary.noi}}.' },
     {
       type: 'kpi_tile',
-      label: 'Year 5 NOI',
-      ref: 'f9.proforma.year1[4].noi',
+      label: 'Year 1 NOI',
+      ref: 'results.summary.noi',
       format: 'currency',
     },
     {
       type: 'table',
       rowSourceRef: 'f9.proforma.year1',
       columns: [
-        { header: 'Year', ref: 'f9.proforma.year1[*].year' },
-        { header: 'NOI',  ref: 'f9.proforma.year1[*].noi', format: 'currency' },
+        { header: 'Line',     ref: 'f9.proforma.year1[*].label' },
+        { header: 'Broker',   ref: 'f9.proforma.year1[*].broker',   format: 'currency' },
+        { header: 'Platform', ref: 'f9.proforma.year1[*].platform', format: 'currency' },
       ],
       limit: 5,
     },
@@ -44,7 +45,7 @@ const validPayload = () => ({
     },
     {
       type: 'line_chart',
-      seriesRef: 'f9.proforma.year1',
+      seriesRef: 'projections',
       xLabel: 'Year',
       yLabel: 'NOI',
       format: 'currency',
@@ -62,7 +63,7 @@ describe('validateCustomTabPayload · happy path', () => {
 
   it('returns the catalog patterns referenced (deduped + normalised)', () => {
     const r = validateCustomTabPayload(validPayload());
-    expect(r.referencedFields).toContain('f9.proforma.year1[*].noi');
+    expect(r.referencedFields).toContain('f9.proforma.year1[*].broker');
     expect(r.referencedFields).toContain('assumptions.ltv');
     expect(r.referencedFields).toContain('assumptions.purchasePrice');
   });
@@ -201,7 +202,7 @@ describe('validateCustomTabPayload · per-block rejections', () => {
     const r = validateCustomTabPayload({
       ...validPayload(),
       blocks: [{
-        type: 'table', columns: [{ header: 'h', ref: 'f9.proforma.year1[*].noi' }],
+        type: 'table', columns: [{ header: 'h', ref: 'f9.proforma.year1[*].broker' }],
         rowSourceRef: '',
       }],
     });
@@ -218,7 +219,7 @@ describe('validateCustomTabPayload · per-block rejections', () => {
 
   it('rejects table with too many columns', () => {
     const cols = Array.from({ length: 13 }).map((_, i) => ({
-      header: `c${i}`, ref: 'f9.proforma.year1[*].noi',
+      header: `c${i}`, ref: 'f9.proforma.year1[*].broker',
     }));
     const r = validateCustomTabPayload({
       ...validPayload(),
@@ -246,7 +247,7 @@ describe('validateCustomTabPayload · per-block rejections', () => {
       blocks: [{
         type: 'table',
         rowSourceRef: 'f9.proforma.year1',
-        columns: [{ header: 'NOI', ref: 'f9.proforma.year1[*].noi' }],
+        columns: [{ header: 'NOI', ref: 'f9.proforma.year1[*].broker' }],
         limit: 999,
       }],
     });
