@@ -19,13 +19,32 @@ export interface AuthenticatedRequest extends Request {
   };
 }
 
-// Extract API key from x-api-key header or Authorization: Bearer <key>
+// Extract API key from x-api-key header or Authorization: Bearer <key>.
+// IMPORTANT: When the credential arrives via `Authorization: Bearer ...` we
+// must distinguish opaque API keys from real JWTs — otherwise every browser
+// JWT gets routed into the API-key validator and rejected as "Invalid API
+// key" before the JWT verifier ever runs (the regression that caused the
+// whole UI to 403). JWTs always have exactly 3 dot-separated segments
+// (header.payload.signature); our env-var API keys are opaque random strings
+// with no embedded dots. Anything that doesn't match the JWT shape is
+// treated as an API-key candidate; JWT-shaped tokens are left for
+// verifyAccessToken to handle in the normal JWT path.
+function looksLikeJwt(token: string): boolean {
+  if (!token) return false;
+  const parts = token.split('.');
+  if (parts.length !== 3) return false;
+  // base64url segments — non-empty, alphanumeric/-/_ only.
+  return parts.every(p => p.length > 0 && /^[A-Za-z0-9_-]+$/.test(p));
+}
+
 function extractApiKey(req: Request): string | null {
   const fromHeader = req.headers['x-api-key'] as string | undefined;
   if (fromHeader) return fromHeader;
   const auth = req.headers.authorization;
   if (auth && auth.startsWith('Bearer ')) {
-    return auth.slice(7);
+    const token = auth.slice(7);
+    if (looksLikeJwt(token)) return null;
+    return token;
   }
   return null;
 }
