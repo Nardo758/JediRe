@@ -86,3 +86,93 @@ export async function readLatestPerSignal(dealId: string): Promise<CorrelationAd
   }
   return out;
 }
+
+/**
+ * Map of correlation_id -> default target field that the signal influences.
+ * This is a conservative default mapping — product can override per-correlation
+ * by providing an explicit `target_field` in the source signal. The intent is
+ * to give every persisted signal at least one assumption-field anchor so M22
+ * attribution can join historical signals back to the assumptions that moved.
+ */
+const DEFAULT_TARGETS: Record<string, string> = {
+  'COR-01': 'rentGrowthYr1',
+  'COR-02': 'rentGrowthYr1',
+  'COR-03': 'occupancy',
+  'COR-04': 'rentGrowthYr1',
+  'COR-05': 'occupancy',
+  'COR-06': 'occupancy',
+  'COR-07': 'occupancy',
+  'COR-13': 'rentGrowthYr1',
+  'COR-14': 'opexGrowthYr1',
+  'COR-15': 'occupancy',
+};
+
+const SIGNAL_DELTA_PCT: Record<string, number> = {
+  bullish: 0.5,
+  bearish: -0.5,
+  neutral: 0.0,
+};
+
+const CONFIDENCE_NORMALIZE: Record<string, 'high' | 'medium' | 'low' | 'insufficient'> = {
+  high: 'high',
+  medium: 'medium',
+  low: 'low',
+  insufficient: 'insufficient',
+};
+
+/**
+ * Pure mapping: convert engine signal outputs into adjustment records.
+ * Extracted from persistCorrelationsForDeal so it's unit-testable without a DB.
+ */
+export function mapSignalsToAdjustments(
+  correlations: Array<{
+    id: string;
+    name?: string;
+    signal: string | null;
+    confidence: string;
+    leadTime?: string;
+    targetField?: string | null;
+  }>,
+  now: string = new Date().toISOString()
+): CorrelationAdjustment[] {
+  const adjustments: CorrelationAdjustment[] = [];
+  for (const c of correlations) {
+    if (!c.signal) continue;
+    if (c.confidence === 'insufficient') continue;
+    const target = c.targetField || DEFAULT_TARGETS[c.id];
+    if (!target) continue;
+    adjustments.push({
+      cor_id: c.id,
+      target_field: target,
+      delta_pct: SIGNAL_DELTA_PCT[c.signal] ?? 0,
+      signal: c.name ? `${c.signal}: ${c.name}` : c.signal,
+      confidence: CONFIDENCE_NORMALIZE[c.confidence] ?? 'low',
+      computed_at: now,
+      model_version: MODEL_VERSIONS.correlation_engine,
+      lead_time: c.leadTime,
+    });
+  }
+  return adjustments;
+}
+
+/**
+ * Convert a list of correlation engine outputs into adjustment records and
+ * persist them on the deal. Engine-shape input intentionally loose so we can
+ * accept the existing `CorrelationResult` shape without a hard dependency.
+ */
+export async function persistCorrelationsForDeal(
+  dealId: string,
+  correlations: Array<{
+    id: string;
+    name?: string;
+    signal: string | null;
+    confidence: string;
+    leadTime?: string;
+    targetField?: string | null;
+  }>
+): Promise<{ persisted: number }> {
+  const adjustments = mapSignalsToAdjustments(correlations);
+  if (adjustments.length === 0) return { persisted: 0 };
+  await persistAdjustments(dealId, adjustments);
+  return { persisted: adjustments.length };
+}

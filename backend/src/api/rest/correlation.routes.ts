@@ -1,7 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { pool } from '../../database';
 import { CorrelationEngineService } from '../../services/correlationEngine.service';
-import { optionalAuth, AuthenticatedRequest } from '../../middleware/auth';
+import { optionalAuth, requireAuth, AuthenticatedRequest } from '../../middleware/auth';
+import { requireDealAccess } from '../../middleware/deal-access';
 
 const router = Router();
 const engine = new CorrelationEngineService(pool);
@@ -55,6 +56,32 @@ router.get('/property/:propertyId', async (req: Request, res: Response) => {
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
+/**
+ * Tier-2 §3: Authenticated deal-scoped compute + persist.
+ *
+ * Persistence to `deals.correlation_adjustments` is a write op gated behind
+ * requireAuth (proves identity) + requireDealAccess (proves the user is a
+ * member of the deal's organization, or the deal creator for un-orged legacy
+ * deals). This prevents UUID-guessing cross-tenant writes.
+ */
+router.post(
+  '/deal/:dealId/report',
+  requireAuth,
+  requireDealAccess,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { dealId } = req.params;
+      const city = (req.query.city as string) || (req.body?.city as string) || 'Atlanta';
+      const state = (req.query.state as string) || (req.body?.state as string) || 'GA';
+      const report = await engine.computeAndPersistForDeal(dealId, city, state);
+      res.json({ success: true, data: report });
+    } catch (error: any) {
+      console.error('Deal correlation persist error:', error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
+);
 
 router.get('/metric/:metricId', async (req: Request, res: Response) => {
   try {

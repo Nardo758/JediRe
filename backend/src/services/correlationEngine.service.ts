@@ -205,6 +205,41 @@ export class CorrelationEngineService {
     return this.computeCorrelations(city, state);
   }
 
+  /**
+   * Tier-2 (Spec §3): Compute correlations for a deal AND persist the resulting
+   * signals as adjustment rows on `deals.correlation_adjustments`. This replaces
+   * the prior in-memory-only behavior — once persisted, M22 attribution and
+   * downstream consumers see the same signal stream that drove the model.
+   *
+   * The persistence step is best-effort and never blocks the report return.
+   */
+  async computeAndPersistForDeal(
+    dealId: string,
+    city: string = 'Atlanta',
+    state: string = 'GA'
+  ): Promise<CorrelationReport & { adjustmentsPersisted?: number }> {
+    const report = await this.computeCorrelations(city, state);
+    try {
+      const { persistCorrelationsForDeal } = await import('./correlation-adjustments.service');
+      const { persisted } = await persistCorrelationsForDeal(
+        dealId,
+        report.correlations.map((c) => ({
+          id: c.id,
+          name: c.name ?? undefined,
+          signal: c.signal,
+          confidence: c.confidence,
+          leadTime: (c as any).leadTime,
+        }))
+      );
+      return { ...report, adjustmentsPersisted: persisted };
+    } catch (err: any) {
+      // Persistence failure must NOT break the report — log and continue.
+      // eslint-disable-next-line no-console
+      console.warn(`[correlationEngine] persist for deal ${dealId} failed: ${err?.message}`);
+      return { ...report, adjustmentsPersisted: 0 };
+    }
+  }
+
   async computeTimeSeriesCorrelations(geographyType: string, geographyId: string, windowMonths: number = 36): Promise<void> {
     try {
       // Step 1: Get all metrics with sufficient data for this geography

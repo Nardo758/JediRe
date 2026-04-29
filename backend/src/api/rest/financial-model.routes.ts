@@ -3,66 +3,88 @@ import { financialModelEngine } from '../../services/financial-model-engine.serv
 import { excelExportService } from '../../services/excel-export.service';
 import { getPool } from '../../database/connection';
 import { dealVersionsService, type SaveTrigger } from '../../services/proforma/deal-versions.service';
+import { requireAuth, AuthenticatedRequest } from '../../middleware/auth';
+import { requireDealAccess } from '../../middleware/deal-access';
 
 const router = Router();
 
 // ──────────────────────────────────────────────────────────────────────────
 // Save-Driven Versioning (Spec §13)
+//
+// All version endpoints are gated by requireAuth + requireDealAccess so that
+// the audit trail cannot be read or written across tenants. Authentication is
+// enforced first, then deal-level org membership is checked against the
+// authenticated user.
 // ──────────────────────────────────────────────────────────────────────────
 
-router.get('/:dealId/versions', async (req: Request, res: Response) => {
-  try {
-    const versions = await dealVersionsService.listVersions(req.params.dealId);
-    return res.json({ success: true, data: versions });
-  } catch (error: any) {
-    console.error('List versions error:', error.message);
-    return res.status(500).json({ error: error.message });
-  }
-});
-
-router.post('/:dealId/versions', async (req: Request, res: Response) => {
-  try {
-    const { dealId } = req.params;
-    // Audit-integrity: server is authoritative for `created_by`, `model_versions`,
-    // and `override_divergences` (Spec §13). Client-supplied values for those
-    // fields are intentionally ignored to prevent audit-trail tampering.
-    const { snapshot, trigger, note } = req.body ?? {};
-    if (!snapshot || typeof snapshot !== 'object') {
-      return res.status(400).json({ error: 'snapshot (object) is required' });
+router.get(
+  '/:dealId/versions',
+  requireAuth,
+  requireDealAccess,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const versions = await dealVersionsService.listVersions(req.params.dealId);
+      return res.json({ success: true, data: versions });
+    } catch (error: any) {
+      console.error('List versions error:', error.message);
+      return res.status(500).json({ error: error.message });
     }
-    const allowedTriggers: SaveTrigger[] = ['user_save', 'chat_command', 'auto_prompt'];
-    const safeTrigger: SaveTrigger | undefined =
-      trigger && allowedTriggers.includes(trigger) ? trigger : undefined;
-    const userId = (req as any).user?.userId ?? null;
-    const row = await dealVersionsService.saveVersion({
-      dealId,
-      userId,
-      snapshot,
-      // modelVersions + divergences intentionally omitted — server stamps them.
-      trigger: safeTrigger,
-      note: note ?? null,
-    });
-    return res.status(201).json({ success: true, data: row });
-  } catch (error: any) {
-    console.error('Save version error:', error.message);
-    return res.status(500).json({ error: error.message });
   }
-});
+);
 
-router.get('/:dealId/versions/:versionNumber', async (req: Request, res: Response) => {
-  try {
-    const versionNumber = Number(req.params.versionNumber);
-    if (!Number.isFinite(versionNumber) || versionNumber < 1) {
-      return res.status(400).json({ error: 'versionNumber must be a positive integer' });
+router.post(
+  '/:dealId/versions',
+  requireAuth,
+  requireDealAccess,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const { dealId } = req.params;
+      // Audit-integrity: server is authoritative for `created_by`, `model_versions`,
+      // and `override_divergences` (Spec §13). Client-supplied values for those
+      // fields are intentionally ignored to prevent audit-trail tampering.
+      const { snapshot, trigger, note } = req.body ?? {};
+      if (!snapshot || typeof snapshot !== 'object') {
+        return res.status(400).json({ error: 'snapshot (object) is required' });
+      }
+      const allowedTriggers: SaveTrigger[] = ['user_save', 'chat_command', 'auto_prompt'];
+      const safeTrigger: SaveTrigger | undefined =
+        trigger && allowedTriggers.includes(trigger) ? trigger : undefined;
+      const userId = (req.user as any)?.userId ?? null;
+      const row = await dealVersionsService.saveVersion({
+        dealId,
+        userId,
+        snapshot,
+        // modelVersions + divergences intentionally omitted — server stamps them.
+        trigger: safeTrigger,
+        note: note ?? null,
+      });
+      return res.status(201).json({ success: true, data: row });
+    } catch (error: any) {
+      console.error('Save version error:', error.message);
+      return res.status(500).json({ error: error.message });
     }
-    const version = await dealVersionsService.getVersion(req.params.dealId, versionNumber);
-    if (!version) return res.status(404).json({ error: 'version not found' });
-    return res.json({ success: true, data: version });
-  } catch (error: any) {
-    console.error('Get version error:', error.message);
-    return res.status(500).json({ error: error.message });
   }
-});
+);
+
+router.get(
+  '/:dealId/versions/:versionNumber',
+  requireAuth,
+  requireDealAccess,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const versionNumber = Number(req.params.versionNumber);
+      if (!Number.isFinite(versionNumber) || versionNumber < 1) {
+        return res.status(400).json({ error: 'versionNumber must be a positive integer' });
+      }
+      const version = await dealVersionsService.getVersion(req.params.dealId, versionNumber);
+      if (!version) return res.status(404).json({ error: 'version not found' });
+      return res.json({ success: true, data: version });
+    } catch (error: any) {
+      console.error('Get version error:', error.message);
+      return res.status(500).json({ error: error.message });
+    }
+  }
+);
 
 router.post('/build', async (req: Request, res: Response) => {
   try {

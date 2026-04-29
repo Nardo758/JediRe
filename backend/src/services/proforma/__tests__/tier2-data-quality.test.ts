@@ -15,6 +15,7 @@ import { MODEL_VERSIONS, snapshotModelVersions, stampModelVersion } from '../mod
 import { agentFillIn } from '../agent-fill-in';
 import type { LibraryResolver } from '../agent-fill-in';
 import { DealVersionsService } from '../deal-versions.service';
+import { mapSignalsToAdjustments } from '../../correlation-adjustments.service';
 
 describe('Tier-2 ProvenancedValue.dataQuality (Spec §12)', () => {
   test('user source always ACTUAL', () => {
@@ -252,5 +253,50 @@ describe('Tier-2 override divergence walker (Spec §13)', () => {
     const divs = svc.computeOverrideDivergences(snapshot);
     expect(divs).toHaveLength(1);
     expect(divs[0].field).toBe('assumptions.cap');
+  });
+});
+
+describe('Tier-2 correlation-adjustments mapping (Spec §3)', () => {
+  const fixedNow = '2026-04-29T12:00:00.000Z';
+
+  test('bullish/bearish signals map to known target fields with correct delta', () => {
+    const out = mapSignalsToAdjustments(
+      [
+        { id: 'COR-01', name: 'Rent runway', signal: 'bullish', confidence: 'high', leadTime: '6m' },
+        { id: 'COR-06', name: 'Supply pressure', signal: 'bearish', confidence: 'medium' },
+      ],
+      fixedNow
+    );
+    expect(out).toHaveLength(2);
+    expect(out[0].cor_id).toBe('COR-01');
+    expect(out[0].target_field).toBe('rentGrowthYr1');
+    expect(out[0].delta_pct).toBeGreaterThan(0);
+    expect(out[0].confidence).toBe('high');
+    expect(out[0].computed_at).toBe(fixedNow);
+    expect(out[0].model_version).toBeTruthy();
+    expect(out[0].lead_time).toBe('6m');
+    expect(out[1].delta_pct).toBeLessThan(0);
+    expect(out[1].target_field).toBe('occupancy');
+  });
+
+  test('insufficient confidence and unknown ids are dropped', () => {
+    const out = mapSignalsToAdjustments(
+      [
+        { id: 'COR-01', signal: 'bullish', confidence: 'insufficient' },
+        { id: 'COR-99-UNKNOWN', signal: 'bullish', confidence: 'high' },
+        { id: 'COR-13', signal: null, confidence: 'high' },
+      ],
+      fixedNow
+    );
+    expect(out).toHaveLength(0);
+  });
+
+  test('explicit targetField overrides default mapping', () => {
+    const out = mapSignalsToAdjustments(
+      [{ id: 'COR-01', signal: 'bullish', confidence: 'high', targetField: 'customField' }],
+      fixedNow
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0].target_field).toBe('customField');
   });
 });

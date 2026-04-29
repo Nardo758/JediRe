@@ -193,9 +193,138 @@ export interface FinancialModelResult {
   }>;
 }
 
+// ── Tier-2 §12 wiring: Agent fill-in registry + assumption helpers ──────────
+// The registry pattern keeps a hard build-time dependency out of the engine
+// while still giving production code a single line to wire a real resolver:
+//   import { financialModelEngineFillInRegistry } from '...';
+//   financialModelEngineFillInRegistry.setResolver(realResolver);
+// When no resolver is registered, the fill-in pass in buildModel() is a no-op.
+
+import type { LibraryResolver, TemplateForFill } from './proforma/agent-fill-in';
+
+const REQUIRED_FIELDS_BY_MODEL_TYPE: Record<string, string[]> = {
+  existing: [
+    'rentGrowthYr1',
+    'opexGrowthYr1',
+    'occupancy',
+    'exitCap',
+    'expenseRatio',
+    'managementFeePct',
+    'replacementReservesPerUnit',
+  ],
+  development: [
+    'rentGrowthYr1',
+    'opexGrowthYr1',
+    'leaseUpAbsorption',
+    'stabilizedOccupancy',
+    'exitCap',
+    'devCostPerUnit',
+  ],
+};
+
+class FinancialModelEngineFillInRegistry {
+  private resolver: LibraryResolver | null = null;
+
+  setResolver(resolver: LibraryResolver | null): void {
+    this.resolver = resolver;
+  }
+
+  getResolver(): LibraryResolver | null {
+    return this.resolver;
+  }
+
+  getTemplate(modelType: string): TemplateForFill {
+    const fields = REQUIRED_FIELDS_BY_MODEL_TYPE[modelType] ?? REQUIRED_FIELDS_BY_MODEL_TYPE.existing;
+    return { sections: [{ id: 'tier2_required', fields, required: true }] };
+  }
+}
+
+export const financialModelEngineFillInRegistry = new FinancialModelEngineFillInRegistry();
+
+/**
+ * Extract a flat map of {field -> ProvenancedValue|null} from the assumption
+ * envelope so the agent fill-in walker can detect which required fields are
+ * already populated. Treats `0` and falsy strings as PRESENT (not missing).
+ */
+function extractExistingForFillIn(
+  assumptions: ProFormaAssumptions
+): Record<string, any> {
+  const a = assumptions as any;
+  const flat: Record<string, any> = {};
+  const candidates = [
+    'rentGrowthYr1', 'opexGrowthYr1', 'occupancy', 'exitCap',
+    'expenseRatio', 'managementFeePct', 'replacementReservesPerUnit',
+    'leaseUpAbsorption', 'stabilizedOccupancy', 'devCostPerUnit',
+  ];
+  for (const k of candidates) {
+    const v = a[k];
+    if (v === null || v === undefined) {
+      flat[k] = null;
+    } else if (typeof v === 'object' && 'value' in v) {
+      // Already a ProvenancedValue
+      flat[k] = v;
+    } else {
+      // Plain scalar — treat as already-present
+      flat[k] = { value: v, source: 'platform', confidence: 0.9, qualityFlag: 'green', asOf: new Date().toISOString() };
+    }
+  }
+  return flat;
+}
+
+/** Merge filled ProvenancedValues back onto the assumption envelope. */
+function applyFillInToAssumptions(
+  assumptions: ProFormaAssumptions,
+  fields: Record<string, any>
+): void {
+  const a = assumptions as any;
+  for (const [key, pv] of Object.entries(fields)) {
+    if (pv && pv.value !== null && pv.value !== undefined) {
+      // Only fill if the slot was actually empty — never overwrite existing.
+      if (a[key] === null || a[key] === undefined) {
+        a[key] = pv.value;
+      }
+    }
+  }
+}
+
 export class FinancialModelEngineService {
   async buildModel(dealId: string, assumptions: ProFormaAssumptions): Promise<FinancialModelResult> {
     const pool = getPool();
+
+    // ─── Tier-2 §12: Agent fill-in pass ──────────────────────────────────
+    // Walk a small required-fields template; for any field that's still
+    // missing from the input assumptions, fill from the data library with
+    // INFERRED quality (or DEFAULT placeholder if the library has no comp).
+    // Production resolver is supplied via setAgentFillInResolver(); when no
+    // resolver is registered, this pass is a no-op (no behavior change).
+    try {
+      const resolver = financialModelEngineFillInRegistry.getResolver();
+      if (resolver) {
+        const { agentFillIn } = await import('./proforma/agent-fill-in');
+        const ctx = {
+          dealId,
+          state: assumptions.dealInfo?.state ?? null,
+          msa: assumptions.dealInfo?.city ?? null,
+          assetClass: assumptions.modelType,
+          unitCount: assumptions.dealInfo?.totalUnits ?? null,
+        };
+        const fill = await agentFillIn({
+          context: ctx,
+          template: financialModelEngineFillInRegistry.getTemplate(assumptions.modelType),
+          existing: extractExistingForFillIn(assumptions),
+          resolver,
+        });
+        logger.info(
+          `[Tier-2] Agent fill-in for ${dealId}: ` +
+          `filled=${fill.filledCount} skipped=${fill.skippedCount} defaulted=${fill.defaultedCount}`
+        );
+        // Merge filled values back onto the assumptions envelope so the
+        // downstream M26/M27 enhancer sees a complete-ish input.
+        applyFillInToAssumptions(assumptions, fill.fields);
+      }
+    } catch (err: any) {
+      logger.warn(`[Tier-2] Agent fill-in skipped for ${dealId}: ${err?.message}`);
+    }
 
     // PHASE 2: Enhance assumptions with M26 tax and M27 comp data
     const { m26m27ProFormaEnhancer } = await import('./financial-model-engine.m26-m27-enhancer');
