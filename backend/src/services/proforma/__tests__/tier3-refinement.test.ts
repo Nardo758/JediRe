@@ -528,3 +528,161 @@ describe('T006 composite blueprint integration', () => {
     );
   });
 });
+
+// ────────────────────────────────────────────────────────────────────────────
+// T007 — projectProforma orchestrator (Tier 1+2+3 integration)
+// ────────────────────────────────────────────────────────────────────────────
+
+import { projectProforma, type ProjectionInputs } from '../proforma-projection.service';
+import { provenanced } from '../../../types/provenanced-value';
+import { OPEX_LINE_KEYS } from '../layered-growth/opex-growth';
+
+function pv(v: number, conf = 0.7) {
+  return provenanced(v, 'platform', conf, 'computed', null);
+}
+function zeroStructural() {
+  return provenanced(0, 'platform', 1.0, 'derived', 'no FL override');
+}
+function baseInputs(overrides: Partial<ProjectionInputs> = {}): ProjectionInputs {
+  return {
+    templateId: 'acquisition_stabilized',
+    revenueFormula: 'simple',
+    horizonYears: 5,
+    rentGrowthBase: {
+      horizonYears: 5,
+      assetClass: 'multifamily',
+      momentum: pv(0.04),
+      cyclePressureIndex: pv(0.2),
+      cpiShelterYoY: pv(0.035),
+      eventDeltas: [],
+    },
+    opexBase: {
+      propertyTax:        { momentum: pv(0.03), cycle: pv(0.005), anchor: pv(0.025), eventDeltas: [], structuralOverride: zeroStructural() },
+      insurance:          { momentum: pv(0.08), cycle: pv(0.10),  anchor: pv(0.04),  eventDeltas: [], structuralOverride: zeroStructural() },
+      utilities:          { momentum: pv(0.04), cycle: pv(0.02),  anchor: pv(0.03),  eventDeltas: [], structuralOverride: zeroStructural() },
+      repairsMaintenance: { momentum: pv(0.03), cycle: pv(0.01),  anchor: pv(0.025), eventDeltas: [], structuralOverride: zeroStructural() },
+      payroll:            { momentum: pv(0.04), cycle: pv(0.02),  anchor: pv(0.035), eventDeltas: [], structuralOverride: zeroStructural() },
+      marketingAdmin:     { momentum: pv(0.025),cycle: pv(0.005), anchor: pv(0.025), eventDeltas: [], structuralOverride: zeroStructural() },
+      replacementReserves:{ momentum: pv(0.025),cycle: pv(0.005), anchor: pv(0.025), eventDeltas: [], structuralOverride: zeroStructural() },
+      other:              { momentum: pv(0.025),cycle: pv(0.005), anchor: pv(0.025), eventDeltas: [], structuralOverride: zeroStructural() },
+    },
+    revenueParams: {
+      units: 100,
+      inPlaceRent: 1500,
+      marketRentYear1: 1600,
+    },
+    noiMargin: 0.60,
+    ...overrides,
+  };
+}
+
+describe('T007 projectProforma orchestrator (Tier 1+2+3 wiring)', () => {
+  test('produces a year per horizon with exhaustive OPEX rows', () => {
+    const out = projectProforma(baseInputs());
+    expect(out).toHaveLength(5);
+    for (const y of out) {
+      expect(y.opex).toHaveLength(OPEX_LINE_KEYS.length);
+      for (const line of y.opex) {
+        expect(OPEX_LINE_KEYS).toContain(line.line);
+        expect(line.cycleDriver).toBeDefined();
+        expect(line.cycleDriver.code).toBeTruthy();
+        expect(line.cycleDriver.source).toBeTruthy();
+      }
+    }
+  });
+
+  test('BTS template truncates rent growth and per-line OPEX growth at Y4+', () => {
+    const out = projectProforma(baseInputs({
+      templateId: 'development_ground_up',
+      horizonYears: 5,
+    }));
+    // Y1-Y3 carry growth (>0), Y4+ tuned to 0.
+    expect(out[0].rentGrowth.value).toBeGreaterThan(0);
+    expect(out[2].rentGrowth.value).toBeGreaterThan(0);
+    expect(out[3].rentGrowth.value).toBe(0);
+    expect(out[4].rentGrowth.value).toBe(0);
+    // Same for OPEX lines (each line tuned independently per template rule).
+    for (const line of out[3].opex) expect(line.growthTuned).toBe(0);
+    for (const line of out[4].opex) expect(line.growthTuned).toBe(0);
+    // Tuning must preserve raw vs tuned distinction.
+    const truncatedLine = out[3].opex.find(l => l.line === 'utilities')!;
+    expect(truncatedLine.growthRaw).toBeGreaterThan(0);
+    expect(truncatedLine.growthTuned).toBe(0);
+  });
+
+  test('Flip template truncates Y2+ growth (exit-by-year-1 strategy)', () => {
+    const out = projectProforma(baseInputs({
+      templateId: 'flip',
+      horizonYears: 3,
+    }));
+    // growthTruncationYear:1 means year > 1 is tuned to 0; Y1 still carries.
+    expect(out[0].rentGrowth.value).toBeGreaterThan(0);
+    expect(out[1].rentGrowth.value).toBe(0);
+    expect(out[2].rentGrowth.value).toBe(0);
+  });
+
+  test('renewal_aware formula is invoked when revenueFormula is set', () => {
+    const inputs = baseInputs({
+      revenueFormula: 'renewal_aware',
+      revenueParams: {
+        units: 100,
+        inPlaceRent: 1500,
+        marketRentYear1: 1600,
+        renewalRate: 0.6,
+        renewalGrowth: 0.02,
+      },
+    });
+    const out = projectProforma(inputs);
+    const y1 = out[0];
+    // Renewal-aware Y1: 60 units × 1500 × 1.02 + 40 × 1600 = 91,800 + 64,000 = 155,800.
+    // Formula returns same-period revenue as inputs (no ×12 wrap).
+    const expected = 60 * 1500 * 1.02 + 40 * 1600;
+    expect(y1.revenue.value).toBeCloseTo(expected, 0);
+  });
+
+  test('simple formula returns units × inPlaceRent × (1+g)^year for Y1', () => {
+    const out = projectProforma(baseInputs({
+      revenueFormula: 'simple',
+      horizonYears: 1,
+    }));
+    const g = out[0].rentGrowth.value!;
+    expect(out[0].revenue.value).toBeCloseTo(100 * 1500 * (1 + g), 2);
+  });
+
+  test('positionSpec injects per-year contribution into rent growth', () => {
+    const withoutPos = projectProforma(baseInputs({ horizonYears: 1 }));
+    const withPos = projectProforma(baseInputs({
+      horizonYears: 1,
+      positionSpec: {
+        initialPosition: 0.10,         // 10% premium
+        mode: 'mean_reverting',
+        assetClass: 'multifamily',     // 4.5yr half-life premium
+      },
+    }));
+    // Mean-reverting from +10% → 0 contributes a NEGATIVE delta in Y1.
+    expect(withPos[0].rentGrowth.value!).toBeLessThan(withoutPos[0].rentGrowth.value!);
+    expect(withPos[0].positionContribution).toBeLessThan(0);
+    expect(withoutPos[0].positionContribution).toBe(0);
+  });
+
+  test('OPEX cycleDriver codes match the blueprint registry verbatim', () => {
+    const out = projectProforma(baseInputs({ horizonYears: 1 }));
+    const lookup = Object.fromEntries(OPEX_LINE_ITEMS.map(l => [l.key, l.cycleDriver]));
+    for (const line of out[0].opex) {
+      expect(line.cycleDriver).toEqual(lookup[line.line]);
+    }
+  });
+
+  test('marketRent_t trends year-over-year by tuned growth', () => {
+    const out = projectProforma(baseInputs({ revenueFormula: 'simple', horizonYears: 3 }));
+    expect(out[0].marketRentT).toBeCloseTo(1600, 6);
+    expect(out[1].marketRentT).toBeCloseTo(1600 * (1 + out[1].rentGrowth.value!), 4);
+    expect(out[2].marketRentT).toBeCloseTo(out[1].marketRentT * (1 + out[2].rentGrowth.value!), 4);
+  });
+
+  test('management fee row auto-couples to revenue growth (tuned)', () => {
+    const out = projectProforma(baseInputs({ horizonYears: 2 }));
+    const mgmtY1 = out[0].opex.find(l => l.line === 'managementFee')!;
+    expect(mgmtY1.growthTuned).toBeCloseTo(out[0].rentGrowth.value!, 6);
+  });
+});
