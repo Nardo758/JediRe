@@ -2048,10 +2048,7 @@ export async function getDealFinancials(
     io_period_months:  'ioPeriodMonths',
     // Section 1/3 fields pass through unchanged (snake_case = rd.key)
   };
-  // F9 Tier-1 backward-compat: rationale entries written before the
-  // canonicalize-on-write fix may be stored under camelCase patch field
-  // names (e.g. 'vacancyPct'). Map those back to snake_case storage form
-  // so the downstream SNAKE_TO_STATIC_KEY lookup resolves the row correctly.
+  // Back-compat for pre-canonical (camelCase) rationale rows.
   const LEGACY_CAMEL_TO_SNAKE: Record<string, string> = {
     vacancyPct: 'vacancy_pct', lossToLeasePct: 'loss_to_lease_pct',
     concessionsPct: 'concessions_pct', badDebtPct: 'bad_debt_pct',
@@ -2084,16 +2081,11 @@ export async function getDealFinancials(
       const ratYr = parseInt(rest.slice(lastColon + 1), 10);
       const ratText = (entry as unknown as { rationale?: string } | null)?.rationale;
       if (isNaN(ratYr) || !ratText) continue;
-      // Backward-compat: existing rows may have camelCase keys (pre-canonicalization);
-      // convert to snake_case before SNAKE_TO_STATIC_KEY lookup so both forms resolve.
       const ratField = LEGACY_CAMEL_TO_SNAKE[rawRatField] ?? rawRatField;
       const rowKey = SNAKE_TO_STATIC_KEY[ratField] ?? ratField;
       if (!userOverrideRationales[rowKey]) userOverrideRationales[rowKey] = {};
       userOverrideRationales[rowKey][ratYr] = ratText;
-      // Mirror vacancy_pct rationale to the Section 2 'stabilizedOcc' row key
-      // (parallel to the value-mirror at line ~2086 — Section 2's stabilizedOcc
-      // row patches the same vacancyPct field, so its hard-warning flag must
-      // also rehydrate the same justification text).
+      // Mirror vacancy_pct → stabilizedOcc (parallels value-mirror below).
       if (ratField === 'vacancy_pct') {
         if (!userOverrideRationales['stabilizedOcc']) userOverrideRationales['stabilizedOcc'] = {};
         userOverrideRationales['stabilizedOcc'][ratYr] = ratText;
@@ -3648,13 +3640,7 @@ export async function applyFinancialsOverride(
   // up-front. The user-assumption layer reads this back when rehydrating so
   // dismissed hard-warning justifications survive reload (spec §9).
   if (rationale !== null) {
-    // F9 Tier-1: canonicalize the rationale key to the snake_case storage
-    // form (FIELD_MAP normalization) so it lines up with how Section 1/3
-    // userOverrides are stored — the read-pass rehydration table is
-    // SNAKE_TO_STATIC_KEY which expects snake_case row keys. Without this
-    // canonicalization, an ACK on `vacancyPct` would write
-    // `rationale:vacancyPct:5` but the override flag for the
-    // `vacancy_pct` row would never find it (key mismatch).
+    // Canonicalize to snake_case so the read-pass row lookup (SNAKE_TO_STATIC_KEY) resolves.
     const canonicalField = FIELD_MAP[field] ?? field;
     const rationaleKey = `rationale:${canonicalField}:${year ?? 0}`;
     if (rationale.trim().length === 0) {
