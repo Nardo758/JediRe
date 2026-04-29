@@ -1,0 +1,30 @@
+# Management Fee — Archetype A (index-anchored growth)
+#
+# Management fee is a percentage-of-GPR calculation, not an independent OpEx line.
+# It couples to revenue: fee = GPR × contract_rate (typically 3-5%).
+# T12 can confirm the contract rate but the dollar amount is derived from revenue.
+
+liuid: "opex.managementFee"
+label: "Property Management"
+section: "opex"
+archetype: "A"
+version: 1
+
+applicableDealTypes: ["acquisition", "development", "refi", "reforecast"]
+
+sourcePreference: [1, 2.5, 3, 4, 5]
+
+dependsOn:
+  required: ["income.gpr"]
+  recommended: []
+
+trajectory:
+  baseGrowth: "pct_of_egi"
+  scheduledEvents: []
+  profileDerivedEvents: true
+
+collision:
+  enabled: true
+  materiality:
+    absoluteMin: 25000
+    pctMin: 0.10

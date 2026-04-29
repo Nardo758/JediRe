@@ -1,0 +1,39 @@
+# Replacement Reserves — Archetype E (zero-rule baseline)
+#
+# Reserves are not a real expense — they're a capital set-aside.
+# Industry standard: $250-400/unit/yr for garden, $350-500/unit/yr for midrise+.
+# This is the simplest schema because it's a rule-of-thumb calculation,
+# not derived from T12 or any data source.
+
+liuid: "reserves.replacementReserves"
+label: "Replacement Reserves"
+section: "reserves"
+archetype: "E"
+version: 1
+
+applicableDealTypes: ["acquisition", "development", "refi", "reforecast"]
+
+sourcePreference: [2.5, 3, 5]
+# Tier 1 (T12) is IRRELEVANT — reserves appear in the proforma, not the P&L
+# Tier 2.5 (profile cluster) gives the best guidance
+# Tier 5 (default) is: $250/unit for garden, $350 for midrise, $450 for highrise
+
+dependsOn:
+  required: []
+  recommended: []
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents:
+    - primitive: "rate_delta"
+      year: 1
+      description: "Age-adjusted reserve — older assets need more capital"
+      value: null
+      source: "schema"
+      confidence: 0.5
+      binding: false
+  profileDerivedEvents: true
+
+confidence:
+  minSampleForHigh: 50
+  freshnessDays: 365

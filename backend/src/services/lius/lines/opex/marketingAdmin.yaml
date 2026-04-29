@@ -1,0 +1,49 @@
+# Marketing & Admin — Archetype B (T12-anchored, cross-validated)
+#
+# Marketing is lifecycle-dependent: lease-up spends 2-3x stabilized
+# Admin is relatively fixed per deal regardless of unit count.
+# Combines two subcategories that behave differently.
+
+liuid: "opex.marketingAdmin"
+label: "Marketing & Admin"
+section: "opex"
+archetype: "B"
+version: 1
+
+applicableDealTypes: ["acquisition", "development", "refi", "reforecast"]
+
+sourcePreference: [1, 2.5, 3, 4, 5]
+
+dependsOn:
+  required: []
+  recommended: []
+
+lifecycleOverrides:
+  - phase: "lease_up"
+    sourcePreference: [1, 5, 2.5, 3, 4]
+    # Lease-up marketing spend often dominates — use T12 + default
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents:
+    - primitive: "rate_delta"
+      year: 1
+      description: "Lease-up marketing premium (if applicable)"
+      value: 0.50
+      source: "schema"
+      confidence: 0.5
+      binding: false
+    - primitive: "rate_delta"
+      year: 3
+      description: "Post stabilization marketing normalization"
+      value: -0.25
+      source: "schema"
+      confidence: 0.4
+      binding: false
+  profileDerivedEvents: true
+
+collision:
+  enabled: true
+  materiality:
+    absoluteMin: 20000
+    pctMin: 0.30

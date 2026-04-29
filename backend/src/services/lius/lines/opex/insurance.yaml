@@ -1,0 +1,88 @@
+# Insurance — Archetype C (ruleset-driven)
+#
+# Insurance is structurally similar to property tax in its failure mode:
+# T12 reflects the seller's policy under prior market conditions, which
+# has BEEN disrupted (FL hardening, CA wildfires, TX hailstorms).
+#
+# The primary driver is:
+#   building_replacement_cost × rate_per_dollar × location_loading
+#
+# Key dynamics:
+# - FL: 200-400% increases over 3 years (coastal wind/hard market)
+# - TX: hail/fire loading, increased by 50-100% over 5 years
+# - CA: wildfire exclusion zones, double or triple rate
+# - Recent vintage (2015+): lower replacement cost per unit → less loading
+# - Elevator, pool, clubhouse: liability premium adders
+
+liuid: "opex.insurance"
+label: "Insurance"
+section: "opex"
+archetype: "C"
+version: 1
+
+applicableDealTypes: ["acquisition", "development", "refi", "reforecast"]
+
+sourcePreference: [2.5, 1, 2, 3, 4]
+# Tier 2.5 (profile cluster) is PRIMARY because:
+#   - insurance is highly building-specific (vintage, construction, amenities)
+#   - T12 may have one-time items (catch-up, claim deductible, retro adjustment)
+#   - profile cluster of buildings with same specs gives the best baseline
+# Tier 1 (T12) second because it includes the actual current policy
+
+dependsOn:
+  required: []
+  recommended: ["opex.propertyTax"]
+  # Both are jurisdiction-sensitive; insurance loading often correlates with tax millage
+
+hardRules:
+  - condition: "FL coastal acquisition"
+    description: "FL coastal properties face 200-400% hard market increases"
+    effect:
+      sourceActions:
+        - tier: 1
+          action: "remove"
+          # Current T12 policy may be cancelled or non-renewable at that rate
+      trajectoryOverrides:
+        - year: 1
+          primitive: "rate_delta"
+          value: 0.25
+          description: "FL coastal — 25% step-up from X date to renewal"
+          binding: false
+
+trajectory:
+  baseGrowth: "platform.insurance_growth"
+  scheduledEvents:
+    - primitive: "rate_delta"
+      year: 2
+      description: "Hard market renewal reset — accelerate growth years 2-3"
+      value: 0.15
+      source: "schema"
+      confidence: 0.7
+      binding: false
+
+collision:
+  enabled: true
+  materiality:
+    absoluteMin: 25000
+    pctMin: 0.25
+
+confidence:
+  minSampleForHigh: 20
+  freshnessDays: 90
+
+reasoningTemplate: |
+  For {{label}}, the agent used building profile cluster benchmarks as the primary source.
+  Profile-matched buildings show P50 of ${{profile_p50}}/unit (n={{n}} structural twins).
+  T12 shows ${{t12_value}} {{one_time_note}}.
+
+  {{location_loading_note}}
+
+  The cross-check: {{cross_check_result}}.
+  {{decision_rationale}}
+
+notes: |
+  Insurance is the most volatile OpEx line item currently.
+  Florida properties in particular need the building profile cluster — 
+  the generic archive (which includes non-coastal properties) will
+  systematically underestimate FL insurance costs.
+  Profile cluster comparison is what catches the FL vs GA difference.

@@ -1,0 +1,28 @@
+# Utilities — Archetype B (T12-anchored, cross-validated)
+#
+# Utilities are mostly building-specific but have RUBS complications:
+# - Older buildings often include water in rent → higher landlord cost
+# - Newer buildings often RUBS water back → lower landlord cost
+# - Electric/gas: building + unit level, hard to separate from T12
+
+liuid: "opex.utilities"
+label: "Utilities"
+section: "opex"
+archetype: "B"
+version: 1
+
+applicableDealTypes: ["acquisition", "development", "refi", "reforecast"]
+
+sourcePreference: [1, 2.5, 3, 4, 5]
+dependsOn:
+  required: []
+  recommended: []
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents: []
+  profileDerivedEvents: true
+
+confidence:
+  minSampleForHigh: 30
+  freshnessDays: 365

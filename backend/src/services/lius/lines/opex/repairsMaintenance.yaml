@@ -1,0 +1,78 @@
+# Repairs & Maintenance — Archetype B (T12-anchored, cross-validated)
+#
+# R&M is the archetypal "T12 + cross-check" line item because:
+#   1. It's property-specific (age, finish level, turnover rate)
+#   2. It frequently contains ONE-TIME capital items
+#   3. T12 is authoritative BUT must be investigated for contamination
+#
+# Key dynamics:
+# - Vintage bands: pre-1980 = 1.5-2x recent vintage maintenance
+# - Lifecycle phase: lease-up = high turnover cost, stabilized = lower
+# - Age-10 HVAC replacement: $300-500/unit spike in year 10 of hold
+# - Structural items (elevator contract, sprinkler inspection) are known
+# - One-time items (deferred catch-up, storm damage, capex-as-R&M) must be removed
+
+liuid: "opex.repairsMaintenance"
+label: "Repairs & Maintenance"
+section: "opex"
+archetype: "B"
+version: 1
+
+applicableDealTypes: ["acquisition", "development", "refi", "reforecast"]
+
+sourcePreference: [1, 2.5, 3, 4, 5]
+# Tier 1 (T12) IS the primary source — but with investigation
+# Tier 2.5 (profile cluster) is the cross-validation
+# The agent MUST check: is the delta one-time or structural?
+
+dependsOn:
+  required: []
+  recommended: []
+
+trajectory:
+  baseGrowth: "cpi"
+  scheduledEvents:
+    - primitive: "discrete_spike"
+      year: 10
+      description: "Age-10 HVAC replacement cycle spike"
+      value: null
+      source: "schema"
+      confidence: 0.6
+      binding: false
+    - primitive: "rate_delta"
+      year: 5
+      description: "Age-related R&M ramp (older assets need more)"
+      value: 0.02
+      source: "schema"
+      confidence: 0.5
+      binding: false
+  profileDerivedEvents: true
+
+collision:
+  enabled: true
+  materiality:
+    absoluteMin: 50000
+    pctMin: 0.30
+
+confidence:
+  minSampleForHigh: 30
+  freshnessDays: 365
+
+reasoningTemplate: |
+  For {{label}}, the agent started with the T12 actual of ${{t12_value}}/unit.
+  The building profile cluster ({{fingerprint}}, n={{n}}) shows P50 of ${{profile_p50}}/unit.
+
+  Comparing T12 to profile expectation:
+  - Delta: ${{delta}}/unit ({{delta_pct}}%)
+  - {{one_time_assessment}}
+
+  {{decision_rationale}}
+  Cross-check: {{cross_check_result}}.
+
+notes: |
+  R&M is the line item most likely to contain misclassified costs.
+  The one-time vs recurring distinction is critical. Common traps:
+  - HVAC replacement expensed as repairs ($300-500K in one year)
+  - Deferred make-ready backlog from acquisition transition
+  - Storm damage deductible applied to R&M instead of insurance
+  Always check T12 detail line items for "catch-up," "special," "one-time" flags.

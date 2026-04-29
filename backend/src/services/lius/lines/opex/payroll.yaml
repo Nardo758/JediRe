@@ -1,0 +1,52 @@
+# Payroll — Archetype B (T12-anchored, cross-validated)
+#
+# Payroll is staffing-ratio driven. The key metric is FTEs per 100 units.
+# Bell Partners target: 1.0 FTE/100 units at stabilization.
+# Lease-up: higher (leasing team + maintenance during fill).
+# Value-add: higher (turnover crew during renovation).
+#
+# Staffing ratio × average salary = payroll.
+# This is more predictive than just using T12 payroll alone.
+
+liuid: "opex.payroll"
+label: "On-site Payroll"
+section: "opex"
+archetype: "B"
+version: 1
+
+applicableDealTypes: ["acquisition", "development", "refi", "reforecast"]
+
+sourcePreference: [1, 2.5, 3, 4, 5]
+
+dependsOn:
+  required: []
+  recommended: []
+
+trajectory:
+  baseGrowth: "wage_index"
+  scheduledEvents:
+    - primitive: "level_reset"
+      year: 1
+      description: "Transition staffing adjustment (new operator staffing model)"
+      value: null
+      source: "schema"
+      confidence: 0.6
+      binding: false
+    - primitive: "rate_delta"
+      year: 3
+      description: "Stabilization → reduce leasing staff, normalize payroll"
+      value: -0.10
+      source: "schema"
+      confidence: 0.5
+      binding: false
+  profileDerivedEvents: true
+
+collision:
+  enabled: true
+  materiality:
+    absoluteMin: 50000
+    pctMin: 0.20
+
+confidence:
+  minSampleForHigh: 20
+  freshnessDays: 365

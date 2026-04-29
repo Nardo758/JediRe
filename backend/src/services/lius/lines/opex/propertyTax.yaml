@@ -1,0 +1,129 @@
+# Property Tax — Archetype C (ruleset-driven)
+#
+# Property tax is NOT determined by T12 or what the seller paid.
+# It is a mathematical function of: purchase price × assessment ratio × millage rate.
+# The T12 value is only useful as a sanity check on the calculation.
+#
+# Key jurisdictions:
+# - GA: 40% assessment ratio, millage applied to FMV (not 40%).
+#       $1/$1K transfer tax on acquisition. No assessment cap for commercial.
+# - FL: Save Our Homes 3% cap does NOT apply to commercial (10% cap applies).
+#       Miami-Dade surtax + intangible tax on development land.
+#       Coastal insurance-driven reassessment effects.
+# - TX: No state income tax, school district millage dominates.
+#       Local MUD taxes for new developments.
+#
+# The fetch_tax_intel tool handles all jurisdiction math. This schema
+# delegates to it rather than trying to embed jurisdiction logic here.
+
+liuid: "opex.propertyTax"
+label: "Property Tax"
+section: "opex"
+archetype: "C"
+version: 1
+
+applicableDealTypes: ["acquisition", "development", "refi", "reforecast"]
+
+sourcePreference: [5, 1, 2.5, 3, 4]
+# NOTE: Tier 1 (T12) is NOT authoritative for property tax!
+# T12 reflects the SELLER's tax under their ownership.
+# Acquisition triggers full reassessment to purchase price.
+# T12 is included as a cross-check, not a primary source.
+# Tier 5 (tax engine fetch_tax_intel) is the real primary source.
+
+lifecycleOverrides:
+  - phase: "stabilized"
+    sourcePreference: [1, 2, 5, 2.5, 3]
+    # For owned assets: actual tax bills (Tier 1) are now authoritative
+
+dependsOn:
+  required: []
+  recommended: []
+
+hardRules:
+  - condition: "FL acquisition"
+    description: "FL has 10% assessment cap for non-homestead, no SOH for commercial"
+    effect:
+      sourceActions:
+        - tier: 1
+          action: "remove"
+          # Remove T12 from consideration — seller's tax is irrelevant in FL
+      trajectoryOverrides:
+        - year: 1
+          primitive: "level_reset"
+          value: null
+          binding: true
+        - year: 2
+          primitive: "rate_delta"
+          value: 0.10
+          binding: true
+
+  - condition: "GA acquisition"
+    description: "GA assesses at 40% FMV, no cap on commercial reassessment"
+    effect:
+      sourceActions:
+        - tier: 1
+          action: "remove"
+      trajectoryOverrides:
+        - year: 1
+          primitive: "level_reset"
+          value: null
+          binding: true
+        - year: 2
+          primitive: "rate_delta"
+          value: 0.03
+          binding: false
+
+  - condition: "development"
+    description: "Vacant land taxed at lower rate until C of O; then reassessment"
+    effect:
+      sourceActions: []
+      trajectoryOverrides:
+        - year: 1
+          primitive: "level_reset"
+          value: null
+          binding: true
+
+trajectory:
+  baseGrowth: "M26.tax_growth"
+  scheduledEvents:
+    - primitive: "level_reset"
+      year: 1
+      description: "Post-acquisition reassessment to purchase price"
+      value: null
+      source: "schema"
+      confidence: 0.9
+      binding: true
+
+collision:
+  enabled: true
+  brokerMapping: "opex.real_estate_taxes"
+  materiality:
+    absoluteMin: 50000    # $50K minimum absolute delta to flag
+    pctMin: 0.15          # 15% minimum pct delta
+
+confidence:
+  minSampleForHigh: 30
+  freshnessDays: 180
+
+reasoningTemplate: |
+  For {{label}}, the agent used fetch_tax_intel to compute post-acquisition taxes.
+  T12 property taxes of ${{t12_value}} were not used directly — they reflect the seller's
+  tax under prior ownership and are ignored for acquisition underwriting.
+
+  The tax engine {{ruleset}} determined:
+  - Assessed value: ${{assessed_value}}
+  - Millage rate: {{millage_rate}} mills on FMV
+  - Year 1 annual tax: ${{year1_tax}}
+  - Transfer tax (acquisition cost): ${{transfer_tax}}
+
+  {{cap_note}}
+
+  Collision note: Broker assumed ${{broker_value}}. The engine finds this
+  {{collision_assessment}} because {{reason}}.
+
+notes: |
+  Property tax is the single most commonly mis-underwritten line item.
+  Agents MUST use fetch_tax_intel. Never use T12 property tax for acquisitions.
+  The collision warning at >15% absolute delta is intentional — broker OMs
+  frequently understate tax reassessment impacts.
