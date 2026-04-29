@@ -166,6 +166,42 @@ For each assumption where archive data is available, include:
 
 This is written into the evidence data_points and reported in the final JSON output.
 
+## Tax Math (NEW — Always Consult fetch_tax_intel)
+
+For EVERY deal, call fetch_tax_intel to determine the property tax math:
+
+### Why Tax Math Varies by Deal Type
+- **ACQUISITIONS**: Purchase triggers full reassessment → taxes jump immediately
+- **DEVELOPMENTS**: Vacant land taxed at lower rate until Certificate of Occupancy
+- **REFIS**: No reassessment — taxes continue on current assessed value schedule
+
+### What fetch_tax_intel Returns
+The tool returns a structured object with jurisdiction, millage rate,
+assessed value, year-1 tax, transfer tax, and jurisdiction-specific tips.
+
+Example fields:
+- jurisdiction: 'GA-Fulton'
+- reTax.year1.assessedValue: purchase price after reassessment
+- reTax.year1.millageRate: e.g. 11.60 mills on FMV
+- reTax.year1.taxAmount: annual tax at new assessed value
+- reTax.deltaVsT12Pct: percentage change vs prior owner's taxes
+- transferTax.totalTransferTax: acquisition doc stamp cost
+- tips[]: jurisdiction-specific guidance (GA 40% ratio, FL SOH cap, etc.)
+
+### How to Use Tax Intel
+1. Call fetch_tax_intel with: dealId, state, county, purchasePrice, loanAmount, units
+2. Use the returned year1.taxAmount as your proforma Year 1 taxes line item
+3. Use the deltaVsT12Pct to explain the post-acquisition tax bump in commentary
+4. Use transferTax.totalTransferTax as acquisition closing cost
+5. For development deals: check if land tax rate differs from improved tax rate
+6. Check tips[] for jurisdiction-specific rules (e.g. FL SOH cap, TX no income tax)
+
+### How This Differs from T12 Taxes
+The T12 reflects the SELLER's tax bill under their ownership. Post-acquisition:
+- Reassessed to purchase price → typically HIGHER taxes
+- Any exemptions seller held (homestead, seniors, veterans) are LOST
+- Process: T12 tax → fetch_tax_intel year1 tax → explain delta in commentary
+
 ## Self-Learning System (CRITICAL)
 
 The platform learns from outcomes: what we assumed vs what actually happened. You MUST
@@ -234,6 +270,52 @@ Use market trends to calibrate forward projections:
   2. For insurance: use jurisdiction forecast + market trend (FL/TX trending 10-15%/yr)
   3. For taxes: use jurisdiction reassessment model (post-acquisition jump)
   4. For controllables: use market trend or CPI, whichever is higher
+
+## Field Resolution Priority (HOW each value is decided)
+
+When multiple sources provide a value for the same field, use this hierarchy:
+
+  1️⃣ DEAL DOCUMENTS (T-12, Rent Roll, Tax Bill, OM)
+     → Highest authority. T12 actuals are ground truth.
+     → Extract via fetch_data_matrix and read context.extractedData
+  
+  2️⃣ DATA LIBRARY (owned portfolio + archive deals)
+     → Comparable assets in same submarket/class/vintage
+     → fetch_data_library_comps, fetch_line_item_benchmarks
+     → Use when T12 data is missing for specific line item
+  
+  3️⃣ MARKET COMP SET (competitive properties within 3-5mi)
+     → fetch_comp_set, fetch_market_trends
+     → Use when no archive benchmark exists
+  
+  4️⃣ JURISDICTION MODELS (tax engine, insurance benchmarks)
+     → fetch_tax_intel — compute post-acquisition taxes
+     → fetch_debt_assumptions — local debt market terms
+  
+  5️⃣ AGENT KNOWLEDGE (training data fallback)
+     → Industry rule-of-thumb when all tools return null
+     → Flag as "conservative_default" — lowest confidence
+
+### How to Resolve Conflicts
+Example: T12 shows maintenance $500/unit, Data Library shows $300/unit:
+- USE $500/unit (Tier 1) — actual property data is authoritative
+- INCLUDE in evidence: "T12 actual: $501/unit; Data Library median: $298/unit"
+- EXPLAIN: "R&M higher than portfolio average due to [age] [condition] [turnover]"
+- DO NOT average them. Averaging obscures real cost structure.
+
+Example: No T12 data, rent roll shows 80% occupancy, market comps show 94%:
+- USE 80% (Tier 1 — actual property data)
+- CROSS-REFERENCE: "Subject in lease-up phase, market stabilized at 94%"
+- PROJECT: "Physical occupancy ramps from 80% → stabilization in Year 3"
+
+### Tax Math Decision Tree
+1. Call fetch_tax_intel → get year1 tax with assessment
+2. Compare to T12 taxes (if available):
+   - T12 tax > tax_intel by <15%: USE tax_intel (reassessment adjustment)
+   - T12 tax < tax_intel by >15%: FLAG and explain (likely acquisition bump)
+   - No T12 tax: USE tax_intel Year 1 directly
+3. For FORWARD years: apply jurisdiction cap/growth from tax_intel year schedule
+4. For TRANSFER taxes: use tax_intel.transferTax.totalTransferTax as closing cost
 
 ## Tool Sequence (typical run)
 

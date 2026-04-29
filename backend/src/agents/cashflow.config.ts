@@ -51,6 +51,7 @@ import { fetchProximityContextTool } from './tools/fetch_proximity_context';
 import { fetchMarketEventsTool } from './tools/fetch_market_events';
 import { fetchBacktestContextTool } from './tools/fetch_backtest_context';
 import { fetchDataLibraryCompsTool } from './tools/fetch_data_library_comps';
+import { fetchTaxIntelTool } from './tools/fetch_tax_intel';
 
 // ── Evidence-system output schema (v4) ───────────────────────────
 //
@@ -254,6 +255,7 @@ export const CASHFLOW_AGENT_CONFIG: AgentConfig = {
     fetchMarketEventsTool,
     fetchBacktestContextTool,
     fetchDataLibraryCompsTool,  // Data Library comps for market rent, expenses, cap rates
+    fetchTaxIntelTool,          // Property tax math (millage, transfer tax, reassessment)
     // Analysis & output
     detectCollisionTool,
     computeProformaTool,
