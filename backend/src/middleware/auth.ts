@@ -19,6 +19,17 @@ export interface AuthenticatedRequest extends Request {
   };
 }
 
+// Extract API key from x-api-key header or Authorization: Bearer <key>
+function extractApiKey(req: Request): string | null {
+  const fromHeader = req.headers['x-api-key'] as string | undefined;
+  if (fromHeader) return fromHeader;
+  const auth = req.headers.authorization;
+  if (auth && auth.startsWith('Bearer ')) {
+    return auth.slice(7);
+  }
+  return null;
+}
+
 /**
  * Require authentication
  * Verifies JWT token and sets req.user. No per-request DB client acquisition.
@@ -29,7 +40,7 @@ export async function requireAuth(
   next: NextFunction
 ): Promise<void> {
   // Allow API key auth on any route that requires auth
-  const apiKey = req.headers['x-api-key'] as string;
+  const apiKey = extractApiKey(req);
   if (apiKey) {
     return requireApiKey(req, res, next);
   }
@@ -136,7 +147,7 @@ export function requireApiKey(
   res: Response,
   next: NextFunction
 ): void {
-  const apiKey = req.headers['x-api-key'] as string;
+  const apiKey = extractApiKey(req);
 
   if (!apiKey) {
     res.status(401).json({
@@ -193,7 +204,7 @@ export async function requireAuthOrApiKey(
   res: Response,
   next: NextFunction
 ): Promise<void> {
-  const apiKey = req.headers['x-api-key'] as string;
+  const apiKey = extractApiKey(req);
   if (apiKey) {
     return requireApiKey(req, res, next);
   }

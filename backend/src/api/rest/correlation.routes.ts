@@ -8,15 +8,27 @@ const router = Router();
 const engine = new CorrelationEngineService(pool);
 
 /**
+ * Extract API key from x-api-key header or Authorization: Bearer <key>
+ */
+function extractAdminApiKey(req: AuthenticatedRequest): string | null {
+  const fromHeader = req.headers['x-api-key'] as string | undefined;
+  if (fromHeader) return fromHeader;
+  const auth = req.headers.authorization;
+  if (auth && auth.startsWith('Bearer ')) {
+    return auth.slice(7);
+  }
+  return null;
+}
+
+/**
  * Middleware: Require Admin API Key
  */
 function requireAdminApiKey(req: AuthenticatedRequest, res: Response, next: Function) {
-  const apiKey = req.headers['x-api-key'] as string;
-
+  const apiKey = extractAdminApiKey(req);
   if (!apiKey) {
     return res.status(401).json({
       error: 'Unauthorized',
-      message: 'Admin API key required (X-API-Key header)'
+      message: 'Admin API key required (X-API-Key header or Authorization: Bearer <key>)'
     });
   }
 

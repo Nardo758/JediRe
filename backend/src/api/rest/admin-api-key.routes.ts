@@ -15,12 +15,14 @@ const pool = getPool();
  * Middleware: Require Admin API Key
  */
 export function requireAdminApiKey(req: AuthenticatedRequest, res: Response, next: Function) {
-  const apiKey = req.headers['x-api-key'] as string;
+  const apiKey = req.headers['x-api-key'] as string
+    || req.query.api_key as string
+    || (req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.slice(7) : null);
   
   if (!apiKey) {
     return res.status(401).json({
       error: 'Unauthorized',
-      message: 'Admin API key required (X-API-Key header)'
+      message: 'Admin API key required (X-API-Key header, Authorization: Bearer, or ?api_key= query param)'
     });
   }
   
