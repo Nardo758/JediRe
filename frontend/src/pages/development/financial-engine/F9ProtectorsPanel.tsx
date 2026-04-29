@@ -56,6 +56,13 @@ export interface F9ProtectorsPanelProps {
    * Defaults to 0.6 — typical FL MF stabilized margin.
    */
   noiMargin?: number;
+  /**
+   * Callback invoked when a hard-warning override flag is ACK'd with a
+   * justification. The parent persists the rationale alongside the user
+   * override (spec §9). Only fired for `source === 'override'` +
+   * `severity === 'high'` flags.
+   */
+  onAckOverride?: (field: string, year: number, rationale: string) => void;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -197,11 +204,48 @@ function GordonBanner({
 // Validation flag rail item
 // ────────────────────────────────────────────────────────────────────────────
 
-function FlagRow({ flag }: { flag: ValidationFlag }) {
+/**
+ * Parse the (field, year) tuple out of an override flag id.
+ *
+ * The flag id is built in AssumptionsTab as
+ *   `override:{field}:{year}:{valueHash}`
+ * (see the override-classification effect). We parse from the right
+ * because `field` is allowed to contain `:` characters in the future
+ * (e.g. nested OPEX line keys); positional split-from-the-left would
+ * silently misparse those. Returns null for non-override flags.
+ */
+function parseOverrideFlagId(id: string): { field: string; year: number } | null {
+  const PREFIX = 'override:';
+  if (!id.startsWith(PREFIX)) return null;
+  const rest = id.slice(PREFIX.length);
+  const lastColon = rest.lastIndexOf(':');
+  if (lastColon <= 0) return null;
+  const beforeValue = rest.slice(0, lastColon);
+  const yearSepIdx = beforeValue.lastIndexOf(':');
+  if (yearSepIdx <= 0) return null;
+  const yearStr = beforeValue.slice(yearSepIdx + 1);
+  const year = parseInt(yearStr, 10);
+  if (isNaN(year) || !/^-?\d+$/.test(yearStr)) return null;
+  const field = beforeValue.slice(0, yearSepIdx);
+  if (!field) return null;
+  return { field, year };
+}
+
+function FlagRow({
+  flag,
+  onAckOverride,
+}: {
+  flag: ValidationFlag;
+  onAckOverride?: (field: string, year: number, rationale: string) => void;
+}) {
   const dismiss = useDealStore((s) => s.dismissValidationFlag);
   const remove = useDealStore((s) => s.removeValidationFlag);
   const [note, setNote] = useState(flag.justification ?? '');
-  const [showNote, setShowNote] = useState(false);
+  // F9 Tier-1: hard warnings (severity 'high') CANNOT be silently
+  // dismissed — the note panel is forced open and stays open until a
+  // non-empty justification is submitted (spec §9 hard-warning rule).
+  const isHardWarning = flag.severity === 'high';
+  const [showNote, setShowNote] = useState(isHardWarning);
 
   const tone =
     flag.severity === 'high'
@@ -210,12 +254,31 @@ function FlagRow({ flag }: { flag: ValidationFlag }) {
         ? 'border-amber-500/40 text-amber-300 bg-amber-900/10'
         : 'border-blue-500/40 text-blue-300 bg-blue-900/10';
 
+  const handleAck = () => {
+    const trimmed = note.trim();
+    if (isHardWarning && !trimmed) return; // Enforced: empty rationale rejected.
+    // For override hard warnings, persist the rationale to the
+    // user-assumption layer via the parent callback (writes through
+    // to per_year_overrides `rationale:{field}:{year}` JSONB key).
+    if (isHardWarning && flag.source === 'override' && onAckOverride) {
+      const parsed = parseOverrideFlagId(flag.id);
+      if (parsed) onAckOverride(parsed.field, parsed.year, trimmed);
+    }
+    dismiss(flag.id, trimmed);
+    if (!isHardWarning) setShowNote(false);
+  };
+
   return (
     <div className={`px-2 py-1 border-l-2 ${tone} ${flag.dismissed ? 'opacity-50' : ''}`} style={{ fontFamily: MONO, fontSize: 9 }}>
       <div className="flex items-start gap-1">
         <span className="font-bold tracking-wide">{flag.source.toUpperCase()}</span>
+        {isHardWarning && !flag.dismissed && (
+          <span className="px-1 py-px text-[7px] font-bold tracking-widest bg-red-500/30 border border-red-500/50 rounded">
+            JUSTIFICATION REQUIRED
+          </span>
+        )}
         <span className="ml-auto flex gap-1 shrink-0">
-          {!flag.dismissed && (
+          {!flag.dismissed && !isHardWarning && (
             <button
               onClick={() => setShowNote((s) => !s)}
               className="text-[8px] opacity-70 hover:opacity-100 underline"
@@ -223,9 +286,12 @@ function FlagRow({ flag }: { flag: ValidationFlag }) {
               note
             </button>
           )}
-          <button onClick={() => remove(flag.id)} className="opacity-50 hover:opacity-100">
-            <X className="w-2.5 h-2.5" />
-          </button>
+          {/* Hard warnings cannot be silently removed — only ACK with note clears them. */}
+          {!isHardWarning && (
+            <button onClick={() => remove(flag.id)} className="opacity-50 hover:opacity-100">
+              <X className="w-2.5 h-2.5" />
+            </button>
+          )}
         </span>
       </div>
       <div className="mt-0.5 leading-tight">{flag.message}</div>
@@ -237,15 +303,13 @@ function FlagRow({ flag }: { flag: ValidationFlag }) {
           <input
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder="Justification…"
+            placeholder={isHardWarning ? 'Justification (required)…' : 'Justification…'}
             className="flex-1 bg-[#060606] border border-current rounded px-1 py-0.5 text-[9px] text-slate-200"
           />
           <button
-            onClick={() => {
-              dismiss(flag.id, note);
-              setShowNote(false);
-            }}
-            className="px-1.5 py-0.5 text-[8px] font-bold border border-current rounded"
+            onClick={handleAck}
+            disabled={isHardWarning && !note.trim()}
+            className="px-1.5 py-0.5 text-[8px] font-bold border border-current rounded disabled:opacity-30 disabled:cursor-not-allowed"
           >
             ACK
           </button>
@@ -307,6 +371,7 @@ export function F9ProtectorsPanel({
   opexGrowth,
   requiredReturn = 0.09,
   noiMargin = 0.6,
+  onAckOverride,
 }: F9ProtectorsPanelProps) {
   const validationFlags = useDealStore((s) => s.validationFlags);
   const runGordon = useDealStore((s) => s.runGordonValidation);
@@ -344,7 +409,7 @@ export function F9ProtectorsPanel({
             ACTIVE PROTECTOR FLAGS · {activeFlags.length}
           </div>
           {activeFlags.map((f) => (
-            <FlagRow key={f.id} flag={f} />
+            <FlagRow key={f.id} flag={f} onAckOverride={onAckOverride} />
           ))}
         </div>
       )}

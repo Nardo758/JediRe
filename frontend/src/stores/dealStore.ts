@@ -311,6 +311,15 @@ interface DealStoreActions {
   confidenceBands: Record<string, ConfidenceBands>;
   /** Active validator flags surfaced in F9. */
   validationFlags: ValidationFlag[];
+  /**
+   * Per-row refusal reasons keyed by field key (e.g. 'gpr', 'realEstateTax').
+   * When non-null the platform is deliberately not forecasting that field
+   * because evaluateRefusal() concluded it lacks the comp/history/asset-class
+   * support to do so honestly (spec §9 refusal threshold).
+   */
+  refusalReasons: Record<string, string | null>;
+  /** Bulk-set refusal reasons (typically from the AssumptionsTab refusal effect). */
+  setRefusalReasons: (reasons: Record<string, string | null>) => void;
   /** Bulk-set bands at proforma generation time (typically from server). */
   setConfidenceBands: (bands: Record<string, ConfidenceBands>) => void;
   /** Replace the active validation flag list (e.g. after a recompute). */
@@ -1664,8 +1673,11 @@ export const useDealStore = create<DealStore>()(
     // ─── F9 PRO FORMA TIER-1 PROTECTORS ─────────────────────
     confidenceBands: {},
     validationFlags: [],
+    refusalReasons: {},
 
     setConfidenceBands: (bands) => set({ confidenceBands: bands }),
+
+    setRefusalReasons: (reasons) => set({ refusalReasons: reasons }),
 
     setValidationFlags: (flags) => set({ validationFlags: flags }),
 

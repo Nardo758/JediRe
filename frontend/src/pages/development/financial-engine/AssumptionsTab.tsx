@@ -7,7 +7,7 @@ import type { FinancialEngineTabProps, F9NarrativeBlock } from './types';
 import { apiClient } from '../../../services/api.client';
 import { F9ProtectorsPanel } from './F9ProtectorsPanel';
 import { useDealStore } from '../../../stores/dealStore';
-import { computeConfidenceBands } from '../../../services/proforma/validators';
+import { computeConfidenceBands, evaluateRefusal } from '../../../services/proforma/validators';
 import type { ConfidenceBands, ValidationFlag } from '../../../services/proforma/types';
 
 // ─── Backend contract ──────────────────────────────────────────────────────────
@@ -51,6 +51,10 @@ interface DealFinancials {
   /** Persisted user overrides keyed by camelCase field name → hold year → value.
    *  Returned by backend so the frontend can rehydrate overrides state across sessions. */
   userOverrides: Record<string, Record<number, number|null>>;
+  /** F9 Tier-1: Persisted hard-warning override justifications, keyed
+   *  field → year → rationale text. Rehydrated from per_year_overrides
+   *  `rationale:{field}:{year}` JSONB sibling keys (spec §9). */
+  userOverrideRationales?: Record<string, Record<number, string>>;
   meta: { seeded: boolean; updatedAt: string|null };
 }
 
@@ -1426,6 +1430,8 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
   const upsertValidationFlag = useDealStore(s => s.upsertValidationFlag);
   const removeValidationFlag = useDealStore(s => s.removeValidationFlag);
   const validationFlags = useDealStore(s => s.validationFlags);
+  const setRefusalReasons = useDealStore(s => s.setRefusalReasons);
+  const refusalReasons = useDealStore(s => s.refusalReasons);
 
   const [financials, setFinancials]     = useState<DealFinancials|null>(null);
   const [loading, setLoading]           = useState(false);
@@ -1505,8 +1511,20 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
   useEffect(() => { loadNarrativeBlocks(); }, [loadNarrativeBlocks]);
   useEffect(() => { if (holdTab) fetchFinancials(holdYears); }, [holdTab]);
 
-  const enqueuePatch = useCallback((field: string, year: number|null, value: number|null) => {
-    patchQueue.current.push({ field, year, value });
+  // F9 Tier-1: enqueuePatch can now ride a `rationale` along with the
+  // value. The backend persists it in per_year_overrides as a sibling
+  // `rationale:{field}:{year}` key so dismissed hard-warning justifications
+  // survive reload. Existing call sites that don't pass `rationale` keep
+  // the prior contract — no rationale write happens server-side.
+  const enqueuePatch = useCallback((
+    field: string,
+    year: number|null,
+    value: number|null,
+    rationale?: string,
+  ) => {
+    patchQueue.current.push(
+      rationale != null ? { field, year, value, rationale } : { field, year, value },
+    );
     if (flushTimer.current) clearTimeout(flushTimer.current);
     flushTimer.current = setTimeout(async () => {
       const patches = patchQueue.current.splice(0);
@@ -1570,7 +1588,11 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
       const conf = (rd.getConfidence?.(financials) ?? 60) / 100;
       const slack = Math.max(0, 1 - conf) * 0.5;
       for (const yr of years) {
-        const forecast = rd.getPlatform(financials, yr) ?? rd.getBroker(financials, yr);
+        // Refusal-aware: if the row is REFUSED the platform isn't an
+        // acceptable forecast anchor, so fall through to broker. The
+        // caller below skips when forecast is null.
+        const forecast = (refusalReasons[rd.key] ? null : rd.getPlatform(financials, yr))
+          ?? rd.getBroker(financials, yr);
         if (forecast == null) continue;
         const absForecast = Math.abs(forecast);
         const sigmaModel = absForecast * slack;
@@ -1583,7 +1605,45 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
       }
     }
     setConfidenceBands(next);
-  }, [financials, years, trafficOffline, revRows, opexRows, setConfidenceBands]);
+    // refusalReasons in deps so refused rows get re-seeded (skipped) once
+    // the refusal effect resolves; otherwise platform-anchored bands would
+    // linger from the initial render before refusal was computed.
+  }, [financials, years, trafficOffline, revRows, opexRows, setConfidenceBands, refusalReasons]);
+
+  // ── F9 Tier-1: Evaluate the refusal threshold per editable row using the
+  //    observable signals we have today (spec §9). Until M14 surfaces real
+  //    comp/history counts these are intentionally conservative proxies:
+  //      stabilizedComps  ≈ # of years where the row has a platform forecast
+  //      historyYears     ≈ # of years where the row has a broker anchor
+  //      hasAssetClassRep = false when this is an M07 row and traffic is offline
+  //    When evaluateRefusal returns refuse=true the row is rendered with a
+  //    REFUSED badge and the platform stops emitting a value (the cell will
+  //    fall through to the broker layer or "—").
+  // ───────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!financials) {
+      setRefusalReasons({});
+      return;
+    }
+    const next: Record<string, string | null> = {};
+    const editableRows = [
+      ...revRows,
+      ...STATIC_ROWS.filter(r => !r.readonly),
+      ...opexRows,
+    ];
+    for (const rd of editableRows) {
+      let stabilizedComps = 0;
+      let historyYears = 0;
+      for (const yr of years) {
+        if (rd.getPlatform(financials, yr) != null) stabilizedComps += 1;
+        if (rd.getBroker(financials, yr)   != null) historyYears   += 1;
+      }
+      const hasAssetClassRep = !(rd.isM07 && trafficOffline);
+      const decision = evaluateRefusal({ stabilizedComps, historyYears, hasAssetClassRep });
+      next[rd.key] = decision.refuse ? (decision.message ?? 'Insufficient data') : null;
+    }
+    setRefusalReasons(next);
+  }, [financials, years, revRows, opexRows, trafficOffline, setRefusalReasons]);
 
   // ── F9 Tier-1: classify every active user override against the band and
   //    upsert / clear `override:{field}:{year}:{valueHash}` flags.  The value
@@ -1617,6 +1677,11 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
         seen.add(flagId);
         const sev = result.classification === 'hard_warning' ? 'high' : 'medium';
         const label = labelByKey[field] ?? field;
+        // Rehydrate any previously-saved rationale for this exact (field,year)
+        // pair so the FlagRow note input prefills with the buyer's prior
+        // justification across page reloads (spec §9 audit trail).
+        const savedRationale =
+          financials?.userOverrideRationales?.[field]?.[yr] ?? undefined;
         const flag: ValidationFlag = {
           id: flagId,
           source: 'override',
@@ -1634,6 +1699,7 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
             value: val,
           },
           raisedAt: new Date().toISOString(),
+          ...(savedRationale ? { justification: savedRationale } : {}),
         };
         upsertValidationFlag(flag);
       }
@@ -1649,23 +1715,63 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [overrides, financials, revRows, opexRows, classifyFieldOverride, upsertValidationFlag, removeValidationFlag]);
 
+  // F9 Tier-1: handler invoked by F9ProtectorsPanel's FlagRow when the
+  // buyer ACKs a hard-warning override flag. Persists the justification
+  // to the user-assumption layer (PATCH with rationale) so it survives
+  // page reload and feeds the audit trail.
+  //
+  // IMPORTANT — display↔patch normalization: a few rows display one unit
+  // but PATCH expects another. The canonical case today is `stabilizedOcc`
+  // which displays occupancy but maps to `patchField: 'vacancyPct'`
+  // (vacancy = 1 − occupancy). We mirror the same +(1 − v).toFixed(4)
+  // transform used in handleUsePlatform/handleUseBroker so ACK never
+  // overwrites vacancy with occupancy.
+  const handleAckOverride = useCallback((field: string, year: number, rationale: string) => {
+    if (!rationale.trim()) return;
+    const currentVal = overrides[field]?.[year] ?? null;
+    if (currentVal == null) return;
+    const row = [...revRows, ...STATIC_ROWS, ...opexRows].find(r => r.key === field);
+    if (!row?.patchField) return;
+    const patchVal = field === 'stabilizedOcc' ? +(1 - currentVal).toFixed(4) : currentVal;
+    enqueuePatch(row.patchField, year, patchVal, rationale.trim());
+  }, [overrides, revRows, opexRows, enqueuePatch]);
+
   const getUser    = (key: string, yr: number) => overrides[key]?.[yr] ?? null;
   const getMode    = (key: string): RowMode => rowModes[key] ?? 'stepped';
   const getFormula = (key: string) => formulas[key] ?? '';
+
+  /**
+   * F9 Tier-1 §9 refusal enforcement: when a row is REFUSED, the platform
+   * MUST stop forecasting for that row. Every consumer that previously
+   * read `rd.getPlatform(financials, yr)` should go through this wrapper
+   * so cell rendering, drawer payload, protector inputs, and formula
+   * evaluation all collapse to broker → user only.
+   *
+   * The refusal effect itself + the band-seeding effect intentionally
+   * keep raw access (they need the underlying counts to compute refusal
+   * and to skip refused rows respectively).
+   */
+  const resolvePlatform = useCallback((rd: RowDef, yr: number): number | null => {
+    if (!financials) return null;
+    if (refusalReasons[rd.key]) return null;
+    return rd.getPlatform(financials, yr);
+  }, [financials, refusalReasons]);
 
   const computeFormulaResult = useCallback((rd: RowDef, yr: number): number|null => {
     const expr = getFormula(rd.key);
     if (!expr || getMode(rd.key) !== 'formula') return null;
     const yearVals: Record<number, number|null> = {};
     for (const y of years) {
-      yearVals[y] = getUser(rd.key, y) ?? (financials ? rd.getPlatform(financials, y) ?? rd.getBroker(financials, y) : null);
+      yearVals[y] = getUser(rd.key, y) ?? (financials ? resolvePlatform(rd, y) ?? rd.getBroker(financials, y) : null);
     }
     return evalFormula(expr, {
       base:     financials ? rd.getBroker(financials, yr)   : null,
-      platform: financials ? rd.getPlatform(financials, yr) : null,
+      platform: financials ? resolvePlatform(rd, yr)        : null,
       yearVals,
     });
-  }, [formulas, rowModes, overrides, financials, years]);
+    // resolvePlatform in deps so refused-row formula evaluation re-runs
+    // when refusal state changes.
+  }, [formulas, rowModes, overrides, financials, years, resolvePlatform]);
 
   const handleApply = useCallback((
     rd: RowDef, yr: number, val: number|null, applyAll: boolean,
@@ -1697,25 +1803,28 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
     if (!rd?.patchField) return;
     const yearVals: Record<number, number|null> = {};
     for (const y of years) {
-      yearVals[y] = rd.getPlatform(financials, y) ?? rd.getBroker(financials, y);
+      yearVals[y] = resolvePlatform(rd, y) ?? rd.getBroker(financials, y);
     }
     for (const y of years) {
       const result = evalFormula(expr, {
         base:     rd.getBroker(financials, y),
-        platform: rd.getPlatform(financials, y),
+        platform: resolvePlatform(rd, y),
         yearVals,
       });
       if (result != null) {
         enqueuePatch(rd.patchField, y, result);
       }
     }
-  }, [financials, allRows, years, enqueuePatch]);
+    // resolvePlatform in deps so apply-formula respects refusal updates.
+  }, [financials, allRows, years, enqueuePatch, resolvePlatform]);
 
   const handleUsePlatform = () => {
     if (!financials || lockedOverrides) return;
     const next: Overrides = { ...overrides };
     for (const rd of allRows) {
       if (rd.readonly) continue;
+      // Refusal-aware: skip rows where the platform has refused to forecast.
+      if (refusalReasons[rd.key]) continue;
       for (const yr of years) {
         const v = rd.getPlatform(financials, yr);
         if (v != null) {
@@ -1759,12 +1868,13 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
       row: rd, year: yr,
       vals: {
         broker:   rd.getBroker(financials, yr),
-        platform: rd.getPlatform(financials, yr),
+        platform: resolvePlatform(rd, yr),
         user:     getUser(rd.key, yr),
       },
       formulaExpr: getFormula(rd.key),
     });
-  }, [financials, overrides, formulas, lockedOverrides]);
+    // resolvePlatform in deps so the drawer payload reflects refusal.
+  }, [financials, overrides, formulas, lockedOverrides, resolvePlatform]);
 
   const a        = assumptions;
   const dealName = (deal?.['name'] as string) ?? financials?.dealName ?? a?.dealInfo?.dealName ?? 'Deal';
@@ -1803,7 +1913,10 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
       if (u != null) return u;
       const row = findRow(key);
       if (!row) return null;
-      return row.getPlatform(financials, yr) ?? row.getBroker(financials, yr);
+      // Refusal-aware: skip platform when the row is REFUSED so protector
+      // inputs (Gordon, NOI identity, etc.) don't anchor on a forecast the
+      // platform has explicitly declined to make.
+      return resolvePlatform(row, yr) ?? row.getBroker(financials, yr);
     };
     const terminalYr = financials.assumptions.holdYears ?? holdYears;
     // Gordon coupling lives at the terminal year — exit cap & terminal g pair.
@@ -1829,7 +1942,9 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
       opexGrowth,
       noiMargin,
     };
-  }, [financials, overrides, holdYears]);
+    // resolvePlatform in deps so protector inputs (Gordon, NOI identity)
+    // re-derive when refusal state changes for any of the underlying rows.
+  }, [financials, overrides, holdYears, resolvePlatform]);
 
   return (
     <div className="flex flex-col w-full h-full bg-[#0a0a0a] text-slate-300 text-xs overflow-hidden" style={{ fontFamily: 'system-ui,sans-serif' }}>
@@ -1932,6 +2047,7 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
           noiIdentityRentGrowth={protectorInputs.noiIdentityRentGrowth}
           opexGrowth={protectorInputs.opexGrowth}
           noiMargin={protectorInputs.noiMargin}
+          onAckOverride={handleAckOverride}
         />
       )}
 
@@ -1984,12 +2100,23 @@ export function AssumptionsTab({ dealId, deal, assumptions, modelResults, onAssu
                               {rd.isM07 && !rd.readonly && <span style={{ fontFamily: MONO, fontSize: 6, color: '#7e22ce', border: '1px solid #4c1d95', borderRadius: 2, padding: '0 2px', flexShrink: 0 }}>M07</span>}
                               {isFinancing && <span style={{ fontFamily: MONO, fontSize: 6, color: '#10b981', border: '1px solid #065f46', borderRadius: 2, padding: '0 2px', flexShrink: 0 }}>→ DEBT</span>}
                               {mode === 'formula' && <FlaskConical className="w-2.5 h-2.5 text-teal-500 shrink-0" />}
+                              {/* F9 Tier-1 §9: REFUSED chip surfaces when evaluateRefusal()
+                                  determines the platform lacks the comp/history support to
+                                  forecast this row honestly. Hover for the reason. */}
+                              {refusalReasons[rd.key] && (
+                                <span
+                                  title={refusalReasons[rd.key] ?? ''}
+                                  style={{ fontFamily: MONO, fontSize: 6, color: '#fca5a5', border: '1px solid #b91c1c', backgroundColor: 'rgba(127,29,29,0.25)', borderRadius: 2, padding: '0 2px', flexShrink: 0, fontWeight: 700, letterSpacing: '0.05em' }}
+                                >
+                                  REFUSED
+                                </span>
+                              )}
                               <span className="truncate">{rd.label}</span>
                             </span>
                           </td>
                           {years.map(yr => {
                             const broker       = financials ? rd.getBroker(financials, yr)   : null;
-                            const platform     = financials ? rd.getPlatform(financials, yr) : null;
+                            const platform     = resolvePlatform(rd, yr);
                             const user         = getUser(rd.key, yr);
                             const formulaResult = mode === 'formula' ? computeFormulaResult(rd, yr) : null;
                             const divergence = getDivergenceColor(

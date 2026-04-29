@@ -543,7 +543,16 @@ router.post('/:dealId/financials/reparse', requireAuth, async (req: Authenticate
 router.patch('/:dealId/financials/override', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { dealId } = req.params;
-    const { field, year = null, value, strValue } = req.body as { field: string; year?: number | null; value: number | string | null; strValue?: string };
+    const { field, year = null, value, strValue, rationale } = req.body as {
+      field: string;
+      year?: number | null;
+      value: number | string | null;
+      strValue?: string;
+      // F9 Tier-1: Buyer's justification when an override is outside the
+      // P10–P90 confidence band. Persisted to the user-assumption layer so
+      // it survives reload and shows up in the audit trail (spec §9).
+      rationale?: string | null;
+    };
     const userId = req.user?.userId ?? 'unknown';
 
     if (!field || typeof field !== 'string') {
@@ -554,10 +563,16 @@ router.patch('/:dealId/financials/override', requireAuth, async (req: Authentica
     if (!isStrField && value !== null && value !== undefined && typeof value !== 'number') {
       return res.status(400).json({ error: 'value must be a number or null' });
     }
+    if (rationale != null && typeof rationale !== 'string') {
+      return res.status(400).json({ error: 'rationale must be a string or omitted' });
+    }
 
     // applyFinancialsOverride accepts number | string | null for string override fields
     const effectiveValue: number | string | null = isStrField ? strValue! : (value as number | null);
-    const result = await applyFinancialsOverride(pool, dealId, field, year ?? null, effectiveValue, userId);
+    const result = await applyFinancialsOverride(
+      pool, dealId, field, year ?? null, effectiveValue, userId,
+      rationale ?? null,
+    );
     res.json({ success: true, data: { dealId, ...result } });
   } catch (error: any) {
     logger.error('Error applying financials override:', error);

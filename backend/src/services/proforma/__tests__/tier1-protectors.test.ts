@@ -528,3 +528,75 @@ describe('Sigma sparsity inflation', () => {
     );
   });
 });
+
+// ───────────────────────────────────────────────────────────────────────────
+// §9 ACK round-trip — rationale key canonicalization regression
+// ───────────────────────────────────────────────────────────────────────────
+import { applyFinancialsOverride } from '../../proforma-adjustment.service';
+
+describe('applyFinancialsOverride — rationale key canonicalization (spec §9)', () => {
+  function makeMockPool() {
+    const calls: { sql: string; params: unknown[] }[] = [];
+    const pool = {
+      query: async (sql: string, params: unknown[] = []) => {
+        calls.push({ sql, params });
+        // Simulate the SELECT in applyFinancialsOverride finding a row
+        if (/SELECT.*deal_assumptions/i.test(sql)) {
+          return { rows: [{ deal_id: params[0], per_year_overrides: {}, year1_seed: {} }] };
+        }
+        return { rows: [], rowCount: 1 };
+      },
+    } as unknown as Parameters<typeof applyFinancialsOverride>[0];
+    return { pool, calls };
+  }
+
+  test('camelCase patch field writes rationale under snake_case canonical key', async () => {
+    const { pool, calls } = makeMockPool();
+    try {
+      await applyFinancialsOverride(
+        pool, 'deal-x', 'vacancyPct', 5, 0.07, 'user-1',
+        'Lease-up plan accepted by IC',
+      );
+    } catch { /* downstream branches may throw on mock data — only the rationale write matters here */ }
+    // First SQL after the rationale-bypass is the rationale UPSERT (jsonb_set with rationaleKey)
+    const rationaleCall = calls.find(c =>
+      typeof c.params[1] === 'string' &&
+      (c.params[1] as string).includes('rationale:'));
+    expect(rationaleCall).toBeDefined();
+    const pathParam = rationaleCall!.params[1] as string;
+    // Must contain canonical snake_case form, NOT raw camelCase
+    expect(pathParam).toBe('{rationale:vacancy_pct:5}');
+    expect(pathParam).not.toContain('vacancyPct');
+    // The JSON body should also reflect the canonicalized field name
+    const bodyJson = JSON.parse(rationaleCall!.params[2] as string);
+    expect(bodyJson.field).toBe('vacancy_pct');
+  });
+
+  test('snake_case input passes through unchanged (Section 1/3 rd.key form)', async () => {
+    const { pool, calls } = makeMockPool();
+    try {
+      await applyFinancialsOverride(
+        pool, 'deal-x', 'real_estate_tax', 3, 250000, 'user-1',
+        'County reassessment notice',
+      );
+    } catch { /* ignore downstream */ }
+    const rationaleCall = calls.find(c =>
+      typeof c.params[1] === 'string' &&
+      (c.params[1] as string).includes('rationale:'));
+    expect(rationaleCall).toBeDefined();
+    expect(rationaleCall!.params[1]).toBe('{rationale:real_estate_tax:3}');
+  });
+
+  test('empty rationale string deletes the rationale key (still canonicalized)', async () => {
+    const { pool, calls } = makeMockPool();
+    try {
+      await applyFinancialsOverride(
+        pool, 'deal-x', 'vacancyPct', 2, 0.06, 'user-1', '   ',
+      );
+    } catch { /* ignore */ }
+    const deleteCall = calls.find(c =>
+      typeof c.sql === 'string' && /jsonb.*-\s*\$2/i.test(c.sql));
+    expect(deleteCall).toBeDefined();
+    expect(deleteCall!.params[1]).toBe('rationale:vacancy_pct:2');
+  });
+});
