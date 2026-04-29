@@ -202,25 +202,59 @@ export interface FinancialModelResult {
 
 import type { LibraryResolver, TemplateForFill } from './proforma/agent-fill-in';
 
+/**
+ * Tier-2 fill-in candidates keyed by the REAL nested ProFormaAssumptions
+ * paths the engine consumes. Using dotted paths (not synthetic top-level
+ * aliases) is required for the fill-in to materially influence model output.
+ * Code-review #449 round 7 explicitly flagged the prior synthetic-key list as
+ * schema-misaligned — this is the alignment fix.
+ */
 const REQUIRED_FIELDS_BY_MODEL_TYPE: Record<string, string[]> = {
   existing: [
-    'rentGrowthYr1',
-    'opexGrowthYr1',
-    'occupancy',
-    'exitCap',
-    'expenseRatio',
-    'managementFeePct',
-    'replacementReservesPerUnit',
+    'revenue.rentGrowth.0',
+    'revenue.stabilizedOccupancy',
+    'revenue.lossToLease',
+    'revenue.collectionLoss',
+    'disposition.exitCapRate',
+    'capex.reservesPerUnit',
+    'capex.contingencyPct',
   ],
   development: [
-    'rentGrowthYr1',
-    'opexGrowthYr1',
-    'leaseUpAbsorption',
-    'stabilizedOccupancy',
-    'exitCap',
-    'devCostPerUnit',
+    'revenue.rentGrowth.0',
+    'revenue.stabilizedOccupancy',
+    'disposition.exitCapRate',
+    'development.hardCostPerSF',
+    'development.softCostPct',
+    'development.developerFee',
+    'development.leaseUpVelocity',
   ],
 };
+
+/** Walk a dotted path (`a.b.0.c`) and return the value or `undefined`. */
+export function getByPath(obj: any, path: string): any {
+  const parts = path.split('.');
+  let cur: any = obj;
+  for (const p of parts) {
+    if (cur === null || cur === undefined) return undefined;
+    cur = cur[p];
+  }
+  return cur;
+}
+
+/** Set a dotted path, creating intermediate objects/arrays as needed. */
+export function setByPath(obj: any, path: string, value: any): void {
+  const parts = path.split('.');
+  let cur: any = obj;
+  for (let i = 0; i < parts.length - 1; i++) {
+    const k = parts[i];
+    const nextIsIndex = /^\d+$/.test(parts[i + 1]);
+    if (cur[k] === null || cur[k] === undefined) {
+      cur[k] = nextIsIndex ? [] : {};
+    }
+    cur = cur[k];
+  }
+  cur[parts[parts.length - 1]] = value;
+}
 
 class FinancialModelEngineFillInRegistry {
   private resolver: LibraryResolver | null = null;
@@ -242,47 +276,55 @@ class FinancialModelEngineFillInRegistry {
 export const financialModelEngineFillInRegistry = new FinancialModelEngineFillInRegistry();
 
 /**
- * Extract a flat map of {field -> ProvenancedValue|null} from the assumption
- * envelope so the agent fill-in walker can detect which required fields are
- * already populated. Treats `0` and falsy strings as PRESENT (not missing).
+ * Extract a flat map of {nested.path -> ProvenancedValue|null} from the
+ * assumption envelope so the agent fill-in walker can detect which required
+ * fields are already populated. Walks the union of all model-type paths to
+ * stay schema-aligned with REQUIRED_FIELDS_BY_MODEL_TYPE.
+ *
+ * Treats `0` and falsy strings as PRESENT (not missing); only null/undefined
+ * count as missing slots eligible for fill-in.
  */
 function extractExistingForFillIn(
   assumptions: ProFormaAssumptions
 ): Record<string, any> {
-  const a = assumptions as any;
   const flat: Record<string, any> = {};
-  const candidates = [
-    'rentGrowthYr1', 'opexGrowthYr1', 'occupancy', 'exitCap',
-    'expenseRatio', 'managementFeePct', 'replacementReservesPerUnit',
-    'leaseUpAbsorption', 'stabilizedOccupancy', 'devCostPerUnit',
-  ];
-  for (const k of candidates) {
-    const v = a[k];
+  const allCandidates = new Set<string>([
+    ...REQUIRED_FIELDS_BY_MODEL_TYPE.existing,
+    ...REQUIRED_FIELDS_BY_MODEL_TYPE.development,
+  ]);
+  for (const path of allCandidates) {
+    const v = getByPath(assumptions, path);
     if (v === null || v === undefined) {
-      flat[k] = null;
+      flat[path] = null;
     } else if (typeof v === 'object' && 'value' in v) {
-      // Already a ProvenancedValue
-      flat[k] = v;
+      flat[path] = v; // Already a ProvenancedValue
     } else {
-      // Plain scalar — treat as already-present
-      flat[k] = { value: v, source: 'platform', confidence: 0.9, qualityFlag: 'green', asOf: new Date().toISOString() };
+      flat[path] = {
+        value: v,
+        source: 'platform',
+        confidence: 0.9,
+        qualityFlag: 'green',
+        asOf: new Date().toISOString(),
+      };
     }
   }
   return flat;
 }
 
-/** Merge filled ProvenancedValues back onto the assumption envelope. */
+/**
+ * Merge filled ProvenancedValues back onto the assumption envelope using the
+ * dotted paths. Only fills slots that were actually empty — never overwrites
+ * a value the caller (or a higher-priority source) already provided.
+ */
 function applyFillInToAssumptions(
   assumptions: ProFormaAssumptions,
   fields: Record<string, any>
 ): void {
-  const a = assumptions as any;
-  for (const [key, pv] of Object.entries(fields)) {
-    if (pv && pv.value !== null && pv.value !== undefined) {
-      // Only fill if the slot was actually empty — never overwrite existing.
-      if (a[key] === null || a[key] === undefined) {
-        a[key] = pv.value;
-      }
+  for (const [path, pv] of Object.entries(fields)) {
+    if (!pv || pv.value === null || pv.value === undefined) continue;
+    const existing = getByPath(assumptions, path);
+    if (existing === null || existing === undefined) {
+      setByPath(assumptions, path, pv.value);
     }
   }
 }

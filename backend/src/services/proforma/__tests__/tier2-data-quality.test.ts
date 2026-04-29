@@ -300,3 +300,53 @@ describe('Tier-2 correlation-adjustments mapping (Spec §3)', () => {
     expect(out[0].target_field).toBe('customField');
   });
 });
+
+describe('Tier-2 fill-in nested-path helpers (#449 round 7 schema-alignment)', () => {
+  test('getByPath / setByPath round-trip through nested object + array', async () => {
+    const { getByPath, setByPath } = await import('../../financial-model-engine.service');
+    const obj: any = { revenue: { rentGrowth: [0.03, 0.025] }, disposition: {} };
+    expect(getByPath(obj, 'revenue.rentGrowth.0')).toBe(0.03);
+    expect(getByPath(obj, 'revenue.rentGrowth.1')).toBe(0.025);
+    expect(getByPath(obj, 'disposition.exitCapRate')).toBeUndefined();
+    expect(getByPath(obj, 'missing.deeply.nested')).toBeUndefined();
+    setByPath(obj, 'disposition.exitCapRate', 0.06);
+    expect(obj.disposition.exitCapRate).toBe(0.06);
+    setByPath(obj, 'capex.contingencyPct', 0.05);
+    expect(obj.capex.contingencyPct).toBe(0.05);
+    setByPath(obj, 'newGroup.0.value', 42);
+    expect(Array.isArray(obj.newGroup)).toBe(true);
+    expect(obj.newGroup[0].value).toBe(42);
+  });
+
+  test('agentFillIn with nested-path candidates fills missing slots only', async () => {
+    const { agentFillIn } = await import('../agent-fill-in');
+    const resolver: LibraryResolver = async (field) => {
+      if (field === 'revenue.stabilizedOccupancy') return { value: 0.94, fillMethod: 'msa-default-occupancy' };
+      if (field === 'disposition.exitCapRate') return { value: 0.0625, fillMethod: 'msa-default-exit-cap' };
+      return null;
+    };
+    const fill = await agentFillIn({
+      context: { dealId: 'd1', state: 'GA', msa: 'Atlanta', assetClass: 'existing' },
+      template: {
+        sections: [
+          {
+            id: 'tier2_required',
+            fields: ['revenue.rentGrowth.0', 'revenue.stabilizedOccupancy', 'disposition.exitCapRate'],
+            required: true,
+          },
+        ],
+      },
+      existing: {
+        'revenue.rentGrowth.0': { value: 0.03, source: 'platform', confidence: 0.9, qualityFlag: 'green', asOf: '2026-04-29' } as any,
+        'revenue.stabilizedOccupancy': null,
+        'disposition.exitCapRate': null,
+      },
+      resolver,
+    });
+    expect(fill.fields['revenue.stabilizedOccupancy']?.value).toBe(0.94);
+    expect(fill.fields['revenue.stabilizedOccupancy']?.dataQuality).toBe('INFERRED');
+    expect(fill.fields['disposition.exitCapRate']?.value).toBe(0.0625);
+    expect(fill.fields['revenue.rentGrowth.0']).toBeUndefined();
+    expect(fill.filledCount).toBe(2);
+  });
+});
