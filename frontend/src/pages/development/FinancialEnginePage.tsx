@@ -66,6 +66,8 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
   const [showVersionDropdown, setShowVersionDropdown] = useState(false);
   const [saveVersionName, setSaveVersionName] = useState('');
   const [showSaveDialog, setShowSaveDialog] = useState(false);
+  // Spec §13: "saved at HH:MM" indicator (replaces unsaved marker on save).
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
   const [opusInput, setOpusInput] = useState('');
   const [opusSending, setOpusSending] = useState(false);
   const [opusMessages, setOpusMessages] = useState<Array<{ role: 'user' | 'opus'; text: string; ts: number }>>([]);
@@ -132,13 +134,31 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
     return () => { cancelled = true; };
   }, [resolvedDealId]);
 
+  // Version history (Spec §13). Backend returns DealVersionRow[]; map to local
+  // ModelVersion shape so the existing picker UI keeps working unchanged.
   useEffect(() => {
     if (!resolvedDealId) return;
     apiClient.get(`/api/v1/financial-model/${resolvedDealId}/versions`).then((res: any) => {
       const data = res?.data?.data ?? res?.data ?? [];
-      if (Array.isArray(data)) setVersions(data);
+      if (!Array.isArray(data)) return;
+      const mapped: ModelVersion[] = data.map((row: any) => {
+        const snap = row.layered_state_snapshot ?? row.layeredStateSnapshot ?? {};
+        return {
+          id: row.id,
+          name: row.note || `v${row.version_number}`,
+          timestamp: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
+          source: 'user',
+          dealType: resolvedDealType,
+          assumptions: snap.assumptions ?? snap,
+          results: snap.results,
+        };
+      });
+      setVersions(mapped);
+      if (mapped.length > 0) {
+        setLastSavedAt(mapped[0].timestamp);
+      }
     }).catch(() => {});
-  }, [resolvedDealId]);
+  }, [resolvedDealId, resolvedDealType]);
 
   // ── F9 DealFinancials — fetched at page level for F1/F8/F10 cross-tab wiring ─
   const [f9Hold, setF9Hold] = useState<number>(5);
@@ -213,7 +233,9 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
   const handleSaveVersion = useCallback(async () => {
     if (!resolvedDealId || !assumptions) return;
     const name = saveVersionName.trim() || `v${versions.length + 1}`;
-    const version: ModelVersion = {
+
+    // Optimistic local insert so the picker reflects the save immediately.
+    const localVersion: ModelVersion = {
       id: crypto.randomUUID(),
       name,
       timestamp: Date.now(),
@@ -222,14 +244,22 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
       assumptions,
       results: modelResults ?? undefined,
     };
-    setVersions(prev => [...prev, version]);
-    setActiveVersion(version);
+    setVersions(prev => [localVersion, ...prev]);
+    setActiveVersion(localVersion);
     setShowSaveDialog(false);
     setSaveVersionName('');
 
+    // Spec §13: snapshot is the LayeredValue state of all assumptions + results.
     try {
-      await apiClient.post(`/api/v1/financial-model/${resolvedDealId}/versions`, version);
-    } catch {}
+      await apiClient.post(`/api/v1/financial-model/${resolvedDealId}/versions`, {
+        snapshot: { assumptions, results: modelResults ?? null },
+        trigger: 'user_save',
+        note: name,
+      });
+      setLastSavedAt(Date.now());
+    } catch (e) {
+      console.warn('saveVersion failed', e);
+    }
   }, [resolvedDealId, assumptions, modelResults, saveVersionName, versions.length, resolvedDealType]);
 
   const handleLoadVersion = useCallback((version: ModelVersion) => {
@@ -452,6 +482,15 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
               background: 'transparent', border: `1px solid ${BT.border.medium}`, color: BT.text.muted,
               fontFamily: MONO, fontSize: 9, padding: '2px 8px', cursor: 'pointer', borderRadius: 2,
             }}>SAVE VERSION</button>
+          )}
+
+          {lastSavedAt != null && (
+            <span
+              title={`Saved ${new Date(lastSavedAt).toLocaleString()}`}
+              style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted }}
+            >
+              saved {new Date(lastSavedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </span>
           )}
 
           <button onClick={handleExport} style={{

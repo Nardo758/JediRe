@@ -42,6 +42,13 @@ export type ProvenanceOrigin =
 /** Quality flag exposed in UI — drives the cell colour and refusal threshold. */
 export type QualityFlag = 'green' | 'yellow' | 'red' | 'unknown';
 
+/**
+ * Data-quality dimension per Spec §12. Independent of `qualityFlag` (colour):
+ * this signals where a value sits on the actual→default scale and drives
+ * the F9 cell badge ("library" / "est" / "default") + tooltip.
+ */
+export type DataQuality = 'ACTUAL' | 'INFERRED' | 'ESTIMATED' | 'DEFAULT';
+
 // ────────────────────────────────────────────────────────────────────────────
 // Core envelope
 // ────────────────────────────────────────────────────────────────────────────
@@ -81,6 +88,12 @@ export interface ProvenancedValue<T> {
 
   /** Explicit "user has reviewed and accepted" flag. */
   userReviewed?: boolean;
+
+  /** Data-quality bucket for F9 badging (Spec §12). Optional for back-compat. */
+  dataQuality?: DataQuality;
+
+  /** Free-text describing how the value was filled (e.g. "regional_avg_class_b_2024"). */
+  fillMethod?: string;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -103,6 +116,7 @@ export function provenanced<T>(
     origin,
     confidence,
     qualityFlag: deriveQualityFlag(value, confidence),
+    dataQuality: deriveDataQuality(origin, source),
     asOf: nowIso(),
     rationale,
   };
@@ -116,6 +130,7 @@ export function missing<T>(rationale = 'value not yet available'): ProvenancedVa
     origin: 'placeholder',
     confidence: 0,
     qualityFlag: 'unknown',
+    dataQuality: 'DEFAULT',
     asOf: nowIso(),
     rationale,
   };
@@ -127,6 +142,43 @@ export function deriveQualityFlag(value: unknown, confidence: number): QualityFl
   if (confidence >= 0.75) return 'green';
   if (confidence >= 0.45) return 'yellow';
   return 'red';
+}
+
+/**
+ * Derive Spec-§12 data-quality bucket from origin + source.
+ *
+ *   ACTUAL    direct documented numbers (T12, rent roll, owner-supplied, OM)
+ *   INFERRED  comp / market-derived (data library lookup, market agent)
+ *   ESTIMATED algorithmic (Opus inference, formula derivation)
+ *   DEFAULT   last-resort platform default or explicit placeholder
+ *
+ * User overrides keep ACTUAL — the user is the highest-trust source.
+ */
+export function deriveDataQuality(
+  origin: ProvenanceOrigin,
+  source: ProvenanceSource
+): DataQuality {
+  if (source === 'user') return 'ACTUAL';
+  switch (origin) {
+    case 't12_extracted':
+    case 'rent_roll':
+    case 'om_extracted':
+    case 'user_input':
+      return 'ACTUAL';
+    case 'comp_set':
+    case 'market_agent':
+    case 'tax_intel':
+    case 'cap_structure':
+    case 'risk_engine':
+      return 'INFERRED';
+    case 'opus_inferred':
+    case 'derived':
+      return 'ESTIMATED';
+    case 'platform_default':
+    case 'placeholder':
+    default:
+      return 'DEFAULT';
+  }
 }
 
 /**

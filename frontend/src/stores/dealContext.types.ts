@@ -54,6 +54,12 @@ export type AlertLevel = 'none' | 'info' | 'warn' | 'block';
 
 export type InputClass = 'identity' | 'override' | 'scope';
 
+/**
+ * Data-quality bucket per F9 Pro Forma Spec §12. Drives the inline F9 cell
+ * badge ("library" / "est" / "default") + tooltip. Independent of `alertLevel`.
+ */
+export type DataQuality = 'ACTUAL' | 'INFERRED' | 'ESTIMATED' | 'DEFAULT';
+
 export interface LayeredValue<T> {
   /** The resolved value (what modules should render) */
   value: T;
@@ -77,6 +83,25 @@ export interface LayeredValue<T> {
     platform?: { value: T; updatedAt: string; confidence: number; source?: string };
     user?: { value: T; updatedAt: string; confidence: number };
   };
+  /** F9 Tier-2 (§12) data-quality bucket — drives badge in cell. */
+  dataQuality?: DataQuality;
+  /** F9 Tier-2 (§12) library lookup key when value was filled by agent. */
+  fillMethod?: string;
+  /** Released model version that produced this value (Spec §13). */
+  modelVersion?: string;
+}
+
+/**
+ * Mirror of backend `deriveDataQuality` (Spec §12). When the backend hasn't
+ * stamped `dataQuality` yet, derive it locally from `source` so badges still
+ * render meaningfully on legacy payloads.
+ */
+export function deriveLayeredDataQuality(source: LayeredValueSource | DataSource): DataQuality {
+  if (source === 'user' || source === 'override') return 'ACTUAL';
+  if (source === 't12' || source === 'rent_roll' || source === 'tax_bill' || source === 'broker') return 'ACTUAL';
+  if (typeof source === 'string' && source.startsWith('agent:')) return 'INFERRED';
+  if (source === 'computed') return 'ESTIMATED';
+  return 'DEFAULT';
 }
 
 /**

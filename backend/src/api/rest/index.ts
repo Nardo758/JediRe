@@ -37,6 +37,7 @@ import mapConfigsRoutes from './map-configs.routes';
 import gridRoutes from './grid.routes';
 import modulesRoutes from './modules.routes';
 import financialModelsRoutes from './financial-models.routes';
+import financialModelRoutes from './financial-model.routes';
 import strategyAnalysesRoutes from './strategy-analyses.routes';
 import ddChecklistsRoutes from './dd-checklists.routes';
 import propertyTypeStrategiesRoutes from './property-type-strategies.routes';
@@ -316,6 +317,7 @@ export function setupRESTRoutes(app: Application): void {
 
   // Financial Models routes (Module-enhanced feature)
   app.use(`${API_PREFIX}/financial-models`, financialModelsRoutes);
+  app.use(`${API_PREFIX}/financial-model`, financialModelRoutes);
 
   // Strategy Analyses routes (Module-enhanced feature)
   app.use(`${API_PREFIX}/strategy-analyses`, strategyAnalysesRoutes);
