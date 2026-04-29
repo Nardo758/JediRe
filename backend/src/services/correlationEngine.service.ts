@@ -207,20 +207,24 @@ export class CorrelationEngineService {
 
   /**
    * Tier-2 (Spec §3): Compute correlations for a deal AND persist the resulting
-   * signals as adjustment rows on `deals.correlation_adjustments`. This replaces
-   * the prior in-memory-only behavior — once persisted, M22 attribution and
-   * downstream consumers see the same signal stream that drove the model.
+   * signals as adjustment rows on `deals.correlation_adjustments`. Once persisted,
+   * M22 attribution and downstream consumers see the same signal stream that
+   * drove the model.
    *
-   * The persistence step is best-effort and never blocks the report return.
+   * Audit-critical: persistence failure THROWS by default so callers (REST
+   * routes) surface a 5xx and clients can retry. Pass `{ strict: false }` for
+   * legacy/best-effort behavior where a failed persist is logged and swallowed.
    */
   async computeAndPersistForDeal(
     dealId: string,
     city: string = 'Atlanta',
-    state: string = 'GA'
-  ): Promise<CorrelationReport & { adjustmentsPersisted?: number }> {
+    state: string = 'GA',
+    opts: { strict?: boolean } = {}
+  ): Promise<CorrelationReport & { adjustmentsPersisted: number }> {
+    const strict = opts.strict !== false;
     const report = await this.computeCorrelations(city, state);
+    const { persistCorrelationsForDeal } = await import('./correlation-adjustments.service');
     try {
-      const { persistCorrelationsForDeal } = await import('./correlation-adjustments.service');
       const { persisted } = await persistCorrelationsForDeal(
         dealId,
         report.correlations.map((c) => ({
@@ -233,9 +237,11 @@ export class CorrelationEngineService {
       );
       return { ...report, adjustmentsPersisted: persisted };
     } catch (err: any) {
-      // Persistence failure must NOT break the report — log and continue.
       // eslint-disable-next-line no-console
       console.warn(`[correlationEngine] persist for deal ${dealId} failed: ${err?.message}`);
+      if (strict) {
+        throw new Error(`Persist correlation adjustments failed for deal ${dealId}: ${err?.message}`);
+      }
       return { ...report, adjustmentsPersisted: 0 };
     }
   }

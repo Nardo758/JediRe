@@ -25,7 +25,13 @@ export interface CorrelationAdjustment {
   source_refs?: Array<{ moduleId?: string; documentId?: string; note?: string }>;
 }
 
-/** Replace the full correlation_adjustments array on a deal. */
+/**
+ * Replace the full correlation_adjustments array on a deal.
+ *
+ * Audit-critical: throws if the deal does not exist (rowCount !== 1) so the
+ * caller cannot mistake a silent no-op UPDATE for a successful persist when
+ * the deal was deleted between the authz check and the write.
+ */
 export async function persistAdjustments(
   dealId: string,
   adjustments: CorrelationAdjustment[]
@@ -36,13 +42,19 @@ export async function persistAdjustments(
     model_version: a.model_version || MODEL_VERSIONS.correlation_engine,
     computed_at: a.computed_at || new Date().toISOString(),
   }));
-  await pool.query(
+  const r = await pool.query(
     `UPDATE deals SET correlation_adjustments = $1::jsonb WHERE id = $2`,
     [JSON.stringify(stamped), dealId]
   );
+  if (r.rowCount !== 1) {
+    throw new Error(`Deal not found for correlation persist: ${dealId}`);
+  }
 }
 
-/** Append one adjustment without overwriting prior history. */
+/**
+ * Append one adjustment without overwriting prior history.
+ * Same rowCount guard as persistAdjustments — fail loud when the deal is gone.
+ */
 export async function appendAdjustment(
   dealId: string,
   adjustment: CorrelationAdjustment
@@ -53,12 +65,15 @@ export async function appendAdjustment(
     model_version: adjustment.model_version || MODEL_VERSIONS.correlation_engine,
     computed_at: adjustment.computed_at || new Date().toISOString(),
   };
-  await pool.query(
+  const r = await pool.query(
     `UPDATE deals
        SET correlation_adjustments = COALESCE(correlation_adjustments, '[]'::jsonb) || $1::jsonb
      WHERE id = $2`,
     [JSON.stringify([stamped]), dealId]
   );
+  if (r.rowCount !== 1) {
+    throw new Error(`Deal not found for correlation append: ${dealId}`);
+  }
 }
 
 /** Read all adjustments for a deal, newest first. */

@@ -234,31 +234,40 @@ export function FinancialEnginePage({ dealId, deal: propDeal, dealType: propDeal
     if (!resolvedDealId || !assumptions) return;
     const name = saveVersionName.trim() || `v${versions.length + 1}`;
 
-    // Optimistic local insert so the picker reflects the save immediately.
-    const localVersion: ModelVersion = {
-      id: crypto.randomUUID(),
-      name,
-      timestamp: Date.now(),
-      source: 'user',
-      dealType: resolvedDealType,
-      assumptions,
-      results: modelResults ?? undefined,
-    };
-    setVersions(prev => [localVersion, ...prev]);
-    setActiveVersion(localVersion);
+    // Spec §13: only insert into the local picker AFTER the server confirms
+    // the version persisted. Showing a non-persisted entry would corrupt the
+    // audit-trail UX (user thinks save succeeded but server has nothing).
     setShowSaveDialog(false);
     setSaveVersionName('');
-
-    // Spec §13: snapshot is the LayeredValue state of all assumptions + results.
     try {
-      await apiClient.post(`/api/v1/financial-model/${resolvedDealId}/versions`, {
-        snapshot: { assumptions, results: modelResults ?? null },
-        trigger: 'user_save',
-        note: name,
-      });
-      setLastSavedAt(Date.now());
-    } catch (e) {
+      const resp = await apiClient.post(
+        `/api/v1/financial-model/${resolvedDealId}/versions`,
+        {
+          snapshot: { assumptions, results: modelResults ?? null },
+          trigger: 'user_save',
+          note: name,
+        }
+      );
+      const serverRow = (resp as any)?.data?.data ?? (resp as any)?.data;
+      const persistedVersion: ModelVersion = {
+        id: serverRow?.id ?? crypto.randomUUID(),
+        name,
+        timestamp: serverRow?.created_at ? new Date(serverRow.created_at).getTime() : Date.now(),
+        source: 'user',
+        dealType: resolvedDealType,
+        assumptions,
+        results: modelResults ?? undefined,
+      };
+      setVersions(prev => [persistedVersion, ...prev]);
+      setActiveVersion(persistedVersion);
+      setLastSavedAt(persistedVersion.timestamp);
+    } catch (e: any) {
       console.warn('saveVersion failed', e);
+      // Re-open the dialog so the user can retry; restore the name they typed.
+      setSaveVersionName(name);
+      setShowSaveDialog(true);
+      // eslint-disable-next-line no-alert
+      window.alert(`Save version failed: ${e?.message ?? 'unknown error'}. Please retry.`);
     }
   }, [resolvedDealId, assumptions, modelResults, saveVersionName, versions.length, resolvedDealType]);
 
