@@ -697,6 +697,93 @@ describe('T007 projectProforma orchestrator (Tier 1+2+3 wiring)', () => {
     }
   });
 
+  test('renewal rate falls back to lookupRenewalRateBaseline(assetClass, marketType) when omitted', () => {
+    const out = projectProforma(baseInputs({
+      revenueFormula: 'mark_to_market',
+      horizonYears: 1,
+      revenueParams: {
+        units: 100,
+        inPlaceRent: 1500,
+        marketRentYear1: 1600,
+        marketType: 'urban',
+        // renewalRate intentionally omitted → must fall back to baseline
+      },
+    }));
+    // multifamily × urban baseline is 0.50 per RENEWAL_RATE_BASELINES.
+    expect(out[0].renewalRateUsed).toBe(0.50);
+  });
+
+  test('renewal rate baseline varies by market type for the same asset class', () => {
+    const urban = projectProforma(baseInputs({
+      revenueFormula: 'renewal_aware',
+      horizonYears: 1,
+      revenueParams: { units: 100, inPlaceRent: 1500, marketRentYear1: 1600, marketType: 'urban' },
+    }));
+    const tertiary = projectProforma(baseInputs({
+      revenueFormula: 'renewal_aware',
+      horizonYears: 1,
+      revenueParams: { units: 100, inPlaceRent: 1500, marketRentYear1: 1600, marketType: 'tertiary' },
+    }));
+    // Tertiary baseline (0.65) > urban (0.50) → revenue values must differ.
+    expect(urban[0].renewalRateUsed).not.toBe(tertiary[0].renewalRateUsed);
+    expect(urban[0].revenue.value).not.toBe(tertiary[0].revenue.value);
+  });
+
+  test('explicit renewalRate wins over the asset-class baseline', () => {
+    const out = projectProforma(baseInputs({
+      revenueFormula: 'renewal_aware',
+      horizonYears: 1,
+      revenueParams: {
+        units: 100,
+        inPlaceRent: 1500,
+        marketRentYear1: 1600,
+        renewalRate: 0.42,
+        marketType: 'urban',
+      },
+    }));
+    expect(out[0].renewalRateUsed).toBe(0.42);
+  });
+
+  test('renewalRateUsed is null for in_place_compounding (formula does not consume it)', () => {
+    const out = projectProforma(baseInputs({
+      revenueFormula: 'in_place_compounding',
+      horizonYears: 1,
+    }));
+    expect(out[0].renewalRateUsed).toBeNull();
+  });
+
+  test('STR template emits 12-month seasonal occupancy breakdown', () => {
+    const out = projectProforma(baseInputs({
+      templateId: 'str_shortterm',
+      revenueFormula: 'in_place_compounding',
+      horizonYears: 1,
+    }));
+    const months = out[0].seasonalMonthly;
+    expect(months).toHaveLength(12);
+    for (const m of months) {
+      expect(m.month).toBeGreaterThanOrEqual(1);
+      expect(m.month).toBeLessThanOrEqual(12);
+      expect(m.factor).toBeGreaterThan(0);
+      expect(m.revenueShare).toBeGreaterThan(0);
+    }
+    // Sun-belt default: peak summer factor (May/Jun) > shoulder (Sep/Oct).
+    const may = months.find(m => m.month === 5)!;
+    const sep = months.find(m => m.month === 9)!;
+    expect(may.factor).toBeGreaterThan(sep.factor);
+    expect(may.revenueShare).toBeGreaterThan(sep.revenueShare);
+    // Sum of monthly shares ≈ annual revenue when factors avg ≈ 1.0.
+    const totalShare = months.reduce((s, m) => s + m.revenueShare, 0);
+    const annual = out[0].revenue.value!;
+    expect(totalShare).toBeCloseTo(annual, 0);
+  });
+
+  test('non-STR templates emit empty seasonalMonthly', () => {
+    for (const tplId of ['acquisition_stabilized', 'development_ground_up', 'flip', 'land_hold'] as const) {
+      const out = projectProforma(baseInputs({ templateId: tplId, horizonYears: 1 }));
+      expect(out[0].seasonalMonthly).toEqual([]);
+    }
+  });
+
   test('orchestrator accepts every canonical RevenueFormulaId without throwing', () => {
     const ids = [
       'mark_to_market',

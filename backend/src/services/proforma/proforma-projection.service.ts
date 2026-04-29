@@ -48,12 +48,15 @@ import {
   computeSimpleRevenue,
   computeMarkToMarketRevenue,
   computeRenewalAwareRevenue,
+  lookupRenewalRateBaseline,
   type CommonRevenueInputs,
   type MarkToMarketInputs,
   type RenewalAwareInputs,
+  type MarketType,
 } from './revenue/revenue-formulas';
 import {
   applyTemplateGrowthTuning,
+  resolveSeasonalOccupancyFactor,
   OPEX_LINE_ITEMS,
   type ProFormaTemplateId,
   type RevenueFormulaId,
@@ -90,10 +93,16 @@ export interface ProjectionInputs {
     marketRentYear1: number;
     /** Mark-to-market only — annual escalator on in-place leases. */
     escalator?: number;
-    /** Mark-to-market / renewal-aware — renewal rate (decimal, 0-1). */
+    /** Mark-to-market / renewal-aware — renewal rate (decimal, 0-1).
+     *  When omitted, the orchestrator falls back to
+     *  `lookupRenewalRateBaseline(assetClass, marketType)` (Tier 3 §11). */
     renewalRate?: number;
     /** Renewal-aware only — renewal-specific growth (decimal). */
     renewalGrowth?: number;
+    /** Market context used to resolve the renewal-rate baseline when
+     *  `renewalRate` is not supplied. Defaults to 'suburban' for the
+     *  asset class. */
+    marketType?: MarketType;
   };
 
   /** NOI margin (year-1) used in the noiGrowthIdentity emission. */
@@ -137,6 +146,23 @@ export interface ProjectionYearResult {
    * `missing()` semantics when inputs are unavailable.
    */
   noiGrowthCheck: ProvenancedValue<number>;
+  /**
+   * Renewal rate actually used for the year's revenue computation. When
+   * `revenueParams.renewalRate` is unset, this is the asset-class × market
+   * baseline from `lookupRenewalRateBaseline()` (Tier 3 §11) — surfaced so
+   * the F9 collision view can show "renewal rate from baseline" provenance.
+   * Null when the formula doesn't consume a renewal rate (in_place_compounding).
+   */
+  renewalRateUsed: number | null;
+  /**
+   * Monthly seasonal-occupancy breakdown for STR templates only (Tier 3 §15).
+   * Each entry is `{ month: 1-12, factor, revenueShare }` where `factor` is
+   * the multiplier from `STRATEGY_TEMPLATE_TUNING.str_shortterm.seasonalOccupancyFactors`
+   * and `revenueShare` is the seasonally-adjusted slice of the year's revenue
+   * (sum of revenueShare ≈ revenue.value when factors average to 1.0).
+   * Empty for non-STR templates.
+   */
+  seasonalMonthly: Array<{ month: number; factor: number; revenueShare: number }>;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -276,21 +302,34 @@ export function projectProforma(inputs: ProjectionInputs): ProjectionYearResult[
     // requires GPR + loss-to-lease %) fall back to in-place compounding so
     // callers always get a numeric projection — see follow-up #460 for full
     // formula coverage.
+    // Asset-class × market-type baseline lookup — used as the contextual
+    // default whenever the caller omits `renewalRate`. Spec §11 + §14.
+    const marketType: MarketType = inputs.revenueParams.marketType ?? 'suburban';
+    const baselineRenewalRate = lookupRenewalRateBaseline(
+      inputs.rentGrowthBase.assetClass,
+      marketType,
+    );
+    const resolvedRenewalRate =
+      inputs.revenueParams.renewalRate ?? baselineRenewalRate;
+
     let revenue: ProvenancedValue<number>;
+    let renewalRateUsed: number | null = null;
     switch (inputs.revenueFormula) {
       case 'mark_to_market': {
+        renewalRateUsed = resolvedRenewalRate;
         const m: MarkToMarketInputs = {
           ...common,
-          renewalRate: inputs.revenueParams.renewalRate ?? 0.55,
+          renewalRate: resolvedRenewalRate,
           escalator: inputs.revenueParams.escalator ?? 0.025,
         };
         revenue = computeMarkToMarketRevenue(m);
         break;
       }
       case 'renewal_aware': {
+        renewalRateUsed = resolvedRenewalRate;
         const r: RenewalAwareInputs = {
           ...common,
-          renewalRate: inputs.revenueParams.renewalRate ?? 0.55,
+          renewalRate: resolvedRenewalRate,
           renewalGrowth: inputs.revenueParams.renewalGrowth ?? 0.02,
         };
         revenue = computeRenewalAwareRevenue(r);
@@ -301,6 +340,24 @@ export function projectProforma(inputs: ProjectionInputs): ProjectionYearResult[
       case 'gpr_minus_loss_to_lease':
       default:
         revenue = computeSimpleRevenue(common);
+    }
+
+    // ── 3a. STR seasonal occupancy breakdown (Tier 3 §15)
+    // For STR templates, decompose the year's revenue into 12 monthly
+    // shares using the seasonal-occupancy multipliers. The breakdown is
+    // empty for non-STR templates. Sum of `revenueShare` ≈ revenue.value
+    // when factors average to 1.0 (which the sun-belt default does).
+    const seasonalMonthly: Array<{ month: number; factor: number; revenueShare: number }> = [];
+    if (inputs.templateId === 'str_shortterm' && (revenue.value ?? 0) > 0) {
+      const monthlyShare = (revenue.value ?? 0) / 12;
+      for (let m = 1; m <= 12; m++) {
+        const factor = resolveSeasonalOccupancyFactor(inputs.templateId, m);
+        seasonalMonthly.push({
+          month: m,
+          factor,
+          revenueShare: monthlyShare * factor,
+        });
+      }
     }
 
     // ── 4. NOI growth identity (Tier 1 cross-check) — must receive
@@ -319,6 +376,8 @@ export function projectProforma(inputs: ProjectionInputs): ProjectionYearResult[
       marketRentT,
       revenue,
       noiGrowthCheck,
+      renewalRateUsed,
+      seasonalMonthly,
     });
   }
 
