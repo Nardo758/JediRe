@@ -19,7 +19,14 @@ import {
   FKEY_MAP,
   PROFORMA_TEMPLATES,
 } from '../proforma-blueprint';
-import { MODULE_REGISTRY } from '../../../module-wiring/module-registry';
+import {
+  MODULE_REGISTRY,
+  type ModuleId,
+  type ModuleDefinition,
+} from '../../../module-wiring/module-registry';
+import * as fs from 'fs';
+import * as path from 'path';
+import { validateProformaPayload } from '../payload-validator';
 
 describe('Pro Forma Blueprint drift', () => {
   test('blueprint version is set', () => {
@@ -53,11 +60,12 @@ describe('Pro Forma Blueprint drift', () => {
   });
 
   test('every module that declares feedsInto: M09 is mirrored in M09.receivesFrom', () => {
-    const m09Inputs = new Set(MODULE_REGISTRY.M09.receivesFrom.map(d => d.moduleId));
-    for (const [moduleId, mod] of Object.entries(MODULE_REGISTRY)) {
+    const m09Inputs = new Set<ModuleId>(MODULE_REGISTRY.M09.receivesFrom.map(d => d.moduleId));
+    const entries = Object.entries(MODULE_REGISTRY) as Array<[ModuleId, ModuleDefinition]>;
+    for (const [moduleId, mod] of entries) {
       if (moduleId === 'M09') continue;
       if (mod.feedsInto.includes('M09')) {
-        expect(m09Inputs.has(moduleId as any)).toBe(true);
+        expect(m09Inputs.has(moduleId)).toBe(true);
       }
     }
   });
@@ -91,5 +99,60 @@ describe('Pro Forma Blueprint drift', () => {
 
   test('OPEX line items are exactly 9 (per spec §7)', () => {
     expect(PROFORMA_BLUEPRINT.opexLineItems).toHaveLength(9);
+  });
+
+  test('generated JSON artifact matches in-memory blueprint exactly', () => {
+    const jsonPath = path.join(__dirname, '..', 'proforma-blueprint.json');
+    expect(fs.existsSync(jsonPath)).toBe(true);
+    const onDisk = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+    // Compare via canonical JSON string round-trip so key order doesn't matter.
+    expect(onDisk).toEqual(JSON.parse(JSON.stringify(PROFORMA_BLUEPRINT)));
+  });
+});
+
+describe('Pro Forma Payload Validator — schema enforcement', () => {
+  test('rejects payload referencing UNKNOWN section ids', () => {
+    const result = validateProformaPayload({
+      template: 'acquisition_stabilized',
+      horizon: 60,
+      periodicity: 'annual',
+      sections: [{ id: 'fake_section_xyz', fields: {} }],
+    });
+    expect(result.ok).toBe(false);
+    expect(
+      result.issues.some(i => i.severity === 'error' && i.message.includes('Unknown section id'))
+    ).toBe(true);
+  });
+
+  test('rejects payload referencing UNKNOWN field keys inside a known section', () => {
+    const tpl = PROFORMA_TEMPLATES.acquisition_stabilized;
+    const firstSection = tpl.sections[0];
+    const validFields: Record<string, unknown> = {};
+    for (const f of firstSection.fields) {
+      validFields[f] = { value: 1, source: 'platform', origin: 'platform_default', confidence: 0.9, asOf: '2026-01-01' };
+    }
+    validFields.fake_field_xyz = { value: 999, source: 'platform', origin: 'opus_inferred', confidence: 0.5, asOf: '2026-01-01' };
+    const result = validateProformaPayload({
+      template: 'acquisition_stabilized',
+      horizon: 60,
+      periodicity: 'annual',
+      sections: [{ id: firstSection.id, fields: validFields }],
+    });
+    expect(
+      result.issues.some(i => i.severity === 'error' && i.message.includes('Unknown field'))
+    ).toBe(true);
+  });
+
+  test('rejects payload using an UNKNOWN revenue formula', () => {
+    const result = validateProformaPayload({
+      template: 'acquisition_stabilized',
+      horizon: 60,
+      periodicity: 'annual',
+      revenueFormula: 'totally_made_up',
+      sections: [],
+    });
+    expect(
+      result.issues.some(i => i.severity === 'error' && i.message.includes('Unknown revenue formula'))
+    ).toBe(true);
   });
 });

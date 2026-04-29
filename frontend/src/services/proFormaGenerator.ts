@@ -18,7 +18,10 @@ import type {
   SensitivityAnalysis,
   SensitivityVariable,
   ProForma,
+  RevenueFormulaId,
+  RentTerminology,
 } from '../types/financial.types';
+import { DEFAULT_REVENUE_FORMULA } from '../types/financial.types';
 
 /**
  * Generate complete pro forma from 3D design
@@ -127,55 +130,109 @@ export function calculateDevelopmentBudget(
 }
 
 /**
- * Calculate revenue projections
+ * Calculate revenue projections.
+ *
+ * Default formula is `mark_to_market` (spec §11): every unit re-rents at
+ * **market** rent on turnover, so loss-to-lease is closed within ~1 turnover
+ * cycle and never compounds. Concessions are amortised over the lease term and
+ * netted out of effective gross income.
+ *
+ * Other formulas:
+ *   - `in_place_compounding`: today's in-place rent grown by rentGrowth each year.
+ *   - `gpr_minus_loss_to_lease`: explicit GPR – LTL drag (heavier discount).
+ *   - `renewal_aware`: separate new-lease vs renewal trade-out (Tier 1 stub).
+ *   - `rent_ramp_value_add`: monthly ramp from in-place to market over leaseUp (Tier 1 stub).
  */
-function calculateRevenue(design: Design3D, assumptions: FinancialAssumptions): RevenueProjection {
+function calculateRevenue(
+  design: Design3D,
+  assumptions: FinancialAssumptions,
+  formula: RevenueFormulaId = DEFAULT_REVENUE_FORMULA
+): RevenueProjection {
   const { unitMix } = design;
   const { marketRents, operating } = assumptions;
 
-  const studioRevenue = unitMix.studio * marketRents.studio * 12;
-  const oneBedRevenue = unitMix.oneBed * marketRents.oneBed * 12;
-  const twoBedRevenue = unitMix.twoBed * marketRents.twoBed * 12;
-  const threeBedRevenue = unitMix.threeBed * marketRents.threeBed * 12;
-  const fourBedRevenue = (unitMix.fourBedPlus || 0) * (marketRents.fourBedPlus || 0) * 12;
+  // GPR is always defined off market rents (spec §5).
+  const studioGPR = unitMix.studio * marketRents.studio * 12;
+  const oneBedGPR = unitMix.oneBed * marketRents.oneBed * 12;
+  const twoBedGPR = unitMix.twoBed * marketRents.twoBed * 12;
+  const threeBedGPR = unitMix.threeBed * marketRents.threeBed * 12;
+  const fourBedGPR = (unitMix.fourBedPlus || 0) * (marketRents.fourBedPlus || 0) * 12;
+  const grossPotentialIncome = studioGPR + oneBedGPR + twoBedGPR + threeBedGPR + fourBedGPR;
 
-  const grossPotentialIncome = 
-    studioRevenue + oneBedRevenue + twoBedRevenue + threeBedRevenue + fourBedRevenue;
-  
+  // Pull rent terminology from extended assumptions (spec §5). All optional —
+  // when missing we fall back to market rent for in-place + zero concessions.
+  const ext = (assumptions as unknown as { rentTerms?: RentTerminology }).rentTerms ?? {};
+  const inPlaceRent = ext.inPlaceRent ?? grossPotentialIncome; // assume at-market by default
+  const turnoverRate = ext.turnoverRatePerYear ?? 0.5; // industry baseline 50%/yr
+  const concessions = ext.concessions ?? 0;
+  const lossToLeasePct = grossPotentialIncome > 0
+    ? Math.max(0, (grossPotentialIncome - inPlaceRent) / grossPotentialIncome)
+    : 0;
   const vacancy = grossPotentialIncome * operating.vacancyRate;
-  const effectiveGrossIncome = grossPotentialIncome - vacancy;
+
+  let effectiveGrossIncome: number;
+  let appliedLossToLease = 0;
+
+  switch (formula) {
+    case 'in_place_compounding': {
+      // Pure in-place: never re-marks to market; locks in today's drag.
+      effectiveGrossIncome = inPlaceRent - inPlaceRent * operating.vacancyRate - concessions;
+      appliedLossToLease = grossPotentialIncome - inPlaceRent;
+      break;
+    }
+    case 'gpr_minus_loss_to_lease': {
+      // Explicit LTL: keeps the full market-vs-in-place gap as a permanent drag.
+      const ltlDollars = grossPotentialIncome * lossToLeasePct;
+      effectiveGrossIncome = grossPotentialIncome - ltlDollars - vacancy - concessions;
+      appliedLossToLease = ltlDollars;
+      break;
+    }
+    case 'renewal_aware':
+    case 'rent_ramp_value_add':
+    case 'mark_to_market':
+    default: {
+      // Mark-to-market (DEFAULT): turnover closes the LTL gap each year.
+      // EGI = market_rent * (1 - vacancy) - residual_LTL - concessions
+      // Residual LTL = LTL$ that hasn't yet rolled to market = LTL$ * (1 - turnover).
+      const ltlDollars = grossPotentialIncome * lossToLeasePct;
+      const residualLTL = ltlDollars * Math.max(0, 1 - turnoverRate);
+      effectiveGrossIncome = grossPotentialIncome - vacancy - residualLTL - concessions;
+      appliedLossToLease = residualLTL;
+      break;
+    }
+  }
+
+  const rentTerms: RentTerminology = {
+    grossPotentialRent: grossPotentialIncome,
+    marketRent: grossPotentialIncome,
+    inPlaceRent,
+    effectiveRent: effectiveGrossIncome,
+    concessions,
+    lossToLease: appliedLossToLease,
+    turnoverRatePerYear: turnoverRate,
+    ...(ext.newLeaseRent !== undefined ? { newLeaseRent: ext.newLeaseRent } : {}),
+    ...(ext.renewalRent !== undefined ? { renewalRent: ext.renewalRent } : {}),
+  };
 
   return {
-    studio: { 
-      units: unitMix.studio, 
-      rent: marketRents.studio, 
-      total: studioRevenue 
-    },
-    oneBed: { 
-      units: unitMix.oneBed, 
-      rent: marketRents.oneBed, 
-      total: oneBedRevenue 
-    },
-    twoBed: { 
-      units: unitMix.twoBed, 
-      rent: marketRents.twoBed, 
-      total: twoBedRevenue 
-    },
-    threeBed: { 
-      units: unitMix.threeBed, 
-      rent: marketRents.threeBed, 
-      total: threeBedRevenue 
-    },
+    studio: { units: unitMix.studio, rent: marketRents.studio, total: studioGPR },
+    oneBed: { units: unitMix.oneBed, rent: marketRents.oneBed, total: oneBedGPR },
+    twoBed: { units: unitMix.twoBed, rent: marketRents.twoBed, total: twoBedGPR },
+    threeBed: { units: unitMix.threeBed, rent: marketRents.threeBed, total: threeBedGPR },
     ...(unitMix.fourBedPlus && {
       fourBedPlus: {
         units: unitMix.fourBedPlus,
         rent: marketRents.fourBedPlus || 0,
-        total: fourBedRevenue,
+        total: fourBedGPR,
       },
     }),
     grossPotentialIncome,
     vacancy,
     effectiveGrossIncome,
+    formula,
+    rentTerms,
+    concessions,
+    lossToLease: appliedLossToLease,
   };
 }
 
@@ -266,7 +323,12 @@ export function calculateOperatingProForma(
   assumptions: FinancialAssumptions,
   budget: DevelopmentBudget
 ): OperatingProForma {
-  const stabilizedRevenue = calculateRevenue(design, assumptions);
+  // Spec §11 default: mark_to_market. Callers can override via
+  // (assumptions as any).revenueFormula.
+  const formula =
+    ((assumptions as unknown as { revenueFormula?: RevenueFormulaId }).revenueFormula) ??
+    DEFAULT_REVENUE_FORMULA;
+  const stabilizedRevenue = calculateRevenue(design, assumptions, formula);
   const stabilizedExpenses = calculateExpenses(design, stabilizedRevenue, assumptions, budget);
   const stabilizedCashFlow = calculateCashFlow(stabilizedRevenue, stabilizedExpenses, assumptions, budget);
 

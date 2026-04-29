@@ -108,9 +108,27 @@ export function validateProformaPayload(payload: any): ValidationResult {
     return { ok: false, templateId, issues, validSections, invalidSections };
   }
 
-  const sectionMap: Record<string, any> = {};
-  for (const s of payload.sections) {
-    if (s && typeof s === 'object' && typeof s.id === 'string') sectionMap[s.id] = s;
+  type SectionPayload = { id?: string; title?: string; fields?: Record<string, unknown> };
+
+  const sectionMap: Record<string, SectionPayload> = {};
+  for (const s of payload.sections as unknown[]) {
+    if (s && typeof s === 'object' && typeof (s as SectionPayload).id === 'string') {
+      const sec = s as SectionPayload;
+      sectionMap[sec.id as string] = sec;
+    }
+  }
+
+  // ── Reject UNKNOWN sections (spec §1: blueprint is the only allowed schema) ──
+  const allowedSectionIds = new Set(template.sections.map(s => s.id));
+  for (const actualId of Object.keys(sectionMap)) {
+    if (!allowedSectionIds.has(actualId)) {
+      issues.push({
+        severity: 'error',
+        path: `$.sections[${actualId}]`,
+        message: `Unknown section id "${actualId}" — not declared in template "${templateId}". Allowed: ${[...allowedSectionIds].join(', ')}`,
+      });
+      invalidSections.push(actualId);
+    }
   }
 
   for (const expected of template.sections) {
@@ -127,24 +145,42 @@ export function validateProformaPayload(payload: any): ValidationResult {
       continue;
     }
 
-    const fields = actual.fields ?? {};
+    const fields: Record<string, unknown> = actual.fields ?? {};
     const missing: string[] = [];
     for (const field of expected.fields) {
       if (!(field in fields)) missing.push(field);
     }
-    if (missing.length > 0 && expected.required) {
+    let sectionInvalid = missing.length > 0 && expected.required;
+    if (sectionInvalid) {
       issues.push({
         severity: 'error',
         path: `$.sections[${expected.id}].fields`,
         message: `Required fields missing: ${missing.join(', ')}`,
       });
       invalidSections.push(expected.id);
-    } else {
-      validSections.push(expected.id);
     }
+
+    // Reject UNKNOWN field keys — Opus must not invent fields.
+    const allowedFieldKeys = new Set(expected.fields);
+    for (const fieldKey of Object.keys(fields)) {
+      if (!allowedFieldKeys.has(fieldKey)) {
+        issues.push({
+          severity: 'error',
+          path: `$.sections[${expected.id}].fields.${fieldKey}`,
+          message: `Unknown field "${fieldKey}" — not declared in section "${expected.id}". Allowed: ${[...allowedFieldKeys].join(', ')}`,
+        });
+        if (!sectionInvalid) {
+          invalidSections.push(expected.id);
+          sectionInvalid = true;
+        }
+      }
+    }
+
+    if (!sectionInvalid) validSections.push(expected.id);
 
     // Provenance check: every value should be wrapped (or null+rationale).
     for (const [fieldKey, fieldValue] of Object.entries(fields)) {
+      if (!allowedFieldKeys.has(fieldKey)) continue; // already errored above
       if (fieldValue === null || fieldValue === undefined) continue;
       if (typeof fieldValue !== 'object') {
         issues.push({
@@ -154,7 +190,7 @@ export function validateProformaPayload(payload: any): ValidationResult {
         });
         continue;
       }
-      const v = fieldValue as any;
+      const v = fieldValue as Record<string, unknown>;
       if (!('value' in v) || !('source' in v) || !('confidence' in v)) {
         issues.push({
           severity: 'warning',
@@ -163,11 +199,12 @@ export function validateProformaPayload(payload: any): ValidationResult {
         });
         continue;
       }
-      if (typeof v.confidence === 'number' && v.confidence < PROVENANCE_RULES.refusalThreshold && v.value !== null) {
+      const confidence = v.confidence;
+      if (typeof confidence === 'number' && confidence < PROVENANCE_RULES.refusalThreshold && v.value !== null) {
         issues.push({
           severity: 'warning',
           path: `$.sections[${expected.id}].fields.${fieldKey}`,
-          message: `Confidence ${v.confidence} below refusal threshold ${PROVENANCE_RULES.refusalThreshold}; should be marked qualityFlag=red or set value=null`,
+          message: `Confidence ${confidence} below refusal threshold ${PROVENANCE_RULES.refusalThreshold}; should be marked qualityFlag=red or set value=null`,
         });
       }
     }
