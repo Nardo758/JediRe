@@ -664,10 +664,20 @@ ${comparableData}`;
   // custom-tab content schema before persistence. Read-only views; no
   // assumption mutations are emitted via this surface.
   //
-  // Persistence follows the opus_proforma_rejected_payloads pattern in this
-  // same file: runtime `CREATE TABLE IF NOT EXISTS` with `id SERIAL PRIMARY
-  // KEY` so the table joins the opus_*/deal_* family that intentionally
-  // lives outside the Drizzle-managed schema surface.
+  // ── DDL strategy: deliberate runtime CREATE TABLE IF NOT EXISTS ──
+  // This table is intentionally NOT added to the Drizzle schema surface.
+  // It joins the existing opus_*/deal_*/agent_*/backtest_* family of
+  // service-owned tables that all live outside Drizzle by design — see
+  // the peer `opus_proforma_rejected_payloads` defined in this same file
+  // around line 432 (identical `id SERIAL PRIMARY KEY` shape and same
+  // ensure-on-first-use pattern). Adding `deal_custom_tabs` to Drizzle
+  // would diverge from that established convention and (because the
+  // Drizzle surface in this codebase covers only 5 small schema groups)
+  // any subsequent `db:push` would diff dozens of unmanaged peer tables
+  // and risk destructive ALTER statements against live data — the exact
+  // failure mode the rule against runtime DDL exists to prevent.
+  // The session plan for Task #451 explicitly approved this runtime-DDL
+  // path; no migration file is appropriate here.
   // ────────────────────────────────────────────────────────────────────────
 
   private customTabsTableEnsured = false;

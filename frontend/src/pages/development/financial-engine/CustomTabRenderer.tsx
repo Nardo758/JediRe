@@ -185,12 +185,14 @@ function formatValue(value: number | null, format?: CustomTabFormat): string {
 // Provenance badge — tiny pill rendered next to a value
 // ──────────────────────────────────────────────────────────────────────────
 
+// NOTE: prop is `fieldRef`, not `ref` — `ref` is reserved by React on
+// function components and would never reach the implementation.
 const ProvenanceBadge: React.FC<{
-  ref: string;
+  fieldRef: string;
   value: unknown;
   evidenceFieldMap?: Record<string, EvidenceFieldMeta>;
-}> = ({ ref, value, evidenceFieldMap }) => {
-  const meta = evidenceFieldMap?.[ref];
+}> = ({ fieldRef, value, evidenceFieldMap }) => {
+  const meta = evidenceFieldMap?.[fieldRef];
   let confidence: number | undefined;
   let source: string | undefined;
   let qualityFlag: string | undefined;
@@ -216,7 +218,7 @@ const ProvenanceBadge: React.FC<{
   }`;
   return (
     <span
-      title={`${ref} · source=${source ?? '?'} · confidence=${confidence ?? '?'} · quality=${qualityFlag ?? '?'}`}
+      title={`${fieldRef} · source=${source ?? '?'} · confidence=${confidence ?? '?'} · quality=${qualityFlag ?? '?'}`}
       style={{
         display: 'inline-block', marginLeft: 4,
         fontFamily: MONO, fontSize: 8, fontWeight: 700,
@@ -273,7 +275,7 @@ const MarkdownBlockView: React.FC<{
         return (
           <span key={i} style={{ color: BT.text.amber, fontWeight: 700 }}>
             {display}
-            <ProvenanceBadge ref={seg.value} value={raw} evidenceFieldMap={evidenceFieldMap} />
+            <ProvenanceBadge fieldRef={seg.value} value={raw} evidenceFieldMap={evidenceFieldMap} />
           </span>
         );
       })}
@@ -307,7 +309,7 @@ const KpiTileBlockView: React.FC<{
         marginTop: 2,
       }}>
         {display}
-        <ProvenanceBadge ref={block.ref} value={raw} evidenceFieldMap={evidenceFieldMap} />
+        <ProvenanceBadge fieldRef={block.ref} value={raw} evidenceFieldMap={evidenceFieldMap} />
       </span>
       {block.sublabel && (
         <span style={{ fontFamily: MONO, fontSize: 9, color: BT.text.secondary, marginTop: 2 }}>
@@ -369,7 +371,7 @@ const TableBlockView: React.FC<{
                 return (
                   <td key={c} style={{ textAlign: 'right', padding: '3px 6px', color: BT.text.primary }}>
                     {display}
-                    <ProvenanceBadge ref={col.ref} value={raw} evidenceFieldMap={evidenceFieldMap} />
+                    <ProvenanceBadge fieldRef={col.ref} value={raw} evidenceFieldMap={evidenceFieldMap} />
                   </td>
                 );
               })}
@@ -426,7 +428,7 @@ const RatioBarBlockView: React.FC<{
       </div>
       <div style={{ marginTop: 4, fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
         {block.numeratorRef} / {block.denominatorRef}
-        <ProvenanceBadge ref={block.numeratorRef} value={resolveRef(block.numeratorRef, data)} evidenceFieldMap={evidenceFieldMap} />
+        <ProvenanceBadge fieldRef={block.numeratorRef} value={resolveRef(block.numeratorRef, data)} evidenceFieldMap={evidenceFieldMap} />
       </div>
     </div>
   );
@@ -461,7 +463,7 @@ const LineChartBlockView: React.FC<{
     }}>
       <div style={{ fontFamily: MONO, fontSize: 9, color: BT.text.muted, marginBottom: 4 }}>
         {block.yLabel ?? 'value'} over {block.xLabel ?? 'period'}
-        <ProvenanceBadge ref={block.seriesRef} value={null} evidenceFieldMap={evidenceFieldMap} />
+        <ProvenanceBadge fieldRef={block.seriesRef} value={null} evidenceFieldMap={evidenceFieldMap} />
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} style={{ background: BT.bg.terminal, borderRadius: 2 }}>
         {/* axes */}
