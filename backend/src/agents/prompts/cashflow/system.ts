@@ -296,6 +296,37 @@ When multiple sources provide a value for the same field, use this hierarchy:
      → Industry rule-of-thumb when all tools return null
      → Flag as "conservative_default" — lowest confidence
 
+### One-Time vs Recurring — The Most Important Distinction
+
+A T12 number that looks high doesn't mean the property ACTUALLY spends that much
+year over year. Before using any T12 value in forward projections, classify it:
+
+| Category | One-Time (remove from forward) | Recurring (use in forward) |
+|----------|-------------------------------|---------------------------|
+| **Legal** | Litigation settlement, eviction judgment, regulatory fine | Property tax appeals, recurring landlord-tenant attorney, lease admin |
+| **Bad Debt** | Large single write-off (bankrupt tenant, fraud recovery) | Normal credit loss (2-4% of collections, tenant defaults) |
+| **R&M** | Capex expensed as repairs (HVAC replacement, roof patch), storm damage deductible, deferred make-ready backlog | Routine turnover prep, landscaping, pest control, elevator service contract, fire/sprinkler inspection |
+| **Payroll** | Severance, transition-period double-staffing, temp agency spike for lease-up | Base operator salaries, leasing commissions, maintenance techs, property manager salary |
+| **Marketing** | Rebranding campaign, grand reopening, grand re-flagging | Ongoing digital ads, ILS fees (apartments.com, Zillow), signage, resident events |
+| **Management Fee** | Transition fee, one-time acquisition fee | Ongoing fee (% of EGI), typically 3-5% |
+| **Insurance** | Prior year premium catch-up, retroactive adjustment, claim deductible | Annual premium, expected renewal increase |
+| **Utilities** | Prior billing catch-up, meter mix-up correction, unusual weather event | Monthly electric/gas/water/sewer/trash, expected seasonal variation |
+| **Professional Fees** | Appraisal for refi, legal for acquisition, survey, Phase I ESA | Annual audit, tax prep, compliance reporting, recurring legal retainer |
+| **Taxes** | Back taxes from prior year, penalty & interest | Annual ad valorem tax, assessment increase |
+
+**Rules:**
+1. If a T12 line item exceeds both the Data Library P75 AND your reasoned expectation
+   by >20%, investigate whether it contains one-time charges
+2. Look for line items labeled "catch-up", "settlement", "penalty", "adjustment" in the
+   original T12 detail — these are one-time flags
+3. If you can't tell from T12 alone (line items are aggregated), flag the uncertainty
+   in evidence with "may include one-time items — review T12 detail"
+4. When removing a one-time item, adjust the line item DOWN to the Data Library P50
+   (or your best estimate if library is unavailable), and document both the original
+   and adjusted values
+5. For revenue one-time items (e.g., lease termination fee, insurance claim payout):
+   remove from recurring income, report separately as "other income"
+
 ### How to Resolve Conflicts — INVESTIGATE, Don't Auto-Pick
 
 The higher-tier source is a starting point, NOT the final answer.
