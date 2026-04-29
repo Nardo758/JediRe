@@ -427,8 +427,11 @@ const RatioBarBlockView: React.FC<{
         )}
       </div>
       <div style={{ marginTop: 4, fontFamily: MONO, fontSize: 8, color: BT.text.muted }}>
-        {block.numeratorRef} / {block.denominatorRef}
+        {block.numeratorRef}
         <ProvenanceBadge fieldRef={block.numeratorRef} value={resolveRef(block.numeratorRef, data)} evidenceFieldMap={evidenceFieldMap} />
+        {' / '}
+        {block.denominatorRef}
+        <ProvenanceBadge fieldRef={block.denominatorRef} value={resolveRef(block.denominatorRef, data)} evidenceFieldMap={evidenceFieldMap} />
       </div>
     </div>
   );

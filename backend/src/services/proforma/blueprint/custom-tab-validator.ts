@@ -318,11 +318,11 @@ export function validateCustomTabPayload(
   }
 
   // tabId / title
-  if (!p.tabId || typeof p.tabId !== 'string' || !/^[a-z0-9_-]{1,64}$/i.test(p.tabId)) {
+  if (!p.tabId || typeof p.tabId !== 'string' || !/^[a-z0-9_-]{1,64}$/.test(p.tabId)) {
     state.issues.push({
       severity: 'error',
       path: '$.tabId',
-      message: '`tabId` must match /^[a-z0-9_-]{1,64}$/i',
+      message: '`tabId` must match /^[a-z0-9_-]{1,64}$/ (lowercase slug)',
     });
   }
   if (!p.title || typeof p.title !== 'string') {
